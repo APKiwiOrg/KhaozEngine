@@ -10,7 +10,7 @@ namespace KhaozEngine.Input;
 /// <see cref="InputManager"/> can derive the unified pointer, edges, and gestures without touching
 /// any MonoGame input statics.
 /// </summary>
-/// <param name="MousePosition">Mouse position in screen pixels.</param>
+/// <param name="MousePosition">Mouse position in window-relative pixels (0,0 = client top-left).</param>
 /// <param name="MouseLeftDown">Whether the left mouse button is down.</param>
 /// <param name="MouseMiddleDown">Whether the middle mouse button is down.</param>
 /// <param name="MouseRightDown">Whether the right mouse button is down.</param>
@@ -18,7 +18,9 @@ namespace KhaozEngine.Input;
 /// <param name="Keyboard">Current keyboard state.</param>
 /// <param name="GamePads">Connected game pad states, indexed by player.</param>
 /// <param name="Touches">Active touch points.</param>
-/// <param name="WindowBounds">Client bounds in screen pixels; an empty rect disables the in-window check.</param>
+/// <param name="WindowBounds">Client area in the same window-relative space as <paramref name="MousePosition"/>:
+/// the InputManager uses only its Width/Height (Location is ignored) to reject clicks outside the client area.
+/// An empty rect disables the in-window check (used by headless tests).</param>
 public readonly record struct RawInputState(
     Point MousePosition,
     bool MouseLeftDown,

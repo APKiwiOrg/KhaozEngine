@@ -113,7 +113,14 @@ public sealed class InputManager
         }
         else
         {
-            bool inWindow = raw.WindowBounds.IsEmpty || raw.WindowBounds.Contains(raw.MousePosition);
+            // Mouse positions are window-relative (0,0 = client top-left), so the in-window
+            // test must ignore WindowBounds.Location (it carries the window's screen offset).
+            // Comparing against the offset rect rejects every click when the window is not at
+            // the screen origin -- which is the normal case on desktop.
+            bool inWindow = raw.WindowBounds.IsEmpty
+                || (raw.MousePosition.X >= 0 && raw.MousePosition.Y >= 0
+                    && raw.MousePosition.X < raw.WindowBounds.Width
+                    && raw.MousePosition.Y < raw.WindowBounds.Height);
             down = raw.MouseLeftDown && inWindow;
             _pointerPosition = Project(new Vector2(raw.MousePosition.X, raw.MousePosition.Y));
             _isPinching = false;

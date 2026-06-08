@@ -17,6 +17,10 @@ public class InputManagerTests
         new(new Point(x, y), down, false, false, scroll,
             new KeyboardState(keys), NoPads, Array.Empty<TouchPoint>(), Rectangle.Empty);
 
+    private static RawInputState MouseInWindow(int x, int y, bool down, Rectangle windowBounds) =>
+        new(new Point(x, y), down, false, false, 0,
+            new KeyboardState(), NoPads, Array.Empty<TouchPoint>(), windowBounds);
+
     private static RawInputState Pads(IReadOnlyList<GamePadState> pads) =>
         new(Point.Zero, false, false, false, 0,
             new KeyboardState(), pads, Array.Empty<TouchPoint>(), Rectangle.Empty);
@@ -73,6 +77,32 @@ public class InputManagerTests
         im.Update(Mouse(10, 10, true), false);
         Assert.False(im.IsPointerDown);
         Assert.False(im.IsPointerJustPressed);
+    }
+
+    // --- in-window check is offset-agnostic (0.1.3 regression) ---
+
+    [Fact]
+    public void TapRegistersWhenWindowIsOffsetOnScreen()
+    {
+        // Desktop mouse coords are window-relative; WindowBounds.Location carries the window's
+        // screen offset. The in-window check must ignore Location, else an offset window (the
+        // normal case) suppresses every click.
+        var im = new InputManager();
+        var rect = new Rectangle(0, 0, 40, 40);
+        var offsetWindow = new Rectangle(1060, 242, 440, 956);
+        im.Update(MouseInWindow(20, 20, down: true, offsetWindow), true);
+        im.Update(MouseInWindow(20, 20, down: false, offsetWindow), true);
+        Assert.True(im.IsTapIn(rect));
+    }
+
+    [Fact]
+    public void ClickOutsideClientAreaIsSuppressed()
+    {
+        // A position beyond the client width/height (mouse left the window) is still rejected.
+        var im = new InputManager();
+        var window = new Rectangle(1060, 242, 440, 956);
+        im.Update(MouseInWindow(500, 50, down: true, window), true);   // x=500 >= width 440
+        Assert.False(im.IsPointerDown);
     }
 
     // --- region blocking (click-through fix, both games) ---

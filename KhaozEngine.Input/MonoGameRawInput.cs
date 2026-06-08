@@ -40,6 +40,8 @@ public sealed class MonoGameRawInput : IRawInput
             Keyboard.GetState(),
             pads,
             list,
-            _window.ClientBounds);
+            // Mouse coords are window-relative, so report the client area at the origin
+            // (ClientBounds.Location is the window's screen offset and must not leak in here).
+            new Rectangle(0, 0, _window.ClientBounds.Width, _window.ClientBounds.Height));
     }
 }

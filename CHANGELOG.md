@@ -2,6 +2,14 @@
 
 All notable changes to KhaozEngine. Versions are shared across the four packages.
 
+## 0.1.3
+
+- Fix: desktop clicks were suppressed whenever the game window was not at the screen
+  origin. `InputManager`'s in-window check compared window-relative mouse coords against
+  `WindowBounds` carrying the window's screen offset, so `Contains` rejected every click.
+  The check now ignores `WindowBounds.Location` (uses Width/Height only), and
+  `MonoGameRawInput` reports the client area at the origin. Adds headless regression tests.
+
 ## 0.1.2
 
 - Add per-package README files (shown on the NuGet package pages).

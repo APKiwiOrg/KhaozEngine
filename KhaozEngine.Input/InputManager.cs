@@ -48,13 +48,27 @@ public sealed class InputManager
     private IReadOnlyList<GamePadState> _currentPads = Array.Empty<GamePadState>();
     private IReadOnlyList<GamePadState> _previousPads = Array.Empty<GamePadState>();
 
+    // mouse buttons (desktop)
+    private bool _middleDown, _wasMiddleDown, _rightDown, _wasRightDown;
+
+    // multi-touch (virtual coords) + pinch midpoint
+    private IReadOnlyList<TouchPoint> _virtualTouches = Array.Empty<TouchPoint>();
+    private Vector2 _pinchMidpoint;
+
+    // controller cursor
+    private readonly float _cursorSpeed;
+    private Point _prevMousePos;
+    private bool _hasPrevMouse;
+
     /// <summary>Creates the input manager.</summary>
     /// <param name="isMobile">True to unify the pointer from touch; false to use the mouse.</param>
     /// <param name="transform">Screen-to-virtual transform; defaults to <see cref="IdentityTransform"/>.</param>
-    public InputManager(bool isMobile = false, ICoordinateTransform? transform = null)
+    /// <param name="cursorSpeed">If &gt; 0, enables a gamepad/keyboard-driven cursor at this speed (virtual px/s) when the mouse is idle. 0 disables it.</param>
+    public InputManager(bool isMobile = false, ICoordinateTransform? transform = null, float cursorSpeed = 0)
     {
         _isMobile = isMobile;
         _transform = transform ?? IdentityTransform.Instance;
+        _cursorSpeed = cursorSpeed;
     }
 
     /// <summary>True when the pointer is driven by touch rather than mouse.</summary>
@@ -78,16 +92,52 @@ public sealed class InputManager
     /// <summary>True only on the frame the pointer transitions from down to up.</summary>
     public bool IsPointerJustReleased => !_isPointerDown && _wasPointerDown;
 
+    /// <summary>True while the middle mouse button is down (desktop, window active).</summary>
+    public bool IsMiddleDown => _middleDown;
+    /// <summary>True only on the frame the middle button transitions up-to-down.</summary>
+    public bool IsMiddleJustPressed => _middleDown && !_wasMiddleDown;
+    /// <summary>True only on the frame the middle button transitions down-to-up (a "middle click").</summary>
+    public bool IsMiddleJustReleased => !_middleDown && _wasMiddleDown;
+
+    /// <summary>True while the right mouse button is down (desktop, window active).</summary>
+    public bool IsRightDown => _rightDown;
+    /// <summary>True only on the frame the right button transitions up-to-down.</summary>
+    public bool IsRightJustPressed => _rightDown && !_wasRightDown;
+    /// <summary>True only on the frame the right button transitions down-to-up.</summary>
+    public bool IsRightJustReleased => !_rightDown && _wasRightDown;
+
+    /// <summary>Active touches in virtual coordinates (id + virtual position + state). Empty on desktop.</summary>
+    public IReadOnlyList<TouchPoint> Touches => _virtualTouches;
+
+    /// <summary>
+    /// Returns the current two-finger pinch (virtual midpoint, distance, per-frame delta, and
+    /// scale ratio). False with fewer than two active touches.
+    /// </summary>
+    public bool TryGetPinch(out Pinch pinch)
+    {
+        if (!_isPinching)
+        {
+            pinch = default;
+            return false;
+        }
+        float scale = _previousPinchDistance > 0f ? _pinchDistance / _previousPinchDistance : 1f;
+        pinch = new Pinch(true, _pinchMidpoint, _pinchDistance, _pinchDistance - _previousPinchDistance, scale);
+        return true;
+    }
+
     /// <summary>
     /// Polls input for this frame. Call once, before screens update, with a fresh snapshot.
     /// </summary>
     /// <param name="raw">The hardware snapshot (from <see cref="IRawInput.Read"/> or a test).</param>
     /// <param name="isActive">Pass <c>Game.IsActive</c>; when false the pointer reads as up to avoid ghost taps.</param>
-    public void Update(RawInputState raw, bool isActive)
+    /// <param name="dt">Elapsed seconds; only used to integrate the controller cursor when enabled.</param>
+    public void Update(RawInputState raw, bool isActive, float dt = 0)
     {
         _blocked.Clear();
         _wasPointerDown = _isPointerDown;
         _previousPointerPosition = _pointerPosition;
+        _wasMiddleDown = _middleDown;
+        _wasRightDown = _rightDown;
         _previousKeyboard = _currentKeyboard;
         _currentKeyboard = raw.Keyboard;
         _previousScrollValue = _scrollValue;
@@ -95,6 +145,7 @@ public sealed class InputManager
         _previousPads = _currentPads;
         _currentPads = raw.GamePads;
         _touches = raw.Touches;
+        _virtualTouches = BuildVirtualTouches(raw.Touches);
 
         bool down;
         if (_isMobile)
@@ -110,6 +161,8 @@ public sealed class InputManager
                 down = false; // keep last position
             }
             UpdatePinch();
+            _middleDown = false;
+            _rightDown = false;
         }
         else
         {
@@ -122,13 +175,63 @@ public sealed class InputManager
                     && raw.MousePosition.X < raw.WindowBounds.Width
                     && raw.MousePosition.Y < raw.WindowBounds.Height);
             down = raw.MouseLeftDown && inWindow;
-            _pointerPosition = Project(new Vector2(raw.MousePosition.X, raw.MousePosition.Y));
+
+            if (_cursorSpeed > 0f)
+                UpdateCursor(raw, dt);
+            else
+                _pointerPosition = Project(new Vector2(raw.MousePosition.X, raw.MousePosition.Y));
+
+            _middleDown = raw.MouseMiddleDown && inWindow;
+            _rightDown = raw.MouseRightDown && inWindow;
             _isPinching = false;
+            _prevMousePos = raw.MousePosition;
+            _hasPrevMouse = true;
         }
 
-        if (!isActive) down = false;
+        if (!isActive)
+        {
+            down = false;
+            _middleDown = false;
+            _rightDown = false;
+        }
         _isPointerDown = down;
         if (IsPointerJustPressed) _pressOrigin = _pointerPosition;
+    }
+
+    // Drives the pointer from the gamepad-0 left stick + arrow keys when the mouse is idle;
+    // snaps to the mouse when it moves or the left button is down. Pointer (aim/hover) only.
+    private void UpdateCursor(RawInputState raw, float dt)
+    {
+        bool mouseMoved = !_hasPrevMouse || raw.MousePosition != _prevMousePos;
+        if (mouseMoved || raw.MouseLeftDown)
+        {
+            _pointerPosition = Project(new Vector2(raw.MousePosition.X, raw.MousePosition.Y));
+            return;
+        }
+
+        Vector2 move = Vector2.Zero;
+        if (raw.GamePads.Count > 0)
+        {
+            var stick = raw.GamePads[0].ThumbSticks.Left;
+            move += new Vector2(stick.X, -stick.Y);
+        }
+        if (raw.Keyboard.IsKeyDown(Keys.Left)) move.X -= 1f;
+        if (raw.Keyboard.IsKeyDown(Keys.Right)) move.X += 1f;
+        if (raw.Keyboard.IsKeyDown(Keys.Up)) move.Y -= 1f;
+        if (raw.Keyboard.IsKeyDown(Keys.Down)) move.Y += 1f;
+
+        _pointerPosition += move * _cursorSpeed * dt;
+        if (_transform.VirtualBounds is Rectangle b)
+            _pointerPosition = Vector2.Clamp(_pointerPosition, new Vector2(b.Left, b.Top), new Vector2(b.Right, b.Bottom));
+    }
+
+    private IReadOnlyList<TouchPoint> BuildVirtualTouches(IReadOnlyList<TouchPoint> raw)
+    {
+        if (raw.Count == 0) return Array.Empty<TouchPoint>();
+        var vt = new TouchPoint[raw.Count];
+        for (int i = 0; i < raw.Count; i++)
+            vt[i] = new TouchPoint(_transform.ScreenToVirtual(raw[i].Position), raw[i].State, raw[i].Id);
+        return vt;
     }
 
     private Vector2 Project(Vector2 screen)
@@ -146,6 +249,7 @@ public sealed class InputManager
             Vector2 t0 = _transform.ScreenToVirtual(_touches[0].Position);
             Vector2 t1 = _transform.ScreenToVirtual(_touches[1].Position);
             float dist = Vector2.Distance(t0, t1);
+            _pinchMidpoint = (t0 + t1) * 0.5f;
             if (!_isPinching) { _pinchDistance = dist; _previousPinchDistance = dist; _isPinching = true; }
             else { _previousPinchDistance = _pinchDistance; _pinchDistance = dist; }
         }

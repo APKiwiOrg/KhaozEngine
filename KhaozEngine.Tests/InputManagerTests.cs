@@ -230,4 +230,158 @@ public class InputManagerTests
         im.Update(Mouse(40, 40, false), true);            // *0.5 = (20,20) -> clamped to (10,10)
         Assert.Equal(new Vector2(10, 10), im.PointerPosition);
     }
+
+    // --- helpers for 0.2.0 tests ---
+    private static RawInputState MouseButtons(int x, int y, bool left, bool middle, bool right) =>
+        new(new Point(x, y), left, middle, right, 0,
+            new KeyboardState(), NoPads, Array.Empty<TouchPoint>(), Rectangle.Empty);
+
+    private static RawInputState Touches2(Vector2 a, Vector2 b, int idA = 1, int idB = 2) =>
+        new(Point.Zero, false, false, false, 0, new KeyboardState(), NoPads,
+            new[] { new TouchPoint(a, TouchLocationState.Moved, idA), new TouchPoint(b, TouchLocationState.Moved, idB) },
+            Rectangle.Empty);
+
+    private static RawInputState Stick(float x, float y) =>
+        new(Point.Zero, false, false, false, 0, new KeyboardState(),
+            new[] { new GamePadState(new GamePadThumbSticks(new Vector2(x, y), Vector2.Zero),
+                        new GamePadTriggers(), new GamePadButtons(), new GamePadDPad()),
+                    new GamePadState(), new GamePadState(), new GamePadState() },
+            Array.Empty<TouchPoint>(), Rectangle.Empty);
+
+    // --- middle / right mouse edges ---
+
+    [Fact]
+    public void MiddleButtonEdges()
+    {
+        var im = new InputManager();
+        im.Update(MouseButtons(0, 0, false, true, false), true);
+        Assert.True(im.IsMiddleDown);
+        Assert.True(im.IsMiddleJustPressed);
+        im.Update(MouseButtons(0, 0, false, true, false), true);
+        Assert.False(im.IsMiddleJustPressed);          // held
+        im.Update(MouseButtons(0, 0, false, false, false), true);
+        Assert.True(im.IsMiddleJustReleased);          // the "middle click"
+        Assert.False(im.IsMiddleDown);
+    }
+
+    [Fact]
+    public void RightButtonEdges()
+    {
+        var im = new InputManager();
+        im.Update(MouseButtons(0, 0, false, false, true), true);
+        Assert.True(im.IsRightDown);
+        Assert.True(im.IsRightJustPressed);
+        im.Update(MouseButtons(0, 0, false, false, false), true);
+        Assert.True(im.IsRightJustReleased);
+    }
+
+    [Fact]
+    public void MouseButtonsSuppressedWhenInactiveOrMobile()
+    {
+        var im = new InputManager();
+        im.Update(MouseButtons(0, 0, false, true, true), false);   // window inactive
+        Assert.False(im.IsMiddleDown);
+        Assert.False(im.IsRightDown);
+
+        var mob = new InputManager(isMobile: true);
+        mob.Update(MouseButtons(0, 0, false, true, true), true);   // mobile has no mouse
+        Assert.False(mob.IsMiddleDown);
+        Assert.False(mob.IsRightDown);
+    }
+
+    // --- multi-touch surfacing ---
+
+    [Fact]
+    public void TouchesSurfacedInVirtualCoordinatesWithIds()
+    {
+        var t = new MatrixTransform(Matrix.CreateScale(0.5f));
+        var im = new InputManager(isMobile: true, transform: t);
+        im.Update(Touches2(new Vector2(100, 200), new Vector2(40, 60), idA: 7, idB: 9), true);
+
+        Assert.Equal(2, im.Touches.Count);
+        Assert.Equal(new Vector2(50, 100), im.Touches[0].Position);   // 100,200 * 0.5
+        Assert.Equal(7, im.Touches[0].Id);
+        Assert.Equal(9, im.Touches[1].Id);
+    }
+
+    [Fact]
+    public void TouchesEmptyOnDesktop()
+    {
+        var im = new InputManager();
+        im.Update(Mouse(10, 10, true), true);
+        Assert.Empty(im.Touches);
+    }
+
+    // --- richer pinch ---
+
+    [Fact]
+    public void TryGetPinchReportsMidpointDistanceAndScale()
+    {
+        var im = new InputManager(isMobile: true);
+        im.Update(Touches2(new Vector2(0, 0), new Vector2(10, 0)), true);   // distance 10, first frame
+        Assert.True(im.TryGetPinch(out var p1));
+        Assert.True(p1.Active);
+        Assert.Equal(new Vector2(5, 0), p1.Midpoint);
+        Assert.Equal(10f, p1.Distance);
+        Assert.Equal(1f, p1.Scale);                                        // first frame ratio = 1
+
+        im.Update(Touches2(new Vector2(0, 0), new Vector2(20, 0)), true);  // distance 20
+        Assert.True(im.TryGetPinch(out var p2));
+        Assert.Equal(20f, p2.Distance);
+        Assert.Equal(10f, p2.Delta);                                       // 20 - 10
+        Assert.Equal(2f, p2.Scale);                                        // 20 / 10
+    }
+
+    [Fact]
+    public void TryGetPinchFalseWithFewerThanTwoTouches()
+    {
+        var im = new InputManager(isMobile: true);
+        im.Update(Touch(new Vector2(5, 5), TouchLocationState.Moved), true);
+        Assert.False(im.TryGetPinch(out var p));
+        Assert.False(p.Active);
+    }
+
+    // --- controller cursor ---
+
+    [Fact]
+    public void CursorDriftsWithLeftStickWhenMouseIdle()
+    {
+        var im = new InputManager(cursorSpeed: 100f);     // identity transform, no clamp
+        im.Update(Stick(0, 0), true, 0.016f);             // frame 1: snaps to mouse (0,0)
+        im.Update(Stick(1, 0), true, 0.5f);               // mouse idle => drift +X by 1*100*0.5
+        Assert.Equal(50f, im.PointerPosition.X, 3);
+        Assert.Equal(0f, im.PointerPosition.Y, 3);
+    }
+
+    [Fact]
+    public void CursorClampsToVirtualBounds()
+    {
+        var t = new MatrixTransform(Matrix.Identity, new Rectangle(0, 0, 10, 10));
+        var im = new InputManager(transform: t, cursorSpeed: 1000f);
+        im.Update(Stick(0, 0), true, 0.016f);             // snap to mouse (0,0)
+        // stick down-right: x=+1, y=-1 (thumbstick up is +Y, which is screen -Y) => drift +X,+Y
+        im.Update(Stick(1, -1), true, 1f);                // huge drift => clamp to (10,10)
+        Assert.Equal(10f, im.PointerPosition.X, 3);
+        Assert.Equal(10f, im.PointerPosition.Y, 3);
+    }
+
+    [Fact]
+    public void MouseMovementSnapsCursorBack()
+    {
+        var im = new InputManager(cursorSpeed: 100f);
+        im.Update(Stick(0, 0), true, 0.016f);
+        im.Update(Stick(1, 0), true, 0.5f);               // drift to ~50
+        im.Update(new RawInputState(new Point(200, 80), false, false, false, 0,
+            new KeyboardState(), NoPads, Array.Empty<TouchPoint>(), Rectangle.Empty), true, 0.5f);
+        Assert.Equal(new Vector2(200, 80), im.PointerPosition);
+    }
+
+    [Fact]
+    public void CursorSpeedZeroIgnoresStick()
+    {
+        var im = new InputManager();                      // cursorSpeed defaults to 0
+        im.Update(Stick(0, 0), true, 0.016f);
+        im.Update(Stick(1, 0), true, 0.5f);               // stick must NOT move the pointer
+        Assert.Equal(Vector2.Zero, im.PointerPosition);
+    }
 }

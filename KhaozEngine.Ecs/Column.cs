@@ -8,6 +8,8 @@ internal abstract class Column
     public abstract void EnsureCapacity(int capacity);
     public abstract void CopyRow(Column dest, int srcRow, int destRow);
     public abstract void SwapRemove(int row, int last);
+    public abstract object GetBoxed(int row);
+    public abstract void SetBoxed(int row, object value);
 }
 
 /// <summary>Contiguous storage for component type <typeparamref name="T"/> (a column in an archetype).</summary>
@@ -34,4 +36,12 @@ internal sealed class Column<T> : Column where T : struct
     }
 
     public override void SwapRemove(int row, int last) => Data[row] = Data[last];
+
+    public override object GetBoxed(int row) => Data[row];
+
+    public override void SetBoxed(int row, object value)
+    {
+        EnsureCapacity(row + 1);
+        Data[row] = (T)value;
+    }
 }

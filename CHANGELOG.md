@@ -2,6 +2,14 @@
 
 All notable changes to KhaozEngine. Versions are shared across the four packages.
 
+## KhaozEngine 2.0.0 (unified versioning)
+
+- All four packages (Input, Screens, UI, Ecs) now share one version line and the `v*` tag scheme; the
+  separate `ecs-v*` line is retired and `Ecs` no longer overrides its version. **No functional change:**
+  Input/Screens/UI `2.0.0` are identical to `0.2.1`, and Ecs `2.0.0` is identical to `1.6.0`. Future
+  releases bump all four together. Games can adopt `2.0.0` whenever convenient; existing vendored
+  `0.2.1`/`1.6.0` references keep working.
+
 ## KhaozEngine.Ecs 1.6.0
 
 - Deterministic outcome model: `EntityCommandBuffer.Defer(Action<World>)` (ordered deferred actions);

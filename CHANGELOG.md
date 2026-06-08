@@ -2,6 +2,14 @@
 
 All notable changes to KhaozEngine. Versions are shared across the four packages.
 
+## KhaozEngine.Ecs 1.6.0
+
+- Deterministic outcome model: `EntityCommandBuffer.Defer(Action<World>)` (ordered deferred actions);
+  a pull-model typed event channel (`World.Emit<T>` / `Events<T>`, cleared by `AdvanceTick`); and
+  `DeterministicRng` (xorshift128+, seedable, save/resume `State`). Drawing RNG inside deferred actions
+  gives a reproducible draw sequence (record order = the deterministic iteration order from 1.5.0).
+  Additive and opt-in. Completes the determinism work (Cycles A + B).
+
 ## KhaozEngine.Ecs 1.5.0
 
 - Deterministic iteration order: queries, `ForEach`, and serialization now walk archetypes in a

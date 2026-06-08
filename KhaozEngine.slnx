@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
   <Project Path="KhaozEngine.Input/KhaozEngine.Input.csproj" />
+  <Project Path="KhaozEngine.Screens/KhaozEngine.Screens.csproj" />
   <Project Path="KhaozEngine.Tests/KhaozEngine.Tests.csproj" />
 </Solution>

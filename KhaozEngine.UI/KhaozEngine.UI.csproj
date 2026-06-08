@@ -2,9 +2,11 @@
   <PropertyGroup>
     <PackageId>KhaozEngine.UI</PackageId>
     <Description>Game-agnostic MonoGame UI widgets (button, slider, dropdown, scroll panel, text input, ...).</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.*" />
     <ProjectReference Include="../KhaozEngine.Input/KhaozEngine.Input.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 </Project>

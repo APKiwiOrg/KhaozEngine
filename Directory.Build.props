@@ -12,6 +12,8 @@
     <PackageProjectUrl>https://github.com/APKiwi/KhaozEngine</PackageProjectUrl>
     <RepositoryUrl>https://github.com/APKiwi/KhaozEngine</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <Copyright>Copyright (c) 2026 APKiwi. All rights reserved.</Copyright>
 
     <!-- SourceLink + symbols so games keep step-into-source debugging. -->
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
@@ -27,5 +29,6 @@
 
   <ItemGroup Condition="'$(IsPackable)' != 'false'">
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+    <None Include="$(MSBuildThisFileDirectory)LICENSE" Pack="true" PackagePath="" />
   </ItemGroup>
 </Project>

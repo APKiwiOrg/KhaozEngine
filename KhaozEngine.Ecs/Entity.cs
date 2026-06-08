@@ -1,8 +1,7 @@
 namespace KhaozEngine.Ecs;
 
 /// <summary>
-/// A lightweight handle to an entity: just a stable integer id. Components are stored
-/// in the <see cref="World"/>, keyed by this id, not on the entity itself.
+/// A versioned handle to an entity. <see cref="Id"/> indexes the world's record table;
+/// <see cref="Version"/> distinguishes a live entity from a stale handle to a recycled id.
 /// </summary>
-/// <param name="Id">The entity's unique id within its <see cref="World"/>.</param>
-public readonly record struct Entity(int Id);
+public readonly record struct Entity(int Id, uint Version);

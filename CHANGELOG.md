@@ -2,6 +2,14 @@
 
 All notable changes to KhaozEngine. Versions are shared across the four packages.
 
+## 0.2.0
+
+- `InputManager`: middle/right mouse-button edges (`IsMiddle/RightDown/JustPressed/JustReleased`).
+- `InputManager.Touches` — active touches in virtual coordinates with stable ids (`TouchPoint.Id`).
+- `InputManager.TryGetPinch(out Pinch)` — virtual midpoint, distance, per-frame delta, scale ratio.
+- Optional gamepad/keyboard controller cursor via `cursorSpeed` ctor arg + `Update(raw, isActive, dt)`.
+- All additive; 0.1.x consumers are unaffected until they bump.
+
 ## 0.1.3
 
 - Fix: desktop clicks were suppressed whenever the game window was not at the screen

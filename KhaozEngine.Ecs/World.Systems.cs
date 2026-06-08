@@ -14,14 +14,21 @@ public sealed partial class World
     private readonly List<ISystem> _systems = new();
     private readonly Dictionary<Type, object> _resources = new();
 
+    /// <summary>Deferred structural changes recorded by systems during iteration. Played back (and cleared)
+    /// after each system runs in <see cref="Update"/>, so one system's changes are visible to the next.</summary>
+    public EntityCommandBuffer Commands { get; } = new();
+
     /// <summary>Registers a system. Systems run in registration order each <see cref="Update"/>.</summary>
     public void AddSystem(ISystem system) => _systems.Add(system);
 
-    /// <summary>Runs every system in order.</summary>
+    /// <summary>Runs every system in order, flushing <see cref="Commands"/> after each one.</summary>
     public void Update(float dt)
     {
         for (int i = 0; i < _systems.Count; i++)
+        {
             _systems[i].Update(this, dt);
+            Commands.Playback(this);
+        }
     }
 
     /// <summary>Stores a world-global singleton of type <typeparamref name="T"/>.</summary>

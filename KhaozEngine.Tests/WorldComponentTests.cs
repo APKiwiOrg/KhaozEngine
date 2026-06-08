@@ -1,3 +1,4 @@
+using System;
 using KhaozEngine.Ecs;
 using Xunit;
 
@@ -67,6 +68,24 @@ public class WorldComponentTests
         Assert.True(w.TryGet<Position>(e, out var p));
         Assert.Equal(3, p.X);
         Assert.False(w.TryGet<Velocity>(e, out _));
+    }
+
+    [Fact]
+    public void StaleHandleOnGetAndSetThrowsAndDoesNotTouchRecycledEntity()
+    {
+        var w = new World();
+        var stale = w.Spawn();
+        w.Set(stale, new Position { X = 1 });
+        w.Despawn(stale);
+        var fresh = w.Spawn();                       // reuses stale.Id with a new version
+        Assert.Equal(stale.Id, fresh.Id);
+
+        Assert.Throws<InvalidOperationException>(() => w.Get<Position>(stale));
+        Assert.Throws<InvalidOperationException>(() => w.Set(stale, new Position { X = 99 }));
+        Assert.Throws<InvalidOperationException>(() => w.Add(stale, new Velocity { Dx = 1 }));
+        Assert.Throws<InvalidOperationException>(() => w.Remove<Position>(stale));
+
+        Assert.False(w.Has<Position>(fresh));        // the new entity was never written through the stale handle
     }
 
     [Fact]

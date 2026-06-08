@@ -31,6 +31,8 @@ public sealed class Query
     }
 
     /// <summary>Yields each matching entity (no component refs).</summary>
+    /// <remarks>Do not make structural changes (Spawn/Despawn/Add/Remove) directly while iterating; record
+    /// them in <see cref="World.Commands"/> (or an <see cref="EntityCommandBuffer"/>) and play back afterward.</remarks>
     public IEnumerable<Entity> Entities()
     {
         Refresh();
@@ -39,6 +41,8 @@ public sealed class Query
                 yield return a.Entities[r];
     }
 
+    /// <remarks>Do not make structural changes (Spawn/Despawn/Add/Remove) directly inside the action; record
+    /// them in <see cref="World.Commands"/> (or an <see cref="EntityCommandBuffer"/>) and play back afterward.</remarks>
     public void ForEach<T1>(RefAction<T1> action) where T1 : struct, IComponent
     {
         int id1 = _world.Reg.Id<T1>();

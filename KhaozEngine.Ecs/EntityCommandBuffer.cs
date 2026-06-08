@@ -35,10 +35,11 @@ public sealed class EntityCommandBuffer
         var resolved = new Dictionary<int, Entity>();   // placeholder id -> real entity
         foreach (var c in _cmds)
         {
+            if (c.op == Op.Create) { resolved[c.placeholder] = world.Spawn(); continue; }
+
             Entity target = Resolve(c.target, resolved);
             switch (c.op)
             {
-                case Op.Create: resolved[c.placeholder] = world.Spawn(); break;
                 case Op.Despawn: world.Despawn(target); break;
                 case Op.Set: c.apply!(world, target); break;
                 case Op.Remove: c.apply!(world, target); break;

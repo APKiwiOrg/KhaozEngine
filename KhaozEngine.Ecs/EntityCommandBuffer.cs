@@ -8,7 +8,7 @@ namespace KhaozEngine.Ecs;
 /// that resolve to real entities on playback.</summary>
 public sealed class EntityCommandBuffer
 {
-    private enum Op { Create, Despawn, Set, Remove }
+    private enum Op { Create, Despawn, Set, Remove, Defer }
 
     private readonly List<(Op op, Entity target, int placeholder, Action<World, Entity>? apply)> _cmds = new();
     private int _nextPlaceholder = -1;
@@ -29,6 +29,11 @@ public sealed class EntityCommandBuffer
     public void Remove<T>(Entity e) where T : struct, IComponent =>
         _cmds.Add((Op.Remove, e, 0, (w, target) => w.Remove<T>(target)));
 
+    /// <summary>Records an arbitrary deferred action, run in record order during <see cref="Playback"/>
+    /// (interleaved with structural ops). Put non-structural deterministic logic — counters, RNG rolls — here.</summary>
+    public void Defer(Action<World> action) =>
+        _cmds.Add((Op.Defer, default, 0, (w, _) => action(w)));
+
     /// <summary>Applies all recorded commands in order, then clears the buffer.</summary>
     public void Playback(World world)
     {
@@ -43,6 +48,7 @@ public sealed class EntityCommandBuffer
                 case Op.Despawn: world.Despawn(target); break;
                 case Op.Set: c.apply!(world, target); break;
                 case Op.Remove: c.apply!(world, target); break;
+                case Op.Defer: c.apply!(world, default); break;
             }
         }
         _cmds.Clear();

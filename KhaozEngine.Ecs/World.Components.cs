@@ -13,11 +13,13 @@ public sealed partial class World
     {
         if (!IsAlive(e)) throw new InvalidOperationException("Stale entity handle.");
         int id = Reg.Id<T>();
-        if (!_records[e.Id].Archetype.Has(id))
+        bool adding = !_records[e.Id].Archetype.Has(id);
+        if (adding)
             MoveEntity(e.Id, id, add: true);
         Record r = _records[e.Id];
         if (!Reg.IsTag(id))
             ((Column<T>)r.Archetype.Columns[id]).Set(r.Row, value);
+        TrackAddedOrChanged(e, id, adding);
     }
 
     /// <summary>Adds component <typeparamref name="T"/>; throws if already present.</summary>
@@ -35,7 +37,10 @@ public sealed partial class World
         if (!IsAlive(e)) throw new InvalidOperationException("Stale entity handle.");
         int id = Reg.Id<T>();
         if (_records[e.Id].Archetype.Has(id))
+        {
             MoveEntity(e.Id, id, add: false);
+            TrackRemoved(e, id);
+        }
     }
 
     /// <summary>Returns a live ref to component <typeparamref name="T"/>. Throws if absent or a tag.</summary>

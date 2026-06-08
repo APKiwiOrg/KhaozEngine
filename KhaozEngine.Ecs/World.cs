@@ -46,6 +46,8 @@ public sealed partial class World
     {
         if (!IsAlive(e)) return;
         ref Record rec = ref _records[e.Id];
+        foreach (int tid in rec.Archetype.TypeIds)
+            TrackRemoved(e, tid);
         if (rec.Archetype.SwapRemove(rec.Row, out Entity moved))
             _records[moved.Id].Row = rec.Row;
         rec.Alive = false;

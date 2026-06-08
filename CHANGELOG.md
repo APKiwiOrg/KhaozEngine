@@ -2,6 +2,13 @@
 
 All notable changes to KhaozEngine. Versions are shared across the four packages.
 
+## KhaozEngine.Ecs 1.2.0
+
+- Add per-tick change detection: `World.AdvanceTick()` (call once per frame), `Added<T>()` /
+  `Removed<T>()` (automatic from structural changes), `Changed<T>()` with explicit `MarkChanged<T>(e)`
+  (since `ref` writes are invisible to the ECS). `Removed<T>` may include despawned entities. The load
+  path does not generate events. Additive; no breaking change.
+
 ## KhaozEngine.Ecs 1.1.0
 
 - Add `WorldSerializer`: JSON save/load of a `World` (entities + components + id-allocator state).

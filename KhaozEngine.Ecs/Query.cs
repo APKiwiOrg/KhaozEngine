@@ -21,7 +21,7 @@ public sealed class Query
         if (_gen == _world.ArchetypeGen) return;
         _gen = _world.ArchetypeGen;
         _matched.Clear();
-        foreach (Archetype a in _world.Archetypes.Values)
+        foreach (Archetype a in _world.ArchetypeOrder)
         {
             bool ok = true;
             foreach (int w in _with) if (!a.Has(w)) { ok = false; break; }

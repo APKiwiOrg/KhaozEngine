@@ -17,6 +17,7 @@ public sealed partial class World
 
     internal readonly ComponentRegistry Reg = new();
     internal readonly Dictionary<ArchetypeSignature, Archetype> Archetypes = new();
+    internal readonly List<Archetype> ArchetypeOrder = new();   // archetypes in creation order (deterministic iteration)
     internal int ArchetypeGen;
     private readonly Archetype _empty;
 
@@ -24,6 +25,7 @@ public sealed partial class World
     {
         _empty = new Archetype(Array.Empty<int>(), Reg);
         Archetypes[new ArchetypeSignature(Array.Empty<int>())] = _empty;
+        ArchetypeOrder.Add(_empty);
         ArchetypeGen++;
     }
 

@@ -92,6 +92,7 @@ public sealed partial class World
         {
             a = new Archetype(sortedSig, Reg);
             Archetypes[key] = a;
+            ArchetypeOrder.Add(a);
             ArchetypeGen++;
         }
         return a;

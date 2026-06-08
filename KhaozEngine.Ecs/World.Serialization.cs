@@ -10,7 +10,7 @@ public sealed partial class World
     internal int SaveNextId => _nextId;
     internal IEnumerable<(int id, uint version)> SaveFreeSlots =>
         _free.Select(id => (id, _records[id].Version));
-    internal IEnumerable<Archetype> SaveArchetypes => Archetypes.Values;
+    internal IEnumerable<Archetype> SaveArchetypes => ArchetypeOrder;
     internal ComponentRegistry Registry => Reg;
 
     // --- load surface ---

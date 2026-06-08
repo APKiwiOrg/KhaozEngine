@@ -32,6 +32,9 @@ public sealed class WorldSerializer
                 throw new ArgumentException($"{t.FullName} is not a struct implementing IComponent.");
             _byName[t.FullName!] = t;
         }
+        // The built-in Parent component lives in the engine assembly, so callers' type lists/scans
+        // won't include it; auto-register so hierarchies serialize.
+        _byName[typeof(Parent).FullName!] = typeof(Parent);
     }
 
     /// <summary>Builds a serializer from every <c>struct : IComponent</c> in <typeparamref name="T"/>'s assembly.</summary>
@@ -90,6 +93,7 @@ public sealed class WorldSerializer
             }
         }
         world.RestoreAllocator(doc.NextId, doc.FreeIds.Select(f => (f.Id, f.Version)));
+        world.RebuildHierarchyIndex();
         return world;
     }
 

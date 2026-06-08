@@ -2,6 +2,13 @@
 
 All notable changes to KhaozEngine. Versions are shared across the four packages.
 
+## KhaozEngine.Ecs 1.3.0
+
+- Add a parent-child hierarchy: built-in `Parent` component, `World.SetParent` / `Detach` /
+  `GetParent` / `Children`, and `DespawnTree` (cascade) vs plain `Despawn` (detaches children to
+  root). Cycle-guarded. Hierarchies serialize (the children index rebuilds on load; `Parent` is
+  auto-included by `WorldSerializer`). Transform propagation stays game-side. Additive.
+
 ## KhaozEngine.Ecs 1.2.0
 
 - Add per-tick change detection: `World.AdvanceTick()` (call once per frame), `Added<T>()` /

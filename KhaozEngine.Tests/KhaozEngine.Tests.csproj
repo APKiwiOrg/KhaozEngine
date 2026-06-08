@@ -11,8 +11,8 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
-    <!-- Enabled as each package lands:
     <ProjectReference Include="../KhaozEngine.Input/KhaozEngine.Input.csproj" />
+    <!-- Enabled as each package lands:
     <ProjectReference Include="../KhaozEngine.Screens/KhaozEngine.Screens.csproj" />
     <ProjectReference Include="../KhaozEngine.UI/KhaozEngine.UI.csproj" />
     -->

@@ -19,6 +19,7 @@ public sealed partial class World
         _added.Clear();
         _changed.Clear();
         _removed.Clear();
+        ClearEvents();
     }
 
     /// <summary>Records a value-mutation of component <typeparamref name="T"/> on <paramref name="e"/>

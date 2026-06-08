@@ -2,6 +2,13 @@
 
 All notable changes to KhaozEngine. Versions are shared across the four packages.
 
+## KhaozEngine.Ecs 1.5.0
+
+- Deterministic iteration order: queries, `ForEach`, and serialization now walk archetypes in a
+  guaranteed creation order (an explicit ordered list) rather than relying on `Dictionary` enumeration.
+  Iteration is reproducible for an identical operation sequence, run-to-run and across processes
+  (foundation for lockstep determinism). Swap-remove within an archetype is unchanged. Additive.
+
 ## KhaozEngine.Ecs 1.4.0
 
 - Add named system groups: `AddSystem(system, group)`, `SetGroupOrder(...)`, `UpdateGroup(name, dt)`,

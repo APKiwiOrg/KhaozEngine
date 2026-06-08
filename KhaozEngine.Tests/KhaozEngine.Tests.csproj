@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <OutputType>Library</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.*" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
+    <!-- Enabled as each package lands:
+    <ProjectReference Include="../KhaozEngine.Input/KhaozEngine.Input.csproj" />
+    <ProjectReference Include="../KhaozEngine.Screens/KhaozEngine.Screens.csproj" />
+    <ProjectReference Include="../KhaozEngine.UI/KhaozEngine.UI.csproj" />
+    -->
+  </ItemGroup>
+</Project>

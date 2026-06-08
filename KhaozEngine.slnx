@@ -1,2 +1,4 @@
 <Solution>
+  <Project Path="KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
+  <Project Path="KhaozEngine.Tests/KhaozEngine.Tests.csproj" />
 </Solution>

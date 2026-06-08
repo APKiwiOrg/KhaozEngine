@@ -2,6 +2,14 @@
 
 All notable changes to KhaozEngine. Versions are shared across the four packages.
 
+## KhaozEngine.Ecs 1.0.0
+
+- Rewrite as a struct-based archetype ECS: versioned `Entity`, archetype/column storage, `ref`
+  `Get<T>`, `With`/`Without` queries, `ForEach` arities 1-8, `EntityCommandBuffer`, typed `Resources`.
+- Breaking vs 0.1.x: components are now `struct : IComponent`; `Get<T>` returns `ref T`; the
+  `List<Entity> Query<T>()` overloads are replaced by `ForEach`. Versioned independently of the
+  other KhaozEngine packages (which stay on 0.2.x).
+
 ## 0.2.0
 
 - `InputManager`: middle/right mouse-button edges (`IsMiddle/RightDown/JustPressed/JustReleased`).

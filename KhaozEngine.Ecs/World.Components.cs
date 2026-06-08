@@ -55,6 +55,8 @@ public sealed partial class World
     // copy shared columns, swap-remove from the old archetype, fix the backfilled record.
     private void MoveEntity(int id, int componentTypeId, bool add)
     {
+        // Safe across the calls below: no callee here resizes _records (only Spawn does, and it is
+        // never reached from MoveEntity), so this ref stays valid for the whole method.
         ref Record rec = ref _records[id];
         Archetype from = rec.Archetype;
         int[] newSig = add ? AddToSignature(from.TypeIds, componentTypeId)
@@ -63,7 +65,7 @@ public sealed partial class World
 
         int destRow = to.AddRow(new Entity(id, rec.Version));
         foreach (var kv in from.Columns)
-            if (to.Columns.TryGetValue(kv.Key, out Column destCol))
+            if (to.Columns.TryGetValue(kv.Key, out Column? destCol))
                 kv.Value.CopyRow(destCol, rec.Row, destRow);
 
         int oldRow = rec.Row;
@@ -77,7 +79,7 @@ public sealed partial class World
     private Archetype GetOrCreateArchetype(int[] sortedSig)
     {
         var key = new ArchetypeSignature(sortedSig);
-        if (!Archetypes.TryGetValue(key, out Archetype a))
+        if (!Archetypes.TryGetValue(key, out Archetype? a))
         {
             a = new Archetype(sortedSig, Reg);
             Archetypes[key] = a;

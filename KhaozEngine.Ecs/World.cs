@@ -45,6 +45,7 @@ public sealed partial class World
     public void Despawn(Entity e)
     {
         if (!IsAlive(e)) return;
+        DetachHierarchyOnDespawn(e);
         ref Record rec = ref _records[e.Id];
         foreach (int tid in rec.Archetype.TypeIds)
             TrackRemoved(e, tid);

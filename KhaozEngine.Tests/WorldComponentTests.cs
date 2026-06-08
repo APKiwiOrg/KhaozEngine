@@ -1,0 +1,84 @@
+using KhaozEngine.Ecs;
+using Xunit;
+
+namespace KhaozEngine.Tests;
+
+file struct Position : IComponent { public int X, Y; }
+file struct Velocity : IComponent { public int Dx; }
+file struct Frozen : IComponent { }   // tag
+
+public class WorldComponentTests
+{
+    [Fact]
+    public void SetGetHasAndRefMutation()
+    {
+        var w = new World();
+        var e = w.Spawn();
+        w.Set(e, new Position { X = 1, Y = 2 });
+        Assert.True(w.Has<Position>(e));
+        Assert.False(w.Has<Velocity>(e));
+        w.Get<Position>(e).X = 42;          // live ref
+        Assert.Equal(42, w.Get<Position>(e).X);
+        Assert.Equal(2, w.Get<Position>(e).Y);
+    }
+
+    [Fact]
+    public void AddingASecondComponentPreservesTheFirst()
+    {
+        var w = new World();
+        var e = w.Spawn();
+        w.Set(e, new Position { X = 7, Y = 8 });
+        w.Set(e, new Velocity { Dx = 5 });          // structural move to {Position,Velocity}
+        Assert.Equal(7, w.Get<Position>(e).X);       // preserved across the move
+        Assert.Equal(5, w.Get<Velocity>(e).Dx);
+    }
+
+    [Fact]
+    public void RemoveMovesArchetypeAndDropsComponent()
+    {
+        var w = new World();
+        var e = w.Spawn();
+        w.Set(e, new Position { X = 1, Y = 1 });
+        w.Set(e, new Velocity { Dx = 9 });
+        w.Remove<Velocity>(e);
+        Assert.False(w.Has<Velocity>(e));
+        Assert.True(w.Has<Position>(e));
+        Assert.Equal(1, w.Get<Position>(e).X);
+    }
+
+    [Fact]
+    public void TagComponentTracksMembershipWithNoData()
+    {
+        var w = new World();
+        var e = w.Spawn();
+        w.Set(e, new Position());
+        w.Set(e, new Frozen());
+        Assert.True(w.Has<Frozen>(e));
+        w.Remove<Frozen>(e);
+        Assert.False(w.Has<Frozen>(e));
+    }
+
+    [Fact]
+    public void TryGetReturnsValueOrFalse()
+    {
+        var w = new World();
+        var e = w.Spawn();
+        w.Set(e, new Position { X = 3, Y = 4 });
+        Assert.True(w.TryGet<Position>(e, out var p));
+        Assert.Equal(3, p.X);
+        Assert.False(w.TryGet<Velocity>(e, out _));
+    }
+
+    [Fact]
+    public void DespawnFromMultiEntityArchetypeKeepsOthersIntact()
+    {
+        var w = new World();
+        var a = w.Spawn(); w.Set(a, new Position { X = 1 });
+        var b = w.Spawn(); w.Set(b, new Position { X = 2 });
+        var c = w.Spawn(); w.Set(c, new Position { X = 3 });
+        w.Despawn(b);                                  // swap-remove inside the {Position} archetype
+        Assert.True(w.IsAlive(a)); Assert.True(w.IsAlive(c));
+        Assert.Equal(1, w.Get<Position>(a).X);
+        Assert.Equal(3, w.Get<Position>(c).X);
+    }
+}

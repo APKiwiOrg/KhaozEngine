@@ -12,11 +12,16 @@ jobs:
     permissions:
       contents: read
       packages: write
+    env:
+      # nuget.config's github source reads this; CI uses the workflow token.
+      GITHUB_PACKAGES_PAT: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      # local-feed is git-ignored (dev inner-loop); create it so the nuget.config 'local' source resolves.
+      - run: mkdir -p local-feed
       - run: dotnet restore
       - run: dotnet build -c Release --no-restore
       - run: dotnet test -c Release --no-build

@@ -29,7 +29,7 @@ public sealed class MonoGameRawInput : IRawInput
         TouchCollection touches = TouchPanel.GetState();
         var list = new List<TouchPoint>(touches.Count);
         foreach (TouchLocation t in touches)
-            list.Add(new TouchPoint(t.Position, t.State));
+            list.Add(new TouchPoint(t.Position, t.State, t.Id));
 
         return new RawInputState(
             new Point(mouse.X, mouse.Y),

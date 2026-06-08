@@ -3,4 +3,5 @@
   <Project Path="KhaozEngine.Input/KhaozEngine.Input.csproj" />
   <Project Path="KhaozEngine.Screens/KhaozEngine.Screens.csproj" />
   <Project Path="KhaozEngine.Tests/KhaozEngine.Tests.csproj" />
+  <Project Path="KhaozEngine.UI/KhaozEngine.UI.csproj" />
 </Solution>

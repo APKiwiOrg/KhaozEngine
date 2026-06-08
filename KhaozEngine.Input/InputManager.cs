@@ -46,6 +46,9 @@ public sealed class InputManager
         _transform = transform ?? IdentityTransform.Instance;
     }
 
+    // True when the unified pointer is driven by touch rather than mouse.
+    public bool IsMobile => _isMobile;
+
     // --- pointer ---
     public Vector2 PointerPosition => _pointerPosition;
     public Vector2 PressOrigin => _pressOrigin;

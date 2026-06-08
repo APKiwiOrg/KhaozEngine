@@ -187,20 +187,50 @@ public sealed class PrimitiveRenderer
         // Background
         DrawFilledRect(spriteBatch, bounds, backgroundColor);
 
-        // Fill
-        float clampedProgress = MathHelper.Clamp(progress, 0f, 1f);
-        int innerX = bounds.X + borderThickness;
-        int innerY = bounds.Y + borderThickness;
-        int innerWidth = bounds.Width - borderThickness * 2;
-        int innerHeight = bounds.Height - borderThickness * 2;
-        int fillWidth = (int)(innerWidth * clampedProgress);
-
-        if (fillWidth > 0)
+        // Fill (geometry capped so short/thin bars keep a visible fill area).
+        (Rectangle fill, int effectiveBorder) = ComputeProgressBarLayout(bounds, progress, borderThickness);
+        if (fill.Width > 0 && fill.Height > 0)
         {
-            DrawFilledRect(spriteBatch, new Rectangle(innerX, innerY, fillWidth, innerHeight), fillColor);
+            DrawFilledRect(spriteBatch, fill, fillColor);
         }
 
-        // Border
-        DrawRect(spriteBatch, bounds, borderColor, borderThickness);
+        // Border (skipped when the bar is too small to fit one without hiding the fill).
+        if (effectiveBorder > 0)
+        {
+            DrawRect(spriteBatch, bounds, borderColor, effectiveBorder);
+        }
+    }
+
+    /// <summary>
+    /// Computes the inner fill rectangle and the effective border thickness for a
+    /// progress bar. Pure geometry, extracted so it can be unit tested headlessly.
+    /// </summary>
+    /// <remarks>
+    /// The requested border is capped so the inner fill area never collapses below
+    /// 1px in either dimension. Without this, a short bar (e.g. a zoomed-out HP bar
+    /// only 2px tall with a 1px border) has zero inner height: the fill never draws
+    /// and the border alone covers the whole bar, rendering as a solid line in the
+    /// border color. Capping the border lets the fill win on tiny bars.
+    /// </remarks>
+    /// <param name="bounds">Outer bounds of the progress bar.</param>
+    /// <param name="progress">Fill amount (clamped to 0..1).</param>
+    /// <param name="borderThickness">Requested border thickness.</param>
+    /// <returns>The inner fill rectangle and the border thickness actually usable.</returns>
+    internal static (Rectangle Fill, int EffectiveBorder) ComputeProgressBarLayout(
+        Rectangle bounds, float progress, int borderThickness)
+    {
+        float clampedProgress = MathHelper.Clamp(progress, 0f, 1f);
+
+        // Largest border that still leaves >= 1px of inner space on the smaller axis.
+        int maxBorder = Math.Max(0, (Math.Min(bounds.Width, bounds.Height) - 1) / 2);
+        int effectiveBorder = Math.Clamp(borderThickness, 0, maxBorder);
+
+        int innerWidth = bounds.Width - effectiveBorder * 2;
+        int innerHeight = bounds.Height - effectiveBorder * 2;
+        int fillWidth = (int)(innerWidth * clampedProgress);
+
+        return (
+            new Rectangle(bounds.X + effectiveBorder, bounds.Y + effectiveBorder, fillWidth, innerHeight),
+            effectiveBorder);
     }
 }

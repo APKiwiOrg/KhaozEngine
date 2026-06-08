@@ -9,4 +9,7 @@
     <ProjectReference Include="../KhaozEngine.Input/KhaozEngine.Input.csproj" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Tests" />
+  </ItemGroup>
 </Project>

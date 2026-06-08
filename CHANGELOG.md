@@ -2,6 +2,13 @@
 
 All notable changes to KhaozEngine. Versions are shared across the four packages.
 
+## KhaozEngine.Ecs 1.1.0
+
+- Add `WorldSerializer`: JSON save/load of a `World` (entities + components + id-allocator state).
+  Entities restore at their exact id/version so `Entity`-typed fields survive; tags and free-slot
+  versions are preserved. Construct with your component types or `FromAssemblyOf<T>()`. Resources and
+  systems are not serialized. Additive; no breaking change.
+
 ## KhaozEngine.Ecs 1.0.0
 
 - Rewrite as a struct-based archetype ECS: versioned `Entity`, archetype/column storage, `ref`
@@ -9,6 +16,14 @@ All notable changes to KhaozEngine. Versions are shared across the four packages
 - Breaking vs 0.1.x: components are now `struct : IComponent`; `Get<T>` returns `ref T`; the
   `List<Entity> Query<T>()` overloads are replaced by `ForEach`. Versioned independently of the
   other KhaozEngine packages (which stay on 0.2.x).
+
+## 0.2.1
+
+- Fix: `PrimitiveRenderer.DrawProgressBar` rendered short bars as a solid line in the border
+  color. A bar only a few pixels tall (e.g. a zoomed-out HP bar at 2px) left zero inner height
+  after subtracting a 1px border on each side, so the fill never drew and the border covered the
+  whole bar. The border thickness is now capped to keep at least a 1px fill area, dropping to 0 on
+  bars too small to fit one. Adds headless geometry regression tests.
 
 ## 0.2.0
 

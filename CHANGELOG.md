@@ -2,6 +2,13 @@
 
 All notable changes to KhaozEngine. Versions are shared across the four packages.
 
+## KhaozEngine.Ecs 1.4.0
+
+- Add named system groups: `AddSystem(system, group)`, `SetGroupOrder(...)`, `UpdateGroup(name, dt)`,
+  and `SystemGroups`. `Update(dt)` runs all groups in order; `UpdateGroup` runs one (e.g. a
+  fixed-timestep simulation group). Systems without a group use `"default"`, so existing usage is
+  unchanged. Additive.
+
 ## KhaozEngine.Ecs 1.3.0
 
 - Add a parent-child hierarchy: built-in `Parent` component, `World.SetParent` / `Detach` /

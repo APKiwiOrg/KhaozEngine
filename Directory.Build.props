@@ -1,0 +1,26 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>disable</ImplicitUsings>
+
+    <!-- Shared package version. Bump here to release all packages together. -->
+    <Version>0.1.0</Version>
+    <Authors>APKiwi</Authors>
+    <Company>Khaoz</Company>
+    <PackageProjectUrl>https://github.com/APKiwi/KhaozEngine</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/APKiwi/KhaozEngine</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+
+    <!-- SourceLink + symbols so games keep step-into-source debugging. -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(IsPackable)' != 'false'">
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+  </ItemGroup>
+</Project>

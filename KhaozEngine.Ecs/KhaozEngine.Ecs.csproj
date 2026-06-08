@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.Ecs</PackageId>
-    <Description>Minimal game-agnostic ECS (World, Entity, systems).</Description>
+    <Description>Game-agnostic struct-based archetype ECS: versioned entities, ref access, ForEach queries, command buffer, resources, systems.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <Version>1.0.0</Version>
   </PropertyGroup>

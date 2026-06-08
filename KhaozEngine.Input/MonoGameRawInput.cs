@@ -5,13 +5,19 @@ using Microsoft.Xna.Framework.Input.Touch;
 
 namespace KhaozEngine.Input;
 
-// The ONLY class that touches the MonoGame input statics.
+/// <summary>
+/// Production <see cref="IRawInput"/>. The ONLY class in the stack that touches the MonoGame input
+/// statics (<see cref="Mouse"/>, <see cref="Keyboard"/>, <see cref="GamePad"/>, <see cref="TouchPanel"/>).
+/// Games must read input through this seam, never the statics directly.
+/// </summary>
 public sealed class MonoGameRawInput : IRawInput
 {
     private readonly GameWindow _window;
 
+    /// <summary>Creates the adapter. <paramref name="window"/> supplies the client bounds.</summary>
     public MonoGameRawInput(GameWindow window) => _window = window;
 
+    /// <inheritdoc/>
     public RawInputState Read()
     {
         MouseState mouse = Mouse.GetState();

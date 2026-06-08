@@ -6,20 +6,37 @@ using Microsoft.Xna.Framework.Graphics;
 
 namespace KhaozEngine.Screens;
 
+/// <summary>
+/// Owns the screen stack and routes input top-to-bottom. The first visible, non-passthrough screen
+/// that reports consuming input blocks the screens below it; a non-passthrough (modal) screen also
+/// stops them updating. Drawing runs bottom-to-top. Also drives screen transitions.
+/// </summary>
 public sealed class ScreenManager
 {
     private readonly List<GameScreen> _screens = new();
 
+    /// <summary>The shared input manager; screens reach it via <c>Manager.Input</c>.</summary>
     public InputManager Input { get; }
+
+    /// <summary>Optional graphics device, for screens that need it.</summary>
     public GraphicsDevice? GraphicsDevice { get; set; }
+
+    /// <summary>Optional shared sprite batch.</summary>
     public SpriteBatch? SpriteBatch { get; set; }
+
+    /// <summary>Optional service provider for games that resolve screen dependencies from a container.</summary>
     public IServiceProvider? Services { get; set; }
+
+    /// <summary>Invoked by <see cref="RequestExit"/>; wire this to <c>Game.Exit</c>.</summary>
     public Action? ExitRequested;
 
+    /// <summary>Creates the manager around an <see cref="InputManager"/>.</summary>
     public ScreenManager(InputManager input) => Input = input;
 
+    /// <summary>The current screens, sorted by <see cref="GameScreen.DrawOrder"/> ascending.</summary>
     public IReadOnlyList<GameScreen> Screens => _screens;
 
+    /// <summary>Adds a screen, applies its entry transition state, calls LoadContent, and re-sorts by draw order.</summary>
     public void Add(GameScreen screen)
     {
         screen.Manager = this;
@@ -34,14 +51,17 @@ public sealed class ScreenManager
         _screens.Sort((a, b) => a.DrawOrder.CompareTo(b.DrawOrder));
     }
 
+    /// <summary>Removes a screen and calls its UnloadContent.</summary>
     public void Remove(GameScreen screen)
     {
         screen.UnloadContent();
         _screens.Remove(screen);
     }
 
+    /// <summary>Raises <see cref="ExitRequested"/>.</summary>
     public void RequestExit() => ExitRequested?.Invoke();
 
+    /// <summary>Advances transitions and routes input/update top-to-bottom. Call once per frame after <see cref="InputManager.Update"/>.</summary>
     public void Update(GameTime gameTime)
     {
         float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
@@ -86,6 +106,7 @@ public sealed class ScreenManager
         return (dir > 0 && screen.TransitionAlpha >= 1f) || (dir < 0 && screen.TransitionAlpha <= 0f);
     }
 
+    /// <summary>Draws all non-hidden screens bottom-to-top.</summary>
     public void Draw(GameTime gameTime, SpriteBatch spriteBatch)
     {
         for (int i = 0; i < _screens.Count; i++)

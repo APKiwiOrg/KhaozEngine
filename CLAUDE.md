@@ -11,8 +11,13 @@ Shared, game-agnostic input + screen-stack + UI + ECS for MonoGame games
 - Hit-test via `InputManager` bounds helpers (`IsTapIn`, etc.), never raw position + button.
 
 ## Build / test / release
-- `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj`
-- `dotnet pack -c Release -o ./local-feed` — cumulative; don't `rm` old versions (consumers pin).
-- Version is shared in `Directory.Build.props`; tag `v*` to publish to GitHub Packages via CI.
+- `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj` — every new behaviour ships with a headless test.
+- **Always update `CHANGELOG.md` on every version bump.** Add a newest-first entry describing the
+  public API / behaviour change in the SAME commit as the `Directory.Build.props` `<Version>` bump.
+  Never bump the version (or tag a release) without a matching changelog entry.
+- Release ritual, in order: bump `<Version>` in `Directory.Build.props` → add the `CHANGELOG.md`
+  entry → `dotnet pack -c Release -o ./local-feed` (cumulative; don't `rm` old versions, consumers
+  pin) → commit → `git tag vX.Y.Z` → push `main` + the tag (CI publishes to GitHub Packages on `v*`).
+- SemVer: additive = minor, fixes = patch, breaking = major.
 - `local-feed/` is gitignored but MUST exist before `dotnet restore` (`mkdir -p local-feed`).
 - net10.0, MonoGame.Framework.DesktopGL 3.8, xUnit.

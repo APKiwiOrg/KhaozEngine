@@ -7,6 +7,7 @@
   <ItemGroup>
     <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.*" />
     <ProjectReference Include="../KhaozEngine.Input/KhaozEngine.Input.csproj" />
+    <ProjectReference Include="../KhaozEngine.Time/KhaozEngine.Time.csproj" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 </Project>

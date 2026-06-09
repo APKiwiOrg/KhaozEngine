@@ -17,6 +17,7 @@
     <ProjectReference Include="../KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
     <ProjectReference Include="../KhaozEngine.Input/KhaozEngine.Input.csproj" />
     <ProjectReference Include="../KhaozEngine.Screens/KhaozEngine.Screens.csproj" />
+    <ProjectReference Include="../KhaozEngine.Time/KhaozEngine.Time.csproj" />
     <ProjectReference Include="../KhaozEngine.UI/KhaozEngine.UI.csproj" />
   </ItemGroup>
 </Project>

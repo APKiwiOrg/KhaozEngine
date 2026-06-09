@@ -52,6 +52,16 @@ public abstract class GameScreen
     /// <summary>Called once when the screen is removed. Release resources here.</summary>
     public virtual void UnloadContent() { }
 
+    /// <summary>Called when the engine clock pauses (TimeScale hits 0 or Pause()). Override to react.</summary>
+    protected virtual void OnPause() { }
+
+    /// <summary>Called when the engine clock resumes from a paused state. Override to react.</summary>
+    protected virtual void OnResume() { }
+
+    // ScreenManager dispatches pause/resume; the virtuals stay protected for subclasses.
+    internal void RaisePause() => OnPause();
+    internal void RaiseResume() => OnResume();
+
     /// <summary>
     /// Per-frame update. Return whether this screen consumed input this frame — true stops input
     /// reaching screens below it, false lets it fall through (see <see cref="InputConsumption"/>).

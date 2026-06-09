@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using KhaozEngine.Input;
+using KhaozEngine.Time;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 
@@ -30,8 +31,34 @@ public sealed class ScreenManager
     /// <summary>Invoked by <see cref="RequestExit"/>; wire this to <c>Game.Exit</c>.</summary>
     public Action? ExitRequested;
 
-    /// <summary>Creates the manager around an <see cref="InputManager"/>.</summary>
-    public ScreenManager(InputManager input) => Input = input;
+    private readonly GameClock _clock;
+
+    /// <summary>The pause / time-scale clock. Read <see cref="ScaledDeltaSeconds"/> for sim, <see cref="RealDeltaSeconds"/> for UI.</summary>
+    public GameClock Clock => _clock;
+
+    /// <summary>Creates the manager around an <see cref="InputManager"/> with a fresh <see cref="GameClock"/>.</summary>
+    public ScreenManager(InputManager input) : this(input, new GameClock()) { }
+
+    /// <summary>Creates the manager sharing an external <see cref="GameClock"/> (e.g. one driven elsewhere).</summary>
+    public ScreenManager(InputManager input, GameClock clock)
+    {
+        Input = input;
+        _clock = clock;
+        _clock.Paused += DispatchPause;
+        _clock.Resumed += DispatchResume;
+    }
+
+    /// <summary>True when the clock is paused (see <see cref="GameClock.IsPaused"/>).</summary>
+    public bool IsPaused => _clock.IsPaused;
+
+    /// <summary>Simulation speed multiplier (see <see cref="GameClock.TimeScale"/>).</summary>
+    public float TimeScale { get => _clock.TimeScale; set => _clock.TimeScale = value; }
+
+    /// <summary>Last frame's unscaled delta seconds (UI, transitions, notifications).</summary>
+    public float RealDeltaSeconds => _clock.RealDeltaSeconds;
+
+    /// <summary>Last frame's simulation delta seconds (gameplay, world); 0 while paused.</summary>
+    public float ScaledDeltaSeconds => _clock.ScaledDeltaSeconds;
 
     /// <summary>The current screens, sorted by <see cref="GameScreen.DrawOrder"/> ascending.</summary>
     public IReadOnlyList<GameScreen> Screens => _screens;
@@ -64,7 +91,8 @@ public sealed class ScreenManager
     /// <summary>Advances transitions and routes input/update top-to-bottom. Call once per frame after <see cref="InputManager.Update"/>.</summary>
     public void Update(GameTime gameTime)
     {
-        float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
+        _clock.Update(gameTime);
+        float dt = _clock.RealDeltaSeconds;   // transitions/UI run on real time, live while paused
         GameScreen[] snapshot = _screens.ToArray();   // screens may add/remove during Update
         bool inputHandled = false;
 
@@ -82,6 +110,16 @@ public sealed class ScreenManager
 
             if (!screen.PassUpdateThrough) break;
         }
+    }
+
+    private void DispatchPause()
+    {
+        foreach (GameScreen s in _screens.ToArray()) s.RaisePause();
+    }
+
+    private void DispatchResume()
+    {
+        foreach (GameScreen s in _screens.ToArray()) s.RaiseResume();
     }
 
     private void AdvanceTransition(GameScreen screen, float dt)

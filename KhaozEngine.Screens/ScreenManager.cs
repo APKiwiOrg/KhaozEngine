@@ -12,7 +12,7 @@ namespace KhaozEngine.Screens;
 /// that reports consuming input blocks the screens below it; a non-passthrough (modal) screen also
 /// stops them updating. Drawing runs bottom-to-top. Also drives screen transitions.
 /// </summary>
-public sealed class ScreenManager
+public sealed class ScreenManager : IDisposable
 {
     private readonly List<GameScreen> _screens = new();
 
@@ -142,6 +142,13 @@ public sealed class ScreenManager
         float delta = duration > 0f ? dt / duration : 1f;
         screen.TransitionAlpha = MathHelper.Clamp(screen.TransitionAlpha + delta * dir, 0f, 1f);
         return (dir > 0 && screen.TransitionAlpha >= 1f) || (dir < 0 && screen.TransitionAlpha <= 0f);
+    }
+
+    /// <summary>Unsubscribes from the clock's pause events. Call when sharing an injected <see cref="GameClock"/> that outlives this manager.</summary>
+    public void Dispose()
+    {
+        _clock.Paused -= DispatchPause;
+        _clock.Resumed -= DispatchResume;
     }
 
     /// <summary>Draws all non-hidden screens bottom-to-top.</summary>

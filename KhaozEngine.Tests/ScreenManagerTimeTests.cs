@@ -39,6 +39,21 @@ public class ScreenManagerTimeTests
     }
 
     [Fact]
+    public void InjectedClockDispatchesPauseToScreens()
+    {
+        var clock = new GameClock();
+        var m = new ScreenManager(new InputManager(), clock);
+        var s = new LifecycleSpyScreen(0);
+        m.Add(s);
+
+        clock.Pause();
+        Assert.Equal(1, s.PauseCount);
+
+        clock.Resume();
+        Assert.Equal(1, s.ResumeCount);
+    }
+
+    [Fact]
     public void DefaultConstructorCreatesAClock()
     {
         var m = new ScreenManager(new InputManager());

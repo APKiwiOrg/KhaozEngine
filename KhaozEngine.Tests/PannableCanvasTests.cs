@@ -112,4 +112,29 @@ public class PannableCanvasTests
         canvas.Update();
         Assert.False(im.IsInputBlocked(new Vector2(100, 100)));
     }
+
+    [Fact]
+    public void WheelScrollPansVerticallyByScrollPanSpeed()
+    {
+        var im = new InputManager();
+        var canvas = MakeCanvas(im);   // large content, pointer inside viewport
+
+        im.Update(Mouse(50, 50, false, scroll: 0), true);    canvas.Update();   // baseline wheel value
+        im.Update(Mouse(50, 50, false, scroll: 120), true);  canvas.Update();   // delta 120
+
+        Assert.Equal(60f, canvas.CameraOffset.Y);   // 120 * 0.5
+        Assert.Equal(0f, canvas.CameraOffset.X);
+    }
+
+    [Fact]
+    public void WheelScrollIgnoredWhenPointerOutsideViewport()
+    {
+        var im = new InputManager();
+        var canvas = MakeCanvas(im);
+
+        im.Update(Mouse(500, 500, false, scroll: 0), true);   canvas.Update();
+        im.Update(Mouse(500, 500, false, scroll: 120), true); canvas.Update();   // pointer outside
+
+        Assert.Equal(0f, canvas.CameraOffset.Y);
+    }
 }

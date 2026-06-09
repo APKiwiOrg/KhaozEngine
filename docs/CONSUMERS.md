@@ -3,7 +3,7 @@
 Which game uses which packages, at which version. Update this whenever a consumer
 bumps a `<PackageReference>` or the engine ships a new version.
 
-**Engine current version:** `2.2.0` (all packages share one version, set in `Directory.Build.props`).
+**Engine current version:** `2.3.0` (all packages share one version, set in `Directory.Build.props`).
 
 ## Version matrix
 
@@ -44,4 +44,4 @@ for d in ~/Hardpoint ~/Nullwake ~/SpaceGame; do
 done
 ```
 
-_Last verified: 2026-06-09 against engine 2.2.0._
+_Last verified: 2026-06-09 against engine 2.3.0._

@@ -2,6 +2,18 @@
 
 All notable changes to KhaozEngine. Versions are shared across all packages.
 
+## KhaozEngine 2.3.0
+
+- **KhaozEngine.Time**: new `TimeSkip` (+ `TimeSkipResult`) for advancing a simulation by a span of
+  sim-time in one analytical call. `Advance(simSeconds, step)` clamps to an optional `MaxSimSeconds`,
+  scales by `Multiplier`, skips requests below `MinSimSeconds` (and any `<= 0`), invokes the consumer's
+  analytical catch-up callback once, raises `Completed`, and returns a `TimeSkipResult`
+  (requested/applied seconds, `WasCapped`, `Ran`). Static `TimeSkip.ElapsedSimSeconds(lastSave, now,
+  timeScale)` computes offline wall time (clamped >= 0, optionally scaled by sim speed).
+- For on-demand "fast-forward for credits" and offline catch-up. The engine simulates nothing itself
+  (the game supplies the analytical step); there is no per-frame budget because analytical catch-up is
+  instant. Additive and opt-in; no behaviour change for existing consumers. All packages bump to 2.3.0.
+
 ## KhaozEngine 2.2.0
 
 - New package **KhaozEngine.Time** with `GameClock`: separates real delta time (UI, transitions,

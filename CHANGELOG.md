@@ -1,6 +1,14 @@
 # Changelog
 
-All notable changes to KhaozEngine. Versions are shared across the four packages.
+All notable changes to KhaozEngine. Versions are shared across all packages.
+
+## KhaozEngine 2.1.0
+
+- New package **KhaozEngine.Content** (pure .NET, depends on JsonSchema.Net): `ConfigLoader.Load<T>`
+  (embedded/disk JSON) and `JsonSchemaValidator` (instance + directory validation), plus a bundled
+  validator tool and a `buildTransitive` target that validates a consumer's `Data/` against its schemas
+  when `KhaozContentDataDir` is set. Generalizes Nullwake's config pattern; opt-in. All packages bump to
+  2.1.0 (unified versioning); no changes to the existing four.
 
 ## KhaozEngine 2.0.0 (unified versioning)
 

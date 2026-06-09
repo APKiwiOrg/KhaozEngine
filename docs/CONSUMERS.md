@@ -7,20 +7,22 @@ bumps a `<PackageReference>` or the engine ships a new version.
 
 ## Version matrix
 
-`–` = package not referenced by that project.
+`–` = package not referenced directly by that project. `Time` is pulled in transitively by
+`Screens` 2.2.0+; consumers vendor `KhaozEngine.Time` even without a direct reference.
 
 | Project   | Project file                         | Input | Screens | UI    | Ecs   | Content | Time |
 |-----------|--------------------------------------|-------|---------|-------|-------|---------|------|
-| Hardpoint | `Hardpoint/Hardpoint.Core`           | 2.1.0 | 2.1.0   | 2.1.0 | 2.1.0 | 2.1.0   | –    |
-| Nullwake  | `Nullwake/Nullwake.Core`             | 2.0.0 | 2.0.0   | 2.0.0 | –     | –       | –    |
+| Hardpoint | `Hardpoint/Hardpoint.Core`           | 2.3.0 | 2.3.0   | 2.3.0 | 2.3.0 | 2.3.0   | –    |
+| Nullwake  | `Nullwake/Nullwake.Core`             | 2.3.0 | 2.3.0   | 2.3.0 | –     | –       | –    |
 | SpaceGame | `SpaceGame/SpaceGame.Core`           | 2.0.0 | 2.0.0   | –     | 2.0.0 | –       | –    |
 
 ## Notes
 
-- **Hardpoint** — fully migrated, tracks latest (2.1.0). First and only consumer of
+- **Hardpoint** — fully migrated, tracks latest (2.3.0). First and only consumer of
   `KhaozEngine.Content` (JSON schema validation at build).
-- **Nullwake** — uses Input/Screens/UI only. One minor behind (2.0.0). No ECS, no Content.
-- **SpaceGame** — uses Input/Screens/Ecs only (no UI). One minor behind (2.0.0).
+- **Nullwake** — uses Input/Screens/UI only. Tracks latest (2.3.0). No ECS, no Content.
+- **SpaceGame** — uses Input/Screens/Ecs only (no UI). Behind at 2.0.0 (deterministic lockstep;
+  has not adopted the 2.2.0+ time features and must not read scaled dt).
 
 ## Repo locations
 

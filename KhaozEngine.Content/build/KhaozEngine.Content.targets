@@ -1,0 +1,8 @@
+<Project>
+  <!-- Validates the consumer's JSON data against its schemas before build.
+       Runs only if the consumer opts in by setting KhaozContentDataDir. -->
+  <Target Name="ValidateKhaozContentSchemas" BeforeTargets="BeforeBuild"
+          Condition="'$(KhaozContentDataDir)' != ''">
+    <Exec Command="dotnet exec &quot;$(MSBuildThisFileDirectory)../tools/KhaozEngine.Content.Validator.dll&quot; &quot;$(KhaozContentDataDir)&quot;" />
+  </Target>
+</Project>

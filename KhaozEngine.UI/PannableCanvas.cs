@@ -1,4 +1,6 @@
+using System;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using KhaozEngine.Input;
 
 namespace KhaozEngine.UI;
@@ -19,6 +21,7 @@ public sealed class PannableCanvas
     private readonly InputManager _input;
     private Vector2 _cameraOffset;
     private float _zoom = 1f;                  // seam for future zoom; fixed at 1 for now
+    private RasterizerState? _scissorRasterizer;
 
     /// <summary>Creates a pannable canvas bound to an input source.</summary>
     public PannableCanvas(InputManager input) => _input = input;
@@ -108,6 +111,35 @@ public sealed class PannableCanvas
         }
         pressWorld = releaseWorld = Vector2.Zero;
         return false;
+    }
+
+    /// <summary>
+    /// Scissor-clips to the viewport and invokes <paramref name="drawWorld"/> with a SpriteBatch whose
+    /// transform maps world coordinates -> virtual screen -> physical pixels. The caller draws nodes/edges
+    /// in world coordinates inside the callback. Pass <c>vr.Scale</c> and <c>vr.ScaleMatrix</c> for
+    /// <paramref name="renderScale"/> / <paramref name="scaleMatrix"/>. Draw screen-space extras (popups,
+    /// pinned HUD) in your own batch after this returns.
+    /// </summary>
+    public void Draw(SpriteBatch sb, GraphicsDevice gd, float renderScale, Matrix scaleMatrix, Action drawWorld)
+    {
+        _scissorRasterizer ??= new RasterizerState { ScissorTestEnable = true };
+
+        gd.ScissorRectangle = new Rectangle(
+            (int)(Viewport.X * renderScale),
+            (int)(Viewport.Y * renderScale),
+            Math.Max(0, (int)(Viewport.Width * renderScale)),
+            Math.Max(0, (int)(Viewport.Height * renderScale)));
+
+        Vector2 c = ViewportCenter;
+        Matrix world =
+            Matrix.CreateScale(_zoom, _zoom, 1f) *
+            Matrix.CreateTranslation(c.X + _cameraOffset.X, c.Y + _cameraOffset.Y, 0f);
+
+        sb.Begin(samplerState: SamplerState.PointClamp,
+                 rasterizerState: _scissorRasterizer,
+                 transformMatrix: world * scaleMatrix);
+        drawWorld();
+        sb.End();
     }
 
     private Rectangle PaddedBounds => new(

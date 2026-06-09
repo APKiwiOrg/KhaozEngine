@@ -195,8 +195,11 @@ input frames; assert on `CameraOffset` and the transforms. No `GraphicsDevice`.
 - Clamp keeps the camera within padded bounds (offset never exceeds the computed min/max).
 - Clamp centers the axis when padded content is smaller than the viewport.
 - `WorldToScreen`/`ScreenToWorld` round-trip for arbitrary points and offsets.
-- `TryGetTap` returns true only on a tap inside the viewport and maps press + release to the
-  correct world points; returns false on a drag/pan release.
+- `TryGetTap` maps press + release to the correct world points on a tap inside the viewport;
+  returns false when the press began outside the viewport, or when the pointer was not released
+  this frame. (An in-viewport pan-release also returns true — `IsTapIn` does not measure drag
+  distance — but its press and release world points differ because the camera moved between them,
+  so the caller's same-target check rejects it.)
 - `CenterOn`/`Focus`/`CenterContent` place the target at the viewport center (when bounds are
   large enough that clamping does not move it).
 - `BlockInput` toggles whether `Update()` reserves the viewport region.

@@ -85,6 +85,21 @@ public class ScreenManagerTimeTests
     }
 
     [Fact]
+    public void TimeScaleZeroDispatchesOnPauseAndResumeReversesIt()
+    {
+        var m = new ScreenManager(new InputManager());
+        var s = new LifecycleSpyScreen(0);
+        m.Add(s);
+
+        m.TimeScale = 0f;          // pause via time-scale, not Pause()
+        Assert.Equal(1, s.PauseCount);
+
+        m.TimeScale = 1f;          // back to normal speed dispatches OnResume once
+        Assert.Equal(1, s.ResumeCount);
+        Assert.Equal(1, s.PauseCount);
+    }
+
+    [Fact]
     public void PauseDispatchesOnPauseToAllScreens()
     {
         var m = new ScreenManager(new InputManager());

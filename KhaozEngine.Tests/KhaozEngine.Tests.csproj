@@ -10,6 +10,10 @@
     <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.*" />
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="Fixtures/sample.json" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Content/KhaozEngine.Content.csproj" />
     <ProjectReference Include="../KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
     <ProjectReference Include="../KhaozEngine.Input/KhaozEngine.Input.csproj" />
     <ProjectReference Include="../KhaozEngine.Screens/KhaozEngine.Screens.csproj" />

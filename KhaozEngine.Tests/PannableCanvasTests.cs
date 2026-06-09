@@ -188,4 +188,38 @@ public class PannableCanvasTests
 
         Assert.Equal(new Vector2(30, 60), canvas.PointerWorld);   // 130,160 minus center 100,100
     }
+
+    [Fact]
+    public void CenterOnPlacesPointAtViewportCenter()
+    {
+        var im = new InputManager();
+        var canvas = MakeCanvas(im);   // large content -> no clamp
+
+        canvas.CenterOn(new Vector2(50, 60));
+
+        Assert.Equal(new Vector2(100, 100), canvas.WorldToScreen(new Vector2(50, 60)));
+    }
+
+    [Fact]
+    public void FocusCentersOnRectCenter()
+    {
+        var im = new InputManager();
+        var canvas = MakeCanvas(im);
+
+        canvas.Focus(new Rectangle(20, 20, 40, 40));   // center (40,40)
+
+        Assert.Equal(new Vector2(100, 100), canvas.WorldToScreen(new Vector2(40, 40)));
+    }
+
+    [Fact]
+    public void CenterContentCentersOnContentMiddle()
+    {
+        var im = new InputManager();
+        var canvas = MakeCanvas(im, new Rectangle(0, 0, 400, 400));
+
+        canvas.CenterContent();
+
+        Assert.Equal(new Vector2(-200, -200), canvas.CameraOffset);   // -(content center 200,200)
+        Assert.Equal(new Vector2(100, 100), canvas.WorldToScreen(new Vector2(200, 200)));
+    }
 }

@@ -67,6 +67,14 @@ public sealed class PannableCanvas
         Clamp();
     }
 
+    /// <summary>Centers the camera on the middle of <paramref name="worldRect"/>, then clamps. (Becomes fit-to-rect if zoom is added.)</summary>
+    public void Focus(Rectangle worldRect) =>
+        CenterOn(new Vector2(worldRect.X + worldRect.Width / 2f, worldRect.Y + worldRect.Height / 2f));
+
+    /// <summary>Centers the camera on the middle of <see cref="ContentBounds"/>, then clamps. The typical on-open default.</summary>
+    public void CenterContent() =>
+        CenterOn(new Vector2(ContentBounds.X + ContentBounds.Width / 2f, ContentBounds.Y + ContentBounds.Height / 2f));
+
     /// <summary>Reserves the viewport (if <see cref="BlockInput"/>), pans on drag and wheel, then clamps. Call once per frame before drawing.</summary>
     public void Update()
     {

@@ -16,8 +16,12 @@ Shared, game-agnostic input + screen-stack + UI + ECS for MonoGame games
   public API / behaviour change in the SAME commit as the `Directory.Build.props` `<Version>` bump.
   Never bump the version (or tag a release) without a matching changelog entry.
 - Release ritual, in order: bump `<Version>` in `Directory.Build.props` → add the `CHANGELOG.md`
-  entry → `dotnet pack -c Release -o ./local-feed` (cumulative; don't `rm` old versions, consumers
-  pin) → commit → `git tag vX.Y.Z` → push `main` + the tag (CI publishes to GitHub Packages on `v*`).
+  entry → update the engine-version line in `docs/CONSUMERS.md` → `dotnet pack -c Release -o ./local-feed`
+  (cumulative; don't `rm` old versions, consumers pin) → commit → `git tag vX.Y.Z` → push `main` + the
+  tag (CI publishes to GitHub Packages on `v*`).
+- **`docs/CONSUMERS.md` tracks which game pins which package version.** Update its version matrix
+  whenever a consumer bumps a `KhaozEngine.*` `<PackageReference>`, and the engine-version line on
+  every release. Refresh snippet is at the bottom of that file.
 - SemVer: additive = minor, fixes = patch, breaking = major.
 - `local-feed/` is gitignored but MUST exist before `dotnet restore` (`mkdir -p local-feed`).
 - net10.0, MonoGame.Framework.DesktopGL 3.8, xUnit.

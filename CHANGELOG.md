@@ -2,6 +2,21 @@
 
 All notable changes to KhaozEngine. Versions are shared across all packages.
 
+## KhaozEngine 2.4.0
+
+- **KhaozEngine.UI**: new `PannableCanvas`, a generic pannable viewport. Owns a camera offset;
+  pans on drag (`InputManager.GetDragDelta`) and vertical wheel (`InputManager.GetScrollIn`) within
+  a caller-set `Viewport`; clamps the camera to `ContentBounds` inflated by `Padding` (centering an
+  axis when content is smaller than the viewport). Exposes `WorldToScreen`/`ScreenToWorld`,
+  `PointerWorld`, and `TryGetTap(out pressWorld, out releaseWorld)` (gated on the press-origin tap
+  invariant so it stays click-through-safe). `CenterOn`/`Focus`/`CenterContent` recenter the camera.
+  `Draw(sb, gd, renderScale, scaleMatrix, drawWorld)` scissor-clips to the viewport and invokes a
+  world-space draw callback (pass `vr.Scale`/`vr.ScaleMatrix`). Zoom is not implemented; a single
+  fixed scale, with the transform seam kept for later.
+- Generalizes the inline camera/pan code in Nullwake's `SkillTreeScreen` so a node-graph / map screen
+  needs no per-game reinvention. Additive and opt-in; no behaviour change for existing consumers.
+  All packages bump to 2.4.0.
+
 ## KhaozEngine 2.3.0
 
 - **KhaozEngine.Time**: new `TimeSkip` (+ `TimeSkipResult`) for advancing a simulation by a span of

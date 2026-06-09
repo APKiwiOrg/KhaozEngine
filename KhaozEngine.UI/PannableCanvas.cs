@@ -67,8 +67,37 @@ public sealed class PannableCanvas
         Clamp();
     }
 
+    /// <summary>Reserves the viewport (if <see cref="BlockInput"/>), pans on drag and wheel, then clamps. Call once per frame before drawing.</summary>
+    public void Update()
+    {
+        if (BlockInput) _input.BlockInputRegion(Viewport);
+
+        _cameraOffset += _input.GetDragDelta(Viewport);
+
+        int scroll = _input.GetScrollIn(Viewport);
+        if (scroll != 0) _cameraOffset.Y += scroll * ScrollPanSpeed;
+
+        Clamp();
+    }
+
+    private Rectangle PaddedBounds => new(
+        ContentBounds.X - Padding, ContentBounds.Y - Padding,
+        ContentBounds.Width + Padding * 2, ContentBounds.Height + Padding * 2);
+
     private void Clamp()
     {
-        // Placeholder until Task 2; no-op keeps CenterOn usable for the round-trip test.
+        Rectangle b = PaddedBounds;
+        float halfW = Viewport.Width / 2f;
+        float halfH = Viewport.Height / 2f;
+
+        float minOffX = -b.Right + halfW;
+        float maxOffX = -b.Left - halfW;
+        if (minOffX > maxOffX) _cameraOffset.X = -(b.X + b.Width / 2f);   // content narrower than view -> center
+        else _cameraOffset.X = MathHelper.Clamp(_cameraOffset.X, minOffX, maxOffX);
+
+        float minOffY = -b.Bottom + halfH;
+        float maxOffY = -b.Top - halfH;
+        if (minOffY > maxOffY) _cameraOffset.Y = -(b.Y + b.Height / 2f);
+        else _cameraOffset.Y = MathHelper.Clamp(_cameraOffset.Y, minOffY, maxOffY);
     }
 }

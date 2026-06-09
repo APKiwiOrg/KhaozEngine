@@ -137,4 +137,55 @@ public class PannableCanvasTests
 
         Assert.Equal(0f, canvas.CameraOffset.Y);
     }
+
+    [Fact]
+    public void TryGetTapMapsPressAndReleaseToWorld()
+    {
+        var im = new InputManager();
+        var canvas = MakeCanvas(im);   // offset stays 0 (no drag/scroll)
+
+        im.Update(Mouse(120, 140, false), true); canvas.Update();
+        im.Update(Mouse(120, 140, true), true);  canvas.Update();
+        im.Update(Mouse(120, 140, false), true); canvas.Update();   // release -> tap
+
+        Assert.True(canvas.TryGetTap(out var press, out var release));
+        Assert.Equal(new Vector2(20, 40), press);     // screen 120,140 minus viewport center 100,100
+        Assert.Equal(new Vector2(20, 40), release);
+    }
+
+    [Fact]
+    public void TryGetTapFalseWhenPressBeganOutsideViewport()
+    {
+        var im = new InputManager();
+        var canvas = MakeCanvas(im);
+
+        im.Update(Mouse(300, 300, false), true); canvas.Update();
+        im.Update(Mouse(300, 300, true), true);  canvas.Update();   // press outside
+        im.Update(Mouse(120, 140, false), true); canvas.Update();   // release inside
+
+        Assert.False(canvas.TryGetTap(out _, out _));
+    }
+
+    [Fact]
+    public void TryGetTapFalseWhenNotReleasedThisFrame()
+    {
+        var im = new InputManager();
+        var canvas = MakeCanvas(im);
+
+        im.Update(Mouse(120, 140, false), true); canvas.Update();
+        im.Update(Mouse(120, 140, true), true);  canvas.Update();   // still pressed
+
+        Assert.False(canvas.TryGetTap(out _, out _));
+    }
+
+    [Fact]
+    public void PointerWorldMapsCurrentPointer()
+    {
+        var im = new InputManager();
+        var canvas = MakeCanvas(im);
+
+        im.Update(Mouse(130, 160, false), true); canvas.Update();
+
+        Assert.Equal(new Vector2(30, 60), canvas.PointerWorld);   // 130,160 minus center 100,100
+    }
 }

@@ -80,6 +80,28 @@ public sealed class PannableCanvas
         Clamp();
     }
 
+    /// <summary>The current pointer position in world coordinates (for hover highlighting).</summary>
+    public Vector2 PointerWorld => ScreenToWorld(_input.PointerPosition);
+
+    /// <summary>
+    /// True on the frame the viewport was tapped (press-origin and release both inside the viewport,
+    /// the click-through-safe invariant). Returns the press and release world points so the caller can
+    /// hit-test both and require the same target -- the precision check for dense node graphs. A pan
+    /// that ends inside the viewport also returns true, but its press and release world points differ
+    /// (the camera moved between them), so the same-target check rejects it.
+    /// </summary>
+    public bool TryGetTap(out Vector2 pressWorld, out Vector2 releaseWorld)
+    {
+        if (_input.IsTapIn(Viewport))
+        {
+            pressWorld = ScreenToWorld(_input.PressOrigin);
+            releaseWorld = ScreenToWorld(_input.PointerPosition);
+            return true;
+        }
+        pressWorld = releaseWorld = Vector2.Zero;
+        return false;
+    }
+
     private Rectangle PaddedBounds => new(
         ContentBounds.X - Padding, ContentBounds.Y - Padding,
         ContentBounds.Width + Padding * 2, ContentBounds.Height + Padding * 2);

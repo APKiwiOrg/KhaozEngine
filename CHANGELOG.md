@@ -2,6 +2,23 @@
 
 All notable changes to KhaozEngine. Versions are shared across all packages.
 
+## KhaozEngine 2.2.0
+
+- New package **KhaozEngine.Time** with `GameClock`: separates real delta time (UI, transitions,
+  notifications) from a scaled simulation delta. `TimeScale` gives slow-mo (`<1`), normal (`1`), and
+  fast-forward (`>1`); `Pause()`/`Resume()` freeze the sim orthogonally to `TimeScale` (resume keeps the
+  intended speed); `Paused`/`Resumed` events fire on transitions; `IsPaused` is true when paused or
+  `TimeScale == 0`.
+- **KhaozEngine.Screens**: `ScreenManager` now owns a `GameClock` (new `ScreenManager(InputManager, GameClock)`
+  overload to share one), exposes `Clock`/`IsPaused`/`TimeScale`/`RealDeltaSeconds`/`ScaledDeltaSeconds`,
+  drives transitions on real dt (so they stay live while paused), dispatches new
+  `GameScreen.OnPause()`/`OnResume()` virtuals to stacked screens on pause transitions, and is now
+  `IDisposable` (unsubscribes from a shared clock).
+- Additive and opt-in. Default `TimeScale == 1` makes scaled dt identical to today, so the existing
+  consumers are unchanged. Gameplay reads `ScaledDeltaSeconds` (e.g. `world.Update(ScaledDeltaSeconds)`);
+  UI/transitions/notifications keep using real time. SpaceGame's fixed-timestep lockstep never reads the
+  scaled delta, so determinism is preserved. All packages bump to 2.2.0.
+
 ## KhaozEngine 2.1.0
 
 - New package **KhaozEngine.Content** (pure .NET, depends on JsonSchema.Net): `ConfigLoader.Load<T>`

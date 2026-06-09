@@ -49,7 +49,6 @@ public sealed class GameClock
     {
         RealDeltaSeconds = (float)gameTime.ElapsedGameTime.TotalSeconds;
         ScaledDeltaSeconds = IsPaused ? 0f : RealDeltaSeconds * _timeScale;
-        RaiseIfChanged();
     }
 
     private void RaiseIfChanged()

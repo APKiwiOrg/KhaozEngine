@@ -52,6 +52,7 @@ public class GameClockTests
     {
         var c = new GameClock { TimeScale = -3f };
         Assert.Equal(0f, c.TimeScale);
+        Assert.True(c.IsPaused);   // clamped to zero -> sim frozen
     }
 
     [Fact]

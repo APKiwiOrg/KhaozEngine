@@ -3,7 +3,7 @@
 Which game uses which packages, at which version. Update this whenever a consumer
 bumps a `<PackageReference>` or the engine ships a new version.
 
-**Engine current version:** `2.6.0` (all packages share one version, set in `Directory.Build.props`).
+**Engine current version:** `3.0.0` (all packages share one version, set in `Directory.Build.props`).
 
 ## Version matrix
 
@@ -13,8 +13,8 @@ bumps a `<PackageReference>` or the engine ships a new version.
 | Project   | Project file                         | Input | Screens | UI    | Ecs   | Content | Diagnostics | Time |
 |-----------|--------------------------------------|-------|---------|-------|-------|---------|-------------|------|
 | Hardpoint | `Hardpoint/Hardpoint.Core`           | 2.4.0 | 2.4.0   | 2.4.0 | 2.4.0 | 2.4.0   | –           | –    |
-| Nullwake  | `Nullwake/Nullwake.Core`             | 2.3.0 | 2.3.0   | 2.3.0 | –     | –       | 2.6.0       | –    |
-| SpaceGame | `SpaceGame/SpaceGame.Core`           | 2.3.0 | 2.3.0   | 2.3.0 | 2.3.0 | 2.3.0   | 2.6.0       | –    |
+| Nullwake  | `Nullwake/Nullwake.Core`             | 3.0.0 | 3.0.0   | 3.0.0 | –     | –       | 3.0.0       | –    |
+| SpaceGame | `SpaceGame/SpaceGame.Core`           | 3.0.0 | 3.0.0   | 3.0.0 | 3.0.0 | 3.0.0   | 3.0.0       | –    |
 
 ## Adoption matrix
 
@@ -33,11 +33,11 @@ scaled-dt usage.
 - **Hardpoint** — fully migrated, tracks latest (2.4.0). First consumer of
   `KhaozEngine.Content` (JSON schema validation at build). Has not adopted `Diagnostics` (no file
   logger of its own yet; a candidate to migrate).
-- **Nullwake** — uses Input/Screens/UI (2.3.0) + `Diagnostics` (2.6.0). No ECS, no Content. Its
+- **Nullwake** — uses Input/Screens/UI (3.0.0) + `Diagnostics` (3.0.0). No ECS, no Content on main. Its
   in-house `GameLogger` is now a thin static facade over `FileLogger`; the Nullwake-specific app-data
   path resolution (`LocalApplicationData/Nullwake/game.log`) stays game-side. Mixed pin is fine:
   `Diagnostics` has no dependency on the other engine packages.
-- **SpaceGame** — uses Input/Screens/UI/Ecs/Content + `Diagnostics` (2.6.0). UI is `TextInputHandler`
+- **SpaceGame** — uses Input/Screens/UI/Ecs/Content + `Diagnostics` (3.0.0). UI is `TextInputHandler`
   for its prompt screens. First consumer of `KhaozEngine.Diagnostics`: its `GameLogger` is now a thin
   facade over `FileLogger`. Deterministic lockstep: vendors `KhaozEngine.Time` transitively via Screens
   but reads no scaled dt (no `GameClock`/`TimeScale`/`TimeSkip` usage) and must keep it that way.
@@ -64,4 +64,7 @@ for d in ~/Hardpoint ~/Nullwake ~/SpaceGame; do
 done
 ```
 
-_Last verified: 2026-06-10 against engine 2.6.0._
+> Nullwake's Content/Diagnostics adoption and SpaceGame's Bucket A (TextInputHandler→engine, UI/Content)
+> are in progress on feature branches, re-pinned to 3.0.0; not yet merged to their respective mains.
+
+_Last verified: 2026-06-10 against engine 3.0.0._

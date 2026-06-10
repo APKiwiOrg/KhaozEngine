@@ -5,13 +5,15 @@ Game-agnostic logging service. Pure .NET, no MonoGame dependency.
 ## Quick start
 
 ```csharp
+using KhaozEngine.App;          // AppDataPaths lives in the KhaozEngine.App package
 using KhaozEngine.Diagnostics;
 
+var paths = new AppDataPaths("MyGame");
 var options = new LoggerOptions { MinimumLevel = LogLevel.Info, DefaultCategory = "Boot" };
 options.Sinks.Add(new FileSink(new FileSinkOptions
 {
-    Path = AppDataPaths.Combine("MyGame", "game.log"),
-    PreviousPath = AppDataPaths.Combine("MyGame", "game.prev.log"),
+    Path = paths.LogFilePath,
+    PreviousPath = paths.PreviousLogFilePath,
     MaxBytes = 5 * 1024 * 1024,
     MaxFiles = 3
 }));
@@ -32,7 +34,8 @@ Log.Shutdown();
 - `ILogger` — category logger (`Trace`/`Debug`/`Info`/`Warn`/`Error`/`Fatal`, each with an optional exception).
 - `ILogSink` + `FileSink` (rotate-on-launch + size rotation + retention), `ConsoleSink`, `DebugSink`, `InMemorySink`. Implement `ILogSink` for custom targets (in-game console, crash uploader).
 - `CrashHandler` — wires `AppDomain.UnhandledException` + `TaskScheduler.UnobservedTaskException`.
-- `AppDataPaths` — OS-correct per-app data directory.
 - `IClock`/`SystemClock` — injectable timestamps.
+
+(OS-correct app-data paths live in `KhaozEngine.App` as `AppDataPaths`; resolve `FileSinkOptions.Path` through it.)
 
 Logging never throws and never blocks the caller (writes happen on a background thread; `Flush`/`Shutdown` drain them).

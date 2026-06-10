@@ -3,7 +3,11 @@
 Which game uses which packages, at which version. Update this whenever a consumer
 bumps a `<PackageReference>` or the engine ships a new version.
 
-**Engine current version:** `3.0.0` (all packages share one version, set in `Directory.Build.props`).
+**Engine current version:** `3.1.0` (all packages share one version, set in `Directory.Build.props`).
+
+> 3.1.0 replaces `KhaozEngine.Diagnostics.FileLogger` with the full logging service (`Log`/`LogManager`,
+> sinks, `CrashHandler`, `AppDataPaths`). Consumer pins below stay at their current versions until each
+> game's migration runs.
 
 ## Version matrix
 
@@ -68,4 +72,4 @@ done
 > Nullwake's Content/Diagnostics adoption and SpaceGame's Bucket A (TextInputHandler→engine, UI/Content)
 > are in progress on feature branches, re-pinned to 3.0.0; not yet merged to their respective mains.
 
-_Last verified: 2026-06-10 against engine 3.0.0._
+_Last verified: 2026-06-11 against engine 3.1.0._

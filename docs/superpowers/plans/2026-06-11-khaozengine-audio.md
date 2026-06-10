@@ -4,7 +4,7 @@
 
 **Goal:** Promote Nullwake's OS-selected music backend (MonoGame `MediaPlayer` + a macOS `AVAudioPlayer` ObjC P/Invoke bridge) into a new game-agnostic `KhaozEngine.Audio` package, with the hardcoded track list parameterized and logging routed through `KhaozEngine.Diagnostics`.
 
-**Architecture:** `AudioSystem` (public) owns volume/enable/auto-rotation state and delegates playback to an `IMusicBackend` (now public). The default constructor picks a backend by OS (`MacOsMusicBackend` on macOS, else `MonoGameMusicBackend`); a second constructor injects a backend for tests or custom platforms. Tracks are caller-registered (constructor seed + additive `RegisterTracks`). Logging is a constructor-injected `ILogger` defaulting to the `Log.For<AudioSystem>()` facade. The two real backends are thin, untested platform shims; `AudioSystem`'s logic is covered headlessly against a `FakeMusicBackend`.
+**Architecture:** `AudioSystem` (public) owns volume/enable/auto-rotation state and delegates playback to an `IMusicBackend` (public). The default constructor picks a backend by OS (`MacOsMusicBackend` on macOS, else `MonoGameMusicBackend`); a second constructor injects a backend for tests or custom platforms. Both concrete backends are public extension points. Tracks are caller-registered (constructor seed + additive, idempotent `RegisterTrack`/`RegisterTracks` that work before or after load — late registrations eager-load for DLC/runtime tracks). Logging is a constructor-injected `ILogger` defaulting to the `Log.For<AudioSystem>()` facade (turn-key: auto-routes to the configured engine log, safe before `Log.Configure`). The real backends are thin platform shims; `AudioSystem`'s logic is covered headlessly against a `FakeMusicBackend`.
 
 **Tech Stack:** net10.0, C# latest, MonoGame.Framework.DesktopGL 3.8.*, KhaozEngine.Diagnostics, xUnit.
 
@@ -19,8 +19,8 @@ Created:
 - `KhaozEngine.Audio/README.md` — package readme (packed)
 - `KhaozEngine.Audio/IMusicBackend.cs` — public backend interface (the seam)
 - `KhaozEngine.Audio/MacOsMusicPlayer.cs` — internal AVAudioPlayer ObjC P/Invoke bridge
-- `KhaozEngine.Audio/MacOsMusicBackend.cs` — internal macOS backend (file-path .mp3 playback)
-- `KhaozEngine.Audio/MonoGameMusicBackend.cs` — internal MonoGame `Song`/`MediaPlayer` backend
+- `KhaozEngine.Audio/MacOsMusicBackend.cs` — public macOS backend (file-path .mp3 playback)
+- `KhaozEngine.Audio/MonoGameMusicBackend.cs` — public MonoGame `Song`/`MediaPlayer` backend
 - `KhaozEngine.Audio/AudioSystem.cs` — public orchestrator (volume/enable/rotation)
 - `KhaozEngine.Tests/Audio/FakeMusicBackend.cs` — test double implementing `IMusicBackend`
 - `KhaozEngine.Tests/Audio/StubServiceProvider.cs` — minimal `IServiceProvider` for a headless `ContentManager`
@@ -31,9 +31,9 @@ Modified:
 - `KhaozEngine.Tests/KhaozEngine.Tests.csproj` — add a `ProjectReference` to `KhaozEngine.Audio`
 
 > Note: this is a promotion of already-working code. Backends are lifted near-verbatim
-> (only namespace + logger change) and are not unit-testable (P/Invoke + MonoGame `Song`).
-> The new/changed logic — track parameterization, register-after-load guard, backend and
-> logger injection — is what the headless tests in Task 8 exercise.
+> (namespace, visibility, and logger change only) and are not unit-testable (P/Invoke +
+> MonoGame `Song`). The new/changed logic — track parameterization, idempotent + post-load
+> registration, backend and logger injection — is what the headless tests in Task 7 exercise.
 
 ---
 
@@ -90,7 +90,7 @@ var audio = new AudioSystem(new[]
     MusicEnabled = true,
 };
 
-// or register additively before LoadContent:
+// register more tracks any time (idempotent; late ones eager-load after LoadContent):
 audio.RegisterTrack("Music/track_three");
 
 audio.LoadContent(Content);   // MonoGame ContentManager
@@ -105,10 +105,14 @@ audio.Dispose();
 - Track names are content-pipeline asset names (no extension), e.g. `Music/foo`.
   The MonoGame backend loads `foo.xnb` via the pipeline; the macOS backend plays the
   raw `foo.mp3` from the content directory. Ship both for cross-platform builds.
+- Registration is idempotent (re-registering a known track is a no-op) and works before
+  or after `LoadContent`; tracks registered after load are eager-loaded immediately, so
+  DLC / runtime track additions just work.
 - Logging routes through `KhaozEngine.Diagnostics`. Pass an `ILogger` to the
   constructor, or leave it null to use the ambient `Log` facade (a no-op until the
-  game calls `Log.Configure(...)`).
-- Custom platforms (e.g. iOS) can supply their own `IMusicBackend` via the
+  game calls `Log.Configure(...)`, then audio logs flow to the configured log).
+- `IMusicBackend` and the concrete `MonoGameMusicBackend` / `MacOsMusicBackend` are
+  public, so a custom platform (e.g. iOS) can supply or compose its own backend via the
   `AudioSystem(IMusicBackend, ...)` constructor.
 ```
 
@@ -200,8 +204,9 @@ git commit -m "Add public IMusicBackend to KhaozEngine.Audio"
 Lifted verbatim from Nullwake except: namespace `KhaozEngine.Audio`; the
 `using Nullwake.Core.Engine;` line is dropped and replaced with
 `using KhaozEngine.Diagnostics;`; an injected `ILogger` field replaces the static
-`GameLogger` (3 `GameLogger.Warn(...)` call sites become `_logger.Warn(...)`). The static
-class-handle/selector setup and all `[DllImport]` signatures are unchanged.
+`GameLogger` (3 `GameLogger.Warn(...)` call sites become `_logger.Warn(...)`). The class stays
+`internal` (an implementation detail of `MacOsMusicBackend`). The static class-handle/selector
+setup and all `[DllImport]` signatures are unchanged.
 
 - [ ] **Step 1: Create the file**
 
@@ -466,7 +471,7 @@ internal sealed class MacOsMusicPlayer : IDisposable
 - [ ] **Step 2: Build**
 
 Run: `dotnet build KhaozEngine.Audio/KhaozEngine.Audio.csproj --nologo`
-Expected: build succeeds. (`SelInit` is assigned but unused — same as the original; the `1591`/unused patterns are not errors here.)
+Expected: build succeeds. (`SelInit` is assigned but unused — same as the original; not an error.)
 
 - [ ] **Step 3: Commit**
 
@@ -483,8 +488,12 @@ git commit -m "Lift MacOsMusicPlayer AVAudioPlayer bridge into KhaozEngine.Audio
 - Create: `KhaozEngine.Audio/MacOsMusicBackend.cs`
 - Create: `KhaozEngine.Audio/MonoGameMusicBackend.cs`
 
-Both lifted verbatim except namespace, the dropped `using Nullwake.Core.Engine;`, an
-injected `ILogger`, and `GameLogger.*` → `_logger.*`.
+Both lifted verbatim from Nullwake except namespace, the dropped `using Nullwake.Core.Engine;`,
+an injected `ILogger`, and `GameLogger` calls becoming `_logger` calls. **Both concrete backends
+are `public`** — they are the agreed extension point, so a game can pick or compose a specific
+backend. Their `ILogger` is optional, defaulting to the turn-key `Log.For<T>()` facade so a game
+can `new MonoGameMusicBackend()` with no setup. (`MacOsMusicPlayer` stays internal — it is an
+implementation detail of `MacOsMusicBackend`, not an `IMusicBackend`.)
 
 - [ ] **Step 1: Create MacOsMusicBackend**
 
@@ -499,24 +508,30 @@ using KhaozEngine.Diagnostics;
 
 namespace KhaozEngine.Audio;
 
-internal sealed class MacOsMusicBackend : IMusicBackend
+/// <summary>macOS music backend: plays raw <c>.mp3</c> files via an AVAudioPlayer bridge.</summary>
+public sealed class MacOsMusicBackend : IMusicBackend
 {
     private readonly List<string> _trackPaths = [];
     private readonly ILogger _logger;
     private readonly MacOsMusicPlayer _player;
 
-    public MacOsMusicBackend(ILogger logger)
+    /// <summary>Creates the backend. <paramref name="logger"/> defaults to the ambient <c>Log</c> facade.</summary>
+    public MacOsMusicBackend(ILogger? logger = null)
     {
-        _logger = logger;
-        _player = new MacOsMusicPlayer(logger);
+        _logger = logger ?? Log.For<MacOsMusicBackend>();
+        _player = new MacOsMusicPlayer(_logger);
     }
 
+    /// <inheritdoc/>
     public string Name => "macOS AVAudioPlayer";
 
+    /// <inheritdoc/>
     public int TrackCount => _trackPaths.Count;
 
+    /// <inheritdoc/>
     public bool IsPlaying => _player.IsPlaying;
 
+    /// <inheritdoc/>
     public bool TryLoadTrack(ContentManager content, string contentDirectory, string trackName, int trackIndex)
     {
         string mp3Path = Path.Combine(contentDirectory, trackName + ".mp3");
@@ -532,21 +547,25 @@ internal sealed class MacOsMusicBackend : IMusicBackend
         return true;
     }
 
+    /// <inheritdoc/>
     public bool TryPlayTrack(int trackIndex, float volume)
     {
         return _player.Play(_trackPaths[trackIndex], volume);
     }
 
+    /// <inheritdoc/>
     public void Stop()
     {
         _player.Stop();
     }
 
+    /// <inheritdoc/>
     public void SetVolume(float volume)
     {
         _player.SetVolume(volume);
     }
 
+    /// <inheritdoc/>
     public void Dispose()
     {
         _player.Dispose();
@@ -567,20 +586,25 @@ using KhaozEngine.Diagnostics;
 
 namespace KhaozEngine.Audio;
 
-internal sealed class MonoGameMusicBackend : IMusicBackend
+/// <summary>Default backend: plays MonoGame <see cref="Song"/> assets via <see cref="MediaPlayer"/>.</summary>
+public sealed class MonoGameMusicBackend : IMusicBackend
 {
     private readonly List<Song> _tracks = [];
     private readonly ILogger _logger;
 
-    public MonoGameMusicBackend(ILogger logger)
+    /// <summary>Creates the backend. <paramref name="logger"/> defaults to the ambient <c>Log</c> facade.</summary>
+    public MonoGameMusicBackend(ILogger? logger = null)
     {
-        _logger = logger;
+        _logger = logger ?? Log.For<MonoGameMusicBackend>();
     }
 
+    /// <inheritdoc/>
     public string Name => "MonoGame MediaPlayer";
 
+    /// <inheritdoc/>
     public int TrackCount => _tracks.Count;
 
+    /// <inheritdoc/>
     public bool IsPlaying
     {
         get
@@ -590,6 +614,7 @@ internal sealed class MonoGameMusicBackend : IMusicBackend
         }
     }
 
+    /// <inheritdoc/>
     public bool TryLoadTrack(ContentManager content, string contentDirectory, string trackName, int trackIndex)
     {
         try
@@ -605,6 +630,7 @@ internal sealed class MonoGameMusicBackend : IMusicBackend
         }
     }
 
+    /// <inheritdoc/>
     public bool TryPlayTrack(int trackIndex, float volume)
     {
         MediaPlayer.IsRepeating = false;
@@ -613,16 +639,19 @@ internal sealed class MonoGameMusicBackend : IMusicBackend
         return true;
     }
 
+    /// <inheritdoc/>
     public void Stop()
     {
         MediaPlayer.Stop();
     }
 
+    /// <inheritdoc/>
     public void SetVolume(float volume)
     {
         MediaPlayer.Volume = volume;
     }
 
+    /// <inheritdoc/>
     public void Dispose()
     {
         try
@@ -658,7 +687,7 @@ Expected: build succeeds.
 
 ```bash
 git add KhaozEngine.Audio/MacOsMusicBackend.cs KhaozEngine.Audio/MonoGameMusicBackend.cs
-git commit -m "Lift macOS + MonoGame music backends into KhaozEngine.Audio"
+git commit -m "Lift public macOS + MonoGame music backends into KhaozEngine.Audio"
 ```
 
 ---
@@ -670,10 +699,12 @@ git commit -m "Lift macOS + MonoGame music backends into KhaozEngine.Audio"
 
 Changes from Nullwake's `AudioSystem`: namespace; drop the static `TrackNames` array;
 hold a caller-populated `List<string> _trackNames`; two constructors (default OS-backend +
-injected backend); `RegisterTrack`/`RegisterTracks` (throw after load); injected `ILogger`
-(default `Log.For<AudioSystem>()`); `Engine.GameLogger.Info` → `_logger.Info`. The volume /
+injected backend); idempotent `RegisterTrack`/`RegisterTracks` that work before or after load
+(post-load registrations eager-load via the retained `ContentManager`); injected `ILogger`
+(default `Log.For<AudioSystem>()`); `Engine.GameLogger.Info` becomes `_logger.Info`. The volume /
 `MusicEnabled` / `PlayRandomTrack` / `Update` / `Dispose` / `SetRng` / `ApplyVolume` logic is
-unchanged.
+unchanged. To support post-load registration, `LoadContent` retains the `ContentManager` and the
+computed content directory so a late `RegisterTrack` can eager-load one track.
 
 - [ ] **Step 1: Create the file**
 
@@ -706,6 +737,8 @@ public sealed class AudioSystem : IDisposable
     private bool _loaded;
     private bool _started;
     private bool _musicEnabled = true;
+    private ContentManager? _content;
+    private string? _contentDirectory;
 
     /// <summary>
     /// Creates an audio system using the backend for the current OS
@@ -731,18 +764,28 @@ public sealed class AudioSystem : IDisposable
         _trackNames = trackNames is null ? new List<string>() : new List<string>(trackNames);
     }
 
-    /// <summary>Adds a track to load. Must be called before <see cref="LoadContent"/>.</summary>
+    /// <summary>
+    /// Adds a track to the rotation. Idempotent: re-registering a known track is a no-op.
+    /// Safe before or after <see cref="LoadContent"/> — a track registered after load is
+    /// eager-loaded immediately via the backend (for DLC / runtime additions).
+    /// </summary>
     public void RegisterTrack(string trackName)
     {
-        if (_loaded)
+        if (_trackNames.Contains(trackName))
         {
-            throw new InvalidOperationException("Cannot register tracks after LoadContent has been called.");
+            return;
         }
 
+        int index = _trackNames.Count;
         _trackNames.Add(trackName);
+
+        if (_loaded && _content is not null)
+        {
+            _backend.TryLoadTrack(_content, _contentDirectory!, trackName, index);
+        }
     }
 
-    /// <summary>Adds several tracks to load. Must be called before <see cref="LoadContent"/>.</summary>
+    /// <summary>Adds several tracks via <see cref="RegisterTrack"/> (idempotent, pre- or post-load).</summary>
     public void RegisterTracks(IEnumerable<string> trackNames)
     {
         foreach (string trackName in trackNames)
@@ -808,13 +851,14 @@ public sealed class AudioSystem : IDisposable
     /// </summary>
     public void LoadContent(ContentManager content)
     {
-        string contentDirectory = System.IO.Path.Combine(
+        _content = content;
+        _contentDirectory = System.IO.Path.Combine(
             AppDomain.CurrentDomain.BaseDirectory, content.RootDirectory);
         _logger.Info($"Audio: using {_backend.Name} backend");
 
         for (int i = 0; i < _trackNames.Count; i++)
         {
-            _backend.TryLoadTrack(content, contentDirectory, _trackNames[i], i);
+            _backend.TryLoadTrack(content, _contentDirectory, _trackNames[i], i);
         }
 
         _logger.Info($"Audio: {_backend.TrackCount}/{_trackNames.Count} tracks loaded");
@@ -930,7 +974,7 @@ Expected: build succeeds.
 
 ```bash
 git add KhaozEngine.Audio/AudioSystem.cs
-git commit -m "Lift AudioSystem with parameterized tracks + injected logger/backend"
+git commit -m "Lift AudioSystem with idempotent registration + injected logger/backend"
 ```
 
 ---
@@ -1042,8 +1086,9 @@ git commit -m "Wire KhaozEngine.Audio into tests + add FakeMusicBackend/StubServ
 
 > These exercise the new/changed logic against the fake backend. Because `AudioSystem`
 > is already implemented (Task 5), they are expected to PASS on first run — the value is
-> proving the track parameterization, register guard, rotation, volume scaling, enable
-> toggle, Update progression, availability flip, and dispose all behave as designed.
+> proving track parameterization, idempotent + post-load registration, rotation, volume
+> scaling, enable toggle, Update progression, availability flip, and dispose all behave
+> as designed.
 
 - [ ] **Step 1: Write the test file**
 
@@ -1082,12 +1127,28 @@ public sealed class AudioSystemTests
     }
 
     [Fact]
-    public void RegisterAfterLoadThrows()
+    public void DuplicateRegistrationLoadsTrackOnce()
     {
-        var (audio, _) = NewLoaded("a");
+        var backend = new FakeMusicBackend();
+        var audio = new AudioSystem(backend, new[] { "a" });
+        audio.RegisterTrack("a");                 // duplicate of the ctor seed
+        audio.RegisterTracks(new[] { "b", "b" }); // duplicate within the batch
 
-        Assert.Throws<InvalidOperationException>(() => audio.RegisterTrack("b"));
-        Assert.Throws<InvalidOperationException>(() => audio.RegisterTracks(new[] { "b" }));
+        audio.LoadContent(new ContentManager(new StubServiceProvider()));
+
+        Assert.Equal(new[] { "a", "b" }, backend.LoadedTracks);
+    }
+
+    [Fact]
+    public void RegisterAfterLoadEagerLoadsNewTrackOnce()
+    {
+        var (audio, backend) = NewLoaded("a", "b");
+
+        audio.RegisterTrack("c");
+        audio.RegisterTrack("c");   // idempotent: no second load
+
+        Assert.Equal(new[] { "a", "b", "c" }, backend.LoadedTracks);
+        Assert.Equal(3, backend.TrackCount);
     }
 
     [Fact]
@@ -1251,7 +1312,7 @@ public sealed class AudioSystemTests
 - [ ] **Step 2: Run the new tests**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --nologo --filter "FullyQualifiedName~AudioSystemTests"`
-Expected: PASS — 14 tests, 0 failed.
+Expected: PASS — 15 tests, 0 failed.
 
 If any fail, debug with `superpowers:systematic-debugging` before proceeding (a likely
 first-run snag is the headless `ContentManager` constructor — if `new ContentManager(new
@@ -1279,7 +1340,7 @@ Expected: build succeeds, `KhaozEngine.Audio` included.
 - [ ] **Step 2: Run the full test suite**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --nologo`
-Expected: PASS — `268 + 14 = 282` total, 0 failed. (Baseline was 268.)
+Expected: PASS — `268 + 15 = 283` total, 0 failed. (Baseline was 268.)
 
 - [ ] **Step 3: Confirm no release-discipline violations**
 
@@ -1290,7 +1351,7 @@ Expected: empty output (no version bump, no changelog, no consumers edit — coo
 
 Run: `git log --oneline origin/main..HEAD` and `git status -sb`
 Expected: the task commits listed, working tree clean. Report branch, worktree path,
-package added, files added, and the test-count delta (+14) back to the coordinating chat.
+package added, files added, and the test-count delta (+15) back to the coordinating chat.
 
 ---
 

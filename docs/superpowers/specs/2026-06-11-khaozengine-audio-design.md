@@ -25,10 +25,16 @@ so it belongs in the shared engine.
 ## Coordinator decisions (locked)
 
 1. **Package:** new standalone `KhaozEngine.Audio`.
-2. **Track registration:** both — constructor seed list **and** additive `RegisterTracks`.
-3. **Test seam:** `IMusicBackend` made **public** + an injectable-backend `AudioSystem`
-   constructor.
-4. **Logging:** constructor-injected `KhaozEngine.Diagnostics.ILogger`.
+2. **Track registration:** both — constructor seed list **and** additive `RegisterTrack`/
+   `RegisterTracks`. Registration is **idempotent** (re-registering a known track is a
+   no-op) and works **before or after** `LoadContent`: a track registered after load is
+   eager-loaded immediately via the backend (so DLC / runtime track additions work).
+3. **Test seam / extension point:** `IMusicBackend` **and** the concrete
+   `MonoGameMusicBackend` / `MacOsMusicBackend` are **public**, plus an injectable-backend
+   `AudioSystem` constructor. A game can pick or compose a specific backend; tests drive a
+   `FakeMusicBackend`.
+4. **Logging:** constructor-injected `KhaozEngine.Diagnostics.ILogger`, defaulting (when
+   null) to the turn-key `Log.For<T>()` facade.
 
 ## Package
 
@@ -45,10 +51,10 @@ so it belongs in the shared engine.
 | File | Visibility | Change from Nullwake |
 |---|---|---|
 | `IMusicBackend.cs` | **public** (was internal) | public test/extensibility seam; members unchanged |
-| `AudioSystem.cs` | `public sealed` | track list parameterized; `ILogger` injected; backend injectable; static `TrackNames` deleted |
-| `MonoGameMusicBackend.cs` | internal | `GameLogger` → injected `ILogger` |
-| `MacOsMusicBackend.cs` | internal | `GameLogger` → injected `ILogger`; passes logger to player |
-| `MacOsMusicPlayer.cs` | internal | `GameLogger` → injected `ILogger`; P/Invoke unchanged |
+| `AudioSystem.cs` | `public sealed` | track list parameterized; `ILogger` injected; backend injectable; static `TrackNames` deleted; retains `ContentManager` for post-load registration |
+| `MonoGameMusicBackend.cs` | **public** (was internal) | `GameLogger` becomes injected `ILogger` (optional, defaults to `Log` facade) |
+| `MacOsMusicBackend.cs` | **public** (was internal) | `GameLogger` becomes injected `ILogger` (optional); passes logger to player |
+| `MacOsMusicPlayer.cs` | internal | `GameLogger` becomes injected `ILogger`; P/Invoke unchanged (impl detail of the macOS backend) |
 
 `IMusicBackend` members (unchanged): `Name`, `TrackCount`, `IsPlaying`,
 `TryLoadTrack(ContentManager, string contentDirectory, string trackName, int trackIndex)`,
@@ -62,8 +68,8 @@ public AudioSystem(IEnumerable<string>? trackNames = null, ILogger? logger = nul
 // injected backend: tests (FakeMusicBackend) or a custom platform backend
 public AudioSystem(IMusicBackend backend, IEnumerable<string>? trackNames = null, ILogger? logger = null);
 
-public void RegisterTrack(string trackName);               // additive, before LoadContent
-public void RegisterTracks(IEnumerable<string> trackNames); // throws InvalidOperationException after LoadContent
+public void RegisterTrack(string trackName);               // idempotent; pre- or post-load
+public void RegisterTracks(IEnumerable<string> trackNames); // idempotent; pre- or post-load
 public void SetRng(Random rng);
 public void LoadContent(ContentManager content);
 public void PlayRandomTrack();
@@ -77,17 +83,20 @@ public bool  MusicEnabled { get; set; }   // true default
 Behaviour notes:
 
 - `logger` defaults (when null) to `Log.For<AudioSystem>()` — a no-op when the game
-  hasn't configured `KhaozEngine.Diagnostics`, real logs when it has. (`NullLogger`
-  is internal to Diagnostics, so the `Log` facade is the public equivalent of the
-  "NullLogger default".) The resolved logger is threaded into any backend the default
-  factory constructs; an injected backend brings its own logger.
+  hasn't configured `KhaozEngine.Diagnostics`, real logs when it has. Turn-key: audio
+  logs auto-route to the configured engine log, and it stays injectable/overridable and
+  safe before `Log.Configure`. The resolved logger is threaded into any backend the
+  default factory constructs; an injected backend brings its own (its `ILogger` is also
+  optional, defaulting to the same facade).
 - Parameterless `new AudioSystem()` still compiles, so the existing object-initializer
   consumer pattern (`new AudioSystem { MasterVolume = ... }`) survives. The two
   constructors are unambiguous because the injected-backend overload requires a
-  non-optional `IMusicBackend` first argument.
+  non-optional `IMusicBackend` first argument; a null backend throws `ArgumentNullException`.
 - The hardcoded `TrackNames` array is deleted; the caller registers its tracks via the
-  constructor seed and/or `RegisterTracks`. Registration after `LoadContent` throws
-  `InvalidOperationException` (otherwise it would be a silent no-op).
+  constructor seed and/or `RegisterTrack`/`RegisterTracks`. Registration is idempotent
+  and works after `LoadContent` — late tracks are eager-loaded immediately through the
+  backend using the `ContentManager` retained at load time. (No hard-throw after load:
+  the whole point of additive registration is runtime/DLC track addition.)
 - The rotation / volume-scaling (`MasterVolume * MusicVolume`) / `MusicEnabled` toggle /
   `_available` / `_loaded` / `_started` state machine is lifted verbatim; only the
   logger and track source change.
@@ -102,19 +111,21 @@ load/play success. `AudioSystem` is constructed with the injected-backend overlo
 
 Headless tests (`KhaozEngine.Tests`):
 
-1. Ctor-seed tracks **and** `RegisterTracks` both contribute; `LoadContent` loads all;
-   `TrackCount` reflects loaded.
-2. `RegisterTrack`/`RegisterTracks` after `LoadContent` throws `InvalidOperationException`.
-3. Rotation with multiple tracks never repeats the previous index (seeded RNG, many
+1. Ctor-seed tracks **and** `RegisterTrack`/`RegisterTracks` all contribute; `LoadContent`
+   loads all; `TrackCount` reflects loaded.
+2. Duplicate registration (a re-registered ctor seed, a duplicate within a batch) loads
+   the track only once.
+3. `RegisterTrack` after `LoadContent` eager-loads the new track once (idempotent).
+4. Rotation with multiple tracks never repeats the previous index (seeded RNG, many
    draws); single track always index 0.
-4. Volume scaling: `MasterVolume * MusicVolume` reaches `TryPlayTrack`'s volume arg and
+5. Volume scaling: `MasterVolume * MusicVolume` reaches `TryPlayTrack`'s volume arg and
    `SetVolume`; values clamped to `[0,1]`.
-5. `MusicEnabled = false` → `Stop`; `= true` → plays. Toggle is a no-op when unchanged.
-6. `Update` defers the first play to the first call (`_started`), then plays the next
+6. `MusicEnabled = false` stops; `= true` plays. Toggle is a no-op when unchanged.
+7. `Update` defers the first play to the first call (`_started`), then plays the next
    track only when `!IsPlaying`.
-7. `TryPlayTrack` returning false flips `_available` off; no further play attempts.
-8. `SetRng` makes rotation deterministic.
-9. `Dispose` disposes the backend.
+8. `TryPlayTrack` returning false flips `_available` off; no further play attempts.
+9. `SetRng` makes rotation deterministic.
+10. `Dispose` disposes the backend; a null injected backend throws.
 
 `LoadContent` requires a `ContentManager`; tests pass an empty
 `new ContentManager(stubServiceProvider)` (the fake backend ignores it — it never calls
@@ -137,10 +148,3 @@ No `<Version>` bump, no `CHANGELOG.md` entry, no `dotnet pack` into the shared
 - Content-pipeline packaging (`.xnb` for non-mac, raw `.mp3` for the macOS file path
   backend) — the consumer ships the assets; the package only consumes track names.
   Noted in the package README.
-
-## Open questions for the coordinator
-
-- Confirm the `AudioSystem(IMusicBackend, ...)` ctor should be **public** (the brief's
-  "inject" choice implies public; it also lets a game supply a custom backend, e.g.
-  iOS). If a smaller surface is preferred, it can be `internal` + `InternalsVisibleTo`
-  the test project instead.

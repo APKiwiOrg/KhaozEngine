@@ -22,7 +22,11 @@ public static class JsonSchemaValidator
     /// <summary>Validates an instance JSON string against a schema JSON string.</summary>
     public static ValidationReport Validate(string instanceJson, string schemaJson)
     {
-        JsonSchema schema = JsonSchema.FromText(schemaJson);
+        // Use an isolated SchemaRegistry so repeated calls with schemas sharing the same $id
+        // (e.g. two data files pointing at the same schema) do not crash on "overwriting
+        // registered schemas is not permitted" in the global static SchemaRegistry.
+        BuildOptions buildOpts = new() { SchemaRegistry = new SchemaRegistry() };
+        JsonSchema schema = JsonSchema.FromText(schemaJson, buildOpts);
         using JsonDocument doc = JsonDocument.Parse(instanceJson, DocOptions);
         EvaluationResults result = schema.Evaluate(doc.RootElement, new EvaluationOptions { OutputFormat = OutputFormat.List });
         if (result.IsValid) return new ValidationReport(true, Array.Empty<string>());

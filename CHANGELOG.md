@@ -2,6 +2,28 @@
 
 All notable changes to KhaozEngine. Versions are shared across all packages.
 
+## KhaozEngine 2.6.0
+
+- **KhaozEngine.Content**: fix `JsonSchemaValidator` crash ("Overwriting registered schemas is not
+  permitted") when multiple data files reference the same schema file (share a `$id`). The validator
+  now passes an isolated `SchemaRegistry` via `BuildOptions` to each `JsonSchema.FromText()` call
+  instead of using the global static registry, so repeated builds and multi-file directories with
+  shared schemas no longer abort with exit code 134. No API surface change; all existing callers
+  are unaffected. All packages bump to 2.6.0.
+
+## KhaozEngine 2.5.0
+
+- New package **KhaozEngine.Diagnostics** with `FileLogger`: a thread-safe, timestamped file logger
+  for diagnosing silent crashes and startup failures. `Initialize(logFilePath, previousLogFilePath?)`
+  opens an `AutoFlush` `StreamWriter` and rotates an existing log aside (when a previous path is given)
+  so the most recent run is always in the primary file; `Info`/`Warn`/`Error`/`Error(msg, ex)` write
+  `[ts] [LEVEL] message` lines; `Shutdown` (also `Dispose`) flushes and closes. Every method swallows
+  IO failures so logging can never crash the game. Pure `System.IO`, no MonoGame dependency. The log
+  path is the caller's concern (each game resolves its own app-data path and passes it in).
+- Extracted from SpaceGame's in-house `GameLogger` (Nullwake had a near-identical copy; Hardpoint had
+  none). Instance-based and headless-testable. Additive; no behaviour change for existing consumers.
+  All packages bump to 2.5.0.
+
 ## KhaozEngine 2.4.0
 
 - **KhaozEngine.UI**: new `PannableCanvas`, a generic pannable viewport. Owns a camera offset;

@@ -239,8 +239,10 @@ path-agnostic: a game resolves its paths and passes them into `FileSinkOptions`.
 - Async by default. `Emit` enqueues into a bounded queue (`QueueCapacity`, default 10k) and returns
   immediately. A single background writer thread drains the queue and writes to all sinks.
 - Overflow: when the queue is full, drop the newest entry and increment `DroppedCount`. The game loop
-  never blocks and memory never grows unbounded. The writer periodically emits a synthetic
-  "N entries dropped" warning when `DroppedCount` advances.
+  never blocks and memory never grows unbounded. When the writer next handles a flush marker (and on
+  shutdown), it emits a single synthetic "N entries dropped" warning covering the drops since the last
+  report, written directly on the writer thread (never re-enqueued, so the warning itself can't be
+  dropped). `DroppedCount` is always exact.
 - `Flush()` blocks until every entry enqueued before the call has been written and all sinks flushed
   (implemented with a flush marker the writer signals on reaching). Used by shutdown and crash so a
   clean exit or a caught crash loses nothing.

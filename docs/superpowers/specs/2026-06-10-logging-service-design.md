@@ -28,7 +28,9 @@ state.
 ## 2. Decisions (approved)
 
 1. **Replace `FileLogger` (breaking).** Delete it and its tests; the new service is the only logging
-   API. SpaceGame migrates in the same release. Forces a **major bump to 4.0.0**.
+   API. SpaceGame migrates in the same release. Shipped as **3.2.0** (a minor bump after batch1's 3.1.0),
+   not a 4.0 major: owner's decision to keep the 3.x line since all consumers are first-party and
+   migrated in lockstep. (Deviates from the `CLAUDE.md` "breaking = major" rule by choice.)
 2. **Games use the engine `Log` static directly.** Delete Nullwake's and SpaceGame's `GameLogger`
    facades; rewrite call sites to the engine `Log`. The engine still exposes an instance core
    (`LogManager`) for tests/DI; `Log` is the ambient facade games call.
@@ -188,7 +190,7 @@ public sealed class InMemorySink: ILogSink
 
 Default line format: `[yyyy-MM-dd HH:mm:ss.fff] [LEVEL] [Category] message`, with any exception
 appended on following lines. This adds `[Category]` versus the old `FileLogger` format; acceptable as
-the format is not a contract and this is a major bump.
+the format is not a contract and the line format is not part of the public API.
 
 ### 4.6 Crash handler
 
@@ -316,15 +318,18 @@ Every new behavior ships a test in `KhaozEngine.Tests`, per the engine rule.
 
 ## 10. Versioning & release coordination
 
-- Target **4.0.0** (breaking: `FileLogger` removed). All packages share the one version.
+- Target **3.2.0**: a minor bump after batch1's 3.1.0, kept in the 3.x line by owner decision despite
+  the breaking `FileLogger` removal (all consumers first-party and migrated in lockstep). batch1's 3.1.0
+  must ship first.
 - The `batch1-promote` worktree is mid-flight toward an additive **3.1.0** (adds `KhaozEngine.Localization`,
   edits the shared `KhaozEngine.Tests.csproj`, `KhaozEngine.slnx`). This logging work lives in its own
   `worktree-logging-service` tree and must not edit those shared release files until release time.
-- Release ritual (engine CLAUDE.md), done as the final coordinated step only after confirming no other
-  chat is mid-release: bump `Directory.Build.props` `<Version>` to `4.0.0` → add the newest-first
-  `CHANGELOG.md` entry (same commit) → update `docs/CONSUMERS.md` engine-version line → merge latest
-  `main` (which may by then include batch1's 3.1.0 + Localization) → `dotnet pack -c Release -o
-  ./local-feed` (cumulative, do not `rm` old versions) → commit → `git tag v4.0.0` → push `main` + tag.
+- Release ritual (engine CLAUDE.md), done as the final coordinated step only after batch1's 3.1.0 has
+  landed and no other chat is mid-release: merge latest `main` (including batch1's 3.1.0 + Localization)
+  → bump `Directory.Build.props` `<Version>` to `3.2.0` → add the newest-first `CHANGELOG.md` entry
+  (same commit, noting the breaking-removal-as-minor deviation) → update `docs/CONSUMERS.md`
+  engine-version line → `dotnet pack -c Release -o ./local-feed` (cumulative, do not `rm` old versions)
+  → commit → `git tag v3.2.0` → push `main` + tag.
 - Do not re-pack or overwrite the shared `local-feed` while batch1 is packing; last-writer-wins there
   caused a prior collision.
 
@@ -337,5 +342,5 @@ Every new behavior ships a test in `KhaozEngine.Tests`, per the engine rule.
   tests run in sync mode so they stay deterministic.
 - Migrating all three games plus the engine in one release is a large change set; each game is its own
   commit/PR off the engine release so they stay reviewable and can be adopted independently.
-- Log line format changes (adds `[Category]`); acceptable under a major bump, called out in the
-  CHANGELOG.
+- Log line format changes (adds `[Category]`); the line format is not part of the public API, called
+  out in the CHANGELOG.

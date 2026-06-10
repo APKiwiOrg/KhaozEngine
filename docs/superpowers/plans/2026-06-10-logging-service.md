@@ -2,13 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the minimal `KhaozEngine.Diagnostics.FileLogger` with a full logging service (levels, pluggable sinks, category loggers, a static `Log` facade over an instance `LogManager` core, non-blocking background writes, a crash-hook helper, and a promoted `AppDataPaths`), and release it as engine 4.0.0.
+**Goal:** Replace the minimal `KhaozEngine.Diagnostics.FileLogger` with a full logging service (levels, pluggable sinks, category loggers, a static `Log` facade over an instance `LogManager` core, non-blocking background writes, a crash-hook helper, and a promoted `AppDataPaths`), and release it as engine 3.2.0 (a minor bump after batch1's 3.1.0; owner's choice to keep the 3.x line despite the breaking `FileLogger` removal, since all consumers are first-party and migrated in lockstep).
 
 **Architecture:** A `LogManager` instance owns the runtime-settable minimum level, an injected `IClock`, and a list of `ILogSink`s. Category loggers (`ILogger` via `GetLogger<T>()`/`GetLogger(string)`) build a `LogEntry` on the calling thread, apply the level filter, then submit it to the manager. In async mode (default) the manager enqueues to a bounded queue drained by a single background writer thread; in synchronous mode (tests) it writes inline. Sinks (`FileSink`, `ConsoleSink`, `DebugSink`, `InMemorySink`) each apply their own optional threshold and never throw. A static `Log` facade wraps one ambient manager so games call `Log.For<T>().Info(...)`.
 
 **Tech Stack:** C# / net10.0, `Nullable enable`, `ImplicitUsings disable` (every file needs explicit `using`s), pure `System.*` (no MonoGame), xUnit.
 
-**Scope:** This plan covers the engine package + tests + `FileLogger` removal + `AppDataPaths` promotion + docs + the 4.0.0 release. The three consumer migrations (SpaceGame, Nullwake, Hardpoint) are **separate follow-on plans** written after 4.0.0 is packed to `local-feed`, because none of them can compile against the new API until the nupkg exists. See "Follow-on plans" at the end.
+**Scope:** This plan covers the engine package + tests + `FileLogger` removal + `AppDataPaths` promotion + docs + the 3.2.0 release. The three consumer migrations (SpaceGame, Nullwake, Hardpoint) are **separate follow-on plans** written after 3.2.0 is packed to `local-feed`, because none of them can compile against the new API until the nupkg exists. See "Follow-on plans" at the end.
 
 **Working tree:** All work happens in the existing worktree `/Users/antonio/KhaozEngine/.claude/worktrees/logging-service` (branch `worktree-logging-service`, off `main` @ 3.0.0). Do **not** edit `KhaozEngine.slnx`, `KhaozEngine.Tests.csproj`, `Directory.Build.props`, `CHANGELOG.md`, or `docs/CONSUMERS.md`'s version line until Task 13 (release), to avoid colliding with the in-flight `worktree-batch1-promote` tree. New `.cs` files are globbed automatically and need no project edits.
 
@@ -2675,14 +2675,14 @@ git commit -m "docs: add logging contract to USING-KHAOZENGINE; update CONSUMERS
 
 ---
 
-## Task 13: Release engine 4.0.0 (COORDINATED — do last)
+## Task 13: Release engine 3.2.0 (COORDINATED — do last)
 
 **Files:**
 - Modify: `Directory.Build.props` (`<Version>`)
 - Modify: `CHANGELOG.md`
 - Modify: `docs/CONSUMERS.md` (engine-version line + matrix)
 
-> **Coordination gate (hard constraint):** these files are also touched by the `worktree-batch1-promote` release. Before doing this task, run `git -C /Users/antonio/KhaozEngine fetch && git -C /Users/antonio/KhaozEngine log --oneline -5 origin/main` and confirm no other chat is mid-release. If batch1's 3.1.0 has already landed on `main`, merge it in first (this becomes 4.0.0 cumulatively). If batch1 is about to release, wait for it. Never pack/overwrite the shared `local-feed` concurrently.
+> **Coordination gate (hard constraint):** these files are also touched by the `worktree-batch1-promote` release. This release is **3.2.0**, the minor after batch1's 3.1.0, so batch1's 3.1.0 MUST ship first. Before doing this task, run `git -C /Users/antonio/KhaozEngine fetch && git -C /Users/antonio/KhaozEngine log --oneline -5 origin/main` and confirm batch1's 3.1.0 has landed and no other chat is mid-release; merge latest `main` in first. If batch1 has not released yet, wait for it. Never pack/overwrite the shared `local-feed` concurrently.
 
 - [ ] **Step 1: Merge latest `main`**
 
@@ -2695,15 +2695,15 @@ dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj   # expected: PASS after 
 
 - [ ] **Step 2: Bump the version**
 
-In `Directory.Build.props`, change `<Version>3.0.0</Version>` to `<Version>4.0.0</Version>`.
-(If batch1's 3.1.0 already merged, this still goes to 4.0.0 — the breaking `FileLogger` removal drives the major.)
+In `Directory.Build.props`, change the merged-in `<Version>3.1.0</Version>` (from batch1) to `<Version>3.2.0</Version>`.
+(Intentionally a minor bump despite the breaking `FileLogger` removal: all consumers are first-party and migrated in lockstep, so we keep the 3.x line rather than jumping to 4.0. Note this deviates from the `CLAUDE.md` "breaking = major" rule by owner decision — call it out in the CHANGELOG entry.)
 
 - [ ] **Step 3: Add the newest-first CHANGELOG entry**
 
 At the top of `CHANGELOG.md` (after the intro line, before the most recent existing entry), add:
 
 ```markdown
-## KhaozEngine 4.0.0
+## KhaozEngine 3.2.0
 
 - **KhaozEngine.Diagnostics**: replaced the minimal `FileLogger` with a full logging service.
   `LogManager` (instance core, injectable) + a static `Log` facade own a runtime-settable
@@ -2722,13 +2722,15 @@ At the top of `CHANGELOG.md` (after the intro line, before the most recent exist
 - Promoted `AppDataPaths`: OS-correct per-app data directory resolver (Windows `%APPDATA%`, macOS
   `~/Library/Application Support`, Linux XDG), created on first access and cached per app name. Engine
   logging stays path-agnostic; games pass resolved paths into `FileSinkOptions`.
-- **BREAKING**: `FileLogger` is removed. Consumers move to `Log`/`LogManager`. The default log line
-  format gains a `[Category]` field: `[ts] [LEVEL] [Category] message`. Major bump; all packages to 4.0.0.
+- **BREAKING (shipped as a minor)**: `FileLogger` is removed; consumers move to `Log`/`LogManager`. The
+  default log line format gains a `[Category]` field: `[ts] [LEVEL] [Category] message`. Numbered 3.2.0
+  (not 4.0.0) by owner decision: every consumer is first-party and migrated in lockstep, so the 3.x line
+  is kept. All packages to 3.2.0.
 ```
 
 - [ ] **Step 4: Update `docs/CONSUMERS.md` version line + matrix**
 
-Change `**Engine current version:** `3.0.0`` to `4.0.0`, bump the Diagnostics column / engine-version references as appropriate, and update `_Last verified_` to today. (Consumer pins stay where they are until each migration plan runs.)
+Change `**Engine current version:**` (3.1.0 after batch1 merges) to `3.2.0`, bump the Diagnostics column / engine-version references as appropriate, and update `_Last verified_` to today. (Consumer pins stay where they are until each migration plan runs.)
 
 - [ ] **Step 5: Pack to the shared local-feed and verify**
 
@@ -2737,14 +2739,14 @@ cd /Users/antonio/KhaozEngine        # main checkout (feed lives here)
 mkdir -p local-feed
 cd /Users/antonio/KhaozEngine/.claude/worktrees/logging-service
 dotnet pack -c Release -o /Users/antonio/KhaozEngine/local-feed
-ls /Users/antonio/KhaozEngine/local-feed/KhaozEngine.Diagnostics.4.0.0.nupkg   # expected: present
+ls /Users/antonio/KhaozEngine/local-feed/KhaozEngine.Diagnostics.3.2.0.nupkg   # expected: present
 ```
 
 - [ ] **Step 6: Commit, merge to main, tag, push**
 
 ```bash
 git add Directory.Build.props CHANGELOG.md docs/CONSUMERS.md
-git commit -m "Release KhaozEngine 4.0.0 (logging service replaces FileLogger)"
+git commit -m "Release KhaozEngine 3.2.0 (logging service replaces FileLogger)"
 ```
 
 Then integrate to `main` and tag (from the main checkout). Confirm again no concurrent release is in flight:
@@ -2752,15 +2754,15 @@ Then integrate to `main` and tag (from the main checkout). Confirm again no conc
 ```bash
 cd /Users/antonio/KhaozEngine
 git merge --no-ff worktree-logging-service
-git tag v4.0.0
+git tag v3.2.0
 git push origin main
-git push origin v4.0.0
+git push origin v3.2.0
 ```
 
 - [ ] **Step 7: Final verification**
 
 Run: `cd /Users/antonio/KhaozEngine && dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj`
-Expected: PASS. Confirm `v4.0.0` is pushed and CI publishes to GitHub Packages on the tag.
+Expected: PASS. Confirm `v3.2.0` is pushed and CI publishes to GitHub Packages on the tag.
 
 ---
 
@@ -2776,7 +2778,7 @@ Expected: PASS. Confirm `v4.0.0` is pushed and CI publishes to GitHub Packages o
 - Instance core + static facade → Tasks 4, 8. ✓
 - Pure .NET, headless-testable (fake clock, in-memory sink, sync mode) → throughout. ✓
 - Promote AppDataPaths → Task 10. ✓
-- Replace FileLogger (breaking, 4.0.0) → Task 11, 13. ✓
+- Replace FileLogger (breaking removal, shipped as minor 3.2.0) → Task 11, 13. ✓
 - Docs (USING + CONSUMERS) → Tasks 12, 13. ✓
 - Release coordination vs batch1 → Task 13 gate. ✓
 
@@ -2786,10 +2788,10 @@ Expected: PASS. Confirm `v4.0.0` is pushed and CI publishes to GitHub Packages o
 
 ---
 
-## Follow-on plans (separate, after 4.0.0 is packed)
+## Follow-on plans (separate, after 3.2.0 is packed)
 
-Each consumer migration is its own plan + its own repo worktree, written once `KhaozEngine.Diagnostics 4.0.0` is in `local-feed`:
+Each consumer migration is its own plan + its own repo worktree, written once `KhaozEngine.Diagnostics 3.2.0` is in `local-feed`:
 
-1. **SpaceGame migration** — delete `GameLogger.cs` + local `AppDataPaths.cs`; configure `Log` (FileSink via `AppDataPaths.Resolve("SpaceGame")` + ConsoleSink + `CrashHandler.Install`); rewrite `GameLogger.*` call sites to `Log`. Bump the Diagnostics pin to 4.0.0.
-2. **Nullwake migration** — delete standalone `GameLogger.cs`; configure `Log` at the three entry points (`Nullwake.DesktopGL/Program.cs`, `Nullwake.Android/MainActivity.cs`, `Nullwake.iOS/Program.cs`) writing `AppDataPaths.Resolve("Nullwake")/game.log` + `game.prev.log`; replace the duplicated crash hooks (`NullwakeGame.InstallUnhandledExceptionLogging` + the inline hooks in `DesktopGL/Program.cs`) with `CrashHandler`; rewrite call sites; update Nullwake's AGENTS.md "sole diagnostic path" rule to point at engine `Log`. Bump pins to 4.0.0.
-3. **Hardpoint adoption** — bump engine pins from 2.4.0 to 4.0.0; add a direct `KhaozEngine.Diagnostics` reference; configure `Log` (FileSink via `AppDataPaths.Resolve("Hardpoint")` + ConsoleSink + `CrashHandler.Install`) at startup; replace any `Debug.Write` calls with `Log`.
+1. **SpaceGame migration** — delete `GameLogger.cs` + local `AppDataPaths.cs`; configure `Log` (FileSink via `AppDataPaths.Resolve("SpaceGame")` + ConsoleSink + `CrashHandler.Install`); rewrite `GameLogger.*` call sites to `Log`. Bump the Diagnostics pin to 3.2.0.
+2. **Nullwake migration** — delete standalone `GameLogger.cs`; configure `Log` at the three entry points (`Nullwake.DesktopGL/Program.cs`, `Nullwake.Android/MainActivity.cs`, `Nullwake.iOS/Program.cs`) writing `AppDataPaths.Resolve("Nullwake")/game.log` + `game.prev.log`; replace the duplicated crash hooks (`NullwakeGame.InstallUnhandledExceptionLogging` + the inline hooks in `DesktopGL/Program.cs`) with `CrashHandler`; rewrite call sites; update Nullwake's AGENTS.md "sole diagnostic path" rule to point at engine `Log`. Bump pins to 3.2.0.
+3. **Hardpoint adoption** — bump engine pins from 2.4.0 to 3.2.0; add a direct `KhaozEngine.Diagnostics` reference; configure `Log` (FileSink via `AppDataPaths.Resolve("Hardpoint")` + ConsoleSink + `CrashHandler.Install`) at startup; replace any `Debug.Write` calls with `Log`.

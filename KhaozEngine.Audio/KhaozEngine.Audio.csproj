@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Audio</PackageId>
+    <Description>Game-agnostic background-music backend for MonoGame: an OS-selected music backend (macOS AVAudioPlayer via ObjC P/Invoke to dodge MonoGame's broken Song backend; MonoGame MediaPlayer elsewhere) behind a caller-registered track list with volume, enable, and automatic track rotation.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.*" />
+    <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

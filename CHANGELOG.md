@@ -2,6 +2,32 @@
 
 All notable changes to KhaozEngine. Versions are shared across all packages.
 
+## KhaozEngine 3.1.0
+
+- **KhaozEngine.Diagnostics**: replaced the minimal `FileLogger` with a full logging service.
+  `LogManager` (instance core, injectable) + a static `Log` facade own a runtime-settable
+  `MinimumLevel`, an injectable `IClock`, and a list of `ILogSink`s. Category loggers via
+  `Log.For<T>()` / `GetLogger(string)` stamp a component tag on each `LogEntry`
+  (`Trace`/`Debug`/`Info`/`Warn`/`Error`/`Fatal`, each with an optional exception). Writes are
+  non-blocking by default (a single background thread drains a bounded queue; overflow is counted in
+  `DroppedCount`, reported on the next flush, and never blocks the caller) with a synchronous mode for
+  deterministic tests; `Flush`/`Shutdown` drain the queue and flush sinks, and logging never throws,
+  including after shutdown.
+- Sinks: `FileSink` (rotate-on-launch + optional size-based rotation + retention via
+  `FileSinkOptions.MaxBytes`/`MaxFiles`, `AutoFlush` for crash survivability), `ConsoleSink`
+  (stderr for errors), `DebugSink` (`System.Diagnostics.Trace`), and `InMemorySink` (tests). Games
+  add their own target by implementing `ILogSink`.
+- `CrashHandler.Install` wires `AppDomain.UnhandledException` + `TaskScheduler.UnobservedTaskException`
+  to log a `Fatal` `Crash` entry and flush, so games stop hand-rolling crash hooks.
+- Promoted `AppDataPaths`: OS-correct per-app data directory resolver (Windows `%APPDATA%`, macOS
+  `~/Library/Application Support`, Linux XDG), created on first access and cached per app name. Engine
+  logging stays path-agnostic; games pass resolved paths into `FileSinkOptions`.
+- **BREAKING (shipped as a minor):** `FileLogger` is removed; consumers move to `Log`/`LogManager`. The
+  default log line format gains a `[Category]` field: `[ts] [LEVEL] [Category] message`. Numbered 3.1.0
+  (not 4.0.0) by owner decision: every consumer is first-party and migrated in lockstep, so the 3.x
+  line is kept. This deliberately deviates from the usual SemVer "breaking = major" rule. All packages
+  to 3.1.0.
+
 ## KhaozEngine 3.0.0
 
 - **KhaozEngine.UI**: new `PrimitiveRenderer.DrawRing` (static + instance overloads) draws a circle

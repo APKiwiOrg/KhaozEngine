@@ -1,25 +1,38 @@
 # KhaozEngine.Diagnostics
 
-Game-agnostic diagnostics primitives for MonoGame games. Pure `System.IO`, no MonoGame dependency.
+Game-agnostic logging service. Pure .NET, no MonoGame dependency.
 
-## FileLogger
-
-Thread-safe, timestamped file logger for diagnosing silent crashes and startup failures.
+## Quick start
 
 ```csharp
-var log = new FileLogger();
-log.Initialize(logFilePath, previousLogFilePath);   // paths are caller-supplied (game-specific)
-log.Info("Boot complete");
-log.Warn("Config fell back to defaults");
-log.Error("Save failed", exception);
-log.Shutdown();                                      // or `using`/Dispose
+using KhaozEngine.Diagnostics;
+
+var options = new LoggerOptions { MinimumLevel = LogLevel.Info, DefaultCategory = "Boot" };
+options.Sinks.Add(new FileSink(new FileSinkOptions
+{
+    Path = AppDataPaths.Combine("MyGame", "game.log"),
+    PreviousPath = AppDataPaths.Combine("MyGame", "game.prev.log"),
+    MaxBytes = 5 * 1024 * 1024,
+    MaxFiles = 3
+}));
+options.Sinks.Add(new ConsoleSink());
+
+Log.Configure(options);
+CrashHandler.Install();          // route unhandled/unobserved exceptions to the log
+
+Log.For<Game>().Info("started");
+// ... on exit:
+Log.Shutdown();
 ```
 
-- Writes `[yyyy-MM-dd HH:mm:ss.fff] [LEVEL] message` lines via an `AutoFlush` `StreamWriter`.
-- On `Initialize`, rotates an existing log to `previousLogFilePath` (when supplied) so the most
-  recent session is always in the primary file. Pass `null` to skip rotation.
-- Every method is guarded by a lock and swallows IO failures: logging never crashes the game.
-- `Initialize` is idempotent; repeat calls are ignored until `Shutdown`.
+## Pieces
 
-The log file location is the caller's concern. Each game resolves its own app-data path (e.g. an
-`AppDataPaths` helper) and hands the resolved paths to `Initialize`.
+- `Log` — static ambient facade (`Log.For<T>()`, `Log.Info(...)`, `Log.Configure`, `Log.Flush`, `Log.Shutdown`). No-op before `Configure`.
+- `LogManager` + `LoggerOptions` — injectable instance core (DI/tests). Runtime-settable `MinimumLevel`. Async by default; set `Synchronous = true` for deterministic tests.
+- `ILogger` — category logger (`Trace`/`Debug`/`Info`/`Warn`/`Error`/`Fatal`, each with an optional exception).
+- `ILogSink` + `FileSink` (rotate-on-launch + size rotation + retention), `ConsoleSink`, `DebugSink`, `InMemorySink`. Implement `ILogSink` for custom targets (in-game console, crash uploader).
+- `CrashHandler` — wires `AppDomain.UnhandledException` + `TaskScheduler.UnobservedTaskException`.
+- `AppDataPaths` — OS-correct per-app data directory.
+- `IClock`/`SystemClock` — injectable timestamps.
+
+Logging never throws and never blocks the caller (writes happen on a background thread; `Flush`/`Shutdown` drain them).

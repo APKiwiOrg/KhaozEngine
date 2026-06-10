@@ -61,20 +61,29 @@ public static class CrashHandler
         {
             LogManager? m;
             lock (gate) { m = target; }
-            m?.Shutdown();
+            try { m?.Shutdown(); }
+            catch { /* crash path: never throw */ }
         }
     }
 
-    /// <summary>Logs a fatal crash entry and flushes. Exposed for testing; safe when uninstalled.</summary>
+    /// <summary>
+    /// Logs a fatal crash entry and flushes. Exposed for testing; safe when uninstalled, and never throws
+    /// (it runs from the runtime's crash path, where an exception would be catastrophic) even if the
+    /// captured manager was already shut down.
+    /// </summary>
     internal static void Report(string context, Exception? exception, object? raw)
     {
         LogManager? m;
         lock (gate) { m = target; }
         if (m is null) return;
 
-        var log = m.GetLogger("Crash");
-        if (exception is not null) log.Fatal(context, exception);
-        else log.Fatal($"{context}: {raw}");
-        m.Flush();
+        try
+        {
+            var log = m.GetLogger("Crash");
+            if (exception is not null) log.Fatal(context, exception);
+            else log.Fatal($"{context}: {raw}");
+            m.Flush();
+        }
+        catch { /* crash path: never throw */ }
     }
 }

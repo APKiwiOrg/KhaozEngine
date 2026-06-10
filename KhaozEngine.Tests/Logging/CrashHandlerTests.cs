@@ -68,4 +68,21 @@ public class CrashHandlerTests
         var ex = Record.Exception(() => CrashHandler.Report("after", new Exception("x"), null));
         Assert.Null(ex);
     }
+
+    [Fact]
+    public void ReportAfterAsyncManagerShutdownDoesNotThrow()
+    {
+        var sink = new InMemorySink();
+        var options = new LoggerOptions { Synchronous = false, MinimumLevel = LogLevel.Trace };
+        options.Sinks.Add(sink);
+        var mgr = new LogManager(options);
+        try
+        {
+            CrashHandler.Install(mgr);
+            mgr.Shutdown();   // async queue disposed; a later crash signal must not throw from the handler
+            var ex = Record.Exception(() => CrashHandler.Report("Unhandled exception", new InvalidOperationException("late"), null));
+            Assert.Null(ex);
+        }
+        finally { CrashHandler.Uninstall(); }
+    }
 }

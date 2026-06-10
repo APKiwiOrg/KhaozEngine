@@ -97,10 +97,16 @@ public sealed class LogManager : IDisposable
             WriteToSinks(entry);
             return;
         }
-        if (!queue!.TryAdd(new WorkItem(entry)))
+        try
         {
-            Interlocked.Increment(ref dropped);
+            if (!queue!.TryAdd(new WorkItem(entry)))
+            {
+                Interlocked.Increment(ref dropped);
+            }
         }
+        // ObjectDisposedException derives from InvalidOperationException, so this covers both the
+        // adding-completed and queue-disposed (shutting down) cases: drop, never throw.
+        catch (InvalidOperationException) { }
     }
 
     private void WriterLoop()
@@ -183,23 +189,27 @@ public sealed class LogManager : IDisposable
             return;
         }
 
-        if (queue!.IsAddingCompleted) { ReportDropsIfAny(); FlushSinks(); return; }
-
         // Push a flush marker and wait for the writer to reach it. The writer reports any drops and
         // flushes sinks while handling the marker, so all entries queued before this call are written
         // first. The drop warning is written by the writer thread, never re-enqueued (so it can't itself
-        // be dropped when the queue is full).
-        using var done = new ManualResetEventSlim(false);
+        // be dropped when the queue is full). If the queue is already completed/disposed (shutting down,
+        // possibly concurrently), flush inline instead. Logging never throws, including after shutdown.
         try
         {
-            queue.Add(new WorkItem(done));   // flush markers must not be dropped; brief block is acceptable off the hot path
-            done.Wait();
+            if (!queue!.IsAddingCompleted)
+            {
+                using var done = new ManualResetEventSlim(false);
+                queue.Add(new WorkItem(done));   // flush markers must not be dropped; brief block is acceptable off the hot path
+                done.Wait();
+                return;
+            }
         }
-        catch (InvalidOperationException)
-        {
-            ReportDropsIfAny();
-            FlushSinks();   // queue completed concurrently
-        }
+        // ObjectDisposedException derives from InvalidOperationException, so this covers both the
+        // adding-completed and queue-disposed (shutting down, possibly concurrently) cases.
+        catch (InvalidOperationException) { }
+
+        ReportDropsIfAny();
+        FlushSinks();
     }
 
     /// <summary>Flushes and disposes all sinks; in async mode stops and joins the writer thread first.</summary>

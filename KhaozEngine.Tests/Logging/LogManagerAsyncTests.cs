@@ -116,7 +116,7 @@ public class LogManagerAsyncTests
     }
 
     [Fact]
-    public void ReentrantFlushFromSinkDoesNotDeadlock()
+    public async Task ReentrantFlushFromSinkDoesNotDeadlock()
     {
         var reentrant = new ReentrantFlushSink();
         var observer = new InMemorySink();
@@ -128,8 +128,27 @@ public class LogManagerAsyncTests
 
         mgr.GetLogger("L").Info("x");   // writer Emit -> reentrant.Emit -> mgr.Flush() on the writer thread
 
-        bool completed = Task.Run(() => mgr.Flush()).Wait(TimeSpan.FromSeconds(5));
-        Assert.True(completed, "Flush deadlocked on a re-entrant flush from a sink's Emit on the writer thread");
+        // WaitAsync throws TimeoutException if Flush deadlocks; completing normally proves it does not.
+        await Task.Run(() => mgr.Flush()).WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Contains(observer.Entries, e => e.Message == "x");
+    }
+
+    [Fact]
+    public void LoggingAndFlushAfterShutdownDoNotThrow()
+    {
+        var sink = new InMemorySink();
+        var options = new LoggerOptions { Synchronous = false, MinimumLevel = LogLevel.Trace };
+        options.Sinks.Add(sink);
+        var mgr = new LogManager(options);
+        mgr.GetLogger("L").Info("before");
+        mgr.Shutdown();   // completes + disposes the async queue
+
+        // Logging must never throw, including after shutdown (a disposed BlockingCollection).
+        var ex = Record.Exception(() =>
+        {
+            mgr.GetLogger("L").Info("after");
+            mgr.Flush();
+        });
+        Assert.Null(ex);
     }
 }

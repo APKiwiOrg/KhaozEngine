@@ -2,7 +2,7 @@
 
 Shared, game-agnostic **input + screen-stack** foundation for MonoGame games. One implementation, used by three games (Hardpoint, Nullwake, SpaceGame), so a fix written once — the click-through fix in particular — propagates to all of them.
 
-KhaozEngine is **not** a full engine. It owns exactly four concerns, each a separate NuGet package, and nothing game-specific:
+KhaozEngine is **not** a full engine. It owns a set of focused, game-agnostic concerns, each a separate NuGet package, and nothing game-specific. The MonoGame-facing packages do input/UI/rendering; the rest are pure .NET so a game can pull in just what it needs:
 
 | Package | What it gives you | Depends on |
 |---|---|---|
@@ -10,6 +10,13 @@ KhaozEngine is **not** a full engine. It owns exactly four concerns, each a sepa
 | **KhaozEngine.Screens** | A screen stack routed top-to-bottom with `receivesInput` / `PassUpdateThrough` / `AlwaysReceivesInput`, two consumption policies, and screen transitions. | KhaozEngine.Input |
 | **KhaozEngine.UI** | A widget library (Button, Slider, Dropdown, ScrollablePanel, TextInput, Toggle, Tooltip, …), a `PrimitiveRenderer`, and a `TextInputHandler`. | KhaozEngine.Input |
 | **KhaozEngine.Ecs** | A minimal `World` / `Entity` / `ISystem` ECS. Independent of the others. | MonoGame |
+| **KhaozEngine.Time** | `GameClock`: real vs scaled delta, slow-mo / fast-forward, pause/resume. | MonoGame |
+| **KhaozEngine.Content** | Config/content loading (embedded or disk JSON) with JSON-schema validation. | Pure .NET |
+| **KhaozEngine.Content.Validator** | Build-time JSON-schema enforcement for content. | Pure .NET |
+| **KhaozEngine.Diagnostics** | Logging service: levels, pluggable sinks (file / console / debug / in-memory), category loggers, a static `Log` facade over an injectable `LogManager`, and crash hooks. | Pure .NET |
+| **KhaozEngine.App** | App/runtime helpers: `BuildMetadata` (read `AssemblyMetadata` at runtime), `AppDataPaths` (OS-correct per-app data dir), `ServiceLocator` (generic `IServiceProvider`). | Pure .NET |
+| **KhaozEngine.Localization** | `LocalizationManager`: discover satellite-resource cultures and set the current thread culture. | Pure .NET |
+| **KhaozEngine.Persistence** | `SaveEncoder`: a Base64 + HMAC-SHA256 save-file tamper-deterrent. | KhaozEngine.Diagnostics |
 
 Target framework `net10.0`, consumable from the `net10.0-android` / `net10.0-ios` heads. Built against MonoGame.Framework.DesktopGL 3.8.
 
@@ -74,10 +81,11 @@ Published to a private GitHub Packages feed on tagged releases, and packed to a 
 <!-- or the GitHub Packages feed: https://nuget.pkg.github.com/APKiwi/index.json -->
 ```
 ```xml
-<PackageReference Include="KhaozEngine.Input"   Version="0.1.0" />
-<PackageReference Include="KhaozEngine.Screens" Version="0.1.0" />
-<PackageReference Include="KhaozEngine.UI"      Version="0.1.0" />
-<PackageReference Include="KhaozEngine.Ecs"     Version="0.1.0" />
+<!-- All packages share one version. Reference only what you use. -->
+<PackageReference Include="KhaozEngine.Input"   Version="3.2.0" />
+<PackageReference Include="KhaozEngine.Screens" Version="3.2.0" />
+<PackageReference Include="KhaozEngine.UI"      Version="3.2.0" />
+<PackageReference Include="KhaozEngine.Ecs"     Version="3.2.0" />
 ```
 
 **Versioning is SemVer.** Each game pins a version and adopts fixes by bumping it — so you can keep one game on an old version while you migrate another. Don't fork the packages; if a game needs an API that isn't there, add it here and bump the version.
@@ -93,7 +101,9 @@ dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj
 ## Repo layout
 
 ```
-KhaozEngine.Input/      KhaozEngine.Screens/      KhaozEngine.UI/      KhaozEngine.Ecs/
+KhaozEngine.Input/   KhaozEngine.Screens/   KhaozEngine.UI/   KhaozEngine.Ecs/   KhaozEngine.Time/
+KhaozEngine.Content/   KhaozEngine.Content.Validator/   KhaozEngine.Diagnostics/
+KhaozEngine.App/   KhaozEngine.Localization/   KhaozEngine.Persistence/
 KhaozEngine.Tests/      docs/USING-KHAOZENGINE.md
 Directory.Build.props (shared version)   nuget.config   .github/workflows/ci.yml
 ```

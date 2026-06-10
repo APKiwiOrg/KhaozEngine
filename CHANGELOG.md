@@ -2,6 +2,38 @@
 
 All notable changes to KhaozEngine. Versions are shared across all packages.
 
+## KhaozEngine 3.2.0
+
+Batch 1 of the "promote duplicated game code into KhaozEngine" effort. Three new pure-.NET packages
+(plus a small consolidation of the `AppDataPaths` that 3.1.0 had shipped). No consumer adopts these yet.
+
+- **KhaozEngine.App** (new, pure .NET): app/runtime helpers.
+  - `BuildMetadata.Read(string key, string fallback, params Assembly?[] assemblies)` — reads
+    `AssemblyMetadataAttribute` values at runtime, probing the supplied assemblies in order (null
+    entries skipped), so a game can surface its own version/build identity without re-deriving it.
+  - `AppDataPaths` — instance resolver for the OS-correct per-app data directory (Windows `%APPDATA%`,
+    macOS `~/Library/Application Support`, Linux `$XDG_DATA_HOME`/`~/.local/share`, with fallbacks).
+    `BaseDirectory` is resolved + created once and cached (thread-safe via `Lazy<T>`); convenience
+    `SaveFilePath`/`SettingsFilePath`/`LogFilePath`/`PreviousLogFilePath`/`GetFilePath`. OS resolution
+    sits behind an internal seam for headless testing.
+  - `ServiceLocator : IServiceProvider` — generic register/resolve-by-type service registry backed by a
+    `ConcurrentDictionary` (`Register`/`Replace`/`Get`/`TryGet`/`Has`/`GetService`). Fits
+    `ScreenManager.Services`.
+- **KhaozEngine.Localization** (new, pure .NET): `LocalizationManager(ResourceManager)` discovers the
+  cultures backed by satellite resources (`GetSupportedCultures`) and sets the current thread culture
+  (`static SetCulture`, fail-fast on null/empty); `DefaultCultureCode = "en-US"`.
+- **KhaozEngine.Persistence** (new; refs `KhaozEngine.Diagnostics`): `SaveEncoder(byte[] hmacKey,
+  string magicPrefix, ILogger logger)` wraps save JSON in a Base64 + HMAC-SHA256 envelope
+  (`{prefix}:{hmac}:{base64}`) as a casual tamper-deterrent. Decoding is lenient (recovers the JSON
+  even on an HMAC mismatch) and reports each outcome (Info / Warn / Error) through the injected
+  engine `ILogger`.
+- **AppDataPaths consolidation:** `KhaozEngine.App.AppDataPaths` is the canonical resolver; the
+  duplicate static `KhaozEngine.Diagnostics.AppDataPaths` that 3.1.0 shipped is **removed** (engine
+  logging is path-agnostic — pass resolved paths into `FileSinkOptions`). Removing a 3.1.0 public type
+  is breaking in principle, but numbered 3.2.0 (not 4.0.0): no released consumer referenced it (3.1.0
+  is not yet adopted by any game), consistent with 3.1.0's owner-choice handling of the `FileLogger`
+  removal.
+
 ## KhaozEngine 3.1.0
 
 - **KhaozEngine.Diagnostics**: replaced the minimal `FileLogger` with a full logging service.

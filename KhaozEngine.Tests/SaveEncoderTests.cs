@@ -58,8 +58,7 @@ public class SaveEncoderTests
         string json = "{\"hp\":7}";
         string encoded = encoder.Encode(json);
 
-        // Flip the last character of the base64 payload (after the 2nd separator).
-        int lastSep = encoded.LastIndexOf(':');
+        // Flip the last character of the base64 payload so the HMAC no longer matches.
         char flipped = encoded[^1] == 'A' ? 'B' : 'A';
         string tampered = encoded[..^1] + flipped;
 
@@ -105,9 +104,33 @@ public class SaveEncoderTests
         var c = new SaveEncoder(Encoding.UTF8.GetBytes("other-key"), "AAA1", new FakeLogger());
 
         string json = "{}";
-        Assert.StartsWith("AAA1:", a.Encode(json));
+        string encodedA = a.Encode(json);
+        Assert.StartsWith("AAA1:", encodedA);
         Assert.StartsWith("BBB1:", b.Encode(json));
-        Assert.NotEqual(a.Encode(json), c.Encode(json)); // same prefix, different key -> different hmac
+        Assert.NotEqual(encodedA, c.Encode(json)); // same prefix, different key -> different hmac
+    }
+
+    [Fact]
+    public void Decode_EmptyPayload_ReturnsNull_AndLogsError()
+    {
+        var encoder = NewEncoder(out FakeLogger log);
+
+        // Valid prefix + hmac + 2nd separator, but no payload after it.
+        string? decoded = encoder.Decode(Prefix + ":deadbeef:");
+
+        Assert.Null(decoded);
+        Assert.Single(log.Entries);
+        Assert.Equal(LogLevel.Error, log.Entries[0].Level);
+    }
+
+    [Fact]
+    public void RoundTrip_PrefixContainingSeparator_StillRoundTrips()
+    {
+        // A prefix that itself contains ':' must not break parsing (firstSep is the prefix length).
+        var encoder = new SaveEncoder(Key, "FO:O1", new FakeLogger());
+        string json = "{\"v\":1}";
+
+        Assert.Equal(json, encoder.Decode(encoder.Encode(json)));
     }
 
     [Fact]

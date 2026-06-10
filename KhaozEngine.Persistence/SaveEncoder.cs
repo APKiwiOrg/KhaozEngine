@@ -66,7 +66,10 @@ public sealed class SaveEncoder
             return null; // not our format; quietly ignore (e.g. legacy plaintext save)
         }
 
-        int firstSep = fileContent.IndexOf(Separator);
+        // IsEncoded guarantees the content starts with magicPrefix + Separator, so the first
+        // separator is exactly at magicPrefix.Length. Computing it directly (rather than IndexOf)
+        // keeps parsing correct even if the prefix itself contained a separator character.
+        int firstSep = magicPrefix.Length;
         int secondSep = fileContent.IndexOf(Separator, firstSep + 1);
         if (secondSep < 0)
         {
@@ -76,6 +79,11 @@ public sealed class SaveEncoder
 
         string hmac = fileContent[(firstSep + 1)..secondSep];
         string base64 = fileContent[(secondSep + 1)..];
+        if (base64.Length == 0)
+        {
+            logger.Error("[SaveEncoder] malformed encoded save (empty payload)");
+            return null;
+        }
 
         bool authentic = string.Equals(hmac, ComputeHmac(base64), StringComparison.OrdinalIgnoreCase);
 

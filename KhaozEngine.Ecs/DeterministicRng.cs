@@ -75,7 +75,7 @@ public sealed class DeterministicRng
 
     /// <summary>
     /// Platform-stable string hash (DJB2 xor variant). Deterministic across runs, .NET
-    /// versions, and platforms — unlike <see cref="string.GetHashCode()"/>, which is
+    /// versions, and platforms, unlike <see cref="string.GetHashCode()"/>, which is
     /// randomized per process.
     /// </summary>
     private static int StableHash(string s)

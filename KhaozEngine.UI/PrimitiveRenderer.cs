@@ -126,6 +126,70 @@ public sealed class PrimitiveRenderer
         }
     }
 
+    private static readonly Vector2 RingLineOrigin = new(0f, 0.5f);
+
+    /// <summary>
+    /// Segment count for a ring of the given radius: an explicit override (floored at 3), or a
+    /// radius-adaptive count clamped to [18, 64] so small rings stay cheap and large rings stay smooth.
+    /// </summary>
+    public static int RingSegments(float radius, int? segmentsOverride) =>
+        segmentsOverride.HasValue
+            ? Math.Max(3, segmentsOverride.Value)
+            : Math.Clamp((int)(radius * 0.35f), 18, 64);
+
+    /// <summary>
+    /// Draws a ring (circle outline) with sub-pixel <b>float</b> thickness, using a caller-supplied
+    /// 1x1 white pixel. Each segment is a rotated quad centered on the radius path (origin y = 0.5),
+    /// so fractional thicknesses render faithfully (unlike <see cref="DrawCircle"/>'s integer line
+    /// width). No-op when radius or thickness is non-positive.
+    /// </summary>
+    /// <param name="spriteBatch">The active SpriteBatch.</param>
+    /// <param name="pixel">A 1x1 white texture.</param>
+    /// <param name="center">Center point.</param>
+    /// <param name="radius">Radius in pixels.</param>
+    /// <param name="thickness">Line thickness in pixels (may be fractional).</param>
+    /// <param name="color">Ring color.</param>
+    /// <param name="segmentsOverride">Explicit segment count, or null for a radius-adaptive count.</param>
+    public static void DrawRing(SpriteBatch spriteBatch, Texture2D pixel, Vector2 center, float radius,
+        float thickness, Color color, int? segmentsOverride = null)
+    {
+        if (radius <= 0f || thickness <= 0f)
+            return;
+
+        int segments = RingSegments(radius, segmentsOverride);
+        float step = MathHelper.TwoPi / segments;
+        Vector2 p0 = center + new Vector2(radius, 0f);
+
+        for (int i = 1; i <= segments; i++)
+        {
+            float angle = i * step;
+            Vector2 p1 = center + new Vector2(MathF.Cos(angle) * radius, MathF.Sin(angle) * radius);
+            DrawRingLine(spriteBatch, pixel, p0, p1, thickness, color);
+            p0 = p1;
+        }
+    }
+
+    /// <summary>
+    /// Instance overload of <see cref="DrawRing(SpriteBatch, Texture2D, Vector2, float, float, Color, int?)"/>
+    /// using this renderer's owned white pixel.
+    /// </summary>
+    public void DrawRing(SpriteBatch spriteBatch, Vector2 center, float radius, float thickness,
+        Color color, int? segmentsOverride = null)
+        => DrawRing(spriteBatch, _pixel, center, radius, thickness, color, segmentsOverride);
+
+    private static void DrawRingLine(SpriteBatch spriteBatch, Texture2D pixel, Vector2 start, Vector2 end,
+        float thickness, Color color)
+    {
+        Vector2 delta = end - start;
+        float length = delta.Length();
+        if (length <= 0f)
+            return;
+
+        float rotation = MathF.Atan2(delta.Y, delta.X);
+        spriteBatch.Draw(pixel, start, sourceRectangle: null, color, rotation, RingLineOrigin,
+            new Vector2(length, thickness), SpriteEffects.None, layerDepth: 0f);
+    }
+
     /// <summary>
     /// Draws a filled circle using stacked horizontal lines.
     /// </summary>

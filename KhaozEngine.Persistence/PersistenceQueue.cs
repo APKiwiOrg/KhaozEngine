@@ -26,6 +26,9 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
     private bool workerScheduled;
     private bool disposed;
 
+    /// <summary>Raised on the background worker thread when a write fails after all retry attempts. A subscriber's own exception is caught and logged, never killing the writer.</summary>
+    public event EventHandler<PersistenceWriteFailedEventArgs>? WriteFailed;
+
     /// <summary>Creates a queue. <paramref name="maxAttempts"/> total write attempts per payload (>= 1); <paramref name="retryDelay"/> backoff between attempts (default 50 ms). Pass an <paramref name="logger"/> to record failures.</summary>
     public PersistenceQueue(ILogger? logger = null, int maxAttempts = 3, TimeSpan? retryDelay = null)
     {
@@ -114,19 +117,51 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
                 pending.Remove(path);
             }
 
-            WriteOne(path, json);
+            WriteWithRetry(path, json);
         }
     }
 
-    private void WriteOne(string path, string json)
+    private void WriteWithRetry(string path, string json)
     {
+        for (int attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            try
+            {
+                AtomicJsonWriter.WriteText(path, json);
+                return;
+            }
+            catch (Exception ex) when (attempt < maxAttempts)
+            {
+                logger?.Warn($"[PersistenceQueue] write to '{path}' failed (attempt {attempt}/{maxAttempts}), retrying", ex);
+                if (retryDelay > TimeSpan.Zero)
+                {
+                    Thread.Sleep(retryDelay);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.Error($"[PersistenceQueue] write to '{path}' failed after {maxAttempts} attempts, giving up", ex);
+                RaiseWriteFailed(path, ex, attempt);
+                return;
+            }
+        }
+    }
+
+    private void RaiseWriteFailed(string path, Exception exception, int attemptCount)
+    {
+        EventHandler<PersistenceWriteFailedEventArgs>? handler = WriteFailed;
+        if (handler is null)
+        {
+            return;
+        }
+
         try
         {
-            AtomicJsonWriter.WriteText(path, json);
+            handler(this, new PersistenceWriteFailedEventArgs(path, exception, attemptCount));
         }
         catch (Exception ex)
         {
-            logger?.Error($"[PersistenceQueue] write to '{path}' failed", ex);
+            logger?.Error("[PersistenceQueue] a WriteFailed subscriber threw", ex);
         }
     }
 }

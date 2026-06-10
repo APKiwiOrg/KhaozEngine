@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using KhaozEngine.Diagnostics;
 using KhaozEngine.Persistence;
 using Xunit;
 
@@ -78,6 +79,57 @@ public class PersistenceQueueTests
 
             Assert.Equal("data", File.ReadAllText(path));
             Assert.Throws<ObjectDisposedException>(() => queue.Enqueue(path, "more"));
+        }
+        finally { Cleanup(root); }
+    }
+
+    [Fact]
+    public void Enqueue_PermanentFailure_RaisesWriteFailedAndLogsAndDoesNotThrow()
+    {
+        string root = NewTempRoot();
+        try
+        {
+            // Make the parent path a FILE so Directory.CreateDirectory throws on every attempt.
+            string blocker = Path.Combine(root, "blocker");
+            File.WriteAllText(blocker, "x");
+            string badPath = Path.Combine(blocker, "save.json");
+
+            var log = new FakeLogger();
+            using var queue = new PersistenceQueue(log, maxAttempts: 2, retryDelay: TimeSpan.FromMilliseconds(1));
+            PersistenceWriteFailedEventArgs? failure = null;
+            queue.WriteFailed += (_, e) => failure = e;
+
+            queue.Enqueue(badPath, "data"); // must not throw
+            queue.Flush();
+
+            Assert.NotNull(failure);
+            Assert.Equal(badPath, failure!.Path);
+            Assert.Equal(2, failure.AttemptCount);
+            Assert.NotNull(failure.Exception);
+            Assert.Contains(log.Entries, e => e.Level == LogLevel.Error);
+        }
+        finally { Cleanup(root); }
+    }
+
+    [Fact]
+    public void WriteFailed_SubscriberThrows_DoesNotKillWriter()
+    {
+        string root = NewTempRoot();
+        try
+        {
+            string blocker = Path.Combine(root, "blocker");
+            File.WriteAllText(blocker, "x");
+            string badPath = Path.Combine(blocker, "save.json");
+            string goodPath = Path.Combine(root, "good.json");
+
+            using var queue = new PersistenceQueue(maxAttempts: 1, retryDelay: TimeSpan.FromMilliseconds(1));
+            queue.WriteFailed += (_, _) => throw new InvalidOperationException("subscriber blew up");
+
+            queue.Enqueue(badPath, "data"); // triggers the throwing subscriber on the worker thread
+            queue.Enqueue(goodPath, "ok");  // worker must survive and still service this
+            queue.Flush();
+
+            Assert.Equal("ok", File.ReadAllText(goodPath));
         }
         finally { Cleanup(root); }
     }

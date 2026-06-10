@@ -589,7 +589,7 @@ using System;
 
 namespace KhaozEngine.Diagnostics;
 
-/// <summary>Logs messages under a fixed category. Obtain one from <see cref="LogManager.GetLogger(string)"/> or <see cref="Log"/>.</summary>
+/// <summary>Logs messages under a fixed category. Obtain one from <see cref="LogManager.GetLogger(string)"/> or the static <c>Log</c> facade.</summary>
 public interface ILogger
 {
     /// <summary>The category/component tag this logger stamps on every entry.</summary>
@@ -623,6 +623,7 @@ public interface ILogger
 
 ```csharp
 // KhaozEngine.Diagnostics/LogFormatter.cs
+using System.Globalization;
 using System.Text;
 
 namespace KhaozEngine.Diagnostics;
@@ -634,7 +635,7 @@ public static class LogFormatter
     public static string Format(in LogEntry entry)
     {
         var sb = new StringBuilder(64);
-        sb.Append('[').Append(entry.Timestamp.ToString("yyyy-MM-dd HH:mm:ss.fff")).Append("] [")
+        sb.Append('[').Append(entry.Timestamp.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture)).Append("] [")
           .Append(Tag(entry.Level)).Append("] [").Append(entry.Category).Append("] ").Append(entry.Message);
         if (entry.Exception is not null)
         {

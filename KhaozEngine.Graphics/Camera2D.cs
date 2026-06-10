@@ -92,4 +92,9 @@ public sealed class Camera2D
 
         return new Vector2(x, y);
     }
+
+    /// <summary>Clamp using the stored <see cref="Viewport"/> property. See
+    /// <see cref="ClampPosition(Vector2, Rectangle, Viewport)"/>.</summary>
+    public Vector2 ClampPosition(Vector2 desired, Rectangle worldBounds) =>
+        ClampPosition(desired, worldBounds, Viewport);
 }

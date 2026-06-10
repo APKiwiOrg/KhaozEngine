@@ -139,4 +139,13 @@ public class CameraTests
         var z2 = new Camera2D { Zoom = 2f };
         Assert.Equal(200f, z2.ClampPosition(desired, bounds, Vp).X, 3);
     }
+
+    [Fact]
+    public void ClampPosition_NoArgOverload_UsesViewportProperty()
+    {
+        var camera = new Camera2D { Zoom = 1f, Viewport = Vp };
+        var bounds = new Rectangle(0, 0, 1000, 1000);
+        var desired = new Vector2(-500f, 5000f);
+        AssertClose(camera.ClampPosition(desired, bounds, Vp), camera.ClampPosition(desired, bounds));
+    }
 }

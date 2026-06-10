@@ -5,6 +5,7 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.App/KhaozEngine.App.csproj" />
     <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
   </ItemGroup>
   <ItemGroup>

@@ -20,7 +20,7 @@ List<CultureInfo> cultures = loc.GetSupportedCultures();
 
 LocalizationManager.SetCulture("en-US");
 // Want a fallback instead of an exception on empty input? Do it at the call site:
-LocalizationManager.SetCulture(code ?? LocalizationManager.DEFAULT_CULTURE_CODE);
+LocalizationManager.SetCulture(code ?? LocalizationManager.DefaultCultureCode);
 ```
 
-`SetCulture` throws on null/empty input. `DEFAULT_CULTURE_CODE` is `"en-US"`.
+`SetCulture` throws on null/empty input. `DefaultCultureCode` is `"en-US"`.

@@ -15,7 +15,7 @@ public class LocalizationManager
     /// <summary>
     /// The culture code the game defaults to.
     /// </summary>
-    public const string DEFAULT_CULTURE_CODE = "en-US";
+    public const string DefaultCultureCode = "en-US";
 
     private readonly ResourceManager _resourceManager;
 
@@ -35,11 +35,11 @@ public class LocalizationManager
     /// Sets the current thread's culture and UI culture from a culture code (e.g. "en-US").
     /// </summary>
     /// <param name="cultureCode">A non-empty culture code.</param>
-    /// <exception cref="ArgumentNullException">Thrown when <paramref name="cultureCode"/> is null or empty.</exception>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="cultureCode"/> is null.</exception>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="cultureCode"/> is empty.</exception>
     public static void SetCulture(string cultureCode)
     {
-        if (string.IsNullOrEmpty(cultureCode))
-            throw new ArgumentNullException(nameof(cultureCode), "A culture code must be provided.");
+        ArgumentException.ThrowIfNullOrEmpty(cultureCode);
 
         CultureInfo culture = new CultureInfo(cultureCode);
         Thread.CurrentThread.CurrentCulture = culture;
@@ -49,7 +49,7 @@ public class LocalizationManager
     /// <summary>
     /// Retrieves the specific cultures that have a localized resource set in the injected
     /// resource manager, always including <see cref="CultureInfo.InvariantCulture"/> (the base,
-    /// non-localized resources) as the last entry.
+    /// non-localized resources).
     /// </summary>
     /// <returns>The list of supported cultures.</returns>
     public List<CultureInfo> GetSupportedCultures()

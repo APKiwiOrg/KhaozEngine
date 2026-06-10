@@ -13,7 +13,7 @@ public class LocalizationManagerTests
     [Fact]
     public void DefaultCultureCode_IsEnUs()
     {
-        Assert.Equal("en-US", LocalizationManager.DEFAULT_CULTURE_CODE);
+        Assert.Equal("en-US", LocalizationManager.DefaultCultureCode);
     }
 
     [Fact]

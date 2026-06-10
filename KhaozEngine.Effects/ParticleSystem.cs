@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 
 namespace KhaozEngine.Effects;
@@ -105,6 +106,29 @@ public sealed class ParticleSystem
             p.Color = color;
 
             _cursor = (_cursor + 1) % _particles.Length;
+        }
+    }
+
+    /// <summary>Current draw size for a particle given its life fraction.</summary>
+    private static float CurrentSize(in Particle p)
+    {
+        float t = p.Life / p.MaxLife;       // 1 at spawn, 0 at death
+        return p.StartSize * (p.EndSizeFactor + (1f - p.EndSizeFactor) * t);
+    }
+
+    /// <summary>
+    /// Enumerates live particles as snapshots. For tests and custom rendering;
+    /// not used by the <see cref="Draw"/> hot path.
+    /// </summary>
+    public IEnumerable<ParticleView> ActiveParticles()
+    {
+        for (int i = 0; i < _particles.Length; i++)
+        {
+            Particle p = _particles[i];
+            if (p.Life <= 0f) continue;
+            yield return new ParticleView(
+                new Vector2(p.X, p.Y), new Vector2(p.VelX, p.VelY),
+                p.Color, CurrentSize(p), p.Life, p.MaxLife);
         }
     }
 }

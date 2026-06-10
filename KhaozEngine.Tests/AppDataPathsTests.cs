@@ -39,6 +39,7 @@ public class AppDataPathsTests
             var paths = new AppDataPaths(AppFolder, env);
 
             Assert.Equal(Path.Combine(root, AppFolder), paths.BaseDirectory);
+            Assert.True(Directory.Exists(paths.BaseDirectory));
         }
         finally { Cleanup(root); }
     }
@@ -55,6 +56,7 @@ public class AppDataPathsTests
             var paths = new AppDataPaths(AppFolder, env);
 
             Assert.Equal(Path.Combine(root, AppFolder), paths.BaseDirectory);
+            Assert.True(Directory.Exists(paths.BaseDirectory));
         }
         finally { Cleanup(root); }
     }
@@ -71,6 +73,7 @@ public class AppDataPathsTests
             var paths = new AppDataPaths(AppFolder, env);
 
             Assert.Equal(Path.Combine(root, ".local", "share", AppFolder), paths.BaseDirectory);
+            Assert.True(Directory.Exists(paths.BaseDirectory));
         }
         finally { Cleanup(root); }
     }
@@ -88,6 +91,7 @@ public class AppDataPathsTests
             var paths = new AppDataPaths(AppFolder, env);
 
             Assert.Equal(Path.Combine(root, AppFolder), paths.BaseDirectory);
+            Assert.True(Directory.Exists(paths.BaseDirectory));
         }
         finally { Cleanup(root); }
     }
@@ -105,6 +109,27 @@ public class AppDataPathsTests
             var paths = new AppDataPaths(AppFolder, env);
 
             Assert.Equal(Path.Combine(root, "." + AppFolder.ToLowerInvariant()), paths.BaseDirectory);
+            Assert.True(Directory.Exists(paths.BaseDirectory));
+        }
+        finally { Cleanup(root); }
+    }
+
+    [Fact]
+    public void BaseDirectory_OsBranchWithBlankPath_FallsThroughToLocalApplicationData()
+    {
+        string root = NewTempRoot();
+        try
+        {
+            // Windows is detected, but ApplicationData resolves to whitespace, so the OS branch
+            // must fall through to the LocalApplicationData fallback rather than return a bad path.
+            var env = new FakeAppDataEnvironment { IsWindows = true };
+            env.Folders[Environment.SpecialFolder.ApplicationData] = "   ";
+            env.Folders[Environment.SpecialFolder.LocalApplicationData] = root;
+
+            var paths = new AppDataPaths(AppFolder, env);
+
+            Assert.Equal(Path.Combine(root, AppFolder), paths.BaseDirectory);
+            Assert.True(Directory.Exists(paths.BaseDirectory));
         }
         finally { Cleanup(root); }
     }

@@ -16,7 +16,7 @@ public sealed class AppDataPaths
 {
     private readonly string appFolderName;
     private readonly IAppDataEnvironment environment;
-    private string? resolvedBaseDir;
+    private readonly Lazy<string> resolvedBaseDir;
 
     /// <summary>Creates a resolver for the given app folder name using the real OS environment.</summary>
     /// <exception cref="ArgumentException"><paramref name="appFolderName"/> is null, empty, or whitespace.</exception>
@@ -34,22 +34,21 @@ public sealed class AppDataPaths
 
         this.appFolderName = appFolderName;
         this.environment = environment;
+        this.resolvedBaseDir = new Lazy<string>(CreateBaseDirectory);
     }
 
-    /// <summary>The root app-data directory. Resolved once and created (if absent) on first access.</summary>
-    public string BaseDirectory
-    {
-        get
-        {
-            if (resolvedBaseDir is not null)
-            {
-                return resolvedBaseDir;
-            }
+    /// <summary>
+    /// The root app-data directory. Resolved and created on first access, then cached; resolution
+    /// and directory creation happen exactly once even under concurrent access (backed by
+    /// <see cref="Lazy{T}"/>).
+    /// </summary>
+    public string BaseDirectory => resolvedBaseDir.Value;
 
-            resolvedBaseDir = ResolveBaseDirectory();
-            Directory.CreateDirectory(resolvedBaseDir);
-            return resolvedBaseDir;
-        }
+    private string CreateBaseDirectory()
+    {
+        string dir = ResolveBaseDirectory();
+        Directory.CreateDirectory(dir);
+        return dir;
     }
 
     /// <summary>Full path to <c>save.json</c> in the app-data directory.</summary>

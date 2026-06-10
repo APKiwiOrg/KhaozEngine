@@ -70,7 +70,7 @@ public sealed class Camera2D
     /// Returns <paramref name="desired"/> clamped so the visible world rectangle
     /// (viewport size divided by <see cref="Zoom"/>) stays inside <paramref name="worldBounds"/>.
     /// On an axis where the world is smaller than the view, the result is centered on that
-    /// axis. Does not mutate <see cref="Position"/> — the caller assigns the result if wanted.
+    /// axis. Does not mutate <see cref="Position"/>; the caller assigns the result if wanted.
     /// </summary>
     /// <remarks>
     /// Uses the axis-aligned visible rect and ignores <see cref="Rotation"/>: exact when

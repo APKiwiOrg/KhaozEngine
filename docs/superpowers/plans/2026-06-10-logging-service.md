@@ -1272,10 +1272,21 @@ git commit -m "feat(diagnostics): add non-blocking background writer with flush 
 **Files:**
 - Create: `KhaozEngine.Diagnostics/Sinks/ConsoleSink.cs`
 - Create: `KhaozEngine.Diagnostics/Sinks/DebugSink.cs`
+- Create: `KhaozEngine.Tests/Logging/LoggingSerialCollection.cs` (xUnit serial collection for global-state tests)
 - Test: `KhaozEngine.Tests/Logging/ConsoleSinkTests.cs`
 - Test: `KhaozEngine.Tests/Logging/DebugSinkTests.cs`
 
-Note: `DebugSink` writes via `System.Diagnostics.Trace` (not `Debug`) so it survives Release builds and is testable with a `TraceListener`.
+Note: `DebugSink` writes via `System.Diagnostics.Trace` (not `Debug`) so it survives Release builds and is testable with a `TraceListener`. These sink tests mutate process-global state (`Console.Out`/`Console.Error`, `Trace.Listeners`), so they (and the static-`Log`/`CrashHandler` tests in Tasks 8–9) join a `"LoggingSerial"` collection with `DisableParallelization = true`, defined once here:
+
+```csharp
+// KhaozEngine.Tests/Logging/LoggingSerialCollection.cs
+using Xunit;
+
+namespace KhaozEngine.Tests.Logging;
+
+[CollectionDefinition("LoggingSerial", DisableParallelization = true)]
+public sealed class LoggingSerialCollection { }
+```
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1288,6 +1299,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Logging;
 
+[Collection("LoggingSerial")]   // redirects Console.Out/Error: must not run parallel to other classes
 public class ConsoleSinkTests
 {
     private static LogEntry Entry(string msg, LogLevel level) =>
@@ -1353,6 +1365,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Logging;
 
+[Collection("LoggingSerial")]   // adds a global Trace listener: must not run parallel to other classes
 public class DebugSinkTests
 {
     private sealed class CapturingListener : TraceListener
@@ -1837,7 +1850,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Logging;
 
-[Collection("LogFacade")]   // static state: do not parallelize with other facade tests
+[Collection("LoggingSerial")]   // static Log state: run serially, never parallel to other classes (collection defined in Task 6)
 public class LogFacadeTests
 {
     private static (LoggerOptions options, InMemorySink sink) SyncOptions()
@@ -2110,7 +2123,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Logging;
 
-[Collection("LogFacade")]   // CrashHandler holds static state like Log
+[Collection("LoggingSerial")]   // CrashHandler holds process-global state: run serially (collection defined in Task 6)
 public class CrashHandlerTests
 {
     private static (LogManager mgr, InMemorySink sink) SyncManager()

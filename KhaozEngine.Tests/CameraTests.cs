@@ -100,4 +100,43 @@ public class CameraTests
         var screen = new Vector2(300f, 220f);
         AssertClose(camera.ScreenToWorld(screen, Vp), camera.ScreenToWorld(screen));
     }
+
+    [Fact]
+    public void ClampPosition_WorldLargerThanView_ClampsToEdges()
+    {
+        var camera = new Camera2D { Zoom = 1f };
+        var bounds = new Rectangle(0, 0, 1000, 1000); // halfW=400 -> X in [400,600], halfH=300 -> Y in [300,700]
+
+        // Far past top-left -> clamps to (Left+halfW, Top+halfH).
+        AssertClose(new Vector2(400f, 300f), camera.ClampPosition(new Vector2(-500f, -500f), bounds, Vp));
+        // Far past bottom-right -> clamps to (Right-halfW, Bottom-halfH).
+        AssertClose(new Vector2(600f, 700f), camera.ClampPosition(new Vector2(5000f, 5000f), bounds, Vp));
+        // Already inside -> unchanged.
+        AssertClose(new Vector2(500f, 500f), camera.ClampPosition(new Vector2(500f, 500f), bounds, Vp));
+    }
+
+    [Fact]
+    public void ClampPosition_WorldSmallerThanViewOnAxis_CentersThatAxis()
+    {
+        var camera = new Camera2D { Zoom = 1f };
+        // World 200 wide (< 800 view) but 2000 tall (> 600 view).
+        var bounds = new Rectangle(0, 0, 200, 2000); // X centers at 100; Y halfH=300 -> [300,1700]
+        var result = camera.ClampPosition(new Vector2(9999f, 9999f), bounds, Vp);
+        AssertClose(new Vector2(100f, 1700f), result);
+    }
+
+    [Fact]
+    public void ClampPosition_IsZoomAware()
+    {
+        var bounds = new Rectangle(0, 0, 1000, 1000);
+        var desired = new Vector2(-500f, 500f); // past the left edge
+
+        // Zoom 1: halfW=400 -> X clamps to 400.
+        var z1 = new Camera2D { Zoom = 1f };
+        Assert.Equal(400f, z1.ClampPosition(desired, bounds, Vp).X, 3);
+
+        // Zoom 2: halfW=200 -> X clamps to 200 (less margin needed when zoomed in).
+        var z2 = new Camera2D { Zoom = 2f };
+        Assert.Equal(200f, z2.ClampPosition(desired, bounds, Vp).X, 3);
+    }
 }

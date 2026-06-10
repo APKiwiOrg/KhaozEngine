@@ -65,4 +65,31 @@ public sealed class Camera2D
 
     /// <summary>Screen-to-world using the stored <see cref="Viewport"/> property.</summary>
     public Vector2 ScreenToWorld(Vector2 screen) => ScreenToWorld(screen, Viewport);
+
+    /// <summary>
+    /// Returns <paramref name="desired"/> clamped so the visible world rectangle
+    /// (viewport size divided by <see cref="Zoom"/>) stays inside <paramref name="worldBounds"/>.
+    /// On an axis where the world is smaller than the view, the result is centered on that
+    /// axis. Does not mutate <see cref="Position"/> — the caller assigns the result if wanted.
+    /// </summary>
+    /// <remarks>
+    /// Uses the axis-aligned visible rect and ignores <see cref="Rotation"/>: exact when
+    /// <see cref="Rotation"/> is 0 (the typical platformer/scroller case); approximate with a
+    /// rotated camera, where the true visible area is a rotated quad.
+    /// </remarks>
+    public Vector2 ClampPosition(Vector2 desired, Rectangle worldBounds, Viewport viewport)
+    {
+        float halfW = viewport.Width / (2f * Zoom);
+        float halfH = viewport.Height / (2f * Zoom);
+
+        float x = worldBounds.Width >= 2f * halfW
+            ? MathHelper.Clamp(desired.X, worldBounds.Left + halfW, worldBounds.Right - halfW)
+            : worldBounds.Left + worldBounds.Width / 2f;
+
+        float y = worldBounds.Height >= 2f * halfH
+            ? MathHelper.Clamp(desired.Y, worldBounds.Top + halfH, worldBounds.Bottom - halfH)
+            : worldBounds.Top + worldBounds.Height / 2f;
+
+        return new Vector2(x, y);
+    }
 }

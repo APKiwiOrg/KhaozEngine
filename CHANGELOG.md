@@ -2,6 +2,32 @@
 
 All notable changes to KhaozEngine. Versions are shared across all packages.
 
+## KhaozEngine 3.0.0
+
+- **KhaozEngine.UI**: new `PrimitiveRenderer.DrawRing` (static + instance overloads) draws a circle
+  outline with sub-pixel **float** thickness by stitching rotated 1x1-pixel quads along the radius
+  path, so fractional thicknesses render faithfully (unlike `DrawCircle`'s integer line width). No-op
+  when radius or thickness is non-positive. `RingSegments(radius, segmentsOverride)` exposes the
+  segment count: an explicit override (floored at 3) or a radius-adaptive count clamped to `[18, 64]`.
+- New package **KhaozEngine.Diagnostics** with `FileLogger`: a thread-safe, timestamped file logger
+  for diagnosing silent crashes and startup failures. `Initialize(logFilePath, previousLogFilePath?)`
+  opens an `AutoFlush` `StreamWriter` and rotates an existing log aside (when a previous path is given)
+  so the most recent run is always in the primary file; `Info`/`Warn`/`Error`/`Error(msg, ex)` write
+  `[ts] [LEVEL] message` lines; `Shutdown` (also `Dispose`) flushes and closes. Every method swallows
+  IO failures so logging can never crash the game. Pure `System.IO`, no MonoGame dependency. The log
+  path is the caller's concern (each game resolves its own app-data path and passes it in). Extracted
+  from SpaceGame's in-house `GameLogger` (Nullwake had a near-identical copy; Hardpoint had none);
+  instance-based and headless-testable. Adopted by SpaceGame and Nullwake.
+- **KhaozEngine.Content**: fix `JsonSchemaValidator` crash ("Overwriting registered schemas is not
+  permitted") when multiple data files reference the same schema file (share a `$id`). The validator
+  now passes an isolated `SchemaRegistry` via `BuildOptions` to each `JsonSchema.FromText()` call
+  instead of using the global static registry, so repeated builds and multi-file directories with
+  shared schemas no longer abort with exit code 134. No API surface change; all existing callers
+  are unaffected.
+- Major bump consolidates the Content validator fix, the new Diagnostics package, and the
+  `DrawRing` primitive into one clean release after untangling concurrent development. All changes are
+  additive; no behaviour change for existing consumers. All packages bump to 3.0.0.
+
 ## KhaozEngine 2.4.0
 
 - **KhaozEngine.UI**: new `PannableCanvas`, a generic pannable viewport. Owns a camera offset;

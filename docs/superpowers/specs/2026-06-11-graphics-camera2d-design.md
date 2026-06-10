@@ -51,7 +51,7 @@ State (all public get/set):
 | Member | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `Position` | `Vector2` | `Zero` | World point shown at screen center. Publicly settable so a future follow-cam can drive it each frame. |
-| `Zoom` | `float` | `1f` | Uniform scale. >1 zooms in. |
+| `Zoom` | `float` | `1f` | Uniform scale. >1 zooms in. Must be `> 0`: `Zoom <= 0` makes the scale term singular, so `Matrix.Invert` (used by `ScreenToWorld`) yields NaN. Documented on the property as an invariant; not clamped or thrown in the setter (a base type should not silently rewrite caller values, and a guard can be added additively later if a consumer needs it). |
 | `Rotation` | `float` | `0f` | Camera roll in radians, CCW. |
 | `Viewport` | `Viewport` | `default` | Convenience target for the no-arg overloads. |
 
@@ -120,6 +120,9 @@ All use `new Viewport(0, 0, 800, 600)`; no `GraphicsDevice`. Float comparisons w
 tolerance (helper or `Assert.Equal(expected, actual, precision)` on components).
 
 1. Center map: `Position=Zero, Zoom=1, Rotation=0` -> `WorldToScreen(Zero) == (400, 300)`.
+1b. Defining invariant: for a non-zero `Position` and arbitrary `Zoom`/`Rotation`,
+   `WorldToScreen(Position) == (400, 300)`. Directly pins "Position always lands at screen
+   center" (the recenter term) rather than relying on the round-trip to cover it indirectly.
 2. Round-trip: `ScreenToWorld(WorldToScreen(p)) ~= p` over several `p`, across non-default
    Position / Zoom / Rotation combinations.
 3. Zoom scale: `Position=Zero, Zoom=2`, world `(10,0)` -> `(400,300) + (20,0) = (420,300)`.

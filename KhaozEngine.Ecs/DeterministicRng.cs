@@ -1,3 +1,5 @@
+using System;
+
 namespace KhaozEngine.Ecs;
 
 /// <summary>
@@ -8,10 +10,12 @@ namespace KhaozEngine.Ecs;
 /// </summary>
 public sealed class DeterministicRng
 {
+    private readonly ulong _seed;
     private ulong _s0, _s1;
 
     public DeterministicRng(ulong seed)
     {
+        _seed = seed;
         ulong z = seed;
         _s0 = SplitMix(ref z);
         _s1 = SplitMix(ref z);
@@ -47,6 +51,42 @@ public sealed class DeterministicRng
 
     /// <summary>An int in [<paramref name="minInclusive"/>, <paramref name="maxExclusive"/>).</summary>
     public int Next(int minInclusive, int maxExclusive) => minInclusive + Next(maxExclusive - minInclusive);
+
+    /// <summary>
+    /// Returns a new generator whose stream is a stable function of THIS generator's
+    /// construction seed and <paramref name="systemName"/>. The same construction seed and
+    /// name always yield the same stream; different names (or different parent seeds) yield
+    /// decorrelated streams. Derivation uses the construction seed, not the live draw state,
+    /// so the result is independent of how many numbers this generator has drawn and is NOT
+    /// affected by a <see cref="State"/> restore. Lets each subsystem own an isolated,
+    /// reproducible stream (e.g. "combat", "oreField").
+    /// </summary>
+    /// <param name="systemName">
+    /// Stable subsystem identifier. Changing it shifts the stream. Empty string is allowed;
+    /// must not be null.
+    /// </param>
+    public DeterministicRng CreateDerived(string systemName)
+    {
+        ArgumentNullException.ThrowIfNull(systemName);
+        ulong derivedSeed = _seed ^ (ulong)(uint)StableHash(systemName);
+        return new DeterministicRng(derivedSeed);
+    }
+
+    /// <summary>
+    /// Platform-stable string hash (DJB2 xor variant). Deterministic across runs, .NET
+    /// versions, and platforms — unlike <see cref="string.GetHashCode()"/>, which is
+    /// randomized per process.
+    /// </summary>
+    private static int StableHash(string s)
+    {
+        unchecked
+        {
+            int hash = 5381;
+            for (int i = 0; i < s.Length; i++)
+                hash = ((hash << 5) + hash) ^ s[i];
+            return hash;
+        }
+    }
 
     private static ulong SplitMix(ref ulong x)
     {

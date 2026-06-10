@@ -34,13 +34,14 @@ scaled-dt usage.
   `KhaozEngine.Content` (JSON schema validation at build). Has not adopted `Diagnostics` (no file
   logger of its own yet; a candidate to migrate).
 - **Nullwake** — uses Input/Screens/UI (3.0.0) + `Diagnostics` (3.0.0). No ECS, no Content on main. Its
-  in-house `GameLogger` is now a thin static facade over `FileLogger`; the Nullwake-specific app-data
-  path resolution (`LocalApplicationData/Nullwake/game.log`) stays game-side. Mixed pin is fine:
-  `Diagnostics` has no dependency on the other engine packages.
+  logging goes through the engine `Log` service (`KhaozEngine.Diagnostics`); the game configures sinks +
+  `AppDataPaths` at startup and logs via `Log`. Mixed pin is fine: `Diagnostics` has no dependency on
+  the other engine packages.
 - **SpaceGame** — uses Input/Screens/UI/Ecs/Content + `Diagnostics` (3.0.0). UI is `TextInputHandler`
-  for its prompt screens. First consumer of `KhaozEngine.Diagnostics`: its `GameLogger` is now a thin
-  facade over `FileLogger`. Deterministic lockstep: vendors `KhaozEngine.Time` transitively via Screens
-  but reads no scaled dt (no `GameClock`/`TimeScale`/`TimeSkip` usage) and must keep it that way.
+  for its prompt screens. First consumer of `KhaozEngine.Diagnostics`: its logging goes through the
+  engine `Log` service (`KhaozEngine.Diagnostics`); the game configures sinks + `AppDataPaths` at
+  startup and logs via `Log`. Deterministic lockstep: vendors `KhaozEngine.Time` transitively via
+  Screens but reads no scaled dt (no `GameClock`/`TimeScale`/`TimeSkip` usage) and must keep it that way.
 
 ## Repo locations
 

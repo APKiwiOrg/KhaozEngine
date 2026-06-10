@@ -1755,6 +1755,8 @@ public sealed class FileSink : ILogSink
             {
                 string line = formatter(entry);
                 writer.WriteLine(line);
+                // Char count, not encoded byte count: UTF-8 multibyte content rotates slightly late
+                // (never early), so a file can modestly exceed MaxBytes. Fine as a rotation threshold.
                 bytesWritten += line.Length + Environment.NewLine.Length;
                 if (options.MaxBytes is long max && bytesWritten >= max)
                 {

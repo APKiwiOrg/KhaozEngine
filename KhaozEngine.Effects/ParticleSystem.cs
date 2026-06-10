@@ -50,9 +50,15 @@ public sealed class ParticleSystem
     public void Emit(ParticleEmitterConfig config, Vector2 position, int count)
         => Emit(config, position, Color.White, count);
 
-    /// <summary>Emits <paramref name="count"/> particles at <paramref name="position"/>, blending from <paramref name="baseColor"/>.</summary>
+    /// <summary>
+    /// Emits <paramref name="count"/> particles at <paramref name="position"/>, blending from
+    /// <paramref name="baseColor"/>. The pool is a ring buffer: emitting into a full pool
+    /// overwrites the oldest live particles.
+    /// </summary>
     public void Emit(ParticleEmitterConfig config, Vector2 position, Color baseColor, int count)
     {
+        if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
+        if (config is null) throw new ArgumentNullException(nameof(config));
         Color color = config.OverrideColor
             ?? Color.Lerp(baseColor, config.BlendTarget, config.BlendAmount);
 

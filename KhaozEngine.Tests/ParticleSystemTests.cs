@@ -20,7 +20,7 @@ public class ParticleSystemTests
     }
 
     [Fact]
-    public void Emit_beyond_capacity_caps_at_pool_size()
+    public void Emit_beyond_capacity_recycles_oldest_slots()
     {
         var sys = NewSystem(poolSize: 4);
         sys.Emit(ParticlePresets.Spark, new Vector2(0, 0), Color.Gray, 10);

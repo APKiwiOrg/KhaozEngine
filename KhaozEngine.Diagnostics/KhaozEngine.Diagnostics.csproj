@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.Diagnostics</PackageId>
-    <Description>Game-agnostic diagnostics: thread-safe timestamped file logger with previous-session rotation. Pure System.IO, no MonoGame dependency.</Description>
+    <Description>Game-agnostic logging service: levels, pluggable sinks (rotating file / console / debug / in-memory), category loggers, a static Log facade over an injectable LogManager, non-blocking background writes, crash hooks, and OS-correct AppDataPaths. Pure .NET, no MonoGame dependency.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>

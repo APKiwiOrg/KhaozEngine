@@ -3,26 +3,44 @@
 Which game uses which packages, at which version. Update this whenever a consumer
 bumps a `<PackageReference>` or the engine ships a new version.
 
-**Engine current version:** `2.4.0` (all packages share one version, set in `Directory.Build.props`).
+**Engine current version:** `2.6.0` (all packages share one version, set in `Directory.Build.props`).
 
 ## Version matrix
 
 `–` = package not referenced directly by that project. `Time` is pulled in transitively by
 `Screens` 2.2.0+; consumers vendor `KhaozEngine.Time` even without a direct reference.
 
-| Project   | Project file                         | Input | Screens | UI    | Ecs   | Content | Time |
-|-----------|--------------------------------------|-------|---------|-------|-------|---------|------|
-| Hardpoint | `Hardpoint/Hardpoint.Core`           | 2.3.0 | 2.3.0   | 2.3.0 | 2.3.0 | 2.3.0   | –    |
-| Nullwake  | `Nullwake/Nullwake.Core`             | 2.3.0 | 2.3.0   | 2.3.0 | –     | –       | –    |
-| SpaceGame | `SpaceGame/SpaceGame.Core`           | 2.0.0 | 2.0.0   | –     | 2.0.0 | –       | –    |
+| Project   | Project file                         | Input | Screens | UI    | Ecs   | Content | Diagnostics | Time |
+|-----------|--------------------------------------|-------|---------|-------|-------|---------|-------------|------|
+| Hardpoint | `Hardpoint/Hardpoint.Core`           | 2.4.0 | 2.4.0   | 2.4.0 | 2.4.0 | 2.4.0   | –           | –    |
+| Nullwake  | `Nullwake/Nullwake.Core`             | 2.3.0 | 2.3.0   | 2.3.0 | –     | –       | 2.6.0       | –    |
+| SpaceGame | `SpaceGame/SpaceGame.Core`           | 2.3.0 | 2.3.0   | 2.3.0 | 2.3.0 | 2.3.0   | 2.6.0       | –    |
+
+## Adoption matrix
+
+Which packages each consumer pulls in. `✓` = direct `<PackageReference>`, `–` = not used,
+`(transitive)` = vendored via `Screens` 2.2.0+ but no direct reference and (for `Time`) no
+scaled-dt usage.
+
+| Consumer  | Input | Screens | UI | Ecs | Content | Diagnostics |    Time      |
+|-----------|:-----:|:-------:|:--:|:---:|:-------:|:-----------:|:------------:|
+| Hardpoint |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      –      | (transitive) |
+| Nullwake  |   ✓   |    ✓    | ✓  |  –  |    –    |      ✓      | (transitive) |
+| SpaceGame |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |
 
 ## Notes
 
-- **Hardpoint** — fully migrated, tracks latest (2.3.0). First and only consumer of
-  `KhaozEngine.Content` (JSON schema validation at build).
-- **Nullwake** — uses Input/Screens/UI only. Tracks latest (2.3.0). No ECS, no Content.
-- **SpaceGame** — uses Input/Screens/Ecs only (no UI). Behind at 2.0.0 (deterministic lockstep;
-  has not adopted the 2.2.0+ time features and must not read scaled dt).
+- **Hardpoint** — fully migrated, tracks latest (2.4.0). First consumer of
+  `KhaozEngine.Content` (JSON schema validation at build). Has not adopted `Diagnostics` (no file
+  logger of its own yet; a candidate to migrate).
+- **Nullwake** — uses Input/Screens/UI (2.3.0) + `Diagnostics` (2.6.0). No ECS, no Content. Its
+  in-house `GameLogger` is now a thin static facade over `FileLogger`; the Nullwake-specific app-data
+  path resolution (`LocalApplicationData/Nullwake/game.log`) stays game-side. Mixed pin is fine:
+  `Diagnostics` has no dependency on the other engine packages.
+- **SpaceGame** — uses Input/Screens/UI/Ecs/Content + `Diagnostics` (2.6.0). UI is `TextInputHandler`
+  for its prompt screens. First consumer of `KhaozEngine.Diagnostics`: its `GameLogger` is now a thin
+  facade over `FileLogger`. Deterministic lockstep: vendors `KhaozEngine.Time` transitively via Screens
+  but reads no scaled dt (no `GameClock`/`TimeScale`/`TimeSkip` usage) and must keep it that way.
 
 ## Repo locations
 
@@ -46,4 +64,4 @@ for d in ~/Hardpoint ~/Nullwake ~/SpaceGame; do
 done
 ```
 
-_Last verified: 2026-06-09 against engine 2.3.0._
+_Last verified: 2026-06-10 against engine 2.6.0._

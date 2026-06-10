@@ -47,4 +47,13 @@ public sealed class Camera2D
     {
         return Vector2.Transform(world, GetViewMatrix(viewport));
     }
+
+    /// <summary>Transforms a screen position back to world space using the given viewport.
+    /// Requires <see cref="Zoom"/> &gt; 0 (otherwise the matrix is singular and the result is
+    /// NaN).</summary>
+    public Vector2 ScreenToWorld(Vector2 screen, Viewport viewport)
+    {
+        Matrix inverseView = Matrix.Invert(GetViewMatrix(viewport));
+        return Vector2.Transform(screen, inverseView);
+    }
 }

@@ -201,6 +201,33 @@ Every consuming game's `Game` subclass:
 
 ---
 
+## Diagnostics / logging (`KhaozEngine.Diagnostics`)
+
+One logging service for every game. Configure it once at startup and log through the static `Log`:
+
+```csharp
+var options = new LoggerOptions { MinimumLevel = LogLevel.Info, DefaultCategory = "Boot" };
+options.Sinks.Add(new FileSink(new FileSinkOptions
+{
+    Path = AppDataPaths.Combine("MyGame", "game.log"),
+    PreviousPath = AppDataPaths.Combine("MyGame", "game.prev.log"),
+}));
+options.Sinks.Add(new ConsoleSink());
+Log.Configure(options);
+CrashHandler.Install();
+```
+
+Rules for consumers:
+
+- Configure `Log` once per process (desktop `Program`, Android `MainActivity`, iOS `Program`). Call `Log.Shutdown()` on exit.
+- Log via `Log.For<T>()` (category = type name) or `Log.Info/Warn/Error/...`. Pass an exception as the optional second argument.
+- The game owns its paths: resolve them with `AppDataPaths.Resolve("<AppName>")` / `Combine(...)` and pass them into `FileSinkOptions`. The engine logging core is path-agnostic.
+- Add a game-specific target (in-game console overlay, crash uploader) by implementing `ILogSink` and `Log.Manager.AddSink(...)`. Do not fork the engine logger.
+- Logging never throws and never blocks the game loop (async writer thread; `Flush`/`Shutdown` drain it; `CrashHandler` flushes on a crash).
+- `MinimumLevel` is runtime-settable for an in-game verbosity toggle.
+
+---
+
 ## Versioning & change process
 
 - SemVer, one shared version across the four packages (`Directory.Build.props`).

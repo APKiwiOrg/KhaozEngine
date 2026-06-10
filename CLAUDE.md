@@ -3,6 +3,17 @@
 Shared, game-agnostic input + screen-stack + UI + ECS for MonoGame games
 (Hardpoint, Nullwake, SpaceGame). See README.md and docs/USING-KHAOZENGINE.md.
 
+## Before starting ANY engine work (concurrent-dev rule)
+There is a lot of parallel development on this engine. Before you touch anything:
+1. Check for ongoing parallel work first: `git worktree list`, `git branch -a`,
+   and `git fetch && git status` to see other branches/trees in flight.
+2. If your change fits an existing branch/worktree, work there.
+3. If it does not fit any of them, create a NEW git worktree (do not start work
+   loose on `main` or pile onto an unrelated branch). Isolate the change in its
+   own tree so concurrent work does not collide.
+
+This applies to every change: code, tests, docs, and version/release work.
+
 ## Rules
 - `MonoGameRawInput` is the ONLY class that may touch Mouse/Keyboard/GamePad/TouchPanel
   statics. Everything else reads `RawInputState` via `IRawInput` — keeps input headless-testable.

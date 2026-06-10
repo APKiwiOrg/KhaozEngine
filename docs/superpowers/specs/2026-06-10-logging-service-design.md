@@ -28,9 +28,10 @@ state.
 ## 2. Decisions (approved)
 
 1. **Replace `FileLogger` (breaking).** Delete it and its tests; the new service is the only logging
-   API. SpaceGame migrates in the same release. Shipped as **3.2.0** (a minor bump after batch1's 3.1.0),
-   not a 4.0 major: owner's decision to keep the 3.x line since all consumers are first-party and
-   migrated in lockstep. (Deviates from the `CLAUDE.md` "breaking = major" rule by choice.)
+   API. SpaceGame migrates in a later follow-on. Shipped as **3.1.0** (claiming the next minor and folding
+   to `main` first, so the in-flight batch1 work rebases to 3.2.0 on top), not a 4.0 major: owner's
+   decision to keep the 3.x line since all consumers are first-party and migrated in lockstep. (Deviates
+   from the `CLAUDE.md` "breaking = major" rule by choice.)
 2. **Games use the engine `Log` static directly.** Delete Nullwake's and SpaceGame's `GameLogger`
    facades; rewrite call sites to the engine `Log`. The engine still exposes an instance core
    (`LogManager`) for tests/DI; `Log` is the ambient facade games call.
@@ -318,18 +319,20 @@ Every new behavior ships a test in `KhaozEngine.Tests`, per the engine rule.
 
 ## 10. Versioning & release coordination
 
-- Target **3.2.0**: a minor bump after batch1's 3.1.0, kept in the 3.x line by owner decision despite
-  the breaking `FileLogger` removal (all consumers first-party and migrated in lockstep). batch1's 3.1.0
-  must ship first.
-- The `batch1-promote` worktree is mid-flight toward an additive **3.1.0** (adds `KhaozEngine.Localization`,
-  edits the shared `KhaozEngine.Tests.csproj`, `KhaozEngine.slnx`). This logging work lives in its own
-  `worktree-logging-service` tree and must not edit those shared release files until release time.
-- Release ritual (engine CLAUDE.md), done as the final coordinated step only after batch1's 3.1.0 has
-  landed and no other chat is mid-release: merge latest `main` (including batch1's 3.1.0 + Localization)
-  → bump `Directory.Build.props` `<Version>` to `3.2.0` → add the newest-first `CHANGELOG.md` entry
+- Target **3.1.0**: claim the next minor and fold to `main` first, kept in the 3.x line by owner decision
+  despite the breaking `FileLogger` removal (all consumers first-party and migrated in lockstep). The
+  in-flight batch1 work then rebases to 3.2.0 on top.
+- The `batch1-promote` worktree is mid-flight (adds `KhaozEngine.Localization` + `ServiceLocator`, edits
+  the shared `KhaozEngine.Tests.csproj`, `KhaozEngine.slnx`). This logging work lives in its own
+  `worktree-logging-service` tree and does not edit those shared files (only adds new `.cs`), so the
+  merge conflict surface is just `Directory.Build.props`/`CHANGELOG.md`/`docs/CONSUMERS.md`, which the
+  batch1 chat resolves when it bumps to 3.2.0.
+- Release ritual (engine CLAUDE.md), done as the final coordinated step only after confirming
+  `origin/main` is still 3.0.0 (nobody else claimed 3.1.0) and no other chat is mid-release: merge latest
+  `main` → bump `Directory.Build.props` `<Version>` to `3.1.0` → add the newest-first `CHANGELOG.md` entry
   (same commit, noting the breaking-removal-as-minor deviation) → update `docs/CONSUMERS.md`
   engine-version line → `dotnet pack -c Release -o ./local-feed` (cumulative, do not `rm` old versions)
-  → commit → `git tag v3.2.0` → push `main` + tag.
+  → commit → merge to `main` → `git tag v3.1.0` → push `main` + tag → hand off to the batch1 chat.
 - Do not re-pack or overwrite the shared `local-feed` while batch1 is packing; last-writer-wins there
   caused a prior collision.
 

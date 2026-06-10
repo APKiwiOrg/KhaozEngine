@@ -55,8 +55,9 @@ public sealed class DeterministicRng
     /// <summary>
     /// Returns a new generator whose stream is a stable function of THIS generator's
     /// construction seed and <paramref name="systemName"/>. The same construction seed and
-    /// name always yield the same stream; different names (or different parent seeds) yield
-    /// decorrelated streams. Derivation uses the construction seed, not the live draw state,
+    /// name always yield the same stream; different names that hash distinctly (32-bit
+    /// DJB2-xor space), or different parent seeds, yield decorrelated streams. Derivation
+    /// uses the construction seed, not the live draw state,
     /// so the result is independent of how many numbers this generator has drawn and is NOT
     /// affected by a <see cref="State"/> restore. Lets each subsystem own an isolated,
     /// reproducible stream (e.g. "combat", "oreField").

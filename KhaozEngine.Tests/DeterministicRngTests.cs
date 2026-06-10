@@ -121,4 +121,19 @@ public class DeterministicRngTests
         Assert.Throws<System.ArgumentNullException>(
             () => new DeterministicRng(1).CreateDerived(null!));
     }
+
+    [Fact]
+    public void CreateDerived_DoesNotPerturbParentStream()
+    {
+        // Deriving a child must not advance or alter the parent's own stream.
+        var control = new DeterministicRng(2024);
+        var expected = Enumerable.Range(0, 16).Select(_ => control.NextULong()).ToArray();
+
+        var parent = new DeterministicRng(2024);
+        parent.CreateDerived("combat");
+        parent.CreateDerived("oreField");
+        var actual = Enumerable.Range(0, 16).Select(_ => parent.NextULong()).ToArray();
+
+        Assert.Equal(expected, actual);
+    }
 }

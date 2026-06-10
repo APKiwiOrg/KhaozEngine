@@ -3,6 +3,7 @@
   <Project Path="KhaozEngine.Content.Validator/KhaozEngine.Content.Validator.csproj" />
   <Project Path="KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
   <Project Path="KhaozEngine.Input/KhaozEngine.Input.csproj" />
+  <Project Path="KhaozEngine.Localization/KhaozEngine.Localization.csproj" />
   <Project Path="KhaozEngine.Screens/KhaozEngine.Screens.csproj" />
   <Project Path="KhaozEngine.Tests/KhaozEngine.Tests.csproj" />
   <Project Path="KhaozEngine.Time/KhaozEngine.Time.csproj" />

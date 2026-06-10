@@ -2419,6 +2419,15 @@ public class AppDataPathsTests
         finally { TryDelete(app); }
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void ResolveThrowsOnBlankAppFolderName(string? appFolderName)
+    {
+        Assert.Throws<ArgumentException>(() => AppDataPaths.Resolve(appFolderName!));
+    }
+
     private static void TryDelete(string app)
     {
         try
@@ -2484,11 +2493,14 @@ public static class AppDataPaths
     {
         if (OperatingSystem.IsWindows())
         {
+            // Windows: SpecialFolder.ApplicationData = %APPDATA% (roaming).
             string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
             if (!string.IsNullOrWhiteSpace(appData)) return Path.Combine(appData, app);
         }
         else if (OperatingSystem.IsMacOS())
         {
+            // macOS: .NET maps SpecialFolder.ApplicationData to ~/Library/Application Support
+            // (same enum as Windows, different OS target). Kept explicit to document per-OS intent.
             string appSupport = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
             if (!string.IsNullOrWhiteSpace(appSupport)) return Path.Combine(appSupport, app);
         }
@@ -2512,7 +2524,7 @@ public static class AppDataPaths
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~AppDataPathsTests"`
-Expected: PASS (4 tests).
+Expected: PASS (7 test cases: 4 facts + a 3-case theory for the blank-name guard).
 
 - [ ] **Step 5: Commit**
 

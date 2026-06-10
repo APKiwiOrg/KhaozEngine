@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using KhaozEngine.App;
 using KhaozEngine.Diagnostics;
 using KhaozEngine.Persistence;
 using Xunit;
@@ -130,6 +131,43 @@ public class PersistenceQueueTests
             queue.Flush();
 
             Assert.Equal("ok", File.ReadAllText(goodPath));
+        }
+        finally { Cleanup(root); }
+    }
+
+    [Fact]
+    public void Enqueue_AppDataPathsOverload_WritesToResolvedFilePath()
+    {
+        string root = NewTempRoot();
+        try
+        {
+            var env = new FakeAppDataEnvironment { IsWindows = true };
+            env.Folders[Environment.SpecialFolder.ApplicationData] = root;
+            var paths = new AppDataPaths("MyGame", env);
+
+            using var queue = new PersistenceQueue();
+            queue.Enqueue(paths, "save.json", "data");
+            queue.Flush();
+
+            Assert.Equal("data", File.ReadAllText(paths.GetFilePath("save.json")));
+        }
+        finally { Cleanup(root); }
+    }
+
+    [Fact]
+    public void EnqueueGeneric_SerializesValueAsJson()
+    {
+        string root = NewTempRoot();
+        try
+        {
+            string path = Path.Combine(root, "save.json");
+            using var queue = new PersistenceQueue();
+
+            queue.Enqueue(path, new { Score = 42 });
+            queue.Flush();
+
+            string json = File.ReadAllText(path);
+            Assert.Contains("\"Score\": 42", json);
         }
         finally { Cleanup(root); }
     }

@@ -67,6 +67,20 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
     public void Enqueue<T>(string path, T value, JsonSerializerOptions? options = null)
         => Enqueue(path, JsonSerializer.Serialize(value, options ?? DefaultOptions));
 
+    /// <summary>Enqueues a write of <paramref name="json"/> to <paramref name="fileName"/> inside the app-data directory.</summary>
+    public void Enqueue(AppDataPaths paths, string fileName, string json)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+        Enqueue(paths.GetFilePath(fileName), json);
+    }
+
+    /// <summary>Serializes <paramref name="value"/> and enqueues it to <paramref name="fileName"/> inside the app-data directory.</summary>
+    public void Enqueue<T>(AppDataPaths paths, string fileName, T value, JsonSerializerOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+        Enqueue(paths.GetFilePath(fileName), value, options);
+    }
+
     /// <inheritdoc/>
     public void Flush()
     {

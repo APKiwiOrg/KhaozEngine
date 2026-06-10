@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Persistence</PackageId>
+    <Description>Game-agnostic save/persistence helpers. SaveEncoder is a Base64 + HMAC-SHA256 tamper-deterrent for save files. Pure .NET (+ KhaozEngine.Diagnostics for logging), no MonoGame dependency.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

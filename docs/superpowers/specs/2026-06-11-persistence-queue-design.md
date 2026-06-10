@@ -28,8 +28,31 @@ migration / sanitize logic, the `ISaveSystem` / `ISettingsStorage` interfaces, a
 
 ## Components
 
-All three new files land in `KhaozEngine.Persistence/`. They are deliberately separate files so item 10
+Four new files land in `KhaozEngine.Persistence/`. They are deliberately separate files so item 10
 can extend the package without editing the same files.
+
+### `IPersistenceQueue.cs` — cross-item seam (verbatim, coordinator-fixed)
+
+Item 10's `FileSettingsStorage` consumes the queue through this minimal interface. The text below is
+fixed by the coordinator and must appear **exactly** as written; item 10 adds the identical text in its
+branch so the two copies merge with zero conflict.
+
+```csharp
+namespace KhaozEngine.Persistence;
+
+public interface IPersistenceQueue
+{
+    // Enqueue a write of json to path; rapid repeats to the same path coalesce
+    // (per-path, last-writer-wins).
+    void Enqueue(string path, string json);
+    // Flush all pending writes synchronously (e.g. on shutdown).
+    void Flush();
+}
+```
+
+`PersistenceQueue` implements `IPersistenceQueue`. The `WriteFailed` event, the retry policy, the
+`Enqueue<T>`/`AppDataPaths` overloads, and `IDisposable` stay on the concrete class only — the seam is
+kept minimal and stable so item 10 depends on the two methods it actually needs and nothing else.
 
 ### `AtomicJsonWriter.cs` — synchronous atomic-write primitive
 
@@ -62,7 +85,7 @@ The machinery duplicated between SpaceGame's `SaveSystem` and `BaseSettingsStora
 generalized to multiple target paths.
 
 ```csharp
-public sealed class PersistenceQueue : IDisposable
+public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
 {
     public PersistenceQueue(ILogger? logger = null, int maxAttempts = 3, TimeSpan? retryDelay = null);
 
@@ -132,7 +155,11 @@ public sealed class PersistenceWriteFailedEventArgs : EventArgs
 - `KhaozEngine.Persistence/KhaozEngine.Persistence.csproj`: add
   `<ProjectReference Include="../KhaozEngine.App/KhaozEngine.App.csproj" />`. Verified safe — `KhaozEngine.App`
   has no project references (pure BCL), so no cycle. **This is the one shared-package dependency change
-  to flag to the coordinator.**
+  to flag to the coordinator.** Item 10 adds the *same* `Persistence -> App` reference in its branch;
+  whoever commits the csproj edit first, the other rebases. The `.cs` files stay distinct (this item:
+  `AtomicJsonWriter` / `PersistenceQueue` / `IPersistenceQueue` / `PersistenceWriteFailedEventArgs`;
+  item 10: `SettingsManager` / storage), and the `IPersistenceQueue.cs` text is byte-identical across
+  both branches, so they merge cleanly.
 - No `.slnx` change: `KhaozEngine.Persistence` is already a solution member.
 - No `KhaozEngine.Tests.csproj` change: it already references both `KhaozEngine.Persistence` and
   `KhaozEngine.App`.
@@ -171,9 +198,9 @@ Expected delta: +12 to +14 tests. Baseline before changes: 268 passing.
 
 ## Coordinator surface (relayed by the user)
 
-1. **New public API** other items/games may depend on: `AtomicJsonWriter`, `PersistenceQueue`,
-   `PersistenceWriteFailedEventArgs`. Item 10 (SettingsManager) is expected to build on
-   `PersistenceQueue`.
+1. **New public API** other items/games may depend on: `IPersistenceQueue` (coordinator-fixed seam),
+   `AtomicJsonWriter`, `PersistenceQueue`, `PersistenceWriteFailedEventArgs`. Item 10 (SettingsManager)
+   consumes `IPersistenceQueue`; the `WriteFailed` event and retry policy stay off the interface.
 2. **Shared-package csproj dependency addition**: `KhaozEngine.Persistence -> KhaozEngine.App`
    (no cycle; App is pure BCL).
 3. Async/coalescing design as above: per-path coalescing, schedule-on-demand ThreadPool worker,

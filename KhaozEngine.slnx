@@ -4,6 +4,7 @@
   <Project Path="KhaozEngine.Content.Validator/KhaozEngine.Content.Validator.csproj" />
   <Project Path="KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
   <Project Path="KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
+  <Project Path="KhaozEngine.Effects/KhaozEngine.Effects.csproj" />
   <Project Path="KhaozEngine.Input/KhaozEngine.Input.csproj" />
   <Project Path="KhaozEngine.Localization/KhaozEngine.Localization.csproj" />
   <Project Path="KhaozEngine.Persistence/KhaozEngine.Persistence.csproj" />

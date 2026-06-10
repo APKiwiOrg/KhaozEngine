@@ -25,7 +25,7 @@ public class BuildMetadataTests
     }
 
     [Fact]
-    public void Read_FallsThroughMissingAssemblyToLaterAssembly()
+    public void Read_KeyAbsentInFirstAssembly_FallsThroughToLaterAssembly()
     {
         // First assembly (corelib) lacks the key; second (test asm) has it.
         Assert.Equal(

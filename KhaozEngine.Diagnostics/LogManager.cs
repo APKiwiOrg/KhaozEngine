@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 
@@ -6,15 +7,34 @@ namespace KhaozEngine.Diagnostics;
 
 /// <summary>
 /// The instance core of the logging service. Owns sinks, the runtime-settable minimum level, and the
-/// write path. Create category loggers via <see cref="GetLogger(string)"/>. Injectable and testable.
+/// write path. In async mode a single background thread drains a bounded queue so logging never blocks
+/// the caller; in synchronous mode writes happen inline (used by tests). Injectable and testable.
 /// </summary>
 public sealed class LogManager : IDisposable
 {
+    private readonly struct WorkItem
+    {
+        public readonly LogEntry Entry;
+        public readonly bool IsFlush;
+        public readonly ManualResetEventSlim? FlushDone;
+
+        public WorkItem(in LogEntry entry) { Entry = entry; IsFlush = false; FlushDone = null; }
+        public WorkItem(ManualResetEventSlim flushDone) { Entry = default; IsFlush = true; FlushDone = flushDone; }
+    }
+
     private readonly object sinkGate = new();
     private readonly List<ILogSink> sinks;
     private readonly IClock clock;
     private readonly string defaultCategory;
     private int minimumLevel;
+
+    private readonly bool synchronous;
+    private readonly BlockingCollection<WorkItem>? queue;
+    private readonly Thread? worker;
+    private int workerThreadId;
+    private long dropped;
+    private long reportedDropped;
+    private bool shutdown;
 
     /// <summary>Creates a manager from <paramref name="options"/>.</summary>
     public LogManager(LoggerOptions options)
@@ -24,6 +44,16 @@ public sealed class LogManager : IDisposable
         clock = options.Clock ?? SystemClock.Instance;
         defaultCategory = string.IsNullOrEmpty(options.DefaultCategory) ? "App" : options.DefaultCategory;
         minimumLevel = (int)options.MinimumLevel;
+        synchronous = options.Synchronous;
+
+        if (!synchronous)
+        {
+            int capacity = options.QueueCapacity > 0 ? options.QueueCapacity : 1;
+            queue = new BlockingCollection<WorkItem>(new ConcurrentQueue<WorkItem>(), capacity);
+            worker = new Thread(WriterLoop) { IsBackground = true, Name = "KhaozEngine.Log" };
+            worker.Start();
+            workerThreadId = worker.ManagedThreadId;
+        }
     }
 
     /// <summary>Entries below this level are dropped. Safe to set from any thread.</summary>
@@ -33,10 +63,10 @@ public sealed class LogManager : IDisposable
         set => Volatile.Write(ref minimumLevel, (int)value);
     }
 
-    /// <summary>Number of entries dropped because the async queue was full. Always 0 in Task 4 (no queue yet).</summary>
-    public long DroppedCount => 0;
+    /// <summary>Number of entries dropped because the async queue was full.</summary>
+    public long DroppedCount => Interlocked.Read(ref dropped);
 
-    /// <summary>The default category used by convenience methods.</summary>
+    /// <summary>The default category used by the static <c>Log</c> facade's convenience methods.</summary>
     public string DefaultCategory => defaultCategory;
 
     /// <summary>The current timestamp from the configured clock.</summary>
@@ -58,11 +88,36 @@ public sealed class LogManager : IDisposable
         lock (sinkGate) { sinks.Add(sink); }
     }
 
-    /// <summary>Submits an entry to the write path. Writes inline regardless of Synchronous flag (Task 5 adds the async branch).</summary>
+    /// <summary>Submits an entry. Async: enqueue (drop-on-full, never blocks). Sync: write inline.</summary>
     internal void Submit(in LogEntry entry)
     {
         if (!IsEnabled(entry.Level)) return;
-        WriteToSinks(entry);
+        if (synchronous)
+        {
+            WriteToSinks(entry);
+            return;
+        }
+        if (!queue!.TryAdd(new WorkItem(entry)))
+        {
+            Interlocked.Increment(ref dropped);
+        }
+    }
+
+    private void WriterLoop()
+    {
+        foreach (var item in queue!.GetConsumingEnumerable())
+        {
+            if (item.IsFlush)
+            {
+                ReportDropsIfAny();
+                FlushSinks();
+                item.FlushDone!.Set();
+            }
+            else
+            {
+                WriteToSinks(item.Entry);
+            }
+        }
     }
 
     private void WriteToSinks(in LogEntry entry)
@@ -98,14 +153,82 @@ public sealed class LogManager : IDisposable
         }
     }
 
-    /// <summary>Flushes all sinks. (Task 5 makes this also drain the async queue.)</summary>
-    public void Flush() => FlushSinks();
+    private void ReportDropsIfAny()
+    {
+        long total = Interlocked.Read(ref dropped);
+        long since = total - reportedDropped;
+        if (since <= 0) return;
+        reportedDropped = total;
+        WriteToSinks(new LogEntry(clock.Now, LogLevel.Warn, "Log", $"{since} log entries dropped (queue full); {total} total"));
+    }
 
-    /// <summary>Flushes and disposes all sinks. (Task 5 makes this also stop the writer thread.)</summary>
+    /// <summary>Drains the async queue (if any) and flushes all sinks. Blocks until done.</summary>
+    public void Flush()
+    {
+        if (synchronous)
+        {
+            ReportDropsIfAny();
+            FlushSinks();
+            return;
+        }
+
+        // Re-entrancy guard: if a sink's Emit/Flush calls back into Flush on the writer thread, we cannot
+        // enqueue a marker and wait for ourselves (the writer would block waiting on a marker only it can
+        // process). The writer is already mid-drain, so flushing sinks inline is the correct, deadlock-free
+        // behaviour.
+        if (Thread.CurrentThread.ManagedThreadId == workerThreadId)
+        {
+            ReportDropsIfAny();
+            FlushSinks();
+            return;
+        }
+
+        if (queue!.IsAddingCompleted) { ReportDropsIfAny(); FlushSinks(); return; }
+
+        // Push a flush marker and wait for the writer to reach it. The writer reports any drops and
+        // flushes sinks while handling the marker, so all entries queued before this call are written
+        // first. The drop warning is written by the writer thread, never re-enqueued (so it can't itself
+        // be dropped when the queue is full).
+        using var done = new ManualResetEventSlim(false);
+        try
+        {
+            queue.Add(new WorkItem(done));   // flush markers must not be dropped; brief block is acceptable off the hot path
+            done.Wait();
+        }
+        catch (InvalidOperationException)
+        {
+            ReportDropsIfAny();
+            FlushSinks();   // queue completed concurrently
+        }
+    }
+
+    /// <summary>Flushes and disposes all sinks; in async mode stops and joins the writer thread first.</summary>
     public void Shutdown()
     {
+        lock (sinkGate)
+        {
+            if (shutdown) return;
+            shutdown = true;
+        }
+
+        if (!synchronous)
+        {
+            try
+            {
+                if (!queue!.IsAddingCompleted) queue.CompleteAdding();
+            }
+            catch (ObjectDisposedException) { }
+            worker?.Join();   // writer has drained the queue and exited; safe to touch sinks from here
+        }
+
+        ReportDropsIfAny();
         FlushSinks();
         DisposeSinks();
+
+        if (!synchronous)
+        {
+            try { queue!.Dispose(); } catch { }
+        }
     }
 
     /// <inheritdoc />

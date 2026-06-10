@@ -341,7 +341,11 @@ using System;
 
 namespace KhaozEngine.Diagnostics;
 
-/// <summary>A destination for log entries. Implementations must never throw and should be thread-safe.</summary>
+/// <summary>
+/// A destination for log entries. Implementations must never throw and should be thread-safe. They must
+/// not call back into the owning <see cref="LogManager"/> (for example <see cref="LogManager.Flush"/> or
+/// another log call) from within <see cref="Emit"/>/<see cref="Flush"/>.
+/// </summary>
 public interface ILogSink : IDisposable
 {
     /// <summary>Writes one entry. Must swallow its own failures.</summary>
@@ -760,7 +764,7 @@ public sealed class LogManager : IDisposable
         set => Volatile.Write(ref minimumLevel, (int)value);
     }
 
-    /// <summary>The default category used by <see cref="Log"/>'s convenience methods.</summary>
+    /// <summary>The default category used by the static <c>Log</c> facade's convenience methods.</summary>
     public string DefaultCategory => defaultCategory;
 
     /// <summary>The current timestamp from the configured clock.</summary>
@@ -865,6 +869,7 @@ Approach: introduce a private `WorkItem` (either a `LogEntry` or a flush marker 
 // KhaozEngine.Tests/Logging/LogManagerAsyncTests.cs
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using KhaozEngine.Diagnostics;
 using Xunit;
 
@@ -880,6 +885,19 @@ public class LogManagerAsyncTests
         public void Emit(in LogEntry entry) { EmitEntered.Set(); Release.Wait(); }
         public void Flush() { }
         public void Dispose() { Release.Set(); }   // never leave a parked writer on teardown
+    }
+
+    /// <summary>A misbehaving sink that flushes its owner from inside Emit (once), to prove re-entrancy doesn't deadlock.</summary>
+    private sealed class ReentrantFlushSink : ILogSink
+    {
+        public LogManager? Owner;
+        private int flushed;
+        public void Emit(in LogEntry entry)
+        {
+            if (Interlocked.Exchange(ref flushed, 1) == 0) Owner?.Flush();
+        }
+        public void Flush() { }
+        public void Dispose() { }
     }
 
     [Fact]
@@ -965,6 +983,24 @@ public class LogManagerAsyncTests
         mgr.GetLogger("L").Info("x");
         Assert.Single(sink.Entries);   // no Flush needed in sync mode
     }
+
+    [Fact]
+    public void ReentrantFlushFromSinkDoesNotDeadlock()
+    {
+        var reentrant = new ReentrantFlushSink();
+        var observer = new InMemorySink();
+        var options = new LoggerOptions { Synchronous = false, MinimumLevel = LogLevel.Trace };
+        options.Sinks.Add(reentrant);
+        options.Sinks.Add(observer);
+        using var mgr = new LogManager(options);
+        reentrant.Owner = mgr;
+
+        mgr.GetLogger("L").Info("x");   // writer Emit -> reentrant.Emit -> mgr.Flush() on the writer thread
+
+        bool completed = Task.Run(() => mgr.Flush()).Wait(TimeSpan.FromSeconds(5));
+        Assert.True(completed, "Flush deadlocked on a re-entrant flush from a sink's Emit on the writer thread");
+        Assert.Contains(observer.Entries, e => e.Message == "x");
+    }
 }
 ```
 
@@ -1012,6 +1048,7 @@ public sealed class LogManager : IDisposable
     private readonly bool synchronous;
     private readonly BlockingCollection<WorkItem>? queue;
     private readonly Thread? worker;
+    private int workerThreadId;
     private long dropped;
     private long reportedDropped;
     private bool shutdown;
@@ -1032,6 +1069,7 @@ public sealed class LogManager : IDisposable
             queue = new BlockingCollection<WorkItem>(new ConcurrentQueue<WorkItem>(), capacity);
             worker = new Thread(WriterLoop) { IsBackground = true, Name = "KhaozEngine.Log" };
             worker.Start();
+            workerThreadId = worker.ManagedThreadId;
         }
     }
 
@@ -1045,7 +1083,7 @@ public sealed class LogManager : IDisposable
     /// <summary>Number of entries dropped because the async queue was full.</summary>
     public long DroppedCount => Interlocked.Read(ref dropped);
 
-    /// <summary>The default category used by <see cref="Log"/>'s convenience methods.</summary>
+    /// <summary>The default category used by the static <c>Log</c> facade's convenience methods.</summary>
     public string DefaultCategory => defaultCategory;
 
     /// <summary>The current timestamp from the configured clock.</summary>
@@ -1151,6 +1189,17 @@ public sealed class LogManager : IDisposable
             return;
         }
 
+        // Re-entrancy guard: if a sink's Emit/Flush calls back into Flush on the writer thread, we cannot
+        // enqueue a marker and wait for ourselves (the writer would block waiting on a marker only it can
+        // process). The writer is already mid-drain, so flushing sinks inline is the correct, deadlock-free
+        // behaviour.
+        if (Thread.CurrentThread.ManagedThreadId == workerThreadId)
+        {
+            ReportDropsIfAny();
+            FlushSinks();
+            return;
+        }
+
         if (queue!.IsAddingCompleted) { ReportDropsIfAny(); FlushSinks(); return; }
 
         // Push a flush marker and wait for the writer to reach it. The writer reports any drops and
@@ -1207,7 +1256,7 @@ public sealed class LogManager : IDisposable
 - [ ] **Step 4: Run the async and the Task 4 sync tests to verify both pass**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~LogManagerAsyncTests|FullyQualifiedName~LogManagerSyncTests"`
-Expected: PASS (all of Task 4's sync tests still green + 5 async tests).
+Expected: PASS (all of Task 4's sync tests still green + 6 async tests, including a re-entrant-flush deadlock guard).
 
 - [ ] **Step 5: Commit**
 

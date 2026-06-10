@@ -138,6 +138,42 @@ public class AppDataPathsTests
         Assert.Throws<ArgumentException>(() => new AppDataPaths(badName!, new FakeAppDataEnvironment()));
     }
 
+    [Fact]
+    public void FilePaths_ComposeOffBaseDirectory()
+    {
+        string root = NewTempRoot();
+        try
+        {
+            var env = new FakeAppDataEnvironment { IsWindows = true };
+            env.Folders[Environment.SpecialFolder.ApplicationData] = root;
+
+            var paths = new AppDataPaths(AppFolder, env);
+            string baseDir = paths.BaseDirectory;
+
+            Assert.Equal(Path.Combine(baseDir, "save.json"), paths.SaveFilePath);
+            Assert.Equal(Path.Combine(baseDir, "settings.json"), paths.SettingsFilePath);
+            Assert.Equal(Path.Combine(baseDir, "game.log"), paths.LogFilePath);
+            Assert.Equal(Path.Combine(baseDir, "game.prev.log"), paths.PreviousLogFilePath);
+        }
+        finally { Cleanup(root); }
+    }
+
+    [Fact]
+    public void GetFilePath_ComposesArbitraryNameOffBaseDirectory()
+    {
+        string root = NewTempRoot();
+        try
+        {
+            var env = new FakeAppDataEnvironment { IsWindows = true };
+            env.Folders[Environment.SpecialFolder.ApplicationData] = root;
+
+            var paths = new AppDataPaths(AppFolder, env);
+
+            Assert.Equal(Path.Combine(paths.BaseDirectory, "custom.dat"), paths.GetFilePath("custom.dat"));
+        }
+        finally { Cleanup(root); }
+    }
+
     // --- helpers ---
 
     private static string NewTempRoot() =>

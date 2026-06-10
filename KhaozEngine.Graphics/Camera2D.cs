@@ -56,4 +56,13 @@ public sealed class Camera2D
         Matrix inverseView = Matrix.Invert(GetViewMatrix(viewport));
         return Vector2.Transform(screen, inverseView);
     }
+
+    /// <summary>View matrix using the stored <see cref="Viewport"/> property.</summary>
+    public Matrix GetViewMatrix() => GetViewMatrix(Viewport);
+
+    /// <summary>World-to-screen using the stored <see cref="Viewport"/> property.</summary>
+    public Vector2 WorldToScreen(Vector2 world) => WorldToScreen(world, Viewport);
+
+    /// <summary>Screen-to-world using the stored <see cref="Viewport"/> property.</summary>
+    public Vector2 ScreenToWorld(Vector2 screen) => ScreenToWorld(screen, Viewport);
 }

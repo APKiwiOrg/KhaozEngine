@@ -80,4 +80,24 @@ public class CameraTests
         var screen = camera.WorldToScreen(new Vector2(10f, 0f), Vp);
         AssertClose(new Vector2(W / 2f, H / 2f + 10f), screen);
     }
+
+    [Fact]
+    public void NoArgOverloads_UseViewportProperty_AndMatchPerCall()
+    {
+        var camera = new Camera2D
+        {
+            Position = new Vector2(40f, -15f),
+            Zoom = 1.3f,
+            Rotation = 0.5f,
+            Viewport = Vp,
+        };
+
+        Assert.Equal(camera.GetViewMatrix(Vp), camera.GetViewMatrix());
+
+        var world = new Vector2(77f, 12f);
+        AssertClose(camera.WorldToScreen(world, Vp), camera.WorldToScreen(world));
+
+        var screen = new Vector2(300f, 220f);
+        AssertClose(camera.ScreenToWorld(screen, Vp), camera.ScreenToWorld(screen));
+    }
 }

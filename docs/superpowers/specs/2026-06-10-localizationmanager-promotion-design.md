@@ -38,11 +38,17 @@ Two of these are real problems, not cosmetics:
 2. **API takes an injected `ResourceManager`** (constructor parameter), rather than
    `(Assembly, baseName)` or static `Configure`. Caller owns `ResourceManager` construction;
    this also makes the class headless-testable with a fake `ResourceManager`.
-3. **`DEFAULT_CULTURE_CODE` = `"en-US"`** (a valid culture; drops the malformed `"en-EN"`).
+3. **`DefaultCultureCode` = `"en-US"`** (a valid culture; drops the malformed `"en-EN"`).
 4. **`SetCulture(null/empty)` throws.** No silent fallback in shared code. A game wanting
-   fallback writes `SetCulture(code ?? LocalizationManager.DEFAULT_CULTURE_CODE)` at its own
-   call site. Implementation throws `ArgumentNullException` (matching the originals); tests
-   assert the base `ArgumentException` so the subtype is not over-specified.
+   fallback writes `SetCulture(code ?? LocalizationManager.DefaultCultureCode)` at its own
+   call site. Implementation uses `ArgumentException.ThrowIfNullOrEmpty` (the BCL idiom:
+   `ArgumentNullException` for null, `ArgumentException` for empty); tests assert the base
+   `ArgumentException` (via `ThrowsAny`) for empty and `ArgumentNullException` for null.
+
+> **Post-review revisions (2026-06-10):** the const was renamed `DEFAULT_CULTURE_CODE` →
+> `DefaultCultureCode` (C# convention) and `SetCulture` switched from a single
+> `ArgumentNullException` to `ArgumentException.ThrowIfNullOrEmpty` (correct exception type for
+> empty input). API block and contract below reflect the final state.
 
 ## Public API
 
@@ -51,7 +57,7 @@ Namespace `KhaozEngine.Localization`:
 ```csharp
 public class LocalizationManager
 {
-    public const string DEFAULT_CULTURE_CODE = "en-US";
+    public const string DefaultCultureCode = "en-US";
 
     public LocalizationManager(ResourceManager resourceManager);
 
@@ -83,7 +89,7 @@ Sub-decisions:
   lookup throws `MissingManifestResourceException` are skipped.
 - `SetCulture(code)`: sets both `CurrentCulture` and `CurrentUICulture` on the current thread to
   `new CultureInfo(code)`. Throws on null/empty `code`.
-- `DEFAULT_CULTURE_CODE`: `"en-US"`.
+- `DefaultCultureCode`: `"en-US"`.
 
 ## Project / packaging changes
 
@@ -111,9 +117,9 @@ The injected `ResourceManager` removes any need for a real `.resx` build pipelin
   1. `GetSupportedCultures()` returns exactly the configured supported cultures plus
      `InvariantCulture` (and the throwing culture is absent).
   2. `SetCulture(valid)` sets both `CurrentCulture` and `CurrentUICulture`.
-  3. `SetCulture(null)` and `SetCulture("")` throw `ArgumentException` (asserted on the base
-     type; the implementation throws `ArgumentNullException`).
-  4. `DEFAULT_CULTURE_CODE == "en-US"`.
+  3. `SetCulture(null)` throws `ArgumentNullException`; `SetCulture("")` throws
+     `ArgumentException` (asserted on the base type via `ThrowsAny`).
+  4. `DefaultCultureCode == "en-US"`.
 - Culture-mutating tests save and restore `Thread.CurrentThread.CurrentCulture` /
   `CurrentUICulture` in a `finally` so state does not leak across the runner.
 

@@ -10,6 +10,13 @@
 
 **Spec:** `docs/superpowers/specs/2026-06-10-localizationmanager-promotion-design.md`
 
+> **As-built note (post code-review):** two changes were applied after the tasks below were
+> executed, and supersede the code blocks here: (1) the public const is `DefaultCultureCode`,
+> not `DEFAULT_CULTURE_CODE` (C# convention); (2) `SetCulture` uses
+> `ArgumentException.ThrowIfNullOrEmpty(cultureCode)` rather than a single `ArgumentNullException`
+> (so empty input throws `ArgumentException`, null throws `ArgumentNullException`). The committed
+> code in `KhaozEngine.Localization/` is the source of truth.
+
 ---
 
 ## File Structure
@@ -232,11 +239,12 @@ Add these three tests inside the `LocalizationManagerTests` class in `KhaozEngin
     public void SetCulture_Empty_Throws()
     {
         // Asserted on the base ArgumentException; implementation throws ArgumentNullException.
-        Assert.Throws<ArgumentException>(() => LocalizationManager.SetCulture(""));
+        // ThrowsAny (not Throws) because xUnit 2.x Throws<T> is exact-type.
+        Assert.ThrowsAny<ArgumentException>(() => LocalizationManager.SetCulture(""));
     }
 ```
 
-Note: `Assert.Throws<ArgumentNullException>` for the null case is exact; `Assert.Throws<ArgumentException>` for the empty case matches on the base type (xUnit `Assert.Throws<T>` accepts a derived exception as long as `T` is in its hierarchy — `ArgumentNullException : ArgumentException`).
+Note: `Assert.Throws<ArgumentNullException>` for the null case is exact. For the empty case, assert on the base type with `Assert.ThrowsAny<ArgumentException>` — xUnit 2.x `Assert.Throws<T>` uses **exact** type matching and would reject the derived `ArgumentNullException`; `ThrowsAny<T>` is the one that accepts subtypes.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 

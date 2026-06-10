@@ -27,4 +27,24 @@ public sealed class Camera2D
     /// <summary>Viewport used by the no-arg overloads. Set once and refresh on resize
     /// (e.g. <c>Window.ClientSizeChanged</c>). The per-call overloads ignore this.</summary>
     public Viewport Viewport { get; set; }
+
+    /// <summary>
+    /// Builds the view (world-to-screen) transform for the given viewport:
+    /// translate so <see cref="Position"/> is at the origin, apply <see cref="Rotation"/>,
+    /// scale by <see cref="Zoom"/>, then translate to the viewport center. The world thus
+    /// rotates and scales about <see cref="Position"/>, which lands at screen center.
+    /// </summary>
+    public Matrix GetViewMatrix(Viewport viewport)
+    {
+        return Matrix.CreateTranslation(-Position.X, -Position.Y, 0f)
+            * Matrix.CreateRotationZ(Rotation)
+            * Matrix.CreateScale(Zoom, Zoom, 1f)
+            * Matrix.CreateTranslation(viewport.Width * 0.5f, viewport.Height * 0.5f, 0f);
+    }
+
+    /// <summary>Transforms a world position to screen space using the given viewport.</summary>
+    public Vector2 WorldToScreen(Vector2 world, Viewport viewport)
+    {
+        return Vector2.Transform(world, GetViewMatrix(viewport));
+    }
 }

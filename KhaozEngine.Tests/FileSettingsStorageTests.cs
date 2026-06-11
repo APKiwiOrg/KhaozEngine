@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.Json;
 using KhaozEngine.App;
 using KhaozEngine.Persistence;
 using Xunit;
@@ -110,6 +111,21 @@ public class FileSettingsStorageTests
 
             Assert.Equal(0, loaded.Score);
             Assert.Equal("", loaded.Name);
+        }
+        finally { Cleanup(root); }
+    }
+
+    [Fact]
+    public void LoadSettings_CorruptJson_Throws()
+    {
+        AppDataPaths paths = TempPaths(out string root);
+        try
+        {
+            var storage = new FileSettingsStorage(paths, new TempDirectPersistenceQueue());
+            // File.ReadAllText succeeds; Deserialize fails. Storage does NOT catch (the manager does).
+            File.WriteAllText(paths.GetFilePath("settings.json"), "not-json{{");
+
+            Assert.Throws<JsonException>(() => storage.LoadSettings<Sample>());
         }
         finally { Cleanup(root); }
     }

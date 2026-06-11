@@ -1,4 +1,6 @@
 using System;
+using System.IO;
+using KhaozEngine.App;
 using KhaozEngine.Diagnostics;
 using KhaozEngine.Persistence;
 using Xunit;
@@ -113,5 +115,30 @@ public class SettingsManagerTests
 
         Assert.False(savedRaised);
         Assert.Contains(logger.Entries, e => e.Level == LogLevel.Error);
+    }
+
+    [Fact]
+    public void Load_CorruptFileThroughRealStorage_FallsBackToDefaults()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "ke-item10-" + Path.GetRandomFileName());
+        try
+        {
+            var env = new FakeAppDataEnvironment { IsMacOS = true };
+            env.Folders[Environment.SpecialFolder.ApplicationData] = root;
+            var paths = new AppDataPaths("Item10Settings", env);
+            File.WriteAllText(paths.GetFilePath("settings.json"), "not-json{{");
+
+            var storage = new FileSettingsStorage(paths, new TempDirectPersistenceQueue());
+            var logger = new FakeLogger();
+
+            var manager = new SettingsManager<Prefs>(storage, logger);
+
+            Assert.Equal(0, manager.Settings.Volume);   // defaults despite corrupt file
+            Assert.Contains(logger.Entries, e => e.Level == LogLevel.Error);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
     }
 }

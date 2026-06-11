@@ -24,7 +24,11 @@ public sealed class SettingsManager<T> where T : new()
     /// <summary>Raised after settings are loaded (including when defaults are substituted).</summary>
     public event Action<T>? SettingsLoaded;
 
-    /// <summary>Raised after settings are successfully saved.</summary>
+    /// <summary>
+    /// Raised after the current settings are handed to storage without error. Storage may persist
+    /// asynchronously (writes go through an <see cref="IPersistenceQueue"/>), so this signals the
+    /// save was accepted/queued, not that bytes are durably on disk.
+    /// </summary>
     public event Action<T>? SettingsSaved;
 
     /// <summary>Creates a manager over <paramref name="storage"/> and immediately loads.</summary>

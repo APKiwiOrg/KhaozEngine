@@ -20,3 +20,32 @@ var encoder = new SaveEncoder(
 string onDisk = encoder.Encode(json);
 string? loaded = encoder.Decode(onDisk);   // null only if not-our-format / malformed / corrupt
 ```
+
+## AtomicJsonWriter
+
+Static crash-safe writer: content goes to a sibling `.tmp` file which is then moved over the target,
+so a crash mid-write never leaves a half-written destination. Synchronous and throws on IO failure
+(the caller decides whether to catch).
+
+```csharp
+AtomicJsonWriter.WriteText(path, json);
+AtomicJsonWriter.Write(path, myValue);                  // serialize (indented) then write
+AtomicJsonWriter.Write(appDataPaths, "save.json", myValue);
+```
+
+## PersistenceQueue
+
+Coalesced asynchronous writer (`IPersistenceQueue`). Each `Enqueue` records the latest payload per
+target path (rapid repeats to one path collapse to the last) and a background worker drains them via
+`AtomicJsonWriter`. Writes never throw into the caller: they retry briefly, then log through the
+optional `ILogger` and raise `WriteFailed`. `Flush()` blocks until drained and the queue is
+`IDisposable` (disposing flushes), so a game can guarantee a clean write on shutdown.
+
+```csharp
+using var queue = new PersistenceQueue(Log.For<PersistenceQueue>());   // logger, maxAttempts, retryDelay all optional
+queue.WriteFailed += (_, e) => Notify(e.Path, e.Exception);
+
+queue.Enqueue(appDataPaths, "save.json", saveData);    // or Enqueue(path, json) / Enqueue<T>(path, value)
+// on shutdown:
+queue.Flush();
+```

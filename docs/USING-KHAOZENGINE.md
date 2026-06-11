@@ -172,6 +172,35 @@ Independent of input/screens. `World` with `Spawn`/`Despawn` (deferred to `Updat
 
 ---
 
+## Graphics layer (`KhaozEngine.Graphics`)
+
+Independent of input/screens. `Camera2D` is a game-agnostic 2D matrix camera. `Position` is the world
+point shown at the center of the viewport; `Zoom` (> 0) and `Rotation` (radians, CCW) scale and roll
+the view about that point. The core methods take an explicit `Viewport`, so the math is fully headless
+(no `GraphicsDevice`); no-arg overloads use the settable `Viewport` property (set it once, refresh on
+`Window.ClientSizeChanged`).
+
+```csharp
+var cam = new Camera2D { Viewport = GraphicsDevice.Viewport, Zoom = 2f };
+cam.Position = player.WorldPosition;                              // follow
+
+// Render world-space content through the view matrix:
+spriteBatch.Begin(transformMatrix: cam.GetViewMatrix());
+// ... draw world ...
+spriteBatch.End();
+
+Vector2 mouseWorld = cam.ScreenToWorld(mouseScreenPos);          // pick/aim in world space
+```
+
+- `WorldToScreen` / `ScreenToWorld` convert between spaces (inverse requires `Zoom` > 0; a non-positive
+  zoom makes the matrix singular and yields NaN).
+- `ClampPosition(desired, worldBounds[, viewport])` returns `desired` clamped so the visible world rect
+  stays inside `worldBounds`, centering on any axis where the world is smaller than the view. It does
+  not mutate `Position` (assign the result yourself). Exact when `Rotation` is 0 (the typical
+  platformer/scroller case); approximate with a rotated camera.
+
+---
+
 ## Testing your game's screens headlessly
 
 Because input is injected, you can test routing and screen logic without a window:

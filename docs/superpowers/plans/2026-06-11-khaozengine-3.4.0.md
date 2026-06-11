@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ship KhaozEngine 3.4.0 — a `SettingsManager<T>` sanitize-on-load hook and `AudioSystem` explicit/repeat playback + now-playing, plus four review nits, then run the release ritual up to (not including) the tag/push.
+**Goal:** Ship KhaozEngine 3.4.0 - a `SettingsManager<T>` sanitize-on-load hook and `AudioSystem` explicit/repeat playback + now-playing, plus four review nits, then run the release ritual up to (not including) the tag/push.
 
 **Architecture:** All changes are additive and backward-compatible. Two gating features (Persistence settings hook, Audio playback control) unblock SpaceGame/Nullwake adoption; four nits harden existing code and docs. One version bump (3.3.0 -> 3.4.0) at the very end. TDD throughout: every behaviour ships with a headless xUnit test driven through `FakeMusicBackend` / in-memory storage. No `Mouse/Keyboard/GamePad/TouchPanel` statics.
 
@@ -15,21 +15,21 @@ Work happens in worktree `worktree-ke-3.4.0` (already created). Run all commands
 ## File Structure
 
 Created:
-- `KhaozEngine.Audio/PlayMode.cs` — the `PlayMode` enum.
-- `docs/superpowers/specs/2026-06-11-khaozengine-3.4.0-design.md` — already written/committed.
+- `KhaozEngine.Audio/PlayMode.cs` - the `PlayMode` enum.
+- `docs/superpowers/specs/2026-06-11-khaozengine-3.4.0-design.md` - already written/committed.
 
 Modified:
-- `KhaozEngine.Persistence/SettingsManager.cs` — add `sanitizeOnLoad` ctor param + apply in `Load()`.
-- `KhaozEngine.Persistence/README.md` — document the `[JsonExtensionData]` downgrade-safe migration pattern.
-- `KhaozEngine.Audio/AudioSystem.cs` — `PlayTrack`, `CurrentTrack`, `TrackChanged`, `PlayMode` prop, `AdvanceTrack`/`CommitPlayed` helpers, latch-scoped `Update`.
-- `KhaozEngine.Ecs/DeterministicRng.cs` — guard the two `Next` overloads.
-- `KhaozEngine.Tests/Audio/FakeMusicBackend.cs` — add `ThrowOnNextIsPlayingReads` to simulate a transient read error.
-- `KhaozEngine.Tests/Audio/AudioSystemTests.cs` — new audio tests.
-- `KhaozEngine.Tests/DeterministicRngTests.cs` — new guard tests.
-- `KhaozEngine.Tests/ParticleSystemTests.cs` — strengthen `Emit_beyond_capacity_recycles_oldest_slots`.
-- `KhaozEngine.Persistence/SettingsManagerTests.cs` (or existing settings test file — confirm at execution) — new hook tests.
-- `docs/USING-KHAOZENGINE.md` — add Graphics/Camera2D section.
-- `Directory.Build.props`, `CHANGELOG.md`, `docs/CONSUMERS.md` — release bump.
+- `KhaozEngine.Persistence/SettingsManager.cs` - add `sanitizeOnLoad` ctor param + apply in `Load()`.
+- `KhaozEngine.Persistence/README.md` - document the `[JsonExtensionData]` downgrade-safe migration pattern.
+- `KhaozEngine.Audio/AudioSystem.cs` - `PlayTrack`, `CurrentTrack`, `TrackChanged`, `PlayMode` prop, `AdvanceTrack`/`CommitPlayed` helpers, latch-scoped `Update`.
+- `KhaozEngine.Ecs/DeterministicRng.cs` - guard the two `Next` overloads.
+- `KhaozEngine.Tests/Audio/FakeMusicBackend.cs` - add `ThrowOnNextIsPlayingReads` to simulate a transient read error.
+- `KhaozEngine.Tests/Audio/AudioSystemTests.cs` - new audio tests.
+- `KhaozEngine.Tests/DeterministicRngTests.cs` - new guard tests.
+- `KhaozEngine.Tests/ParticleSystemTests.cs` - strengthen `Emit_beyond_capacity_recycles_oldest_slots`.
+- `KhaozEngine.Persistence/SettingsManagerTests.cs` (or existing settings test file - confirm at execution) - new hook tests.
+- `docs/USING-KHAOZENGINE.md` - add Graphics/Camera2D section.
+- `Directory.Build.props`, `CHANGELOG.md`, `docs/CONSUMERS.md` - release bump.
 
 ---
 
@@ -54,7 +54,7 @@ private sealed class InMemoryStorage : ISettingsStorage
 }
 ```
 
-> Note: match the real `ISettingsStorage` signatures — confirm them in `KhaozEngine.Persistence/ISettingsStorage.cs` before writing the fake (the generic constraints/return shape must line up). If the test file already has a fake storage, use it instead of adding `InMemoryStorage`.
+> Note: match the real `ISettingsStorage` signatures - confirm them in `KhaozEngine.Persistence/ISettingsStorage.cs` before writing the fake (the generic constraints/return shape must line up). If the test file already has a fake storage, use it instead of adding `InMemoryStorage`.
 
 Tests:
 
@@ -98,7 +98,7 @@ public void SanitizeOnLoad_ClampedValueIsWhatSettingsExposes()
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~SanitizeOnLoad"`
-Expected: FAIL to compile — `SettingsManager` ctor has no `sanitizeOnLoad` parameter.
+Expected: FAIL to compile - `SettingsManager` ctor has no `sanitizeOnLoad` parameter.
 
 - [ ] **Step 3: Implement the hook**
 
@@ -183,7 +183,7 @@ git commit -m "feat(Persistence): SettingsManager<T> sanitizeOnLoad hook (runs o
 
 ---
 
-## Task 2: Persistence README — downgrade-safe migration pattern
+## Task 2: Persistence README - downgrade-safe migration pattern
 
 **Files:**
 - Modify: `KhaozEngine.Persistence/README.md` (append after the existing `## Settings` section)
@@ -196,7 +196,7 @@ Append to `KhaozEngine.Persistence/README.md`:
 ### Schema migration & downgrade safety
 
 `SettingsManager<T>` takes an optional `sanitizeOnLoad` hook that runs on **every** load, including
-the initial load in the constructor (the `SettingsLoaded` event can't help there — it fires inside
+the initial load in the constructor (the `SettingsLoaded` event can't help there - it fires inside
 the ctor before a caller can subscribe). Use it to clamp fields and migrate an embedded schema version:
 
 ```csharp
@@ -215,7 +215,7 @@ static SaveData Migrate(SaveData s)
 
 For forward-compatibility (a newer build wrote fields this older build doesn't know), give the DTO a
 `[JsonExtensionData]` bag. `FileSettingsStorage` round-trips the live object through
-`System.Text.Json`, so unknown fields survive a load + save and are not dropped on downgrade — no
+`System.Text.Json`, so unknown fields survive a load + save and are not dropped on downgrade - no
 engine code required, just the DTO shape:
 
 ```csharp
@@ -238,7 +238,7 @@ git commit -m "docs(Persistence): document JsonExtensionData + sanitizeOnLoad mi
 
 ---
 
-## Task 3: AudioSystem — PlayMode enum + extend FakeMusicBackend
+## Task 3: AudioSystem - PlayMode enum + extend FakeMusicBackend
 
 **Files:**
 - Create: `KhaozEngine.Audio/PlayMode.cs`
@@ -311,7 +311,7 @@ git commit -m "feat(Audio): add PlayMode enum; test backend can simulate transie
 
 ---
 
-## Task 4: AudioSystem — PlayTrack + CurrentTrack + TrackChanged
+## Task 4: AudioSystem - PlayTrack + CurrentTrack + TrackChanged
 
 **Files:**
 - Modify: `KhaozEngine.Audio/AudioSystem.cs`
@@ -387,7 +387,7 @@ public void DisablingMusicClearsCurrentTrack()
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~PlayTrack|FullyQualifiedName~CurrentTrack"`
-Expected: FAIL to compile — no `PlayTrack`, `CurrentTrack`, or `TrackChanged` members.
+Expected: FAIL to compile - no `PlayTrack`, `CurrentTrack`, or `TrackChanged` members.
 
 - [ ] **Step 3: Implement explicit playback + now-playing**
 
@@ -524,7 +524,7 @@ git commit -m "feat(Audio): PlayTrack(index/name) + CurrentTrack + TrackChanged 
 
 ---
 
-## Task 5: AudioSystem — PlayMode property + RepeatOne auto-advance
+## Task 5: AudioSystem - PlayMode property + RepeatOne auto-advance
 
 **Files:**
 - Modify: `KhaozEngine.Audio/AudioSystem.cs`
@@ -577,7 +577,7 @@ public void TrackChanged_FiresOnChange_NotOnSameNameRepeat()
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~RepeatOne|FullyQualifiedName~PlayMode|FullyQualifiedName~TrackChanged"`
-Expected: FAIL to compile — no `PlayMode` property.
+Expected: FAIL to compile - no `PlayMode` property.
 
 - [ ] **Step 3: Implement PlayMode + AdvanceTrack**
 
@@ -623,7 +623,7 @@ git commit -m "feat(Audio): PlayMode.RepeatOne auto-advance replays current trac
 
 ---
 
-## Task 6: AudioSystem — scope the _available latch (nit 4)
+## Task 6: AudioSystem - scope the _available latch (nit 4)
 
 **Files:**
 - Modify: `KhaozEngine.Audio/AudioSystem.cs` (`Update()`)
@@ -654,7 +654,7 @@ public void Update_TransientIsPlayingError_SkipsFrameAndStaysAvailable()
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~Update_TransientIsPlayingError"`
-Expected: FAIL — current `Update()` catch sets `_available = false`, so the third `Update()` is a no-op and `PlayedIndices.Count` stays at `playedBefore` (asserts `playedBefore + 1`).
+Expected: FAIL - current `Update()` catch sets `_available = false`, so the third `Update()` is a no-op and `PlayedIndices.Count` stays at `playedBefore` (asserts `playedBefore + 1`).
 
 - [ ] **Step 3: Rewrite Update() to scope the latch**
 
@@ -696,7 +696,7 @@ Replace the entire `Update()` method body in `KhaozEngine.Audio/AudioSystem.cs` 
     }
 ```
 
-> If Task 5 has not run yet, use `PlayRandomTrack();` in place of `AdvanceTrack();` and let Task 5 do the substitution. If Task 5 already ran, `AdvanceTrack()` exists — use it as shown.
+> If Task 5 has not run yet, use `PlayRandomTrack();` in place of `AdvanceTrack();` and let Task 5 do the substitution. If Task 5 already ran, `AdvanceTrack()` exists - use it as shown.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -760,7 +760,7 @@ Ensure `using System;` is present in the test file (for `ArgumentOutOfRangeExcep
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~Next_NonPositiveMax|FullyQualifiedName~NextRange_MaxNotAboveMin"`
-Expected: FAIL — currently `Next(0)` throws `DivideByZeroException` (not `ArgumentOutOfRangeException`), and `Next(5,3)` computes a negative modulo (no throw).
+Expected: FAIL - currently `Next(0)` throws `DivideByZeroException` (not `ArgumentOutOfRangeException`), and `Next(5,3)` computes a negative modulo (no throw).
 
 - [ ] **Step 3: Add the guards**
 
@@ -832,7 +832,7 @@ In `KhaozEngine.Tests/ParticleSystemTests.cs`, replace the existing `Emit_beyond
         foreach (var p in sys.ActiveParticles())
         {
             Assert.True(p.Position.X > 0 && p.Position.Y > 0,
-                $"particle at {p.Position} survived from the old batch — oldest slots not recycled");
+                $"particle at {p.Position} survived from the old batch - oldest slots not recycled");
         }
     }
 ```
@@ -840,7 +840,7 @@ In `KhaozEngine.Tests/ParticleSystemTests.cs`, replace the existing `Emit_beyond
 - [ ] **Step 2: Run the test**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~Emit_beyond_capacity_recycles_oldest_slots"`
-Expected: PASS. (If it fails, the recycle logic is not overwriting oldest — investigate before forcing the test.)
+Expected: PASS. (If it fails, the recycle logic is not overwriting oldest - investigate before forcing the test.)
 
 - [ ] **Step 3: Commit**
 
@@ -851,7 +851,7 @@ git commit -m "test(Effects): assert oldest particles are actually overwritten o
 
 ---
 
-## Task 9: USING-KHAOZENGINE.md — Graphics / Camera2D section (nit 6)
+## Task 9: USING-KHAOZENGINE.md - Graphics / Camera2D section (nit 6)
 
 **Files:**
 - Modify: `docs/USING-KHAOZENGINE.md`
@@ -885,7 +885,7 @@ Vector2 mouseWorld = cam.ScreenToWorld(mouseScreenPos);          // pick/aim in 
   zoom makes the matrix singular and yields NaN).
 - `ClampPosition(desired, worldBounds[, viewport])` returns `desired` clamped so the visible world rect
   stays inside `worldBounds`, centering on any axis where the world is smaller than the view. It does
-  not mutate `Position` — assign the result yourself. Exact when `Rotation` is 0 (the typical
+  not mutate `Position` - assign the result yourself. Exact when `Rotation` is 0 (the typical
   platformer/scroller case); approximate with a rotated camera.
 
 ---
@@ -916,7 +916,7 @@ Expected: build succeeds, 0 errors (pre-existing XML-doc warnings are acceptable
 
 ---
 
-## Task 11: Release 3.4.0 (version, changelog, consumers, pack) — STOP before tag/push
+## Task 11: Release 3.4.0 (version, changelog, consumers, pack) - STOP before tag/push
 
 **Files:**
 - Modify: `Directory.Build.props`, `CHANGELOG.md`, `docs/CONSUMERS.md`
@@ -934,19 +934,19 @@ Insert a newest-first entry at the top of `CHANGELOG.md` (immediately under the 
 
 Additive feature pass unblocking SpaceGame/Nullwake adoption, plus review-nit fixes. No breaking changes.
 
-- **KhaozEngine.Persistence** — `SettingsManager<T>` gains an optional `sanitizeOnLoad` constructor hook
+- **KhaozEngine.Persistence** - `SettingsManager<T>` gains an optional `sanitizeOnLoad` constructor hook
   (`Func<T,T>`). It runs on every load, including the initial load inside the constructor (which the
   `SettingsLoaded` event can't reach), so callers can clamp fields / migrate a schema version on the
   first load. Null = passthrough; a throwing hook is swallowed/logged. README documents the
   `[JsonExtensionData]` + version-field downgrade-safe migration pattern.
-- **KhaozEngine.Audio** — `AudioSystem` now supports explicit and repeating playback alongside random
+- **KhaozEngine.Audio** - `AudioSystem` now supports explicit and repeating playback alongside random
   rotation: `PlayTrack(int)` / `PlayTrack(string)` (unknown name/index is a logged no-op), a settable
   `PlayMode { RandomRotation, RepeatOne }` (default `RandomRotation`), and now-playing state via
   `CurrentTrack` + the `TrackChanged` event.
-- **KhaozEngine.Audio** — a transient exception while reading `IMusicBackend.IsPlaying` in `Update()`
+- **KhaozEngine.Audio** - a transient exception while reading `IMusicBackend.IsPlaying` in `Update()`
   now skips the frame (logged) and recovers, instead of permanently disabling audio. The availability
   latch is reserved for real play/load failures.
-- **KhaozEngine.Ecs** — `DeterministicRng.Next(maxExclusive)` and `Next(min, max)` now throw
+- **KhaozEngine.Ecs** - `DeterministicRng.Next(maxExclusive)` and `Next(min, max)` now throw
   `ArgumentOutOfRangeException` on non-positive / empty ranges (previously a DivideByZero / negative-
   modulo trap).
 - Docs/tests: `docs/USING-KHAOZENGINE.md` gains a `KhaozEngine.Graphics` / `Camera2D` section; the
@@ -978,7 +978,7 @@ git add Directory.Build.props CHANGELOG.md docs/CONSUMERS.md
 git commit -m "Release KhaozEngine 3.4.0 (Persistence sanitizeOnLoad + Audio playback control + nits)"
 ```
 
-- [ ] **Step 7: STOP — confirm with the user before tagging/pushing**
+- [ ] **Step 7: STOP - confirm with the user before tagging/pushing**
 
 Do NOT run `git tag v3.4.0` or push anything yet. Report what shipped (files changed, test count, packed versions) and the proposed merge/tag/push, and wait for explicit user approval. Tagging `v3.4.0` triggers CI to publish to GitHub Packages.
 

@@ -1,4 +1,4 @@
-# KhaozEngine 3.4.0 — design
+# KhaozEngine 3.4.0 - design
 
 Small, focused feature pass unblocking the in-flight SpaceGame and Nullwake adoptions, plus four
 review nits. All changes additive / backward-compatible. One version bump (3.3.0 -> 3.4.0) at the end.
@@ -41,13 +41,13 @@ Key points:
   ctor-supplied delegate can).
 - Runs on **every** subsequent `Load()` / reload too.
 - Runs on the failure-fallback `new T()` path as well, so a migration always sees a consistent object.
-- A hook that returns null is treated as "no change" (`?? loaded`) — defensive; the hook contract is
+- A hook that returns null is treated as "no change" (`?? loaded`) - defensive; the hook contract is
   to return the sanitized object.
 - A hook that throws is swallowed + logged (audio/settings swallow-don't-crash house style); the
   unsanitized value is used.
 - `null` hook = passthrough. Backward compatible (param defaults to null).
 
-Docs: add the downgrade-safety pattern to the Persistence README — a DTO with `[JsonExtensionData]`
+Docs: add the downgrade-safety pattern to the Persistence README - a DTO with `[JsonExtensionData]`
 (preserves unknown fields from a newer schema across a save round-trip) + a version field + a
 `sanitizeOnLoad` that migrates. **No engine code** for ExtensionData: `FileSettingsStorage` already
 round-trips the live object through `System.Text.Json`, preserving unknown fields.
@@ -59,14 +59,14 @@ clamps is what `Settings` exposes.
 
 All additive; default behaviour unchanged.
 
-- `PlayTrack(int index)` and `PlayTrack(string name)` — explicit selection alongside
+- `PlayTrack(int index)` and `PlayTrack(string name)` - explicit selection alongside
   `PlayRandomTrack`. Index resolves against `_trackNames` order (== backend load order). Unknown
   name or out-of-range index: `_logger.Warn` + no-op (swallow-don't-crash; do not throw). Honours the
   existing `_available` / `_musicEnabled` / `trackCount == 0` guards exactly like `PlayRandomTrack`.
 - `enum PlayMode { RandomRotation, RepeatOne }` as a settable property, default `RandomRotation`. In
   `Update`'s auto-advance branch (`!_backend.IsPlaying`): `RandomRotation` -> `PlayRandomTrack`
   (current behaviour); `RepeatOne` -> replay the current track via its index.
-- `CurrentTrack` (`string?` — the playing track's name, or null when nothing is playing) and an
+- `CurrentTrack` (`string?` - the playing track's name, or null when nothing is playing) and an
   `event Action<string?>? TrackChanged` for a now-playing UI. Both updated centrally at the single
   point where `_lastTrackIndex` is committed after a successful play, plus cleared to null on `Stop`
   (MusicEnabled = false). `TrackChanged` fires only on an actual change of the current name.
@@ -89,7 +89,7 @@ random-rotation behaviour.
 
 ### 3. `DeterministicRng` argument guards (review nit; pre-existing bug)
 
-`Next(int maxExclusive)` currently does `NextULong() % (ulong)maxExclusive` — a `maxExclusive <= 0`
+`Next(int maxExclusive)` currently does `NextULong() % (ulong)maxExclusive` - a `maxExclusive <= 0`
 is a DivideByZero / huge-cast trap. Guard both overloads:
 
 - `Next(maxExclusive)`: throw `ArgumentOutOfRangeException` when `maxExclusive <= 0`.
@@ -97,7 +97,7 @@ is a DivideByZero / huge-cast trap. Guard both overloads:
 
 Tests: each overload throws on the bad boundary; valid ranges still work.
 
-### 4. Audio `_available` latch scoping (review nit) — coordinator decision: option 1
+### 4. Audio `_available` latch scoping (review nit) - coordinator decision: option 1
 
 The permanent `_available = false` latch stays **only for real play/load failures** (`TryPlayTrack`
 returning false, or a throw during an actual play attempt). A throw while **reading
@@ -119,7 +119,7 @@ public void Update()
 ```
 
 Not gold-plating: if a persistently-throwing `IsPlaying` ever spams Warn every frame in practice,
-rate-limit later — not now.
+rate-limit later - not now.
 
 Test: a backend that throws once on `IsPlaying` then recovers -> audio stays available and resumes
 auto-advance on the following frame.
@@ -131,13 +131,13 @@ overwritten: poolSize 4, emit 4 at a far position A (fills the pool), emit 4 mor
 position B; assert all active particles are at B (none survive at A), in addition to
 `ActiveCount == 4`. Use positions far enough apart that preset jitter cannot blur A into B.
 
-### 6. `docs/USING-KHAOZENGINE.md` — Graphics / Camera2D section (review nit)
+### 6. `docs/USING-KHAOZENGINE.md` - Graphics / Camera2D section (review nit)
 
 Add a `KhaozEngine.Graphics` / `Camera2D` section to the consumer-contract doc, mirroring the style of
 the existing per-package sections (Input / Screens / UI / Ecs / Diagnostics). The package currently
 has no entry there.
 
-## Out of scope (tracked in docs/ROADMAP.md — do NOT start)
+## Out of scope (tracked in docs/ROADMAP.md - do NOT start)
 
 Camera follow layer, screen shake, particle unification, `PrimitiveRenderer.DrawCircle/DrawRing`, SFX
 audio.

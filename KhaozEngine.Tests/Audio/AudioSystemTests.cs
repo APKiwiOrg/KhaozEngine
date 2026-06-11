@@ -55,6 +55,22 @@ public sealed class AudioSystemTests
     }
 
     [Fact]
+    public void RegisterAfterLoad_FailedLoad_IsNotPhantomed()
+    {
+        var (audio, backend) = NewLoaded("a");
+        backend.LoadSucceeds = false;
+
+        audio.RegisterTrack("missing");          // post-load, load fails -> must NOT be committed
+        Assert.Equal(1, backend.TrackCount);
+
+        // The failed name is not stuck: once loads can succeed, re-registering it works.
+        backend.LoadSucceeds = true;
+        audio.RegisterTrack("missing");
+        Assert.Equal(2, backend.TrackCount);
+        Assert.Contains("missing", backend.LoadedTracks);
+    }
+
+    [Fact]
     public void NullBackendThrows()
     {
         Assert.Throws<ArgumentNullException>(() => new AudioSystem((IMusicBackend)null!));

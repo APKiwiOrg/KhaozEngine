@@ -65,13 +65,18 @@ public sealed class AudioSystem : IDisposable
             return;
         }
 
-        int index = _trackNames.Count;
-        _trackNames.Add(trackName);
-
         if (_loaded && _content is not null)
         {
-            _backend.TryLoadTrack(_content, _contentDirectory!, trackName, index);
+            // Post-load (DLC / runtime add): only commit the track if it actually loads, so a
+            // missing file doesn't leave a phantom name that the dedup guard then blocks from reloading.
+            if (_backend.TryLoadTrack(_content, _contentDirectory!, trackName))
+            {
+                _trackNames.Add(trackName);
+            }
+            return;
         }
+
+        _trackNames.Add(trackName);   // pre-load: loaded later in LoadContent
     }
 
     /// <summary>Adds several tracks via <see cref="RegisterTrack"/> (idempotent, pre- or post-load).</summary>
@@ -150,7 +155,7 @@ public sealed class AudioSystem : IDisposable
 
         for (int i = 0; i < _trackNames.Count; i++)
         {
-            _backend.TryLoadTrack(content, _contentDirectory, _trackNames[i], i);
+            _backend.TryLoadTrack(content, _contentDirectory, _trackNames[i]);
         }
 
         _logger.Info($"Audio: {_backend.TrackCount}/{_trackNames.Count} tracks loaded");
@@ -183,14 +188,13 @@ public sealed class AudioSystem : IDisposable
                 } while (index == _lastTrackIndex);
             }
 
-            _lastTrackIndex = index;
             if (!_backend.TryPlayTrack(index, _masterVolume * _musicVolume))
             {
                 _available = false;
                 return;
             }
 
-            ApplyVolume();
+            _lastTrackIndex = index;   // record only after a successful play
         }
         catch (Exception)
         {

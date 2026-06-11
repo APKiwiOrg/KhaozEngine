@@ -75,7 +75,8 @@ public sealed class Camera2D
     /// <remarks>
     /// Uses the axis-aligned visible rect and ignores <see cref="Rotation"/>: exact when
     /// <see cref="Rotation"/> is 0 (the typical platformer/scroller case); approximate with a
-    /// rotated camera, where the true visible area is a rotated quad.
+    /// rotated camera, where the true visible area is a rotated quad. Requires <see cref="Zoom"/> &gt; 0
+    /// (it divides the viewport by <see cref="Zoom"/>); a non-positive zoom yields a degenerate clamp.
     /// </remarks>
     public Vector2 ClampPosition(Vector2 desired, Rectangle worldBounds, Viewport viewport)
     {

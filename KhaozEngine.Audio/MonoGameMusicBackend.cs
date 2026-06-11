@@ -35,7 +35,7 @@ public sealed class MonoGameMusicBackend : IMusicBackend
     }
 
     /// <inheritdoc/>
-    public bool TryLoadTrack(ContentManager content, string contentDirectory, string trackName, int trackIndex)
+    public bool TryLoadTrack(ContentManager content, string contentDirectory, string trackName)
     {
         try
         {

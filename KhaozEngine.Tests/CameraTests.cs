@@ -25,6 +25,18 @@ public class CameraTests
         AssertClose(new Vector2(W / 2f, H / 2f), camera.WorldToScreen(Vector2.Zero, Vp));
     }
 
+    [Fact]
+    public void NoArgOverloads_WithUnsetViewport_UseZeroSizeViewport()
+    {
+        // Viewport defaults to default(Viewport) (zero size): the no-arg overloads center on
+        // (0,0), so world origin maps to screen (0,0). Documents the "set Viewport first" footgun.
+        var camera = new Camera2D();
+        AssertClose(Vector2.Zero, camera.WorldToScreen(Vector2.Zero));
+
+        camera.Viewport = Vp;   // once set, the no-arg path matches the per-call path
+        AssertClose(camera.WorldToScreen(Vector2.Zero, Vp), camera.WorldToScreen(Vector2.Zero));
+    }
+
     [Theory]
     [InlineData(123f, -45f, 1f, 0f)]
     [InlineData(-10f, 200f, 2.5f, 0.7f)]

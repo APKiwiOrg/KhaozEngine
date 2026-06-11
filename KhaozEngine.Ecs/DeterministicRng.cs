@@ -55,7 +55,7 @@ public sealed class DeterministicRng
     /// <summary>
     /// Returns a new generator whose stream is a stable function of THIS generator's
     /// construction seed and <paramref name="systemName"/>. The same construction seed and
-    /// name always yield the same stream; different names that hash distinctly (32-bit
+    /// name always yield the same stream; different names that hash distinctly (64-bit
     /// DJB2-xor space), or different parent seeds, yield decorrelated streams. Derivation
     /// uses the construction seed, not the live draw state,
     /// so the result is independent of how many numbers this generator has drawn and is NOT
@@ -69,7 +69,7 @@ public sealed class DeterministicRng
     public DeterministicRng CreateDerived(string systemName)
     {
         ArgumentNullException.ThrowIfNull(systemName);
-        ulong derivedSeed = _seed ^ (ulong)(uint)StableHash(systemName);
+        ulong derivedSeed = _seed ^ StableHash(systemName);
         return new DeterministicRng(derivedSeed);
     }
 
@@ -78,11 +78,11 @@ public sealed class DeterministicRng
     /// versions, and platforms, unlike <see cref="string.GetHashCode()"/>, which is
     /// randomized per process.
     /// </summary>
-    private static int StableHash(string s)
+    private static ulong StableHash(string s)
     {
         unchecked
         {
-            int hash = 5381;
+            ulong hash = 5381UL;
             for (int i = 0; i < s.Length; i++)
                 hash = ((hash << 5) + hash) ^ s[i];
             return hash;

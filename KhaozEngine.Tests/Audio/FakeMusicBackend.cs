@@ -19,7 +19,7 @@ internal sealed class FakeMusicBackend : IMusicBackend
     public int TrackCount => LoadedTracks.Count;
     public bool IsPlaying { get; set; }
 
-    public bool TryLoadTrack(ContentManager content, string contentDirectory, string trackName, int trackIndex)
+    public bool TryLoadTrack(ContentManager content, string contentDirectory, string trackName)
     {
         if (!LoadSucceeds) return false;
         LoadedTracks.Add(trackName);

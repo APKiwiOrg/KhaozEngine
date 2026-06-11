@@ -39,7 +39,10 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
 
         this.logger = logger;
         this.maxAttempts = maxAttempts;
-        this.retryDelay = retryDelay ?? TimeSpan.FromMilliseconds(50);
+        // Retry backoff runs as Thread.Sleep on the background ThreadPool worker, so cap it to keep a
+        // pathological value from tying up a pool thread.
+        TimeSpan delay = retryDelay ?? TimeSpan.FromMilliseconds(50);
+        this.retryDelay = delay > TimeSpan.FromSeconds(1) ? TimeSpan.FromSeconds(1) : delay;
     }
 
     /// <inheritdoc/>
@@ -136,12 +139,22 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
         }
         finally
         {
-            // Always release the scheduling latch and wake Flush waiters, even on an
-            // unexpected escape, so the queue can never wedge with workerScheduled stuck true.
             lock (sync)
             {
-                workerScheduled = false;
-                Monitor.PulseAll(sync);
+                // An Enqueue can land in the window between our pending-empty check above and here:
+                // it saw workerScheduled still true, so it added to pending WITHOUT scheduling a
+                // worker. If anything is pending, keep the latch and run another drain rather than
+                // stranding that write (which would also wedge Flush forever). Otherwise release the
+                // latch and wake Flush waiters.
+                if (pending.Count > 0)
+                {
+                    ThreadPool.UnsafeQueueUserWorkItem(static state => ((PersistenceQueue)state!).DrainPending(), this);
+                }
+                else
+                {
+                    workerScheduled = false;
+                    Monitor.PulseAll(sync);
+                }
             }
         }
     }

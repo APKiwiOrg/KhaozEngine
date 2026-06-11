@@ -119,9 +119,9 @@ public class DeterministicRngTests
     public void CreateDerived_KnownVectorLocksDerivation()
     {
         // Captured from the implementation: DeterministicRng(42).CreateDerived("combat").
-        // Locks hash (DJB2-xor) + combine (seed ^ (uint)hash) + splitmix64 + xorshift128+.
+        // Locks hash (64-bit DJB2-xor) + combine (seed ^ hash) + splitmix64 + xorshift128+.
         var r = new DeterministicRng(42).CreateDerived("combat");
-        ulong[] expected = { 8282211289345641777, 4911969048212868208, 2168842347878230391 };
+        ulong[] expected = { 9806816559159912542, 11064271574511955243, 16628530826375170203 };
         Assert.Equal(expected, new[] { r.NextULong(), r.NextULong(), r.NextULong() });
     }
 

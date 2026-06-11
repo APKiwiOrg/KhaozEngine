@@ -20,6 +20,17 @@ public class ParticleSystemTests
     }
 
     [Fact]
+    public void Emit_invertedRanges_throws()
+    {
+        var sys = NewSystem();
+        var badLife = ParticlePresets.Spark with { MinLife = 5f, MaxLife = 1f };
+        var badSpeed = ParticlePresets.Spark with { MinSpeed = 200f, MaxSpeed = 10f };
+
+        Assert.Throws<ArgumentException>(() => sys.Emit(badLife, Vector2.Zero, Color.Gray, 1));
+        Assert.Throws<ArgumentException>(() => sys.Emit(badSpeed, Vector2.Zero, Color.Gray, 1));
+    }
+
+    [Fact]
     public void Emit_beyond_capacity_recycles_oldest_slots()
     {
         var sys = NewSystem(poolSize: 4);

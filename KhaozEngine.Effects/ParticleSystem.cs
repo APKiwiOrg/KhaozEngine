@@ -62,6 +62,10 @@ public sealed class ParticleSystem
     {
         if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
         if (config is null) throw new ArgumentNullException(nameof(config));
+        if (config.MinLife > config.MaxLife)
+            throw new ArgumentException("MinLife must be <= MaxLife.", nameof(config));
+        if (config.MinSpeed > config.MaxSpeed)
+            throw new ArgumentException("MinSpeed must be <= MaxSpeed.", nameof(config));
         Color color = config.OverrideColor
             ?? Color.Lerp(baseColor, config.BlendTarget, config.BlendAmount);
 
@@ -144,8 +148,9 @@ public sealed class ParticleSystem
     }
 
     /// <summary>
-    /// Enumerates live particles as snapshots. For tests and custom rendering;
-    /// not used by the <see cref="Draw"/> hot path.
+    /// Enumerates live particles as snapshots. For tests and occasional inspection; not used by the
+    /// <see cref="Draw"/> hot path. Allocates an iterator per call, so prefer <see cref="Draw"/> for
+    /// per-frame rendering rather than enumerating this each frame.
     /// </summary>
     public IEnumerable<ParticleView> ActiveParticles()
     {

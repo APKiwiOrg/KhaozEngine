@@ -19,7 +19,7 @@ public interface IMusicBackend : IDisposable
     bool IsPlaying { get; }
 
     /// <summary>Attempts to load one track. Returns false if it could not be loaded.</summary>
-    bool TryLoadTrack(ContentManager content, string contentDirectory, string trackName, int trackIndex);
+    bool TryLoadTrack(ContentManager content, string contentDirectory, string trackName);
 
     /// <summary>Attempts to start the track at <paramref name="trackIndex"/> at the given volume.</summary>
     bool TryPlayTrack(int trackIndex, float volume);

@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading.Tasks;
 using KhaozEngine.App;
 using KhaozEngine.Diagnostics;
 using KhaozEngine.Persistence;
@@ -23,6 +24,36 @@ public class PersistenceQueueTests
 
             Assert.True(File.Exists(path));
             Assert.Equal("payload", File.ReadAllText(path));
+        }
+        finally { Cleanup(root); }
+    }
+
+    [Fact]
+    public void RapidInterleavedEnqueues_FlushDrainsEverything_NoHang()
+    {
+        string root = NewTempRoot();
+        try
+        {
+            using var queue = new PersistenceQueue();
+            const int n = 2000;
+            const int paths = 8;
+            for (int i = 0; i < n; i++)
+            {
+                queue.Enqueue(Path.Combine(root, $"f{i % paths}.json"), $"v{i}");
+            }
+
+            // The schedule-on-demand drain has a window where an Enqueue can land just as the worker
+            // is exiting; if mishandled it strands that write and Flush() wedges forever. Guard with a
+            // timeout so a regression fails loudly instead of hanging the suite.
+            bool flushed = Task.Run(() => queue.Flush()).Wait(TimeSpan.FromSeconds(15));
+            Assert.True(flushed, "Flush() did not complete - the queue wedged");
+
+            // Per-path last-writer-wins: the final value for path p is the largest i with i % paths == p.
+            for (int p = 0; p < paths; p++)
+            {
+                int last = n - paths + p;   // n % paths == 0
+                Assert.Equal($"v{last}", File.ReadAllText(Path.Combine(root, $"f{p}.json")));
+            }
         }
         finally { Cleanup(root); }
     }

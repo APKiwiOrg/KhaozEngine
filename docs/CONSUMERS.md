@@ -39,7 +39,7 @@ bumps a `<PackageReference>` or the engine ships a new version.
 
 | Project   | Project file                         | Input | Screens | UI    | Ecs   | Content | Diagnostics | Time  | App   | Localization | Persistence | Audio | Effects | Graphics |
 |-----------|--------------------------------------|-------|---------|-------|-------|---------|-------------|-------|-------|--------------|-------------|-------|---------|----------|
-| Hardpoint | `Hardpoint/Hardpoint.Core`           | 3.4.1 | 3.4.1   | 3.4.1 | 3.4.1 | 3.4.1   | 3.4.1       | –     | 3.4.1 | 3.4.1        | –           | –     | 3.4.1   | –        |
+| Hardpoint | `Hardpoint/Hardpoint.Core`           | 3.4.1 | 3.4.1   | 3.4.1 | 3.4.1 | 3.4.1   | 3.4.1       | –     | 3.4.1 | 3.4.1        | 3.4.1       | –     | 3.4.1   | –        |
 | Nullwake  | `Nullwake/Nullwake.Core`             | 3.4.0 | 3.4.0   | 3.4.0 | –     | 3.4.0   | 3.4.0       | 3.4.0 | 3.4.0 | 3.4.0        | 3.4.0       | 3.4.0 | 3.4.0   | –        |
 | SpaceGame | `SpaceGame/SpaceGame.Core`           | 3.4.1 | 3.4.1   | 3.4.1 | 3.4.1 | 3.4.1   | 3.4.1       | –     | 3.4.1 | 3.4.1        | 3.4.1       | 3.4.1 | –       | 3.4.1    |
 
@@ -51,7 +51,7 @@ scaled-dt usage.
 
 | Consumer  | Input | Screens | UI | Ecs | Content | Diagnostics |    Time      | App | Localization | Persistence | Audio | Effects | Graphics |
 |-----------|:-----:|:-------:|:--:|:---:|:-------:|:-----------:|:------------:|:---:|:------------:|:-----------:|:-----:|:-------:|:--------:|
-| Hardpoint |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |  ✓  |      ✓       |      –      |   –   |    ✓    |    –     |
+| Hardpoint |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |  ✓  |      ✓       |      ✓      |   –   |    ✓    |    –     |
 | Nullwake  |   ✓   |    ✓    | ✓  |  –  |    ✓    |      ✓      |      ✓       |  ✓  |      ✓       |      ✓      |   ✓   |    ✓    |    –     |
 | SpaceGame |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |  ✓  |      ✓       |      ✓      |   ✓   |    –    |    ✓     |
 
@@ -65,8 +65,11 @@ scaled-dt usage.
   (corrected the malformed default culture `en-EN` to `en-US`). `Effects.ParticleSystem` drives
   projectile-hit and enemy-death bursts (`Spark` preset), fed by new game-side `ProjectileSystem.Hit` /
   `DamageSystem.EnemyKilled` events; tower range rings drawn with `UI.PrimitiveRenderer.DrawRing`.
-  **Not adopted:** Persistence — campaign progress stays in-memory (`CampaignProgress`); its own
-  meta-progression sub-project still owns the save work. Audio — no audio assets yet. Graphics — the
+  Campaign progress persists via `Persistence`: `SettingsManager<CampaignSaveData>` over
+  `FileSettingsStorage` + a shared `PersistenceQueue` (`save.json` under `AppDataPaths`), seeded into
+  `CampaignProgress` on load and written on each level cleared; a `sanitizeOnLoad` hook dedupes ids and
+  null-guards the list. The campaign is a 10-level branching graph (linear opener, a two-route split
+  that merges, then a final stretch). **Not adopted:** Audio — no audio assets yet. Graphics — the
   map already runs on `PannableCanvas`, which owns its camera; the gameplay board is fixed-size.
   `Ecs.CreateDerived`/the `DeterministicRng` guards — the game uses no RNG.
 - **Nullwake** - on 3.4.0. Adopted Input/Screens/UI/Time/Content/Diagnostics/App/Localization/Persistence/Audio/Effects.
@@ -129,4 +132,4 @@ done
 > Persistence/Graphics adopted), then to 3.4.0 (save.json onto `SettingsManager<SaveData>` + `sanitizeOnLoad`;
 > then 3.4.1 routed music onto `AudioSystem`; Ecs.CreateDerived not adopted to preserve its lockstep baseline).
 
-_Last verified: 2026-06-12. Engine at 3.4.1 (AudioSystem partial-load name-alignment fix). Hardpoint row bumped 2.4.0 -> 3.4.1 (adopted Diagnostics/App/Localization/Effects; Persistence/Audio/Graphics/Ecs-RNG not adopted). SpaceGame row bumped to 3.4.1 (music adopted onto `AudioSystem`). Nullwake row at 3.4.0._
+_Last verified: 2026-06-12. Engine at 3.4.1 (AudioSystem partial-load name-alignment fix). Hardpoint row on 3.4.1 (adopted Diagnostics/App/Localization/Effects/Persistence; campaign progress now persists to save.json and the campaign is 10 levels; Audio/Graphics/Ecs-RNG not adopted). SpaceGame row bumped to 3.4.1 (music adopted onto `AudioSystem`). Nullwake row at 3.4.0._

@@ -87,6 +87,20 @@ public class SettingsManagerTests
     }
 
     [Fact]
+    public void Load_StorageThrows_RaisesSettingsLoaded_WithDefaults()
+    {
+        var storage = new FakeStorage { ThrowOnLoad = true };
+        var manager = new SettingsManager<Prefs>(storage);
+        Prefs? loadedArg = null;
+        manager.SettingsLoaded += p => loadedArg = p;
+
+        manager.Load();   // failure path must still fire SettingsLoaded with defaults
+
+        Assert.NotNull(loadedArg);
+        Assert.Equal(0, loadedArg!.Volume);
+    }
+
+    [Fact]
     public void Save_StorageThrows_Swallowed_AndLogsError()
     {
         var storage = new FakeStorage { ThrowOnSave = true };

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Microsoft.Xna.Framework.Content;
 using KhaozEngine.Audio;
 using Xunit;
@@ -237,5 +238,66 @@ public sealed class AudioSystemTests
         audio.Dispose();
 
         Assert.True(backend.Disposed);
+    }
+
+    [Fact]
+    public void PlayTrackByName_PlaysItAndSetsCurrentTrack()
+    {
+        var (audio, backend) = NewLoaded("a", "b", "c");
+        string? changed = "unset";
+        audio.TrackChanged += name => changed = name;
+
+        audio.PlayTrack("b");
+
+        Assert.Equal(1, backend.PlayedIndices[^1]);   // "b" is index 1
+        Assert.Equal("b", audio.CurrentTrack);
+        Assert.Equal("b", changed);
+    }
+
+    [Fact]
+    public void PlayTrackByIndex_PlaysIt()
+    {
+        var (audio, backend) = NewLoaded("a", "b", "c");
+        audio.PlayTrack(2);
+        Assert.Equal(2, backend.PlayedIndices[^1]);
+        Assert.Equal("c", audio.CurrentTrack);
+    }
+
+    [Fact]
+    public void PlayTrackByName_Unknown_IsLoggedNoOp()
+    {
+        var (audio, backend) = NewLoaded("a", "b");
+        audio.PlayTrack("nope");
+        Assert.Empty(backend.PlayedIndices);
+        Assert.Null(audio.CurrentTrack);
+    }
+
+    [Fact]
+    public void PlayTrackByIndex_OutOfRange_IsNoOp()
+    {
+        var (audio, backend) = NewLoaded("a", "b");
+        audio.PlayTrack(5);
+        audio.PlayTrack(-1);
+        Assert.Empty(backend.PlayedIndices);
+        Assert.Null(audio.CurrentTrack);
+    }
+
+    [Fact]
+    public void CurrentTrackIsNullBeforeAnyPlay()
+    {
+        var (audio, _) = NewLoaded("a", "b");
+        Assert.Null(audio.CurrentTrack);
+    }
+
+    [Fact]
+    public void DisablingMusicClearsCurrentTrack()
+    {
+        var (audio, _) = NewLoaded("a", "b");
+        string? last = "unset";
+        audio.PlayTrack("a");
+        audio.TrackChanged += n => last = n;
+        audio.MusicEnabled = false;
+        Assert.Null(audio.CurrentTrack);
+        Assert.Null(last);                 // TrackChanged(null) fired on stop
     }
 }

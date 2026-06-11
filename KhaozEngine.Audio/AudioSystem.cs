@@ -24,6 +24,7 @@ public sealed class AudioSystem : IDisposable
     private bool _loaded;
     private bool _started;
     private bool _musicEnabled = true;
+    private string? _currentTrack;
     private ContentManager? _content;
     private string? _contentDirectory;
 
@@ -123,6 +124,7 @@ public sealed class AudioSystem : IDisposable
                 else
                 {
                     _backend.Stop();
+                    ClearCurrentTrack();
                 }
             }
             catch (Exception)
@@ -142,6 +144,12 @@ public sealed class AudioSystem : IDisposable
             ApplyVolume();
         }
     }
+
+    /// <summary>Name of the track currently playing, or null when nothing is playing.</summary>
+    public string? CurrentTrack => _currentTrack;
+
+    /// <summary>Raised when <see cref="CurrentTrack"/> changes (including to null on stop).</summary>
+    public event Action<string?>? TrackChanged;
 
     /// <summary>
     /// Loads all registered music tracks for the active platform backend.
@@ -194,12 +202,84 @@ public sealed class AudioSystem : IDisposable
                 return;
             }
 
-            _lastTrackIndex = index;   // record only after a successful play
+            CommitPlayed(index);   // record + now-playing state, only after a successful play
         }
         catch (Exception)
         {
             _available = false;
         }
+    }
+
+    // Records a just-played track index and updates the now-playing state. Marks playback as started
+    // so Update()'s deferred first-play does not fire a second track. Fires TrackChanged only when the
+    // current track NAME actually changes (a RepeatOne replay of the same track does not re-fire).
+    private void CommitPlayed(int index)
+    {
+        _lastTrackIndex = index;
+        _started = true;
+        string? name = (index >= 0 && index < _trackNames.Count) ? _trackNames[index] : null;
+        if (_currentTrack != name)
+        {
+            _currentTrack = name;
+            TrackChanged?.Invoke(name);
+        }
+    }
+
+    private void ClearCurrentTrack()
+    {
+        if (_currentTrack is not null)
+        {
+            _currentTrack = null;
+            TrackChanged?.Invoke(null);
+        }
+    }
+
+    /// <summary>
+    /// Plays the registered track at <paramref name="index"/> (index into the registration order).
+    /// Out-of-range index logs a warning and is a no-op. Honours <see cref="MusicEnabled"/> and the
+    /// availability latch, like <see cref="PlayRandomTrack"/>.
+    /// </summary>
+    public void PlayTrack(int index)
+    {
+        int trackCount = _backend.TrackCount;
+        if (trackCount == 0 || !_available || !_musicEnabled) return;
+
+        if (index < 0 || index >= trackCount)
+        {
+            _logger.Warn($"Audio: PlayTrack index {index} out of range (0..{trackCount - 1}); ignoring.");
+            return;
+        }
+
+        try
+        {
+            if (!_backend.TryPlayTrack(index, _masterVolume * _musicVolume))
+            {
+                _available = false;
+                return;
+            }
+
+            CommitPlayed(index);
+        }
+        catch (Exception)
+        {
+            _available = false;
+        }
+    }
+
+    /// <summary>
+    /// Plays the registered track named <paramref name="name"/>. An unknown name logs a warning and
+    /// is a no-op (no throw).
+    /// </summary>
+    public void PlayTrack(string name)
+    {
+        int index = _trackNames.IndexOf(name);
+        if (index < 0)
+        {
+            _logger.Warn($"Audio: PlayTrack unknown track '{name}'; ignoring.");
+            return;
+        }
+
+        PlayTrack(index);
     }
 
     /// <summary>

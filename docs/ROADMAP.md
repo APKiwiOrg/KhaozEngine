@@ -19,8 +19,13 @@ needs no changes:
 - Parallax background layers off the same camera
 - Smooth zoom
 
-Motivated by a planned platformer / side-scroller. Nullwake's existing OreField follow-cam should
-eventually compose this instead of its own math. (Base design: `docs/superpowers/specs/2026-06-11-graphics-camera2d-design.md`.)
+Motivated by a planned platformer / side-scroller. (Base design:
+`docs/superpowers/specs/2026-06-11-graphics-camera2d-design.md`.)
+
+Note: `Camera2D` is a uniform full-viewport projection. Nullwake's camera does NOT use it (its
+`OreField.RefToScreen` is a non-uniform scale into a screen sub-rect - a different model with nothing
+to delete, see CONSUMERS.md). Converging Nullwake later would require adding sub-viewport +
+non-uniform-scale support to the camera, or Nullwake's projection stays game-specific.
 
 ## Screen shake (`KhaozEngine.Effects`)
 

@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Graphics</PackageId>
+    <Description>Game-agnostic 2D matrix camera (Camera2D): position/zoom/rotation to view matrix, screen&lt;-&gt;world transforms, optional world-bounds clamp. Headless (no GraphicsDevice required for the math).</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.*" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
+using KhaozEngine.UI;
 
 namespace KhaozEngine.Effects;
 
@@ -154,6 +156,22 @@ public sealed class ParticleSystem
             yield return new ParticleView(
                 new Vector2(p.X, p.Y), new Vector2(p.VelX, p.VelY),
                 p.Color, CurrentSize(p), p.Life, p.MaxLife);
+        }
+    }
+
+    /// <summary>Draws all live particles as small filled rectangles, fading out over life.</summary>
+    public void Draw(SpriteBatch spriteBatch, PrimitiveRenderer renderer)
+    {
+        for (int i = 0; i < _particles.Length; i++)
+        {
+            ref Particle p = ref _particles[i];
+            if (p.Life <= 0f) continue;
+
+            float alpha = p.Life / p.MaxLife;
+            int pixelSize = Math.Max(1, (int)(CurrentSize(p) + 0.5f));
+            renderer.DrawFilledRect(spriteBatch,
+                new Rectangle((int)p.X - pixelSize / 2, (int)p.Y - pixelSize / 2, pixelSize, pixelSize),
+                p.Color * alpha);
         }
     }
 }

@@ -87,4 +87,28 @@ public class ParticleSystemTests
         float vy1 = sys.ActiveParticles().Single().Velocity.Y;
         Assert.True(vy1 > vy0, "downward gravity should increase Y velocity");
     }
+
+    [Fact]
+    public void Spark_size_is_constant_over_life()
+    {
+        var sys = NewSystem(poolSize: 1);
+        sys.Emit(ParticlePresets.Spark, new Vector2(0, 0), Color.Gray, 1);
+        Assert.Equal(2f, sys.ActiveParticles().Single().Size, 3);
+        sys.Update(0.1);
+        Assert.Equal(2f, sys.ActiveParticles().Single().Size, 3);
+    }
+
+    [Fact]
+    public void Ember_size_shrinks_toward_end_factor()
+    {
+        var sys = NewSystem(poolSize: 1);
+        sys.Emit(ParticlePresets.Ember, new Vector2(0, 0), Color.Gray, 1);
+        float sizeAtSpawn = sys.ActiveParticles().Single().Size;
+        sys.Update(0.2);
+        var p = sys.ActiveParticles().Single();
+        float t = p.Life / p.MaxLife;
+        float expected = 3f * (0.3f + 0.7f * t);
+        Assert.Equal(expected, p.Size, 3);
+        Assert.True(p.Size < sizeAtSpawn, "ember shrinks as it ages");
+    }
 }

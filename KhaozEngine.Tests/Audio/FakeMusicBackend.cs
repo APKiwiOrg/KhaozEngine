@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Microsoft.Xna.Framework.Content;
 using KhaozEngine.Audio;
@@ -17,7 +18,24 @@ internal sealed class FakeMusicBackend : IMusicBackend
 
     public string Name => "Fake";
     public int TrackCount => LoadedTracks.Count;
-    public bool IsPlaying { get; set; }
+    private bool _isPlaying;
+
+    /// <summary>When &gt; 0, the next read of <see cref="IsPlaying"/> throws and decrements this.</summary>
+    public int ThrowOnNextIsPlayingReads { get; set; }
+
+    public bool IsPlaying
+    {
+        get
+        {
+            if (ThrowOnNextIsPlayingReads > 0)
+            {
+                ThrowOnNextIsPlayingReads--;
+                throw new InvalidOperationException("Transient IsPlaying read failure (test).");
+            }
+            return _isPlaying;
+        }
+        set => _isPlaying = value;
+    }
 
     public bool TryLoadTrack(ContentManager content, string contentDirectory, string trackName)
     {

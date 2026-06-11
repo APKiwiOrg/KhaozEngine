@@ -34,8 +34,10 @@ public sealed class AudioSystem : IDisposable
     /// <param name="trackNames">Optional initial track names (content asset names, no extension).</param>
     /// <param name="logger">Optional logger; defaults to the ambient <c>Log</c> facade.</param>
     public AudioSystem(IEnumerable<string>? trackNames = null, ILogger? logger = null)
-        : this(CreateBackend(logger ?? Log.For<AudioSystem>()), trackNames, logger)
     {
+        _logger = logger ?? Log.For<AudioSystem>();
+        _backend = CreateBackend(_logger);
+        _trackNames = trackNames is null ? new List<string>() : new List<string>(trackNames);
     }
 
     /// <summary>

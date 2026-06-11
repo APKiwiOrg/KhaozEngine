@@ -13,6 +13,7 @@ public sealed class SettingsManager<T> where T : new()
 {
     private readonly ISettingsStorage storage;
     private readonly ILogger? logger;
+    private readonly Func<T, T>? sanitizeOnLoad;
     private T settings = new();
 
     /// <summary>The underlying storage.</summary>
@@ -32,11 +33,20 @@ public sealed class SettingsManager<T> where T : new()
     public event Action<T>? SettingsSaved;
 
     /// <summary>Creates a manager over <paramref name="storage"/> and immediately loads.</summary>
+    /// <param name="storage">Backing storage.</param>
+    /// <param name="logger">Optional logger for swallowed load/save failures.</param>
+    /// <param name="sanitizeOnLoad">
+    /// Optional hook applied to the deserialized value after EVERY load, including the initial load
+    /// in this constructor (which fires before any caller can subscribe to <see cref="SettingsLoaded"/>).
+    /// Clamp fields, migrate a schema-version field, etc.; return the sanitized object, which becomes
+    /// <see cref="Settings"/>. A hook that throws is swallowed/logged and the unsanitized value is used.
+    /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="storage"/> is null.</exception>
-    public SettingsManager(ISettingsStorage storage, ILogger? logger = null)
+    public SettingsManager(ISettingsStorage storage, ILogger? logger = null, Func<T, T>? sanitizeOnLoad = null)
     {
         this.storage = storage ?? throw new ArgumentNullException(nameof(storage));
         this.logger = logger;
+        this.sanitizeOnLoad = sanitizeOnLoad;
         Load();
     }
 
@@ -54,19 +64,36 @@ public sealed class SettingsManager<T> where T : new()
         }
     }
 
-    /// <summary>Loads settings, falling back to defaults on failure. Always raises <see cref="SettingsLoaded"/>.</summary>
+    /// <summary>
+    /// Loads settings, falling back to defaults on failure, then applies the optional sanitize hook.
+    /// Always raises <see cref="SettingsLoaded"/>.
+    /// </summary>
     public void Load()
     {
+        T loaded;
         try
         {
-            settings = storage.LoadSettings<T>() ?? new T();
+            loaded = storage.LoadSettings<T>() ?? new T();
         }
         catch (Exception ex)
         {
             logger?.Error("Failed to load settings; using defaults.", ex);
-            settings = new T();
+            loaded = new T();
         }
 
+        if (sanitizeOnLoad is not null)
+        {
+            try
+            {
+                loaded = sanitizeOnLoad(loaded) ?? loaded;
+            }
+            catch (Exception ex)
+            {
+                logger?.Error("sanitizeOnLoad threw; using unsanitized value.", ex);
+            }
+        }
+
+        settings = loaded;
         SettingsLoaded?.Invoke(settings);
     }
 }

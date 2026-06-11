@@ -141,4 +141,43 @@ public class SettingsManagerTests
             if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
         }
     }
+
+    // Tests for the sanitizeOnLoad hook.
+
+    private sealed class Box { public int Value { get; set; } }
+
+    [Fact]
+    public void SanitizeOnLoad_RunsOnInitialCtorLoad()
+    {
+        var storage = new FakeStorage { ToLoad = new Box { Value = 999 } };
+        var mgr = new SettingsManager<Box>(storage, logger: null, sanitizeOnLoad: b => { b.Value = Math.Min(b.Value, 100); return b; });
+        Assert.Equal(100, mgr.Settings.Value);   // clamped on the FIRST load, before any caller could subscribe
+    }
+
+    [Fact]
+    public void SanitizeOnLoad_RunsOnReload()
+    {
+        var storage = new FakeStorage { ToLoad = new Box { Value = 5 } };
+        var mgr = new SettingsManager<Box>(storage, logger: null, sanitizeOnLoad: b => { b.Value += 1; return b; });
+        Assert.Equal(6, mgr.Settings.Value);
+        storage.ToLoad = new Box { Value = 50 };
+        mgr.Load();
+        Assert.Equal(51, mgr.Settings.Value);    // hook ran again on reload
+    }
+
+    [Fact]
+    public void SanitizeOnLoad_Null_IsPassthrough()
+    {
+        var storage = new FakeStorage { ToLoad = new Box { Value = 7 } };
+        var mgr = new SettingsManager<Box>(storage);   // no hook
+        Assert.Equal(7, mgr.Settings.Value);
+    }
+
+    [Fact]
+    public void SanitizeOnLoad_ClampedValueIsWhatSettingsExposes()
+    {
+        var storage = new FakeStorage { ToLoad = new Box { Value = -40 } };
+        var mgr = new SettingsManager<Box>(storage, logger: null, sanitizeOnLoad: b => { b.Value = Math.Max(b.Value, 0); return b; });
+        Assert.Equal(0, mgr.Settings.Value);
+    }
 }

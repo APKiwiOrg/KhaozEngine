@@ -109,6 +109,31 @@ public sealed class ParticleSystem
         }
     }
 
+    /// <summary>Advances all live particles by <paramref name="realDeltaSeconds"/>.</summary>
+    public void Update(double realDeltaSeconds)
+    {
+        float dt = (float)realDeltaSeconds;
+        for (int i = 0; i < _particles.Length; i++)
+        {
+            ref Particle p = ref _particles[i];
+            if (p.Life <= 0f) continue;
+
+            p.Life -= dt;
+            if (p.Life <= 0f) { p.Life = 0f; continue; }
+
+            p.VelX += p.AccelX * dt;
+            p.VelY += p.AccelY * dt;
+            p.X += p.VelX * dt;
+            p.Y += p.VelY * dt;
+
+            if (p.SwayAmplitude > 0f)
+            {
+                float elapsed = p.MaxLife - p.Life;
+                p.X += (float)Math.Sin(elapsed * p.SwayFrequency + p.Phase) * p.SwayAmplitude * dt;
+            }
+        }
+    }
+
     /// <summary>Current draw size for a particle given its life fraction.</summary>
     private static float CurrentSize(in Particle p)
     {

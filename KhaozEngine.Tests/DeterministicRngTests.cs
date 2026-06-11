@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using KhaozEngine.Ecs;
 using Xunit;
@@ -123,6 +124,32 @@ public class DeterministicRngTests
         var r = new DeterministicRng(42).CreateDerived("combat");
         ulong[] expected = { 9806816559159912542, 11064271574511955243, 16628530826375170203 };
         Assert.Equal(expected, new[] { r.NextULong(), r.NextULong(), r.NextULong() });
+    }
+
+    [Fact]
+    public void Next_NonPositiveMax_Throws()
+    {
+        var rng = new DeterministicRng(1);
+        Assert.Throws<ArgumentOutOfRangeException>(() => rng.Next(0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => rng.Next(-5));
+    }
+
+    [Fact]
+    public void NextRange_MaxNotAboveMin_Throws()
+    {
+        var rng = new DeterministicRng(1);
+        Assert.Throws<ArgumentOutOfRangeException>(() => rng.Next(5, 5));
+        Assert.Throws<ArgumentOutOfRangeException>(() => rng.Next(5, 3));
+    }
+
+    [Fact]
+    public void Next_ValidRanges_StillWork()
+    {
+        var rng = new DeterministicRng(1);
+        int a = rng.Next(10);
+        Assert.InRange(a, 0, 9);
+        int b = rng.Next(-3, 4);
+        Assert.InRange(b, -3, 3);
     }
 
     [Fact]

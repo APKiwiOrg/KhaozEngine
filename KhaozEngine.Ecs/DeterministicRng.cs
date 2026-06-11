@@ -47,10 +47,22 @@ public sealed class DeterministicRng
     public float NextFloat() => (float)NextDouble();
 
     /// <summary>An int in [0, <paramref name="maxExclusive"/>). Uses modulo (negligible bias for game ranges).</summary>
-    public int Next(int maxExclusive) => (int)(NextULong() % (ulong)maxExclusive);
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxExclusive"/> is &lt;= 0.</exception>
+    public int Next(int maxExclusive)
+    {
+        if (maxExclusive <= 0)
+            throw new ArgumentOutOfRangeException(nameof(maxExclusive), maxExclusive, "maxExclusive must be positive.");
+        return (int)(NextULong() % (ulong)maxExclusive);
+    }
 
     /// <summary>An int in [<paramref name="minInclusive"/>, <paramref name="maxExclusive"/>).</summary>
-    public int Next(int minInclusive, int maxExclusive) => minInclusive + Next(maxExclusive - minInclusive);
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxExclusive"/> is &lt;= <paramref name="minInclusive"/>.</exception>
+    public int Next(int minInclusive, int maxExclusive)
+    {
+        if (maxExclusive <= minInclusive)
+            throw new ArgumentOutOfRangeException(nameof(maxExclusive), maxExclusive, "maxExclusive must be greater than minInclusive.");
+        return minInclusive + Next(maxExclusive - minInclusive);
+    }
 
     /// <summary>
     /// Returns a new generator whose stream is a stable function of THIS generator's

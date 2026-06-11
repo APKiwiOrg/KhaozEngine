@@ -2,6 +2,16 @@
 
 All notable changes to KhaozEngine. Versions are shared across all packages.
 
+## KhaozEngine 3.4.1
+
+Bug fix for the 3.4.0 now-playing feature. No API or behaviour change for callers whose tracks all load.
+
+- **KhaozEngine.Audio** - `AudioSystem.LoadContent` now drops any track that fails to load from its
+  internal name list, keeping it aligned with the backend's compact track list. Previously a partial
+  load failure left the names and the backend's indices misaligned, so `CurrentTrack` / `TrackChanged`
+  reported the wrong song and `PlayTrack(name)` could resolve to the wrong index. The load log still
+  reports `loaded/requested` against the originally requested count.
+
 ## KhaozEngine 3.4.0
 
 Additive feature pass unblocking SpaceGame/Nullwake adoption, plus review-nit fixes. No breaking changes.

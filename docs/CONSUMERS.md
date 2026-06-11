@@ -3,7 +3,11 @@
 Which game uses which packages, at which version. Update this whenever a consumer
 bumps a `<PackageReference>` or the engine ships a new version.
 
-**Engine current version:** `3.4.0` (all packages share one version, set in `Directory.Build.props`).
+**Engine current version:** `3.4.1` (all packages share one version, set in `Directory.Build.props`).
+
+> 3.4.1 fixes a 3.4.0 bug: `AudioSystem.LoadContent` now drops failed-to-load tracks so its name
+> list stays aligned with the backend, keeping `CurrentTrack`/`TrackChanged`/`PlayTrack(name)` correct
+> after a partial load failure. No API change. SpaceGame adopts it for the deferred music/now-playing work.
 
 > 3.4.0 extends `KhaozEngine.Persistence` (`SettingsManager<T>` `sanitizeOnLoad` hook) and
 > `KhaozEngine.Audio` (`AudioSystem` `PlayTrack`/`PlayMode`/`CurrentTrack`/`TrackChanged`, plus the
@@ -37,7 +41,7 @@ bumps a `<PackageReference>` or the engine ships a new version.
 |-----------|--------------------------------------|-------|---------|-------|-------|---------|-------------|-------|-------|--------------|-------------|-------|---------|----------|
 | Hardpoint | `Hardpoint/Hardpoint.Core`           | 2.4.0 | 2.4.0   | 2.4.0 | 2.4.0 | 2.4.0   | –           | –     | –     | –            | –           | –     | –       | –        |
 | Nullwake  | `Nullwake/Nullwake.Core`             | 3.4.0 | 3.4.0   | 3.4.0 | –     | 3.4.0   | 3.4.0       | 3.4.0 | 3.4.0 | 3.4.0        | 3.4.0       | 3.4.0 | 3.4.0   | –        |
-| SpaceGame | `SpaceGame/SpaceGame.Core`           | 3.3.0 | 3.3.0   | 3.3.0 | 3.3.0 | 3.3.0   | 3.3.0       | –     | 3.3.0 | 3.3.0        | 3.3.0       | –     | –       | 3.3.0    |
+| SpaceGame | `SpaceGame/SpaceGame.Core`           | 3.4.0 | 3.4.0   | 3.4.0 | 3.4.0 | 3.4.0   | 3.4.0       | –     | 3.4.0 | 3.4.0        | 3.4.0       | –     | –       | 3.4.0    |
 
 ## Adoption matrix
 
@@ -67,18 +71,21 @@ scaled-dt usage.
   `SettingsManager`. **Graphics not adopted:** `OreField.RefToScreen` is a non-uniform fit-into-sub-rectangle
   projection, incompatible with `Camera2D`'s uniform full-viewport matrix. **Ecs not yet adopted:**
   `DeterministicRng` swap is a planned follow-up; still on `GameRng`.
-- **SpaceGame** — on 3.3.0. Adopted Input/Screens/UI/Ecs/Content/Diagnostics + App/Localization/
+- **SpaceGame** — on 3.4.0. Adopted Input/Screens/UI/Ecs/Content/Diagnostics + App/Localization/
   Persistence/Graphics. First consumer of `Graphics` (`Camera2D`, headless with a per-frame Viewport
   sync). Logging via the engine `Log` service (FileSink + ConsoleSink + `CrashHandler`, configured at
   startup; flushes the persistence queue + `Log.Shutdown` on exit). `AppDataPaths` + `BuildMetadata`
   from `App`; `LocalizationManager` from `Localization` (corrected the malformed default culture to
   `en-US`); settings + leaderboard persistence on `SettingsManager<T>` + `FileSettingsStorage` over one
-  shared `PersistenceQueue`. **Deferred to a 3.4.0 follow-up:** `save.json`/`SaveSystem` (awaiting the
-  `sanitizeOnLoad` hook) and music (`AudioVolumeMixer`/`MusicPlaybackController`, awaiting KE.Audio
-  `PlayTrack`/`PlayMode`); SFX volume stays game-side (KE.Audio is music-only). **Not adopted:**
-  `Ecs.CreateDerived` — it would move SpaceGame's multiplayer lockstep determinism baseline. Deterministic
-  lockstep: vendors `KhaozEngine.Time` transitively via Screens, reads no scaled dt
-  (no `GameClock`/`TimeScale`/`TimeSkip`), and must keep it that way.
+  shared `PersistenceQueue`. `save.json` now also runs on `SettingsManager<SaveData>` with the 3.4.0
+  `sanitizeOnLoad` hook (sanitizes on every load incl. the first; `[JsonExtensionData]` + `SchemaVersion`
+  round-trip keeps downgrade safety); the hand-rolled `SaveSystem` static was deleted (the `SaveData` DTO
+  stays) and writes flow through the shared `PersistenceQueue`. **Deferred to a 3.4.1 follow-up:** music
+  (`AudioVolumeMixer`/`MusicPlaybackController` → KE.Audio `PlayTrack`/`PlayMode.RepeatOne` + a now-playing
+  overlay wired to `CurrentTrack`/`TrackChanged`); SFX volume stays game-side (KE.Audio is music-only).
+  **Not adopted:** `Ecs.CreateDerived` — it would move SpaceGame's multiplayer lockstep determinism
+  baseline. Deterministic lockstep: vendors `KhaozEngine.Time` transitively via Screens, reads no scaled
+  dt (no `GameClock`/`TimeScale`/`TimeSkip`), and must keep it that way.
 
 ## Repo locations
 
@@ -105,7 +112,7 @@ done
 > Nullwake migrated to 3.3.0 (Diagnostics/App/Localization/Persistence/Audio/Effects all adopted;
 > Graphics and Ecs deferred), then version-bumped to 3.4.0 (free AudioSystem IsPlaying-read resilience
 > fix; new music modes assessed but not adopted). SpaceGame migrated to 3.3.0 on main (Diagnostics/App/Localization/
-> Persistence/Graphics adopted; save.json + music deferred to a 3.4.0 follow-up; Ecs.CreateDerived not
-> adopted to preserve its lockstep baseline).
+> Persistence/Graphics adopted), then to 3.4.0 (save.json onto `SettingsManager<SaveData>` + `sanitizeOnLoad`;
+> music deferred to a 3.4.1 follow-up; Ecs.CreateDerived not adopted to preserve its lockstep baseline).
 
-_Last verified: 2026-06-11. Nullwake row bumped to 3.4.0 (version-only bump; free AudioSystem IsPlaying-read resilience fix, music modes not adopted). SpaceGame/Hardpoint rows unchanged._
+_Last verified: 2026-06-11. Engine at 3.4.1 (AudioSystem partial-load name-alignment fix). SpaceGame row bumped to 3.4.0 (save.json adopted). Nullwake row at 3.4.0; Hardpoint unchanged._

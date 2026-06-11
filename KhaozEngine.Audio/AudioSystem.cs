@@ -164,12 +164,21 @@ public sealed class AudioSystem : IDisposable
             AppDomain.CurrentDomain.BaseDirectory, content.RootDirectory);
         _logger.Info($"Audio: using {_backend.Name} backend");
 
+        // Keep _trackNames aligned with the backend's compact track list: drop any that fail to load,
+        // so name lookups (CurrentTrack, PlayTrack(name)) resolve to the right track even after a
+        // partial-load failure.
+        int requested = _trackNames.Count;
+        int kept = 0;
         for (int i = 0; i < _trackNames.Count; i++)
         {
-            _backend.TryLoadTrack(content, _contentDirectory, _trackNames[i]);
+            if (_backend.TryLoadTrack(content, _contentDirectory, _trackNames[i]))
+            {
+                _trackNames[kept++] = _trackNames[i];
+            }
         }
+        _trackNames.RemoveRange(kept, _trackNames.Count - kept);
 
-        _logger.Info($"Audio: {_backend.TrackCount}/{_trackNames.Count} tracks loaded");
+        _logger.Info($"Audio: {_backend.TrackCount}/{requested} tracks loaded");
         _loaded = true;
 
         // Apply volume that was set during construction (before native audio was ready)

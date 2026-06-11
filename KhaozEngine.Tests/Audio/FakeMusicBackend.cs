@@ -16,6 +16,9 @@ internal sealed class FakeMusicBackend : IMusicBackend
     public bool LoadSucceeds { get; set; } = true;
     public bool PlaySucceeds { get; set; } = true;
 
+    /// <summary>Track names whose load should fail, on top of the global <see cref="LoadSucceeds"/>.</summary>
+    public HashSet<string> FailTracks { get; } = new();
+
     public string Name => "Fake";
     public int TrackCount => LoadedTracks.Count;
     private bool _isPlaying;
@@ -39,7 +42,7 @@ internal sealed class FakeMusicBackend : IMusicBackend
 
     public bool TryLoadTrack(ContentManager content, string contentDirectory, string trackName)
     {
-        if (!LoadSucceeds) return false;
+        if (!LoadSucceeds || FailTracks.Contains(trackName)) return false;
         LoadedTracks.Add(trackName);
         return true;
     }

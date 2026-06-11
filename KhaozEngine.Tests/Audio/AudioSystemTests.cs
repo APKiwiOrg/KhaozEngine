@@ -340,6 +340,24 @@ public sealed class AudioSystemTests
     }
 
     [Fact]
+    public void PartialLoadFailure_KeepsNamesAlignedSoCurrentTrackIsCorrect()
+    {
+        // "b" fails to load: the backend's track list compacts to [a, c]. AudioSystem must compact its
+        // own name list to match, or name<->index lookups drift and CurrentTrack reports the wrong song.
+        var backend = new FakeMusicBackend();
+        backend.FailTracks.Add("b");
+        var audio = new AudioSystem(backend, new[] { "a", "b", "c" });
+        audio.LoadContent(new ContentManager(new StubServiceProvider()));
+
+        Assert.Equal(new[] { "a", "c" }, backend.LoadedTracks);   // "b" skipped
+        Assert.Equal(2, backend.TrackCount);
+
+        audio.PlayTrack("c");
+        Assert.Equal(1, backend.PlayedIndices[^1]);   // "c" is now compact index 1, not 2
+        Assert.Equal("c", audio.CurrentTrack);        // and the now-playing name resolves correctly
+    }
+
+    [Fact]
     public void Update_TransientIsPlayingError_SkipsFrameAndStaysAvailable()
     {
         var (audio, backend) = NewLoaded("a", "b");

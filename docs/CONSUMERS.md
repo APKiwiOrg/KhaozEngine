@@ -15,8 +15,8 @@ bumps a `<PackageReference>` or the engine ships a new version.
 > pooled `ParticleSystem` + `Spark`/`Ember` presets), `KhaozEngine.Graphics` (`Camera2D`). Extended:
 > `KhaozEngine.Persistence` gains `AtomicJsonWriter`/`PersistenceQueue` + `SettingsManager<T>` (and now
 > references `KhaozEngine.App`); `KhaozEngine.Ecs` gains `DeterministicRng.CreateDerived`. None of the
-> Batch 2 additions is adopted by a consumer yet, so the matrices below are unchanged; add columns when
-> a game first pins one.
+> Batch 2 additions is now adopted by Nullwake (App, Localization, Persistence, Audio, Effects) at 3.3.0;
+> the matrices below include columns for all of them.
 
 > 3.2.0 adds three pure-.NET packages from the "promote into KE" batch: `KhaozEngine.App`
 > (`BuildMetadata`, `AppDataPaths`, `ServiceLocator`), `KhaozEngine.Localization`

@@ -32,11 +32,11 @@ bumps a `<PackageReference>` or the engine ships a new version.
 `–` = package not referenced directly by that project. `Time` is pulled in transitively by
 `Screens` 2.2.0+; consumers vendor `KhaozEngine.Time` even without a direct reference.
 
-| Project   | Project file                         | Input | Screens | UI    | Ecs   | Content | Diagnostics | Time |
-|-----------|--------------------------------------|-------|---------|-------|-------|---------|-------------|------|
-| Hardpoint | `Hardpoint/Hardpoint.Core`           | 2.4.0 | 2.4.0   | 2.4.0 | 2.4.0 | 2.4.0   | –           | –    |
-| Nullwake  | `Nullwake/Nullwake.Core`             | 3.0.0 | 3.0.0   | 3.0.0 | –     | 3.0.0   | –           | 3.0.0|
-| SpaceGame | `SpaceGame/SpaceGame.Core`           | 3.0.0 | 3.0.0   | 3.0.0 | 3.0.0 | 3.0.0   | 3.0.0       | –    |
+| Project   | Project file                         | Input | Screens | UI    | Ecs   | Content | Diagnostics | Time  | App   | Localization | Persistence | Audio | Effects |
+|-----------|--------------------------------------|-------|---------|-------|-------|---------|-------------|-------|-------|--------------|-------------|-------|---------|
+| Hardpoint | `Hardpoint/Hardpoint.Core`           | 2.4.0 | 2.4.0   | 2.4.0 | 2.4.0 | 2.4.0   | –           | –     | –     | –            | –           | –     | –       |
+| Nullwake  | `Nullwake/Nullwake.Core`             | 3.3.0 | 3.3.0   | 3.3.0 | –     | 3.3.0   | 3.3.0       | 3.3.0 | 3.3.0 | 3.3.0        | 3.3.0       | 3.3.0 | 3.3.0   |
+| SpaceGame | `SpaceGame/SpaceGame.Core`           | 3.0.0 | 3.0.0   | 3.0.0 | 3.0.0 | 3.0.0   | 3.0.0       | –     | –     | –            | –           | –     | –       |
 
 ## Adoption matrix
 
@@ -44,20 +44,23 @@ Which packages each consumer pulls in. `✓` = direct `<PackageReference>`, `–
 `(transitive)` = vendored via `Screens` 2.2.0+ but no direct reference and (for `Time`) no
 scaled-dt usage.
 
-| Consumer  | Input | Screens | UI | Ecs | Content | Diagnostics |    Time      |
-|-----------|:-----:|:-------:|:--:|:---:|:-------:|:-----------:|:------------:|
-| Hardpoint |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      –      | (transitive) |
-| Nullwake  |   ✓   |    ✓    | ✓  |  –  |    ✓    |      –      |      ✓       |
-| SpaceGame |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |
+| Consumer  | Input | Screens | UI | Ecs | Content | Diagnostics |    Time      | App | Localization | Persistence | Audio | Effects |
+|-----------|:-----:|:-------:|:--:|:---:|:-------:|:-----------:|:------------:|:---:|:------------:|:-----------:|:-----:|:-------:|
+| Hardpoint |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      –      | (transitive) |  –  |      –       |      –      |   –   |    –    |
+| Nullwake  |   ✓   |    ✓    | ✓  |  –  |    ✓    |      ✓      |      ✓       |  ✓  |      ✓       |      ✓      |   ✓   |    ✓    |
+| SpaceGame |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |  –  |      –       |      –      |   –   |    –    |
 
 ## Notes
 
 - **Hardpoint** — fully migrated, tracks latest (2.4.0). First consumer of
   `KhaozEngine.Content` (JSON schema validation at build). Has not adopted `Diagnostics` (no file
   logger of its own yet; a candidate to migrate).
-- **Nullwake** — on main, pins Input/Screens/UI/`Time`/`Content` at 3.0.0 (its `Time` reference is
-  direct, not transitive). Has **not** adopted `Diagnostics`: it still runs its own in-house `GameLogger`,
-  so the migration to the engine `Log` service is pending. No ECS.
+- **Nullwake** — on 3.3.0. Adopted Input/Screens/UI/Time/Content/Diagnostics/App/Localization/Persistence/Audio/Effects.
+  `GameLogger` replaced by engine `Log` + `CrashHandler` (configured via `LogBootstrap`). Uses `AppDataPaths`,
+  `ServiceLocator`, `BuildMetadata`, `SaveEncoder` + `AtomicJsonWriter`, `AudioSystem`, and `Effects.ParticleSystem`.
+  **Graphics not adopted:** `OreField.RefToScreen` is a non-uniform fit-into-sub-rectangle projection,
+  incompatible with `Camera2D`'s uniform full-viewport matrix. **Ecs not yet adopted:** `DeterministicRng`
+  swap is a planned follow-up; still on `GameRng`.
 - **SpaceGame** — uses Input/Screens/UI/Ecs/Content + `Diagnostics` (3.0.0). UI is `TextInputHandler`
   for its prompt screens. First consumer of `KhaozEngine.Diagnostics`: its logging goes through the
   engine `Log` service (`KhaozEngine.Diagnostics`); the game configures sinks + `AppDataPaths` at
@@ -86,11 +89,8 @@ for d in ~/Hardpoint ~/Nullwake ~/SpaceGame; do
 done
 ```
 
-> Nullwake's `Content`/`Time` adoption already landed on main; its `Diagnostics`/logging migration is
-> still pending. SpaceGame's Bucket A (TextInputHandler→engine, UI/Content) work is on feature branches,
-> re-pinned to 3.0.0; not yet merged.
->
-> The 3.2.0 packages (`App`, `Localization`, `Persistence`) are not yet referenced by any consumer, so
-> they have no matrix columns; add them when a game first pins one.
+> Nullwake migrated to 3.3.0 (Diagnostics/App/Localization/Persistence/Audio/Effects all adopted;
+> Graphics and Ecs deferred). SpaceGame's Bucket A (TextInputHandler→engine, UI/Content) work is on
+> feature branches, re-pinned to 3.0.0; not yet merged.
 
-_Last verified: 2026-06-11 against engine 3.2.0 (consumer rows checked against each game's main checkout)._
+_Last verified: 2026-06-11 against engine 3.3.0 (consumer rows checked against each game's main checkout)._

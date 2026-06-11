@@ -128,7 +128,7 @@ public class SettingsManagerTests
             var paths = new AppDataPaths("Item10Settings", env);
             File.WriteAllText(paths.GetFilePath("settings.json"), "not-json{{");
 
-            var storage = new FileSettingsStorage(paths, new TempDirectPersistenceQueue());
+            var storage = new FileSettingsStorage(paths, new PersistenceQueue());
             var logger = new FakeLogger();
 
             var manager = new SettingsManager<Prefs>(storage, logger);

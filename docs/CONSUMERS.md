@@ -3,7 +3,15 @@
 Which game uses which packages, at which version. Update this whenever a consumer
 bumps a `<PackageReference>` or the engine ships a new version.
 
-**Engine current version:** `3.2.0` (all packages share one version, set in `Directory.Build.props`).
+**Engine current version:** `3.3.0` (all packages share one version, set in `Directory.Build.props`).
+
+> 3.3.0 (Batch 2) adds three new packages and extends two. New: `KhaozEngine.Audio` (`AudioSystem`
+> + music backends, incl. the macOS AVAudioPlayer workaround), `KhaozEngine.Effects` (data-driven
+> pooled `ParticleSystem` + `Spark`/`Ember` presets), `KhaozEngine.Graphics` (`Camera2D`). Extended:
+> `KhaozEngine.Persistence` gains `AtomicJsonWriter`/`PersistenceQueue` + `SettingsManager<T>` (and now
+> references `KhaozEngine.App`); `KhaozEngine.Ecs` gains `DeterministicRng.CreateDerived`. None of the
+> Batch 2 additions is adopted by a consumer yet, so the matrices below are unchanged; add columns when
+> a game first pins one.
 
 > 3.2.0 adds three pure-.NET packages from the "promote into KE" batch: `KhaozEngine.App`
 > (`BuildMetadata`, `AppDataPaths`, `ServiceLocator`), `KhaozEngine.Localization`

@@ -2,6 +2,33 @@
 
 All notable changes to KhaozEngine. Versions are shared across all packages.
 
+## KhaozEngine 3.3.0
+
+Batch 2 of the "promote duplicated game code into KhaozEngine" effort: three new packages plus
+additions to two existing ones. All additive; no consumer adopts these yet.
+
+- **KhaozEngine.Audio** (new; MonoGame + Diagnostics): `AudioSystem` (track-registry music player,
+  seed-via-ctor + additive idempotent `RegisterTrack`/`RegisterTracks` that work pre- and post-load)
+  over a public `IMusicBackend`. Public `MonoGameMusicBackend` and `MacOsMusicBackend` (the macOS
+  backend works around MonoGame's broken `Song` playback via an AVAudioPlayer P/Invoke shim). Logs
+  through an injected `ILogger` (defaults to the engine `Log`).
+- **KhaozEngine.Effects** (new; MonoGame + UI): pooled, data-driven particle system. A
+  `ParticleEmitterConfig` record holds all tunables; `ParticlePresets.Spark`/`.Ember` reproduce the
+  promoted Nullwake hit effects; `ParticleSystem.Emit(config, position, baseColor, count)` with a
+  ring-buffer pool. First resident of a generic visual-effects package (room for screen shake, flashes, etc.).
+- **KhaozEngine.Graphics** (new; MonoGame): `Camera2D` — a generic 2D matrix camera
+  (position/zoom/rotation → view matrix), headless `WorldToScreen`/`ScreenToWorld` (explicit `Viewport`,
+  no `GraphicsDevice`), turn-key no-arg overloads via a settable `Viewport`, and a pure
+  `ClampPosition` world-bounds helper. The base for a future follow/deadzone/parallax camera layer.
+- **KhaozEngine.Persistence** additions: `AtomicJsonWriter` (crash-safe temp-then-move writes),
+  `PersistenceQueue` (`IPersistenceQueue`; per-path coalescing async writer, never throws into the
+  game, retry + `WriteFailed` event, blocking `Flush()` + flush-on-dispose), and
+  `SettingsManager<T>` / `ISettingsStorage` / `FileSettingsStorage` (typed settings persisted via the
+  queue, default paths through `KhaozEngine.App.AppDataPaths`). Persistence now also references `KhaozEngine.App`.
+- **KhaozEngine.Ecs** addition: `DeterministicRng.CreateDerived(string systemName)` — named, stable,
+  reproducible substreams (mixes the parent seed with a fixed string hash; not `string.GetHashCode`).
+  Note: derived streams do not byte-match `System.Random`, so any consumer migrating to it must re-baseline golden values.
+
 ## KhaozEngine 3.2.0
 
 Batch 1 of the "promote duplicated game code into KhaozEngine" effort. Three new pure-.NET packages

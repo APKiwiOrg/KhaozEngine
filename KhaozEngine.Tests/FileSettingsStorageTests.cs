@@ -85,11 +85,13 @@ public class FileSettingsStorageTests
         AppDataPaths paths = TempPaths(out string root);
         try
         {
-            // Real synchronous queue so the file lands on disk for the load.
-            var storage = new FileSettingsStorage(paths, new TempDirectPersistenceQueue());
+            // Real async queue; Flush() forces the enqueued write to disk before the load.
+            using var queue = new PersistenceQueue();
+            var storage = new FileSettingsStorage(paths, queue);
 
             Assert.False(storage.SettingsExist());
             storage.SaveSettings(new Sample { Score = 42, Name = "neo" });
+            queue.Flush();
             Assert.True(storage.SettingsExist());
 
             Sample loaded = storage.LoadSettings<Sample>();
@@ -121,7 +123,7 @@ public class FileSettingsStorageTests
         AppDataPaths paths = TempPaths(out string root);
         try
         {
-            var storage = new FileSettingsStorage(paths, new TempDirectPersistenceQueue());
+            var storage = new FileSettingsStorage(paths, new RecordingQueue());
             // File.ReadAllText succeeds; Deserialize fails. Storage does NOT catch (the manager does).
             File.WriteAllText(paths.GetFilePath("settings.json"), "not-json{{");
 

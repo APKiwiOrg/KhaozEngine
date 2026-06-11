@@ -16,7 +16,10 @@ KhaozEngine is **not** a full engine. It owns a set of focused, game-agnostic co
 | **KhaozEngine.Diagnostics** | Logging service: levels, pluggable sinks (file / console / debug / in-memory), category loggers, a static `Log` facade over an injectable `LogManager`, and crash hooks. | Pure .NET |
 | **KhaozEngine.App** | App/runtime helpers: `BuildMetadata` (read `AssemblyMetadata` at runtime), `AppDataPaths` (OS-correct per-app data dir), `ServiceLocator` (generic `IServiceProvider`). | Pure .NET |
 | **KhaozEngine.Localization** | `LocalizationManager`: discover satellite-resource cultures and set the current thread culture. | Pure .NET |
-| **KhaozEngine.Persistence** | `SaveEncoder`: a Base64 + HMAC-SHA256 save-file tamper-deterrent. | KhaozEngine.Diagnostics |
+| **KhaozEngine.Persistence** | `SaveEncoder` (Base64 + HMAC-SHA256 tamper-deterrent), `AtomicJsonWriter` + `PersistenceQueue` (crash-safe atomic writes, per-path coalescing), `SettingsManager<T>` (typed settings storage). | KhaozEngine.Diagnostics, KhaozEngine.App |
+| **KhaozEngine.Audio** | `AudioSystem` music player over a pluggable `IMusicBackend`, including a macOS AVAudioPlayer backend that works around MonoGame's broken `Song` playback. | MonoGame |
+| **KhaozEngine.Effects** | Data-driven pooled `ParticleSystem` with config-record presets (`Spark`/`Ember`). First resident of a generic visual-effects package. | MonoGame, KhaozEngine.UI |
+| **KhaozEngine.Graphics** | `Camera2D`: a generic 2D matrix camera (position/zoom/rotation → view matrix), world↔screen, and a world-bounds clamp. | MonoGame |
 
 Target framework `net10.0`, consumable from the `net10.0-android` / `net10.0-ios` heads. Built against MonoGame.Framework.DesktopGL 3.8.
 
@@ -82,10 +85,10 @@ Published to a private GitHub Packages feed on tagged releases, and packed to a 
 ```
 ```xml
 <!-- All packages share one version. Reference only what you use. -->
-<PackageReference Include="KhaozEngine.Input"   Version="3.2.0" />
-<PackageReference Include="KhaozEngine.Screens" Version="3.2.0" />
-<PackageReference Include="KhaozEngine.UI"      Version="3.2.0" />
-<PackageReference Include="KhaozEngine.Ecs"     Version="3.2.0" />
+<PackageReference Include="KhaozEngine.Input"   Version="3.3.0" />
+<PackageReference Include="KhaozEngine.Screens" Version="3.3.0" />
+<PackageReference Include="KhaozEngine.UI"      Version="3.3.0" />
+<PackageReference Include="KhaozEngine.Ecs"     Version="3.3.0" />
 ```
 
 **Versioning is SemVer.** Each game pins a version and adopts fixes by bumping it — so you can keep one game on an old version while you migrate another. Don't fork the packages; if a game needs an API that isn't there, add it here and bump the version.
@@ -104,6 +107,7 @@ dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj
 KhaozEngine.Input/   KhaozEngine.Screens/   KhaozEngine.UI/   KhaozEngine.Ecs/   KhaozEngine.Time/
 KhaozEngine.Content/   KhaozEngine.Content.Validator/   KhaozEngine.Diagnostics/
 KhaozEngine.App/   KhaozEngine.Localization/   KhaozEngine.Persistence/
+KhaozEngine.Audio/   KhaozEngine.Effects/   KhaozEngine.Graphics/
 KhaozEngine.Tests/      docs/USING-KHAOZENGINE.md
 Directory.Build.props (shared version)   nuget.config   .github/workflows/ci.yml
 ```

@@ -5,6 +5,16 @@ so each game subsystem can pull its own reproducible RNG stream without interfer
 others. Ports the determinism semantics of Nullwake's `GameRng` into the engine's
 higher-quality generator.
 
+## Migration warning (read before migrating Nullwake)
+
+Derived streams produced by `CreateDerived` do **NOT** byte-match the streams Nullwake's old
+`GameRng` produced via `System.Random`. The determinism contract is preserved (same seed +
+name is reproducible), but the generator is different, so the actual number sequences change.
+When the separate `GameRng -> DeterministicRng` migration runs, this is a silent
+save/replay-compat landmine: any golden-value test, recorded replay file, or save-state
+determinism tied to exact RNG output WILL shift and must be re-baselined. Whoever owns that
+migration needs to re-capture those baselines deliberately, not assume bit-compatibility.
+
 ## Background
 
 `KhaozEngine.Ecs.DeterministicRng` is a xorshift128+ generator seeded via splitmix64

@@ -8,7 +8,8 @@ bumps a `<PackageReference>` or the engine ships a new version.
 > 3.4.0 extends `KhaozEngine.Persistence` (`SettingsManager<T>` `sanitizeOnLoad` hook) and
 > `KhaozEngine.Audio` (`AudioSystem` `PlayTrack`/`PlayMode`/`CurrentTrack`/`TrackChanged`, plus the
 > scoped IsPlaying-read latch), and hardens `KhaozEngine.Ecs` `DeterministicRng.Next` argument guards.
-> All additive; no consumer has adopted 3.4.0 yet, so the matrices below are unchanged.
+> All additive. Nullwake bumped to 3.4.0 (a version-only bump: it picks up the `AudioSystem`
+> IsPlaying-read resilience fix for free, and assessed but did not adopt the new music modes; see notes).
 
 > 3.3.0 (Batch 2) adds three new packages and extends two. New: `KhaozEngine.Audio` (`AudioSystem`
 > + music backends, incl. the macOS AVAudioPlayer workaround), `KhaozEngine.Effects` (data-driven
@@ -32,11 +33,11 @@ bumps a `<PackageReference>` or the engine ships a new version.
 `–` = package not referenced directly by that project. `Time` is pulled in transitively by
 `Screens` 2.2.0+; consumers vendor `KhaozEngine.Time` even without a direct reference.
 
-| Project   | Project file                         | Input | Screens | UI    | Ecs   | Content | Diagnostics | Time  | App   | Localization | Persistence | Audio | Effects |
-|-----------|--------------------------------------|-------|---------|-------|-------|---------|-------------|-------|-------|--------------|-------------|-------|---------|
-| Hardpoint | `Hardpoint/Hardpoint.Core`           | 2.4.0 | 2.4.0   | 2.4.0 | 2.4.0 | 2.4.0   | –           | –     | –     | –            | –           | –     | –       |
-| Nullwake  | `Nullwake/Nullwake.Core`             | 3.3.0 | 3.3.0   | 3.3.0 | –     | 3.3.0   | 3.3.0       | 3.3.0 | 3.3.0 | 3.3.0        | 3.3.0       | 3.3.0 | 3.3.0   |
-| SpaceGame | `SpaceGame/SpaceGame.Core`           | 3.0.0 | 3.0.0   | 3.0.0 | 3.0.0 | 3.0.0   | 3.0.0       | –     | –     | –            | –           | –     | –       |
+| Project   | Project file                         | Input | Screens | UI    | Ecs   | Content | Diagnostics | Time  | App   | Localization | Persistence | Audio | Effects | Graphics |
+|-----------|--------------------------------------|-------|---------|-------|-------|---------|-------------|-------|-------|--------------|-------------|-------|---------|----------|
+| Hardpoint | `Hardpoint/Hardpoint.Core`           | 2.4.0 | 2.4.0   | 2.4.0 | 2.4.0 | 2.4.0   | –           | –     | –     | –            | –           | –     | –       | –        |
+| Nullwake  | `Nullwake/Nullwake.Core`             | 3.3.0 | 3.3.0   | 3.3.0 | –     | 3.3.0   | 3.3.0       | 3.3.0 | 3.3.0 | 3.3.0        | 3.3.0       | 3.3.0 | 3.3.0   | –        |
+| SpaceGame | `SpaceGame/SpaceGame.Core`           | 3.3.0 | 3.3.0   | 3.3.0 | 3.3.0 | 3.3.0   | 3.3.0       | –     | 3.3.0 | 3.3.0        | 3.3.0       | –     | –       | 3.3.0    |
 
 ## Adoption matrix
 
@@ -44,11 +45,11 @@ Which packages each consumer pulls in. `✓` = direct `<PackageReference>`, `–
 `(transitive)` = vendored via `Screens` 2.2.0+ but no direct reference and (for `Time`) no
 scaled-dt usage.
 
-| Consumer  | Input | Screens | UI | Ecs | Content | Diagnostics |    Time      | App | Localization | Persistence | Audio | Effects |
-|-----------|:-----:|:-------:|:--:|:---:|:-------:|:-----------:|:------------:|:---:|:------------:|:-----------:|:-----:|:-------:|
-| Hardpoint |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      –      | (transitive) |  –  |      –       |      –      |   –   |    –    |
-| Nullwake  |   ✓   |    ✓    | ✓  |  –  |    ✓    |      ✓      |      ✓       |  ✓  |      ✓       |      ✓      |   ✓   |    ✓    |
-| SpaceGame |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |  –  |      –       |      –      |   –   |    –    |
+| Consumer  | Input | Screens | UI | Ecs | Content | Diagnostics |    Time      | App | Localization | Persistence | Audio | Effects | Graphics |
+|-----------|:-----:|:-------:|:--:|:---:|:-------:|:-----------:|:------------:|:---:|:------------:|:-----------:|:-----:|:-------:|:--------:|
+| Hardpoint |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      –      | (transitive) |  –  |      –       |      –      |   –   |    –    |    –     |
+| Nullwake  |   ✓   |    ✓    | ✓  |  –  |    ✓    |      ✓      |      ✓       |  ✓  |      ✓       |      ✓      |   ✓   |    ✓    |    –     |
+| SpaceGame |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |  ✓  |      ✓       |      ✓      |   –   |    –    |    ✓     |
 
 ## Notes
 
@@ -61,11 +62,18 @@ scaled-dt usage.
   **Graphics not adopted:** `OreField.RefToScreen` is a non-uniform fit-into-sub-rectangle projection,
   incompatible with `Camera2D`'s uniform full-viewport matrix. **Ecs not yet adopted:** `DeterministicRng`
   swap is a planned follow-up; still on `GameRng`.
-- **SpaceGame** — uses Input/Screens/UI/Ecs/Content + `Diagnostics` (3.0.0). UI is `TextInputHandler`
-  for its prompt screens. First consumer of `KhaozEngine.Diagnostics`: its logging goes through the
-  engine `Log` service (`KhaozEngine.Diagnostics`); the game configures sinks + `AppDataPaths` at
-  startup and logs via `Log`. Deterministic lockstep: vendors `KhaozEngine.Time` transitively via
-  Screens but reads no scaled dt (no `GameClock`/`TimeScale`/`TimeSkip` usage) and must keep it that way.
+- **SpaceGame** — on 3.3.0. Adopted Input/Screens/UI/Ecs/Content/Diagnostics + App/Localization/
+  Persistence/Graphics. First consumer of `Graphics` (`Camera2D`, headless with a per-frame Viewport
+  sync). Logging via the engine `Log` service (FileSink + ConsoleSink + `CrashHandler`, configured at
+  startup; flushes the persistence queue + `Log.Shutdown` on exit). `AppDataPaths` + `BuildMetadata`
+  from `App`; `LocalizationManager` from `Localization` (corrected the malformed default culture to
+  `en-US`); settings + leaderboard persistence on `SettingsManager<T>` + `FileSettingsStorage` over one
+  shared `PersistenceQueue`. **Deferred to a 3.4.0 follow-up:** `save.json`/`SaveSystem` (awaiting the
+  `sanitizeOnLoad` hook) and music (`AudioVolumeMixer`/`MusicPlaybackController`, awaiting KE.Audio
+  `PlayTrack`/`PlayMode`); SFX volume stays game-side (KE.Audio is music-only). **Not adopted:**
+  `Ecs.CreateDerived` — it would move SpaceGame's multiplayer lockstep determinism baseline. Deterministic
+  lockstep: vendors `KhaozEngine.Time` transitively via Screens, reads no scaled dt
+  (no `GameClock`/`TimeScale`/`TimeSkip`), and must keep it that way.
 
 ## Repo locations
 
@@ -90,7 +98,8 @@ done
 ```
 
 > Nullwake migrated to 3.3.0 (Diagnostics/App/Localization/Persistence/Audio/Effects all adopted;
-> Graphics and Ecs deferred). SpaceGame's Bucket A (TextInputHandler→engine, UI/Content) work is on
-> feature branches, re-pinned to 3.0.0; not yet merged.
+> Graphics and Ecs deferred). SpaceGame migrated to 3.3.0 on main (Diagnostics/App/Localization/
+> Persistence/Graphics adopted; save.json + music deferred to a 3.4.0 follow-up; Ecs.CreateDerived not
+> adopted to preserve its lockstep baseline).
 
-_Last verified: 2026-06-11 against engine 3.3.0 (consumer rows checked against each game's main checkout)._
+_Last verified: 2026-06-11 — SpaceGame row updated for its 3.3.0 adoption (App/Localization/Persistence/Graphics; added the Graphics column). Other rows unchanged._

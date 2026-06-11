@@ -69,3 +69,38 @@ var settings = new SettingsManager<MySettings>(storage, Log.For<SettingsManager<
 settings.Settings.MasterVolume = 0.8f;
 settings.Save();
 ```
+
+### Schema migration & downgrade safety
+
+`SettingsManager<T>` takes an optional `sanitizeOnLoad` hook that runs on **every** load, including
+the initial load in the constructor (the `SettingsLoaded` event can't help there; it fires inside
+the ctor before a caller can subscribe). Use it to clamp fields and migrate an embedded schema version:
+
+```csharp
+var mgr = new SettingsManager<SaveData>(
+    storage,
+    Log.For<SettingsManager<SaveData>>(),
+    sanitizeOnLoad: Migrate);
+
+static SaveData Migrate(SaveData s)
+{
+    if (s.Version < 2) { /* fill new fields, rename, etc. */ s.Version = 2; }
+    s.MasterVolume = Math.Clamp(s.MasterVolume, 0f, 1f);
+    return s;
+}
+```
+
+For forward-compatibility (a newer build wrote fields this older build doesn't know), give the DTO a
+`[JsonExtensionData]` bag. `FileSettingsStorage` round-trips the live object through
+`System.Text.Json`, so unknown fields survive a load + save and are not dropped on downgrade. No
+engine code required, just the DTO shape:
+
+```csharp
+public sealed class SaveData
+{
+    public int Version { get; set; } = 2;
+    public float MasterVolume { get; set; } = 1f;
+
+    [JsonExtensionData] public Dictionary<string, JsonElement>? Extra { get; set; }
+}
+```

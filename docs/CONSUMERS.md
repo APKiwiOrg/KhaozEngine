@@ -39,9 +39,9 @@ bumps a `<PackageReference>` or the engine ships a new version.
 
 | Project   | Project file                         | Input | Screens | UI    | Ecs   | Content | Diagnostics | Time  | App   | Localization | Persistence | Audio | Effects | Graphics |
 |-----------|--------------------------------------|-------|---------|-------|-------|---------|-------------|-------|-------|--------------|-------------|-------|---------|----------|
-| Hardpoint | `Hardpoint/Hardpoint.Core`           | 2.4.0 | 2.4.0   | 2.4.0 | 2.4.0 | 2.4.0   | –           | –     | –     | –            | –           | –     | –       | –        |
+| Hardpoint | `Hardpoint/Hardpoint.Core`           | 3.4.1 | 3.4.1   | 3.4.1 | 3.4.1 | 3.4.1   | 3.4.1       | –     | 3.4.1 | 3.4.1        | –           | –     | 3.4.1   | –        |
 | Nullwake  | `Nullwake/Nullwake.Core`             | 3.4.0 | 3.4.0   | 3.4.0 | –     | 3.4.0   | 3.4.0       | 3.4.0 | 3.4.0 | 3.4.0        | 3.4.0       | 3.4.0 | 3.4.0   | –        |
-| SpaceGame | `SpaceGame/SpaceGame.Core`           | 3.4.0 | 3.4.0   | 3.4.0 | 3.4.0 | 3.4.0   | 3.4.0       | –     | 3.4.0 | 3.4.0        | 3.4.0       | –     | –       | 3.4.0    |
+| SpaceGame | `SpaceGame/SpaceGame.Core`           | 3.4.1 | 3.4.1   | 3.4.1 | 3.4.1 | 3.4.1   | 3.4.1       | –     | 3.4.1 | 3.4.1        | 3.4.1       | 3.4.1 | –       | 3.4.1    |
 
 ## Adoption matrix
 
@@ -51,15 +51,24 @@ scaled-dt usage.
 
 | Consumer  | Input | Screens | UI | Ecs | Content | Diagnostics |    Time      | App | Localization | Persistence | Audio | Effects | Graphics |
 |-----------|:-----:|:-------:|:--:|:---:|:-------:|:-----------:|:------------:|:---:|:------------:|:-----------:|:-----:|:-------:|:--------:|
-| Hardpoint |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      –      | (transitive) |  –  |      –       |      –      |   –   |    –    |    –     |
+| Hardpoint |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |  ✓  |      ✓       |      –      |   –   |    ✓    |    –     |
 | Nullwake  |   ✓   |    ✓    | ✓  |  –  |    ✓    |      ✓      |      ✓       |  ✓  |      ✓       |      ✓      |   ✓   |    ✓    |    –     |
-| SpaceGame |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |  ✓  |      ✓       |      ✓      |   –   |    –    |    ✓     |
+| SpaceGame |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |  ✓  |      ✓       |      ✓      |   ✓   |    –    |    ✓     |
 
 ## Notes
 
-- **Hardpoint** — fully migrated, tracks latest (2.4.0). First consumer of
-  `KhaozEngine.Content` (JSON schema validation at build). Has not adopted `Diagnostics` (no file
-  logger of its own yet; a candidate to migrate).
+- **Hardpoint** — on 3.4.1. First consumer of `KhaozEngine.Content` (JSON schema validation at
+  build). Bumped from 2.4.0 and adopted Diagnostics/App/Localization/Effects. Logging via the engine
+  `Log` service (FileSink + ConsoleSink under `AppDataPaths`, `CrashHandler` installed; both configured
+  in the `HardpointGame` ctor and flushed via `Log.Shutdown` on dispose) — Hardpoint had no logger
+  before. `LocalizationManager` swapped from the hand-rolled copy to `KhaozEngine.Localization`
+  (corrected the malformed default culture `en-EN` to `en-US`). `Effects.ParticleSystem` drives
+  projectile-hit and enemy-death bursts (`Spark` preset), fed by new game-side `ProjectileSystem.Hit` /
+  `DamageSystem.EnemyKilled` events; tower range rings drawn with `UI.PrimitiveRenderer.DrawRing`.
+  **Not adopted:** Persistence — campaign progress stays in-memory (`CampaignProgress`); its own
+  meta-progression sub-project still owns the save work. Audio — no audio assets yet. Graphics — the
+  map already runs on `PannableCanvas`, which owns its camera; the gameplay board is fixed-size.
+  `Ecs.CreateDerived`/the `DeterministicRng` guards — the game uses no RNG.
 - **Nullwake** - on 3.4.0. Adopted Input/Screens/UI/Time/Content/Diagnostics/App/Localization/Persistence/Audio/Effects.
   `GameLogger` replaced by engine `Log` + `CrashHandler` (configured via `LogBootstrap`). Uses `AppDataPaths`,
   `ServiceLocator`, `BuildMetadata`, `SaveEncoder` + `AtomicJsonWriter`, `AudioSystem`, and `Effects.ParticleSystem`.
@@ -71,7 +80,7 @@ scaled-dt usage.
   `SettingsManager`. **Graphics not adopted:** `OreField.RefToScreen` is a non-uniform fit-into-sub-rectangle
   projection, incompatible with `Camera2D`'s uniform full-viewport matrix. **Ecs not yet adopted:**
   `DeterministicRng` swap is a planned follow-up; still on `GameRng`.
-- **SpaceGame** — on 3.4.0. Adopted Input/Screens/UI/Ecs/Content/Diagnostics + App/Localization/
+- **SpaceGame** — on 3.4.1. Adopted Input/Screens/UI/Ecs/Content/Diagnostics + App/Localization/
   Persistence/Graphics. First consumer of `Graphics` (`Camera2D`, headless with a per-frame Viewport
   sync). Logging via the engine `Log` service (FileSink + ConsoleSink + `CrashHandler`, configured at
   startup; flushes the persistence queue + `Log.Shutdown` on exit). `AppDataPaths` + `BuildMetadata`
@@ -80,9 +89,14 @@ scaled-dt usage.
   shared `PersistenceQueue`. `save.json` now also runs on `SettingsManager<SaveData>` with the 3.4.0
   `sanitizeOnLoad` hook (sanitizes on every load incl. the first; `[JsonExtensionData]` + `SchemaVersion`
   round-trip keeps downgrade safety); the hand-rolled `SaveSystem` static was deleted (the `SaveData` DTO
-  stays) and writes flow through the shared `PersistenceQueue`. **Deferred to a 3.4.1 follow-up:** music
-  (`AudioVolumeMixer`/`MusicPlaybackController` → KE.Audio `PlayTrack`/`PlayMode.RepeatOne` + a now-playing
-  overlay wired to `CurrentTrack`/`TrackChanged`); SFX volume stays game-side (KE.Audio is music-only).
+  stays) and writes flow through the shared `PersistenceQueue`. **Music (3.4.1):** runs on
+  `KhaozEngine.Audio.AudioSystem` — one instance owns the 4 tracks, loops the per-screen track via
+  `PlayMode.RepeatOne`, and is the source of truth for current track + music volume (`MasterVolume *
+  MusicVolume`). `MusicPlaybackController` is a thin seam (`PlayContextTrack`/`ApplyVolume`); a
+  `MusicCatalog` maps content-asset paths to display names; the now-playing overlay binds to
+  `CurrentTrack`/`TrackChanged` (pause = stop/replay via `MusicEnabled`). The in-house `NowPlayingService`
+  + `AudioVolumeMixer`'s music path + raw `MediaPlayer` playback were deleted; SFX/ambient volume stays
+  game-side (KE.Audio is music-only).
   **Not adopted:** `Ecs.CreateDerived` — it would move SpaceGame's multiplayer lockstep determinism
   baseline. Deterministic lockstep: vendors `KhaozEngine.Time` transitively via Screens, reads no scaled
   dt (no `GameClock`/`TimeScale`/`TimeSkip`), and must keep it that way.
@@ -113,6 +127,6 @@ done
 > Graphics and Ecs deferred), then version-bumped to 3.4.0 (free AudioSystem IsPlaying-read resilience
 > fix; new music modes assessed but not adopted). SpaceGame migrated to 3.3.0 on main (Diagnostics/App/Localization/
 > Persistence/Graphics adopted), then to 3.4.0 (save.json onto `SettingsManager<SaveData>` + `sanitizeOnLoad`;
-> music deferred to a 3.4.1 follow-up; Ecs.CreateDerived not adopted to preserve its lockstep baseline).
+> then 3.4.1 routed music onto `AudioSystem`; Ecs.CreateDerived not adopted to preserve its lockstep baseline).
 
-_Last verified: 2026-06-11. Engine at 3.4.1 (AudioSystem partial-load name-alignment fix). SpaceGame row bumped to 3.4.0 (save.json adopted). Nullwake row at 3.4.0; Hardpoint unchanged._
+_Last verified: 2026-06-12. Engine at 3.4.1 (AudioSystem partial-load name-alignment fix). Hardpoint row bumped 2.4.0 -> 3.4.1 (adopted Diagnostics/App/Localization/Effects; Persistence/Audio/Graphics/Ecs-RNG not adopted). SpaceGame row bumped to 3.4.1 (music adopted onto `AudioSystem`). Nullwake row at 3.4.0._

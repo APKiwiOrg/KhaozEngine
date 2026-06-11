@@ -34,8 +34,26 @@ public class ParticleSystemTests
     public void Emit_beyond_capacity_recycles_oldest_slots()
     {
         var sys = NewSystem(poolSize: 4);
-        sys.Emit(ParticlePresets.Spark, new Vector2(0, 0), Color.Gray, 10);
+
+        // First batch fills the pool at a far-away position.
+        var oldPos = new Vector2(-10000, -10000);
+        sys.Emit(ParticlePresets.Spark, oldPos, Color.Gray, 4);
         Assert.Equal(4, sys.ActiveCount);
+
+        // Second batch (also pool-sized) at a distant position must overwrite the OLDEST slots.
+        var newPos = new Vector2(10000, 10000);
+        sys.Emit(ParticlePresets.Spark, newPos, Color.Gray, 4);
+
+        Assert.Equal(4, sys.ActiveCount);
+
+        // No surviving particle should be anywhere near the old emission point: the originals were
+        // actually overwritten, not merely counted. Positions are 20000 apart, far beyond any preset
+        // jitter, so a midpoint threshold cleanly separates old from new.
+        foreach (var p in sys.ActiveParticles())
+        {
+            Assert.True(p.Position.X > 0 && p.Position.Y > 0,
+                $"particle at {p.Position} survived from the old batch: oldest slots not recycled");
+        }
     }
 
     [Fact]

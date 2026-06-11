@@ -180,4 +180,14 @@ public class SettingsManagerTests
         var mgr = new SettingsManager<Box>(storage, logger: null, sanitizeOnLoad: b => { b.Value = Math.Max(b.Value, 0); return b; });
         Assert.Equal(0, mgr.Settings.Value);
     }
+
+    [Fact]
+    public void SanitizeOnLoad_HookThrows_UsesUnsanitizedValue_AndLogsError()
+    {
+        var storage = new FakeStorage { ToLoad = new Box { Value = 42 } };
+        var logger = new FakeLogger();
+        var mgr = new SettingsManager<Box>(storage, logger, sanitizeOnLoad: _ => throw new InvalidOperationException("bad hook"));
+        Assert.Equal(42, mgr.Settings.Value);   // throw swallowed; unsanitized value used
+        Assert.Contains(logger.Entries, e => e.Level == LogLevel.Error);
+    }
 }

@@ -96,6 +96,10 @@ For forward-compatibility (a newer build wrote fields this older build doesn't k
 engine code required, just the DTO shape:
 
 ```csharp
+using System.Collections.Generic;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 public sealed class SaveData
 {
     public int Version { get; set; } = 2;

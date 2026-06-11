@@ -153,6 +153,19 @@ public sealed class AudioSystemTests
     }
 
     [Fact]
+    public void TogglingMusicBeforeFirstUpdateDoesNotDoubleStart()
+    {
+        var (audio, backend) = NewLoaded("a", "b");
+
+        audio.MusicEnabled = false;           // before any Update
+        audio.MusicEnabled = true;            // initiates one track
+        Assert.Single(backend.PlayedIndices);
+
+        audio.Update();                       // must NOT start a second track
+        Assert.Single(backend.PlayedIndices);
+    }
+
+    [Fact]
     public void UpdateDefersFirstPlayThenAdvancesWhenStopped()
     {
         var (audio, backend) = NewLoaded("a", "b");

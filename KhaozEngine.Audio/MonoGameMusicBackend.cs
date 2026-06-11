@@ -39,13 +39,13 @@ public sealed class MonoGameMusicBackend : IMusicBackend
     {
         try
         {
-            _logger.Info($"Audio: loading track {trackIndex}: {trackName}");
+            _logger.Info($"Audio: loading track {trackName}");
             _tracks.Add(content.Load<Song>(trackName));
             return true;
         }
         catch (Exception ex)
         {
-            _logger.Warn($"Audio: track {trackIndex} failed: {ex.Message}");
+            _logger.Warn($"Audio: track {trackName} failed: {ex.Message}");
             return false;
         }
     }

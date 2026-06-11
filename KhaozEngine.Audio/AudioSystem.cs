@@ -111,6 +111,9 @@ public sealed class AudioSystem : IDisposable
                 if (_musicEnabled)
                 {
                     PlayRandomTrack();
+                    // Toggling on initiated playback, so the deferred first-play in Update()
+                    // must not start a second track.
+                    _started = true;
                 }
                 else
                 {

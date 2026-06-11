@@ -105,33 +105,44 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
 
     private void DrainPending()
     {
-        while (true)
+        try
         {
-            string path;
-            string json;
+            while (true)
+            {
+                string path;
+                string json;
 
+                lock (sync)
+                {
+                    if (pending.Count == 0)
+                    {
+                        return;
+                    }
+
+                    path = string.Empty;
+                    json = string.Empty;
+                    foreach (KeyValuePair<string, string> entry in pending)
+                    {
+                        path = entry.Key;
+                        json = entry.Value;
+                        break;
+                    }
+
+                    pending.Remove(path);
+                }
+
+                WriteWithRetry(path, json);
+            }
+        }
+        finally
+        {
+            // Always release the scheduling latch and wake Flush waiters, even on an
+            // unexpected escape, so the queue can never wedge with workerScheduled stuck true.
             lock (sync)
             {
-                if (pending.Count == 0)
-                {
-                    workerScheduled = false;
-                    Monitor.PulseAll(sync);
-                    return;
-                }
-
-                path = string.Empty;
-                json = string.Empty;
-                foreach (KeyValuePair<string, string> entry in pending)
-                {
-                    path = entry.Key;
-                    json = entry.Value;
-                    break;
-                }
-
-                pending.Remove(path);
+                workerScheduled = false;
+                Monitor.PulseAll(sync);
             }
-
-            WriteWithRetry(path, json);
         }
     }
 

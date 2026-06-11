@@ -9,15 +9,33 @@ SpaceGame / Nullwake adoptions. The items below are the *bigger* areas to come b
 
 ## Camera — first-class follow / scroller camera (`KhaozEngine.Graphics`)
 
-`Camera2D` (3.3.0) is the generic matrix base only (position/zoom/rotation -> view matrix, world<->screen,
-bounds clamp). Build a follow-camera layer on top that drives `Camera2D.Position` each frame; the base
-needs no changes:
+`Camera2D` (3.3.0) is the generic matrix BASE only: position/zoom/rotation -> view matrix,
+world<->screen, and a `ClampPosition` bounds helper. A game can hand-roll a scroller camera on it
+today, but the engine does NOT yet provide the follow / "feel" layer, so every consumer would
+reimplement it. Build a `FollowCamera` that drives `Camera2D.Position`/`Zoom` each frame (base
+unchanged). Full 2D scroller / platformer camera needs:
 
-- Follow a target with smoothing / damping
-- Deadzone / camera window (don't move until the target leaves a box) — biggest platformer feel upgrade
-- Look-ahead (lead in the direction of motion)
-- Parallax background layers off the same camera
-- Smooth zoom
+Follow & framing
+- Target follow with damping/smoothing, settable PER AXIS (platformers decouple X/Y, e.g. only
+  re-centre Y when grounded/landing)
+- Deadzone / camera window (soft box the target moves in before the camera reacts) - biggest feel upgrade
+- Target offset / composition bias (frame the player low so you see more ahead/below)
+- Look-ahead (lead in movement/facing direction, with its own smoothing)
+- Multi-target framing (auto position + zoom to fit N targets) - co-op / shared screen
+
+Constraints
+- Bounds confiner: auto-apply `ClampPosition` during follow, with per-region bounds
+- Room / region cameras: different bounds (and optionally settings) per area, Metroidvania-style
+
+Motion polish
+- Smooth / eased zoom transitions
+- Camera blends: lerp position/zoom/rotation between setups over a duration (room hand-offs)
+- Instant snap: teleport on respawn / scene load / room change
+- Pixel-perfect snapping: round camera position to the pixel grid for pixel-art (kills sub-pixel shimmer)
+
+Effects & parallax
+- Screen shake (lives in `KhaozEngine.Effects`, perturbs the camera; trauma-based decay) - see below
+- Parallax background layers scrolling at fractional rates off the same camera
 
 Motivated by a planned platformer / side-scroller. (Base design:
 `docs/superpowers/specs/2026-06-11-graphics-camera2d-design.md`.)

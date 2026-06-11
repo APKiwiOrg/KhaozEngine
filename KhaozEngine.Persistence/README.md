@@ -20,3 +20,23 @@ var encoder = new SaveEncoder(
 string onDisk = encoder.Encode(json);
 string? loaded = encoder.Decode(onDisk);   // null only if not-our-format / malformed / corrupt
 ```
+
+## Settings
+
+`SettingsManager<T>` holds a strongly-typed settings object and persists it through an
+`ISettingsStorage`. `FileSettingsStorage` serializes to indented JSON under a
+`KhaozEngine.App.AppDataPaths` directory and writes through an `IPersistenceQueue` (atomic,
+per-path coalescing); reads are direct. Load/save failures are swallowed and reported via an
+optional `KhaozEngine.Diagnostics.ILogger`.
+
+```csharp
+using KhaozEngine.App;
+using KhaozEngine.Persistence;
+
+var paths = new AppDataPaths("MyGame");
+var storage = new FileSettingsStorage(paths, persistenceQueue);   // queue supplied by the host
+var settings = new SettingsManager<MySettings>(storage, Log.For<SettingsManager<MySettings>>());
+
+settings.Settings.MasterVolume = 0.8f;
+settings.Save();
+```

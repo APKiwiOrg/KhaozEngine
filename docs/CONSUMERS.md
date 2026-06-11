@@ -3,7 +3,12 @@
 Which game uses which packages, at which version. Update this whenever a consumer
 bumps a `<PackageReference>` or the engine ships a new version.
 
-**Engine current version:** `3.3.0` (all packages share one version, set in `Directory.Build.props`).
+**Engine current version:** `3.4.0` (all packages share one version, set in `Directory.Build.props`).
+
+> 3.4.0 extends `KhaozEngine.Persistence` (`SettingsManager<T>` `sanitizeOnLoad` hook) and
+> `KhaozEngine.Audio` (`AudioSystem` `PlayTrack`/`PlayMode`/`CurrentTrack`/`TrackChanged`, plus the
+> scoped IsPlaying-read latch), and hardens `KhaozEngine.Ecs` `DeterministicRng.Next` argument guards.
+> All additive; no consumer has adopted 3.4.0 yet, so the matrices below are unchanged.
 
 > 3.3.0 (Batch 2) adds three new packages and extends two. New: `KhaozEngine.Audio` (`AudioSystem`
 > + music backends, incl. the macOS AVAudioPlayer workaround), `KhaozEngine.Effects` (data-driven

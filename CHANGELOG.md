@@ -2,6 +2,28 @@
 
 All notable changes to KhaozEngine. Versions are shared across all packages.
 
+## KhaozEngine 3.4.0
+
+Additive feature pass unblocking SpaceGame/Nullwake adoption, plus review-nit fixes. No breaking changes.
+
+- **KhaozEngine.Persistence** - `SettingsManager<T>` gains an optional `sanitizeOnLoad` constructor hook
+  (`Func<T,T>`). It runs on every load, including the initial load inside the constructor (which the
+  `SettingsLoaded` event can't reach), so callers can clamp fields / migrate a schema version on the
+  first load. Null = passthrough; a throwing hook is swallowed/logged and the unsanitized value is used.
+  The README documents the `[JsonExtensionData]` + version-field downgrade-safe migration pattern.
+- **KhaozEngine.Audio** - `AudioSystem` now supports explicit and repeating playback alongside random
+  rotation: `PlayTrack(int)` / `PlayTrack(string)` (an unknown name or out-of-range index is a logged
+  no-op, not a throw), a settable `PlayMode { RandomRotation, RepeatOne }` (default `RandomRotation`),
+  and now-playing state via `CurrentTrack` plus the `TrackChanged` event.
+- **KhaozEngine.Audio** - a transient exception while reading `IMusicBackend.IsPlaying` in `Update()`
+  now skips the frame (logged) and recovers, instead of permanently disabling audio. The availability
+  latch is reserved for real play/load failures.
+- **KhaozEngine.Ecs** - `DeterministicRng.Next(maxExclusive)` and `Next(min, max)` now throw
+  `ArgumentOutOfRangeException` on non-positive / empty ranges (previously a DivideByZero or
+  negative-modulo trap).
+- Docs/tests: `docs/USING-KHAOZENGINE.md` gains a `KhaozEngine.Graphics` / `Camera2D` section; the
+  Effects pool-recycle test now asserts the oldest particles are actually overwritten.
+
 ## KhaozEngine 3.3.0
 
 Batch 2 of the "promote duplicated game code into KhaozEngine" effort: three new packages plus

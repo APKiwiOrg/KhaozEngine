@@ -46,12 +46,13 @@ public class ParticleSystemTests
 
         Assert.Equal(4, sys.ActiveCount);
 
-        // No surviving particle should be anywhere near the old emission point: the originals were
-        // actually overwritten, not merely counted. Positions are 20000 apart, far beyond any preset
-        // jitter, so a midpoint threshold cleanly separates old from new.
+        // Every surviving particle must belong to the NEW batch, proving the originals were actually
+        // overwritten and not merely counted. The two batches are 20000 units apart and the Spark
+        // preset jitters by only a few units, so requiring positions well into the newPos half
+        // (> 5000 on each axis) cleanly excludes any old-batch survivor near (-10000, -10000).
         foreach (var p in sys.ActiveParticles())
         {
-            Assert.True(p.Position.X > 0 && p.Position.Y > 0,
+            Assert.True(p.Position.X > 5000 && p.Position.Y > 5000,
                 $"particle at {p.Position} survived from the old batch: oldest slots not recycled");
         }
     }

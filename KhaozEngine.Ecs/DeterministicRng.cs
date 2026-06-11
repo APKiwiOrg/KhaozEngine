@@ -4,7 +4,7 @@ namespace KhaozEngine.Ecs;
 
 /// <summary>
 /// Seeded, fixed-algorithm pseudo-random generator (xorshift128+, seeded via splitmix64). Reproducible
-/// across .NET versions and platforms — unlike <see cref="System.Random"/>. Opt-in: a game owns an
+/// across .NET versions and platforms (unlike <see cref="System.Random"/>). Opt-in: a game owns an
 /// instance and persists <see cref="State"/> for save/resume. Used inside deferred commands so draws
 /// occur in a deterministic order (see the outcome-buffer contract).
 /// </summary>

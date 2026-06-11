@@ -338,4 +338,20 @@ public sealed class AudioSystemTests
 
         Assert.Equal(new string?[] { "a", "b" }, names);
     }
+
+    [Fact]
+    public void Update_TransientIsPlayingError_SkipsFrameAndStaysAvailable()
+    {
+        var (audio, backend) = NewLoaded("a", "b");
+        audio.Update();                              // deferred first play
+        int playedBefore = backend.PlayedIndices.Count;
+
+        backend.ThrowOnNextIsPlayingReads = 1;
+        audio.Update();                              // IsPlaying read throws -> skip frame, do NOT latch
+        Assert.Equal(playedBefore, backend.PlayedIndices.Count);   // no advance this frame
+
+        backend.IsPlaying = false;
+        audio.Update();                              // recovered -> audio still alive, advances
+        Assert.Equal(playedBefore + 1, backend.PlayedIndices.Count);
+    }
 }

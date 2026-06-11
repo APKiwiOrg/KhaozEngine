@@ -301,6 +301,8 @@ public sealed class AudioSystem : IDisposable
     /// <summary>
     /// Call each frame to detect when the current track ends and queue the next.
     /// Defers first playback to the first Update call so the audio subsystem is ready.
+    /// A transient failure reading <see cref="IMusicBackend.IsPlaying"/> skips the frame (logged) and
+    /// recovers next frame; only real play/load failures permanently disable audio.
     /// </summary>
     public void Update()
     {
@@ -313,16 +315,20 @@ public sealed class AudioSystem : IDisposable
             return;
         }
 
+        bool isPlaying;
         try
         {
-            if (!_backend.IsPlaying)
-            {
-                AdvanceTrack();
-            }
+            isPlaying = _backend.IsPlaying;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            _available = false;
+            _logger.Warn("Audio: failed to read IsPlaying; skipping frame.", ex);
+            return;
+        }
+
+        if (!isPlaying)
+        {
+            AdvanceTrack();
         }
     }
 

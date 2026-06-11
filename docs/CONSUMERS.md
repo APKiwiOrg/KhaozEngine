@@ -15,9 +15,9 @@ bumps a `<PackageReference>` or the engine ships a new version.
 > + music backends, incl. the macOS AVAudioPlayer workaround), `KhaozEngine.Effects` (data-driven
 > pooled `ParticleSystem` + `Spark`/`Ember` presets), `KhaozEngine.Graphics` (`Camera2D`). Extended:
 > `KhaozEngine.Persistence` gains `AtomicJsonWriter`/`PersistenceQueue` + `SettingsManager<T>` (and now
-> references `KhaozEngine.App`); `KhaozEngine.Ecs` gains `DeterministicRng.CreateDerived`. None of the
-> Batch 2 additions is now adopted by Nullwake (App, Localization, Persistence, Audio, Effects) at 3.3.0;
-> the matrices below include columns for all of them.
+> references `KhaozEngine.App`); `KhaozEngine.Ecs` gains `DeterministicRng.CreateDerived`. The Batch 2
+> additions are adopted by Nullwake (App, Localization, Persistence, Audio, Effects); the matrices below
+> include columns for all of them.
 
 > 3.2.0 adds three pure-.NET packages from the "promote into KE" batch: `KhaozEngine.App`
 > (`BuildMetadata`, `AppDataPaths`, `ServiceLocator`), `KhaozEngine.Localization`
@@ -36,7 +36,7 @@ bumps a `<PackageReference>` or the engine ships a new version.
 | Project   | Project file                         | Input | Screens | UI    | Ecs   | Content | Diagnostics | Time  | App   | Localization | Persistence | Audio | Effects | Graphics |
 |-----------|--------------------------------------|-------|---------|-------|-------|---------|-------------|-------|-------|--------------|-------------|-------|---------|----------|
 | Hardpoint | `Hardpoint/Hardpoint.Core`           | 2.4.0 | 2.4.0   | 2.4.0 | 2.4.0 | 2.4.0   | –           | –     | –     | –            | –           | –     | –       | –        |
-| Nullwake  | `Nullwake/Nullwake.Core`             | 3.3.0 | 3.3.0   | 3.3.0 | –     | 3.3.0   | 3.3.0       | 3.3.0 | 3.3.0 | 3.3.0        | 3.3.0       | 3.3.0 | 3.3.0   | –        |
+| Nullwake  | `Nullwake/Nullwake.Core`             | 3.4.0 | 3.4.0   | 3.4.0 | –     | 3.4.0   | 3.4.0       | 3.4.0 | 3.4.0 | 3.4.0        | 3.4.0       | 3.4.0 | 3.4.0   | –        |
 | SpaceGame | `SpaceGame/SpaceGame.Core`           | 3.3.0 | 3.3.0   | 3.3.0 | 3.3.0 | 3.3.0   | 3.3.0       | –     | 3.3.0 | 3.3.0        | 3.3.0       | –     | –       | 3.3.0    |
 
 ## Adoption matrix
@@ -56,12 +56,17 @@ scaled-dt usage.
 - **Hardpoint** — fully migrated, tracks latest (2.4.0). First consumer of
   `KhaozEngine.Content` (JSON schema validation at build). Has not adopted `Diagnostics` (no file
   logger of its own yet; a candidate to migrate).
-- **Nullwake** — on 3.3.0. Adopted Input/Screens/UI/Time/Content/Diagnostics/App/Localization/Persistence/Audio/Effects.
+- **Nullwake** - on 3.4.0. Adopted Input/Screens/UI/Time/Content/Diagnostics/App/Localization/Persistence/Audio/Effects.
   `GameLogger` replaced by engine `Log` + `CrashHandler` (configured via `LogBootstrap`). Uses `AppDataPaths`,
   `ServiceLocator`, `BuildMetadata`, `SaveEncoder` + `AtomicJsonWriter`, `AudioSystem`, and `Effects.ParticleSystem`.
-  **Graphics not adopted:** `OreField.RefToScreen` is a non-uniform fit-into-sub-rectangle projection,
-  incompatible with `Camera2D`'s uniform full-viewport matrix. **Ecs not yet adopted:** `DeterministicRng`
-  swap is a planned follow-up; still on `GameRng`.
+  The 3.4.0 bump is version-only: it gets the `AudioSystem` IsPlaying-read resilience fix for free (a transient
+  read error now skips a frame instead of killing music). Assessed but did NOT adopt the new music modes
+  (`PlayTrack`/`PlayMode.RepeatOne`/`CurrentTrack`): Nullwake plays pure random background rotation via
+  `PlayRandomTrack`, so there is nothing to change. `SettingsManager` `sanitizeOnLoad` does not apply: saves
+  go through `LocalSaveSystem` + `AtomicJsonWriter` (sanitize/migrate stays inline in `SaveMigrator`), not
+  `SettingsManager`. **Graphics not adopted:** `OreField.RefToScreen` is a non-uniform fit-into-sub-rectangle
+  projection, incompatible with `Camera2D`'s uniform full-viewport matrix. **Ecs not yet adopted:**
+  `DeterministicRng` swap is a planned follow-up; still on `GameRng`.
 - **SpaceGame** — on 3.3.0. Adopted Input/Screens/UI/Ecs/Content/Diagnostics + App/Localization/
   Persistence/Graphics. First consumer of `Graphics` (`Camera2D`, headless with a per-frame Viewport
   sync). Logging via the engine `Log` service (FileSink + ConsoleSink + `CrashHandler`, configured at
@@ -98,8 +103,9 @@ done
 ```
 
 > Nullwake migrated to 3.3.0 (Diagnostics/App/Localization/Persistence/Audio/Effects all adopted;
-> Graphics and Ecs deferred). SpaceGame migrated to 3.3.0 on main (Diagnostics/App/Localization/
+> Graphics and Ecs deferred), then version-bumped to 3.4.0 (free AudioSystem IsPlaying-read resilience
+> fix; new music modes assessed but not adopted). SpaceGame migrated to 3.3.0 on main (Diagnostics/App/Localization/
 > Persistence/Graphics adopted; save.json + music deferred to a 3.4.0 follow-up; Ecs.CreateDerived not
 > adopted to preserve its lockstep baseline).
 
-_Last verified: 2026-06-11 — SpaceGame row updated for its 3.3.0 adoption (App/Localization/Persistence/Graphics; added the Graphics column). Other rows unchanged._
+_Last verified: 2026-06-11. Nullwake row bumped to 3.4.0 (version-only bump; free AudioSystem IsPlaying-read resilience fix, music modes not adopted). SpaceGame/Hardpoint rows unchanged._

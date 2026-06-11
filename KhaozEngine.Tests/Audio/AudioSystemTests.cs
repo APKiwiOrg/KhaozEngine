@@ -300,4 +300,42 @@ public sealed class AudioSystemTests
         Assert.Null(audio.CurrentTrack);
         Assert.Null(last);                 // TrackChanged(null) fired on stop
     }
+
+    [Fact]
+    public void DefaultPlayModeIsRandomRotation()
+    {
+        var (audio, _) = NewLoaded("a");
+        Assert.Equal(PlayMode.RandomRotation, audio.PlayMode);
+    }
+
+    [Fact]
+    public void RepeatOne_ReplaysSameTrackOnAutoAdvance()
+    {
+        var (audio, backend) = NewLoaded("a", "b", "c");
+        audio.PlayTrack("b");                 // index 1; sets _lastTrackIndex = 1, _started = true
+        audio.PlayMode = PlayMode.RepeatOne;
+
+        backend.IsPlaying = false;
+        audio.Update();                       // auto-advance under RepeatOne
+
+        // Random rotation would AVOID index 1 (last played); RepeatOne replays exactly index 1.
+        Assert.Equal(1, backend.PlayedIndices[^1]);
+        Assert.Equal("b", audio.CurrentTrack);
+    }
+
+    [Fact]
+    public void TrackChanged_FiresOnChange_NotOnSameNameRepeat()
+    {
+        var (audio, backend) = NewLoaded("a", "b", "c");
+        var names = new List<string?>();
+        audio.TrackChanged += n => names.Add(n);
+
+        audio.PlayTrack("a");                 // change -> "a"
+        audio.PlayTrack("b");                 // change -> "b"
+        audio.PlayMode = PlayMode.RepeatOne;
+        backend.IsPlaying = false;
+        audio.Update();                       // RepeatOne replay of "b" -> NO new event
+
+        Assert.Equal(new string?[] { "a", "b" }, names);
+    }
 }

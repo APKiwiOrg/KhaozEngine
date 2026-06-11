@@ -151,6 +151,9 @@ public sealed class AudioSystem : IDisposable
     /// <summary>Raised when <see cref="CurrentTrack"/> changes (including to null on stop).</summary>
     public event Action<string?>? TrackChanged;
 
+    /// <summary>How the next track is chosen when the current one ends. Default <see cref="PlayMode.RandomRotation"/>.</summary>
+    public PlayMode PlayMode { get; set; } = PlayMode.RandomRotation;
+
     /// <summary>
     /// Loads all registered music tracks for the active platform backend.
     /// </summary>
@@ -234,6 +237,19 @@ public sealed class AudioSystem : IDisposable
         }
     }
 
+    // Chooses the next track when the current one ends, per PlayMode.
+    private void AdvanceTrack()
+    {
+        if (PlayMode == PlayMode.RepeatOne && _lastTrackIndex >= 0)
+        {
+            PlayTrack(_lastTrackIndex);
+        }
+        else
+        {
+            PlayRandomTrack();
+        }
+    }
+
     /// <summary>
     /// Plays the registered track at <paramref name="index"/> (index into the registration order).
     /// Out-of-range index logs a warning and is a no-op. Honours <see cref="MusicEnabled"/> and the
@@ -301,7 +317,7 @@ public sealed class AudioSystem : IDisposable
         {
             if (!_backend.IsPlaying)
             {
-                PlayRandomTrack();
+                AdvanceTrack();
             }
         }
         catch (Exception)

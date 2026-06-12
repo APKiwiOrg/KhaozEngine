@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Sprites</PackageId>
+    <Description>Game-agnostic 2D sprite + directional-animation playback for MonoGame. SpriteSheet/SpriteSheetLayout (grid -&gt; source rectangles, headless math), SpriteAnimation + SpriteAnimationPlayer (GameTime/float-delta frame clock with looping), Direction8 (8-cardinal enum + FromVector nearest-of-8 mapping in screen space), and DirectionalAnimatedSprite (one animation per direction, draws the right frame via SpriteBatch with centered origin). Plus PixelLabSpriteLoader: builds a DirectionalAnimatedSprite from a PixelLab export (assembled 8-row grid sheet or loose per-direction frames), isolating PixelLab's row-order assumption to one place.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.*" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Tests" />
+  </ItemGroup>
+</Project>

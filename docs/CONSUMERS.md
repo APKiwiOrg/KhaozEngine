@@ -3,7 +3,19 @@
 Which game uses which packages, at which version. Update this whenever a consumer
 bumps a `<PackageReference>` or the engine ships a new version.
 
-**Engine current version:** `3.7.0` (all packages share one version, set in `Directory.Build.props`).
+**Engine current version:** `3.8.0` (all packages share one version, set in `Directory.Build.props`).
+
+> 3.8.0 adds a new package `KhaozEngine.Sprites`: 2D sprite + directional-animation playback.
+> `Direction8` (8 facings + `FromVector` nearest-of-8 in y-down screen space), `SpriteSheet` /
+> `SpriteSheetLayout` (grid -> source rects, headless math), `SpriteAnimation` +
+> `SpriteAnimationPlayer` (GameTime/float-delta frame clock, looping + one-shot), and
+> `DirectionalAnimatedSprite` (one animation per direction, draws the right frame via `SpriteBatch`,
+> centered origin, phase preserved across facing changes). `PixelLabSpriteLoader` builds one from a
+> PixelLab export (assembled grid sheet or loose per-direction frames), isolating PixelLab's
+> `S,SE,E,NE,N,NW,W,SW` row order to one place. Additive, no breaking changes. No consumer adopts yet;
+> Hardpoint is the first adopter (pixel-art entity rendering, replacing `PrimitiveRenderer` colored
+> rects). PixelLab exports loose per-frame PNGs (not a canonical sheet) so the grid-sheet row order
+> should be verified against a real export on first adoption.
 
 > 3.7.0 adds two additive camera/viewport features. `KhaozEngine.Graphics.CameraController`: a
 > reusable pan/zoom/pinch gesture controller that drives an existing `Camera2D` from an `InputManager`

@@ -2,6 +2,50 @@
 
 All notable changes to KhaozEngine. Versions are shared across all packages.
 
+## KhaozEngine 3.9.0
+
+Camera framing + follow, both in `KhaozEngine.Graphics`. Additive, no breaking changes.
+
+### Camera2D framing helpers: CenterOn + Focus (fit-to-rect zoom)
+
+`Camera2D` gains the framing math that consumers were hand-rolling (Hardpoint's `BoardFraming`,
+SpaceForge's grid framing, `PannableCanvas`'s long-dormant `Focus(rect)` zoom seam):
+
+- `CenterOn(Vector2 world)` — sets `Position` so the world point is at the viewport center (an explicit
+  alias for API parity).
+- `Focus(Rectangle worldRect, Viewport viewport, float paddingFraction = 0f, float minZoom, float maxZoom)`
+  — fit-to-rect: sets `Zoom` so the rect (optionally inflated by `paddingFraction` on each side) is fully
+  visible (contain fit, `min(viewport.Width / rectW, viewport.Height / rectH)`), clamped to
+  `minZoom`/`maxZoom`, then centers `Position` on the rect. Pure and headless. Does not clamp to world
+  bounds — call `ClampPosition` after if the rect is a sub-region. A no-arg-viewport overload uses the
+  stored `Viewport` property.
+
+Because these live on `Camera2D`, both `CameraController` and (once consolidated) `PannableCanvas`
+inherit them.
+
+### CameraFollow (target-follow with smoothing + deadzone)
+
+New `CameraFollow` drives a `Camera2D` to follow a moving target. The game decides what to follow; this
+owns only the smoothing/deadzone/clamp. Kept separate from the gesture `CameraController` — a screen
+typically uses one or the other.
+
+- `Update(Vector2 target, float dt, Viewport viewport, Rectangle worldBounds)` — eases toward the target,
+  then clamps via `Camera2D.ClampPosition`. Headless (explicit `Viewport`).
+- **Frame-rate-independent smoothing**: per-frame catch-up is `1 - exp(-Stiffness * dt)`, so the result
+  is independent of step size / frame rate. `Stiffness <= 0` snaps instantly.
+- **Optional deadzone**: a screen-space (virtual) `Rectangle` the target may move within before the camera
+  chases; once the target crosses an edge the camera moves just enough to put it back on that edge.
+  `Rectangle.Empty` (default) disables it (camera centers on the target).
+
+Wiring:
+
+    var camera = new Camera2D { Viewport = GraphicsDevice.Viewport };
+    var follow = new CameraFollow(camera) { Stiffness = 8f, Deadzone = new Rectangle(360, 240, 200, 120) };
+    // per frame:
+    follow.Update(playerWorldPos, dt, GraphicsDevice.Viewport, levelBounds);
+    // or frame a region instead of following:
+    camera.Focus(levelBounds, GraphicsDevice.Viewport, paddingFraction: 0.05f, minZoom: 0.5f, maxZoom: 3f);
+
 ## KhaozEngine 3.8.0
 
 New package `KhaozEngine.Sprites`: 2D sprite + directional-animation playback. Additive, no breaking

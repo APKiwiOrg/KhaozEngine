@@ -2,6 +2,67 @@
 
 All notable changes to KhaozEngine. Versions are shared across all packages.
 
+## KhaozEngine 3.7.0
+
+Two additive camera/viewport features. No breaking changes.
+
+### KhaozEngine.Graphics: CameraController (pan/zoom/pinch gesture controller)
+
+New `CameraController` drives an existing `Camera2D` from an `InputManager`, so gameplay can pan
+and zoom an arbitrary world render without re-implementing the gesture math. It owns no matrix math
+of its own: it reuses `Camera2D.ScreenToWorld` and `Camera2D.ClampPosition`.
+
+- **Pan**: single-pointer drag and two-finger drag (by pinch midpoint travel). Grab-and-drag, so
+  world content tracks the finger; the screen delta is divided by `Zoom` to a world delta.
+- **Zoom**: scroll wheel (desktop) and pinch (mobile), clamped to `MinZoom`/`MaxZoom`. Zoom is about
+  the cursor / pinch midpoint — the focal world point stays under the pointer. `WheelZoomStep` is the
+  multiplicative factor per 120-unit notch (fractional/multi-notch deltas scale smoothly via a power).
+- **Bounds clamp**: after pan/zoom, clamps via `Camera2D.ClampPosition(Position, worldBounds, viewport)`
+  so the view stays inside a caller-supplied world rectangle (auto-centers when the world is smaller).
+- **Tap vs pan**: `TryGetTap(out pressWorld, out releaseWorld)` mirrors `PannableCanvas.TryGetTap` and
+  honors the press-origin invariant — gameplay places a tower on a tap but treats a drag as a pan
+  (a pan returns true too, but its press/release world points differ, so a same-target check rejects it).
+- **Headless**: `Update(Viewport, Rectangle worldBounds)` takes an explicit `Viewport` like `Camera2D`,
+  so the step is unit-testable with no `GraphicsDevice`. Toggles: `EnablePan`, `EnableZoom`, `BlockInput`.
+
+`KhaozEngine.Graphics` now references `KhaozEngine.Input` (for `InputManager`). Wiring:
+
+    var camera = new Camera2D { Viewport = GraphicsDevice.Viewport };
+    var controller = new CameraController(input, camera) { MinZoom = 0.5f, MaxZoom = 4f };
+    // per frame, after input.Update(...):
+    controller.Update(GraphicsDevice.Viewport, worldBounds);
+    if (controller.TryGetTap(out var pressWorld, out var releaseWorld)) { /* place on tap */ }
+    spriteBatch.Begin(transformMatrix: camera.GetViewMatrix());
+
+Relationship to `PannableCanvas` (KhaozEngine.UI): both now carry pan/zoom gesture logic, but on
+different coordinate conventions (`PannableCanvas` uses an additive offset and an inset sub-rectangle
+viewport with scissor clipping; `CameraController` uses `Camera2D`'s position/zoom matrix). This
+release ships `CameraController` standalone and leaves `PannableCanvas` as-is to avoid regressing the
+games already on it (Hardpoint's map). Consolidating `PannableCanvas` onto `CameraController` is a
+tracked follow-up; the two are not meant to diverge long-term.
+
+### KhaozEngine.Input: opt-in desktop design-scale for VirtualResolution
+
+`VirtualResolution` now offers a design-scaled mode on desktop, mirroring mobile: a fixed
+`BaseWidth` × `ReferenceHeight` design space scaled to fill the window, so desktop UI presents the
+same fixed design space (and scales up on a large/Retina window) instead of sizing in raw
+back-buffer pixels.
+
+- **Opt-in, non-breaking**: the desktop default (`isMobile:false` → scale 1, identity matrix, virtual
+  size = back-buffer) is unchanged. Opt in with the new `VirtualResolution.DesignScaled(gdm, baseWidth,
+  referenceHeight)` factory (still pass `isMobile:false` to the `InputManager`; only the scaling differs).
+- **Fill policy**: fill-the-width, adaptive-height (the same as mobile) — no letterbox bars and no
+  offset, so `ScreenToVirtual` stays a plain divide-by-`Scale` and `InputManager` hit-testing lines up.
+- The `GraphicsDeviceManager` ctor argument is now nullable, and a new `Configure(int screenWidth,
+  int screenHeight)` computes the scaling from an explicit size (`Initialize` delegates to it). This
+  makes the scaling headless-testable and lets a consumer drive it from a known/fixed size.
+
+Wiring a desktop game into design-scale:
+
+    var vr = VirtualResolution.DesignScaled(graphicsDeviceManager, baseWidth: 932, referenceHeight: 430);
+    vr.Initialize();                                  // and again on Window.ClientSizeChanged
+    var input = new InputManager(isMobile: false, transform: vr);
+
 ## KhaozEngine 3.6.0
 
 ### KhaozEngine.Ecs: CachedQuery (per-tick allocation-free query reuse)

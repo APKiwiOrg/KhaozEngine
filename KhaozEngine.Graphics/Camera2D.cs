@@ -31,15 +31,15 @@ public sealed class Camera2D
     /// <summary>
     /// Builds the view (world-to-screen) transform for the given viewport:
     /// translate so <see cref="Position"/> is at the origin, apply <see cref="Rotation"/>,
-    /// scale by <see cref="Zoom"/>, then translate to the viewport center. The world thus
-    /// rotates and scales about <see cref="Position"/>, which lands at screen center.
+    /// scale by <see cref="Zoom"/>, then translate to the viewport center <c>(X + W/2, Y + H/2)</c>.
+    /// The world thus rotates and scales about <see cref="Position"/>, which lands at screen center.
     /// </summary>
     public Matrix GetViewMatrix(Viewport viewport)
     {
         return Matrix.CreateTranslation(-Position.X, -Position.Y, 0f)
             * Matrix.CreateRotationZ(Rotation)
             * Matrix.CreateScale(Zoom, Zoom, 1f)
-            * Matrix.CreateTranslation(viewport.Width * 0.5f, viewport.Height * 0.5f, 0f);
+            * Matrix.CreateTranslation(viewport.X + viewport.Width * 0.5f, viewport.Y + viewport.Height * 0.5f, 0f);
     }
 
     /// <summary>Transforms a world position to screen space using the given viewport.</summary>

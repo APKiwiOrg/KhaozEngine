@@ -160,4 +160,12 @@ public class CameraTests
         var desired = new Vector2(-500f, 5000f);
         AssertClose(camera.ClampPosition(desired, bounds, Vp), camera.ClampPosition(desired, bounds));
     }
+
+    [Fact]
+    public void InsetViewport_HonorsOffset_MapsPositionToInsetCenter()
+    {
+        var camera = new Camera2D { Position = new Vector2(50f, 60f), Zoom = 1f };
+        var inset = new Viewport(300, 200, 400, 300);   // center = (300+200, 200+150) = (500, 350)
+        AssertClose(new Vector2(500f, 350f), camera.WorldToScreen(camera.Position, inset));
+    }
 }

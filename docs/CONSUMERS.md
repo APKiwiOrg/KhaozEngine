@@ -48,7 +48,7 @@ bumps a `<PackageReference>` or the engine ships a new version.
 |-----------|--------------------------------------|-------|---------|-------|-------|---------|-------------|-------|-------|--------------|-------------|-------|---------|----------|
 | Hardpoint | `Hardpoint/Hardpoint.Core`           | 3.4.1 | 3.4.1   | 3.4.1 | 3.4.1 | 3.4.1   | 3.4.1       | –     | 3.4.1 | 3.4.1        | 3.4.1       | –     | 3.4.1   | –        |
 | Nullwake  | `Nullwake/Nullwake.Core`             | 3.4.0 | 3.4.0   | 3.4.0 | –     | 3.4.0   | 3.4.0       | 3.4.0 | 3.4.0 | 3.4.0        | 3.4.0       | 3.4.0 | 3.4.0   | –        |
-| SpaceGame | `SpaceGame/SpaceGame.Core`           | 3.4.1 | 3.4.1   | 3.4.1 | 3.4.1 | 3.4.1   | 3.4.1       | –     | 3.4.1 | 3.4.1        | 3.4.1       | 3.4.1 | –       | 3.4.1    |
+| SpaceGame | `SpaceGame/SpaceGame.Core`           | 3.4.1 | 3.4.1   | 3.4.1 | 3.6.0 | 3.4.1   | 3.4.1       | –     | 3.4.1 | 3.4.1        | 3.4.1       | 3.4.1 | –       | 3.4.1    |
 
 ## Adoption matrix
 
@@ -110,10 +110,12 @@ scaled-dt usage.
   **Not adopted:** `Ecs.CreateDerived` — it would move SpaceGame's multiplayer lockstep determinism
   baseline. Deterministic lockstep: vendors `KhaozEngine.Time` transitively via Screens, reads no scaled
   dt (no `GameClock`/`TimeScale`/`TimeSkip`), and must keep it that way.
-  **Pending (3.6.0):** adopt `Ecs.CachedQuery` at the 4 per-tick `world.Query()` sites
-  (`ProjectileMotionSystem`, `CollisionSystem` x2, `RunSession.Diagnostics` x2) to kill per-tick query
-  allocation. Pure allocation change, behaviour-identical: the `StateHash_MatchesCapturedBaseline`
-  baseline must stay `15235204183988888313`. Still on Ecs 3.4.1 until that bump lands.
+  **Ecs 3.6.0 (CachedQuery) adopted:** the 4 per-tick `world.Query()` sites (`ProjectileMotionSystem`,
+  `CollisionSystem` x2, `RunSession.Diagnostics` x2) now reuse `CachedQuery` fields, so the sim no longer
+  allocates a query per tick. Pure allocation change, behaviour-identical: `StateHash_MatchesCapturedBaseline`
+  unchanged at `4423044029376371829` (the ECS-migration spec-1 baseline, which moved off
+  `15235204183988888313` when projectiles migrated to World). Only Ecs bumped 3.4.1 → 3.6.0; the other KE
+  packages stay 3.4.1 (Ecs has no cross-KE deps). SpaceGame build 0.21.4.
 
 ## Repo locations
 
@@ -143,4 +145,4 @@ done
 > Persistence/Graphics adopted), then to 3.4.0 (save.json onto `SettingsManager<SaveData>` + `sanitizeOnLoad`;
 > then 3.4.1 routed music onto `AudioSystem`; Ecs.CreateDerived not adopted to preserve its lockstep baseline).
 
-_Last verified: 2026-06-12. Engine at 3.6.0 (`Ecs.CachedQuery`: per-tick allocation-free query reuse, rebinds on World swap). Consumer rows unchanged: Hardpoint 3.4.1 (adopted Diagnostics/App/Localization/Effects/Persistence; campaign progress persists to save.json, 10-level campaign; Audio/Graphics/Ecs-RNG not adopted), SpaceGame 3.4.1 (music on `AudioSystem`; CachedQuery adoption pending), Nullwake 3.4.0._
+_Last verified: 2026-06-12. Engine at 3.6.0 (`Ecs.CachedQuery`: per-tick allocation-free query reuse, rebinds on World swap). Consumer rows: Hardpoint 3.4.1 (adopted Diagnostics/App/Localization/Effects/Persistence; campaign progress persists to save.json, 10-level campaign; Audio/Graphics/Ecs-RNG not adopted), SpaceGame on Ecs 3.6.0 (CachedQuery adopted) with its other KE packages still 3.4.1 (music on `AudioSystem`), Nullwake 3.4.0._

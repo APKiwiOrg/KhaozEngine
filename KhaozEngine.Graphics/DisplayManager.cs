@@ -11,7 +11,7 @@ public sealed partial class DisplayManager
         WindowMode.Windowed             => (false, true),
         WindowMode.BorderlessFullscreen => (true,  false),
         WindowMode.ExclusiveFullscreen  => (true,  true),
-        _                               => (false, true),
+        _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, null),
     };
 
     /// <summary>Clamps a requested client size up to the per-axis minimum (0 = no floor).</summary>

@@ -168,4 +168,39 @@ public class CameraTests
         var inset = new Viewport(300, 200, 400, 300);   // center = (300+200, 200+150) = (500, 350)
         AssertClose(new Vector2(500f, 350f), camera.WorldToScreen(camera.Position, inset));
     }
+
+    [Fact]
+    public void PanByScreenDelta_MovesPositionOppositeDividedByZoom()
+    {
+        var cam = new Camera2D { Zoom = 2f, Position = Vector2.Zero };
+        cam.PanByScreenDelta(new Vector2(40f, 0f));
+        AssertClose(new Vector2(-20f, 0f), cam.Position);   // 40 / 2 = 20, opposite (grab-and-drag)
+    }
+
+    [Fact]
+    public void PanByScreenDelta_IgnoresZeroAndDegenerateZoom()
+    {
+        var cam = new Camera2D { Zoom = 0f, Position = new Vector2(5f, 5f) };
+        cam.PanByScreenDelta(new Vector2(10f, 10f));   // Zoom <= 0 guarded -> no-op
+        AssertClose(new Vector2(5f, 5f), cam.Position);
+    }
+
+    [Fact]
+    public void ZoomAboutScreenPoint_KeepsFocusWorldPointFixed()
+    {
+        var cam = new Camera2D { Zoom = 1f, Viewport = Vp };
+        var focus = new Vector2(500f, 300f);   // Vp center (400,300) -> world (100,0)
+        var worldBefore = cam.ScreenToWorld(focus, Vp);
+        cam.ZoomAboutScreenPoint(2f, focus, Vp, 0.1f, 10f);
+        Assert.Equal(2f, cam.Zoom, 3);
+        AssertClose(worldBefore, cam.ScreenToWorld(focus, Vp));   // focal world point pinned under focus
+    }
+
+    [Fact]
+    public void ZoomAboutScreenPoint_ClampsToMax()
+    {
+        var cam = new Camera2D { Zoom = 1f };
+        cam.ZoomAboutScreenPoint(50f, new Vector2(400f, 300f), Vp, 0.1f, 10f);
+        Assert.Equal(10f, cam.Zoom, 3);
+    }
 }

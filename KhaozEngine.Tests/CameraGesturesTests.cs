@@ -30,6 +30,7 @@ public class CameraGesturesTests
     {
         var cam = new Camera2D { Viewport = Vp };
         var tracker = new PinchGestureTracker();
+        // Scale=1f makes ZoomAboutScreenPoint a no-op (clamped == Zoom); the tracker's _active flag only guards pan.
         tracker.Apply(cam, new Pinch(true, new Vector2(400, 300), 100f, 0f, 1f), Vp, true, true, 0.1f, 10f);
         AssertClose(Vector2.Zero, cam.Position);
         Assert.Equal(1f, cam.Zoom, 3);
@@ -54,6 +55,18 @@ public class CameraGesturesTests
         tracker.Reset();
         tracker.Apply(cam, new Pinch(true, new Vector2(430, 300), 100f, 0f, 1f), Vp, true, true, 0.1f, 100f);
         AssertClose(Vector2.Zero, cam.Position);   // reset -> treated as first frame -> no pan
+    }
+
+    [Fact]
+    public void PinchTracker_SecondFrame_ZoomsByScale()
+    {
+        var cam = new Camera2D { Viewport = Vp };
+        var tracker = new PinchGestureTracker();
+        // First frame establishes the pinch (scale 1 -> no zoom). enablePan:false isolates zoom.
+        tracker.Apply(cam, new Pinch(true, new Vector2(400, 300), 100f, 0f, 1f), Vp, false, true, 0.1f, 100f);
+        // Second frame: scale 2 -> zoom doubles.
+        tracker.Apply(cam, new Pinch(true, new Vector2(400, 300), 200f, 100f, 2f), Vp, false, true, 0.1f, 100f);
+        Assert.Equal(2f, cam.Zoom, 3);
     }
 
     [Fact]

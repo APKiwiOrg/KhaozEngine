@@ -2,6 +2,26 @@
 
 All notable changes to KhaozEngine. Versions are shared across all packages.
 
+## KhaozEngine 3.6.0
+
+### KhaozEngine.Ecs: CachedQuery (per-tick allocation-free query reuse)
+
+New `CachedQuery` lets sim hot paths reuse a single `Query` instead of allocating a fresh one
+every tick. `World.Query()` returns `new Query(this)` per call, so calling it inside a per-tick
+loop violates the consumers' "no per-frame allocation in sim hot paths" rule.
+
+- `CachedQuery(Func<World, Query> build)` captures the filter builder once.
+- `Query For(World world)` returns the reused `Query`, rebuilding it only when the `World`
+  instance changes (`ReferenceEquals` check) — for consumers that recreate the `World` on
+  run-reset. The underlying `Query` still self-refreshes its matched-archetype list on
+  `ArchetypeGen` changes, so newly spawned archetypes are picked up through the cache.
+
+Additive, no breaking changes. Usage:
+
+    private readonly CachedQuery _projectiles = new(w => w.Query().With<ProjectileTag>());
+    // per tick:
+    _projectiles.For(world).ForEach((Entity e, ref Position p) => ...);
+
 ## KhaozEngine 3.5.0
 
 ### KhaozEngine.Graphics: DisplayManager (display/window configuration)

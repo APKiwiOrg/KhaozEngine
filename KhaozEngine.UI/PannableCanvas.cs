@@ -2,25 +2,31 @@ using System;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using KhaozEngine.Input;
+using KhaozEngine.Graphics;
+using XnaViewport = Microsoft.Xna.Framework.Graphics.Viewport;
 
 namespace KhaozEngine.UI;
 
 /// <summary>
-/// A generic pannable viewport: owns a camera offset and lets a caller pan over world-space
-/// content larger than a caller-supplied viewport. Drag and wheel pan, clamps to caller-supplied
-/// content bounds plus padding, scissor-clips rendering, and exposes world/screen transforms plus
-/// a click-through-safe tap helper. No game-specific concepts. Zoom is not implemented (a private
-/// <c>_zoom = 1f</c> seam is kept so it can be added later).
+/// A generic pannable viewport over world-space content larger than a caller-supplied viewport.
+/// Drag and wheel pan (wheel = vertical pan), optional two-finger pinch zoom, clamps to caller-supplied
+/// content bounds plus padding, scissor-clips rendering, and exposes world/screen transforms plus a
+/// click-through-safe tap helper. No game-specific concepts.
 ///
-/// Per frame: set <see cref="Viewport"/> and <see cref="ContentBounds"/>, call Update
-/// to pan/clamp, then Draw with a world-space draw callback. Query
-/// TryGetTap for the world point(s) tapped this frame.
+/// <para>Delegates its transform / clamp / pan / zoom / tap math to a backing
+/// <see cref="KhaozEngine.Graphics.Camera2D"/> (shared with
+/// <see cref="KhaozEngine.Graphics.CameraController"/>), so the gesture math has a single
+/// implementation. <see cref="CameraOffset"/> is the legacy additive-offset view of the camera
+/// (<c>-Position * Zoom</c>).</para>
+///
+/// Per frame: set <see cref="Viewport"/> and <see cref="ContentBounds"/>, call Update to pan/zoom/clamp,
+/// then Draw with a world-space draw callback. Query TryGetTap for the world point(s) tapped this frame.
 /// </summary>
 public sealed class PannableCanvas
 {
     private readonly InputManager _input;
-    private Vector2 _cameraOffset;
-    private float _zoom = 1f;                  // seam for future zoom; fixed at 1 for now
+    private readonly Camera2D _camera = new();
+    private readonly PinchGestureTracker _pinch = new();
     private RasterizerState? _scissorRasterizer;
 
     /// <summary>Creates a pannable canvas bound to an input source.</summary>
@@ -41,36 +47,40 @@ public sealed class PannableCanvas
     /// <summary>When true, Update reserves the viewport via <c>InputManager.BlockInputRegion</c> so lower screens ignore drags/scrolls that start inside it.</summary>
     public bool BlockInput { get; set; } = true;
 
-    /// <summary>The current camera offset (pan state). Read-only; change it via panning or the focus helpers.</summary>
-    public Vector2 CameraOffset => _cameraOffset;
+    /// <summary>When false, drag and two-finger pan are ignored.</summary>
+    public bool EnablePan { get; set; } = true;
 
-    private Vector2 ViewportCenter =>
-        new(Viewport.X + Viewport.Width / 2f, Viewport.Y + Viewport.Height / 2f);
+    /// <summary>When false, pinch zoom is ignored (the canvas stays at its current zoom; wheel still pans).</summary>
+    public bool EnableZoom { get; set; } = true;
+
+    /// <summary>Smallest allowed camera zoom (pinch zoom-out clamps here).</summary>
+    public float MinZoom { get; set; } = 0.1f;
+
+    /// <summary>Largest allowed camera zoom (pinch zoom-in clamps here).</summary>
+    public float MaxZoom { get; set; } = 10f;
+
+    /// <summary>The backing camera. Exposed so callers can read/drive zoom/position directly.</summary>
+    public Camera2D Camera => _camera;
+
+    /// <summary>The current camera offset (legacy additive pan state): <c>-Position * Zoom</c>. Read-only; change it via panning or the focus helpers.</summary>
+    public Vector2 CameraOffset => -_camera.Position * _camera.Zoom;
+
+    private XnaViewport CameraViewport => new(Viewport.X, Viewport.Y, Viewport.Width, Viewport.Height);
 
     /// <summary>Maps a world point to virtual screen coordinates.</summary>
-    public Vector2 WorldToScreen(Vector2 world)
-    {
-        Vector2 c = ViewportCenter;
-        return new Vector2(c.X + world.X * _zoom + _cameraOffset.X,
-                           c.Y + world.Y * _zoom + _cameraOffset.Y);
-    }
+    public Vector2 WorldToScreen(Vector2 world) => _camera.WorldToScreen(world, CameraViewport);
 
-    /// <summary>Maps a virtual screen point back to world coordinates (exact inverse of <see cref="WorldToScreen"/>).</summary>
-    public Vector2 ScreenToWorld(Vector2 screen)
-    {
-        Vector2 c = ViewportCenter;
-        return new Vector2((screen.X - c.X - _cameraOffset.X) / _zoom,
-                           (screen.Y - c.Y - _cameraOffset.Y) / _zoom);
-    }
+    /// <summary>Maps a virtual screen point back to world coordinates (inverse of <see cref="WorldToScreen"/>).</summary>
+    public Vector2 ScreenToWorld(Vector2 screen) => _camera.ScreenToWorld(screen, CameraViewport);
 
     /// <summary>Centers the camera so <paramref name="world"/> sits at the viewport center, then clamps.</summary>
     public void CenterOn(Vector2 world)
     {
-        _cameraOffset = new Vector2(-world.X * _zoom, -world.Y * _zoom);
+        _camera.Position = world;
         Clamp();
     }
 
-    /// <summary>Centers the camera on the middle of <paramref name="worldRect"/>, then clamps. (Becomes fit-to-rect if zoom is added.)</summary>
+    /// <summary>Centers the camera on the middle of <paramref name="worldRect"/>, then clamps.</summary>
     public void Focus(Rectangle worldRect) =>
         CenterOn(new Vector2(worldRect.X + worldRect.Width / 2f, worldRect.Y + worldRect.Height / 2f));
 
@@ -78,15 +88,28 @@ public sealed class PannableCanvas
     public void CenterContent() =>
         CenterOn(new Vector2(ContentBounds.X + ContentBounds.Width / 2f, ContentBounds.Y + ContentBounds.Height / 2f));
 
-    /// <summary>Reserves the viewport (if <see cref="BlockInput"/>), pans on drag and wheel, then clamps. Call once per frame before drawing.</summary>
+    /// <summary>Reserves the viewport (if <see cref="BlockInput"/>), pans on drag and wheel, zooms on pinch, then clamps. Call once per frame before drawing.</summary>
     public void Update()
     {
         if (BlockInput) _input.BlockInputRegion(Viewport);
 
-        _cameraOffset += _input.GetDragDelta(Viewport);
+        if (_input.TryGetPinch(out Pinch pinch))
+        {
+            _pinch.Apply(_camera, pinch, CameraViewport, EnablePan, EnableZoom, MinZoom, MaxZoom);
+        }
+        else
+        {
+            _pinch.Reset();
 
-        int scroll = _input.GetScrollIn(Viewport);
-        if (scroll != 0) _cameraOffset.Y += scroll * ScrollPanSpeed;
+            if (EnablePan)
+            {
+                _camera.PanByScreenDelta(_input.GetDragDelta(Viewport));
+
+                int scroll = _input.GetScrollIn(Viewport);
+                if (scroll != 0)
+                    _camera.Position += new Vector2(0f, -scroll * ScrollPanSpeed / _camera.Zoom);
+            }
+        }
 
         Clamp();
     }
@@ -95,30 +118,17 @@ public sealed class PannableCanvas
     public Vector2 PointerWorld => ScreenToWorld(_input.PointerPosition);
 
     /// <summary>
-    /// True on the frame the viewport was tapped (press-origin and release both inside the viewport,
-    /// the click-through-safe invariant). Returns the press and release world points so the caller can
-    /// hit-test both and require the same target -- the precision check for dense node graphs. A pan
-    /// that ends inside the viewport also returns true, but its press and release world points differ
-    /// (the camera moved between them), so the same-target check rejects it.
+    /// True on the frame the viewport was tapped (press-origin and release both inside it). Returns the
+    /// press and release world points so the caller can hit-test both and require the same target; a pan
+    /// that ends inside returns true too, but its press/release world points differ so the check rejects it.
     /// </summary>
-    public bool TryGetTap(out Vector2 pressWorld, out Vector2 releaseWorld)
-    {
-        if (_input.IsTapIn(Viewport))
-        {
-            pressWorld = ScreenToWorld(_input.PressOrigin);
-            releaseWorld = ScreenToWorld(_input.PointerPosition);
-            return true;
-        }
-        pressWorld = releaseWorld = Vector2.Zero;
-        return false;
-    }
+    public bool TryGetTap(out Vector2 pressWorld, out Vector2 releaseWorld) =>
+        CameraGestures.TryGetTap(_input, _camera, CameraViewport, out pressWorld, out releaseWorld);
 
     /// <summary>
     /// Scissor-clips to the viewport and invokes <paramref name="drawWorld"/> with a SpriteBatch whose
-    /// transform maps world coordinates -> virtual screen -> physical pixels. The caller draws nodes/edges
-    /// in world coordinates inside the callback. Pass <c>vr.Scale</c> and <c>vr.ScaleMatrix</c> for
-    /// <paramref name="renderScale"/> / <paramref name="scaleMatrix"/>. Draw screen-space extras (popups,
-    /// pinned HUD) in your own batch after this returns.
+    /// transform maps world coordinates -> virtual screen -> physical pixels. Pass <c>vr.Scale</c> and
+    /// <c>vr.ScaleMatrix</c> for <paramref name="renderScale"/> / <paramref name="scaleMatrix"/>.
     /// </summary>
     public void Draw(SpriteBatch sb, GraphicsDevice gd, float renderScale, Matrix scaleMatrix, Action drawWorld)
     {
@@ -130,10 +140,7 @@ public sealed class PannableCanvas
             Math.Max(0, (int)(Viewport.Width * renderScale)),
             Math.Max(0, (int)(Viewport.Height * renderScale)));
 
-        Vector2 c = ViewportCenter;
-        Matrix world =
-            Matrix.CreateScale(_zoom, _zoom, 1f) *
-            Matrix.CreateTranslation(c.X + _cameraOffset.X, c.Y + _cameraOffset.Y, 0f);
+        Matrix world = _camera.GetViewMatrix(CameraViewport);
 
         sb.Begin(samplerState: SamplerState.PointClamp,
                  rasterizerState: _scissorRasterizer,
@@ -146,20 +153,6 @@ public sealed class PannableCanvas
         ContentBounds.X - Padding, ContentBounds.Y - Padding,
         ContentBounds.Width + Padding * 2, ContentBounds.Height + Padding * 2);
 
-    private void Clamp()
-    {
-        Rectangle b = PaddedBounds;
-        float halfW = Viewport.Width / 2f;
-        float halfH = Viewport.Height / 2f;
-
-        float minOffX = -b.Right + halfW;
-        float maxOffX = -b.Left - halfW;
-        if (minOffX > maxOffX) _cameraOffset.X = -(b.X + b.Width / 2f);   // content narrower than view -> center
-        else _cameraOffset.X = MathHelper.Clamp(_cameraOffset.X, minOffX, maxOffX);
-
-        float minOffY = -b.Bottom + halfH;
-        float maxOffY = -b.Top - halfH;
-        if (minOffY > maxOffY) _cameraOffset.Y = -(b.Y + b.Height / 2f);
-        else _cameraOffset.Y = MathHelper.Clamp(_cameraOffset.Y, minOffY, maxOffY);
-    }
+    private void Clamp() =>
+        _camera.Position = _camera.ClampPosition(_camera.Position, PaddedBounds, CameraViewport);
 }

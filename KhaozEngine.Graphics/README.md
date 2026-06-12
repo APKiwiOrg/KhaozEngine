@@ -24,8 +24,9 @@ spriteBatch.Begin(transformMatrix: camera.GetViewMatrix());
 Vector2 world = camera.ScreenToWorld(input.PointerPosition);
 ```
 
-`Zoom` must be `> 0`. Follow-cam logic (smoothing, bounds tracking) lives game-side and
-composes a `Camera2D`.
+`Zoom` must be `> 0`. Framing helpers: `CenterOn(world)` puts a world point at the viewport center;
+`Focus(rect, viewport, paddingFraction, minZoom, maxZoom)` is a fit-to-rect contain zoom (sets zoom so
+the rect fills the view, then centers on it) — handy for "frame the whole level" or "zoom to selection".
 
 ## CameraController
 
@@ -44,5 +45,24 @@ var controller = new CameraController(input, camera) { MinZoom = 0.5f, MaxZoom =
 // per frame, after input.Update(...):
 controller.Update(GraphicsDevice.Viewport, worldBounds);
 if (controller.TryGetTap(out var pressWorld, out var releaseWorld)) { /* place on tap */ }
+spriteBatch.Begin(transformMatrix: camera.GetViewMatrix());
+```
+
+## CameraFollow
+
+Drives a `Camera2D` to follow a moving target. The game decides *what* to follow; `CameraFollow` owns
+the smoothing, an optional deadzone, and the bounds clamp. Use it instead of `CameraController` on a
+screen with a follow-cam (the two are mutually exclusive per screen).
+
+Smoothing is frame-rate-independent (`1 - exp(-Stiffness * dt)`); `Stiffness <= 0` snaps. The deadzone
+is a screen-space rectangle the target can move within before the camera chases; `Rectangle.Empty`
+centers on the target.
+
+```csharp
+var camera = new Camera2D { Viewport = GraphicsDevice.Viewport };
+var follow = new CameraFollow(camera) { Stiffness = 8f, Deadzone = new Rectangle(360, 240, 200, 120) };
+
+// per frame:
+follow.Update(playerWorldPos, dt, GraphicsDevice.Viewport, levelBounds);
 spriteBatch.Begin(transformMatrix: camera.GetViewMatrix());
 ```

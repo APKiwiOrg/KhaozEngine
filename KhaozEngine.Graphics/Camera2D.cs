@@ -98,4 +98,36 @@ public sealed class Camera2D
     /// <see cref="ClampPosition(Vector2, Rectangle, Viewport)"/>.</summary>
     public Vector2 ClampPosition(Vector2 desired, Rectangle worldBounds) =>
         ClampPosition(desired, worldBounds, Viewport);
+
+    /// <summary>Sets <see cref="Position"/> so <paramref name="world"/> sits at the viewport center.
+    /// (Position already is the world point at center, so this is an explicit alias for readability
+    /// and API parity with the pannable canvas.)</summary>
+    public void CenterOn(Vector2 world) => Position = world;
+
+    /// <summary>
+    /// Frames <paramref name="worldRect"/>: sets <see cref="Zoom"/> so the rect (optionally inflated
+    /// by <paramref name="paddingFraction"/> on each side) is fully visible — a contain fit,
+    /// <c>min(viewport.Width / rectWidth, viewport.Height / rectHeight)</c> — clamped to
+    /// <paramref name="minZoom"/>/<paramref name="maxZoom"/>, then centers <see cref="Position"/> on the
+    /// rect. Pure and headless (explicit <paramref name="viewport"/>); ignores <see cref="Rotation"/>
+    /// like the other axis-aligned helpers. Does not clamp to world bounds — call
+    /// <see cref="ClampPosition(Vector2, Rectangle, Viewport)"/> after if the rect is a sub-region.
+    /// </summary>
+    public void Focus(Rectangle worldRect, Viewport viewport, float paddingFraction = 0f,
+        float minZoom = 0.0001f, float maxZoom = float.MaxValue)
+    {
+        float scale = 1f + 2f * paddingFraction;
+        float w = MathHelper.Max(1f, worldRect.Width * scale);
+        float h = MathHelper.Max(1f, worldRect.Height * scale);
+        float fit = MathHelper.Min(viewport.Width / w, viewport.Height / h);
+
+        Zoom = MathHelper.Clamp(fit, minZoom, maxZoom);
+        Position = new Vector2(worldRect.X + worldRect.Width / 2f, worldRect.Y + worldRect.Height / 2f);
+    }
+
+    /// <summary>Frames <paramref name="worldRect"/> using the stored <see cref="Viewport"/> property.
+    /// See <see cref="Focus(Rectangle, Viewport, float, float, float)"/>.</summary>
+    public void Focus(Rectangle worldRect, float paddingFraction = 0f,
+        float minZoom = 0.0001f, float maxZoom = float.MaxValue) =>
+        Focus(worldRect, Viewport, paddingFraction, minZoom, maxZoom);
 }

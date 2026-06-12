@@ -3,7 +3,16 @@
 Which game uses which packages, at which version. Update this whenever a consumer
 bumps a `<PackageReference>` or the engine ships a new version.
 
-**Engine current version:** `3.7.0` (all packages share one version, set in `Directory.Build.props`).
+**Engine current version:** `3.9.0` (all packages share one version, set in `Directory.Build.props`).
+
+> 3.9.0 extends `KhaozEngine.Graphics` with camera framing + follow. `Camera2D` gains `CenterOn(world)`
+> and `Focus(rect, viewport, paddingFraction, minZoom, maxZoom)` (fit-to-rect contain zoom) — the framing
+> math Hardpoint hand-rolled as `BoardFraming`, SpaceForge does inline, and `PannableCanvas.Focus(rect)`
+> has a dormant seam for. New `CameraFollow` drives a `Camera2D` to follow a target with frame-rate-
+> independent smoothing (`1 - exp(-Stiffness*dt)`) + an optional screen-space deadzone + bounds clamp.
+> Additive. Adoption targets: SpaceForge → `CameraController` + `Camera2D.Focus`; Hardpoint
+> `BoardView`/`BoardFraming` → `CameraController` + `Camera2D.Focus`; SpaceGame gameplay follow →
+> `CameraFollow`; `PannableCanvas` consolidation depends on `Camera2D.Focus`. No consumer adopts yet.
 
 > 3.7.0 adds two additive camera/viewport features. `KhaozEngine.Graphics.CameraController`: a
 > reusable pan/zoom/pinch gesture controller that drives an existing `Camera2D` from an `InputManager`
@@ -155,4 +164,4 @@ done
 > Persistence/Graphics adopted), then to 3.4.0 (save.json onto `SettingsManager<SaveData>` + `sanitizeOnLoad`;
 > then 3.4.1 routed music onto `AudioSystem`; Ecs.CreateDerived not adopted to preserve its lockstep baseline).
 
-_Last verified: 2026-06-13. Engine at 3.7.0 (`Graphics.CameraController`: pan/zoom/pinch gesture controller over `Camera2D`; `Input.VirtualResolution` opt-in desktop design-scale). No consumer adopts 3.7.0 yet. Consumer rows: Hardpoint 3.4.1 (adopted Diagnostics/App/Localization/Effects/Persistence; campaign progress persists to save.json, 10-level campaign; Audio/Graphics/Ecs-RNG not adopted), SpaceGame on Ecs 3.6.0 (CachedQuery adopted) with its other KE packages still 3.4.1 (music on `AudioSystem`), Nullwake 3.4.0._
+_Last verified: 2026-06-13. Engine at 3.9.0 (`Graphics`: `Camera2D.CenterOn`/`Focus` fit-to-rect framing + `CameraFollow` smoothing/deadzone; builds on 3.7.0 `CameraController` + `Input.VirtualResolution` desktop design-scale). No consumer adopts 3.7.0/3.9.0 yet. Consumer rows: Hardpoint 3.4.1 (adopted Diagnostics/App/Localization/Effects/Persistence; campaign progress persists to save.json, 10-level campaign; Audio/Graphics/Ecs-RNG not adopted), SpaceGame on Ecs 3.6.0 (CachedQuery adopted) with its other KE packages still 3.4.1 (music on `AudioSystem`), Nullwake 3.4.0._

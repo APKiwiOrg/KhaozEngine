@@ -3,7 +3,17 @@
 Which game uses which packages, at which version. Update this whenever a consumer
 bumps a `<PackageReference>` or the engine ships a new version.
 
-**Engine current version:** `3.6.0` (all packages share one version, set in `Directory.Build.props`).
+**Engine current version:** `3.7.0` (all packages share one version, set in `Directory.Build.props`).
+
+> 3.7.0 adds two additive camera/viewport features. `KhaozEngine.Graphics.CameraController`: a
+> reusable pan/zoom/pinch gesture controller that drives an existing `Camera2D` from an `InputManager`
+> (drag + two-finger pan, wheel + pinch zoom about the cursor/focus, world-bounds clamp via
+> `Camera2D.ClampPosition`, and `TryGetTap` tap-vs-pan disambiguation). Graphics now references Input.
+> `PannableCanvas` is left as-is this release (consolidation onto `CameraController` is a follow-up).
+> `KhaozEngine.Input.VirtualResolution` gains an opt-in desktop design-scale mode via the
+> `DesignScaled(...)` factory (fill-the-width, adaptive-height, mirrors mobile) plus a headless
+> `Configure(w, h)`; the `isMobile:false` desktop default (scale 1, identity) is unchanged. No consumer
+> adopts either yet — Hardpoint's map (on `PannableCanvas`) is the likeliest `CameraController` adopter.
 
 > 3.6.0 adds `KhaozEngine.Ecs.CachedQuery`: a small helper that reuses one `Query` across calls so
 > sim hot paths stop allocating a fresh query per tick. Rebuilds only on a `World` instance swap
@@ -145,4 +155,4 @@ done
 > Persistence/Graphics adopted), then to 3.4.0 (save.json onto `SettingsManager<SaveData>` + `sanitizeOnLoad`;
 > then 3.4.1 routed music onto `AudioSystem`; Ecs.CreateDerived not adopted to preserve its lockstep baseline).
 
-_Last verified: 2026-06-12. Engine at 3.6.0 (`Ecs.CachedQuery`: per-tick allocation-free query reuse, rebinds on World swap). Consumer rows: Hardpoint 3.4.1 (adopted Diagnostics/App/Localization/Effects/Persistence; campaign progress persists to save.json, 10-level campaign; Audio/Graphics/Ecs-RNG not adopted), SpaceGame on Ecs 3.6.0 (CachedQuery adopted) with its other KE packages still 3.4.1 (music on `AudioSystem`), Nullwake 3.4.0._
+_Last verified: 2026-06-13. Engine at 3.7.0 (`Graphics.CameraController`: pan/zoom/pinch gesture controller over `Camera2D`; `Input.VirtualResolution` opt-in desktop design-scale). No consumer adopts 3.7.0 yet. Consumer rows: Hardpoint 3.4.1 (adopted Diagnostics/App/Localization/Effects/Persistence; campaign progress persists to save.json, 10-level campaign; Audio/Graphics/Ecs-RNG not adopted), SpaceGame on Ecs 3.6.0 (CachedQuery adopted) with its other KE packages still 3.4.1 (music on `AudioSystem`), Nullwake 3.4.0._

@@ -2,6 +2,28 @@
 
 All notable changes to KhaozEngine. Versions are shared across all packages.
 
+## KhaozEngine 3.5.0
+
+### KhaozEngine.Graphics: DisplayManager (display/window configuration)
+
+New `DisplayManager` centralizes MonoGame `GraphicsDeviceManager` + `GameWindow` setup so games
+stop configuring the device bespoke.
+
+- `DisplaySettings` (immutable record): `Width`/`Height`, `Mode` (`WindowMode.Windowed` /
+  `BorderlessFullscreen` / `ExclusiveFullscreen`), `AllowUserResizing`, `MinWidth`/`MinHeight`
+  floor, `SupportedOrientations`, `Title`. Factories `DisplaySettings.Landscape(w, h)` and
+  `Portrait(w, h)`. Pure and headless-testable; build variants with `with`.
+- `DevicePresets` catalog of common iOS logical-point sizes (iPhone SE to 15 Pro Max, iPad to
+  Pro 12.9") via `DevicePreset.Portrait()` / `.Landscape()`.
+- `DisplayManager(graphics, window, settings)` applies settings to the live device and exposes
+  runtime mutators `Apply`, `SetResolution`, `SetMode`, `ToggleFullscreen`, `SetResizable`, plus
+  `Width`/`Height`/`Size`/`IsFullscreen`. Enforces the min-size floor by clamping on
+  `ClientSizeChanged`. Composes with `VirtualResolution`, which still reads the device for scaling.
+
+One-liner for an iPhone 15 Pro Max landscape window (932x430):
+
+    display = new DisplayManager(graphicsDeviceManager, Window, DisplaySettings.Landscape(932, 430));
+
 ## KhaozEngine 3.4.1
 
 Bug fix for the 3.4.0 now-playing feature. No API or behaviour change for callers whose tracks all load.

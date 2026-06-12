@@ -201,6 +201,35 @@ Vector2 mouseWorld = cam.ScreenToWorld(mouseScreenPos);          // pick/aim in 
 
 ---
 
+## DisplayManager (KhaozEngine.Graphics)
+
+`DisplayManager` centralizes window/display configuration so a game does not poke
+`GraphicsDeviceManager`/`GameWindow` directly. Construct it in your `Game` constructor (where
+`graphicsDeviceManager` and `Window` already exist) with a declarative `DisplaySettings`:
+
+    // 932x430 landscape (iPhone 14/15 Pro Max logical points)
+    display = new DisplayManager(graphicsDeviceManager, Window, DisplaySettings.Landscape(932, 430));
+
+    // Or via the device-size catalog (same 932x430):
+    display = new DisplayManager(graphicsDeviceManager, Window, DevicePresets.IPhone15ProMax.Landscape());
+
+`DisplaySettings` is an immutable record: `Width`, `Height`, `Mode` (`WindowMode.Windowed` /
+`BorderlessFullscreen` / `ExclusiveFullscreen`), `AllowUserResizing`, `MinWidth`/`MinHeight`
+floor, `SupportedOrientations`, `Title`. Build variants with `with`, or use the
+`DisplaySettings.Landscape(w, h)` / `Portrait(w, h)` factories.
+
+Runtime changes:
+
+    display.SetResolution(1280, 720);
+    display.ToggleFullscreen();
+    display.SetResizable(true, minWidth: 640, minHeight: 360); // floor enforced on resize
+
+`Width`/`Height`/`Size` report the current backbuffer size (use `display.Size` instead of reading
+`PreferredBackBufferWidth/Height`). `VirtualResolution` is unchanged: `DisplayManager` owns the
+device config, `VirtualResolution` reads it for its coordinate scaling.
+
+---
+
 ## Testing your game's screens headlessly
 
 Because input is injected, you can test routing and screen logic without a window:

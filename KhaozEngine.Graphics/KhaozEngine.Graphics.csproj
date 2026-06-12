@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.Graphics</PackageId>
-    <Description>Game-agnostic 2D matrix camera (Camera2D): position/zoom/rotation to view matrix, screen&lt;-&gt;world transforms, optional world-bounds clamp. Headless (no GraphicsDevice required for the math).</Description>
+    <Description>Game-agnostic 2D matrix camera (Camera2D): position/zoom/rotation to view matrix, screen&lt;-&gt;world transforms, optional world-bounds clamp. Headless (no GraphicsDevice required for the math). Plus DisplayManager: declarative window/display config (size, fullscreen mode, resizing + min-size floor, orientations) over GraphicsDeviceManager/GameWindow, with a DevicePresets size catalog.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>

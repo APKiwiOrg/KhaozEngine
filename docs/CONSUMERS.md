@@ -3,7 +3,7 @@
 Which game uses which packages, at which version. Update this whenever a consumer
 bumps a `<PackageReference>` or the engine ships a new version.
 
-**Engine current version:** `3.4.1` (all packages share one version, set in `Directory.Build.props`).
+**Engine current version:** `3.5.0` (all packages share one version, set in `Directory.Build.props`).
 
 > 3.4.1 fixes a 3.4.0 bug: `AudioSystem.LoadContent` now drops failed-to-load tracks so its name
 > list stays aligned with the backend, keeping `CurrentTrack`/`TrackChanged`/`PlayTrack(name)` correct

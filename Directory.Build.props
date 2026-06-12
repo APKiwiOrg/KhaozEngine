@@ -6,7 +6,7 @@
     <ImplicitUsings>disable</ImplicitUsings>
 
     <!-- Shared package version for ALL packages (Input/Screens/UI/Ecs). Bump here to release together. -->
-    <Version>3.4.1</Version>
+    <Version>3.5.0</Version>
     <Authors>APKiwi</Authors>
     <Company>Khaoz</Company>
     <PackageProjectUrl>https://github.com/APKiwi/KhaozEngine</PackageProjectUrl>

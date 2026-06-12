@@ -203,4 +203,22 @@ public class CameraTests
         cam.ZoomAboutScreenPoint(50f, new Vector2(400f, 300f), Vp, 0.1f, 10f);
         Assert.Equal(10f, cam.Zoom, 3);
     }
+
+    [Fact]
+    public void ZoomAboutScreenPoint_KeepsFocusWorldPointFixed_AtNonzeroPosition()
+    {
+        var cam = new Camera2D { Zoom = 1f, Position = new Vector2(200f, -150f), Viewport = Vp };
+        var focus = new Vector2(500f, 300f);
+        var worldBefore = cam.ScreenToWorld(focus, Vp);
+        cam.ZoomAboutScreenPoint(2f, focus, Vp, 0.1f, 10f);
+        AssertClose(worldBefore, cam.ScreenToWorld(focus, Vp));   // focus pinned even with nonzero start position
+    }
+
+    [Fact]
+    public void ZoomAboutScreenPoint_ClampsToMin()
+    {
+        var cam = new Camera2D { Zoom = 1f };
+        cam.ZoomAboutScreenPoint(0.001f, new Vector2(400f, 300f), Vp, 0.1f, 10f);
+        Assert.Equal(0.1f, cam.Zoom, 3);
+    }
 }

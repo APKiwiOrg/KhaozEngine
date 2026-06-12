@@ -11,6 +11,7 @@
   <Project Path="KhaozEngine.Localization/KhaozEngine.Localization.csproj" />
   <Project Path="KhaozEngine.Persistence/KhaozEngine.Persistence.csproj" />
   <Project Path="KhaozEngine.Screens/KhaozEngine.Screens.csproj" />
+  <Project Path="KhaozEngine.Sprites/KhaozEngine.Sprites.csproj" />
   <Project Path="KhaozEngine.Tests/KhaozEngine.Tests.csproj" />
   <Project Path="KhaozEngine.Time/KhaozEngine.Time.csproj" />
   <Project Path="KhaozEngine.UI/KhaozEngine.UI.csproj" />

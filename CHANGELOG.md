@@ -2,6 +2,39 @@
 
 All notable changes to KhaozEngine. Versions are shared across all packages.
 
+## KhaozEngine 3.8.0
+
+New package `KhaozEngine.Sprites`: 2D sprite + directional-animation playback. Additive, no breaking
+changes. Replaces flat-primitive entity rendering with directional, animated sprites for all games.
+
+### KhaozEngine.Sprites (new)
+
+- **`Direction8`** — the 8 facings `S, SE, E, NE, N, NW, W, SW`, ordered so the enum value is the
+  direction's row index in a PixelLab grid sheet. `Direction8Extensions.FromVector(facing, fallback)`
+  maps a movement/aim vector to the nearest of 8 in y-down screen space (+X east, +Y south); magnitude
+  is irrelevant, a 22.5-degree seam rounds to the higher (clockwise) direction, and a zero vector
+  returns `fallback`. `ToVector()` returns the unit facing.
+- **`SpriteSheetLayout`** — pure grid math (no `Texture2D`, headless): `FromFrameSize` / `FromGrid`,
+  then `GetFrame(row, column)` -> source `Rectangle`. **`SpriteSheet`** pairs it with a texture.
+- **`SpriteFrame`** — a `(Texture2D, Rectangle)` drawable frame; frames carry their own texture so an
+  animation can span one packed sheet or a set of loose per-frame textures.
+- **`SpriteAnimation`** — ordered frames + per-frame duration + loop flag (`FromFps` or seconds ctor).
+  **`SpriteAnimationPlayer`** advances it by a `float` seconds delta or a `GameTime`, yields the current
+  frame, loops, flags `IsFinished` for one-shots, and `Play(anim, preservePhase)` swaps animations. A
+  small relative tolerance on the frame boundary keeps exact-multiple deltas from dropping a frame to
+  float noise.
+- **`DirectionalAnimatedSprite`** — one animation per `Direction8`, plays the one matching the current
+  facing, draws via `SpriteBatch` with a centered origin by default; switching facing preserves the
+  animation phase so a walk cycle stays smooth. `Update(facing, gameTime)` does both in one call.
+- **`PixelLabSpriteLoader`** — builds a `DirectionalAnimatedSprite` from a PixelLab export, either an
+  assembled grid sheet (`FromGridSheet`: 8 direction rows x N frame columns) or loose per-direction
+  frame textures (`FromFrames`). PixelLab's row order is isolated here (in `RowFor`) so the core types
+  stay PixelLab-agnostic. Note: PixelLab exports loose per-frame PNGs, not a canonical sheet, so the
+  grid layout matches an assembly step's output; verify row order against a real export on first use.
+
+The animation clock decouples from `KhaozEngine.Time` deliberately (advances on a `float` delta), so
+callers feed either `GameTime.ElapsedGameTime` or a scaled `GameClock.ScaledDeltaSeconds`.
+
 ## KhaozEngine 3.7.0
 
 Two additive camera/viewport features. No breaking changes.

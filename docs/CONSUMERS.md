@@ -132,4 +132,4 @@ done
 > Persistence/Graphics adopted), then to 3.4.0 (save.json onto `SettingsManager<SaveData>` + `sanitizeOnLoad`;
 > then 3.4.1 routed music onto `AudioSystem`; Ecs.CreateDerived not adopted to preserve its lockstep baseline).
 
-_Last verified: 2026-06-12. Engine at 3.4.1 (AudioSystem partial-load name-alignment fix). Hardpoint row on 3.4.1 (adopted Diagnostics/App/Localization/Effects/Persistence; campaign progress now persists to save.json and the campaign is 10 levels; Audio/Graphics/Ecs-RNG not adopted). SpaceGame row bumped to 3.4.1 (music adopted onto `AudioSystem`). Nullwake row at 3.4.0._
+_Last verified: 2026-06-12. Engine at 3.5.0 (DisplayManager: backbuffer size, fullscreen mode, resize floor, orientations, title). Hardpoint row on 3.4.1 (adopted Diagnostics/App/Localization/Effects/Persistence; campaign progress now persists to save.json and the campaign is 10 levels; Audio/Graphics/Ecs-RNG not adopted). SpaceGame row bumped to 3.4.1 (music adopted onto `AudioSystem`). Nullwake row at 3.4.0._

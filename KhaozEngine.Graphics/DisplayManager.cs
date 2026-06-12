@@ -10,7 +10,7 @@ namespace KhaozEngine.Graphics;
 /// no statics"). Construct in the <c>Game</c> constructor; the constructor sets preferences
 /// (no <c>ApplyChanges</c>, the normal pre-device path) and runtime mutators apply immediately.
 /// </summary>
-public sealed partial class DisplayManager
+public sealed class DisplayManager
 {
     private readonly GraphicsDeviceManager _graphics;
     private readonly GameWindow _window;
@@ -101,6 +101,7 @@ public sealed partial class DisplayManager
             _graphics.PreferredBackBufferWidth = clamped.X;
             _graphics.PreferredBackBufferHeight = clamped.Y;
             _graphics.ApplyChanges();
+            Settings = Settings with { Width = clamped.X, Height = clamped.Y };
         }
         finally
         {

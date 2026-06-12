@@ -4,7 +4,7 @@ namespace KhaozEngine.Graphics;
 
 /// <summary>
 /// Declarative description of the wanted window: size, presentation mode, resize behaviour,
-/// optional minimum size floor, supported orientations, and title. Immutable — build variants
+/// optional minimum size floor, supported orientations, and title. Immutable; build variants
 /// with <c>with</c> expressions. Pure data; <see cref="DisplayManager"/> applies it to the device.
 /// </summary>
 public sealed record DisplaySettings

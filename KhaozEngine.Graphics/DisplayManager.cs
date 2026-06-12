@@ -18,7 +18,7 @@ public sealed partial class DisplayManager
     private bool _inResize;
 
     /// <summary>Current applied settings.</summary>
-    public DisplaySettings Settings { get; private set; }
+    public DisplaySettings Settings { get; private set; } = null!;
 
     /// <summary>Current preferred backbuffer width.</summary>
     public int Width => _graphics.PreferredBackBufferWidth;
@@ -37,7 +37,7 @@ public sealed partial class DisplayManager
     {
         _graphics = graphics ?? throw new ArgumentNullException(nameof(graphics));
         _window = window ?? throw new ArgumentNullException(nameof(window));
-        Settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        ArgumentNullException.ThrowIfNull(settings);
         ApplyInternal(settings, applyChanges: false);
     }
 
@@ -96,10 +96,16 @@ public sealed partial class DisplayManager
         if (clamped.X == bounds.Width && clamped.Y == bounds.Height) return;
 
         _inResize = true;
-        _graphics.PreferredBackBufferWidth = clamped.X;
-        _graphics.PreferredBackBufferHeight = clamped.Y;
-        _graphics.ApplyChanges();
-        _inResize = false;
+        try
+        {
+            _graphics.PreferredBackBufferWidth = clamped.X;
+            _graphics.PreferredBackBufferHeight = clamped.Y;
+            _graphics.ApplyChanges();
+        }
+        finally
+        {
+            _inResize = false;
+        }
     }
 
     /// <summary>Maps a <see cref="WindowMode"/> to MonoGame's

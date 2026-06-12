@@ -3,7 +3,14 @@
 Which game uses which packages, at which version. Update this whenever a consumer
 bumps a `<PackageReference>` or the engine ships a new version.
 
-**Engine current version:** `3.5.0` (all packages share one version, set in `Directory.Build.props`).
+**Engine current version:** `3.6.0` (all packages share one version, set in `Directory.Build.props`).
+
+> 3.6.0 adds `KhaozEngine.Ecs.CachedQuery`: a small helper that reuses one `Query` across calls so
+> sim hot paths stop allocating a fresh query per tick. Rebuilds only on a `World` instance swap
+> (`ReferenceEquals`), so run-reset (`new World()`) stays correct; the underlying `Query` still
+> self-refreshes its archetype list on `ArchetypeGen` changes. Additive, no breaking changes.
+> SpaceGame adopts it at the 4 per-tick `world.Query()` sites (projectile motion, collision x2,
+> run diagnostics x2) — behaviour-identical, pure allocation change.
 
 > 3.4.1 fixes a 3.4.0 bug: `AudioSystem.LoadContent` now drops failed-to-load tracks so its name
 > list stays aligned with the backend, keeping `CurrentTrack`/`TrackChanged`/`PlayTrack(name)` correct
@@ -103,6 +110,10 @@ scaled-dt usage.
   **Not adopted:** `Ecs.CreateDerived` — it would move SpaceGame's multiplayer lockstep determinism
   baseline. Deterministic lockstep: vendors `KhaozEngine.Time` transitively via Screens, reads no scaled
   dt (no `GameClock`/`TimeScale`/`TimeSkip`), and must keep it that way.
+  **Pending (3.6.0):** adopt `Ecs.CachedQuery` at the 4 per-tick `world.Query()` sites
+  (`ProjectileMotionSystem`, `CollisionSystem` x2, `RunSession.Diagnostics` x2) to kill per-tick query
+  allocation. Pure allocation change, behaviour-identical: the `StateHash_MatchesCapturedBaseline`
+  baseline must stay `15235204183988888313`. Still on Ecs 3.4.1 until that bump lands.
 
 ## Repo locations
 
@@ -132,4 +143,4 @@ done
 > Persistence/Graphics adopted), then to 3.4.0 (save.json onto `SettingsManager<SaveData>` + `sanitizeOnLoad`;
 > then 3.4.1 routed music onto `AudioSystem`; Ecs.CreateDerived not adopted to preserve its lockstep baseline).
 
-_Last verified: 2026-06-12. Engine at 3.5.0 (DisplayManager: backbuffer size, fullscreen mode, resize floor, orientations, title). Hardpoint row on 3.4.1 (adopted Diagnostics/App/Localization/Effects/Persistence; campaign progress now persists to save.json and the campaign is 10 levels; Audio/Graphics/Ecs-RNG not adopted). SpaceGame row bumped to 3.4.1 (music adopted onto `AudioSystem`). Nullwake row at 3.4.0._
+_Last verified: 2026-06-12. Engine at 3.6.0 (`Ecs.CachedQuery`: per-tick allocation-free query reuse, rebinds on World swap). Consumer rows unchanged: Hardpoint 3.4.1 (adopted Diagnostics/App/Localization/Effects/Persistence; campaign progress persists to save.json, 10-level campaign; Audio/Graphics/Ecs-RNG not adopted), SpaceGame 3.4.1 (music on `AudioSystem`; CachedQuery adoption pending), Nullwake 3.4.0._

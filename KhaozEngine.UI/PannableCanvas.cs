@@ -77,7 +77,7 @@ public sealed class PannableCanvas
     /// <summary>Centers the camera so <paramref name="world"/> sits at the viewport center, then clamps.</summary>
     public void CenterOn(Vector2 world)
     {
-        _camera.Position = world;
+        _camera.CenterOn(world);
         Clamp();
     }
 

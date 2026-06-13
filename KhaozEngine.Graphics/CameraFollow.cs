@@ -32,7 +32,11 @@ public sealed class CameraFollow
     /// <summary>A screen-space (virtual) rectangle the target may move within before the camera chases.
     /// While the target's screen position stays inside it, the camera holds still; once the target
     /// crosses an edge, the camera moves just enough to put it back on that edge. <see cref="Rectangle.Empty"/>
-    /// (the default) disables the deadzone, so the camera centers on the target.</summary>
+    /// (the default) disables the deadzone, so the camera centers on the target.
+    /// <para>Coordinates are absolute virtual screen space — the same space as
+    /// <see cref="Camera2D.WorldToScreen(Vector2, Viewport)"/> output. For an inset viewport (non-zero
+    /// <c>viewport.X</c>/<c>Y</c>), the rectangle must be given in absolute screen coordinates, not
+    /// relative to the viewport's origin.</para></summary>
     public Rectangle Deadzone { get; set; } = Rectangle.Empty;
 
     /// <summary>

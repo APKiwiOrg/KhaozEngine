@@ -1,6 +1,6 @@
 # KhaozEngine roadmap / backlog
 
-Larger feature areas identified but not yet scheduled. Current released version: **4.0.0**.
+Larger feature areas identified but not yet scheduled. Current released version: **4.1.0**.
 
 Several items from the original (3.3.0-era) backlog have since shipped: the camera follow/framing
 layer, the pan/zoom gesture controller, and `PrimitiveRenderer` circle/ring drawing. Those are listed
@@ -69,5 +69,6 @@ effects keep their own SFX volume/mixing (e.g. SpaceGame's `AudioVolumeMixer`). 
   (moved from `UI` in 4.0.0). SpaceGame's ring rendering and Hardpoint's tower range rings use them.
 
 ---
-_Source: coordinated promote-into-KE effort, 2026-06-11; updated 2026-06-13 for 4.0.0. Update as items
+_Source: coordinated promote-into-KE effort, 2026-06-11; shipped-items reconciled 2026-06-13 at 4.0.0;
+version line tracks the current release (4.1.0 was logging-only, no roadmap area moved). Update as items
 are scheduled or shipped._

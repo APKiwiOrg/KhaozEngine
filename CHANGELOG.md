@@ -2,6 +2,19 @@
 
 All notable changes to KhaozEngine. Versions are shared across all packages.
 
+## KhaozEngine 3.11.0
+
+Additive seam so consumers stop wrapping `VirtualResolution` just to make screens headless-testable.
+
+### KhaozEngine.Input
+
+- New `IDesignViewport` interface: `int Width`, `int Height`, `float Scale`, `Matrix ScaleMatrix`.
+  `VirtualResolution` now implements it (its existing properties already satisfy the contract — no
+  behavior change). Screens that need only design-space size/scale/matrix can take an `IDesignViewport`
+  and tests can hand them a fixed-size fake instead of standing up a `VirtualResolution`. Hardpoint's
+  game-side `IViewport` + `VirtualResolutionViewport` adapter exist purely for this; they can drop the
+  adapter and reference the engine interface directly.
+
 ## KhaozEngine 3.10.0
 
 Shared camera-gesture core: `PannableCanvas` and `CameraController` now drive a `Camera2D` and share

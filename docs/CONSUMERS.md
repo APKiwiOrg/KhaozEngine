@@ -10,8 +10,10 @@ bumps a `<PackageReference>` or the engine ships a new version.
 > depends on Graphics, so add a `using KhaozEngine.Graphics;`). `KhaozEngine.Effects` now depends on
 > `KhaozEngine.Graphics` instead of `KhaozEngine.UI` (its only UI use was `PrimitiveRenderer`). New leaf
 > package `KhaozEngine.Serialization` holds `JsonDefaults` (shared `System.Text.Json` baselines);
-> `KhaozEngine.Content`/`.Persistence`/`.Ecs` now consume it and gain a dependency on it. No consumer
-> adopts yet.
+> `KhaozEngine.Content`/`.Persistence`/`.Ecs` now consume it and gain a dependency on it. **Hardpoint
+> adopts 4.0.0** (first adopter): added `using KhaozEngine.Graphics;` to the 9 files using
+> `PrimitiveRenderer`/`ColorHelper`; `Serialization` arrives transitively (via Content/Persistence/Ecs),
+> `JsonDefaults` not adopted. Tests green (95).
 
 > 3.12.0 adds `SpriteRegistry` to `KhaozEngine.Sprites`: a keyed store of `DirectionalAnimatedSprite`
 > (`Add`/`Get`/`Contains`/`Count`) with one bulk `Update(deltaSeconds)` that advances every registered
@@ -102,13 +104,15 @@ bumps a `<PackageReference>` or the engine ships a new version.
 ## Version matrix
 
 `–` = package not referenced directly by that project. `Time` is pulled in transitively by
-`Screens` 2.2.0+; consumers vendor `KhaozEngine.Time` even without a direct reference.
+`Screens` 2.2.0+; consumers vendor `KhaozEngine.Time` even without a direct reference. Likewise
+`Serialization` (4.0.0+) is transitive via `Content`/`Persistence`/`Ecs`, so it shows `–` for
+consumers that don't reference it directly.
 
-| Project   | Project file                         | Input | Screens | UI    | Ecs   | Content | Diagnostics | Time  | App   | Localization | Persistence | Audio | Effects | Graphics |
-|-----------|--------------------------------------|-------|---------|-------|-------|---------|-------------|-------|-------|--------------|-------------|-------|---------|----------|
-| Hardpoint | `Hardpoint/Hardpoint.Core`           | 3.4.1 | 3.4.1   | 3.4.1 | 3.4.1 | 3.4.1   | 3.4.1       | –     | 3.4.1 | 3.4.1        | 3.4.1       | –     | 3.4.1   | –        |
-| Nullwake  | `Nullwake/Nullwake.Core`             | 3.4.0 | 3.4.0   | 3.4.0 | –     | 3.4.0   | 3.4.0       | 3.4.0 | 3.4.0 | 3.4.0        | 3.4.0       | 3.4.0 | 3.4.0   | –        |
-| SpaceGame | `SpaceGame/SpaceGame.Core`           | 3.4.1 | 3.4.1   | 3.4.1 | 3.6.0 | 3.4.1   | 3.4.1       | –     | 3.4.1 | 3.4.1        | 3.4.1       | 3.4.1 | –       | 3.4.1    |
+| Project   | Project file                         | Input | Screens | UI    | Ecs   | Content | Diagnostics | Time  | App   | Localization | Persistence | Audio | Effects | Graphics | Sprites | Serialization |
+|-----------|--------------------------------------|-------|---------|-------|-------|---------|-------------|-------|-------|--------------|-------------|-------|---------|----------|---------|---------------|
+| Hardpoint | `Hardpoint/Hardpoint.Core`           | 4.0.0 | 4.0.0   | 4.0.0 | 4.0.0 | 4.0.0   | 4.0.0       | –     | 4.0.0 | 4.0.0        | 4.0.0       | –     | 4.0.0   | 4.0.0    | 4.0.0   | –             |
+| Nullwake  | `Nullwake/Nullwake.Core`             | 3.4.0 | 3.4.0   | 3.4.0 | –     | 3.4.0   | 3.4.0       | 3.4.0 | 3.4.0 | 3.4.0        | 3.4.0       | 3.4.0 | 3.4.0   | –        | –       | –             |
+| SpaceGame | `SpaceGame/SpaceGame.Core`           | 3.4.1 | 3.4.1   | 3.4.1 | 3.6.0 | 3.4.1   | 3.4.1       | –     | 3.4.1 | 3.4.1        | 3.4.1       | 3.4.1 | –       | 3.4.1    | –       | –             |
 
 ## Adoption matrix
 
@@ -116,15 +120,15 @@ Which packages each consumer pulls in. `✓` = direct `<PackageReference>`, `–
 `(transitive)` = vendored via `Screens` 2.2.0+ but no direct reference and (for `Time`) no
 scaled-dt usage.
 
-| Consumer  | Input | Screens | UI | Ecs | Content | Diagnostics |    Time      | App | Localization | Persistence | Audio | Effects | Graphics |
-|-----------|:-----:|:-------:|:--:|:---:|:-------:|:-----------:|:------------:|:---:|:------------:|:-----------:|:-----:|:-------:|:--------:|
-| Hardpoint |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |  ✓  |      ✓       |      ✓      |   –   |    ✓    |    –     |
-| Nullwake  |   ✓   |    ✓    | ✓  |  –  |    ✓    |      ✓      |      ✓       |  ✓  |      ✓       |      ✓      |   ✓   |    ✓    |    –     |
-| SpaceGame |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |  ✓  |      ✓       |      ✓      |   ✓   |    –    |    ✓     |
+| Consumer  | Input | Screens | UI | Ecs | Content | Diagnostics |    Time      | App | Localization | Persistence | Audio | Effects | Graphics | Sprites |  Serialization  |
+|-----------|:-----:|:-------:|:--:|:---:|:-------:|:-----------:|:------------:|:---:|:------------:|:-----------:|:-----:|:-------:|:--------:|:-------:|:---------------:|
+| Hardpoint |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |  ✓  |      ✓       |      ✓      |   –   |    ✓    |    ✓     |    ✓    |  (transitive)   |
+| Nullwake  |   ✓   |    ✓    | ✓  |  –  |    ✓    |      ✓      |      ✓       |  ✓  |      ✓       |      ✓      |   ✓   |    ✓    |    –     |    –    |        –        |
+| SpaceGame |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |  ✓  |      ✓       |      ✓      |   ✓   |    –    |    ✓     |    –    |        –        |
 
 ## Notes
 
-- **Hardpoint** — on 3.4.1. First consumer of `KhaozEngine.Content` (JSON schema validation at
+- **Hardpoint** — on 4.0.0. First consumer of `KhaozEngine.Content` (JSON schema validation at
   build). Bumped from 2.4.0 and adopted Diagnostics/App/Localization/Effects. Logging via the engine
   `Log` service (FileSink + ConsoleSink under `AppDataPaths`, `CrashHandler` installed; both configured
   in the `HardpointGame` ctor and flushed via `Log.Shutdown` on dispose) — Hardpoint had no logger
@@ -139,6 +143,14 @@ scaled-dt usage.
   that merges, then a final stretch). **Not adopted:** Audio — no audio assets yet. Graphics — the
   map already runs on `PannableCanvas`, which owns its camera; the gameplay board is fixed-size.
   `Ecs.CreateDerived`/the `DeterministicRng` guards — the game uses no RNG.
+  Since the 3.4.1 snapshot above, Hardpoint walked the chain to **4.0.0**: it now references
+  `Graphics` directly (gameplay camera — `Camera2D.Focus` board framing + `CameraController` pan/zoom,
+  `VirtualResolution.DesignScaled` desktop, from 3.9.0/3.10.0) and `Sprites` (`DirectionalAnimatedSprite`
+  + `SpriteRegistry` for pixel-art entity rendering, 3.8.0/3.12.0), and took `Input.IDesignViewport`
+  (3.11.0, dropping the game-side viewport adapter). The "Graphics not adopted" line above is therefore
+  superseded; **Audio** is still the only unadopted package (no audio assets yet). 4.0.0 itself is a
+  version+namespace bump: `PrimitiveRenderer`/`ColorHelper` moved to `KhaozEngine.Graphics` (using-only
+  fix across 9 files), `Serialization` transitive, `JsonDefaults` not adopted.
 - **Nullwake** - on 3.4.0. Adopted Input/Screens/UI/Time/Content/Diagnostics/App/Localization/Persistence/Audio/Effects.
   `GameLogger` replaced by engine `Log` + `CrashHandler` (configured via `LogBootstrap`). Uses `AppDataPaths`,
   `ServiceLocator`, `BuildMetadata`, `SaveEncoder` + `AtomicJsonWriter`, `AudioSystem`, and `Effects.ParticleSystem`.
@@ -205,4 +217,4 @@ done
 > Persistence/Graphics adopted), then to 3.4.0 (save.json onto `SettingsManager<SaveData>` + `sanitizeOnLoad`;
 > then 3.4.1 routed music onto `AudioSystem`; Ecs.CreateDerived not adopted to preserve its lockstep baseline).
 
-_Last verified: 2026-06-13. Engine at 3.11.0 (`Input.IDesignViewport` seam on `VirtualResolution`; 3.10.0 shared Camera2D gesture core + `PannableCanvas` pinch zoom; 3.9.0 `Camera2D.CenterOn`/`Focus` framing + `CameraFollow`; 3.8.0 added `KhaozEngine.Sprites`; 3.7.0 `CameraController` + `Input.VirtualResolution` desktop design-scale). No consumer adopts 3.7.0–3.11.0 yet. Consumer rows: Hardpoint 3.4.1 (adopted Diagnostics/App/Localization/Effects/Persistence; campaign progress persists to save.json, 10-level campaign; Audio/Graphics/Ecs-RNG not adopted), SpaceGame on Ecs 3.6.0 (CachedQuery adopted) with its other KE packages still 3.4.1 (music on `AudioSystem`), Nullwake 3.4.0._
+_Last verified: 2026-06-13. Engine at 4.0.0 (`PrimitiveRenderer`/`ColorHelper` moved `UI` -> `Graphics`; new leaf `KhaozEngine.Serialization` with `JsonDefaults`, consumed by Content/Persistence/Ecs). Consumer rows: **Hardpoint 4.0.0** (first 4.0.0 adopter; walked 3.4.1 -> 4.0.0 picking up Graphics gameplay camera, Sprites + `SpriteRegistry`, `Input.IDesignViewport`; Audio still not adopted), SpaceGame on Ecs 3.6.0 (CachedQuery) with its other KE packages still 3.4.1 (music on `AudioSystem`), Nullwake 3.4.0. SpaceGame/Nullwake rows predate the 3.5.0–4.0.0 features and are unverified against their current csprojs._

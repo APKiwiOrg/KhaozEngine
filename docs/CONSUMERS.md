@@ -15,8 +15,10 @@ bumps a `<PackageReference>` or the engine ships a new version.
 > `PrimitiveRenderer`/`ColorHelper`; `Serialization` arrives transitively (via Content/Persistence/Ecs),
 > `JsonDefaults` not adopted. Tests green (95). **Nullwake also on 4.0.0:** `using KhaozEngine.Graphics;`
 > added to the 21 files that draw primitives, plus an explicit `KhaozEngine.Graphics` reference (it uses
-> `PrimitiveRenderer`/`ColorHelper` directly); `Serialization` transitive, `JsonDefaults` not adopted.
-> Tests green (90). **SpaceGame also on 4.0.0:** all KE packages unified to 4.0.0 (Ecs moved 3.6.0 ->
+> `PrimitiveRenderer`/`ColorHelper` directly). Tests green (90). Nullwake since adopted three more shipped
+> features: `PannableCanvas` (skill-tree pan, zoom off for sharp text), `DisplayManager` (desktop window +
+> min-size floor), and `JsonDefaults` (config/save options, now a direct `KhaozEngine.Serialization` ref).
+> **SpaceGame also on 4.0.0:** all KE packages unified to 4.0.0 (Ecs moved 3.6.0 ->
 > 4.0.0, the rest 3.4.1 -> 4.0.0); `using KhaozEngine.Graphics;` added to the 4 files using
 > `PrimitiveRenderer` (it already referenced `KhaozEngine.Graphics`); `Serialization` transitive,
 > `JsonDefaults` not adopted. All three consumers are now on 4.0.0.
@@ -117,7 +119,7 @@ consumers that don't reference it directly.
 | Project   | Project file                         | Input | Screens | UI    | Ecs   | Content | Diagnostics | Time  | App   | Localization | Persistence | Audio | Effects | Graphics | Sprites | Serialization |
 |-----------|--------------------------------------|-------|---------|-------|-------|---------|-------------|-------|-------|--------------|-------------|-------|---------|----------|---------|---------------|
 | Hardpoint | `Hardpoint/Hardpoint.Core`           | 4.0.0 | 4.0.0   | 4.0.0 | 4.0.0 | 4.0.0   | 4.0.0       | –     | 4.0.0 | 4.0.0        | 4.0.0       | –     | 4.0.0   | 4.0.0    | 4.0.0   | –             |
-| Nullwake  | `Nullwake/Nullwake.Core`             | 4.0.0 | 4.0.0   | 4.0.0 | –     | 4.0.0   | 4.0.0       | 4.0.0 | 4.0.0 | 4.0.0        | 4.0.0       | 4.0.0 | 4.0.0   | 4.0.0    | –       | –             |
+| Nullwake  | `Nullwake/Nullwake.Core`             | 4.0.0 | 4.0.0   | 4.0.0 | –     | 4.0.0   | 4.0.0       | 4.0.0 | 4.0.0 | 4.0.0        | 4.0.0       | 4.0.0 | 4.0.0   | 4.0.0    | –       | 4.0.0         |
 | SpaceGame | `SpaceGame/SpaceGame.Core`           | 4.0.0 | 4.0.0   | 4.0.0 | 4.0.0 | 4.0.0   | 4.0.0       | –     | 4.0.0 | 4.0.0        | 4.0.0       | 4.0.0 | –       | 4.0.0    | –       | –             |
 
 ## Adoption matrix
@@ -129,7 +131,7 @@ scaled-dt usage.
 | Consumer  | Input | Screens | UI | Ecs | Content | Diagnostics |    Time      | App | Localization | Persistence | Audio | Effects | Graphics | Sprites |  Serialization  |
 |-----------|:-----:|:-------:|:--:|:---:|:-------:|:-----------:|:------------:|:---:|:------------:|:-----------:|:-----:|:-------:|:--------:|:-------:|:---------------:|
 | Hardpoint |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |  ✓  |      ✓       |      ✓      |   –   |    ✓    |    ✓     |    ✓    |  (transitive)   |
-| Nullwake  |   ✓   |    ✓    | ✓  |  –  |    ✓    |      ✓      |      ✓       |  ✓  |      ✓       |      ✓      |   ✓   |    ✓    |    ✓     |    –    |        –        |
+| Nullwake  |   ✓   |    ✓    | ✓  |  –  |    ✓    |      ✓      |      ✓       |  ✓  |      ✓       |      ✓      |   ✓   |    ✓    |    ✓     |    –    |        ✓        |
 | SpaceGame |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |  ✓  |      ✓       |      ✓      |   ✓   |    –    |    ✓     |    –    |        –        |
 
 ## Notes
@@ -163,13 +165,19 @@ scaled-dt usage.
   Walked 3.4.0 -> 4.0.0 directly (everything 3.5.0-3.12.0 was additive, only 4.0.0 breaking). The 4.0.0 bump
   is the `PrimitiveRenderer`/`ColorHelper` namespace move: added `using KhaozEngine.Graphics;` to the 21 files
   that draw primitives, plus an explicit `KhaozEngine.Graphics` reference (Nullwake uses those types directly
-  rather than transitively via UI). `Serialization` arrives transitively via Content/Persistence; `JsonDefaults`
-  not adopted. The earlier-skipped 3.4.0 audio music modes and `SettingsManager` `sanitizeOnLoad` still do not
+  rather than transitively via UI). Then adopted three more shipped features: **`PannableCanvas`** (UI) for
+  both skill-tree screens' pan/clamp/world-screen/tap, replacing the hand-rolled `_cameraOffset` math they
+  carried (the code `PannableCanvas` was generalized from in 2.4.0); `EnableZoom = false` keeps nodes in the
+  sharp screen-space batch (a zoom matrix would blur SpriteFont glyphs). **`DisplayManager` + `DisplaySettings`**
+  (Graphics) for desktop window config + the min-size floor (mobile keeps only the portrait line; a fixed
+  backbuffer would break fill-to-screen scaling). **`JsonDefaults`** (Serialization, now a direct ref):
+  `TolerantRead` for `ConfigLoader`, `IndentedWrite` for `LocalSaveSystem` (byte-identical to the prior inline
+  options). The earlier-skipped 3.4.0 audio music modes and `SettingsManager` `sanitizeOnLoad` still do not
   apply (pure random rotation via `PlayRandomTrack`; saves go through `LocalSaveSystem` + `AtomicJsonWriter`,
-  not `SettingsManager`). **Camera2D not adopted:** the `KhaozEngine.Graphics` package is now consumed for
-  `PrimitiveRenderer`/`ColorHelper`, but `Camera2D` is not, because `OreField.RefToScreen` is a non-uniform
-  fit-into-sub-rectangle projection, incompatible with `Camera2D`'s uniform full-viewport matrix.
-  **Ecs not yet adopted:** `DeterministicRng` swap is a planned follow-up; still on `GameRng`.
+  not `SettingsManager`). **Camera2D not adopted for the mining view:** `OreField.RefToScreen` is a non-uniform
+  fit-into-sub-rectangle projection, incompatible with `Camera2D`'s uniform full-viewport matrix (`PannableCanvas`
+  does drive a `Camera2D` internally, but only over the skill-tree node space). **Ecs not yet adopted:**
+  `DeterministicRng` swap is a planned follow-up; still on `GameRng`.
 - **SpaceGame** (on 4.0.0). Adopted Input/Screens/UI/Ecs/Content/Diagnostics + App/Localization/
   Persistence/Graphics/Audio. First consumer of `Graphics` (`Camera2D`, headless with a per-frame Viewport
   sync). Logging via the engine `Log` service (FileSink + ConsoleSink + `CrashHandler`, configured at

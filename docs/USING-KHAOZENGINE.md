@@ -294,7 +294,11 @@ CrashHandler.Install();
 Rules for consumers:
 
 - Configure `Log` once per process (desktop `Program`, Android `MainActivity`, iOS `Program`). Call `Log.Shutdown()` on exit.
-- Log via `Log.For<T>()` (category = type name) or `Log.Info/Warn/Error/...`. Pass an exception as the optional second argument.
+- Pick a **category**, then log under it. Pass an exception as the optional second argument.
+  - A single class's logging → `Log.For<T>()` (category = the type name).
+  - A feature/subsystem spanning several classes, or a game-side module with no single owning type (cloud save, auto-update, networking) → `Log.Get("ModuleName")` with a stable PascalCase name, used consistently everywhere that module logs. The category is a free string; it does **not** have to be an engine type, so game-only modules categorize the same way engine ones do.
+  - `Log.Info/Warn/Error(...)` (no category) is the catch-all under the configured `DefaultCategory` — fine for one-off boot/shutdown lines, not for a subsystem you'll want to grep later.
+- **Never bake a category-like prefix into the message text.** The formatter already renders the category as `[Category] message`, so `Log.Info("[CloudSave] uploaded")` double-tags as `[App] [CloudSave] uploaded`. Put the tag in the category instead: `Log.Get("CloudSave").Info("uploaded")` → `[CloudSave] uploaded`. Same rule for `Foo: ...` / `TAG ...` style prefixes.
 - The game owns its paths: resolve them with `new KhaozEngine.App.AppDataPaths("<AppName>")` (`LogFilePath` / `PreviousLogFilePath` / `GetFilePath(...)`) and pass them into `FileSinkOptions`. The engine logging core is path-agnostic.
 - Add a game-specific target (in-game console overlay, crash uploader) by implementing `ILogSink` and `Log.Manager.AddSink(...)`. Do not fork the engine logger.
 - Logging never throws and never blocks the game loop (async writer thread; `Flush`/`Shutdown` drain it; `CrashHandler` flushes on a crash).

@@ -31,6 +31,9 @@ one implementation of pan / zoom / pinch / clamp / tap. Additive API plus one sc
   (defaults 0.1 / 10), `EnablePan` / `EnableZoom` (default true), and a `Camera` accessor. Wheel stays a
   vertical pan. Mouse-only behavior is unchanged. Disable pinch with `EnableZoom = false`; `EnablePan =
   false` disables all panning (drag, two-finger, and wheel).
+- `Focus(rect)` now **fits zoom to the rect** (delegates to `Camera2D.Focus`, clamped to `MinZoom`/
+  `MaxZoom`), fulfilling its long-standing "becomes fit-to-rect once zoom exists" intent — it previously
+  only centered. Optional `paddingFraction` parameter. Use `CenterOn`/`CenterContent` for a center-only move.
 - `KhaozEngine.UI` now references `KhaozEngine.Graphics` (transitive package dependency added).
 
 ## KhaozEngine 3.9.0

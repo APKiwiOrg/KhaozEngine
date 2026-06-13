@@ -219,6 +219,18 @@ public class PannableCanvasTests
     }
 
     [Fact]
+    public void FocusFitsZoomToRect()
+    {
+        var im = new InputManager();
+        var canvas = MakeCanvas(im);   // viewport 200x200, large content -> no clamp
+
+        canvas.Focus(new Rectangle(0, 0, 40, 40));   // contain fit = min(200/40, 200/40) = 5
+
+        Assert.Equal(5f, canvas.Camera.Zoom, Tol);                                  // Focus now fits zoom, not just centers
+        Assert.Equal(new Vector2(100, 100), canvas.WorldToScreen(new Vector2(20, 20)));   // rect center at viewport center
+    }
+
+    [Fact]
     public void CenterContentCentersOnContentMiddle()
     {
         var im = new InputManager();

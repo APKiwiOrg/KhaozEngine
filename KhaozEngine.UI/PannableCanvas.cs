@@ -81,9 +81,16 @@ public sealed class PannableCanvas
         Clamp();
     }
 
-    /// <summary>Centers the camera on the middle of <paramref name="worldRect"/>, then clamps.</summary>
-    public void Focus(Rectangle worldRect) =>
-        CenterOn(new Vector2(worldRect.X + worldRect.Width / 2f, worldRect.Y + worldRect.Height / 2f));
+    /// <summary>Frames <paramref name="worldRect"/>: fits <see cref="Camera"/> zoom so the rect
+    /// (optionally inflated by <paramref name="paddingFraction"/> on each side) is fully visible —
+    /// a contain fit clamped to <see cref="MinZoom"/>/<see cref="MaxZoom"/> — centers on it, then clamps
+    /// to <see cref="ContentBounds"/>. Delegates to <see cref="KhaozEngine.Graphics.Camera2D.Focus"/>,
+    /// the shared fit-to-rect core. (Unlike <see cref="CenterOn"/>, this also changes the zoom.)</summary>
+    public void Focus(Rectangle worldRect, float paddingFraction = 0f)
+    {
+        _camera.Focus(worldRect, CameraViewport, paddingFraction, MinZoom, MaxZoom);
+        Clamp();
+    }
 
     /// <summary>Centers the camera on the middle of <see cref="ContentBounds"/>, then clamps. The typical on-open default.</summary>
     public void CenterContent() =>

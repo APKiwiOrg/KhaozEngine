@@ -13,7 +13,10 @@ bumps a `<PackageReference>` or the engine ships a new version.
 > `KhaozEngine.Content`/`.Persistence`/`.Ecs` now consume it and gain a dependency on it. **Hardpoint
 > adopts 4.0.0** (first adopter): added `using KhaozEngine.Graphics;` to the 9 files using
 > `PrimitiveRenderer`/`ColorHelper`; `Serialization` arrives transitively (via Content/Persistence/Ecs),
-> `JsonDefaults` not adopted. Tests green (95).
+> `JsonDefaults` not adopted. Tests green (95). **Nullwake also on 4.0.0:** `using KhaozEngine.Graphics;`
+> added to the 21 files that draw primitives, plus an explicit `KhaozEngine.Graphics` reference (it uses
+> `PrimitiveRenderer`/`ColorHelper` directly); `Serialization` transitive, `JsonDefaults` not adopted.
+> Tests green (90).
 
 > 3.12.0 adds `SpriteRegistry` to `KhaozEngine.Sprites`: a keyed store of `DirectionalAnimatedSprite`
 > (`Add`/`Get`/`Contains`/`Count`) with one bulk `Update(deltaSeconds)` that advances every registered
@@ -111,7 +114,7 @@ consumers that don't reference it directly.
 | Project   | Project file                         | Input | Screens | UI    | Ecs   | Content | Diagnostics | Time  | App   | Localization | Persistence | Audio | Effects | Graphics | Sprites | Serialization |
 |-----------|--------------------------------------|-------|---------|-------|-------|---------|-------------|-------|-------|--------------|-------------|-------|---------|----------|---------|---------------|
 | Hardpoint | `Hardpoint/Hardpoint.Core`           | 4.0.0 | 4.0.0   | 4.0.0 | 4.0.0 | 4.0.0   | 4.0.0       | –     | 4.0.0 | 4.0.0        | 4.0.0       | –     | 4.0.0   | 4.0.0    | 4.0.0   | –             |
-| Nullwake  | `Nullwake/Nullwake.Core`             | 3.4.0 | 3.4.0   | 3.4.0 | –     | 3.4.0   | 3.4.0       | 3.4.0 | 3.4.0 | 3.4.0        | 3.4.0       | 3.4.0 | 3.4.0   | –        | –       | –             |
+| Nullwake  | `Nullwake/Nullwake.Core`             | 4.0.0 | 4.0.0   | 4.0.0 | –     | 4.0.0   | 4.0.0       | 4.0.0 | 4.0.0 | 4.0.0        | 4.0.0       | 4.0.0 | 4.0.0   | 4.0.0    | –       | –             |
 | SpaceGame | `SpaceGame/SpaceGame.Core`           | 3.4.1 | 3.4.1   | 3.4.1 | 3.6.0 | 3.4.1   | 3.4.1       | –     | 3.4.1 | 3.4.1        | 3.4.1       | 3.4.1 | –       | 3.4.1    | –       | –             |
 
 ## Adoption matrix
@@ -123,7 +126,7 @@ scaled-dt usage.
 | Consumer  | Input | Screens | UI | Ecs | Content | Diagnostics |    Time      | App | Localization | Persistence | Audio | Effects | Graphics | Sprites |  Serialization  |
 |-----------|:-----:|:-------:|:--:|:---:|:-------:|:-----------:|:------------:|:---:|:------------:|:-----------:|:-----:|:-------:|:--------:|:-------:|:---------------:|
 | Hardpoint |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |  ✓  |      ✓       |      ✓      |   –   |    ✓    |    ✓     |    ✓    |  (transitive)   |
-| Nullwake  |   ✓   |    ✓    | ✓  |  –  |    ✓    |      ✓      |      ✓       |  ✓  |      ✓       |      ✓      |   ✓   |    ✓    |    –     |    –    |        –        |
+| Nullwake  |   ✓   |    ✓    | ✓  |  –  |    ✓    |      ✓      |      ✓       |  ✓  |      ✓       |      ✓      |   ✓   |    ✓    |    ✓     |    –    |        –        |
 | SpaceGame |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |  ✓  |      ✓       |      ✓      |   ✓   |    –    |    ✓     |    –    |        –        |
 
 ## Notes
@@ -151,17 +154,19 @@ scaled-dt usage.
   superseded; **Audio** is still the only unadopted package (no audio assets yet). 4.0.0 itself is a
   version+namespace bump: `PrimitiveRenderer`/`ColorHelper` moved to `KhaozEngine.Graphics` (using-only
   fix across 9 files), `Serialization` transitive, `JsonDefaults` not adopted.
-- **Nullwake** - on 3.4.0. Adopted Input/Screens/UI/Time/Content/Diagnostics/App/Localization/Persistence/Audio/Effects.
+- **Nullwake** - on 4.0.0. Adopted Input/Screens/UI/Graphics/Time/Content/Diagnostics/App/Localization/Persistence/Audio/Effects.
   `GameLogger` replaced by engine `Log` + `CrashHandler` (configured via `LogBootstrap`). Uses `AppDataPaths`,
   `ServiceLocator`, `BuildMetadata`, `SaveEncoder` + `AtomicJsonWriter`, `AudioSystem`, and `Effects.ParticleSystem`.
-  The 3.4.0 bump is version-only: it gets the `AudioSystem` IsPlaying-read resilience fix for free (a transient
-  read error now skips a frame instead of killing music). Assessed but did NOT adopt the new music modes
-  (`PlayTrack`/`PlayMode.RepeatOne`/`CurrentTrack`): Nullwake plays pure random background rotation via
-  `PlayRandomTrack`, so there is nothing to change. `SettingsManager` `sanitizeOnLoad` does not apply: saves
-  go through `LocalSaveSystem` + `AtomicJsonWriter` (sanitize/migrate stays inline in `SaveMigrator`), not
-  `SettingsManager`. **Graphics not adopted:** `OreField.RefToScreen` is a non-uniform fit-into-sub-rectangle
-  projection, incompatible with `Camera2D`'s uniform full-viewport matrix. **Ecs not yet adopted:**
-  `DeterministicRng` swap is a planned follow-up; still on `GameRng`.
+  Walked 3.4.0 -> 4.0.0 directly (everything 3.5.0-3.12.0 was additive, only 4.0.0 breaking). The 4.0.0 bump
+  is the `PrimitiveRenderer`/`ColorHelper` namespace move: added `using KhaozEngine.Graphics;` to the 21 files
+  that draw primitives, plus an explicit `KhaozEngine.Graphics` reference (Nullwake uses those types directly
+  rather than transitively via UI). `Serialization` arrives transitively via Content/Persistence; `JsonDefaults`
+  not adopted. The earlier-skipped 3.4.0 audio music modes and `SettingsManager` `sanitizeOnLoad` still do not
+  apply (pure random rotation via `PlayRandomTrack`; saves go through `LocalSaveSystem` + `AtomicJsonWriter`,
+  not `SettingsManager`). **Camera2D not adopted:** the `KhaozEngine.Graphics` package is now consumed for
+  `PrimitiveRenderer`/`ColorHelper`, but `Camera2D` is not, because `OreField.RefToScreen` is a non-uniform
+  fit-into-sub-rectangle projection, incompatible with `Camera2D`'s uniform full-viewport matrix.
+  **Ecs not yet adopted:** `DeterministicRng` swap is a planned follow-up; still on `GameRng`.
 - **SpaceGame** — on 3.4.1. Adopted Input/Screens/UI/Ecs/Content/Diagnostics + App/Localization/
   Persistence/Graphics. First consumer of `Graphics` (`Camera2D`, headless with a per-frame Viewport
   sync). Logging via the engine `Log` service (FileSink + ConsoleSink + `CrashHandler`, configured at
@@ -217,4 +222,4 @@ done
 > Persistence/Graphics adopted), then to 3.4.0 (save.json onto `SettingsManager<SaveData>` + `sanitizeOnLoad`;
 > then 3.4.1 routed music onto `AudioSystem`; Ecs.CreateDerived not adopted to preserve its lockstep baseline).
 
-_Last verified: 2026-06-13. Engine at 4.0.0 (`PrimitiveRenderer`/`ColorHelper` moved `UI` -> `Graphics`; new leaf `KhaozEngine.Serialization` with `JsonDefaults`, consumed by Content/Persistence/Ecs). Consumer rows: **Hardpoint 4.0.0** (first 4.0.0 adopter; walked 3.4.1 -> 4.0.0 picking up Graphics gameplay camera, Sprites + `SpriteRegistry`, `Input.IDesignViewport`; Audio still not adopted), SpaceGame on Ecs 3.6.0 (CachedQuery) with its other KE packages still 3.4.1 (music on `AudioSystem`), Nullwake 3.4.0. SpaceGame/Nullwake rows predate the 3.5.0–4.0.0 features and are unverified against their current csprojs._
+_Last verified: 2026-06-13. Engine at 4.0.0 (`PrimitiveRenderer`/`ColorHelper` moved `UI` -> `Graphics`; new leaf `KhaozEngine.Serialization` with `JsonDefaults`, consumed by Content/Persistence/Ecs). Consumer rows: **Hardpoint 4.0.0** (first 4.0.0 adopter; walked 3.4.1 -> 4.0.0 picking up Graphics gameplay camera, Sprites + `SpriteRegistry`, `Input.IDesignViewport`; Audio still not adopted), **Nullwake 4.0.0** (walked 3.4.0 -> 4.0.0; `PrimitiveRenderer`/`ColorHelper` namespace move handled across 21 files + explicit Graphics ref; Camera2D/Ecs still deferred; verified against its csproj this session, build + 90 tests green), SpaceGame on Ecs 3.6.0 (CachedQuery) with its other KE packages still 3.4.1 (music on `AudioSystem`). The SpaceGame row predates the 3.5.0-4.0.0 features and is unverified against its current csproj._

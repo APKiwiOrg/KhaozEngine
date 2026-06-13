@@ -7,6 +7,7 @@
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.App/KhaozEngine.App.csproj" />
     <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
+    <ProjectReference Include="../KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />

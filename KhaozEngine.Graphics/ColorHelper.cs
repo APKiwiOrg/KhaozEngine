@@ -1,6 +1,6 @@
 using Microsoft.Xna.Framework;
 
-namespace KhaozEngine.UI;
+namespace KhaozEngine.Graphics;
 
 /// <summary>
 /// Shared color parsing utilities.

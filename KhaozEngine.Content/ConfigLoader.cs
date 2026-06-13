@@ -2,19 +2,13 @@ using System;
 using System.IO;
 using System.Reflection;
 using System.Text.Json;
+using KhaozEngine.Serialization;
 
 namespace KhaozEngine.Content;
 
 /// <summary>Loads typed config from JSON — the disk path first (if it exists), else an embedded resource.</summary>
 public static class ConfigLoader
 {
-    private static readonly JsonSerializerOptions Default = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        ReadCommentHandling = JsonCommentHandling.Skip,
-        AllowTrailingCommas = true,
-    };
-
     /// <summary>Loads <typeparamref name="T"/> from <paramref name="diskPath"/> if it exists, otherwise from
     /// the embedded resource <paramref name="resourceName"/> in <paramref name="assembly"/>. Throws if neither
     /// is found or deserialization yields null.</summary>
@@ -35,7 +29,7 @@ public static class ConfigLoader
             json = reader.ReadToEnd();
         }
 
-        return JsonSerializer.Deserialize<T>(json, options ?? Default)
+        return JsonSerializer.Deserialize<T>(json, options ?? JsonDefaults.TolerantRead)
             ?? throw new InvalidOperationException($"Config '{resourceName}' deserialized to null.");
     }
 }

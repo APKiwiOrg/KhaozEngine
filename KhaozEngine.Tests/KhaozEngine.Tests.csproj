@@ -24,6 +24,7 @@
     <ProjectReference Include="../KhaozEngine.Localization/KhaozEngine.Localization.csproj" />
     <ProjectReference Include="../KhaozEngine.Persistence/KhaozEngine.Persistence.csproj" />
     <ProjectReference Include="../KhaozEngine.Screens/KhaozEngine.Screens.csproj" />
+    <ProjectReference Include="../KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
     <ProjectReference Include="../KhaozEngine.Sprites/KhaozEngine.Sprites.csproj" />
     <ProjectReference Include="../KhaozEngine.Time/KhaozEngine.Time.csproj" />
     <ProjectReference Include="../KhaozEngine.UI/KhaozEngine.UI.csproj" />

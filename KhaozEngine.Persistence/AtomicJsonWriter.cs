@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Text.Json;
 using KhaozEngine.App;
+using KhaozEngine.Serialization;
 
 namespace KhaozEngine.Persistence;
 
@@ -13,7 +14,6 @@ namespace KhaozEngine.Persistence;
 /// </summary>
 public static class AtomicJsonWriter
 {
-    private static readonly JsonSerializerOptions DefaultOptions = new() { WriteIndented = true };
 
     /// <summary>Atomically writes <paramref name="contents"/> to <paramref name="path"/>, creating the parent directory if needed.</summary>
     public static void WriteText(string path, string contents)
@@ -34,7 +34,7 @@ public static class AtomicJsonWriter
 
     /// <summary>Serializes <paramref name="value"/> to JSON (indented by default) and atomically writes it to <paramref name="path"/>.</summary>
     public static void Write<T>(string path, T value, JsonSerializerOptions? options = null)
-        => WriteText(path, JsonSerializer.Serialize(value, options ?? DefaultOptions));
+        => WriteText(path, JsonSerializer.Serialize(value, options ?? JsonDefaults.IndentedWrite));
 
     /// <summary>Atomically writes <paramref name="contents"/> to <paramref name="fileName"/> inside the app-data directory.</summary>
     public static void WriteText(AppDataPaths paths, string fileName, string contents)

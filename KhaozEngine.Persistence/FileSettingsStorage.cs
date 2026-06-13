@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Text.Json;
 using KhaozEngine.App;
+using KhaozEngine.Serialization;
 
 namespace KhaozEngine.Persistence;
 
@@ -12,11 +13,6 @@ namespace KhaozEngine.Persistence;
 /// </summary>
 public sealed class FileSettingsStorage : ISettingsStorage
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new()
-    {
-        WriteIndented = true
-    };
-
     private readonly AppDataPaths appDataPaths;
     private readonly IPersistenceQueue writeQueue;
 
@@ -36,7 +32,7 @@ public sealed class FileSettingsStorage : ISettingsStorage
     /// <summary>Serializes <paramref name="settings"/> to JSON and queues an atomic write.</summary>
     public void SaveSettings<T>(T settings) where T : new()
     {
-        string json = JsonSerializer.Serialize(settings, SerializerOptions);
+        string json = JsonSerializer.Serialize(settings, JsonDefaults.IndentedWrite);
         writeQueue.Enqueue(SettingsFilePath, json);
     }
 

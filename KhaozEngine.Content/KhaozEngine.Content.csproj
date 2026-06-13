@@ -7,6 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="JsonSchema.Net" Version="9.1.3" />
+    <ProjectReference Include="../KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
     <None Include="README.md" Pack="true" PackagePath="\" />
     <None Include="build/KhaozEngine.Content.targets" Pack="true" PackagePath="build/KhaozEngine.Content.targets" />
     <None Include="build/KhaozEngine.Content.targets" Pack="true" PackagePath="buildTransitive/KhaozEngine.Content.targets" />

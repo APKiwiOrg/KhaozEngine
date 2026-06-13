@@ -5,8 +5,8 @@
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>disable</ImplicitUsings>
 
-    <!-- Shared package version for ALL packages (Input/Screens/UI/Ecs). Bump here to release together. -->
-    <Version>3.12.0</Version>
+    <!-- Shared package version for ALL KhaozEngine.* packages. Bump here to release them together. -->
+    <Version>4.0.0</Version>
     <Authors>APKiwi</Authors>
     <Company>Khaoz</Company>
     <PackageProjectUrl>https://github.com/APKiwi/KhaozEngine</PackageProjectUrl>

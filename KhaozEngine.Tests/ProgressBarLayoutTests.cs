@@ -1,4 +1,4 @@
-using KhaozEngine.UI;
+using KhaozEngine.Graphics;
 using Microsoft.Xna.Framework;
 using Xunit;
 

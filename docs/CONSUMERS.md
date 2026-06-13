@@ -16,7 +16,10 @@ bumps a `<PackageReference>` or the engine ships a new version.
 > `JsonDefaults` not adopted. Tests green (95). **Nullwake also on 4.0.0:** `using KhaozEngine.Graphics;`
 > added to the 21 files that draw primitives, plus an explicit `KhaozEngine.Graphics` reference (it uses
 > `PrimitiveRenderer`/`ColorHelper` directly); `Serialization` transitive, `JsonDefaults` not adopted.
-> Tests green (90).
+> Tests green (90). **SpaceGame also on 4.0.0:** all KE packages unified to 4.0.0 (Ecs moved 3.6.0 ->
+> 4.0.0, the rest 3.4.1 -> 4.0.0); `using KhaozEngine.Graphics;` added to the 4 files using
+> `PrimitiveRenderer` (it already referenced `KhaozEngine.Graphics`); `Serialization` transitive,
+> `JsonDefaults` not adopted. All three consumers are now on 4.0.0.
 
 > 3.12.0 adds `SpriteRegistry` to `KhaozEngine.Sprites`: a keyed store of `DirectionalAnimatedSprite`
 > (`Add`/`Get`/`Contains`/`Count`) with one bulk `Update(deltaSeconds)` that advances every registered
@@ -115,7 +118,7 @@ consumers that don't reference it directly.
 |-----------|--------------------------------------|-------|---------|-------|-------|---------|-------------|-------|-------|--------------|-------------|-------|---------|----------|---------|---------------|
 | Hardpoint | `Hardpoint/Hardpoint.Core`           | 4.0.0 | 4.0.0   | 4.0.0 | 4.0.0 | 4.0.0   | 4.0.0       | –     | 4.0.0 | 4.0.0        | 4.0.0       | –     | 4.0.0   | 4.0.0    | 4.0.0   | –             |
 | Nullwake  | `Nullwake/Nullwake.Core`             | 4.0.0 | 4.0.0   | 4.0.0 | –     | 4.0.0   | 4.0.0       | 4.0.0 | 4.0.0 | 4.0.0        | 4.0.0       | 4.0.0 | 4.0.0   | 4.0.0    | –       | –             |
-| SpaceGame | `SpaceGame/SpaceGame.Core`           | 3.4.1 | 3.4.1   | 3.4.1 | 3.6.0 | 3.4.1   | 3.4.1       | –     | 3.4.1 | 3.4.1        | 3.4.1       | 3.4.1 | –       | 3.4.1    | –       | –             |
+| SpaceGame | `SpaceGame/SpaceGame.Core`           | 4.0.0 | 4.0.0   | 4.0.0 | 4.0.0 | 4.0.0   | 4.0.0       | –     | 4.0.0 | 4.0.0        | 4.0.0       | 4.0.0 | –       | 4.0.0    | –       | –             |
 
 ## Adoption matrix
 
@@ -138,7 +141,7 @@ scaled-dt usage.
   before. `LocalizationManager` swapped from the hand-rolled copy to `KhaozEngine.Localization`
   (corrected the malformed default culture `en-EN` to `en-US`). `Effects.ParticleSystem` drives
   projectile-hit and enemy-death bursts (`Spark` preset), fed by new game-side `ProjectileSystem.Hit` /
-  `DamageSystem.EnemyKilled` events; tower range rings drawn with `UI.PrimitiveRenderer.DrawRing`.
+  `DamageSystem.EnemyKilled` events; tower range rings drawn with `Graphics.PrimitiveRenderer.DrawRing`.
   Campaign progress persists via `Persistence`: `SettingsManager<CampaignSaveData>` over
   `FileSettingsStorage` + a shared `PersistenceQueue` (`save.json` under `AppDataPaths`), seeded into
   `CampaignProgress` on load and written on each level cleared; a `sanitizeOnLoad` hook dedupes ids and
@@ -167,8 +170,8 @@ scaled-dt usage.
   `PrimitiveRenderer`/`ColorHelper`, but `Camera2D` is not, because `OreField.RefToScreen` is a non-uniform
   fit-into-sub-rectangle projection, incompatible with `Camera2D`'s uniform full-viewport matrix.
   **Ecs not yet adopted:** `DeterministicRng` swap is a planned follow-up; still on `GameRng`.
-- **SpaceGame** — on 3.4.1. Adopted Input/Screens/UI/Ecs/Content/Diagnostics + App/Localization/
-  Persistence/Graphics. First consumer of `Graphics` (`Camera2D`, headless with a per-frame Viewport
+- **SpaceGame** (on 4.0.0). Adopted Input/Screens/UI/Ecs/Content/Diagnostics + App/Localization/
+  Persistence/Graphics/Audio. First consumer of `Graphics` (`Camera2D`, headless with a per-frame Viewport
   sync). Logging via the engine `Log` service (FileSink + ConsoleSink + `CrashHandler`, configured at
   startup; flushes the persistence queue + `Log.Shutdown` on exit). `AppDataPaths` + `BuildMetadata`
   from `App`; `LocalizationManager` from `Localization` (corrected the malformed default culture to
@@ -191,8 +194,14 @@ scaled-dt usage.
   `CollisionSystem` x2, `RunSession.Diagnostics` x2) now reuse `CachedQuery` fields, so the sim no longer
   allocates a query per tick. Pure allocation change, behaviour-identical: `StateHash_MatchesCapturedBaseline`
   unchanged at `4423044029376371829` (the ECS-migration spec-1 baseline, which moved off
-  `15235204183988888313` when projectiles migrated to World). Only Ecs bumped 3.4.1 → 3.6.0; the other KE
-  packages stay 3.4.1 (Ecs has no cross-KE deps). SpaceGame build 0.21.4.
+  `15235204183988888313` when projectiles migrated to World). The CachedQuery work shipped while SpaceGame
+  was on Ecs 3.6.0 (rest of KE at 3.4.1). **Now unified to 4.0.0:** all KE packages bumped together (Ecs
+  3.6.0 -> 4.0.0, the rest 3.4.1 -> 4.0.0). The 4.0.0 step is the `PrimitiveRenderer`/`ColorHelper`
+  namespace move (`using KhaozEngine.Graphics;` added to 4 files; `Graphics` was already referenced);
+  `Serialization` arrives transitively, `JsonDefaults` not adopted. Ecs 4.0.0 changes nothing SpaceGame
+  relies on (only `WorldSerializer`'s internal JSON defaults moved), so the lockstep `StateHash` baseline
+  is unaffected. **Still not adopted:** `Effects` (own `ParticleManager`), `Sprites`, and
+  `Ecs.CreateDerived` (would move the lockstep determinism baseline).
 
 ## Repo locations
 
@@ -222,4 +231,4 @@ done
 > Persistence/Graphics adopted), then to 3.4.0 (save.json onto `SettingsManager<SaveData>` + `sanitizeOnLoad`;
 > then 3.4.1 routed music onto `AudioSystem`; Ecs.CreateDerived not adopted to preserve its lockstep baseline).
 
-_Last verified: 2026-06-13. Engine at 4.0.0 (`PrimitiveRenderer`/`ColorHelper` moved `UI` -> `Graphics`; new leaf `KhaozEngine.Serialization` with `JsonDefaults`, consumed by Content/Persistence/Ecs). Consumer rows: **Hardpoint 4.0.0** (first 4.0.0 adopter; walked 3.4.1 -> 4.0.0 picking up Graphics gameplay camera, Sprites + `SpriteRegistry`, `Input.IDesignViewport`; Audio still not adopted), **Nullwake 4.0.0** (walked 3.4.0 -> 4.0.0; `PrimitiveRenderer`/`ColorHelper` namespace move handled across 21 files + explicit Graphics ref; Camera2D/Ecs still deferred; verified against its csproj this session, build + 90 tests green), SpaceGame on Ecs 3.6.0 (CachedQuery) with its other KE packages still 3.4.1 (music on `AudioSystem`). The SpaceGame row predates the 3.5.0-4.0.0 features and is unverified against its current csproj._
+_Last verified: 2026-06-13. Engine at 4.0.0 (`PrimitiveRenderer`/`ColorHelper` moved `UI` -> `Graphics`; new leaf `KhaozEngine.Serialization` with `JsonDefaults`, consumed by Content/Persistence/Ecs). **All three consumers verified on 4.0.0 against their current csprojs this session.** Hardpoint (first 4.0.0 adopter; walked 3.4.1 -> 4.0.0 picking up Graphics gameplay camera, Sprites + `SpriteRegistry`, `Input.IDesignViewport`; Audio still not adopted). Nullwake (walked 3.4.0 -> 4.0.0; `PrimitiveRenderer`/`ColorHelper` move across 21 files + explicit Graphics ref; Camera2D/Ecs still deferred). SpaceGame (unified all KE packages to 4.0.0 from a 3.4.1 + Ecs 3.6.0 split; `PrimitiveRenderer` move across 4 files; Effects/Sprites/`Ecs.CreateDerived` still not adopted). Adoption ✓/– matrix matches each game's actual `<PackageReference>` set._

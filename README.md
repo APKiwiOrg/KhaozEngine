@@ -8,18 +8,20 @@ KhaozEngine is **not** a full engine. It owns a set of focused, game-agnostic co
 |---|---|---|
 | **KhaozEngine.Input** | A unified pointer (mouse+touch), edge detection, the `IsTapIn` press-origin invariant, per-frame region blocking, drag/scroll/pinch, keyboard + gamepad + menu-navigation, and a coordinate-transform seam — all behind a testable `IRawInput` seam. | MonoGame |
 | **KhaozEngine.Screens** | A screen stack routed top-to-bottom with `receivesInput` / `PassUpdateThrough` / `AlwaysReceivesInput`, two consumption policies, and screen transitions. | KhaozEngine.Input |
-| **KhaozEngine.UI** | A widget library (Button, Slider, Dropdown, ScrollablePanel, TextInput, Toggle, Tooltip, …), a `PrimitiveRenderer`, and a `TextInputHandler`. | KhaozEngine.Input |
-| **KhaozEngine.Ecs** | A minimal `World` / `Entity` / `ISystem` ECS. Independent of the others. | MonoGame |
-| **KhaozEngine.Time** | `GameClock`: real vs scaled delta, slow-mo / fast-forward, pause/resume. | MonoGame |
-| **KhaozEngine.Content** | Config/content loading (embedded or disk JSON) with JSON-schema validation. | Pure .NET |
-| **KhaozEngine.Content.Validator** | Build-time JSON-schema enforcement for content. | Pure .NET |
+| **KhaozEngine.UI** | A widget library (Button, Slider, Dropdown, ScrollablePanel, TextInput, Toggle, Tooltip, …) and a `TextInputHandler`. (Rendering primitives moved to KhaozEngine.Graphics in 4.0.0.) | KhaozEngine.Input, KhaozEngine.Graphics |
+| **KhaozEngine.Ecs** | A struct-based archetype `World` / `Entity` / `ISystem` ECS: by-ref component access, `ForEach`, command buffer, system groups, `CachedQuery`, `DeterministicRng`, `WorldSerializer`. | MonoGame, KhaozEngine.Serialization |
+| **KhaozEngine.Time** | `GameClock`: real vs scaled delta, slow-mo / fast-forward, pause/resume, plus `TimeSkip`. | MonoGame |
+| **KhaozEngine.Content** | Config/content loading (embedded or disk JSON) with JSON-schema validation. | KhaozEngine.Serialization (+ JsonSchema.Net) |
+| **KhaozEngine.Content.Validator** | Build-time JSON-schema enforcement for content. | KhaozEngine.Content |
 | **KhaozEngine.Diagnostics** | Logging service: levels, pluggable sinks (file / console / debug / in-memory), category loggers, a static `Log` facade over an injectable `LogManager`, and crash hooks. | Pure .NET |
 | **KhaozEngine.App** | App/runtime helpers: `BuildMetadata` (read `AssemblyMetadata` at runtime), `AppDataPaths` (OS-correct per-app data dir), `ServiceLocator` (generic `IServiceProvider`). | Pure .NET |
 | **KhaozEngine.Localization** | `LocalizationManager`: discover satellite-resource cultures and set the current thread culture. | Pure .NET |
-| **KhaozEngine.Persistence** | `SaveEncoder` (Base64 + HMAC-SHA256 tamper-deterrent), `AtomicJsonWriter` + `PersistenceQueue` (crash-safe atomic writes, per-path coalescing), `SettingsManager<T>` (typed settings storage). | KhaozEngine.Diagnostics, KhaozEngine.App |
-| **KhaozEngine.Audio** | `AudioSystem` music player over a pluggable `IMusicBackend`, including a macOS AVAudioPlayer backend that works around MonoGame's broken `Song` playback. | MonoGame |
-| **KhaozEngine.Effects** | Data-driven pooled `ParticleSystem` with config-record presets (`Spark`/`Ember`). First resident of a generic visual-effects package. | MonoGame, KhaozEngine.UI |
-| **KhaozEngine.Graphics** | `Camera2D`: a generic 2D matrix camera (position/zoom/rotation → view matrix), world↔screen, and a world-bounds clamp. | MonoGame |
+| **KhaozEngine.Persistence** | `SaveEncoder` (Base64 + HMAC-SHA256 tamper-deterrent), `AtomicJsonWriter` + `PersistenceQueue` (crash-safe atomic writes, per-path coalescing), `SettingsManager<T>` (typed settings storage). | KhaozEngine.Diagnostics, KhaozEngine.App, KhaozEngine.Serialization |
+| **KhaozEngine.Audio** | `AudioSystem` music player over a pluggable `IMusicBackend`, including a macOS AVAudioPlayer backend that works around MonoGame's broken `Song` playback. | MonoGame, KhaozEngine.Diagnostics |
+| **KhaozEngine.Effects** | Data-driven pooled `ParticleSystem` with config-record presets (`Spark`/`Ember`). First resident of a generic visual-effects package. | MonoGame, KhaozEngine.Graphics |
+| **KhaozEngine.Graphics** | `Camera2D` (generic 2D matrix camera: position/zoom/rotation → view matrix, world↔screen, bounds clamp), the `CameraController`/`CameraFollow` feel layer, `DisplayManager`, and the rendering primitives `PrimitiveRenderer` + `ColorHelper`. | MonoGame, KhaozEngine.Input |
+| **KhaozEngine.Sprites** | 2D sprite + directional animation: `SpriteSheet`, `SpriteAnimationPlayer`, `DirectionalAnimatedSprite`, `Direction8`, `SpriteRegistry`, `PixelLabSpriteLoader`. | MonoGame |
+| **KhaozEngine.Serialization** | Shared `System.Text.Json` defaults (`JsonDefaults`: tolerant-read / indented-write / include-fields) so Content, Persistence, and Ecs serialize consistently. | Pure .NET |
 
 Target framework `net10.0`, consumable from the `net10.0-android` / `net10.0-ios` heads. Built against MonoGame.Framework.DesktopGL 3.8.
 
@@ -85,10 +87,10 @@ Published to a private GitHub Packages feed on tagged releases, and packed to a 
 ```
 ```xml
 <!-- All packages share one version. Reference only what you use. -->
-<PackageReference Include="KhaozEngine.Input"   Version="3.3.0" />
-<PackageReference Include="KhaozEngine.Screens" Version="3.3.0" />
-<PackageReference Include="KhaozEngine.UI"      Version="3.3.0" />
-<PackageReference Include="KhaozEngine.Ecs"     Version="3.3.0" />
+<PackageReference Include="KhaozEngine.Input"   Version="4.0.0" />
+<PackageReference Include="KhaozEngine.Screens" Version="4.0.0" />
+<PackageReference Include="KhaozEngine.UI"      Version="4.0.0" />
+<PackageReference Include="KhaozEngine.Ecs"     Version="4.0.0" />
 ```
 
 **Versioning is SemVer.** Each game pins a version and adopts fixes by bumping it — so you can keep one game on an old version while you migrate another. Don't fork the packages; if a game needs an API that isn't there, add it here and bump the version.
@@ -106,8 +108,8 @@ dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj
 ```
 KhaozEngine.Input/   KhaozEngine.Screens/   KhaozEngine.UI/   KhaozEngine.Ecs/   KhaozEngine.Time/
 KhaozEngine.Content/   KhaozEngine.Content.Validator/   KhaozEngine.Diagnostics/
-KhaozEngine.App/   KhaozEngine.Localization/   KhaozEngine.Persistence/
-KhaozEngine.Audio/   KhaozEngine.Effects/   KhaozEngine.Graphics/
+KhaozEngine.App/   KhaozEngine.Localization/   KhaozEngine.Persistence/   KhaozEngine.Serialization/
+KhaozEngine.Audio/   KhaozEngine.Effects/   KhaozEngine.Graphics/   KhaozEngine.Sprites/
 KhaozEngine.Tests/      docs/USING-KHAOZENGINE.md
 Directory.Build.props (shared version)   nuget.config   .github/workflows/ci.yml
 ```
@@ -116,8 +118,10 @@ CI builds, tests, packs, and on a `v*` tag publishes to GitHub Packages.
 
 ## Consumers
 
-| Game | Uses | Status |
+| Game | Uses (KhaozEngine.*) | Status |
 |---|---|---|
-| **Hardpoint** | Input, Screens, Ecs | Migrated (`0.1.0`). Only `GameplayScreen`/`PauseScreen`/`HardpointGame` are game-side. |
-| **Nullwake** | Input, Screens, UI | Migrating. Source of the widgets, `VirtualResolution`, transitions, and the click-through fix. |
-| **SpaceGame** | Input, Screens, UI | Migrating. Full input-model migration off its `InputState`. |
+| **Hardpoint** | Input, Screens, UI, Ecs, Graphics, Sprites, Effects, Content, Diagnostics, App, Localization, Persistence | On 4.0.0. |
+| **Nullwake** | Input, Screens, UI, Graphics, Time, Audio, Effects, Content, Diagnostics, App, Localization, Persistence | On 4.0.0. Source of the widgets, `VirtualResolution`, transitions, and the click-through fix. |
+| **SpaceGame** | Input, Screens, UI, Ecs, Graphics, Audio, Content, Diagnostics, App, Localization, Persistence | On 4.0.0. |
+
+Full per-package version + adoption matrix: [`docs/CONSUMERS.md`](docs/CONSUMERS.md).

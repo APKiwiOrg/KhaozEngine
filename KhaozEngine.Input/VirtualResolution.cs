@@ -17,9 +17,10 @@ namespace KhaozEngine.Input;
 /// </list>
 /// Implements <see cref="ICoordinateTransform"/> so it can be passed straight to the
 /// <see cref="InputManager"/>; <see cref="ScreenToVirtual"/> divides by <see cref="Scale"/> in both
-/// modes, so pointer hit-testing lines up with whatever scaling is in effect.
+/// modes, so pointer hit-testing lines up with whatever scaling is in effect. Also implements
+/// <see cref="IDesignViewport"/> so screens can render/lay out against that fakeable seam.
 /// </summary>
-public sealed class VirtualResolution : ICoordinateTransform
+public sealed class VirtualResolution : ICoordinateTransform, IDesignViewport
 {
     private readonly GraphicsDeviceManager? _graphicsDeviceManager;
     private readonly bool _designScaled;

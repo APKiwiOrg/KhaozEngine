@@ -80,4 +80,46 @@ public class VirtualResolutionTests
         Assert.Equal(950, vr.Height);
         Assert.Equal(Matrix.CreateScale(2f, 2f, 1f), vr.ScaleMatrix);
     }
+
+    [Fact]
+    public void ImplementsDesignViewport_ExposingLiveSizeScaleAndMatrix()
+    {
+        // VirtualResolution is usable through the IDesignViewport seam; the seam reports the live
+        // values (it reads the same backing members, so reconfiguring is visible through the interface).
+        var vr = VirtualResolution.DesignScaled(null, baseWidth: 932, referenceHeight: 430);
+        vr.Configure(1864, 860);
+
+        IDesignViewport viewport = vr;
+        Assert.Equal(vr.Width, viewport.Width);
+        Assert.Equal(vr.Height, viewport.Height);
+        Assert.Equal(vr.Scale, viewport.Scale, Tol);
+        Assert.Equal(vr.ScaleMatrix, viewport.ScaleMatrix);
+
+        vr.Configure(2796, 430);   // 3x width; seam tracks the change
+        Assert.Equal(3f, viewport.Scale, Tol);
+        Assert.Equal(932, viewport.Width);
+        Assert.Equal(143, viewport.Height);
+        Assert.Equal(Matrix.CreateScale(3f, 3f, 1f), viewport.ScaleMatrix);
+    }
+
+    [Fact]
+    public void DesignViewport_IsFakeableWithoutVirtualResolution()
+    {
+        // The whole point of the seam: a headless screen can run against a fixed fake with no
+        // GraphicsDeviceManager and no VirtualResolution at all.
+        IDesignViewport fake = new FakeViewport(320, 180, 2f, Matrix.CreateScale(2f, 2f, 1f));
+
+        Assert.Equal(320, fake.Width);
+        Assert.Equal(180, fake.Height);
+        Assert.Equal(2f, fake.Scale, Tol);
+        Assert.Equal(Matrix.CreateScale(2f, 2f, 1f), fake.ScaleMatrix);
+    }
+
+    private sealed class FakeViewport(int width, int height, float scale, Matrix scaleMatrix) : IDesignViewport
+    {
+        public int Width { get; } = width;
+        public int Height { get; } = height;
+        public float Scale { get; } = scale;
+        public Matrix ScaleMatrix { get; } = scaleMatrix;
+    }
 }

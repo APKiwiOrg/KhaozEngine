@@ -3,7 +3,14 @@
 Which game uses which packages, at which version. Update this whenever a consumer
 bumps a `<PackageReference>` or the engine ships a new version.
 
-**Engine current version:** `3.10.0` (all packages share one version, set in `Directory.Build.props`).
+**Engine current version:** `3.11.0` (all packages share one version, set in `Directory.Build.props`).
+
+> 3.11.0 adds `KhaozEngine.Input.IDesignViewport` — a 4-member seam (`Width`, `Height`, `Scale`,
+> `ScaleMatrix`) that `VirtualResolution` now implements (no behavior change; its existing properties
+> already satisfy it). Screens needing only design-space size/scale/matrix can depend on the interface
+> and tests fake it directly. Hardpoint can drop its game-side `IViewport` + `VirtualResolutionViewport`
+> adapter (which existed solely for headless screen tests) and reference the engine interface. Additive.
+> No consumer adopts yet.
 
 > 3.10.0 centralizes the pan/zoom/clamp/tap gesture math: `PannableCanvas` (UI) and `CameraController`
 > (Graphics) both drive a `Camera2D` through shared `PinchGestureTracker` / `CameraGestures` helpers
@@ -184,4 +191,4 @@ done
 > Persistence/Graphics adopted), then to 3.4.0 (save.json onto `SettingsManager<SaveData>` + `sanitizeOnLoad`;
 > then 3.4.1 routed music onto `AudioSystem`; Ecs.CreateDerived not adopted to preserve its lockstep baseline).
 
-_Last verified: 2026-06-13. Engine at 3.9.0 (`Graphics`: `Camera2D.CenterOn`/`Focus` fit-to-rect framing + `CameraFollow` smoothing/deadzone; builds on 3.7.0 `CameraController` + `Input.VirtualResolution` desktop design-scale; 3.8.0 added the `KhaozEngine.Sprites` package). No consumer adopts 3.7.0/3.8.0/3.9.0 yet. Consumer rows: Hardpoint 3.4.1 (adopted Diagnostics/App/Localization/Effects/Persistence; campaign progress persists to save.json, 10-level campaign; Audio/Graphics/Ecs-RNG not adopted), SpaceGame on Ecs 3.6.0 (CachedQuery adopted) with its other KE packages still 3.4.1 (music on `AudioSystem`), Nullwake 3.4.0._
+_Last verified: 2026-06-13. Engine at 3.11.0 (`Input.IDesignViewport` seam on `VirtualResolution`; 3.10.0 shared Camera2D gesture core + `PannableCanvas` pinch zoom; 3.9.0 `Camera2D.CenterOn`/`Focus` framing + `CameraFollow`; 3.8.0 added `KhaozEngine.Sprites`; 3.7.0 `CameraController` + `Input.VirtualResolution` desktop design-scale). No consumer adopts 3.7.0–3.11.0 yet. Consumer rows: Hardpoint 3.4.1 (adopted Diagnostics/App/Localization/Effects/Persistence; campaign progress persists to save.json, 10-level campaign; Audio/Graphics/Ecs-RNG not adopted), SpaceGame on Ecs 3.6.0 (CachedQuery adopted) with its other KE packages still 3.4.1 (music on `AudioSystem`), Nullwake 3.4.0._

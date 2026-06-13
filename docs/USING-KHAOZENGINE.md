@@ -164,11 +164,13 @@ The manager owns transition timing. Set `TransitionOnDuration`/`TransitionOffDur
 
 Widgets (`Button`, `Slider`, `Toggle`, `Dropdown`, `ScrollablePanel`, `TextInput`, `Tooltip`, `MenuTile`, `ExpandableRow`, …) take an `InputManager` and a `PrimitiveRenderer` and call the same bounds helpers — so they are click-through-safe by construction. `LayoutConstants.TopBarHeight` / `BottomNavHeight` are settable statics (default to Nullwake's `48`/`52`); set them once at startup for your chrome. `TextInputHandler(maxLength, charValidator)` is a keystroke state machine: `ProcessInput(InputManager, PlayerIndex?)` returns whether it consumed, exposes `Text`, `CaretBlinkTimer`, `PasteRequested`, `TextDeleted` (letters map to lowercase).
 
+> **4.0.0 note:** `PrimitiveRenderer` and `ColorHelper` no longer live in `KhaozEngine.UI`; they moved to **`KhaozEngine.Graphics`** (low-level rendering helpers, see the Graphics section). `KhaozEngine.UI` depends on Graphics, so widgets still get a `PrimitiveRenderer` exactly as before; game code that constructs or passes one needs `using KhaozEngine.Graphics;`.
+
 ---
 
 ## ECS layer (`KhaozEngine.Ecs`)
 
-Independent of input/screens. `World` with `Spawn`/`Despawn` (deferred to `Update` flush), `Set/Get/Has/TryGet<T>` (components are classes implementing `IComponent`), `Query<T1[,T2[,T3]]>()`, and `AddSystem(ISystem)` (`ISystem.Update(World, float dt)`).
+Independent of input/screens. A struct-based archetype ECS: components are **structs** implementing `IComponent` (plain data). `World` exposes `Spawn()` / `Despawn(e)` (with an `EntityCommandBuffer` via `World.Commands` for deferred structural changes), component access `Add/Set/Has/TryGet/Remove<T>` plus `ref T Get<T>` (by-ref, no boxing), iteration via `Query()` and `ForEach<T1..T8>(RefAction<…>)`, parent/child hierarchy (`SetParent`/`DespawnTree`), per-`World` resources (`SetResource/GetResource<T>`), and systems grouped + ordered (`AddSystem(ISystem, group)`, `SetGroupOrder`, `Update(float dt)`). `CachedQuery` reuses a query across ticks to avoid per-tick allocation; `DeterministicRng` gives platform-stable RNG; `WorldSerializer` saves/loads a world as JSON (uses `KhaozEngine.Serialization.JsonDefaults.IncludeFields`).
 
 ---
 
@@ -198,6 +200,19 @@ Vector2 mouseWorld = cam.ScreenToWorld(mouseScreenPos);          // pick/aim in 
   stays inside `worldBounds`, centering on any axis where the world is smaller than the view. It does
   not mutate `Position` (assign the result yourself). Exact when `Rotation` is 0 (the typical
   platformer/scroller case); approximate with a rotated camera.
+- `CenterOn(world)` / `Focus(rect, viewport, padding, minZoom, maxZoom)` frame a point or fit-to-rect.
+  `CameraController` drives a `Camera2D` from an `InputManager` (drag/wheel/pinch pan+zoom, tap-vs-pan).
+  `CameraFollow` eases `Position` toward a target with frame-rate-independent smoothing (`Stiffness`),
+  an optional screen-space `Deadzone`, and bounds clamp. `PinchGestureTracker` / `CameraGestures` are
+  the shared gesture core (also used by `UI.PannableCanvas`).
+
+**Rendering primitives (moved here in 4.0.0).** `PrimitiveRenderer` draws shapes from a 1×1 white
+pixel (`DrawFilledRect`/`DrawRect`/`DrawLine`/`DrawCircle`/`DrawFilledCircle`/`DrawRing` (radius-adaptive
+segment count, thickness-aware)/`DrawVerticalGradient`/`DrawProgressBar`) and recreates its pixel on
+device reset. `ColorHelper.ParseHex` parses hex colors. Both used to live in `KhaozEngine.UI`; game code
+referencing them needs `using KhaozEngine.Graphics;`.
+
+Also in this package: `DisplayManager` (below) for window/display config.
 
 ---
 
@@ -287,8 +302,22 @@ Rules for consumers:
 
 ---
 
+## Other packages (brief)
+
+The sections above cover the core flow. The rest of the 16-package set, one line each:
+
+- **`KhaozEngine.App`**: app identity / data paths: `AppDataPaths`, `BuildMetadata`, `ServiceLocator`, `IAppDataEnvironment`. Pure BCL, no MonoGame.
+- **`KhaozEngine.Persistence`**: crash-safe saves: `AtomicJsonWriter`, `PersistenceQueue` (coalesced async writes), `SettingsManager<T>` + `FileSettingsStorage`, `SaveEncoder` (Base64 + HMAC).
+- **`KhaozEngine.Content`**: config loading + JSON-schema validation: `ConfigLoader` (disk-then-embedded), `JsonSchemaValidator`, build-time schema enforcement via the bundled validator.
+- **`KhaozEngine.Serialization`**: shared `System.Text.Json` baselines: `JsonDefaults.TolerantRead` / `IndentedWrite` / `IncludeFields`. Consumed by Content/Persistence/Ecs. Pure BCL.
+- **`KhaozEngine.Localization`**: `LocalizationManager` (culture + string lookup).
+- **`KhaozEngine.Audio`**: `AudioSystem` music playback (one track at a time, `PlayMode`, now-playing events; macOS AVAudioPlayer backend). Music-only; SFX stays game-side.
+- **`KhaozEngine.Effects`**: pooled rect `ParticleSystem` + `Spark`/`Ember` presets. Depends on Graphics (for `PrimitiveRenderer`).
+- **`KhaozEngine.Sprites`**: 2D sprite + directional animation: `SpriteSheet`, `SpriteAnimationPlayer`, `DirectionalAnimatedSprite`, `Direction8`, `SpriteRegistry`, `PixelLabSpriteLoader`. Takes a raw `float`/`GameTime` delta.
+- **`KhaozEngine.Time`**: `GameClock` (pause / `TimeScale`) + `TimeSkip`. Pulled in transitively by `Screens`; optional to use directly.
+
 ## Versioning & change process
 
-- SemVer, one shared version across the four packages (`Directory.Build.props`).
+- SemVer, one shared version across all packages (`Directory.Build.props`).
 - Local file-feed for inner-loop dev; GitHub Packages on `v*` tags.
 - To change the library: edit, add a headless test in `KhaozEngine.Tests`, `dotnet pack -o ./local-feed`, consume locally; when stable, bump the version + tag for a published release. Each game adopts on its own schedule by bumping its pinned version.

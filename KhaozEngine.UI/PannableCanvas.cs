@@ -47,7 +47,7 @@ public sealed class PannableCanvas
     /// <summary>When true, Update reserves the viewport via <c>InputManager.BlockInputRegion</c> so lower screens ignore drags/scrolls that start inside it.</summary>
     public bool BlockInput { get; set; } = true;
 
-    /// <summary>When false, drag and two-finger pan are ignored.</summary>
+    /// <summary>When false, all panning is ignored: drag, two-finger pan, and wheel scroll pan.</summary>
     public bool EnablePan { get; set; } = true;
 
     /// <summary>When false, pinch zoom is ignored (the canvas stays at its current zoom; wheel still pans).</summary>
@@ -59,7 +59,8 @@ public sealed class PannableCanvas
     /// <summary>Largest allowed camera zoom (pinch zoom-in clamps here).</summary>
     public float MaxZoom { get; set; } = 10f;
 
-    /// <summary>The backing camera. Exposed so callers can read/drive zoom/position directly.</summary>
+    /// <summary>The backing camera. Exposed so callers can read or drive position/zoom directly;
+    /// direct writes bypass clamping, so call <see cref="Update"/> (which clamps) afterward to keep the view in bounds.</summary>
     public Camera2D Camera => _camera;
 
     /// <summary>The current camera offset (legacy additive pan state): <c>-Position * Zoom</c>. Read-only; change it via panning or the focus helpers.</summary>

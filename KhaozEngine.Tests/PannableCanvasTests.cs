@@ -29,6 +29,13 @@ public class PannableCanvasTests
             ContentBounds = content ?? new Rectangle(-1000, -1000, 2000, 2000),
         };
 
+    private const float Tol = 1e-2f;
+
+    private static RawInputState Touches2(Vector2 a, Vector2 b) =>
+        new(Point.Zero, false, false, false, 0, new KeyboardState(), NoPads,
+            new[] { new TouchPoint(a, TouchLocationState.Moved, 1), new TouchPoint(b, TouchLocationState.Moved, 2) },
+            Rectangle.Empty);
+
     [Fact]
     public void ScreenWorldRoundTrips()
     {
@@ -212,6 +219,18 @@ public class PannableCanvasTests
     }
 
     [Fact]
+    public void FocusFitsZoomToRect()
+    {
+        var im = new InputManager();
+        var canvas = MakeCanvas(im);   // viewport 200x200, large content -> no clamp
+
+        canvas.Focus(new Rectangle(0, 0, 40, 40));   // contain fit = min(200/40, 200/40) = 5
+
+        Assert.Equal(5f, canvas.Camera.Zoom, Tol);                                  // Focus now fits zoom, not just centers
+        Assert.Equal(new Vector2(100, 100), canvas.WorldToScreen(new Vector2(20, 20)));   // rect center at viewport center
+    }
+
+    [Fact]
     public void CenterContentCentersOnContentMiddle()
     {
         var im = new InputManager();
@@ -221,5 +240,59 @@ public class PannableCanvasTests
 
         Assert.Equal(new Vector2(-200, -200), canvas.CameraOffset);   // -(content center 200,200)
         Assert.Equal(new Vector2(100, 100), canvas.WorldToScreen(new Vector2(200, 200)));
+    }
+
+    [Fact]
+    public void PinchZoomsAboutMidpoint()
+    {
+        var im = new InputManager(isMobile: true);
+        var canvas = MakeCanvas(im);
+        canvas.MaxZoom = 100f;
+
+        im.Update(Touches2(new Vector2(60, 100), new Vector2(140, 100)), true); canvas.Update();  // mid 100, dist 80
+        im.Update(Touches2(new Vector2(20, 100), new Vector2(180, 100)), true); canvas.Update();  // mid 100, dist 160 -> 2x
+
+        Assert.Equal(2f, canvas.Camera.Zoom, Tol);
+    }
+
+    [Fact]
+    public void PinchTwoFingerDragPans()
+    {
+        var im = new InputManager(isMobile: true);
+        var canvas = MakeCanvas(im);   // large content -> no clamp interference
+
+        im.Update(Touches2(new Vector2(60, 100), new Vector2(140, 100)), true); canvas.Update();  // mid 100, dist 80
+        im.Update(Touches2(new Vector2(90, 100), new Vector2(170, 100)), true); canvas.Update();  // mid 130, dist 80
+
+        Assert.Equal(1f, canvas.Camera.Zoom, Tol);              // distance unchanged -> no zoom
+        Assert.Equal(30f, canvas.CameraOffset.X, Tol);          // mid +30, zoom 1
+    }
+
+    [Fact]
+    public void PinchDoesNotZoomWhenZoomDisabled()
+    {
+        var im = new InputManager(isMobile: true);
+        var canvas = MakeCanvas(im);
+        canvas.EnableZoom = false;
+
+        im.Update(Touches2(new Vector2(60, 100), new Vector2(140, 100)), true); canvas.Update();
+        im.Update(Touches2(new Vector2(20, 100), new Vector2(180, 100)), true); canvas.Update();  // spread
+
+        Assert.Equal(1f, canvas.Camera.Zoom, Tol);
+    }
+
+    [Fact]
+    public void TransformsStayZoomCorrectAfterPinch()
+    {
+        var im = new InputManager(isMobile: true);
+        var canvas = MakeCanvas(im);
+        canvas.MaxZoom = 100f;
+
+        im.Update(Touches2(new Vector2(60, 100), new Vector2(140, 100)), true); canvas.Update();
+        im.Update(Touches2(new Vector2(20, 100), new Vector2(180, 100)), true); canvas.Update();  // 2x (dist 80 -> 160)
+
+        // Round-trip must still hold under non-unit zoom.
+        foreach (var w in new[] { new Vector2(0, 0), new Vector2(33, -41) })
+            Assert.True(Vector2.Distance(w, canvas.ScreenToWorld(canvas.WorldToScreen(w))) < 0.01f);
     }
 }

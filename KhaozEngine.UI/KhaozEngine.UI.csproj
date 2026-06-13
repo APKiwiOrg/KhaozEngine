@@ -1,12 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.UI</PackageId>
-    <Description>Game-agnostic MonoGame UI widgets (button, slider, dropdown, scroll panel, text input, ...).</Description>
+    <Description>Game-agnostic MonoGame UI widgets (button, slider, dropdown, scroll panel, text input, ...) plus PannableCanvas: a pannable/pinch-zoomable world viewport that delegates its pan/zoom/clamp/tap math to KhaozEngine.Graphics.Camera2D.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.*" />
     <ProjectReference Include="../KhaozEngine.Input/KhaozEngine.Input.csproj" />
+    <ProjectReference Include="../KhaozEngine.Graphics/KhaozEngine.Graphics.csproj" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <ItemGroup>

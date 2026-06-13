@@ -24,8 +24,7 @@ public sealed class CameraController
     private readonly Camera2D _camera;
 
     private Viewport _lastViewport;
-    private bool _wasPinching;
-    private Vector2 _prevPinchMidpoint;
+    private readonly PinchGestureTracker _pinch = new();
 
     /// <summary>Creates a controller bound to an input source and the camera it drives.</summary>
     public CameraController(InputManager input, Camera2D camera)
@@ -75,29 +74,21 @@ public sealed class CameraController
 
         if (_input.TryGetPinch(out Pinch pinch))
         {
-            // Two-finger pan by the midpoint travel (skip the first pinch frame: no previous midpoint).
-            if (_wasPinching && EnablePan)
-                PanByScreenDelta(pinch.Midpoint - _prevPinchMidpoint);
-
-            if (EnableZoom && pinch.Scale > 0f)
-                ApplyZoom(_camera.Zoom * pinch.Scale, pinch.Midpoint, viewport);
-
-            _prevPinchMidpoint = pinch.Midpoint;
-            _wasPinching = true;
+            _pinch.Apply(_camera, pinch, viewport, EnablePan, EnableZoom, MinZoom, MaxZoom);
         }
         else
         {
-            _wasPinching = false;
+            _pinch.Reset();
 
             if (EnablePan)
-                PanByScreenDelta(_input.GetDragDelta(bounds));
+                _camera.PanByScreenDelta(_input.GetDragDelta(bounds));
 
             if (EnableZoom)
             {
                 int scroll = _input.GetScrollIn(bounds);
                 if (scroll != 0)
-                    ApplyZoom(_camera.Zoom * MathF.Pow(WheelZoomStep, scroll / 120f),
-                              _input.PointerPosition, viewport);
+                    _camera.ZoomAboutScreenPoint(_camera.Zoom * MathF.Pow(WheelZoomStep, scroll / 120f),
+                                                 _input.PointerPosition, viewport, MinZoom, MaxZoom);
             }
         }
 
@@ -112,35 +103,6 @@ public sealed class CameraController
     /// release world points differ and the same-target check rejects it. Maps through the viewport
     /// from the most recent <see cref="Update"/>.
     /// </summary>
-    public bool TryGetTap(out Vector2 pressWorld, out Vector2 releaseWorld)
-    {
-        if (_input.IsTapIn(_lastViewport.Bounds))
-        {
-            pressWorld = _camera.ScreenToWorld(_input.PressOrigin, _lastViewport);
-            releaseWorld = _camera.ScreenToWorld(_input.PointerPosition, _lastViewport);
-            return true;
-        }
-        pressWorld = releaseWorld = Vector2.Zero;
-        return false;
-    }
-
-    // Moves the camera so world content tracks the pointer: a screen drag of d maps to a world move
-    // of d/zoom, applied opposite to the drag (grab-and-drag). No-op at a degenerate zoom.
-    private void PanByScreenDelta(Vector2 screenDelta)
-    {
-        if (screenDelta == Vector2.Zero || _camera.Zoom <= 0f) return;
-        _camera.Position -= screenDelta / _camera.Zoom;
-    }
-
-    // Sets zoom (clamped) while keeping the world point under the focus screen position fixed.
-    private void ApplyZoom(float targetZoom, Vector2 focusScreen, Viewport viewport)
-    {
-        float clamped = MathHelper.Clamp(targetZoom, MinZoom, MaxZoom);
-        if (clamped == _camera.Zoom) return;
-
-        Vector2 worldBefore = _camera.ScreenToWorld(focusScreen, viewport);
-        _camera.Zoom = clamped;
-        Vector2 worldAfter = _camera.ScreenToWorld(focusScreen, viewport);
-        _camera.Position += worldBefore - worldAfter;
-    }
+    public bool TryGetTap(out Vector2 pressWorld, out Vector2 releaseWorld) =>
+        CameraGestures.TryGetTap(_input, _camera, _lastViewport, out pressWorld, out releaseWorld);
 }

@@ -31,15 +31,15 @@ public sealed class Camera2D
     /// <summary>
     /// Builds the view (world-to-screen) transform for the given viewport:
     /// translate so <see cref="Position"/> is at the origin, apply <see cref="Rotation"/>,
-    /// scale by <see cref="Zoom"/>, then translate to the viewport center. The world thus
-    /// rotates and scales about <see cref="Position"/>, which lands at screen center.
+    /// scale by <see cref="Zoom"/>, then translate to the viewport center <c>(X + W/2, Y + H/2)</c>.
+    /// The world thus rotates and scales about <see cref="Position"/>, which lands at screen center.
     /// </summary>
     public Matrix GetViewMatrix(Viewport viewport)
     {
         return Matrix.CreateTranslation(-Position.X, -Position.Y, 0f)
             * Matrix.CreateRotationZ(Rotation)
             * Matrix.CreateScale(Zoom, Zoom, 1f)
-            * Matrix.CreateTranslation(viewport.Width * 0.5f, viewport.Height * 0.5f, 0f);
+            * Matrix.CreateTranslation(viewport.X + viewport.Width * 0.5f, viewport.Y + viewport.Height * 0.5f, 0f);
     }
 
     /// <summary>Transforms a world position to screen space using the given viewport.</summary>
@@ -130,4 +130,28 @@ public sealed class Camera2D
     public void Focus(Rectangle worldRect, float paddingFraction = 0f,
         float minZoom = 0.0001f, float maxZoom = float.MaxValue) =>
         Focus(worldRect, Viewport, paddingFraction, minZoom, maxZoom);
+
+    /// <summary>Moves the camera so world content tracks a screen drag of <paramref name="screenDelta"/>:
+    /// the world moves by <c>screenDelta / Zoom</c>, applied opposite to the drag (grab-and-drag).
+    /// No-op for a zero delta or a non-positive <see cref="Zoom"/>.</summary>
+    public void PanByScreenDelta(Vector2 screenDelta)
+    {
+        if (screenDelta == Vector2.Zero || Zoom <= 0f) return;
+        Position -= screenDelta / Zoom;
+    }
+
+    /// <summary>Sets <see cref="Zoom"/> to <paramref name="targetZoom"/> clamped to
+    /// <c>[<paramref name="minZoom"/>, <paramref name="maxZoom"/>]</c> while keeping the world point
+    /// currently under <paramref name="focusScreen"/> fixed on screen. No-op if the clamped zoom equals
+    /// the current zoom.</summary>
+    public void ZoomAboutScreenPoint(float targetZoom, Vector2 focusScreen, Viewport viewport, float minZoom, float maxZoom)
+    {
+        float clamped = MathHelper.Clamp(targetZoom, minZoom, maxZoom);
+        if (clamped == Zoom) return;
+
+        Vector2 worldBefore = ScreenToWorld(focusScreen, viewport);
+        Zoom = clamped;
+        Vector2 worldAfter = ScreenToWorld(focusScreen, viewport);
+        Position += worldBefore - worldAfter;
+    }
 }

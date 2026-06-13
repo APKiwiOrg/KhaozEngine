@@ -27,6 +27,16 @@ Log.For<Game>().Info("started");
 Log.Shutdown();
 ```
 
+## Categories
+
+Every entry carries a **category**, rendered by the formatter as `[Category] message`. Choose it once and never repeat it in the message text:
+
+- One class's logs → `Log.For<T>()` (category = the type name).
+- A subsystem spanning classes, or a game-side module with no single owning type (e.g. `CloudSave`, `Update`) → `Log.Get("ModuleName")` with a stable PascalCase name. The category is a plain string, so non-engine modules categorize the same way.
+- `Log.Info/Warn/Error(...)` with no category → the configured `DefaultCategory`; for one-off lines, not per-subsystem logging.
+
+Do **not** prefix the message with the category: `Log.Info("[CloudSave] saved")` double-tags as `[App] [CloudSave] saved`. Write `Log.Get("CloudSave").Info("saved")` → `[CloudSave] saved`.
+
 ## Pieces
 
 - `Log` — static ambient facade (`Log.For<T>()`, `Log.Info(...)`, `Log.Configure`, `Log.Flush`, `Log.Shutdown`). No-op before `Configure`.

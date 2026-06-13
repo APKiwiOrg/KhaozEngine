@@ -17,7 +17,8 @@ bumps a `<PackageReference>` or the engine ships a new version.
 > added to the 21 files that draw primitives, plus an explicit `KhaozEngine.Graphics` reference (it uses
 > `PrimitiveRenderer`/`ColorHelper` directly). Tests green (90). Nullwake since adopted three more shipped
 > features: `PannableCanvas` (skill-tree pan, zoom off for sharp text), `DisplayManager` (desktop window +
-> min-size floor), and `JsonDefaults` (config/save options, now a direct `KhaozEngine.Serialization` ref).
+> min-size floor), and `JsonDefaults` (a direct `KhaozEngine.Serialization` ref: `TolerantRead` in its
+> `ConfigLoader`, `IndentedWrite` in `LocalSaveSystem`).
 > **SpaceGame also on 4.0.0:** all KE packages unified to 4.0.0 (Ecs moved 3.6.0 ->
 > 4.0.0, the rest 3.4.1 -> 4.0.0); `using KhaozEngine.Graphics;` added to the 4 files using
 > `PrimitiveRenderer` (it already referenced `KhaozEngine.Graphics`); `Serialization` transitive,
@@ -112,9 +113,9 @@ bumps a `<PackageReference>` or the engine ships a new version.
 ## Version matrix
 
 `–` = package not referenced directly by that project. `Time` is pulled in transitively by
-`Screens` 2.2.0+; consumers vendor `KhaozEngine.Time` even without a direct reference. Likewise
-`Serialization` (4.0.0+) is transitive via `Content`/`Persistence`/`Ecs`, so it shows `–` for
-consumers that don't reference it directly.
+`Screens` 2.2.0+; consumers vendor `KhaozEngine.Time` even without a direct reference. `Serialization`
+(4.0.0+) is transitive via `Content`/`Persistence`/`Ecs`, so it shows `–` for consumers that don't
+reference it directly (Nullwake does reference it directly for `JsonDefaults`).
 
 | Project   | Project file                         | Input | Screens | UI    | Ecs   | Content | Diagnostics | Time  | App   | Localization | Persistence | Audio | Effects | Graphics | Sprites | Serialization |
 |-----------|--------------------------------------|-------|---------|-------|-------|---------|-------------|-------|-------|--------------|-------------|-------|---------|----------|---------|---------------|
@@ -172,7 +173,10 @@ scaled-dt usage.
   (Graphics) for desktop window config + the min-size floor (mobile keeps only the portrait line; a fixed
   backbuffer would break fill-to-screen scaling). **`JsonDefaults`** (Serialization, now a direct ref):
   `TolerantRead` for `ConfigLoader`, `IndentedWrite` for `LocalSaveSystem` (byte-identical to the prior inline
-  options). The earlier-skipped 3.4.0 audio music modes and `SettingsManager` `sanitizeOnLoad` still do not
+  options). **`Content` is build-time only:** referenced for its MSBuild schema-validation target (validates
+  `Data/*.json` against `Data/schemas/` at build, 10+ schemas); Nullwake uses its own `ConfigLoader`, not
+  `KhaozEngine.Content.ConfigLoader`, so the package has no runtime/code use. The earlier-skipped 3.4.0 audio
+  music modes and `SettingsManager` `sanitizeOnLoad` still do not
   apply (pure random rotation via `PlayRandomTrack`; saves go through `LocalSaveSystem` + `AtomicJsonWriter`,
   not `SettingsManager`). **Camera2D not adopted for the mining view:** `OreField.RefToScreen` is a non-uniform
   fit-into-sub-rectangle projection, incompatible with `Camera2D`'s uniform full-viewport matrix (`PannableCanvas`
@@ -239,4 +243,4 @@ done
 > Persistence/Graphics adopted), then to 3.4.0 (save.json onto `SettingsManager<SaveData>` + `sanitizeOnLoad`;
 > then 3.4.1 routed music onto `AudioSystem`; Ecs.CreateDerived not adopted to preserve its lockstep baseline).
 
-_Last verified: 2026-06-13. Engine at 4.0.0 (`PrimitiveRenderer`/`ColorHelper` moved `UI` -> `Graphics`; new leaf `KhaozEngine.Serialization` with `JsonDefaults`, consumed by Content/Persistence/Ecs). **All three consumers verified on 4.0.0 against their current csprojs this session.** Hardpoint (first 4.0.0 adopter; walked 3.4.1 -> 4.0.0 picking up Graphics gameplay camera, Sprites + `SpriteRegistry`, `Input.IDesignViewport`; Audio still not adopted). Nullwake (walked 3.4.0 -> 4.0.0; `PrimitiveRenderer`/`ColorHelper` move across 21 files + explicit Graphics ref; Camera2D/Ecs still deferred). SpaceGame (unified all KE packages to 4.0.0 from a 3.4.1 + Ecs 3.6.0 split; `PrimitiveRenderer` move across 4 files; Effects/Sprites/`Ecs.CreateDerived` still not adopted). Adoption ✓/– matrix matches each game's actual `<PackageReference>` set._
+_Last verified: 2026-06-13. Engine at 4.0.0 (`PrimitiveRenderer`/`ColorHelper` moved `UI` -> `Graphics`; new leaf `KhaozEngine.Serialization` with `JsonDefaults`, consumed by Content/Persistence/Ecs). **All three consumers verified on 4.0.0 against their current csprojs this session.** Hardpoint (first 4.0.0 adopter; walked 3.4.1 -> 4.0.0 picking up Graphics gameplay camera, Sprites + `SpriteRegistry`, `Input.IDesignViewport`; Audio still not adopted). Nullwake (walked 3.4.0 -> 4.0.0; `PrimitiveRenderer`/`ColorHelper` move across 21 files + explicit Graphics ref; **adopted `JsonDefaults`** via explicit `Serialization` ref; Camera2D/Ecs still deferred). SpaceGame (unified all KE packages to 4.0.0 from a 3.4.1 + Ecs 3.6.0 split; `PrimitiveRenderer` move across 4 files; Effects/Sprites/`Ecs.CreateDerived` still not adopted). Adoption ✓/– matrix matches each game's actual `<PackageReference>` set. **No-dead-reference pass (2026-06-13): every direct `KhaozEngine.*` reference in all three repos is used; the one zero-code-use case (Nullwake `Content`) is legitimate build-time schema validation.**_

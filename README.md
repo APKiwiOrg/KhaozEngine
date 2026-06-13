@@ -121,7 +121,7 @@ CI builds, tests, packs, and on a `v*` tag publishes to GitHub Packages.
 | Game | Uses (KhaozEngine.*) | Status |
 |---|---|---|
 | **Hardpoint** | Input, Screens, UI, Ecs, Graphics, Sprites, Effects, Content, Diagnostics, App, Localization, Persistence | On 4.0.0. |
-| **Nullwake** | Input, Screens, UI, Graphics, Time, Audio, Effects, Content, Diagnostics, App, Localization, Persistence | On 4.0.0. Source of the widgets, `VirtualResolution`, transitions, and the click-through fix. |
+| **Nullwake** | Input, Screens, UI, Graphics, Time, Audio, Effects, Content, Diagnostics, App, Localization, Persistence, Serialization | On 4.0.0. Source of the widgets, `VirtualResolution`, transitions, and the click-through fix. |
 | **SpaceGame** | Input, Screens, UI, Ecs, Graphics, Audio, Content, Diagnostics, App, Localization, Persistence | On 4.0.0. |
 
 Full per-package version + adoption matrix: [`docs/CONSUMERS.md`](docs/CONSUMERS.md).

@@ -253,7 +253,7 @@ public class PannableCanvasTests
         im.Update(Touches2(new Vector2(90, 100), new Vector2(170, 100)), true); canvas.Update();  // mid 130, dist 80
 
         Assert.Equal(1f, canvas.Camera.Zoom, Tol);              // distance unchanged -> no zoom
-        Assert.True(Math.Abs(canvas.CameraOffset.X - 30f) < 0.01f, $"offset.X was {canvas.CameraOffset.X}");  // mid +30, zoom 1
+        Assert.Equal(30f, canvas.CameraOffset.X, Tol);          // mid +30, zoom 1
     }
 
     [Fact]
@@ -277,7 +277,7 @@ public class PannableCanvasTests
         canvas.MaxZoom = 100f;
 
         im.Update(Touches2(new Vector2(60, 100), new Vector2(140, 100)), true); canvas.Update();
-        im.Update(Touches2(new Vector2(20, 100), new Vector2(180, 100)), true); canvas.Update();  // ~2x
+        im.Update(Touches2(new Vector2(20, 100), new Vector2(180, 100)), true); canvas.Update();  // 2x (dist 80 -> 160)
 
         // Round-trip must still hold under non-unit zoom.
         foreach (var w in new[] { new Vector2(0, 0), new Vector2(33, -41) })

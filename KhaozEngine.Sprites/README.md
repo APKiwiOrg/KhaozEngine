@@ -26,6 +26,10 @@ sprites (8-way characters, projectiles, pickups) instead of flat primitives.
   the animation phase so a walk cycle stays smooth.
 - **`PixelLabSpriteLoader`** — builds a `DirectionalAnimatedSprite` from a PixelLab export. PixelLab's
   row order (`S, SE, E, NE, N, NW, W, SW`) is isolated here; the core types stay generic.
+- **`SpriteRegistry`** — a keyed store of `DirectionalAnimatedSprite` (`Add` / `Get` / `Contains` /
+  `Count`) with one bulk `Update(deltaSeconds)` that advances every registered sprite once per frame.
+  Takes already-built sprites; how they're loaded (embedded resources, content pipeline) stays
+  game-side, since resource names are game-specific.
 
 ## Usage
 

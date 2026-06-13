@@ -3,7 +3,13 @@
 Which game uses which packages, at which version. Update this whenever a consumer
 bumps a `<PackageReference>` or the engine ships a new version.
 
-**Engine current version:** `3.11.0` (all packages share one version, set in `Directory.Build.props`).
+**Engine current version:** `3.12.0` (all packages share one version, set in `Directory.Build.props`).
+
+> 3.12.0 adds `SpriteRegistry` to `KhaozEngine.Sprites`: a keyed store of `DirectionalAnimatedSprite`
+> (`Add`/`Get`/`Contains`/`Count`) with one bulk `Update(deltaSeconds)` that advances every registered
+> sprite once per frame. Takes already-built sprites; loading by embedded-resource manifest name stays
+> game-side. Centralizes the dictionary + bulk-advance Hardpoint hand-rolls in `SpriteLibrary`.
+> Additive, MonoGame-only. Adoption target: Hardpoint `SpriteLibrary`. No consumer adopts yet.
 
 > 3.11.0 adds `KhaozEngine.Input.IDesignViewport` — a 4-member seam (`Width`, `Height`, `Scale`,
 > `ScaleMatrix`) that `VirtualResolution` now implements (no behavior change; its existing properties

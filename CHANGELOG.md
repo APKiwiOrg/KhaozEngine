@@ -2,6 +2,37 @@
 
 All notable changes to KhaozEngine. Versions are shared across all packages.
 
+## KhaozEngine 3.10.0
+
+Shared camera-gesture core: `PannableCanvas` and `CameraController` now drive a `Camera2D` and share
+one implementation of pan / zoom / pinch / clamp / tap. Additive API plus one scoped behavior change.
+
+### KhaozEngine.Graphics
+
+- `Camera2D.GetViewMatrix` now honors the viewport's X/Y offset (centers `Position` on
+  `(viewport.X + W/2, viewport.Y + H/2)`). **Behavior change**, but only for a viewport with a non-zero
+  X/Y origin (an inset sub-rectangle) — the previously unsupported/incorrect case. Whole-screen
+  viewports (X = Y = 0, every prior call site) are unchanged. Makes inset viewports map correctly.
+- New `Camera2D.PanByScreenDelta(screenDelta)` — grab-and-drag pan (`Position -= screenDelta / Zoom`).
+- New `Camera2D.ZoomAboutScreenPoint(target, focusScreen, viewport, min, max)` — clamped zoom that keeps
+  the world point under the focus fixed.
+- New `PinchGestureTracker` — the shared two-finger pinch state machine (midpoint pan + zoom-about-focus).
+- New `CameraGestures.TryGetTap(input, camera, viewport, out press, out release)` — the shared
+  press-origin tap-vs-pan helper.
+- `CameraController` now drives `Camera2D` through these shared pieces. No public API or behavior change.
+
+### KhaozEngine.UI
+
+- `PannableCanvas` delegates its transform / clamp / pan / tap math to a backing `Camera2D` (shared with
+  `CameraController`). `CameraOffset` is preserved as the legacy additive view (`-Position * Zoom`).
+  Drag pan, wheel-as-vertical-pan, scissor `Draw`, `BlockInput`, `Padding`, `ScrollPanSpeed`, and the
+  press-origin tap invariant are byte-identical.
+- New: real two-finger **pinch zoom** (the old `_zoom = 1f` seam is now live). New `MinZoom` / `MaxZoom`
+  (defaults 0.1 / 10), `EnablePan` / `EnableZoom` (default true), and a `Camera` accessor. Wheel stays a
+  vertical pan. Mouse-only behavior is unchanged. Disable pinch with `EnableZoom = false`; `EnablePan =
+  false` disables all panning (drag, two-finger, and wheel).
+- `KhaozEngine.UI` now references `KhaozEngine.Graphics` (transitive package dependency added).
+
 ## KhaozEngine 3.9.0
 
 Camera framing + follow, both in `KhaozEngine.Graphics`. Additive, no breaking changes.

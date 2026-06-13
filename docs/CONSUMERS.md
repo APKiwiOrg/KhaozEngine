@@ -3,7 +3,15 @@
 Which game uses which packages, at which version. Update this whenever a consumer
 bumps a `<PackageReference>` or the engine ships a new version.
 
-**Engine current version:** `3.9.0` (all packages share one version, set in `Directory.Build.props`).
+**Engine current version:** `3.10.0` (all packages share one version, set in `Directory.Build.props`).
+
+> 3.10.0 centralizes the pan/zoom/clamp/tap gesture math: `PannableCanvas` (UI) and `CameraController`
+> (Graphics) both drive a `Camera2D` through shared `PinchGestureTracker` / `CameraGestures` helpers
+> plus new `Camera2D.PanByScreenDelta` / `ZoomAboutScreenPoint`. `PannableCanvas` gains real pinch zoom
+> (`MinZoom`/`MaxZoom`/`EnableZoom`/`EnablePan`, `Camera` accessor); drag/wheel/tap stay byte-identical.
+> New `KhaozEngine.UI -> KhaozEngine.Graphics` package dependency. `Camera2D.GetViewMatrix` now honors
+> viewport X/Y (only affects inset viewports; whole-screen X=Y=0 unchanged). No consumer adopts yet —
+> Hardpoint's map (on `PannableCanvas`) gets pinch zoom for free once it bumps; opt out via `EnableZoom = false`.
 
 > 3.9.0 extends `KhaozEngine.Graphics` with camera framing + follow. `Camera2D` gains `CenterOn(world)`
 > and `Focus(rect, viewport, paddingFraction, minZoom, maxZoom)` (fit-to-rect contain zoom) — the framing

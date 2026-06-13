@@ -2,6 +2,40 @@
 
 All notable changes to KhaozEngine. Versions are shared across all packages.
 
+## KhaozEngine 4.0.0
+
+Breaking. Inter-package tidy-up: a rendering primitive moves to the rendering package, and JSON
+defaults are centralized in a new package. No runtime behavior change, but two namespaces moved and
+`KhaozEngine.Effects` swaps a dependency, so consumers need `using` and possibly `<PackageReference>`
+updates.
+
+### KhaozEngine.Graphics
+
+- `PrimitiveRenderer` and `ColorHelper` moved here from `KhaozEngine.UI` (namespace
+  `KhaozEngine.UI` -> `KhaozEngine.Graphics`). They are low-level rendering helpers (1x1 pixel
+  shapes, hex color parsing) with no UI concepts, so they belong in the rendering package that
+  already sits below UI. **Migration:** add `using KhaozEngine.Graphics;` where you used
+  `PrimitiveRenderer`/`ColorHelper`. `KhaozEngine.UI` consumers need no new package reference (UI
+  already depends on Graphics); the types are just in a different namespace now.
+
+### KhaozEngine.Effects
+
+- Now depends on `KhaozEngine.Graphics` instead of `KhaozEngine.UI`. Its only use of UI was
+  `PrimitiveRenderer`, which now lives in Graphics, so the package no longer drags in the whole UI
+  widget set. **Migration:** if you reference `KhaozEngine.Effects` directly, no change; the
+  transitive dependency just shifts from UI to Graphics.
+
+### KhaozEngine.Serialization (new package)
+
+- New leaf package holding `JsonDefaults`: shared `System.Text.Json` option baselines so config,
+  persistence, and ECS serialize the same way. `TolerantRead` (case-insensitive, `//` comments,
+  trailing commas), `IndentedWrite` (`WriteIndented`), and `IncludeFields` (round-trips public
+  fields). Each is a single shared, effectively read-only instance. Pure BCL, no MonoGame.
+- `KhaozEngine.Content` (`ConfigLoader`), `KhaozEngine.Persistence` (`AtomicJsonWriter`,
+  `PersistenceQueue`, `FileSettingsStorage`), and `KhaozEngine.Ecs` (`WorldSerializer`) now consume
+  `JsonDefaults` instead of each declaring their own options. Public APIs and on-disk format are
+  unchanged; these packages gain a `KhaozEngine.Serialization` dependency.
+
 ## KhaozEngine 3.12.0
 
 Additive. New keyed registry for directional sprites in `KhaozEngine.Sprites`.

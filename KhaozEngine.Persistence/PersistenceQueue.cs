@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Threading;
 using KhaozEngine.App;
 using KhaozEngine.Diagnostics;
+using KhaozEngine.Serialization;
 
 namespace KhaozEngine.Persistence;
 
@@ -16,7 +17,6 @@ namespace KhaozEngine.Persistence;
 /// </summary>
 public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
 {
-    private static readonly JsonSerializerOptions DefaultOptions = new() { WriteIndented = true };
 
     private readonly object sync = new();
     private readonly Dictionary<string, string> pending = new(StringComparer.Ordinal);
@@ -68,7 +68,7 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
 
     /// <summary>Serializes <paramref name="value"/> (indented by default) and enqueues it for <paramref name="path"/>.</summary>
     public void Enqueue<T>(string path, T value, JsonSerializerOptions? options = null)
-        => Enqueue(path, JsonSerializer.Serialize(value, options ?? DefaultOptions));
+        => Enqueue(path, JsonSerializer.Serialize(value, options ?? JsonDefaults.IndentedWrite));
 
     /// <summary>Enqueues a write of <paramref name="json"/> to <paramref name="fileName"/> inside the app-data directory.</summary>
     public void Enqueue(AppDataPaths paths, string fileName, string json)

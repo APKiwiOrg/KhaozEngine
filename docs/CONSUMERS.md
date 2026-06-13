@@ -3,7 +3,15 @@
 Which game uses which packages, at which version. Update this whenever a consumer
 bumps a `<PackageReference>` or the engine ships a new version.
 
-**Engine current version:** `3.12.0` (all packages share one version, set in `Directory.Build.props`).
+**Engine current version:** `4.0.0` (all packages share one version, set in `Directory.Build.props`).
+
+> 4.0.0 (breaking) is an inter-package tidy-up, no runtime behavior change. `PrimitiveRenderer` and
+> `ColorHelper` move from `KhaozEngine.UI` to `KhaozEngine.Graphics` (namespace change only; UI already
+> depends on Graphics, so add a `using KhaozEngine.Graphics;`). `KhaozEngine.Effects` now depends on
+> `KhaozEngine.Graphics` instead of `KhaozEngine.UI` (its only UI use was `PrimitiveRenderer`). New leaf
+> package `KhaozEngine.Serialization` holds `JsonDefaults` (shared `System.Text.Json` baselines);
+> `KhaozEngine.Content`/`.Persistence`/`.Ecs` now consume it and gain a dependency on it. No consumer
+> adopts yet.
 
 > 3.12.0 adds `SpriteRegistry` to `KhaozEngine.Sprites`: a keyed store of `DirectionalAnimatedSprite`
 > (`Add`/`Get`/`Contains`/`Count`) with one bulk `Update(deltaSeconds)` that advances every registered

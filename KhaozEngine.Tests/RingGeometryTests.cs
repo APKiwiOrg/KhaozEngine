@@ -1,4 +1,4 @@
-using KhaozEngine.UI;
+using KhaozEngine.Graphics;
 using Xunit;
 
 namespace KhaozEngine.Tests;

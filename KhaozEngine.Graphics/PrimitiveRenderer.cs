@@ -2,7 +2,7 @@ using System;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 
-namespace KhaozEngine.UI;
+namespace KhaozEngine.Graphics;
 
 /// <summary>
 /// Provides primitive shape rendering (rectangles, lines, circles) using a

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using KhaozEngine.Serialization;
 
 namespace KhaozEngine.Ecs;
 
@@ -25,7 +26,7 @@ public sealed class WorldSerializer
     /// converters here for value types that don't round-trip by default (e.g. MonoGame Color).</param>
     public WorldSerializer(IEnumerable<Type> componentTypes, JsonSerializerOptions? options)
     {
-        _options = options ?? new JsonSerializerOptions { IncludeFields = true };
+        _options = options ?? JsonDefaults.IncludeFields;
         foreach (Type t in componentTypes)
         {
             if (!t.IsValueType || t.IsAbstract || !typeof(IComponent).IsAssignableFrom(t))

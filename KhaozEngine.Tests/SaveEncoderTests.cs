@@ -169,9 +169,12 @@ public class SaveEncoderTests
     }
 
     [Fact]
-    public void Ctor_NullLogger_Throws()
+    public void Ctor_NullLogger_FallsBackToAmbient_AndStillDecodes()
     {
-        Assert.Throws<ArgumentNullException>(() => new SaveEncoder(Key, Prefix, null!));
+        // A null logger is no longer an error: the encoder falls back to the ambient Log facade
+        // (a no-op when unconfigured). Decoding must still work without throwing.
+        var encoder = new SaveEncoder(Key, Prefix, null);
+        Assert.Equal("{\"x\":1}", encoder.Decode(encoder.Encode("{\"x\":1}")));
     }
 }
 

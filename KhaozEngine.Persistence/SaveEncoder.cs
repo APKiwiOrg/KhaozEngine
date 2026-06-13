@@ -9,8 +9,8 @@ namespace KhaozEngine.Persistence;
 /// Encodes/decodes save data to deter casual tampering: Base64 for obfuscation plus an
 /// HMAC-SHA256 integrity tag. File format: <c>{prefix}:{hmac-hex}:{base64-payload}</c>.
 /// This is a deterrent, not real security: the HMAC key ships in the game binary. Decoding is
-/// lenient (recovers the JSON even on an HMAC mismatch) and reports outcomes via the injected
-/// <see cref="ILogger"/>.
+/// lenient (recovers the JSON even on an HMAC mismatch) and reports outcomes via an
+/// <see cref="ILogger"/> (the ambient <c>Log</c> facade when none is injected).
 /// </summary>
 public sealed class SaveEncoder
 {
@@ -20,12 +20,11 @@ public sealed class SaveEncoder
     private readonly string magicPrefix;
     private readonly ILogger logger;
 
-    /// <summary>Creates an encoder with the given HMAC key, magic prefix, and logger.</summary>
+    /// <summary>Creates an encoder with the given HMAC key and magic prefix. <paramref name="logger"/>
+    /// defaults to the ambient <c>Log</c> facade (category <c>SaveEncoder</c>).</summary>
     /// <exception cref="ArgumentException"><paramref name="hmacKey"/> is null/empty, or <paramref name="magicPrefix"/> is null/empty/whitespace.</exception>
-    /// <exception cref="ArgumentNullException"><paramref name="logger"/> is null.</exception>
-    public SaveEncoder(byte[] hmacKey, string magicPrefix, ILogger logger)
+    public SaveEncoder(byte[] hmacKey, string magicPrefix, ILogger? logger = null)
     {
-        ArgumentNullException.ThrowIfNull(logger);
         if (hmacKey is null || hmacKey.Length == 0)
         {
             throw new ArgumentException("An HMAC key must be provided.", nameof(hmacKey));
@@ -37,7 +36,7 @@ public sealed class SaveEncoder
 
         this.hmacKey = (byte[])hmacKey.Clone();
         this.magicPrefix = magicPrefix;
-        this.logger = logger;
+        this.logger = logger ?? Log.For<SaveEncoder>();
     }
 
     /// <summary>Encodes a JSON string into the obfuscated save format.</summary>
@@ -73,7 +72,7 @@ public sealed class SaveEncoder
         int secondSep = fileContent.IndexOf(Separator, firstSep + 1);
         if (secondSep < 0)
         {
-            logger.Error("[SaveEncoder] malformed encoded save (missing separator)");
+            logger.Error("malformed encoded save (missing separator)");
             return null;
         }
 
@@ -81,7 +80,7 @@ public sealed class SaveEncoder
         string base64 = fileContent[(secondSep + 1)..];
         if (base64.Length == 0)
         {
-            logger.Error("[SaveEncoder] malformed encoded save (empty payload)");
+            logger.Error("malformed encoded save (empty payload)");
             return null;
         }
 
@@ -95,17 +94,17 @@ public sealed class SaveEncoder
         }
         catch (FormatException)
         {
-            logger.Error("[SaveEncoder] failed to decode Base64 payload");
+            logger.Error("failed to decode Base64 payload");
             return null;
         }
 
         if (authentic)
         {
-            logger.Info("[SaveEncoder] save decoded (HMAC ok)");
+            logger.Info("save decoded (HMAC ok)");
         }
         else
         {
-            logger.Warn("[SaveEncoder] save decoded but HMAC mismatch - possible tampering");
+            logger.Warn("save decoded but HMAC mismatch - possible tampering");
         }
 
         return json;

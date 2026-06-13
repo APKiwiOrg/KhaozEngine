@@ -85,7 +85,7 @@ internal sealed class MacOsMusicPlayer : IDisposable
 
         if (AVAudioPlayerClass == IntPtr.Zero)
         {
-            _logger.Warn("Audio: AVAudioPlayer class not available");
+            _logger.Warn("AVAudioPlayer class not available");
             return false;
         }
 
@@ -101,7 +101,7 @@ internal sealed class MacOsMusicPlayer : IDisposable
 
                 if (candidate == IntPtr.Zero)
                 {
-                    _logger.Warn($"Audio: AVAudioPlayer init failed: {GetErrorDescription(error)}");
+                    _logger.Warn($"AVAudioPlayer init failed: {GetErrorDescription(error)}");
                     return false;
                 }
 
@@ -112,7 +112,7 @@ internal sealed class MacOsMusicPlayer : IDisposable
 
                 if (SendByte(_player, SelPlay) == 0)
                 {
-                    _logger.Warn("Audio: AVAudioPlayer play returned false");
+                    _logger.Warn("AVAudioPlayer play returned false");
                     Stop();
                     return false;
                 }
@@ -126,7 +126,7 @@ internal sealed class MacOsMusicPlayer : IDisposable
         }
         catch (Exception ex)
         {
-            _logger.Warn($"Audio: AVAudioPlayer bridge failed: {ex.Message}");
+            _logger.Warn($"AVAudioPlayer bridge failed: {ex.Message}");
             Stop();
             return false;
         }

@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Reflection;
 using System.Text.Json;
+using KhaozEngine.Diagnostics;
 using KhaozEngine.Serialization;
 
 namespace KhaozEngine.Content;
@@ -15,9 +16,11 @@ public static class ConfigLoader
     public static T Load<T>(Assembly assembly, string resourceName, string? diskPath = null, JsonSerializerOptions? options = null)
     {
         string json;
+        string source;
         if (diskPath is not null && File.Exists(diskPath))
         {
             json = File.ReadAllText(diskPath);
+            source = $"disk '{diskPath}'";
         }
         else
         {
@@ -27,9 +30,12 @@ public static class ConfigLoader
                     $"Config not found: no file at '{diskPath ?? "(none)"}' and no embedded resource '{resourceName}' in {assembly.GetName().Name}.");
             using var reader = new StreamReader(stream);
             json = reader.ReadToEnd();
+            source = $"embedded resource '{resourceName}'";
         }
 
-        return JsonSerializer.Deserialize<T>(json, options ?? JsonDefaults.TolerantRead)
+        T value = JsonSerializer.Deserialize<T>(json, options ?? JsonDefaults.TolerantRead)
             ?? throw new InvalidOperationException($"Config '{resourceName}' deserialized to null.");
+        Log.Get("ConfigLoader").Debug($"loaded {typeof(T).Name} from {source}");
+        return value;
     }
 }

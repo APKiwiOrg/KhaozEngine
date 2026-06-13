@@ -12,7 +12,7 @@ namespace KhaozEngine.Persistence;
 public sealed class SettingsManager<T> where T : new()
 {
     private readonly ISettingsStorage storage;
-    private readonly ILogger? logger;
+    private readonly ILogger logger;
     private readonly Func<T, T>? sanitizeOnLoad;
     private T settings = new();
 
@@ -45,7 +45,8 @@ public sealed class SettingsManager<T> where T : new()
     public SettingsManager(ISettingsStorage storage, ILogger? logger = null, Func<T, T>? sanitizeOnLoad = null)
     {
         this.storage = storage ?? throw new ArgumentNullException(nameof(storage));
-        this.logger = logger;
+        // Generic type name would render as "SettingsManager`1"; use a clean fixed category instead.
+        this.logger = logger ?? Log.Get("SettingsManager");
         this.sanitizeOnLoad = sanitizeOnLoad;
         Load();
     }
@@ -60,7 +61,7 @@ public sealed class SettingsManager<T> where T : new()
         }
         catch (Exception ex)
         {
-            logger?.Error("Failed to save settings.", ex);
+            logger.Error("Failed to save settings.", ex);
         }
     }
 
@@ -77,7 +78,7 @@ public sealed class SettingsManager<T> where T : new()
         }
         catch (Exception ex)
         {
-            logger?.Error("Failed to load settings; using defaults.", ex);
+            logger.Error("Failed to load settings; using defaults.", ex);
             loaded = new T();
         }
 
@@ -89,7 +90,7 @@ public sealed class SettingsManager<T> where T : new()
             }
             catch (Exception ex)
             {
-                logger?.Error("sanitizeOnLoad threw; using unsanitized value.", ex);
+                logger.Error("sanitizeOnLoad threw; using unsanitized value.", ex);
             }
         }
 

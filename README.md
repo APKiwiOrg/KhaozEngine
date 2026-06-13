@@ -34,6 +34,7 @@ The input + screen code was built clean inside Hardpoint, modelled on Nullwake's
 > **`MonoGameRawInput` is the only code in the entire stack that touches `Mouse`/`Keyboard`/`GamePad`/`TouchPanel`.** Everything above it reads an immutable `RawInputState` snapshot through the `IRawInput` seam. Games must not poll the MonoGame input statics directly — doing so re-introduces the untestable, click-through-leaking pattern this library exists to kill.
 
 Full consumer contract: [`docs/USING-KHAOZENGINE.md`](docs/USING-KHAOZENGINE.md). Read it before wiring a game in.
+All docs are indexed in [`docs/INDEX.md`](docs/INDEX.md) (living docs vs the dated design archive).
 
 ## Quickstart (the canonical game-loop wiring)
 
@@ -86,11 +87,11 @@ Published to a private GitHub Packages feed on tagged releases, and packed to a 
 <!-- or the GitHub Packages feed: https://nuget.pkg.github.com/APKiwi/index.json -->
 ```
 ```xml
-<!-- All packages share one version. Reference only what you use. -->
-<PackageReference Include="KhaozEngine.Input"   Version="4.0.0" />
-<PackageReference Include="KhaozEngine.Screens" Version="4.0.0" />
-<PackageReference Include="KhaozEngine.UI"      Version="4.0.0" />
-<PackageReference Include="KhaozEngine.Ecs"     Version="4.0.0" />
+<!-- All packages share one version (the current release). Reference only what you use. -->
+<PackageReference Include="KhaozEngine.Input"   Version="4.1.0" />
+<PackageReference Include="KhaozEngine.Screens" Version="4.1.0" />
+<PackageReference Include="KhaozEngine.UI"      Version="4.1.0" />
+<PackageReference Include="KhaozEngine.Ecs"     Version="4.1.0" />
 ```
 
 **Versioning is SemVer.** Each game pins a version and adopts fixes by bumping it — so you can keep one game on an old version while you migrate another. Don't fork the packages; if a game needs an API that isn't there, add it here and bump the version.

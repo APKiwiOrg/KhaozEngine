@@ -17,6 +17,9 @@ jobs:
       GITHUB_PACKAGES_PAT: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+      # Fail fast if the docs' "current version" declarations drifted from Directory.Build.props.
+      - name: Check doc version consistency
+        run: ./scripts/check-doc-versions.sh
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'

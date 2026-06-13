@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Resources;
 using System.Threading;
+using KhaozEngine.Diagnostics;
 
 namespace KhaozEngine.Localization;
 
@@ -44,6 +45,7 @@ public class LocalizationManager
         CultureInfo culture = new CultureInfo(cultureCode);
         Thread.CurrentThread.CurrentCulture = culture;
         Thread.CurrentThread.CurrentUICulture = culture;
+        Log.For<LocalizationManager>().Debug($"culture set to {cultureCode}");
     }
 
     /// <summary>
@@ -77,6 +79,7 @@ public class LocalizationManager
         // Always add the default (invariant) culture - the base .resx file.
         supportedCultures.Add(CultureInfo.InvariantCulture);
 
+        Log.For<LocalizationManager>().Debug($"discovered {supportedCultures.Count} supported culture(s)");
         return supportedCultures;
     }
 }

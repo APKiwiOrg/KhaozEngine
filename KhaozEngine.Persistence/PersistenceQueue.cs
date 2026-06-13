@@ -20,7 +20,7 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
 
     private readonly object sync = new();
     private readonly Dictionary<string, string> pending = new(StringComparer.Ordinal);
-    private readonly ILogger? logger;
+    private readonly ILogger logger;
     private readonly int maxAttempts;
     private readonly TimeSpan retryDelay;
     private bool workerScheduled;
@@ -29,7 +29,7 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
     /// <summary>Raised on the background worker thread when a write fails after all retry attempts. A subscriber's own exception is caught and logged, never killing the writer.</summary>
     public event EventHandler<PersistenceWriteFailedEventArgs>? WriteFailed;
 
-    /// <summary>Creates a queue. <paramref name="maxAttempts"/> total write attempts per payload (>= 1); <paramref name="retryDelay"/> backoff between attempts (default 50 ms). Pass an <paramref name="logger"/> to record failures.</summary>
+    /// <summary>Creates a queue. <paramref name="maxAttempts"/> total write attempts per payload (>= 1); <paramref name="retryDelay"/> backoff between attempts (default 50 ms). <paramref name="logger"/> defaults to the ambient <c>Log</c> facade (category <c>PersistenceQueue</c>).</summary>
     public PersistenceQueue(ILogger? logger = null, int maxAttempts = 3, TimeSpan? retryDelay = null)
     {
         if (maxAttempts < 1)
@@ -37,7 +37,7 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
             throw new ArgumentOutOfRangeException(nameof(maxAttempts), "At least one attempt is required.");
         }
 
-        this.logger = logger;
+        this.logger = logger ?? Log.For<PersistenceQueue>();
         this.maxAttempts = maxAttempts;
         // Retry backoff runs as Thread.Sleep on the background ThreadPool worker, so cap it to keep a
         // pathological value from tying up a pool thread.
@@ -170,7 +170,7 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
             }
             catch (Exception ex) when (attempt < maxAttempts)
             {
-                logger?.Warn($"[PersistenceQueue] write to '{path}' failed (attempt {attempt}/{maxAttempts}), retrying", ex);
+                logger.Warn($"write to '{path}' failed (attempt {attempt}/{maxAttempts}), retrying", ex);
                 if (retryDelay > TimeSpan.Zero)
                 {
                     Thread.Sleep(retryDelay);
@@ -178,7 +178,7 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
             }
             catch (Exception ex)
             {
-                logger?.Error($"[PersistenceQueue] write to '{path}' failed after {maxAttempts} attempts, giving up", ex);
+                logger.Error($"write to '{path}' failed after {maxAttempts} attempts, giving up", ex);
                 RaiseWriteFailed(path, ex, attempt);
                 return;
             }
@@ -199,7 +199,7 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
         }
         catch (Exception ex)
         {
-            logger?.Error("[PersistenceQueue] a WriteFailed subscriber threw", ex);
+            logger.Error("a WriteFailed subscriber threw", ex);
         }
     }
 }

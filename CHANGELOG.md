@@ -2,6 +2,45 @@
 
 All notable changes to KhaozEngine. Versions are shared across all packages.
 
+## KhaozEngine 4.1.0
+
+Additive. Logging normalization: packages that log now lean on the logger's category (already
+rendered by `LogFormatter` as `[Category]`) instead of hand-rolled message prefixes, and fall back
+to the ambient `Log` facade when no `ILogger` is injected. Two more packages gain logging where it
+earns its keep. No public type removed; on-disk formats unchanged.
+
+### KhaozEngine.Audio
+
+- Log messages drop the redundant `Audio:` prefix across `AudioSystem` and the three backends. The
+  category already identifies the source (`AudioSystem`, `MonoGameMusicBackend`, `MacOsMusicBackend`,
+  `MacOsMusicPlayer`), so the prefix was doubling up. No behavior change beyond log text.
+
+### KhaozEngine.Persistence
+
+- `SaveEncoder`, `PersistenceQueue`, and `SettingsManager<T>` drop inline `[ClassName]` message
+  prefixes and now resolve a logger via `?? Log.For<T>()` (the generic `SettingsManager<T>` uses the
+  fixed category `SettingsManager` to avoid a `` `1 `` suffix). They log under their own category
+  whether or not a logger is injected.
+- `SaveEncoder`'s `logger` constructor argument is now **optional** (`ILogger? logger = null`); a null
+  logger no longer throws, it falls back to the ambient facade. Callers passing a logger are
+  unaffected.
+
+### KhaozEngine.Content
+
+- `ConfigLoader.Load<T>` now emits a Debug line naming the resolved source (disk path vs embedded
+  resource) under category `ConfigLoader` — the usual "which config actually loaded" question. Adds a
+  `KhaozEngine.Diagnostics` dependency. `JsonSchemaValidator` keeps its `TextWriter` reporter (it is a
+  CLI tool surface, not runtime diagnostics).
+
+### KhaozEngine.Localization
+
+- `LocalizationManager.SetCulture` and `GetSupportedCultures` emit Debug lines (culture set, count of
+  discovered cultures) under category `LocalizationManager`. Adds a `KhaozEngine.Diagnostics`
+  dependency (still pure BCL, Diagnostics has no MonoGame dep).
+
+Pure-compute packages (Ecs, Time, Sprites, UI, Graphics, Input, Serialization, Effects, App, Screens)
+intentionally stay logless: no IO and no swallowed exceptions, so logging would be noise.
+
 ## KhaozEngine 4.0.0
 
 Breaking. Inter-package tidy-up: a rendering primitive moves to the rendering package, and JSON

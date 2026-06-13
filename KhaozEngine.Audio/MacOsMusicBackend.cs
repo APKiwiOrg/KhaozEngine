@@ -33,11 +33,11 @@ public sealed class MacOsMusicBackend : IMusicBackend
     public bool TryLoadTrack(ContentManager content, string contentDirectory, string trackName)
     {
         string mp3Path = Path.Combine(contentDirectory, trackName + ".mp3");
-        _logger.Info($"Audio: loading track {trackName} ({mp3Path})");
+        _logger.Info($"loading track {trackName} ({mp3Path})");
 
         if (!File.Exists(mp3Path))
         {
-            _logger.Warn($"Audio: track {trackName} not found at {mp3Path}");
+            _logger.Warn($"track {trackName} not found at {mp3Path}");
             return false;
         }
 

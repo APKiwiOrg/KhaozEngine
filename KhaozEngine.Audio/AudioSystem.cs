@@ -162,7 +162,7 @@ public sealed class AudioSystem : IDisposable
         _content = content;
         _contentDirectory = System.IO.Path.Combine(
             AppDomain.CurrentDomain.BaseDirectory, content.RootDirectory);
-        _logger.Info($"Audio: using {_backend.Name} backend");
+        _logger.Info($"using {_backend.Name} backend");
 
         // Keep _trackNames aligned with the backend's compact track list: drop any that fail to load,
         // so name lookups (CurrentTrack, PlayTrack(name)) resolve to the right track even after a
@@ -178,7 +178,7 @@ public sealed class AudioSystem : IDisposable
         }
         _trackNames.RemoveRange(kept, _trackNames.Count - kept);
 
-        _logger.Info($"Audio: {_backend.TrackCount}/{requested} tracks loaded");
+        _logger.Info($"{_backend.TrackCount}/{requested} tracks loaded");
         _loaded = true;
 
         // Apply volume that was set during construction (before native audio was ready)
@@ -271,7 +271,7 @@ public sealed class AudioSystem : IDisposable
 
         if (index < 0 || index >= trackCount)
         {
-            _logger.Warn($"Audio: PlayTrack index {index} out of range (0..{trackCount - 1}); ignoring.");
+            _logger.Warn($"PlayTrack index {index} out of range (0..{trackCount - 1}); ignoring.");
             return;
         }
 
@@ -300,7 +300,7 @@ public sealed class AudioSystem : IDisposable
         int index = _trackNames.IndexOf(name);
         if (index < 0)
         {
-            _logger.Warn($"Audio: PlayTrack unknown track '{name}'; ignoring.");
+            _logger.Warn($"PlayTrack unknown track '{name}'; ignoring.");
             return;
         }
 
@@ -331,7 +331,7 @@ public sealed class AudioSystem : IDisposable
         }
         catch (Exception ex)
         {
-            _logger.Warn("Audio: failed to read IsPlaying; skipping frame.", ex);
+            _logger.Warn("failed to read IsPlaying; skipping frame.", ex);
             return;
         }
 

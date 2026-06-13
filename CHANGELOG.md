@@ -2,6 +2,20 @@
 
 All notable changes to KhaozEngine. Versions are shared across all packages.
 
+## KhaozEngine 3.12.0
+
+Additive. New keyed registry for directional sprites in `KhaozEngine.Sprites`.
+
+### KhaozEngine.Sprites
+
+- New `SpriteRegistry` — a keyed store of `DirectionalAnimatedSprite` with one bulk
+  `Update(float deltaSeconds)` that advances every registered sprite's animation clock once per
+  frame. `Add(key, sprite)` (non-empty key, no duplicates, non-null sprite), `Get(key)` returning
+  the sprite or null, `Contains(key)`, and `Count`. Takes already-built sprites — loading by
+  embedded-resource manifest name stays game-side, since resource names are game-specific.
+  Centralizes the `Dictionary<string, DirectionalAnimatedSprite>` + per-frame bulk-advance that
+  Hardpoint hand-rolls in `SpriteLibrary`.
+
 ## KhaozEngine 3.11.0
 
 Additive seam so consumers stop wrapping `VirtualResolution` just to make screens headless-testable.

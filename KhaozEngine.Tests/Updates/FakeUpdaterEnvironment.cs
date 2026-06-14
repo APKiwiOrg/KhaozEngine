@@ -1,0 +1,70 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using KhaozEngine.Updates;
+
+namespace KhaozEngine.Tests.Updates;
+
+/// <summary>
+/// In-memory <see cref="IUpdaterEnvironment"/> modelling a virtual filesystem so the staged-apply
+/// core can be tested without touching disk or spawning processes. Copy failures are simulated by
+/// adding the source path to <see cref="ThrowOnCopyFrom"/>.
+/// </summary>
+internal sealed class FakeUpdaterEnvironment : IUpdaterEnvironment
+{
+    public readonly Dictionary<string, string> Files = new(StringComparer.Ordinal);
+    public readonly HashSet<string> Directories = new(StringComparer.Ordinal);
+    public readonly HashSet<string> ThrowOnCopyFrom = new(StringComparer.Ordinal);
+    public readonly List<string> Log_ = new();
+    public string? RelaunchedExe;
+    public int SleepCalls;
+    public int ParentWaits;
+
+    public bool FileExists(string path) => Files.ContainsKey(path);
+
+    public void WriteAllText(string path, string content) => Files[path] = content;
+
+    public void CreateDirectory(string path) => Directories.Add(path);
+
+    public void CopyFile(string source, string destination, bool overwrite)
+    {
+        if (ThrowOnCopyFrom.Contains(source))
+        {
+            throw new IOException($"simulated lock: {source}");
+        }
+        if (!Files.TryGetValue(source, out string? content))
+        {
+            throw new FileNotFoundException(source);
+        }
+        Files[destination] = content;
+    }
+
+    public void DeleteFile(string path) => Files.Remove(path);
+
+    public void DeleteDirectory(string path)
+    {
+        string prefix = path.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        var toRemove = new List<string>();
+        foreach (string key in Files.Keys)
+        {
+            if (key == path || key.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                toRemove.Add(key);
+            }
+        }
+        foreach (string key in toRemove)
+        {
+            Files.Remove(key);
+        }
+    }
+
+    public void Sleep(int milliseconds) => SleepCalls++;
+
+    public void WaitForParentExit(int pid, int timeoutMilliseconds) => ParentWaits++;
+
+    public void Relaunch(string executablePath, string workingDirectory) => RelaunchedExe = executablePath;
+
+    public void ClearQuarantine(string installDir) { }
+
+    public void Log(string message) => Log_.Add(message);
+}

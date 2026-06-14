@@ -25,6 +25,7 @@ KhaozEngine is **not** a full engine. It owns a set of focused, game-agnostic co
 | **KhaozEngine.Platform** | `Clipboard`: cross-platform system-clipboard facade (SDL2 / macOS / Windows CF_DIB / optional mobile bridge), best-effort and never-throwing. | Pure .NET |
 | **KhaozEngine.Collision** | Deterministic 2D collision + broadphase: `CircleCollision` (circle overlap + optional precise refinement) and `SpatialHashGrid` (uniform spatial hash). Bit-identical math for lockstep sims. | MonoGame |
 | **KhaozEngine.Pooling** | `ObjectPool<T>`: fixed-capacity free-list pool with O(1) rent/return, active/free tracking, swap-removal compaction. | Pure .NET |
+| **KhaozEngine.Updates** | Delta auto-update pipeline: SHA256 manifests + diffing, a host-agnostic update source (default HTTP transport, configurable endpoint), an `UpdateService` state machine with resumable staged downloads, and a cross-platform staged-apply core (`UpdateApplier`) for an external updater shim. | KhaozEngine.Diagnostics |
 
 Target framework `net10.0`, consumable from the `net10.0-android` / `net10.0-ios` heads. Built against MonoGame.Framework.DesktopGL 3.8.
 
@@ -91,10 +92,10 @@ Published to a private GitHub Packages feed on tagged releases, and packed to a 
 ```
 ```xml
 <!-- All packages share one version (the current release). Reference only what you use. -->
-<PackageReference Include="KhaozEngine.Input"   Version="4.5.0" />
-<PackageReference Include="KhaozEngine.Screens" Version="4.5.0" />
-<PackageReference Include="KhaozEngine.UI"      Version="4.5.0" />
-<PackageReference Include="KhaozEngine.Ecs"     Version="4.5.0" />
+<PackageReference Include="KhaozEngine.Input"   Version="4.6.0" />
+<PackageReference Include="KhaozEngine.Screens" Version="4.6.0" />
+<PackageReference Include="KhaozEngine.UI"      Version="4.6.0" />
+<PackageReference Include="KhaozEngine.Ecs"     Version="4.6.0" />
 ```
 
 **Versioning is SemVer.** Each game pins a version and adopts fixes by bumping it - so you can keep one game on an old version while you migrate another. Don't fork the packages; if a game needs an API that isn't there, add it here and bump the version.
@@ -114,6 +115,7 @@ KhaozEngine.Input/   KhaozEngine.Screens/   KhaozEngine.UI/   KhaozEngine.Ecs/  
 KhaozEngine.Content/   KhaozEngine.Content.Validator/   KhaozEngine.Diagnostics/
 KhaozEngine.App/   KhaozEngine.Localization/   KhaozEngine.Persistence/   KhaozEngine.Serialization/
 KhaozEngine.Audio/   KhaozEngine.Effects/   KhaozEngine.Graphics/   KhaozEngine.Sprites/
+KhaozEngine.Platform/   KhaozEngine.Collision/   KhaozEngine.Pooling/   KhaozEngine.Updates/
 KhaozEngine.Tests/      docs/USING-KHAOZENGINE.md
 Directory.Build.props (shared version)   nuget.config   .github/workflows/ci.yml
 ```

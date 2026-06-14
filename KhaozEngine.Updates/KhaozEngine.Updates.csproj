@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Updates</PackageId>
+    <Description>Game-agnostic delta auto-update pipeline: SHA256 file manifests + diffing, a host-agnostic update source (default HTTP/Azure Blob transport, configurable endpoint), an UpdateService state machine with resumable staged downloads, and a cross-platform staged-apply core (back-up + rollback + relaunch) for an external updater shim. Pure .NET (+ KhaozEngine.Diagnostics), no MonoGame dependency.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

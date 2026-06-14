@@ -15,6 +15,41 @@ Repo utilities under `tools/`. Not packages: never versioned, packed, or tagged.
   leading gap) missing-frame tolerance with warnings. Prints the `frameCount` and suggested `fps`.
   Uses SixLabors.ImageSharp 2.1.13 (Apache-2.0); no MonoGame/GraphicsDevice. See its README.
 
+## KhaozEngine 4.6.0
+
+Additive. New package `KhaozEngine.Updates`. No change to existing packages.
+
+### KhaozEngine.Updates (new)
+
+- New package centralizing a game-agnostic **delta auto-update pipeline** (promoted from SpaceGame so
+  Hardpoint/Nullwake can reuse it). Determinism-neutral (never touches sim/RNG). Pure .NET
+  (+ `KhaozEngine.Diagnostics`), no MonoGame dependency.
+- `UpdateManifest` - SHA256 file manifest (`path`/`sha256`/`size`, ordinal-sorted, stable camelCase
+  JSON wire format). `GenerateFromDirectory(dir, version, platform)` builds one from an install dir
+  (also usable by an offline publish-side manifest generator); `ComputeDiff(local, remote)` returns
+  `FilesToDownload` + `FilesToDelete` + `TotalDownloadBytes`.
+- `IUpdateSource` - host-agnostic transport. `HttpUpdateSource` is the default (HTTP against a
+  configurable `ServerBaseUrl` + `LatestVersionPath` template; files resolved as siblings of the
+  manifest - SpaceGame's Azure Blob layout, but a game points it elsewhere via config or implements
+  the interface for any backend). `LatestVersionInfo` carries version/build/manifest-url/required.
+- `UpdateService` - the check -> download -> apply state machine (`UpdateState`), with resumable
+  staging (already-staged files with a matching SHA256 are skipped; corrupt downloads retry up to
+  `MaxDownloadRetries`), boot hygiene (stale-staging cleanup, interrupted-apply detection), and
+  offline-safe checks (failures fall back to `Idle`). Shim launch and process exit are injectable via
+  `UpdateServiceOptions`, so the whole lifecycle is headless-testable. `Platform`/`InstallDir` default
+  to the current OS runtime id / `AppContext.BaseDirectory`.
+- `UpdateApplier` + `IUpdaterEnvironment` - the cross-platform **staged-apply core** for an external
+  updater shim: wait for the game to exit, back up each install file before overwriting, copy with
+  retries for locked files, roll every overwrite back on any failure (install never left half-new),
+  abort before touching the install if a staged source is missing, delete removed files, install the
+  new manifest, clear the macOS quarantine attribute, relaunch. All side effects go through
+  `IUpdaterEnvironment` (`SystemUpdaterEnvironment` is the real impl); a game's shim is just
+  `UpdateApplier.Run(args, new SystemUpdaterEnvironment(log))`.
+- `ApplyUpdateConfig` is the `apply-update.json` handoff contract; it (de)serializes through a
+  source-generated `UpdatesJsonContext`, so the shim needs no reflection and stays trim/AOT safe.
+- 46 headless tests (manifest diffing, resume skip/retry, download verification, apply / rollback /
+  abort).
+
 ## KhaozEngine 4.5.0
 
 Additive. Two new packages of game-agnostic 2D primitives, ported verbatim from SpaceGame.

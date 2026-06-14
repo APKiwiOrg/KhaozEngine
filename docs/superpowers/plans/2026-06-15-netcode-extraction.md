@@ -10,7 +10,7 @@
 
 **Determinism gate:** `UnitAxisQuantizer` must round bit-identically to SpaceGame's `TickCommandCodec` — its dequantize feeds the host-authoritative sim (hash `17709480852979803671`). Tests pin the exact values. No SpaceGame change in this plan; the hash risk lands at adoption (separate task).
 
-**Version:** provisional `4.5.0` (`4.4.0` is taken by Platform; two other worktrees also queued — reconcile the real number against `main` at release time, Task 8).
+**Version:** `4.7.0`. `4.4.0` (Platform), `4.5.0` (Collision+Pooling), and `4.6.0` (Updates) are all taken on `main` as of the rebase. Re-confirm `4.7.0` is still free in Task 8 Step 1 before bumping.
 
 ---
 
@@ -964,11 +964,11 @@ git commit -m "docs(netcode): package READMEs"
 **Files:**
 - Modify: `CHANGELOG.md`
 
-- [ ] **Step 1: Add a newest-first entry above `## KhaozEngine 4.4.0`**
+- [ ] **Step 1: Add a newest-first entry above `## KhaozEngine 4.6.0`**
 
-Insert (replace `4.5.0` with the reconciled version from Task 8 if it changed):
+Insert (replace `4.7.0` with the reconciled version from Task 8 if it changed):
 ```markdown
-## KhaozEngine 4.5.0
+## KhaozEngine 4.7.0
 
 Additive. Two new packages extracting SpaceGame's reusable netcode. No change to existing packages.
 
@@ -1003,7 +1003,7 @@ Additive. Two new packages extracting SpaceGame's reusable netcode. No change to
 
 ```bash
 git add CHANGELOG.md
-git commit -m "docs(netcode): CHANGELOG entry for 4.5.0 netcode packages"
+git commit -m "docs(netcode): CHANGELOG entry for 4.7.0 netcode packages"
 ```
 
 ---
@@ -1016,25 +1016,26 @@ git commit -m "docs(netcode): CHANGELOG entry for 4.5.0 netcode packages"
 - Modify: `docs/ROADMAP.md`
 - Modify: `README.md`
 
-- [ ] **Step 1: Reconcile the version number**
+- [ ] **Step 1: Re-confirm the version number is free**
 
-Before bumping, check what has landed on `main`:
 ```bash
 git fetch
 git tag --sort=-v:refname | head -5
 git log --oneline origin/main -5
 ```
-`4.4.0` is taken by Platform. If neither `collision-pooling` nor `updates-package` has merged to `main`, use `4.5.0`. If one or both merged (taking `4.5.0`/`4.6.0`), use the next free number. Use that number everywhere below (and fix the CHANGELOG heading from Task 7 if it changed).
+`4.4.0`/`4.5.0`/`4.6.0` are taken (Platform / Collision+Pooling / Updates). Use `4.7.0` if it is still
+free. If another branch has merged and taken `4.7.0`, rebase onto `main` again and use the next free
+number, updating every `4.7.0` below and the CHANGELOG heading from Task 7.
 
 - [ ] **Step 2: Bump `Directory.Build.props`**
 
-Change `<Version>4.4.0</Version>` to `<Version>4.5.0</Version>` (or the reconciled number).
+Change `<Version>4.6.0</Version>` to `<Version>4.7.0</Version>` (or the reconciled number).
 
 - [ ] **Step 3: Update the three guard declarations**
 
-- `docs/ROADMAP.md` line 3: `Current released version: **4.4.0**.` -> `**4.5.0**.`
-- `README.md` lines 91-94: change each `Version="4.4.0"` to `Version="4.5.0"` (all four `<PackageReference>` example lines).
-- `docs/CONSUMERS.md`: change `**Engine current version:** \`4.4.0\`` to `\`4.5.0\``.
+- `docs/ROADMAP.md` line 3: `Current released version: **4.6.0**.` -> `**4.7.0**.`
+- `README.md`: change each of the four `<PackageReference>` example lines from `Version="4.6.0"` to `Version="4.7.0"`.
+- `docs/CONSUMERS.md`: change `**Engine current version:** \`4.6.0\`` to `\`4.7.0\``.
 
 - [ ] **Step 4: Add Netcode columns to `docs/CONSUMERS.md` matrices**
 
@@ -1047,7 +1048,7 @@ existing matrix already shows 4.0.0 pins; leave consumer pins unchanged, only ad
 - [ ] **Step 5: Run the doc-version guard**
 
 Run: `./scripts/check-doc-versions.sh`
-Expected: `all engine-version declarations match 4.5.0` (or reconciled number). Fix any FAIL before continuing.
+Expected: `all engine-version declarations match 4.7.0` (or reconciled number). Fix any FAIL before continuing.
 
 - [ ] **Step 6: Full test suite green**
 
@@ -1062,20 +1063,20 @@ mkdir -p local-feed
 dotnet pack KhaozEngine.Netcode/KhaozEngine.Netcode.csproj -c Release -o ./local-feed
 dotnet pack KhaozEngine.Netcode.LiteNetLib/KhaozEngine.Netcode.LiteNetLib.csproj -c Release -o ./local-feed
 ```
-Expected: `KhaozEngine.Netcode.4.5.0.nupkg` and `KhaozEngine.Netcode.LiteNetLib.4.5.0.nupkg` (+ `.snupkg`)
+Expected: `KhaozEngine.Netcode.4.7.0.nupkg` and `KhaozEngine.Netcode.LiteNetLib.4.7.0.nupkg` (+ `.snupkg`)
 written to `local-feed`. (Cumulative — do not delete older versions.)
 
 - [ ] **Step 8: Commit the release**
 
 ```bash
 git add Directory.Build.props docs/CONSUMERS.md docs/ROADMAP.md README.md
-git commit -m "release(4.5.0): KhaozEngine.Netcode + .LiteNetLib packages, bump + docs"
+git commit -m "release(4.7.0): KhaozEngine.Netcode + .LiteNetLib packages, bump + docs"
 ```
 
 - [ ] **Step 9: Tag**
 
 ```bash
-git tag v4.5.0
+git tag v4.7.0
 ```
 (Do not push yet — pushing main + tag happens at branch finish, after the user picks a finish option.)
 

@@ -4,7 +4,7 @@ Which game uses which packages, at which version. Current state only — for the
 [`../CHANGELOG.md`](../CHANGELOG.md). Update this whenever a consumer bumps a `<PackageReference>` or the
 engine ships a new version.
 
-**Engine current version:** `4.3.0` (all packages share one version, set in `Directory.Build.props`).
+**Engine current version:** `4.3.1` (all packages share one version, set in `Directory.Build.props`).
 
 > The latest release (4.1.0, additive logging normalization) is **not adopted by any consumer yet** — all
 > three are on 4.0.0. A game adopts a release on its own schedule by bumping its pinned version; the

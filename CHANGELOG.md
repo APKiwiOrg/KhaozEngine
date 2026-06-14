@@ -2,6 +2,20 @@
 
 All notable changes to KhaozEngine. Versions are shared across all packages.
 
+## KhaozEngine 4.3.1
+
+Bugfix. No API change.
+
+### KhaozEngine.Audio
+
+- `MacOsMusicBackend.TryLoadTrack` now locates the built track file by probing the formats the
+  content pipeline actually emits (`.ogg`, `.mp3`, `.m4a`, `.wav`, `.aiff`, `.caf`), preferring
+  `.ogg`. It previously looked only for a raw `.mp3` on disk, but the DesktopGL pipeline transcodes
+  music to `.ogg` (the `.xnb` is just a header that references it), so every track failed to load and
+  no music played. AVAudioPlayer decodes the built `.ogg` directly.
+- The native AVAudioPlayer bridge is now created lazily on first playback instead of in the
+  constructor, so track loading is headless-testable on non-macOS CI.
+
 ## KhaozEngine 4.3.0
 
 Additive. Completes the isometric toolkit's picking + extensibility seams from 4.2.0. No behaviour

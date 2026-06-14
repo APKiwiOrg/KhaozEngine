@@ -13,9 +13,10 @@ namespace KhaozEngine.UI;
 ///
 /// Usage:
 /// 1. Create with font, renderer, input
-/// 2. Call <see cref="Update"/> each frame with row bounds
-/// 3. Call <see cref="DrawSummary"/> to render the summary row
-/// 4. If <see cref="IsExpanded"/>, call <see cref="DrawDetail"/> for the detail area
+/// 2. Call <see cref="Update"/> each frame with the summary row bounds
+/// 3. Draw your summary content into <see cref="SummaryBounds"/>, then call
+///    <see cref="DrawExpandIndicator"/> to render the +/- marker
+/// 4. If <see cref="IsExpanded"/>, draw your detail content into <see cref="DetailBounds"/>
 /// 5. Use <see cref="TotalHeight"/> for layout calculations
 /// </summary>
 public sealed class ExpandableRow

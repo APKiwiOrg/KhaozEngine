@@ -69,7 +69,7 @@ public class ChangeDetectionTests
         w.Despawn(e);
         Assert.Contains(e, w.Removed<CdA>());
         Assert.Contains(e, w.Removed<CdTag>());
-        Assert.Empty(w.Removed<CdA>().Where(w.IsAlive)); // e is dead now
+        Assert.DoesNotContain(w.Removed<CdA>(), w.IsAlive); // e is dead now
     }
 
     [Fact]

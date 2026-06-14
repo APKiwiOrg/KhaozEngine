@@ -9,14 +9,14 @@ namespace KhaozEngine.Graphics;
 /// Drives a <see cref="Camera2D"/> from an <see cref="InputManager"/>: drag / two-finger pan,
 /// scroll-wheel and pinch zoom (about the cursor / pinch focus), and a world-bounds clamp. Reusable
 /// for any world render (place a tower on a tap, pan the battlefield on a drag); the
-/// <see cref="PannableCanvas"/>-style <see cref="TryGetTap"/> lets a caller tell a tap from a pan.
+/// <c>PannableCanvas</c>-style <see cref="TryGetTap"/> lets a caller tell a tap from a pan.
 ///
 /// <para>Call <see cref="Update"/> once per frame with the current viewport and the world rectangle
 /// the view must stay inside. The viewport is passed explicitly (like <see cref="Camera2D"/>'s
 /// transform methods take a <see cref="Viewport"/>), so the controller is headless: no
 /// <c>GraphicsDevice</c> is required and the step is unit-testable. The controller owns no matrix
-/// math of its own; it reuses <see cref="Camera2D.ScreenToWorld"/> and
-/// <see cref="Camera2D.ClampPosition"/>.</para>
+/// math of its own; it reuses <see cref="Camera2D.ScreenToWorld(Vector2, Viewport)"/> and
+/// <see cref="Camera2D.ClampPosition(Vector2, Rectangle, Viewport)"/>.</para>
 /// </summary>
 public sealed class CameraController
 {

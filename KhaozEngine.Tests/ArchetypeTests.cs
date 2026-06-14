@@ -4,7 +4,6 @@ using Xunit;
 namespace KhaozEngine.Tests;
 
 file struct A : IComponent { public int V; }
-file struct B : IComponent { public int V; }
 
 public class ArchetypeTests
 {

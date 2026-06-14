@@ -29,7 +29,7 @@ public class PersistenceQueueTests
     }
 
     [Fact]
-    public void RapidInterleavedEnqueues_FlushDrainsEverything_NoHang()
+    public async Task RapidInterleavedEnqueues_FlushDrainsEverything_NoHang()
     {
         string root = NewTempRoot();
         try
@@ -45,8 +45,10 @@ public class PersistenceQueueTests
             // The schedule-on-demand drain has a window where an Enqueue can land just as the worker
             // is exiting; if mishandled it strands that write and Flush() wedges forever. Guard with a
             // timeout so a regression fails loudly instead of hanging the suite.
-            bool flushed = Task.Run(() => queue.Flush()).Wait(TimeSpan.FromSeconds(15));
+            var flushTask = Task.Run(() => queue.Flush());
+            bool flushed = await Task.WhenAny(flushTask, Task.Delay(TimeSpan.FromSeconds(15))) == flushTask;
             Assert.True(flushed, "Flush() did not complete - the queue wedged");
+            await flushTask;   // observe any exception thrown by Flush()
 
             // Per-path last-writer-wins: the final value for path p is the largest i with i % paths == p.
             for (int p = 0; p < paths; p++)

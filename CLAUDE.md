@@ -27,9 +27,12 @@ This applies to every change: code, tests, docs, and version/release work.
   public API / behaviour change in the SAME commit as the `Directory.Build.props` `<Version>` bump.
   Never bump the version (or tag a release) without a matching changelog entry.
 - Release ritual, in order: bump `<Version>` in `Directory.Build.props` → add the `CHANGELOG.md`
-  entry → update the engine-version line in `docs/CONSUMERS.md` → `dotnet pack -c Release -o ./local-feed`
-  (cumulative; don't `rm` old versions, consumers pin) → commit → `git tag vX.Y.Z` → push `main` + the
-  tag (CI publishes to GitHub Packages on `v*`).
+  entry → update the engine-version declarations the guard checks (`docs/CONSUMERS.md` "Engine current
+  version", `docs/ROADMAP.md` "Current released version", and the `README.md` `<PackageReference>`
+  example) → `dotnet pack -c Release -o ./local-feed` (cumulative; don't `rm` old versions, consumers
+  pin) → commit → `git tag vX.Y.Z` → push `main` + the tag (CI publishes to GitHub Packages on `v*`).
+- `scripts/check-doc-versions.sh` enforces those three declarations match `Directory.Build.props`; CI
+  runs it on every push, so a forgotten bump fails the build (consumer pins are exempt and may lag).
 - **`docs/CONSUMERS.md` tracks which game pins which package version.** Update its version matrix
   whenever a consumer bumps a `KhaozEngine.*` `<PackageReference>`, and the engine-version line on
   every release. Refresh snippet is at the bottom of that file.

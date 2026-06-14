@@ -82,4 +82,37 @@ public class IsometricProjectionTests
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => new IsometricProjection(w, h, heightScale));
     }
+
+    [Theory]
+    [InlineData(2f, 1f, 3f)]
+    [InlineData(-4f, 6f, 0.5f)]
+    [InlineData(0f, 0f, 5f)]
+    public void WorldToScreen_then_ScreenToWorld_round_trips_at_an_arbitrary_height_plane(float wx, float wy, float z)
+    {
+        var proj = new IsometricProjection(64f, 32f, heightScale: 18f);
+        Vector2 screen = proj.WorldToScreen(wx, wy, z);
+        Vector2 world = proj.ScreenToWorld(screen, z);
+        Assert.Equal(wx, world.X, 4);
+        Assert.Equal(wy, world.Y, 4);
+    }
+
+    [Fact]
+    public void ScreenToWorld_at_z_zero_equals_ScreenToGround()
+    {
+        var proj = new IsometricProjection();
+        var screen = new Vector2(120f, -40f);
+        Assert.Equal(proj.ScreenToGround(screen), proj.ScreenToWorld(screen, 0f));
+    }
+
+    [Fact]
+    public void Projection_is_usable_through_the_IIsometricProjection_seam()
+    {
+        // Consumers depend on the interface so they can swap or fake it in headless tests.
+        IIsometricProjection proj = new IsometricProjection(48f, 24f, heightScale: 12f);
+        Vector2 screen = proj.WorldToScreen(3f, 2f, z: 1f);
+        Vector2 world = proj.ScreenToWorld(screen, z: 1f);
+        Assert.Equal(3f, world.X, 4);
+        Assert.Equal(2f, world.Y, 4);
+        Assert.Equal(12f, proj.HeightScale);
+    }
 }

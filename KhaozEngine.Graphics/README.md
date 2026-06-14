@@ -71,16 +71,19 @@ spriteBatch.Begin(transformMatrix: camera.GetViewMatrix());
 
 Project a 2:1 diamond grid at draw time. No grid/tiles/pathfinding: keep your own world model.
 
-`IsometricProjection` (configurable footprint, default 64x32, configurable `heightScale`):
+`IsometricProjection` (configurable footprint, default 64x32, configurable `heightScale`; implements
+`IIsometricProjection` so you can fake it in headless tests):
 
 ```csharp
 var iso = new IsometricProjection();
 Vector2 screen = origin + iso.WorldToScreen(tileX, tileY, z);  // z lifts up the screen
-Vector2 world  = iso.ScreenToGround(mouseScreen - origin);     // continuous world point for picking
+Vector2 ground = iso.ScreenToGround(mouseScreen - origin);     // pick on flat ground (z = 0)
+Vector2 onTile = iso.ScreenToWorld(mouseScreen - origin, z);   // pick on a raised plane (terrain)
 ```
 
-`IsoDepth.DepthKey(wx, wy, z, layer)` returns a comparable `IsoDepthKey` for Y-sorting your own draw
-list: primary order `wx + wy + z`, integer `layer` as tiebreak.
+`IsoDepth.DepthKey(wx, wy, z, layer, zWeight)` returns a comparable `IsoDepthKey` for Y-sorting your
+own draw list: primary order `wx + wy + z * zWeight` (`zWeight` defaults to 1; raise it so a tall stack
+sorts in front of a nearer neighbour, or `0` to ignore height), integer `layer` as tiebreak.
 
 `PrimitiveRenderer` iso shapes: `DrawIsoDiamond` (filled tile), `DrawIsoBlock` (top + two shaded side
 faces for a given height), `DrawIsoEllipse` (filled 2:1, blob shadows) and `DrawIsoEllipseOutline`

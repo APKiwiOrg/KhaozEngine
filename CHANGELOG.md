@@ -2,6 +2,23 @@
 
 All notable changes to KhaozEngine. Versions are shared across all packages.
 
+## KhaozEngine 4.3.0
+
+Additive. Completes the isometric toolkit's picking + extensibility seams from 4.2.0. No behaviour
+change for existing 4.2.0 calls.
+
+### KhaozEngine.Graphics
+
+- `IsometricProjection.ScreenToWorld(screen, z)`: inverts the projection on the horizontal plane at
+  height `z` (not just the ground). `ScreenToWorld(screen, 0)` equals `ScreenToGround`. This is the
+  building block for picking over varying terrain — a consumer that owns the heightmap tests candidate
+  heights front-to-back; the toolkit supplies the per-plane inverse.
+- `IIsometricProjection` interface, implemented by `IsometricProjection`. Consumers can depend on the
+  seam and substitute a fake/stub projection in headless tests (mirrors `Input.IDesignViewport`).
+- `IsoDepth.DepthKey` gains an optional `zWeight` (default 1): scales how strongly height pushes a
+  drawable toward the front, so a tall stack can be made to sort in front of a taller-but-nearer
+  neighbour, or `zWeight: 0` drops height from ordering. Existing 4-argument calls are unchanged.
+
 ## KhaozEngine 4.2.0
 
 Additive. A render-only isometric toolkit in `KhaozEngine.Graphics`, plus an opt-in footprint

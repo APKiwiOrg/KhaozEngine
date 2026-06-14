@@ -76,7 +76,6 @@ public class SheetAssemblerTests
         var result = SheetAssembler.Assemble(anim, new AssemblyOptions(BottomPad: 0));
         using var sheet = result.Sheet;
 
-        int cell = 16;
         // south is row 0. Both columns: opaque pixel must be at cell-local y = 15 (baseline).
         Assert.Equal(255, sheet[8, 15].A);        // row 0, col 0, baseline
         Assert.Equal(255, sheet[16 + 8, 15].A);   // row 0, col 1, baseline

@@ -635,7 +635,6 @@ public class SheetAssemblerTests
         var result = SheetAssembler.Assemble(anim, new AssemblyOptions(BottomPad: 0));
         using var sheet = result.Sheet;
 
-        int cell = 16;
         // south is row 0. Both columns: opaque pixel must be at cell-local y = 15 (baseline).
         Assert.Equal(255, sheet[8, 15].A);        // row 0, col 0, baseline
         Assert.Equal(255, sheet[16 + 8, 15].A);   // row 0, col 1, baseline
@@ -785,7 +784,8 @@ public static class SheetAssembler
     // Places one frame into the cell at (cellX, cellY). Horizontally centers the frame canvas;
     // vertically maps the opaque-bbox bottom to the baseline (cellH - bottomPad - 1). A fully
     // transparent frame is bottom-aligned with no normalization. Source pixels outside the cell
-    // are clipped (only ever the transparent padding).
+    // are clipped: only transparent padding, unless bottomPad > 0 and a frame's opaque area reaches
+    // the canvas top (then its top rows can clip; keep bottomPad small relative to frame headroom).
     private static void Blit(
         Image<Rgba32> sheet, Image<Rgba32> frame,
         int cellX, int cellY, int cellW, int cellH, int bottomPad, int alphaThreshold)

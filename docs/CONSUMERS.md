@@ -93,13 +93,18 @@ scaled-dt usage.
   is a thin seam; `MusicCatalog` maps content-asset paths to display names; the now-playing overlay binds to
   `CurrentTrack`/`TrackChanged`. The in-house `NowPlayingService`, `AudioVolumeMixer`'s music path, and raw
   `MediaPlayer` playback were deleted. SFX/ambient volume stays game-side (KE.Audio is music-only).
-- **Ecs:** uses `CachedQuery` at the 4 per-tick `world.Query()` sites (`ProjectileMotionSystem`,
-  `CollisionSystem` ×2, `RunSession.Diagnostics` ×2), so the sim allocates no query per tick. Lockstep
-  `StateHash` baseline unchanged at `4423044029376371829`.
+- **Ecs:** the **entire host-authoritative simulation runs on the Ecs `World`**. The 8-spec "ECS World
+  Migration" (2026-06) moved every sim entity + system off bespoke storage onto entities + struct
+  `IComponent`s + queries, with deferred mutations via `EntityCommandBuffer.Defer`, events via
+  `World.Emit`/`Events`, per-stream run RNG via `DeterministicRng.CreateDerived` (`root.CreateDerived
+  ("loot"/"upgrade"/"upgrade-slot-{slot}")`), and `WorldSerializer` for a host full-state snapshot +
+  round-trip (the foundation for the new mid-run late-join/resync feature). `CachedQuery` keeps the hot
+  per-tick sites query-alloc-free. In BETA, cross-version seed replayability is explicitly not a concern, so
+  the migration re-baselined the lockstep `StateHash` deliberately — **one** designated move (the
+  `CreateDerived` swap); the final baseline is `5562709684599485702`.
 - **Not adopted:** `Effects` (keeps its richer game-side `ParticleManager` — see the particle-unification
-  roadmap item), `Sprites`, and `Ecs.CreateDerived`. Deterministic multiplayer lockstep is why
-  `CreateDerived` is held back (it would move the determinism baseline) and why SpaceGame vendors `Time`
-  transitively but reads no scaled dt (no `GameClock`/`TimeScale`/`TimeSkip`) — it must keep it that way.
+  roadmap item) and `Sprites`. SpaceGame vendors `Time` transitively but reads no scaled dt (no
+  `GameClock`/`TimeScale`/`TimeSkip`) — the lockstep sim must keep it that way.
 
 ## Repo locations
 

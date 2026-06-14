@@ -23,6 +23,8 @@
     <ProjectReference Include="../KhaozEngine.Graphics/KhaozEngine.Graphics.csproj" />
     <ProjectReference Include="../KhaozEngine.Input/KhaozEngine.Input.csproj" />
     <ProjectReference Include="../KhaozEngine.Localization/KhaozEngine.Localization.csproj" />
+    <ProjectReference Include="../KhaozEngine.Netcode/KhaozEngine.Netcode.csproj" />
+    <ProjectReference Include="../KhaozEngine.Netcode.LiteNetLib/KhaozEngine.Netcode.LiteNetLib.csproj" />
     <ProjectReference Include="../KhaozEngine.Persistence/KhaozEngine.Persistence.csproj" />
     <ProjectReference Include="../KhaozEngine.Platform/KhaozEngine.Platform.csproj" />
     <ProjectReference Include="../KhaozEngine.Pooling/KhaozEngine.Pooling.csproj" />

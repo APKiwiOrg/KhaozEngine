@@ -2,13 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ship two new additive KhaozEngine packages — `KhaozEngine.Netcode` (quantization + client prediction/reconciliation + host command queue) and `KhaozEngine.Netcode.LiteNetLib` (reliable/unreliable channel-split kernel) — generalized from SpaceGame's netcode.
+**Goal:** Ship two new additive KhaozEngine packages (`KhaozEngine.Netcode` for quantization + client prediction/reconciliation + host command queue, and `KhaozEngine.Netcode.LiteNetLib` for the reliable/unreliable channel-split kernel), generalized from SpaceGame's netcode.
 
 **Architecture:** Pure machinery (no transport dep) lives in `KhaozEngine.Netcode`, refs MonoGame only for `Vector2`/`MathHelper`. The LiteNetLib channel mapping lives in a separate `KhaozEngine.Netcode.LiteNetLib` package. The game keeps its own command/state/batch types and field layout; the engine exposes primitives, generics, and an interface + driver.
 
 **Tech Stack:** net10.0, C# (nullable on, ImplicitUsings off), MonoGame.Framework.DesktopGL 3.8.*, LiteNetLib 2.1.2, xUnit.
 
-**Determinism gate:** `UnitAxisQuantizer` must round bit-identically to SpaceGame's `TickCommandCodec` — its dequantize feeds the host-authoritative sim (hash `17709480852979803671`). Tests pin the exact values. No SpaceGame change in this plan; the hash risk lands at adoption (separate task).
+**Determinism gate:** `UnitAxisQuantizer` must round bit-identically to SpaceGame's `TickCommandCodec`: its dequantize feeds the host-authoritative sim (hash `17709480852979803671`). Tests pin the exact values. No SpaceGame change in this plan; the hash risk lands at adoption (separate task).
 
 **Version:** `4.7.0`. `4.4.0` (Platform), `4.5.0` (Collision+Pooling), and `4.6.0` (Updates) are all taken on `main` as of the rebase. Re-confirm `4.7.0` is still free in Task 8 Step 1 before bumping.
 
@@ -110,7 +110,7 @@ public class UnitAxisQuantizerTests
 - [ ] **Step 4: Run the test, verify it fails to compile**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter UnitAxisQuantizerTests`
-Expected: build error — `UnitAxisQuantizer` does not exist.
+Expected: build error: `UnitAxisQuantizer` does not exist.
 
 - [ ] **Step 5: Implement `UnitAxisQuantizer`**
 
@@ -125,7 +125,7 @@ namespace KhaozEngine.Netcode;
 /// 8-bit quantization of a unit-range axis (move/aim component) to a signed byte and back.
 /// The wire codec scheme: quantization rounds away-from-zero so it is symmetric about zero.
 /// Determinism note: SpaceGame dequantizes commands before they enter the host-authoritative sim,
-/// so this rounding is hash-gated — it must not change.
+/// so this rounding is hash-gated; it must not change.
 /// </summary>
 public static class UnitAxisQuantizer
 {
@@ -268,7 +268,7 @@ public class ClientPredictionTests
 - [ ] **Step 2: Run the test, verify it fails to compile**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter ClientPredictionTests`
-Expected: build error — types not defined.
+Expected: build error: types not defined.
 
 - [ ] **Step 3: Implement the interfaces and value types**
 
@@ -371,7 +371,7 @@ public sealed class ClientPrediction<TState, TCommand>
     /// <summary>The current predicted (authority-tracking) state.</summary>
     public TState PredictedState => predictedState;
 
-    /// <summary>The predicted state with the smoothing offset applied — what to draw.</summary>
+    /// <summary>The predicted state with the smoothing offset applied (what to draw).</summary>
     public TState RenderedState => predictedState.WithPosition(predictedState.Position + renderOffset);
 
     public void Reset(in TState initialState)
@@ -548,7 +548,7 @@ public class RemoteCommandQueueTests
 - [ ] **Step 2: Run the test, verify it fails to compile**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter RemoteCommandQueueTests`
-Expected: build error — `RemoteCommandQueue` not defined.
+Expected: build error: `RemoteCommandQueue` not defined.
 
 - [ ] **Step 3: Implement `RemoteCommandQueue`**
 
@@ -755,7 +755,7 @@ public class ChannelSplitterTests
 - [ ] **Step 4: Run the test, verify it fails to compile**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter ChannelSplitterTests`
-Expected: build error — types not defined.
+Expected: build error: types not defined.
 
 - [ ] **Step 5: Implement `ChannelSplitter`**
 
@@ -794,8 +794,8 @@ public interface IChannelSplittable<TSelf>
 
 /// <summary>
 /// Splits a batch so position/transient state (Sequenced) is never head-of-line blocked by reliable
-/// events (ReliableOrdered). Before splitting, one reliable event forced the whole batch — positions
-/// included — onto the reliable channel, so a single lost packet stalled every later position update
+/// events (ReliableOrdered). Before splitting, one reliable event forced the whole batch (positions
+/// included) onto the reliable channel, so a single lost packet stalled every later position update
 /// until retransmit.
 /// </summary>
 public static class ChannelSplitter
@@ -852,7 +852,7 @@ git commit -m "feat(netcode): KhaozEngine.Netcode.LiteNetLib channel-split kerne
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj`
 Expected: all tests pass (the prior ~536 baseline plus the new Netcode tests; report the final count).
 
-- [ ] **Step 2: If anything fails**, fix it before proceeding. Do not edit existing engine tests to make them pass — the new packages are additive and must not affect existing behavior.
+- [ ] **Step 2: If anything fails**, fix it before proceeding. Do not edit existing engine tests to make them pass: the new packages are additive and must not affect existing behavior.
 
 ---
 
@@ -994,7 +994,7 @@ Additive. Two new packages extracting SpaceGame's reusable netcode. No change to
 - New package: LiteNetLib channel-split kernel (refs `LiteNetLib 2.1.2`).
 - `IChannelSplittable<TSelf>` + `ChannelSplitter.Send`: split a batch into its unreliable
   (position/transient, latest-wins) and reliable (spawns/destroys/events) parts and send each non-empty
-  part on its own channel — Sequenced vs ReliableOrdered — so reliable events never head-of-line-block
+  part on its own channel (Sequenced vs ReliableOrdered) so reliable events never head-of-line-block
   position updates. `NetChannelReliability` + `ChannelSplitter.ToDeliveryMethod` expose the mapping. The
   game keeps its own batch DTO and field layout.
 ```
@@ -1042,7 +1042,7 @@ Change `<Version>4.6.0</Version>` to `<Version>4.7.0</Version>` (or the reconcil
 In both the "Version matrix" and the "Adoption matrix" tables, append two columns: `Netcode` and
 `Netcode.LiteNetLib`. For every consumer row put `-` (none adopt yet). Add the same two columns to the
 header and the separator row of each table. Also update the prose note under "Version matrix" so it no
-longer claims "all three are on 4.0.0" if that is stale — state the current adoption truthfully (the
+longer claims "all three are on 4.0.0" if that is stale; state the current adoption truthfully (the
 existing matrix already shows 4.0.0 pins; leave consumer pins unchanged, only add the new `-` columns).
 
 - [ ] **Step 5: Run the doc-version guard**
@@ -1064,7 +1064,7 @@ dotnet pack KhaozEngine.Netcode/KhaozEngine.Netcode.csproj -c Release -o ./local
 dotnet pack KhaozEngine.Netcode.LiteNetLib/KhaozEngine.Netcode.LiteNetLib.csproj -c Release -o ./local-feed
 ```
 Expected: `KhaozEngine.Netcode.4.7.0.nupkg` and `KhaozEngine.Netcode.LiteNetLib.4.7.0.nupkg` (+ `.snupkg`)
-written to `local-feed`. (Cumulative — do not delete older versions.)
+written to `local-feed`. (Cumulative; do not delete older versions.)
 
 - [ ] **Step 8: Commit the release**
 
@@ -1078,7 +1078,7 @@ git commit -m "release(4.7.0): KhaozEngine.Netcode + .LiteNetLib packages, bump 
 ```bash
 git tag v4.7.0
 ```
-(Do not push yet — pushing main + tag happens at branch finish, after the user picks a finish option.)
+(Do not push yet; pushing main + tag happens at branch finish, after the user picks a finish option.)
 
 ---
 

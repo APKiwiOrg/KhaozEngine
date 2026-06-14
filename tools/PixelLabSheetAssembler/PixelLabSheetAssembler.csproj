@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <AssemblyName>PixelLabSheetAssembler</AssemblyName>
+    <RootNamespace>PixelLabSheetAssembler</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="SixLabors.ImageSharp" Version="2.1.9" />
+  </ItemGroup>
+</Project>

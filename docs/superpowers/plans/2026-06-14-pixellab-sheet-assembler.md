@@ -6,7 +6,7 @@
 
 **Architecture:** A `net10.0` console project `tools/PixelLabSheetAssembler/` (IsPackable=false, never NuGet-packed) with a testable pure core (`SheetAssembler`, `GapFiller`, `Bbox`, `DirectionRows`) split from the IO boundary (`PixelLabExport`) and CLI (`Program`). A sibling xUnit project `tools/PixelLabSheetAssembler.Tests/` tests the core with synthetic in-memory PNGs and pins the row table against the live `KhaozEngine.Sprites.Direction8` enum. Both are added to `KhaozEngine.slnx` so CI builds/tests them.
 
-**Tech Stack:** C# / net10.0, SixLabors.ImageSharp 2.1.9 (Apache-2.0) for PNG IO + pixel access, System.Text.Json, System.IO.Compression, xUnit.
+**Tech Stack:** C# / net10.0, SixLabors.ImageSharp 2.1.13 (Apache-2.0) for PNG IO + pixel access, System.Text.Json, System.IO.Compression, xUnit.
 
 **Spec:** `docs/superpowers/specs/2026-06-14-pixellab-sheet-assembler-design.md`
 
@@ -38,7 +38,7 @@
     <RootNamespace>PixelLabSheetAssembler</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="SixLabors.ImageSharp" Version="2.1.9" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="2.1.13" />
   </ItemGroup>
 </Project>
 ```

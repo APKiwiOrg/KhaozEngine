@@ -50,7 +50,8 @@ at runtime. So it lives as a repo tool instead.
 **SixLabors.ImageSharp, Apache-2.0 (the 2.1.x line)** for PNG read/write and pixel
 access. Pure-managed, cross-platform (macOS dev + Linux CI), no native deps, no
 `GraphicsDevice`, and the 2.1.x line is Apache-2.0 (no Six Labors split-license
-question). Pinned exactly so it does not float into the split-licensed 3.x line.
+question). Pinned at **2.1.13** (latest Apache-2.0 2.1.x; clears the security advisories
+that flagged 2.1.9) so it does not float into the split-licensed 3.x line.
 
 ## Verified facts about the real exports
 

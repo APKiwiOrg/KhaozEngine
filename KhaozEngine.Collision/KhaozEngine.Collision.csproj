@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Collision</PackageId>
+    <Description>Game-agnostic 2D collision + broadphase primitives: circle/circle intersection with optional per-pixel precise refinement, and a uniform spatial hash grid. Deterministic float math + iteration order for lockstep sims.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.*" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

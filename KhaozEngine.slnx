@@ -11,6 +11,7 @@
   <Project Path="KhaozEngine.Input/KhaozEngine.Input.csproj" />
   <Project Path="KhaozEngine.Localization/KhaozEngine.Localization.csproj" />
   <Project Path="KhaozEngine.Netcode/KhaozEngine.Netcode.csproj" />
+  <Project Path="KhaozEngine.Netcode.LiteNetLib/KhaozEngine.Netcode.LiteNetLib.csproj" />
   <Project Path="KhaozEngine.Persistence/KhaozEngine.Persistence.csproj" />
   <Project Path="KhaozEngine.Platform/KhaozEngine.Platform.csproj" />
   <Project Path="KhaozEngine.Pooling/KhaozEngine.Pooling.csproj" />

@@ -345,7 +345,7 @@ namespace PixelLabSheetAssembler;
 /// Resolves, for one direction, which source frame index to draw into each of the
 /// 0..frameCount-1 column slots. A missing index is filled by holding the nearest previous
 /// present frame; if none precede (leading gap), the nearest following frame is held. Frames are
-/// never shifted, so the row stays in sync. Each fill adds a warning. With <paramref name="strict"/>
+/// never shifted, so the row stays in sync. Each fill adds a warning. With <c>strict</c>
 /// the first gap throws instead. A direction with no frames always throws.
 /// </summary>
 public static class GapFiller

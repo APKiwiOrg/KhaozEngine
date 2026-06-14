@@ -14,7 +14,7 @@ namespace KhaozEngine.UI;
 /// 1. Create with item count, item height, header text
 /// 2. Call <see cref="Update"/> each frame to handle scroll input
 /// 3. Call <see cref="BeginDraw"/> to start rendering (sets up scissor clip)
-/// 4. Iterate <see cref="GetVisibleRange"/> and draw your items
+/// 4. Draw your items in the clipped region, positioning each via <see cref="GetItemY"/> / <see cref="GetItemWidth"/>
 /// 5. Call <see cref="EndDraw"/> to restore state
 ///
 /// This component does NOT own a SpriteBatch or know about specific item types.

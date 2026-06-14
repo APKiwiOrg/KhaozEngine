@@ -14,7 +14,7 @@ namespace KhaozEngine.UI;
 /// 1. Create with style, renderer, input, and icon draw callback
 /// 2. Call <see cref="Update"/> each frame with current bounds
 /// 3. Check <see cref="WasClicked"/> for tap detection
-/// 4. Call <see cref="Draw"/> to render
+/// 4. Call <see cref="Draw(SpriteBatch, Rectangle)"/> to render
 /// </summary>
 public sealed class MiniButton
 {

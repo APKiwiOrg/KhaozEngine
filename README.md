@@ -22,6 +22,7 @@ KhaozEngine is **not** a full engine. It owns a set of focused, game-agnostic co
 | **KhaozEngine.Graphics** | `Camera2D` (generic 2D matrix camera: position/zoom/rotation → view matrix, world↔screen, bounds clamp), the `CameraController`/`CameraFollow` feel layer, `DisplayManager`, and the rendering primitives `PrimitiveRenderer` + `ColorHelper`. | MonoGame, KhaozEngine.Input |
 | **KhaozEngine.Sprites** | 2D sprite + directional animation: `SpriteSheet`, `SpriteAnimationPlayer`, `DirectionalAnimatedSprite`, `Direction8`, `SpriteRegistry`, `PixelLabSpriteLoader`. | MonoGame |
 | **KhaozEngine.Serialization** | Shared `System.Text.Json` defaults (`JsonDefaults`: tolerant-read / indented-write / include-fields) so Content, Persistence, and Ecs serialize consistently. | Pure .NET |
+| **KhaozEngine.Updates** | Delta auto-update pipeline: SHA256 manifests + diffing, a host-agnostic update source (default HTTP transport, configurable endpoint), an `UpdateService` state machine with resumable staged downloads, and a cross-platform staged-apply core (`UpdateApplier`) for an external updater shim. | KhaozEngine.Diagnostics |
 
 Target framework `net10.0`, consumable from the `net10.0-android` / `net10.0-ios` heads. Built against MonoGame.Framework.DesktopGL 3.8.
 
@@ -88,10 +89,10 @@ Published to a private GitHub Packages feed on tagged releases, and packed to a 
 ```
 ```xml
 <!-- All packages share one version (the current release). Reference only what you use. -->
-<PackageReference Include="KhaozEngine.Input"   Version="4.3.1" />
-<PackageReference Include="KhaozEngine.Screens" Version="4.3.1" />
-<PackageReference Include="KhaozEngine.UI"      Version="4.3.1" />
-<PackageReference Include="KhaozEngine.Ecs"     Version="4.3.1" />
+<PackageReference Include="KhaozEngine.Input"   Version="4.6.0" />
+<PackageReference Include="KhaozEngine.Screens" Version="4.6.0" />
+<PackageReference Include="KhaozEngine.UI"      Version="4.6.0" />
+<PackageReference Include="KhaozEngine.Ecs"     Version="4.6.0" />
 ```
 
 **Versioning is SemVer.** Each game pins a version and adopts fixes by bumping it - so you can keep one game on an old version while you migrate another. Don't fork the packages; if a game needs an API that isn't there, add it here and bump the version.
@@ -111,6 +112,7 @@ KhaozEngine.Input/   KhaozEngine.Screens/   KhaozEngine.UI/   KhaozEngine.Ecs/  
 KhaozEngine.Content/   KhaozEngine.Content.Validator/   KhaozEngine.Diagnostics/
 KhaozEngine.App/   KhaozEngine.Localization/   KhaozEngine.Persistence/   KhaozEngine.Serialization/
 KhaozEngine.Audio/   KhaozEngine.Effects/   KhaozEngine.Graphics/   KhaozEngine.Sprites/
+KhaozEngine.Updates/
 KhaozEngine.Tests/      docs/USING-KHAOZENGINE.md
 Directory.Build.props (shared version)   nuget.config   .github/workflows/ci.yml
 ```

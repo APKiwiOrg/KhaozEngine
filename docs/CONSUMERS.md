@@ -4,11 +4,12 @@ Which game uses which packages, at which version. Current state only - for the p
 [`../CHANGELOG.md`](../CHANGELOG.md). Update this whenever a consumer bumps a `<PackageReference>` or the
 engine ships a new version.
 
-**Engine current version:** `4.3.1` (all packages share one version, set in `Directory.Build.props`).
+**Engine current version:** `4.6.0` (all packages share one version, set in `Directory.Build.props`).
 
-> The latest release (4.1.0, additive logging normalization) is **not adopted by any consumer yet** - all
-> three are on 4.0.0. A game adopts a release on its own schedule by bumping its pinned version; the
-> matrices below show what each game actually pins, which is expected to lag the engine.
+> The latest release (4.6.0, additive: new `KhaozEngine.Updates` package) is **not adopted by any consumer
+> yet** - all three are on 4.0.0. A game adopts a release on its own schedule by bumping its pinned version;
+> the matrices below show what each game actually pins, which is expected to lag the engine. SpaceGame is the
+> intended first adopter of `Updates` (its auto-update system is the source the package was centralized from).
 
 ## Version matrix
 
@@ -17,11 +18,11 @@ engine ships a new version.
 (4.0.0+) is transitive via `Content`/`Persistence`/`Ecs`, so it shows `-` for consumers that don't
 reference it directly (Nullwake does reference it directly for `JsonDefaults`).
 
-| Project   | Project file                         | Input | Screens | UI    | Ecs   | Content | Diagnostics | Time  | App   | Localization | Persistence | Audio | Effects | Graphics | Sprites | Serialization |
-|-----------|--------------------------------------|-------|---------|-------|-------|---------|-------------|-------|-------|--------------|-------------|-------|---------|----------|---------|---------------|
-| Hardpoint | `Hardpoint/Hardpoint.Core`           | 4.0.0 | 4.0.0   | 4.0.0 | 4.0.0 | 4.0.0   | 4.0.0       | -     | 4.0.0 | 4.0.0        | 4.0.0       | -     | 4.0.0   | 4.0.0    | 4.0.0   | -             |
-| Nullwake  | `Nullwake/Nullwake.Core`             | 4.0.0 | 4.0.0   | 4.0.0 | -     | 4.0.0   | 4.0.0       | 4.0.0 | 4.0.0 | 4.0.0        | 4.0.0       | 4.0.0 | 4.0.0   | 4.0.0    | -       | 4.0.0         |
-| SpaceGame | `SpaceGame/SpaceGame.Core`           | 4.0.0 | 4.0.0   | 4.0.0 | 4.0.0 | 4.0.0   | 4.0.0       | -     | 4.0.0 | 4.0.0        | 4.0.0       | 4.0.0 | -       | 4.0.0    | -       | -             |
+| Project   | Project file                         | Input | Screens | UI    | Ecs   | Content | Diagnostics | Time  | App   | Localization | Persistence | Audio | Effects | Graphics | Sprites | Serialization | Updates |
+|-----------|--------------------------------------|-------|---------|-------|-------|---------|-------------|-------|-------|--------------|-------------|-------|---------|----------|---------|---------------|---------|
+| Hardpoint | `Hardpoint/Hardpoint.Core`           | 4.0.0 | 4.0.0   | 4.0.0 | 4.0.0 | 4.0.0   | 4.0.0       | -     | 4.0.0 | 4.0.0        | 4.0.0       | -     | 4.0.0   | 4.0.0    | 4.0.0   | -             | -       |
+| Nullwake  | `Nullwake/Nullwake.Core`             | 4.0.0 | 4.0.0   | 4.0.0 | -     | 4.0.0   | 4.0.0       | 4.0.0 | 4.0.0 | 4.0.0        | 4.0.0       | 4.0.0 | 4.0.0   | 4.0.0    | -       | 4.0.0         | -       |
+| SpaceGame | `SpaceGame/SpaceGame.Core`           | 4.0.0 | 4.0.0   | 4.0.0 | 4.0.0 | 4.0.0   | 4.0.0       | -     | 4.0.0 | 4.0.0        | 4.0.0       | 4.0.0 | -       | 4.0.0    | -       | -             | -       |
 
 ## Adoption matrix
 
@@ -29,11 +30,11 @@ Which packages each consumer pulls in. `✓` = direct `<PackageReference>`, `-` 
 `(transitive)` = vendored via `Screens` 2.2.0+ but no direct reference and (for `Time`) no
 scaled-dt usage.
 
-| Consumer  | Input | Screens | UI | Ecs | Content | Diagnostics |    Time      | App | Localization | Persistence | Audio | Effects | Graphics | Sprites |  Serialization  |
-|-----------|:-----:|:-------:|:--:|:---:|:-------:|:-----------:|:------------:|:---:|:------------:|:-----------:|:-----:|:-------:|:--------:|:-------:|:---------------:|
-| Hardpoint |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |  ✓  |      ✓       |      ✓      |   -   |    ✓    |    ✓     |    ✓    |  (transitive)   |
-| Nullwake  |   ✓   |    ✓    | ✓  |  -  |    ✓    |      ✓      |      ✓       |  ✓  |      ✓       |      ✓      |   ✓   |    ✓    |    ✓     |    -    |        ✓        |
-| SpaceGame |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |  ✓  |      ✓       |      ✓      |   ✓   |    -    |    ✓     |    -    |        -        |
+| Consumer  | Input | Screens | UI | Ecs | Content | Diagnostics |    Time      | App | Localization | Persistence | Audio | Effects | Graphics | Sprites |  Serialization  | Updates |
+|-----------|:-----:|:-------:|:--:|:---:|:-------:|:-----------:|:------------:|:---:|:------------:|:-----------:|:-----:|:-------:|:--------:|:-------:|:---------------:|:-------:|
+| Hardpoint |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |  ✓  |      ✓       |      ✓      |   -   |    ✓    |    ✓     |    ✓    |  (transitive)   |    -    |
+| Nullwake  |   ✓   |    ✓    | ✓  |  -  |    ✓    |      ✓      |      ✓       |  ✓  |      ✓       |      ✓      |   ✓   |    ✓    |    ✓     |    -    |        ✓        |    -    |
+| SpaceGame |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |  ✓  |      ✓       |      ✓      |   ✓   |    -    |    ✓     |    -    |        -        |    -    |
 
 ## Notes (current state per consumer)
 
@@ -131,7 +132,8 @@ done
 After editing, run `./scripts/check-doc-versions.sh` (CI runs it too) to confirm the engine-version line
 still matches `Directory.Build.props`.
 
-_Last verified: 2026-06-14. Engine at 4.1.0; all three consumers on 4.0.0 (4.1.0 unadopted). Adoption
+_Last verified: 2026-06-14. Engine at 4.6.0 (new `Updates` package); all three consumers on 4.0.0
+(4.1.0-4.6.0 unadopted; SpaceGame is the intended first `Updates` adopter). Adoption
 ✓/- matrix matches each game's actual `<PackageReference>` set as of the 2026-06-13 no-dead-reference
 pass (every direct `KhaozEngine.*` reference in all three repos is used; the one zero-code-use case,
 Nullwake `Content`, is legitimate build-time schema validation)._

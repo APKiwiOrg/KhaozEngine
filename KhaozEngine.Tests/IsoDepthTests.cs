@@ -55,4 +55,21 @@ public class IsoDepthTests
         Assert.Equal(IsoDepth.DepthKey(2f, 1f, 1f, 3), IsoDepth.DepthKey(2f, 1f, 1f, 3));
         Assert.Equal(0, IsoDepth.DepthKey(2f, 1f, 1f, 3).CompareTo(IsoDepth.DepthKey(2f, 1f, 1f, 3)));
     }
+
+    [Fact]
+    public void Default_zWeight_is_one()
+    {
+        Assert.Equal(IsoDepth.DepthKey(1f, 1f, 2f, 0, zWeight: 1f), IsoDepth.DepthKey(1f, 1f, 2f));
+    }
+
+    [Fact]
+    public void Higher_zWeight_pushes_a_tall_stack_in_front_of_a_nearer_neighbour()
+    {
+        IsoDepthKey nearLow = IsoDepth.DepthKey(3f, 3f, z: 0f);                  // depth 6
+        IsoDepthKey farTallW1 = IsoDepth.DepthKey(1f, 1f, z: 3f, zWeight: 1f);   // depth 2 + 3 = 5
+        IsoDepthKey farTallW2 = IsoDepth.DepthKey(1f, 1f, z: 3f, zWeight: 2f);   // depth 2 + 6 = 8
+
+        Assert.True(nearLow > farTallW1);  // at weight 1 the nearer-but-lower tile draws in front
+        Assert.True(farTallW2 > nearLow);  // raising zWeight pushes the tall stack in front instead
+    }
 }

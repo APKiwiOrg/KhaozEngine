@@ -258,21 +258,33 @@ project it on the way to the screen. Orthographic rendering is untouched if you 
 
     Vector2 screen = origin + iso.WorldToScreen(tileX, tileY);     // z defaults to 0
     Vector2 lifted = origin + iso.WorldToScreen(tileX, tileY, z);  // z lifts up the screen
-    Vector2 world  = iso.ScreenToGround(mouseScreen - origin);     // continuous world point for picking
+    Vector2 ground = iso.ScreenToGround(mouseScreen - origin);     // pick on flat ground (z = 0)
+    Vector2 onTile = iso.ScreenToWorld(mouseScreen - origin, z);   // pick on a raised plane
 
 - `WorldToScreen(wx, wy, z = 0)`: `sx = (wx - wy) * TileWidth/2`, `sy = (wx + wy) * TileHeight/2 - z * HeightScale`.
   The result is projection-local (origin at world `(0,0,0)`); add your camera/draw origin.
 - `ScreenToGround(screen)`: the `z = 0` inverse, returning a **continuous** world `(x, y)` — floor it
   to a tile or keep the fraction for sub-tile picking.
-- `z` is a real input even though v1 callers pass 0; it is the seam for terrain height later.
+- `ScreenToWorld(screen, z)`: the inverse on the plane at height `z` (`ScreenToWorld(s, 0)` ==
+  `ScreenToGround(s)`). For varying terrain, picking is a consumer-side job — you own the heightmap, so
+  walk candidate heights front-to-back testing `ScreenToWorld(screen, z)` against it; the toolkit just
+  supplies the per-plane inverse.
+- `z` lifts the point up the screen — the seam for terrain height; both the projection and the depth
+  key consume it for real.
+- Depend on `IIsometricProjection` (implemented by `IsometricProjection`) where you want to swap the
+  projection or fake it in a headless screen test, the same way screens take `IDesignViewport`.
 
 Y-sort your own draw list with `IsoDepth.DepthKey`:
 
     drawList.Sort((a, b) => IsoDepth.DepthKey(a.X, a.Y, a.Z, a.Layer)
                    .CompareTo(IsoDepth.DepthKey(b.X, b.Y, b.Z, b.Layer)));
 
-Primary order is `wx + wy + z` (far tiles first, near last); integer `layer` breaks ties on the same
-tile (e.g. a decal under a unit). It returns a comparable `IsoDepthKey`.
+Primary order is `wx + wy + z * zWeight` (far tiles first, near last); integer `layer` breaks ties on
+the same tile (e.g. a decal under a unit). It returns a comparable `IsoDepthKey`. `zWeight` (5th arg,
+default 1) tunes how hard height pushes toward the front — raise it when a tall stack must sort over a
+nearer-but-shorter neighbour, or pass `0` to ignore height in ordering. The `IsoDepthKey` ctor is
+public, so you can build keys from a custom formula (e.g. a topological pass for big multi-tile sprites)
+without fighting the helper.
 
 Tall sprites stand on their tile via the opt-in footprint anchor on the directional sprite draw path:
 

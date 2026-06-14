@@ -60,6 +60,15 @@ public static class IsoDepth
     /// front); <paramref name="layer"/> is the tiebreak for things sharing the same depth. Sort the
     /// draw list ascending by the returned key.
     /// </summary>
-    public static IsoDepthKey DepthKey(float wx, float wy, float z = 0f, int layer = 0)
-        => new(wx + wy + z, layer);
+    /// <param name="wx">World X.</param>
+    /// <param name="wy">World Y.</param>
+    /// <param name="z">Height. Contributes <c>z * <paramref name="zWeight"/></c> to the depth.</param>
+    /// <param name="layer">Integer tiebreak at equal depth (higher draws on top).</param>
+    /// <param name="zWeight">
+    /// How strongly height pushes a drawable toward the front. Defaults to 1 (one z-unit counts as
+    /// one tile-step of depth). Raise it so a tall stack reliably sorts in front of taller-but-nearer
+    /// neighbours; set 0 to ignore height in ordering entirely.
+    /// </param>
+    public static IsoDepthKey DepthKey(float wx, float wy, float z = 0f, int layer = 0, float zWeight = 1f)
+        => new((wx + wy) + z * zWeight, layer);
 }

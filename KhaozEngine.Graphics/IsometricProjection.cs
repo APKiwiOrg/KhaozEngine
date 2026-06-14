@@ -11,12 +11,13 @@ namespace KhaozEngine.Graphics;
 /// </summary>
 /// <remarks>
 /// The tile footprint is configurable; the default 64x32 is the classic 2:1 diamond. <c>z</c> is a
-/// real input on <see cref="WorldToScreen(float, float, float)"/> even though v1 callers pass 0:
-/// it lifts a point up the screen by <c>z * HeightScale</c>, the seam for terrain height later.
-/// <see cref="ScreenToGround"/> inverts the projection at <c>z = 0</c>, returning the continuous
-/// world point under the cursor on the ground plane.
+/// real input on <see cref="WorldToScreen(float, float, float)"/>: it lifts a point up the screen by
+/// <c>z * HeightScale</c>, the seam for terrain height. <see cref="ScreenToGround"/> inverts at
+/// <c>z = 0</c> for flat-ground picking; <see cref="ScreenToWorld(Vector2, float)"/> inverts at an
+/// arbitrary height plane (the building block for picking over varying terrain). Implements
+/// <see cref="IIsometricProjection"/> so consumers can depend on the seam and fake it in tests.
 /// </remarks>
-public sealed class IsometricProjection
+public sealed class IsometricProjection : IIsometricProjection
 {
     /// <summary>Tile footprint width in pixels (the diamond's full horizontal span).</summary>
     public float TileWidth { get; }
@@ -79,4 +80,16 @@ public sealed class IsometricProjection
         float b = screen.Y / TileHeight;
         return new Vector2(b + a, b - a);
     }
+
+    /// <summary>
+    /// Inverts the projection on the horizontal plane at height <paramref name="z"/>: the continuous
+    /// world point that, when drawn at that height, lands under <paramref name="screen"/>. Since
+    /// <see cref="WorldToScreen(float, float, float)"/> lifts a point by <c>z * HeightScale</c>,
+    /// undoing the lift before the ground inverse recovers the point on the raised plane. This is the
+    /// building block for picking over varying terrain: the consumer (which owns the heightmap)
+    /// tests candidate heights front-to-back. <c>ScreenToWorld(screen, 0)</c> equals
+    /// <see cref="ScreenToGround"/>.
+    /// </summary>
+    public Vector2 ScreenToWorld(Vector2 screen, float z)
+        => ScreenToGround(new Vector2(screen.X, screen.Y + z * HeightScale));
 }

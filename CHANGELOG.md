@@ -15,6 +15,34 @@ Repo utilities under `tools/`. Not packages: never versioned, packed, or tagged.
   leading gap) missing-frame tolerance with warnings. Prints the `frameCount` and suggested `fps`.
   Uses SixLabors.ImageSharp 2.1.13 (Apache-2.0); no MonoGame/GraphicsDevice. See its README.
 
+## KhaozEngine 4.5.0
+
+Additive. Two new packages of game-agnostic 2D primitives, ported verbatim from SpaceGame.
+
+### KhaozEngine.Collision (new package)
+
+- New package: deterministic 2D collision + broadphase primitives. Refs `MonoGame.Framework.DesktopGL`
+  for `Vector2`. Float math and iteration order are bit-identical to the SpaceGame originals
+  (`CircleCollision`, `EnemySpatialIndex`) so it can be adopted in a lockstep sim without moving the hash.
+- `CircleCollision` (static): `Intersects(Vector2, float, Vector2, float)` and `Intersects(ICircleCollider,
+  ICircleCollider)` broad overlap (`DistanceSquared <= combined^2`, touching counts), plus three
+  `DoCollidersCollide` overloads (collider/collider, bare-circle/collider, collider/bare-circle) that apply
+  per-pixel precise refinement when a side implements `IPreciseCircleCollisionTarget`.
+- `ICircleCollider` (`Position`, `Radius`) and `IPreciseCircleCollisionTarget` (`IntersectsCircle`).
+- `SpatialHashGrid`: uniform spatial hash for broadphase. Generic rebuild via `BeginRebuild(capacity)` +
+  `Add(index, position, radius)` per item (replaces the snapshot-coupled `Rebuild`), then
+  `QueryCandidates(center, radius)` / `GetQueryIndex(i)` / `SortQueryIndicesAscending(count)`. Cell coord =
+  `(int)MathF.Floor(world / cellSize)`, queries walk Y-outer/X-inner, cell chains are LIFO (head insertion).
+  Renamed off "Enemy"; stores caller-supplied indices into whatever collection the caller owns.
+
+### KhaozEngine.Pooling (new package)
+
+- New package: `ObjectPool<T>` where `T : class, IPoolable`, a fixed-capacity free-list pool genericized
+  from SpaceGame's `XpFlyerPool` (XpFlyer specialization + `Update`/`Draw` dropped). Zero dependencies.
+- O(1) `Rent()` (null when exhausted) / `Return(item)` (resets, ignores foreign items), `Clear()`,
+  `ActiveCount`/`FreeCount`, and `GetActive(slot)` over a swap-removal-compacted active set. `IPoolable`
+  exposes `PoolIndex` (pool-owned) + `Reset()`.
+
 ## KhaozEngine 4.4.0
 
 Additive. New package `KhaozEngine.Platform` for native platform interop. No change to existing packages.

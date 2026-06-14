@@ -1,6 +1,7 @@
 <Solution>
   <Project Path="KhaozEngine.App/KhaozEngine.App.csproj" />
   <Project Path="KhaozEngine.Audio/KhaozEngine.Audio.csproj" />
+  <Project Path="KhaozEngine.Collision/KhaozEngine.Collision.csproj" />
   <Project Path="KhaozEngine.Content/KhaozEngine.Content.csproj" />
   <Project Path="KhaozEngine.Content.Validator/KhaozEngine.Content.Validator.csproj" />
   <Project Path="KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
@@ -11,6 +12,7 @@
   <Project Path="KhaozEngine.Localization/KhaozEngine.Localization.csproj" />
   <Project Path="KhaozEngine.Persistence/KhaozEngine.Persistence.csproj" />
   <Project Path="KhaozEngine.Platform/KhaozEngine.Platform.csproj" />
+  <Project Path="KhaozEngine.Pooling/KhaozEngine.Pooling.csproj" />
   <Project Path="KhaozEngine.Screens/KhaozEngine.Screens.csproj" />
   <Project Path="KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
   <Project Path="KhaozEngine.Sprites/KhaozEngine.Sprites.csproj" />

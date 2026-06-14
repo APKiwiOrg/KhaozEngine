@@ -95,4 +95,30 @@ public class ClientPredictionTests
         p.Reconcile(1, new FakeState(Vector2.Zero), lastAcknowledgedSeq: -1);
         Assert.Equal(4f, p.PredictedState.Position.X, 3);
     }
+
+    [Fact]
+    public void Reconcile_ErrorAtDeadZone_IsIgnored()
+    {
+        var p = NewPrediction();
+        p.Predict(new Vector2(60f, 0f)); // predicted X = 1
+        // basis +1.5, seq 0 unacked -> replay predicted = 2.5; prevRendered = 1; |error| = 1.5 == dead-zone
+        var r = p.Reconcile(1, new FakeState(new Vector2(1.5f, 0f)), lastAcknowledgedSeq: -1);
+        Assert.Equal(1.5f, r.PositionError, 3);
+        Assert.False(r.HardSnapApplied);
+        Assert.Equal(p.PredictedState.Position.X, p.RenderedState.Position.X, 3); // offset ignored at boundary
+    }
+
+    [Fact]
+    public void Reset_ClearsPendingAndSeq()
+    {
+        var p = NewPrediction();
+        p.Predict(new Vector2(60f, 0f));
+        p.Predict(new Vector2(60f, 0f));
+        p.Reset(new FakeState(new Vector2(99f, 0f)));
+        Assert.Equal(99f, p.PredictedState.Position.X, 3);
+        Assert.Equal(0, p.Predict(new Vector2(60f, 0f))); // seq restarts at 0
+        // only the one post-reset command should replay (pre-reset commands were cleared)
+        p.Reconcile(1, new FakeState(Vector2.Zero), lastAcknowledgedSeq: -1);
+        Assert.Equal(1f, p.PredictedState.Position.X, 3);
+    }
 }

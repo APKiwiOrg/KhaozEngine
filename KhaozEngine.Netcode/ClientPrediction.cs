@@ -12,12 +12,12 @@ namespace KhaozEngine.Netcode;
 /// produces a correction, smoothed via a decaying render offset so it never pops on screen.
 /// </summary>
 public sealed class ClientPrediction<TState, TCommand>
-    where TState : IPredictedState<TState>
+    where TState : struct, IPredictedState<TState>
 {
     private readonly ITickSimulator<TState, TCommand> simulator;
     private readonly PredictionSettings settings;
     private readonly SortedList<int, TCommand> pendingCommands = new();
-    private TState predictedState = default!;
+    private TState predictedState;
     private Vector2 renderOffset;
     private int nextSeq;
 

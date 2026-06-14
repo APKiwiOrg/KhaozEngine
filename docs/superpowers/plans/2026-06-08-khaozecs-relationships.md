@@ -1,4 +1,4 @@
-# KhaozEngine.Ecs Relationships / Hierarchy — Implementation Plan
+# KhaozEngine.Ecs Relationships / Hierarchy - Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax. TDD throughout.
 
@@ -305,7 +305,7 @@ public class HierarchySerializationTests
 }
 ```
 
-- [ ] **Step 2: Run to verify failure** (the rebuilt-index assertions fail — `Load` doesn't rebuild yet).
+- [ ] **Step 2: Run to verify failure** (the rebuilt-index assertions fail - `Load` doesn't rebuild yet).
 
 - [ ] **Step 3: Auto-include `Parent` and rebuild the index on load**
 
@@ -337,9 +337,9 @@ git commit -m "ECS: serializer auto-includes Parent and rebuilds the hierarchy i
 
 **Files:** Modify `KhaozEngine.Ecs/KhaozEngine.Ecs.csproj`, `CHANGELOG.md`
 
-- [ ] **Step 1: Bump the Ecs package version** — change `<Version>1.2.0</Version>` to `<Version>1.3.0</Version>` in `KhaozEngine.Ecs/KhaozEngine.Ecs.csproj`.
+- [ ] **Step 1: Bump the Ecs package version** - change `<Version>1.2.0</Version>` to `<Version>1.3.0</Version>` in `KhaozEngine.Ecs/KhaozEngine.Ecs.csproj`.
 
-- [ ] **Step 2: Changelog** — prepend under the title in `CHANGELOG.md`:
+- [ ] **Step 2: Changelog** - prepend under the title in `CHANGELOG.md`:
 ```markdown
 ## KhaozEngine.Ecs 1.3.0
 
@@ -375,7 +375,7 @@ git commit -m "Release KhaozEngine.Ecs 1.3.0 (parent-child hierarchy)"
 - Transform propagation game-side → not implemented (correctly out of scope).
 - Additive `1.3.0` release → Task 3.
 
-**Placeholder scan:** none — every new/changed member shown in full.
+**Placeholder scan:** none - every new/changed member shown in full.
 
 **Type consistency:** `Parent { Entity Value }`; `World.SetParent/Detach/GetParent/Children/DespawnTree` + internal `AddToParentIndex`/`DetachFromParentIndex`/`DetachHierarchyOnDespawn`/`CollectPostOrder`/`RebuildHierarchyIndex`; `_children` is `Dictionary<int, List<Entity>>`. `Despawn` edit keeps its existing change-tracking + removal, adding only `DetachHierarchyOnDespawn` first. `WorldSerializer` constructor adds `typeof(Parent)`; `Load` calls `RebuildHierarchyIndex`.
 

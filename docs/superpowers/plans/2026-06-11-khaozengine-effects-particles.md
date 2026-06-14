@@ -20,17 +20,17 @@
 
 ## File structure
 
-- Create `KhaozEngine.Effects/KhaozEngine.Effects.csproj` — package project, refs MonoGame + `KhaozEngine.UI`.
-- Create `KhaozEngine.Effects/README.md` — packed readme.
-- Create `KhaozEngine.Effects/ParticleEmission.cs` — emission-pattern enum.
-- Create `KhaozEngine.Effects/ParticleEmitterConfig.cs` — immutable preset/config record.
-- Create `KhaozEngine.Effects/ParticlePresets.cs` — built-in `Spark`/`Ember` presets.
-- Create `KhaozEngine.Effects/ParticleView.cs` — read-only live-particle snapshot.
-- Create `KhaozEngine.Effects/ParticleSystem.cs` — the pool (Emit/Update/Draw/ActiveParticles).
-- Create `KhaozEngine.Tests/ParticlePresetsTests.cs` — preset-value tests.
-- Create `KhaozEngine.Tests/ParticleSystemTests.cs` — pool/update behavior tests.
-- Modify `KhaozEngine.slnx` — add the project.
-- Modify `KhaozEngine.Tests/KhaozEngine.Tests.csproj` — add a ProjectReference.
+- Create `KhaozEngine.Effects/KhaozEngine.Effects.csproj` - package project, refs MonoGame + `KhaozEngine.UI`.
+- Create `KhaozEngine.Effects/README.md` - packed readme.
+- Create `KhaozEngine.Effects/ParticleEmission.cs` - emission-pattern enum.
+- Create `KhaozEngine.Effects/ParticleEmitterConfig.cs` - immutable preset/config record.
+- Create `KhaozEngine.Effects/ParticlePresets.cs` - built-in `Spark`/`Ember` presets.
+- Create `KhaozEngine.Effects/ParticleView.cs` - read-only live-particle snapshot.
+- Create `KhaozEngine.Effects/ParticleSystem.cs` - the pool (Emit/Update/Draw/ActiveParticles).
+- Create `KhaozEngine.Tests/ParticlePresetsTests.cs` - preset-value tests.
+- Create `KhaozEngine.Tests/ParticleSystemTests.cs` - pool/update behavior tests.
+- Modify `KhaozEngine.slnx` - add the project.
+- Modify `KhaozEngine.Tests/KhaozEngine.Tests.csproj` - add a ProjectReference.
 
 ---
 
@@ -70,10 +70,10 @@ Create `KhaozEngine.Effects/README.md`:
 
 Game-agnostic pooled particle system for MonoGame games.
 
-- `ParticleSystem` — fixed-size, zero-allocation pool of rectangle particles.
-- `ParticleEmitterConfig` — immutable, data-driven emitter preset (lifetime,
+- `ParticleSystem` - fixed-size, zero-allocation pool of rectangle particles.
+- `ParticleEmitterConfig` - immutable, data-driven emitter preset (lifetime,
   speed, emission pattern, jitter, size curve, sway, acceleration, color).
-- `ParticlePresets.Spark` / `.Ember` — built-in presets (outward sparks,
+- `ParticlePresets.Spark` / `.Ember` - built-in presets (outward sparks,
   upward-drifting embers).
 
 ```csharp
@@ -111,10 +111,10 @@ In `KhaozEngine.Tests/KhaozEngine.Tests.csproj`, add this line immediately after
 - [ ] **Step 5: Build the solution to verify wiring**
 
 Run: `dotnet build KhaozEngine.Effects/KhaozEngine.Effects.csproj`
-Expected: Build succeeded (an empty assembly is fine — no types yet).
+Expected: Build succeeded (an empty assembly is fine - no types yet).
 
 Then run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj`
-Expected: PASS, 268 passing (unchanged — nothing added yet).
+Expected: PASS, 268 passing (unchanged - nothing added yet).
 
 - [ ] **Step 6: Commit**
 
@@ -189,7 +189,7 @@ public class ParticlePresetsTests
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj`
-Expected: FAIL — build error, `ParticlePresets` / `ParticleEmission` / config members do not exist.
+Expected: FAIL - build error, `ParticlePresets` / `ParticleEmission` / config members do not exist.
 
 - [ ] **Step 3: Create the emission enum**
 
@@ -359,7 +359,7 @@ git commit -m "Add KhaozEngine.Effects config, presets, and snapshot types"
 
 ---
 
-## Task 3: `ParticleSystem` pool — Emit and ActiveCount
+## Task 3: `ParticleSystem` pool - Emit and ActiveCount
 
 **Files:**
 - Create: `KhaozEngine.Effects/ParticleSystem.cs`
@@ -404,7 +404,7 @@ public class ParticleSystemTests
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj`
-Expected: FAIL — build error, `ParticleSystem` does not exist.
+Expected: FAIL - build error, `ParticleSystem` does not exist.
 
 - [ ] **Step 3: Create `ParticleSystem` with the pool, Emit, and ActiveCount**
 
@@ -531,7 +531,7 @@ git commit -m "Add ParticleSystem pool with Emit and ActiveCount"
 
 ---
 
-## Task 4: `ActiveParticles()` snapshots — color blend and radial spread
+## Task 4: `ActiveParticles()` snapshots - color blend and radial spread
 
 **Files:**
 - Modify: `KhaozEngine.Effects/ParticleSystem.cs`
@@ -573,7 +573,7 @@ Add these methods inside the `ParticleSystemTests` class in `KhaozEngine.Tests/P
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj`
-Expected: FAIL — build error, `ParticleSystem.ActiveParticles` does not exist.
+Expected: FAIL - build error, `ParticleSystem.ActiveParticles` does not exist.
 
 - [ ] **Step 3: Add `CurrentSize` and `ActiveParticles` to `ParticleSystem`**
 
@@ -620,7 +620,7 @@ git commit -m "Add ActiveParticles snapshots; cover color blend and radial sprea
 
 ---
 
-## Task 5: `Update` — age-out, directional rise with sway, acceleration
+## Task 5: `Update` - age-out, directional rise with sway, acceleration
 
 **Files:**
 - Modify: `KhaozEngine.Effects/ParticleSystem.cs`
@@ -669,7 +669,7 @@ Add these methods inside the `ParticleSystemTests` class:
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj`
-Expected: FAIL — build error, `ParticleSystem.Update` does not exist.
+Expected: FAIL - build error, `ParticleSystem.Update` does not exist.
 
 - [ ] **Step 3: Add `Update` to `ParticleSystem`**
 
@@ -754,7 +754,7 @@ Add these methods inside the `ParticleSystemTests` class:
 
 - [ ] **Step 2: Run tests to verify they pass (size curve already implemented)**
 
-`CurrentSize` was added in Task 4, so these size tests should pass immediately — they lock the curve behavior over life now that `Update` exists.
+`CurrentSize` was added in Task 4, so these size tests should pass immediately - they lock the curve behavior over life now that `Update` exists.
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj`
 Expected: PASS, 280 passing.

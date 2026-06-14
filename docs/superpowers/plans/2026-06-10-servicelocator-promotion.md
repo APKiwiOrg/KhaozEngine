@@ -14,10 +14,10 @@
 
 ## File Structure
 
-- `KhaozEngine.App/ServiceLocator.cs` — the promoted class (sole responsibility: register/resolve services by type).
-- `KhaozEngine.Tests/ServiceLocatorTests.cs` — tests + tiny marker interfaces/impls.
+- `KhaozEngine.App/ServiceLocator.cs` - the promoted class (sole responsibility: register/resolve services by type).
+- `KhaozEngine.Tests/ServiceLocatorTests.cs` - tests + tiny marker interfaces/impls.
 
-No new package, no csproj/slnx/Tests-wiring changes (all exist). No version bump / CHANGELOG / pack — deferred to the single end-of-batch 3.1.0 release.
+No new package, no csproj/slnx/Tests-wiring changes (all exist). No version bump / CHANGELOG / pack - deferred to the single end-of-batch 3.1.0 release.
 
 All commands run from the worktree root: `/Users/antonio/KhaozEngine/.claude/worktrees/batch1-promote`.
 
@@ -162,7 +162,7 @@ public class ServiceLocatorTests
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~ServiceLocatorTests" -v q`
-Expected: FAIL — compile error, `ServiceLocator` does not exist in namespace `KhaozEngine.App`.
+Expected: FAIL - compile error, `ServiceLocator` does not exist in namespace `KhaozEngine.App`.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -268,7 +268,7 @@ public sealed class ServiceLocator : IServiceProvider
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~ServiceLocatorTests" -v q`
-Expected: PASS — 11 passed.
+Expected: PASS - 11 passed.
 
 - [ ] **Step 5: Commit**
 
@@ -284,7 +284,7 @@ git commit -m "Add KhaozEngine.App.ServiceLocator"
 - [ ] **Step 1: Run the entire test suite**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj -v q`
-Expected: PASS — baseline (202) + 11 new = 213, 0 failed. (Confirm the baseline at the start; the delta is +11.)
+Expected: PASS - baseline (202) + 11 new = 213, 0 failed. (Confirm the baseline at the start; the delta is +11.)
 
 - [ ] **Step 2: Build the package project in isolation (confirm no stray deps)**
 

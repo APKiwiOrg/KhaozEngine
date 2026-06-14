@@ -18,8 +18,8 @@
 
 ## File Structure
 
-- **Modify** `KhaozEngine.Ecs/DeterministicRng.cs` — add `_seed` field, `CreateDerived` method, `StableHash` helper.
-- **Modify** `KhaozEngine.Tests/DeterministicRngTests.cs` — add the named-stream tests.
+- **Modify** `KhaozEngine.Ecs/DeterministicRng.cs` - add `_seed` field, `CreateDerived` method, `StableHash` helper.
+- **Modify** `KhaozEngine.Tests/DeterministicRngTests.cs` - add the named-stream tests.
 
 No other files change. The known-vector value in Task 6 is captured from a real run, not guessed.
 
@@ -117,7 +117,7 @@ Add these five tests to the `DeterministicRngTests` class in
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~CreateDerived"`
-Expected: BUILD FAILURE — `'DeterministicRng' does not contain a definition for 'CreateDerived'`.
+Expected: BUILD FAILURE - `'DeterministicRng' does not contain a definition for 'CreateDerived'`.
 
 - [ ] **Step 3: Implement `_seed`, `CreateDerived`, and `StableHash`**
 
@@ -170,7 +170,7 @@ Add the new method and helper just after `Next(int minInclusive, int maxExclusiv
 
     /// <summary>
     /// Platform-stable string hash (DJB2 xor variant). Deterministic across runs, .NET
-    /// versions, and platforms — unlike <see cref="string.GetHashCode()"/>, which is
+    /// versions, and platforms - unlike <see cref="string.GetHashCode()"/>, which is
     /// randomized per process.
     /// </summary>
     private static int StableHash(string s)
@@ -222,7 +222,7 @@ Add to `DeterministicRngTests`:
         // Captured from the implementation: DeterministicRng(42).CreateDerived("combat").
         // Locks hash (DJB2-xor) + combine (seed ^ (uint)hash) + splitmix64 + xorshift128+.
         var r = new DeterministicRng(42).CreateDerived("combat");
-        ulong[] expected = { 0, 0, 0 };   // placeholder — replaced in Step 2
+        ulong[] expected = { 0, 0, 0 };   // placeholder - replaced in Step 2
         Assert.Equal(expected, new[] { r.NextULong(), r.NextULong(), r.NextULong() });
     }
 ```
@@ -240,7 +240,7 @@ dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj \
 The failure message prints the actual `ulong[]`. Copy those three values into the `expected`
 array, replacing `{ 0, 0, 0 }`. (Alternatively, temporarily change the assert to
 `Assert.Equal(new ulong[]{1,2,3}, ...)` to force a print, or read the three values off the
-failure diff.) Do not hand-compute — capture from the run.
+failure diff.) Do not hand-compute - capture from the run.
 
 - [ ] **Step 3: Run to verify the pin passes**
 
@@ -268,7 +268,7 @@ Expected: PASS, **275 total** (268 baseline + 7 new), 0 failed, 0 skipped.
 - [ ] **Step 2: Confirm no release-discipline files were touched**
 
 Run: `git diff --name-only origin/main`
-Expected: exactly these four —
+Expected: exactly these four -
 ```
 KhaozEngine.Ecs/DeterministicRng.cs
 KhaozEngine.Tests/DeterministicRngTests.cs

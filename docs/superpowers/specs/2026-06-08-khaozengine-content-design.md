@@ -1,14 +1,14 @@
-# KhaozEngine.Content — shared config loading + JSON-schema validation (design)
+# KhaozEngine.Content - shared config loading + JSON-schema validation (design)
 
 **Date:** 2026-06-08
 **Status:** Approved (pending written-spec review)
-**Package:** new `KhaozEngine.Content`. Released with the suite at **2.1.0** (unified versioning — adding
+**Package:** new `KhaozEngine.Content`. Released with the suite at **2.1.0** (unified versioning - adding
 a package bumps all packages to `2.1.0`; Content debuts there).
 
 ## Goal
 
 A game-agnostic package for **config-driven content**: load typed config from JSON (embedded resource
-or disk), and validate JSON against JSON Schema — once, shared, instead of each game replicating
+or disk), and validate JSON against JSON Schema - once, shared, instead of each game replicating
 Nullwake's `ConfigLoader` + `ValidateSchemas` tool + MSBuild target. First new consumer is the Hardpoint
 tower catalog (next cycle); SpaceGame can adopt later. Nullwake keeps its working per-repo version and
 migrates only when convenient (not forced).
@@ -25,14 +25,14 @@ MSBuild target `BeforeBuild`. `KhaozEngine.Content` lifts the generic core of th
 - **Config carries data + mechanic *parameters*; behavior stays in C#.** (e.g. a `SplashRadius` number
   in JSON; the code that applies AoE lives in the game.)
 - **Schema rule (refined):** hand-authored / config JSON always has a schema, build- **and** test-
-  validated so drift fails. Machine-round-tripped JSON (serializer output, save files) is exempt — the
+  validated so drift fails. Machine-round-tripped JSON (serializer output, save files) is exempt - the
   (de)serializer + a round-trip test is its contract. This package serves the former.
 
 ## Package shape
 
 `KhaozEngine.Content` is **pure .NET, no MonoGame dependency** (content/config tooling). It inherits the
 shared `Directory.Build.props` (net10.0, version, SourceLink, embedded LICENSE). It adds **one** package
-dependency: `JsonSchema.Net` (the library Nullwake's schemas are already written for — the engine's first
+dependency: `JsonSchema.Net` (the library Nullwake's schemas are already written for - the engine's first
 non-MonoGame dependency, isolated to this opt-in package).
 
 ## Library API
@@ -84,7 +84,7 @@ A consumer gets build-time validation by referencing the package and adding
 
 > The `buildTransitive` `.targets` + bundled tool is the one fiddly piece (NuGet build tooling always
 > is). If the packaging fights implementation, the fallback is the shipped library + a one-line per-repo
-> `<Exec>`/test calling `ValidateDirectory` — the shared validator is the durable win either way. End-to-
+> `<Exec>`/test calling `ValidateDirectory` - the shared validator is the durable win either way. End-to-
 > end firing of the `.targets` is proven when Hardpoint adopts it next cycle (this cycle unit-tests the
 > validator logic directly).
 

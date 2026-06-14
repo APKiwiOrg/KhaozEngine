@@ -11,12 +11,12 @@ branch `batch2-item10-settings` for the coordinator to fold into the batched 3.3
 
 Source files (still present, re-read):
 
-- `SpaceGame.Core/Settings/ISettingsStorage.cs` — generic, no SpaceGame deps.
-- `SpaceGame.Core/Settings/SettingsManager.cs` — generic, but `internal` and logs via `Debug.WriteLine`.
-- `SpaceGame.Core/Settings/BaseSettingsStorage.cs` — file-based JSON storage with an inline
+- `SpaceGame.Core/Settings/ISettingsStorage.cs` - generic, no SpaceGame deps.
+- `SpaceGame.Core/Settings/SettingsManager.cs` - generic, but `internal` and logs via `Debug.WriteLine`.
+- `SpaceGame.Core/Settings/BaseSettingsStorage.cs` - file-based JSON storage with an inline
   coalescing atomic writer.
-- `SpaceGame.Core/Settings/{Desktop,Mobile,Console}SettingsStorage.cs` — vestigial.
-- `SpaceGame.Core/Settings/SpaceGameSettings.cs` + `SpaceGameServer` — game DTOs (the `T`).
+- `SpaceGame.Core/Settings/{Desktop,Mobile,Console}SettingsStorage.cs` - vestigial.
+- `SpaceGame.Core/Settings/SpaceGameSettings.cs` + `SpaceGameServer` - game DTOs (the `T`).
 
 Findings that shaped the design:
 
@@ -129,7 +129,7 @@ public sealed class SettingsManager<T> where T : new()
 ## Project wiring
 
 - `KhaozEngine.Persistence.csproj`: add `<ProjectReference Include="../KhaozEngine.App/KhaozEngine.App.csproj" />`
-  (Diagnostics ref already present). **Shared file with item 8** — coordinator sequences the commit/rebase.
+  (Diagnostics ref already present). **Shared file with item 8** - coordinator sequences the commit/rebase.
 - `KhaozEngine.slnx` and `KhaozEngine.Tests.csproj` already reference Persistence and App; no change.
 
 ## Testing (KhaozEngine.Tests, headless xUnit)

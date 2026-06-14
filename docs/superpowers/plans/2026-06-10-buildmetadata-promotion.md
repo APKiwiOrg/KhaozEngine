@@ -14,15 +14,15 @@
 
 ## File Structure
 
-- `KhaozEngine.App/KhaozEngine.App.csproj` — new package project (pure BCL).
-- `KhaozEngine.App/README.md` — packed package readme.
-- `KhaozEngine.App/BuildMetadata.cs` — the helper (sole responsibility: read assembly metadata with fallback).
-- `KhaozEngine.slnx` — add the new project.
-- `KhaozEngine.Tests/KhaozEngine.Tests.csproj` — add a `ProjectReference` to the new package.
-- `KhaozEngine.Tests/BuildMetadataFixtures.cs` — `[assembly: AssemblyMetadata(...)]` test fixtures.
-- `KhaozEngine.Tests/BuildMetadataTests.cs` — the tests.
+- `KhaozEngine.App/KhaozEngine.App.csproj` - new package project (pure BCL).
+- `KhaozEngine.App/README.md` - packed package readme.
+- `KhaozEngine.App/BuildMetadata.cs` - the helper (sole responsibility: read assembly metadata with fallback).
+- `KhaozEngine.slnx` - add the new project.
+- `KhaozEngine.Tests/KhaozEngine.Tests.csproj` - add a `ProjectReference` to the new package.
+- `KhaozEngine.Tests/BuildMetadataFixtures.cs` - `[assembly: AssemblyMetadata(...)]` test fixtures.
+- `KhaozEngine.Tests/BuildMetadataTests.cs` - the tests.
 
-No version bump / CHANGELOG / pack in this plan — deferred to the single end-of-batch 3.1.0 release.
+No version bump / CHANGELOG / pack in this plan - deferred to the single end-of-batch 3.1.0 release.
 
 All commands run from the worktree root: `/Users/antonio/KhaozEngine/.claude/worktrees/batch1-promote`.
 
@@ -38,7 +38,7 @@ All commands run from the worktree root: `/Users/antonio/KhaozEngine/.claude/wor
 
 - [ ] **Step 1: Create the package csproj**
 
-Create `KhaozEngine.App/KhaozEngine.App.csproj` (mirrors `KhaozEngine.Localization` — pure BCL, no MonoGame, no `InternalsVisibleTo`):
+Create `KhaozEngine.App/KhaozEngine.App.csproj` (mirrors `KhaozEngine.Localization` - pure BCL, no MonoGame, no `InternalsVisibleTo`):
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
@@ -66,7 +66,7 @@ Game-agnostic app identity / runtime helpers. Pure BCL, no MonoGame dependency.
 
 `BuildMetadata.Read` reads `AssemblyMetadata` items (emitted by a project's `Directory.Build.props`)
 back at runtime, so a game can surface its own version / build name / bundle id without re-deriving
-them. The caller passes the assemblies to probe — the engine never guesses via
+them. The caller passes the assemblies to probe - the engine never guesses via
 `GetExecutingAssembly` (that would resolve to the engine, not the game).
 
 ```csharp
@@ -85,7 +85,7 @@ skipped; otherwise the fallback is returned.
 
 - [ ] **Step 3: Add the project to the solution**
 
-Modify `KhaozEngine.slnx` — add the new project as the FIRST `<Project>` line (alphabetical: "App" sorts before "Content"):
+Modify `KhaozEngine.slnx` - add the new project as the FIRST `<Project>` line (alphabetical: "App" sorts before "Content"):
 
 ```xml
 <Solution>
@@ -95,7 +95,7 @@ Modify `KhaozEngine.slnx` — add the new project as the FIRST `<Project>` line 
 
 - [ ] **Step 4: Reference the package from the test project**
 
-Modify `KhaozEngine.Tests/KhaozEngine.Tests.csproj` — add the project reference as the FIRST `<ProjectReference>` (before Content):
+Modify `KhaozEngine.Tests/KhaozEngine.Tests.csproj` - add the project reference as the FIRST `<ProjectReference>` (before Content):
 
 ```xml
   <ItemGroup>
@@ -205,7 +205,7 @@ public class BuildMetadataTests
 - [ ] **Step 3: Run the tests to verify they fail**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~BuildMetadataTests" -v q`
-Expected: FAIL — compile error, `BuildMetadata` does not exist in namespace `KhaozEngine.App`.
+Expected: FAIL - compile error, `BuildMetadata` does not exist in namespace `KhaozEngine.App`.
 
 - [ ] **Step 4: Write the implementation**
 
@@ -288,7 +288,7 @@ public static class BuildMetadata
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~BuildMetadataTests" -v q`
-Expected: PASS — 7 passed.
+Expected: PASS - 7 passed.
 
 - [ ] **Step 6: Commit**
 
@@ -304,7 +304,7 @@ git commit -m "Add KhaozEngine.App.BuildMetadata.Read"
 - [ ] **Step 1: Run the entire test suite**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj -v q`
-Expected: PASS — baseline (~182) + 7 new, 0 failed. (Confirm the baseline count at the start of work; the delta is +7.)
+Expected: PASS - baseline (~182) + 7 new, 0 failed. (Confirm the baseline count at the start of work; the delta is +7.)
 
 - [ ] **Step 2: Build the package project in isolation (confirm no stray deps)**
 

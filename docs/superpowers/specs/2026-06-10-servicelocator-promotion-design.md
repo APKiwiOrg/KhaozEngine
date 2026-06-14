@@ -9,7 +9,7 @@ Lift Nullwake's generic `ServiceLocator` into the shared `KhaozEngine.App` packa
 (and the engine's `ScreenManager.Services` slot) can use one maintained service registry instead
 of threading dependencies through constructors.
 
-Source: `Nullwake.Core/Engine/ServiceLocator.cs` — already fully generic, zero game coupling,
+Source: `Nullwake.Core/Engine/ServiceLocator.cs` - already fully generic, zero game coupling,
 implements `IServiceProvider`. Engine has no equivalent yet.
 
 ## Decisions (from brainstorming)
@@ -83,7 +83,7 @@ Pure BCL; define a couple of tiny marker interfaces + implementations in the tes
 
 ## Release handling
 
-Item 4 of Batch 1. No `<Version>` bump, no `CHANGELOG.md`, no `dotnet pack` here — deferred to the
+Item 4 of Batch 1. No `<Version>` bump, no `CHANGELOG.md`, no `dotnet pack` here - deferred to the
 single end-of-batch `3.0.0 → 3.1.0` release.
 
 ## Out of scope

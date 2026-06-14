@@ -30,7 +30,7 @@ public sealed class EntityCommandBuffer
         _cmds.Add((Op.Remove, e, 0, (w, target) => w.Remove<T>(target)));
 
     /// <summary>Records an arbitrary deferred action, run in record order during <see cref="Playback"/>
-    /// (interleaved with structural ops). Put non-structural deterministic logic — counters, RNG rolls — here.</summary>
+    /// (interleaved with structural ops). Put non-structural deterministic logic - counters, RNG rolls - here.</summary>
     public void Defer(Action<World> action) =>
         _cmds.Add((Op.Defer, default, 0, (w, _) => action(w)));
 

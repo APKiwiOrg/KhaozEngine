@@ -1,4 +1,4 @@
-# KhaozEngine.Ecs Change Detection — Implementation Plan
+# KhaozEngine.Ecs Change Detection - Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax. TDD: failing test → see it fail → implement → see it pass → commit.
 
@@ -14,7 +14,7 @@
 
 ---
 
-## Task 1: Change tracking — sets, API, and the Set/Remove/Despawn hooks
+## Task 1: Change tracking - sets, API, and the Set/Remove/Despawn hooks
 
 **Files:** Create `KhaozEngine.Ecs/World.ChangeTracking.cs`; Modify `KhaozEngine.Ecs/World.Components.cs`, `KhaozEngine.Ecs/World.cs`; Test `KhaozEngine.Tests/ChangeDetectionTests.cs`
 
@@ -130,7 +130,7 @@ public class ChangeDetectionTests
 }
 ```
 
-- [ ] **Step 2: Run to verify failure** — `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj` → FAIL (members missing).
+- [ ] **Step 2: Run to verify failure** - `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj` → FAIL (members missing).
 
 - [ ] **Step 3: Create the change-tracking partial**
 
@@ -248,7 +248,7 @@ Replace the existing `Despawn` with (record each component as removed before the
     }
 ```
 
-- [ ] **Step 6: Run to verify pass** — `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj`. All `ChangeDetectionTests` pass plus the existing suite (76).
+- [ ] **Step 6: Run to verify pass** - `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj`. All `ChangeDetectionTests` pass plus the existing suite (76).
 
 - [ ] **Step 7: Commit**
 
@@ -263,9 +263,9 @@ git commit -m "ECS: per-tick change detection (Added/Changed/Removed, AdvanceTic
 
 **Files:** Modify `KhaozEngine.Ecs/KhaozEngine.Ecs.csproj`, `CHANGELOG.md`
 
-- [ ] **Step 1: Bump the Ecs package version** — in `KhaozEngine.Ecs/KhaozEngine.Ecs.csproj`, change `<Version>1.1.0</Version>` to `<Version>1.2.0</Version>`.
+- [ ] **Step 1: Bump the Ecs package version** - in `KhaozEngine.Ecs/KhaozEngine.Ecs.csproj`, change `<Version>1.1.0</Version>` to `<Version>1.2.0</Version>`.
 
-- [ ] **Step 2: Changelog** — prepend under the title in `CHANGELOG.md`:
+- [ ] **Step 2: Changelog** - prepend under the title in `CHANGELOG.md`:
 ```markdown
 ## KhaozEngine.Ecs 1.2.0
 
@@ -298,7 +298,7 @@ git commit -m "Release KhaozEngine.Ecs 1.2.0 (change detection)"
 - `Removed` may be dead; `.Where(IsAlive)` filters → Task 1 (`DespawnReportsRemovedForEachComponentAndMayBeDead`).
 - Additive `1.2.0` release → Task 2.
 
-**Placeholder scan:** none — every new/changed member shown in full.
+**Placeholder scan:** none - every new/changed member shown in full.
 
 **Type consistency:** `World.Tick`/`AdvanceTick`/`MarkChanged<T>`/`Added<T>`/`Changed<T>`/`Removed<T>` and internal `TrackAddedOrChanged`/`TrackRemoved`/`ByType` consistent across the partial and the hooks. `_added`/`_changed` are `HashSet<(Entity, int)>`; `_removed` is `Dictionary<int, List<Entity>>`. `Set`/`Remove`/`Despawn` edits preserve their existing guards and behavior, adding only tracking calls.
 

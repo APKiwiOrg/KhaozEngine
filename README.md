@@ -1,12 +1,12 @@
 # KhaozEngine
 
-Shared, game-agnostic **input + screen-stack** foundation for MonoGame games. One implementation, used by three games (Hardpoint, Nullwake, SpaceGame), so a fix written once — the click-through fix in particular — propagates to all of them.
+Shared, game-agnostic **input + screen-stack** foundation for MonoGame games. One implementation, used by three games (Hardpoint, Nullwake, SpaceGame), so a fix written once - the click-through fix in particular - propagates to all of them.
 
 KhaozEngine is **not** a full engine. It owns a set of focused, game-agnostic concerns, each a separate NuGet package, and nothing game-specific. The MonoGame-facing packages do input/UI/rendering; the rest are pure .NET so a game can pull in just what it needs:
 
 | Package | What it gives you | Depends on |
 |---|---|---|
-| **KhaozEngine.Input** | A unified pointer (mouse+touch), edge detection, the `IsTapIn` press-origin invariant, per-frame region blocking, drag/scroll/pinch, keyboard + gamepad + menu-navigation, and a coordinate-transform seam — all behind a testable `IRawInput` seam. | MonoGame |
+| **KhaozEngine.Input** | A unified pointer (mouse+touch), edge detection, the `IsTapIn` press-origin invariant, per-frame region blocking, drag/scroll/pinch, keyboard + gamepad + menu-navigation, and a coordinate-transform seam - all behind a testable `IRawInput` seam. | MonoGame |
 | **KhaozEngine.Screens** | A screen stack routed top-to-bottom with `receivesInput` / `PassUpdateThrough` / `AlwaysReceivesInput`, two consumption policies, and screen transitions. | KhaozEngine.Input |
 | **KhaozEngine.UI** | A widget library (Button, Slider, Dropdown, ScrollablePanel, TextInput, Toggle, Tooltip, …) and a `TextInputHandler`. (Rendering primitives moved to KhaozEngine.Graphics in 4.0.0.) | KhaozEngine.Input, KhaozEngine.Graphics |
 | **KhaozEngine.Ecs** | A struct-based archetype `World` / `Entity` / `ISystem` ECS: by-ref component access, `ForEach`, command buffer, system groups, `CachedQuery`, `DeterministicRng`, `WorldSerializer`. | MonoGame, KhaozEngine.Serialization |
@@ -31,7 +31,7 @@ The input + screen code was built clean inside Hardpoint, modelled on Nullwake's
 
 ## The one rule that matters most
 
-> **`MonoGameRawInput` is the only code in the entire stack that touches `Mouse`/`Keyboard`/`GamePad`/`TouchPanel`.** Everything above it reads an immutable `RawInputState` snapshot through the `IRawInput` seam. Games must not poll the MonoGame input statics directly — doing so re-introduces the untestable, click-through-leaking pattern this library exists to kill.
+> **`MonoGameRawInput` is the only code in the entire stack that touches `Mouse`/`Keyboard`/`GamePad`/`TouchPanel`.** Everything above it reads an immutable `RawInputState` snapshot through the `IRawInput` seam. Games must not poll the MonoGame input statics directly - doing so re-introduces the untestable, click-through-leaking pattern this library exists to kill.
 
 Full consumer contract: [`docs/USING-KHAOZENGINE.md`](docs/USING-KHAOZENGINE.md). Read it before wiring a game in.
 All docs are indexed in [`docs/INDEX.md`](docs/INDEX.md) (living docs vs the dated design archive).
@@ -94,11 +94,11 @@ Published to a private GitHub Packages feed on tagged releases, and packed to a 
 <PackageReference Include="KhaozEngine.Ecs"     Version="4.3.1" />
 ```
 
-**Versioning is SemVer.** Each game pins a version and adopts fixes by bumping it — so you can keep one game on an old version while you migrate another. Don't fork the packages; if a game needs an API that isn't there, add it here and bump the version.
+**Versioning is SemVer.** Each game pins a version and adopts fixes by bumping it - so you can keep one game on an old version while you migrate another. Don't fork the packages; if a game needs an API that isn't there, add it here and bump the version.
 
 ## Testability standard
 
-Every input and routing path is covered by `KhaozEngine.Tests` (xUnit), headless, by constructing `RawInputState` snapshots frame-by-frame and feeding them to `InputManager.Update`. New behaviour added to the library ships with a headless test. This is the standard, not a nicety — it's the reason the raw read is behind `IRawInput`.
+Every input and routing path is covered by `KhaozEngine.Tests` (xUnit), headless, by constructing `RawInputState` snapshots frame-by-frame and feeding them to `InputManager.Update`. New behaviour added to the library ships with a headless test. This is the standard, not a nicety - it's the reason the raw read is behind `IRawInput`.
 
 ```bash
 dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj

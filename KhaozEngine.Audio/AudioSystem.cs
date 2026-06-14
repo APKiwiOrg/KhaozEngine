@@ -56,7 +56,7 @@ public sealed class AudioSystem : IDisposable
 
     /// <summary>
     /// Adds a track to the rotation. Idempotent: re-registering a known track is a no-op.
-    /// Safe before or after <see cref="LoadContent"/> — a track registered after load is
+    /// Safe before or after <see cref="LoadContent"/> - a track registered after load is
     /// eager-loaded immediately via the backend (for DLC / runtime additions).
     /// </summary>
     public void RegisterTrack(string trackName)

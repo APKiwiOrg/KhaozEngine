@@ -1,4 +1,4 @@
-# KhaozEngine.Ecs — system ordering / groups (design)
+# KhaozEngine.Ecs - system ordering / groups (design)
 
 **Date:** 2026-06-08
 **Status:** Approved (pending written-spec review)
@@ -12,7 +12,7 @@ last of the deferred ECS features.
 
 ## Scope
 
-**Named groups only** — not a before/after constraint graph with topological sort. Within a group,
+**Named groups only** - not a before/after constraint graph with topological sort. Within a group,
 systems run in **registration order**; groups run in a **definable order**. Registration-order-within-a-group
 already gives deterministic ordering for these games; constraint graphs (and their cycle-detection
 failure modes) are more than they need.

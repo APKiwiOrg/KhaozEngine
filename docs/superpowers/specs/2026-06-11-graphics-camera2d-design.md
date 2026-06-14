@@ -1,4 +1,4 @@
-# KhaozEngine.Graphics — Camera2D (Batch 2, item 12)
+# KhaozEngine.Graphics - Camera2D (Batch 2, item 12)
 
 Promote SpaceGame's generic matrix camera into a new engine package. Base camera only:
 position/zoom/rotation to view matrix, plus screen<->world helpers and an optional
@@ -23,7 +23,7 @@ Out of scope (do NOT promote):
 
 ## Source (re-verified)
 
-`~/SpaceGame/SpaceGame/SpaceGame.Core/Camera2D.cs` — `internal sealed class Camera2D`:
+`~/SpaceGame/SpaceGame/SpaceGame.Core/Camera2D.cs` - `internal sealed class Camera2D`:
 - State: `Position` (get/set, default `Zero`), `Zoom` (get/set, default `1`). No rotation.
 - Holds a `GraphicsDevice`, reads `Viewport` off it on each `GetViewMatrix()`.
 - `GetViewMatrix()`, `WorldToScreen(Vector2)`, `ScreenToWorld(Vector2)`.
@@ -39,7 +39,7 @@ plain `Viewport` so the math is headless-testable with no graphics context.
 
 - `KhaozEngine.Graphics`, net10.0, `MonoGame.Framework.DesktopGL` `3.8.*`, README packed.
 - csproj mirrors `KhaozEngine.Time` (PackageId, Description, PackageReadmeFile, MonoGame
-  PackageReference, README `None` include). No version in the csproj — inherited from
+  PackageReference, README `None` include). No version in the csproj - inherited from
   `Directory.Build.props` (untouched).
 - Repo has `ImplicitUsings` disabled: explicit `using Microsoft.Xna.Framework;` (Matrix,
   Vector2, Rectangle, MathHelper) and `using Microsoft.Xna.Framework.Graphics;` (Viewport).
@@ -55,7 +55,7 @@ State (all public get/set):
 | `Rotation` | `float` | `0f` | Camera roll in radians, CCW. |
 | `Viewport` | `Viewport` | `default` | Convenience target for the no-arg overloads. |
 
-`sealed` — game follow-cams compose (own a `Camera2D`, drive its `Position`/`Zoom`/
+`sealed` - game follow-cams compose (own a `Camera2D`, drive its `Position`/`Zoom`/
 `Rotation`, read its matrix), they do not subclass.
 
 ### View matrix
@@ -67,7 +67,7 @@ T(-Position) * R(Rotation) * S(Zoom, Zoom, 1) * T(viewport.Width/2, viewport.Hei
 ```
 
 (XNA row-vector convention: composition reads left-to-right in application order.) Recenter
-on `Position`, rotate, scale, then translate to screen center — so the world rotates and
+on `Position`, rotate, scale, then translate to screen center - so the world rotates and
 scales about `Position`, which lands at the viewport center. At `Position=Zero, Zoom=1,
 Rotation=0` this maps world origin to `(W/2, H/2)`.
 
@@ -98,7 +98,7 @@ Exact when `Rotation == 0` (the platformer/scroller case). With non-zero rotatio
 visible area is a rotated quad, so the clamp is approximate; documented on the method, not
 engineered for rotation-exactness (YAGNI).
 
-`ClampPosition` returns a value and does not mutate `Position` — the caller assigns it (or
+`ClampPosition` returns a value and does not mutate `Position` - the caller assigns it (or
 not) at its discretion.
 
 ### Turn-key no-arg overloads
@@ -111,7 +111,7 @@ Delegate to the core using the `Viewport` property:
 
 Doc-comment: single-viewport games set `camera.Viewport` once and refresh it on
 `ClientSizeChanged`; split-screen / minimap / test code uses the per-call overloads and
-ignores the property. The property defaults to `default(Viewport)` (zero size) — the no-arg
+ignores the property. The property defaults to `default(Viewport)` (zero size) - the no-arg
 overloads are only meaningful once it is set.
 
 ## Tests (`KhaozEngine.Tests/CameraTests.cs`, xUnit, headless)
@@ -127,7 +127,7 @@ tolerance (helper or `Assert.Equal(expected, actual, precision)` on components).
    Position / Zoom / Rotation combinations.
 3. Zoom scale: `Position=Zero, Zoom=2`, world `(10,0)` -> `(400,300) + (20,0) = (420,300)`.
 4. Rotation: `Rotation = pi/2`, a world +X offset from `Position` maps to a screen offset
-   along ∓Y — pins the rotation direction and matrix fold.
+   along ∓Y - pins the rotation direction and matrix fold.
 5. No-arg parity: with `camera.Viewport` set, `GetViewMatrix() == GetViewMatrix(vp)` and the
    `WorldToScreen`/`ScreenToWorld` no-arg results equal their per-call equivalents.
 6. Clamp, world larger than view: `desired` past an edge -> `worldBounds.Left + halfW`
@@ -145,8 +145,8 @@ Added:
 - `KhaozEngine.Tests/CameraTests.cs`
 
 Edited (one line each):
-- `KhaozEngine.slnx` — add the project entry.
-- `KhaozEngine.Tests/KhaozEngine.Tests.csproj` — add the `ProjectReference`.
+- `KhaozEngine.slnx` - add the project entry.
+- `KhaozEngine.Tests/KhaozEngine.Tests.csproj` - add the `ProjectReference`.
 
 ## Open questions for coordinator
 

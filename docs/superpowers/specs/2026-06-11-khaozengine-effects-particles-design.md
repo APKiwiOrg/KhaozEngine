@@ -1,4 +1,4 @@
-# KhaozEngine.Effects — pooled particle system (promote Nullwake `HitParticleSystem`)
+# KhaozEngine.Effects - pooled particle system (promote Nullwake `HitParticleSystem`)
 
 Status: approved design
 Date: 2026-06-11
@@ -22,7 +22,7 @@ preserved exactly by two built-in presets, so adoption is a near drop-in swap.
   `SpawnDotParticles`).
 - Overlap noted: SpaceGame has its own `ParticleManager` / `Particle` /
   `ParticleEffectType`. Architecturally different (List-based/allocating,
-  texture+tail draw, `OnDeath` recursion, 4 named effects). NOT folded in here —
+  texture+tail draw, `OnDeath` recursion, 4 named effects). NOT folded in here -
   surfaced to coordinator as a possible future unification item.
 
 ## Decisions (locked with coordinator via relay)
@@ -119,18 +119,18 @@ Old call → new call mapping (for the later Nullwake adoption item):
   value); configurable via constructor. Each particle stores its own behavioral
   params (start size, end-size factor, sway freq/amp, phase, acceleration, color),
   so one system can mix particles spawned from different presets.
-- **Emit(config, position, baseColor, count)**: per particle —
+- **Emit(config, position, baseColor, count)**: per particle -
   - life = rand[MinLife, MaxLife], speed = rand[MinSpeed, MaxSpeed];
   - velocity: Radial → `angle = rand[0, 2π)`, `(cos,sin)·speed`; Directional →
     `Direction` rotated by `rand[-Spread, +Spread]`, scaled by speed;
   - spawn offset: `x ± JitterX`, `y ± JitterY` (uniform half-extent);
   - color: `OverrideColor ?? Lerp(baseColor, BlendTarget, BlendAmount)`;
   - sway phase: `rand[0, 2π)` (only matters when SwayAmplitude > 0).
-- **Update(double realDeltaSeconds)**: for each live particle —
+- **Update(double realDeltaSeconds)**: for each live particle -
   `vel += Acceleration·dt; pos += vel·dt`; if `SwayAmplitude > 0`,
   `x += sin(elapsed·SwayFrequency + phase)·SwayAmplitude·dt` where
   `elapsed = MaxLife − Life`; `Life -= dt`, recycle at `Life ≤ 0`. Uses real delta
-  (not sim delta) — same intent as the original (particles stay smooth regardless
+  (not sim delta) - same intent as the original (particles stay smooth regardless
   of game speed).
 - **Draw(spriteBatch, renderer)**: thin shim. `alpha = Life/MaxLife`;
   `size = StartSize·(EndSizeFactor + (1−EndSizeFactor)·t)` with `t = Life/MaxLife`;
@@ -160,19 +160,19 @@ New file `ParticleSystemTests.cs`. Seed a `new Random(<fixed>)` for determinism.
 8. **Size curve**: ember `ParticleView.Size` decreases toward `StartSize·0.3` as
    life drops; spark `Size` stays `StartSize`.
 
-The SpriteBatch `Draw` path stays an untested thin shim (per item brief — keep the
+The SpriteBatch `Draw` path stays an untested thin shim (per item brief - keep the
 SpriteBatch draw a shim; test the update/pool logic).
 
 ## Out of scope
 
 - Nullwake call-site migration (separate adoption item).
-- Unifying SpaceGame's `ParticleManager` (texture/tail/OnDeath) — surfaced to
+- Unifying SpaceGame's `ParticleManager` (texture/tail/OnDeath) - surfaced to
   coordinator, not done here.
 - Version bump / CHANGELOG / pack (coordinator owns 3.3.0 batch release).
 
 ## Open questions for coordinator
 
-- Approve the public API surface above — `ParticleEmitterConfig` fields,
-  `ParticleView`, `ActiveParticles()` — since Nullwake adoption and future callers
+- Approve the public API surface above - `ParticleEmitterConfig` fields,
+  `ParticleView`, `ActiveParticles()` - since Nullwake adoption and future callers
   bind to it.
 - SpaceGame overlap: keep separate (recommended) or schedule a future unify item?

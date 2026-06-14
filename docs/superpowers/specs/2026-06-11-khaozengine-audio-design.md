@@ -1,4 +1,4 @@
-# KhaozEngine.Audio — Design (Batch 2, Item 7)
+# KhaozEngine.Audio - Design (Batch 2, Item 7)
 
 Promote Nullwake's music/audio backend into a new game-agnostic package
 `KhaozEngine.Audio`. Source: `Nullwake.Core/Systems/{IMusicBackend,AudioSystem,
@@ -25,7 +25,7 @@ so it belongs in the shared engine.
 ## Coordinator decisions (locked)
 
 1. **Package:** new standalone `KhaozEngine.Audio`.
-2. **Track registration:** both — constructor seed list **and** additive `RegisterTrack`/
+2. **Track registration:** both - constructor seed list **and** additive `RegisterTrack`/
    `RegisterTracks`. Registration is **idempotent** (re-registering a known track is a
    no-op) and works **before or after** `LoadContent`: a track registered after load is
    eager-loaded immediately via the backend (so DLC / runtime track additions work).
@@ -82,7 +82,7 @@ public bool  MusicEnabled { get; set; }   // true default
 
 Behaviour notes:
 
-- `logger` defaults (when null) to `Log.For<AudioSystem>()` — a no-op when the game
+- `logger` defaults (when null) to `Log.For<AudioSystem>()` - a no-op when the game
   hasn't configured `KhaozEngine.Diagnostics`, real logs when it has. Turn-key: audio
   logs auto-route to the configured engine log, and it stays injectable/overridable and
   safe before `Log.Configure`. The resolved logger is threaded into any backend the
@@ -94,13 +94,13 @@ Behaviour notes:
   non-optional `IMusicBackend` first argument; a null backend throws `ArgumentNullException`.
 - The hardcoded `TrackNames` array is deleted; the caller registers its tracks via the
   constructor seed and/or `RegisterTrack`/`RegisterTracks`. Registration is idempotent
-  and works after `LoadContent` — late tracks are eager-loaded immediately through the
+  and works after `LoadContent` - late tracks are eager-loaded immediately through the
   backend using the `ContentManager` retained at load time. (No hard-throw after load:
   the whole point of additive registration is runtime/DLC track addition.)
 - The rotation / volume-scaling (`MasterVolume * MusicVolume`) / `MusicEnabled` toggle /
   `_available` / `_loaded` / `_started` state machine is lifted verbatim; only the
   logger and track source change.
-- `CreateBackend` stays lazy — it only instantiates the chosen backend, so the macOS
+- `CreateBackend` stays lazy - it only instantiates the chosen backend, so the macOS
   path never forces the MonoGame Media types to load.
 
 ## Test seam (KhaozEngine.Tests)
@@ -128,7 +128,7 @@ Headless tests (`KhaozEngine.Tests`):
 10. `Dispose` disposes the backend; a null injected backend throws.
 
 `LoadContent` requires a `ContentManager`; tests pass an empty
-`new ContentManager(stubServiceProvider)` (the fake backend ignores it — it never calls
+`new ContentManager(stubServiceProvider)` (the fake backend ignores it - it never calls
 `content.Load`). The real MonoGame and macOS backends stay untested: P/Invoke and
 MonoGame `Song` loading aren't unit-testable, which is exactly why the seam exists.
 
@@ -143,8 +143,8 @@ No `<Version>` bump, no `CHANGELOG.md` entry, no `dotnet pack` into the shared
 ## Out of scope (stays consumer-side)
 
 - The `[MethodImpl(NoInlining)]` JIT-isolation wrappers in `NullwakeGame` that defer
-  loading `Microsoft.Xna.Framework.Media` — a game concern.
+  loading `Microsoft.Xna.Framework.Media` - a game concern.
 - `ServiceLocator` registration of the `AudioSystem`.
 - Content-pipeline packaging (`.xnb` for non-mac, raw `.mp3` for the macOS file path
-  backend) — the consumer ships the assets; the package only consumes track names.
+  backend) - the consumer ships the assets; the package only consumes track names.
   Noted in the package README.

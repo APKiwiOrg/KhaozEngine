@@ -97,7 +97,7 @@ public sealed class CameraController
 
     /// <summary>
     /// Mirrors <c>PannableCanvas.TryGetTap</c>: true on the frame the viewport is tapped (press-origin
-    /// and release both inside it — the click-through-safe invariant). Returns the press and release
+    /// and release both inside it - the click-through-safe invariant). Returns the press and release
     /// points in world coordinates so the caller can hit-test both and require the same target. A pan
     /// also satisfies the invariant, but the camera moved between press and release, so its press and
     /// release world points differ and the same-target check rejects it. Maps through the viewport

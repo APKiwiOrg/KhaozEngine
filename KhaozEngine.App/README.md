@@ -4,7 +4,7 @@ Game-agnostic app identity / runtime helpers. Pure BCL, no MonoGame dependency.
 
 `BuildMetadata.Read` reads `AssemblyMetadata` items (emitted by a project's `Directory.Build.props`)
 back at runtime, so a game can surface its own version / build name / bundle id without re-deriving
-them. The caller passes the assemblies to probe — the engine never guesses via
+them. The caller passes the assemblies to probe - the engine never guesses via
 `GetExecutingAssembly` (that would resolve to the engine, not the game).
 
 ```csharp

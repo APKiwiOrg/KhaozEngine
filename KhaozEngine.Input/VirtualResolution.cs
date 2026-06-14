@@ -10,10 +10,10 @@ namespace KhaozEngine.Input;
 /// <list type="bullet">
 /// <item><b>Design-scaled</b> (mobile, and opt-in on desktop via <see cref="DesignScaled"/>): a
 /// fixed <see cref="BaseWidth"/> design space scaled to fill the window width, with the height axis
-/// adapting to the aspect ratio (fill-the-width, adaptive-height — no letterbox, no offset). A
+/// adapting to the aspect ratio (fill-the-width, adaptive-height - no letterbox, no offset). A
 /// large/Retina window scales the whole design space up, so UI keeps the same fixed design size.</item>
 /// <item><b>One-to-one</b> (the desktop default): scale 1.0, virtual size equals the window size,
-/// <see cref="ScaleMatrix"/> is identity — UI sizes in raw back-buffer pixels.</item>
+/// <see cref="ScaleMatrix"/> is identity - UI sizes in raw back-buffer pixels.</item>
 /// </list>
 /// Implements <see cref="ICoordinateTransform"/> so it can be passed straight to the
 /// <see cref="InputManager"/>; <see cref="ScreenToVirtual"/> divides by <see cref="Scale"/> in both

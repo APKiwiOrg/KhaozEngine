@@ -1,4 +1,4 @@
-# KhaozEngine.Ecs — change detection (design)
+# KhaozEngine.Ecs - change detection (design)
 
 **Date:** 2026-06-08
 **Status:** Approved (pending written-spec review)
@@ -6,8 +6,8 @@
 
 ## Goal
 
-Let systems react to component changes this frame — components **added**, **removed**, or whose
-value **changed** — instead of rescanning everything or hand-rolling dirty flags. Second of the
+Let systems react to component changes this frame - components **added**, **removed**, or whose
+value **changed** - instead of rescanning everything or hand-rolling dirty flags. Second of the
 deferred ECS features being folded in (relationships and system ordering/groups follow).
 
 ## The constraint that shapes the design
@@ -36,7 +36,7 @@ Detection is kept out of the hot column/archetype paths. The World holds three s
 - `Set<T>` **when it overwrites** an existing component → `_changed`.
 - `MarkChanged<T>(e)` → `_changed` (the manual hook for `ref` mutations; no-op if the entity lacks `T`).
 - `Remove<T>` → `_removed`. `Despawn` → `_removed` for **each** component the entity had.
-- The load path (`SetByType`) is exempt — loading is not a gameplay change, and the first
+- The load path (`SetByType`) is exempt - loading is not a gameplay change, and the first
   `AdvanceTick` clears the sets anyway.
 
 ## API (on `World`)
@@ -92,6 +92,6 @@ tag `ecs-v1.2.0` and push from `main` after the branch merges (CI publishes).
 ## Out of scope / deferred
 
 Automatic value-change detection (impossible through `ref` without a wrapper or pessimistic
-per-access stamping — both rejected); `Query()` filter integration; per-observer "since I last ran"
+per-access stamping - both rejected); `Query()` filter integration; per-observer "since I last ran"
 ticks (only "since last `AdvanceTick`" / this frame is supported); the remaining deferred features
 (relationships, system ordering/groups), each its own cycle.

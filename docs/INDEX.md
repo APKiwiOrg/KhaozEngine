@@ -22,7 +22,7 @@ runs on every push. Consumer *pins* are allowed to lag and are not checked.
 
 ## Process docs
 
-- [../CLAUDE.md](../CLAUDE.md) — concurrent-dev rule (worktree per change), the release ritual, build/test commands.
+- [../CLAUDE.md](../CLAUDE.md) - concurrent-dev rule (worktree per change), the release ritual, build/test commands.
 - Release ritual, short form: bump `Directory.Build.props` `<Version>` -> add the `CHANGELOG.md` entry ->
   update the engine-version line in `CONSUMERS.md` -> `dotnet pack -c Release -o ./local-feed` -> commit ->
   `git tag vX.Y.Z` -> push `main` + tag.
@@ -31,11 +31,11 @@ runs on every push. Consumer *pins* are allowed to lag and are not checked.
 
 Historical, not maintained as living docs. Two files per feature, named `YYYY-MM-DD-<feature>`:
 
-- `specs/` — the design doc agreed before building a feature (the "what + why").
-- `plans/` — the implementation plan executed against that spec (the "how").
+- `specs/` - the design doc agreed before building a feature (the "what + why").
+- `plans/` - the implementation plan executed against that spec (the "how").
 
 These capture the reasoning behind a feature at the time it shipped; the living docs above describe the
-current state. Don't update archive files to match later changes — supersede them with the CHANGELOG and
+current state. Don't update archive files to match later changes - supersede them with the CHANGELOG and
 the living docs instead. To browse what's there:
 
 ```sh

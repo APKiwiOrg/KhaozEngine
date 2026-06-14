@@ -39,12 +39,12 @@ Do **not** prefix the message with the category: `Log.Info("[CloudSave] saved")`
 
 ## Pieces
 
-- `Log` — static ambient facade (`Log.For<T>()`, `Log.Info(...)`, `Log.Configure`, `Log.Flush`, `Log.Shutdown`). No-op before `Configure`.
-- `LogManager` + `LoggerOptions` — injectable instance core (DI/tests). Runtime-settable `MinimumLevel`. Async by default; set `Synchronous = true` for deterministic tests.
-- `ILogger` — category logger (`Trace`/`Debug`/`Info`/`Warn`/`Error`/`Fatal`, each with an optional exception).
+- `Log` - static ambient facade (`Log.For<T>()`, `Log.Info(...)`, `Log.Configure`, `Log.Flush`, `Log.Shutdown`). No-op before `Configure`.
+- `LogManager` + `LoggerOptions` - injectable instance core (DI/tests). Runtime-settable `MinimumLevel`. Async by default; set `Synchronous = true` for deterministic tests.
+- `ILogger` - category logger (`Trace`/`Debug`/`Info`/`Warn`/`Error`/`Fatal`, each with an optional exception).
 - `ILogSink` + `FileSink` (rotate-on-launch + size rotation + retention), `ConsoleSink`, `DebugSink`, `InMemorySink`. Implement `ILogSink` for custom targets (in-game console, crash uploader).
-- `CrashHandler` — wires `AppDomain.UnhandledException` + `TaskScheduler.UnobservedTaskException`.
-- `IClock`/`SystemClock` — injectable timestamps.
+- `CrashHandler` - wires `AppDomain.UnhandledException` + `TaskScheduler.UnobservedTaskException`.
+- `IClock`/`SystemClock` - injectable timestamps.
 
 (OS-correct app-data paths live in `KhaozEngine.App` as `AppDataPaths`; resolve `FileSinkOptions.Path` through it.)
 

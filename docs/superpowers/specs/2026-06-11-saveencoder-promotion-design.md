@@ -23,7 +23,7 @@ Source: `Nullwake.Core/Systems/SaveEncoder.cs` (static class; hardcoded key + pr
    fake. A Persistence→Diagnostics dependency is acceptable (engine-wide good logging is wanted).
 
    > Context: the 3.1.0 logging service **removed** `FileLogger`; logging is now `Log` / `LogManager`
-   > / `ILogger` / sinks. An earlier draft of this design injected `FileLogger` — invalid now.
+   > / `ILogger` / sinks. An earlier draft of this design injected `FileLogger` - invalid now.
 
 ## Public API
 
@@ -104,5 +104,5 @@ Item 6 of Batch 1. No `<Version>` bump / `CHANGELOG.md` / `dotnet pack` here. Th
 
 ## Out of scope
 
-- Migrating Nullwake (or any game) to consume it — separate adopt PRs after release.
+- Migrating Nullwake (or any game) to consume it - separate adopt PRs after release.
 - Save read/write, atomic file writing (item 8), settings (item 10).

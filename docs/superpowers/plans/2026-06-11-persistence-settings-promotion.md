@@ -12,25 +12,25 @@
 
 **Release discipline (do NOT violate):** no `<Version>` edit, no `CHANGELOG.md`, no `docs/CONSUMERS.md`, no `dotnet pack`/local-feed. Coordinator owns the batched 3.3.0 release.
 
-**Shared-file note:** Task 2 edits `KhaozEngine.Persistence.csproj` (App ref) and Task 1 creates `IPersistenceQueue.cs` — both are also touched by item 8. The `.cs` filenames here are kept distinct from item 8's writer files; the coordinator sequences the csproj commit/rebase.
+**Shared-file note:** Task 2 edits `KhaozEngine.Persistence.csproj` (App ref) and Task 1 creates `IPersistenceQueue.cs` - both are also touched by item 8. The `.cs` filenames here are kept distinct from item 8's writer files; the coordinator sequences the csproj commit/rebase.
 
 ---
 
 ## File structure
 
 Create (production, `KhaozEngine.Persistence/`):
-- `IPersistenceQueue.cs` — the write seam (verbatim; item 8 adds identical text).
-- `TempDirectPersistenceQueue.cs` — TEMP throwaway synchronous queue (dropped at merge).
-- `ISettingsStorage.cs` — storage contract.
-- `FileSettingsStorage.cs` — concrete JSON storage over `AppDataPaths` + `IPersistenceQueue`.
-- `SettingsManager.cs` — `SettingsManager<T>`.
+- `IPersistenceQueue.cs` - the write seam (verbatim; item 8 adds identical text).
+- `TempDirectPersistenceQueue.cs` - TEMP throwaway synchronous queue (dropped at merge).
+- `ISettingsStorage.cs` - storage contract.
+- `FileSettingsStorage.cs` - concrete JSON storage over `AppDataPaths` + `IPersistenceQueue`.
+- `SettingsManager.cs` - `SettingsManager<T>`.
 
 Modify:
-- `KhaozEngine.Persistence/KhaozEngine.Persistence.csproj` — add App `ProjectReference`.
-- `KhaozEngine.Persistence/README.md` — add a "Settings" section.
+- `KhaozEngine.Persistence/KhaozEngine.Persistence.csproj` - add App `ProjectReference`.
+- `KhaozEngine.Persistence/README.md` - add a "Settings" section.
 
 Create (tests, `KhaozEngine.Tests/`):
-- `TempDirectPersistenceQueueTests.cs` — TEMP (dropped at merge with the impl).
+- `TempDirectPersistenceQueueTests.cs` - TEMP (dropped at merge with the impl).
 - `FileSettingsStorageTests.cs`
 - `SettingsManagerTests.cs`
 

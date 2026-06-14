@@ -1,4 +1,4 @@
-# KhaozEngine.Ecs — archetype ECS (design)
+# KhaozEngine.Ecs - archetype ECS (design)
 
 **Date:** 2026-06-08
 **Status:** Approved (pending written-spec review)
@@ -9,7 +9,7 @@ shared engine version; Input/Screens/UI stay on 0.2.x).
 
 Replace the placeholder component-composition `World` with a real, reusable **archetype ECS** that
 can underpin any of the author's MonoGame games. This is a deliberate foundation investment, not a
-response to a measured performance problem — Hardpoint's entity counts are modest — so the bar is
+response to a measured performance problem - Hardpoint's entity counts are modest - so the bar is
 "a clean, capable, well-tested ECS worth owning," with a generous-but-bounded core and clearly
 deferred advanced features.
 
@@ -29,7 +29,7 @@ migration of its one consumer, Hardpoint.
 Settled during brainstorming:
 
 1. **Full struct-based archetype ECS** (not the seam-preserving "archetype-of-references", which is
-   dominated — it gives neither data locality nor a head start on the real thing).
+   dominated - it gives neither data locality nor a head start on the real thing).
 2. **Component constraint is `struct`** (any value type), not `unmanaged`, so future components may
    hold managed fields (texture handles, strings). Columns are managed `T[]`.
 3. **`ForEach` arity cap = 8** (overloads `ForEach<T1>` … `ForEach<T1..T8>`). Filters are unlimited.
@@ -45,14 +45,14 @@ Settled during brainstorming:
 public readonly record struct Entity(int Id, uint Version);
 ```
 Ids are recycled through a free-list; recycling bumps the slot's version. A stale `Entity` whose
-version no longer matches the live slot is detected — `IsAlive` returns false — preventing the
+version no longer matches the live slot is detected - `IsAlive` returns false - preventing the
 recycled-id aliasing hazard the bare-int `World` has.
 
 ### Components
 
 `public interface IComponent { }` stays as a marker; component types are `struct X : IComponent`.
 Generic APIs constrain `where T : struct, IComponent`. **Tag components** (zero-size structs, e.g. a
-`FlowFollower` marker) are recognised and stored as archetype membership only — no column is
+`FlowFollower` marker) are recognised and stored as archetype membership only - no column is
 allocated for them.
 
 ### Archetype storage
@@ -61,8 +61,8 @@ allocated for them.
   bitset of dense `ComponentType` ids assigned by a registry).
 - Each archetype holds one **column** (`T[]`, grown as needed) per non-tag component type, plus a
   row→`Entity` array and a count. Component data for an entity lives at `(archetype, row)`.
-- The `World` keeps an `EntityRecord` per id — `(Archetype archetype, int row, uint version, bool
-  alive)` — and a free-list of recycled ids.
+- The `World` keeps an `EntityRecord` per id - `(Archetype archetype, int row, uint version, bool
+  alive)` - and a free-list of recycled ids.
 - **Structural changes** (`Add<T>`, `Remove<T>`, `Set<T>` when it adds a new type, `Spawn`,
   `Despawn`) move the entity to the archetype matching its new signature: allocate a row there, copy
   the shared columns over, and **swap-remove** from the old archetype (the row that backfills has its
@@ -90,7 +90,7 @@ bool   TryGet<T>(Entity e, out T value);          // by value (copy)
 
 - A **`Query`** is described with `With<T>()` / `Without<T>()` (any number of each) and caches the
   set of matching archetypes, refreshed when new archetypes appear.
-- Primary iteration is **`ForEach`** with ref-passing delegates, arities 1–8:
+- Primary iteration is **`ForEach`** with ref-passing delegates, arities 1-8:
   ```csharp
   world.ForEach((Entity e, ref Transform t, ref Movement m) => { t.Position += ...; });
   world.Query().Without<Frozen>().ForEach((Entity e, ref Transform t) => { ... });
@@ -112,13 +112,13 @@ directly; direct structural calls outside iteration remain immediate.
 
 ### Systems
 
-`public interface ISystem { void Update(World world, float dt); }` — unchanged. `World.AddSystem`
+`public interface ISystem { void Update(World world, float dt); }` - unchanged. `World.AddSystem`
 registers; `World.Update(dt)` runs systems in registration order, then plays back the frame's command
 buffer. (System groups, ordering constraints, and parallel scheduling are deferred.)
 
 ### Resources (typed singletons)
 
-`SetResource<T>(T)` / `T GetResource<T>()` / `bool HasResource<T>()` — a typed store for world-global
+`SetResource<T>(T)` / `T GetResource<T>()` / `bool HasResource<T>()` - a typed store for world-global
 state (a match context, a clock, RNG). Optional for consumers; Hardpoint may keep constructor
 injection or move shared state here.
 
@@ -133,7 +133,7 @@ Each is a clean future addition; none is needed for the current games.
 `KhaozEngine.Ecs` sets its own `<Version>1.0.0</Version>` in its csproj, overriding the repo-shared
 version, so the ECS versions independently of Input/Screens/UI. It keeps its own `CHANGELOG.md`
 section (or a dedicated changelog) and remains dependency-free (MonoGame only, for `Vector2` et al.
-used by consumers' components — the ECS core itself needs no MonoGame type). Released by the normal
+used by consumers' components - the ECS core itself needs no MonoGame type). Released by the normal
 ritual (pack to local-feed cumulatively, tag, CI publish).
 
 ## Testing
@@ -144,7 +144,7 @@ Headless xUnit, exhaustive (this is a foundation):
   reports `!IsAlive`; `Get`/`Has` on a stale handle do not return live data.
 - Archetype transitions: `Add`/`Remove`/`Set` move the entity and preserve the other components'
   values; tag components change the signature with no column.
-- `Get` returns a live ref — mutation through it persists.
+- `Get` returns a live ref - mutation through it persists.
 - `Despawn` swap-remove: the backfilled entity's row is corrected; its components remain correct.
 - `ForEach` correctness across arities 1, 2, 3 (and a spot-check at a higher arity), with `With` /
   `Without` filters, including matching-many-take-few.

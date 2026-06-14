@@ -1,8 +1,8 @@
-# KhaozEngine.Ecs Archetype ECS — Build Plan (Plan 1 of 2)
+# KhaozEngine.Ecs Archetype ECS - Build Plan (Plan 1 of 2)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax. TDD: failing test → see it fail → implement → see it pass → commit.
 
-**Goal:** Replace the placeholder `World` in `KhaozEngine.Ecs` with a real struct-based archetype ECS (versioned entities, archetype/column storage, `ref` access, `With`/`Without` queries, `ForEach` arities 1–8, an `EntityCommandBuffer`, and typed `Resources`), released at its own version `1.0.0`.
+**Goal:** Replace the placeholder `World` in `KhaozEngine.Ecs` with a real struct-based archetype ECS (versioned entities, archetype/column storage, `ref` access, `With`/`Without` queries, `ForEach` arities 1-8, an `EntityCommandBuffer`, and typed `Resources`), released at its own version `1.0.0`.
 
 **Architecture:** Entities are versioned handles into a record table. Components are `struct`s; entities with the same component set share an **archetype** that stores each component type in a contiguous **column** (`T[]`). Structural changes move an entity between archetypes (copy shared columns, swap-remove from the old). Queries cache matching archetypes; `ForEach` passes `ref`s into columns. Structural changes during iteration go through an `EntityCommandBuffer`.
 
@@ -17,21 +17,21 @@
 ---
 
 ## File Structure (KhaozEngine.Ecs/)
-- `Entity.cs` — versioned handle (rewrite).
-- `IComponent.cs` — marker (unchanged).
-- `ComponentRegistry.cs` — `Type`→dense id, tag detection, column factory.
-- `Column.cs` — `Column` abstract + `Column<T>` typed storage.
-- `Archetype.cs` — signature, columns, rows, add/swap-remove.
-- `ArchetypeSignature.cs` — sorted-int-set key with equality/hash.
-- `World.cs` — entities, structural ops, access, queries, systems, resources (rewrite).
-- `Query.cs` — `With`/`Without` + `ForEach` arities 1–8 + `Entities()`.
-- `RefActions.cs` — `RefAction<T1..Tn>` delegate types.
-- `EntityCommandBuffer.cs` — deferred structural changes.
+- `Entity.cs` - versioned handle (rewrite).
+- `IComponent.cs` - marker (unchanged).
+- `ComponentRegistry.cs` - `Type`→dense id, tag detection, column factory.
+- `Column.cs` - `Column` abstract + `Column<T>` typed storage.
+- `Archetype.cs` - signature, columns, rows, add/swap-remove.
+- `ArchetypeSignature.cs` - sorted-int-set key with equality/hash.
+- `World.cs` - entities, structural ops, access, queries, systems, resources (rewrite).
+- `Query.cs` - `With`/`Without` + `ForEach` arities 1-8 + `Entities()`.
+- `RefActions.cs` - `RefAction<T1..Tn>` delegate types.
+- `EntityCommandBuffer.cs` - deferred structural changes.
 - **Delete:** `World.cs` old contents (rewritten), `KhaozEngine.Tests/EcsWorldTests.cs` (replaced).
 
 ---
 
-## Task 1: Reset the package — versioned Entity, marker, remove old World + test
+## Task 1: Reset the package - versioned Entity, marker, remove old World + test
 
 **Files:**
 - Modify: `KhaozEngine.Ecs/Entity.cs`
@@ -57,7 +57,7 @@ public readonly record struct Entity(int Id, uint Version);
 cd ~/KhaozEngine
 git rm KhaozEngine.Ecs/World.cs KhaozEngine.Tests/EcsWorldTests.cs
 ```
-> `IComponent.cs` stays as-is (the marker interface). The new `World.cs` is created in Task 4; the package will not build again until then — that's expected for this rewrite.
+> `IComponent.cs` stays as-is (the marker interface). The new `World.cs` is created in Task 4; the package will not build again until then - that's expected for this rewrite.
 
 ---
 
@@ -110,7 +110,7 @@ public class ColumnTests
 }
 ```
 
-- [ ] **Step 2: Run to verify failure** — `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj` → FAIL (types missing).
+- [ ] **Step 2: Run to verify failure** - `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj` → FAIL (types missing).
 
 - [ ] **Step 3: Implement Column**
 
@@ -375,7 +375,7 @@ git commit -m "ECS: ArchetypeSignature + Archetype storage"
 
 ---
 
-## Task 4: World — spawn / despawn / versioning
+## Task 4: World - spawn / despawn / versioning
 
 **Files:**
 - Create: `KhaozEngine.Ecs/World.cs`
@@ -714,7 +714,7 @@ git commit -m "ECS: structural ops + ref access with archetype moves"
 
 ---
 
-## Task 6: Queries + ForEach (arities 1–8)
+## Task 6: Queries + ForEach (arities 1-8)
 
 **Files:**
 - Create: `KhaozEngine.Ecs/RefActions.cs`, `KhaozEngine.Ecs/Query.cs`, `KhaozEngine.Ecs/World.Query.cs`
@@ -778,7 +778,7 @@ public class QueryTests
 
 - [ ] **Step 3: Implement RefActions, Query, and World.Query**
 
-`KhaozEngine.Ecs/RefActions.cs` — delegate types, arities 1–8:
+`KhaozEngine.Ecs/RefActions.cs` - delegate types, arities 1-8:
 ```csharp
 namespace KhaozEngine.Ecs;
 
@@ -792,7 +792,7 @@ public delegate void RefAction<T1, T2, T3, T4, T5, T6, T7>(Entity e, ref T1 c1, 
 public delegate void RefAction<T1, T2, T3, T4, T5, T6, T7, T8>(Entity e, ref T1 c1, ref T2 c2, ref T3 c3, ref T4 c4, ref T5 c5, ref T6 c6, ref T7 c7, ref T8 c8);
 ```
 
-`KhaozEngine.Ecs/Query.cs` — filters + matching-archetype cache + `ForEach` arities 1–8 + `Entities()`:
+`KhaozEngine.Ecs/Query.cs` - filters + matching-archetype cache + `ForEach` arities 1-8 + `Entities()`:
 ```csharp
 using System.Collections.Generic;
 
@@ -871,7 +871,7 @@ public sealed class Query
 
 > **Implementer note:** write out all of `ForEach<T1,T2,T3>` through `ForEach<T1..T8>` in `Query.cs` by mechanically extending the two shown above (one more id/guard/column/ref-arg each). They are not optional or abbreviated in the final file.
 
-`KhaozEngine.Ecs/World.Query.cs` — no-filter convenience that delegates to a fresh `Query` (filters add their own):
+`KhaozEngine.Ecs/World.Query.cs` - no-filter convenience that delegates to a fresh `Query` (filters add their own):
 ```csharp
 namespace KhaozEngine.Ecs;
 
@@ -887,7 +887,7 @@ public sealed partial class World
 }
 ```
 
-> **Implementer note:** likewise write all `World.ForEach<...>` arities 1–8 (each a one-line delegation to `new Query(this).ForEach(a)`).
+> **Implementer note:** likewise write all `World.ForEach<...>` arities 1-8 (each a one-line delegation to `new Query(this).ForEach(a)`).
 
 - [ ] **Step 4: Run to verify pass; commit**
 
@@ -1177,13 +1177,13 @@ Expected: green. Input/Screens/UI are untouched and still 0.2.0.
 - `struct, IComponent`; tag components no-column → Tasks 2, 3, 5.
 - Archetype/column storage, structural moves, swap-remove fixups → Tasks 3, 5.
 - `ref Get<T>` / Set / Add / Remove / Has / TryGet → Task 5.
-- `With`/`Without` queries + `ForEach` arities 1–8 + `Entities()` → Task 6.
+- `With`/`Without` queries + `ForEach` arities 1-8 + `Entities()` → Task 6.
 - `EntityCommandBuffer` (create/despawn/set/remove + placeholder resolution) → Task 7.
 - `Resources` + `ISystem`/`AddSystem`/`Update` → Task 8.
 - Independent `1.0.0`, changelog (per the engine's release rule) → Task 9.
 - Deferred features (scheduling, change detection, relationships, serialization, native memory) → absent by design.
 
-**Placeholder scan:** the only deliberately-templated code is `ForEach` arities 3–8 (Task 6), specified by an exact mechanical rule and flagged "write them all out" — not vague. Everything else is complete.
+**Placeholder scan:** the only deliberately-templated code is `ForEach` arities 3-8 (Task 6), specified by an exact mechanical rule and flagged "write them all out" - not vague. Everything else is complete.
 
 **Type consistency:** `Entity(int Id, uint Version)`; `where T : struct, IComponent` on every component API; `Column<T>.Data`/`Get`/`Set` used by `World`, `Archetype`, `Query`; `ComponentRegistry.Id<T>()`/`IsTag`/`CreateColumn`; `Archetype.Has`/`AddRow`/`SwapRemove(out Entity)`; `World` partial across `World.cs`/`World.Components.cs`/`World.Query.cs`/`World.Systems.cs` sharing `_records`/`Reg`/`Archetypes`/`ArchetypeGen`. `RefAction<...>` matches `ForEach<...>` arities. `EntityCommandBuffer.Create/Despawn/Set/Remove/Playback`. `World.SetResource/GetResource/HasResource`, `AddSystem/Update`.
 

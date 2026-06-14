@@ -4,7 +4,7 @@
 
 **Goal:** Promote Nullwake's OS-selected music backend (MonoGame `MediaPlayer` + a macOS `AVAudioPlayer` ObjC P/Invoke bridge) into a new game-agnostic `KhaozEngine.Audio` package, with the hardcoded track list parameterized and logging routed through `KhaozEngine.Diagnostics`.
 
-**Architecture:** `AudioSystem` (public) owns volume/enable/auto-rotation state and delegates playback to an `IMusicBackend` (public). The default constructor picks a backend by OS (`MacOsMusicBackend` on macOS, else `MonoGameMusicBackend`); a second constructor injects a backend for tests or custom platforms. Both concrete backends are public extension points. Tracks are caller-registered (constructor seed + additive, idempotent `RegisterTrack`/`RegisterTracks` that work before or after load — late registrations eager-load for DLC/runtime tracks). Logging is a constructor-injected `ILogger` defaulting to the `Log.For<AudioSystem>()` facade (turn-key: auto-routes to the configured engine log, safe before `Log.Configure`). The real backends are thin platform shims; `AudioSystem`'s logic is covered headlessly against a `FakeMusicBackend`.
+**Architecture:** `AudioSystem` (public) owns volume/enable/auto-rotation state and delegates playback to an `IMusicBackend` (public). The default constructor picks a backend by OS (`MacOsMusicBackend` on macOS, else `MonoGameMusicBackend`); a second constructor injects a backend for tests or custom platforms. Both concrete backends are public extension points. Tracks are caller-registered (constructor seed + additive, idempotent `RegisterTrack`/`RegisterTracks` that work before or after load - late registrations eager-load for DLC/runtime tracks). Logging is a constructor-injected `ILogger` defaulting to the `Log.For<AudioSystem>()` facade (turn-key: auto-routes to the configured engine log, safe before `Log.Configure`). The real backends are thin platform shims; `AudioSystem`'s logic is covered headlessly against a `FakeMusicBackend`.
 
 **Tech Stack:** net10.0, C# latest, MonoGame.Framework.DesktopGL 3.8.*, KhaozEngine.Diagnostics, xUnit.
 
@@ -15,25 +15,25 @@
 ## File Structure
 
 Created:
-- `KhaozEngine.Audio/KhaozEngine.Audio.csproj` — package definition
-- `KhaozEngine.Audio/README.md` — package readme (packed)
-- `KhaozEngine.Audio/IMusicBackend.cs` — public backend interface (the seam)
-- `KhaozEngine.Audio/MacOsMusicPlayer.cs` — internal AVAudioPlayer ObjC P/Invoke bridge
-- `KhaozEngine.Audio/MacOsMusicBackend.cs` — public macOS backend (file-path .mp3 playback)
-- `KhaozEngine.Audio/MonoGameMusicBackend.cs` — public MonoGame `Song`/`MediaPlayer` backend
-- `KhaozEngine.Audio/AudioSystem.cs` — public orchestrator (volume/enable/rotation)
-- `KhaozEngine.Tests/Audio/FakeMusicBackend.cs` — test double implementing `IMusicBackend`
-- `KhaozEngine.Tests/Audio/StubServiceProvider.cs` — minimal `IServiceProvider` for a headless `ContentManager`
-- `KhaozEngine.Tests/Audio/AudioSystemTests.cs` — headless behaviour tests
+- `KhaozEngine.Audio/KhaozEngine.Audio.csproj` - package definition
+- `KhaozEngine.Audio/README.md` - package readme (packed)
+- `KhaozEngine.Audio/IMusicBackend.cs` - public backend interface (the seam)
+- `KhaozEngine.Audio/MacOsMusicPlayer.cs` - internal AVAudioPlayer ObjC P/Invoke bridge
+- `KhaozEngine.Audio/MacOsMusicBackend.cs` - public macOS backend (file-path .mp3 playback)
+- `KhaozEngine.Audio/MonoGameMusicBackend.cs` - public MonoGame `Song`/`MediaPlayer` backend
+- `KhaozEngine.Audio/AudioSystem.cs` - public orchestrator (volume/enable/rotation)
+- `KhaozEngine.Tests/Audio/FakeMusicBackend.cs` - test double implementing `IMusicBackend`
+- `KhaozEngine.Tests/Audio/StubServiceProvider.cs` - minimal `IServiceProvider` for a headless `ContentManager`
+- `KhaozEngine.Tests/Audio/AudioSystemTests.cs` - headless behaviour tests
 
 Modified:
-- `KhaozEngine.slnx` — add the `KhaozEngine.Audio` project
-- `KhaozEngine.Tests/KhaozEngine.Tests.csproj` — add a `ProjectReference` to `KhaozEngine.Audio`
+- `KhaozEngine.slnx` - add the `KhaozEngine.Audio` project
+- `KhaozEngine.Tests/KhaozEngine.Tests.csproj` - add a `ProjectReference` to `KhaozEngine.Audio`
 
 > Note: this is a promotion of already-working code. Backends are lifted near-verbatim
 > (namespace, visibility, and logger change only) and are not unit-testable (P/Invoke +
-> MonoGame `Song`). The new/changed logic — track parameterization, idempotent + post-load
-> registration, backend and logger injection — is what the headless tests in Task 7 exercise.
+> MonoGame `Song`). The new/changed logic - track parameterization, idempotent + post-load
+> registration, backend and logger injection - is what the headless tests in Task 7 exercise.
 
 ---
 
@@ -471,7 +471,7 @@ internal sealed class MacOsMusicPlayer : IDisposable
 - [ ] **Step 2: Build**
 
 Run: `dotnet build KhaozEngine.Audio/KhaozEngine.Audio.csproj --nologo`
-Expected: build succeeds. (`SelInit` is assigned but unused — same as the original; not an error.)
+Expected: build succeeds. (`SelInit` is assigned but unused - same as the original; not an error.)
 
 - [ ] **Step 3: Commit**
 
@@ -490,9 +490,9 @@ git commit -m "Lift MacOsMusicPlayer AVAudioPlayer bridge into KhaozEngine.Audio
 
 Both lifted verbatim from Nullwake except namespace, the dropped `using Nullwake.Core.Engine;`,
 an injected `ILogger`, and `GameLogger` calls becoming `_logger` calls. **Both concrete backends
-are `public`** — they are the agreed extension point, so a game can pick or compose a specific
+are `public`** - they are the agreed extension point, so a game can pick or compose a specific
 backend. Their `ILogger` is optional, defaulting to the turn-key `Log.For<T>()` facade so a game
-can `new MonoGameMusicBackend()` with no setup. (`MacOsMusicPlayer` stays internal — it is an
+can `new MonoGameMusicBackend()` with no setup. (`MacOsMusicPlayer` stays internal - it is an
 implementation detail of `MacOsMusicBackend`, not an `IMusicBackend`.)
 
 - [ ] **Step 1: Create MacOsMusicBackend**
@@ -766,7 +766,7 @@ public sealed class AudioSystem : IDisposable
 
     /// <summary>
     /// Adds a track to the rotation. Idempotent: re-registering a known track is a no-op.
-    /// Safe before or after <see cref="LoadContent"/> — a track registered after load is
+    /// Safe before or after <see cref="LoadContent"/> - a track registered after load is
     /// eager-loaded immediately via the backend (for DLC / runtime additions).
     /// </summary>
     public void RegisterTrack(string trackName)
@@ -1085,7 +1085,7 @@ git commit -m "Wire KhaozEngine.Audio into tests + add FakeMusicBackend/StubServ
 - Create: `KhaozEngine.Tests/Audio/AudioSystemTests.cs`
 
 > These exercise the new/changed logic against the fake backend. Because `AudioSystem`
-> is already implemented (Task 5), they are expected to PASS on first run — the value is
+> is already implemented (Task 5), they are expected to PASS on first run - the value is
 > proving track parameterization, idempotent + post-load registration, rotation, volume
 > scaling, enable toggle, Update progression, availability flip, and dispose all behave
 > as designed.
@@ -1312,10 +1312,10 @@ public sealed class AudioSystemTests
 - [ ] **Step 2: Run the new tests**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --nologo --filter "FullyQualifiedName~AudioSystemTests"`
-Expected: PASS — 15 tests, 0 failed.
+Expected: PASS - 15 tests, 0 failed.
 
 If any fail, debug with `superpowers:systematic-debugging` before proceeding (a likely
-first-run snag is the headless `ContentManager` constructor — if `new ContentManager(new
+first-run snag is the headless `ContentManager` constructor - if `new ContentManager(new
 StubServiceProvider())` throws, that is the only place to investigate; the fake backend
 ignores its argument so no content is ever loaded).
 
@@ -1340,12 +1340,12 @@ Expected: build succeeds, `KhaozEngine.Audio` included.
 - [ ] **Step 2: Run the full test suite**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --nologo`
-Expected: PASS — `268 + 15 = 283` total, 0 failed. (Baseline was 268.)
+Expected: PASS - `268 + 15 = 283` total, 0 failed. (Baseline was 268.)
 
 - [ ] **Step 3: Confirm no release-discipline violations**
 
 Run: `git diff --stat origin/main -- Directory.Build.props CHANGELOG.md docs/CONSUMERS.md`
-Expected: empty output (no version bump, no changelog, no consumers edit — coordinator owns 3.3.0).
+Expected: empty output (no version bump, no changelog, no consumers edit - coordinator owns 3.3.0).
 
 - [ ] **Step 4: Final status for the coordinator**
 

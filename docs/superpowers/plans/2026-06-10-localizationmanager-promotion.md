@@ -21,14 +21,14 @@
 
 ## File Structure
 
-- `KhaozEngine.Localization/KhaozEngine.Localization.csproj` — new package project (pure BCL).
-- `KhaozEngine.Localization/README.md` — packed package readme.
-- `KhaozEngine.Localization/LocalizationManager.cs` — the promoted class (sole responsibility: culture discovery + thread-culture mutation).
-- `KhaozEngine.slnx` — add the new project.
-- `KhaozEngine.Tests/KhaozEngine.Tests.csproj` — add a `ProjectReference` to the new package.
-- `KhaozEngine.Tests/LocalizationManagerTests.cs` — tests + test-local `FakeResourceManager`/`FakeResourceSet`.
+- `KhaozEngine.Localization/KhaozEngine.Localization.csproj` - new package project (pure BCL).
+- `KhaozEngine.Localization/README.md` - packed package readme.
+- `KhaozEngine.Localization/LocalizationManager.cs` - the promoted class (sole responsibility: culture discovery + thread-culture mutation).
+- `KhaozEngine.slnx` - add the new project.
+- `KhaozEngine.Tests/KhaozEngine.Tests.csproj` - add a `ProjectReference` to the new package.
+- `KhaozEngine.Tests/LocalizationManagerTests.cs` - tests + test-local `FakeResourceManager`/`FakeResourceSet`.
 
-No version bump or CHANGELOG entry in this plan — that happens once at the end of Batch 1 (see spec "Release handling").
+No version bump or CHANGELOG entry in this plan - that happens once at the end of Batch 1 (see spec "Release handling").
 
 All commands run from the worktree root: `/Users/antonio/KhaozEngine/.claude/worktrees/batch1-promote`.
 
@@ -96,7 +96,7 @@ LocalizationManager.SetCulture(code ?? LocalizationManager.DEFAULT_CULTURE_CODE)
 
 - [ ] **Step 3: Add the project to the solution**
 
-Modify `KhaozEngine.slnx` — add the new project line in alphabetical order, immediately after the `KhaozEngine.Input` line:
+Modify `KhaozEngine.slnx` - add the new project line in alphabetical order, immediately after the `KhaozEngine.Input` line:
 
 ```xml
   <Project Path="KhaozEngine.Input/KhaozEngine.Input.csproj" />
@@ -106,7 +106,7 @@ Modify `KhaozEngine.slnx` — add the new project line in alphabetical order, im
 
 - [ ] **Step 4: Reference the package from the test project**
 
-Modify `KhaozEngine.Tests/KhaozEngine.Tests.csproj` — add the project reference in alphabetical order, after the `KhaozEngine.Input` reference:
+Modify `KhaozEngine.Tests/KhaozEngine.Tests.csproj` - add the project reference in alphabetical order, after the `KhaozEngine.Input` reference:
 
 ```xml
     <ProjectReference Include="../KhaozEngine.Input/KhaozEngine.Input.csproj" />
@@ -157,7 +157,7 @@ public class LocalizationManagerTests
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~LocalizationManagerTests" -v q`
-Expected: FAIL — compile error, `LocalizationManager` does not exist in namespace `KhaozEngine.Localization`.
+Expected: FAIL - compile error, `LocalizationManager` does not exist in namespace `KhaozEngine.Localization`.
 
 - [ ] **Step 3: Write the minimal implementation**
 
@@ -188,7 +188,7 @@ public class LocalizationManager
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~LocalizationManagerTests" -v q`
-Expected: PASS — 1 passed.
+Expected: PASS - 1 passed.
 
 - [ ] **Step 5: Commit**
 
@@ -244,12 +244,12 @@ Add these three tests inside the `LocalizationManagerTests` class in `KhaozEngin
     }
 ```
 
-Note: `Assert.Throws<ArgumentNullException>` for the null case is exact. For the empty case, assert on the base type with `Assert.ThrowsAny<ArgumentException>` — xUnit 2.x `Assert.Throws<T>` uses **exact** type matching and would reject the derived `ArgumentNullException`; `ThrowsAny<T>` is the one that accepts subtypes.
+Note: `Assert.Throws<ArgumentNullException>` for the null case is exact. For the empty case, assert on the base type with `Assert.ThrowsAny<ArgumentException>` - xUnit 2.x `Assert.Throws<T>` uses **exact** type matching and would reject the derived `ArgumentNullException`; `ThrowsAny<T>` is the one that accepts subtypes.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~LocalizationManagerTests" -v q`
-Expected: FAIL — compile error, `LocalizationManager` does not contain a definition for `SetCulture`.
+Expected: FAIL - compile error, `LocalizationManager` does not contain a definition for `SetCulture`.
 
 - [ ] **Step 3: Add the SetCulture method**
 
@@ -275,7 +275,7 @@ In `KhaozEngine.Localization/LocalizationManager.cs`, add this method inside the
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~LocalizationManagerTests" -v q`
-Expected: PASS — 4 passed.
+Expected: PASS - 4 passed.
 
 - [ ] **Step 5: Commit**
 
@@ -374,7 +374,7 @@ internal sealed class FakeResourceManager : ResourceManager
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~LocalizationManagerTests" -v q`
-Expected: FAIL — compile error: `LocalizationManager` has no constructor taking one argument and no `GetSupportedCultures` method.
+Expected: FAIL - compile error: `LocalizationManager` has no constructor taking one argument and no `GetSupportedCultures` method.
 
 - [ ] **Step 3: Add the ctor, field, and GetSupportedCultures**
 
@@ -468,7 +468,7 @@ public class LocalizationManager
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~LocalizationManagerTests" -v q`
-Expected: PASS — 7 passed.
+Expected: PASS - 7 passed.
 
 - [ ] **Step 5: Commit**
 
@@ -484,7 +484,7 @@ git commit -m "Add LocalizationManager.GetSupportedCultures"
 - [ ] **Step 1: Run the entire test suite**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj -v q`
-Expected: PASS — 164 passed (157 baseline + 7 new), 0 failed.
+Expected: PASS - 164 passed (157 baseline + 7 new), 0 failed.
 
 - [ ] **Step 2: Build the package project in isolation (confirm no stray deps)**
 

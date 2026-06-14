@@ -1,8 +1,8 @@
-# KhaozEngine.Ecs Deterministic Outcome Buffer + RNG — Implementation Plan
+# KhaozEngine.Ecs Deterministic Outcome Buffer + RNG - Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax. TDD throughout.
 
-**Goal:** Add the deterministic deferred-outcome model to `KhaozEngine.Ecs` — `EntityCommandBuffer.Defer`, a pull-model typed event channel, a `DeterministicRng`, and the RNG-draw-timing contract — released as `1.6.0`. Determinism Cycle B.
+**Goal:** Add the deterministic deferred-outcome model to `KhaozEngine.Ecs` - `EntityCommandBuffer.Defer`, a pull-model typed event channel, a `DeterministicRng`, and the RNG-draw-timing contract - released as `1.6.0`. Determinism Cycle B.
 
 **Architecture:** Additive, opt-in. `Defer(Action<World>)` joins the existing ordered command list (drains in record order). `World.Emit`/`Events<T>` are a per-type, emission-ordered event store cleared by `AdvanceTick`. `DeterministicRng` is a standalone pinned-algorithm RNG. The engine owns ordering; games own RNG/meaning. Hardpoint/Nullwake unaffected.
 
@@ -63,7 +63,7 @@ public class DeferTests
 }
 ```
 
-- [ ] **Step 2: Run to verify failure** — `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj` (no `Defer`).
+- [ ] **Step 2: Run to verify failure** - `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj` (no `Defer`).
 
 - [ ] **Step 3: Add `Defer` to `EntityCommandBuffer.cs`**
 
@@ -71,7 +71,7 @@ public class DeferTests
 - Add the method (after `Remove`):
 ```csharp
     /// <summary>Records an arbitrary deferred action, run in record order during <see cref="Playback"/>
-    /// (interleaved with structural ops). Put non-structural deterministic logic — counters, RNG rolls — here.</summary>
+    /// (interleaved with structural ops). Put non-structural deterministic logic - counters, RNG rolls - here.</summary>
     public void Defer(Action<World> action) =>
         _cmds.Add((Op.Defer, default, 0, (w, _) => action(w)));
 ```
@@ -262,7 +262,7 @@ namespace KhaozEngine.Ecs;
 
 /// <summary>
 /// Seeded, fixed-algorithm pseudo-random generator (xorshift128+, seeded via splitmix64). Reproducible
-/// across .NET versions and platforms — unlike <see cref="System.Random"/>. Opt-in: a game owns an
+/// across .NET versions and platforms - unlike <see cref="System.Random"/>. Opt-in: a game owns an
 /// instance and persists <see cref="State"/> for save/resume. Used inside deferred commands so draws
 /// occur in a deterministic order (see the outcome-buffer contract).
 /// </summary>
@@ -319,7 +319,7 @@ public sealed class DeterministicRng
 }
 ```
 
-- [ ] **Step 4: Capture the known vector** — run the suite; `KnownVectorLocksAlgorithm` fails on the placeholder zeros. Read the actual first three `NextULong()` values for seed 42 from the failure output and replace the `expected` array. Re-run: it passes, locking the algorithm against accidental change.
+- [ ] **Step 4: Capture the known vector** - run the suite; `KnownVectorLocksAlgorithm` fails on the placeholder zeros. Read the actual first three `NextULong()` values for seed 42 from the failure output and replace the `expected` array. Re-run: it passes, locking the algorithm against accidental change.
 
 - [ ] **Step 5: Commit**
 
@@ -415,7 +415,7 @@ git commit -m "Release KhaozEngine.Ecs 1.6.0 (deterministic outcome buffer + RNG
 - Opt-in / no regression → all tasks (full suite green; no existing API changed).
 - Additive `1.6.0` release → Task 4.
 
-**Placeholder scan:** one intentional — the known-vector `expected` array is captured on first run (Task 3 Step 4), not a logic gap.
+**Placeholder scan:** one intentional - the known-vector `expected` array is captured on first run (Task 3 Step 4), not a logic gap.
 
 **Type consistency:** `EntityCommandBuffer.Defer(Action<World>)` + `Op.Defer`; `World.Emit<T>(T)` / `Events<T>()` / internal `ClearEvents`; `_events` is `Dictionary<Type, List<object>>`; `DeterministicRng` API per spec. `AdvanceTick` clears the event store alongside the change sets.
 

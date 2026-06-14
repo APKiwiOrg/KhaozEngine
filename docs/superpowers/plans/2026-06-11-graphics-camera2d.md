@@ -19,14 +19,14 @@
 ## File Structure
 
 Created:
-- `KhaozEngine.Graphics/KhaozEngine.Graphics.csproj` — package definition (mirrors `KhaozEngine.Time`).
-- `KhaozEngine.Graphics/Camera2D.cs` — the camera type (the entire public surface of the package).
-- `KhaozEngine.Graphics/README.md` — packed package readme.
-- `KhaozEngine.Tests/CameraTests.cs` — headless xUnit tests.
+- `KhaozEngine.Graphics/KhaozEngine.Graphics.csproj` - package definition (mirrors `KhaozEngine.Time`).
+- `KhaozEngine.Graphics/Camera2D.cs` - the camera type (the entire public surface of the package).
+- `KhaozEngine.Graphics/README.md` - packed package readme.
+- `KhaozEngine.Tests/CameraTests.cs` - headless xUnit tests.
 
 Modified (one line each):
-- `KhaozEngine.slnx` — register the new project so the solution builds it.
-- `KhaozEngine.Tests/KhaozEngine.Tests.csproj` — add `ProjectReference` to the new package so tests can see `Camera2D`.
+- `KhaozEngine.slnx` - register the new project so the solution builds it.
+- `KhaozEngine.Tests/KhaozEngine.Tests.csproj` - add `ProjectReference` to the new package so tests can see `Camera2D`.
 
 ---
 
@@ -133,7 +133,7 @@ public sealed class Camera2D
 
 - [ ] **Step 4: Register the project in the solution**
 
-Modify `KhaozEngine.slnx` — add this line in the `<Solution>` list, keeping the existing alphabetical-ish order (after the `Ecs` entry, before `Input`):
+Modify `KhaozEngine.slnx` - add this line in the `<Solution>` list, keeping the existing alphabetical-ish order (after the `Ecs` entry, before `Input`):
 
 ```xml
   <Project Path="KhaozEngine.Graphics/KhaozEngine.Graphics.csproj" />
@@ -141,7 +141,7 @@ Modify `KhaozEngine.slnx` — add this line in the `<Solution>` list, keeping th
 
 - [ ] **Step 5: Reference the package from the test project**
 
-Modify `KhaozEngine.Tests/KhaozEngine.Tests.csproj` — add to the `<ItemGroup>` of `ProjectReference`s (after the `Ecs` reference, before `Input`):
+Modify `KhaozEngine.Tests/KhaozEngine.Tests.csproj` - add to the `<ItemGroup>` of `ProjectReference`s (after the `Ecs` reference, before `Input`):
 
 ```xml
     <ProjectReference Include="../KhaozEngine.Graphics/KhaozEngine.Graphics.csproj" />
@@ -224,7 +224,7 @@ public class CameraTests
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~CameraTests"`
-Expected: FAIL — `Camera2D` does not contain a definition for `WorldToScreen`.
+Expected: FAIL - `Camera2D` does not contain a definition for `WorldToScreen`.
 
 - [ ] **Step 3: Implement GetViewMatrix and WorldToScreen**
 
@@ -322,7 +322,7 @@ Append these methods to the `CameraTests` class in `KhaozEngine.Tests/CameraTest
 ```
 
 Note for the implementer: if the `Rotation` test's expected sign is off, do NOT flip the
-matrix — verify against MonoGame's `Matrix.CreateRotationZ` convention and correct the
+matrix - verify against MonoGame's `Matrix.CreateRotationZ` convention and correct the
 *expected* value in the test. The matrix order is fixed by the spec; the test documents the
 observed direction. (`CreateRotationZ(+theta)` rotates the world CCW; composed with the
 screen translate, a +X world offset maps toward +Y screen. If empirically it is `-10f`,
@@ -331,7 +331,7 @@ update the expected to `H/2 - 10f` and leave a comment.)
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~CameraTests"`
-Expected: FAIL — `Camera2D` does not contain a definition for `ScreenToWorld`.
+Expected: FAIL - `Camera2D` does not contain a definition for `ScreenToWorld`.
 
 - [ ] **Step 3: Implement ScreenToWorld**
 
@@ -399,7 +399,7 @@ Append to the `CameraTests` class:
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~CameraTests"`
-Expected: FAIL — no parameterless `GetViewMatrix` overload.
+Expected: FAIL - no parameterless `GetViewMatrix` overload.
 
 - [ ] **Step 3: Implement the no-arg overloads**
 
@@ -489,7 +489,7 @@ Append to the `CameraTests` class. Bounds `(0,0,1000,1000)`; at `Zoom=1`, `Vp` i
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~CameraTests"`
-Expected: FAIL — no `ClampPosition` method.
+Expected: FAIL - no `ClampPosition` method.
 
 - [ ] **Step 3: Implement ClampPosition**
 
@@ -500,7 +500,7 @@ Add to `Camera2D.cs` after the no-arg overloads:
     /// Returns <paramref name="desired"/> clamped so the visible world rectangle
     /// (viewport size divided by <see cref="Zoom"/>) stays inside <paramref name="worldBounds"/>.
     /// On an axis where the world is smaller than the view, the result is centered on that
-    /// axis. Does not mutate <see cref="Position"/> — the caller assigns the result if wanted.
+    /// axis. Does not mutate <see cref="Position"/> - the caller assigns the result if wanted.
     /// </summary>
     /// <remarks>
     /// Uses the axis-aligned visible rect and ignores <see cref="Rotation"/>: exact when
@@ -552,7 +552,7 @@ Expected: **281 total, 0 failed** = 268 baseline + 13 new. New cases: WorldOrigi
 - [ ] **Step 2: Build the package in Release to confirm pack-readiness (no pack)**
 
 Run: `dotnet build KhaozEngine.Graphics/KhaozEngine.Graphics.csproj -c Release`
-Expected: Build succeeded, 0 errors. (Do NOT run `dotnet pack` into the shared feed — coordinator owns release.)
+Expected: Build succeeded, 0 errors. (Do NOT run `dotnet pack` into the shared feed - coordinator owns release.)
 
 - [ ] **Step 3: Confirm release-discipline files are untouched**
 

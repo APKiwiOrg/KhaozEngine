@@ -82,8 +82,8 @@ public sealed class PannableCanvas
     }
 
     /// <summary>Frames <paramref name="worldRect"/>: fits <see cref="Camera"/> zoom so the rect
-    /// (optionally inflated by <paramref name="paddingFraction"/> on each side) is fully visible —
-    /// a contain fit clamped to <see cref="MinZoom"/>/<see cref="MaxZoom"/> — centers on it, then clamps
+    /// (optionally inflated by <paramref name="paddingFraction"/> on each side) is fully visible -
+    /// a contain fit clamped to <see cref="MinZoom"/>/<see cref="MaxZoom"/> - centers on it, then clamps
     /// to <see cref="ContentBounds"/>. Delegates to
     /// <see cref="KhaozEngine.Graphics.Camera2D.Focus(Rectangle, Viewport, float, float, float)"/>,
     /// the shared fit-to-rect core. (Unlike <see cref="CenterOn"/>, this also changes the zoom.)</summary>

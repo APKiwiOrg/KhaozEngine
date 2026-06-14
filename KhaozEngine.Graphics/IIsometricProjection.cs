@@ -6,7 +6,7 @@ namespace KhaozEngine.Graphics;
 /// Render-only isometric projection seam: world &lt;-&gt; screen mapping for a diamond tile grid.
 /// Implemented by <see cref="IsometricProjection"/>; consumers depend on this so they can swap the
 /// projection or substitute a fake/stub in headless screen tests (mirrors the <c>IDesignViewport</c>
-/// seam in <c>KhaozEngine.Input</c>). Holds no grid/tiles/pathfinding — purely the coordinate map.
+/// seam in <c>KhaozEngine.Input</c>). Holds no grid/tiles/pathfinding - purely the coordinate map.
 /// </summary>
 public interface IIsometricProjection
 {

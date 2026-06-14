@@ -7,7 +7,7 @@
 # script checks exactly those declarations and nothing else.
 #
 # NOTE: consumer *pins* (e.g. "Hardpoint ... On 4.0.0") legitimately lag the
-# engine version and are deliberately NOT checked here — a game adopts a release
+# engine version and are deliberately NOT checked here - a game adopts a release
 # on its own schedule. Only the "this is the current release" claims are enforced.
 #
 # Run locally: ./scripts/check-doc-versions.sh   (also runs in CI)

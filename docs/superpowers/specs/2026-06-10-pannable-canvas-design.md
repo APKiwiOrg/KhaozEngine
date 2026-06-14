@@ -1,4 +1,4 @@
-# PannableCanvas — design
+# PannableCanvas - design
 
 A reusable `KhaozEngine.UI` control: a viewport that owns a camera and lets a consumer
 pan over content larger than the viewport. Generalizes the camera/pan code Nullwake's
@@ -6,7 +6,7 @@ pan over content larger than the viewport. Generalizes the camera/pan code Nullw
 reinvention.
 
 Reference (do not modify): `Nullwake.Core/Screens/SkillTreeScreen.cs` already does all of
-this inline — a `Vector2 _cameraOffset`, drag pan via `_input.GetDragDelta`, wheel pan via
+this inline - a `Vector2 _cameraOffset`, drag pan via `_input.GetDragDelta`, wheel pan via
 `_input.GetScrollIn`, `ClampCamera()` against auto-computed canvas bounds, scissor-clipped
 drawing, and `ScreenToWorld`/`WorldToScreen` transforms.
 
@@ -63,7 +63,7 @@ public sealed class PannableCanvas
 
 ### Dependency rationale
 
-`VirtualResolution` is **not** headless-constructable — its constructor requires a
+`VirtualResolution` is **not** headless-constructable - its constructor requires a
 `GraphicsDeviceManager`. It is only needed for the scissor scale and the scale matrix, both
 of which only matter inside `Draw()`. Everything else (pan, clamp, transforms, tap, focus)
 works in virtual coordinates and needs only `InputManager`, which already reports
@@ -72,7 +72,7 @@ works in virtual coordinates and needs only `InputManager`, which already report
 So the testable core depends on `InputManager` alone, and `Draw()` takes the two raw values
 (`renderScale`, `scaleMatrix`) instead of a `VirtualResolution`. Callers pass `vr.Scale` and
 `vr.ScaleMatrix`. The control has zero dependency on `VirtualResolution`. `PrimitiveRenderer`
-is not a dependency either — the caller owns all drawing.
+is not a dependency either - the caller owns all drawing.
 
 ## Behavior
 
@@ -133,15 +133,15 @@ return false;
 ```
 
 `IsTapIn` is the click-through-safe gate (it already enforces the press-origin invariant).
-Returning both world points lets the caller hit-test each and require the same node — the
-precision check `SkillTreeScreen` does today — without the control knowing what a node is.
+Returning both world points lets the caller hit-test each and require the same node - the
+precision check `SkillTreeScreen` does today - without the control knowing what a node is.
 
 ### Focus
 
 - `CenterOn(world)`: `CameraOffset = -world * _zoom`, then `Clamp()`. Lands `world` at the
   viewport center (subject to clamping).
 - `Focus(rect)`: `CenterOn(rect center)`.
-- `CenterContent()`: `CenterOn(ContentBounds center)` — the on-open default ("focus the
+- `CenterContent()`: `CenterOn(ContentBounds center)` - the on-open default ("focus the
   frontier" is the caller passing its own rect to `Focus`).
 
 All three use the current `Viewport`/`ContentBounds`, so the caller sets those before calling
@@ -197,8 +197,8 @@ input frames; assert on `CameraOffset` and the transforms. No `GraphicsDevice`.
 - `WorldToScreen`/`ScreenToWorld` round-trip for arbitrary points and offsets.
 - `TryGetTap` maps press + release to the correct world points on a tap inside the viewport;
   returns false when the press began outside the viewport, or when the pointer was not released
-  this frame. (An in-viewport pan-release also returns true — `IsTapIn` does not measure drag
-  distance — but its press and release world points differ because the camera moved between them,
+  this frame. (An in-viewport pan-release also returns true - `IsTapIn` does not measure drag
+  distance - but its press and release world points differ because the camera moved between them,
   so the caller's same-target check rejects it.)
 - `CenterOn`/`Focus`/`CenterContent` place the target at the viewport center (when bounds are
   large enough that clamping does not move it).

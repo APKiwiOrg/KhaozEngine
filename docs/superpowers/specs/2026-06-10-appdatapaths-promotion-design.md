@@ -11,7 +11,7 @@ through one maintained implementation instead of each hand-inlining
 `Environment.GetFolderPath(LocalApplicationData)`.
 
 Current state:
-- SpaceGame: `SpaceGame.Core/Systems/AppDataPaths.cs` — a proper static resolver (Win/mac/Linux/
+- SpaceGame: `SpaceGame.Core/Systems/AppDataPaths.cs` - a proper static resolver (Win/mac/Linux/
   XDG + fallbacks), but hardcodes `AppFolderName = "SpaceGame"`.
 - Nullwake: inlines `Environment.GetFolderPath(SpecialFolder.LocalApplicationData)` + `"Nullwake"`
   in `NullwakeGame.cs`, `Systems/LocalSaveSystem.cs`, and the old `Engine/GameLogger.cs`.
@@ -25,7 +25,7 @@ Current state:
    state (rejected the static `Configure`-once pattern, consistent with `LocalizationManager`).
 3. **Injected-environment test seam.** The OS/env access is abstracted behind an internal
    `IAppDataEnvironment` so every resolution branch is unit-tested deterministically on any OS.
-   Games never touch it — they use the simple `AppDataPaths(appFolderName)` ctor; the engine owns
+   Games never touch it - they use the simple `AppDataPaths(appFolderName)` ctor; the engine owns
    all OS-specific nuance in one place. Requires `InternalsVisibleTo KhaozEngine.Tests` on the package.
 4. **Full convenience member set** (pure drop-in for SpaceGame): `BaseDirectory`, `SaveFilePath`,
    `SettingsFilePath`, `LogFilePath`, `PreviousLogFilePath`, `GetFilePath(name)`. The conventional
@@ -135,4 +135,4 @@ Item 5 of Batch 1. No `<Version>` bump, no `CHANGELOG.md` entry, no `dotnet pack
 - Migrating the games to consume it (adopt PRs, after release). NOTE for that phase: Nullwake's
   data dir moves from `LocalApplicationData/Nullwake` to the OS-correct location, so existing user
   saves/logs would need a one-time migration or would appear "reset". SpaceGame is a near drop-in.
-- Reworking save/settings persistence (items 8/10) — only the path resolution moves here.
+- Reworking save/settings persistence (items 8/10) - only the path resolution moves here.

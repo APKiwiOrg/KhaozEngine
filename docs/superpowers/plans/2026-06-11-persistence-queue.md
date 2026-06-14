@@ -15,22 +15,22 @@
 ## File Structure
 
 New files in `KhaozEngine.Persistence/`:
-- `IPersistenceQueue.cs` — coordinator-fixed seam (verbatim text; item 10 adds identical text).
-- `AtomicJsonWriter.cs` — static synchronous atomic write.
-- `PersistenceWriteFailedEventArgs.cs` — failure event payload.
-- `PersistenceQueue.cs` — coalesced async writer.
+- `IPersistenceQueue.cs` - coordinator-fixed seam (verbatim text; item 10 adds identical text).
+- `AtomicJsonWriter.cs` - static synchronous atomic write.
+- `PersistenceWriteFailedEventArgs.cs` - failure event payload.
+- `PersistenceQueue.cs` - coalesced async writer.
 
 New test files in `KhaozEngine.Tests/`:
 - `AtomicJsonWriterTests.cs`
 - `PersistenceQueueTests.cs`
 
 Modified:
-- `KhaozEngine.Persistence/KhaozEngine.Persistence.csproj` — add `KhaozEngine.App` ProjectReference.
-- `KhaozEngine.Persistence/README.md` — document the new types.
+- `KhaozEngine.Persistence/KhaozEngine.Persistence.csproj` - add `KhaozEngine.App` ProjectReference.
+- `KhaozEngine.Persistence/README.md` - document the new types.
 
 Reused test helpers (already in `KhaozEngine.Tests`, namespace `KhaozEngine.Tests`):
-- `FakeAppDataEnvironment` (internal, in `AppDataPathsTests.cs`) — drives `new AppDataPaths(folder, env)`.
-- `FakeLogger` (internal, in `SaveEncoderTests.cs`) — captures `Entries` of `(LogLevel Level, string Message)`.
+- `FakeAppDataEnvironment` (internal, in `AppDataPathsTests.cs`) - drives `new AppDataPaths(folder, env)`.
+- `FakeLogger` (internal, in `SaveEncoderTests.cs`) - captures `Entries` of `(LogLevel Level, string Message)`.
 
 All commands run from the worktree root: `/Users/antonio/KhaozEngine/.claude/worktrees/batch2-item8-persistence-queue`.
 
@@ -63,7 +63,7 @@ to:
 - [ ] **Step 2: Verify it still builds**
 
 Run: `dotnet build KhaozEngine.Persistence/KhaozEngine.Persistence.csproj`
-Expected: Build succeeded (no cycle — `KhaozEngine.App` has no project references).
+Expected: Build succeeded (no cycle - `KhaozEngine.App` has no project references).
 
 - [ ] **Step 3: Commit**
 
@@ -83,7 +83,7 @@ git commit -m "Persistence: reference KhaozEngine.App for AppDataPaths overloads
 
 - [ ] **Step 1: Create the interface (verbatim, coordinator-fixed)**
 
-Create `KhaozEngine.Persistence/IPersistenceQueue.cs` with EXACTLY this text (item 10 adds the identical text in its branch; byte-identical so the two copies merge with zero conflict — do not reword the comments):
+Create `KhaozEngine.Persistence/IPersistenceQueue.cs` with EXACTLY this text (item 10 adds the identical text in its branch; byte-identical so the two copies merge with zero conflict - do not reword the comments):
 
 ```csharp
 namespace KhaozEngine.Persistence;
@@ -241,7 +241,7 @@ public class AtomicJsonWriterTests
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~AtomicJsonWriterTests"`
-Expected: FAIL — does not compile, `AtomicJsonWriter` does not exist.
+Expected: FAIL - does not compile, `AtomicJsonWriter` does not exist.
 
 - [ ] **Step 3: Implement AtomicJsonWriter**
 
@@ -305,7 +305,7 @@ public static class AtomicJsonWriter
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~AtomicJsonWriterTests"`
-Expected: PASS — 6 tests.
+Expected: PASS - 6 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -431,7 +431,7 @@ public class PersistenceQueueTests
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~PersistenceQueueTests"`
-Expected: FAIL — does not compile, `PersistenceQueue` does not exist.
+Expected: FAIL - does not compile, `PersistenceQueue` does not exist.
 
 - [ ] **Step 3: Implement the queue core**
 
@@ -575,7 +575,7 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~PersistenceQueueTests"`
-Expected: PASS — 4 tests.
+Expected: PASS - 4 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -595,7 +595,7 @@ git commit -m "Persistence: add PersistenceQueue core (coalesce, flush, dispose)
 
 - [ ] **Step 1: Write the failing tests**
 
-Add these two tests inside the `PersistenceQueueTests` class in `KhaozEngine.Tests/PersistenceQueueTests.cs` (before the `NewTempRoot` helper). They need `using KhaozEngine.Diagnostics;` (for `LogLevel`) — add it to the file's using block.
+Add these two tests inside the `PersistenceQueueTests` class in `KhaozEngine.Tests/PersistenceQueueTests.cs` (before the `NewTempRoot` helper). They need `using KhaozEngine.Diagnostics;` (for `LogLevel`) - add it to the file's using block.
 
 ```csharp
     [Fact]
@@ -653,7 +653,7 @@ Add these two tests inside the `PersistenceQueueTests` class in `KhaozEngine.Tes
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~PersistenceQueueTests"`
-Expected: FAIL — `PersistenceWriteFailedEventArgs` and `PersistenceQueue.WriteFailed` do not exist (does not compile).
+Expected: FAIL - `PersistenceWriteFailedEventArgs` and `PersistenceQueue.WriteFailed` do not exist (does not compile).
 
 - [ ] **Step 3: Create the event-args type**
 
@@ -774,7 +774,7 @@ In `KhaozEngine.Persistence/PersistenceQueue.cs`, in `DrainPending`, change the 
 - [ ] **Step 7: Run the tests to verify they pass**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~PersistenceQueueTests"`
-Expected: PASS — 6 tests.
+Expected: PASS - 6 tests.
 
 - [ ] **Step 8: Commit**
 
@@ -793,7 +793,7 @@ git commit -m "Persistence: add retry + WriteFailed event to PersistenceQueue"
 
 - [ ] **Step 1: Write the failing tests**
 
-Add these tests inside `PersistenceQueueTests` (before the `NewTempRoot` helper). They need `using KhaozEngine.App;` — add it to the file's using block.
+Add these tests inside `PersistenceQueueTests` (before the `NewTempRoot` helper). They need `using KhaozEngine.App;` - add it to the file's using block.
 
 ```csharp
     [Fact]
@@ -837,7 +837,7 @@ Add these tests inside `PersistenceQueueTests` (before the `NewTempRoot` helper)
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~PersistenceQueueTests"`
-Expected: FAIL — no `Enqueue(AppDataPaths, string, string)` overload (does not compile). (`EnqueueGeneric_SerializesValueAsJson` uses the `Enqueue<T>` added in Task 4 and will compile, but the file fails to build until the AppDataPaths overload exists.)
+Expected: FAIL - no `Enqueue(AppDataPaths, string, string)` overload (does not compile). (`EnqueueGeneric_SerializesValueAsJson` uses the `Enqueue<T>` added in Task 4 and will compile, but the file fails to build until the AppDataPaths overload exists.)
 
 - [ ] **Step 3: Add the AppDataPaths overloads**
 
@@ -862,7 +862,7 @@ In `KhaozEngine.Persistence/PersistenceQueue.cs`, add these two methods immediat
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~PersistenceQueueTests"`
-Expected: PASS — 8 tests.
+Expected: PASS - 8 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -932,7 +932,7 @@ git commit -m "Persistence: document AtomicJsonWriter and PersistenceQueue in RE
 - [ ] **Step 1: Run the entire test suite**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj`
-Expected: PASS — 268 baseline + 14 new = **282 tests**, 0 failed.
+Expected: PASS - 268 baseline + 14 new = **282 tests**, 0 failed.
 
 - [ ] **Step 2: Confirm the package builds in isolation**
 

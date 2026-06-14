@@ -1,4 +1,4 @@
-# KhaozEngine.Ecs — seed-stable iteration order (design)
+# KhaozEngine.Ecs - seed-stable iteration order (design)
 
 **Date:** 2026-06-08
 **Status:** Approved (pending written-spec review)
@@ -14,7 +14,7 @@ for non-deterministic games.
 This is **Cycle A** of the determinism work requested for SpaceGame. **Cycle B** (deterministic
 outcome/event buffer + RNG-draw timing) follows separately. Note SpaceGame still runs its own
 order-preserving entity lists and seeded `System.Random`; this cycle makes the *engine* ECS reproducible
-for its own native use and for SpaceGame's eventual Phase-4 adoption — it does not change SpaceGame today.
+for its own native use and for SpaceGame's eventual Phase-4 adoption - it does not change SpaceGame today.
 
 ## The gap
 
@@ -24,7 +24,7 @@ Iteration has two layers:
   enumeration order is not contractually stable across processes or after rehashing. **This is the one
   real source of non-determinism.**
 - **Within-archetype:** entities are a dense `Entity[]`. Removal uses **swap-remove** (O(1)). Given an
-  identical operation sequence this is already reproducible (same swaps ⇒ same layout) — it is *not*
+  identical operation sequence this is already reproducible (same swaps ⇒ same layout) - it is *not*
   insertion-ordered, but reproducible is sufficient for lockstep and for cross-client hashing. We keep
   swap-remove (decision: no perf regression; SpaceGame keeps its own ordered lists regardless).
 
@@ -46,18 +46,18 @@ No public API changes. The only observable difference is that iteration order be
 ## Reproducibility guarantee (documented contract)
 
 > For a `World` built by a given sequence of `Spawn`/`Set`/`Add`/`Remove`/`Despawn` operations,
-> `Query`/`ForEach` visit entities in an order that depends only on that sequence — identical run-to-run
+> `Query`/`ForEach` visit entities in an order that depends only on that sequence - identical run-to-run
 > and across processes. Order is creation-ordered across archetypes and swap-remove-stable within an
 > archetype. It is reproducible, not insertion-ordered.
 
 ## Out of scope
 
-- Change-detection set enumeration (`Added`/`Changed`/`Removed` currently iterate a `HashSet`) — a
+- Change-detection set enumeration (`Added`/`Changed`/`Removed` currently iterate a `HashSet`) - a
   separate small follow-up only if a deterministic sim iterates those.
-- Order-preserving (insertion-ordered) within-archetype removal — rejected for now (perf + diff size);
+- Order-preserving (insertion-ordered) within-archetype removal - rejected for now (perf + diff size);
   reproducible swap-remove is sufficient.
-- Zero-alloc query enumerators (a perf concern, not correctness) — separate cycle if ever wanted.
-- The outcome/event buffer + RNG-draw timing — Cycle B.
+- Zero-alloc query enumerators (a perf concern, not correctness) - separate cycle if ever wanted.
+- The outcome/event buffer + RNG-draw timing - Cycle B.
 
 ## Testing (headless)
 

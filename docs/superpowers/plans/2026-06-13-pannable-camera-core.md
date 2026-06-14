@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make `PannableCanvas` (UI) and `CameraController` (Graphics) both drive a `Camera2D` and share one implementation of pan-by-delta, zoom-about-focus, pinch, clamp, and tap — and give PannableCanvas real pinch-to-zoom.
+**Goal:** Make `PannableCanvas` (UI) and `CameraController` (Graphics) both drive a `Camera2D` and share one implementation of pan-by-delta, zoom-about-focus, pinch, clamp, and tap - and give PannableCanvas real pinch-to-zoom.
 
 **Architecture:** Promote `PanByScreenDelta` and `ZoomAboutScreenPoint` onto `Camera2D`; generalize `Camera2D.GetViewMatrix` to honor viewport X/Y; add two shared gesture helpers (`PinchGestureTracker`, `CameraGestures.TryGetTap`) in Graphics. Refactor `CameraController` to consume them (byte-identical). Rewrite `PannableCanvas` to delegate its transform/clamp/tap math to a backing `Camera2D` and add pinch-zoom, while keeping its scissor `Draw`, `BlockInput`, `Padding`, `ScrollPanSpeed`, and wheel-as-vertical-pan semantics. Release as 3.8.0.
 
@@ -35,7 +35,7 @@ Add to `KhaozEngine.Tests/CameraTests.cs` (inside the class):
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~InsetViewport_HonorsOffset"`
-Expected: FAIL — got `(200, 150)` (X/Y ignored), expected `(500, 350)`.
+Expected: FAIL - got `(200, 150)` (X/Y ignored), expected `(500, 350)`.
 
 - [ ] **Step 3: Change GetViewMatrix to honor X/Y**
 
@@ -56,7 +56,7 @@ Also update the XML doc summary on `GetViewMatrix` to read: "translate to the vi
 - [ ] **Step 4: Run the new test and the full CameraTests**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~CameraTests"`
-Expected: PASS (all). The existing tests use `Viewport(0,0,W,H)` so X+W/2 = W/2 — unchanged.
+Expected: PASS (all). The existing tests use `Viewport(0,0,W,H)` so X+W/2 = W/2 - unchanged.
 
 - [ ] **Step 5: Commit**
 
@@ -117,7 +117,7 @@ Add to `KhaozEngine.Tests/CameraTests.cs`:
 - [ ] **Step 2: Run to verify failure**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~PanByScreenDelta|FullyQualifiedName~ZoomAboutScreenPoint"`
-Expected: FAIL — methods do not exist (compile error).
+Expected: FAIL - methods do not exist (compile error).
 
 - [ ] **Step 3: Add the methods to Camera2D**
 
@@ -163,7 +163,7 @@ git commit -m "feat(Graphics): Camera2D.PanByScreenDelta + ZoomAboutScreenPoint 
 
 ---
 
-## Task 3: Shared gesture helpers — PinchGestureTracker + CameraGestures
+## Task 3: Shared gesture helpers - PinchGestureTracker + CameraGestures
 
 **Files:**
 - Create: `KhaozEngine.Graphics/PinchGestureTracker.cs`
@@ -251,7 +251,7 @@ public class CameraGesturesTests
 - [ ] **Step 2: Run to verify failure**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~CameraGesturesTests"`
-Expected: FAIL — `PinchGestureTracker` / `CameraGestures` do not exist (compile error).
+Expected: FAIL - `PinchGestureTracker` / `CameraGestures` do not exist (compile error).
 
 - [ ] **Step 3: Create PinchGestureTracker**
 
@@ -425,10 +425,10 @@ Replace the `TryGetTap` body:
 
 Delete the private `PanByScreenDelta` and `ApplyZoom` methods entirely (now on `Camera2D`). Keep the XML doc comment that preceded the old `PanByScreenDelta`/`ApplyZoom` region only if it documents `Update`; otherwise remove the now-orphaned comments. The `MathF` using (`using System;`) is still needed for `MathF.Pow`.
 
-- [ ] **Step 3: Run the CameraController suite — must stay green**
+- [ ] **Step 3: Run the CameraController suite - must stay green**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~CameraControllerTests"`
-Expected: PASS (all). If any fail, the refactor changed behavior — diff against the original arithmetic in Tasks 2-3.
+Expected: PASS (all). If any fail, the refactor changed behavior - diff against the original arithmetic in Tasks 2-3.
 
 - [ ] **Step 4: Commit**
 
@@ -632,14 +632,14 @@ public sealed class PannableCanvas
 }
 ```
 
-- [ ] **Step 4: Run PannableCanvasTests — must stay byte-identical green**
+- [ ] **Step 4: Run PannableCanvasTests - must stay byte-identical green**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~PannableCanvasTests"`
 Expected: PASS (all). The exact-equality tests (`ScreenWorldRoundTrips`, drag/clamp/wheel offsets, tap, pointer) must pass.
 
 - [ ] **Step 5 (only if Step 4's `ScreenWorldRoundTrips` or tap/pointer exact-equality tests FAIL): apply the direct-affine ScreenToWorld fallback**
 
-If `Matrix.Invert` introduces float error that breaks an exact `Assert.Equal`, replace `ScreenToWorld` and add the helper (keeps WorldToScreen on the matrix, derives the inverse directly from Position/Zoom — bit-identical to the original formula):
+If `Matrix.Invert` introduces float error that breaks an exact `Assert.Equal`, replace `ScreenToWorld` and add the helper (keeps WorldToScreen on the matrix, derives the inverse directly from Position/Zoom - bit-identical to the original formula):
 
 ```csharp
     private Vector2 ViewportCenter =>
@@ -655,7 +655,7 @@ If `Matrix.Invert` introduces float error that breaks an exact `Assert.Equal`, r
     }
 ```
 
-Re-run Step 4; expected PASS. (If Step 4 already passed, skip this step — do not add the fallback.)
+Re-run Step 4; expected PASS. (If Step 4 already passed, skip this step - do not add the fallback.)
 
 - [ ] **Step 6: Run the FULL suite (catch any cross-package fallout)**
 
@@ -748,7 +748,7 @@ Add to `KhaozEngine.Tests/PannableCanvasTests.cs`:
 - [ ] **Step 2: Run to verify they pass (the pinch wiring already exists from Task 5)**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~PannableCanvasTests"`
-Expected: PASS (all, including the 4 new). If `PinchZoomsAboutMidpoint` fails on the zoom ratio, confirm `InputManager(isMobile: true)` produces a `Pinch` with `Scale` = newDist/oldDist (160/80 = 2). If the two existing mouse-only tests now fail, the pinch branch leaked into the mouse path — re-check `TryGetPinch` returns false for mouse input.
+Expected: PASS (all, including the 4 new). If `PinchZoomsAboutMidpoint` fails on the zoom ratio, confirm `InputManager(isMobile: true)` produces a `Pinch` with `Scale` = newDist/oldDist (160/80 = 2). If the two existing mouse-only tests now fail, the pinch branch leaked into the mouse path - re-check `TryGetPinch` returns false for mouse input.
 
 - [ ] **Step 3: Commit**
 
@@ -765,7 +765,7 @@ git commit -m "test(UI): PannableCanvas pinch-zoom + two-finger pan + EnableZoom
 - Modify: `Directory.Build.props` (Version 3.7.0 -> 3.8.0)
 - Modify: `CHANGELOG.md` (newest-first entry)
 - Modify: `docs/CONSUMERS.md` (engine-version line + UI->Graphics dep note)
-- Modify: `KhaozEngine.UI/KhaozEngine.UI.csproj` (`<Description>` mentions delegation/pinch) — optional polish
+- Modify: `KhaozEngine.UI/KhaozEngine.UI.csproj` (`<Description>` mentions delegation/pinch) - optional polish
 
 - [ ] **Step 1: Full suite green before releasing**
 
@@ -790,13 +790,13 @@ one implementation of pan / zoom / pinch / clamp / tap. Additive API plus one sc
 
 - `Camera2D.GetViewMatrix` now honors the viewport's X/Y offset (centers `Position` on
   `(viewport.X + W/2, viewport.Y + H/2)`). **Behavior change**, but only for a viewport with a non-zero
-  X/Y origin (an inset sub-rectangle) — the previously unsupported/incorrect case. Whole-screen
+  X/Y origin (an inset sub-rectangle) - the previously unsupported/incorrect case. Whole-screen
   viewports (X = Y = 0, every prior call site) are unchanged. Makes inset viewports map correctly.
-- New `Camera2D.PanByScreenDelta(screenDelta)` — grab-and-drag pan (`Position -= screenDelta / Zoom`).
-- New `Camera2D.ZoomAboutScreenPoint(target, focusScreen, viewport, min, max)` — clamped zoom that keeps
+- New `Camera2D.PanByScreenDelta(screenDelta)` - grab-and-drag pan (`Position -= screenDelta / Zoom`).
+- New `Camera2D.ZoomAboutScreenPoint(target, focusScreen, viewport, min, max)` - clamped zoom that keeps
   the world point under the focus fixed.
-- New `PinchGestureTracker` — the shared two-finger pinch state machine (midpoint pan + zoom-about-focus).
-- New `CameraGestures.TryGetTap(input, camera, viewport, out press, out release)` — the shared
+- New `PinchGestureTracker` - the shared two-finger pinch state machine (midpoint pan + zoom-about-focus).
+- New `CameraGestures.TryGetTap(input, camera, viewport, out press, out release)` - the shared
   press-origin tap-vs-pan helper.
 - `CameraController` now drives `Camera2D` through these shared pieces. No public API or behavior change.
 
@@ -830,7 +830,7 @@ Change `3.7.0` to `3.8.0`. Then add a one-line note after the existing 3.7.0 sum
 > viewport X/Y (only affects inset viewports). No consumer adopts yet.
 ```
 
-- [ ] **Step 5: Pack to local-feed (cumulative — do NOT delete old versions)**
+- [ ] **Step 5: Pack to local-feed (cumulative - do NOT delete old versions)**
 
 Run: `dotnet pack -c Release -o ./local-feed`
 Expected: builds and writes `KhaozEngine.*.3.8.0.nupkg` into `local-feed/`. Confirm: `ls local-feed/ | grep 3.8.0` shows Input, Screens, UI, Ecs, Graphics, Audio, Content, Diagnostics, Effects, Localization, Persistence, Time, App at 3.8.0.
@@ -858,7 +858,7 @@ dotnet restore --source /Users/antonio/KhaozEngine-pannable-core/local-feed --so
 dotnet build -c Debug
 ```
 
-Expected: build succeeds (PannableCanvas API is source-compatible; new members are additive). Note for the user: pinch zoom is now **default-on** for Hardpoint's map — it can opt out with `EnableZoom = false` on its `PannableCanvas`.
+Expected: build succeeds (PannableCanvas API is source-compatible; new members are additive). Note for the user: pinch zoom is now **default-on** for Hardpoint's map - it can opt out with `EnableZoom = false` on its `PannableCanvas`.
 
 Then revert the Hardpoint csproj edits (consumer adoption is Hardpoint's own work, not this engine release):
 
@@ -875,6 +875,6 @@ Tagging + pushing happens during branch finish (see handoff), not inline. The ta
 ## Self-Review notes (already applied)
 
 - **Spec coverage:** Camera2D X/Y (Task 1), Camera2D ops (Task 2), shared helpers (Task 3), CameraController refactor (Task 4), PannableCanvas delegation (Task 5), pinch zoom + new props (Tasks 5-6), release + Hardpoint verify (Task 7). All spec sections mapped.
-- **Type consistency:** `PinchGestureTracker.Apply(camera, pinch, viewport, enablePan, enableZoom, minZoom, maxZoom)` / `Reset()`; `CameraGestures.TryGetTap(input, camera, viewport, out pressWorld, out releaseWorld)`; `Camera2D.PanByScreenDelta(screenDelta)`; `Camera2D.ZoomAboutScreenPoint(targetZoom, focusScreen, viewport, minZoom, maxZoom)` — identical across Tasks 2-6.
+- **Type consistency:** `PinchGestureTracker.Apply(camera, pinch, viewport, enablePan, enableZoom, minZoom, maxZoom)` / `Reset()`; `CameraGestures.TryGetTap(input, camera, viewport, out pressWorld, out releaseWorld)`; `Camera2D.PanByScreenDelta(screenDelta)`; `Camera2D.ZoomAboutScreenPoint(targetZoom, focusScreen, viewport, minZoom, maxZoom)` - identical across Tasks 2-6.
 - **Exactness:** primary path delegates ScreenToWorld to the Camera2D matrix; Task 5 Step 5 is the direct-affine fallback, applied only if an exact-equality test regresses.
 ```

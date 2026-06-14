@@ -6,7 +6,7 @@
 
 **Architecture:** A single `sealed class PannableCanvas` in `KhaozEngine.UI`. Its testable core (pan, clamp, world/screen transforms, tap, focus) depends only on `InputManager` and works in virtual coordinates, so it is headless-testable. `Draw()` is the only method touching a `GraphicsDevice`/`SpriteBatch`; it takes the virtual→physical `renderScale` + `scaleMatrix` as parameters (no `VirtualResolution` dependency, since `VirtualResolution` is not headless-constructable). The camera transform is additive and zoom-shaped around a private `_zoom = 1f` seam.
 
-**Tech Stack:** net10.0, C# (ImplicitUsings disabled — all usings explicit), MonoGame.Framework.DesktopGL 3.8, xUnit headless tests.
+**Tech Stack:** net10.0, C# (ImplicitUsings disabled - all usings explicit), MonoGame.Framework.DesktopGL 3.8, xUnit headless tests.
 
 Spec: `docs/superpowers/specs/2026-06-10-pannable-canvas-design.md`. Reference (read, do not modify): `~/Nullwake/Nullwake/Nullwake.Core/Screens/SkillTreeScreen.cs`.
 
@@ -14,18 +14,18 @@ Spec: `docs/superpowers/specs/2026-06-10-pannable-canvas-design.md`. Reference (
 
 ## File structure
 
-- Create: `KhaozEngine.UI/PannableCanvas.cs` — the control. One responsibility: a generic pannable viewport (camera offset + transforms + clip).
-- Create: `KhaozEngine.Tests/PannableCanvasTests.cs` — headless tests mirroring `KhaozEngine.Tests/InputManagerTests.cs` style.
-- Modify: `Directory.Build.props` — `<Version>` 2.3.0 → 2.4.0.
-- Modify: `CHANGELOG.md` — newest-first entry.
-- Modify: `docs/CONSUMERS.md` — engine-version line 2.3.0 → 2.4.0.
+- Create: `KhaozEngine.UI/PannableCanvas.cs` - the control. One responsibility: a generic pannable viewport (camera offset + transforms + clip).
+- Create: `KhaozEngine.Tests/PannableCanvasTests.cs` - headless tests mirroring `KhaozEngine.Tests/InputManagerTests.cs` style.
+- Modify: `Directory.Build.props` - `<Version>` 2.3.0 → 2.4.0.
+- Modify: `CHANGELOG.md` - newest-first entry.
+- Modify: `docs/CONSUMERS.md` - engine-version line 2.3.0 → 2.4.0.
 - Produce: `local-feed/*.2.4.0.nupkg` via `dotnet pack`.
 
 No existing files are otherwise touched. Additive and opt-in.
 
 ---
 
-## Task 1: Class skeleton — config, constructor, transforms
+## Task 1: Class skeleton - config, constructor, transforms
 
 **Files:**
 - Create: `KhaozEngine.UI/PannableCanvas.cs`
@@ -83,7 +83,7 @@ public class PannableCanvasTests
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter PannableCanvasTests`
-Expected: FAIL — compile error, `PannableCanvas` does not exist.
+Expected: FAIL - compile error, `PannableCanvas` does not exist.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -183,7 +183,7 @@ git commit -m "Add PannableCanvas skeleton: config, transforms, round-trip test"
 
 ---
 
-## Task 2: Update — drag pan, clamp, block region
+## Task 2: Update - drag pan, clamp, block region
 
 **Files:**
 - Modify: `KhaozEngine.UI/PannableCanvas.cs`
@@ -271,7 +271,7 @@ public void UpdateBlocksViewportRegionWhenBlockInputTrue()
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter PannableCanvasTests`
-Expected: FAIL — `Update` not defined / clamp is a no-op so the new assertions fail.
+Expected: FAIL - `Update` not defined / clamp is a no-op so the new assertions fail.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -447,7 +447,7 @@ public void PointerWorldMapsCurrentPointer()
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter PannableCanvasTests`
-Expected: FAIL — `TryGetTap` / `PointerWorld` not defined.
+Expected: FAIL - `TryGetTap` / `PointerWorld` not defined.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -460,7 +460,7 @@ public Vector2 PointerWorld => ScreenToWorld(_input.PointerPosition);
 /// <summary>
 /// True on the frame the viewport was tapped (press-origin and release both inside the viewport,
 /// the click-through-safe invariant). Returns the press and release world points so the caller can
-/// hit-test both and require the same target — the precision check for dense node graphs. A pan
+/// hit-test both and require the same target - the precision check for dense node graphs. A pan
 /// that ends inside the viewport also returns true, but its press and release world points differ
 /// (the camera moved between them), so the same-target check rejects it.
 /// </summary>
@@ -491,7 +491,7 @@ git commit -m "PannableCanvas: TryGetTap (press+release world) and PointerWorld"
 
 ---
 
-## Task 5: Focus — Focus(rect) + CenterContent
+## Task 5: Focus - Focus(rect) + CenterContent
 
 **Files:**
 - Modify: `KhaozEngine.UI/PannableCanvas.cs`
@@ -542,7 +542,7 @@ public void CenterContentCentersOnContentMiddle()
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter PannableCanvasTests`
-Expected: FAIL — `Focus` / `CenterContent` not defined. (`CenterOnPlacesPointAtViewportCenter` passes already.)
+Expected: FAIL - `Focus` / `CenterContent` not defined. (`CenterOnPlacesPointAtViewportCenter` passes already.)
 
 - [ ] **Step 3: Write the implementation**
 
@@ -572,7 +572,7 @@ git commit -m "PannableCanvas: Focus(rect) and CenterContent"
 
 ---
 
-## Task 6: Draw — scissor clip + world-space transform
+## Task 6: Draw - scissor clip + world-space transform
 
 `Draw` touches `GraphicsDevice`/`SpriteBatch`, so it is verified by compilation + consumer integration, not a headless unit test (the existing widgets' draw paths are likewise untested headlessly).
 
@@ -622,7 +622,7 @@ Expected: Build succeeded, 0 errors.
 - [ ] **Step 3: Run the full test suite (nothing regressed)**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj`
-Expected: PASS — all existing tests plus the 15 PannableCanvas tests.
+Expected: PASS - all existing tests plus the 15 PannableCanvas tests.
 
 - [ ] **Step 4: Commit**
 
@@ -699,7 +699,7 @@ Do NOT `git tag` or push yet. Per the user's request, report that 2.4.0 is in `l
 
 ## Self-review notes
 
-- **Spec coverage:** camera offset + drag/wheel pan (Tasks 2–3), clamp to content+padding with center-when-smaller (Task 2), scissor clip + world transform Draw (Task 6), World/Screen transforms + round-trip (Task 1), `TryGetTap` press+release click-through-safe (Task 4), `CenterOn`/`Focus`/`CenterContent` (Tasks 1 & 5), zoom seam (`_zoom` present throughout), `InputManager`-only core + `Draw` takes scale/matrix (all tasks), tests mirroring `InputManagerTests` (every task), CHANGELOG + version bump + CONSUMERS + local-feed (Task 7). All covered.
+- **Spec coverage:** camera offset + drag/wheel pan (Tasks 2-3), clamp to content+padding with center-when-smaller (Task 2), scissor clip + world transform Draw (Task 6), World/Screen transforms + round-trip (Task 1), `TryGetTap` press+release click-through-safe (Task 4), `CenterOn`/`Focus`/`CenterContent` (Tasks 1 & 5), zoom seam (`_zoom` present throughout), `InputManager`-only core + `Draw` takes scale/matrix (all tasks), tests mirroring `InputManagerTests` (every task), CHANGELOG + version bump + CONSUMERS + local-feed (Task 7). All covered.
 - **Naming consistency:** `Viewport`, `ContentBounds`, `Padding`, `ScrollPanSpeed`, `BlockInput`, `CameraOffset`, `WorldToScreen`, `ScreenToWorld`, `PointerWorld`, `TryGetTap`, `CenterOn`, `Focus`, `CenterContent`, `Draw` are used identically in the spec, tests, and implementation.
 - **TryGetTap nuance:** `IsTapIn` does not measure drag distance, so an in-viewport pan-release also returns true; the caller distinguishes via differing press/release world points (documented on the method and in the spec). `TryGetTapFalseWhenNotReleasedThisFrame` and the press-outside test pin the genuine false cases.
 - **Press-frame delta:** every drag/tap test inserts a hover frame before pressing so `GetDragDelta` (which returns `PointerDelta`) is zero on the press frame.

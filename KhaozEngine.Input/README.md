@@ -3,7 +3,7 @@
 Game-agnostic, headless-testable input for MonoGame. A unified mouse+touch pointer with edge
 detection, the `IsTapIn` press-origin invariant (the click-through fix), per-frame region
 blocking, drag/scroll/pinch gestures, keyboard + gamepad + menu-navigation, and a
-coordinate-transform seam — all behind an injectable `IRawInput`.
+coordinate-transform seam - all behind an injectable `IRawInput`.
 
 ```csharp
 var input = new InputManager(isMobile: false);

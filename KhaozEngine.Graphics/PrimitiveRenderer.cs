@@ -342,7 +342,7 @@ public sealed class PrimitiveRenderer
     }
 
     /// <summary>
-    /// Draws a filled isometric (2:1 by default) ellipse centred at <paramref name="center"/> —
+    /// Draws a filled isometric (2:1 by default) ellipse centred at <paramref name="center"/> -
     /// a foreshortened disc for blob shadows and filled range markers.
     /// </summary>
     /// <param name="spriteBatch">The active SpriteBatch (within Begin/End).</param>
@@ -368,7 +368,7 @@ public sealed class PrimitiveRenderer
     }
 
     /// <summary>
-    /// Strokes an isometric (2:1 by default) ellipse outline — a range ring on the ground plane.
+    /// Strokes an isometric (2:1 by default) ellipse outline - a range ring on the ground plane.
     /// </summary>
     /// <param name="spriteBatch">The active SpriteBatch (within Begin/End).</param>
     /// <param name="center">Screen-space centre.</param>

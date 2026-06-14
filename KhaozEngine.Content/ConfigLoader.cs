@@ -7,7 +7,7 @@ using KhaozEngine.Serialization;
 
 namespace KhaozEngine.Content;
 
-/// <summary>Loads typed config from JSON — the disk path first (if it exists), else an embedded resource.</summary>
+/// <summary>Loads typed config from JSON - the disk path first (if it exists), else an embedded resource.</summary>
 public static class ConfigLoader
 {
     /// <summary>Loads <typeparamref name="T"/> from <paramref name="diskPath"/> if it exists, otherwise from

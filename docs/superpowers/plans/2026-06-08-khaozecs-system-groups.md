@@ -1,4 +1,4 @@
-# KhaozEngine.Ecs System Ordering / Groups — Implementation Plan
+# KhaozEngine.Ecs System Ordering / Groups - Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax. TDD throughout.
 
@@ -100,7 +100,7 @@ public class SystemGroupsTests
 }
 ```
 
-- [ ] **Step 2: Run to verify failure** — `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj` → FAIL (`AddSystem` overload / `SetGroupOrder` / `UpdateGroup` / `SystemGroups` missing).
+- [ ] **Step 2: Run to verify failure** - `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj` → FAIL (`AddSystem` overload / `SetGroupOrder` / `UpdateGroup` / `SystemGroups` missing).
 
 - [ ] **Step 3: Rewrite `World.Systems.cs`**
 
@@ -196,7 +196,7 @@ public sealed partial class World
 }
 ```
 
-- [ ] **Step 4: Run to verify pass** — `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj`. New `SystemGroupsTests` pass **and the existing `WorldSystemsTests` still pass** (default group preserves registration order + per-system command-buffer flush).
+- [ ] **Step 4: Run to verify pass** - `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj`. New `SystemGroupsTests` pass **and the existing `WorldSystemsTests` still pass** (default group preserves registration order + per-system command-buffer flush).
 
 - [ ] **Step 5: Commit**
 
@@ -211,9 +211,9 @@ git commit -m "ECS: named system groups (AddSystem group, SetGroupOrder, UpdateG
 
 **Files:** Modify `KhaozEngine.Ecs/KhaozEngine.Ecs.csproj`, `CHANGELOG.md`
 
-- [ ] **Step 1: Bump the Ecs package version** — change `<Version>1.3.0</Version>` to `<Version>1.4.0</Version>` in `KhaozEngine.Ecs/KhaozEngine.Ecs.csproj`.
+- [ ] **Step 1: Bump the Ecs package version** - change `<Version>1.3.0</Version>` to `<Version>1.4.0</Version>` in `KhaozEngine.Ecs/KhaozEngine.Ecs.csproj`.
 
-- [ ] **Step 2: Changelog** — prepend under the title in `CHANGELOG.md`:
+- [ ] **Step 2: Changelog** - prepend under the title in `CHANGELOG.md`:
 ```markdown
 ## KhaozEngine.Ecs 1.4.0
 
@@ -247,7 +247,7 @@ git commit -m "Release KhaozEngine.Ecs 1.4.0 (system groups)"
 - `SystemGroups` introspection → Task 1.
 - Additive `1.4.0` release → Task 2.
 
-**Placeholder scan:** none — the full file is shown.
+**Placeholder scan:** none - the full file is shown.
 
 **Type consistency:** `AddSystem(ISystem, string="default")`, `SetGroupOrder(params string[])`, `Update(float)`, `UpdateGroup(string, float)`, `SystemGroups => IReadOnlyList<string>`; internal `RunGroup`/`GetOrCreateGroup`. `Commands`/`Resources`/`ISystem` unchanged. Per-system `Commands.Playback` preserved.
 

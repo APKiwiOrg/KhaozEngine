@@ -26,7 +26,7 @@ Vector2 world = camera.ScreenToWorld(input.PointerPosition);
 
 `Zoom` must be `> 0`. Framing helpers: `CenterOn(world)` puts a world point at the viewport center;
 `Focus(rect, viewport, paddingFraction, minZoom, maxZoom)` is a fit-to-rect contain zoom (sets zoom so
-the rect fills the view, then centers on it) — handy for "frame the whole level" or "zoom to selection".
+the rect fills the view, then centers on it) - handy for "frame the whole level" or "zoom to selection".
 
 ## CameraController
 

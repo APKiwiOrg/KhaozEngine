@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the minimal `KhaozEngine.Diagnostics.FileLogger` with a full logging service (levels, pluggable sinks, category loggers, a static `Log` facade over an instance `LogManager` core, non-blocking background writes, a crash-hook helper, and a promoted `AppDataPaths`), and release it as engine 3.1.0 — claiming the next minor and folding to `main` first, so the in-flight `batch1-promote` work rebases to 3.2.0 on top. Owner's choice to keep the 3.x line despite the breaking `FileLogger` removal, since all consumers are first-party and migrated in lockstep.
+**Goal:** Replace the minimal `KhaozEngine.Diagnostics.FileLogger` with a full logging service (levels, pluggable sinks, category loggers, a static `Log` facade over an instance `LogManager` core, non-blocking background writes, a crash-hook helper, and a promoted `AppDataPaths`), and release it as engine 3.1.0 - claiming the next minor and folding to `main` first, so the in-flight `batch1-promote` work rebases to 3.2.0 on top. Owner's choice to keep the 3.x line despite the breaking `FileLogger` removal, since all consumers are first-party and migrated in lockstep.
 
 **Architecture:** A `LogManager` instance owns the runtime-settable minimum level, an injected `IClock`, and a list of `ILogSink`s. Category loggers (`ILogger` via `GetLogger<T>()`/`GetLogger(string)`) build a `LogEntry` on the calling thread, apply the level filter, then submit it to the manager. In async mode (default) the manager enqueues to a bounded queue drained by a single background writer thread; in synchronous mode (tests) it writes inline. Sinks (`FileSink`, `ConsoleSink`, `DebugSink`, `InMemorySink`) each apply their own optional threshold and never throw. A static `Log` facade wraps one ambient manager so games call `Log.For<T>().Info(...)`.
 
@@ -1305,7 +1305,7 @@ git commit -m "feat(diagnostics): add non-blocking background writer with flush 
 - Test: `KhaozEngine.Tests/Logging/ConsoleSinkTests.cs`
 - Test: `KhaozEngine.Tests/Logging/DebugSinkTests.cs`
 
-Note: `DebugSink` writes via `System.Diagnostics.Trace` (not `Debug`) so it survives Release builds and is testable with a `TraceListener`. These sink tests mutate process-global state (`Console.Out`/`Console.Error`, `Trace.Listeners`), so they (and the static-`Log`/`CrashHandler` tests in Tasks 8–9) join a `"LoggingSerial"` collection with `DisableParallelization = true`, defined once here:
+Note: `DebugSink` writes via `System.Diagnostics.Trace` (not `Debug`) so it survives Release builds and is testable with a `TraceListener`. These sink tests mutate process-global state (`Console.Out`/`Console.Error`, `Trace.Listeners`), so they (and the static-`Log`/`CrashHandler` tests in Tasks 8-9) join a `"LoggingSerial"` collection with `DisableParallelization = true`, defined once here:
 
 ```csharp
 // KhaozEngine.Tests/Logging/LoggingSerialCollection.cs
@@ -2591,13 +2591,13 @@ Log.Shutdown();
 
 ## Pieces
 
-- `Log` — static ambient facade (`Log.For<T>()`, `Log.Info(...)`, `Log.Configure`, `Log.Flush`, `Log.Shutdown`). No-op before `Configure`.
-- `LogManager` + `LoggerOptions` — injectable instance core (DI/tests). Runtime-settable `MinimumLevel`. Async by default; set `Synchronous = true` for deterministic tests.
-- `ILogger` — category logger (`Trace`/`Debug`/`Info`/`Warn`/`Error`/`Fatal`, each with an optional exception).
+- `Log` - static ambient facade (`Log.For<T>()`, `Log.Info(...)`, `Log.Configure`, `Log.Flush`, `Log.Shutdown`). No-op before `Configure`.
+- `LogManager` + `LoggerOptions` - injectable instance core (DI/tests). Runtime-settable `MinimumLevel`. Async by default; set `Synchronous = true` for deterministic tests.
+- `ILogger` - category logger (`Trace`/`Debug`/`Info`/`Warn`/`Error`/`Fatal`, each with an optional exception).
 - `ILogSink` + `FileSink` (rotate-on-launch + size rotation + retention), `ConsoleSink`, `DebugSink`, `InMemorySink`. Implement `ILogSink` for custom targets (in-game console, crash uploader).
-- `CrashHandler` — wires `AppDomain.UnhandledException` + `TaskScheduler.UnobservedTaskException`.
-- `AppDataPaths` — OS-correct per-app data directory.
-- `IClock`/`SystemClock` — injectable timestamps.
+- `CrashHandler` - wires `AppDomain.UnhandledException` + `TaskScheduler.UnobservedTaskException`.
+- `AppDataPaths` - OS-correct per-app data directory.
+- `IClock`/`SystemClock` - injectable timestamps.
 
 Logging never throws and never blocks the caller (writes happen on a background thread; `Flush`/`Shutdown` drain them).
 ```
@@ -2675,7 +2675,7 @@ git commit -m "docs: add logging contract to USING-KHAOZENGINE; update CONSUMERS
 
 ---
 
-## Task 13: Release engine 3.1.0 (COORDINATED — do last)
+## Task 13: Release engine 3.1.0 (COORDINATED - do last)
 
 **Files:**
 - Modify: `Directory.Build.props` (`<Version>`)
@@ -2696,7 +2696,7 @@ dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj   # expected: PASS after 
 - [ ] **Step 2: Bump the version**
 
 In `Directory.Build.props`, change `<Version>3.0.0</Version>` to `<Version>3.1.0</Version>`.
-(Intentionally a minor bump despite the breaking `FileLogger` removal: all consumers are first-party and migrated in lockstep, so we keep the 3.x line rather than jumping to 4.0. Note this deviates from the `CLAUDE.md` "breaking = major" rule by owner decision — call it out in the CHANGELOG entry.)
+(Intentionally a minor bump despite the breaking `FileLogger` removal: all consumers are first-party and migrated in lockstep, so we keep the 3.x line rather than jumping to 4.0. Note this deviates from the `CLAUDE.md` "breaking = major" rule by owner decision - call it out in the CHANGELOG entry.)
 
 - [ ] **Step 3: Add the newest-first CHANGELOG entry**
 
@@ -2790,8 +2790,8 @@ Expected: PASS. Confirm `v3.1.0` is pushed and CI publishes to GitHub Packages o
 
 ## Follow-on plans (separate, after 3.1.0 is packed)
 
-Each consumer migration is its own plan + its own repo worktree, written once `KhaozEngine.Diagnostics 3.1.0` is in `local-feed`. (Pin to whichever engine version is current when each migration runs — at least 3.1.0; likely 3.2.0+ once batch1 lands.)
+Each consumer migration is its own plan + its own repo worktree, written once `KhaozEngine.Diagnostics 3.1.0` is in `local-feed`. (Pin to whichever engine version is current when each migration runs - at least 3.1.0; likely 3.2.0+ once batch1 lands.)
 
-1. **SpaceGame migration** — delete `GameLogger.cs` + local `AppDataPaths.cs`; configure `Log` (FileSink via `AppDataPaths.Resolve("SpaceGame")` + ConsoleSink + `CrashHandler.Install`); rewrite `GameLogger.*` call sites to `Log`. Bump the Diagnostics pin to the current engine version (>= 3.1.0).
-2. **Nullwake migration** — delete standalone `GameLogger.cs`; configure `Log` at the three entry points (`Nullwake.DesktopGL/Program.cs`, `Nullwake.Android/MainActivity.cs`, `Nullwake.iOS/Program.cs`) writing `AppDataPaths.Resolve("Nullwake")/game.log` + `game.prev.log`; replace the duplicated crash hooks (`NullwakeGame.InstallUnhandledExceptionLogging` + the inline hooks in `DesktopGL/Program.cs`) with `CrashHandler`; rewrite call sites; update Nullwake's AGENTS.md "sole diagnostic path" rule to point at engine `Log`. Bump pins to the current engine version (>= 3.1.0).
-3. **Hardpoint adoption** — bump engine pins from 2.4.0 to the current engine version (>= 3.1.0); add a direct `KhaozEngine.Diagnostics` reference; configure `Log` (FileSink via `AppDataPaths.Resolve("Hardpoint")` + ConsoleSink + `CrashHandler.Install`) at startup; replace any `Debug.Write` calls with `Log`.
+1. **SpaceGame migration** - delete `GameLogger.cs` + local `AppDataPaths.cs`; configure `Log` (FileSink via `AppDataPaths.Resolve("SpaceGame")` + ConsoleSink + `CrashHandler.Install`); rewrite `GameLogger.*` call sites to `Log`. Bump the Diagnostics pin to the current engine version (>= 3.1.0).
+2. **Nullwake migration** - delete standalone `GameLogger.cs`; configure `Log` at the three entry points (`Nullwake.DesktopGL/Program.cs`, `Nullwake.Android/MainActivity.cs`, `Nullwake.iOS/Program.cs`) writing `AppDataPaths.Resolve("Nullwake")/game.log` + `game.prev.log`; replace the duplicated crash hooks (`NullwakeGame.InstallUnhandledExceptionLogging` + the inline hooks in `DesktopGL/Program.cs`) with `CrashHandler`; rewrite call sites; update Nullwake's AGENTS.md "sole diagnostic path" rule to point at engine `Log`. Bump pins to the current engine version (>= 3.1.0).
+3. **Hardpoint adoption** - bump engine pins from 2.4.0 to the current engine version (>= 3.1.0); add a direct `KhaozEngine.Diagnostics` reference; configure `Log` (FileSink via `AppDataPaths.Resolve("Hardpoint")` + ConsoleSink + `CrashHandler.Install`) at startup; replace any `Debug.Write` calls with `Log`.

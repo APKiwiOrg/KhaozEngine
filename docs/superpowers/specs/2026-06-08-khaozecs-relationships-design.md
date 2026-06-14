@@ -1,4 +1,4 @@
-# KhaozEngine.Ecs — relationships / hierarchy (design)
+# KhaozEngine.Ecs - relationships / hierarchy (design)
 
 **Date:** 2026-06-08
 **Status:** Approved (pending written-spec review)
@@ -6,15 +6,15 @@
 
 ## Goal
 
-Parent-child entity hierarchy — one parent, any number of children — for attachments (a turret on a
+Parent-child entity hierarchy - one parent, any number of children - for attachments (a turret on a
 moving platform, a multi-part enemy) and scene-graph transforms. Third of the deferred ECS features
 (system ordering/groups remains).
 
 ## Scope
 
-Parent-child **hierarchy only** — not general typed relationships ("A targets B", "A owns C"); that
+Parent-child **hierarchy only** - not general typed relationships ("A targets B", "A owns C"); that
 is more than these games need. The ECS provides the **links and traversal**; computing world
-transforms (`parent.world × child.local`) stays **game-side** — the ECS is game-agnostic and does not
+transforms (`parent.world × child.local`) stays **game-side** - the ECS is game-agnostic and does not
 know a game's `Transform`. A game writes a small system that walks the links and propagates its own
 transform.
 
@@ -37,7 +37,7 @@ void          DespawnTree(Entity e);                    // despawn e and all des
 ```
 
 `Parent` is also publicly usable directly (e.g. `world.Has<Parent>(e)`), but `SetParent`/`Detach`
-are the supported mutators — they keep the `Parent` component and the `_children` index consistent.
+are the supported mutators - they keep the `Parent` component and the `_children` index consistent.
 
 ## Despawn semantics
 
@@ -67,12 +67,12 @@ are the supported mutators — they keep the `Parent` component and the `_childr
 
 ## Implementation surface
 
-- New `Parent.cs` — the component.
-- New `World.Hierarchy.cs` partial — the `_children` index, `SetParent`/`Detach`/`GetParent`/
+- New `Parent.cs` - the component.
+- New `World.Hierarchy.cs` partial - the `_children` index, `SetParent`/`Detach`/`GetParent`/
   `Children`/`DespawnTree`, and internal `RebuildHierarchyIndex` + the unlink/detach helpers used by
   `Despawn`.
-- `World.cs` `Despawn` — detach children to root and unlink from parent before the existing removal.
-- `WorldSerializer` — add `typeof(Parent)` to its type table; call `RebuildHierarchyIndex` at the end
+- `World.cs` `Despawn` - detach children to root and unlink from parent before the existing removal.
+- `WorldSerializer` - add `typeof(Parent)` to its type table; call `RebuildHierarchyIndex` at the end
   of `Load`.
 
 The hierarchy mutators go through the existing `Set<Parent>` / `Remove<Parent>` paths, so change

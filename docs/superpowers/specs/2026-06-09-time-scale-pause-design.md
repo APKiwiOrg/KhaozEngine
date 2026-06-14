@@ -133,7 +133,7 @@ existing top-down input routing covers the overlay case for free.
 
 Default `TimeScale == 1`, not paused, so
 `ScaledDeltaSeconds == RealDeltaSeconds == gameTime.ElapsedGameTime.TotalSeconds`
-— identical to today. Nothing reads the clock until a consumer opts in. No
+- identical to today. Nothing reads the clock until a consumer opts in. No
 `Update` signature change and no input-routing change. SpaceGame's lockstep uses
 a fixed timestep and computes its own dt, never touching `ScaledDeltaSeconds`, so
 determinism is preserved even after it adopts 2.2.0. The feature is purely

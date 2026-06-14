@@ -1,4 +1,4 @@
-# KhaozEngine.Content — Implementation Plan
+# KhaozEngine.Content - Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax. TDD where it fits.
 
@@ -45,7 +45,7 @@ using System.Text.Json;
 
 namespace KhaozEngine.Content;
 
-/// <summary>Loads typed config from JSON — disk path first (if it exists), else an embedded resource.</summary>
+/// <summary>Loads typed config from JSON - disk path first (if it exists), else an embedded resource.</summary>
 public static class ConfigLoader
 {
     private static readonly JsonSerializerOptions Default = new()
@@ -77,7 +77,7 @@ public static class ConfigLoader
 }
 ```
 
-- [ ] **Step 3: `JsonSchemaValidator.cs`** (verify the `Json.Schema` v9.1.3 API while implementing — adjust the error-extraction to the actual `EvaluationResults` shape)
+- [ ] **Step 3: `JsonSchemaValidator.cs`** (verify the `Json.Schema` v9.1.3 API while implementing - adjust the error-extraction to the actual `EvaluationResults` shape)
 ```csharp
 using System;
 using System.Collections.Generic;
@@ -322,7 +322,7 @@ targets under `build/` and `buildTransitive/`:
 > when Hardpoint adopts the package next cycle (sets `KhaozContentDataDir` → build validates `towers.json`).
 > **Fallback** if the publish-into-pack proves unworkable: drop the bundled tool, keep the library, and
 > have consumers enforce via (a) a test calling `JsonSchemaValidator.ValidateDirectory` and (b) a one-line
-> per-repo `<Exec>` target — the shared validator is still the win. Note the fallback in the changelog if taken.
+> per-repo `<Exec>` target - the shared validator is still the win. Note the fallback in the changelog if taken.
 
 - [ ] **Step 4: Verify package contents; commit**
 ```bash
@@ -339,9 +339,9 @@ git commit -m "KhaozEngine.Content: bundled schema validator + buildTransitive t
 
 **Files:** Modify `Directory.Build.props`, `CHANGELOG.md`.
 
-- [ ] **Step 1: Bump shared version** — `Directory.Build.props` `<Version>2.0.0</Version>` → `<Version>2.1.0</Version>`.
+- [ ] **Step 1: Bump shared version** - `Directory.Build.props` `<Version>2.0.0</Version>` → `<Version>2.1.0</Version>`.
 
-- [ ] **Step 2: Changelog** — prepend under the title in `CHANGELOG.md`:
+- [ ] **Step 2: Changelog** - prepend under the title in `CHANGELOG.md`:
 ```markdown
 ## KhaozEngine 2.1.0
 

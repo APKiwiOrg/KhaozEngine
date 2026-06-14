@@ -14,13 +14,13 @@
 
 ## File Structure
 
-- `KhaozEngine.App/IAppDataEnvironment.cs` — internal OS/env abstraction (test seam).
-- `KhaozEngine.App/SystemAppDataEnvironment.cs` — internal default impl over the real OS/env.
-- `KhaozEngine.App/AppDataPaths.cs` — the public resolver class.
-- `KhaozEngine.App/KhaozEngine.App.csproj` — add `InternalsVisibleTo KhaozEngine.Tests`.
-- `KhaozEngine.Tests/AppDataPathsTests.cs` — tests + `FakeAppDataEnvironment` double + temp-dir helpers.
+- `KhaozEngine.App/IAppDataEnvironment.cs` - internal OS/env abstraction (test seam).
+- `KhaozEngine.App/SystemAppDataEnvironment.cs` - internal default impl over the real OS/env.
+- `KhaozEngine.App/AppDataPaths.cs` - the public resolver class.
+- `KhaozEngine.App/KhaozEngine.App.csproj` - add `InternalsVisibleTo KhaozEngine.Tests`.
+- `KhaozEngine.Tests/AppDataPathsTests.cs` - tests + `FakeAppDataEnvironment` double + temp-dir helpers.
 
-No version bump / CHANGELOG / pack — deferred to the single end-of-batch 3.1.0 release. No slnx or Tests-csproj project-reference changes (the package + reference already exist).
+No version bump / CHANGELOG / pack - deferred to the single end-of-batch 3.1.0 release. No slnx or Tests-csproj project-reference changes (the package + reference already exist).
 
 All commands run from the worktree root: `/Users/antonio/KhaozEngine/.claude/worktrees/batch1-promote`.
 
@@ -35,7 +35,7 @@ All commands run from the worktree root: `/Users/antonio/KhaozEngine/.claude/wor
 
 - [ ] **Step 1: Add InternalsVisibleTo to the package csproj**
 
-Modify `KhaozEngine.App/KhaozEngine.App.csproj` — add a second `ItemGroup` so tests can see the internal seam. Final file:
+Modify `KhaozEngine.App/KhaozEngine.App.csproj` - add a second `ItemGroup` so tests can see the internal seam. Final file:
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
@@ -283,7 +283,7 @@ public class AppDataPathsTests
     }
 }
 
-/// <summary>Test double for <see cref="IAppDataEnvironment"/> — all facts are settable.</summary>
+/// <summary>Test double for <see cref="IAppDataEnvironment"/> - all facts are settable.</summary>
 internal sealed class FakeAppDataEnvironment : IAppDataEnvironment
 {
     public bool IsWindows { get; set; }
@@ -307,7 +307,7 @@ internal sealed class FakeAppDataEnvironment : IAppDataEnvironment
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~AppDataPathsTests" -v q`
-Expected: FAIL — compile error, `AppDataPaths` does not exist in namespace `KhaozEngine.App`.
+Expected: FAIL - compile error, `AppDataPaths` does not exist in namespace `KhaozEngine.App`.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -431,7 +431,7 @@ public sealed class AppDataPaths
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~AppDataPathsTests" -v q`
-Expected: PASS — 10 passed (6 branch + 1 caching + 3 theory cases).
+Expected: PASS - 10 passed (6 branch + 1 caching + 3 theory cases).
 
 - [ ] **Step 5: Commit**
 
@@ -447,7 +447,7 @@ git commit -m "Add KhaozEngine.App.AppDataPaths with OS-correct resolution"
 **Files:**
 - Modify: `KhaozEngine.Tests/AppDataPathsTests.cs`
 
-(The file-path members are already implemented in Task 2's `AppDataPaths.cs`; this task adds the tests that pin their contract. Write the tests, run them, and they should pass against the existing implementation — this is the verification half of TDD for those members.)
+(The file-path members are already implemented in Task 2's `AppDataPaths.cs`; this task adds the tests that pin their contract. Write the tests, run them, and they should pass against the existing implementation - this is the verification half of TDD for those members.)
 
 - [ ] **Step 1: Add the file-path tests**
 
@@ -494,7 +494,7 @@ Add these tests inside the `AppDataPathsTests` class (after the existing tests, 
 - [ ] **Step 2: Run the tests to verify they pass**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~AppDataPathsTests" -v q`
-Expected: PASS — 12 passed (10 from Task 2 + 2 new).
+Expected: PASS - 12 passed (10 from Task 2 + 2 new).
 
 - [ ] **Step 3: Commit**
 
@@ -510,7 +510,7 @@ git commit -m "Add AppDataPaths file-path member tests"
 - [ ] **Step 1: Run the entire test suite**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj -v q`
-Expected: PASS — baseline (189) + 12 new = 201, 0 failed. (Confirm the baseline at the start; the delta is +12.)
+Expected: PASS - baseline (189) + 12 new = 201, 0 failed. (Confirm the baseline at the start; the delta is +12.)
 
 - [ ] **Step 2: Build the package project in isolation (confirm no stray deps)**
 
@@ -524,4 +524,4 @@ No commit needed (verification only).
 ## Notes for the release / adopt phase (do NOT do here)
 
 - End-of-batch: bump `<Version>` 3.0.0 → 3.1.0, one `CHANGELOG.md` entry for the batch, update `docs/CONSUMERS.md`, `dotnet pack -c Release -o ./local-feed`.
-- Adopt: SpaceGame is a near drop-in (replace its `AppDataPaths` static usages with an instance, or a thin static facade holding `new AppDataPaths("SpaceGame")`). Nullwake replaces its three inlined `LocalApplicationData/Nullwake` sites — NOTE its data dir moves to the OS-correct location, so plan a one-time save/log migration or accept a reset. Hardpoint can adopt when it grows persistence.
+- Adopt: SpaceGame is a near drop-in (replace its `AppDataPaths` static usages with an instance, or a thin static facade holding `new AppDataPaths("SpaceGame")`). Nullwake replaces its three inlined `LocalApplicationData/Nullwake` sites - NOTE its data dir moves to the OS-correct location, so plan a one-time save/log migration or accept a reset. Hardpoint can adopt when it grows persistence.

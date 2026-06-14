@@ -1,4 +1,4 @@
-# Using KhaozEngine — the consumer contract
+# Using KhaozEngine - the consumer contract
 
 This is the authoritative guide to what KhaozEngine does and **how it must be used** by the three games that depend on it. Read the [Hard rules](#hard-rules) section first; the rest is reference.
 
@@ -29,8 +29,8 @@ Every frame, in this exact order:
 
 These are not style preferences. Breaking them re-introduces the exact bugs this library was built to remove.
 
-1. **Only `MonoGameRawInput` touches the MonoGame input statics.** No `Mouse.GetState()`, `Keyboard.GetState()`, `GamePad.GetState()`, or `TouchPanel.GetState()` anywhere else in a game. If you need a new piece of raw state, add a field to `RawInputState` and read it in `MonoGameRawInput` — never reach around the seam.
-2. **Call `InputManager.Update(rawInput.Read(), IsActive)` once per frame, before `ScreenManager.Update`.** Pass the real `Game.IsActive` — it suppresses ghost taps when the window regains focus.
+1. **Only `MonoGameRawInput` touches the MonoGame input statics.** No `Mouse.GetState()`, `Keyboard.GetState()`, `GamePad.GetState()`, or `TouchPanel.GetState()` anywhere else in a game. If you need a new piece of raw state, add a field to `RawInputState` and read it in `MonoGameRawInput` - never reach around the seam.
+2. **Call `InputManager.Update(rawInput.Read(), IsActive)` once per frame, before `ScreenManager.Update`.** Pass the real `Game.IsActive` - it suppresses ghost taps when the window regains focus.
 3. **Hit-test with the bounds helpers, never with raw position + button.** Use `IsTapIn`, `IsPressingIn`, `IsHoveringIn`, `IsDraggingIn`, etc. `IsTapIn` enforces the press-origin invariant; hand-rolled `IsPointerDown && rect.Contains(pos)` checks do not, and they leak clicks.
 4. **An overlay that sits above a still-updating layer must reserve its footprint** with `BlockInputRegion(rect)` every frame, and the layer beneath must guard its actions with `IsInputBlocked(...)`. This is half of the click-through fix; the other half is `IsTapIn`.
 5. **`GameScreen.Update` returns whether it consumed input this frame.** Return `true` when this screen should stop input reaching screens below it, `false` to let it fall through. Getting this wrong breaks routing.
@@ -53,7 +53,7 @@ public interface IRawInput { RawInputState Read(); }
 public sealed class MonoGameRawInput : IRawInput { public MonoGameRawInput(GameWindow window); }
 ```
 
-Production uses `MonoGameRawInput`. Tests construct `RawInputState` directly and inject it — that is the whole point of the seam.
+Production uses `MonoGameRawInput`. Tests construct `RawInputState` directly and inject it - that is the whole point of the seam.
 
 ### InputManager
 
@@ -62,14 +62,14 @@ new InputManager(bool isMobile = false, ICoordinateTransform? transform = null);
 void Update(RawInputState raw, bool isActive);
 ```
 
-**Unified pointer** (mouse on desktop, primary touch on mobile — chosen internally from `isMobile`, so higher layers never branch on platform):
+**Unified pointer** (mouse on desktop, primary touch on mobile - chosen internally from `isMobile`, so higher layers never branch on platform):
 `PointerPosition`, `PressOrigin`, `PointerDelta`, `IsPointerDown`, `IsPointerJustPressed`, `IsPointerJustReleased`, `IsMobile`.
 
 **Bounds helpers (use these):**
-- `IsTapIn(rect)` — true on release **only if press-origin and release are both inside `rect`**. The click-through invariant.
-- `IsTapFromTo(originRect, releaseRect)` — press in one rect, release in another (e.g. tap-scrim-to-dismiss).
-- `IsPressingIn(rect)` — held, press began inside, still inside (button "pressed" visual).
-- `IsHoveringIn(rect)` — inside and not pressed (desktop hover).
+- `IsTapIn(rect)` - true on release **only if press-origin and release are both inside `rect`**. The click-through invariant.
+- `IsTapFromTo(originRect, releaseRect)` - press in one rect, release in another (e.g. tap-scrim-to-dismiss).
+- `IsPressingIn(rect)` - held, press began inside, still inside (button "pressed" visual).
+- `IsHoveringIn(rect)` - inside and not pressed (desktop hover).
 - `IsPointerIn(rect)`, `IsReleasedOutside(rect)`.
 
 **Gestures (Nullwake-derived):** `IsDraggingIn(rect)`, `GetDragDelta(rect)`, `ScrollWheelDelta`, `GetScrollIn(rect)`, `IsMouseWheelScrolledUp/Down`, `IsPinching`, `GetPinchDeltaIn(rect)`. Drag/scroll/pinch only fire when the interaction started in / is over the given bounds.
@@ -82,10 +82,10 @@ void Update(RawInputState raw, bool isActive);
 
 Four layered defenses; a game gets all four for free if it follows the rules:
 
-1. **`IsTapIn` invariant** — per-widget: a press that began outside a target can't register as a tap on it.
-2. **`receivesInput` flag** — the first visible, non-passthrough, input-consuming screen sets `inputHandled`; every screen below sees `receivesInput == false`.
-3. **`PassUpdateThrough = false`** — a modal screen stops the loop entirely; layers below neither update nor see input (gameplay freezes under a pause menu).
-4. **`BlockInputRegion` / `IsInputBlocked`** — for an overlay that *passes update through* onto a live layer (a HUD/toolbar over gameplay): it reserves its rect, and the live layer checks `IsInputBlocked(PressOrigin)` before acting, so a click on the overlay never drops through.
+1. **`IsTapIn` invariant** - per-widget: a press that began outside a target can't register as a tap on it.
+2. **`receivesInput` flag** - the first visible, non-passthrough, input-consuming screen sets `inputHandled`; every screen below sees `receivesInput == false`.
+3. **`PassUpdateThrough = false`** - a modal screen stops the loop entirely; layers below neither update nor see input (gameplay freezes under a pause menu).
+4. **`BlockInputRegion` / `IsInputBlocked`** - for an overlay that *passes update through* onto a live layer (a HUD/toolbar over gameplay): it reserves its rect, and the live layer checks `IsInputBlocked(PressOrigin)` before acting, so a click on the overlay never drops through.
 
 ### Coordinate transforms
 
@@ -94,9 +94,9 @@ Four layered defenses; a game gets all four for free if it follows the rules:
 ```csharp
 public interface ICoordinateTransform { Vector2 ScreenToVirtual(Vector2 screen); Rectangle? VirtualBounds { get; } }
 ```
-- `IdentityTransform.Instance` — screen pixels are virtual coords (default).
-- `MatrixTransform(matrix, virtualBounds?)` — arbitrary matrix (e.g. a game's existing input-transform matrix). `SetMatrix(...)` to update.
-- `VirtualResolution(graphicsDeviceManager, isMobile, baseWidth = 440, referenceHeight = 956)` — adaptive scaling (mobile: fixed virtual width, scale to fill; desktop: 1:1). Also serves as your `SpriteBatch` `ScaleMatrix`. `VirtualBounds` clamps the pointer into the viewport.
+- `IdentityTransform.Instance` - screen pixels are virtual coords (default).
+- `MatrixTransform(matrix, virtualBounds?)` - arbitrary matrix (e.g. a game's existing input-transform matrix). `SetMatrix(...)` to update.
+- `VirtualResolution(graphicsDeviceManager, isMobile, baseWidth = 440, referenceHeight = 956)` - adaptive scaling (mobile: fixed virtual width, scale to fill; desktop: 1:1). Also serves as your `SpriteBatch` `ScaleMatrix`. `VirtualBounds` clamps the pointer into the viewport.
 
 A camera's world↔screen transform is a *rendering* concern and stays in the game; only the screen→virtual mapping belongs on the InputManager.
 
@@ -150,9 +150,9 @@ for each screen, highest DrawOrder first:
 
 ### Flags
 
-- `PassUpdateThrough` — `false` = modal: screens below don't update or get input. `true` = a transparent/HUD layer over a live one.
-- `AlwaysReceivesInput` — receives input even when a higher screen consumed it (a persistent nav bar), and does not itself set `inputHandled`.
-- `State = Hidden` — skipped entirely (no update, no input, no block). Set it before `Add` to add a screen hidden.
+- `PassUpdateThrough` - `false` = modal: screens below don't update or get input. `true` = a transparent/HUD layer over a live one.
+- `AlwaysReceivesInput` - receives input even when a higher screen consumed it (a persistent nav bar), and does not itself set `inputHandled`.
+- `State = Hidden` - skipped entirely (no update, no input, no block). Set it before `Add` to add a screen hidden.
 
 ### Transitions
 
@@ -162,7 +162,7 @@ The manager owns transition timing. Set `TransitionOnDuration`/`TransitionOffDur
 
 ## UI layer (`KhaozEngine.UI`)
 
-Widgets (`Button`, `Slider`, `Toggle`, `Dropdown`, `ScrollablePanel`, `TextInput`, `Tooltip`, `MenuTile`, `ExpandableRow`, …) take an `InputManager` and a `PrimitiveRenderer` and call the same bounds helpers — so they are click-through-safe by construction. `LayoutConstants.TopBarHeight` / `BottomNavHeight` are settable statics (default to Nullwake's `48`/`52`); set them once at startup for your chrome. `TextInputHandler(maxLength, charValidator)` is a keystroke state machine: `ProcessInput(InputManager, PlayerIndex?)` returns whether it consumed, exposes `Text`, `CaretBlinkTimer`, `PasteRequested`, `TextDeleted` (letters map to lowercase).
+Widgets (`Button`, `Slider`, `Toggle`, `Dropdown`, `ScrollablePanel`, `TextInput`, `Tooltip`, `MenuTile`, `ExpandableRow`, …) take an `InputManager` and a `PrimitiveRenderer` and call the same bounds helpers - so they are click-through-safe by construction. `LayoutConstants.TopBarHeight` / `BottomNavHeight` are settable statics (default to Nullwake's `48`/`52`); set them once at startup for your chrome. `TextInputHandler(maxLength, charValidator)` is a keystroke state machine: `ProcessInput(InputManager, PlayerIndex?)` returns whether it consumed, exposes `Text`, `CaretBlinkTimer`, `PasteRequested`, `TextDeleted` (letters map to lowercase).
 
 > **4.0.0 note:** `PrimitiveRenderer` and `ColorHelper` no longer live in `KhaozEngine.UI`; they moved to **`KhaozEngine.Graphics`** (low-level rendering helpers, see the Graphics section). `KhaozEngine.UI` depends on Graphics, so widgets still get a `PrimitiveRenderer` exactly as before; game code that constructs or passes one needs `using KhaozEngine.Graphics;`.
 
@@ -263,13 +263,13 @@ project it on the way to the screen. Orthographic rendering is untouched if you 
 
 - `WorldToScreen(wx, wy, z = 0)`: `sx = (wx - wy) * TileWidth/2`, `sy = (wx + wy) * TileHeight/2 - z * HeightScale`.
   The result is projection-local (origin at world `(0,0,0)`); add your camera/draw origin.
-- `ScreenToGround(screen)`: the `z = 0` inverse, returning a **continuous** world `(x, y)` — floor it
+- `ScreenToGround(screen)`: the `z = 0` inverse, returning a **continuous** world `(x, y)` - floor it
   to a tile or keep the fraction for sub-tile picking.
 - `ScreenToWorld(screen, z)`: the inverse on the plane at height `z` (`ScreenToWorld(s, 0)` ==
-  `ScreenToGround(s)`). For varying terrain, picking is a consumer-side job — you own the heightmap, so
+  `ScreenToGround(s)`). For varying terrain, picking is a consumer-side job - you own the heightmap, so
   walk candidate heights front-to-back testing `ScreenToWorld(screen, z)` against it; the toolkit just
   supplies the per-plane inverse.
-- `z` lifts the point up the screen — the seam for terrain height; both the projection and the depth
+- `z` lifts the point up the screen - the seam for terrain height; both the projection and the depth
   key consume it for real.
 - Depend on `IIsometricProjection` (implemented by `IsometricProjection`) where you want to swap the
   projection or fake it in a headless screen test, the same way screens take `IDesignViewport`.
@@ -281,7 +281,7 @@ Y-sort your own draw list with `IsoDepth.DepthKey`:
 
 Primary order is `wx + wy + z * zWeight` (far tiles first, near last); integer `layer` breaks ties on
 the same tile (e.g. a decal under a unit). It returns a comparable `IsoDepthKey`. `zWeight` (5th arg,
-default 1) tunes how hard height pushes toward the front — raise it when a tall stack must sort over a
+default 1) tunes how hard height pushes toward the front - raise it when a tall stack must sort over a
 nearer-but-shorter neighbour, or pass `0` to ignore height in ordering. The `IsoDepthKey` ctor is
 public, so you can build keys from a custom formula (e.g. a topological pass for big multi-tile sprites)
 without fighting the helper.
@@ -327,7 +327,7 @@ Construct `RawInputState` in a helper; `GameTime` is headless-constructible (`ne
 
 Every consuming game's `Game` subclass:
 - Creates exactly one `MonoGameRawInput(Window)`, one `InputManager`, one `ScreenManager`.
-- In `Update`: `input.Update(rawInput.Read(), IsActive);` **then** `screens.Update(gameTime);` — never the reverse, never a second input read.
+- In `Update`: `input.Update(rawInput.Read(), IsActive);` **then** `screens.Update(gameTime);` - never the reverse, never a second input read.
 - In `Draw`: `screens.Draw(gameTime, spriteBatch);`.
 - Sets `IsMouseVisible = true` on desktop.
 - Passes `IsMobile` into `InputManager` (and `VirtualResolution`, if used).
@@ -359,7 +359,7 @@ Rules for consumers:
 - Pick a **category**, then log under it. Pass an exception as the optional second argument.
   - A single class's logging → `Log.For<T>()` (category = the type name).
   - A feature/subsystem spanning several classes, or a game-side module with no single owning type (cloud save, auto-update, networking) → `Log.Get("ModuleName")` with a stable PascalCase name, used consistently everywhere that module logs. The category is a free string; it does **not** have to be an engine type, so game-only modules categorize the same way engine ones do.
-  - `Log.Info/Warn/Error(...)` (no category) is the catch-all under the configured `DefaultCategory` — fine for one-off boot/shutdown lines, not for a subsystem you'll want to grep later.
+  - `Log.Info/Warn/Error(...)` (no category) is the catch-all under the configured `DefaultCategory` - fine for one-off boot/shutdown lines, not for a subsystem you'll want to grep later.
 - **Never bake a category-like prefix into the message text.** The formatter already renders the category as `[Category] message`, so `Log.Info("[CloudSave] uploaded")` double-tags as `[App] [CloudSave] uploaded`. Put the tag in the category instead: `Log.Get("CloudSave").Info("uploaded")` → `[CloudSave] uploaded`. Same rule for `Foo: ...` / `TAG ...` style prefixes.
 - The game owns its paths: resolve them with `new KhaozEngine.App.AppDataPaths("<AppName>")` (`LogFilePath` / `PreviousLogFilePath` / `GetFilePath(...)`) and pass them into `FileSinkOptions`. The engine logging core is path-agnostic.
 - Add a game-specific target (in-game console overlay, crash uploader) by implementing `ILogSink` and `Log.Manager.AddSink(...)`. Do not fork the engine logger.

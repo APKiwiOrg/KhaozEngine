@@ -63,7 +63,7 @@ public abstract class GameScreen
     internal void RaiseResume() => OnResume();
 
     /// <summary>
-    /// Per-frame update. Return whether this screen consumed input this frame — true stops input
+    /// Per-frame update. Return whether this screen consumed input this frame - true stops input
     /// reaching screens below it, false lets it fall through (see <see cref="InputConsumption"/>).
     /// </summary>
     /// <param name="gameTime">Timing snapshot.</param>

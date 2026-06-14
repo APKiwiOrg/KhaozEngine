@@ -106,11 +106,11 @@ public sealed class Camera2D
 
     /// <summary>
     /// Frames <paramref name="worldRect"/>: sets <see cref="Zoom"/> so the rect (optionally inflated
-    /// by <paramref name="paddingFraction"/> on each side) is fully visible — a contain fit,
-    /// <c>min(viewport.Width / rectWidth, viewport.Height / rectHeight)</c> — clamped to
+    /// by <paramref name="paddingFraction"/> on each side) is fully visible - a contain fit,
+    /// <c>min(viewport.Width / rectWidth, viewport.Height / rectHeight)</c> - clamped to
     /// <paramref name="minZoom"/>/<paramref name="maxZoom"/>, then centers <see cref="Position"/> on the
     /// rect. Pure and headless (explicit <paramref name="viewport"/>); ignores <see cref="Rotation"/>
-    /// like the other axis-aligned helpers. Does not clamp to world bounds — call
+    /// like the other axis-aligned helpers. Does not clamp to world bounds - call
     /// <see cref="ClampPosition(Vector2, Rectangle, Viewport)"/> after if the rect is a sub-region.
     /// </summary>
     public void Focus(Rectangle worldRect, Viewport viewport, float paddingFraction = 0f,

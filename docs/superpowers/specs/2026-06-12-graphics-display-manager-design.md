@@ -1,4 +1,4 @@
-# DisplayManager — display/window configuration for KhaozEngine.Graphics
+# DisplayManager - display/window configuration for KhaozEngine.Graphics
 
 **Date:** 2026-06-12
 **Target version:** KhaozEngine 3.5.0 (additive, no breaking changes)
@@ -96,7 +96,7 @@ Catalog of common iOS logical-point sizes (portrait orientation, width x height)
 | `IPadAir`         | 834x1194 | 1194x834  |
 | `IPadPro129`      | 1024x1366| 1366x1024 |
 
-`IPhone15ProMax.Landscape()` yields exactly 932x430 — Hardpoint's concrete need maps to the
+`IPhone15ProMax.Landscape()` yields exactly 932x430 - Hardpoint's concrete need maps to the
 catalog. (Same logical points as iPhone 14 Pro Max; named for the latest.)
 
 ### 4. `DisplayManager` (thin imperative wrapper)
@@ -128,7 +128,7 @@ constructor) plus the initial `DisplaySettings`, and applies the preferences:
 - `SupportedOrientations`, `window.AllowUserResizing`, `window.Title` (when set).
 - Wires the min-size floor handler on `window.ClientSizeChanged`.
 
-The constructor sets preferences only (no `ApplyChanges` — pre-device that is the normal MonoGame
+The constructor sets preferences only (no `ApplyChanges` - pre-device that is the normal MonoGame
 path). Runtime mutators set the preference then call `ApplyChanges()`. `ToggleFullscreen` uses
 `graphics.ToggleFullScreen()`.
 
@@ -162,7 +162,7 @@ Unchanged. `DisplayManager` owns device configuration; `VirtualResolution` keeps
 `GraphicsDeviceManager.GraphicsDevice.PresentationParameters` for its scaling. The display
 manager just makes the backbuffer size it reads explicit and centralized.
 
-## Hardpoint adoption (illustrative — separate from this engine task)
+## Hardpoint adoption (illustrative - separate from this engine task)
 
 In `HardpointGame`'s constructor:
 

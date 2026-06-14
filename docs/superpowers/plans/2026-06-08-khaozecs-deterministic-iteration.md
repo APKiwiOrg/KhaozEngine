@@ -1,10 +1,10 @@
-# KhaozEngine.Ecs Seed-Stable Iteration — Implementation Plan
+# KhaozEngine.Ecs Seed-Stable Iteration - Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax. TDD throughout.
 
 **Goal:** Make engine ECS iteration follow a guaranteed reproducible order (archetype-creation order across archetypes; swap-remove-stable within), replacing reliance on `Dictionary.Values` enumeration (which is *undefined* per the BCL, even though it happens to be insertion-ordered today). Released as `1.5.0`. Determinism Cycle A.
 
-**Architecture:** Additive. `World` gains an `ArchetypeOrder` list appended to whenever an archetype is created; the three archetype walks (`Query.Refresh`, `WorldSerializer` save accessor — `ForEach` flows through `Query.Refresh`) iterate that list instead of `Archetypes.Values`. Swap-remove within an archetype is unchanged (already reproducible for identical op sequences). No public API change.
+**Architecture:** Additive. `World` gains an `ArchetypeOrder` list appended to whenever an archetype is created; the three archetype walks (`Query.Refresh`, `WorldSerializer` save accessor - `ForEach` flows through `Query.Refresh`) iterate that list instead of `Archetypes.Values`. Swap-remove within an archetype is unchanged (already reproducible for identical op sequences). No public API change.
 
 **Tech Stack:** C#, .NET 10, xUnit.
 
@@ -79,7 +79,7 @@ public class DeterministicIterationTests
 }
 ```
 
-- [ ] **Step 2: Run the suite** — `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj`. These lock the contract; they may already pass (today's `Dictionary` happens to enumerate in insertion order), but they guard against any future switch to an unordered source. Proceed to make the order an explicit guarantee.
+- [ ] **Step 2: Run the suite** - `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj`. These lock the contract; they may already pass (today's `Dictionary` happens to enumerate in insertion order), but they guard against any future switch to an unordered source. Proceed to make the order an explicit guarantee.
 
 - [ ] **Step 3: Add the ordered archetype list to `World.cs`**
 
@@ -128,7 +128,7 @@ Change the save accessor:
     internal IEnumerable<Archetype> SaveArchetypes => ArchetypeOrder;
 ```
 
-- [ ] **Step 7: Run to verify pass** — `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj`. All `DeterministicIterationTests` pass plus the full existing suite (97). No query/ForEach test should regress (they assert sets/contents, order-independent).
+- [ ] **Step 7: Run to verify pass** - `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj`. All `DeterministicIterationTests` pass plus the full existing suite (97). No query/ForEach test should regress (they assert sets/contents, order-independent).
 
 - [ ] **Step 8: Commit**
 
@@ -143,9 +143,9 @@ git commit -m "ECS: deterministic iteration via creation-ordered archetype list"
 
 **Files:** Modify `KhaozEngine.Ecs/KhaozEngine.Ecs.csproj`, `CHANGELOG.md`
 
-- [ ] **Step 1: Bump the Ecs package version** — change `<Version>1.4.0</Version>` to `<Version>1.5.0</Version>` in `KhaozEngine.Ecs/KhaozEngine.Ecs.csproj`.
+- [ ] **Step 1: Bump the Ecs package version** - change `<Version>1.4.0</Version>` to `<Version>1.5.0</Version>` in `KhaozEngine.Ecs/KhaozEngine.Ecs.csproj`.
 
-- [ ] **Step 2: Changelog** — prepend under the title in `CHANGELOG.md`:
+- [ ] **Step 2: Changelog** - prepend under the title in `CHANGELOG.md`:
 ```markdown
 ## KhaozEngine.Ecs 1.5.0
 
@@ -179,7 +179,7 @@ git commit -m "Release KhaozEngine.Ecs 1.5.0 (deterministic iteration)"
 - Change-detection set order, order-preserving removal, zero-alloc, outcome buffer → out of scope (per spec).
 - Additive `1.5.0` release → Task 2.
 
-**Placeholder scan:** none — every edit shown in full.
+**Placeholder scan:** none - every edit shown in full.
 
 **Type consistency:** `World.ArchetypeOrder` is `List<Archetype>`, appended in the ctor and `GetOrCreateArchetype`; consumed by `Query.Refresh` and `World.SaveArchetypes`. `Archetypes` dictionary retained for O(1) signature lookup. No public API change.
 

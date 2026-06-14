@@ -2,7 +2,7 @@
 
 ## Goal
 
-A small, game-agnostic helper for "advance the simulation by N hours" — both
+A small, game-agnostic helper for "advance the simulation by N hours" - both
 on-demand ("skip +2h for some credits") and offline catch-up ("you were away
 3h"). It owns the bookkeeping (cap, multiplier, minimum threshold, elapsed-time
 calc, a Completed event) and delegates the actual advancement to a
@@ -154,7 +154,7 @@ Add tests to the existing test project (already references `KhaozEngine.Time`).
 1. `Directory.Build.props` `<Version>` 2.2.0 -> 2.3.0.
 2. `CHANGELOG.md` newest-first entry (new `TimeSkip` / `TimeSkipResult` in `KhaozEngine.Time`;
    analytical one-shot catch-up; cap/multiplier/threshold; `ElapsedSimSeconds` helper; additive/opt-in).
-3. `docs/CONSUMERS.md` engine-version line -> 2.3.0 (matrix Time column stays `–`; no consumer adopts yet).
+3. `docs/CONSUMERS.md` engine-version line -> 2.3.0 (matrix Time column stays `-`; no consumer adopts yet).
 4. `dotnet pack -c Release -o ./local-feed` (cumulative).
 5. Commit, `git tag v2.3.0` (do NOT push without user go-ahead).
 
@@ -164,7 +164,7 @@ Add tests to the existing test project (already references `KhaozEngine.Time`).
   a heavy per-tick sim that cannot go analytical, a budgeted tick-pump can be designed then.
 - No `IProjectable`/projection interface (the catch-up logic is 100% game-specific; the callback is
   the seam).
-- No `DateTime.UtcNow` inside the engine — the consumer supplies `now` (keeps it headless-testable).
+- No `DateTime.UtcNow` inside the engine - the consumer supplies `now` (keeps it headless-testable).
 - No `GameClock` dependency in `TimeSkip` (scale passed as a plain double).
 - No consumer migration in this change (Nullwake adopting `GameClock`/`TimeSkip` is separate work).
 ```

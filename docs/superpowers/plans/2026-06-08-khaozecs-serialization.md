@@ -1,4 +1,4 @@
-# KhaozEngine.Ecs World Serialization — Implementation Plan
+# KhaozEngine.Ecs World Serialization - Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax. TDD: failing test → see it fail → implement → see it pass → commit.
 
@@ -14,7 +14,7 @@
 
 ---
 
-## Task 1: Type-erased access — Column boxing + registry id↔Type / RegisterType
+## Task 1: Type-erased access - Column boxing + registry id↔Type / RegisterType
 
 **Files:** Modify `KhaozEngine.Ecs/Column.cs`, `KhaozEngine.Ecs/ComponentRegistry.cs`; Test `KhaozEngine.Tests/RegistryReflectionTests.cs`
 
@@ -64,7 +64,7 @@ public class RegistryReflectionTests
 }
 ```
 
-- [ ] **Step 2: Run to verify failure** — `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj` → FAIL (members missing).
+- [ ] **Step 2: Run to verify failure** - `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj` → FAIL (members missing).
 
 - [ ] **Step 3: Add boxing to Column**
 
@@ -549,7 +549,7 @@ git commit -m "ECS: WorldSerializer (JSON save/load, type table, FromAssemblyOf)
 
 In `KhaozEngine.Ecs/KhaozEngine.Ecs.csproj`, change `<Version>1.0.0</Version>` to `<Version>1.1.0</Version>`.
 
-- [ ] **Step 2: Changelog** — prepend under the title in `CHANGELOG.md`:
+- [ ] **Step 2: Changelog** - prepend under the title in `CHANGELOG.md`:
 ```markdown
 ## KhaozEngine.Ecs 1.1.0
 
@@ -585,7 +585,7 @@ git commit -m "Release KhaozEngine.Ecs 1.1.0 (World serialization)"
 - `IncludeFields = true` default + caller-supplied converters → Task 3 (`WorldSerializer` options).
 - Additive `1.1.0` release → Task 4.
 
-**Placeholder scan:** none — every new member is shown in full.
+**Placeholder scan:** none - every new member is shown in full.
 
 **Type consistency:** `Column.GetBoxed/SetBoxed`; `ComponentRegistry.RegisterType/TypeOf/Id<T>`; `World.CreateAt/SetByType/RestoreAllocator/SaveNextId/SaveFreeSlots/SaveArchetypes/Registry`; `WorldSerializer(params Type[])` / `(IEnumerable<Type>, JsonSerializerOptions?)` / `FromAssemblyOf<T>` / `Save`/`Load`. Save/Load DTOs (`SaveDoc`/`FreeSlot`/`EntityDoc`) consistent between write and read.
 

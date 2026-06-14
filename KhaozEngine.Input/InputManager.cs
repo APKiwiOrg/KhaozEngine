@@ -401,7 +401,7 @@ public sealed class InputManager
         IsNewKeyPress(Keys.Left, p, out _) || IsNewButtonPress(Buttons.DPadLeft, p, out _);
 
     /// <summary>
-    /// "Pause": Escape, gamepad Back or Start, or — when <paramref name="bounds"/> is given —
+    /// "Pause": Escape, gamepad Back or Start, or - when <paramref name="bounds"/> is given -
     /// a click-through-safe tap inside it.
     /// </summary>
     public bool IsPauseGame(PlayerIndex? p, Rectangle? bounds = null)

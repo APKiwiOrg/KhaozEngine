@@ -54,13 +54,13 @@ matrix. Same math, guaranteed bit-identical. The test suite decides which path s
 
 ## Design
 
-### 1. Camera2D (Graphics) — generalize + two new camera ops
+### 1. Camera2D (Graphics) - generalize + two new camera ops
 
 All additive except the X/Y term, which is a no-op when X = Y = 0 (every current call site).
 
 - **`GetViewMatrix`**: final translation becomes `T(viewport.X + W/2, viewport.Y + H/2)` (was
   `T(W/2, H/2)`). Makes inset viewports correct for *any* consumer (a future inset CameraController
-  too). `ClampPosition` is unchanged — it is world-space and X/Y-independent. New `CameraTests` case
+  too). `ClampPosition` is unchanged - it is world-space and X/Y-independent. New `CameraTests` case
   asserts a non-zero-offset viewport maps `Position` to the inset rect's center.
 - **`void PanByScreenDelta(Vector2 d)`** → `if (d == Zero || Zoom <= 0) return; Position -= d / Zoom;`
   Lifted verbatim from `CameraController.PanByScreenDelta`.
@@ -71,23 +71,23 @@ All additive except the X/Y term, which is a no-op when X = Y = 0 (every current
 
 ### 2. Two shared gesture helpers (Graphics, public, additive)
 
-- **`PinchGestureTracker`** — owns `_wasPinching` / `_prevMidpoint`. `Apply(Camera2D cam, Pinch pinch,
+- **`PinchGestureTracker`** - owns `_wasPinching` / `_prevMidpoint`. `Apply(Camera2D cam, Pinch pinch,
   Viewport vp, bool enablePan, bool enableZoom, float min, float max)`: on a continuing pinch, pan by
   `cam.PanByScreenDelta(pinch.Midpoint − _prevMidpoint)` when `enablePan`; zoom via
   `cam.ZoomAboutScreenPoint(cam.Zoom · pinch.Scale, pinch.Midpoint, vp, min, max)` when `enableZoom`
   and `pinch.Scale > 0`; store midpoint; set active. `Reset()` clears active (called on non-pinch
   frames). The single pinch pan+zoom state machine.
 - **`CameraGestures.TryGetTap(InputManager input, Camera2D cam, Viewport vp, out Vector2 pressWorld,
-  out Vector2 releaseWorld)`** — the press-origin tap→world body: `IsTapIn(vp.Bounds)` then map
+  out Vector2 releaseWorld)`** - the press-origin tap→world body: `IsTapIn(vp.Bounds)` then map
   `PressOrigin` and `PointerPosition` through `cam.ScreenToWorld(p, vp)`. Used by both classes.
 
 ### 3. CameraController refactors to consume #1 and #2
 
-No public API change. Behavior byte-identical, held green by `CameraControllerTests` (1e-2 tol) — the
+No public API change. Behavior byte-identical, held green by `CameraControllerTests` (1e-2 tol) - the
 arithmetic is moved, not changed. Its pinch branch becomes a `PinchGestureTracker.Apply` call, its
 `PanByScreenDelta`/`ApplyZoom` become `Camera2D` calls, its `TryGetTap` becomes `CameraGestures.TryGetTap`.
 
-### 4. PannableCanvas (UI) — delegates; gains UI → Graphics project reference
+### 4. PannableCanvas (UI) - delegates; gains UI → Graphics project reference
 
 - Drops `_cameraOffset` and `_zoom` fields; holds a `Camera2D _camera`. `CameraOffset` is derived
   `−_camera.Position · _camera.Zoom`.
@@ -114,7 +114,7 @@ arithmetic is moved, not changed. Its pinch branch becomes a `PinchGestureTracke
 ### Packaging / cycle check
 
 UI → {Input, Graphics}; Graphics → Input; Effects → UI. UI → Graphics is acyclic (Graphics never
-references UI). The `KhaozEngine.UI` package gains a transitive `KhaozEngine.Graphics` dependency —
+references UI). The `KhaozEngine.UI` package gains a transitive `KhaozEngine.Graphics` dependency -
 additive.
 
 ## Testing
@@ -128,14 +128,14 @@ additive.
 
 ## Release (3.8.0, minor)
 
-Additive API + refactor. The one behavior change — Camera2D honoring viewport X/Y — affects only the
+Additive API + refactor. The one behavior change - Camera2D honoring viewport X/Y - affects only the
 previously-unused non-zero-offset path; called out loudly in CHANGELOG. New UI → Graphics package dep
 noted in CHANGELOG + CONSUMERS.
 
 Ritual: bump `<Version>` to 3.8.0 in `Directory.Build.props` → CHANGELOG entry → CONSUMERS engine line
 + note the UI→Graphics dep → `dotnet pack -c Release -o ./local-feed` → commit → `git tag v3.8.0` →
 push main + tag. Verify Hardpoint builds against the new package (its map is on PannableCanvas; pinch
-zoom is now default-on — note it can opt out via `EnableZoom = false`).
+zoom is now default-on - note it can opt out via `EnableZoom = false`).
 
 ## Non-goals
 

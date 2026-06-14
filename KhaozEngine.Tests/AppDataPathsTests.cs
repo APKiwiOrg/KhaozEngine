@@ -211,7 +211,7 @@ public class AppDataPathsTests
     }
 }
 
-/// <summary>Test double for <see cref="IAppDataEnvironment"/> — all facts are settable.</summary>
+/// <summary>Test double for <see cref="IAppDataEnvironment"/> - all facts are settable.</summary>
 internal sealed class FakeAppDataEnvironment : IAppDataEnvironment
 {
     public bool IsWindows { get; set; }

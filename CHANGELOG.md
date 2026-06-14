@@ -25,7 +25,7 @@ change for existing 4.2.0 calls.
 
 - `IsometricProjection.ScreenToWorld(screen, z)`: inverts the projection on the horizontal plane at
   height `z` (not just the ground). `ScreenToWorld(screen, 0)` equals `ScreenToGround`. This is the
-  building block for picking over varying terrain — a consumer that owns the heightmap tests candidate
+  building block for picking over varying terrain - a consumer that owns the heightmap tests candidate
   heights front-to-back; the toolkit supplies the per-plane inverse.
 - `IIsometricProjection` interface, implemented by `IsometricProjection`. Consumers can depend on the
   seam and substitute a fake/stub projection in headless tests (mirrors `Input.IDesignViewport`).
@@ -46,13 +46,13 @@ signature change is a trailing optional parameter).
   (defaults to tile height). `WorldToScreen(wx, wy, z = 0)` maps world to screen
   (`sx = (wx - wy) * TileWidth/2`, `sy = (wx + wy) * TileHeight/2 - z * HeightScale`);
   `ScreenToGround(screen)` inverts on the ground plane (`z = 0`), returning a continuous world
-  point for picking. `z` is a real input now (v1 callers pass 0) — the seam for terrain height.
+  point for picking. `z` is a real input now (v1 callers pass 0) - the seam for terrain height.
 - `IsoDepth.DepthKey(wx, wy, z = 0, layer = 0)` returns a comparable `IsoDepthKey` for Y-sorting a
   draw list: primary order `wx + wy + z`, integer `layer` as tiebreak. The consumer sorts its own list.
 - `PrimitiveRenderer.DrawIsoDiamond` (filled 2:1 tile), `DrawIsoBlock` (top + two shaded side faces
   for a given height), `DrawIsoEllipse` (filled 2:1, for shadows) and `DrawIsoEllipseOutline`
   (stroked 2:1, for range rings). Match the existing pixel-quad rendering style.
-- `ColorHelper.Scale(color, factor)`: per-channel RGB multiply (alpha kept), clamped — used for the
+- `ColorHelper.Scale(color, factor)`: per-channel RGB multiply (alpha kept), clamped - used for the
   default block face shading.
 
 ### KhaozEngine.Sprites
@@ -88,7 +88,7 @@ earns its keep. No public type removed; on-disk formats unchanged.
 ### KhaozEngine.Content
 
 - `ConfigLoader.Load<T>` now emits a Debug line naming the resolved source (disk path vs embedded
-  resource) under category `ConfigLoader` — the usual "which config actually loaded" question. Adds a
+  resource) under category `ConfigLoader` - the usual "which config actually loaded" question. Adds a
   `KhaozEngine.Diagnostics` dependency. `JsonSchemaValidator` keeps its `TextWriter` reporter (it is a
   CLI tool surface, not runtime diagnostics).
 
@@ -141,10 +141,10 @@ Additive. New keyed registry for directional sprites in `KhaozEngine.Sprites`.
 
 ### KhaozEngine.Sprites
 
-- New `SpriteRegistry` — a keyed store of `DirectionalAnimatedSprite` with one bulk
+- New `SpriteRegistry` - a keyed store of `DirectionalAnimatedSprite` with one bulk
   `Update(float deltaSeconds)` that advances every registered sprite's animation clock once per
   frame. `Add(key, sprite)` (non-empty key, no duplicates, non-null sprite), `Get(key)` returning
-  the sprite or null, `Contains(key)`, and `Count`. Takes already-built sprites — loading by
+  the sprite or null, `Contains(key)`, and `Count`. Takes already-built sprites - loading by
   embedded-resource manifest name stays game-side, since resource names are game-specific.
   Centralizes the `Dictionary<string, DirectionalAnimatedSprite>` + per-frame bulk-advance that
   Hardpoint hand-rolls in `SpriteLibrary`.
@@ -156,7 +156,7 @@ Additive seam so consumers stop wrapping `VirtualResolution` just to make screen
 ### KhaozEngine.Input
 
 - New `IDesignViewport` interface: `int Width`, `int Height`, `float Scale`, `Matrix ScaleMatrix`.
-  `VirtualResolution` now implements it (its existing properties already satisfy the contract — no
+  `VirtualResolution` now implements it (its existing properties already satisfy the contract - no
   behavior change). Screens that need only design-space size/scale/matrix can take an `IDesignViewport`
   and tests can hand them a fixed-size fake instead of standing up a `VirtualResolution`. Hardpoint's
   game-side `IViewport` + `VirtualResolutionViewport` adapter exist purely for this; they can drop the
@@ -171,13 +171,13 @@ one implementation of pan / zoom / pinch / clamp / tap. Additive API plus one sc
 
 - `Camera2D.GetViewMatrix` now honors the viewport's X/Y offset (centers `Position` on
   `(viewport.X + W/2, viewport.Y + H/2)`). **Behavior change**, but only for a viewport with a non-zero
-  X/Y origin (an inset sub-rectangle) — the previously unsupported/incorrect case. Whole-screen
+  X/Y origin (an inset sub-rectangle) - the previously unsupported/incorrect case. Whole-screen
   viewports (X = Y = 0, every prior call site) are unchanged. Makes inset viewports map correctly.
-- New `Camera2D.PanByScreenDelta(screenDelta)` — grab-and-drag pan (`Position -= screenDelta / Zoom`).
-- New `Camera2D.ZoomAboutScreenPoint(target, focusScreen, viewport, min, max)` — clamped zoom that keeps
+- New `Camera2D.PanByScreenDelta(screenDelta)` - grab-and-drag pan (`Position -= screenDelta / Zoom`).
+- New `Camera2D.ZoomAboutScreenPoint(target, focusScreen, viewport, min, max)` - clamped zoom that keeps
   the world point under the focus fixed.
-- New `PinchGestureTracker` — the shared two-finger pinch state machine (midpoint pan + zoom-about-focus).
-- New `CameraGestures.TryGetTap(input, camera, viewport, out press, out release)` — the shared
+- New `PinchGestureTracker` - the shared two-finger pinch state machine (midpoint pan + zoom-about-focus).
+- New `CameraGestures.TryGetTap(input, camera, viewport, out press, out release)` - the shared
   press-origin tap-vs-pan helper.
 - `CameraController` now drives `Camera2D` through these shared pieces. No public API or behavior change.
 
@@ -192,7 +192,7 @@ one implementation of pan / zoom / pinch / clamp / tap. Additive API plus one sc
   vertical pan. Mouse-only behavior is unchanged. Disable pinch with `EnableZoom = false`; `EnablePan =
   false` disables all panning (drag, two-finger, and wheel).
 - `Focus(rect)` now **fits zoom to the rect** (delegates to `Camera2D.Focus`, clamped to `MinZoom`/
-  `MaxZoom`), fulfilling its long-standing "becomes fit-to-rect once zoom exists" intent — it previously
+  `MaxZoom`), fulfilling its long-standing "becomes fit-to-rect once zoom exists" intent - it previously
   only centered. Optional `paddingFraction` parameter. Use `CenterOn`/`CenterContent` for a center-only move.
 - `KhaozEngine.UI` now references `KhaozEngine.Graphics` (transitive package dependency added).
 
@@ -205,13 +205,13 @@ Camera framing + follow, both in `KhaozEngine.Graphics`. Additive, no breaking c
 `Camera2D` gains the framing math that consumers were hand-rolling (Hardpoint's `BoardFraming`,
 SpaceForge's grid framing, `PannableCanvas`'s long-dormant `Focus(rect)` zoom seam):
 
-- `CenterOn(Vector2 world)` — sets `Position` so the world point is at the viewport center (an explicit
+- `CenterOn(Vector2 world)` - sets `Position` so the world point is at the viewport center (an explicit
   alias for API parity).
 - `Focus(Rectangle worldRect, Viewport viewport, float paddingFraction = 0f, float minZoom, float maxZoom)`
-  — fit-to-rect: sets `Zoom` so the rect (optionally inflated by `paddingFraction` on each side) is fully
+  - fit-to-rect: sets `Zoom` so the rect (optionally inflated by `paddingFraction` on each side) is fully
   visible (contain fit, `min(viewport.Width / rectW, viewport.Height / rectH)`), clamped to
   `minZoom`/`maxZoom`, then centers `Position` on the rect. Pure and headless. Does not clamp to world
-  bounds — call `ClampPosition` after if the rect is a sub-region. A no-arg-viewport overload uses the
+  bounds - call `ClampPosition` after if the rect is a sub-region. A no-arg-viewport overload uses the
   stored `Viewport` property.
 
 Because these live on `Camera2D`, both `CameraController` and (once consolidated) `PannableCanvas`
@@ -220,10 +220,10 @@ inherit them.
 ### CameraFollow (target-follow with smoothing + deadzone)
 
 New `CameraFollow` drives a `Camera2D` to follow a moving target. The game decides what to follow; this
-owns only the smoothing/deadzone/clamp. Kept separate from the gesture `CameraController` — a screen
+owns only the smoothing/deadzone/clamp. Kept separate from the gesture `CameraController` - a screen
 typically uses one or the other.
 
-- `Update(Vector2 target, float dt, Viewport viewport, Rectangle worldBounds)` — eases toward the target,
+- `Update(Vector2 target, float dt, Viewport viewport, Rectangle worldBounds)` - eases toward the target,
   then clamps via `Camera2D.ClampPosition`. Headless (explicit `Viewport`).
 - **Frame-rate-independent smoothing**: per-frame catch-up is `1 - exp(-Stiffness * dt)`, so the result
   is independent of step size / frame rate. `Stiffness <= 0` snaps instantly.
@@ -247,24 +247,24 @@ changes. Replaces flat-primitive entity rendering with directional, animated spr
 
 ### KhaozEngine.Sprites (new)
 
-- **`Direction8`** — the 8 facings `S, SE, E, NE, N, NW, W, SW`, ordered so the enum value is the
+- **`Direction8`** - the 8 facings `S, SE, E, NE, N, NW, W, SW`, ordered so the enum value is the
   direction's row index in a PixelLab grid sheet. `Direction8Extensions.FromVector(facing, fallback)`
   maps a movement/aim vector to the nearest of 8 in y-down screen space (+X east, +Y south); magnitude
   is irrelevant, a 22.5-degree seam rounds to the higher (clockwise) direction, and a zero vector
   returns `fallback`. `ToVector()` returns the unit facing.
-- **`SpriteSheetLayout`** — pure grid math (no `Texture2D`, headless): `FromFrameSize` / `FromGrid`,
+- **`SpriteSheetLayout`** - pure grid math (no `Texture2D`, headless): `FromFrameSize` / `FromGrid`,
   then `GetFrame(row, column)` -> source `Rectangle`. **`SpriteSheet`** pairs it with a texture.
-- **`SpriteFrame`** — a `(Texture2D, Rectangle)` drawable frame; frames carry their own texture so an
+- **`SpriteFrame`** - a `(Texture2D, Rectangle)` drawable frame; frames carry their own texture so an
   animation can span one packed sheet or a set of loose per-frame textures.
-- **`SpriteAnimation`** — ordered frames + per-frame duration + loop flag (`FromFps` or seconds ctor).
+- **`SpriteAnimation`** - ordered frames + per-frame duration + loop flag (`FromFps` or seconds ctor).
   **`SpriteAnimationPlayer`** advances it by a `float` seconds delta or a `GameTime`, yields the current
   frame, loops, flags `IsFinished` for one-shots, and `Play(anim, preservePhase)` swaps animations. A
   small relative tolerance on the frame boundary keeps exact-multiple deltas from dropping a frame to
   float noise.
-- **`DirectionalAnimatedSprite`** — one animation per `Direction8`, plays the one matching the current
+- **`DirectionalAnimatedSprite`** - one animation per `Direction8`, plays the one matching the current
   facing, draws via `SpriteBatch` with a centered origin by default; switching facing preserves the
   animation phase so a walk cycle stays smooth. `Update(facing, gameTime)` does both in one call.
-- **`PixelLabSpriteLoader`** — builds a `DirectionalAnimatedSprite` from a PixelLab export, either an
+- **`PixelLabSpriteLoader`** - builds a `DirectionalAnimatedSprite` from a PixelLab export, either an
   assembled grid sheet (`FromGridSheet`: 8 direction rows x N frame columns) or loose per-direction
   frame textures (`FromFrames`). PixelLab's row order is isolated here (in `RowFor`) so the core types
   stay PixelLab-agnostic. Note: PixelLab exports loose per-frame PNGs, not a canonical sheet, so the
@@ -286,12 +286,12 @@ of its own: it reuses `Camera2D.ScreenToWorld` and `Camera2D.ClampPosition`.
 - **Pan**: single-pointer drag and two-finger drag (by pinch midpoint travel). Grab-and-drag, so
   world content tracks the finger; the screen delta is divided by `Zoom` to a world delta.
 - **Zoom**: scroll wheel (desktop) and pinch (mobile), clamped to `MinZoom`/`MaxZoom`. Zoom is about
-  the cursor / pinch midpoint — the focal world point stays under the pointer. `WheelZoomStep` is the
+  the cursor / pinch midpoint - the focal world point stays under the pointer. `WheelZoomStep` is the
   multiplicative factor per 120-unit notch (fractional/multi-notch deltas scale smoothly via a power).
 - **Bounds clamp**: after pan/zoom, clamps via `Camera2D.ClampPosition(Position, worldBounds, viewport)`
   so the view stays inside a caller-supplied world rectangle (auto-centers when the world is smaller).
 - **Tap vs pan**: `TryGetTap(out pressWorld, out releaseWorld)` mirrors `PannableCanvas.TryGetTap` and
-  honors the press-origin invariant — gameplay places a tower on a tap but treats a drag as a pan
+  honors the press-origin invariant - gameplay places a tower on a tap but treats a drag as a pan
   (a pan returns true too, but its press/release world points differ, so a same-target check rejects it).
 - **Headless**: `Update(Viewport, Rectangle worldBounds)` takes an explicit `Viewport` like `Camera2D`,
   so the step is unit-testable with no `GraphicsDevice`. Toggles: `EnablePan`, `EnableZoom`, `BlockInput`.
@@ -322,7 +322,7 @@ back-buffer pixels.
 - **Opt-in, non-breaking**: the desktop default (`isMobile:false` → scale 1, identity matrix, virtual
   size = back-buffer) is unchanged. Opt in with the new `VirtualResolution.DesignScaled(gdm, baseWidth,
   referenceHeight)` factory (still pass `isMobile:false` to the `InputManager`; only the scaling differs).
-- **Fill policy**: fill-the-width, adaptive-height (the same as mobile) — no letterbox bars and no
+- **Fill policy**: fill-the-width, adaptive-height (the same as mobile) - no letterbox bars and no
   offset, so `ScreenToVirtual` stays a plain divide-by-`Scale` and `InputManager` hit-testing lines up.
 - The `GraphicsDeviceManager` ctor argument is now nullable, and a new `Configure(int screenWidth,
   int screenHeight)` computes the scaling from an explicit size (`Initialize` delegates to it). This
@@ -344,7 +344,7 @@ loop violates the consumers' "no per-frame allocation in sim hot paths" rule.
 
 - `CachedQuery(Func<World, Query> build)` captures the filter builder once.
 - `Query For(World world)` returns the reused `Query`, rebuilding it only when the `World`
-  instance changes (`ReferenceEquals` check) — for consumers that recreate the `World` on
+  instance changes (`ReferenceEquals` check) - for consumers that recreate the `World` on
   run-reset. The underlying `Query` still self-refreshes its matched-archetype list on
   `ArchetypeGen` changes, so newly spawned archetypes are picked up through the cache.
 
@@ -422,7 +422,7 @@ additions to two existing ones. All additive; no consumer adopts these yet.
   `ParticleEmitterConfig` record holds all tunables; `ParticlePresets.Spark`/`.Ember` reproduce the
   promoted Nullwake hit effects; `ParticleSystem.Emit(config, position, baseColor, count)` with a
   ring-buffer pool. First resident of a generic visual-effects package (room for screen shake, flashes, etc.).
-- **KhaozEngine.Graphics** (new; MonoGame): `Camera2D` — a generic 2D matrix camera
+- **KhaozEngine.Graphics** (new; MonoGame): `Camera2D` - a generic 2D matrix camera
   (position/zoom/rotation → view matrix), headless `WorldToScreen`/`ScreenToWorld` (explicit `Viewport`,
   no `GraphicsDevice`), turn-key no-arg overloads via a settable `Viewport`, and a pure
   `ClampPosition` world-bounds helper. The base for a future follow/deadzone/parallax camera layer.
@@ -431,7 +431,7 @@ additions to two existing ones. All additive; no consumer adopts these yet.
   game, retry + `WriteFailed` event, blocking `Flush()` + flush-on-dispose), and
   `SettingsManager<T>` / `ISettingsStorage` / `FileSettingsStorage` (typed settings persisted via the
   queue, default paths through `KhaozEngine.App.AppDataPaths`). Persistence now also references `KhaozEngine.App`.
-- **KhaozEngine.Ecs** addition: `DeterministicRng.CreateDerived(string systemName)` — named, stable,
+- **KhaozEngine.Ecs** addition: `DeterministicRng.CreateDerived(string systemName)` - named, stable,
   reproducible substreams (mixes the parent seed with a fixed string hash; not `string.GetHashCode`).
   Note: derived streams do not byte-match `System.Random`, so any consumer migrating to it must re-baseline golden values.
 
@@ -441,15 +441,15 @@ Batch 1 of the "promote duplicated game code into KhaozEngine" effort. Three new
 (plus a small consolidation of the `AppDataPaths` that 3.1.0 had shipped). No consumer adopts these yet.
 
 - **KhaozEngine.App** (new, pure .NET): app/runtime helpers.
-  - `BuildMetadata.Read(string key, string fallback, params Assembly?[] assemblies)` — reads
+  - `BuildMetadata.Read(string key, string fallback, params Assembly?[] assemblies)` - reads
     `AssemblyMetadataAttribute` values at runtime, probing the supplied assemblies in order (null
     entries skipped), so a game can surface its own version/build identity without re-deriving it.
-  - `AppDataPaths` — instance resolver for the OS-correct per-app data directory (Windows `%APPDATA%`,
+  - `AppDataPaths` - instance resolver for the OS-correct per-app data directory (Windows `%APPDATA%`,
     macOS `~/Library/Application Support`, Linux `$XDG_DATA_HOME`/`~/.local/share`, with fallbacks).
     `BaseDirectory` is resolved + created once and cached (thread-safe via `Lazy<T>`); convenience
     `SaveFilePath`/`SettingsFilePath`/`LogFilePath`/`PreviousLogFilePath`/`GetFilePath`. OS resolution
     sits behind an internal seam for headless testing.
-  - `ServiceLocator : IServiceProvider` — generic register/resolve-by-type service registry backed by a
+  - `ServiceLocator : IServiceProvider` - generic register/resolve-by-type service registry backed by a
     `ConcurrentDictionary` (`Register`/`Replace`/`Get`/`TryGet`/`Has`/`GetService`). Fits
     `ScreenManager.Services`.
 - **KhaozEngine.Localization** (new, pure .NET): `LocalizationManager(ResourceManager)` discovers the
@@ -462,7 +462,7 @@ Batch 1 of the "promote duplicated game code into KhaozEngine" effort. Three new
   engine `ILogger`.
 - **AppDataPaths consolidation:** `KhaozEngine.App.AppDataPaths` is the canonical resolver; the
   duplicate static `KhaozEngine.Diagnostics.AppDataPaths` that 3.1.0 shipped is **removed** (engine
-  logging is path-agnostic — pass resolved paths into `FileSinkOptions`). Removing a 3.1.0 public type
+  logging is path-agnostic - pass resolved paths into `FileSinkOptions`). Removing a 3.1.0 public type
   is breaking in principle, but numbered 3.2.0 (not 4.0.0): no released consumer referenced it (3.1.0
   is not yet adopted by any game), consistent with 3.1.0's owner-choice handling of the `FileLogger`
   removal.
@@ -641,8 +641,8 @@ Batch 1 of the "promote duplicated game code into KhaozEngine" effort. Three new
 ## 0.2.0
 
 - `InputManager`: middle/right mouse-button edges (`IsMiddle/RightDown/JustPressed/JustReleased`).
-- `InputManager.Touches` — active touches in virtual coordinates with stable ids (`TouchPoint.Id`).
-- `InputManager.TryGetPinch(out Pinch)` — virtual midpoint, distance, per-frame delta, scale ratio.
+- `InputManager.Touches` - active touches in virtual coordinates with stable ids (`TouchPoint.Id`).
+- `InputManager.TryGetPinch(out Pinch)` - virtual midpoint, distance, per-frame delta, scale ratio.
 - Optional gamepad/keyboard controller cursor via `cursorSpeed` ctor arg + `Update(raw, isActive, dt)`.
 - All additive; 0.1.x consumers are unaffected until they bump.
 
@@ -669,13 +669,13 @@ Batch 1 of the "promote duplicated game code into KhaozEngine" effort. Three new
 
 Initial release. Four packages extracted from Hardpoint/Nullwake/SpaceGame:
 
-- **KhaozEngine.Input** — unified pointer (mouse+touch), `IsTapIn` press-origin invariant
+- **KhaozEngine.Input** - unified pointer (mouse+touch), `IsTapIn` press-origin invariant
   (click-through fix), region blocking, drag/scroll/pinch, keyboard + gamepad + menu-navigation,
   coordinate-transform seam (`Identity` / `Matrix` / `VirtualResolution`), all behind the testable
   `IRawInput` seam.
-- **KhaozEngine.Screens** — screen stack with top-to-bottom routing, `ConsumeWhenVisible` /
+- **KhaozEngine.Screens** - screen stack with top-to-bottom routing, `ConsumeWhenVisible` /
   `ConsumeWhenHandled` policies, and transitions.
-- **KhaozEngine.UI** — widget library, `PrimitiveRenderer`, `TextInputHandler`.
-- **KhaozEngine.Ecs** — minimal `World` / `Entity` / `ISystem`.
+- **KhaozEngine.UI** - widget library, `PrimitiveRenderer`, `TextInputHandler`.
+- **KhaozEngine.Ecs** - minimal `World` / `Entity` / `ISystem`.
 
 30 headless tests. Hardpoint migrated onto it.

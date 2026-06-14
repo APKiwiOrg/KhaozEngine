@@ -1,4 +1,4 @@
-# DeterministicRng.CreateDerived — design
+# DeterministicRng.CreateDerived - design
 
 Batch 2, item 9. Add a named-stream factory to the existing `KhaozEngine.Ecs.DeterministicRng`
 so each game subsystem can pull its own reproducible RNG stream without interfering with
@@ -60,7 +60,7 @@ streams (a single-bit seed difference produces an unrelated stream).
 
 "Stable per name" must hold regardless of *when* `CreateDerived` is called. Deriving from
 the live xorshift state would make a derived stream depend on how many numbers the parent
-had already drawn — an order-dependent footgun. Deriving from the immutable construction
+had already drawn - an order-dependent footgun. Deriving from the immutable construction
 seed mirrors Nullwake's semantics exactly: order-independent, isolated per name,
 reproducible. The cost is one `ulong` field.
 
@@ -82,7 +82,7 @@ public DeterministicRng CreateDerived(string systemName);
 ```
 
 `systemName` is a stable identifier (e.g. `"combat"`, `"oreField"`). Changing it shifts the
-stream — same contract as Nullwake. Null `systemName` throws `ArgumentNullException`
+stream - same contract as Nullwake. Null `systemName` throws `ArgumentNullException`
 (`StableHash` would otherwise NRE on `s.Length`); empty string is permitted and hashes to
 the `5381` seed constant.
 
@@ -90,15 +90,15 @@ the `5381` seed constant.
 
 Headless tests added to the existing `KhaozEngine.Tests/DeterministicRngTests.cs`:
 
-1. **Same name → identical stream** — two parents with the same seed, derive the same name,
+1. **Same name → identical stream** - two parents with the same seed, derive the same name,
    compare N draws.
-2. **Different names → different streams** — `"combat"` vs `"oreField"` from one parent.
+2. **Different names → different streams** - `"combat"` vs `"oreField"` from one parent.
 3. **Different parent seeds, same name → different streams.**
-4. **Stream independence** — deriving and draining one named stream does not perturb another
+4. **Stream independence** - deriving and draining one named stream does not perturb another
    named stream taken from a fresh parent (mirrors Nullwake's isolation test).
-5. **Order independence** — drawing from the parent before `CreateDerived` does not change
+5. **Order independence** - drawing from the parent before `CreateDerived` does not change
    the derived stream (proves derive-from-seed, not derive-from-state).
-6. **Known-vector pin** — `new DeterministicRng(42).CreateDerived("combat")` produces a
+6. **Known-vector pin** - `new DeterministicRng(42).CreateDerived("combat")` produces a
    hard-coded `ulong[]`, locking the entire derivation (hash + combine + splitmix +
    xorshift) against drift across runs/platforms. Vector captured from the first
    implementation run, same pattern as the existing `KnownVectorLocksAlgorithm` test.
@@ -117,7 +117,7 @@ Headless tests added to the existing `KhaozEngine.Tests/DeterministicRngTests.cs
 - **The exact derivation is now a public contract.** `derivedSeed = constructionSeed ^
   (uint)StableHash(name)`, `StableHash` = DJB2-xor (`5381`, `((h<<5)+h)^c`). The
   Nullwake-migration effort depends on this exact derivation.
-- **Derived streams will NOT byte-match Nullwake's old `System.Random` streams** — different
+- **Derived streams will NOT byte-match Nullwake's old `System.Random` streams** - different
   generator algorithm. The determinism contract is preserved, but any golden values or
   save-state compatibility in Nullwake that depended on actual sequences will shift when it
   migrates. Flag to whoever does that migration.

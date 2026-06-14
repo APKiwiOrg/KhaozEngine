@@ -71,7 +71,7 @@ public class DisplayManagerHelperTests
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter DisplayManagerHelperTests`
-Expected: FAIL — build error, `WindowMode` and `DisplayManager` do not exist.
+Expected: FAIL - build error, `WindowMode` and `DisplayManager` do not exist.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -123,7 +123,7 @@ public sealed partial class DisplayManager
 
 (`partial` so Task 4 adds the instance members in the same file without re-touching these.)
 
-Modify `KhaozEngine.Graphics/KhaozEngine.Graphics.csproj` — add an item group after the existing
+Modify `KhaozEngine.Graphics/KhaozEngine.Graphics.csproj` - add an item group after the existing
 one so the tests can see internals:
 
 ```xml
@@ -211,7 +211,7 @@ public class DisplaySettingsTests
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter DisplaySettingsTests`
-Expected: FAIL — `DisplaySettings` does not exist.
+Expected: FAIL - `DisplaySettings` does not exist.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -224,7 +224,7 @@ namespace KhaozEngine.Graphics;
 
 /// <summary>
 /// Declarative description of the wanted window: size, presentation mode, resize behaviour,
-/// optional minimum size floor, supported orientations, and title. Immutable — build variants
+/// optional minimum size floor, supported orientations, and title. Immutable - build variants
 /// with <c>with</c> expressions. Pure data; <see cref="DisplayManager"/> applies it to the device.
 /// </summary>
 public sealed record DisplaySettings
@@ -348,7 +348,7 @@ public class DevicePresetTests
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter DevicePresetTests`
-Expected: FAIL — `DevicePreset` / `DevicePresets` do not exist.
+Expected: FAIL - `DevicePreset` / `DevicePresets` do not exist.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -376,31 +376,31 @@ public readonly record struct DevicePreset(string Name, int PortraitWidth, int P
 /// </summary>
 public static class DevicePresets
 {
-    /// <summary>iPhone SE (2nd/3rd gen) — 375x667.</summary>
+    /// <summary>iPhone SE (2nd/3rd gen) - 375x667.</summary>
     public static readonly DevicePreset IPhoneSE = new("iPhone SE", 375, 667);
 
-    /// <summary>iPhone 13 mini / 12 mini — 375x812.</summary>
+    /// <summary>iPhone 13 mini / 12 mini - 375x812.</summary>
     public static readonly DevicePreset IPhone13Mini = new("iPhone 13 mini", 375, 812);
 
-    /// <summary>iPhone 15 / 14 / 13 — 390x844.</summary>
+    /// <summary>iPhone 15 / 14 / 13 - 390x844.</summary>
     public static readonly DevicePreset IPhone15 = new("iPhone 15", 390, 844);
 
-    /// <summary>iPhone 15 Pro / 14 Pro — 393x852.</summary>
+    /// <summary>iPhone 15 Pro / 14 Pro - 393x852.</summary>
     public static readonly DevicePreset IPhone15Pro = new("iPhone 15 Pro", 393, 852);
 
-    /// <summary>iPhone 15 Plus / 14 Plus / 13 Pro Max — 428x926.</summary>
+    /// <summary>iPhone 15 Plus / 14 Plus / 13 Pro Max - 428x926.</summary>
     public static readonly DevicePreset IPhone15Plus = new("iPhone 15 Plus", 428, 926);
 
-    /// <summary>iPhone 15 Pro Max / 14 Pro Max — 430x932 (landscape 932x430).</summary>
+    /// <summary>iPhone 15 Pro Max / 14 Pro Max - 430x932 (landscape 932x430).</summary>
     public static readonly DevicePreset IPhone15ProMax = new("iPhone 15 Pro Max", 430, 932);
 
-    /// <summary>iPad 10.2" — 810x1080.</summary>
+    /// <summary>iPad 10.2" - 810x1080.</summary>
     public static readonly DevicePreset IPad102 = new("iPad 10.2\"", 810, 1080);
 
-    /// <summary>iPad Air / iPad Pro 11" — 834x1194.</summary>
+    /// <summary>iPad Air / iPad Pro 11" - 834x1194.</summary>
     public static readonly DevicePreset IPadAir = new("iPad Air", 834, 1194);
 
-    /// <summary>iPad Pro 12.9" — 1024x1366.</summary>
+    /// <summary>iPad Pro 12.9" - 1024x1366.</summary>
     public static readonly DevicePreset IPadPro129 = new("iPad Pro 12.9\"", 1024, 1366);
 }
 ```
@@ -551,7 +551,7 @@ Expected: Build succeeded, 0 errors.
 - [ ] **Step 3: Run the full test suite to verify nothing regressed**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj`
-Expected: PASS — all pre-existing tests plus the 13 new ones from Tasks 1–3 green.
+Expected: PASS - all pre-existing tests plus the 13 new ones from Tasks 1-3 green.
 
 - [ ] **Step 4: Commit**
 
@@ -591,7 +591,7 @@ newest entry goes above the current newest). Entry content:
 ```markdown
 ## KhaozEngine 3.5.0
 
-### KhaozEngine.Graphics — DisplayManager (display/window configuration)
+### KhaozEngine.Graphics - DisplayManager (display/window configuration)
 
 New `DisplayManager` centralizes MonoGame `GraphicsDeviceManager` + `GameWindow` setup so games
 stop configuring the device bespoke.
@@ -630,7 +630,7 @@ match their heading depth + prose style. Add a new section near them:
     // Or via the device-size catalog (same 932x430):
     display = new DisplayManager(graphicsDeviceManager, Window, DevicePresets.IPhone15ProMax.Landscape());
 
-`DisplaySettings` is an immutable record — `Width`, `Height`, `Mode` (`WindowMode.Windowed` /
+`DisplaySettings` is an immutable record - `Width`, `Height`, `Mode` (`WindowMode.Windowed` /
 `BorderlessFullscreen` / `ExclusiveFullscreen`), `AllowUserResizing`, `MinWidth`/`MinHeight`
 floor, `SupportedOrientations`, `Title`. Build variants with `with`, or use the
 `DisplaySettings.Landscape(w, h)` / `Portrait(w, h)` factories.
@@ -683,7 +683,7 @@ git commit -m "release(3.5.0): DisplayManager docs, changelog, version bump"
 - [ ] **Step 1: Pack Release to the canonical local-feed**
 
 Pack all packages at the new version into the canonical feed (NOT the worktree's local-feed;
-consumers restore from `~/KhaozEngine/local-feed`). Cumulative — do not delete old versions.
+consumers restore from `~/KhaozEngine/local-feed`). Cumulative - do not delete old versions.
 
 Run:
 ```bash
@@ -703,7 +703,7 @@ Expected: the file path prints (exists).
 ### Tag + push
 
 Tagging `v3.5.0` and pushing `main` + the tag happen at branch-finish (merge back to `main`
-first), per the finishing-a-development-branch flow and CLAUDE.md. Not a plan task — handled when
+first), per the finishing-a-development-branch flow and CLAUDE.md. Not a plan task - handled when
 the work is integrated.
 
 ---
@@ -711,18 +711,18 @@ the work is integrated.
 ## Self-Review
 
 **Spec coverage:**
-- Placement in KhaozEngine.Graphics + InternalsVisibleTo — Task 1. ✓
-- `WindowMode` + `ResolveMode` — Task 1. ✓
-- `ClampToMinimum` — Task 1. ✓
-- `DisplaySettings` record + Landscape/Portrait — Task 2. ✓
-- `DevicePreset` + broad `DevicePresets` catalog (incl. IPhone15ProMax → 932x430) — Task 3. ✓
-- `DisplayManager` ctor/properties/mutators/min-size floor wiring — Task 4. ✓
-- VirtualResolution interaction (unchanged) — documented in Tasks 4/5. ✓
-- 932x430 one-liner — Tasks 5 (docs) + covered by Task 3 test. ✓
-- Headless tests (7 spec items) — Tasks 1–3 cover ResolveMode (3), ClampToMinimum (3 cases),
+- Placement in KhaozEngine.Graphics + InternalsVisibleTo - Task 1. ✓
+- `WindowMode` + `ResolveMode` - Task 1. ✓
+- `ClampToMinimum` - Task 1. ✓
+- `DisplaySettings` record + Landscape/Portrait - Task 2. ✓
+- `DevicePreset` + broad `DevicePresets` catalog (incl. IPhone15ProMax → 932x430) - Task 3. ✓
+- `DisplayManager` ctor/properties/mutators/min-size floor wiring - Task 4. ✓
+- VirtualResolution interaction (unchanged) - documented in Tasks 4/5. ✓
+- 932x430 one-liner - Tasks 5 (docs) + covered by Task 3 test. ✓
+- Headless tests (7 spec items) - Tasks 1-3 cover ResolveMode (3), ClampToMinimum (3 cases),
   Landscape/Portrait orientations + dims, preset 932x430, preset swap, second preset dims. ✓
-- Release ritual (version, changelog same commit, USING doc, CONSUMERS, Description, pack, tag) —
-  Tasks 5–6 + tag/push note. ✓
+- Release ritual (version, changelog same commit, USING doc, CONSUMERS, Description, pack, tag) -
+  Tasks 5-6 + tag/push note. ✓
 
 **Placeholder scan:** No TBD/TODO; every code step shows complete code. Doc-edit steps that say
 "read the file to match style" still specify the exact content to insert. ✓

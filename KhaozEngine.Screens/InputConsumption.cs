@@ -2,7 +2,7 @@ namespace KhaozEngine.Screens;
 
 /// <summary>
 /// Declares a screen's intended input-consumption behaviour. This is intent you implement via the
-/// bool returned from <see cref="GameScreen.Update"/> — the manager acts on that return value.
+/// bool returned from <see cref="GameScreen.Update"/> - the manager acts on that return value.
 /// </summary>
 public enum InputConsumption
 {

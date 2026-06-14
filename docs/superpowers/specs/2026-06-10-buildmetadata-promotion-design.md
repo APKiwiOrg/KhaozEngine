@@ -19,11 +19,11 @@ Consumers (each keeps its own `BuildConfig` facade):
 
 Two private methods are near-identical in all three games:
 
-1. `TryReadMetadata(Assembly assembly, string key, out string value)` — the reflection loop over
+1. `TryReadMetadata(Assembly assembly, string key, out string value)` - the reflection loop over
    `AssemblyMetadataAttribute`s. Byte-identical except Hardpoint fully-qualifies
    `System.Reflection.Assembly` / `System.Reflection.AssemblyMetadataAttribute` to avoid a
    namespace clash with its sibling `Hardpoint.Core.Assembly` namespace (CS0118). Logic identical.
-2. `ReadMetadataValue(string key, string fallback)` — the orchestration: probe the game's own
+2. `ReadMetadataValue(string key, string fallback)` - the orchestration: probe the game's own
    assembly (`typeof(BuildConfig).Assembly`, or `typeof(SpaceGameGame).Assembly` in SpaceGame),
    then `Assembly.GetEntryAssembly()` (null-checked), then return `fallback`. Identical shape.
 
@@ -42,7 +42,7 @@ The engine currently has no metadata reader (verified).
 2. **New package `KhaozEngine.App`**, pure BCL, no MonoGame / other KE deps. Intended home for
    app identity / runtime / environment helpers; `BuildMetadata` now, `AppDataPaths` (#5) likely later.
 3. Assembly resolution is **explicit** (caller passes the assemblies). The helper must not call
-   `Assembly.GetExecutingAssembly()` — once this code lives in `KhaozEngine.dll` that would return
+   `Assembly.GetExecutingAssembly()` - once this code lives in `KhaozEngine.dll` that would return
    the engine assembly, not the game's (the same trap as `LocalizationManager`).
 
 ## Public API

@@ -14,13 +14,13 @@
 
 ## File Structure
 
-- `KhaozEngine.Persistence/KhaozEngine.Persistence.csproj` — new package (refs Diagnostics).
-- `KhaozEngine.Persistence/README.md` — packed readme.
-- `KhaozEngine.Persistence/SaveEncoder.cs` — the class.
-- `KhaozEngine.slnx`, `KhaozEngine.Tests/KhaozEngine.Tests.csproj` — wiring.
-- `KhaozEngine.Tests/SaveEncoderTests.cs` — tests + `FakeLogger`.
+- `KhaozEngine.Persistence/KhaozEngine.Persistence.csproj` - new package (refs Diagnostics).
+- `KhaozEngine.Persistence/README.md` - packed readme.
+- `KhaozEngine.Persistence/SaveEncoder.cs` - the class.
+- `KhaozEngine.slnx`, `KhaozEngine.Tests/KhaozEngine.Tests.csproj` - wiring.
+- `KhaozEngine.Tests/SaveEncoderTests.cs` - tests + `FakeLogger`.
 
-No version bump / CHANGELOG / pack — deferred to the end-of-batch 3.2.0 release. Commands run from the worktree root `/Users/antonio/KhaozEngine/.claude/worktrees/batch1-promote`.
+No version bump / CHANGELOG / pack - deferred to the end-of-batch 3.2.0 release. Commands run from the worktree root `/Users/antonio/KhaozEngine/.claude/worktrees/batch1-promote`.
 
 ---
 
@@ -77,7 +77,7 @@ string? loaded = encoder.Decode(onDisk);   // null only if not-our-format / malf
 ```
 ```
 
-- [ ] **Step 3: Add to `KhaozEngine.slnx`** — insert between Localization and Screens:
+- [ ] **Step 3: Add to `KhaozEngine.slnx`** - insert between Localization and Screens:
 
 ```xml
   <Project Path="KhaozEngine.Localization/KhaozEngine.Localization.csproj" />
@@ -85,7 +85,7 @@ string? loaded = encoder.Decode(onDisk);   // null only if not-our-format / malf
   <Project Path="KhaozEngine.Screens/KhaozEngine.Screens.csproj" />
 ```
 
-- [ ] **Step 4: Add a `ProjectReference` in `KhaozEngine.Tests/KhaozEngine.Tests.csproj`** — between Localization and Screens:
+- [ ] **Step 4: Add a `ProjectReference` in `KhaozEngine.Tests/KhaozEngine.Tests.csproj`** - between Localization and Screens:
 
 ```xml
     <ProjectReference Include="../KhaozEngine.Localization/KhaozEngine.Localization.csproj" />
@@ -93,7 +93,7 @@ string? loaded = encoder.Decode(onDisk);   // null only if not-our-format / malf
     <ProjectReference Include="../KhaozEngine.Screens/KhaozEngine.Screens.csproj" />
 ```
 
-- [ ] **Step 5: Build** — `dotnet build KhaozEngine.Tests/KhaozEngine.Tests.csproj -v q`
+- [ ] **Step 5: Build** - `dotnet build KhaozEngine.Tests/KhaozEngine.Tests.csproj -v q`
 Expected: `Build succeeded`, `0 Error(s)`.
 
 - [ ] **Step 6: Commit**
@@ -290,7 +290,7 @@ internal sealed class FakeLogger : ILogger
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~SaveEncoderTests" -v q`
-Expected: FAIL — `SaveEncoder` does not exist in namespace `KhaozEngine.Persistence`.
+Expected: FAIL - `SaveEncoder` does not exist in namespace `KhaozEngine.Persistence`.
 
 - [ ] **Step 3: Write the implementation** (`KhaozEngine.Persistence/SaveEncoder.cs`):
 
@@ -412,7 +412,7 @@ public sealed class SaveEncoder
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~SaveEncoderTests" -v q`
-Expected: PASS — 14 passed (11 facts + a 3-case `Ctor_InvalidPrefix` theory).
+Expected: PASS - 14 passed (11 facts + a 3-case `Ctor_InvalidPrefix` theory).
 
 - [ ] **Step 5: Commit**
 
@@ -425,10 +425,10 @@ git commit -m "Add KhaozEngine.Persistence.SaveEncoder (ILogger-based)"
 
 ## Task 3: Full suite green + isolated build
 
-- [ ] **Step 1: Full suite** — `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj -v q`
-Expected: PASS — baseline (252) + 14 = 266, 0 failed. (Confirm baseline at start; delta +14.)
+- [ ] **Step 1: Full suite** - `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj -v q`
+Expected: PASS - baseline (252) + 14 = 266, 0 failed. (Confirm baseline at start; delta +14.)
 
-- [ ] **Step 2: Isolated package build** — `dotnet build KhaozEngine.Persistence/KhaozEngine.Persistence.csproj -v q`
+- [ ] **Step 2: Isolated package build** - `dotnet build KhaozEngine.Persistence/KhaozEngine.Persistence.csproj -v q`
 Expected: `Build succeeded`, `0 Warning(s)`, `0 Error(s)`.
 
 ---

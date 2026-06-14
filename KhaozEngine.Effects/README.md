@@ -2,10 +2,10 @@
 
 Game-agnostic pooled particle system for MonoGame games.
 
-- `ParticleSystem` — fixed-size, zero-allocation pool of rectangle particles.
-- `ParticleEmitterConfig` — immutable, data-driven emitter preset (lifetime,
+- `ParticleSystem` - fixed-size, zero-allocation pool of rectangle particles.
+- `ParticleEmitterConfig` - immutable, data-driven emitter preset (lifetime,
   speed, emission pattern, jitter, size curve, sway, acceleration, color).
-- `ParticlePresets.Spark` / `.Ember` — built-in presets (outward sparks,
+- `ParticlePresets.Spark` / `.Ember` - built-in presets (outward sparks,
   upward-drifting embers).
 
 ```csharp

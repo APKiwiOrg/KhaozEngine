@@ -8,7 +8,7 @@ namespace KhaozEngine.Graphics;
 /// Drives a <see cref="Camera2D"/> to follow a moving target, with frame-rate-independent smoothing,
 /// an optional screen-space deadzone, and a world-bounds clamp. The game decides <i>what</i> to follow
 /// (which entity, where it is); this owns only the smoothing/deadzone/clamp. Kept separate from the
-/// gesture <see cref="CameraController"/> — a screen typically uses one or the other.
+/// gesture <see cref="CameraController"/> - a screen typically uses one or the other.
 ///
 /// <para>Call <see cref="Update"/> once per frame with the target's world position and the frame's
 /// elapsed seconds. The step takes an explicit <see cref="Viewport"/> like <see cref="Camera2D"/>, so
@@ -33,7 +33,7 @@ public sealed class CameraFollow
     /// While the target's screen position stays inside it, the camera holds still; once the target
     /// crosses an edge, the camera moves just enough to put it back on that edge. <see cref="Rectangle.Empty"/>
     /// (the default) disables the deadzone, so the camera centers on the target.
-    /// <para>Coordinates are absolute virtual screen space — the same space as
+    /// <para>Coordinates are absolute virtual screen space - the same space as
     /// <see cref="Camera2D.WorldToScreen(Vector2, Viewport)"/> output. For an inset viewport (non-zero
     /// <c>viewport.X</c>/<c>Y</c>), the rectangle must be given in absolute screen coordinates, not
     /// relative to the viewport's origin.</para></summary>

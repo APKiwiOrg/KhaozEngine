@@ -28,13 +28,13 @@ version/release work.
 
 ## Rules
 - `MonoGameRawInput` is the ONLY class that may touch Mouse/Keyboard/GamePad/TouchPanel
-  statics. Everything else reads `RawInputState` via `IRawInput` — keeps input headless-testable.
+  statics. Everything else reads `RawInputState` via `IRawInput` - keeps input headless-testable.
 - New behaviour ships with a headless test in `KhaozEngine.Tests` (build `RawInputState`
   frame-by-frame; `GameTime` is `new GameTime(TimeSpan.Zero, TimeSpan.FromSeconds(dt))`).
 - Hit-test via `InputManager` bounds helpers (`IsTapIn`, etc.), never raw position + button.
 
 ## Build / test / release
-- `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj` — every new behaviour ships with a headless test.
+- `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj` - every new behaviour ships with a headless test.
 - **Always update `CHANGELOG.md` on every version bump.** Add a newest-first entry describing the
   public API / behaviour change in the SAME commit as the `Directory.Build.props` `<Version>` bump.
   Never bump the version (or tag a release) without a matching changelog entry.

@@ -31,7 +31,7 @@ migration / sanitize logic, the `ISaveSystem` / `ISettingsStorage` interfaces, a
 Four new files land in `KhaozEngine.Persistence/`. They are deliberately separate files so item 10
 can extend the package without editing the same files.
 
-### `IPersistenceQueue.cs` — cross-item seam (verbatim, coordinator-fixed)
+### `IPersistenceQueue.cs` - cross-item seam (verbatim, coordinator-fixed)
 
 Item 10's `FileSettingsStorage` consumes the queue through this minimal interface. The text below is
 fixed by the coordinator and must appear **exactly** as written; item 10 adds the identical text in its
@@ -51,10 +51,10 @@ public interface IPersistenceQueue
 ```
 
 `PersistenceQueue` implements `IPersistenceQueue`. The `WriteFailed` event, the retry policy, the
-`Enqueue<T>`/`AppDataPaths` overloads, and `IDisposable` stay on the concrete class only — the seam is
+`Enqueue<T>`/`AppDataPaths` overloads, and `IDisposable` stay on the concrete class only - the seam is
 kept minimal and stable so item 10 depends on the two methods it actually needs and nothing else.
 
-### `AtomicJsonWriter.cs` — synchronous atomic-write primitive
+### `AtomicJsonWriter.cs` - synchronous atomic-write primitive
 
 Static class. The crash-safe write both games do inline, extracted once.
 
@@ -79,7 +79,7 @@ Synchronous and **throws** on IO failure: the caller decides whether to catch. T
 Nullwake's synchronous save path uses directly (no queue), and it is the single place that performs
 the temp-then-move so the queue does not re-implement it.
 
-### `PersistenceQueue.cs` — coalesced async writer (`sealed`, `IDisposable`)
+### `PersistenceQueue.cs` - coalesced async writer (`sealed`, `IDisposable`)
 
 The machinery duplicated between SpaceGame's `SaveSystem` and `BaseSettingsStorage`, unified and
 generalized to multiple target paths.
@@ -115,7 +115,7 @@ in `Save()` before queuing). Only the raw IO is deferred to the worker.
 already scheduled, queues one via `ThreadPool.UnsafeQueueUserWorkItem`. The worker loops: under the
 lock, if `_pending` is empty it sets `_workerScheduled = false`, pulses any `Flush` waiters, and
 returns; otherwise it removes one entry, releases the lock, and writes it. This means **zero idle
-cost** — no thread is held when nothing is queued. (Alternative considered: a dedicated long-lived
+cost** - no thread is held when nothing is queued. (Alternative considered: a dedicated long-lived
 background thread + blocking channel. Cleaner shutdown, but always holds a thread; rejected to keep
 idle cost zero and stay faithful to the proven source behavior.)
 
@@ -125,7 +125,7 @@ here are transient (file locked by AV / cloud-sync, momentary disk pressure). A 
 same path during a retry lands as a fresh pending entry and is written after the current attempt
 finishes, so last-write-wins still holds.
 
-**Failure handling.** Never throws into the `Enqueue` caller — async writes must not crash the game
+**Failure handling.** Never throws into the `Enqueue` caller - async writes must not crash the game
 loop. On a failed attempt it logs `Warn` via the optional `ILogger`; on final give-up after
 `maxAttempts` it logs `Error` and raises `WriteFailed`. The event lets a game react (retry at a higher
 level, show a "save failed" prompt, bump a telemetry counter). The event is raised on the worker
@@ -133,7 +133,7 @@ thread and wrapped in try/catch so a subscriber's own exception cannot kill the 
 and logged).
 
 **Flush / shutdown.** `Flush()` blocks (via `Monitor.Wait`) until `_pending` is empty *and*
-`_workerScheduled` is false — i.e. the in-flight write, including any retry/backoff, has completed
+`_workerScheduled` is false - i.e. the in-flight write, including any retry/backoff, has completed
 (success or final failure). Because the worker only clears `_workerScheduled` after it loops back and
 finds nothing pending, this precisely captures "no write in flight". `Dispose()` calls `Flush()` then
 marks the queue disposed; any subsequent `Enqueue` throws `ObjectDisposedException`. This is the gap
@@ -153,7 +153,7 @@ public sealed class PersistenceWriteFailedEventArgs : EventArgs
 ## Wiring (the only project-level edits)
 
 - `KhaozEngine.Persistence/KhaozEngine.Persistence.csproj`: add
-  `<ProjectReference Include="../KhaozEngine.App/KhaozEngine.App.csproj" />`. Verified safe — `KhaozEngine.App`
+  `<ProjectReference Include="../KhaozEngine.App/KhaozEngine.App.csproj" />`. Verified safe - `KhaozEngine.App`
   has no project references (pure BCL), so no cycle. **This is the one shared-package dependency change
   to flag to the coordinator.** Item 10 adds the *same* `Persistence -> App` reference in its branch;
   whoever commits the csproj edit first, the other rebases. The `.cs` files stay distinct (this item:

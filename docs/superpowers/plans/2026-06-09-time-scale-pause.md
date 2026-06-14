@@ -4,7 +4,7 @@
 
 **Goal:** Add an engine-level `GameClock` (pause + time-scale) so games can freeze, slow, or speed up the simulation while UI, transitions, and notifications stay on real time.
 
-**Architecture:** A new pure package `KhaozEngine.Time` holds `GameClock` (real vs scaled delta, orthogonal pause-with-memory, `Paused`/`Resumed` events). `ScreenManager` owns a `GameClock`, drives transitions on real dt, exposes ambient forwarders, and dispatches `OnPause`/`OnResume` virtuals to stacked screens. ECS is untouched — gameplay screens feed `world.Update(ScaledDeltaSeconds)` themselves. Default `TimeScale == 1` makes scaled dt identical to real dt, so the three pinned consumers are unaffected and SpaceGame's fixed-timestep lockstep stays deterministic.
+**Architecture:** A new pure package `KhaozEngine.Time` holds `GameClock` (real vs scaled delta, orthogonal pause-with-memory, `Paused`/`Resumed` events). `ScreenManager` owns a `GameClock`, drives transitions on real dt, exposes ambient forwarders, and dispatches `OnPause`/`OnResume` virtuals to stacked screens. ECS is untouched - gameplay screens feed `world.Update(ScaledDeltaSeconds)` themselves. Default `TimeScale == 1` makes scaled dt identical to real dt, so the three pinned consumers are unaffected and SpaceGame's fixed-timestep lockstep stays deterministic.
 
 **Tech Stack:** C# net10.0, MonoGame.Framework.DesktopGL 3.8 (for `GameTime`), xUnit.
 
@@ -12,19 +12,19 @@
 
 ## File Structure
 
-- Create: `KhaozEngine.Time/KhaozEngine.Time.csproj` — new package, references MonoGame for `GameTime`.
-- Create: `KhaozEngine.Time/GameClock.cs` — the `GameClock` type.
-- Create: `KhaozEngine.Time/README.md` — package readme (packed, like other packages).
-- Modify: `KhaozEngine.slnx` — register the new project.
-- Modify: `KhaozEngine.Screens/KhaozEngine.Screens.csproj` — add ProjectReference to `.Time`.
-- Modify: `KhaozEngine.Screens/GameScreen.cs:49-53` — add `OnPause`/`OnResume` virtuals + internal shims.
-- Modify: `KhaozEngine.Screens/ScreenManager.cs:16-34,65-67` — clock field, two constructors, `Clock` + forwarders, advance clock in `Update`, dispatch hooks.
-- Modify: `KhaozEngine.Tests/KhaozEngine.Tests.csproj` — add ProjectReference to `.Time`.
-- Create: `KhaozEngine.Tests/GameClockTests.cs` — `GameClock` unit suite.
-- Create: `KhaozEngine.Tests/ScreenManagerTimeTests.cs` — `ScreenManager` clock integration suite.
-- Modify: `Directory.Build.props:9` — version 2.1.0 → 2.2.0.
-- Modify: `CHANGELOG.md` — newest-first entry.
-- Modify: `docs/CONSUMERS.md` — engine-version line + matrix Time column.
+- Create: `KhaozEngine.Time/KhaozEngine.Time.csproj` - new package, references MonoGame for `GameTime`.
+- Create: `KhaozEngine.Time/GameClock.cs` - the `GameClock` type.
+- Create: `KhaozEngine.Time/README.md` - package readme (packed, like other packages).
+- Modify: `KhaozEngine.slnx` - register the new project.
+- Modify: `KhaozEngine.Screens/KhaozEngine.Screens.csproj` - add ProjectReference to `.Time`.
+- Modify: `KhaozEngine.Screens/GameScreen.cs:49-53` - add `OnPause`/`OnResume` virtuals + internal shims.
+- Modify: `KhaozEngine.Screens/ScreenManager.cs:16-34,65-67` - clock field, two constructors, `Clock` + forwarders, advance clock in `Update`, dispatch hooks.
+- Modify: `KhaozEngine.Tests/KhaozEngine.Tests.csproj` - add ProjectReference to `.Time`.
+- Create: `KhaozEngine.Tests/GameClockTests.cs` - `GameClock` unit suite.
+- Create: `KhaozEngine.Tests/ScreenManagerTimeTests.cs` - `ScreenManager` clock integration suite.
+- Modify: `Directory.Build.props:9` - version 2.1.0 → 2.2.0.
+- Modify: `CHANGELOG.md` - newest-first entry.
+- Modify: `docs/CONSUMERS.md` - engine-version line + matrix Time column.
 
 ---
 
@@ -278,7 +278,7 @@ public class GameClockTests
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~GameClockTests"`
-Expected: FAIL — assertions fail (stub leaves deltas at 0, no `TimeScale`/`IsPaused`/`Pause` members compile error). If members are missing the build fails; that counts as the failing state.
+Expected: FAIL - assertions fail (stub leaves deltas at 0, no `TimeScale`/`IsPaused`/`Pause` members compile error). If members are missing the build fails; that counts as the failing state.
 
 - [ ] **Step 3: Implement `GameClock`**
 
@@ -353,7 +353,7 @@ public sealed class GameClock
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~GameClockTests"`
-Expected: PASS — all 11 tests green.
+Expected: PASS - all 11 tests green.
 
 - [ ] **Step 5: Commit**
 
@@ -472,7 +472,7 @@ public class ScreenManagerTimeTests
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~ScreenManagerTimeTests"`
-Expected: FAIL — `ScreenManager` has no `Clock`/`TimeScale`/`RealDeltaSeconds`/`ScaledDeltaSeconds`, no two-arg constructor, and `GameScreen` has no `OnPause`/`OnResume` (build errors count as failing).
+Expected: FAIL - `ScreenManager` has no `Clock`/`TimeScale`/`RealDeltaSeconds`/`ScaledDeltaSeconds`, no two-arg constructor, and `GameScreen` has no `OnPause`/`OnResume` (build errors count as failing).
 
 - [ ] **Step 3: Add the lifecycle hooks to `GameScreen`**
 
@@ -574,12 +574,12 @@ Then add the dispatch helpers immediately after the `Update` method's closing br
 - [ ] **Step 6: Run the new tests to verify they pass**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~ScreenManagerTimeTests"`
-Expected: PASS — all 5 tests green.
+Expected: PASS - all 5 tests green.
 
 - [ ] **Step 7: Run the full test suite (no regressions)**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj`
-Expected: PASS — existing `ScreenManagerTests` and all other suites still green (default `TimeScale==1`, `Zero` GameTime gives `RealDeltaSeconds==0`, identical to prior behavior).
+Expected: PASS - existing `ScreenManagerTests` and all other suites still green (default `TimeScale==1`, `Zero` GameTime gives `RealDeltaSeconds==0`, identical to prior behavior).
 
 - [ ] **Step 8: Commit**
 
@@ -649,14 +649,14 @@ to:
 **Engine current version:** `2.2.0` (all packages share one version, set in `Directory.Build.props`).
 ```
 
-Add a `Time` column to the matrix (header row, separator row, and each consumer row keep `–` since none have adopted it yet):
+Add a `Time` column to the matrix (header row, separator row, and each consumer row keep `-` since none have adopted it yet):
 
 ```markdown
 | Project   | Project file                         | Input | Screens | UI    | Ecs   | Content | Time |
 |-----------|--------------------------------------|-------|---------|-------|-------|---------|------|
-| Hardpoint | `Hardpoint/Hardpoint.Core`           | 2.1.0 | 2.1.0   | 2.1.0 | 2.1.0 | 2.1.0   | –    |
-| Nullwake  | `Nullwake/Nullwake.Core`             | 2.0.0 | 2.0.0   | 2.0.0 | –     | –       | –    |
-| SpaceGame | `SpaceGame/SpaceGame.Core`           | 2.0.0 | 2.0.0   | –     | 2.0.0 | –       | –    |
+| Hardpoint | `Hardpoint/Hardpoint.Core`           | 2.1.0 | 2.1.0   | 2.1.0 | 2.1.0 | 2.1.0   | -    |
+| Nullwake  | `Nullwake/Nullwake.Core`             | 2.0.0 | 2.0.0   | 2.0.0 | -     | -       | -    |
+| SpaceGame | `SpaceGame/SpaceGame.Core`           | 2.0.0 | 2.0.0   | -     | 2.0.0 | -       | -    |
 ```
 
 And update the footer line at the bottom:
@@ -693,8 +693,8 @@ Report that 2.2.0 is built into `local-feed`, summarize the new API, and ask whe
 
 ## Notes for the implementer
 
-- `GameTime` for headless tests: `new GameTime(TimeSpan.Zero, TimeSpan.FromSeconds(dt))` — only `ElapsedGameTime` matters to the clock.
+- `GameTime` for headless tests: `new GameTime(TimeSpan.Zero, TimeSpan.FromSeconds(dt))` - only `ElapsedGameTime` matters to the clock.
 - Floating-point asserts in these tests use exact values because the inputs are exact binary fractions (0.5, 0.25, etc.). Don't add tolerances unless a test uses a non-exact value.
-- Do not touch `KhaozEngine.Ecs` — it stays clock-agnostic; gameplay screens pass `ScaledDeltaSeconds` into `world.Update`.
+- Do not touch `KhaozEngine.Ecs` - it stays clock-agnostic; gameplay screens pass `ScaledDeltaSeconds` into `world.Update`.
 - `local-feed/` is gitignored but must exist before `dotnet restore`/`pack` (`mkdir -p local-feed`).
 ```

@@ -5,28 +5,28 @@ sprites (8-way characters, projectiles, pickups) instead of flat primitives.
 
 ## Pieces
 
-- **`Direction8`** — the 8 facings `S, SE, E, NE, N, NW, W, SW`. The enum value is the direction's
+- **`Direction8`** - the 8 facings `S, SE, E, NE, N, NW, W, SW`. The enum value is the direction's
   row index in a PixelLab grid sheet. `Direction8Extensions.FromVector(facing)` maps a movement/aim
   vector to the nearest of 8 (screen space is y-down: +X east, +Y south; magnitude is irrelevant; a
   zero vector returns a fallback). `ToVector()` gives the unit facing back.
-- **`SpriteSheetLayout`** — pure grid math (no `Texture2D`, headless-testable): from a sheet size plus
+- **`SpriteSheetLayout`** - pure grid math (no `Texture2D`, headless-testable): from a sheet size plus
   either a per-frame size (`FromFrameSize`) or row/column counts (`FromGrid`), gives the source
   `Rectangle` for any `(row, column)`.
-- **`SpriteSheet`** — a `Texture2D` paired with a `SpriteSheetLayout`. `FromFrameSize` / `FromGrid`
+- **`SpriteSheet`** - a `Texture2D` paired with a `SpriteSheetLayout`. `FromFrameSize` / `FromGrid`
   factories; `GetFrame(row, col)` / `Frame(row, col)`.
-- **`SpriteFrame`** — one drawable frame: a `Texture2D` + source `Rectangle`. Frames carry their own
+- **`SpriteFrame`** - one drawable frame: a `Texture2D` + source `Rectangle`. Frames carry their own
   texture, so an animation can come from one packed sheet or a set of loose per-frame textures.
-- **`SpriteAnimation`** — ordered frames + per-frame duration + loop flag. `FromFps(frames, fps, loop)`
+- **`SpriteAnimation`** - ordered frames + per-frame duration + loop flag. `FromFps(frames, fps, loop)`
   or the seconds-per-frame constructor.
-- **`SpriteAnimationPlayer`** — advances an animation by a time delta and yields the current frame.
+- **`SpriteAnimationPlayer`** - advances an animation by a time delta and yields the current frame.
   Feed it a `float` seconds delta (e.g. `GameClock.ScaledDeltaSeconds`) or a `GameTime`. Loops, clamps
   + flags `IsFinished` for one-shots, and `Play(anim, preservePhase)` swaps animations.
-- **`DirectionalAnimatedSprite`** — one `SpriteAnimation` per `Direction8`; plays the one matching the
+- **`DirectionalAnimatedSprite`** - one `SpriteAnimation` per `Direction8`; plays the one matching the
   current facing and draws it via `SpriteBatch`. Centered origin by default; switching facing preserves
   the animation phase so a walk cycle stays smooth.
-- **`PixelLabSpriteLoader`** — builds a `DirectionalAnimatedSprite` from a PixelLab export. PixelLab's
+- **`PixelLabSpriteLoader`** - builds a `DirectionalAnimatedSprite` from a PixelLab export. PixelLab's
   row order (`S, SE, E, NE, N, NW, W, SW`) is isolated here; the core types stay generic.
-- **`SpriteRegistry`** — a keyed store of `DirectionalAnimatedSprite` (`Add` / `Get` / `Contains` /
+- **`SpriteRegistry`** - a keyed store of `DirectionalAnimatedSprite` (`Add` / `Get` / `Contains` /
   `Count`) with one bulk `Update(deltaSeconds)` that advances every registered sprite once per frame.
   Takes already-built sprites; how they're loaded (embedded resources, content pipeline) stays
   game-side, since resource names are game-specific.

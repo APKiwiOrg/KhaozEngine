@@ -1,4 +1,4 @@
-# KhaozEngine.Ecs — World serialization (design)
+# KhaozEngine.Ecs - World serialization (design)
 
 **Date:** 2026-06-08
 **Status:** Approved (pending written-spec review)
@@ -8,14 +8,14 @@
 
 Save and restore a `World` (its live entities and their components) to/from JSON, so games can
 persist and resume state. This is the first of the deferred ECS features being folded in (the others
-— change detection, relationships, system ordering/groups — follow in their own cycles). It directly
+- change detection, relationships, system ordering/groups - follow in their own cycles). It directly
 unblocks Hardpoint sub-project #2 (roguelike meta-progression: save/resume an in-progress run).
 
 ## Scope
 
 In scope: serializing the World's **entities + components** and the **id-allocator state**. Out of
 scope: `Resources` (the game manages its own globals) and `ISystem`s (not data; the game re-adds
-systems after a load). Format is **JSON via `System.Text.Json`** (built in — the ECS stays
+systems after a load). Format is **JSON via `System.Text.Json`** (built in - the ECS stays
 dependency-free beyond MonoGame; human-readable saves; reflection handles arbitrary component structs).
 
 ## Save document shape
@@ -50,7 +50,7 @@ dependency-free beyond MonoGame; human-readable saves; reflection handles arbitr
 
 On load, each entity is recreated **at its exact id and version**, and the allocator state is
 restored. Therefore an `Entity` reference stored inside a component still resolves to the correct
-entity after the round-trip — **no reference-remapping pass is needed**. (The alternative, re-spawning
+entity after the round-trip - **no reference-remapping pass is needed**. (The alternative, re-spawning
 with fresh ids and rewriting every `Entity`-typed field, is avoided.)
 
 ## ECS additions (the serializer lives in `KhaozEngine.Ecs` and uses internals)

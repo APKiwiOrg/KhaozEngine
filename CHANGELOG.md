@@ -15,6 +15,27 @@ Repo utilities under `tools/`. Not packages: never versioned, packed, or tagged.
   leading gap) missing-frame tolerance with warnings. Prints the `frameCount` and suggested `fps`.
   Uses SixLabors.ImageSharp 2.1.13 (Apache-2.0); no MonoGame/GraphicsDevice. See its README.
 
+## KhaozEngine 4.4.0
+
+Additive. New package `KhaozEngine.Platform` for native platform interop. No change to existing packages.
+
+### KhaozEngine.Platform (new)
+
+- New package: game-agnostic native platform interop, pure BCL P/Invoke, no MonoGame dependency.
+- `Clipboard`: cross-platform system-clipboard facade. `TryGetClipboardText()` / `TrySetClipboardText(string)`
+  dispatch SDL2 first, then a macOS `NSPasteboard` fallback, then an optional Android/iOS bridge.
+  `TrySetClipboardImagePng(byte[])` covers macOS + mobile; `TrySetClipboardImageRgba32(w, h, rgba)` writes a
+  bottom-up `CF_DIB` on Windows. Every call is best-effort and never throws (a missing/failing backend
+  yields `""` / `false`).
+- `Clipboard.MobileBridgeTypeName`: fully-qualified type name of the consumer's mobile clipboard bridge,
+  resolved by reflection across loaded assemblies (static `TryGetClipboardText(out string)` /
+  `TrySetClipboardText(string)` / `TrySetClipboardImagePng(byte[])`). Defaults to `null` (mobile fallback
+  skipped); reassigning clears the resolution cache. This replaces the hard-coded bridge type name in the
+  promoted-from source, so consumers register their own bridge.
+- Ported verbatim from SpaceGame's `ClipboardInterop` (the SDL2 / Windows GDI / macOS Objective-C / mobile
+  marshaling is unchanged); the dispatch/fallback ordering and the `CF_DIB` packing are extracted into pure
+  helpers and covered by headless tests. The native bridges themselves can't run headless.
+
 ## KhaozEngine 4.3.1
 
 Bugfix. No API change.

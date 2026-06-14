@@ -6,7 +6,7 @@
     <ImplicitUsings>disable</ImplicitUsings>
 
     <!-- Shared package version for ALL KhaozEngine.* packages. Bump here to release them together. -->
-    <Version>4.3.1</Version>
+    <Version>4.4.0</Version>
     <Authors>APKiwi</Authors>
     <Company>Khaoz</Company>
     <PackageProjectUrl>https://github.com/APKiwi/KhaozEngine</PackageProjectUrl>

@@ -10,6 +10,7 @@
   <Project Path="KhaozEngine.Input/KhaozEngine.Input.csproj" />
   <Project Path="KhaozEngine.Localization/KhaozEngine.Localization.csproj" />
   <Project Path="KhaozEngine.Persistence/KhaozEngine.Persistence.csproj" />
+  <Project Path="KhaozEngine.Platform/KhaozEngine.Platform.csproj" />
   <Project Path="KhaozEngine.Screens/KhaozEngine.Screens.csproj" />
   <Project Path="KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
   <Project Path="KhaozEngine.Sprites/KhaozEngine.Sprites.csproj" />

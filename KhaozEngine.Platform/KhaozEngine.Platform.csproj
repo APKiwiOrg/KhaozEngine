@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Platform</PackageId>
+    <Description>Game-agnostic native platform interop. Cross-platform clipboard get/set (text + image) over SDL2, Windows GDI, macOS NSPasteboard, and an optional reflection-resolved mobile bridge. Pure BCL P/Invoke, no MonoGame dependency.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Tests" />
+  </ItemGroup>
+</Project>

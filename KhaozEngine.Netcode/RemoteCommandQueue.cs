@@ -20,6 +20,7 @@ public sealed class RemoteCommandQueue<TCommand>
         this.neutralCommand = neutralCommand;
     }
 
+    /// <summary>Clears all per-slot queues and acknowledgement tracking.</summary>
     public void Reset()
     {
         queuesBySlot.Clear();
@@ -68,6 +69,7 @@ public sealed class RemoteCommandQueue<TCommand>
         return command;
     }
 
+    /// <summary>The highest seq dequeued for <paramref name="slot"/> so far, or -1 if none.</summary>
     public int GetLastAcknowledgedSeq(int slot) =>
         lastAcknowledgedSeqBySlot.GetValueOrDefault(slot, -1);
 }

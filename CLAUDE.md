@@ -8,11 +8,23 @@ There is a lot of parallel development on this engine. Before you touch anything
 1. Check for ongoing parallel work first: `git worktree list`, `git branch -a`,
    and `git fetch && git status` to see other branches/trees in flight.
 2. If your change fits an existing branch/worktree, work there.
-3. If it does not fit any of them, create a NEW git worktree (do not start work
+3. If it does not fit any of them, create a NEW worktree (do not start work
    loose on `main` or pile onto an unrelated branch). Isolate the change in its
    own tree so concurrent work does not collide.
 
-This applies to every change: code, tests, docs, and version/release work.
+This applies to every change with one exception below: code, tests, docs, and
+version/release work.
+
+- **How to create the tree:** prefer the native `EnterWorktree` tool, not
+  `git worktree add`. The native tool is what the parallel-dev workflow expects.
+- **Branch / tree naming:** `feature/<short-name>` for new features, `fix/<short-name>`
+  for bug fixes, `<batchN>-promote` for game-code-into-engine promotion batches
+  (e.g. `batch1-promote`). Keep the worktree directory name matching the branch.
+- **Trivial-change exception:** a self-contained edit that ships no package
+  (a doc typo, a comment, a CLAUDE.md/governance tweak, a one-line non-API fix
+  with no version bump) may be made directly on a clean `main` without a worktree,
+  as long as the parallel-work check in step 1 comes back clean. Anything that
+  touches public API, tests, or triggers the release ritual still needs a tree.
 
 ## Rules
 - `MonoGameRawInput` is the ONLY class that may touch Mouse/Keyboard/GamePad/TouchPanel
@@ -37,5 +49,12 @@ This applies to every change: code, tests, docs, and version/release work.
   whenever a consumer bumps a `KhaozEngine.*` `<PackageReference>`, and the engine-version line on
   every release. Refresh snippet is at the bottom of that file.
 - SemVer: additive = minor, fixes = patch, breaking = major.
+- **Commit subjects:** conventional-commit style `area(scope): summary`, e.g.
+  `audio(4.3.1): MacOsMusicBackend loads built .ogg` or `docs(consumers): ...`.
+  On a release/version-bump commit, use the new version as the scope (`audio(4.3.1):`).
+- **One version bump per batch, not per item.** When a worktree promotes several
+  related items, commit each item individually but do the single `Directory.Build.props`
+  bump + `CHANGELOG.md` entry + `dotnet pack` ONCE at the end of the batch, then do
+  per-consumer adopt PRs. Never bump the version per-item within a batch.
 - `local-feed/` is gitignored but MUST exist before `dotnet restore` (`mkdir -p local-feed`).
 - net10.0, MonoGame.Framework.DesktopGL 3.8, xUnit.

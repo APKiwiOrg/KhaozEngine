@@ -15,6 +15,37 @@ Repo utilities under `tools/`. Not packages: never versioned, packed, or tagged.
   leading gap) missing-frame tolerance with warnings. Prints the `frameCount` and suggested `fps`.
   Uses SixLabors.ImageSharp 2.1.13 (Apache-2.0); no MonoGame/GraphicsDevice. See its README.
 
+## KhaozEngine 4.7.0
+
+Additive. Two new packages extracting SpaceGame's reusable netcode. No change to existing packages.
+
+### KhaozEngine.Netcode (new)
+
+- New package: game-agnostic, transport-free netcode primitives (refs MonoGame for `Vector2`/`MathHelper`).
+- `UnitAxisQuantizer`: 8-bit quantization of a unit-range `[-1,1]` axis to a signed byte and back
+  (`Quantize` clamps then rounds `*127` away-from-zero; `Dequantize` is `v/127f`). The game keeps its
+  own command record + packed field layout. Determinism: this rounding is sim-hash-relevant for any game
+  that dequantizes commands before its host-authoritative deterministic sim, so the scheme is fixed.
+- `ClientPrediction<TState,TCommand>`: client-side prediction + authoritative reconciliation. Seq-keyed
+  pending-command buffer with oldest-drop bound, ack-prune, rebase to an authoritative basis + replay of
+  unacknowledged commands, and decaying render-offset error smoothing with hard-snap and dead-zone. Game
+  supplies `IPredictedState<TSelf>` (Position + WithPosition) and `ITickSimulator<TState,TCommand>`
+  (one deterministic step); tunables via `PredictionSettings` (`PredictionSettings.Default` = 60 Hz,
+  256-command buffer, 100u snap, rate 8, 1.5u dead-zone). Returns `ReconciliationResult`. State type is
+  `struct`-constrained.
+- `RemoteCommandQueue<TCommand>`: host-side per-slot, seq-ordered command queue. Dedups duplicate
+  `(slot,seq)` and negative seqs, returns a caller-supplied neutral command for an empty slot, tracks
+  the last-acknowledged seq per slot. Determinism-neutral (orders/dedups only).
+
+### KhaozEngine.Netcode.LiteNetLib (new)
+
+- New package: LiteNetLib channel-split kernel (refs `LiteNetLib 2.1.2`).
+- `IChannelSplittable<TSelf>` + `ChannelSplitter.Send`: split a batch into its unreliable
+  (position/transient, latest-wins) and reliable (spawns/destroys/events) parts and send each non-empty
+  part on its own channel (Sequenced vs ReliableOrdered) so reliable events never head-of-line-block
+  position updates. `NetChannelReliability` + `ChannelSplitter.ToDeliveryMethod` expose the mapping. The
+  game keeps its own batch DTO and field layout.
+
 ## KhaozEngine 4.6.0
 
 Additive. New package `KhaozEngine.Updates`. No change to existing packages.

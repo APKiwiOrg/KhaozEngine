@@ -92,10 +92,10 @@ Published to a private GitHub Packages feed on tagged releases, and packed to a 
 ```
 ```xml
 <!-- All packages share one version (the current release). Reference only what you use. -->
-<PackageReference Include="KhaozEngine.Input"   Version="4.6.0" />
-<PackageReference Include="KhaozEngine.Screens" Version="4.6.0" />
-<PackageReference Include="KhaozEngine.UI"      Version="4.6.0" />
-<PackageReference Include="KhaozEngine.Ecs"     Version="4.6.0" />
+<PackageReference Include="KhaozEngine.Input"   Version="4.7.0" />
+<PackageReference Include="KhaozEngine.Screens" Version="4.7.0" />
+<PackageReference Include="KhaozEngine.UI"      Version="4.7.0" />
+<PackageReference Include="KhaozEngine.Ecs"     Version="4.7.0" />
 ```
 
 **Versioning is SemVer.** Each game pins a version and adopts fixes by bumping it - so you can keep one game on an old version while you migrate another. Don't fork the packages; if a game needs an API that isn't there, add it here and bump the version.

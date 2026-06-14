@@ -66,3 +66,22 @@ var follow = new CameraFollow(camera) { Stiffness = 8f, Deadzone = new Rectangle
 follow.Update(playerWorldPos, dt, GraphicsDevice.Viewport, levelBounds);
 spriteBatch.Begin(transformMatrix: camera.GetViewMatrix());
 ```
+
+## Isometric toolkit (render-only)
+
+Project a 2:1 diamond grid at draw time. No grid/tiles/pathfinding: keep your own world model.
+
+`IsometricProjection` (configurable footprint, default 64x32, configurable `heightScale`):
+
+```csharp
+var iso = new IsometricProjection();
+Vector2 screen = origin + iso.WorldToScreen(tileX, tileY, z);  // z lifts up the screen
+Vector2 world  = iso.ScreenToGround(mouseScreen - origin);     // continuous world point for picking
+```
+
+`IsoDepth.DepthKey(wx, wy, z, layer)` returns a comparable `IsoDepthKey` for Y-sorting your own draw
+list: primary order `wx + wy + z`, integer `layer` as tiebreak.
+
+`PrimitiveRenderer` iso shapes: `DrawIsoDiamond` (filled tile), `DrawIsoBlock` (top + two shaded side
+faces for a given height), `DrawIsoEllipse` (filled 2:1, blob shadows) and `DrawIsoEllipseOutline`
+(stroked 2:1, range rings). `ColorHelper.Scale(color, factor)` is the per-channel shade helper.

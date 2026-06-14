@@ -76,8 +76,11 @@ public sealed class DirectionalAnimatedSprite
 
     /// <summary>
     /// Draws the current frame at <paramref name="position"/> via <paramref name="spriteBatch"/>
-    /// (which must be within Begin/End). Origin defaults to the centre of the frame, so
-    /// <paramref name="position"/> is where the sprite is centred.
+    /// (which must be within Begin/End). Origin defaults to the centre of the frame (or the
+    /// footprint bottom-centre when <paramref name="anchor"/> is
+    /// <see cref="SpriteAnchor.FootprintBottomCenter"/>), so <paramref name="position"/> is where
+    /// the sprite is centred (or stands). An explicit <paramref name="origin"/> overrides
+    /// <paramref name="anchor"/>.
     /// </summary>
     public void Draw(
         SpriteBatch spriteBatch,
@@ -87,10 +90,28 @@ public sealed class DirectionalAnimatedSprite
         Color? tint = null,
         Vector2? origin = null,
         SpriteEffects effects = SpriteEffects.None,
-        float layerDepth = 0f)
+        float layerDepth = 0f,
+        SpriteAnchor anchor = SpriteAnchor.Center)
     {
         SpriteFrame frame = _player.CurrentFrame;
-        Vector2 frameOrigin = origin ?? new Vector2(frame.Source.Width / 2f, frame.Source.Height / 2f);
+        Vector2 frameOrigin = ResolveOrigin(frame.Source, anchor, origin);
         spriteBatch.Draw(frame.Texture, position, frame.Source, tint ?? Color.White, rotation, frameOrigin, scale, effects, layerDepth);
+    }
+
+    /// <summary>
+    /// Resolves the draw origin for a frame: an explicit <paramref name="origin"/> wins; otherwise
+    /// <paramref name="anchor"/> picks the frame centre or the footprint bottom-centre. Pure, so the
+    /// anchoring is unit-testable without a <c>GraphicsDevice</c>.
+    /// </summary>
+    internal static Vector2 ResolveOrigin(Rectangle source, SpriteAnchor anchor, Vector2? origin)
+    {
+        if (origin.HasValue)
+            return origin.Value;
+
+        return anchor switch
+        {
+            SpriteAnchor.FootprintBottomCenter => new Vector2(source.Width / 2f, source.Height),
+            _ => new Vector2(source.Width / 2f, source.Height / 2f),
+        };
     }
 }

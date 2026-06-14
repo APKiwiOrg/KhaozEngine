@@ -85,4 +85,26 @@ public class DirectionalAnimatedSpriteTests
             .ToDictionary(kv => kv.Key, kv => kv.Value);
         Assert.Throws<ArgumentException>(() => new DirectionalAnimatedSprite(partial));
     }
+
+    [Fact]
+    public void ResolveOrigin_defaults_to_frame_centre()
+    {
+        var source = new Rectangle(0, 0, 40, 60);
+        Assert.Equal(new Vector2(20f, 30f), DirectionalAnimatedSprite.ResolveOrigin(source, SpriteAnchor.Center, null));
+    }
+
+    [Fact]
+    public void ResolveOrigin_footprint_anchor_uses_bottom_centre()
+    {
+        var source = new Rectangle(0, 0, 40, 60);
+        Assert.Equal(new Vector2(20f, 60f), DirectionalAnimatedSprite.ResolveOrigin(source, SpriteAnchor.FootprintBottomCenter, null));
+    }
+
+    [Fact]
+    public void ResolveOrigin_explicit_origin_overrides_anchor()
+    {
+        var source = new Rectangle(0, 0, 40, 60);
+        var custom = new Vector2(7f, 9f);
+        Assert.Equal(custom, DirectionalAnimatedSprite.ResolveOrigin(source, SpriteAnchor.FootprintBottomCenter, custom));
+    }
 }

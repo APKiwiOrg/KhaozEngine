@@ -2,6 +2,35 @@
 
 All notable changes to KhaozEngine. Versions are shared across all packages.
 
+## KhaozEngine 4.2.0
+
+Additive. A render-only isometric toolkit in `KhaozEngine.Graphics`, plus an opt-in footprint
+anchor on the directional sprite draw path. No gameplay/grid/pathfinding concepts: consumers keep
+their own world model and project at draw time. Orthographic consumers are unaffected (the only
+signature change is a trailing optional parameter).
+
+### KhaozEngine.Graphics
+
+- `IsometricProjection`: configurable 2:1-style tile footprint (default 64x32) and `heightScale`
+  (defaults to tile height). `WorldToScreen(wx, wy, z = 0)` maps world to screen
+  (`sx = (wx - wy) * TileWidth/2`, `sy = (wx + wy) * TileHeight/2 - z * HeightScale`);
+  `ScreenToGround(screen)` inverts on the ground plane (`z = 0`), returning a continuous world
+  point for picking. `z` is a real input now (v1 callers pass 0) — the seam for terrain height.
+- `IsoDepth.DepthKey(wx, wy, z = 0, layer = 0)` returns a comparable `IsoDepthKey` for Y-sorting a
+  draw list: primary order `wx + wy + z`, integer `layer` as tiebreak. The consumer sorts its own list.
+- `PrimitiveRenderer.DrawIsoDiamond` (filled 2:1 tile), `DrawIsoBlock` (top + two shaded side faces
+  for a given height), `DrawIsoEllipse` (filled 2:1, for shadows) and `DrawIsoEllipseOutline`
+  (stroked 2:1, for range rings). Match the existing pixel-quad rendering style.
+- `ColorHelper.Scale(color, factor)`: per-channel RGB multiply (alpha kept), clamped — used for the
+  default block face shading.
+
+### KhaozEngine.Sprites
+
+- `SpriteAnchor` enum and a new optional `anchor` parameter on `DirectionalAnimatedSprite.Draw`
+  (default `Center`, unchanged). `FootprintBottomCenter` anchors the draw position at the frame's
+  bottom-centre so a tall iso sprite stands on its (z-lifted) tile instead of being centred on it.
+  An explicit `origin` still overrides the anchor. Facing/`Direction8` logic is unchanged.
+
 ## KhaozEngine 4.1.0
 
 Additive. Logging normalization: packages that log now lean on the logger's category (already

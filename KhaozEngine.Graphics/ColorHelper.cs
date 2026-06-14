@@ -1,3 +1,4 @@
+using System;
 using Microsoft.Xna.Framework;
 
 namespace KhaozEngine.Graphics;
@@ -7,6 +8,23 @@ namespace KhaozEngine.Graphics;
 /// </summary>
 public static class ColorHelper
 {
+    /// <summary>
+    /// Multiplies the RGB channels by <paramref name="factor"/> (alpha unchanged), clamping each to
+    /// 0..255. A factor below 1 darkens (useful for shaded faces); above 1 lightens. Negative
+    /// factors are treated as 0.
+    /// </summary>
+    /// <param name="color">The colour to scale.</param>
+    /// <param name="factor">Per-channel multiplier; values &lt; 0 clamp to 0.</param>
+    public static Color Scale(Color color, float factor)
+    {
+        if (factor < 0f) factor = 0f;
+        return new Color(
+            (int)Math.Clamp(color.R * factor, 0f, 255f),
+            (int)Math.Clamp(color.G * factor, 0f, 255f),
+            (int)Math.Clamp(color.B * factor, 0f, 255f),
+            color.A);
+    }
+
     /// <summary>
     /// Parses a hex color string (e.g., "#B87333" or "B87333") into a <see cref="Color"/>.
     /// Returns <paramref name="fallback"/> if the string is malformed.

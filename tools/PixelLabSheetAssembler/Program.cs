@@ -53,9 +53,11 @@ internal static class Program
         }
 
         string? temp = null;
+        CharacterAnimation? charAnim = null;
         try
         {
-            var (charAnim, t) = PixelLabExport.Load(input!, anim!);
+            var (loaded, t) = PixelLabExport.Load(input!, anim!);
+            charAnim = loaded;
             temp = t;
 
             AssemblyResult result = SheetAssembler.Assemble(
@@ -82,11 +84,28 @@ internal static class Program
         }
         catch (AssemblyException ex)
         {
+            // Expected, user-facing failure (bad export, missing direction, strict gap).
+            Console.Error.WriteLine($"error: {ex.Message}");
+            return 1;
+        }
+        catch (Exception ex)
+        {
+            // Unexpected: malformed metadata.json, unreadable PNG, unwritable --out path, etc.
+            // Report cleanly and honour the exit-code contract instead of dumping a stack trace.
             Console.Error.WriteLine($"error: {ex.Message}");
             return 1;
         }
         finally
         {
+            // Dispose the loaded frame images (each holds an unmanaged pixel buffer); the sheet was
+            // already disposed in the using above. Matters most if this is ever reused as a library.
+            if (charAnim != null)
+            {
+                foreach (var frames in charAnim.FramesByDir.Values)
+                    foreach (var f in frames)
+                        f.Image.Dispose();
+            }
+
             if (temp != null)
             {
                 try { Directory.Delete(temp, recursive: true); } catch { /* best effort */ }

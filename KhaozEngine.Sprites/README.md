@@ -65,3 +65,7 @@ Hand-built (full control, no PixelLab assumptions):
 - PixelLab does not emit a canonical sheet (it exports loose per-frame PNGs). The `FromGridSheet`
   layout matches what an assembly step (Aseprite / TexturePacker / a pack script) produces; verify the
   row order against a real export the first time a game adopts this.
+- For isometric games, `DirectionalAnimatedSprite.Draw(..., anchor: SpriteAnchor.FootprintBottomCenter)`
+  anchors the draw position at the frame's bottom-centre, so a tall sprite stands on its (z-lifted)
+  tile instead of being centred on it. `SpriteAnchor.Center` is the default; an explicit `origin`
+  overrides the anchor.

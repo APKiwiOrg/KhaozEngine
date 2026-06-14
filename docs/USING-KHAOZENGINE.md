@@ -245,6 +245,56 @@ device config, `VirtualResolution` reads it for its coordinate scaling.
 
 ---
 
+## Isometric toolkit (KhaozEngine.Graphics, added 4.2.0)
+
+Render-only, opt-in, additive. It is projection + depth-sort + draw helpers, nothing else: no grid,
+no tiles, no pathfinding. You keep your own world model (whatever a tile means to your game) and
+project it on the way to the screen. Orthographic rendering is untouched if you never call into it.
+
+`IsometricProjection` maps your continuous world coordinates to screen space and back:
+
+    var iso = new IsometricProjection();              // default 64x32 (2:1) footprint
+    // var iso = new IsometricProjection(80, 40, heightScale: 24); // custom footprint + z lift
+
+    Vector2 screen = origin + iso.WorldToScreen(tileX, tileY);     // z defaults to 0
+    Vector2 lifted = origin + iso.WorldToScreen(tileX, tileY, z);  // z lifts up the screen
+    Vector2 world  = iso.ScreenToGround(mouseScreen - origin);     // continuous world point for picking
+
+- `WorldToScreen(wx, wy, z = 0)`: `sx = (wx - wy) * TileWidth/2`, `sy = (wx + wy) * TileHeight/2 - z * HeightScale`.
+  The result is projection-local (origin at world `(0,0,0)`); add your camera/draw origin.
+- `ScreenToGround(screen)`: the `z = 0` inverse, returning a **continuous** world `(x, y)` — floor it
+  to a tile or keep the fraction for sub-tile picking.
+- `z` is a real input even though v1 callers pass 0; it is the seam for terrain height later.
+
+Y-sort your own draw list with `IsoDepth.DepthKey`:
+
+    drawList.Sort((a, b) => IsoDepth.DepthKey(a.X, a.Y, a.Z, a.Layer)
+                   .CompareTo(IsoDepth.DepthKey(b.X, b.Y, b.Z, b.Layer)));
+
+Primary order is `wx + wy + z` (far tiles first, near last); integer `layer` breaks ties on the same
+tile (e.g. a decal under a unit). It returns a comparable `IsoDepthKey`.
+
+Tall sprites stand on their tile via the opt-in footprint anchor on the directional sprite draw path:
+
+    Vector2 feet = origin + iso.WorldToScreen(unit.X, unit.Y, unit.Z);
+    sprite.Draw(spriteBatch, feet, anchor: SpriteAnchor.FootprintBottomCenter);
+
+`SpriteAnchor.Center` stays the default (orthographic behaviour unchanged); an explicit `origin:`
+still overrides the anchor. Facing / `Direction8` logic is unchanged.
+
+`PrimitiveRenderer` gains iso shape helpers (same 1×1-pixel style as the rest of it):
+
+    prim.DrawIsoDiamond(spriteBatch, center, 64, 32, fill);                 // a tile
+    prim.DrawIsoBlock(spriteBatch, baseCenter, 64, 32, height: 24, top);    // raised cube/wall (auto-shaded sides)
+    prim.DrawIsoEllipse(spriteBatch, center, radiusX: 20, shadow);          // blob shadow (2:1)
+    prim.DrawIsoEllipseOutline(spriteBatch, center, radiusX: 96, ring);     // range ring (2:1)
+
+`DrawIsoBlock`'s side faces default to shaded variants of the top color (left darker than right);
+pass `leftFace` / `rightFace` to override. `DrawIsoEllipse*` take a `ratio` (default 0.5 = 2:1).
+`ColorHelper.Scale(color, factor)` is the per-channel RGB multiply used for the default shading.
+
+---
+
 ## Testing your game's screens headlessly
 
 Because input is injected, you can test routing and screen logic without a window:
@@ -317,7 +367,7 @@ The sections above cover the core flow. The rest of the 16-package set, one line
 - **`KhaozEngine.Localization`**: `LocalizationManager` (culture + string lookup).
 - **`KhaozEngine.Audio`**: `AudioSystem` music playback (one track at a time, `PlayMode`, now-playing events; macOS AVAudioPlayer backend). Music-only; SFX stays game-side.
 - **`KhaozEngine.Effects`**: pooled rect `ParticleSystem` + `Spark`/`Ember` presets. Depends on Graphics (for `PrimitiveRenderer`).
-- **`KhaozEngine.Sprites`**: 2D sprite + directional animation: `SpriteSheet`, `SpriteAnimationPlayer`, `DirectionalAnimatedSprite`, `Direction8`, `SpriteRegistry`, `PixelLabSpriteLoader`. Takes a raw `float`/`GameTime` delta.
+- **`KhaozEngine.Sprites`**: 2D sprite + directional animation: `SpriteSheet`, `SpriteAnimationPlayer`, `DirectionalAnimatedSprite` (opt-in `SpriteAnchor.FootprintBottomCenter` for iso), `Direction8`, `SpriteRegistry`, `PixelLabSpriteLoader`. Takes a raw `float`/`GameTime` delta.
 - **`KhaozEngine.Time`**: `GameClock` (pause / `TimeScale`) + `TimeSkip`. Pulled in transitively by `Screens`; optional to use directly.
 
 ## Versioning & change process

@@ -297,4 +297,144 @@ public sealed class PrimitiveRenderer
             new Rectangle(bounds.X + effectiveBorder, bounds.Y + effectiveBorder, fillWidth, innerHeight),
             effectiveBorder);
     }
+
+    // --- Isometric primitives ------------------------------------------------------------------
+    // Render-only helpers for a 2:1 diamond grid. They rasterise the pure geometry in IsoShapes;
+    // pair with IsometricProjection to place them. Orthographic callers are unaffected.
+
+    /// <summary>
+    /// Draws a filled isometric diamond (a 2:1-style tile) centred at <paramref name="center"/>.
+    /// </summary>
+    /// <param name="spriteBatch">The active SpriteBatch (within Begin/End).</param>
+    /// <param name="center">Screen-space centre of the tile.</param>
+    /// <param name="tileWidth">Diamond footprint width in pixels.</param>
+    /// <param name="tileHeight">Diamond footprint height in pixels (half the width for 2:1).</param>
+    /// <param name="color">Fill color.</param>
+    public void DrawIsoDiamond(SpriteBatch spriteBatch, Vector2 center, float tileWidth, float tileHeight, Color color)
+    {
+        FillConvexPolygon(spriteBatch, IsoShapes.DiamondCorners(center, tileWidth, tileHeight), color);
+    }
+
+    /// <summary>
+    /// Draws an isometric block: a top diamond lifted by <paramref name="height"/> pixels plus its
+    /// two visible side faces, so a tile reads as a raised cube/wall. The block stands on the tile
+    /// whose footprint is centred at <paramref name="baseCenter"/>. Side faces default to shaded
+    /// variants of <paramref name="topColor"/> (left darker than right) for a lit look; override
+    /// either to taste.
+    /// </summary>
+    /// <param name="spriteBatch">The active SpriteBatch (within Begin/End).</param>
+    /// <param name="baseCenter">Screen-space centre of the ground tile the block sits on.</param>
+    /// <param name="tileWidth">Diamond footprint width in pixels.</param>
+    /// <param name="tileHeight">Diamond footprint height in pixels.</param>
+    /// <param name="height">Block height in screen pixels (how far the top is lifted).</param>
+    /// <param name="topColor">Color of the top face.</param>
+    /// <param name="leftFace">Left side face color. Defaults to <paramref name="topColor"/> * 0.65.</param>
+    /// <param name="rightFace">Right side face color. Defaults to <paramref name="topColor"/> * 0.8.</param>
+    public void DrawIsoBlock(SpriteBatch spriteBatch, Vector2 baseCenter, float tileWidth, float tileHeight,
+        float height, Color topColor, Color? leftFace = null, Color? rightFace = null)
+    {
+        (Vector2[] left, Vector2[] right) = IsoShapes.BlockFaces(baseCenter, tileWidth, tileHeight, height);
+
+        // Side faces first, top last, so the top diamond paints over the shared front edges.
+        FillConvexPolygon(spriteBatch, left, leftFace ?? ColorHelper.Scale(topColor, 0.65f));
+        FillConvexPolygon(spriteBatch, right, rightFace ?? ColorHelper.Scale(topColor, 0.8f));
+        FillConvexPolygon(spriteBatch, IsoShapes.DiamondCorners(new Vector2(baseCenter.X, baseCenter.Y - height), tileWidth, tileHeight), topColor);
+    }
+
+    /// <summary>
+    /// Draws a filled isometric (2:1 by default) ellipse centred at <paramref name="center"/> —
+    /// a foreshortened disc for blob shadows and filled range markers.
+    /// </summary>
+    /// <param name="spriteBatch">The active SpriteBatch (within Begin/End).</param>
+    /// <param name="center">Screen-space centre.</param>
+    /// <param name="radiusX">Horizontal radius in pixels.</param>
+    /// <param name="color">Fill color.</param>
+    /// <param name="ratio">Vertical-to-horizontal radius ratio. Defaults to 0.5 (2:1).</param>
+    public void DrawIsoEllipse(SpriteBatch spriteBatch, Vector2 center, float radiusX, Color color, float ratio = 0.5f)
+    {
+        float radiusY = radiusX * ratio;
+        if (radiusX <= 0f || radiusY <= 0f)
+            return;
+
+        int intRadiusY = (int)radiusY;
+        for (int y = -intRadiusY; y <= intRadiusY; y++)
+        {
+            float halfWidth = radiusX * MathF.Sqrt(MathF.Max(0f, 1f - (y * y) / (radiusY * radiusY)));
+            spriteBatch.Draw(_pixel, new Rectangle(
+                (int)(center.X - halfWidth),
+                (int)center.Y + y,
+                (int)(halfWidth * 2f), 1), color);
+        }
+    }
+
+    /// <summary>
+    /// Strokes an isometric (2:1 by default) ellipse outline — a range ring on the ground plane.
+    /// </summary>
+    /// <param name="spriteBatch">The active SpriteBatch (within Begin/End).</param>
+    /// <param name="center">Screen-space centre.</param>
+    /// <param name="radiusX">Horizontal radius in pixels.</param>
+    /// <param name="color">Ring color.</param>
+    /// <param name="ratio">Vertical-to-horizontal radius ratio. Defaults to 0.5 (2:1).</param>
+    /// <param name="thickness">Line thickness in pixels.</param>
+    /// <param name="segments">Number of line segments (higher = smoother).</param>
+    public void DrawIsoEllipseOutline(SpriteBatch spriteBatch, Vector2 center, float radiusX, Color color,
+        float ratio = 0.5f, int thickness = 1, int segments = 48)
+    {
+        float radiusY = radiusX * ratio;
+        if (radiusX <= 0f || radiusY <= 0f)
+            return;
+
+        Vector2[] points = IsoShapes.EllipsePoints(center, radiusX, radiusY, segments);
+        for (int i = 0; i < points.Length; i++)
+        {
+            Vector2 a = points[i];
+            Vector2 b = points[(i + 1) % points.Length];
+            DrawLine(spriteBatch, a, b, color, thickness);
+        }
+    }
+
+    /// <summary>
+    /// Fills a convex polygon (the iso diamond and block faces) by horizontal scanlines, sampling
+    /// each row at its centre and spanning between the leftmost and rightmost edge crossings.
+    /// </summary>
+    private void FillConvexPolygon(SpriteBatch spriteBatch, Vector2[] verts, Color color)
+    {
+        float minY = float.MaxValue, maxY = float.MinValue;
+        foreach (Vector2 v in verts)
+        {
+            if (v.Y < minY) minY = v.Y;
+            if (v.Y > maxY) maxY = v.Y;
+        }
+
+        int y0 = (int)MathF.Floor(minY);
+        int y1 = (int)MathF.Ceiling(maxY);
+        for (int y = y0; y < y1; y++)
+        {
+            float scanY = y + 0.5f;
+            float xMin = float.MaxValue, xMax = float.MinValue;
+
+            for (int i = 0; i < verts.Length; i++)
+            {
+                Vector2 a = verts[i];
+                Vector2 b = verts[(i + 1) % verts.Length];
+                bool crosses = (a.Y <= scanY && b.Y > scanY) || (b.Y <= scanY && a.Y > scanY);
+                if (!crosses)
+                    continue;
+
+                float t = (scanY - a.Y) / (b.Y - a.Y);
+                float x = a.X + t * (b.X - a.X);
+                if (x < xMin) xMin = x;
+                if (x > xMax) xMax = x;
+            }
+
+            if (xMax < xMin)
+                continue;
+
+            int left = (int)MathF.Round(xMin);
+            int width = (int)MathF.Round(xMax - xMin);
+            if (width <= 0)
+                width = 1;
+            spriteBatch.Draw(_pixel, new Rectangle(left, y, width, 1), color);
+        }
+    }
 }

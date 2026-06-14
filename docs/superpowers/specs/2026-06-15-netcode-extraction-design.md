@@ -18,7 +18,7 @@ generalized off SpaceGame's wire format so other games can reuse them. Three sou
 The packed field layout (which axes/actions/entities) stays game-side; the engine exposes the generic
 machinery (primitives, generic buffer/replay, interface + driver).
 
-## Determinism (the flagged caveat — CONFIRMED hash-gated)
+## Determinism (the flagged caveat: CONFIRMED hash-gated)
 
 The dequantization **does** feed the host-authoritative deterministic sim:
 
@@ -52,12 +52,12 @@ Refs `MonoGame.Framework.DesktopGL 3.8.*` only (for `Vector2` / `MathHelper`). `
 `InternalsVisibleTo KhaozEngine.Tests`, ships `README.md`.
 
 1. **`UnitAxisQuantizer`** (static class)
-   - `static sbyte Quantize(float value)` — clamp to `[-1,1]`, `*127`, round away-from-zero, cast `sbyte`.
-   - `static float Dequantize(sbyte value)` — `value / 127f`.
+   - `static sbyte Quantize(float value)`: clamp to `[-1,1]`, `*127`, round away-from-zero, cast `sbyte`.
+   - `static float Dequantize(sbyte value)`: `value / 127f`.
    - Byte-identical to SpaceGame `TickCommandCodec`. The game keeps its own command record + field
      mapping (move/aim/actions); it just calls these two primitives per axis.
 
-2. **Client prediction** — generalizes `ClientPredictionState`.
+2. **Client prediction**: generalizes `ClientPredictionState`.
    ```csharp
    public interface IPredictedState<TSelf>
    {
@@ -114,7 +114,7 @@ Refs `MonoGame.Framework.DesktopGL 3.8.*` only (for `Vector2` / `MathHelper`). `
    when `|error| >= HardSnapDistance` (offset zeroed), ignore when `|error| <= CorrectionDeadZone`,
    else offset = error and decays in `AdvancePresentation`.
 
-3. **`RemoteCommandQueue<TCommand>`** — generalizes `RemotePlayerCommandQueue` (host-side, same source
+3. **`RemoteCommandQueue<TCommand>`**: generalizes `RemotePlayerCommandQueue` (host-side, same source
    file, determinism-neutral).
    ```csharp
    public sealed class RemoteCommandQueue<TCommand>
@@ -157,11 +157,11 @@ public static class ChannelSplitter
 ```
 The game implements `IChannelSplittable<EntityUpdateBatchDto>` (its `HasPositionContent` ->
 `HasUnreliableContent`, `ExtractPositions` -> `ExtractUnreliable`, etc.). The engine drives "split, send
-each non-empty part on its channel" — the head-of-line-blocking fix, transport-mapped.
+each non-empty part on its channel" (the head-of-line-blocking fix, transport-mapped).
 
 ## Tests (`KhaozEngine.Tests`, headless, no GraphicsDevice; references both new packages)
 
-- **`UnitAxisQuantizer`**: pinned exact values — `Quantize(0)=0`, `Quantize(1)=127`, `Quantize(-1)=-127`,
+- **`UnitAxisQuantizer`**: pinned exact values: `Quantize(0)=0`, `Quantize(1)=127`, `Quantize(-1)=-127`,
   `Quantize(0.5)=64` (away-from-zero on `63.5`), `Quantize(-0.5)=-64`, clamp `Quantize(2f)=127`,
   `Quantize(-2f)=-127`; `Dequantize(127)=1`, `Dequantize(0)=0`; round-trip error <= `1/127`. These pin
   the determinism contract.
@@ -188,7 +188,7 @@ each non-empty part on its channel" — the head-of-line-blocking fix, transport
 
 ## Release ritual (per CLAUDE.md)
 
-- **Version**: provisional `4.5.0` (additive -> minor). See "Version coordination" — the actual number
+- **Version**: provisional `4.5.0` (additive -> minor). See "Version coordination"; the actual number
   may need to move to `4.6.0`/`4.7.0` at merge depending on the other two in-flight release branches.
 - Bump `<Version>` in `Directory.Build.props`.
 - `CHANGELOG.md`: newest-first entry for the new packages.
@@ -199,13 +199,13 @@ each non-empty part on its channel" — the head-of-line-blocking fix, transport
 - `dotnet test` green, then `dotnet pack -c Release -o ./local-feed`.
 - Commit per item; single version bump at the end; `git tag v<ver>`; push `main` + tag.
 
-## Version coordination (IMPORTANT — concurrent release collision)
+## Version coordination (IMPORTANT: concurrent release collision)
 
 At design time, `v4.4.0` is already tagged on `main` for `KhaozEngine.Platform`. Two other worktrees
 are in flight and each ALSO bumped to `4.4.0` (now stale):
 
-- `worktree-feature+collision-pooling` — Collision + Pooling packages.
-- `worktree-feature+updates-package` — Updates package.
+- `worktree-feature+collision-pooling`: Collision + Pooling packages.
+- `worktree-feature+updates-package`: Updates package.
 
 Whichever of the three remaining branches merges first takes `4.5.0`; the others must rebase onto
 `main` and bump again (`4.6.0`, `4.7.0`). This spec uses `4.5.0` provisionally; reconcile the real

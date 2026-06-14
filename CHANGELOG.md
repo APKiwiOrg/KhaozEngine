@@ -2,6 +2,19 @@
 
 All notable changes to KhaozEngine. Versions are shared across all packages.
 
+## Tools
+
+Repo utilities under `tools/`. Not packages: never versioned, packed, or tagged.
+
+### PixelLabSheetAssembler
+
+- New offline tool (`tools/PixelLabSheetAssembler`, `IsPackable=false`). Assembles a PixelLab
+  character export (zip or dir) plus an animation name into one `Direction8` grid sheet PNG for
+  `PixelLabSpriteLoader.FromGridSheet`: 8 rows in `Direction8` order, N frame columns, uniform cell
+  size, feet-on-baseline anchoring (opaque-bbox bottom), and hold-previous (or hold-next for a
+  leading gap) missing-frame tolerance with warnings. Prints the `frameCount` and suggested `fps`.
+  Uses SixLabors.ImageSharp 2.1.13 (Apache-2.0); no MonoGame/GraphicsDevice. See its README.
+
 ## KhaozEngine 4.3.1
 
 Bugfix. No API change.

@@ -14,6 +14,8 @@
     <PackageReference Include="SharpGLTF.Core" Version="1.0.6" />
     <!-- Override the vulnerable Newtonsoft.Json 9.0.1 that Veldrid.SPIRV drags in (NU1903). -->
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <!-- The MonoGame-free ECS, so 3D entities can render via Scene3DBinder (Transform3D + MeshInstance). -->
+    <ProjectReference Include="../KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
     <None Include="README.md" Pack="true" PackagePath="\" />
     <None Include="assets/testmodel.glb" Pack="true" PackagePath="assets\" CopyToOutputDirectory="PreserveNewest" />
     <None Include="assets/asteroid.glb" Pack="true" PackagePath="assets\" CopyToOutputDirectory="PreserveNewest" />

@@ -10,8 +10,13 @@ namespace KhaozEngine.Render3D
     /// </summary>
     public static class Render3DSnapshot
     {
-        /// <summary>Render <paramref name="frames"/> frames and return the final image as RGBA8 (w*h*4 bytes).</summary>
-        public static byte[] Capture(GltfMesh mesh, Action<Scene3D>? configure, int width, int height, int frames)
+        /// <summary>
+        /// Render a multi-instance scene offscreen and return the final image as RGBA8 (w*h*4 bytes).
+        /// <paramref name="setup"/> runs once (load meshes via <see cref="Scene3D.LoadMesh"/>, configure
+        /// camera/post); <paramref name="drawFrame"/> runs each frame after <see cref="Scene3D.Begin"/> to
+        /// queue instances via <see cref="Scene3D.Draw"/>.
+        /// </summary>
+        public static byte[] Capture(int width, int height, Action<Scene3D> setup, Action<Scene3D> drawFrame, int frames = 1)
         {
             var opts = new GraphicsDeviceOptions(
                 debug: false, swapchainDepthFormat: null, syncToVerticalBlank: false,
@@ -26,14 +31,13 @@ namespace KhaozEngine.Render3D
             using Framebuffer finalFB = f.CreateFramebuffer(new FramebufferDescription(null, finalTex));
 
             using var scene = new Scene3D(gd, finalFB.OutputDescription);
-            var handle = scene.LoadMesh(mesh);
-            configure?.Invoke(scene);
+            setup(scene);
 
             using CommandList renderCl = f.CreateCommandList();
             for (int i = 0; i < Math.Max(1, frames); i++)
             {
                 scene.Begin();
-                scene.Draw(handle, Matrix4x4.Identity);
+                drawFrame(scene);
                 renderCl.Begin();
                 scene.RenderInternal(renderCl, width, height, finalFB);
                 renderCl.End();
@@ -70,6 +74,16 @@ namespace KhaozEngine.Render3D
             }
             gd.Unmap(staging);
             return outBytes;
+        }
+
+        /// <summary>Single-mesh convenience: load <paramref name="mesh"/>, draw one instance at the origin each frame.</summary>
+        public static byte[] Capture(GltfMesh mesh, Action<Scene3D>? configure, int width, int height, int frames)
+        {
+            MeshHandle handle = default;
+            return Capture(width, height,
+                setup: scene => { handle = scene.LoadMesh(mesh); configure?.Invoke(scene); },
+                drawFrame: scene => scene.Draw(handle, Matrix4x4.Identity),
+                frames: frames);
         }
     }
 }

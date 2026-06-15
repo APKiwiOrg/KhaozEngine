@@ -42,11 +42,11 @@ via AOT, and ~21 existing C# packages + 3 games would be thrown away by a rewrit
 - **Audio:** `OpenAL` via `Silk.NET.OpenAL` (or a small custom backend) replaces MonoGame audio.
 - **Texture/content:** `StbImageSharp` etc.
 
-### Current status (as of `5.4.0-experimental`)
+### Current status (as of `5.5.0-experimental`)
 
 **Every subsystem needed to drop MonoGame is now proven on the custom stack — no feasibility unknowns
 remain; the rest is productization + porting.** Shipped 5.x packages (shared version, currently
-`5.4.0-experimental`):
+`5.5.0-experimental`):
 
 | Subsystem | Status |
 |---|---|
@@ -54,16 +54,16 @@ remain; the rest is productization + porting.** Shipped 5.x packages (shared ver
 | 2D rendering | shipped — `KhaozEngine.Render2D` (SpriteBatch, Camera2D, Texture2D + PNG) |
 | Text | shipped — `SpriteFont` (runtime TTF via stb_truetype) in Render2D |
 | Audio | shipped — `KhaozEngine.Audio` graduated to OpenAL streaming (WAV/OGG/MP3) |
-| Windowing + input | shipped — `KhaozEngine.Windowing` (`AppWindow` + engine-native keyboard/mouse `InputState`, Render2D integrated); gamepad/touch + the rich `InputManager` are follow-ups |
+| Windowing + input | shipped — `KhaozEngine.Windowing` (`AppWindow` + engine-native keyboard/mouse `InputState` + bounds-aware `Pointer` with the click-through invariant; Render2D draws via `Render2DSurface`, the standalone `Render2DHost` was folded away). Gamepad/touch/pinch + virtual-resolution transforms are follow-ups |
 | Math | done — `System.Numerics` |
 
 Caveats to clear during productization: Metal-only so far (per-backend clip-Y + MRT-clear handling pending);
 SDL2 bundled per-sample; production audio should bundle **openal-soft** (macOS's system OpenAL is deprecated,
 same as its OpenGL).
 
-**Next milestone:** **finish the input + 2D-stack port** — extend `KhaozEngine.Windowing` with gamepad/touch
-and the rich gesture/`InputManager` layer (port `KhaozEngine.Input`), fold `Render2DHost` into the Windowing
-path, then port `Screens`/`UI` onto the custom stack. This unblocks migrating a first game.
+**Next milestone:** **port `Screens` + `UI` onto the custom stack** — they sit directly on the `Pointer`
+(now ported) + Render2D, and are the last engine layers between the foundation and a running game. Also finish
+input breadth (gamepad/touch/pinch, virtual-resolution transforms) as games need it. Then migrate a first game.
 
 ### Phased plan
 
@@ -89,7 +89,7 @@ path, then port `Screens`/`UI` onto the custom stack. This unblocks migrating a 
 - **4.x line** — the existing MonoGame packages; one shared version in `Directory.Build.props`; keeps
   shipping 4.8.0, 4.9.0, ... normally and in parallel.
 - **5.x experimental line** — the custom-stack packages (`Render3D`, `Render2D`, ...) share a second version,
-  `Directory.Build.props` `<KhaozEngine5xVersion>` (currently `5.4.0-experimental`), and release together
+  `Directory.Build.props` `<KhaozEngine5xVersion>` (currently `5.5.0-experimental`), and release together
   under one `vX.Y.Z-experimental` tag. (The first two Render3D releases, 5.0.0/5.1.0, predate this and were
   per-package.) The doc-version guard checks the shared 4.x version only; the 5.x line is exempt (like
   consumer pins). Packages graduate

@@ -8,6 +8,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
     <ProjectReference Include="../KhaozEngine.Render2D/KhaozEngine.Render2D.csproj" />
   </ItemGroup>
   <!-- Copy system SDL2 (Homebrew) into output so `dotnet run` works without DYLD_FALLBACK_LIBRARY_PATH. -->

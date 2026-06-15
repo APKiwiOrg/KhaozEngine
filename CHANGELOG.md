@@ -5,6 +5,15 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 4.11.0 (MonoGame 4.x line)
+
+- **`KhaozEngine.Content.ColorHex`**: `FromHex(string) -> Vector4` (RGBA 0..1; accepts `#RRGGBB` / `RRGGBB` /
+  `#RRGGBBAA`, leading `#` optional, missing alpha = opaque) and `ToHex(Vector4) -> #RRGGBBAA`. A
+  MonoGame-free, Veldrid-free home for parsing config colour strings, usable by both the pure domain and the
+  render stack (it lives in Content because games already reference it for config and it has no GPU deps).
+  Headless-tested. (Centralizes a hex-colour helper games were hand-rolling; from the Hardpoint testbed.)
+  Shared 4.x version bumped 4.10.0 -> 4.11.0.
+
 ## 5.15.0-experimental (custom 5.x line)
 
 ### KhaozEngine.Render3D (additive)

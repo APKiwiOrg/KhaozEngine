@@ -6,7 +6,7 @@
     <ImplicitUsings>disable</ImplicitUsings>
 
     <!-- Shared version for the 4.x MonoGame-based packages. Bump here to release them together. -->
-    <Version>4.10.0</Version>
+    <Version>4.11.0</Version>
     <!-- Shared version for the 5.x experimental custom-stack (MonoGame-free) packages, which set
          <Version>$(KhaozEngine5xVersion)</Version> in their csproj. Bump here to release them together. -->
     <KhaozEngine5xVersion>5.15.0-experimental</KhaozEngine5xVersion>

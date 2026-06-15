@@ -71,6 +71,10 @@ sealed class MenuScreen : Screen
 sealed class SettingsScreen : Screen
 {
     readonly GuiAssets _a;
+    Panel _dialog = null!;
+    Label _title = null!, _volumeLabel = null!, _fullscreenLabel = null!, _help = null!, _readout = null!;
+    Slider _volume = null!;
+    Toggle _fullscreen = null!;
     Button _back = null!;
 
     public SettingsScreen(GuiAssets a)
@@ -82,21 +86,49 @@ sealed class SettingsScreen : Screen
         TransitionOffDuration = 0.18f;
     }
 
-    public override void LoadContent() =>
-        _back = new Button(new Rect(390, 320, 180, 56), "Back", _a.Small, ExitScreen);
+    public override void LoadContent()
+    {
+        _dialog = new Panel(new Rect(260, 110, 440, 330)) { BorderThickness = 1f };
+        _title = new Label(new Rect(260, 130, 440, 44), "Settings", _a.Big) { Align = TextAlign.Center };
+
+        _volumeLabel = new Label(new Rect(290, 196, 120, 24), "Volume", _a.Small);
+        _volume = new Slider(new Rect(420, 200, 200, 14), 0.7f);
+        _readout = new Label(new Rect(630, 196, 50, 24), "70%", _a.Small) { Align = TextAlign.Right };
+
+        _fullscreenLabel = new Label(new Rect(290, 246, 200, 26), "Fullscreen", _a.Small);
+        _fullscreen = new Toggle(new Rect(624, 244, 56, 28));
+
+        _help = new Label(new Rect(290, 288, 380, 70),
+            "Drag the slider or toggle the switch. This help text wraps to the panel width via TextLayout.",
+            _a.Small)
+        { Wrap = true, Color = new Vector4(0.6f, 0.7f, 0.85f, 1f) };
+
+        _back = new Button(new Rect(390, 372, 180, 50), "Back", _a.Small, ExitScreen);
+    }
 
     public override bool Update(float dt, bool receivesInput)
     {
-        if (receivesInput) _back.Update(Manager.Pointer);
+        if (receivesInput)
+        {
+            _volume.Update(Manager.Pointer);
+            _fullscreen.Update(Manager.Pointer);
+            _back.Update(Manager.Pointer);
+            _readout.Text = $"{(int)(_volume.Value * 100)}%";
+        }
         return true;
     }
 
     public override void Draw(SpriteBatch batch)
     {
-        float a = TransitionAlpha;
-        batch.Draw(_a.White, new Vector4(0, 0, 960, 540), new Vector4(0, 0, 0, 0.55f * a));            // scrim
-        batch.Draw(_a.White, new Vector4(280, 150, 400, 240), new Vector4(0.14f, 0.18f, 0.26f, a));    // panel
-        batch.DrawString(_a.Big, "Settings", new Vector2(330, 190), new Vector4(0.95f, 0.97f, 1f, a));
+        batch.Draw(_a.White, new Vector4(0, 0, 960, 540), new Vector4(0, 0, 0, 0.55f * TransitionAlpha));   // scrim
+        _dialog.Draw(batch, _a.White);
+        _title.Draw(batch);
+        _volumeLabel.Draw(batch);
+        _volume.Draw(batch, _a.White);
+        _readout.Draw(batch);
+        _fullscreenLabel.Draw(batch);
+        _fullscreen.Draw(batch, _a.White);
+        _help.Draw(batch);
         _back.Draw(batch, _a.White);
     }
 }

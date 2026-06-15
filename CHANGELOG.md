@@ -5,6 +5,36 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 5.7.0-experimental (custom 5.x line)
+
+Core `KhaozEngine.UI` widgets ported onto the custom stack: `Label`, `Panel`, `Slider`, `Toggle` in
+`KhaozEngine.Gui`, plus a device-free text-layout helper in `KhaozEngine.Render2D`.
+
+### KhaozEngine.Render2D (additive)
+
+- `ITextMeasurer` — a text-measurement seam (`LineHeight` + `Measure(string)`) implemented by `SpriteFont`.
+  Lets the layout math be unit-tested headlessly with a fake measurer (no GPU device / real font).
+- `TextLayout` — pure word-wrap + alignment helpers over `ITextMeasurer` (`AlignedX`, `Wrap`,
+  `MeasureWrappedHeight`), plus pixel-snapped draw overloads taking a `SpriteBatch` + `SpriteFont`
+  (`DrawAligned`, `DrawWrapped`) and a `TextAlign` enum. Ported from the 4.x MonoGame-bound `UI.TextHelper`.
+
+### KhaozEngine.Gui (additive)
+
+- `Label` — non-interactive text widget: aligned (left/center/right) and optionally word-wrapped within its
+  bounds, vertical-centered for single lines. Pure presentation over the (tested) `TextLayout`.
+- `Panel` — filled, optionally-bordered container/backdrop; `BlocksPointer` reserves its region on the
+  `Pointer` (via `BlockRegion`) so a layer beneath can skip hit-testing under it (modal scrims/popups).
+- `Slider` — horizontal slider over `Pointer`; the bounds are the track. A press that begins inside starts a
+  drag and jumps the value to the pointer (clamped 0..1), tracking until release; a press that began elsewhere
+  is ignored (press-origin invariant). `Update` returns whether the value changed.
+- `Toggle` — two-state switch; a valid tap (press + release both inside, the click-through invariant) flips
+  `IsOn` and fires `OnChanged`. Drawn as a track with a thumb that slides to the on/off side.
+- Internal `GuiDraw` fill/border helpers (1x1-white-texture rects) shared by the widgets.
+- Headless tests cover the layout math (`TextLayoutTests`), the slider drag/clamp/press-origin behaviour
+  (`SliderTests`), the toggle flip + click-through (`ToggleTests`), and panel pointer-blocking (`PanelTests`).
+  `GuiSample`'s settings screen now drives a `Panel`, `Label`s, a volume `Slider` (with live readout), and a
+  fullscreen `Toggle`. The heavier widgets (ScrollablePanel/Dropdown/TextInput/PopupPanel) are a follow-up batch.
+
 ## 5.6.0-experimental (custom 5.x line)
 
 New `KhaozEngine.Gui` package — the screen-stack + first widget on the custom stack.

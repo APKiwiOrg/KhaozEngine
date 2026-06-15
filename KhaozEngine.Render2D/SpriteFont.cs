@@ -17,7 +17,7 @@ namespace KhaozEngine.Render2D
     /// A bitmap font rasterized at load time from a TrueType file (stb_truetype) into a single atlas.
     /// Draw with <see cref="SpriteBatch.DrawString"/>.
     /// </summary>
-    public sealed class SpriteFont : IDisposable
+    public sealed class SpriteFont : IDisposable, ITextMeasurer
     {
         internal readonly Texture2D Atlas;
         internal readonly int AtlasW, AtlasH;

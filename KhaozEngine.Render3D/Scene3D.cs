@@ -52,8 +52,11 @@ namespace KhaozEngine.Render3D
         /// <summary>Start a frame: clear the instance queue. Call before submitting instances.</summary>
         public void Begin() => _instances.Begin();
 
-        /// <summary>Queue one instance: draw <paramref name="mesh"/> at world transform <paramref name="world"/>.</summary>
-        public void Draw(MeshHandle mesh, Matrix4x4 world) => _instances.Add(mesh, world);
+        /// <summary>Queue one instance: draw <paramref name="mesh"/> at world transform <paramref name="world"/> (no tint).</summary>
+        public void Draw(MeshHandle mesh, Matrix4x4 world) => _instances.Add(mesh, world, Vector4.One);
+
+        /// <summary>Queue one instance with a per-instance RGBA <paramref name="tint"/> that multiplies the lit color.</summary>
+        public void Draw(MeshHandle mesh, Matrix4x4 world, Vector4 tint) => _instances.Add(mesh, world, tint);
 
         void EnsureSize(int viewportW, int viewportH)
         {
@@ -80,7 +83,7 @@ namespace KhaozEngine.Render3D
             foreach (var inst in _instances.Items)
             {
                 var m = _meshes[inst.Mesh.Index];
-                _model.DrawInstance(cl, m.Vb, m.Ib, m.IndexCount, vp, inst.World, Post);
+                _model.DrawInstance(cl, m.Vb, m.Ib, m.IndexCount, vp, inst.World, Post, inst.Tint);
             }
 
             _post.Run(cl, _res, target, Post);

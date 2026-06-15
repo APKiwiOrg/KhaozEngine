@@ -14,13 +14,14 @@ namespace KhaozEngine.Render3D
         public IReadOnlyList<Instance> Items => _items;
 
         public void Begin() => _items.Clear();
-        public void Add(MeshHandle mesh, Matrix4x4 world) => _items.Add(new Instance(mesh, world));
+        public void Add(MeshHandle mesh, Matrix4x4 world, Vector4 tint) => _items.Add(new Instance(mesh, world, tint));
 
         public readonly struct Instance
         {
             public MeshHandle Mesh { get; }
             public Matrix4x4 World { get; }
-            public Instance(MeshHandle mesh, Matrix4x4 world) { Mesh = mesh; World = world; }
+            public Vector4 Tint { get; }
+            public Instance(MeshHandle mesh, Matrix4x4 world, Vector4 tint) { Mesh = mesh; World = world; Tint = tint; }
         }
     }
 }

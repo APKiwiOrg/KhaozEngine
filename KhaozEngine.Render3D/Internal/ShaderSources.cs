@@ -13,7 +13,7 @@ namespace KhaozEngine.Render3D.Internal
         public const string ModelVert = @"#version 450
 layout(set=0, binding=0) uniform U {
     mat4 ViewProj; mat4 Model;
-    vec4 LightDir; vec4 LightColor; vec4 Ambient; vec4 Params;
+    vec4 LightDir; vec4 LightColor; vec4 Ambient; vec4 Params; vec4 Tint;
 };
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
@@ -36,6 +36,7 @@ layout(set=0, binding=0) uniform U {
     vec4 LightColor;
     vec4 Ambient;
     vec4 Params;     // x = CelBands
+    vec4 Tint;       // per-instance RGBA, multiplies the lit color
 };
 layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;
@@ -48,7 +49,7 @@ void main() {
     float ndl = max(dot(N, -normalize(LightDir.xyz)), 0.0);
     float bands = Params.x;
     if (bands >= 1.0) ndl = floor(ndl * bands + 0.5) / bands; // cel
-    vec3 lit = vColor.rgb * (Ambient.rgb + LightColor.rgb * ndl);
+    vec3 lit = vColor.rgb * Tint.rgb * (Ambient.rgb + LightColor.rgb * ndl);
     oColor = vec4(lit, 1.0);
     oNormal = vec4(N * 0.5 + 0.5, 1.0);
     oDepth = vec4(vDepth, vDepth, vDepth, 1.0);

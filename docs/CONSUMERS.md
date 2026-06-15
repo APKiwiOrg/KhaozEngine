@@ -36,8 +36,8 @@ engine ships a new version.
 > determinism-neutral (never touches sim/RNG), so it carries no hash gate.
 
 **Experimental 5.x line:** the custom-stack (MonoGame-free) packages `KhaozEngine.Render3D`,
-`KhaozEngine.Render2D`, and `KhaozEngine.Audio` share `5.3.0-experimental` (`Directory.Build.props`
-`<KhaozEngine5xVersion>`), separate from the 4.x version above (see [`ROADMAP.md`](ROADMAP.md), "The
+`KhaozEngine.Render2D`, `KhaozEngine.Audio`, and `KhaozEngine.Windowing` share `5.4.0-experimental`
+(`Directory.Build.props` `<KhaozEngine5xVersion>`), separate from the 4.x version above (see [`ROADMAP.md`](ROADMAP.md), "The
 post-MonoGame pivot"). **No consumer adopts them yet** (the games are MonoGame; migration is deferred under
 the full-custom plan). `KhaozEngine.Audio` **graduated** from the 4.x line to 5.x (OpenAL backend, no
 MonoGame); the `Audio` column in the matrix below now reflects the **frozen 4.x** Audio that current

@@ -382,10 +382,39 @@ The sections above cover the core flow. The rest of the 16-package set, one line
 - **`KhaozEngine.Sprites`**: 2D sprite + directional animation: `SpriteSheet`, `SpriteAnimationPlayer`, `DirectionalAnimatedSprite` (opt-in `SpriteAnchor.FootprintBottomCenter` for iso), `Direction8`, `SpriteRegistry`, `PixelLabSpriteLoader`. Takes a raw `float`/`GameTime` delta.
 - **`KhaozEngine.Time`**: `GameClock` (pause / `TimeScale`) + `TimeSkip`. Pulled in transitively by `Screens`; optional to use directly.
 
+## Windowing (`KhaozEngine.Windowing`, experimental 5.x line)
+
+The shared window + input foundation for the custom stack. `AppWindow` owns the SDL2/Metal window + loop;
+each frame gives an engine-native `InputState` and the GPU command list. Renderers draw into it (Render2D via
+`Render2DSurface`). Metal-only; needs SDL2 (`brew install sdl2`).
+
+```csharp
+using KhaozEngine.Windowing;
+using KhaozEngine.Render2D;
+
+var window = new AppWindow("My app", 960, 540);
+var surface = new Render2DSurface(window);                 // SpriteBatch + loaders on the window's device
+var font = surface.LoadFont("/path/to/font.ttf", 28f);
+var box = new System.Numerics.Vector2(480, 270);
+
+window.Run(frame =>
+{
+    var input = frame.Input;                               // engine-native keyboard + mouse
+    if (input.WasPressed(Key.Escape)) window.Close();
+    if (input.IsDown(Key.Right)) box.X += 300f * frame.Dt;
+    if (input.WasPressed(MouseButton.Left)) box = input.MousePosition;
+
+    surface.NewFrame(frame);
+    surface.Batch.Begin();
+    surface.Batch.DrawString(font, "hello", new System.Numerics.Vector2(20, 20), System.Numerics.Vector4.One);
+    surface.Batch.End();
+});
+```
+
 ## Render2D (`KhaozEngine.Render2D`, experimental 5.x line)
 
 Experimental, **not part of the MonoGame contract above** - 2D rendering on the custom MonoGame-free stack
-(shared 5.x line, `5.3.0-experimental`). `SpriteBatch` + `Camera2D` + `Texture2D` (PNG via StbImageSharp) +
+(shared 5.x line, `5.4.0-experimental`). `SpriteBatch` + `Camera2D` + `Texture2D` (PNG via StbImageSharp) +
 `SpriteFont` (runtime TTF text via stb_truetype). `Render2DHost` owns the SDL2/Metal window; the
 `Render2DSample` auto-copies SDL2 so `dotnet run` just works. Headless drawing via `Render2DSnapshot`.
 
@@ -410,7 +439,7 @@ host.Run(f =>
 
 Experimental, **not part of the MonoGame contract above** - it is the first package of the custom
 MonoGame-free renderer (see [`ROADMAP.md`](ROADMAP.md), "The post-MonoGame pivot"). On the shared 5.x line
-at `5.3.0-experimental`. Metal-only for now; `Render3DHost` needs SDL2 (`brew install sdl2`). The
+at `5.4.0-experimental`. Metal-only for now; `Render3DHost` needs SDL2 (`brew install sdl2`). The
 `Render3DSample` project auto-copies SDL2 into its output so `dotnet run` just works; a consumer using
 `Render3DHost` directly must ensure SDL2 is on the loader path (or copy it into the app's output as
 `libsdl2.dylib`).

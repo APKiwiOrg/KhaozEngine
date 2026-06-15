@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Windowing</PackageId>
+    <!-- Shared 5.x experimental custom-stack line. -->
+    <Version>$(KhaozEngine5xVersion)</Version>
+    <Description>EXPERIMENTAL windowing + input foundation for the custom MonoGame-free stack. AppWindow owns the SDL2/Metal window, Veldrid device, swapchain, and frame loop; each frame exposes an engine-native InputState (keyboard + mouse, no MonoGame) and the render target. Shared by the 5.x renderers. Part of the post-MonoGame 5.x line.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Veldrid" Version="4.9.0" />
+    <PackageReference Include="Veldrid.StartupUtilities" Version="4.9.0" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Tests" />
+  </ItemGroup>
+</Project>

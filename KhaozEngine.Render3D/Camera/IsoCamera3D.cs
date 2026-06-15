@@ -56,5 +56,34 @@ namespace KhaozEngine.Render3D
         }
 
         public Matrix4x4 ViewProjection => View * Projection;
+
+        /// <summary>
+        /// Unproject a screen pixel (top-left origin, y-down) into a world ray. For this orthographic camera
+        /// the direction equals <see cref="Forward"/>; the math is general so it still holds if a perspective
+        /// camera is added. Inverts <see cref="ViewProjection"/>, which matches the displayed image.
+        /// </summary>
+        public Ray ScreenToRay(Vector2 screenPixel, int viewportWidth, int viewportHeight)
+        {
+            float ndcX = screenPixel.X / viewportWidth * 2f - 1f;
+            float ndcY = 1f - screenPixel.Y / viewportHeight * 2f;
+            Matrix4x4.Invert(ViewProjection, out var inv);
+            Vector3 near = Unproject(new Vector3(ndcX, ndcY, 0f), inv);
+            Vector3 far = Unproject(new Vector3(ndcX, ndcY, 1f), inv);
+            return new Ray(near, far - near);
+        }
+
+        /// <summary>Pick the world point under a screen pixel on the horizontal plane y = <paramref name="groundY"/>.</summary>
+        public Vector3 ScreenToGround(Vector2 screenPixel, int viewportWidth, int viewportHeight, float groundY = 0f)
+        {
+            Ray r = ScreenToRay(screenPixel, viewportWidth, viewportHeight);
+            float t = MathF.Abs(r.Direction.Y) < 1e-6f ? 0f : (groundY - r.Origin.Y) / r.Direction.Y;
+            return r.Origin + r.Direction * t;
+        }
+
+        static Vector3 Unproject(Vector3 ndc, Matrix4x4 invViewProj)
+        {
+            var p = Vector4.Transform(new Vector4(ndc, 1f), invViewProj);
+            return new Vector3(p.X, p.Y, p.Z) / p.W;
+        }
     }
 }

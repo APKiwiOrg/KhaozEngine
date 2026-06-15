@@ -5,6 +5,25 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 5.9.1-experimental (custom 5.x line)
+
+### KhaozEngine.Render2D (fix)
+
+- `SpriteBatch` scissor clipping now composes with a design viewport. Two bugs: the clip rect passed to
+  `SetScissor` was treated as window points even under `Begin(IDesignViewport)` (so it ignored the design
+  scale + letterbox offset), and the clip helpers re-`Begin()`ed in screen space to resume after the scissor
+  (throwing away the design transform, so clipped content drew unscaled at raw design coordinates). Now
+  `SetScissor`/`ClearScissor` **flush internally and preserve the active transform** (no surrounding `Begin`
+  needed), and a clip rect is mapped through the active viewport. New pure overload
+  `ComputeScissor(rect, IDesignViewport?, ...)` is headless-tested. Visible symptom: on the resized `GuiSample`
+  Widgets screen the scrollable list drew unscaled and escaped its panel.
+
+### KhaozEngine.Gui (fix)
+
+- `ScrollablePanel.BeginClip`/`EndClip` are now one-liners over `SetScissor`/`ClearScissor` (they no longer
+  `End()`+`Begin()` around the scissor, which was the source of the lost-transform bug). Clipped content under
+  a `DesignViewport` now scales and clips correctly.
+
 ## 5.9.0-experimental (custom 5.x line)
 
 Resolution independence + layout (milestone 1 of engine maturity). The window already resized the

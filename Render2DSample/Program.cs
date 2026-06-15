@@ -57,14 +57,21 @@ if (args.Contains("--smoke"))
     return nonBg > 1000 ? 0 : 1;
 }
 
-var host = new Render2DHost("KhaozEngine.Render2D — sample", 960, 540);
-var whiteT = host.CreateTexture(new byte[] { 255, 255, 255, 255 }, 1, 1);
-var checkerT = host.CreateTexture(Checker(64), 64, 64);
-var bigF = host.LoadFont(FontPath, 40f);
-var smallF = host.LoadFont(FontPath, 22f);
+var window = new KhaozEngine.Windowing.AppWindow("KhaozEngine.Render2D — sample", 960, 540);
+var surface = new Render2DSurface(window);
+var whiteT = surface.CreateTexture(new byte[] { 255, 255, 255, 255 }, 1, 1);
+var checkerT = surface.CreateTexture(Checker(64), 64, 64);
+var bigF = surface.LoadFont(FontPath, 40f);
+var smallF = surface.LoadFont(FontPath, 22f);
 Console.WriteLine("Esc quit");
-host.Run(f => Scene(host.Batch, whiteT, checkerT, bigF, smallF, f.Width));
-host.Dispose();
+window.Run(frame =>
+{
+    if (frame.Input.WasPressed(KhaozEngine.Windowing.Key.Escape)) window.Close();
+    surface.NewFrame(frame);
+    Scene(surface.Batch, whiteT, checkerT, bigF, smallF, frame.Width);
+});
+surface.Dispose();
+window.Dispose();
 return 0;
 
 static void WriteBmp(string path, int w, int h, byte[] rgba)

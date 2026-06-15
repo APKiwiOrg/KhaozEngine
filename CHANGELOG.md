@@ -5,6 +5,28 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 5.5.0-experimental (custom 5.x line)
+
+Bounds-aware pointer input (the click-through core) in `KhaozEngine.Windowing`, and the renderer windowing
+consolidates onto `AppWindow`.
+
+### KhaozEngine.Windowing
+
+- `Pointer` — a bounds-aware pointer over the mouse with the **press-origin click-through invariant**, ported
+  from the MonoGame `InputManager` core. `Update(InputState)` per frame, then hit-test with `IsTapIn`,
+  `IsPressingIn`, `IsHoveringIn`, `IsPointerIn`, `IsReleasedOutside`, `IsDraggingIn`/`GetDragDelta`,
+  `IsTapFromTo`, plus region blocking (`BlockRegion`/`IsBlocked`) for overlay click-through. New `Rect`
+  type for hit-testing. Headless `PointerTests` cover the invariant (press-outside-release-inside is not a
+  tap). Touch/gamepad/pinch/menu-nav and virtual-resolution transforms are still follow-ups.
+
+### KhaozEngine.Render2D (cleanup)
+
+- Removed the standalone `Render2DHost` + its own `Key`/`FrameInfo` (superseded by `AppWindow` from
+  Windowing). Draw into a window via `Render2DSurface(AppWindow)`; `Render2DSnapshot` (headless) is
+  unchanged. `Render2DSample` now uses `AppWindow`. Render2D dropped its direct `Veldrid.StartupUtilities`
+  reference (windowing comes from `KhaozEngine.Windowing`). The `WindowingSample` gained a clickable button
+  demonstrating `IsTapIn` + region-blocking.
+
 ## 5.4.0-experimental (custom 5.x line)
 
 New `KhaozEngine.Windowing` package — the shared windowing + input foundation — and Render2D integrates with it.

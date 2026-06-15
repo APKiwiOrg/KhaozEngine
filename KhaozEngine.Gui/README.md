@@ -13,9 +13,17 @@ Screen-stack + widgets on the custom MonoGame-free stack.
   - `Panel` — filled/bordered container; `BlocksPointer` reserves its region so lower layers skip hit-testing under it.
   - `Slider` — horizontal track; a drag started from inside jumps + tracks the value 0..1.
   - `Toggle` — two-state switch flipped by a valid tap; fires `OnChanged`.
+  - `Dropdown` — trigger + option list (opens below); two-phase draw (`Draw` trigger / `DrawOverlay` list last).
+  - `TextInput` — single-line field; tap-to-focus, typed keys edit the text (via `TextEntry`), blinking caret.
+  - `Tooltip` — auto-sized floating bubble; `ComputeBounds` (flip/clamp) is a pure, testable layout function.
+  - `PopupPanel` — modal dialog: scrim + title + `PopupRow` content + dismiss/primary footer; blocks the pointer.
+  - `ScrollablePanel` — wheel/drag scrolling fixed-height list; rows drawn between `BeginClip`/`EndClip` (scissor),
+    hit-test with `TappedItemIndex`.
+- `TextEntry` — headless key→char text-entry helper (US layout + shift), used by `TextInput`. No SDL plumbing.
 
 Text wrap/alignment lives in `KhaozEngine.Render2D.TextLayout` (over the `ITextMeasurer` seam, so the layout
-math is headless-testable). Ported from `KhaozEngine.Screens`/`UI`. Built on `KhaozEngine.Windowing`
-(Pointer/Input) + `KhaozEngine.Render2D` (SpriteBatch/SpriteFont/Texture2D). Part of the post-MonoGame 5.x
-line. The heavy widgets (ScrollablePanel/Dropdown/TextInput/PopupPanel) and pause/timescale/touch/gamepad are
-follow-ups.
+math is headless-testable); clipping uses `SpriteBatch` scissor (`SetScissor`/`ClearScissor`, DPI-aware). Ported
+from `KhaozEngine.Screens`/`UI` (game-specific layout coupling dropped). Built on `KhaozEngine.Windowing`
+(Pointer/Input) + `KhaozEngine.Render2D` (SpriteBatch/SpriteFont/Texture2D). Part of the post-MonoGame 5.x line.
+Pause/timescale, touch/gamepad, and virtual-resolution transforms are follow-ups; the GPU scissor clip is not
+yet visually verified (Metal-only, built without a display).

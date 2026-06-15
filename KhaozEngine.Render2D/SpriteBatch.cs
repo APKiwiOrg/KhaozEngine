@@ -64,12 +64,51 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
             {
                 BlendState = BlendStateDescription.SingleAlphaBlend,
                 DepthStencilState = DepthStencilStateDescription.Disabled,
-                RasterizerState = new RasterizerStateDescription(FaceCullMode.None, PolygonFillMode.Solid, FrontFace.Clockwise, false, false),
+                RasterizerState = new RasterizerStateDescription(FaceCullMode.None, PolygonFillMode.Solid, FrontFace.Clockwise, depthClipEnabled: false, scissorTestEnabled: true),
                 PrimitiveTopology = PrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },
                 ShaderSet = new ShaderSetDescription(new[] { vl }, _shaders),
                 Outputs = output,
             });
+        }
+
+        /// <summary>
+        /// Convert a clip rect (in viewport points, top-left origin) to framebuffer pixels, scaling for DPI
+        /// (e.g. 2x Retina) and clamping to the framebuffer. Pure function — unit-tested headlessly.
+        /// </summary>
+        public static (uint X, uint Y, uint Width, uint Height) ComputeScissor(
+            Windowing.Rect rect, int viewportW, int viewportH, int framebufferW, int framebufferH)
+        {
+            float sx = viewportW > 0 ? (float)framebufferW / viewportW : 1f;
+            float sy = viewportH > 0 ? (float)framebufferH / viewportH : 1f;
+            float x0 = Math.Clamp(rect.X * sx, 0, framebufferW);
+            float x1 = Math.Clamp((rect.X + rect.Width) * sx, 0, framebufferW);
+            float y0 = Math.Clamp(rect.Y * sy, 0, framebufferH);
+            float y1 = Math.Clamp((rect.Y + rect.Height) * sy, 0, framebufferH);
+            return ((uint)MathF.Round(x0), (uint)MathF.Round(y0),
+                    (uint)MathF.Round(x1 - x0), (uint)MathF.Round(y1 - y0));
+        }
+
+        /// <summary>
+        /// Clip subsequent draws to <paramref name="rect"/> (viewport points). Call between an <see cref="End"/>
+        /// and the next <see cref="Begin"/>; pair with <see cref="ClearScissor"/> to restore the full viewport.
+        /// </summary>
+        public void SetScissor(Windowing.Rect rect)
+        {
+            var fb = _gd.MainSwapchain?.Framebuffer;
+            int fbw = fb != null ? (int)fb.Width : _vw;
+            int fbh = fb != null ? (int)fb.Height : _vh;
+            var (x, y, w, h) = ComputeScissor(rect, _vw, _vh, fbw, fbh);
+            _cl.SetScissorRect(0, x, y, w, h);
+        }
+
+        /// <summary>Reset the scissor to the full framebuffer (undo <see cref="SetScissor"/>).</summary>
+        public void ClearScissor()
+        {
+            var fb = _gd.MainSwapchain?.Framebuffer;
+            uint fbw = fb != null ? fb.Width : (uint)Math.Max(0, _vw);
+            uint fbh = fb != null ? fb.Height : (uint)Math.Max(0, _vh);
+            _cl.SetScissorRect(0, 0, 0, fbw, fbh);
         }
 
         // Called by the host/snapshot each frame before the user's draw callback.

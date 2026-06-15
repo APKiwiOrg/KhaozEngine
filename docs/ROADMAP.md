@@ -42,11 +42,11 @@ via AOT, and ~21 existing C# packages + 3 games would be thrown away by a rewrit
 - **Audio:** `OpenAL` via `Silk.NET.OpenAL` (or a small custom backend) replaces MonoGame audio.
 - **Texture/content:** `StbImageSharp` etc.
 
-### Current status (as of `5.7.0-experimental`)
+### Current status (as of `5.8.0-experimental`)
 
 **Every subsystem needed to drop MonoGame is now proven on the custom stack — no feasibility unknowns
 remain; the rest is productization + porting.** Shipped 5.x packages (shared version, currently
-`5.7.0-experimental`):
+`5.8.0-experimental`):
 
 | Subsystem | Status |
 |---|---|
@@ -55,7 +55,7 @@ remain; the rest is productization + porting.** Shipped 5.x packages (shared ver
 | Text | shipped — `SpriteFont` (runtime TTF via stb_truetype) in Render2D |
 | Audio | shipped — `KhaozEngine.Audio` graduated to OpenAL streaming (WAV/OGG/MP3) |
 | Windowing + input | shipped — `KhaozEngine.Windowing` (`AppWindow` + engine-native keyboard/mouse `InputState` + bounds-aware `Pointer` with the click-through invariant; Render2D draws via `Render2DSurface`, the standalone `Render2DHost` was folded away). Gamepad/touch/pinch + virtual-resolution transforms are follow-ups |
-| Screens / UI | started — `KhaozEngine.Gui` (`ScreenStack` routing + transitions, `Screen` base, and the core widgets `Button`/`Label`/`Panel`/`Slider`/`Toggle` over `Pointer`; `TextLayout` wrap/align in Render2D). The heavy widgets (ScrollablePanel/Dropdown/TextInput/PopupPanel) + pause/timescale/touch are follow-ups |
+| Screens / UI | shipped (widget set) — `KhaozEngine.Gui`: `ScreenStack` routing + transitions, `Screen` base, and the widgets `Button`/`Label`/`Panel`/`Slider`/`Toggle` + `Dropdown`/`TextInput`/`Tooltip`/`PopupPanel`/`ScrollablePanel` over `Pointer`; `TextLayout` wrap/align + `SpriteBatch` scissor clip in Render2D; `TextEntry` key→char. Pause/timescale, touch/gamepad, and virtual-resolution transforms are the remaining follow-ups |
 | Math | done — `System.Numerics` |
 
 Caveats to clear during productization: Metal-only so far (per-backend clip-Y + MRT-clear handling pending);
@@ -66,11 +66,13 @@ same as its OpenGL).
 HUD, modal game-over, looping generated music) runs the whole 5.x stack (Windowing + Render2D + Gui + Audio)
 as a real game loop, no MonoGame. The foundation is complete for a 2D game.
 
-**Next milestone:** the core widgets (`Label`/`Panel`/`Slider`/`Toggle` + `TextLayout`) landed in
-`5.7.0-experimental`. Remaining: **the heavy `UI` widgets** off MonoGame (the 4.x `KhaozEngine.UI`'s
-ScrollablePanel/Dropdown/TextInput/PopupPanel/Tooltip/...) onto `Gui` + `Pointer` — these need scroll/clip,
-keyboard text entry, and nested-popup input routing — and fill in input breadth (gamepad/touch/
-virtual-resolution) as needed. Then migrate a real game (Hardpoint/Nullwake/SpaceGame).
+**Next milestone:** the widget set is now ported — core (`Label`/`Panel`/`Slider`/`Toggle` + `TextLayout`) in
+`5.7.0-experimental`, the heavy ones (`Dropdown`/`TextInput`/`Tooltip`/`PopupPanel`/`ScrollablePanel` + the
+`SpriteBatch` scissor clip + `TextEntry`) in `5.8.0-experimental`. Remaining before a game migration:
+**visually verify the GPU scissor clip on a real display** (built Metal-only without a screen), then fill in
+**input breadth** (gamepad/touch/pinch, virtual-resolution transforms) and pause/timescale. Then migrate a
+real game (Hardpoint/Nullwake/SpaceGame). Richer text entry (IME/locale/dead-keys) is a later nicety — the
+current `TextEntry` is US-layout key-mapping.
 
 ### Phased plan
 
@@ -96,7 +98,7 @@ virtual-resolution) as needed. Then migrate a real game (Hardpoint/Nullwake/Spac
 - **4.x line** — the existing MonoGame packages; one shared version in `Directory.Build.props`; keeps
   shipping 4.8.0, 4.9.0, ... normally and in parallel.
 - **5.x experimental line** — the custom-stack packages (`Render3D`, `Render2D`, ...) share a second version,
-  `Directory.Build.props` `<KhaozEngine5xVersion>` (currently `5.7.0-experimental`), and release together
+  `Directory.Build.props` `<KhaozEngine5xVersion>` (currently `5.8.0-experimental`), and release together
   under one `vX.Y.Z-experimental` tag. (The first two Render3D releases, 5.0.0/5.1.0, predate this and were
   per-package.) The doc-version guard checks the shared 4.x version only; the 5.x line is exempt (like
   consumer pins). Packages graduate

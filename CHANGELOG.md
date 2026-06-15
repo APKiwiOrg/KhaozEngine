@@ -5,6 +5,47 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 5.8.0-experimental (custom 5.x line)
+
+The heavy `KhaozEngine.UI` widgets ported onto the custom stack: `Dropdown`, `TextInput`, `Tooltip`,
+`PopupPanel`, `ScrollablePanel` in `KhaozEngine.Gui`, plus a scissor-clip capability in `KhaozEngine.Render2D`
+and a headless `TextEntry` helper. Game-specific coupling from the 4.x versions (VirtualResolution,
+LayoutConstants, nav/top-bar assumptions) was dropped — these are clean generic widgets.
+
+### KhaozEngine.Render2D (additive)
+
+- `SpriteBatch` gains **scissor clipping**: `SetScissor(Rect)` / `ClearScissor()` (call between an `End` and the
+  next `Begin`) clip subsequent draws to a viewport-space rect. `ComputeScissor(...)` is a pure, unit-tested
+  helper that scales viewport points to framebuffer pixels (DPI / Retina aware) and clamps to the framebuffer.
+  The pipeline now enables the scissor test (default = full framebuffer, so unclipped draws are unaffected).
+
+### KhaozEngine.Gui (additive)
+
+- `TextEntry` — headless text-entry helper: maps a frame's `InputState` key presses (+ shift, US layout) to
+  typed characters and applies them to a string (append printable, Backspace deletes), with max-length and a
+  char filter. No SDL text-input plumbing, so it is fully unit-testable. (No IME/locale/dead-keys.)
+- `TextInput` — single-line field: tap to focus / tap-out to blur; while focused, typed keys edit the text
+  (via `TextEntry`); bordered field with placeholder + blinking caret. Ported from the 4.x `UI.TextInput`
+  (which hooked SDL's TextInput event).
+- `Dropdown` — selector with a trigger + an option list that opens below; tap to open/select, release-outside
+  dismisses. Two-phase draw (`Draw` trigger inside any clip, `DrawOverlay` the open list last/unclipped).
+- `Tooltip` — auto-sized floating bubble; `ComputeBounds(...)` is a pure layout function (sizes to content,
+  sits above the anchor, flips below when it would cross the top margin, clamps into the viewport) testable
+  with a fake `ITextMeasurer`. `Show`/`Hide`/`Draw` instance API.
+- `PopupPanel` — modal dialog: scrim, centered auto-sized panel (clamped between a min height and a viewport
+  fraction), title bar, label/value content rows (`PopupRow` Header/Stat/Spacer), and a footer dismiss button
+  (+ optional primary action). `Update` blocks the pointer over the panel. (No internal scroll — that is
+  `ScrollablePanel`.)
+- `ScrollablePanel` — vertically-scrolling fixed-height list: wheel (while hovering) + drag scroll, clamped to
+  range; the owner draws rows positioned via `ItemBounds` between `BeginClip`/`EndClip` (which set/clear the
+  SpriteBatch scissor); `TappedItemIndex` hit-tests a row (gaps return -1). Ported from the 4.x
+  `UI.ScrollablePanel` (clipping now via the engine scissor instead of MonoGame's).
+- Headless tests cover all of the above logic (`TextEntryTests`, `TextInputTests`, `DropdownTests`,
+  `TooltipTests`, `PopupPanelTests`, `ScrollablePanelTests`, plus `SpriteBatchScissorTests` for the DPI scissor
+  math) — 40 new, 752 green. `GuiSample` gains a "Widgets" screen driving the dropdown, text field, scrollable
+  list, hover tooltip, and a modal popup. NOTE: this stack is Metal-only and was built without a display, so the
+  GPU scissor clip itself is not yet visually verified (the scroll logic + pixel math are).
+
 ## 5.7.0-experimental (custom 5.x line)
 
 Core `KhaozEngine.UI` widgets ported onto the custom stack: `Label`, `Panel`, `Slider`, `Toggle` in

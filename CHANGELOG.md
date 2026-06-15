@@ -5,6 +5,21 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 5.19.0-experimental (custom 5.x line)
+
+### KhaozEngine.Render3D (additive)
+
+- **Lighting + materials**: the model pass gains a second **fill light** (`PixelPostProcessSettings.
+  FillLightDirection`/`FillLightColor`, a dim cool default that softens shadowed sides) on top of the existing
+  key light, **Blinn-Phong specular** highlights, and **emissive** self-illumination — driven by a new
+  per-instance `Material` (`Emissive`, `Specular` strength, `Shininess`) with `Material.None` (matte,
+  the prior look), `Material.Glowing(color)`, and `Material.Shiny(strength, shininess)`. (The glow factory is
+  `Glowing` rather than `Emissive` because that name is taken by the property.) `Scene3D.Draw(mesh, world,
+  tint, material)` and a `MeshInstance.Material` field (additive, default matte) carry it; the
+  `Scene3DBinder` scene overload applies it. The shader now also receives the camera eye for the specular
+  view vector. Default look (matte materials, dim fill) is unchanged. Snapshot-verified (matte vs shiny vs
+  emissive spheres + fill on form). From the Hardpoint testbed.
+
 ## 5.18.0-experimental (custom 5.x line)
 
 ### KhaozEngine.Render3D (additive)

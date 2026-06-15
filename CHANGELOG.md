@@ -5,6 +5,28 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 5.12.0-experimental (custom 5.x line)
+
+Native packaging (milestone 3), part 1: bundle openal-soft so audio no longer depends on the deprecated
+macOS system OpenAL.
+
+### KhaozEngine.Audio
+
+- Reference `Silk.NET.OpenAL.Soft.Native` (1.23.1) and create the API with `AL.GetApi(true)` /
+  `ALContext.GetApi(true)` (the openal-soft library-name container). The native ships RID-specific
+  (linux-arm/arm64/x64, osx-arm64/x64, win-arm64/x64/x86) and flows to the consuming app's `runtimes/<rid>/
+  native/` via the runtime graph. Verified on osx-arm64: the process now loads the bundled
+  `libopenal.dylib`, not `/System/Library/Frameworks/OpenAL.framework` (deprecated), with the audio device
+  opening cleanly. Deviceless CI still falls back to `NullMusicBackend` as before.
+
+### Known gap (SDL2)
+
+- SDL2 is still sourced on macOS by a per-sample `CopySdl2` MSBuild target that copies a Homebrew-installed
+  `libSDL2.dylib` (Veldrid.SDL2 4.9.0 bundles only osx-x64, no osx-arm64/linux), so a clean macOS checkout
+  still needs `brew install sdl2`. A proper bundled SDL2 across RIDs is folded into the cross-platform-backends
+  milestone (it shares the Windows/Linux native-coverage work and can't be run-verified on the Apple-Silicon
+  dev box).
+
 ## 5.11.0-experimental (custom 5.x line)
 
 Input breadth, part 2: gamepad + touch state on `InputState`. Additive and non-breaking. The state model is

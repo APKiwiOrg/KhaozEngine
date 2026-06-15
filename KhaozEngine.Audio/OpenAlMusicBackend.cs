@@ -42,8 +42,10 @@ public sealed unsafe class OpenAlMusicBackend : IMusicBackend
     public OpenAlMusicBackend(ILogger? logger = null)
     {
         _logger = logger ?? Log.For<OpenAlMusicBackend>();
-        _alc = ALContext.GetApi();
-        _al = AL.GetApi();
+        // soft: true targets the bundled openal-soft (Silk.NET.OpenAL.Soft.Native) rather than the platform's
+        // default OpenAL, so macOS uses the shipped lib instead of its deprecated system OpenAL.framework.
+        _alc = ALContext.GetApi(true);
+        _al = AL.GetApi(true);
         _device = _alc.OpenDevice("");
         if (_device == null) throw new InvalidOperationException("OpenAL: could not open an audio device");
         _context = _alc.CreateContext(_device, null);

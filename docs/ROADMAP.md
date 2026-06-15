@@ -42,11 +42,11 @@ via AOT, and ~21 existing C# packages + 3 games would be thrown away by a rewrit
 - **Audio:** `OpenAL` via `Silk.NET.OpenAL` (or a small custom backend) replaces MonoGame audio.
 - **Texture/content:** `StbImageSharp` etc.
 
-### Current status (as of `5.11.0-experimental`)
+### Current status (as of `5.12.0-experimental`)
 
 **Every subsystem needed to drop MonoGame is now proven on the custom stack — no feasibility unknowns
 remain; the rest is productization + porting.** Shipped 5.x packages (shared version, currently
-`5.11.0-experimental`):
+`5.12.0-experimental`):
 
 | Subsystem | Status |
 |---|---|
@@ -83,8 +83,12 @@ engine to a real, resolution-independent, layout-capable state first. Agreed ord
    gamepad polling in `AppWindow`. All in `KhaozEngine.Windowing`, headless-tested, demoed in
    `WindowingSample`. Open: a *live* gamepad smoke needs a physical controller (polling is best-effort +
    compile-verified) and *touch* is mobile (the model + mapping are tested, live deferred).
-3. **Native packaging / distribution (current).** SDL2 + openal-soft bundled as RID-specific natives (macOS
-   system OpenAL/GL are deprecated) so a clean checkout runs with one command, no env vars or manual copies.
+3. **Native packaging / distribution (current).** Part 1 shipped (`5.12.0-experimental`): openal-soft bundled
+   via `Silk.NET.OpenAL.Soft.Native` + `GetApi(true)`, so audio uses the shipped `libopenal` instead of the
+   deprecated macOS system OpenAL.framework (verified on osx-arm64; native covers all 8 RIDs). Remaining: SDL2
+   is still copied from a Homebrew install on macOS by a per-sample `CopySdl2` target (Veldrid.SDL2 4.9.0 ships
+   only osx-x64), so a clean macOS checkout still needs `brew install sdl2`. Bundling SDL2 across RIDs is folded
+   into milestone 4 (shares the Windows/Linux native coverage and can't be run-verified on the dev box).
 4. **Cross-platform backends (deferred until hardware/CI).** Un-Metal-only: backend selection
    (Vulkan / D3D11 / GL / Metal) via Veldrid so Render2D/Render3D/Snapshot run on Windows/Linux (and later
    mobile); verify the SPIR-V shaders cross-compile per backend; per-backend clip-Y + MRT-clear handling.
@@ -119,7 +123,7 @@ Then migrate a real game (Hardpoint/Nullwake/SpaceGame) onto a stack that's actu
 - **4.x line** — the existing MonoGame packages; one shared version in `Directory.Build.props`; keeps
   shipping 4.8.0, 4.9.0, ... normally and in parallel.
 - **5.x experimental line** — the custom-stack packages (`Render3D`, `Render2D`, ...) share a second version,
-  `Directory.Build.props` `<KhaozEngine5xVersion>` (currently `5.11.0-experimental`), and release together
+  `Directory.Build.props` `<KhaozEngine5xVersion>` (currently `5.12.0-experimental`), and release together
   under one `vX.Y.Z-experimental` tag. (The first two Render3D releases, 5.0.0/5.1.0, predate this and were
   per-package.) The doc-version guard checks the shared 4.x version only; the 5.x line is exempt (like
   consumer pins). Packages graduate

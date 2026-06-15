@@ -48,7 +48,7 @@ sealed class MenuScreen : Screen
     readonly DesignViewport _vp;
     readonly Action _quit;
     Label _title = null!, _footer = null!;
-    Button _settings = null!, _widgets = null!, _quitBtn = null!;
+    Button _settings = null!, _widgets = null!, _immediate = null!, _quitBtn = null!;
 
     public MenuScreen(GuiAssets a, DesignViewport vp, Action quit)
     {
@@ -64,12 +64,13 @@ sealed class MenuScreen : Screen
 
         // Centered vertical button column, anchored to the design center so it stays put at any window size.
         Rect mid = Layout.Resolve(db, Anchor.Center, 220, 52);
-        _settings = new Button(mid with { Y = mid.Y - 64 }, "Settings", _a.Small, () => Manager.Add(new SettingsScreen(_a, _vp)));
-        _widgets = new Button(mid, "Widgets", _a.Small, () => Manager.Add(new WidgetsScreen(_a, _vp)));
-        _quitBtn = new Button(mid with { Y = mid.Y + 64 }, "Quit", _a.Small, _quit);
+        _settings = new Button(mid with { Y = mid.Y - 96 }, "Settings", _a.Small, () => Manager.Add(new SettingsScreen(_a, _vp)));
+        _widgets = new Button(mid with { Y = mid.Y - 32 }, "Widgets", _a.Small, () => Manager.Add(new WidgetsScreen(_a, _vp)));
+        _immediate = new Button(mid with { Y = mid.Y + 32 }, "Immediate", _a.Small, () => Manager.Add(new ImmediateScreen(_a, _vp)));
+        _quitBtn = new Button(mid with { Y = mid.Y + 96 }, "Quit", _a.Small, _quit);
 
         _footer = new Label(Layout.Resolve(db, Anchor.Bottom, db.Width, 24, marginY: 36),
-            "Settings = core widgets    Widgets = dropdown/text/scroll/popup    Esc to quit", _a.Small)
+            "Settings = core widgets    Widgets = heavy widgets    Immediate = GuiSurface    Esc to quit", _a.Small)
         { Align = TextAlign.Center, Color = new Vector4(0.6f, 0.7f, 0.85f, 1f) };
     }
 
@@ -78,6 +79,7 @@ sealed class MenuScreen : Screen
         if (!receivesInput) return false;
         _settings.Update(Manager.Pointer);
         _widgets.Update(Manager.Pointer);
+        _immediate.Update(Manager.Pointer);
         _quitBtn.Update(Manager.Pointer);
         return true;
     }
@@ -88,6 +90,7 @@ sealed class MenuScreen : Screen
         _title.Draw(batch);
         _settings.Draw(batch, _a.White);
         _widgets.Draw(batch, _a.White);
+        _immediate.Draw(batch, _a.White);
         _quitBtn.Draw(batch, _a.White);
         _footer.Draw(batch);
     }
@@ -307,4 +310,73 @@ sealed class PopupScreen : Screen
     }
 
     public override void Draw(SpriteBatch batch) => _popup.Draw(batch, _a.White, Manager.Pointer);
+}
+
+// Immediate-mode demo: every widget is issued inside Draw via GuiSurface (no retained widget fields).
+// Hit-testing and rendering both happen in the GuiSurface calls, so Update is a no-op input gate.
+sealed class ImmediateScreen : Screen
+{
+    readonly GuiAssets _a;
+    readonly DesignViewport _vp;
+    GuiSurface _ui = null!;
+    bool _toggled;
+
+    public ImmediateScreen(GuiAssets a, DesignViewport vp)
+    {
+        _a = a; _vp = vp;
+        PassUpdateThrough = false;
+        BackgroundColor = new Vector4(0.07f, 0.09f, 0.13f, 1f);   // opaque full screen
+    }
+
+    public override void LoadContent() => _ui = new GuiSurface(_a.White);
+
+    public override bool Update(float dt, bool receivesInput) => receivesInput;
+
+    public override void Draw(SpriteBatch batch)
+    {
+        DrawBackground(batch, _a.White, _vp);
+        _ui.Begin(batch, Manager.Pointer);
+
+        // Titled card near the top.
+        var card = new Rect(120, 40, 720, 110);
+        _ui.Panel(card, new Vector4(0.11f, 0.14f, 0.20f, 1f), new Vector4(0.30f, 0.38f, 0.52f, 1f));
+        _ui.Label(_a.Big, "Immediate-mode GuiSurface", new Vector2(card.X + 18, card.Y + 14), Vector4.One);
+        _ui.Label(_a.Small, "One call per widget inside Draw - no retained instances.",
+            new Vector2(card.X + 18, card.Y + 64), new Vector4(0.6f, 0.7f, 0.85f, 1f));
+
+        // Three same-width rects showing Left / Center / Right alignment.
+        var labelColor = new Vector4(0.82f, 0.86f, 0.94f, 1f);
+        var cellFill = new Vector4(0.10f, 0.12f, 0.17f, 1f);
+        for (int i = 0; i < 3; i++)
+        {
+            var cell = new Rect(120 + i * 250, 170, 230, 36);
+            _ui.Panel(cell, cellFill);
+            var align = (GuiAlign)i;
+            _ui.Label(_a.Small, cell, align.ToString(), labelColor, align);
+        }
+
+        // A row of 4 swatches in different colours.
+        _ui.Label(_a.Small, "Swatches", new Vector2(120, 222), labelColor);
+        Vector4[] cols =
+        {
+            new(0.85f, 0.30f, 0.32f, 1f),
+            new(0.32f, 0.74f, 0.42f, 1f),
+            new(0.34f, 0.55f, 0.90f, 1f),
+            new(0.92f, 0.78f, 0.30f, 1f),
+        };
+        for (int i = 0; i < cols.Length; i++)
+            _ui.Swatch(new Rect(120 + i * 56, 248, 48, 48), cols[i]);
+
+        // Buttons: enabled toggle, disabled, selected.
+        if (_ui.Button(_a.Small, new Rect(120, 320, 200, 48), _toggled ? "ON" : "OFF"))
+            _toggled = !_toggled;
+        _ui.Button(_a.Small, new Rect(340, 320, 200, 48), "Disabled", GuiStyle.Default, enabled: false);
+        _ui.Button(_a.Small, new Rect(560, 320, 200, 48), "Selected", GuiStyle.Default, enabled: true, selected: true);
+
+        // Capture-flag readout + Back.
+        _ui.Label(_a.Small, $"PointerCaptured: {_ui.PointerCaptured}",
+            new Vector2(120, 400), new Vector4(0.6f, 0.7f, 0.85f, 1f));
+        if (_ui.Button(_a.Small, new Rect(120, 440, 200, 48), "Back"))
+            Manager.Remove(this);
+    }
 }

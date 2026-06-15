@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Netcode.Abstractions</PackageId>
+    <Description>Zero-dependency channel-split contract for KhaozEngine netcode. IChannelSplittable&lt;TSelf&gt; (a batch declares its unreliable position/transient content vs reliable event content and extracts each sub-batch) plus the NetChannelReliability enum (UnreliableSequenced / ReliableOrdered). BCL only: no MonoGame, no LiteNetLib, no UDP transport. A batch DTO in a MonoGame-free, transport-agnostic project (e.g. one shared with a web/leaderboard server) references ONLY this package to implement the contract. The namespace is KhaozEngine.Netcode (assembly name differs deliberately): KhaozEngine.Netcode type-forwards both types here, so existing consumers that reference KhaozEngine.Netcode keep binding them unchanged.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

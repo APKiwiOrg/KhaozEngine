@@ -62,6 +62,11 @@ latest-wins) vs reliable (spawns/destroys/events, must-arrive-ordered) content a
 sub-batch. Because it names no transport type, a DTO that lives in a transport-agnostic project (e.g.
 one shared with a web server) can implement it without referencing any UDP library.
 
+> These two types now physically live in the zero-dependency **`KhaozEngine.Netcode.Abstractions`**
+> package (BCL only, no MonoGame). A MonoGame-free DTO project should reference **only** that package.
+> `KhaozEngine.Netcode` type-forwards both, so referencing `KhaozEngine.Netcode` still binds them with
+> no source change. The namespace stays `KhaozEngine.Netcode` either way.
+
 ```csharp
 readonly record struct EntityBatch(/* ...fields... */) : IChannelSplittable<EntityBatch>
 {

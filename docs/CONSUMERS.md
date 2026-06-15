@@ -4,9 +4,19 @@ Which game uses which packages, at which version. Current state only - for the p
 [`../CHANGELOG.md`](../CHANGELOG.md). Update this whenever a consumer bumps a `<PackageReference>` or the
 engine ships a new version.
 
-**Engine current version:** `4.8.0` (all packages share one version, set in `Directory.Build.props`).
+**Engine current version:** `4.9.0` (all packages share one version, set in `Directory.Build.props`).
 
-> 4.8.0 is a **breaking** release shipped as a minor bump (the `5.x` line is reserved for the
+> 4.9.0 is **additive**: new zero-dependency package `KhaozEngine.Netcode.Abstractions` (BCL only, no
+> MonoGame, no LiteNetLib) now physically holds `IChannelSplittable<T>` + `NetChannelReliability`.
+> 4.8.0 had put them in `KhaozEngine.Netcode`, but that package depends on MonoGame, so a MonoGame-free
+> contracts assembly (e.g. one referenced by an ASP.NET leaderboard server) still couldn't implement
+> the contract. `KhaozEngine.Netcode` now depends on Abstractions and type-forwards both types
+> (`[TypeForwardedTo]` works here: the full type name is unchanged, only the assembly moved), so any
+> consumer referencing `KhaozEngine.Netcode` keeps binding them with **no source change**. A
+> MonoGame-free DTO project references **only** `KhaozEngine.Netcode.Abstractions`. SpaceGame is the
+> intended first adopter (its `EntityUpdateBatchDto` in `SpaceGame.Multiplayer.Contracts`).
+>
+> 4.8.0 was a **breaking** release shipped as a minor bump (the `5.x` line is reserved for the
 > experimental branch): `IChannelSplittable<T>` and the
 > `NetChannelReliability` enum moved from `KhaozEngine.Netcode.LiteNetLib` to the transport-free
 > `KhaozEngine.Netcode` so a batch DTO in a transport-agnostic project (MessagePack-only, no UDP) can
@@ -32,11 +42,11 @@ engine ships a new version.
 (4.0.0+) is transitive via `Content`/`Persistence`/`Ecs`, so it shows `-` for consumers that don't
 reference it directly (Nullwake does reference it directly for `JsonDefaults`).
 
-| Project   | Project file                         | Input | Screens | UI    | Ecs   | Content | Diagnostics | Time  | App   | Localization | Persistence | Audio | Effects | Graphics | Sprites | Serialization | Platform | Collision | Pooling | Updates | Netcode | Netcode.LiteNetLib |
-|-----------|--------------------------------------|-------|---------|-------|-------|---------|-------------|-------|-------|--------------|-------------|-------|---------|----------|---------|---------------|----------|-----------|---------|---------|---------|--------------------|
-| Hardpoint | `Hardpoint/Hardpoint.Core`           | 4.0.0 | 4.0.0   | 4.0.0 | 4.0.0 | 4.0.0   | 4.0.0       | -     | 4.0.0 | 4.0.0        | 4.0.0       | -     | 4.0.0   | 4.0.0    | 4.0.0   | -             | -        | -         | -       | -       | - | - |
-| Nullwake  | `Nullwake/Nullwake.Core`             | 4.0.0 | 4.0.0   | 4.0.0 | -     | 4.0.0   | 4.0.0       | 4.0.0 | 4.0.0 | 4.0.0        | 4.0.0       | 4.0.0 | 4.0.0   | 4.0.0    | -       | 4.0.0         | -        | -         | -       | -       | - | - |
-| SpaceGame | `SpaceGame/SpaceGame.Core`           | 4.0.0 | 4.0.0   | 4.0.0 | 4.0.0 | 4.0.0   | 4.0.0       | -     | 4.0.0 | 4.0.0        | 4.0.0       | 4.0.0 | -       | 4.0.0    | -       | -             | -        | -         | -       | -       | - | - |
+| Project   | Project file                         | Input | Screens | UI    | Ecs   | Content | Diagnostics | Time  | App   | Localization | Persistence | Audio | Effects | Graphics | Sprites | Serialization | Platform | Collision | Pooling | Updates | Netcode | Netcode.LiteNetLib | Netcode.Abstractions |
+|-----------|--------------------------------------|-------|---------|-------|-------|---------|-------------|-------|-------|--------------|-------------|-------|---------|----------|---------|---------------|----------|-----------|---------|---------|---------|--------------------|--------------------|
+| Hardpoint | `Hardpoint/Hardpoint.Core`           | 4.0.0 | 4.0.0   | 4.0.0 | 4.0.0 | 4.0.0   | 4.0.0       | -     | 4.0.0 | 4.0.0        | 4.0.0       | -     | 4.0.0   | 4.0.0    | 4.0.0   | -             | -        | -         | -       | -       | - | - | - |
+| Nullwake  | `Nullwake/Nullwake.Core`             | 4.0.0 | 4.0.0   | 4.0.0 | -     | 4.0.0   | 4.0.0       | 4.0.0 | 4.0.0 | 4.0.0        | 4.0.0       | 4.0.0 | 4.0.0   | 4.0.0    | -       | 4.0.0         | -        | -         | -       | -       | - | - | - |
+| SpaceGame | `SpaceGame/SpaceGame.Core`           | 4.0.0 | 4.0.0   | 4.0.0 | 4.0.0 | 4.0.0   | 4.0.0       | -     | 4.0.0 | 4.0.0        | 4.0.0       | 4.0.0 | -       | 4.0.0    | -       | -             | -        | -         | -       | -       | - | - | - |
 
 ## Adoption matrix
 
@@ -44,11 +54,11 @@ Which packages each consumer pulls in. `✓` = direct `<PackageReference>`, `-` 
 `(transitive)` = vendored via `Screens` 2.2.0+ but no direct reference and (for `Time`) no
 scaled-dt usage.
 
-| Consumer  | Input | Screens | UI | Ecs | Content | Diagnostics |    Time      | App | Localization | Persistence | Audio | Effects | Graphics | Sprites |  Serialization  | Platform | Collision | Pooling | Updates | Netcode | Netcode.LiteNetLib |
-|-----------|:-----:|:-------:|:--:|:---:|:-------:|:-----------:|:------------:|:---:|:------------:|:-----------:|:-----:|:-------:|:--------:|:-------:|:---------------:|:--------:|:---------:|:-------:|:-------:|:-------:|:------------------:|
-| Hardpoint |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |  ✓  |      ✓       |      ✓      |   -   |    ✓    |    ✓     |    ✓    |  (transitive)   |    -     |     -     |    -    |    -    | - | - |
-| Nullwake  |   ✓   |    ✓    | ✓  |  -  |    ✓    |      ✓      |      ✓       |  ✓  |      ✓       |      ✓      |   ✓   |    ✓    |    ✓     |    -    |        ✓        |    -     |     -     |    -    |    -    | - | - |
-| SpaceGame |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |  ✓  |      ✓       |      ✓      |   ✓   |    -    |    ✓     |    -    |        -        |    -     |     -     |    -    |    -    | - | - |
+| Consumer  | Input | Screens | UI | Ecs | Content | Diagnostics |    Time      | App | Localization | Persistence | Audio | Effects | Graphics | Sprites |  Serialization  | Platform | Collision | Pooling | Updates | Netcode | Netcode.LiteNetLib | Netcode.Abstractions |
+|-----------|:-----:|:-------:|:--:|:---:|:-------:|:-----------:|:------------:|:---:|:------------:|:-----------:|:-----:|:-------:|:--------:|:-------:|:---------------:|:--------:|:---------:|:-------:|:-------:|:-------:|:------------------:|:------------------:|
+| Hardpoint |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |  ✓  |      ✓       |      ✓      |   -   |    ✓    |    ✓     |    ✓    |  (transitive)   |    -     |     -     |    -    |    -    | - | - | - |
+| Nullwake  |   ✓   |    ✓    | ✓  |  -  |    ✓    |      ✓      |      ✓       |  ✓  |      ✓       |      ✓      |   ✓   |    ✓    |    ✓     |    -    |        ✓        |    -     |     -     |    -    |    -    | - | - | - |
+| SpaceGame |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |  ✓  |      ✓       |      ✓      |   ✓   |    -    |    ✓     |    -    |        -        |    -     |     -     |    -    |    -    | - | - | - |
 
 ## Notes (current state per consumer)
 

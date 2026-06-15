@@ -6,6 +6,11 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.*" />
+    <!-- The channel-split contract (IChannelSplittable<T> + NetChannelReliability) lives in the
+         zero-dependency Abstractions package so transport-agnostic DTO projects can implement it
+         without pulling MonoGame in. This package type-forwards both types (see TypeForwards.cs),
+         so existing consumers that reference KhaozEngine.Netcode keep binding them unchanged. -->
+    <ProjectReference Include="../KhaozEngine.Netcode.Abstractions/KhaozEngine.Netcode.Abstractions.csproj" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <ItemGroup>

@@ -21,7 +21,7 @@ namespace KhaozEngine.Gui
         readonly Texture2D _white;
         readonly List<Rect> _blocked = new();
         SpriteBatch? _batch;
-        Pointer? _pointer;
+        Pointer _pointer = new();
 
         /// <summary>The style applied to <see cref="Button(SpriteFont, Rect, string)"/> when no explicit style is passed.</summary>
         public GuiStyle Style { get; set; }
@@ -35,11 +35,12 @@ namespace KhaozEngine.Gui
         }
 
         /// <summary>
-        /// Begin a UI frame: capture the already-begun <paramref name="batch"/> (may be null for headless) and
-        /// the design-space <paramref name="pointer"/>, and clear the per-frame blocked region set so
-        /// <see cref="PointerCaptured"/> reflects only this frame's widgets.
+        /// Begin a UI frame: capture the already-begun <paramref name="batch"/> (<c>null</c> for headless tests,
+        /// where return values and capture still compute but nothing draws) and the design-space
+        /// <paramref name="pointer"/>, and clear the per-frame blocked region set so <see cref="PointerCaptured"/>
+        /// reflects only this frame's widgets.
         /// </summary>
-        public void Begin(SpriteBatch batch, Pointer pointer)
+        public void Begin(SpriteBatch? batch, Pointer pointer)
         {
             _batch = batch;
             _pointer = pointer;
@@ -110,13 +111,13 @@ namespace KhaozEngine.Gui
         {
             _blocked.Add(rect);
 
-            Pointer? p = _pointer;
-            bool clicked = enabled && p is not null && p.IsTapIn(rect);
+            Pointer p = _pointer;
+            bool clicked = enabled && p.IsTapIn(rect);
 
             if (_batch is null) return clicked;
 
-            bool pressing = p is not null && p.IsPressingIn(rect);
-            bool hovering = p is not null && p.IsHoveringIn(rect);
+            bool pressing = p.IsPressingIn(rect);
+            bool hovering = p.IsHoveringIn(rect);
 
             Vector4 fill = !enabled ? style.DisabledFill
                 : selected ? style.SelectedFill
@@ -146,7 +147,9 @@ namespace KhaozEngine.Gui
         {
             get
             {
-                if (_pointer is null) return false;
+                // PressOrigin defaults to (0,0) and is only meaningful once a press has happened, so a
+                // never-pressed pointer must not capture a widget that merely sits at the origin.
+                if (!_pointer.IsDown && !_pointer.IsJustReleased) return false;
                 Vector2 origin = _pointer.PressOrigin;
                 foreach (var r in _blocked)
                     if (r.Contains(origin)) return true;

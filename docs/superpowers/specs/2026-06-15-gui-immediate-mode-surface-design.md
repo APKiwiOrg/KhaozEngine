@@ -46,8 +46,8 @@ public sealed class GuiSurface
 
     public GuiStyle Style { get; set; }
 
-    // Begin a UI frame: capture the already-begun batch + the design-space pointer. Resets PointerCaptured.
-    public void Begin(SpriteBatch batch, Pointer pointer);
+    // Begin a UI frame: capture the already-begun batch (null for headless) + the design-space pointer. Resets PointerCaptured.
+    public void Begin(SpriteBatch? batch, Pointer pointer);
 
     public void Panel(Rect rect, Vector4 fill);
     public void Panel(Rect rect, Vector4 fill, Vector4 border, float borderThickness = 1.5f);
@@ -77,7 +77,8 @@ public enum GuiAlign { Left, Center, Right }   // horizontal; text is always ver
    SelectedBorder else Border. Text colour = `enabled` -> Text else DisabledText. Label is centered both axes.
 3. **Drawing** reuses the internal `GuiDraw.Fill`/`Border`. The surface holds the 1x1 white texture; the caller
    owns `batch.Begin(viewport)` / `End()` (so the surface composes with the design viewport for free).
-4. **Headless-testable.** `Begin` accepts a `null` batch; every draw helper no-ops when batch is null, so
+4. **Headless-testable.** `Begin` accepts a `null` batch (the only nullable argument; the `Pointer` is always
+   non-null and trivially constructable headlessly); every draw helper no-ops when batch is null, so
    interaction + `PointerCaptured` + `Button` return values are testable over a fed `RawInputState`/`Pointer`
    with no GPU. (Mirror the existing `ScrollablePanelTests` input pattern.)
 

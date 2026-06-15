@@ -29,15 +29,15 @@ namespace KhaozEngine.Tests.Gui
             var at = new Vector2(150, 120);
 
             p.Update(Frame(at, false));               // idle
-            ui.Begin(null!, p);
+            ui.Begin(null, p);
             Assert.False(ui.Button(null!, Btn, "Go"));
 
             p.Update(Frame(at, true));                // press inside
-            ui.Begin(null!, p);
+            ui.Begin(null, p);
             Assert.False(ui.Button(null!, Btn, "Go")); // held -> no click yet
 
             p.Update(Frame(at, false));               // release inside
-            ui.Begin(null!, p);
+            ui.Begin(null, p);
             Assert.True(ui.Button(null!, Btn, "Go"));  // click fires once on release
         }
 
@@ -51,7 +51,7 @@ namespace KhaozEngine.Tests.Gui
             p.Update(Frame(new Vector2(10, 10), true));    // press OUTSIDE the button
             p.Update(Frame(new Vector2(150, 120), false)); // release inside the button
 
-            ui.Begin(null!, p);
+            ui.Begin(null, p);
             Assert.False(ui.Button(null!, Btn, "Go"));     // press-origin invariant: no click
         }
 
@@ -66,7 +66,7 @@ namespace KhaozEngine.Tests.Gui
             p.Update(Frame(at, true));                      // press inside
             p.Update(Frame(at, false));                     // release inside
 
-            ui.Begin(null!, p);
+            ui.Begin(null, p);
             bool clicked = ui.Button(null!, Btn, "Go", GuiStyle.Default, enabled: false);
             Assert.False(clicked);                          // disabled never clicks
             Assert.True(ui.PointerCaptured);                // but still reserves its rect
@@ -83,7 +83,7 @@ namespace KhaozEngine.Tests.Gui
             p.Update(Frame(at, false));
             p.Update(Frame(at, true));                      // press-origin inside the panel
 
-            ui.Begin(null!, p);
+            ui.Begin(null, p);
             ui.Panel(panel, GuiStyle.Default.Fill);
             Assert.True(ui.PointerCaptured);
         }
@@ -98,10 +98,21 @@ namespace KhaozEngine.Tests.Gui
             p.Update(Frame(at, false));
             p.Update(Frame(at, true));                      // press-origin far from any widget
 
-            ui.Begin(null!, p);
+            ui.Begin(null, p);
             ui.Panel(new Rect(0, 0, 100, 100), GuiStyle.Default.Fill);
             ui.Button(null!, Btn, "Go");
             Assert.False(ui.PointerCaptured);
+        }
+
+        [Fact]
+        public void PointerCaptured_is_false_for_a_never_pressed_pointer_even_over_a_widget_at_the_origin()
+        {
+            var ui = Surface();
+            var p = new Pointer();   // never pressed: PressOrigin defaults to (0,0)
+
+            ui.Begin(null, p);
+            ui.Panel(new Rect(0, 0, 100, 100), GuiStyle.Default.Fill);
+            Assert.False(ui.PointerCaptured);   // no active press -> no false-positive capture at (0,0)
         }
 
         [Fact]
@@ -114,12 +125,12 @@ namespace KhaozEngine.Tests.Gui
             p.Update(Frame(at, false));
             p.Update(Frame(at, true));                      // press-origin inside the panel
 
-            ui.Begin(null!, p);
+            ui.Begin(null, p);
             ui.Panel(new Rect(0, 0, 100, 100), GuiStyle.Default.Fill);
             Assert.True(ui.PointerCaptured);
 
             // New frame, draw nothing over the press-origin -> capture resets.
-            ui.Begin(null!, p);
+            ui.Begin(null, p);
             Assert.False(ui.PointerCaptured);
         }
 
@@ -133,7 +144,7 @@ namespace KhaozEngine.Tests.Gui
             p.Update(Frame(at, false));
             p.Update(Frame(at, true));
 
-            ui.Begin(null!, p);
+            ui.Begin(null, p);
             ui.Swatch(new Rect(0, 0, 40, 40), Vector4.One);
             Assert.True(ui.PointerCaptured);
         }
@@ -147,16 +158,16 @@ namespace KhaozEngine.Tests.Gui
 
             // Hover only (no press): no click regardless of selected flag.
             p.Update(Frame(at, false));
-            ui.Begin(null!, p);
+            ui.Begin(null, p);
             Assert.False(ui.Button(null!, Btn, "Go", GuiStyle.Default, enabled: true, selected: true));
 
             // Full tap with selected: still clicks once on release.
             p.Update(Frame(at, true));
-            ui.Begin(null!, p);
+            ui.Begin(null, p);
             Assert.False(ui.Button(null!, Btn, "Go", GuiStyle.Default, enabled: true, selected: true));
 
             p.Update(Frame(at, false));
-            ui.Begin(null!, p);
+            ui.Begin(null, p);
             Assert.True(ui.Button(null!, Btn, "Go", GuiStyle.Default, enabled: true, selected: true));
         }
     }

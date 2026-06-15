@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <OutputType>Library</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+  <!-- Intentionally references ONLY KhaozEngine.Netcode (the transport-free core). It must NOT
+       reference KhaozEngine.Netcode.LiteNetLib or LiteNetLib: this project compiling is the proof
+       that IChannelSplittable<T> can be implemented without any UDP transport in scope, mirroring
+       SpaceGame.Multiplayer.Contracts. Adding a transport dependency here breaks the build on purpose. -->
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Netcode/KhaozEngine.Netcode.csproj" />
+  </ItemGroup>
+</Project>

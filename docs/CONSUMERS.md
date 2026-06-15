@@ -4,8 +4,18 @@ Which game uses which packages, at which version. Current state only - for the p
 [`../CHANGELOG.md`](../CHANGELOG.md). Update this whenever a consumer bumps a `<PackageReference>` or the
 engine ships a new version.
 
-**Engine current version:** `4.7.0` (all packages share one version, set in `Directory.Build.props`).
+**Engine current version:** `4.8.0` (all packages share one version, set in `Directory.Build.props`).
 
+> 4.8.0 is a **breaking** release shipped as a minor bump (the `5.x` line is reserved for the
+> experimental branch): `IChannelSplittable<T>` and the
+> `NetChannelReliability` enum moved from `KhaozEngine.Netcode.LiteNetLib` to the transport-free
+> `KhaozEngine.Netcode` so a batch DTO in a transport-agnostic project (MessagePack-only, no UDP) can
+> implement the split contract. `ChannelSplitter` (the `DeliveryMethod` mapping + `Send`) stays in
+> `.LiteNetLib`. No type-forwards (a namespace move can't be bridged by `[TypeForwardedTo]`); migration
+> is a one-line `using` swap (`using KhaozEngine.Netcode;` for the contract, keep
+> `using KhaozEngine.Netcode.LiteNetLib;` only if you call `ChannelSplitter`). No consumer references
+> the netcode types yet, so nothing breaks in practice.
+>
 > The latest releases (4.6.0, new `Updates` package; 4.5.0, new `Collision` + `Pooling` packages; 4.4.0, new
 > `Platform` package with the cross-platform `Clipboard`) are **not adopted by any consumer yet** - all three
 > are on 4.0.0. A game adopts a release on its own schedule by bumping its pinned version; the matrices below
@@ -141,9 +151,11 @@ done
 After editing, run `./scripts/check-doc-versions.sh` (CI runs it too) to confirm the engine-version line
 still matches `Directory.Build.props`.
 
-_Last verified: 2026-06-15. Engine at 4.7.0 (new `Platform` 4.4.0, `Collision`+`Pooling` 4.5.0, `Updates`
-4.6.0, `Netcode`+`Netcode.LiteNetLib` 4.7.0); all three consumers on 4.0.0 (4.1.0-4.7.0 unadopted; SpaceGame
-is the intended first adopter of the netcode packages). Adoption
+_Last verified: 2026-06-15. Engine at 4.8.0 (breaking, shipped as a minor since `5.x` is reserved for
+the experimental branch: `IChannelSplittable<T>`+`NetChannelReliability` moved `Netcode.LiteNetLib` ->
+`Netcode`, `ChannelSplitter` stays in `.LiteNetLib`; earlier: new `Platform` 4.4.0, `Collision`+`Pooling`
+4.5.0, `Updates` 4.6.0, `Netcode`+`Netcode.LiteNetLib` 4.7.0); all three consumers on 4.0.0 (4.1.0-4.8.0
+unadopted; SpaceGame is the intended first adopter of the netcode packages). Adoption
 ✓/- matrix matches each game's actual `<PackageReference>` set as of the 2026-06-13 no-dead-reference
 pass (every direct `KhaozEngine.*` reference in all three repos is used; the one zero-code-use case,
 Nullwake `Content`, is legitimate build-time schema validation)._

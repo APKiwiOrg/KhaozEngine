@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using KhaozEngine.Netcode;
 using KhaozEngine.Netcode.LiteNetLib;
 using LiteNetLib;
 using Xunit;

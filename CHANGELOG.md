@@ -5,6 +5,26 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 5.6.0-experimental (custom 5.x line)
+
+New `KhaozEngine.Gui` package — the screen-stack + first widget on the custom stack.
+
+### KhaozEngine.Gui (new)
+
+- `ScreenStack` — owns a stack of `Screen`s and routes input top-to-bottom: the first visible,
+  non-passthrough screen that reports consuming input blocks the screens below it; a modal
+  (`PassUpdateThrough == false`) screen also stops them updating; `AlwaysReceivesInput` opts back in. Draws
+  bottom-to-top and drives transitions. Exposes a shared `Pointer` + `InputState`. Ported faithfully from the
+  MonoGame `ScreenManager` (uses `dt` instead of `GameTime`; the click-through layering model is intact).
+- `Screen` — base UI surface: `Update(dt, receivesInput)` (return whether it consumed input) + `Draw(SpriteBatch)`,
+  with `DrawOrder`/`PassUpdateThrough`/`AlwaysReceivesInput`/transitions/`ExitScreen`.
+- `Button` — bounds-aware widget over `Pointer.IsTapIn` (press-origin click-through invariant), hover/press
+  visuals. Built on `KhaozEngine.Windowing` + `KhaozEngine.Render2D`.
+- Headless `ScreenStackTests` cover the routing core (consume-blocks-lower, modal-stops-lower,
+  AlwaysReceivesInput, transition-on, animated exit). `GuiSample` shows a menu that pushes a modal settings
+  screen. Pause/timescale, per-player scoping, touch gestures, and the wider widget set
+  (Slider/Dropdown/ScrollablePanel/...) are follow-ups.
+
 ## 5.5.0-experimental (custom 5.x line)
 
 Bounds-aware pointer input (the click-through core) in `KhaozEngine.Windowing`, and the renderer windowing

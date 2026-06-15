@@ -35,11 +35,13 @@ engine ships a new version.
 > engine `CircleCollision` + `SpatialHashGrid` and confirm the hash stays `17709480852979803671`. `Updates` is
 > determinism-neutral (never touches sim/RNG), so it carries no hash gate.
 
-**Experimental 5.x line:** the custom-stack (MonoGame-free) packages `KhaozEngine.Render3D` and
-`KhaozEngine.Render2D` share `5.2.0-experimental` (`Directory.Build.props` `<KhaozEngine5xVersion>`),
-separate from the 4.x version above (see [`ROADMAP.md`](ROADMAP.md), "The post-MonoGame pivot"). **No consumer
-adopts them yet** (the games are MonoGame; migration is deferred under the full-custom plan). They are not in
-the version matrix below, which tracks the 4.x MonoGame packages.
+**Experimental 5.x line:** the custom-stack (MonoGame-free) packages `KhaozEngine.Render3D`,
+`KhaozEngine.Render2D`, and `KhaozEngine.Audio` share `5.3.0-experimental` (`Directory.Build.props`
+`<KhaozEngine5xVersion>`), separate from the 4.x version above (see [`ROADMAP.md`](ROADMAP.md), "The
+post-MonoGame pivot"). **No consumer adopts them yet** (the games are MonoGame; migration is deferred under
+the full-custom plan). `KhaozEngine.Audio` **graduated** from the 4.x line to 5.x (OpenAL backend, no
+MonoGame); the `Audio` column in the matrix below now reflects the **frozen 4.x** Audio that current
+consumers still pin. The 5.x packages are otherwise not in the matrix, which tracks the 4.x MonoGame packages.
 
 ## Version matrix
 

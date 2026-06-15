@@ -1,11 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.Audio</PackageId>
-    <Description>Game-agnostic background-music backend for MonoGame: an OS-selected music backend (macOS AVAudioPlayer via ObjC P/Invoke to dodge MonoGame's broken Song backend; MonoGame MediaPlayer elsewhere) behind a caller-registered track list with volume, enable, and automatic track rotation.</Description>
+    <!-- Graduated to the shared 5.x experimental custom-stack line (was 4.x MonoGame). -->
+    <Version>$(KhaozEngine5xVersion)</Version>
+    <Description>EXPERIMENTAL game-agnostic background-music backend on the custom MonoGame-free stack: an OpenAL (Silk.NET.OpenAL) streaming music backend behind the IMusicBackend seam, decoding WAV / OGG (NVorbis) / MP3 (NLayer), with a caller-registered track list, volume, enable, and automatic track rotation (AudioSystem). No MonoGame. Part of the post-MonoGame 5.x line.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.*" />
+    <PackageReference Include="Silk.NET.OpenAL" Version="2.23.0" />
+    <PackageReference Include="NVorbis" Version="0.10.5" />
+    <PackageReference Include="NLayer" Version="1.16.0" />
     <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>

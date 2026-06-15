@@ -5,6 +5,27 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 5.3.0-experimental (custom 5.x line)
+
+`KhaozEngine.Audio` **graduates from the 4.x MonoGame line to the 5.x custom stack** (the first existing
+package to graduate; the 4.x MonoGame Audio is frozen at its last 4.x version, still pinnable by current
+consumers). `Render3D` and `Render2D` roll to 5.3.0 with no functional change.
+
+### KhaozEngine.Audio (now MonoGame-free)
+
+- Backend swapped to a cross-platform **OpenAL streaming backend** (`OpenAlMusicBackend`, Silk.NET.OpenAL):
+  decodes **WAV / OGG (NVorbis) / MP3 (NLayer)** and streams via queued buffers, pumped from
+  `AudioSystem.Update()`. The MonoGame and macOS-AVAudioPlayer backends are removed; no `Microsoft.Xna`
+  reference remains.
+- **Breaking API (intended for the 5.x graduation):** `IMusicBackend.TryLoadTrack` drops its
+  `ContentManager` parameter (`TryLoadTrack(contentDirectory, trackName)`) and gains `Update()`;
+  `AudioSystem.LoadContent(ContentManager)` becomes `LoadContent(string contentDirectory)` (the folder
+  holding the audio files; track names are file names without extension). The rest of `AudioSystem`
+  (volume, enable, rotation, `PlayMode`, `TrackChanged`) is unchanged.
+- `AudioSystem` logic stays covered by the headless `AudioSystemTests` (fake backend); real OpenAL
+  streaming is eyeball/spike-verified (can't run on the CI audio-less runner). Needs an OpenAL impl at
+  runtime (macOS ships one; bundle openal-soft for production). Music-only; SFX is a future layer.
+
 ## 5.2.0-experimental (custom 5.x line)
 
 New `KhaozEngine.Render2D` package, and the 5.x line becomes a **shared** version (was per-package for the

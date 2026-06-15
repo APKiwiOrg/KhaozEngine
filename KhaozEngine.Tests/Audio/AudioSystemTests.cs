@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Microsoft.Xna.Framework.Content;
 using KhaozEngine.Audio;
 using Xunit;
 
@@ -12,7 +11,7 @@ public sealed class AudioSystemTests
     {
         var backend = new FakeMusicBackend();
         var audio = new AudioSystem(backend, tracks);
-        audio.LoadContent(new ContentManager(new StubServiceProvider()));
+        audio.LoadContent("tracks");
         return (audio, backend);
     }
 
@@ -24,7 +23,7 @@ public sealed class AudioSystemTests
         audio.RegisterTrack("c");
         audio.RegisterTracks(new[] { "d", "e" });
 
-        audio.LoadContent(new ContentManager(new StubServiceProvider()));
+        audio.LoadContent("tracks");
 
         Assert.Equal(new[] { "a", "b", "c", "d", "e" }, backend.LoadedTracks);
         Assert.Equal(5, backend.TrackCount);
@@ -38,7 +37,7 @@ public sealed class AudioSystemTests
         audio.RegisterTrack("a");                 // duplicate of the ctor seed
         audio.RegisterTracks(new[] { "b", "b" }); // duplicate within the batch
 
-        audio.LoadContent(new ContentManager(new StubServiceProvider()));
+        audio.LoadContent("tracks");
 
         Assert.Equal(new[] { "a", "b" }, backend.LoadedTracks);
     }
@@ -347,7 +346,7 @@ public sealed class AudioSystemTests
         var backend = new FakeMusicBackend();
         backend.FailTracks.Add("b");
         var audio = new AudioSystem(backend, new[] { "a", "b", "c" });
-        audio.LoadContent(new ContentManager(new StubServiceProvider()));
+        audio.LoadContent("tracks");
 
         Assert.Equal(new[] { "a", "c" }, backend.LoadedTracks);   // "b" skipped
         Assert.Equal(2, backend.TrackCount);

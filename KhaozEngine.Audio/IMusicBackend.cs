@@ -1,11 +1,10 @@
 using System;
-using Microsoft.Xna.Framework.Content;
 
 namespace KhaozEngine.Audio;
 
 /// <summary>
-/// A platform music backend: loads named tracks and plays one at a time with volume control.
-/// Implemented by the bundled MonoGame and macOS backends; games or tests may supply their own.
+/// A platform music backend: loads named tracks (from a content directory) and plays one at a time with
+/// volume control. Implemented by the bundled OpenAL backend; games or tests may supply their own.
 /// </summary>
 public interface IMusicBackend : IDisposable
 {
@@ -18,8 +17,8 @@ public interface IMusicBackend : IDisposable
     /// <summary>True while a track is currently playing.</summary>
     bool IsPlaying { get; }
 
-    /// <summary>Attempts to load one track. Returns false if it could not be loaded.</summary>
-    bool TryLoadTrack(ContentManager content, string contentDirectory, string trackName);
+    /// <summary>Attempts to load one track from <paramref name="contentDirectory"/>. Returns false if it could not be loaded.</summary>
+    bool TryLoadTrack(string contentDirectory, string trackName);
 
     /// <summary>Attempts to start the track at <paramref name="trackIndex"/> at the given volume.</summary>
     bool TryPlayTrack(int trackIndex, float volume);
@@ -29,4 +28,7 @@ public interface IMusicBackend : IDisposable
 
     /// <summary>Sets output volume (0.0 - 1.0).</summary>
     void SetVolume(float volume);
+
+    /// <summary>Pump streaming state (refill buffers, detect end-of-track). Call once per frame.</summary>
+    void Update();
 }

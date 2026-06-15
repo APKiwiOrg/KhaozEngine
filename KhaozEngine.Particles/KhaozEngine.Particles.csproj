@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Particles</PackageId>
+    <!-- Shared 5.x experimental line (see docs/ROADMAP.md "The post-MonoGame pivot"). -->
+    <Version>$(KhaozEngine5xVersion)</Version>
+    <Description>EXPERIMENTAL pure, deterministic particle simulation for the custom MonoGame-free 5.x stack (System.Numerics + BCL only, no Veldrid/MonoGame). Capacity-bounded pool with swap-remove compaction so live particles are a contiguous span; per-particle lerp endpoints (size/color) + gravity + drag baked at emit time; cone-spread emission; internal xorshift32 RNG for full determinism (no System.Random / wall-clock). Render-agnostic: a 3D billboard or 2D path consumes Active. Includes EmitterConfig with Spark/Puff defaults and a RateAccumulator helper for continuous emission.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Tests" />
+  </ItemGroup>
+</Project>

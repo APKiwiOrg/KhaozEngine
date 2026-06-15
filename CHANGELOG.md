@@ -5,6 +5,17 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 5.16.0-experimental (custom 5.x line)
+
+### KhaozEngine.Render3D (additive)
+
+- **ECS->Scene3D binding**: render-component types `Transform3D` (position/scale/rotation; zero scale/rotation
+  treated as identity) and `MeshInstance` (`MeshHandle` + `Vector4` tint; zero tint = white), plus
+  `Scene3DBinder.Submit(world, scene)` which draws every entity carrying both. Replaces the per-game
+  "query entities -> compute matrix -> Draw" loop with one call. The pure core
+  `Submit(world, Action<MeshHandle,Matrix4x4,Vector4>)` is headless-tested with a real `World` + a recording
+  delegate. Render3D now references the MonoGame-free `KhaozEngine.Ecs`. From the Hardpoint testbed.
+
 ## 4.11.0 (MonoGame 4.x line)
 
 - **`KhaozEngine.Content.ColorHex`**: `FromHex(string) -> Vector4` (RGBA 0..1; accepts `#RRGGBB` / `RRGGBB` /

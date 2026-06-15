@@ -6,23 +6,28 @@ using KhaozEngine.Windowing;
 
 // Proves the screen-stack on the custom stack: a menu screen whose buttons push a modal settings screen,
 // all routed through ScreenStack (input-consumption layering + transitions) over AppWindow + Render2D.
-var window = new AppWindow("KhaozEngine.Gui — screen stack", 960, 540) { ClearColor = new Vector4(0.07f, 0.09f, 0.13f, 1f) };
+// Resolution-independent: everything is authored in a fixed 960x540 design space and the DesignViewport
+// scales/centers/letterboxes it onto whatever the window is resized to (hit-testing stays aligned).
+var window = new AppWindow("KhaozEngine.Gui - screen stack", 960, 540) { ClearColor = new Vector4(0.03f, 0.04f, 0.06f, 1f) };
 var surface = new Render2DSurface(window);
 var assets = new GuiAssets(
     surface.CreateTexture(new byte[] { 255, 255, 255, 255 }, 1, 1),
     surface.LoadFont("/System/Library/Fonts/Supplemental/Arial.ttf", 40f),
     surface.LoadFont("/System/Library/Fonts/Supplemental/Arial.ttf", 26f));
 
+var viewport = new DesignViewport(960, 540, ScaleMode.Fit);
+
 var stack = new ScreenStack();
-stack.Add(new MenuScreen(assets, () => window.Close()));
+stack.Add(new MenuScreen(assets, viewport, () => window.Close()));
 
 window.Run(frame =>
 {
     if (frame.Input.WasPressed(Key.Escape)) window.Close();
-    stack.Update(frame.Dt, frame.Input);
+    viewport.Update(frame.Width, frame.Height);
+    stack.Update(frame.Dt, frame.Input, viewport);
 
     surface.NewFrame(frame);
-    surface.Batch.Begin();
+    surface.Batch.Begin(viewport);
     stack.Draw(surface.Batch);
     surface.Batch.End();
 });
@@ -40,16 +45,32 @@ sealed class GuiAssets
 sealed class MenuScreen : Screen
 {
     readonly GuiAssets _a;
+    readonly DesignViewport _vp;
     readonly Action _quit;
+    Label _title = null!, _footer = null!;
     Button _settings = null!, _widgets = null!, _quitBtn = null!;
 
-    public MenuScreen(GuiAssets a, Action quit) { _a = a; _quit = quit; PassUpdateThrough = false; }
+    public MenuScreen(GuiAssets a, DesignViewport vp, Action quit)
+    {
+        _a = a; _vp = vp; _quit = quit;
+        PassUpdateThrough = false;
+        BackgroundColor = new Vector4(0.07f, 0.09f, 0.13f, 1f);   // opaque full screen
+    }
 
     public override void LoadContent()
     {
-        _settings = new Button(new Rect(380, 200, 200, 52), "Settings", _a.Small, () => Manager.Add(new SettingsScreen(_a)));
-        _widgets = new Button(new Rect(380, 264, 200, 52), "Widgets", _a.Small, () => Manager.Add(new WidgetsScreen(_a)));
-        _quitBtn = new Button(new Rect(380, 328, 200, 52), "Quit", _a.Small, _quit);
+        Rect db = _vp.DesignBounds;
+        _title = new Label(Layout.Resolve(db, Anchor.Top, db.Width, 56, marginY: 56), "Main Menu", _a.Big) { Align = TextAlign.Center };
+
+        // Centered vertical button column, anchored to the design center so it stays put at any window size.
+        Rect mid = Layout.Resolve(db, Anchor.Center, 220, 52);
+        _settings = new Button(mid with { Y = mid.Y - 64 }, "Settings", _a.Small, () => Manager.Add(new SettingsScreen(_a, _vp)));
+        _widgets = new Button(mid, "Widgets", _a.Small, () => Manager.Add(new WidgetsScreen(_a, _vp)));
+        _quitBtn = new Button(mid with { Y = mid.Y + 64 }, "Quit", _a.Small, _quit);
+
+        _footer = new Label(Layout.Resolve(db, Anchor.Bottom, db.Width, 24, marginY: 36),
+            "Settings = core widgets    Widgets = dropdown/text/scroll/popup    Esc to quit", _a.Small)
+        { Align = TextAlign.Center, Color = new Vector4(0.6f, 0.7f, 0.85f, 1f) };
     }
 
     public override bool Update(float dt, bool receivesInput)
@@ -63,26 +84,28 @@ sealed class MenuScreen : Screen
 
     public override void Draw(SpriteBatch batch)
     {
-        batch.DrawString(_a.Big, "Main Menu", new Vector2(380, 120), new Vector4(0.95f, 0.97f, 1f, 1f));
+        DrawBackground(batch, _a.White, _vp);
+        _title.Draw(batch);
         _settings.Draw(batch, _a.White);
         _widgets.Draw(batch, _a.White);
         _quitBtn.Draw(batch, _a.White);
-        batch.DrawString(_a.Small, "Settings = core widgets  •  Widgets = dropdown/text/scroll/popup  •  Esc to quit", new Vector2(140, 470), new Vector4(0.6f, 0.7f, 0.85f, 1f));
+        _footer.Draw(batch);
     }
 }
 
 sealed class SettingsScreen : Screen
 {
     readonly GuiAssets _a;
+    readonly DesignViewport _vp;
     Panel _dialog = null!;
     Label _title = null!, _volumeLabel = null!, _fullscreenLabel = null!, _help = null!, _readout = null!;
     Slider _volume = null!;
     Toggle _fullscreen = null!;
     Button _back = null!;
 
-    public SettingsScreen(GuiAssets a)
+    public SettingsScreen(GuiAssets a, DesignViewport vp)
     {
-        _a = a;
+        _a = a; _vp = vp;
         DrawOrder = 10;
         PassUpdateThrough = false;     // modal: the menu beneath neither updates nor receives input
         TransitionOnDuration = 0.18f;
@@ -91,22 +114,25 @@ sealed class SettingsScreen : Screen
 
     public override void LoadContent()
     {
-        _dialog = new Panel(new Rect(260, 110, 440, 330)) { BorderThickness = 1f };
-        _title = new Label(new Rect(260, 130, 440, 44), "Settings", _a.Big) { Align = TextAlign.Center };
+        // Center the dialog in the design space; inner widgets are placed relative to the dialog rect.
+        Rect d = Layout.Resolve(_vp.DesignBounds, Anchor.Center, 440, 330);
+        _dialog = new Panel(d) { BorderThickness = 1f };
+        _title = new Label(Layout.Resolve(d, Anchor.Top, d.Width, 44, marginY: 20), "Settings", _a.Big) { Align = TextAlign.Center };
 
-        _volumeLabel = new Label(new Rect(290, 196, 120, 24), "Volume", _a.Small);
-        _volume = new Slider(new Rect(420, 200, 200, 14), 0.7f);
-        _readout = new Label(new Rect(630, 196, 50, 24), "70%", _a.Small) { Align = TextAlign.Right };
+        _volumeLabel = new Label(new Rect(d.X + 30, d.Y + 86, 120, 24), "Volume", _a.Small);
+        _volume = new Slider(new Rect(d.X + 160, d.Y + 90, 200, 14), 0.7f);
+        _readout = new Label(new Rect(d.X + 370, d.Y + 86, 50, 24), "70%", _a.Small) { Align = TextAlign.Right };
 
-        _fullscreenLabel = new Label(new Rect(290, 246, 200, 26), "Fullscreen", _a.Small);
-        _fullscreen = new Toggle(new Rect(624, 244, 56, 28));
+        _fullscreenLabel = new Label(new Rect(d.X + 30, d.Y + 136, 200, 26), "Fullscreen", _a.Small);
+        _fullscreen = new Toggle(new Rect(d.Right - 76, d.Y + 134, 56, 28));
 
-        _help = new Label(new Rect(290, 288, 380, 70),
+        _help = new Label(new Rect(d.X + 30, d.Y + 178, d.Width - 60, 70),
             "Drag the slider or toggle the switch. This help text wraps to the panel width via TextLayout.",
             _a.Small)
         { Wrap = true, Color = new Vector4(0.6f, 0.7f, 0.85f, 1f) };
 
-        _back = new Button(new Rect(390, 372, 180, 50), "Back", _a.Small, ExitScreen);
+        Rect backRect = Layout.Resolve(d, Anchor.Bottom, 180, 50, marginY: 18);
+        _back = new Button(backRect, "Back", _a.Small, ExitScreen);
     }
 
     public override bool Update(float dt, bool receivesInput)
@@ -123,7 +149,8 @@ sealed class SettingsScreen : Screen
 
     public override void Draw(SpriteBatch batch)
     {
-        batch.Draw(_a.White, new Vector4(0, 0, 960, 540), new Vector4(0, 0, 0, 0.55f * TransitionAlpha));   // scrim
+        Rect db = _vp.DesignBounds;
+        batch.Draw(_a.White, new Vector4(db.X, db.Y, db.Width, db.Height), new Vector4(0, 0, 0, 0.55f * TransitionAlpha));   // scrim
         _dialog.Draw(batch, _a.White);
         _title.Draw(batch);
         _volumeLabel.Draw(batch);
@@ -141,6 +168,7 @@ sealed class SettingsScreen : Screen
 sealed class WidgetsScreen : Screen
 {
     readonly GuiAssets _a;
+    readonly DesignViewport _vp;
     Label _title = null!, _nameLabel = null!, _diffLabel = null!, _listLabel = null!;
     TextInput _name = null!;
     Dropdown _difficulty = null!;
@@ -148,11 +176,17 @@ sealed class WidgetsScreen : Screen
     Tooltip _tip = null!;
     Button _info = null!, _confirm = null!, _back = null!;
 
-    public WidgetsScreen(GuiAssets a) { _a = a; PassUpdateThrough = false; }
+    public WidgetsScreen(GuiAssets a, DesignViewport vp)
+    {
+        _a = a; _vp = vp;
+        PassUpdateThrough = false;
+        BackgroundColor = new Vector4(0.07f, 0.09f, 0.13f, 1f);   // opaque full screen (no bleed-through)
+    }
 
     public override void LoadContent()
     {
-        _title = new Label(new Rect(0, 28, 960, 40), "Widgets", _a.Big) { Align = TextAlign.Center };
+        Rect db = _vp.DesignBounds;
+        _title = new Label(Layout.Resolve(db, Anchor.Top, db.Width, 40, marginY: 28), "Widgets", _a.Big) { Align = TextAlign.Center };
 
         _nameLabel = new Label(new Rect(120, 92, 260, 18), "Name", _a.Small);
         _name = new TextInput(new Rect(120, 112, 260, 32), _a.Small) { Placeholder = "type a name", MaxLength = 16 };
@@ -166,9 +200,9 @@ sealed class WidgetsScreen : Screen
         _listLabel = new Label(new Rect(120, 222, 260, 18), "Scrollable list (wheel / drag)", _a.Small);
         _list = new ScrollablePanel(new Rect(120, 244, 280, 200)) { ItemCount = 24, ItemHeight = 30, ItemSpacing = 4 };
 
-        _tip = new Tooltip(_a.Small, _a.Small) { Viewport = new Vector2(960, 540) };
+        _tip = new Tooltip(_a.Small, _a.Small) { Viewport = new Vector2(db.Width, db.Height) };
         _info = new Button(new Rect(620, 112, 160, 32), "hover for tip", _a.Small);
-        _confirm = new Button(new Rect(620, 380, 160, 48), "Confirm…", _a.Small, () => Manager.Add(new PopupScreen(_a, _name.Text, _difficulty.SelectedLabel)));
+        _confirm = new Button(new Rect(620, 380, 160, 48), "Confirm...", _a.Small, () => Manager.Add(new PopupScreen(_a, _vp, _name.Text, _difficulty.SelectedLabel)));
         _back = new Button(new Rect(620, 440, 160, 40), "Back", _a.Small, ExitScreen);
     }
 
@@ -197,6 +231,7 @@ sealed class WidgetsScreen : Screen
 
     public override void Draw(SpriteBatch batch)
     {
+        DrawBackground(batch, _a.White, _vp);
         _title.Draw(batch);
         _nameLabel.Draw(batch);
         _name.Draw(batch, _a.White);
@@ -228,12 +263,13 @@ sealed class WidgetsScreen : Screen
 sealed class PopupScreen : Screen
 {
     readonly GuiAssets _a;
+    readonly DesignViewport _vp;
     readonly string _name, _difficulty;
     PopupPanel _popup = null!;
 
-    public PopupScreen(GuiAssets a, string name, string difficulty)
+    public PopupScreen(GuiAssets a, DesignViewport vp, string name, string difficulty)
     {
-        _a = a; _name = name; _difficulty = difficulty;
+        _a = a; _vp = vp; _name = name; _difficulty = difficulty;
         DrawOrder = 20; PassUpdateThrough = false;
         TransitionOnDuration = 0.15f; TransitionOffDuration = 0.15f;
     }
@@ -242,7 +278,7 @@ sealed class PopupScreen : Screen
     {
         _popup = new PopupPanel
         {
-            Viewport = new Vector2(960, 540),
+            Viewport = new Vector2(_vp.Width, _vp.Height),
             Title = "Start game?",
             DismissText = "Cancel",
             PrimaryActionText = "Start",

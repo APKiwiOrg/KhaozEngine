@@ -31,16 +31,26 @@ namespace KhaozEngine.Windowing
         public bool IsRightJustReleased => !_right && _wasRight;
 
         /// <summary>Derive the pointer from this frame's input. Call once per frame before hit-testing.</summary>
-        public void Update(InputState input)
+        public void Update(InputState input) => Update(input, null);
+
+        /// <summary>
+        /// Derive the pointer from this frame's input, mapping the cursor into design space through
+        /// <paramref name="viewport"/> so all bounds helpers hit-test in design coordinates (matching draws
+        /// made via <c>SpriteBatch.Begin(IDesignViewport)</c>). Pass null for raw window-pixel coordinates.
+        /// The in-window guard still uses the raw window position.
+        /// </summary>
+        public void Update(InputState input, IDesignViewport? viewport)
         {
             _blocked.Clear();
             _wasDown = _down; _wasMid = _mid; _wasRight = _right;
             _prevPos = _pos;
-            _pos = input.MousePosition;
 
-            // Only count presses while the pointer is inside the client area.
+            Vector2 screen = input.MousePosition;
+            // Only count presses while the pointer is inside the client area (raw window space).
             bool inWindow = input.Width <= 0
-                || (_pos.X >= 0 && _pos.Y >= 0 && _pos.X < input.Width && _pos.Y < input.Height);
+                || (screen.X >= 0 && screen.Y >= 0 && screen.X < input.Width && screen.Y < input.Height);
+
+            _pos = viewport != null ? viewport.ScreenToDesign(screen) : screen;
             _down = input.IsDown(MouseButton.Left) && inWindow;
             _mid = input.IsDown(MouseButton.Middle) && inWindow;
             _right = input.IsDown(MouseButton.Right) && inWindow;

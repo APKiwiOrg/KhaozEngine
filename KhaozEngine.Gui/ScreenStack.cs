@@ -44,10 +44,17 @@ namespace KhaozEngine.Gui
         }
 
         /// <summary>Advance transitions and route input/update top-to-bottom. Call once per frame.</summary>
-        public void Update(float dt, InputState input)
+        public void Update(float dt, InputState input) => Update(dt, input, null);
+
+        /// <summary>
+        /// As <see cref="Update(float, InputState)"/>, but maps the pointer into design space through
+        /// <paramref name="viewport"/> so screens hit-test in the same coordinates they draw with under
+        /// <c>SpriteBatch.Begin(IDesignViewport)</c>. Pass null for raw window-pixel coordinates.
+        /// </summary>
+        public void Update(float dt, InputState input, IDesignViewport? viewport)
         {
             Input = input;
-            Pointer.Update(input);
+            Pointer.Update(input, viewport);
 
             Screen[] snapshot = _screens.ToArray();   // screens may add/remove during Update
             bool inputHandled = false;

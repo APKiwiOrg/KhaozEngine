@@ -21,6 +21,33 @@ namespace KhaozEngine.Tests.Windowing
         }
 
         [Fact]
+        public void Tap_in_design_space_under_a_scaled_letterboxed_viewport()
+        {
+            // 960x540 design Fit into a 1920x1200 window -> scale 2, 60px top/bottom bars.
+            var vp = new DesignViewport(960, 540, ScaleMode.Fit);
+            vp.Update(1920, 1200);
+            // Box is in DESIGN space; the screen click is where that design point lands on the window.
+            Vector2 screen = vp.DesignToScreen(new Vector2(150, 140));   // -> (300, 340)
+            Assert.Equal(new Vector2(300, 340), screen);
+
+            InputState Win(bool down)
+            {
+                var b = new HashSet<MouseButton>();
+                if (down) b.Add(MouseButton.Left);
+                return new InputState(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
+                    b, new HashSet<MouseButton>(), screen, Vector2.Zero, 0, 1920, 1200);
+            }
+
+            var p = new Pointer();
+            p.Update(Win(false), vp);
+            p.Update(Win(true), vp);
+            p.Update(Win(false), vp);
+
+            Assert.True(p.IsTapIn(Box));                       // design-space hit-test lines up
+            Assert.Equal(new Vector2(150, 140), p.Position);   // pointer reported in design space
+        }
+
+        [Fact]
         public void Tap_inside_fires_on_release()
         {
             var p = new Pointer();

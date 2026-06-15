@@ -5,6 +5,21 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 5.14.0-experimental (custom 5.x line)
+
+Engine maturity from the Hardpoint 3D testbed: per-instance tint + code-built mesh primitives, so one mesh
+draws in many colors and games stop hand-rolling primitive geometry.
+
+### KhaozEngine.Render3D (additive)
+
+- **Per-instance tint**: `Scene3D.Draw(MeshHandle, Matrix4x4 world, Vector4 tint)` (the existing
+  `Draw(mesh, world)` defaults to white = no tint). The tint multiplies the lit colour in the model shader
+  (a `vec4 Tint` added to the model UBO; `SceneInstances.Instance` carries it). Lets a single white mesh be
+  drawn in many colours instead of one mesh per colour.
+- **`MeshPrimitives`**: `Box(size)` and `Tile(size, thickness)` build `GltfMesh` cubes/flat-tiles in code
+  (24 verts / 36 indices, per-face normals, white vertex colour for tinting), no asset files. Headless-tested
+  (vertex/index counts, corner positions, tile base at y=0). Verified visually (one box drawn in three tints).
+
 ## 5.13.1-experimental (custom 5.x line)
 
 ### KhaozEngine.Render3D (fix)

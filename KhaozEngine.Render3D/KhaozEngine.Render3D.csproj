@@ -19,6 +19,9 @@
     <None Include="assets/asteroid.glb" Pack="true" PackagePath="assets\" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
+  </ItemGroup>
+  <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Tests" />
   </ItemGroup>
 </Project>

@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 using KhaozEngine.Render3D;
 
 static string FindModel(string name = "testmodel.glb")
@@ -48,16 +49,15 @@ if (args.Contains("--smoke"))
 var host = new Render3DHost("KhaozEngine Render3D — sample", 1280, 720);
 var sc = host.Scene;
 string[] modelFiles = { FindModel("testmodel.glb"), FindModel("asteroid.glb") };
+MeshHandle[] handles = modelFiles.Select(p => sc.LoadMesh(GltfLoader.Load(p))).ToArray();
 int modelIdx = 0;
-sc.LoadModel(GltfLoader.Load(modelFiles[modelIdx]));
 sc.Camera.OrthoSize = 2.7f;
 int palIdx = 2;
 PrintHelp();
 
 host.Run(f =>
 {
-    sc.Spin(f.Dt);
-    if (f.Pressed.Contains(Key.Space)) { modelIdx = (modelIdx + 1) % modelFiles.Length; sc.LoadModel(GltfLoader.Load(modelFiles[modelIdx])); }
+    if (f.Pressed.Contains(Key.Space)) modelIdx = (modelIdx + 1) % handles.Length;
     if (f.Pressed.Contains(Key.O)) sc.Post.Outline = !sc.Post.Outline;
     if (f.Pressed.Contains(Key.A)) sc.Post.Starfield = !sc.Post.Starfield;
     if (f.Pressed.Contains(Key.R)) // toggle the retro/pixel look on/off
@@ -75,6 +75,11 @@ host.Run(f =>
     if (f.Down.Contains(Key.Down)) sc.Camera.Elevation -= 1.5f * f.Dt;
     if (f.Down.Contains(Key.Left)) sc.Camera.Azimuth -= 1.5f * f.Dt;
     if (f.Down.Contains(Key.Right)) sc.Camera.Azimuth += 1.5f * f.Dt;
+
+    sc.Begin();
+    for (int gx = -1; gx <= 1; gx++)
+        for (int gz = -1; gz <= 1; gz++)
+            sc.Draw(handles[modelIdx], Matrix4x4.CreateTranslation(gx * 3f, 0, gz * 3f));
 });
 host.Dispose();
 return 0;

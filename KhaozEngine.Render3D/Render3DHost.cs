@@ -15,6 +15,7 @@ namespace KhaozEngine.Render3D
     {
         readonly Sdl2Window _window;
         readonly GraphicsDevice _gd;
+        readonly CommandList _cl;
         readonly HashSet<Key> _down = new();
 
         /// <summary>The scene to drive (camera, model, post settings).</summary>
@@ -34,6 +35,7 @@ namespace KhaozEngine.Render3D
             VeldridStartup.CreateWindowAndGraphicsDevice(wci, opts, GraphicsBackend.Metal, out _window, out _gd);
             _window.Resized += () => _gd.MainSwapchain.Resize((uint)_window.Width, (uint)_window.Height);
             Scene = new Scene3D(_gd, _gd.MainSwapchain.Framebuffer.OutputDescription);
+            _cl = _gd.ResourceFactory.CreateCommandList();
         }
 
         /// <summary>Pump events, call <paramref name="onFrame"/>, render, present — until the window closes.</summary>
@@ -61,7 +63,10 @@ namespace KhaozEngine.Render3D
 
                 onFrame(new FrameInfo { Dt = dt, Down = _down, Pressed = pressed });
 
-                Scene.RenderInternal(_gd.MainSwapchain.Framebuffer);
+                _cl.Begin();
+                Scene.RenderInternal(_cl, _window.Width, _window.Height, _gd.MainSwapchain.Framebuffer);
+                _cl.End();
+                _gd.SubmitCommands(_cl);
                 _gd.SwapBuffers(_gd.MainSwapchain);
             }
         }
@@ -98,6 +103,7 @@ namespace KhaozEngine.Render3D
         public void Dispose()
         {
             Scene.Dispose();
+            _cl.Dispose();
             _gd.Dispose();
         }
     }

@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 using Veldrid;
 
 namespace KhaozEngine.Render3D
@@ -25,13 +26,18 @@ namespace KhaozEngine.Render3D
             using Framebuffer finalFB = f.CreateFramebuffer(new FramebufferDescription(null, finalTex));
 
             using var scene = new Scene3D(gd, finalFB.OutputDescription);
-            scene.LoadModel(mesh);
+            var handle = scene.LoadMesh(mesh);
             configure?.Invoke(scene);
 
+            using CommandList renderCl = f.CreateCommandList();
             for (int i = 0; i < Math.Max(1, frames); i++)
             {
-                scene.Spin(1f / 60f);
-                scene.RenderInternal(finalFB);
+                scene.Begin();
+                scene.Draw(handle, Matrix4x4.Identity);
+                renderCl.Begin();
+                scene.RenderInternal(renderCl, width, height, finalFB);
+                renderCl.End();
+                gd.SubmitCommands(renderCl);
             }
             gd.WaitForIdle();
 

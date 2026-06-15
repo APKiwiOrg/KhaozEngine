@@ -15,13 +15,16 @@ namespace KhaozEngine.Render3D
 
         public void Begin() => _items.Clear();
         public void Add(MeshHandle mesh, Matrix4x4 world, Vector4 tint) => _items.Add(new Instance(mesh, world, tint));
+        public void Add(MeshHandle mesh, Matrix4x4 world, Vector4 tint, Material material) => _items.Add(new Instance(mesh, world, tint, material));
 
         public readonly struct Instance
         {
             public MeshHandle Mesh { get; }
             public Matrix4x4 World { get; }
             public Vector4 Tint { get; }
-            public Instance(MeshHandle mesh, Matrix4x4 world, Vector4 tint) { Mesh = mesh; World = world; Tint = tint; }
+            public Material Material { get; }
+            public Instance(MeshHandle mesh, Matrix4x4 world, Vector4 tint) : this(mesh, world, tint, Material.None) { }
+            public Instance(MeshHandle mesh, Matrix4x4 world, Vector4 tint, Material material) { Mesh = mesh; World = world; Tint = tint; Material = material; }
         }
     }
 }

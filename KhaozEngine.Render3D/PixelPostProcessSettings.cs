@@ -39,9 +39,15 @@ namespace KhaozEngine.Render3D
         /// <summary>Scene background (cleared behind the model). Dark = space.</summary>
         public Vector4 BackgroundColor = new(0.02f, 0.03f, 0.06f, 1f);
 
-        /// <summary>Direction the sunlight travels (will be normalized).</summary>
+        /// <summary>Direction the key (sun) light travels (will be normalized).</summary>
         public Vector3 LightDirection = new(-0.5f, -0.85f, -0.35f);
         public Vector4 LightColor = new(1f, 0.95f, 0.86f, 1f);
         public Vector4 AmbientColor = new(0.16f, 0.19f, 0.30f, 1f);
+
+        /// <summary>Direction the fill light travels (will be normalized). Dim cool fill from the other side
+        /// so forms don't read flat. Specular comes from the key light only.</summary>
+        public Vector3 FillLightDirection = new(0.6f, -0.3f, 0.5f);
+        /// <summary>Fill light colour (dim cool by default).</summary>
+        public Vector4 FillLightColor = new(0.20f, 0.24f, 0.34f, 1f);
     }
 }

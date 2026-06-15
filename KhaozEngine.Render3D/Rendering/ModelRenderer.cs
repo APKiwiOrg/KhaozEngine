@@ -59,15 +59,24 @@ namespace KhaozEngine.Render3D.Rendering
             });
         }
 
-        public void Draw(CommandList cl, DeviceBuffer vb, DeviceBuffer ib, int indexCount,
-            Matrix4x4 viewProj, Matrix4x4 model, RenderResources res, PixelPostProcessSettings s)
+        /// <summary>Bind + clear the model framebuffer once per frame, before drawing instances.</summary>
+        public void BeginModelPass(CommandList cl, RenderResources res, PixelPostProcessSettings s)
         {
-            // Upload row-major directly: Veldrid's reinterpret into a column-major GLSL mat4 already
-            // transposes, so `ViewProj * Model * pos` in the shader is the correct column-vector result.
-            // Rendering into a texture on the Metal backend lands Y-flipped vs. the camera's standard
-            // (OpenGL-style, unit-tested) clip space, so flip clip Y here so world-up maps to image-top.
-            // Presentation-layer correction only; camera math is untouched. TODO: gate per-backend when a
-            // non-Metal backend is added (Metal reports IsClipSpaceYInverted=false yet still needs this).
+            cl.SetFramebuffer(res.ModelFB);
+            // Metal MRT clear collapses to one value across attachments; clear all three to the background.
+            // alpha 0 marks "background" for the starfield composite; the model writes alpha 1.
+            var bg = new RgbaFloat(s.BackgroundColor.X, s.BackgroundColor.Y, s.BackgroundColor.Z, 0f);
+            cl.ClearColorTarget(0, bg);
+            cl.ClearColorTarget(1, bg);
+            cl.ClearColorTarget(2, bg);
+            cl.ClearDepthStencil(1f);
+        }
+
+        /// <summary>Draw one instance into the (already-bound, already-cleared) model pass.</summary>
+        public void DrawInstance(CommandList cl, DeviceBuffer vb, DeviceBuffer ib, int indexCount,
+            Matrix4x4 viewProj, Matrix4x4 model, PixelPostProcessSettings s)
+        {
+            // Row-major upload; flip clip Y so world-up maps to image-top on the Metal render target.
             var yFlip = Matrix4x4.Identity; yFlip.M22 = -1f;
             var ubo = new Ubo
             {
@@ -79,19 +88,6 @@ namespace KhaozEngine.Render3D.Rendering
                 Params = new Vector4(s.CelBands, 0, 0, 0),
             };
             cl.UpdateBuffer(_ubo, 0, ref ubo);
-
-            cl.SetFramebuffer(res.ModelFB);
-            // Veldrid's Metal MRT clear collapses to a single value across all attachments, so clear all
-            // three to the background. The background ends up uniform in the normal/depth targets too, which
-            // keeps the depth-driven silhouette clean (background depth ~= bg.r << sphere depth) and avoids
-            // spurious edges in empty space.
-            // alpha 0 marks "background" for the starfield composite; the model writes alpha 1.
-            var bg = new RgbaFloat(s.BackgroundColor.X, s.BackgroundColor.Y, s.BackgroundColor.Z, 0f);
-            cl.ClearColorTarget(0, bg);
-            cl.ClearColorTarget(1, bg);
-            cl.ClearColorTarget(2, bg);
-            cl.ClearDepthStencil(1f);
-
             cl.SetPipeline(_pipeline);
             cl.SetGraphicsResourceSet(0, _set);
             cl.SetVertexBuffer(0, vb);

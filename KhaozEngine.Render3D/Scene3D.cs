@@ -8,6 +8,10 @@ using KhaozEngine.Render3D.Rendering;
 
 namespace KhaozEngine.Render3D
 {
+    /// <summary>Blend mode for <see cref="Scene3D.DrawBillboard"/>: standard <see cref="Alpha"/> transparency,
+    /// or <see cref="Additive"/> (source-alpha/one) for glowy accumulation (sparks, muzzle flashes).</summary>
+    public enum BillboardBlend { Alpha, Additive }
+
     /// <summary>
     /// A drawable 3D scene: an <see cref="IsoCamera3D"/>, a set of uploaded meshes, a per-frame instance queue,
     /// and the pixel post chain. Load meshes once with <see cref="LoadMesh"/>; each frame call
@@ -22,10 +26,15 @@ namespace KhaozEngine.Render3D
         readonly ModelRenderer _model;
         readonly PixelPostProcess _post;
         readonly LineRenderer _lines;
+        readonly BillboardRenderer _billboards;
         readonly RenderResources _res;
         readonly List<Mesh> _meshes = new();
         readonly SceneInstances _instances = new();
         readonly List<LineRenderer.LineVertex> _lineVerts = new();
+        readonly List<BillboardRenderer.BillboardVertex> _billboardAlpha = new();
+        readonly List<BillboardRenderer.BillboardVertex> _billboardAdditive = new();
+        Vector3 _billboardRight, _billboardUp;
+        bool _billboardBasisValid;
 
         public IsoCamera3D Camera { get; } = new();
         public PixelPostProcessSettings Post { get; } = new();
@@ -39,6 +48,7 @@ namespace KhaozEngine.Render3D
             _post = new PixelPostProcess(gd, _res.PingAFB.OutputDescription, targetOutput);
             _post.BindTargets(_res);
             _lines = new LineRenderer(gd, targetOutput);
+            _billboards = new BillboardRenderer(gd, targetOutput);
         }
 
         /// <summary>Upload a loaded mesh to the GPU once; returns a handle to instance it with <see cref="Draw"/>.</summary>
@@ -53,11 +63,15 @@ namespace KhaozEngine.Render3D
             return new MeshHandle(_meshes.Count - 1);
         }
 
-        /// <summary>Start a frame: clear the instance queue and the debug-line queue. Call before submitting.</summary>
+        /// <summary>Start a frame: clear the instance queue, the debug-line queue, and the billboard queues.
+        /// Call before submitting.</summary>
         public void Begin()
         {
             _instances.Begin();
             _lineVerts.Clear();
+            _billboardAlpha.Clear();
+            _billboardAdditive.Clear();
+            _billboardBasisValid = false;
         }
 
         /// <summary>Queue one instance: draw <paramref name="mesh"/> at world transform <paramref name="world"/> (no tint).</summary>
@@ -133,6 +147,29 @@ namespace KhaozEngine.Render3D
                 _lineVerts.Add(new LineRenderer.LineVertex(p, color));
         }
 
+        // ---- Camera-facing billboard overlay (immediate-mode; queued this frame, drawn on top after lines). ----
+
+        /// <summary>Queue a camera-facing soft-disc billboard centred at <paramref name="worldPos"/> with half-size
+        /// <paramref name="size"/> (the quad spans 2*size across), tinted by <paramref name="color"/> (RGBA), using
+        /// the given <paramref name="blend"/>. Cleared in <see cref="Begin"/>; drawn over the post image and the
+        /// debug lines. The game loops its particle system's <c>Active</c> span and calls this per particle.</summary>
+        public void DrawBillboard(Vector3 worldPos, float size, Vector4 color, BillboardBlend blend = BillboardBlend.Alpha)
+        {
+            // Camera basis is constant across a frame's billboards; compute it once (on the first call) and reuse.
+            if (!_billboardBasisValid)
+            {
+                BillboardGeometry.CameraBasis(Camera.Forward, out _billboardRight, out _billboardUp);
+                _billboardBasisValid = true;
+            }
+            Span<Vector3> pos = stackalloc Vector3[6];
+            Span<Vector2> uv = stackalloc Vector2[6];
+            BillboardGeometry.Triangles(worldPos, size, _billboardRight, _billboardUp, pos, uv);
+
+            var list = blend == BillboardBlend.Additive ? _billboardAdditive : _billboardAlpha;
+            for (int i = 0; i < 6; i++)
+                list.Add(new BillboardRenderer.BillboardVertex(pos[i], uv[i], color));
+        }
+
         void EnsureSize(int viewportW, int viewportH)
         {
             if (_res.Width != Post.RenderWidth || _res.Height != Post.RenderHeight)
@@ -169,6 +206,13 @@ namespace KhaozEngine.Render3D
             // lines line up with rendered geometry and with ScreenToGround picking).
             if (_lineVerts.Count > 0)
                 _lines.Draw(cl, Camera.ViewProjection, CollectionsMarshal.AsSpan(_lineVerts), target);
+
+            // Billboards: after the line pass, additive first (glow) then alpha, same overlay framebuffer +
+            // ViewProjection. Each rebinds `target` (no clear) and uploads its own vertex span.
+            if (_billboardAdditive.Count > 0)
+                _billboards.Draw(cl, Camera.ViewProjection, CollectionsMarshal.AsSpan(_billboardAdditive), target, additive: true);
+            if (_billboardAlpha.Count > 0)
+                _billboards.Draw(cl, Camera.ViewProjection, CollectionsMarshal.AsSpan(_billboardAlpha), target, additive: false);
         }
 
         public void Dispose()
@@ -176,6 +220,7 @@ namespace KhaozEngine.Render3D
             _model.Dispose();
             _post.Dispose();
             _lines.Dispose();
+            _billboards.Dispose();
             _res.Dispose();
             foreach (var m in _meshes) { m.Vb.Dispose(); m.Ib.Dispose(); }
         }

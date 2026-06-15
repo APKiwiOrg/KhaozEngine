@@ -16,6 +16,7 @@
   <Project Path="KhaozEngine.Netcode.LiteNetLib/KhaozEngine.Netcode.LiteNetLib.csproj" />
   <Project Path="KhaozEngine.Netcode.DecouplingTests/KhaozEngine.Netcode.DecouplingTests.csproj" />
   <Project Path="KhaozEngine.Netcode.Abstractions.DecouplingTests/KhaozEngine.Netcode.Abstractions.DecouplingTests.csproj" />
+  <Project Path="KhaozEngine.Particles/KhaozEngine.Particles.csproj" />
   <Project Path="KhaozEngine.Persistence/KhaozEngine.Persistence.csproj" />
   <Project Path="KhaozEngine.Platform/KhaozEngine.Platform.csproj" />
   <Project Path="KhaozEngine.Pooling/KhaozEngine.Pooling.csproj" />

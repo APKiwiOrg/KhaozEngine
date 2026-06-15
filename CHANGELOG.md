@@ -5,6 +5,28 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 5.21.0-experimental (custom 5.x line)
+
+### KhaozEngine.Particles (NEW package)
+
+- **Particle simulation** (pure, MonoGame/Veldrid-free — System.Numerics + BCL only): `ParticleSystem`
+  (capacity-bounded pool, swap-remove compaction, contiguous `Active` span), `EmitterConfig` (lifetime/speed
+  ranges, cone `Direction`+`SpreadDegrees`, gravity, drag, start/end size + colour, `Spark`/`Puff` presets),
+  `Particle`, and a `RateAccumulator` for continuous emission. Fully **deterministic** — an internal xorshift32
+  RNG seeded per system, no `System.Random`/`DateTime`/wall-clock — so two systems with the same seed + calls
+  produce identical particles (headless-testable). Render-agnostic: a game splats `system.Active` to any
+  renderer.
+
+### KhaozEngine.Render3D (additive)
+
+- **Camera-facing billboards** for displaying particles (and any sprite-in-3D): `Scene3D.DrawBillboard(worldPos,
+  size, color, BillboardBlend.Alpha|Additive)` draws a soft round disc (smoothstep falloff in the shader, no
+  texture) facing the camera, composited over the post image like the debug lines. Alpha for smoke/puffs,
+  additive for glowing sparks/flashes (pairs with the 5.19 emissive look). The camera basis is computed once
+  per frame. Render3D deliberately does NOT depend on KhaozEngine.Particles — the game loops `Active` and calls
+  `DrawBillboard` per particle. Snapshot-verified (additive spark burst + alpha puff over a lit scene). From
+  the Hardpoint testbed.
+
 ## 5.20.0-experimental (custom 5.x line)
 
 ### KhaozEngine.Render3D (additive)

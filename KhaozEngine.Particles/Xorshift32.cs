@@ -33,7 +33,7 @@ internal struct Xorshift32
         return (NextUInt() >> 8) * (1.0f / 16777216.0f);
     }
 
-    /// <summary>Float uniformly in [min, max].</summary>
+    /// <summary>Float uniformly in [min, max) (half-open, since the underlying unit float is [0, 1)).</summary>
     public float Range(float min, float max)
     {
         if (max <= min)

@@ -33,6 +33,8 @@ namespace KhaozEngine.Render3D
         readonly List<LineRenderer.LineVertex> _lineVerts = new();
         readonly List<BillboardRenderer.BillboardVertex> _billboardAlpha = new();
         readonly List<BillboardRenderer.BillboardVertex> _billboardAdditive = new();
+        Vector3 _billboardRight, _billboardUp;
+        bool _billboardBasisValid;
 
         public IsoCamera3D Camera { get; } = new();
         public PixelPostProcessSettings Post { get; } = new();
@@ -69,6 +71,7 @@ namespace KhaozEngine.Render3D
             _lineVerts.Clear();
             _billboardAlpha.Clear();
             _billboardAdditive.Clear();
+            _billboardBasisValid = false;
         }
 
         /// <summary>Queue one instance: draw <paramref name="mesh"/> at world transform <paramref name="world"/> (no tint).</summary>
@@ -152,10 +155,15 @@ namespace KhaozEngine.Render3D
         /// debug lines. The game loops its particle system's <c>Active</c> span and calls this per particle.</summary>
         public void DrawBillboard(Vector3 worldPos, float size, Vector4 color, BillboardBlend blend = BillboardBlend.Alpha)
         {
-            BillboardGeometry.CameraBasis(Camera.Forward, out var right, out var up);
+            // Camera basis is constant across a frame's billboards; compute it once (on the first call) and reuse.
+            if (!_billboardBasisValid)
+            {
+                BillboardGeometry.CameraBasis(Camera.Forward, out _billboardRight, out _billboardUp);
+                _billboardBasisValid = true;
+            }
             Span<Vector3> pos = stackalloc Vector3[6];
             Span<Vector2> uv = stackalloc Vector2[6];
-            BillboardGeometry.Triangles(worldPos, size, right, up, pos, uv);
+            BillboardGeometry.Triangles(worldPos, size, _billboardRight, _billboardUp, pos, uv);
 
             var list = blend == BillboardBlend.Additive ? _billboardAdditive : _billboardAlpha;
             for (int i = 0; i < 6; i++)

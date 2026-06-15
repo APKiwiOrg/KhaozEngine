@@ -14,6 +14,7 @@ namespace KhaozEngine.Render3D.Rendering
         {
             public Matrix4x4 ViewProj; public Matrix4x4 Model;
             public Vector4 Dir; public Vector4 Color; public Vector4 Ambient; public Vector4 Params;
+            public Vector4 Tint;
         }
 
         readonly GraphicsDevice _gd;
@@ -27,7 +28,7 @@ namespace KhaozEngine.Render3D.Rendering
             _gd = gd;
             var factory = gd.ResourceFactory;
 
-            _ubo = factory.CreateBuffer(new BufferDescription(192, BufferUsage.UniformBuffer)); // 2 mat4 + 4 vec4
+            _ubo = factory.CreateBuffer(new BufferDescription(208, BufferUsage.UniformBuffer)); // 2 mat4 + 5 vec4
 
             var layout = factory.CreateResourceLayout(new ResourceLayoutDescription(
                 new ResourceLayoutElementDescription("U", ResourceKind.UniformBuffer, ShaderStages.Vertex | ShaderStages.Fragment)));
@@ -74,7 +75,7 @@ namespace KhaozEngine.Render3D.Rendering
 
         /// <summary>Draw one instance into the (already-bound, already-cleared) model pass.</summary>
         public void DrawInstance(CommandList cl, DeviceBuffer vb, DeviceBuffer ib, int indexCount,
-            Matrix4x4 viewProj, Matrix4x4 model, PixelPostProcessSettings s)
+            Matrix4x4 viewProj, Matrix4x4 model, PixelPostProcessSettings s, Vector4 tint)
         {
             // Upload the camera's view-projection as-is. (An earlier clip-Y flip here rendered the scene
             // vertically inverted — invisible on symmetric content but obvious on an asymmetric board — and
@@ -88,6 +89,7 @@ namespace KhaozEngine.Render3D.Rendering
                 Color = s.LightColor,
                 Ambient = s.AmbientColor,
                 Params = new Vector4(s.CelBands, 0, 0, 0),
+                Tint = tint,
             };
             cl.UpdateBuffer(_ubo, 0, ref ubo);
             cl.SetPipeline(_pipeline);

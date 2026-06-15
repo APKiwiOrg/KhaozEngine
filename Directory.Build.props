@@ -9,7 +9,7 @@
     <Version>4.9.0</Version>
     <!-- Shared version for the 5.x experimental custom-stack (MonoGame-free) packages, which set
          <Version>$(KhaozEngine5xVersion)</Version> in their csproj. Bump here to release them together. -->
-    <KhaozEngine5xVersion>5.9.1-experimental</KhaozEngine5xVersion>
+    <KhaozEngine5xVersion>5.10.0-experimental</KhaozEngine5xVersion>
     <Authors>APKiwi</Authors>
     <Company>Khaoz</Company>
     <PackageProjectUrl>https://github.com/APKiwi/KhaozEngine</PackageProjectUrl>

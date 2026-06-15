@@ -42,11 +42,11 @@ via AOT, and ~21 existing C# packages + 3 games would be thrown away by a rewrit
 - **Audio:** `OpenAL` via `Silk.NET.OpenAL` (or a small custom backend) replaces MonoGame audio.
 - **Texture/content:** `StbImageSharp` etc.
 
-### Current status (as of `5.9.1-experimental`)
+### Current status (as of `5.10.0-experimental`)
 
 **Every subsystem needed to drop MonoGame is now proven on the custom stack — no feasibility unknowns
 remain; the rest is productization + porting.** Shipped 5.x packages (shared version, currently
-`5.9.1-experimental`):
+`5.10.0-experimental`):
 
 | Subsystem | Status |
 |---|---|
@@ -76,14 +76,20 @@ engine to a real, resolution-independent, layout-capable state first. Agreed ord
    `Pointer`/`ScreenStack` hit-testing; `SpriteBatch.Begin(IDesignViewport)`; `Layout.Resolve` anchoring
    (`TopLeft`..`BottomRight`/`Center`/`Stretch`); `Screen.BackgroundColor`. `GuiSample` scales/centers/
    letterboxes on resize with aligned hit-testing. All headless-tested.
-2. **Cross-platform backends (current).** Un-Metal-only: backend selection (Vulkan / D3D11 / GL / Metal) via
-   Veldrid so Render2D/Render3D/Snapshot run on Windows/Linux (and later mobile); verify the SPIR-V shaders
-   cross-compile per backend; per-backend clip-Y + MRT-clear handling. The biggest gap between
-   proof-of-concept and a real cross-platform engine.
-3. **Input breadth.** Gamepad + touch on `InputState`; a gesture seam (tap/drag/pinch) over the design
-   viewport; pause/timescale. Builds on the existing `InputState`/`Pointer`.
-4. **Native packaging / distribution.** SDL2 + openal-soft bundled as RID-specific natives (macOS system
+2. **Input breadth (current).** Part 1 shipped (`5.10.0-experimental`): `GameClock` (pause/time-scale over
+   `float` dt), `GestureRecognizer` (tap/long-press/drag), `PinchRecognizer` (two-point scale+pan) in
+   `KhaozEngine.Windowing`, all headless-tested, with a live drag/tap/pause/speed demo in `WindowingSample`.
+   Part 2 (next): gamepad + touch state on `InputState` (non-breaking) + SDL polling. The input *logic* is
+   fully headless-testable (the engine's standard frame-by-frame state pattern); a *live* gamepad smoke
+   needs a controller and *touch* is mobile (deferred), but those don't gate the tested logic.
+3. **Native packaging / distribution.** SDL2 + openal-soft bundled as RID-specific natives (macOS system
    OpenAL/GL are deprecated) so a clean checkout runs with one command, no env vars or manual copies.
+4. **Cross-platform backends (deferred until hardware/CI).** Un-Metal-only: backend selection
+   (Vulkan / D3D11 / GL / Metal) via Veldrid so Render2D/Render3D/Snapshot run on Windows/Linux (and later
+   mobile); verify the SPIR-V shaders cross-compile per backend; per-backend clip-Y + MRT-clear handling.
+   The biggest gap to a real cross-platform engine, but moved later: it can't be run-verified on the
+   Apple-Silicon dev machine (Metal-only locally; macOS OpenGL is the deprecated GL-2.1 layer, no Vulkan
+   loader installed), so it waits for real Windows/Linux hardware or a CI matrix.
 
 Then migrate a real game (Hardpoint/Nullwake/SpaceGame) onto a stack that's actually ready. Richer text entry
 (IME/locale/dead-keys) stays a later nicety — the current `TextEntry` is US-layout key-mapping.
@@ -112,7 +118,7 @@ Then migrate a real game (Hardpoint/Nullwake/SpaceGame) onto a stack that's actu
 - **4.x line** — the existing MonoGame packages; one shared version in `Directory.Build.props`; keeps
   shipping 4.8.0, 4.9.0, ... normally and in parallel.
 - **5.x experimental line** — the custom-stack packages (`Render3D`, `Render2D`, ...) share a second version,
-  `Directory.Build.props` `<KhaozEngine5xVersion>` (currently `5.9.1-experimental`), and release together
+  `Directory.Build.props` `<KhaozEngine5xVersion>` (currently `5.10.0-experimental`), and release together
   under one `vX.Y.Z-experimental` tag. (The first two Render3D releases, 5.0.0/5.1.0, predate this and were
   per-package.) The doc-version guard checks the shared 4.x version only; the 5.x line is exempt (like
   consumer pins). Packages graduate

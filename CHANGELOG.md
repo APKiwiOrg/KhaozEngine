@@ -1,8 +1,31 @@
 # Changelog
 
 All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one version
-(`Directory.Build.props`). New custom-stack (MonoGame-free) packages version **independently** on a 5.x
-experimental line - see `KhaozEngine.Render3D` below and the post-MonoGame plan in `docs/ROADMAP.md`.
+(`Directory.Build.props` `<Version>`); the 5.x experimental custom-stack (MonoGame-free) packages share a
+second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
+`docs/ROADMAP.md`.
+
+## 5.2.0-experimental (custom 5.x line)
+
+New `KhaozEngine.Render2D` package, and the 5.x line becomes a **shared** version (was per-package for the
+first two Render3D releases).
+
+### KhaozEngine.Render2D (new)
+
+- New package: 2D rendering on the custom MonoGame-free foundation (Veldrid + SPIR-V, `System.Numerics`).
+  `SpriteBatch` (batched textured quads, alpha blend + tint, per-texture batching; quads transformed to clip
+  space on the CPU so there is no per-batch uniform), `Camera2D` (position/zoom/rotation, headless +
+  unit-tested), `Texture2D` (PNG load via `StbImageSharp`), `SpriteFont` (runtime TrueType text - glyph atlas
+  via `stb_truetype` - with `DrawString`/`Measure`). `Render2DHost` owns the SDL2/Metal window + frame loop +
+  input; `Render2DSnapshot` captures headless. Veldrid stays internal; deps
+  (Veldrid/Veldrid.SPIRV/StbTrueTypeSharp/StbImageSharp) confined to the package. Proves 2D + text on the
+  custom stack (de-risks the 2D game migration). Metal-only for now.
+
+### 5.x line now shared
+
+- The 5.x custom-stack packages now share `Directory.Build.props` `<KhaozEngine5xVersion>` (both
+  `Render3D` and `Render2D` reference it). They release together under one `vX.Y.Z-experimental` tag, ending
+  the per-package tag collisions. `Render3D` rolls `5.1.0 -> 5.2.0-experimental` with no functional change.
 
 ## KhaozEngine.Render3D 5.1.0-experimental
 

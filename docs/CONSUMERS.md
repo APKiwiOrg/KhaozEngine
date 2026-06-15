@@ -35,10 +35,11 @@ engine ships a new version.
 > engine `CircleCollision` + `SpatialHashGrid` and confirm the hash stays `17709480852979803671`. `Updates` is
 > determinism-neutral (never touches sim/RNG), so it carries no hash gate.
 
-**Experimental 5.x line:** `KhaozEngine.Render3D` ships at `5.1.0-experimental`, versioned **independently**
-of the shared 4.x version above (see [`ROADMAP.md`](ROADMAP.md), "The post-MonoGame pivot"). It is the first
-custom-stack (MonoGame-free) package; **no consumer adopts it yet** (Hardpoint integration is deferred under
-the full-custom plan). It is not part of the version matrix below, which tracks the 4.x MonoGame packages.
+**Experimental 5.x line:** the custom-stack (MonoGame-free) packages `KhaozEngine.Render3D` and
+`KhaozEngine.Render2D` share `5.2.0-experimental` (`Directory.Build.props` `<KhaozEngine5xVersion>`),
+separate from the 4.x version above (see [`ROADMAP.md`](ROADMAP.md), "The post-MonoGame pivot"). **No consumer
+adopts them yet** (the games are MonoGame; migration is deferred under the full-custom plan). They are not in
+the version matrix below, which tracks the 4.x MonoGame packages.
 
 ## Version matrix
 

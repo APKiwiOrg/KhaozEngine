@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Render2D</PackageId>
+    <!-- Shared 5.x experimental line (see docs/ROADMAP.md "The post-MonoGame pivot"). -->
+    <Version>$(KhaozEngine5xVersion)</Version>
+    <Description>EXPERIMENTAL 2D rendering on the custom MonoGame-free foundation (Veldrid + SPIR-V, System.Numerics). Batched SpriteBatch with a Camera2D (position/zoom/rotation), Texture2D (PNG load via StbImageSharp), and runtime TTF text (SpriteFont via stb_truetype glyph atlas), with alpha blending and tinting. Render2DHost owns the SDL2/Metal window; Render2DSnapshot captures headless. Veldrid stays internal; deps are confined to this package. Seed of the post-MonoGame 2D stack.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Veldrid" Version="4.9.0" />
+    <PackageReference Include="Veldrid.SPIRV" Version="1.0.15" />
+    <PackageReference Include="Veldrid.StartupUtilities" Version="4.9.0" />
+    <PackageReference Include="StbTrueTypeSharp" Version="1.26.12" />
+    <PackageReference Include="StbImageSharp" Version="2.30.15" />
+    <!-- Override the vulnerable Newtonsoft.Json 9.0.1 that Veldrid.SPIRV drags in (NU1903). -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Tests" />
+  </ItemGroup>
+</Project>

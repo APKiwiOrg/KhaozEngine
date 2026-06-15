@@ -49,13 +49,16 @@ version/release work.
   whenever a consumer bumps a `KhaozEngine.*` `<PackageReference>`, and the engine-version line on
   every release. Refresh snippet is at the bottom of that file.
 - SemVer: additive = minor, fixes = patch, breaking = major.
-- **Two version lines during the post-MonoGame transition.** The shared `Directory.Build.props` `<Version>`
-  governs the **4.x MonoGame-based packages**. New custom-stack (MonoGame-free) packages on the **5.x
-  experimental line** (first: `KhaozEngine.Render3D`, `5.0.0-experimental`) version **independently** via
-  their own csproj `<Version>` override and are released/tagged on their own (tag `vX.Y.Z-experimental`).
-  `check-doc-versions.sh` only enforces the shared 4.x version, so the 5.x packages are exempt (like
-  consumer pins). Don't bump the shared 4.x version when releasing a 5.x package. See
-  `docs/ROADMAP.md` ("The post-MonoGame pivot") for the plan.
+- **Two shared version lines during the post-MonoGame transition.** `Directory.Build.props` carries two
+  shared versions: `<Version>` governs the **4.x MonoGame-based packages**, and `<KhaozEngine5xVersion>`
+  governs the **5.x experimental custom-stack (MonoGame-free) packages** (`KhaozEngine.Render3D`,
+  `KhaozEngine.Render2D`, ...), which set `<Version>$(KhaozEngine5xVersion)</Version>` in their csproj. Each
+  line bumps as a unit: bump `<KhaozEngine5xVersion>` to release ALL 5.x packages together (repack each to
+  `local-feed`, single tag `vX.Y.Z-experimental`); bump `<Version>` for the 4.x packages. The two lines move
+  independently of each other. `check-doc-versions.sh` only enforces the 4.x `<Version>`, so the 5.x line is
+  exempt (like consumer pins). NOTE: early Render3D releases (`5.0.0-experimental`, `5.1.0-experimental`)
+  predate the shared 5.x line and were per-package; from `5.2.0-experimental` on, the 5.x line is shared.
+  See `docs/ROADMAP.md` ("The post-MonoGame pivot").
 - **Commit subjects:** conventional-commit style `area(scope): summary`, e.g.
   `audio(4.3.1): MacOsMusicBackend loads built .ogg` or `docs(consumers): ...`.
   On a release/version-bump commit, use the new version as the scope (`audio(4.3.1):`).

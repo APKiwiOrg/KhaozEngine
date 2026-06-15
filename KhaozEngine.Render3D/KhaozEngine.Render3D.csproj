@@ -1,9 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.Render3D</PackageId>
-    <!-- Independent 5.x experimental line: overrides the shared 4.x Directory.Build.props version.
-         The custom (MonoGame-free) rendering stack starts here. -->
-    <Version>5.1.0-experimental</Version>
+    <!-- Shared 5.x experimental line (custom MonoGame-free stack), versioned via Directory.Build.props. -->
+    <Version>$(KhaozEngine5xVersion)</Version>
     <Description>EXPERIMENTAL stylized 3D module on a custom MonoGame-free foundation (Veldrid + SPIR-V, System.Numerics). Orthographic IsoCamera3D, runtime glTF lit/cel model draw, a procedural starfield, and a PixelPostProcess chain (smooth or retro: swappable palette quantization, Bayer dither, depth/normal edge outline, point-or-linear upscale). Default look is smooth stylized space; retro/pixel is a toggle. Seed of the post-MonoGame KhaozEngine. Deps (Veldrid/Veldrid.SPIRV/SharpGLTF) are confined to this package.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>

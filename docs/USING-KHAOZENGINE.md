@@ -382,11 +382,35 @@ The sections above cover the core flow. The rest of the 16-package set, one line
 - **`KhaozEngine.Sprites`**: 2D sprite + directional animation: `SpriteSheet`, `SpriteAnimationPlayer`, `DirectionalAnimatedSprite` (opt-in `SpriteAnchor.FootprintBottomCenter` for iso), `Direction8`, `SpriteRegistry`, `PixelLabSpriteLoader`. Takes a raw `float`/`GameTime` delta.
 - **`KhaozEngine.Time`**: `GameClock` (pause / `TimeScale`) + `TimeSkip`. Pulled in transitively by `Screens`; optional to use directly.
 
+## Render2D (`KhaozEngine.Render2D`, experimental 5.x line)
+
+Experimental, **not part of the MonoGame contract above** - 2D rendering on the custom MonoGame-free stack
+(shared 5.x line, `5.2.0-experimental`). `SpriteBatch` + `Camera2D` + `Texture2D` (PNG via StbImageSharp) +
+`SpriteFont` (runtime TTF text via stb_truetype). `Render2DHost` owns the SDL2/Metal window; the
+`Render2DSample` auto-copies SDL2 so `dotnet run` just works. Headless drawing via `Render2DSnapshot`.
+
+```csharp
+using KhaozEngine.Render2D;
+
+var host = new Render2DHost("My 2D test", 960, 540);
+Texture2D logo = host.LoadTexture("logo.png");
+SpriteFont font = host.LoadFont("/System/Library/Fonts/Supplemental/Arial.ttf", 32f);
+var cam = new Camera2D();
+
+host.Run(f =>
+{
+    host.Batch.Begin(cam);                                 // world space; or Begin() for screen space
+    host.Batch.Draw(logo, new System.Numerics.Vector2(100, 100), System.Numerics.Vector4.One);
+    host.Batch.DrawString(font, "Hello, Veldrid 2D", new System.Numerics.Vector2(100, 60), System.Numerics.Vector4.One);
+    host.Batch.End();
+});
+```
+
 ## Render3D (`KhaozEngine.Render3D`, experimental 5.x line)
 
 Experimental, **not part of the MonoGame contract above** - it is the first package of the custom
-MonoGame-free renderer (see [`ROADMAP.md`](ROADMAP.md), "The post-MonoGame pivot"). Versioned independently
-at `5.1.0-experimental`. Metal-only for now; `Render3DHost` needs SDL2 (`brew install sdl2`). The
+MonoGame-free renderer (see [`ROADMAP.md`](ROADMAP.md), "The post-MonoGame pivot"). On the shared 5.x line
+at `5.2.0-experimental`. Metal-only for now; `Render3DHost` needs SDL2 (`brew install sdl2`). The
 `Render3DSample` project auto-copies SDL2 into its output so `dotnet run` just works; a consumer using
 `Render3DHost` directly must ensure SDL2 is on the loader path (or copy it into the app's output as
 `libsdl2.dylib`).

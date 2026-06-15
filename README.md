@@ -26,6 +26,9 @@ KhaozEngine is **not** a full engine. It owns a set of focused, game-agnostic co
 | **KhaozEngine.Collision** | Deterministic 2D collision + broadphase: `CircleCollision` (circle overlap + optional precise refinement) and `SpatialHashGrid` (uniform spatial hash). Bit-identical math for lockstep sims. | MonoGame |
 | **KhaozEngine.Pooling** | `ObjectPool<T>`: fixed-capacity free-list pool with O(1) rent/return, active/free tracking, swap-removal compaction. | Pure .NET |
 | **KhaozEngine.Updates** | Delta auto-update pipeline: SHA256 manifests + diffing, a host-agnostic update source (default HTTP transport, configurable endpoint), an `UpdateService` state machine with resumable staged downloads, and a cross-platform staged-apply core (`UpdateApplier`) for an external updater shim. | KhaozEngine.Diagnostics |
+| **KhaozEngine.Netcode.Abstractions** | The zero-dependency channel-split contract: `IChannelSplittable<TSelf>` + the `NetChannelReliability` enum. Reference this alone from a MonoGame-free, transport-agnostic DTO project (e.g. one shared with a web server). Namespace stays `KhaozEngine.Netcode`. | Pure .NET |
+| **KhaozEngine.Netcode** | Transport-free netcode primitives: `UnitAxisQuantizer` (deterministic 8-bit axis codec), `ClientPrediction<TState,TCommand>` (prediction + authoritative reconciliation), `RemoteCommandQueue<TCommand>`. Type-forwards the channel-split contract from Abstractions. | MonoGame, KhaozEngine.Netcode.Abstractions |
+| **KhaozEngine.Netcode.LiteNetLib** | LiteNetLib transport binding: `ChannelSplitter` maps `NetChannelReliability` to LiteNetLib's `DeliveryMethod` and drives split-and-send so reliable events never head-of-line-block position updates. | LiteNetLib, KhaozEngine.Netcode |
 
 Target framework `net10.0`, consumable from the `net10.0-android` / `net10.0-ios` heads. Built against MonoGame.Framework.DesktopGL 3.8.
 
@@ -92,10 +95,10 @@ Published to a private GitHub Packages feed on tagged releases, and packed to a 
 ```
 ```xml
 <!-- All packages share one version (the current release). Reference only what you use. -->
-<PackageReference Include="KhaozEngine.Input"   Version="4.8.0" />
-<PackageReference Include="KhaozEngine.Screens" Version="4.8.0" />
-<PackageReference Include="KhaozEngine.UI"      Version="4.8.0" />
-<PackageReference Include="KhaozEngine.Ecs"     Version="4.8.0" />
+<PackageReference Include="KhaozEngine.Input"   Version="4.9.0" />
+<PackageReference Include="KhaozEngine.Screens" Version="4.9.0" />
+<PackageReference Include="KhaozEngine.UI"      Version="4.9.0" />
+<PackageReference Include="KhaozEngine.Ecs"     Version="4.9.0" />
 ```
 
 **Versioning is SemVer.** Each game pins a version and adopts fixes by bumping it - so you can keep one game on an old version while you migrate another. Don't fork the packages; if a game needs an API that isn't there, add it here and bump the version.

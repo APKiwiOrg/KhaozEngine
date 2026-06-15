@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <OutputType>Library</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+  <!-- Intentionally references ONLY KhaozEngine.Netcode.Abstractions (the zero-dependency contract).
+       It must NOT reference KhaozEngine.Netcode (MonoGame), KhaozEngine.Netcode.LiteNetLib, MonoGame,
+       or LiteNetLib: this project compiling is the proof that a DTO can implement IChannelSplittable<T>
+       with NO MonoGame and NO UDP transport in scope, mirroring SpaceGame.Multiplayer.Contracts
+       (MessagePack-only, referenced by the ASP.NET leaderboard server). Adding any of those references
+       breaks the build on purpose. -->
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Netcode.Abstractions/KhaozEngine.Netcode.Abstractions.csproj" />
+  </ItemGroup>
+</Project>

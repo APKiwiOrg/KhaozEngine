@@ -14,9 +14,13 @@ public enum NetChannelReliability
 /// A batch that can be split into a reliable and an unreliable sub-batch for channel-separated sending.
 /// </summary>
 /// <remarks>
-/// Transport-free: this contract names no transport type, so a batch DTO in a transport-agnostic
-/// project (e.g. one shared with a web server) can implement it without referencing any UDP library.
-/// The LiteNetLib delivery-method mapping lives in <c>KhaozEngine.Netcode.LiteNetLib.ChannelSplitter</c>.
+/// Transport-free and dependency-free: this contract names no transport type and lives in the
+/// zero-dependency <c>KhaozEngine.Netcode.Abstractions</c> package (BCL only, no MonoGame, no
+/// LiteNetLib), so a batch DTO in a MonoGame-free, transport-agnostic project (e.g. one shared with a
+/// web server) can implement it referencing only that package. The namespace stays
+/// <c>KhaozEngine.Netcode</c> and the type is forwarded from <c>KhaozEngine.Netcode</c>, so consumers
+/// referencing that package keep binding it unchanged. The LiteNetLib delivery-method mapping lives in
+/// <c>KhaozEngine.Netcode.LiteNetLib.ChannelSplitter</c>.
 /// </remarks>
 /// <typeparam name="TSelf">The implementing batch type (CRTP), so extraction stays strongly typed.</typeparam>
 public interface IChannelSplittable<TSelf>

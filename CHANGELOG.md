@@ -15,6 +15,42 @@ Repo utilities under `tools/`. Not packages: never versioned, packed, or tagged.
   leading gap) missing-frame tolerance with warnings. Prints the `frameCount` and suggested `fps`.
   Uses SixLabors.ImageSharp 2.1.13 (Apache-2.0); no MonoGame/GraphicsDevice. See its README.
 
+## KhaozEngine 4.9.0
+
+Additive. New zero-dependency package; no source change for existing consumers. The `4.8.0` move put
+the channel-split contract in `KhaozEngine.Netcode`, but that package depends on
+`MonoGame.Framework.DesktopGL` (its `UnitAxisQuantizer`/`IPredictedState` use `Vector2`/`MathHelper`),
+so a MonoGame-free, web-server-shared DTO project still could not implement the contract without
+dragging MonoGame + native SDL in. This release extracts the contract into a package with no
+dependencies at all.
+
+### KhaozEngine.Netcode.Abstractions (new)
+
+- New package, **zero NuGet dependencies** (BCL only: no MonoGame, no LiteNetLib, no UDP transport).
+  `IChannelSplittable<TSelf>` and the `NetChannelReliability` enum now physically live here. A batch
+  DTO in a MonoGame-free, transport-agnostic project (e.g. a contracts assembly referenced by an
+  ASP.NET leaderboard server) references **only** this package to implement the contract.
+- **Namespace stays `KhaozEngine.Netcode`** (assembly name `KhaozEngine.Netcode.Abstractions` differs
+  deliberately), so no consumer needs a `using` change.
+
+### KhaozEngine.Netcode (changed, non-breaking)
+
+- Takes a package dependency on `KhaozEngine.Netcode.Abstractions` and adds assembly-level
+  `[TypeForwardedTo(typeof(IChannelSplittable<>))]` + `[TypeForwardedTo(typeof(NetChannelReliability))]`.
+  Type-forwards **work here**: the full type name is unchanged and only the assembly moved (unlike the
+  4.8.0 namespace move, which forwards could not bridge). Anyone referencing `KhaozEngine.Netcode`
+  keeps compiling and binding both types with no change.
+- `KhaozEngine.Netcode.LiteNetLib`'s `ChannelSplitter` references the contract transitively; its
+  `Send<T>`/`ToDeliveryMethod` still use `LiteNetLib.DeliveryMethod` and stay put.
+
+Guards: a new test project `KhaozEngine.Netcode.Abstractions.DecouplingTests` references **only**
+`KhaozEngine.Netcode.Abstractions` and implements the contract on a dummy struct (compiling proves the
+contract needs no MonoGame and no transport; a reflection test asserts the declaring assembly
+references neither `MonoGame.Framework` nor `LiteNetLib`). The existing
+`KhaozEngine.Netcode.DecouplingTests` stays green and now also asserts the types resolve through the
+type-forwards to the Abstractions assembly. No shipped consumer references these types yet (SpaceGame
+is the intended first adopter via `EntityUpdateBatchDto`).
+
 ## KhaozEngine 4.8.0
 
 Breaking change shipped as a minor bump: the `5.x` line is reserved for the experimental branch, so

@@ -1,14 +1,16 @@
+using System.Linq;
 using KhaozEngine.Netcode;
 using Xunit;
 
 namespace KhaozEngine.Netcode.DecouplingTests;
 
 /// <summary>
-/// Proves the channel-split contract is transport-free: a batch DTO can implement
-/// <see cref="IChannelSplittable{TSelf}"/> with ONLY a reference to KhaozEngine.Netcode, no UDP
-/// transport in scope. This project deliberately omits the KhaozEngine.Netcode.LiteNetLib and
-/// LiteNetLib references, so the dummy DTO below compiling is the structural guarantee that mirrors
-/// SpaceGame.Multiplayer.Contracts (MessagePack-only, also referenced by the leaderboard web server).
+/// Proves the channel-split contract is transport-free AND still bound through KhaozEngine.Netcode.
+/// Since 4.9.0 the contract physically lives in KhaozEngine.Netcode.Abstractions and KhaozEngine.Netcode
+/// type-forwards it; this project references ONLY KhaozEngine.Netcode (no LiteNetLib), so its compiling
+/// and passing is the guarantee that existing consumers referencing KhaozEngine.Netcode keep binding
+/// <see cref="IChannelSplittable{TSelf}"/> with no source change. The sibling
+/// KhaozEngine.Netcode.Abstractions.DecouplingTests covers the Abstractions-only DTO path.
 /// </summary>
 public class ChannelSplitContractDecouplingTests
 {
@@ -51,5 +53,19 @@ public class ChannelSplitContractDecouplingTests
         // without the LiteNetLib DeliveryMethod mapping (which stays in .LiteNetLib).
         Assert.True(reliability is NetChannelReliability.UnreliableSequenced
             or NetChannelReliability.ReliableOrdered);
+    }
+
+    [Fact]
+    public void Contract_ResolvesViaTypeForward_ToAbstractionsAssembly()
+    {
+        // Referenced through KhaozEngine.Netcode, but the type physically lives in (and forwards to)
+        // KhaozEngine.Netcode.Abstractions. This is what keeps existing consumers binding unchanged.
+        Assert.Equal("KhaozEngine.Netcode.Abstractions", typeof(IChannelSplittable<>).Assembly.GetName().Name);
+        Assert.Equal("KhaozEngine.Netcode.Abstractions", typeof(NetChannelReliability).Assembly.GetName().Name);
+
+        // And the contract's declaring assembly drags in no MonoGame / UDP transport.
+        var referenced = typeof(IChannelSplittable<>).Assembly.GetReferencedAssemblies().Select(a => a.Name).ToArray();
+        Assert.DoesNotContain("MonoGame.Framework", referenced);
+        Assert.DoesNotContain("LiteNetLib", referenced);
     }
 }

@@ -8,10 +8,13 @@
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
   </ItemGroup>
-  <!-- Intentionally references ONLY KhaozEngine.Netcode (the transport-free core). It must NOT
-       reference KhaozEngine.Netcode.LiteNetLib or LiteNetLib: this project compiling is the proof
-       that IChannelSplittable<T> can be implemented without any UDP transport in scope, mirroring
-       SpaceGame.Multiplayer.Contracts. Adding a transport dependency here breaks the build on purpose. -->
+  <!-- Intentionally references ONLY KhaozEngine.Netcode (NOT LiteNetLib). Since 4.9.0
+       IChannelSplittable<T> + NetChannelReliability physically live in KhaozEngine.Netcode.Abstractions
+       and KhaozEngine.Netcode type-forwards them. This project compiling + its tests passing prove the
+       type-forwards keep KhaozEngine.Netcode binding both types, so existing consumers that reference
+       KhaozEngine.Netcode need no source change. (The sibling
+       KhaozEngine.Netcode.Abstractions.DecouplingTests proves the Abstractions-only DTO path.) Adding a
+       transport dependency here breaks the build on purpose. -->
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Netcode/KhaozEngine.Netcode.csproj" />
   </ItemGroup>

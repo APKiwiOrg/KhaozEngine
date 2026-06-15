@@ -76,14 +76,19 @@ engine to a real, resolution-independent, layout-capable state first. Agreed ord
    `Pointer`/`ScreenStack` hit-testing; `SpriteBatch.Begin(IDesignViewport)`; `Layout.Resolve` anchoring
    (`TopLeft`..`BottomRight`/`Center`/`Stretch`); `Screen.BackgroundColor`. `GuiSample` scales/centers/
    letterboxes on resize with aligned hit-testing. All headless-tested.
-2. **Cross-platform backends (current).** Un-Metal-only: backend selection (Vulkan / D3D11 / GL / Metal) via
-   Veldrid so Render2D/Render3D/Snapshot run on Windows/Linux (and later mobile); verify the SPIR-V shaders
-   cross-compile per backend; per-backend clip-Y + MRT-clear handling. The biggest gap between
-   proof-of-concept and a real cross-platform engine.
-3. **Input breadth.** Gamepad + touch on `InputState`; a gesture seam (tap/drag/pinch) over the design
-   viewport; pause/timescale. Builds on the existing `InputState`/`Pointer`.
-4. **Native packaging / distribution.** SDL2 + openal-soft bundled as RID-specific natives (macOS system
+2. **Input breadth (current).** Gamepad + touch on `InputState`; a gesture seam (tap/drag/pinch) over the
+   design viewport; pause/timescale. Builds on the existing `InputState`/`Pointer`. The input *logic* is
+   fully headless-testable (the engine's standard frame-by-frame state pattern); a *live* gamepad smoke
+   needs a controller and *touch* is mobile (deferred), but those don't gate the tested logic.
+3. **Native packaging / distribution.** SDL2 + openal-soft bundled as RID-specific natives (macOS system
    OpenAL/GL are deprecated) so a clean checkout runs with one command, no env vars or manual copies.
+4. **Cross-platform backends (deferred until hardware/CI).** Un-Metal-only: backend selection
+   (Vulkan / D3D11 / GL / Metal) via Veldrid so Render2D/Render3D/Snapshot run on Windows/Linux (and later
+   mobile); verify the SPIR-V shaders cross-compile per backend; per-backend clip-Y + MRT-clear handling.
+   The biggest gap to a real cross-platform engine, but moved later: it can't be run-verified on the
+   Apple-Silicon dev machine (Metal-only locally; macOS OpenGL is the deprecated GL-2.1 layer, no Vulkan
+   loader installed), so it waits for real Windows/Linux hardware or a CI matrix rather than shipping
+   wired-but-unverified clip-space handling.
 
 Then migrate a real game (Hardpoint/Nullwake/SpaceGame) onto a stack that's actually ready. Richer text entry
 (IME/locale/dead-keys) stays a later nicety — the current `TextEntry` is US-layout key-mapping.

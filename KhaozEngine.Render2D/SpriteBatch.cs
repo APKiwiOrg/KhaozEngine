@@ -44,6 +44,7 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
         CommandList _cl = null!;
         int _vw, _vh;
         Matrix4x4 _vp;
+        Windowing.IDesignViewport? _viewport;   // active design viewport (set by Begin(IDesignViewport)), else null
 
         internal SpriteBatch(GraphicsDevice gd, OutputDescription output)
         {
@@ -90,21 +91,42 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
         }
 
         /// <summary>
-        /// Clip subsequent draws to <paramref name="rect"/> (viewport points). Call between an <see cref="End"/>
-        /// and the next <see cref="Begin"/>; pair with <see cref="ClearScissor"/> to restore the full viewport.
+        /// As <see cref="ComputeScissor(Windowing.Rect,int,int,int,int)"/>, but first maps a clip rect given in
+        /// design space through <paramref name="viewport"/> (scale + letterbox offset) into window points. Pass
+        /// a null viewport to treat <paramref name="rect"/> as already in window points. Pure / headless.
+        /// </summary>
+        public static (uint X, uint Y, uint Width, uint Height) ComputeScissor(
+            Windowing.Rect rect, Windowing.IDesignViewport? viewport, int viewportW, int viewportH, int framebufferW, int framebufferH)
+        {
+            if (viewport != null)
+            {
+                var tl = viewport.DesignToScreen(new Vector2(rect.X, rect.Y));
+                var br = viewport.DesignToScreen(new Vector2(rect.Right, rect.Bottom));
+                rect = new Windowing.Rect(tl.X, tl.Y, br.X - tl.X, br.Y - tl.Y);
+            }
+            return ComputeScissor(rect, viewportW, viewportH, framebufferW, framebufferH);
+        }
+
+        /// <summary>
+        /// Flush pending draws, then clip subsequent draws to <paramref name="rect"/>. When a design viewport is
+        /// active (<see cref="Begin(Windowing.IDesignViewport)"/>) <paramref name="rect"/> is in design space and
+        /// is mapped through it; otherwise it is in window points. Pair with <see cref="ClearScissor"/>. The
+        /// current transform is preserved, so no <see cref="Begin"/> is needed around it.
         /// </summary>
         public void SetScissor(Windowing.Rect rect)
         {
+            Flush();
             var fb = _gd.MainSwapchain?.Framebuffer;
             int fbw = fb != null ? (int)fb.Width : _vw;
             int fbh = fb != null ? (int)fb.Height : _vh;
-            var (x, y, w, h) = ComputeScissor(rect, _vw, _vh, fbw, fbh);
+            var (x, y, w, h) = ComputeScissor(rect, _viewport, _vw, _vh, fbw, fbh);
             _cl.SetScissorRect(0, x, y, w, h);
         }
 
-        /// <summary>Reset the scissor to the full framebuffer (undo <see cref="SetScissor"/>).</summary>
+        /// <summary>Flush pending (clipped) draws, then reset the scissor to the full framebuffer (undo <see cref="SetScissor"/>).</summary>
         public void ClearScissor()
         {
+            Flush();
             var fb = _gd.MainSwapchain?.Framebuffer;
             uint fbw = fb != null ? fb.Width : (uint)Math.Max(0, _vw);
             uint fbh = fb != null ? fb.Height : (uint)Math.Max(0, _vh);
@@ -120,16 +142,17 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
         }
 
         /// <summary>Begin a batch in world space through <paramref name="camera"/>.</summary>
-        public void Begin(Camera2D camera) { _vp = camera.GetViewProjection(_vw, _vh); ResetBatches(); }
+        public void Begin(Camera2D camera) { _vp = camera.GetViewProjection(_vw, _vh); _viewport = null; ResetBatches(); }
 
         /// <summary>Begin a batch in screen space (pixels, top-left origin).</summary>
-        public void Begin() { _vp = Matrix4x4.CreateOrthographicOffCenter(0, _vw, _vh, 0, -1, 1); ResetBatches(); }
+        public void Begin() { _vp = Matrix4x4.CreateOrthographicOffCenter(0, _vw, _vh, 0, -1, 1); _viewport = null; ResetBatches(); }
 
         /// <summary>
         /// Begin a batch in design space through <paramref name="viewport"/>: subsequent draws use design
         /// coordinates and are scaled, centered, and letterboxed to the current window for the viewport's mode.
+        /// A scissor set while this is active (<see cref="SetScissor"/>) is mapped through the viewport too.
         /// </summary>
-        public void Begin(Windowing.IDesignViewport viewport) { _vp = viewport.GetClipProjection(_vw, _vh); ResetBatches(); }
+        public void Begin(Windowing.IDesignViewport viewport) { _vp = viewport.GetClipProjection(_vw, _vh); _viewport = viewport; ResetBatches(); }
 
         public void Draw(Texture2D tex, Vector2 position, Vector4 color) =>
             Draw(tex, new Vector4(position.X, position.Y, tex.Width, tex.Height), new Vector4(0, 0, 1, 1), color);
@@ -168,7 +191,14 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
         }
 
         /// <summary>Flush the current batch.</summary>
-        public void End()
+        public void End() => Flush();
+
+        /// <summary>
+        /// Draw the accumulated runs (in submission order) and clear them, keeping the current transform and
+        /// scissor. Used by <see cref="End"/> and by the scissor calls so a clip can be applied mid-batch
+        /// without a <see cref="Begin"/> that would reset the design-viewport transform.
+        /// </summary>
+        void Flush()
         {
             var f = _gd.ResourceFactory;
             _cl.SetPipeline(_pipeline);
@@ -188,6 +218,7 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
                 _cl.SetVertexBuffer(0, vb);
                 _cl.Draw((uint)verts.Count);
             }
+            _runs.Reset();
         }
 
         Vector2 Clip(float x, float y)

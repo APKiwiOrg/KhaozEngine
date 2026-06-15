@@ -75,20 +75,10 @@ namespace KhaozEngine.Gui
             GuiDraw.Border(batch, white, Bounds, 1f, Border);
         }
 
-        /// <summary>Flush the current batch and clip subsequent draws to <see cref="Bounds"/>. Draw items, then call <see cref="EndClip"/>.</summary>
-        public void BeginClip(SpriteBatch batch)
-        {
-            batch.End();
-            batch.SetScissor(Bounds);
-            batch.Begin();
-        }
+        /// <summary>Flush pending draws and clip subsequent draws to <see cref="Bounds"/>. Draw items, then call <see cref="EndClip"/>.</summary>
+        public void BeginClip(SpriteBatch batch) => batch.SetScissor(Bounds);
 
         /// <summary>Flush the clipped draws and restore the full viewport.</summary>
-        public void EndClip(SpriteBatch batch)
-        {
-            batch.End();
-            batch.ClearScissor();
-            batch.Begin();
-        }
+        public void EndClip(SpriteBatch batch) => batch.ClearScissor();
     }
 }

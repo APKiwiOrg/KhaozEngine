@@ -51,7 +51,7 @@ reference it directly (Nullwake does reference it directly for `JsonDefaults`).
 |-----------|--------------------------------------|-------|---------|-------|-------|---------|-------------|-------|-------|--------------|-------------|-------|---------|----------|---------|---------------|----------|-----------|---------|---------|---------|--------------------|--------------------|
 | Hardpoint | `Hardpoint/Hardpoint.Core`           | 4.0.0 | 4.0.0   | 4.0.0 | 4.0.0 | 4.0.0   | 4.0.0       | -     | 4.0.0 | 4.0.0        | 4.0.0       | -     | 4.0.0   | 4.0.0    | 4.0.0   | -             | -        | -         | -       | -       | - | - | - |
 | Nullwake  | `Nullwake/Nullwake.Core`             | 4.0.0 | 4.0.0   | 4.0.0 | -     | 4.0.0   | 4.0.0       | 4.0.0 | 4.0.0 | 4.0.0        | 4.0.0       | 4.0.0 | 4.0.0   | 4.0.0    | -       | 4.0.0         | -        | -         | -       | -       | - | - | - |
-| SpaceGame | `SpaceGame/SpaceGame.Core`           | 4.0.0 | 4.0.0   | 4.0.0 | 4.0.0 | 4.0.0   | 4.0.0       | -     | 4.0.0 | 4.0.0        | 4.0.0       | 4.0.0 | -       | 4.0.0    | -       | -             | -        | -         | -       | -       | - | - | - |
+| SpaceGame | `SpaceGame/SpaceGame.Core`           | 4.9.0 | 4.9.0   | 4.9.0 | 4.9.0 | 4.9.0   | 4.9.0       | -     | 4.9.0 | 4.9.0        | 4.9.0       | 4.9.0 | -       | 4.9.0    | -       | -             | 4.9.0    | 4.9.0     | 4.9.0   | 4.9.0   | 4.9.0 | - | 4.9.0 |
 
 ## Adoption matrix
 
@@ -63,7 +63,7 @@ scaled-dt usage.
 |-----------|:-----:|:-------:|:--:|:---:|:-------:|:-----------:|:------------:|:---:|:------------:|:-----------:|:-----:|:-------:|:--------:|:-------:|:---------------:|:--------:|:---------:|:-------:|:-------:|:-------:|:------------------:|:------------------:|
 | Hardpoint |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |  ✓  |      ✓       |      ✓      |   -   |    ✓    |    ✓     |    ✓    |  (transitive)   |    -     |     -     |    -    |    -    | - | - | - |
 | Nullwake  |   ✓   |    ✓    | ✓  |  -  |    ✓    |      ✓      |      ✓       |  ✓  |      ✓       |      ✓      |   ✓   |    ✓    |    ✓     |    -    |        ✓        |    -     |     -     |    -    |    -    | - | - | - |
-| SpaceGame |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |  ✓  |      ✓       |      ✓      |   ✓   |    -    |    ✓     |    -    |        -        |    -     |     -     |    -    |    -    | - | - | - |
+| SpaceGame |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |  ✓  |      ✓       |      ✓      |   ✓   |    -    |    ✓     |    -    |  (transitive)   |    ✓     |     ✓     |    ✓    |    ✓    | ✓ | - | ✓ |
 
 ## Notes (current state per consumer)
 
@@ -108,7 +108,7 @@ scaled-dt usage.
   (`PannableCanvas` does drive a `Camera2D` internally, but only over the skill-tree node space). `Ecs`
   not yet adopted - a `DeterministicRng` swap (off `GameRng`) is a planned follow-up. `Sprites` unused.
 
-### SpaceGame - on 4.0.0
+### SpaceGame - on 4.9.0
 
 - **Graphics:** first consumer of `Camera2D` (headless, with a per-frame `Viewport` sync).
 - **Logging:** engine `Log` service (FileSink + ConsoleSink + `CrashHandler`); flushes the persistence
@@ -132,14 +132,27 @@ scaled-dt usage.
   per-tick sites query-alloc-free. In BETA, cross-version seed replayability is explicitly not a concern, so
   the migration re-baselined the lockstep `StateHash` deliberately - **one** designated move (the
   `CreateDerived` swap); the final baseline is `5562709684599485702`.
-- **Not adopted:** `Effects` (keeps its richer game-side `ParticleManager` - see the particle-unification
-  roadmap item) and `Sprites`. SpaceGame vendors `Time` transitively but reads no scaled dt (no
-  `GameClock`/`TimeScale`/`TimeSkip`) - the lockstep sim must keep it that way.
-- **`Platform` (4.4.0) - pending adoption:** the cross-platform `Clipboard` was promoted from SpaceGame's
-  own `SpaceGame.Core/Platform/ClipboardInterop.cs`. On adoption SpaceGame deletes that file, references
-  `KhaozEngine.Platform`, swaps its `ClipboardInterop.*` callsites for `KhaozEngine.Platform.Clipboard.*`,
-  and sets `Clipboard.MobileBridgeTypeName = "SpaceGame.Platform.MobileClipboardBridge"` at startup
-  (the engine no longer hard-codes that type name).
+- **Generic infra (adopted 4.9.0):** the seven packages promoted from SpaceGame's own code are now all
+  consumed, each behind a thin game-side adapter that keeps the game-specific glue:
+  - `Platform` - `Clipboard` replaces the in-house `ClipboardInterop` (deleted); the mobile heads set
+    `Clipboard.MobileBridgeTypeName = "SpaceGame.Platform.MobileClipboardBridge"` at startup.
+  - `Collision` - `CircleCollision` + `SpatialHashGrid`; `Entity : ICircleCollider` with an explicit
+    `Radius => CollisionRadius` (the scaled collision radius, not the base). `EnemySpatialIndex` is now a
+    thin adapter over the grid.
+  - `Pooling` - `ObjectPool<XpFlyer>` (deleted the in-house `XpFlyerPool`).
+  - `Updates` - the whole auto-update pipeline (in-game service + the `SpaceGameUpdater` shim via
+    `UpdateApplier.Run` + the publish-side manifest tool via `UpdateManifest.GenerateFromDirectory`).
+  - `Netcode` - `UnitAxisQuantizer` (the input wire codec), and `ClientPrediction` + `RemoteCommandQueue`
+    behind adapters that keep the DTO/arena/config glue.
+  `Collision` and the input codec are byte-identical extractions, so the lockstep `StateHash` did not move.
+- **`Netcode.Abstractions` (4.9.0):** referenced by `SpaceGame.Multiplayer.Contracts` (not `.Core`), so the
+  MonoGame-free DTO project - and the ASP.NET leaderboard server that references it - can have
+  `EntityUpdateBatchDto` implement `IChannelSplittable` without pulling MonoGame or LiteNetLib in. The
+  `ChannelSplitter` orchestration itself is not used: the host does its own UDP-frame sub-chunking.
+- **Still not adopted:** `Effects` (keeps its richer game-side `ParticleManager` - see the
+  particle-unification roadmap item), `Sprites`, and `Netcode.LiteNetLib`. SpaceGame vendors `Time`
+  transitively but reads no scaled dt (no `GameClock`/`TimeScale`/`TimeSkip`) - the lockstep sim must keep
+  it that way.
 
 ## Repo locations
 

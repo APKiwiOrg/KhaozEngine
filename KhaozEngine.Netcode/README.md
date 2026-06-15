@@ -54,3 +54,25 @@ var queue = new RemoteCommandQueue<MyCommand>(neutralCommand: MyCommand.Idle);
 queue.Store(slot, seq, command);                       // on receive
 var cmd = queue.Dequeue(slot, out int lastAckedSeq);   // once per sim tick
 ```
+
+## IChannelSplittable&lt;TSelf&gt; + NetChannelReliability
+
+The transport-free channel-split contract. A batch DTO declares its unreliable (position/transient,
+latest-wins) vs reliable (spawns/destroys/events, must-arrive-ordered) content and extracts each
+sub-batch. Because it names no transport type, a DTO that lives in a transport-agnostic project (e.g.
+one shared with a web server) can implement it without referencing any UDP library.
+
+```csharp
+readonly record struct EntityBatch(/* ...fields... */) : IChannelSplittable<EntityBatch>
+{
+    public bool HasUnreliableContent => /* any position/transient field set */;
+    public bool HasReliableContent   => /* any event field set */;
+    public EntityBatch ExtractUnreliable() => /* copy with event fields nulled */;
+    public EntityBatch ExtractReliable()   => /* copy with position fields nulled */;
+}
+```
+
+`NetChannelReliability` (`UnreliableSequenced` / `ReliableOrdered`) names the two channels. The
+LiteNetLib `DeliveryMethod` mapping and the `ChannelSplitter.Send` orchestration live in the
+**`KhaozEngine.Netcode.LiteNetLib`** package, so adding the split only pulls in a UDP transport on the
+sending side, not in the DTO project.

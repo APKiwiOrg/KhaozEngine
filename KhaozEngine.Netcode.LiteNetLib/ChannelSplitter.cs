@@ -1,36 +1,8 @@
 using System;
+using KhaozEngine.Netcode;
 using LiteNetLib;
 
 namespace KhaozEngine.Netcode.LiteNetLib;
-
-/// <summary>Reliability class for an entity-update sub-batch.</summary>
-public enum NetChannelReliability
-{
-    /// <summary>Position/transient state: latest value wins, stale packets may be dropped.</summary>
-    UnreliableSequenced,
-
-    /// <summary>Events that must arrive in order: spawns, destroys, collects, hits, game state.</summary>
-    ReliableOrdered
-}
-
-/// <summary>
-/// A batch that can be split into a reliable and an unreliable sub-batch for channel-separated sending.
-/// </summary>
-/// <typeparam name="TSelf">The implementing batch type (CRTP), so extraction stays strongly typed.</typeparam>
-public interface IChannelSplittable<TSelf>
-{
-    /// <summary>True if the batch has any position/transient content to send unreliably.</summary>
-    bool HasUnreliableContent { get; }
-
-    /// <summary>True if the batch has any event content that must be sent reliably.</summary>
-    bool HasReliableContent { get; }
-
-    /// <summary>The position/transient-only sub-batch (reliable fields nulled/cleared).</summary>
-    TSelf ExtractUnreliable();
-
-    /// <summary>The events-only sub-batch (position fields nulled/cleared).</summary>
-    TSelf ExtractReliable();
-}
 
 /// <summary>
 /// Splits a batch so position/transient state (Sequenced) is never head-of-line blocked by reliable
@@ -38,6 +10,12 @@ public interface IChannelSplittable<TSelf>
 /// included) onto the reliable channel, so a single lost packet stalled every later position update
 /// until retransmit.
 /// </summary>
+/// <remarks>
+/// The split contract itself (<see cref="IChannelSplittable{TSelf}"/> and
+/// <see cref="NetChannelReliability"/>) lives in the transport-free <c>KhaozEngine.Netcode</c>
+/// package so batch DTOs can implement it without referencing LiteNetLib. Only the
+/// <see cref="DeliveryMethod"/> mapping and send orchestration stay here.
+/// </remarks>
 public static class ChannelSplitter
 {
     /// <summary>Maps a reliability class to LiteNetLib's delivery method.</summary>

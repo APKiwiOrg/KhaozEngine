@@ -15,6 +15,39 @@ Repo utilities under `tools/`. Not packages: never versioned, packed, or tagged.
   leading gap) missing-frame tolerance with warnings. Prints the `frameCount` and suggested `fps`.
   Uses SixLabors.ImageSharp 2.1.13 (Apache-2.0); no MonoGame/GraphicsDevice. See its README.
 
+## KhaozEngine 4.8.0
+
+Breaking change shipped as a minor bump: the `5.x` line is reserved for the experimental branch, so
+this breaking namespace move ships as `4.8.0` rather than `5.0.0`. Pin deliberately if you implement
+the moved contract.
+
+- **`IChannelSplittable<TSelf>` and the `NetChannelReliability` enum moved from
+  `KhaozEngine.Netcode.LiteNetLib` to `KhaozEngine.Netcode`** (namespace
+  `KhaozEngine.Netcode.LiteNetLib` -> `KhaozEngine.Netcode`). Both are pure: the interface is just
+  the `Has*/Extract*` members, the enum is two values, and neither names a LiteNetLib type. Moving
+  them lets a batch DTO that lives in a transport-agnostic project (e.g. one shared with a web
+  server) implement the split contract without pulling a UDP transport into that project.
+- **`ChannelSplitter` stays in `KhaozEngine.Netcode.LiteNetLib`** (its `Send<T>` orchestration and
+  `ToDeliveryMethod` genuinely use `LiteNetLib.DeliveryMethod`). `KhaozEngine.Netcode.LiteNetLib`
+  now has a package dependency on `KhaozEngine.Netcode` for the moved types.
+- **`KhaozEngine.Netcode` still has no LiteNetLib dependency** (only MonoGame). A dedicated test
+  project (`KhaozEngine.Netcode.DecouplingTests`) references only the core package and implements
+  `IChannelSplittable<T>` on a dummy struct; it compiling is the standing guard that the contract
+  stays transport-free.
+
+No type-forwards: `[TypeForwardedTo]` redirects the *assembly* for an unchanged full type name, so
+it cannot bridge a *namespace* change. No shipped consumer references these types yet (all consumers
+on 4.0.0; netcode unadopted), so nothing breaks in practice. Migration for any code that used them
+is a one-line `using` swap:
+
+```csharp
+// before
+using KhaozEngine.Netcode.LiteNetLib;   // IChannelSplittable<T>, NetChannelReliability, ChannelSplitter
+// after
+using KhaozEngine.Netcode;              // IChannelSplittable<T>, NetChannelReliability
+using KhaozEngine.Netcode.LiteNetLib;   // ChannelSplitter (keep only if you call Send/ToDeliveryMethod)
+```
+
 ## KhaozEngine 4.7.0
 
 Additive. Two new packages extracting SpaceGame's reusable netcode. No change to existing packages.

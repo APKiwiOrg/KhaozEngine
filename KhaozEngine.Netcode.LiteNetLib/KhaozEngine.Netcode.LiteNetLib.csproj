@@ -1,11 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.Netcode.LiteNetLib</PackageId>
-    <Description>LiteNetLib channel-split kernel for entity-update batches. IChannelSplittable&lt;T&gt; lets a game's batch DTO declare its unreliable (position/transient, latest-wins) vs reliable (spawns/destroys/events, must-arrive-ordered) content and extract each sub-batch; ChannelSplitter.Send drives "split, send each non-empty part on its channel" (Sequenced vs ReliableOrdered) so reliable events never head-of-line-block position updates. ToDeliveryMethod maps NetChannelReliability to LiteNetLib's DeliveryMethod. The game keeps its own batch type and field layout.</Description>
+    <Description>LiteNetLib transport binding for the channel-split kernel. The transport-free split contract (IChannelSplittable&lt;T&gt; + NetChannelReliability) now lives in KhaozEngine.Netcode; this package adds ChannelSplitter, which maps NetChannelReliability to LiteNetLib's DeliveryMethod (ToDeliveryMethod) and drives "split, send each non-empty part on its channel" (Sequenced vs ReliableOrdered) via Send, so reliable events never head-of-line-block position updates. The game keeps its own batch type and field layout.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="LiteNetLib" Version="2.1.2" />
+    <ProjectReference Include="../KhaozEngine.Netcode/KhaozEngine.Netcode.csproj" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <ItemGroup>

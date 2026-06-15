@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Microsoft.Xna.Framework.Content;
 using KhaozEngine.Audio;
 
 namespace KhaozEngine.Tests;
@@ -12,6 +11,7 @@ internal sealed class FakeMusicBackend : IMusicBackend
     public List<int> PlayedIndices { get; } = new();
     public List<float> Volumes { get; } = new();
     public int StopCount { get; private set; }
+    public int UpdateCount { get; private set; }
     public bool Disposed { get; private set; }
     public bool LoadSucceeds { get; set; } = true;
     public bool PlaySucceeds { get; set; } = true;
@@ -40,7 +40,7 @@ internal sealed class FakeMusicBackend : IMusicBackend
         set => _isPlaying = value;
     }
 
-    public bool TryLoadTrack(ContentManager content, string contentDirectory, string trackName)
+    public bool TryLoadTrack(string contentDirectory, string trackName)
     {
         if (!LoadSucceeds || FailTracks.Contains(trackName)) return false;
         LoadedTracks.Add(trackName);
@@ -63,6 +63,8 @@ internal sealed class FakeMusicBackend : IMusicBackend
     }
 
     public void SetVolume(float volume) => Volumes.Add(volume);
+
+    public void Update() => UpdateCount++;
 
     public void Dispose() => Disposed = true;
 }

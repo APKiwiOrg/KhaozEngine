@@ -54,8 +54,10 @@ via AOT, and ~21 existing C# packages + 3 games would be thrown away by a rewrit
    runtime TTF text (stb_truetype glyph atlas) — shipped and proven (the text-rendering risk is cleared).
    Still to do: the iso toolkit rebuilt on the custom renderer, sprite sorting/layers, text layout (wrapping).
    Confirms 2D / iso-lite games are covered (2D is strictly simpler than the 3D already proven).
-4. **Port the 2D stack.** Move Input/Screens/UI/Sprites/Effects + audio (OpenAL) + content load off MonoGame
-   onto the custom foundation.
+4. **Port the 2D stack (started).** `KhaozEngine.Audio` graduated to the 5.x line with a cross-platform
+   OpenAL streaming backend (WAV/OGG/MP3) - the first existing package ported off MonoGame, and the last
+   *unproven* subsystem now proven. Still to do: move Input/Screens/UI/Sprites/Effects + content load off
+   MonoGame onto the custom foundation.
 5. **Migrate the games.** Hardpoint / Nullwake / SpaceGame onto the 5.x stack; retire the 4.x MonoGame line.
 6. **Mobile.** iOS/Android platform layers (lifecycle, touch, packaging, stores).
 
@@ -64,7 +66,7 @@ via AOT, and ~21 existing C# packages + 3 games would be thrown away by a rewrit
 - **4.x line** — the existing MonoGame packages; one shared version in `Directory.Build.props`; keeps
   shipping 4.8.0, 4.9.0, ... normally and in parallel.
 - **5.x experimental line** — the custom-stack packages (`Render3D`, `Render2D`, ...) share a second version,
-  `Directory.Build.props` `<KhaozEngine5xVersion>` (currently `5.2.0-experimental`), and release together
+  `Directory.Build.props` `<KhaozEngine5xVersion>` (currently `5.3.0-experimental`), and release together
   under one `vX.Y.Z-experimental` tag. (The first two Render3D releases, 5.0.0/5.1.0, predate this and were
   per-package.) The doc-version guard checks the shared 4.x version only; the 5.x line is exempt (like
   consumer pins). Packages graduate

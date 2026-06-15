@@ -377,7 +377,7 @@ The sections above cover the core flow. The rest of the 16-package set, one line
 - **`KhaozEngine.Content`**: config loading + JSON-schema validation: `ConfigLoader` (disk-then-embedded), `JsonSchemaValidator`, build-time schema enforcement via the bundled validator.
 - **`KhaozEngine.Serialization`**: shared `System.Text.Json` baselines: `JsonDefaults.TolerantRead` / `IndentedWrite` / `IncludeFields`. Consumed by Content/Persistence/Ecs. Pure BCL.
 - **`KhaozEngine.Localization`**: `LocalizationManager` (culture + string lookup).
-- **`KhaozEngine.Audio`**: `AudioSystem` music playback (one track at a time, `PlayMode`, now-playing events; macOS AVAudioPlayer backend). Music-only; SFX stays game-side.
+- **`KhaozEngine.Audio`** (graduated to the 5.x line): `AudioSystem` music playback (one track at a time, `PlayMode`, `TrackChanged` events) over a cross-platform OpenAL streaming backend (WAV/OGG/MP3); no MonoGame. `LoadContent(directory)` + `Update()` per frame. Music-only; SFX is a future layer.
 - **`KhaozEngine.Effects`**: pooled rect `ParticleSystem` + `Spark`/`Ember` presets. Depends on Graphics (for `PrimitiveRenderer`).
 - **`KhaozEngine.Sprites`**: 2D sprite + directional animation: `SpriteSheet`, `SpriteAnimationPlayer`, `DirectionalAnimatedSprite` (opt-in `SpriteAnchor.FootprintBottomCenter` for iso), `Direction8`, `SpriteRegistry`, `PixelLabSpriteLoader`. Takes a raw `float`/`GameTime` delta.
 - **`KhaozEngine.Time`**: `GameClock` (pause / `TimeScale`) + `TimeSkip`. Pulled in transitively by `Screens`; optional to use directly.
@@ -385,7 +385,7 @@ The sections above cover the core flow. The rest of the 16-package set, one line
 ## Render2D (`KhaozEngine.Render2D`, experimental 5.x line)
 
 Experimental, **not part of the MonoGame contract above** - 2D rendering on the custom MonoGame-free stack
-(shared 5.x line, `5.2.0-experimental`). `SpriteBatch` + `Camera2D` + `Texture2D` (PNG via StbImageSharp) +
+(shared 5.x line, `5.3.0-experimental`). `SpriteBatch` + `Camera2D` + `Texture2D` (PNG via StbImageSharp) +
 `SpriteFont` (runtime TTF text via stb_truetype). `Render2DHost` owns the SDL2/Metal window; the
 `Render2DSample` auto-copies SDL2 so `dotnet run` just works. Headless drawing via `Render2DSnapshot`.
 
@@ -410,7 +410,7 @@ host.Run(f =>
 
 Experimental, **not part of the MonoGame contract above** - it is the first package of the custom
 MonoGame-free renderer (see [`ROADMAP.md`](ROADMAP.md), "The post-MonoGame pivot"). On the shared 5.x line
-at `5.2.0-experimental`. Metal-only for now; `Render3DHost` needs SDL2 (`brew install sdl2`). The
+at `5.3.0-experimental`. Metal-only for now; `Render3DHost` needs SDL2 (`brew install sdl2`). The
 `Render3DSample` project auto-copies SDL2 into its output so `dotnet run` just works; a consumer using
 `Render3DHost` directly must ensure SDL2 is on the loader path (or copy it into the app's output as
 `libsdl2.dylib`).

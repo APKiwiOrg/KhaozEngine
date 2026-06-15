@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Microsoft.Xna.Framework;
-using Microsoft.Xna.Framework.Content;
 using KhaozEngine.Diagnostics;
 
 namespace KhaozEngine.Audio;
@@ -25,12 +23,10 @@ public sealed class AudioSystem : IDisposable
     private bool _started;
     private bool _musicEnabled = true;
     private string? _currentTrack;
-    private ContentManager? _content;
     private string? _contentDirectory;
 
     /// <summary>
-    /// Creates an audio system using the backend for the current OS
-    /// (macOS AVAudioPlayer, otherwise MonoGame MediaPlayer).
+    /// Creates an audio system using the OpenAL streaming backend.
     /// </summary>
     /// <param name="trackNames">Optional initial track names (content asset names, no extension).</param>
     /// <param name="logger">Optional logger; defaults to the ambient <c>Log</c> facade.</param>
@@ -66,11 +62,11 @@ public sealed class AudioSystem : IDisposable
             return;
         }
 
-        if (_loaded && _content is not null)
+        if (_loaded && _contentDirectory is not null)
         {
             // Post-load (DLC / runtime add): only commit the track if it actually loads, so a
             // missing file doesn't leave a phantom name that the dedup guard then blocks from reloading.
-            if (_backend.TryLoadTrack(_content, _contentDirectory!, trackName))
+            if (_backend.TryLoadTrack(_contentDirectory!, trackName))
             {
                 _trackNames.Add(trackName);
             }
@@ -98,7 +94,7 @@ public sealed class AudioSystem : IDisposable
         get => _masterVolume;
         set
         {
-            _masterVolume = MathHelper.Clamp(value, 0f, 1f);
+            _masterVolume = Math.Clamp(value, 0f, 1f);
             ApplyVolume();
         }
     }
@@ -140,7 +136,7 @@ public sealed class AudioSystem : IDisposable
         get => _musicVolume;
         set
         {
-            _musicVolume = MathHelper.Clamp(value, 0f, 1f);
+            _musicVolume = Math.Clamp(value, 0f, 1f);
             ApplyVolume();
         }
     }
@@ -155,13 +151,12 @@ public sealed class AudioSystem : IDisposable
     public PlayMode PlayMode { get; set; } = PlayMode.RandomRotation;
 
     /// <summary>
-    /// Loads all registered music tracks for the active platform backend.
+    /// Loads all registered music tracks from <paramref name="contentDirectory"/> (the folder holding the
+    /// WAV/OGG/MP3 files). Names are the file names without extension.
     /// </summary>
-    public void LoadContent(ContentManager content)
+    public void LoadContent(string contentDirectory)
     {
-        _content = content;
-        _contentDirectory = System.IO.Path.Combine(
-            AppDomain.CurrentDomain.BaseDirectory, content.RootDirectory);
+        _contentDirectory = contentDirectory;
         _logger.Info($"using {_backend.Name} backend");
 
         // Keep _trackNames aligned with the backend's compact track list: drop any that fail to load,
@@ -171,7 +166,7 @@ public sealed class AudioSystem : IDisposable
         int kept = 0;
         for (int i = 0; i < _trackNames.Count; i++)
         {
-            if (_backend.TryLoadTrack(content, _contentDirectory, _trackNames[i]))
+            if (_backend.TryLoadTrack(_contentDirectory, _trackNames[i]))
             {
                 _trackNames[kept++] = _trackNames[i];
             }
@@ -317,6 +312,8 @@ public sealed class AudioSystem : IDisposable
     {
         if (_backend.TrackCount == 0 || !_available || !_musicEnabled) return;
 
+        _backend.Update();   // pump the streaming backend (refill buffers, detect end-of-track)
+
         if (!_started)
         {
             _started = true;
@@ -347,15 +344,7 @@ public sealed class AudioSystem : IDisposable
         _backend.Dispose();
     }
 
-    private static IMusicBackend CreateBackend(ILogger logger)
-    {
-        if (OperatingSystem.IsMacOS())
-        {
-            return new MacOsMusicBackend(logger);
-        }
-
-        return new MonoGameMusicBackend(logger);
-    }
+    private static IMusicBackend CreateBackend(ILogger logger) => new OpenAlMusicBackend(logger);
 
     private void ApplyVolume()
     {

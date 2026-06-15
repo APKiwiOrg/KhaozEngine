@@ -5,6 +5,25 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 5.18.0-experimental (custom 5.x line)
+
+### KhaozEngine.Render3D (additive)
+
+- **Procedural mesh primitives.** `MeshPrimitives` gains `Cylinder`, `Cone`, `Pyramid`, `Wedge`, and `Sphere`
+  alongside the existing `Box`/`Tile`, all returning a `GltfMesh` with white vertex colour and CCW outward
+  winding. `Cylinder(radius, height, segments, capped)` and `Cone(...)` seat their base at y=0 along +Y with
+  smooth radial side normals and flat center-fan caps (`capped:false` drops the caps). `Pyramid(baseSize,
+  height)` and `Wedge(size, height)` are flat-shaded solids (square-based pyramid; right-triangular prism ramp
+  rising -Z->+Z). `Sphere(radius, rings, segments)` is a UV sphere centered at the origin with smooth radial
+  normals. Degenerate args clamp (`segments>=3`, `rings>=2`).
+- **`MeshBuilder`** composes transformed, optionally re-coloured `GltfMesh` parts into a single mesh, so a game
+  can build a multi-part, multi-colour silhouette in code and draw it as one tinted instance. `Add(part,
+  transform)` keeps the part's colours; `Add(part, transform, color)` bakes a colour onto the appended verts.
+  Positions transform by `Vector3.Transform`; normals by the inverse-transpose of the linear 3x3 (correct under
+  non-uniform scale, falling back to the raw linear part if non-invertible) then re-normalized; indices offset
+  by the running vertex count. `Build()` throws if the total exceeds the `ushort` vertex ceiling (65535).
+  Fluent. `VertexCount`/`IndexCount` expose the running totals.
+
 ## 5.17.0-experimental (custom 5.x line)
 
 ### KhaozEngine.Gui (additive)

@@ -5,6 +5,18 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 5.8.1-experimental (custom 5.x line)
+
+### KhaozEngine.Render2D (fix)
+
+- `SpriteBatch` now preserves **submission order across textures**. It previously grouped all quads globally
+  per texture and flushed those groups in first-seen order, so a draw issued later could paint *under* or
+  *over* the wrong layer whenever textures interleaved (text vs. solid-fill rectangles). Visible symptom: a
+  menu's text bled through a modal panel drawn on top of it, and in-screen overlays (dropdown popup, tooltip)
+  could land beneath later fills. Quads are now coalesced into submission-ordered *runs* — only consecutive
+  same-texture draws merge — so painter's order is correct. Pure run-coalescing logic is headless-tested
+  (`QuadRunBuilder`); no API change.
+
 ## 5.8.0-experimental (custom 5.x line)
 
 The heavy `KhaozEngine.UI` widgets ported onto the custom stack: `Dropdown`, `TextInput`, `Tooltip`,

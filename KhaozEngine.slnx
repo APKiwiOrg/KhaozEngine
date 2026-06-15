@@ -32,6 +32,7 @@
   <Project Path="Render2DSample/Render2DSample.csproj" />
   <Project Path="WindowingSample/WindowingSample.csproj" />
   <Project Path="GuiSample/GuiSample.csproj" />
+  <Project Path="MiniGame/MiniGame.csproj" />
   <Project Path="Render3DSample/Render3DSample.csproj" />
   <Project Path="tools/PixelLabSheetAssembler/PixelLabSheetAssembler.csproj" />
   <Project Path="tools/PixelLabSheetAssembler.Tests/PixelLabSheetAssembler.Tests.csproj" />

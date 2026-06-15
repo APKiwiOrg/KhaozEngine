@@ -62,10 +62,14 @@ Caveats to clear during productization: Metal-only so far (per-backend clip-Y + 
 SDL2 bundled per-sample; production audio should bundle **openal-soft** (macOS's system OpenAL is deprecated,
 same as its OpenGL).
 
-**Next milestone:** **stand up a tiny end-to-end game on the 5.x stack** — a minimal playable scene wiring
-Windowing + Render2D + Gui + Audio together (the foundation is now complete for a 2D game). In parallel, port
-the wider `UI` widget set and fill in input breadth (gamepad/touch/virtual-resolution) as the game needs it.
-Then migrate a real game (Hardpoint/Nullwake/SpaceGame).
+**End-to-end proven:** the `MiniGame` sample ("Catcher" — title menu, falling-block gameplay with score/lives
+HUD, modal game-over, looping generated music) runs the whole 5.x stack (Windowing + Render2D + Gui + Audio)
+as a real game loop, no MonoGame. The foundation is complete for a 2D game.
+
+**Next milestone:** **port the wider `UI` widget set** off MonoGame (the 4.x `KhaozEngine.UI` is ~3,800 lines:
+Slider/Dropdown/ScrollablePanel/PopupPanel/TextInput/Tooltip/...) onto `Gui` + `Pointer`, and fill in input
+breadth (gamepad/touch/virtual-resolution) as needed. Then migrate a real game
+(Hardpoint/Nullwake/SpaceGame).
 
 ### Phased plan
 

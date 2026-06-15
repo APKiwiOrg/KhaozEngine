@@ -5,6 +5,13 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 5.3.1-experimental (custom 5.x line)
+
+- **Fix (`KhaozEngine.Audio`):** `AudioSystem`'s default constructor no longer throws when no OpenAL
+  implementation / audio device is available (headless CI, servers, machines without sound) - it falls back
+  to a silent `NullMusicBackend` and logs a warning. A real device still gets the OpenAL backend. (This was
+  red on the Linux CI runner, which has no OpenAL.)
+
 ## 5.3.0-experimental (custom 5.x line)
 
 `KhaozEngine.Audio` **graduates from the 4.x MonoGame line to the 5.x custom stack** (the first existing

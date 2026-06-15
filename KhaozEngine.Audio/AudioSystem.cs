@@ -344,7 +344,20 @@ public sealed class AudioSystem : IDisposable
         _backend.Dispose();
     }
 
-    private static IMusicBackend CreateBackend(ILogger logger) => new OpenAlMusicBackend(logger);
+    private static IMusicBackend CreateBackend(ILogger logger)
+    {
+        try
+        {
+            return new OpenAlMusicBackend(logger);
+        }
+        catch (Exception ex)
+        {
+            // No OpenAL implementation / audio device (headless CI, server, no sound card): stay silent
+            // rather than crash. A real device on the player's machine still gets the OpenAL backend.
+            logger.Warn("audio unavailable; using a silent backend.", ex);
+            return new NullMusicBackend();
+        }
+    }
 
     private void ApplyVolume()
     {

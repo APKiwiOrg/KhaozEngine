@@ -2,12 +2,13 @@ namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
     /// GLSL #version 450 shader sources, compiled at load via Veldrid.SPIRV (GLSL -> SPIR-V -> MSL/HLSL/GLSL).
-    /// The model pass writes 3 MRT color targets (lit color, encoded normal, linear-ish depth) so the edge
-    /// pass needs no depth-texture sampling (portable on the Metal backend).
+    /// Post shaders use Veldrid's separate texture2D + sampler style (not combined sampler2D) so the
+    /// ResourceLayout binding order is unambiguous. The model pass writes 3 MRT color targets
+    /// (lit color, encoded normal, linear-ish depth) so the edge pass never samples a depth texture.
     /// </summary>
     internal static class ShaderSources
     {
-        // ---- Model pass ----
+        // ---- Model pass (matrices uploaded transposed: GLSL column-vector math) ----
         public const string ModelVert = @"#version 450
 layout(set=0, binding=0) uniform Cam { mat4 ViewProj; mat4 Model; };
 layout(location=0) in vec3 Position;
@@ -59,14 +60,15 @@ void main() {
 
         // ---- Palette quantize (+ optional Bayer dither) ----
         public const string PaletteFrag = @"#version 450
-layout(set=0, binding=0) uniform sampler2D Src;
-layout(set=0, binding=1) uniform Pal { vec4 Colors[64]; vec4 Info; }; // Info.x=count, .y=ditherOn
+layout(set=0, binding=0) uniform texture2D Src;
+layout(set=0, binding=1) uniform sampler Samp;
+layout(set=0, binding=2) uniform Pal { vec4 Colors[64]; vec4 Info; }; // Info.x=count, .y=ditherOn
 layout(location=0) in vec2 vUv;
 layout(location=0) out vec4 oColor;
 const float bayer[16] = float[16](
     0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
 void main() {
-    vec3 c = texture(Src, vUv).rgb;
+    vec3 c = texture(sampler2D(Src, Samp), vUv).rgb;
     if (Info.y > 0.5) {
         ivec2 px = ivec2(gl_FragCoord.xy);
         float th = (bayer[(px.y & 3) * 4 + (px.x & 3)] / 16.0 - 0.5);
@@ -84,21 +86,22 @@ void main() {
 
         // ---- Depth/normal edge outline ----
         public const string EdgeFrag = @"#version 450
-layout(set=0, binding=0) uniform sampler2D Color;
-layout(set=0, binding=1) uniform sampler2D NormalTex;
-layout(set=0, binding=2) uniform sampler2D DepthTex;
-layout(set=0, binding=3) uniform Edge { vec4 OutlineColor; vec4 Texel; vec4 Thresh; }; // Texel.xy=1/size; Thresh.x=depth,.y=normal
+layout(set=0, binding=0) uniform texture2D ColorTex;
+layout(set=0, binding=1) uniform texture2D NormalTex;
+layout(set=0, binding=2) uniform texture2D DepthTex;
+layout(set=0, binding=3) uniform sampler Samp;
+layout(set=0, binding=4) uniform Edge { vec4 OutlineColor; vec4 Texel; vec4 Thresh; }; // Texel.xy=1/size; Thresh.x=depth,.y=normal
 layout(location=0) in vec2 vUv;
 layout(location=0) out vec4 oColor;
 void main() {
-    vec3 base = texture(Color, vUv).rgb;
-    float d0 = texture(DepthTex, vUv).r;
-    vec3 n0 = texture(NormalTex, vUv).rgb * 2.0 - 1.0;
+    vec3 base = texture(sampler2D(ColorTex, Samp), vUv).rgb;
+    float d0 = texture(sampler2D(DepthTex, Samp), vUv).r;
+    vec3 n0 = texture(sampler2D(NormalTex, Samp), vUv).rgb * 2.0 - 1.0;
     float edge = 0.0;
     vec2 offs[4] = vec2[4](vec2(Texel.x, 0), vec2(-Texel.x, 0), vec2(0, Texel.y), vec2(0, -Texel.y));
     for (int i = 0; i < 4; i++) {
-        float d = texture(DepthTex, vUv + offs[i]).r;
-        vec3 n = texture(NormalTex, vUv + offs[i]).rgb * 2.0 - 1.0;
+        float d = texture(sampler2D(DepthTex, Samp), vUv + offs[i]).r;
+        vec3 n = texture(sampler2D(NormalTex, Samp), vUv + offs[i]).rgb * 2.0 - 1.0;
         if (abs(d - d0) > Thresh.x) edge = 1.0;
         if ((1.0 - dot(n, n0)) > Thresh.y) edge = 1.0;
     }
@@ -107,9 +110,10 @@ void main() {
 
         // ---- Point upscale blit ----
         public const string BlitFrag = @"#version 450
-layout(set=0, binding=0) uniform sampler2D Src;
+layout(set=0, binding=0) uniform texture2D Src;
+layout(set=0, binding=1) uniform sampler Samp;
 layout(location=0) in vec2 vUv;
 layout(location=0) out vec4 oColor;
-void main() { oColor = texture(Src, vUv); }";
+void main() { oColor = texture(sampler2D(Src, Samp), vUv); }";
     }
 }

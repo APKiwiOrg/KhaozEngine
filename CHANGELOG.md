@@ -5,6 +5,22 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 5.17.0-experimental (custom 5.x line)
+
+### KhaozEngine.Gui (additive)
+
+- **Immediate-mode UI surface**: `GuiSurface` lets a game running a single `window.Run(frame => ...)` loop
+  author a HUD-over-3D and full-screen menus with one call site per widget instead of hand-rolling
+  `SpriteBatch` fills + per-widget `Pointer.BlockRegion` bookkeeping. `Begin(batch, pointer)` (the `batch` may
+  be `null` for headless tests) then `Panel`/`Swatch`/`Label` (positioned or box-aligned via `GuiAlign`) and
+  `Button(...) -> bool` (hover/press/disabled/selected visuals, fires on the press-origin `IsTapIn` invariant).
+  `PointerCaptured` reports whether the pointer's press-origin landed on any widget this frame, centralizing the
+  click-through gate that keeps a tap on a button from leaking to the world. `GuiStyle` carries the default
+  palette (matching the retained `Button`) and is overridable per call or on the surface. Draws through the
+  existing `GuiDraw` primitives and reuses the caller's begun batch so it composes with the design viewport for
+  free. Headless-tested (interaction + capture, no GPU); demoed in `GuiSample`'s Immediate screen. From the
+  Hardpoint testbed (the flagged immediate-mode-Gui engine-first candidate).
+
 ## 5.16.0-experimental (custom 5.x line)
 
 ### KhaozEngine.Render3D (additive)

@@ -66,13 +66,29 @@ same as its OpenGL).
 HUD, modal game-over, looping generated music) runs the whole 5.x stack (Windowing + Render2D + Gui + Audio)
 as a real game loop, no MonoGame. The foundation is complete for a 2D game.
 
-**Next milestone:** the widget set is now ported — core (`Label`/`Panel`/`Slider`/`Toggle` + `TextLayout`) in
-`5.7.0-experimental`, the heavy ones (`Dropdown`/`TextInput`/`Tooltip`/`PopupPanel`/`ScrollablePanel` + the
-`SpriteBatch` scissor clip + `TextEntry`) in `5.8.0-experimental`. Remaining before a game migration:
-**visually verify the GPU scissor clip on a real display** (built Metal-only without a screen), then fill in
-**input breadth** (gamepad/touch/pinch, virtual-resolution transforms) and pause/timescale. Then migrate a
-real game (Hardpoint/Nullwake/SpaceGame). Richer text entry (IME/locale/dead-keys) is a later nicety — the
-current `TextEntry` is US-layout key-mapping.
+**Next milestones — engine maturity before any game migration.** The widget set is ported (core in
+`5.7.0-experimental`, heavy + `SpriteBatch` scissor clip + `TextEntry` in `5.8.0-experimental`; cross-texture
+painter's order fixed in `5.8.1-experimental`). Rather than migrate a game onto an immature stack, build the
+engine to a real, resolution-independent, layout-capable state first. Agreed order, one at a time:
+
+1. **Resolution independence + layout (current).** A design-viewport / virtual-resolution + scale-matrix story
+   so content scales, centers, and letterboxes on window resize (currently everything is hard pixels at
+   960x540 and ignores resize); a layout/anchoring system (anchors, align, stretch, dock-to-center, margins)
+   so widgets stop taking absolute `Rect`s; and a `Screen` background/clear convention (the non-modal
+   `WidgetsScreen` showing the menu through its gaps is this gap). Mirrors the proven 4.x `VirtualResolution` /
+   `IDesignViewport`, rebuilt clean (game coupling dropped). Headless-testable. Hit-testing must resolve in
+   design space (under the scale matrix).
+2. **Cross-platform backends.** Un-Metal-only: backend selection (Vulkan / D3D11 / GL / Metal) via Veldrid so
+   Render2D/Render3D/Snapshot run on Windows/Linux (and later mobile); verify the SPIR-V shaders cross-compile
+   per backend; per-backend clip-Y + MRT-clear handling. The biggest gap between proof-of-concept and a real
+   cross-platform engine.
+3. **Input breadth.** Gamepad + touch on `InputState`; a gesture seam (tap/drag/pinch) over the design
+   viewport; pause/timescale. Builds on the existing `InputState`/`Pointer`.
+4. **Native packaging / distribution.** SDL2 + openal-soft bundled as RID-specific natives (macOS system
+   OpenAL/GL are deprecated) so a clean checkout runs with one command, no env vars or manual copies.
+
+Then migrate a real game (Hardpoint/Nullwake/SpaceGame) onto a stack that's actually ready. Richer text entry
+(IME/locale/dead-keys) stays a later nicety — the current `TextEntry` is US-layout key-mapping.
 
 ### Phased plan
 

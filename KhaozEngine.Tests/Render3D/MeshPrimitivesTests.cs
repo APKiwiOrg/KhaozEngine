@@ -211,6 +211,73 @@ namespace KhaozEngine.Tests.Render3D
             }
         }
 
+        // --- normal DIRECTION regression: stored normals must point OUTWARD (the renderer uses the
+        //     stored normal for shading; an inward normal mis-shades the face). The earlier tests only
+        //     checked normal LENGTH, which is why the inward-normal bug on Pyramid/Wedge slipped through. ---
+
+        /// <summary>
+        /// For a convex primitive, every triangle's stored per-vertex normal should point away from the mesh
+        /// centroid: dot(normal, faceCentroid - meshCentroid) &gt; 0 for each of the triangle's three vertices.
+        /// </summary>
+        static void AssertAllFaceNormalsOutward(GltfMesh mesh)
+        {
+            var meshCentroid = Vector3.Zero;
+            foreach (var v in mesh.Vertices)
+                meshCentroid += v.Position;
+            meshCentroid /= mesh.Vertices.Length;
+
+            for (int t = 0; t < mesh.Indices.Length; t += 3)
+            {
+                ushort i0 = mesh.Indices[t], i1 = mesh.Indices[t + 1], i2 = mesh.Indices[t + 2];
+                var p0 = mesh.Vertices[i0].Position;
+                var p1 = mesh.Vertices[i1].Position;
+                var p2 = mesh.Vertices[i2].Position;
+                var faceCentroid = (p0 + p1 + p2) / 3f;
+                var outward = faceCentroid - meshCentroid;
+
+                foreach (var vi in new[] { i0, i1, i2 })
+                {
+                    var n = mesh.Vertices[vi].Normal;
+                    Assert.True(Vector3.Dot(n, outward) > 1e-4f,
+                        $"Triangle starting at index {t}: vertex {vi} normal {n} points inward " +
+                        $"(dot with outward {outward} = {Vector3.Dot(n, outward)}).");
+                }
+            }
+        }
+
+        [Fact]
+        public void Box_Face_Normals_Point_Outward()
+        {
+            // regression guard: Box already stores outward normals; this must pass.
+            AssertAllFaceNormalsOutward(MeshPrimitives.Box());
+        }
+
+        [Fact]
+        public void Pyramid_Face_Normals_Point_Outward()
+        {
+            AssertAllFaceNormalsOutward(MeshPrimitives.Pyramid());
+        }
+
+        [Fact]
+        public void Wedge_Face_Normals_Point_Outward()
+        {
+            AssertAllFaceNormalsOutward(MeshPrimitives.Wedge());
+        }
+
+        [Fact]
+        public void Cylinder_Cap_Normals_Point_Outward()
+        {
+            // ±Y cap triangles: dot of the flat cap normal with (faceCentroid - meshCentroid) > 0.
+            AssertAllFaceNormalsOutward(MeshPrimitives.Cylinder());
+        }
+
+        [Fact]
+        public void Cone_Cap_Normals_Point_Outward()
+        {
+            // the -Y base cap plus the outward/up side normals.
+            AssertAllFaceNormalsOutward(MeshPrimitives.Cone());
+        }
+
         [Fact]
         public void Degenerate_Segments_And_Rings_Are_Clamped()
         {

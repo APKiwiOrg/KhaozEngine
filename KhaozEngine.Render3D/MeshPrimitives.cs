@@ -141,11 +141,12 @@ namespace KhaozEngine.Render3D
                 inds.Add(baseIdx); inds.Add((ushort)(baseIdx + 1)); inds.Add((ushort)(baseIdx + 2));
             }
 
-            // four sides (CCW outward): each base edge then apex
-            Tri(c0, c1, apex); // -Z
-            Tri(c1, c2, apex); // +X
-            Tri(c2, c3, apex); // +Z
-            Tri(c3, c0, apex); // -X
+            // four sides: swap the first two corners so the computed normal (Cross(b-a, c-a))
+            // points OUTWARD away from the axis (the un-swapped order stored inward normals).
+            Tri(c1, c0, apex); // -Z
+            Tri(c2, c1, apex); // +X
+            Tri(c3, c2, apex); // +Z
+            Tri(c0, c3, apex); // -X
 
             // base quad (-Y, CCW seen from below)
             var nDown = -Vector3.UnitY;
@@ -202,15 +203,15 @@ namespace KhaozEngine.Render3D
                 inds.Add(baseIdx); inds.Add((ushort)(baseIdx + 2)); inds.Add((ushort)(baseIdx + 3));
             }
 
-            // bottom (-Y), CCW from below: a, d, c, b
-            Quad(a, d, c, b);
-            // back wall (+Z), vertical, CCW from outside (+Z): d, c -> f, e ; outward +Z
-            Quad(c, d, e, f);
-            // sloped top: from low edge (a,b at -Z) up to high edge (e,f at +Z), normal points up/-Z-ish
+            // bottom (-Y outward): order gives Cross(q-p, s-p) pointing -Y.
+            Quad(d, a, b, c);
+            // back wall (vertical, +Z outward): order gives normal pointing +Z.
+            Quad(d, c, f, e);
+            // sloped top: from low edge (a,b at -Z) up to high edge (e,f at +Z), normal points up/-Z-ish (already outward)
             Quad(b, a, e, f);
-            // side -X triangle (a, d, e), outward -X
-            Tri(d, a, e);
-            // side +X triangle (b, c, f), outward +X
+            // side -X triangle (-X outward): order gives normal pointing -X.
+            Tri(a, d, e);
+            // side +X triangle (b, c, f), outward +X (already correct)
             Tri(b, f, c);
 
             return new GltfMesh(verts.ToArray(), inds.ToArray());

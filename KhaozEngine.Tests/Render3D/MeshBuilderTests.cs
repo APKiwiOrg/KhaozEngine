@@ -110,17 +110,33 @@ namespace KhaozEngine.Tests.Render3D
             Assert.True(Vector3.Dot(n, Vector3.UnitY) > 0.99f);
         }
 
-        [Fact]
-        public void Build_Throws_When_Exceeding_65535_Vertices()
+        static GltfMesh FlatPart(int vertexCount)
         {
-            var builder = new MeshBuilder();
-            var sphere = MeshPrimitives.Sphere(0.5f, rings: 30, segments: 60);
-            // accumulate parts until we cross the ushort ceiling
-            int needed = (ushort.MaxValue / sphere.Vertices.Length) + 2;
-            for (int i = 0; i < needed; i++)
-                builder.Add(sphere, Matrix4x4.CreateTranslation(i, 0, 0));
+            var verts = new ModelVertex[vertexCount];
+            for (int i = 0; i < vertexCount; i++)
+                verts[i] = new ModelVertex(Vector3.Zero, Vector3.UnitY, Vector4.One);
+            return new GltfMesh(verts, System.Array.Empty<ushort>());
+        }
 
-            Assert.True(builder.VertexCount > ushort.MaxValue);
+        [Fact]
+        public void Build_Allows_Exactly_65536_Vertices()
+        {
+            // indices 0..65535 all fit in a ushort, so 65536 vertices is the valid maximum.
+            var mesh = new MeshBuilder()
+                .Add(FlatPart(ushort.MaxValue + 1), Matrix4x4.Identity)
+                .Build();
+            Assert.Equal(ushort.MaxValue + 1, mesh.Vertices.Length);
+        }
+
+        [Fact]
+        public void Build_Throws_When_Exceeding_65536_Vertices()
+        {
+            // 65537 vertices would need index 65536, which overflows ushort.
+            var builder = new MeshBuilder()
+                .Add(FlatPart(ushort.MaxValue + 1), Matrix4x4.Identity)
+                .Add(FlatPart(1), Matrix4x4.Identity);
+
+            Assert.Equal(ushort.MaxValue + 2, builder.VertexCount);
             Assert.Throws<InvalidOperationException>(() => builder.Build());
         }
 

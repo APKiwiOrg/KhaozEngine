@@ -68,12 +68,16 @@ namespace KhaozEngine.Render3D
             return linear; // degenerate: best-effort fall back to the raw linear part.
         }
 
-        /// <summary>Returns the accumulated mesh. Throws if the vertex total exceeds <see cref="ushort.MaxValue"/> (index type ceiling).</summary>
+        /// <summary>
+        /// Returns the accumulated mesh. A mesh with exactly <c>ushort.MaxValue + 1</c> (65536) vertices is valid
+        /// because indices 0..65535 all fit in a <see cref="ushort"/>; this throws only at 65537+ vertices, where
+        /// the highest index would overflow the index type.
+        /// </summary>
         public GltfMesh Build()
         {
-            if (_vertices.Count > ushort.MaxValue)
+            if (_vertices.Count > ushort.MaxValue + 1)
                 throw new InvalidOperationException(
-                    $"MeshBuilder accumulated {_vertices.Count} vertices, which exceeds the ushort index ceiling ({ushort.MaxValue}).");
+                    $"MeshBuilder accumulated {_vertices.Count} vertices, which exceeds the ushort index ceiling ({ushort.MaxValue + 1}).");
 
             return new GltfMesh(_vertices.ToArray(), _indices.ToArray());
         }

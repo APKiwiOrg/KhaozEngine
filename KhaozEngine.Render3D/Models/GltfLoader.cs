@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using SharpGLTF.Schema2;
+// KhaozEngine.Render3D now defines its own Material struct; alias the glTF one to disambiguate.
+using GltfMaterial = SharpGLTF.Schema2.Material;
 
 namespace KhaozEngine.Render3D
 {
@@ -54,7 +56,7 @@ namespace KhaozEngine.Render3D
             return new GltfMesh(verts, indices.ToArray());
         }
 
-        static Vector4 ReadBaseColor(Material? mat)
+        static Vector4 ReadBaseColor(GltfMaterial? mat)
         {
             var fallback = new Vector4(0.8f, 0.8f, 0.8f, 1f);
             if (mat == null) return fallback;

@@ -58,6 +58,10 @@ namespace KhaozEngine.Render3D
         /// <summary>Queue one instance with a per-instance RGBA <paramref name="tint"/> that multiplies the lit color.</summary>
         public void Draw(MeshHandle mesh, Matrix4x4 world, Vector4 tint) => _instances.Add(mesh, world, tint);
 
+        /// <summary>Queue one instance with a per-instance <paramref name="tint"/> and <paramref name="material"/>
+        /// (emissive glow + specular).</summary>
+        public void Draw(MeshHandle mesh, Matrix4x4 world, Vector4 tint, Material material) => _instances.Add(mesh, world, tint, material);
+
         void EnsureSize(int viewportW, int viewportH)
         {
             if (_res.Width != Post.RenderWidth || _res.Height != Post.RenderHeight)
@@ -80,10 +84,11 @@ namespace KhaozEngine.Render3D
 
             _model.BeginModelPass(cl, _res, Post);
             Matrix4x4 vp = Camera.ViewProjection;
+            Vector3 eye = Camera.Eye;
             foreach (var inst in _instances.Items)
             {
                 var m = _meshes[inst.Mesh.Index];
-                _model.DrawInstance(cl, m.Vb, m.Ib, m.IndexCount, vp, inst.World, Post, inst.Tint);
+                _model.DrawInstance(cl, m.Vb, m.Ib, m.IndexCount, vp, inst.World, Post, inst.Tint, eye, inst.Material);
             }
 
             _post.Run(cl, _res, target, Post);

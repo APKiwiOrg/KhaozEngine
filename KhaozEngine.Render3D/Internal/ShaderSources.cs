@@ -14,6 +14,7 @@ namespace KhaozEngine.Render3D.Internal
 layout(set=0, binding=0) uniform U {
     mat4 ViewProj; mat4 Model;
     vec4 LightDir; vec4 LightColor; vec4 Ambient; vec4 Params; vec4 Tint;
+    vec4 FillDir; vec4 FillColor; vec4 CameraPos; vec4 Emissive; vec4 SpecParams;
 };
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
@@ -21,35 +22,50 @@ layout(location=2) in vec4 Color;
 layout(location=0) out vec3 vNormalW;
 layout(location=1) out vec4 vColor;
 layout(location=2) out float vDepth;
+layout(location=3) out vec3 vWorldPos;
 void main() {
     vec4 world = Model * vec4(Position, 1.0);
     gl_Position = ViewProj * world;
     vNormalW = normalize(mat3(Model) * Normal);
     vColor = Color;
     vDepth = gl_Position.z / gl_Position.w; // 0..1 in Veldrid clip space; linear for ortho
+    vWorldPos = world.xyz;
 }";
 
         public const string ModelFrag = @"#version 450
 layout(set=0, binding=0) uniform U {
     mat4 ViewProj; mat4 Model;
-    vec4 LightDir;   // xyz = travel direction
+    vec4 LightDir;   // xyz = key light travel direction
     vec4 LightColor;
     vec4 Ambient;
     vec4 Params;     // x = CelBands
     vec4 Tint;       // per-instance RGBA, multiplies the lit color
+    vec4 FillDir;    // xyz = fill light travel direction
+    vec4 FillColor;  // fill light colour
+    vec4 CameraPos;  // xyz = eye position
+    vec4 Emissive;   // per-instance self-illumination, added after lighting
+    vec4 SpecParams; // x = specular strength, y = shininess exponent
 };
 layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;
 layout(location=2) in float vDepth;
+layout(location=3) in vec3 vWorldPos;
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
 void main() {
     vec3 N = normalize(vNormalW);
-    float ndl = max(dot(N, -normalize(LightDir.xyz)), 0.0);
+    vec3 albedo = vColor.rgb * Tint.rgb;
+    float ndlKey  = max(dot(N, -normalize(LightDir.xyz)), 0.0);
+    float ndlFill = max(dot(N, -normalize(FillDir.xyz)), 0.0);
     float bands = Params.x;
-    if (bands >= 1.0) ndl = floor(ndl * bands + 0.5) / bands; // cel
-    vec3 lit = vColor.rgb * Tint.rgb * (Ambient.rgb + LightColor.rgb * ndl);
+    if (bands >= 1.0) { ndlKey = floor(ndlKey*bands+0.5)/bands; ndlFill = floor(ndlFill*bands+0.5)/bands; }
+    vec3 diffuse = LightColor.rgb*ndlKey + FillColor.rgb*ndlFill;
+    // Blinn-Phong specular from the key light only, gated by key ndl so back faces don't shine.
+    vec3 V = normalize(CameraPos.xyz - vWorldPos);
+    vec3 H = normalize(-normalize(LightDir.xyz) + V);
+    float spec = pow(max(dot(N,H),0.0), max(SpecParams.y,1.0)) * SpecParams.x * step(0.0001, ndlKey);
+    vec3 lit = albedo * (Ambient.rgb + diffuse) + LightColor.rgb*spec + Emissive.rgb;
     oColor = vec4(lit, 1.0);
     oNormal = vec4(N * 0.5 + 0.5, 1.0);
     oDepth = vec4(vDepth, vDepth, vDepth, 1.0);

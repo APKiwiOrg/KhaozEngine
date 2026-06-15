@@ -5,6 +5,16 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 5.15.0-experimental (custom 5.x line)
+
+### KhaozEngine.Render3D (additive)
+
+- **`IsoCamera3D.Frame(center, size, margin = 1.1f)`**: aim the camera at a bounds center and size `OrthoSize`
+  so an axis-aligned bounds fits the viewport (projects the 8 corners into view space, fits both axes against
+  the current `AspectRatio`/`Zoom`). Replaces the per-game "OrthoSize = max(w,h)*spacing*k" guesswork with a
+  correct fit. Pure math, headless-tested (tight fit at margin 1, slack with margin > 1, wide-aspect). From
+  the Hardpoint testbed (board framing).
+
 ## 5.14.0-experimental (custom 5.x line)
 
 Engine maturity from the Hardpoint 3D testbed: per-instance tint + code-built mesh primitives, so one mesh

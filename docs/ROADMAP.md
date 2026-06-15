@@ -42,6 +42,29 @@ via AOT, and ~21 existing C# packages + 3 games would be thrown away by a rewrit
 - **Audio:** `OpenAL` via `Silk.NET.OpenAL` (or a small custom backend) replaces MonoGame audio.
 - **Texture/content:** `StbImageSharp` etc.
 
+### Current status (as of `5.3.0-experimental`)
+
+**Every subsystem needed to drop MonoGame is now proven on the custom stack — no feasibility unknowns
+remain; the rest is productization + porting.** Shipped 5.x packages (shared version, currently
+`5.3.0-experimental`):
+
+| Subsystem | Status |
+|---|---|
+| 3D rendering | shipped — `KhaozEngine.Render3D` (IsoCamera3D, runtime glTF lit/cel, PixelPostProcess, starfield) |
+| 2D rendering | shipped — `KhaozEngine.Render2D` (SpriteBatch, Camera2D, Texture2D + PNG) |
+| Text | shipped — `SpriteFont` (runtime TTF via stb_truetype) in Render2D |
+| Audio | shipped — `KhaozEngine.Audio` graduated to OpenAL streaming (WAV/OGG/MP3) |
+| Windowing + input | proven — SDL2 via the renderer hosts (not yet a shared package; raw input not yet engine-native) |
+| Math | done — `System.Numerics` |
+
+Caveats to clear during productization: Metal-only so far (per-backend clip-Y + MRT-clear handling pending);
+each renderer host bundles SDL2 (no shared platform package yet); production audio should bundle **openal-soft**
+(macOS's system OpenAL is deprecated, same as its OpenGL).
+
+**Next milestone:** the **windowing + input foundation** — a shared platform layer (one SDL2 window/host for
+both renderers) and an engine-native input layer to graduate `KhaozEngine.Input` off MonoGame. This is the
+next blocker for porting Screens/UI and migrating the games.
+
 ### Phased plan
 
 1. **Render3D POC (shipped, `5.1.0-experimental`).** `KhaozEngine.Render3D`: `IsoCamera3D`, runtime glTF

@@ -42,11 +42,11 @@ via AOT, and ~21 existing C# packages + 3 games would be thrown away by a rewrit
 - **Audio:** `OpenAL` via `Silk.NET.OpenAL` (or a small custom backend) replaces MonoGame audio.
 - **Texture/content:** `StbImageSharp` etc.
 
-### Current status (as of `5.8.1-experimental`)
+### Current status (as of `5.9.0-experimental`)
 
 **Every subsystem needed to drop MonoGame is now proven on the custom stack — no feasibility unknowns
 remain; the rest is productization + porting.** Shipped 5.x packages (shared version, currently
-`5.8.1-experimental`):
+`5.9.0-experimental`):
 
 | Subsystem | Status |
 |---|---|
@@ -71,17 +71,15 @@ as a real game loop, no MonoGame. The foundation is complete for a 2D game.
 painter's order fixed in `5.8.1-experimental`). Rather than migrate a game onto an immature stack, build the
 engine to a real, resolution-independent, layout-capable state first. Agreed order, one at a time:
 
-1. **Resolution independence + layout (current).** A design-viewport / virtual-resolution + scale-matrix story
-   so content scales, centers, and letterboxes on window resize (currently everything is hard pixels at
-   960x540 and ignores resize); a layout/anchoring system (anchors, align, stretch, dock-to-center, margins)
-   so widgets stop taking absolute `Rect`s; and a `Screen` background/clear convention (the non-modal
-   `WidgetsScreen` showing the menu through its gaps is this gap). Mirrors the proven 4.x `VirtualResolution` /
-   `IDesignViewport`, rebuilt clean (game coupling dropped). Headless-testable. Hit-testing must resolve in
-   design space (under the scale matrix).
-2. **Cross-platform backends.** Un-Metal-only: backend selection (Vulkan / D3D11 / GL / Metal) via Veldrid so
-   Render2D/Render3D/Snapshot run on Windows/Linux (and later mobile); verify the SPIR-V shaders cross-compile
-   per backend; per-backend clip-Y + MRT-clear handling. The biggest gap between proof-of-concept and a real
-   cross-platform engine.
+1. **Resolution independence + layout (shipped, `5.9.0-experimental`).** `DesignViewport`/`IDesignViewport`
+   (Fit/Fill/Stretch, letterbox + centering, screen<->design mapping, `GetClipProjection`); design-space
+   `Pointer`/`ScreenStack` hit-testing; `SpriteBatch.Begin(IDesignViewport)`; `Layout.Resolve` anchoring
+   (`TopLeft`..`BottomRight`/`Center`/`Stretch`); `Screen.BackgroundColor`. `GuiSample` scales/centers/
+   letterboxes on resize with aligned hit-testing. All headless-tested.
+2. **Cross-platform backends (current).** Un-Metal-only: backend selection (Vulkan / D3D11 / GL / Metal) via
+   Veldrid so Render2D/Render3D/Snapshot run on Windows/Linux (and later mobile); verify the SPIR-V shaders
+   cross-compile per backend; per-backend clip-Y + MRT-clear handling. The biggest gap between
+   proof-of-concept and a real cross-platform engine.
 3. **Input breadth.** Gamepad + touch on `InputState`; a gesture seam (tap/drag/pinch) over the design
    viewport; pause/timescale. Builds on the existing `InputState`/`Pointer`.
 4. **Native packaging / distribution.** SDL2 + openal-soft bundled as RID-specific natives (macOS system
@@ -114,7 +112,7 @@ Then migrate a real game (Hardpoint/Nullwake/SpaceGame) onto a stack that's actu
 - **4.x line** — the existing MonoGame packages; one shared version in `Directory.Build.props`; keeps
   shipping 4.8.0, 4.9.0, ... normally and in parallel.
 - **5.x experimental line** — the custom-stack packages (`Render3D`, `Render2D`, ...) share a second version,
-  `Directory.Build.props` `<KhaozEngine5xVersion>` (currently `5.8.1-experimental`), and release together
+  `Directory.Build.props` `<KhaozEngine5xVersion>` (currently `5.9.0-experimental`), and release together
   under one `vX.Y.Z-experimental` tag. (The first two Render3D releases, 5.0.0/5.1.0, predate this and were
   per-package.) The doc-version guard checks the shared 4.x version only; the 5.x line is exempt (like
   consumer pins). Packages graduate

@@ -125,6 +125,12 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
         /// <summary>Begin a batch in screen space (pixels, top-left origin).</summary>
         public void Begin() { _vp = Matrix4x4.CreateOrthographicOffCenter(0, _vw, _vh, 0, -1, 1); ResetBatches(); }
 
+        /// <summary>
+        /// Begin a batch in design space through <paramref name="viewport"/>: subsequent draws use design
+        /// coordinates and are scaled, centered, and letterboxed to the current window for the viewport's mode.
+        /// </summary>
+        public void Begin(Windowing.IDesignViewport viewport) { _vp = viewport.GetClipProjection(_vw, _vh); ResetBatches(); }
+
         public void Draw(Texture2D tex, Vector2 position, Vector4 color) =>
             Draw(tex, new Vector4(position.X, position.Y, tex.Width, tex.Height), new Vector4(0, 0, 1, 1), color);
 

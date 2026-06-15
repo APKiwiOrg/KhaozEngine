@@ -1,4 +1,6 @@
+using System.Numerics;
 using KhaozEngine.Render2D;
+using KhaozEngine.Windowing;
 
 namespace KhaozEngine.Gui
 {
@@ -30,6 +32,13 @@ namespace KhaozEngine.Gui
         public float TransitionAlpha = 1f;
         public bool IsExiting;
 
+        /// <summary>
+        /// Opaque fill for a full (non-modal) screen. When set, call <see cref="DrawBackground"/> first in
+        /// <see cref="Draw"/> so the screen below does not show through the gaps. Leave null for a modal/overlay
+        /// that should let the screen below show (draw your own scrim instead).
+        /// </summary>
+        public Vector4? BackgroundColor;
+
         /// <summary>The owning stack, set by <see cref="ScreenStack.Add"/>.</summary>
         public ScreenStack Manager = null!;
 
@@ -41,6 +50,16 @@ namespace KhaozEngine.Gui
 
         /// <summary>Per-frame draw (screens draw bottom-to-top).</summary>
         public abstract void Draw(SpriteBatch batch);
+
+        /// <summary>
+        /// Fill the whole design viewport with <see cref="BackgroundColor"/> if set (no-op otherwise). Call
+        /// first in <see cref="Draw"/> for an opaque full screen. <paramref name="white"/> is a 1x1 white texture.
+        /// </summary>
+        public void DrawBackground(SpriteBatch batch, Texture2D white, IDesignViewport viewport)
+        {
+            if (BackgroundColor is { } c)
+                batch.Draw(white, new Vector4(0, 0, viewport.Width, viewport.Height), c);
+        }
 
         /// <summary>Request removal; animates out first if <see cref="TransitionOffDuration"/> &gt; 0.</summary>
         public void ExitScreen()

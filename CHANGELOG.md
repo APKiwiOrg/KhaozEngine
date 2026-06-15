@@ -5,6 +5,38 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 5.9.0-experimental (custom 5.x line)
+
+Resolution independence + layout (milestone 1 of engine maturity). The window already resized the
+framebuffer; this adds the missing design layer so content scales, centers, and letterboxes instead of
+sitting at hard pixel coordinates. Additive across Windowing/Render2D/Gui.
+
+### KhaozEngine.Windowing (additive)
+
+- `DesignViewport` + `IDesignViewport`: a fixed design space (e.g. 960x540) mapped onto the current window
+  with a `ScaleMode` (`Fit` = letterbox/pillarbox centered, `Fill` = cover/crop centered, `Stretch` =
+  distort). Exposes `ScaleX/Y`, `OffsetX/Y`, `ContentBounds`, `DesignBounds`, `ScreenToDesign`/`DesignToScreen`,
+  and `GetClipProjection(viewportW, viewportH)` for the batch. Pure math, headless-tested.
+- `Pointer.Update(InputState, IDesignViewport)`: maps the cursor into design space so all bounds helpers
+  hit-test in the same coordinates draws use (press-origin click-through invariant preserved). The existing
+  `Update(InputState)` is unchanged (identity). In-window guard still uses the raw window position.
+
+### KhaozEngine.Render2D (additive)
+
+- `SpriteBatch.Begin(IDesignViewport)`: draw in design coordinates; scaling, centering, and letterbox happen
+  for free. Mirrors `Begin(Camera2D)`. Existing `Begin()` / `Begin(Camera2D)` unchanged.
+
+### KhaozEngine.Gui (additive)
+
+- `Layout.Resolve(parent, Anchor, width, height, marginX, marginY)`: pure anchor-based rect placement
+  (`TopLeft`..`BottomRight`, `Center`, `Stretch`) against the design viewport or a container, so widgets stop
+  hard-coding absolute pixels. Headless-tested.
+- `ScreenStack.Update(dt, InputState, IDesignViewport)`: routes the pointer through the design viewport.
+- `Screen.BackgroundColor` + `Screen.DrawBackground(batch, white, viewport)`: opaque full-screen fill
+  convention for non-modal screens (fixes screens showing the one below through their gaps).
+- `GuiSample` now drives a `DesignViewport(960, 540, Fit)`: resize the window and the UI scales, centers, and
+  letterboxes, with hit-testing aligned and opaque backgrounds on the full screens.
+
 ## 5.8.1-experimental (custom 5.x line)
 
 ### KhaozEngine.Render2D (fix)

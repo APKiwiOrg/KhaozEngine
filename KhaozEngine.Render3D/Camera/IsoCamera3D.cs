@@ -58,6 +58,32 @@ namespace KhaozEngine.Render3D
         public Matrix4x4 ViewProjection => View * Projection;
 
         /// <summary>
+        /// Aim the camera at <paramref name="center"/> and size <see cref="OrthoSize"/> so an axis-aligned
+        /// bounds of full extent <paramref name="size"/> fits the viewport (with a <paramref name="margin"/>
+        /// of slack, e.g. 1.1 = 10%). Projects the 8 corners into view space and fits both axes against the
+        /// current <see cref="AspectRatio"/>/<see cref="Zoom"/>. Pure math.
+        /// </summary>
+        public void Frame(Vector3 center, Vector3 size, float margin = 1.1f)
+        {
+            Target = center;
+            Matrix4x4 view = View;
+            Vector3 h = size * 0.5f;
+            float maxX = 0f, maxY = 0f;
+            for (int sx = -1; sx <= 1; sx += 2)
+                for (int sy = -1; sy <= 1; sy += 2)
+                    for (int sz = -1; sz <= 1; sz += 2)
+                    {
+                        var v = Vector3.Transform(center + new Vector3(sx * h.X, sy * h.Y, sz * h.Z), view);
+                        maxX = MathF.Max(maxX, MathF.Abs(v.X));
+                        maxY = MathF.Max(maxY, MathF.Abs(v.Y));
+                    }
+            // OrthoSize is the full vertical world extent; the viewport is OrthoSize/Zoom tall and that*Aspect
+            // wide. Cover both: OrthoSize >= 2*Zoom*maxY and >= 2*Zoom*maxX/Aspect.
+            float needed = MathF.Max(2f * maxY, 2f * maxX / AspectRatio);
+            OrthoSize = needed * Zoom * margin;
+        }
+
+        /// <summary>
         /// Unproject a screen pixel (top-left origin, y-down) into a world ray. For this orthographic camera
         /// the direction equals <see cref="Forward"/>; the math is general so it still holds if a perspective
         /// camera is added. Inverts <see cref="ViewProjection"/>, which matches the displayed image.

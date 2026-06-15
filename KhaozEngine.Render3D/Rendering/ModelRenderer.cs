@@ -81,9 +81,14 @@ namespace KhaozEngine.Render3D.Rendering
             cl.UpdateBuffer(_ubo, 0, ref ubo);
 
             cl.SetFramebuffer(res.ModelFB);
-            cl.ClearColorTarget(0, new RgbaFloat(s.AmbientColor.X, s.AmbientColor.Y, s.AmbientColor.Z, 1f));
-            cl.ClearColorTarget(1, new RgbaFloat(0.5f, 0.5f, 0.5f, 1f)); // encoded ~zero normal
-            cl.ClearColorTarget(2, new RgbaFloat(1f, 1f, 1f, 1f));       // far depth
+            // Veldrid's Metal MRT clear collapses to a single value across all attachments, so clear all
+            // three to the background. The background ends up uniform in the normal/depth targets too, which
+            // keeps the depth-driven silhouette clean (background depth ~= bg.r << sphere depth) and avoids
+            // spurious edges in empty space.
+            var bg = new RgbaFloat(s.BackgroundColor.X, s.BackgroundColor.Y, s.BackgroundColor.Z, 1f);
+            cl.ClearColorTarget(0, bg);
+            cl.ClearColorTarget(1, bg);
+            cl.ClearColorTarget(2, bg);
             cl.ClearDepthStencil(1f);
 
             cl.SetPipeline(_pipeline);

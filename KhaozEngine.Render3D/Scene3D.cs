@@ -35,7 +35,7 @@ namespace KhaozEngine.Render3D
             _gd = gd;
             _swapchainOutput = swapchainOutput;
             _cl = gd.ResourceFactory.CreateCommandList();
-            _res = new RenderResources(gd, Post.LowResWidth, Post.LowResHeight);
+            _res = new RenderResources(gd, Post.RenderWidth, Post.RenderHeight);
             _model = new ModelRenderer(gd, _res.ModelFB.OutputDescription);
             _post = new PixelPostProcess(gd, _res.PingAFB.OutputDescription, swapchainOutput);
             _post.BindTargets(_res);
@@ -58,8 +58,8 @@ namespace KhaozEngine.Render3D
 
         void EnsureSize()
         {
-            if (_res.Width == Post.LowResWidth && _res.Height == Post.LowResHeight) return;
-            _res.Resize(Post.LowResWidth, Post.LowResHeight);
+            if (_res.Width == Post.RenderWidth && _res.Height == Post.RenderHeight) return;
+            _res.Resize(Post.RenderWidth, Post.RenderHeight);
             _post.BindTargets(_res);
         }
 
@@ -67,7 +67,7 @@ namespace KhaozEngine.Render3D
         internal void RenderInternal(Framebuffer swapchainFB)
         {
             EnsureSize();
-            Camera.AspectRatio = (float)Post.LowResWidth / Post.LowResHeight;
+            Camera.AspectRatio = (float)Post.RenderWidth / Post.RenderHeight;
 
             _cl.Begin();
             _post.PrepareUniforms(_cl, _res, Post);
@@ -80,7 +80,7 @@ namespace KhaozEngine.Render3D
             else
             {
                 _cl.SetFramebuffer(_res.ModelFB);
-                _cl.ClearColorTarget(0, new RgbaFloat(Post.AmbientColor.X, Post.AmbientColor.Y, Post.AmbientColor.Z, 1f));
+                _cl.ClearColorTarget(0, new RgbaFloat(Post.BackgroundColor.X, Post.BackgroundColor.Y, Post.BackgroundColor.Z, 1f));
                 _cl.ClearColorTarget(1, new RgbaFloat(0.5f, 0.5f, 0.5f, 1f));
                 _cl.ClearColorTarget(2, new RgbaFloat(1f, 1f, 1f, 1f));
                 _cl.ClearDepthStencil(1f);

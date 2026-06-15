@@ -15,17 +15,23 @@ if (args.Contains("--smoke"))
 {
     var mesh = GltfLoader.Load(FindModel());
     Console.WriteLine($"mesh: verts={mesh.Vertices.Length} tris={mesh.TriangleCount} v0.Color={mesh.Vertices[0].Color} v0.N={mesh.Vertices[0].Normal}");
-    int w = 320, h = 180;
-    bool raw = args.Contains("--raw");
+    int w = 1280, h = 720;
+    bool retro = args.Contains("--retro");
     byte[] rgba = Render3DSnapshot.Capture(mesh, s =>
     {
-        s.Camera.OrthoSize = 3.2f;
-        s.Post.LowResWidth = w; s.Post.LowResHeight = h;
-        s.Post.Quantize = !raw && !args.Contains("--noq");
-        s.Post.Dither = !raw && !args.Contains("--nod");
-        s.Post.Outline = !raw && !args.Contains("--noe");
-        s.Post.CelBands = raw ? 0 : 4;
-        s.Post.ActivePalette = Palettes.Ember8;
+        s.Camera.OrthoSize = 2.7f;
+        if (retro)
+        {
+            s.Post.RenderWidth = 320; s.Post.RenderHeight = 180;
+            s.Post.Pixelated = true; s.Post.Quantize = true; s.Post.Dither = true; s.Post.CelBands = 4;
+            s.Post.ActivePalette = args.Contains("--pico") ? Palettes.Pico8
+                : args.Contains("--gb") ? Palettes.GameBoy : Palettes.Ember8;
+        }
+        else
+        {
+            s.Post.RenderWidth = 2560; s.Post.RenderHeight = 1440; // 2x SSAA -> output, smooth edges
+        }
+        if (args.Contains("--noe")) s.Post.Outline = false;
     }, w, h, 8);
 
     int nonBg = 0;
@@ -43,32 +49,33 @@ if (args.Contains("--smoke"))
 var host = new Render3DHost("KhaozEngine Render3D — sample", 1280, 720);
 var sc = host.Scene;
 sc.LoadModel(GltfLoader.Load(FindModel()));
-sc.Camera.OrthoSize = 3.2f;
+sc.Camera.OrthoSize = 2.7f;
 int palIdx = 2;
-sc.Post.ActivePalette = Palettes.All[palIdx];
 PrintHelp();
 
 host.Run(f =>
 {
     sc.Spin(f.Dt);
-    if (f.Pressed.Contains(Key.Q)) sc.Post.Quantize = !sc.Post.Quantize;
-    if (f.Pressed.Contains(Key.D)) sc.Post.Dither = !sc.Post.Dither;
     if (f.Pressed.Contains(Key.O)) sc.Post.Outline = !sc.Post.Outline;
+    if (f.Pressed.Contains(Key.R)) // toggle the retro/pixel look on/off
+    {
+        bool on = !sc.Post.Quantize;
+        sc.Post.Quantize = sc.Post.Dither = sc.Post.Pixelated = on;
+        sc.Post.CelBands = on ? 4 : 0;
+        sc.Post.RenderWidth = on ? 320 : 1920; sc.Post.RenderHeight = on ? 180 : 1080;
+    }
     if (f.Pressed.Contains(Key.C)) sc.Post.CelBands = sc.Post.CelBands == 0 ? 4 : 0;
     if (f.Pressed.Contains(Key.P)) { palIdx = (palIdx + 1) % Palettes.All.Length; sc.Post.ActivePalette = Palettes.All[palIdx]; Console.WriteLine("palette: " + sc.Post.ActivePalette.Name); }
     if (f.Down.Contains(Key.Up)) sc.Camera.Elevation += 1.5f * f.Dt;
     if (f.Down.Contains(Key.Down)) sc.Camera.Elevation -= 1.5f * f.Dt;
     if (f.Down.Contains(Key.Left)) sc.Camera.Azimuth -= 1.5f * f.Dt;
     if (f.Down.Contains(Key.Right)) sc.Camera.Azimuth += 1.5f * f.Dt;
-    if (f.Pressed.Contains(Key.Number1)) { sc.Post.LowResWidth = 160; sc.Post.LowResHeight = 90; }
-    if (f.Pressed.Contains(Key.Number2)) { sc.Post.LowResWidth = 320; sc.Post.LowResHeight = 180; }
-    if (f.Pressed.Contains(Key.Number3)) { sc.Post.LowResWidth = 640; sc.Post.LowResHeight = 360; }
 });
 host.Dispose();
 return 0;
 
 static void PrintHelp() => Console.WriteLine(
-    "Q quantize | D dither | O outline | C cel | P palette | arrows angle | 1/2/3 low-res | Esc quit");
+    "O outline | R retro/pixel toggle | C cel | P palette | arrows angle | Esc quit");
 
 // Minimal 24-bit bottom-up BMP (opens in Preview).
 static void WriteBmp(string path, int w, int h, byte[] rgba)

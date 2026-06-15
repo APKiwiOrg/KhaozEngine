@@ -24,7 +24,8 @@ namespace KhaozEngine.Render3D.Rendering
 
         ResourceSet _paletteSet = null!;
         ResourceSet _edgeFromColor = null!, _edgeFromPingA = null!;
-        ResourceSet _blitFromColor = null!, _blitFromPingA = null!, _blitFromPingB = null!;
+        ResourceSet _blitColorP = null!, _blitPingAP = null!, _blitPingBP = null!; // point sampler
+        ResourceSet _blitColorL = null!, _blitPingAL = null!, _blitPingBL = null!; // linear sampler
         RenderResources? _bound;
 
         public PixelPostProcess(GraphicsDevice gd, OutputDescription pingOutput, OutputDescription swapchainOutput)
@@ -80,12 +81,16 @@ namespace KhaozEngine.Render3D.Rendering
             var f = _gd.ResourceFactory;
             var samp = _gd.PointSampler;
 
+            var lin = _gd.LinearSampler;
             _paletteSet = f.CreateResourceSet(new ResourceSetDescription(_palLayout, res.ColorTex, samp, _palBuf));
             _edgeFromColor = f.CreateResourceSet(new ResourceSetDescription(_edgeLayout, res.ColorTex, res.NormalTex, res.DepthColorTex, samp, _edgeBuf));
             _edgeFromPingA = f.CreateResourceSet(new ResourceSetDescription(_edgeLayout, res.PingA, res.NormalTex, res.DepthColorTex, samp, _edgeBuf));
-            _blitFromColor = f.CreateResourceSet(new ResourceSetDescription(_blitLayout, res.ColorTex, samp));
-            _blitFromPingA = f.CreateResourceSet(new ResourceSetDescription(_blitLayout, res.PingA, samp));
-            _blitFromPingB = f.CreateResourceSet(new ResourceSetDescription(_blitLayout, res.PingB, samp));
+            _blitColorP = f.CreateResourceSet(new ResourceSetDescription(_blitLayout, res.ColorTex, samp));
+            _blitPingAP = f.CreateResourceSet(new ResourceSetDescription(_blitLayout, res.PingA, samp));
+            _blitPingBP = f.CreateResourceSet(new ResourceSetDescription(_blitLayout, res.PingB, samp));
+            _blitColorL = f.CreateResourceSet(new ResourceSetDescription(_blitLayout, res.ColorTex, lin));
+            _blitPingAL = f.CreateResourceSet(new ResourceSetDescription(_blitLayout, res.PingA, lin));
+            _blitPingBL = f.CreateResourceSet(new ResourceSetDescription(_blitLayout, res.PingB, lin));
             _bound = res; _boundW = res.Width; _boundH = res.Height;
         }
         int _boundW, _boundH;
@@ -135,8 +140,9 @@ namespace KhaozEngine.Render3D.Rendering
                 src = fromColor ? res.PingA : res.PingB;
             }
 
-            ResourceSet blit = ReferenceEquals(src, res.ColorTex) ? _blitFromColor
-                : ReferenceEquals(src, res.PingA) ? _blitFromPingA : _blitFromPingB;
+            ResourceSet blit = s.Pixelated
+                ? (ReferenceEquals(src, res.ColorTex) ? _blitColorP : ReferenceEquals(src, res.PingA) ? _blitPingAP : _blitPingBP)
+                : (ReferenceEquals(src, res.ColorTex) ? _blitColorL : ReferenceEquals(src, res.PingA) ? _blitPingAL : _blitPingBL);
             cl.SetFramebuffer(swapchainFB);
             cl.ClearColorTarget(0, RgbaFloat.Black);
             cl.SetPipeline(_blitPipe);
@@ -147,7 +153,8 @@ namespace KhaozEngine.Render3D.Rendering
         void DisposeSets()
         {
             _paletteSet?.Dispose(); _edgeFromColor?.Dispose(); _edgeFromPingA?.Dispose();
-            _blitFromColor?.Dispose(); _blitFromPingA?.Dispose(); _blitFromPingB?.Dispose();
+            _blitColorP?.Dispose(); _blitPingAP?.Dispose(); _blitPingBP?.Dispose();
+            _blitColorL?.Dispose(); _blitPingAL?.Dispose(); _blitPingBL?.Dispose();
         }
 
         public void Dispose()

@@ -47,7 +47,7 @@ static (List<Vector3> v, List<int> i) Ico(int subdiv)
     return (verts, tris);
 }
 
-var (vs, idx) = Ico(2);
+var (vs, idx) = Ico(3);
 var mat = new MaterialBuilder("body")
     .WithMetallicRoughnessShader()
     .WithBaseColor(new Vector4(0.85f, 0.55f, 0.30f, 1f))

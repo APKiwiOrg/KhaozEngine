@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Gui</PackageId>
+    <!-- Shared 5.x experimental custom-stack line. -->
+    <Version>$(KhaozEngine5xVersion)</Version>
+    <Description>EXPERIMENTAL screen-stack + widgets on the custom MonoGame-free stack. ScreenStack routes input top-to-bottom (input-consumption + modal layering, the click-through model) and draws bottom-to-top with transitions; Screen is the base surface; Button is a bounds-aware widget over Windowing.Pointer + Render2D. Ported from KhaozEngine.Screens/UI. Part of the post-MonoGame 5.x line.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
+    <ProjectReference Include="../KhaozEngine.Render2D/KhaozEngine.Render2D.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Tests" />
+  </ItemGroup>
+</Project>

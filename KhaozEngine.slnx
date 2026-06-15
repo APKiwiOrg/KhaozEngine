@@ -8,6 +8,7 @@
   <Project Path="KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
   <Project Path="KhaozEngine.Effects/KhaozEngine.Effects.csproj" />
   <Project Path="KhaozEngine.Graphics/KhaozEngine.Graphics.csproj" />
+  <Project Path="KhaozEngine.Gui/KhaozEngine.Gui.csproj" />
   <Project Path="KhaozEngine.Input/KhaozEngine.Input.csproj" />
   <Project Path="KhaozEngine.Localization/KhaozEngine.Localization.csproj" />
   <Project Path="KhaozEngine.Netcode.Abstractions/KhaozEngine.Netcode.Abstractions.csproj" />
@@ -30,6 +31,7 @@
   <Project Path="KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
   <Project Path="Render2DSample/Render2DSample.csproj" />
   <Project Path="WindowingSample/WindowingSample.csproj" />
+  <Project Path="GuiSample/GuiSample.csproj" />
   <Project Path="Render3DSample/Render3DSample.csproj" />
   <Project Path="tools/PixelLabSheetAssembler/PixelLabSheetAssembler.csproj" />
   <Project Path="tools/PixelLabSheetAssembler.Tests/PixelLabSheetAssembler.Tests.csproj" />

@@ -411,10 +411,35 @@ window.Run(frame =>
 });
 ```
 
+## Gui (`KhaozEngine.Gui`, experimental 5.x line)
+
+Screen-stack + widgets on the custom stack. `ScreenStack` routes input top-to-bottom (the click-through
+layering), draws bottom-to-top, drives transitions. `Screen` is the base surface; `Button` is a bounds-aware
+widget over the pointer. Built on Windowing + Render2D.
+
+```csharp
+using KhaozEngine.Gui;
+
+var stack = new ScreenStack();
+stack.Add(new MenuScreen());                                   // your Screen subclass
+
+window.Run(frame =>
+{
+    stack.Update(frame.Dt, frame.Input);                       // routes input + advances transitions
+    surface.NewFrame(frame);
+    surface.Batch.Begin();
+    stack.Draw(surface.Batch);                                 // draws all screens bottom-to-top
+    surface.Batch.End();
+});
+
+// inside a Screen: read input via Manager.Pointer (e.g. button.Update(Manager.Pointer)); return true from
+// Update to consume input (block screens below). Set PassUpdateThrough=false for a modal.
+```
+
 ## Render2D (`KhaozEngine.Render2D`, experimental 5.x line)
 
 Experimental, **not part of the MonoGame contract above** - 2D rendering on the custom MonoGame-free stack
-(shared 5.x line, `5.5.0-experimental`). `SpriteBatch` + `Camera2D` + `Texture2D` (PNG via StbImageSharp) +
+(shared 5.x line, `5.6.0-experimental`). `SpriteBatch` + `Camera2D` + `Texture2D` (PNG via StbImageSharp) +
 `SpriteFont` (runtime TTF text via stb_truetype). `Render2DHost` owns the SDL2/Metal window; the
 `Render2DSample` auto-copies SDL2 so `dotnet run` just works. Headless drawing via `Render2DSnapshot`.
 
@@ -439,7 +464,7 @@ host.Run(f =>
 
 Experimental, **not part of the MonoGame contract above** - it is the first package of the custom
 MonoGame-free renderer (see [`ROADMAP.md`](ROADMAP.md), "The post-MonoGame pivot"). On the shared 5.x line
-at `5.5.0-experimental`. Metal-only for now; `Render3DHost` needs SDL2 (`brew install sdl2`). The
+at `5.6.0-experimental`. Metal-only for now; `Render3DHost` needs SDL2 (`brew install sdl2`). The
 `Render3DSample` project auto-copies SDL2 into its output so `dotnet run` just works; a consumer using
 `Render3DHost` directly must ensure SDL2 is on the loader path (or copy it into the app's output as
 `libsdl2.dylib`).

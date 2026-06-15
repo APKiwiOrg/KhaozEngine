@@ -5,6 +5,30 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 5.13.0-experimental (custom 5.x line)
+
+Render3D grows from a single-model demo into a scene a game can use (Phase A of the Hardpoint 3D vertical
+slice): many instances per frame, screen->ground picking, and composition into an `AppWindow` alongside a
+Render2D HUD.
+
+### KhaozEngine.Render3D
+
+- **Multi-instance `Scene3D`** (breaking vs the demo API): `LoadMesh(GltfMesh) -> MeshHandle` (load several
+  meshes), then per frame `Begin()` + `Draw(MeshHandle, Matrix4x4 world)` to queue instances. The old
+  single-model `LoadModel`/`Spin` is removed; instances are drawn through the iso camera + `PixelPostProcess`
+  in one pass. `SceneInstances` (the instance queue) is headless-tested.
+- **`IsoCamera3D` picking**: `ScreenToGround(screenPixel, viewportW, viewportH, groundY = 0)` and
+  `ScreenToRay(...)` (returns the new `Ray` struct) unproject a screen pixel into the world. Pure /
+  headless-tested (round-trips a known ground point; screen-centre maps to the camera target).
+- **`Render3DSurface`**: binds a `Scene3D` to a `KhaozEngine.Windowing.AppWindow` and renders into the
+  window's per-frame command list, so a 3D scene composes into the same window as a `Render2D` HUD (3D fills
+  the frame, the HUD draws on top). Mirrors `Render2DSurface`; adds a Render3D->Windowing reference.
+- `Scene3D.RenderInternal` now records into a caller-supplied `CommandList` + target `Framebuffer` (the
+  caller owns Begin/End/Submit); `Render3DHost` and `Render3DSnapshot` drive that path. `ModelRenderer.Draw`
+  split into `BeginModelPass` (clear once) + `DrawInstance` (per instance). `Render3DSnapshot` gains a
+  multi-instance `Capture(width, height, setup, drawFrame, frames)` overload (verified a 3x3 instance grid).
+- `Render3DSample` now submits a grid of instances instead of spinning one model.
+
 ## 5.12.0-experimental (custom 5.x line)
 
 Native packaging (milestone 3), part 1: bundle openal-soft so audio no longer depends on the deprecated

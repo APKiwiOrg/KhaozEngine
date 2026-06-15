@@ -1,0 +1,170 @@
+using System;
+using System.Collections.Generic;
+using System.Numerics;
+using System.Text;
+using Veldrid;
+using Veldrid.SPIRV;
+
+namespace KhaozEngine.Render2D
+{
+    /// <summary>
+    /// Batched 2D sprite + text renderer. Corners are transformed to clip space on the CPU by the current
+    /// camera, so there is no per-batch uniform; quads are grouped per texture and drawn in submission order.
+    /// </summary>
+    public sealed class SpriteBatch : IDisposable
+    {
+        const string VertSrc = @"#version 450
+layout(location=0) in vec2 ClipPos;
+layout(location=1) in vec2 Uv;
+layout(location=2) in vec4 Color;
+layout(location=0) out vec2 vUv;
+layout(location=1) out vec4 vColor;
+void main() { gl_Position = vec4(ClipPos, 0.0, 1.0); vUv = Uv; vColor = Color; }";
+
+        const string FragSrc = @"#version 450
+layout(set=0, binding=0) uniform texture2D Tex;
+layout(set=0, binding=1) uniform sampler Samp;
+layout(location=0) in vec2 vUv;
+layout(location=1) in vec4 vColor;
+layout(location=0) out vec4 oColor;
+void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
+
+        struct V { public Vector2 Pos; public Vector2 Uv; public Vector4 Color; }
+
+        readonly GraphicsDevice _gd;
+        readonly ResourceLayout _layout;
+        readonly Pipeline _pipeline;
+        readonly Shader[] _shaders;
+        readonly Sampler _sampler;
+        readonly Dictionary<Texture, ResourceSet> _sets = new();
+        readonly List<Texture> _order = new();
+        readonly Dictionary<Texture, List<V>> _batches = new();
+        readonly List<DeviceBuffer> _frameBuffers = new();
+
+        CommandList _cl = null!;
+        int _vw, _vh;
+        Matrix4x4 _vp;
+
+        internal SpriteBatch(GraphicsDevice gd, OutputDescription output)
+        {
+            _gd = gd;
+            var f = gd.ResourceFactory;
+            _sampler = gd.LinearSampler;
+            _layout = f.CreateResourceLayout(new ResourceLayoutDescription(
+                new ResourceLayoutElementDescription("Tex", ResourceKind.TextureReadOnly, ShaderStages.Fragment),
+                new ResourceLayoutElementDescription("Samp", ResourceKind.Sampler, ShaderStages.Fragment)));
+            _shaders = f.CreateFromSpirv(
+                new ShaderDescription(ShaderStages.Vertex, Encoding.UTF8.GetBytes(VertSrc), "main"),
+                new ShaderDescription(ShaderStages.Fragment, Encoding.UTF8.GetBytes(FragSrc), "main"));
+            var vl = new VertexLayoutDescription(
+                new VertexElementDescription("ClipPos", VertexElementSemantic.Position, VertexElementFormat.Float2),
+                new VertexElementDescription("Uv", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float2),
+                new VertexElementDescription("Color", VertexElementSemantic.Color, VertexElementFormat.Float4));
+            _pipeline = f.CreateGraphicsPipeline(new GraphicsPipelineDescription
+            {
+                BlendState = BlendStateDescription.SingleAlphaBlend,
+                DepthStencilState = DepthStencilStateDescription.Disabled,
+                RasterizerState = new RasterizerStateDescription(FaceCullMode.None, PolygonFillMode.Solid, FrontFace.Clockwise, false, false),
+                PrimitiveTopology = PrimitiveTopology.TriangleList,
+                ResourceLayouts = new[] { _layout },
+                ShaderSet = new ShaderSetDescription(new[] { vl }, _shaders),
+                Outputs = output,
+            });
+        }
+
+        // Called by the host/snapshot each frame before the user's draw callback.
+        internal void NewFrame(CommandList cl, int viewportW, int viewportH)
+        {
+            _cl = cl; _vw = viewportW; _vh = viewportH;
+            foreach (var b in _frameBuffers) b.Dispose();
+            _frameBuffers.Clear();
+        }
+
+        /// <summary>Begin a batch in world space through <paramref name="camera"/>.</summary>
+        public void Begin(Camera2D camera) { _vp = camera.GetViewProjection(_vw, _vh); ResetBatches(); }
+
+        /// <summary>Begin a batch in screen space (pixels, top-left origin).</summary>
+        public void Begin() { _vp = Matrix4x4.CreateOrthographicOffCenter(0, _vw, _vh, 0, -1, 1); ResetBatches(); }
+
+        public void Draw(Texture2D tex, Vector2 position, Vector4 color) =>
+            Draw(tex, new Vector4(position.X, position.Y, tex.Width, tex.Height), new Vector4(0, 0, 1, 1), color);
+
+        public void Draw(Texture2D tex, Vector4 destRect, Vector4 color) =>
+            Draw(tex, destRect, new Vector4(0, 0, 1, 1), color);
+
+        /// <summary>dest = (x, y, w, h) in world units; src = (u0, v0, u1, v1) in 0..1.</summary>
+        public void Draw(Texture2D tex, Vector4 destRect, Vector4 srcUV, Vector4 color)
+        {
+            float x = destRect.X, y = destRect.Y, w = destRect.Z, h = destRect.W;
+            Vector2 tl = Clip(x, y), tr = Clip(x + w, y), br = Clip(x + w, y + h), bl = Clip(x, y + h);
+            var uTL = new Vector2(srcUV.X, srcUV.Y); var uTR = new Vector2(srcUV.Z, srcUV.Y);
+            var uBR = new Vector2(srcUV.Z, srcUV.W); var uBL = new Vector2(srcUV.X, srcUV.W);
+            var list = ListFor(tex.Handle);
+            list.Add(new V { Pos = tl, Uv = uTL, Color = color }); list.Add(new V { Pos = tr, Uv = uTR, Color = color }); list.Add(new V { Pos = br, Uv = uBR, Color = color });
+            list.Add(new V { Pos = tl, Uv = uTL, Color = color }); list.Add(new V { Pos = br, Uv = uBR, Color = color }); list.Add(new V { Pos = bl, Uv = uBL, Color = color });
+        }
+
+        /// <summary>Draw <paramref name="text"/> with its top-left at <paramref name="position"/>.</summary>
+        public void DrawString(SpriteFont font, string text, Vector2 position, Vector4 color)
+        {
+            float penX = position.X, baseline = position.Y + font.Ascent;
+            foreach (char c in text)
+            {
+                if (!font.Glyphs.TryGetValue(c, out var g)) continue;
+                if (g.W > 0 && g.H > 0)
+                {
+                    var dest = new Vector4(penX + g.XOff, baseline + g.YOff, g.W, g.H);
+                    var uv = new Vector4((float)g.Ax / font.AtlasW, (float)g.Ay / font.AtlasH,
+                                         (float)(g.Ax + g.W) / font.AtlasW, (float)(g.Ay + g.H) / font.AtlasH);
+                    Draw(font.Atlas, dest, uv, color);
+                }
+                penX += g.Advance;
+            }
+        }
+
+        /// <summary>Flush the current batch.</summary>
+        public void End()
+        {
+            var f = _gd.ResourceFactory;
+            _cl.SetPipeline(_pipeline);
+            foreach (var tex in _order)
+            {
+                var verts = _batches[tex];
+                if (verts.Count == 0) continue;
+                var vb = f.CreateBuffer(new BufferDescription((uint)(verts.Count * 32), BufferUsage.VertexBuffer));
+                _gd.UpdateBuffer(vb, 0, verts.ToArray());
+                _frameBuffers.Add(vb);
+                if (!_sets.TryGetValue(tex, out var set))
+                {
+                    set = f.CreateResourceSet(new ResourceSetDescription(_layout, tex, _sampler));
+                    _sets[tex] = set;
+                }
+                _cl.SetGraphicsResourceSet(0, set);
+                _cl.SetVertexBuffer(0, vb);
+                _cl.Draw((uint)verts.Count);
+            }
+        }
+
+        Vector2 Clip(float x, float y)
+        {
+            var v = Vector4.Transform(new Vector4(x, y, 0, 1), _vp);
+            return new Vector2(v.X, v.Y);
+        }
+
+        List<V> ListFor(Texture tex)
+        {
+            if (!_batches.TryGetValue(tex, out var list)) { list = new List<V>(); _batches[tex] = list; _order.Add(tex); }
+            return list;
+        }
+
+        void ResetBatches() { _batches.Clear(); _order.Clear(); }
+
+        public void Dispose()
+        {
+            foreach (var b in _frameBuffers) b.Dispose();
+            foreach (var s in _sets.Values) s.Dispose();
+            _pipeline.Dispose(); _layout.Dispose();
+            foreach (var sh in _shaders) sh.Dispose();
+        }
+    }
+}

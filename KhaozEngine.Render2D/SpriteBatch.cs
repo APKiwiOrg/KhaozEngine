@@ -9,7 +9,8 @@ namespace KhaozEngine.Render2D
 {
     /// <summary>
     /// Batched 2D sprite + text renderer. Corners are transformed to clip space on the CPU by the current
-    /// camera, so there is no per-batch uniform; quads are grouped per texture and drawn in submission order.
+    /// camera, so there is no per-batch uniform; quads are coalesced into submission-ordered runs (consecutive
+    /// same-texture draws share a run) so painter's order is preserved across textures.
     /// </summary>
     public sealed class SpriteBatch : IDisposable
     {
@@ -37,8 +38,7 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
         readonly Shader[] _shaders;
         readonly Sampler _sampler;
         readonly Dictionary<Texture, ResourceSet> _sets = new();
-        readonly List<Texture> _order = new();
-        readonly Dictionary<Texture, List<V>> _batches = new();
+        readonly QuadRunBuilder<V> _runs = new();
         readonly List<DeviceBuffer> _frameBuffers = new();
 
         CommandList _cl = null!;
@@ -138,9 +138,9 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
             Vector2 tl = Clip(x, y), tr = Clip(x + w, y), br = Clip(x + w, y + h), bl = Clip(x, y + h);
             var uTL = new Vector2(srcUV.X, srcUV.Y); var uTR = new Vector2(srcUV.Z, srcUV.Y);
             var uBR = new Vector2(srcUV.Z, srcUV.W); var uBL = new Vector2(srcUV.X, srcUV.W);
-            var list = ListFor(tex.Handle);
-            list.Add(new V { Pos = tl, Uv = uTL, Color = color }); list.Add(new V { Pos = tr, Uv = uTR, Color = color }); list.Add(new V { Pos = br, Uv = uBR, Color = color });
-            list.Add(new V { Pos = tl, Uv = uTL, Color = color }); list.Add(new V { Pos = br, Uv = uBR, Color = color }); list.Add(new V { Pos = bl, Uv = uBL, Color = color });
+            var key = tex.Handle;
+            _runs.Add(key, new V { Pos = tl, Uv = uTL, Color = color }); _runs.Add(key, new V { Pos = tr, Uv = uTR, Color = color }); _runs.Add(key, new V { Pos = br, Uv = uBR, Color = color });
+            _runs.Add(key, new V { Pos = tl, Uv = uTL, Color = color }); _runs.Add(key, new V { Pos = br, Uv = uBR, Color = color }); _runs.Add(key, new V { Pos = bl, Uv = uBL, Color = color });
         }
 
         /// <summary>Draw <paramref name="text"/> with its top-left at <paramref name="position"/>.</summary>
@@ -166,10 +166,10 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
         {
             var f = _gd.ResourceFactory;
             _cl.SetPipeline(_pipeline);
-            foreach (var tex in _order)
+            foreach (var (key, verts) in _runs.Runs)
             {
-                var verts = _batches[tex];
                 if (verts.Count == 0) continue;
+                var tex = (Texture)key;
                 var vb = f.CreateBuffer(new BufferDescription((uint)(verts.Count * 32), BufferUsage.VertexBuffer));
                 _gd.UpdateBuffer(vb, 0, verts.ToArray());
                 _frameBuffers.Add(vb);
@@ -190,13 +190,7 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
             return new Vector2(v.X, v.Y);
         }
 
-        List<V> ListFor(Texture tex)
-        {
-            if (!_batches.TryGetValue(tex, out var list)) { list = new List<V>(); _batches[tex] = list; _order.Add(tex); }
-            return list;
-        }
-
-        void ResetBatches() { _batches.Clear(); _order.Clear(); }
+        void ResetBatches() => _runs.Reset();
 
         public void Dispose()
         {

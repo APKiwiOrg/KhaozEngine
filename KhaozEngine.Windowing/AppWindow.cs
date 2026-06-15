@@ -32,6 +32,7 @@ namespace KhaozEngine.Windowing
         readonly Frame _frame = new();
         readonly HashSet<Key> _keysDown = new();
         readonly HashSet<MouseButton> _mouseDown = new();
+        readonly SdlGamepadPoller _gamepads = new();
         Vector2 _lastMouse;
 
         /// <summary>The Veldrid graphics device (advanced GPU boundary; renderers consume it).</summary>
@@ -111,7 +112,8 @@ namespace KhaozEngine.Windowing
             return new InputState(
                 new HashSet<Key>(_keysDown), pressed, released,
                 new HashSet<MouseButton>(_mouseDown), mPressed,
-                pos, delta, snap.WheelDelta, _window.Width, _window.Height);
+                pos, delta, snap.WheelDelta, _window.Width, _window.Height,
+                _gamepads.Poll());
         }
 
         static bool MapMouse(Veldrid.MouseButton b, out MouseButton r)
@@ -173,6 +175,7 @@ namespace KhaozEngine.Windowing
 
         public void Dispose()
         {
+            _gamepads.Dispose();
             _cl.Dispose();
             Device.Dispose();
         }

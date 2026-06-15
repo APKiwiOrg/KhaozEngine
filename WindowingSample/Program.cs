@@ -40,6 +40,14 @@ window.Run(frame =>
     clock.Update(frame.Dt);
     orbit += clock.ScaledDeltaSeconds * 1.6f;     // animation runs on SCALED time (freezes when paused)
 
+    // Gamepad (best-effort): left stick nudges the box, A resets it. No-op when no controller is connected.
+    var pad = input.PrimaryGamepad;
+    if (pad.IsConnected)
+    {
+        box += pad.LeftStickDeadzoned(0.2f) * (260f * frame.Dt);
+        if (pad.WasPressed(GamepadButton.A)) box = new Vector2(300, 300);
+    }
+
     // Gesture handling.
     var boxRect = new Rect(box.X - 45, box.Y - 45, 90, 90);
     if (gestures.DragStarted && boxRect.Contains(gestures.DragStart)) grabbed = true;
@@ -78,9 +86,10 @@ window.Run(frame =>
     surface.Batch.Draw(white, new Vector4(pointer.Position.X - 3, pointer.Position.Y - 3, 6, 6), new Vector4(0.4f, 0.95f, 0.7f, 1f));
 
     string gstate = gestures.IsDragging ? "dragging" : "idle";
+    string padInfo = pad.IsConnected ? $"pad: stick {pad.LeftStick.X:0.0},{pad.LeftStick.Y:0.0}" : "pad: none";
     surface.Batch.DrawString(font, "Drag the box  -  tap empty space  -  long-press to reset  -  Space pause  -  1/2/3 speed", new Vector2(20, 18), new Vector4(0.92f, 0.96f, 1f, 1f));
     surface.Batch.DrawString(font,
-        $"gesture: {gstate}    clock: {(clock.IsPaused ? "PAUSED" : $"x{clock.TimeScale:0.0}")}    sim t={clock.ElapsedScaledSeconds:0.0}s",
+        $"gesture: {gstate}    clock: {(clock.IsPaused ? "PAUSED" : $"x{clock.TimeScale:0.0}")}    sim t={clock.ElapsedScaledSeconds:0.0}s    {padInfo}",
         new Vector2(20, 500), new Vector4(0.7f, 0.85f, 1f, 1f));
 
     surface.Batch.End();

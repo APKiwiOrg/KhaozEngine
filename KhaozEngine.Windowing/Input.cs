@@ -35,6 +35,10 @@ namespace KhaozEngine.Windowing
         public float ScrollDelta { get; }
         public int Width { get; }
         public int Height { get; }
+        /// <summary>Connected gamepads this frame (empty when none). Index via <see cref="Gamepad"/>.</summary>
+        public IReadOnlyList<GamepadState> Gamepads { get; }
+        /// <summary>Active touch points this frame (empty on desktop).</summary>
+        public IReadOnlyList<TouchPoint> Touches { get; }
 
         public static readonly InputState Empty = new(
             new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
@@ -44,13 +48,23 @@ namespace KhaozEngine.Windowing
         public InputState(
             IReadOnlySet<Key> down, IReadOnlySet<Key> pressed, IReadOnlySet<Key> released,
             IReadOnlySet<MouseButton> mouseDown, IReadOnlySet<MouseButton> mousePressed,
-            Vector2 mousePosition, Vector2 mouseDelta, float scrollDelta, int width, int height)
+            Vector2 mousePosition, Vector2 mouseDelta, float scrollDelta, int width, int height,
+            IReadOnlyList<GamepadState>? gamepads = null, IReadOnlyList<TouchPoint>? touches = null)
         {
             KeysDown = down; KeysPressed = pressed; KeysReleased = released;
             MouseDown = mouseDown; MousePressed = mousePressed;
             MousePosition = mousePosition; MouseDelta = mouseDelta; ScrollDelta = scrollDelta;
             Width = width; Height = height;
+            Gamepads = gamepads ?? System.Array.Empty<GamepadState>();
+            Touches = touches ?? System.Array.Empty<TouchPoint>();
         }
+
+        /// <summary>The gamepad at <paramref name="index"/>, or <see cref="GamepadState.Disconnected"/> if absent.</summary>
+        public GamepadState Gamepad(int index = 0) =>
+            index >= 0 && index < Gamepads.Count ? Gamepads[index] : GamepadState.Disconnected;
+
+        /// <summary>The first gamepad, or <see cref="GamepadState.Disconnected"/> if none is connected.</summary>
+        public GamepadState PrimaryGamepad => Gamepad(0);
 
         /// <summary>True while <paramref name="key"/> is held.</summary>
         public bool IsDown(Key key) => KeysDown.Contains(key);

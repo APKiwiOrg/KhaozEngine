@@ -23,6 +23,8 @@ namespace KhaozEngine.Render3D
         public bool Dither = false;
         /// <summary>Depth/normal discontinuity edge outline (stylized).</summary>
         public bool Outline = true;
+        /// <summary>Procedural starfield in the background (assumes a dark space background).</summary>
+        public bool Starfield = true;
 
         /// <summary>0 = smooth diffuse; N&gt;0 = cel shading with N light bands (retro/toon).</summary>
         public int CelBands = 0;

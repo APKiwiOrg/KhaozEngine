@@ -3,17 +3,16 @@ using System.IO;
 using System.Linq;
 using KhaozEngine.Render3D;
 
-static string FindModel()
+static string FindModel(string name = "testmodel.glb")
 {
-    string a = Path.Combine(AppContext.BaseDirectory, "assets", "testmodel.glb");
+    string a = Path.Combine(AppContext.BaseDirectory, "assets", name);
     if (File.Exists(a)) return a;
-    string b = Path.GetFullPath("KhaozEngine.Render3D/assets/testmodel.glb");
-    return b;
+    return Path.GetFullPath("KhaozEngine.Render3D/assets/" + name);
 }
 
 if (args.Contains("--smoke"))
 {
-    var mesh = GltfLoader.Load(FindModel());
+    var mesh = GltfLoader.Load(FindModel(args.Contains("--asteroid") ? "asteroid.glb" : "testmodel.glb"));
     Console.WriteLine($"mesh: verts={mesh.Vertices.Length} tris={mesh.TriangleCount} v0.Color={mesh.Vertices[0].Color} v0.N={mesh.Vertices[0].Normal}");
     int w = 1280, h = 720;
     bool retro = args.Contains("--retro");
@@ -48,7 +47,9 @@ if (args.Contains("--smoke"))
 
 var host = new Render3DHost("KhaozEngine Render3D — sample", 1280, 720);
 var sc = host.Scene;
-sc.LoadModel(GltfLoader.Load(FindModel()));
+string[] modelFiles = { FindModel("testmodel.glb"), FindModel("asteroid.glb") };
+int modelIdx = 0;
+sc.LoadModel(GltfLoader.Load(modelFiles[modelIdx]));
 sc.Camera.OrthoSize = 2.7f;
 int palIdx = 2;
 PrintHelp();
@@ -56,7 +57,9 @@ PrintHelp();
 host.Run(f =>
 {
     sc.Spin(f.Dt);
+    if (f.Pressed.Contains(Key.Space)) { modelIdx = (modelIdx + 1) % modelFiles.Length; sc.LoadModel(GltfLoader.Load(modelFiles[modelIdx])); }
     if (f.Pressed.Contains(Key.O)) sc.Post.Outline = !sc.Post.Outline;
+    if (f.Pressed.Contains(Key.A)) sc.Post.Starfield = !sc.Post.Starfield;
     if (f.Pressed.Contains(Key.R)) // toggle the retro/pixel look on/off
     {
         bool on = !sc.Post.Quantize;
@@ -66,6 +69,8 @@ host.Run(f =>
     }
     if (f.Pressed.Contains(Key.C)) sc.Post.CelBands = sc.Post.CelBands == 0 ? 4 : 0;
     if (f.Pressed.Contains(Key.P)) { palIdx = (palIdx + 1) % Palettes.All.Length; sc.Post.ActivePalette = Palettes.All[palIdx]; Console.WriteLine("palette: " + sc.Post.ActivePalette.Name); }
+    if (f.Down.Contains(Key.W)) sc.Camera.OrthoSize = MathF.Max(1f, sc.Camera.OrthoSize - 2f * f.Dt);   // zoom in
+    if (f.Down.Contains(Key.S)) sc.Camera.OrthoSize = MathF.Min(12f, sc.Camera.OrthoSize + 2f * f.Dt);  // zoom out
     if (f.Down.Contains(Key.Up)) sc.Camera.Elevation += 1.5f * f.Dt;
     if (f.Down.Contains(Key.Down)) sc.Camera.Elevation -= 1.5f * f.Dt;
     if (f.Down.Contains(Key.Left)) sc.Camera.Azimuth -= 1.5f * f.Dt;
@@ -75,7 +80,7 @@ host.Dispose();
 return 0;
 
 static void PrintHelp() => Console.WriteLine(
-    "O outline | R retro/pixel toggle | C cel | P palette | arrows angle | Esc quit");
+    "Space model | O outline | A starfield | R retro toggle | C cel | P palette | W/S zoom | arrows orbit | Esc quit");
 
 // Minimal 24-bit bottom-up BMP (opens in Preview).
 static void WriteBmp(string path, int w, int h, byte[] rgba)

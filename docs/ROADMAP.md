@@ -44,9 +44,10 @@ via AOT, and ~21 existing C# packages + 3 games would be thrown away by a rewrit
 
 ### Phased plan
 
-1. **Render3D POC (shipped, `5.0.0-experimental`).** `KhaozEngine.Render3D`: `IsoCamera3D`, runtime glTF
-   lit/cel draw, the `PixelPostProcess` chain (palette/dither/edge/upscale), `Scene3D`/`Render3DHost`
-   consumer API, standalone sample. Proves the renderer + the look. Metal-only for now.
+1. **Render3D POC (shipped, `5.1.0-experimental`).** `KhaozEngine.Render3D`: `IsoCamera3D`, runtime glTF
+   lit/cel draw, the `PixelPostProcess` chain (palette/dither/edge/upscale + procedural starfield),
+   `Scene3D`/`Render3DHost` consumer API, standalone sample. Default look is smooth stylized space; retro is a
+   toggle. Proves the renderer + the look. Metal-only for now.
 2. **Rendering core.** Harden into a reusable core + the multi-backend `IGraphicsBackend` seam; per-backend
    clip-space-Y and MRT-clear handling; window/input platform package (lift windowing out of `Render3DHost`).
 3. **2D-on-Veldrid.** Sprite batcher, textured quads, and the iso toolkit rebuilt on the custom renderer —

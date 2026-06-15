@@ -386,8 +386,10 @@ The sections above cover the core flow. The rest of the 16-package set, one line
 
 Experimental, **not part of the MonoGame contract above** - it is the first package of the custom
 MonoGame-free renderer (see [`ROADMAP.md`](ROADMAP.md), "The post-MonoGame pivot"). Versioned independently
-at `5.0.0-experimental`. Metal-only for now; `Render3DHost` needs SDL2 on the loader path
-(`brew install sdl2`, then run with `DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib`).
+at `5.1.0-experimental`. Metal-only for now; `Render3DHost` needs SDL2 (`brew install sdl2`). The
+`Render3DSample` project auto-copies SDL2 into its output so `dotnet run` just works; a consumer using
+`Render3DHost` directly must ensure SDL2 is on the loader path (or copy it into the app's output as
+`libsdl2.dylib`).
 
 A consumer drives a spinning model with the post-process on like this (Veldrid never appears in the API):
 

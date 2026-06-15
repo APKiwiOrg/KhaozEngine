@@ -5,6 +5,27 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 5.10.0-experimental (custom 5.x line)
+
+Input breadth, part 1 (milestone 2 of engine maturity): pause/time-scale and a gesture seam. All additive in
+`KhaozEngine.Windowing`, MonoGame-free, and headless-tested. Gamepad + touch state land next (part 2).
+
+### KhaozEngine.Windowing (additive)
+
+- `GameClock`: 5.x-native clock separating real delta from a scaled simulation delta, driven by a raw
+  `float` dt (`AppWindow.Frame.Dt`). `TimeScale` (slow-mo / normal / fast-forward), `Pause`/`Resume`
+  (orthogonal to scale), `RealDeltaSeconds`/`ScaledDeltaSeconds`, `ElapsedRealSeconds`/`ElapsedScaledSeconds`
+  accumulators, and `Paused`/`Resumed` edge events. The custom-stack analogue of the 4.x
+  `KhaozEngine.Time.GameClock` (which is MonoGame-coupled via `GameTime`).
+- `GestureRecognizer`: single-pointer tap / long-press / drag from raw (isDown, position, dt) frames or a
+  `Pointer`. Per-frame flags (`Tapped`, `LongPressed`, `DragStarted`/`DragEnded`) plus `IsDragging`,
+  `DragDelta`/`DragTotal`/`DragStart`; tunable `MoveThreshold`/`TapMaxDuration`/`LongPressDuration`. Feed it
+  the design-space `Pointer.Position` so gestures match scaled/letterboxed draws; use real (unscaled) dt.
+- `PinchRecognizer`: two-point pinch -> relative `Scale`, per-frame `ScaleDelta`, midpoint `PanDelta` +
+  `Center`. Headless-testable; live it needs two touch points (mobile).
+- `WindowingSample` now demos drag/tap/long-press and a `GameClock` (Space pauses, 1/2/3 set speed) on a
+  `DesignViewport`.
+
 ## 5.9.1-experimental (custom 5.x line)
 
 ### KhaozEngine.Render2D (fix)

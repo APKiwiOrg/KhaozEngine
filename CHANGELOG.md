@@ -5,6 +5,28 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 5.4.0-experimental (custom 5.x line)
+
+New `KhaozEngine.Windowing` package — the shared windowing + input foundation — and Render2D integrates with it.
+
+### KhaozEngine.Windowing (new)
+
+- `AppWindow` — owns the SDL2/Metal window, Veldrid device + swapchain, and the frame loop. `Run(onFrame)`
+  clears + presents around the callback; each `Frame` exposes `Dt`, an engine-native `InputState`, and the
+  GPU command list to draw into. `Device`/`MainSwapchain` are the advanced GPU boundary (the only Veldrid in
+  the API).
+- `InputState` — per-frame keyboard + mouse snapshot: keys down/pressed/released, mouse position/delta,
+  mouse buttons, scroll, window size; `IsDown`/`WasPressed` helpers over engine-native `Key`/`MouseButton`
+  enums. No MonoGame. (Headless `InputStateTests`.) Gamepad/touch and the rich gesture/`InputManager` layer
+  are follow-ups.
+- **Render2D integration:** `Render2DSurface(AppWindow)` builds a `SpriteBatch` + texture/font loaders on the
+  window's device, so a consumer draws a 2D scene into `AppWindow` frames (see `WindowingSample`). Render2D
+  now references Windowing. `Render2DCore` gained an `ownsDevice` flag so a borrowed (window-owned) device
+  isn't double-disposed.
+
+Follow-up noted: Render2D still ships its own standalone `Key`/`FrameInfo`/`Render2DHost`; these will fold
+into the Windowing path so there's one window/input layer (the `WindowingSample` aliases around the overlap).
+
 ## 5.3.1-experimental (custom 5.x line)
 
 - **Fix (`KhaozEngine.Audio`):** `AudioSystem`'s default constructor no longer throws when no OpenAL

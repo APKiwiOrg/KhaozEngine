@@ -10,10 +10,12 @@ namespace KhaozEngine.Render2D.Internal
     {
         public GraphicsDevice Gd { get; }
         public SpriteBatch Batch { get; }
+        readonly bool _ownsDevice;
 
-        public Render2DCore(GraphicsDevice gd, OutputDescription output)
+        public Render2DCore(GraphicsDevice gd, OutputDescription output, bool ownsDevice = true)
         {
             Gd = gd;
+            _ownsDevice = ownsDevice;
             Batch = new SpriteBatch(gd, output);
         }
 
@@ -34,6 +36,6 @@ namespace KhaozEngine.Render2D.Internal
         public SpriteFont LoadFont(string ttfPath, float pixelHeight) =>
             SpriteFont.Build(Gd, File.ReadAllBytes(ttfPath), pixelHeight);
 
-        public void Dispose() { Batch.Dispose(); Gd.Dispose(); }
+        public void Dispose() { Batch.Dispose(); if (_ownsDevice) Gd.Dispose(); }
     }
 }

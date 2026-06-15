@@ -35,6 +35,7 @@
     <ProjectReference Include="../KhaozEngine.Sprites/KhaozEngine.Sprites.csproj" />
     <ProjectReference Include="../KhaozEngine.Time/KhaozEngine.Time.csproj" />
     <ProjectReference Include="../KhaozEngine.UI/KhaozEngine.UI.csproj" />
+    <ProjectReference Include="../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
     <ProjectReference Include="../KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
   </ItemGroup>
 </Project>

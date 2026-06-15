@@ -8,6 +8,65 @@ under each area as **Shipped** so the remaining work is clear. The 4.0.0 release
 `PrimitiveRenderer`/`ColorHelper` into `KhaozEngine.Graphics` (see CHANGELOG); roadmap references below
 use the current namespaces.
 
+## The post-MonoGame pivot (5.x line) — strategic direction
+
+**Decision (2026-06-15): KhaozEngine becomes a full, self-contained, cross-platform game framework with
+no MonoGame dependency anywhere** — desktop (Win/Mac/Linux) first, mobile (iOS/Android) later, covering
+2D / iso-lite games as well as 3D. The 4.x MonoGame-based packages keep shipping in parallel and are
+ported over package-by-package; nothing breaks for current consumers mid-transition.
+
+### Why
+
+The trigger was a real-time 3D proof-of-concept. Two findings settled the direction (spikes on Apple
+Silicon, net10.0):
+
+- **MonoGame's shader pipeline is a dead end on Apple.** A MonoGame DesktopGL context here reports
+  `GL_VERSION "2.1 Metal - 90.5"` / `GLSL 1.20` (Apple's deprecated GL-on-Metal layer); `#version 130+`
+  shaders fail. Custom shaders via MGFX also require the Windows HLSL compiler under Wine, which is
+  deprecated/fragile on Apple Silicon. Modern + custom-shaders + iOS is not reachable through MonoGame.
+- **A custom renderer works cleanly.** A headless spike created a `Veldrid` **Metal** device, cross-compiled
+  a GLSL `#version 450` shader through SPIR-V to MSL, and rendered — no Wine, no offline shader step,
+  compiled natively on the Mac.
+
+### Foundation
+
+.NET (not C++ — the renderer's heavy lifting is on the GPU, modern .NET handles the CPU side, iOS ships
+via AOT, and ~21 existing C# packages + 3 games would be thrown away by a rewrite). Layers:
+
+- **GPU:** `Veldrid` behind a KhaozEngine-owned seam (native **Metal** on Mac/iOS, **Vulkan** on Android,
+  **D3D11/Vulkan** on Windows). Shaders authored once in GLSL -> SPIR-V -> MSL/HLSL/GLSL at load
+  (`Veldrid.SPIRV`). Veldrid is low-maintenance upstream; the seam lets a `Silk.NET`-Vulkan backend
+  replace it later without touching game/scene code.
+- **Math:** `System.Numerics` (`Vector3`/`Matrix4x4`/`Quaternion`).
+- **Windowing/input:** SDL2 / `Silk.NET` feeding the existing `IRawInput` seam.
+- **Audio:** `OpenAL` via `Silk.NET.OpenAL` (or a small custom backend) replaces MonoGame audio.
+- **Texture/content:** `StbImageSharp` etc.
+
+### Phased plan
+
+1. **Render3D POC (shipped, `5.0.0-experimental`).** `KhaozEngine.Render3D`: `IsoCamera3D`, runtime glTF
+   lit/cel draw, the `PixelPostProcess` chain (palette/dither/edge/upscale), `Scene3D`/`Render3DHost`
+   consumer API, standalone sample. Proves the renderer + the look. Metal-only for now.
+2. **Rendering core.** Harden into a reusable core + the multi-backend `IGraphicsBackend` seam; per-backend
+   clip-space-Y and MRT-clear handling; window/input platform package (lift windowing out of `Render3DHost`).
+3. **2D-on-Veldrid.** Sprite batcher, textured quads, and the iso toolkit rebuilt on the custom renderer —
+   confirms 2D / iso-lite games are covered (2D is strictly simpler than the 3D already proven).
+4. **Port the 2D stack.** Move Input/Screens/UI/Sprites/Effects + audio (OpenAL) + content load off MonoGame
+   onto the custom foundation.
+5. **Migrate the games.** Hardpoint / Nullwake / SpaceGame onto the 5.x stack; retire the 4.x MonoGame line.
+6. **Mobile.** iOS/Android platform layers (lifecycle, touch, packaging, stores).
+
+### Version policy (two lines during the transition)
+
+- **4.x line** — the existing MonoGame packages; one shared version in `Directory.Build.props`; keeps
+  shipping 4.8.0, 4.9.0, ... normally and in parallel.
+- **5.x experimental line** — new custom-stack packages, each versioned **independently** via its own
+  csproj `<Version>` (starting `KhaozEngine.Render3D 5.0.0-experimental`). The doc-version guard checks the
+  shared 4.x version only; the independent 5.x versions are exempt (like consumer pins). Packages graduate
+  4.x -> 5.x as they are ported.
+
+Design spec: `docs/superpowers/specs/2026-06-15-render3d-custom-engine-design.md`.
+
 ## Camera: first-class follow / scroller camera (`KhaozEngine.Graphics`)
 
 `Camera2D` is the generic matrix base: position/zoom/rotation to view matrix, world<->screen, and a

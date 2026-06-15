@@ -1,6 +1,39 @@
 # Changelog
 
-All notable changes to KhaozEngine. Versions are shared across all packages.
+All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one version
+(`Directory.Build.props`). New custom-stack (MonoGame-free) packages version **independently** on a 5.x
+experimental line - see `KhaozEngine.Render3D` below and the post-MonoGame plan in `docs/ROADMAP.md`.
+
+## KhaozEngine.Render3D 5.0.0-experimental (new, independent 5.x line)
+
+First package of the post-MonoGame custom engine (see `docs/ROADMAP.md`). EXPERIMENTAL. Versions
+independently of the shared 4.x line via its own csproj `<Version>`; ships nothing that changes existing
+packages. Proven on Apple Silicon (Metal) at net10.0.
+
+### KhaozEngine.Render3D (new)
+
+- New package: real-time stylized 3D on a **custom MonoGame-free renderer** - `Veldrid` (GPU) +
+  `Veldrid.SPIRV` (GLSL -> SPIR-V -> MSL/HLSL/GLSL at load, compiled natively, no Wine) + `SharpGLTF`
+  (runtime glTF load). Math is `System.Numerics`. All three deps are confined to this package; no
+  `Microsoft.Xna.Framework` reference.
+- `IsoCamera3D` / `IIsoCamera3D`: orthographic isometric camera (no perspective). Configurable
+  `Azimuth` (default 45 deg), `Elevation` (default `atan(0.5)` ~= 26.57 deg, the 2:1 iso look), `Target`,
+  `OrthoSize`, `Zoom`, near/far. Exposes `View` / `Projection` / `ViewProjection` (`Matrix4x4`). Headless,
+  unit-tested.
+- `GltfLoader` / `GltfMesh`: load a `.glb`/`.gltf` at runtime (SharpGLTF) into a welded-normal mesh.
+- `Scene3D`: a camera + one model + a `PixelPostProcessSettings`. Renders the lit model into an internal
+  render target, runs the post chain, presents. `Render3DHost` owns the SDL2/Metal window + frame loop +
+  engine-native input (`Key`/`FrameInfo`); Veldrid stays fully internal. `Render3DSnapshot` captures a
+  scene offscreen to a CPU RGBA buffer (headless, for tooling/tests).
+- Directional "sun" lighting with smooth diffuse or **cel** shading. `PixelPostProcess` chain, every stage
+  independently toggleable: palette quantization (swappable `Palette`/`Palettes`), 4x4 Bayer dither,
+  depth/normal-edge silhouette outline, point-or-linear upscale, configurable internal resolution and
+  background. Default settings target a smooth, stylized space look; flipping the toggles gives the
+  chunky retro/pixel look.
+- Known limitations (POC): Metal backend only (clip-Y flip + MRT-clear handling are Metal-specific, gated
+  for a future per-backend pass); `Render3DHost` needs SDL2 on the loader path (`brew install sdl2`);
+  `Veldrid.SPIRV` pulls a transitive `Newtonsoft.Json` flagged `NU1903` (build-time). GPU rendering is
+  eyeball-verified (the sample / `Render3DSnapshot`); only the camera math has CI unit tests.
 
 ## Tools
 

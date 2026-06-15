@@ -57,10 +57,11 @@ var mesh = new MeshBuilder<VertexPosition, VertexEmpty, VertexEmpty>("ico");
 var prim = mesh.UsePrimitive(mat);
 for (int f = 0; f < idx.Count; f += 3)
 {
-    prim.AddTriangle(
-        new VertexPosition(vs[idx[f]]),
-        new VertexPosition(vs[idx[f + 1]]),
-        new VertexPosition(vs[idx[f + 2]]));
+    Vector3 a = vs[idx[f]], b = vs[idx[f + 1]], c = vs[idx[f + 2]];
+    // Ensure CCW winding as seen from outside (outward face normal) so glTF-standard loaders
+    // compute outward-pointing normals: cross(b-a, c-a) should agree with the outward direction (a).
+    if (Vector3.Dot(Vector3.Cross(b - a, c - a), a) < 0f) (b, c) = (c, b);
+    prim.AddTriangle(new VertexPosition(a), new VertexPosition(b), new VertexPosition(c));
 }
 
 var scene = new SceneBuilder();

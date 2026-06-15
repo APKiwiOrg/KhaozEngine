@@ -22,7 +22,10 @@ namespace KhaozEngine.Render3D
 
         public Palette ActivePalette = Palettes.Ember8;
         public Vector4 OutlineColor = new(0.05f, 0.03f, 0.06f, 1f);
-        public float OutlineDepthThreshold = 0.0015f;
+        // Depth here is the non-linear clip depth (compressed near the far plane), so the threshold only
+        // needs to catch genuine occlusion jumps between separate surfaces; the silhouette rim comes from
+        // the normal edge (surface normal flips against the cleared background).
+        public float OutlineDepthThreshold = 0.2f;
         public float OutlineNormalThreshold = 0.4f;
 
         /// <summary>Direction the sunlight travels (will be normalized).</summary>

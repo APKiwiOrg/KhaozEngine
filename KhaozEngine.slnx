@@ -23,6 +23,7 @@
   <Project Path="KhaozEngine.Time/KhaozEngine.Time.csproj" />
   <Project Path="KhaozEngine.UI/KhaozEngine.UI.csproj" />
   <Project Path="KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
+  <Project Path="Render3DSample/Render3DSample.csproj" />
   <Project Path="tools/PixelLabSheetAssembler/PixelLabSheetAssembler.csproj" />
   <Project Path="tools/PixelLabSheetAssembler.Tests/PixelLabSheetAssembler.Tests.csproj" />
 </Solution>

@@ -11,34 +11,47 @@ namespace KhaozEngine.Render3D
         public static GltfMesh Load(string path)
         {
             ModelRoot root = ModelRoot.Load(path);
-            var verts = new List<ModelVertex>();
+            var positions = new List<Vector3>();
+            var normals = new List<Vector3>();
+            var colors = new List<Vector4>();
             var indices = new List<ushort>();
+            var weld = new Dictionary<(long, long, long), int>();
+
+            int Vertex(Vector3 p, Vector4 color)
+            {
+                var key = ((long)MathF.Round(p.X * 1e4f), (long)MathF.Round(p.Y * 1e4f), (long)MathF.Round(p.Z * 1e4f));
+                if (weld.TryGetValue(key, out int idx)) return idx;
+                idx = positions.Count;
+                positions.Add(p); normals.Add(Vector3.Zero); colors.Add(color);
+                weld[key] = idx;
+                return idx;
+            }
 
             foreach (var mesh in root.LogicalMeshes)
             foreach (var prim in mesh.Primitives)
             {
                 var pos = prim.GetVertexAccessor("POSITION")?.AsVector3Array();
                 if (pos == null) continue;
-
                 Vector4 baseColor = ReadBaseColor(prim.Material);
 
                 foreach (var (a, b, c) in prim.GetTriangleIndices())
                 {
                     Vector3 p0 = pos[a], p1 = pos[b], p2 = pos[c];
-                    Vector3 n = Vector3.Normalize(Vector3.Cross(p1 - p0, p2 - p0)); // flat per-triangle
-                    AddVertex(verts, indices, p0, n, baseColor);
-                    AddVertex(verts, indices, p1, n, baseColor);
-                    AddVertex(verts, indices, p2, n, baseColor);
+                    Vector3 faceN = Vector3.Cross(p1 - p0, p2 - p0); // area-weighted (un-normalized)
+                    int i0 = Vertex(p0, baseColor), i1 = Vertex(p1, baseColor), i2 = Vertex(p2, baseColor);
+                    normals[i0] += faceN; normals[i1] += faceN; normals[i2] += faceN;
+                    indices.Add((ushort)i0); indices.Add((ushort)i1); indices.Add((ushort)i2);
                 }
             }
-            if (verts.Count == 0) throw new InvalidOperationException("glTF has no triangles: " + path);
-            return new GltfMesh(verts.ToArray(), indices.ToArray());
-        }
+            if (positions.Count == 0) throw new InvalidOperationException("glTF has no triangles: " + path);
 
-        static void AddVertex(List<ModelVertex> verts, List<ushort> indices, Vector3 p, Vector3 n, Vector4 c)
-        {
-            indices.Add((ushort)verts.Count);
-            verts.Add(new ModelVertex(p, n, c));
+            var verts = new ModelVertex[positions.Count];
+            for (int i = 0; i < positions.Count; i++)
+            {
+                Vector3 n = normals[i].LengthSquared() > 1e-12f ? Vector3.Normalize(normals[i]) : Vector3.UnitY;
+                verts[i] = new ModelVertex(positions[i], n, colors[i]);
+            }
+            return new GltfMesh(verts, indices.ToArray());
         }
 
         static Vector4 ReadBaseColor(Material? mat)

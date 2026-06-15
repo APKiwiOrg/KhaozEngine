@@ -8,9 +8,13 @@ namespace KhaozEngine.Render3D.Internal
     /// </summary>
     internal static class ShaderSources
     {
-        // ---- Model pass (matrices uploaded transposed: GLSL column-vector math) ----
+        // ---- Model pass. One combined UBO (both stages) avoids a cross-stage two-buffer binding
+        //      issue in the Veldrid/SPIRV Metal mapping. Matrices uploaded row-major directly. ----
         public const string ModelVert = @"#version 450
-layout(set=0, binding=0) uniform Cam { mat4 ViewProj; mat4 Model; };
+layout(set=0, binding=0) uniform U {
+    mat4 ViewProj; mat4 Model;
+    vec4 LightDir; vec4 LightColor; vec4 Ambient; vec4 Params;
+};
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
 layout(location=2) in vec4 Color;
@@ -26,7 +30,8 @@ void main() {
 }";
 
         public const string ModelFrag = @"#version 450
-layout(set=0, binding=1) uniform Light {
+layout(set=0, binding=0) uniform U {
+    mat4 ViewProj; mat4 Model;
     vec4 LightDir;   // xyz = travel direction
     vec4 LightColor;
     vec4 Ambient;

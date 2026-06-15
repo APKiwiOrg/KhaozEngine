@@ -10,11 +10,14 @@ namespace KhaozEngine.Render3D.Rendering
     /// <summary>Builds the model pipeline and draws the lit/cel glTF mesh into the low-res MRT.</summary>
     internal sealed class ModelRenderer : IDisposable
     {
-        struct CamUbo { public Matrix4x4 ViewProj; public Matrix4x4 Model; }
-        struct LightUbo { public Vector4 Dir; public Vector4 Color; public Vector4 Ambient; public Vector4 Params; }
+        struct Ubo
+        {
+            public Matrix4x4 ViewProj; public Matrix4x4 Model;
+            public Vector4 Dir; public Vector4 Color; public Vector4 Ambient; public Vector4 Params;
+        }
 
         readonly GraphicsDevice _gd;
-        readonly DeviceBuffer _camBuf, _lightBuf;
+        readonly DeviceBuffer _ubo;
         readonly ResourceSet _set;
         readonly Pipeline _pipeline;
         readonly Shader[] _shaders;
@@ -24,13 +27,11 @@ namespace KhaozEngine.Render3D.Rendering
             _gd = gd;
             var factory = gd.ResourceFactory;
 
-            _camBuf = factory.CreateBuffer(new BufferDescription(128, BufferUsage.UniformBuffer));
-            _lightBuf = factory.CreateBuffer(new BufferDescription(64, BufferUsage.UniformBuffer));
+            _ubo = factory.CreateBuffer(new BufferDescription(192, BufferUsage.UniformBuffer)); // 2 mat4 + 4 vec4
 
             var layout = factory.CreateResourceLayout(new ResourceLayoutDescription(
-                new ResourceLayoutElementDescription("Cam", ResourceKind.UniformBuffer, ShaderStages.Vertex),
-                new ResourceLayoutElementDescription("Light", ResourceKind.UniformBuffer, ShaderStages.Fragment)));
-            _set = factory.CreateResourceSet(new ResourceSetDescription(layout, _camBuf, _lightBuf));
+                new ResourceLayoutElementDescription("U", ResourceKind.UniformBuffer, ShaderStages.Vertex | ShaderStages.Fragment)));
+            _set = factory.CreateResourceSet(new ResourceSetDescription(layout, _ubo));
 
             _shaders = factory.CreateFromSpirv(
                 new ShaderDescription(ShaderStages.Vertex, Encoding.UTF8.GetBytes(ShaderSources.ModelVert), "main"),
@@ -61,17 +62,23 @@ namespace KhaozEngine.Render3D.Rendering
         public void Draw(CommandList cl, DeviceBuffer vb, DeviceBuffer ib, int indexCount,
             Matrix4x4 viewProj, Matrix4x4 model, RenderResources res, PixelPostProcessSettings s)
         {
-            // Upload transposed so GLSL column-vector math is natural (correct positions AND normals).
-            var cam = new CamUbo { ViewProj = Matrix4x4.Transpose(viewProj), Model = Matrix4x4.Transpose(model) };
-            cl.UpdateBuffer(_camBuf, 0, ref cam);
-            var light = new LightUbo
+            // Upload row-major directly: Veldrid's reinterpret into a column-major GLSL mat4 already
+            // transposes, so `ViewProj * Model * pos` in the shader is the correct column-vector result.
+            // Rendering into a texture on the Metal backend lands Y-flipped vs. the camera's standard
+            // (OpenGL-style, unit-tested) clip space, so flip clip Y here so world-up maps to image-top.
+            // Presentation-layer correction only; camera math is untouched. TODO: gate per-backend when a
+            // non-Metal backend is added (Metal reports IsClipSpaceYInverted=false yet still needs this).
+            var yFlip = Matrix4x4.Identity; yFlip.M22 = -1f;
+            var ubo = new Ubo
             {
+                ViewProj = viewProj * yFlip,
+                Model = model,
                 Dir = new Vector4(Vector3.Normalize(s.LightDirection), 0f),
                 Color = s.LightColor,
                 Ambient = s.AmbientColor,
                 Params = new Vector4(s.CelBands, 0, 0, 0),
             };
-            cl.UpdateBuffer(_lightBuf, 0, ref light);
+            cl.UpdateBuffer(_ubo, 0, ref ubo);
 
             cl.SetFramebuffer(res.ModelFB);
             cl.ClearColorTarget(0, new RgbaFloat(s.AmbientColor.X, s.AmbientColor.Y, s.AmbientColor.Z, 1f));
@@ -90,7 +97,7 @@ namespace KhaozEngine.Render3D.Rendering
         {
             _pipeline.Dispose(); _set.Dispose();
             foreach (var sh in _shaders) sh.Dispose();
-            _camBuf.Dispose(); _lightBuf.Dispose();
+            _ubo.Dispose();
         }
     }
 }

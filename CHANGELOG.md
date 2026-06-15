@@ -5,6 +5,18 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 5.20.0-experimental (custom 5.x line)
+
+### KhaozEngine.Render3D (additive)
+
+- **Debug line/wireframe overlay**: immediate-mode `Scene3D.DebugLine/DebugRay/DebugBox/DebugGrid/DebugAxes/
+  DebugCircle` draw coloured lines on top of the post-processed image with the camera's view-projection (depth
+  disabled, alpha-blended overlay). For dev viz and in-game cues — tower range rings (`DebugCircle` on the
+  ground), flow-field arrows, board grids, bounds, RGB axis gizmos. Segments accumulate per frame and clear in
+  `Begin()` (same lifecycle as instances). The geometry builders live in a pure, headless-tested
+  `DebugShapes` (Box/Grid/Circle/Axes). Backed by an internal `LineRenderer` (LineList pipeline). Snapshot-
+  verified (grid + box wireframe + ground ring + axes + line over a lit scene). From the Hardpoint testbed.
+
 ## 5.19.0-experimental (custom 5.x line)
 
 ### KhaozEngine.Render3D (additive)

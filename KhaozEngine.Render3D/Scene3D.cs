@@ -83,7 +83,10 @@ namespace KhaozEngine.Render3D
         /// <summary>Queue a ray from <paramref name="origin"/> along <paramref name="direction"/> for
         /// <paramref name="length"/> units.</summary>
         public void DebugRay(Vector3 origin, Vector3 direction, float length, Vector4 color)
-            => DebugLine(origin, origin + Vector3.Normalize(direction) * length, color);
+        {
+            if (direction.LengthSquared() < 1e-12f) return;   // degenerate direction: nothing to draw
+            DebugLine(origin, origin + Vector3.Normalize(direction) * length, color);
+        }
 
         /// <summary>Queue the 12 edges of an axis-aligned box centred at <paramref name="center"/> with full
         /// extents <paramref name="size"/>.</summary>

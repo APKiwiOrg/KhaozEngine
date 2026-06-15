@@ -68,6 +68,7 @@ namespace KhaozEngine.Render3D
         /// <paramref name="normal"/>.</summary>
         public static void Circle(List<Vector3> segments, Vector3 center, Vector3 normal, float radius, int segmentCount)
         {
+            if (segmentCount < 3 || normal.LengthSquared() < 1e-12f) return;   // degenerate: nothing to draw
             // Build an orthonormal basis (u, v) spanning the plane perpendicular to normal.
             Vector3 n = Vector3.Normalize(normal);
             Vector3 reference = Math.Abs(n.Y) < 0.99f ? Vector3.UnitY : Vector3.UnitX;

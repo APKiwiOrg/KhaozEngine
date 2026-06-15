@@ -25,6 +25,7 @@ namespace KhaozEngine.Render3D.Rendering
 
         readonly GraphicsDevice _gd;
         readonly DeviceBuffer _ubo;            // one mat4 ViewProj (64 bytes)
+        readonly ResourceLayout _layout;
         readonly ResourceSet _set;
         readonly Pipeline _pipeline;
         readonly Shader[] _shaders;
@@ -39,9 +40,9 @@ namespace KhaozEngine.Render3D.Rendering
 
             _ubo = factory.CreateBuffer(new BufferDescription(64, BufferUsage.UniformBuffer)); // mat4 ViewProj
 
-            var layout = factory.CreateResourceLayout(new ResourceLayoutDescription(
+            _layout = factory.CreateResourceLayout(new ResourceLayoutDescription(
                 new ResourceLayoutElementDescription("U", ResourceKind.UniformBuffer, ShaderStages.Vertex)));
-            _set = factory.CreateResourceSet(new ResourceSetDescription(layout, _ubo));
+            _set = factory.CreateResourceSet(new ResourceSetDescription(_layout, _ubo));
 
             _shaders = factory.CreateFromSpirv(
                 new ShaderDescription(ShaderStages.Vertex, Encoding.UTF8.GetBytes(ShaderSources.LineVert), "main"),
@@ -59,7 +60,7 @@ namespace KhaozEngine.Render3D.Rendering
                 DepthStencilState = DepthStencilStateDescription.Disabled,
                 RasterizerState = new RasterizerStateDescription(FaceCullMode.None, PolygonFillMode.Solid, FrontFace.Clockwise, false, false),
                 PrimitiveTopology = PrimitiveTopology.LineList,
-                ResourceLayouts = new[] { layout },
+                ResourceLayouts = new[] { _layout },
                 ShaderSet = new ShaderSetDescription(new[] { vertexLayout }, _shaders),
                 Outputs = targetOutput,
             });
@@ -96,6 +97,7 @@ namespace KhaozEngine.Render3D.Rendering
         {
             _pipeline.Dispose();
             _set.Dispose();
+            _layout.Dispose();
             foreach (var sh in _shaders) sh.Dispose();
             _ubo.Dispose();
             _vb?.Dispose();

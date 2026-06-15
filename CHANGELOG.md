@@ -5,6 +5,27 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 5.11.0-experimental (custom 5.x line)
+
+Input breadth, part 2: gamepad + touch state on `InputState`. Additive and non-breaking. The state model is
+headless-tested; a *live* gamepad smoke needs a physical controller (the SDL polling is best-effort and
+compile-verified, defensive on every call) and touch is mobile (the type + any mapping stay testable).
+
+### KhaozEngine.Windowing (additive)
+
+- `GamepadState` + `GamepadButton`: immutable per-frame pad snapshot (button down/pressed/released sets, two
+  analog sticks raw, two triggers), with `IsDown`/`WasPressed`/`WasReleased` and radial-deadzone stick
+  helpers. `GamepadState.Disconnected` is the not-connected sentinel.
+- `Deadzone.Radial(stick, deadzone)`: shared magnitude-based deadzone (rejects small diagonal drift as a
+  whole, rescales the remainder so the edge maps to 0 and full tilt to 1).
+- `TouchPoint` + `TouchPhase`: a touch point (stable id, position, phase). Empty on desktop; mobile fills it.
+- `InputState` gains `Gamepads` / `Touches` (default empty) plus `Gamepad(index)` (returns
+  `GamepadState.Disconnected` when absent) and `PrimaryGamepad`. The existing 10-arg constructor is unchanged
+  (the new parameters are optional), so all current call sites keep compiling.
+- `AppWindow` polls SDL2 game controllers each frame via a defensive `SdlGamepadPoller` (every SDL call
+  guarded; degrades to no pads on any failure, never affecting the window loop). `WindowingSample` shows a pad
+  readout and lets the left stick nudge the box / A reset it.
+
 ## 5.10.0-experimental (custom 5.x line)
 
 Input breadth, part 1 (milestone 2 of engine maturity): pause/time-scale and a gesture seam. All additive in

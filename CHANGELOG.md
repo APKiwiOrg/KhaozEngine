@@ -5,6 +5,18 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 5.13.1-experimental (custom 5.x line)
+
+### KhaozEngine.Render3D (fix)
+
+- **3D scenes rendered vertically upside-down.** `ModelRenderer` multiplied the camera view-projection by a
+  clip-Y flip (`M22 = -1`), which inverted the image (world-up landed at the bottom) AND disagreed with
+  `IsoCamera3D.ScreenToGround` picking, which uses the *unflipped* matrix. The flip was invisible on symmetric
+  content (a sphere, a starfield, a symmetric instance grid) and only showed up on the first asymmetric scene
+  (an iso game board). Removed the flip: the view-projection is uploaded as-is, so the render is right-side up
+  and consistent with picking. Verified with an asymmetric two-sphere snapshot (world-up now maps to
+  screen-up). No API change.
+
 ## 4.10.0 (MonoGame 4.x line)
 
 - **`KhaozEngine.Ecs` is now MonoGame-free**: dropped the unused `MonoGame.Framework.DesktopGL` package

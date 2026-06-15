@@ -76,11 +76,13 @@ namespace KhaozEngine.Render3D.Rendering
         public void DrawInstance(CommandList cl, DeviceBuffer vb, DeviceBuffer ib, int indexCount,
             Matrix4x4 viewProj, Matrix4x4 model, PixelPostProcessSettings s)
         {
-            // Row-major upload; flip clip Y so world-up maps to image-top on the Metal render target.
-            var yFlip = Matrix4x4.Identity; yFlip.M22 = -1f;
+            // Upload the camera's view-projection as-is. (An earlier clip-Y flip here rendered the scene
+            // vertically inverted — invisible on symmetric content but obvious on an asymmetric board — and
+            // it also disagreed with IsoCamera3D.ScreenToGround picking, which uses the unflipped matrix.
+            // Using viewProj directly makes the render right-side up AND consistent with picking.)
             var ubo = new Ubo
             {
-                ViewProj = viewProj * yFlip,
+                ViewProj = viewProj,
                 Model = model,
                 Dir = new Vector4(Vector3.Normalize(s.LightDirection), 0f),
                 Color = s.LightColor,

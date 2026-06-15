@@ -47,29 +47,37 @@ static (List<Vector3> v, List<int> i) Ico(int subdiv)
     return (verts, tris);
 }
 
-var (vs, idx) = Ico(3);
-var mat = new MaterialBuilder("body")
-    .WithMetallicRoughnessShader()
-    .WithBaseColor(new Vector4(0.85f, 0.55f, 0.30f, 1f))
-    .WithMetallicRoughness(0f, 1f);
+// Organic lumpiness for the asteroid: layered trig "noise" on the surface direction.
+static float Lump(Vector3 p) =>
+    0.16f * MathF.Sin(p.X * 4.1f) * MathF.Sin(p.Y * 3.7f + 1.3f) * MathF.Sin(p.Z * 4.3f + 2.1f)
+  + 0.08f * MathF.Sin(p.X * 8.2f + 0.5f) * MathF.Cos(p.Z * 7.9f);
 
-var mesh = new MeshBuilder<VertexPosition, VertexEmpty, VertexEmpty>("ico");
-var prim = mesh.UsePrimitive(mat);
-for (int f = 0; f < idx.Count; f += 3)
+void Build(string path, Vector4 color, bool lumpy)
 {
-    Vector3 a = vs[idx[f]], b = vs[idx[f + 1]], c = vs[idx[f + 2]];
-    // Ensure CCW winding as seen from outside (outward face normal) so glTF-standard loaders
-    // compute outward-pointing normals: cross(b-a, c-a) should agree with the outward direction (a).
-    if (Vector3.Dot(Vector3.Cross(b - a, c - a), a) < 0f) (b, c) = (c, b);
-    prim.AddTriangle(new VertexPosition(a), new VertexPosition(b), new VertexPosition(c));
+    var (vs, idx) = Ico(3);
+    if (lumpy)
+        for (int k = 0; k < vs.Count; k++)
+            vs[k] = vs[k] * (1f + Lump(vs[k]));
+
+    var mat = new MaterialBuilder("body").WithMetallicRoughnessShader()
+        .WithBaseColor(color).WithMetallicRoughness(0f, 1f);
+    var mesh = new MeshBuilder<VertexPosition, VertexEmpty, VertexEmpty>("ico");
+    var prim = mesh.UsePrimitive(mat);
+    for (int f = 0; f < idx.Count; f += 3)
+    {
+        Vector3 a = vs[idx[f]], b = vs[idx[f + 1]], c = vs[idx[f + 2]];
+        // Ensure CCW winding as seen from outside so glTF-standard loaders get outward normals.
+        if (Vector3.Dot(Vector3.Cross(b - a, c - a), a) < 0f) (b, c) = (c, b);
+        prim.AddTriangle(new VertexPosition(a), new VertexPosition(b), new VertexPosition(c));
+    }
+    var scene = new SceneBuilder();
+    scene.AddRigidMesh(mesh, Matrix4x4.Identity);
+    string full = System.IO.Path.GetFullPath(path);
+    System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(full)!);
+    scene.ToGltf2().SaveGLB(full);
+    Console.WriteLine($"wrote {full} verts={vs.Count} tris={idx.Count / 3}");
 }
 
-var scene = new SceneBuilder();
-scene.AddRigidMesh(mesh, Matrix4x4.Identity);
-var model = scene.ToGltf2();
-
-string outPath = args.Length > 0 ? args[0] : "KhaozEngine.Render3D/assets/testmodel.glb";
-outPath = System.IO.Path.GetFullPath(outPath);
-System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(outPath)!);
-model.SaveGLB(outPath);
-Console.WriteLine($"wrote {outPath} verts={vs.Count} tris={idx.Count / 3}");
+string dir = args.Length > 0 ? args[0] : "KhaozEngine.Render3D/assets";
+Build(System.IO.Path.Combine(dir, "testmodel.glb"), new Vector4(0.85f, 0.55f, 0.30f, 1f), lumpy: false); // warm planet
+Build(System.IO.Path.Combine(dir, "asteroid.glb"), new Vector4(0.46f, 0.44f, 0.42f, 1f), lumpy: true);    // gray asteroid

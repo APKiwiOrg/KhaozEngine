@@ -4,6 +4,22 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 (`Directory.Build.props`). New custom-stack (MonoGame-free) packages version **independently** on a 5.x
 experimental line - see `KhaozEngine.Render3D` below and the post-MonoGame plan in `docs/ROADMAP.md`.
 
+## KhaozEngine.Render3D 5.1.0-experimental
+
+Polish pass on the experimental renderer (additive; default look unchanged).
+
+- **Procedural starfield** behind the model (`PixelPostProcessSettings.Starfield`, default on), composited in
+  the final pass. Background is flagged by the color target's alpha (model writes alpha 1, the clear sets 0)
+  and preserved through the palette/edge passes - keeps the blit to a safe binding count (a depth texture in
+  the blit tripped a Veldrid/Metal multi-resource binding bug).
+- **Second test model**: a lumpy low-poly `asteroid.glb` (noise-perturbed icosphere) alongside the planet,
+  proving the loader handles arbitrary glTF geometry. The sample switches models (Space), zooms (W/S), and
+  toggles the starfield (A).
+- **`Newtonsoft.Json` pinned to 13.0.3** in the package to override the vulnerable transitive 9.0.1 from
+  `Veldrid.SPIRV` (clears NU1903).
+- **Sample runs without env vars**: `Render3DSample` auto-copies the system SDL2 (Homebrew) into its output as
+  `libsdl2.dylib`, so `dotnet run --project Render3DSample` works without `DYLD_FALLBACK_LIBRARY_PATH`.
+
 ## KhaozEngine.Render3D 5.0.0-experimental (new, independent 5.x line)
 
 First package of the post-MonoGame custom engine (see `docs/ROADMAP.md`). EXPERIMENTAL. Versions

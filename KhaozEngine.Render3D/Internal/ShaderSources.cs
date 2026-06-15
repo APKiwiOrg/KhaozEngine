@@ -73,7 +73,8 @@ layout(location=0) out vec4 oColor;
 const float bayer[16] = float[16](
     0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
 void main() {
-    vec3 c = texture(sampler2D(Src, Samp), vUv).rgb;
+    vec4 src = texture(sampler2D(Src, Samp), vUv);
+    vec3 c = src.rgb;
     if (Info.y > 0.5) {
         ivec2 px = ivec2(gl_FragCoord.xy);
         float th = (bayer[(px.y & 3) * 4 + (px.x & 3)] / 16.0 - 0.5);
@@ -86,7 +87,7 @@ void main() {
         float d = dot(c - pc, c - pc);
         if (d < best) { best = d; bestC = pc; }
     }
-    oColor = vec4(bestC, 1.0);
+    oColor = vec4(bestC, src.a); // preserve background alpha marker
 }";
 
         // ---- Depth/normal edge outline ----
@@ -99,7 +100,8 @@ layout(set=0, binding=4) uniform Edge { vec4 OutlineColor; vec4 Texel; vec4 Thre
 layout(location=0) in vec2 vUv;
 layout(location=0) out vec4 oColor;
 void main() {
-    vec3 base = texture(sampler2D(ColorTex, Samp), vUv).rgb;
+    vec4 baseSrc = texture(sampler2D(ColorTex, Samp), vUv);
+    vec3 base = baseSrc.rgb;
     float d0 = texture(sampler2D(DepthTex, Samp), vUv).r;
     vec3 n0 = texture(sampler2D(NormalTex, Samp), vUv).rgb * 2.0 - 1.0;
     float edge = 0.0;
@@ -110,15 +112,29 @@ void main() {
         if (abs(d - d0) > Thresh.x) edge = 1.0;
         if ((1.0 - dot(n, n0)) > Thresh.y) edge = 1.0;
     }
-    oColor = vec4(mix(base, OutlineColor.rgb, edge), 1.0);
+    oColor = vec4(mix(base, OutlineColor.rgb, edge), baseSrc.a); // preserve background alpha marker
 }";
 
-        // ---- Point upscale blit ----
+        // ---- Final upscale blit (+ optional procedural starfield in the background) ----
+        // Background is flagged by the color target's alpha (model writes a=1, the clear sets a=0),
+        // which the palette/edge passes preserve. Keeps the blit to a safe 3-binding set (the depth
+        // texture in here tripped a Veldrid/Metal multi-resource binding bug).
         public const string BlitFrag = @"#version 450
 layout(set=0, binding=0) uniform texture2D Src;
 layout(set=0, binding=1) uniform sampler Samp;
+layout(set=0, binding=2) uniform Final { vec4 BgColor; vec4 Params; }; // Params.x=starsOn
 layout(location=0) in vec2 vUv;
 layout(location=0) out vec4 oColor;
-void main() { oColor = texture(sampler2D(Src, Samp), vUv); }";
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+void main() {
+    vec4 s = texture(sampler2D(Src, Samp), vUv);
+    vec3 col = s.rgb;
+    if (Params.x > 0.5 && s.a < 0.5) {                   // background (alpha marker) -> stars
+        vec2 cell = floor(vUv * vec2(220.0, 124.0));
+        float star = step(0.992, hash(cell)) * (0.55 + 0.45 * hash(cell + 3.7));
+        col = BgColor.rgb + vec3(star);
+    }
+    oColor = vec4(col, 1.0);
+}";
     }
 }

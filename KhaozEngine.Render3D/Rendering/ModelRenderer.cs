@@ -85,7 +85,8 @@ namespace KhaozEngine.Render3D.Rendering
             // three to the background. The background ends up uniform in the normal/depth targets too, which
             // keeps the depth-driven silhouette clean (background depth ~= bg.r << sphere depth) and avoids
             // spurious edges in empty space.
-            var bg = new RgbaFloat(s.BackgroundColor.X, s.BackgroundColor.Y, s.BackgroundColor.Z, 1f);
+            // alpha 0 marks "background" for the starfield composite; the model writes alpha 1.
+            var bg = new RgbaFloat(s.BackgroundColor.X, s.BackgroundColor.Y, s.BackgroundColor.Z, 0f);
             cl.ClearColorTarget(0, bg);
             cl.ClearColorTarget(1, bg);
             cl.ClearColorTarget(2, bg);

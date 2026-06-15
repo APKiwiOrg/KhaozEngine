@@ -90,6 +90,32 @@ void main() {
     oColor = vColor;
 }";
 
+        // ---- Camera-facing billboard overlay. Standalone mat4 ViewProj UBO (64 bytes), its own layout/buffer.
+        //      Soft disc: alpha falls to 0 toward the corners so the quad reads as a round, feathered sprite.
+        //      Depth disabled + alpha-or-additive blend = overlay; drawn after the line pass. ----
+        public const string BillboardVert = @"#version 450
+layout(set=0, binding=0) uniform U { mat4 ViewProj; };
+layout(location=0) in vec3 Position;
+layout(location=1) in vec2 Uv;
+layout(location=2) in vec4 Color;
+layout(location=0) out vec2 vUv;
+layout(location=1) out vec4 vColor;
+void main() {
+    gl_Position = ViewProj * vec4(Position, 1.0);
+    vUv = Uv;
+    vColor = Color;
+}";
+
+        public const string BillboardFrag = @"#version 450
+layout(location=0) in vec2 vUv;
+layout(location=1) in vec4 vColor;
+layout(location=0) out vec4 oColor;
+void main() {
+    float d = length(vUv * 2.0 - 1.0);
+    float a = smoothstep(1.0, 0.55, d);
+    oColor = vec4(vColor.rgb, vColor.a * a);
+}";
+
         // ---- Shared fullscreen triangle ----
         public const string FullscreenVert = @"#version 450
 layout(location=0) out vec2 vUv;

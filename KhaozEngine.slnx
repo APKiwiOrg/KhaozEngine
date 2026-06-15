@@ -18,6 +18,7 @@
   <Project Path="KhaozEngine.Persistence/KhaozEngine.Persistence.csproj" />
   <Project Path="KhaozEngine.Platform/KhaozEngine.Platform.csproj" />
   <Project Path="KhaozEngine.Pooling/KhaozEngine.Pooling.csproj" />
+  <Project Path="KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
   <Project Path="KhaozEngine.Screens/KhaozEngine.Screens.csproj" />
   <Project Path="KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
   <Project Path="KhaozEngine.Sprites/KhaozEngine.Sprites.csproj" />
@@ -25,6 +26,7 @@
   <Project Path="KhaozEngine.Time/KhaozEngine.Time.csproj" />
   <Project Path="KhaozEngine.UI/KhaozEngine.UI.csproj" />
   <Project Path="KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
+  <Project Path="Render3DSample/Render3DSample.csproj" />
   <Project Path="tools/PixelLabSheetAssembler/PixelLabSheetAssembler.csproj" />
   <Project Path="tools/PixelLabSheetAssembler.Tests/PixelLabSheetAssembler.Tests.csproj" />
 </Solution>

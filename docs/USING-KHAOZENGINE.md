@@ -382,8 +382,43 @@ The sections above cover the core flow. The rest of the 16-package set, one line
 - **`KhaozEngine.Sprites`**: 2D sprite + directional animation: `SpriteSheet`, `SpriteAnimationPlayer`, `DirectionalAnimatedSprite` (opt-in `SpriteAnchor.FootprintBottomCenter` for iso), `Direction8`, `SpriteRegistry`, `PixelLabSpriteLoader`. Takes a raw `float`/`GameTime` delta.
 - **`KhaozEngine.Time`**: `GameClock` (pause / `TimeScale`) + `TimeSkip`. Pulled in transitively by `Screens`; optional to use directly.
 
+## Render3D (`KhaozEngine.Render3D`, experimental 5.x line)
+
+Experimental, **not part of the MonoGame contract above** - it is the first package of the custom
+MonoGame-free renderer (see [`ROADMAP.md`](ROADMAP.md), "The post-MonoGame pivot"). Versioned independently
+at `5.0.0-experimental`. Metal-only for now; `Render3DHost` needs SDL2 on the loader path
+(`brew install sdl2`, then run with `DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib`).
+
+A consumer drives a spinning model with the post-process on like this (Veldrid never appears in the API):
+
+```csharp
+using KhaozEngine.Render3D;
+
+var host = new Render3DHost("My 3D test", 1280, 720);   // owns the SDL2/Metal window + loop
+var scene = host.Scene;
+scene.LoadModel(GltfLoader.Load("assets/testmodel.glb"));
+
+scene.Camera.Azimuth = MathF.PI / 4f;                    // iso defaults; tweak by eye
+scene.Camera.Elevation = MathF.Atan(0.5f);
+scene.Camera.OrthoSize = 2.7f;
+
+// smooth stylized space look is the default; for the chunky retro look:
+//   scene.Post.RenderWidth = 320; scene.Post.RenderHeight = 180;
+//   scene.Post.Pixelated = scene.Post.Quantize = scene.Post.Dither = true;
+//   scene.Post.CelBands = 4; scene.Post.ActivePalette = Palettes.Pico8;
+
+host.Run(f => scene.Spin(f.Dt));                         // spins the model each frame, post-process on
+```
+
+`Render3DSnapshot.Capture(mesh, configure, w, h, frames)` renders the same scene offscreen to a CPU RGBA
+buffer (headless, no window) - used by the sample's `--smoke` path and any tooling. See the
+`Render3DSample` project for the full interactive harness (hotkeys: `R` retro toggle, `O` outline, `C` cel,
+`P` palette, arrows orbit).
+
 ## Versioning & change process
 
-- SemVer, one shared version across all packages (`Directory.Build.props`).
+- SemVer, one shared version across the **4.x MonoGame packages** (`Directory.Build.props`). New custom-stack
+  packages (e.g. `KhaozEngine.Render3D`) version independently on the **5.x** experimental line via their own
+  csproj `<Version>`; the doc-version guard checks the shared 4.x version only.
 - Local file-feed for inner-loop dev; GitHub Packages on `v*` tags.
 - To change the library: edit, add a headless test in `KhaozEngine.Tests`, `dotnet pack -o ./local-feed`, consume locally; when stable, bump the version + tag for a published release. Each game adopts on its own schedule by bumping its pinned version.

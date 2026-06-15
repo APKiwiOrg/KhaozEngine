@@ -42,11 +42,11 @@ via AOT, and ~21 existing C# packages + 3 games would be thrown away by a rewrit
 - **Audio:** `OpenAL` via `Silk.NET.OpenAL` (or a small custom backend) replaces MonoGame audio.
 - **Texture/content:** `StbImageSharp` etc.
 
-### Current status (as of `5.6.0-experimental`)
+### Current status (as of `5.7.0-experimental`)
 
 **Every subsystem needed to drop MonoGame is now proven on the custom stack — no feasibility unknowns
 remain; the rest is productization + porting.** Shipped 5.x packages (shared version, currently
-`5.6.0-experimental`):
+`5.7.0-experimental`):
 
 | Subsystem | Status |
 |---|---|
@@ -55,7 +55,7 @@ remain; the rest is productization + porting.** Shipped 5.x packages (shared ver
 | Text | shipped — `SpriteFont` (runtime TTF via stb_truetype) in Render2D |
 | Audio | shipped — `KhaozEngine.Audio` graduated to OpenAL streaming (WAV/OGG/MP3) |
 | Windowing + input | shipped — `KhaozEngine.Windowing` (`AppWindow` + engine-native keyboard/mouse `InputState` + bounds-aware `Pointer` with the click-through invariant; Render2D draws via `Render2DSurface`, the standalone `Render2DHost` was folded away). Gamepad/touch/pinch + virtual-resolution transforms are follow-ups |
-| Screens / UI | started — `KhaozEngine.Gui` (`ScreenStack` top-to-bottom input routing + transitions, `Screen` base, `Button`). The wider widget set (Slider/Dropdown/ScrollablePanel/...) + pause/timescale/touch are follow-ups |
+| Screens / UI | started — `KhaozEngine.Gui` (`ScreenStack` routing + transitions, `Screen` base, and the core widgets `Button`/`Label`/`Panel`/`Slider`/`Toggle` over `Pointer`; `TextLayout` wrap/align in Render2D). The heavy widgets (ScrollablePanel/Dropdown/TextInput/PopupPanel) + pause/timescale/touch are follow-ups |
 | Math | done — `System.Numerics` |
 
 Caveats to clear during productization: Metal-only so far (per-backend clip-Y + MRT-clear handling pending);
@@ -66,10 +66,11 @@ same as its OpenGL).
 HUD, modal game-over, looping generated music) runs the whole 5.x stack (Windowing + Render2D + Gui + Audio)
 as a real game loop, no MonoGame. The foundation is complete for a 2D game.
 
-**Next milestone:** **port the wider `UI` widget set** off MonoGame (the 4.x `KhaozEngine.UI` is ~3,800 lines:
-Slider/Dropdown/ScrollablePanel/PopupPanel/TextInput/Tooltip/...) onto `Gui` + `Pointer`, and fill in input
-breadth (gamepad/touch/virtual-resolution) as needed. Then migrate a real game
-(Hardpoint/Nullwake/SpaceGame).
+**Next milestone:** the core widgets (`Label`/`Panel`/`Slider`/`Toggle` + `TextLayout`) landed in
+`5.7.0-experimental`. Remaining: **the heavy `UI` widgets** off MonoGame (the 4.x `KhaozEngine.UI`'s
+ScrollablePanel/Dropdown/TextInput/PopupPanel/Tooltip/...) onto `Gui` + `Pointer` — these need scroll/clip,
+keyboard text entry, and nested-popup input routing — and fill in input breadth (gamepad/touch/
+virtual-resolution) as needed. Then migrate a real game (Hardpoint/Nullwake/SpaceGame).
 
 ### Phased plan
 
@@ -95,7 +96,7 @@ breadth (gamepad/touch/virtual-resolution) as needed. Then migrate a real game
 - **4.x line** — the existing MonoGame packages; one shared version in `Directory.Build.props`; keeps
   shipping 4.8.0, 4.9.0, ... normally and in parallel.
 - **5.x experimental line** — the custom-stack packages (`Render3D`, `Render2D`, ...) share a second version,
-  `Directory.Build.props` `<KhaozEngine5xVersion>` (currently `5.6.0-experimental`), and release together
+  `Directory.Build.props` `<KhaozEngine5xVersion>` (currently `5.7.0-experimental`), and release together
   under one `vX.Y.Z-experimental` tag. (The first two Render3D releases, 5.0.0/5.1.0, predate this and were
   per-package.) The doc-version guard checks the shared 4.x version only; the 5.x line is exempt (like
   consumer pins). Packages graduate

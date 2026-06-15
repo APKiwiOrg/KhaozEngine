@@ -1,0 +1,68 @@
+using System;
+using System.Numerics;
+using KhaozEngine.Render2D;
+using KhaozEngine.Windowing;
+
+namespace KhaozEngine.Gui
+{
+    /// <summary>
+    /// A horizontal slider over <see cref="Pointer"/>: <see cref="Bounds"/> is the interactive track. A press
+    /// that begins inside the track starts a drag and jumps the value to the pointer; dragging keeps tracking
+    /// (clamped 0..1) until release. A press that began elsewhere is ignored, like the click-through invariant.
+    /// Call <see cref="Update"/> then <see cref="Draw"/> each frame. Ported from the 4.x <c>UI.Slider</c>.
+    /// </summary>
+    public sealed class Slider
+    {
+        public Rect Bounds;
+        /// <summary>Current value, 0..1.</summary>
+        public float Value;
+        /// <summary>When false, the slider neither drags nor reports changes.</summary>
+        public bool Enabled = true;
+
+        public Vector4 TrackColor = new(0.12f, 0.12f, 0.16f, 1f);
+        public Vector4 BorderColor = new(0.22f, 0.22f, 0.26f, 1f);
+        public Vector4 FillColor = new(0.16f, 0.39f, 0.70f, 1f);
+        public Vector4 ThumbColor = Vector4.One;
+        public Vector4 ThumbDragColor = new(0.39f, 0.70f, 1f, 1f);
+        public float ThumbWidth = 10f;
+
+        bool _dragging;
+
+        public Slider(Rect bounds, float value = 0f) { Bounds = bounds; Value = Math.Clamp(value, 0f, 1f); }
+
+        /// <summary>Hit-test against the pointer and update <see cref="Value"/>. Returns true if the value changed.</summary>
+        public bool Update(Pointer pointer)
+        {
+            if (!Enabled) { _dragging = false; return false; }
+
+            // Start a drag only if the press began inside the track (press-origin invariant).
+            if (pointer.IsJustPressed && Bounds.Contains(pointer.Position))
+                _dragging = true;
+            if (!pointer.IsDown)
+                _dragging = false;
+
+            if (!_dragging) return false;
+
+            float t = Bounds.Width > 0f ? (pointer.Position.X - Bounds.X) / Bounds.Width : 0f;
+            float newValue = Math.Clamp(t, 0f, 1f);
+            if (newValue == Value) return false;
+            Value = newValue;
+            return true;
+        }
+
+        /// <summary>Draw the track, fill, and thumb. <paramref name="white"/> is a 1x1 white texture.</summary>
+        public void Draw(SpriteBatch batch, Texture2D white)
+        {
+            GuiDraw.Fill(batch, white, Bounds, TrackColor);
+            GuiDraw.Border(batch, white, Bounds, 1f, BorderColor);
+
+            float fillW = Bounds.Width * Value;
+            if (fillW > 0f)
+                GuiDraw.Fill(batch, white, new Rect(Bounds.X, Bounds.Y, fillW, Bounds.Height), FillColor);
+
+            float thumbX = Bounds.X + fillW - ThumbWidth * 0.5f;
+            var thumb = new Rect(thumbX, Bounds.Y - 3f, ThumbWidth, Bounds.Height + 6f);
+            GuiDraw.Fill(batch, white, thumb, _dragging ? ThumbDragColor : ThumbColor);
+        }
+    }
+}

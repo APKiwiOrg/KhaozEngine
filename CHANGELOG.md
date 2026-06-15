@@ -5,6 +5,13 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 4.10.0 (MonoGame 4.x line)
+
+- **`KhaozEngine.Ecs` is now MonoGame-free**: dropped the unused `MonoGame.Framework.DesktopGL` package
+  reference (the ECS source uses no Xna types; its only dependency, `KhaozEngine.Serialization`, is pure BCL).
+  This lets the custom MonoGame-free 5.x stack reuse the same ECS. No API or behaviour change; existing 4.x
+  consumers are unaffected (they carry their own MonoGame reference). Shared 4.x version bumped 4.9.0 -> 4.10.0.
+
 ## 5.13.0-experimental (custom 5.x line)
 
 Render3D grows from a single-model demo into a scene a game can use (Phase A of the Hardpoint 3D vertical

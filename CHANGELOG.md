@@ -4,6 +4,27 @@ All notable changes to KhaozEngine. The 4.x line shares one version (`Directory.
 5.x custom-stack (MonoGame-free) engine packages share a second (`<KhaozEngine5xVersion>`). See the post-MonoGame
 plan in `docs/ROADMAP.md`.
 
+## 5.35.0 (custom 5.x line)
+
+Per-mesh albedo textures in `KhaozEngine.Render3D`. Meshes were colour-baked only (lit `vColor * vTint`); the
+model pass can now sample a bound texture and fold it into the albedo (`texRgb * vColor * vTint`). The UV
+plumbing was already in place (vertex UVs, the shaders threaded `vUv`, glTF `TEXCOORD_0`, and every
+`MeshPrimitives` / `MeshBuilder` shape generates real UVs), so this wires the sampling end to end.
+
+- **Texture API on `Scene3D`**: `LoadTexture(string pngPath)` (PNG/JPG via StbImageSharp) and
+  `LoadTexture(byte[] rgba, int width, int height)` (raw RGBA, for procedural textures) return an opaque
+  `Scene3D.TextureHandle`. New `LoadMesh(GltfMesh mesh, TextureHandle texture)` overload textures a mesh; the
+  existing `LoadMesh(GltfMesh)` stays untextured. Textures are owned by the scene (shareable across meshes,
+  freed in `Dispose`); an invalid/`default` handle falls back to untextured without throwing.
+- **Model pass**: the resource layout gains an albedo `texture2D` (binding 1) + `sampler` (binding 2); each mesh
+  carries its own material resource set, bound per mesh. The texture is **per mesh** (shared by its instances);
+  per-instance tint still varies colour. A shared linear/wrap sampler is used.
+- **Untextured stays pixel-identical**: an untextured mesh samples a 1x1 white default, so
+  `white * vColor * vTint == vColor * vTint`. The committed `scene3d` / `scene2d` goldens are unchanged
+  (verified, not re-baked). A new `scene3d_textured` golden (a checkerboard on a plane) covers the texturing
+  path; `Render3DSample` draws a checkerboard-textured floor.
+- Out of scope (follow-ups): texture alpha / transparency, mipmaps, per-instance textures, normal/roughness maps.
+
 ## 5.34.0 (custom 5.x line)
 
 SFX in `KhaozEngine.Audio`: one-shot sound effects with optional 3D positional audio, alongside the existing

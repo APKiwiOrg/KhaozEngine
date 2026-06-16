@@ -65,11 +65,13 @@ layout(set=0, binding=0) uniform U {
     vec4 FillColor;  // fill light colour
     vec4 CameraPos;  // xyz = eye position
 };
+layout(set=0, binding=1) uniform texture2D Albedo;   // per-mesh albedo; 1x1 white default keeps untextured meshes unchanged
+layout(set=0, binding=2) uniform sampler AlbedoSamp;
 layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;
 layout(location=2) in float vDepth;
 layout(location=3) in vec3 vWorldPos;
-layout(location=4) in vec2 vUv; // declared to keep the stage interface matched; texturing is a later step
+layout(location=4) in vec2 vUv; // albedo sample coord
 layout(location=5) in vec4 vTint;       // per-instance RGBA, multiplies the lit color
 layout(location=6) in vec4 vEmissive;   // per-instance self-illumination, added after lighting
 layout(location=7) in vec4 vSpecParams; // x = specular strength, y = shininess exponent
@@ -78,7 +80,8 @@ layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
 void main() {
     vec3 N = normalize(vNormalW);
-    vec3 albedo = vColor.rgb * vTint.rgb;
+    vec3 texRgb = texture(sampler2D(Albedo, AlbedoSamp), vUv).rgb; // white (1,1,1) for untextured meshes
+    vec3 albedo = vColor.rgb * vTint.rgb * texRgb;
     float ndlKey  = max(dot(N, -normalize(LightDir.xyz)), 0.0);
     float ndlFill = max(dot(N, -normalize(FillDir.xyz)), 0.0);
     float bands = Params.x;

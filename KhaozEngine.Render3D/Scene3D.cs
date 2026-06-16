@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using StbImageSharp;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Render3D.Rendering;
@@ -31,6 +33,8 @@ namespace KhaozEngine.Render3D
         // Slot-indexed GPU mesh storage parallel to _slots; a freed slot's entry is null until reused.
         readonly List<Mesh?> _meshes = new();
         readonly MeshSlotMap _slots = new();
+        // Loaded albedo textures, indexed by TextureHandle.Index. Shared across meshes; disposed in Dispose.
+        readonly List<IGpuTexture> _textures = new();
         readonly SceneInstances _instances = new();
         readonly List<LineRenderer.LineVertex> _lineVerts = new();
         readonly List<BillboardRenderer.BillboardVertex> _billboardAlpha = new();
@@ -56,9 +60,39 @@ namespace KhaozEngine.Render3D
             _billboards = new BillboardRenderer(gd, targetOutput);
         }
 
+        /// <summary>An opaque handle to an albedo texture loaded with <see cref="LoadTexture(string)"/> /
+        /// <see cref="LoadTexture(byte[],int,int)"/>. Pass it to <see cref="LoadMesh(GltfMesh,TextureHandle)"/> to
+        /// texture a mesh. Wraps an index into Scene3D's internal texture list; the GPU texture stays internal.</summary>
+        public readonly struct TextureHandle
+        {
+            /// <summary>Index into the owning scene's texture list (0-based). Internal detail; do not interpret.</summary>
+            internal readonly int Index;
+            internal TextureHandle(int index) { Index = index + 1; } // store +1 so default == Invalid (Index 0)
+            /// <summary>An invalid handle (the same as <c>default</c>). Loading a mesh with this is untextured.</summary>
+            public static TextureHandle Invalid => default;
+            /// <summary>True when this handle refers to a loaded texture (not the <c>default</c>/Invalid handle).</summary>
+            public bool IsValid => Index != 0;
+            /// <summary>The 0-based list index this handle refers to. Only meaningful when <see cref="IsValid"/>.</summary>
+            internal int ListIndex => Index - 1;
+        }
+
         /// <summary>Upload a loaded mesh to the GPU once; returns a handle to instance it with <see cref="Draw"/>.
-        /// Reuses a slot freed by <see cref="UnloadMesh"/> when one is available.</summary>
-        public MeshHandle LoadMesh(GltfMesh mesh)
+        /// Reuses a slot freed by <see cref="UnloadMesh"/> when one is available. The mesh is untextured (samples the
+        /// renderer's 1x1 white default, so its colour is the baked vertex colour times any per-instance tint).</summary>
+        public MeshHandle LoadMesh(GltfMesh mesh) => LoadMeshInternal(mesh, null);
+
+        /// <summary>Upload a loaded mesh to the GPU once and bind <paramref name="texture"/> as its albedo. The
+        /// fragment shader multiplies the sampled texel into the lit albedo (<c>texRgb * vColor * vTint</c>). An
+        /// invalid/<c>default</c> <paramref name="texture"/> handle falls back to untextured (no throw).</summary>
+        public MeshHandle LoadMesh(GltfMesh mesh, TextureHandle texture)
+        {
+            IGpuResourceSet? material = null;
+            if (texture.IsValid)
+                material = _model.CreateMaterialSet(_textures[texture.ListIndex]);
+            return LoadMeshInternal(mesh, material);
+        }
+
+        MeshHandle LoadMeshInternal(GltfMesh mesh, IGpuResourceSet? material)
         {
             var f = _gd.Factory;
             var vb = f.CreateBuffer(new GpuBufferDescription((uint)(mesh.Vertices.Length * ModelVertex.SizeInBytes), GpuBufferUsage.VertexBuffer));
@@ -67,10 +101,31 @@ namespace KhaozEngine.Render3D
             _gd.UpdateBuffer(ib, 0, mesh.Indices);
 
             int index = _slots.Alloc(out int generation);
-            var slot = new Mesh(vb, ib, mesh.Indices.Length);
+            var slot = new Mesh(vb, ib, mesh.Indices.Length, material);
             if (index < _meshes.Count) _meshes[index] = slot;   // reused freed slot
             else _meshes.Add(slot);                              // fresh appended slot
             return new MeshHandle(index, generation);
+        }
+
+        /// <summary>Decode a PNG/JPG file into an albedo texture (RGBA8) and return a handle for
+        /// <see cref="LoadMesh(GltfMesh,TextureHandle)"/>. The texture is owned by the scene and freed in
+        /// <see cref="Dispose"/>; it may be shared across several meshes.</summary>
+        public TextureHandle LoadTexture(string pngPath)
+        {
+            ImageResult img = ImageResult.FromMemory(File.ReadAllBytes(pngPath), ColorComponents.RedGreenBlueAlpha);
+            return LoadTexture(img.Data, img.Width, img.Height);
+        }
+
+        /// <summary>Create an albedo texture from raw RGBA8 bytes (row-major, <paramref name="width"/> *
+        /// <paramref name="height"/> * 4 bytes) and return a handle. For procedural textures and tests. The texture
+        /// is owned by the scene and freed in <see cref="Dispose"/>.</summary>
+        public TextureHandle LoadTexture(byte[] rgba, int width, int height)
+        {
+            var tex = _gd.Factory.CreateTexture(GpuTextureDescription.Texture2D(
+                (uint)width, (uint)height, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
+            _gd.UpdateTexture(tex, rgba, 0, 0, (uint)width, (uint)height);
+            _textures.Add(tex);
+            return new TextureHandle(_textures.Count - 1);
         }
 
         /// <summary>
@@ -83,7 +138,9 @@ namespace KhaozEngine.Render3D
             if (h.Generation == 0) return;          // default handle: no-op
             _slots.Free(h.Index, h.Generation);     // throws on stale/invalid
             var m = _meshes[h.Index];
-            if (m is { } mesh) { mesh.Vb.Dispose(); mesh.Ib.Dispose(); }
+            // Dispose the per-mesh material set alongside the buffers, but NOT the texture: it is owned in
+            // _textures and may be shared by other meshes (freed in Dispose).
+            if (m is { } mesh) { mesh.Vb.Dispose(); mesh.Ib.Dispose(); mesh.MaterialSet?.Dispose(); }
             _meshes[h.Index] = null;
         }
 
@@ -233,7 +290,7 @@ namespace KhaozEngine.Render3D
                     if (!_slots.IsValid(run.Mesh.Index, run.Mesh.Generation)) continue;
                     var m = _meshes[run.Mesh.Index];
                     if (m is not { } mesh) continue;
-                    _model.DrawMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, run.Start, run.Count);
+                    _model.DrawMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, run.Start, run.Count, mesh.MaterialSet);
                 }
             }
 
@@ -261,14 +318,23 @@ namespace KhaozEngine.Render3D
             _billboards.Dispose();
             _res.Dispose();
             foreach (var m in _meshes)
-                if (m is { } mesh) { mesh.Vb.Dispose(); mesh.Ib.Dispose(); }
+                if (m is { } mesh) { mesh.Vb.Dispose(); mesh.Ib.Dispose(); mesh.MaterialSet?.Dispose(); }
+            foreach (var t in _textures) t.Dispose();
+            _textures.Clear();
         }
 
         readonly struct Mesh
         {
             public readonly IGpuBuffer Vb, Ib;
             public readonly int IndexCount;
-            public Mesh(IGpuBuffer vb, IGpuBuffer ib, int indexCount) { Vb = vb; Ib = ib; IndexCount = indexCount; }
+            /// <summary>Per-mesh material resource set (UBO + albedo + sampler), or null => the renderer's white
+            /// default. The texture itself is owned in Scene3D's <c>_textures</c> list, not here, so a texture can
+            /// be shared by several meshes; only the set is owned per mesh.</summary>
+            public readonly IGpuResourceSet? MaterialSet;
+            public Mesh(IGpuBuffer vb, IGpuBuffer ib, int indexCount, IGpuResourceSet? materialSet = null)
+            {
+                Vb = vb; Ib = ib; IndexCount = indexCount; MaterialSet = materialSet;
+            }
         }
 
         /// <summary>A contiguous run of instances of one mesh handle inside the flat instance array.</summary>

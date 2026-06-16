@@ -83,8 +83,26 @@ static void WriteBmp(string path, int w, int h, byte[] rgba)
 sealed class Render3DSampleApp : GameApp
 {
     MeshHandle[] _handles = Array.Empty<MeshHandle>();
+    MeshHandle _texturedPlane;
     int _modelIdx;
     int _palIdx = 2;
+
+    /// <summary>A deterministic NxN checkerboard in two contrasting colours, as RGBA8 bytes.</summary>
+    static byte[] Checkerboard(int n = 64, int cell = 8)
+    {
+        var px = new byte[n * n * 4];
+        for (int y = 0; y < n; y++)
+            for (int x = 0; x < n; x++)
+            {
+                bool a = ((x / cell) + (y / cell)) % 2 == 0;
+                int i = (y * n + x) * 4;
+                px[i + 0] = (byte)(a ? 235 : 30);
+                px[i + 1] = (byte)(a ? 70 : 200);
+                px[i + 2] = (byte)(a ? 40 : 220);
+                px[i + 3] = 255;
+            }
+        return px;
+    }
 
     public static string FindModel(string name = "testmodel.glb")
     {
@@ -110,6 +128,11 @@ sealed class Render3DSampleApp : GameApp
         var sc = Scene!;
         string[] modelFiles = { FindModel("testmodel.glb"), FindModel("asteroid.glb") };
         _handles = modelFiles.Select(p => sc.LoadMesh(GltfLoader.Load(p))).ToArray();
+
+        // Textured floor: a checkerboard-albedo plane drawn under the model grid, exercising the texturing path.
+        Scene3D.TextureHandle checker = sc.LoadTexture(Checkerboard(), 64, 64);
+        _texturedPlane = sc.LoadMesh(MeshPrimitives.Plane(12f, 12f), checker);
+
         sc.Camera.OrthoSize = 2.7f;
     }
 
@@ -146,6 +169,8 @@ sealed class Render3DSampleApp : GameApp
 
     protected override void OnDraw3D(Scene3D scene)
     {
+        // Textured checkerboard floor under the grid.
+        scene.Draw(_texturedPlane, Matrix4x4.CreateTranslation(0, -1.2f, 0));
         for (int gx = -1; gx <= 1; gx++)
             for (int gz = -1; gz <= 1; gz++)
                 scene.Draw(_handles[_modelIdx], Matrix4x4.CreateTranslation(gx * 3f, 0, gz * 3f));

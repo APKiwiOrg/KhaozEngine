@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using Veldrid;
+using KhaozEngine.Gpu;
 using KhaozEngine.Render2D.Internal;
 
 namespace KhaozEngine.Render2D
@@ -25,7 +26,11 @@ namespace KhaozEngine.Render2D
         public static byte[] Capture(int width, int height, Vector4 clear, Action<Render2DContext> draw)
         {
             var opts = new GraphicsDeviceOptions(false, null, false, ResourceBindingModel.Improved, true, true);
-            GraphicsDevice gd = GraphicsDevice.CreateMetal(opts);
+            // NOTE: the context is intentionally NOT disposed here — as in the original inline CreateMetal path,
+            // tearing down the Metal device after this 2D font/texture pass crashes (Veldrid 4.9.0). The device
+            // is left to process teardown (this is a tooling/test-only snapshot helper). Matches baseline behaviour.
+            GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless(opts);
+            GraphicsDevice gd = gpu.Device;
             var f = gd.ResourceFactory;
             Texture target = f.CreateTexture(TextureDescription.Texture2D(
                 (uint)width, (uint)height, 1, 1, PixelFormat.R8_G8_B8_A8_UNorm, TextureUsage.RenderTarget | TextureUsage.Sampled));

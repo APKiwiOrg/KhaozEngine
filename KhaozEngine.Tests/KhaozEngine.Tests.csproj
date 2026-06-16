@@ -19,6 +19,7 @@
     <ProjectReference Include="../KhaozEngine.Content/KhaozEngine.Content.csproj" />
     <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
     <ProjectReference Include="../KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
+    <ProjectReference Include="../KhaozEngine.Gpu/KhaozEngine.Gpu.csproj" />
     <ProjectReference Include="../KhaozEngine.Effects/KhaozEngine.Effects.csproj" />
     <ProjectReference Include="../KhaozEngine.Graphics/KhaozEngine.Graphics.csproj" />
     <ProjectReference Include="../KhaozEngine.Gui/KhaozEngine.Gui.csproj" />

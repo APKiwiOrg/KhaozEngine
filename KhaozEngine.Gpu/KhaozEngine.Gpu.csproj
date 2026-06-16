@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Gpu</PackageId>
+    <!-- Shared 5.x experimental custom-stack line (see docs/ROADMAP.md "The post-MonoGame pivot"). -->
+    <Version>$(KhaozEngine5xVersion)</Version>
+    <Description>EXPERIMENTAL GPU backend seam for the custom MonoGame-free stack. Owns backend selection (GpuBackendSelector: RuntimeInformation probe with a KE_GRAPHICS_BACKEND override), GpuCapabilities (clip-space-Y / depth-range), and a transitional GpuDeviceContext that wraps Veldrid device creation (windowed via VeldridStartup, headless via GraphicsDevice.CreateMetal) so the 5.x renderers stop hard-coding GraphicsBackend.Metal. Phase 3a foundation: the device context still exposes the Veldrid GraphicsDevice as a transitional bridge (replaced by wrapped GPU types in Phase 3b/3c). Veldrid deps are confined here.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Veldrid" Version="4.9.0" />
+    <PackageReference Include="Veldrid.SPIRV" Version="1.0.15" />
+    <PackageReference Include="Veldrid.StartupUtilities" Version="4.9.0" />
+    <!-- Override the vulnerable Newtonsoft.Json 9.0.1 that Veldrid.SPIRV drags in (NU1903). -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Tests" />
+  </ItemGroup>
+</Project>

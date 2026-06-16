@@ -1,0 +1,96 @@
+# cross-platform-gpu — desktop GPU golden-snapshot matrix (Win D3D11 / Linux Vulkan / macOS Metal).
+#
+# What this does:
+#   * On push / pull_request to main it VERIFIES the committed per-backend goldens
+#     (KhaozEngine.Tests/Gpu/goldens/<name>.<backend>.txt) on a real runner for each desktop backend.
+#   * macOS (arm64) verifies the committed *.metal.txt goldens immediately — those are baked on Metal.
+#   * Windows (D3D11) and Linux (Vulkan) will FAIL with "golden ... missing ... bake it" until their
+#     per-backend goldens are generated and committed. That failure is expected on first run.
+#
+# Generating the Win/Linux (and any new-backend) goldens:
+#   1. Run this workflow manually (Actions -> cross-platform-gpu -> Run workflow) with bake = true.
+#   2. The bake legs render with KE_UPDATE_GOLDENS=1 and upload the per-backend grids as artifacts
+#      named goldens-<backend> (scene2d.<backend>.txt, scene3d.<backend>.txt).
+#   3. Download the artifacts, drop the files into KhaozEngine.Tests/Gpu/goldens/, and commit them.
+#   4. After that, the push/PR legs VERIFY those backends instead of failing.
+#
+# Software rasterizers (these runners have no real GPU):
+#   * Linux uses Mesa lavapipe (software Vulkan) via VK_ICD_FILENAMES.
+#   * Windows D3D11 falls back to WARP (software) automatically when no hardware adapter is present.
+#
+# The headless golden tests use Render2D/3D Snapshot -> CreateHeadless (offscreen, NO window), so SDL2 is
+# NOT required here — only the Vulkan/D3D11 runtime plus a (software) rasterizer. A shipped windowed game
+# still needs SDL2 + libveldrid-spirv bundled per-RID; see docs/CROSS-PLATFORM.md.
+#
+# The fast inner-loop CI (build/test/pack/publish, GPU tests skipped) stays in ci.yml — untouched.
+
+name: cross-platform-gpu
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      bake:
+        description: 'Re-bake the per-backend goldens (KE_UPDATE_GOLDENS=1) and upload them as artifacts'
+        type: boolean
+        default: false
+
+jobs:
+  gpu-golden:
+    name: ${{ matrix.os }} / ${{ matrix.backend }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            backend: metal
+          - os: windows-latest
+            backend: direct3d11
+          - os: ubuntu-latest
+            backend: vulkan
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # local-feed is git-ignored (dev inner-loop); create it so the nuget.config 'local' source resolves.
+      - run: mkdir -p local-feed
+        shell: bash
+
+      - run: dotnet restore
+
+      - run: dotnet build -c Release --no-restore
+
+      # Linux: install Mesa lavapipe (software Vulkan ICD) and point the loader at it.
+      - name: Install software Vulkan (lavapipe)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mesa-vulkan-drivers vulkan-tools
+          echo "VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json" >> "$GITHUB_ENV"
+
+      - name: Vulkan diagnostics
+        if: matrix.os == 'ubuntu-latest'
+        continue-on-error: true
+        run: vulkaninfo --summary || true
+
+      - name: Run GPU golden tests
+        env:
+          KE_GPU_TESTS: '1'
+          KE_GRAPHICS_BACKEND: ${{ matrix.backend }}
+          KE_UPDATE_GOLDENS: ${{ (github.event_name == 'workflow_dispatch' && inputs.bake) && '1' || '' }}
+        run: dotnet test -c Release --no-build --filter "FullyQualifiedName~Golden"
+
+      # When baking: upload the freshly written per-backend goldens so they can be downloaded and committed.
+      - name: Upload baked goldens
+        if: github.event_name == 'workflow_dispatch' && inputs.bake
+        uses: actions/upload-artifact@v4
+        with:
+          name: goldens-${{ matrix.backend }}
+          path: KhaozEngine.Tests/Gpu/goldens/*.${{ matrix.backend }}.txt

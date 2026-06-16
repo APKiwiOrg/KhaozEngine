@@ -64,14 +64,33 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData("metal", true, GpuBackendKind.Metal)]
         [InlineData("vulkan", true, GpuBackendKind.Vulkan)]
         [InlineData("d3d11", true, GpuBackendKind.Direct3D11)]
+        [InlineData("direct3d11", true, GpuBackendKind.Direct3D11)]   // alias matching GpuBackendKind.ToString()
         [InlineData("gl", true, GpuBackendKind.OpenGL)]
-        [InlineData("opengl", false, default(GpuBackendKind))]
+        [InlineData("opengl", true, GpuBackendKind.OpenGL)]           // alias matching GpuBackendKind.ToString()
+        [InlineData("nonsense", false, default(GpuBackendKind))]
         [InlineData(null, false, default(GpuBackendKind))]
         public void TryParseBackend_RecognizesKnownValues(string? value, bool ok, GpuBackendKind expected)
         {
             bool parsed = GpuBackendSelector.TryParseBackend(value, out GpuBackendKind backend);
             Assert.Equal(ok, parsed);
             if (ok) Assert.Equal(expected, backend);
+        }
+
+        // --- the exact KE_GRAPHICS_BACKEND values the cross-platform-gpu CI matrix sets per runner, asserted
+        // regardless of the host OS so the override drives the backend (and thus the per-backend golden path). ---
+
+        [Theory]
+        [InlineData("metal", GpuBackendKind.Metal)]      // macos-14 leg
+        [InlineData("d3d11", GpuBackendKind.Direct3D11)] // windows-latest leg
+        [InlineData("vulkan", GpuBackendKind.Vulkan)]    // ubuntu-latest leg
+        [InlineData("gl", GpuBackendKind.OpenGL)]        // (out of CI scope, but the override still resolves)
+        public void Select_CiMatrixBackendOverride_HonoredOnEveryOs(string env, GpuBackendKind expected)
+        {
+            foreach (OSPlatformKind os in new[]
+                { OSPlatformKind.MacOS, OSPlatformKind.Windows, OSPlatformKind.Linux, OSPlatformKind.Unknown })
+            {
+                Assert.Equal(expected, GpuBackendSelector.Select(env, os));
+            }
         }
     }
 }

@@ -145,14 +145,19 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// Resolve <c>Gpu/goldens/&lt;name&gt;.txt</c> next to this source file. Using <see cref="CallerFilePathAttribute"/>
-        /// makes the path independent of <c>dotnet test</c>'s working directory and the build output layout, so
-        /// generated references and checks always hit the committed source tree.
+        /// Resolve <c>Gpu/goldens/&lt;name&gt;.&lt;backend&gt;.txt</c> next to this source file, where
+        /// <c>&lt;backend&gt;</c> is the active <see cref="KhaozEngine.Gpu.GpuBackendSelector.Select()"/> result
+        /// lower-cased (metal / vulkan / direct3d11 / opengl). Each backend gets its own reference grid because a
+        /// software rasterizer (lavapipe, WARP) won't match Metal pixel-for-pixel. Using
+        /// <see cref="CallerFilePathAttribute"/> makes the path independent of <c>dotnet test</c>'s working
+        /// directory and the build output layout, so generated references and checks always hit the committed
+        /// source tree.
         /// </summary>
         public static string GoldenPath(string name, [CallerFilePath] string thisFile = "")
         {
             string dir = Path.GetDirectoryName(thisFile)!;
-            return Path.Combine(dir, "goldens", name + ".txt");
+            string backend = KhaozEngine.Gpu.GpuBackendSelector.Select().ToString().ToLowerInvariant();
+            return Path.Combine(dir, "goldens", name + "." + backend + ".txt");
         }
     }
 }

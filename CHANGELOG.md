@@ -4,6 +4,26 @@ All notable changes to KhaozEngine. The 4.x line shares one version (`Directory.
 5.x custom-stack (MonoGame-free) engine packages share a second (`<KhaozEngine5xVersion>`). See the post-MonoGame
 plan in `docs/ROADMAP.md`.
 
+## 5.32.0 (custom 5.x line)
+
+Cross-platform desktop bring-up — verification infrastructure (audit milestone 4, desktop scope). No renderer
+change; the `KhaozEngine.Gpu` seam already abstracts the backend.
+
+- **Backend-aware golden net**: the golden-snapshot references are now per-backend (`goldens/<name>.<backend>.txt`,
+  resolved from `GpuBackendSelector.Select()`), so the same scene can be verified independently on Metal / Vulkan
+  / D3D11 (software-rasterizer output differs from Metal pixel-for-pixel). The existing Metal references were
+  renamed to `*.metal.txt`.
+- **Cross-platform GPU CI** (`.github/workflows/cross-platform-gpu.yml`): a matrix that runs the golden tests on
+  **macOS (Metal)**, **Windows (Direct3D11, WARP fallback)**, and **Linux (Vulkan via Mesa lavapipe)**. macOS
+  verifies the committed Metal goldens immediately; Windows/Linux are baked via a manual `workflow_dispatch
+  bake=true` run (uploads the per-backend goldens as artifacts to commit), then verified on push. The fast
+  `ci.yml` (build/test/pack/publish) is unchanged.
+- `KE_GRAPHICS_BACKEND` now also accepts `direct3d11`/`opengl` aliases (matching the enum names + the CI matrix
+  values).
+- New `docs/CROSS-PLATFORM.md` documents the matrix, software rasterizers, the per-backend golden flow, and the
+  remaining productization gaps (per-RID SDL2/libveldrid-spirv bundling for shipped windowed apps; OpenGL +
+  runtime clip-Y derivation; mobile as a separate project).
+
 ## 5.31.0 (custom 5.x line — drops the `-experimental` tag)
 
 - **The 5.x custom stack graduates from experimental.** No code change — the `KhaozEngine.Gpu`/`Windowing`/

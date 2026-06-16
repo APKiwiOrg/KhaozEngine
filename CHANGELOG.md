@@ -5,6 +5,27 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 5.29.0-experimental (custom 5.x line)
+
+P1 batch 1 (see `docs/ENGINE-AUDIT-5x-2026-06-16.md`): two contained fixes.
+
+### KhaozEngine.Gui (P1#6 — styling unification)
+
+- The retained `Button` now uses `GuiStyle` (its hardcoded `Color`/`HoverColor`/`PressColor`/`TextColor` fields
+  are replaced by a single `Style` + `Enabled`/`Selected`), and both the retained `Button` and the immediate
+  `GuiSurface.Button` draw through one shared `GuiDraw.DrawButton` — so there's a single source of truth for
+  button visuals (no more hand-duplicated colours that drift). The retained `Button.Update` now reserves its
+  rect (`Pointer.BlockRegion`), closing the click-through gap in the retained path, and a disabled button never
+  fires.
+
+### KhaozEngine.Render3D (P1#7b — mesh lifecycle)
+
+- `Scene3D.UnloadMesh(MeshHandle)` frees a mesh's GPU buffers and recycles its slot, so a game that streams or
+  swaps content no longer leaks. `MeshHandle` gains a generation; handles are validated on draw, so a stale
+  handle (its mesh unloaded, or its slot since reused) is skipped rather than drawing freed/wrong geometry.
+  Backed by a pure, headless-tested slot map. (Was: append-only index, no unload — a GPU-memory leak for any
+  dynamic content lifecycle.)
+
 ## 5.28.0-experimental (custom 5.x line)
 
 P0 hardening, stage 3 — graphics-backend seam, **phase 3d of 4 (final)**. Lockdown: the consumer-facing

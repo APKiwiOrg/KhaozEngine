@@ -26,7 +26,12 @@ grid because a software rasterizer (lavapipe, WARP) does not match Apple Metal p
 goldens absorb that while still catching real shader / UBO / blend / winding / orientation regressions (coarse
 32×18 grid, per-channel tolerance).
 
-The Metal goldens (`scene2d.metal.txt`, `scene3d.metal.txt`) are committed and verified on every macOS run.
+The Metal goldens (`scene2d.metal.txt`, `scene3d.metal.txt`) and the Direct3D11 goldens
+(`scene2d.direct3d11.txt`, `scene3d.direct3d11.txt`, baked on WARP) are committed and verified on every macOS /
+Windows run respectively. Linux Vulkan goldens are not committed yet (see below).
+
+The 2D golden loads a libre font bundled in the test project (`KhaozEngine.Tests/Assets/Roboto-Regular.ttf`,
+Apache-2.0) rather than an OS system-font path, so its glyph input is identical on every runner.
 
 ## CI matrix (`.github/workflows/cross-platform-gpu.yml`)
 
@@ -40,18 +45,26 @@ Runs the golden tests (`--filter FullyQualifiedName~Golden`, `KE_GPU_TESTS=1`) p
 
 Software rasterizers on the runners (no real GPU):
 
-- Linux Vulkan → Mesa **lavapipe** (`mesa-vulkan-drivers`, `VK_ICD_FILENAMES=.../lvp_icd.x86_64.json`).
-- Windows D3D11 → **WARP** software adapter (automatic fallback when no hardware adapter is present).
+- Linux Vulkan → Mesa **lavapipe** (`mesa-vulkan-drivers`, `VK_ICD_FILENAMES=.../lvp_icd.x86_64.json`). Veldrid
+  4.9.0's Vulkan binding P/Invokes the bare names `libdl` / `libvulkan`, which modern Ubuntu only ships versioned,
+  so the workflow symlinks `libdl.so` → `libdl.so.2` and `libvulkan.so` → `libvulkan.so.1`. Even with that, lavapipe
+  currently crashes the test host at `vkEnumeratePhysicalDevices` on the hosted runner, so the **Vulkan leg is
+  `continue-on-error` (informational, non-blocking)** until a working software-Vulkan setup or real GPU CI lands.
+- Windows D3D11 → **WARP** software adapter (automatic fallback when no hardware adapter is present). Verified.
+
+Net result: **Metal (macOS) and Direct3D11 (Windows/WARP) are validated and blocking; Vulkan (Linux/lavapipe) is
+non-blocking and pending.** The overall workflow is green when Metal + D3D11 verify.
 
 ### Per-backend golden flow
 
-1. **Push / PR = verify.** macOS verifies the committed `.metal.txt` goldens immediately. Windows (D3D11) and
-   Linux (Vulkan) **fail with "golden ... missing ... bake it"** until their goldens exist. That failure is
-   expected on first run.
+1. **Push / PR = verify.** macOS verifies the committed `.metal.txt` goldens and Windows verifies the committed
+   `.direct3d11.txt` goldens. A backend with no committed goldens **fails with "golden ... missing ... bake it"**
+   (that's the current state for Vulkan, but its leg is non-blocking).
 2. **Generate a new backend's goldens:** run the workflow manually with `bake = true`. The bake legs render
    with `KE_UPDATE_GOLDENS=1` and upload artifacts named `goldens-<backend>`
    (`scene2d.<backend>.txt`, `scene3d.<backend>.txt`).
 3. **Commit them:** download the artifacts, drop the files into `KhaozEngine.Tests/Gpu/goldens/`, commit.
+   (Metal and D3D11 goldens are already committed this way; the D3D11 set was baked on the WARP runner.)
 4. After that, the push/PR legs verify those backends instead of failing.
 
 The fast inner-loop CI (`.github/workflows/ci.yml`: build/test/pack/publish, GPU tests skipped) is separate and
@@ -61,10 +74,13 @@ untouched.
 
 This release delivers the **verification mechanism**, not a finished cross-platform product. Open items:
 
-1. **Windowed-app distribution needs native bundling.** The headless golden tests use `CreateHeadless` (no
-   window) so they need no SDL2. A shipped game opens a window and needs **SDL2 + libveldrid-spirv bundled
-   per-RID** (win-x64, linux-x64, osx-arm64, ...). On macOS SDL2 is still copied from Homebrew (Veldrid.SDL2
-   lacks an osx-arm64 native); clean per-RID SDL2 bundling is still pending.
+1. **Windowed-app native bundling (mostly resolved in 5.33.0).** The headless golden tests use `CreateHeadless`
+   (no window), so they need no windowing natives. A shipped windowed game previously needed SDL2 bundled
+   per-RID, and on macOS SDL2 was copied from Homebrew (Veldrid.Sdl2 lacked an osx-arm64 native). **5.33.0
+   replaced Veldrid.Sdl2 with Silk.NET.Windowing (GLFW), which bundles its natives per-RID across desktop**, so
+   the SDL2 problem is gone (no `brew install sdl2`). `libveldrid-spirv` still rides along per-RID via the Veldrid
+   GPU packages. The remaining work is run-verifying the windowed path on Windows/Linux hardware (the headless
+   matrix above does not open a window).
 2. **OpenGL backend deferred.** D3D11 and Vulkan honor Veldrid's clip-space prefer-flags
    (clip-Y / 0..1 depth) like Metal, so they need no special handling. OpenGL's runtime clip-Y / depth
    derivation is the troublesome one and is out of scope here; the `gl` override parses but is unverified.

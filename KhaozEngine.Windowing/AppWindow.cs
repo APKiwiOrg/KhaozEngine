@@ -4,7 +4,7 @@ using System.Diagnostics;
 using System.Numerics;
 using Veldrid;
 using Veldrid.Sdl2;
-using Veldrid.StartupUtilities;
+using KhaozEngine.Gpu;
 
 namespace KhaozEngine.Windowing
 {
@@ -28,6 +28,7 @@ namespace KhaozEngine.Windowing
     public sealed class AppWindow : IDisposable
     {
         readonly Sdl2Window _window;
+        readonly GpuDeviceContext _gpu;
         readonly CommandList _cl;
         readonly Frame _frame = new();
         readonly HashSet<Key> _keysDown = new();
@@ -39,17 +40,20 @@ namespace KhaozEngine.Windowing
         public GraphicsDevice Device { get; }
         /// <summary>The main swapchain (advanced GPU boundary).</summary>
         public Swapchain MainSwapchain => Device.MainSwapchain;
+        /// <summary>The selected graphics backend (centralized via <see cref="GpuBackendSelector"/>).</summary>
+        public GpuBackendKind Backend => _gpu.Backend;
+        /// <summary>Clip-space / depth conventions of the live device (see <see cref="GpuCapabilities"/>).</summary>
+        public GpuCapabilities Capabilities => _gpu.Capabilities;
         /// <summary>Background colour cleared each frame.</summary>
         public Vector4 ClearColor = new(0.10f, 0.12f, 0.16f, 1f);
 
         public AppWindow(string title, int width, int height)
         {
-            var wci = new WindowCreateInfo(100, 100, width, height, WindowState.Normal, title);
             var opts = new GraphicsDeviceOptions(false, null, true, ResourceBindingModel.Improved, true, true);
-            VeldridStartup.CreateWindowAndGraphicsDevice(wci, opts, GraphicsBackend.Metal, out _window, out var gd);
-            Device = gd;
+            (_window, _gpu) = GpuDeviceContext.CreateWindow(title, width, height, opts);
+            Device = _gpu.Device;
             _window.Resized += () => Device.MainSwapchain.Resize((uint)_window.Width, (uint)_window.Height);
-            _cl = gd.ResourceFactory.CreateCommandList();
+            _cl = Device.ResourceFactory.CreateCommandList();
             _lastMouse = Vector2.Zero;
         }
 
@@ -177,7 +181,7 @@ namespace KhaozEngine.Windowing
         {
             _gamepads.Dispose();
             _cl.Dispose();
-            Device.Dispose();
+            _gpu.Dispose();
         }
     }
 }

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using Veldrid;
 using Veldrid.Sdl2;
-using Veldrid.StartupUtilities;
+using KhaozEngine.Gpu;
 
 namespace KhaozEngine.Render3D
 {
@@ -14,6 +14,7 @@ namespace KhaozEngine.Render3D
     public sealed class Render3DHost : IDisposable
     {
         readonly Sdl2Window _window;
+        readonly GpuDeviceContext _gpu;
         readonly GraphicsDevice _gd;
         readonly CommandList _cl;
         readonly HashSet<Key> _down = new();
@@ -23,7 +24,6 @@ namespace KhaozEngine.Render3D
 
         public Render3DHost(string title, int width, int height)
         {
-            var wci = new WindowCreateInfo(100, 100, width, height, WindowState.Normal, title);
             var opts = new GraphicsDeviceOptions(
                 debug: false,
                 swapchainDepthFormat: null,
@@ -32,7 +32,8 @@ namespace KhaozEngine.Render3D
                 preferDepthRangeZeroToOne: true,
                 preferStandardClipSpaceYDirection: true);
 
-            VeldridStartup.CreateWindowAndGraphicsDevice(wci, opts, GraphicsBackend.Metal, out _window, out _gd);
+            (_window, _gpu) = GpuDeviceContext.CreateWindow(title, width, height, opts);
+            _gd = _gpu.Device;
             _window.Resized += () => _gd.MainSwapchain.Resize((uint)_window.Width, (uint)_window.Height);
             Scene = new Scene3D(_gd, _gd.MainSwapchain.Framebuffer.OutputDescription);
             _cl = _gd.ResourceFactory.CreateCommandList();
@@ -104,7 +105,7 @@ namespace KhaozEngine.Render3D
         {
             Scene.Dispose();
             _cl.Dispose();
-            _gd.Dispose();
+            _gpu.Dispose();
         }
     }
 }

@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using Veldrid;
+using KhaozEngine.Gpu;
 
 namespace KhaozEngine.Render3D
 {
@@ -22,7 +23,8 @@ namespace KhaozEngine.Render3D
                 debug: false, swapchainDepthFormat: null, syncToVerticalBlank: false,
                 resourceBindingModel: ResourceBindingModel.Improved,
                 preferDepthRangeZeroToOne: true, preferStandardClipSpaceYDirection: true);
-            using GraphicsDevice gd = GraphicsDevice.CreateMetal(opts);
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless(opts);
+            GraphicsDevice gd = gpu.Device;
             var f = gd.ResourceFactory;
 
             using Texture finalTex = f.CreateTexture(TextureDescription.Texture2D(

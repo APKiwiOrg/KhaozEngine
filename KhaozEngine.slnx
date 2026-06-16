@@ -7,6 +7,7 @@
   <Project Path="KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
   <Project Path="KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
   <Project Path="KhaozEngine.Effects/KhaozEngine.Effects.csproj" />
+  <Project Path="KhaozEngine.Gpu/KhaozEngine.Gpu.csproj" />
   <Project Path="KhaozEngine.Graphics/KhaozEngine.Graphics.csproj" />
   <Project Path="KhaozEngine.Gui/KhaozEngine.Gui.csproj" />
   <Project Path="KhaozEngine.Input/KhaozEngine.Input.csproj" />

@@ -117,6 +117,8 @@ namespace KhaozEngine.Render3D.Rendering
             // vertically inverted — invisible on symmetric content but obvious on an asymmetric board — and
             // it also disagreed with IsoCamera3D.ScreenToGround picking, which uses the unflipped matrix.
             // Using viewProj directly makes the render right-side up AND consistent with picking.)
+            // TODO Phase 3c: when a non-Metal backend lands, derive any clip-Y/depth compensation from
+            // GpuCapabilities (ClipSpaceYInverted/DepthRangeZeroToOne) rather than the baked Metal assumption.
             var ubo = new FrameUbo
             {
                 ViewProj = viewProj,

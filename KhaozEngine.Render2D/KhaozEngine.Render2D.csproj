@@ -15,6 +15,7 @@
     <!-- Override the vulnerable Newtonsoft.Json 9.0.1 that Veldrid.SPIRV drags in (NU1903). -->
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <ProjectReference Include="../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
+    <ProjectReference Include="../KhaozEngine.Gpu/KhaozEngine.Gpu.csproj" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <ItemGroup>

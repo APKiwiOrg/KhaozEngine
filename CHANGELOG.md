@@ -4,6 +4,32 @@ All notable changes to KhaozEngine. The 4.x line shares one version (`Directory.
 5.x custom-stack (MonoGame-free) engine packages share a second (`<KhaozEngine5xVersion>`). See the post-MonoGame
 plan in `docs/ROADMAP.md`.
 
+## 5.33.0 (custom 5.x line)
+
+Windowing platform swapped from `Veldrid.Sdl2` to **Silk.NET** (audit milestone 3, desktop distribution). The GPU
+stays Veldrid behind the `KhaozEngine.Gpu` seam; only the window / input / loop changed. This removes the
+`brew install sdl2` runtime requirement on macOS: `Silk.NET.Windowing.Glfw` bundles its GLFW natives per-RID, so a
+clean checkout (and shipped game) runs without a system SDL2. `AppWindow`'s public API is unchanged, so consumers
+(surfaces, `GameApp`, Hardpoint) need only a version bump.
+
+- **`KhaozEngine.Windowing`**: `AppWindow` rewritten on `Silk.NET.Windowing` + `Silk.NET.Input` (GLFW). It creates
+  the window with `GraphicsAPI.None` (the GPU is driven by Veldrid), reads the native handle, and builds the device
+  from it. Keyboard / mouse / scroll go through the same edge-tracking `InputState` model as before; gamepads move
+  from the old SDL poller to a `SilkGamepadReader` over `IInputContext.Gamepads`. Dropped `Veldrid` /
+  `Veldrid.StartupUtilities`; deleted `SdlGamepadPoller`.
+- **HiDPI**: the cursor (logical points from GLFW) is now scaled into framebuffer-pixel space so input and the
+  render viewport share one coordinate system. Identity on a 1:1 display; keeps `Pointer` hit-testing correct on
+  any display where the framebuffer size diverges from the logical window size.
+- **`KhaozEngine.Gpu`**: new `GpuWindowHandle` (+ `GpuWindowKind` Cocoa/Win32/X11/Wayland) and
+  `GpuDeviceContext.CreateForWindow(handle, w, h)` build a Veldrid swapchain from a native window handle (the GPU
+  package takes no windowing dependency, just an `IntPtr` + kind). The old SDL2 `CreateWindow` is gone; headless
+  `CreateHeadless` (goldens) is unchanged. Dropped `Veldrid.StartupUtilities`.
+- **Samples**: removed the per-sample `CopySdl2` MSBuild targets (natives now come transitively from
+  `Silk.NET.Windowing.Glfw`).
+- Verified: `KE_GPU_TESTS=1` goldens pixel-identical (headless path untouched), full suite green, and a
+  multi-frame windowed smoke (`KE_MAX_FRAMES`) runs `GuiSample` / `Render2DSample` / `Render3DSample` through the
+  real Silk window + Veldrid Metal device and exits cleanly.
+
 ## 5.32.0 (custom 5.x line)
 
 Cross-platform desktop bring-up — verification infrastructure (audit milestone 4, desktop scope). No renderer

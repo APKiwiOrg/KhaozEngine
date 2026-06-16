@@ -85,10 +85,13 @@ engine to a real, resolution-independent, layout-capable state first. Agreed ord
    compile-verified) and *touch* is mobile (the model + mapping are tested, live deferred).
 3. **Native packaging / distribution (current).** Part 1 shipped (`5.12.0-experimental`): openal-soft bundled
    via `Silk.NET.OpenAL.Soft.Native` + `GetApi(true)`, so audio uses the shipped `libopenal` instead of the
-   deprecated macOS system OpenAL.framework (verified on osx-arm64; native covers all 8 RIDs). Remaining: SDL2
-   is still copied from a Homebrew install on macOS by a per-sample `CopySdl2` target (Veldrid.SDL2 4.9.0 ships
-   only osx-x64), so a clean macOS checkout still needs `brew install sdl2`. Bundling SDL2 across RIDs is folded
-   into milestone 4 (shares the Windows/Linux native coverage and can't be run-verified on the dev box).
+   deprecated macOS system OpenAL.framework (verified on osx-arm64; native covers all 8 RIDs). Part 2 shipped
+   (`5.33.0`): the SDL2 dependency is gone. `AppWindow`'s window/input platform was swapped from `Veldrid.Sdl2`
+   (unmaintained, ships only osx-x64 natives) to **Silk.NET.Windowing + Silk.NET.Input** (GLFW), which bundles its
+   natives per-RID across desktop, so a clean checkout / shipped game no longer needs `brew install sdl2`. The GPU
+   stays Veldrid behind the `KhaozEngine.Gpu` seam; the swapchain is built from the native window handle via the
+   new `GpuDeviceContext.CreateForWindow`. The per-sample `CopySdl2` targets were removed. Silk.NET is also the
+   windowing/input foundation a future mobile (Android/iOS) project will build on.
 4. **Cross-platform backends (deferred until hardware/CI).** Un-Metal-only: backend selection
    (Vulkan / D3D11 / GL / Metal) via Veldrid so Render2D/Render3D/Snapshot run on Windows/Linux (and later
    mobile); verify the SPIR-V shaders cross-compile per backend; per-backend clip-Y + MRT-clear handling.

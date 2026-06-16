@@ -1,13 +1,11 @@
 using System;
 using Veldrid;
-using Veldrid.Sdl2;
-using Veldrid.StartupUtilities;
 using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu
 {
     /// <summary>
-    /// TRANSITIONAL Veldrid bridge created via <see cref="CreateWindow"/> / <see cref="CreateHeadless"/>.
+    /// TRANSITIONAL Veldrid bridge created via <see cref="CreateForWindow"/> / <see cref="CreateHeadless()"/>.
     /// Phase 3a centralizes backend selection (no more hard-coded <c>GraphicsBackend.Metal</c>) and surfaces
     /// <see cref="GpuCapabilities"/>, but still exposes the raw Veldrid <see cref="GraphicsDevice"/> so the
     /// existing renderers keep working unchanged. Phase 3b/3c replace <see cref="Device"/> with the wrapped
@@ -48,22 +46,42 @@ namespace KhaozEngine.Gpu
         }
 
         /// <summary>
-        /// Create an SDL2 window + graphics device on the selected backend (via <see cref="GpuBackendSelector"/>).
-        /// Replaces the per-package <c>VeldridStartup.CreateWindowAndGraphicsDevice(..., GraphicsBackend.Metal, ...)</c>
-        /// calls. The returned context does NOT own the device's disposal contract differently from before:
-        /// callers that previously disposed <c>GraphicsDevice</c> should now dispose this context.
+        /// Create a windowed graphics device on the selected backend (via <see cref="GpuBackendSelector"/>) from a
+        /// platform-native window handle. The window/input platform (KhaozEngine.Windowing, on Silk.NET) creates the
+        /// native window and passes its handle here as a <see cref="GpuWindowHandle"/>, so this package needs no
+        /// windowing dependency of its own. Builds the Veldrid <c>SwapchainSource</c> for the handle's
+        /// <see cref="GpuWindowKind"/>, then creates the backend device with a main swapchain (so
+        /// <see cref="IGpuDevice.SwapchainFramebuffer"/> is non-null). The returned context owns the device's
+        /// disposal: dispose this context, not the underlying device.
         /// </summary>
-        public static (Sdl2Window window, GpuDeviceContext ctx) CreateWindow(
-            string title, int width, int height, int x = 100, int y = 100)
+        public static GpuDeviceContext CreateForWindow(in GpuWindowHandle window, uint width, uint height)
         {
-            var wci = new WindowCreateInfo(x, y, width, height, WindowState.Normal, title);
-            // Engine-owned default device options (depth swapchain, Improved binding, sRGB, vsync). Veldrid's
-            // GraphicsDeviceOptions stays internal to this package so consumers never reference a Veldrid type.
+            SwapchainSource source = window.Kind switch
+            {
+                GpuWindowKind.Cocoa => SwapchainSource.CreateNSWindow(window.Handle),
+                GpuWindowKind.Win32 => SwapchainSource.CreateWin32(window.Handle, IntPtr.Zero),
+                GpuWindowKind.X11 => SwapchainSource.CreateXlib(window.Display, window.Handle),
+                GpuWindowKind.Wayland => SwapchainSource.CreateWayland(window.Display, window.Handle),
+                _ => throw new NotSupportedException($"Unknown GpuWindowKind '{window.Kind}'."),
+            };
+
+            // Engine-owned default windowed device options (depth swapchain, Improved binding, sRGB, vsync) -
+            // the same options the previous windowed CreateWindow path passed. Veldrid's GraphicsDeviceOptions stays
+            // internal to this package so consumers never reference a Veldrid type.
             var opts = new GraphicsDeviceOptions(false, null, true, ResourceBindingModel.Improved, true, true);
+            var scDesc = new SwapchainDescription(source, width, height, null, true, false);
+
             GpuBackendKind kind = GpuBackendSelector.Select();
-            GraphicsBackend backend = GpuBackendSelector.ToVeldrid(kind);
-            VeldridStartup.CreateWindowAndGraphicsDevice(wci, opts, backend, out Sdl2Window window, out GraphicsDevice gd);
-            return (window, new GpuDeviceContext(gd, kind, ownsDevice: true));
+            GraphicsDevice gd = kind switch
+            {
+                GpuBackendKind.Metal => GraphicsDevice.CreateMetal(opts, scDesc),
+                GpuBackendKind.Vulkan => GraphicsDevice.CreateVulkan(opts, scDesc),
+                GpuBackendKind.Direct3D11 => GraphicsDevice.CreateD3D11(opts, scDesc),
+                GpuBackendKind.OpenGL => throw new NotSupportedException(
+                    "Windowed OpenGL device-from-handle is not supported (Silk would need to own the GL context)."),
+                _ => GraphicsDevice.CreateMetal(opts, scDesc),
+            };
+            return new GpuDeviceContext(gd, kind, ownsDevice: true);
         }
 
         /// <summary>

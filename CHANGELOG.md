@@ -4,6 +4,21 @@ All notable changes to KhaozEngine. The 4.x line shares one version (`Directory.
 5.x custom-stack (MonoGame-free) engine packages share a second (`<KhaozEngine5xVersion>`). See the post-MonoGame
 plan in `docs/ROADMAP.md`.
 
+## 5.37.0 (custom 5.x line)
+
+New `IsoCameraController` in `KhaozEngine.Render3D`: cursor-anchored zoom + pan for an `IsoCamera3D`. It is
+input-agnostic (pure System.Numerics, no GPU, no input types) so a game wires its own input policy to it and the
+math stays headless-testable.
+
+- `Zoom(wheelDelta, cursorPx, vw, vh)` scales `Camera.Zoom` by `ZoomStep^wheelDelta` (clamped to
+  `[MinZoom, MaxZoom]`) and shifts `Target` so the ground point under the cursor stays fixed (zoom-to-cursor).
+- `BeginPan` / `UpdatePan` / `EndPan` are a grab-pan: the world point grabbed at the start of the drag stays
+  under the cursor, so the ground follows the hand. `IsPanning` reports state.
+- Optional `PanMin` / `PanMax` clamp `Target` X/Z; `GroundY` sets the pick plane.
+
+Headless-tested (anchor preservation for zoom + pan, clamps, no-op guards). Adopt by feeding scroll delta to
+`Zoom` and a drag to `BeginPan`/`UpdatePan`.
+
 ## 5.36.0 (custom 5.x line)
 
 `GuiSurface` (immediate-mode UI) now exposes hover state, so a game can drive hover sounds / highlights without

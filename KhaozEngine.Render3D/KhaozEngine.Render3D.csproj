@@ -3,7 +3,7 @@
     <PackageId>KhaozEngine.Render3D</PackageId>
     <!-- Shared 5.x experimental line (custom MonoGame-free stack), versioned via Directory.Build.props. -->
     <Version>$(KhaozEngine5xVersion)</Version>
-    <Description>stylized 3D module on a custom MonoGame-free foundation (KhaozEngine.Gpu seam, System.Numerics). Orthographic IsoCamera3D, runtime glTF lit/cel model draw with optional per-mesh albedo textures (UV sampling, 1x1 white default), a procedural starfield, and a PixelPostProcess chain (smooth or retro: swappable palette quantization, Bayer dither, depth/normal edge outline, point-or-linear upscale). Default look is smooth stylized space; retro/pixel is a toggle. Seed of the post-MonoGame KhaozEngine. All GPU work routes through KhaozEngine.Gpu; SharpGLTF handles model loading.</Description>
+    <Description>stylized 3D module on a custom MonoGame-free foundation (KhaozEngine.Gpu seam, System.Numerics). Orthographic IsoCamera3D (+ IsoCameraController: cursor-anchored scroll-zoom and grab-pan), runtime glTF lit/cel model draw with optional per-mesh albedo textures (UV sampling, 1x1 white default), a procedural starfield, and a PixelPostProcess chain (smooth or retro: swappable palette quantization, Bayer dither, depth/normal edge outline, point-or-linear upscale). Default look is smooth stylized space; retro/pixel is a toggle. Seed of the post-MonoGame KhaozEngine. All GPU work routes through KhaozEngine.Gpu; SharpGLTF handles model loading.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>

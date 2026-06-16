@@ -119,22 +119,7 @@ namespace KhaozEngine.Gui
             bool pressing = p.IsPressingIn(rect);
             bool hovering = p.IsHoveringIn(rect);
 
-            Vector4 fill = !enabled ? style.DisabledFill
-                : selected ? style.SelectedFill
-                : pressing ? style.Press
-                : hovering ? style.Hover
-                : style.Fill;
-            Vector4 border = selected ? style.SelectedBorder : style.Border;
-            Vector4 text = enabled ? style.Text : style.DisabledText;
-
-            GuiDraw.Fill(_batch, _white, rect, fill);
-            GuiDraw.Border(_batch, _white, rect, style.BorderThickness, border);
-
-            Vector2 size = font.Measure(label);
-            var pos = new Vector2(
-                rect.X + (rect.Width - size.X) * 0.5f,
-                rect.Y + (rect.Height - font.LineHeight) * 0.5f);
-            _batch.DrawString(font, label, pos, text);
+            GuiDraw.DrawButton(_batch, _white, font, rect, label, style, enabled, selected, hovering, pressing);
 
             return clicked;
         }

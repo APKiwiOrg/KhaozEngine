@@ -28,7 +28,9 @@ namespace KhaozEngine.Render3D
         readonly LineRenderer _lines;
         readonly BillboardRenderer _billboards;
         readonly RenderResources _res;
-        readonly List<Mesh> _meshes = new();
+        // Slot-indexed GPU mesh storage parallel to _slots; a freed slot's entry is null until reused.
+        readonly List<Mesh?> _meshes = new();
+        readonly MeshSlotMap _slots = new();
         readonly SceneInstances _instances = new();
         readonly List<LineRenderer.LineVertex> _lineVerts = new();
         readonly List<BillboardRenderer.BillboardVertex> _billboardAlpha = new();
@@ -54,7 +56,8 @@ namespace KhaozEngine.Render3D
             _billboards = new BillboardRenderer(gd, targetOutput);
         }
 
-        /// <summary>Upload a loaded mesh to the GPU once; returns a handle to instance it with <see cref="Draw"/>.</summary>
+        /// <summary>Upload a loaded mesh to the GPU once; returns a handle to instance it with <see cref="Draw"/>.
+        /// Reuses a slot freed by <see cref="UnloadMesh"/> when one is available.</summary>
         public MeshHandle LoadMesh(GltfMesh mesh)
         {
             var f = _gd.Factory;
@@ -62,8 +65,26 @@ namespace KhaozEngine.Render3D
             _gd.UpdateBuffer(vb, 0, mesh.Vertices);
             var ib = f.CreateBuffer(new GpuBufferDescription((uint)(mesh.Indices.Length * sizeof(ushort)), GpuBufferUsage.IndexBuffer));
             _gd.UpdateBuffer(ib, 0, mesh.Indices);
-            _meshes.Add(new Mesh(vb, ib, mesh.Indices.Length));
-            return new MeshHandle(_meshes.Count - 1);
+
+            int index = _slots.Alloc(out int generation);
+            var slot = new Mesh(vb, ib, mesh.Indices.Length);
+            if (index < _meshes.Count) _meshes[index] = slot;   // reused freed slot
+            else _meshes.Add(slot);                              // fresh appended slot
+            return new MeshHandle(index, generation);
+        }
+
+        /// <summary>
+        /// Free the GPU buffers backing <paramref name="h"/> and release its slot for reuse. A <c>default</c>
+        /// handle is a no-op. A stale or bogus handle (its generation no longer matches the slot, e.g. a
+        /// double-free) throws <see cref="ArgumentException"/>.
+        /// </summary>
+        public void UnloadMesh(MeshHandle h)
+        {
+            if (h.Generation == 0) return;          // default handle: no-op
+            _slots.Free(h.Index, h.Generation);     // throws on stale/invalid
+            var m = _meshes[h.Index];
+            if (m is { } mesh) { mesh.Vb.Dispose(); mesh.Ib.Dispose(); }
+            _meshes[h.Index] = null;
         }
 
         /// <summary>Start a frame: clear the instance queue, the debug-line queue, and the billboard queues.
@@ -207,8 +228,12 @@ namespace KhaozEngine.Render3D
                 _model.UploadInstances(cl, CollectionsMarshal.AsSpan(_instanceData));
                 foreach (var run in _runs)
                 {
-                    var m = _meshes[run.MeshIndex];
-                    _model.DrawMeshInstanced(cl, m.Vb, m.Ib, m.IndexCount, run.Start, run.Count);
+                    // Skip a run whose mesh was unloaded (stale handle): a destroyed entity may linger a frame.
+                    // The instance data was uploaded contiguously, so skipping a run just leaves its slice undrawn.
+                    if (!_slots.IsValid(run.Mesh.Index, run.Mesh.Generation)) continue;
+                    var m = _meshes[run.Mesh.Index];
+                    if (m is not { } mesh) continue;
+                    _model.DrawMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, run.Start, run.Count);
                 }
             }
 
@@ -235,7 +260,8 @@ namespace KhaozEngine.Render3D
             _lines.Dispose();
             _billboards.Dispose();
             _res.Dispose();
-            foreach (var m in _meshes) { m.Vb.Dispose(); m.Ib.Dispose(); }
+            foreach (var m in _meshes)
+                if (m is { } mesh) { mesh.Vb.Dispose(); mesh.Ib.Dispose(); }
         }
 
         readonly struct Mesh
@@ -245,20 +271,25 @@ namespace KhaozEngine.Render3D
             public Mesh(IGpuBuffer vb, IGpuBuffer ib, int indexCount) { Vb = vb; Ib = ib; IndexCount = indexCount; }
         }
 
-        /// <summary>A contiguous run of instances of one mesh inside the flat instance array.</summary>
+        /// <summary>A contiguous run of instances of one mesh handle inside the flat instance array.</summary>
         internal readonly struct MeshRun
         {
-            public readonly int MeshIndex;
+            public readonly MeshHandle Mesh;
             public readonly uint Start;
             public readonly uint Count;
-            public MeshRun(int meshIndex, uint start, uint count) { MeshIndex = meshIndex; Start = start; Count = count; }
+            public MeshRun(MeshHandle mesh, uint start, uint count) { Mesh = mesh; Start = start; Count = count; }
+            public MeshRun(int meshIndex, uint start, uint count) : this(new MeshHandle(meshIndex), start, count) { }
         }
 
+        /// <summary>Two handles name the same mesh slot occupant (index AND generation match).</summary>
+        internal static bool SameHandle(MeshHandle a, MeshHandle b) =>
+            a.Index == b.Index && a.Generation == b.Generation;
+
         /// <summary>
-        /// Group queued <paramref name="items"/> by mesh index into <paramref name="instanceData"/> (a flat array
+        /// Group queued <paramref name="items"/> by mesh handle into <paramref name="instanceData"/> (a flat array
         /// ordered so all instances of one mesh are contiguous) and <paramref name="runs"/> (one
-        /// <see cref="MeshRun"/> per unique mesh, in first-seen order). Pure + headless-testable; both output lists
-        /// are Cleared and refilled (no realloc on the caller's reused buffers).
+        /// <see cref="MeshRun"/> per unique mesh handle, in first-seen order). Pure + headless-testable; both output
+        /// lists are Cleared and refilled (no realloc on the caller's reused buffers).
         /// </summary>
         internal static void GroupInstances(IReadOnlyList<SceneInstances.Instance> items,
             List<ModelRenderer.InstanceData> instanceData, List<MeshRun> runs)
@@ -273,10 +304,10 @@ namespace KhaozEngine.Render3D
             // Use the runs list as scratch for (meshIndex, count) accumulation.
             for (int i = 0; i < items.Count; i++)
             {
-                int mesh = items[i].Mesh.Index;
+                MeshHandle mesh = items[i].Mesh;
                 int slot = -1;
                 for (int r = 0; r < runs.Count; r++)
-                    if (runs[r].MeshIndex == mesh) { slot = r; break; }
+                    if (SameHandle(runs[r].Mesh, mesh)) { slot = r; break; }
                 if (slot < 0) runs.Add(new MeshRun(mesh, 0, 1));
                 else runs[slot] = new MeshRun(mesh, 0, runs[slot].Count + 1);
             }
@@ -290,7 +321,7 @@ namespace KhaozEngine.Render3D
                 uint start = cursor;
                 writeCursor[r] = start;
                 cursor += runs[r].Count;
-                runs[r] = new MeshRun(runs[r].MeshIndex, start, runs[r].Count);
+                runs[r] = new MeshRun(runs[r].Mesh, start, runs[r].Count);
             }
 
             // Size the flat array, then scatter each instance into its mesh's contiguous slot.
@@ -299,10 +330,10 @@ namespace KhaozEngine.Render3D
             for (int i = 0; i < items.Count; i++)
             {
                 var inst = items[i];
-                int mesh = inst.Mesh.Index;
+                MeshHandle mesh = inst.Mesh;
                 int slot = -1;
                 for (int r = 0; r < runs.Count; r++)
-                    if (runs[r].MeshIndex == mesh) { slot = r; break; }
+                    if (SameHandle(runs[r].Mesh, mesh)) { slot = r; break; }
                 uint dst = writeCursor[slot]++;
                 instanceData[(int)dst] = new ModelRenderer.InstanceData
                 {

@@ -15,6 +15,11 @@ namespace KhaozEngine.Tests.Gpu
     {
         const int W = 480, H = 320;
 
+        // Bundled libre font (copied next to the test assembly), so the 2D golden's glyph input is identical on
+        // macOS / Windows / Linux runners. A hard-coded OS system-font path would only exist on one platform.
+        static readonly string FontPath = System.IO.Path.Combine(
+            System.AppContext.BaseDirectory, "Assets", "Roboto-Regular.ttf");
+
         [GpuFact]
         public void Golden3D_FixedAsymmetricScene()
         {
@@ -57,7 +62,7 @@ namespace KhaozEngine.Tests.Gpu
             byte[] rgba = Render2DSnapshot.Capture(W, H, new Vector4(0.07f, 0.08f, 0.11f, 1f), ctx =>
             {
                 Texture2D white = ctx.CreateTexture(new byte[] { 255, 255, 255, 255 }, 1, 1);
-                SpriteFont font = ctx.LoadFont("/System/Library/Fonts/Supplemental/Arial.ttf", 48f);
+                SpriteFont font = ctx.LoadFont(FontPath, 48f);
                 ctx.Batch.Begin();
                 ctx.Batch.Draw(white, new Vector4(40, 40, 180, 90), new Vector4(0.85f, 0.2f, 0.2f, 1f));
                 ctx.Batch.Draw(white, new Vector4(260, 150, 150, 120), new Vector4(0.2f, 0.7f, 0.3f, 1f));

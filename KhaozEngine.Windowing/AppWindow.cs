@@ -50,8 +50,7 @@ namespace KhaozEngine.Windowing
 
         public AppWindow(string title, int width, int height)
         {
-            var opts = new GraphicsDeviceOptions(false, null, true, ResourceBindingModel.Improved, true, true);
-            (_window, _gpu) = GpuDeviceContext.CreateWindow(title, width, height, opts);
+            (_window, _gpu) = GpuDeviceContext.CreateWindow(title, width, height);
             _device = _gpu.GpuDevice;
             _window.Resized += () => _device.ResizeSwapchain((uint)_window.Width, (uint)_window.Height);
             _cl = _device.Factory.CreateCommandList();

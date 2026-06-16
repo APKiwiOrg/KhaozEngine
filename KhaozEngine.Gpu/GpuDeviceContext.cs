@@ -54,11 +54,12 @@ namespace KhaozEngine.Gpu
         /// callers that previously disposed <c>GraphicsDevice</c> should now dispose this context.
         /// </summary>
         public static (Sdl2Window window, GpuDeviceContext ctx) CreateWindow(
-            string title, int width, int height, GraphicsDeviceOptions? options = null, int x = 100, int y = 100)
+            string title, int width, int height, int x = 100, int y = 100)
         {
             var wci = new WindowCreateInfo(x, y, width, height, WindowState.Normal, title);
-            GraphicsDeviceOptions opts = options ??
-                new GraphicsDeviceOptions(false, null, true, ResourceBindingModel.Improved, true, true);
+            // Engine-owned default device options (depth swapchain, Improved binding, sRGB, vsync). Veldrid's
+            // GraphicsDeviceOptions stays internal to this package so consumers never reference a Veldrid type.
+            var opts = new GraphicsDeviceOptions(false, null, true, ResourceBindingModel.Improved, true, true);
             GpuBackendKind kind = GpuBackendSelector.Select();
             GraphicsBackend backend = GpuBackendSelector.ToVeldrid(kind);
             VeldridStartup.CreateWindowAndGraphicsDevice(wci, opts, backend, out Sdl2Window window, out GraphicsDevice gd);
@@ -79,7 +80,7 @@ namespace KhaozEngine.Gpu
         public static GpuDeviceContext CreateHeadless()
             => CreateHeadless(new GraphicsDeviceOptions(false, null, false, ResourceBindingModel.Improved, true, true));
 
-        public static GpuDeviceContext CreateHeadless(GraphicsDeviceOptions options)
+        internal static GpuDeviceContext CreateHeadless(GraphicsDeviceOptions options)
         {
             GpuBackendKind kind = GpuBackendSelector.Select();
             GraphicsDevice gd = kind switch

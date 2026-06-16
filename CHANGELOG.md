@@ -23,6 +23,19 @@ remaining legacy-MonoGame surface.
   hash). The byte-identical sim math keeps SpaceGame's `17709480852979803671` gate stable when it adopts.
 - All other 4.x packages are unchanged; they share this version bump as usual.
 
+## 5.41.0 (custom 5.x line)
+
+Third engine-first gap-fill for porting 2D games (Nullwake) to the 5.x stack: `Render2D.TextHelper`, the
+point-anchored text-drawing convenience the screens lean on.
+
+- **`Render2D.TextHelper`** - point-anchored text over a `SpriteFont`: `Draw` (top-left at a point), `DrawCentered`
+  (centered on a point), `DrawRight` (right edge on a point), `DrawCenteredInRect`, and `DrawWrappedCentered`, each
+  with an optional `alpha` fade overload. Positions are pixel-snapped (floored) to avoid sub-pixel blur; colors are
+  RGBA `Vector4`. Complements `TextLayout` (which aligns/wraps within a width-region) with the screen-author point
+  API; the positioning math (`CenteredX`/`RightX`/`CenteredInRect`/`MeasureWrappedHeight`) is pure + headless-tested
+  over `ITextMeasurer`. The MonoGame-free 5.x port of the 4.x `UI.TextHelper`.
+- 5 new headless tests (centered/right anchoring, centered-in-rect, wrapped-height, empty-string).
+
 ## 5.40.0 (custom 5.x line)
 
 Second engine-first gap-fill for porting 2D games (Nullwake) to the 5.x stack: a `Gui.PannableCanvas`, the

@@ -61,15 +61,15 @@ namespace KhaozEngine.Render3D
                 verts.Add(new ModelVertex(b1, n1, white, new Vector2(u1, 0f)));
                 verts.Add(new ModelVertex(t1, n1, white, new Vector2(u1, 1f)));
                 verts.Add(new ModelVertex(t0, n0, white, new Vector2(u0, 1f)));
-                // outward CCW (viewed from outside)
-                inds.Add(baseIdx); inds.Add((ushort)(baseIdx + 1)); inds.Add((ushort)(baseIdx + 2));
-                inds.Add(baseIdx); inds.Add((ushort)(baseIdx + 2)); inds.Add((ushort)(baseIdx + 3));
+                // wind so the geometric face normal cross(p1-p0,p2-p0) agrees with the outward radial normals.
+                inds.Add(baseIdx); inds.Add((ushort)(baseIdx + 2)); inds.Add((ushort)(baseIdx + 1));
+                inds.Add(baseIdx); inds.Add((ushort)(baseIdx + 3)); inds.Add((ushort)(baseIdx + 2));
             }
 
             if (capped)
             {
-                AddCapFan(verts, inds, new Vector3(0f, height, 0f), radius, segments, Vector3.UnitY, true);
-                AddCapFan(verts, inds, Vector3.Zero, radius, segments, -Vector3.UnitY, false);
+                AddCapFan(verts, inds, new Vector3(0f, height, 0f), radius, segments, Vector3.UnitY, false);
+                AddCapFan(verts, inds, Vector3.Zero, radius, segments, -Vector3.UnitY, true);
             }
 
             return new GltfMesh(verts.ToArray(), inds.ToArray());
@@ -106,12 +106,12 @@ namespace KhaozEngine.Render3D
                 verts.Add(new ModelVertex(b0, n0, white, new Vector2(u0, 0f)));
                 verts.Add(new ModelVertex(b1, n1, white, new Vector2(u1, 0f)));
                 verts.Add(new ModelVertex(apex, nApex, white, new Vector2((u0 + u1) * 0.5f, 1f)));
-                // CCW from outside: base0 -> base1 -> apex
-                inds.Add(baseIdx); inds.Add((ushort)(baseIdx + 1)); inds.Add((ushort)(baseIdx + 2));
+                // wind so the geometric face normal cross(p1-p0,p2-p0) agrees with the outward side normals.
+                inds.Add(baseIdx); inds.Add((ushort)(baseIdx + 2)); inds.Add((ushort)(baseIdx + 1));
             }
 
             if (capped)
-                AddCapFan(verts, inds, Vector3.Zero, radius, segments, -Vector3.UnitY, false);
+                AddCapFan(verts, inds, Vector3.Zero, radius, segments, -Vector3.UnitY, true);
 
             return new GltfMesh(verts.ToArray(), inds.ToArray());
         }
@@ -153,15 +153,15 @@ namespace KhaozEngine.Render3D
             Tri(c3, c2, apex); // +Z
             Tri(c0, c3, apex); // -X
 
-            // base quad (-Y, CCW seen from below)
+            // base quad (-Y): wind so cross(p1-p0,p2-p0) agrees with the stored -Y normal.
             var nDown = -Vector3.UnitY;
             ushort bi = (ushort)verts.Count;
             verts.Add(new ModelVertex(c0, nDown, white, new Vector2(0f, 0f)));
             verts.Add(new ModelVertex(c3, nDown, white, new Vector2(1f, 0f)));
             verts.Add(new ModelVertex(c2, nDown, white, new Vector2(1f, 1f)));
             verts.Add(new ModelVertex(c1, nDown, white, new Vector2(0f, 1f)));
-            inds.Add(bi); inds.Add((ushort)(bi + 1)); inds.Add((ushort)(bi + 2));
-            inds.Add(bi); inds.Add((ushort)(bi + 2)); inds.Add((ushort)(bi + 3));
+            inds.Add(bi); inds.Add((ushort)(bi + 2)); inds.Add((ushort)(bi + 1));
+            inds.Add(bi); inds.Add((ushort)(bi + 3)); inds.Add((ushort)(bi + 2));
 
             return new GltfMesh(verts.ToArray(), inds.ToArray());
         }
@@ -260,9 +260,9 @@ namespace KhaozEngine.Render3D
                     ushort i1 = (ushort)(r * cols + s + 1);
                     ushort i2 = (ushort)((r + 1) * cols + s);
                     ushort i3 = (ushort)((r + 1) * cols + s + 1);
-                    // CCW outward: top-left, bottom-left, bottom-right / top-left, bottom-right, top-right
-                    inds.Add(i0); inds.Add(i2); inds.Add(i3);
-                    inds.Add(i0); inds.Add(i3); inds.Add(i1);
+                    // wind so the geometric face normal cross(p1-p0,p2-p0) agrees with the outward radial normals.
+                    inds.Add(i0); inds.Add(i3); inds.Add(i2);
+                    inds.Add(i0); inds.Add(i1); inds.Add(i3);
                 }
             }
 
@@ -545,12 +545,13 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>
-        /// Adds a flat triangle-fan cap (center + ring) facing <paramref name="normal"/>. <paramref name="ccwFromOutside"/>
-        /// controls winding so the visible front face is CCW.
+        /// Adds a flat triangle-fan cap (center + ring) facing <paramref name="normal"/>.
+        /// <paramref name="windToMatchNormal"/> selects the triangle winding so the geometric face normal
+        /// (cross(p1-p0, p2-p0)) agrees with the stored <paramref name="normal"/>.
         /// </summary>
         static void AddCapFan(System.Collections.Generic.List<ModelVertex> verts,
             System.Collections.Generic.List<ushort> inds, Vector3 center, float radius, int segments,
-            Vector3 normal, bool ccwFromOutside)
+            Vector3 normal, bool windToMatchNormal)
         {
             var white = Vector4.One;
             // planar disc UV: centre at (0.5,0.5), ring traced on the unit circle.
@@ -568,7 +569,7 @@ namespace KhaozEngine.Render3D
             {
                 ushort cur = (ushort)(ringStart + s);
                 ushort next = (ushort)(ringStart + (s + 1) % segments);
-                if (ccwFromOutside)
+                if (windToMatchNormal)
                 {
                     inds.Add(centerIdx); inds.Add(cur); inds.Add(next);
                 }

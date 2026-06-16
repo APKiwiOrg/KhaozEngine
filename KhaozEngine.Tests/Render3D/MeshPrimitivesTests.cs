@@ -435,6 +435,60 @@ namespace KhaozEngine.Tests.Render3D
             }
         }
 
+        // --- winding-vs-normal correctness net. The model pipeline uses FaceCullMode.None, so a reversed
+        //     triangle winding renders identically and is INVISIBLE to tests/snapshots (it only shows as
+        //     mis-lit faces). This asserts the geometric face normal (from the winding) agrees with the
+        //     stored vertex normals — catching a winding flip independently of whether the stored normal is
+        //     outward. Complementary to the AssertAllFaceNormalsOutward direction tests. ---
+
+        /// <summary>
+        /// For every triangle, the geometric face normal <c>normalize(cross(p1-p0, p2-p0))</c> must point the
+        /// same way as the average of the three stored vertex normals (<c>dot &gt; 0</c>). Degenerate
+        /// (zero-area) triangles are skipped.
+        /// </summary>
+        static void AssertWindingMatchesNormals(GltfMesh mesh)
+        {
+            for (int t = 0; t < mesh.Indices.Length; t += 3)
+            {
+                ushort i0 = mesh.Indices[t], i1 = mesh.Indices[t + 1], i2 = mesh.Indices[t + 2];
+                var p0 = mesh.Vertices[i0].Position;
+                var p1 = mesh.Vertices[i1].Position;
+                var p2 = mesh.Vertices[i2].Position;
+
+                var cross = Vector3.Cross(p1 - p0, p2 - p0);
+                if (cross.LengthSquared() < 1e-12f) continue; // degenerate / zero-area triangle
+                var faceN = Vector3.Normalize(cross);
+
+                var avgStored = (mesh.Vertices[i0].Normal + mesh.Vertices[i1].Normal + mesh.Vertices[i2].Normal) / 3f;
+                Assert.True(Vector3.Dot(faceN, avgStored) > 1e-4f,
+                    $"Triangle at index {t} winds opposite its stored normals " +
+                    $"(dot(faceN {faceN}, avgStoredNormal {avgStored}) = {Vector3.Dot(faceN, avgStored)}).");
+            }
+        }
+
+        // Tile is not in AllPrimitives' degenerate variants; include the full canonical set here.
+        public static System.Collections.Generic.IEnumerable<object[]> AllPrimitivesForWinding()
+        {
+            yield return new object[] { MeshPrimitives.Box() };
+            yield return new object[] { MeshPrimitives.Tile() };
+            yield return new object[] { MeshPrimitives.Cylinder() };
+            yield return new object[] { MeshPrimitives.Cone() };
+            yield return new object[] { MeshPrimitives.Pyramid() };
+            yield return new object[] { MeshPrimitives.Wedge() };
+            yield return new object[] { MeshPrimitives.Sphere() };
+            yield return new object[] { MeshPrimitives.Capsule() };
+            yield return new object[] { MeshPrimitives.RoundedBox() };
+            yield return new object[] { MeshPrimitives.Torus() };
+            yield return new object[] { MeshPrimitives.Plane() }; // single-sided +Y: winding-vs-normal still holds
+        }
+
+        [Theory]
+        [MemberData(nameof(AllPrimitivesForWinding))]
+        public void Primitive_Winding_Matches_Stored_Normals(GltfMesh mesh)
+        {
+            AssertWindingMatchesNormals(mesh);
+        }
+
         [Fact]
         public void Box_Face_Normals_Point_Outward()
         {

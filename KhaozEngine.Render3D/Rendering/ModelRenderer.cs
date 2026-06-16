@@ -22,6 +22,7 @@ namespace KhaozEngine.Render3D.Rendering
 
         readonly GraphicsDevice _gd;
         readonly DeviceBuffer _ubo;
+        readonly ResourceLayout _layout;
         readonly ResourceSet _set;
         readonly Pipeline _pipeline;
         readonly Shader[] _shaders;
@@ -33,9 +34,9 @@ namespace KhaozEngine.Render3D.Rendering
 
             _ubo = factory.CreateBuffer(new BufferDescription(288, BufferUsage.UniformBuffer)); // 2 mat4 + 10 vec4
 
-            var layout = factory.CreateResourceLayout(new ResourceLayoutDescription(
+            _layout = factory.CreateResourceLayout(new ResourceLayoutDescription(
                 new ResourceLayoutElementDescription("U", ResourceKind.UniformBuffer, ShaderStages.Vertex | ShaderStages.Fragment)));
-            _set = factory.CreateResourceSet(new ResourceSetDescription(layout, _ubo));
+            _set = factory.CreateResourceSet(new ResourceSetDescription(_layout, _ubo));
 
             _shaders = factory.CreateFromSpirv(
                 new ShaderDescription(ShaderStages.Vertex, Encoding.UTF8.GetBytes(ShaderSources.ModelVert), "main"),
@@ -58,7 +59,7 @@ namespace KhaozEngine.Render3D.Rendering
                 DepthStencilState = DepthStencilStateDescription.DepthOnlyLessEqual,
                 RasterizerState = new RasterizerStateDescription(FaceCullMode.None, PolygonFillMode.Solid, FrontFace.Clockwise, true, false),
                 PrimitiveTopology = PrimitiveTopology.TriangleList,
-                ResourceLayouts = new[] { layout },
+                ResourceLayouts = new[] { _layout },
                 ShaderSet = new ShaderSetDescription(new[] { vertexLayout }, _shaders),
                 Outputs = modelOutputs,
             });
@@ -75,6 +76,17 @@ namespace KhaozEngine.Render3D.Rendering
             cl.ClearColorTarget(1, bg);
             cl.ClearColorTarget(2, bg);
             cl.ClearDepthStencil(1f);
+        }
+
+        /// <summary>
+        /// Bind the pipeline + resource set once for the model pass. Invariant across instances within a pass
+        /// (the resource set references the shared <c>_ubo</c>; only its CONTENTS change per instance via
+        /// <c>UpdateBuffer</c>). Call after <see cref="BeginModelPass"/> and before the <see cref="DrawInstance"/> loop.
+        /// </summary>
+        public void BindPass(CommandList cl)
+        {
+            cl.SetPipeline(_pipeline);
+            cl.SetGraphicsResourceSet(0, _set);
         }
 
         /// <summary>Draw one instance into the (already-bound, already-cleared) model pass.</summary>
@@ -102,8 +114,6 @@ namespace KhaozEngine.Render3D.Rendering
                 SpecParams = new Vector4(material.Specular, material.Shininess, 0f, 0f),
             };
             cl.UpdateBuffer(_ubo, 0, ref ubo);
-            cl.SetPipeline(_pipeline);
-            cl.SetGraphicsResourceSet(0, _set);
             cl.SetVertexBuffer(0, vb);
             cl.SetIndexBuffer(ib, IndexFormat.UInt16);
             cl.DrawIndexed((uint)indexCount, 1, 0, 0, 0);
@@ -111,7 +121,7 @@ namespace KhaozEngine.Render3D.Rendering
 
         public void Dispose()
         {
-            _pipeline.Dispose(); _set.Dispose();
+            _pipeline.Dispose(); _set.Dispose(); _layout.Dispose();
             foreach (var sh in _shaders) sh.Dispose();
             _ubo.Dispose();
         }

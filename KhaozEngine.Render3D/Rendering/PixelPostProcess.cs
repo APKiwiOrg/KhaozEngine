@@ -28,6 +28,7 @@ namespace KhaozEngine.Render3D.Rendering
         ResourceSet _blitColorP = null!, _blitPingAP = null!, _blitPingBP = null!; // point sampler
         ResourceSet _blitColorL = null!, _blitPingAL = null!, _blitPingBL = null!; // linear sampler
         RenderResources? _bound;
+        readonly float[] _palScratch = new float[260]; // reused per frame: 64 vec4 palette + count/dither (+ pad)
 
         public PixelPostProcess(GraphicsDevice gd, OutputDescription pingOutput, OutputDescription swapchainOutput)
         {
@@ -100,7 +101,10 @@ namespace KhaozEngine.Render3D.Rendering
         /// <summary>Upload post UBOs. Call BEFORE any SetFramebuffer this frame (no active render pass).</summary>
         public void PrepareUniforms(CommandList cl, RenderResources res, PixelPostProcessSettings s)
         {
-            var pal = new float[260];
+            var pal = _palScratch;
+            // Zero the 256-float palette region so stale colors from a larger previous palette don't leak.
+            // (Indices 258..259 are pad and stay 0; they're never written.)
+            Array.Clear(pal, 0, 256);
             int count = Math.Min(s.ActivePalette.Colors.Length, 64);
             for (int i = 0; i < count; i++)
             {

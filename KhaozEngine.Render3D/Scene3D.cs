@@ -191,6 +191,7 @@ namespace KhaozEngine.Render3D
             _post.PrepareUniforms(cl, _res, Post);
 
             _model.BeginModelPass(cl, _res, Post);
+            _model.BindPass(cl);
             Matrix4x4 vp = Camera.ViewProjection;
             Vector3 eye = Camera.Eye;
             foreach (var inst in _instances.Items)

@@ -1,18 +1,18 @@
 using System;
 using System.IO;
 using StbImageSharp;
-using Veldrid;
+using KhaozEngine.Gpu;
 
 namespace KhaozEngine.Render2D.Internal
 {
-    /// <summary>Owns the GraphicsDevice + SpriteBatch and the texture/font factories. Shared by the host and the snapshot.</summary>
+    /// <summary>Owns the GPU device + SpriteBatch and the texture/font factories. Shared by the host and the snapshot.</summary>
     internal sealed class Render2DCore : IDisposable
     {
-        public GraphicsDevice Gd { get; }
+        public IGpuDevice Gd { get; }
         public SpriteBatch Batch { get; }
         readonly bool _ownsDevice;
 
-        public Render2DCore(GraphicsDevice gd, OutputDescription output, bool ownsDevice = true)
+        public Render2DCore(IGpuDevice gd, GpuOutputDescription output, bool ownsDevice = true)
         {
             Gd = gd;
             _ownsDevice = ownsDevice;
@@ -21,9 +21,9 @@ namespace KhaozEngine.Render2D.Internal
 
         public Texture2D CreateTexture(byte[] rgba, int width, int height)
         {
-            var t = Gd.ResourceFactory.CreateTexture(TextureDescription.Texture2D(
-                (uint)width, (uint)height, 1, 1, PixelFormat.R8_G8_B8_A8_UNorm, TextureUsage.Sampled));
-            Gd.UpdateTexture(t, rgba, 0, 0, 0, (uint)width, (uint)height, 1, 0, 0);
+            var t = Gd.Factory.CreateTexture(GpuTextureDescription.Texture2D(
+                (uint)width, (uint)height, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
+            Gd.UpdateTexture(t, rgba, 0, 0, (uint)width, (uint)height);
             return new Texture2D(t, width, height);
         }
 

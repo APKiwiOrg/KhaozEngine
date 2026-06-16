@@ -8,7 +8,8 @@ namespace KhaozEngine.Gpu.Internal
     internal sealed class VeldridGpuCommandList : IGpuCommandList
     {
         internal CommandList CommandList { get; }
-        public VeldridGpuCommandList(CommandList cl) => CommandList = cl;
+        readonly bool _owns;
+        public VeldridGpuCommandList(CommandList cl, bool owns = true) { CommandList = cl; _owns = owns; }
 
         public void Begin() => CommandList.Begin();
         public void End() => CommandList.End();
@@ -54,6 +55,6 @@ namespace KhaozEngine.Gpu.Internal
         public void CopyTexture(IGpuTexture src, IGpuTexture dst)
             => CommandList.CopyTexture(((VeldridGpuTexture)src).Texture, ((VeldridGpuTexture)dst).Texture);
 
-        public void Dispose() => CommandList.Dispose();
+        public void Dispose() { if (_owns) CommandList.Dispose(); }
     }
 }

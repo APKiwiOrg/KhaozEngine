@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using StbTrueTypeSharp;
-using Veldrid;
+using KhaozEngine.Gpu;
 
 namespace KhaozEngine.Render2D
 {
@@ -43,7 +43,7 @@ namespace KhaozEngine.Render2D
 
         public void Dispose() => Atlas.Dispose();
 
-        internal static unsafe SpriteFont Build(GraphicsDevice gd, byte[] ttf, float pixelHeight)
+        internal static unsafe SpriteFont Build(IGpuDevice gd, byte[] ttf, float pixelHeight)
         {
             var handle = GCHandle.Alloc(ttf, GCHandleType.Pinned);
             try
@@ -85,9 +85,9 @@ namespace KhaozEngine.Render2D
                     penX += gw + 2; rowH = Math.Max(rowH, gh);
                 }
 
-                var tex = gd.ResourceFactory.CreateTexture(TextureDescription.Texture2D(
-                    (uint)aw, (uint)ah, 1, 1, PixelFormat.R8_G8_B8_A8_UNorm, TextureUsage.Sampled));
-                gd.UpdateTexture(tex, atlas, 0, 0, 0, (uint)aw, (uint)ah, 1, 0, 0);
+                var tex = gd.Factory.CreateTexture(GpuTextureDescription.Texture2D(
+                    (uint)aw, (uint)ah, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
+                gd.UpdateTexture(tex, atlas, 0, 0, (uint)aw, (uint)ah);
 
                 var font = new SpriteFont(new Texture2D(tex, aw, ah), aw, ah, ascent * scale, lineHeight);
                 foreach (var kv in glyphs) font.Glyphs[kv.Key] = kv.Value;

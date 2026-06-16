@@ -71,6 +71,14 @@ namespace KhaozEngine.Gpu
         /// mapped but not exercised in Phase 3a. <paramref name="options"/> matches what the snapshot helpers
         /// previously passed verbatim so the golden image stays pixel-identical.
         /// </summary>
+        /// <summary>
+        /// Veldrid-free headless device for migrated consumers (Render2D) that must not reference Veldrid. Uses
+        /// the SAME device options the 2D snapshot path passed verbatim (no depth, no main-swapchain depth, debug
+        /// off, Improved binding, sRGB on, sync off) so the golden image stays pixel-identical.
+        /// </summary>
+        public static GpuDeviceContext CreateHeadless()
+            => CreateHeadless(new GraphicsDeviceOptions(false, null, false, ResourceBindingModel.Improved, true, true));
+
         public static GpuDeviceContext CreateHeadless(GraphicsDeviceOptions options)
         {
             GpuBackendKind kind = GpuBackendSelector.Select();

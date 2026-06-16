@@ -23,6 +23,20 @@ remaining legacy-MonoGame surface.
   hash). The byte-identical sim math keeps SpaceGame's `17709480852979803671` gate stable when it adopts.
 - All other 4.x packages are unchanged; they share this version bump as usual.
 
+## 5.42.0 (custom 5.x line)
+
+Fourth engine-first gap-fill for porting 2D games (Nullwake) to the 5.x stack: `Windowing.TimeSkip`, the
+offline / fast-forward catch-up primitive that sits next to `GameClock`.
+
+- **`Windowing.TimeSkip`** (+ `TimeSkipResult`) - advances a simulation by a span of sim-time in one shot with
+  optional cap / multiplier / min-threshold policy, then invokes the consumer's analytical catch-up callback
+  (O(events), not O(ticks)). Drives on-demand fast-forward ("skip +2h") and offline catch-up ("away 3h"); a
+  `Completed` event fires on every `Advance` (including no-ops), and `ElapsedSimSeconds(lastSave, now, timeScale)`
+  is the pure wall-time helper (clamped >= 0). The MonoGame-free 5.x port of the 4.x `Time.TimeSkip` (pure BCL,
+  headless-tested) - it could not be referenced from a 5.x game because the 4.x `KhaozEngine.Time` package still
+  drags in MonoGame via its `GameClock`.
+- 7 new headless tests (cap/multiplier/min/no-op/Completed/ElapsedSimSeconds).
+
 ## 5.41.0 (custom 5.x line)
 
 Third engine-first gap-fill for porting 2D games (Nullwake) to the 5.x stack: `Render2D.TextHelper`, the

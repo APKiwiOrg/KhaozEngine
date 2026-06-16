@@ -17,7 +17,7 @@ namespace KhaozEngine.Render3D
     /// and the pixel post chain. Load meshes once with <see cref="LoadMesh"/>; each frame call
     /// <see cref="Begin"/>, queue instances with <see cref="Draw"/>, then have the surface/host render. Owns its
     /// GPU resources (via the KhaozEngine.Gpu seam) but records into a caller-supplied command list (see
-    /// <see cref="Render3DSurface"/> / <see cref="Render3DHost"/>); the public surface stays backend-free.
+    /// <see cref="Render3DSurface"/>); the public surface stays backend-free.
     /// </summary>
     public sealed class Scene3D : IDisposable
     {

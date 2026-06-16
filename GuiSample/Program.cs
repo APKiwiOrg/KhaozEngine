@@ -1,39 +1,54 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Game;
 using KhaozEngine.Gui;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
 
 // Proves the screen-stack on the custom stack: a menu screen whose buttons push a modal settings screen,
-// all routed through ScreenStack (input-consumption layering + transitions) over AppWindow + Render2D.
+// all routed through ScreenStack (input-consumption layering + transitions) over the GameApp loop facade.
 // Resolution-independent: everything is authored in a fixed 960x540 design space and the DesignViewport
 // scales/centers/letterboxes it onto whatever the window is resized to (hit-testing stays aligned).
-var window = new AppWindow("KhaozEngine.Gui - screen stack", 960, 540) { ClearColor = new Vector4(0.03f, 0.04f, 0.06f, 1f) };
-var surface = new Render2DSurface(window);
-var assets = new GuiAssets(
-    surface.CreateTexture(new byte[] { 255, 255, 255, 255 }, 1, 1),
-    surface.LoadFont("/System/Library/Fonts/Supplemental/Arial.ttf", 40f),
-    surface.LoadFont("/System/Library/Fonts/Supplemental/Arial.ttf", 26f));
+using (var app = new GuiSampleApp())
+    app.Run();
 
-var viewport = new DesignViewport(960, 540, ScaleMode.Fit);
-
-var stack = new ScreenStack();
-stack.Add(new MenuScreen(assets, viewport, () => window.Close()));
-
-window.Run(frame =>
+sealed class GuiSampleApp : GameApp
 {
-    if (frame.Input.WasPressed(Key.Escape)) window.Close();
-    viewport.Update(frame.Width, frame.Height);
-    stack.Update(frame.Dt, frame.Input, viewport);
+    GuiAssets _assets = null!;
+    ScreenStack _stack = null!;
 
-    surface.NewFrame(frame);
-    surface.Batch.Begin(viewport);
-    stack.Draw(surface.Batch);
-    surface.Batch.End();
-});
+    public GuiSampleApp()
+        : base(new GameAppOptions
+        {
+            Title = "KhaozEngine.Gui - screen stack",
+            Width = 960,
+            Height = 540,
+            DesignWidth = 960,
+            DesignHeight = 540,
+            ScaleMode = ScaleMode.Fit,
+            ClearColor = new Vector4(0.03f, 0.04f, 0.06f, 1f),
+        })
+    { }
 
-surface.Dispose();
-window.Dispose();
+    protected override void OnLoad()
+    {
+        _assets = new GuiAssets(
+            Surface2D.CreateTexture(new byte[] { 255, 255, 255, 255 }, 1, 1),
+            Surface2D.LoadFont("/System/Library/Fonts/Supplemental/Arial.ttf", 40f),
+            Surface2D.LoadFont("/System/Library/Fonts/Supplemental/Arial.ttf", 26f));
+
+        _stack = new ScreenStack();
+        _stack.Add(new MenuScreen(_assets, Viewport, Quit));
+    }
+
+    protected override void OnUpdate(float dt)
+    {
+        if (Input.WasPressed(Key.Escape)) { Quit(); return; }
+        _stack.Update(dt, Input, Viewport);
+    }
+
+    protected override void OnDraw2D(SpriteBatch batch) => _stack.Draw(batch);
+}
 
 sealed class GuiAssets
 {

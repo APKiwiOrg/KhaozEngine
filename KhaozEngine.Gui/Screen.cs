@@ -42,6 +42,10 @@ namespace KhaozEngine.Gui
         /// <summary>The owning stack, set by <see cref="ScreenStack.Add"/>.</summary>
         public ScreenStack Manager = null!;
 
+        /// <summary>The owning stack's <see cref="ScreenStack.Services"/> container, or null when none is set
+        /// (or before this screen has been added to a stack). Read it to resolve shared services.</summary>
+        public System.IServiceProvider? Services => Manager?.Services;
+
         public virtual void LoadContent() { }
         public virtual void UnloadContent() { }
 

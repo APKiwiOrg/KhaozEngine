@@ -82,6 +82,32 @@ namespace KhaozEngine.Tests.Gui
         }
 
         [Fact]
+        public void Services_round_trips_and_a_screen_reads_it_via_manager()
+        {
+            var services = new FakeServices();
+            var stack = new ScreenStack { Services = services };
+            Assert.Same(services, stack.Services);
+
+            var s = new FakeScreen();
+            stack.Add(s);
+            Assert.Same(services, s.Services); // screen reads its manager's Services
+        }
+
+        [Fact]
+        public void Screen_services_is_null_when_stack_has_none()
+        {
+            var stack = new ScreenStack();
+            var s = new FakeScreen();
+            stack.Add(s);
+            Assert.Null(s.Services);
+        }
+
+        sealed class FakeServices : System.IServiceProvider
+        {
+            public object? GetService(System.Type serviceType) => null;
+        }
+
+        [Fact]
         public void ExitScreen_with_transition_animates_out_then_removes()
         {
             var stack = new ScreenStack();

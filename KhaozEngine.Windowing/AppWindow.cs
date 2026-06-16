@@ -18,6 +18,9 @@ namespace KhaozEngine.Windowing
         public int Height { get; internal set; }
         /// <summary>The GPU command list for this frame (advanced; renderers draw into it). Veldrid type.</summary>
         public CommandList Commands { get; internal set; } = null!;
+        /// <summary>This frame's command list as an engine <see cref="IGpuCommandList"/> (for the migrated 2D
+        /// renderer). Non-owning bridge over the same Veldrid <see cref="Commands"/>; full retype is phase 3c.</summary>
+        public IGpuCommandList GpuCommands { get; internal set; } = null!;
     }
 
     /// <summary>
@@ -30,6 +33,7 @@ namespace KhaozEngine.Windowing
         readonly Sdl2Window _window;
         readonly GpuDeviceContext _gpu;
         readonly CommandList _cl;
+        readonly IGpuCommandList _gpuCl;
         readonly Frame _frame = new();
         readonly HashSet<Key> _keysDown = new();
         readonly HashSet<MouseButton> _mouseDown = new();
@@ -38,6 +42,8 @@ namespace KhaozEngine.Windowing
 
         /// <summary>The Veldrid graphics device (advanced GPU boundary; renderers consume it).</summary>
         public GraphicsDevice Device { get; }
+        /// <summary>The engine-owned GPU device (the migrated 2D renderer consumes this instead of <see cref="Device"/>).</summary>
+        public IGpuDevice GpuDevice => _gpu.GpuDevice;
         /// <summary>The main swapchain (advanced GPU boundary).</summary>
         public Swapchain MainSwapchain => Device.MainSwapchain;
         /// <summary>The selected graphics backend (centralized via <see cref="GpuBackendSelector"/>).</summary>
@@ -54,6 +60,7 @@ namespace KhaozEngine.Windowing
             Device = _gpu.Device;
             _window.Resized += () => Device.MainSwapchain.Resize((uint)_window.Width, (uint)_window.Height);
             _cl = Device.ResourceFactory.CreateCommandList();
+            _gpuCl = GpuCommandLists.Wrap(_cl);
             _lastMouse = Vector2.Zero;
         }
 
@@ -81,7 +88,7 @@ namespace KhaozEngine.Windowing
                 _cl.SetFramebuffer(Device.MainSwapchain.Framebuffer);
                 _cl.ClearColorTarget(0, new RgbaFloat(ClearColor.X, ClearColor.Y, ClearColor.Z, ClearColor.W));
 
-                _frame.Dt = dt; _frame.Input = input; _frame.Width = w; _frame.Height = h; _frame.Commands = _cl;
+                _frame.Dt = dt; _frame.Input = input; _frame.Width = w; _frame.Height = h; _frame.Commands = _cl; _frame.GpuCommands = _gpuCl;
                 onFrame(_frame);
 
                 _cl.End();

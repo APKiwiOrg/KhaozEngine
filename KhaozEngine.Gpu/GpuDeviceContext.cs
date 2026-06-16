@@ -2,6 +2,7 @@ using System;
 using Veldrid;
 using Veldrid.Sdl2;
 using Veldrid.StartupUtilities;
+using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu
 {
@@ -23,10 +24,17 @@ namespace KhaozEngine.Gpu
         public GpuCapabilities Capabilities { get; }
 
         /// <summary>
-        /// The underlying Veldrid device. TRANSITIONAL bridge for Phase 3a: the renderers still consume Veldrid
-        /// directly. Replaced by wrapped engine GPU types in Phase 3b/3c.
+        /// The underlying Veldrid device. TRANSITIONAL bridge: Render3D still consumes Veldrid directly until
+        /// phase 3c. Render2D (phase 3b) consumes <see cref="GpuDevice"/> instead. Goes away after 3c.
         /// </summary>
         public GraphicsDevice Device { get; }
+
+        /// <summary>
+        /// The engine-owned GPU device wrapping the same underlying Veldrid <see cref="Device"/>. Phase-3b
+        /// renderers (Render2D) consume this instead of the raw device, so Veldrid stays hidden. The wrapper is
+        /// non-owning — disposal flows through this context's <see cref="Dispose"/>.
+        /// </summary>
+        public IGpuDevice GpuDevice { get; }
 
         GpuDeviceContext(GraphicsDevice device, GpuBackendKind backend, bool ownsDevice)
         {
@@ -34,6 +42,9 @@ namespace KhaozEngine.Gpu
             Backend = backend;
             _ownsDevice = ownsDevice;
             Capabilities = new GpuCapabilities(device.IsClipSpaceYInverted, device.IsDepthRangeZeroToOne);
+            // Non-owning wrapper: this context owns the raw device's disposal (see Dispose), so the wrapper must
+            // not dispose it again.
+            GpuDevice = new VeldridGpuDevice(device, backend, ownsDevice: false);
         }
 
         /// <summary>
@@ -60,6 +71,14 @@ namespace KhaozEngine.Gpu
         /// mapped but not exercised in Phase 3a. <paramref name="options"/> matches what the snapshot helpers
         /// previously passed verbatim so the golden image stays pixel-identical.
         /// </summary>
+        /// <summary>
+        /// Veldrid-free headless device for migrated consumers (Render2D) that must not reference Veldrid. Uses
+        /// the SAME device options the 2D snapshot path passed verbatim (no depth, no main-swapchain depth, debug
+        /// off, Improved binding, sRGB on, sync off) so the golden image stays pixel-identical.
+        /// </summary>
+        public static GpuDeviceContext CreateHeadless()
+            => CreateHeadless(new GraphicsDeviceOptions(false, null, false, ResourceBindingModel.Improved, true, true));
+
         public static GpuDeviceContext CreateHeadless(GraphicsDeviceOptions options)
         {
             GpuBackendKind kind = GpuBackendSelector.Select();

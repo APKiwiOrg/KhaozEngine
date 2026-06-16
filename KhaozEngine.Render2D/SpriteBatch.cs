@@ -2,9 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
-using System.Text;
-using Veldrid;
-using Veldrid.SPIRV;
+using KhaozEngine.Gpu;
 
 namespace KhaozEngine.Render2D
 {
@@ -33,46 +31,46 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
 
         struct V { public Vector2 Pos; public Vector2 Uv; public Vector4 Color; }
 
-        readonly GraphicsDevice _gd;
-        readonly ResourceLayout _layout;
-        readonly Pipeline _pipeline;
-        readonly Shader[] _shaders;
-        readonly Sampler _sampler;
-        readonly Dictionary<Texture, ResourceSet> _sets = new();
+        readonly IGpuDevice _gd;
+        readonly IGpuResourceLayout _layout;
+        readonly IGpuPipeline _pipeline;
+        readonly IGpuShaderSet _shaders;
+        readonly IGpuSampler _sampler;
+        readonly Dictionary<IGpuTexture, IGpuResourceSet> _sets = new();
         readonly QuadRunBuilder<V> _runs = new();
 
         const uint VertexSizeBytes = 32;       // V = Pos(8) + Uv(8) + Color(16)
-        DeviceBuffer? _vb;                     // one persistent, growable vertex buffer
-        uint _vbCapacityBytes;                 // current capacity in bytes
+        IGpuBuffer? _vb;                        // one persistent, growable vertex buffer
+        uint _vbCapacityBytes;                  // current capacity in bytes
 
-        CommandList _cl = null!;
+        IGpuCommandList _cl = null!;
         int _vw, _vh;
         Matrix4x4 _vp;
         Windowing.IDesignViewport? _viewport;   // active design viewport (set by Begin(IDesignViewport)), else null
 
-        internal SpriteBatch(GraphicsDevice gd, OutputDescription output)
+        internal SpriteBatch(IGpuDevice gd, GpuOutputDescription output)
         {
             _gd = gd;
-            var f = gd.ResourceFactory;
+            var f = gd.Factory;
             _sampler = gd.LinearSampler;
-            _layout = f.CreateResourceLayout(new ResourceLayoutDescription(
-                new ResourceLayoutElementDescription("Tex", ResourceKind.TextureReadOnly, ShaderStages.Fragment),
-                new ResourceLayoutElementDescription("Samp", ResourceKind.Sampler, ShaderStages.Fragment)));
-            _shaders = f.CreateFromSpirv(
-                new ShaderDescription(ShaderStages.Vertex, Encoding.UTF8.GetBytes(VertSrc), "main"),
-                new ShaderDescription(ShaderStages.Fragment, Encoding.UTF8.GetBytes(FragSrc), "main"));
-            var vl = new VertexLayoutDescription(
-                new VertexElementDescription("ClipPos", VertexElementSemantic.Position, VertexElementFormat.Float2),
-                new VertexElementDescription("Uv", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float2),
-                new VertexElementDescription("Color", VertexElementSemantic.Color, VertexElementFormat.Float4));
-            _pipeline = f.CreateGraphicsPipeline(new GraphicsPipelineDescription
+            _layout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
+                new GpuResourceLayoutElement("Tex", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("Samp", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
+            _shaders = f.CreateShadersFromSpirv(VertSrc, FragSrc);
+            var vl = new GpuVertexLayoutDescription(
+                new GpuVertexElement("ClipPos", GpuVertexElementFormat.Float2),
+                new GpuVertexElement("Uv", GpuVertexElementFormat.Float2),
+                new GpuVertexElement("Color", GpuVertexElementFormat.Float4));
+            _pipeline = f.CreateGraphicsPipeline(new GpuPipelineDescription
             {
-                BlendState = BlendStateDescription.SingleAlphaBlend,
-                DepthStencilState = DepthStencilStateDescription.Disabled,
-                RasterizerState = new RasterizerStateDescription(FaceCullMode.None, PolygonFillMode.Solid, FrontFace.Clockwise, depthClipEnabled: false, scissorTestEnabled: true),
-                PrimitiveTopology = PrimitiveTopology.TriangleList,
+                BlendFactor = Vector4.Zero,
+                BlendAttachments = new[] { GpuBlendAttachment.AlphaBlend },
+                DepthStencil = GpuDepthStencilState.Disabled,
+                Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: false, scissorTestEnabled: true),
+                Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },
-                ShaderSet = new ShaderSetDescription(new[] { vl }, _shaders),
+                ShaderSet = _shaders,
+                VertexLayouts = new List<GpuVertexLayoutDescription> { vl },
                 Outputs = output,
             });
         }
@@ -120,7 +118,7 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
         public void SetScissor(Windowing.Rect rect)
         {
             Flush();
-            var fb = _gd.MainSwapchain?.Framebuffer;
+            var fb = _gd.SwapchainFramebuffer;
             int fbw = fb != null ? (int)fb.Width : _vw;
             int fbh = fb != null ? (int)fb.Height : _vh;
             var (x, y, w, h) = ComputeScissor(rect, _viewport, _vw, _vh, fbw, fbh);
@@ -131,14 +129,14 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
         public void ClearScissor()
         {
             Flush();
-            var fb = _gd.MainSwapchain?.Framebuffer;
+            var fb = _gd.SwapchainFramebuffer;
             uint fbw = fb != null ? fb.Width : (uint)Math.Max(0, _vw);
             uint fbh = fb != null ? fb.Height : (uint)Math.Max(0, _vh);
             _cl.SetScissorRect(0, 0, 0, fbw, fbh);
         }
 
         // Called by the host/snapshot each frame before the user's draw callback.
-        internal void NewFrame(CommandList cl, int viewportW, int viewportH)
+        internal void NewFrame(IGpuCommandList cl, int viewportW, int viewportH)
         {
             _cl = cl; _vw = viewportW; _vh = viewportH;
         }
@@ -202,7 +200,7 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
         /// </summary>
         void Flush()
         {
-            var f = _gd.ResourceFactory;
+            var f = _gd.Factory;
 
             // Total vertex count across all non-empty runs; size the one persistent buffer for the whole frame.
             int totalCount = 0;
@@ -218,16 +216,16 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
             foreach (var (key, verts) in _runs.Runs)
             {
                 if (verts.Count == 0) continue;
-                var tex = (Texture)key;
+                var tex = (IGpuTexture)key;
                 // Upload directly from the run's backing List<V> — no ToArray() copy.
-                _gd.UpdateBuffer(_vb, byteOffset, CollectionsMarshal.AsSpan(verts));
+                _gd.UpdateBuffer(_vb!, byteOffset, (ReadOnlySpan<V>)CollectionsMarshal.AsSpan(verts));
                 if (!_sets.TryGetValue(tex, out var set))
                 {
-                    set = f.CreateResourceSet(new ResourceSetDescription(_layout, tex, _sampler));
+                    set = f.CreateResourceSet(new GpuResourceSetDescription(_layout, tex, _sampler));
                     _sets[tex] = set;
                 }
                 _cl.SetGraphicsResourceSet(0, set);
-                _cl.SetVertexBuffer(0, _vb);
+                _cl.SetVertexBuffer(0, _vb!);
                 // Draw(vertexCount, instanceCount, vertexStart, instanceStart): the run's offset is vertexStart.
                 _cl.Draw((uint)verts.Count, 1, vertexStart, 0);
                 byteOffset += (uint)verts.Count * VertexSizeBytes;
@@ -241,8 +239,8 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
             if (_vb != null && _vbCapacityBytes >= bytesNeeded) return;
             _vb?.Dispose();
             _vbCapacityBytes = Math.Max(bytesNeeded, _vbCapacityBytes == 0 ? 4096u : _vbCapacityBytes * 2);
-            _vb = _gd.ResourceFactory.CreateBuffer(
-                new BufferDescription(_vbCapacityBytes, BufferUsage.VertexBuffer));
+            _vb = _gd.Factory.CreateBuffer(
+                new GpuBufferDescription(_vbCapacityBytes, GpuBufferUsage.VertexBuffer));
         }
 
         Vector2 Clip(float x, float y)
@@ -258,7 +256,7 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
             _vb?.Dispose();
             foreach (var s in _sets.Values) s.Dispose();
             _pipeline.Dispose(); _layout.Dispose();
-            foreach (var sh in _shaders) sh.Dispose();
+            _shaders.Dispose();
         }
     }
 }

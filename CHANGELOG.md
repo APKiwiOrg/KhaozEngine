@@ -5,6 +5,31 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 5.26.0-experimental (custom 5.x line)
+
+P0 hardening, stage 3 — graphics-backend seam, **phase 3b of 4**. The full engine-owned GPU abstraction lands
+and **Render2D is migrated onto it (Veldrid dropped from Render2D entirely)**. Behaviour unchanged (both
+goldens pixel-identical).
+
+### KhaozEngine.Gpu
+
+- **Full GPU interface + Veldrid implementation**: `IGpuDevice`/`IGpuResourceFactory`/`IGpuCommandList` + the
+  resource handles (`IGpuBuffer`/`Texture`/`Sampler`/`Framebuffer`/`Pipeline`/`ResourceLayout`/`ResourceSet`/
+  `ShaderSet`), engine-owned descriptions + 16 `Gpu*` enums, all mapped 1:1 to Veldrid inside `Internal/`. Veldrid
+  is now hidden behind this interface (a future Silk.NET backend becomes a new `IGpuDevice` impl). Covers the
+  full surface both renderers use, so phase 3c migrates Render3D against the same interface. A gated `[GpuFact]`
+  smoke test exercises buffer+texture+pipeline+draw+readback on the device. Plus `GpuCommandLists.Wrap(...)` — a
+  transitional bridge presenting a window's frame command list as an `IGpuCommandList` until phase 3c retypes
+  `Frame.Commands`.
+
+### KhaozEngine.Render2D (migrated; one fewer dependency)
+
+- **No longer references Veldrid.** `SpriteBatch`/`Render2DCore`/`Render2DSurface`/`Render2DSnapshot`/`Texture2D`/
+  `SpriteFont` are rewritten against the `KhaozEngine.Gpu` interface; the `Veldrid`/`Veldrid.SPIRV` package
+  references are removed. `AppWindow` now also exposes `GpuDevice` + `Frame.GpuCommands` for 2D consumers
+  (Render3D still uses the Veldrid path until 3c). Submission order, scissor, and the persistent vertex buffer
+  are preserved; the 2D golden passes pixel-identical.
+
 ## 5.25.0-experimental (custom 5.x line)
 
 P0 hardening, stage 3 of 3 — the graphics-backend seam, **phase 3a of 4** (foundation). See

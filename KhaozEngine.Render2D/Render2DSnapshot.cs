@@ -1,12 +1,11 @@
 using System;
 using System.Numerics;
-using Veldrid;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render2D.Internal;
 
 namespace KhaozEngine.Render2D
 {
-    /// <summary>Draw surface handed to a <see cref="Render2DSnapshot"/> callback (Veldrid-free).</summary>
+    /// <summary>Draw surface handed to a <see cref="Render2DSnapshot"/> callback (backend-free).</summary>
     public sealed class Render2DContext
     {
         readonly Render2DCore _core;
@@ -25,45 +24,46 @@ namespace KhaozEngine.Render2D
     {
         public static byte[] Capture(int width, int height, Vector4 clear, Action<Render2DContext> draw)
         {
-            var opts = new GraphicsDeviceOptions(false, null, false, ResourceBindingModel.Improved, true, true);
             // NOTE: the context is intentionally NOT disposed here — as in the original inline CreateMetal path,
-            // tearing down the Metal device after this 2D font/texture pass crashes (Veldrid 4.9.0). The device
+            // tearing down the Metal device after this 2D font/texture pass crashes in the backend. The device
             // is left to process teardown (this is a tooling/test-only snapshot helper). Matches baseline behaviour.
-            GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless(opts);
-            GraphicsDevice gd = gpu.Device;
-            var f = gd.ResourceFactory;
-            Texture target = f.CreateTexture(TextureDescription.Texture2D(
-                (uint)width, (uint)height, 1, 1, PixelFormat.R8_G8_B8_A8_UNorm, TextureUsage.RenderTarget | TextureUsage.Sampled));
-            Framebuffer fb = f.CreateFramebuffer(new FramebufferDescription(null, target));
-            var core = new Render2DCore(gd, fb.OutputDescription);
-            CommandList cl = f.CreateCommandList();
+            GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
+            IGpuDevice gd = gpu.GpuDevice;
+            var f = gd.Factory;
+            IGpuTexture target = f.CreateTexture(GpuTextureDescription.Texture2D(
+                (uint)width, (uint)height, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
+            IGpuFramebuffer fb = f.CreateFramebuffer(null, target);
+            // Match baseline: core owns the device's disposal (the GpuDeviceContext wrapper is intentionally left
+            // undisposed so the device is torn down exactly once, here, via core.Dispose()).
+            var core = new Render2DCore(gd, fb.Outputs, ownsDevice: true);
+            IGpuCommandList cl = f.CreateCommandList();
             try
             {
                 cl.Begin();
                 cl.SetFramebuffer(fb);
-                cl.ClearColorTarget(0, new RgbaFloat(clear.X, clear.Y, clear.Z, clear.W));
+                cl.ClearColorTarget(0, clear);
                 core.Batch.NewFrame(cl, width, height);
                 draw(new Render2DContext(core, width, height));
                 cl.End();
-                gd.SubmitCommands(cl);
+                gd.Submit(cl);
                 gd.WaitForIdle();
                 return Readback(gd, target, width, height);
             }
             finally { cl.Dispose(); fb.Dispose(); target.Dispose(); core.Dispose(); }
         }
 
-        static byte[] Readback(GraphicsDevice gd, Texture src, int w, int h)
+        static byte[] Readback(IGpuDevice gd, IGpuTexture src, int w, int h)
         {
-            var f = gd.ResourceFactory;
-            using Texture staging = f.CreateTexture(TextureDescription.Texture2D(
-                (uint)w, (uint)h, 1, 1, PixelFormat.R8_G8_B8_A8_UNorm, TextureUsage.Staging));
-            using (CommandList cl = f.CreateCommandList())
+            var f = gd.Factory;
+            using IGpuTexture staging = f.CreateTexture(GpuTextureDescription.Texture2D(
+                (uint)w, (uint)h, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Staging));
+            using (IGpuCommandList cl = f.CreateCommandList())
             {
                 cl.Begin(); cl.CopyTexture(src, staging); cl.End();
-                gd.SubmitCommands(cl); gd.WaitForIdle();
+                gd.Submit(cl); gd.WaitForIdle();
             }
             var outBytes = new byte[w * h * 4];
-            MappedResource map = gd.Map(staging, MapMode.Read);
+            MappedData map = gd.Map(staging, GpuMapMode.Read);
             unsafe
             {
                 byte* data = (byte*)map.Data;

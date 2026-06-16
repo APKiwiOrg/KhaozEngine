@@ -15,8 +15,8 @@ namespace KhaozEngine.Render2D
 
         public Render2DSurface(AppWindow window)
         {
-            // borrow the window's device (it owns it); don't dispose it here.
-            _core = new Render2DCore(window.Device, window.MainSwapchain.Framebuffer.OutputDescription, ownsDevice: false);
+            // borrow the window's GPU device (it owns it); don't dispose it here.
+            _core = new Render2DCore(window.GpuDevice, window.GpuDevice.SwapchainFramebuffer!.Outputs, ownsDevice: false);
         }
 
         public SpriteBatch Batch => _core.Batch;
@@ -25,7 +25,7 @@ namespace KhaozEngine.Render2D
         public SpriteFont LoadFont(string ttfPath, float pixelHeight) => _core.LoadFont(ttfPath, pixelHeight);
 
         /// <summary>Bind this frame's command list/viewport to the batch. Call once per frame before drawing.</summary>
-        public void NewFrame(Frame frame) => _core.Batch.NewFrame(frame.Commands, frame.Width, frame.Height);
+        public void NewFrame(Frame frame) => _core.Batch.NewFrame(frame.GpuCommands, frame.Width, frame.Height);
 
         public void Dispose() => _core.Dispose();
     }

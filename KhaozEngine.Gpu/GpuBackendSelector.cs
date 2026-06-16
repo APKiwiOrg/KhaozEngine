@@ -42,8 +42,8 @@ namespace KhaozEngine.Gpu
             {
                 case "metal": backend = GpuBackendKind.Metal; return true;
                 case "vulkan": backend = GpuBackendKind.Vulkan; return true;
-                case "d3d11": backend = GpuBackendKind.Direct3D11; return true;
-                case "gl": backend = GpuBackendKind.OpenGL; return true;
+                case "d3d11": case "direct3d11": backend = GpuBackendKind.Direct3D11; return true;
+                case "gl": case "opengl": backend = GpuBackendKind.OpenGL; return true;
                 default: backend = default; return false;
             }
         }

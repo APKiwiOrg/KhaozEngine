@@ -64,8 +64,10 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData("metal", true, GpuBackendKind.Metal)]
         [InlineData("vulkan", true, GpuBackendKind.Vulkan)]
         [InlineData("d3d11", true, GpuBackendKind.Direct3D11)]
+        [InlineData("direct3d11", true, GpuBackendKind.Direct3D11)]   // alias matching GpuBackendKind.ToString()
         [InlineData("gl", true, GpuBackendKind.OpenGL)]
-        [InlineData("opengl", false, default(GpuBackendKind))]
+        [InlineData("opengl", true, GpuBackendKind.OpenGL)]           // alias matching GpuBackendKind.ToString()
+        [InlineData("nonsense", false, default(GpuBackendKind))]
         [InlineData(null, false, default(GpuBackendKind))]
         public void TryParseBackend_RecognizesKnownValues(string? value, bool ok, GpuBackendKind expected)
         {

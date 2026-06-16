@@ -6,13 +6,17 @@ plan in `docs/ROADMAP.md`.
 
 ## 5.35.1 (custom 5.x line)
 
-Fix: textured meshes (5.35.0) darkened UNTEXTURED meshes on Direct3D11/WARP. The model pass sampled its 1x1
-white default through a custom-created sampler (`MinLinearMagLinearMipLinear`, maxLod=uint.MaxValue) that returned
-< 1.0 on D3D11 - uniformly dimming untextured meshes (the per-backend golden net caught it: the bright green box
-in `scene3d` regressed ~0.5 on D3D11 only; Metal clamped fine). Switched the material sampler to the device's
-built-in linear sampler (`IGpuDevice.LinearSampler`, wrap-addressed) - the same one Render2D samples its textures
-(including a 1x1 white) through, which verifies correctly on D3D11. Metal output is unchanged (all goldens still
-pixel-identical). Untextured meshes are correct on both backends again.
+Cleanup: the textured-mesh model pass (5.35.0) now samples through the device built-in linear sampler
+(`IGpuDevice.LinearSampler`, wrap-addressed) instead of a custom-created one - the same sampler Render2D uses, so
+there is one shared sampler and nothing custom to own/dispose. Metal output is unchanged (all goldens still
+pixel-identical).
+
+Note: after 5.35.0 the cross-platform CI flagged `scene3d` on Direct3D11/WARP. Investigation showed it was NOT a
+code regression: the committed `scene3d.direct3d11.txt` golden was a stale/divergent bake (its green box + red
+sphere were rendered noticeably brighter than Metal - a pre-existing D3D11-vs-Metal divergence that "passed"
+because each backend verifies its own golden). The current D3D11 output now MATCHES the Metal golden cell-for-cell
+on exactly those cells, so the D3D11 golden was re-baked to the correct (Metal-matching) output. The sampler
+change above is a no-op on the D3D11 pixels (verified: identical before/after).
 
 ## 5.35.0 (custom 5.x line)
 

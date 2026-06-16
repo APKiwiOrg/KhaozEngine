@@ -5,6 +5,21 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 5.28.0-experimental (custom 5.x line)
+
+P0 hardening, stage 3 — graphics-backend seam, **phase 3d of 4 (final)**. Lockdown: the consumer-facing
+renderer/windowing/Gui packages are confirmed Veldrid-free. The **graphics-backend seam (P0#1) is complete** —
+Veldrid is contained to `KhaozEngine.Gpu` (all GPU) + Windowing's internal SDL2 window/input, and a future
+Silk.NET backend is a new `IGpuDevice` impl, not a consumer-visible change.
+
+### KhaozEngine.Gpu / KhaozEngine.Tests
+
+- `GpuDeviceContext.Device` (the raw Veldrid `GraphicsDevice`) is now **internal** — no renderer consumes it;
+  consumers use the engine-owned `GpuDevice`.
+- **Veldrid lockdown test**: a reflection test asserts the public API of Render2D / Render3D / Windowing / Gui
+  exposes no `Veldrid.*` type (it would fail the build on any future leak). The samples build unchanged against
+  the migrated API.
+
 ## 5.27.0-experimental (custom 5.x line)
 
 P0 hardening, stage 3 — graphics-backend seam, **phase 3c of 4**. **Render3D is now fully off Veldrid**, and

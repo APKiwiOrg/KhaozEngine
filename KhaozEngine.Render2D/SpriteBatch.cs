@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using System.Text;
 using Veldrid;
 using Veldrid.SPIRV;
@@ -39,7 +40,10 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
         readonly Sampler _sampler;
         readonly Dictionary<Texture, ResourceSet> _sets = new();
         readonly QuadRunBuilder<V> _runs = new();
-        readonly List<DeviceBuffer> _frameBuffers = new();
+
+        const uint VertexSizeBytes = 32;       // V = Pos(8) + Uv(8) + Color(16)
+        DeviceBuffer? _vb;                     // one persistent, growable vertex buffer
+        uint _vbCapacityBytes;                 // current capacity in bytes
 
         CommandList _cl = null!;
         int _vw, _vh;
@@ -137,8 +141,6 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
         internal void NewFrame(CommandList cl, int viewportW, int viewportH)
         {
             _cl = cl; _vw = viewportW; _vh = viewportH;
-            foreach (var b in _frameBuffers) b.Dispose();
-            _frameBuffers.Clear();
         }
 
         /// <summary>Begin a batch in world space through <paramref name="camera"/>.</summary>
@@ -201,24 +203,46 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
         void Flush()
         {
             var f = _gd.ResourceFactory;
+
+            // Total vertex count across all non-empty runs; size the one persistent buffer for the whole frame.
+            int totalCount = 0;
+            foreach (var (_, verts) in _runs.Runs)
+                totalCount += verts.Count;
+            if (totalCount == 0) { _runs.Reset(); return; }
+
+            EnsureVertexCapacity((uint)totalCount * VertexSizeBytes);
+
             _cl.SetPipeline(_pipeline);
+            uint byteOffset = 0;
+            uint vertexStart = 0;
             foreach (var (key, verts) in _runs.Runs)
             {
                 if (verts.Count == 0) continue;
                 var tex = (Texture)key;
-                var vb = f.CreateBuffer(new BufferDescription((uint)(verts.Count * 32), BufferUsage.VertexBuffer));
-                _gd.UpdateBuffer(vb, 0, verts.ToArray());
-                _frameBuffers.Add(vb);
+                // Upload directly from the run's backing List<V> — no ToArray() copy.
+                _gd.UpdateBuffer(_vb, byteOffset, CollectionsMarshal.AsSpan(verts));
                 if (!_sets.TryGetValue(tex, out var set))
                 {
                     set = f.CreateResourceSet(new ResourceSetDescription(_layout, tex, _sampler));
                     _sets[tex] = set;
                 }
                 _cl.SetGraphicsResourceSet(0, set);
-                _cl.SetVertexBuffer(0, vb);
-                _cl.Draw((uint)verts.Count);
+                _cl.SetVertexBuffer(0, _vb);
+                // Draw(vertexCount, instanceCount, vertexStart, instanceStart): the run's offset is vertexStart.
+                _cl.Draw((uint)verts.Count, 1, vertexStart, 0);
+                byteOffset += (uint)verts.Count * VertexSizeBytes;
+                vertexStart += (uint)verts.Count;
             }
             _runs.Reset();
+        }
+
+        void EnsureVertexCapacity(uint bytesNeeded)
+        {
+            if (_vb != null && _vbCapacityBytes >= bytesNeeded) return;
+            _vb?.Dispose();
+            _vbCapacityBytes = Math.Max(bytesNeeded, _vbCapacityBytes == 0 ? 4096u : _vbCapacityBytes * 2);
+            _vb = _gd.ResourceFactory.CreateBuffer(
+                new BufferDescription(_vbCapacityBytes, BufferUsage.VertexBuffer));
         }
 
         Vector2 Clip(float x, float y)
@@ -231,7 +255,7 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
 
         public void Dispose()
         {
-            foreach (var b in _frameBuffers) b.Dispose();
+            _vb?.Dispose();
             foreach (var s in _sets.Values) s.Dispose();
             _pipeline.Dispose(); _layout.Dispose();
             foreach (var sh in _shaders) sh.Dispose();

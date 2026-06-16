@@ -5,6 +5,27 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 5.24.0-experimental (custom 5.x line)
+
+P0 hardening, stage 2 of 3 (see `docs/ENGINE-AUDIT-5x-2026-06-16.md`): submission performance. Internal
+rewrite; `Scene3D.Draw`/`SpriteBatch.Draw` public APIs unchanged. Guarded by the stage-1 golden-snapshot net
+(both 3D + 2D goldens pass pixel-equivalent).
+
+### KhaozEngine.Render3D (perf)
+
+- **GPU instancing.** The model pass no longer uploads a UBO + issues a draw per instance. Per-frame uniforms
+  (view-projection, lights, camera) live in a 176-byte UBO uploaded once per frame; per-instance data (model
+  matrix, tint, emissive, specular) moves to an instanced vertex stream uploaded once per frame; each UNIQUE
+  mesh draws once with `instanceCount`. A 200-object board goes from ~200 UBO uploads + 200 draws to 1 UBO
+  upload + ~(unique-mesh) instanced draws. (The previous per-instance ceiling was ~150-300 objects.)
+
+### KhaozEngine.Render2D (perf)
+
+- **Persistent SpriteBatch vertex buffer.** `SpriteBatch.Flush` no longer creates+disposes a GPU buffer and
+  allocates a managed array per texture-run every frame; it uploads sub-ranges into one persistent growable
+  buffer (uploaded directly from the run's backing storage, no `ToArray`). Removes the worst per-frame
+  allocation/driver-churn hot spot in 2D.
+
 ## 5.23.0-experimental (custom 5.x line)
 
 P0 hardening, stage 1 of 3 (see `docs/ENGINE-AUDIT-5x-2026-06-16.md`): correctness net + low-risk fixes. No

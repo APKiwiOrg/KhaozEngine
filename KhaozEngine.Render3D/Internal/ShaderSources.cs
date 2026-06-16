@@ -8,24 +8,39 @@ namespace KhaozEngine.Render3D.Internal
     /// </summary>
     internal static class ShaderSources
     {
-        // ---- Model pass. One combined UBO (both stages) avoids a cross-stage two-buffer binding
-        //      issue in the Veldrid/SPIRV Metal mapping. Matrices uploaded row-major directly. ----
+        // ---- Model pass. Per-frame UBO (binding 0, both stages) holds only frame uniforms; per-instance data
+        //      (Model matrix, Tint, Emissive, SpecParams) arrives via an instanced vertex stream (buffer slot 1,
+        //      instanceStepRate 1). The Model matrix is reconstructed from 4 instance vec4 rows: InstanceData.Model
+        //      is a System.Numerics Matrix4x4 stored row-major, read here as IModel0..3 (the rows). mat4(IModel0..3)
+        //      builds the matrix COLUMNS from those rows = the transpose, which is exactly how GLSL read the old
+        //      row-major UBO Model. So Model * vec4(pos) reproduces the previous world transform. ----
         public const string ModelVert = @"#version 450
 layout(set=0, binding=0) uniform U {
-    mat4 ViewProj; mat4 Model;
-    vec4 LightDir; vec4 LightColor; vec4 Ambient; vec4 Params; vec4 Tint;
-    vec4 FillDir; vec4 FillColor; vec4 CameraPos; vec4 Emissive; vec4 SpecParams;
+    mat4 ViewProj;
+    vec4 LightDir; vec4 LightColor; vec4 Ambient; vec4 Params;
+    vec4 FillDir; vec4 FillColor; vec4 CameraPos;
 };
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
 layout(location=2) in vec4 Color;
 layout(location=3) in vec2 TexCoord;
+layout(location=4) in vec4 IModel0;   // per-instance model matrix rows
+layout(location=5) in vec4 IModel1;
+layout(location=6) in vec4 IModel2;
+layout(location=7) in vec4 IModel3;
+layout(location=8) in vec4 ITint;
+layout(location=9) in vec4 IEmissive;
+layout(location=10) in vec4 ISpecParams;
 layout(location=0) out vec3 vNormalW;
 layout(location=1) out vec4 vColor;
 layout(location=2) out float vDepth;
 layout(location=3) out vec3 vWorldPos;
 layout(location=4) out vec2 vUv;
+layout(location=5) out vec4 vTint;
+layout(location=6) out vec4 vEmissive;
+layout(location=7) out vec4 vSpecParams;
 void main() {
+    mat4 Model = mat4(IModel0, IModel1, IModel2, IModel3);
     vec4 world = Model * vec4(Position, 1.0);
     gl_Position = ViewProj * world;
     vNormalW = normalize(mat3(Model) * Normal);
@@ -33,33 +48,36 @@ void main() {
     vDepth = gl_Position.z / gl_Position.w; // 0..1 in Veldrid clip space; linear for ortho
     vWorldPos = world.xyz;
     vUv = TexCoord;
+    vTint = ITint;
+    vEmissive = IEmissive;
+    vSpecParams = ISpecParams;
 }";
 
         public const string ModelFrag = @"#version 450
 layout(set=0, binding=0) uniform U {
-    mat4 ViewProj; mat4 Model;
+    mat4 ViewProj;
     vec4 LightDir;   // xyz = key light travel direction
     vec4 LightColor;
     vec4 Ambient;
     vec4 Params;     // x = CelBands
-    vec4 Tint;       // per-instance RGBA, multiplies the lit color
     vec4 FillDir;    // xyz = fill light travel direction
     vec4 FillColor;  // fill light colour
     vec4 CameraPos;  // xyz = eye position
-    vec4 Emissive;   // per-instance self-illumination, added after lighting
-    vec4 SpecParams; // x = specular strength, y = shininess exponent
 };
 layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;
 layout(location=2) in float vDepth;
 layout(location=3) in vec3 vWorldPos;
 layout(location=4) in vec2 vUv; // declared to keep the stage interface matched; texturing is a later step
+layout(location=5) in vec4 vTint;       // per-instance RGBA, multiplies the lit color
+layout(location=6) in vec4 vEmissive;   // per-instance self-illumination, added after lighting
+layout(location=7) in vec4 vSpecParams; // x = specular strength, y = shininess exponent
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
 void main() {
     vec3 N = normalize(vNormalW);
-    vec3 albedo = vColor.rgb * Tint.rgb;
+    vec3 albedo = vColor.rgb * vTint.rgb;
     float ndlKey  = max(dot(N, -normalize(LightDir.xyz)), 0.0);
     float ndlFill = max(dot(N, -normalize(FillDir.xyz)), 0.0);
     float bands = Params.x;
@@ -68,8 +86,8 @@ void main() {
     // Blinn-Phong specular from the key light only, gated by key ndl so back faces don't shine.
     vec3 V = normalize(CameraPos.xyz - vWorldPos);
     vec3 H = normalize(-normalize(LightDir.xyz) + V);
-    float spec = pow(max(dot(N,H),0.0), max(SpecParams.y,1.0)) * SpecParams.x * step(0.0001, ndlKey);
-    vec3 lit = albedo * (Ambient.rgb + diffuse) + LightColor.rgb*spec + Emissive.rgb;
+    float spec = pow(max(dot(N,H),0.0), max(vSpecParams.y,1.0)) * vSpecParams.x * step(0.0001, ndlKey);
+    vec3 lit = albedo * (Ambient.rgb + diffuse) + LightColor.rgb*spec + vEmissive.rgb;
     oColor = vec4(lit, 1.0);
     oNormal = vec4(N * 0.5 + 0.5, 1.0);
     oDepth = vec4(vDepth, vDepth, vDepth, 1.0);

@@ -33,6 +33,9 @@ namespace KhaozEngine.Render3D
         readonly List<LineRenderer.LineVertex> _lineVerts = new();
         readonly List<BillboardRenderer.BillboardVertex> _billboardAlpha = new();
         readonly List<BillboardRenderer.BillboardVertex> _billboardAdditive = new();
+        // Reused per-frame grouping buffers (cleared, not realloc) for GPU instancing.
+        readonly List<ModelRenderer.InstanceData> _instanceData = new();
+        readonly List<MeshRun> _runs = new();
         Vector3 _billboardRight, _billboardUp;
         bool _billboardBasisValid;
 
@@ -191,13 +194,22 @@ namespace KhaozEngine.Render3D
             _post.PrepareUniforms(cl, _res, Post);
 
             _model.BeginModelPass(cl, _res, Post);
-            _model.BindPass(cl);
             Matrix4x4 vp = Camera.ViewProjection;
             Vector3 eye = Camera.Eye;
-            foreach (var inst in _instances.Items)
+            _model.SetFrameUniforms(cl, vp, eye, Post);
+            _model.BindPass(cl);
+
+            // GPU instancing: group queued instances by mesh into a flat instance array (ordered by mesh) + a
+            // run per unique mesh. Reuses member buffers (cleared, not realloc) to stay per-frame alloc-free.
+            GroupInstances(_instances.Items, _instanceData, _runs);
+            if (_instanceData.Count > 0)
             {
-                var m = _meshes[inst.Mesh.Index];
-                _model.DrawInstance(cl, m.Vb, m.Ib, m.IndexCount, vp, inst.World, Post, inst.Tint, eye, inst.Material);
+                _model.UploadInstances(cl, CollectionsMarshal.AsSpan(_instanceData));
+                foreach (var run in _runs)
+                {
+                    var m = _meshes[run.MeshIndex];
+                    _model.DrawMeshInstanced(cl, m.Vb, m.Ib, m.IndexCount, run.Start, run.Count);
+                }
             }
 
             _post.Run(cl, _res, target, Post);
@@ -231,6 +243,75 @@ namespace KhaozEngine.Render3D
             public readonly DeviceBuffer Vb, Ib;
             public readonly int IndexCount;
             public Mesh(DeviceBuffer vb, DeviceBuffer ib, int indexCount) { Vb = vb; Ib = ib; IndexCount = indexCount; }
+        }
+
+        /// <summary>A contiguous run of instances of one mesh inside the flat instance array.</summary>
+        internal readonly struct MeshRun
+        {
+            public readonly int MeshIndex;
+            public readonly uint Start;
+            public readonly uint Count;
+            public MeshRun(int meshIndex, uint start, uint count) { MeshIndex = meshIndex; Start = start; Count = count; }
+        }
+
+        /// <summary>
+        /// Group queued <paramref name="items"/> by mesh index into <paramref name="instanceData"/> (a flat array
+        /// ordered so all instances of one mesh are contiguous) and <paramref name="runs"/> (one
+        /// <see cref="MeshRun"/> per unique mesh, in first-seen order). Pure + headless-testable; both output lists
+        /// are Cleared and refilled (no realloc on the caller's reused buffers).
+        /// </summary>
+        internal static void GroupInstances(IReadOnlyList<SceneInstances.Instance> items,
+            List<ModelRenderer.InstanceData> instanceData, List<MeshRun> runs)
+        {
+            instanceData.Clear();
+            runs.Clear();
+            if (items.Count == 0) return;
+
+            // First-seen mesh order. Instances are usually already mesh-coherent (one mesh per kind), so the run
+            // list stays short; we append each instance into its mesh's bucket by stable two-pass grouping.
+            // Pass 1: collect distinct mesh indices in first-seen order + count per mesh.
+            // Use the runs list as scratch for (meshIndex, count) accumulation.
+            for (int i = 0; i < items.Count; i++)
+            {
+                int mesh = items[i].Mesh.Index;
+                int slot = -1;
+                for (int r = 0; r < runs.Count; r++)
+                    if (runs[r].MeshIndex == mesh) { slot = r; break; }
+                if (slot < 0) runs.Add(new MeshRun(mesh, 0, 1));
+                else runs[slot] = new MeshRun(mesh, 0, runs[slot].Count + 1);
+            }
+
+            // Assign each run a start offset (prefix sum), and record per-mesh write cursors.
+            // runs currently holds (meshIndex, 0, count) in first-seen order.
+            uint cursor = 0;
+            Span<uint> writeCursor = runs.Count <= 64 ? stackalloc uint[runs.Count] : new uint[runs.Count];
+            for (int r = 0; r < runs.Count; r++)
+            {
+                uint start = cursor;
+                writeCursor[r] = start;
+                cursor += runs[r].Count;
+                runs[r] = new MeshRun(runs[r].MeshIndex, start, runs[r].Count);
+            }
+
+            // Size the flat array, then scatter each instance into its mesh's contiguous slot.
+            int total = (int)cursor;
+            for (int i = 0; i < total; i++) instanceData.Add(default);
+            for (int i = 0; i < items.Count; i++)
+            {
+                var inst = items[i];
+                int mesh = inst.Mesh.Index;
+                int slot = -1;
+                for (int r = 0; r < runs.Count; r++)
+                    if (runs[r].MeshIndex == mesh) { slot = r; break; }
+                uint dst = writeCursor[slot]++;
+                instanceData[(int)dst] = new ModelRenderer.InstanceData
+                {
+                    Model = inst.World,
+                    Tint = inst.Tint,
+                    Emissive = inst.Material.Emissive,
+                    SpecParams = new Vector4(inst.Material.Specular, inst.Material.Shininess, 0f, 0f),
+                };
+            }
         }
     }
 }

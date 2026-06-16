@@ -41,7 +41,7 @@ namespace KhaozEngine.Render3D
                 Vector3 nrm = Vector3.TransformNormal(v.Normal, normalMatrix);
                 float len = nrm.Length();
                 nrm = len > 1e-12f ? nrm / len : v.Normal;
-                _vertices.Add(new ModelVertex(pos, nrm, color ?? v.Color));
+                _vertices.Add(new ModelVertex(pos, nrm, color ?? v.Color, v.Uv));
             }
 
             foreach (var idx in part.Indices)

@@ -19,10 +19,12 @@ layout(set=0, binding=0) uniform U {
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
 layout(location=2) in vec4 Color;
+layout(location=3) in vec2 TexCoord;
 layout(location=0) out vec3 vNormalW;
 layout(location=1) out vec4 vColor;
 layout(location=2) out float vDepth;
 layout(location=3) out vec3 vWorldPos;
+layout(location=4) out vec2 vUv;
 void main() {
     vec4 world = Model * vec4(Position, 1.0);
     gl_Position = ViewProj * world;
@@ -30,6 +32,7 @@ void main() {
     vColor = Color;
     vDepth = gl_Position.z / gl_Position.w; // 0..1 in Veldrid clip space; linear for ortho
     vWorldPos = world.xyz;
+    vUv = TexCoord;
 }";
 
         public const string ModelFrag = @"#version 450
@@ -50,6 +53,7 @@ layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;
 layout(location=2) in float vDepth;
 layout(location=3) in vec3 vWorldPos;
+layout(location=4) in vec2 vUv; // declared to keep the stage interface matched; texturing is a later step
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;

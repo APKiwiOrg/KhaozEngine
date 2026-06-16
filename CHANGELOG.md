@@ -4,6 +4,16 @@ All notable changes to KhaozEngine. The 4.x line shares one version (`Directory.
 5.x custom-stack (MonoGame-free) engine packages share a second (`<KhaozEngine5xVersion>`). See the post-MonoGame
 plan in `docs/ROADMAP.md`.
 
+## 5.35.1 (custom 5.x line)
+
+Fix: textured meshes (5.35.0) darkened UNTEXTURED meshes on Direct3D11/WARP. The model pass sampled its 1x1
+white default through a custom-created sampler (`MinLinearMagLinearMipLinear`, maxLod=uint.MaxValue) that returned
+< 1.0 on D3D11 - uniformly dimming untextured meshes (the per-backend golden net caught it: the bright green box
+in `scene3d` regressed ~0.5 on D3D11 only; Metal clamped fine). Switched the material sampler to the device's
+built-in linear sampler (`IGpuDevice.LinearSampler`, wrap-addressed) - the same one Render2D samples its textures
+(including a 1x1 white) through, which verifies correctly on D3D11. Metal output is unchanged (all goldens still
+pixel-identical). Untextured meshes are correct on both backends again.
+
 ## 5.35.0 (custom 5.x line)
 
 Per-mesh albedo textures in `KhaozEngine.Render3D`. Meshes were colour-baked only (lit `vColor * vTint`); the

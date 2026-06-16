@@ -34,7 +34,7 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuDevice _gd;
         readonly IGpuBuffer _ubo;
         readonly IGpuResourceLayout _layout;
-        readonly IGpuSampler _sampler;          // shared linear/wrap sampler for all material sets
+        readonly IGpuSampler _sampler;          // shared linear/wrap sampler (the device built-in, NOT owned here)
         readonly IGpuTexture _white;            // 1x1 white default; white*vColor*vTint == vColor*vTint (untextured invariant)
         readonly IGpuResourceSet _defaultSet;   // UBO + white + sampler; bound for meshes with no material set
         readonly IGpuPipeline _pipeline;
@@ -55,10 +55,12 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuResourceLayoutElement("Albedo", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("AlbedoSampler", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
 
-            // Shared linear sampler, wrapping so UVs outside 0..1 tile.
-            _sampler = factory.CreateSampler(new GpuSamplerDescription(
-                GpuSamplerFilter.MinLinearMagLinearMipLinear,
-                GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap));
+            // Use the device's built-in linear sampler (wrap-addressed) - the SAME one Render2D samples its
+            // textures (incl. a 1x1 white) through, which verifies correctly on D3D11/WARP. A custom
+            // CreateSampler here (MinLinearMagLinearMipLinear, maxLod=uint.MaxValue) instead sampled the 1x1 white
+            // default as < 1.0 on D3D11 - uniformly darkening untextured meshes (the golden net caught it on the
+            // green box) while Metal clamped fine. Built-in sampler is non-owning, so it is NOT disposed here.
+            _sampler = gd.LinearSampler;
 
             // 1x1 white default texture: an untextured mesh samples (1,1,1), so albedo == vColor*vTint and every
             // existing scene renders pixel-identical (the safety invariant).
@@ -201,7 +203,7 @@ namespace KhaozEngine.Render3D.Rendering
         public void Dispose()
         {
             _pipeline.Dispose(); _defaultSet.Dispose(); _layout.Dispose();
-            _white.Dispose(); _sampler.Dispose();
+            _white.Dispose(); // _sampler is the device built-in (non-owning); do not dispose it.
             _shaders.Dispose();
             _ubo.Dispose();
             _instanceBuffer?.Dispose();

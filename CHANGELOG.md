@@ -5,6 +5,25 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 5.30.0-experimental (custom 5.x line)
+
+P1 batch 2 (see `docs/ENGINE-AUDIT-5x-2026-06-16.md`): the game-loop framework + POC cleanup.
+
+### KhaozEngine.Game (NEW package — P1#4)
+
+- **`GameApp` loop facade.** A subclass base that owns the window, clock, design viewport, pointer, and the 2D/
+  (optional) 3D surfaces, and drives the per-frame composition in the correct order — so a game overrides
+  `OnLoad`/`OnUpdate(dt)`/`OnDraw3D(scene)`/`OnDraw2D(batch)`/`OnResize` and **cannot get the frame ordering
+  wrong** (clock → viewport → pointer → update → 3D submit+render → 2D begin/draw/end). `GameAppOptions` carries
+  title/size/design-size/clear-colour/`Enable3D`. The raw `AppWindow.Run` path stays for special needs. Both
+  the 3D (`Render3DSample`) and 2D (`GuiSample`) samples now run on it.
+
+### KhaozEngine.Render3D (P1#5 — POC debt removed)
+
+- **Deleted `Render3DHost`** and its private `Key`/`FrameInfo` (a second window/loop + a second `Key` enum that
+  duplicated Windowing). The standalone 3D demo path is now `GameApp`; the only public key enum is
+  `KhaozEngine.Windowing.Key`. (`Render3DSnapshot` — the headless capture path — is unchanged.)
+
 ## 5.29.0-experimental (custom 5.x line)
 
 P1 batch 1 (see `docs/ENGINE-AUDIT-5x-2026-06-16.md`): two contained fixes.

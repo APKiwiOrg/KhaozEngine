@@ -24,10 +24,10 @@ namespace KhaozEngine.Gpu
         public GpuCapabilities Capabilities { get; }
 
         /// <summary>
-        /// The underlying Veldrid device. TRANSITIONAL bridge: Render3D still consumes Veldrid directly until
-        /// phase 3c. Render2D (phase 3b) consumes <see cref="GpuDevice"/> instead. Goes away after 3c.
+        /// The underlying Veldrid device — the implementation detail behind <see cref="GpuDevice"/>. Internal as
+        /// of phase 3d: no renderer consumes it; consumers use the engine-owned <see cref="GpuDevice"/>.
         /// </summary>
-        public GraphicsDevice Device { get; }
+        internal GraphicsDevice Device { get; }
 
         /// <summary>
         /// The engine-owned GPU device wrapping the same underlying Veldrid <see cref="Device"/>. Phase-3b

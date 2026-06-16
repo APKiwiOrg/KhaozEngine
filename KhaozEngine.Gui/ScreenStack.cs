@@ -23,6 +23,10 @@ namespace KhaozEngine.Gui
         /// <summary>The current screens, sorted by <see cref="Screen.DrawOrder"/> ascending.</summary>
         public IReadOnlyList<Screen> Screens => _screens;
 
+        /// <summary>Optional service container shared with the screens (a DI container or a service locator).
+        /// Screens read it via <see cref="Screen.Services"/>. Set once after constructing the stack; null when unused.</summary>
+        public System.IServiceProvider? Services { get; set; }
+
         /// <summary>Adds a screen, applies its entry transition, calls LoadContent, and re-sorts by draw order.</summary>
         public void Add(Screen screen)
         {

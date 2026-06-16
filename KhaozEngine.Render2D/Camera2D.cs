@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Windowing;
 
 namespace KhaozEngine.Render2D
 {
@@ -43,6 +44,63 @@ namespace KhaozEngine.Render2D
         {
             Matrix4x4.Invert(GetView(viewportWidth, viewportHeight), out var inv);
             return Vector2.Transform(screen, inv);
+        }
+
+        /// <summary>Sets <see cref="Position"/> so <paramref name="world"/> sits at the viewport centre.
+        /// (Position already is the world point at centre, so this is an explicit alias for readability
+        /// and API parity with the pannable canvas.)</summary>
+        public void CenterOn(Vector2 world) => Position = world;
+
+        /// <summary>Moves the camera so world content tracks a screen drag of <paramref name="screenDelta"/>:
+        /// the world moves by <c>screenDelta / Zoom</c>, applied opposite to the drag (grab-and-drag).
+        /// No-op for a zero delta or a non-positive <see cref="Zoom"/>.</summary>
+        public void PanByScreenDelta(Vector2 screenDelta)
+        {
+            if (screenDelta == Vector2.Zero || Zoom <= 0f) return;
+            Position -= screenDelta / Zoom;
+        }
+
+        /// <summary>
+        /// Frames <paramref name="worldRect"/>: sets <see cref="Zoom"/> so the rect (optionally inflated
+        /// by <paramref name="paddingFraction"/> on each side) is fully visible - a contain fit,
+        /// <c>min(viewportWidth / rectWidth, viewportHeight / rectHeight)</c> - clamped to
+        /// <paramref name="minZoom"/>/<paramref name="maxZoom"/>, then centres <see cref="Position"/> on the
+        /// rect. Pure and headless; ignores <see cref="Rotation"/> like the other axis-aligned helpers. Does
+        /// not clamp to world bounds - call <see cref="ClampPosition"/> after if the rect is a sub-region.
+        /// </summary>
+        public void Focus(Rect worldRect, int viewportWidth, int viewportHeight, float paddingFraction = 0f,
+            float minZoom = 0.0001f, float maxZoom = float.MaxValue)
+        {
+            float scale = 1f + 2f * paddingFraction;
+            float w = MathF.Max(1f, worldRect.Width * scale);
+            float h = MathF.Max(1f, worldRect.Height * scale);
+            float fit = MathF.Min(viewportWidth / w, viewportHeight / h);
+
+            Zoom = Math.Clamp(fit, minZoom, maxZoom);
+            Position = new Vector2(worldRect.X + worldRect.Width / 2f, worldRect.Y + worldRect.Height / 2f);
+        }
+
+        /// <summary>
+        /// Returns <paramref name="desired"/> clamped so the visible world rectangle
+        /// (viewport size divided by <see cref="Zoom"/>) stays inside <paramref name="worldBounds"/>.
+        /// On an axis where the world is smaller than the view, the result is centred on that axis. Does
+        /// not mutate <see cref="Position"/>; the caller assigns the result if wanted. Ignores
+        /// <see cref="Rotation"/> (exact when it is 0); requires <see cref="Zoom"/> &gt; 0.
+        /// </summary>
+        public Vector2 ClampPosition(Vector2 desired, Rect worldBounds, int viewportWidth, int viewportHeight)
+        {
+            float halfW = viewportWidth / (2f * Zoom);
+            float halfH = viewportHeight / (2f * Zoom);
+
+            float x = worldBounds.Width >= 2f * halfW
+                ? Math.Clamp(desired.X, worldBounds.X + halfW, worldBounds.Right - halfW)
+                : worldBounds.X + worldBounds.Width / 2f;
+
+            float y = worldBounds.Height >= 2f * halfH
+                ? Math.Clamp(desired.Y, worldBounds.Y + halfH, worldBounds.Bottom - halfH)
+                : worldBounds.Y + worldBounds.Height / 2f;
+
+            return new Vector2(x, y);
         }
     }
 }

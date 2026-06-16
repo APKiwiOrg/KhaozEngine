@@ -23,6 +23,23 @@ remaining legacy-MonoGame surface.
   hash). The byte-identical sim math keeps SpaceGame's `17709480852979803671` gate stable when it adopts.
 - All other 4.x packages are unchanged; they share this version bump as usual.
 
+## 5.40.0 (custom 5.x line)
+
+Second engine-first gap-fill for porting 2D games (Nullwake) to the 5.x stack: a `Gui.PannableCanvas`, the
+`Render2D.Camera2D` math it needs, and `Gui.ScreenStack.Services`.
+
+- **`Render2D.Camera2D`** gains `CenterOn`, `PanByScreenDelta`, `Focus(Rect, vw, vh, padding, min, max)` (contain-
+  fit + centre), and `ClampPosition(desired, worldBounds, vw, vh)` (keep the view inside bounds; centre when the
+  bounds are smaller than the viewport). Pure math, headless-tested.
+- **`Gui.PannableCanvas`** - a generic pannable viewport over world-space content larger than a viewport: drag +
+  wheel pan over a `Windowing.Pointer` (+ `InputState.ScrollDelta`), clamps to caller content bounds + padding,
+  `WorldToScreen`/`ScreenToWorld` (viewport-offset aware), `CenterOn`/`Focus`/`CenterContent`, a click-through-safe
+  `TryGetTap`, and a scissor-clipped `Draw(batch, drawWorld)` via `Begin(camera)`. Pan-only this release (pinch
+  zoom is a follow-up - the 5.x Pointer exposes no pinch yet). Ported from the 4.x MonoGame `UI.PannableCanvas`.
+- **`Gui.ScreenStack.Services`** (`IServiceProvider?`) + `Screen.Services` (reads via `Manager`) - so a screen can
+  resolve services through its manager (matches the 4.x ScreenManager).
+- 21 new headless tests (Camera2D math, PannableCanvas transforms/clamp/tap/pan, ScreenStack.Services).
+
 ## 5.39.0 (custom 5.x line)
 
 `KhaozEngine.Render2D` gains a 2D `PrimitiveRenderer` and SpriteBatch rotation - the first engine-first gap-fill

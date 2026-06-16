@@ -52,6 +52,18 @@ namespace KhaozEngine.Render2D
             finally { cl.Dispose(); fb.Dispose(); target.Dispose(); core.Dispose(); }
         }
 
+        /// <summary>
+        /// As <see cref="Capture"/>, but encodes the result to a PNG (via the dependency-free <see cref="Png"/>
+        /// encoder) and writes it to <paramref name="path"/>. Returns the raw RGBA buffer too (for assertions /
+        /// further processing). The one-call path a game's snapshot tool needs.
+        /// </summary>
+        public static byte[] CaptureToPng(string path, int width, int height, Vector4 clear, Action<Render2DContext> draw)
+        {
+            byte[] rgba = Capture(width, height, clear, draw);
+            Png.Write(path, rgba, width, height);
+            return rgba;
+        }
+
         static byte[] Readback(IGpuDevice gd, IGpuTexture src, int w, int h)
         {
             var f = gd.Factory;

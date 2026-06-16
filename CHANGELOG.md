@@ -5,6 +5,30 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 5.27.0-experimental (custom 5.x line)
+
+P0 hardening, stage 3 — graphics-backend seam, **phase 3c of 4**. **Render3D is now fully off Veldrid**, and
+`Frame.Commands` is the engine command list — so both renderer packages run entirely on `KhaozEngine.Gpu`.
+Behaviour unchanged (both goldens pixel-identical, 3D scene visually confirmed).
+
+### KhaozEngine.Render3D (migrated; Veldrid dropped)
+
+- **No longer references Veldrid.** `Scene3D`, `ModelRenderer` (instanced model pass + MRT), `PixelPostProcess`,
+  `RenderResources`, `LineRenderer`, `BillboardRenderer`, `Render3DSurface`, `Render3DSnapshot`, and the standalone
+  `Render3DHost` are all rewritten against the `KhaozEngine.Gpu` interface; the `Veldrid`/`Veldrid.SPIRV`/
+  `Veldrid.StartupUtilities` (and the now-unneeded Newtonsoft) package references are removed. The full pipeline
+  state (MRT, instancing, depth/raster/blend, the post-process chain, the debug-line + billboard overlays) is
+  preserved. `Render3DHost` now delegates its window/loop to `AppWindow`.
+
+### KhaozEngine.Windowing / KhaozEngine.Gpu
+
+- `Frame.Commands` is now an `IGpuCommandList` (the transitional `Frame.GpuCommands` + the `GpuCommandLists.Wrap`
+  bridge are removed). `AppWindow` no longer exposes the Veldrid `GraphicsDevice`/`Swapchain` — its public GPU
+  surface is `GpuDevice`/`Backend`/`Capabilities`, and it drives the loop through the engine command list. The
+  SDL2 window + input pump remain on `Veldrid.Sdl2` (the windowing/input platform layer — abstracting SDL2 is a
+  separate future item). `KhaozEngine.Gpu`'s public device factories no longer expose Veldrid's
+  `GraphicsDeviceOptions` (kept internal), so creating a device touches no Veldrid type.
+
 ## 5.26.0-experimental (custom 5.x line)
 
 P0 hardening, stage 3 — graphics-backend seam, **phase 3b of 4**. The full engine-owned GPU abstraction lands

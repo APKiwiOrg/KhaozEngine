@@ -23,6 +23,21 @@ remaining legacy-MonoGame surface.
   hash). The byte-identical sim math keeps SpaceGame's `17709480852979803671` gate stable when it adopts.
 - All other 4.x packages are unchanged; they share this version bump as usual.
 
+## 5.39.0 (custom 5.x line)
+
+`KhaozEngine.Render2D` gains a 2D `PrimitiveRenderer` and SpriteBatch rotation - the first engine-first gap-fill
+for porting 2D games (Nullwake) off the legacy MonoGame `Graphics.PrimitiveRenderer`.
+
+- **SpriteBatch rotation:** new `Draw(tex, position, size, originNormalized, rotation, srcUV, color)` overload
+  emits a rotated quad through the same clip + winding path as the axis-aligned draws (z-order + scissor
+  preserved). At rotation 0 / origin (0,0) it is identical to the axis-aligned `Draw`.
+- **`PrimitiveRenderer`** (over a 1x1 white pixel + the SpriteBatch): `DrawFilledRect`, `DrawRect` (outline),
+  `DrawLine` (sub-pixel, centered on its thickness), `DrawCircle`, `DrawRing` (+ adaptive `RingSegments`),
+  `DrawFilledCircle`, `DrawVerticalGradient`, `DrawProgressBar` (+ a pure `ComputeProgressBarLayout`). Uses 5.x
+  types (`Rect`, `Vector4` colours, `System.Numerics.Vector2`).
+- Headless tests (progress-bar layout, ring segments, rotated-corner geometry) + a new `scene2d_primitives`
+  golden. Existing goldens unchanged.
+
 ## 5.38.0 (custom 5.x line)
 
 Game scene/state stack in `KhaozEngine.Game`, so games stop hand-rolling an `AppState` enum + giant `switch`.

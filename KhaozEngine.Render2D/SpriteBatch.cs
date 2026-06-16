@@ -164,7 +164,40 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
         public void Draw(Texture2D tex, Vector4 destRect, Vector4 srcUV, Vector4 color)
         {
             float x = destRect.X, y = destRect.Y, w = destRect.Z, h = destRect.W;
-            Vector2 tl = Clip(x, y), tr = Clip(x + w, y), br = Clip(x + w, y + h), bl = Clip(x, y + h);
+            EmitQuad(tex, new Vector2(x, y), new Vector2(x + w, y), new Vector2(x + w, y + h), new Vector2(x, y + h), srcUV, color);
+        }
+
+        /// <summary>
+        /// Draw a rotated quad. <paramref name="position"/> is the world point where the pivot
+        /// (<paramref name="originNormalized"/>, in [0,1] of the quad) lands; <paramref name="size"/> is the
+        /// unrotated (w, h); <paramref name="rotation"/> is in radians (clockwise in screen space, y-down,
+        /// matching <c>atan2</c> of a screen-space edge); src = (u0, v0, u1, v1) in 0..1. At rotation 0 with
+        /// origin (0, 0) and size (w, h) this is identical to <c>Draw(tex, (x, y, w, h), srcUV, color)</c>.
+        /// </summary>
+        public void Draw(Texture2D tex, Vector2 position, Vector2 size, Vector2 originNormalized, float rotation, Vector4 srcUV, Vector4 color)
+        {
+            float cos = MathF.Cos(rotation), sin = MathF.Sin(rotation);
+            EmitQuad(tex,
+                RotatedCorner(0f, 0f, position, size, originNormalized, cos, sin),
+                RotatedCorner(1f, 0f, position, size, originNormalized, cos, sin),
+                RotatedCorner(1f, 1f, position, size, originNormalized, cos, sin),
+                RotatedCorner(0f, 1f, position, size, originNormalized, cos, sin),
+                srcUV, color);
+        }
+
+        // One quad corner in world space: rotate the local offset of normalized corner (cx, cy) about the pivot.
+        // Internal so the rotated-corner geometry is unit-testable without a GPU.
+        internal static Vector2 RotatedCorner(float cx, float cy, Vector2 position, Vector2 size, Vector2 origin, float cos, float sin)
+        {
+            float lx = (cx - origin.X) * size.X, ly = (cy - origin.Y) * size.Y;
+            return new Vector2(position.X + (lx * cos - ly * sin), position.Y + (lx * sin + ly * cos));
+        }
+
+        // Add two triangles (tl, tr, br + tl, br, bl) for the given world-space corners with the matching UVs.
+        // Both the axis-aligned and rotated Draw overloads funnel through here so z-order + scissor are shared.
+        void EmitQuad(Texture2D tex, Vector2 worldTL, Vector2 worldTR, Vector2 worldBR, Vector2 worldBL, Vector4 srcUV, Vector4 color)
+        {
+            Vector2 tl = Clip(worldTL.X, worldTL.Y), tr = Clip(worldTR.X, worldTR.Y), br = Clip(worldBR.X, worldBR.Y), bl = Clip(worldBL.X, worldBL.Y);
             var uTL = new Vector2(srcUV.X, srcUV.Y); var uTR = new Vector2(srcUV.Z, srcUV.Y);
             var uBR = new Vector2(srcUV.Z, srcUV.W); var uBL = new Vector2(srcUV.X, srcUV.W);
             var key = tex.Handle;

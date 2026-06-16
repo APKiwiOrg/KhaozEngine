@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Numerics;
 using KhaozEngine.Diagnostics;
 
 namespace KhaozEngine.Audio;
@@ -11,12 +13,20 @@ namespace KhaozEngine.Audio;
 /// </summary>
 public sealed class AudioSystem : IDisposable
 {
+    private static readonly string[] SfxExtensions = { ".wav", ".ogg", ".mp3" };
+
     private readonly IMusicBackend _backend;
+    private readonly ISfxBackend _sfxBackend;
+    private readonly OpenAlContext? _context;   // shared OpenAL context (owned here); null when silent
     private readonly ILogger _logger;
     private readonly List<string> _trackNames;
+    private readonly List<string> _sfxNames = new();
+    private readonly Dictionary<string, int> _sfx = new();   // name -> backend handle
+    private readonly HashSet<string> _warnedSfx = new();     // warn-once for unknown SFX
     private Random _rng = new();
     private float _masterVolume = 0.66f;
     private float _musicVolume = 0.4f;
+    private float _sfxVolume = 0.7f;
     private int _lastTrackIndex = -1;
     private bool _available = true;
     private bool _loaded;
@@ -33,12 +43,31 @@ public sealed class AudioSystem : IDisposable
     public AudioSystem(IEnumerable<string>? trackNames = null, ILogger? logger = null)
     {
         _logger = logger ?? Log.For<AudioSystem>();
-        _backend = CreateBackend(_logger);
+        // Build ONE shared OpenAL context for both music and SFX (OpenAL has one context per process). On
+        // failure (no device) fall back to silent Null backends with no context, preserving today's behavior.
+        try
+        {
+            _context = new OpenAlContext();
+            _backend = new OpenAlMusicBackend(_context, _logger);
+            _sfxBackend = new OpenAlSfxBackend(_context, _logger);
+        }
+        catch (Exception ex)
+        {
+            // No OpenAL implementation / audio device (headless CI, server, no sound card): stay silent
+            // rather than crash. A real device on the player's machine still gets the OpenAL backends.
+            _logger.Warn("audio unavailable; using silent backends.", ex);
+            _context?.Dispose();
+            _context = null;
+            _backend = new NullMusicBackend();
+            _sfxBackend = new NullSfxBackend();
+        }
         _trackNames = trackNames is null ? new List<string>() : new List<string>(trackNames);
     }
 
     /// <summary>
-    /// Creates an audio system with a caller-supplied backend (tests or custom platforms).
+    /// Creates an audio system with a caller-supplied music backend (tests or custom platforms). SFX use a
+    /// silent <see cref="NullSfxBackend"/> (no shared context) so existing music-only construction is
+    /// unaffected.
     /// </summary>
     /// <param name="backend">The music backend to drive.</param>
     /// <param name="trackNames">Optional initial track names (content asset names, no extension).</param>
@@ -47,6 +76,23 @@ public sealed class AudioSystem : IDisposable
     {
         _logger = logger ?? Log.For<AudioSystem>();
         _backend = backend ?? throw new ArgumentNullException(nameof(backend));
+        _sfxBackend = new NullSfxBackend();
+        _trackNames = trackNames is null ? new List<string>() : new List<string>(trackNames);
+    }
+
+    /// <summary>
+    /// Creates an audio system with caller-supplied music AND SFX backends (tests or custom platforms). No
+    /// shared OpenAL context is created or owned.
+    /// </summary>
+    /// <param name="music">The music backend to drive.</param>
+    /// <param name="sfx">The SFX backend to drive.</param>
+    /// <param name="trackNames">Optional initial track names (content asset names, no extension).</param>
+    /// <param name="logger">Optional logger; defaults to the ambient <c>Log</c> facade.</param>
+    public AudioSystem(IMusicBackend music, ISfxBackend sfx, IEnumerable<string>? trackNames = null, ILogger? logger = null)
+    {
+        _logger = logger ?? Log.For<AudioSystem>();
+        _backend = music ?? throw new ArgumentNullException(nameof(music));
+        _sfxBackend = sfx ?? throw new ArgumentNullException(nameof(sfx));
         _trackNames = trackNames is null ? new List<string>() : new List<string>(trackNames);
     }
 
@@ -141,6 +187,16 @@ public sealed class AudioSystem : IDisposable
         }
     }
 
+    /// <summary>
+    /// SFX volume (0.0 - 1.0). Scaled by master volume. Applied per <see cref="PlaySfx"/> (no eager apply,
+    /// since SFX are fire-and-forget one-shots).
+    /// </summary>
+    public float SfxVolume
+    {
+        get => _sfxVolume;
+        set => _sfxVolume = Math.Clamp(value, 0f, 1f);
+    }
+
     /// <summary>Name of the track currently playing, or null when nothing is playing.</summary>
     public string? CurrentTrack => _currentTrack;
 
@@ -174,10 +230,51 @@ public sealed class AudioSystem : IDisposable
         _trackNames.RemoveRange(kept, _trackNames.Count - kept);
 
         _logger.Info($"{_backend.TrackCount}/{requested} tracks loaded");
+
+        // Load all registered SFX from the same content dir (name + .wav/.ogg/.mp3 -> handle).
+        foreach (string name in _sfxNames) LoadSfx(name);
+
         _loaded = true;
 
         // Apply volume that was set during construction (before native audio was ready)
         ApplyVolume();
+    }
+
+    /// <summary>
+    /// Registers a one-shot SFX by content name (no extension). If content is already loaded, it is
+    /// eager-loaded now (mirrors <see cref="RegisterTrack"/>); otherwise it loads in <see cref="LoadContent"/>.
+    /// Idempotent.
+    /// </summary>
+    public void RegisterSfx(string name)
+    {
+        if (_sfxNames.Contains(name)) return;
+        _sfxNames.Add(name);
+        if (_loaded && _contentDirectory is not null) LoadSfx(name);
+    }
+
+    /// <summary>Registers several SFX via <see cref="RegisterSfx"/> (idempotent, pre- or post-load).</summary>
+    public void RegisterSfxes(IEnumerable<string> names)
+    {
+        foreach (string name in names) RegisterSfx(name);
+    }
+
+    // Looks for name + .wav/.ogg/.mp3 in the content dir and maps name -> backend handle. Skips + warns on
+    // a missing file or a backend load failure (-1).
+    private void LoadSfx(string name)
+    {
+        if (_contentDirectory is null || _sfx.ContainsKey(name)) return;
+
+        foreach (string ext in SfxExtensions)
+        {
+            string path = Path.Combine(_contentDirectory, name + ext);
+            if (!File.Exists(path)) continue;
+
+            int handle = _sfxBackend.Load(path);
+            if (handle >= 0) { _sfx[name] = handle; }
+            else _logger.Warn($"SFX '{name}' failed to load from '{path}'.");
+            return;
+        }
+        _logger.Warn($"SFX: no WAV/OGG/MP3 file found for '{name}' in '{_contentDirectory}'.");
     }
 
     /// <summary>
@@ -338,25 +435,65 @@ public sealed class AudioSystem : IDisposable
         }
     }
 
-    /// <inheritdoc/>
-    public void Dispose()
-    {
-        _backend.Dispose();
-    }
+    /// <summary>
+    /// Plays a registered SFX as a non-positional one-shot (heard at full gain). Gain =
+    /// <see cref="MasterVolume"/> * <see cref="SfxVolume"/> * clamp01(<paramref name="volume"/>). An unknown
+    /// name warns once and is a no-op. An SFX hiccup is logged and swallowed (never disables music).
+    /// </summary>
+    public void PlaySfx(string name, float volume = 1f, float pitch = 1f)
+        => PlaySfxInternal(name, volume, pitch, positional: false, default);
 
-    private static IMusicBackend CreateBackend(ILogger logger)
+    /// <summary>
+    /// Plays a registered SFX as a positional one-shot at <paramref name="position"/> in world space
+    /// (attenuates / pans relative to the listener; see <see cref="SetListener"/>). Same gain / unknown-name /
+    /// guard behavior as <see cref="PlaySfx"/>.
+    /// </summary>
+    public void PlaySfx3D(string name, Vector3 position, float volume = 1f, float pitch = 1f)
+        => PlaySfxInternal(name, volume, pitch, positional: true, position);
+
+    private void PlaySfxInternal(string name, float volume, float pitch, bool positional, Vector3 position)
     {
+        if (!_sfx.TryGetValue(name, out int handle))
+        {
+            if (_warnedSfx.Add(name)) _logger.Warn($"PlaySfx unknown SFX '{name}'; ignoring.");
+            return;
+        }
+
+        float gain = _masterVolume * _sfxVolume * Math.Clamp(volume, 0f, 1f);
         try
         {
-            return new OpenAlMusicBackend(logger);
+            _sfxBackend.Play(handle, gain, pitch, positional, position);
         }
         catch (Exception ex)
         {
-            // No OpenAL implementation / audio device (headless CI, server, no sound card): stay silent
-            // rather than crash. A real device on the player's machine still gets the OpenAL backend.
-            logger.Warn("audio unavailable; using a silent backend.", ex);
-            return new NullMusicBackend();
+            // An SFX hiccup must never disable music: log and carry on (do not flip the availability latch).
+            _logger.Warn($"PlaySfx '{name}' failed.", ex);
         }
+    }
+
+    /// <summary>
+    /// Sets the 3D listener pose used by <see cref="PlaySfx3D"/> for attenuation / panning. No-op for
+    /// non-positional SFX.
+    /// </summary>
+    public void SetListener(Vector3 position, Vector3 forward, Vector3 up)
+    {
+        try
+        {
+            _sfxBackend.SetListener(position, forward, up);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn("SetListener failed.", ex);
+        }
+    }
+
+    /// <inheritdoc/>
+    public void Dispose()
+    {
+        // Dispose order: SFX backend, music backend, then the shared context LAST (the backends borrow it).
+        _sfxBackend.Dispose();
+        _backend.Dispose();
+        _context?.Dispose();
     }
 
     private void ApplyVolume()

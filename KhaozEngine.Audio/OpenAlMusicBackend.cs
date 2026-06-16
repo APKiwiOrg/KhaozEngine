@@ -19,10 +19,9 @@ public sealed unsafe class OpenAlMusicBackend : IMusicBackend
     static readonly string[] Extensions = { ".ogg", ".mp3", ".wav" };
 
     readonly ILogger _logger;
-    readonly ALContext _alc;
+    readonly OpenAlContext _ctx;
+    readonly bool _ownsContext;
     readonly AL _al;
-    readonly Device* _device;
-    readonly Context* _context;
     readonly List<string> _tracks = new();
     readonly short[] _scratch = new short[ChunkSamples];
 
@@ -39,17 +38,31 @@ public sealed unsafe class OpenAlMusicBackend : IMusicBackend
     public int TrackCount => _tracks.Count;
     public bool IsPlaying => _playing;
 
+    /// <summary>
+    /// Creates a music backend that owns its own <see cref="OpenAlContext"/> (back-compat for any direct
+    /// consumer). Throws if no audio device is available. Prefer the shared-context overload when running
+    /// alongside the SFX backend so both live in the single per-process OpenAL context.
+    /// </summary>
     public OpenAlMusicBackend(ILogger? logger = null)
+        : this(new OpenAlContext(), ownsContext: true, logger)
+    {
+    }
+
+    /// <summary>
+    /// Creates a music backend that borrows a shared <see cref="OpenAlContext"/> (does not dispose it). Used by
+    /// <see cref="AudioSystem"/> so music and SFX share the one per-process OpenAL context.
+    /// </summary>
+    internal OpenAlMusicBackend(OpenAlContext context, ILogger? logger = null)
+        : this(context, ownsContext: false, logger)
+    {
+    }
+
+    OpenAlMusicBackend(OpenAlContext context, bool ownsContext, ILogger? logger)
     {
         _logger = logger ?? Log.For<OpenAlMusicBackend>();
-        // soft: true targets the bundled openal-soft (Silk.NET.OpenAL.Soft.Native) rather than the platform's
-        // default OpenAL, so macOS uses the shipped lib instead of its deprecated system OpenAL.framework.
-        _alc = ALContext.GetApi(true);
-        _al = AL.GetApi(true);
-        _device = _alc.OpenDevice("");
-        if (_device == null) throw new InvalidOperationException("OpenAL: could not open an audio device");
-        _context = _alc.CreateContext(_device, null);
-        _alc.MakeContextCurrent(_context);
+        _ctx = context ?? throw new ArgumentNullException(nameof(context));
+        _ownsContext = ownsContext;
+        _al = context.Al;
     }
 
     public bool TryLoadTrack(string contentDirectory, string trackName)
@@ -153,10 +166,7 @@ public sealed unsafe class OpenAlMusicBackend : IMusicBackend
     public void Dispose()
     {
         Stop();
-        _alc.MakeContextCurrent(null);
-        if (_context != null) _alc.DestroyContext(_context);
-        if (_device != null) _alc.CloseDevice(_device);
-        _al.Dispose();
-        _alc.Dispose();
+        // Only tear down a context we created. A shared context is owned and disposed by AudioSystem.
+        if (_ownsContext) _ctx.Dispose();
     }
 }

@@ -1,5 +1,5 @@
 using System;
-using Veldrid;
+using KhaozEngine.Gpu;
 
 namespace KhaozEngine.Render3D.Internal
 {
@@ -10,21 +10,21 @@ namespace KhaozEngine.Render3D.Internal
     /// </summary>
     internal sealed class RenderResources : IDisposable
     {
-        readonly GraphicsDevice _gd;
+        readonly IGpuDevice _gd;
 
         public int Width { get; private set; }
         public int Height { get; private set; }
 
-        public Texture ColorTex = null!;
-        public Texture NormalTex = null!;
-        public Texture DepthColorTex = null!;
-        public Texture DepthStencil = null!;
-        public Framebuffer ModelFB = null!;
+        public IGpuTexture ColorTex = null!;
+        public IGpuTexture NormalTex = null!;
+        public IGpuTexture DepthColorTex = null!;
+        public IGpuTexture DepthStencil = null!;
+        public IGpuFramebuffer ModelFB = null!;
 
-        public Texture PingA = null!, PingB = null!;
-        public Framebuffer PingAFB = null!, PingBFB = null!;
+        public IGpuTexture PingA = null!, PingB = null!;
+        public IGpuFramebuffer PingAFB = null!, PingBFB = null!;
 
-        public RenderResources(GraphicsDevice gd, int w, int h)
+        public RenderResources(IGpuDevice gd, int w, int h)
         {
             _gd = gd;
             Create(w, h);
@@ -37,26 +37,25 @@ namespace KhaozEngine.Render3D.Internal
             Create(w, h);
         }
 
-        Texture Tex(uint w, uint h, PixelFormat fmt, TextureUsage usage) =>
-            _gd.ResourceFactory.CreateTexture(TextureDescription.Texture2D(w, h, 1, 1, fmt, usage));
+        IGpuTexture Tex(uint w, uint h, GpuPixelFormat fmt, GpuTextureUsage usage) =>
+            _gd.Factory.CreateTexture(GpuTextureDescription.Texture2D(w, h, fmt, usage));
 
         void Create(int w, int h)
         {
             Width = w; Height = h;
             uint uw = (uint)w, uh = (uint)h;
-            var rt = TextureUsage.RenderTarget | TextureUsage.Sampled;
+            var rt = GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled;
 
-            ColorTex = Tex(uw, uh, PixelFormat.R8_G8_B8_A8_UNorm, rt);
-            NormalTex = Tex(uw, uh, PixelFormat.R8_G8_B8_A8_UNorm, rt);
-            DepthColorTex = Tex(uw, uh, PixelFormat.R32_Float, rt);
-            DepthStencil = Tex(uw, uh, PixelFormat.D32_Float_S8_UInt, TextureUsage.DepthStencil);
-            ModelFB = _gd.ResourceFactory.CreateFramebuffer(
-                new FramebufferDescription(DepthStencil, ColorTex, NormalTex, DepthColorTex));
+            ColorTex = Tex(uw, uh, GpuPixelFormat.R8G8B8A8UNorm, rt);
+            NormalTex = Tex(uw, uh, GpuPixelFormat.R8G8B8A8UNorm, rt);
+            DepthColorTex = Tex(uw, uh, GpuPixelFormat.R32Float, rt);
+            DepthStencil = Tex(uw, uh, GpuPixelFormat.D32FloatS8UInt, GpuTextureUsage.DepthStencil);
+            ModelFB = _gd.Factory.CreateFramebuffer(DepthStencil, ColorTex, NormalTex, DepthColorTex);
 
-            PingA = Tex(uw, uh, PixelFormat.R8_G8_B8_A8_UNorm, rt);
-            PingB = Tex(uw, uh, PixelFormat.R8_G8_B8_A8_UNorm, rt);
-            PingAFB = _gd.ResourceFactory.CreateFramebuffer(new FramebufferDescription(null, PingA));
-            PingBFB = _gd.ResourceFactory.CreateFramebuffer(new FramebufferDescription(null, PingB));
+            PingA = Tex(uw, uh, GpuPixelFormat.R8G8B8A8UNorm, rt);
+            PingB = Tex(uw, uh, GpuPixelFormat.R8G8B8A8UNorm, rt);
+            PingAFB = _gd.Factory.CreateFramebuffer(null, PingA);
+            PingBFB = _gd.Factory.CreateFramebuffer(null, PingB);
         }
 
         void DisposeTargets()

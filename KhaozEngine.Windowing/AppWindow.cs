@@ -16,36 +16,31 @@ namespace KhaozEngine.Windowing
         public InputState Input { get; internal set; } = InputState.Empty;
         public int Width { get; internal set; }
         public int Height { get; internal set; }
-        /// <summary>The GPU command list for this frame (advanced; renderers draw into it). Veldrid type.</summary>
-        public CommandList Commands { get; internal set; } = null!;
-        /// <summary>This frame's command list as an engine <see cref="IGpuCommandList"/> (for the migrated 2D
-        /// renderer). Non-owning bridge over the same Veldrid <see cref="Commands"/>; full retype is phase 3c.</summary>
-        public IGpuCommandList GpuCommands { get; internal set; } = null!;
+        /// <summary>The engine GPU command list for this frame (the swapchain is already bound and cleared;
+        /// renderers draw into it). Backend GPU types stay hidden behind <see cref="IGpuCommandList"/>.</summary>
+        public IGpuCommandList Commands { get; internal set; } = null!;
     }
 
     /// <summary>
-    /// Owns the SDL2/Metal window, Veldrid device + swapchain, and the frame loop. Each frame pumps input
-    /// into an engine-native <see cref="InputState"/>, clears the swapchain, runs the callback, and presents.
-    /// The 5.x renderers build on this. POC: Metal only; needs SDL2 at runtime.
+    /// Owns the SDL2 window (the window/input platform stays on Veldrid.Sdl2), the engine GPU device
+    /// (<see cref="IGpuDevice"/>, backend GPU types hidden behind the KhaozEngine.Gpu seam), and the frame loop.
+    /// Each frame pumps input into an engine-native <see cref="InputState"/>, clears the swapchain, runs the
+    /// callback, and presents. The 5.x renderers build on this. POC: Metal only; needs SDL2 at runtime.
     /// </summary>
     public sealed class AppWindow : IDisposable
     {
         readonly Sdl2Window _window;
         readonly GpuDeviceContext _gpu;
-        readonly CommandList _cl;
-        readonly IGpuCommandList _gpuCl;
+        readonly IGpuDevice _device;
+        readonly IGpuCommandList _cl;
         readonly Frame _frame = new();
         readonly HashSet<Key> _keysDown = new();
         readonly HashSet<MouseButton> _mouseDown = new();
         readonly SdlGamepadPoller _gamepads = new();
         Vector2 _lastMouse;
 
-        /// <summary>The Veldrid graphics device (advanced GPU boundary; renderers consume it).</summary>
-        public GraphicsDevice Device { get; }
-        /// <summary>The engine-owned GPU device (the migrated 2D renderer consumes this instead of <see cref="Device"/>).</summary>
-        public IGpuDevice GpuDevice => _gpu.GpuDevice;
-        /// <summary>The main swapchain (advanced GPU boundary).</summary>
-        public Swapchain MainSwapchain => Device.MainSwapchain;
+        /// <summary>The engine-owned GPU device (renderers consume this; backend GPU types stay hidden).</summary>
+        public IGpuDevice GpuDevice => _device;
         /// <summary>The selected graphics backend (centralized via <see cref="GpuBackendSelector"/>).</summary>
         public GpuBackendKind Backend => _gpu.Backend;
         /// <summary>Clip-space / depth conventions of the live device (see <see cref="GpuCapabilities"/>).</summary>
@@ -57,10 +52,9 @@ namespace KhaozEngine.Windowing
         {
             var opts = new GraphicsDeviceOptions(false, null, true, ResourceBindingModel.Improved, true, true);
             (_window, _gpu) = GpuDeviceContext.CreateWindow(title, width, height, opts);
-            Device = _gpu.Device;
-            _window.Resized += () => Device.MainSwapchain.Resize((uint)_window.Width, (uint)_window.Height);
-            _cl = Device.ResourceFactory.CreateCommandList();
-            _gpuCl = GpuCommandLists.Wrap(_cl);
+            _device = _gpu.GpuDevice;
+            _window.Resized += () => _device.ResizeSwapchain((uint)_window.Width, (uint)_window.Height);
+            _cl = _device.Factory.CreateCommandList();
             _lastMouse = Vector2.Zero;
         }
 
@@ -85,15 +79,15 @@ namespace KhaozEngine.Windowing
                 int w = _window.Width, h = _window.Height;
 
                 _cl.Begin();
-                _cl.SetFramebuffer(Device.MainSwapchain.Framebuffer);
-                _cl.ClearColorTarget(0, new RgbaFloat(ClearColor.X, ClearColor.Y, ClearColor.Z, ClearColor.W));
+                _cl.SetFramebuffer(_device.SwapchainFramebuffer!);
+                _cl.ClearColorTarget(0, ClearColor);
 
-                _frame.Dt = dt; _frame.Input = input; _frame.Width = w; _frame.Height = h; _frame.Commands = _cl; _frame.GpuCommands = _gpuCl;
+                _frame.Dt = dt; _frame.Input = input; _frame.Width = w; _frame.Height = h; _frame.Commands = _cl;
                 onFrame(_frame);
 
                 _cl.End();
-                Device.SubmitCommands(_cl);
-                Device.SwapBuffers(Device.MainSwapchain);
+                _device.Submit(_cl);
+                _device.Present();
             }
         }
 

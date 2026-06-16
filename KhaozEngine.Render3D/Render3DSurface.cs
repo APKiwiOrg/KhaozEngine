@@ -19,12 +19,12 @@ namespace KhaozEngine.Render3D
         public Render3DSurface(AppWindow window)
         {
             _window = window;
-            Scene = new Scene3D(window.Device, window.MainSwapchain.Framebuffer.OutputDescription);
+            Scene = new Scene3D(window.GpuDevice, window.GpuDevice.SwapchainFramebuffer!.Outputs);
         }
 
         /// <summary>Record the queued 3D scene into this frame's command list, ending on the window framebuffer.</summary>
         public void Render(Frame frame) =>
-            Scene.RenderInternal(frame.Commands, frame.Width, frame.Height, _window.MainSwapchain.Framebuffer);
+            Scene.RenderInternal(frame.Commands, frame.Width, frame.Height, _window.GpuDevice.SwapchainFramebuffer!);
 
         public void Dispose() => Scene.Dispose();
     }

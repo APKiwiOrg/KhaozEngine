@@ -3,17 +3,12 @@
     <PackageId>KhaozEngine.Render3D</PackageId>
     <!-- Shared 5.x experimental line (custom MonoGame-free stack), versioned via Directory.Build.props. -->
     <Version>$(KhaozEngine5xVersion)</Version>
-    <Description>EXPERIMENTAL stylized 3D module on a custom MonoGame-free foundation (Veldrid + SPIR-V, System.Numerics). Orthographic IsoCamera3D, runtime glTF lit/cel model draw, a procedural starfield, and a PixelPostProcess chain (smooth or retro: swappable palette quantization, Bayer dither, depth/normal edge outline, point-or-linear upscale). Default look is smooth stylized space; retro/pixel is a toggle. Seed of the post-MonoGame KhaozEngine. Deps (Veldrid/Veldrid.SPIRV/SharpGLTF) are confined to this package.</Description>
+    <Description>EXPERIMENTAL stylized 3D module on a custom MonoGame-free foundation (KhaozEngine.Gpu seam, System.Numerics). Orthographic IsoCamera3D, runtime glTF lit/cel model draw, a procedural starfield, and a PixelPostProcess chain (smooth or retro: swappable palette quantization, Bayer dither, depth/normal edge outline, point-or-linear upscale). Default look is smooth stylized space; retro/pixel is a toggle. Seed of the post-MonoGame KhaozEngine. All GPU work routes through KhaozEngine.Gpu; SharpGLTF handles model loading.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Veldrid" Version="4.9.0" />
-    <PackageReference Include="Veldrid.SPIRV" Version="1.0.15" />
-    <PackageReference Include="Veldrid.StartupUtilities" Version="4.9.0" />
     <PackageReference Include="SharpGLTF.Core" Version="1.0.6" />
-    <!-- Override the vulnerable Newtonsoft.Json 9.0.1 that Veldrid.SPIRV drags in (NU1903). -->
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <!-- The MonoGame-free ECS, so 3D entities can render via Scene3DBinder (Transform3D + MeshInstance). -->
     <ProjectReference Include="../KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
     <None Include="README.md" Pack="true" PackagePath="\" />

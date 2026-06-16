@@ -67,13 +67,27 @@ jobs:
 
       - run: dotnet build -c Release --no-restore
 
-      # Linux: install Mesa lavapipe (software Vulkan ICD) and point the loader at it.
+      # Linux: install Mesa lavapipe (software Vulkan ICD) + the Vulkan loader, and point the loader at it.
       - name: Install software Vulkan (lavapipe)
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y mesa-vulkan-drivers vulkan-tools
+          sudo apt-get install -y mesa-vulkan-drivers vulkan-tools libvulkan1
           echo "VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json" >> "$GITHUB_ENV"
+
+      # Veldrid 4.9.0's Vulkan binding P/Invokes the bare names "libdl" and "libvulkan"; modern Ubuntu only
+      # ships the versioned libdl.so.2 / libvulkan.so.1 (no -dev unversioned symlink), so the device init
+      # throws DllNotFoundException before any rendering. Provide the unversioned symlinks the loader expects.
+      - name: Symlink libdl / libvulkan for Veldrid (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          set -x
+          libdir=/usr/lib/x86_64-linux-gnu
+          dl=$(ldconfig -p | awk '/libdl\.so\.2/ {print $NF; exit}')
+          vk=$(ldconfig -p | awk '/libvulkan\.so\.1/ {print $NF; exit}')
+          [ -n "$dl" ] && sudo ln -sf "$dl" "$libdir/libdl.so" || echo "WARN: libdl.so.2 not found"
+          [ -n "$vk" ] && sudo ln -sf "$vk" "$libdir/libvulkan.so" || echo "WARN: libvulkan.so.1 not found"
+          ls -l "$libdir/libdl.so" "$libdir/libvulkan.so" 2>/dev/null || true
 
       - name: Vulkan diagnostics
         if: matrix.os == 'ubuntu-latest'

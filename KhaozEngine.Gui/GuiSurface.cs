@@ -22,6 +22,8 @@ namespace KhaozEngine.Gui
         readonly List<Rect> _blocked = new();
         SpriteBatch? _batch;
         Pointer _pointer = new();
+        Rect? _hoveredRect;       // the enabled button under the pointer THIS frame (last one wins); null = none
+        Rect? _prevHoveredRect;   // last frame's hovered button, for hover-enter detection
 
         /// <summary>The style applied to <see cref="Button(SpriteFont, Rect, string)"/> when no explicit style is passed.</summary>
         public GuiStyle Style { get; set; }
@@ -45,6 +47,10 @@ namespace KhaozEngine.Gui
             _batch = batch;
             _pointer = pointer;
             _blocked.Clear();
+            // Roll the hovered-widget tracking: this frame's hover accumulates as Buttons are issued; compare
+            // against last frame's to detect hover-enter. Read IsHovering/HoverEntered AFTER all widgets are drawn.
+            _prevHoveredRect = _hoveredRect;
+            _hoveredRect = null;
         }
 
         /// <summary>Draw a solid-filled <paramref name="rect"/>; reserves it for click-through.</summary>
@@ -114,15 +120,35 @@ namespace KhaozEngine.Gui
             Pointer p = _pointer;
             bool clicked = enabled && p.IsTapIn(rect);
 
+            // Track hover for enabled buttons only (a disabled button shows no hover affordance, so it should not
+            // drive hover feedback). Computed before the headless early-return so hover state is testable.
+            bool hovering = enabled && p.IsHoveringIn(rect);
+            if (hovering) _hoveredRect = rect;
+
             if (_batch is null) return clicked;
 
             bool pressing = p.IsPressingIn(rect);
-            bool hovering = p.IsHoveringIn(rect);
-
             GuiDraw.DrawButton(_batch, _white, font, rect, label, style, enabled, selected, hovering, pressing);
 
             return clicked;
         }
+
+        /// <summary>
+        /// True when the pointer is over an enabled <see cref="Button(SpriteFont, Rect, string)"/> this frame.
+        /// Valid after all widgets for the frame have been issued (read it before the next <see cref="Begin"/>).
+        /// </summary>
+        public bool IsHovering => _hoveredRect.HasValue;
+
+        /// <summary>The rect of the enabled button under the pointer this frame, or null when none is hovered.</summary>
+        public Rect? HoveredRect => _hoveredRect;
+
+        /// <summary>
+        /// True only on the frame the pointer moves ONTO a (different) enabled button - i.e. a hover-enter, or
+        /// sliding from one button straight onto another. False while staying on the same button, and false on
+        /// hover-exit (moving off a button onto nothing). Wire this to a UI hover sound / highlight. Valid after
+        /// all widgets for the frame have been issued.
+        /// </summary>
+        public bool HoverEntered => _hoveredRect.HasValue && _hoveredRect != _prevHoveredRect;
 
         /// <summary>
         /// True when the stored pointer's press-origin lies inside any widget reserved this frame (the

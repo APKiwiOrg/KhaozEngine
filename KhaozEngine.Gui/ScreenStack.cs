@@ -14,6 +14,7 @@ namespace KhaozEngine.Gui
     public sealed class ScreenStack
     {
         readonly List<Screen> _screens = new();
+        readonly List<Screen> _updateScratch = new(); // reused per-frame copy so screens can add/remove during Update
 
         /// <summary>The shared bounds-aware pointer; screens hit-test via <c>Manager.Pointer</c>.</summary>
         public Pointer Pointer { get; } = new();
@@ -56,11 +57,12 @@ namespace KhaozEngine.Gui
             Input = input;
             Pointer.Update(input, viewport);
 
-            Screen[] snapshot = _screens.ToArray();   // screens may add/remove during Update
+            _updateScratch.Clear();                  // screens may add/remove during Update; iterate a copy
+            _updateScratch.AddRange(_screens);
             bool inputHandled = false;
-            for (int i = snapshot.Length - 1; i >= 0; i--)
+            for (int i = _updateScratch.Count - 1; i >= 0; i--)
             {
-                Screen screen = snapshot[i];
+                Screen screen = _updateScratch[i];
                 AdvanceTransition(screen, dt);
                 if (screen.State == ScreenState.Hidden) continue;
 

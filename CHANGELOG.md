@@ -5,6 +5,32 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 5.23.0-experimental (custom 5.x line)
+
+P0 hardening, stage 1 of 3 (see `docs/ENGINE-AUDIT-5x-2026-06-16.md`): correctness net + low-risk fixes. No
+public API change.
+
+### KhaozEngine.Render3D / Render2D / Gui (fixes + perf)
+
+- **Fixed** a `ResourceLayout` GPU-resource leak in `ModelRenderer` (now stored + disposed like the other
+  renderers).
+- **Perf**: hoisted the invariant `SetPipeline`/`SetGraphicsResourceSet` binds out of the per-instance model
+  loop (one bind per pass, not per instance); cached the post-process palette scratch array (was a 260-float
+  allocation every frame); `ScreenStack.Update` reuses a scratch list instead of allocating a `Screen[]` every
+  frame. (The per-instance UBO upload — the real 3D scaling ceiling — is stage 2.)
+- **Mesh winding made consistent**: a new winding-vs-normal test net (applied to every `MeshPrimitives` shape)
+  found that Cylinder/Cone/Pyramid-base/Sphere wound their triangles opposite their own outward normals (two
+  conflicting conventions). Flipped those generators so winding is uniformly CCW-outward. Render-neutral today
+  (`FaceCullMode.None`; positions + normals unchanged) but unblocks enabling back-face culling later.
+
+### KhaozEngine.Tests
+
+- **Golden-snapshot GPU regression net**: gated `[GpuFact]` tests render fixed 3D + 2D scenes through the
+  offscreen snapshot path and compare a downsampled colour grid to committed references with tolerance —
+  catching shader/blend/UBO/winding/orientation regressions that headless tests and `FaceCullMode.None`
+  cannot see. Skipped by default (and on GPU-less CI); run with `KE_GPU_TESTS=1`, re-bake with
+  `KE_UPDATE_GOLDENS=1`.
+
 ## 5.22.0-experimental (custom 5.x line)
 
 ### KhaozEngine.Render3D (additive; one internal format change)

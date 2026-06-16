@@ -31,7 +31,7 @@ namespace KhaozEngine.Tests.Render3D
             Scene3D.GroupInstances(items, data, runs);
 
             Assert.Single(runs);
-            Assert.Equal(0, runs[0].MeshIndex);
+            Assert.Equal(0, runs[0].Mesh.Index);
             Assert.Equal(0u, runs[0].Start);
             Assert.Equal(2u, runs[0].Count);
             Assert.Equal(2, data.Count);
@@ -58,10 +58,10 @@ namespace KhaozEngine.Tests.Render3D
             Scene3D.GroupInstances(items, data, runs);
 
             Assert.Equal(2, runs.Count);
-            Assert.Equal(5, runs[0].MeshIndex);
+            Assert.Equal(5, runs[0].Mesh.Index);
             Assert.Equal(0u, runs[0].Start);
             Assert.Equal(3u, runs[0].Count);
-            Assert.Equal(2, runs[1].MeshIndex);
+            Assert.Equal(2, runs[1].Mesh.Index);
             Assert.Equal(3u, runs[1].Start);
             Assert.Equal(2u, runs[1].Count);
 
@@ -120,7 +120,7 @@ namespace KhaozEngine.Tests.Render3D
 
             Assert.Single(data);
             Assert.Single(runs);
-            Assert.Equal(7, runs[0].MeshIndex);
+            Assert.Equal(7, runs[0].Mesh.Index);
         }
     }
 }

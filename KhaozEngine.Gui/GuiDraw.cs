@@ -24,5 +24,33 @@ namespace KhaozEngine.Gui
             Fill(batch, white, new Rect(r.X, r.Y, t, r.Height), color);                      // left
             Fill(batch, white, new Rect(r.Right - t, r.Y, t, r.Height), color);              // right
         }
+
+        /// <summary>
+        /// The single source of truth for button visuals, shared by the immediate <see cref="GuiSurface.Button(SpriteFont, Rect, string, GuiStyle, bool, bool)"/>
+        /// and the retained <see cref="Button"/>. Draws the fill (priority: <c>!enabled</c>→DisabledFill,
+        /// <paramref name="selected"/>→SelectedFill, <paramref name="press"/>→Press, <paramref name="hover"/>→Hover,
+        /// else Fill), the border (selected→SelectedBorder else Border, <c>style.BorderThickness</c>), and the
+        /// centred <paramref name="label"/> (enabled→Text else DisabledText).
+        /// </summary>
+        public static void DrawButton(SpriteBatch batch, Texture2D white, SpriteFont font, Rect rect, string label,
+            in GuiStyle style, bool enabled, bool selected, bool hover, bool press)
+        {
+            Vector4 fill = !enabled ? style.DisabledFill
+                : selected ? style.SelectedFill
+                : press ? style.Press
+                : hover ? style.Hover
+                : style.Fill;
+            Vector4 border = selected ? style.SelectedBorder : style.Border;
+            Vector4 text = enabled ? style.Text : style.DisabledText;
+
+            Fill(batch, white, rect, fill);
+            Border(batch, white, rect, style.BorderThickness, border);
+
+            Vector2 size = font.Measure(label);
+            var pos = new Vector2(
+                rect.X + (rect.Width - size.X) * 0.5f,
+                rect.Y + (rect.Height - font.LineHeight) * 0.5f);
+            batch.DrawString(font, label, pos, text);
+        }
     }
 }

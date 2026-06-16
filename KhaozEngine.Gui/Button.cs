@@ -1,5 +1,4 @@
 using System;
-using System.Numerics;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
 
@@ -8,7 +7,10 @@ namespace KhaozEngine.Gui
     /// <summary>
     /// A bounds-aware button over <see cref="Pointer"/>: clicks fire through the press-origin
     /// <see cref="Pointer.IsTapIn"/> invariant (a click that began elsewhere can't trigger it), with
-    /// hover/press visuals. Call <see cref="Update"/> then <see cref="Draw"/> each frame.
+    /// hover/press/disabled/selected visuals driven by <see cref="GuiStyle"/> (shared with the immediate
+    /// <see cref="GuiSurface"/>). Call <see cref="Update"/> then <see cref="Draw"/> each frame; <see cref="Update"/>
+    /// reserves the rect on the pointer (the click-through gate), so a layer beneath can check
+    /// <see cref="Pointer.IsBlocked"/>.
     /// </summary>
     public sealed class Button
     {
@@ -17,10 +19,12 @@ namespace KhaozEngine.Gui
         public SpriteFont Font;
         public Action? OnClick;
 
-        public Vector4 Color = new(0.18f, 0.30f, 0.42f, 1f);
-        public Vector4 HoverColor = new(0.26f, 0.50f, 0.66f, 1f);
-        public Vector4 PressColor = new(0.20f, 0.40f, 0.55f, 1f);
-        public Vector4 TextColor = Vector4.One;
+        /// <summary>The palette driving the button's visual states; defaults to <see cref="GuiStyle.Default"/>.</summary>
+        public GuiStyle Style = GuiStyle.Default;
+        /// <summary>When false, the button draws disabled and never fires <see cref="OnClick"/> (still reserves its rect).</summary>
+        public bool Enabled = true;
+        /// <summary>When true, the button draws in its selected state.</summary>
+        public bool Selected;
 
         bool _hover, _press;
 
@@ -29,23 +33,23 @@ namespace KhaozEngine.Gui
             Bounds = bounds; Label = label; Font = font; OnClick = onClick;
         }
 
-        /// <summary>Hit-test against the pointer; fires <see cref="OnClick"/> on a valid tap. Returns true if clicked.</summary>
+        /// <summary>
+        /// Reserve the rect for click-through (<see cref="Pointer.BlockRegion"/>) and hit-test against the pointer.
+        /// Fires <see cref="OnClick"/> and returns true only on a valid press-origin tap AND when <see cref="Enabled"/>;
+        /// a disabled button still reserves its rect but never fires.
+        /// </summary>
         public bool Update(Pointer pointer)
         {
+            pointer.BlockRegion(Bounds);
             _hover = pointer.IsHoveringIn(Bounds);
             _press = pointer.IsPressingIn(Bounds);
-            if (pointer.IsTapIn(Bounds)) { OnClick?.Invoke(); return true; }
+            if (Enabled && pointer.IsTapIn(Bounds)) { OnClick?.Invoke(); return true; }
             return false;
         }
 
-        /// <summary>Draw the button. <paramref name="white"/> is a 1x1 white texture for the fill.</summary>
-        public void Draw(SpriteBatch batch, Texture2D white)
-        {
-            Vector4 c = _press ? PressColor : _hover ? HoverColor : Color;
-            batch.Draw(white, new Vector4(Bounds.X, Bounds.Y, Bounds.Width, Bounds.Height), c);
-            Vector2 size = Font.Measure(Label);
-            var pos = new Vector2(Bounds.X + (Bounds.Width - size.X) * 0.5f, Bounds.Y + (Bounds.Height - Font.LineHeight) * 0.5f);
-            batch.DrawString(Font, Label, pos, TextColor);
-        }
+        /// <summary>Draw the button via the shared <see cref="GuiDraw.DrawButton"/>. <paramref name="white"/> is a
+        /// 1x1 white texture for the fill.</summary>
+        public void Draw(SpriteBatch batch, Texture2D white) =>
+            GuiDraw.DrawButton(batch, white, Font, Bounds, Label, Style, Enabled, Selected, _hover, _press);
     }
 }

@@ -4,7 +4,22 @@ Which game uses which packages, at which version. Current state only - for the p
 [`../CHANGELOG.md`](../CHANGELOG.md). Update this whenever a consumer bumps a `<PackageReference>` or the
 engine ships a new version.
 
-**Engine current version:** `4.11.0` (all packages share one version, set in `Directory.Build.props`).
+**Engine current version:** `4.12.0` (the 4.x line `<Version>`: the legacy MonoGame packages + the permanent
+MonoGame-free foundation packages they share a version with). The **5.x custom MonoGame-free stack**
+(`Gpu`/`Windowing`/`Render2D`/`Render3D`/`Gui`/`Audio`/`Particles`/`Game`) is on its own line
+`<KhaozEngine5xVersion>` = `5.38.0`. The two lines move independently; both set in `Directory.Build.props`.
+
+> 4.12.0 (breaking, shipped as a 4.x minor since the version-number jump to 5.x is reserved for the custom
+> stack): `KhaozEngine.Collision` (`CircleCollision`, `SpatialHashGrid`, `ICircleCollider`) and
+> `KhaozEngine.Netcode` (`UnitAxisQuantizer`, `ClientPrediction`, `IPredictedState`) are now **MonoGame-free** -
+> their public `Vector2` swapped from XNA (`Microsoft.Xna.Framework`) to `System.Numerics`, and the MonoGame
+> package reference is gone. Determinism preserved: `CircleCollision.Intersects` now uses explicit `dx*dx+dy*dy`
+> (bit-stable, not a library helper) and `UnitAxisQuantizer` uses `System.Math.Clamp` (a comparison clamp,
+> bit-identical to the old `MathHelper.Clamp`); `ClientPrediction`'s `Length`/`Lerp` are client render-smoothing
+> only (not in the lockstep hash). Adopting consumers swap their `using Microsoft.Xna.Framework;` to
+> `using System.Numerics;` at the call sites. This makes both packages foundation-grade (consumable by a 5.x
+> game), unblocking SpaceGame's eventual port; SpaceGame's `Collision` adoption stays hash-gated
+> (`17709480852979803671`) and the byte-identical math keeps it stable.
 
 > 4.9.0 is **additive**: new zero-dependency package `KhaozEngine.Netcode.Abstractions` (BCL only, no
 > MonoGame, no LiteNetLib) now physically holds `IChannelSplittable<T>` + `NetChannelReliability`.
@@ -35,13 +50,19 @@ engine ships a new version.
 > engine `CircleCollision` + `SpatialHashGrid` and confirm the hash stays `17709480852979803671`. `Updates` is
 > determinism-neutral (never touches sim/RNG), so it carries no hash gate.
 
-**Experimental 5.x line:** the custom-stack (MonoGame-free) packages `KhaozEngine.Render3D`,
-`KhaozEngine.Render2D`, `KhaozEngine.Audio`, `KhaozEngine.Windowing`, and `KhaozEngine.Gui` share `5.6.0-experimental`
-(`Directory.Build.props` `<KhaozEngine5xVersion>`), separate from the 4.x version above (see [`ROADMAP.md`](ROADMAP.md), "The
-post-MonoGame pivot"). **No consumer adopts them yet** (the games are MonoGame; migration is deferred under
-the full-custom plan). `KhaozEngine.Audio` **graduated** from the 4.x line to 5.x (OpenAL backend, no
-MonoGame); the `Audio` column in the matrix below now reflects the **frozen 4.x** Audio that current
-consumers still pin. The 5.x packages are otherwise not in the matrix, which tracks the 4.x MonoGame packages.
+**5.x custom stack (no longer experimental):** the 8 MonoGame-free packages `Gpu`, `Windowing`, `Render2D`,
+`Render3D`, `Gui`, `Audio`, `Particles`, `Game` share `<KhaozEngine5xVersion>` = `5.38.0` (the `-experimental`
+suffix was dropped at `5.31.0`). They replace the legacy 4.x MonoGame rendering/UI/input/audio/screens/effects/
+time packages (UI->Gui, Graphics->Render2D, Screens->Gui ScreenStack + Game SceneManager, Input->Windowing,
+Effects->Particles, Time->Windowing.GameClock). See [`ROADMAP.md`](ROADMAP.md), "The post-MonoGame pivot".
+
+**Hardpoint is fully migrated to the 5.x stack** (the proof a game can run 100% MonoGame-free). It pins the 5.x
+packages at `5.38.0` (`Windowing`/`Render3D`/`Render2D`/`Gui`/`Particles`/`Audio`/`Game`, `Gpu` transitive) and
+uses only the MonoGame-free FOUNDATION packages off the 4.x line (`Ecs`/`Content`/`Diagnostics`/`App`/
+`Localization`/`Persistence` at `4.12.0`). It uses NONE of the legacy MonoGame packages anymore. **Nullwake and
+SpaceGame are still on the 4.x MonoGame stack** (not yet migrated); their full ports onto 5.x are the remaining
+"migrate to 5.x" work. The matrices below track the 4.x MonoGame packages, so Hardpoint's legacy-package columns
+now read `-` (replaced by 5.x) - see its row.
 
 ## Version matrix
 
@@ -52,7 +73,7 @@ reference it directly (Nullwake does reference it directly for `JsonDefaults`).
 
 | Project   | Project file                         | Input | Screens | UI    | Ecs   | Content | Diagnostics | Time  | App   | Localization | Persistence | Audio | Effects | Graphics | Sprites | Serialization | Platform | Collision | Pooling | Updates | Netcode | Netcode.LiteNetLib | Netcode.Abstractions |
 |-----------|--------------------------------------|-------|---------|-------|-------|---------|-------------|-------|-------|--------------|-------------|-------|---------|----------|---------|---------------|----------|-----------|---------|---------|---------|--------------------|--------------------|
-| Hardpoint | `Hardpoint/Hardpoint.Core`           | 4.0.0 | 4.0.0   | 4.0.0 | 4.0.0 | 4.0.0   | 4.0.0       | -     | 4.0.0 | 4.0.0        | 4.0.0       | -     | 4.0.0   | 4.0.0    | 4.0.0   | -             | -        | -         | -       | -       | - | - | - |
+| Hardpoint | `Hardpoint/Hardpoint.Core` (5.x) | -     | -       | -     | 4.12.0 | 4.12.0  | 4.12.0      | -     | 4.12.0 | 4.12.0       | 4.12.0      | -     | -       | -        | -       | -             | -        | -         | -       | -       | - | - | - |
 | Nullwake  | `Nullwake/Nullwake.Core`             | 4.0.0 | 4.0.0   | 4.0.0 | -     | 4.0.0   | 4.0.0       | 4.0.0 | 4.0.0 | 4.0.0        | 4.0.0       | 4.0.0 | 4.0.0   | 4.0.0    | -       | 4.0.0         | -        | -         | -       | -       | - | - | - |
 | SpaceGame | `SpaceGame/SpaceGame.Core`           | 4.9.0 | 4.9.0   | 4.9.0 | 4.9.0 | 4.9.0   | 4.9.0       | -     | 4.9.0 | 4.9.0        | 4.9.0       | 4.9.0 | -       | 4.9.0    | -       | -             | 4.9.0    | 4.9.0     | 4.9.0   | 4.9.0   | 4.9.0 | - | 4.9.0 |
 
@@ -64,32 +85,33 @@ scaled-dt usage.
 
 | Consumer  | Input | Screens | UI | Ecs | Content | Diagnostics |    Time      | App | Localization | Persistence | Audio | Effects | Graphics | Sprites |  Serialization  | Platform | Collision | Pooling | Updates | Netcode | Netcode.LiteNetLib | Netcode.Abstractions |
 |-----------|:-----:|:-------:|:--:|:---:|:-------:|:-----------:|:------------:|:---:|:------------:|:-----------:|:-----:|:-------:|:--------:|:-------:|:---------------:|:--------:|:---------:|:-------:|:-------:|:-------:|:------------------:|:------------------:|
-| Hardpoint |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |  ✓  |      ✓       |      ✓      |   -   |    ✓    |    ✓     |    ✓    |  (transitive)   |    -     |     -     |    -    |    -    | - | - | - |
+| Hardpoint (5.x) | - | - | - |  ✓  |    ✓    |      ✓      |      -       |  ✓  |      ✓       |      ✓      |   -   |    -    |    -     |    -    |        -        |    -     |     -     |    -    |    -    | - | - | - |
 | Nullwake  |   ✓   |    ✓    | ✓  |  -  |    ✓    |      ✓      |      ✓       |  ✓  |      ✓       |      ✓      |   ✓   |    ✓    |    ✓     |    -    |        ✓        |    -     |     -     |    -    |    -    | - | - | - |
 | SpaceGame |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |  ✓  |      ✓       |      ✓      |   ✓   |    -    |    ✓     |    -    |  (transitive)   |    ✓     |     ✓     |    ✓    |    ✓    | ✓ | - | ✓ |
 
 ## Notes (current state per consumer)
 
-### Hardpoint - on 4.0.0
+### Hardpoint - MIGRATED to the 5.x custom stack (MonoGame-free)
 
-- **Logging:** engine `Log` service (FileSink + ConsoleSink under `AppDataPaths`, `CrashHandler`
-  installed), configured in the `HardpointGame` ctor and flushed via `Log.Shutdown` on dispose. Hardpoint
-  had no logger before adopting.
-- **Content:** first consumer of `KhaozEngine.Content` - build-time JSON-schema validation of its `Data/`.
-- **Localization:** swapped its hand-rolled copy for `LocalizationManager` (this corrected the malformed
-  default culture `en-EN` to `en-US`).
-- **Effects:** `ParticleSystem` drives projectile-hit and enemy-death bursts (`Spark` preset), fed by
-  game-side `ProjectileSystem.Hit` / `DamageSystem.EnemyKilled` events.
-- **Graphics:** gameplay camera (`Camera2D.Focus` board framing + `CameraController` pan/zoom,
-  `VirtualResolution.DesignScaled` desktop scaling); tower range rings via `PrimitiveRenderer.DrawRing`.
-- **Sprites:** `DirectionalAnimatedSprite` + `SpriteRegistry` for pixel-art entity rendering.
-- **Persistence:** campaign progress via `SettingsManager<CampaignSaveData>` over `FileSettingsStorage` +
-  a shared `PersistenceQueue` (`save.json` under `AppDataPaths`); a `sanitizeOnLoad` hook dedupes ids and
-  null-guards the list. (The campaign is a 10-level branching graph.)
-- **Input:** uses `IDesignViewport`, having dropped its game-side viewport adapter.
-- **Not adopted:** `Audio` (no audio assets yet) - the only unreferenced package. It references `Ecs` but
-  uses no RNG, so `DeterministicRng`/`CreateDerived` don't apply. `Serialization` arrives transitively;
-  `JsonDefaults` not used directly.
+Hardpoint was rebuilt as a full-3D iso tower-defense entirely on the 5.x stack; it pins the 5.x packages at
+`5.38.0` and uses zero legacy MonoGame packages. The rendering/UI/input/audio that used to come from the 4.x
+packages now come from 5.x:
+
+- **3D + 2D rendering:** `Render3D` (iso board, glTF/procedural meshes, per-mesh albedo textures for the dirt
+  floor, lighting/materials, debug draw, billboards, `IsoCameraController` zoom/pan) + `Render2D` (the HUD batch).
+  Replaces the old `Graphics`/`Sprites`/`UI`.
+- **Windowing/input:** `Windowing` (`AppWindow` on Silk.NET, `GameClock`, `InputState`/`Pointer`,
+  `DesignViewport`). Replaces `Input`/`Time`.
+- **UI + screens:** `Gui` `GuiSurface` (immediate-mode HUD/menus, hover-enter for UI sounds) + `Game`
+  `SceneManager`/`GameScene` (Title/Match/Pause/GameOver scene stack). Replaces `UI`/`Screens`.
+- **Audio:** `Audio` (`AudioSystem` SFX mixer + positional one-shots + `WavSynth` placeholders) drives combat
+  + UI sounds. Replaces the old 4.x `Audio`.
+- **Effects:** `Particles` (`ParticleSystem`) drives muzzle/hit/death bursts via the game-side `CombatVfx`
+  entity-diff. Replaces `Effects`.
+- **Foundation (4.x line, MonoGame-free):** still uses `Ecs` (the ECS the gameplay runs on), `Content`
+  (build-time JSON schema validation), `Diagnostics` (the `Log` service + `CrashHandler`), `App`
+  (`AppDataPaths`/`BuildMetadata`), `Localization` (`LocalizationManager`), `Persistence`
+  (`SettingsManager<CampaignSaveData>` campaign saves) - all at `4.12.0`.
 
 ### Nullwake - on 4.0.0
 
@@ -148,6 +170,9 @@ scaled-dt usage.
   - `Netcode` - `UnitAxisQuantizer` (the input wire codec), and `ClientPrediction` + `RemoteCommandQueue`
     behind adapters that keep the DTO/arena/config glue.
   `Collision` and the input codec are byte-identical extractions, so the lockstep `StateHash` did not move.
+  (As of engine `4.12.0`, `Collision` + `Netcode` are MonoGame-free: their `Vector2` is `System.Numerics`, not
+  XNA. When SpaceGame bumps from 4.9.0 to 4.12.0 it swaps `using Microsoft.Xna.Framework;` to
+  `using System.Numerics;` at those call sites; the math is byte-identical so the hash gate holds.)
 - **`Netcode.Abstractions` (4.9.0):** referenced by `SpaceGame.Multiplayer.Contracts` (not `.Core`), so the
   MonoGame-free DTO project - and the ASP.NET leaderboard server that references it - can have
   `EntityUpdateBatchDto` implement `IChannelSplittable` without pulling MonoGame or LiteNetLib in. The
@@ -182,11 +207,11 @@ done
 After editing, run `./scripts/check-doc-versions.sh` (CI runs it too) to confirm the engine-version line
 still matches `Directory.Build.props`.
 
-_Last verified: 2026-06-15. Engine at 4.8.0 (breaking, shipped as a minor since `5.x` is reserved for
-the experimental branch: `IChannelSplittable<T>`+`NetChannelReliability` moved `Netcode.LiteNetLib` ->
-`Netcode`, `ChannelSplitter` stays in `.LiteNetLib`; earlier: new `Platform` 4.4.0, `Collision`+`Pooling`
-4.5.0, `Updates` 4.6.0, `Netcode`+`Netcode.LiteNetLib` 4.7.0); all three consumers on 4.0.0 (4.1.0-4.8.0
-unadopted; SpaceGame is the intended first adopter of the netcode packages). Adoption
-✓/- matrix matches each game's actual `<PackageReference>` set as of the 2026-06-13 no-dead-reference
-pass (every direct `KhaozEngine.*` reference in all three repos is used; the one zero-code-use case,
-Nullwake `Content`, is legitimate build-time schema validation)._
+_Last verified: 2026-06-16. Engine on two lines: 4.x `<Version>` = **4.12.0** (4.12.0 made `Collision` +
+`Netcode` MonoGame-free), 5.x `<KhaozEngine5xVersion>` = **5.38.0** (Gpu/Windowing/Render2D/Render3D/Gui/Audio/
+Particles/Game). **Hardpoint is fully migrated to the 5.x stack** (pins 5.38.0, uses only the MonoGame-free
+foundation off the 4.x line). **Nullwake and SpaceGame remain on the 4.x MonoGame stack** (their 5.x ports are
+the remaining migration work; SpaceGame still pins 4.9.0, Nullwake 4.0.0 - neither has adopted the de-MonoGamed
+Collision/Netcode yet). The 10 legacy MonoGame packages (UI/Graphics/Screens/Sprites/Input/Effects/Time, plus
+the now-mg-free Collision/Netcode) get deleted once Nullwake + SpaceGame are off them, at which point the
+foundation packages merge into a single unified version line._

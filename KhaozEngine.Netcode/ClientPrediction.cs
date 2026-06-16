@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using Microsoft.Xna.Framework;
+using System.Numerics;
 
 namespace KhaozEngine.Netcode;
 

@@ -1,6 +1,6 @@
 # KhaozEngine roadmap / backlog
 
-Larger feature areas identified but not yet scheduled. Current released version: **4.11.0**.
+Larger feature areas identified but not yet scheduled. Current released version: **4.12.0**.
 
 Several items from the original (3.3.0-era) backlog have since shipped: the camera follow/framing
 layer, the pan/zoom gesture controller, and `PrimitiveRenderer` circle/ring drawing. Those are listed

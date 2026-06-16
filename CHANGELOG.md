@@ -23,6 +23,17 @@ remaining legacy-MonoGame surface.
   hash). The byte-identical sim math keeps SpaceGame's `17709480852979803671` gate stable when it adopts.
 - All other 4.x packages are unchanged; they share this version bump as usual.
 
+## 5.43.0 (custom 5.x line)
+
+Tooling: a dependency-free PNG encoder so game snapshot tools stop re-implementing the image write.
+
+- **`Render2D.Png`** - a minimal BCL-only PNG encoder for 8-bit RGBA buffers (`Encode(rgba, w, h) -> byte[]`,
+  `Write(path, rgba, w, h)`). Uses `System.IO.Compression.ZLibStream` for the IDAT stream + a CRC-32 table, so
+  Render2D gains NO image-library dependency. Tooling/test helper (no palette/interlace).
+- **`Render2DSnapshot.CaptureToPng(path, w, h, clear, draw)`** - one-call headless render -> PNG (over the
+  existing `Capture` + `Png`), the path a game's offscreen screen-capture tool needs. Returns the raw RGBA too.
+- 3 headless tests (PNG signature, byte-identical round-trip through the StbImageSharp decoder, length guard).
+
 ## 5.42.0 (custom 5.x line)
 
 Fourth engine-first gap-fill for porting 2D games (Nullwake) to the 5.x stack: `Windowing.TimeSkip`, the

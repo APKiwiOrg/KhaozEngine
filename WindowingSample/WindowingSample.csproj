@@ -9,5 +9,6 @@
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
     <ProjectReference Include="../KhaozEngine.Render2D/KhaozEngine.Render2D.csproj" />
+    <ProjectReference Include="../KhaozEngine.Audio/KhaozEngine.Audio.csproj" />
   </ItemGroup>
 </Project>

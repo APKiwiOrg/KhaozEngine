@@ -4,6 +4,32 @@ All notable changes to KhaozEngine. The 4.x line shares one version (`Directory.
 5.x custom-stack (MonoGame-free) engine packages share a second (`<KhaozEngine5xVersion>`). See the post-MonoGame
 plan in `docs/ROADMAP.md`.
 
+## 5.34.0 (custom 5.x line)
+
+SFX in `KhaozEngine.Audio`: one-shot sound effects with optional 3D positional audio, alongside the existing
+OpenAL streaming music. Games can now play fire / hit / death sounds, not just background music.
+
+- **Shared OpenAL context.** OpenAL has one current context per process, so music and SFX now share a single
+  internal `OpenAlContext` (device + context), owned by `AudioSystem`. `OpenAlMusicBackend` was refactored to
+  borrow it; its public `OpenAlMusicBackend(ILogger?)` ctor still works (creates + owns its own context for
+  back-compat). Streaming behavior is unchanged.
+- **SFX seam.** New public `ISfxBackend` (+ headless-safe `NullSfxBackend`) mirroring `IMusicBackend`. The
+  internal `OpenAlSfxBackend` whole-file decodes short sounds into single buffers and plays them on a fixed
+  16-voice source pool (prefers an idle voice, falls back to round-robin stealing), with per-sound gain / pitch
+  and optional 3D position.
+- **`AudioSystem` SFX API.** `RegisterSfx(name)` / `RegisterSfxes(...)` (loaded from the same content dir as
+  music, `name` + `.wav` / `.ogg` / `.mp3`), `PlaySfx(name, volume, pitch)` (non-positional), `PlaySfx3D(name,
+  position, volume, pitch)`, `SetListener(position, forward, up)`, and a `SfxVolume` property (effective gain =
+  Master x Sfx x call). An SFX failure is logged and swallowed so it can never disable music. No device =>
+  silent Null backends (unchanged fallback). Added an `AudioSystem(IMusicBackend, ISfxBackend, ...)` ctor for
+  tests; existing ctors are unchanged.
+- **`WavSynth`** (public): writes mono 16-bit PCM WAV placeholder SFX (`WriteTone` with sine / square / saw +
+  attack-release envelope, `WriteNoise` with a deterministic xorshift seed), so a game / sample can generate
+  audible placeholders with no external assets.
+- `WindowingSample` synthesizes a couple of sounds and plays them (Z = 2D, X = positional) as a live smoke.
+- Headless tests cover the voice-pool policy, the SFX volume / routing / listener math (via a fake backend), and
+  the WAV synth's RIFF/WAVE output. Verified: full suite green + the OpenAL SFX path runs cleanly in the sample.
+
 ## 5.33.0 (custom 5.x line)
 
 Windowing platform swapped from `Veldrid.Sdl2` to **Silk.NET** (audit milestone 3, desktop distribution). The GPU

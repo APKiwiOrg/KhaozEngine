@@ -3,7 +3,7 @@
     <PackageId>KhaozEngine.Game</PackageId>
     <!-- Shared 5.x experimental line (see docs/ROADMAP.md "The post-MonoGame pivot"). -->
     <Version>$(KhaozEngine5xVersion)</Version>
-    <Description>EXPERIMENTAL game-loop facade on the custom MonoGame-free foundation. GameApp is an abstract base that owns the per-frame composition + ordering (clock, design viewport, pointer, 3D scene render, 2D batch) so games override OnLoad/OnUpdate/OnDraw3D/OnDraw2D/OnResize instead of hand-wiring AppWindow.Run. Sits above the renderers (KhaozEngine.Windowing + Render2D + Render3D + Gui); the lower-level AppWindow.Run path stays available for games with special needs.</Description>
+    <Description>game-loop facade on the custom MonoGame-free foundation. GameApp is an abstract base that owns the per-frame composition + ordering (clock, design viewport, pointer, 3D scene render, 2D batch) so games override OnLoad/OnUpdate/OnDraw3D/OnDraw2D/OnResize instead of hand-wiring AppWindow.Run. Sits above the renderers (KhaozEngine.Windowing + Render2D + Render3D + Gui); the lower-level AppWindow.Run path stays available for games with special needs.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>

@@ -1,9 +1,21 @@
 # Changelog
 
-All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one version
-(`Directory.Build.props` `<Version>`); the 5.x experimental custom-stack (MonoGame-free) packages share a
-second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
-`docs/ROADMAP.md`.
+All notable changes to KhaozEngine. The 4.x line shares one version (`Directory.Build.props` `<Version>`); the
+5.x custom-stack (MonoGame-free) engine packages share a second (`<KhaozEngine5xVersion>`). See the post-MonoGame
+plan in `docs/ROADMAP.md`.
+
+## 5.31.0 (custom 5.x line — drops the `-experimental` tag)
+
+- **The 5.x custom stack graduates from experimental.** No code change — the `KhaozEngine.Gpu`/`Windowing`/
+  `Render2D`/`Render3D`/`Gui`/`Audio`/`Particles`/`Game` packages drop the `-experimental` version suffix
+  (`5.30.0-experimental` → `5.31.0`) and their descriptions drop the `EXPERIMENTAL` prefix. After the audit-
+  driven P0 (correctness net, instancing, the full graphics-backend seam) and P1 work (GameApp facade, Gui +
+  mesh fixes), the stack is the engine: a self-contained, MonoGame-free, single-GPU-abstraction game framework
+  that Hardpoint ships on. The 5.x tag is now plain `vX.Y.Z`.
+- **P1#9 resolved (documented).** The 4.x line is clarified to carry BOTH the legacy MonoGame-based packages
+  AND the permanent MonoGame-free foundation packages the 5.x stack depends on (`Ecs`/`Serialization`/`Content`/
+  `Diagnostics`/...); those graduate to the unified line when MonoGame is finally dropped, rather than churning
+  consumers now. (CLAUDE.md governance + `Directory.Build.props` comments updated.)
 
 ## 5.30.0-experimental (custom 5.x line)
 

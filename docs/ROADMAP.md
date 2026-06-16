@@ -129,9 +129,15 @@ first; **Phase A shipped in `5.13.0-experimental`**: multi-instance `Scene3D` (`
 
 - **4.x line** — the existing MonoGame packages; one shared version in `Directory.Build.props`; keeps
   shipping 4.8.0, 4.9.0, ... normally and in parallel.
-- **5.x experimental line** — the custom-stack packages (`Render3D`, `Render2D`, ...) share a second version,
-  `Directory.Build.props` `<KhaozEngine5xVersion>` (currently `5.18.0-experimental`), and release together
-  under one `vX.Y.Z-experimental` tag. (The first two Render3D releases, 5.0.0/5.1.0, predate this and were
+- **5.x line** — the custom-stack engine packages (`Gpu`, `Windowing`, `Render2D`, `Render3D`, `Gui`, `Audio`,
+  `Particles`, `Game`) share a second version, `Directory.Build.props` `<KhaozEngine5xVersion>` (currently
+  `5.31.0`), and release together under one tag. **It dropped the `-experimental` suffix at `5.31.0`** — after
+  the audit-driven P0 (correctness net, instancing, the full graphics-backend seam that contains Veldrid behind
+  `KhaozEngine.Gpu`) and P1 (the `GameApp` loop facade), it's the engine, not a spike, and Hardpoint ships on
+  it. The 5.x tag is now plain `vX.Y.Z` (releases up to `5.30.0-experimental` carried the suffix). The 4.x line
+  also still carries the permanent MonoGame-free foundation packages the 5.x stack depends on
+  (`Ecs`/`Serialization`/`Content`/`Diagnostics`/...), which graduate to the unified line when MonoGame is
+  finally dropped. (The first two Render3D releases, 5.0.0/5.1.0, predate the shared line and were
   per-package.) The doc-version guard checks the shared 4.x version only; the 5.x line is exempt (like
   consumer pins). Packages graduate
   4.x -> 5.x as they are ported.

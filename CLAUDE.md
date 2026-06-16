@@ -50,15 +50,21 @@ version/release work.
   every release. Refresh snippet is at the bottom of that file.
 - SemVer: additive = minor, fixes = patch, breaking = major.
 - **Two shared version lines during the post-MonoGame transition.** `Directory.Build.props` carries two
-  shared versions: `<Version>` governs the **4.x MonoGame-based packages**, and `<KhaozEngine5xVersion>`
-  governs the **5.x experimental custom-stack (MonoGame-free) packages** (`KhaozEngine.Render3D`,
-  `KhaozEngine.Render2D`, ...), which set `<Version>$(KhaozEngine5xVersion)</Version>` in their csproj. Each
-  line bumps as a unit: bump `<KhaozEngine5xVersion>` to release ALL 5.x packages together (repack each to
-  `local-feed`, single tag `vX.Y.Z-experimental`); bump `<Version>` for the 4.x packages. The two lines move
-  independently of each other. `check-doc-versions.sh` only enforces the 4.x `<Version>`, so the 5.x line is
-  exempt (like consumer pins). NOTE: early Render3D releases (`5.0.0-experimental`, `5.1.0-experimental`)
-  predate the shared 5.x line and were per-package; from `5.2.0-experimental` on, the 5.x line is shared.
-  See `docs/ROADMAP.md` ("The post-MonoGame pivot").
+  shared versions: `<Version>` governs the **4.x line**, and `<KhaozEngine5xVersion>` governs the **5.x
+  custom-stack (MonoGame-free) engine packages** (`KhaozEngine.Gpu`, `Windowing`, `Render2D`, `Render3D`,
+  `Gui`, `Audio`, `Particles`, `Game`), which set `<Version>$(KhaozEngine5xVersion)</Version>` in their csproj.
+  The **5.x line dropped the `-experimental` suffix at `5.31.0`** — it is the engine now; the 5.x tag is plain
+  `vX.Y.Z` (releases up to `5.30.0-experimental` carried the suffix). The **4.x line carries BOTH** the genuinely
+  legacy MonoGame-based packages (`UI`/`Graphics`/`Screens`/`Sprites`/`Input`/`Effects`/`Collision`/`Time`/
+  `Netcode`) **AND** the permanent, MonoGame-FREE foundation packages the 5.x stack depends on (`Ecs`/
+  `Serialization`/`Content`/`Diagnostics`/`App`/`Localization`/`Persistence`/`Pooling`/`Platform`/`Updates`/
+  `Netcode.Abstractions`/`Netcode.LiteNetLib`); those foundation packages graduate to the unified line when
+  MonoGame is finally dropped (P1#9, deferred — see `docs/ENGINE-AUDIT-5x-2026-06-16.md`). Each line bumps as a
+  unit: bump `<KhaozEngine5xVersion>` to release ALL 5.x packages together (repack each to `local-feed`, single
+  tag `vX.Y.Z`); bump `<Version>` for the 4.x packages. The two lines move independently. `check-doc-versions.sh`
+  only enforces the 4.x `<Version>`, so the 5.x line is exempt (like consumer pins). NOTE: early Render3D
+  releases (`5.0.0-experimental`, `5.1.0-experimental`) predate the shared 5.x line and were per-package; from
+  `5.2.0-experimental` on, the 5.x line is shared. See `docs/ROADMAP.md` ("The post-MonoGame pivot").
 - **Commit subjects:** conventional-commit style `area(scope): summary`, e.g.
   `audio(4.3.1): MacOsMusicBackend loads built .ogg` or `docs(consumers): ...`.
   On a release/version-bump commit, use the new version as the scope (`audio(4.3.1):`).

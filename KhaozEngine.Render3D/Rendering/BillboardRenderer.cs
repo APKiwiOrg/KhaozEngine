@@ -1,8 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
-using System.Text;
-using Veldrid;
-using Veldrid.SPIRV;
+using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D.Rendering
@@ -26,81 +25,70 @@ namespace KhaozEngine.Render3D.Rendering
             public const uint SizeInBytes = 36;
         }
 
-        readonly GraphicsDevice _gd;
-        readonly DeviceBuffer _ubo;            // one mat4 ViewProj (64 bytes)
-        readonly ResourceLayout _layout;
-        readonly ResourceSet _set;
-        readonly Pipeline _alphaPipeline;
-        readonly Pipeline _additivePipeline;
-        readonly Shader[] _shaders;
+        readonly IGpuDevice _gd;
+        readonly IGpuBuffer _ubo;              // one mat4 ViewProj (64 bytes)
+        readonly IGpuResourceLayout _layout;
+        readonly IGpuResourceSet _set;
+        readonly IGpuPipeline _alphaPipeline;
+        readonly IGpuPipeline _additivePipeline;
+        readonly IGpuShaderSet _shaders;
 
-        DeviceBuffer? _vb;
+        IGpuBuffer? _vb;
         uint _vbCapacity;                      // capacity in vertices
 
-        public BillboardRenderer(GraphicsDevice gd, OutputDescription targetOutput)
+        public BillboardRenderer(IGpuDevice gd, GpuOutputDescription targetOutput)
         {
             _gd = gd;
-            var factory = gd.ResourceFactory;
+            var factory = gd.Factory;
 
-            _ubo = factory.CreateBuffer(new BufferDescription(64, BufferUsage.UniformBuffer)); // mat4 ViewProj
+            _ubo = factory.CreateBuffer(new GpuBufferDescription(64, GpuBufferUsage.UniformBuffer)); // mat4 ViewProj
 
-            _layout = factory.CreateResourceLayout(new ResourceLayoutDescription(
-                new ResourceLayoutElementDescription("U", ResourceKind.UniformBuffer, ShaderStages.Vertex)));
-            _set = factory.CreateResourceSet(new ResourceSetDescription(_layout, _ubo));
+            _layout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
+                new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex)));
+            _set = factory.CreateResourceSet(new GpuResourceSetDescription(_layout, _ubo));
 
-            _shaders = factory.CreateFromSpirv(
-                new ShaderDescription(ShaderStages.Vertex, Encoding.UTF8.GetBytes(ShaderSources.BillboardVert), "main"),
-                new ShaderDescription(ShaderStages.Fragment, Encoding.UTF8.GetBytes(ShaderSources.BillboardFrag), "main"));
+            _shaders = factory.CreateShadersFromSpirv(ShaderSources.BillboardVert, ShaderSources.BillboardFrag);
 
-            var vertexLayout = new VertexLayoutDescription(
-                new VertexElementDescription("Position", VertexElementSemantic.Position, VertexElementFormat.Float3),
-                new VertexElementDescription("Uv", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float2),
-                new VertexElementDescription("Color", VertexElementSemantic.Color, VertexElementFormat.Float4));
+            var vertexLayout = new GpuVertexLayoutDescription(
+                new GpuVertexElement("Position", GpuVertexElementFormat.Float3),
+                new GpuVertexElement("Uv", GpuVertexElementFormat.Float2),
+                new GpuVertexElement("Color", GpuVertexElementFormat.Float4));
 
             // Additive: out = src.rgb*src.a + dst*1, alpha src.a*1 + dst*1. Glowy accumulation for sparks/flashes.
-            var additiveAttachment = new BlendAttachmentDescription(
-                blendEnabled: true,
-                sourceColorFactor: BlendFactor.SourceAlpha,
-                destinationColorFactor: BlendFactor.One,
-                colorFunction: BlendFunction.Add,
-                sourceAlphaFactor: BlendFactor.SourceAlpha,
-                destinationAlphaFactor: BlendFactor.One,
-                alphaFunction: BlendFunction.Add);
-
-            _alphaPipeline = CreatePipeline(factory, vertexLayout, targetOutput,
-                new BlendStateDescription(RgbaFloat.Black, BlendAttachmentDescription.AlphaBlend));
-            _additivePipeline = CreatePipeline(factory, vertexLayout, targetOutput,
-                new BlendStateDescription(RgbaFloat.Black, additiveAttachment));
+            _alphaPipeline = CreatePipeline(factory, vertexLayout, targetOutput, GpuBlendAttachment.AlphaBlend);
+            _additivePipeline = CreatePipeline(factory, vertexLayout, targetOutput, GpuBlendAttachment.Additive);
         }
 
-        Pipeline CreatePipeline(ResourceFactory factory, VertexLayoutDescription vertexLayout,
-            OutputDescription targetOutput, BlendStateDescription blend) =>
-            factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
+        IGpuPipeline CreatePipeline(IGpuResourceFactory factory, GpuVertexLayoutDescription vertexLayout,
+            GpuOutputDescription targetOutput, GpuBlendAttachment blend) =>
+            factory.CreateGraphicsPipeline(new GpuPipelineDescription
             {
-                BlendState = blend,
-                DepthStencilState = DepthStencilStateDescription.Disabled,
-                RasterizerState = new RasterizerStateDescription(FaceCullMode.None, PolygonFillMode.Solid, FrontFace.Clockwise, false, false),
-                PrimitiveTopology = PrimitiveTopology.TriangleList,
+                BlendFactor = Vector4.Zero,
+                BlendAttachments = new[] { blend },
+                DepthStencil = GpuDepthStencilState.Disabled,
+                Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: false, scissorTestEnabled: false),
+                Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },
-                ShaderSet = new ShaderSetDescription(new[] { vertexLayout }, _shaders),
+                ShaderSet = _shaders,
+                VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout },
                 Outputs = targetOutput,
             });
 
         /// <summary>Draw <paramref name="verts"/> as a triangle list into <paramref name="target"/> (no clear;
         /// this is an overlay), transformed by <paramref name="viewProj"/>, using the additive pipeline when
         /// <paramref name="additive"/> else the alpha pipeline. No-op when empty.</summary>
-        public void Draw(CommandList cl, Matrix4x4 viewProj, ReadOnlySpan<BillboardVertex> verts, Framebuffer target, bool additive)
+        public void Draw(IGpuCommandList cl, Matrix4x4 viewProj, ReadOnlySpan<BillboardVertex> verts, IGpuFramebuffer target, bool additive)
         {
             if (verts.Length == 0) return;
 
             EnsureCapacity((uint)verts.Length);
-            cl.UpdateBuffer(_vb, 0, verts);
-            cl.UpdateBuffer(_ubo, 0, ref viewProj);
+            cl.UpdateBuffer(_vb!, 0, verts);
+            cl.UpdateBuffer(_ubo, 0, in viewProj);
 
             cl.SetFramebuffer(target);
             cl.SetPipeline(additive ? _additivePipeline : _alphaPipeline);
             cl.SetGraphicsResourceSet(0, _set);
-            cl.SetVertexBuffer(0, _vb);
+            cl.SetVertexBuffer(0, _vb!);
             cl.Draw((uint)verts.Length, 1, 0, 0);
         }
 
@@ -110,8 +98,8 @@ namespace KhaozEngine.Render3D.Rendering
             _vb?.Dispose();
             // Grow with a little headroom so a slowly-growing overlay doesn't recreate every frame.
             _vbCapacity = Math.Max(vertexCount, _vbCapacity == 0 ? 256u : _vbCapacity * 2);
-            _vb = _gd.ResourceFactory.CreateBuffer(
-                new BufferDescription(_vbCapacity * BillboardVertex.SizeInBytes, BufferUsage.VertexBuffer));
+            _vb = _gd.Factory.CreateBuffer(
+                new GpuBufferDescription(_vbCapacity * BillboardVertex.SizeInBytes, GpuBufferUsage.VertexBuffer));
         }
 
         public void Dispose()
@@ -120,7 +108,7 @@ namespace KhaozEngine.Render3D.Rendering
             _additivePipeline.Dispose();
             _set.Dispose();
             _layout.Dispose();
-            foreach (var sh in _shaders) sh.Dispose();
+            _shaders.Dispose();
             _ubo.Dispose();
             _vb?.Dispose();
         }

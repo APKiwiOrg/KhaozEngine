@@ -1,6 +1,5 @@
 using System;
 using System.Numerics;
-using Veldrid;
 using KhaozEngine.Gpu;
 
 namespace KhaozEngine.Render3D
@@ -19,23 +18,21 @@ namespace KhaozEngine.Render3D
         /// </summary>
         public static byte[] Capture(int width, int height, Action<Scene3D> setup, Action<Scene3D> drawFrame, int frames = 1)
         {
-            var opts = new GraphicsDeviceOptions(
-                debug: false, swapchainDepthFormat: null, syncToVerticalBlank: false,
-                resourceBindingModel: ResourceBindingModel.Improved,
-                preferDepthRangeZeroToOne: true, preferStandardClipSpaceYDirection: true);
-            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless(opts);
-            GraphicsDevice gd = gpu.Device;
-            var f = gd.ResourceFactory;
+            // No-arg CreateHeadless uses the exact options the 3D snapshot needs (no depth, no sync, Improved
+            // binding, depth-range 0..1, standard clip-Y) so the golden image stays pixel-identical.
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
+            IGpuDevice gd = gpu.GpuDevice;
+            var f = gd.Factory;
 
-            using Texture finalTex = f.CreateTexture(TextureDescription.Texture2D(
-                (uint)width, (uint)height, 1, 1, PixelFormat.R8_G8_B8_A8_UNorm,
-                TextureUsage.RenderTarget | TextureUsage.Sampled));
-            using Framebuffer finalFB = f.CreateFramebuffer(new FramebufferDescription(null, finalTex));
+            using IGpuTexture finalTex = f.CreateTexture(GpuTextureDescription.Texture2D(
+                (uint)width, (uint)height, GpuPixelFormat.R8G8B8A8UNorm,
+                GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
+            using IGpuFramebuffer finalFB = f.CreateFramebuffer(null, finalTex);
 
-            using var scene = new Scene3D(gd, finalFB.OutputDescription);
+            using var scene = new Scene3D(gd, finalFB.Outputs);
             setup(scene);
 
-            using CommandList renderCl = f.CreateCommandList();
+            using IGpuCommandList renderCl = f.CreateCommandList();
             for (int i = 0; i < Math.Max(1, frames); i++)
             {
                 scene.Begin();
@@ -43,23 +40,23 @@ namespace KhaozEngine.Render3D
                 renderCl.Begin();
                 scene.RenderInternal(renderCl, width, height, finalFB);
                 renderCl.End();
-                gd.SubmitCommands(renderCl);
+                gd.Submit(renderCl);
             }
             gd.WaitForIdle();
 
-            using Texture staging = f.CreateTexture(TextureDescription.Texture2D(
-                (uint)width, (uint)height, 1, 1, PixelFormat.R8_G8_B8_A8_UNorm, TextureUsage.Staging));
-            using (CommandList cl = f.CreateCommandList())
+            using IGpuTexture staging = f.CreateTexture(GpuTextureDescription.Texture2D(
+                (uint)width, (uint)height, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Staging));
+            using (IGpuCommandList cl = f.CreateCommandList())
             {
                 cl.Begin();
                 cl.CopyTexture(finalTex, staging);
                 cl.End();
-                gd.SubmitCommands(cl);
+                gd.Submit(cl);
                 gd.WaitForIdle();
             }
 
             var outBytes = new byte[width * height * 4];
-            MappedResource map = gd.Map(staging, MapMode.Read);
+            MappedData map = gd.Map(staging, GpuMapMode.Read);
             unsafe
             {
                 byte* data = (byte*)map.Data;

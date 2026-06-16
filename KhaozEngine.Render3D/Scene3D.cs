@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
-using Veldrid;
+using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Render3D.Rendering;
 
@@ -16,13 +16,13 @@ namespace KhaozEngine.Render3D
     /// A drawable 3D scene: an <see cref="IsoCamera3D"/>, a set of uploaded meshes, a per-frame instance queue,
     /// and the pixel post chain. Load meshes once with <see cref="LoadMesh"/>; each frame call
     /// <see cref="Begin"/>, queue instances with <see cref="Draw"/>, then have the surface/host render. Owns its
-    /// Veldrid resources but records into a caller-supplied command list (see <see cref="Render3DSurface"/> /
-    /// <see cref="Render3DHost"/>); the public surface stays Veldrid-free.
+    /// GPU resources (via the KhaozEngine.Gpu seam) but records into a caller-supplied command list (see
+    /// <see cref="Render3DSurface"/> / <see cref="Render3DHost"/>); the public surface stays backend-free.
     /// </summary>
     public sealed class Scene3D : IDisposable
     {
-        readonly GraphicsDevice _gd;
-        readonly OutputDescription _targetOutput;
+        readonly IGpuDevice _gd;
+        readonly GpuOutputDescription _targetOutput;
         readonly ModelRenderer _model;
         readonly PixelPostProcess _post;
         readonly LineRenderer _lines;
@@ -42,13 +42,13 @@ namespace KhaozEngine.Render3D
         public IsoCamera3D Camera { get; } = new();
         public PixelPostProcessSettings Post { get; } = new();
 
-        internal Scene3D(GraphicsDevice gd, OutputDescription targetOutput)
+        internal Scene3D(IGpuDevice gd, GpuOutputDescription targetOutput)
         {
             _gd = gd;
             _targetOutput = targetOutput;
             _res = new RenderResources(gd, Post.RenderWidth, Post.RenderHeight);
-            _model = new ModelRenderer(gd, _res.ModelFB.OutputDescription);
-            _post = new PixelPostProcess(gd, _res.PingAFB.OutputDescription, targetOutput);
+            _model = new ModelRenderer(gd, _res.ModelFB.Outputs);
+            _post = new PixelPostProcess(gd, _res.PingAFB.Outputs, targetOutput);
             _post.BindTargets(_res);
             _lines = new LineRenderer(gd, targetOutput);
             _billboards = new BillboardRenderer(gd, targetOutput);
@@ -57,10 +57,10 @@ namespace KhaozEngine.Render3D
         /// <summary>Upload a loaded mesh to the GPU once; returns a handle to instance it with <see cref="Draw"/>.</summary>
         public MeshHandle LoadMesh(GltfMesh mesh)
         {
-            var f = _gd.ResourceFactory;
-            var vb = f.CreateBuffer(new BufferDescription((uint)(mesh.Vertices.Length * ModelVertex.SizeInBytes), BufferUsage.VertexBuffer));
+            var f = _gd.Factory;
+            var vb = f.CreateBuffer(new GpuBufferDescription((uint)(mesh.Vertices.Length * ModelVertex.SizeInBytes), GpuBufferUsage.VertexBuffer));
             _gd.UpdateBuffer(vb, 0, mesh.Vertices);
-            var ib = f.CreateBuffer(new BufferDescription((uint)(mesh.Indices.Length * sizeof(ushort)), BufferUsage.IndexBuffer));
+            var ib = f.CreateBuffer(new GpuBufferDescription((uint)(mesh.Indices.Length * sizeof(ushort)), GpuBufferUsage.IndexBuffer));
             _gd.UpdateBuffer(ib, 0, mesh.Indices);
             _meshes.Add(new Mesh(vb, ib, mesh.Indices.Length));
             return new MeshHandle(_meshes.Count - 1);
@@ -188,7 +188,7 @@ namespace KhaozEngine.Render3D
         /// <paramref name="cl"/>, ending on <paramref name="target"/>. The caller owns Begin/End/Submit of
         /// <paramref name="cl"/>. <paramref name="viewportW"/>/<paramref name="viewportH"/> are the target size.
         /// </summary>
-        internal void RenderInternal(CommandList cl, int viewportW, int viewportH, Framebuffer target)
+        internal void RenderInternal(IGpuCommandList cl, int viewportW, int viewportH, IGpuFramebuffer target)
         {
             EnsureSize(viewportW, viewportH);
             _post.PrepareUniforms(cl, _res, Post);
@@ -240,9 +240,9 @@ namespace KhaozEngine.Render3D
 
         readonly struct Mesh
         {
-            public readonly DeviceBuffer Vb, Ib;
+            public readonly IGpuBuffer Vb, Ib;
             public readonly int IndexCount;
-            public Mesh(DeviceBuffer vb, DeviceBuffer ib, int indexCount) { Vb = vb; Ib = ib; IndexCount = indexCount; }
+            public Mesh(IGpuBuffer vb, IGpuBuffer ib, int indexCount) { Vb = vb; Ib = ib; IndexCount = indexCount; }
         }
 
         /// <summary>A contiguous run of instances of one mesh inside the flat instance array.</summary>

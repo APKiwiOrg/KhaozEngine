@@ -1,8 +1,9 @@
 namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
-    /// GLSL #version 450 shader sources, compiled at load via Veldrid.SPIRV (GLSL -> SPIR-V -> MSL/HLSL/GLSL).
-    /// Post shaders use Veldrid's separate texture2D + sampler style (not combined sampler2D) so the
+    /// GLSL #version 450 shader sources, cross-compiled at load via the GPU seam's SPIR-V path
+    /// (GLSL -> SPIR-V -> MSL/HLSL/GLSL). Post shaders use the separate texture2D + sampler style
+    /// (not combined sampler2D) so the
     /// ResourceLayout binding order is unambiguous. The model pass writes 3 MRT color targets
     /// (lit color, encoded normal, linear-ish depth) so the edge pass never samples a depth texture.
     /// </summary>
@@ -45,7 +46,7 @@ void main() {
     gl_Position = ViewProj * world;
     vNormalW = normalize(mat3(Model) * Normal);
     vColor = Color;
-    vDepth = gl_Position.z / gl_Position.w; // 0..1 in Veldrid clip space; linear for ortho
+    vDepth = gl_Position.z / gl_Position.w; // 0..1 in clip space; linear for ortho
     vWorldPos = world.xyz;
     vUv = TexCoord;
     vTint = ITint;
@@ -202,7 +203,7 @@ void main() {
         // ---- Final upscale blit (+ optional procedural starfield in the background) ----
         // Background is flagged by the color target's alpha (model writes a=1, the clear sets a=0),
         // which the palette/edge passes preserve. Keeps the blit to a safe 3-binding set (the depth
-        // texture in here tripped a Veldrid/Metal multi-resource binding bug).
+        // texture in here tripped a backend/Metal multi-resource binding bug).
         public const string BlitFrag = @"#version 450
 layout(set=0, binding=0) uniform texture2D Src;
 layout(set=0, binding=1) uniform sampler Samp;

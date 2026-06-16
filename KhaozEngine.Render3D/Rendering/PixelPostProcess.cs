@@ -1,8 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
-using System.Text;
-using Veldrid;
-using Veldrid.SPIRV;
+using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D.Rendering
@@ -17,38 +16,38 @@ namespace KhaozEngine.Render3D.Rendering
         struct EdgeUbo { public Vector4 OutlineColor; public Vector4 Texel; public Vector4 Thresh; }
         struct FinalUbo { public Vector4 BgColor; public Vector4 Params; }
 
-        readonly GraphicsDevice _gd;
-        readonly Shader[] _palFrag, _edgeFrag, _blitFrag;
-        readonly ResourceLayout _palLayout, _edgeLayout, _blitLayout;
-        readonly Pipeline _palPipe, _edgePipe, _blitPipe;
-        readonly DeviceBuffer _palBuf, _edgeBuf, _finalBuf;
+        readonly IGpuDevice _gd;
+        readonly IGpuShaderSet _palFrag, _edgeFrag, _blitFrag;
+        readonly IGpuResourceLayout _palLayout, _edgeLayout, _blitLayout;
+        readonly IGpuPipeline _palPipe, _edgePipe, _blitPipe;
+        readonly IGpuBuffer _palBuf, _edgeBuf, _finalBuf;
 
-        ResourceSet _paletteSet = null!;
-        ResourceSet _edgeFromColor = null!, _edgeFromPingA = null!;
-        ResourceSet _blitColorP = null!, _blitPingAP = null!, _blitPingBP = null!; // point sampler
-        ResourceSet _blitColorL = null!, _blitPingAL = null!, _blitPingBL = null!; // linear sampler
+        IGpuResourceSet _paletteSet = null!;
+        IGpuResourceSet _edgeFromColor = null!, _edgeFromPingA = null!;
+        IGpuResourceSet _blitColorP = null!, _blitPingAP = null!, _blitPingBP = null!; // point sampler
+        IGpuResourceSet _blitColorL = null!, _blitPingAL = null!, _blitPingBL = null!; // linear sampler
         RenderResources? _bound;
         readonly float[] _palScratch = new float[260]; // reused per frame: 64 vec4 palette + count/dither (+ pad)
 
-        public PixelPostProcess(GraphicsDevice gd, OutputDescription pingOutput, OutputDescription swapchainOutput)
+        public PixelPostProcess(IGpuDevice gd, GpuOutputDescription pingOutput, GpuOutputDescription swapchainOutput)
         {
             _gd = gd;
-            var f = gd.ResourceFactory;
+            var f = gd.Factory;
 
-            _palBuf = f.CreateBuffer(new BufferDescription(1040, BufferUsage.UniformBuffer)); // 64 vec4 + 1 vec4
-            _edgeBuf = f.CreateBuffer(new BufferDescription(48, BufferUsage.UniformBuffer));
-            _finalBuf = f.CreateBuffer(new BufferDescription(32, BufferUsage.UniformBuffer)); // 2 vec4
+            _palBuf = f.CreateBuffer(new GpuBufferDescription(1040, GpuBufferUsage.UniformBuffer)); // 64 vec4 + 1 vec4
+            _edgeBuf = f.CreateBuffer(new GpuBufferDescription(48, GpuBufferUsage.UniformBuffer));
+            _finalBuf = f.CreateBuffer(new GpuBufferDescription(32, GpuBufferUsage.UniformBuffer)); // 2 vec4
 
             // Each pass is its own vert+frag pair (FullscreenVert is the shared vertex source).
             _palFrag = Pair(f, ShaderSources.PaletteFrag);
             _edgeFrag = Pair(f, ShaderSources.EdgeFrag);
             _blitFrag = Pair(f, ShaderSources.BlitFrag);
 
-            _palLayout = f.CreateResourceLayout(new ResourceLayoutDescription(
+            _palLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 T("Src"), S("Samp"), U("Pal")));
-            _edgeLayout = f.CreateResourceLayout(new ResourceLayoutDescription(
+            _edgeLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 T("ColorTex"), T("NormalTex"), T("DepthTex"), S("Samp"), U("Edge")));
-            _blitLayout = f.CreateResourceLayout(new ResourceLayoutDescription(
+            _blitLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 T("Src"), S("Samp"), U("Final")));
 
             _palPipe = FullscreenPipeline(f, _palFrag, _palLayout, pingOutput);
@@ -56,23 +55,24 @@ namespace KhaozEngine.Render3D.Rendering
             _blitPipe = FullscreenPipeline(f, _blitFrag, _blitLayout, swapchainOutput);
         }
 
-        static ResourceLayoutElementDescription T(string n) => new(n, ResourceKind.TextureReadOnly, ShaderStages.Fragment);
-        static ResourceLayoutElementDescription S(string n) => new(n, ResourceKind.Sampler, ShaderStages.Fragment);
-        static ResourceLayoutElementDescription U(string n) => new(n, ResourceKind.UniformBuffer, ShaderStages.Fragment);
+        static GpuResourceLayoutElement T(string n) => new(n, GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment);
+        static GpuResourceLayoutElement S(string n) => new(n, GpuResourceKind.Sampler, GpuShaderStages.Fragment);
+        static GpuResourceLayoutElement U(string n) => new(n, GpuResourceKind.UniformBuffer, GpuShaderStages.Fragment);
 
-        static Shader[] Pair(ResourceFactory f, string frag) => f.CreateFromSpirv(
-            new ShaderDescription(ShaderStages.Vertex, Encoding.UTF8.GetBytes(ShaderSources.FullscreenVert), "main"),
-            new ShaderDescription(ShaderStages.Fragment, Encoding.UTF8.GetBytes(frag), "main"));
+        static IGpuShaderSet Pair(IGpuResourceFactory f, string frag) =>
+            f.CreateShadersFromSpirv(ShaderSources.FullscreenVert, frag);
 
-        Pipeline FullscreenPipeline(ResourceFactory f, Shader[] shaders, ResourceLayout layout, OutputDescription outputs) =>
-            f.CreateGraphicsPipeline(new GraphicsPipelineDescription
+        IGpuPipeline FullscreenPipeline(IGpuResourceFactory f, IGpuShaderSet shaders, IGpuResourceLayout layout, GpuOutputDescription outputs) =>
+            f.CreateGraphicsPipeline(new GpuPipelineDescription
             {
-                BlendState = BlendStateDescription.SingleOverrideBlend,
-                DepthStencilState = DepthStencilStateDescription.Disabled,
-                RasterizerState = new RasterizerStateDescription(FaceCullMode.None, PolygonFillMode.Solid, FrontFace.Clockwise, false, false),
-                PrimitiveTopology = PrimitiveTopology.TriangleList,
+                BlendFactor = Vector4.Zero,
+                BlendAttachments = new[] { GpuBlendAttachment.OverrideBlend },
+                DepthStencil = GpuDepthStencilState.Disabled,
+                Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: false, scissorTestEnabled: false),
+                Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { layout },
-                ShaderSet = new ShaderSetDescription(Array.Empty<VertexLayoutDescription>(), shaders),
+                ShaderSet = shaders,
+                VertexLayouts = new List<GpuVertexLayoutDescription>(),
                 Outputs = outputs,
             });
 
@@ -81,25 +81,25 @@ namespace KhaozEngine.Render3D.Rendering
         {
             if (ReferenceEquals(_bound, res) && res.Width == _boundW && res.Height == _boundH) return;
             DisposeSets();
-            var f = _gd.ResourceFactory;
+            var f = _gd.Factory;
             var samp = _gd.PointSampler;
 
             var lin = _gd.LinearSampler;
-            _paletteSet = f.CreateResourceSet(new ResourceSetDescription(_palLayout, res.ColorTex, samp, _palBuf));
-            _edgeFromColor = f.CreateResourceSet(new ResourceSetDescription(_edgeLayout, res.ColorTex, res.NormalTex, res.DepthColorTex, samp, _edgeBuf));
-            _edgeFromPingA = f.CreateResourceSet(new ResourceSetDescription(_edgeLayout, res.PingA, res.NormalTex, res.DepthColorTex, samp, _edgeBuf));
-            _blitColorP = f.CreateResourceSet(new ResourceSetDescription(_blitLayout, res.ColorTex, samp, _finalBuf));
-            _blitPingAP = f.CreateResourceSet(new ResourceSetDescription(_blitLayout, res.PingA, samp, _finalBuf));
-            _blitPingBP = f.CreateResourceSet(new ResourceSetDescription(_blitLayout, res.PingB, samp, _finalBuf));
-            _blitColorL = f.CreateResourceSet(new ResourceSetDescription(_blitLayout, res.ColorTex, lin, _finalBuf));
-            _blitPingAL = f.CreateResourceSet(new ResourceSetDescription(_blitLayout, res.PingA, lin, _finalBuf));
-            _blitPingBL = f.CreateResourceSet(new ResourceSetDescription(_blitLayout, res.PingB, lin, _finalBuf));
+            _paletteSet = f.CreateResourceSet(new GpuResourceSetDescription(_palLayout, res.ColorTex, samp, _palBuf));
+            _edgeFromColor = f.CreateResourceSet(new GpuResourceSetDescription(_edgeLayout, res.ColorTex, res.NormalTex, res.DepthColorTex, samp, _edgeBuf));
+            _edgeFromPingA = f.CreateResourceSet(new GpuResourceSetDescription(_edgeLayout, res.PingA, res.NormalTex, res.DepthColorTex, samp, _edgeBuf));
+            _blitColorP = f.CreateResourceSet(new GpuResourceSetDescription(_blitLayout, res.ColorTex, samp, _finalBuf));
+            _blitPingAP = f.CreateResourceSet(new GpuResourceSetDescription(_blitLayout, res.PingA, samp, _finalBuf));
+            _blitPingBP = f.CreateResourceSet(new GpuResourceSetDescription(_blitLayout, res.PingB, samp, _finalBuf));
+            _blitColorL = f.CreateResourceSet(new GpuResourceSetDescription(_blitLayout, res.ColorTex, lin, _finalBuf));
+            _blitPingAL = f.CreateResourceSet(new GpuResourceSetDescription(_blitLayout, res.PingA, lin, _finalBuf));
+            _blitPingBL = f.CreateResourceSet(new GpuResourceSetDescription(_blitLayout, res.PingB, lin, _finalBuf));
             _bound = res; _boundW = res.Width; _boundH = res.Height;
         }
         int _boundW, _boundH;
 
         /// <summary>Upload post UBOs. Call BEFORE any SetFramebuffer this frame (no active render pass).</summary>
-        public void PrepareUniforms(CommandList cl, RenderResources res, PixelPostProcessSettings s)
+        public void PrepareUniforms(IGpuCommandList cl, RenderResources res, PixelPostProcessSettings s)
         {
             var pal = _palScratch;
             // Zero the 256-float palette region so stale colors from a larger previous palette don't leak.
@@ -112,7 +112,7 @@ namespace KhaozEngine.Render3D.Rendering
                 pal[i * 4 + 0] = c.X; pal[i * 4 + 1] = c.Y; pal[i * 4 + 2] = c.Z; pal[i * 4 + 3] = c.W;
             }
             pal[256] = count; pal[257] = s.Dither ? 1f : 0f;
-            cl.UpdateBuffer(_palBuf, 0, pal);
+            cl.UpdateBuffer<float>(_palBuf, 0, pal);
 
             var edge = new EdgeUbo
             {
@@ -120,19 +120,19 @@ namespace KhaozEngine.Render3D.Rendering
                 Texel = new Vector4(1f / res.Width, 1f / res.Height, 0, 0),
                 Thresh = new Vector4(s.OutlineDepthThreshold, s.OutlineNormalThreshold, 0, 0),
             };
-            cl.UpdateBuffer(_edgeBuf, 0, ref edge);
+            cl.UpdateBuffer(_edgeBuf, 0, in edge);
 
             var final = new FinalUbo
             {
                 BgColor = s.BackgroundColor,
                 Params = new Vector4(s.Starfield ? 1f : 0f, 0, 0, 0),
             };
-            cl.UpdateBuffer(_finalBuf, 0, ref final);
+            cl.UpdateBuffer(_finalBuf, 0, in final);
         }
 
-        public void Run(CommandList cl, RenderResources res, Framebuffer swapchainFB, PixelPostProcessSettings s)
+        public void Run(IGpuCommandList cl, RenderResources res, IGpuFramebuffer swapchainFB, PixelPostProcessSettings s)
         {
-            Texture src = res.ColorTex;
+            IGpuTexture src = res.ColorTex;
 
             if (s.Quantize)
             {
@@ -153,11 +153,11 @@ namespace KhaozEngine.Render3D.Rendering
                 src = fromColor ? res.PingA : res.PingB;
             }
 
-            ResourceSet blit = s.Pixelated
+            IGpuResourceSet blit = s.Pixelated
                 ? (ReferenceEquals(src, res.ColorTex) ? _blitColorP : ReferenceEquals(src, res.PingA) ? _blitPingAP : _blitPingBP)
                 : (ReferenceEquals(src, res.ColorTex) ? _blitColorL : ReferenceEquals(src, res.PingA) ? _blitPingAL : _blitPingBL);
             cl.SetFramebuffer(swapchainFB);
-            cl.ClearColorTarget(0, RgbaFloat.Black);
+            cl.ClearColorTarget(0, new Vector4(0f, 0f, 0f, 1f)); // RgbaFloat.Black
             cl.SetPipeline(_blitPipe);
             cl.SetGraphicsResourceSet(0, blit);
             cl.Draw(3);
@@ -175,9 +175,9 @@ namespace KhaozEngine.Render3D.Rendering
             DisposeSets();
             _palPipe.Dispose(); _edgePipe.Dispose(); _blitPipe.Dispose();
             _palLayout.Dispose(); _edgeLayout.Dispose(); _blitLayout.Dispose();
-            foreach (var sh in _palFrag) sh.Dispose();
-            foreach (var sh in _edgeFrag) sh.Dispose();
-            foreach (var sh in _blitFrag) sh.Dispose();
+            _palFrag.Dispose();
+            _edgeFrag.Dispose();
+            _blitFrag.Dispose();
             _palBuf.Dispose(); _edgeBuf.Dispose(); _finalBuf.Dispose();
         }
     }

@@ -25,7 +25,7 @@ namespace KhaozEngine.Render2D
         public SpriteFont LoadFont(string ttfPath, float pixelHeight) => _core.LoadFont(ttfPath, pixelHeight);
 
         /// <summary>Bind this frame's command list/viewport to the batch. Call once per frame before drawing.</summary>
-        public void NewFrame(Frame frame) => _core.Batch.NewFrame(frame.GpuCommands, frame.Width, frame.Height);
+        public void NewFrame(Frame frame) => _core.Batch.NewFrame(frame.Commands, frame.Width, frame.Height);
 
         public void Dispose() => _core.Dispose();
     }

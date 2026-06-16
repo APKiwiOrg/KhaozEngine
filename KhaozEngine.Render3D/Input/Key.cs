@@ -1,6 +1,6 @@
 namespace KhaozEngine.Render3D
 {
-    /// <summary>Engine-native key identifiers exposed to consumers (no Veldrid types leak out).</summary>
+    /// <summary>Engine-native key identifiers exposed to consumers (no platform input types leak out).</summary>
     public enum Key
     {
         Escape, Space, Q, W, E, R, A, S, D, O, C, P,

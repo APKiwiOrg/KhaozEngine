@@ -34,7 +34,9 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuDevice _gd;
         readonly IGpuBuffer _ubo;
         readonly IGpuResourceLayout _layout;
-        readonly IGpuResourceSet _set;
+        readonly IGpuSampler _sampler;          // shared linear/wrap sampler for all material sets
+        readonly IGpuTexture _white;            // 1x1 white default; white*vColor*vTint == vColor*vTint (untextured invariant)
+        readonly IGpuResourceSet _defaultSet;   // UBO + white + sampler; bound for meshes with no material set
         readonly IGpuPipeline _pipeline;
         readonly IGpuShaderSet _shaders;
 
@@ -49,8 +51,22 @@ namespace KhaozEngine.Render3D.Rendering
             _ubo = factory.CreateBuffer(new GpuBufferDescription(176, GpuBufferUsage.UniformBuffer)); // 1 mat4 + 7 vec4
 
             _layout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
-                new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment)));
-            _set = factory.CreateResourceSet(new GpuResourceSetDescription(_layout, _ubo));
+                new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("Albedo", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("AlbedoSampler", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
+
+            // Shared linear sampler, wrapping so UVs outside 0..1 tile.
+            _sampler = factory.CreateSampler(new GpuSamplerDescription(
+                GpuSamplerFilter.MinLinearMagLinearMipLinear,
+                GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap));
+
+            // 1x1 white default texture: an untextured mesh samples (1,1,1), so albedo == vColor*vTint and every
+            // existing scene renders pixel-identical (the safety invariant).
+            _white = factory.CreateTexture(GpuTextureDescription.Texture2D(
+                1, 1, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
+            gd.UpdateTexture(_white, new byte[] { 255, 255, 255, 255 }, 0, 0, 1, 1);
+
+            _defaultSet = factory.CreateResourceSet(new GpuResourceSetDescription(_layout, _ubo, _white, _sampler));
 
             _shaders = factory.CreateShadersFromSpirv(ShaderSources.ModelVert, ShaderSources.ModelFrag);
 
@@ -139,8 +155,16 @@ namespace KhaozEngine.Render3D.Rendering
         public void BindPass(IGpuCommandList cl)
         {
             cl.SetPipeline(_pipeline);
-            cl.SetGraphicsResourceSet(0, _set);
+            // The material resource set (UBO + albedo + sampler) is bound per mesh in DrawMeshInstanced, because
+            // the albedo texture varies per mesh; the shared UBO is part of each set, so it still sees fresh
+            // per-frame uniforms uploaded into _ubo.
         }
+
+        /// <summary>Build a per-mesh material resource set binding <paramref name="albedo"/> (plus the shared frame
+        /// UBO and sampler). The returned set is owned by the caller (Scene3D) and disposed when its mesh unloads.
+        /// </summary>
+        public IGpuResourceSet CreateMaterialSet(IGpuTexture albedo) =>
+            _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_layout, _ubo, albedo, _sampler));
 
         /// <summary>Ensure the persistent instance buffer holds at least <paramref name="instanceCount"/>
         /// instances, then upload <paramref name="instances"/> starting at offset 0. Geometric 2x growth.</summary>
@@ -161,11 +185,13 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         /// <summary>Draw one mesh's run: <paramref name="instanceCount"/> instances starting at
-        /// <paramref name="instanceStart"/> in the shared instance buffer. The pipeline + resource set + frame UBO
-        /// must already be bound (<see cref="BindPass"/>/<see cref="SetFrameUniforms"/>).</summary>
+        /// <paramref name="instanceStart"/> in the shared instance buffer. The pipeline + frame UBO must already be
+        /// bound (<see cref="BindPass"/>/<see cref="SetFrameUniforms"/>). Binds <paramref name="materialSet"/> (or
+        /// the white default when null) as resource set 0 before drawing, so each mesh can carry its own albedo.</summary>
         public void DrawMeshInstanced(IGpuCommandList cl, IGpuBuffer vb, IGpuBuffer ib, int indexCount,
-            uint instanceStart, uint instanceCount)
+            uint instanceStart, uint instanceCount, IGpuResourceSet? materialSet = null)
         {
+            cl.SetGraphicsResourceSet(0, materialSet ?? _defaultSet);
             cl.SetVertexBuffer(0, vb);
             cl.SetVertexBuffer(1, _instanceBuffer!);
             cl.SetIndexBuffer(ib, GpuIndexFormat.UInt16);
@@ -174,7 +200,8 @@ namespace KhaozEngine.Render3D.Rendering
 
         public void Dispose()
         {
-            _pipeline.Dispose(); _set.Dispose(); _layout.Dispose();
+            _pipeline.Dispose(); _defaultSet.Dispose(); _layout.Dispose();
+            _white.Dispose(); _sampler.Dispose();
             _shaders.Dispose();
             _ubo.Dispose();
             _instanceBuffer?.Dispose();

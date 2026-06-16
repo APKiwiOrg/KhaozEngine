@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using Xunit;
 using KhaozEngine.Render2D;
 using KhaozEngine.Render3D;
 
@@ -54,6 +55,52 @@ namespace KhaozEngine.Tests.Gpu
                 frames: 2);
 
             GoldenCompare.AssertOrUpdate("scene3d", rgba, W, H);
+        }
+
+        [GpuFact]
+        public void Golden3D_TexturedMesh()
+        {
+            // Deterministic 64x64 checkerboard (8x8 cells) in two contrasting colours.
+            const int TexN = 64, Cell = 8;
+            var checker = new byte[TexN * TexN * 4];
+            for (int y = 0; y < TexN; y++)
+                for (int x = 0; x < TexN; x++)
+                {
+                    bool a = ((x / Cell) + (y / Cell)) % 2 == 0;
+                    int i = (y * TexN + x) * 4;
+                    checker[i + 0] = (byte)(a ? 235 : 30);
+                    checker[i + 1] = (byte)(a ? 70 : 200);
+                    checker[i + 2] = (byte)(a ? 40 : 220);
+                    checker[i + 3] = 255;
+                }
+
+            MeshHandle plane = default;
+
+            byte[] rgba = Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    // Texture API: a valid handle textures the mesh; an invalid/default handle falls back to
+                    // untextured without throwing. Both asserted inline (Scene3D needs a device, so this rides the
+                    // gated golden rather than a separate headless test).
+                    Scene3D.TextureHandle tex = scene.LoadTexture(checker, TexN, TexN);
+                    Assert.True(tex.IsValid);
+                    Assert.False(Scene3D.TextureHandle.Invalid.IsValid);
+
+                    // Invalid handle into LoadMesh => untextured fallback, no throw.
+                    MeshHandle fallback = scene.LoadMesh(MeshPrimitives.Box(0.2f), Scene3D.TextureHandle.Invalid);
+                    Assert.NotEqual(default, fallback);
+
+                    plane = scene.LoadMesh(MeshPrimitives.Plane(3f, 3f), tex);
+                    // Fixed top-ish framing so the checker fills the view deterministically.
+                    scene.Camera.Frame(new Vector3(0f, 0f, 0f), new Vector3(2.6f, 4.2f, 2.6f));
+                },
+                drawFrame: scene =>
+                {
+                    scene.Draw(plane, Matrix4x4.Identity);
+                },
+                frames: 2);
+
+            GoldenCompare.AssertOrUpdate("scene3d_textured", rgba, W, H);
         }
 
         [GpuFact]

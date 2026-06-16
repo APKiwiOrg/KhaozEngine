@@ -4,6 +4,27 @@ All notable changes to KhaozEngine. The 4.x line shares one version (`Directory.
 5.x custom-stack (MonoGame-free) engine packages share a second (`<KhaozEngine5xVersion>`). See the post-MonoGame
 plan in `docs/ROADMAP.md`.
 
+## 5.38.0 (custom 5.x line)
+
+Game scene/state stack in `KhaozEngine.Game`, so games stop hand-rolling an `AppState` enum + giant `switch`.
+A `GameScene` is a full game state - it owns its own update + 3D submission + 2D HUD draw + lifecycle - and a
+`SceneManager` runs a stack of them.
+
+- `GameScene` (abstract): `OnEnter`/`OnExit`/`OnUpdate(dt)`/`OnDraw3D(Scene3D)`/`OnDraw2D(SpriteBatch)`/`OnResize`,
+  plus `DrawBelow` (this scene is a transparent overlay - draw the one below too) and `UpdateBelow` (let the one
+  below keep updating; default false, so an overlay freezes what it covers). Reads shared per-frame context
+  (Input/Pointer/Viewport/FrameWidth/FrameHeight) via its `Manager`.
+- `SceneManager`: `Push`/`Pop`/`Replace` (swap top)/`SwitchTo` (clear + push)/`Clear`, and `Update`/`Draw3D`/
+  `Draw2D`/`Resize`. Overlay-aware: updates run top-down and stop at the first scene that doesn't pass them
+  through; draws run from the lowest visible scene up. Transitions requested from inside `Update`/`OnUpdate` are
+  deferred and applied at the end of the pass, so the stack is never mutated mid-iteration. `OnEnter`/`OnExit`
+  fire on add/remove.
+- Distinct from and composable with the Gui `ScreenStack` (a 2D-UI-only screen stack): a scene may use a
+  `GuiSurface`/`ScreenStack` internally for its menus. Drives cleanly from a `GameApp` subclass (forward
+  `OnUpdate`/`OnDraw3D`/`OnDraw2D`/`OnResize` to the manager) or a raw `AppWindow` loop.
+- New `SceneSample` (Menu -> SwitchTo Play -> Push Pause overlay -> Pop). Headless-tested (lifecycle ordering,
+  both gating modes, deferred transitions, edge cases).
+
 ## 5.37.0 (custom 5.x line)
 
 New `IsoCameraController` in `KhaozEngine.Render3D`: cursor-anchored zoom + pan for an `IsoCamera3D`. It is

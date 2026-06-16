@@ -37,6 +37,7 @@
   <Project Path="GuiSample/GuiSample.csproj" />
   <Project Path="MiniGame/MiniGame.csproj" />
   <Project Path="Render3DSample/Render3DSample.csproj" />
+  <Project Path="SceneSample/SceneSample.csproj" />
   <Project Path="tools/PixelLabSheetAssembler/PixelLabSheetAssembler.csproj" />
   <Project Path="tools/PixelLabSheetAssembler.Tests/PixelLabSheetAssembler.Tests.csproj" />
 </Solution>

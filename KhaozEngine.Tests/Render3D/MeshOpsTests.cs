@@ -96,5 +96,21 @@ namespace KhaozEngine.Tests.Render3D
         {
             Assert.Throws<ArgumentNullException>(() => MeshOps.WithSmoothNormals(null!));
         }
+
+        [Fact]
+        public void RecomputeFlatNormals_Does_Not_Mutate_Input()
+        {
+            var box = MeshPrimitives.Box();
+            var before = box.Vertices.Select(v => v.Normal).ToArray();
+            _ = MeshOps.RecomputeFlatNormals(box);
+            for (int i = 0; i < box.Vertices.Length; i++)
+                Assert.Equal(before[i], box.Vertices[i].Normal);
+        }
+
+        [Fact]
+        public void RecomputeFlatNormals_Throws_On_Null()
+        {
+            Assert.Throws<ArgumentNullException>(() => MeshOps.RecomputeFlatNormals(null!));
+        }
     }
 }

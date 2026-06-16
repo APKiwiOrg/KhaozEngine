@@ -10,11 +10,4 @@
     <ProjectReference Include="../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
     <ProjectReference Include="../KhaozEngine.Render2D/KhaozEngine.Render2D.csproj" />
   </ItemGroup>
-  <Target Name="CopySdl2" AfterTargets="Build" Condition="$([MSBuild]::IsOSPlatform('OSX'))">
-    <PropertyGroup>
-      <_Sdl2Src Condition="Exists('/opt/homebrew/lib/libSDL2.dylib')">/opt/homebrew/lib/libSDL2.dylib</_Sdl2Src>
-      <_Sdl2Src Condition="'$(_Sdl2Src)' == '' and Exists('/usr/local/lib/libSDL2.dylib')">/usr/local/lib/libSDL2.dylib</_Sdl2Src>
-    </PropertyGroup>
-    <Copy Condition="'$(_Sdl2Src)' != ''" SourceFiles="$(_Sdl2Src)" DestinationFiles="$(OutDir)libsdl2.dylib" SkipUnchangedFiles="true" />
-  </Target>
 </Project>

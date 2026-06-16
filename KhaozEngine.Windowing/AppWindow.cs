@@ -1,10 +1,13 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Numerics;
-using Veldrid;
-using Veldrid.Sdl2;
+using Silk.NET.Input;
+using Silk.NET.Maths;
+using Silk.NET.Windowing;
+using Silk.NET.Windowing.Glfw;
 using KhaozEngine.Gpu;
+using SilkKey = Silk.NET.Input.Key;
+using SilkMouseButton = Silk.NET.Input.MouseButton;
 
 namespace KhaozEngine.Windowing
 {
@@ -22,22 +25,35 @@ namespace KhaozEngine.Windowing
     }
 
     /// <summary>
-    /// Owns the SDL2 window (the window/input platform stays on Veldrid.Sdl2), the engine GPU device
-    /// (<see cref="IGpuDevice"/>, backend GPU types hidden behind the KhaozEngine.Gpu seam), and the frame loop.
-    /// Each frame pumps input into an engine-native <see cref="InputState"/>, clears the swapchain, runs the
-    /// callback, and presents. The 5.x renderers build on this. POC: Metal only; needs SDL2 at runtime.
+    /// Owns the Silk.NET window + input + frame loop (GLFW natives bundled per-RID, so no <c>brew install sdl2</c>),
+    /// the engine GPU device (<see cref="IGpuDevice"/>, backend GPU types hidden behind the KhaozEngine.Gpu seam),
+    /// and presentation. The Veldrid swapchain is created from the native window handle via
+    /// <see cref="GpuDeviceContext.CreateForWindow"/>. Each frame pumps Silk input into an engine-native
+    /// <see cref="InputState"/>, clears the swapchain, runs the callback, and presents. The 5.x renderers build on
+    /// this. The GPU backend is selected by <see cref="GpuBackendSelector"/> (Metal on this dev box).
     /// </summary>
     public sealed class AppWindow : IDisposable
     {
-        readonly Sdl2Window _window;
+        readonly IWindow _window;
+        readonly IInputContext _input;
         readonly GpuDeviceContext _gpu;
         readonly IGpuDevice _device;
         readonly IGpuCommandList _cl;
         readonly Frame _frame = new();
+
+        // Edge-tracking input state (mirrors the previous model). Silk fires KeyDown/KeyUp/MouseDown/MouseUp/Scroll
+        // on its event pump; we accumulate into per-frame sets and snapshot them once per render callback.
         readonly HashSet<Key> _keysDown = new();
+        readonly HashSet<Key> _pressed = new();
+        readonly HashSet<Key> _released = new();
         readonly HashSet<MouseButton> _mouseDown = new();
-        readonly SdlGamepadPoller _gamepads = new();
+        readonly HashSet<MouseButton> _mousePressed = new();
+        readonly SilkGamepadReader _gamepads = new();
         Vector2 _lastMouse;
+        float _wheelAccum;
+
+        readonly int _maxFrames;
+        int _frameCount;
 
         /// <summary>The engine-owned GPU device (renderers consume this; backend GPU types stay hidden).</summary>
         public IGpuDevice GpuDevice => _device;
@@ -50,128 +66,191 @@ namespace KhaozEngine.Windowing
 
         public AppWindow(string title, int width, int height)
         {
-            (_window, _gpu) = GpuDeviceContext.CreateWindow(title, width, height);
+            // KE_MAX_FRAMES: render N frames then close (lets a windowed smoke test run a few frames + exit cleanly).
+            _maxFrames = int.TryParse(Environment.GetEnvironmentVariable("KE_MAX_FRAMES"), out int mf) && mf > 0 ? mf : 0;
+
+            GlfwWindowing.RegisterPlatform();
+            var opts = WindowOptions.Default with
+            {
+                Size = new Vector2D<int>(width, height),
+                Title = title,
+                // We drive the GPU ourselves via Veldrid; Silk must not create a GL/Vulkan context.
+                API = GraphicsAPI.None,
+            };
+            _window = Window.Create(opts);
+            _window.Initialize(); // creates the native window WITHOUT starting the loop; the handle is valid after this.
+
+            GpuWindowHandle handle = BuildHandle(_window);
+            _gpu = GpuDeviceContext.CreateForWindow(handle, (uint)width, (uint)height);
             _device = _gpu.GpuDevice;
-            _window.Resized += () => _device.ResizeSwapchain((uint)_window.Width, (uint)_window.Height);
             _cl = _device.Factory.CreateCommandList();
+
+            // Resize the swapchain to the drawable (framebuffer) size, not the logical window size.
+            _window.FramebufferResize += s => _device.ResizeSwapchain((uint)s.X, (uint)s.Y);
+
+            _input = _window.CreateInput();
+            WireInput();
+
             _lastMouse = Vector2.Zero;
         }
 
-        public bool Exists => _window.Exists;
+        static GpuWindowHandle BuildHandle(IWindow window)
+        {
+            var native = window.Native ?? throw new NotSupportedException("Silk window exposed no native handle.");
+            if (OperatingSystem.IsMacOS())
+            {
+                IntPtr nsWindow = native.Cocoa ?? throw new NotSupportedException("No Cocoa native handle.");
+                return new GpuWindowHandle(GpuWindowKind.Cocoa, nsWindow);
+            }
+            if (OperatingSystem.IsWindows())
+            {
+                var win32 = native.Win32 ?? throw new NotSupportedException("No Win32 native handle.");
+                return new GpuWindowHandle(GpuWindowKind.Win32, win32.Hwnd);
+            }
+            if (OperatingSystem.IsLinux())
+            {
+                if (native.X11 is { } x11)
+                    return new GpuWindowHandle(GpuWindowKind.X11, (IntPtr)x11.Window, x11.Display);
+                if (native.Wayland is { } wl)
+                    return new GpuWindowHandle(GpuWindowKind.Wayland, wl.Surface, wl.Display);
+                throw new NotSupportedException("No X11 or Wayland native handle on this Linux session.");
+            }
+            throw new NotSupportedException("Unsupported windowing platform for the Silk -> Veldrid bridge.");
+        }
+
+        public bool Exists => !_window.IsClosing;
         public void Close() => _window.Close();
 
         /// <summary>Run the frame loop until the window closes, calling <paramref name="onFrame"/> each frame.</summary>
         public void Run(Action<Frame> onFrame)
         {
-            var sw = Stopwatch.StartNew();
-            double last = 0;
-            while (_window.Exists)
+            _window.Render += dt =>
             {
-                InputSnapshot snap = _window.PumpEvents();
-                if (!_window.Exists) break;
-
-                double now = sw.Elapsed.TotalSeconds;
-                float dt = (float)Math.Min(now - last, 0.1);
-                last = now;
-
-                InputState input = BuildInput(snap);
-                int w = _window.Width, h = _window.Height;
+                float fdt = (float)Math.Min(dt, 0.1);
+                InputState input = BuildInput();
+                int w = _window.FramebufferSize.X, h = _window.FramebufferSize.Y;
 
                 _cl.Begin();
                 _cl.SetFramebuffer(_device.SwapchainFramebuffer!);
                 _cl.ClearColorTarget(0, ClearColor);
 
-                _frame.Dt = dt; _frame.Input = input; _frame.Width = w; _frame.Height = h; _frame.Commands = _cl;
+                _frame.Dt = fdt; _frame.Input = input; _frame.Width = w; _frame.Height = h; _frame.Commands = _cl;
                 onFrame(_frame);
 
                 _cl.End();
                 _device.Submit(_cl);
                 _device.Present();
-            }
+
+                if (_maxFrames > 0 && ++_frameCount >= _maxFrames) _window.Close();
+            };
+            _window.Run();
         }
 
-        InputState BuildInput(InputSnapshot snap)
+        void WireInput()
         {
-            var pressed = new HashSet<Key>();
-            var released = new HashSet<Key>();
-            foreach (var ke in snap.KeyEvents)
+            foreach (IKeyboard kb in _input.Keyboards)
             {
-                if (!MapKey(ke.Key, out Key k)) continue;
-                if (ke.Down) { if (!ke.Repeat && _keysDown.Add(k)) pressed.Add(k); }
-                else if (_keysDown.Remove(k)) released.Add(k);
+                kb.KeyDown += (_, key, _) => { if (MapKey(key, out Key k) && _keysDown.Add(k)) _pressed.Add(k); };
+                kb.KeyUp += (_, key, _) => { if (MapKey(key, out Key k) && _keysDown.Remove(k)) _released.Add(k); };
             }
-
-            var mPressed = new HashSet<MouseButton>();
-            foreach (var me in snap.MouseEvents)
+            foreach (IMouse m in _input.Mice)
             {
-                if (!MapMouse(me.MouseButton, out MouseButton b)) continue;
-                if (me.Down) { if (_mouseDown.Add(b)) mPressed.Add(b); }
-                else _mouseDown.Remove(b);
+                m.MouseDown += (_, btn) => { if (MapMouse(btn, out MouseButton b) && _mouseDown.Add(b)) _mousePressed.Add(b); };
+                m.MouseUp += (_, btn) => { if (MapMouse(btn, out MouseButton b)) _mouseDown.Remove(b); };
+                m.Scroll += (_, wheel) => _wheelAccum += wheel.Y;
             }
-
-            var pos = snap.MousePosition;
-            var delta = pos - _lastMouse;
-            _lastMouse = pos;
-
-            return new InputState(
-                new HashSet<Key>(_keysDown), pressed, released,
-                new HashSet<MouseButton>(_mouseDown), mPressed,
-                pos, delta, snap.WheelDelta, _window.Width, _window.Height,
-                _gamepads.Poll());
         }
 
-        static bool MapMouse(Veldrid.MouseButton b, out MouseButton r)
+        InputState BuildInput()
+        {
+            Vector2 pos = _lastMouse;
+            var mice = _input.Mice;
+            // Silk/GLFW report the cursor in LOGICAL points; the render viewport (Frame.Width/Height ->
+            // DesignViewport / SpriteBatch.Begin) is in FRAMEBUFFER pixels. On a HiDPI display (Retina Mac at 2x,
+            // scaled Windows) those differ, so scale the cursor into framebuffer space to keep input and rendering
+            // in one coordinate system (otherwise Pointer hit-testing is off by the DPI factor). 1x = no-op.
+            if (mice.Count > 0) pos = ToFramebuffer(mice[0].Position);
+            Vector2 delta = pos - _lastMouse;
+
+            var input = new InputState(
+                new HashSet<Key>(_keysDown), new HashSet<Key>(_pressed), new HashSet<Key>(_released),
+                new HashSet<MouseButton>(_mouseDown), new HashSet<MouseButton>(_mousePressed),
+                pos, delta, _wheelAccum,
+                _window.FramebufferSize.X, _window.FramebufferSize.Y,
+                _gamepads.Read(_input.Gamepads));
+
+            _pressed.Clear();
+            _released.Clear();
+            _mousePressed.Clear();
+            _lastMouse = pos;
+            _wheelAccum = 0f;
+            return input;
+        }
+
+        /// <summary>Scale a logical-point cursor position into framebuffer pixels (DPI factor per axis; 1x = identity).</summary>
+        Vector2 ToFramebuffer(Vector2 logical)
+        {
+            var size = _window.Size;
+            var fb = _window.FramebufferSize;
+            float sx = size.X > 0 ? (float)fb.X / size.X : 1f;
+            float sy = size.Y > 0 ? (float)fb.Y / size.Y : 1f;
+            return new Vector2(logical.X * sx, logical.Y * sy);
+        }
+
+        static bool MapMouse(SilkMouseButton b, out MouseButton r)
         {
             switch (b)
             {
-                case Veldrid.MouseButton.Left: r = MouseButton.Left; return true;
-                case Veldrid.MouseButton.Middle: r = MouseButton.Middle; return true;
-                case Veldrid.MouseButton.Right: r = MouseButton.Right; return true;
-                case Veldrid.MouseButton.Button1: r = MouseButton.X1; return true;
-                case Veldrid.MouseButton.Button2: r = MouseButton.X2; return true;
+                case SilkMouseButton.Left: r = MouseButton.Left; return true;
+                case SilkMouseButton.Middle: r = MouseButton.Middle; return true;
+                case SilkMouseButton.Right: r = MouseButton.Right; return true;
+                case SilkMouseButton.Button4: r = MouseButton.X1; return true;
+                case SilkMouseButton.Button5: r = MouseButton.X2; return true;
                 default: r = default; return false;
             }
         }
 
-        static bool MapKey(Veldrid.Key k, out Key r)
+        static bool MapKey(SilkKey k, out Key r)
         {
             r = k switch
             {
-                >= Veldrid.Key.A and <= Veldrid.Key.Z => Key.A + (k - Veldrid.Key.A),
-                >= Veldrid.Key.Number0 and <= Veldrid.Key.Number9 => Key.D0 + (k - Veldrid.Key.Number0),
-                >= Veldrid.Key.F1 and <= Veldrid.Key.F12 => Key.F1 + (k - Veldrid.Key.F1),
-                Veldrid.Key.Up => Key.Up,
-                Veldrid.Key.Down => Key.Down,
-                Veldrid.Key.Left => Key.Left,
-                Veldrid.Key.Right => Key.Right,
-                Veldrid.Key.Space => Key.Space,
-                Veldrid.Key.Enter or Veldrid.Key.KeypadEnter => Key.Enter,
-                Veldrid.Key.Escape => Key.Escape,
-                Veldrid.Key.Tab => Key.Tab,
-                Veldrid.Key.BackSpace => Key.Backspace,
-                Veldrid.Key.Delete => Key.Delete,
-                Veldrid.Key.Insert => Key.Insert,
-                Veldrid.Key.Home => Key.Home,
-                Veldrid.Key.End => Key.End,
-                Veldrid.Key.PageUp => Key.PageUp,
-                Veldrid.Key.PageDown => Key.PageDown,
-                Veldrid.Key.ShiftLeft => Key.LeftShift,
-                Veldrid.Key.ShiftRight => Key.RightShift,
-                Veldrid.Key.ControlLeft => Key.LeftControl,
-                Veldrid.Key.ControlRight => Key.RightControl,
-                Veldrid.Key.AltLeft => Key.LeftAlt,
-                Veldrid.Key.AltRight => Key.RightAlt,
-                Veldrid.Key.Minus => Key.Minus,
-                Veldrid.Key.Plus => Key.Equals,
-                Veldrid.Key.Comma => Key.Comma,
-                Veldrid.Key.Period => Key.Period,
-                Veldrid.Key.Slash => Key.Slash,
-                Veldrid.Key.Semicolon => Key.Semicolon,
-                Veldrid.Key.BracketLeft => Key.LeftBracket,
-                Veldrid.Key.BracketRight => Key.RightBracket,
-                Veldrid.Key.BackSlash => Key.Backslash,
-                Veldrid.Key.Quote => Key.Apostrophe,
-                Veldrid.Key.Grave => Key.Grave,
+                >= SilkKey.A and <= SilkKey.Z => Key.A + (k - SilkKey.A),
+                >= SilkKey.Number0 and <= SilkKey.Number9 => Key.D0 + (k - SilkKey.Number0),
+                >= SilkKey.F1 and <= SilkKey.F12 => Key.F1 + (k - SilkKey.F1),
+                SilkKey.Up => Key.Up,
+                SilkKey.Down => Key.Down,
+                SilkKey.Left => Key.Left,
+                SilkKey.Right => Key.Right,
+                SilkKey.Space => Key.Space,
+                SilkKey.Enter or SilkKey.KeypadEnter => Key.Enter,
+                SilkKey.Escape => Key.Escape,
+                SilkKey.Tab => Key.Tab,
+                SilkKey.Backspace => Key.Backspace,
+                SilkKey.Delete => Key.Delete,
+                SilkKey.Insert => Key.Insert,
+                SilkKey.Home => Key.Home,
+                SilkKey.End => Key.End,
+                SilkKey.PageUp => Key.PageUp,
+                SilkKey.PageDown => Key.PageDown,
+                SilkKey.ShiftLeft => Key.LeftShift,
+                SilkKey.ShiftRight => Key.RightShift,
+                SilkKey.ControlLeft => Key.LeftControl,
+                SilkKey.ControlRight => Key.RightControl,
+                SilkKey.AltLeft => Key.LeftAlt,
+                SilkKey.AltRight => Key.RightAlt,
+                SilkKey.SuperLeft => Key.LeftSuper,
+                SilkKey.SuperRight => Key.RightSuper,
+                SilkKey.Minus => Key.Minus,
+                SilkKey.Equal => Key.Equals,
+                SilkKey.LeftBracket => Key.LeftBracket,
+                SilkKey.RightBracket => Key.RightBracket,
+                SilkKey.BackSlash => Key.Backslash,
+                SilkKey.Semicolon => Key.Semicolon,
+                SilkKey.Apostrophe => Key.Apostrophe,
+                SilkKey.Comma => Key.Comma,
+                SilkKey.Period => Key.Period,
+                SilkKey.Slash => Key.Slash,
+                SilkKey.GraveAccent => Key.Grave,
                 _ => Key.None,
             };
             return r != Key.None;
@@ -179,9 +258,10 @@ namespace KhaozEngine.Windowing
 
         public void Dispose()
         {
-            _gamepads.Dispose();
-            _cl.Dispose();
-            _gpu.Dispose();
+            try { _input?.Dispose(); } catch { }
+            try { _cl?.Dispose(); } catch { }
+            try { _gpu?.Dispose(); } catch { }
+            try { _window?.Dispose(); } catch { }
         }
     }
 }

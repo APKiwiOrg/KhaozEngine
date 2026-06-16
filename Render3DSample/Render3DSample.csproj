@@ -15,14 +15,4 @@
     <None Include="../KhaozEngine.Render3D/assets/testmodel.glb" Link="assets/testmodel.glb" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../KhaozEngine.Render3D/assets/asteroid.glb" Link="assets/asteroid.glb" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
-
-  <!-- Copy the system SDL2 (Homebrew) into the output as libsdl2.dylib so Veldrid.Sdl2 finds it and
-       `dotnet run` works without DYLD_FALLBACK_LIBRARY_PATH. POC convenience; no-op if SDL2 isn't installed. -->
-  <Target Name="CopySdl2" AfterTargets="Build" Condition="$([MSBuild]::IsOSPlatform('OSX'))">
-    <PropertyGroup>
-      <_Sdl2Src Condition="Exists('/opt/homebrew/lib/libSDL2.dylib')">/opt/homebrew/lib/libSDL2.dylib</_Sdl2Src>
-      <_Sdl2Src Condition="'$(_Sdl2Src)' == '' and Exists('/usr/local/lib/libSDL2.dylib')">/usr/local/lib/libSDL2.dylib</_Sdl2Src>
-    </PropertyGroup>
-    <Copy Condition="'$(_Sdl2Src)' != ''" SourceFiles="$(_Sdl2Src)" DestinationFiles="$(OutDir)libsdl2.dylib" SkipUnchangedFiles="true" />
-  </Target>
 </Project>

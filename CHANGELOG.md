@@ -4,6 +4,21 @@ All notable changes to KhaozEngine. The 4.x line shares one version (`Directory.
 5.x custom-stack (MonoGame-free) engine packages share a second (`<KhaozEngine5xVersion>`). See the post-MonoGame
 plan in `docs/ROADMAP.md`.
 
+## 5.36.0 (custom 5.x line)
+
+`GuiSurface` (immediate-mode UI) now exposes hover state, so a game can drive hover sounds / highlights without
+reconstructing rect hit-tests itself. The surface tracks the enabled button under the pointer each frame and
+compares against last frame:
+
+- `IsHovering` - true when the pointer is over an enabled button this frame.
+- `HoverEntered` - true only on the frame the pointer moves ONTO a (different) button (a hover-enter, or sliding
+  straight from one button onto another). False while staying on the same button and false on hover-exit. Wire
+  this to a UI hover tick.
+- `HoveredRect` - the rect of the hovered button, or null.
+
+Read them after issuing the frame's widgets (before the next `Begin`). Disabled buttons do not register hover
+(no affordance). Click behavior (the `Button` bool return) is unchanged. Headless-tested.
+
 ## 5.35.1 (custom 5.x line)
 
 Cleanup: the textured-mesh model pass (5.35.0) now samples through the device built-in linear sampler

@@ -150,6 +150,82 @@ namespace KhaozEngine.Tests.Gui
         }
 
         [Fact]
+        public void HoverEntered_fires_once_when_the_pointer_moves_onto_a_button()
+        {
+            var ui = Surface();
+            var p = new Pointer();
+            var outside = new Vector2(10, 10);
+            var inside = new Vector2(150, 120);
+
+            // Outside: not hovering, no enter.
+            p.Update(Frame(outside, false));
+            ui.Begin(null, p);
+            ui.Button(null!, Btn, "Go");
+            Assert.False(ui.IsHovering);
+            Assert.False(ui.HoverEntered);
+
+            // Move onto the button: hovering + hover-enter this frame.
+            p.Update(Frame(inside, false));
+            ui.Begin(null, p);
+            ui.Button(null!, Btn, "Go");
+            Assert.True(ui.IsHovering);
+            Assert.True(ui.HoverEntered);
+            Assert.Equal(Btn, ui.HoveredRect);
+
+            // Stay on the button: still hovering, but no re-enter.
+            p.Update(Frame(new Vector2(160, 130), false));
+            ui.Begin(null, p);
+            ui.Button(null!, Btn, "Go");
+            Assert.True(ui.IsHovering);
+            Assert.False(ui.HoverEntered);
+
+            // Move off onto nothing: not hovering, and exit is NOT an enter.
+            p.Update(Frame(outside, false));
+            ui.Begin(null, p);
+            ui.Button(null!, Btn, "Go");
+            Assert.False(ui.IsHovering);
+            Assert.False(ui.HoverEntered);
+        }
+
+        [Fact]
+        public void HoverEntered_fires_when_sliding_from_one_button_straight_onto_another()
+        {
+            var a = new Rect(100, 100, 120, 40);
+            var b = new Rect(100, 160, 120, 40);
+            var ui = Surface();
+            var p = new Pointer();
+
+            void FrameAt(Vector2 at)
+            {
+                p.Update(Frame(at, false));
+                ui.Begin(null, p);
+                ui.Button(null!, a, "A");
+                ui.Button(null!, b, "B");
+            }
+
+            FrameAt(new Vector2(150, 120));      // on A -> enter
+            Assert.True(ui.HoverEntered);
+            Assert.Equal(a, ui.HoveredRect);
+
+            FrameAt(new Vector2(150, 180));      // straight onto B -> a fresh enter (different rect)
+            Assert.True(ui.HoverEntered);
+            Assert.Equal(b, ui.HoveredRect);
+        }
+
+        [Fact]
+        public void A_disabled_button_does_not_register_hover()
+        {
+            var ui = Surface();
+            var p = new Pointer();
+
+            p.Update(Frame(new Vector2(150, 120), false)); // over the button
+            ui.Begin(null, p);
+            ui.Button(null!, Btn, "Go", GuiStyle.Default, enabled: false);
+            Assert.False(ui.IsHovering);     // disabled => no hover affordance
+            Assert.False(ui.HoverEntered);
+        }
+
+        [Fact]
         public void Selected_or_hover_state_does_not_change_the_click_contract()
         {
             var ui = Surface();

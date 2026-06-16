@@ -2,14 +2,16 @@ using System.Numerics;
 
 namespace KhaozEngine.Render3D
 {
-    /// <summary>Interleaved vertex: position, flat normal, base color (RGBA). 40 bytes.</summary>
+    /// <summary>Interleaved vertex: position, normal, base color (RGBA), texture UV. 48 bytes.</summary>
     public struct ModelVertex
     {
         public Vector3 Position;
         public Vector3 Normal;
         public Vector4 Color;
-        public ModelVertex(Vector3 p, Vector3 n, Vector4 c) { Position = p; Normal = n; Color = c; }
-        public const uint SizeInBytes = 40; // 3*4 + 3*4 + 4*4
+        public Vector2 Uv;
+        public ModelVertex(Vector3 p, Vector3 n, Vector4 c, Vector2 uv) { Position = p; Normal = n; Color = c; Uv = uv; }
+        public ModelVertex(Vector3 p, Vector3 n, Vector4 c) : this(p, n, c, Vector2.Zero) { } // back-compat
+        public const uint SizeInBytes = 48; // 3*4 + 3*4 + 4*4 + 2*4
     }
 
     /// <summary>CPU-side loaded mesh. GPU buffers are created internally by the renderer.</summary>

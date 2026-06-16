@@ -5,6 +5,22 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 5.22.0-experimental (custom 5.x line)
+
+### KhaozEngine.Render3D (additive; one internal format change)
+
+- **More mesh primitives**: `MeshPrimitives.Torus`, `Capsule`, `RoundedBox`, `Plane` (subdividable flat grid)
+  join Box/Tile/Cylinder/Cone/Pyramid/Wedge/Sphere — smooth normals on curved surfaces, degenerate-arg
+  clamping, CCW-outward winding.
+- **UV texture coordinates**: `ModelVertex` gains a `Vector2 Uv` (vertex now 48 bytes) and every primitive
+  generates sensible UVs (per-face for flats, cylindrical for cylinder/cone, lat/long for sphere, etc.);
+  `MeshBuilder` carries UVs through, `GltfLoader` reads `TEXCOORD_0`. The model shader passes the UV through
+  (it is not yet sampled — textured-mesh *rendering* is a later step; this makes the geometry data ready so
+  primitives don't need re-touching then). Existing meshes are unaffected (the 3-arg `ModelVertex` ctor
+  defaults UV to zero). Render verified unchanged after the vertex-format change.
+- **`MeshOps`**: `WithSmoothNormals(mesh, epsilon)` welds vertices by position and averages normals (smooth a
+  faceted mesh); `RecomputeFlatNormals(mesh)` for per-triangle face normals. Both return copies.
+
 ## 5.21.0-experimental (custom 5.x line)
 
 ### KhaozEngine.Particles (NEW package)

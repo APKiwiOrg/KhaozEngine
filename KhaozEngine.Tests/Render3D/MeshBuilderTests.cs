@@ -85,6 +85,35 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void Add_Preserves_Source_Uvs()
+        {
+            // a part with distinct per-vertex UVs must keep them through Add (no transform on UV).
+            var part = new GltfMesh(new[]
+            {
+                new ModelVertex(Vector3.Zero, Vector3.UnitY, Vector4.One, new Vector2(0.1f, 0.2f)),
+                new ModelVertex(Vector3.UnitX, Vector3.UnitY, Vector4.One, new Vector2(0.7f, 0.9f)),
+                new ModelVertex(Vector3.UnitZ, Vector3.UnitY, Vector4.One, new Vector2(0.3f, 0.6f)),
+            }, new ushort[] { 0, 1, 2 });
+
+            var mesh = new MeshBuilder()
+                .Add(part, Matrix4x4.CreateTranslation(5f, 0f, 0f), new Vector4(0.2f, 0.2f, 0.2f, 1f))
+                .Build();
+
+            for (int i = 0; i < part.Vertices.Length; i++)
+            {
+                Assert.Equal(part.Vertices[i].Uv.X, mesh.Vertices[i].Uv.X, 5);
+                Assert.Equal(part.Vertices[i].Uv.Y, mesh.Vertices[i].Uv.Y, 5);
+            }
+        }
+
+        [Fact]
+        public void ModelVertex_3Arg_Ctor_Defaults_Uv_To_Zero()
+        {
+            var v = new ModelVertex(Vector3.One, Vector3.UnitY, Vector4.One);
+            Assert.Equal(Vector2.Zero, v.Uv);
+        }
+
+        [Fact]
         public void Normals_Stay_Unit_Length_Under_NonUniform_Scale()
         {
             var transform = Matrix4x4.CreateScale(3f, 1f, 0.5f);

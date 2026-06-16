@@ -44,7 +44,8 @@ namespace KhaozEngine.Render3D.Rendering
             var vertexLayout = new VertexLayoutDescription(
                 new VertexElementDescription("Position", VertexElementSemantic.Position, VertexElementFormat.Float3),
                 new VertexElementDescription("Normal", VertexElementSemantic.Normal, VertexElementFormat.Float3),
-                new VertexElementDescription("Color", VertexElementSemantic.Color, VertexElementFormat.Float4));
+                new VertexElementDescription("Color", VertexElementSemantic.Color, VertexElementFormat.Float4),
+                new VertexElementDescription("TexCoord", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float2));
 
             var blend = new BlendStateDescription(RgbaFloat.Black,
                 BlendAttachmentDescription.OverrideBlend,

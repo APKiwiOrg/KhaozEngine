@@ -73,5 +73,22 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(ok, parsed);
             if (ok) Assert.Equal(expected, backend);
         }
+
+        // --- the exact KE_GRAPHICS_BACKEND values the cross-platform-gpu CI matrix sets per runner, asserted
+        // regardless of the host OS so the override drives the backend (and thus the per-backend golden path). ---
+
+        [Theory]
+        [InlineData("metal", GpuBackendKind.Metal)]      // macos-14 leg
+        [InlineData("d3d11", GpuBackendKind.Direct3D11)] // windows-latest leg
+        [InlineData("vulkan", GpuBackendKind.Vulkan)]    // ubuntu-latest leg
+        [InlineData("gl", GpuBackendKind.OpenGL)]        // (out of CI scope, but the override still resolves)
+        public void Select_CiMatrixBackendOverride_HonoredOnEveryOs(string env, GpuBackendKind expected)
+        {
+            foreach (OSPlatformKind os in new[]
+                { OSPlatformKind.MacOS, OSPlatformKind.Windows, OSPlatformKind.Linux, OSPlatformKind.Unknown })
+            {
+                Assert.Equal(expected, GpuBackendSelector.Select(env, os));
+            }
+        }
     }
 }

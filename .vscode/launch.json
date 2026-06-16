@@ -1,0 +1,60 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run WindowingSample (input + SFX demo)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/WindowingSample/bin/Debug/net10.0/WindowingSample.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}/WindowingSample",
+      "console": "internalConsole",
+      "stopAtEntry": false
+    },
+    {
+      "name": "Run GuiSample",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/GuiSample/bin/Debug/net10.0/GuiSample.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}/GuiSample",
+      "console": "internalConsole",
+      "stopAtEntry": false
+    },
+    {
+      "name": "Run Render3DSample",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/Render3DSample/bin/Debug/net10.0/Render3DSample.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}/Render3DSample",
+      "console": "internalConsole",
+      "stopAtEntry": false
+    },
+    {
+      "name": "Run Render2DSample",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/Render2DSample/bin/Debug/net10.0/Render2DSample.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}/Render2DSample",
+      "console": "internalConsole",
+      "stopAtEntry": false
+    },
+    {
+      "name": "Run MiniGame",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/MiniGame/bin/Debug/net10.0/MiniGame.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}/MiniGame",
+      "console": "internalConsole",
+      "stopAtEntry": false
+    }
+  ]
+}

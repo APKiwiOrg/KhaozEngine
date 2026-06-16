@@ -1,5 +1,5 @@
 using KhaozEngine.Collision;
-using Microsoft.Xna.Framework;
+using System.Numerics;
 using Xunit;
 
 namespace KhaozEngine.Tests;

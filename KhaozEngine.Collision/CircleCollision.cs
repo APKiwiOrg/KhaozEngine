@@ -1,10 +1,10 @@
-using Microsoft.Xna.Framework;
+using System.Numerics;
 
 namespace KhaozEngine.Collision;
 
 /// <summary>
 /// Circle/circle intersection with optional per-pixel precise refinement. The float math here is
-/// deterministic and must stay bit-identical for lockstep sims: <c>DistanceSquared &lt;= combined^2</c>,
+/// deterministic and must stay bit-identical for lockstep sims: <c>distanceSquared &lt;= combined^2</c>,
 /// touching circles count as intersecting.
 /// </summary>
 public static class CircleCollision
@@ -13,7 +13,11 @@ public static class CircleCollision
     public static bool Intersects(Vector2 positionA, float radiusA, Vector2 positionB, float radiusB)
     {
         float combinedRadius = radiusA + radiusB;
-        return Vector2.DistanceSquared(positionA, positionB) <= combinedRadius * combinedRadius;
+        // Explicit dx*dx + dy*dy (not Vector2.DistanceSquared) so the result is bit-stable and does NOT depend on
+        // the Vector2 library's helper implementation - this is hash-gated for lockstep sims.
+        float dx = positionA.X - positionB.X;
+        float dy = positionA.Y - positionB.Y;
+        return dx * dx + dy * dy <= combinedRadius * combinedRadius;
     }
 
     /// <summary>Broad circle/circle overlap test reading position + radius from two colliders.</summary>

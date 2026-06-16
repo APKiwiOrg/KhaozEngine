@@ -4,6 +4,25 @@ All notable changes to KhaozEngine. The 4.x line shares one version (`Directory.
 5.x custom-stack (MonoGame-free) engine packages share a second (`<KhaozEngine5xVersion>`). See the post-MonoGame
 plan in `docs/ROADMAP.md`.
 
+## 4.12.0 (4.x line)
+
+`KhaozEngine.Collision` and `KhaozEngine.Netcode` are now **MonoGame-free** - they drop the
+`MonoGame.Framework.DesktopGL` reference and their public `Vector2` moves from XNA (`Microsoft.Xna.Framework`) to
+`System.Numerics`. This makes them foundation-grade (a 5.x MonoGame-free game can consume them) and shrinks the
+remaining legacy-MonoGame surface.
+
+- **Breaking** (shipped as a 4.x minor; the version-number jump to 5.x is reserved for the custom stack): the
+  `Vector2` in `CircleCollision`, `SpatialHashGrid`, `ICircleCollider`, `IPreciseCircleCollisionTarget`,
+  `UnitAxisQuantizer`(none), `ClientPrediction`, and `IPredictedState` is now `System.Numerics.Vector2`. A
+  consumer swaps `using Microsoft.Xna.Framework;` to `using System.Numerics;` at those call sites; the
+  field-compatible struct means no other change.
+- **Determinism preserved** (these are lockstep-hash-gated for SpaceGame): `CircleCollision.Intersects` now uses
+  explicit `dx*dx + dy*dy` rather than a `Vector2` library helper, so the result is bit-stable regardless of the
+  vector library; `UnitAxisQuantizer` uses `System.Math.Clamp` (a comparison clamp, bit-identical to the old
+  `MathHelper.Clamp`). `ClientPrediction`'s `Length`/`Lerp` are client render-smoothing only (not in the sim
+  hash). The byte-identical sim math keeps SpaceGame's `17709480852979803671` gate stable when it adopts.
+- All other 4.x packages are unchanged; they share this version bump as usual.
+
 ## 5.38.0 (custom 5.x line)
 
 Game scene/state stack in `KhaozEngine.Game`, so games stop hand-rolling an `AppState` enum + giant `switch`.

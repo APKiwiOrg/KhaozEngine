@@ -5,6 +5,28 @@ All notable changes to KhaozEngine. The 4.x MonoGame-based packages share one ve
 second version (`Directory.Build.props` `<KhaozEngine5xVersion>`). See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 5.25.0-experimental (custom 5.x line)
+
+P0 hardening, stage 3 of 3 — the graphics-backend seam, **phase 3a of 4** (foundation). See
+`docs/ENGINE-AUDIT-5x-2026-06-16.md` + `docs/superpowers/specs/2026-06-16-gpu-backend-seam-design.md`. Behaviour
+on Metal is unchanged (both goldens pass pixel-identical).
+
+### KhaozEngine.Gpu (NEW package)
+
+- **Backend-seam foundation**: `GpuBackendKind`, `GpuCapabilities` (clip-Y / depth-range, read from the device),
+  `GpuBackendSelector.Select()` (probe `RuntimeInformation` → Metal on macOS / Direct3D11 on Windows / Vulkan on
+  Linux, with a `KE_GRAPHICS_BACKEND` env override; the core logic is a pure `Select(env, os)` overload that is
+  headless-tested), and `GpuDeviceContext` factories (`CreateWindow`/`CreateHeadless`) that own device creation
+  behind the selector. This is the first of four phases: it centralizes the previously hard-coded
+  `GraphicsBackend.Metal` (removed from `AppWindow`, `Render3DHost`, and both snapshot helpers), and plumbs the
+  device capabilities — without yet wrapping the GPU resource types (phases 3b/3c rewrite the renderers against
+  engine-owned GPU interfaces so Veldrid stops appearing on any public API; 3d migrates consumers).
+
+### Windowing / Render2D / Render3D
+
+- Device creation now routes through `KhaozEngine.Gpu`; `AppWindow` exposes `Backend`/`Capabilities`. The
+  clip-Y/depth derivation from `GpuCapabilities` is marked for phase 3c (behaviour identical on Metal for now).
+
 ## 5.24.0-experimental (custom 5.x line)
 
 P0 hardening, stage 2 of 3 (see `docs/ENGINE-AUDIT-5x-2026-06-16.md`): submission performance. Internal

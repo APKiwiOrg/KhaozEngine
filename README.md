@@ -95,10 +95,10 @@ Published to a private GitHub Packages feed on tagged releases, and packed to a 
 ```
 ```xml
 <!-- The 5.x engine (custom stack + the MonoGame-free foundation). Reference only what you use. -->
-<PackageReference Include="KhaozEngine.Windowing" Version="5.46.0" />
-<PackageReference Include="KhaozEngine.Render2D"  Version="5.46.0" />
-<PackageReference Include="KhaozEngine.Gui"       Version="5.46.0" />
-<PackageReference Include="KhaozEngine.Ecs"       Version="5.46.0" />
+<PackageReference Include="KhaozEngine.Windowing" Version="5.47.0" />
+<PackageReference Include="KhaozEngine.Render2D"  Version="5.47.0" />
+<PackageReference Include="KhaozEngine.Gui"       Version="5.47.0" />
+<PackageReference Include="KhaozEngine.Ecs"       Version="5.47.0" />
 ```
 
 **Versioning is SemVer.** Each game pins a version and adopts fixes by bumping it - so you can keep one game on an old version while you migrate another. Don't fork the packages; if a game needs an API that isn't there, add it here and bump the version.

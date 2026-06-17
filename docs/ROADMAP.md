@@ -1,6 +1,6 @@
 # KhaozEngine roadmap / backlog
 
-Larger feature areas identified but not yet scheduled. Current released version: **5.46.0** (the 5.x line,
+Larger feature areas identified but not yet scheduled. Current released version: **5.47.0** (the 5.x line,
 which is the engine: the custom MonoGame-free stack plus the graduated foundation packages). The legacy 4.x
 line is frozen-ish at `4.12.0` and now carries only the genuinely-MonoGame packages
 (`Effects`/`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`), consumed by the still-4.x SpaceGame.
@@ -49,7 +49,7 @@ via AOT, and ~21 existing C# packages + 3 games would be thrown away by a rewrit
 
 **Every subsystem needed to drop MonoGame is now proven on the custom stack — no feasibility unknowns
 remain; the rest is productization + porting.** Shipped 5.x packages (shared version, currently
-`5.45.1`):
+`5.47.0`):
 
 | Subsystem | Status |
 |---|---|

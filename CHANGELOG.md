@@ -4,6 +4,19 @@ All notable changes to KhaozEngine. The 5.x line `<KhaozEngine5xVersion>` is the
 stack + the graduated foundation packages); the legacy 4.x line `<Version>` carries only the genuinely-MonoGame
 packages. Both versions live in `Directory.Build.props`. See the post-MonoGame plan in `docs/ROADMAP.md`.
 
+## 5.47.0 (custom 5.x line)
+
+`Windowing.AdaptiveViewport` - a responsive `IDesignViewport` that fills a resizable window at any aspect (promoted
+from Nullwake, where it replaced the pillarboxed fixed-aspect viewport on desktop).
+
+- The design **height** is fixed (vertical layout/anchors stay constant) while the design **width** tracks the
+  window's aspect ratio, with a uniform height-fit scale and **no letterbox**. Layout expressed relative to
+  `Width`/`Height` (full-width bars, Width-relative grids, centered content) fills the window edge-to-edge instead of
+  being pillarboxed. `Width` is floored at the reference width so a narrower-than-design window keeps the design's
+  minimum rather than squishing. Contrast `DesignViewport`, which preserves a fixed reference size by letterboxing.
+- Drop-in for the existing seam: drive with `Update(windowW, windowH)`, pass to `SpriteBatch.Begin(IDesignViewport)` /
+  `Pointer.Update(InputState, IDesignViewport)`. Pure math, no window/GPU dependency. 5 headless tests.
+
 ## 5.46.0 (custom 5.x line)
 
 **The MonoGame-free foundation packages graduated from the 4.x line onto the 5.x line, so a 5.x game pins only

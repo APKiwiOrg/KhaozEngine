@@ -13,7 +13,7 @@
     <!-- Shared version for the 5.x custom-stack (MonoGame-free) engine packages (KhaozEngine.Gpu, Windowing,
          Render2D, Render3D, Gui, Audio, Particles, Game), which set <Version>$(KhaozEngine5xVersion)</Version>
          in their csproj. No longer experimental as of 5.31.0. Bump here to release them together. -->
-    <KhaozEngine5xVersion>5.44.0</KhaozEngine5xVersion>
+    <KhaozEngine5xVersion>5.45.0</KhaozEngine5xVersion>
     <Authors>APKiwi</Authors>
     <Company>Khaoz</Company>
     <PackageProjectUrl>https://github.com/APKiwi/KhaozEngine</PackageProjectUrl>

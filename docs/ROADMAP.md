@@ -1,6 +1,9 @@
 # KhaozEngine roadmap / backlog
 
-Larger feature areas identified but not yet scheduled. Current released version: **4.12.0**.
+Larger feature areas identified but not yet scheduled. Current released version: **5.46.0** (the 5.x line,
+which is the engine: the custom MonoGame-free stack plus the graduated foundation packages). The legacy 4.x
+line is frozen-ish at `4.12.0` and now carries only the genuinely-MonoGame packages
+(`Effects`/`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`), consumed by the still-4.x SpaceGame.
 
 Several items from the original (3.3.0-era) backlog have since shipped: the camera follow/framing
 layer, the pan/zoom gesture controller, and `PrimitiveRenderer` circle/ring drawing. Those are listed
@@ -92,12 +95,14 @@ engine to a real, resolution-independent, layout-capable state first. Agreed ord
    stays Veldrid behind the `KhaozEngine.Gpu` seam; the swapchain is built from the native window handle via the
    new `GpuDeviceContext.CreateForWindow`. The per-sample `CopySdl2` targets were removed. Silk.NET is also the
    windowing/input foundation a future mobile (Android/iOS) project will build on.
-4. **Cross-platform backends (deferred until hardware/CI).** Un-Metal-only: backend selection
-   (Vulkan / D3D11 / GL / Metal) via Veldrid so Render2D/Render3D/Snapshot run on Windows/Linux (and later
-   mobile); verify the SPIR-V shaders cross-compile per backend; per-backend clip-Y + MRT-clear handling.
-   The biggest gap to a real cross-platform engine, but moved later: it can't be run-verified on the
-   Apple-Silicon dev machine (Metal-only locally; macOS OpenGL is the deprecated GL-2.1 layer, no Vulkan
-   loader installed), so it waits for real Windows/Linux hardware or a CI matrix.
+4. **Cross-platform backends (mostly landed; Vulkan/GL remain).** Backend selection (Vulkan / D3D11 / GL /
+   Metal) is built: `GpuBackendSelector` does an OS probe + `KE_GRAPHICS_BACKEND` override, `GpuDeviceContext`
+   creates the device, and `GpuCapabilities` derives clip-Y / depth-range from the live device at runtime
+   (wired into `Camera2D` + `ModelRenderer`, replacing the hard-wired Metal assumptions). The
+   `cross-platform-gpu.yml` CI matrix runs the golden-snapshot tests per backend: **Metal + D3D11 (WARP) are
+   green and blocking**, with committed per-backend goldens. **Still open:** the Linux Vulkan leg is
+   non-blocking (Mesa lavapipe crashes at `vkEnumeratePhysicalDevices` on the hosted runner) and the `gl`
+   override parses but is unverified — both wait for real GPU CI / hardware. See `docs/CROSS-PLATFORM.md`.
 
 Then migrate a real game (Hardpoint/Nullwake/SpaceGame) onto a stack that's actually ready. Richer text entry
 (IME/locale/dead-keys) stays a later nicety — the current `TextEntry` is US-layout key-mapping.
@@ -128,22 +133,24 @@ first; **Phase A shipped in `5.13.0-experimental`**: multi-instance `Scene3D` (`
 5. **Migrate the games.** Hardpoint / Nullwake / SpaceGame onto the 5.x stack; retire the 4.x MonoGame line.
 6. **Mobile.** iOS/Android platform layers (lifecycle, touch, packaging, stores).
 
-### Version policy (two lines during the transition)
+### Version policy (two lines)
 
-- **4.x line** — the existing MonoGame packages; one shared version in `Directory.Build.props`; keeps
-  shipping 4.8.0, 4.9.0, ... normally and in parallel.
-- **5.x line** — the custom-stack engine packages (`Gpu`, `Windowing`, `Render2D`, `Render3D`, `Gui`, `Audio`,
-  `Particles`, `Game`) share a second version, `Directory.Build.props` `<KhaozEngine5xVersion>` (currently
-  `5.31.0`), and release together under one tag. **It dropped the `-experimental` suffix at `5.31.0`** — after
-  the audit-driven P0 (correctness net, instancing, the full graphics-backend seam that contains Veldrid behind
-  `KhaozEngine.Gpu`) and P1 (the `GameApp` loop facade), it's the engine, not a spike, and Hardpoint ships on
-  it. The 5.x tag is now plain `vX.Y.Z` (releases up to `5.30.0-experimental` carried the suffix). The 4.x line
-  also still carries the permanent MonoGame-free foundation packages the 5.x stack depends on
-  (`Ecs`/`Serialization`/`Content`/`Diagnostics`/...), which graduate to the unified line when MonoGame is
-  finally dropped. (The first two Render3D releases, 5.0.0/5.1.0, predate the shared line and were
-  per-package.) The doc-version guard checks the shared 4.x version only; the 5.x line is exempt (like
-  consumer pins). Packages graduate
-  4.x -> 5.x as they are ported.
+- **5.x line — the engine.** The custom-stack packages (`Gpu`, `Windowing`, `Render2D`, `Render3D`, `Gui`,
+  `Audio`, `Particles`, `Game`) **and**, as of **`5.46.0`**, the graduated MonoGame-free foundation packages
+  (`Ecs`/`Serialization`/`Content`/`Diagnostics`/`App`/`Localization`/`Persistence`/`Pooling`/`Platform`/
+  `Updates`/`Collision`/`Netcode`/`Netcode.Abstractions`/`Netcode.LiteNetLib` — 14 packages) share the version
+  `Directory.Build.props` `<KhaozEngine5xVersion>` and release together under one `vX.Y.Z` tag. It dropped the
+  `-experimental` suffix at `5.31.0` (after the audit-driven P0 + P1: correctness net, instancing, the
+  graphics-backend seam behind `KhaozEngine.Gpu`, the `GameApp` loop facade). **The foundation graduated onto
+  this line at `5.46.0`** (audit P1#9) so a 5.x game pins **only** 5.x packages; it was a non-breaking
+  re-version (same assemblies/API, just a version-string swap from `4.12.0`). The **doc-version guard now
+  checks this line** (`<KhaozEngine5xVersion>`). (The first two Render3D releases, 5.0.0/5.1.0, predate the
+  shared line and were per-package.)
+- **4.x line — legacy, frozen-ish.** After the `5.46.0` graduation it carries **only** the genuinely-MonoGame
+  packages (`Effects`/`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`), consumed by the still-4.x SpaceGame
+  until it migrates; then they're deleted and MonoGame is fully gone. It bumps only when one of those packages
+  needs a release. Its `<Version>` (`4.12.0`) is no longer the "current engine version" and is not guard-checked
+  (it lags like a consumer pin).
 
 Design spec: `docs/superpowers/specs/2026-06-15-render3d-custom-engine-design.md`.
 

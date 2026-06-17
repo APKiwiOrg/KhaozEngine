@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.Diagnostics</PackageId>
+    <!-- Graduated onto the shared 5.x line at 5.46.0 (was the 4.x <Version>); MonoGame-free foundation. -->
+    <Version>$(KhaozEngine5xVersion)</Version>
     <Description>Game-agnostic logging service: levels, pluggable sinks (rotating file / console / debug / in-memory), category loggers, a static Log facade over an injectable LogManager, non-blocking background writes, and crash hooks. Pure .NET, no MonoGame dependency.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>

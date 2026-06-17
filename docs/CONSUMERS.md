@@ -4,10 +4,21 @@ Which game uses which packages, at which version. Current state only - for the p
 [`../CHANGELOG.md`](../CHANGELOG.md). Update this whenever a consumer bumps a `<PackageReference>` or the
 engine ships a new version.
 
-**Engine current version:** `4.12.0` (the 4.x line `<Version>`: the legacy MonoGame packages + the permanent
-MonoGame-free foundation packages they share a version with). The **5.x custom MonoGame-free stack**
-(`Gpu`/`Windowing`/`Render2D`/`Render3D`/`Gui`/`Audio`/`Particles`/`Game`) is on its own line
-`<KhaozEngine5xVersion>` = `5.45.1`. The two lines move independently; both set in `Directory.Build.props`.
+**Engine current version:** `5.46.0` — the 5.x line `<KhaozEngine5xVersion>`, which is now the engine: the
+custom MonoGame-free stack (`Gpu`/`Windowing`/`Render2D`/`Render3D`/`Gui`/`Audio`/`Particles`/`Game`) **plus**
+the MonoGame-free foundation packages that graduated onto it at `5.46.0`
+(`Ecs`/`Serialization`/`Content`/`Diagnostics`/`App`/`Localization`/`Persistence`/`Pooling`/`Platform`/
+`Updates`/`Collision`/`Netcode`/`Netcode.Abstractions`/`Netcode.LiteNetLib`). The legacy 4.x line `<Version>`
+is frozen-ish at `4.12.0` and now carries **only** the genuinely-MonoGame packages
+(`Effects`/`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`), consumed by the still-4.x SpaceGame. The two
+lines move independently; both set in `Directory.Build.props`. The doc-version guard now checks the 5.x line.
+
+> **5.46.0 (graduation, non-breaking re-version):** the 14 MonoGame-free foundation packages moved from the
+> 4.x `<Version>` line to the 5.x `<KhaozEngine5xVersion>` line so a 5.x game pins **only** 5.x packages. Same
+> assemblies, namespaces, and public API — a consumer just swaps `Version="4.12.0"` to `Version="5.46.0"` on
+> those `<PackageReference>`s. The old `4.12.0` foundation nupkgs stay in the feed (cumulative pack), so a
+> consumer that hasn't bumped (Hardpoint, SpaceGame) keeps resolving its pin and nothing breaks. This is audit
+> item P1#9. The genuinely-MonoGame packages stay on 4.x until SpaceGame migrates, then they're deleted.
 
 > 4.12.0 (breaking, shipped as a 4.x minor since the version-number jump to 5.x is reserved for the custom
 > stack): `KhaozEngine.Collision` (`CircleCollision`, `SpatialHashGrid`, `ICircleCollider`) and
@@ -50,11 +61,12 @@ MonoGame-free foundation packages they share a version with). The **5.x custom M
 > engine `CircleCollision` + `SpatialHashGrid` and confirm the hash stays `17709480852979803671`. `Updates` is
 > determinism-neutral (never touches sim/RNG), so it carries no hash gate.
 
-**5.x custom stack (no longer experimental):** the 8 MonoGame-free packages `Gpu`, `Windowing`, `Render2D`,
-`Render3D`, `Gui`, `Audio`, `Particles`, `Game` share `<KhaozEngine5xVersion>` = `5.38.0` (the `-experimental`
-suffix was dropped at `5.31.0`). They replace the legacy 4.x MonoGame rendering/UI/input/audio/screens/effects/
-time packages (UI->Gui, Graphics->Render2D, Screens->Gui ScreenStack + Game SceneManager, Input->Windowing,
-Effects->Particles, Time->Windowing.GameClock). See [`ROADMAP.md`](ROADMAP.md), "The post-MonoGame pivot".
+**5.x line (the engine, no longer experimental):** the 8 custom-stack packages `Gpu`, `Windowing`, `Render2D`,
+`Render3D`, `Gui`, `Audio`, `Particles`, `Game` (the `-experimental` suffix was dropped at `5.31.0`) **plus**
+the 14 graduated foundation packages all share `<KhaozEngine5xVersion>` = `5.46.0`. The stack packages replace
+the legacy 4.x MonoGame rendering/UI/input/audio/screens/effects/time packages (UI->Gui, Graphics->Render2D,
+Screens->Gui ScreenStack + Game SceneManager, Input->Windowing, Effects->Particles, Time->Windowing.GameClock).
+See [`ROADMAP.md`](ROADMAP.md), "The post-MonoGame pivot".
 
 **Hardpoint is fully migrated to the 5.x stack** (the proof a game can run 100% MonoGame-free). It pins the 5.x
 packages at `5.38.0` (`Windowing`/`Render3D`/`Render2D`/`Gui`/`Particles`/`Audio`/`Game`, `Gpu` transitive) and
@@ -193,8 +205,8 @@ packages now come from 5.x:
 ## How to refresh this file
 
 ```sh
-# engine version (source of truth)
-grep -i '<Version>' ~/KhaozEngine/Directory.Build.props
+# engine version (source of truth) - the 5.x line is the engine; 4.x is legacy-MonoGame-only
+grep -iE '<KhaozEngine5xVersion>|<Version>' ~/KhaozEngine/Directory.Build.props
 
 # what each consumer pins
 for d in ~/Hardpoint ~/Nullwake ~/SpaceGame; do
@@ -207,11 +219,12 @@ done
 After editing, run `./scripts/check-doc-versions.sh` (CI runs it too) to confirm the engine-version line
 still matches `Directory.Build.props`.
 
-_Last verified: 2026-06-16. Engine on two lines: 4.x `<Version>` = **4.12.0** (4.12.0 made `Collision` +
-`Netcode` MonoGame-free), 5.x `<KhaozEngine5xVersion>` = **5.38.0** (Gpu/Windowing/Render2D/Render3D/Gui/Audio/
-Particles/Game). **Hardpoint is fully migrated to the 5.x stack** (pins 5.38.0, uses only the MonoGame-free
-foundation off the 4.x line). **Nullwake and SpaceGame remain on the 4.x MonoGame stack** (their 5.x ports are
-the remaining migration work; SpaceGame still pins 4.9.0, Nullwake 4.0.0 - neither has adopted the de-MonoGamed
-Collision/Netcode yet). The 10 legacy MonoGame packages (UI/Graphics/Screens/Sprites/Input/Effects/Time, plus
-the now-mg-free Collision/Netcode) get deleted once Nullwake + SpaceGame are off them, at which point the
-foundation packages merge into a single unified version line._
+_Last verified: 2026-06-17. The 5.x line `<KhaozEngine5xVersion>` = **5.46.0** is the engine: the 8 custom-stack
+packages plus the 14 foundation packages that graduated onto it at 5.46.0 (audit P1#9). The legacy 4.x line
+`<Version>` = **4.12.0** is frozen-ish and now carries **only** the 7 genuinely-MonoGame packages
+(Effects/Graphics/Input/Screens/Sprites/Time/UI). **Hardpoint** is fully migrated to the 5.x stack (pins 5.38.0
+stack + 4.12.0 foundation — both lagging the current release; adopts 5.46.0 on its own schedule). **Nullwake**
+is migrating on branch `migrate-5x` (its temp main) and pins **5.46.0** there, fully off MonoGame and 5.x-only;
+the matrix rows above still show its pre-migration main and update when `migrate-5x` merges. **SpaceGame**
+remains on the 4.x MonoGame stack (pins 4.9.0; its 5.x port is the remaining migration work). The 7 legacy
+MonoGame packages get deleted once SpaceGame is off them, at which point the 4.x line — and MonoGame — is gone._

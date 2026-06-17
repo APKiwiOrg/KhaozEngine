@@ -1,8 +1,28 @@
 # Changelog
 
-All notable changes to KhaozEngine. The 4.x line shares one version (`Directory.Build.props` `<Version>`); the
-5.x custom-stack (MonoGame-free) engine packages share a second (`<KhaozEngine5xVersion>`). See the post-MonoGame
-plan in `docs/ROADMAP.md`.
+All notable changes to KhaozEngine. The 5.x line `<KhaozEngine5xVersion>` is the engine (custom MonoGame-free
+stack + the graduated foundation packages); the legacy 4.x line `<Version>` carries only the genuinely-MonoGame
+packages. Both versions live in `Directory.Build.props`. See the post-MonoGame plan in `docs/ROADMAP.md`.
+
+## 5.46.0 (custom 5.x line)
+
+**The MonoGame-free foundation packages graduated from the 4.x line onto the 5.x line, so a 5.x game pins only
+5.x packages** (audit P1#9). 14 packages move from `<Version>` (`4.12.0`) to `<KhaozEngine5xVersion>` (`5.46.0`):
+`Ecs`, `Serialization`, `Content`, `Diagnostics`, `App`, `Localization`, `Persistence`, `Pooling`, `Platform`,
+`Updates`, `Collision`, `Netcode`, `Netcode.Abstractions`, `Netcode.LiteNetLib`. The 5.x line is now the 8
+custom-stack packages + these 14 = 22 packages, all at `5.46.0`.
+
+- **Non-breaking re-version.** Same assemblies, namespaces, and public API — only the package version changes. A
+  consumer adopts by swapping `Version="4.12.0"` to `Version="5.46.0"` on those `<PackageReference>`s; no code
+  change. The old `4.12.0` foundation nupkgs remain in the feed (cumulative pack), so a consumer that hasn't
+  bumped (Hardpoint, SpaceGame) keeps resolving its pin unchanged.
+- **The 4.x line is now legacy-only**, carrying just the genuinely-MonoGame packages
+  (`Effects`/`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`), consumed by the still-4.x SpaceGame until it
+  migrates. `<Version>` stays `4.12.0` (frozen-ish); these packages and the 4.x line are deleted with MonoGame
+  once SpaceGame is off them.
+- **`scripts/check-doc-versions.sh` now checks the 5.x line** (`<KhaozEngine5xVersion>`). The 4.x `<Version>` is
+  no longer the "current engine version" and is exempt like a consumer pin.
+- No functional/runtime change; existing tests unaffected.
 
 ## 4.12.0 (4.x line)
 

@@ -61,89 +61,67 @@ lines move independently; both set in `Directory.Build.props`. The doc-version g
 > engine `CircleCollision` + `SpatialHashGrid` and confirm the hash stays `17709480852979803671`. `Updates` is
 > determinism-neutral (never touches sim/RNG), so it carries no hash gate.
 
-**5.x line (the engine, no longer experimental):** the 8 custom-stack packages `Gpu`, `Windowing`, `Render2D`,
-`Render3D`, `Gui`, `Audio`, `Particles`, `Game` (the `-experimental` suffix was dropped at `5.31.0`) **plus**
-the 14 graduated foundation packages all share `<KhaozEngine5xVersion>` = `5.46.0`. The stack packages replace
+**5.x line (the engine, no longer experimental):** the custom-stack packages `Gpu`, `Windowing`, `Render2D`,
+`Render3D`, `Gui`, `Audio`, `Particles`, `Game`, `Game.Render3D` (the `-experimental` suffix was dropped at
+`5.31.0`) **plus** the 14 graduated foundation packages **plus** the four umbrella metapackages all share
+`<KhaozEngine5xVersion>`. The stack packages replace
 the legacy 4.x MonoGame rendering/UI/input/audio/screens/effects/time packages (UI->Gui, Graphics->Render2D,
 Screens->Gui ScreenStack + Game SceneManager, Input->Windowing, Effects->Particles, Time->Windowing.GameClock).
 See [`ROADMAP.md`](ROADMAP.md), "The post-MonoGame pivot".
 
-**Hardpoint is fully migrated to the 5.x stack** (the proof a game can run 100% MonoGame-free). It pins the 5.x
-packages at `5.38.0` (`Windowing`/`Render3D`/`Render2D`/`Gui`/`Particles`/`Audio`/`Game`, `Gpu` transitive) and
-uses only the MonoGame-free FOUNDATION packages off the 4.x line (`Ecs`/`Content`/`Diagnostics`/`App`/
-`Localization`/`Persistence` at `4.12.0`). It uses NONE of the legacy MonoGame packages anymore. **Nullwake and
-SpaceGame are still on the 4.x MonoGame stack** (not yet migrated); their full ports onto 5.x are the remaining
-"migrate to 5.x" work. The matrices below track the 4.x MonoGame packages, so Hardpoint's legacy-package columns
-now read `-` (replaced by 5.x) - see its row.
+**Both 5.x games now reference the engine through an umbrella metapackage** (one `<PackageReference>` instead
+of a dozen). **SpaceGame** is the lone holdout still on the 4.x MonoGame stack.
 
-## Version matrix
+## Metapackages (the one-line entry points, 5.49.0 + 5.50.0)
 
-`-` = package not referenced directly by that project. `Time` is pulled in transitively by
-`Screens` 2.2.0+; consumers vendor `KhaozEngine.Time` even without a direct reference. `Serialization`
-(4.0.0+) is transitive via `Content`/`Persistence`/`Ecs`, so it shows `-` for consumers that don't
-reference it directly (Nullwake does reference it directly for `JsonDefaults`).
+Code-free NuGet metapackages, each a curated dependency group over the granular packages (which still exist for
+fine-grained use - a wire-contract project references just `Netcode.Abstractions`, etc.):
 
-| Project   | Project file                         | Input | Screens | UI    | Ecs   | Content | Diagnostics | Time  | App   | Localization | Persistence | Audio | Effects | Graphics | Sprites | Serialization | Platform | Collision | Pooling | Updates | Netcode | Netcode.LiteNetLib | Netcode.Abstractions |
-|-----------|--------------------------------------|-------|---------|-------|-------|---------|-------------|-------|-------|--------------|-------------|-------|---------|----------|---------|---------------|----------|-----------|---------|---------|---------|--------------------|--------------------|
-| Hardpoint | `Hardpoint/Hardpoint.Core` (5.x) | -     | -       | -     | 4.12.0 | 4.12.0  | 4.12.0      | -     | 4.12.0 | 4.12.0       | 4.12.0      | -     | -       | -        | -       | -             | -        | -         | -       | -       | - | - | - |
-| Nullwake  | `Nullwake/Nullwake.Core`             | 4.0.0 | 4.0.0   | 4.0.0 | -     | 4.0.0   | 4.0.0       | 4.0.0 | 4.0.0 | 4.0.0        | 4.0.0       | 4.0.0 | 4.0.0   | 4.0.0    | -       | 4.0.0         | -        | -         | -       | -       | - | - | - |
-| SpaceGame | `SpaceGame/SpaceGame.Core`           | 4.9.0 | 4.9.0   | 4.9.0 | 4.9.0 | 4.9.0   | 4.9.0       | -     | 4.9.0 | 4.9.0        | 4.9.0       | 4.9.0 | -       | 4.9.0    | -       | -             | 4.9.0    | 4.9.0     | 4.9.0   | 4.9.0   | 4.9.0 | - | 4.9.0 |
+| Metapackage | Pulls in | For |
+|---|---|---|
+| `KhaozEngine.Game2D` | 2D runtime (Windowing/Render2D/Gui/Audio/Particles) + `Game` (the Render3D-free loop framework) + `Foundation` | a desktop 2D game |
+| `KhaozEngine.Game3D` | `Game2D` + `Render3D` + `Game.Render3D` (the 3D scene bridge: GameApp3D/IGameScene3D/SceneManager.Draw3D) | a desktop 3D game |
+| `KhaozEngine.Server` | `Foundation` + netcode (`Netcode`/`.Abstractions`/`.LiteNetLib`) | a headless sim server (no GPU) |
+| `KhaozEngine.Foundation` | the GPU-free foundation (App/Content/Diagnostics/Ecs/Localization/Persistence/Serialization/Pooling/Collision/Platform/Updates) | a gameplay-logic library (no renderer) |
 
-## Adoption matrix
+## Consumer matrix
 
-Which packages each consumer pulls in. `✓` = direct `<PackageReference>`, `-` = not used,
-`(transitive)` = vendored via `Screens` 2.2.0+ but no direct reference and (for `Time`) no
-scaled-dt usage.
+| Consumer | Project(s) | References | Version |
+|---|---|---|---|
+| **Hardpoint** (5.x, 3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic) | **5.50.0** |
+| **Nullwake** (5.x, 2D) | `Nullwake.Core` | `KhaozEngine.Game2D` | **5.50.0** |
+| **SpaceGame** (4.x MonoGame) | `SpaceGame.Core` | granular 4.x packages (Input/Screens/UI/Graphics + foundation + netcode) | 4.9.0 |
 
-| Consumer  | Input | Screens | UI | Ecs | Content | Diagnostics |    Time      | App | Localization | Persistence | Audio | Effects | Graphics | Sprites |  Serialization  | Platform | Collision | Pooling | Updates | Netcode | Netcode.LiteNetLib | Netcode.Abstractions |
-|-----------|:-----:|:-------:|:--:|:---:|:-------:|:-----------:|:------------:|:---:|:------------:|:-----------:|:-----:|:-------:|:--------:|:-------:|:---------------:|:--------:|:---------:|:-------:|:-------:|:-------:|:------------------:|:------------------:|
-| Hardpoint (5.x) | - | - | - |  ✓  |    ✓    |      ✓      |      -       |  ✓  |      ✓       |      ✓      |   -   |    -    |    -     |    -    |        -        |    -     |     -     |    -    |    -    | - | - | - |
-| Nullwake  |   ✓   |    ✓    | ✓  |  -  |    ✓    |      ✓      |      ✓       |  ✓  |      ✓       |      ✓      |   ✓   |    ✓    |    ✓     |    -    |        ✓        |    -     |     -     |    -    |    -    | - | - | - |
-| SpaceGame |   ✓   |    ✓    | ✓  |  ✓  |    ✓    |      ✓      | (transitive) |  ✓  |      ✓       |      ✓      |   ✓   |    -    |    ✓     |    -    |  (transitive)   |    ✓     |     ✓     |    ✓    |    ✓    | ✓ | - | ✓ |
+Both games drive their own `AppWindow.Run` loop today (neither uses the `GameApp`/`GameApp3D` facade yet);
+Hardpoint uses the `SceneManager` + `IGameScene3D` scene stack, Nullwake the `Gui.ScreenStack`.
 
 ## Notes (current state per consumer)
 
-### Hardpoint - MIGRATED to the 5.x custom stack (MonoGame-free)
+### Hardpoint - 5.x, full-3D (on `KhaozEngine.Game3D` 5.50.0)
 
-Hardpoint was rebuilt as a full-3D iso tower-defense entirely on the 5.x stack; it pins the 5.x packages at
-`5.38.0` and uses zero legacy MonoGame packages. The rendering/UI/input/audio that used to come from the 4.x
-packages now come from 5.x:
+A full-3D iso tower-defense entirely on the 5.x stack, zero legacy MonoGame packages. Two projects:
 
-- **3D + 2D rendering:** `Render3D` (iso board, glTF/procedural meshes, per-mesh albedo textures for the dirt
-  floor, lighting/materials, debug draw, billboards, `IsoCameraController` zoom/pan) + `Render2D` (the HUD batch).
-  Replaces the old `Graphics`/`Sprites`/`UI`.
-- **Windowing/input:** `Windowing` (`AppWindow` on Silk.NET, `GameClock`, `InputState`/`Pointer`,
-  `DesignViewport`). Replaces `Input`/`Time`.
-- **UI + screens:** `Gui` `GuiSurface` (immediate-mode HUD/menus, hover-enter for UI sounds) + `Game`
-  `SceneManager`/`GameScene` (Title/Match/Pause/GameOver scene stack). Replaces `UI`/`Screens`.
-- **Audio:** `Audio` (`AudioSystem` SFX mixer + positional one-shots + `WavSynth` placeholders) drives combat
-  + UI sounds. Replaces the old 4.x `Audio`.
-- **Effects:** `Particles` (`ParticleSystem`) drives muzzle/hit/death bursts via the game-side `CombatVfx`
-  entity-diff. Replaces `Effects`.
-- **Foundation (4.x line, MonoGame-free):** still uses `Ecs` (the ECS the gameplay runs on), `Content`
-  (build-time JSON schema validation), `Diagnostics` (the `Log` service + `CrashHandler`), `App`
-  (`AppDataPaths`/`BuildMetadata`), `Localization` (`LocalizationManager`), `Persistence`
-  (`SettingsManager<CampaignSaveData>` campaign saves) - all at `4.12.0`.
+- **`Hardpoint.Game` (the head)** references one package, **`KhaozEngine.Game3D`**, which bundles the 3D
+  renderer (`Render3D`: iso board, glTF/procedural meshes, per-mesh albedo textures, lighting/materials, debug
+  draw, billboards, `IsoCameraController`), the 2D HUD (`Render2D`), windowing/input (`Windowing`), UI
+  (`Gui.GuiSurface`), audio (`Audio` SFX + positional), particles (`Particles` via the `CombatVfx` entity-diff),
+  the `Game` scene framework, and the `Game.Render3D` 3D-scene bridge. It drives its own `AppWindow.Run` loop
+  with a `SceneManager` stack (Title/Match/Pause/GameOver); `MatchScene` implements `IGameScene3D` and the loop
+  calls the `SceneManager.Draw3D` extension to render the board behind every screen.
+- **`Hardpoint.Core` (gameplay logic)** references one package, **`KhaozEngine.Foundation`** - the GPU-free
+  foundation (Ecs for the sim, Content for build-time JSON schema validation, Diagnostics `Log`/`CrashHandler`,
+  App `AppDataPaths`/`BuildMetadata`, Localization, Persistence `SettingsManager<CampaignSaveData>`). A logic
+  library deliberately pulls no renderer.
 
-### Nullwake - on 4.0.0
+### Nullwake - 5.x, 2D (on `KhaozEngine.Game2D` 5.50.0)
 
-- **Logging:** game-side `GameLogger` replaced by engine `Log` + `CrashHandler` (configured via
-  `LogBootstrap`). Also uses `AppDataPaths`, `ServiceLocator`, `BuildMetadata`.
-- **Persistence:** `SaveEncoder` + `AtomicJsonWriter`; saves go through its own `LocalSaveSystem`, not
-  `SettingsManager`.
-- **UI / Graphics:** both skill-tree screens run on `PannableCanvas` (replacing hand-rolled `_cameraOffset`
-  math); `EnableZoom = false` keeps nodes in the sharp screen-space batch (a zoom matrix would blur
-  SpriteFont glyphs). `DisplayManager` + `DisplaySettings` own desktop window config + the min-size floor.
-- **Serialization (direct ref):** `JsonDefaults.TolerantRead` in `ConfigLoader`, `IndentedWrite` in
-  `LocalSaveSystem`.
-- **Audio / Effects:** `AudioSystem` (random rotation via `PlayRandomTrack`) and `Effects.ParticleSystem`.
-- **Content is build-time only:** referenced for its MSBuild schema-validation target (validates
-  `Data/*.json` against `Data/schemas/`, 10+ schemas). Nullwake uses its own `ConfigLoader`, so the
-  package has no runtime/code use - a legitimate build-time-only reference.
-- **Not adopted:** `Camera2D` for the mining view - `OreField.RefToScreen` is a non-uniform
-  fit-into-a-sub-rectangle projection, incompatible with `Camera2D`'s uniform full-viewport matrix
-  (`PannableCanvas` does drive a `Camera2D` internally, but only over the skill-tree node space). `Ecs`
-  not yet adopted - a `DeterministicRng` swap (off `GameRng`) is a planned follow-up. `Sprites` unused.
+Fully migrated off MonoGame (the migration landed on Nullwake `main`). `Nullwake.Core` references one package,
+**`KhaozEngine.Game2D`** (the 2D runtime + the Render3D-free `Game` loop framework + the foundation). It drives
+its own `AppWindow.Run` loop with a `Gui.ScreenStack` of 20 screens, a `DesignViewport`/`AdaptiveViewport`,
+`GameClock` + `TimeSkip` for offline catch-up, `AudioSystem`, and a 2D `Particles` system; saves go through its
+own `LocalSaveSystem` (`SaveEncoder` + `AtomicJsonWriter`). The Android/iOS heads are parked until a 5.x
+mobile-windowing engine project. (Still game-local and not yet converged onto the engine: the ~9 Gui widgets it
+duplicates from `KhaozEngine.Gui`.)
 
 ### SpaceGame - on 4.9.0
 
@@ -219,12 +197,11 @@ done
 After editing, run `./scripts/check-doc-versions.sh` (CI runs it too) to confirm the engine-version line
 still matches `Directory.Build.props`.
 
-_Last verified: 2026-06-17. The 5.x line `<KhaozEngine5xVersion>` = **5.46.0** is the engine: the 8 custom-stack
-packages plus the 14 foundation packages that graduated onto it at 5.46.0 (audit P1#9). The legacy 4.x line
-`<Version>` = **4.12.0** is frozen-ish and now carries **only** the 7 genuinely-MonoGame packages
-(Effects/Graphics/Input/Screens/Sprites/Time/UI). **Hardpoint** is fully migrated to the 5.x stack (pins 5.38.0
-stack + 4.12.0 foundation — both lagging the current release; adopts 5.46.0 on its own schedule). **Nullwake**
-is migrating on branch `migrate-5x` (its temp main) and pins **5.46.0** there, fully off MonoGame and 5.x-only;
-the matrix rows above still show its pre-migration main and update when `migrate-5x` merges. **SpaceGame**
-remains on the 4.x MonoGame stack (pins 4.9.0; its 5.x port is the remaining migration work). The 7 legacy
-MonoGame packages get deleted once SpaceGame is off them, at which point the 4.x line — and MonoGame — is gone._
+_Last verified: 2026-06-17. The 5.x line `<KhaozEngine5xVersion>` = **5.50.0** is the engine: the custom-stack
+packages + the graduated foundation + the four umbrella metapackages (Game2D/Game3D/Server/Foundation). The
+legacy 4.x line `<Version>` = **4.12.0** is frozen-ish and carries **only** the 7 genuinely-MonoGame packages
+(Effects/Graphics/Input/Screens/Sprites/Time/UI). **Hardpoint** (3D) is on **5.50.0** via `Game3D` + `Foundation`,
+**Nullwake** (2D) is on **5.50.0** via `Game2D` (migration merged to main) - both fully off MonoGame and
+referencing the engine in one line. **SpaceGame** is the lone 4.x MonoGame holdout (pins 4.9.0; its 5.x port is
+the remaining migration work). The 7 legacy MonoGame packages get deleted once SpaceGame is off them, at which
+point the 4.x line — and MonoGame — is gone._

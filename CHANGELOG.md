@@ -23,6 +23,18 @@ remaining legacy-MonoGame surface.
   hash). The byte-identical sim math keeps SpaceGame's `17709480852979803671` gate stable when it adopts.
 - All other 4.x packages are unchanged; they share this version bump as usual.
 
+## 5.45.1 (custom 5.x line)
+
+Fix: `Render2D.SpriteBatch` corrupted any frame that flushed more than once. The batch reused a single persistent
+vertex buffer starting at byte 0 on every flush, but a frame flushes repeatedly whenever `SetScissor`/`ClearScissor`
+is used (e.g. scrollable panels): a later flush overwrote the vertices an earlier, already-recorded `Draw` still
+referenced, so the GPU read the wrong geometry. Symptoms were garbled/misplaced/clipped content in scissor-clipped
+UI (the single-flush main scene was unaffected, which is why goldens missed it).
+
+- Each flush within a frame now uses its own vertex buffer from a small pool (`_flushIndex` resets per `NewFrame`);
+  buffers persist across frames and only grow, so no extra per-frame allocation. No public API change.
+- New GPU regression test: a draw before `SetScissor` must not corrupt, and the scissor must clip the asked band.
+
 ## 5.45.0 (custom 5.x line)
 
 Sixth engine-first gap-fill for porting 2D games (Nullwake) to the 5.x stack: open a fixed-design window large

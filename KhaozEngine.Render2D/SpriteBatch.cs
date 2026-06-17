@@ -40,8 +40,13 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
         readonly QuadRunBuilder<V> _runs = new();
 
         const uint VertexSizeBytes = 32;       // V = Pos(8) + Uv(8) + Color(16)
-        IGpuBuffer? _vb;                        // one persistent, growable vertex buffer
-        uint _vbCapacityBytes;                  // current capacity in bytes
+        // One growable vertex buffer PER flush-within-a-frame. A frame can flush several times (every
+        // SetScissor/ClearScissor forces one), and a buffer referenced by an already-recorded Draw must not be
+        // overwritten before the GPU runs that Draw — so each flush gets its own buffer instead of reusing one at
+        // offset 0. Buffers persist across frames (only grow); _flushIndex resets each NewFrame.
+        readonly List<IGpuBuffer> _vbs = new();
+        readonly List<uint> _vbCaps = new();
+        int _flushIndex;
 
         IGpuCommandList _cl = null!;
         int _vw, _vh;
@@ -138,7 +143,7 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
         // Called by the host/snapshot each frame before the user's draw callback.
         internal void NewFrame(IGpuCommandList cl, int viewportW, int viewportH)
         {
-            _cl = cl; _vw = viewportW; _vh = viewportH;
+            _cl = cl; _vw = viewportW; _vh = viewportH; _flushIndex = 0;
         }
 
         /// <summary>Begin a batch in world space through <paramref name="camera"/>.</summary>
@@ -242,7 +247,8 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
                 totalCount += verts.Count;
             if (totalCount == 0) { _runs.Reset(); return; }
 
-            EnsureVertexCapacity((uint)totalCount * VertexSizeBytes);
+            // A dedicated buffer for THIS flush so a prior flush's pending Draw isn't overwritten.
+            IGpuBuffer vb = AcquireFlushBuffer((uint)totalCount * VertexSizeBytes);
 
             _cl.SetPipeline(_pipeline);
             uint byteOffset = 0;
@@ -252,14 +258,14 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
                 if (verts.Count == 0) continue;
                 var tex = (IGpuTexture)key;
                 // Upload directly from the run's backing List<V> — no ToArray() copy.
-                _gd.UpdateBuffer(_vb!, byteOffset, (ReadOnlySpan<V>)CollectionsMarshal.AsSpan(verts));
+                _gd.UpdateBuffer(vb, byteOffset, (ReadOnlySpan<V>)CollectionsMarshal.AsSpan(verts));
                 if (!_sets.TryGetValue(tex, out var set))
                 {
                     set = f.CreateResourceSet(new GpuResourceSetDescription(_layout, tex, _sampler));
                     _sets[tex] = set;
                 }
                 _cl.SetGraphicsResourceSet(0, set);
-                _cl.SetVertexBuffer(0, _vb!);
+                _cl.SetVertexBuffer(0, vb);
                 // Draw(vertexCount, instanceCount, vertexStart, instanceStart): the run's offset is vertexStart.
                 _cl.Draw((uint)verts.Count, 1, vertexStart, 0);
                 byteOffset += (uint)verts.Count * VertexSizeBytes;
@@ -268,13 +274,20 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
             _runs.Reset();
         }
 
-        void EnsureVertexCapacity(uint bytesNeeded)
+        // The vertex buffer for the current flush index this frame, grown to fit. Each flush in a frame gets its own
+        // buffer (see _vbs); they persist across frames and only grow.
+        IGpuBuffer AcquireFlushBuffer(uint bytesNeeded)
         {
-            if (_vb != null && _vbCapacityBytes >= bytesNeeded) return;
-            _vb?.Dispose();
-            _vbCapacityBytes = Math.Max(bytesNeeded, _vbCapacityBytes == 0 ? 4096u : _vbCapacityBytes * 2);
-            _vb = _gd.Factory.CreateBuffer(
-                new GpuBufferDescription(_vbCapacityBytes, GpuBufferUsage.VertexBuffer));
+            int i = _flushIndex++;
+            while (_vbs.Count <= i) { _vbs.Add(null!); _vbCaps.Add(0); }
+            if (_vbs[i] == null || _vbCaps[i] < bytesNeeded)
+            {
+                _vbs[i]?.Dispose();
+                uint cap = Math.Max(bytesNeeded, _vbCaps[i] == 0 ? 4096u : _vbCaps[i] * 2);
+                _vbs[i] = _gd.Factory.CreateBuffer(new GpuBufferDescription(cap, GpuBufferUsage.VertexBuffer));
+                _vbCaps[i] = cap;
+            }
+            return _vbs[i];
         }
 
         Vector2 Clip(float x, float y)
@@ -287,7 +300,7 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
 
         public void Dispose()
         {
-            _vb?.Dispose();
+            foreach (var vb in _vbs) vb?.Dispose();
             foreach (var s in _sets.Values) s.Dispose();
             _pipeline.Dispose(); _layout.Dispose();
             _shaders.Dispose();

@@ -46,7 +46,7 @@ via AOT, and ~21 existing C# packages + 3 games would be thrown away by a rewrit
 
 **Every subsystem needed to drop MonoGame is now proven on the custom stack — no feasibility unknowns
 remain; the rest is productization + porting.** Shipped 5.x packages (shared version, currently
-`5.45.0`):
+`5.45.1`):
 
 | Subsystem | Status |
 |---|---|

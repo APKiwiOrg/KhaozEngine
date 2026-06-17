@@ -23,6 +23,24 @@ remaining legacy-MonoGame surface.
   hash). The byte-identical sim math keeps SpaceGame's `17709480852979803671` gate stable when it adopts.
 - All other 4.x packages are unchanged; they share this version bump as usual.
 
+## 5.45.0 (custom 5.x line)
+
+Sixth engine-first gap-fill for porting 2D games (Nullwake) to the 5.x stack: open a fixed-design window large
+enough to read on a desktop monitor. A small-tall (mobile-portrait) design opened at its design size renders the
+whole UI at life-size, so its intentionally-small text is tiny on a desktop display.
+
+- **`AppWindow.Scaled(title, designWidth, designHeight, screenFraction = 0.9f, maxScale = 2f)`** - a factory that
+  opens the window sized up to fill the display: the largest multiple of the design that preserves its aspect and
+  fits within `screenFraction` of the primary monitor's work area, clamped to `[1, maxScale]`. Pair with a
+  `DesignViewport` (Fit) so the whole UI (and text) scales uniformly; with `Render2D` 5.44.0 font oversampling the
+  upscaled text stays crisp. Never opens smaller than the design size.
+- **`AppWindow.FitToScreen(designW, designH, screenW, screenH, screenFraction, maxScale)`** - the pure sizing policy
+  (no monitor/GPU access), returned as a `(Width, Height)`. Falls back to the design size when the screen size is
+  unknown (`<= 0`). 5 headless tests (grow-to-fill + aspect preserved, never-shrink on a height-constrained screen,
+  maxScale cap, unknown-screen fallback, landscape width-bound).
+- **`AppWindow.PrimaryScreenSize()`** - the primary monitor size in window coordinates (or `(0, 0)` headless), via
+  the Silk monitor API.
+
 ## 5.44.0 (custom 5.x line)
 
 Fifth engine-first gap-fill for porting 2D games (Nullwake) to the 5.x stack: crisp supersampled text. Small UI

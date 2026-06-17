@@ -8,6 +8,8 @@
   <Project Path="KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
   <Project Path="KhaozEngine.Effects/KhaozEngine.Effects.csproj" />
   <Project Path="KhaozEngine.Game/KhaozEngine.Game.csproj" />
+  <Project Path="KhaozEngine.Game.Render3D/KhaozEngine.Game.Render3D.csproj" />
+  <Project Path="KhaozEngine.Foundation/KhaozEngine.Foundation.csproj" />
   <Project Path="KhaozEngine.Game2D/KhaozEngine.Game2D.csproj" />
   <Project Path="KhaozEngine.Game3D/KhaozEngine.Game3D.csproj" />
   <Project Path="KhaozEngine.Server/KhaozEngine.Server.csproj" />

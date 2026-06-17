@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using KhaozEngine.Render2D;
-using KhaozEngine.Render3D;
 using KhaozEngine.Windowing;
 
 namespace KhaozEngine.Game
@@ -100,15 +99,8 @@ namespace KhaozEngine.Game
                 _pending.Dequeue()();
         }
 
-        /// <summary>Draw the visible scenes bottom-to-top (3D). Same visibility set as <see cref="Draw2D"/>. No-op if empty.</summary>
-        public void Draw3D(Scene3D scene)
-        {
-            int from = FirstVisibleIndex();
-            for (int i = from; i < _scenes.Count; i++)
-                _scenes[i].OnDraw3D(scene);
-        }
-
-        /// <summary>Draw the visible scenes bottom-to-top (2D). Same visibility set as <see cref="Draw3D"/>. No-op if empty.</summary>
+        /// <summary>Draw the visible scenes bottom-to-top (2D). No-op if empty. (For a 3D world pass, the
+        /// <c>KhaozEngine.Game.Render3D</c> bridge adds a <c>Draw3D</c> extension over the same visible set.)</summary>
         public void Draw2D(SpriteBatch batch)
         {
             int from = FirstVisibleIndex();
@@ -128,9 +120,10 @@ namespace KhaozEngine.Game
         /// <summary>
         /// The bottom-most visible scene index: start at the top and descend while that scene draws what is below
         /// it and a scene exists below. Returns <see cref="Count"/> (a past-the-end index, so the draw loops are a
-        /// no-op) when the stack is empty. The headless test reads this to verify visibility without a GPU.
+        /// no-op) when the stack is empty. Public so the <c>KhaozEngine.Game.Render3D</c> bridge's <c>Draw3D</c>
+        /// extension can draw the same visible set, and so a headless test can verify visibility without a GPU.
         /// </summary>
-        internal int FirstVisibleIndex()
+        public int FirstVisibleIndex()
         {
             if (_scenes.Count == 0) return 0; // == Count; draw loops run zero iterations.
             int i = _scenes.Count - 1;

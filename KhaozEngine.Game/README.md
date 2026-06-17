@@ -1,6 +1,6 @@
-# KhaozEngine.Game (experimental, 5.x)
+# KhaozEngine.Game (5.x)
 
-A game-loop facade over the MonoGame-free 5.x stack. `GameApp` is an abstract base that owns the
+A 2D game-loop facade over the MonoGame-free 5.x stack. `GameApp` is an abstract base that owns the
 per-frame composition + ordering so a game can't get it wrong:
 
 ```
@@ -10,16 +10,18 @@ each frame:
   Viewport.Update(window size)   -> OnResize on change
   Pointer.Update(input, Viewport)
   OnUpdate(Dt)
-  if 3D: Scene.Begin(); OnDraw3D(Scene); Surface3D.Render(frame)
+  OnRenderWorld(frame)           // empty by default; a subclass renders a world here (e.g. a 3D scene)
   Surface2D.NewFrame(frame); Batch.Begin(Viewport); OnDraw2D(Batch); Batch.End()
 ```
 
-Subclass it and override `OnLoad` / `OnUpdate(dt)` / `OnDraw3D(scene)` / `OnDraw2D(batch)` /
-`OnResize(w, h)`; call `Quit()` to close. Construct with `GameAppOptions.For(title, w, h)` (set
-`Enable3D = true`, `DesignWidth/Height`, `ScaleMode`, `ClearColor` as needed).
+Subclass it and override `OnLoad` / `OnUpdate(dt)` / `OnDraw2D(batch)` / `OnResize(w, h)`; call
+`Quit()` to close. Construct with `GameAppOptions.For(title, w, h)` (set `DesignWidth/Height`,
+`ScaleMode`, `ClearColor` as needed).
 
-It sits above the renderers (`KhaozEngine.Windowing` + `Render2D` + `Render3D` + `Gui`). It is the
-optional convenience layer: a game with special needs can still drive `AppWindow.Run` directly.
+It sits above `KhaozEngine.Windowing` + `Render2D` + `Gui` - **no 3D renderer dependency**, so a 2D
+game pulls no Render3D. For a 3D world pass, use `KhaozEngine.Game.Render3D` (`GameApp3D`, plus the
+`IGameScene3D` scene hook and the `SceneManager.Draw3D` extension). It is the optional convenience
+layer: a game with special needs can still drive `AppWindow.Run` directly.
 
 ```csharp
 sealed class Demo : GameApp

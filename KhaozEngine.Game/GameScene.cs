@@ -1,5 +1,4 @@
 using KhaozEngine.Render2D;
-using KhaozEngine.Render3D;
 
 namespace KhaozEngine.Game
 {
@@ -40,9 +39,6 @@ namespace KhaozEngine.Game
 
         /// <summary>Per-frame simulation step. Only called when this scene is "live" (see manager update gating).</summary>
         public virtual void OnUpdate(float dt) { }
-
-        /// <summary>Submit 3D instances. Only called when the scene is visible.</summary>
-        public virtual void OnDraw3D(Scene3D scene) { }
 
         /// <summary>Draw the HUD / 2D UI. Only called when the scene is visible.</summary>
         public virtual void OnDraw2D(SpriteBatch batch) { }

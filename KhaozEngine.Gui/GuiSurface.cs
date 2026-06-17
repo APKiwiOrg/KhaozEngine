@@ -15,6 +15,17 @@ namespace KhaozEngine.Gui
     /// <see cref="GuiDraw"/> helpers; the caller owns <c>batch.Begin(viewport)</c>/<c>End()</c> so the surface
     /// composes with the design viewport for free. Pass a <c>null</c> batch to <see cref="Begin"/> for headless
     /// interaction tests (return values + capture still compute; nothing draws).
+    /// <para>
+    /// <b>Immediate vs retained:</b> use <see cref="GuiSurface"/> for HUDs/menus authored fresh each frame inside a
+    /// <c>window.Run</c> loop - no instances to keep, one call site per widget, styled by <see cref="GuiStyle"/>.
+    /// Use the retained widgets (<see cref="Button"/>, <see cref="Toggle"/>, <see cref="Slider"/>,
+    /// <see cref="Dropdown"/>, <see cref="TextInput"/>, ...) when a control owns persistent state across frames
+    /// (focus, drag, open/closed) or sits in a long-lived screen object: construct once, call <c>Update</c> then
+    /// <c>Draw</c> each frame. Both paradigms reserve their rect on the <see cref="Pointer"/> for the same
+    /// press-origin click-through gate, share the internal <see cref="GuiDraw"/> drawing, and read from
+    /// <see cref="GuiStyle"/> (retained widgets with richer palettes expose their own override colors). Don't drive
+    /// the same control through both in one frame.
+    /// </para>
     /// </summary>
     public sealed class GuiSurface
     {

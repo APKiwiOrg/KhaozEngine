@@ -31,9 +31,12 @@ namespace KhaozEngine.Gui
             Bounds = bounds; IsOn = isOn; OnChanged = onChanged;
         }
 
-        /// <summary>Hit-test against the pointer; flips on a valid tap. Returns true if the state changed.</summary>
+        /// <summary>Hit-test against the pointer; flips on a valid tap. Returns true if the state changed.
+        /// Always reserves its rect on the pointer (the click-through gate) - even when disabled - so a layer
+        /// beneath can check <see cref="Pointer.IsBlocked"/>, matching the retained <see cref="Button"/>.</summary>
         public bool Update(Pointer pointer)
         {
+            pointer.BlockRegion(Bounds);
             if (!Enabled) return false;
             if (!pointer.IsTapIn(Bounds)) return false;
             IsOn = !IsOn;

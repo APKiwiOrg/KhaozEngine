@@ -33,6 +33,7 @@ namespace KhaozEngine.Gui
         /// <summary>Hit-test against the pointer and update <see cref="Value"/>. Returns true if the value changed.</summary>
         public bool Update(Pointer pointer)
         {
+            pointer.BlockRegion(Bounds); // reserve the track for click-through, even when disabled
             if (!Enabled) { _dragging = false; return false; }
 
             // Start a drag only if the press began inside the track (press-origin invariant).

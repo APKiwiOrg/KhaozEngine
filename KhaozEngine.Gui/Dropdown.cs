@@ -56,6 +56,9 @@ namespace KhaozEngine.Gui
         public bool Update(Pointer pointer)
         {
             WasChanged = false;
+            // Reserve the trigger (closed) or the whole expanded list (open) for click-through, so a layer
+            // beneath can't be clicked through the dropdown.
+            pointer.BlockRegion(IsOpen ? FullBounds() : TriggerBounds);
             if (!IsOpen)
             {
                 if (pointer.IsTapIn(TriggerBounds)) IsOpen = true;

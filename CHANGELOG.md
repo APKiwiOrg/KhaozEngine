@@ -4,6 +4,31 @@ All notable changes to KhaozEngine. The 5.x line `<KhaozEngine5xVersion>` is the
 stack + the graduated foundation packages); the legacy 4.x line `<Version>` carries only the genuinely-MonoGame
 packages. Both versions live in `Directory.Build.props`. See the post-MonoGame plan in `docs/ROADMAP.md`.
 
+## 5.48.0 (custom 5.x line)
+
+Engine-audit cleanups (`docs/ENGINE-AUDIT-5x-2026-06-16.md`): a real mesh-loader bug fix plus three quality
+items. No behavioural change to existing scenes - the GPU goldens are pixel-identical.
+
+- **`Render3D.GltfLoader` no longer silently corrupts meshes (audit P2#11).** It welded vertices by *position
+  only* (merging away hard edges and UV seams) and cast indices to `ushort` with no bound check (silently
+  truncating any mesh past 65535 vertices). It now honours the glTF `NORMAL` attribute, welds on
+  (position, normal, uv) so hard edges and UV seams survive, and **throws** past the ushort index ceiling
+  instead of truncating (matching `MeshBuilder`). The welding/normal/overflow logic moved to a new internal
+  `MeshAssembler` that's unit-tested without needing a glTF file on disk. (No golden uses `GltfLoader`, so
+  procedural-mesh output is unchanged.)
+- **Typed `Color` and `Rect` overloads on `SpriteBatch.Draw`/`DrawString` (audit P2#12).** Destination rect and
+  color were both a bare `Vector4` and could be swapped at a call site. New `Render2D.Color` struct (RGBA float,
+  implicit to `Vector4`, `FromBytes`/`WithAlpha`/`White`/...) and typed overloads; the rect overloads reuse the
+  existing `Windowing.Rect`. The untyped `Vector4` overloads stay, so nothing breaks.
+- **Retained widgets reserve their rect, like `Button` (audit P1#6, click-through).** `Toggle`, `Slider`,
+  `Dropdown`, and `TextInput` now call `Pointer.BlockRegion` during `Update` (the open `Dropdown` reserves its
+  whole expanded list), so a layer beneath can't be clicked through them. `GuiSurface`'s docs now spell out when
+  to use the immediate vs retained paradigm. (`Button` already did this; the audit's specific Button complaint
+  was resolved earlier.)
+- **Shared `Gpu.GpuReadback.ToRgba` (audit P2#13).** The headless texture-readback (staging blit + map +
+  row-pitch de-stride) was duplicated verbatim in the Render2D and Render3D snapshot helpers; both now call the
+  one helper in `KhaozEngine.Gpu`. Pure refactor - goldens verified pixel-identical on Metal.
+
 ## 5.47.0 (custom 5.x line)
 
 `Windowing.AdaptiveViewport` - a responsive `IDesignViewport` that fills a resizable window at any aspect (promoted

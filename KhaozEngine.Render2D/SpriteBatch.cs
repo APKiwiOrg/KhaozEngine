@@ -172,6 +172,18 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
             EmitQuad(tex, new Vector2(x, y), new Vector2(x + w, y), new Vector2(x + w, y + h), new Vector2(x, y + h), srcUV, color);
         }
 
+        // Typed overloads: a Color and a destination rect can no longer be swapped at a call site (both used to
+        // be a bare Vector4). Reuses Windowing.Rect (x, y, w, h) for the rect; forwards to the untyped forms so
+        // the batch path is identical.
+        public void Draw(Texture2D tex, Vector2 position, Color color) => Draw(tex, position, (Vector4)color);
+
+        public void Draw(Texture2D tex, Windowing.Rect destRect, Color color) =>
+            Draw(tex, new Vector4(destRect.X, destRect.Y, destRect.Width, destRect.Height), (Vector4)color);
+
+        /// <summary>dest in world units; src = (u0, v0, u1, v1) in 0..1.</summary>
+        public void Draw(Texture2D tex, Windowing.Rect destRect, Vector4 srcUV, Color color) =>
+            Draw(tex, new Vector4(destRect.X, destRect.Y, destRect.Width, destRect.Height), srcUV, (Vector4)color);
+
         /// <summary>
         /// Draw a rotated quad. <paramref name="position"/> is the world point where the pivot
         /// (<paramref name="originNormalized"/>, in [0,1] of the quad) lands; <paramref name="size"/> is the
@@ -209,6 +221,10 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
             _runs.Add(key, new V { Pos = tl, Uv = uTL, Color = color }); _runs.Add(key, new V { Pos = tr, Uv = uTR, Color = color }); _runs.Add(key, new V { Pos = br, Uv = uBR, Color = color });
             _runs.Add(key, new V { Pos = tl, Uv = uTL, Color = color }); _runs.Add(key, new V { Pos = br, Uv = uBR, Color = color }); _runs.Add(key, new V { Pos = bl, Uv = uBL, Color = color });
         }
+
+        /// <summary>Draw <paramref name="text"/> with its top-left at <paramref name="position"/> (typed color).</summary>
+        public void DrawString(SpriteFont font, string text, Vector2 position, Color color) =>
+            DrawString(font, text, position, (Vector4)color);
 
         /// <summary>Draw <paramref name="text"/> with its top-left at <paramref name="position"/>.</summary>
         public void DrawString(SpriteFont font, string text, Vector2 position, Vector4 color)

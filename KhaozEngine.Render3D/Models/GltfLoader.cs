@@ -13,53 +13,33 @@ namespace KhaozEngine.Render3D
         public static GltfMesh Load(string path)
         {
             ModelRoot root = ModelRoot.Load(path);
-            var positions = new List<Vector3>();
-            var normals = new List<Vector3>();
-            var colors = new List<Vector4>();
-            var uvs = new List<Vector2>();
-            var indices = new List<ushort>();
-            var weld = new Dictionary<(long, long, long), int>();
-
-            int Vertex(Vector3 p, Vector4 color, Vector2 uv)
-            {
-                var key = ((long)MathF.Round(p.X * 1e4f), (long)MathF.Round(p.Y * 1e4f), (long)MathF.Round(p.Z * 1e4f));
-                if (weld.TryGetValue(key, out int idx)) return idx;
-                idx = positions.Count;
-                positions.Add(p); normals.Add(Vector3.Zero); colors.Add(color); uvs.Add(uv);
-                weld[key] = idx;
-                return idx;
-            }
+            var corners = new List<MeshCorner>();
 
             foreach (var mesh in root.LogicalMeshes)
             foreach (var prim in mesh.Primitives)
             {
                 var pos = prim.GetVertexAccessor("POSITION")?.AsVector3Array();
                 if (pos == null) continue;
-                // TEXCOORD_0 if present; otherwise UVs default to Vector2.Zero (SharpGLTF exposes the
-                // standard glTF attribute by name, same accessor pattern as POSITION).
+                // NORMAL / TEXCOORD_0 if present (SharpGLTF exposes the standard glTF attributes by name, same
+                // accessor pattern as POSITION). Source normals are honoured so the artist's hard edges survive;
+                // when absent, MeshAssembler computes a smooth normal from winding.
+                var srcNormals = prim.GetVertexAccessor("NORMAL")?.AsVector3Array();
                 var texcoords = prim.GetVertexAccessor("TEXCOORD_0")?.AsVector2Array();
                 Vector4 baseColor = ReadBaseColor(prim.Material);
 
+                Vector3? Norm(int i) => srcNormals != null && i < srcNormals.Count ? srcNormals[i] : (Vector3?)null;
                 Vector2 Uv(int i) => texcoords != null && i < texcoords.Count ? texcoords[i] : Vector2.Zero;
 
                 foreach (var (a, b, c) in prim.GetTriangleIndices())
                 {
-                    Vector3 p0 = pos[a], p1 = pos[b], p2 = pos[c];
-                    Vector3 faceN = Vector3.Cross(p1 - p0, p2 - p0); // area-weighted (un-normalized)
-                    int i0 = Vertex(p0, baseColor, Uv(a)), i1 = Vertex(p1, baseColor, Uv(b)), i2 = Vertex(p2, baseColor, Uv(c));
-                    normals[i0] += faceN; normals[i1] += faceN; normals[i2] += faceN;
-                    indices.Add((ushort)i0); indices.Add((ushort)i1); indices.Add((ushort)i2);
+                    corners.Add(new MeshCorner(pos[a], Norm(a), baseColor, Uv(a)));
+                    corners.Add(new MeshCorner(pos[b], Norm(b), baseColor, Uv(b)));
+                    corners.Add(new MeshCorner(pos[c], Norm(c), baseColor, Uv(c)));
                 }
             }
-            if (positions.Count == 0) throw new InvalidOperationException("glTF has no triangles: " + path);
+            if (corners.Count == 0) throw new InvalidOperationException("glTF has no triangles: " + path);
 
-            var verts = new ModelVertex[positions.Count];
-            for (int i = 0; i < positions.Count; i++)
-            {
-                Vector3 n = normals[i].LengthSquared() > 1e-12f ? Vector3.Normalize(normals[i]) : Vector3.UnitY;
-                verts[i] = new ModelVertex(positions[i], n, colors[i], uvs[i]);
-            }
-            return new GltfMesh(verts, indices.ToArray());
+            return MeshAssembler.Build(corners);
         }
 
         static Vector4 ReadBaseColor(GltfMaterial? mat)

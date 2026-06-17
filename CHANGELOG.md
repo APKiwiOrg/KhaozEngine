@@ -23,6 +23,20 @@ remaining legacy-MonoGame surface.
   hash). The byte-identical sim math keeps SpaceGame's `17709480852979803671` gate stable when it adopts.
 - All other 4.x packages are unchanged; they share this version bump as usual.
 
+## 5.47.0 (custom 5.x line)
+
+`Windowing.AdaptiveViewport` - a responsive `IDesignViewport` that fills a resizable window at any aspect (promoted
+from Nullwake, where it replaced the pillarboxed fixed-aspect viewport on desktop). (5.46.0 is reserved by a parallel
+foundation-graduation branch.)
+
+- The design **height** is fixed (vertical layout/anchors stay constant) while the design **width** tracks the
+  window's aspect ratio, with a uniform height-fit scale and **no letterbox**. Layout expressed relative to
+  `Width`/`Height` (full-width bars, Width-relative grids, centered content) fills the window edge-to-edge instead of
+  being pillarboxed. `Width` is floored at the reference width so a narrower-than-design window keeps the design's
+  minimum rather than squishing. Contrast `DesignViewport`, which preserves a fixed reference size by letterboxing.
+- Drop-in for the existing seam: drive with `Update(windowW, windowH)`, pass to `SpriteBatch.Begin(IDesignViewport)` /
+  `Pointer.Update(InputState, IDesignViewport)`. Pure math, no window/GPU dependency. 5 headless tests.
+
 ## 5.45.1 (custom 5.x line)
 
 Fix: `Render2D.SpriteBatch` corrupted any frame that flushed more than once. The batch reused a single persistent

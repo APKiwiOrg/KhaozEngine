@@ -2,8 +2,7 @@
   <PropertyGroup>
     <PackageId>KhaozEngine.Server</PackageId>
     <Version>$(KhaozEngine5xVersion)</Version>
-    <Description>Umbrella metapackage for a headless / server-side build on the KhaozEngine 5.x stack: every MonoGame-free, GPU-free foundation package (Ecs/Serialization/Content/Persistence/Diagnostics/App/Localization/Collision/Pooling/Platform/Updates) plus the networking layer (Netcode/Netcode.Abstractions/Netcode.LiteNetLib). Pulls in NO graphics, windowing, audio, or GPU, so an authoritative sim server or tool stays lean. (A contracts-only project that just needs the wire types should reference KhaozEngine.Netcode.Abstractions directly instead.) Contains no code; just dependencies.</Description>
-    <!-- Metapackage: no compiled output, just a dependency group. -->
+    <Description>Umbrella metapackage for a headless / server-side build on the KhaozEngine 5.x stack: the MonoGame-free, GPU-free Foundation (Ecs/Serialization/Content/Persistence/Diagnostics/App/Localization/Collision/Pooling/Platform/Updates) plus the networking layer (Netcode/Netcode.Abstractions/Netcode.LiteNetLib). Pulls in NO graphics, windowing, audio, or GPU, so an authoritative sim server or tool stays lean. (A contracts-only project that just needs the wire types should reference KhaozEngine.Netcode.Abstractions directly instead.) Contains no code; just dependencies.</Description>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <SuppressDependenciesWhenPacking>false</SuppressDependenciesWhenPacking>
@@ -11,17 +10,7 @@
   </PropertyGroup>
   <ItemGroup>
     <!-- GPU-free foundation -->
-    <ProjectReference Include="../KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
-    <ProjectReference Include="../KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
-    <ProjectReference Include="../KhaozEngine.Content/KhaozEngine.Content.csproj" />
-    <ProjectReference Include="../KhaozEngine.Persistence/KhaozEngine.Persistence.csproj" />
-    <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
-    <ProjectReference Include="../KhaozEngine.App/KhaozEngine.App.csproj" />
-    <ProjectReference Include="../KhaozEngine.Localization/KhaozEngine.Localization.csproj" />
-    <ProjectReference Include="../KhaozEngine.Collision/KhaozEngine.Collision.csproj" />
-    <ProjectReference Include="../KhaozEngine.Pooling/KhaozEngine.Pooling.csproj" />
-    <ProjectReference Include="../KhaozEngine.Platform/KhaozEngine.Platform.csproj" />
-    <ProjectReference Include="../KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
+    <ProjectReference Include="../KhaozEngine.Foundation/KhaozEngine.Foundation.csproj" />
     <!-- networking -->
     <ProjectReference Include="../KhaozEngine.Netcode/KhaozEngine.Netcode.csproj" />
     <ProjectReference Include="../KhaozEngine.Netcode.Abstractions/KhaozEngine.Netcode.Abstractions.csproj" />

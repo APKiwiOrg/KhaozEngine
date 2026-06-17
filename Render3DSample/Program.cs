@@ -80,7 +80,7 @@ static void WriteBmp(string path, int w, int h, byte[] rgba)
 // Windowed 3D demo on the GameApp loop facade: orbit/zoom an iso camera over a 3x3 grid of the
 // current model, toggle outline/starfield/retro/cel/palette. (The --smoke path above stays on
 // Render3DSnapshot, unchanged.)
-sealed class Render3DSampleApp : GameApp
+sealed class Render3DSampleApp : GameApp3D
 {
     MeshHandle[] _handles = Array.Empty<MeshHandle>();
     MeshHandle _texturedPlane;
@@ -119,7 +119,6 @@ sealed class Render3DSampleApp : GameApp
             Height = 720,
             ScaleMode = ScaleMode.Fit,
             ClearColor = new Vector4(0.10f, 0.12f, 0.16f, 1f),
-            Enable3D = true,
         })
     { }
 

@@ -94,10 +94,11 @@ Published to a private GitHub Packages feed on tagged releases, and packed to a 
 <!-- or the GitHub Packages feed: https://nuget.pkg.github.com/APKiwi/index.json -->
 ```
 ```xml
-<!-- One reference per game via an umbrella metapackage. Pick the bundle that fits: -->
-<PackageReference Include="KhaozEngine.Game2D" Version="5.49.0" />  <!-- desktop 2D: Windowing+Render2D+Gui+Audio+Particles+foundation -->
-<PackageReference Include="KhaozEngine.Game3D" Version="5.49.0" />  <!-- desktop 3D: Game2D + Render3D + GameApp/SceneManager -->
-<PackageReference Include="KhaozEngine.Server" Version="5.49.0" />  <!-- headless: GPU-free foundation + netcode, no graphics -->
+<!-- One reference per project via an umbrella metapackage. Pick the bundle that fits: -->
+<PackageReference Include="KhaozEngine.Game2D"     Version="5.50.0" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
+<PackageReference Include="KhaozEngine.Game3D"     Version="5.50.0" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
+<PackageReference Include="KhaozEngine.Server"     Version="5.50.0" />  <!-- headless: foundation + netcode, no graphics -->
+<PackageReference Include="KhaozEngine.Foundation" Version="5.50.0" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
 ```
 
 The metapackages have no code; they just pull in the granular packages. You can still reference those

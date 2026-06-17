@@ -2,18 +2,17 @@
   <PropertyGroup>
     <PackageId>KhaozEngine.Game3D</PackageId>
     <Version>$(KhaozEngine5xVersion)</Version>
-    <Description>Umbrella metapackage for a desktop 3D game on the KhaozEngine 5.x stack: a strict superset of KhaozEngine.Game2D plus Render3D and Game (the GameApp/SceneManager loop facade). One reference gives the full 2D + 3D + game-loop stack. No networking (Netcode) - add KhaozEngine.Netcode.LiteNetLib if you need it. Contains no code; just dependencies.</Description>
-    <!-- Metapackage: no compiled output, just a dependency group. -->
+    <Description>Umbrella metapackage for a desktop 3D game on the KhaozEngine 5.x stack: a strict superset of KhaozEngine.Game2D plus Render3D and Game.Render3D (the 3D scene integration: GameApp3D, IGameScene3D, and the SceneManager.Draw3D extension). One reference gives the full 2D + 3D + game-loop stack. No networking (Netcode) - add KhaozEngine.Netcode.LiteNetLib if you need it. Contains no code; just dependencies.</Description>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <SuppressDependenciesWhenPacking>false</SuppressDependenciesWhenPacking>
     <NoWarn>$(NoWarn);NU5128</NoWarn>
   </PropertyGroup>
   <ItemGroup>
-    <!-- everything in the 2D bundle... -->
+    <!-- everything in the 2D bundle (Game is already there)... -->
     <ProjectReference Include="../KhaozEngine.Game2D/KhaozEngine.Game2D.csproj" />
-    <!-- ...plus the 3D renderer and the GameApp/SceneManager facade -->
+    <!-- ...plus the 3D renderer and the Game<->Render3D bridge -->
     <ProjectReference Include="../KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
-    <ProjectReference Include="../KhaozEngine.Game/KhaozEngine.Game.csproj" />
+    <ProjectReference Include="../KhaozEngine.Game.Render3D/KhaozEngine.Game.Render3D.csproj" />
   </ItemGroup>
 </Project>

@@ -1,17 +1,18 @@
 using System;
 using System.Numerics;
 using KhaozEngine.Render2D;
-using KhaozEngine.Render3D;
 using KhaozEngine.Windowing;
 
 namespace KhaozEngine.Game
 {
     /// <summary>
-    /// Optional game-loop facade over <see cref="AppWindow"/>: owns the per-frame composition + ordering
-    /// (clock, design viewport, pointer, 3D scene render, 2D batch) so a game subclass only overrides
-    /// <see cref="OnLoad"/>/<see cref="OnUpdate"/>/<see cref="OnDraw3D"/>/<see cref="OnDraw2D"/>/
-    /// <see cref="OnResize"/> and can't get the frame ordering wrong. A game with special needs can still
-    /// drive <see cref="AppWindow.Run"/> directly; that path stays public and unchanged.
+    /// Optional 2D game-loop facade over <see cref="AppWindow"/>: owns the per-frame composition + ordering
+    /// (clock, design viewport, pointer, 2D batch) so a game subclass only overrides
+    /// <see cref="OnLoad"/>/<see cref="OnUpdate"/>/<see cref="OnDraw2D"/>/<see cref="OnResize"/> and can't get
+    /// the frame ordering wrong. The <see cref="OnRenderWorld"/> seam runs before the 2D pass for a subclass that
+    /// renders a world first (e.g. <c>GameApp3D</c> in <c>KhaozEngine.Game.Render3D</c> drives a 3D scene there) -
+    /// this package stays free of any renderer beyond Render2D. A game with special needs can still drive
+    /// <see cref="AppWindow.Run"/> directly; that path stays public and unchanged.
     /// </summary>
     public abstract class GameApp : IDisposable
     {
@@ -20,7 +21,6 @@ namespace KhaozEngine.Game
         readonly DesignViewport _viewport;
         readonly Pointer _pointer = new();
         readonly Render2DSurface _surface2D;
-        readonly Render3DSurface? _surface3D;
 
         InputState _input = InputState.Empty;
         int _frameWidth, _frameHeight;
@@ -38,8 +38,6 @@ namespace KhaozEngine.Game
                 options.ResolvedDesignWidth, options.ResolvedDesignHeight, options.ScaleMode);
 
             _surface2D = new Render2DSurface(_window);
-            if (options.Enable3D)
-                _surface3D = new Render3DSurface(_window);
         }
 
         /// <summary>The underlying window (owns the GPU device, the SDL2 window, and the raw frame loop).</summary>
@@ -54,10 +52,6 @@ namespace KhaozEngine.Game
         protected InputState Input => _input;
         /// <summary>The 2D drawing surface bound to the window.</summary>
         protected Render2DSurface Surface2D => _surface2D;
-        /// <summary>The 3D surface, or null unless <see cref="GameAppOptions.Enable3D"/>.</summary>
-        protected Render3DSurface? Surface3D => _surface3D;
-        /// <summary>The 3D scene (<see cref="Surface3D"/>?.Scene), or null unless Enable3D.</summary>
-        protected Scene3D? Scene => _surface3D?.Scene;
         /// <summary>The 2D sprite batch (<see cref="Surface2D"/>.Batch).</summary>
         protected SpriteBatch Batch => _surface2D.Batch;
         /// <summary>This frame's window width in points.</summary>
@@ -78,8 +72,11 @@ namespace KhaozEngine.Game
         protected virtual void OnLoad() { }
         /// <summary>Per-frame simulation step. <paramref name="dt"/> is the scaled delta (<see cref="Dt"/>).</summary>
         protected virtual void OnUpdate(float dt) { }
-        /// <summary>Submit 3D instances; only called when Enable3D. <paramref name="scene"/>.Begin() is already called.</summary>
-        protected virtual void OnDraw3D(Scene3D scene) { }
+        /// <summary>
+        /// Render a world pass BEFORE the 2D batch each frame (empty by default). A subclass that owns its own
+        /// render surface (e.g. a 3D scene) drives it here; <see cref="GameApp"/> itself stays 2D-only.
+        /// </summary>
+        protected virtual void OnRenderWorld(Frame frame) { }
         /// <summary>Draw the 2D scene / HUD. <paramref name="batch"/>.Begin(Viewport) is already called.</summary>
         protected virtual void OnDraw2D(SpriteBatch batch) { }
         /// <summary>Window resized (also fires once on the first frame). Design space units stay fixed.</summary>
@@ -111,12 +108,7 @@ namespace KhaozEngine.Game
                 _pointer.Update(_input, _viewport);
                 OnUpdate(_dt);
 
-                if (_surface3D is not null)
-                {
-                    _surface3D.Scene.Begin();
-                    OnDraw3D(_surface3D.Scene);
-                    _surface3D.Render(frame);
-                }
+                OnRenderWorld(frame);
 
                 _surface2D.NewFrame(frame);
                 _surface2D.Batch.Begin(_viewport);
@@ -125,9 +117,12 @@ namespace KhaozEngine.Game
             });
         }
 
+        /// <summary>Dispose a subclass's own resources (e.g. a 3D surface) before the 2D surface + window tear down.</summary>
+        protected virtual void OnDispose() { }
+
         public void Dispose()
         {
-            _surface3D?.Dispose();
+            OnDispose();
             _surface2D.Dispose();
             _window.Dispose();
             GC.SuppressFinalize(this);

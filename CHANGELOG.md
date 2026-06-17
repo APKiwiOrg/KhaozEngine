@@ -4,6 +4,31 @@ All notable changes to KhaozEngine. The 5.x line `<KhaozEngine5xVersion>` is the
 stack + the graduated foundation packages); the legacy 4.x line `<Version>` carries only the genuinely-MonoGame
 packages. Both versions live in `Directory.Build.props`. See the post-MonoGame plan in `docs/ROADMAP.md`.
 
+## 5.50.0 (custom 5.x line)
+
+Two structural follow-ups to the umbrella metapackages: the game-loop framework no longer drags in the 3D
+renderer, and there's a foundation-only bundle.
+
+- **`KhaozEngine.Game` is now Render3D-free.** Its `GameApp`/`GameScene`/`SceneManager` baked in optional 3D
+  hooks, forcing a compile-time `Render3D` (and SharpGLTF) dependency on every game that used the loop facade -
+  even a 2D one. The 3D integration moved to a new bridge package **`KhaozEngine.Game.Render3D`**:
+  - **`GameApp3D : GameApp`** - builds the `Render3DSurface` and drives the 3D pass in `GameApp`'s new
+    `OnRenderWorld(Frame)` seam (which runs before the 2D batch).
+  - **`IGameScene3D`** - a `GameScene` implements this to submit a 3D world pass.
+  - **`SceneManager.Draw3D(scene)`** extension - draws the visible `IGameScene3D` scenes (same visible set as
+    `Draw2D`).
+  - **Breaking** (shipped as a 5.x minor; the only consumer, Hardpoint, is migrated alongside): removed
+    `GameApp.OnDraw3D`/`Scene`/`Surface3D`, `GameScene.OnDraw3D`, `SceneManager.Draw3D`, and
+    `GameAppOptions.Enable3D` from `KhaozEngine.Game`. A 3D game now derives `GameApp3D` (or implements
+    `IGameScene3D` on its scene + calls the `Draw3D` extension) from `KhaozEngine.Game.Render3D`. `SceneManager.
+    FirstVisibleIndex` is now public. **`KhaozEngine.Game2D` now includes `KhaozEngine.Game`** (it pulls no 3D),
+    so a 2D game gets the loop facade with no 3D renderer.
+- **New `KhaozEngine.Foundation` metapackage** - the MonoGame-free, GPU-free foundation (App/Content/Diagnostics/
+  Ecs/Localization/Persistence/Serialization/Pooling/Collision/Platform/Updates) in one reference, for a
+  gameplay-logic library or any non-rendering project. `Game2D` and `Server` now compose it instead of listing
+  the foundation packages individually (same closure, deduplicated).
+- No runtime/render change: the GPU goldens are pixel-identical and the 3D sample runs on `GameApp3D`.
+
 ## 5.49.0 (custom 5.x line)
 
 **Umbrella metapackages so a game references the engine in one line instead of a dozen.** Three new code-free

@@ -7,7 +7,7 @@ engine ships a new version.
 **Engine current version:** `4.12.0` (the 4.x line `<Version>`: the legacy MonoGame packages + the permanent
 MonoGame-free foundation packages they share a version with). The **5.x custom MonoGame-free stack**
 (`Gpu`/`Windowing`/`Render2D`/`Render3D`/`Gui`/`Audio`/`Particles`/`Game`) is on its own line
-`<KhaozEngine5xVersion>` = `5.38.0`. The two lines move independently; both set in `Directory.Build.props`.
+`<KhaozEngine5xVersion>` = `5.44.0`. The two lines move independently; both set in `Directory.Build.props`.
 
 > 4.12.0 (breaking, shipped as a 4.x minor since the version-number jump to 5.x is reserved for the custom
 > stack): `KhaozEngine.Collision` (`CircleCollision`, `SpatialHashGrid`, `ICircleCollider`) and

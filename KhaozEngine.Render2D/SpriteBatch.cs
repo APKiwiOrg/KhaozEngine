@@ -208,13 +208,14 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
         /// <summary>Draw <paramref name="text"/> with its top-left at <paramref name="position"/>.</summary>
         public void DrawString(SpriteFont font, string text, Vector2 position, Vector4 color)
         {
+            float k = font.RenderScale; // atlas texels -> logical pixels (glyphs are baked at oversample density)
             float penX = position.X, baseline = position.Y + font.Ascent;
             foreach (char c in text)
             {
                 if (!font.Glyphs.TryGetValue(c, out var g)) continue;
                 if (g.W > 0 && g.H > 0)
                 {
-                    var dest = new Vector4(penX + g.XOff, baseline + g.YOff, g.W, g.H);
+                    var dest = new Vector4(penX + g.XOff * k, baseline + g.YOff * k, g.W * k, g.H * k);
                     var uv = new Vector4((float)g.Ax / font.AtlasW, (float)g.Ay / font.AtlasH,
                                          (float)(g.Ax + g.W) / font.AtlasW, (float)(g.Ay + g.H) / font.AtlasH);
                     Draw(font.Atlas, dest, uv, color);

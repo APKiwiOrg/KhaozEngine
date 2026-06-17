@@ -94,12 +94,15 @@ Published to a private GitHub Packages feed on tagged releases, and packed to a 
 <!-- or the GitHub Packages feed: https://nuget.pkg.github.com/APKiwi/index.json -->
 ```
 ```xml
-<!-- The 5.x engine (custom stack + the MonoGame-free foundation). Reference only what you use. -->
-<PackageReference Include="KhaozEngine.Windowing" Version="5.48.0" />
-<PackageReference Include="KhaozEngine.Render2D"  Version="5.48.0" />
-<PackageReference Include="KhaozEngine.Gui"       Version="5.48.0" />
-<PackageReference Include="KhaozEngine.Ecs"       Version="5.48.0" />
+<!-- One reference per game via an umbrella metapackage. Pick the bundle that fits: -->
+<PackageReference Include="KhaozEngine.Game2D" Version="5.49.0" />  <!-- desktop 2D: Windowing+Render2D+Gui+Audio+Particles+foundation -->
+<PackageReference Include="KhaozEngine.Game3D" Version="5.49.0" />  <!-- desktop 3D: Game2D + Render3D + GameApp/SceneManager -->
+<PackageReference Include="KhaozEngine.Server" Version="5.49.0" />  <!-- headless: GPU-free foundation + netcode, no graphics -->
 ```
+
+The metapackages have no code; they just pull in the granular packages. You can still reference those
+directly (e.g. just `KhaozEngine.Netcode.Abstractions` for a wire-contract project) and mix a bundle with extra
+packages (e.g. `KhaozEngine.Game2D` + `KhaozEngine.Netcode.LiteNetLib` for a 2D multiplayer game).
 
 **Versioning is SemVer.** Each game pins a version and adopts fixes by bumping it - so you can keep one game on an old version while you migrate another. Don't fork the packages; if a game needs an API that isn't there, add it here and bump the version.
 

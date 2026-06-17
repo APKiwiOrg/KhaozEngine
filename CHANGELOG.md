@@ -4,6 +4,28 @@ All notable changes to KhaozEngine. The 5.x line `<KhaozEngine5xVersion>` is the
 stack + the graduated foundation packages); the legacy 4.x line `<Version>` carries only the genuinely-MonoGame
 packages. Both versions live in `Directory.Build.props`. See the post-MonoGame plan in `docs/ROADMAP.md`.
 
+## 5.49.0 (custom 5.x line)
+
+**Umbrella metapackages so a game references the engine in one line instead of a dozen.** Three new code-free
+packages, each a curated dependency group over the existing granular packages (which stay, unchanged - the
+split still serves servers, tools, and trimmed builds):
+
+- **`KhaozEngine.Game2D`** - desktop 2D game: `Windowing`, `Render2D`, `Gui`, `Audio`, `Particles` + the
+  MonoGame-free foundation (`App`/`Content`/`Diagnostics`/`Ecs`/`Localization`/`Persistence`/`Serialization`/
+  `Pooling`/`Collision`/`Platform`/`Updates`). No 3D, no netcode.
+- **`KhaozEngine.Game3D`** - desktop 3D game: a strict superset of `Game2D` plus `Render3D` and `Game` (the
+  `GameApp`/`SceneManager` loop facade).
+- **`KhaozEngine.Server`** - headless / server: the GPU-free foundation plus the networking layer
+  (`Netcode`/`Netcode.Abstractions`/`Netcode.LiteNetLib`). No graphics, windowing, audio, or GPU.
+
+Each metapackage ships no assembly (`IncludeBuildOutput=false`), just a NuGet dependency group at the shared
+5.x version. You can still reference granular packages directly, and mix a bundle with extras (e.g.
+`Game2D` + `Netcode.LiteNetLib` for a 2D multiplayer game). No code or behaviour change to any existing package.
+
+> Note: the `GameApp` facade (`KhaozEngine.Game`) depends on `Render3D`, so it lives in `Game3D` only; a 2D game
+> on `Game2D` drives the `AppWindow.Run` loop directly. Decoupling `GameApp` from `Render3D` (so it could join
+> `Game2D`) is a possible follow-up.
+
 ## 5.48.0 (custom 5.x line)
 
 Engine-audit cleanups (`docs/ENGINE-AUDIT-5x-2026-06-16.md`): a real mesh-loader bug fix plus three quality

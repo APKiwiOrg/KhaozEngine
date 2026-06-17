@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Game2D</PackageId>
+    <Version>$(KhaozEngine5xVersion)</Version>
+    <Description>Umbrella metapackage for a desktop 2D game on the KhaozEngine 5.x stack: pulls in Windowing, Render2D, Gui, Audio, Particles and the MonoGame-free foundation (App/Content/Diagnostics/Ecs/Localization/Persistence/Serialization/Pooling/Collision/Platform/Updates) in one reference. No 3D (Render3D) and no networking (Netcode) - add KhaozEngine.Render3D or KhaozEngine.Netcode.LiteNetLib if you need them, or reference KhaozEngine.Game3D for the full 3D stack. Contains no code; just dependencies.</Description>
+    <!-- Metapackage: no compiled output, just a dependency group. -->
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <SuppressDependenciesWhenPacking>false</SuppressDependenciesWhenPacking>
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- 2D runtime -->
+    <ProjectReference Include="../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
+    <ProjectReference Include="../KhaozEngine.Render2D/KhaozEngine.Render2D.csproj" />
+    <ProjectReference Include="../KhaozEngine.Gui/KhaozEngine.Gui.csproj" />
+    <ProjectReference Include="../KhaozEngine.Audio/KhaozEngine.Audio.csproj" />
+    <ProjectReference Include="../KhaozEngine.Particles/KhaozEngine.Particles.csproj" />
+    <!-- MonoGame-free foundation (no netcode) -->
+    <ProjectReference Include="../KhaozEngine.App/KhaozEngine.App.csproj" />
+    <ProjectReference Include="../KhaozEngine.Collision/KhaozEngine.Collision.csproj" />
+    <ProjectReference Include="../KhaozEngine.Content/KhaozEngine.Content.csproj" />
+    <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
+    <ProjectReference Include="../KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
+    <ProjectReference Include="../KhaozEngine.Localization/KhaozEngine.Localization.csproj" />
+    <ProjectReference Include="../KhaozEngine.Persistence/KhaozEngine.Persistence.csproj" />
+    <ProjectReference Include="../KhaozEngine.Platform/KhaozEngine.Platform.csproj" />
+    <ProjectReference Include="../KhaozEngine.Pooling/KhaozEngine.Pooling.csproj" />
+    <ProjectReference Include="../KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
+    <ProjectReference Include="../KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
+  </ItemGroup>
+</Project>

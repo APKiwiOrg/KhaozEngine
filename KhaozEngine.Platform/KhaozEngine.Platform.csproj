@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.Platform</PackageId>
+    <!-- Graduated onto the shared 5.x line at 5.46.0 (was the 4.x <Version>); MonoGame-free foundation. -->
+    <Version>$(KhaozEngine5xVersion)</Version>
     <Description>Game-agnostic native platform interop. Cross-platform clipboard get/set (text + image) over SDL2, Windows GDI, macOS NSPasteboard, and an optional reflection-resolved mobile bridge. Pure BCL P/Invoke, no MonoGame dependency.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>

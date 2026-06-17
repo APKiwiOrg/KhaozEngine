@@ -5,15 +5,20 @@
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>disable</ImplicitUsings>
 
-    <!-- Shared version for the 4.x line: the legacy MonoGame-based packages AND (for now) the permanent,
-         MonoGame-free foundation packages (Ecs/Serialization/Content/Diagnostics/App/Localization/Persistence/
-         Pooling/Platform/Updates/Netcode*) that the 5.x stack also depends on. Those foundation packages
-         graduate to the unified line when MonoGame is finally dropped. Bump here to release them together. -->
+    <!-- Shared version for the 4.x LEGACY line: now ONLY the genuinely-MonoGame packages
+         (Effects/Graphics/Input/Screens/Sprites/Time/UI), consumed by the still-4.x SpaceGame until it
+         migrates. The MonoGame-free foundation packages that used to share this line graduated to the 5.x
+         line at 5.46.0 (they set <Version>$(KhaozEngine5xVersion)</Version> in their csproj). This line is
+         frozen-ish: bump only when a MonoGame package itself needs a release. -->
     <Version>4.12.0</Version>
-    <!-- Shared version for the 5.x custom-stack (MonoGame-free) engine packages (KhaozEngine.Gpu, Windowing,
-         Render2D, Render3D, Gui, Audio, Particles, Game), which set <Version>$(KhaozEngine5xVersion)</Version>
-         in their csproj. No longer experimental as of 5.31.0. Bump here to release them together. -->
-    <KhaozEngine5xVersion>5.45.1</KhaozEngine5xVersion>
+    <!-- Shared version for the 5.x engine: the custom-stack (MonoGame-free) packages (KhaozEngine.Gpu,
+         Windowing, Render2D, Render3D, Gui, Audio, Particles, Game) AND the graduated MonoGame-free
+         foundation packages (Ecs/Serialization/Content/Content.Validator/Diagnostics/App/Localization/
+         Persistence/Pooling/Platform/Updates/Collision/Netcode/Netcode.Abstractions/Netcode.LiteNetLib),
+         which all set <Version>$(KhaozEngine5xVersion)</Version> in their csproj. No longer experimental as
+         of 5.31.0; foundation graduated onto this line at 5.46.0 so a 5.x game pins only 5.x packages. Bump
+         here to release them together; this is the version the doc-version guard checks. -->
+    <KhaozEngine5xVersion>5.46.0</KhaozEngine5xVersion>
     <Authors>APKiwi</Authors>
     <Company>Khaoz</Company>
     <PackageProjectUrl>https://github.com/APKiwi/KhaozEngine</PackageProjectUrl>

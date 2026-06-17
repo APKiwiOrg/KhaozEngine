@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.Netcode</PackageId>
+    <!-- Graduated onto the shared 5.x line at 5.46.0 (was the 4.x <Version>); MonoGame-free foundation. -->
+    <Version>$(KhaozEngine5xVersion)</Version>
     <Description>Game-agnostic, transport-free netcode primitives (System.Numerics, no MonoGame). UnitAxisQuantizer (signed-byte 8-bit quantization of a unit-range [-1,1] axis, the wire codec scheme; deterministic, round-trips within 1/127). ClientPrediction&lt;TState,TCommand&gt; (client-side prediction + authoritative reconciliation: seq-keyed pending-command buffer, ack-prune, rebase + replay of unacked commands, and decaying render-offset error smoothing with hard-snap and dead-zone) over IPredictedState/ITickSimulator with a PredictionSettings struct. RemoteCommandQueue&lt;TCommand&gt; (host-side per-slot seq-ordered command queue with duplicate/negative-seq rejection and last-acknowledged-seq tracking). The game keeps its own command/state types and packed field layout.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>

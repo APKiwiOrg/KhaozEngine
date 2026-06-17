@@ -2,25 +2,28 @@
 #
 # Guards against the docs drifting behind the engine version.
 #
-# Source of truth: <Version> in Directory.Build.props. A few docs declare the
-# *engine current version* in prose; those must equal the source of truth. This
-# script checks exactly those declarations and nothing else.
+# Source of truth: <KhaozEngine5xVersion> in Directory.Build.props. The 5.x line IS
+# the engine now (the MonoGame-free foundation packages graduated onto it at 5.46.0),
+# so the "engine current version" the docs declare must equal that. A few docs declare
+# that version in prose; this script checks exactly those declarations and nothing else.
 #
-# NOTE: consumer *pins* (e.g. "Hardpoint ... On 4.0.0") legitimately lag the
-# engine version and are deliberately NOT checked here - a game adopts a release
-# on its own schedule. Only the "this is the current release" claims are enforced.
+# NOTE: the legacy 4.x <Version> (the genuinely-MonoGame packages only) is NOT checked
+# here - it is frozen-ish and lags like a consumer pin. Consumer *pins* (e.g. "Hardpoint
+# ... On 5.38.0") also legitimately lag the engine version and are deliberately NOT
+# checked - a game adopts a release on its own schedule. Only the "this is the current
+# release" claims are enforced.
 #
 # Run locally: ./scripts/check-doc-versions.sh   (also runs in CI)
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-ver=$(grep -oE '<Version>[^<]+</Version>' Directory.Build.props | head -1 | sed -E 's#</?Version>##g')
+ver=$(grep -oE '<KhaozEngine5xVersion>[^<]+</KhaozEngine5xVersion>' Directory.Build.props | head -1 | sed -E 's#</?KhaozEngine5xVersion>##g')
 if [ -z "$ver" ]; then
-  echo "could not read <Version> from Directory.Build.props" >&2
+  echo "could not read <KhaozEngine5xVersion> from Directory.Build.props" >&2
   exit 1
 fi
-echo "engine version (Directory.Build.props): $ver"
+echo "engine version (Directory.Build.props KhaozEngine5xVersion): $ver"
 
 fail=0
 expect() {

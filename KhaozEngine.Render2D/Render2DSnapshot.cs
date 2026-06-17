@@ -47,7 +47,7 @@ namespace KhaozEngine.Render2D
                 cl.End();
                 gd.Submit(cl);
                 gd.WaitForIdle();
-                return Readback(gd, target, width, height);
+                return GpuReadback.ToRgba(gd, target, width, height);
             }
             finally { cl.Dispose(); fb.Dispose(); target.Dispose(); core.Dispose(); }
         }
@@ -64,31 +64,5 @@ namespace KhaozEngine.Render2D
             return rgba;
         }
 
-        static byte[] Readback(IGpuDevice gd, IGpuTexture src, int w, int h)
-        {
-            var f = gd.Factory;
-            using IGpuTexture staging = f.CreateTexture(GpuTextureDescription.Texture2D(
-                (uint)w, (uint)h, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Staging));
-            using (IGpuCommandList cl = f.CreateCommandList())
-            {
-                cl.Begin(); cl.CopyTexture(src, staging); cl.End();
-                gd.Submit(cl); gd.WaitForIdle();
-            }
-            var outBytes = new byte[w * h * 4];
-            MappedData map = gd.Map(staging, GpuMapMode.Read);
-            unsafe
-            {
-                byte* data = (byte*)map.Data;
-                for (int y = 0; y < h; y++)
-                    for (int x = 0; x < w; x++)
-                    {
-                        uint si = (uint)(y * (int)map.RowPitch + x * 4);
-                        int di = (y * w + x) * 4;
-                        outBytes[di] = data[si]; outBytes[di + 1] = data[si + 1]; outBytes[di + 2] = data[si + 2]; outBytes[di + 3] = data[si + 3];
-                    }
-            }
-            gd.Unmap(staging);
-            return outBytes;
-        }
     }
 }

@@ -44,6 +44,7 @@ namespace KhaozEngine.Gui
         {
             TextChanged = false;
 
+            pointer.BlockRegion(Bounds); // reserve the field for click-through (the click-through gate)
             if (pointer.IsTapIn(Bounds)) Focus();
             else if (pointer.IsReleasedOutside(Bounds)) IsFocused = false;
 

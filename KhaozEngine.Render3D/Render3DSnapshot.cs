@@ -44,35 +44,7 @@ namespace KhaozEngine.Render3D
             }
             gd.WaitForIdle();
 
-            using IGpuTexture staging = f.CreateTexture(GpuTextureDescription.Texture2D(
-                (uint)width, (uint)height, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Staging));
-            using (IGpuCommandList cl = f.CreateCommandList())
-            {
-                cl.Begin();
-                cl.CopyTexture(finalTex, staging);
-                cl.End();
-                gd.Submit(cl);
-                gd.WaitForIdle();
-            }
-
-            var outBytes = new byte[width * height * 4];
-            MappedData map = gd.Map(staging, GpuMapMode.Read);
-            unsafe
-            {
-                byte* data = (byte*)map.Data;
-                for (int y = 0; y < height; y++)
-                    for (int x = 0; x < width; x++)
-                    {
-                        uint si = (uint)(y * (int)map.RowPitch + x * 4);
-                        int di = (y * width + x) * 4;
-                        outBytes[di + 0] = data[si + 0];
-                        outBytes[di + 1] = data[si + 1];
-                        outBytes[di + 2] = data[si + 2];
-                        outBytes[di + 3] = data[si + 3];
-                    }
-            }
-            gd.Unmap(staging);
-            return outBytes;
+            return GpuReadback.ToRgba(gd, finalTex, width, height);
         }
 
         /// <summary>Single-mesh convenience: load <paramref name="mesh"/>, draw one instance at the origin each frame.</summary>

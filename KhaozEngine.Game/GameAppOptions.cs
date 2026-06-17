@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using KhaozEngine.Windowing;
 
@@ -24,6 +25,21 @@ namespace KhaozEngine.Game
         public ScaleMode ScaleMode;
         /// <summary>Background colour cleared each frame (default dark).</summary>
         public Vector4 ClearColor;
+
+        /// <summary>
+        /// Optional: build the window. Default (null) is <c>new AppWindow(Title, Width, Height)</c>. Set it to use
+        /// a different policy, e.g. <c>o =&gt; AppWindow.Scaled(o.Title, o.Width, o.Height, 0.87f)</c> for a
+        /// display-fitted window. <see cref="GameApp"/> sets <see cref="ClearColor"/> on the result.
+        /// </summary>
+        public Func<GameAppOptions, AppWindow>? WindowFactory;
+
+        /// <summary>
+        /// Optional: build the design viewport. Default (null) is
+        /// <c>new DesignViewport(ResolvedDesignWidth, ResolvedDesignHeight, ScaleMode)</c>. Set it for a different
+        /// policy, e.g. <c>o =&gt; new AdaptiveViewport(o.DesignWidth, o.DesignHeight)</c> for a responsive,
+        /// no-letterbox viewport.
+        /// </summary>
+        public Func<GameAppOptions, IDesignViewport>? ViewportFactory;
 
         /// <summary>Resolved design width: <see cref="DesignWidth"/>, or <see cref="Width"/> when it is 0.</summary>
         internal int ResolvedDesignWidth => DesignWidth == 0 ? Width : DesignWidth;

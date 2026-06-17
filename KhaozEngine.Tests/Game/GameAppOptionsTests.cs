@@ -21,6 +21,9 @@ namespace KhaozEngine.Tests.Game
             Assert.Equal(0, o.DesignHeight);
             Assert.Equal(ScaleMode.Fit, o.ScaleMode);
             Assert.Equal(new Vector4(0.10f, 0.12f, 0.16f, 1f), o.ClearColor);
+            // No factories by default -> GameApp builds a plain AppWindow + DesignViewport.
+            Assert.Null(o.WindowFactory);
+            Assert.Null(o.ViewportFactory);
         }
 
         [Fact]

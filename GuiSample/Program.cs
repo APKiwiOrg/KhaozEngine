@@ -60,12 +60,12 @@ sealed class GuiAssets
 sealed class MenuScreen : Screen
 {
     readonly GuiAssets _a;
-    readonly DesignViewport _vp;
+    readonly IDesignViewport _vp;
     readonly Action _quit;
     Label _title = null!, _footer = null!;
     Button _settings = null!, _widgets = null!, _immediate = null!, _quitBtn = null!;
 
-    public MenuScreen(GuiAssets a, DesignViewport vp, Action quit)
+    public MenuScreen(GuiAssets a, IDesignViewport vp, Action quit)
     {
         _a = a; _vp = vp; _quit = quit;
         PassUpdateThrough = false;
@@ -114,14 +114,14 @@ sealed class MenuScreen : Screen
 sealed class SettingsScreen : Screen
 {
     readonly GuiAssets _a;
-    readonly DesignViewport _vp;
+    readonly IDesignViewport _vp;
     Panel _dialog = null!;
     Label _title = null!, _volumeLabel = null!, _fullscreenLabel = null!, _help = null!, _readout = null!;
     Slider _volume = null!;
     Toggle _fullscreen = null!;
     Button _back = null!;
 
-    public SettingsScreen(GuiAssets a, DesignViewport vp)
+    public SettingsScreen(GuiAssets a, IDesignViewport vp)
     {
         _a = a; _vp = vp;
         DrawOrder = 10;
@@ -186,7 +186,7 @@ sealed class SettingsScreen : Screen
 sealed class WidgetsScreen : Screen
 {
     readonly GuiAssets _a;
-    readonly DesignViewport _vp;
+    readonly IDesignViewport _vp;
     Label _title = null!, _nameLabel = null!, _diffLabel = null!, _listLabel = null!;
     TextInput _name = null!;
     Dropdown _difficulty = null!;
@@ -194,7 +194,7 @@ sealed class WidgetsScreen : Screen
     Tooltip _tip = null!;
     Button _info = null!, _confirm = null!, _back = null!;
 
-    public WidgetsScreen(GuiAssets a, DesignViewport vp)
+    public WidgetsScreen(GuiAssets a, IDesignViewport vp)
     {
         _a = a; _vp = vp;
         PassUpdateThrough = false;
@@ -281,11 +281,11 @@ sealed class WidgetsScreen : Screen
 sealed class PopupScreen : Screen
 {
     readonly GuiAssets _a;
-    readonly DesignViewport _vp;
+    readonly IDesignViewport _vp;
     readonly string _name, _difficulty;
     PopupPanel _popup = null!;
 
-    public PopupScreen(GuiAssets a, DesignViewport vp, string name, string difficulty)
+    public PopupScreen(GuiAssets a, IDesignViewport vp, string name, string difficulty)
     {
         _a = a; _vp = vp; _name = name; _difficulty = difficulty;
         DrawOrder = 20; PassUpdateThrough = false;
@@ -332,11 +332,11 @@ sealed class PopupScreen : Screen
 sealed class ImmediateScreen : Screen
 {
     readonly GuiAssets _a;
-    readonly DesignViewport _vp;
+    readonly IDesignViewport _vp;
     GuiSurface _ui = null!;
     bool _toggled;
 
-    public ImmediateScreen(GuiAssets a, DesignViewport vp)
+    public ImmediateScreen(GuiAssets a, IDesignViewport vp)
     {
         _a = a; _vp = vp;
         PassUpdateThrough = false;

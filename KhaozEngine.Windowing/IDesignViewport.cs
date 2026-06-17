@@ -10,6 +10,9 @@ namespace KhaozEngine.Windowing
     /// </summary>
     public interface IDesignViewport
     {
+        /// <summary>Recompute the scale/letterbox from the current window size (points). Called once per frame.</summary>
+        void Update(int windowWidth, int windowHeight);
+
         /// <summary>Design-space width.</summary>
         int Width { get; }
         /// <summary>Design-space height.</summary>

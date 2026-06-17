@@ -18,7 +18,7 @@ namespace KhaozEngine.Game
     {
         readonly AppWindow _window;
         readonly GameClock _clock = new();
-        readonly DesignViewport _viewport;
+        readonly IDesignViewport _viewport;
         readonly Pointer _pointer = new();
         readonly Render2DSurface _surface2D;
 
@@ -29,13 +29,14 @@ namespace KhaozEngine.Game
 
         protected GameApp(in GameAppOptions options)
         {
-            _window = new AppWindow(options.Title, options.Width, options.Height)
-            {
-                ClearColor = options.ClearColor,
-            };
+            // The window + viewport come from the options' factories when set (e.g. AppWindow.Scaled +
+            // AdaptiveViewport for a responsive, display-fitted game); otherwise the plain defaults.
+            _window = options.WindowFactory?.Invoke(options)
+                ?? new AppWindow(options.Title, options.Width, options.Height);
+            _window.ClearColor = options.ClearColor;
 
-            _viewport = new DesignViewport(
-                options.ResolvedDesignWidth, options.ResolvedDesignHeight, options.ScaleMode);
+            _viewport = options.ViewportFactory?.Invoke(options)
+                ?? new DesignViewport(options.ResolvedDesignWidth, options.ResolvedDesignHeight, options.ScaleMode);
 
             _surface2D = new Render2DSurface(_window);
         }
@@ -45,7 +46,7 @@ namespace KhaozEngine.Game
         /// <summary>The game clock (pause / time-scale over the raw frame delta). Updated each frame before <see cref="OnUpdate"/>.</summary>
         protected GameClock Clock => _clock;
         /// <summary>The design-space viewport. Updated each frame from the window size before <see cref="OnUpdate"/>.</summary>
-        protected DesignViewport Viewport => _viewport;
+        protected IDesignViewport Viewport => _viewport;
         /// <summary>The design-space pointer. Updated each frame from this frame's input before <see cref="OnUpdate"/>.</summary>
         protected Pointer Pointer => _pointer;
         /// <summary>This frame's raw input snapshot (for custom needs / 3D picking).</summary>

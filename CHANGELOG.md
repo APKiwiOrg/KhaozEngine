@@ -4,6 +4,21 @@ All notable changes to KhaozEngine. The 5.x line `<KhaozEngine5xVersion>` is the
 stack + the graduated foundation packages); the legacy 4.x line `<Version>` carries only the genuinely-MonoGame
 packages. Both versions live in `Directory.Build.props`. See the post-MonoGame plan in `docs/ROADMAP.md`.
 
+## 5.51.0 (custom 5.x line)
+
+`GameApp` (the loop facade) can now host a game with a custom window or viewport, so a real game can adopt it
+instead of hand-writing the `AppWindow.Run` loop.
+
+- **`GameAppOptions.WindowFactory`** (`Func<GameAppOptions, AppWindow>?`) and **`ViewportFactory`**
+  (`Func<GameAppOptions, IDesignViewport>?`) - optional builders. When null (the default) `GameApp` builds the
+  plain `new AppWindow(Title, Width, Height)` + `new DesignViewport(...)` as before; set them to use e.g.
+  `AppWindow.Scaled` (display-fitted) + `AdaptiveViewport` (responsive, no letterbox). `GameApp.Viewport` is now
+  typed `IDesignViewport`.
+- **`IDesignViewport` gains `Update(int windowWidth, int windowHeight)`** - the per-frame recompute the facade
+  drives. Both `DesignViewport` and `AdaptiveViewport` already had this method; it's now on the seam. Minor
+  breaking change for a custom `IDesignViewport` implementation (add the one-line `Update`).
+- No behaviour change with default options.
+
 ## 5.50.0 (custom 5.x line)
 
 Two structural follow-ups to the umbrella metapackages: the game-loop framework no longer drags in the 3D

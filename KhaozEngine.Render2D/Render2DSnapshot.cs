@@ -16,7 +16,7 @@ namespace KhaozEngine.Render2D
         public SpriteBatch Batch => _core.Batch;
         public Texture2D LoadTexture(string pngPath) => _core.LoadTexture(pngPath);
         public Texture2D CreateTexture(byte[] rgba, int width, int height) => _core.CreateTexture(rgba, width, height);
-        public SpriteFont LoadFont(string ttfPath, float pixelHeight) => _core.LoadFont(ttfPath, pixelHeight);
+        public SpriteFont LoadFont(string ttfPath, float pixelHeight, int oversample = 1) => _core.LoadFont(ttfPath, pixelHeight, oversample);
     }
 
     /// <summary>Headless offscreen 2D render to a CPU RGBA buffer (no window). For tooling/tests; needs a Metal GPU.</summary>

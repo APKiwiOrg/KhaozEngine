@@ -22,7 +22,11 @@ namespace KhaozEngine.Render2D
         public SpriteBatch Batch => _core.Batch;
         public Texture2D LoadTexture(string pngPath) => _core.LoadTexture(pngPath);
         public Texture2D CreateTexture(byte[] rgba, int width, int height) => _core.CreateTexture(rgba, width, height);
-        public SpriteFont LoadFont(string ttfPath, float pixelHeight) => _core.LoadFont(ttfPath, pixelHeight);
+        /// <summary>
+        /// Bake a TTF into a <see cref="SpriteFont"/>. Pass <paramref name="oversample"/> &gt; 1 (2-3) for crisp text
+        /// when a design-space viewport upscales to a higher-resolution framebuffer; layout is unchanged.
+        /// </summary>
+        public SpriteFont LoadFont(string ttfPath, float pixelHeight, int oversample = 1) => _core.LoadFont(ttfPath, pixelHeight, oversample);
 
         /// <summary>Bind this frame's command list/viewport to the batch. Call once per frame before drawing.</summary>
         public void NewFrame(Frame frame) => _core.Batch.NewFrame(frame.Commands, frame.Width, frame.Height);

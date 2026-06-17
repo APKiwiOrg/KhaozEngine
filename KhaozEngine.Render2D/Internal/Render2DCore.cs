@@ -33,8 +33,8 @@ namespace KhaozEngine.Render2D.Internal
             return CreateTexture(img.Data, img.Width, img.Height);
         }
 
-        public SpriteFont LoadFont(string ttfPath, float pixelHeight) =>
-            SpriteFont.Build(Gd, File.ReadAllBytes(ttfPath), pixelHeight);
+        public SpriteFont LoadFont(string ttfPath, float pixelHeight, int oversample = 1) =>
+            SpriteFont.Build(Gd, File.ReadAllBytes(ttfPath), pixelHeight, oversample);
 
         public void Dispose() { Batch.Dispose(); if (_ownsDevice) Gd.Dispose(); }
     }

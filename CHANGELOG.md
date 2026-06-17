@@ -23,6 +23,28 @@ remaining legacy-MonoGame surface.
   hash). The byte-identical sim math keeps SpaceGame's `17709480852979803671` gate stable when it adopts.
 - All other 4.x packages are unchanged; they share this version bump as usual.
 
+## 5.44.0 (custom 5.x line)
+
+Fifth engine-first gap-fill for porting 2D games (Nullwake) to the 5.x stack: crisp supersampled text. Small UI
+fonts baked at their design pixel size go soft when a `DesignViewport` upscales them to a higher-resolution
+framebuffer; `SpriteFont` can now rasterize the atlas at a higher texel density while keeping the on-screen layout
+identical.
+
+- **`Render2DSurface.LoadFont(ttfPath, pixelHeight, oversample = 1)`** (and the matching `Render2DContext.LoadFont`
+  used by snapshots) gains an `oversample` factor. The glyph atlas is baked at `pixelHeight * oversample`, but
+  every layout metric (`Measure`, `LineHeight`, glyph advances) is reported at the logical `pixelHeight`, so text
+  occupies the exact same space at any oversample - only the texel density changes. Pass 2-3 for HiDPI / upscaled
+  design viewports. With linear sampling the denser atlas stays sharp through the upscale.
+- **Non-breaking / pixel-identical default**: `oversample == 1` is the original bake. The atlas width stays 512 and
+  its height only grows past the 256 floor when a larger raster needs the room, so the default produces the exact
+  same atlas (the `scene2d` GPU text golden is unchanged on metal). The fixed-256 atlas also gained an adaptive
+  height, removing a latent overflow for large fonts/oversamples.
+- Internally `SpriteFont.Build` now splits into a device-free `BakeCpu` (rasterization + packing + metrics) plus a
+  thin GPU upload; `SpriteBatch.DrawString` scales each glyph quad by the new `SpriteFont.RenderScale` (1/oversample).
+- 5 headless tests (default 512x256 lock, atlas grows with oversample, logical metrics/advances invariant across
+  oversample, glyph quad logical size, non-empty coverage); verified visually that oversample 3 stays crisp under a
+  3x upscale where oversample 1 blurs.
+
 ## 5.43.0 (custom 5.x line)
 
 Tooling: a dependency-free PNG encoder so game snapshot tools stop re-implementing the image write.

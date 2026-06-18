@@ -18,6 +18,7 @@ namespace KhaozEngine.Render2D
     {
         private readonly Camera2D _camera;
         private Vector2 _smoothPos;     // sub-pixel-accurate truth the smoothing operates on
+        private Vector2 _leadOffset;    // currently-applied (eased) look-ahead offset
         private bool _initialized;      // false until the first Update / Warp seeds _smoothPos
 
         /// <summary>Creates a follow controller for the given camera.</summary>
@@ -34,6 +35,9 @@ namespace KhaozEngine.Render2D
         /// <summary>Convenience: sets both axes of <see cref="Stiffness"/> to the same value.</summary>
         public void SetStiffness(float both) => Stiffness = new Vector2(both, both);
 
+        /// <summary>Look-ahead configuration. <c>default</c> (zero lead time) disables it.</summary>
+        public LookAheadSettings LookAhead { get; set; }
+
         /// <summary>An absolute screen-space rectangle the target may move within before the camera chases
         /// (same space as <see cref="Camera2D.WorldToScreen(Vector2, int, int)"/> output, rotation assumed 0).
         /// While the target's screen position stays inside it the camera holds; crossing an edge moves the
@@ -44,7 +48,7 @@ namespace KhaozEngine.Render2D
         /// <summary>
         /// Follow step. Eases the camera toward <paramref name="target"/> (held within <see cref="Deadzone"/>
         /// if set), then clamps so the view stays inside <paramref name="worldBounds"/>.
-        /// <paramref name="velocity"/> is unused until look-ahead is added.
+        /// <paramref name="velocity"/> drives the look-ahead offset when <see cref="LookAhead"/> is configured.
         /// </summary>
         public void Update(Vector2 target, Vector2 velocity, float dt,
                            int viewportWidth, int viewportHeight, Rect worldBounds)
@@ -52,6 +56,7 @@ namespace KhaozEngine.Render2D
             if (!_initialized) { _smoothPos = _camera.Position; _initialized = true; }
 
             Vector2 desired = ComputeDesired(target, viewportWidth, viewportHeight);
+            desired += UpdateLeadOffset(velocity, dt);
 
             _smoothPos = new Vector2(
                 EaseAxis(_smoothPos.X, desired.X, Stiffness.X, dt),
@@ -71,6 +76,7 @@ namespace KhaozEngine.Render2D
         public void Warp(Vector2 position)
         {
             _smoothPos = position;
+            _leadOffset = Vector2.Zero;
             _initialized = true;
             _camera.Position = position;
         }
@@ -101,5 +107,23 @@ namespace KhaozEngine.Render2D
 
             return _smoothPos + new Vector2(dx, dy) / zoom;
         }
+
+        // Eases _leadOffset toward clamp(velocity * LeadTime, +/-MaxDistance) per axis, returns the new offset.
+        private Vector2 UpdateLeadOffset(Vector2 velocity, float dt)
+        {
+            var leadTarget = new Vector2(
+                ClampAxis(velocity.X * LookAhead.LeadTime.X, LookAhead.MaxDistance.X),
+                ClampAxis(velocity.Y * LookAhead.LeadTime.Y, LookAhead.MaxDistance.Y));
+
+            _leadOffset = new Vector2(
+                EaseAxis(_leadOffset.X, leadTarget.X, LookAhead.Stiffness, dt),
+                EaseAxis(_leadOffset.Y, leadTarget.Y, LookAhead.Stiffness, dt));
+
+            return _leadOffset;
+        }
+
+        // Clamps value to [-max, max]; max <= 0 means unclamped.
+        private static float ClampAxis(float value, float max)
+            => max <= 0f ? value : System.Math.Clamp(value, -max, max);
     }
 }

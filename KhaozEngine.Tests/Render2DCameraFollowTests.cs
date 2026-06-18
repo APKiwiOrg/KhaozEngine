@@ -155,4 +155,88 @@ public class Render2DCameraFollowTests
         follow.Update(new Vector2(1500f, 500f), 0.1f, Vw, Vh, Unbounded);
         Assert.Equal(500f + 1000f * (1f - MathF.Exp(-1f)), cam.Position.X, 0.5f);
     }
+
+    // ---- Look-ahead ----
+
+    [Fact]
+    public void LookAhead_DisabledByDefaultProducesNoOffset()
+    {
+        var cam = new Camera2D { Position = Vector2.Zero };
+        var follow = new CameraFollow(cam);
+        follow.SetStiffness(0f);                            // snap, so position == desired
+
+        follow.Update(new Vector2(0f, 0f), new Vector2(100f, 0f), 0.1f, Vw, Vh, Unbounded);
+
+        AssertClose(Vector2.Zero, cam.Position);            // default LookAhead -> no lead
+    }
+
+    [Fact]
+    public void LookAhead_LeadsAlongVelocity()
+    {
+        var cam = new Camera2D { Position = Vector2.Zero };
+        var follow = new CameraFollow(cam)
+        {
+            // Lead 0.4s horizontally, generous clamp, instant lead easing (Stiffness 0).
+            LookAhead = new LookAheadSettings(new Vector2(0.4f, 0f), new Vector2(1000f, 0f), 0f),
+        };
+        follow.SetStiffness(0f);
+
+        follow.Update(new Vector2(0f, 0f), new Vector2(100f, 0f), 0.1f, Vw, Vh, Unbounded);
+
+        AssertClose(new Vector2(40f, 0f), cam.Position);    // 100 * 0.4 = 40 ahead, +x
+    }
+
+    [Fact]
+    public void LookAhead_ClampsToMaxDistance()
+    {
+        var cam = new Camera2D { Position = Vector2.Zero };
+        var follow = new CameraFollow(cam)
+        {
+            LookAhead = new LookAheadSettings(new Vector2(0.4f, 0f), new Vector2(30f, 0f), 0f),
+        };
+        follow.SetStiffness(0f);
+
+        follow.Update(new Vector2(0f, 0f), new Vector2(100f, 0f), 0.1f, Vw, Vh, Unbounded);
+
+        AssertClose(new Vector2(30f, 0f), cam.Position);    // 40 desired, clamped to 30
+    }
+
+    [Fact]
+    public void LookAhead_PerAxisLeavesUnleadAxisOnTarget()
+    {
+        var cam = new Camera2D { Position = Vector2.Zero };
+        var follow = new CameraFollow(cam)
+        {
+            LookAhead = new LookAheadSettings(new Vector2(0.4f, 0f), new Vector2(1000f, 1000f), 0f),
+        };
+        follow.SetStiffness(0f);
+
+        follow.Update(new Vector2(0f, 0f), new Vector2(100f, 100f), 0.1f, Vw, Vh, Unbounded);
+
+        AssertClose(new Vector2(40f, 0f), cam.Position);    // x leads, y has LeadTime 0 -> no lead
+    }
+
+    [Fact]
+    public void LookAhead_EasesOnDirectionReversal()
+    {
+        var cam = new Camera2D { Position = Vector2.Zero };
+        var follow = new CameraFollow(cam)
+        {
+            // Finite lead easing so a reversal does not jump the offset in one frame.
+            LookAhead = new LookAheadSettings(new Vector2(0.4f, 0f), new Vector2(1000f, 0f), 10f),
+        };
+        follow.SetStiffness(0f);
+
+        // Build a positive lead over several frames moving +x.
+        for (int i = 0; i < 20; i++)
+            follow.Update(new Vector2(0f, 0f), new Vector2(100f, 0f), 0.1f, Vw, Vh, Unbounded);
+        Assert.True(cam.Position.X > 30f);                  // lead settled near +40
+
+        float before = cam.Position.X;
+        // One frame of reversed velocity: the lead eases toward -40, it must not snap there.
+        follow.Update(new Vector2(0f, 0f), new Vector2(-100f, 0f), 0.1f, Vw, Vh, Unbounded);
+
+        Assert.True(cam.Position.X < before);               // moved toward the new target
+        Assert.True(cam.Position.X > -40f);                 // but did not jump all the way
+    }
 }

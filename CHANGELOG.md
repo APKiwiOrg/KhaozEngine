@@ -4,6 +4,24 @@ All notable changes to KhaozEngine. The 5.x line `<KhaozEngine5xVersion>` is the
 stack + the graduated foundation packages); the legacy 4.x line `<Version>` carries only the genuinely-MonoGame
 packages. Both versions live in `Directory.Build.props`. See the post-MonoGame plan in `docs/ROADMAP.md`.
 
+## 5.58.0 (custom 5.x line)
+
+`GuiSurface.Slider` - an immediate-mode horizontal drag slider, the one widget the immediate surface lacked
+for a settings screen. Same idiom as `Button`/`Panel`/`Swatch`: one call per frame, styled by `GuiStyle`,
+headless-testable via `Begin(null, pointer)`.
+
+- `float Slider(Rect rect, float value, GuiStyle style, bool enabled = true)` and the default-style overload
+  `float Slider(Rect rect, float value)`. Value domain is normalized `[0,1]`; the caller maps to its own range
+  (volumes are already 0..1) and owns persistence.
+- Drag uses the press-origin invariant (via `Pointer.IsDraggingIn`): the value only tracks the pointer when the
+  press began inside the track, and keeps tracking even if the cursor strays off the track while held. The
+  handle half-width is inset so the ends reach exactly 0 and 1.
+- An enabled slider reserves its rect for the `PointerCaptured` click-through gate (so the board/camera behind
+  a settings panel does not also react); a disabled slider returns its value unchanged, reserves nothing, and
+  draws muted.
+- Visuals (`GuiDraw.DrawSlider`, reusing `GuiStyle`): thin track bar, accent fill left of the handle, and a knob
+  that lights `Press` while dragging / `Hover` while hovered. The value label is the caller's job.
+
 ## 5.57.0 (custom 5.x line)
 
 Parallax background layers - the final camera feel-layer slice. With this, the roadmap camera backlog

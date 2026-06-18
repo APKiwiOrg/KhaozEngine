@@ -144,6 +144,44 @@ namespace KhaozEngine.Gui
             return clicked;
         }
 
+        /// <summary>A horizontal slider using the surface's default <see cref="Style"/>. Returns the value in [0,1].</summary>
+        public float Slider(Rect rect, float value) => Slider(rect, value, Style);
+
+        /// <summary>
+        /// An immediate-mode horizontal slider. Returns the (possibly updated) value in [0,1]. While the pointer is
+        /// pressed with its press-origin inside <paramref name="rect"/> (the same press-origin invariant as
+        /// <see cref="Button(SpriteFont, Rect, string)"/>, via <see cref="Pointer.IsDraggingIn"/>), the value tracks
+        /// the pointer X clamped to [0,1] - the drag keeps control even if the cursor strays off the track, which
+        /// <c>IsPressingIn</c> would not. The handle half-width is inset so the ends reach exactly 0 and 1. The
+        /// caller owns the value's range mapping (volumes are already 0..1), persistence, and any side-effects.
+        /// When enabled the rect is reserved for the <see cref="PointerCaptured"/> gate; when disabled the value is
+        /// returned unchanged, nothing is reserved, and the control draws muted.
+        /// </summary>
+        public float Slider(Rect rect, float value, GuiStyle style, bool enabled = true)
+        {
+            Pointer p = _pointer;
+
+            float result = value;
+            bool dragging = enabled && p.IsDraggingIn(rect);
+            if (dragging)
+            {
+                (float half, float usable) = GuiDraw.SliderGeometry(rect);
+                float v = (p.Position.X - (rect.X + half)) / usable;
+                result = v < 0f ? 0f : v > 1f ? 1f : v;
+            }
+
+            // Only an enabled slider blocks the layer beneath (per spec a disabled slider lets the board through).
+            if (enabled) _blocked.Add(rect);
+
+            bool hovering = enabled && p.IsHoveringIn(rect);
+            if (hovering) _hoveredRect = rect;
+
+            if (_batch is null) return result;
+
+            GuiDraw.DrawSlider(_batch, _white, rect, result, style, enabled, hovering, dragging);
+            return result;
+        }
+
         /// <summary>
         /// True when the pointer is over an enabled <see cref="Button(SpriteFont, Rect, string)"/> this frame.
         /// Valid after all widgets for the frame have been issued (read it before the next <see cref="Begin"/>).

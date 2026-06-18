@@ -54,13 +54,13 @@ version/release work.
 - **Two shared version lines (5.x = the engine; 4.x = legacy MonoGame).** `Directory.Build.props` carries two
   shared versions. `<KhaozEngine5xVersion>` governs the **5.x line, which IS the engine**: the custom-stack
   (MonoGame-free) packages (`KhaozEngine.Gpu`, `Windowing`, `Render2D`, `Render3D`, `Gui`, `Audio`, `Particles`,
-  `Game`) **and**, as of **`5.46.0`** (audit P1#9), the graduated MonoGame-free foundation packages (`Ecs`/
+  `Effects`, `Game`) **and**, as of **`5.46.0`** (audit P1#9), the graduated MonoGame-free foundation packages (`Ecs`/
   `Serialization`/`Content`/`Diagnostics`/`App`/`Localization`/`Persistence`/`Pooling`/`Platform`/`Updates`/
   `Collision`/`Netcode`/`Netcode.Abstractions`/`Netcode.LiteNetLib`). All of those set
   `<Version>$(KhaozEngine5xVersion)</Version>` in their csproj. The 5.x line dropped the `-experimental` suffix
   at `5.31.0`; the tag is plain `vX.Y.Z` (releases up to `5.30.0-experimental` carried the suffix). `<Version>`
   governs the **legacy 4.x line**, which now carries **ONLY** the genuinely-MonoGame packages
-  (`UI`/`Graphics`/`Screens`/`Sprites`/`Input`/`Effects`/`Time`), consumed by the still-4.x SpaceGame; it is
+  (`UI`/`Graphics`/`Screens`/`Sprites`/`Input`/`Time`), consumed by the still-4.x SpaceGame; it is
   frozen-ish (bump only when a MonoGame package itself needs a release) and gets deleted with MonoGame once
   SpaceGame migrates. Each line bumps as a unit: bump `<KhaozEngine5xVersion>` to release ALL 5.x packages
   together (repack to `local-feed`, single tag `vX.Y.Z`) — this is the normal release; bump `<Version>` only for

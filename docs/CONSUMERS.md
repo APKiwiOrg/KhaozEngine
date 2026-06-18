@@ -4,13 +4,13 @@ Which game uses which packages, at which version. Current state only - for the p
 [`../CHANGELOG.md`](../CHANGELOG.md). Update this whenever a consumer bumps a `<PackageReference>` or the
 engine ships a new version.
 
-**Engine current version:** `5.55.0` — the 5.x line `<KhaozEngine5xVersion>`, which is now the engine: the
+**Engine current version:** `5.56.0` — the 5.x line `<KhaozEngine5xVersion>`, which is now the engine: the
 custom MonoGame-free stack (`Gpu`/`Windowing`/`Render2D`/`Render3D`/`Gui`/`Audio`/`Particles`/`Game`) **plus**
 the MonoGame-free foundation packages that graduated onto it at `5.46.0`
 (`Ecs`/`Serialization`/`Content`/`Diagnostics`/`App`/`Localization`/`Persistence`/`Pooling`/`Platform`/
 `Updates`/`Collision`/`Netcode`/`Netcode.Abstractions`/`Netcode.LiteNetLib`). The legacy 4.x line `<Version>`
 is frozen-ish at `4.12.0` and now carries **only** the genuinely-MonoGame packages
-(`Effects`/`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`), consumed by the still-4.x SpaceGame. The two
+(`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`), consumed by the still-4.x SpaceGame. The two
 lines move independently; both set in `Directory.Build.props`. The doc-version guard now checks the 5.x line.
 
 > **5.46.0 (graduation, non-breaking re-version):** the 14 MonoGame-free foundation packages moved from the
@@ -204,8 +204,8 @@ still matches `Directory.Build.props`.
 
 _Last verified: 2026-06-18. The 5.x line `<KhaozEngine5xVersion>` = **5.51.0** is the engine: the custom-stack
 packages + the graduated foundation + the four umbrella metapackages (Game2D/Game3D/Server/Foundation). The
-legacy 4.x line `<Version>` = **4.12.0** is frozen-ish and carries **only** the 7 genuinely-MonoGame packages
-(Effects/Graphics/Input/Screens/Sprites/Time/UI). **Hardpoint** (3D) is on **5.51.0** via `Game3D` + `Foundation`,
+legacy 4.x line `<Version>` = **4.12.0** is frozen-ish and carries **only** the 6 genuinely-MonoGame packages
+(Graphics/Input/Screens/Sprites/Time/UI). **Hardpoint** (3D) is on **5.51.0** via `Game3D` + `Foundation`,
 **Nullwake** (2D) is on **5.51.0** via `Game2D` - both fully off MonoGame, referencing the engine in one line, and
 now running on the `GameApp3D`/`GameApp` loop facade. **SpaceGame** is the lone 4.x MonoGame holdout (pins 4.9.0;
 its 5.x port is the remaining migration work). The 7 legacy MonoGame packages get deleted once SpaceGame is off

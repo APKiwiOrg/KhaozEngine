@@ -1,9 +1,9 @@
 # KhaozEngine roadmap / backlog
 
-Larger feature areas identified but not yet scheduled. Current released version: **5.55.0** (the 5.x line,
+Larger feature areas identified but not yet scheduled. Current released version: **5.56.0** (the 5.x line,
 which is the engine: the custom MonoGame-free stack plus the graduated foundation packages). The legacy 4.x
 line is frozen-ish at `4.12.0` and now carries only the genuinely-MonoGame packages
-(`Effects`/`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`), consumed by the still-4.x SpaceGame.
+(`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`), consumed by the still-4.x SpaceGame.
 
 Several items from the original (3.3.0-era) backlog have since shipped: the camera follow/framing
 layer, the pan/zoom gesture controller, and `PrimitiveRenderer` circle/ring drawing. Those are listed
@@ -147,7 +147,7 @@ first; **Phase A shipped in `5.13.0-experimental`**: multi-instance `Scene3D` (`
   checks this line** (`<KhaozEngine5xVersion>`). (The first two Render3D releases, 5.0.0/5.1.0, predate the
   shared line and were per-package.)
 - **4.x line — legacy, frozen-ish.** After the `5.46.0` graduation it carries **only** the genuinely-MonoGame
-  packages (`Effects`/`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`), consumed by the still-4.x SpaceGame
+  packages (`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`), consumed by the still-4.x SpaceGame
   until it migrates; then they're deleted and MonoGame is fully gone. It bumps only when one of those packages
   needs a release. Its `<Version>` (`4.12.0`) is no longer the "current engine version" and is not guard-checked
   (it lags like a consumer pin).
@@ -181,10 +181,12 @@ Design spec: `docs/superpowers/specs/2026-06-15-render3d-custom-engine-design.md
 - 5.55.0: `RoomCamera` + `CameraRoom` (`KhaozEngine.Render2D`) - **room / region cameras**: per-area bounds
   (+ optional zoom), in-room follow confined to the region, and an eased hand-off (CameraBlend) when the
   target crosses into a new region. Composes the follow + blend layers.
+- 5.56.0: `ScreenShake` (`KhaozEngine.Effects`, graduated to 5.x) - **screen shake**: trauma-based,
+  deterministic offset generator (`trauma^2` falloff, seeded smooth noise, positional + rotational), composed
+  onto the render camera. Pairs with the follow / room cameras.
 
 **Still open** (the deeper scroller/platformer feel layer):
 - Parallax background layers scrolling at fractional rates off the same camera.
-- Screen shake that perturbs the camera (lives in `KhaozEngine.Effects`, see below).
 
 Motivated by a planned platformer / side-scroller. (Base design:
 `docs/superpowers/specs/2026-06-11-graphics-camera2d-design.md`.)
@@ -195,6 +197,8 @@ to delete, see CONSUMERS.md). Converging Nullwake later would require adding sub
 non-uniform-scale support to the camera, or Nullwake's projection stays game-specific.
 
 ## Screen shake (`KhaozEngine.Effects`)
+
+**Shipped (5.56.0)** as the trauma-based `ScreenShake` offset generator (see the camera section).
 
 A screen-shake effect that perturbs the camera (Effects to Graphics interplay; the
 `Effects -> Graphics` package dependency exists as of 4.0.0). Trauma-based decay. Pairs with the

@@ -1,6 +1,6 @@
 # KhaozEngine roadmap / backlog
 
-Larger feature areas identified but not yet scheduled. Current released version: **5.56.0** (the 5.x line,
+Larger feature areas identified but not yet scheduled. Current released version: **5.57.0** (the 5.x line,
 which is the engine: the custom MonoGame-free stack plus the graduated foundation packages). The legacy 4.x
 line is frozen-ish at `4.12.0` and now carries only the genuinely-MonoGame packages
 (`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`), consumed by the still-4.x SpaceGame.
@@ -184,9 +184,12 @@ Design spec: `docs/superpowers/specs/2026-06-15-render3d-custom-engine-design.md
 - 5.56.0: `ScreenShake` (`KhaozEngine.Effects`, graduated to 5.x) - **screen shake**: trauma-based,
   deterministic offset generator (`trauma^2` falloff, seeded smooth noise, positional + rotational), composed
   onto the render camera. Pairs with the follow / room cameras.
+- 5.57.0: `ParallaxLayer` + `Parallax.Wrap` (`KhaozEngine.Render2D`) - **parallax background layers**:
+  per-axis scroll factor (0 = static .. 1 = world-locked) off the same camera, plus a positive-modulo tiling
+  helper for infinitely repeating backgrounds. Completes the camera feel-layer backlog.
 
 **Still open** (the deeper scroller/platformer feel layer):
-- Parallax background layers scrolling at fractional rates off the same camera.
+- (none - the camera feel-layer backlog is complete as of 5.57.0)
 
 Motivated by a planned platformer / side-scroller. (Base design:
 `docs/superpowers/specs/2026-06-11-graphics-camera2d-design.md`.)

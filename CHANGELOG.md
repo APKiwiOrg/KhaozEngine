@@ -4,6 +4,20 @@ All notable changes to KhaozEngine. The 5.x line `<KhaozEngine5xVersion>` is the
 stack + the graduated foundation packages); the legacy 4.x line `<Version>` carries only the genuinely-MonoGame
 packages. Both versions live in `Directory.Build.props`. See the post-MonoGame plan in `docs/ROADMAP.md`.
 
+## 5.57.0 (custom 5.x line)
+
+Parallax background layers - the final camera feel-layer slice. With this, the roadmap camera backlog
+(follow, look-ahead, pixel snap, multi-target framing, eased blends, room cameras, screen shake, parallax)
+is complete.
+
+- **`ParallaxLayer`** (`KhaozEngine.Render2D`) - a per-axis scroll `Factor` (0 = static backdrop, 1 = locked
+  to the world, 0.5 = half speed / farther) with `ViewPosition(cameraPosition) = cameraPosition * Factor`.
+  The game derives a layer `Camera2D` from it and draws the layer's sprites; parallax is translation-only
+  (zoom/rotation are shared with the main camera).
+- **`Parallax.Wrap(value, size)`** (`KhaozEngine.Render2D`) - a positive modulo (`[0, size)`) for seamlessly
+  tiling a repeating background; the game draws copies starting at `-Wrap(layerViewX, tileWidth)`. Returns 0
+  for non-positive size.
+
 ## 5.56.0 (custom 5.x line)
 
 Screen shake on the 5.x engine, and `KhaozEngine.Effects` graduates off MonoGame onto the 5.x line - the

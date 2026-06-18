@@ -4,6 +4,33 @@ All notable changes to KhaozEngine. The 5.x line `<KhaozEngine5xVersion>` is the
 stack + the graduated foundation packages); the legacy 4.x line `<Version>` carries only the genuinely-MonoGame
 packages. Both versions live in `Directory.Build.props`. See the post-MonoGame plan in `docs/ROADMAP.md`.
 
+## 5.60.0 (custom 5.x line)
+
+Menu-navigation input layer: a MonoGame-free `InputManager` in `KhaozEngine.Windowing`, the 5.x rebuild
+of the legacy 4.x `KhaozEngine.Input.InputManager`. Closes the gap where the 5.x stack had raw input
+primitives but no high-level menu/action layer, and `Gui` widgets were pointer-only.
+
+- **`KhaozEngine.Windowing`:** new `InputManager` (poll once per frame via
+  `Update(InputState, IDesignViewport?)`). Composes a `Pointer` for the press-origin click-through
+  invariant and adds keyboard/gamepad menu navigation: `IsMenuUp`/`IsMenuDown` (arrow / D-pad /
+  edge-detected left-stick / scroll-wheel), `IsMenuSelect` (Enter/Space/A/Start), `IsMenuCancel`
+  (Escape/B/Back), `IsSelectNext`/`IsSelectPrevious` (Right/Left + D-pad), `IsPauseGame`
+  (Escape/Back/Start or a tap in bounds). Plus `IsKeyDown`/`IsKeyJustPressed`,
+  `IsNewKeyPress`/`IsNewButtonPress` (per-player with an `out PlayerIndex`, or any-player scan),
+  `IsMouseWheelScrolledUp`/`Down`, and the full set of `Pointer` hit-test helpers delegated through.
+- **`KhaozEngine.Windowing`:** new `PlayerIndex` enum (`One`..`Four`, 0-based), the MonoGame-free
+  replacement for XNA `PlayerIndex`. Maps XNA `Keys`/`Buttons`/`PlayerIndex` to `Key`/`GamepadButton`/
+  `PlayerIndex`, and `Rectangle` to `Rect`, so a 4.x consumer ports with a `using` swap.
+- **`KhaozEngine.Windowing`:** `Pointer` gains `IsMiddleJustPressed` and `IsRightJustPressed` (symmetric
+  with the existing `*JustReleased` edges), backing the `InputManager` middle-button surface.
+- **`KhaozEngine.Gui`:** new `FocusNavigator` - keyboard/gamepad focus cursor over a list of N widgets
+  (wrap/clamp index math; `Update(InputManager)` drives focus from vertical menu nav). The natural
+  companion to the otherwise pointer-only Gui widgets.
+- Left-stick "up" convention: `+Y` = stick pushed up (matching the engine's existing 4.x cursor
+  convention), edge-detected past `InputManager.StickThreshold` (0.5) against the previous frame.
+- Additive, no breaking changes. Reachable from the `KhaozEngine.Game2D` umbrella (pulls `Windowing`
+  and `Gui`). 35 new headless tests. First consumer: SpaceGame's 5.x screen/menu port.
+
 ## 5.59.0 (custom 5.x line)
 
 Cross-platform storage: `AppDataPaths` is now publisher-rooted and mobile-aware, plus a new

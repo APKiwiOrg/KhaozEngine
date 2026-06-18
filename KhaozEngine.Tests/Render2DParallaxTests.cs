@@ -59,6 +59,8 @@ public class Render2DParallaxTests
     public void Wrap_NegativeValueGivesPositiveRemainder()
     {
         Assert.Equal(70f, Parallax.Wrap(-30f, 100f), Tol);
+        Assert.Equal(0f, Parallax.Wrap(-100f, 100f), Tol);   // negative exact multiple wraps to 0, not -100
+        Assert.Equal(30f, Parallax.Wrap(-170f, 100f), Tol);  // -170 -> 30 (wraps multiple periods)
     }
 
     [Fact]

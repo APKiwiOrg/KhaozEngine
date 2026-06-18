@@ -31,7 +31,8 @@ namespace KhaozEngine.Render2D
         /// <summary>The camera this controller drives.</summary>
         public Camera2D Camera => _camera;
 
-        /// <summary>The internal in-room follow - tune its Stiffness/Deadzone/LookAhead/Snap for the in-room feel.</summary>
+        /// <summary>The internal in-room follow - tune its Stiffness/Deadzone/LookAhead/Snap for the in-room
+        /// feel. Do NOT call its Update/Warp directly: RoomCamera drives it.</summary>
         public CameraFollow Follow => _follow;
 
         /// <summary>Index of the active room, or -1 until the first room is acquired.</summary>
@@ -74,6 +75,7 @@ namespace KhaozEngine.Render2D
                 return;
             }
 
+            // Settled (incl. the first-acquisition frame: SnapTo warped the follow, this resumes following).
             _follow.Update(target, velocity, dt, viewportWidth, viewportHeight, _rooms[_activeIndex].Bounds);
         }
 

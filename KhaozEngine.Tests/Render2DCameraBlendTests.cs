@@ -43,7 +43,9 @@ public class Render2DCameraBlendTests
         var a = new CameraState(new Vector2(0f, 0f), 1f, 0f);
         var b = new CameraState(new Vector2(100f, 50f), 3f, 1f);
 
-        var at0 = CameraState.Lerp(a, b, 0f);
+        var at0 = CameraState.Lerp(a, b, 0f);   // t=0 returns a exactly
+        Assert.Equal(new Vector2(0f, 0f), at0.Position);
+        Assert.Equal(1f, at0.Zoom, Tol);
         Assert.Equal(0f, at0.Rotation, Tol);
 
         var at1 = CameraState.Lerp(a, b, 1f);

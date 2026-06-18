@@ -79,4 +79,24 @@ public class Render2DGroupCameraTests
         AssertClose(Vector2.Zero, pos);
         Assert.Equal(100f, zoom, Tol);   // huge fit, clamped to maxZoom; no NaN/Infinity
     }
+
+    [Fact]
+    public void Bounds_SinglePointWithZeroMinSizeFloorsToEpsilon()
+    {
+        var pts = new[] { new Vector2(7f, -3f) };
+        var b = CameraFraming.Bounds(pts, 0f, Vector2.Zero);   // zero extent + zero min -> epsilon-sized box on the point
+        Assert.True(b.Width > 0f && b.Width < 1e-3f, $"width {b.Width} not epsilon-sized");
+        Assert.True(b.Height > 0f && b.Height < 1e-3f, $"height {b.Height} not epsilon-sized");
+        // box stays centered on the point
+        Assert.Equal(7f, b.X + b.Width * 0.5f, 1e-3f);
+        Assert.Equal(-3f, b.Y + b.Height * 0.5f, 1e-3f);
+    }
+
+    [Fact]
+    public void Solve_ClampsZoomToMin()
+    {
+        // Bounds far larger than the viewport -> fit < minZoom -> clamped up to minZoom.
+        var (_, zoom) = CameraFraming.Solve(new Rect(0f, 0f, 80_000f, 60_000f), Vw, Vh, 0.5f, float.MaxValue);
+        Assert.Equal(0.5f, zoom, Tol);   // fit = min(800/80000, 600/60000) = 0.01, clamped up to 0.5
+    }
 }

@@ -203,12 +203,15 @@ public class Render2DCameraBlendTests
         var held = cam.Position;
         float heldZoom = cam.Zoom;
 
+        Assert.Equal(0.3f, blend.Progress, Tol);   // progress reflects how far it got
+
         blend.Stop();
         Assert.False(blend.IsBlending);
 
         blend.Update(0.5f);   // ignored once stopped
         Assert.True(Vector2.Distance(held, cam.Position) <= Tol);
         Assert.Equal(heldZoom, cam.Zoom, Tol);
+        Assert.Equal(0.3f, blend.Progress, Tol);   // Stop leaves Progress at its last value
     }
 
     [Fact]
@@ -221,5 +224,6 @@ public class Render2DCameraBlendTests
 
         AssertState(cam, new Vector2(5f, 5f), 2f, 0.1f);
         Assert.False(blend.IsBlending);
+        Assert.Equal(0f, blend.Progress, Tol);
     }
 }

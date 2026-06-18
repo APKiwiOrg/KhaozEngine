@@ -26,7 +26,8 @@ namespace KhaozEngine.Render2D
         /// <summary>True from a positive-duration <see cref="To"/> until progress reaches 1.</summary>
         public bool IsBlending { get; private set; }
 
-        /// <summary>Raw progress 0..1 (pre-easing); 1 when complete or after an instant snap.</summary>
+        /// <summary>Raw progress 0..1 (pre-easing): 0 before the first blend, 1 when complete or after an
+        /// instant snap. <see cref="Stop"/> leaves it at its last value (the fraction reached when halted).</summary>
         public float Progress { get; private set; }
 
         /// <summary>

@@ -4,7 +4,7 @@ Which game uses which packages, at which version. Current state only - for the p
 [`../CHANGELOG.md`](../CHANGELOG.md). Update this whenever a consumer bumps a `<PackageReference>` or the
 engine ships a new version.
 
-**Engine current version:** `5.57.0` — the 5.x line `<KhaozEngine5xVersion>`, which is now the engine: the
+**Engine current version:** `5.58.0` — the 5.x line `<KhaozEngine5xVersion>`, which is now the engine: the
 custom MonoGame-free stack (`Gpu`/`Windowing`/`Render2D`/`Render3D`/`Gui`/`Audio`/`Particles`/`Game`) **plus**
 the MonoGame-free foundation packages that graduated onto it at `5.46.0`
 (`Ecs`/`Serialization`/`Content`/`Diagnostics`/`App`/`Localization`/`Persistence`/`Pooling`/`Platform`/
@@ -202,7 +202,7 @@ done
 After editing, run `./scripts/check-doc-versions.sh` (CI runs it too) to confirm the engine-version line
 still matches `Directory.Build.props`.
 
-_Last verified: 2026-06-18. The 5.x line `<KhaozEngine5xVersion>` = **5.57.0** is the engine: the custom-stack
+_Last verified: 2026-06-18. The 5.x line `<KhaozEngine5xVersion>` = **5.58.0** is the engine: the custom-stack
 packages + the graduated foundation + the four umbrella metapackages (Game2D/Game3D/Server/Foundation). The
 legacy 4.x line `<Version>` = **4.12.0** is frozen-ish and carries **only** the 6 genuinely-MonoGame packages
 (Graphics/Input/Screens/Sprites/Time/UI). **Hardpoint** (3D) is on **5.57.0** via `Game3D` + `Foundation`,

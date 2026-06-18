@@ -26,6 +26,55 @@ namespace KhaozEngine.Gui
         }
 
         /// <summary>
+        /// The handle geometry for a horizontal slider track: a square knob the height of <paramref name="rect"/>
+        /// (clamped to the rect width), and the travel range of its CENTRE. Insetting by the handle half-width is
+        /// what lets the value reach exactly 0 and 1 without the knob spilling past the track ends. Shared by the
+        /// input-mapping in <see cref="GuiSurface"/>.<c>Slider</c> and <see cref="DrawSlider"/> so both agree on
+        /// where value <c>v</c> sits.
+        /// </summary>
+        public static (float half, float usable) SliderGeometry(Rect rect)
+        {
+            float handleW = System.MathF.Min(rect.Height, rect.Width);
+            float half = handleW * 0.5f;
+            float usable = System.MathF.Max(1f, rect.Width - handleW);
+            return (half, usable);
+        }
+
+        /// <summary>
+        /// Slider visuals: a thin track bar (<c>style.Fill</c>, or <c>DisabledFill</c>), an accent fill
+        /// (<c>style.Border</c>) from the left end up to the handle when enabled, and a knob at value
+        /// <paramref name="value01"/> (<c>style.Press</c> while <paramref name="dragging"/>, <c>style.Hover</c> while
+        /// <paramref name="hover"/>, else <c>style.Fill</c>; <c>DisabledFill</c> when disabled). Geometry matches
+        /// <see cref="SliderGeometry"/>.
+        /// </summary>
+        public static void DrawSlider(SpriteBatch batch, Texture2D white, Rect rect, float value01,
+            in GuiStyle style, bool enabled, bool hover, bool dragging)
+        {
+            float v = value01 < 0f ? 0f : value01 > 1f ? 1f : value01;
+            (float half, float usable) = SliderGeometry(rect);
+
+            // Thin track bar centred vertically, spanning the handle-centre travel range.
+            float trackH = System.MathF.Max(2f, rect.Height * 0.30f);
+            float trackY = rect.Y + (rect.Height - trackH) * 0.5f;
+            var track = new Rect(rect.X + half, trackY, usable, trackH);
+            Fill(batch, white, track, enabled ? style.Fill : style.DisabledFill);
+
+            float centerX = rect.X + half + v * usable;
+
+            // Accent fill from the left end up to the handle (enabled only).
+            if (enabled && centerX > track.X)
+                Fill(batch, white, new Rect(track.X, trackY, centerX - track.X, trackH), style.Border);
+
+            Vector4 knob = !enabled ? style.DisabledFill
+                : dragging ? style.Press
+                : hover ? style.Hover
+                : style.Fill;
+            var handle = new Rect(centerX - half, rect.Y, half * 2f, rect.Height);
+            Fill(batch, white, handle, knob);
+            Border(batch, white, handle, style.BorderThickness, enabled ? style.Border : style.DisabledText);
+        }
+
+        /// <summary>
         /// The single source of truth for button visuals, shared by the immediate <see cref="GuiSurface.Button(SpriteFont, Rect, string, GuiStyle, bool, bool)"/>
         /// and the retained <see cref="Button"/>. Draws the fill (priority: <c>!enabled</c>→DisabledFill,
         /// <paramref name="selected"/>→SelectedFill, <paramref name="press"/>→Press, <paramref name="hover"/>→Hover,

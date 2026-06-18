@@ -4,6 +4,23 @@ All notable changes to KhaozEngine. The 5.x line `<KhaozEngine5xVersion>` is the
 stack + the graduated foundation packages); the legacy 4.x line `<Version>` carries only the genuinely-MonoGame
 packages. Both versions live in `Directory.Build.props`. See the post-MonoGame plan in `docs/ROADMAP.md`.
 
+## 5.55.0 (custom 5.x line)
+
+Room / region cameras on the 5.x engine - Metroidvania-style per-area cameras, the next slice of the camera
+feel layer (composing the follow + blend pieces already shipped).
+
+- **`RoomCamera`** (`KhaozEngine.Render2D`) - a turnkey controller: `Update(target, velocity, dt, vw, vh)`
+  follows the target confined to the region it is in (an internal `CameraFollow`, exposed via `Follow` for
+  feel tuning) and eases (an internal `CameraBlend`) to reframe when the target crosses into a new region,
+  then resumes following. `BlendDuration` / `BlendEasing` shape the hand-off; `ActiveRoomIndex` /
+  `IsTransitioning` expose state; `Warp(target, vw, vh)` snaps to the target's room instantly.
+- **`CameraRoom`** (`KhaozEngine.Render2D`) - a region: a world rect (both the trigger area and the camera
+  confinement) plus an optional per-room zoom override (`null` keeps the current zoom). Overlaps resolve by
+  list order; a target in no room holds the current room.
+- **`Camera2D.ClampPosition`** gains an overload taking an explicit zoom, so a hand-off can clamp the framing
+  at the next room's zoom before the camera has eased there. The existing overload delegates with `Zoom`
+  (behaviour unchanged).
+
 ## 5.54.0 (custom 5.x line)
 
 Eased camera blends on the 5.x engine - a reusable one-shot camera transition primitive, the next slice of

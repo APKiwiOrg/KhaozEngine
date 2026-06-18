@@ -1,6 +1,6 @@
 # KhaozEngine roadmap / backlog
 
-Larger feature areas identified but not yet scheduled. Current released version: **5.54.0** (the 5.x line,
+Larger feature areas identified but not yet scheduled. Current released version: **5.55.0** (the 5.x line,
 which is the engine: the custom MonoGame-free stack plus the graduated foundation packages). The legacy 4.x
 line is frozen-ish at `4.12.0` and now carries only the genuinely-MonoGame packages
 (`Effects`/`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`), consumed by the still-4.x SpaceGame.
@@ -178,9 +178,11 @@ Design spec: `docs/superpowers/specs/2026-06-15-render3d-custom-engine-design.md
 - 5.54.0: `CameraBlend` + `CameraState` + `Easing` (`KhaozEngine.Render2D`) - **eased camera blends**: a
   one-shot, time-based transition that lerps position/zoom/rotation between setups over a duration with a
   preset or custom easing curve (instant snap on duration 0). The primitive room/region cameras hand off with.
+- 5.55.0: `RoomCamera` + `CameraRoom` (`KhaozEngine.Render2D`) - **room / region cameras**: per-area bounds
+  (+ optional zoom), in-room follow confined to the region, and an eased hand-off (CameraBlend) when the
+  target crosses into a new region. Composes the follow + blend layers.
 
 **Still open** (the deeper scroller/platformer feel layer):
-- Room / region cameras: different bounds (and optionally settings) per area, Metroidvania-style.
 - Parallax background layers scrolling at fractional rates off the same camera.
 - Screen shake that perturbs the camera (lives in `KhaozEngine.Effects`, see below).
 

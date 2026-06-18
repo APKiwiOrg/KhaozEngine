@@ -17,11 +17,12 @@ namespace KhaozEngine.Render2D
         /// <summary>Grid size in world units; <see cref="Apply"/> rounds each axis to a multiple of this.</summary>
         public readonly float WorldUnitsPerPixel;
 
-        /// <summary>Creates an enabled snap with the given grid size (world units per art pixel).</summary>
+        /// <summary>Creates a snap with the given grid size (world units per art pixel).
+        /// <see cref="Enabled"/> is set to <c>true</c> only when <paramref name="worldUnitsPerPixel"/> is positive.</summary>
         public PixelSnap(float worldUnitsPerPixel)
         {
-            Enabled = true;
             WorldUnitsPerPixel = worldUnitsPerPixel;
+            Enabled = worldUnitsPerPixel > 0f;
         }
 
         /// <summary>Rounds each axis to the nearest multiple of <see cref="WorldUnitsPerPixel"/>.

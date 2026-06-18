@@ -36,7 +36,7 @@ public class Render2DCameraFollowTests
     [Fact]
     public void PixelSnap_NonPositiveGridIsIdentity()
     {
-        var snap = new PixelSnap(0f);           // ctor sets Enabled = true but grid is 0
+        var snap = new PixelSnap(0f);           // non-positive grid -> Enabled stays false
         var p = new Vector2(13.37f, -4.2f);
         AssertClose(p, snap.Apply(p));
     }

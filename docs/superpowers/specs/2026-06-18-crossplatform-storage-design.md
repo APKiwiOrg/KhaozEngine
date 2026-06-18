@@ -28,7 +28,7 @@ glue typed save/load by hand. That boilerplate should live in the engine once.
 - **Version: minor `5.59.0`**, noted as breaking-as-minor in CHANGELOG/CONSUMERS, consistent with
   prior 5.x practice (the 5.x line absorbs breaking changes as minors rather than majors).
 
-## Part A — `AppDataPaths` becomes publisher-rooted (`KhaozEngine.App`)
+## Part A - `AppDataPaths` becomes publisher-rooted (`KhaozEngine.App`)
 
 Canonical layout: `<os-base>/<publisher>/<appName>/`. Single layout, no legacy fallback shape.
 
@@ -59,7 +59,7 @@ Fallback chain (unchanged in spirit, with publisher/appName appended):
 1. If the matched OS branch yields a blank path, fall through.
 2. `SpecialFolder.LocalApplicationData` + publisher/appName.
 3. Last resort: `SpecialFolder.UserProfile` + `.<publisher>` lowercased + appName, i.e.
-   `Path.Combine(home, "." + publisher.ToLowerInvariant(), appName)` — keeps the dotfile-style
+   `Path.Combine(home, "." + publisher.ToLowerInvariant(), appName)` - keeps the dotfile-style
    hidden root but still nests the game under the publisher.
 
 `BaseDirectory` stays `Lazy<string>` (resolve + `Directory.CreateDirectory` exactly once, thread-safe).
@@ -70,7 +70,7 @@ Fallback chain (unchanged in spirit, with publisher/appName appended):
 - `SystemAppDataEnvironment` maps them to `OperatingSystem.IsAndroid()` / `OperatingSystem.IsIOS()`.
 - BCL-only; no MonoGame, no mobile SDK references.
 
-## Part B — `GameStorage` facade (`KhaozEngine.Persistence`)
+## Part B - `GameStorage` facade (`KhaozEngine.Persistence`)
 
 Lives in `KhaozEngine.Persistence` (which already references `KhaozEngine.App`). One object that
 assembles paths + queue + storages + optional encoder, and exposes generic typed save/load.
@@ -81,8 +81,8 @@ assembles paths + queue + storages + optional encoder, and exposes generic typed
 var storage = new GameStorage("APKiwi", "Hardpoint");                    // plaintext, defaults
 var storage = new GameStorage("APKiwi", "Hardpoint", new GameStorageOptions
 {
-    Encoder = mySaveEncoder,   // SaveEncoder? — enables encoded save/load
-    Logger  = log,             // ILogger? — passed to the internal PersistenceQueue
+    Encoder = mySaveEncoder,   // SaveEncoder? - enables encoded save/load
+    Logger  = log,             // ILogger? - passed to the internal PersistenceQueue
     MaxWriteAttempts = 3,       // queue tuning (default 3)
     RetryDelay = TimeSpan.FromMilliseconds(50), // queue tuning (default 50ms)
 });
@@ -132,7 +132,7 @@ public void Dispose();  // Flush + dispose WriteQueue
 - **Lifetime**: `GameStorage` owns the `WriteQueue` it creates and disposes it on `Dispose`
   (which flushes first). `Flush` is exposed for explicit shutdown drains.
 
-## Part C — Tests, packaging, cleanup
+## Part C - Tests, packaging, cleanup
 
 ### Tests (`KhaozEngine.Tests`, headless)
 

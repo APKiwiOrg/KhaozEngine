@@ -10,13 +10,15 @@ namespace KhaozEngine.Render2D
     /// </summary>
     public readonly struct LookAheadSettings
     {
-        /// <summary>Seconds of velocity to lead by, per axis. 0 on an axis = no lead there.</summary>
+        /// <summary>Seconds of look-ahead, per axis: multiplied by velocity to give a world-space lead
+        /// distance. 0 on an axis = no lead there.</summary>
         public readonly Vector2 LeadTime;
 
         /// <summary>Clamp on lead magnitude, per axis (world units). A component &lt;= 0 = unclamped.</summary>
         public readonly Vector2 MaxDistance;
 
-        /// <summary>Easing rate of the lead offset (per second). &lt;= 0 = apply instantly.</summary>
+        /// <summary>Easing rate of the lead offset (per second), scalar (shared by both axes).
+        /// &lt;= 0 = apply instantly.</summary>
         public readonly float Stiffness;
 
         /// <summary>Creates look-ahead settings.</summary>

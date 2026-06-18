@@ -233,10 +233,12 @@ public class Render2DCameraFollowTests
         Assert.True(cam.Position.X > 30f);                  // lead settled near +40
 
         float before = cam.Position.X;
-        // One frame of reversed velocity: the lead eases toward -40, it must not snap there.
+        // One frame of reversed velocity (leadTarget = -40): the offset eases by 1 - exp(-Stiffness*dt),
+        // it must land partway, NOT snap to -40.
         follow.Update(new Vector2(0f, 0f), new Vector2(-100f, 0f), 0.1f, Vw, Vh, Unbounded);
 
-        Assert.True(cam.Position.X < before);               // moved toward the new target
-        Assert.True(cam.Position.X > -40f);                 // but did not jump all the way
+        float expected = before + (-40f - before) * (1f - MathF.Exp(-10f * 0.1f));
+        Assert.Equal(expected, cam.Position.X, Tol);        // exact one-step ease (proves ease, not snap)
+        Assert.True(cam.Position.X is < 0f and > -40f);     // moved past zero but nowhere near the -40 target
     }
 }

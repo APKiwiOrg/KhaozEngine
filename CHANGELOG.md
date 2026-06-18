@@ -4,6 +4,22 @@ All notable changes to KhaozEngine. The 5.x line `<KhaozEngine5xVersion>` is the
 stack + the graduated foundation packages); the legacy 4.x line `<Version>` carries only the genuinely-MonoGame
 packages. Both versions live in `Directory.Build.props`. See the post-MonoGame plan in `docs/ROADMAP.md`.
 
+## 5.54.0 (custom 5.x line)
+
+Eased camera blends on the 5.x engine - a reusable one-shot camera transition primitive, the next slice of
+the camera feel layer (and the building block the room/region camera slice will consume).
+
+- **`CameraBlend`** (`KhaozEngine.Render2D`) - transitions a `Camera2D` from its current framing to a target
+  over a duration: `To(target, duration, easing)` captures the start, `Update(dt)` advances it, and the
+  camera lands exactly on the target at the end. `duration <= 0` snaps instantly; `IsBlending` / `Progress`
+  expose state; `Stop()` cancels in place; calling `To` mid-blend cleanly re-targets from the current frame.
+- **`CameraState`** (`KhaozEngine.Render2D`) - an immutable framing snapshot (position + zoom + rotation) with
+  `From(camera)` / `ApplyTo(camera)` / `Lerp(a, b, t)`. The blend endpoint type, and a reusable camera "setup"
+  value.
+- **`Easing`** (`KhaozEngine.Render2D`) - pure preset curves (`Linear`, `SmoothStep`, `EaseIn`, `EaseOut`,
+  `EaseInOut`), each clamping `t` to `[0,1]`. `CameraBlend` defaults to `SmoothStep`; callers can pass any
+  `Func<float,float>`.
+
 ## 5.53.0 (custom 5.x line)
 
 Multi-target (co-op / shared-screen) camera framing on the 5.x engine, the next slice of the camera feel

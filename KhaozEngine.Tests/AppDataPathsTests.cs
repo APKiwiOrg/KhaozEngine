@@ -151,6 +151,59 @@ public class AppDataPathsTests
         finally { Cleanup(root); }
     }
 
+    [Fact]
+    public void BaseDirectory_Android_UsesLocalApplicationDataSandboxUnderPublisher()
+    {
+        string root = NewTempRoot();
+        try
+        {
+            var env = new FakeAppDataEnvironment { IsAndroid = true };
+            env.Folders[Environment.SpecialFolder.LocalApplicationData] = root;
+
+            var paths = new AppDataPaths(Publisher, AppName, env);
+
+            Assert.Equal(Path.Combine(root, Publisher, AppName), paths.BaseDirectory);
+            Assert.True(Directory.Exists(paths.BaseDirectory));
+        }
+        finally { Cleanup(root); }
+    }
+
+    [Fact]
+    public void BaseDirectory_IOS_UsesLocalApplicationDataSandboxUnderPublisher()
+    {
+        string root = NewTempRoot();
+        try
+        {
+            var env = new FakeAppDataEnvironment { IsIOS = true };
+            env.Folders[Environment.SpecialFolder.LocalApplicationData] = root;
+
+            var paths = new AppDataPaths(Publisher, AppName, env);
+
+            Assert.Equal(Path.Combine(root, Publisher, AppName), paths.BaseDirectory);
+            Assert.True(Directory.Exists(paths.BaseDirectory));
+        }
+        finally { Cleanup(root); }
+    }
+
+    [Fact]
+    public void BaseDirectory_Android_TakesPrecedenceOverDesktopFlag()
+    {
+        string sandbox = NewTempRoot();
+        string desktop = NewTempRoot();
+        try
+        {
+            // Both Android and a desktop flag set: the mobile sandbox must win.
+            var env = new FakeAppDataEnvironment { IsAndroid = true, IsLinux = true };
+            env.Folders[Environment.SpecialFolder.LocalApplicationData] = sandbox;
+            env.EnvVars["XDG_DATA_HOME"] = desktop;
+
+            var paths = new AppDataPaths(Publisher, AppName, env);
+
+            Assert.Equal(Path.Combine(sandbox, Publisher, AppName), paths.BaseDirectory);
+        }
+        finally { Cleanup(sandbox); Cleanup(desktop); }
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

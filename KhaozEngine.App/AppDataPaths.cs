@@ -4,35 +4,43 @@ using System.IO;
 namespace KhaozEngine.App;
 
 /// <summary>
-/// Resolves the OS-correct application-data directory (for saves, settings, logs) under a given
-/// app folder name, and exposes conventional file paths inside it.
+/// Resolves the OS-correct application-data directory (for saves, settings, logs) under a
+/// publisher root, and exposes conventional file paths inside it. Layout is
+/// <c>&lt;os-base&gt;/&lt;publisher&gt;/&lt;appName&gt;/</c> so every game from one publisher nests together.
 /// <list type="bullet">
-///   <item>Windows: <c>%APPDATA%\&lt;appFolderName&gt;\</c></item>
-///   <item>macOS: <c>~/Library/Application Support/&lt;appFolderName&gt;/</c></item>
-///   <item>Linux: <c>$XDG_DATA_HOME/&lt;appFolderName&gt;/</c> (else <c>~/.local/share/&lt;appFolderName&gt;/</c>)</item>
+///   <item>Windows: <c>%APPDATA%\&lt;publisher&gt;\&lt;appName&gt;\</c></item>
+///   <item>macOS: <c>~/Library/Application Support/&lt;publisher&gt;/&lt;appName&gt;/</c></item>
+///   <item>Linux: <c>$XDG_DATA_HOME/&lt;publisher&gt;/&lt;appName&gt;/</c> (else <c>~/.local/share/&lt;publisher&gt;/&lt;appName&gt;/</c>)</item>
+///   <item>Android / iOS: <c>&lt;app-sandbox&gt;/&lt;publisher&gt;/&lt;appName&gt;/</c></item>
 /// </list>
 /// </summary>
 public sealed class AppDataPaths
 {
-    private readonly string appFolderName;
+    private readonly string publisher;
+    private readonly string appName;
     private readonly IAppDataEnvironment environment;
     private readonly Lazy<string> resolvedBaseDir;
 
-    /// <summary>Creates a resolver for the given app folder name using the real OS environment.</summary>
-    /// <exception cref="ArgumentException"><paramref name="appFolderName"/> is null, empty, or whitespace.</exception>
-    public AppDataPaths(string appFolderName)
-        : this(appFolderName, new SystemAppDataEnvironment())
+    /// <summary>Creates a resolver for the given publisher and app name using the real OS environment.</summary>
+    /// <exception cref="ArgumentException"><paramref name="publisher"/> or <paramref name="appName"/> is null, empty, or whitespace.</exception>
+    public AppDataPaths(string publisher, string appName)
+        : this(publisher, appName, new SystemAppDataEnvironment())
     {
     }
 
-    internal AppDataPaths(string appFolderName, IAppDataEnvironment environment)
+    internal AppDataPaths(string publisher, string appName, IAppDataEnvironment environment)
     {
-        if (string.IsNullOrWhiteSpace(appFolderName))
+        if (string.IsNullOrWhiteSpace(publisher))
         {
-            throw new ArgumentException("An app folder name must be provided.", nameof(appFolderName));
+            throw new ArgumentException("A publisher name must be provided.", nameof(publisher));
+        }
+        if (string.IsNullOrWhiteSpace(appName))
+        {
+            throw new ArgumentException("An app name must be provided.", nameof(appName));
         }
 
-        this.appFolderName = appFolderName;
+        this.publisher = publisher;
+        this.appName = appName;
         this.environment = environment;
         this.resolvedBaseDir = new Lazy<string>(CreateBaseDirectory);
     }
@@ -68,12 +76,22 @@ public sealed class AppDataPaths
 
     private string ResolveBaseDirectory()
     {
-        if (environment.IsWindows)
+        // Mobile sandboxes are checked first so a platform that also reports a desktop flag
+        // cannot shadow them.
+        if (environment.IsAndroid || environment.IsIOS)
+        {
+            string sandbox = environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (!string.IsNullOrWhiteSpace(sandbox))
+            {
+                return Nest(sandbox);
+            }
+        }
+        else if (environment.IsWindows)
         {
             string appData = environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
             if (!string.IsNullOrWhiteSpace(appData))
             {
-                return Path.Combine(appData, appFolderName);
+                return Nest(appData);
             }
         }
         else if (environment.IsMacOS)
@@ -81,7 +99,7 @@ public sealed class AppDataPaths
             string appSupport = environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
             if (!string.IsNullOrWhiteSpace(appSupport))
             {
-                return Path.Combine(appSupport, appFolderName);
+                return Nest(appSupport);
             }
         }
         else if (environment.IsLinux)
@@ -89,23 +107,25 @@ public sealed class AppDataPaths
             string? xdgDataHome = environment.GetEnvironmentVariable("XDG_DATA_HOME");
             if (!string.IsNullOrWhiteSpace(xdgDataHome))
             {
-                return Path.Combine(xdgDataHome, appFolderName);
+                return Nest(xdgDataHome);
             }
 
             string? home = environment.GetEnvironmentVariable("HOME");
             if (!string.IsNullOrWhiteSpace(home))
             {
-                return Path.Combine(home, ".local", "share", appFolderName);
+                return Path.Combine(home, ".local", "share", publisher, appName);
             }
         }
 
         string localAppData = environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         if (!string.IsNullOrWhiteSpace(localAppData))
         {
-            return Path.Combine(localAppData, appFolderName);
+            return Nest(localAppData);
         }
 
         string homeDir = environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        return Path.Combine(homeDir, $".{appFolderName.ToLowerInvariant()}");
+        return Path.Combine(homeDir, "." + publisher.ToLowerInvariant(), appName);
     }
+
+    private string Nest(string baseDir) => Path.Combine(baseDir, publisher, appName);
 }

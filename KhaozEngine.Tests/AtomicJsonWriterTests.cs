@@ -89,7 +89,7 @@ public class AtomicJsonWriterTests
         {
             var env = new FakeAppDataEnvironment { IsWindows = true };
             env.Folders[Environment.SpecialFolder.ApplicationData] = root;
-            var paths = new AppDataPaths("MyGame", env);
+            var paths = new AppDataPaths("APKiwi", "MyGame", env);
 
             AtomicJsonWriter.WriteText(paths, "save.json", "data");
 

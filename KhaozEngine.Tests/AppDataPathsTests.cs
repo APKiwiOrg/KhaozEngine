@@ -8,10 +8,11 @@ namespace KhaozEngine.Tests;
 
 public class AppDataPathsTests
 {
-    private const string AppFolder = "MyGame";
+    private const string Publisher = "APKiwi";
+    private const string AppName = "MyGame";
 
     [Fact]
-    public void BaseDirectory_Windows_UsesApplicationData()
+    public void BaseDirectory_Windows_UsesApplicationDataUnderPublisher()
     {
         string root = NewTempRoot();
         try
@@ -19,16 +20,16 @@ public class AppDataPathsTests
             var env = new FakeAppDataEnvironment { IsWindows = true };
             env.Folders[Environment.SpecialFolder.ApplicationData] = root;
 
-            var paths = new AppDataPaths(AppFolder, env);
+            var paths = new AppDataPaths(Publisher, AppName, env);
 
-            Assert.Equal(Path.Combine(root, AppFolder), paths.BaseDirectory);
+            Assert.Equal(Path.Combine(root, Publisher, AppName), paths.BaseDirectory);
             Assert.True(Directory.Exists(paths.BaseDirectory));
         }
         finally { Cleanup(root); }
     }
 
     [Fact]
-    public void BaseDirectory_MacOS_UsesApplicationData()
+    public void BaseDirectory_MacOS_UsesApplicationDataUnderPublisher()
     {
         string root = NewTempRoot();
         try
@@ -36,9 +37,9 @@ public class AppDataPathsTests
             var env = new FakeAppDataEnvironment { IsMacOS = true };
             env.Folders[Environment.SpecialFolder.ApplicationData] = root;
 
-            var paths = new AppDataPaths(AppFolder, env);
+            var paths = new AppDataPaths(Publisher, AppName, env);
 
-            Assert.Equal(Path.Combine(root, AppFolder), paths.BaseDirectory);
+            Assert.Equal(Path.Combine(root, Publisher, AppName), paths.BaseDirectory);
             Assert.True(Directory.Exists(paths.BaseDirectory));
         }
         finally { Cleanup(root); }
@@ -53,9 +54,9 @@ public class AppDataPathsTests
             var env = new FakeAppDataEnvironment { IsLinux = true };
             env.EnvVars["XDG_DATA_HOME"] = root;
 
-            var paths = new AppDataPaths(AppFolder, env);
+            var paths = new AppDataPaths(Publisher, AppName, env);
 
-            Assert.Equal(Path.Combine(root, AppFolder), paths.BaseDirectory);
+            Assert.Equal(Path.Combine(root, Publisher, AppName), paths.BaseDirectory);
             Assert.True(Directory.Exists(paths.BaseDirectory));
         }
         finally { Cleanup(root); }
@@ -70,9 +71,9 @@ public class AppDataPathsTests
             var env = new FakeAppDataEnvironment { IsLinux = true };
             env.EnvVars["HOME"] = root; // XDG_DATA_HOME deliberately absent
 
-            var paths = new AppDataPaths(AppFolder, env);
+            var paths = new AppDataPaths(Publisher, AppName, env);
 
-            Assert.Equal(Path.Combine(root, ".local", "share", AppFolder), paths.BaseDirectory);
+            Assert.Equal(Path.Combine(root, ".local", "share", Publisher, AppName), paths.BaseDirectory);
             Assert.True(Directory.Exists(paths.BaseDirectory));
         }
         finally { Cleanup(root); }
@@ -84,31 +85,29 @@ public class AppDataPathsTests
         string root = NewTempRoot();
         try
         {
-            // No OS flag set; primary branch never taken.
             var env = new FakeAppDataEnvironment();
             env.Folders[Environment.SpecialFolder.LocalApplicationData] = root;
 
-            var paths = new AppDataPaths(AppFolder, env);
+            var paths = new AppDataPaths(Publisher, AppName, env);
 
-            Assert.Equal(Path.Combine(root, AppFolder), paths.BaseDirectory);
+            Assert.Equal(Path.Combine(root, Publisher, AppName), paths.BaseDirectory);
             Assert.True(Directory.Exists(paths.BaseDirectory));
         }
         finally { Cleanup(root); }
     }
 
     [Fact]
-    public void BaseDirectory_LastResort_UsesUserProfileDotFolder()
+    public void BaseDirectory_LastResort_UsesUserProfileDotPublisherThenAppName()
     {
         string root = NewTempRoot();
         try
         {
-            // Nothing resolves except UserProfile.
             var env = new FakeAppDataEnvironment();
             env.Folders[Environment.SpecialFolder.UserProfile] = root;
 
-            var paths = new AppDataPaths(AppFolder, env);
+            var paths = new AppDataPaths(Publisher, AppName, env);
 
-            Assert.Equal(Path.Combine(root, "." + AppFolder.ToLowerInvariant()), paths.BaseDirectory);
+            Assert.Equal(Path.Combine(root, "." + Publisher.ToLowerInvariant(), AppName), paths.BaseDirectory);
             Assert.True(Directory.Exists(paths.BaseDirectory));
         }
         finally { Cleanup(root); }
@@ -120,15 +119,13 @@ public class AppDataPathsTests
         string root = NewTempRoot();
         try
         {
-            // Windows is detected, but ApplicationData resolves to whitespace, so the OS branch
-            // must fall through to the LocalApplicationData fallback rather than return a bad path.
             var env = new FakeAppDataEnvironment { IsWindows = true };
             env.Folders[Environment.SpecialFolder.ApplicationData] = "   ";
             env.Folders[Environment.SpecialFolder.LocalApplicationData] = root;
 
-            var paths = new AppDataPaths(AppFolder, env);
+            var paths = new AppDataPaths(Publisher, AppName, env);
 
-            Assert.Equal(Path.Combine(root, AppFolder), paths.BaseDirectory);
+            Assert.Equal(Path.Combine(root, Publisher, AppName), paths.BaseDirectory);
             Assert.True(Directory.Exists(paths.BaseDirectory));
         }
         finally { Cleanup(root); }
@@ -143,24 +140,86 @@ public class AppDataPathsTests
             var env = new FakeAppDataEnvironment { IsWindows = true };
             env.Folders[Environment.SpecialFolder.ApplicationData] = root;
 
-            var paths = new AppDataPaths(AppFolder, env);
+            var paths = new AppDataPaths(Publisher, AppName, env);
 
             string first = paths.BaseDirectory;
             string second = paths.BaseDirectory;
 
             Assert.Equal(first, second);
-            Assert.Equal(1, env.GetFolderPathCalls); // resolution happened exactly once
+            Assert.Equal(1, env.GetFolderPathCalls);
         }
         finally { Cleanup(root); }
+    }
+
+    [Fact]
+    public void BaseDirectory_Android_UsesLocalApplicationDataSandboxUnderPublisher()
+    {
+        string root = NewTempRoot();
+        try
+        {
+            var env = new FakeAppDataEnvironment { IsAndroid = true };
+            env.Folders[Environment.SpecialFolder.LocalApplicationData] = root;
+
+            var paths = new AppDataPaths(Publisher, AppName, env);
+
+            Assert.Equal(Path.Combine(root, Publisher, AppName), paths.BaseDirectory);
+            Assert.True(Directory.Exists(paths.BaseDirectory));
+        }
+        finally { Cleanup(root); }
+    }
+
+    [Fact]
+    public void BaseDirectory_IOS_UsesLocalApplicationDataSandboxUnderPublisher()
+    {
+        string root = NewTempRoot();
+        try
+        {
+            var env = new FakeAppDataEnvironment { IsIOS = true };
+            env.Folders[Environment.SpecialFolder.LocalApplicationData] = root;
+
+            var paths = new AppDataPaths(Publisher, AppName, env);
+
+            Assert.Equal(Path.Combine(root, Publisher, AppName), paths.BaseDirectory);
+            Assert.True(Directory.Exists(paths.BaseDirectory));
+        }
+        finally { Cleanup(root); }
+    }
+
+    [Fact]
+    public void BaseDirectory_Android_TakesPrecedenceOverDesktopFlag()
+    {
+        string sandbox = NewTempRoot();
+        string desktop = NewTempRoot();
+        try
+        {
+            // Both Android and a desktop flag set: the mobile sandbox must win.
+            var env = new FakeAppDataEnvironment { IsAndroid = true, IsLinux = true };
+            env.Folders[Environment.SpecialFolder.LocalApplicationData] = sandbox;
+            env.EnvVars["XDG_DATA_HOME"] = desktop;
+
+            var paths = new AppDataPaths(Publisher, AppName, env);
+
+            Assert.Equal(Path.Combine(sandbox, Publisher, AppName), paths.BaseDirectory);
+        }
+        finally { Cleanup(sandbox); Cleanup(desktop); }
     }
 
     [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    public void Ctor_InvalidAppFolderName_Throws(string? badName)
+    public void Ctor_InvalidPublisher_Throws(string? badPublisher)
     {
-        Assert.Throws<ArgumentException>(() => new AppDataPaths(badName!, new FakeAppDataEnvironment()));
+        Assert.Throws<ArgumentException>(() => new AppDataPaths(badPublisher!, AppName, new FakeAppDataEnvironment()));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Ctor_InvalidAppName_Throws(string? badAppName)
+    {
+        Assert.Throws<ArgumentException>(() => new AppDataPaths(Publisher, badAppName!, new FakeAppDataEnvironment()));
     }
 
     [Fact]
@@ -172,7 +231,7 @@ public class AppDataPathsTests
             var env = new FakeAppDataEnvironment { IsWindows = true };
             env.Folders[Environment.SpecialFolder.ApplicationData] = root;
 
-            var paths = new AppDataPaths(AppFolder, env);
+            var paths = new AppDataPaths(Publisher, AppName, env);
             string baseDir = paths.BaseDirectory;
 
             Assert.Equal(Path.Combine(baseDir, "save.json"), paths.SaveFilePath);
@@ -192,7 +251,7 @@ public class AppDataPathsTests
             var env = new FakeAppDataEnvironment { IsWindows = true };
             env.Folders[Environment.SpecialFolder.ApplicationData] = root;
 
-            var paths = new AppDataPaths(AppFolder, env);
+            var paths = new AppDataPaths(Publisher, AppName, env);
 
             Assert.Equal(Path.Combine(paths.BaseDirectory, "custom.dat"), paths.GetFilePath("custom.dat"));
         }
@@ -217,6 +276,8 @@ internal sealed class FakeAppDataEnvironment : IAppDataEnvironment
     public bool IsWindows { get; set; }
     public bool IsMacOS { get; set; }
     public bool IsLinux { get; set; }
+    public bool IsAndroid { get; set; }
+    public bool IsIOS { get; set; }
     public Dictionary<Environment.SpecialFolder, string> Folders { get; } = new();
     public Dictionary<string, string?> EnvVars { get; } = new();
     public int GetFolderPathCalls { get; private set; }

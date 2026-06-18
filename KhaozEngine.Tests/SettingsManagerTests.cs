@@ -125,7 +125,7 @@ public class SettingsManagerTests
         {
             var env = new FakeAppDataEnvironment { IsMacOS = true };
             env.Folders[Environment.SpecialFolder.ApplicationData] = root;
-            var paths = new AppDataPaths("Item10Settings", env);
+            var paths = new AppDataPaths("APKiwi", "Item10Settings", env);
             File.WriteAllText(paths.GetFilePath("settings.json"), "not-json{{");
 
             var storage = new FileSettingsStorage(paths, new PersistenceQueue());

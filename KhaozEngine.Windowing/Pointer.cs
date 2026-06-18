@@ -26,8 +26,10 @@ namespace KhaozEngine.Windowing
         public bool IsJustPressed => _down && !_wasDown;
         public bool IsJustReleased => !_down && _wasDown;
         public bool IsMiddleDown => _mid;
+        public bool IsMiddleJustPressed => _mid && !_wasMid;
         public bool IsMiddleJustReleased => !_mid && _wasMid;
         public bool IsRightDown => _right;
+        public bool IsRightJustPressed => _right && !_wasRight;
         public bool IsRightJustReleased => !_right && _wasRight;
 
         /// <summary>Derive the pointer from this frame's input. Call once per frame before hit-testing.</summary>

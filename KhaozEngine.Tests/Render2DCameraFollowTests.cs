@@ -277,15 +277,19 @@ public class Render2DCameraFollowTests
             Stiffness = new Vector2(10f, 10f),
             Snap = new PixelSnap(10f),
         };
-        var target = new Vector2(100f, 0f);
+        // Off-grid target (107 -> snaps to 110): a buggy impl that fed the snap back into the sub-pixel
+        // state would converge _smoothPos to a grid point instead of the exact target.
+        var target = new Vector2(107f, 0f);
 
-        // Many smoothing frames toward a fixed target: sub-pixel truth converges, output stays on the grid.
         for (int i = 0; i < 200; i++)
             follow.Update(target, 0.1f, Vw, Vh, Unbounded);
 
-        AssertClose(new Vector2(100f, 0f), cam.Position);   // snap(100) == 100, no drift accumulated
+        // Sub-pixel truth converges to the EXACT off-grid target (no snap feedback)...
+        AssertClose(new Vector2(107f, 0f), follow.SmoothPosition);
+        // ...while the rendered position is snapped to the grid (round(10.7) * 10 = 110).
+        AssertClose(new Vector2(110f, 0f), cam.Position);
 
-        // A few more frames at convergence keep the output stable (no shimmer from re-snapping).
+        // Output stays stable at convergence (no shimmer from re-snapping each frame).
         var settled = cam.Position;
         follow.Update(target, 0.1f, Vw, Vh, Unbounded);
         AssertClose(settled, cam.Position, 1e-4f);

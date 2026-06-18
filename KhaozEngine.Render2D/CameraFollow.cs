@@ -21,6 +21,10 @@ namespace KhaozEngine.Render2D
         private Vector2 _leadOffset;    // currently-applied (eased) look-ahead offset
         private bool _initialized;      // false until the first Update / Warp seeds _smoothPos
 
+        // Exposed for tests (InternalsVisibleTo) to assert the un-snapped sub-pixel truth, which the public
+        // Camera.Position may differ from when pixel-snap is enabled.
+        internal Vector2 SmoothPosition => _smoothPos;
+
         /// <summary>Creates a follow controller for the given camera.</summary>
         public CameraFollow(Camera2D camera) => _camera = camera;
 

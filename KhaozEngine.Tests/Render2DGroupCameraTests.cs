@@ -190,8 +190,8 @@ public class Render2DGroupCameraTests
         groupTwo.Update(targets, 0.1f, Vw, Vh, Unbounded);
         groupTwo.Update(targets, 0.1f, Vw, Vh, Unbounded);
 
-        AssertClose(camOne.Position, camTwo.Position, 0.1f);
-        Assert.Equal(camOne.Zoom, camTwo.Zoom, 0.05f);
+        AssertClose(camOne.Position, camTwo.Position, Tol);
+        Assert.Equal(camOne.Zoom, camTwo.Zoom, Tol);
     }
 
     [Fact]
@@ -204,6 +204,24 @@ public class Render2DGroupCameraTests
 
         AssertClose(new Vector2(5f, 5f), cam.Position);
         Assert.Equal(2f, cam.Zoom, Tol);
+    }
+
+    [Fact]
+    public void Group_UpdateClampsPositionToWorldBounds()
+    {
+        var cam = new Camera2D();
+        var group = new GroupCamera(cam) { PaddingFraction = 0f, MinViewSize = new Vector2(100f, 100f) };
+        // single point at origin -> zoom 6, desired center (0,0); world (0,0,1000,1000) clamps to (66.67, 50).
+        var targets = new[] { Vector2.Zero };
+        var bounds = new Rect(0f, 0f, 1000f, 1000f);
+
+        for (int i = 0; i < 200; i++)
+            group.Update(targets, 0.1f, Vw, Vh, bounds);
+
+        Assert.Equal(6f, cam.Zoom, Tol);
+        // Eases toward (0,0) but is clamped back to the world edge every frame using the eased zoom.
+        Assert.Equal(66.6667f, cam.Position.X, 1e-1f);
+        Assert.Equal(50f, cam.Position.Y, 1e-1f);
     }
 
     [Fact]

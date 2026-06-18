@@ -108,4 +108,118 @@ public class Render2DCameraBlendTests
             }
         }
     }
+
+    // ---- CameraBlend ----
+
+    private static CameraState TargetState => new(new Vector2(100f, 50f), 3f, 1f);
+
+    [Fact]
+    public void Blend_ReachesTargetExactlyAndClearsBlending()
+    {
+        var cam = new Camera2D { Position = Vector2.Zero, Zoom = 1f, Rotation = 0f };
+        var blend = new CameraBlend(cam);
+
+        blend.To(TargetState, 1f, Easing.Linear);
+        Assert.True(blend.IsBlending);
+
+        for (int i = 0; i < 10; i++) blend.Update(0.1f);   // 1.0s total
+
+        AssertState(cam, new Vector2(100f, 50f), 3f, 1f);
+        Assert.False(blend.IsBlending);
+        Assert.Equal(1f, blend.Progress, Tol);
+    }
+
+    [Fact]
+    public void Blend_LinearHalfwayIsMidpoint()
+    {
+        var cam = new Camera2D { Position = Vector2.Zero, Zoom = 1f, Rotation = 0f };
+        var blend = new CameraBlend(cam);
+
+        blend.To(TargetState, 1f, Easing.Linear);
+        blend.Update(0.5f);
+
+        AssertState(cam, new Vector2(50f, 25f), 2f, 0.5f);
+        Assert.True(blend.IsBlending);
+    }
+
+    [Fact]
+    public void Blend_ZeroDurationSnapsInstantly()
+    {
+        var cam = new Camera2D { Position = Vector2.Zero, Zoom = 1f, Rotation = 0f };
+        var blend = new CameraBlend(cam);
+
+        blend.To(TargetState, 0f);
+
+        AssertState(cam, new Vector2(100f, 50f), 3f, 1f);
+        Assert.False(blend.IsBlending);
+        Assert.Equal(1f, blend.Progress, Tol);
+    }
+
+    [Fact]
+    public void Blend_IsDeterministicOnElapsedTime()
+    {
+        var camA = new Camera2D { Position = Vector2.Zero, Zoom = 1f, Rotation = 0f };
+        var blendA = new CameraBlend(camA);
+        blendA.To(TargetState, 1f);             // default SmoothStep
+        blendA.Update(0.5f);
+
+        var camB = new Camera2D { Position = Vector2.Zero, Zoom = 1f, Rotation = 0f };
+        var blendB = new CameraBlend(camB);
+        blendB.To(TargetState, 1f);
+        blendB.Update(0.25f);
+        blendB.Update(0.25f);
+
+        Assert.True(Vector2.Distance(camA.Position, camB.Position) <= Tol);
+        Assert.Equal(camA.Zoom, camB.Zoom, Tol);
+        Assert.Equal(camA.Rotation, camB.Rotation, Tol);
+    }
+
+    [Fact]
+    public void Blend_MidBlendRetargetRecapturesStart()
+    {
+        var cam = new Camera2D { Position = Vector2.Zero, Zoom = 1f, Rotation = 0f };
+        var blend = new CameraBlend(cam);
+
+        blend.To(new CameraState(new Vector2(100f, 0f), 1f, 0f), 1f, Easing.Linear);
+        blend.Update(0.5f);   // now at x=50
+        float midX = cam.Position.X;
+        Assert.Equal(50f, midX, 1e-3f);
+
+        // Retarget from the mid-blend position to x=150; new start is the current (50) position.
+        blend.To(new CameraState(new Vector2(150f, 0f), 1f, 0f), 1f, Easing.Linear);
+        blend.Update(0.5f);   // halfway from 50 to 150 -> 100
+
+        Assert.Equal(100f, cam.Position.X, 1e-3f);
+    }
+
+    [Fact]
+    public void Blend_StopHaltsInPlace()
+    {
+        var cam = new Camera2D { Position = Vector2.Zero, Zoom = 1f, Rotation = 0f };
+        var blend = new CameraBlend(cam);
+
+        blend.To(TargetState, 1f, Easing.Linear);
+        blend.Update(0.3f);
+        var held = cam.Position;
+        float heldZoom = cam.Zoom;
+
+        blend.Stop();
+        Assert.False(blend.IsBlending);
+
+        blend.Update(0.5f);   // ignored once stopped
+        Assert.True(Vector2.Distance(held, cam.Position) <= Tol);
+        Assert.Equal(heldZoom, cam.Zoom, Tol);
+    }
+
+    [Fact]
+    public void Blend_UpdateWhenIdleIsNoOp()
+    {
+        var cam = new Camera2D { Position = new Vector2(5f, 5f), Zoom = 2f, Rotation = 0.1f };
+        var blend = new CameraBlend(cam);
+
+        blend.Update(0.5f);   // never called To
+
+        AssertState(cam, new Vector2(5f, 5f), 2f, 0.1f);
+        Assert.False(blend.IsBlending);
+    }
 }

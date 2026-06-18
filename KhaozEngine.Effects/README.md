@@ -1,24 +1,22 @@
 # KhaozEngine.Effects
 
-Game-agnostic pooled particle system for MonoGame games.
+Game-feel visual effects for the MonoGame-free 5.x stack (System.Numerics + BCL only).
 
-- `ParticleSystem` - fixed-size, zero-allocation pool of rectangle particles.
-- `ParticleEmitterConfig` - immutable, data-driven emitter preset (lifetime,
-  speed, emission pattern, jitter, size curve, sway, acceleration, color).
-- `ParticlePresets.Spark` / `.Ember` - built-in presets (outward sparks,
-  upward-drifting embers).
+## ScreenShake
 
-```csharp
-var particles = new ParticleSystem(rng);
-particles.Emit(ParticlePresets.Spark, screenPos, oreColor, count: 4);
-particles.Emit(ParticlePresets.Ember, screenPos, count: 3);
-
-particles.Update(realDeltaSeconds);   // real (unscaled) delta
-particles.Draw(spriteBatch, primitiveRenderer);
-```
-
-Derive custom presets with `with`:
+A trauma-based, deterministic screen-shake offset generator. Add trauma on impacts; the shake magnitude
+falls off as trauma squared and decays over time. Seeded smooth noise keeps it reproducible and
+headless-testable (no `System.Random` / wall-clock). It produces a positional `Offset` and a rotational
+`Angle` the game composes onto its render camera:
 
 ```csharp
-var fast = ParticlePresets.Spark with { MaxSpeed = 120f, Acceleration = new Vector2(0, 200) };
+var shake = new ScreenShake();
+shake.Add(0.6f);              // on an explosion / hit
+// each frame:
+shake.Update(dt);
+renderCamera.Position = camera.Position + shake.Offset;
+renderCamera.Rotation = camera.Rotation + shake.Angle;
 ```
+
+The old 4.x rect-particle system that used to live here was retired; particle simulation now lives in
+`KhaozEngine.Particles`.

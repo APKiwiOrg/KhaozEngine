@@ -1,12 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.Effects</PackageId>
-    <Description>Game-agnostic pooled particle system: data-driven emitter presets (sparks, embers, custom) drawn as filled rectangles.</Description>
+    <!-- Shared 5.x line (see docs/ROADMAP.md "The post-MonoGame pivot"). Graduated off MonoGame at 5.56.0;
+         the old 4.x rect-particle system was retired (superseded by KhaozEngine.Particles). -->
+    <Version>$(KhaozEngine5xVersion)</Version>
+    <Description>Game-feel visual effects for the custom MonoGame-free 5.x stack (System.Numerics + BCL only). ScreenShake: a trauma-based, deterministic screen-shake offset generator (trauma^2 falloff, seeded smooth noise, positional + rotational offset) the game composes onto its render camera. Particle simulation now lives in KhaozEngine.Particles.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.*" />
-    <ProjectReference Include="../KhaozEngine.Graphics/KhaozEngine.Graphics.csproj" />
     <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Tests" />
   </ItemGroup>
 </Project>

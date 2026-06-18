@@ -4,6 +4,21 @@ All notable changes to KhaozEngine. The 5.x line `<KhaozEngine5xVersion>` is the
 stack + the graduated foundation packages); the legacy 4.x line `<Version>` carries only the genuinely-MonoGame
 packages. Both versions live in `Directory.Build.props`. See the post-MonoGame plan in `docs/ROADMAP.md`.
 
+## 5.56.0 (custom 5.x line)
+
+Screen shake on the 5.x engine, and `KhaozEngine.Effects` graduates off MonoGame onto the 5.x line - the
+last camera feel-layer slice (parallax aside).
+
+- **`KhaozEngine.Effects` graduated to the 5.x line.** The old 4.x rect-particle system (MonoGame + Graphics)
+  was retired - it was superseded by the MonoGame-free `KhaozEngine.Particles` and had no game consumer. The
+  package now targets System.Numerics + BCL only and versions with `<KhaozEngine5xVersion>`. The 4.x line is
+  down to `Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`.
+- **`ScreenShake`** (`KhaozEngine.Effects`) - a trauma-based, deterministic shake offset generator. `Add(amount)`
+  bumps trauma on impacts; the magnitude falls off as `trauma^2` and `Update(dt)` drains it. It exposes a
+  positional `Offset` and rotational `Angle` (seeded smooth noise, no `System.Random`/wall-clock) that the
+  game composes onto its render camera - it never mutates a camera itself. `MaxOffset`/`MaxAngle`/
+  `DecayPerSecond`/`Frequency` tune the feel; `MaxAngle = 0` gives positional-only shake.
+
 ## 5.55.0 (custom 5.x line)
 
 Room / region cameras on the 5.x engine - Metroidvania-style per-area cameras, the next slice of the camera

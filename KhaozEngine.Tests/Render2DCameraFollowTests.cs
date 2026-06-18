@@ -241,4 +241,53 @@ public class Render2DCameraFollowTests
         Assert.Equal(expected, cam.Position.X, Tol);        // exact one-step ease (proves ease, not snap)
         Assert.True(cam.Position.X is < 0f and > -40f);     // moved past zero but nowhere near the -40 target
     }
+
+    // ---- Pixel snap integration ----
+
+    [Fact]
+    public void FollowSnap_RoundsRenderedPositionToGrid()
+    {
+        var cam = new Camera2D { Position = Vector2.Zero };
+        var follow = new CameraFollow(cam) { Snap = new PixelSnap(10f) };
+        follow.SetStiffness(0f);
+
+        follow.Update(new Vector2(13f, 7f), 0.1f, Vw, Vh, Unbounded);
+
+        AssertClose(new Vector2(10f, 10f), cam.Position);   // snapped to the 10-unit grid
+    }
+
+    [Fact]
+    public void FollowSnap_DisabledLeavesPositionExact()
+    {
+        var cam = new Camera2D { Position = Vector2.Zero };
+        var follow = new CameraFollow(cam);                 // default Snap disabled
+        follow.SetStiffness(0f);
+
+        follow.Update(new Vector2(13f, 7f), 0.1f, Vw, Vh, Unbounded);
+
+        AssertClose(new Vector2(13f, 7f), cam.Position);
+    }
+
+    [Fact]
+    public void FollowSnap_SmoothingHasNoCumulativeDrift()
+    {
+        var cam = new Camera2D { Position = Vector2.Zero };
+        var follow = new CameraFollow(cam)
+        {
+            Stiffness = new Vector2(10f, 10f),
+            Snap = new PixelSnap(10f),
+        };
+        var target = new Vector2(100f, 0f);
+
+        // Many smoothing frames toward a fixed target: sub-pixel truth converges, output stays on the grid.
+        for (int i = 0; i < 200; i++)
+            follow.Update(target, 0.1f, Vw, Vh, Unbounded);
+
+        AssertClose(new Vector2(100f, 0f), cam.Position);   // snap(100) == 100, no drift accumulated
+
+        // A few more frames at convergence keep the output stable (no shimmer from re-snapping).
+        var settled = cam.Position;
+        follow.Update(target, 0.1f, Vw, Vh, Unbounded);
+        AssertClose(settled, cam.Position, 1e-4f);
+    }
 }

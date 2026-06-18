@@ -38,6 +38,10 @@ namespace KhaozEngine.Render2D
         /// <summary>Look-ahead configuration. <c>default</c> (zero lead time) disables it.</summary>
         public LookAheadSettings LookAhead { get; set; }
 
+        /// <summary>Pixel-snap applied to the rendered <see cref="Camera2D.Position"/> only; smoothing keeps
+        /// the sub-pixel truth, so there is no drift. <c>default</c> (disabled) leaves the position exact.</summary>
+        public PixelSnap Snap { get; set; }
+
         /// <summary>An absolute screen-space rectangle the target may move within before the camera chases
         /// (same space as <see cref="Camera2D.WorldToScreen(Vector2, int, int)"/> output, rotation assumed 0).
         /// While the target's screen position stays inside it the camera holds; crossing an edge moves the
@@ -64,7 +68,7 @@ namespace KhaozEngine.Render2D
 
             _smoothPos = _camera.ClampPosition(_smoothPos, worldBounds, viewportWidth, viewportHeight);
 
-            _camera.Position = _smoothPos;
+            _camera.Position = Snap.Enabled ? Snap.Apply(_smoothPos) : _smoothPos;
         }
 
         /// <summary>Convenience overload with zero velocity.</summary>
@@ -78,7 +82,7 @@ namespace KhaozEngine.Render2D
             _smoothPos = position;
             _leadOffset = Vector2.Zero;
             _initialized = true;
-            _camera.Position = position;
+            _camera.Position = Snap.Enabled ? Snap.Apply(position) : position;
         }
 
         private static float EaseAxis(float current, float desired, float stiffness, float dt)

@@ -1,6 +1,6 @@
 # KhaozEngine roadmap / backlog
 
-Larger feature areas identified but not yet scheduled. Current released version: **5.52.0** (the 5.x line,
+Larger feature areas identified but not yet scheduled. Current released version: **5.53.0** (the 5.x line,
 which is the engine: the custom MonoGame-free stack plus the graduated foundation packages). The legacy 4.x
 line is frozen-ish at `4.12.0` and now carries only the genuinely-MonoGame packages
 (`Effects`/`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`), consumed by the still-4.x SpaceGame.
@@ -172,9 +172,11 @@ Design spec: `docs/superpowers/specs/2026-06-15-render3d-custom-engine-design.md
   (`Stiffness` is a `Vector2`), **look-ahead** (`LookAheadSettings`: eased, clamped, per-axis lead along a
   caller-supplied velocity), and **pixel-perfect snapping** (`PixelSnap` on the rendered position, sub-pixel
   smoothing preserved). The 4.x `KhaozEngine.Graphics` `CameraFollow` stays for SpaceGame until it migrates.
+- 5.53.0: `GroupCamera` + `CameraFraming` (`KhaozEngine.Render2D`) - **multi-target framing** for co-op /
+  shared screen: eases position + zoom to fit N targets (padded bounding box, contain-fit zoom, per-axis
+  `MinViewSize` floor, world-bounds clamp, instant `Warp`).
 
 **Still open** (the deeper scroller/platformer feel layer):
-- Multi-target framing (auto position + zoom to fit N targets), for co-op / shared screen.
 - Room / region cameras: different bounds (and optionally settings) per area, Metroidvania-style.
 - Smooth / eased zoom transitions and camera blends (lerp position/zoom/rotation between setups over a
   duration, for room hand-offs); instant snap on respawn / scene load.

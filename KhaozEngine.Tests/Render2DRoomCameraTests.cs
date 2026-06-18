@@ -44,4 +44,24 @@ public class Render2DRoomCameraTests
         Assert.Equal(200f, atZoom2.X, Tol);
         Assert.True(atZoom2.X < atZoom1.X, "higher zoom should sit nearer the bound edge");
     }
+
+    // ---- CameraRoom ----
+
+    [Fact]
+    public void Room_ContainsRespectsBounds()
+    {
+        var room = new CameraRoom(new Rect(0f, 0f, 100f, 100f));
+        Assert.True(room.Contains(new Vector2(50f, 50f)));
+        Assert.False(room.Contains(new Vector2(150f, 50f)));
+    }
+
+    [Fact]
+    public void Room_ZoomDefaultsToNull()
+    {
+        var noZoom = new CameraRoom(new Rect(0f, 0f, 100f, 100f));
+        Assert.Null(noZoom.Zoom);
+
+        var withZoom = new CameraRoom(new Rect(0f, 0f, 100f, 100f), 2f);
+        Assert.Equal(2f, withZoom.Zoom);
+    }
 }

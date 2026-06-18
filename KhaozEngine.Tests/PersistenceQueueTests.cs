@@ -176,7 +176,7 @@ public class PersistenceQueueTests
         {
             var env = new FakeAppDataEnvironment { IsWindows = true };
             env.Folders[Environment.SpecialFolder.ApplicationData] = root;
-            var paths = new AppDataPaths("MyGame", env);
+            var paths = new AppDataPaths("APKiwi", "MyGame", env);
 
             using var queue = new PersistenceQueue();
             queue.Enqueue(paths, "save.json", "data");

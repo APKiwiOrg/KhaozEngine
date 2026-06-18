@@ -30,7 +30,7 @@ public class FileSettingsStorageTests
         root = Path.Combine(Path.GetTempPath(), "ke-item10-" + Path.GetRandomFileName());
         var env = new FakeAppDataEnvironment { IsMacOS = true };
         env.Folders[Environment.SpecialFolder.ApplicationData] = root;
-        return new AppDataPaths("Item10Settings", env);
+        return new AppDataPaths("APKiwi", "Item10Settings", env);
     }
 
     [Fact]

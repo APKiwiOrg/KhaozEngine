@@ -53,7 +53,8 @@ public sealed class GameStorage : IDisposable
         Encoder = options.Encoder;
     }
 
-    /// <summary>Serializes <paramref name="value"/> to indented JSON, optionally encodes it, and queues a write to <paramref name="fileName"/> in the app-data dir.</summary>
+    /// <summary>Serializes <paramref name="value"/> to indented JSON, optionally encodes it, and queues a write to <paramref name="fileName"/> in the app-data dir.
+    /// The write is queued (asynchronous and coalesced), so a subsequent <see cref="Load{T}"/> of the same file only reflects it after a <see cref="Flush"/>.</summary>
     /// <exception cref="InvalidOperationException"><paramref name="encode"/> is true but no encoder was configured.</exception>
     public void Save<T>(string fileName, T value, bool encode = false)
     {
@@ -81,6 +82,9 @@ public sealed class GameStorage : IDisposable
     /// Loads <paramref name="fileName"/> and deserializes to <typeparamref name="T"/>. Returns a new
     /// <typeparamref name="T"/> if the file is absent. If an encoder is configured and the content is
     /// encoded, it is decoded transparently first (lenient: recovers JSON even on HMAC mismatch).
+    /// Reads committed on-disk state, so after a <see cref="Save{T}"/> call <see cref="Flush"/> before
+    /// loading the same file. Parsing tolerates comments and trailing commas (saves are written as
+    /// human-editable indented JSON).
     /// </summary>
     public T Load<T>(string fileName) where T : new()
     {
@@ -96,7 +100,7 @@ public sealed class GameStorage : IDisposable
             content = Encoder.Decode(content) ?? content;
         }
 
-        return JsonSerializer.Deserialize<T>(content) ?? new T();
+        return JsonSerializer.Deserialize<T>(content, JsonDefaults.TolerantRead) ?? new T();
     }
 
     /// <summary>True when <paramref name="fileName"/> exists in the app-data directory.</summary>

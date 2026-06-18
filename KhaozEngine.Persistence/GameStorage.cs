@@ -70,6 +70,14 @@ public sealed class GameStorage : IDisposable
     }
 
     /// <summary>
+    /// Builds a <see cref="SettingsManager{T}"/> over <see cref="Settings"/> (which loads on
+    /// construction), using the facade's logger. <paramref name="sanitizeOnLoad"/> is applied after
+    /// every load (clamp fields, migrate a schema version, etc.).
+    /// </summary>
+    public SettingsManager<T> CreateSettingsManager<T>(Func<T, T>? sanitizeOnLoad = null) where T : new()
+        => new SettingsManager<T>(Settings, logger, sanitizeOnLoad);
+
+    /// <summary>
     /// Loads <paramref name="fileName"/> and deserializes to <typeparamref name="T"/>. Returns a new
     /// <typeparamref name="T"/> if the file is absent. If an encoder is configured and the content is
     /// encoded, it is decoded transparently first (lenient: recovers JSON even on HMAC mismatch).

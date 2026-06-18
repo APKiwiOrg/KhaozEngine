@@ -119,4 +119,19 @@ public class ScreenShakeTests
             Assert.Equal(0f, s.Angle, Tol);
         }
     }
+
+    [Fact]
+    public void Angle_NonZeroAndBoundedWhenActive()
+    {
+        var s = new ScreenShake(seed: 3) { DecayPerSecond = 0f, MaxAngle = 0.2f };
+        s.Add(1f);
+        bool sawNonZero = false;
+        for (int i = 0; i < 100; i++)
+        {
+            s.Update(0.01f);
+            Assert.True(MathF.Abs(s.Angle) <= 0.2f + Tol, $"|angle| {s.Angle} exceeds trauma^2*MaxAngle");
+            if (MathF.Abs(s.Angle) > 1e-3f) sawNonZero = true;
+        }
+        Assert.True(sawNonZero, "angle should be non-zero at some point when MaxAngle>0 and trauma>0");
+    }
 }

@@ -217,6 +217,8 @@ internal sealed class FakeAppDataEnvironment : IAppDataEnvironment
     public bool IsWindows { get; set; }
     public bool IsMacOS { get; set; }
     public bool IsLinux { get; set; }
+    public bool IsAndroid { get; set; }
+    public bool IsIOS { get; set; }
     public Dictionary<Environment.SpecialFolder, string> Folders { get; } = new();
     public Dictionary<string, string?> EnvVars { get; } = new();
     public int GetFolderPathCalls { get; private set; }

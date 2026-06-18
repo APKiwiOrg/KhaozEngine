@@ -18,6 +18,12 @@ internal interface IAppDataEnvironment
     /// <summary>True when running on Linux.</summary>
     bool IsLinux { get; }
 
+    /// <summary>True when running on Android.</summary>
+    bool IsAndroid { get; }
+
+    /// <summary>True when running on iOS.</summary>
+    bool IsIOS { get; }
+
     /// <summary>Maps to <see cref="Environment.GetFolderPath(Environment.SpecialFolder)"/>.</summary>
     string GetFolderPath(Environment.SpecialFolder folder);
 

@@ -8,6 +8,8 @@ internal sealed class SystemAppDataEnvironment : IAppDataEnvironment
     public bool IsWindows => OperatingSystem.IsWindows();
     public bool IsMacOS => OperatingSystem.IsMacOS();
     public bool IsLinux => OperatingSystem.IsLinux();
+    public bool IsAndroid => OperatingSystem.IsAndroid();
+    public bool IsIOS => OperatingSystem.IsIOS();
     public string GetFolderPath(Environment.SpecialFolder folder) => Environment.GetFolderPath(folder);
     public string? GetEnvironmentVariable(string variable) => Environment.GetEnvironmentVariable(variable);
 }

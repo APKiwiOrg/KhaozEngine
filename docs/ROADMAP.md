@@ -1,6 +1,6 @@
 # KhaozEngine roadmap / backlog
 
-Larger feature areas identified but not yet scheduled. Current released version: **5.51.0** (the 5.x line,
+Larger feature areas identified but not yet scheduled. Current released version: **5.52.0** (the 5.x line,
 which is the engine: the custom MonoGame-free stack plus the graduated foundation packages). The legacy 4.x
 line is frozen-ish at `4.12.0` and now carries only the genuinely-MonoGame packages
 (`Effects`/`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`), consumed by the still-4.x SpaceGame.
@@ -168,16 +168,16 @@ Design spec: `docs/superpowers/specs/2026-06-15-render3d-custom-engine-design.md
   (`1 - exp(-Stiffness*dt)`), an optional screen-space `Deadzone` (camera window), and bounds clamp.
 - `Camera2D.CenterOn(world)` + `Camera2D.Focus(rect, viewport, padding, minZoom, maxZoom)` (3.9.0):
   point framing and fit-to-rect contain-zoom (the framing math Hardpoint/SpaceForge hand-rolled).
+- 5.52.0: `CameraFollow` ported to the 5.x `KhaozEngine.Render2D` line with **per-axis follow tuning**
+  (`Stiffness` is a `Vector2`), **look-ahead** (`LookAheadSettings`: eased, clamped, per-axis lead along a
+  caller-supplied velocity), and **pixel-perfect snapping** (`PixelSnap` on the rendered position, sub-pixel
+  smoothing preserved). The 4.x `KhaozEngine.Graphics` `CameraFollow` stays for SpaceGame until it migrates.
 
 **Still open** (the deeper scroller/platformer feel layer):
-- Per-axis follow tuning (platformers decouple X/Y, e.g. only re-centre Y when grounded/landing).
-  `CameraFollow` today smooths both axes with one `Stiffness`.
-- Look-ahead (lead in movement/facing direction, with its own smoothing).
 - Multi-target framing (auto position + zoom to fit N targets), for co-op / shared screen.
 - Room / region cameras: different bounds (and optionally settings) per area, Metroidvania-style.
 - Smooth / eased zoom transitions and camera blends (lerp position/zoom/rotation between setups over a
   duration, for room hand-offs); instant snap on respawn / scene load.
-- Pixel-perfect snapping: round camera position to the pixel grid for pixel-art (kills sub-pixel shimmer).
 - Parallax background layers scrolling at fractional rates off the same camera.
 - Screen shake that perturbs the camera (lives in `KhaozEngine.Effects`, see below).
 

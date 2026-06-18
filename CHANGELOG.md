@@ -4,6 +4,24 @@ All notable changes to KhaozEngine. The 5.x line `<KhaozEngine5xVersion>` is the
 stack + the graduated foundation packages); the legacy 4.x line `<Version>` carries only the genuinely-MonoGame
 packages. Both versions live in `Directory.Build.props`. See the post-MonoGame plan in `docs/ROADMAP.md`.
 
+## 5.52.0 (custom 5.x line)
+
+Camera feel layer for 2D / platformer games arrives on the 5.x engine: `CameraFollow` (previously 4.x-only,
+MonoGame-bound) is ported to `KhaozEngine.Render2D` (System.Numerics, headless) and enriched for side-scroller
+feel.
+
+- **`CameraFollow`** (`KhaozEngine.Render2D`) - drives a `Camera2D` to follow a target with per-axis,
+  frame-rate-independent smoothing (`1 - exp(-Stiffness.axis * dt)`), an optional absolute screen-space
+  `Deadzone` (`Rect?`), a world-bounds clamp, and `Warp(position)` for instant respawn / scene-load placement.
+  `Stiffness` is a per-axis `Vector2` (a component `<= 0` snaps that axis); `SetStiffness(float)` sets both.
+- **Look-ahead** - `CameraFollow.LookAhead` (`LookAheadSettings`) leads the camera ahead of the target along a
+  caller-supplied velocity: `clamp(velocity * LeadTime, +/-MaxDistance)` per axis, eased by its own
+  `Stiffness` so a direction reversal does not snap. Per-axis `LeadTime` allows horizontal-only lead.
+- **Pixel snap** - `CameraFollow.Snap` (`PixelSnap`, also usable standalone) snaps the rendered
+  `Camera.Position` to an art-pixel grid (`WorldUnitsPerPixel`) while smoothing keeps the sub-pixel truth, so
+  there is no drift. Snaps camera translation only; integer zoom + a fixed-resolution render target remain the
+  game's responsibility.
+
 ## 5.51.0 (custom 5.x line)
 
 `GameApp` (the loop facade) can now host a game with a custom window or viewport, so a real game can adopt it

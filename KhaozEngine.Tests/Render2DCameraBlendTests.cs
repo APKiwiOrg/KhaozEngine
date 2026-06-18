@@ -58,4 +58,54 @@ public class Render2DCameraBlendTests
         Assert.Equal(2f, mid.Zoom, Tol);
         Assert.Equal(0.5f, mid.Rotation, Tol);
     }
+
+    // ---- Easing ----
+
+    [Fact]
+    public void Easing_EndpointsAreZeroAndOne()
+    {
+        Func<float, float>[] curves = { Easing.Linear, Easing.SmoothStep, Easing.EaseIn, Easing.EaseOut, Easing.EaseInOut };
+        foreach (var f in curves)
+        {
+            Assert.Equal(0f, f(0f), Tol);
+            Assert.Equal(1f, f(1f), Tol);
+        }
+    }
+
+    [Fact]
+    public void Easing_ClampsInputOutsideUnitInterval()
+    {
+        Func<float, float>[] curves = { Easing.Linear, Easing.SmoothStep, Easing.EaseIn, Easing.EaseOut, Easing.EaseInOut };
+        foreach (var f in curves)
+        {
+            Assert.Equal(0f, f(-1f), Tol);
+            Assert.Equal(1f, f(2f), Tol);
+        }
+    }
+
+    [Fact]
+    public void Easing_HasExpectedMidpointShapes()
+    {
+        Assert.Equal(0.3f, Easing.Linear(0.3f), Tol);
+        Assert.Equal(0.5f, Easing.SmoothStep(0.5f), Tol);
+        Assert.Equal(0.25f, Easing.EaseIn(0.5f), Tol);
+        Assert.Equal(0.75f, Easing.EaseOut(0.5f), Tol);
+        Assert.Equal(0.5f, Easing.EaseInOut(0.5f), Tol);
+    }
+
+    [Fact]
+    public void Easing_IsMonotonicNonDecreasing()
+    {
+        Func<float, float>[] curves = { Easing.Linear, Easing.SmoothStep, Easing.EaseIn, Easing.EaseOut, Easing.EaseInOut };
+        foreach (var f in curves)
+        {
+            float prev = f(0f);
+            for (float t = 0.05f; t <= 1f; t += 0.05f)
+            {
+                float cur = f(t);
+                Assert.True(cur >= prev - 1e-5f, $"curve not monotonic at t={t}: {cur} < {prev}");
+                prev = cur;
+            }
+        }
+    }
 }

@@ -88,9 +88,17 @@ namespace KhaozEngine.Render2D
         /// <see cref="Rotation"/> (exact when it is 0); requires <see cref="Zoom"/> &gt; 0.
         /// </summary>
         public Vector2 ClampPosition(Vector2 desired, Rect worldBounds, int viewportWidth, int viewportHeight)
+            => ClampPosition(desired, worldBounds, viewportWidth, viewportHeight, Zoom);
+
+        /// <summary>
+        /// As <see cref="ClampPosition(Vector2, Rect, int, int)"/> but clamps for an explicit
+        /// <paramref name="zoom"/> instead of <see cref="Zoom"/>. Used when framing for a zoom the camera has
+        /// not eased to yet (e.g. a room hand-off targeting the next room's zoom). Requires <paramref name="zoom"/> &gt; 0.
+        /// </summary>
+        public Vector2 ClampPosition(Vector2 desired, Rect worldBounds, int viewportWidth, int viewportHeight, float zoom)
         {
-            float halfW = viewportWidth / (2f * Zoom);
-            float halfH = viewportHeight / (2f * Zoom);
+            float halfW = viewportWidth / (2f * zoom);
+            float halfH = viewportHeight / (2f * zoom);
 
             float x = worldBounds.Width >= 2f * halfW
                 ? Math.Clamp(desired.X, worldBounds.X + halfW, worldBounds.Right - halfW)

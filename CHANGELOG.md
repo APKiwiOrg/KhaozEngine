@@ -4,6 +4,24 @@ All notable changes to KhaozEngine. The 5.x line `<KhaozEngine5xVersion>` is the
 stack + the graduated foundation packages); the legacy 4.x line `<Version>` carries only the genuinely-MonoGame
 packages. Both versions live in `Directory.Build.props`. See the post-MonoGame plan in `docs/ROADMAP.md`.
 
+## 5.59.0 (custom 5.x line)
+
+Cross-platform storage: `AppDataPaths` is now publisher-rooted and mobile-aware, plus a new
+`GameStorage` facade in `KhaozEngine.Persistence`.
+
+- **BREAKING (`KhaozEngine.App`):** `AppDataPaths` now takes `(string publisher, string appName)` and
+  resolves `<os-base>/<publisher>/<appName>/`. The old single-arg `AppDataPaths(appFolderName)` is
+  removed. Migrate call sites: `new AppDataPaths("MyGame")` becomes `new AppDataPaths("APKiwi", "MyGame")`
+  (or switch to `GameStorage`). No on-disk migration is performed; data under the old single-folder
+  layout is orphaned.
+- New Android/iOS branches resolve the app sandbox (`SpecialFolder.LocalApplicationData`) and are
+  checked before the desktop branches. `IAppDataEnvironment` gains `IsAndroid`/`IsIOS`. BCL-only.
+- New `GameStorage` / `GameStorageOptions` (`KhaozEngine.Persistence`): one object assembling the
+  publisher-rooted `AppDataPaths`, a shared `PersistenceQueue`, a `FileSettingsStorage`, and an optional
+  `SaveEncoder`. Generic typed `Save<T>`/`Load<T>` (plaintext or transparently encoded), `Exists`/`Delete`,
+  `CreateSettingsManager<T>`, and `Flush`/`Dispose` (flushes the queue). `Load<T>` returns a new instance
+  for an absent file, tolerates comments/trailing commas, and auto-decodes encoded saves.
+
 ## 5.58.0 (custom 5.x line)
 
 `GuiSurface.Slider` - an immediate-mode horizontal drag slider, the one widget the immediate surface lacked

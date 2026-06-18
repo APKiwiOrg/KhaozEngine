@@ -4,6 +4,20 @@ All notable changes to KhaozEngine. The 5.x line `<KhaozEngine5xVersion>` is the
 stack + the graduated foundation packages); the legacy 4.x line `<Version>` carries only the genuinely-MonoGame
 packages. Both versions live in `Directory.Build.props`. See the post-MonoGame plan in `docs/ROADMAP.md`.
 
+## 5.53.0 (custom 5.x line)
+
+Multi-target (co-op / shared-screen) camera framing on the 5.x engine, the next slice of the camera feel
+layer.
+
+- **`GroupCamera`** (`KhaozEngine.Render2D`) - drives a `Camera2D` to keep N targets framed: each frame it
+  takes the targets' padded bounding box and eases position and zoom toward the contain-fit framing
+  (frame-rate-independent, separate `Stiffness` / `ZoomStiffness`), then clamps to world bounds. `PaddingFraction`
+  sets the margin; `MinViewSize` floors the framed extent so a clustered or single target does not zoom to the
+  max. `Warp(targets, ...)` snaps instantly; an empty target list holds the view.
+- **`CameraFraming`** (`KhaozEngine.Render2D`) - the pure framing math underneath: `Bounds(targets,
+  paddingFraction, minViewSize)` for the padded AABB and `Solve(bounds, vw, vh, minZoom, maxZoom)` for the
+  position + contain-fit zoom. Headless, no easing - usable standalone.
+
 ## 5.52.0 (custom 5.x line)
 
 Camera feel layer for 2D / platformer games arrives on the 5.x engine: `CameraFollow` (previously 4.x-only,

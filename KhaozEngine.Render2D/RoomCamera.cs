@@ -104,6 +104,7 @@ namespace KhaozEngine.Render2D
         {
             CameraRoom room = _rooms[index];
             float zoom = room.Zoom ?? _camera.Zoom;
+            _blend.Stop();   // cancel any in-flight hand-off; a snap supersedes a transition
             _camera.Zoom = zoom;
             _follow.Warp(_camera.ClampPosition(target, room.Bounds, vw, vh, zoom));
             _activeIndex = index;

@@ -247,6 +247,28 @@ public class Render2DRoomCameraTests
     }
 
     [Fact]
+    public void Room_WarpDuringTransitionCancelsHandoffAndSnaps()
+    {
+        var cam = new Camera2D();
+        var rc = new RoomCamera(cam, TwoRooms()) { BlendDuration = 0.4f };
+
+        rc.Update(new Vector2(500f, 500f), 0.016f, Vw, Vh);    // acquire A
+        rc.Update(new Vector2(2500f, 500f), 0.016f, Vw, Vh);   // begin A->B hand-off
+        Assert.True(rc.IsTransitioning);
+
+        rc.Warp(new Vector2(500f, 500f), Vw, Vh);              // snap back to A mid-blend
+
+        Assert.False(rc.IsTransitioning);
+        Assert.Equal(0, rc.ActiveRoomIndex);
+        Assert.Equal(1f, cam.Zoom, Tol);                       // A's zoom
+
+        // The cancelled blend must not resurrect: a settled follow Update keeps us in A, no transition.
+        rc.Update(new Vector2(500f, 500f), 0.1f, Vw, Vh);
+        Assert.False(rc.IsTransitioning);
+        Assert.Equal(0, rc.ActiveRoomIndex);
+    }
+
+    [Fact]
     public void Room_RetargetMidBlendToThirdRoomSettlesInThird()
     {
         // A [0,2000) z1, B [2000,4000) z2, C [4000,6000) z3.

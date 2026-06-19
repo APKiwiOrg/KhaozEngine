@@ -92,6 +92,30 @@ namespace KhaozEngine.Tests.Windowing
         }
 
         [Fact]
+        public void IsDragStartIn_true_while_a_press_that_began_inside_is_held()
+        {
+            var p = new Pointer();
+            p.Update(Frame(Inside, false));
+            Assert.False(p.IsDragStartIn(Box));   // not pressed yet
+            p.Update(Frame(Inside, true));        // press began inside -> grabbed
+            Assert.True(p.IsDragStartIn(Box));
+            p.Update(Frame(Outside, true));       // cursor strays out, still down -> keeps the grab
+            Assert.True(p.IsDragStartIn(Box));
+            p.Update(Frame(Outside, false));      // released -> grab ends
+            Assert.False(p.IsDragStartIn(Box));
+        }
+
+        [Fact]
+        public void IsDragStartIn_false_when_the_press_began_outside()  // press-origin invariant
+        {
+            var p = new Pointer();
+            p.Update(Frame(Outside, false));
+            p.Update(Frame(Outside, true));       // press began OUTSIDE the box
+            p.Update(Frame(Inside, true));        // dragged inside, still down
+            Assert.False(p.IsDragStartIn(Box));   // press-origin was outside -> never grabs
+        }
+
+        [Fact]
         public void Region_blocking()
         {
             var p = new Pointer();

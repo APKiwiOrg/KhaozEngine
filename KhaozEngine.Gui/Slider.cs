@@ -36,8 +36,9 @@ namespace KhaozEngine.Gui
             pointer.BlockRegion(Bounds); // reserve the track for click-through, even when disabled
             if (!Enabled) { _dragging = false; return false; }
 
-            // Start a drag only if the press began inside the track (press-origin invariant).
-            if (pointer.IsJustPressed && Bounds.Contains(pointer.Position))
+            // Start a drag only if the press began inside the track (press-origin invariant), shared with
+            // the immediate GuiSurface.Slider via Pointer.IsDragStartIn.
+            if (pointer.IsDragStartIn(Bounds))
                 _dragging = true;
             if (!pointer.IsDown)
                 _dragging = false;

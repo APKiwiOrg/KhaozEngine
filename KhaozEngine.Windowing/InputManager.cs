@@ -86,6 +86,8 @@ namespace KhaozEngine.Windowing
         public bool IsPressingIn(Rect bounds) => _pointer.IsPressingIn(bounds);
         public bool IsReleasedOutside(Rect bounds) => _pointer.IsReleasedOutside(bounds);
         public bool IsDraggingIn(Rect bounds) => _pointer.IsDraggingIn(bounds);
+        /// <summary>The slider grab-gate: a drag whose press began inside <paramref name="bounds"/> is held (press-origin enforced).</summary>
+        public bool IsDragStartIn(Rect bounds) => _pointer.IsDragStartIn(bounds);
         public Vector2 GetDragDelta(Rect bounds) => _pointer.GetDragDelta(bounds);
 
         /// <summary>Reserve a region for an overlay this frame; the layer beneath checks <see cref="IsInputBlocked"/>.</summary>

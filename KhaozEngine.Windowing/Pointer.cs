@@ -83,5 +83,14 @@ namespace KhaozEngine.Windowing
         public bool IsReleasedOutside(Rect bounds) => IsJustReleased && !bounds.Contains(_pos);
         public bool IsDraggingIn(Rect bounds) => _down && bounds.Contains(_pressOrigin);
         public Vector2 GetDragDelta(Rect bounds) => IsDraggingIn(bounds) ? Delta : Vector2.Zero;
+
+        /// <summary>
+        /// The slider grab-gate: true while a drag whose press began inside <paramref name="bounds"/> is held
+        /// (button down, press-origin in bounds), even after the cursor strays off. This is the press-origin
+        /// invariant applied to a drag start - a press that began elsewhere never grabs - so the retained and
+        /// immediate sliders share one rule instead of each rolling their own (<c>IsJustPressed + Contains</c>
+        /// vs <c>IsDraggingIn</c>). Same condition as <see cref="IsDraggingIn"/>, named for the grab site.
+        /// </summary>
+        public bool IsDragStartIn(Rect bounds) => _down && bounds.Contains(_pressOrigin);
     }
 }

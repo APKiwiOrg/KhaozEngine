@@ -1,6 +1,6 @@
 using System;
 using System.Linq;
-using KhaozEngine.Ecs;
+using KhaozEngine.Primitives;
 using Xunit;
 
 namespace KhaozEngine.Tests;

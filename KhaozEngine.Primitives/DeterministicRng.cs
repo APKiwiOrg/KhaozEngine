@@ -1,6 +1,6 @@
 using System;
 
-namespace KhaozEngine.Ecs;
+namespace KhaozEngine.Primitives;
 
 /// <summary>
 /// Seeded, fixed-algorithm pseudo-random generator (xorshift128+, seeded via splitmix64). Reproducible
@@ -90,7 +90,7 @@ public sealed class DeterministicRng
     /// versions, and platforms, unlike <see cref="string.GetHashCode()"/>, which is
     /// randomized per process.
     /// </summary>
-    private static ulong StableHash(string s)
+    public static ulong StableHash(string s)
     {
         unchecked
         {

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using KhaozEngine.Ecs;
+using KhaozEngine.Primitives;
 using Xunit;
 
 namespace KhaozEngine.Tests;

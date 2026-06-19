@@ -88,7 +88,7 @@ fine-grained use - a wire-contract project references just `Netcode.Abstractions
 
 | Consumer | Project(s) | References | Version |
 |---|---|---|---|
-| **Hardpoint** (5.x, 3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic) | **5.57.0** |
+| **Hardpoint** (5.x, 3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic) | **5.70.0** |
 | **Nullwake** (5.x, 2D) | `Nullwake.Core` | `KhaozEngine.Game2D` | **5.59.0** |
 | **SpaceGame** (4.x MonoGame) | `SpaceGame.Core` | granular 4.x packages (Input/Screens/UI/Graphics + foundation + netcode) | 4.9.0 |
 
@@ -99,7 +99,7 @@ options' `WindowFactory`/`ViewportFactory`. Neither hand-writes the `AppWindow.R
 
 ## Notes (current state per consumer)
 
-### Hardpoint - 5.x, full-3D (on `KhaozEngine.Game3D` 5.57.0)
+### Hardpoint - 5.x, full-3D (on `KhaozEngine.Game3D` 5.70.0)
 
 A full-3D iso tower-defense entirely on the 5.x stack, zero legacy MonoGame packages. Two projects:
 
@@ -205,7 +205,7 @@ still matches `Directory.Build.props`.
 _Last verified: 2026-06-19. The 5.x line `<KhaozEngine5xVersion>` = **5.63.0** is the engine: the custom-stack
 packages + the graduated foundation + the four umbrella metapackages (Game2D/Game3D/Server/Foundation). The
 legacy 4.x line `<Version>` = **4.12.0** is frozen-ish and carries **only** the 6 genuinely-MonoGame packages
-(Graphics/Input/Screens/Sprites/Time/UI). **Hardpoint** (3D) is on **5.57.0** via `Game3D` + `Foundation`,
+(Graphics/Input/Screens/Sprites/Time/UI). **Hardpoint** (3D) is on **5.70.0** via `Game3D` + `Foundation`,
 **Nullwake** (2D) is on **5.59.0** via `Game2D` - both fully off MonoGame, referencing the engine in one line, and
 now running on the `GameApp3D`/`GameApp` loop facade. **SpaceGame** is the lone 4.x MonoGame holdout (pins 4.9.0;
 its 5.x port is the remaining migration work). The 7 legacy MonoGame packages get deleted once SpaceGame is off

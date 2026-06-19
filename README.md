@@ -15,7 +15,7 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 | **KhaozEngine.Render2D** | `SpriteBatch` (textured quads + `DrawString` over stb_truetype `SpriteFont`, optional model transform + sampler mode), `Camera2D`, `Texture2D`, `ImageRgba` (CPU pixel/opaque-mask decode), `Render2DSurface`, scissor/point-sampling, offscreen capture. | Windowing, Gpu |
 | **KhaozEngine.Render3D** | Stylized 3D: `Scene3D` (multi-instance mesh draw, glTF + procedural meshes, per-mesh albedo textures, materials/lighting, billboards, debug draw), `IsoCamera3D` (ortho iso + screen-to-ground/ray picking), `PixelPostProcess`, `Render3DSurface`. | Ecs, Windowing, Gpu |
 | **KhaozEngine.Gui** | `GuiSurface` (immediate-mode UI: Panel/Label/Button/Slider/Toggle, hover, click-through gate), `ScreenStack` (top-to-bottom routed screen stack + widgets), `FocusNavigator` (menu navigation). | Windowing, Render2D |
-| **KhaozEngine.Audio** | `AudioSystem`: an OpenAL (Silk.NET.OpenAL) streaming music backend + SFX one-shots and 3D positional audio over a voice pool. WAV/OGG/MP3. | Diagnostics |
+| **KhaozEngine.Audio** | `AudioSystem`: an OpenAL (Silk.NET.OpenAL) streaming music backend + SFX one-shots and 3D positional audio over a voice pool. WAV/OGG/MP3. Random track rotation is scopeable via `SetRotationPool` (e.g. menu-only music while every track stays playable on demand). | Diagnostics |
 | **KhaozEngine.Particles** | Pure, deterministic particle simulation (xorshift, `System.Numerics` + BCL only): `ParticleSystem` pool, `EmitterConfig` presets, `RateAccumulator`. | Pure .NET |
 | **KhaozEngine.Effects** | Game-feel visual effects: `ScreenShake` (trauma-based), parallax helpers. | Pure .NET |
 | **KhaozEngine.Game** | The 2D game-loop facade: `GameApp` (abstract base owning the per-frame compose: clock/viewport/input/draw) + `GameAppOptions`, and a `SceneManager`/`GameScene` state stack (Push/Pop/Replace/SwitchTo, overlay DrawBelow/UpdateBelow). | Windowing, Render2D, Gui |
@@ -116,10 +116,10 @@ Published to a private GitHub Packages feed on tagged releases, and packed to a 
 ```
 ```xml
 <!-- One reference per project via an umbrella metapackage. Pick the bundle that fits: -->
-<PackageReference Include="KhaozEngine.Game2D"     Version="5.70.0" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
-<PackageReference Include="KhaozEngine.Game3D"     Version="5.70.0" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
-<PackageReference Include="KhaozEngine.Server"     Version="5.70.0" />  <!-- headless: foundation + netcode, no graphics -->
-<PackageReference Include="KhaozEngine.Foundation" Version="5.70.0" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
+<PackageReference Include="KhaozEngine.Game2D"     Version="5.71.0" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
+<PackageReference Include="KhaozEngine.Game3D"     Version="5.71.0" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
+<PackageReference Include="KhaozEngine.Server"     Version="5.71.0" />  <!-- headless: foundation + netcode, no graphics -->
+<PackageReference Include="KhaozEngine.Foundation" Version="5.71.0" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
 ```
 
 The metapackages have no code; they just pull in the granular packages. You can still reference those

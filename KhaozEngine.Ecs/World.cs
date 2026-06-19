@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using KhaozEngine.Pooling;
 
 namespace KhaozEngine.Ecs;
 
@@ -27,6 +28,10 @@ public sealed partial class World
         Archetypes[new ArchetypeSignature(Array.Empty<int>())] = _empty;
         ArchetypeOrder.Add(_empty);
         ArchetypeGen++;
+
+        // Small prewarm covers a few levels of nested ForEach zero-alloc; deeper nesting falls back to
+        // a fresh Query (see RentForEachQuery). Bound to this World so pooled queries match its archetypes.
+        _forEachQueryPool = new ObjectPool<PoolableQuery>(() => new PoolableQuery(new Query(this)), prewarmCount: 4);
     }
 
     /// <summary>Creates a new entity with no components.</summary>

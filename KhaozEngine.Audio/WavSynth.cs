@@ -47,7 +47,7 @@ public static class WavSynth
                 _ => 0f,
             };
             float env = Envelope(i, count, sampleRate, attack, release);
-            samples[i] = ToShort(wave * amplitude * env);
+            samples[i] = AudioConvert.ToShort(wave * amplitude * env);
         }
         Write(path, samples, sampleRate);
     }
@@ -75,7 +75,7 @@ public static class WavSynth
             state ^= state << 5;
             float n = (state / (float)uint.MaxValue) * 2f - 1f;
             float env = Envelope(i, count, sampleRate, attack, release);
-            samples[i] = ToShort(n * amplitude * env);
+            samples[i] = AudioConvert.ToShort(n * amplitude * env);
         }
         Write(path, samples, sampleRate);
     }
@@ -91,8 +91,6 @@ public static class WavSynth
         float r = fromEnd < releaseSamples ? (float)fromEnd / releaseSamples : 1f;
         return Math.Min(a, r);
     }
-
-    static short ToShort(float f) => (short)Math.Clamp((int)MathF.Round(f * 32767f), short.MinValue, short.MaxValue);
 
     // Standard 44-byte RIFF/WAVE header (mono, 16-bit PCM) + interleaved sample data.
     static void Write(string path, short[] samples, int sampleRate)

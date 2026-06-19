@@ -25,8 +25,6 @@ internal static class PcmDecoders
             var ext => throw new NotSupportedException("unsupported audio format: " + ext),
         };
     }
-
-    internal static short ToShort(float f) => (short)Math.Clamp((int)MathF.Round(f * 32767f), short.MinValue, short.MaxValue);
 }
 
 /// <summary>Streams 16-bit PCM from a RIFF/WAVE file.</summary>
@@ -90,7 +88,7 @@ internal sealed class OggDecoder : IPcmDecoder
     {
         if (_f.Length < count) _f = new float[count];
         int n = _r.ReadSamples(_f, 0, count);
-        for (int i = 0; i < n; i++) buffer[offset + i] = PcmDecoders.ToShort(_f[i]);
+        for (int i = 0; i < n; i++) buffer[offset + i] = AudioConvert.ToShort(_f[i]);
         return n;
     }
 
@@ -111,7 +109,7 @@ internal sealed class Mp3Decoder : IPcmDecoder
     {
         if (_buf.Length < count) _buf = new float[count];
         int n = _f.ReadSamples(_buf, 0, count);
-        for (int i = 0; i < n; i++) buffer[offset + i] = PcmDecoders.ToShort(_buf[i]);
+        for (int i = 0; i < n; i++) buffer[offset + i] = AudioConvert.ToShort(_buf[i]);
         return n;
     }
 

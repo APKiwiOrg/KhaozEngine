@@ -1,10 +1,9 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Numerics;
 using System.Runtime.InteropServices;
-using StbImageSharp;
 using KhaozEngine.Gpu;
+using KhaozEngine.Render2D;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Render3D.Rendering;
@@ -116,8 +115,8 @@ namespace KhaozEngine.Render3D
         /// <see cref="Dispose"/>; it may be shared across several meshes.</summary>
         public TextureHandle LoadTexture(string pngPath)
         {
-            ImageResult img = ImageResult.FromMemory(File.ReadAllBytes(pngPath), ColorComponents.RedGreenBlueAlpha);
-            return LoadTexture(img.Data, img.Width, img.Height);
+            ImageRgba img = ImageRgba.Load(pngPath);
+            return LoadTexture(img.Pixels, img.Width, img.Height);
         }
 
         /// <summary>Create an albedo texture from raw RGBA8 bytes (row-major, <paramref name="width"/> *

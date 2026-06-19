@@ -9,8 +9,6 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="SharpGLTF.Core" Version="1.0.6" />
-    <!-- PNG/JPG albedo texture decode (same decoder Render2D pins). -->
-    <PackageReference Include="StbImageSharp" Version="2.30.15" />
     <!-- The MonoGame-free ECS, so 3D entities can render via Scene3DBinder (Transform3D + MeshInstance). -->
     <ProjectReference Include="../KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
     <None Include="README.md" Pack="true" PackagePath="\" />

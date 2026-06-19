@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Numerics;
-using StbImageSharp;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 
@@ -31,8 +30,8 @@ namespace KhaozEngine.Render2D.Internal
 
         public Texture2D LoadTexture(string pngPath)
         {
-            ImageResult img = ImageResult.FromMemory(File.ReadAllBytes(pngPath), ColorComponents.RedGreenBlueAlpha);
-            return CreateTexture(img.Data, img.Width, img.Height);
+            ImageRgba img = ImageRgba.Load(pngPath);
+            return CreateTexture(img.Pixels, img.Width, img.Height);
         }
 
         public SpriteFont LoadFont(string ttfPath, float pixelHeight, int oversample = 1) =>

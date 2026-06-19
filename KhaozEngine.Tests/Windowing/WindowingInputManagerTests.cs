@@ -314,5 +314,31 @@ namespace KhaozEngine.Tests.Windowing
             im.Update(Mouse(new Vector2(10, 10), middleDown: false));
             Assert.True(im.IsMiddleJustReleased);
         }
+
+        // ---- scoped scroll (6.3.0) -----------------------------------------
+
+        // A frame with the pointer at pos and the given raw wheel delta.
+        static InputState Scroll(Vector2 pos, float scroll) => new InputState(
+            new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
+            new HashSet<MouseButton>(), new HashSet<MouseButton>(),
+            pos, Vector2.Zero, scroll, 960, 540);
+
+        [Fact]
+        public void GetScrollIn_returns_rounded_delta_when_pointer_is_inside_bounds()
+        {
+            var box = new Rect(100, 100, 200, 80);   // contains (150,140)
+            var im = new InputManager();
+            im.Update(Scroll(new Vector2(150, 140), 2.6f));
+            Assert.Equal(3, im.GetScrollIn(box));                       // rounded to the nearest notch
+        }
+
+        [Fact]
+        public void GetScrollIn_is_zero_when_pointer_is_outside_bounds()
+        {
+            var box = new Rect(100, 100, 200, 80);   // does NOT contain (10,10)
+            var im = new InputManager();
+            im.Update(Scroll(new Vector2(10, 10), 5f));
+            Assert.Equal(0, im.GetScrollIn(box));                       // scoped: no scroll outside the region
+        }
     }
 }

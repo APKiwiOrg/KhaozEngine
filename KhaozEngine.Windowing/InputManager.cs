@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 
 namespace KhaozEngine.Windowing
@@ -99,6 +100,10 @@ namespace KhaozEngine.Windowing
 
         /// <summary>Raw scroll-wheel delta this frame (positive = up).</summary>
         public float ScrollDelta => _input.ScrollDelta;
+        /// <summary>Integer scroll-notch delta this frame when the pointer is over <paramref name="bounds"/>, else 0.
+        /// Scopes wheel scrolling to a region (e.g. a scrollable panel) using the bounds helpers rather than a raw
+        /// position check.</summary>
+        public int GetScrollIn(Rect bounds) => IsPointerIn(bounds) ? (int)MathF.Round(ScrollDelta) : 0;
         /// <summary>True this frame if the scroll wheel moved up.</summary>
         public bool IsMouseWheelScrolledUp => _input.ScrollDelta > 0f;
         /// <summary>True this frame if the scroll wheel moved down.</summary>

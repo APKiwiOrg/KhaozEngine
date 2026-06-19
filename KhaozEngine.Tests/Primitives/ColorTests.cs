@@ -109,4 +109,34 @@ public class ColorTests
     {
         Assert.Equal(new Color(0f, 0f, 0f, 0f), Color.Transparent);
     }
+
+    // --- scalar multiply + lerp (6.3.0 additive helpers) ---
+
+    [Fact]
+    public void Multiply_ScalesAllChannelsIncludingAlpha_Unclamped()
+    {
+        var c = new Color(0.2f, 0.4f, 0.6f, 0.8f);
+        Assert.Equal(new Color(0.4f, 0.8f, 1.2f, 1.6f), c * 2f);   // alpha scales too; not clamped
+    }
+
+    [Fact]
+    public void Multiply_IsSymmetric()
+    {
+        var c = new Color(0.2f, 0.4f, 0.6f, 0.8f);
+        Assert.Equal(c * 1.5f, 1.5f * c);
+    }
+
+    [Theory]
+    [InlineData(0f)]
+    [InlineData(0.5f)]
+    [InlineData(1f)]
+    [InlineData(-0.25f)]   // unclamped below 0
+    [InlineData(1.5f)]     // unclamped above 1
+    public void Lerp_IsByteIdenticalToVector4Lerp(float t)
+    {
+        var a = new Color(0.1f, 0.2f, 0.3f, 0.4f);
+        var b = new Color(0.9f, 0.7f, 0.5f, 1.0f);
+        var expected = (Color)Vector4.Lerp(a.ToVector4(), b.ToVector4(), t);
+        Assert.Equal(expected, Color.Lerp(a, b, t));
+    }
 }

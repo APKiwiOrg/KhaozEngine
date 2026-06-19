@@ -28,6 +28,18 @@ namespace KhaozEngine.Primitives
         /// <summary>The same color with a replaced alpha.</summary>
         public Color WithAlpha(float a) => new(R, G, B, a);
 
+        /// <summary>Scale all four channels (including alpha) by <paramref name="s"/>. Unclamped; matches
+        /// <see cref="Vector4"/> <c>* float</c> and legacy MonoGame <c>Color * float</c>.</summary>
+        public static Color operator *(Color c, float s) => new(c.R * s, c.G * s, c.B * s, c.A * s);
+
+        /// <summary>Scalar multiply (symmetric with <see cref="op_Multiply(Color,float)"/>).</summary>
+        public static Color operator *(float s, Color c) => new(c.R * s, c.G * s, c.B * s, c.A * s);
+
+        /// <summary>Component-wise linear interpolation, unclamped and byte-identical to
+        /// <see cref="Vector4.Lerp(Vector4,Vector4,float)"/> (it delegates to it): <c>a + (b - a) * t</c> per
+        /// channel. <paramref name="t"/> is NOT clamped and no rounding through bytes occurs.</summary>
+        public static Color Lerp(Color a, Color b, float t) => FromVector4(Vector4.Lerp(a.ToVector4(), b.ToVector4(), t));
+
         /// <summary>Parse <c>#RRGGBB</c> or <c>#RRGGBBAA</c> (leading '#' optional). Missing alpha is opaque.</summary>
         public static Color FromHex(string hex)
         {

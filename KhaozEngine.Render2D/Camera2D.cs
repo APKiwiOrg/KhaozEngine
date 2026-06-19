@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Windowing;
 
 namespace KhaozEngine.Render2D
@@ -74,7 +75,7 @@ namespace KhaozEngine.Render2D
             float scale = 1f + 2f * paddingFraction;
             float w = MathF.Max(1f, worldRect.Width * scale);
             float h = MathF.Max(1f, worldRect.Height * scale);
-            float fit = MathF.Min(viewportWidth / w, viewportHeight / h);
+            float fit = ViewportMath.Fit(w, h, viewportWidth, viewportHeight);
 
             Zoom = Math.Clamp(fit, minZoom, maxZoom);
             Position = new Vector2(worldRect.X + worldRect.Width / 2f, worldRect.Y + worldRect.Height / 2f);

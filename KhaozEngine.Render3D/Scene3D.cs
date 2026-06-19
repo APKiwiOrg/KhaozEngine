@@ -333,7 +333,7 @@ namespace KhaozEngine.Render3D
             int maxW = Math.Max(1, s.MaxRenderWidth);
             int maxH = Math.Max(1, s.MaxRenderHeight);
             if (vw <= maxW && vh <= maxH) return (vw, vh);
-            float scale = MathF.Min((float)maxW / vw, (float)maxH / vh);
+            float scale = ViewportMath.Fit(vw, vh, maxW, maxH);
             int w = Math.Max(1, (int)MathF.Round(vw * scale));
             int h = Math.Max(1, (int)MathF.Round(vh * scale));
             return (w, h);

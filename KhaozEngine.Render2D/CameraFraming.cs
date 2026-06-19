@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Windowing;
 
 namespace KhaozEngine.Render2D
@@ -54,7 +55,7 @@ namespace KhaozEngine.Render2D
         {
             float w = MathF.Max(bounds.Width, Epsilon);
             float h = MathF.Max(bounds.Height, Epsilon);
-            float fit = MathF.Min(vw / w, vh / h);
+            float fit = ViewportMath.Fit(w, h, vw, vh);
             float zoom = Math.Clamp(fit, minZoom, maxZoom);
             var pos = new Vector2(bounds.X + bounds.Width * 0.5f, bounds.Y + bounds.Height * 0.5f);
             return (pos, zoom);

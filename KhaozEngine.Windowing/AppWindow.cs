@@ -129,7 +129,7 @@ namespace KhaozEngine.Windowing
             float availW = screenWidth * screenFraction;
             float availH = screenHeight * screenFraction;
             // Uniform scale that keeps the design fully inside the available area on both axes.
-            float scale = MathF.Min(availW / designWidth, availH / designHeight);
+            float scale = ViewportMath.Fit(designWidth, designHeight, availW, availH);
             scale = Math.Clamp(scale, 1f, MathF.Max(1f, maxScale));
             return ((int)MathF.Round(designWidth * scale), (int)MathF.Round(designHeight * scale));
         }

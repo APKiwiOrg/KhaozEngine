@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
 
@@ -92,7 +93,7 @@ namespace KhaozEngine.Gui
             GuiDraw.Fill(batch, white, TriggerBounds, Background);
             GuiDraw.Border(batch, white, TriggerBounds, 1f, IsOpen ? OpenBorder : Border);
             float ty = TriggerBounds.Y + (TriggerBounds.Height - font.LineHeight) * 0.5f;
-            batch.DrawString(font, SelectedLabel, new Vector2(MathF.Floor(TriggerBounds.X + 6f), MathF.Floor(ty)), TextColor);
+            batch.DrawString(font, SelectedLabel, new Vector2(MathF.Floor(TriggerBounds.X + 6f), MathF.Floor(ty)), (Color)TextColor);
         }
 
         /// <summary>Draw the open option list. Call last (unclipped) so it overlays other content.</summary>
@@ -111,7 +112,7 @@ namespace KhaozEngine.Gui
                 else if (pointer.IsPointerIn(r)) GuiDraw.Fill(batch, white, r, HoverColor);
                 float ty = r.Y + (r.Height - font.LineHeight) * 0.5f;
                 batch.DrawString(font, _options[i].Label, new Vector2(MathF.Floor(r.X + 6f), MathF.Floor(ty)),
-                    selected ? SelectedTextColor : TextColor);
+                    (Color)(selected ? SelectedTextColor : TextColor));
             }
         }
     }

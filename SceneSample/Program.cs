@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using KhaozEngine.Game;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Render3D;
 using KhaozEngine.Windowing;
@@ -66,9 +67,9 @@ sealed class MenuScene : GameScene
     {
         var m = Manager!;
         // Dim full-frame panel as a menu backdrop.
-        batch.Draw(_white, new Vector4(0, 0, m.FrameWidth, m.FrameHeight), new Vector4(0.12f, 0.16f, 0.24f, 1f));
+        batch.Draw(_white, new Vector4(0, 0, m.FrameWidth, m.FrameHeight), new Color(0.12f, 0.16f, 0.24f, 1f));
         batch.Draw(_white, new Vector4(m.FrameWidth * 0.3f, m.FrameHeight * 0.42f, m.FrameWidth * 0.4f, 40),
-            new Vector4(0.3f, 0.6f, 0.9f, 1f));
+            new Color(0.3f, 0.6f, 0.9f, 1f));
     }
 }
 
@@ -90,9 +91,9 @@ sealed class PlayScene : GameScene
     public override void OnDraw2D(SpriteBatch batch)
     {
         var m = Manager!;
-        batch.Draw(_white, new Vector4(0, 0, m.FrameWidth, m.FrameHeight), new Vector4(0.08f, 0.2f, 0.12f, 1f));
+        batch.Draw(_white, new Vector4(0, 0, m.FrameWidth, m.FrameHeight), new Color(0.08f, 0.2f, 0.12f, 1f));
         batch.Draw(_white, new Vector4(m.FrameWidth * 0.45f, m.FrameHeight * 0.45f, 60, 60),
-            new Vector4(0.9f, 0.8f, 0.2f, 1f));
+            new Color(0.9f, 0.8f, 0.2f, 1f));
     }
 }
 
@@ -120,8 +121,8 @@ sealed class PauseScene : GameScene
     {
         var m = Manager!;
         // Semi-transparent scrim over the (still-drawn) play scene + a pause bar.
-        batch.Draw(_white, new Vector4(0, 0, m.FrameWidth, m.FrameHeight), new Vector4(0f, 0f, 0f, 0.5f));
+        batch.Draw(_white, new Vector4(0, 0, m.FrameWidth, m.FrameHeight), new Color(0f, 0f, 0f, 0.5f));
         batch.Draw(_white, new Vector4(m.FrameWidth * 0.35f, m.FrameHeight * 0.46f, m.FrameWidth * 0.3f, 32),
-            new Vector4(0.9f, 0.9f, 0.95f, 1f));
+            new Color(0.9f, 0.9f, 0.95f, 1f));
     }
 }

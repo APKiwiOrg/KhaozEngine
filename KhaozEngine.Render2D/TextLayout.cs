@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Render2D
 {
@@ -65,7 +66,7 @@ namespace KhaozEngine.Render2D
         /// [<paramref name="left"/>, <paramref name="left"/> + <paramref name="width"/>] at <paramref name="y"/>.
         /// Positions are pixel-snapped to avoid sub-pixel blur.</summary>
         public static void DrawAligned(SpriteBatch batch, SpriteFont font, string text,
-            float left, float width, float y, TextAlign align, Vector4 color)
+            float left, float width, float y, TextAlign align, Color color)
         {
             float x = MathF.Floor(AlignedX(font, text, left, width, align));
             batch.DrawString(font, text, new Vector2(x, MathF.Floor(y)), color);
@@ -74,7 +75,7 @@ namespace KhaozEngine.Render2D
         /// <summary>Draws <paramref name="text"/> word-wrapped to <paramref name="maxWidth"/>, each line aligned
         /// within that width, starting at <paramref name="topLeft"/>. Returns the total height drawn.</summary>
         public static float DrawWrapped(SpriteBatch batch, SpriteFont font, string text,
-            Vector2 topLeft, float maxWidth, TextAlign align, Vector4 color)
+            Vector2 topLeft, float maxWidth, TextAlign align, Color color)
         {
             float y = topLeft.Y;
             foreach (string line in Wrap(font, text, maxWidth))

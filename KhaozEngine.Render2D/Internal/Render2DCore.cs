@@ -3,6 +3,7 @@ using System.IO;
 using System.Numerics;
 using StbImageSharp;
 using KhaozEngine.Gpu;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Render2D.Internal
 {
@@ -46,7 +47,7 @@ namespace KhaozEngine.Render2D.Internal
         /// textures/fonts already created on that device and the result is a GPU texture you can sample. The
         /// returned <see cref="Texture2D"/> owns the GPU target; the caller disposes it.
         /// </summary>
-        public static Texture2D RenderToTexture(IGpuDevice gd, int width, int height, Vector4 clear, Action<SpriteBatch> draw)
+        public static Texture2D RenderToTexture(IGpuDevice gd, int width, int height, Color clear, Action<SpriteBatch> draw)
         {
             ArgumentNullException.ThrowIfNull(draw);
             width = Math.Max(1, width);
@@ -88,7 +89,7 @@ namespace KhaozEngine.Render2D.Internal
         /// equivalent of <see cref="Render2DSnapshot.Capture"/> - it reuses the live device's textures/fonts
         /// rather than a throwaway headless one. For pixels a game needs on the CPU (e.g. a clipboard copy).
         /// </summary>
-        public static byte[] RenderToRgba(IGpuDevice gd, int width, int height, Vector4 clear, Action<SpriteBatch> draw)
+        public static byte[] RenderToRgba(IGpuDevice gd, int width, int height, Color clear, Action<SpriteBatch> draw)
         {
             ArgumentNullException.ThrowIfNull(draw);
             width = Math.Max(1, width);

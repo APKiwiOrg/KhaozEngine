@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Windowing;
 
 namespace KhaozEngine.Render2D
@@ -44,38 +45,38 @@ namespace KhaozEngine.Render2D
         // --- drawing (needs the GPU-backed SpriteFont) ---
 
         /// <summary>Draws <paramref name="text"/> with its top-left at (<paramref name="x"/>, <paramref name="y"/>).</summary>
-        public static void Draw(SpriteBatch batch, SpriteFont font, string text, float x, float y, Vector4 color) =>
+        public static void Draw(SpriteBatch batch, SpriteFont font, string text, float x, float y, Color color) =>
             batch.DrawString(font, text, Snap(x, y), color);
 
         /// <summary>Draws <paramref name="text"/> at (<paramref name="x"/>, <paramref name="y"/>), alpha modulated by <paramref name="alpha"/>.</summary>
-        public static void Draw(SpriteBatch batch, SpriteFont font, string text, float x, float y, Vector4 color, float alpha) =>
+        public static void Draw(SpriteBatch batch, SpriteFont font, string text, float x, float y, Color color, float alpha) =>
             batch.DrawString(font, text, Snap(x, y), Fade(color, alpha));
 
         /// <summary>Draws <paramref name="text"/> horizontally centered on <paramref name="centerX"/> at <paramref name="y"/>.</summary>
-        public static void DrawCentered(SpriteBatch batch, SpriteFont font, string text, float centerX, float y, Vector4 color) =>
+        public static void DrawCentered(SpriteBatch batch, SpriteFont font, string text, float centerX, float y, Color color) =>
             batch.DrawString(font, text, Snap(CenteredX(font, text, centerX), y), color);
 
         /// <summary>Draws <paramref name="text"/> centered on <paramref name="centerX"/>, alpha modulated by <paramref name="alpha"/>.</summary>
-        public static void DrawCentered(SpriteBatch batch, SpriteFont font, string text, float centerX, float y, Vector4 color, float alpha) =>
+        public static void DrawCentered(SpriteBatch batch, SpriteFont font, string text, float centerX, float y, Color color, float alpha) =>
             batch.DrawString(font, text, Snap(CenteredX(font, text, centerX), y), Fade(color, alpha));
 
         /// <summary>Draws <paramref name="text"/> right-aligned so its right edge lands on <paramref name="rightX"/> at <paramref name="y"/>.</summary>
-        public static void DrawRight(SpriteBatch batch, SpriteFont font, string text, float rightX, float y, Vector4 color) =>
+        public static void DrawRight(SpriteBatch batch, SpriteFont font, string text, float rightX, float y, Color color) =>
             batch.DrawString(font, text, Snap(RightX(font, text, rightX), y), color);
 
         /// <summary>Draws <paramref name="text"/> right-aligned to <paramref name="rightX"/>, alpha modulated by <paramref name="alpha"/>.</summary>
-        public static void DrawRight(SpriteBatch batch, SpriteFont font, string text, float rightX, float y, Vector4 color, float alpha) =>
+        public static void DrawRight(SpriteBatch batch, SpriteFont font, string text, float rightX, float y, Color color, float alpha) =>
             batch.DrawString(font, text, Snap(RightX(font, text, rightX), y), Fade(color, alpha));
 
         /// <summary>Draws <paramref name="text"/> centered horizontally and vertically within <paramref name="rect"/>.</summary>
-        public static void DrawCenteredInRect(SpriteBatch batch, SpriteFont font, string text, Rect rect, Vector4 color)
+        public static void DrawCenteredInRect(SpriteBatch batch, SpriteFont font, string text, Rect rect, Color color)
         {
             Vector2 p = CenteredInRect(font, text, rect);
             batch.DrawString(font, text, Snap(p.X, p.Y), color);
         }
 
         /// <summary>Draws <paramref name="text"/> centered within <paramref name="rect"/>, alpha modulated by <paramref name="alpha"/>.</summary>
-        public static void DrawCenteredInRect(SpriteBatch batch, SpriteFont font, string text, Rect rect, Vector4 color, float alpha)
+        public static void DrawCenteredInRect(SpriteBatch batch, SpriteFont font, string text, Rect rect, Color color, float alpha)
         {
             Vector2 p = CenteredInRect(font, text, rect);
             batch.DrawString(font, text, Snap(p.X, p.Y), Fade(color, alpha));
@@ -86,7 +87,7 @@ namespace KhaozEngine.Render2D
         /// <paramref name="centerX"/>, starting at <paramref name="y"/>. Returns the total height drawn.
         /// </summary>
         public static float DrawWrappedCentered(SpriteBatch batch, SpriteFont font, string text,
-            float centerX, float y, float maxWidth, Vector4 color, float alpha) =>
+            float centerX, float y, float maxWidth, Color color, float alpha) =>
             TextLayout.DrawWrapped(batch, font, text,
                 new Vector2(centerX - maxWidth * 0.5f, y), maxWidth, TextAlign.Center, Fade(color, alpha));
 
@@ -94,7 +95,7 @@ namespace KhaozEngine.Render2D
         static Vector2 Snap(float x, float y) => new(MathF.Floor(x), MathF.Floor(y));
 
         // Multiply the color's alpha by an extra factor (RGB unchanged), clamped to [0, 1].
-        static Vector4 Fade(Vector4 color, float alpha) =>
-            new(color.X, color.Y, color.Z, color.W * Math.Clamp(alpha, 0f, 1f));
+        static Color Fade(Color color, float alpha) =>
+            color.WithAlpha(color.A * Math.Clamp(alpha, 0f, 1f));
     }
 }

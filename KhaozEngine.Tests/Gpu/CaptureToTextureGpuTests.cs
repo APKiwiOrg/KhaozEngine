@@ -1,5 +1,6 @@
 using System.Numerics;
 using KhaozEngine.Gpu;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Render2D.Internal;
 using KhaozEngine.Windowing;
@@ -30,12 +31,12 @@ namespace KhaozEngine.Tests.Gpu
             var white = new Texture2D(whiteHandle, 1, 1);
 
             // Clear red; draw a green quad over the left half only, so the captured texture has both colours.
-            Texture2D captured = Render2DCore.RenderToTexture(gd, W, H, new Vector4(1, 0, 0, 1), batch =>
+            Texture2D captured = Render2DCore.RenderToTexture(gd, W, H, new Color(1, 0, 0, 1), batch =>
             {
                 var vp = new DesignViewport(W, H, ScaleMode.Fit);
                 vp.Update(W, H);
                 batch.Begin(vp);
-                batch.Draw(white, new Vector4(0, 0, W / 2f, H), new Vector4(0, 1, 0, 1));
+                batch.Draw(white, new Vector4(0, 0, W / 2f, H), new Color(0, 1, 0, 1));
                 batch.End();
             });
 

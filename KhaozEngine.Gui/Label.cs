@@ -1,4 +1,5 @@
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
 
@@ -31,11 +32,11 @@ namespace KhaozEngine.Gui
         {
             if (Wrap)
             {
-                TextLayout.DrawWrapped(batch, Font, Text, new Vector2(Bounds.X, Bounds.Y), Bounds.Width, Align, Color);
+                TextLayout.DrawWrapped(batch, Font, Text, new Vector2(Bounds.X, Bounds.Y), Bounds.Width, Align, (KhaozEngine.Primitives.Color)Color);
                 return;
             }
             float y = VerticalCenter ? Bounds.Y + (Bounds.Height - Font.LineHeight) * 0.5f : Bounds.Y;
-            TextLayout.DrawAligned(batch, Font, Text, Bounds.X, Bounds.Width, y, Align, Color);
+            TextLayout.DrawAligned(batch, Font, Text, Bounds.X, Bounds.Width, y, Align, (KhaozEngine.Primitives.Color)Color);
         }
     }
 }

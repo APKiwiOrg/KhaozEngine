@@ -1,4 +1,5 @@
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
 
@@ -62,7 +63,7 @@ namespace KhaozEngine.Gui
         public void DrawBackground(SpriteBatch batch, Texture2D white, IDesignViewport viewport)
         {
             if (BackgroundColor is { } c)
-                batch.Draw(white, new Vector4(0, 0, viewport.Width, viewport.Height), c);
+                batch.Draw(white, new Vector4(0, 0, viewport.Width, viewport.Height), (Color)c);
         }
 
         /// <summary>Request removal; animates out first if <see cref="TransitionOffDuration"/> &gt; 0.</summary>

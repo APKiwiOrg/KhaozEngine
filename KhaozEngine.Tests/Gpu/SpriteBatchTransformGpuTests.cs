@@ -1,5 +1,6 @@
 using System.Numerics;
 using KhaozEngine.Gpu;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Render2D.Internal;
 using KhaozEngine.Windowing;
@@ -26,13 +27,13 @@ namespace KhaozEngine.Tests.Gpu
             gd.UpdateTexture(whiteHandle, new byte[] { 255, 255, 255, 255 }, 0, 0, 1, 1);
             var white = new Texture2D(whiteHandle, 1, 1);
 
-            byte[] rgba = Render2DCore.RenderToRgba(gd, W, H, new Vector4(0, 0, 0, 1), batch =>
+            byte[] rgba = Render2DCore.RenderToRgba(gd, W, H, new Color(0, 0, 0, 1), batch =>
             {
                 var vp = new DesignViewport(W, H, ScaleMode.Fit);
                 vp.Update(W, H);
                 // Same rect at the design origin, but translated +20,+20 by the model transform.
                 batch.Begin(vp, Matrix4x4.CreateTranslation(20, 20, 0));
-                batch.Draw(white, new Vector4(0, 0, 10, 10), new Vector4(1, 1, 1, 1));
+                batch.Draw(white, new Vector4(0, 0, 10, 10), new Color(1, 1, 1, 1));
                 batch.End();
             });
 

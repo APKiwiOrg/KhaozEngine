@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Windowing;
 
 namespace KhaozEngine.Render2D
@@ -55,11 +56,11 @@ namespace KhaozEngine.Render2D
         static byte[] WhitePixel => new byte[] { 255, 255, 255, 255 };
 
         /// <summary>Draws a filled rectangle.</summary>
-        public void DrawFilledRect(SpriteBatch batch, Rect r, Vector4 color) =>
+        public void DrawFilledRect(SpriteBatch batch, Rect r, Color color) =>
             batch.Draw(_white, new Vector4(r.X, r.Y, r.Width, r.Height), color);
 
         /// <summary>Draws a rectangle outline (border only) as four thin filled rects.</summary>
-        public void DrawRect(SpriteBatch batch, Rect r, Vector4 color, float thickness = 1f)
+        public void DrawRect(SpriteBatch batch, Rect r, Color color, float thickness = 1f)
         {
             float t = thickness;
             DrawFilledRect(batch, new Rect(r.X, r.Y, r.Width, t), color);              // top
@@ -72,7 +73,7 @@ namespace KhaozEngine.Render2D
         /// Draws a line from <paramref name="a"/> to <paramref name="c"/> as a rotated quad centered on its
         /// thickness (sub-pixel <paramref name="thickness"/> renders faithfully). No-op for a zero-length line.
         /// </summary>
-        public void DrawLine(SpriteBatch batch, Vector2 a, Vector2 c, Vector4 color, float thickness = 1f)
+        public void DrawLine(SpriteBatch batch, Vector2 a, Vector2 c, Color color, float thickness = 1f)
         {
             Vector2 edge = c - a;
             float len = edge.Length();
@@ -82,7 +83,7 @@ namespace KhaozEngine.Render2D
         }
 
         /// <summary>Draws a circle outline as <paramref name="segments"/> line segments.</summary>
-        public void DrawCircle(SpriteBatch batch, Vector2 center, float radius, Vector4 color, int segments = 32, float thickness = 1f)
+        public void DrawCircle(SpriteBatch batch, Vector2 center, float radius, Color color, int segments = 32, float thickness = 1f)
         {
             if (segments < 3) segments = 3;
             float step = MathF.Tau / segments;
@@ -111,7 +112,7 @@ namespace KhaozEngine.Render2D
         /// centered on the radius path, so fractional thicknesses render faithfully (unlike
         /// <see cref="DrawCircle"/>'s line width). No-op when radius or thickness is non-positive.
         /// </summary>
-        public void DrawRing(SpriteBatch batch, Vector2 center, float radius, float thickness, Vector4 color, int? segmentsOverride = null)
+        public void DrawRing(SpriteBatch batch, Vector2 center, float radius, float thickness, Color color, int? segmentsOverride = null)
         {
             if (radius <= 0f || thickness <= 0f) return;
             int segments = RingSegments(radius, segmentsOverride);
@@ -127,7 +128,7 @@ namespace KhaozEngine.Render2D
         }
 
         /// <summary>Draws a filled circle as stacked 1px horizontal rects.</summary>
-        public void DrawFilledCircle(SpriteBatch batch, Vector2 center, float radius, Vector4 color)
+        public void DrawFilledCircle(SpriteBatch batch, Vector2 center, float radius, Color color)
         {
             int intRadius = (int)radius;
             for (int y = -intRadius; y <= intRadius; y++)
@@ -141,14 +142,15 @@ namespace KhaozEngine.Render2D
         /// Draws a vertical gradient by rendering <paramref name="bands"/> horizontal strips with linearly
         /// interpolated colors between <paramref name="top"/> and <paramref name="bottom"/>.
         /// </summary>
-        public void DrawVerticalGradient(SpriteBatch batch, Rect r, Vector4 top, Vector4 bottom, int bands = 12)
+        public void DrawVerticalGradient(SpriteBatch batch, Rect r, Color top, Color bottom, int bands = 12)
         {
             if (bands < 1) bands = 1;
             float bandHeight = r.Height / bands;
+            Vector4 topV = top, bottomV = bottom;   // lerp in float space; implicit Color -> Vector4
             for (int i = 0; i < bands; i++)
             {
                 float t = i / (float)(bands - 1 == 0 ? 1 : bands - 1);
-                Vector4 color = Vector4.Lerp(top, bottom, t);
+                Color color = (Color)Vector4.Lerp(topV, bottomV, t);
                 float y = r.Y + i * bandHeight;
                 float h = (i == bands - 1) ? r.Bottom - y : MathF.Ceiling(bandHeight);
                 DrawFilledRect(batch, new Rect(r.X, y, r.Width, h), color);
@@ -160,7 +162,7 @@ namespace KhaozEngine.Render2D
         /// <paramref name="progress"/> (0..1), and a <paramref name="border"/> outline. Fill geometry is capped
         /// (see <see cref="ComputeProgressBarLayout"/>) so short/thin bars keep a visible fill.
         /// </summary>
-        public void DrawProgressBar(SpriteBatch batch, Rect r, float progress, Vector4 fill, Vector4 bg, Vector4 border, float borderThickness = 1f)
+        public void DrawProgressBar(SpriteBatch batch, Rect r, float progress, Color fill, Color bg, Color border, float borderThickness = 1f)
         {
             DrawFilledRect(batch, r, bg);
 

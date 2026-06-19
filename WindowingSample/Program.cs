@@ -4,6 +4,7 @@ using System.IO;
 using System.Numerics;
 using KhaozEngine.Audio;
 using KhaozEngine.Diagnostics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
 
@@ -103,32 +104,32 @@ window.Run(frame =>
     surface.NewFrame(frame);
     surface.Batch.Begin(viewport);
 
-    surface.Batch.Draw(white, new Vector4(0, 0, 960, 540), new Vector4(0.07f, 0.09f, 0.13f, 1f));   // design bg
+    surface.Batch.Draw(white, new Vector4(0, 0, 960, 540), new Color(0.07f, 0.09f, 0.13f, 1f));   // design bg
 
     // Orbiting dot (pause/time-scale made visible).
     var c = new Vector2(700, 180);
     var dot = c + new Vector2(MathF.Cos(orbit), MathF.Sin(orbit)) * 90f;
-    surface.Batch.Draw(white, new Vector4(c.X - 92, c.Y - 92, 184, 184), new Vector4(0.10f, 0.12f, 0.17f, 1f));
-    surface.Batch.Draw(white, new Vector4(dot.X - 10, dot.Y - 10, 20, 20), new Vector4(0.95f, 0.75f, 0.35f, 1f));
+    surface.Batch.Draw(white, new Vector4(c.X - 92, c.Y - 92, 184, 184), new Color(0.10f, 0.12f, 0.17f, 1f));
+    surface.Batch.Draw(white, new Vector4(dot.X - 10, dot.Y - 10, 20, 20), new Color(0.95f, 0.75f, 0.35f, 1f));
 
     // Tap marks (fade out).
     foreach (var (pos, life) in marks)
-        surface.Batch.Draw(white, new Vector4(pos.X - 6, pos.Y - 6, 12, 12), new Vector4(0.4f, 0.95f, 0.7f, life));
+        surface.Batch.Draw(white, new Vector4(pos.X - 6, pos.Y - 6, 12, 12), new Color(0.4f, 0.95f, 0.7f, life));
 
     // Draggable box.
     var boxColor = grabbed ? new Vector4(0.30f, 0.55f, 0.75f, 1f) : new Vector4(0.18f, 0.34f, 0.5f, 1f);
-    surface.Batch.Draw(white, new Vector4(boxRect.X, boxRect.Y, boxRect.Width, boxRect.Height), boxColor);
-    surface.Batch.DrawString(font, "drag me", new Vector2(box.X - 40, box.Y - 13), new Vector4(0.95f, 0.97f, 1f, 1f));
+    surface.Batch.Draw(white, new Vector4(boxRect.X, boxRect.Y, boxRect.Width, boxRect.Height), (Color)boxColor);
+    surface.Batch.DrawString(font, "drag me", new Vector2(box.X - 40, box.Y - 13), new Color(0.95f, 0.97f, 1f, 1f));
 
     // Pointer marker.
-    surface.Batch.Draw(white, new Vector4(pointer.Position.X - 3, pointer.Position.Y - 3, 6, 6), new Vector4(0.4f, 0.95f, 0.7f, 1f));
+    surface.Batch.Draw(white, new Vector4(pointer.Position.X - 3, pointer.Position.Y - 3, 6, 6), new Color(0.4f, 0.95f, 0.7f, 1f));
 
     string gstate = gestures.IsDragging ? "dragging" : "idle";
     string padInfo = pad.IsConnected ? $"pad: stick {pad.LeftStick.X:0.0},{pad.LeftStick.Y:0.0}" : "pad: none";
-    surface.Batch.DrawString(font, "Drag box  -  tap  -  long-press reset  -  Space pause  -  1/2/3 speed  -  Z blip  -  X 3D thud", new Vector2(20, 18), new Vector4(0.92f, 0.96f, 1f, 1f));
+    surface.Batch.DrawString(font, "Drag box  -  tap  -  long-press reset  -  Space pause  -  1/2/3 speed  -  Z blip  -  X 3D thud", new Vector2(20, 18), new Color(0.92f, 0.96f, 1f, 1f));
     surface.Batch.DrawString(font,
         $"gesture: {gstate}    clock: {(clock.IsPaused ? "PAUSED" : $"x{clock.TimeScale:0.0}")}    sim t={clock.ElapsedScaledSeconds:0.0}s    sfx: {lastSfx}    {padInfo}",
-        new Vector2(20, 500), new Vector4(0.7f, 0.85f, 1f, 1f));
+        new Vector2(20, 500), new Color(0.7f, 0.85f, 1f, 1f));
 
     surface.Batch.End();
 });

@@ -1,5 +1,6 @@
 using System.Numerics;
 using KhaozEngine.Gpu;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Render2D.Internal;
 using KhaozEngine.Windowing;
@@ -25,12 +26,12 @@ namespace KhaozEngine.Tests.Gpu
             gd.UpdateTexture(whiteHandle, new byte[] { 255, 255, 255, 255 }, 0, 0, 1, 1);
             var white = new Texture2D(whiteHandle, 1, 1);
 
-            byte[] rgba = Render2DCore.RenderToRgba(gd, W, H, new Vector4(1, 0, 0, 1), batch =>
+            byte[] rgba = Render2DCore.RenderToRgba(gd, W, H, new Color(1, 0, 0, 1), batch =>
             {
                 var vp = new DesignViewport(W, H, ScaleMode.Fit);
                 vp.Update(W, H);
                 batch.Begin(vp);
-                batch.Draw(white, new Vector4(0, 0, W / 2f, H), new Vector4(0, 1, 0, 1)); // green left half
+                batch.Draw(white, new Vector4(0, 0, W / 2f, H), new Color(0, 1, 0, 1)); // green left half
                 batch.End();
             });
 

@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
 
@@ -75,7 +76,7 @@ namespace KhaozEngine.Gui
             bool empty = Text.Length == 0;
             string shown = empty ? Placeholder : Text;
             batch.DrawString(Font, shown, new Vector2(MathF.Floor(textX), MathF.Floor(textY)),
-                empty ? PlaceholderColor : TextColor);
+                (Color)(empty ? PlaceholderColor : TextColor));
 
             if (IsFocused && CursorVisible)
             {

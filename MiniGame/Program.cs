@@ -4,6 +4,7 @@ using System.IO;
 using System.Numerics;
 using KhaozEngine.Audio;
 using KhaozEngine.Gui;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
 
@@ -75,7 +76,7 @@ sealed class GameCtx
     public GameCtx(AppWindow w, Texture2D white, SpriteFont big, SpriteFont small, Random rng)
     { Window = w; White = white; Big = big; Small = small; Rng = rng; }
 
-    public void Rect(SpriteBatch b, float x, float y, float w, float h, Vector4 c) => b.Draw(White, new Vector4(x, y, w, h), c);
+    public void Rect(SpriteBatch b, float x, float y, float w, float h, Vector4 c) => b.Draw(White, new Vector4(x, y, w, h), (Color)c);
 }
 
 sealed class TitleScreen : Screen
@@ -97,8 +98,8 @@ sealed class TitleScreen : Screen
     }
     public override void Draw(SpriteBatch b)
     {
-        b.DrawString(_c.Big, "CATCHER", new Vector2(330, 140), new Vector4(0.95f, 0.97f, 1f, 1f));
-        b.DrawString(_c.Small, "catch the falling blocks — A/D or arrows", new Vector2(290, 220), new Vector4(0.6f, 0.72f, 0.9f, 1f));
+        b.DrawString(_c.Big, "CATCHER", new Vector2(330, 140), new Color(0.95f, 0.97f, 1f, 1f));
+        b.DrawString(_c.Small, "catch the falling blocks — A/D or arrows", new Vector2(290, 220), new Color(0.6f, 0.72f, 0.9f, 1f));
         _start.Draw(b, _c.White); _quit.Draw(b, _c.White);
     }
 }
@@ -150,8 +151,8 @@ sealed class PlayScreen : Screen
     {
         foreach (var it in _items) _c.Rect(b, it.Pos.X, it.Pos.Y, ItemSize, ItemSize, it.Color);
         _c.Rect(b, _paddleX, PaddleY, PaddleW, PaddleH, new Vector4(0.5f, 0.85f, 0.95f, 1f));
-        b.DrawString(_c.Small, $"Score {_score}", new Vector2(20, 16), new Vector4(0.92f, 0.96f, 1f, 1f));
-        b.DrawString(_c.Small, $"Lives {_lives}", new Vector2(820, 16), new Vector4(1f, 0.7f, 0.6f, 1f));
+        b.DrawString(_c.Small, $"Score {_score}", new Vector2(20, 16), new Color(0.92f, 0.96f, 1f, 1f));
+        b.DrawString(_c.Small, $"Lives {_lives}", new Vector2(820, 16), new Color(1f, 0.7f, 0.6f, 1f));
     }
 }
 
@@ -183,8 +184,8 @@ sealed class GameOverScreen : Screen
         float a = TransitionAlpha;
         _c.Rect(b, 0, 0, 960, 540, new Vector4(0, 0, 0, 0.6f * a));
         _c.Rect(b, 260, 150, 440, 250, new Vector4(0.14f, 0.16f, 0.24f, a));
-        b.DrawString(_c.Big, "GAME OVER", new Vector2(300, 185), new Vector4(1f, 0.95f, 0.95f, a));
-        b.DrawString(_c.Small, $"Final score: {_score}", new Vector2(380, 265), new Vector4(0.85f, 0.9f, 1f, a));
+        b.DrawString(_c.Big, "GAME OVER", new Vector2(300, 185), new Color(1f, 0.95f, 0.95f, a));
+        b.DrawString(_c.Small, $"Final score: {_score}", new Vector2(380, 265), new Color(0.85f, 0.9f, 1f, a));
         _retry.Draw(b, _c.White); _quit.Draw(b, _c.White);
     }
 }

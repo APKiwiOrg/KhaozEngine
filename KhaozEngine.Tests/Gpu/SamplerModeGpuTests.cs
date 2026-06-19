@@ -1,4 +1,5 @@
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
 using Xunit;
@@ -17,7 +18,7 @@ namespace KhaozEngine.Tests.Gpu
         public void Point_sampling_keeps_hard_edges_where_linear_blends()
         {
             int linearMid = 0, pointMid = 0;
-            byte[] rgba = Render2DSnapshot.Capture(W, H, new Vector4(0, 0, 0, 1), ctx =>
+            byte[] rgba = Render2DSnapshot.Capture(W, H, new Color(0, 0, 0, 1), ctx =>
             {
                 // 2x2 checker: TL/BR white, TR/BL black.
                 byte[] checker =
@@ -31,11 +32,11 @@ namespace KhaozEngine.Tests.Gpu
 
                 // Left half: Linear (blended edges). Right half: Point (hard edges).
                 ctx.Batch.Begin(vp, SamplerMode.Linear);
-                ctx.Batch.Draw(tex, new Vector4(10, 10, 80, 80), new Vector4(1, 1, 1, 1));
+                ctx.Batch.Draw(tex, new Vector4(10, 10, 80, 80), new Color(1, 1, 1, 1));
                 ctx.Batch.End();
 
                 ctx.Batch.Begin(vp, SamplerMode.Point);
-                ctx.Batch.Draw(tex, new Vector4(110, 10, 80, 80), new Vector4(1, 1, 1, 1));
+                ctx.Batch.Draw(tex, new Vector4(110, 10, 80, 80), new Color(1, 1, 1, 1));
                 ctx.Batch.End();
             });
 

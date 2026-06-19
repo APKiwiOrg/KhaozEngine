@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using KhaozEngine.Gpu;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render2D.Internal;
 
 namespace KhaozEngine.Render2D
@@ -22,7 +23,7 @@ namespace KhaozEngine.Render2D
     /// <summary>Headless offscreen 2D render to a CPU RGBA buffer (no window). For tooling/tests; needs a Metal GPU.</summary>
     public static class Render2DSnapshot
     {
-        public static byte[] Capture(int width, int height, Vector4 clear, Action<Render2DContext> draw)
+        public static byte[] Capture(int width, int height, Color clear, Action<Render2DContext> draw)
         {
             // NOTE: the context is intentionally NOT disposed here — as in the original inline CreateMetal path,
             // tearing down the Metal device after this 2D font/texture pass crashes in the backend. The device
@@ -57,7 +58,7 @@ namespace KhaozEngine.Render2D
         /// encoder) and writes it to <paramref name="path"/>. Returns the raw RGBA buffer too (for assertions /
         /// further processing). The one-call path a game's snapshot tool needs.
         /// </summary>
-        public static byte[] CaptureToPng(string path, int width, int height, Vector4 clear, Action<Render2DContext> draw)
+        public static byte[] CaptureToPng(string path, int width, int height, Color clear, Action<Render2DContext> draw)
         {
             byte[] rgba = Capture(width, height, clear, draw);
             Png.Write(path, rgba, width, height);

@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using Xunit;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Render3D;
 
@@ -141,15 +142,15 @@ namespace KhaozEngine.Tests.Gpu
         [GpuFact]
         public void Golden2D_FixedScene()
         {
-            byte[] rgba = Render2DSnapshot.Capture(W, H, new Vector4(0.07f, 0.08f, 0.11f, 1f), ctx =>
+            byte[] rgba = Render2DSnapshot.Capture(W, H, new Color(0.07f, 0.08f, 0.11f, 1f), ctx =>
             {
                 Texture2D white = ctx.CreateTexture(new byte[] { 255, 255, 255, 255 }, 1, 1);
                 SpriteFont font = ctx.LoadFont(FontPath, 48f);
                 ctx.Batch.Begin();
-                ctx.Batch.Draw(white, new Vector4(40, 40, 180, 90), new Vector4(0.85f, 0.2f, 0.2f, 1f));
-                ctx.Batch.Draw(white, new Vector4(260, 150, 150, 120), new Vector4(0.2f, 0.7f, 0.3f, 1f));
-                ctx.Batch.Draw(white, new Vector4(120, 220, 110, 70), new Vector4(0.25f, 0.4f, 0.9f, 0.9f));
-                ctx.Batch.DrawString(font, "KE", new Vector2(60, 200), new Vector4(0.95f, 0.95f, 0.4f, 1f));
+                ctx.Batch.Draw(white, new Vector4(40, 40, 180, 90), new Color(0.85f, 0.2f, 0.2f, 1f));
+                ctx.Batch.Draw(white, new Vector4(260, 150, 150, 120), new Color(0.2f, 0.7f, 0.3f, 1f));
+                ctx.Batch.Draw(white, new Vector4(120, 220, 110, 70), new Color(0.25f, 0.4f, 0.9f, 0.9f));
+                ctx.Batch.DrawString(font, "KE", new Vector2(60, 200), new Color(0.95f, 0.95f, 0.4f, 1f));
                 ctx.Batch.End();
             });
 
@@ -159,34 +160,34 @@ namespace KhaozEngine.Tests.Gpu
         [GpuFact]
         public void Golden2D_Primitives()
         {
-            byte[] rgba = Render2DSnapshot.Capture(W, H, new Vector4(0.06f, 0.07f, 0.10f, 1f), ctx =>
+            byte[] rgba = Render2DSnapshot.Capture(W, H, new Color(0.06f, 0.07f, 0.10f, 1f), ctx =>
             {
                 using var prim = new PrimitiveRenderer(ctx);
                 ctx.Batch.Begin();
 
                 // Filled rect + outline rect on top of it.
-                prim.DrawFilledRect(ctx.Batch, new KhaozEngine.Windowing.Rect(30, 30, 130, 80), new Vector4(0.20f, 0.45f, 0.85f, 1f));
-                prim.DrawRect(ctx.Batch, new KhaozEngine.Windowing.Rect(30, 30, 130, 80), new Vector4(0.95f, 0.95f, 0.95f, 1f), 3f);
+                prim.DrawFilledRect(ctx.Batch, new KhaozEngine.Windowing.Rect(30, 30, 130, 80), new Color(0.20f, 0.45f, 0.85f, 1f));
+                prim.DrawRect(ctx.Batch, new KhaozEngine.Windowing.Rect(30, 30, 130, 80), new Color(0.95f, 0.95f, 0.95f, 1f), 3f);
 
                 // A couple of diagonal lines (rotated quads).
-                prim.DrawLine(ctx.Batch, new Vector2(40, 130), new Vector2(180, 210), new Vector4(0.95f, 0.35f, 0.2f, 1f), 4f);
-                prim.DrawLine(ctx.Batch, new Vector2(40, 210), new Vector2(180, 130), new Vector4(0.2f, 0.9f, 0.4f, 1f), 4f);
+                prim.DrawLine(ctx.Batch, new Vector2(40, 130), new Vector2(180, 210), new Color(0.95f, 0.35f, 0.2f, 1f), 4f);
+                prim.DrawLine(ctx.Batch, new Vector2(40, 210), new Vector2(180, 130), new Color(0.2f, 0.9f, 0.4f, 1f), 4f);
 
                 // Circle outline + ring, distinct radii.
-                prim.DrawCircle(ctx.Batch, new Vector2(280, 80), 45f, new Vector4(0.9f, 0.8f, 0.2f, 1f), segments: 40, thickness: 2f);
-                prim.DrawRing(ctx.Batch, new Vector2(400, 80), 50f, 6f, new Vector4(0.85f, 0.3f, 0.85f, 1f));
+                prim.DrawCircle(ctx.Batch, new Vector2(280, 80), 45f, new Color(0.9f, 0.8f, 0.2f, 1f), segments: 40, thickness: 2f);
+                prim.DrawRing(ctx.Batch, new Vector2(400, 80), 50f, 6f, new Color(0.85f, 0.3f, 0.85f, 1f));
 
                 // Filled circle.
-                prim.DrawFilledCircle(ctx.Batch, new Vector2(280, 200), 42f, new Vector4(0.3f, 0.7f, 0.9f, 1f));
+                prim.DrawFilledCircle(ctx.Batch, new Vector2(280, 200), 42f, new Color(0.3f, 0.7f, 0.9f, 1f));
 
                 // Vertical gradient panel.
                 prim.DrawVerticalGradient(ctx.Batch, new KhaozEngine.Windowing.Rect(360, 150, 90, 110),
-                    new Vector4(0.9f, 0.9f, 0.95f, 1f), new Vector4(0.15f, 0.1f, 0.3f, 1f), bands: 16);
+                    new Color(0.9f, 0.9f, 0.95f, 1f), new Color(0.15f, 0.1f, 0.3f, 1f), bands: 16);
 
                 // Progress bar near the bottom.
                 prim.DrawProgressBar(ctx.Batch, new KhaozEngine.Windowing.Rect(40, 280, 400, 24), 0.62f,
-                    new Vector4(0.2f, 0.8f, 0.35f, 1f), new Vector4(0.15f, 0.15f, 0.18f, 1f),
-                    new Vector4(0.8f, 0.8f, 0.85f, 1f), 2f);
+                    new Color(0.2f, 0.8f, 0.35f, 1f), new Color(0.15f, 0.15f, 0.18f, 1f),
+                    new Color(0.8f, 0.8f, 0.85f, 1f), 2f);
 
                 ctx.Batch.End();
             });

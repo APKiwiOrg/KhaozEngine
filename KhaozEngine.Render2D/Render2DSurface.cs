@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render2D.Internal;
 using KhaozEngine.Windowing;
 
@@ -51,7 +52,7 @@ namespace KhaozEngine.Render2D
         /// <param name="height">Target height in pixels (clamped to &gt;= 1).</param>
         /// <param name="clear">Colour the target is cleared to before <paramref name="draw"/> runs.</param>
         /// <param name="draw">Draws the scene into the supplied offscreen batch.</param>
-        public Texture2D CaptureToTexture(int width, int height, Vector4 clear, Action<SpriteBatch> draw) =>
+        public Texture2D CaptureToTexture(int width, int height, Color clear, Action<SpriteBatch> draw) =>
             Render2DCore.RenderToTexture(_core.Gd, width, height, clear, draw);
 
         /// <summary>
@@ -60,7 +61,7 @@ namespace KhaozEngine.Render2D
         /// game needs on the CPU (e.g. a clipboard image copy). Reuses this surface's live device + assets. Runs
         /// synchronously (submits + waits for the GPU).
         /// </summary>
-        public byte[] CaptureToRgba(int width, int height, Vector4 clear, Action<SpriteBatch> draw) =>
+        public byte[] CaptureToRgba(int width, int height, Color clear, Action<SpriteBatch> draw) =>
             Render2DCore.RenderToRgba(_core.Gd, width, height, clear, draw);
 
         public void Dispose() => _core.Dispose();

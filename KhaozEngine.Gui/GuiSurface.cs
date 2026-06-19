@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
 
@@ -93,7 +94,7 @@ namespace KhaozEngine.Gui
         public void Label(SpriteFont font, string text, Vector2 pos, Vector4 color)
         {
             if (_batch is null) return;
-            _batch.DrawString(font, text, pos, color);
+            _batch.DrawString(font, text, pos, (Color)color);
         }
 
         /// <summary>
@@ -112,7 +113,7 @@ namespace KhaozEngine.Gui
                 _ => rect.X + (rect.Width - size.X) * 0.5f,
             };
             float y = rect.Y + (rect.Height - font.LineHeight) * 0.5f;
-            _batch.DrawString(font, text, new Vector2(x, y), color);
+            _batch.DrawString(font, text, new Vector2(x, y), (Color)color);
         }
 
         /// <summary>A button with the surface's default <see cref="Style"/>. Returns true on a valid press-origin tap.</summary>

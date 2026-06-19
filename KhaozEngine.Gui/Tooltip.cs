@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
 
@@ -96,12 +97,12 @@ namespace KhaozEngine.Gui
             float y = b.Y + Metrics.PadY;
             if (!string.IsNullOrEmpty(_title))
             {
-                batch.DrawString(_titleFont, _title, new Vector2(MathF.Floor(x), MathF.Floor(y)), TitleColor);
+                batch.DrawString(_titleFont, _title, new Vector2(MathF.Floor(x), MathF.Floor(y)), (Color)TitleColor);
                 y += _titleFont.LineHeight + Metrics.TitleGap;
             }
             for (int i = 0; i < _lines.Count; i++)
             {
-                batch.DrawString(_bodyFont, _lines[i].Text, new Vector2(MathF.Floor(x), MathF.Floor(y)), _lines[i].Color);
+                batch.DrawString(_bodyFont, _lines[i].Text, new Vector2(MathF.Floor(x), MathF.Floor(y)), (Color)_lines[i].Color);
                 y += _bodyFont.LineHeight + Metrics.LineSpacing;
             }
         }

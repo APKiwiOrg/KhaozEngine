@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
 
@@ -138,7 +139,7 @@ namespace KhaozEngine.Gui
 
             if (TitleFont != null)
                 TextLayout.DrawAligned(batch, TitleFont, Title, p.X, p.Width,
-                    p.Y + (TitleBarHeight - TitleFont.LineHeight) * 0.5f, TextAlign.Center, TitleColor);
+                    p.Y + (TitleBarHeight - TitleFont.LineHeight) * 0.5f, TextAlign.Center, (Color)TitleColor);
 
             if (BodyFont != null) DrawRows(batch);
 
@@ -156,13 +157,13 @@ namespace KhaozEngine.Gui
                 switch (r.Type)
                 {
                     case PopupRowType.Header:
-                        TextLayout.DrawAligned(batch, BodyFont!, r.Label, c.X, c.Width, y + 6f, TextAlign.Left, HeaderColor);
+                        TextLayout.DrawAligned(batch, BodyFont!, r.Label, c.X, c.Width, y + 6f, TextAlign.Left, (Color)HeaderColor);
                         y += HeaderRowHeight;
                         break;
                     case PopupRowType.Stat:
                         float ty = y + (RowHeight - BodyFont!.LineHeight) * 0.5f;
-                        TextLayout.DrawAligned(batch, BodyFont!, r.Label, c.X, c.Width, ty, TextAlign.Left, LabelColor);
-                        TextLayout.DrawAligned(batch, BodyFont!, r.Value, c.X, c.Width, ty, TextAlign.Right, r.ValueColor);
+                        TextLayout.DrawAligned(batch, BodyFont!, r.Label, c.X, c.Width, ty, TextAlign.Left, (Color)LabelColor);
+                        TextLayout.DrawAligned(batch, BodyFont!, r.Value, c.X, c.Width, ty, TextAlign.Right, (Color)r.ValueColor);
                         y += RowHeight;
                         break;
                     case PopupRowType.Spacer:
@@ -177,7 +178,7 @@ namespace KhaozEngine.Gui
             Vector4 c = !enabled ? DisabledColor : pointer.IsHoveringIn(r) ? color * 1.3f : color;
             GuiDraw.Fill(batch, white, r, c);
             if (BodyFont != null)
-                TextLayout.DrawAligned(batch, BodyFont, text, r.X, r.Width, r.Y + (r.Height - BodyFont.LineHeight) * 0.5f, TextAlign.Center, Vector4.One);
+                TextLayout.DrawAligned(batch, BodyFont, text, r.X, r.Width, r.Y + (r.Height - BodyFont.LineHeight) * 0.5f, TextAlign.Center, (Color)Vector4.One);
         }
     }
 }

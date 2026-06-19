@@ -1,4 +1,5 @@
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
 using Xunit;
@@ -19,15 +20,15 @@ namespace KhaozEngine.Tests.Gpu
         [GpuFact]
         public void DrawString_scale_grows_the_glyph_extent_proportionally()
         {
-            byte[] rgba = Render2DSnapshot.Capture(W, H, new Vector4(0, 0, 0, 1), ctx =>
+            byte[] rgba = Render2DSnapshot.Capture(W, H, new Color(0, 0, 0, 1), ctx =>
             {
                 SpriteFont font = ctx.LoadFont(FontPath, 28f, oversample: 1);
                 var vp = new DesignViewport(W, H, ScaleMode.Fit);
                 vp.Update(W, H);
                 ctx.Batch.Begin(vp);
                 // Same glyph, top region scale 1, bottom region scale 2, both left-anchored at x = 40.
-                ctx.Batch.DrawString(font, "8", new Vector2(40, 40), new Vector4(1, 1, 1, 1), 1f);
-                ctx.Batch.DrawString(font, "8", new Vector2(40, 170), new Vector4(1, 1, 1, 1), 2f);
+                ctx.Batch.DrawString(font, "8", new Vector2(40, 40), new Color(1, 1, 1, 1), 1f);
+                ctx.Batch.DrawString(font, "8", new Vector2(40, 170), new Color(1, 1, 1, 1), 2f);
                 ctx.Batch.End();
             });
 

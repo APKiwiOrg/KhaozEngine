@@ -1,4 +1,5 @@
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
 using Xunit;
@@ -16,17 +17,17 @@ namespace KhaozEngine.Tests.Gpu
         [GpuFact]
         public void Scissor_after_a_prior_draw_still_clips_to_the_asked_band()
         {
-            byte[] rgba = Render2DSnapshot.Capture(W, H, new Vector4(0, 0, 0, 1), ctx =>
+            byte[] rgba = Render2DSnapshot.Capture(W, H, new Color(0, 0, 0, 1), ctx =>
             {
                 Texture2D white = ctx.CreateTexture(new byte[] { 255, 255, 255, 255 }, 1, 1);
                 var vp = new DesignViewport(W, H, ScaleMode.Fit);
                 vp.Update(W, H);
                 ctx.Batch.Begin(vp);
                 // Prior draw (like a panel's scrim/bg): a dark band over the TOP half. SetScissor flushes it.
-                ctx.Batch.Draw(white, new Vector4(0, 0, W, 520), new Vector4(0.15f, 0.15f, 0.15f, 1f));
+                ctx.Batch.Draw(white, new Vector4(0, 0, W, 520), new Color(0.15f, 0.15f, 0.15f, 1f));
                 // Clip the following column to a middle band, like a scrollable panel's content area.
                 ctx.Batch.SetScissor(new Rect(0, 532, W, 372));
-                ctx.Batch.Draw(white, new Vector4(0, 0, W, H), new Vector4(1, 1, 0.2f, 1f)); // bright yellow, full height
+                ctx.Batch.Draw(white, new Vector4(0, 0, W, H), new Color(1, 1, 0.2f, 1f)); // bright yellow, full height
                 ctx.Batch.ClearScissor();
                 ctx.Batch.End();
             });

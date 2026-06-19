@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using KhaozEngine.Game;
 using KhaozEngine.Gui;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
 
@@ -168,7 +169,7 @@ sealed class SettingsScreen : Screen
     public override void Draw(SpriteBatch batch)
     {
         Rect db = _vp.DesignBounds;
-        batch.Draw(_a.White, new Vector4(db.X, db.Y, db.Width, db.Height), new Vector4(0, 0, 0, 0.55f * TransitionAlpha));   // scrim
+        batch.Draw(_a.White, new Vector4(db.X, db.Y, db.Width, db.Height), new Color(0, 0, 0, 0.55f * TransitionAlpha));   // scrim
         _dialog.Draw(batch, _a.White);
         _title.Draw(batch);
         _volumeLabel.Draw(batch);
@@ -262,8 +263,8 @@ sealed class WidgetsScreen : Screen
         for (int i = 0; i < _list.ItemCount; i++)
         {
             Rect r = _list.ItemBounds(i);
-            batch.Draw(_a.White, new Vector4(r.X + 4, r.Y, r.Width - 8, r.Height), new Vector4(0.12f, 0.14f, 0.2f, 1f));
-            batch.DrawString(_a.Small, $"Item {i + 1}", new Vector2(r.X + 14, r.Y + (r.Height - _a.Small.LineHeight) * 0.5f), new Vector4(0.8f, 0.84f, 0.9f, 1f));
+            batch.Draw(_a.White, new Vector4(r.X + 4, r.Y, r.Width - 8, r.Height), new Color(0.12f, 0.14f, 0.2f, 1f));
+            batch.DrawString(_a.Small, $"Item {i + 1}", new Vector2(r.X + 14, r.Y + (r.Height - _a.Small.LineHeight) * 0.5f), new Color(0.8f, 0.84f, 0.9f, 1f));
         }
         _list.EndClip(batch);
 

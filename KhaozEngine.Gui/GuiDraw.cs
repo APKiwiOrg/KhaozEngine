@@ -1,4 +1,5 @@
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
 
@@ -12,7 +13,7 @@ namespace KhaozEngine.Gui
     {
         /// <summary>Fill <paramref name="r"/> with a solid color.</summary>
         public static void Fill(SpriteBatch batch, Texture2D white, Rect r, Vector4 color) =>
-            batch.Draw(white, new Vector4(r.X, r.Y, r.Width, r.Height), color);
+            batch.Draw(white, new Vector4(r.X, r.Y, r.Width, r.Height), (Color)color);
 
         /// <summary>Draw a <paramref name="thickness"/>-px outline just inside <paramref name="r"/>.</summary>
         public static void Border(SpriteBatch batch, Texture2D white, Rect r, float thickness, Vector4 color)
@@ -99,7 +100,7 @@ namespace KhaozEngine.Gui
             var pos = new Vector2(
                 rect.X + (rect.Width - size.X) * 0.5f,
                 rect.Y + (rect.Height - font.LineHeight) * 0.5f);
-            batch.DrawString(font, label, pos, text);
+            batch.DrawString(font, label, pos, (Color)text);
         }
     }
 }

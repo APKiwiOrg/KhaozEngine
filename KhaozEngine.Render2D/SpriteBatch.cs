@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Render2D
 {
@@ -197,30 +198,29 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
 
         IGpuSampler Resolve(SamplerMode mode) => mode == SamplerMode.Point ? _pointSampler : _linearSampler;
 
-        public void Draw(Texture2D tex, Vector2 position, Vector4 color) =>
+        public void Draw(Texture2D tex, Vector2 position, Color color) =>
             Draw(tex, new Vector4(position.X, position.Y, tex.Width, tex.Height), new Vector4(0, 0, 1, 1), color);
 
-        public void Draw(Texture2D tex, Vector4 destRect, Vector4 color) =>
+        /// <summary>dest = (x, y, w, h) in world units; whole-texture UV.</summary>
+        public void Draw(Texture2D tex, Vector4 destRect, Color color) =>
             Draw(tex, destRect, new Vector4(0, 0, 1, 1), color);
 
         /// <summary>dest = (x, y, w, h) in world units; src = (u0, v0, u1, v1) in 0..1.</summary>
-        public void Draw(Texture2D tex, Vector4 destRect, Vector4 srcUV, Vector4 color)
+        public void Draw(Texture2D tex, Vector4 destRect, Vector4 srcUV, Color color)
         {
             float x = destRect.X, y = destRect.Y, w = destRect.Z, h = destRect.W;
+            // Color drops to the vertex Vector4 layout via the implicit operator at the EmitQuad boundary.
             EmitQuad(tex, new Vector2(x, y), new Vector2(x + w, y), new Vector2(x + w, y + h), new Vector2(x, y + h), srcUV, color);
         }
 
-        // Typed overloads: a Color and a destination rect can no longer be swapped at a call site (both used to
-        // be a bare Vector4). Reuses Windowing.Rect (x, y, w, h) for the rect; forwards to the untyped forms so
-        // the batch path is identical.
-        public void Draw(Texture2D tex, Vector2 position, Color color) => Draw(tex, position, (Vector4)color);
-
+        // Typed Rect overloads: a Color and a destination rect can no longer be swapped at a call site. Reuses
+        // Windowing.Rect (x, y, w, h) for the rect; forwards to the Vector4-dest forms so the batch path is identical.
         public void Draw(Texture2D tex, Windowing.Rect destRect, Color color) =>
-            Draw(tex, new Vector4(destRect.X, destRect.Y, destRect.Width, destRect.Height), (Vector4)color);
+            Draw(tex, new Vector4(destRect.X, destRect.Y, destRect.Width, destRect.Height), color);
 
         /// <summary>dest in world units; src = (u0, v0, u1, v1) in 0..1.</summary>
         public void Draw(Texture2D tex, Windowing.Rect destRect, Vector4 srcUV, Color color) =>
-            Draw(tex, new Vector4(destRect.X, destRect.Y, destRect.Width, destRect.Height), srcUV, (Vector4)color);
+            Draw(tex, new Vector4(destRect.X, destRect.Y, destRect.Width, destRect.Height), srcUV, color);
 
         /// <summary>
         /// Draw a rotated quad. <paramref name="position"/> is the world point where the pivot
@@ -229,7 +229,7 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
         /// matching <c>atan2</c> of a screen-space edge); src = (u0, v0, u1, v1) in 0..1. At rotation 0 with
         /// origin (0, 0) and size (w, h) this is identical to <c>Draw(tex, (x, y, w, h), srcUV, color)</c>.
         /// </summary>
-        public void Draw(Texture2D tex, Vector2 position, Vector2 size, Vector2 originNormalized, float rotation, Vector4 srcUV, Vector4 color)
+        public void Draw(Texture2D tex, Vector2 position, Vector2 size, Vector2 originNormalized, float rotation, Vector4 srcUV, Color color)
         {
             float cos = MathF.Cos(rotation), sin = MathF.Sin(rotation);
             EmitQuad(tex,
@@ -260,12 +260,8 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
             _runs.Add(key, new V { Pos = tl, Uv = uTL, Color = color }); _runs.Add(key, new V { Pos = br, Uv = uBR, Color = color }); _runs.Add(key, new V { Pos = bl, Uv = uBL, Color = color });
         }
 
-        /// <summary>Draw <paramref name="text"/> with its top-left at <paramref name="position"/> (typed color).</summary>
-        public void DrawString(SpriteFont font, string text, Vector2 position, Color color) =>
-            DrawString(font, text, position, (Vector4)color);
-
         /// <summary>Draw <paramref name="text"/> with its top-left at <paramref name="position"/>.</summary>
-        public void DrawString(SpriteFont font, string text, Vector2 position, Vector4 color) =>
+        public void DrawString(SpriteFont font, string text, Vector2 position, Color color) =>
             DrawString(font, text, position, color, 1f);
 
         /// <summary>
@@ -275,11 +271,7 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
         /// <c>font.Measure(text) * scale</c> - the caller measures at <paramref name="scale"/> for positioning and
         /// draws at the same <paramref name="scale"/>. <c>scale = 1</c> is the unscaled path.
         /// </summary>
-        public void DrawString(SpriteFont font, string text, Vector2 position, Color color, float scale) =>
-            DrawString(font, text, position, (Vector4)color, scale);
-
-        /// <inheritdoc cref="DrawString(SpriteFont, string, Vector2, Color, float)"/>
-        public void DrawString(SpriteFont font, string text, Vector2 position, Vector4 color, float scale)
+        public void DrawString(SpriteFont font, string text, Vector2 position, Color color, float scale)
         {
             // atlas texels -> logical pixels (glyphs are baked at oversample density), then the caller's scale.
             float k = font.RenderScale * scale;

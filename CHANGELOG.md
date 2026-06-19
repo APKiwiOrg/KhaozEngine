@@ -4,6 +4,25 @@ All notable changes to KhaozEngine. The 5.x line `<KhaozEngine5xVersion>` is the
 stack + the graduated foundation packages); the legacy 4.x line `<Version>` carries only the genuinely-MonoGame
 packages. Both versions live in `Directory.Build.props`. See the post-MonoGame plan in `docs/ROADMAP.md`.
 
+## 5.66.0 (custom 5.x line)
+
+Optional viewport-tracking internal render target for `KhaozEngine.Render3D`, to kill upscale blur on large
+windows. `Scene3D` renders the 3D world into a fixed offscreen target (default 1600x900) and blit-scales it to
+the swapchain. On a window larger than that target (trivial on Retina) the smooth (non-`Pixelated`) blit
+UPscaled the buffer bilinearly, so everything went soft; zooming the ortho camera out made it worse. New opt-in
+mode sizes the target to the actual framebuffer instead, so the final blit is 1:1 (or a downscale at the cap).
+Default is unchanged (`FixedInternal`), so the retro/`Pixelated` path and existing consumers are untouched.
+
+- **`KhaozEngine.Render3D`:** new `RenderScale` enum (`FixedInternal` | `MatchViewport`) and three
+  `PixelPostProcessSettings` fields: `RenderScale` (default `FixedInternal`), `MaxRenderWidth`/`MaxRenderHeight`
+  (default 3840x2160, the cap when matching). `MatchViewport` sizes the internal `RenderResources` to the
+  framebuffer each frame, clamped to the cap with aspect preserved (each axis >= 1). `Scene3D.EnsureSize` resizes
+  only when the clamped target actually changes (stable at the cap, no per-frame thrash); `RenderWidth`/
+  `RenderHeight` are ignored in `MatchViewport`. The viewport plumbed into the render is already physical
+  framebuffer pixels (`AppWindow` sets `Frame.Width/Height` from `FramebufferSize`), so Retina output is sharp.
+  Pure `Scene3D.ComputeTargetSize` carries the sizing math with a headless test; a `KE_GPU_TESTS` test asserts
+  the real `RenderResources` resize for both modes.
+
 ## 5.65.0 (custom 5.x line)
 
 Frame-rate-independent client prediction render. `ClientPrediction.RenderedState` now eases the predicted

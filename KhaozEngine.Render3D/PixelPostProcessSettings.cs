@@ -3,16 +3,50 @@ using System.Numerics;
 namespace KhaozEngine.Render3D
 {
     /// <summary>
+    /// How the 3D scene's internal offscreen render target is sized.
+    /// </summary>
+    public enum RenderScale
+    {
+        /// <summary>Render at a fixed <see cref="PixelPostProcessSettings.RenderWidth"/> x
+        /// <see cref="PixelPostProcessSettings.RenderHeight"/> target, then blit-scale it to the window. This is the
+        /// default and the retro/pixel path (a small fixed target + <see cref="PixelPostProcessSettings.Pixelated"/>
+        /// gives chunky pixels). On windows larger than the fixed target the final blit UPscales, so the smooth
+        /// (non-pixelated) look softens.</summary>
+        FixedInternal,
+        /// <summary>Size the internal target to the actual framebuffer/viewport each frame (clamped to
+        /// <see cref="PixelPostProcessSettings.MaxRenderWidth"/> x <see cref="PixelPostProcessSettings.MaxRenderHeight"/>),
+        /// so the final blit is 1:1 (or a downscale at the cap) instead of an upscale. Kills upscale blur on large
+        /// windows / zoomed-out views. <see cref="PixelPostProcessSettings.RenderWidth"/>/<c>RenderHeight</c> are
+        /// ignored in this mode.</summary>
+        MatchViewport,
+    }
+
+    /// <summary>
     /// Post-process toggles + parameters. Every stage is independent. Defaults target a smooth, stylized
     /// (non-retro) space look: high internal render resolution, anti-aliased downscale, dark background,
     /// smooth diffuse, no palette/dither/cel. Flip the toggles for the chunky retro/pixel look.
     /// </summary>
     public sealed class PixelPostProcessSettings
     {
-        /// <summary>Internal render width. High = smooth; small + Pixelated = chunky retro pixels.</summary>
+        /// <summary>Internal render target sizing. Default <see cref="Render3D.RenderScale.FixedInternal"/> keeps the
+        /// historical fixed-resolution path (and the retro look); <see cref="Render3D.RenderScale.MatchViewport"/>
+        /// tracks the framebuffer to avoid upscale blur on large windows.</summary>
+        public RenderScale RenderScale = RenderScale.FixedInternal;
+
+        /// <summary>Internal render width (used only when <see cref="RenderScale"/> is
+        /// <see cref="Render3D.RenderScale.FixedInternal"/>). High = smooth; small + Pixelated = chunky retro pixels.</summary>
         public int RenderWidth = 1600;
-        /// <summary>Internal render height.</summary>
+        /// <summary>Internal render height (used only when <see cref="RenderScale"/> is
+        /// <see cref="Render3D.RenderScale.FixedInternal"/>).</summary>
         public int RenderHeight = 900;
+
+        /// <summary>Upper bound on the internal target width when <see cref="RenderScale"/> is
+        /// <see cref="Render3D.RenderScale.MatchViewport"/>, so giant windows don't allocate unbounded targets. The
+        /// viewport is scaled down to fit this cap, aspect preserved.</summary>
+        public int MaxRenderWidth = 3840;
+        /// <summary>Upper bound on the internal target height when <see cref="RenderScale"/> is
+        /// <see cref="Render3D.RenderScale.MatchViewport"/> (see <see cref="MaxRenderWidth"/>).</summary>
+        public int MaxRenderHeight = 2160;
 
         /// <summary>Point-sample the final upscale for crisp pixels (retro). False = smooth/AA downscale.</summary>
         public bool Pixelated = false;

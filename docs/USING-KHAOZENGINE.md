@@ -278,6 +278,13 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
   billboards, and a debug-draw overlay (`DebugLine/Ray/Box/Grid/Axes/Circle`). `Post` is the
   `PixelPostProcess` (pixelation / quantize / dither / cel bands / palette for the chunky retro look; the smooth
   look is the default).
+- Internal render-target sizing: `Post.RenderScale` (since 5.66.0). The default `FixedInternal` renders into a
+  fixed `Post.RenderWidth` x `RenderHeight` target (1600x900) and blit-scales it to the window - the retro path
+  (small fixed target + `Pixelated`), but on a window bigger than that target the smooth blit UPscales and
+  softens. Set `Post.RenderScale = RenderScale.MatchViewport` to size the target to the actual framebuffer each
+  frame instead (1:1, no upscale blur on large / Retina windows; capped at `Post.MaxRenderWidth` x
+  `MaxRenderHeight`, default 3840x2160, aspect preserved). Leave it `FixedInternal` for the chunky/`Pixelated`
+  look.
 - `IsoCamera3D`: `Azimuth`/`Elevation`/`Target`/`OrthoSize`/`Zoom`, `Frame(target, azimuth, size)`,
   `ScreenToRay`, `ScreenToGround`, and the `View`/`Projection`/`ViewProjection` matrices.
 

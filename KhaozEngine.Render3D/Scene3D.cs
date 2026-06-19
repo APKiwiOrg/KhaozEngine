@@ -251,13 +251,46 @@ namespace KhaozEngine.Render3D
                 list.Add(new BillboardRenderer.BillboardVertex(pos[i], uv[i], color));
         }
 
+        // Current internal render-target size (physical pixels). Exposed for tests to assert MatchViewport resizes
+        // and FixedInternal stays put; not part of the public surface.
+        internal int RenderTargetWidth => _res.Width;
+        internal int RenderTargetHeight => _res.Height;
+
+        /// <summary>
+        /// The internal render-target size for a given post config + viewport. <see cref="RenderScale.FixedInternal"/>
+        /// returns <see cref="PixelPostProcessSettings.RenderWidth"/>/<c>RenderHeight</c> unchanged (the historical
+        /// path). <see cref="RenderScale.MatchViewport"/> tracks the viewport, clamped to
+        /// <see cref="PixelPostProcessSettings.MaxRenderWidth"/>/<c>MaxRenderHeight</c> with aspect preserved, each
+        /// dimension at least 1. Pure + headless-testable (no GPU). Stable once the viewport is at/over the cap for a
+        /// fixed aspect, so <see cref="EnsureSize"/> doesn't thrash.
+        /// </summary>
+        internal static (int W, int H) ComputeTargetSize(PixelPostProcessSettings s, int viewportW, int viewportH)
+        {
+            if (s.RenderScale == RenderScale.FixedInternal)
+                return (s.RenderWidth, s.RenderHeight);
+
+            // MatchViewport: render at the framebuffer size, capped (aspect-preserving downscale) so a huge window
+            // doesn't allocate an unbounded target. Guard against a zero/negative viewport during startup/minimise.
+            int vw = Math.Max(1, viewportW);
+            int vh = Math.Max(1, viewportH);
+            int maxW = Math.Max(1, s.MaxRenderWidth);
+            int maxH = Math.Max(1, s.MaxRenderHeight);
+            if (vw <= maxW && vh <= maxH) return (vw, vh);
+            float scale = MathF.Min((float)maxW / vw, (float)maxH / vh);
+            int w = Math.Max(1, (int)MathF.Round(vw * scale));
+            int h = Math.Max(1, (int)MathF.Round(vh * scale));
+            return (w, h);
+        }
+
         void EnsureSize(int viewportW, int viewportH)
         {
-            if (_res.Width != Post.RenderWidth || _res.Height != Post.RenderHeight)
+            var (tw, th) = ComputeTargetSize(Post, viewportW, viewportH);
+            if (_res.Width != tw || _res.Height != th)
             {
-                _res.Resize(Post.RenderWidth, Post.RenderHeight);
+                _res.Resize(tw, th);
                 _post.BindTargets(_res);
             }
+            // Aspect uses the true viewport (the post target is blit-stretched to fill it), not the clamped target.
             Camera.AspectRatio = viewportH > 0 ? (float)viewportW / viewportH : Camera.AspectRatio;
         }
 

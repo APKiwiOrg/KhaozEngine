@@ -1,4 +1,5 @@
 using System.Numerics;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Particles;
 
@@ -39,10 +40,10 @@ public struct EmitterConfig
     public float EndSize;
 
     /// <summary>RGBA colour at spawn (lerped to <see cref="EndColor"/> over normalised age; alpha too).</summary>
-    public Vector4 StartColor;
+    public Color StartColor;
 
     /// <summary>RGBA colour at death (set alpha to 0 to fade out).</summary>
-    public Vector4 EndColor;
+    public Color EndColor;
 
     /// <summary>A short-lived, fast, fading spark (good additive hit/muzzle burst).</summary>
     public static EmitterConfig Spark => new()
@@ -57,8 +58,8 @@ public struct EmitterConfig
         Drag = 2.0f,
         StartSize = 0.25f,
         EndSize = 0.05f,
-        StartColor = new Vector4(1.0f, 0.85f, 0.4f, 1.0f),
-        EndColor = new Vector4(1.0f, 0.3f, 0.1f, 0.0f),
+        StartColor = new Color(1.0f, 0.85f, 0.4f, 1.0f),
+        EndColor = new Color(1.0f, 0.3f, 0.1f, 0.0f),
     };
 
     /// <summary>A slow, growing, fading smoke-ish puff.</summary>
@@ -74,7 +75,7 @@ public struct EmitterConfig
         Drag = 1.0f,
         StartSize = 0.3f,
         EndSize = 1.1f,
-        StartColor = new Vector4(0.7f, 0.7f, 0.72f, 0.6f),
-        EndColor = new Vector4(0.4f, 0.4f, 0.42f, 0.0f),
+        StartColor = new Color(0.7f, 0.7f, 0.72f, 0.6f),
+        EndColor = new Color(0.4f, 0.4f, 0.42f, 0.0f),
     };
 }

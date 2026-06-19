@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Particles;
 
@@ -16,12 +17,12 @@ public sealed class ParticleSystem
     // discarded afterwards. Kept index-parallel to _particles and swap-removed in lockstep.
     private readonly float[] _startSize;
     private readonly float[] _endSize;
-    private readonly Vector4[] _startColor;
-    private readonly Vector4[] _endColor;
+    private readonly Color[] _startColor;
+    private readonly Color[] _endColor;
     private readonly Vector3[] _gravity;
     private readonly float[] _drag;
 
-    private Xorshift32 _rng;
+    private XorRng _rng;
     private int _count;
 
     public ParticleSystem(int capacity, uint seed = 1)
@@ -34,11 +35,11 @@ public sealed class ParticleSystem
         _particles = new Particle[capacity];
         _startSize = new float[capacity];
         _endSize = new float[capacity];
-        _startColor = new Vector4[capacity];
-        _endColor = new Vector4[capacity];
+        _startColor = new Color[capacity];
+        _endColor = new Color[capacity];
         _gravity = new Vector3[capacity];
         _drag = new float[capacity];
-        _rng = new Xorshift32(seed);
+        _rng = new XorRng(seed);
     }
 
     /// <summary>Maximum simultaneous live particles.</summary>
@@ -119,8 +120,8 @@ public sealed class ParticleSystem
             p.Position += p.Velocity * dt;
 
             float n = p.Norm;
-            p.Size = Lerp(_startSize[i], _endSize[i], n);
-            p.Color = Vector4.Lerp(_startColor[i], _endColor[i], n);
+            p.Size = MathUtil.Lerp(_startSize[i], _endSize[i], n);
+            p.Color = (Color)Vector4.Lerp(_startColor[i], _endColor[i], n);
 
             i++;
         }
@@ -198,5 +199,4 @@ public sealed class ParticleSystem
         b = Vector3.Cross(n, t);
     }
 
-    private static float Lerp(float a, float b, float t) => a + (b - a) * t;
 }

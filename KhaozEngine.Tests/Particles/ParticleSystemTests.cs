@@ -1,5 +1,6 @@
 using System.Numerics;
 using KhaozEngine.Particles;
+using KhaozEngine.Primitives;
 using Xunit;
 
 namespace KhaozEngine.Tests.Particles;
@@ -18,8 +19,8 @@ public class ParticleSystemTests
         Drag = 0f,
         StartSize = 1f,
         EndSize = 3f,
-        StartColor = new Vector4(1f, 0f, 0f, 1f),
-        EndColor = new Vector4(0f, 0f, 1f, 0f),
+        StartColor = new Color(1f, 0f, 0f, 1f),
+        EndColor = new Color(0f, 0f, 1f, 0f),
     };
 
     [Fact]
@@ -115,8 +116,8 @@ public class ParticleSystemTests
         var p = sys.Active[0];
 
         Assert.Equal(1f, p.Size, 2);
-        Assert.True(System.Math.Abs(p.Color.X - 1f) < 0.01f); // red start
-        Assert.True(System.Math.Abs(p.Color.W - 1f) < 0.01f); // alpha start
+        Assert.True(System.Math.Abs(p.Color.R - 1f) < 0.01f); // red start
+        Assert.True(System.Math.Abs(p.Color.A - 1f) < 0.01f); // alpha start
     }
 
     [Fact]
@@ -129,8 +130,8 @@ public class ParticleSystemTests
         var p = sys.Active[0];
 
         Assert.Equal(3f, p.Size, 1);            // EndSize = 3
-        Assert.True(p.Color.Z > 0.99f);          // blue end
-        Assert.True(p.Color.W < 0.01f);          // alpha faded to 0
+        Assert.True(p.Color.B > 0.99f);          // blue end
+        Assert.True(p.Color.A < 0.01f);          // alpha faded to 0
     }
 
     [Fact]

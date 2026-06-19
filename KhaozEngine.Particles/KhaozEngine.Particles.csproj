@@ -10,6 +10,9 @@
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
+  </ItemGroup>
+  <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Tests" />
   </ItemGroup>
 </Project>

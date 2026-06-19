@@ -1,4 +1,5 @@
 using System.Numerics;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Particles;
 
@@ -24,7 +25,7 @@ public struct Particle
     public float Size;
 
     /// <summary>Current (interpolated) RGBA colour.</summary>
-    public Vector4 Color;
+    public Color Color;
 
     /// <summary>True while the particle has not exceeded its lifetime.</summary>
     public readonly bool Alive => Age < Life;

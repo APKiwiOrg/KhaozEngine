@@ -1,27 +1,33 @@
 # Using KhaozEngine - the consumer contract
 
-This is the authoritative guide to what KhaozEngine does and **how it must be used** by the three games that depend on it. Read the [Hard rules](#hard-rules) section first; the rest is reference.
+This is the authoritative guide to what KhaozEngine does and **how it must be used** by the games that depend
+on it. The engine is **MonoGame-free**: Silk.NET windowing/input, Veldrid behind `KhaozEngine.Gpu` for the GPU,
+Silk.NET.OpenAL for audio, `System.Numerics` math throughout. Read the [Hard rules](#hard-rules) first; the rest
+is reference.
 
 ---
 
 ## Mental model: one data flow
 
+A game subclasses `GameApp` (2D) or `GameApp3D` (3D). The base owns the window and the per-frame loop; the game
+fills in seams.
+
 ```
-hardware ──► MonoGameRawInput.Read() ──► RawInputState (immutable snapshot)
-                                              │
-                                  InputManager.Update(raw, isActive)
-                                              │
-                 ┌────────────────────────────┼────────────────────────────┐
-                 ▼                            ▼                            ▼
-        ScreenManager.Update(gameTime)   widgets (Button…)        your game logic
-        routes input top-to-bottom       read InputManager        reads InputManager
+hardware ──► AppWindow (the only Silk.NET/GLFW toucher) ──► InputState (immutable per-frame snapshot)
+                                                                  │
+                              GameApp.Run() drives, each frame, in order:
+                                  Clock.Update(dt) → Viewport.Update(w,h) → OnResize? →
+                                  Pointer.Update(Input, Viewport) → OnUpdate(dt) →
+                                  OnRenderWorld(frame)  [3D pass]  →  Batch.Begin(Viewport) → OnDraw2D → End
+                                                                  │
+                 ┌────────────────────────────────────────────────┼─────────────────────────────┐
+                 ▼                              ▼                                                 ▼
+        SceneManager (scene stack)      Gui (GuiSurface / ScreenStack)                   your game logic
+        routes input top-to-bottom      read Pointer / InputManager                      reads InputState / Pointer
 ```
 
-Every frame, in this exact order:
-1. `MonoGameRawInput.Read()` snapshots the hardware into a `RawInputState`.
-2. `InputManager.Update(raw, IsActive)` derives the unified pointer, edges, keyboard/gamepad state, and clears the per-frame blocked regions.
-3. `ScreenManager.Update(gameTime)` routes input through the screen stack.
-4. Screens and widgets ask the `InputManager` questions (`IsTapIn`, `IsInputBlocked`, `IsMenuSelect`, …). They never touch hardware.
+Renderers compose into the same window: `Render2DSurface` (the 2D batch) and, for 3D, `Render3DSurface` + a
+`Scene3D` drawn behind the 2D HUD.
 
 ---
 
@@ -29,310 +35,266 @@ Every frame, in this exact order:
 
 These are not style preferences. Breaking them re-introduces the exact bugs this library was built to remove.
 
-1. **Only `MonoGameRawInput` touches the MonoGame input statics.** No `Mouse.GetState()`, `Keyboard.GetState()`, `GamePad.GetState()`, or `TouchPanel.GetState()` anywhere else in a game. If you need a new piece of raw state, add a field to `RawInputState` and read it in `MonoGameRawInput` - never reach around the seam.
-2. **Call `InputManager.Update(rawInput.Read(), IsActive)` once per frame, before `ScreenManager.Update`.** Pass the real `Game.IsActive` - it suppresses ghost taps when the window regains focus.
-3. **Hit-test with the bounds helpers, never with raw position + button.** Use `IsTapIn`, `IsPressingIn`, `IsHoveringIn`, `IsDraggingIn`, etc. `IsTapIn` enforces the press-origin invariant; hand-rolled `IsPointerDown && rect.Contains(pos)` checks do not, and they leak clicks.
-4. **An overlay that sits above a still-updating layer must reserve its footprint** with `BlockInputRegion(rect)` every frame, and the layer beneath must guard its actions with `IsInputBlocked(...)`. This is half of the click-through fix; the other half is `IsTapIn`.
-5. **`GameScreen.Update` returns whether it consumed input this frame.** Return `true` when this screen should stop input reaching screens below it, `false` to let it fall through. Getting this wrong breaks routing.
-6. **Don't fork the packages.** Need an API that isn't there? Add it to KhaozEngine, ship a headless test, bump the version, and consume the new version. Pinned versions are how games stay green during each other's migrations.
+1. **Only `AppWindow` touches the Silk.NET/GLFW input.** No game code reads Silk input devices directly. Each
+   frame the window produces an immutable `InputState`; games read it through `GameApp.Input` /
+   `InputManager` / `Pointer`. If you need a new piece of raw state, add it to `InputState` and populate it in
+   `AppWindow` - never reach around the seam.
+2. **Drive input through the loop, not by hand.** `GameApp.Run()` already calls `Pointer.Update(Input, Viewport)`
+   once per frame before `OnUpdate`. If you use an `InputManager` directly (e.g. for menu nav), call
+   `Update(input, viewport)` once per frame, before you query it.
+3. **Hit-test with the bounds helpers, never with raw position + button.** Use `IsTapIn`, `IsPressingIn`,
+   `IsHoveringIn`, `IsDraggingIn`, etc. `IsTapIn` enforces the press-origin invariant; a hand-rolled
+   `IsPointerDown && rect.Contains(pos)` does not, and it leaks clicks.
+4. **An overlay above a still-updating layer must reserve its footprint** with `BlockInputRegion(rect)` every
+   frame, and the layer beneath must guard its actions with `IsInputBlocked(point)`. This is half of the
+   click-through fix; the other half is `IsTapIn`.
+5. **Pass the design viewport to `Pointer.Update` / `InputManager.Update`** so hit-testing lines up with what's
+   drawn. `GameApp` does this for you; if you build your own loop, do it yourself.
+6. **`System.Numerics` only** - `Vector2/3/4`, `Matrix4x4`. No XNA / MonoGame types anywhere.
+7. **Don't fork the packages.** Need an API that isn't there? Add it to KhaozEngine, ship a headless test, bump
+   the version, and consume the new version. Pinned versions are how games stay green during each other's
+   migrations.
 
 ---
 
-## Input layer (`KhaozEngine.Input`)
+## Wiring a game (`KhaozEngine.Game` + `KhaozEngine.Game.Render3D`)
 
-### RawInputState + the seam
-
-```csharp
-public readonly record struct RawInputState(
-    Point MousePosition, bool MouseLeftDown, bool MouseMiddleDown, bool MouseRightDown,
-    int ScrollWheelValue, KeyboardState Keyboard,
-    IReadOnlyList<GamePadState> GamePads, IReadOnlyList<TouchPoint> Touches,
-    Rectangle WindowBounds);
-
-public interface IRawInput { RawInputState Read(); }
-public sealed class MonoGameRawInput : IRawInput { public MonoGameRawInput(GameWindow window); }
-```
-
-Production uses `MonoGameRawInput`. Tests construct `RawInputState` directly and inject it - that is the whole point of the seam.
-
-### InputManager
+`GameApp` is the abstract 2D game-loop facade. It owns the `AppWindow`, `GameClock`, an `IDesignViewport`, the
+`Pointer`, a `Render2DSurface` (`Surface2D`) and its `SpriteBatch` (`Batch`). You configure it with a
+`GameAppOptions` and override the seams you need.
 
 ```csharp
-new InputManager(bool isMobile = false, ICoordinateTransform? transform = null);
-void Update(RawInputState raw, bool isActive);
-```
+using System.Numerics;
+using KhaozEngine.Game;
+using KhaozEngine.Render2D;
+using KhaozEngine.Windowing;
 
-**Unified pointer** (mouse on desktop, primary touch on mobile - chosen internally from `isMobile`, so higher layers never branch on platform):
-`PointerPosition`, `PressOrigin`, `PointerDelta`, `IsPointerDown`, `IsPointerJustPressed`, `IsPointerJustReleased`, `IsMobile`.
+public sealed class MyGame : GameApp
+{
+    public MyGame() : base(GameAppOptions.For("My Game", 1280, 720)) { }
 
-**Bounds helpers (use these):**
-- `IsTapIn(rect)` - true on release **only if press-origin and release are both inside `rect`**. The click-through invariant.
-- `IsTapFromTo(originRect, releaseRect)` - press in one rect, release in another (e.g. tap-scrim-to-dismiss).
-- `IsPressingIn(rect)` - held, press began inside, still inside (button "pressed" visual).
-- `IsHoveringIn(rect)` - inside and not pressed (desktop hover).
-- `IsPointerIn(rect)`, `IsReleasedOutside(rect)`.
-
-**Gestures (Nullwake-derived):** `IsDraggingIn(rect)`, `GetDragDelta(rect)`, `ScrollWheelDelta`, `GetScrollIn(rect)`, `IsMouseWheelScrolledUp/Down`, `IsPinching`, `GetPinchDeltaIn(rect)`. Drag/scroll/pinch only fire when the interaction started in / is over the given bounds.
-
-**Region blocking (the other half of click-through):** `BlockInputRegion(rect)` (call from a higher overlay each frame), `IsInputBlocked(point)` (check from the layer beneath before acting). The blocked list is cleared at the start of every `Update`.
-
-**Keyboard / gamepad / menu-navigation (SpaceGame-derived):** `IsKeyDown`, `IsKeyJustPressed`, `IsNewKeyPress(key, PlayerIndex?, out who)`, `IsNewButtonPress(button, PlayerIndex?, out who)`, `IsMenuSelect/Cancel(PlayerIndex?, out)`, `IsMenuUp/Down(PlayerIndex?)`, `IsSelectNext/Previous(PlayerIndex?)`, `IsPauseGame(PlayerIndex?, Rectangle?)`. Pass `null` for the player to accept "any connected controller". One physical keyboard is assumed (player index is preserved for API compatibility but the keyboard is shared).
-
-### The click-through fix, in full
-
-Four layered defenses; a game gets all four for free if it follows the rules:
-
-1. **`IsTapIn` invariant** - per-widget: a press that began outside a target can't register as a tap on it.
-2. **`receivesInput` flag** - the first visible, non-passthrough, input-consuming screen sets `inputHandled`; every screen below sees `receivesInput == false`.
-3. **`PassUpdateThrough = false`** - a modal screen stops the loop entirely; layers below neither update nor see input (gameplay freezes under a pause menu).
-4. **`BlockInputRegion` / `IsInputBlocked`** - for an overlay that *passes update through* onto a live layer (a HUD/toolbar over gameplay): it reserves its rect, and the live layer checks `IsInputBlocked(PressOrigin)` before acting, so a click on the overlay never drops through.
-
-### Coordinate transforms
-
-`InputManager` routes every pointer position through an `ICoordinateTransform` so a resolution/camera change doesn't churn callers:
-
-```csharp
-public interface ICoordinateTransform { Vector2 ScreenToVirtual(Vector2 screen); Rectangle? VirtualBounds { get; } }
-```
-- `IdentityTransform.Instance` - screen pixels are virtual coords (default).
-- `MatrixTransform(matrix, virtualBounds?)` - arbitrary matrix (e.g. a game's existing input-transform matrix). `SetMatrix(...)` to update.
-- `VirtualResolution(graphicsDeviceManager, isMobile, baseWidth = 440, referenceHeight = 956)` - adaptive scaling (mobile: fixed virtual width, scale to fill; desktop: 1:1). Also serves as your `SpriteBatch` `ScaleMatrix`. `VirtualBounds` clamps the pointer into the viewport.
-
-A camera's world↔screen transform is a *rendering* concern and stays in the game; only the screen→virtual mapping belongs on the InputManager.
-
----
-
-## Screen layer (`KhaozEngine.Screens`)
-
-```csharp
-public enum ScreenState { TransitionOn, Active, TransitionOff, Hidden }
-public enum InputConsumption { ConsumeWhenVisible, ConsumeWhenHandled }
-
-public abstract class GameScreen {
-    public int DrawOrder; public bool PassUpdateThrough; public bool AlwaysReceivesInput;
-    public InputConsumption InputConsumption; public ScreenState State;
-    public float TransitionOnDuration, TransitionOffDuration, TransitionAlpha;
-    public PlayerIndex? ControllingPlayer; public GestureType EnabledGestures;
-    public ScreenManager Manager; public bool IsExiting;
-    public virtual void LoadContent(); public virtual void UnloadContent();
-    public abstract bool Update(GameTime gameTime, bool receivesInput);   // returns "consumed?"
-    public abstract void Draw(GameTime gameTime, SpriteBatch spriteBatch);
-    public void ExitScreen();
+    protected override void OnLoad()              { /* load textures/fonts via Surface2D */ }
+    protected override void OnUpdate(float dt)
+    {
+        if (Input.WasPressed(Key.Escape)) Quit();
+        if (Pointer.IsTapIn(new Rect(300, 200, 200, 40))) { /* button hit, click-through-safe */ }
+    }
+    protected override void OnDraw2D(SpriteBatch batch) { /* batch.Draw(...) / font.DrawString(...) */ }
+    protected override void OnResize(int w, int h)      { }
 }
 
-public sealed class ScreenManager {
-    public ScreenManager(InputManager input);
-    public InputManager Input; public GraphicsDevice? GraphicsDevice; public SpriteBatch? SpriteBatch;
-    public IServiceProvider? Services; public Action? ExitRequested; public IReadOnlyList<GameScreen> Screens;
-    public void Add(GameScreen); public void Remove(GameScreen); public void RequestExit();
-    public void Update(GameTime); public void Draw(GameTime, SpriteBatch);
+// Program.cs
+using var game = new MyGame();
+game.Run();
+```
+
+`GameAppOptions` (a struct): `Title`, `Width`/`Height`, `DesignWidth`/`DesignHeight`, `ScaleMode`, `ClearColor`,
+and optional `WindowFactory` / `ViewportFactory` (e.g. `AppWindow.Scaled` for a display-fitted window, or an
+`AdaptiveViewport` for responsive layout). Use `GameAppOptions.For(title, w, h)` for the common case.
+
+`GameApp` seams: `OnLoad()`, `OnUpdate(float dt)`, `OnRenderWorld(Frame)` (the 3D pass; empty in 2D),
+`OnDraw2D(SpriteBatch)`, `OnResize(int, int)`, `OnDispose()`. Properties you read: `Window`, `Clock`, `Viewport`,
+`Pointer`, `Input` (the frame's `InputState`), `Surface2D`, `Batch`, `FrameWidth`/`FrameHeight`/`Dt`,
+`ClearColor`. Call `Quit()` to exit.
+
+### Scenes (`SceneManager` / `GameScene`)
+
+For multi-screen games, push `GameScene`s onto a `SceneManager` (full-frame scene stack, distinct from the
+2D-only `Gui.ScreenStack`). `Push`/`Pop`/`Replace`/`SwitchTo`/`Clear`; a scene overrides `OnEnter`/`OnExit`,
+`OnUpdate(dt)`, `OnDraw2D(batch)`, `OnResize`. Set `DrawBelow` / `UpdateBelow` for an overlay scene (e.g. a pause
+menu over a still-rendered match). Feed the manager `Input`/`Pointer`/`Viewport`/`FrameWidth`/`FrameHeight` each
+frame, then `Update(dt)` and `Draw2D(batch)`.
+
+### 3D (`GameApp3D`, `IGameScene3D`, `SceneManager.Draw3D`)
+
+`GameApp3D : GameApp` adds a `Render3DSurface` (`Surface3D`) and a `Scene3D` (`Scene`), and a new seam
+`OnDraw3D(Scene3D scene)` (it overrides `OnRenderWorld` to run the 3D pass behind the 2D HUD). A scene that draws
+3D implements `IGameScene3D` (`void OnDraw3D(Scene3D scene)`), and the app's `OnDraw3D` calls the
+`SceneManager.Draw3D(scene)` extension to render the visible scene set.
+
+```csharp
+public sealed class MyGame3D : GameApp3D
+{
+    public MyGame3D() : base(GameAppOptions.For("My 3D Game", 1280, 720)) { }
+    protected override void OnDraw3D(Scene3D scene) { _scenes.Draw3D(scene); }   // 3D world
+    protected override void OnDraw2D(SpriteBatch batch) { /* HUD over the 3D */ }
 }
 ```
 
-### Routing (top-to-bottom by `DrawOrder`)
-
-```
-inputHandled = false
-for each screen, highest DrawOrder first:
-    advance transition; if Hidden: skip
-    receivesInput = !inputHandled || screen.AlwaysReceivesInput
-    consumed = screen.Update(gameTime, receivesInput)        // the bool you return
-    if receivesInput && consumed && !AlwaysReceivesInput: inputHandled = true
-    if !PassUpdateThrough: break                              // modal stops the loop
-```
-`Draw` runs bottom-to-top over all non-Hidden screens.
-
-### The two consumption policies
-
-`InputConsumption` is **intent you implement via your return value**, not magic the manager applies:
-- **`ConsumeWhenVisible`** (the common case): a visible interactive screen occupies input whether or not it did anything. Implement by `return receivesInput;`.
-- **`ConsumeWhenHandled`**: only block lower screens when you actually handled something (e.g. a popup that should let unrelated clicks fall through). Implement by returning the real handled result; `return false` when you didn't act.
-
-### Flags
-
-- `PassUpdateThrough` - `false` = modal: screens below don't update or get input. `true` = a transparent/HUD layer over a live one.
-- `AlwaysReceivesInput` - receives input even when a higher screen consumed it (a persistent nav bar), and does not itself set `inputHandled`.
-- `State = Hidden` - skipped entirely (no update, no input, no block). Set it before `Add` to add a screen hidden.
-
-### Transitions
-
-The manager owns transition timing. Set `TransitionOnDuration`/`TransitionOffDuration` (seconds; `0` = instant). On `Add`, a screen with a non-zero on-duration enters `TransitionOn` with `TransitionAlpha` ramping `0→1`; `ExitScreen()` ramps `1→0` then removes. Read `TransitionAlpha` (1 = fully visible) in `Draw` to fade.
-
 ---
 
-## UI layer (`KhaozEngine.UI`)
+## Input (`KhaozEngine.Windowing`)
 
-Widgets (`Button`, `Slider`, `Toggle`, `Dropdown`, `ScrollablePanel`, `TextInput`, `Tooltip`, `MenuTile`, `ExpandableRow`, …) take an `InputManager` and a `PrimitiveRenderer` and call the same bounds helpers - so they are click-through-safe by construction. `LayoutConstants.TopBarHeight` / `BottomNavHeight` are settable statics (default to Nullwake's `48`/`52`); set them once at startup for your chrome. `TextInputHandler(maxLength, charValidator)` is a keystroke state machine: `ProcessInput(InputManager, PlayerIndex?)` returns whether it consumed, exposes `Text`, `CaretBlinkTimer`, `PasteRequested`, `TextDeleted` (letters map to lowercase).
+### InputState - the immutable snapshot
 
-> **4.0.0 note:** `PrimitiveRenderer` and `ColorHelper` no longer live in `KhaozEngine.UI`; they moved to **`KhaozEngine.Graphics`** (low-level rendering helpers, see the Graphics section). `KhaozEngine.UI` depends on Graphics, so widgets still get a `PrimitiveRenderer` exactly as before; game code that constructs or passes one needs `using KhaozEngine.Graphics;`.
-
----
-
-## ECS layer (`KhaozEngine.Ecs`)
-
-Independent of input/screens. A struct-based archetype ECS: components are **structs** implementing `IComponent` (plain data). `World` exposes `Spawn()` / `Despawn(e)` (with an `EntityCommandBuffer` via `World.Commands` for deferred structural changes), component access `Add/Set/Has/TryGet/Remove<T>` plus `ref T Get<T>` (by-ref, no boxing), iteration via `Query()` and `ForEach<T1..T8>(RefAction<…>)`, parent/child hierarchy (`SetParent`/`DespawnTree`), per-`World` resources (`SetResource/GetResource<T>`), and systems grouped + ordered (`AddSystem(ISystem, group)`, `SetGroupOrder`, `Update(float dt)`). `CachedQuery` reuses a query across ticks to avoid per-tick allocation; `DeterministicRng` gives platform-stable RNG; `WorldSerializer` saves/loads a world as JSON (uses `KhaozEngine.Serialization.JsonDefaults.IncludeFields`).
-
----
-
-## Graphics layer (`KhaozEngine.Graphics`)
-
-Independent of input/screens. `Camera2D` is a game-agnostic 2D matrix camera. `Position` is the world
-point shown at the center of the viewport; `Zoom` (> 0) and `Rotation` (radians, CCW) scale and roll
-the view about that point. The core methods take an explicit `Viewport`, so the math is fully headless
-(no `GraphicsDevice`); no-arg overloads use the settable `Viewport` property (set it once, refresh on
-`Window.ClientSizeChanged`).
+`AppWindow` produces one `InputState` per frame (delivered as `Frame.Input`, surfaced as `GameApp.Input`). All
+engine-native, `System.Numerics`:
 
 ```csharp
-var cam = new Camera2D { Viewport = GraphicsDevice.Viewport, Zoom = 2f };
-cam.Position = player.WorldPosition;                              // follow
+public readonly record struct InputState(
+    IReadOnlySet<Key> KeysDown, KeysPressed, KeysReleased,
+    IReadOnlySet<MouseButton> MouseDown, MousePressed,
+    Vector2 MousePosition, Vector2 MouseDelta, float ScrollDelta,
+    int Width, int Height,
+    IReadOnlyList<GamepadState> Gamepads, IReadOnlyList<TouchPoint> Touches);
 
-// Render world-space content through the view matrix:
-spriteBatch.Begin(transformMatrix: cam.GetViewMatrix());
-// ... draw world ...
-spriteBatch.End();
-
-Vector2 mouseWorld = cam.ScreenToWorld(mouseScreenPos);          // pick/aim in world space
+bool IsDown(Key) / WasPressed(Key) / WasReleased(Key);
+bool IsDown(MouseButton) / WasPressed(MouseButton);
+GamepadState Gamepad(int i = 0);  GamepadState PrimaryGamepad { get; }
 ```
 
-- `WorldToScreen` / `ScreenToWorld` convert between spaces (inverse requires `Zoom` > 0; a non-positive
-  zoom makes the matrix singular and yields NaN).
-- `ClampPosition(desired, worldBounds[, viewport])` returns `desired` clamped so the visible world rect
-  stays inside `worldBounds`, centering on any axis where the world is smaller than the view. It does
-  not mutate `Position` (assign the result yourself). Exact when `Rotation` is 0 (the typical
-  platformer/scroller case); approximate with a rotated camera.
-- `CenterOn(world)` / `Focus(rect, viewport, padding, minZoom, maxZoom)` frame a point or fit-to-rect.
-  `CameraController` drives a `Camera2D` from an `InputManager` (drag/wheel/pinch pan+zoom, tap-vs-pan).
-  `CameraFollow` eases `Position` toward a target with frame-rate-independent smoothing (`Stiffness`),
-  an optional screen-space `Deadzone`, and bounds clamp. `PinchGestureTracker` / `CameraGestures` are
-  the shared gesture core (also used by `UI.PannableCanvas`).
+`Key` and `MouseButton` are engine enums; `GamepadState` exposes `ButtonsDown/Pressed/Released`,
+`LeftStick`/`RightStick` (+ `LeftStickDeadzoned(...)`), triggers, and `IsDown/WasPressed/WasReleased`.
 
-**Rendering primitives (moved here in 4.0.0).** `PrimitiveRenderer` draws shapes from a 1×1 white
-pixel (`DrawFilledRect`/`DrawRect`/`DrawLine`/`DrawCircle`/`DrawFilledCircle`/`DrawRing` (radius-adaptive
-segment count, thickness-aware)/`DrawVerticalGradient`/`DrawProgressBar`) and recreates its pixel on
-device reset. `ColorHelper.ParseHex` parses hex colors. Both used to live in `KhaozEngine.UI`; game code
-referencing them needs `using KhaozEngine.Graphics;`.
+### InputManager + Pointer - the higher-level read
 
-Also in this package: `DisplayManager` (below) for window/display config.
-
----
-
-## DisplayManager (KhaozEngine.Graphics)
-
-`DisplayManager` centralizes window/display configuration so a game does not poke
-`GraphicsDeviceManager`/`GameWindow` directly. Construct it in your `Game` constructor (where
-`graphicsDeviceManager` and `Window` already exist) with a declarative `DisplaySettings`:
-
-    // 932x430 landscape (iPhone 14/15 Pro Max logical points)
-    display = new DisplayManager(graphicsDeviceManager, Window, DisplaySettings.Landscape(932, 430));
-
-    // Or via the device-size catalog (same 932x430):
-    display = new DisplayManager(graphicsDeviceManager, Window, DevicePresets.IPhone15ProMax.Landscape());
-
-`DisplaySettings` is an immutable record: `Width`, `Height`, `Mode` (`WindowMode.Windowed` /
-`BorderlessFullscreen` / `ExclusiveFullscreen`), `AllowUserResizing`, `MinWidth`/`MinHeight`
-floor, `SupportedOrientations`, `Title`. Build variants with `with`, or use the
-`DisplaySettings.Landscape(w, h)` / `Portrait(w, h)` factories.
-
-Runtime changes:
-
-    display.SetResolution(1280, 720);
-    display.ToggleFullscreen();
-    display.SetResizable(true, minWidth: 640, minHeight: 360); // floor enforced on resize
-
-`Width`/`Height`/`Size` report the current backbuffer size (use `display.Size` instead of reading
-`PreferredBackBufferWidth/Height`). `VirtualResolution` is unchanged: `DisplayManager` owns the
-device config, `VirtualResolution` reads it for its coordinate scaling.
-
----
-
-## Isometric toolkit (KhaozEngine.Graphics, added 4.2.0)
-
-Render-only, opt-in, additive. It is projection + depth-sort + draw helpers, nothing else: no grid,
-no tiles, no pathfinding. You keep your own world model (whatever a tile means to your game) and
-project it on the way to the screen. Orthographic rendering is untouched if you never call into it.
-
-`IsometricProjection` maps your continuous world coordinates to screen space and back:
-
-    var iso = new IsometricProjection();              // default 64x32 (2:1) footprint
-    // var iso = new IsometricProjection(80, 40, heightScale: 24); // custom footprint + z lift
-
-    Vector2 screen = origin + iso.WorldToScreen(tileX, tileY);     // z defaults to 0
-    Vector2 lifted = origin + iso.WorldToScreen(tileX, tileY, z);  // z lifts up the screen
-    Vector2 ground = iso.ScreenToGround(mouseScreen - origin);     // pick on flat ground (z = 0)
-    Vector2 onTile = iso.ScreenToWorld(mouseScreen - origin, z);   // pick on a raised plane
-
-- `WorldToScreen(wx, wy, z = 0)`: `sx = (wx - wy) * TileWidth/2`, `sy = (wx + wy) * TileHeight/2 - z * HeightScale`.
-  The result is projection-local (origin at world `(0,0,0)`); add your camera/draw origin.
-- `ScreenToGround(screen)`: the `z = 0` inverse, returning a **continuous** world `(x, y)` - floor it
-  to a tile or keep the fraction for sub-tile picking.
-- `ScreenToWorld(screen, z)`: the inverse on the plane at height `z` (`ScreenToWorld(s, 0)` ==
-  `ScreenToGround(s)`). For varying terrain, picking is a consumer-side job - you own the heightmap, so
-  walk candidate heights front-to-back testing `ScreenToWorld(screen, z)` against it; the toolkit just
-  supplies the per-plane inverse.
-- `z` lifts the point up the screen - the seam for terrain height; both the projection and the depth
-  key consume it for real.
-- Depend on `IIsometricProjection` (implemented by `IsometricProjection`) where you want to swap the
-  projection or fake it in a headless screen test, the same way screens take `IDesignViewport`.
-
-Y-sort your own draw list with `IsoDepth.DepthKey`:
-
-    drawList.Sort((a, b) => IsoDepth.DepthKey(a.X, a.Y, a.Z, a.Layer)
-                   .CompareTo(IsoDepth.DepthKey(b.X, b.Y, b.Z, b.Layer)));
-
-Primary order is `wx + wy + z * zWeight` (far tiles first, near last); integer `layer` breaks ties on
-the same tile (e.g. a decal under a unit). It returns a comparable `IsoDepthKey`. `zWeight` (5th arg,
-default 1) tunes how hard height pushes toward the front - raise it when a tall stack must sort over a
-nearer-but-shorter neighbour, or pass `0` to ignore height in ordering. The `IsoDepthKey` ctor is
-public, so you can build keys from a custom formula (e.g. a topological pass for big multi-tile sprites)
-without fighting the helper.
-
-Tall sprites stand on their tile via the opt-in footprint anchor on the directional sprite draw path:
-
-    Vector2 feet = origin + iso.WorldToScreen(unit.X, unit.Y, unit.Z);
-    sprite.Draw(spriteBatch, feet, anchor: SpriteAnchor.FootprintBottomCenter);
-
-`SpriteAnchor.Center` stays the default (orthographic behaviour unchanged); an explicit `origin:`
-still overrides the anchor. Facing / `Direction8` logic is unchanged.
-
-`PrimitiveRenderer` gains iso shape helpers (same 1×1-pixel style as the rest of it):
-
-    prim.DrawIsoDiamond(spriteBatch, center, 64, 32, fill);                 // a tile
-    prim.DrawIsoBlock(spriteBatch, baseCenter, 64, 32, height: 24, top);    // raised cube/wall (auto-shaded sides)
-    prim.DrawIsoEllipse(spriteBatch, center, radiusX: 20, shadow);          // blob shadow (2:1)
-    prim.DrawIsoEllipseOutline(spriteBatch, center, radiusX: 96, ring);     // range ring (2:1)
-
-`DrawIsoBlock`'s side faces default to shaded variants of the top color (left darker than right);
-pass `leftFace` / `rightFace` to override. `DrawIsoEllipse*` take a `ratio` (default 0.5 = 2:1).
-`ColorHelper.Scale(color, factor)` is the per-channel RGB multiply used for the default shading.
-
----
-
-## Testing your game's screens headlessly
-
-Because input is injected, you can test routing and screen logic without a window:
+`Pointer` (the unified pointer) and `InputManager` (pointer + keyboard/gamepad/menu-nav) derive per-frame state
+from an `InputState`. `GameApp` owns a `Pointer` and updates it for you; construct an `InputManager` yourself if
+you want edge detection or menu navigation.
 
 ```csharp
 var im = new InputManager();
-var m  = new ScreenManager(im);
-m.Add(new MyScreen());
-im.Update(MouseAt(20, 20, down: true),  isActive: true);  m.Update(Zero);   // press
-im.Update(MouseAt(20, 20, down: false), isActive: true);  m.Update(Zero);   // release → IsTapIn fires
-// assert on your screen's state
+im.Update(input, viewport);   // once per frame, BEFORE you query
 ```
-Construct `RawInputState` in a helper; `GameTime` is headless-constructible (`new GameTime(TimeSpan.Zero, TimeSpan.FromSeconds(dt))`). See `KhaozEngine.Tests` for the patterns.
+
+**Unified pointer:** `PointerPosition`, `PressOrigin`, `PointerDelta`, `IsPointerDown`, `IsPointerJustPressed`,
+`IsPointerJustReleased` (+ middle/right variants).
+
+**Bounds helpers (use these):**
+- `IsTapIn(Rect)` - true on release **only if press-origin and release are both inside the rect**. The
+  click-through invariant.
+- `IsTapFromTo(originRect, releaseRect)` - press in one rect, release in another (tap-scrim-to-dismiss).
+- `IsPressingIn(Rect)` - held, press began inside, still inside ("pressed" visual).
+- `IsHoveringIn(Rect)` - inside and not pressed (desktop hover).
+- `IsPointerIn(Rect)`, `IsReleasedOutside(Rect)`, `IsDraggingIn(Rect)`, `GetDragDelta(Rect)`.
+
+**Region blocking (the other half of click-through):** `BlockInputRegion(Rect)` from the higher overlay each
+frame; `IsInputBlocked(Vector2)` from the layer beneath before acting. Cleared at the start of every `Update`.
+
+**Scroll:** `ScrollDelta`, `IsMouseWheelScrolledUp/Down`.
+
+**Keyboard / gamepad / menu navigation:** `IsKeyDown`, `IsKeyJustPressed`, `IsNewKeyPress(key, PlayerIndex?, out
+who)`, `IsNewButtonPress(button, PlayerIndex?, out who)`, `IsMenuUp/Down(PlayerIndex?)`, `IsMenuSelect/Cancel
+(PlayerIndex?, out who)`, `IsSelectNext/Previous(PlayerIndex?)`, `IsPauseGame(PlayerIndex?, Rect?)`. Pass `null`
+for the player to accept "any connected controller".
+
+### Rect, viewport, clock
+
+- `Rect(X, Y, Width, Height)` is the engine's rectangle (`Right`/`Bottom`/`Contains(Vector2)`).
+- `IDesignViewport` (impls: `DesignViewport` letterbox/fill/stretch, `AdaptiveViewport` responsive) maps between
+  design space and screen pixels (`DesignToScreen`/`ScreenToDesign`, `GetClipProjection`). `GameApp` owns one
+  and passes it into `Pointer.Update`, so design-space coordinates and hit-tests line up.
+- `GameClock`: `TimeScale`, `Pause()`/`Resume()`, `RealDeltaSeconds`/`ScaledDeltaSeconds`,
+  `Paused`/`Resumed` events. `GameApp.Clock` is updated for you each frame.
 
 ---
 
-## Required wiring for these games (the MUST list)
+## Gui (`KhaozEngine.Gui`)
 
-Every consuming game's `Game` subclass:
-- Creates exactly one `MonoGameRawInput(Window)`, one `InputManager`, one `ScreenManager`.
-- In `Update`: `input.Update(rawInput.Read(), IsActive);` **then** `screens.Update(gameTime);` - never the reverse, never a second input read.
-- In `Draw`: `screens.Draw(gameTime, spriteBatch);`.
-- Sets `IsMouseVisible = true` on desktop.
-- Passes `IsMobile` into `InputManager` (and `VirtualResolution`, if used).
-- Routes platform selection through `isMobile`, not per-call branching.
-- Resolves dependencies for screens however the game prefers (`ScreenManager.Services` is a generic `IServiceProvider` if you use a container); screens reach the input through `Manager.Input`.
+Two styles, both built on Windowing + Render2D.
+
+**Immediate-mode `GuiSurface`** - the common case for HUDs and simple menus. `Begin(batch?, pointer)` then call
+widgets each frame; `Button(...)` returns `bool` (true the frame it's clicked). Widgets are click-through-safe by
+construction (they hit-test via the `Pointer`).
+
+```csharp
+var gui = new GuiSurface(whitePixel);            // a 1x1 white Texture2D
+gui.Begin(batch, pointer);
+gui.Panel(new Rect(40, 40, 240, 120), bgColor);
+gui.Label(font, new Rect(40, 40, 240, 24), "Pause", textColor, GuiAlign.Center);
+if (gui.Button(font, new Rect(60, 90, 200, 36), "Resume")) Resume();
+```
+
+`GuiSurface` also exposes hover state (`IsHovering`/`HoverEntered`/`HoveredRect`) and a `Slider`. The
+`PointerCaptured` gate lets a game suppress world clicks when the pointer is over UI.
+
+**Retained `ScreenStack`** - a routed stack of `Screen`s (top-to-bottom input, bottom-to-top draw, transitions),
+for menu-heavy games. `Add`/`Remove`, `Update(dt, input[, viewport])`, `Draw(batch)`. A `Screen` reads input via
+`Manager.Pointer` and returns whether it consumed (to block screens below); set a screen non-pass-through for a
+modal.
+
+**`FocusNavigator`** - keyboard/gamepad menu focus: `SetCount`, `Focus`, `MoveNext`/`MovePrevious`, `Wrap`, and
+`Update(InputManager, PlayerIndex?)` which advances focus from menu-nav edges.
+
+---
+
+## Render2D (`KhaozEngine.Render2D`)
+
+2D rendering on the custom stack. `Render2DSurface(window)` owns the `SpriteBatch` and the loaders;
+`GameApp.Surface2D`/`Batch` give you one already wired.
+
+```csharp
+Texture2D logo = Surface2D.LoadTexture("logo.png");                 // PNG via StbImageSharp
+SpriteFont font = Surface2D.LoadFont("/path/Arial.ttf", 32f);       // runtime TTF via stb_truetype
+
+batch.Begin(Viewport, SamplerMode.Point);        // design-viewport space, crisp pixels; or Begin(camera) / Begin()
+batch.Draw(logo, new Vector2(100, 100), Vector4.One);
+batch.DrawString(font, "Hello", new Vector2(100, 60), Vector4.One);
+batch.End();
+```
+
+- `Begin` overloads: `Begin(Camera2D, SamplerMode)` (world space), `Begin(IDesignViewport, SamplerMode)`
+  (design space), `Begin(SamplerMode)` (raw screen). `SamplerMode` is `Linear` (default) or `Point`.
+- `Camera2D`: `Position`/`Zoom`/`Rotation`, `WorldToScreen`/`ScreenToWorld`, `CenterOn`, `PanByScreenDelta`,
+  `Focus(rect, ...)`, `ClampPosition(...)`. The camera-feel layer (follow, look-ahead, blends, room cameras,
+  screen shake, parallax) lives alongside it in Render2D / Effects.
+- Scissor clipping: `SetScissor(Rect)` / `ClearScissor()` (composes with the design viewport).
+- Offscreen capture (headless / tooling): `Surface2D.CaptureToTexture(...)` and `CaptureToRgba(...)`.
+
+---
+
+## Render3D (`KhaozEngine.Render3D`)
+
+Stylized 3D. `Render3DSurface(window)` owns a `Scene3D`; `GameApp3D.Surface3D`/`Scene` give you one. The GPU
+backend (Veldrid) never appears in the API.
+
+```csharp
+var scene = Surface3D.Scene;
+MeshHandle board = scene.LoadMesh(MeshPrimitives.Plane(...));        // glTF via GltfLoader, or procedural
+TextureHandle tex = scene.LoadTexture("dirt.png");
+MeshHandle tower = scene.LoadMesh(GltfLoader.Load("tower.glb"), tex);
+
+scene.Camera.Azimuth = MathF.PI/4f;  scene.Camera.OrthoSize = 2.7f;       // ortho iso camera
+// or auto-fit a bounds: scene.Camera.Frame(center, size, margin: 1.1f);
+Vector3 ground = scene.Camera.ScreenToGround(pointer.Position, w, h, 0f); // picking
+
+// per frame, inside OnDraw3D:
+scene.Begin();
+scene.Draw(board, Matrix4x4.Identity);
+scene.Draw(tower, transform, tint, Material.Shiny);
+scene.DrawBillboard(pos, size, color, BillboardBlend.Additive);
+scene.DebugCircle(center, up, radius, color);                        // immediate-mode debug overlay
+```
+
+- `Scene3D`: `LoadMesh`/`LoadTexture`/`UnloadMesh`, `Begin()`, `Draw(handle, transform[, tint[, material]])`,
+  billboards, and a debug-draw overlay (`DebugLine/Ray/Box/Grid/Axes/Circle`). `Post` is the
+  `PixelPostProcess` (pixelation / quantize / dither / cel bands / palette for the chunky retro look; the smooth
+  look is the default).
+- `IsoCamera3D`: `Azimuth`/`Elevation`/`Target`/`OrthoSize`/`Zoom`, `Frame(target, azimuth, size)`,
+  `ScreenToRay`, `ScreenToGround`, and the `View`/`Projection`/`ViewProjection` matrices.
+
+---
+
+## ECS (`KhaozEngine.Ecs`)
+
+Independent of input/rendering. A struct-based archetype ECS: components are **structs** implementing
+`IComponent`. `World` exposes `Spawn()` / `Despawn(e)` (with an `EntityCommandBuffer` via `World.Commands` for
+deferred structural changes), component access `Add/Set/Has/TryGet/Remove<T>` plus `ref T Get<T>` (by-ref, no
+boxing), iteration via `Query()` and `ForEach<T1..T8>(RefAction<…>)`, parent/child hierarchy
+(`SetParent`/`DespawnTree`), per-`World` resources (`SetResource/GetResource<T>`), and systems grouped + ordered
+(`AddSystem(ISystem, group)`, `SetGroupOrder`, `Update(float dt)`). `CachedQuery` reuses a query across ticks to
+avoid per-tick allocation; `DeterministicRng` (xorshift128+/splitmix64, `CreateDerived(name)` for per-stream
+sub-RNGs) gives platform-stable RNG for lockstep sims; `WorldSerializer` round-trips a world as JSON (uses
+`KhaozEngine.Serialization.JsonDefaults.IncludeFields`).
+
+---
+
+## Audio (`KhaozEngine.Audio`)
+
+`AudioSystem` over a cross-platform OpenAL (Silk.NET.OpenAL) backend, no MonoGame. Streaming music (WAV/OGG/MP3,
+one track via `PlayMode`, `CurrentTrack`/`TrackChanged`), SFX one-shots, and 3D positional audio
+(`PlaySfx`/`PlaySfx3D`/`SetListener`, a 16-voice pool, per-channel volume). `LoadContent(directory)` +
+`Update()` per frame.
 
 ---
 
@@ -341,13 +303,9 @@ Every consuming game's `Game` subclass:
 One logging service for every game. Configure it once at startup and log through the static `Log`:
 
 ```csharp
-var paths = new KhaozEngine.App.AppDataPaths("MyGame");   // AppDataPaths lives in KhaozEngine.App
+var paths = new KhaozEngine.App.AppDataPaths("APKiwi", "MyGame");   // publisher-rooted, in KhaozEngine.App
 var options = new LoggerOptions { MinimumLevel = LogLevel.Info, DefaultCategory = "Boot" };
-options.Sinks.Add(new FileSink(new FileSinkOptions
-{
-    Path = paths.LogFilePath,
-    PreviousPath = paths.PreviousLogFilePath,
-}));
+options.Sinks.Add(new FileSink(new FileSinkOptions { Path = paths.LogFilePath, PreviousPath = paths.PreviousLogFilePath }));
 options.Sinks.Add(new ConsoleSink());
 Log.Configure(options);
 CrashHandler.Install();
@@ -355,150 +313,73 @@ CrashHandler.Install();
 
 Rules for consumers:
 
-- Configure `Log` once per process (desktop `Program`, Android `MainActivity`, iOS `Program`). Call `Log.Shutdown()` on exit.
-- Pick a **category**, then log under it. Pass an exception as the optional second argument.
+- Configure `Log` once per process; call `Log.Shutdown()` on exit.
+- Pick a **category**, then log under it (pass an exception as the optional second argument):
   - A single class's logging → `Log.For<T>()` (category = the type name).
-  - A feature/subsystem spanning several classes, or a game-side module with no single owning type (cloud save, auto-update, networking) → `Log.Get("ModuleName")` with a stable PascalCase name, used consistently everywhere that module logs. The category is a free string; it does **not** have to be an engine type, so game-only modules categorize the same way engine ones do.
-  - `Log.Info/Warn/Error(...)` (no category) is the catch-all under the configured `DefaultCategory` - fine for one-off boot/shutdown lines, not for a subsystem you'll want to grep later.
-- **Never bake a category-like prefix into the message text.** The formatter already renders the category as `[Category] message`, so `Log.Info("[CloudSave] uploaded")` double-tags as `[App] [CloudSave] uploaded`. Put the tag in the category instead: `Log.Get("CloudSave").Info("uploaded")` → `[CloudSave] uploaded`. Same rule for `Foo: ...` / `TAG ...` style prefixes.
-- The game owns its paths: resolve them with `new KhaozEngine.App.AppDataPaths("<AppName>")` (`LogFilePath` / `PreviousLogFilePath` / `GetFilePath(...)`) and pass them into `FileSinkOptions`. The engine logging core is path-agnostic.
-- Add a game-specific target (in-game console overlay, crash uploader) by implementing `ILogSink` and `Log.Manager.AddSink(...)`. Do not fork the engine logger.
-- Logging never throws and never blocks the game loop (async writer thread; `Flush`/`Shutdown` drain it; `CrashHandler` flushes on a crash).
-- `MinimumLevel` is runtime-settable for an in-game verbosity toggle.
+  - A feature/subsystem spanning several classes, or a game-side module with no single owning type → 
+    `Log.Get("ModuleName")` with a stable PascalCase name.
+  - `Log.Info/Warn/Error(...)` (no category) is the catch-all under `DefaultCategory` - fine for one-off
+    boot/shutdown lines, not for a subsystem you'll grep later.
+- **Never bake a category-like prefix into the message text.** The formatter renders `[Category] message`, so
+  `Log.Info("[CloudSave] uploaded")` double-tags. Put the tag in the category: `Log.Get("CloudSave").Info("uploaded")`.
+- The game owns its paths via `KhaozEngine.App.AppDataPaths`; the logging core is path-agnostic.
+- Add a game-specific target by implementing `ILogSink` and `Log.Manager.AddSink(...)`. Don't fork the logger.
+- Logging never throws and never blocks the loop (async writer; `Flush`/`Shutdown` drain it; `CrashHandler`
+  flushes on a crash). `MinimumLevel` is runtime-settable.
 
 ---
 
-## Other packages (brief)
+## Foundation packages (brief)
 
-The sections above cover the core flow. The rest of the 16-package set, one line each:
+The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, GPU-free):
 
-- **`KhaozEngine.App`**: app identity / data paths: `AppDataPaths`, `BuildMetadata`, `ServiceLocator`, `IAppDataEnvironment`. Pure BCL, no MonoGame.
-- **`KhaozEngine.Persistence`**: crash-safe saves: `AtomicJsonWriter`, `PersistenceQueue` (coalesced async writes), `SettingsManager<T>` + `FileSettingsStorage`, `SaveEncoder` (Base64 + HMAC).
-- **`KhaozEngine.Content`**: config loading + JSON-schema validation: `ConfigLoader` (disk-then-embedded), `JsonSchemaValidator`, build-time schema enforcement via the bundled validator.
-- **`KhaozEngine.Serialization`**: shared `System.Text.Json` baselines: `JsonDefaults.TolerantRead` / `IndentedWrite` / `IncludeFields`. Consumed by Content/Persistence/Ecs. Pure BCL.
-- **`KhaozEngine.Localization`**: `LocalizationManager` (culture + string lookup).
-- **`KhaozEngine.Audio`** (graduated to the 5.x line): `AudioSystem` music playback (one track at a time, `PlayMode`, `TrackChanged` events) over a cross-platform OpenAL streaming backend (WAV/OGG/MP3); no MonoGame. `LoadContent(directory)` + `Update()` per frame. Music-only; SFX is a future layer.
-- **`KhaozEngine.Effects`**: pooled rect `ParticleSystem` + `Spark`/`Ember` presets. Depends on Graphics (for `PrimitiveRenderer`).
-- **`KhaozEngine.Sprites`**: 2D sprite + directional animation: `SpriteSheet`, `SpriteAnimationPlayer`, `DirectionalAnimatedSprite` (opt-in `SpriteAnchor.FootprintBottomCenter` for iso), `Direction8`, `SpriteRegistry`, `PixelLabSpriteLoader`. Takes a raw `float`/`GameTime` delta.
-- **`KhaozEngine.Time`**: `GameClock` (pause / `TimeScale`) + `TimeSkip`. Pulled in transitively by `Screens`; optional to use directly.
+- **`KhaozEngine.App`**: app identity / data paths: `AppDataPaths` (publisher-rooted: `<base>/APKiwi/<game>/`),
+  `BuildMetadata`, `ServiceLocator`.
+- **`KhaozEngine.Persistence`**: crash-safe saves: `AtomicJsonWriter`, `PersistenceQueue` (coalesced async
+  writes), `SettingsManager<T>` + `FileSettingsStorage`, `SaveEncoder` (Base64 + HMAC), and the `GameStorage`
+  facade (paths + queue + settings + encoder).
+- **`KhaozEngine.Content`**: config loading + JSON-schema validation: `ConfigLoader` (disk-then-embedded),
+  `JsonSchemaValidator`, build-time schema enforcement via the bundled `Content.Validator` tool.
+- **`KhaozEngine.Serialization`**: shared `System.Text.Json` baselines (`JsonDefaults.TolerantRead` /
+  `IndentedWrite` / `IncludeFields`). Consumed by Content/Persistence/Ecs.
+- **`KhaozEngine.Localization`**: `LocalizationManager` (discover cultures + set the thread culture).
+- **`KhaozEngine.Platform`**: `Clipboard` (cross-platform text + image, best-effort, never throws).
+- **`KhaozEngine.Pooling`**: `ObjectPool<T>` (O(1) rent/return, swap-removal compaction).
+- **`KhaozEngine.Collision`**: deterministic `CircleCollision` + `SpatialHashGrid` (bit-identical for lockstep).
+- **`KhaozEngine.Updates`**: delta auto-update pipeline (SHA256 manifests + diffing, resumable staged downloads,
+  cross-platform staged-apply).
+- **`KhaozEngine.Netcode` / `.Abstractions` / `.LiteNetLib`**: transport-free netcode primitives
+  (`UnitAxisQuantizer`, `ClientPrediction`, `RemoteCommandQueue`), the zero-dependency channel-split contract
+  (`IChannelSplittable<TSelf>` + `NetChannelReliability`), and the LiteNetLib transport binding.
 
-## Windowing (`KhaozEngine.Windowing`, experimental 5.x line)
+---
 
-The shared window + input foundation for the custom stack. `AppWindow` owns the SDL2/Metal window + loop;
-each frame gives an engine-native `InputState` and the GPU command list. Renderers draw into it (Render2D via
-`Render2DSurface`). Metal-only; needs SDL2 (`brew install sdl2`).
+## Testing your game headlessly
 
-```csharp
-using KhaozEngine.Windowing;
-using KhaozEngine.Render2D;
-
-var window = new AppWindow("My app", 960, 540);
-var surface = new Render2DSurface(window);                 // SpriteBatch + loaders on the window's device
-var font = surface.LoadFont("/path/to/font.ttf", 28f);
-var box = new System.Numerics.Vector2(480, 270);
-
-window.Run(frame =>
-{
-    var input = frame.Input;                               // engine-native keyboard + mouse
-    if (input.WasPressed(Key.Escape)) window.Close();
-    if (input.IsDown(Key.Right)) box.X += 300f * frame.Dt;
-    if (input.WasPressed(MouseButton.Left)) box = input.MousePosition;
-
-    surface.NewFrame(frame);
-    surface.Batch.Begin();
-    surface.Batch.DrawString(font, "hello", new System.Numerics.Vector2(20, 20), System.Numerics.Vector4.One);
-    surface.Batch.End();
-});
-```
-
-## Gui (`KhaozEngine.Gui`, experimental 5.x line)
-
-Screen-stack + widgets on the custom stack. `ScreenStack` routes input top-to-bottom (the click-through
-layering), draws bottom-to-top, drives transitions. `Screen` is the base surface; `Button` is a bounds-aware
-widget over the pointer. Built on Windowing + Render2D.
+Because input is injected, you can test logic and hit-testing without a window: construct `InputState` snapshots
+frame-by-frame and feed `InputManager.Update`. `dt` is a plain `float` in seconds - there is no `GameTime`.
 
 ```csharp
-using KhaozEngine.Gui;
-
-var stack = new ScreenStack();
-stack.Add(new MenuScreen());                                   // your Screen subclass
-
-window.Run(frame =>
-{
-    stack.Update(frame.Dt, frame.Input);                       // routes input + advances transitions
-    surface.NewFrame(frame);
-    surface.Batch.Begin();
-    stack.Draw(surface.Batch);                                 // draws all screens bottom-to-top
-    surface.Batch.End();
-});
-
-// inside a Screen: read input via Manager.Pointer (e.g. button.Update(Manager.Pointer)); return true from
-// Update to consume input (block screens below). Set PassUpdateThrough=false for a modal.
+var im = new InputManager();
+im.Update(MouseAt(20, 20, down: true));    // press
+im.Update(MouseAt(20, 20, down: false));   // release → IsTapIn(rect over 20,20) fires
+Assert.True(im.IsTapIn(new Rect(0, 0, 40, 40)));
 ```
 
-## Render2D (`KhaozEngine.Render2D`, experimental 5.x line)
+New behaviour added to the library ships with a headless test in `KhaozEngine.Tests`. This is the standard, not
+a nicety - it's the reason the raw read sits behind the `AppWindow`/`InputState` seam. See the test project for
+the `InputState` builder patterns.
 
-Experimental, **not part of the MonoGame contract above** - 2D rendering on the custom MonoGame-free stack
-(shared 5.x line, `5.6.0-experimental`). `SpriteBatch` + `Camera2D` + `Texture2D` (PNG via StbImageSharp) +
-`SpriteFont` (runtime TTF text via stb_truetype). `Render2DHost` owns the SDL2/Metal window; the
-`Render2DSample` auto-copies SDL2 so `dotnet run` just works. Headless drawing via `Render2DSnapshot`.
-
-```csharp
-using KhaozEngine.Render2D;
-
-var host = new Render2DHost("My 2D test", 960, 540);
-Texture2D logo = host.LoadTexture("logo.png");
-SpriteFont font = host.LoadFont("/System/Library/Fonts/Supplemental/Arial.ttf", 32f);
-var cam = new Camera2D();
-
-host.Run(f =>
-{
-    host.Batch.Begin(cam);                                 // world space; or Begin() for screen space
-    host.Batch.Draw(logo, new System.Numerics.Vector2(100, 100), System.Numerics.Vector4.One);
-    host.Batch.DrawString(font, "Hello, Veldrid 2D", new System.Numerics.Vector2(100, 60), System.Numerics.Vector4.One);
-    host.Batch.End();
-});
-```
-
-## Render3D (`KhaozEngine.Render3D`, experimental 5.x line)
-
-Experimental, **not part of the MonoGame contract above** - it is the first package of the custom
-MonoGame-free renderer (see [`ROADMAP.md`](ROADMAP.md), "The post-MonoGame pivot"). On the shared 5.x line
-at `5.6.0-experimental`. Metal-only for now; `Render3DHost` needs SDL2 (`brew install sdl2`). The
-`Render3DSample` project auto-copies SDL2 into its output so `dotnet run` just works; a consumer using
-`Render3DHost` directly must ensure SDL2 is on the loader path (or copy it into the app's output as
-`libsdl2.dylib`).
-
-A consumer drives a spinning model with the post-process on like this (Veldrid never appears in the API):
-
-```csharp
-using KhaozEngine.Render3D;
-
-var host = new Render3DHost("My 3D test", 1280, 720);   // owns the SDL2/Metal window + loop
-var scene = host.Scene;
-scene.LoadModel(GltfLoader.Load("assets/testmodel.glb"));
-
-scene.Camera.Azimuth = MathF.PI / 4f;                    // iso defaults; tweak by eye
-scene.Camera.Elevation = MathF.Atan(0.5f);
-scene.Camera.OrthoSize = 2.7f;
-
-// smooth stylized space look is the default; for the chunky retro look:
-//   scene.Post.RenderWidth = 320; scene.Post.RenderHeight = 180;
-//   scene.Post.Pixelated = scene.Post.Quantize = scene.Post.Dither = true;
-//   scene.Post.CelBands = 4; scene.Post.ActivePalette = Palettes.Pico8;
-
-host.Run(f => scene.Spin(f.Dt));                         // spins the model each frame, post-process on
-```
-
-`Render3DSnapshot.Capture(mesh, configure, w, h, frames)` renders the same scene offscreen to a CPU RGBA
-buffer (headless, no window) - used by the sample's `--smoke` path and any tooling. See the
-`Render3DSample` project for the full interactive harness (hotkeys: `R` retro toggle, `O` outline, `C` cel,
-`P` palette, arrows orbit).
+---
 
 ## Versioning & change process
 
-- SemVer, one shared version across the **4.x MonoGame packages** (`Directory.Build.props`). New custom-stack
-  packages (e.g. `KhaozEngine.Render3D`) version independently on the **5.x** experimental line via their own
-  csproj `<Version>`; the doc-version guard checks the shared 4.x version only.
-- Local file-feed for inner-loop dev; GitHub Packages on `v*` tags.
-- To change the library: edit, add a headless test in `KhaozEngine.Tests`, `dotnet pack -o ./local-feed`, consume locally; when stable, bump the version + tag for a published release. Each game adopts on its own schedule by bumping its pinned version.
+- **One shared version** across the whole engine: `<KhaozEngine5xVersion>` in `Directory.Build.props`. Every
+  packable project sets `<Version>$(KhaozEngine5xVersion)</Version>`; bumping it releases all packages together.
+  `scripts/check-doc-versions.sh` (run in CI) enforces that the engine-version declarations in `CONSUMERS.md`,
+  `ROADMAP.md`, and the `README.md` `<PackageReference>` example match.
+- SemVer: additive = minor, fixes = patch, breaking = major. Local file-feed for inner-loop dev; GitHub Packages
+  on `v*` tags.
+- To change the library: edit, add a headless test, `dotnet pack -c Release -o ./local-feed`, consume locally;
+  when stable, bump the version + add a `CHANGELOG.md` entry + tag for a published release. Each game adopts on
+  its own schedule by bumping its pinned version (or its umbrella metapackage version).

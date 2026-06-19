@@ -27,11 +27,14 @@ version/release work.
   touches public API, tests, or triggers the release ritual still needs a tree.
 
 ## Rules
-- `MonoGameRawInput` is the ONLY class that may touch Mouse/Keyboard/GamePad/TouchPanel
-  statics. Everything else reads `RawInputState` via `IRawInput` - keeps input headless-testable.
-- New behaviour ships with a headless test in `KhaozEngine.Tests` (build `RawInputState`
-  frame-by-frame; `GameTime` is `new GameTime(TimeSpan.Zero, TimeSpan.FromSeconds(dt))`).
-- Hit-test via `InputManager` bounds helpers (`IsTapIn`, etc.), never raw position + button.
+- `AppWindow` (KhaozEngine.Windowing) is the ONLY class that touches the Silk.NET/GLFW input
+  statics. Everything else reads the immutable `InputState` snapshot (handed in via `Frame.Input`)
+  through `InputManager`/`Pointer` - keeps input headless-testable. (There is no `MonoGameRawInput`
+  or `IRawInput` any more; the engine is MonoGame-free.)
+- New behaviour ships with a headless test in `KhaozEngine.Tests` (construct an `InputState`
+  frame-by-frame and feed `InputManager.Update(input, viewport?)`; `dt` is a plain `float` in seconds,
+  no `GameTime`).
+- Hit-test via `InputManager`/`Pointer` bounds helpers (`IsTapIn`, etc.), never raw position + button.
 
 ## Build / test / release
 - `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj` - every new behaviour ships with a headless test.
@@ -52,10 +55,13 @@ version/release work.
 - SemVer: additive = minor, fixes = patch, breaking = major.
 - **One shared version line - the engine is now entirely MonoGame-free.** `Directory.Build.props` carries a
   single `<KhaozEngine5xVersion>` governing **the whole engine**: the custom-stack packages (`KhaozEngine.Gpu`,
-  `Windowing`, `Render2D`, `Render3D`, `Gui`, `Audio`, `Particles`, `Effects`, `Game`) and the MonoGame-free
-  foundation (`Ecs`/`Serialization`/`Content`/`Diagnostics`/`App`/`Localization`/`Persistence`/`Pooling`/
-  `Platform`/`Updates`/`Collision`/`Netcode`/`Netcode.Abstractions`/`Netcode.LiteNetLib`). All set
-  `<Version>$(KhaozEngine5xVersion)</Version>` in their csproj. Bump it to release ALL packages together
+  `Windowing`, `Render2D`, `Render3D`, `Gui`, `Audio`, `Particles`, `Effects`, `Game`, `Game.Render3D`) and the
+  MonoGame-free foundation (`Ecs`/`Serialization`/`Content`/`Diagnostics`/`App`/`Localization`/`Persistence`/
+  `Pooling`/`Platform`/`Updates`/`Collision`/`Netcode`/`Netcode.Abstractions`/`Netcode.LiteNetLib`) plus the four
+  code-free umbrella metapackages (`Foundation`, `Game2D`, `Game3D`, `Server`). (`KhaozEngine.Content.Validator`
+  is a build-time tool, `IsPackable=false`, shipped inside the `Content` package rather than versioned itself.)
+  All packable projects set `<Version>$(KhaozEngine5xVersion)</Version>` in their csproj. Bump it to release ALL
+  packages together
   (repack to `local-feed`, single tag `vX.Y.Z`); `check-doc-versions.sh` enforces this line. The 5.x line
   dropped the `-experimental` suffix at `5.31.0` (the tag is plain `vX.Y.Z`); the foundation graduated onto it
   at `5.46.0`. **The legacy 4.x MonoGame `<Version>` line + its six packages (`UI`/`Graphics`/`Screens`/
@@ -69,4 +75,5 @@ version/release work.
   bump + `CHANGELOG.md` entry + `dotnet pack` ONCE at the end of the batch, then do
   per-consumer adopt PRs. Never bump the version per-item within a batch.
 - `local-feed/` is gitignored but MUST exist before `dotnet restore` (`mkdir -p local-feed`).
-- net10.0, MonoGame.Framework.DesktopGL 3.8, xUnit.
+- net10.0, MonoGame-free: Silk.NET (windowing + input, GLFW natives bundled per-RID), Veldrid behind
+  `KhaozEngine.Gpu` (GPU), Silk.NET.OpenAL (audio), xUnit (tests).

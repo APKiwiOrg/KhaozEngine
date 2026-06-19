@@ -8,14 +8,14 @@ which one wins.
 
 | Doc | What it's for | Source of truth for |
 |---|---|---|
-| [README.md](../README.md) | Top-level overview: the 16-package table, the one hard rule, quickstart wiring, repo layout. | The package list + what each package owns. |
+| [README.md](../README.md) | Top-level overview: the package table (granular packages + umbrella metapackages), the one hard rule, quickstart wiring, repo layout. | The package list + what each package owns. |
 | [USING-KHAOZENGINE.md](USING-KHAOZENGINE.md) | The consumer contract: hard rules, the data-flow model, per-layer API reference, headless-test patterns. Read before wiring a game in. | How a game must use the engine. |
 | [CHANGELOG.md](../CHANGELOG.md) | Newest-first, per-package, every version. | Release history. Nothing else should restate the per-version story. |
 | [CONSUMERS.md](CONSUMERS.md) | Current state only: which game pins which package at which version, and notable non-adoptions with reasons. | The version + adoption matrices. |
 | [ROADMAP.md](ROADMAP.md) | Larger feature areas not yet scheduled; shipped items marked. | The backlog. |
-| `../<Package>/README.md` | One-paragraph purpose + a snippet per package (16 of them). | Per-package quick reference. |
+| `../<Package>/README.md` | One-paragraph purpose + a snippet per package. | Per-package quick reference. |
 
-The **engine current version** lives in `../Directory.Build.props` (`<Version>`). Docs that restate it
+The **engine current version** lives in `../Directory.Build.props` (`<KhaozEngine5xVersion>`). Docs that restate it
 (CONSUMERS "Engine current version", ROADMAP "Current released version", the README PackageReference
 example) are guarded by [`../scripts/check-doc-versions.sh`](../scripts/check-doc-versions.sh), which CI
 runs on every push. Consumer *pins* are allowed to lag and are not checked.
@@ -23,7 +23,7 @@ runs on every push. Consumer *pins* are allowed to lag and are not checked.
 ## Process docs
 
 - [../CLAUDE.md](../CLAUDE.md) - concurrent-dev rule (worktree per change), the release ritual, build/test commands.
-- Release ritual, short form: bump `Directory.Build.props` `<Version>` -> add the `CHANGELOG.md` entry ->
+- Release ritual, short form: bump `Directory.Build.props` `<KhaozEngine5xVersion>` -> add the `CHANGELOG.md` entry ->
   update the engine-version line in `CONSUMERS.md` -> `dotnet pack -c Release -o ./local-feed` -> commit ->
   `git tag vX.Y.Z` -> push `main` + tag.
 

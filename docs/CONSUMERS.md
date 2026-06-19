@@ -116,7 +116,7 @@ A full-3D iso tower-defense entirely on the 5.x stack, zero legacy MonoGame pack
   App `AppDataPaths`/`BuildMetadata`, Localization, Persistence `SettingsManager<CampaignSaveData>`). A logic
   library deliberately pulls no renderer.
 
-### Nullwake - 5.x, 2D (on `KhaozEngine.Game2D` 5.57.0)
+### Nullwake - 5.x, 2D (on `KhaozEngine.Game2D` 5.59.0)
 
 Fully migrated off MonoGame (the migration landed on Nullwake `main`). `Nullwake.Core` references one package,
 **`KhaozEngine.Game2D`** (the 2D runtime + the Render3D-free `Game` loop framework + the foundation). The shell
@@ -202,11 +202,11 @@ done
 After editing, run `./scripts/check-doc-versions.sh` (CI runs it too) to confirm the engine-version line
 still matches `Directory.Build.props`.
 
-_Last verified: 2026-06-18. The 5.x line `<KhaozEngine5xVersion>` = **5.58.0** is the engine: the custom-stack
+_Last verified: 2026-06-19. The 5.x line `<KhaozEngine5xVersion>` = **5.63.0** is the engine: the custom-stack
 packages + the graduated foundation + the four umbrella metapackages (Game2D/Game3D/Server/Foundation). The
 legacy 4.x line `<Version>` = **4.12.0** is frozen-ish and carries **only** the 6 genuinely-MonoGame packages
 (Graphics/Input/Screens/Sprites/Time/UI). **Hardpoint** (3D) is on **5.57.0** via `Game3D` + `Foundation`,
-**Nullwake** (2D) is on **5.57.0** via `Game2D` - both fully off MonoGame, referencing the engine in one line, and
+**Nullwake** (2D) is on **5.59.0** via `Game2D` - both fully off MonoGame, referencing the engine in one line, and
 now running on the `GameApp3D`/`GameApp` loop facade. **SpaceGame** is the lone 4.x MonoGame holdout (pins 4.9.0;
 its 5.x port is the remaining migration work). The 7 legacy MonoGame packages get deleted once SpaceGame is off
 them, at which point the 4.x line — and MonoGame — is gone._

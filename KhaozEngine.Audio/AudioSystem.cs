@@ -198,8 +198,9 @@ public sealed class AudioSystem : IDisposable
                     ClearCurrentTrack();
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                _logger.Debug("music backend failed toggling MusicEnabled; disabling audio.", ex);
                 _available = false;
             }
         }
@@ -338,8 +339,9 @@ public sealed class AudioSystem : IDisposable
 
             CommitPlayed(index);   // record + now-playing state, only after a successful play
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            _logger.Debug("music backend failed in PlayRandomTrack; disabling audio.", ex);
             _available = false;
         }
     }
@@ -452,8 +454,9 @@ public sealed class AudioSystem : IDisposable
 
             CommitPlayed(index);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            _logger.Debug("music backend failed in PlayTrack; disabling audio.", ex);
             _available = false;
         }
     }
@@ -578,8 +581,9 @@ public sealed class AudioSystem : IDisposable
         {
             _backend.SetVolume(_masterVolume * _musicVolume);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            _logger.Debug("music backend failed applying volume; disabling audio.", ex);
             _available = false;
         }
     }

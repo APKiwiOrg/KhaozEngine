@@ -14,9 +14,7 @@
   <Project Path="KhaozEngine.Game3D/KhaozEngine.Game3D.csproj" />
   <Project Path="KhaozEngine.Server/KhaozEngine.Server.csproj" />
   <Project Path="KhaozEngine.Gpu/KhaozEngine.Gpu.csproj" />
-  <Project Path="KhaozEngine.Graphics/KhaozEngine.Graphics.csproj" />
   <Project Path="KhaozEngine.Gui/KhaozEngine.Gui.csproj" />
-  <Project Path="KhaozEngine.Input/KhaozEngine.Input.csproj" />
   <Project Path="KhaozEngine.Localization/KhaozEngine.Localization.csproj" />
   <Project Path="KhaozEngine.Netcode.Abstractions/KhaozEngine.Netcode.Abstractions.csproj" />
   <Project Path="KhaozEngine.Netcode/KhaozEngine.Netcode.csproj" />
@@ -29,12 +27,8 @@
   <Project Path="KhaozEngine.Pooling/KhaozEngine.Pooling.csproj" />
   <Project Path="KhaozEngine.Render2D/KhaozEngine.Render2D.csproj" />
   <Project Path="KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
-  <Project Path="KhaozEngine.Screens/KhaozEngine.Screens.csproj" />
   <Project Path="KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
-  <Project Path="KhaozEngine.Sprites/KhaozEngine.Sprites.csproj" />
   <Project Path="KhaozEngine.Tests/KhaozEngine.Tests.csproj" />
-  <Project Path="KhaozEngine.Time/KhaozEngine.Time.csproj" />
-  <Project Path="KhaozEngine.UI/KhaozEngine.UI.csproj" />
   <Project Path="KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
   <Project Path="KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
   <Project Path="Render2DSample/Render2DSample.csproj" />

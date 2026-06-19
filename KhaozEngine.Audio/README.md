@@ -1,13 +1,15 @@
-# KhaozEngine.Audio (experimental, 5.x)
+# KhaozEngine.Audio
 
-Game-agnostic background-music backend on the custom MonoGame-free stack.
+Game-agnostic audio on the custom MonoGame-free stack: streaming music + SFX + 3D positional audio.
 
 - `AudioSystem` — track list, volume (master x music), enable/disable, automatic rotation (`PlayMode`),
-  `TrackChanged` events. `LoadContent(directory)` then `Update()` once per frame.
-- `IMusicBackend` — the backend seam (games/tests may supply their own).
+  `TrackChanged` events; `PlaySfx` / `PlaySfx3D` / `SetListener` / `SfxVolume`. `LoadContent(directory)` then
+  `Update()` once per frame.
+- `IMusicBackend` / `ISfxBackend` — the backend seams (games/tests may supply their own).
 - `OpenAlMusicBackend` — cross-platform OpenAL (Silk.NET.OpenAL) streaming backend, decoding **WAV / OGG
   (NVorbis) / MP3 (NLayer)**, one track at a time with queued-buffer streaming.
+- `OpenAlSfxBackend` + `SfxVoicePool` — a 16-voice one-shot SFX pool over a shared OpenAL context, with
+  optional 3D positioning.
 
-No MonoGame. Part of the post-MonoGame 5.x line (`docs/ROADMAP.md`). `OpenAlMusicBackend` needs an OpenAL
-implementation at runtime (macOS ships one; bundle openal-soft for production). Music-only; SFX is a future
-layer.
+No MonoGame. Part of the 5.x engine (`docs/ROADMAP.md`). OpenAL is bundled (openal-soft, Silk.NET.OpenAL.Soft
+.Native) so no system OpenAL is required.

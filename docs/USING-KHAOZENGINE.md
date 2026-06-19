@@ -235,10 +235,18 @@ batch.End();
 
 - `Begin` overloads: `Begin(Camera2D, SamplerMode)` (world space), `Begin(IDesignViewport, SamplerMode)`
   (design space), `Begin(SamplerMode)` (raw screen). `SamplerMode` is `Linear` (default) or `Point`.
+- Model transform: each `Begin` also has a `Matrix4x4 transform` overload (`Begin(Matrix4x4)`,
+  `Begin(Camera2D, Matrix4x4)`, `Begin(IDesignViewport, Matrix4x4)`) applied to every draw before projection, so
+  a composed group (panel + icon + text) tilts/scales/translates as one. `DrawString` has no rotation of its
+  own, so the model transform is how text tilts with its card. A `SetScissor` during a transformed pass clips by
+  the un-rotated (design) bounds, not the rotated quad (the GPU scissor is axis-aligned).
 - `Camera2D`: `Position`/`Zoom`/`Rotation`, `WorldToScreen`/`ScreenToWorld`, `CenterOn`, `PanByScreenDelta`,
   `Focus(rect, ...)`, `ClampPosition(...)`. The camera-feel layer (follow, look-ahead, blends, room cameras,
   screen shake, parallax) lives alongside it in Render2D / Effects.
 - Scissor clipping: `SetScissor(Rect)` / `ClearScissor()` (composes with the design viewport).
+- `ImageRgba` (CPU, no GPU): `ImageRgba.Load(path)` / `Decode(bytes)` / `Surface2D.LoadImageRgba(path)` give a
+  tightly-packed RGBA8 image with `AlphaAt` / `IsOpaqueAt(threshold)` for opaque-pixel collision masks. Pass
+  `img.Pixels` to `Surface2D.CreateTexture` to also draw it without re-decoding.
 - Offscreen capture (headless / tooling): `Surface2D.CaptureToTexture(...)` and `CaptureToRgba(...)`.
 
 ---

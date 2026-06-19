@@ -1,4 +1,4 @@
-# KhaozEngine.Particles (experimental)
+# KhaozEngine.Particles
 
 Pure, deterministic, headless-testable particle simulation for the MonoGame-free 5.x stack
 (`System.Numerics` + BCL only, no Veldrid/MonoGame, no project refs).

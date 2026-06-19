@@ -1,12 +1,16 @@
-# KhaozEngine.Windowing (experimental, 5.x)
+# KhaozEngine.Windowing
 
 Windowing + input foundation for the custom MonoGame-free stack.
 
-- `AppWindow` — owns the SDL2/Metal window, Veldrid device + swapchain, and the frame loop. `Run(onFrame)`
-  clears + presents around your callback; each `Frame` gives `Dt`, an engine-native `InputState`, and the
-  GPU command list to draw into. `Device`/`MainSwapchain` are exposed as the advanced GPU boundary.
-- `InputState` — per-frame keyboard + mouse snapshot (`IsDown`/`WasPressed` for `Key`/`MouseButton`,
-  mouse position/delta, scroll). No MonoGame.
+- `AppWindow` — owns the Silk.NET (GLFW) window, the GPU device + swapchain (via `KhaozEngine.Gpu`), and the
+  frame loop. `Run(onFrame)` clears + presents around your callback; each `Frame` gives `Dt`, an engine-native
+  `InputState`, framebuffer size, and the GPU command list to draw into. `AppWindow.Scaled(...)` fits a
+  design-sized window to the display.
+- `InputState` — per-frame keyboard + mouse + gamepad + touch snapshot (`IsDown`/`WasPressed` for
+  `Key`/`MouseButton`, mouse position/delta/scroll, `Gamepad(i)`). Immutable; no MonoGame.
+- `InputManager` / `Pointer` — the higher-level read: unified pointer, edges, bounds helpers (`IsTapIn` etc.),
+  region blocking, keyboard/gamepad/menu navigation.
+- `GameClock` (pause/timescale), `DesignViewport` / `AdaptiveViewport` (letterbox/fill/stretch + responsive).
 
-The 5.x renderers (`Render2D`, ...) build on this. Metal-only for now; needs SDL2 at runtime
-(`brew install sdl2`). Gamepad/touch and the rich gesture/`InputManager` layer are follow-ups.
+The 5.x renderers (`Render2D`, `Render3D`) build on this. Silk.NET windowing ships GLFW natives bundled per-RID,
+so there is no SDL2/brew step. Touch is mobile-deferred (no 5.x mobile-windowing head yet).

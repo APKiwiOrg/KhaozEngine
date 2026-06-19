@@ -20,15 +20,15 @@ Clipboard.TrySetClipboardImageRgba32(w, h, rgbaPixels);      // Windows (CF_DIB)
 
 Backend dispatch:
 
-- **Text get/set:** SDL2 first (the clipboard MonoGame's DesktopGL window already owns), then a macOS
+- **Text get/set:** SDL2 first (used if an SDL2 library is present on the host), then a macOS
   `NSPasteboard` fallback, then the mobile bridge on Android/iOS.
 - **PNG image:** macOS `NSPasteboard` and the mobile bridge. Windows is intentionally not attempted for
   PNG (no reliable image-paste path), so it returns `false`.
 - **RGBA32 image:** Windows only, written as a bottom-up `CF_DIB`. Other platforms return `false`.
 
-The SDL2 / `user32` / `kernel32` / `libobjc` entry points are resolved at runtime by the host process
-(MonoGame.Framework.DesktopGL ships SDL2). When a backend is missing the call falls through and
-ultimately returns the empty/`false` result rather than throwing.
+The SDL2 / `user32` / `kernel32` / `libobjc` entry points are resolved at runtime by the host process.
+When a backend (or SDL2) is missing the call falls through and ultimately returns the empty/`false` result
+rather than throwing.
 
 ### Mobile bridge (Android / iOS)
 

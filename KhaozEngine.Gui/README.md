@@ -1,7 +1,10 @@
-# KhaozEngine.Gui (experimental, 5.x)
+# KhaozEngine.Gui
 
-Screen-stack + widgets on the custom MonoGame-free stack.
+Immediate-mode + retained UI on the custom MonoGame-free stack.
 
+- `GuiSurface` — immediate-mode UI for a `Run`-loop game: `Begin(batch?, pointer)` then `Panel`/`Label`/`Swatch`/
+  `Button`->bool/`Slider`/hover, with a `PointerCaptured` click-through gate. `FocusNavigator` drives
+  keyboard/gamepad menu focus.
 - `ScreenStack` — owns a stack of `Screen`s; routes input top-to-bottom (input-consumption + modal layering,
   the click-through model), draws bottom-to-top, drives transitions. Exposes a shared `Pointer` + `InputState`.
 - `Screen` — base UI surface: `Update(dt, receivesInput)` (returns whether it consumed input) + `Draw(SpriteBatch)`,
@@ -24,6 +27,4 @@ Screen-stack + widgets on the custom MonoGame-free stack.
 Text wrap/alignment lives in `KhaozEngine.Render2D.TextLayout` (over the `ITextMeasurer` seam, so the layout
 math is headless-testable); clipping uses `SpriteBatch` scissor (`SetScissor`/`ClearScissor`, DPI-aware). Ported
 from `KhaozEngine.Screens`/`UI` (game-specific layout coupling dropped). Built on `KhaozEngine.Windowing`
-(Pointer/Input) + `KhaozEngine.Render2D` (SpriteBatch/SpriteFont/Texture2D). Part of the post-MonoGame 5.x line.
-Pause/timescale, touch/gamepad, and virtual-resolution transforms are follow-ups; the GPU scissor clip is not
-yet visually verified (Metal-only, built without a display).
+(Pointer/Input) + `KhaozEngine.Render2D` (SpriteBatch/SpriteFont/Texture2D). Part of the 5.x engine.

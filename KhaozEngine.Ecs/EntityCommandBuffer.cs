@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using KhaozEngine.Pooling;
 
 namespace KhaozEngine.Ecs;
 
@@ -10,8 +11,23 @@ public sealed class EntityCommandBuffer
 {
     private enum Op { Create, Despawn, Set, Remove, Defer }
 
+    // Poolable wrapper so the remap dictionary survives across Playback calls without re-allocating.
+    // The pool calls Reset() on return, which clears the dictionary so the next rent starts empty.
+    internal sealed class PoolableRemapDictionary : IPoolable
+    {
+        public int PoolIndex { get; set; } = -1;
+        public readonly Dictionary<int, Entity> Dict = new();
+        public void Reset() => Dict.Clear();
+    }
+
     private readonly List<(Op op, Entity target, int placeholder, Action<World, Entity>? apply)> _cmds = new();
     private int _nextPlaceholder = -1;
+
+    // One-item instance pool per EntityCommandBuffer: EntityCommandBuffer is not thread-safe
+    // (no locks on _cmds) so a shared static pool would be unsafe when multiple ECBs run concurrently.
+    // An instance pool scoped to each ECB matches the single-threaded usage contract exactly.
+    internal readonly ObjectPool<PoolableRemapDictionary> _remapPool =
+        new(() => new PoolableRemapDictionary(), prewarmCount: 1);
 
     /// <summary>Records creation of a new entity; the returned handle is a placeholder usable in later Set calls.</summary>
     public Entity Create()
@@ -37,21 +53,30 @@ public sealed class EntityCommandBuffer
     /// <summary>Applies all recorded commands in order, then clears the buffer.</summary>
     public void Playback(World world)
     {
-        var resolved = new Dictionary<int, Entity>();   // placeholder id -> real entity
-        foreach (var c in _cmds)
-        {
-            if (c.op == Op.Create) { resolved[c.placeholder] = world.Spawn(); continue; }
+        PoolableRemapDictionary remap = _remapPool.Rent()
+            ?? throw new InvalidOperationException("EntityCommandBuffer.Playback is not re-entrant: remap pool exhausted.");
 
-            Entity target = Resolve(c.target, resolved);
-            switch (c.op)
+        try
+        {
+            foreach (var c in _cmds)
             {
-                case Op.Despawn: world.Despawn(target); break;
-                case Op.Set: c.apply!(world, target); break;
-                case Op.Remove: c.apply!(world, target); break;
-                case Op.Defer: c.apply!(world, default); break;
+                if (c.op == Op.Create) { remap.Dict[c.placeholder] = world.Spawn(); continue; }
+
+                Entity target = Resolve(c.target, remap.Dict);
+                switch (c.op)
+                {
+                    case Op.Despawn: world.Despawn(target); break;
+                    case Op.Set: c.apply!(world, target); break;
+                    case Op.Remove: c.apply!(world, target); break;
+                    case Op.Defer: c.apply!(world, default); break;
+                }
             }
         }
-        _cmds.Clear();
+        finally
+        {
+            _remapPool.Return(remap);   // Reset() clears Dict; safe even when an exception is thrown.
+            _cmds.Clear();
+        }
     }
 
     private static Entity Resolve(Entity e, Dictionary<int, Entity> resolved) =>

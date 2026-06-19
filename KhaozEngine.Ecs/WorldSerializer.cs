@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using KhaozEngine.Serialization;
 
 namespace KhaozEngine.Ecs;
@@ -15,6 +17,26 @@ namespace KhaozEngine.Ecs;
 /// </summary>
 public sealed class WorldSerializer
 {
+    /// <summary>The save <c>FormatVersion</c> this build writes and is the newest it can read.</summary>
+    public const int CurrentFormatVersion = 1;
+
+    // Document-level upgrade hooks, keyed by the version they upgrade FROM (ascending). A migration
+    // registered at N takes a document at version N and returns it at version N+1. Load applies every
+    // migration from the save's version up to CurrentFormatVersion before deserializing.
+    private static readonly SortedDictionary<int, Func<JsonObject, JsonObject>> _migrations = new();
+
+    /// <summary>
+    /// Registers a document-level upgrade from <paramref name="fromVersion"/> to <paramref name="fromVersion"/>+1.
+    /// On <see cref="Load(string)"/> of an older save, registered migrations run in ascending order to bring the
+    /// document up to <see cref="CurrentFormatVersion"/> before it is deserialized. The hook receives and returns
+    /// the raw <see cref="JsonObject"/> save document.
+    /// </summary>
+    public static void RegisterMigration(int fromVersion, Func<JsonObject, JsonObject> upgrade)
+        => _migrations[fromVersion] = upgrade ?? throw new ArgumentNullException(nameof(upgrade));
+
+    // Resolves the persistence key for a component type: its [ComponentId] if present, else Type.FullName.
+    private static string KeyFor(Type t) => t.GetCustomAttribute<ComponentIdAttribute>()?.Id ?? t.FullName!;
+
     private readonly Dictionary<string, Type> _byName = new();
     private readonly JsonSerializerOptions _options;
 
@@ -31,11 +53,11 @@ public sealed class WorldSerializer
         {
             if (!t.IsValueType || t.IsAbstract || !typeof(IComponent).IsAssignableFrom(t))
                 throw new ArgumentException($"{t.FullName} is not a struct implementing IComponent.");
-            _byName[t.FullName!] = t;
+            _byName[KeyFor(t)] = t;
         }
         // The built-in Parent component lives in the engine assembly, so callers' type lists/scans
         // won't include it; auto-register so hierarchies serialize.
-        _byName[typeof(Parent).FullName!] = typeof(Parent);
+        _byName[KeyFor(typeof(Parent))] = typeof(Parent);
     }
 
     /// <summary>Builds a serializer from every <c>struct : IComponent</c> in <typeparamref name="T"/>'s assembly.</summary>
@@ -67,7 +89,7 @@ public sealed class WorldSerializer
                     object value = reg.IsTag(tid)
                         ? Activator.CreateInstance(t)!
                         : arch.Columns[tid].GetBoxed(row);
-                    ed.Components[t.FullName!] = JsonSerializer.SerializeToElement(value, t, _options);
+                    ed.Components[KeyFor(t)] = JsonSerializer.SerializeToElement(value, t, _options);
                 }
                 doc.Entities.Add(ed);
             }
@@ -78,7 +100,30 @@ public sealed class WorldSerializer
     /// <summary>Deserializes a world from a JSON string.</summary>
     public World Load(string json)
     {
-        SaveDoc doc = JsonSerializer.Deserialize<SaveDoc>(json, _options)
+        if (JsonNode.Parse(json) is not JsonObject root)
+            throw new InvalidOperationException("Empty or invalid save document.");
+
+        // Read the version BEFORE deserializing so a future save is rejected, not mis-read. A missing
+        // FormatVersion is treated as version 1: pre-existing saves always wrote 1, and that is the
+        // lowest known version.
+        int found = root.TryGetPropertyValue("FormatVersion", out JsonNode? fv) && fv is not null
+            ? fv.GetValue<int>()
+            : CurrentFormatVersion;
+
+        if (found > CurrentFormatVersion)
+            throw new UnsupportedSaveVersionException(found, CurrentFormatVersion);
+
+        // Older save: bring it up to the current version with any registered migrations (ascending).
+        for (int v = found; v < CurrentFormatVersion; v++)
+        {
+            if (!_migrations.TryGetValue(v, out Func<JsonObject, JsonObject>? upgrade))
+                throw new InvalidOperationException(
+                    $"No migration registered to upgrade save FormatVersion {v} to {v + 1}.");
+            root = upgrade(root);
+            root["FormatVersion"] = v + 1;
+        }
+
+        SaveDoc doc = root.Deserialize<SaveDoc>(_options)
             ?? throw new InvalidOperationException("Empty or invalid save document.");
         var world = new World();
         foreach (EntityDoc ed in doc.Entities)
@@ -114,7 +159,7 @@ public sealed class WorldSerializer
 
     private sealed class SaveDoc
     {
-        public int FormatVersion { get; set; } = 1;
+        public int FormatVersion { get; set; } = CurrentFormatVersion;
         public int NextId { get; set; }
         public List<FreeSlot> FreeIds { get; set; } = new();
         public List<EntityDoc> Entities { get; set; } = new();

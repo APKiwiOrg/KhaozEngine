@@ -4,6 +4,22 @@ All notable changes to KhaozEngine. The 5.x line `<KhaozEngine5xVersion>` is the
 stack + the graduated foundation packages); the legacy 4.x line `<Version>` carries only the genuinely-MonoGame
 packages. Both versions live in `Directory.Build.props`. See the post-MonoGame plan in `docs/ROADMAP.md`.
 
+## 5.61.0 (custom 5.x line)
+
+On-device offscreen capture for the 2D surface: `Render2DSurface.CaptureToTexture(width, height, clear,
+Action<SpriteBatch> draw)` renders a 2D pass into a fresh sampleable `Texture2D` on the surface's own live
+GPU device and returns it (caller-owned, dispose when done). Unlike `Render2DSnapshot.Capture`, which spins
+up a throwaway headless device and reads back to the CPU, this stays on the live device, so the draw callback
+can reuse textures/fonts already loaded on the surface. The one-shot freeze-frame screenshot a game needs (a
+death scene captured to a texture and shown behind the game-over UI) without rebuilding assets on a second
+device.
+
+- **`KhaozEngine.Render2D`:** new `Render2DSurface.CaptureToTexture`. Runs synchronously (submits + waits on
+  the GPU) into an offscreen `RenderTarget | Sampled` target sized to `width`/`height` (clamped to >= 1). The
+  callback gets its own batch and does the usual `Begin(camera)`/`Begin(viewport)` + `End()` passes inside it.
+- Shared mechanism lives in `Render2DCore.RenderToTexture(IGpuDevice, ...)` so it is GPU-testable headlessly
+  (gated `[GpuFact]`: renders a known quad, reads it back, asserts the captured pixels).
+
 ## 5.60.0 (custom 5.x line)
 
 Menu-navigation input layer: a MonoGame-free `InputManager` in `KhaozEngine.Windowing`, the 5.x rebuild

@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 using KhaozEngine.Render2D.Internal;
 using KhaozEngine.Windowing;
 
@@ -30,6 +31,21 @@ namespace KhaozEngine.Render2D
 
         /// <summary>Bind this frame's command list/viewport to the batch. Call once per frame before drawing.</summary>
         public void NewFrame(Frame frame) => _core.Batch.NewFrame(frame.Commands, frame.Width, frame.Height);
+
+        /// <summary>
+        /// Render an offscreen 2D pass into a fresh sampleable <see cref="Texture2D"/> on THIS surface's live GPU
+        /// device. The <paramref name="draw"/> callback gets its own batch (do the usual <c>Begin(..)/End()</c>
+        /// passes inside it) and can draw textures/fonts already loaded on this surface - unlike
+        /// <see cref="Render2DSnapshot.Capture"/>, which spins up a throwaway headless device and cannot reuse
+        /// live assets. Intended for one-shot captures (e.g. a freeze-frame screenshot). The returned texture is
+        /// owned by the caller - dispose it when done. Runs synchronously (submits + waits for the GPU).
+        /// </summary>
+        /// <param name="width">Target width in pixels (clamped to &gt;= 1).</param>
+        /// <param name="height">Target height in pixels (clamped to &gt;= 1).</param>
+        /// <param name="clear">Colour the target is cleared to before <paramref name="draw"/> runs.</param>
+        /// <param name="draw">Draws the scene into the supplied offscreen batch.</param>
+        public Texture2D CaptureToTexture(int width, int height, Vector4 clear, Action<SpriteBatch> draw) =>
+            Render2DCore.RenderToTexture(_core.Gd, width, height, clear, draw);
 
         public void Dispose() => _core.Dispose();
     }

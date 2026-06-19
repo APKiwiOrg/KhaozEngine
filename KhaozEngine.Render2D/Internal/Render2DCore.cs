@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Numerics;
 using StbImageSharp;
 using KhaozEngine.Gpu;
 
@@ -37,5 +38,48 @@ namespace KhaozEngine.Render2D.Internal
             SpriteFont.Build(Gd, File.ReadAllBytes(ttfPath), pixelHeight, oversample);
 
         public void Dispose() { Batch.Dispose(); if (_ownsDevice) Gd.Dispose(); }
+
+        /// <summary>
+        /// Offscreen 2D render into a fresh sampleable <see cref="Texture2D"/> on <paramref name="gd"/>. Unlike
+        /// <see cref="Render2DSnapshot.Capture"/> (which owns a throwaway headless device and reads back to the
+        /// CPU), this stays on the supplied live device, so the <paramref name="draw"/> callback can use
+        /// textures/fonts already created on that device and the result is a GPU texture you can sample. The
+        /// returned <see cref="Texture2D"/> owns the GPU target; the caller disposes it.
+        /// </summary>
+        public static Texture2D RenderToTexture(IGpuDevice gd, int width, int height, Vector4 clear, Action<SpriteBatch> draw)
+        {
+            ArgumentNullException.ThrowIfNull(draw);
+            width = Math.Max(1, width);
+            height = Math.Max(1, height);
+
+            var f = gd.Factory;
+            IGpuTexture target = f.CreateTexture(GpuTextureDescription.Texture2D(
+                (uint)width, (uint)height, GpuPixelFormat.R8G8B8A8UNorm,
+                GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
+            IGpuFramebuffer fb = f.CreateFramebuffer(null, target);
+            // A batch whose pipeline targets the offscreen framebuffer's format, sharing the same device so any
+            // texture/font created on it draws straight in. Disposed here; only the target texture survives.
+            var batch = new SpriteBatch(gd, fb.Outputs);
+            IGpuCommandList cl = f.CreateCommandList();
+            try
+            {
+                cl.Begin();
+                cl.SetFramebuffer(fb);
+                cl.ClearColorTarget(0, clear);
+                batch.NewFrame(cl, width, height);
+                draw(batch);
+                cl.End();
+                gd.Submit(cl);
+                gd.WaitForIdle();
+            }
+            finally
+            {
+                cl.Dispose();
+                batch.Dispose();
+                fb.Dispose();
+            }
+
+            return new Texture2D(target, width, height);
+        }
     }
 }

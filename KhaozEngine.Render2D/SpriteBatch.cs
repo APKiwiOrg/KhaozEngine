@@ -35,8 +35,11 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
         readonly IGpuResourceLayout _layout;
         readonly IGpuPipeline _pipeline;
         readonly IGpuShaderSet _shaders;
-        readonly IGpuSampler _sampler;
-        readonly Dictionary<IGpuTexture, IGpuResourceSet> _sets = new();
+        readonly IGpuSampler _linearSampler;
+        readonly IGpuSampler _pointSampler;
+        IGpuSampler _sampler;   // the sampler for the current Begin..End pass (Linear by default)
+        // Keyed by (texture, sampler): a texture drawn under both Linear and Point in one frame needs a set each.
+        readonly Dictionary<(IGpuTexture Tex, IGpuSampler Samp), IGpuResourceSet> _sets = new();
         readonly QuadRunBuilder<V> _runs = new();
 
         const uint VertexSizeBytes = 32;       // V = Pos(8) + Uv(8) + Color(16)
@@ -57,7 +60,9 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
         {
             _gd = gd;
             var f = gd.Factory;
-            _sampler = gd.LinearSampler;
+            _linearSampler = gd.LinearSampler;
+            _pointSampler = gd.PointSampler;
+            _sampler = _linearSampler;
             _layout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 new GpuResourceLayoutElement("Tex", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("Samp", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
@@ -146,18 +151,22 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
             _cl = cl; _vw = viewportW; _vh = viewportH; _flushIndex = 0;
         }
 
-        /// <summary>Begin a batch in world space through <paramref name="camera"/>.</summary>
-        public void Begin(Camera2D camera) { _vp = camera.GetViewProjection(_vw, _vh); _viewport = null; ResetBatches(); }
+        /// <summary>Begin a batch in world space through <paramref name="camera"/>, sampled per <paramref name="sampler"/>
+        /// (default <see cref="SamplerMode.Linear"/>; pass <see cref="SamplerMode.Point"/> for crisp pixel art).</summary>
+        public void Begin(Camera2D camera, SamplerMode sampler = SamplerMode.Linear) { _sampler = Resolve(sampler); _vp = camera.GetViewProjection(_vw, _vh); _viewport = null; ResetBatches(); }
 
-        /// <summary>Begin a batch in screen space (pixels, top-left origin).</summary>
-        public void Begin() { _vp = Matrix4x4.CreateOrthographicOffCenter(0, _vw, _vh, 0, -1, 1); _viewport = null; ResetBatches(); }
+        /// <summary>Begin a batch in screen space (pixels, top-left origin), sampled per <paramref name="sampler"/>.</summary>
+        public void Begin(SamplerMode sampler = SamplerMode.Linear) { _sampler = Resolve(sampler); _vp = Matrix4x4.CreateOrthographicOffCenter(0, _vw, _vh, 0, -1, 1); _viewport = null; ResetBatches(); }
 
         /// <summary>
         /// Begin a batch in design space through <paramref name="viewport"/>: subsequent draws use design
         /// coordinates and are scaled, centered, and letterboxed to the current window for the viewport's mode.
         /// A scissor set while this is active (<see cref="SetScissor"/>) is mapped through the viewport too.
+        /// Sampled per <paramref name="sampler"/> (default <see cref="SamplerMode.Linear"/>).
         /// </summary>
-        public void Begin(Windowing.IDesignViewport viewport) { _vp = viewport.GetClipProjection(_vw, _vh); _viewport = viewport; ResetBatches(); }
+        public void Begin(Windowing.IDesignViewport viewport, SamplerMode sampler = SamplerMode.Linear) { _sampler = Resolve(sampler); _vp = viewport.GetClipProjection(_vw, _vh); _viewport = viewport; ResetBatches(); }
+
+        IGpuSampler Resolve(SamplerMode mode) => mode == SamplerMode.Point ? _pointSampler : _linearSampler;
 
         public void Draw(Texture2D tex, Vector2 position, Vector4 color) =>
             Draw(tex, new Vector4(position.X, position.Y, tex.Width, tex.Height), new Vector4(0, 0, 1, 1), color);
@@ -290,10 +299,11 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
                 var tex = (IGpuTexture)key;
                 // Upload directly from the run's backing List<V> — no ToArray() copy.
                 _gd.UpdateBuffer(vb, byteOffset, (ReadOnlySpan<V>)CollectionsMarshal.AsSpan(verts));
-                if (!_sets.TryGetValue(tex, out var set))
+                var setKey = (tex, _sampler);
+                if (!_sets.TryGetValue(setKey, out var set))
                 {
                     set = f.CreateResourceSet(new GpuResourceSetDescription(_layout, tex, _sampler));
-                    _sets[tex] = set;
+                    _sets[setKey] = set;
                 }
                 _cl.SetGraphicsResourceSet(0, set);
                 _cl.SetVertexBuffer(0, vb);

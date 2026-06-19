@@ -51,6 +51,19 @@ namespace KhaozEngine.Gui
             return true;
         }
 
+        /// <summary>
+        /// Adjust <see cref="Value"/> by <paramref name="delta"/> (clamped 0..1) for keyboard / gamepad control,
+        /// where pointer dragging is not in play. No-op when disabled. Returns true if the value changed.
+        /// </summary>
+        public bool Nudge(float delta)
+        {
+            if (!Enabled || delta == 0f) return false;
+            float newValue = Math.Clamp(Value + delta, 0f, 1f);
+            if (newValue == Value) return false;
+            Value = newValue;
+            return true;
+        }
+
         /// <summary>Draw the track, fill, and thumb. <paramref name="white"/> is a 1x1 white texture.</summary>
         public void Draw(SpriteBatch batch, Texture2D white)
         {

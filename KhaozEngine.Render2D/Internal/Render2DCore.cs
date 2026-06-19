@@ -81,5 +81,45 @@ namespace KhaozEngine.Render2D.Internal
 
             return new Texture2D(target, width, height);
         }
+
+        /// <summary>
+        /// As <see cref="RenderToTexture"/>, but reads the result back to a tightly-packed CPU RGBA8 buffer
+        /// (<c>width * height * 4</c> bytes, row-major, top-left origin) and frees the GPU target. The on-device
+        /// equivalent of <see cref="Render2DSnapshot.Capture"/> - it reuses the live device's textures/fonts
+        /// rather than a throwaway headless one. For pixels a game needs on the CPU (e.g. a clipboard copy).
+        /// </summary>
+        public static byte[] RenderToRgba(IGpuDevice gd, int width, int height, Vector4 clear, Action<SpriteBatch> draw)
+        {
+            ArgumentNullException.ThrowIfNull(draw);
+            width = Math.Max(1, width);
+            height = Math.Max(1, height);
+
+            var f = gd.Factory;
+            IGpuTexture target = f.CreateTexture(GpuTextureDescription.Texture2D(
+                (uint)width, (uint)height, GpuPixelFormat.R8G8B8A8UNorm,
+                GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
+            IGpuFramebuffer fb = f.CreateFramebuffer(null, target);
+            var batch = new SpriteBatch(gd, fb.Outputs);
+            IGpuCommandList cl = f.CreateCommandList();
+            try
+            {
+                cl.Begin();
+                cl.SetFramebuffer(fb);
+                cl.ClearColorTarget(0, clear);
+                batch.NewFrame(cl, width, height);
+                draw(batch);
+                cl.End();
+                gd.Submit(cl);
+                gd.WaitForIdle();
+                return GpuReadback.ToRgba(gd, target, width, height);
+            }
+            finally
+            {
+                cl.Dispose();
+                batch.Dispose();
+                fb.Dispose();
+                target.Dispose();
+            }
+        }
     }
 }

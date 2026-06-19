@@ -4,6 +4,23 @@ All notable changes to KhaozEngine. The 5.x line `<KhaozEngine5xVersion>` is the
 stack + the graduated foundation packages); the legacy 4.x line `<Version>` carries only the genuinely-MonoGame
 packages. Both versions live in `Directory.Build.props`. See the post-MonoGame plan in `docs/ROADMAP.md`.
 
+## 5.63.0 (custom 5.x line)
+
+Three additions consumers asked for after the SpaceGame port: point sampling, CPU-side capture, and keyboard
+slider control.
+
+- **`KhaozEngine.Render2D` - point sampling:** `SpriteBatch.Begin(...)` now takes an optional
+  `SamplerMode` (`Linear` default, `Point` for crisp pixel art - the 4.x `SamplerState.PointClamp` equivalent).
+  Per-pass: pass it to the `Begin(Camera2D)` / `Begin(IDesignViewport)` / `Begin()` overload. Resource sets are
+  keyed by (texture, sampler) so a texture drawn under both filters in one frame gets a set each. GPU-gated test
+  upscales a checker and asserts the Point pass keeps hard edges where Linear blends.
+- **`KhaozEngine.Render2D` - CPU capture:** `Render2DSurface.CaptureToRgba(w, h, clear, draw)` renders an
+  offscreen pass on the live device (reusing its textures/fonts) and returns a tightly-packed RGBA8 byte buffer -
+  the on-device equivalent of `Render2DSnapshot.Capture`, for pixels a game needs on the CPU (e.g. a clipboard
+  image copy). Shared mechanism in `Render2DCore.RenderToRgba`; GPU-gated test.
+- **`KhaozEngine.Gui` - slider keyboard control:** `Slider.Nudge(delta)` adjusts the value (clamped 0..1) for
+  keyboard / gamepad, independent of pointer drag; returns whether it changed. Unit-tested.
+
 ## 5.62.0 (custom 5.x line)
 
 Scaled text: `SpriteBatch.DrawString(font, text, position, color, scale)` (Color + Vector4 overloads) draws the

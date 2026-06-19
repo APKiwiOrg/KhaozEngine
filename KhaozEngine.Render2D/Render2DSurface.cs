@@ -47,6 +47,15 @@ namespace KhaozEngine.Render2D
         public Texture2D CaptureToTexture(int width, int height, Vector4 clear, Action<SpriteBatch> draw) =>
             Render2DCore.RenderToTexture(_core.Gd, width, height, clear, draw);
 
+        /// <summary>
+        /// As <see cref="CaptureToTexture"/>, but returns a tightly-packed CPU RGBA8 buffer
+        /// (<c>width * height * 4</c> bytes, row-major, top-left origin) instead of a GPU texture - for pixels a
+        /// game needs on the CPU (e.g. a clipboard image copy). Reuses this surface's live device + assets. Runs
+        /// synchronously (submits + waits for the GPU).
+        /// </summary>
+        public byte[] CaptureToRgba(int width, int height, Vector4 clear, Action<SpriteBatch> draw) =>
+            Render2DCore.RenderToRgba(_core.Gd, width, height, clear, draw);
+
         public void Dispose() => _core.Dispose();
     }
 }

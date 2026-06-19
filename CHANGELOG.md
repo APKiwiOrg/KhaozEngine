@@ -4,6 +4,17 @@ All notable changes to KhaozEngine. The 5.x line `<KhaozEngine5xVersion>` is the
 stack + the graduated foundation packages); the legacy 4.x line `<Version>` carries only the genuinely-MonoGame
 packages. Both versions live in `Directory.Build.props`. See the post-MonoGame plan in `docs/ROADMAP.md`.
 
+## 6.3.0
+
+Additive helpers (non-breaking) that unblock Nullwake's 6.x adoption. Rendering byte-identical; golden snapshots unaffected.
+
+- `KhaozEngine.Primitives.Color`: scalar multiply `operator *(Color, float)` and the symmetric `operator *(float, Color)`
+  scale all four channels including alpha (unclamped), matching `Vector4 * float` / legacy MonoGame `Color * float`.
+- `KhaozEngine.Primitives.Color.Lerp(a, b, t)`: component-wise, unclamped, byte-identical to
+  `System.Numerics.Vector4.Lerp` (delegates to it - no clamp, no rounding through bytes).
+- `KhaozEngine.Windowing.InputManager.GetScrollIn(Rect bounds)`: integer scroll-notch delta when the pointer is over
+  `bounds`, else 0 (scopes wheel scrolling to a region via the bounds helpers, no raw position check).
+
 ## 6.2.0
 
 Cross-platform clip-space correction (port hardening). No behavior change on Metal (golden-snapshot byte-identical).

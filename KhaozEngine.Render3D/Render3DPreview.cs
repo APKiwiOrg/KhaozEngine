@@ -106,9 +106,15 @@ namespace KhaozEngine.Render3D
         /// Render one preview frame into the (reused) offscreen target and return the sampleable
         /// <see cref="Texture"/>. Clears the scene's instance queue, invokes <paramref name="drawFrame"/> to queue
         /// the preview instance(s) (typically one <see cref="Scene3D.Draw(MeshHandle,System.Numerics.Matrix4x4)"/>
-        /// with the current rotation), records the scene on its own command list, submits, and waits for the GPU
-        /// so the result is ready to sample later this frame by the 2D pass.
+        /// with the current rotation), records the scene on its own command list, and submits.
         /// </summary>
+        /// <remarks>
+        /// Does NOT block the CPU. The preview runs on the same device/queue as the on-screen passes, so a later
+        /// same-frame 2D pass that samples <see cref="Texture"/> sees the finished render by submission ordering
+        /// (the preview submit precedes the 2D submit; the GPU serializes them). A CPU read of the result instead
+        /// goes through <see cref="GpuReadback"/>, which fences itself. Avoiding a per-frame <c>WaitForIdle</c> here
+        /// means N live previews no longer cost N full pipeline stalls per frame.
+        /// </remarks>
         public Texture2D Capture(Action<Scene3D> drawFrame)
         {
             Scene.Begin();
@@ -117,7 +123,6 @@ namespace KhaozEngine.Render3D
             Scene.RenderInternal(_cl, Width, Height, _fb);
             _cl.End();
             _gd.Submit(_cl);
-            _gd.WaitForIdle();
             return _texture;
         }
 

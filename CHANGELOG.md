@@ -4,6 +4,24 @@ All notable changes to KhaozEngine. The 5.x line `<KhaozEngine5xVersion>` is the
 stack + the graduated foundation packages); the legacy 4.x line `<Version>` carries only the genuinely-MonoGame
 packages. Both versions live in `Directory.Build.props`. See the post-MonoGame plan in `docs/ROADMAP.md`.
 
+## 5.71.0 (custom 5.x line)
+
+Scoped random-rotation pool in `KhaozEngine.Audio.AudioSystem`. A game can register every track (so
+`PlayTrack(name)` plays any of them on demand) while restricting which tracks the random picker is allowed to
+surface - e.g. keep menu music on a menu subset instead of letting a gameplay or death track boot on the menu.
+
+- **`KhaozEngine.Audio`:** new `AudioSystem.SetRotationPool(IEnumerable<string>? trackNames)`. `null` (the
+  default / unset state) keeps random rotation over ALL registered tracks, byte-for-byte the previous behaviour.
+  A non-null pool scopes `PlayRandomTrack()` (the deferred boot first-play, `MusicEnabled = true` resume, and
+  end-of-track auto-advance under `PlayMode.RandomRotation`) to only the named tracks that are registered. Names
+  not registered are ignored; names resolve lazily, so it is safe to call before or after `LoadContent` and
+  before or after the tracks are registered.
+- `PlayTrack(name)` / `PlayTrack(index)` are unaffected: any registered track still plays on demand regardless
+  of the pool. The "don't repeat the same track twice in a row" rule operates within the pool. A pool of size 1
+  plays that track every time. If the pool resolves to no registered tracks (e.g. names not yet loaded) rotation
+  falls back to ALL tracks with a one-time warning, so a misconfigured pool never silences music.
+- Additive, back-compatible: existing callers that never touch the pool are unchanged.
+
 ## 5.70.0 (custom 5.x line)
 
 Live render-to-texture for 3D model previews in `KhaozEngine.Render3D`: render a rotating model into a

@@ -23,6 +23,9 @@ public sealed class AudioSystem : IDisposable
     private readonly List<string> _sfxNames = new();
     private readonly Dictionary<string, int> _sfx = new();   // name -> backend handle
     private readonly HashSet<string> _warnedSfx = new();     // warn-once for unknown SFX
+    private List<string>? _rotationPoolNames;                // null = random rotation draws from ALL tracks
+    private readonly HashSet<string> _warnedPoolNames = new(); // debug-once for pool names not registered
+    private bool _warnedEmptyPool;                           // warn-once for an empty resolved pool fallback
     private Random _rng = new();
     private float _masterVolume = 0.66f;
     private float _musicVolume = 0.4f;
@@ -133,6 +136,31 @@ public sealed class AudioSystem : IDisposable
 
     /// <summary>Replaces the track-shuffle RNG with a seeded instance.</summary>
     public void SetRng(Random rng) { _rng = rng; }
+
+    /// <summary>
+    /// Scopes which registered tracks <see cref="PlayRandomTrack"/> is allowed to pick from (the random
+    /// boot first-play, <see cref="MusicEnabled"/> resume, and end-of-track auto-advance under
+    /// <see cref="PlayMode.RandomRotation"/>). Lets a game register every track (so <see cref="PlayTrack(string)"/>
+    /// can play any on demand) while keeping random selection on, say, a menu subset.
+    /// </summary>
+    /// <param name="trackNames">
+    /// The names eligible for random rotation. <c>null</c> (the default / unset state) restores rotation over
+    /// ALL registered tracks. Names not registered are ignored. Names resolve lazily, so this is safe to call
+    /// before or after <see cref="LoadContent"/> and before or after the tracks are registered.
+    /// </param>
+    /// <remarks>
+    /// <see cref="PlayTrack(string)"/> / <see cref="PlayTrack(int)"/> are unaffected - any registered track still
+    /// plays on demand regardless of the pool. The "don't repeat the same track twice in a row" rule operates
+    /// within the pool. A pool of size 1 plays that track every time. If the pool resolves to no registered
+    /// tracks (e.g. names not yet loaded) rotation falls back to ALL tracks with a one-time warning, so a
+    /// misconfigured pool never silences music.
+    /// </remarks>
+    public void SetRotationPool(IEnumerable<string>? trackNames)
+    {
+        _rotationPoolNames = trackNames is null ? null : new List<string>(trackNames);
+        _warnedPoolNames.Clear();
+        _warnedEmptyPool = false;
+    }
 
     /// <summary>Master volume (0.0 - 1.0). Scales all audio output.</summary>
     public float MasterVolume
@@ -287,16 +315,17 @@ public sealed class AudioSystem : IDisposable
 
         try
         {
+            List<int> pool = ResolveRotationIndices(trackCount);
             int index;
-            if (trackCount == 1)
+            if (pool.Count == 1)
             {
-                index = 0;
+                index = pool[0];
             }
             else
             {
                 do
                 {
-                    index = _rng.Next(trackCount);
+                    index = pool[_rng.Next(pool.Count)];
                 } while (index == _lastTrackIndex);
             }
 
@@ -312,6 +341,51 @@ public sealed class AudioSystem : IDisposable
         {
             _available = false;
         }
+    }
+
+    // Resolves the rotation pool to a list of distinct, in-range backend track indices that PlayRandomTrack
+    // may select from. A null pool (default) -> every registered track (byte-for-byte the pre-pool behaviour).
+    // A configured pool -> only its names that are registered; names not registered are skipped (debug-once).
+    // If the pool resolves to nothing, falls back to ALL tracks (warn-once) so music is never silenced.
+    private List<int> ResolveRotationIndices(int trackCount)
+    {
+        if (_rotationPoolNames is null)
+        {
+            return AllIndices(trackCount);
+        }
+
+        var indices = new List<int>(_rotationPoolNames.Count);
+        foreach (string name in _rotationPoolNames)
+        {
+            int idx = _trackNames.IndexOf(name);
+            if (idx >= 0 && idx < trackCount)
+            {
+                if (!indices.Contains(idx)) indices.Add(idx);
+            }
+            else if (_warnedPoolNames.Add(name))
+            {
+                _logger.Debug($"rotation pool track '{name}' is not registered; ignoring.");
+            }
+        }
+
+        if (indices.Count == 0)
+        {
+            if (!_warnedEmptyPool)
+            {
+                _warnedEmptyPool = true;
+                _logger.Warn("rotation pool resolved to no registered tracks; falling back to all tracks.");
+            }
+            return AllIndices(trackCount);
+        }
+
+        return indices;
+    }
+
+    private static List<int> AllIndices(int trackCount)
+    {
+        var all = new List<int>(trackCount);
+        for (int i = 0; i < trackCount; i++) all.Add(i);
+        return all;
     }
 
     // Records a just-played track index and updates the now-playing state. Marks playback as started

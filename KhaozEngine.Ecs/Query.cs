@@ -16,6 +16,16 @@ public sealed class Query
     public Query With<T>() where T : struct, IComponent { _with.Add(_world.Reg.Id<T>()); return this; }
     public Query Without<T>() where T : struct, IComponent { _without.Add(_world.Reg.Id<T>()); return this; }
 
+    /// <summary>Resets this query to its as-constructed state (no filters, match cache invalidated) so a
+    /// pooled instance can be safely reused. Internal: only the <see cref="World"/> ForEach query pool
+    /// recycles Query instances; user-built queries (via <see cref="World.Query"/>) are never pooled.</summary>
+    internal void ResetFilters()
+    {
+        _with.Clear();
+        _without.Clear();
+        _gen = -1;          // force Refresh to rebuild _matched on next use
+    }
+
     private void Refresh()
     {
         if (_gen == _world.ArchetypeGen) return;

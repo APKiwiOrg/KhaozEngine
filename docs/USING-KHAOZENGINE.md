@@ -310,6 +310,27 @@ avoid per-tick allocation; `DeterministicRng` (xorshift128+/splitmix64, `CreateD
 sub-RNGs) gives platform-stable RNG for lockstep sims; `WorldSerializer` round-trips a world as JSON (uses
 `KhaozEngine.Serialization.JsonDefaults.IncludeFields`).
 
+### `[ComponentId]` and save-format stability (policy)
+
+`WorldSerializer` keys each component in a save by `[ComponentId("...")]` if present, else by `Type.FullName`.
+The `FullName` default means renaming or moving a component struct silently breaks every existing save.
+`[ComponentId]` pins a stable key so the type can be renamed/moved freely. The dup-key guard rejects two
+types resolving to the same key, and `WorldSerializer.RegisterMigration(fromVersion, upgrade)` rewrites older
+save documents up to `CurrentFormatVersion` before deserialize.
+
+Rules:
+
+- **New component types SHOULD carry a stable `[ComponentId("...")]` from creation.** It costs nothing up
+  front (no saves exist yet) and buys free renames forever. Pick a short, stable string that is not the type
+  name (so the key survives a rename), unique within the world's component set.
+- **Adding `[ComponentId]` to an already-shipped component is a save-format break, not a free win.** Old saves
+  stored that component under its `Type.FullName`; the annotated build looks it up under the new id and the old
+  entries vanish. So only annotate a shipped component *together with* a paired migration: bump
+  `CurrentFormatVersion` and `RegisterMigration` a hook that renames the old `Type.FullName` key to the new id
+  in older documents. Never annotate a shipped component without that migration.
+- Practically: annotate freely while a component has no shipped saves; for shipped ones, defer the
+  `[ComponentId]` until a rename is actually needed, then land it with its migration in the same change.
+
 ---
 
 ## Audio (`KhaozEngine.Audio`)

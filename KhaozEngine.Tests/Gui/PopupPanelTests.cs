@@ -97,5 +97,17 @@ namespace KhaozEngine.Tests.Gui
             panel.Update(p);
             Assert.True(p.IsBlocked(Center(panel.PanelRect())));
         }
+
+        [Fact]
+        public void Viewport_defaults_to_zero_and_layout_throws_until_it_is_set()
+        {
+            var panel = new PopupPanel();
+            Assert.Equal(Vector2.Zero, panel.Viewport);                       // unset by default
+            Assert.Throws<System.InvalidOperationException>(() => panel.PanelRect());
+
+            panel.Viewport = View;
+            var rect = panel.PanelRect();                                     // no throw once set
+            Assert.True(rect.Width > 0f && rect.Height > 0f);
+        }
     }
 }

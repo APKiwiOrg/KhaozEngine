@@ -4,6 +4,21 @@ All notable changes to KhaozEngine. The 5.x line `<KhaozEngine5xVersion>` is the
 stack + the graduated foundation packages); the legacy 4.x line `<Version>` carries only the genuinely-MonoGame
 packages. Both versions live in `Directory.Build.props`. See the post-MonoGame plan in `docs/ROADMAP.md`.
 
+## 5.67.0 (custom 5.x line)
+
+Generic 2D grid line-of-sight / segment-raycast helper in `KhaozEngine.Collision` (shipped in the
+`KhaozEngine.Foundation` umbrella). Subsumes the bespoke grid LOS test games were writing by hand (Hardpoint's
+tower line-of-fire) and improves on it: an exact Amanatides&Woo grid traversal (4-connected supercover) instead
+of fixed-step sampling, so a thin diagonal wall is never stepped over.
+
+- **`KhaozEngine.Collision`:** new static `GridRay`. `IsClear(from, to, cellSize, blocks)` returns true when the
+  segment crosses no cell for which the caller's `blocks(x, y)` predicate is true; the two endpoint cells (the
+  cells containing `from`/`to`) are excluded by default so a shooter/target standing in a wall cell does not block
+  its own line, with an opt-in `includeEndpointCells` to test them too. `Trace(from, to, cellSize, visit)`
+  enumerates every touched cell in order (endpoints included; return false from `visit` to stop early). Fully
+  decoupled from game types, deterministic, allocation-free on the hot path (the only delegate is the caller's
+  predicate). Cell mapping is `(int)MathF.Floor(world / cellSize)`, matching `SpatialHashGrid`.
+
 ## 5.66.0 (custom 5.x line)
 
 Optional viewport-tracking internal render target for `KhaozEngine.Render3D`, to kill upscale blur on large

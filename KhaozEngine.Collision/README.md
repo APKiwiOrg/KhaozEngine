@@ -7,6 +7,11 @@ Game-agnostic 2D collision + broadphase primitives.
 - **`SpatialHashGrid`** - uniform spatial hash for broadphase candidate queries. Rebuild each tick with
   `BeginRebuild(capacity)` + one `Add(index, position, radius)` per item, then `QueryCandidates` /
   `GetQueryIndex`.
+- **`GridRay`** - exact 2D grid line-of-sight / segment-raycast. `IsClear(from, to, cellSize, blocks)` walks
+  every cell the segment touches (Amanatides&Woo 4-connected supercover, not fixed-step sampling) and returns
+  true when none satisfy the caller's `blocks(x, y)` predicate; endpoint cells are excluded by default
+  (`includeEndpointCells` to opt in). `Trace(...)` enumerates the touched cells. Decoupled from game types,
+  deterministic, allocation-free on the hot path.
 - **`ICircleCollider`** (`Position` + `Radius`) and **`IPreciseCircleCollisionTarget`**
   (`IntersectsCircle`) - implement on your entity type.
 

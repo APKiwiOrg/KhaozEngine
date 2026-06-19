@@ -131,15 +131,13 @@ namespace KhaozEngine.Render3D.Rendering
         /// <summary>Upload the per-frame uniforms once per frame, before the instanced draws.</summary>
         public void SetFrameUniforms(IGpuCommandList cl, Matrix4x4 viewProj, Vector3 cameraPos, PixelPostProcessSettings s)
         {
-            // Upload the camera's view-projection as-is. (An earlier clip-Y flip here rendered the scene
-            // vertically inverted — invisible on symmetric content but obvious on an asymmetric board — and
-            // it also disagreed with IsoCamera3D.ScreenToGround picking, which uses the unflipped matrix.
-            // Using viewProj directly makes the render right-side up AND consistent with picking.)
-            // TODO cross-platform bring-up: when a non-Metal backend lands, derive any clip-Y/depth compensation
-            // from GpuCapabilities (ClipSpaceYInverted/DepthRangeZeroToOne) rather than the baked Metal assumption.
+            // Clip-space-Y correction is derived from the live backend (GpuClip), not baked for Metal: it is the
+            // identity on Metal/D3D (byte-identical render) and flips clip-Y on inverted-Y backends (Vulkan).
+            // Applied only to the GPU-uploaded matrix; IsoCamera3D.ScreenToGround picking keeps the raw
+            // Camera.ViewProjection, so render and picking stay consistent (an earlier unconditional flip broke both).
             var ubo = new FrameUbo
             {
-                ViewProj = viewProj,
+                ViewProj = GpuClip.Correct(viewProj, _gd.Capabilities),
                 Dir = new Vector4(Vector3.Normalize(s.LightDirection), 0f),
                 Color = s.LightColor,
                 Ambient = s.AmbientColor,

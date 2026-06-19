@@ -78,7 +78,9 @@ namespace KhaozEngine.Render3D.Rendering
 
             EnsureCapacity((uint)verts.Length);
             cl.UpdateBuffer(_vb!, 0, verts);
-            cl.UpdateBuffer(_ubo, 0, in viewProj);
+            // Clip-Y derived from the live backend (identity on Metal/D3D, flips on Vulkan) - see GpuClip.
+            var clipVp = GpuClip.Correct(viewProj, _gd.Capabilities);
+            cl.UpdateBuffer(_ubo, 0, in clipVp);
 
             cl.SetFramebuffer(target);
             cl.SetPipeline(_pipelines[pipelineIndex]);

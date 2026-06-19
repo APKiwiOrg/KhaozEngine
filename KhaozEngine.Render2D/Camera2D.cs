@@ -29,8 +29,9 @@ namespace KhaozEngine.Render2D
         /// <summary>World -> clip transform (the matrix the sprite batch uses).</summary>
         public Matrix4x4 GetViewProjection(int viewportWidth, int viewportHeight)
         {
-            // y-down ortho lands the right way up in the Metal render target (no clip-Y flip needed).
-            // TODO Phase 3c: derive the flip from GpuCapabilities.ClipSpaceYInverted instead of assuming Metal.
+            // Authored y-down ortho (right way up on Metal/D3D). The backend clip-space-Y correction is applied
+            // by SpriteBatch where it bakes vertices into clip space (via GpuClip, derived from the live device),
+            // so this stays the authored matrix - keeping it consistent with the CPU world/screen helpers below.
             var ortho = Matrix4x4.CreateOrthographicOffCenter(0, viewportWidth, viewportHeight, 0, -1, 1);
             return GetView(viewportWidth, viewportHeight) * ortho;
         }

@@ -154,10 +154,10 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
 
         /// <summary>Begin a batch in world space through <paramref name="camera"/>, sampled per <paramref name="sampler"/>
         /// (default <see cref="SamplerMode.Linear"/>; pass <see cref="SamplerMode.Point"/> for crisp pixel art).</summary>
-        public void Begin(Camera2D camera, SamplerMode sampler = SamplerMode.Linear) { _sampler = Resolve(sampler); _vp = camera.GetViewProjection(_vw, _vh); _viewport = null; ResetBatches(); }
+        public void Begin(Camera2D camera, SamplerMode sampler = SamplerMode.Linear) { _sampler = Resolve(sampler); _vp = Clip(camera.GetViewProjection(_vw, _vh)); _viewport = null; ResetBatches(); }
 
         /// <summary>Begin a batch in screen space (pixels, top-left origin), sampled per <paramref name="sampler"/>.</summary>
-        public void Begin(SamplerMode sampler = SamplerMode.Linear) { _sampler = Resolve(sampler); _vp = Matrix4x4.CreateOrthographicOffCenter(0, _vw, _vh, 0, -1, 1); _viewport = null; ResetBatches(); }
+        public void Begin(SamplerMode sampler = SamplerMode.Linear) { _sampler = Resolve(sampler); _vp = Clip(Matrix4x4.CreateOrthographicOffCenter(0, _vw, _vh, 0, -1, 1)); _viewport = null; ResetBatches(); }
 
         /// <summary>
         /// Begin a batch in design space through <paramref name="viewport"/>: subsequent draws use design
@@ -165,7 +165,7 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
         /// A scissor set while this is active (<see cref="SetScissor"/>) is mapped through the viewport too.
         /// Sampled per <paramref name="sampler"/> (default <see cref="SamplerMode.Linear"/>).
         /// </summary>
-        public void Begin(Windowing.IDesignViewport viewport, SamplerMode sampler = SamplerMode.Linear) { _sampler = Resolve(sampler); _vp = viewport.GetClipProjection(_vw, _vh); _viewport = viewport; ResetBatches(); }
+        public void Begin(Windowing.IDesignViewport viewport, SamplerMode sampler = SamplerMode.Linear) { _sampler = Resolve(sampler); _vp = Clip(viewport.GetClipProjection(_vw, _vh)); _viewport = viewport; ResetBatches(); }
 
         /// <summary>
         /// Begin a batch in screen space (pixels, top-left origin) with a <paramref name="transform"/> applied to
@@ -174,13 +174,13 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
         /// here is how text tilts with its panel. Build <paramref name="transform"/> in screen space (e.g.
         /// rotate-about-a-pivot = <c>Translate(-p) * RotationZ(a) * Translate(p)</c>).
         /// </summary>
-        public void Begin(Matrix4x4 transform, SamplerMode sampler = SamplerMode.Linear) { _sampler = Resolve(sampler); _vp = ComposeModelViewProjection(transform, Matrix4x4.CreateOrthographicOffCenter(0, _vw, _vh, 0, -1, 1)); _viewport = null; ResetBatches(); }
+        public void Begin(Matrix4x4 transform, SamplerMode sampler = SamplerMode.Linear) { _sampler = Resolve(sampler); _vp = Clip(ComposeModelViewProjection(transform, Matrix4x4.CreateOrthographicOffCenter(0, _vw, _vh, 0, -1, 1))); _viewport = null; ResetBatches(); }
 
         /// <summary>
         /// As <see cref="Begin(Camera2D, SamplerMode)"/>, with a model <paramref name="transform"/> (in world
         /// space) applied to every draw before the camera's view-projection.
         /// </summary>
-        public void Begin(Camera2D camera, Matrix4x4 transform, SamplerMode sampler = SamplerMode.Linear) { _sampler = Resolve(sampler); _vp = ComposeModelViewProjection(transform, camera.GetViewProjection(_vw, _vh)); _viewport = null; ResetBatches(); }
+        public void Begin(Camera2D camera, Matrix4x4 transform, SamplerMode sampler = SamplerMode.Linear) { _sampler = Resolve(sampler); _vp = Clip(ComposeModelViewProjection(transform, camera.GetViewProjection(_vw, _vh))); _viewport = null; ResetBatches(); }
 
         /// <summary>
         /// As <see cref="Begin(Windowing.IDesignViewport, SamplerMode)"/>, with a model <paramref name="transform"/>
@@ -190,11 +190,17 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
         /// <paramref name="transform"/> (the GPU scissor is axis-aligned in framebuffer space), so clip a rotated
         /// card by its un-rotated design bounds.
         /// </summary>
-        public void Begin(Windowing.IDesignViewport viewport, Matrix4x4 transform, SamplerMode sampler = SamplerMode.Linear) { _sampler = Resolve(sampler); _vp = ComposeModelViewProjection(transform, viewport.GetClipProjection(_vw, _vh)); _viewport = viewport; ResetBatches(); }
+        public void Begin(Windowing.IDesignViewport viewport, Matrix4x4 transform, SamplerMode sampler = SamplerMode.Linear) { _sampler = Resolve(sampler); _vp = Clip(ComposeModelViewProjection(transform, viewport.GetClipProjection(_vw, _vh))); _viewport = viewport; ResetBatches(); }
 
         // Compose a model transform with a view-projection so a point maps as (p * model) * viewProjection. Pure /
         // headless-testable: getting the multiplication order backwards is the easy bug, so it has its own test.
         internal static Matrix4x4 ComposeModelViewProjection(Matrix4x4 model, Matrix4x4 viewProjection) => model * viewProjection;
+
+        // Apply the live backend's clip-space-Y convention to the CPU-baked view-projection (corners are
+        // transformed to clip space on the CPU at draw time, so the correction lands on _vp here). Identity on
+        // Metal/D3D, flips clip-Y on inverted-Y backends (Vulkan). _vp is render-only; CPU world<->screen math
+        // uses Camera2D.GetView, so it is unaffected. See KhaozEngine.Gpu.GpuClip.
+        Matrix4x4 Clip(Matrix4x4 viewProjection) => GpuClip.Correct(viewProjection, _gd.Capabilities);
 
         IGpuSampler Resolve(SamplerMode mode) => mode == SamplerMode.Point ? _pointSampler : _linearSampler;
 

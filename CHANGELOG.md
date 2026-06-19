@@ -4,6 +4,14 @@ All notable changes to KhaozEngine. The 5.x line `<KhaozEngine5xVersion>` is the
 stack + the graduated foundation packages); the legacy 4.x line `<Version>` carries only the genuinely-MonoGame
 packages. Both versions live in `Directory.Build.props`. See the post-MonoGame plan in `docs/ROADMAP.md`.
 
+## 5.63.1 (custom 5.x line)
+
+Internal cleanup, no public API change.
+
+- **`KhaozEngine.Audio`:** the float-to-16-bit-PCM helper `ToShort` was duplicated in `Decoding.cs`
+  (`PcmDecoders.ToShort`) and `WavSynth.cs`. Consolidated into a single internal `AudioConvert.ToShort`;
+  both call sites now use it. Behaviour is identical (same clamp + round).
+
 ## 5.63.0 (custom 5.x line)
 
 Three additions consumers asked for after the SpaceGame port: point sampling, CPU-side capture, and keyboard

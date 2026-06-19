@@ -25,6 +25,7 @@
   <Project Path="KhaozEngine.Persistence/KhaozEngine.Persistence.csproj" />
   <Project Path="KhaozEngine.Platform/KhaozEngine.Platform.csproj" />
   <Project Path="KhaozEngine.Pooling/KhaozEngine.Pooling.csproj" />
+  <Project Path="KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
   <Project Path="KhaozEngine.Render2D/KhaozEngine.Render2D.csproj" />
   <Project Path="KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
   <Project Path="KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />

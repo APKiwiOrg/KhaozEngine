@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Render2D
 {

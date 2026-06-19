@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using Xunit;
 

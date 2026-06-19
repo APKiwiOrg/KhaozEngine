@@ -31,8 +31,26 @@ namespace KhaozEngine.Render3D
         /// <summary>Optional inclusive upper bound for <see cref="IsoCamera3D.Target"/> X/Z (Y is left untouched).</summary>
         public Vector3? PanMax;
 
+        /// <summary>
+        /// Lower clamp for <see cref="IsoCamera3D.Elevation"/> during an orbit, radians. Default ~15 deg.
+        /// Kept &gt; 0 so the view never goes flat or tilts under the board.
+        /// </summary>
+        public float MinElevation = MathF.PI / 12f;
+        /// <summary>
+        /// Upper clamp for <see cref="IsoCamera3D.Elevation"/> during an orbit, radians. Default ~88 deg.
+        /// Kept strictly &lt; 90 deg so <c>CreateLookAt</c> does not degenerate when the eye direction aligns with up.
+        /// </summary>
+        public float MaxElevation = MathF.PI * 0.49f;
+        /// <summary>Radians of azimuth applied per pixel of horizontal drag during an orbit. Default 0.01.</summary>
+        public float OrbitYawSpeed = 0.01f;
+        /// <summary>Radians of elevation applied per pixel of vertical drag during an orbit. Default 0.01.</summary>
+        public float OrbitPitchSpeed = 0.01f;
+
         bool _panning;
         Vector3 _grabWorld;   // the fixed world point grabbed at BeginPan, kept under the cursor while panning
+
+        bool _orbiting;
+        Vector2 _lastOrbitPx;   // last cursor px seen while orbiting, for the per-frame delta
 
         public IsoCameraController(IsoCamera3D camera)
         {
@@ -83,6 +101,34 @@ namespace KhaozEngine.Render3D
 
         /// <summary>End the current grab-pan (if any).</summary>
         public void EndPan() => _panning = false;
+
+        /// <summary>True between <see cref="BeginOrbit"/> and <see cref="EndOrbit"/>.</summary>
+        public bool IsOrbiting => _orbiting;
+
+        /// <summary>Start a cursor-driven orbit: records <paramref name="cursorPx"/> as the drag origin.</summary>
+        public void BeginOrbit(Vector2 cursorPx)
+        {
+            _lastOrbitPx = cursorPx;
+            _orbiting = true;
+        }
+
+        /// <summary>
+        /// Continue an orbit: swings <see cref="IsoCamera3D.Azimuth"/> by the horizontal drag and tilts
+        /// <see cref="IsoCamera3D.Elevation"/> by the vertical drag (dragging up raises elevation), clamped to
+        /// [<see cref="MinElevation"/>, <see cref="MaxElevation"/>]. <see cref="IsoCamera3D.Target"/> is left fixed,
+        /// so the camera swings around the board centre for free. No-op if not currently orbiting.
+        /// </summary>
+        public void UpdateOrbit(Vector2 cursorPx)
+        {
+            if (!_orbiting) return;
+            Vector2 d = cursorPx - _lastOrbitPx;
+            Camera.Azimuth += d.X * OrbitYawSpeed;
+            Camera.Elevation = Math.Clamp(Camera.Elevation - d.Y * OrbitPitchSpeed, MinElevation, MaxElevation);
+            _lastOrbitPx = cursorPx;
+        }
+
+        /// <summary>End the current orbit (if any).</summary>
+        public void EndOrbit() => _orbiting = false;
 
         void ClampTarget()
         {

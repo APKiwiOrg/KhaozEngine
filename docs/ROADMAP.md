@@ -3,7 +3,9 @@
 Larger feature areas identified but not yet scheduled. Current released version: **6.0.0** (the shared
 `<KhaozEngine5xVersion>` line, which is the engine: the custom MonoGame-free stack plus the graduated foundation packages). The legacy 4.x
 line and its six genuinely-MonoGame packages (`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`) were
-DELETED once SpaceGame, the last consumer, migrated off MonoGame - the engine is now entirely MonoGame-free.
+DELETED from the engine source, so the engine itself is now entirely MonoGame-free. SpaceGame is the lone
+remaining 4.x consumer (it still pins the already-published 4.9.0 nupkgs); its 5.x/6.x port is the
+outstanding migration goal that lets the 4.x packages be retired everywhere.
 
 Several items from the original (3.3.0-era) backlog have since shipped: the camera follow/framing
 layer, the pan/zoom gesture controller, and `PrimitiveRenderer` circle/ring drawing. Those are listed

@@ -45,7 +45,7 @@ public sealed class WorldSerializer
 
     /// <param name="componentTypes">Each must be a <c>struct</c> implementing <see cref="IComponent"/>.</param>
     /// <param name="options">Optional JSON options; defaults to <c>IncludeFields = true</c>. Add
-    /// converters here for value types that don't round-trip by default (e.g. MonoGame Color).</param>
+    /// converters here for value types that don't round-trip by default (e.g. a struct serialized via a custom JsonConverter).</param>
     public WorldSerializer(IEnumerable<Type> componentTypes, JsonSerializerOptions? options)
     {
         _options = options ?? JsonDefaults.IncludeFields;

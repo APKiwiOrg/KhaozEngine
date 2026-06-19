@@ -4,7 +4,9 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Content
 {
-    public class ColorHexTests
+    // Covers KhaozEngine.Primitives.Color hex conversion (FromHex/ToHex), which absorbed the
+    // removed Content.ColorHex helper at 6.0.0. Kept here for the hex-format edge cases.
+    public class ColorHexConversionTests
     {
         [Fact]
         public void FromHex_ParsesRRGGBB_AsOpaque()

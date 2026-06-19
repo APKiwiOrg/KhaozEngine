@@ -28,7 +28,7 @@ public static class JsonDefaults
 
     /// <summary>Round-trips public fields, not just properties (<see cref="JsonSerializerOptions.IncludeFields"/>).
     /// Used by the ECS world serializer, whose component structs expose fields. Add converters by passing
-    /// your own options for value types that don't round-trip by default (e.g. MonoGame Color).</summary>
+    /// your own options for value types that don't round-trip by default (e.g. a struct serialized via a custom JsonConverter).</summary>
     public static JsonSerializerOptions IncludeFields { get; } = new()
     {
         IncludeFields = true,

@@ -24,6 +24,7 @@ public sealed unsafe class OpenAlMusicBackend : IMusicBackend
     readonly AL _al;
     readonly List<string> _tracks = new();
     readonly short[] _scratch = new short[ChunkSamples];
+    readonly uint[] _one = new uint[1];   // reused 1-element scratch for span-less Queue/UnqueueBuffers (zero-alloc steady state)
 
     uint _source;
     uint[] _buffers = Array.Empty<uint>();
@@ -94,7 +95,7 @@ public sealed unsafe class OpenAlMusicBackend : IMusicBackend
             for (int i = 0; i < NumBuffers; i++)
             {
                 _buffers[i] = _al.GenBuffer();
-                if (Fill(_buffers[i])) { _al.SourceQueueBuffers(_source, new[] { _buffers[i] }); queued++; }
+                if (Fill(_buffers[i])) { _one[0] = _buffers[i]; _al.SourceQueueBuffers(_source, _one); queued++; }
             }
             if (queued == 0) { Stop(); return false; }
 
@@ -118,9 +119,8 @@ public sealed unsafe class OpenAlMusicBackend : IMusicBackend
         _al.GetSourceProperty(_source, GetSourceInteger.BuffersProcessed, out int processed);
         for (int i = 0; i < processed; i++)
         {
-            var one = new uint[1];
-            _al.SourceUnqueueBuffers(_source, one);
-            if (!_streamEnded && Fill(one[0])) _al.SourceQueueBuffers(_source, one);
+            _al.SourceUnqueueBuffers(_source, _one);
+            if (!_streamEnded && Fill(_one[0])) _al.SourceQueueBuffers(_source, _one);
         }
 
         _al.GetSourceProperty(_source, GetSourceInteger.BuffersQueued, out int queued);

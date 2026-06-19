@@ -29,7 +29,8 @@ BREAKING. First 6.x release. New shared primitives leaf + uniform public color t
   matching its write and `GameStorage`.
 - Internal: single image-decode path via `ImageRgba` (`Render3D` no longer references `StbImageSharp` directly);
   `EntityCommandBuffer` playback dictionary pooled via `KhaozEngine.Pooling`; viewport-fit math centralized in
-  `ViewportMath`.
+  `ViewportMath`. `WavSynth.WriteNoise` now uses `XorRng` (its placeholder noise samples differ slightly from
+  5.x because `XorRng.NextFloat` uses a 24-bit mantissa; output is still deterministic for a fixed seed).
 
 ## 5.71.0 (custom 5.x line)
 

@@ -23,6 +23,13 @@ namespace KhaozEngine.Render2D
         public SpriteBatch Batch => _core.Batch;
         public Texture2D LoadTexture(string pngPath) => _core.LoadTexture(pngPath);
         public Texture2D CreateTexture(byte[] rgba, int width, int height) => _core.CreateTexture(rgba, width, height);
+
+        /// <summary>
+        /// Decode an image file (PNG/JPG/...) to a CPU-side <see cref="ImageRgba"/> - the raw RGBA pixels, no GPU
+        /// texture and no GPU round-trip. For pixels a game wants on the CPU, e.g. rebuilding an opaque-pixel
+        /// collision mask. To also draw it, pass <c>img.Pixels</c> to <see cref="CreateTexture"/> (no re-decode).
+        /// </summary>
+        public ImageRgba LoadImageRgba(string path) => ImageRgba.Load(path);
         /// <summary>
         /// Bake a TTF into a <see cref="SpriteFont"/>. Pass <paramref name="oversample"/> &gt; 1 (2-3) for crisp text
         /// when a design-space viewport upscales to a higher-resolution framebuffer; layout is unchanged.

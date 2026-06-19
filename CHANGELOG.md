@@ -4,6 +4,33 @@ All notable changes to KhaozEngine. The 5.x line `<KhaozEngine5xVersion>` is the
 stack + the graduated foundation packages); the legacy 4.x line `<Version>` carries only the genuinely-MonoGame
 packages. Both versions live in `Directory.Build.props`. See the post-MonoGame plan in `docs/ROADMAP.md`.
 
+## 6.1.0
+
+Post-6.0.0 cleanup batch: performance, internal dedup, and consistency. No public color/API breaks; two small
+Gui behavior refinements are noted below.
+
+- Render3D: `Render3DPreview.Capture` no longer blocks the CPU with a per-frame `WaitForIdle`. Live previews
+  rely on same-queue submission ordering (CPU readbacks still fence via `GpuReadback`), so N live previews no
+  longer cost N pipeline stalls per frame.
+- Render3D: the line/fill/billboard overlay renderers now share one generic `OverlayRenderer<TVertex>` (vertex
+  structs and `Draw` signatures unchanged; rendering byte-identical).
+- Audio: music streaming is zero-alloc in steady state (reuses a preallocated 1-element queue scratch instead of
+  allocating per processed buffer per frame). The `AudioSystem` catch blocks that disable audio now log at Debug
+  (with the exception) so a silent backend failure is diagnosable.
+- Ecs: `World.ForEach` overloads pool their per-call `Query` (and its backing lists) via `KhaozEngine.Pooling`,
+  so steady-state `ForEach` is allocation-free; nested `ForEach` is unaffected (falls back to a fresh `Query`).
+  `Query`'s public API is unchanged.
+- Updates: best-effort cleanup catch blocks (temp / rollback / staging dir deletes) now log at Debug instead of
+  swallowing silently.
+- Gui (behavior): `PopupPanel`'s buttons now route through the shared `GuiDraw.DrawButton` / `GuiStyle` (gaining a
+  border, a press affordance, and state priority). `Slider` (retained and immediate) now grabs only when the
+  press began inside the track, via the new `Pointer.IsDragStartIn(Rect)`.
+- Gui (behavior, fail-loud): `PopupPanel.Viewport` and `Tooltip.Viewport` no longer default to 960x540; an unset
+  (`Vector2.Zero`) viewport now throws on use, so a missed assignment surfaces immediately instead of silently
+  mis-positioning. Set the design viewport explicitly (callers that already set it are unaffected).
+- Docs: added the `[ComponentId]` save-format-stability policy to `docs/USING-KHAOZENGINE.md` (new components get
+  a stable id from creation; annotating an already-shipped component needs a paired `RegisterMigration`).
+
 ## 6.0.0
 
 BREAKING. First 6.x release. New shared primitives leaf + uniform public color type.

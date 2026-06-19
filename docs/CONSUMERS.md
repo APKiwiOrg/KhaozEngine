@@ -4,8 +4,8 @@ Which game uses which packages, at which version. Current state only - for the p
 [`../CHANGELOG.md`](../CHANGELOG.md). Update this whenever a consumer bumps a `<PackageReference>` or the
 engine ships a new version.
 
-**Engine current version:** `5.71.0` — the 5.x line `<KhaozEngine5xVersion>`, which is now the engine: the
-custom MonoGame-free stack (`Gpu`/`Windowing`/`Render2D`/`Render3D`/`Gui`/`Audio`/`Particles`/`Game`) **plus**
+**Engine current version:** `6.0.0` (the shared `<KhaozEngine5xVersion>` line, which is the engine): the
+custom MonoGame-free stack (`Primitives`/`Gpu`/`Windowing`/`Render2D`/`Render3D`/`Gui`/`Audio`/`Particles`/`Game`) **plus**
 the MonoGame-free foundation packages that graduated onto it at `5.46.0`
 (`Ecs`/`Serialization`/`Content`/`Diagnostics`/`App`/`Localization`/`Persistence`/`Pooling`/`Platform`/
 `Updates`/`Collision`/`Netcode`/`Netcode.Abstractions`/`Netcode.LiteNetLib`). **The legacy 4.x line + its six
@@ -61,10 +61,11 @@ line in `Directory.Build.props`, which the doc-version guard checks.
 > engine `CircleCollision` + `SpatialHashGrid` and confirm the hash stays `17709480852979803671`. `Updates` is
 > determinism-neutral (never touches sim/RNG), so it carries no hash gate.
 
-**5.x line (the engine, no longer experimental):** the custom-stack packages `Gpu`, `Windowing`, `Render2D`,
-`Render3D`, `Gui`, `Audio`, `Particles`, `Game`, `Game.Render3D` (the `-experimental` suffix was dropped at
-`5.31.0`) **plus** the 14 graduated foundation packages **plus** the four umbrella metapackages all share
-`<KhaozEngine5xVersion>`. The stack packages replace
+**Shared engine line (the engine, no longer experimental):** the zero-dependency `Primitives` leaf (new at
+`6.0.0`: `Color`, `DeterministicRng`, `XorRng`, `MathUtil`, `ViewportMath`, `Easing`) **plus** the custom-stack
+packages `Gpu`, `Windowing`, `Render2D`, `Render3D`, `Gui`, `Audio`, `Particles`, `Game`, `Game.Render3D` (the
+`-experimental` suffix was dropped at `5.31.0`) **plus** the 14 graduated foundation packages **plus** the four
+umbrella metapackages all share `<KhaozEngine5xVersion>`. The stack packages replace
 the legacy 4.x MonoGame rendering/UI/input/audio/screens/effects/time packages (UI->Gui, Graphics->Render2D,
 Screens->Gui ScreenStack + Game SceneManager, Input->Windowing, Effects->Particles, Time->Windowing.GameClock).
 See [`ROADMAP.md`](ROADMAP.md), "The post-MonoGame pivot".
@@ -82,7 +83,7 @@ fine-grained use - a wire-contract project references just `Netcode.Abstractions
 | `KhaozEngine.Game2D` | 2D runtime (Windowing/Render2D/Gui/Audio/Particles) + `Game` (the Render3D-free loop framework) + `Foundation` | a desktop 2D game |
 | `KhaozEngine.Game3D` | `Game2D` + `Render3D` + `Game.Render3D` (the 3D scene bridge: GameApp3D/IGameScene3D/SceneManager.Draw3D) | a desktop 3D game |
 | `KhaozEngine.Server` | `Foundation` + netcode (`Netcode`/`.Abstractions`/`.LiteNetLib`) | a headless sim server (no GPU) |
-| `KhaozEngine.Foundation` | the GPU-free foundation (App/Content/Diagnostics/Ecs/Localization/Persistence/Serialization/Pooling/Collision/Platform/Updates) | a gameplay-logic library (no renderer) |
+| `KhaozEngine.Foundation` | the GPU-free foundation (Primitives/App/Content/Diagnostics/Ecs/Localization/Persistence/Serialization/Pooling/Collision/Platform/Updates) | a gameplay-logic library (no renderer) |
 
 ## Consumer matrix
 
@@ -202,11 +203,11 @@ done
 After editing, run `./scripts/check-doc-versions.sh` (CI runs it too) to confirm the engine-version line
 still matches `Directory.Build.props`.
 
-_Last verified: 2026-06-19. The 5.x line `<KhaozEngine5xVersion>` = **5.63.0** is the engine: the custom-stack
-packages + the graduated foundation + the four umbrella metapackages (Game2D/Game3D/Server/Foundation). The
-legacy 4.x line `<Version>` = **4.12.0** is frozen-ish and carries **only** the 6 genuinely-MonoGame packages
-(Graphics/Input/Screens/Sprites/Time/UI). **Hardpoint** (3D) is on **5.70.0** via `Game3D` + `Foundation`,
+_Last verified: 2026-06-20. The shared line `<KhaozEngine5xVersion>` = **6.0.0** is the engine: the new
+zero-dependency `Primitives` leaf + the custom-stack packages + the graduated foundation + the four umbrella
+metapackages (Game2D/Game3D/Server/Foundation). The legacy 4.x `<Version>` line was deleted from
+`Directory.Build.props`, but its old MonoGame nupkgs stay in the feed so a holdout pin still resolves.
+**Hardpoint** (3D) is on **5.70.0** via `Game3D` + `Foundation`,
 **Nullwake** (2D) is on **5.59.0** via `Game2D` - both fully off MonoGame, referencing the engine in one line, and
 now running on the `GameApp3D`/`GameApp` loop facade. **SpaceGame** is the lone 4.x MonoGame holdout (pins 4.9.0;
-its 5.x port is the remaining migration work). The 7 legacy MonoGame packages get deleted once SpaceGame is off
-them, at which point the 4.x line — and MonoGame — is gone._
+its 5.x port is the remaining migration work)._

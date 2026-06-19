@@ -4,6 +4,33 @@ All notable changes to KhaozEngine. The 5.x line `<KhaozEngine5xVersion>` is the
 stack + the graduated foundation packages); the legacy 4.x line `<Version>` carries only the genuinely-MonoGame
 packages. Both versions live in `Directory.Build.props`. See the post-MonoGame plan in `docs/ROADMAP.md`.
 
+## 6.0.0
+
+BREAKING. First 6.x release. New shared primitives leaf + uniform public color type.
+
+- New package `KhaozEngine.Primitives` (zero-dependency leaf, `System.Numerics` only): `Color` (now with
+  `FromHex`/`ToHex`), `DeterministicRng` (moved from `Ecs`, `StableHash` now public), `XorRng` (value-type PRNG,
+  promoted from `Particles`), `MathUtil` (`Clamp01`/`Lerp`/`InverseLerp`), `ViewportMath` (`Fit`/`Cover`),
+  `Easing` (moved from `Render2D`).
+- **BREAKING:** the public color API across `Gpu`, `Render2D`, `Render3D`, `Particles`, and `Content` now takes
+  `KhaozEngine.Primitives.Color` instead of `Vector4`. `IGpuCommandList.ClearColorTarget` takes `Color`.
+  `Content.ColorHex` removed (use `Color.FromHex` / `Color.ToHex`). Internal GPU layout structs (vertex formats,
+  std140 UBOs) stay `Vector4`. Rendering output is byte-identical (verified by golden snapshots).
+- **BREAKING:** `KhaozEngine.Ecs.DeterministicRng` moved to `KhaozEngine.Primitives` (update using directives).
+- `Ecs` save format: `WorldSerializer` now reads `FormatVersion` (throws `UnsupportedSaveVersionException` on
+  unknown future versions), has a migration-registration seam (`RegisterMigration`), and supports
+  `[ComponentId("key")]` for rename-stable component keys (with a duplicate-key guard).
+- **BREAKING (behavior):** `Audio` random-track selection now uses the deterministic `DeterministicRng` (via
+  `SetRng`) instead of `System.Random`. `SetRng`'s parameter type changed to `DeterministicRng`. The default is a
+  fixed seed, so without calling `SetRng` the track order is reproducible and invariant across launches (call
+  `SetRng` with a varying seed, e.g. from the clock, for per-launch variety). The rotation-pool track-set
+  semantics from 5.71.0 are unchanged.
+- Fix: `FileSettingsStorage` reads with `JsonDefaults.TolerantRead` (comments, trailing commas, case-insensitive),
+  matching its write and `GameStorage`.
+- Internal: single image-decode path via `ImageRgba` (`Render3D` no longer references `StbImageSharp` directly);
+  `EntityCommandBuffer` playback dictionary pooled via `KhaozEngine.Pooling`; viewport-fit math centralized in
+  `ViewportMath`.
+
 ## 5.71.0 (custom 5.x line)
 
 Scoped random-rotation pool in `KhaozEngine.Audio.AudioSystem`. A game can register every track (so

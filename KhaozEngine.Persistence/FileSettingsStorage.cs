@@ -45,7 +45,7 @@ public sealed class FileSettingsStorage : ISettingsStorage
         }
 
         string json = File.ReadAllText(SettingsFilePath);
-        return JsonSerializer.Deserialize<T>(json) ?? new T();
+        return JsonSerializer.Deserialize<T>(json, JsonDefaults.TolerantRead) ?? new T();
     }
 
     /// <summary>True when the settings file exists on disk.</summary>

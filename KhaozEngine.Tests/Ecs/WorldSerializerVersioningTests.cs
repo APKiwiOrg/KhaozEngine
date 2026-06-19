@@ -8,6 +8,12 @@ namespace KhaozEngine.Tests.Ecs;
 [ComponentId("pos")]
 public struct VrPosition : IComponent { public float X; public float Y; }
 
+// INTENTIONAL COLLISION: DupKeyA and DupKeyB both carry [ComponentId("dup")] to exercise the
+// duplicate-key guard in WorldSerializer's constructor. As a side effect, any call to
+// WorldSerializer.FromAssemblyOf<T>() where T lives in this test assembly will throw, because
+// the scan finds both structs and hits the collision. Future tests that need FromAssemblyOf must
+// either pass explicit types to the constructor or scan the engine assembly (e.g.
+// FromAssemblyOf<KhaozEngine.Ecs.Parent>()), NOT the whole test assembly.
 [ComponentId("dup")]
 public struct DupKeyA : IComponent { public int Value; }
 

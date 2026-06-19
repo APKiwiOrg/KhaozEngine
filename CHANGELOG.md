@@ -4,6 +4,18 @@ All notable changes to KhaozEngine. The 5.x line `<KhaozEngine5xVersion>` is the
 stack + the graduated foundation packages); the legacy 4.x line `<Version>` carries only the genuinely-MonoGame
 packages. Both versions live in `Directory.Build.props`. See the post-MonoGame plan in `docs/ROADMAP.md`.
 
+## 5.62.0 (custom 5.x line)
+
+Scaled text: `SpriteBatch.DrawString(font, text, position, color, scale)` (Color + Vector4 overloads) draws the
+glyph run uniformly scaled by `scale` about its top-left. The whole layout - glyph size, offsets, advances and
+the ascent baseline - scales together, so it matches a layout measured with `font.Measure(text) * scale` (the
+caller measures at `scale` to position, draws at the same `scale`). Closes the gap that forced consumers to draw
+all text at the base font size after the 4.x `DrawString(..., scale, ...)` overload went away; `scale = 1`
+is the existing unscaled path.
+
+- **`KhaozEngine.Render2D`:** new `SpriteBatch.DrawString(..., float scale)` overloads. GPU-gated test renders a
+  glyph at scale 1 and scale 2 and asserts the lit-pixel extent grows ~2x in width and height.
+
 ## 5.61.0 (custom 5.x line)
 
 On-device offscreen capture for the 2D surface: `Render2DSurface.CaptureToTexture(width, height, clear,

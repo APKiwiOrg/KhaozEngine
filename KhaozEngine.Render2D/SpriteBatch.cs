@@ -227,10 +227,25 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
             DrawString(font, text, position, (Vector4)color);
 
         /// <summary>Draw <paramref name="text"/> with its top-left at <paramref name="position"/>.</summary>
-        public void DrawString(SpriteFont font, string text, Vector2 position, Vector4 color)
+        public void DrawString(SpriteFont font, string text, Vector2 position, Vector4 color) =>
+            DrawString(font, text, position, color, 1f);
+
+        /// <summary>
+        /// Draw <paramref name="text"/> with its top-left at <paramref name="position"/>, uniformly scaled by
+        /// <paramref name="scale"/> about that top-left corner. The whole layout (glyph size, offsets and
+        /// advances, and the ascent baseline) scales together, so this matches a layout computed with
+        /// <c>font.Measure(text) * scale</c> - the caller measures at <paramref name="scale"/> for positioning and
+        /// draws at the same <paramref name="scale"/>. <c>scale = 1</c> is the unscaled path.
+        /// </summary>
+        public void DrawString(SpriteFont font, string text, Vector2 position, Color color, float scale) =>
+            DrawString(font, text, position, (Vector4)color, scale);
+
+        /// <inheritdoc cref="DrawString(SpriteFont, string, Vector2, Color, float)"/>
+        public void DrawString(SpriteFont font, string text, Vector2 position, Vector4 color, float scale)
         {
-            float k = font.RenderScale; // atlas texels -> logical pixels (glyphs are baked at oversample density)
-            float penX = position.X, baseline = position.Y + font.Ascent;
+            // atlas texels -> logical pixels (glyphs are baked at oversample density), then the caller's scale.
+            float k = font.RenderScale * scale;
+            float penX = position.X, baseline = position.Y + font.Ascent * scale;
             foreach (char c in text)
             {
                 if (!font.Glyphs.TryGetValue(c, out var g)) continue;
@@ -241,7 +256,7 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
                                          (float)(g.Ax + g.W) / font.AtlasW, (float)(g.Ay + g.H) / font.AtlasH);
                     Draw(font.Atlas, dest, uv, color);
                 }
-                penX += g.Advance;
+                penX += g.Advance * scale;
             }
         }
 

@@ -166,6 +166,35 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
         /// </summary>
         public void Begin(Windowing.IDesignViewport viewport, SamplerMode sampler = SamplerMode.Linear) { _sampler = Resolve(sampler); _vp = viewport.GetClipProjection(_vw, _vh); _viewport = viewport; ResetBatches(); }
 
+        /// <summary>
+        /// Begin a batch in screen space (pixels, top-left origin) with a <paramref name="transform"/> applied to
+        /// every draw before projection - so a whole composed group (a sprite + its overlaid text) rotates,
+        /// scales, or translates as one. <see cref="DrawString"/> has no rotation of its own, so a model transform
+        /// here is how text tilts with its panel. Build <paramref name="transform"/> in screen space (e.g.
+        /// rotate-about-a-pivot = <c>Translate(-p) * RotationZ(a) * Translate(p)</c>).
+        /// </summary>
+        public void Begin(Matrix4x4 transform, SamplerMode sampler = SamplerMode.Linear) { _sampler = Resolve(sampler); _vp = ComposeModelViewProjection(transform, Matrix4x4.CreateOrthographicOffCenter(0, _vw, _vh, 0, -1, 1)); _viewport = null; ResetBatches(); }
+
+        /// <summary>
+        /// As <see cref="Begin(Camera2D, SamplerMode)"/>, with a model <paramref name="transform"/> (in world
+        /// space) applied to every draw before the camera's view-projection.
+        /// </summary>
+        public void Begin(Camera2D camera, Matrix4x4 transform, SamplerMode sampler = SamplerMode.Linear) { _sampler = Resolve(sampler); _vp = ComposeModelViewProjection(transform, camera.GetViewProjection(_vw, _vh)); _viewport = null; ResetBatches(); }
+
+        /// <summary>
+        /// As <see cref="Begin(Windowing.IDesignViewport, SamplerMode)"/>, with a model <paramref name="transform"/>
+        /// (in design space) applied to every draw before the viewport projection - so a HUD card tilts about its
+        /// pivot while its panel, icon, and text move together. The viewport's scale/letterbox still applies on top.
+        /// Note: a <see cref="SetScissor"/> set during this pass is mapped through the viewport but NOT through
+        /// <paramref name="transform"/> (the GPU scissor is axis-aligned in framebuffer space), so clip a rotated
+        /// card by its un-rotated design bounds.
+        /// </summary>
+        public void Begin(Windowing.IDesignViewport viewport, Matrix4x4 transform, SamplerMode sampler = SamplerMode.Linear) { _sampler = Resolve(sampler); _vp = ComposeModelViewProjection(transform, viewport.GetClipProjection(_vw, _vh)); _viewport = viewport; ResetBatches(); }
+
+        // Compose a model transform with a view-projection so a point maps as (p * model) * viewProjection. Pure /
+        // headless-testable: getting the multiplication order backwards is the easy bug, so it has its own test.
+        internal static Matrix4x4 ComposeModelViewProjection(Matrix4x4 model, Matrix4x4 viewProjection) => model * viewProjection;
+
         IGpuSampler Resolve(SamplerMode mode) => mode == SamplerMode.Point ? _pointSampler : _linearSampler;
 
         public void Draw(Texture2D tex, Vector2 position, Vector4 color) =>

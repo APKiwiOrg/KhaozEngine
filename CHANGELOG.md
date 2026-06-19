@@ -4,6 +4,17 @@ All notable changes to KhaozEngine. The 5.x line `<KhaozEngine5xVersion>` is the
 stack + the graduated foundation packages); the legacy 4.x line `<Version>` carries only the genuinely-MonoGame
 packages. Both versions live in `Directory.Build.props`. See the post-MonoGame plan in `docs/ROADMAP.md`.
 
+## 5.68.0 (custom 5.x line)
+
+Cursor orbit gesture on `IsoCameraController` (`KhaozEngine.Render3D`), input-agnostic and headless-testable like
+the existing pan/zoom. `BeginOrbit(cursorPx)` / `UpdateOrbit(cursorPx)` / `EndOrbit()` (plus `IsOrbiting`) swing the
+camera's `Azimuth` by horizontal drag (`OrbitYawSpeed`, rad/px) and tilt `Elevation` by vertical drag
+(`OrbitPitchSpeed`, rad/px; dragging up raises elevation), clamped to `[MinElevation, MaxElevation]` (defaults
+`PI/12` ~15 deg and `PI*0.49` ~88 deg). The clamp keeps the camera strictly above the ground plane (never flat or
+under the board) and strictly below the vertical (so `CreateLookAt` can't degenerate against the up vector). Orbit
+leaves `Target` fixed, so the camera swings around the board centre with no re-pin. The game wires the gesture to
+whichever button it likes.
+
 ## 5.67.0 (custom 5.x line)
 
 Generic 2D grid line-of-sight / segment-raycast helper in `KhaozEngine.Collision` (shipped in the

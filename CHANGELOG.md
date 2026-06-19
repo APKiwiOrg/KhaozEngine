@@ -4,6 +4,25 @@ All notable changes to KhaozEngine. The 5.x line `<KhaozEngine5xVersion>` is the
 stack + the graduated foundation packages); the legacy 4.x line `<Version>` carries only the genuinely-MonoGame
 packages. Both versions live in `Directory.Build.props`. See the post-MonoGame plan in `docs/ROADMAP.md`.
 
+## 5.64.0 (custom 5.x line)
+
+Two additive `KhaozEngine.Render2D` APIs for HUD/card UIs and CPU pixel work (the SpaceGame fan-card screen
+asked for both): a batch-level model transform so a whole card tilts as one, and a CPU image decode for
+opaque-pixel collision masks.
+
+- **Batch model transform:** `SpriteBatch.Begin(...)` gains overloads taking a `Matrix4x4 transform` applied to
+  every draw before projection, so a composed group (panel + icon + text) rotates / scales / translates as one.
+  `DrawString` has no rotation of its own, so a model transform here is how text tilts with its card. On all
+  three spaces: `Begin(Matrix4x4)` (screen), `Begin(Camera2D, Matrix4x4)` (world), and
+  `Begin(IDesignViewport, Matrix4x4)` (design - the card-tilt case). A `SetScissor` during a design-space
+  transformed pass is mapped through the viewport but NOT the transform (the GPU scissor is axis-aligned in
+  framebuffer space), so clip a rotated card by its un-rotated design bounds. A headless test pins the
+  model-before-projection compose order; a GPU-gated test draws a translated rect and asserts the pass moved.
+- **CPU image decode:** new `ImageRgba` struct - tightly-packed RGBA8 pixels + width/height, no GPU resource -
+  with `AlphaAt` / `IsOpaqueAt(threshold)` for building opaque-pixel collision masks. Decode with
+  `ImageRgba.Load(path)` / `ImageRgba.Decode(bytes)` or `Render2DSurface.LoadImageRgba(path)`; no GPU device and
+  no GPU round-trip. Hand `img.Pixels` to `Render2DSurface.CreateTexture` to also draw it without re-decoding.
+
 ## 5.63.1 (custom 5.x line)
 
 Internal cleanup, no public API change.

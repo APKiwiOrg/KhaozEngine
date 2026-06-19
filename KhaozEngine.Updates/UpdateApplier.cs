@@ -77,7 +77,8 @@ public static class UpdateApplier
 
         ApplyResult result = Apply(config, environment);
 
-        try { environment.DeleteFile(configPath); } catch { }
+        try { environment.DeleteFile(configPath); }
+        catch (Exception ex) { environment.Log($"Cleanup: could not delete apply config {configPath}: {ex.Message}"); }
 
         return result.ExitCode;
     }
@@ -97,11 +98,13 @@ public static class UpdateApplier
         string? markerPath = MarkerPath(config);
         if (markerPath is not null)
         {
-            try { environment.WriteAllText(markerPath, "{}"); } catch { }
+            try { environment.WriteAllText(markerPath, "{}"); }
+            catch (Exception ex) { environment.Log($"Could not write progress marker {markerPath}: {ex.Message}"); }
         }
 
         string rollbackDir = Path.Combine(config.InstallDir, RollbackDirName);
-        try { environment.DeleteDirectory(rollbackDir); } catch { }
+        try { environment.DeleteDirectory(rollbackDir); }
+        catch (Exception ex) { environment.Log($"Cleanup: could not clear stale rollback dir {rollbackDir}: {ex.Message}"); }
 
         // Pre-flight: every staged source must exist before we change anything. A missing source means
         // staging is incomplete; applying it would mix old and new binaries. Abort with the install
@@ -166,7 +169,8 @@ public static class UpdateApplier
         if (copyFailed)
         {
             RestoreBackups(environment, config.InstallDir, rollbackDir, backedUp);
-            try { environment.DeleteDirectory(rollbackDir); } catch { }
+            try { environment.DeleteDirectory(rollbackDir); }
+            catch (Exception ex) { environment.Log($"Cleanup: could not remove rollback dir {rollbackDir} after restore: {ex.Message}"); }
             ClearMarker(environment, markerPath);
             environment.Log("Update aborted and rolled back. Existing version left intact.");
             environment.Relaunch(config.GameExePath, config.InstallDir);
@@ -215,8 +219,10 @@ public static class UpdateApplier
             }
         }
 
-        try { environment.DeleteDirectory(config.StagingDir); } catch { }
-        try { environment.DeleteDirectory(rollbackDir); } catch { }
+        try { environment.DeleteDirectory(config.StagingDir); }
+        catch (Exception ex) { environment.Log($"Cleanup: could not remove staging dir {config.StagingDir}: {ex.Message}"); }
+        try { environment.DeleteDirectory(rollbackDir); }
+        catch (Exception ex) { environment.Log($"Cleanup: could not remove rollback dir {rollbackDir}: {ex.Message}"); }
         ClearMarker(environment, markerPath);
 
         environment.ClearQuarantine(config.InstallDir);
@@ -291,7 +297,8 @@ public static class UpdateApplier
     {
         if (markerPath is not null)
         {
-            try { environment.DeleteFile(markerPath); } catch { }
+            try { environment.DeleteFile(markerPath); }
+            catch (Exception ex) { environment.Log($"Cleanup: could not clear progress marker {markerPath}: {ex.Message}"); }
         }
     }
 

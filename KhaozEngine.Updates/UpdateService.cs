@@ -114,6 +114,9 @@ public sealed class UpdateService : IDisposable
             UpdateManifest localManifest = LoadOrGenerateLocalManifest();
             ManifestDiff diff = UpdateManifest.ComputeDiff(localManifest, remoteManifest);
 
+            // Deliberately NOT pooled: this list is retained in the `pendingDownloads` field below and
+            // lives across the whole check -> download -> apply lifecycle, so a pooled buffer would alias.
+            // It is also a cold one-shot path (per update check, not per frame) with no alloc pressure.
             var downloads = new List<ManifestFileEntry>(diff.FilesToDownload);
 
             // Resume support: drop files already staged with a matching SHA256.
@@ -205,7 +208,8 @@ public sealed class UpdateService : IDisposable
                     if (success && !VerifyFileHash(destPath, file.Sha256))
                     {
                         log.Info($"SHA256 mismatch for {file.Path}, retrying...");
-                        try { File.Delete(destPath); } catch { }
+                        try { File.Delete(destPath); }
+                        catch (Exception ex) { log.Debug($"Could not delete mismatched download {destPath}: {ex.Message}"); }
                         Interlocked.Add(ref bytesDownloaded, -fileBytes);
                         success = false;
                     }

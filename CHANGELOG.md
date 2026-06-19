@@ -4,6 +4,33 @@ All notable changes to KhaozEngine. The 5.x line `<KhaozEngine5xVersion>` is the
 stack + the graduated foundation packages); the legacy 4.x line `<Version>` carries only the genuinely-MonoGame
 packages. Both versions live in `Directory.Build.props`. See the post-MonoGame plan in `docs/ROADMAP.md`.
 
+## 5.70.0 (custom 5.x line)
+
+Live render-to-texture for 3D model previews in `KhaozEngine.Render3D`: render a rotating model into a
+sampleable `Texture2D` on the live device and composite it into a 2D `SpriteBatch`/Gui panel (unit inspectors,
+shop / character-select previews, item icons). Fills the gap between `Render3DSurface` (window framebuffer only)
+and `Render3DSnapshot` (separate headless device + CPU readback, for goldens/tooling).
+
+- **`KhaozEngine.Render3D`:** new `Render3DPreview` (`IDisposable`). Built once from the live `AppWindow`
+  (`new Render3DPreview(window, width, height)`); owns a dedicated `Scene3D` (isolated from the board scene) and
+  a single offscreen render target reused every frame, so a spinning preview allocates no GPU texture per frame.
+  Load preview meshes and frame the camera ONCE via `preview.Scene` (no per-frame re-upload, unlike the
+  snapshot path), then each frame call `Capture(Action<Scene3D> drawFrame)` (queue the instance(s) with the
+  current world matrix) to re-render in place and get the sampleable `Texture` back. `Resize(w, h)` re-allocates
+  the target; sizes are clamped into `[1, MaxDimension]` (4096) by the pure, headless-testable
+  `Render3DPreview.ClampSize`. The result runs on the live Metal/Veldrid device through the same
+  `Scene3D.RenderInternal` (full stylized post chain), so the preview matches the on-screen look.
+- **`KhaozEngine.Render3D`:** new `PixelPostProcessSettings.TransparentBackground` (default `false`). When set,
+  the final blit keeps the per-pixel alpha "background marker" (geometry stays opaque, the cleared background
+  stays transparent) instead of forcing opaque, so a scene composites cleanly over a 2D panel. `Render3DPreview`
+  enables it (with the starfield off) by default. Existing on-screen rendering is unchanged (default opaque); all
+  committed goldens are byte-identical.
+- **`KhaozEngine.Render2D`:** new `Texture2D.Wrap(IGpuTexture, width, height, ownsHandle = true)`. Wraps an
+  engine GPU texture (e.g. another module's render target) as a `SpriteBatch`-drawable `Texture2D`. With
+  `ownsHandle: false` the wrapper does not dispose the underlying texture, so a reused offscreen target can hand
+  back a stable, non-owning `Texture2D` each frame. `Render3D` now references `Render2D` (already present in every
+  `Game3D` consumer, which is a superset of `Game2D`).
+
 ## 5.69.0 (custom 5.x line)
 
 Ground-aligned, alpha-blended FILLED overlay primitive on `Scene3D` (`KhaozEngine.Render3D`): flat world-space

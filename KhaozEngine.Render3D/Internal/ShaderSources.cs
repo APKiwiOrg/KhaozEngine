@@ -210,7 +210,7 @@ void main() {
         public const string BlitFrag = @"#version 450
 layout(set=0, binding=0) uniform texture2D Src;
 layout(set=0, binding=1) uniform sampler Samp;
-layout(set=0, binding=2) uniform Final { vec4 BgColor; vec4 Params; }; // Params.x=starsOn
+layout(set=0, binding=2) uniform Final { vec4 BgColor; vec4 Params; }; // Params.x=starsOn, .y=transparentBg
 layout(location=0) in vec2 vUv;
 layout(location=0) out vec4 oColor;
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -222,7 +222,10 @@ void main() {
         float star = step(0.992, hash(cell)) * (0.55 + 0.45 * hash(cell + 3.7));
         col = BgColor.rgb + vec3(star);
     }
-    oColor = vec4(col, 1.0);
+    // Opaque on-screen by default; for an offscreen preview (Params.y) keep the alpha marker so the cleared
+    // background composites transparently (geometry a=1 stays opaque, cleared background a=0 stays clear).
+    float outA = (Params.y > 0.5) ? s.a : 1.0;
+    oColor = vec4(col, outA);
 }";
     }
 }

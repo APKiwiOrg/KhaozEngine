@@ -125,7 +125,7 @@ namespace KhaozEngine.Render3D.Rendering
             var final = new FinalUbo
             {
                 BgColor = s.BackgroundColor,
-                Params = new Vector4(s.Starfield ? 1f : 0f, 0, 0, 0),
+                Params = new Vector4(s.Starfield ? 1f : 0f, s.TransparentBackground ? 1f : 0f, 0, 0),
             };
             cl.UpdateBuffer(_finalBuf, 0, in final);
         }
@@ -157,7 +157,9 @@ namespace KhaozEngine.Render3D.Rendering
                 ? (ReferenceEquals(src, res.ColorTex) ? _blitColorP : ReferenceEquals(src, res.PingA) ? _blitPingAP : _blitPingBP)
                 : (ReferenceEquals(src, res.ColorTex) ? _blitColorL : ReferenceEquals(src, res.PingA) ? _blitPingAL : _blitPingBL);
             cl.SetFramebuffer(swapchainFB);
-            cl.ClearColorTarget(0, new Vector4(0f, 0f, 0f, 1f)); // RgbaFloat.Black
+            // Transparent clear when compositing offscreen, else opaque black. (The fullscreen blit overwrites
+            // every pixel via OverrideBlend, so this mainly documents intent; the alpha is set in the shader.)
+            cl.ClearColorTarget(0, s.TransparentBackground ? Vector4.Zero : new Vector4(0f, 0f, 0f, 1f));
             cl.SetPipeline(_blitPipe);
             cl.SetGraphicsResourceSet(0, blit);
             cl.Draw(3);

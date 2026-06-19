@@ -73,6 +73,17 @@ namespace KhaozEngine.Render3D
         /// <summary>Scene background (cleared behind the model). Dark = space.</summary>
         public Vector4 BackgroundColor = new(0.02f, 0.03f, 0.06f, 1f);
 
+        /// <summary>
+        /// Emit the background as transparent (alpha 0) in the final image instead of opaque, so the scene can be
+        /// composited over something else - e.g. an offscreen model preview drawn into a 2D panel (see
+        /// <see cref="Render3DPreview"/>). The whole stylized chain still runs; only the final blit keeps the
+        /// per-pixel alpha (geometry stays opaque, the cleared background stays clear). Default false (the
+        /// historical opaque output for an on-screen surface). Has no useful effect together with
+        /// <see cref="Starfield"/> (the stars fill the background opaquely), so a transparent preview leaves
+        /// starfield off.
+        /// </summary>
+        public bool TransparentBackground = false;
+
         /// <summary>Direction the key (sun) light travels (will be normalized).</summary>
         public Vector3 LightDirection = new(-0.5f, -0.85f, -0.35f);
         public Vector4 LightColor = new(1f, 0.95f, 0.86f, 1f);

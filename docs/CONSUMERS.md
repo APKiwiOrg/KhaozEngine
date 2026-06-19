@@ -8,10 +8,10 @@ engine ships a new version.
 custom MonoGame-free stack (`Gpu`/`Windowing`/`Render2D`/`Render3D`/`Gui`/`Audio`/`Particles`/`Game`) **plus**
 the MonoGame-free foundation packages that graduated onto it at `5.46.0`
 (`Ecs`/`Serialization`/`Content`/`Diagnostics`/`App`/`Localization`/`Persistence`/`Pooling`/`Platform`/
-`Updates`/`Collision`/`Netcode`/`Netcode.Abstractions`/`Netcode.LiteNetLib`). The legacy 4.x line `<Version>`
-is frozen-ish at `4.12.0` and now carries **only** the genuinely-MonoGame packages
-(`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`), consumed by the still-4.x SpaceGame. The two
-lines move independently; both set in `Directory.Build.props`. The doc-version guard now checks the 5.x line.
+`Updates`/`Collision`/`Netcode`/`Netcode.Abstractions`/`Netcode.LiteNetLib`). **The legacy 4.x line + its six
+genuinely-MonoGame packages (`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`) were DELETED once SpaceGame,
+the last consumer, migrated off MonoGame** - the engine is now entirely MonoGame-free with a single version
+line in `Directory.Build.props`, which the doc-version guard checks.
 
 > **5.46.0 (graduation, non-breaking re-version):** the 14 MonoGame-free foundation packages moved from the
 > 4.x `<Version>` line to the 5.x `<KhaozEngine5xVersion>` line so a 5.x game pins **only** 5.x packages. Same

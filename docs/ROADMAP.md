@@ -2,8 +2,8 @@
 
 Larger feature areas identified but not yet scheduled. Current released version: **5.62.0** (the 5.x line,
 which is the engine: the custom MonoGame-free stack plus the graduated foundation packages). The legacy 4.x
-line is frozen-ish at `4.12.0` and now carries only the genuinely-MonoGame packages
-(`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`), consumed by the still-4.x SpaceGame.
+line and its six genuinely-MonoGame packages (`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`) were
+DELETED once SpaceGame, the last consumer, migrated off MonoGame - the engine is now entirely MonoGame-free.
 
 Several items from the original (3.3.0-era) backlog have since shipped: the camera follow/framing
 layer, the pan/zoom gesture controller, and `PrimitiveRenderer` circle/ring drawing. Those are listed

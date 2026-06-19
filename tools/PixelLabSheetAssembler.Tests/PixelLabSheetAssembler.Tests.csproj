@@ -10,6 +10,5 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../PixelLabSheetAssembler/PixelLabSheetAssembler.csproj" />
-    <ProjectReference Include="../../KhaozEngine.Sprites/KhaozEngine.Sprites.csproj" />
   </ItemGroup>
 </Project>

@@ -1,5 +1,3 @@
-using System;
-using KhaozEngine.Sprites;
 using Xunit;
 
 namespace PixelLabSheetAssembler.Tests;
@@ -7,32 +5,33 @@ namespace PixelLabSheetAssembler.Tests;
 public class DirectionRowsTests
 {
     [Fact]
-    public void NameToRow_matches_live_Direction8_order()
+    public void NameToRow_matches_the_canonical_Direction8_order()
     {
-        // PixelLab export dir-name -> the Direction8 it must land on.
-        var expected = new (string Name, Direction8 Dir)[]
+        // The canonical S, SE, E, NE, N, NW, W, SW order (rows 0..7) the PixelLab sheet rows must follow.
+        // (Was cross-checked against KhaozEngine.Sprites.Direction8; that legacy MonoGame package is gone, so the
+        // order is asserted directly here.)
+        var expected = new (string Name, int Row)[]
         {
-            ("south", Direction8.S),
-            ("south-east", Direction8.SE),
-            ("east", Direction8.E),
-            ("north-east", Direction8.NE),
-            ("north", Direction8.N),
-            ("north-west", Direction8.NW),
-            ("west", Direction8.W),
-            ("south-west", Direction8.SW),
+            ("south", 0),
+            ("south-east", 1),
+            ("east", 2),
+            ("north-east", 3),
+            ("north", 4),
+            ("north-west", 5),
+            ("west", 6),
+            ("south-west", 7),
         };
 
         Assert.Equal(8, DirectionRows.NameToRow.Count);
-        foreach (var (name, dir) in expected)
+        foreach (var (name, row) in expected)
         {
             Assert.True(DirectionRows.NameToRow.ContainsKey(name), $"missing dir name '{name}'");
-            // Row must equal the enum's integer value AND the loader's RowFor (the source of truth).
-            Assert.Equal((int)dir, DirectionRows.NameToRow[name]);
-            Assert.Equal(PixelLabSpriteLoader.RowFor(dir), DirectionRows.NameToRow[name]);
+            Assert.Equal(row, DirectionRows.NameToRow[name]);
         }
 
-        // Every Direction8 member is covered by some name (no row left unmapped).
-        foreach (Direction8 d in Enum.GetValues<Direction8>())
-            Assert.Contains((int)d, DirectionRows.NameToRow.Values);
+        for (int r = 0; r < 8; r++)
+        {
+            Assert.Contains(r, DirectionRows.NameToRow.Values);
+        }
     }
 }

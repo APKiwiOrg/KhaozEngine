@@ -5,19 +5,16 @@
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>disable</ImplicitUsings>
 
-    <!-- Shared version for the 4.x LEGACY line: now ONLY the genuinely-MonoGame packages
-         (Graphics/Input/Screens/Sprites/Time/UI), consumed by the still-4.x SpaceGame until it
-         migrates. The MonoGame-free foundation packages that used to share this line graduated to the 5.x
-         line at 5.46.0 (they set <Version>$(KhaozEngine5xVersion)</Version> in their csproj). This line is
-         frozen-ish: bump only when a MonoGame package itself needs a release. -->
-    <Version>4.12.0</Version>
-    <!-- Shared version for the 5.x engine: the custom-stack (MonoGame-free) packages (KhaozEngine.Gpu,
-         Windowing, Render2D, Render3D, Gui, Audio, Particles, Effects, Game) AND the graduated MonoGame-free
-         foundation packages (Ecs/Serialization/Content/Content.Validator/Diagnostics/App/Localization/
-         Persistence/Pooling/Platform/Updates/Collision/Netcode/Netcode.Abstractions/Netcode.LiteNetLib),
-         which all set <Version>$(KhaozEngine5xVersion)</Version> in their csproj. No longer experimental as
-         of 5.31.0; foundation graduated onto this line at 5.46.0 so a 5.x game pins only 5.x packages. Bump
-         here to release them together; this is the version the doc-version guard checks. -->
+    <!-- The legacy 4.x MonoGame line is GONE: its six packages (Graphics/Input/Screens/Sprites/Time/UI) were
+         deleted once SpaceGame, the last consumer, migrated off MonoGame to the 5.x stack. The engine is now
+         entirely MonoGame-free, so there is a single shared version line below. (History: docs/ROADMAP.md
+         "The post-MonoGame pivot".) -->
+    <!-- Shared version for the 5.x engine - the WHOLE engine now. Every packable package sets
+         <Version>$(KhaozEngine5xVersion)</Version> in its csproj: the custom render/runtime stack (Gpu,
+         Windowing, Render2D, Render3D, Gui, Audio, Particles, Effects, Game) plus the graduated MonoGame-free
+         foundation (Ecs/Serialization/Content/Diagnostics/App/Localization/Persistence/Pooling/Platform/Updates/
+         Collision/Netcode/Netcode.Abstractions/Netcode.LiteNetLib). Bump here to release them together; this is
+         the version the doc-version guard checks. -->
     <KhaozEngine5xVersion>5.62.0</KhaozEngine5xVersion>
     <Authors>APKiwi</Authors>
     <Company>Khaoz</Company>

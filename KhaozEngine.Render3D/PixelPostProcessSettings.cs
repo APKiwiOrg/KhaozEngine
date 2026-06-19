@@ -1,4 +1,5 @@
 using System.Numerics;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Render3D
 {
@@ -71,7 +72,7 @@ namespace KhaozEngine.Render3D
         public float OutlineNormalThreshold = 0.45f;
 
         /// <summary>Scene background (cleared behind the model). Dark = space.</summary>
-        public Vector4 BackgroundColor = new(0.02f, 0.03f, 0.06f, 1f);
+        public Color BackgroundColor = new(0.02f, 0.03f, 0.06f, 1f);
 
         /// <summary>
         /// Emit the background as transparent (alpha 0) in the final image instead of opaque, so the scene can be

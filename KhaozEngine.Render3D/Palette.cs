@@ -1,4 +1,4 @@
-using System.Numerics;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Render3D
 {
@@ -6,11 +6,11 @@ namespace KhaozEngine.Render3D
     public sealed class Palette
     {
         public string Name { get; }
-        public Vector4[] Colors { get; }
-        public Palette(string name, Vector4[] colors) { Name = name; Colors = colors; }
+        public Color[] Colors { get; }
+        public Palette(string name, Color[] colors) { Name = name; Colors = colors; }
 
         /// <summary>Build an opaque color from a 0xRRGGBB hex literal.</summary>
-        public static Vector4 Hex(uint rgb) =>
+        public static Color Hex(uint rgb) =>
             new(((rgb >> 16) & 0xFF) / 255f, ((rgb >> 8) & 0xFF) / 255f, (rgb & 0xFF) / 255f, 1f);
     }
 }

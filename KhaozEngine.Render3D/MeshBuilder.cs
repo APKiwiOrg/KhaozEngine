@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Render3D
 {
@@ -26,7 +27,7 @@ namespace KhaozEngine.Render3D
         public MeshBuilder Add(GltfMesh part, Matrix4x4 transform) => AddInternal(part, transform, null);
 
         /// <summary>Appends <paramref name="part"/> transformed by <paramref name="transform"/>, baking <paramref name="color"/> onto every appended vertex.</summary>
-        public MeshBuilder Add(GltfMesh part, Matrix4x4 transform, Vector4 color) => AddInternal(part, transform, color);
+        public MeshBuilder Add(GltfMesh part, Matrix4x4 transform, Color color) => AddInternal(part, transform, color);
 
         MeshBuilder AddInternal(GltfMesh part, Matrix4x4 transform, Vector4? color)
         {

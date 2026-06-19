@@ -20,6 +20,8 @@
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
     <ProjectReference Include="../KhaozEngine.Gpu/KhaozEngine.Gpu.csproj" />
+    <!-- Primitives.Color is the canonical RGBA type across the public 3D color API (Scene3D, Material, Palette). -->
+    <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
     <!-- Render3DPreview returns a Render2D.Texture2D so an offscreen 3D model preview is drawable by a
          SpriteBatch. Render2D already ships in every Game3D consumer (Game3D is a superset of Game2D). -->
     <ProjectReference Include="../KhaozEngine.Render2D/KhaozEngine.Render2D.csproj" />

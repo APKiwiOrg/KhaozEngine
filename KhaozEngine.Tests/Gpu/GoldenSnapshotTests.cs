@@ -43,15 +43,15 @@ namespace KhaozEngine.Tests.Gpu
                     // Red shiny sphere off to one side and raised.
                     scene.Draw(sphere,
                         Matrix4x4.CreateTranslation(-1.4f, 0.6f, 0.9f),
-                        new Vector4(0.85f, 0.12f, 0.12f, 1f),
+                        new Color(0.85f, 0.12f, 0.12f, 1f),
                         Material.Shiny(0.8f));
                     // Green matte box on the other side, distinct position.
                     scene.Draw(box,
                         Matrix4x4.CreateTranslation(1.3f, 0.45f, -1.1f),
-                        new Vector4(0.15f, 0.75f, 0.2f, 1f));
+                        new Color(0.15f, 0.75f, 0.2f, 1f));
                     // Debug ring on the ground, off-centre so it breaks symmetry.
                     scene.DebugCircle(new Vector3(0.2f, 0.02f, 1.6f), Vector3.UnitY, 1.1f,
-                        new Vector4(0.9f, 0.85f, 0.2f, 1f));
+                        new Color(0.9f, 0.85f, 0.2f, 1f));
                 },
                 frames: 2);
 
@@ -76,17 +76,17 @@ namespace KhaozEngine.Tests.Gpu
                     scene.Draw(floor, Matrix4x4.CreateTranslation(0f, 0f, 0f));
                     // An opaque box the fill must NOT wash out where it doesn't overlap.
                     scene.Draw(box, Matrix4x4.CreateTranslation(1.3f, 0.45f, -1.1f),
-                        new Vector4(0.15f, 0.75f, 0.2f, 1f));
+                        new Color(0.15f, 0.75f, 0.2f, 1f));
 
                     // Translucent green ground tile: alpha < 1 so the floor reads THROUGH it (blend assertion).
                     scene.DebugFilledQuad(new Vector3(-1.0f, 0.045f, 0.6f), halfSize: 1.2f,
-                        new Vector4(0.30f, 0.85f, 0.45f, 0.45f));
+                        new Color(0.30f, 0.85f, 0.45f, 0.45f));
                     // Translucent magenta ground disc off to the other side.
                     scene.DebugFilledCircle(new Vector3(1.4f, 0.045f, 1.4f), Vector3.UnitY, 1.0f,
-                        new Vector4(0.85f, 0.25f, 0.8f, 0.45f), segments: 40);
+                        new Color(0.85f, 0.25f, 0.8f, 0.45f), segments: 40);
                     // A crisp outline ON TOP of the filled tile: locks draw order (fill under line).
                     scene.DebugCircle(new Vector3(-1.0f, 0.05f, 0.6f), Vector3.UnitY, 1.0f,
-                        new Vector4(1f, 1f, 0.3f, 1f), segments: 40);
+                        new Color(1f, 1f, 0.3f, 1f), segments: 40);
                 },
                 frames: 2);
 

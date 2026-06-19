@@ -1,11 +1,11 @@
-using System.Numerics;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Render3D
 {
     /// <summary>A few built-in retro palettes. Consumers can also pass their own <see cref="Palette"/>.</summary>
     public static class Palettes
     {
-        static Vector4 H(uint v) => Palette.Hex(v);
+        static Color H(uint v) => Palette.Hex(v);
 
         /// <summary>PICO-8 16-color.</summary>
         public static readonly Palette Pico8 = new("Pico8", new[]

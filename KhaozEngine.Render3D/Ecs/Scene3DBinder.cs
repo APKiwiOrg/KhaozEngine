@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using KhaozEngine.Ecs;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Render3D
 {
@@ -21,13 +22,13 @@ namespace KhaozEngine.Render3D
         /// <see cref="MeshInstance"/>, invoke <paramref name="draw"/> with its mesh, world matrix, tint (zero
         /// tint -> white), and <see cref="MeshInstance.Material"/>. Headless-testable with a recording delegate.
         /// </summary>
-        public static void Submit(World world, Action<MeshHandle, Matrix4x4, Vector4, Material> draw)
+        public static void Submit(World world, Action<MeshHandle, Matrix4x4, Color, Material> draw)
         {
             foreach (var e in world.Query().With<Transform3D>().With<MeshInstance>().Entities())
             {
                 Transform3D t = world.Get<Transform3D>(e);
                 MeshInstance m = world.Get<MeshInstance>(e);
-                Vector4 tint = m.Tint == Vector4.Zero ? Vector4.One : m.Tint;
+                Color tint = m.Tint == Color.Transparent ? Color.White : m.Tint;
                 draw(m.Mesh, t.ToMatrix(), tint, m.Material);
             }
         }
@@ -38,13 +39,13 @@ namespace KhaozEngine.Render3D
         /// with a recording delegate (no GPU). This overload is tint-only: the delegate signature carries no
         /// material, so use the <see cref="Scene3D"/> overload above when materials matter.
         /// </summary>
-        public static void Submit(World world, Action<MeshHandle, Matrix4x4, Vector4> draw)
+        public static void Submit(World world, Action<MeshHandle, Matrix4x4, Color> draw)
         {
             foreach (var e in world.Query().With<Transform3D>().With<MeshInstance>().Entities())
             {
                 Transform3D t = world.Get<Transform3D>(e);
                 MeshInstance m = world.Get<MeshInstance>(e);
-                Vector4 tint = m.Tint == Vector4.Zero ? Vector4.One : m.Tint;
+                Color tint = m.Tint == Color.Transparent ? Color.White : m.Tint;
                 draw(m.Mesh, t.ToMatrix(), tint);
             }
         }

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Rendering;
 using Xunit;
@@ -78,7 +79,7 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void MapsMaterial_Onto_EmissiveAndSpecParams()
         {
-            var glow = new Vector4(0.8f, 0.2f, 0.1f, 1f);
+            var glow = new Color(0.8f, 0.2f, 0.1f, 1f);
             var items = new List<SceneInstances.Instance>
             {
                 new(new MeshHandle(0), Matrix4x4.Identity, Vector4.One, new Material(glow, 0.7f, 64f)),
@@ -88,7 +89,7 @@ namespace KhaozEngine.Tests.Render3D
 
             Scene3D.GroupInstances(items, data, runs);
 
-            Assert.Equal(glow, data[0].Emissive);
+            Assert.Equal((Vector4)glow, data[0].Emissive);
             Assert.Equal(0.7f, data[0].SpecParams.X, 4);
             Assert.Equal(64f, data[0].SpecParams.Y, 4);
         }

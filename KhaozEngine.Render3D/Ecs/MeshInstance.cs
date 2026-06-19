@@ -1,5 +1,5 @@
-using System.Numerics;
 using KhaozEngine.Ecs;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Render3D
 {
@@ -13,7 +13,7 @@ namespace KhaozEngine.Render3D
     public struct MeshInstance : IComponent
     {
         public MeshHandle Mesh;
-        public Vector4 Tint;
+        public Color Tint;
         public Material Material;
     }
 }

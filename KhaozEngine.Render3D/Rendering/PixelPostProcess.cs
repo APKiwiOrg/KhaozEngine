@@ -110,7 +110,7 @@ namespace KhaozEngine.Render3D.Rendering
             for (int i = 0; i < count; i++)
             {
                 var c = s.ActivePalette.Colors[i];
-                pal[i * 4 + 0] = c.X; pal[i * 4 + 1] = c.Y; pal[i * 4 + 2] = c.Z; pal[i * 4 + 3] = c.W;
+                pal[i * 4 + 0] = c.R; pal[i * 4 + 1] = c.G; pal[i * 4 + 2] = c.B; pal[i * 4 + 3] = c.A;
             }
             pal[256] = count; pal[257] = s.Dither ? 1f : 0f;
             cl.UpdateBuffer<float>(_palBuf, 0, pal);

@@ -1,5 +1,6 @@
 using System.Numerics;
 using KhaozEngine.Gpu;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using KhaozEngine.Tests.Gpu;
 using Xunit;
@@ -26,11 +27,11 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(0, scene.FillVertexCount);
 
             // Square ground tile = 2 triangles = 6 verts.
-            scene.DebugFilledQuad(new Vector3(0, 0.05f, 0), halfSize: 0.5f, new Vector4(0.3f, 0.85f, 0.45f, 0.28f));
+            scene.DebugFilledQuad(new Vector3(0, 0.05f, 0), halfSize: 0.5f, new Color(0.3f, 0.85f, 0.45f, 0.28f));
             Assert.Equal(6, scene.FillVertexCount);
 
             // Disc fan of 12 triangles = 36 verts; accumulates on top of the quad.
-            scene.DebugFilledCircle(new Vector3(1, 0.05f, 1), Vector3.UnitY, 0.8f, new Vector4(0.85f, 0.4f, 0.3f, 0.3f), segments: 12);
+            scene.DebugFilledCircle(new Vector3(1, 0.05f, 1), Vector3.UnitY, 0.8f, new Color(0.85f, 0.4f, 0.3f, 0.3f), segments: 12);
             Assert.Equal(6 + 36, scene.FillVertexCount);
 
             // Next frame's Begin clears the queue.

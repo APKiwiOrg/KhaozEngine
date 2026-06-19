@@ -5,6 +5,7 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using StbImageSharp;
 using KhaozEngine.Gpu;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Render3D.Rendering;
 
@@ -160,20 +161,20 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>Queue one instance: draw <paramref name="mesh"/> at world transform <paramref name="world"/> (no tint).</summary>
-        public void Draw(MeshHandle mesh, Matrix4x4 world) => _instances.Add(mesh, world, Vector4.One);
+        public void Draw(MeshHandle mesh, Matrix4x4 world) => _instances.Add(mesh, world, Color.White);
 
         /// <summary>Queue one instance with a per-instance RGBA <paramref name="tint"/> that multiplies the lit color.</summary>
-        public void Draw(MeshHandle mesh, Matrix4x4 world, Vector4 tint) => _instances.Add(mesh, world, tint);
+        public void Draw(MeshHandle mesh, Matrix4x4 world, Color tint) => _instances.Add(mesh, world, tint);
 
         /// <summary>Queue one instance with a per-instance <paramref name="tint"/> and <paramref name="material"/>
         /// (emissive glow + specular).</summary>
-        public void Draw(MeshHandle mesh, Matrix4x4 world, Vector4 tint, Material material) => _instances.Add(mesh, world, tint, material);
+        public void Draw(MeshHandle mesh, Matrix4x4 world, Color tint, Material material) => _instances.Add(mesh, world, tint, material);
 
         // ---- Debug line overlay (immediate-mode; queued this frame, drawn on top after post). ----
 
         /// <summary>Queue a single debug line from <paramref name="a"/> to <paramref name="b"/> in colour
         /// <paramref name="color"/> (RGBA). Cleared in <see cref="Begin"/>; drawn over the post image.</summary>
-        public void DebugLine(Vector3 a, Vector3 b, Vector4 color)
+        public void DebugLine(Vector3 a, Vector3 b, Color color)
         {
             _lineVerts.Add(new LineRenderer.LineVertex(a, color));
             _lineVerts.Add(new LineRenderer.LineVertex(b, color));
@@ -181,7 +182,7 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Queue a ray from <paramref name="origin"/> along <paramref name="direction"/> for
         /// <paramref name="length"/> units.</summary>
-        public void DebugRay(Vector3 origin, Vector3 direction, float length, Vector4 color)
+        public void DebugRay(Vector3 origin, Vector3 direction, float length, Color color)
         {
             if (direction.LengthSquared() < 1e-12f) return;   // degenerate direction: nothing to draw
             DebugLine(origin, origin + Vector3.Normalize(direction) * length, color);
@@ -189,7 +190,7 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Queue the 12 edges of an axis-aligned box centred at <paramref name="center"/> with full
         /// extents <paramref name="size"/>.</summary>
-        public void DebugBox(Vector3 center, Vector3 size, Vector4 color)
+        public void DebugBox(Vector3 center, Vector3 size, Color color)
         {
             _scratch.Clear();
             DebugShapes.Box(_scratch, center, size);
@@ -198,7 +199,7 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Queue an XZ-plane grid through <paramref name="center"/>.Y: <c>cells+1</c> lines each way,
         /// spanning <c>cells*cellSize</c>.</summary>
-        public void DebugGrid(Vector3 center, float cellSize, int cells, Vector4 color)
+        public void DebugGrid(Vector3 center, float cellSize, int cells, Color color)
         {
             _scratch.Clear();
             DebugShapes.Grid(_scratch, center, cellSize, cells);
@@ -209,15 +210,15 @@ namespace KhaozEngine.Render3D
         /// <paramref name="scale"/> long.</summary>
         public void DebugAxes(Vector3 origin, float scale)
         {
-            DebugLine(origin, origin + new Vector3(scale, 0, 0), new Vector4(1f, 0.2f, 0.2f, 1f));
-            DebugLine(origin, origin + new Vector3(0, scale, 0), new Vector4(0.2f, 1f, 0.2f, 1f));
-            DebugLine(origin, origin + new Vector3(0, 0, scale), new Vector4(0.3f, 0.5f, 1f, 1f));
+            DebugLine(origin, origin + new Vector3(scale, 0, 0), new Color(1f, 0.2f, 0.2f, 1f));
+            DebugLine(origin, origin + new Vector3(0, scale, 0), new Color(0.2f, 1f, 0.2f, 1f));
+            DebugLine(origin, origin + new Vector3(0, 0, scale), new Color(0.3f, 0.5f, 1f, 1f));
         }
 
         /// <summary>Queue a circle of <paramref name="segments"/> segments at <paramref name="radius"/> from
         /// <paramref name="center"/> in the plane perpendicular to <paramref name="normal"/>
         /// (use <see cref="Vector3.UnitY"/> for a ground ring).</summary>
-        public void DebugCircle(Vector3 center, Vector3 normal, float radius, Vector4 color, int segments = 32)
+        public void DebugCircle(Vector3 center, Vector3 normal, float radius, Color color, int segments = 32)
         {
             _scratch.Clear();
             DebugShapes.Circle(_scratch, center, normal, radius, segments);
@@ -244,7 +245,7 @@ namespace KhaozEngine.Render3D
         /// <paramref name="halfExtents"/>.X scales that axis, .Y the perpendicular one. <paramref name="color"/> is
         /// RGBA; its alpha is blended over the post image. Cleared in <see cref="Begin"/>; drawn under the debug
         /// lines.</summary>
-        public void DebugFilledQuad(Vector3 center, Vector3 normal, Vector3 uAxis, Vector2 halfExtents, Vector4 color)
+        public void DebugFilledQuad(Vector3 center, Vector3 normal, Vector3 uAxis, Vector2 halfExtents, Color color)
         {
             _fillScratch.Clear();
             DebugFillShapes.FilledQuad(_fillScratch, center, normal, uAxis, halfExtents);
@@ -254,20 +255,20 @@ namespace KhaozEngine.Render3D
         /// <summary>Queue a flat translucent quad on the XZ ground plane (normal +Y, u axis +X) centred at
         /// <paramref name="center"/>, with the given <paramref name="halfExtents"/> (X along world X, Y along world
         /// Z) and RGBA <paramref name="color"/>.</summary>
-        public void DebugFilledQuad(Vector3 center, Vector2 halfExtents, Vector4 color) =>
+        public void DebugFilledQuad(Vector3 center, Vector2 halfExtents, Color color) =>
             DebugFilledQuad(center, Vector3.UnitY, Vector3.UnitX, halfExtents, color);
 
         /// <summary>Queue a square translucent ground tile centred at <paramref name="center"/> on the XZ plane,
         /// half a <paramref name="halfSize"/> across each way, in RGBA <paramref name="color"/>. The board-tile
         /// convenience (range/coverage/AoE highlights).</summary>
-        public void DebugFilledQuad(Vector3 center, float halfSize, Vector4 color) =>
+        public void DebugFilledQuad(Vector3 center, float halfSize, Color color) =>
             DebugFilledQuad(center, Vector3.UnitY, Vector3.UnitX, new Vector2(halfSize, halfSize), color);
 
         /// <summary>Queue a flat translucent disc of <paramref name="segments"/> triangles at
         /// <paramref name="radius"/> from <paramref name="center"/>, in the plane perpendicular to
         /// <paramref name="normal"/> (use <see cref="Vector3.UnitY"/> for a ground disc), in RGBA
         /// <paramref name="color"/>.</summary>
-        public void DebugFilledCircle(Vector3 center, Vector3 normal, float radius, Vector4 color, int segments = 32)
+        public void DebugFilledCircle(Vector3 center, Vector3 normal, float radius, Color color, int segments = 32)
         {
             _fillScratch.Clear();
             DebugFillShapes.FilledCircle(_fillScratch, center, normal, radius, segments);
@@ -290,7 +291,7 @@ namespace KhaozEngine.Render3D
         /// <paramref name="size"/> (the quad spans 2*size across), tinted by <paramref name="color"/> (RGBA), using
         /// the given <paramref name="blend"/>. Cleared in <see cref="Begin"/>; drawn over the post image and the
         /// debug lines. The game loops its particle system's <c>Active</c> span and calls this per particle.</summary>
-        public void DrawBillboard(Vector3 worldPos, float size, Vector4 color, BillboardBlend blend = BillboardBlend.Alpha)
+        public void DrawBillboard(Vector3 worldPos, float size, Color color, BillboardBlend blend = BillboardBlend.Alpha)
         {
             // Camera basis is constant across a frame's billboards; compute it once (on the first call) and reuse.
             if (!_billboardBasisValid)

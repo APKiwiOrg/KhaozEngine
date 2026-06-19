@@ -7,7 +7,7 @@ namespace KhaozEngine.Render3D
     /// Builds simple <see cref="GltfMesh"/> primitives in code (no asset files), so games don't hand-roll
     /// them. Each face is a quad with its own outward normal (flat shading); vertex color is white
     /// (<see cref="Vector4.One"/>) since color now comes from the per-instance tint passed to
-    /// <see cref="Scene3D.Draw(MeshHandle, Matrix4x4, Vector4)"/>.
+    /// <see cref="Scene3D.Draw(MeshHandle, Matrix4x4, KhaozEngine.Primitives.Color)"/>.
     /// </summary>
     public static class MeshPrimitives
     {

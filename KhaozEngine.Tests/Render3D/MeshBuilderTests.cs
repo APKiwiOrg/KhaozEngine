@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using Xunit;
 
@@ -61,7 +62,7 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void Color_Overload_Sets_Every_Appended_Vertex_Color()
         {
-            var color = new Vector4(0.2f, 0.4f, 0.6f, 1f);
+            var color = new Color(0.2f, 0.4f, 0.6f, 1f);
             var mesh = new MeshBuilder()
                 .Add(MeshPrimitives.Box(), Matrix4x4.Identity)          // white
                 .Add(MeshPrimitives.Cylinder(), Matrix4x4.Identity, color)
@@ -71,7 +72,7 @@ namespace KhaozEngine.Tests.Render3D
             for (int i = 0; i < boxVerts; i++)
                 Assert.Equal(Vector4.One, mesh.Vertices[i].Color);
             for (int i = boxVerts; i < mesh.Vertices.Length; i++)
-                Assert.Equal(color, mesh.Vertices[i].Color);
+                Assert.Equal((Vector4)color, mesh.Vertices[i].Color);
         }
 
         [Fact]
@@ -96,7 +97,7 @@ namespace KhaozEngine.Tests.Render3D
             }, new ushort[] { 0, 1, 2 });
 
             var mesh = new MeshBuilder()
-                .Add(part, Matrix4x4.CreateTranslation(5f, 0f, 0f), new Vector4(0.2f, 0.2f, 0.2f, 1f))
+                .Add(part, Matrix4x4.CreateTranslation(5f, 0f, 0f), new Color(0.2f, 0.2f, 0.2f, 1f))
                 .Build();
 
             for (int i = 0; i < part.Vertices.Length; i++)

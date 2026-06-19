@@ -1,5 +1,6 @@
 using System.Numerics;
 using KhaozEngine.Gpu;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Render3D;
 using Xunit;
@@ -32,13 +33,13 @@ namespace KhaozEngine.Tests.Gpu
 
             // Caller drives rotation by passing a world matrix per frame.
             Texture2D tex = preview.Capture(scene =>
-                scene.Draw(box, Matrix4x4.CreateRotationY(0.7f), new Vector4(0.85f, 0.35f, 0.2f, 1f)));
+                scene.Draw(box, Matrix4x4.CreateRotationY(0.7f), new Color(0.85f, 0.35f, 0.2f, 1f)));
 
             Assert.Equal(W, tex.Width);
             Assert.Equal(H, tex.Height);
             // Capturing again returns the SAME wrapper (target reused, no per-frame allocation).
             Texture2D again = preview.Capture(scene =>
-                scene.Draw(box, Matrix4x4.CreateRotationY(1.1f), new Vector4(0.85f, 0.35f, 0.2f, 1f)));
+                scene.Draw(box, Matrix4x4.CreateRotationY(1.1f), new Color(0.85f, 0.35f, 0.2f, 1f)));
             Assert.Same(tex, again);
 
             byte[] rgba = GpuReadback.ToRgba(gd, tex.Handle, W, H);

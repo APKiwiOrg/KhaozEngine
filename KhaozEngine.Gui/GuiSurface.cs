@@ -151,7 +151,8 @@ namespace KhaozEngine.Gui
         /// <summary>
         /// An immediate-mode horizontal slider. Returns the (possibly updated) value in [0,1]. While the pointer is
         /// pressed with its press-origin inside <paramref name="rect"/> (the same press-origin invariant as
-        /// <see cref="Button(SpriteFont, Rect, string)"/>, via <see cref="Pointer.IsDraggingIn"/>), the value tracks
+        /// <see cref="Button(SpriteFont, Rect, string)"/>, via <see cref="Pointer.IsDragStartIn"/> - shared with the
+        /// retained <see cref="Slider"/>), the value tracks
         /// the pointer X clamped to [0,1] - the drag keeps control even if the cursor strays off the track, which
         /// <c>IsPressingIn</c> would not. The handle half-width is inset so the ends reach exactly 0 and 1. The
         /// caller owns the value's range mapping (volumes are already 0..1), persistence, and any side-effects.
@@ -163,7 +164,7 @@ namespace KhaozEngine.Gui
             Pointer p = _pointer;
 
             float result = value;
-            bool dragging = enabled && p.IsDraggingIn(rect);
+            bool dragging = enabled && p.IsDragStartIn(rect);
             if (dragging)
             {
                 (float half, float usable) = GuiDraw.SliderGeometry(rect);

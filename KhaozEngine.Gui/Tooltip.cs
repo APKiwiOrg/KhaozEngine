@@ -35,7 +35,12 @@ namespace KhaozEngine.Gui
 
         public bool IsVisible { get; private set; }
         public TooltipMetrics Metrics = TooltipMetrics.Default;
-        public Vector2 Viewport = new(960, 540);
+        /// <summary>
+        /// The design-space viewport the bubble clamps within. Defaults to <see cref="Vector2.Zero"/> ("unset");
+        /// the caller must assign the real design size before drawing. A visible tooltip with this unset throws
+        /// in <see cref="Draw"/> so a forgotten assignment fails loudly instead of silently mis-positioning.
+        /// </summary>
+        public Vector2 Viewport = Vector2.Zero;
 
         public Vector4 Background = new(0.055f, 0.055f, 0.094f, 0.94f);
         public Vector4 Border = new(0.24f, 0.255f, 0.31f, 0.78f);
@@ -89,6 +94,9 @@ namespace KhaozEngine.Gui
         public void Draw(SpriteBatch batch, Texture2D white)
         {
             if (!IsVisible || (_lines.Count == 0 && string.IsNullOrEmpty(_title))) return;
+            if (Viewport == Vector2.Zero)
+                throw new InvalidOperationException(
+                    "Tooltip.Viewport is unset (Vector2.Zero); assign the design viewport size before draw.");
             Rect b = ComputeBounds(_titleFont, _title, _bodyFont, _lines, _anchor, Viewport, Metrics);
             GuiDraw.Fill(batch, white, b, Background);
             GuiDraw.Border(batch, white, b, 1f, Border);

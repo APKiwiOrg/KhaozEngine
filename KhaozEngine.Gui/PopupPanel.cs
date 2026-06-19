@@ -29,7 +29,12 @@ namespace KhaozEngine.Gui
     {
         readonly List<PopupRow> _rows = new();
 
-        public Vector2 Viewport = new(960, 540);
+        /// <summary>
+        /// The design-space viewport the panel centers within. Defaults to <see cref="Vector2.Zero"/> ("unset");
+        /// the caller must assign the real design size before use. Leaving it unset throws on layout (see
+        /// <see cref="PanelRect"/>) so a forgotten assignment fails loudly instead of silently mis-positioning.
+        /// </summary>
+        public Vector2 Viewport = Vector2.Zero;
         public string Title = "";
         public float WidthFraction = 0.85f;
         public float MaxHeightFraction = 0.85f;
@@ -77,6 +82,9 @@ namespace KhaozEngine.Gui
         /// <summary>The centered, auto-sized panel rectangle.</summary>
         public Rect PanelRect()
         {
+            if (Viewport == Vector2.Zero)
+                throw new InvalidOperationException(
+                    "PopupPanel.Viewport is unset (Vector2.Zero); assign the design viewport size before layout/draw.");
             float panelW = Viewport.X * WidthFraction;
             float maxH = Viewport.Y * MaxHeightFraction;
             float totalH = Math.Clamp(TitleBarHeight + ContentHeight() + FooterHeight + ContentPadding * 2f, MinHeight, maxH);
@@ -173,12 +181,33 @@ namespace KhaozEngine.Gui
             }
         }
 
+        // A button's per-state palette built from its semantic fill (Dismiss blue / Primary green). Hover/press
+        // derive from the fill (hover keeps the old color*1.3 brighten); label stays white as before.
+        GuiStyle ButtonStyle(Vector4 fill) => new()
+        {
+            Fill = fill,
+            Hover = fill * 1.3f,
+            Press = fill * 1.15f,
+            Border = PanelBorder,
+            Text = Vector4.One,
+            DisabledFill = DisabledColor,
+            DisabledText = Vector4.One,
+            SelectedFill = fill,
+            SelectedBorder = PanelBorder,
+            BorderThickness = 1f,
+        };
+
         void DrawButton(SpriteBatch batch, Texture2D white, Rect r, string text, Vector4 color, bool enabled, Pointer pointer)
         {
-            Vector4 c = !enabled ? DisabledColor : pointer.IsHoveringIn(r) ? color * 1.3f : color;
-            GuiDraw.Fill(batch, white, r, c);
-            if (BodyFont != null)
-                TextLayout.DrawAligned(batch, BodyFont, text, r.X, r.Width, r.Y + (r.Height - BodyFont.LineHeight) * 0.5f, TextAlign.Center, (Color)Vector4.One);
+            // Route through the shared GuiDraw.DrawButton so popups inherit GuiStyle's state-priority and the
+            // press-origin affordance (IsPressingIn) instead of hand-rolling fill+hover+label here.
+            if (BodyFont == null)
+            {
+                GuiDraw.Fill(batch, white, r, enabled ? color : DisabledColor);
+                return;
+            }
+            GuiDraw.DrawButton(batch, white, BodyFont, r, text, ButtonStyle(color), enabled,
+                selected: false, pointer.IsHoveringIn(r), pointer.IsPressingIn(r));
         }
     }
 }

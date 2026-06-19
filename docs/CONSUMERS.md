@@ -4,7 +4,7 @@ Which game uses which packages, at which version. Current state only - for the p
 [`../CHANGELOG.md`](../CHANGELOG.md). Update this whenever a consumer bumps a `<PackageReference>` or the
 engine ships a new version.
 
-**Engine current version:** `6.1.0` (the shared `<KhaozEngine5xVersion>` line, which is the engine): the
+**Engine current version:** `6.2.0` (the shared `<KhaozEngine5xVersion>` line, which is the engine): the
 custom MonoGame-free stack (`Primitives`/`Gpu`/`Windowing`/`Render2D`/`Render3D`/`Gui`/`Audio`/`Particles`/`Game`) **plus**
 the MonoGame-free foundation packages that graduated onto it at `5.46.0`
 (`Ecs`/`Serialization`/`Content`/`Diagnostics`/`App`/`Localization`/`Persistence`/`Pooling`/`Platform`/
@@ -203,7 +203,7 @@ done
 After editing, run `./scripts/check-doc-versions.sh` (CI runs it too) to confirm the engine-version line
 still matches `Directory.Build.props`.
 
-_Last verified: 2026-06-20. The shared line `<KhaozEngine5xVersion>` = **6.1.0** is the engine: the new
+_Last verified: 2026-06-20. The shared line `<KhaozEngine5xVersion>` = **6.2.0** is the engine: the new
 zero-dependency `Primitives` leaf + the custom-stack packages + the graduated foundation + the four umbrella
 metapackages (Game2D/Game3D/Server/Foundation). The legacy 4.x `<Version>` line was deleted from
 `Directory.Build.props`, but its old MonoGame nupkgs stay in the feed so a holdout pin still resolves.

@@ -4,6 +4,19 @@ All notable changes to KhaozEngine. The 5.x line `<KhaozEngine5xVersion>` is the
 stack + the graduated foundation packages); the legacy 4.x line `<Version>` carries only the genuinely-MonoGame
 packages. Both versions live in `Directory.Build.props`. See the post-MonoGame plan in `docs/ROADMAP.md`.
 
+## 6.2.0
+
+Cross-platform clip-space correction (port hardening). No behavior change on Metal (golden-snapshot byte-identical).
+
+- New `KhaozEngine.Gpu.GpuClip.Correct(viewProj, caps)`: adapts a world-to-clip view-projection to the live
+  backend's clip-space-Y convention (identity on Metal/D3D, flips clip-Y on inverted-Y backends like Vulkan,
+  per Veldrid's `IsClipSpaceYInverted`). Applied at the GPU view-projection upload sites (`SpriteBatch`,
+  `ModelRenderer`, `OverlayRenderer`), never to CPU world/screen / picking matrices, so render and picking stay
+  consistent. Replaces the baked Metal-only assumption (the old TODOs in `Camera2D` / `ModelRenderer`).
+- NOTE: the inverted-Y (Vulkan/D3D11) path is correct-by-construction from `GpuCapabilities` but is not yet
+  validated on non-Metal hardware (no green non-Metal CI). Depth range is not remapped: all supported backends
+  (Metal/D3D11/Vulkan) use a [0,1] NDC range; only unsupported legacy OpenGL would differ.
+
 ## 6.1.0
 
 Post-6.0.0 cleanup batch: performance, internal dedup, and consistency. No public color/API breaks; two small

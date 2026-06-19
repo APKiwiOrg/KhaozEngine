@@ -4,6 +4,21 @@ All notable changes to KhaozEngine. The 5.x line `<KhaozEngine5xVersion>` is the
 stack + the graduated foundation packages); the legacy 4.x line `<Version>` carries only the genuinely-MonoGame
 packages. Both versions live in `Directory.Build.props`. See the post-MonoGame plan in `docs/ROADMAP.md`.
 
+## 5.65.0 (custom 5.x line)
+
+Frame-rate-independent client prediction render. `ClientPrediction.RenderedState` now eases the predicted
+position from the previous tick to the current one across the tick duration (time-based), instead of only the
+per-tick stepped position. Above the tick rate (e.g. a 144Hz window over a 60Hz sim) the predicted local entity
+- and anything that follows it, like the camera and orbiting drones - was snapping each tick and juddering; it
+is now smooth at any frame rate. The reconciliation render offset is unchanged (still decays over real time);
+the inter-tick interpolation collapses onto the rebased state on reconcile so the visible correction is carried
+only by that offset.
+
+- **`KhaozEngine.Netcode`:** `ClientPrediction.RenderedState` interpolates `previousPredictedPosition` ->
+  `predictedState.Position` by `min(1, secondsSinceLastPredict / TickSeconds)`. `Reset`/`Predict`/`Reconcile`
+  maintain the interpolation endpoints; `AdvancePresentation` advances the clock (clamped to one tick, so a
+  stalled tick stream holds rather than overshoots). Headless test asserts the eased, clamped path.
+
 ## 5.64.0 (custom 5.x line)
 
 Two additive `KhaozEngine.Render2D` APIs for HUD/card UIs and CPU pixel work (the SpaceGame fan-card screen

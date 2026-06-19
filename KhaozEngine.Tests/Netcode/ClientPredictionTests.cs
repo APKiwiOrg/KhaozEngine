@@ -121,4 +121,26 @@ public class ClientPredictionTests
         p.Reconcile(1, new FakeState(Vector2.Zero), lastAcknowledgedSeq: -1);
         Assert.Equal(1f, p.PredictedState.Position.X, 3);
     }
+
+    [Fact]
+    public void RenderedState_eases_between_ticks_so_it_stays_smooth_above_the_tick_rate()
+    {
+        const float tick = 1f / 60f;
+        var p = NewPrediction();
+        p.Predict(new Vector2(60f, 0f)); // predicted X steps to 1; render starts at the previous tick (0)
+        Assert.Equal(1f, p.PredictedState.Position.X, 3);
+        Assert.Equal(0f, p.RenderedState.Position.X, 3);
+
+        // Half a tick of frames -> render is halfway from the previous (0) to the current (1) tick.
+        p.AdvancePresentation(tick * 0.5f);
+        Assert.Equal(0.5f, p.RenderedState.Position.X, 2);
+
+        // The rest of the tick -> render reaches the current tick.
+        p.AdvancePresentation(tick * 0.5f);
+        Assert.Equal(1f, p.RenderedState.Position.X, 2);
+
+        // No new predict: render holds at the current tick (clamped, no overshoot past it).
+        p.AdvancePresentation(tick);
+        Assert.Equal(1f, p.RenderedState.Position.X, 3);
+    }
 }

@@ -1,6 +1,6 @@
 # KhaozEngine roadmap / backlog
 
-Larger feature areas identified but not yet scheduled. Current released version: **5.64.0** (the 5.x line,
+Larger feature areas identified but not yet scheduled. Current released version: **5.65.0** (the 5.x line,
 which is the engine: the custom MonoGame-free stack plus the graduated foundation packages). The legacy 4.x
 line and its six genuinely-MonoGame packages (`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`) were
 DELETED once SpaceGame, the last consumer, migrated off MonoGame - the engine is now entirely MonoGame-free.

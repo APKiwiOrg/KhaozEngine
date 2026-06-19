@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using KhaozEngine.Ecs;
 using Xunit;
@@ -6,6 +7,12 @@ namespace KhaozEngine.Tests.Ecs;
 
 [ComponentId("pos")]
 public struct VrPosition : IComponent { public float X; public float Y; }
+
+[ComponentId("dup")]
+public struct DupKeyA : IComponent { public int Value; }
+
+[ComponentId("dup")]
+public struct DupKeyB : IComponent { public int Value; }
 
 public class WorldSerializerVersioningTests
 {
@@ -46,5 +53,19 @@ public class WorldSerializerVersioningTests
             .Select(x => loaded.Get<VrPosition>(x)).Single();
         Assert.Equal(7, got.X);
         Assert.Equal(9, got.Y);
+    }
+
+    [Fact]
+    public void DuplicateComponentKeyThrowsArgumentException()
+    {
+        // DupKeyA and DupKeyB both carry [ComponentId("dup")]: the second registration must throw.
+        Assert.Throws<ArgumentException>(() => new WorldSerializer(typeof(DupKeyA), typeof(DupKeyB)));
+    }
+
+    [Fact]
+    public void RegisteringSameTypeTwiceIsIdempotent()
+    {
+        // Idempotent re-registration of the identical type must NOT throw.
+        _ = new WorldSerializer(typeof(VrPosition), typeof(VrPosition));
     }
 }

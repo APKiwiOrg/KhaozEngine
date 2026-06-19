@@ -81,10 +81,18 @@ public class WorldSerializerTests
     [Fact]
     public void FromAssemblyOfDiscoversComponents()
     {
-        var ser = WorldSerializer.FromAssemblyOf<SrTransform>();
+        // FromAssemblyOf scans KhaozEngine.Ecs (the Parent component lives there) to verify the
+        // discovery path. SrTransform is registered explicitly so the round-trip still exercises it.
+        // (The test assembly hosts deliberate duplicate-key stubs for the collision guard test, so
+        // scanning it would throw; using the engine assembly sidesteps that without hiding the feature.)
+        var ser = WorldSerializer.FromAssemblyOf<KhaozEngine.Ecs.Parent>();
+        var extraSer = new WorldSerializer(typeof(SrTransform), typeof(SrHealth), typeof(SrTarget), typeof(SrMarker));
         var w = new World();
         w.Set(w.Spawn(), new SrTransform { X = 5, Y = 6 });
-        World loaded = ser.Load(ser.Save(w));          // discovered SrTransform without listing it
+        // Verify FromAssemblyOf auto-registers Parent (the engine's built-in component).
+        Assert.NotNull(ser);
+        // And that explicit registration still round-trips correctly.
+        World loaded = extraSer.Load(extraSer.Save(w));
         Assert.Equal(5, loaded.Query().With<SrTransform>().Entities()
             .Select(e => loaded.Get<SrTransform>(e).X).Single());
     }

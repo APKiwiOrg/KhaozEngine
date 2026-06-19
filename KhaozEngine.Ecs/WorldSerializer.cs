@@ -53,7 +53,12 @@ public sealed class WorldSerializer
         {
             if (!t.IsValueType || t.IsAbstract || !typeof(IComponent).IsAssignableFrom(t))
                 throw new ArgumentException($"{t.FullName} is not a struct implementing IComponent.");
-            _byName[KeyFor(t)] = t;
+            string key = KeyFor(t);
+            if (_byName.TryGetValue(key, out Type? existing) && existing != t)
+                throw new ArgumentException(
+                    $"Duplicate component key '{key}': both {existing.FullName} and {t.FullName} resolve to the same key. " +
+                    $"Assign unique [ComponentId] values or use distinct type names.");
+            _byName[key] = t;
         }
         // The built-in Parent component lives in the engine assembly, so callers' type lists/scans
         // won't include it; auto-register so hierarchies serialize.

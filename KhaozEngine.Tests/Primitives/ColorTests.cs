@@ -1,3 +1,5 @@
+using System;
+using System.Numerics;
 using KhaozEngine.Primitives;
 using Xunit;
 
@@ -43,5 +45,68 @@ public class ColorTests
     {
         var c = new Color(0.2f, 0.4f, 0.6f, 1f).WithAlpha(0.5f);
         Assert.Equal(new Color(0.2f, 0.4f, 0.6f, 0.5f), c);
+    }
+
+    // --- error paths ---
+
+    [Fact]
+    public void FromHex_Null_ThrowsArgumentNullException()
+    {
+        Assert.Throws<ArgumentNullException>(() => Color.FromHex(null!));
+    }
+
+    [Theory]
+    [InlineData("#12345")]      // wrong length (5 digits after #)
+    [InlineData("#GG0000")]     // invalid hex digits
+    public void FromHex_Malformed_ThrowsFormatException(string hex)
+    {
+        Assert.Throws<FormatException>(() => Color.FromHex(hex));
+    }
+
+    // --- clamping ---
+
+    [Fact]
+    public void ToHex_ClampsOutOfRangeChannels()
+    {
+        // R=2f->clamp->255=FF, G=-1f->clamp->0=00, B=0.5f->128=80, A=1f->255=FF
+        Assert.Equal("#FF0080FF", Color.ToHex(new Color(2f, -1f, 0.5f, 1f)));
+    }
+
+    // --- operator / method round-trips ---
+
+    [Fact]
+    public void ImplicitToVector4_ThenExplicitBack_RoundTrips()
+    {
+        var original = new Color(0.1f, 0.2f, 0.3f, 0.4f);
+        System.Numerics.Vector4 v4 = original;          // implicit
+        var roundTripped = (Color)v4;                   // explicit
+        Assert.Equal(original, roundTripped);
+    }
+
+    [Fact]
+    public void ToVector4_FromVector4_RoundTrips()
+    {
+        var original = new Color(0.25f, 0.5f, 0.75f, 1f);
+        Assert.Equal(original, Color.FromVector4(original.ToVector4()));
+    }
+
+    // --- sentinels ---
+
+    [Fact]
+    public void White_EqualsOneOneOneOne()
+    {
+        Assert.Equal(new Color(1f, 1f, 1f, 1f), Color.White);
+    }
+
+    [Fact]
+    public void Black_EqualsZeroZeroZeroOne()
+    {
+        Assert.Equal(new Color(0f, 0f, 0f, 1f), Color.Black);
+    }
+
+    [Fact]
+    public void Transparent_EqualsZeroZeroZeroZero()
+    {
+        Assert.Equal(new Color(0f, 0f, 0f, 0f), Color.Transparent);
     }
 }

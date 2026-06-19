@@ -30,7 +30,7 @@ namespace KhaozEngine.Tests.Render3D
             var red = new Color(1f, 0f, 0f, 1f);
             s.Add(new MeshHandle(0), Matrix4x4.Identity, red);
 
-            Assert.Equal((Vector4)red, s.Items[0].Tint);
+            Assert.Equal(red, s.Items[0].Tint);
         }
 
         [Fact]

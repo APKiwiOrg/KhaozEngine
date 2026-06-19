@@ -15,7 +15,7 @@ namespace KhaozEngine.Tests.Render3D
     /// </summary>
     public class Scene3DGroupInstancesTests
     {
-        static SceneInstances.Instance Inst(int mesh, float tx, Vector4 tint)
+        static SceneInstances.Instance Inst(int mesh, float tx, Color tint)
             => new(new MeshHandle(mesh), Matrix4x4.CreateTranslation(tx, 0, 0), tint);
 
         [Fact]
@@ -23,8 +23,8 @@ namespace KhaozEngine.Tests.Render3D
         {
             var items = new List<SceneInstances.Instance>
             {
-                Inst(0, 1f, Vector4.One),
-                Inst(0, 2f, new Vector4(1, 0, 0, 1)),
+                Inst(0, 1f, Color.White),
+                Inst(0, 2f, new Color(1f, 0f, 0f, 1f)),
             };
             var data = new List<ModelRenderer.InstanceData>();
             var runs = new List<Scene3D.MeshRun>();
@@ -47,11 +47,11 @@ namespace KhaozEngine.Tests.Render3D
             // Submission order: mesh 5, 2, 5, 2, 5 -> two runs in first-seen order (5 then 2), each contiguous.
             var items = new List<SceneInstances.Instance>
             {
-                Inst(5, 10f, Vector4.One),
-                Inst(2, 20f, Vector4.One),
-                Inst(5, 11f, Vector4.One),
-                Inst(2, 21f, Vector4.One),
-                Inst(5, 12f, Vector4.One),
+                Inst(5, 10f, Color.White),
+                Inst(2, 20f, Color.White),
+                Inst(5, 11f, Color.White),
+                Inst(2, 21f, Color.White),
+                Inst(5, 12f, Color.White),
             };
             var data = new List<ModelRenderer.InstanceData>();
             var runs = new List<Scene3D.MeshRun>();
@@ -82,7 +82,7 @@ namespace KhaozEngine.Tests.Render3D
             var glow = new Color(0.8f, 0.2f, 0.1f, 1f);
             var items = new List<SceneInstances.Instance>
             {
-                new(new MeshHandle(0), Matrix4x4.Identity, Vector4.One, new Material(glow, 0.7f, 64f)),
+                new(new MeshHandle(0), Matrix4x4.Identity, Color.White, new Material(glow, 0.7f, 64f)),
             };
             var data = new List<ModelRenderer.InstanceData>();
             var runs = new List<Scene3D.MeshRun>();
@@ -112,11 +112,11 @@ namespace KhaozEngine.Tests.Render3D
             var data = new List<ModelRenderer.InstanceData>();
             var runs = new List<Scene3D.MeshRun>();
 
-            var first = new List<SceneInstances.Instance> { Inst(1, 0f, Vector4.One), Inst(1, 0f, Vector4.One) };
+            var first = new List<SceneInstances.Instance> { Inst(1, 0f, Color.White), Inst(1, 0f, Color.White) };
             Scene3D.GroupInstances(first, data, runs);
             Assert.Equal(2, data.Count);
 
-            var second = new List<SceneInstances.Instance> { Inst(7, 0f, Vector4.One) };
+            var second = new List<SceneInstances.Instance> { Inst(7, 0f, Color.White) };
             Scene3D.GroupInstances(second, data, runs);
 
             Assert.Single(data);

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
 using KhaozEngine.Diagnostics;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Audio;
 
@@ -26,7 +27,7 @@ public sealed class AudioSystem : IDisposable
     private List<string>? _rotationPoolNames;                // null = random rotation draws from ALL tracks
     private readonly HashSet<string> _warnedPoolNames = new(); // debug-once for pool names not registered
     private bool _warnedEmptyPool;                           // warn-once for an empty resolved pool fallback
-    private Random _rng = new();
+    private DeterministicRng _rng = new(0);
     private float _masterVolume = 0.66f;
     private float _musicVolume = 0.4f;
     private float _sfxVolume = 0.7f;
@@ -134,8 +135,8 @@ public sealed class AudioSystem : IDisposable
         }
     }
 
-    /// <summary>Replaces the track-shuffle RNG with a seeded instance.</summary>
-    public void SetRng(Random rng) { _rng = rng; }
+    /// <summary>Replaces the track-shuffle RNG with a seeded deterministic instance.</summary>
+    public void SetRng(DeterministicRng rng) { _rng = rng; }
 
     /// <summary>
     /// Scopes which registered tracks <see cref="PlayRandomTrack"/> is allowed to pick from (the random

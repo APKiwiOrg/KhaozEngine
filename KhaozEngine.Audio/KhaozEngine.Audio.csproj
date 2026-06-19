@@ -15,6 +15,7 @@
     <PackageReference Include="NVorbis" Version="0.10.5" />
     <PackageReference Include="NLayer" Version="1.16.0" />
     <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
+    <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
     <InternalsVisibleTo Include="KhaozEngine.Tests" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>

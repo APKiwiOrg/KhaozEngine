@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using KhaozEngine.Audio;
+using KhaozEngine.Primitives;
 using Xunit;
 
 namespace KhaozEngine.Tests;
@@ -90,7 +91,7 @@ public sealed class AudioSystemTests
     public void PlayRandomTrackNeverRepeatsPreviousIndex()
     {
         var (audio, backend) = NewLoaded("a", "b", "c");
-        audio.SetRng(new Random(12345));
+        audio.SetRng(new DeterministicRng(12345));
 
         for (int i = 0; i < 200; i++)
         {
@@ -216,9 +217,9 @@ public sealed class AudioSystemTests
     public void SetRngMakesRotationDeterministic()
     {
         var (a1, b1) = NewLoaded("a", "b", "c");
-        a1.SetRng(new Random(7));
+        a1.SetRng(new DeterministicRng(7));
         var (a2, b2) = NewLoaded("a", "b", "c");
-        a2.SetRng(new Random(7));
+        a2.SetRng(new DeterministicRng(7));
 
         for (int i = 0; i < 20; i++)
         {

@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Audio;
 
@@ -66,14 +67,11 @@ public static class WavSynth
     {
         int count = Math.Max(0, (int)(seconds * sampleRate));
         short[] samples = new short[count];
-        uint state = 0x9E3779B9u;   // fixed seed -> reproducible
+        var rng = new XorRng(0x9E3779B9u);   // fixed seed -> reproducible
         for (int i = 0; i < count; i++)
         {
             // xorshift32, mapped to [-1, 1).
-            state ^= state << 13;
-            state ^= state >> 17;
-            state ^= state << 5;
-            float n = (state / (float)uint.MaxValue) * 2f - 1f;
+            float n = rng.NextFloat() * 2f - 1f;
             float env = Envelope(i, count, sampleRate, attack, release);
             samples[i] = AudioConvert.ToShort(n * amplitude * env);
         }

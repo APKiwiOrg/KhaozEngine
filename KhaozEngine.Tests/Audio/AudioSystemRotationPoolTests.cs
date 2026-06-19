@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.Audio;
+using KhaozEngine.Primitives;
 using Xunit;
 
 namespace KhaozEngine.Tests;
@@ -30,7 +31,7 @@ public sealed class AudioSystemRotationPoolTests
     public void SingletonPool_AlwaysSelectsThatTrack()
     {
         var (audio, backend) = NewLoaded("a", "b", "c", "d");
-        audio.SetRng(new Random(1));
+        audio.SetRng(new DeterministicRng(1));
         audio.SetRotationPool(new[] { "a" });   // index 0
 
         Spin(audio, backend, 50);
@@ -45,7 +46,7 @@ public sealed class AudioSystemRotationPoolTests
         for (int seed = 0; seed < 25; seed++)
         {
             var (audio, backend) = NewLoaded("a", "b", "c", "d");
-            audio.SetRng(new Random(seed));
+            audio.SetRng(new DeterministicRng((ulong)seed));
             audio.SetRotationPool(new[] { "a", "b" });   // indices 0, 1
 
             Spin(audio, backend, 60);
@@ -62,7 +63,7 @@ public sealed class AudioSystemRotationPoolTests
     public void NullPool_AllTracksEligible()
     {
         var (audio, backend) = NewLoaded("a", "b", "c", "d");
-        audio.SetRng(new Random(99));
+        audio.SetRng(new DeterministicRng(99));
         audio.SetRotationPool(null);   // explicit default
 
         Spin(audio, backend, 200);
@@ -74,7 +75,7 @@ public sealed class AudioSystemRotationPoolTests
     public void ResettingPoolToNull_RestoresAllTracks()
     {
         var (audio, backend) = NewLoaded("a", "b", "c", "d");
-        audio.SetRng(new Random(5));
+        audio.SetRng(new DeterministicRng(5));
         audio.SetRotationPool(new[] { "a" });
         Spin(audio, backend, 20);
         Assert.All(backend.PlayedIndices, idx => Assert.Equal(0, idx));
@@ -114,7 +115,7 @@ public sealed class AudioSystemRotationPoolTests
     public void UnknownPoolNames_AreIgnored_KnownOnesStillSelected()
     {
         var (audio, backend) = NewLoaded("a", "b", "c", "d");
-        audio.SetRng(new Random(3));
+        audio.SetRng(new DeterministicRng(3));
         audio.SetRotationPool(new[] { "a", "ghost", "b" });   // "ghost" is not registered
 
         Spin(audio, backend, 60);
@@ -128,7 +129,7 @@ public sealed class AudioSystemRotationPoolTests
     public void EmptyResolvedPool_FallsBackToAllTracks_NeverSilent()
     {
         var (audio, backend) = NewLoaded("a", "b", "c", "d");
-        audio.SetRng(new Random(11));
+        audio.SetRng(new DeterministicRng(11));
         audio.SetRotationPool(new[] { "nope", "alsonope" });   // none registered
 
         Spin(audio, backend, 200);
@@ -142,7 +143,7 @@ public sealed class AudioSystemRotationPoolTests
     public void EmptyPoolList_FallsBackToAllTracks()
     {
         var (audio, backend) = NewLoaded("a", "b", "c", "d");
-        audio.SetRng(new Random(8));
+        audio.SetRng(new DeterministicRng(8));
         audio.SetRotationPool(Array.Empty<string>());
 
         Spin(audio, backend, 200);
@@ -160,7 +161,7 @@ public sealed class AudioSystemRotationPoolTests
         audio.RegisterTrack("c");
         audio.RegisterTrack("d");
         audio.LoadContent("tracks");            // now a,b,c,d are loaded; "c" is index 2
-        audio.SetRng(new Random(2));
+        audio.SetRng(new DeterministicRng(2));
 
         Spin(audio, backend, 40);
 
@@ -171,7 +172,7 @@ public sealed class AudioSystemRotationPoolTests
     public void PoolMembersAvoidImmediateRepeat()
     {
         var (audio, backend) = NewLoaded("a", "b", "c", "d");
-        audio.SetRng(new Random(17));
+        audio.SetRng(new DeterministicRng(17));
         audio.SetRotationPool(new[] { "a", "b", "c" });   // 3-member pool
 
         Spin(audio, backend, 200);
@@ -188,10 +189,10 @@ public sealed class AudioSystemRotationPoolTests
         // The null-pool path must produce the identical index stream as before SetRotationPool existed:
         // one AudioSystem never touches the pool, the other sets it to null explicitly. Same seed -> same picks.
         var (a1, b1) = NewLoaded("a", "b", "c");
-        a1.SetRng(new Random(42));
+        a1.SetRng(new DeterministicRng(42));
         var (a2, b2) = NewLoaded("a", "b", "c");
         a2.SetRotationPool(null);
-        a2.SetRng(new Random(42));
+        a2.SetRng(new DeterministicRng(42));
 
         Spin(a1, b1, 50);
         Spin(a2, b2, 50);

@@ -28,6 +28,7 @@ namespace KhaozEngine.Render3D
         readonly ModelRenderer _model;
         readonly PixelPostProcess _post;
         readonly LineRenderer _lines;
+        readonly FillRenderer _fills;
         readonly BillboardRenderer _billboards;
         readonly RenderResources _res;
         // Slot-indexed GPU mesh storage parallel to _slots; a freed slot's entry is null until reused.
@@ -37,6 +38,7 @@ namespace KhaozEngine.Render3D
         readonly List<IGpuTexture> _textures = new();
         readonly SceneInstances _instances = new();
         readonly List<LineRenderer.LineVertex> _lineVerts = new();
+        readonly List<FillRenderer.FillVertex> _fillVerts = new();
         readonly List<BillboardRenderer.BillboardVertex> _billboardAlpha = new();
         readonly List<BillboardRenderer.BillboardVertex> _billboardAdditive = new();
         // Reused per-frame grouping buffers (cleared, not realloc) for GPU instancing.
@@ -57,6 +59,7 @@ namespace KhaozEngine.Render3D
             _post = new PixelPostProcess(gd, _res.PingAFB.Outputs, targetOutput);
             _post.BindTargets(_res);
             _lines = new LineRenderer(gd, targetOutput);
+            _fills = new FillRenderer(gd, targetOutput);
             _billboards = new BillboardRenderer(gd, targetOutput);
         }
 
@@ -144,12 +147,13 @@ namespace KhaozEngine.Render3D
             _meshes[h.Index] = null;
         }
 
-        /// <summary>Start a frame: clear the instance queue, the debug-line queue, and the billboard queues.
-        /// Call before submitting.</summary>
+        /// <summary>Start a frame: clear the instance queue, the debug-line queue, the filled-overlay queue, and
+        /// the billboard queues. Call before submitting.</summary>
         public void Begin()
         {
             _instances.Begin();
             _lineVerts.Clear();
+            _fillVerts.Clear();
             _billboardAlpha.Clear();
             _billboardAdditive.Clear();
             _billboardBasisValid = false;
@@ -227,6 +231,58 @@ namespace KhaozEngine.Render3D
             foreach (var p in _scratch)
                 _lineVerts.Add(new LineRenderer.LineVertex(p, color));
         }
+
+        // ---- Filled (alpha-blended) overlay: flat, world-space translucent shapes painted on a plane (ground
+        //      tiles, range/zone/AoE highlights). Queued this frame, drawn after post UNDER the debug lines so an
+        //      outline reads crisp on top of a fill. The mesh pass is opaque, so a tinted plane mesh can't blend;
+        //      these live here in the overlay pass. ----
+
+        readonly List<Vector3> _fillScratch = new();
+
+        /// <summary>Queue a flat translucent quad centred at <paramref name="center"/>, lying in the plane with the
+        /// given <paramref name="normal"/>, its first in-plane axis along <paramref name="uAxis"/>.
+        /// <paramref name="halfExtents"/>.X scales that axis, .Y the perpendicular one. <paramref name="color"/> is
+        /// RGBA; its alpha is blended over the post image. Cleared in <see cref="Begin"/>; drawn under the debug
+        /// lines.</summary>
+        public void DebugFilledQuad(Vector3 center, Vector3 normal, Vector3 uAxis, Vector2 halfExtents, Vector4 color)
+        {
+            _fillScratch.Clear();
+            DebugFillShapes.FilledQuad(_fillScratch, center, normal, uAxis, halfExtents);
+            AppendFillScratch(color);
+        }
+
+        /// <summary>Queue a flat translucent quad on the XZ ground plane (normal +Y, u axis +X) centred at
+        /// <paramref name="center"/>, with the given <paramref name="halfExtents"/> (X along world X, Y along world
+        /// Z) and RGBA <paramref name="color"/>.</summary>
+        public void DebugFilledQuad(Vector3 center, Vector2 halfExtents, Vector4 color) =>
+            DebugFilledQuad(center, Vector3.UnitY, Vector3.UnitX, halfExtents, color);
+
+        /// <summary>Queue a square translucent ground tile centred at <paramref name="center"/> on the XZ plane,
+        /// half a <paramref name="halfSize"/> across each way, in RGBA <paramref name="color"/>. The board-tile
+        /// convenience (range/coverage/AoE highlights).</summary>
+        public void DebugFilledQuad(Vector3 center, float halfSize, Vector4 color) =>
+            DebugFilledQuad(center, Vector3.UnitY, Vector3.UnitX, new Vector2(halfSize, halfSize), color);
+
+        /// <summary>Queue a flat translucent disc of <paramref name="segments"/> triangles at
+        /// <paramref name="radius"/> from <paramref name="center"/>, in the plane perpendicular to
+        /// <paramref name="normal"/> (use <see cref="Vector3.UnitY"/> for a ground disc), in RGBA
+        /// <paramref name="color"/>.</summary>
+        public void DebugFilledCircle(Vector3 center, Vector3 normal, float radius, Vector4 color, int segments = 32)
+        {
+            _fillScratch.Clear();
+            DebugFillShapes.FilledCircle(_fillScratch, center, normal, radius, segments);
+            AppendFillScratch(color);
+        }
+
+        void AppendFillScratch(Vector4 color)
+        {
+            foreach (var p in _fillScratch)
+                _fillVerts.Add(new FillRenderer.FillVertex(p, color));
+        }
+
+        /// <summary>Count of queued filled-overlay vertices this frame (3 per triangle). Internal: lets tests
+        /// assert <see cref="Begin"/> clears the queue and the builders queue the expected geometry.</summary>
+        internal int FillVertexCount => _fillVerts.Count;
 
         // ---- Camera-facing billboard overlay (immediate-mode; queued this frame, drawn on top after lines). ----
 
@@ -329,6 +385,12 @@ namespace KhaozEngine.Render3D
 
             _post.Run(cl, _res, target, Post);
 
+            // Filled overlay: rebind `target` and draw the accumulated translucent triangles on top of the post
+            // image, BEFORE the lines so an outline drawn on top of a fill reads crisp. Depth disabled + alpha
+            // blend; same Camera.ViewProjection as the model pass (so fills line up with geometry and picking).
+            if (_fillVerts.Count > 0)
+                _fills.Draw(cl, Camera.ViewProjection, CollectionsMarshal.AsSpan(_fillVerts), target);
+
             // Debug overlay: rebind `target` and draw the accumulated lines on top of the post image, with
             // depth disabled and alpha blend. Camera.ViewProjection matches the model pass (unflipped, so
             // lines line up with rendered geometry and with ScreenToGround picking).
@@ -348,6 +410,7 @@ namespace KhaozEngine.Render3D
             _model.Dispose();
             _post.Dispose();
             _lines.Dispose();
+            _fills.Dispose();
             _billboards.Dispose();
             _res.Dispose();
             foreach (var m in _meshes)

@@ -4,6 +4,20 @@ All notable changes to KhaozEngine. The 5.x line `<KhaozEngine5xVersion>` is the
 stack + the graduated foundation packages); the legacy 4.x line `<Version>` carries only the genuinely-MonoGame
 packages. Both versions live in `Directory.Build.props`. See the post-MonoGame plan in `docs/ROADMAP.md`.
 
+## 5.69.0 (custom 5.x line)
+
+Ground-aligned, alpha-blended FILLED overlay primitive on `Scene3D` (`KhaozEngine.Render3D`): flat world-space
+translucent shapes painted on a plane (range/zone/coverage/AoE highlights, board tiles), the counterpart to the
+existing translucent `Debug*` line outlines. New `DebugFilledQuad(center, normal, uAxis, halfExtents, color)` plus
+two ground conveniences: `DebugFilledQuad(center, halfExtents, color)` (XZ plane, normal +Y, u axis +X) and
+`DebugFilledQuad(center, halfSize, color)` (square tile). `DebugFilledCircle(center, normal, radius, color,
+segments=32)` fills a disc as a triangle fan. Colour is an RGBA `Vector4`; alpha is respected and blended over the
+post image. The fills draw in the overlay pass (the mesh pass is opaque, so a tinted plane mesh can't blend) on a
+new triangle-list renderer (depth disabled, src-alpha/one-minus-src-alpha), and are drawn UNDER the debug lines so
+an outline reads crisp on top of a fill. Cleared each frame in `Begin()`; per-frame alloc-free like the line and
+billboard paths. Pure geometry builders live in the new `DebugFillShapes` (headless-testable: winding, extents,
+fan vertex count). Additive; no API removed.
+
 ## 5.68.0 (custom 5.x line)
 
 Cursor orbit gesture on `IsoCameraController` (`KhaozEngine.Render3D`), input-agnostic and headless-testable like

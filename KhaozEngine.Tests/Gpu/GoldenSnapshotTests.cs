@@ -58,6 +58,41 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuFact]
+        public void Golden3D_FilledOverlay()
+        {
+            MeshHandle floor = default, box = default;
+
+            byte[] rgba = Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    floor = scene.LoadMesh(MeshPrimitives.Tile(6f, 0.1f));
+                    box = scene.LoadMesh(MeshPrimitives.Box(0.9f));
+                    // Same fixed asymmetric framing as the line golden so a flip moves content visibly.
+                    scene.Camera.Frame(new Vector3(0.4f, 0.4f, -0.2f), new Vector3(5f, 3f, 5f));
+                },
+                drawFrame: scene =>
+                {
+                    scene.Draw(floor, Matrix4x4.CreateTranslation(0f, 0f, 0f));
+                    // An opaque box the fill must NOT wash out where it doesn't overlap.
+                    scene.Draw(box, Matrix4x4.CreateTranslation(1.3f, 0.45f, -1.1f),
+                        new Vector4(0.15f, 0.75f, 0.2f, 1f));
+
+                    // Translucent green ground tile: alpha < 1 so the floor reads THROUGH it (blend assertion).
+                    scene.DebugFilledQuad(new Vector3(-1.0f, 0.045f, 0.6f), halfSize: 1.2f,
+                        new Vector4(0.30f, 0.85f, 0.45f, 0.45f));
+                    // Translucent magenta ground disc off to the other side.
+                    scene.DebugFilledCircle(new Vector3(1.4f, 0.045f, 1.4f), Vector3.UnitY, 1.0f,
+                        new Vector4(0.85f, 0.25f, 0.8f, 0.45f), segments: 40);
+                    // A crisp outline ON TOP of the filled tile: locks draw order (fill under line).
+                    scene.DebugCircle(new Vector3(-1.0f, 0.05f, 0.6f), Vector3.UnitY, 1.0f,
+                        new Vector4(1f, 1f, 0.3f, 1f), segments: 40);
+                },
+                frames: 2);
+
+            GoldenCompare.AssertOrUpdate("scene3d_fill", rgba, W, H);
+        }
+
+        [GpuFact]
         public void Golden3D_TexturedMesh()
         {
             // Deterministic 64x64 checkerboard (8x8 cells) in two contrasting colours.

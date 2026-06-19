@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.Game;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Render3D;
 using KhaozEngine.Windowing;
@@ -118,7 +119,7 @@ sealed class Render3DSampleApp : GameApp3D
             Width = 1280,
             Height = 720,
             ScaleMode = ScaleMode.Fit,
-            ClearColor = new Vector4(0.10f, 0.12f, 0.16f, 1f),
+            ClearColor = new Color(0.10f, 0.12f, 0.16f, 1f),
         })
     { }
 

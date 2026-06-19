@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.Primitives;
 using Silk.NET.Input;
 using Silk.NET.Maths;
 using Silk.NET.Windowing;
@@ -62,7 +63,7 @@ namespace KhaozEngine.Windowing
         /// <summary>Clip-space / depth conventions of the live device (see <see cref="GpuCapabilities"/>).</summary>
         public GpuCapabilities Capabilities => _gpu.Capabilities;
         /// <summary>Background colour cleared each frame.</summary>
-        public Vector4 ClearColor = new(0.10f, 0.12f, 0.16f, 1f);
+        public Color ClearColor = new(0.10f, 0.12f, 0.16f, 1f);
 
         public AppWindow(string title, int width, int height)
         {

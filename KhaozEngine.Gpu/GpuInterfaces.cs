@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Gpu
 {
@@ -106,7 +107,7 @@ namespace KhaozEngine.Gpu
         /// <summary>Bind a framebuffer as the render target.</summary>
         void SetFramebuffer(IGpuFramebuffer fb);
         /// <summary>Clear colour attachment <paramref name="index"/> to <paramref name="rgba"/>.</summary>
-        void ClearColorTarget(uint index, Vector4 rgba);
+        void ClearColorTarget(uint index, Color rgba);
         /// <summary>Clear the depth attachment.</summary>
         void ClearDepthStencil(float depth);
         /// <summary>Bind a graphics pipeline.</summary>

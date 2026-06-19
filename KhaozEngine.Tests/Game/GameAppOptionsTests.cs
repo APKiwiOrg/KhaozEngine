@@ -1,5 +1,6 @@
 using System.Numerics;
 using KhaozEngine.Game;
+using KhaozEngine.Primitives;
 using KhaozEngine.Windowing;
 using Xunit;
 
@@ -20,7 +21,7 @@ namespace KhaozEngine.Tests.Game
             Assert.Equal(0, o.DesignWidth);
             Assert.Equal(0, o.DesignHeight);
             Assert.Equal(ScaleMode.Fit, o.ScaleMode);
-            Assert.Equal(new Vector4(0.10f, 0.12f, 0.16f, 1f), o.ClearColor);
+            Assert.Equal(new Color(0.10f, 0.12f, 0.16f, 1f), o.ClearColor);
             // No factories by default -> GameApp builds a plain AppWindow + DesignViewport.
             Assert.Null(o.WindowFactory);
             Assert.Null(o.ViewportFactory);

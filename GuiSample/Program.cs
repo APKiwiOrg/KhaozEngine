@@ -27,7 +27,7 @@ sealed class GuiSampleApp : GameApp
             DesignWidth = 960,
             DesignHeight = 540,
             ScaleMode = ScaleMode.Fit,
-            ClearColor = new Vector4(0.03f, 0.04f, 0.06f, 1f),
+            ClearColor = new Color(0.03f, 0.04f, 0.06f, 1f),
         })
     { }
 

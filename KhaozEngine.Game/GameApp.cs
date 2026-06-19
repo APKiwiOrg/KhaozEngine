@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
 
@@ -63,7 +64,7 @@ namespace KhaozEngine.Game
         protected float Dt => _dt;
 
         /// <summary>Background colour cleared each frame; forwards to <see cref="AppWindow.ClearColor"/>.</summary>
-        public Vector4 ClearColor
+        public Color ClearColor
         {
             get => _window.ClearColor;
             set => _window.ClearColor = value;

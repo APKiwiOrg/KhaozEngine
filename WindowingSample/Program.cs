@@ -18,7 +18,7 @@ Log.Configure(loggerOptions);
 // (drag / tap / long-press) over the design-space Pointer, and a GameClock (pause / time-scale) driving an
 // animation independently of real time. All authored in a 960x540 DesignViewport so it scales/letterboxes on
 // resize and gestures stay aligned. No MonoGame.
-var window = new AppWindow("KhaozEngine.Windowing - input demo", 960, 540) { ClearColor = new Vector4(0.03f, 0.04f, 0.06f, 1f) };
+var window = new AppWindow("KhaozEngine.Windowing - input demo", 960, 540) { ClearColor = new Color(0.03f, 0.04f, 0.06f, 1f) };
 var surface = new Render2DSurface(window);
 var font = surface.LoadFont("/System/Library/Fonts/Supplemental/Arial.ttf", 26f);
 var white = surface.CreateTexture(new byte[] { 255, 255, 255, 255 }, 1, 1);

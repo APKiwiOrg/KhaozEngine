@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Primitives;
 using Veldrid;
 
 namespace KhaozEngine.Gpu.Internal
@@ -17,8 +18,8 @@ namespace KhaozEngine.Gpu.Internal
         public void SetFramebuffer(IGpuFramebuffer fb)
             => CommandList.SetFramebuffer(((VeldridGpuFramebuffer)fb).Framebuffer);
 
-        public void ClearColorTarget(uint index, Vector4 rgba)
-            => CommandList.ClearColorTarget(index, new RgbaFloat(rgba.X, rgba.Y, rgba.Z, rgba.W));
+        public void ClearColorTarget(uint index, Color rgba)
+            => CommandList.ClearColorTarget(index, new RgbaFloat(rgba.R, rgba.G, rgba.B, rgba.A));
 
         public void ClearDepthStencil(float depth) => CommandList.ClearDepthStencil(depth);
 

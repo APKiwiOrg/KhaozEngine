@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Gpu;
+using KhaozEngine.Primitives;
 using Veldrid;
 using Xunit;
 
@@ -76,7 +77,7 @@ void main() { o = vec4(0.0, 1.0, 0.0, 1.0); }";
             using IGpuCommandList cl = f.CreateCommandList();
             cl.Begin();
             cl.SetFramebuffer(fb);
-            cl.ClearColorTarget(0, new Vector4(0, 0, 0, 1));
+            cl.ClearColorTarget(0, Color.Black);
             cl.SetFullScissorRects();
             cl.SetPipeline(pipeline);
             cl.SetVertexBuffer(0, vb);

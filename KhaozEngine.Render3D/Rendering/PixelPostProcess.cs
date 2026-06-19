@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Gpu;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D.Rendering
@@ -159,7 +160,7 @@ namespace KhaozEngine.Render3D.Rendering
             cl.SetFramebuffer(swapchainFB);
             // Transparent clear when compositing offscreen, else opaque black. (The fullscreen blit overwrites
             // every pixel via OverrideBlend, so this mainly documents intent; the alpha is set in the shader.)
-            cl.ClearColorTarget(0, s.TransparentBackground ? Vector4.Zero : new Vector4(0f, 0f, 0f, 1f));
+            cl.ClearColorTarget(0, s.TransparentBackground ? Color.Transparent : Color.Black);
             cl.SetPipeline(_blitPipe);
             cl.SetGraphicsResourceSet(0, blit);
             cl.Draw(3);

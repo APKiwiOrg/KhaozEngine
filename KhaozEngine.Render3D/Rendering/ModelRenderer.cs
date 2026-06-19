@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Gpu;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D.Rendering
@@ -121,9 +122,9 @@ namespace KhaozEngine.Render3D.Rendering
             // Metal MRT clear collapses to one value across attachments; clear all three to the background.
             // alpha 0 marks "background" for the starfield composite; the model writes alpha 1.
             var bg = new Vector4(s.BackgroundColor.X, s.BackgroundColor.Y, s.BackgroundColor.Z, 0f);
-            cl.ClearColorTarget(0, bg);
-            cl.ClearColorTarget(1, bg);
-            cl.ClearColorTarget(2, bg);
+            cl.ClearColorTarget(0, Color.FromVector4(bg));
+            cl.ClearColorTarget(1, Color.FromVector4(bg));
+            cl.ClearColorTarget(2, Color.FromVector4(bg));
             cl.ClearDepthStencil(1f);
         }
 

@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Windowing;
 
 namespace KhaozEngine.Game
@@ -24,7 +25,7 @@ namespace KhaozEngine.Game
         /// <summary>How the design space maps onto the window (default <see cref="ScaleMode.Fit"/>).</summary>
         public ScaleMode ScaleMode;
         /// <summary>Background colour cleared each frame (default dark).</summary>
-        public Vector4 ClearColor;
+        public Color ClearColor;
 
         /// <summary>
         /// Optional: build the window. Default (null) is <c>new AppWindow(Title, Width, Height)</c>. Set it to use
@@ -55,7 +56,7 @@ namespace KhaozEngine.Game
             DesignWidth = 0,
             DesignHeight = 0,
             ScaleMode = ScaleMode.Fit,
-            ClearColor = new Vector4(0.10f, 0.12f, 0.16f, 1f),
+            ClearColor = new Color(0.10f, 0.12f, 0.16f, 1f),
         };
     }
 }

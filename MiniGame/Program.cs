@@ -11,7 +11,7 @@ using KhaozEngine.Windowing;
 // A tiny but complete game on the custom 5.x stack — proves Windowing + Render2D + Gui + Audio run a real
 // game loop with no MonoGame. "Catcher": move the paddle to catch falling blocks; miss three and it's over.
 const int W = 960, H = 540;
-var window = new AppWindow("KhaozEngine — Catcher (5.x stack demo)", W, H) { ClearColor = new Vector4(0.06f, 0.08f, 0.12f, 1f) };
+var window = new AppWindow("KhaozEngine — Catcher (5.x stack demo)", W, H) { ClearColor = new Color(0.06f, 0.08f, 0.12f, 1f) };
 var surface = new Render2DSurface(window);
 
 // Background music: generate a short looping WAV and play it through the OpenAL backend.

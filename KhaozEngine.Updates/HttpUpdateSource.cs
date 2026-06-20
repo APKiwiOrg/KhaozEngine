@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 using System.Net.Http;
-using System.Net.Http.Json;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Diagnostics;
@@ -27,6 +27,15 @@ public sealed class HttpUpdateSourceOptions
 
     /// <summary>Per-request HTTP timeout when this source owns its <see cref="HttpClient"/>.</summary>
     public TimeSpan HttpTimeout { get; init; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// Maximum number of bytes accepted from the "latest version" probe response before it is rejected
+    /// (the check returns null). The payload is a small fixed-shape <see cref="LatestVersionInfo"/>, so
+    /// the default 64 KB is generous headroom while still capping a hostile or compromised host that
+    /// streams an unbounded body into the JSON parser (memory-exhaustion guard). Mirrors the manifest/
+    /// file caps on <see cref="HttpUpdateSource.DownloadBytesAsync"/> and <see cref="HttpUpdateSource.DownloadFileAsync"/>.
+    /// </summary>
+    public long MaxLatestVersionBytes { get; init; } = 64L * 1024;
 
     /// <summary>Streaming buffer size for file downloads.</summary>
     public int DownloadBufferSize { get; init; } = 81920;
@@ -72,9 +81,32 @@ public sealed class HttpUpdateSource : IUpdateSource, IDisposable
 
         try
         {
-            return await httpClient.GetFromJsonAsync<LatestVersionInfo>(endpoint, cancellationToken);
+            // Bounded read: the probe response is a small fixed-shape record, so cap the body before it
+            // reaches the JSON parser. An unbounded GetFromJsonAsync would let a hostile/compromised host
+            // stream an arbitrarily large body into memory (DoS). Mirrors DownloadBytesAsync's cap.
+            using HttpResponseMessage response = await httpClient.GetAsync(
+                endpoint, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            using Stream contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var ms = new MemoryStream();
+            byte[] buffer = new byte[options.DownloadBufferSize];
+            long total = 0;
+            int read;
+            while ((read = await contentStream.ReadAsync(buffer, cancellationToken)) > 0)
+            {
+                total += read;
+                if (total > options.MaxLatestVersionBytes)
+                {
+                    log.Info($"Version check response exceeded size cap ({options.MaxLatestVersionBytes} bytes), aborting");
+                    return null;
+                }
+                ms.Write(buffer, 0, read);
+            }
+
+            return JsonSerializer.Deserialize<LatestVersionInfo>(ms.GetBuffer().AsSpan(0, (int)ms.Length));
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException or IOException or JsonException)
         {
             log.Info($"Version check failed: {ex.Message}");
             return null;

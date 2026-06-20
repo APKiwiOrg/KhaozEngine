@@ -119,6 +119,36 @@ public sealed class HttpUpdateSourceTests
     }
 
     [Fact]
+    public async Task CheckLatestVersion_OverCap_ReturnsNull()
+    {
+        var src = new HttpUpdateSource(
+            new HttpUpdateSourceOptions { ServerBaseUrl = "https://updates.example.com/", MaxLatestVersionBytes = 16 },
+            new HttpClient(new StubHandler(new byte[64 * 1024])));
+
+        LatestVersionInfo? result = await src.CheckLatestVersionAsync("win-x64");
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task CheckLatestVersion_WithinCap_DeserializesInfo()
+    {
+        byte[] body = System.Text.Encoding.UTF8.GetBytes(
+            "{\"version\":\"1.2.3\",\"buildVersion\":\"build-7\",\"manifestUrl\":\"https://updates.example.com/m.json\",\"required\":true}");
+        var src = new HttpUpdateSource(
+            new HttpUpdateSourceOptions { ServerBaseUrl = "https://updates.example.com/" },
+            new HttpClient(new StubHandler(body)));
+
+        LatestVersionInfo? result = await src.CheckLatestVersionAsync("win-x64");
+
+        Assert.NotNull(result);
+        Assert.Equal("1.2.3", result!.Version);
+        Assert.Equal("build-7", result.BuildVersion);
+        Assert.Equal("https://updates.example.com/m.json", result.ManifestUrl);
+        Assert.True(result.Required);
+    }
+
+    [Fact]
     public async Task DownloadFile_OffOriginHost_ReturnsFalse()
     {
         HttpUpdateSource src = Source("https://updates.example.com/");

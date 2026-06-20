@@ -29,11 +29,12 @@ public interface IUpdateSource
     Task<LatestVersionInfo?> CheckLatestVersionAsync(string platform, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Downloads the raw bytes at <paramref name="url"/> (the manifest or its detached signature).
-    /// Returns null on any transport/IO error. Implementations MUST reject a URL that is not https
-    /// or not same-host with their configured base (see <see cref="HttpUpdateSource"/>).
+    /// Downloads the raw bytes at <paramref name="url"/> (the manifest or its detached signature),
+    /// aborting (returns null) if more than <paramref name="maxBytes"/> arrive. Returns null on any
+    /// transport/IO error. Implementations MUST reject a URL that is not https or not same-host with
+    /// their configured base (see <see cref="HttpUpdateSource"/>).
     /// </summary>
-    Task<byte[]?> DownloadBytesAsync(string url, CancellationToken cancellationToken = default);
+    Task<byte[]?> DownloadBytesAsync(string url, long maxBytes, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Streams a single file to <paramref name="destPath"/>, reporting cumulative bytes, aborting if

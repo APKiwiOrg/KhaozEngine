@@ -49,6 +49,9 @@ public sealed class UpdateServiceOptions
     /// <summary>Total download size cap across all changed files. Default 16 GiB.</summary>
     public long MaxTotalDownloadBytes { get; init; } = 16L * 1024 * 1024 * 1024;
 
+    /// <summary>Cap on the manifest and signature download size. Default 64 MiB.</summary>
+    public long MaxManifestBytes { get; init; } = 64L * 1024 * 1024;
+
     /// <summary>Whether <see cref="UpdateService.Dispose"/> disposes <see cref="Source"/> if it is disposable.</summary>
     public bool DisposeSource { get; init; } = true;
 

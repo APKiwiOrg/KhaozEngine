@@ -84,7 +84,7 @@ public sealed class HttpUpdateSourceTests
     {
         HttpUpdateSource src = Source("https://updates.example.com/");
 
-        byte[]? result = await src.DownloadBytesAsync("https://attacker.com/manifest.json");
+        byte[]? result = await src.DownloadBytesAsync("https://attacker.com/manifest.json", long.MaxValue);
 
         Assert.Null(result);
     }
@@ -94,9 +94,28 @@ public sealed class HttpUpdateSourceTests
     {
         HttpUpdateSource src = Source("https://updates.example.com/");
 
-        byte[]? result = await src.DownloadBytesAsync("http://updates.example.com/manifest.json");
+        byte[]? result = await src.DownloadBytesAsync("http://updates.example.com/manifest.json", long.MaxValue);
 
         Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task DownloadBytes_OverCap_ReturnsNull()
+    {
+        var src = new HttpUpdateSource(new HttpUpdateSourceOptions { ServerBaseUrl = "https://updates.example.com/" },
+            new HttpClient(new StubHandler(new byte[100])));
+        byte[]? result = await src.DownloadBytesAsync("https://updates.example.com/manifest.json", 10);
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task DownloadBytes_WithinCap_ReturnsBytes()
+    {
+        var body = new byte[] { 1, 2, 3, 4 };
+        var src = new HttpUpdateSource(new HttpUpdateSourceOptions { ServerBaseUrl = "https://updates.example.com/" },
+            new HttpClient(new StubHandler(body)));
+        byte[]? result = await src.DownloadBytesAsync("https://updates.example.com/manifest.json", 1024);
+        Assert.Equal(body, result);
     }
 
     [Fact]

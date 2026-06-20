@@ -29,7 +29,7 @@ internal sealed class FakeUpdateSource : IUpdateSource
     /// <summary>Raw bytes keyed by URL: the manifest JSON and its ".sig" live here.</summary>
     public readonly Dictionary<string, byte[]> Bytes = new(StringComparer.Ordinal);
 
-    public Task<byte[]?> DownloadBytesAsync(string url, CancellationToken cancellationToken = default)
+    public Task<byte[]?> DownloadBytesAsync(string url, long maxBytes, CancellationToken cancellationToken = default)
         => Task.FromResult(Bytes.TryGetValue(url, out byte[]? b) ? b : null);
 
     public string ResolveFileUrl(LatestVersionInfo latest, string relativePath) => relativePath;

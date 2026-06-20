@@ -29,9 +29,10 @@ public sealed class UpdateService : IDisposable
     private readonly string appDataDir;
     private readonly string localManifestPath;
     private readonly int maxRetries;
-    private readonly System.Collections.Generic.IReadOnlyList<string> trustedKeys;
+    private readonly IReadOnlyList<string> trustedKeys;
     private readonly long maxFileBytes;
     private readonly long maxTotalDownloadBytes;
+    private readonly long maxManifestBytes;
     private byte[]? pendingManifestBytes;
     private readonly ILogger log = Log.For<UpdateService>();
 
@@ -83,6 +84,7 @@ public sealed class UpdateService : IDisposable
         }
         maxFileBytes = options.MaxFileBytes;
         maxTotalDownloadBytes = options.MaxTotalDownloadBytes;
+        maxManifestBytes = options.MaxManifestBytes;
         localManifestPath = Path.Combine(appDataDir, "update-manifest.json");
 
         DetectInterruptedApply();
@@ -117,8 +119,8 @@ public sealed class UpdateService : IDisposable
 
             log.Info($"Update available: {currentVersion} -> {latest.Version}");
 
-            byte[]? manifestBytes = await source.DownloadBytesAsync(latest.ManifestUrl, cancellationToken);
-            byte[]? signature = await source.DownloadBytesAsync(latest.ManifestUrl + ".sig", cancellationToken);
+            byte[]? manifestBytes = await source.DownloadBytesAsync(latest.ManifestUrl, maxManifestBytes, cancellationToken);
+            byte[]? signature = await source.DownloadBytesAsync(latest.ManifestUrl + ".sig", maxManifestBytes, cancellationToken);
             if (manifestBytes is null || signature is null)
             {
                 SetState(UpdateState.Idle);
@@ -176,8 +178,9 @@ public sealed class UpdateService : IDisposable
             // It is also a cold one-shot path (per update check, not per frame) with no alloc pressure.
             var downloads = new List<ManifestFileEntry>(diff.FilesToDownload);
 
-            // Resume support: drop files already staged with a matching SHA256.
-            string stagingDir = GetStagingDir(latest.Version);
+            // Resume support: drop files already staged with a matching SHA256. Use the signed
+            // manifest version (authoritative) so this matches the staging dir used at download/apply.
+            string stagingDir = GetStagingDir(remoteManifest.Version);
             int alreadyStaged = 0;
             for (int i = downloads.Count - 1; i >= 0; i--)
             {
@@ -200,7 +203,7 @@ public sealed class UpdateService : IDisposable
             pendingManifestBytes = manifestBytes;
             pendingDownloads = downloads;
             pendingDeletes = diff.FilesToDelete;
-            remoteVersion = latest.Version;
+            remoteVersion = remoteManifest.Version;
             required = remoteManifest.Required;
             totalDownloadBytes = 0;
             for (int i = 0; i < downloads.Count; i++)

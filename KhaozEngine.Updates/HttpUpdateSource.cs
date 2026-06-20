@@ -81,7 +81,7 @@ public sealed class HttpUpdateSource : IUpdateSource, IDisposable
         }
     }
 
-    public async Task<byte[]?> DownloadBytesAsync(string url, CancellationToken cancellationToken = default)
+    public async Task<byte[]?> DownloadBytesAsync(string url, long maxBytes, CancellationToken cancellationToken = default)
     {
         if (!IsAllowedOrigin(url))
         {
@@ -91,9 +91,28 @@ public sealed class HttpUpdateSource : IUpdateSource, IDisposable
 
         try
         {
-            return await httpClient.GetByteArrayAsync(url, cancellationToken);
+            using HttpResponseMessage response = await httpClient.GetAsync(
+                url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            using Stream contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var ms = new MemoryStream();
+            byte[] buffer = new byte[options.DownloadBufferSize];
+            long total = 0;
+            int read;
+            while ((read = await contentStream.ReadAsync(buffer, cancellationToken)) > 0)
+            {
+                total += read;
+                if (total > maxBytes)
+                {
+                    log.Info($"Response exceeded size cap ({maxBytes} bytes), aborting: {url}");
+                    return null;
+                }
+                ms.Write(buffer, 0, read);
+            }
+            return ms.ToArray();
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException or IOException)
         {
             log.Info($"Download failed ({url}): {ex.Message}");
             return null;

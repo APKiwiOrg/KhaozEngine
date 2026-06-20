@@ -26,13 +26,6 @@ public sealed class UpdateServiceTests : IDisposable
 
     private const string ManifestUrl = "https://u.example.com/2.0.0/manifest.json";
 
-    private static string NewTempDir()
-    {
-        string dir = Path.Combine(Path.GetTempPath(), "ke-upd-" + System.Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(dir);
-        return dir;
-    }
-
     public UpdateServiceTests()
     {
         root = Path.Combine(Path.GetTempPath(), "ke-updates-svc-" + Guid.NewGuid().ToString("N"));
@@ -354,6 +347,29 @@ public sealed class UpdateServiceTests : IDisposable
         await svc.CheckForUpdateAsync();
 
         Assert.Equal(UpdateState.Idle, svc.State);
+    }
+
+    [Fact]
+    public async Task Check_RemoteVersion_ComesFromSignedManifest_NotLatestResponse()
+    {
+        // The unsigned Latest response advertises 2.5.0, but the SIGNED manifest says 2.0.0. The
+        // signed version is authoritative for RemoteVersion (it feeds the recorded installed version).
+        File.WriteAllText(Path.Combine(installDir, "game.dll"), "v1");
+        string gameSha = source.Add("game.dll", "v2");
+        var remote = new UpdateManifest { Version = "2.0.0", Platform = "win-x64" };
+        remote.Files.Add(new ManifestFileEntry { Path = "game.dll", Sha256 = gameSha, Size = 2 });
+        byte[] manifestBytes = Encoding.UTF8.GetBytes(remote.Serialize());
+        source.Bytes[ManifestUrl] = manifestBytes;
+        source.Bytes[ManifestUrl + ".sig"] = ManifestSigner.Sign(manifestBytes, PrivPem);
+        source.RemoteManifest = remote;
+        // Unsigned advertised version differs from (and is newer than) the signed one; both > current.
+        source.Latest = new LatestVersionInfo("2.5.0", "2.5.0", ManifestUrl, Required: false);
+        using UpdateService svc = Build();
+
+        await svc.CheckForUpdateAsync();
+
+        Assert.Equal(UpdateState.UpdateAvailable, svc.State);
+        Assert.Equal("2.0.0", svc.RemoteVersion);
     }
 
     [Fact]

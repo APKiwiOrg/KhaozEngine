@@ -6,6 +6,34 @@ stopped. Determinism-neutral: it never touches simulation or RNG, so no hash con
 
 Pure .NET (+ `KhaozEngine.Diagnostics`), no MonoGame dependency.
 
+## Signing (required)
+
+Manifests are RSA-2048 / SHA-256 / PKCS#1 signed. The client REQUIRES at least one trusted public
+key and refuses any manifest without a valid signature. There is no unsigned mode.
+
+1. Generate a key pair once: `ManifestSigner.GenerateKeyPair()`. Keep the private key secret (a CI
+   secret); commit nothing.
+2. At publish time, sign the exact manifest bytes and ship `manifest.json.sig` (the raw signature)
+   next to `manifest.json`:
+   `File.WriteAllBytes(manifestPath + ".sig", ManifestSigner.Sign(manifestBytes, privateKeyPem))`.
+3. Embed the public key(s) in the game and pass them to the service:
+
+   ```csharp
+   new UpdateServiceOptions
+   {
+       Source = new HttpUpdateSource(new HttpUpdateSourceOptions { ServerBaseUrl = "https://my-server.example.com/" }),
+       CurrentVersion = BuildConfig.Version,
+       AppDataDir = appDataDir,
+       TrustedPublicKeys = new[] { MyEmbeddedPublicKeyPem },
+   };
+   ```
+
+Rotate by shipping the new public key alongside the old (both in `TrustedPublicKeys`), switching the
+signer to the new private key, then dropping the old key in a later release.
+
+The HTTP source enforces https and a same-host origin (the manifest and every file must sit on the
+configured base host), and caps both the manifest and each downloaded file at a size limit.
+
 ## Pieces
 
 - **`UpdateManifest`** - SHA256 file manifest (`path` / `sha256` / `size`, sorted). `GenerateFromDirectory`
@@ -26,7 +54,10 @@ using KhaozEngine.Updates;
 
 var source = new HttpUpdateSource(new HttpUpdateSourceOptions
 {
-    ServerBaseUrl = Environment.GetEnvironmentVariable("MYGAME_SERVER_URL") ?? "https://my-server.example.com/",
+    // Release builds: hardcode the feed URL. Do NOT read it from an env var in production, a local
+    // attacker could repoint the updater. (Mandatory signing already blocks a repointed feed from
+    // serving a valid manifest, but hardcoding removes the vector entirely.)
+    ServerBaseUrl = "https://my-server.example.com/",
     // LatestVersionPath defaults to "api/updates/latest?platform={platform}"
 });
 
@@ -36,6 +67,7 @@ using var updates = new UpdateService(new UpdateServiceOptions
     CurrentVersion = BuildInfo.Version,          // your compiled-in version
     AppDataDir = appDataPaths.BaseDirectory,     // writable per-user dir for manifest + staging
     UpdaterExecutableName = "MyGameUpdater",     // shim that sits next to the game (".exe" added on Windows)
+    TrustedPublicKeys = new[] { MyEmbeddedPublicKeyPem }, // required: see "Signing (required)" above
     OnBeforeForcedExit = () => SaveEverything(),
 });
 

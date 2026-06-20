@@ -297,7 +297,9 @@ void main() {
         /// in draw units; <paramref name="softness"/> 0 = crisp fwidth AA, &gt;0 = soft falloff (shadow/glow);
         /// <paramref name="strokeWidth"/> 0 = filled, &gt;0 = ring (border, needs roughly &gt;=1 draw-unit to be
         /// visible). Alpha-shaped by an SDF in the shared shader; batches with everything. Use the white texture for
-        /// solid fills.
+        /// solid fills. Note: even <paramref name="cornerRadius"/> 0 takes the SDF path (square corners with AA),
+        /// which is not byte-identical to and a touch costlier than the plain <see cref="Draw(Texture2D, Vector4, Color)"/>
+        /// overloads; use those for a flat quad.
         /// </summary>
         public void DrawRounded(Texture2D tex, Vector4 destRect, Vector4 srcUV, Color top, Color bottom,
             float cornerRadius, float softness = 0f, float strokeWidth = 0f)

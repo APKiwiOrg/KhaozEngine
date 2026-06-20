@@ -5,6 +5,37 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.1.0
+
+Additive (non-breaking): textured, depth-interleaved billboards in `Scene3D` (`KhaozEngine.Render3D`), so
+sprite-sheet frames can be drawn as depth-sorted quads inside the lit 3D scene alongside meshes. Unblocks
+SpaceGame's mesh-rendering pivot (WS1.5): enemies/projectiles/effects render as textured billboards in the same
+depth-buffered scene as the player/drone meshes until they become meshes in WS3. The colour-only billboard
+overlay and every existing 2D/3D golden are byte-identical (no Hardpoint regression).
+
+- `Scene3D.DrawBillboard(TextureHandle texture, Vector3 worldPos, float size, Vector4 sourceUv, Color tint,
+  BillboardBlend blend = Alpha)`: queue a camera-facing quad sampling a sub-rect `sourceUv` (`(u0,v0,u1,v1)`,
+  bottom-left to top-right) of a texture loaded with `Scene3D.LoadTexture`, multiplied by `tint`, with `Alpha`
+  or `Additive` blend. A convenience overload without `sourceUv` samples the whole texture (`(0,0,1,1)`). An
+  invalid/`default` texture handle draws nothing (no throw), mirroring the untextured-mesh fallback. Cleared each
+  `Begin()` like the other per-frame queues.
+- Depth-interleaved with meshes: unlike the colour-only `DrawBillboard` (an overlay drawn after the post chain
+  with depth disabled), textured billboards draw INTO the model MRT alongside the lit meshes with the depth test
+  on (less-or-equal) and depth write OFF. A nearer mesh occludes a quad behind it and a quad in front draws over
+  a mesh behind it; depth write is off so overlapping quads blend in submission order (submit back-to-front for
+  correct transparency). The whole MRT (meshes + textured billboards) then goes through the post chain together;
+  the outline pass still keys off the meshes' normal/depth (the textured pass preserves attachments 1 & 2).
+- `BillboardGeometry.Triangles(center, size, right, up, Vector4 sourceUv, positions, uvs)`: pure helper mapping
+  the quad's corners onto a source-UV sub-rect for sprite-sheet frame selection (the existing full-square
+  overload is unchanged). Swap `v0`/`v1` (or `u0`/`u1`) to flip a frame.
+- `GpuBlendAttachment.PreserveDestination` (keep dst: src*0 + dst*1) and
+  `GpuDepthStencilState.DepthTestLessEqualNoWrite` (depth test, no write) added to `KhaozEngine.Gpu` for the new
+  pass; both are generic pipeline-state presets.
+
+Tests: headless coverage of the UV-rect mapping and the submission-order run coalescing; backend-agnostic GPU
+readback tests for sub-rect sampling, tint, blend, and occlusion both ways; a new committed golden
+(`scene3d_texbillboard`) of a textured billboard depth-interleaved with a mesh.
+
 ## 7.0.1
 
 ### KhaozEngine.Updates: cap the version-check probe response

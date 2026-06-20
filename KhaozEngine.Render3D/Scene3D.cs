@@ -30,12 +30,16 @@ namespace KhaozEngine.Render3D
         readonly LineRenderer _lines;
         readonly FillRenderer _fills;
         readonly BillboardRenderer _billboards;
+        readonly TexturedBillboardRenderer _texBillboards;
         readonly RenderResources _res;
         // Slot-indexed GPU mesh storage parallel to _slots; a freed slot's entry is null until reused.
         readonly List<Mesh?> _meshes = new();
         readonly MeshSlotMap _slots = new();
         // Loaded albedo textures, indexed by TextureHandle.Index. Shared across meshes; disposed in Dispose.
         readonly List<IGpuTexture> _textures = new();
+        // Per-texture billboard resource sets, parallel to _textures (ListIndex), created lazily the first time a
+        // texture is used for a textured billboard. Disposed in Dispose.
+        readonly List<IGpuResourceSet?> _texBillboardSets = new();
         readonly SceneInstances _instances = new();
         // Per-frame dynamic point lights, cleared each Begin() like the instance queue. The host adds them
         // (already N-nearest-culled); the renderer clamps to MaxPointLights and zero-fills the rest.
@@ -44,6 +48,11 @@ namespace KhaozEngine.Render3D
         readonly List<FillRenderer.FillVertex> _fillVerts = new();
         readonly List<BillboardRenderer.BillboardVertex> _billboardAlpha = new();
         readonly List<BillboardRenderer.BillboardVertex> _billboardAdditive = new();
+        // Textured depth-interleaved billboards: queued in submission order (NOT split by blend, so additive and
+        // alpha quads stay correctly ordered against each other), coalesced into same-texture+blend runs at render.
+        readonly List<TexturedBillboardItem> _texBillboardItems = new();
+        readonly List<TexturedBillboardRun> _texBillboardRuns = new();
+        readonly List<BillboardRenderer.BillboardVertex> _texBillboardVerts = new();
         // Reused per-frame grouping buffers (cleared, not realloc) for GPU instancing.
         readonly List<ModelRenderer.InstanceData> _instanceData = new();
         readonly List<MeshRun> _runs = new();
@@ -69,6 +78,9 @@ namespace KhaozEngine.Render3D
             _lines = new LineRenderer(gd, targetOutput);
             _fills = new FillRenderer(gd, targetOutput);
             _billboards = new BillboardRenderer(gd, targetOutput);
+            // Textured billboards draw INTO the model MRT (depth-interleaved with meshes), so they target the model
+            // framebuffer's output description, not the final target like the overlay renderers above.
+            _texBillboards = new TexturedBillboardRenderer(gd, _res.ModelFB.Outputs);
         }
 
         /// <summary>An opaque handle to an albedo texture loaded with <see cref="LoadTexture(string)"/> /
@@ -165,6 +177,7 @@ namespace KhaozEngine.Render3D
             _fillVerts.Clear();
             _billboardAlpha.Clear();
             _billboardAdditive.Clear();
+            _texBillboardItems.Clear();
             _billboardBasisValid = false;
         }
 
@@ -345,6 +358,47 @@ namespace KhaozEngine.Render3D
                 list.Add(new BillboardRenderer.BillboardVertex(pos[i], uv[i], color));
         }
 
+        /// <summary>
+        /// Queue a camera-facing TEXTURED billboard: a quad at <paramref name="worldPos"/> with half-size
+        /// <paramref name="size"/> (spans 2*size across), sampling the sub-rect <paramref name="sourceUv"/>
+        /// (<c>(u0,v0,u1,v1)</c> - bottom-left to top-right; pass <c>(0,0,1,1)</c> for the whole texture, or a frame
+        /// rect for a sprite sheet) of the texture loaded as <paramref name="texture"/>, multiplied by
+        /// <paramref name="tint"/> (RGBA), using <paramref name="blend"/>. Cleared in <see cref="Begin"/>.
+        /// </summary>
+        /// <remarks>
+        /// Unlike the colour-only <see cref="DrawBillboard(Vector3,float,Color,BillboardBlend)"/> (an overlay drawn
+        /// after the post chain), textured billboards draw INTO the model pass with the depth test on (no depth
+        /// write): a nearer mesh occludes the quad and the quad draws over a farther mesh, so meshes and sprites
+        /// interleave correctly. Depth write is off, so overlapping quads blend in SUBMISSION order - submit
+        /// back-to-front for correct transparency. An invalid/<c>default</c> <paramref name="texture"/> draws
+        /// nothing (no throw). Presentation only.
+        /// </remarks>
+        public void DrawBillboard(TextureHandle texture, Vector3 worldPos, float size, Vector4 sourceUv, Color tint,
+            BillboardBlend blend = BillboardBlend.Alpha)
+        {
+            if (!texture.IsValid) return;   // nothing to sample: no-op, like the untextured-mesh fallback
+            Vector4 c = tint;
+            _texBillboardItems.Add(new TexturedBillboardItem
+            {
+                TexIndex = texture.ListIndex,
+                Blend = blend,
+                Center = worldPos,
+                Size = size,
+                SourceUv = sourceUv,
+                Color = c,
+            });
+        }
+
+        /// <summary>Queue a textured billboard sampling the WHOLE texture (source rect <c>(0,0,1,1)</c>); see
+        /// <see cref="DrawBillboard(TextureHandle,Vector3,float,Vector4,Color,BillboardBlend)"/>.</summary>
+        public void DrawBillboard(TextureHandle texture, Vector3 worldPos, float size, Color tint,
+            BillboardBlend blend = BillboardBlend.Alpha) =>
+            DrawBillboard(texture, worldPos, size, new Vector4(0f, 0f, 1f, 1f), tint, blend);
+
+        /// <summary>Count of textured billboards queued this frame. Internal: lets tests assert
+        /// <see cref="Begin"/> clears the queue and the overloads enqueue.</summary>
+        internal int TexturedBillboardCount => _texBillboardItems.Count;
+
         // Current internal render-target size (physical pixels). Exposed for tests to assert MatchViewport resizes
         // and FixedInternal stays put; not part of the public surface.
         internal int RenderTargetWidth => _res.Width;
@@ -421,6 +475,11 @@ namespace KhaozEngine.Render3D
                 }
             }
 
+            // Textured billboards: drawn into the SAME model framebuffer (still bound), after the meshes, with the
+            // depth test on (no write). This is what gives mesh/sprite depth interleaving; then the whole MRT
+            // (meshes + textured billboards) goes through the post chain together.
+            DrawTexturedBillboards(cl);
+
             _post.Run(cl, _res, target, Post);
 
             // Filled overlay: rebind `target` and draw the accumulated translucent triangles on top of the post
@@ -443,6 +502,51 @@ namespace KhaozEngine.Render3D
                 _billboards.Draw(cl, Camera.ViewProjection, CollectionsMarshal.AsSpan(_billboardAlpha), target, additive: false);
         }
 
+        /// <summary>Coalesce the queued textured billboards into same-(texture,blend) runs (submission order
+        /// preserved), then draw each run into the model framebuffer. The model FB is still bound from the mesh
+        /// pass; the depth buffer holds the meshes' depth so the quads interleave. No-op when nothing is queued.</summary>
+        void DrawTexturedBillboards(IGpuCommandList cl)
+        {
+            if (_texBillboardItems.Count == 0) return;
+
+            CoalesceTexturedBillboards(_texBillboardItems, _texBillboardRuns);
+
+            // Camera basis is constant across the frame; compute once and reuse for every quad.
+            BillboardGeometry.CameraBasis(Camera.Forward, out Vector3 right, out Vector3 up);
+            _texBillboards.SetViewProj(cl, Camera.ViewProjection);
+
+            Span<Vector3> pos = stackalloc Vector3[6];
+            Span<Vector2> uv = stackalloc Vector2[6];
+            foreach (var run in _texBillboardRuns)
+            {
+                _texBillboardVerts.Clear();
+                for (int i = run.Start; i < run.Start + run.Count; i++)
+                {
+                    var it = _texBillboardItems[i];
+                    BillboardGeometry.Triangles(it.Center, it.Size, right, up, it.SourceUv, pos, uv);
+                    for (int v = 0; v < 6; v++)
+                        _texBillboardVerts.Add(new BillboardRenderer.BillboardVertex(pos[v], uv[v], it.Color));
+                }
+                IGpuResourceSet set = GetTexBillboardSet(run.TexIndex);
+                _texBillboards.Draw(cl, CollectionsMarshal.AsSpan(_texBillboardVerts), _res.ModelFB, set,
+                    run.Blend == BillboardBlend.Additive);
+            }
+        }
+
+        /// <summary>Get (creating on first use) the textured-billboard resource set for the texture at
+        /// <paramref name="texListIndex"/>. Cached parallel to <c>_textures</c>; disposed in <see cref="Dispose"/>.</summary>
+        IGpuResourceSet GetTexBillboardSet(int texListIndex)
+        {
+            while (_texBillboardSets.Count <= texListIndex) _texBillboardSets.Add(null);
+            var set = _texBillboardSets[texListIndex];
+            if (set is null)
+            {
+                set = _texBillboards.CreateTextureSet(_textures[texListIndex]);
+                _texBillboardSets[texListIndex] = set;
+            }
+            return set;
+        }
+
         public void Dispose()
         {
             _model.Dispose();
@@ -450,9 +554,12 @@ namespace KhaozEngine.Render3D
             _lines.Dispose();
             _fills.Dispose();
             _billboards.Dispose();
+            _texBillboards.Dispose();
             _res.Dispose();
             foreach (var m in _meshes)
                 if (m is { } mesh) { mesh.Vb.Dispose(); mesh.Ib.Dispose(); mesh.MaterialSet?.Dispose(); }
+            foreach (var s in _texBillboardSets) s?.Dispose();
+            _texBillboardSets.Clear();
             foreach (var t in _textures) t.Dispose();
             _textures.Clear();
         }
@@ -484,6 +591,57 @@ namespace KhaozEngine.Render3D
         /// <summary>Two handles name the same mesh slot occupant (index AND generation match).</summary>
         internal static bool SameHandle(MeshHandle a, MeshHandle b) =>
             a.Index == b.Index && a.Generation == b.Generation;
+
+        /// <summary>One queued textured billboard (resolved texture list index + blend + transform + source rect +
+        /// tint). Stored in submission order; coalesced into runs at render time.</summary>
+        internal struct TexturedBillboardItem
+        {
+            public int TexIndex;          // ListIndex into _textures
+            public BillboardBlend Blend;
+            public Vector3 Center;
+            public float Size;
+            public Vector4 SourceUv;      // (u0,v0,u1,v1)
+            public Vector4 Color;
+        }
+
+        /// <summary>A contiguous run of textured-billboard items sharing one texture + blend, drawn as one call.</summary>
+        internal readonly struct TexturedBillboardRun
+        {
+            public readonly int TexIndex;
+            public readonly BillboardBlend Blend;
+            public readonly int Start;
+            public readonly int Count;
+            public TexturedBillboardRun(int texIndex, BillboardBlend blend, int start, int count)
+            {
+                TexIndex = texIndex; Blend = blend; Start = start; Count = count;
+            }
+        }
+
+        /// <summary>
+        /// Coalesce <paramref name="items"/> (in submission order) into <paramref name="runs"/>: each run is a
+        /// maximal span of consecutive items sharing the same texture index AND blend. Submission order is
+        /// preserved (a texture/blend change starts a new run rather than merging non-adjacent items), so
+        /// alpha-blended quads keep the host's back-to-front ordering across textures. Pure + headless-testable;
+        /// <paramref name="runs"/> is Cleared and refilled.
+        /// </summary>
+        internal static void CoalesceTexturedBillboards(IReadOnlyList<TexturedBillboardItem> items, List<TexturedBillboardRun> runs)
+        {
+            runs.Clear();
+            if (items.Count == 0) return;
+
+            int start = 0;
+            for (int i = 1; i <= items.Count; i++)
+            {
+                bool boundary = i == items.Count
+                    || items[i].TexIndex != items[start].TexIndex
+                    || items[i].Blend != items[start].Blend;
+                if (boundary)
+                {
+                    runs.Add(new TexturedBillboardRun(items[start].TexIndex, items[start].Blend, start, i - start));
+                    start = i;
+                }
+            }
+        }
 
         /// <summary>
         /// Group queued <paramref name="items"/> by mesh handle into <paramref name="instanceData"/> (a flat array

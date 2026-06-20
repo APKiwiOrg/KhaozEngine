@@ -39,6 +39,14 @@ namespace KhaozEngine.Gui
         public Vector4 TextColor = new(0.78f, 0.80f, 0.84f, 1f);
         public Vector4 SelectedTextColor = new(0.55f, 0.78f, 1f, 1f);
 
+        /// <summary>
+        /// Modern-look knobs (rounded/shadow/gradient/glow) for the trigger and the open list container; defaults
+        /// to the flat <see cref="GuiStyle.Default"/> so the dropdown renders byte-identically to pre-7.8.0. The
+        /// dropdown keeps its own colours; only the affordance knobs are read, and the option-row highlights stay
+        /// flat. Set <c>Style = GuiStyle.Modern</c> to opt in.
+        /// </summary>
+        public GuiStyle Style = GuiStyle.Default;
+
         public Dropdown(IReadOnlyList<DropdownOption> options, Rect triggerBounds)
         {
             if (options == null || options.Count == 0) throw new ArgumentException("At least one option is required.", nameof(options));
@@ -90,8 +98,9 @@ namespace KhaozEngine.Gui
         /// <summary>Draw the trigger (current label + chevron). Safe to call inside a clip region.</summary>
         public void Draw(SpriteBatch batch, Texture2D white, SpriteFont font)
         {
-            GuiDraw.Fill(batch, white, TriggerBounds, Background);
-            GuiDraw.Border(batch, white, TriggerBounds, 1f, IsOpen ? OpenBorder : Border);
+            if (IsOpen) GuiDraw.HoverGlow(batch, white, TriggerBounds, Style);
+            GuiDraw.FillStyled(batch, white, TriggerBounds, Style with { BorderThickness = 1f },
+                Background, IsOpen ? OpenBorder : Border);
             float ty = TriggerBounds.Y + (TriggerBounds.Height - font.LineHeight) * 0.5f;
             batch.DrawString(font, SelectedLabel, new Vector2(MathF.Floor(TriggerBounds.X + 6f), MathF.Floor(ty)), (Color)TextColor);
         }
@@ -101,8 +110,7 @@ namespace KhaozEngine.Gui
         {
             if (!IsOpen) return;
             var list = new Rect(TriggerBounds.X, TriggerBounds.Bottom, TriggerBounds.Width, TriggerBounds.Height * _options.Count);
-            GuiDraw.Fill(batch, white, list, ListBackground);
-            GuiDraw.Border(batch, white, list, 1f, Border);
+            GuiDraw.FillStyled(batch, white, list, Style with { BorderThickness = 1f }, ListBackground, Border);
 
             for (int i = 0; i < _options.Count; i++)
             {

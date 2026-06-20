@@ -26,6 +26,15 @@ namespace KhaozEngine.Gui
         public Vector4 ThumbDragColor = new(0.39f, 0.70f, 1f, 1f);
         public float ThumbWidth = 10f;
 
+        /// <summary>
+        /// Modern-look knobs (rounded/shadow/gradient/glow) for the thumb; defaults to the flat
+        /// <see cref="GuiStyle.Default"/> so the slider renders byte-identically to pre-7.8.0. The slider keeps its
+        /// own per-element colours (<see cref="TrackColor"/>/<see cref="FillColor"/>/<see cref="ThumbColor"/>); the
+        /// track and accent fill always stay flat and only the thumb takes the style (mirrors
+        /// <c>GuiDraw.DrawSlider</c>). Set <c>Style = GuiStyle.Modern</c> to opt in.
+        /// </summary>
+        public GuiStyle Style = GuiStyle.Default;
+
         bool _dragging;
 
         public Slider(Rect bounds, float value = 0f) { Bounds = bounds; Value = Math.Clamp(value, 0f, 1f); }
@@ -77,7 +86,11 @@ namespace KhaozEngine.Gui
 
             float thumbX = Bounds.X + fillW - ThumbWidth * 0.5f;
             var thumb = new Rect(thumbX, Bounds.Y - 3f, ThumbWidth, Bounds.Height + 6f);
-            GuiDraw.Fill(batch, white, thumb, _dragging ? ThumbDragColor : ThumbColor);
+            // Thumb is the one styled element; the thumb has no border today, so force BorderThickness 0 (the flat
+            // default then collapses to the same single Fill - byte-identical). A modern style rounds/shadows it.
+            if (_dragging) GuiDraw.HoverGlow(batch, white, thumb, Style);
+            GuiDraw.FillStyled(batch, white, thumb, Style with { BorderThickness = 0f },
+                _dragging ? ThumbDragColor : ThumbColor, default);
         }
     }
 }

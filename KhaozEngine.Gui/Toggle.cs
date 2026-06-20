@@ -26,6 +26,14 @@ namespace KhaozEngine.Gui
         public Vector4 ThumbColor = Vector4.One;
         public Vector4 DisabledColor = new(0.10f, 0.10f, 0.12f, 1f);
 
+        /// <summary>
+        /// Modern-look knobs (rounded/shadow/gradient/glow) for the track and thumb; defaults to the flat
+        /// <see cref="GuiStyle.Default"/> so the toggle renders byte-identically to pre-7.8.0. The toggle keeps its
+        /// own per-state colours (<see cref="OnColor"/>/<see cref="OffColor"/>/<see cref="ThumbColor"/> etc.); only
+        /// the affordance knobs are read. Set <c>Style = GuiStyle.Modern</c> for a rounded pill.
+        /// </summary>
+        public GuiStyle Style = GuiStyle.Default;
+
         public Toggle(Rect bounds, bool isOn = false, Action<bool>? onChanged = null)
         {
             Bounds = bounds; IsOn = isOn; OnChanged = onChanged;
@@ -49,13 +57,16 @@ namespace KhaozEngine.Gui
         {
             Vector4 track = !Enabled ? DisabledColor : IsOn ? OnColor : OffColor;
             Vector4 border = !Enabled ? OffBorderColor : IsOn ? BorderColor : OffBorderColor;
-            GuiDraw.Fill(batch, white, Bounds, track);
-            GuiDraw.Border(batch, white, Bounds, 1f, border);
+            // Track keeps its 1px border; the thumb has none (BorderThickness 0). Both flat by default
+            // (byte-identical), rounded into a pill when a modern style is set.
+            if (IsOn && Enabled) GuiDraw.HoverGlow(batch, white, Bounds, Style);
+            GuiDraw.FillStyled(batch, white, Bounds, Style with { BorderThickness = 1f }, track, border);
 
             float pad = 2f;
             float thumbSize = Bounds.Height - pad * 2f;
             float thumbX = IsOn ? Bounds.Right - thumbSize - pad : Bounds.X + pad;
-            GuiDraw.Fill(batch, white, new Rect(thumbX, Bounds.Y + pad, thumbSize, thumbSize), ThumbColor);
+            GuiDraw.FillStyled(batch, white, new Rect(thumbX, Bounds.Y + pad, thumbSize, thumbSize),
+                Style with { BorderThickness = 0f }, ThumbColor, default);
         }
     }
 }

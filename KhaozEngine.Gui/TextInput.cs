@@ -34,6 +34,15 @@ namespace KhaozEngine.Gui
         public Vector4 PlaceholderColor = new(0.39f, 0.39f, 0.47f, 1f);
         public Vector4 CursorColor = new(0.70f, 0.78f, 1f, 1f);
 
+        /// <summary>
+        /// Modern-look knobs (rounded/shadow/gradient/glow) for the field box; defaults to the flat
+        /// <see cref="GuiStyle.Default"/> so the field renders byte-identically to pre-7.8.0. The field keeps its
+        /// own colours (<see cref="Background"/>/<see cref="Border"/>/<see cref="BorderFocused"/> etc.); the caret
+        /// stays a flat sliver. A focused field with a glowing style draws a focus halo. Set
+        /// <c>Style = GuiStyle.Modern</c> to opt in.
+        /// </summary>
+        public GuiStyle Style = GuiStyle.Default;
+
         const float BlinkRate = 0.5f;
         const float PadX = 8f;
         float _blink;
@@ -68,8 +77,9 @@ namespace KhaozEngine.Gui
         public void Draw(SpriteBatch batch, Texture2D white)
         {
             if (Font == null) return;
-            GuiDraw.Fill(batch, white, Bounds, Background);
-            GuiDraw.Border(batch, white, Bounds, 1f, IsFocused ? BorderFocused : Border);
+            if (IsFocused) GuiDraw.HoverGlow(batch, white, Bounds, Style);
+            GuiDraw.FillStyled(batch, white, Bounds, Style with { BorderThickness = 1f },
+                Background, IsFocused ? BorderFocused : Border);
 
             float textX = Bounds.X + PadX;
             float textY = Bounds.Y + (Bounds.Height - Font.LineHeight) * 0.5f;

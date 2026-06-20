@@ -19,6 +19,14 @@ namespace KhaozEngine.Gui
         public Vector4 BorderColor = new(0.20f, 0.24f, 0.32f, 1f);
         public float BorderThickness;
 
+        /// <summary>
+        /// Modern-look knobs (rounded/shadow/gradient/glow); defaults to the flat <see cref="GuiStyle.Default"/> so
+        /// the panel renders byte-identically to pre-7.8.0. The panel keeps its own <see cref="Color"/>/
+        /// <see cref="BorderColor"/>/<see cref="BorderThickness"/> (the style's border thickness is overridden by
+        /// the panel's). Set <c>Style = GuiStyle.Modern</c> for a rounded, shadowed backdrop.
+        /// </summary>
+        public GuiStyle Style = GuiStyle.Default;
+
         public Panel(Rect bounds) { Bounds = bounds; }
 
         /// <summary>Reserve the pointer region when <see cref="BlocksPointer"/>. Call before lower layers hit-test.</summary>
@@ -30,8 +38,7 @@ namespace KhaozEngine.Gui
         /// <summary>Draw the fill and (if any) border. <paramref name="white"/> is a 1x1 white texture.</summary>
         public void Draw(SpriteBatch batch, Texture2D white)
         {
-            GuiDraw.Fill(batch, white, Bounds, Color);
-            GuiDraw.Border(batch, white, Bounds, BorderThickness, BorderColor);
+            GuiDraw.FillStyled(batch, white, Bounds, Style with { BorderThickness = BorderThickness }, Color, BorderColor);
         }
     }
 }

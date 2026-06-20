@@ -27,6 +27,15 @@ namespace KhaozEngine.Gui
         public Vector4 Background = new(0.047f, 0.047f, 0.078f, 0.96f);
         public Vector4 Border = new(0.24f, 0.24f, 0.31f, 1f);
 
+        /// <summary>
+        /// Modern-look knobs (rounded/shadow/gradient/glow) for the panel background; defaults to the flat
+        /// <see cref="GuiStyle.Default"/> so the panel renders byte-identically to pre-7.8.0. Keeps its own
+        /// <see cref="Background"/>/<see cref="Border"/> colours. Note the row clip (<see cref="BeginClip"/>) is a
+        /// rectangular scissor, so a large corner radius can leave items square at the corners. Set
+        /// <c>Style = GuiStyle.Modern</c> to opt in.
+        /// </summary>
+        public GuiStyle Style = GuiStyle.Default;
+
         public float ScrollOffset { get; private set; }
         public float Stride => ItemHeight + ItemSpacing;
         public float ContentHeight => ItemCount * Stride;
@@ -71,8 +80,7 @@ namespace KhaozEngine.Gui
         /// <summary>Draw the panel background + border. <paramref name="white"/> is a 1x1 white texture.</summary>
         public void DrawBackground(SpriteBatch batch, Texture2D white)
         {
-            GuiDraw.Fill(batch, white, Bounds, Background);
-            GuiDraw.Border(batch, white, Bounds, 1f, Border);
+            GuiDraw.FillStyled(batch, white, Bounds, Style with { BorderThickness = 1f }, Background, Border);
         }
 
         /// <summary>Flush pending draws and clip subsequent draws to <see cref="Bounds"/>. Draw items, then call <see cref="EndClip"/>.</summary>

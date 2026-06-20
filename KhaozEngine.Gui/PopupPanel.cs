@@ -64,6 +64,15 @@ namespace KhaozEngine.Gui
         public Vector4 PrimaryColor = new(0.20f, 0.44f, 0.30f, 1f);
         public Vector4 DisabledColor = new(0.14f, 0.14f, 0.17f, 1f);
 
+        /// <summary>
+        /// Modern-look knobs (rounded/shadow/gradient/glow) for the panel body and footer buttons; defaults to the
+        /// flat <see cref="GuiStyle.Default"/> so the popup renders byte-identically to pre-7.8.0. The popup keeps
+        /// its own colours; only the affordance knobs are read, and the full-screen scrim plus the title bar stay
+        /// flat (the title bar's square corners overlap a rounded body's top corners by at most the radius). Set
+        /// <c>Style = GuiStyle.Modern</c> to opt in.
+        /// </summary>
+        public GuiStyle Style = GuiStyle.Default;
+
         public SpriteFont? TitleFont, BodyFont;
 
         public PopupPanel() { }
@@ -141,8 +150,7 @@ namespace KhaozEngine.Gui
         {
             Rect p = PanelRect();
             GuiDraw.Fill(batch, white, new Rect(0, 0, Viewport.X, Viewport.Y), new Vector4(ScrimColor.X, ScrimColor.Y, ScrimColor.Z, ScrimOpacity));
-            GuiDraw.Fill(batch, white, p, PanelColor);
-            GuiDraw.Border(batch, white, p, 1f, PanelBorder);
+            GuiDraw.FillStyled(batch, white, p, Style with { BorderThickness = 1f }, PanelColor, PanelBorder);
             GuiDraw.Fill(batch, white, new Rect(p.X, p.Y, p.Width, TitleBarHeight), TitleBarColor);
 
             if (TitleFont != null)
@@ -182,20 +190,24 @@ namespace KhaozEngine.Gui
         }
 
         // A button's per-state palette built from its semantic fill (Dismiss blue / Primary green). Hover/press
-        // derive from the fill (hover keeps the old color*1.3 brighten); label stays white as before.
-        GuiStyle ButtonStyle(Vector4 fill) => new()
+        // derive from the fill (hover keeps the old color*1.3 brighten); label stays white as before. Starts from
+        // the popup's Style so the footer buttons inherit its modern affordances (rounded/shadow/gradient/glow);
+        // when Style is the flat default this is byte-identical to the old hand-built palette.
+        GuiStyle ButtonStyle(Vector4 fill)
         {
-            Fill = fill,
-            Hover = fill * 1.3f,
-            Press = fill * 1.15f,
-            Border = PanelBorder,
-            Text = Vector4.One,
-            DisabledFill = DisabledColor,
-            DisabledText = Vector4.One,
-            SelectedFill = fill,
-            SelectedBorder = PanelBorder,
-            BorderThickness = 1f,
-        };
+            var s = Style;
+            s.Fill = fill;
+            s.Hover = fill * 1.3f;
+            s.Press = fill * 1.15f;
+            s.Border = PanelBorder;
+            s.Text = Vector4.One;
+            s.DisabledFill = DisabledColor;
+            s.DisabledText = Vector4.One;
+            s.SelectedFill = fill;
+            s.SelectedBorder = PanelBorder;
+            s.BorderThickness = 1f;
+            return s;
+        }
 
         void DrawButton(SpriteBatch batch, Texture2D white, Rect r, string text, Vector4 color, bool enabled, Pointer pointer)
         {

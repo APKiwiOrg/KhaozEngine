@@ -5,6 +5,36 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.8.0
+
+Additive (non-breaking): the remaining retained `KhaozEngine.Gui` widgets gain a `GuiStyle Style` field (mirroring
+the retained `Button`) so they inherit the 7.7.0 modern look (rounded corners, soft shadow, vertical gradient,
+hover/active glow) when a modern style is set, and stay byte-identical on the flat default. The gated 2D goldens do
+not move.
+
+- **Retained widgets adopt `GuiStyle`.** `Slider`, `Toggle`, `Panel`, `Dropdown`, `TextInput`, `PopupPanel`, and
+  `ScrollablePanel` each gain a public `GuiStyle Style = GuiStyle.Default;` field and route their body/handle/thumb
+  fills through `GuiDraw.FillStyled` (and `GuiDraw.HoverGlow` where an active state exists). Each widget keeps its
+  own per-element colour fields (e.g. `Slider.TrackColor`/`ThumbColor`, `Toggle.OnColor`/`OffColor`,
+  `Panel.Color`) - those are passed as the `bodyColor`/`borderColor` arguments; only the modern affordance knobs
+  (corner radius, shadow, gradient, glow) come from `Style`. Set `widget.Style = GuiStyle.Modern` to opt the whole
+  retained set into the modern look.
+- **Per-widget rounding decisions** (mirrors the immediate-mode `GuiDraw.DrawSlider` reference, where the thin
+  track stays flat and only the knob rounds):
+  - `Slider`: track + accent fill stay flat; only the thumb takes `Style` (glow behind it while dragging).
+  - `Toggle`: track rounds into a pill and the thumb rounds (glow behind the track while on + enabled).
+  - `Panel`: the body rounds; the panel keeps its own `BorderThickness` field (the style's is overridden by it).
+  - `Dropdown`: the trigger and the open list container round (glow behind the trigger while open); the
+    option-row highlights stay flat.
+  - `TextInput`: the field box rounds (focus glow behind it while focused); the caret stays a flat sliver.
+  - `PopupPanel`: the body rounds and the footer buttons inherit the modern affordances (their palette now derives
+    from `Style`); the full-screen scrim and the title bar stay flat.
+  - `ScrollablePanel`: the background container rounds (the row clip stays a rectangular scissor).
+- **Byte-identical default.** Every routed fill passes `Style with { BorderThickness = <element's existing value> }`
+  so the flat default (`GuiStyle.Default`, which `IsFlat`) collapses back to the exact prior `Fill` + `Border`
+  calls (borderless thumbs use `BorderThickness = 0`); `HoverGlow` is a no-op when `GlowSize == 0`. No public colour
+  fields were removed.
+
 ## 7.7.0
 
 Additive (non-breaking): modern UI primitives + a procedural icon system in `KhaozEngine.Gui`, all opt-in and

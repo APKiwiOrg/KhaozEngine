@@ -72,7 +72,7 @@ remain; the rest is productization + porting.** Shipped engine packages (shared 
 
 Caveats from that snapshot, now resolved: per-backend clip-Y is handled (6.2.0 `GpuClip` derives the clip-Y
 sign from `GpuCapabilities`; identity on Metal / D3D11, flipped on Vulkan) and validated by the
-cross-platform-gpu CI matrix (Metal + D3D11 blocking; Vulkan non-blocking / pending hardware); the SDL2
+cross-platform-gpu CI matrix (Metal + D3D11 + Vulkan all blocking, lavapipe software Vulkan on Linux); the SDL2
 per-sample bundling is gone (5.33.0 moved windowing/input to Silk.NET / GLFW, which bundles natives per-RID);
 and production audio bundles **openal-soft** (5.12.0) instead of the deprecated macOS system OpenAL.
 
@@ -110,10 +110,9 @@ engine to a real, resolution-independent, layout-capable state first. Agreed ord
    Metal) is built: `GpuBackendSelector` does an OS probe + `KE_GRAPHICS_BACKEND` override, `GpuDeviceContext`
    creates the device, and `GpuCapabilities` derives clip-Y / depth-range from the live device at runtime
    (wired into `Camera2D` + `ModelRenderer`, replacing the hard-wired Metal assumptions). The
-   `cross-platform-gpu.yml` CI matrix runs the golden-snapshot tests per backend: **Metal + D3D11 (WARP) are
-   green and blocking**, with committed per-backend goldens. **Still open:** the Linux Vulkan leg is
-   non-blocking (Mesa lavapipe crashes at `vkEnumeratePhysicalDevices` on the hosted runner) and the `gl`
-   override parses but is unverified — both wait for real GPU CI / hardware. See `docs/CROSS-PLATFORM.md`.
+   `cross-platform-gpu.yml` CI matrix runs the golden-snapshot tests per backend: **Metal + D3D11 (WARP) +
+   Vulkan (Linux/lavapipe) are all green and blocking**, with committed per-backend goldens. **Still open:** the
+   `gl` override parses but is unverified — it waits for real GPU CI / hardware. See `docs/CROSS-PLATFORM.md`.
 
 Then migrate a real game (Hardpoint/Nullwake/SpaceGame) onto a stack that's actually ready. Richer text entry
 (IME/locale/dead-keys) stays a later nicety — the current `TextEntry` is US-layout key-mapping.

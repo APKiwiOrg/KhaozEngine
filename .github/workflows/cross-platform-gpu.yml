@@ -3,19 +3,19 @@
 # What this does:
 #   * On push / pull_request to main it VERIFIES the committed per-backend goldens
 #     (KhaozEngine.Tests/Gpu/goldens/<name>.<backend>.txt) on a real runner for each desktop backend.
-#   * macOS (arm64) verifies the committed *.metal.txt goldens immediately — those are baked on Metal.
-#   * Windows (D3D11) and Linux (Vulkan) will FAIL with "golden ... missing ... bake it" until their
-#     per-backend goldens are generated and committed. That failure is expected on first run.
+#   * All three legs are validated, committed, and blocking: macOS Metal, Windows D3D11 (WARP),
+#     Linux Vulkan (Mesa lavapipe).
 #
-# Generating the Win/Linux (and any new-backend) goldens:
+# Generating goldens for a NEW scene or backend:
 #   1. Run this workflow manually (Actions -> cross-platform-gpu -> Run workflow) with bake = true.
 #   2. The bake legs render with KE_UPDATE_GOLDENS=1 and upload the per-backend grids as artifacts
-#      named goldens-<backend> (scene2d.<backend>.txt, scene3d.<backend>.txt).
+#      named goldens-<backend> (e.g. scene2d.<backend>.txt).
 #   3. Download the artifacts, drop the files into KhaozEngine.Tests/Gpu/goldens/, and commit them.
-#   4. After that, the push/PR legs VERIFY those backends instead of failing.
+#   4. After that, the push/PR legs VERIFY those backends.
 #
 # Software rasterizers (these runners have no real GPU):
-#   * Linux uses Mesa lavapipe (software Vulkan) via VK_ICD_FILENAMES.
+#   * Linux uses Mesa lavapipe (software Vulkan); the workflow discovers the lavapipe ICD manifest at runtime
+#     (its name/path drifts across Ubuntu images) and points VK_ICD_FILENAMES/VK_DRIVER_FILES at it.
 #   * Windows D3D11 falls back to WARP (software) automatically when no hardware adapter is present.
 #
 # The headless golden tests use Render2D/3D Snapshot -> CreateHeadless (offscreen, NO window), so SDL2 is
@@ -42,10 +42,10 @@ jobs:
   gpu-golden:
     name: ${{ matrix.os }} / ${{ matrix.backend }}
     runs-on: ${{ matrix.os }}
-    # Metal + D3D11 are the blocking, validated desktop backends. The Linux Vulkan leg runs on Mesa lavapipe
-    # (software), which currently crashes the test host at vkEnumeratePhysicalDevices on the hosted runner; it is
-    # kept running as informational (non-blocking) until a working software-Vulkan setup or real GPU CI lands.
-    continue-on-error: ${{ matrix.backend == 'vulkan' }}
+    # All three desktop backends are validated and blocking: Metal (macOS), Direct3D11 (Windows/WARP), and
+    # Vulkan (Linux/Mesa lavapipe). Goldens are tolerance-based (32x18 averaged grid), robust to software-
+    # rasterizer noise. If the lavapipe leg ever flakes on a runner-image change, re-add
+    # `continue-on-error: ${{ matrix.backend == 'vulkan' }}` here to drop it back to informational.
     strategy:
       fail-fast: false
       matrix:

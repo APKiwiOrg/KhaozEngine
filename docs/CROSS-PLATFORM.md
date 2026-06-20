@@ -45,21 +45,20 @@ Runs the golden tests (`--filter FullyQualifiedName~Golden`, `KE_GPU_TESTS=1`) p
 
 Software rasterizers on the runners (no real GPU):
 
-- Linux Vulkan → Mesa **lavapipe** (`mesa-vulkan-drivers`, `VK_ICD_FILENAMES=.../lvp_icd.x86_64.json`). Veldrid
-  4.9.0's Vulkan binding P/Invokes the bare names `libdl` / `libvulkan`, which modern Ubuntu only ships versioned,
-  so the workflow symlinks `libdl.so` → `libdl.so.2` and `libvulkan.so` → `libvulkan.so.1`. Even with that, lavapipe
-  currently crashes the test host at `vkEnumeratePhysicalDevices` on the hosted runner, so the **Vulkan leg is
-  `continue-on-error` (informational, non-blocking)** until a working software-Vulkan setup or real GPU CI lands.
+- Linux Vulkan → Mesa **lavapipe** (`mesa-vulkan-drivers`). The lavapipe ICD manifest's name/path drifts across
+  Ubuntu runner images (it is now `lvp_icd.json`, was `lvp_icd.x86_64.json`), so the workflow **discovers it at
+  runtime** and points `VK_ICD_FILENAMES` + `VK_DRIVER_FILES` at it rather than hardcoding. Veldrid 4.9.0's Vulkan
+  binding P/Invokes the bare names `libdl` / `libvulkan`, which modern Ubuntu only ships versioned, so the workflow
+  also symlinks `libdl.so` → `libdl.so.2` and `libvulkan.so` → `libvulkan.so.1`.
 - Windows D3D11 → **WARP** software adapter (automatic fallback when no hardware adapter is present). Verified.
 
-Net result: **Metal (macOS) and Direct3D11 (Windows/WARP) are validated and blocking; Vulkan (Linux/lavapipe) is
-non-blocking and pending.** The overall workflow is green when Metal + D3D11 verify.
+Net result: **all three desktop backends are validated and blocking** — Metal (macOS), Direct3D11 (Windows/WARP),
+and Vulkan (Linux/lavapipe). The overall workflow is green only when all three verify.
 
 ### Per-backend golden flow
 
-1. **Push / PR = verify.** macOS verifies the committed `.metal.txt` goldens and Windows verifies the committed
-   `.direct3d11.txt` goldens. A backend with no committed goldens **fails with "golden ... missing ... bake it"**
-   (that's the current state for Vulkan, but its leg is non-blocking).
+1. **Push / PR = verify.** Each leg verifies its committed goldens (`.metal.txt`, `.direct3d11.txt`,
+   `.vulkan.txt`). A backend with no committed goldens **fails with "golden ... missing ... bake it"**.
 2. **Generate a new backend's goldens:** run the workflow manually with `bake = true`. The bake legs render
    with `KE_UPDATE_GOLDENS=1` and upload artifacts named `goldens-<backend>`
    (`scene2d.<backend>.txt`, `scene3d.<backend>.txt`).

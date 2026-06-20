@@ -168,6 +168,6 @@ CI builds, tests, packs, and on a `v*` tag publishes to GitHub Packages.
 |---|---|---|
 | **Hardpoint** (3D) | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic) | On 5.70.0, fully off MonoGame. |
 | **Nullwake** (2D) | `KhaozEngine.Game2D` | On 5.59.0, fully off MonoGame. Source of the widgets, transitions, and the click-through fix. |
-| **SpaceGame** | granular 4.x packages (the last MonoGame holdout) | On 4.9.0. 5.x port is the remaining migration work. |
+| **SpaceGame** (2D) | `KhaozEngine.Game2D` (head) + foundation pins on `SpaceGame.Sim` | On 6.3.0, fully off MonoGame. Deterministic lockstep sim split into `SpaceGame.Sim`. |
 
 Full per-package version + adoption matrix: [`docs/CONSUMERS.md`](docs/CONSUMERS.md).

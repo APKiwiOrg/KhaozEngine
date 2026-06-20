@@ -11,8 +11,8 @@ the MonoGame-free foundation packages that graduated onto it at `5.46.0`
 `Updates`/`Collision`/`Netcode`/`Netcode.Abstractions`/`Netcode.LiteNetLib`). **The legacy 4.x line + its six
 genuinely-MonoGame packages (`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`) were DELETED from the repo**, so
 the engine is now entirely MonoGame-free with a single version line in `Directory.Build.props` (the doc-version
-guard checks it). SpaceGame, the lone remaining 4.x consumer, still resolves the already-published `4.9.0` nupkgs
-until its 6.x port lands.
+guard checks it). All three consumers are now off MonoGame (SpaceGame finished its port and pins 6.3.0); the old
+`4.9.0` nupkgs stay in the feed only for historical resolution.
 
 > **5.46.0 (graduation, non-breaking re-version):** the 14 MonoGame-free foundation packages moved from the
 > 4.x `<Version>` line to the 5.x `<KhaozEngine5xVersion>` line so a 5.x game pins **only** 5.x packages. Same
@@ -71,8 +71,9 @@ the legacy 4.x MonoGame rendering/UI/input/audio/screens/effects/time packages (
 Screens->Gui ScreenStack + Game SceneManager, Input->Windowing, Effects->Particles, Time->Windowing.GameClock).
 See [`ROADMAP.md`](ROADMAP.md), "The post-MonoGame pivot".
 
-**Both 5.x games now reference the engine through an umbrella metapackage** (one `<PackageReference>` instead
-of a dozen). **SpaceGame** is the lone holdout still on the 4.x MonoGame stack.
+**The 5.x games reference the engine through an umbrella metapackage** (one `<PackageReference>` instead
+of a dozen). **SpaceGame** uses `Game2D` for its head plus granular foundation pins on the split-out
+`SpaceGame.Sim` (it predates wrapping the sim's package set into a metapackage).
 
 ## Metapackages (the one-line entry points, 5.49.0 + 5.50.0)
 
@@ -92,7 +93,7 @@ fine-grained use - a wire-contract project references just `Netcode.Abstractions
 |---|---|---|---|
 | **Hardpoint** (5.x, 3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic) | **5.70.0** |
 | **Nullwake** (5.x, 2D) | `Nullwake.Core` | `KhaozEngine.Game2D` | **5.59.0** |
-| **SpaceGame** (4.x MonoGame) | `SpaceGame.Core` | granular 4.x packages (Input/Screens/UI/Graphics + foundation + netcode) | 4.9.0 |
+| **SpaceGame** (6.x, 2D) | `SpaceGame.Core` (head) / `SpaceGame.Sim` (lockstep sim) | `Game2D` + `Netcode.LiteNetLib` + `Primitives` (head); `Ecs`/`Collision`/`Diagnostics`/`Content`/`Serialization`/`App`/`Netcode`/`Pooling` + `Primitives` (sim); `Netcode.Abstractions` (contracts); `Updates` (tools) | **6.3.0** |
 
 Both games now run on the loop facade (5.57.0): **Hardpoint** is a `GameApp3D` subclass (`HardpointGame`) over a
 `SceneManager` + `IGameScene3D` scene stack; **Nullwake** is a `GameApp` subclass (`NullwakeGame`) over a
@@ -130,54 +131,32 @@ own `LocalSaveSystem` (`SaveEncoder` + `AtomicJsonWriter`). The Android/iOS head
 mobile-windowing engine project. (Still game-local and not yet converged onto the engine: the ~9 Gui widgets it
 duplicates from `KhaozEngine.Gui`.)
 
-### SpaceGame - on 4.9.0
+### SpaceGame - on 6.3.0 (MonoGame-free)
 
-- **Graphics:** first consumer of `Camera2D` (headless, with a per-frame `Viewport` sync).
-- **Logging:** engine `Log` service (FileSink + ConsoleSink + `CrashHandler`); flushes the persistence
-  queue + `Log.Shutdown` on exit. `AppDataPaths` + `BuildMetadata` from `App`; `LocalizationManager`
-  (corrected the malformed default culture to `en-US`).
-- **Persistence:** settings, leaderboard, and `save.json` all on `SettingsManager<T>` + `FileSettingsStorage`
-  over one shared `PersistenceQueue`; `save.json` uses the `sanitizeOnLoad` hook (`[JsonExtensionData]` +
-  `SchemaVersion` round-trip for downgrade safety). The hand-rolled `SaveSystem` static was deleted (the
-  `SaveData` DTO stays).
-- **Audio:** music runs on `AudioSystem` - one instance owns the 4 tracks, loops the per-screen track via
-  `PlayMode.RepeatOne`, and is the source of truth for current track + music volume. `MusicPlaybackController`
-  is a thin seam; `MusicCatalog` maps content-asset paths to display names; the now-playing overlay binds to
-  `CurrentTrack`/`TrackChanged`. The in-house `NowPlayingService`, `AudioVolumeMixer`'s music path, and raw
-  `MediaPlayer` playback were deleted. SFX/ambient volume stays game-side (KE.Audio is music-only).
-- **Ecs:** the **entire host-authoritative simulation runs on the Ecs `World`**. The 8-spec "ECS World
-  Migration" (2026-06) moved every sim entity + system off bespoke storage onto entities + struct
-  `IComponent`s + queries, with deferred mutations via `EntityCommandBuffer.Defer`, events via
-  `World.Emit`/`Events`, per-stream run RNG via `DeterministicRng.CreateDerived` (`root.CreateDerived
-  ("loot"/"upgrade"/"upgrade-slot-{slot}")`), and `WorldSerializer` for a host full-state snapshot +
-  round-trip (the foundation for the new mid-run late-join/resync feature). `CachedQuery` keeps the hot
-  per-tick sites query-alloc-free. In BETA, cross-version seed replayability is explicitly not a concern, so
-  the migration re-baselined the lockstep `StateHash` deliberately - **one** designated move (the
-  `CreateDerived` swap); the final baseline is `5562709684599485702`.
-- **Generic infra (adopted 4.9.0):** the seven packages promoted from SpaceGame's own code are now all
-  consumed, each behind a thin game-side adapter that keeps the game-specific glue:
-  - `Platform` - `Clipboard` replaces the in-house `ClipboardInterop` (deleted); the mobile heads set
-    `Clipboard.MobileBridgeTypeName = "SpaceGame.Platform.MobileClipboardBridge"` at startup.
-  - `Collision` - `CircleCollision` + `SpatialHashGrid`; `Entity : ICircleCollider` with an explicit
-    `Radius => CollisionRadius` (the scaled collision radius, not the base). `EnemySpatialIndex` is now a
-    thin adapter over the grid.
-  - `Pooling` - `ObjectPool<XpFlyer>` (deleted the in-house `XpFlyerPool`).
-  - `Updates` - the whole auto-update pipeline (in-game service + the `SpaceGameUpdater` shim via
-    `UpdateApplier.Run` + the publish-side manifest tool via `UpdateManifest.GenerateFromDirectory`).
-  - `Netcode` - `UnitAxisQuantizer` (the input wire codec), and `ClientPrediction` + `RemoteCommandQueue`
-    behind adapters that keep the DTO/arena/config glue.
-  `Collision` and the input codec are byte-identical extractions, so the lockstep `StateHash` did not move.
-  (As of engine `4.12.0`, `Collision` + `Netcode` are MonoGame-free: their `Vector2` is `System.Numerics`, not
-  XNA. When SpaceGame bumps from 4.9.0 to 4.12.0 it swaps `using Microsoft.Xna.Framework;` to
-  `using System.Numerics;` at those call sites; the math is byte-identical so the hash gate holds.)
-- **`Netcode.Abstractions` (4.9.0):** referenced by `SpaceGame.Multiplayer.Contracts` (not `.Core`), so the
-  MonoGame-free DTO project - and the ASP.NET leaderboard server that references it - can have
-  `EntityUpdateBatchDto` implement `IChannelSplittable` without pulling MonoGame or LiteNetLib in. The
-  `ChannelSplitter` orchestration itself is not used: the host does its own UDP-frame sub-chunking.
-- **Still not adopted:** `Effects` (keeps its richer game-side `ParticleManager` - see the
-  particle-unification roadmap item), `Sprites`, and `Netcode.LiteNetLib`. SpaceGame vendors `Time`
-  transitively but reads no scaled dt (no `GameClock`/`TimeScale`/`TimeSkip`) - the lockstep sim must keep
-  it that way.
+SpaceGame completed its de-MonoGame migration onto the 5.x stack (merged `96255c9`) and now pins **6.3.0**.
+There is no MonoGame and no `.mgcb`; the desktop head `SpaceGame.Desktop` runs Silk/GLFW + Veldrid through the
+`GameApp` facade. Input is the immutable `InputState` snapshot via `InputManager`/`Pointer`.
+
+- **Head (`SpaceGame.Core`):** `KhaozEngine.Game2D` (Windowing/Render2D/Gui/Audio/Particles + the GameApp
+  facade + foundation) + `Netcode.LiteNetLib` (transport) + `Primitives`. Music runs on `AudioSystem` via the
+  rotation-pool track-set (5.71.0); decorative effects run on `KhaozEngine.Particles` (`ParticleEffectPresets`).
+- **Sim (`SpaceGame.Sim`):** the deterministic lockstep host sim, split into its own MonoGame-free project.
+  References `Ecs`/`Collision`/`Diagnostics`/`Content`/`Serialization`/`App`/`Netcode`/`Pooling` + `Primitives`.
+  The **entire host-authoritative simulation runs on the Ecs `World`** (struct `IComponent`s + queries, deferred
+  mutations via `EntityCommandBuffer.Defer`, events via `World.Emit`/`Events`, per-stream run RNG via
+  `DeterministicRng.CreateDerived`, `WorldSerializer` for host full-state snapshot/resync). Persistence
+  (settings/leaderboard/`save.json`) is on `SettingsManager<T>` + `FileSettingsStorage`; logging on the `Log`
+  service; `AppDataPaths`/`BuildMetadata`/`LocalizationManager` from `App`.
+- **Contracts (`SpaceGame.Multiplayer.Contracts`):** `Netcode.Abstractions` only - the MonoGame-free DTO
+  project (also referenced by the ASP.NET leaderboard server) so `EntityUpdateBatchDto` can implement
+  `IChannelSplittable` without pulling in MonoGame or LiteNetLib.
+- **Tools:** `ManifestGenerator` + `SpaceGameUpdater` reference `Updates` (the auto-update pipeline).
+- **6.0.0 breaking surface:** `Color` and `DeterministicRng` moved to the new zero-dep `Primitives` leaf
+  (`Color` is no longer re-exported by `Render2D`); the `Color` API unified off `Vector4`. Both were mechanical
+  `using`/literal swaps in SpaceGame. 6.1→6.3 are additive (pinned to latest for consistency).
+- **Lockstep determinism:** the `StateHash` baseline is **`17709480852979803671`** (the tentacle-hitbox
+  re-baseline). It held byte-identical across the 6.x bump - the `DeterministicRng` relocation is the same type
+  in a new namespace. (The pre-migration `5562709684599485702` is stale.)
 
 ## Repo locations
 
@@ -209,6 +188,6 @@ zero-dependency `Primitives` leaf + the custom-stack packages + the graduated fo
 metapackages (Game2D/Game3D/Server/Foundation). The legacy 4.x `<Version>` line was deleted from
 `Directory.Build.props`, but its old MonoGame nupkgs stay in the feed so a holdout pin still resolves.
 **Hardpoint** (3D) is on **5.70.0** via `Game3D` + `Foundation`,
-**Nullwake** (2D) is on **5.59.0** via `Game2D` - both fully off MonoGame, referencing the engine in one line, and
-now running on the `GameApp3D`/`GameApp` loop facade. **SpaceGame** is the lone 4.x MonoGame holdout (pins 4.9.0;
-its 5.x port is the remaining migration work)._
+**Nullwake** (2D) is on **5.59.0** via `Game2D`, and **SpaceGame** (2D) is on **6.3.0** via `Game2D` + the
+split-out `SpaceGame.Sim` - all three fully off MonoGame, referencing the engine in one line (plus the sim's
+foundation pins), and running on the `GameApp3D`/`GameApp` loop facade._

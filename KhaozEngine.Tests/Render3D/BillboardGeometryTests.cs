@@ -120,6 +120,69 @@ namespace KhaozEngine.Tests.Render3D
             });
         }
 
+        [Fact]
+        public void Triangles_SourceUv_MapsRectToCorners()
+        {
+            // A non-trivial sub-rect: u in [0.25, 0.75], v in [0.1, 0.6].
+            var src = new Vector4(0.25f, 0.10f, 0.75f, 0.60f);
+            const float size = 4f;
+            BillboardGeometry.Corners(Vector3.Zero, size, Right, Up, out var bl, out var br, out var tl, out var tr);
+            Span<Vector3> pos = stackalloc Vector3[6];
+            Span<Vector2> uv = stackalloc Vector2[6];
+            int n = BillboardGeometry.Triangles(Vector3.Zero, size, Right, Up, src, pos, uv);
+            Assert.Equal(6, n);
+
+            // Positions are identical to the full-square overload (only the UVs change).
+            var uvBL = new Vector2(src.X, src.Y);
+            var uvBR = new Vector2(src.Z, src.Y);
+            var uvTL = new Vector2(src.X, src.W);
+            var uvTR = new Vector2(src.Z, src.W);
+            for (int i = 0; i < 6; i++)
+            {
+                Vector2 expected = pos[i] switch
+                {
+                    var p when Vector3.Distance(p, bl) < Eps => uvBL,
+                    var p when Vector3.Distance(p, br) < Eps => uvBR,
+                    var p when Vector3.Distance(p, tl) < Eps => uvTL,
+                    var p when Vector3.Distance(p, tr) < Eps => uvTR,
+                    _ => throw new Xunit.Sdk.XunitException($"unexpected position {pos[i]}")
+                };
+                Assert.True(Vector2.Distance(uv[i], expected) < Eps, $"uv {uv[i]} != expected {expected}");
+            }
+        }
+
+        [Fact]
+        public void Triangles_SourceUv_AllUvsInsideRect()
+        {
+            var src = new Vector4(0.3f, 0.2f, 0.8f, 0.5f);
+            Span<Vector3> pos = stackalloc Vector3[6];
+            Span<Vector2> uv = stackalloc Vector2[6];
+            BillboardGeometry.Triangles(Vector3.Zero, 1f, Right, Up, src, pos, uv);
+            foreach (var t in uv)
+            {
+                Assert.InRange(t.X, src.X, src.Z);
+                Assert.InRange(t.Y, src.Y, src.W);
+            }
+        }
+
+        [Fact]
+        public void Triangles_SourceUv_ThrowsWhenSpanTooSmall()
+        {
+            var src = new Vector4(0f, 0f, 1f, 1f);
+            Assert.Throws<ArgumentException>(() =>
+            {
+                Span<Vector3> pos = new Vector3[5];
+                Span<Vector2> uv = new Vector2[6];
+                BillboardGeometry.Triangles(Vector3.Zero, 1f, Right, Up, src, pos, uv);
+            });
+            Assert.Throws<ArgumentException>(() =>
+            {
+                Span<Vector3> pos = new Vector3[6];
+                Span<Vector2> uv = new Vector2[5];
+                BillboardGeometry.Triangles(Vector3.Zero, 1f, Right, Up, src, pos, uv);
+            });
+        }
+
         [Theory]
         [InlineData(0.3f, -1f, 0.6f)]    // a generic look direction
         [InlineData(-0.7f, 0.2f, -0.5f)]

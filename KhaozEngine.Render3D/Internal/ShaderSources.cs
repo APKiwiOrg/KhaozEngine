@@ -168,6 +168,27 @@ void main() {
     oColor = vec4(vColor.rgb, vColor.a * a);
 }";
 
+        // ---- Textured, depth-interleaved billboard. Unlike the soft-disc overlay above (which draws AFTER the
+        //      post chain with depth disabled), this draws INTO the model MRT alongside the meshes with the depth
+        //      test on (no depth write), so a nearer mesh occludes the quad and the quad draws over a farther mesh.
+        //      It reuses BillboardVert. It samples a texture sub-rect (vUv carries the source rect) times the tint,
+        //      and writes all 3 MRT targets so the SPIR-V output count matches the framebuffer: only colour matters
+        //      (the normal/depth attachments use a PreserveDestination blend, so what it writes there is discarded). ----
+        public const string TexturedBillboardFrag = @"#version 450
+layout(set=0, binding=1) uniform texture2D Tex;
+layout(set=0, binding=2) uniform sampler Samp;
+layout(location=0) in vec2 vUv;
+layout(location=1) in vec4 vColor;
+layout(location=0) out vec4 oColor;
+layout(location=1) out vec4 oNormal;
+layout(location=2) out vec4 oDepth;
+void main() {
+    vec4 t = texture(sampler2D(Tex, Samp), vUv);
+    oColor = vec4(t.rgb * vColor.rgb, t.a * vColor.a);
+    oNormal = vec4(0.0);   // discarded (PreserveDestination blend on attachment 1)
+    oDepth  = vec4(0.0);   // discarded (PreserveDestination blend on attachment 2)
+}";
+
         // ---- Shared fullscreen triangle ----
         public const string FullscreenVert = @"#version 450
 layout(location=0) out vec2 vUv;

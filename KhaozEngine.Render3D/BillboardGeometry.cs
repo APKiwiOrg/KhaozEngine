@@ -74,5 +74,36 @@ namespace KhaozEngine.Render3D
             positions[5] = tl; uvs[5] = UvTL;
             return 6;
         }
+
+        /// <summary>
+        /// Like <see cref="Triangles(Vector3,float,Vector3,Vector3,Span{Vector3},Span{Vector2})"/> but maps the quad
+        /// to a sub-rectangle of a texture instead of the full <c>[0,1]²</c>, for sprite-sheet frame selection.
+        /// <paramref name="sourceUv"/> is <c>(u0,v0,u1,v1)</c>: <c>(u0,v0)</c> maps to the bottom-left corner and
+        /// <c>(u1,v1)</c> to the top-right, following the same corner order as the full-square overload. Pass
+        /// <c>(0,0,1,1)</c> for the whole texture; swap <c>v0</c>/<c>v1</c> (or <c>u0</c>/<c>u1</c>) to flip a frame.
+        /// Both spans must hold at least 6 elements. Returns 6.
+        /// </summary>
+        public static int Triangles(Vector3 center, float size, Vector3 right, Vector3 up, Vector4 sourceUv,
+            Span<Vector3> positions, Span<Vector2> uvs)
+        {
+            if (positions.Length < 6) throw new ArgumentException("positions span must hold at least 6 vertices", nameof(positions));
+            if (uvs.Length < 6) throw new ArgumentException("uvs span must hold at least 6 vertices", nameof(uvs));
+
+            Corners(center, size, right, up, out var bl, out var br, out var tl, out var tr);
+
+            // Map the unit-square corners onto the source rect: u0,v0 = BL ... u1,v1 = TR.
+            var uvBL = new Vector2(sourceUv.X, sourceUv.Y);
+            var uvBR = new Vector2(sourceUv.Z, sourceUv.Y);
+            var uvTL = new Vector2(sourceUv.X, sourceUv.W);
+            var uvTR = new Vector2(sourceUv.Z, sourceUv.W);
+
+            positions[0] = bl; uvs[0] = uvBL;
+            positions[1] = br; uvs[1] = uvBR;
+            positions[2] = tl; uvs[2] = uvTL;
+            positions[3] = br; uvs[3] = uvBR;
+            positions[4] = tr; uvs[4] = uvTR;
+            positions[5] = tl; uvs[5] = uvTL;
+            return 6;
+        }
     }
 }

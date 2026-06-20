@@ -140,6 +140,45 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuFact]
+        public void Golden3D_TexturedBillboard_DepthInterleaved()
+        {
+            // A 2-cell horizontal "sprite sheet": left cell magenta, right cell cyan. Each cell is solid so a
+            // source-UV sub-rect selects one frame's colour cleanly.
+            var sheet = new byte[2 * 1 * 4];
+            sheet[0] = 230; sheet[1] = 30; sheet[2] = 215; sheet[3] = 255;  // left cell: magenta
+            sheet[4] = 30; sheet[5] = 215; sheet[6] = 230; sheet[7] = 255;  // right cell: cyan
+            var leftCell = new Vector4(0f, 0f, 0.5f, 1f);
+            var rightCell = new Vector4(0.5f, 0f, 1f, 1f);
+
+            MeshHandle box = default;
+            Scene3D.TextureHandle tex = default;
+            Vector3 fwd = default;   // the camera's (fixed iso) view direction; depth runs along it
+
+            byte[] rgba = Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    box = scene.LoadMesh(MeshPrimitives.Box(1.4f));
+                    tex = scene.LoadTexture(sheet, 2, 1);
+                    scene.Post.Starfield = false;   // keep the background flat so occlusion reads clearly
+                    scene.Camera.Frame(Vector3.Zero, new Vector3(4.5f, 4.5f, 4.5f));
+                    fwd = scene.Camera.Forward;
+                },
+                drawFrame: scene =>
+                {
+                    // Opaque green box at the origin.
+                    scene.Draw(box, Matrix4x4.Identity, new Color(0.15f, 0.7f, 0.2f, 1f));
+                    // CYAN billboard BEHIND the box (+forward, away from the eye), large so it pokes out around the
+                    // box's silhouette: the box must occlude its centre, the corners stay visible.
+                    scene.DrawBillboard(tex, fwd * 2.2f, 1.5f, rightCell, Color.White);
+                    // MAGENTA billboard IN FRONT of the box (-forward, toward the eye): it must draw over the box.
+                    scene.DrawBillboard(tex, -fwd * 2.2f, 0.7f, leftCell, Color.White);
+                },
+                frames: 2);
+
+            GoldenCompare.AssertOrUpdate("scene3d_texbillboard", rgba, W, H);
+        }
+
+        [GpuFact]
         public void Golden2D_FixedScene()
         {
             byte[] rgba = Render2DSnapshot.Capture(W, H, new Color(0.07f, 0.08f, 0.11f, 1f), ctx =>

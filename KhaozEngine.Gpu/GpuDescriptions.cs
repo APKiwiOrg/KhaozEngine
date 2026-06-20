@@ -208,6 +208,14 @@ namespace KhaozEngine.Gpu
             true,
             GpuBlendFactor.SourceAlpha, GpuBlendFactor.One, GpuBlendFunction.Add,
             GpuBlendFactor.SourceAlpha, GpuBlendFactor.One, GpuBlendFunction.Add);
+
+        /// <summary>Keep the destination untouched (out = dst): src factor Zero, dst factor One. For an MRT
+        /// attachment a pass writes a fragment for (so the SPIR-V output count matches) but must not modify - e.g.
+        /// the normal / linear-depth attachments under the textured-billboard pass, which only paints colour.</summary>
+        public static GpuBlendAttachment PreserveDestination => new(
+            true,
+            GpuBlendFactor.Zero, GpuBlendFactor.One, GpuBlendFunction.Add,
+            GpuBlendFactor.Zero, GpuBlendFactor.One, GpuBlendFunction.Add);
     }
 
     /// <summary>Depth-stencil pipeline state. Engine mirror of the subset of Veldrid
@@ -230,6 +238,11 @@ namespace KhaozEngine.Gpu
         public static GpuDepthStencilState Disabled => new(false, false, GpuComparison.Always);
         /// <summary>Depth test + write with less-or-equal (the 3D model pass).</summary>
         public static GpuDepthStencilState DepthOnlyLessEqual => new(true, true, GpuComparison.LessEqual);
+        /// <summary>Depth test (less-or-equal) WITHOUT depth write: alpha-blended geometry that must interleave
+        /// with the opaque pass (read its depth so a nearer mesh occludes it and it draws over a farther mesh) but
+        /// not write depth itself, so transparent quads don't occlude each other and stay ordered by submission /
+        /// the host's back-to-front sort. Used by the textured-billboard pass.</summary>
+        public static GpuDepthStencilState DepthTestLessEqualNoWrite => new(true, false, GpuComparison.LessEqual);
     }
 
     /// <summary>Rasterizer pipeline state. Engine mirror of Veldrid <c>RasterizerStateDescription</c>.</summary>

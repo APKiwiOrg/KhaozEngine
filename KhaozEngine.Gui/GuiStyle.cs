@@ -57,7 +57,7 @@ namespace KhaozEngine.Gui
 
         /// <summary>
         /// True when every modern knob is at its off default, so <see cref="GuiDraw"/> takes the plain
-        /// single-quad path that renders byte-identically to pre-7.4.0.
+        /// single-quad path that renders byte-identically to pre-7.7.0.
         /// </summary>
         public bool IsFlat =>
             CornerRadius == 0f && ShadowSize == 0f && FillMode == GuiFill.Solid && GlowSize == 0f;

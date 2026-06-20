@@ -28,7 +28,7 @@ namespace KhaozEngine.Gui
 
         /// <summary>
         /// Fill <paramref name="r"/> honouring <paramref name="style"/>: when <see cref="GuiStyle.IsFlat"/> this is
-        /// the exact plain single-quad <see cref="Fill"/> + <see cref="Border"/> (byte-identical to pre-7.4.0);
+        /// the exact plain single-quad <see cref="Fill"/> + <see cref="Border"/> (byte-identical to pre-7.7.0);
         /// otherwise it draws the soft shadow (when <see cref="GuiStyle.ShadowColor"/> is non-transparent), the rounded
         /// (optionally gradient) body, and the rounded border ring.
         /// <paramref name="bodyColor"/> is the resolved state colour (hover/press/etc.); <paramref name="borderColor"/>

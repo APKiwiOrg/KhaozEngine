@@ -1,4 +1,4 @@
-# KhaozEngine.Gui modern UI primitives + icon system (v7.4.0)
+# KhaozEngine.Gui modern UI primitives + icon system (v7.7.0)
 
 Status: approved design, ready for implementation plan.
 Date: 2026-06-20.

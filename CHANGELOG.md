@@ -5,6 +5,32 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.7.0
+
+Additive (non-breaking): modern UI primitives + a procedural icon system in `KhaozEngine.Gui`, all opt-in and
+defaulted off so existing screens render byte-identically (the gated 2D goldens for the plain path do not move).
+
+- **Gui modern primitives.** New `GuiStyle` fields, all defaulted to today's flat look: `CornerRadius`,
+  `ShadowSize`/`ShadowColor`/`ShadowOffset`, `FillMode` (`GuiFill.Solid`|`VerticalGradient`) with
+  `GradientTopScale`/`GradientBottomScale`, and `GlowColor`/`GlowSize` hover glow. New `GuiStyle.Modern` preset
+  wires rounded corners + soft shadow + gradient + glow onto the default palette, and `GuiStyle.IsFlat` /
+  `GuiStyle.ScaleRgb` support the draw path. Centralized in `GuiDraw` (`FillStyled`/`HoverGlow`), so the
+  immediate-mode `GuiSurface` widgets (`Panel`/`Button`/`Slider`) and the retained `Button` (which already carries
+  a `GuiStyle`) inherit it. The other retained widgets (`Slider`/`Toggle`/`Panel`/`Dropdown`) still carry their own
+  flat colour fields and keep today's look until a follow-up migrates them onto `GuiStyle`. New
+  `GuiSurface.Panel(rect, style)` overload.
+- **SDF SpriteBatch path (Render2D).** The shared sprite vertex widened from 32B to 64B with rounded-rect SDF
+  attributes; the fragment shader branches on a per-vertex mode flag (flag 0 = the prior `texture * vColor`,
+  byte-identical for every existing draw; flag 1 = alpha shaped by an Inigo-Quilez rounded-box SDF with `fwidth`
+  AA, computed in uniform control flow, used for corners/shadow/glow/border-ring). New public
+  `SpriteBatch.DrawRounded(...)` and a vertical-gradient `Draw(tex, dest, top, bottom)` overload (the latter using
+  the already-interpolated per-vertex colour).
+- **Icon system (Gui).** `IconAtlas` CPU-bakes a core outline icon set (coin, heart, skull, crosshair, gear, play,
+  pause, close, check, plus, minus, chevron-l/r/u/d) into one tintable alpha-mask atlas (no shipped asset, the
+  `VfxTextures` pattern), exposed via a string-keyed registry. Games register their own icons
+  (`IconAtlas.Register`). Draw with `GuiSurface.Icon(rect, id, tint)`. New composed widgets
+  `GuiSurface.IconButton` and `GuiSurface.StatChip`.
+
 ## 7.6.0
 
 Additive (non-breaking): a reusable "attention" pulse VFX in the 2D VFX module, so any game can flag a point of

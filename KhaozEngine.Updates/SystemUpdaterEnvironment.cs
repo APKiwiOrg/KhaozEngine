@@ -95,5 +95,21 @@ public sealed class SystemUpdaterEnvironment : IUpdaterEnvironment
         }
     }
 
+    public bool IsReparsePoint(string path)
+    {
+        try
+        {
+            if (!File.Exists(path) && !Directory.Exists(path))
+            {
+                return false;
+            }
+            return (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public void Log(string message) => logSink?.Invoke(message);
 }

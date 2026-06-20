@@ -66,5 +66,9 @@ internal sealed class FakeUpdaterEnvironment : IUpdaterEnvironment
 
     public void ClearQuarantine(string installDir) { }
 
+    public readonly HashSet<string> ReparsePoints = new(StringComparer.Ordinal);
+
+    public bool IsReparsePoint(string path) => ReparsePoints.Contains(path);
+
     public void Log(string message) => Log_.Add(message);
 }

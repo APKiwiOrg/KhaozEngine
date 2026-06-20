@@ -127,6 +127,67 @@ public sealed class UpdateApplierTests
         Assert.False(env.Files.ContainsKey(marker)); // written during apply, cleared at the end
     }
 
+    [Theory]
+    [InlineData("../escape.dll")]
+    [InlineData("../../escape.dll")]
+    [InlineData("sub/../../escape.dll")]
+    public void Apply_UnsafeCopyPath_AbortsBeforeTouchingInstall(string badPath)
+    {
+        var env = new FakeUpdaterEnvironment();
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.Files[InstallPath("game.dll")] = "v1";
+        env.Files[InstallPath("Game")] = "exe";
+
+        ApplyResult result = UpdateApplier.Apply(Config(new() { "game.dll", badPath }), env);
+
+        Assert.Equal(ApplyOutcome.AbortedUnsafePath, result.Outcome);
+        Assert.Equal("v1", env.Files[InstallPath("game.dll")]); // untouched
+        Assert.Equal(InstallPath("Game"), env.RelaunchedExe);   // old version relaunched
+    }
+
+    [Fact]
+    public void Apply_UnsafeDeletePath_AbortsBeforeTouchingInstall()
+    {
+        var env = new FakeUpdaterEnvironment();
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.Files[InstallPath("game.dll")] = "v1";
+        env.Files[InstallPath("Game")] = "exe";
+
+        ApplyResult result = UpdateApplier.Apply(
+            Config(new() { "game.dll" }, new List<string> { "../../secret" }), env);
+
+        Assert.Equal(ApplyOutcome.AbortedUnsafePath, result.Outcome);
+        Assert.Equal("v1", env.Files[InstallPath("game.dll")]);
+    }
+
+    [Fact]
+    public void Apply_StagedSourceIsReparsePoint_Aborts()
+    {
+        var env = new FakeUpdaterEnvironment();
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.ReparsePoints.Add(StagingPath("game.dll"));
+        env.Files[InstallPath("Game")] = "exe";
+
+        ApplyResult result = UpdateApplier.Apply(Config(new() { "game.dll" }), env);
+
+        Assert.Equal(ApplyOutcome.AbortedUnsafePath, result.Outcome);
+    }
+
+    [Fact]
+    public void Apply_DestIsReparsePoint_RemovesLinkThenCopies()
+    {
+        var env = new FakeUpdaterEnvironment();
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.Files[InstallPath("game.dll")] = "link";          // pretend this is a symlink
+        env.ReparsePoints.Add(InstallPath("game.dll"));
+        env.Files[InstallPath("Game")] = "exe";
+
+        ApplyResult result = UpdateApplier.Apply(Config(new() { "game.dll" }), env);
+
+        Assert.Equal(ApplyOutcome.Succeeded, result.Outcome);
+        Assert.Equal("v2", env.Files[InstallPath("game.dll")]); // real file replaced the link
+    }
+
     [Fact]
     public void Run_BadArgs_ReturnsError()
     {

@@ -16,6 +16,9 @@ public enum ApplyOutcome
     /// <summary>A staged source file was missing; aborted before touching the install (old version intact).</summary>
     AbortedStagingIncomplete,
 
+    /// <summary>A manifest path was unsafe (absolute/traversal) or a reparse point; aborted untouched.</summary>
+    AbortedUnsafePath,
+
     /// <summary>A copy failed mid-apply; every overwritten file was restored and the old version relaunched.</summary>
     RolledBack
 }
@@ -88,6 +91,25 @@ public static class UpdateApplier
     {
         environment.Log($"Applying v{config.TargetVersion}: {config.FilesToCopy.Count} to copy, {config.FilesToDelete.Count} to delete");
 
+        foreach (string relativePath in config.FilesToCopy)
+        {
+            if (!IsSafeRelativePath(config.InstallDir, relativePath))
+            {
+                environment.Log($"Unsafe copy path, aborting untouched: {relativePath}");
+                environment.Relaunch(config.GameExePath, config.InstallDir);
+                return new ApplyResult { Outcome = ApplyOutcome.AbortedUnsafePath, ExitCode = 1 };
+            }
+        }
+        foreach (string relativePath in config.FilesToDelete)
+        {
+            if (!IsSafeRelativePath(config.InstallDir, relativePath))
+            {
+                environment.Log($"Unsafe delete path, aborting untouched: {relativePath}");
+                environment.Relaunch(config.GameExePath, config.InstallDir);
+                return new ApplyResult { Outcome = ApplyOutcome.AbortedUnsafePath, ExitCode = 1 };
+            }
+        }
+
         if (config.ParentPid > 0)
         {
             environment.WaitForParentExit(config.ParentPid, MaxParentWaitSeconds * 1000);
@@ -119,6 +141,13 @@ public static class UpdateApplier
                 environment.Relaunch(config.GameExePath, config.InstallDir);
                 return new ApplyResult { Outcome = ApplyOutcome.AbortedStagingIncomplete, ExitCode = 1 };
             }
+            if (environment.IsReparsePoint(source))
+            {
+                environment.Log($"Staged file is a reparse point, aborting: {relativePath}");
+                ClearMarker(environment, markerPath);
+                environment.Relaunch(config.GameExePath, config.InstallDir);
+                return new ApplyResult { Outcome = ApplyOutcome.AbortedUnsafePath, ExitCode = 1 };
+            }
         }
 
         var backedUp = new List<string>();
@@ -129,6 +158,13 @@ public static class UpdateApplier
         {
             string source = Path.Combine(config.StagingDir, ToNative(relativePath));
             string dest = Path.Combine(config.InstallDir, ToNative(relativePath));
+
+            if (environment.FileExists(dest) && environment.IsReparsePoint(dest))
+            {
+                environment.Log($"Destination is a reparse point, removing link before copy: {relativePath}");
+                try { environment.DeleteFile(dest); }
+                catch (Exception ex) { environment.Log($"Could not remove link {relativePath}: {ex.Message}"); }
+            }
 
             string? destDir = Path.GetDirectoryName(dest);
             if (!string.IsNullOrEmpty(destDir))
@@ -303,4 +339,36 @@ public static class UpdateApplier
     }
 
     private static string ToNative(string relativePath) => relativePath.Replace('/', Path.DirectorySeparatorChar);
+
+    /// <summary>
+    /// True when <paramref name="relativePath"/> is a plain forward-slash relative path that stays
+    /// under <paramref name="installDir"/>: not rooted, no drive letter, no <c>..</c> segment, no null
+    /// byte, and resolving it against the install dir does not escape it.
+    /// </summary>
+    private static bool IsSafeRelativePath(string installDir, string relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath) || relativePath.Contains('\0'))
+        {
+            return false;
+        }
+        if (Path.IsPathRooted(relativePath) || relativePath.Contains(':'))
+        {
+            return false;
+        }
+        string[] segments = relativePath.Split('/', '\\');
+        foreach (string segment in segments)
+        {
+            if (segment == "..")
+            {
+                return false;
+            }
+        }
+
+        string fullInstall = Path.GetFullPath(installDir);
+        string combined = Path.GetFullPath(Path.Combine(fullInstall, ToNative(relativePath)));
+        string prefix = fullInstall.EndsWith(Path.DirectorySeparatorChar)
+            ? fullInstall
+            : fullInstall + Path.DirectorySeparatorChar;
+        return combined.StartsWith(prefix, StringComparison.Ordinal);
+    }
 }

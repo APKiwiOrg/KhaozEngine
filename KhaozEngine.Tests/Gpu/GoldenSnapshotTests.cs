@@ -245,7 +245,7 @@ namespace KhaozEngine.Tests.Gpu
             {
                 Texture2D white = ctx.CreateTexture(new byte[] { 255, 255, 255, 255 }, 1, 1);
                 var atlas = KhaozEngine.Gui.IconAtlas.Bake(ctx, cell: 64);
-                atlas.TryGet(KhaozEngine.Gui.Icons.Coin, out Texture2D iconTex, out System.Numerics.Vector4 coinUv);
+                atlas.TryGet(KhaozEngine.Gui.Icons.Coin, out Texture2D atlasTex, out System.Numerics.Vector4 coinUv);
                 atlas.TryGet(KhaozEngine.Gui.Icons.Heart, out _, out System.Numerics.Vector4 heartUv);
                 atlas.TryGet(KhaozEngine.Gui.Icons.Gear, out _, out System.Numerics.Vector4 gearUv);
 
@@ -267,9 +267,17 @@ namespace KhaozEngine.Tests.Gpu
                     (Color)new System.Numerics.Vector4(0.6f, 0.8f, 1f, 1f), style.CornerRadius, 0f, 3f);
 
                 // Tinted icons across the top-right.
-                ctx.Batch.Draw(iconTex, new System.Numerics.Vector4(290, 50, 48, 48), coinUv, new Color(0.95f, 0.8f, 0.2f, 1f));
-                ctx.Batch.Draw(iconTex, new System.Numerics.Vector4(290, 110, 48, 48), heartUv, new Color(0.9f, 0.25f, 0.3f, 1f));
-                ctx.Batch.Draw(iconTex, new System.Numerics.Vector4(290, 170, 48, 48), gearUv, new Color(0.8f, 0.85f, 0.9f, 1f));
+                ctx.Batch.Draw(atlasTex, new System.Numerics.Vector4(290, 50, 48, 48), coinUv, new Color(0.95f, 0.8f, 0.2f, 1f));
+                ctx.Batch.Draw(atlasTex, new System.Numerics.Vector4(290, 110, 48, 48), heartUv, new Color(0.9f, 0.25f, 0.3f, 1f));
+                ctx.Batch.Draw(atlasTex, new System.Numerics.Vector4(290, 170, 48, 48), gearUv, new Color(0.8f, 0.85f, 0.9f, 1f));
+
+                // Bottom-anchored rounded gradient bar: occupies the lower frame so a transform/viewport
+                // regression that shifts content vertically moves a downsampled cell.
+                ctx.Batch.DrawRounded(white, new System.Numerics.Vector4(40, 268, 400, 34),
+                    new System.Numerics.Vector4(0, 0, 1, 1),
+                    (Color)new System.Numerics.Vector4(0.25f, 0.75f, 0.40f, 1f),
+                    (Color)new System.Numerics.Vector4(0.10f, 0.35f, 0.18f, 1f),
+                    8f);
 
                 ctx.Batch.End();
             });

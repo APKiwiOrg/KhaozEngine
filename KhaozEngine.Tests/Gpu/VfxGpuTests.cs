@@ -122,5 +122,46 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.True(Lum(rgba, W / 2, H / 2) > 20, "additive particle centre should be lit");
         }
+
+        [GpuFact]
+        public void AttentionBeacon_LightsPixelsAroundCenter()
+        {
+            Vector2 c = new(W / 2f, H / 2f);
+            // A frozen time where ring 0 is partway out; rings + glints should light pixels off-center.
+            var p = AttentionBeaconParams.Default with { MaxRadius = 40f, GlintRadius = 24f };
+
+            byte[] rgba = Render2DSnapshot.Capture(W, H, Color.Black, ctx =>
+            {
+                using var vfx = new VfxRenderer(ctx);
+                ctx.Batch.Begin();
+                vfx.DrawAttentionBeacon(ctx.Batch, c, p, timeSeconds: 0.6f);
+                ctx.Batch.End();
+            });
+
+            // Somewhere on the ring band away from the exact center should be lit.
+            bool anyLit = false;
+            for (int x = W / 2; x < W / 2 + 40 && !anyLit; x++)
+                if (Lum(rgba, x, H / 2) > 10) anyLit = true;
+            Assert.True(anyLit, "beacon should light pixels out from the center");
+            Assert.Equal(0, Lum(rgba, 2, 2)); // far corner stays background
+        }
+
+        [GpuFact]
+        public void AttentionBeacon_ZeroCounts_DrawNothing()
+        {
+            Vector2 c = new(W / 2f, H / 2f);
+            var p = AttentionBeaconParams.Default with { RingCount = 0, GlintCount = 0 };
+
+            byte[] rgba = Render2DSnapshot.Capture(W, H, Color.Black, ctx =>
+            {
+                using var vfx = new VfxRenderer(ctx);
+                ctx.Batch.Begin();
+                vfx.DrawAttentionBeacon(ctx.Batch, c, p, timeSeconds: 0.6f);
+                ctx.Batch.End();
+            });
+
+            Assert.Equal(0, Lum(rgba, W / 2, H / 2)); // nothing drawn anywhere
+            Assert.Equal(0, Lum(rgba, W / 2 + 20, H / 2));
+        }
     }
 }

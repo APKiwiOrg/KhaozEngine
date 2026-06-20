@@ -5,6 +5,30 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.6.0
+
+Additive (non-breaking): a reusable "attention" pulse VFX in the 2D VFX module, so any game can flag a point of
+interest (pickups, quest markers, objectives) with expanding sonar-ping rings and twinkling glints instead of a
+bespoke per-game aura. Stateless and time-driven, mirroring `EnergyBeam`.
+
+- `KhaozEngine.Render2D.Vfx.AttentionBeacon`: new static
+  `Draw(SpriteBatch batch, Texture2D? ring, Texture2D? glow, Vector2 center, in AttentionBeaconParams p, float timeSeconds)`.
+  Draws additively (the batch's blend mode is saved and restored): `RingCount` soft sonar rings expanding from
+  `InnerRadius` to `MaxRadius` over `RingPeriod`, evenly phase-staggered and fading to zero at the rim, plus
+  `GlintCount` glints placed at deterministic golden-angle offsets (no per-frame RNG, no allocation), each
+  twinkling on its own phase at `TwinkleRate`. A null `ring` skips the rings; a null `glow` skips the glints;
+  `RingCount = 0` and `GlintCount = 0` draw nothing.
+- `KhaozEngine.Render2D.Vfx.AttentionBeaconParams`: new immutable `record struct` of tunables (`Color`,
+  `Intensity`, `RingCount`/`RingPeriod`/`InnerRadius`/`MaxRadius`/`RingThickness`, `GlintCount`/`GlintRadius`/
+  `GlintSize`/`TwinkleRate`/`GlintStyle`) with a `Default` preset. `RingThickness` is a relative band-thickness
+  multiplier (1 = the ring texture's native band). New `GlintStyle` enum: `Disc` (soft dot) or `Star` (a tiny
+  4-point sparkle from two crossed soft quads; the default).
+- `KhaozEngine.Render2D.Vfx.VfxRenderer`: new
+  `DrawAttentionBeacon(SpriteBatch batch, Vector2 center, in AttentionBeaconParams p, float timeSeconds)`, which
+  forwards to `AttentionBeacon.Draw` with the owned ring (rings) and glow (glints) textures, mirroring `DrawBeam`.
+
+Existing render paths and goldens are unaffected (new draw only).
+
 ## 7.5.0
 
 Additive (non-breaking): a generic translucent filled-fan primitive on the Render3D debug overlay, so a consumer

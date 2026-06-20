@@ -275,13 +275,28 @@ public static class UpdateApplier
             }
         }
 
+        // Clear quarantine first so the signature check sees the file as the OS will at launch.
+        environment.ClearQuarantine(config.InstallDir);
+
+        // Fail closed: if the installed executable is not validly signed, roll back to the backups
+        // (still present - we have not cleaned the rollback dir yet) and relaunch the old version.
+        if (!environment.VerifyCodeSignature(config.GameExePath))
+        {
+            environment.Log("Code signature verification FAILED after apply; rolling back.");
+            RestoreBackups(environment, config.InstallDir, rollbackDir, backedUp);
+            try { environment.DeleteDirectory(rollbackDir); }
+            catch (Exception ex) { environment.Log($"Cleanup: could not remove rollback dir {rollbackDir} after restore: {ex.Message}"); }
+            ClearMarker(environment, markerPath);
+            environment.Relaunch(config.GameExePath, config.InstallDir);
+            return new ApplyResult { Outcome = ApplyOutcome.RolledBack, ExitCode = 1 };
+        }
+
         try { environment.DeleteDirectory(config.StagingDir); }
         catch (Exception ex) { environment.Log($"Cleanup: could not remove staging dir {config.StagingDir}: {ex.Message}"); }
         try { environment.DeleteDirectory(rollbackDir); }
         catch (Exception ex) { environment.Log($"Cleanup: could not remove rollback dir {rollbackDir}: {ex.Message}"); }
         ClearMarker(environment, markerPath);
 
-        environment.ClearQuarantine(config.InstallDir);
         environment.Relaunch(config.GameExePath, config.InstallDir);
 
         environment.Log(errors > 0 ? $"Update completed with {errors} error(s)." : "Update applied successfully!");

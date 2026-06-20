@@ -226,6 +226,38 @@ public sealed class UpdateApplierTests
     }
 
     [Fact]
+    public void Apply_CodeSignatureInvalid_RollsBackAndRelaunchesOld()
+    {
+        var env = new FakeUpdaterEnvironment();
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.Files[InstallPath("game.dll")] = "v1";
+        env.Files[InstallPath("Game")] = "exe";
+        env.CodeSignatureValid = false;
+
+        ApplyResult result = UpdateApplier.Apply(Config(new() { "game.dll" }), env);
+
+        Assert.Equal(ApplyOutcome.RolledBack, result.Outcome);
+        Assert.Equal(1, result.ExitCode);
+        Assert.Equal("v1", env.Files[InstallPath("game.dll")]); // restored from backup
+        Assert.Equal(InstallPath("Game"), env.RelaunchedExe);
+    }
+
+    [Fact]
+    public void Apply_CodeSignatureValid_Succeeds()
+    {
+        var env = new FakeUpdaterEnvironment();
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.Files[InstallPath("game.dll")] = "v1";
+        env.Files[InstallPath("Game")] = "exe";
+        env.CodeSignatureValid = true;
+
+        ApplyResult result = UpdateApplier.Apply(Config(new() { "game.dll" }), env);
+
+        Assert.Equal(ApplyOutcome.Succeeded, result.Outcome);
+        Assert.Equal("v2", env.Files[InstallPath("game.dll")]);
+    }
+
+    [Fact]
     public void Run_BadArgs_ReturnsError()
     {
         Assert.Equal(1, UpdateApplier.Run(Array.Empty<string>(), new FakeUpdaterEnvironment()));

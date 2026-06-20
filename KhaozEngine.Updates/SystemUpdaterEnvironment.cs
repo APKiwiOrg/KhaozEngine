@@ -111,5 +111,45 @@ public sealed class SystemUpdaterEnvironment : IUpdaterEnvironment
         }
     }
 
+    public bool VerifyCodeSignature(string executablePath)
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            return true; // no OS signature enforcement to re-check here
+        }
+
+        try
+        {
+            // Verify the .app bundle that contains the executable, not the inner Mach-O.
+            string target = executablePath;
+            int appIndex = executablePath.IndexOf(".app/", StringComparison.Ordinal);
+            if (appIndex >= 0)
+            {
+                target = executablePath[..(appIndex + 4)];
+            }
+
+            using Process? proc = Process.Start(new ProcessStartInfo
+            {
+                FileName = "codesign",
+                ArgumentList = { "--verify", "--deep", "--strict", target },
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            });
+            if (proc is null)
+            {
+                Log("codesign could not be started; treating as unverified.");
+                return false;
+            }
+            proc.WaitForExit(15000);
+            return proc.ExitCode == 0;
+        }
+        catch (Exception ex)
+        {
+            Log($"codesign verification error: {ex.Message}");
+            return false;
+        }
+    }
+
     public void Log(string message) => logSink?.Invoke(message);
 }

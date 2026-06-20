@@ -78,5 +78,9 @@ internal sealed class FakeUpdaterEnvironment : IUpdaterEnvironment
 
     public bool IsReparsePoint(string path) => Files.ContainsKey(path) && ReparsePoints.Contains(path);
 
+    public bool CodeSignatureValid = true;
+
+    public bool VerifyCodeSignature(string executablePath) => CodeSignatureValid;
+
     public void Log(string message) => Log_.Add(message);
 }

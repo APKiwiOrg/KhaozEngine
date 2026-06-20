@@ -30,5 +30,11 @@ public interface IUpdaterEnvironment
     /// <summary>True when <paramref name="path"/> exists and is a symlink/reparse point.</summary>
     bool IsReparsePoint(string path);
 
+    /// <summary>
+    /// Verifies the OS-level code signature of the installed executable/bundle at
+    /// <paramref name="executablePath"/>. Returns true on platforms without signature enforcement.
+    /// </summary>
+    bool VerifyCodeSignature(string executablePath);
+
     void Log(string message);
 }

@@ -42,18 +42,22 @@ layout(location=4) in vec2 vMode;
 layout(location=0) out vec4 oColor;
 void main() {
     vec4 base = texture(sampler2D(Tex, Samp), vUv) * vColor;
+    // Compute the rounded-box SDF coverage UNCONDITIONALLY so fwidth() stays in uniform control flow
+    // (derivatives in a non-uniform branch are undefined per spec; Vulkan/lavapipe is strict). The
+    // plain-draw branch below still writes the literal `base`, so output is byte-identical for Mode.y=0.
+    vec2 b = vShape.xy;
+    float r = vShape.z;
+    float soft = vShape.w;
+    float stroke = vMode.x;
+    vec2 q = abs(vLocal) - b + r;
+    float d = min(max(q.x, q.y), 0.0) + length(max(q, vec2(0.0))) - r;
+    float dStroke = abs(d) - stroke * 0.5;
+    d = stroke > 0.0 ? dStroke : d;
+    float aa = soft > 0.0 ? soft : max(fwidth(d), 1e-4);
+    float cov = clamp(0.5 - d / aa, 0.0, 1.0);
     if (vMode.y < 0.5) {
-        oColor = base;                       // plain draws: byte-identical to before
+        oColor = base;
     } else {
-        vec2 b = vShape.xy;
-        float r = vShape.z;
-        float soft = vShape.w;
-        float stroke = vMode.x;
-        vec2 q = abs(vLocal) - b + r;
-        float d = min(max(q.x, q.y), 0.0) + length(max(q, vec2(0.0))) - r;
-        if (stroke > 0.0) d = abs(d) - stroke * 0.5;
-        float aa = soft > 0.0 ? soft : max(fwidth(d), 1e-4);
-        float cov = clamp(0.5 - d / aa, 0.0, 1.0);
         base.a *= cov;
         oColor = base;
     }

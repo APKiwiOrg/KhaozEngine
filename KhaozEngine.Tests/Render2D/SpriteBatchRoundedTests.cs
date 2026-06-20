@@ -25,5 +25,15 @@ namespace KhaozEngine.Tests.Render2D
             Vector4 s = SpriteBatch.RoundedShape(200f, 100f, radius: 8f, softness: 3f);
             Assert.Equal(new Vector4(100f, 50f, 8f, 3f), s);
         }
+
+        [Fact]
+        public void RoundedLocals_ZeroSize_AllZero()
+        {
+            var (tl, tr, br, bl) = SpriteBatch.RoundedLocals(0f, 0f);
+            Assert.Equal(Vector2.Zero, tl);
+            Assert.Equal(Vector2.Zero, tr);
+            Assert.Equal(Vector2.Zero, br);
+            Assert.Equal(Vector2.Zero, bl);
+        }
     }
 }

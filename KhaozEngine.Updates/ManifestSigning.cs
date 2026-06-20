@@ -11,7 +11,7 @@ public sealed record ManifestKeyPair(string PrivateKeyPem, string PublicKeyPem);
 
 /// <summary>
 /// Publish-side manifest signing. The private key signs the exact manifest bytes with RSA-2048
-/// PKCS#1 v1.5 over SHA-256; the detached signature ships as <c>manifest.json.sig</c> (base64).
+/// PKCS#1 v1.5 over SHA-256; the detached signature ships as <c>manifest.json.sig</c> (raw signature bytes).
 /// Pure BCL, so the Updates package keeps its near-zero-dependency footprint.
 /// </summary>
 public static class ManifestSigner

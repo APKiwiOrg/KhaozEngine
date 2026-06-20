@@ -128,6 +128,26 @@ public sealed class UpdateManifestTests
         Assert.Contains("\"publishedAtUtc\"", json);
         Assert.Contains("\"sha256\"", json);
     }
+
+    [Fact]
+    public void Manifest_RequiredFlag_RoundTripsThroughJson()
+    {
+        var manifest = new UpdateManifest { Version = "2.0.0", Platform = "win-x64", Required = true };
+
+        UpdateManifest? parsed = UpdateManifest.Deserialize(manifest.Serialize());
+
+        Assert.NotNull(parsed);
+        Assert.True(parsed!.Required);
+    }
+
+    [Fact]
+    public void Manifest_RequiredFlag_DefaultsFalseWhenAbsent()
+    {
+        UpdateManifest? parsed = UpdateManifest.Deserialize("{\"version\":\"2.0.0\",\"platform\":\"win-x64\",\"files\":[]}");
+
+        Assert.NotNull(parsed);
+        Assert.False(parsed!.Required);
+    }
 }
 
 public sealed class UpdateVersionTests

@@ -25,6 +25,9 @@ public sealed class UpdateManifest
     [JsonPropertyName("publishedAtUtc")]
     public DateTime PublishedAtUtc { get; set; }
 
+    [JsonPropertyName("required")]
+    public bool Required { get; set; }
+
     [JsonPropertyName("files")]
     public List<ManifestFileEntry> Files { get; set; } = new();
 

@@ -5,6 +5,19 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.4.0
+
+Additive (non-breaking): point/segment geometry in `KhaozEngine.Collision`, the primitive swept (look-ahead)
+collision needs so a fast mover cannot tunnel through a thin target between two frames.
+
+- `KhaozEngine.Collision`: new `Segment2D` static class with
+  `DistanceToSegment(Vector2 p, Vector2 a, Vector2 b, out float t)` - the shortest distance from a point to the
+  segment `[a, b]` (the clamped closest point, not the infinite line). `t` is the projection parameter of that
+  closest point along `a -> b`, clamped to `[0, 1]` (`t ~ 0` near `a`, `t ~ 1` near `b`), so callers can order
+  hits by position along a swept path. A degenerate segment (`a == b`) returns `|p - a|` with `t = 0`. The math
+  uses explicit component arithmetic (no `Vector2.Dot`/`Length` helpers), bit-stable for lockstep sims, matching
+  `CircleCollision`. Companion to the existing `CircleCollision` (circle/circle) and `GridRay` (grid raycast).
+
 ## 7.3.0
 
 Additive (non-breaking): the auto-updater's reusable last-mile glue, so games adopt the updater with thin

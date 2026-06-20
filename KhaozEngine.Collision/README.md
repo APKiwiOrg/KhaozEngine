@@ -7,6 +7,11 @@ Game-agnostic 2D collision + broadphase primitives.
 - **`SpatialHashGrid`** - uniform spatial hash for broadphase candidate queries. Rebuild each tick with
   `BeginRebuild(capacity)` + one `Add(index, position, radius)` per item, then `QueryCandidates` /
   `GetQueryIndex`.
+- **`Segment2D`** - point/segment geometry. `DistanceToSegment(p, a, b, out t)` returns the shortest distance
+  from a point to the segment `[a, b]` (the clamped closest point, not the infinite line) plus the clamped
+  `[0, 1]` projection parameter `t` (`~0` near `a`, `~1` near `b`) for ordering hits along a swept path. A
+  degenerate segment (`a == b`) returns `|p - a|`, `t = 0`. The primitive a swept (look-ahead) collision needs
+  so a fast mover cannot tunnel through a thin target between two frames. Deterministic explicit-component math.
 - **`GridRay`** - exact 2D grid line-of-sight / segment-raycast. `IsClear(from, to, cellSize, blocks)` walks
   every cell the segment touches (Amanatides&Woo 4-connected supercover, not fixed-step sampling) and returns
   true when none satisfy the caller's `blocks(x, y)` predicate; endpoint cells are excluded by default

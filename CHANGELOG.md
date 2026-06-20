@@ -5,6 +5,26 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.3.0
+
+Additive (non-breaking): the auto-updater's reusable last-mile glue, so games adopt the updater with thin
+per-game config only (feed URL, embedded public key, a one-line shim, a themed overlay).
+
+- `KhaozEngine.Updates`: new read-only `IUpdateStatus` (implemented by `UpdateService`) so UI can present
+  update state without the concrete service. `UpdaterShim.Main(args)` - a game's external updater exe is now
+  one line (`return KhaozEngine.Updates.UpdaterShim.Main(args);`). `UpdateOverlayActions.Trigger(service)` +
+  `ResolveAction(state)` - the default state-to-action wiring (`OverlayAction` enum). `ManifestToolCommands` -
+  the command logic behind the new CLI.
+- `KhaozEngine.Gui`: `UpdateOverlayView` (a headless-testable presenter over `IUpdateStatus` that raises
+  `OnTrigger`/`Triggered` on a bound key/gamepad button) and `UpdateOverlayScreen` (a drop-in `Screen`
+  wrapper, modal only while a panel is shown), themed via `UpdateOverlayTheme`. `KhaozEngine.Gui` now
+  depends on `KhaozEngine.Updates` (pure .NET, acyclic).
+- New `KhaozEngine.Updates.Tool` package: the `ke-updater` dotnet tool - `manifest`, `genkey`, `sign`,
+  `verify` for RSA-2048 signed manifests. Wires the `--genkey`/`--sign` deferred in 7.0.0.
+- `KhaozEngine.Updates` now bundles `templates/publish-update.sh` (a parameterized publish template) and a
+  README "Adopting the updater" section. No change to the security model (signing stays mandatory; HTTPS +
+  same-host; size/disk caps; fail-closed apply).
+
 ## 7.2.0
 
 Additive (non-breaking): round (cylindrical) end-caps for `EnergyBeam` (`KhaozEngine.Render2D.Vfx`), so a beam

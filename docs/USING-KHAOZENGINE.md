@@ -279,6 +279,7 @@ batch.Begin();
 sparks.Draw(batch, vfx.GlowTexture);                 // or vfx.WhitePixel for solid squares
 vfx.DrawGlow(batch, hitPoint, radius: 20f, new Color(1f, 0.8f, 0.4f, 1f));   // halo / impact flare
 vfx.DrawBeam(batch, muzzle, target, BeamParams.Default with { Caps = BeamCap.Round }, timeSeconds);  // capsule ends
+vfx.DrawAttentionBeacon(batch, pickup, AttentionBeaconParams.Default, realTimeSeconds);  // sonar rings + glints
 batch.End();
 ```
 
@@ -293,6 +294,14 @@ batch.End();
   radius half each band's pulse-adjusted width at every endpoint (glow cap under, core cap over), independent of
   `FlareRadius` and sampled from the `glow` texture (square ends if `glow` is null). Default `BeamCap.None` keeps
   the original square ends.
+- `AttentionBeacon.Draw(batch, ring, glow, center, in AttentionBeaconParams, timeSeconds)`: an additive "look at
+  me" pulse (pickups, quest markers, objectives), expanding sonar-ping rings plus a configurable number of
+  twinkling glints; time-driven and stateless like `EnergyBeam`, so feed an unscaled real-time accumulator and it
+  animates regardless of game time-scale. `VfxRenderer.DrawAttentionBeacon(batch, center, in p, timeSeconds)`
+  wraps it with the owned ring (rings) and glow (glints) textures. Tunables on `AttentionBeaconParams`:
+  `RingCount`/`RingPeriod`/`InnerRadius`/`MaxRadius`/`RingThickness` (relative band thickness, 1 = texture-native),
+  `GlintCount`/`GlintRadius`/`GlintSize`/`TwinkleRate`/`GlintStyle` (`Disc` or `Star`), plus `Color` and
+  `Intensity`. `RingCount = 0` and `GlintCount = 0` draw nothing; a null `ring`/`glow` skips that sub-effect.
 - `VfxTextures`: `BakeGlowPixels`/`BakeRingPixels` (pure RGBA8, headless) and `BakeGlow`/`BakeRing`/`White`
   (upload to a `Render2DSurface` / `Render2DContext`).
 - Screen shake is **not** here - use `KhaozEngine.Effects.ScreenShake` (trauma-based, camera-independent: `Add` /

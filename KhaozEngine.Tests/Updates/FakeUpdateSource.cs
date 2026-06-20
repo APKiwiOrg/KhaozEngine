@@ -61,6 +61,19 @@ internal sealed class FakeUpdateSource : IUpdateSource
         return Task.FromResult(true);
     }
 
+    /// <summary>
+    /// Publishes a signed manifest: stores its raw JSON bytes at <paramref name="manifestUrl"/> and a
+    /// detached signature at "<paramref name="manifestUrl"/>.sig", and sets <see cref="Latest"/>.
+    /// </summary>
+    public void PublishSigned(UpdateManifest manifest, string manifestUrl, string privateKeyPem, bool required = false)
+    {
+        byte[] manifestBytes = System.Text.Encoding.UTF8.GetBytes(manifest.Serialize());
+        Bytes[manifestUrl] = manifestBytes;
+        Bytes[manifestUrl + ".sig"] = ManifestSigner.Sign(manifestBytes, privateKeyPem);
+        RemoteManifest = manifest;
+        Latest = new LatestVersionInfo(manifest.Version, manifest.Version, manifestUrl, required);
+    }
+
     /// <summary>Adds a file's correct bytes and returns its lowercase-hex SHA256 for manifest entries.</summary>
     public string Add(string relativePath, string content)
     {

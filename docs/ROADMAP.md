@@ -5,15 +5,18 @@ Larger feature areas identified but not yet scheduled. Current released version:
 line and its six genuinely-MonoGame packages (`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`) were
 DELETED from the engine source, so the engine itself is now entirely MonoGame-free. SpaceGame is the lone
 remaining 4.x consumer (it still pins the already-published 4.9.0 nupkgs); its 5.x/6.x port is the
-outstanding migration goal that lets the 4.x packages be retired everywhere.
+outstanding migration goal that lets the 4.x packages be retired everywhere. As of 6.0.0 there is also a
+new zero-dependency `KhaozEngine.Primitives` leaf at the bottom of the graph (`Color`, `DeterministicRng`,
+`XorRng`, `MathUtil`, `ViewportMath`, `Easing`).
 
 Several items from the original (3.3.0-era) backlog have since shipped: the camera follow/framing
 layer, the pan/zoom gesture controller, and `PrimitiveRenderer` circle/ring drawing. Those are listed
-under each area as **Shipped** so the remaining work is clear. The 4.0.0 release also moved
-`PrimitiveRenderer`/`ColorHelper` into `KhaozEngine.Graphics` (see CHANGELOG); roadmap references below
-use the current namespaces.
+under each area as **Shipped** so the remaining work is clear. (The primitive/camera code that the 4.0.0
+release once put in `KhaozEngine.Graphics` now lives in `KhaozEngine.Render2D` / `KhaozEngine.Effects` on the
+MonoGame-free stack; the 4.x `Graphics`/`UI` packages were deleted. Roadmap references below use the current
+package names.)
 
-## The post-MonoGame pivot (5.x line) — strategic direction
+## The post-MonoGame pivot (6.x line): strategic direction
 
 **Decision (2026-06-15): KhaozEngine becomes a full, self-contained, cross-platform game framework with
 no MonoGame dependency anywhere** — desktop (Win/Mac/Linux) first, mobile (iOS/Android) later, covering
@@ -47,11 +50,14 @@ via AOT, and ~21 existing C# packages + 3 games would be thrown away by a rewrit
 - **Audio:** `OpenAL` via `Silk.NET.OpenAL` (or a small custom backend) replaces MonoGame audio.
 - **Texture/content:** `StbImageSharp` etc.
 
-### Current status (as of `5.18.0-experimental`)
+### Current status (as of 6.3.0)
+
+_(Historical snapshot below; current state is 6.3.0 - see CONSUMERS.md / CHANGELOG.md. The table captured
+the moment every subsystem was first proven on the custom stack; the version markers in it are left as a
+record of when each landed.)_
 
 **Every subsystem needed to drop MonoGame is now proven on the custom stack — no feasibility unknowns
-remain; the rest is productization + porting.** Shipped 5.x packages (shared version, currently
-`5.47.0`):
+remain; the rest is productization + porting.** Shipped engine packages (shared version, now at 6.3.0):
 
 | Subsystem | Status |
 |---|---|
@@ -63,9 +69,11 @@ remain; the rest is productization + porting.** Shipped 5.x packages (shared ver
 | Screens / UI | shipped (widget set) — `KhaozEngine.Gui`: `ScreenStack` routing + transitions, `Screen` base, and the widgets `Button`/`Label`/`Panel`/`Slider`/`Toggle` + `Dropdown`/`TextInput`/`Tooltip`/`PopupPanel`/`ScrollablePanel` over `Pointer`; `TextLayout` wrap/align + `SpriteBatch` scissor clip in Render2D; `TextEntry` key→char. Pause/timescale, touch/gamepad, and virtual-resolution transforms are the remaining follow-ups |
 | Math | done — `System.Numerics` |
 
-Caveats to clear during productization: Metal-only so far (per-backend clip-Y + MRT-clear handling pending);
-SDL2 bundled per-sample; production audio should bundle **openal-soft** (macOS's system OpenAL is deprecated,
-same as its OpenGL).
+Caveats from that snapshot, now resolved: per-backend clip-Y is handled (6.2.0 `GpuClip` derives the clip-Y
+sign from `GpuCapabilities`; identity on Metal / D3D11, flipped on Vulkan) and validated by the
+cross-platform-gpu CI matrix (Metal + D3D11 blocking; Vulkan non-blocking / pending hardware); the SDL2
+per-sample bundling is gone (5.33.0 moved windowing/input to Silk.NET / GLFW, which bundles natives per-RID);
+and production audio bundles **openal-soft** (5.12.0) instead of the deprecated macOS system OpenAL.
 
 **End-to-end proven:** the `MiniGame` sample ("Catcher" — title menu, falling-block gameplay with score/lives
 HUD, modal game-over, looping generated music) runs the whole 5.x stack (Windowing + Render2D + Gui + Audio)
@@ -121,7 +129,8 @@ first; **Phase A shipped in `5.13.0-experimental`**: multi-instance `Scene3D` (`
 1. **Render3D POC (shipped, `5.1.0-experimental`).** `KhaozEngine.Render3D`: `IsoCamera3D`, runtime glTF
    lit/cel draw, the `PixelPostProcess` chain (palette/dither/edge/upscale + procedural starfield),
    `Scene3D`/`Render3DHost` consumer API, standalone sample. Default look is smooth stylized space; retro is a
-   toggle. Proves the renderer + the look. Metal-only for now.
+   toggle. Proves the renderer + the look. (Was Metal-only at the time; D3D11 + Vulkan backends since landed,
+   with per-backend clip-Y derived from `GpuCapabilities` at 6.2.0.)
 2. **Rendering core.** Harden into a reusable core + the multi-backend `IGraphicsBackend` seam; per-backend
    clip-space-Y and MRT-clear handling; window/input platform package (lift windowing out of `Render3DHost`).
 3. **2D-on-Veldrid (started, `KhaozEngine.Render2D`).** Sprite batcher + textured quads + `Camera2D` +
@@ -135,28 +144,26 @@ first; **Phase A shipped in `5.13.0-experimental`**: multi-instance `Scene3D` (`
 5. **Migrate the games.** Hardpoint / Nullwake / SpaceGame onto the 5.x stack; retire the 4.x MonoGame line.
 6. **Mobile.** iOS/Android platform layers (lifecycle, touch, packaging, stores).
 
-### Version policy (two lines)
+### Version policy (one shared line)
 
-- **5.x line — the engine.** The custom-stack packages (`Gpu`, `Windowing`, `Render2D`, `Render3D`, `Gui`,
-  `Audio`, `Particles`, `Game`) **and**, as of **`5.46.0`**, the graduated MonoGame-free foundation packages
+- **One shared version line (the whole MonoGame-free engine).** The `Primitives` leaf, the custom-stack
+  packages (`Gpu`, `Windowing`, `Render2D`, `Render3D`, `Gui`, `Audio`, `Particles`, `Effects`, `Game`,
+  `Game.Render3D`), the graduated MonoGame-free foundation packages
   (`Ecs`/`Serialization`/`Content`/`Diagnostics`/`App`/`Localization`/`Persistence`/`Pooling`/`Platform`/
-  `Updates`/`Collision`/`Netcode`/`Netcode.Abstractions`/`Netcode.LiteNetLib` — 14 packages) share the version
-  `Directory.Build.props` `<KhaozEngine5xVersion>` and release together under one `vX.Y.Z` tag. It dropped the
-  `-experimental` suffix at `5.31.0` (after the audit-driven P0 + P1: correctness net, instancing, the
-  graphics-backend seam behind `KhaozEngine.Gpu`, the `GameApp` loop facade). **The foundation graduated onto
-  this line at `5.46.0`** (audit P1#9) so a 5.x game pins **only** 5.x packages; it was a non-breaking
-  re-version (same assemblies/API, just a version-string swap from `4.12.0`). The **doc-version guard now
-  checks this line** (`<KhaozEngine5xVersion>`). (The first two Render3D releases, 5.0.0/5.1.0, predate the
-  shared line and were per-package.)
-- **4.x line — legacy, frozen-ish.** After the `5.46.0` graduation it carries **only** the genuinely-MonoGame
-  packages (`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`), consumed by the still-4.x SpaceGame
-  until it migrates; then they're deleted and MonoGame is fully gone. It bumps only when one of those packages
-  needs a release. Its `<Version>` (`4.12.0`) is no longer the "current engine version" and is not guard-checked
-  (it lags like a consumer pin).
+  `Updates`/`Collision`/`Netcode`/`Netcode.Abstractions`/`Netcode.LiteNetLib`), and the four umbrella
+  metapackages all share the `Directory.Build.props` `<KhaozEngine5xVersion>` prop (still so named, but it now
+  governs the 6.x engine) and release together under one `vX.Y.Z` tag. The `-experimental` suffix was dropped
+  at `5.31.0`; the foundation graduated onto the shared line at `5.46.0`; the line crossed to 6.0.0 with the
+  `Primitives` leaf + the `Color` migration. The **doc-version guard checks this line**. (The first two
+  Render3D releases, 5.0.0/5.1.0, predate the shared line and were per-package.)
+- **The old 4.x MonoGame line was DELETED from the repo.** Its six genuinely-MonoGame packages
+  (`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`) are gone from `Directory.Build.props` and the source
+  tree; only their already-published nupkgs remain in the feed so SpaceGame's `4.9.0` pin keeps resolving until
+  it ports. Once SpaceGame migrates, even those can be retired and MonoGame is fully gone.
 
 Design spec: `docs/superpowers/specs/2026-06-15-render3d-custom-engine-design.md`.
 
-## Camera: first-class follow / scroller camera (`KhaozEngine.Graphics`)
+## Camera: first-class follow / scroller camera (`KhaozEngine.Render2D`)
 
 `Camera2D` is the generic matrix base: position/zoom/rotation to view matrix, world<->screen, and a
 `ClampPosition` bounds helper. A "feel" layer has since been built on top of it without changing the base.
@@ -205,9 +212,8 @@ non-uniform-scale support to the camera, or Nullwake's projection stays game-spe
 
 **Shipped (5.56.0)** as the trauma-based `ScreenShake` offset generator (see the camera section).
 
-A screen-shake effect that perturbs the camera (Effects to Graphics interplay; the
-`Effects -> Graphics` package dependency exists as of 4.0.0). Trauma-based decay. Pairs with the
-follow-camera layer above. Not yet built.
+A screen-shake effect that perturbs the camera, composed onto the render camera in `KhaozEngine.Render2D`.
+Trauma-based decay. Pairs with the follow-camera layer above.
 
 ## Particle unification (`KhaozEngine.Effects`)
 
@@ -218,17 +224,18 @@ still does NOT reference `KhaozEngine.Effects`, which is the blocker.)
 
 ## SFX audio (`KhaozEngine.Audio`)
 
-`KhaozEngine.Audio` is music-only (one track at a time + master x music volume). Games that mix sound
-effects keep their own SFX volume/mixing (e.g. SpaceGame's `AudioVolumeMixer`). A future SFX layer
-(one-shot playback, channels, separate SFX vs music volume) would let those move into the engine.
+**Shipped (5.34.0).** `KhaozEngine.Audio` gained SFX one-shots + 3D positional audio over a 16-voice pool
+(`PlaySfx`/`PlaySfx3D`/`SetListener`, per-channel volume) on top of the streaming music backend, so it is no
+longer music-only. SpaceGame still keeps its game-side SFX mixing (`AudioVolumeMixer`) until it ports.
 
 ## Shipped (closed roadmap items)
 
 - **`PrimitiveRenderer` circle/ring:** `DrawCircle`, `DrawFilledCircle`, and a thickness-aware,
-  radius-adaptive `DrawRing` (with `RingSegments`) shipped and now live in `KhaozEngine.Graphics`
-  (moved from `UI` in 4.0.0). SpaceGame's ring rendering and Hardpoint's tower range rings use them.
+  radius-adaptive `DrawRing` (with `RingSegments`) shipped. SpaceGame's ring rendering and Hardpoint's tower
+  range rings use them. (Originally in the 4.x `UI`/`Graphics` packages; the primitive drawing now lives on
+  the MonoGame-free stack in `KhaozEngine.Render2D` / `Render3D`.)
 
 ---
-_Source: coordinated promote-into-KE effort, 2026-06-11; shipped-items reconciled 2026-06-13 at 4.0.0;
-version line tracks the current release (4.1.0 was logging-only, no roadmap area moved). Update as items
-are scheduled or shipped._
+_Source: coordinated promote-into-KE effort, 2026-06-11; shipped-items reconciled 2026-06-13 at 4.0.0.
+The engine is now one MonoGame-free shared version line, currently 6.3.0 (see CONSUMERS.md / CHANGELOG.md).
+Update as items are scheduled or shipped._

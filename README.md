@@ -10,6 +10,7 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 
 | Package | What it gives you | Depends on |
 |---|---|---|
+| **KhaozEngine.Primitives** | The zero-dependency leaf (`System.Numerics` only): `Color` (`FromHex`/`ToHex`, `* float`, `Lerp`), `DeterministicRng`, `XorRng`, `MathUtil`, `ViewportMath`, `Easing`. The bottom of the dependency graph; an RGBA color anywhere in the public API is a `Color`. | Pure .NET |
 | **KhaozEngine.Gpu** | The GPU backend seam: backend selection (Metal/D3D11/Vulkan/OpenGL via RID), device + command-list abstraction over Veldrid. The only graphics-API-aware layer. | Pure .NET (+ Veldrid) |
 | **KhaozEngine.Windowing** | `AppWindow` (owns the Silk.NET/GLFW window + the per-frame `Run` loop), the immutable `InputState` snapshot, `InputManager`/`Pointer` (unified pointer, edges, `IsTapIn` press-origin invariant, region blocking, drag/scroll, keyboard/gamepad/menu-nav), `GameClock`, `DesignViewport`/`AdaptiveViewport`. | KhaozEngine.Gpu |
 | **KhaozEngine.Render2D** | `SpriteBatch` (textured quads + `DrawString` over stb_truetype `SpriteFont`, optional model transform + sampler mode), `Camera2D`, `Texture2D`, `ImageRgba` (CPU pixel/opaque-mask decode), `Render2DSurface`, scissor/point-sampling, offscreen capture. | Windowing, Gpu |
@@ -20,7 +21,7 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 | **KhaozEngine.Effects** | Game-feel visual effects: `ScreenShake` (trauma-based), parallax helpers. | Pure .NET |
 | **KhaozEngine.Game** | The 2D game-loop facade: `GameApp` (abstract base owning the per-frame compose: clock/viewport/input/draw) + `GameAppOptions`, and a `SceneManager`/`GameScene` state stack (Push/Pop/Replace/SwitchTo, overlay DrawBelow/UpdateBelow). | Windowing, Render2D, Gui |
 | **KhaozEngine.Game.Render3D** | The 3D bridge for the Game framework: `GameApp3D` (a `GameApp` that stands up a `Render3DSurface` + drives the 3D pass), `IGameScene3D`, and a `SceneManager.Draw3D` extension. Kept separate so a 2D game pulls no 3D renderer. | Game, Render3D |
-| **KhaozEngine.Ecs** | A struct-based archetype `World`/`Entity`/`ISystem` ECS: by-ref component access, `ForEach`, command buffer, system groups, `CachedQuery`, `DeterministicRng`, `WorldSerializer`. | Serialization |
+| **KhaozEngine.Ecs** | A struct-based archetype `World`/`Entity`/`ISystem` ECS: by-ref component access, `ForEach`, command buffer, system groups, `CachedQuery`, `WorldSerializer`. (`DeterministicRng` moved to `KhaozEngine.Primitives` in 6.0.0.) | Serialization |
 | **KhaozEngine.Content** | Config/content loading (embedded or disk JSON) with JSON-schema validation + build-time schema enforcement. | Diagnostics, Serialization (+ JsonSchema.Net) |
 | **KhaozEngine.Diagnostics** | Logging service: levels, pluggable sinks (rotating file / console / debug / in-memory), category loggers, a static `Log` facade over an injectable `LogManager`, crash hooks. | Pure .NET |
 | **KhaozEngine.App** | App/runtime helpers: `BuildMetadata` (read `AssemblyMetadata` at runtime), `AppDataPaths` (publisher-rooted OS-correct per-app data dir), `ServiceLocator`. | Pure .NET |
@@ -43,7 +44,7 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 | **KhaozEngine.Game2D** | 2D runtime (Windowing/Render2D/Gui/Audio/Particles) + `Game` + `Foundation` | a desktop 2D game |
 | **KhaozEngine.Game3D** | `Game2D` + `Render3D` + `Game.Render3D` (the 3D scene bridge) | a desktop 3D game |
 | **KhaozEngine.Server** | `Foundation` + netcode (`Netcode`/`.Abstractions`/`.LiteNetLib`) | a headless sim server (no GPU) |
-| **KhaozEngine.Foundation** | the GPU-free foundation (App/Content/Diagnostics/Ecs/Localization/Persistence/Serialization/Pooling/Collision/Platform/Updates) | a gameplay-logic library (no renderer) |
+| **KhaozEngine.Foundation** | the GPU-free foundation (Primitives/App/Content/Diagnostics/Ecs/Localization/Persistence/Serialization/Pooling/Collision/Platform/Updates) | a gameplay-logic library (no renderer) |
 
 Target framework `net10.0`. MonoGame-free: Silk.NET windowing/input (GLFW natives bundled per-RID), Veldrid
 behind `KhaozEngine.Gpu` for the GPU, Silk.NET.OpenAL for audio. `System.Numerics` math throughout.
@@ -146,6 +147,7 @@ dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj
 KhaozEngine.Gpu/   KhaozEngine.Windowing/   KhaozEngine.Render2D/   KhaozEngine.Render3D/   KhaozEngine.Gui/
 KhaozEngine.Audio/   KhaozEngine.Particles/   KhaozEngine.Effects/   KhaozEngine.Game/   KhaozEngine.Game.Render3D/
 # Foundation (GPU-free, pure .NET)
+KhaozEngine.Primitives/
 KhaozEngine.Ecs/   KhaozEngine.Serialization/   KhaozEngine.Content/   KhaozEngine.Content.Validator/
 KhaozEngine.Diagnostics/   KhaozEngine.App/   KhaozEngine.Localization/   KhaozEngine.Persistence/
 KhaozEngine.Pooling/   KhaozEngine.Platform/   KhaozEngine.Collision/   KhaozEngine.Updates/
@@ -164,7 +166,7 @@ CI builds, tests, packs, and on a `v*` tag publishes to GitHub Packages.
 
 | Game | References | Status |
 |---|---|---|
-| **Hardpoint** (3D) | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic) | On 5.57.0, fully off MonoGame. |
+| **Hardpoint** (3D) | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic) | On 5.70.0, fully off MonoGame. |
 | **Nullwake** (2D) | `KhaozEngine.Game2D` | On 5.59.0, fully off MonoGame. Source of the widgets, transitions, and the click-through fix. |
 | **SpaceGame** | granular 4.x packages (the last MonoGame holdout) | On 4.9.0. 5.x port is the remaining migration work. |
 

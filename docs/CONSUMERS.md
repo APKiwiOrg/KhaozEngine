@@ -5,13 +5,14 @@ Which game uses which packages, at which version. Current state only - for the p
 engine ships a new version.
 
 **Engine current version:** `6.3.0` (the shared `<KhaozEngine5xVersion>` line, which is the engine): the
-custom MonoGame-free stack (`Primitives`/`Gpu`/`Windowing`/`Render2D`/`Render3D`/`Gui`/`Audio`/`Particles`/`Game`) **plus**
+custom MonoGame-free stack (`Primitives`/`Gpu`/`Windowing`/`Render2D`/`Render3D`/`Gui`/`Audio`/`Particles`/`Effects`/`Game`/`Game.Render3D`) **plus**
 the MonoGame-free foundation packages that graduated onto it at `5.46.0`
 (`Ecs`/`Serialization`/`Content`/`Diagnostics`/`App`/`Localization`/`Persistence`/`Pooling`/`Platform`/
 `Updates`/`Collision`/`Netcode`/`Netcode.Abstractions`/`Netcode.LiteNetLib`). **The legacy 4.x line + its six
-genuinely-MonoGame packages (`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`) were DELETED once SpaceGame,
-the last consumer, migrated off MonoGame** - the engine is now entirely MonoGame-free with a single version
-line in `Directory.Build.props`, which the doc-version guard checks.
+genuinely-MonoGame packages (`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`) were DELETED from the repo**, so
+the engine is now entirely MonoGame-free with a single version line in `Directory.Build.props` (the doc-version
+guard checks it). SpaceGame, the lone remaining 4.x consumer, still resolves the already-published `4.9.0` nupkgs
+until its 6.x port lands.
 
 > **5.46.0 (graduation, non-breaking re-version):** the 14 MonoGame-free foundation packages moved from the
 > 4.x `<Version>` line to the 5.x `<KhaozEngine5xVersion>` line so a 5.x game pins **only** 5.x packages. Same
@@ -63,7 +64,7 @@ line in `Directory.Build.props`, which the doc-version guard checks.
 
 **Shared engine line (the engine, no longer experimental):** the zero-dependency `Primitives` leaf (new at
 `6.0.0`: `Color`, `DeterministicRng`, `XorRng`, `MathUtil`, `ViewportMath`, `Easing`) **plus** the custom-stack
-packages `Gpu`, `Windowing`, `Render2D`, `Render3D`, `Gui`, `Audio`, `Particles`, `Game`, `Game.Render3D` (the
+packages `Gpu`, `Windowing`, `Render2D`, `Render3D`, `Gui`, `Audio`, `Particles`, `Effects`, `Game`, `Game.Render3D` (the
 `-experimental` suffix was dropped at `5.31.0`) **plus** the 14 graduated foundation packages **plus** the four
 umbrella metapackages all share `<KhaozEngine5xVersion>`. The stack packages replace
 the legacy 4.x MonoGame rendering/UI/input/audio/screens/effects/time packages (UI->Gui, Graphics->Render2D,

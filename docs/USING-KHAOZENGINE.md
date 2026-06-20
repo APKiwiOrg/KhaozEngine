@@ -50,7 +50,9 @@ These are not style preferences. Breaking them re-introduces the exact bugs this
    click-through fix; the other half is `IsTapIn`.
 5. **Pass the design viewport to `Pointer.Update` / `InputManager.Update`** so hit-testing lines up with what's
    drawn. `GameApp` does this for you; if you build your own loop, do it yourself.
-6. **`System.Numerics` only** - `Vector2/3/4`, `Matrix4x4`. No XNA / MonoGame types anywhere.
+6. **`System.Numerics` only** - `Vector2/3/4`, `Matrix4x4`. No XNA / MonoGame types anywhere. (An RGBA color
+   is `KhaozEngine.Primitives.Color`, not a bare `Vector4`, since the 6.0.0 color migration; GPU-layout structs
+   still use `Vector4`.)
 7. **Don't fork the packages.** Need an API that isn't there? Add it to KhaozEngine, ship a headless test, bump
    the version, and consume the new version. Pinned versions are how games stay green during each other's
    migrations.
@@ -228,8 +230,8 @@ Texture2D logo = Surface2D.LoadTexture("logo.png");                 // PNG via S
 SpriteFont font = Surface2D.LoadFont("/path/Arial.ttf", 32f);       // runtime TTF via stb_truetype
 
 batch.Begin(Viewport, SamplerMode.Point);        // design-viewport space, crisp pixels; or Begin(camera) / Begin()
-batch.Draw(logo, new Vector2(100, 100), Vector4.One);
-batch.DrawString(font, "Hello", new Vector2(100, 60), Vector4.One);
+batch.Draw(logo, new Vector2(100, 100), Color.White);
+batch.DrawString(font, "Hello", new Vector2(100, 60), Color.White);
 batch.End();
 ```
 
@@ -308,7 +310,8 @@ boxing), iteration via `Query()` and `ForEach<T1..T8>(RefAction<…>)`, parent/c
 (`AddSystem(ISystem, group)`, `SetGroupOrder`, `Update(float dt)`). `CachedQuery` reuses a query across ticks to
 avoid per-tick allocation; `DeterministicRng` (xorshift128+/splitmix64, `CreateDerived(name)` for per-stream
 sub-RNGs) gives platform-stable RNG for lockstep sims; `WorldSerializer` round-trips a world as JSON (uses
-`KhaozEngine.Serialization.JsonDefaults.IncludeFields`).
+`KhaozEngine.Serialization.JsonDefaults.IncludeFields`). (`DeterministicRng` moved to `KhaozEngine.Primitives`
+in 6.0.0; the ECS still uses it for lockstep RNG.)
 
 ### `[ComponentId]` and save-format stability (policy)
 
@@ -377,6 +380,8 @@ Rules for consumers:
 
 The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, GPU-free):
 
+- **`KhaozEngine.Primitives`**: the zero-dependency leaf: `Color` (`FromHex`/`ToHex`, `* float`, `Lerp`),
+  `DeterministicRng`, `XorRng`, `MathUtil`, `ViewportMath`, `Easing`. The bottom of the dependency graph.
 - **`KhaozEngine.App`**: app identity / data paths: `AppDataPaths` (publisher-rooted: `<base>/APKiwi/<game>/`),
   `BuildMetadata`, `ServiceLocator`.
 - **`KhaozEngine.Persistence`**: crash-safe saves: `AtomicJsonWriter`, `PersistenceQueue` (coalesced async

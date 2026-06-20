@@ -1,6 +1,6 @@
 # Cross-platform desktop GPU
 
-KhaozEngine's 5.x custom stack (Render2D / Render3D) runs on Veldrid. Each desktop OS gets a native graphics
+KhaozEngine's 6.x custom stack (Render2D / Render3D) runs on Veldrid. Each desktop OS gets a native graphics
 backend; the GPU golden-snapshot net verifies rendering on each one through a CI matrix.
 
 ## Platform → backend (desktop scope)
@@ -84,5 +84,12 @@ This release delivers the **verification mechanism**, not a finished cross-platf
 2. **OpenGL backend deferred.** D3D11 and Vulkan honor Veldrid's clip-space prefer-flags
    (clip-Y / 0..1 depth) like Metal, so they need no special handling. OpenGL's runtime clip-Y / depth
    derivation is the troublesome one and is out of scope here; the `gl` override parses but is unverified.
-3. **Mobile (Android / iOS) is a separate project.** It needs native windowing/lifecycle, Native AOT, and
+   (Clip-space-Y itself is no longer a baked Metal assumption: as of 6.2.0 `GpuClip` derives the clip-Y sign
+   from `GpuCapabilities` - identity on Metal / D3D11, flipped on Vulkan. The non-Metal path is still
+   unvalidated on real hardware, since the cross-platform-gpu Vulkan leg is the known-red one.)
+3. **Deferred port-hardening.** Two items are scoped but not yet built: GPU device-lost / device-removed
+   handling (recreate the device + resources on a lost swapchain) and a central `Platform` OS-info seam
+   (one place that answers OS / RID / capability questions). See
+   `docs/superpowers/specs/2026-06-20-post-6.0.0-deferred-scope.md`.
+4. **Mobile (Android / iOS) is a separate project.** It needs native windowing/lifecycle, Native AOT, and
    build-time shader pre-compilation — not covered by this desktop matrix.

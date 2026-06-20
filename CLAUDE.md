@@ -38,14 +38,18 @@ version/release work.
 
 ## Build / test / release
 - `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj` - every new behaviour ships with a headless test.
-- **Always update `CHANGELOG.md` on every version bump.** Add a newest-first entry describing the
-  public API / behaviour change in the SAME commit as the `Directory.Build.props` `<Version>` bump.
-  Never bump the version (or tag a release) without a matching changelog entry.
+- **Always update BOTH `CHANGELOG.md` AND `CHANGENOTES.md` on every version bump.** `CHANGELOG.md` gets the
+  newest-first detailed entry (public API / behaviour change); `CHANGENOTES.md` gets a newest-first one-or-two
+  sentence digest line (the high-level "history over time" view). Both go in the SAME commit as the
+  `Directory.Build.props` version bump. Never bump the version (or tag a release) without both.
 - Release ritual, in order: bump `<KhaozEngine5xVersion>` in `Directory.Build.props` → add the
-  `CHANGELOG.md` entry → update the engine-version declarations the guard checks (`docs/CONSUMERS.md` "Engine
-  current version", `docs/ROADMAP.md` "Current released version", and the `README.md` `<PackageReference>`
-  example) → `dotnet pack -c Release -o ./local-feed` (cumulative; don't `rm` old versions, consumers
-  pin) → commit → `git tag vX.Y.Z` → push `main` + the tag (CI publishes to GitHub Packages on `v*`).
+  `CHANGELOG.md` entry → add the one-line `CHANGENOTES.md` entry → update the engine-version declarations the
+  guard checks (`docs/CONSUMERS.md` "Engine current version", `docs/ROADMAP.md` "Current released version", and
+  the `README.md` `<PackageReference>` example) → `dotnet pack -c Release -o ./local-feed` (cumulative within a
+  release) → commit → `git tag vX.Y.Z` → push `main` + the tag (CI publishes to GitHub Packages on `v*`).
+  `local-feed/` is a gitignored dev convenience; GitHub Packages (every published `v*`) is the durable store, so
+  `local-feed` may be pruned to the current major-line floor (currently `6.0.0`) without losing anything
+  recoverable.
 - `scripts/check-doc-versions.sh` enforces those three declarations match the **5.x line**
   (`<KhaozEngine5xVersion>`, which is the engine); CI runs it on every push, so a forgotten bump fails the
   build. Consumer pins are exempt and may lag.
@@ -54,7 +58,9 @@ version/release work.
   every release. Refresh snippet is at the bottom of that file.
 - SemVer: additive = minor, fixes = patch, breaking = major.
 - **One shared version line - the engine is now entirely MonoGame-free.** `Directory.Build.props` carries a
-  single `<KhaozEngine5xVersion>` governing **the whole engine**: the custom-stack packages (`KhaozEngine.Gpu`,
+  single `<KhaozEngine5xVersion>` governing **the whole engine**: the zero-dependency `Primitives` leaf
+  (`Color`/`DeterministicRng`/`XorRng`/`MathUtil`/`ViewportMath`/`Easing`, new at `6.0.0`), the custom-stack
+  packages (`KhaozEngine.Gpu`,
   `Windowing`, `Render2D`, `Render3D`, `Gui`, `Audio`, `Particles`, `Effects`, `Game`, `Game.Render3D`) and the
   MonoGame-free foundation (`Ecs`/`Serialization`/`Content`/`Diagnostics`/`App`/`Localization`/`Persistence`/
   `Pooling`/`Platform`/`Updates`/`Collision`/`Netcode`/`Netcode.Abstractions`/`Netcode.LiteNetLib`) plus the four
@@ -65,8 +71,9 @@ version/release work.
   (repack to `local-feed`, single tag `vX.Y.Z`); `check-doc-versions.sh` enforces this line. The 5.x line
   dropped the `-experimental` suffix at `5.31.0` (the tag is plain `vX.Y.Z`); the foundation graduated onto it
   at `5.46.0`. **The legacy 4.x MonoGame `<Version>` line + its six packages (`UI`/`Graphics`/`Screens`/
-  `Sprites`/`Input`/`Time`) were DELETED once SpaceGame, the last consumer, migrated off MonoGame** - there is
-  no 4.x line any more. See `docs/ROADMAP.md` ("The post-MonoGame pivot").
+  `Sprites`/`Input`/`Time`) were DELETED from the repo; there is no 4.x line any more.** SpaceGame (the lone
+  remaining 4.x consumer) still resolves the already-published `4.9.0` nupkgs from the feed until its 6.x port
+  lands. See `docs/ROADMAP.md` ("The post-MonoGame pivot").
 - **Commit subjects:** conventional-commit style `area(scope): summary`, e.g.
   `audio(4.3.1): MacOsMusicBackend loads built .ogg` or `docs(consumers): ...`.
   On a release/version-bump commit, use the new version as the scope (`audio(4.3.1):`).

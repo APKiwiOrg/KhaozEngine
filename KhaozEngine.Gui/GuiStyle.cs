@@ -102,7 +102,11 @@ namespace KhaozEngine.Gui
             }
         }
 
-        /// <summary>Multiply RGB by <paramref name="scale"/> (clamped to [0,1] per channel), keeping alpha. Pure.</summary>
+        /// <summary>
+        /// Multiply RGB by <paramref name="scale"/> (clamped to [0,1] per channel), keeping alpha. Pure. When using
+        /// a scale &gt; 1 (e.g. <see cref="GradientTopScale"/>), keep source channels below roughly <c>1 / scale</c>
+        /// or the brightened channels hard-clip at 1, which can shift hue. The default palette stays in range.
+        /// </summary>
         public static Vector4 ScaleRgb(Vector4 c, float scale) => new Vector4(
             System.Math.Clamp(c.X * scale, 0f, 1f),
             System.Math.Clamp(c.Y * scale, 0f, 1f),

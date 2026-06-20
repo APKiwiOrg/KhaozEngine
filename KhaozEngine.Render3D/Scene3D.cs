@@ -37,6 +37,9 @@ namespace KhaozEngine.Render3D
         // Loaded albedo textures, indexed by TextureHandle.Index. Shared across meshes; disposed in Dispose.
         readonly List<IGpuTexture> _textures = new();
         readonly SceneInstances _instances = new();
+        // Per-frame dynamic point lights, cleared each Begin() like the instance queue. The host adds them
+        // (already N-nearest-culled); the renderer clamps to MaxPointLights and zero-fills the rest.
+        readonly List<ModelRenderer.PointLightData> _lights = new();
         readonly List<LineRenderer.LineVertex> _lineVerts = new();
         readonly List<FillRenderer.FillVertex> _fillVerts = new();
         readonly List<BillboardRenderer.BillboardVertex> _billboardAlpha = new();
@@ -49,6 +52,11 @@ namespace KhaozEngine.Render3D
 
         public IsoCamera3D Camera { get; } = new();
         public PixelPostProcessSettings Post { get; } = new();
+
+        /// <summary>Maximum dynamic point lights consumed in one frame. <see cref="AddLight"/> accepts any number,
+        /// but only the first <see cref="MaxPointLights"/> queued are uploaded (extras are dropped); the host is
+        /// expected to pick the N nearest per frame so a dense bullet-hell stays within budget.</summary>
+        public const int MaxPointLights = ModelRenderer.MaxPointLights;
 
         internal Scene3D(IGpuDevice gd, GpuOutputDescription targetOutput)
         {
@@ -147,11 +155,12 @@ namespace KhaozEngine.Render3D
             _meshes[h.Index] = null;
         }
 
-        /// <summary>Start a frame: clear the instance queue, the debug-line queue, the filled-overlay queue, and
-        /// the billboard queues. Call before submitting.</summary>
+        /// <summary>Start a frame: clear the instance queue, the point-light queue, the debug-line queue, the
+        /// filled-overlay queue, and the billboard queues. Call before submitting.</summary>
         public void Begin()
         {
             _instances.Begin();
+            _lights.Clear();
             _lineVerts.Clear();
             _fillVerts.Clear();
             _billboardAlpha.Clear();
@@ -168,6 +177,35 @@ namespace KhaozEngine.Render3D
         /// <summary>Queue one instance with a per-instance <paramref name="tint"/> and <paramref name="material"/>
         /// (emissive glow + specular).</summary>
         public void Draw(MeshHandle mesh, Matrix4x4 world, Color tint, Material material) => _instances.Add(mesh, world, tint, material);
+
+        // ---- Dynamic point/effect lights (muzzle flashes, explosions, thrusters, key projectiles). ----
+
+        /// <summary>
+        /// Queue a dynamic point light at <paramref name="worldPos"/> for this frame: it adds diffuse (and cheap
+        /// specular) to the lit mesh pass, on top of the global key+fill+ambient term, falling smoothly to zero at
+        /// <paramref name="radius"/> world units and scaled by <paramref name="intensity"/>. <paramref name="color"/>
+        /// is the light's RGB (alpha ignored). Cleared each <see cref="Begin"/> like the instance queue.
+        /// </summary>
+        /// <remarks>
+        /// Presentation only - never feed simulation/collision state from a light. Only the first
+        /// <see cref="MaxPointLights"/> lights queued in a frame are uploaded (extras are dropped); pick the
+        /// N nearest to the camera/action per frame so a dense scene stays within the GPU budget. Zero lights ==
+        /// the historical key+fill+ambient render, bit-identical.
+        /// </remarks>
+        public void AddLight(Vector3 worldPos, Color color, float radius, float intensity)
+        {
+            Vector4 c = color;
+            _lights.Add(new ModelRenderer.PointLightData
+            {
+                PosRadius = new Vector4(worldPos, radius),
+                ColorIntensity = new Vector4(c.X, c.Y, c.Z, intensity),
+            });
+        }
+
+        /// <summary>Count of point lights queued this frame (before the renderer's <see cref="MaxPointLights"/>
+        /// clamp). Internal: lets tests assert <see cref="Begin"/> clears the queue and <see cref="AddLight"/>
+        /// enqueues.</summary>
+        internal int LightCount => _lights.Count;
 
         // ---- Debug line overlay (immediate-mode; queued this frame, drawn on top after post). ----
 
@@ -363,7 +401,7 @@ namespace KhaozEngine.Render3D
             _model.BeginModelPass(cl, _res, Post);
             Matrix4x4 vp = Camera.ViewProjection;
             Vector3 eye = Camera.Eye;
-            _model.SetFrameUniforms(cl, vp, eye, Post);
+            _model.SetFrameUniforms(cl, vp, eye, Post, CollectionsMarshal.AsSpan(_lights));
             _model.BindPass(cl);
 
             // GPU instancing: group queued instances by mesh into a flat instance array (ordered by mesh) + a

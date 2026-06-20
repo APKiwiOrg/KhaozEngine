@@ -5,6 +5,29 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 6.5.0
+
+Additive (non-breaking): dynamic point lights in the lit mesh pass, for 2.5D mesh-composited games (SpaceGame's
+mesh-rendering pivot, WS1). Zero-light rendering is byte-identical to 6.4.0; existing goldens unchanged.
+
+- `KhaozEngine.Render3D.Scene3D.AddLight(Vector3 worldPos, Color color, float radius, float intensity)`: queues a
+  per-frame dynamic point/effect light (muzzle flashes, explosions, thrusters, key projectiles). Cleared each
+  `Begin()` like the instance queue. The lit fragment shader accumulates point-light diffuse plus cheap
+  Blinn-Phong specular on top of the existing key+fill+ambient term, back-face gated like the key term, with a
+  smooth windowed distance attenuation (1 at the light, easing to 0 at `radius`, scaled by `intensity`). Cel
+  banding applies to point lights too when `CelBands >= 1`.
+- `Scene3D.MaxPointLights` (16): the per-frame GPU budget. `AddLight` accepts any number, but only the first
+  `MaxPointLights` queued are uploaded - the host picks the N nearest to the action per frame (CPU-side cull) so
+  a dense bullet-hell stays bounded. The renderer defensively clamps and zero-fills the unused tail so a previous
+  frame's lights never leak. The frame UBO grew from 176 to 688 bytes (header + two `vec4[16]` light arrays);
+  `Params.y` carries the active count. Zero active lights leaves the shader's light loop unentered, so the lit
+  term is bit-identical to the prior key+fill+ambient-only path (no Hardpoint regression).
+- Transparent-background compositing for the 3D-under-2D path was already in place
+  (`PixelPostProcessSettings.TransparentBackground`, since 5.70.0; `Render3DPreview` defaults it on): the model
+  pass clears the colour target to alpha 0 and the palette/edge/blit post passes preserve the per-pixel alpha, so
+  a captured `Texture2D` overlays a 2D background with alpha 0 outside the silhouette. Re-verified by the preview
+  GPU test for this pivot; no code change needed beyond the point-light shader edit keeping the alpha path intact.
+
 ## 6.4.0
 
 Additive packaging fix (non-breaking). No code or behaviour change; rendering byte-identical.

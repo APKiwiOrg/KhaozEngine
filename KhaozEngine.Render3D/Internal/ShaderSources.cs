@@ -20,6 +20,8 @@ layout(set=0, binding=0) uniform U {
     mat4 ViewProj;
     vec4 LightDir; vec4 LightColor; vec4 Ambient; vec4 Params;
     vec4 FillDir; vec4 FillColor; vec4 CameraPos;
+    vec4 PointPosRadius[16];      // per-frame point lights: xyz = world pos, w = radius
+    vec4 PointColorIntensity[16]; // rgb = colour, w = intensity (unused in the vertex stage)
 };
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
@@ -60,10 +62,12 @@ layout(set=0, binding=0) uniform U {
     vec4 LightDir;   // xyz = key light travel direction
     vec4 LightColor;
     vec4 Ambient;
-    vec4 Params;     // x = CelBands
+    vec4 Params;     // x = CelBands, y = active point-light count
     vec4 FillDir;    // xyz = fill light travel direction
     vec4 FillColor;  // fill light colour
     vec4 CameraPos;  // xyz = eye position
+    vec4 PointPosRadius[16];      // point lights: xyz = world pos, w = radius (active count in Params.y)
+    vec4 PointColorIntensity[16]; // point lights: rgb = colour, w = intensity
 };
 layout(set=0, binding=1) uniform texture2D Albedo;   // per-mesh albedo; 1x1 white default keeps untextured meshes unchanged
 layout(set=0, binding=2) uniform sampler AlbedoSamp;
@@ -91,7 +95,29 @@ void main() {
     vec3 V = normalize(CameraPos.xyz - vWorldPos);
     vec3 H = normalize(-normalize(LightDir.xyz) + V);
     float spec = pow(max(dot(N,H),0.0), max(vSpecParams.y,1.0)) * vSpecParams.x * step(0.0001, ndlKey);
-    vec3 lit = albedo * (Ambient.rgb + diffuse) + LightColor.rgb*spec + vEmissive.rgb;
+    vec3 specColor = LightColor.rgb*spec;
+    // Dynamic point/effect lights (muzzle flashes, explosions, thrusters): accumulate diffuse (+ cheap
+    // specular) with a windowed distance attenuation, added on top of the key+fill term and back-face gated
+    // by max(dot(N,L),0) like the key term. Params.y is the host-capped active count; zero leaves diffuse and
+    // specColor untouched, so the lit term stays bit-identical to the key+fill+ambient-only path.
+    int npl = int(Params.y);
+    for (int i = 0; i < npl; i++) {
+        vec3 toL = PointPosRadius[i].xyz - vWorldPos;
+        float radius = PointPosRadius[i].w;
+        float dist = length(toL);
+        vec3 L = (dist > 1e-4) ? toL / dist : vec3(0.0);
+        float ndl = max(dot(N, L), 0.0);
+        if (bands >= 1.0) ndl = floor(ndl*bands+0.5)/bands;
+        // Smooth falloff: 1 at the light, easing to exactly 0 at its radius; scaled by intensity.
+        float f = clamp(1.0 - (dist*dist)/max(radius*radius, 1e-6), 0.0, 1.0);
+        float att = f * f * PointColorIntensity[i].w;
+        vec3 lc = PointColorIntensity[i].rgb;
+        diffuse += lc * (ndl * att);
+        vec3 Hp = normalize(L + V);
+        float sp = pow(max(dot(N,Hp),0.0), max(vSpecParams.y,1.0)) * vSpecParams.x * step(0.0001, ndl);
+        specColor += lc * (sp * att);
+    }
+    vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor + vEmissive.rgb;
     oColor = vec4(lit, 1.0);
     oNormal = vec4(N * 0.5 + 0.5, 1.0);
     oDepth = vec4(vDepth, vDepth, vDepth, 1.0);

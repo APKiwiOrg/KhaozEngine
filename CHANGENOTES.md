@@ -2,6 +2,7 @@
 
 High-level history, newest first. One or two sentences per release; full detail in [CHANGELOG.md](CHANGELOG.md).
 
+- **6.5.0**: Dynamic point lights in the lit mesh pass: `Scene3D.AddLight(pos, color, radius, intensity)` (per-frame, cleared each `Begin()`, capped at `Scene3D.MaxPointLights`=16, host picks N-nearest) adds attenuated diffuse + cheap specular on top of key+fill+ambient. Zero lights is byte-identical. Unblocks SpaceGame's 2.5D mesh pivot (WS1); transparent-background compositing was already in place (`TransparentBackground`, 5.70.0).
 - **6.4.0**: `Game2D` umbrella now bundles `KhaozEngine.Effects` (`ScreenShake`/game-feel), flowing transitively into `Game3D`. Closes the last omni-package gap (Effects was the only leaf no metapackage pulled in); packaging-only, byte-identical.
 - **6.3.0**: Additive helpers unblocking Nullwake's 6.x adoption: `Color` scalar-multiply and `Lerp`, plus `InputManager.GetScrollIn(Rect)` for region-scoped wheel scrolling. Rendering byte-identical.
 - **6.2.0**: Cross-platform clip-space correction via `GpuClip.Correct(viewProj, caps)`, adapting world-to-clip to each backend's clip-Y convention (identity on Metal/D3D, flips on Vulkan). No Metal behavior change; the inverted-Y path is correct-by-construction but unvalidated on non-Metal hardware.

@@ -272,6 +272,7 @@ Vector3 ground = scene.Camera.ScreenToGround(pointer.Position, w, h, 0f); // pic
 scene.Begin();
 scene.Draw(board, Matrix4x4.Identity);
 scene.Draw(tower, transform, tint, Material.Shiny);
+scene.AddLight(muzzlePos, new Color(1f, 0.6f, 0.2f, 1f), radius: 6f, intensity: 3f); // point light (since 6.5.0)
 scene.DrawBillboard(pos, size, color, BillboardBlend.Additive);
 scene.DebugCircle(center, up, radius, color);                        // immediate-mode debug overlay
 ```
@@ -280,6 +281,15 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
   billboards, and a debug-draw overlay (`DebugLine/Ray/Box/Grid/Axes/Circle`). `Post` is the
   `PixelPostProcess` (pixelation / quantize / dither / cel bands / palette for the chunky retro look; the smooth
   look is the default).
+- Dynamic point lights (since 6.5.0): `scene.AddLight(worldPos, color, radius, intensity)` queues a per-frame
+  effect light (muzzle flashes, explosions, thrusters) that adds diffuse + cheap specular to the lit mesh pass,
+  on top of the global key+fill+ambient term, with a smooth falloff to zero at `radius`. Cleared each `Begin()`
+  like the draw queue. Only the first `Scene3D.MaxPointLights` (16) queued in a frame are uploaded - the host
+  picks the N nearest to the action so a dense scene stays within the GPU budget. Zero lights renders
+  byte-identical to the key+fill path. Presentation only: never feed a light back into simulation/collision.
+- Transparent compositing: set `Post.TransparentBackground = true` (default on for `Render3DPreview`) to emit the
+  background as alpha 0 so a captured `Texture2D` overlays a 2D scene; the stylized post chain preserves the
+  per-pixel alpha (geometry opaque, cleared background clear). Leave `Starfield` off when transparent.
 - Internal render-target sizing: `Post.RenderScale` (since 5.66.0). The default `FixedInternal` renders into a
   fixed `Post.RenderWidth` x `RenderHeight` target (1600x900) and blit-scales it to the window - the retro path
   (small fixed target + `Pixelated`), but on a window bigger than that target the smooth blit UPscales and

@@ -536,7 +536,7 @@ In `KhaozEngine.Render2D/Vfx/VfxRenderer.cs`, add after `DrawBeam` (before `Disp
         /// <see cref="AttentionBeacon.Draw"/>. Pass an unscaled real-time accumulator as
         /// <paramref name="timeSeconds"/> so the pulse animates regardless of game time-scale.
         /// </summary>
-        public void DrawAttentionBeacon(SpriteBatch batch, Vector2 center, float timeSeconds, in AttentionBeaconParams p)
+        public void DrawAttentionBeacon(SpriteBatch batch, Vector2 center, in AttentionBeaconParams p, float timeSeconds)
             => AttentionBeacon.Draw(batch, RingTexture, GlowTexture, center, p, timeSeconds);
 ```
 
@@ -575,7 +575,7 @@ Add these `[GpuFact]` methods inside the `VfxGpuTests` class (they use the exist
             {
                 using var vfx = new VfxRenderer(ctx);
                 ctx.Batch.Begin();
-                vfx.DrawAttentionBeacon(ctx.Batch, c, timeSeconds: 0.6f, p);
+                vfx.DrawAttentionBeacon(ctx.Batch, c, p, timeSeconds: 0.6f);
                 ctx.Batch.End();
             });
 
@@ -597,7 +597,7 @@ Add these `[GpuFact]` methods inside the `VfxGpuTests` class (they use the exist
             {
                 using var vfx = new VfxRenderer(ctx);
                 ctx.Batch.Begin();
-                vfx.DrawAttentionBeacon(ctx.Batch, c, timeSeconds: 0.6f, p);
+                vfx.DrawAttentionBeacon(ctx.Batch, c, p, timeSeconds: 0.6f);
                 ctx.Batch.End();
             });
 
@@ -647,7 +647,7 @@ using var vfx = new VfxRenderer(surface);
 var beacon = AttentionBeaconParams.Default with { Color = new Color(1f, 0.85f, 0.3f, 1f) };
 
 batch.Begin();
-vfx.DrawAttentionBeacon(batch, worldOrScreenPoint, realTimeSeconds, beacon);
+vfx.DrawAttentionBeacon(batch, worldOrScreenPoint, beacon, realTimeSeconds);
 batch.End();
 ```
 

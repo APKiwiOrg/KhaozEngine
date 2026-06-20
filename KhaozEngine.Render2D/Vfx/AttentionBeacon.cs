@@ -43,5 +43,28 @@ namespace KhaozEngine.Render2D.Vfx
         /// </summary>
         internal static float RingDiameter(float bandRadius, float ringThickness, float bandCenterFraction) =>
             2f * bandRadius * ringThickness / bandCenterFraction;
+
+        // Golden angle / golden-ratio conjugate give stable, well-spread, RNG-free per-index offsets.
+        internal const float GoldenAngle = 2.39996323f;       // radians
+        const float GoldenRatioConj = 0.61803399f;
+
+        /// <summary>Fractional part of <paramref name="v"/> in [0,1). Pure.</summary>
+        static float Frac(float v) => v - MathF.Floor(v);
+
+        /// <summary>Angle (radians) of glint <paramref name="index"/>: golden-angle spacing, stable and well spread. Pure.</summary>
+        internal static float GlintAngle(int index) => index * GoldenAngle;
+
+        /// <summary>Per-index radius factor in [0.6, 1.0] from a golden-ratio hash, so glints sit at varied radii. Pure.</summary>
+        internal static float GlintRadiusFactor(int index) => 0.6f + 0.4f * Frac((index + 1) * GoldenRatioConj);
+
+        /// <summary>
+        /// Twinkle alpha in [0,1] of glint <paramref name="index"/> at <paramref name="time"/> seconds twinkling at
+        /// <paramref name="twinkleRate"/> rad/s, on an index-derived phase so glints pulse out of step. Pure.
+        /// </summary>
+        internal static float GlintAlpha(int index, float time, float twinkleRate)
+        {
+            float phase = Frac(index * GoldenRatioConj) * MathF.Tau;
+            return 0.5f + 0.5f * MathF.Sin(time * twinkleRate + phase);
+        }
     }
 }

@@ -96,4 +96,53 @@ public class AttentionBeaconTests
         float thick = AttentionBeacon.RingDiameter(27f, 2f, 0.675f);
         Assert.True(thin < native && thick > native, "RingThickness scales the drawn quad");
     }
+
+    [Fact]
+    public void GlintAngle_StableAcrossCalls_AndDistinctPerIndex()
+    {
+        Assert.Equal(AttentionBeacon.GlintAngle(2), AttentionBeacon.GlintAngle(2), Tol); // deterministic
+        // Golden-angle spacing: consecutive indices are well separated, none coincide mod tau.
+        float a0 = AttentionBeacon.GlintAngle(0);
+        float a1 = AttentionBeacon.GlintAngle(1);
+        float a2 = AttentionBeacon.GlintAngle(2);
+        Assert.True(MathF.Abs(a1 - a0) > 0.1f);
+        Assert.True(MathF.Abs(a2 - a1) > 0.1f);
+    }
+
+    [Fact]
+    public void GlintRadiusFactor_StableAndWithinBand()
+    {
+        for (int j = 0; j < 8; j++)
+        {
+            float f = AttentionBeacon.GlintRadiusFactor(j);
+            Assert.Equal(f, AttentionBeacon.GlintRadiusFactor(j), Tol); // deterministic
+            Assert.InRange(f, 0.6f, 1.0f);
+        }
+    }
+
+    [Fact]
+    public void GlintAlpha_StaysInRange_AndIsNonNegative()
+    {
+        for (float t = 0f; t < 4f; t += 0.13f)
+        {
+            float a = AttentionBeacon.GlintAlpha(1, t, 6f);
+            Assert.InRange(a, 0f, 1f);
+        }
+    }
+
+    [Fact]
+    public void GlintAlpha_DifferentIndices_TwinkleOutOfPhase()
+    {
+        // Distinct per-index phase: two glints are not identical at every instant.
+        bool differ = false;
+        for (float t = 0f; t < 2f; t += 0.1f)
+        {
+            if (MathF.Abs(AttentionBeacon.GlintAlpha(0, t, 6f) - AttentionBeacon.GlintAlpha(1, t, 6f)) > 1e-3f)
+            {
+                differ = true;
+                break;
+            }
+        }
+        Assert.True(differ, "glints should twinkle on independent phases");
+    }
 }

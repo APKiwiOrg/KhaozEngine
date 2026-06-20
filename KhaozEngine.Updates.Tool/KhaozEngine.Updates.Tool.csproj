@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>ke-updater</ToolCommandName>
+    <PackageId>KhaozEngine.Updates.Tool</PackageId>
+    <Version>$(KhaozEngine5xVersion)</Version>
+    <Description>The ke-updater CLI: generate, sign, and verify KhaozEngine update manifests (RSA-2048). A dotnet tool wrapper over KhaozEngine.Updates.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
+  </ItemGroup>
+</Project>

@@ -32,6 +32,7 @@
   <Project Path="KhaozEngine.Tests/KhaozEngine.Tests.csproj" />
   <Project Path="KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
   <Project Path="KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
+  <Project Path="KhaozEngine.Updates.Tool/KhaozEngine.Updates.Tool.csproj" />
   <Project Path="Render2DSample/Render2DSample.csproj" />
   <Project Path="WindowingSample/WindowingSample.csproj" />
   <Project Path="GuiSample/GuiSample.csproj" />

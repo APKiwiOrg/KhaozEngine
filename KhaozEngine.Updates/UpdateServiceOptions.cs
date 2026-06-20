@@ -15,6 +15,13 @@ public sealed class UpdateServiceOptions
     /// <summary>Transport used to query versions, fetch manifests, and download files.</summary>
     public required IUpdateSource Source { get; init; }
 
+    /// <summary>
+    /// Trusted RSA public keys (SubjectPublicKeyInfo PEM) for manifest signatures. At least one is
+    /// REQUIRED; constructing <see cref="UpdateService"/> with none throws. A list so keys can be
+    /// rotated (ship the new key beside the old, switch the signer, drop the old key later).
+    /// </summary>
+    public required System.Collections.Generic.IReadOnlyList<string> TrustedPublicKeys { get; init; }
+
     /// <summary>The currently installed version (e.g. from the game's build metadata).</summary>
     public required string CurrentVersion { get; init; }
 
@@ -35,6 +42,15 @@ public sealed class UpdateServiceOptions
 
     /// <summary>Retries per file on download/hash-mismatch before failing.</summary>
     public int MaxDownloadRetries { get; init; } = 2;
+
+    /// <summary>Per-file download size cap (hostile/oversized payload guard). Default 4 GiB.</summary>
+    public long MaxFileBytes { get; init; } = 4L * 1024 * 1024 * 1024;
+
+    /// <summary>Total download size cap across all changed files. Default 16 GiB.</summary>
+    public long MaxTotalDownloadBytes { get; init; } = 16L * 1024 * 1024 * 1024;
+
+    /// <summary>Cap on the manifest and signature download size. Default 64 MiB.</summary>
+    public long MaxManifestBytes { get; init; } = 64L * 1024 * 1024;
 
     /// <summary>Whether <see cref="UpdateService.Dispose"/> disposes <see cref="Source"/> if it is disposable.</summary>
     public bool DisposeSource { get; init; } = true;

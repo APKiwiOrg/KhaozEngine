@@ -29,6 +29,11 @@ public sealed class UpdateService : IDisposable
     private readonly string appDataDir;
     private readonly string localManifestPath;
     private readonly int maxRetries;
+    private readonly IReadOnlyList<string> trustedKeys;
+    private readonly long maxFileBytes;
+    private readonly long maxTotalDownloadBytes;
+    private readonly long maxManifestBytes;
+    private byte[]? pendingManifestBytes;
     private readonly ILogger log = Log.For<UpdateService>();
 
     private volatile UpdateState state = UpdateState.Idle;
@@ -70,6 +75,16 @@ public sealed class UpdateService : IDisposable
         installDir = options.InstallDir;
         appDataDir = options.AppDataDir;
         maxRetries = Math.Max(1, options.MaxDownloadRetries);
+        trustedKeys = options.TrustedPublicKeys;
+        if (trustedKeys is null || trustedKeys.Count == 0)
+        {
+            throw new ArgumentException(
+                "UpdateServiceOptions.TrustedPublicKeys must contain at least one RSA public key; " +
+                "unsigned updates are not supported.", nameof(options));
+        }
+        maxFileBytes = options.MaxFileBytes;
+        maxTotalDownloadBytes = options.MaxTotalDownloadBytes;
+        maxManifestBytes = options.MaxManifestBytes;
         localManifestPath = Path.Combine(appDataDir, "update-manifest.json");
 
         DetectInterruptedApply();
@@ -104,9 +119,53 @@ public sealed class UpdateService : IDisposable
 
             log.Info($"Update available: {currentVersion} -> {latest.Version}");
 
-            UpdateManifest? remoteManifest = await source.DownloadManifestAsync(latest.ManifestUrl, cancellationToken);
+            byte[]? manifestBytes = await source.DownloadBytesAsync(latest.ManifestUrl, maxManifestBytes, cancellationToken);
+            byte[]? signature = await source.DownloadBytesAsync(latest.ManifestUrl + ".sig", maxManifestBytes, cancellationToken);
+            if (manifestBytes is null || signature is null)
+            {
+                SetState(UpdateState.Idle);
+                return;
+            }
+
+            if (!ManifestVerifier.Verify(manifestBytes, signature, trustedKeys))
+            {
+                log.Warn($"Manifest signature INVALID for {latest.Version}; refusing update.");
+                SetState(UpdateState.Idle);
+                return;
+            }
+
+            UpdateManifest? remoteManifest = UpdateManifest.Deserialize(System.Text.Encoding.UTF8.GetString(manifestBytes));
             if (remoteManifest is null)
             {
+                SetState(UpdateState.Idle);
+                return;
+            }
+
+            // Trust only signed fields for security decisions: re-check the downgrade gate against the
+            // signed version (not the unsigned `latest`), and take Required from the signed manifest.
+            if (!UpdateVersion.IsNewer(currentVersion, remoteManifest.Version))
+            {
+                log.Info($"Signed manifest version {remoteManifest.Version} not newer than {currentVersion}; ignoring.");
+                SetState(UpdateState.Idle);
+                return;
+            }
+
+            // Reject a hostile/oversized manifest before doing any work.
+            long declaredTotal = 0;
+            for (int i = 0; i < remoteManifest.Files.Count; i++)
+            {
+                long size = remoteManifest.Files[i].Size;
+                if (size < 0 || size > maxFileBytes)
+                {
+                    log.Warn($"Manifest file {remoteManifest.Files[i].Path} size {size} exceeds cap {maxFileBytes}; refusing.");
+                    SetState(UpdateState.Idle);
+                    return;
+                }
+                declaredTotal += size;
+            }
+            if (declaredTotal > maxTotalDownloadBytes)
+            {
+                log.Warn($"Manifest total {declaredTotal} exceeds cap {maxTotalDownloadBytes}; refusing.");
                 SetState(UpdateState.Idle);
                 return;
             }
@@ -119,8 +178,9 @@ public sealed class UpdateService : IDisposable
             // It is also a cold one-shot path (per update check, not per frame) with no alloc pressure.
             var downloads = new List<ManifestFileEntry>(diff.FilesToDownload);
 
-            // Resume support: drop files already staged with a matching SHA256.
-            string stagingDir = GetStagingDir(latest.Version);
+            // Resume support: drop files already staged with a matching SHA256. Use the signed
+            // manifest version (authoritative) so this matches the staging dir used at download/apply.
+            string stagingDir = GetStagingDir(remoteManifest.Version);
             int alreadyStaged = 0;
             for (int i = downloads.Count - 1; i >= 0; i--)
             {
@@ -140,10 +200,11 @@ public sealed class UpdateService : IDisposable
 
             pendingLatest = latest;
             pendingRemoteManifest = remoteManifest;
+            pendingManifestBytes = manifestBytes;
             pendingDownloads = downloads;
             pendingDeletes = diff.FilesToDelete;
-            remoteVersion = latest.Version;
-            required = latest.Required;
+            remoteVersion = remoteManifest.Version;
+            required = remoteManifest.Required;
             totalDownloadBytes = 0;
             for (int i = 0; i < downloads.Count; i++)
             {
@@ -183,6 +244,12 @@ public sealed class UpdateService : IDisposable
             string stagingDir = GetStagingDir(remoteVersion);
             Directory.CreateDirectory(stagingDir);
 
+            if (!HasEnoughFreeSpace(stagingDir, totalDownloadBytes))
+            {
+                SetError("Not enough free disk space to download the update.");
+                return;
+            }
+
             filesDownloaded = 0;
             Interlocked.Exchange(ref bytesDownloaded, 0);
 
@@ -203,7 +270,7 @@ public sealed class UpdateService : IDisposable
                         Interlocked.Add(ref bytesDownloaded, delta);
                     });
 
-                    success = await source.DownloadFileAsync(fileUrl, destPath, progress, cancellationToken);
+                    success = await source.DownloadFileAsync(fileUrl, destPath, maxFileBytes, progress, cancellationToken);
 
                     if (success && !VerifyFileHash(destPath, file.Sha256))
                     {
@@ -225,18 +292,23 @@ public sealed class UpdateService : IDisposable
                 StateChanged?.Invoke();
             }
 
-            // Persist the manifest we already downloaded during the check so the shim can install it.
-            if (pendingRemoteManifest is not null)
+            // Persist the exact signed manifest bytes so the installed local manifest matches what was
+            // verified (falls back to re-serialization if bytes are unavailable).
+            try
             {
-                try
+                string stagedManifestPath = Path.Combine(stagingDir, "manifest.json");
+                if (pendingManifestBytes is not null)
                 {
-                    File.WriteAllText(Path.Combine(stagingDir, "manifest.json"), pendingRemoteManifest.Serialize());
+                    File.WriteAllBytes(stagedManifestPath, pendingManifestBytes);
                 }
-                catch (Exception ex)
+                else if (pendingRemoteManifest is not null)
                 {
-                    // Non-fatal: the shim can regenerate from staging if needed.
-                    log.Info($"Could not write staged manifest: {ex.Message}");
+                    File.WriteAllText(stagedManifestPath, pendingRemoteManifest.Serialize());
                 }
+            }
+            catch (Exception ex)
+            {
+                log.Info($"Could not write staged manifest: {ex.Message}");
             }
 
             log.Info($"Download complete. {filesDownloaded} file(s) staged.");
@@ -473,6 +545,24 @@ public sealed class UpdateService : IDisposable
     {
         errorMessage = message;
         SetState(UpdateState.Failed);
+    }
+
+    private bool HasEnoughFreeSpace(string stagingDir, long needed)
+    {
+        try
+        {
+            string? root = Path.GetPathRoot(Path.GetFullPath(stagingDir));
+            if (string.IsNullOrEmpty(root))
+            {
+                return true; // cannot determine; do not block
+            }
+            long available = new DriveInfo(root).AvailableFreeSpace;
+            return available >= needed + (needed / 10); // 10% headroom
+        }
+        catch
+        {
+            return true; // never block an update on a disk-probe failure
+        }
     }
 
     private static bool VerifyFileHash(string filePath, string expectedSha256)

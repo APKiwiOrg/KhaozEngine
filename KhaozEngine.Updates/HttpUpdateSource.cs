@@ -43,10 +43,13 @@ public sealed class HttpUpdateSource : IUpdateSource, IDisposable
     private readonly HttpClient httpClient;
     private readonly bool ownsClient;
     private readonly ILogger log = Log.For<HttpUpdateSource>();
+    private readonly string? baseHost;
 
     public HttpUpdateSource(HttpUpdateSourceOptions options, HttpClient? httpClient = null)
     {
         this.options = options;
+        Uri? baseUri = HttpUpdateSource.ParseBase(options.ServerBaseUrl);
+        baseHost = baseUri?.Host;
         if (httpClient is null)
         {
             this.httpClient = new HttpClient { Timeout = options.HttpTimeout };
@@ -78,21 +81,52 @@ public sealed class HttpUpdateSource : IUpdateSource, IDisposable
         }
     }
 
-    public async Task<UpdateManifest?> DownloadManifestAsync(string manifestUrl, CancellationToken cancellationToken = default)
+    public async Task<byte[]?> DownloadBytesAsync(string url, long maxBytes, CancellationToken cancellationToken = default)
     {
+        if (!IsAllowedOrigin(url))
+        {
+            log.Info($"Refusing off-origin or non-https URL: {url}");
+            return null;
+        }
+
         try
         {
-            return UpdateManifest.Deserialize(await httpClient.GetStringAsync(manifestUrl, cancellationToken));
+            using HttpResponseMessage response = await httpClient.GetAsync(
+                url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            using Stream contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var ms = new MemoryStream();
+            byte[] buffer = new byte[options.DownloadBufferSize];
+            long total = 0;
+            int read;
+            while ((read = await contentStream.ReadAsync(buffer, cancellationToken)) > 0)
+            {
+                total += read;
+                if (total > maxBytes)
+                {
+                    log.Info($"Response exceeded size cap ({maxBytes} bytes), aborting: {url}");
+                    return null;
+                }
+                ms.Write(buffer, 0, read);
+            }
+            return ms.ToArray();
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException or IOException)
         {
-            log.Info($"Manifest download failed: {ex.Message}");
+            log.Info($"Download failed ({url}): {ex.Message}");
             return null;
         }
     }
 
-    public async Task<bool> DownloadFileAsync(string fileUrl, string destPath, IProgress<long>? bytesProgress = null, CancellationToken cancellationToken = default)
+    public async Task<bool> DownloadFileAsync(string fileUrl, string destPath, long maxBytes, IProgress<long>? bytesProgress = null, CancellationToken cancellationToken = default)
     {
+        if (!IsAllowedOrigin(fileUrl))
+        {
+            log.Info($"Refusing off-origin or non-https file URL: {fileUrl}");
+            return false;
+        }
+
         try
         {
             using HttpResponseMessage response = await httpClient.GetAsync(
@@ -105,26 +139,49 @@ public sealed class HttpUpdateSource : IUpdateSource, IDisposable
                 Directory.CreateDirectory(destDir);
             }
 
-            using var fileStream = new FileStream(destPath, FileMode.Create, FileAccess.Write, FileShare.None);
-            using Stream contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-
-            byte[] buffer = new byte[options.DownloadBufferSize];
-            long totalBytesRead = 0;
-            int bytesRead;
-            while ((bytesRead = await contentStream.ReadAsync(buffer, cancellationToken)) > 0)
+            // The file stream lives in a nested scope so it is disposed before any cleanup delete:
+            // deleting a still-open handle fails on Windows.
+            using (var fileStream = new FileStream(destPath, FileMode.Create, FileAccess.Write, FileShare.None))
+            using (Stream contentStream = await response.Content.ReadAsStreamAsync(cancellationToken))
             {
-                await fileStream.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
-                totalBytesRead += bytesRead;
-                bytesProgress?.Report(totalBytesRead);
-            }
+                byte[] buffer = new byte[options.DownloadBufferSize];
+                long totalBytesRead = 0;
+                int bytesRead;
+                while ((bytesRead = await contentStream.ReadAsync(buffer, cancellationToken)) > 0)
+                {
+                    totalBytesRead += bytesRead;
+                    if (totalBytesRead > maxBytes)
+                    {
+                        log.Info($"File exceeded size cap ({maxBytes} bytes), aborting: {fileUrl}");
+                        goto Cleanup;
+                    }
+                    await fileStream.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
+                    bytesProgress?.Report(totalBytesRead);
+                }
 
-            return true;
+                return true;
+            }
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException)
         {
             log.Info($"File download failed ({fileUrl}): {ex.Message}");
-            return false;
         }
+
+    Cleanup:
+        // Best-effort: never leave a partial/oversized file behind on a failure path. Runs only after
+        // the file stream above has been disposed.
+        try
+        {
+            if (File.Exists(destPath))
+            {
+                File.Delete(destPath);
+            }
+        }
+        catch
+        {
+            // ignore; cleanup is best-effort
+        }
+        return false;
     }
 
     /// <summary>Default layout: each file lives next to the manifest under the same build directory.</summary>
@@ -156,6 +213,36 @@ public sealed class HttpUpdateSource : IUpdateSource, IDisposable
 
         string path = latestVersionPath.Replace("{platform}", Uri.EscapeDataString(platform));
         return Uri.TryCreate($"{normalized}/{path}", UriKind.Absolute, out Uri? resolved) ? resolved : null;
+    }
+
+    /// <summary>True only when <paramref name="url"/> is absolute https on the configured base host.</summary>
+    private bool IsAllowedOrigin(string url)
+    {
+        if (baseHost is null)
+        {
+            return false;
+        }
+        if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri))
+        {
+            return false;
+        }
+        return uri.Scheme == Uri.UriSchemeHttps
+            && string.Equals(uri.Host, baseHost, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Parses the configured base into an absolute https Uri (bare host implies https).</summary>
+    private static Uri? ParseBase(string serverBaseUrl)
+    {
+        if (string.IsNullOrWhiteSpace(serverBaseUrl))
+        {
+            return null;
+        }
+        string normalized = serverBaseUrl.Trim().TrimEnd('/');
+        if (!normalized.Contains("://", StringComparison.Ordinal))
+        {
+            normalized = $"https://{normalized}";
+        }
+        return Uri.TryCreate(normalized, UriKind.Absolute, out Uri? uri) ? uri : null;
     }
 
     public void Dispose()

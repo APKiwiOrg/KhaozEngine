@@ -5,6 +5,18 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.0.0
+
+### KhaozEngine.Updates: security hardening (BREAKING)
+
+- Mandatory manifest signing. Manifests are RSA-2048 / SHA-256 / PKCS#1 signed; the client verifies a detached `manifest.json.sig` over the raw manifest bytes before parsing and refuses anything unsigned or signed by an untrusted key. `UpdateServiceOptions.TrustedPublicKeys` is now REQUIRED (at least one key), constructing `UpdateService` without one throws. New `ManifestSigner` / `ManifestVerifier` / `ManifestKeyPair` (pure BCL, no new dependency).
+- Signed fields only for security decisions. `Required` is now a signed manifest field; the downgrade gate and the recorded version run against the signed manifest. The unsigned `/latest` response is a hint only.
+- Feed transport locked to https + same host. `HttpUpdateSource` refuses any manifest, `.sig`, or file URL that is not https or not on the configured `ServerBaseUrl` host. `IUpdateSource` now exposes `DownloadBytesAsync(url, maxBytes)` (replacing `DownloadManifestAsync`) and `DownloadFileAsync` takes a `maxBytes` cap. The manifest and signature fetches are size-capped (`MaxManifestBytes`, default 64 MiB).
+- Apply-time guards. Path-traversal rejection on both copy and delete lists (new `ApplyOutcome.AbortedUnsafePath`), reparse-point guards on staged sources and destinations (a destination symlink is removed before copy, and a failed removal fails closed rather than writing through the link), and macOS `codesign --verify --deep --strict` before relaunch (fail closed, rolls back and relaunches the old version on failure). The new manifest is installed only after the signature check passes. `IUpdaterEnvironment` gains `IsReparsePoint` and `VerifyCodeSignature`.
+- Size and disk caps. Per-file (`MaxFileBytes`, default 4 GiB) and total (`MaxTotalDownloadBytes`, default 16 GiB) download caps, streaming overrun abort, and a free-disk pre-check.
+
+The whole engine shares one version line, so all packages bump to 7.0.0; only KhaozEngine.Updates changed. Consumers using the updater must generate keys, embed the public key, and publish a signed manifest (SpaceGame).
+
 ## 6.6.0
 
 Additive (non-breaking): a generic 2D VFX module under `KhaozEngine.Render2D.Vfx` (glowing sprites, animated

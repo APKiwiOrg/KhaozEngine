@@ -15,6 +15,8 @@ namespace KhaozEngine.Updates;
 /// </summary>
 public sealed class SystemUpdaterEnvironment : IUpdaterEnvironment
 {
+    private const int CodesignTimeoutMs = 15000;
+
     private readonly Action<string>? logSink;
 
     public SystemUpdaterEnvironment(Action<string>? logSink = null)
@@ -92,6 +94,62 @@ public sealed class SystemUpdaterEnvironment : IUpdaterEnvironment
         catch
         {
             // Best-effort; failure to clear quarantine is not fatal.
+        }
+    }
+
+    public bool IsReparsePoint(string path)
+    {
+        try
+        {
+            if (!File.Exists(path) && !Directory.Exists(path))
+            {
+                return false;
+            }
+            return (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public bool VerifyCodeSignature(string executablePath)
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            return true; // no OS signature enforcement to re-check here
+        }
+
+        try
+        {
+            // Verify the .app bundle that contains the executable, not the inner Mach-O.
+            string target = executablePath;
+            int appIndex = executablePath.IndexOf(".app/", StringComparison.Ordinal);
+            if (appIndex >= 0)
+            {
+                target = executablePath[..(appIndex + 4)];
+            }
+
+            // We don't redirect codesign's output: we never read it, and draining a redirected pipe
+            // (needed to avoid a full-buffer stall) would complicate the timed WaitForExit below.
+            using Process? proc = Process.Start(new ProcessStartInfo
+            {
+                FileName = "codesign",
+                ArgumentList = { "--verify", "--deep", "--strict", target },
+                UseShellExecute = false
+            });
+            if (proc is null)
+            {
+                Log("codesign could not be started; treating as unverified.");
+                return false;
+            }
+            proc.WaitForExit(CodesignTimeoutMs);
+            return proc.ExitCode == 0;
+        }
+        catch (Exception ex)
+        {
+            Log($"codesign verification error: {ex.Message}");
+            return false;
         }
     }
 

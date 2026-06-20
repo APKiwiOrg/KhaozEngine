@@ -15,6 +15,7 @@ internal sealed class FakeUpdaterEnvironment : IUpdaterEnvironment
     public readonly Dictionary<string, string> Files = new(StringComparer.Ordinal);
     public readonly HashSet<string> Directories = new(StringComparer.Ordinal);
     public readonly HashSet<string> ThrowOnCopyFrom = new(StringComparer.Ordinal);
+    public readonly HashSet<string> ThrowOnDeleteOf = new(StringComparer.Ordinal);
     public readonly List<string> Log_ = new();
     public string? RelaunchedExe;
     public int SleepCalls;
@@ -39,7 +40,14 @@ internal sealed class FakeUpdaterEnvironment : IUpdaterEnvironment
         Files[destination] = content;
     }
 
-    public void DeleteFile(string path) => Files.Remove(path);
+    public void DeleteFile(string path)
+    {
+        if (ThrowOnDeleteOf.Contains(path))
+        {
+            throw new IOException($"simulated delete failure: {path}");
+        }
+        Files.Remove(path);
+    }
 
     public void DeleteDirectory(string path)
     {
@@ -65,6 +73,14 @@ internal sealed class FakeUpdaterEnvironment : IUpdaterEnvironment
     public void Relaunch(string executablePath, string workingDirectory) => RelaunchedExe = executablePath;
 
     public void ClearQuarantine(string installDir) { }
+
+    public readonly HashSet<string> ReparsePoints = new(StringComparer.Ordinal);
+
+    public bool IsReparsePoint(string path) => Files.ContainsKey(path) && ReparsePoints.Contains(path);
+
+    public bool CodeSignatureValid = true;
+
+    public bool VerifyCodeSignature(string executablePath) => CodeSignatureValid;
 
     public void Log(string message) => Log_.Add(message);
 }

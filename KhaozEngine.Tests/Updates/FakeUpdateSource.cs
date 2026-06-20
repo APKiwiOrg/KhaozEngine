@@ -26,12 +26,15 @@ internal sealed class FakeUpdateSource : IUpdateSource
     public Task<LatestVersionInfo?> CheckLatestVersionAsync(string platform, CancellationToken cancellationToken = default)
         => Task.FromResult(Latest);
 
-    public Task<UpdateManifest?> DownloadManifestAsync(string manifestUrl, CancellationToken cancellationToken = default)
-        => Task.FromResult(RemoteManifest);
+    /// <summary>Raw bytes keyed by URL: the manifest JSON and its ".sig" live here.</summary>
+    public readonly Dictionary<string, byte[]> Bytes = new(StringComparer.Ordinal);
+
+    public Task<byte[]?> DownloadBytesAsync(string url, long maxBytes, CancellationToken cancellationToken = default)
+        => Task.FromResult(Bytes.TryGetValue(url, out byte[]? b) ? b : null);
 
     public string ResolveFileUrl(LatestVersionInfo latest, string relativePath) => relativePath;
 
-    public Task<bool> DownloadFileAsync(string fileUrl, string destPath, IProgress<long>? bytesProgress = null, CancellationToken cancellationToken = default)
+    public Task<bool> DownloadFileAsync(string fileUrl, string destPath, long maxBytes, IProgress<long>? bytesProgress = null, CancellationToken cancellationToken = default)
     {
         DownloadCalls++;
         if (!Files.TryGetValue(fileUrl, out byte[]? bytes))
@@ -56,6 +59,19 @@ internal sealed class FakeUpdateSource : IUpdateSource
         File.WriteAllBytes(destPath, toWrite);
         bytesProgress?.Report(toWrite.Length);
         return Task.FromResult(true);
+    }
+
+    /// <summary>
+    /// Publishes a signed manifest: stores its raw JSON bytes at <paramref name="manifestUrl"/> and a
+    /// detached signature at "<paramref name="manifestUrl"/>.sig", and sets <see cref="Latest"/>.
+    /// </summary>
+    public void PublishSigned(UpdateManifest manifest, string manifestUrl, string privateKeyPem, bool required = false)
+    {
+        byte[] manifestBytes = System.Text.Encoding.UTF8.GetBytes(manifest.Serialize());
+        Bytes[manifestUrl] = manifestBytes;
+        Bytes[manifestUrl + ".sig"] = ManifestSigner.Sign(manifestBytes, privateKeyPem);
+        RemoteManifest = manifest;
+        Latest = new LatestVersionInfo(manifest.Version, manifest.Version, manifestUrl, required);
     }
 
     /// <summary>Adds a file's correct bytes and returns its lowercase-hex SHA256 for manifest entries.</summary>

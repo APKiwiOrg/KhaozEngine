@@ -18,6 +18,14 @@ public sealed class UpdateServiceTests : IDisposable
     private readonly List<(string updaterPath, string configPath)> launches = new();
     private bool exited;
 
+    // Shared signing key for the test suite. The signer holds the private key; the service trusts the
+    // matching public key. Sign with PrivPem, trust PubPem.
+    private static readonly System.Security.Cryptography.RSA SignKey = System.Security.Cryptography.RSA.Create(2048);
+    private static string PrivPem => SignKey.ExportRSAPrivateKeyPem();
+    private static string PubPem => SignKey.ExportSubjectPublicKeyInfoPem();
+
+    private const string ManifestUrl = "https://u.example.com/2.0.0/manifest.json";
+
     public UpdateServiceTests()
     {
         root = Path.Combine(Path.GetTempPath(), "ke-updates-svc-" + Guid.NewGuid().ToString("N"));
@@ -35,16 +43,19 @@ public sealed class UpdateServiceTests : IDisposable
     private static readonly string UpdaterFileName =
         OperatingSystem.IsWindows() ? "TestUpdater.exe" : "TestUpdater";
 
-    private UpdateService Build(string currentVersion = "1.0.0", int maxRetries = 2)
+    private UpdateService Build(string currentVersion = "1.0.0", int maxRetries = 2,
+        IReadOnlyList<string>? trustedKeys = null, long? maxFileBytes = null)
         => new(new UpdateServiceOptions
         {
             Source = source,
             CurrentVersion = currentVersion,
+            TrustedPublicKeys = trustedKeys ?? new[] { PubPem },
             InstallDir = installDir,
             AppDataDir = appDataDir,
             Platform = "win-x64",
             UpdaterExecutableName = "TestUpdater",
             MaxDownloadRetries = maxRetries,
+            MaxFileBytes = maxFileBytes ?? 4L * 1024 * 1024 * 1024,
             DisposeSource = false,
             LaunchUpdater = (u, c) => { launches.Add((u, c)); return true; },
             ExitProcess = () => exited = true
@@ -54,7 +65,7 @@ public sealed class UpdateServiceTests : IDisposable
 
     /// <summary>
     /// Sets up a standard "v2 available" scenario: install has game.dll@v1; remote changes game.dll
-    /// and adds new.dll. Returns the remote manifest the fake source will serve.
+    /// and adds new.dll. Publishes the remote manifest SIGNED with the trusted key.
     /// </summary>
     private void SetupV2Available()
     {
@@ -66,8 +77,7 @@ public sealed class UpdateServiceTests : IDisposable
         var remote = new UpdateManifest { Version = "2.0.0", Platform = "win-x64" };
         remote.Files.Add(new ManifestFileEntry { Path = "game.dll", Sha256 = gameSha, Size = 2 });
         remote.Files.Add(new ManifestFileEntry { Path = "new.dll", Sha256 = newSha, Size = 2 });
-        source.RemoteManifest = remote;
-        source.Latest = new LatestVersionInfo("2.0.0", "2.0.0", "https://host/2.0.0/win-x64/manifest.json", Required: false);
+        source.PublishSigned(remote, ManifestUrl, PrivPem);
     }
 
     [Fact]
@@ -244,5 +254,134 @@ public sealed class UpdateServiceTests : IDisposable
 
         Assert.True(svc.PreviousUpdateInterrupted);
         Assert.False(File.Exists(Path.Combine(appDataDir, "apply-in-progress.json"))); // cleared
+    }
+
+    // --- Signed-manifest hardening (Task 5) ---
+
+    [Fact]
+    public void Ctor_NoTrustedKeys_Throws()
+    {
+        Assert.Throws<ArgumentException>(() => Build(trustedKeys: Array.Empty<string>()));
+    }
+
+    [Fact]
+    public async Task Check_UnsignedManifest_DoesNotOfferUpdate()
+    {
+        // Publish manifest bytes + Latest but NO ".sig" entry.
+        var remote = new UpdateManifest { Version = "2.0.0", Platform = "win-x64" };
+        remote.Files.Add(new ManifestFileEntry { Path = "game.dll", Sha256 = FakeUpdateSource.Sha("v2"), Size = 2 });
+        source.Bytes[ManifestUrl] = Encoding.UTF8.GetBytes(remote.Serialize());
+        source.Latest = new LatestVersionInfo("2.0.0", "2.0.0", ManifestUrl, Required: false);
+        using UpdateService svc = Build();
+
+        await svc.CheckForUpdateAsync();
+
+        Assert.Equal(UpdateState.Idle, svc.State);
+    }
+
+    [Fact]
+    public async Task Check_WrongKeySignature_DoesNotOfferUpdate()
+    {
+        using var otherKey = System.Security.Cryptography.RSA.Create(2048);
+        var remote = new UpdateManifest { Version = "2.0.0", Platform = "win-x64" };
+        remote.Files.Add(new ManifestFileEntry { Path = "game.dll", Sha256 = FakeUpdateSource.Sha("v2"), Size = 2 });
+        // Sign with a DIFFERENT key than the trusted PubPem.
+        source.PublishSigned(remote, ManifestUrl, otherKey.ExportRSAPrivateKeyPem());
+        using UpdateService svc = Build();
+
+        await svc.CheckForUpdateAsync();
+
+        Assert.Equal(UpdateState.Idle, svc.State);
+    }
+
+    [Fact]
+    public async Task Check_ValidSignature_OffersUpdate()
+    {
+        File.WriteAllText(Path.Combine(installDir, "game.dll"), "v1");
+        string gameSha = source.Add("game.dll", "v2");
+        var remote = new UpdateManifest { Version = "2.0.0", Platform = "win-x64" };
+        remote.Files.Add(new ManifestFileEntry { Path = "game.dll", Sha256 = gameSha, Size = 2 });
+        source.PublishSigned(remote, ManifestUrl, PrivPem);
+        using UpdateService svc = Build();
+
+        await svc.CheckForUpdateAsync();
+
+        Assert.Equal(UpdateState.UpdateAvailable, svc.State);
+        Assert.Equal("2.0.0", svc.RemoteVersion);
+    }
+
+    [Fact]
+    public async Task Check_SignedRequiredFlag_IsUsed_NotTheLatestResponse()
+    {
+        // Signed manifest says Required=true; the Latest response says required=false. The signed
+        // field must win.
+        var remote = new UpdateManifest { Version = "2.0.0", Platform = "win-x64", Required = true };
+        remote.Files.Add(new ManifestFileEntry { Path = "new.dll", Sha256 = source.Add("new.dll", "n1"), Size = 2 });
+        byte[] manifestBytes = Encoding.UTF8.GetBytes(remote.Serialize());
+        source.Bytes[ManifestUrl] = manifestBytes;
+        source.Bytes[ManifestUrl + ".sig"] = ManifestSigner.Sign(manifestBytes, PrivPem);
+        source.RemoteManifest = remote;
+        source.Latest = new LatestVersionInfo("2.0.0", "2.0.0", ManifestUrl, Required: false);
+        using UpdateService svc = Build();
+
+        await svc.CheckForUpdateAsync();
+
+        Assert.Equal(UpdateState.UpdateAvailable, svc.State);
+        Assert.True(svc.IsRequired);
+    }
+
+    [Fact]
+    public async Task Check_Downgrade_IsRejected_EvenIfSigned()
+    {
+        // Signed manifest version 1.0.0, current 2.0.0 -> reject.
+        var remote = new UpdateManifest { Version = "1.0.0", Platform = "win-x64" };
+        remote.Files.Add(new ManifestFileEntry { Path = "game.dll", Sha256 = FakeUpdateSource.Sha("v0"), Size = 2 });
+        // Latest claims to be newer to get past the first gate; the signed downgrade check must catch it.
+        byte[] manifestBytes = Encoding.UTF8.GetBytes(remote.Serialize());
+        source.Bytes[ManifestUrl] = manifestBytes;
+        source.Bytes[ManifestUrl + ".sig"] = ManifestSigner.Sign(manifestBytes, PrivPem);
+        source.RemoteManifest = remote;
+        source.Latest = new LatestVersionInfo("3.0.0", "3.0.0", ManifestUrl, Required: false);
+        using UpdateService svc = Build(currentVersion: "2.0.0");
+
+        await svc.CheckForUpdateAsync();
+
+        Assert.Equal(UpdateState.Idle, svc.State);
+    }
+
+    [Fact]
+    public async Task Check_RemoteVersion_ComesFromSignedManifest_NotLatestResponse()
+    {
+        // The unsigned Latest response advertises 2.5.0, but the SIGNED manifest says 2.0.0. The
+        // signed version is authoritative for RemoteVersion (it feeds the recorded installed version).
+        File.WriteAllText(Path.Combine(installDir, "game.dll"), "v1");
+        string gameSha = source.Add("game.dll", "v2");
+        var remote = new UpdateManifest { Version = "2.0.0", Platform = "win-x64" };
+        remote.Files.Add(new ManifestFileEntry { Path = "game.dll", Sha256 = gameSha, Size = 2 });
+        byte[] manifestBytes = Encoding.UTF8.GetBytes(remote.Serialize());
+        source.Bytes[ManifestUrl] = manifestBytes;
+        source.Bytes[ManifestUrl + ".sig"] = ManifestSigner.Sign(manifestBytes, PrivPem);
+        source.RemoteManifest = remote;
+        // Unsigned advertised version differs from (and is newer than) the signed one; both > current.
+        source.Latest = new LatestVersionInfo("2.5.0", "2.5.0", ManifestUrl, Required: false);
+        using UpdateService svc = Build();
+
+        await svc.CheckForUpdateAsync();
+
+        Assert.Equal(UpdateState.UpdateAvailable, svc.State);
+        Assert.Equal("2.0.0", svc.RemoteVersion);
+    }
+
+    [Fact]
+    public async Task Check_FileOverCap_DoesNotOfferUpdate()
+    {
+        var remote = new UpdateManifest { Version = "2.0.0", Platform = "win-x64" };
+        remote.Files.Add(new ManifestFileEntry { Path = "huge.dll", Sha256 = FakeUpdateSource.Sha("x"), Size = 5_000_000_000 });
+        source.PublishSigned(remote, ManifestUrl, PrivPem);
+        using UpdateService svc = Build(maxFileBytes: 1_000_000);
+
+        await svc.CheckForUpdateAsync();
+
+        Assert.Equal(UpdateState.Idle, svc.State);
     }
 }

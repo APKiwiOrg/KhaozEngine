@@ -28,14 +28,20 @@ public interface IUpdateSource
     /// <summary>Queries the latest published build for a platform. Returns null when unreachable.</summary>
     Task<LatestVersionInfo?> CheckLatestVersionAsync(string platform, CancellationToken cancellationToken = default);
 
-    /// <summary>Downloads and parses a build's manifest. Returns null on failure.</summary>
-    Task<UpdateManifest?> DownloadManifestAsync(string manifestUrl, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Downloads the raw bytes at <paramref name="url"/> (the manifest or its detached signature),
+    /// aborting (returns null) if more than <paramref name="maxBytes"/> arrive. Returns null on any
+    /// transport/IO error. Implementations MUST reject a URL that is not https or not same-host with
+    /// their configured base (see <see cref="HttpUpdateSource"/>).
+    /// </summary>
+    Task<byte[]?> DownloadBytesAsync(string url, long maxBytes, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Streams a single file to <paramref name="destPath"/>, reporting cumulative bytes. Returns false
-    /// on any transport/IO error so the caller can retry.
+    /// Streams a single file to <paramref name="destPath"/>, reporting cumulative bytes, aborting if
+    /// more than <paramref name="maxBytes"/> arrive (a hostile/oversized payload guard). Returns false
+    /// on any transport/IO error or overrun so the caller can retry.
     /// </summary>
-    Task<bool> DownloadFileAsync(string fileUrl, string destPath, IProgress<long>? bytesProgress = null, CancellationToken cancellationToken = default);
+    Task<bool> DownloadFileAsync(string fileUrl, string destPath, long maxBytes, IProgress<long>? bytesProgress = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Resolves the absolute URL of one manifest file given the build's <see cref="LatestVersionInfo"/>

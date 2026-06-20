@@ -12,14 +12,38 @@ namespace KhaozEngine.Render3D.Rendering
     /// UNIQUE mesh, each with the run's instanceCount.</summary>
     internal sealed class ModelRenderer : IDisposable
     {
-        /// <summary>Per-frame uniforms (binding 0). 1 mat4 + 7 vec4 = 64 + 112 = 176 bytes. Field order MUST
-        /// exactly mirror the std140 UBO block in BOTH ModelVert and ModelFrag.</summary>
+        /// <summary>Maximum dynamic point lights consumed per frame. The host picks the N nearest (CPU-side
+        /// budget); the renderer defensively clamps to this and zero-fills the unused tail. Must match the
+        /// <c>[16]</c> array size declared in the std140 UBO block in BOTH ModelVert and ModelFrag.</summary>
+        internal const int MaxPointLights = 16;
+
+        // std140 UBO layout: a 176-byte header (the FrameUbo struct) followed by two vec4[MaxPointLights]
+        // arrays (point light pos/radius, then colour/intensity). 176 + 2*256 = 688 bytes.
+        const uint HeaderBytes = 176;
+        const uint LightArrayBytes = MaxPointLights * 16;             // vec4 stride is 16 in std140
+        const uint UboBytes = HeaderBytes + 2 * LightArrayBytes;      // 688
+
+        /// <summary>Per-frame uniforms (binding 0) header. 1 mat4 + 7 vec4 = 64 + 112 = 176 bytes, uploaded at
+        /// offset 0. Field order MUST exactly mirror the std140 UBO block in BOTH ModelVert and ModelFrag; the
+        /// point-light arrays follow this header in the same buffer (see <see cref="MaxPointLights"/>).</summary>
         struct FrameUbo
         {
             public Matrix4x4 ViewProj;
             public Vector4 Dir; public Vector4 Color; public Vector4 Ambient; public Vector4 Params;
             public Vector4 FillDir; public Vector4 FillColor; public Vector4 CameraPos;
         }
+
+        /// <summary>One dynamic point light, packed for the std140 UBO arrays: <see cref="PosRadius"/> is
+        /// (worldX, worldY, worldZ, radius); <see cref="ColorIntensity"/> is (r, g, b, intensity).</summary>
+        public struct PointLightData
+        {
+            public Vector4 PosRadius;
+            public Vector4 ColorIntensity;
+        }
+
+        // Reused per-frame upload scratch (cleared/refilled, never realloc) for the two UBO light arrays.
+        readonly Vector4[] _lightPosRadius = new Vector4[MaxPointLights];
+        readonly Vector4[] _lightColorIntensity = new Vector4[MaxPointLights];
 
         /// <summary>Per-instance vertex stream (buffer slot 1, instanceStepRate 1). 64 + 48 = 112 bytes. The
         /// Model matrix is a System.Numerics Matrix4x4 (row-major), read in the shader as four Float4 rows.</summary>
@@ -49,7 +73,7 @@ namespace KhaozEngine.Render3D.Rendering
             _gd = gd;
             var factory = gd.Factory;
 
-            _ubo = factory.CreateBuffer(new GpuBufferDescription(176, GpuBufferUsage.UniformBuffer)); // 1 mat4 + 7 vec4
+            _ubo = factory.CreateBuffer(new GpuBufferDescription(UboBytes, GpuBufferUsage.UniformBuffer)); // 176 header + 2 vec4[16] point-light arrays
 
             _layout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
                 new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
@@ -128,9 +152,15 @@ namespace KhaozEngine.Render3D.Rendering
             cl.ClearDepthStencil(1f);
         }
 
-        /// <summary>Upload the per-frame uniforms once per frame, before the instanced draws.</summary>
-        public void SetFrameUniforms(IGpuCommandList cl, Matrix4x4 viewProj, Vector3 cameraPos, PixelPostProcessSettings s)
+        /// <summary>Upload the per-frame uniforms once per frame, before the instanced draws. <paramref name="lights"/>
+        /// is the host's per-frame point-light list; it is clamped to <see cref="MaxPointLights"/> (the host is
+        /// responsible for picking the N nearest) and the active count is written into <c>Params.y</c>. An empty
+        /// span leaves the shader's point-light loop unentered, so the render is bit-identical to the key+fill path.</summary>
+        public void SetFrameUniforms(IGpuCommandList cl, Matrix4x4 viewProj, Vector3 cameraPos,
+            PixelPostProcessSettings s, ReadOnlySpan<PointLightData> lights)
         {
+            int count = BuildLightArrays(lights, _lightPosRadius, _lightColorIntensity);
+
             // Clip-space-Y correction is derived from the live backend (GpuClip), not baked for Metal: it is the
             // identity on Metal/D3D (byte-identical render) and flips clip-Y on inverted-Y backends (Vulkan).
             // Applied only to the GPU-uploaded matrix; IsoCamera3D.ScreenToGround picking keeps the raw
@@ -141,12 +171,36 @@ namespace KhaozEngine.Render3D.Rendering
                 Dir = new Vector4(Vector3.Normalize(s.LightDirection), 0f),
                 Color = s.LightColor,
                 Ambient = s.AmbientColor,
-                Params = new Vector4(s.CelBands, 0, 0, 0),
+                Params = new Vector4(s.CelBands, count, 0, 0),
                 FillDir = new Vector4(Vector3.Normalize(s.FillLightDirection), 0f),
                 FillColor = s.FillLightColor,
                 CameraPos = new Vector4(cameraPos, 1f),
             };
             cl.UpdateBuffer(_ubo, 0, in ubo);
+            // Point-light arrays follow the 176-byte header in the same UBO. Always upload the full fixed-size
+            // arrays (zero-filled tail) so a previous frame's lights never leak past the active count.
+            cl.UpdateBuffer(_ubo, HeaderBytes, (ReadOnlySpan<Vector4>)_lightPosRadius);
+            cl.UpdateBuffer(_ubo, HeaderBytes + LightArrayBytes, (ReadOnlySpan<Vector4>)_lightColorIntensity);
+        }
+
+        /// <summary>Pure, headless-testable packing of the host light list into the two fixed-size UBO arrays:
+        /// copies up to <see cref="MaxPointLights"/> lights (extras are dropped - the host selects the N nearest),
+        /// zero-fills the remaining tail, and returns the active count. Both output arrays must be length
+        /// <see cref="MaxPointLights"/>.</summary>
+        internal static int BuildLightArrays(ReadOnlySpan<PointLightData> lights, Vector4[] posRadius, Vector4[] colorIntensity)
+        {
+            int count = Math.Min(lights.Length, MaxPointLights);
+            for (int i = 0; i < count; i++)
+            {
+                posRadius[i] = lights[i].PosRadius;
+                colorIntensity[i] = lights[i].ColorIntensity;
+            }
+            for (int i = count; i < MaxPointLights; i++)
+            {
+                posRadius[i] = Vector4.Zero;
+                colorIntensity[i] = Vector4.Zero;
+            }
+            return count;
         }
 
         /// <summary>

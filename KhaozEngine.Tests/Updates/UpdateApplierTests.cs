@@ -186,6 +186,43 @@ public sealed class UpdateApplierTests
 
         Assert.Equal(ApplyOutcome.Succeeded, result.Outcome);
         Assert.Equal("v2", env.Files[InstallPath("game.dll")]); // real file replaced the link
+        Assert.Contains(env.Log_, m => m.Contains("removing link before copy")); // exercised the removal branch
+    }
+
+    [Fact]
+    public void Apply_DestReparsePoint_LinkRemovalFails_AbortsWithoutCopyingThroughLink()
+    {
+        var env = new FakeUpdaterEnvironment();
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.Files[InstallPath("game.dll")] = "link";
+        env.ReparsePoints.Add(InstallPath("game.dll"));
+        env.ThrowOnDeleteOf.Add(InstallPath("game.dll"));
+        env.Files[InstallPath("Game")] = "exe";
+
+        ApplyResult result = UpdateApplier.Apply(Config(new() { "game.dll" }), env);
+
+        Assert.Equal(ApplyOutcome.AbortedUnsafePath, result.Outcome);
+        Assert.Equal("link", env.Files[InstallPath("game.dll")]); // NOT overwritten through the link
+        Assert.Equal(InstallPath("Game"), env.RelaunchedExe);
+    }
+
+    [Fact]
+    public void Apply_DestReparsePoint_ThenLaterCopyFails_RollsBackOtherFiles()
+    {
+        var env = new FakeUpdaterEnvironment();
+        env.Files[StagingPath("a.dll")] = "a-new";
+        env.Files[StagingPath("b.dll")] = "b-new";
+        env.Files[InstallPath("a.dll")] = "a-link";
+        env.ReparsePoints.Add(InstallPath("a.dll"));   // a is a symlink dest, removed then copied
+        env.Files[InstallPath("b.dll")] = "b-old";
+        env.Files[InstallPath("Game")] = "exe";
+        env.ThrowOnCopyFrom.Add(StagingPath("b.dll")); // b copy fails -> rollback
+
+        ApplyResult result = UpdateApplier.Apply(Config(new() { "a.dll", "b.dll" }), env);
+
+        Assert.Equal(ApplyOutcome.RolledBack, result.Outcome);
+        Assert.Equal("b-old", env.Files[InstallPath("b.dll")]); // restored
+        // a.dll's original link is intentionally NOT restored (documented contract); just assert no crash + outcome.
     }
 
     [Fact]

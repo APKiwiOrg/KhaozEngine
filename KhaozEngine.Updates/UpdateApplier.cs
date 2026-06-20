@@ -19,7 +19,11 @@ public enum ApplyOutcome
     /// <summary>A manifest path was unsafe (absolute/traversal) or a reparse point; aborted untouched.</summary>
     AbortedUnsafePath,
 
-    /// <summary>A copy failed mid-apply; every overwritten file was restored and the old version relaunched.</summary>
+    /// <summary>
+    /// A copy failed mid-apply; every overwritten file was restored and the old version relaunched. The one
+    /// exception: an intentionally-removed destination symlink (suspect at a managed install path) is not
+    /// recreated, since its target is unknown.
+    /// </summary>
     RolledBack
 }
 
@@ -35,8 +39,9 @@ public sealed class ApplyResult
 /// <summary>
 /// The cross-platform staged-apply core for an external updater shim: waits for the game to exit,
 /// backs up each install file before overwriting it, copies staged files in (with retries for locked
-/// files), rolls everything back on any failure, deletes removed files, installs the new manifest,
-/// and relaunches. All side effects go through <see cref="IUpdaterEnvironment"/> so the logic is
+/// files), rolls everything back on any failure (the one exception being an intentionally-removed suspect
+/// destination symlink, which is discarded and not restored), deletes removed files, installs the new
+/// manifest, and relaunches. All side effects go through <see cref="IUpdaterEnvironment"/> so the logic is
 /// headless-testable; a game's shim is just <c>UpdateApplier.Run(args, new SystemUpdaterEnvironment())</c>.
 /// </summary>
 public static class UpdateApplier
@@ -161,9 +166,24 @@ public static class UpdateApplier
 
             if (environment.FileExists(dest) && environment.IsReparsePoint(dest))
             {
+                // A removed reparse-point link is intentionally discarded: it is NOT recreated on a later
+                // rollback (we do not have its target, and a symlink at a managed install path is suspect).
                 environment.Log($"Destination is a reparse point, removing link before copy: {relativePath}");
-                try { environment.DeleteFile(dest); }
-                catch (Exception ex) { environment.Log($"Could not remove link {relativePath}: {ex.Message}"); }
+                bool linkRemoved;
+                try { environment.DeleteFile(dest); linkRemoved = true; }
+                catch (Exception ex) { environment.Log($"Could not remove link {relativePath}: {ex.Message}"); linkRemoved = false; }
+
+                if (!linkRemoved)
+                {
+                    // Fail closed: never copy through a symlink (it would write outside the install dir).
+                    // Roll back anything already applied so the install stays consistent, then relaunch old.
+                    RestoreBackups(environment, config.InstallDir, rollbackDir, backedUp);
+                    try { environment.DeleteDirectory(rollbackDir); }
+                    catch (Exception ex) { environment.Log($"Cleanup: could not remove rollback dir {rollbackDir} after restore: {ex.Message}"); }
+                    ClearMarker(environment, markerPath);
+                    environment.Relaunch(config.GameExePath, config.InstallDir);
+                    return new ApplyResult { Outcome = ApplyOutcome.AbortedUnsafePath, ExitCode = 1 };
+                }
             }
 
             string? destDir = Path.GetDirectoryName(dest);

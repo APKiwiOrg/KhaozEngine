@@ -162,7 +162,11 @@ namespace KhaozEngine.Tests.Gpu
         {
             byte[] rgba = Render2DSnapshot.Capture(W, H, new Color(0.06f, 0.07f, 0.10f, 1f), ctx =>
             {
-                using var prim = new PrimitiveRenderer(ctx);
+                // NOT 'using': prim owns a 1x1 white texture that the batch's recorded draws reference. Capture
+                // submits the command list AFTER this callback returns, so disposing prim here use-after-frees the
+                // texture. Vulkan rejects that at submit (ResourceRefCount.Increment on a disposed resource);
+                // Metal/D3D11 silently tolerate it. Left to process teardown, like Capture leaks the device.
+                var prim = new PrimitiveRenderer(ctx);
                 ctx.Batch.Begin();
 
                 // Filled rect + outline rect on top of it.

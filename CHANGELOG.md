@@ -5,6 +5,22 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.5.0
+
+Additive (non-breaking): a generic translucent filled-fan primitive on the Render3D debug overlay, so a consumer
+can fill an arbitrary star-shaped polygon (e.g. a turret's line-of-sight area) instead of only quads and discs.
+
+- `KhaozEngine.Render3D.DebugFillShapes`: new
+  `FilledFan(List<Vector3> tris, Vector3 center, IReadOnlyList<Vector3> rim, bool closed)`. For each adjacent rim
+  pair it appends the triangle `(center, rim[i], rim[i+1])`; when `closed` it also appends the wrap triangle
+  `(center, rim[last], rim[0])` to seal the loop. Same CCW winding convention as `FilledCircle` (wind the rim CCW
+  about the desired facing normal). Degenerate input (fewer than 2 rim points) appends nothing.
+- `KhaozEngine.Render3D.Scene3D`: new
+  `DebugFilledFan(Vector3 center, IReadOnlyList<Vector3> rim, Color color, bool closed = true)` - queues the fan
+  through the existing fill overlay (cleared in `Begin`, drawn under the debug lines), the arbitrary-polygon
+  counterpart to `DebugFilledQuad`/`DebugFilledCircle`. The fill vertex buffer stays internal; this exposes the
+  builder so games no longer have to reach into it.
+
 ## 7.4.0
 
 Additive (non-breaking): point/segment geometry in `KhaozEngine.Collision`, the primitive swept (look-ahead)

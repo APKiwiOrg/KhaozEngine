@@ -325,6 +325,19 @@ namespace KhaozEngine.Render3D
             AppendFillScratch(color);
         }
 
+        /// <summary>Queue a flat translucent triangle fan from <paramref name="center"/> out to an arbitrary,
+        /// already-ordered boundary <paramref name="rim"/> (e.g. a turret's star-shaped line-of-sight area), in RGBA
+        /// <paramref name="color"/>. When <paramref name="closed"/> (the default) the loop is sealed with a wrap
+        /// triangle (center, rim[last], rim[0]); pass <c>false</c> for an open arc. Wind the rim CCW about the
+        /// desired facing normal (use <see cref="Vector3.UnitY"/> for a ground fan, as with
+        /// <see cref="DebugFilledCircle"/>). Cleared in <see cref="Begin"/>; drawn under the debug lines.</summary>
+        public void DebugFilledFan(Vector3 center, IReadOnlyList<Vector3> rim, Color color, bool closed = true)
+        {
+            _fillScratch.Clear();
+            DebugFillShapes.FilledFan(_fillScratch, center, rim, closed);
+            AppendFillScratch(color);
+        }
+
         void AppendFillScratch(Vector4 color)
         {
             foreach (var p in _fillScratch)

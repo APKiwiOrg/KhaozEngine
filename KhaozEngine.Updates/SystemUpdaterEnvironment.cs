@@ -15,6 +15,8 @@ namespace KhaozEngine.Updates;
 /// </summary>
 public sealed class SystemUpdaterEnvironment : IUpdaterEnvironment
 {
+    private const int CodesignTimeoutMs = 15000;
+
     private readonly Action<string>? logSink;
 
     public SystemUpdaterEnvironment(Action<string>? logSink = null)
@@ -128,20 +130,20 @@ public sealed class SystemUpdaterEnvironment : IUpdaterEnvironment
                 target = executablePath[..(appIndex + 4)];
             }
 
+            // We don't redirect codesign's output: we never read it, and draining a redirected pipe
+            // (needed to avoid a full-buffer stall) would complicate the timed WaitForExit below.
             using Process? proc = Process.Start(new ProcessStartInfo
             {
                 FileName = "codesign",
                 ArgumentList = { "--verify", "--deep", "--strict", target },
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
+                UseShellExecute = false
             });
             if (proc is null)
             {
                 Log("codesign could not be started; treating as unverified.");
                 return false;
             }
-            proc.WaitForExit(15000);
+            proc.WaitForExit(CodesignTimeoutMs);
             return proc.ExitCode == 0;
         }
         catch (Exception ex)

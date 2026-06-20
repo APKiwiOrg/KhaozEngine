@@ -243,6 +243,23 @@ public sealed class UpdateApplierTests
     }
 
     [Fact]
+    public void Apply_CodeSignatureInvalid_DoesNotInstallNewManifest()
+    {
+        var env = new FakeUpdaterEnvironment();
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.Files[StagingPath("manifest.json")] = "{\"version\":\"2.0.0\"}";
+        env.Files[InstallPath("game.dll")] = "v1";
+        env.Files[InstallPath("Game")] = "exe";
+        env.CodeSignatureValid = false;
+
+        ApplyResult result = UpdateApplier.Apply(Config(new() { "game.dll" }), env);
+
+        Assert.Equal(ApplyOutcome.RolledBack, result.Outcome);
+        // Manifest dest must NOT have been written on a codesign-fail rollback.
+        Assert.False(env.Files.ContainsKey(Path.Combine(AppData, "update-manifest.json")));
+    }
+
+    [Fact]
     public void Apply_CodeSignatureValid_Succeeds()
     {
         var env = new FakeUpdaterEnvironment();

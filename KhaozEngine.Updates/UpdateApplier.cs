@@ -20,9 +20,11 @@ public enum ApplyOutcome
     AbortedUnsafePath,
 
     /// <summary>
-    /// A copy failed mid-apply; every overwritten file was restored and the old version relaunched. The one
-    /// exception: an intentionally-removed destination symlink (suspect at a managed install path) is not
-    /// recreated, since its target is unknown.
+    /// A copy failed mid-apply, or the post-apply code-signature check failed; every overwritten file was
+    /// restored and the old version relaunched. The new manifest is never installed on this path, so the old
+    /// binaries relaunch against the old manifest (a consistent state). The one exception to the restore: an
+    /// intentionally-removed destination symlink (suspect at a managed install path) is not recreated, since
+    /// its target is unknown.
     /// </summary>
     RolledBack
 }
@@ -253,6 +255,26 @@ public static class UpdateApplier
 
         int errors = 0;
 
+        // Clear quarantine first so the signature check sees the file as the OS will at launch.
+        environment.ClearQuarantine(config.InstallDir);
+
+        // Fail closed: if the installed executable is not validly signed, roll back to the backups
+        // (still present - we have not cleaned the rollback dir yet) and relaunch the old version.
+        if (!environment.VerifyCodeSignature(config.GameExePath))
+        {
+            environment.Log("Code signature verification FAILED after apply; rolling back.");
+            RestoreBackups(environment, config.InstallDir, rollbackDir, backedUp);
+            try { environment.DeleteDirectory(rollbackDir); }
+            catch (Exception ex) { environment.Log($"Cleanup: could not remove rollback dir {rollbackDir} after restore: {ex.Message}"); }
+            ClearMarker(environment, markerPath);
+            environment.Relaunch(config.GameExePath, config.InstallDir);
+            return new ApplyResult { Outcome = ApplyOutcome.RolledBack, ExitCode = 1 };
+        }
+
+        // The manifest is the "commit record" of the update: install it only now, once the new binaries
+        // are verified. On a codesign-fail rollback above we never reach here, so the old binaries are
+        // relaunched against the old manifest (consistent state). The staged source must still exist,
+        // so this runs before the staging-dir cleanup below.
         if (!string.IsNullOrEmpty(config.ManifestDestPath))
         {
             string stagedManifest = Path.Combine(config.StagingDir, "manifest.json");
@@ -273,22 +295,6 @@ public static class UpdateApplier
                     errors++;
                 }
             }
-        }
-
-        // Clear quarantine first so the signature check sees the file as the OS will at launch.
-        environment.ClearQuarantine(config.InstallDir);
-
-        // Fail closed: if the installed executable is not validly signed, roll back to the backups
-        // (still present - we have not cleaned the rollback dir yet) and relaunch the old version.
-        if (!environment.VerifyCodeSignature(config.GameExePath))
-        {
-            environment.Log("Code signature verification FAILED after apply; rolling back.");
-            RestoreBackups(environment, config.InstallDir, rollbackDir, backedUp);
-            try { environment.DeleteDirectory(rollbackDir); }
-            catch (Exception ex) { environment.Log($"Cleanup: could not remove rollback dir {rollbackDir} after restore: {ex.Message}"); }
-            ClearMarker(environment, markerPath);
-            environment.Relaunch(config.GameExePath, config.InstallDir);
-            return new ApplyResult { Outcome = ApplyOutcome.RolledBack, ExitCode = 1 };
         }
 
         try { environment.DeleteDirectory(config.StagingDir); }

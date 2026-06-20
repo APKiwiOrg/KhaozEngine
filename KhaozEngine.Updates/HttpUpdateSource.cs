@@ -78,21 +78,33 @@ public sealed class HttpUpdateSource : IUpdateSource, IDisposable
         }
     }
 
-    public async Task<UpdateManifest?> DownloadManifestAsync(string manifestUrl, CancellationToken cancellationToken = default)
+    public async Task<byte[]?> DownloadBytesAsync(string url, CancellationToken cancellationToken = default)
     {
+        if (!IsAllowedOrigin(url))
+        {
+            log.Info($"Refusing off-origin or non-https URL: {url}");
+            return null;
+        }
+
         try
         {
-            return UpdateManifest.Deserialize(await httpClient.GetStringAsync(manifestUrl, cancellationToken));
+            return await httpClient.GetByteArrayAsync(url, cancellationToken);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException)
         {
-            log.Info($"Manifest download failed: {ex.Message}");
+            log.Info($"Download failed ({url}): {ex.Message}");
             return null;
         }
     }
 
-    public async Task<bool> DownloadFileAsync(string fileUrl, string destPath, IProgress<long>? bytesProgress = null, CancellationToken cancellationToken = default)
+    public async Task<bool> DownloadFileAsync(string fileUrl, string destPath, long maxBytes, IProgress<long>? bytesProgress = null, CancellationToken cancellationToken = default)
     {
+        if (!IsAllowedOrigin(fileUrl))
+        {
+            log.Info($"Refusing off-origin or non-https file URL: {fileUrl}");
+            return false;
+        }
+
         try
         {
             using HttpResponseMessage response = await httpClient.GetAsync(
@@ -113,8 +125,13 @@ public sealed class HttpUpdateSource : IUpdateSource, IDisposable
             int bytesRead;
             while ((bytesRead = await contentStream.ReadAsync(buffer, cancellationToken)) > 0)
             {
-                await fileStream.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
                 totalBytesRead += bytesRead;
+                if (totalBytesRead > maxBytes)
+                {
+                    log.Info($"File exceeded size cap ({maxBytes} bytes), aborting: {fileUrl}");
+                    return false;
+                }
+                await fileStream.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
                 bytesProgress?.Report(totalBytesRead);
             }
 
@@ -157,6 +174,9 @@ public sealed class HttpUpdateSource : IUpdateSource, IDisposable
         string path = latestVersionPath.Replace("{platform}", Uri.EscapeDataString(platform));
         return Uri.TryCreate($"{normalized}/{path}", UriKind.Absolute, out Uri? resolved) ? resolved : null;
     }
+
+    // Implemented in Task 4. Placeholder admits all so Task 3 is purely the transport-shape change.
+    private bool IsAllowedOrigin(string url) => true;
 
     public void Dispose()
     {

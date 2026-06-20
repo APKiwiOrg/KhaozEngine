@@ -26,12 +26,15 @@ internal sealed class FakeUpdateSource : IUpdateSource
     public Task<LatestVersionInfo?> CheckLatestVersionAsync(string platform, CancellationToken cancellationToken = default)
         => Task.FromResult(Latest);
 
-    public Task<UpdateManifest?> DownloadManifestAsync(string manifestUrl, CancellationToken cancellationToken = default)
-        => Task.FromResult(RemoteManifest);
+    /// <summary>Raw bytes keyed by URL: the manifest JSON and its ".sig" live here.</summary>
+    public readonly Dictionary<string, byte[]> Bytes = new(StringComparer.Ordinal);
+
+    public Task<byte[]?> DownloadBytesAsync(string url, CancellationToken cancellationToken = default)
+        => Task.FromResult(Bytes.TryGetValue(url, out byte[]? b) ? b : null);
 
     public string ResolveFileUrl(LatestVersionInfo latest, string relativePath) => relativePath;
 
-    public Task<bool> DownloadFileAsync(string fileUrl, string destPath, IProgress<long>? bytesProgress = null, CancellationToken cancellationToken = default)
+    public Task<bool> DownloadFileAsync(string fileUrl, string destPath, long maxBytes, IProgress<long>? bytesProgress = null, CancellationToken cancellationToken = default)
     {
         DownloadCalls++;
         if (!Files.TryGetValue(fileUrl, out byte[]? bytes))

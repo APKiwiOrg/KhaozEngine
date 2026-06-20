@@ -104,7 +104,10 @@ public sealed class UpdateService : IDisposable
 
             log.Info($"Update available: {currentVersion} -> {latest.Version}");
 
-            UpdateManifest? remoteManifest = await source.DownloadManifestAsync(latest.ManifestUrl, cancellationToken);
+            byte[]? manifestBytes = await source.DownloadBytesAsync(latest.ManifestUrl, cancellationToken);
+            UpdateManifest? remoteManifest = manifestBytes is null
+                ? null
+                : UpdateManifest.Deserialize(System.Text.Encoding.UTF8.GetString(manifestBytes));
             if (remoteManifest is null)
             {
                 SetState(UpdateState.Idle);
@@ -203,7 +206,7 @@ public sealed class UpdateService : IDisposable
                         Interlocked.Add(ref bytesDownloaded, delta);
                     });
 
-                    success = await source.DownloadFileAsync(fileUrl, destPath, progress, cancellationToken);
+                    success = await source.DownloadFileAsync(fileUrl, destPath, long.MaxValue, progress, cancellationToken);
 
                     if (success && !VerifyFileHash(destPath, file.Sha256))
                     {

@@ -29,7 +29,8 @@ namespace KhaozEngine.Gui
         /// <summary>
         /// Fill <paramref name="r"/> honouring <paramref name="style"/>: when <see cref="GuiStyle.IsFlat"/> this is
         /// the exact plain single-quad <see cref="Fill"/> + <see cref="Border"/> (byte-identical to pre-7.4.0);
-        /// otherwise it draws the soft shadow, the rounded (optionally gradient) body, and the rounded border ring.
+        /// otherwise it draws the soft shadow (when <see cref="GuiStyle.ShadowColor"/> is non-transparent), the rounded
+        /// (optionally gradient) body, and the rounded border ring.
         /// <paramref name="bodyColor"/> is the resolved state colour (hover/press/etc.); <paramref name="borderColor"/>
         /// is the outline.
         /// </summary>
@@ -45,11 +46,19 @@ namespace KhaozEngine.Gui
 
             var dest = new Vector4(r.X, r.Y, r.Width, r.Height);
 
-            // Soft drop shadow under everything.
+            // Soft drop shadow under everything. Expand the quad by ShadowSize (half per side) so the SDF soft
+            // falloff has fragments OUTSIDE the body to fade through (same pattern as HoverGlow); without the
+            // expansion the softness would only ramp at the quad's own edge and read as a hard offset strip.
             if (style.ShadowSize > 0f && style.ShadowColor.W > 0f)
             {
-                var shadow = new Vector4(r.X + style.ShadowOffset.X, r.Y + style.ShadowOffset.Y, r.Width, r.Height);
-                batch.DrawRounded(white, shadow, (Color)style.ShadowColor, style.CornerRadius, softness: style.ShadowSize);
+                float ss = style.ShadowSize;
+                var shadow = new Vector4(
+                    r.X + style.ShadowOffset.X - ss * 0.5f,
+                    r.Y + style.ShadowOffset.Y - ss * 0.5f,
+                    r.Width + ss,
+                    r.Height + ss);
+                batch.DrawRounded(white, shadow, (Color)style.ShadowColor,
+                    style.CornerRadius + ss * 0.5f, softness: ss);
             }
 
             // Rounded body: vertical gradient (scale of the state colour) or flat.

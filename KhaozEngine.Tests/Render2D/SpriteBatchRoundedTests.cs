@@ -35,5 +35,14 @@ namespace KhaozEngine.Tests.Render2D
             Assert.Equal(Vector2.Zero, br);
             Assert.Equal(Vector2.Zero, bl);
         }
+
+        [Fact]
+        public void RoundedMode_FilledVsStroke()
+        {
+            // Filled fill: stroke 0, modeFlag 1.
+            Assert.Equal(new Vector2(0f, 1f), SpriteBatch.RoundedMode(strokeWidth: 0f));
+            // Border ring: stroke > 0, modeFlag 1.
+            Assert.Equal(new Vector2(2.5f, 1f), SpriteBatch.RoundedMode(strokeWidth: 2.5f));
+        }
     }
 }

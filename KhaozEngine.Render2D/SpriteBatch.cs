@@ -280,6 +280,41 @@ void main() {
             EmitQuad(tex, new Vector2(x, y), new Vector2(x + w, y), new Vector2(x + w, y + h), new Vector2(x, y + h), srcUV, color);
         }
 
+        /// <summary>
+        /// Vertical 2-tone fill: <paramref name="top"/> on the upper edge, <paramref name="bottom"/> on the lower
+        /// edge, interpolated by the per-vertex colour. dest = (x, y, w, h); whole-texture UV. Plain (non-rounded).
+        /// </summary>
+        public void Draw(Texture2D tex, Vector4 destRect, Color top, Color bottom)
+        {
+            float x = destRect.X, y = destRect.Y, w = destRect.Z, h = destRect.W;
+            EmitQuad(tex, new Vector2(x, y), new Vector2(x + w, y), new Vector2(x + w, y + h), new Vector2(x, y + h),
+                new Vector4(0, 0, 1, 1), (Vector4)top, (Vector4)bottom,
+                Vector2.Zero, Vector2.Zero, Vector2.Zero, Vector2.Zero, Vector4.Zero, Vector2.Zero);
+        }
+
+        /// <summary>
+        /// Rounded-rect draw with optional vertical gradient, soft edge, and stroke. <paramref name="cornerRadius"/>
+        /// in draw units; <paramref name="softness"/> 0 = crisp fwidth AA, &gt;0 = soft falloff (shadow/glow);
+        /// <paramref name="strokeWidth"/> 0 = filled, &gt;0 = ring (border, needs roughly &gt;=1 draw-unit to be
+        /// visible). Alpha-shaped by an SDF in the shared shader; batches with everything. Use the white texture for
+        /// solid fills.
+        /// </summary>
+        public void DrawRounded(Texture2D tex, Vector4 destRect, Vector4 srcUV, Color top, Color bottom,
+            float cornerRadius, float softness = 0f, float strokeWidth = 0f)
+        {
+            float x = destRect.X, y = destRect.Y, w = destRect.Z, h = destRect.W;
+            var (lTL, lTR, lBR, lBL) = RoundedLocals(w, h);
+            Vector4 shape = RoundedShape(w, h, cornerRadius, softness);
+            Vector2 mode = RoundedMode(strokeWidth);
+            EmitQuad(tex, new Vector2(x, y), new Vector2(x + w, y), new Vector2(x + w, y + h), new Vector2(x, y + h),
+                srcUV, (Vector4)top, (Vector4)bottom, lTL, lTR, lBR, lBL, shape, mode);
+        }
+
+        /// <summary>Rounded-rect convenience: single colour, whole-texture UV.</summary>
+        public void DrawRounded(Texture2D tex, Vector4 destRect, Color color,
+            float cornerRadius, float softness = 0f, float strokeWidth = 0f) =>
+            DrawRounded(tex, destRect, new Vector4(0, 0, 1, 1), color, color, cornerRadius, softness, strokeWidth);
+
         // Typed Rect overloads: a Color and a destination rect can no longer be swapped at a call site. Reuses
         // Windowing.Rect (x, y, w, h) for the rect; forwards to the Vector4-dest forms so the batch path is identical.
         public void Draw(Texture2D tex, Windowing.Rect destRect, Color color) =>
@@ -353,6 +388,9 @@ void main() {
         /// <summary>Packs the SDF Shape attribute = (halfX, halfY, radius, softness). Pure / headless.</summary>
         internal static Vector4 RoundedShape(float w, float h, float radius, float softness) =>
             new Vector4(w * 0.5f, h * 0.5f, radius, softness);
+
+        /// <summary>Packs the Mode attribute = (strokeWidth, 1). Pure / headless. modeFlag 1 enables the SDF branch.</summary>
+        internal static Vector2 RoundedMode(float strokeWidth) => new Vector2(strokeWidth, 1f);
 
         AdditiveKey AdditiveKeyFor(IGpuTexture tex)
         {

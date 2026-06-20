@@ -96,7 +96,7 @@ fine-grained use - a wire-contract project references just `Netcode.Abstractions
 
 | Consumer | Project(s) | References | Version |
 |---|---|---|---|
-| **Hardpoint** (6.x, 3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic) | **6.3.0** |
+| **Hardpoint** (7.x, 3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic); adopted the updater glue (`Updates` via Foundation, overlay via Gui) — dormant | **7.3.0** |
 | **Nullwake** (7.x, 2D) | `Nullwake.Core` | `KhaozEngine.Game2D` + `Diagnostics`/`Persistence`/`Windowing` | **7.2.0** |
 | **SpaceGame** (6.x, 2D) | `SpaceGame.Core` (head) / `SpaceGame.Sim` (lockstep sim) | `Game2D` + `Netcode.LiteNetLib` + `Primitives` (head); `Ecs`/`Collision`/`Diagnostics`/`Content`/`Serialization`/`App`/`Netcode`/`Pooling` + `Primitives` (sim); `Netcode.Abstractions` (contracts); `Updates` (tools) | **6.3.0** |
 
@@ -107,9 +107,9 @@ options' `WindowFactory`/`ViewportFactory`. Neither hand-writes the `AppWindow.R
 
 ## Notes (current state per consumer)
 
-### Hardpoint - 6.x, full-3D (on `KhaozEngine.Game3D` 6.3.0)
+### Hardpoint - 7.x, full-3D (on `KhaozEngine.Game3D` 7.3.0)
 
-A full-3D iso tower-defense entirely on the 6.x stack, zero legacy MonoGame packages. Two projects:
+A full-3D iso tower-defense entirely on the 7.x stack, zero legacy MonoGame packages. Two projects:
 
 - **`Hardpoint.Game` (the head)** references one package, **`KhaozEngine.Game3D`**, which bundles the 3D
   renderer (`Render3D`: iso board, glTF/procedural meshes, per-mesh albedo textures, lighting/materials, debug
@@ -123,6 +123,10 @@ A full-3D iso tower-defense entirely on the 6.x stack, zero legacy MonoGame pack
   foundation (Ecs for the sim, Content for build-time JSON schema validation, Diagnostics `Log`/`CrashHandler`,
   App `AppDataPaths`/`BuildMetadata`, Localization, Persistence `SettingsManager<CampaignSaveData>`). A logic
   library deliberately pulls no renderer.
+
+Adopted the 7.3.0 auto-updater glue (`UpdateService` + `UpdateOverlayView` wired into `HardpointGame`, a
+one-line `HardpointUpdater` shim, an embedded RSA public key). It ships **dormant** (`Enabled = false`, no feed
+queried) until Hardpoint has a distribution channel; flip-on checklist is in the game's `Updates/README.md`.
 
 ### Nullwake - 7.x, 2D (on `KhaozEngine.Game2D` 7.2.0)
 
@@ -199,13 +203,13 @@ done
 After editing, run `./scripts/check-doc-versions.sh` (CI runs it too) to confirm the engine-version line
 still matches `Directory.Build.props`.
 
-_Last verified: 2026-06-20. The shared line `<KhaozEngine5xVersion>` = **6.3.0** is the engine: the new
+_Last verified: 2026-06-20. The shared line `<KhaozEngine5xVersion>` = **7.3.0** is the engine: the new
 zero-dependency `Primitives` leaf + the custom-stack packages + the graduated foundation + the four umbrella
 metapackages (Game2D/Game3D/Server/Foundation). The legacy 4.x `<Version>` line was deleted from
 `Directory.Build.props` and its old MonoGame nupkgs pruned from the feed (recoverable from GitHub Packages).
-**Hardpoint** (3D) is on **6.3.0** via `Game3D` + `Foundation`,
+**Hardpoint** (3D) is on **7.3.0** via `Game3D` + `Foundation`,
 **Nullwake** (2D) is on **7.2.0** via `Game2D` (+ `Diagnostics`/`Persistence`/`Windowing`), and **SpaceGame**
-(2D) is on **6.3.0** via `Game2D` + the split-out `SpaceGame.Sim` - all three fully off MonoGame and on the
-6.x line, referencing the engine in one line (plus the sim's foundation pins), and running on the
+(2D) is on **6.3.0** via `Game2D` + the split-out `SpaceGame.Sim` - all three fully off MonoGame, each pinning
+the engine on its own schedule, referencing the engine in one line (plus the sim's foundation pins), and running on the
 `GameApp3D`/`GameApp` loop facade. The breaking 6.0.0 `Primitives.Color` migration has been adopted by all
 three._

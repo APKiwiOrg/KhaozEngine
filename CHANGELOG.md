@@ -5,6 +5,22 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.0.1
+
+### KhaozEngine.Updates: cap the version-check probe response
+
+- `HttpUpdateSource.CheckLatestVersionAsync` now reads the `/latest` probe response with a bounded buffer
+  before deserializing, instead of handing an unbounded body to `GetFromJsonAsync`. A hostile or compromised
+  update host could otherwise stream an arbitrarily large body into the JSON parser (memory-exhaustion DoS).
+  The response is a small fixed-shape `LatestVersionInfo`, so the read is capped at a new
+  `HttpUpdateSourceOptions.MaxLatestVersionBytes` (default 64 KiB); an over-cap response is aborted and the
+  check returns null, mirroring the existing `MaxManifestBytes` / `maxBytes` caps on `DownloadBytesAsync` and
+  `DownloadFileAsync`. Malformed JSON and transport/IO errors on the probe now also return null (offline-safe)
+  rather than throwing. Closes the residual risk flagged in the 7.0.0 updater-hardening review.
+
+The whole engine shares one version line, so all packages bump to 7.0.1; only KhaozEngine.Updates changed, and
+the change is additive (a new option with a safe default) with no API break.
+
 ## 7.0.0
 
 ### KhaozEngine.Updates: security hardening (BREAKING)

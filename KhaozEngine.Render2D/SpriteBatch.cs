@@ -34,7 +34,8 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
 
         readonly IGpuDevice _gd;
         readonly IGpuResourceLayout _layout;
-        readonly IGpuPipeline _pipeline;
+        readonly IGpuPipeline _pipeline;          // alpha (source-over) - the default
+        readonly IGpuPipeline _additivePipeline;  // additive (glowy VFX)
         readonly IGpuShaderSet _shaders;
         readonly IGpuSampler _linearSampler;
         readonly IGpuSampler _pointSampler;
@@ -42,6 +43,17 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
         // Keyed by (texture, sampler): a texture drawn under both Linear and Point in one frame needs a set each.
         readonly Dictionary<(IGpuTexture Tex, IGpuSampler Samp), IGpuResourceSet> _sets = new();
         readonly QuadRunBuilder<V> _runs = new();
+
+        // The current draw blend mode (reset to Alpha by each Begin). Read at EmitQuad time so it can change
+        // per quad within a batch.
+        BlendMode _blend = BlendMode.Alpha;
+
+        // A stable per-texture wrapper used as the run key for ADDITIVE draws, so an additive quad never coalesces
+        // with an alpha quad of the same texture and Flush can pick the right pipeline. The alpha path keeps using
+        // the raw texture handle as the key (unchanged, so existing output is byte-identical). Cached per handle to
+        // keep additive draws zero-alloc after warm-up.
+        sealed class AdditiveKey { public readonly IGpuTexture Tex; public AdditiveKey(IGpuTexture t) => Tex = t; }
+        readonly Dictionary<IGpuTexture, AdditiveKey> _additiveKeys = new();
 
         const uint VertexSizeBytes = 32;       // V = Pos(8) + Uv(8) + Color(16)
         // One growable vertex buffer PER flush-within-a-frame. A frame can flush several times (every
@@ -72,10 +84,10 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
                 new GpuVertexElement("ClipPos", GpuVertexElementFormat.Float2),
                 new GpuVertexElement("Uv", GpuVertexElementFormat.Float2),
                 new GpuVertexElement("Color", GpuVertexElementFormat.Float4));
-            _pipeline = f.CreateGraphicsPipeline(new GpuPipelineDescription
+            GpuPipelineDescription Describe(GpuBlendAttachment blend) => new GpuPipelineDescription
             {
                 BlendFactor = Vector4.Zero,
-                BlendAttachments = new[] { GpuBlendAttachment.AlphaBlend },
+                BlendAttachments = new[] { blend },
                 DepthStencil = GpuDepthStencilState.Disabled,
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: false, scissorTestEnabled: true),
                 Topology = GpuPrimitiveTopology.TriangleList,
@@ -83,8 +95,17 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
                 ShaderSet = _shaders,
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vl },
                 Outputs = output,
-            });
+            };
+            _pipeline = f.CreateGraphicsPipeline(Describe(GpuBlendAttachment.AlphaBlend));
+            _additivePipeline = f.CreateGraphicsPipeline(Describe(GpuBlendAttachment.Additive));
         }
+
+        /// <summary>
+        /// Compositing mode for subsequent draws (default <see cref="BlendMode.Alpha"/>). Each <c>Begin</c> resets
+        /// this to <see cref="BlendMode.Alpha"/>; set it mid-batch to switch (e.g. <see cref="BlendMode.Additive"/>
+        /// for glowy VFX) without a new <c>Begin</c>. Painter's order is preserved across blend modes.
+        /// </summary>
+        public BlendMode BlendMode { get => _blend; set => _blend = value; }
 
         /// <summary>
         /// Convert a clip rect (in viewport points, top-left origin) to framebuffer pixels, scaling for DPI
@@ -261,9 +282,17 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
             Vector2 tl = Clip(worldTL.X, worldTL.Y), tr = Clip(worldTR.X, worldTR.Y), br = Clip(worldBR.X, worldBR.Y), bl = Clip(worldBL.X, worldBL.Y);
             var uTL = new Vector2(srcUV.X, srcUV.Y); var uTR = new Vector2(srcUV.Z, srcUV.Y);
             var uBR = new Vector2(srcUV.Z, srcUV.W); var uBL = new Vector2(srcUV.X, srcUV.W);
-            var key = tex.Handle;
+            // Alpha keeps the raw handle as the key (unchanged path); additive uses a stable per-texture wrapper so
+            // it never merges with an alpha run of the same texture and Flush can choose the additive pipeline.
+            object key = _blend == BlendMode.Alpha ? tex.Handle : AdditiveKeyFor(tex.Handle);
             _runs.Add(key, new V { Pos = tl, Uv = uTL, Color = color }); _runs.Add(key, new V { Pos = tr, Uv = uTR, Color = color }); _runs.Add(key, new V { Pos = br, Uv = uBR, Color = color });
             _runs.Add(key, new V { Pos = tl, Uv = uTL, Color = color }); _runs.Add(key, new V { Pos = br, Uv = uBR, Color = color }); _runs.Add(key, new V { Pos = bl, Uv = uBL, Color = color });
+        }
+
+        AdditiveKey AdditiveKeyFor(IGpuTexture tex)
+        {
+            if (!_additiveKeys.TryGetValue(tex, out var k)) { k = new AdditiveKey(tex); _additiveKeys[tex] = k; }
+            return k;
         }
 
         /// <summary>Draw <paramref name="text"/> with its top-left at <paramref name="position"/>.</summary>
@@ -317,13 +346,16 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
             // A dedicated buffer for THIS flush so a prior flush's pending Draw isn't overwritten.
             IGpuBuffer vb = AcquireFlushBuffer((uint)totalCount * VertexSizeBytes);
 
-            _cl.SetPipeline(_pipeline);
             uint byteOffset = 0;
             uint vertexStart = 0;
             foreach (var (key, verts) in _runs.Runs)
             {
                 if (verts.Count == 0) continue;
-                var tex = (IGpuTexture)key;
+                // An additive run is keyed by an AdditiveKey wrapper; everything else is a raw texture handle (alpha).
+                IGpuTexture tex; IGpuPipeline pipeline;
+                if (key is AdditiveKey ak) { tex = ak.Tex; pipeline = _additivePipeline; }
+                else { tex = (IGpuTexture)key; pipeline = _pipeline; }
+                _cl.SetPipeline(pipeline);
                 // Upload directly from the run's backing List<V> — no ToArray() copy.
                 _gd.UpdateBuffer(vb, byteOffset, (ReadOnlySpan<V>)CollectionsMarshal.AsSpan(verts));
                 var setKey = (tex, _sampler);
@@ -364,13 +396,13 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
             return new Vector2(v.X, v.Y);
         }
 
-        void ResetBatches() => _runs.Reset();
+        void ResetBatches() { _runs.Reset(); _blend = BlendMode.Alpha; }
 
         public void Dispose()
         {
             foreach (var vb in _vbs) vb?.Dispose();
             foreach (var s in _sets.Values) s.Dispose();
-            _pipeline.Dispose(); _layout.Dispose();
+            _pipeline.Dispose(); _additivePipeline.Dispose(); _layout.Dispose();
             _shaders.Dispose();
         }
     }

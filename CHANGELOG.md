@@ -5,6 +5,43 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 6.6.0
+
+Additive (non-breaking): a generic 2D VFX module under `KhaozEngine.Render2D.Vfx` (glowing sprites, animated
+energy beams, rich pooled particles), plus per-quad additive blending on `SpriteBatch`. Engine-first
+centralization driven by Nullwake's mining-VFX upgrade; nothing here is Nullwake-specific. The alpha render path
+is byte-identical to 6.5.0 (existing 2D/3D goldens unchanged).
+
+- `KhaozEngine.Render2D.BlendMode` (`Alpha` | `Additive`) and `SpriteBatch.BlendMode { get; set; }`: choose the
+  compositing mode for subsequent draws. It can change mid-batch (per quad) without a new `Begin`, and painter's
+  order is preserved across blend modes. Each `Begin` resets it to `Alpha`. The default `Alpha` path is unchanged
+  (the run key, pipeline, and vertex output for alpha draws are identical, so output is byte-for-byte the same);
+  additive draws go through a second pipeline built from `GpuBlendAttachment.Additive`.
+- `KhaozEngine.Render2D.Vfx.Particle2DSystem`: a fixed-size, zero-allocation, screen-space particle pool (ring
+  buffer) driven by a deterministic seeded `XorRng` (not `System.Random`). Per particle: velocity, constant
+  acceleration (gravity), **drag** (velocity damping), horizontal sway, **rotation + angular velocity**, size
+  lerp and colour lerp over life, and a per-particle **blend mode**. `Emit(in Particle2DEmitterConfig, Vector2
+  origin, int count)` and a tint overload; `Update(float dt)`; `Clear()`; `ActiveParticles()` snapshots; and
+  `Draw(SpriteBatch, Texture2D)` (per-particle blend) / `Draw(SpriteBatch, Texture2D, BlendMode)` (forced blend)
+  - pass a 1x1 white pixel for solid squares or a baked glow dot for soft sprites.
+- `KhaozEngine.Render2D.Vfx.Particle2DEmitterConfig` (immutable `readonly record struct`, `with`-derivable),
+  `Particle2DEmission` (`Radial` | `Directional`-with-cone), and `Particle2DView` (read-only snapshot for tests
+  and custom rendering). Build configs from data so a consumer keeps presets in content.
+- `KhaozEngine.Render2D.Vfx.EnergyBeam.Draw(SpriteBatch, Texture2D white, Texture2D? glow, Vector2 a, Vector2 b,
+  in BeamParams, float timeSeconds)`: an animated additive A->B beam - soft glow band under a bright core, with
+  flowing dashes, brightness/width pulse, sideways jitter, and endpoint flares. Time-driven and stateless (no
+  hidden mutable state). `BeamParams` is an immutable record struct with a `Default` preset.
+- `KhaozEngine.Render2D.Vfx.VfxTextures`: CPU-baked VFX textures, no shipped asset. `BakeGlowPixels`/
+  `BakeRingPixels` return tightly-packed RGBA8 (pure / headless); `BakeGlow`/`BakeRing`/`White` upload to a
+  sampleable `Texture2D` on a `Render2DSurface` or snapshot `Render2DContext`.
+- `KhaozEngine.Render2D.Vfx.VfxRenderer` (`IDisposable`): convenience owner that bakes a glow, a ring, and a 1x1
+  white texture **at construction** and offers ready-made additive draws - `DrawGlow` (halos/flares/bloom),
+  `DrawRing` (impact/shockwave), and `DrawBeam` (forwards to `EnergyBeam` with the owned textures). Exposes
+  `GlowTexture`/`RingTexture`/`WhitePixel` to feed a `Particle2DSystem`.
+- Trauma-based screen shake is unchanged: the existing `KhaozEngine.Effects.ScreenShake` (`Add`/`Update`/
+  `Offset`/`Angle`, camera-independent, deterministic seeded noise) already covers the VFX brief's shake item, so
+  no duplicate type was added. It reaches 2D consumers via the `Game2D` umbrella (since 6.4.0).
+
 ## 6.5.0
 
 Additive (non-breaking): dynamic point lights in the lit mesh pass, for 2.5D mesh-composited games (SpaceGame's

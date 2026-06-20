@@ -4,7 +4,7 @@ Which game uses which packages, at which version. Current state only - for the p
 [`../CHANGELOG.md`](../CHANGELOG.md). Update this whenever a consumer bumps a `<PackageReference>` or the
 engine ships a new version.
 
-**Engine current version:** `6.5.0` (the shared `<KhaozEngine5xVersion>` line, which is the engine): the
+**Engine current version:** `6.6.0` (the shared `<KhaozEngine5xVersion>` line, which is the engine): the
 custom MonoGame-free stack (`Primitives`/`Gpu`/`Windowing`/`Render2D`/`Render3D`/`Gui`/`Audio`/`Particles`/`Effects`/`Game`/`Game.Render3D`) **plus**
 the MonoGame-free foundation packages that graduated onto it at `5.46.0`
 (`Ecs`/`Serialization`/`Content`/`Diagnostics`/`App`/`Localization`/`Persistence`/`Pooling`/`Platform`/
@@ -132,6 +132,11 @@ screens; the display-fitted `AppWindow.Scaled` window + responsive `AdaptiveView
 own `LocalSaveSystem` (`SaveEncoder` + `AtomicJsonWriter`). The Android/iOS heads are parked until a
 mobile-windowing engine project. (Still game-local and not yet converged onto the engine: the ~9 Gui widgets it
 duplicates from `KhaozEngine.Gui`.)
+
+**Adoption DUE: 6.6.0** ships the generic 2D VFX module (`KhaozEngine.Render2D.Vfx`: `Particle2DSystem`,
+`EnergyBeam`, `VfxRenderer`/glow + additive `SpriteBatch.BlendMode`) that this mining-VFX upgrade was waiting on.
+Nullwake's in-repo `Nullwake.Core.Rendering` particle system generalizes onto `Particle2DSystem` (gravity + drag
++ rotation + per-particle additive blend); bump `Game2D` from 6.3.0 to 6.6.0 to wire it.
 
 ### SpaceGame - on 6.3.0 (MonoGame-free)
 

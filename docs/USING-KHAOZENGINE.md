@@ -250,6 +250,50 @@ batch.End();
   tightly-packed RGBA8 image with `AlphaAt` / `IsOpaqueAt(threshold)` for opaque-pixel collision masks. Pass
   `img.Pixels` to `Surface2D.CreateTexture` to also draw it without re-decoding.
 - Offscreen capture (headless / tooling): `Surface2D.CaptureToTexture(...)` and `CaptureToRgba(...)`.
+- Blend mode: `batch.BlendMode = BlendMode.Additive` switches subsequent draws to additive compositing (glows,
+  sparks, beams); it can change mid-batch (per quad) and painter's order is preserved across modes. Each `Begin`
+  resets it to `BlendMode.Alpha` (the default, source-over).
+
+### 2D VFX (`KhaozEngine.Render2D.Vfx`)
+
+Glowing sprites, animated energy beams, and rich pooled particles - all additive, no shipped asset. The
+convenience entry point is `VfxRenderer`, which bakes the textures it needs at construction:
+
+```csharp
+using var vfx = new VfxRenderer(Surface2D);          // bakes a glow, a ring, and a 1x1 white pixel
+
+// Pooled, zero-alloc, deterministic (seeded XorRng) screen-space particles.
+var sparks = new Particle2DSystem(capacity: 256, seed: 1);
+var cfg = new Particle2DEmitterConfig {
+    MinLife = 0.2f, MaxLife = 0.5f, MinSpeed = 60f, MaxSpeed = 140f,
+    Emission = Particle2DEmission.Radial, StartSize = 4f, EndSize = 0f,
+    Acceleration = new Vector2(0, 300f),             // gravity
+    Drag = 1.5f, RotationJitter = 3.14f, MinAngularVelocity = -6f, MaxAngularVelocity = 6f,
+    StartColor = new Color(1f, 0.9f, 0.5f, 1f), EndColor = new Color(1f, 0.3f, 0f, 0f),
+    Blend = BlendMode.Additive,
+};
+sparks.Emit(cfg, hitPoint, count: 24);               // burst; call each frame for a continuous stream
+// ... each frame:
+sparks.Update(dt);
+batch.Begin();
+sparks.Draw(batch, vfx.GlowTexture);                 // or vfx.WhitePixel for solid squares
+vfx.DrawGlow(batch, hitPoint, radius: 20f, new Color(1f, 0.8f, 0.4f, 1f));   // halo / impact flare
+vfx.DrawBeam(batch, muzzle, target, BeamParams.Default with { DashLength = 12f, DashSpeed = 80f }, timeSeconds);
+batch.End();
+```
+
+- `Particle2DSystem`: ring-buffer pool; per particle = velocity, acceleration (gravity), drag, sway, rotation +
+  angular velocity, size/colour lerp over life, per-particle blend. `Emit(in cfg, origin, count)` (+ tint
+  overload), `Update(dt)`, `Clear()`, `ActiveParticles()` (snapshots for tests), `Draw(batch, texture)` (per-
+  particle blend) or `Draw(batch, texture, BlendMode)` (forced). Deterministic per seed.
+- `Particle2DEmitterConfig` is an immutable `record struct` - keep presets in content and derive with `with`.
+- `EnergyBeam.Draw(batch, white, glow, a, b, in BeamParams, timeSeconds)`: additive A->B beam (glow band + core,
+  flowing dashes, pulse, jitter, endpoint flares); time-driven and stateless. `VfxRenderer.DrawBeam` wraps it
+  with the owned textures.
+- `VfxTextures`: `BakeGlowPixels`/`BakeRingPixels` (pure RGBA8, headless) and `BakeGlow`/`BakeRing`/`White`
+  (upload to a `Render2DSurface` / `Render2DContext`).
+- Screen shake is **not** here - use `KhaozEngine.Effects.ScreenShake` (trauma-based, camera-independent: `Add` /
+  `Update(dt)` / `Offset` / `Angle`); compose `Offset`/`Angle` onto your own camera.
 
 ---
 

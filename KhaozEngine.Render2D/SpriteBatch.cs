@@ -18,19 +18,52 @@ namespace KhaozEngine.Render2D
 layout(location=0) in vec2 ClipPos;
 layout(location=1) in vec2 Uv;
 layout(location=2) in vec4 Color;
+layout(location=3) in vec2 Local;
+layout(location=4) in vec4 Shape;
+layout(location=5) in vec2 Mode;
 layout(location=0) out vec2 vUv;
 layout(location=1) out vec4 vColor;
-void main() { gl_Position = vec4(ClipPos, 0.0, 1.0); vUv = Uv; vColor = Color; }";
+layout(location=2) out vec2 vLocal;
+layout(location=3) out vec4 vShape;
+layout(location=4) out vec2 vMode;
+void main() {
+    gl_Position = vec4(ClipPos, 0.0, 1.0);
+    vUv = Uv; vColor = Color; vLocal = Local; vShape = Shape; vMode = Mode;
+}";
 
         const string FragSrc = @"#version 450
 layout(set=0, binding=0) uniform texture2D Tex;
 layout(set=0, binding=1) uniform sampler Samp;
 layout(location=0) in vec2 vUv;
 layout(location=1) in vec4 vColor;
+layout(location=2) in vec2 vLocal;
+layout(location=3) in vec4 vShape;
+layout(location=4) in vec2 vMode;
 layout(location=0) out vec4 oColor;
-void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
+void main() {
+    vec4 base = texture(sampler2D(Tex, Samp), vUv) * vColor;
+    if (vMode.y < 0.5) {
+        oColor = base;                       // plain draws: byte-identical to before
+    } else {
+        vec2 b = vShape.xy;
+        float r = vShape.z;
+        float soft = vShape.w;
+        float stroke = vMode.x;
+        vec2 q = abs(vLocal) - b + r;
+        float d = min(max(q.x, q.y), 0.0) + length(max(q, vec2(0.0))) - r;
+        if (stroke > 0.0) d = abs(d) - stroke * 0.5;
+        float aa = soft > 0.0 ? soft : max(fwidth(d), 1e-4);
+        float cov = clamp(0.5 - d / aa, 0.0, 1.0);
+        base.a *= cov;
+        oColor = base;
+    }
+}";
 
-        struct V { public Vector2 Pos; public Vector2 Uv; public Vector4 Color; }
+        struct V
+        {
+            public Vector2 Pos; public Vector2 Uv; public Vector4 Color;
+            public Vector2 Local; public Vector4 Shape; public Vector2 Mode;
+        }
 
         readonly IGpuDevice _gd;
         readonly IGpuResourceLayout _layout;
@@ -55,7 +88,7 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
         sealed class AdditiveKey { public readonly IGpuTexture Tex; public AdditiveKey(IGpuTexture t) => Tex = t; }
         readonly Dictionary<IGpuTexture, AdditiveKey> _additiveKeys = new();
 
-        const uint VertexSizeBytes = 32;       // V = Pos(8) + Uv(8) + Color(16)
+        const uint VertexSizeBytes = 64;       // V = Pos(8)+Uv(8)+Color(16)+Local(8)+Shape(16)+Mode(8)
         // One growable vertex buffer PER flush-within-a-frame. A frame can flush several times (every
         // SetScissor/ClearScissor forces one), and a buffer referenced by an already-recorded Draw must not be
         // overwritten before the GPU runs that Draw — so each flush gets its own buffer instead of reusing one at
@@ -83,7 +116,10 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
             var vl = new GpuVertexLayoutDescription(
                 new GpuVertexElement("ClipPos", GpuVertexElementFormat.Float2),
                 new GpuVertexElement("Uv", GpuVertexElementFormat.Float2),
-                new GpuVertexElement("Color", GpuVertexElementFormat.Float4));
+                new GpuVertexElement("Color", GpuVertexElementFormat.Float4),
+                new GpuVertexElement("Local", GpuVertexElementFormat.Float2),
+                new GpuVertexElement("Shape", GpuVertexElementFormat.Float4),
+                new GpuVertexElement("Mode", GpuVertexElementFormat.Float2));
             GpuPipelineDescription Describe(GpuBlendAttachment blend) => new GpuPipelineDescription
             {
                 BlendFactor = Vector4.Zero,
@@ -279,15 +315,40 @@ void main() { oColor = texture(sampler2D(Tex, Samp), vUv) * vColor; }";
         // Both the axis-aligned and rotated Draw overloads funnel through here so z-order + scissor are shared.
         void EmitQuad(Texture2D tex, Vector2 worldTL, Vector2 worldTR, Vector2 worldBR, Vector2 worldBL, Vector4 srcUV, Vector4 color)
         {
+            // Plain path: zero SDF fields, single colour on all four corners, Mode.y = 0 (disabled).
+            EmitQuad(tex, worldTL, worldTR, worldBR, worldBL, srcUV, color, color,
+                Vector2.Zero, Vector2.Zero, Vector2.Zero, Vector2.Zero, Vector4.Zero, Vector2.Zero);
+        }
+
+        // Full emit: per-corner colour (top vs bottom for gradients) + per-corner Local + shared Shape/Mode.
+        void EmitQuad(Texture2D tex, Vector2 worldTL, Vector2 worldTR, Vector2 worldBR, Vector2 worldBL,
+            Vector4 srcUV, Vector4 colorTop, Vector4 colorBottom,
+            Vector2 localTL, Vector2 localTR, Vector2 localBR, Vector2 localBL, Vector4 shape, Vector2 mode)
+        {
             Vector2 tl = Clip(worldTL.X, worldTL.Y), tr = Clip(worldTR.X, worldTR.Y), br = Clip(worldBR.X, worldBR.Y), bl = Clip(worldBL.X, worldBL.Y);
             var uTL = new Vector2(srcUV.X, srcUV.Y); var uTR = new Vector2(srcUV.Z, srcUV.Y);
             var uBR = new Vector2(srcUV.Z, srcUV.W); var uBL = new Vector2(srcUV.X, srcUV.W);
             // Alpha keeps the raw handle as the key (unchanged path); additive uses a stable per-texture wrapper so
             // it never merges with an alpha run of the same texture and Flush can choose the additive pipeline.
             object key = _blend == BlendMode.Alpha ? tex.Handle : AdditiveKeyFor(tex.Handle);
-            _runs.Add(key, new V { Pos = tl, Uv = uTL, Color = color }); _runs.Add(key, new V { Pos = tr, Uv = uTR, Color = color }); _runs.Add(key, new V { Pos = br, Uv = uBR, Color = color });
-            _runs.Add(key, new V { Pos = tl, Uv = uTL, Color = color }); _runs.Add(key, new V { Pos = br, Uv = uBR, Color = color }); _runs.Add(key, new V { Pos = bl, Uv = uBL, Color = color });
+            V vtl = new V { Pos = tl, Uv = uTL, Color = colorTop, Local = localTL, Shape = shape, Mode = mode };
+            V vtr = new V { Pos = tr, Uv = uTR, Color = colorTop, Local = localTR, Shape = shape, Mode = mode };
+            V vbr = new V { Pos = br, Uv = uBR, Color = colorBottom, Local = localBR, Shape = shape, Mode = mode };
+            V vbl = new V { Pos = bl, Uv = uBL, Color = colorBottom, Local = localBL, Shape = shape, Mode = mode };
+            _runs.Add(key, vtl); _runs.Add(key, vtr); _runs.Add(key, vbr);
+            _runs.Add(key, vtl); _runs.Add(key, vbr); _runs.Add(key, vbl);
         }
+
+        /// <summary>The four rect-local corner offsets (TL, TR, BR, BL) from the centre of a w x h rect. Pure / headless.</summary>
+        internal static (Vector2 TL, Vector2 TR, Vector2 BR, Vector2 BL) RoundedLocals(float w, float h)
+        {
+            float hx = w * 0.5f, hy = h * 0.5f;
+            return (new Vector2(-hx, -hy), new Vector2(hx, -hy), new Vector2(hx, hy), new Vector2(-hx, hy));
+        }
+
+        /// <summary>Packs the SDF Shape attribute = (halfX, halfY, radius, softness). Pure / headless.</summary>
+        internal static Vector4 RoundedShape(float w, float h, float radius, float softness) =>
+            new Vector4(w * 0.5f, h * 0.5f, radius, softness);
 
         AdditiveKey AdditiveKeyFor(IGpuTexture tex)
         {

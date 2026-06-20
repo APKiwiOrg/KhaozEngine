@@ -27,6 +27,67 @@ namespace KhaozEngine.Gui
         }
 
         /// <summary>
+        /// Fill <paramref name="r"/> honouring <paramref name="style"/>: when <see cref="GuiStyle.IsFlat"/> this is
+        /// the exact plain single-quad <see cref="Fill"/> + <see cref="Border"/> (byte-identical to pre-7.7.0);
+        /// otherwise it draws the soft shadow (when <see cref="GuiStyle.ShadowColor"/> is non-transparent), the rounded
+        /// (optionally gradient) body, and the rounded border ring.
+        /// <paramref name="bodyColor"/> is the resolved state colour (hover/press/etc.); <paramref name="borderColor"/>
+        /// is the outline.
+        /// </summary>
+        public static void FillStyled(SpriteBatch batch, Texture2D white, Rect r, in GuiStyle style,
+            Vector4 bodyColor, Vector4 borderColor)
+        {
+            if (style.IsFlat)
+            {
+                Fill(batch, white, r, bodyColor);
+                Border(batch, white, r, style.BorderThickness, borderColor);
+                return;
+            }
+
+            var dest = new Vector4(r.X, r.Y, r.Width, r.Height);
+
+            // Soft drop shadow under everything. Expand the quad by ShadowSize (half per side) so the SDF soft
+            // falloff has fragments OUTSIDE the body to fade through (same pattern as HoverGlow); without the
+            // expansion the softness would only ramp at the quad's own edge and read as a hard offset strip.
+            if (style.ShadowSize > 0f && style.ShadowColor.W > 0f)
+            {
+                float ss = style.ShadowSize;
+                var shadow = new Vector4(
+                    r.X + style.ShadowOffset.X - ss * 0.5f,
+                    r.Y + style.ShadowOffset.Y - ss * 0.5f,
+                    r.Width + ss,
+                    r.Height + ss);
+                batch.DrawRounded(white, shadow, (Color)style.ShadowColor,
+                    style.CornerRadius + ss * 0.5f, softness: ss);
+            }
+
+            // Rounded body: vertical gradient (scale of the state colour) or flat.
+            Vector4 top = bodyColor, bottom = bodyColor;
+            if (style.FillMode == GuiFill.VerticalGradient)
+            {
+                top = GuiStyle.ScaleRgb(bodyColor, style.GradientTopScale);
+                bottom = GuiStyle.ScaleRgb(bodyColor, style.GradientBottomScale);
+            }
+            batch.DrawRounded(white, dest, new Vector4(0, 0, 1, 1), (Color)top, (Color)bottom, style.CornerRadius);
+
+            // Rounded border ring.
+            if (style.BorderThickness > 0f)
+                batch.DrawRounded(white, dest, (Color)borderColor, style.CornerRadius, softness: 0f, strokeWidth: style.BorderThickness);
+        }
+
+        /// <summary>Draw a hover glow halo behind/around <paramref name="r"/> (additive) when the style enables it.</summary>
+        public static void HoverGlow(SpriteBatch batch, Texture2D white, Rect r, in GuiStyle style)
+        {
+            if (style.GlowSize <= 0f || style.GlowColor.W <= 0f) return;
+            var prev = batch.BlendMode;
+            batch.BlendMode = BlendMode.Additive;
+            float g = style.GlowSize;
+            var dest = new Vector4(r.X - g * 0.5f, r.Y - g * 0.5f, r.Width + g, r.Height + g);
+            batch.DrawRounded(white, dest, (Color)style.GlowColor, style.CornerRadius + g * 0.5f, softness: g);
+            batch.BlendMode = prev;
+        }
+
+        /// <summary>
         /// The handle geometry for a horizontal slider track: a square knob the height of <paramref name="rect"/>
         /// (clamped to the rect width), and the travel range of its CENTRE. Insetting by the handle half-width is
         /// what lets the value reach exactly 0 and 1 without the knob spilling past the track ends. Shared by the
@@ -71,8 +132,7 @@ namespace KhaozEngine.Gui
                 : hover ? style.Hover
                 : style.Fill;
             var handle = new Rect(centerX - half, rect.Y, half * 2f, rect.Height);
-            Fill(batch, white, handle, knob);
-            Border(batch, white, handle, style.BorderThickness, enabled ? style.Border : style.DisabledText);
+            FillStyled(batch, white, handle, style, knob, enabled ? style.Border : style.DisabledText);
         }
 
         /// <summary>
@@ -93,8 +153,8 @@ namespace KhaozEngine.Gui
             Vector4 border = selected ? style.SelectedBorder : style.Border;
             Vector4 text = enabled ? style.Text : style.DisabledText;
 
-            Fill(batch, white, rect, fill);
-            Border(batch, white, rect, style.BorderThickness, border);
+            if (hover && enabled) HoverGlow(batch, white, rect, style);
+            FillStyled(batch, white, rect, style, fill, border);
 
             Vector2 size = font.Measure(label);
             var pos = new Vector2(

@@ -40,6 +40,9 @@ namespace KhaozEngine.Gui
         /// <summary>The style applied to <see cref="Button(SpriteFont, Rect, string)"/> when no explicit style is passed.</summary>
         public GuiStyle Style { get; set; }
 
+        /// <summary>The icon set resolved by <see cref="Icon"/>/<see cref="IconButton"/>/<see cref="StatChip"/>; null = icons draw nothing.</summary>
+        public IconAtlas? IconAtlas { get; set; }
+
         /// <param name="white">A 1x1 white texture for rectangle fills.</param>
         /// <param name="style">The default widget style; <see cref="GuiStyle.Default"/> if null.</param>
         public GuiSurface(Texture2D white, GuiStyle? style = null)
@@ -80,6 +83,26 @@ namespace KhaozEngine.Gui
             if (_batch is null) return;
             GuiDraw.Fill(_batch, _white, rect, fill);
             GuiDraw.Border(_batch, _white, rect, borderThickness, border);
+        }
+
+        /// <summary>Draw a panel honouring the full <paramref name="style"/> (rounded/shadow/gradient); reserves it for click-through.</summary>
+        public void Panel(Rect rect, in GuiStyle style)
+        {
+            _blocked.Add(rect);
+            if (_batch is null) return;
+            GuiDraw.FillStyled(_batch, _white, rect, style, style.Fill, style.Border);
+        }
+
+        /// <summary>
+        /// Draw icon <paramref name="id"/> into <paramref name="rect"/>, tinted by <paramref name="tint"/>, via the
+        /// shared batched-quad path. No-op when no <see cref="IconAtlas"/> is set or the id is unknown. Decoration:
+        /// does not reserve a rect (compose inside a button/chip to reserve).
+        /// </summary>
+        public void Icon(Rect rect, string id, Vector4 tint)
+        {
+            if (_batch is null || IconAtlas is null) return;
+            if (!IconAtlas.TryGet(id, out var tex, out var uv)) return;
+            _batch.Draw(tex, new Vector4(rect.X, rect.Y, rect.Width, rect.Height), uv, (Color)tint);
         }
 
         /// <summary>Draw a plain filled colour chip; reserves it for click-through.</summary>
@@ -143,6 +166,61 @@ namespace KhaozEngine.Gui
             GuiDraw.DrawButton(_batch, _white, font, rect, label, style, enabled, selected, hovering, pressing);
 
             return clicked;
+        }
+
+        /// <summary>
+        /// An icon-only button (icon centred in a styled panel, tinted by the text colour, hover glow from the
+        /// style). Returns true on a valid press-origin tap; always reserves its rect. Mirrors <see cref="Button(SpriteFont, Rect, string, GuiStyle, bool, bool)"/>.
+        /// </summary>
+        public bool IconButton(Rect rect, string iconId, GuiStyle style, bool enabled = true, bool selected = false)
+        {
+            _blocked.Add(rect);
+            Pointer p = _pointer;
+            bool clicked = enabled && p.IsTapIn(rect);
+            bool hovering = enabled && p.IsHoveringIn(rect);
+            if (hovering) _hoveredRect = rect;
+            if (_batch is null) return clicked;
+
+            bool pressing = p.IsPressingIn(rect);
+            Vector4 fill = !enabled ? style.DisabledFill
+                : selected ? style.SelectedFill
+                : pressing ? style.Press
+                : hovering ? style.Hover
+                : style.Fill;
+            Vector4 border = selected ? style.SelectedBorder : style.Border;
+            Vector4 iconTint = enabled ? style.Text : style.DisabledText;
+
+            if (hovering) GuiDraw.HoverGlow(_batch, _white, rect, style);
+            GuiDraw.FillStyled(_batch, _white, rect, style, fill, border);
+
+            float side = System.MathF.Min(rect.Width, rect.Height) * 0.6f;
+            var iconRect = new Rect(rect.X + (rect.Width - side) * 0.5f, rect.Y + (rect.Height - side) * 0.5f, side, side);
+            Icon(iconRect, iconId, iconTint);
+            return clicked;
+        }
+
+        /// <summary>
+        /// A non-interactive "stat chip": a styled rounded panel with an icon at the left and a label/value to its
+        /// right. Reserves its rect for click-through (like <see cref="Panel(Rect, Vector4)"/>). A null
+        /// <paramref name="font"/> draws panel + icon only (headless-safe).
+        /// </summary>
+        public void StatChip(Rect rect, string iconId, string label, string value, SpriteFont font, GuiStyle style)
+        {
+            _blocked.Add(rect);
+            if (_batch is null) return;
+
+            GuiDraw.FillStyled(_batch, _white, rect, style, style.Fill, style.Border);
+
+            float pad = rect.Height * 0.18f;
+            float iconSide = rect.Height - pad * 2f;
+            var iconRect = new Rect(rect.X + pad, rect.Y + pad, iconSide, iconSide);
+            Icon(iconRect, iconId, style.Text);
+
+            if (font is null) return;
+            float textX = iconRect.Right + pad;
+            float ty = rect.Y + (rect.Height - font.LineHeight) * 0.5f;
+            string text = string.IsNullOrEmpty(value) ? label : $"{label}  {value}";
+            _batch.DrawString(font, text, new Vector2(textX, ty), (Color)style.Text);
         }
 
         /// <summary>A horizontal slider using the surface's default <see cref="Style"/>. Returns the value in [0,1].</summary>

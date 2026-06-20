@@ -19,7 +19,7 @@ namespace KhaozEngine.Updates;
 /// it never touches game simulation or RNG. Offline-safe: check failures fall back to <see
 /// cref="UpdateState.Idle"/>.
 /// </summary>
-public sealed class UpdateService : IDisposable
+public sealed class UpdateService : IDisposable, IUpdateStatus
 {
     private readonly UpdateServiceOptions options;
     private readonly IUpdateSource source;

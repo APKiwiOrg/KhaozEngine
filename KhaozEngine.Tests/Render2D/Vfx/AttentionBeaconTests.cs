@@ -37,4 +37,63 @@ public class AttentionBeaconTests
         Assert.Equal(0, p.RingCount);
         Assert.Equal(0, p.GlintCount);
     }
+
+    [Fact]
+    public void RingPhase_EvenlyStaggered()
+    {
+        // At time 0 the i-th of 4 rings is offset by i/4 of the period.
+        Assert.Equal(0.00f, AttentionBeacon.RingPhase(0, 4, 0f, 2f), Tol);
+        Assert.Equal(0.25f, AttentionBeacon.RingPhase(1, 4, 0f, 2f), Tol);
+        Assert.Equal(0.50f, AttentionBeacon.RingPhase(2, 4, 0f, 2f), Tol);
+        Assert.Equal(0.75f, AttentionBeacon.RingPhase(3, 4, 0f, 2f), Tol);
+    }
+
+    [Fact]
+    public void RingPhase_WrapsWithinUnitInterval_AndResets()
+    {
+        // Period 2: phase advances time/period and wraps at the period boundary back to its start.
+        float atStart = AttentionBeacon.RingPhase(0, 3, 0f, 2f);
+        float atHalf = AttentionBeacon.RingPhase(0, 3, 1f, 2f);
+        float atPeriod = AttentionBeacon.RingPhase(0, 3, 2f, 2f);
+        Assert.Equal(0.0f, atStart, Tol);
+        Assert.Equal(0.5f, atHalf, Tol);
+        Assert.Equal(0.0f, atPeriod, Tol); // reset
+        Assert.InRange(AttentionBeacon.RingPhase(0, 3, 5f, 2f), 0f, 1f); // always in [0,1)
+    }
+
+    [Fact]
+    public void RingRadius_GrowsMonotonically_FromInnerToMax()
+    {
+        float r0 = AttentionBeacon.RingRadius(0f, 6f, 48f);
+        float rMid = AttentionBeacon.RingRadius(0.5f, 6f, 48f);
+        float r1 = AttentionBeacon.RingRadius(1f, 6f, 48f);
+        Assert.Equal(6f, r0, Tol);   // inner at phase 0
+        Assert.Equal(27f, rMid, Tol); // lerp midpoint
+        Assert.Equal(48f, r1, Tol);  // max at phase 1
+        Assert.True(rMid > r0 && r1 > rMid, "radius must grow monotonically with phase");
+    }
+
+    [Fact]
+    public void RingAlpha_OneAtInner_ZeroAtMax()
+    {
+        Assert.Equal(1f, AttentionBeacon.RingAlpha(0f), Tol);   // bright at the inner radius
+        Assert.Equal(0f, AttentionBeacon.RingAlpha(1f), Tol);   // faded out by the max radius
+        Assert.Equal(0.25f, AttentionBeacon.RingAlpha(0.75f), Tol);
+    }
+
+    [Fact]
+    public void RingDiameter_DefaultThickness_CentersBandOnRadius()
+    {
+        // bandCenterFraction 0.675: a band at radius 27 needs a quad of side 2*27/0.675 = 80.
+        Assert.Equal(80f, AttentionBeacon.RingDiameter(27f, 1f, 0.675f), Tol);
+    }
+
+    [Fact]
+    public void RingDiameter_ThickerMultiplier_YieldsLargerQuad()
+    {
+        float thin = AttentionBeacon.RingDiameter(27f, 0.5f, 0.675f);
+        float native = AttentionBeacon.RingDiameter(27f, 1f, 0.675f);
+        float thick = AttentionBeacon.RingDiameter(27f, 2f, 0.675f);
+        Assert.True(thin < native && thick > native, "RingThickness scales the drawn quad");
+    }
 }

@@ -31,7 +31,7 @@ public interface IUpdateSource
     /// <summary>
     /// Downloads the raw bytes at <paramref name="url"/> (the manifest or its detached signature).
     /// Returns null on any transport/IO error. Implementations MUST reject a URL that is not https
-    /// or not same-origin with their configured base (see <see cref="HttpUpdateSource"/>).
+    /// or not same-host with their configured base (see <see cref="HttpUpdateSource"/>).
     /// </summary>
     Task<byte[]?> DownloadBytesAsync(string url, CancellationToken cancellationToken = default);
 

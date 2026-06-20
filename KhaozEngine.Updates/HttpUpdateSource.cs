@@ -120,31 +120,49 @@ public sealed class HttpUpdateSource : IUpdateSource, IDisposable
                 Directory.CreateDirectory(destDir);
             }
 
-            using var fileStream = new FileStream(destPath, FileMode.Create, FileAccess.Write, FileShare.None);
-            using Stream contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-
-            byte[] buffer = new byte[options.DownloadBufferSize];
-            long totalBytesRead = 0;
-            int bytesRead;
-            while ((bytesRead = await contentStream.ReadAsync(buffer, cancellationToken)) > 0)
+            // The file stream lives in a nested scope so it is disposed before any cleanup delete:
+            // deleting a still-open handle fails on Windows.
+            using (var fileStream = new FileStream(destPath, FileMode.Create, FileAccess.Write, FileShare.None))
+            using (Stream contentStream = await response.Content.ReadAsStreamAsync(cancellationToken))
             {
-                totalBytesRead += bytesRead;
-                if (totalBytesRead > maxBytes)
+                byte[] buffer = new byte[options.DownloadBufferSize];
+                long totalBytesRead = 0;
+                int bytesRead;
+                while ((bytesRead = await contentStream.ReadAsync(buffer, cancellationToken)) > 0)
                 {
-                    log.Info($"File exceeded size cap ({maxBytes} bytes), aborting: {fileUrl}");
-                    return false;
+                    totalBytesRead += bytesRead;
+                    if (totalBytesRead > maxBytes)
+                    {
+                        log.Info($"File exceeded size cap ({maxBytes} bytes), aborting: {fileUrl}");
+                        goto Cleanup;
+                    }
+                    await fileStream.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
+                    bytesProgress?.Report(totalBytesRead);
                 }
-                await fileStream.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
-                bytesProgress?.Report(totalBytesRead);
-            }
 
-            return true;
+                return true;
+            }
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException)
         {
             log.Info($"File download failed ({fileUrl}): {ex.Message}");
-            return false;
         }
+
+    Cleanup:
+        // Best-effort: never leave a partial/oversized file behind on a failure path. Runs only after
+        // the file stream above has been disposed.
+        try
+        {
+            if (File.Exists(destPath))
+            {
+                File.Delete(destPath);
+            }
+        }
+        catch
+        {
+            // ignore; cleanup is best-effort
+        }
+        return false;
     }
 
     /// <summary>Default layout: each file lives next to the manifest under the same build directory.</summary>

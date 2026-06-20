@@ -337,6 +337,12 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
   billboards, and a debug-draw overlay (`DebugLine/Ray/Box/Grid/Axes/Circle`). `Post` is the
   `PixelPostProcess` (pixelation / quantize / dither / cel bands / palette for the chunky retro look; the smooth
   look is the default).
+- Translucent filled overlay (alpha-blended flat shapes, drawn under the debug lines): `DebugFilledQuad`
+  (ground tiles / rects), `DebugFilledCircle` (discs / ranges), and `DebugFilledFan(center, rim, color, closed)`
+  (since 7.5.0) for an arbitrary, already-ordered boundary polygon - fan an outline out from a centre point to
+  fill a star-shaped area (e.g. a turret's line-of-sight footprint) that a quad or disc can't express. Wind the
+  rim CCW about the desired facing normal (`Vector3.UnitY` for a ground fan); `closed: true` (the default) seals
+  the loop with a wrap triangle, `false` leaves an open arc.
 - Dynamic point lights (since 6.5.0): `scene.AddLight(worldPos, color, radius, intensity)` queues a per-frame
   effect light (muzzle flashes, explosions, thrusters) that adds diffuse + cheap specular to the lit mesh pass,
   on top of the global key+fill+ambient term, with a smooth falloff to zero at `radius`. Cleared each `Begin()`

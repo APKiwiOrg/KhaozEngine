@@ -24,11 +24,12 @@ namespace KhaozEngine.Tests.Gui
         {
             var ui = Surface();
             var p = new Pointer();
-            p.Update(Frame(new Vector2(16, 16), false));
+            p.Update(Frame(new Vector2(16, 16), false));   // idle inside the icon rect
+            p.Update(Frame(new Vector2(16, 16), true));    // press-origin inside the icon rect
 
             ui.Begin(null, p);          // no IconAtlas set -> Icon is a no-op
             ui.Icon(new Rect(0, 0, 32, 32), Icons.Coin, Vector4.One);
-            // Decoration: reserves nothing, captures nothing.
+            // Decoration: reserves nothing, so a press inside its rect is not captured.
             Assert.False(ui.PointerCaptured);
         }
 
@@ -48,6 +49,19 @@ namespace KhaozEngine.Tests.Gui
             bool clicked = ui.IconButton(rect, Icons.Play, GuiStyle.Default);
             Assert.True(clicked);
             Assert.True(ui.PointerCaptured);
+        }
+
+        [Fact]
+        public void IconButton_ReturnsFalseWhenPressOriginOutsideRect()
+        {
+            var ui = Surface();
+            var p = new Pointer();
+            var rect = new Rect(10, 10, 40, 40);
+            p.Update(Frame(new Vector2(5, 5), false));     // idle outside
+            p.Update(Frame(new Vector2(5, 5), true));      // press-origin OUTSIDE
+            p.Update(Frame(new Vector2(30, 30), false));   // release inside
+            ui.Begin(null, p);
+            Assert.False(ui.IconButton(rect, Icons.Play, GuiStyle.Default));
         }
 
         [Fact]

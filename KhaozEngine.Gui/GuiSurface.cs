@@ -188,14 +188,14 @@ namespace KhaozEngine.Gui
                 : hovering ? style.Hover
                 : style.Fill;
             Vector4 border = selected ? style.SelectedBorder : style.Border;
-            Vector4 text = enabled ? style.Text : style.DisabledText;
+            Vector4 iconTint = enabled ? style.Text : style.DisabledText;
 
             if (hovering) GuiDraw.HoverGlow(_batch, _white, rect, style);
             GuiDraw.FillStyled(_batch, _white, rect, style, fill, border);
 
             float side = System.MathF.Min(rect.Width, rect.Height) * 0.6f;
             var iconRect = new Rect(rect.X + (rect.Width - side) * 0.5f, rect.Y + (rect.Height - side) * 0.5f, side, side);
-            Icon(iconRect, iconId, text);
+            Icon(iconRect, iconId, iconTint);
             return clicked;
         }
 

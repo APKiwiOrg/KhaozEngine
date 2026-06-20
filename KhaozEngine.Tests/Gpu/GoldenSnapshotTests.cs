@@ -237,5 +237,44 @@ namespace KhaozEngine.Tests.Gpu
 
             GoldenCompare.AssertOrUpdate("scene2d_primitives", rgba, W, H);
         }
+
+        [GpuFact]
+        public void Golden2D_Modern()
+        {
+            byte[] rgba = Render2DSnapshot.Capture(W, H, new Color(0.10f, 0.11f, 0.14f, 1f), ctx =>
+            {
+                Texture2D white = ctx.CreateTexture(new byte[] { 255, 255, 255, 255 }, 1, 1);
+                var atlas = KhaozEngine.Gui.IconAtlas.Bake(ctx, cell: 64);
+                atlas.TryGet(KhaozEngine.Gui.Icons.Coin, out Texture2D iconTex, out System.Numerics.Vector4 coinUv);
+                atlas.TryGet(KhaozEngine.Gui.Icons.Heart, out _, out System.Numerics.Vector4 heartUv);
+                atlas.TryGet(KhaozEngine.Gui.Icons.Gear, out _, out System.Numerics.Vector4 gearUv);
+
+                var style = KhaozEngine.Gui.GuiStyle.Modern;
+                ctx.Batch.Begin();
+
+                // Soft drop shadow (expanded), then a rounded vertical-gradient panel on top.
+                float ss = style.ShadowSize;
+                ctx.Batch.DrawRounded(white,
+                    new System.Numerics.Vector4(40 - ss * 0.5f, 50 - ss * 0.5f + 4f, 220 + ss, 130 + ss),
+                    (Color)style.ShadowColor, style.CornerRadius + ss * 0.5f, softness: ss);
+                ctx.Batch.DrawRounded(white, new System.Numerics.Vector4(40, 50, 220, 130),
+                    new System.Numerics.Vector4(0, 0, 1, 1),
+                    (Color)new System.Numerics.Vector4(0.30f, 0.55f, 0.95f, 1f),
+                    (Color)new System.Numerics.Vector4(0.10f, 0.20f, 0.45f, 1f),
+                    style.CornerRadius);
+                // Rounded border ring.
+                ctx.Batch.DrawRounded(white, new System.Numerics.Vector4(40, 50, 220, 130),
+                    (Color)new System.Numerics.Vector4(0.6f, 0.8f, 1f, 1f), style.CornerRadius, 0f, 3f);
+
+                // Tinted icons across the top-right.
+                ctx.Batch.Draw(iconTex, new System.Numerics.Vector4(290, 50, 48, 48), coinUv, new Color(0.95f, 0.8f, 0.2f, 1f));
+                ctx.Batch.Draw(iconTex, new System.Numerics.Vector4(290, 110, 48, 48), heartUv, new Color(0.9f, 0.25f, 0.3f, 1f));
+                ctx.Batch.Draw(iconTex, new System.Numerics.Vector4(290, 170, 48, 48), gearUv, new Color(0.8f, 0.85f, 0.9f, 1f));
+
+                ctx.Batch.End();
+            });
+
+            GoldenCompare.AssertOrUpdate("scene2d_modern", rgba, W, H);
+        }
     }
 }

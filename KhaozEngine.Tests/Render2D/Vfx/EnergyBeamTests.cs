@@ -67,4 +67,61 @@ public class EnergyBeamTests
         Assert.Equal(0f, EnergyBeam.DashAlpha(0f, 1f, 2f, 2f, 1f), Tol);
         Assert.Equal(1f, EnergyBeam.DashAlpha(1f, 1f, 2f, 2f, 1f), Tol);
     }
+
+    [Fact]
+    public void DefaultBeamParams_HasSquareEnds()
+    {
+        // Existing callers must be unchanged: the default cap mode draws no end-caps (square ends).
+        Assert.Equal(BeamCap.None, BeamParams.Default.Caps);
+    }
+
+    [Fact]
+    public void RoundCaps_DisabledCap_EmitsNoCap()
+    {
+        var caps = EnergyBeam.RoundCaps(new Vector2(0, 0), new Vector2(10, 0), BeamCap.None, bandWidth: 8f, pulse: 1f);
+        Assert.False(caps.Enabled);
+    }
+
+    [Fact]
+    public void RoundCaps_Enabled_EmitsDiscAtEachEndSizedToHalfWidth()
+    {
+        Vector2 a = new(0, 0), b = new(10, 0);
+        var caps = EnergyBeam.RoundCaps(a, b, BeamCap.Round, bandWidth: 8f, pulse: 1f);
+
+        Assert.True(caps.Enabled);
+        Assert.Equal(a, caps.A);
+        Assert.Equal(b, caps.B);
+        Assert.Equal(4f, caps.Radius, Tol); // half the band width
+    }
+
+    [Fact]
+    public void RoundCaps_ScalesWithPulse()
+    {
+        var caps = EnergyBeam.RoundCaps(new Vector2(0, 0), new Vector2(10, 0), BeamCap.Round, bandWidth: 8f, pulse: 1.5f);
+        Assert.Equal(6f, caps.Radius, Tol); // 8 * 1.5 / 2
+    }
+
+    [Fact]
+    public void RoundCaps_CoreAndGlowGetDifferentlySizedCaps()
+    {
+        Vector2 a = new(0, 0), b = new(10, 0);
+        var glowCaps = EnergyBeam.RoundCaps(a, b, BeamCap.Round, bandWidth: 12f, pulse: 1f);
+        var coreCaps = EnergyBeam.RoundCaps(a, b, BeamCap.Round, bandWidth: 3f, pulse: 1f);
+        Assert.Equal(6f, glowCaps.Radius, Tol);
+        Assert.Equal(1.5f, coreCaps.Radius, Tol);
+    }
+
+    [Fact]
+    public void RoundCaps_ZeroLengthBeam_EmitsNoCap()
+    {
+        var caps = EnergyBeam.RoundCaps(new Vector2(3, 3), new Vector2(3, 3), BeamCap.Round, bandWidth: 8f, pulse: 1f);
+        Assert.False(caps.Enabled);
+    }
+
+    [Fact]
+    public void RoundCaps_ZeroWidthBand_EmitsNoCap()
+    {
+        var caps = EnergyBeam.RoundCaps(new Vector2(0, 0), new Vector2(10, 0), BeamCap.Round, bandWidth: 0f, pulse: 1f);
+        Assert.False(caps.Enabled);
+    }
 }

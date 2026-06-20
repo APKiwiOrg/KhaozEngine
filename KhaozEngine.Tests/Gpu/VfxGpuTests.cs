@@ -67,6 +67,36 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuFact]
+        public void RoundCaps_LightPixelsBeyondTheSquareEnd()
+        {
+            // Endpoint b at x = W-20; sample a few px beyond it on-axis. FlareRadius 0 isolates the cap (no flare),
+            // so a square-ended beam leaves that pixel dark while a round core cap (radius = CoreWidth/2) lights it.
+            // A wide bright core (16px -> 8px cap) makes the differential unambiguous on the R channel.
+            Vector2 a = new(20, H / 2f), b = new(W - 20, H / 2f);
+            int yMid = H / 2, xPastEnd = (int)b.X + 3;
+            var bp = BeamParams.Default with { FlareRadius = 0f, CoreWidth = 16f };
+
+            byte[] square = Render2DSnapshot.Capture(W, H, Color.Black, ctx =>
+            {
+                using var vfx = new VfxRenderer(ctx);
+                ctx.Batch.Begin();
+                vfx.DrawBeam(ctx.Batch, a, b, bp with { Caps = BeamCap.None }, 0f);
+                ctx.Batch.End();
+            });
+
+            byte[] round = Render2DSnapshot.Capture(W, H, Color.Black, ctx =>
+            {
+                using var vfx = new VfxRenderer(ctx);
+                ctx.Batch.Begin();
+                vfx.DrawBeam(ctx.Batch, a, b, bp with { Caps = BeamCap.Round }, 0f);
+                ctx.Batch.End();
+            });
+
+            Assert.Equal(0, Lum(square, xPastEnd, yMid)); // square end: nothing past the endpoint
+            Assert.True(Lum(round, xPastEnd, yMid) > 10, "round cap should light pixels just beyond the endpoint");
+        }
+
+        [GpuFact]
         public void AdditiveParticles_RenderLitPixels()
         {
             var cfg = new Particle2DEmitterConfig

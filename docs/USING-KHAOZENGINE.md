@@ -278,7 +278,7 @@ sparks.Update(dt);
 batch.Begin();
 sparks.Draw(batch, vfx.GlowTexture);                 // or vfx.WhitePixel for solid squares
 vfx.DrawGlow(batch, hitPoint, radius: 20f, new Color(1f, 0.8f, 0.4f, 1f));   // halo / impact flare
-vfx.DrawBeam(batch, muzzle, target, BeamParams.Default with { DashLength = 12f, DashSpeed = 80f }, timeSeconds);
+vfx.DrawBeam(batch, muzzle, target, BeamParams.Default with { Caps = BeamCap.Round }, timeSeconds);  // capsule ends
 batch.End();
 ```
 
@@ -289,7 +289,10 @@ batch.End();
 - `Particle2DEmitterConfig` is an immutable `record struct` - keep presets in content and derive with `with`.
 - `EnergyBeam.Draw(batch, white, glow, a, b, in BeamParams, timeSeconds)`: additive A->B beam (glow band + core,
   flowing dashes, pulse, jitter, endpoint flares); time-driven and stateless. `VfxRenderer.DrawBeam` wraps it
-  with the owned textures.
+  with the owned textures. `BeamParams.Caps = BeamCap.Round` rounds both ends into a capsule: a soft disc cap of
+  radius half each band's pulse-adjusted width at every endpoint (glow cap under, core cap over), independent of
+  `FlareRadius` and sampled from the `glow` texture (square ends if `glow` is null). Default `BeamCap.None` keeps
+  the original square ends.
 - `VfxTextures`: `BakeGlowPixels`/`BakeRingPixels` (pure RGBA8, headless) and `BakeGlow`/`BakeRing`/`White`
   (upload to a `Render2DSurface` / `Render2DContext`).
 - Screen shake is **not** here - use `KhaozEngine.Effects.ScreenShake` (trauma-based, camera-independent: `Add` /

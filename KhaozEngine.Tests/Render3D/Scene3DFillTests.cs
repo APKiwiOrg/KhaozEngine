@@ -38,5 +38,39 @@ namespace KhaozEngine.Tests.Render3D
             scene.Begin();
             Assert.Equal(0, scene.FillVertexCount);
         }
+
+        [GpuFact]
+        public void FilledFan_Queues_RimCountTriangles_When_Closed()
+        {
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
+            IGpuDevice gd = gpu.GpuDevice;
+            var f = gd.Factory;
+            using IGpuTexture tex = f.CreateTexture(GpuTextureDescription.Texture2D(
+                16, 16, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
+            using IGpuFramebuffer fb = f.CreateFramebuffer(null, tex);
+            using var scene = new Scene3D(gd, fb.Outputs);
+
+            // A star-shaped visibility polygon: a centre plus a rim of 5 boundary points.
+            var rim = new[]
+            {
+                new Vector3(1, 0.05f, 0), new Vector3(0.3f, 0.05f, 0.9f), new Vector3(-0.8f, 0.05f, 0.6f),
+                new Vector3(-0.8f, 0.05f, -0.6f), new Vector3(0.3f, 0.05f, -0.9f),
+            };
+
+            scene.Begin();
+            Assert.Equal(0, scene.FillVertexCount);
+
+            // Closed fan = rim.Length triangles = rim.Length*3 verts.
+            scene.DebugFilledFan(new Vector3(0, 0.05f, 0), rim, new Color(0.4f, 0.7f, 0.95f, 0.3f), closed: true);
+            Assert.Equal(rim.Length * 3, scene.FillVertexCount);
+
+            // Open fan would be one triangle fewer; verify the flag reaches the builder.
+            scene.Begin();
+            scene.DebugFilledFan(new Vector3(0, 0.05f, 0), rim, new Color(0.4f, 0.7f, 0.95f, 0.3f), closed: false);
+            Assert.Equal((rim.Length - 1) * 3, scene.FillVertexCount);
+
+            scene.Begin();
+            Assert.Equal(0, scene.FillVertexCount);
+        }
     }
 }

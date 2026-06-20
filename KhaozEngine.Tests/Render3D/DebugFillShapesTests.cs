@@ -92,6 +92,57 @@ namespace KhaozEngine.Tests.Render3D
             }
         }
 
+        // A square rim on the XZ plane wound so each (center, rim[i], rim[i+1]) triangle (and the wrap) faces +Y.
+        static List<Vector3> SquareRim() => new()
+        {
+            new Vector3(1, 0, 0), new Vector3(0, 0, -1), new Vector3(-1, 0, 0), new Vector3(0, 0, 1),
+        };
+
+        [Fact]
+        public void FilledFan_Open_EmitsRimMinusOneTriangles_AsCenterRimRim()
+        {
+            var tris = new List<Vector3>();
+            var center = new Vector3(2, 0.05f, -1);
+            var rim = SquareRim();
+            DebugFillShapes.FilledFan(tris, center, rim, closed: false);
+
+            Assert.Equal((rim.Count - 1) * 3, tris.Count);   // 3 triangles, no wrap edge
+            for (int i = 0; i < rim.Count - 1; i++)
+            {
+                Assert.Equal(center, tris[i * 3]);           // apex
+                Assert.Equal(rim[i], tris[i * 3 + 1]);
+                Assert.Equal(rim[i + 1], tris[i * 3 + 2]);
+            }
+        }
+
+        [Fact]
+        public void FilledFan_Closed_AddsWrapTriangle()
+        {
+            var tris = new List<Vector3>();
+            var center = Vector3.Zero;
+            var rim = SquareRim();
+            DebugFillShapes.FilledFan(tris, center, rim, closed: true);
+
+            Assert.Equal(rim.Count * 3, tris.Count);         // 4 triangles incl. the wrap
+            int last = tris.Count - 3;                        // the wrap triangle (center, rim[^1], rim[0])
+            Assert.Equal(center, tris[last]);
+            Assert.Equal(rim[^1], tris[last + 1]);
+            Assert.Equal(rim[0], tris[last + 2]);
+        }
+
+        [Fact]
+        public void FilledFan_WindsCCWAboutNormal()
+        {
+            var tris = new List<Vector3>();
+            DebugFillShapes.FilledFan(tris, Vector3.Zero, SquareRim(), closed: true);
+
+            for (int i = 0; i < tris.Count; i += 3)
+            {
+                Vector3 n = Vector3.Normalize(TriNormal(tris[i], tris[i + 1], tris[i + 2]));
+                Assert.True(Vector3.Dot(n, Vector3.UnitY) > 0.99f, $"fan triangle {i / 3} wound the wrong way: {n}");
+            }
+        }
+
         [Fact]
         public void Degenerate_Inputs_AppendNothing()
         {
@@ -100,6 +151,8 @@ namespace KhaozEngine.Tests.Render3D
             DebugFillShapes.FilledQuad(tris, Vector3.Zero, Vector3.UnitY, Vector3.UnitY, Vector2.One);      // uAxis ∥ normal
             DebugFillShapes.FilledCircle(tris, Vector3.Zero, Vector3.UnitY, 1f, 2);                          // too few segments
             DebugFillShapes.FilledCircle(tris, Vector3.Zero, Vector3.Zero, 1f, 16);                          // zero normal
+            DebugFillShapes.FilledFan(tris, Vector3.Zero, new List<Vector3>(), closed: true);               // empty rim
+            DebugFillShapes.FilledFan(tris, Vector3.Zero, new List<Vector3> { Vector3.UnitX }, closed: true);// single rim point
             Assert.Empty(tris);
         }
     }

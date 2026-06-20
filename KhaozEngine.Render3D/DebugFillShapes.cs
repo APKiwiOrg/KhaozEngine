@@ -59,6 +59,33 @@ namespace KhaozEngine.Render3D
             }
         }
 
+        /// <summary>Append a triangle fan from <paramref name="center"/> out to an arbitrary boundary
+        /// <paramref name="rim"/> (an already-ordered polygon outline, e.g. a turret's star-shaped line-of-sight
+        /// area). For each adjacent rim pair this appends the triangle (center, rim[i], rim[i+1]); when
+        /// <paramref name="closed"/> it also appends the wrap triangle (center, rim[last], rim[0]) to seal the loop.
+        /// Winding follows the same convention as <see cref="FilledCircle"/>: a rim wound CCW about the desired
+        /// +normal yields triangles facing +normal. Degenerate input (fewer than 2 rim points) appends nothing.</summary>
+        public static void FilledFan(List<Vector3> tris, Vector3 center, IReadOnlyList<Vector3> rim, bool closed)
+        {
+            if (rim == null || rim.Count < 2) return;
+
+            for (int i = 0; i < rim.Count - 1; i++)
+            {
+                // CCW about +normal: each wedge is (center, rim[i], rim[i+1]).
+                tris.Add(center);
+                tris.Add(rim[i]);
+                tris.Add(rim[i + 1]);
+            }
+
+            if (closed)
+            {
+                // Seal the loop with the wrap wedge (center, rim[last], rim[0]).
+                tris.Add(center);
+                tris.Add(rim[rim.Count - 1]);
+                tris.Add(rim[0]);
+            }
+        }
+
         // Orthonormal in-plane basis (u, v) with u along uAxis projected off the normal and v = cross(n, u), so a
         // triangle wound (a, a+u, a+u+v) has its geometric normal along +n. Returns false on degenerate input.
         static bool PlaneBasis(Vector3 normal, Vector3 uAxis, out Vector3 u, out Vector3 v)

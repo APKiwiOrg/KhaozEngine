@@ -5,6 +5,24 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.2.0
+
+Additive (non-breaking): round (cylindrical) end-caps for `EnergyBeam` (`KhaozEngine.Render2D.Vfx`), so a beam
+can read as a capsule/cylinder instead of a hard rectangle. The default keeps the original square ends, so every
+existing caller and every committed golden is byte-identical.
+
+- `BeamParams.Caps` (`BeamCap` enum, `None` | `Round`, default `None`): with `BeamCap.Round`, a soft disc cap of
+  radius half the band's pulse-adjusted width is drawn at each endpoint of both the glow band and the core, so the
+  caps sit flush with the band, scale with the pulse, and the wider glow band gets a larger cap than the thin core
+  automatically. The glow cap is drawn under the core cap, matching the band draw order; both use the same
+  per-band colour/alpha as the band itself.
+- The round caps are independent of the endpoint flare: a beam with `FlareRadius = 0` and `BeamCap.Round` still
+  has rounded ends. The disc is sampled from the same radial glow texture passed to `EnergyBeam.Draw` (the
+  `glow` argument); with no glow texture the ends stay square. A degenerate (zero-length) beam draws nothing.
+- New pure helper `EnergyBeam.RoundCaps(a, b, BeamCap, bandWidth, pulse)` returning an internal `BeamCaps` value
+  computes the per-band cap geometry headlessly (covered by `EnergyBeamTests`); the private flare disc helper is
+  now `DrawDisc`, shared by flares and caps.
+
 ## 7.1.0
 
 Additive (non-breaking): textured, depth-interleaved billboards in `Scene3D` (`KhaozEngine.Render3D`), so

@@ -78,6 +78,15 @@ namespace KhaozEngine.Render2D.Vfx
         public void DrawBeam(SpriteBatch batch, Vector2 a, Vector2 b, in BeamParams p, float timeSeconds)
             => EnergyBeam.Draw(batch, WhitePixel, GlowTexture, a, b, p, timeSeconds);
 
+        /// <summary>
+        /// Draws an additive attention pulse (expanding sonar rings + twinkling glints) centered at
+        /// <paramref name="center"/> using the owned ring (sonar rings) and glow (glints) textures. Forwards to
+        /// <see cref="AttentionBeacon.Draw"/>. Pass an unscaled real-time accumulator as
+        /// <paramref name="timeSeconds"/> so the pulse animates regardless of game time-scale.
+        /// </summary>
+        public void DrawAttentionBeacon(SpriteBatch batch, Vector2 center, in AttentionBeaconParams p, float timeSeconds)
+            => AttentionBeacon.Draw(batch, RingTexture, GlowTexture, center, p, timeSeconds);
+
         /// <summary>Frees the baked textures.</summary>
         public void Dispose()
         {

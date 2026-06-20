@@ -4,7 +4,12 @@ Shared, game-agnostic engine - a custom MonoGame-free 2D/3D render + windowing/i
 stack (Hardpoint, Nullwake, SpaceGame all run on it). See README.md and docs/USING-KHAOZENGINE.md.
 
 ## Before starting ANY engine work (concurrent-dev rule)
-There is a lot of parallel development on this engine. Before you touch anything:
+This section is the engine's instance of the global "Branching, worktrees, and finishing work"
+default (worktree per change; finish by merge to `main` + commit + push). It wins where it differs:
+heavy parallel dev makes the worktree mandatory (with the trivial-change exception below), and a
+finished release is a full publish (merge + push `main` + push the `vX.Y.Z` tag + pack to
+`local-feed`), not a held local merge. There is a lot of parallel development on this engine.
+Before you touch anything:
 1. Check for ongoing parallel work first: `git worktree list`, `git branch -a`,
    and `git fetch && git status` to see other branches/trees in flight.
 2. If your change fits an existing branch/worktree, work there.

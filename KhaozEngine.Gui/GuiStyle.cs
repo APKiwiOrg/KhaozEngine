@@ -5,6 +5,9 @@ namespace KhaozEngine.Gui
     /// <summary>Horizontal text alignment within a box. Text is always vertically centered in the rect.</summary>
     public enum GuiAlign { Left, Center, Right }
 
+    /// <summary>How a widget body is filled. <see cref="Solid"/> is the flat default.</summary>
+    public enum GuiFill { Solid, VerticalGradient }
+
     /// <summary>
     /// A palette of colors driving an immediate-mode <see cref="GuiSurface"/> widget's visual states. Use
     /// <see cref="Default"/> for a sensible blue-grey look matching the retained <see cref="Button"/> defaults,
@@ -33,6 +36,32 @@ namespace KhaozEngine.Gui
         /// <summary>Outline thickness in pixels.</summary>
         public float BorderThickness;
 
+        /// <summary>Corner radius in draw units. 0 (default) = hard corners (today's look).</summary>
+        public float CornerRadius;
+        /// <summary>Soft drop-shadow spread in draw units. 0 (default) = no shadow.</summary>
+        public float ShadowSize;
+        /// <summary>Drop-shadow colour (default transparent).</summary>
+        public Vector4 ShadowColor;
+        /// <summary>Drop-shadow offset in draw units (default (0,0)).</summary>
+        public Vector2 ShadowOffset;
+        /// <summary>Body fill mode (default <see cref="GuiFill.Solid"/>).</summary>
+        public GuiFill FillMode;
+        /// <summary>Top-edge RGB multiplier of the active state colour when <see cref="GuiFill.VerticalGradient"/> (default 1).</summary>
+        public float GradientTopScale;
+        /// <summary>Bottom-edge RGB multiplier of the active state colour when <see cref="GuiFill.VerticalGradient"/> (default 1).</summary>
+        public float GradientBottomScale;
+        /// <summary>Hover-glow colour (default transparent).</summary>
+        public Vector4 GlowColor;
+        /// <summary>Hover-glow spread in draw units. 0 (default) = no glow.</summary>
+        public float GlowSize;
+
+        /// <summary>
+        /// True when every modern knob is at its off default, so <see cref="GuiDraw"/> takes the plain
+        /// single-quad path that renders byte-identically to pre-7.4.0.
+        /// </summary>
+        public bool IsFlat =>
+            CornerRadius == 0f && ShadowSize == 0f && FillMode == GuiFill.Solid && GlowSize == 0f;
+
         /// <summary>The default blue-grey palette, matching the retained <see cref="Button"/> defaults.</summary>
         public static GuiStyle Default => new()
         {
@@ -46,6 +75,38 @@ namespace KhaozEngine.Gui
             SelectedFill = new Vector4(0.28f, 0.46f, 0.66f, 1f),
             SelectedBorder = new Vector4(0.55f, 0.80f, 1f, 1f),
             BorderThickness = 1.5f,
+            FillMode = GuiFill.Solid,
+            GradientTopScale = 1f,
+            GradientBottomScale = 1f,
         };
+
+        /// <summary>
+        /// The default palette with modern affordances switched on: rounded corners, a soft drop shadow, a subtle
+        /// vertical gradient, and a hover glow. Opt in with <c>ui.Style = GuiStyle.Modern</c>; games tune the palette.
+        /// </summary>
+        public static GuiStyle Modern
+        {
+            get
+            {
+                var s = Default;
+                s.CornerRadius = 7f;
+                s.ShadowSize = 8f;
+                s.ShadowColor = new Vector4(0f, 0f, 0f, 0.40f);
+                s.ShadowOffset = new Vector2(0f, 3f);
+                s.FillMode = GuiFill.VerticalGradient;
+                s.GradientTopScale = 1.12f;
+                s.GradientBottomScale = 0.85f;
+                s.GlowColor = new Vector4(0.55f, 0.80f, 1f, 0.35f);
+                s.GlowSize = 10f;
+                return s;
+            }
+        }
+
+        /// <summary>Multiply RGB by <paramref name="scale"/> (clamped to [0,1] per channel), keeping alpha. Pure.</summary>
+        public static Vector4 ScaleRgb(Vector4 c, float scale) => new Vector4(
+            System.Math.Clamp(c.X * scale, 0f, 1f),
+            System.Math.Clamp(c.Y * scale, 0f, 1f),
+            System.Math.Clamp(c.Z * scale, 0f, 1f),
+            c.W);
     }
 }

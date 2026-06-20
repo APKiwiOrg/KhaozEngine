@@ -14,7 +14,7 @@ not a library, so no consumer references it via `<PackageReference>` and it is i
 **The legacy 4.x line + its six
 genuinely-MonoGame packages (`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`) were DELETED from the repo**, so
 the engine is now entirely MonoGame-free with a single version line in `Directory.Build.props` (the doc-version
-guard checks it). All three consumers are now off MonoGame (SpaceGame finished its port and pins 6.3.0). The
+guard checks it). All three consumers are now off MonoGame (SpaceGame finished its port and pins 7.3.0). The
 legacy `4.9.0` nupkgs have been pruned from `local-feed` (which now floors at the 6.x line); they remain
 recoverable from GitHub Packages, the durable store. All three consumers are on the 6.x line, so nothing
 relies on a pre-6.x feed entry.
@@ -97,8 +97,8 @@ fine-grained use - a wire-contract project references just `Netcode.Abstractions
 | Consumer | Project(s) | References | Version |
 |---|---|---|---|
 | **Hardpoint** (7.x, 3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic); adopted the updater glue (`Updates` via Foundation, overlay via Gui) — dormant | **7.3.0** |
-| **Nullwake** (7.x, 2D) | `Nullwake.Core` | `KhaozEngine.Game2D` + `Diagnostics`/`Persistence`/`Windowing` | **7.2.0** |
-| **SpaceGame** (6.x, 2D) | `SpaceGame.Core` (head) / `SpaceGame.Sim` (lockstep sim) | `Game2D` + `Netcode.LiteNetLib` + `Primitives` (head); `Ecs`/`Collision`/`Diagnostics`/`Content`/`Serialization`/`App`/`Netcode`/`Pooling` + `Primitives` (sim); `Netcode.Abstractions` (contracts); `Updates` (tools) | **6.3.0** |
+| **Nullwake** (7.x, 2D) | `Nullwake.Core` | `KhaozEngine.Game2D` + `Diagnostics`/`Persistence`/`Windowing` | **7.3.0** |
+| **SpaceGame** (7.x, 2D) | `SpaceGame.Core` (head) / `SpaceGame.Sim` (lockstep sim) | `Game2D` + `Netcode.LiteNetLib` + `Primitives` (head); `Ecs`/`Collision`/`Diagnostics`/`Content`/`Serialization`/`App`/`Netcode`/`Pooling` + `Primitives` (sim); `Netcode.Abstractions` (contracts); `Updates` (tools); manifest signing adopted (`ke-updater sign` + embedded RSA public key) | **7.3.0** |
 
 Both games now run on the loop facade (5.57.0): **Hardpoint** is a `GameApp3D` subclass (`HardpointGame`) over a
 `SceneManager` + `IGameScene3D` scene stack; **Nullwake** is a `GameApp` subclass (`NullwakeGame`) over a
@@ -128,7 +128,7 @@ Adopted the 7.3.0 auto-updater glue (`UpdateService` + `UpdateOverlayView` wired
 one-line `HardpointUpdater` shim, an embedded RSA public key). It ships **dormant** (`Enabled = false`, no feed
 queried) until Hardpoint has a distribution channel; flip-on checklist is in the game's `Updates/README.md`.
 
-### Nullwake - 7.x, 2D (on `KhaozEngine.Game2D` 7.2.0)
+### Nullwake - 7.x, 2D (on `KhaozEngine.Game2D` 7.3.0)
 
 Fully migrated off MonoGame (the migration landed on Nullwake `main`). `Nullwake.Core` references one package,
 **`KhaozEngine.Game2D`** (the 2D runtime + the Render3D-free `Game` loop framework + the foundation). The shell
@@ -151,9 +151,13 @@ from the VFX scope did not ship in 7.0.0; a follow-up engine round is queued.)
 reads as a capsule instead of a rectangle; 7.0.1 (updater probe cap) and 7.1.0 (Render3D textured billboards)
 are carried along and touch nothing Nullwake consumes.
 
-### SpaceGame - on 6.3.0 (MonoGame-free)
+**Bumped to 7.3.0** to adopt the auto-updater glue (`UpdateService` + `UpdateOverlayScreen` wired into
+`NullwakeGame`, a one-line `NullwakeUpdater` shim, an embedded RSA public key). Desktop-only, ships dormant
+(`Enabled = false`, no feed queried); flip-on checklist in `Nullwake.Core/Systems/Updates/README.md`.
 
-SpaceGame completed its de-MonoGame migration onto the 5.x stack (merged `96255c9`) and now pins **6.3.0**.
+### SpaceGame - on 7.3.0 (MonoGame-free, manifest signing adopted)
+
+SpaceGame completed its de-MonoGame migration onto the 5.x stack (merged `96255c9`) and now pins **7.3.0**.
 There is no MonoGame and no `.mgcb`; the desktop head `SpaceGame.Desktop` runs Silk/GLFW + Veldrid through the
 `GameApp` facade. Input is the immutable `InputState` snapshot via `InputManager`/`Pointer`.
 
@@ -170,13 +174,18 @@ There is no MonoGame and no `.mgcb`; the desktop head `SpaceGame.Desktop` runs S
 - **Contracts (`SpaceGame.Multiplayer.Contracts`):** `Netcode.Abstractions` only - the MonoGame-free DTO
   project (also referenced by the ASP.NET leaderboard server) so `EntityUpdateBatchDto` can implement
   `IChannelSplittable` without pulling in MonoGame or LiteNetLib.
-- **Tools:** `ManifestGenerator` + `SpaceGameUpdater` reference `Updates` (the auto-update pipeline).
+- **Tools:** `SpaceGameUpdater` (thin shim, forwards to `KhaozEngine.Updates.UpdaterShim.Main`) + `ke-updater`
+  dotnet tool for manifest generation and signing (no bespoke `ManifestGenerator` project).
+- **Auto-update signing (7.3.0):** manifests are signed via `ke-updater sign`; the client verifies
+  `manifest.json.sig` against an embedded RSA public key (`SpaceGame.Core/Resources/update-signing-public.pem`)
+  and rejects unsigned or wrong-key feeds. Private key is CI secret `UPDATE_PRIVATE_KEY`, never committed.
 - **6.0.0 breaking surface:** `Color` and `DeterministicRng` moved to the new zero-dep `Primitives` leaf
   (`Color` is no longer re-exported by `Render2D`); the `Color` API unified off `Vector4`. Both were mechanical
-  `using`/literal swaps in SpaceGame. 6.1→6.3 are additive (pinned to latest for consistency).
+  `using`/literal swaps in SpaceGame. 6.1→6.3 are additive; 7.0→7.3 are additive for SpaceGame (the adoption
+  surface is the signing pipeline, not a new public API).
 - **Lockstep determinism:** the `StateHash` baseline is **`17709480852979803671`** (the tentacle-hitbox
-  re-baseline). It held byte-identical across the 6.x bump - the `DeterministicRng` relocation is the same type
-  in a new namespace. (The pre-migration `5562709684599485702` is stale.)
+  re-baseline). It held byte-identical across the 6.x and 7.x bumps. (The pre-migration `5562709684599485702`
+  is stale.)
 
 ## Repo locations
 
@@ -208,8 +217,8 @@ zero-dependency `Primitives` leaf + the custom-stack packages + the graduated fo
 metapackages (Game2D/Game3D/Server/Foundation). The legacy 4.x `<Version>` line was deleted from
 `Directory.Build.props` and its old MonoGame nupkgs pruned from the feed (recoverable from GitHub Packages).
 **Hardpoint** (3D) is on **7.3.0** via `Game3D` + `Foundation`,
-**Nullwake** (2D) is on **7.2.0** via `Game2D` (+ `Diagnostics`/`Persistence`/`Windowing`), and **SpaceGame**
-(2D) is on **6.3.0** via `Game2D` + the split-out `SpaceGame.Sim` - all three fully off MonoGame, each pinning
+**Nullwake** (2D) is on **7.3.0** via `Game2D` (+ `Diagnostics`/`Persistence`/`Windowing`), and **SpaceGame**
+(2D) is on **7.3.0** via `Game2D` + the split-out `SpaceGame.Sim` - all three fully off MonoGame, each pinning
 the engine on its own schedule, referencing the engine in one line (plus the sim's foundation pins), and running on the
 `GameApp3D`/`GameApp` loop facade. The breaking 6.0.0 `Primitives.Color` migration has been adopted by all
-three._
+three. SpaceGame adopted manifest signing (`ke-updater sign` + embedded RSA public key) at 7.3.0._

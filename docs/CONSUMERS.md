@@ -97,7 +97,7 @@ fine-grained use - a wire-contract project references just `Netcode.Abstractions
 | Consumer | Project(s) | References | Version |
 |---|---|---|---|
 | **Hardpoint** (7.x, 3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic); adopted the updater glue (`Updates` via Foundation, overlay via Gui) — dormant; uses `Collision.Segment2D` (7.4.0) for swept projectile collision | **7.4.0** |
-| **Nullwake** (7.x, 2D) | `Nullwake.Core` | `KhaozEngine.Game2D` + `Diagnostics`/`Persistence`/`Windowing` | **7.3.0** |
+| **Nullwake** (7.x, 2D) | `Nullwake.Core` | `KhaozEngine.Game2D` + `Diagnostics`/`Persistence`/`Windowing`; uses `AttentionBeacon` (7.6.0) for the timed-reward tappable pulse | **7.6.0** |
 | **SpaceGame** (7.x, 2D) | `SpaceGame.Core` (head) / `SpaceGame.Sim` (lockstep sim) | `Game2D` + `Netcode.LiteNetLib` + `Primitives` (head); `Ecs`/`Collision`/`Diagnostics`/`Content`/`Serialization`/`App`/`Netcode`/`Pooling` + `Primitives` (sim); `Netcode.Abstractions` (contracts); `Updates` (tools); manifest signing adopted (`ke-updater sign` + embedded RSA public key) | **7.3.0** |
 
 Both games now run on the loop facade (5.57.0): **Hardpoint** is a `GameApp3D` subclass (`HardpointGame`) over a
@@ -132,7 +132,7 @@ queried) until Hardpoint has a distribution channel; flip-on checklist is in the
 collision primitive that lets a fast tower projectile hit the next enemy along its path instead of tunnelling
 through a thin one between frames (used in `ProjectileSystem`'s ballistic branch after a target dies mid-flight).
 
-### Nullwake - 7.x, 2D (on `KhaozEngine.Game2D` 7.3.0)
+### Nullwake - 7.x, 2D (on `KhaozEngine.Game2D` 7.6.0)
 
 Fully migrated off MonoGame (the migration landed on Nullwake `main`). `Nullwake.Core` references one package,
 **`KhaozEngine.Game2D`** (the 2D runtime + the Render3D-free `Game` loop framework + the foundation). The shell
@@ -158,6 +158,12 @@ are carried along and touch nothing Nullwake consumes.
 **Bumped to 7.3.0** to adopt the auto-updater glue (`UpdateService` + `UpdateOverlayScreen` wired into
 `NullwakeGame`, a one-line `NullwakeUpdater` shim, an embedded RSA public key). Desktop-only, ships dormant
 (`Enabled = false`, no feed queried); flip-on checklist in `Nullwake.Core/Systems/Updates/README.md`.
+
+**Bumped to 7.6.0** to adopt `AttentionBeacon` (`VfxRenderer.DrawAttentionBeacon`) for the timed-reward
+tappable's attention pulse, replacing a bespoke sine-pulsed `DrawFilledCircle` aura with the sonar-ping rings +
+twinkling glints. Tint + max radius are data-driven (`timed_rewards.json`), the shape comes from
+`AttentionBeaconParams.Default` via `VfxPresets.TimedRewardBeacon`. 7.4.0 (`Collision.Segment2D`) and 7.5.0 are
+carried along and touch nothing Nullwake consumes.
 
 ### SpaceGame - on 7.3.0 (MonoGame-free, manifest signing adopted)
 

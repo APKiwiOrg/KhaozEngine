@@ -94,7 +94,7 @@ fine-grained use - a wire-contract project references just `Netcode.Abstractions
 | Consumer | Project(s) | References | Version |
 |---|---|---|---|
 | **Hardpoint** (6.x, 3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic) | **6.3.0** |
-| **Nullwake** (7.x, 2D) | `Nullwake.Core` | `KhaozEngine.Game2D` + `Diagnostics`/`Persistence`/`Windowing` | **7.0.0** |
+| **Nullwake** (7.x, 2D) | `Nullwake.Core` | `KhaozEngine.Game2D` + `Diagnostics`/`Persistence`/`Windowing` | **7.2.0** |
 | **SpaceGame** (6.x, 2D) | `SpaceGame.Core` (head) / `SpaceGame.Sim` (lockstep sim) | `Game2D` + `Netcode.LiteNetLib` + `Primitives` (head); `Ecs`/`Collision`/`Diagnostics`/`Content`/`Serialization`/`App`/`Netcode`/`Pooling` + `Primitives` (sim); `Netcode.Abstractions` (contracts); `Updates` (tools) | **6.3.0** |
 
 Both games now run on the loop facade (5.57.0): **Hardpoint** is a `GameApp3D` subclass (`HardpointGame`) over a
@@ -121,7 +121,7 @@ A full-3D iso tower-defense entirely on the 6.x stack, zero legacy MonoGame pack
   App `AppDataPaths`/`BuildMetadata`, Localization, Persistence `SettingsManager<CampaignSaveData>`). A logic
   library deliberately pulls no renderer.
 
-### Nullwake - 7.x, 2D (on `KhaozEngine.Game2D` 7.0.0)
+### Nullwake - 7.x, 2D (on `KhaozEngine.Game2D` 7.2.0)
 
 Fully migrated off MonoGame (the migration landed on Nullwake `main`). `Nullwake.Core` references one package,
 **`KhaozEngine.Game2D`** (the 2D runtime + the Render3D-free `Game` loop framework + the foundation). The shell
@@ -139,6 +139,10 @@ Nullwake retired its in-repo `Nullwake.Core.Rendering` particle stack onto `Part
 rotation + per-particle additive blend); the mining laser uses `EnergyBeam`, and miner/impact/shatter glows use
 `VfxRenderer`. Only Nullwake-specific presets (`Rendering/VfxPresets.cs`) stay in-repo. (Screen shake / `ShakeState`
 from the VFX scope did not ship in 7.0.0; a follow-up engine round is queued.)
+
+**Bumped to 7.2.0** to adopt `EnergyBeam` round end-caps (`BeamParams.Caps = BeamCap.Round`) so the mining beam
+reads as a capsule instead of a rectangle; 7.0.1 (updater probe cap) and 7.1.0 (Render3D textured billboards)
+are carried along and touch nothing Nullwake consumes.
 
 ### SpaceGame - on 6.3.0 (MonoGame-free)
 
@@ -197,7 +201,7 @@ zero-dependency `Primitives` leaf + the custom-stack packages + the graduated fo
 metapackages (Game2D/Game3D/Server/Foundation). The legacy 4.x `<Version>` line was deleted from
 `Directory.Build.props` and its old MonoGame nupkgs pruned from the feed (recoverable from GitHub Packages).
 **Hardpoint** (3D) is on **6.3.0** via `Game3D` + `Foundation`,
-**Nullwake** (2D) is on **7.0.0** via `Game2D` (+ `Diagnostics`/`Persistence`/`Windowing`), and **SpaceGame**
+**Nullwake** (2D) is on **7.2.0** via `Game2D` (+ `Diagnostics`/`Persistence`/`Windowing`), and **SpaceGame**
 (2D) is on **6.3.0** via `Game2D` + the split-out `SpaceGame.Sim` - all three fully off MonoGame and on the
 6.x line, referencing the engine in one line (plus the sim's foundation pins), and running on the
 `GameApp3D`/`GameApp` loop facade. The breaking 6.0.0 `Primitives.Color` migration has been adopted by all

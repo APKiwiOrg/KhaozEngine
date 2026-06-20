@@ -106,3 +106,60 @@ return UpdateApplier.Run(args, new SystemUpdaterEnvironment(msg =>
 The same `UpdateManifest.GenerateFromDirectory(buildDir, version, platform)` that builds the local
 manifest produces a published build's manifest, so an offline `dotnet run` tool can emit
 `manifest.json` identical to what the client expects.
+
+## Adopting the updater (last-mile glue)
+
+Everything below ships in this package - adopting the updater means using the engine feature only.
+
+### 1. Keys
+
+Generate an RSA-2048 keypair once with the `ke-updater` dotnet tool:
+
+```
+dotnet tool install --global KhaozEngine.Updates.Tool
+ke-updater genkey --out ./keys
+```
+
+`keys/private.pem` signs your manifests - keep it secret (a CI secret, never committed).
+`keys/public.pem` is embedded in the client via `UpdateServiceOptions.TrustedPublicKeys` (ship more
+than one to rotate keys).
+
+### 2. In-game overlay
+
+Add `UpdateOverlayScreen` (from `KhaozEngine.Gui`) to your screen stack, pointing it at the
+`UpdateService` (which implements `IUpdateStatus`) and wiring its trigger to the default action helper:
+
+```csharp
+var overlay = new UpdateOverlayScreen(updateService, font, whiteTexture, viewport);
+overlay.OnTrigger += _ => UpdateOverlayActions.Trigger(updateService);
+screenStack.Add(overlay);
+```
+
+Retheme via `new UpdateOverlayTheme { ... }` (colours, labels, `TriggerKey`/`TriggerButton`) or
+subclass it to override `TitleFor`/`BodyFor` for localized text. For non-stack UI, use the lower-level
+`UpdateOverlayView` directly (`Update(status, input, dt)` + `Draw(batch, font, white, viewport, status)`).
+
+### 3. The updater shim
+
+Your external updater exe is one line:
+
+```csharp
+return KhaozEngine.Updates.UpdaterShim.Main(args);
+```
+
+Publish it per-RID with a game-specific name and set `UpdateServiceOptions.UpdaterExecutableName` to match.
+
+### 4. Publish + feed layout
+
+Copy `templates/publish-update.sh` (shipped in this package) into your repo, fill in the CONFIG block,
+and run it per platform. It builds, generates + signs the manifest with `ke-updater`, uploads, and points
+the latest pointer at the new version. The feed layout the client expects:
+
+```
+<feed-root>/
+  latest-<platform>.json            -> {"version":"<v>"}
+  <version>/<platform>/
+    manifest.json
+    manifest.json.sig
+    <game files...>
+```

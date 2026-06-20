@@ -1,13 +1,14 @@
 # KhaozEngine roadmap / backlog
 
-Larger feature areas identified but not yet scheduled. Current released version: **6.3.0** (the shared
+Larger feature areas identified but not yet scheduled. Current released version: **6.4.0** (the shared
 `<KhaozEngine5xVersion>` line, which is the engine: the custom MonoGame-free stack plus the graduated foundation packages). The legacy 4.x
 line and its six genuinely-MonoGame packages (`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`) were
-DELETED from the engine source, so the engine itself is now entirely MonoGame-free. SpaceGame is the lone
-remaining 4.x consumer (it still pins the already-published 4.9.0 nupkgs); its 5.x/6.x port is the
-outstanding migration goal that lets the 4.x packages be retired everywhere. As of 6.0.0 there is also a
-new zero-dependency `KhaozEngine.Primitives` leaf at the bottom of the graph (`Color`, `DeterministicRng`,
-`XorRng`, `MathUtil`, `ViewportMath`, `Easing`).
+DELETED from the engine source, so the engine itself is now entirely MonoGame-free. All three consumers are
+off MonoGame too and all pin `6.3.0`: Hardpoint (`Game3D` + `Foundation`), Nullwake (`Game2D`), and SpaceGame
+(`Game2D` + the split-out `SpaceGame.Sim`). The breaking 6.0.0 `Primitives.Color` migration has been adopted
+everywhere, so the post-MonoGame pivot is fully complete on both the engine and consumer sides. As of 6.0.0
+there is also a new zero-dependency `KhaozEngine.Primitives` leaf at the bottom of the graph (`Color`,
+`DeterministicRng`, `XorRng`, `MathUtil`, `ViewportMath`, `Easing`).
 
 Several items from the original (3.3.0-era) backlog have since shipped: the camera follow/framing
 layer, the pan/zoom gesture controller, and `PrimitiveRenderer` circle/ring drawing. Those are listed
@@ -141,7 +142,9 @@ first; **Phase A shipped in `5.13.0-experimental`**: multi-instance `Scene3D` (`
    OpenAL streaming backend (WAV/OGG/MP3) - the first existing package ported off MonoGame, and the last
    *unproven* subsystem now proven. Still to do: move Input/Screens/UI/Sprites/Effects + content load off
    MonoGame onto the custom foundation.
-5. **Migrate the games.** Hardpoint / Nullwake / SpaceGame onto the 5.x stack; retire the 4.x MonoGame line.
+5. **Migrate the games (done).** All three are off MonoGame and pin `6.3.0` (Hardpoint, Nullwake, SpaceGame),
+   including the breaking 6.0.0 `Primitives.Color` adoption. The 4.x MonoGame line was retired (packages
+   deleted, feed pruned to the 6.x floor).
 6. **Mobile.** iOS/Android platform layers (lifecycle, touch, packaging, stores).
 
 ### Version policy (one shared line)
@@ -158,8 +161,9 @@ first; **Phase A shipped in `5.13.0-experimental`**: multi-instance `Scene3D` (`
   Render3D releases, 5.0.0/5.1.0, predate the shared line and were per-package.)
 - **The old 4.x MonoGame line was DELETED from the repo.** Its six genuinely-MonoGame packages
   (`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`) are gone from `Directory.Build.props` and the source
-  tree; only their already-published nupkgs remain in the feed so SpaceGame's `4.9.0` pin keeps resolving until
-  it ports. Once SpaceGame migrates, even those can be retired and MonoGame is fully gone.
+  tree. SpaceGame has since ported, so the legacy `4.9.0` nupkgs were pruned from `local-feed` (now floored at
+  the 6.x line); they remain recoverable from GitHub Packages. MonoGame is fully gone from the engine and all
+  three consumers.
 
 Design spec: `docs/superpowers/specs/2026-06-15-render3d-custom-engine-design.md`.
 
@@ -180,7 +184,8 @@ Design spec: `docs/superpowers/specs/2026-06-15-render3d-custom-engine-design.md
 - 5.52.0: `CameraFollow` ported to the 5.x `KhaozEngine.Render2D` line with **per-axis follow tuning**
   (`Stiffness` is a `Vector2`), **look-ahead** (`LookAheadSettings`: eased, clamped, per-axis lead along a
   caller-supplied velocity), and **pixel-perfect snapping** (`PixelSnap` on the rendered position, sub-pixel
-  smoothing preserved). The 4.x `KhaozEngine.Graphics` `CameraFollow` stays for SpaceGame until it migrates.
+  smoothing preserved). The old 4.x `KhaozEngine.Graphics` `CameraFollow` was retired with the rest of the 4.x
+  line once SpaceGame ported.
 - 5.53.0: `GroupCamera` + `CameraFraming` (`KhaozEngine.Render2D`) - **multi-target framing** for co-op /
   shared screen: eases position + zoom to fit N targets (padded bounding box, contain-fit zoom, per-axis
   `MinViewSize` floor, world-bounds clamp, instant `Warp`).
@@ -219,14 +224,16 @@ Trauma-based decay. Pairs with the follow-camera layer above.
 
 `Effects.ParticleSystem` is rect-based and pooled. SpaceGame's `ParticleManager` has richer features kept
 game-side: textured sprites, particle tails / trails, and on-death recursion (a dying particle spawns
-children). Fold these into the engine so SpaceGame can adopt and converge. (SpaceGame is on 4.0.0 but
-still does NOT reference `KhaozEngine.Effects`, which is the blocker.)
+children). Fold these into the engine so SpaceGame can adopt and converge. (As of 6.4.0 the `Game2D` umbrella
+SpaceGame's head uses pulls `KhaozEngine.Effects` transitively, so the package is now on hand; the open work
+is folding the richer features above into `Effects.ParticleSystem`.)
 
 ## SFX audio (`KhaozEngine.Audio`)
 
 **Shipped (5.34.0).** `KhaozEngine.Audio` gained SFX one-shots + 3D positional audio over a 16-voice pool
 (`PlaySfx`/`PlaySfx3D`/`SetListener`, per-channel volume) on top of the streaming music backend, so it is no
-longer music-only. SpaceGame still keeps its game-side SFX mixing (`AudioVolumeMixer`) until it ports.
+longer music-only. SpaceGame (now ported, on `6.3.0`) may still keep its game-side SFX mixing
+(`AudioVolumeMixer`) layered over the engine audio.
 
 ## Shipped (closed roadmap items)
 

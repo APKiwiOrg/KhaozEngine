@@ -2,6 +2,7 @@
 
 High-level history, newest first. One or two sentences per release; full detail in [CHANGELOG.md](CHANGELOG.md).
 
+- **6.4.0**: `Game2D` umbrella now bundles `KhaozEngine.Effects` (`ScreenShake`/game-feel), flowing transitively into `Game3D`. Closes the last omni-package gap (Effects was the only leaf no metapackage pulled in); packaging-only, byte-identical.
 - **6.3.0**: Additive helpers unblocking Nullwake's 6.x adoption: `Color` scalar-multiply and `Lerp`, plus `InputManager.GetScrollIn(Rect)` for region-scoped wheel scrolling. Rendering byte-identical.
 - **6.2.0**: Cross-platform clip-space correction via `GpuClip.Correct(viewProj, caps)`, adapting world-to-clip to each backend's clip-Y convention (identity on Metal/D3D, flips on Vulkan). No Metal behavior change; the inverted-Y path is correct-by-construction but unvalidated on non-Metal hardware.
 - **6.1.0**: Post-6.0 cleanup: dropped a per-frame `WaitForIdle` in `Render3DPreview`, unified the line/fill/billboard overlay renderers, zero-alloc music streaming and `World.ForEach`, fail-loud Gui viewport defaults, and Debug-level logging on swallowed errors.

@@ -2,7 +2,7 @@
   <PropertyGroup>
     <PackageId>KhaozEngine.Game2D</PackageId>
     <Version>$(KhaozEngine5xVersion)</Version>
-    <Description>Umbrella metapackage for a desktop 2D game on the KhaozEngine 5.x stack: the 2D runtime (Windowing, Render2D, Gui, Audio, Particles) + the Game loop/scene framework (GameApp/SceneManager, now Render3D-free) + the MonoGame-free Foundation. No 3D (Render3D) and no networking (Netcode) - reference KhaozEngine.Game3D for the full 3D stack, or add KhaozEngine.Netcode.LiteNetLib for 2D multiplayer. Contains no code; just dependencies.</Description>
+    <Description>Umbrella metapackage for a desktop 2D game on the KhaozEngine 5.x stack: the 2D runtime (Windowing, Render2D, Gui, Audio, Particles, Effects) + the Game loop/scene framework (GameApp/SceneManager, now Render3D-free) + the MonoGame-free Foundation. No 3D (Render3D) and no networking (Netcode) - reference KhaozEngine.Game3D for the full 3D stack, or add KhaozEngine.Netcode.LiteNetLib for 2D multiplayer. Contains no code; just dependencies.</Description>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <SuppressDependenciesWhenPacking>false</SuppressDependenciesWhenPacking>
@@ -15,6 +15,7 @@
     <ProjectReference Include="../KhaozEngine.Gui/KhaozEngine.Gui.csproj" />
     <ProjectReference Include="../KhaozEngine.Audio/KhaozEngine.Audio.csproj" />
     <ProjectReference Include="../KhaozEngine.Particles/KhaozEngine.Particles.csproj" />
+    <ProjectReference Include="../KhaozEngine.Effects/KhaozEngine.Effects.csproj" />
     <ProjectReference Include="../KhaozEngine.Game/KhaozEngine.Game.csproj" />
     <!-- shared MonoGame-free foundation -->
     <ProjectReference Include="../KhaozEngine.Foundation/KhaozEngine.Foundation.csproj" />

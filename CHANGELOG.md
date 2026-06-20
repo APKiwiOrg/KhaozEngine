@@ -1,8 +1,19 @@
 # Changelog
 
-All notable changes to KhaozEngine. The 5.x line `<KhaozEngine5xVersion>` is the engine (custom MonoGame-free
-stack + the graduated foundation packages); the legacy 4.x line `<Version>` carries only the genuinely-MonoGame
-packages. Both versions live in `Directory.Build.props`. See the post-MonoGame plan in `docs/ROADMAP.md`.
+All notable changes to KhaozEngine. One shared version line `<KhaozEngine5xVersion>` in `Directory.Build.props`
+governs the whole MonoGame-free engine (custom stack + graduated foundation packages + the four umbrella
+metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
+`docs/ROADMAP.md`.
+
+## 6.4.0
+
+Additive packaging fix (non-breaking). No code or behaviour change; rendering byte-identical.
+
+- `KhaozEngine.Game2D` umbrella now pulls in `KhaozEngine.Effects` (the trauma-based `ScreenShake` /
+  game-feel package), so it flows transitively into `KhaozEngine.Game3D` too. Closes the last omni-package
+  gap: `Effects` was previously the only leaf package no metapackage referenced, forcing 2D/3D consumers to
+  add it by hand. A game already on `Game2D`/`Game3D` gets `Effects` for free after this bump; a game that
+  referenced `Effects` directly can drop the explicit `<PackageReference>`.
 
 ## 6.3.0
 

@@ -41,7 +41,7 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 
 | Metapackage | Pulls in | For |
 |---|---|---|
-| **KhaozEngine.Game2D** | 2D runtime (Windowing/Render2D/Gui/Audio/Particles) + `Game` + `Foundation` | a desktop 2D game |
+| **KhaozEngine.Game2D** | 2D runtime (Windowing/Render2D/Gui/Audio/Particles/Effects) + `Game` + `Foundation` | a desktop 2D game |
 | **KhaozEngine.Game3D** | `Game2D` + `Render3D` + `Game.Render3D` (the 3D scene bridge) | a desktop 3D game |
 | **KhaozEngine.Server** | `Foundation` + netcode (`Netcode`/`.Abstractions`/`.LiteNetLib`) | a headless sim server (no GPU) |
 | **KhaozEngine.Foundation** | the GPU-free foundation (Primitives/App/Content/Diagnostics/Ecs/Localization/Persistence/Serialization/Pooling/Collision/Platform/Updates) | a gameplay-logic library (no renderer) |
@@ -117,10 +117,10 @@ Published to a private GitHub Packages feed on tagged releases, and packed to a 
 ```
 ```xml
 <!-- One reference per project via an umbrella metapackage. Pick the bundle that fits: -->
-<PackageReference Include="KhaozEngine.Game2D"     Version="6.3.0" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
-<PackageReference Include="KhaozEngine.Game3D"     Version="6.3.0" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
-<PackageReference Include="KhaozEngine.Server"     Version="6.3.0" />  <!-- headless: foundation + netcode, no graphics -->
-<PackageReference Include="KhaozEngine.Foundation" Version="6.3.0" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
+<PackageReference Include="KhaozEngine.Game2D"     Version="6.4.0" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
+<PackageReference Include="KhaozEngine.Game3D"     Version="6.4.0" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
+<PackageReference Include="KhaozEngine.Server"     Version="6.4.0" />  <!-- headless: foundation + netcode, no graphics -->
+<PackageReference Include="KhaozEngine.Foundation" Version="6.4.0" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
 ```
 
 The metapackages have no code; they just pull in the granular packages. You can still reference those
@@ -166,8 +166,8 @@ CI builds, tests, packs, and on a `v*` tag publishes to GitHub Packages.
 
 | Game | References | Status |
 |---|---|---|
-| **Hardpoint** (3D) | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic) | On 5.70.0, fully off MonoGame. |
-| **Nullwake** (2D) | `KhaozEngine.Game2D` | On 5.59.0, fully off MonoGame. Source of the widgets, transitions, and the click-through fix. |
+| **Hardpoint** (3D) | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic) | On 6.3.0, fully off MonoGame. |
+| **Nullwake** (2D) | `KhaozEngine.Game2D` | On 6.3.0, fully off MonoGame. Source of the widgets, transitions, and the click-through fix. |
 | **SpaceGame** (2D) | `KhaozEngine.Game2D` (head) + foundation pins on `SpaceGame.Sim` | On 6.3.0, fully off MonoGame. Deterministic lockstep sim split into `SpaceGame.Sim`. |
 
 Full per-package version + adoption matrix: [`docs/CONSUMERS.md`](docs/CONSUMERS.md).

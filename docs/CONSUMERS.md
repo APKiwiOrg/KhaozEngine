@@ -4,15 +4,17 @@ Which game uses which packages, at which version. Current state only - for the p
 [`../CHANGELOG.md`](../CHANGELOG.md). Update this whenever a consumer bumps a `<PackageReference>` or the
 engine ships a new version.
 
-**Engine current version:** `6.3.0` (the shared `<KhaozEngine5xVersion>` line, which is the engine): the
+**Engine current version:** `6.4.0` (the shared `<KhaozEngine5xVersion>` line, which is the engine): the
 custom MonoGame-free stack (`Primitives`/`Gpu`/`Windowing`/`Render2D`/`Render3D`/`Gui`/`Audio`/`Particles`/`Effects`/`Game`/`Game.Render3D`) **plus**
 the MonoGame-free foundation packages that graduated onto it at `5.46.0`
 (`Ecs`/`Serialization`/`Content`/`Diagnostics`/`App`/`Localization`/`Persistence`/`Pooling`/`Platform`/
 `Updates`/`Collision`/`Netcode`/`Netcode.Abstractions`/`Netcode.LiteNetLib`). **The legacy 4.x line + its six
 genuinely-MonoGame packages (`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`) were DELETED from the repo**, so
 the engine is now entirely MonoGame-free with a single version line in `Directory.Build.props` (the doc-version
-guard checks it). All three consumers are now off MonoGame (SpaceGame finished its port and pins 6.3.0); the old
-`4.9.0` nupkgs stay in the feed only for historical resolution.
+guard checks it). All three consumers are now off MonoGame (SpaceGame finished its port and pins 6.3.0). The
+legacy `4.9.0` nupkgs have been pruned from `local-feed` (which now floors at the 6.x line); they remain
+recoverable from GitHub Packages, the durable store. All three consumers are on the 6.x line, so nothing
+relies on a pre-6.x feed entry.
 
 > **5.46.0 (graduation, non-breaking re-version):** the 14 MonoGame-free foundation packages moved from the
 > 4.x `<Version>` line to the 5.x `<KhaozEngine5xVersion>` line so a 5.x game pins **only** 5.x packages. Same
@@ -91,8 +93,8 @@ fine-grained use - a wire-contract project references just `Netcode.Abstractions
 
 | Consumer | Project(s) | References | Version |
 |---|---|---|---|
-| **Hardpoint** (5.x, 3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic) | **5.70.0** |
-| **Nullwake** (5.x, 2D) | `Nullwake.Core` | `KhaozEngine.Game2D` | **5.59.0** |
+| **Hardpoint** (6.x, 3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic) | **6.3.0** |
+| **Nullwake** (6.x, 2D) | `Nullwake.Core` | `KhaozEngine.Game2D` + `Diagnostics`/`Persistence`/`Windowing` | **6.3.0** |
 | **SpaceGame** (6.x, 2D) | `SpaceGame.Core` (head) / `SpaceGame.Sim` (lockstep sim) | `Game2D` + `Netcode.LiteNetLib` + `Primitives` (head); `Ecs`/`Collision`/`Diagnostics`/`Content`/`Serialization`/`App`/`Netcode`/`Pooling` + `Primitives` (sim); `Netcode.Abstractions` (contracts); `Updates` (tools) | **6.3.0** |
 
 Both games now run on the loop facade (5.57.0): **Hardpoint** is a `GameApp3D` subclass (`HardpointGame`) over a
@@ -102,9 +104,9 @@ options' `WindowFactory`/`ViewportFactory`. Neither hand-writes the `AppWindow.R
 
 ## Notes (current state per consumer)
 
-### Hardpoint - 5.x, full-3D (on `KhaozEngine.Game3D` 5.70.0)
+### Hardpoint - 6.x, full-3D (on `KhaozEngine.Game3D` 6.3.0)
 
-A full-3D iso tower-defense entirely on the 5.x stack, zero legacy MonoGame packages. Two projects:
+A full-3D iso tower-defense entirely on the 6.x stack, zero legacy MonoGame packages. Two projects:
 
 - **`Hardpoint.Game` (the head)** references one package, **`KhaozEngine.Game3D`**, which bundles the 3D
   renderer (`Render3D`: iso board, glTF/procedural meshes, per-mesh albedo textures, lighting/materials, debug
@@ -119,7 +121,7 @@ A full-3D iso tower-defense entirely on the 5.x stack, zero legacy MonoGame pack
   App `AppDataPaths`/`BuildMetadata`, Localization, Persistence `SettingsManager<CampaignSaveData>`). A logic
   library deliberately pulls no renderer.
 
-### Nullwake - 5.x, 2D (on `KhaozEngine.Game2D` 5.59.0)
+### Nullwake - 6.x, 2D (on `KhaozEngine.Game2D` 6.3.0)
 
 Fully migrated off MonoGame (the migration landed on Nullwake `main`). `Nullwake.Core` references one package,
 **`KhaozEngine.Game2D`** (the 2D runtime + the Render3D-free `Game` loop framework + the foundation). The shell
@@ -127,7 +129,7 @@ is `NullwakeGame`, a `GameApp` subclass (OnLoad/OnUpdate/OnDraw2D/OnDispose) ove
 screens; the display-fitted `AppWindow.Scaled` window + responsive `AdaptiveViewport` come from the options'
 `WindowFactory`/`ViewportFactory`. It uses `GameClock` + `TimeSkip` for offline catch-up, `AudioSystem`, and a
 2D `Particles` system; saves go through its
-own `LocalSaveSystem` (`SaveEncoder` + `AtomicJsonWriter`). The Android/iOS heads are parked until a 5.x
+own `LocalSaveSystem` (`SaveEncoder` + `AtomicJsonWriter`). The Android/iOS heads are parked until a
 mobile-windowing engine project. (Still game-local and not yet converged onto the engine: the ~9 Gui widgets it
 duplicates from `KhaozEngine.Gui`.)
 
@@ -186,8 +188,10 @@ still matches `Directory.Build.props`.
 _Last verified: 2026-06-20. The shared line `<KhaozEngine5xVersion>` = **6.3.0** is the engine: the new
 zero-dependency `Primitives` leaf + the custom-stack packages + the graduated foundation + the four umbrella
 metapackages (Game2D/Game3D/Server/Foundation). The legacy 4.x `<Version>` line was deleted from
-`Directory.Build.props`, but its old MonoGame nupkgs stay in the feed so a holdout pin still resolves.
-**Hardpoint** (3D) is on **5.70.0** via `Game3D` + `Foundation`,
-**Nullwake** (2D) is on **5.59.0** via `Game2D`, and **SpaceGame** (2D) is on **6.3.0** via `Game2D` + the
-split-out `SpaceGame.Sim` - all three fully off MonoGame, referencing the engine in one line (plus the sim's
-foundation pins), and running on the `GameApp3D`/`GameApp` loop facade._
+`Directory.Build.props` and its old MonoGame nupkgs pruned from the feed (recoverable from GitHub Packages).
+**Hardpoint** (3D) is on **6.3.0** via `Game3D` + `Foundation`,
+**Nullwake** (2D) is on **6.3.0** via `Game2D` (+ `Diagnostics`/`Persistence`/`Windowing`), and **SpaceGame**
+(2D) is on **6.3.0** via `Game2D` + the split-out `SpaceGame.Sim` - all three fully off MonoGame and on the
+6.x line, referencing the engine in one line (plus the sim's foundation pins), and running on the
+`GameApp3D`/`GameApp` loop facade. The breaking 6.0.0 `Primitives.Color` migration has been adopted by all
+three._

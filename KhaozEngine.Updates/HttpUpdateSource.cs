@@ -43,10 +43,13 @@ public sealed class HttpUpdateSource : IUpdateSource, IDisposable
     private readonly HttpClient httpClient;
     private readonly bool ownsClient;
     private readonly ILogger log = Log.For<HttpUpdateSource>();
+    private readonly string? baseHost;
 
     public HttpUpdateSource(HttpUpdateSourceOptions options, HttpClient? httpClient = null)
     {
         this.options = options;
+        Uri? baseUri = HttpUpdateSource.ParseBase(options.ServerBaseUrl);
+        baseHost = baseUri?.Host;
         if (httpClient is null)
         {
             this.httpClient = new HttpClient { Timeout = options.HttpTimeout };
@@ -175,8 +178,35 @@ public sealed class HttpUpdateSource : IUpdateSource, IDisposable
         return Uri.TryCreate($"{normalized}/{path}", UriKind.Absolute, out Uri? resolved) ? resolved : null;
     }
 
-    // Implemented in Task 4. Placeholder admits all so Task 3 is purely the transport-shape change.
-    private bool IsAllowedOrigin(string url) => true;
+    /// <summary>True only when <paramref name="url"/> is absolute https on the configured base host.</summary>
+    private bool IsAllowedOrigin(string url)
+    {
+        if (baseHost is null)
+        {
+            return false;
+        }
+        if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri))
+        {
+            return false;
+        }
+        return uri.Scheme == Uri.UriSchemeHttps
+            && string.Equals(uri.Host, baseHost, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Parses the configured base into an absolute https Uri (bare host implies https).</summary>
+    private static Uri? ParseBase(string serverBaseUrl)
+    {
+        if (string.IsNullOrWhiteSpace(serverBaseUrl))
+        {
+            return null;
+        }
+        string normalized = serverBaseUrl.Trim().TrimEnd('/');
+        if (!normalized.Contains("://", StringComparison.Ordinal))
+        {
+            normalized = $"https://{normalized}";
+        }
+        return Uri.TryCreate(normalized, UriKind.Absolute, out Uri? uri) ? uri : null;
+    }
 
     public void Dispose()
     {

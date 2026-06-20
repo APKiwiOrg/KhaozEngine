@@ -1,4 +1,6 @@
 using System;
+using System.IO;
+using System.Threading.Tasks;
 using KhaozEngine.Updates;
 using Xunit;
 
@@ -57,5 +59,38 @@ public sealed class HttpUpdateSourceTests
 
         Assert.Equal("https://blob/releases/1.2.3/win-x64/game.dll", source.ResolveFileUrl(latest, "game.dll"));
         Assert.Equal("https://blob/releases/1.2.3/win-x64/data/x.bin", source.ResolveFileUrl(latest, "data/x.bin"));
+    }
+
+    private static HttpUpdateSource Source(string baseUrl)
+        => new(new HttpUpdateSourceOptions { ServerBaseUrl = baseUrl });
+
+    [Fact]
+    public async Task DownloadBytes_OffOriginHost_ReturnsNull()
+    {
+        HttpUpdateSource src = Source("https://updates.example.com/");
+
+        byte[]? result = await src.DownloadBytesAsync("https://attacker.com/manifest.json");
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task DownloadBytes_NonHttps_ReturnsNull()
+    {
+        HttpUpdateSource src = Source("https://updates.example.com/");
+
+        byte[]? result = await src.DownloadBytesAsync("http://updates.example.com/manifest.json");
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task DownloadFile_OffOriginHost_ReturnsFalse()
+    {
+        HttpUpdateSource src = Source("https://updates.example.com/");
+
+        bool ok = await src.DownloadFileAsync("https://attacker.com/game.dll", Path.Combine(Path.GetTempPath(), "x.bin"), long.MaxValue);
+
+        Assert.False(ok);
     }
 }

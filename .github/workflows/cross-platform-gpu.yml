@@ -3,19 +3,19 @@
 # What this does:
 #   * On push / pull_request to main it VERIFIES the committed per-backend goldens
 #     (KhaozEngine.Tests/Gpu/goldens/<name>.<backend>.txt) on a real runner for each desktop backend.
-#   * macOS (arm64) verifies the committed *.metal.txt goldens immediately — those are baked on Metal.
-#   * Windows (D3D11) and Linux (Vulkan) will FAIL with "golden ... missing ... bake it" until their
-#     per-backend goldens are generated and committed. That failure is expected on first run.
+#   * All three legs are validated, committed, and blocking: macOS Metal, Windows D3D11 (WARP),
+#     Linux Vulkan (Mesa lavapipe).
 #
-# Generating the Win/Linux (and any new-backend) goldens:
+# Generating goldens for a NEW scene or backend:
 #   1. Run this workflow manually (Actions -> cross-platform-gpu -> Run workflow) with bake = true.
 #   2. The bake legs render with KE_UPDATE_GOLDENS=1 and upload the per-backend grids as artifacts
-#      named goldens-<backend> (scene2d.<backend>.txt, scene3d.<backend>.txt).
+#      named goldens-<backend> (e.g. scene2d.<backend>.txt).
 #   3. Download the artifacts, drop the files into KhaozEngine.Tests/Gpu/goldens/, and commit them.
-#   4. After that, the push/PR legs VERIFY those backends instead of failing.
+#   4. After that, the push/PR legs VERIFY those backends.
 #
 # Software rasterizers (these runners have no real GPU):
-#   * Linux uses Mesa lavapipe (software Vulkan) via VK_ICD_FILENAMES.
+#   * Linux uses Mesa lavapipe (software Vulkan); the workflow discovers the lavapipe ICD manifest at runtime
+#     (its name/path drifts across Ubuntu images) and points VK_ICD_FILENAMES/VK_DRIVER_FILES at it.
 #   * Windows D3D11 falls back to WARP (software) automatically when no hardware adapter is present.
 #
 # The headless golden tests use Render2D/3D Snapshot -> CreateHeadless (offscreen, NO window), so SDL2 is
@@ -42,10 +42,10 @@ jobs:
   gpu-golden:
     name: ${{ matrix.os }} / ${{ matrix.backend }}
     runs-on: ${{ matrix.os }}
-    # Metal + D3D11 are the blocking, validated desktop backends. The Linux Vulkan leg runs on Mesa lavapipe
-    # (software), which currently crashes the test host at vkEnumeratePhysicalDevices on the hosted runner; it is
-    # kept running as informational (non-blocking) until a working software-Vulkan setup or real GPU CI lands.
-    continue-on-error: ${{ matrix.backend == 'vulkan' }}
+    # All three desktop backends are validated and blocking: Metal (macOS), Direct3D11 (Windows/WARP), and
+    # Vulkan (Linux/Mesa lavapipe). Goldens are tolerance-based (32x18 averaged grid), robust to software-
+    # rasterizer noise. If the lavapipe leg ever flakes on a runner-image change, re-add
+    # `continue-on-error: ${{ matrix.backend == 'vulkan' }}` here to drop it back to informational.
     strategy:
       fail-fast: false
       matrix:
@@ -71,13 +71,34 @@ jobs:
 
       - run: dotnet build -c Release --no-restore
 
-      # Linux: install Mesa lavapipe (software Vulkan ICD) + the Vulkan loader, and point the loader at it.
+      # Linux: install Mesa lavapipe (software Vulkan) + the loader. The lavapipe ICD manifest's path/name
+      # drifts across Ubuntu runner images, so DISCOVER it rather than hardcoding (the old hardcoded
+      # /usr/share/vulkan/icd.d/lvp_icd.x86_64.json went missing and gave "Found no drivers!"). Dump what the
+      # package shipped so a future drift is diagnosable from the log.
       - name: Install software Vulkan (lavapipe)
         if: matrix.os == 'ubuntu-latest'
         run: |
+          set -x
           sudo apt-get update
           sudo apt-get install -y mesa-vulkan-drivers vulkan-tools libvulkan1
-          echo "VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json" >> "$GITHUB_ENV"
+          echo "--- mesa-vulkan-drivers contents (icd / lvp / .so) ---"
+          dpkg -L mesa-vulkan-drivers 2>/dev/null | grep -Ei 'icd|lvp|\.so' || true
+          echo "--- ICD manifests on disk ---"
+          ls -la /usr/share/vulkan/icd.d/ /etc/vulkan/icd.d/ 2>/dev/null || true
+
+      - name: Point Vulkan loader at lavapipe
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          set -x
+          icd=$(find /usr /etc -name 'lvp_icd*.json' 2>/dev/null | head -1)
+          if [ -z "$icd" ]; then
+            echo "::error::lavapipe ICD manifest not found after installing mesa-vulkan-drivers"
+            find /usr /etc -name '*_icd*.json' 2>/dev/null || true
+            exit 1
+          fi
+          echo "lavapipe ICD: $icd"; cat "$icd" || true
+          # VK_ICD_FILENAMES (loader < 1.3.207) + VK_DRIVER_FILES (newer loaders); set both for safety.
+          { echo "VK_ICD_FILENAMES=$icd"; echo "VK_DRIVER_FILES=$icd"; } >> "$GITHUB_ENV"
 
       # Veldrid 4.9.0's Vulkan binding P/Invokes the bare names "libdl" and "libvulkan"; modern Ubuntu only
       # ships the versioned libdl.so.2 / libvulkan.so.1 (no -dev unversioned symlink), so the device init
@@ -106,9 +127,12 @@ jobs:
         run: dotnet test -c Release --no-build --filter "FullyQualifiedName~Golden"
 
       # When baking: upload the freshly written per-backend goldens so they can be downloaded and committed.
+      # always() so a leg that wrote some goldens before erroring still surfaces them; ignore = no spurious
+      # failure on a leg that wrote none.
       - name: Upload baked goldens
-        if: github.event_name == 'workflow_dispatch' && inputs.bake
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.bake
         uses: actions/upload-artifact@v4
         with:
           name: goldens-${{ matrix.backend }}
           path: KhaozEngine.Tests/Gpu/goldens/*.${{ matrix.backend }}.txt
+          if-no-files-found: ignore

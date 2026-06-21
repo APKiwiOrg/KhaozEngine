@@ -37,6 +37,7 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 | **KhaozEngine.Netcode** | Transport-free netcode primitives (`System.Numerics`): `UnitAxisQuantizer` (deterministic 8-bit axis codec), `ClientPrediction<TState,TCommand>`, `RemoteCommandQueue<TCommand>`. Type-forwards the channel-split contract from Abstractions. | Netcode.Abstractions |
 | **KhaozEngine.Netcode.LiteNetLib** | LiteNetLib transport binding: `ChannelSplitter` maps `NetChannelReliability` to LiteNetLib's `DeliveryMethod`. | LiteNetLib, Netcode |
 | **KhaozEngine.Content.Validator** | Build-time JSON-schema enforcement tool for content (`IsPackable=false`; ships inside the Content package). | Content |
+| **KhaozEngine.Sfx.Tool** | The `ke-sfxbake` dotnet tool (`PackAsTool`): manifest-driven bulk SFX generation + bake. Reads a per-game `sfx.manifest.jsonc`, generates each effect via the ElevenLabs sound-effects REST API, encodes with ffmpeg/oggenc, idempotent via `.sfxmeta` sidecars. Author-time tool, not a runtime package. | Serialization |
 
 **Umbrella metapackages** (code-free curated dependency groups - one `<PackageReference>` instead of a dozen):
 
@@ -118,10 +119,10 @@ Published to a private GitHub Packages feed on tagged releases, and packed to a 
 ```
 ```xml
 <!-- One reference per project via an umbrella metapackage. Pick the bundle that fits: -->
-<PackageReference Include="KhaozEngine.Game2D"     Version="7.13.0" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
-<PackageReference Include="KhaozEngine.Game3D"     Version="7.13.0" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
-<PackageReference Include="KhaozEngine.Server"     Version="7.13.0" />  <!-- headless: foundation + netcode, no graphics -->
-<PackageReference Include="KhaozEngine.Foundation" Version="7.13.0" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
+<PackageReference Include="KhaozEngine.Game2D"     Version="7.14.0" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
+<PackageReference Include="KhaozEngine.Game3D"     Version="7.14.0" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
+<PackageReference Include="KhaozEngine.Server"     Version="7.14.0" />  <!-- headless: foundation + netcode, no graphics -->
+<PackageReference Include="KhaozEngine.Foundation" Version="7.14.0" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
 ```
 
 The metapackages have no code; they just pull in the granular packages. You can still reference those
@@ -157,11 +158,42 @@ KhaozEngine.Netcode/   KhaozEngine.Netcode.Abstractions/   KhaozEngine.Netcode.L
 KhaozEngine.Foundation/   KhaozEngine.Game2D/   KhaozEngine.Game3D/   KhaozEngine.Server/
 # Tests, samples, tools
 KhaozEngine.Tests/   GuiSample/   Render2DSample/   Render3DSample/   SceneSample/   WindowingSample/   MiniGame/
+KhaozEngine.Updates.Tool/ (ke-updater)   KhaozEngine.Sfx.Tool/ (ke-sfxbake)
 tools/   docs/USING-KHAOZENGINE.md
 Directory.Build.props (shared version)   nuget.config   .github/workflows/ci.yml
 ```
 
 CI builds, tests, packs, and on a `v*` tag publishes to GitHub Packages.
+
+## Dev tools
+
+Author-time dotnet tools that ship as packages on the shared version line (not runtime dependencies):
+
+- **`ke-sfxbake`** (`KhaozEngine.Sfx.Tool`) - manifest-driven bulk SFX generation + bake. Each game owns a
+  `sfx.manifest.jsonc` describing its effects; the tool generates them via the ElevenLabs sound-effects API and
+  encodes into the asset tree, skipping anything already up to date (`.sfxmeta` hash sidecars). Needs
+  `ELEVENLABS_API_KEY`, plus an ffmpeg with libvorbis or `oggenc` (vorbis-tools) for OGG output.
+
+  ```bash
+  export ELEVENLABS_API_KEY=...           # already set on dev machines
+  ke-sfxbake bake path/to/sfx.manifest.jsonc --dry-run   # plan + estimated credits, spends nothing
+  ke-sfxbake bake path/to/sfx.manifest.jsonc             # generate new/changed, skip unchanged
+  ke-sfxbake bake path/to/sfx.manifest.jsonc --force     # regenerate everything
+  ```
+
+  ```jsonc
+  // sfx.manifest.jsonc - paths resolve relative to this file
+  {
+    "sounds": [
+      { "key": "ui/confirm", "prompt": "crisp sci-fi UI confirm blip, short synth tail",
+        "durationSeconds": 1.2, "out": "Assets/Sfx/ui/confirm.ogg" },          // mono OGG (default)
+      { "key": "ui/click", "prompt": "soft latency click", "format": "wav",
+        "out": "Assets/Sfx/ui/click.wav" },                                     // 16-bit PCM WAV for one-shots
+    ],
+  }
+  ```
+
+- **`ke-updater`** (`KhaozEngine.Updates.Tool`) - generate, sign, and verify update manifests (RSA-2048).
 
 ## Consumers
 

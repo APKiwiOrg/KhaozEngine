@@ -4,13 +4,15 @@ Which game uses which packages, at which version. Current state only - for the p
 [`../CHANGELOG.md`](../CHANGELOG.md). Update this whenever a consumer bumps a `<PackageReference>` or the
 engine ships a new version.
 
-**Engine current version:** `7.13.0` (the shared `<KhaozEngine5xVersion>` line, which is the engine): the
+**Engine current version:** `7.14.0` (the shared `<KhaozEngine5xVersion>` line, which is the engine): the
 custom MonoGame-free stack (`Primitives`/`Gpu`/`Windowing`/`Render2D`/`Render3D`/`Gui`/`Audio`/`Particles`/`Effects`/`Game`/`Game.Render3D`) **plus**
 the MonoGame-free foundation packages that graduated onto it at `5.46.0`
 (`Ecs`/`Serialization`/`Content`/`Diagnostics`/`App`/`Localization`/`Persistence`/`Pooling`/`Platform`/
 `Updates`/`Collision`/`Netcode`/`Netcode.Abstractions`/`Netcode.LiteNetLib`). 7.3.0 also adds the publish-side
-`KhaozEngine.Updates.Tool` package (the `ke-updater` dotnet tool: manifest/genkey/sign/verify); it is a tool,
-not a library, so no consumer references it via `<PackageReference>` and it is in no umbrella metapackage.
+`KhaozEngine.Updates.Tool` package (the `ke-updater` dotnet tool: manifest/genkey/sign/verify), and 7.14.0 adds
+the author-time `KhaozEngine.Sfx.Tool` package (the `ke-sfxbake` dotnet tool: manifest-driven bulk SFX
+generation + bake via the ElevenLabs API + ffmpeg/oggenc); both are tools,
+not libraries, so no consumer references them via `<PackageReference>` and they are in no umbrella metapackage.
 **The legacy 4.x line + its six
 genuinely-MonoGame packages (`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`) were DELETED from the repo**, so
 the engine is now entirely MonoGame-free with a single version line in `Directory.Build.props` (the doc-version

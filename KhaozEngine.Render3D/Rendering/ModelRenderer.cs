@@ -67,6 +67,9 @@ namespace KhaozEngine.Render3D.Rendering
 
         IGpuBuffer? _instanceBuffer;
         uint _instanceCapacity;          // capacity in instances
+        // Instance buffers replaced by a grow are retired here (a prior in-flight frame may still read them);
+        // disposed only in Dispose. Bounded by geometric growth.
+        readonly List<IDisposable> _retired = new();
 
         public ModelRenderer(IGpuDevice gd, GpuOutputDescription modelOutputs)
         {
@@ -240,7 +243,10 @@ namespace KhaozEngine.Render3D.Rendering
         void EnsureInstanceCapacity(uint instanceCount)
         {
             if (_instanceBuffer != null && _instanceCapacity >= instanceCount) return;
-            _instanceBuffer?.Dispose();
+            // Retire (don't dispose inline): a prior frame's command list may still be reading the old buffer on
+            // the GPU when this frame grows; disposing it then is a use-after-free. Geometric growth bounds the
+            // retired count; freed in Dispose. (Same reasoning as SkinnedModelRenderer.)
+            if (_instanceBuffer != null) _retired.Add(_instanceBuffer);
             _instanceCapacity = Math.Max(instanceCount, _instanceCapacity == 0 ? 64u : _instanceCapacity * 2);
             _instanceBuffer = _gd.Factory.CreateBuffer(
                 new GpuBufferDescription(_instanceCapacity * InstanceData.SizeInBytes, GpuBufferUsage.VertexBuffer));
@@ -267,6 +273,8 @@ namespace KhaozEngine.Render3D.Rendering
             _shaders.Dispose();
             _ubo.Dispose();
             _instanceBuffer?.Dispose();
+            foreach (var r in _retired) r.Dispose();
+            _retired.Clear();
         }
     }
 }

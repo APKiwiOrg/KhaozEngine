@@ -44,6 +44,11 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuBuffer? _instanceBuffer; uint _instanceCapacity;          // capacity in instances
         IGpuBuffer? _boneBuffer; uint _boneSlotCapacity;             // capacity in per-draw slots
         IGpuResourceSet? _boneSet;                                   // binds the bone buffer as a one-slot dynamic window
+        // Buffers/sets replaced by a capacity grow are RETIRED here, not disposed inline: a prior frame's command
+        // list may still be reading the old buffer on the GPU when this frame grows, and disposing it then is a
+        // use-after-free (garbage / dropped draws on the growth frame). Geometric growth bounds this to a handful
+        // of entries ever (they stop accumulating once the high-water-mark is reached); freed only in Dispose.
+        readonly List<IDisposable> _retired = new();
 
         public SkinnedModelRenderer(IGpuDevice gd, GpuOutputDescription modelOutputs, ModelRenderer model)
         {
@@ -109,7 +114,8 @@ namespace KhaozEngine.Render3D.Rendering
         void EnsureBoneCapacity(uint slotCount)
         {
             if (_boneBuffer != null && _boneSlotCapacity >= slotCount) return;
-            _boneBuffer?.Dispose(); _boneSet?.Dispose();
+            if (_boneBuffer != null) _retired.Add(_boneBuffer);   // may still be read by an in-flight frame; retire, don't dispose
+            if (_boneSet != null) _retired.Add(_boneSet);
             _boneSlotCapacity = Math.Max(slotCount, _boneSlotCapacity == 0 ? 8u : _boneSlotCapacity * 2);
             _boneBuffer = _gd.Factory.CreateBuffer(new GpuBufferDescription(_boneSlotCapacity * SlotBytes, GpuBufferUsage.UniformBuffer));
             // The set binds a single-slot WINDOW (offset 0, size SlotBytes); the per-draw offset selects the slot.
@@ -127,7 +133,7 @@ namespace KhaozEngine.Render3D.Rendering
         void EnsureInstanceCapacity(uint count)
         {
             if (_instanceBuffer != null && _instanceCapacity >= count) return;
-            _instanceBuffer?.Dispose();
+            if (_instanceBuffer != null) _retired.Add(_instanceBuffer);   // retire (may be in flight), don't dispose inline
             _instanceCapacity = Math.Max(count, _instanceCapacity == 0 ? 64u : _instanceCapacity * 2);
             _instanceBuffer = _gd.Factory.CreateBuffer(
                 new GpuBufferDescription(_instanceCapacity * SkinnedInstanceData.SizeInBytes, GpuBufferUsage.VertexBuffer));
@@ -173,6 +179,8 @@ namespace KhaozEngine.Render3D.Rendering
         {
             _pipeline.Dispose(); _shaders.Dispose(); _boneLayout.Dispose();
             _boneSet?.Dispose(); _boneBuffer?.Dispose(); _instanceBuffer?.Dispose();
+            foreach (var r in _retired) r.Dispose();
+            _retired.Clear();
         }
     }
 }

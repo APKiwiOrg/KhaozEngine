@@ -5,6 +5,18 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.14.1
+
+Fix: GPU use-after-free when a model/skinned instance or bone buffer grows. `EnsureInstanceCapacity` /
+`EnsureBoneCapacity` (`ModelRenderer`, `SkinnedModelRenderer`) disposed the old buffer inline on a 2x capacity
+grow and immediately allocated a new one; a prior frame's command list could still be reading the old buffer on
+the GPU, so the growth frame read freed/reallocated memory. With many skinned draws per frame and the count
+rising frame to frame (e.g. enemies spawning), this dropped the affected draws and occasionally produced a
+full-screen garbage triangle. Grown-out buffers (and the bone resource set) are now RETIRED and freed only when
+the renderer is disposed, never inline while potentially in flight; geometric growth bounds the retired set to a
+few entries. No API or behaviour change otherwise; single-frame rendering was already correct (a render-to-texture
+test draws 192 skinned meshes across two mesh handles with the last still rendering).
+
 ## 7.14.0
 
 Additive: new `KhaozEngine.Sfx.Tool` package, the `ke-sfxbake` dotnet tool (`PackAsTool`, rides the shared

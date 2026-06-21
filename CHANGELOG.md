@@ -5,7 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
-## 7.10.0
+## 7.11.0
 
 Runtime skinned / deformable mesh support in Render3D. New `Scene3D.LoadSkinnedMesh` /
 `DrawSkinned` / `UnloadSkinnedMesh` add GPU bone-palette skinning: a smooth mesh bends under
@@ -23,6 +23,35 @@ transform, so forward kinematics for a chain is the caller's responsibility (Pol
 consumer's per-segment layout). New types: `SkinnedVertex`, `SkinnedGltfMesh`,
 `SkinnedMeshHandle`, `Axis`, `SkinningMath` (pure, headless-testable). Presentation only: must not
 touch sim/RNG/netcode.
+
+## 7.10.0
+
+Additive (non-breaking): new `KhaozEngine.Determinism` package with `DeterministicFpScope`, cross-platform control
+of the CPU floating-point environment for fixed-tick / lockstep sims. A fixed-seed, fixed-input host sim can drift
+across threads, machines, and even process runs because the per-thread FP control register (ARM64 `FPCR`, x86
+`MXCSR`) is uncontrolled: its rounding mode and flush-to-zero / denormals-are-zero flags are not guaranteed to
+match, and a native library on the thread can change them. Different flags give different low bits, which compound
+over thousands of ticks (the SpaceGame determinism tripwire produced two different final states from one seed on
+one machine). `DeterministicFpScope.Enter()` (RAII, allocation-free) saves the current FP environment, installs the
+IEEE default (round-to-nearest-even, FTZ/DAZ off, FP traps masked), and restores on dispose; `DeterministicFp.
+SetCanonical()`/`Restore()` are the set-once-per-sim-thread form, and `DeterministicFp.IsSupported` reports whether
+the platform is wired up (unsupported -> safe no-op, never corrupts FP state).
+
+Implemented over the platform C library's `<fenv.h>` via pure-managed P/Invoke (a per-OS `DllImportResolver`; no
+native build asset, packs through the existing pipeline). Canonical state is a zeroed `fenv_t` on macOS/Linux arm64
+(a zero write sets FPCR=0, which is round-to-nearest + FTZ-off + traps-masked by the ARM architecture itself),
+`FE_DFL_ENV` on x64 (glibc/musl sentinel `(fenv_t*)-1`; macOS/Windows resolve the
+`_FE_DFL_ENV` symbol, else fall back to the captured startup environment). Works on arm64 and x64 across macOS,
+Linux, and Windows. The package is wired into `KhaozEngine.Foundation`, so the `Game2D`/`Game3D`/`Server` umbrellas
+expose it transitively.
+
+Scope: this controls the FP *register* only. It does NOT fix non-determinism from JIT *codegen* (FMA contraction
+via `MathF.FusedMultiplyAdd`, auto-vectorization / reduction order). See the new "Deterministic floating point"
+section in `docs/USING-KHAOZENGINE.md` for the guidance (fix operation order, avoid fused/vectorized forms for
+state you hash or send over the wire). Ships with a headless repro harness in `KhaozEngine.Tests` that corrupts the
+thread's rounding mode and asserts the mini-sim is byte-identical across repeated runs and across main / thread-pool
+/ dedicated threads with the scope active; a CI step runs the determinism tests under `DOTNET_TieredCompilation` 0
+and 1.
 
 ## 7.9.0
 

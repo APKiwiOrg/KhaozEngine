@@ -20,6 +20,7 @@
     <ProjectReference Include="../KhaozEngine.Audio/KhaozEngine.Audio.csproj" />
     <ProjectReference Include="../KhaozEngine.Collision/KhaozEngine.Collision.csproj" />
     <ProjectReference Include="../KhaozEngine.Content/KhaozEngine.Content.csproj" />
+    <ProjectReference Include="../KhaozEngine.Determinism/KhaozEngine.Determinism.csproj" />
     <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
     <ProjectReference Include="../KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
     <ProjectReference Include="../KhaozEngine.Effects/KhaozEngine.Effects.csproj" />

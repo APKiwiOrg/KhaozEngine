@@ -508,11 +508,63 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
 - **`KhaozEngine.Platform`**: `Clipboard` (cross-platform text + image, best-effort, never throws).
 - **`KhaozEngine.Pooling`**: `ObjectPool<T>` (O(1) rent/return, swap-removal compaction).
 - **`KhaozEngine.Collision`**: deterministic `CircleCollision` + `SpatialHashGrid` (bit-identical for lockstep).
+- **`KhaozEngine.Determinism`**: `DeterministicFpScope` - forces a canonical CPU floating-point environment
+  for fixed-tick / lockstep sims (see "Deterministic floating point" below).
 - **`KhaozEngine.Updates`**: delta auto-update pipeline (SHA256 manifests + diffing, resumable staged downloads,
   cross-platform staged-apply).
 - **`KhaozEngine.Netcode` / `.Abstractions` / `.LiteNetLib`**: transport-free netcode primitives
   (`UnitAxisQuantizer`, `ClientPrediction`, `RemoteCommandQueue`), the zero-dependency channel-split contract
   (`IChannelSplittable<TSelf>` + `NetChannelReliability`), and the LiteNetLib transport binding.
+
+---
+
+## Deterministic floating point (`KhaozEngine.Determinism`)
+
+A fixed-tick host sim that must be bit-reproducible (replays, lockstep multiplayer, a determinism
+tripwire) has a hidden input most code forgets: the CPU's per-thread floating-point control register
+(ARM64 `FPCR`, x86 `MXCSR`). Its rounding mode and flush-to-zero / denormals-are-zero flags are NOT
+guaranteed to match across threads, machines, or even process runs, and a native library on the
+thread can change them behind your back. Different flags give different low bits, and over thousands
+of ticks that compounds into a visibly different result. (This was a real SpaceGame bug: the same
+seed + same input gave two different final states across runs on one machine.)
+
+`DeterministicFpScope` pins that register to the IEEE default - round-to-nearest-even, FTZ/DAZ off,
+FP traps masked - for the duration of a tick or a sim thread, and restores the prior state after.
+It is allocation-free and cheap enough to wrap every tick.
+
+```csharp
+using KhaozEngine.Determinism;
+
+// Per tick (or wrap the whole fixed-step run):
+using (DeterministicFpScope.Enter())
+{
+    sim.Tick(dt);
+}
+
+// Or set once on a dedicated sim thread, restore on teardown:
+var prior = DeterministicFp.SetCanonical();
+try   { RunSimLoop(); }
+finally { DeterministicFp.Restore(prior); }
+```
+
+It is implemented over the platform C library's `<fenv.h>` (no native build asset; pure-managed
+P/Invoke), and works on arm64 and x64 (macOS / Linux / Windows). On an unsupported platform
+`IsSupported` is `false` and the scope is a safe no-op (it never corrupts FP state) - assert
+`DeterministicFp.IsSupported` in a debug build if your game requires the guarantee.
+
+**What it does NOT fix.** The scope controls the FP *register* only. It does not remove
+non-determinism that comes from JIT *codegen* differences:
+
+- **Fused multiply-add.** `MathF.FusedMultiplyAdd(a, b, c)` (and any op the JIT contracts into one)
+  rounds once; `a * b + c` rounds twice. They give different bits. For sim math that must be
+  reproducible, pick one form explicitly and use it everywhere - do not mix.
+- **Auto-vectorization / reduction order.** A horizontal sum over a `System.Numerics.Vector<T>` can
+  add lanes in a different order than a scalar loop, which changes rounding. Keep state that must be
+  bit-identical on a fixed, scalar accumulation order.
+
+Rule of thumb: integers and `DeterministicRng` are already bit-stable; for the float math in a
+deterministic tick, wrap it in `DeterministicFpScope`, keep operation order fixed, and avoid fused
+or vectorized forms for the values you hash or send over the wire.
 
 ---
 

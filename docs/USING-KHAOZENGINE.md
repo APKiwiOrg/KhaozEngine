@@ -531,7 +531,9 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
 - **`KhaozEngine.Determinism`**: `DeterministicFpScope` - forces a canonical CPU floating-point environment
   for fixed-tick / lockstep sims (see "Deterministic floating point" below).
 - **`KhaozEngine.Updates`**: delta auto-update pipeline (SHA256 manifests + diffing, resumable staged downloads,
-  cross-platform staged-apply).
+  cross-platform staged-apply). Feeds either a dynamic API or a server-less static blob (no backend - the
+  client reads the full `LatestVersionInfo` straight from `latest-{platform}.json`); both have a ready-to-fill
+  publish template. See the package README "Publish + feed layout".
 - **`KhaozEngine.Netcode` / `.Abstractions` / `.LiteNetLib`**: transport-free netcode primitives
   (`UnitAxisQuantizer`, `ClientPrediction`, `RemoteCommandQueue`), the zero-dependency channel-split contract
   (`IChannelSplittable<TSelf>` + `NetChannelReliability`), and the LiteNetLib transport binding.

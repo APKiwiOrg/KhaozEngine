@@ -151,15 +151,65 @@ Publish it per-RID with a game-specific name and set `UpdateServiceOptions.Updat
 
 ### 4. Publish + feed layout
 
-Copy `templates/publish-update.sh` (shipped in this package) into your repo, fill in the CONFIG block,
-and run it per platform. It builds, generates + signs the manifest with `ke-updater`, uploads, and points
-the latest pointer at the new version. The feed layout the client expects:
+Two feed shapes are supported. Both lay the build out the same way; they differ only in what the
+`latest-<platform>.json` pointer contains and who fills it in. Pick by whether a server sits in front
+of the feed:
+
+| | Dynamic-server feed | Server-less static-blob feed |
+|---|---|---|
+| Template | `templates/publish-update.sh` | `templates/publish-update-static.sh` |
+| `latest-<platform>.json` holds | `{"version":"<v>"}` (minimal) | the full `LatestVersionInfo` |
+| Who builds the client's response | a dynamic API enriches the minimal blob into the full `LatestVersionInfo` | the blob IS the response; the client reads it directly |
+| Client `LatestVersionPath` | `api/updates/latest?platform={platform}` (default) | `<container>/latest-{platform}.json` |
+| Use when | you already run a server (SpaceGame) | single-player game, no backend (Hardpoint) |
+
+Copy the matching template (both ship in this package) into your repo, fill in the CONFIG block, and run
+it per platform. It builds, generates + signs the manifest with `ke-updater`, uploads, and writes the
+latest pointer. Shared build layout under the feed root:
 
 ```
 <feed-root>/
-  latest-<platform>.json            -> {"version":"<v>"}
+  latest-<platform>.json            -> see table above
   <version>/<platform>/
     manifest.json
     manifest.json.sig
     <game files...>
 ```
+
+#### Server-less static-blob feed (no backend)
+
+`publish-update-static.sh` writes the **full** `LatestVersionInfo` so a game with no server deserializes
+it straight from the blob (the minimal `{"version"}` form is insufficient here: the client needs
+`manifestUrl` to find the manifest, and `LatestVersionInfo` also requires `buildVersion` and `required`):
+
+```json
+{ "version": "1.4.0", "buildVersion": "1.4.0", "manifestUrl": "https://acct.blob.core.windows.net/releases/1.4.0/osx-arm64/manifest.json", "required": false }
+```
+
+- **`version`** drives the update decision (compared with the client's compiled-in version via
+  `UpdateVersion.IsNewer`).
+- **`manifestUrl`** is the absolute blob URL of *that build's* `manifest.json`; the client resolves every
+  other file as a sibling of it. The template derives it as
+  `PUBLIC_BASE_URL/CONTAINER/<version>/<platform>/manifest.json`.
+- **`required`** marks a mandatory update the user cannot skip (`UPDATE_REQUIRED=true` to set it).
+- **`buildVersion`** is an opaque display label the engine does NOT compare against. The template
+  defaults it to `version`; pass a 3rd arg for a separate informational/display string.
+
+**Client wiring** points `ServerBaseUrl` at the blob host (same host the manifests live on - the source
+enforces https + same-origin) and `LatestVersionPath` at the static pointer:
+
+```csharp
+new HttpUpdateSource(new HttpUpdateSourceOptions
+{
+    ServerBaseUrl = "https://yourgameupdates.blob.core.windows.net/", // your storage account host
+    LatestVersionPath = "releases/latest-{platform}.json",             // "<container>/latest-{platform}.json"
+});
+```
+
+**Public-blob container setup.** The client fetches blobs anonymously, so the container needs public
+(anonymous) **blob** read - e.g. `az storage container create --name releases --account-name <acct> --public-access blob`.
+`blob` access (not `container`) exposes blobs by exact URL without allowing the container to be listed.
+Mandatory signing still gates every install, so a public read-only feed is safe.
+
+For a feed fronted by a dynamic API instead, use `publish-update.sh` (it writes the minimal pointer and
+the server fills in `manifestUrl` etc. from the version).

@@ -19,3 +19,21 @@ string version = BuildMetadata.Read(
 
 First assembly with a matching, non-whitespace `AssemblyMetadata` value wins; null assemblies are
 skipped; otherwise the fallback is returned.
+
+## AppInstallStamp
+
+A local record of when the current app version first ran on this machine and when it last changed
+(what an About screen shows as "Installed" / "Updated"). Distinct from the build's release date, which
+stays a per-game `BuildMetadata` property. The core is a pure, storage-free resolver - `utcNow` is
+injected, so it is deterministic and snapshot/headless replay stays stable.
+
+```csharp
+AppInstallStampResult r = AppInstallStamp.Resolve(previousStamp, currentVersion, DateTime.UtcNow);
+if (r.Changed) Persist(r.Stamp);   // first run, or a version change
+```
+
+First run (previous null) sets both dates; same version returns the previous stamp untouched; a
+different version (upgrade or downgrade - ordinal string inequality only) preserves
+`FirstInstalledAtUtc` and bumps `Version` + `UpdatedAtUtc`. Store the stamp on the game's existing
+settings DTO rather than a separate file; `KhaozEngine.Persistence` adds a `SettingsManager<T>.StampInstall(...)`
+convenience that resolves and saves only when changed.

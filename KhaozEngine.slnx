@@ -30,6 +30,7 @@
   <Project Path="KhaozEngine.Render2D/KhaozEngine.Render2D.csproj" />
   <Project Path="KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
   <Project Path="KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
+  <Project Path="KhaozEngine.Sfx.Tool/KhaozEngine.Sfx.Tool.csproj" />
   <Project Path="KhaozEngine.Tests/KhaozEngine.Tests.csproj" />
   <Project Path="KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
   <Project Path="KhaozEngine.Updates/KhaozEngine.Updates.csproj" />

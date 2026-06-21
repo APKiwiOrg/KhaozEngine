@@ -72,7 +72,8 @@ version/release work.
   code-free umbrella metapackages (`Foundation`, `Game2D`, `Game3D`, `Server`). (`KhaozEngine.Content.Validator`
   is a build-time tool, `IsPackable=false`, shipped inside the `Content` package rather than versioned itself.)
   `KhaozEngine.Updates.Tool` (the `ke-updater` dotnet tool: manifest/genkey/sign/verify, shipped at `7.3.0`)
-  is `PackAsTool` and rides the same shared version line.
+  and `KhaozEngine.Sfx.Tool` (the `ke-sfxbake` dotnet tool: manifest-driven bulk SFX generation + bake via the
+  ElevenLabs API + ffmpeg/oggenc, shipped at `7.14.0`) are both `PackAsTool` and ride the same shared version line.
   All packable projects set `<Version>$(KhaozEngine5xVersion)</Version>` in their csproj. Bump it to release ALL
   packages together
   (repack to `local-feed`, single tag `vX.Y.Z`); `check-doc-versions.sh` enforces this line. The 5.x line

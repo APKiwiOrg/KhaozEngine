@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>ke-sfxbake</ToolCommandName>
+    <PackageId>KhaozEngine.Sfx.Tool</PackageId>
+    <RootNamespace>KhaozEngine.Sfx</RootNamespace>
+    <Version>$(KhaozEngine5xVersion)</Version>
+    <Description>The ke-sfxbake CLI: manifest-driven bulk SFX generation + bake for KhaozEngine. Reads a per-game JSONC manifest, generates each effect via the ElevenLabs Sound Effects REST API, normalizes/encodes with ffmpeg or oggenc, and writes the result into the game's asset tree with an idempotency sidecar. Author-time dev tool, not a runtime package.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Route the hand-authored JSONC manifest through the engine-wide JSONC read policy. -->
+    <ProjectReference Include="../KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
+  </ItemGroup>
+</Project>

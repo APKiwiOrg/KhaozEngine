@@ -5,6 +5,33 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.14.0
+
+Additive: new `KhaozEngine.Sfx.Tool` package, the `ke-sfxbake` dotnet tool (`PackAsTool`, rides the shared
+version line like `ke-updater`). A manifest-driven bulk SFX generation + bake pipeline usable by every game.
+It reads a per-game `sfx.manifest.jsonc` (routed through the engine `Jsonc` read policy: comments + trailing
+commas), generates each effect via the ElevenLabs text-to-sound-effects REST API directly (not the auditioning
+MCP, so it batches and runs unattended; key from `ELEVENLABS_API_KEY`), normalizes/encodes with ffmpeg or
+oggenc, and writes into that repo's asset tree. It is author-time tooling, not a runtime package: no game
+references it via `<PackageReference>` and it is in no umbrella metapackage.
+
+Per-entry manifest schema: `key`, `prompt`, optional `durationSeconds` (0.5-30), optional `promptInfluence`
+(0..1), `format` (`ogg` default | `wav`), `channels` (`mono` default | `stereo`), and `out` (resolved relative
+to the manifest file). Format policy baked in as defaults: OGG Vorbis mono at ~q5 (8-9x smaller than WAV at
+scale); mono is the default because OpenAL only spatializes mono sources; `wav` output is forced to 16-bit PCM
+44.1 kHz (the only WAV `KhaozEngine.Audio`'s `WavDecoder` accepts); the API source is requested at high fidelity
+(`mp3_44100_192` by default, or `pcm_44100` via `--source-format`) for a single lossy step before encode.
+
+Idempotency + cost control: each output gets a `.sfxmeta` sidecar holding a hash of (prompt + duration +
+influence + format + channels + model + source format); a re-run skips entries whose output exists and whose
+hash is unchanged, regenerates only changed/new ones, and `--force` regenerates all. `--dry-run` prints the
+generate/skip plan and an estimated credit cost (ElevenLabs API list rate, approximate) and spends nothing.
+Preflight detects a usable Vorbis encoder (an ffmpeg built with libvorbis, or `oggenc` from vorbis-tools) and
+fails with a clear remediation message rather than emitting bad/stereo-only OGG, since stock Homebrew ffmpeg has
+no libvorbis. The network and encoder sit behind `IElevenLabsSfxClient` / `IAudioEncoder` (plus an
+`ISfxFileSystem` / `IProcessRunner` seam) so the whole pipeline is headless-tested with no network, API, or
+audio device. Authoring each game's manifest and wiring play keys is separate per-game work.
+
 ## 7.13.0
 
 Additive: JSONC (JSON with `//` and `/* */` comments and trailing commas) is now the documented engine standard

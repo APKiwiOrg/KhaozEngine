@@ -41,5 +41,6 @@
     <ProjectReference Include="../KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
     <ProjectReference Include="../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
     <ProjectReference Include="../KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
+    <ProjectReference Include="../KhaozEngine.Sfx.Tool/KhaozEngine.Sfx.Tool.csproj" />
   </ItemGroup>
 </Project>

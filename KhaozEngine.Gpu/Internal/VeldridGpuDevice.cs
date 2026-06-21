@@ -108,7 +108,8 @@ namespace KhaozEngine.Gpu.Internal
             for (int i = 0; i < elems.Length; i++)
             {
                 var e = src[i];
-                elems[i] = new ResourceLayoutElementDescription(e.Name, VeldridMap.ToVeldrid(e.Kind), VeldridMap.ToVeldrid(e.Stages));
+                var options = e.Dynamic ? ResourceLayoutElementOptions.DynamicBinding : ResourceLayoutElementOptions.None;
+                elems[i] = new ResourceLayoutElementDescription(e.Name, VeldridMap.ToVeldrid(e.Kind), VeldridMap.ToVeldrid(e.Stages), options);
             }
             return new VeldridGpuResourceLayout(
                 GraphicsDevice.ResourceFactory.CreateResourceLayout(new ResourceLayoutDescription(elems)));
@@ -128,6 +129,7 @@ namespace KhaozEngine.Gpu.Internal
             VeldridGpuBuffer b => b.Buffer,
             VeldridGpuTexture t => t.Texture,
             VeldridGpuSampler s => s.Sampler,
+            GpuBufferRange br => new DeviceBufferRange(((VeldridGpuBuffer)br.Buffer).Buffer, br.Offset, br.Size),
             _ => throw new ArgumentException($"Unsupported bindable resource: {r?.GetType().Name ?? "null"}"),
         };
 

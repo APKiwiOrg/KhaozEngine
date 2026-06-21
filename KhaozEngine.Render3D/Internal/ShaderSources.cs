@@ -124,10 +124,11 @@ void main() {
 }";
 
         // ---- Skinned model vertex shader. Same per-frame UBO (set 0, binding 0) and same per-instance stream as
-        //      ModelVert, but with two extra per-vertex attributes (bone indices + weights) and one extra
-        //      per-instance attribute (the bone offset into the shared bone buffer). The bone matrices for EVERY
-        //      skinned draw this frame live in one read-only structured buffer (set 1, binding 0); each instance
-        //      reads its own contiguous range starting at IBoneOffset. Outputs match ModelVert exactly so the
+        //      ModelVert, plus two per-vertex attributes (bone indices + weights). The bone palette is a
+        //      DYNAMIC-OFFSET uniform buffer (set 1, binding 0): each skinned draw rebinds it with a per-draw byte
+        //      offset, so the shader reads bones[0..N] for THIS draw without any per-instance index. (A per-instance
+        //      bone-offset attribute into a single shared buffer mis-fetched for every draw past the first on the
+        //      Metal/Veldrid backend; dynamic-offset rebasing avoids it.) Outputs match ModelVert exactly so the
         //      shared ModelFrag links and the lit/colour path is identical. ----
         public const string SkinnedModelVert = @"#version 450
 layout(set=0, binding=0) uniform U {
@@ -137,7 +138,7 @@ layout(set=0, binding=0) uniform U {
     vec4 PointPosRadius[16];
     vec4 PointColorIntensity[16];
 };
-layout(set=1, binding=0) readonly buffer Bones { mat4 bones[]; };
+layout(set=1, binding=0) uniform Bones { mat4 bones[128]; }; // per-draw dynamic-offset window (see MaxBonesPerDraw)
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
 layout(location=2) in vec4 Color;
@@ -151,7 +152,6 @@ layout(location=9)  in vec4 IModel3;
 layout(location=10) in vec4 ITint;
 layout(location=11) in vec4 IEmissive;
 layout(location=12) in vec4 ISpecParams;
-layout(location=13) in float IBoneOffset; // base index into bones[] for this instance's palette
 layout(location=0) out vec3 vNormalW;
 layout(location=1) out vec4 vColor;
 layout(location=2) out float vDepth;
@@ -161,16 +161,15 @@ layout(location=5) out vec4 vTint;
 layout(location=6) out vec4 vEmissive;
 layout(location=7) out vec4 vSpecParams;
 void main() {
-    int o = int(IBoneOffset);
     float total = BoneWeights.x + BoneWeights.y + BoneWeights.z + BoneWeights.w;
     mat4 skin;
     if (total < 1e-6) {
         skin = mat4(1.0);
     } else {
-        skin = BoneWeights.x * bones[o + int(BoneIndices.x)]
-             + BoneWeights.y * bones[o + int(BoneIndices.y)]
-             + BoneWeights.z * bones[o + int(BoneIndices.z)]
-             + BoneWeights.w * bones[o + int(BoneIndices.w)];
+        skin = BoneWeights.x * bones[int(BoneIndices.x)]
+             + BoneWeights.y * bones[int(BoneIndices.y)]
+             + BoneWeights.z * bones[int(BoneIndices.z)]
+             + BoneWeights.w * bones[int(BoneIndices.w)];
     }
     mat4 Model = mat4(IModel0, IModel1, IModel2, IModel3);
     vec4 local = skin * vec4(Position, 1.0);

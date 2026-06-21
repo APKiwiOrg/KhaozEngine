@@ -61,9 +61,10 @@ namespace KhaozEngine.Render3D
         readonly MeshSlotMap _skinnedSlots = new();
         readonly SkinnedSceneInstances _skinnedInstances = new();
         // Per-frame composed bone palette for every skinned draw (cleared each Begin), and reused grouping buffers.
+        // Per-frame bone palette, slot-packed: draw i's composed matrices live at [i*MaxBonesPerDraw ..], padded to
+        // the per-draw window so each draw's dynamic-offset bind selects exactly its slice. Cleared each Begin().
         readonly List<Matrix4x4> _boneMatrices = new();
         readonly List<SkinnedModelRenderer.SkinnedInstanceData> _skinnedInstanceData = new();
-        readonly List<SkinnedMeshRun> _skinnedRuns = new();
         SkinnedModelRenderer _skinnedModel = null!;   // set in the constructor after _model
         Vector3 _billboardRight, _billboardUp;
         bool _billboardBasisValid;
@@ -219,8 +220,12 @@ namespace KhaozEngine.Render3D
             if (!_skinnedSlots.IsValid(h.Index, h.Generation)) return;
             var entry = _skinnedMeshes[h.Index];
             if (entry is null) return;
-            uint boneOffset = ComposeBonesInto(_boneMatrices, boneMatrices, entry.InverseBind);
-            _skinnedInstances.Add(h, model, tint, material, boneOffset);
+            // This draw's bones go into slot N (N = its submission index), padded to the per-draw window so the
+            // dynamic-offset bind selects exactly this draw's palette. Slot N maps to bone byte offset
+            // N * SlotBytes and to instance buffer element N in the render loop.
+            int slot = _skinnedInstances.Items.Count;
+            ComposeBonesIntoSlot(_boneMatrices, slot, boneMatrices, entry.InverseBind);
+            _skinnedInstances.Add(h, model, tint, material);
         }
 
         /// <summary>Free a skinned mesh's GPU buffers and release its slot. A <c>default</c> handle is a no-op; a
@@ -560,21 +565,25 @@ namespace KhaozEngine.Render3D
                 }
             }
 
-            // Skinned pass: same model framebuffer + frame UBO, separate pipeline. Upload this frame's whole bone
-            // palette once, then one instanced draw per unique skinned mesh (instances read their own bone range).
+            // Skinned pass: same model framebuffer + frame UBO, separate pipeline. Upload this frame's slot-packed
+            // bone palette + the per-instance data once, then draw each skinned instance separately, selecting its
+            // bone slot (and its instance-buffer element) by index. Each skinned instance is its own instanceCount=1
+            // draw rebased to bone slot i: a per-instance index into one shared bone buffer mis-fetched past the
+            // first draw on Metal/Veldrid, so dynamic-offset rebasing is used instead.
             var skinnedItems = _skinnedInstances.Items;
             if (skinnedItems.Count > 0)
             {
-                SkinnedModelRenderer.GroupSkinnedInstances(skinnedItems, _skinnedInstanceData, _skinnedRuns);
+                SkinnedModelRenderer.BuildInstanceData(skinnedItems, _skinnedInstanceData);
                 _skinnedModel.UploadBones(cl, CollectionsMarshal.AsSpan(_boneMatrices));
                 _skinnedModel.UploadInstances(cl, CollectionsMarshal.AsSpan(_skinnedInstanceData));
                 _skinnedModel.BindPass(cl);
-                foreach (var run in _skinnedRuns)
+                for (int i = 0; i < skinnedItems.Count; i++)
                 {
-                    if (!_skinnedSlots.IsValid(run.Mesh.Index, run.Mesh.Generation)) continue;
-                    var m = _skinnedMeshes[run.Mesh.Index];
+                    var it = skinnedItems[i];
+                    if (!_skinnedSlots.IsValid(it.Mesh.Index, it.Mesh.Generation)) continue;
+                    var m = _skinnedMeshes[it.Mesh.Index];
                     if (m is not { } entry) continue;
-                    _skinnedModel.DrawSkinnedMeshInstanced(cl, entry.Vb, entry.Ib, entry.IndexCount, run.Start, run.Count, entry.MaterialSet);
+                    _skinnedModel.DrawSkinnedInstance(cl, entry.Vb, entry.Ib, entry.IndexCount, (uint)i, (uint)i, entry.MaterialSet);
                 }
             }
 
@@ -708,16 +717,6 @@ namespace KhaozEngine.Render3D
             public MeshRun(int meshIndex, uint start, uint count) : this(new MeshHandle(meshIndex), start, count) { }
         }
 
-        /// <summary>A contiguous run of skinned instances of one mesh handle inside the flat skinned-instance
-        /// array.</summary>
-        internal readonly struct SkinnedMeshRun
-        {
-            public readonly SkinnedMeshHandle Mesh;
-            public readonly uint Start;
-            public readonly uint Count;
-            public SkinnedMeshRun(SkinnedMeshHandle mesh, uint start, uint count) { Mesh = mesh; Start = start; Count = count; }
-        }
-
         /// <summary>Two handles name the same mesh slot occupant (index AND generation match).</summary>
         internal static bool SameHandle(MeshHandle a, MeshHandle b) =>
             a.Index == b.Index && a.Generation == b.Generation;
@@ -774,18 +773,27 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>Compose <paramref name="boneMatrices"/> (per-frame joint world transforms) with
-        /// <paramref name="inverseBind"/> into <paramref name="dst"/>, appending one skin matrix per bone, and
-        /// return the start offset (in matrices) of the appended block. Pure + headless-testable. Throws if the
-        /// two inputs differ in length.</summary>
-        internal static uint ComposeBonesInto(List<Matrix4x4> dst, ReadOnlySpan<Matrix4x4> boneMatrices, Matrix4x4[] inverseBind)
+        /// <paramref name="inverseBind"/> and write them into <paramref name="dst"/> at bone slot
+        /// <paramref name="slot"/> (matrix index <c>slot * MaxBonesPerDraw</c>). <paramref name="dst"/> is grown to
+        /// hold the whole slot and any gap is identity-filled, so each draw's dynamic-offset window reads only its
+        /// own (and harmless identity) matrices. Pure + headless-testable. Throws if the two inputs differ in length
+        /// or the mesh exceeds the per-draw bone cap.</summary>
+        internal static void ComposeBonesIntoSlot(List<Matrix4x4> dst, int slot,
+            ReadOnlySpan<Matrix4x4> boneMatrices, Matrix4x4[] inverseBind)
         {
             if (boneMatrices.Length != inverseBind.Length)
                 throw new ArgumentException(
                     $"boneMatrices length {boneMatrices.Length} must equal the mesh bone count {inverseBind.Length}.");
-            uint offset = (uint)dst.Count;
+            int cap = SkinnedModelRenderer.MaxBonesPerDraw;
+            if (boneMatrices.Length > cap)
+                throw new ArgumentException($"a skinned mesh has {boneMatrices.Length} bones, over the {cap}-bone per-draw cap.");
+            int need = (slot + 1) * cap;
+            while (dst.Count < need) dst.Add(Matrix4x4.Identity);   // pad up to and including this slot (identity = no deform)
+            int baseIdx = slot * cap;
             for (int b = 0; b < boneMatrices.Length; b++)
-                dst.Add(SkinningMath.Compose(boneMatrices[b], inverseBind[b]));
-            return offset;
+                dst[baseIdx + b] = SkinningMath.Compose(boneMatrices[b], inverseBind[b]);
+            for (int b = boneMatrices.Length; b < cap; b++)
+                dst[baseIdx + b] = Matrix4x4.Identity;             // clear the rest of the slot (reused list)
         }
 
         /// <summary>

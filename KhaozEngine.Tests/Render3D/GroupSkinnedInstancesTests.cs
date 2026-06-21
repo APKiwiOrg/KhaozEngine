@@ -8,55 +8,59 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Render3D
 {
-    /// <summary>Headless coverage of SkinnedModelRenderer.GroupSkinnedInstances: skinned draws are bucketed into
-    /// contiguous per-mesh runs (first-seen order, prefix-sum offsets), and each instance keeps its own bone
-    /// offset so instances of one mesh draw in a single instanced call yet read distinct bone ranges.</summary>
+    /// <summary>Headless coverage of SkinnedModelRenderer.BuildInstanceData: each queued skinned draw becomes one
+    /// instance entry in submission order (no grouping, since each skinned draw renders separately with its own
+    /// dynamic-offset bone slot), mapping World/Tint/Material onto the per-instance stream.</summary>
     public class GroupSkinnedInstancesTests
     {
-        static SkinnedSceneInstances.Instance Inst(int mesh, uint boneOffset, Color tint) => new(
-            new SkinnedMeshHandle(mesh), Matrix4x4.Identity, tint, Material.None, boneOffset);
+        static SkinnedSceneInstances.Instance Inst(int mesh, float tx, Color tint) =>
+            new(new SkinnedMeshHandle(mesh), Matrix4x4.CreateTranslation(tx, 0, 0), tint, Material.None);
 
         [Fact]
-        public void InterleavedMeshes_BucketedContiguously_BoneOffsetsPreserved()
+        public void BuildInstanceData_PreservesSubmissionOrder_AndMapsFields()
         {
             var items = new List<SkinnedSceneInstances.Instance>
             {
-                Inst(0, 0,  Color.White),   // mesh 0, bones [0..)
-                Inst(1, 8,  Color.White),   // mesh 1
-                Inst(0, 16, Color.White),   // mesh 0 again, different bone range
+                Inst(0, 1f, Color.White),
+                Inst(1, 2f, new Color(1f, 0f, 0f, 1f)),
+                Inst(0, 3f, Color.White),
             };
             var data = new List<SkinnedModelRenderer.SkinnedInstanceData>();
-            var runs = new List<Scene3D.SkinnedMeshRun>();
 
-            SkinnedModelRenderer.GroupSkinnedInstances(items, data, runs);
+            SkinnedModelRenderer.BuildInstanceData(items, data);
 
-            Assert.Equal(2, runs.Count);
-            Assert.Equal(0, runs[0].Mesh.Index);
-            Assert.Equal(0u, runs[0].Start);
-            Assert.Equal(2u, runs[0].Count);          // two instances of mesh 0, contiguous
-            Assert.Equal(1, runs[1].Mesh.Index);
-            Assert.Equal(2u, runs[1].Start);
-            // mesh-0 instances keep their own bone offsets even after reordering.
-            Assert.Equal(0f, data[0].BoneOffset);
-            Assert.Equal(16f, data[1].BoneOffset);
-            Assert.Equal(8f, data[2].BoneOffset);     // mesh 1
+            Assert.Equal(3, data.Count);
+            Assert.Equal(1f, data[0].Model.M41, 4);
+            Assert.Equal(2f, data[1].Model.M41, 4);
+            Assert.Equal(3f, data[2].Model.M41, 4);
+            Assert.Equal(new Vector4(1, 0, 0, 1), data[1].Tint);
         }
 
         [Fact]
-        public void Empty_ProducesNoRuns()
+        public void BuildInstanceData_Empty_ProducesNoInstances()
         {
             var data = new List<SkinnedModelRenderer.SkinnedInstanceData>();
-            var runs = new List<Scene3D.SkinnedMeshRun>();
-            SkinnedModelRenderer.GroupSkinnedInstances(new List<SkinnedSceneInstances.Instance>(), data, runs);
-            Assert.Empty(runs);
+            SkinnedModelRenderer.BuildInstanceData(new List<SkinnedSceneInstances.Instance>(), data);
             Assert.Empty(data);
         }
 
         [Fact]
-        public void SkinnedInstanceData_StrideMatchesManagedSize()
+        public void SkinnedInstanceData_StrideIs16Aligned()
         {
-            Assert.Equal(116u, SkinnedModelRenderer.SkinnedInstanceData.SizeInBytes);
-            Assert.Equal(116, Marshal.SizeOf<SkinnedModelRenderer.SkinnedInstanceData>());
+            // The per-instance vertex stride must be a multiple of 16 (a non-16 stride mis-fetches the last
+            // attribute for instances past the first on Metal/Veldrid).
+            Assert.Equal(112u, SkinnedModelRenderer.SkinnedInstanceData.SizeInBytes);
+            Assert.Equal(112, Marshal.SizeOf<SkinnedModelRenderer.SkinnedInstanceData>());
+            Assert.Equal(0u, SkinnedModelRenderer.SkinnedInstanceData.SizeInBytes % 16);
+        }
+
+        [Fact]
+        public void BoneSlot_IsA256ByteAlignedWindow()
+        {
+            // Each per-draw dynamic offset is slot * SlotBytes; SlotBytes must be 256-aligned so any slot offset
+            // satisfies the backend uniform-buffer offset alignment.
+            Assert.Equal(0u, SkinnedModelRenderer.SlotBytes % 256u);
+            Assert.Equal((uint)SkinnedModelRenderer.MaxBonesPerDraw * 64u, SkinnedModelRenderer.SlotBytes);
         }
     }
 }

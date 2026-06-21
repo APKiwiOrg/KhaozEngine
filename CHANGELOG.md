@@ -5,6 +5,23 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.12.0
+
+Fix + additive: multi-instance skinned meshes now render correctly. Drawing more than one skinned mesh in a
+frame, each with its own bone palette, previously rendered every skinned draw past the first as invisible or
+full-screen garbage (SpaceGame's many-tentacle creature hit this; the 7.11.0 GPU test only ever drew one skinned
+mesh per frame). Root cause: indexing a single shared bone buffer by a per-instance offset mis-fetched on the
+Metal/Veldrid backend for every draw after the first. The bone palette is now a DYNAMIC-OFFSET uniform buffer:
+each skinned draw's bones occupy a per-draw slot, and the draw rebinds the bone buffer with that slot's byte
+offset so the vertex shader reads `bones[0..N]` for its own mesh (no per-instance index). Each skinned
+`DrawSkinned` is now its own `instanceCount=1` draw (skinned meshes are no longer GPU-instanced); one skinned
+mesh has at most 128 bones (`MaxBonesPerDraw`), and a mesh over the cap throws. The public skinned API
+(`Scene3D.LoadSkinnedMesh` / `DrawSkinned` / `UnloadSkinnedMesh`) is unchanged; bone matrices, the lit colour
+path, and determinism semantics are unchanged. Additive in `KhaozEngine.Gpu`: dynamic-offset resource bindings
+(`GpuResourceLayoutElement(... dynamic: true)`, the `GpuBufferRange` bindable, and
+`IGpuCommandList.SetGraphicsResourceSet(slot, set, dynamicOffset)`) plus an offset overload of
+`SetVertexBuffer`.
+
 ## 7.11.0
 
 Runtime skinned / deformable mesh support in Render3D. New `Scene3D.LoadSkinnedMesh` /

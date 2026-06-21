@@ -6,34 +6,44 @@ using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D.Rendering
 {
-    /// <summary>Draws skinned meshes into the model MRT. Reuses ModelRenderer's frame UBO (set 0) and lit
-    /// fragment shader; adds a skinned vertex shader, two extra per-vertex attributes (bone indices + weights),
-    /// a per-instance bone offset, and one growable read-only structured buffer (set 1) holding every skinned
-    /// draw's composed bone matrices for the frame. Instances of one mesh draw in a single instanced call, each
-    /// reading its own bone range via the offset.</summary>
+    /// <summary>Draws skinned meshes into the model MRT. Reuses ModelRenderer's frame UBO + lit fragment shader;
+    /// adds a skinned vertex shader and two per-vertex attributes (bone indices + weights). The bone palette is a
+    /// DYNAMIC-OFFSET uniform buffer: every skinned draw's bones are packed into per-draw slots in one buffer, and
+    /// each draw rebinds the bone set with its slot's byte offset so the shader reads bones[0..N] for that draw.
+    /// Each skinned instance is its own draw (no GPU instancing): indexing a single shared bone buffer by a
+    /// per-instance attribute mis-fetched for every draw past the first on the Metal/Veldrid backend, so per-draw
+    /// dynamic-offset rebasing is used instead. The instance data (model/tint) still streams via a per-instance
+    /// vertex buffer, rebased per draw to its element.</summary>
     internal sealed class SkinnedModelRenderer : IDisposable
     {
-        /// <summary>Per-instance stream for the skinned pass: the rigid InstanceData fields plus the bone offset.
-        /// 64 + 16*3 + 4 = 116 bytes.</summary>
+        /// <summary>Per-instance stream for the skinned pass: model + tint + emissive + spec. 64 + 16*3 = 112 bytes
+        /// (a multiple of 16). No bone offset rides here: the bone slot is selected by a per-draw dynamic offset.</summary>
         public struct SkinnedInstanceData
         {
             public Matrix4x4 Model;     // 64
             public Vector4 Tint;        // 16
             public Vector4 Emissive;    // 16
             public Vector4 SpecParams;  // 16
-            public float BoneOffset;    // 4  (base index into the bone buffer; float so it rides as a Float1 attr)
-            public const uint SizeInBytes = 116;
+            public const uint SizeInBytes = 112;
         }
 
+        /// <summary>Max bones in one skinned mesh's palette: the per-draw dynamic-offset window (the shader's
+        /// <c>bones[128]</c>). One mesh (a tentacle/limb/creature) must have at most this many bones. 128 mat4 is an
+        /// 8 KiB window (under the 64 KiB uniform-buffer limit) and a multiple of 256 bytes, so every per-draw
+        /// dynamic offset (slot * <see cref="SlotBytes"/>) is automatically 256-byte aligned.</summary>
+        public const int MaxBonesPerDraw = 128;
+        /// <summary>Byte size of one bone slot (one skinned draw's palette window). 128 * 64 = 8192 (256-aligned).</summary>
+        public const uint SlotBytes = (uint)MaxBonesPerDraw * 64u;
+
         readonly IGpuDevice _gd;
-        readonly ModelRenderer _model;          // shared frame UBO + material sets come from here
-        readonly IGpuResourceLayout _boneLayout; // set 1: the bone structured buffer
+        readonly ModelRenderer _model;           // shared frame UBO + white default material set come from here
+        readonly IGpuResourceLayout _boneLayout; // set 1: the dynamic-offset bone uniform buffer
         readonly IGpuPipeline _pipeline;
         readonly IGpuShaderSet _shaders;
 
-        IGpuBuffer? _instanceBuffer; uint _instanceCapacity;
-        IGpuBuffer? _boneBuffer; uint _boneCapacity;        // capacity in matrices
-        IGpuResourceSet? _boneSet;
+        IGpuBuffer? _instanceBuffer; uint _instanceCapacity;          // capacity in instances
+        IGpuBuffer? _boneBuffer; uint _boneSlotCapacity;             // capacity in per-draw slots
+        IGpuResourceSet? _boneSet;                                   // binds the bone buffer as a one-slot dynamic window
 
         public SkinnedModelRenderer(IGpuDevice gd, GpuOutputDescription modelOutputs, ModelRenderer model)
         {
@@ -41,7 +51,7 @@ namespace KhaozEngine.Render3D.Rendering
             var factory = gd.Factory;
 
             _boneLayout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
-                new GpuResourceLayoutElement("Bones", GpuResourceKind.StructuredBufferReadOnly, GpuShaderStages.Vertex)));
+                new GpuResourceLayoutElement("Bones", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex, dynamic: true)));
 
             _shaders = factory.CreateShadersFromSpirv(ShaderSources.SkinnedModelVert, ShaderSources.ModelFrag);
 
@@ -65,7 +75,6 @@ namespace KhaozEngine.Render3D.Rendering
                     new GpuVertexElement("ITint", GpuVertexElementFormat.Float4),
                     new GpuVertexElement("IEmissive", GpuVertexElementFormat.Float4),
                     new GpuVertexElement("ISpecParams", GpuVertexElementFormat.Float4),
-                    new GpuVertexElement("IBoneOffset", GpuVertexElementFormat.Float1),
                 });
 
             _pipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription
@@ -78,7 +87,7 @@ namespace KhaozEngine.Render3D.Rendering
                 DepthStencil = GpuDepthStencilState.DepthOnlyLessEqual,
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
-                // set 0 = material (UBO + albedo + sampler), reused from ModelRenderer's layout; set 1 = bones.
+                // set 0 = material (UBO + albedo + sampler), reused from ModelRenderer's layout; set 1 = bones (dynamic).
                 ResourceLayouts = new[] { _model.MaterialLayout, _boneLayout },
                 ShaderSet = _shaders,
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout },
@@ -86,23 +95,26 @@ namespace KhaozEngine.Render3D.Rendering
             });
         }
 
-        /// <summary>Upload this frame's composed bone palette (every skinned draw's matrices, concatenated) into
-        /// the shared structured buffer, growing it (and recreating its resource set) on demand.</summary>
-        public void UploadBones(IGpuCommandList cl, ReadOnlySpan<Matrix4x4> bones)
+        /// <summary>Upload this frame's slot-packed bone palette: <paramref name="slots"/> is <c>slotCount *
+        /// <see cref="MaxBonesPerDraw"/></c> matrices, draw i's palette at <c>i * MaxBonesPerDraw</c>. Grows the
+        /// buffer (and its dynamic-window set) on demand.</summary>
+        public void UploadBones(IGpuCommandList cl, ReadOnlySpan<Matrix4x4> slots)
         {
-            if (bones.Length == 0) return;
-            EnsureBoneCapacity((uint)bones.Length);
-            cl.UpdateBuffer(_boneBuffer!, 0, bones);
+            if (slots.Length == 0) return;
+            uint slotCount = (uint)(slots.Length / MaxBonesPerDraw);
+            EnsureBoneCapacity(slotCount);
+            cl.UpdateBuffer(_boneBuffer!, 0, slots);
         }
 
-        void EnsureBoneCapacity(uint count)
+        void EnsureBoneCapacity(uint slotCount)
         {
-            if (_boneBuffer != null && _boneCapacity >= count) return;
+            if (_boneBuffer != null && _boneSlotCapacity >= slotCount) return;
             _boneBuffer?.Dispose(); _boneSet?.Dispose();
-            _boneCapacity = Math.Max(count, _boneCapacity == 0 ? 64u : _boneCapacity * 2);
-            _boneBuffer = _gd.Factory.CreateBuffer(new GpuBufferDescription(
-                _boneCapacity * 64u, GpuBufferUsage.StructuredBufferReadOnly, structureByteStride: 64u));
-            _boneSet = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_boneLayout, _boneBuffer));
+            _boneSlotCapacity = Math.Max(slotCount, _boneSlotCapacity == 0 ? 8u : _boneSlotCapacity * 2);
+            _boneBuffer = _gd.Factory.CreateBuffer(new GpuBufferDescription(_boneSlotCapacity * SlotBytes, GpuBufferUsage.UniformBuffer));
+            // The set binds a single-slot WINDOW (offset 0, size SlotBytes); the per-draw offset selects the slot.
+            _boneSet = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(
+                _boneLayout, new GpuBufferRange(_boneBuffer, 0, SlotBytes)));
         }
 
         public void UploadInstances(IGpuCommandList cl, ReadOnlySpan<SkinnedInstanceData> instances)
@@ -121,72 +133,40 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuBufferDescription(_instanceCapacity * SkinnedInstanceData.SizeInBytes, GpuBufferUsage.VertexBuffer));
         }
 
-        public void BindPass(IGpuCommandList cl)
-        {
-            cl.SetPipeline(_pipeline);
-            cl.SetGraphicsResourceSet(1, _boneSet!);   // bones are constant across the whole skinned pass
-        }
+        public void BindPass(IGpuCommandList cl) => cl.SetPipeline(_pipeline);
 
-        /// <summary>Draw one skinned mesh's run. Binds the mesh's material set (or the renderer's white default)
-        /// at set 0; set 1 (bones) is already bound by <see cref="BindPass"/>.</summary>
-        public void DrawSkinnedMeshInstanced(IGpuCommandList cl, IGpuBuffer vb, IGpuBuffer ib, int indexCount,
-            uint instanceStart, uint instanceCount, IGpuResourceSet? materialSet)
+        /// <summary>Draw one skinned instance. Binds its material set (set 0) or the white default, the bone slot
+        /// (set 1) via the per-draw dynamic offset, the geometry, and its element of the instance buffer (rebased so
+        /// it reads as instance 0). One <c>instanceCount=1</c> draw.</summary>
+        public void DrawSkinnedInstance(IGpuCommandList cl, IGpuBuffer vb, IGpuBuffer ib, int indexCount,
+            uint instanceIndex, uint boneSlot, IGpuResourceSet? materialSet)
         {
             cl.SetGraphicsResourceSet(0, materialSet ?? _model.DefaultMaterialSet);
+            cl.SetGraphicsResourceSet(1, _boneSet!, boneSlot * SlotBytes);
             cl.SetVertexBuffer(0, vb);
-            cl.SetVertexBuffer(1, _instanceBuffer!);
+            cl.SetVertexBuffer(1, _instanceBuffer!, instanceIndex * SkinnedInstanceData.SizeInBytes);
             cl.SetIndexBuffer(ib, GpuIndexFormat.UInt16);
-            cl.DrawIndexed((uint)indexCount, instanceCount, 0, 0, instanceStart);
+            cl.DrawIndexed((uint)indexCount, 1, 0, 0, 0);
         }
 
-        /// <summary>Group queued skinned instances by mesh handle into <paramref name="instanceData"/> (flat,
-        /// mesh-contiguous) and <paramref name="runs"/> (one per unique mesh, first-seen). Each instance keeps its
-        /// own bone offset. Pure + headless-testable; both lists are cleared and refilled.</summary>
-        internal static void GroupSkinnedInstances(IReadOnlyList<SkinnedSceneInstances.Instance> items,
-            List<SkinnedInstanceData> instanceData, List<Scene3D.SkinnedMeshRun> runs)
+        /// <summary>Build the per-instance stream from the queued skinned draws in submission order (no grouping:
+        /// each draw renders separately). Pure + headless-testable; <paramref name="instanceData"/> is cleared and
+        /// refilled. Instance i maps to bone slot i.</summary>
+        internal static void BuildInstanceData(IReadOnlyList<SkinnedSceneInstances.Instance> items,
+            List<SkinnedInstanceData> instanceData)
         {
-            instanceData.Clear(); runs.Clear();
-            if (items.Count == 0) return;
-
-            for (int i = 0; i < items.Count; i++)
-            {
-                var mesh = items[i].Mesh;
-                int slot = FindRun(runs, mesh);
-                if (slot < 0) runs.Add(new Scene3D.SkinnedMeshRun(mesh, 0, 1));
-                else runs[slot] = new Scene3D.SkinnedMeshRun(mesh, 0, runs[slot].Count + 1);
-            }
-
-            uint cursor = 0;
-            Span<uint> writeCursor = runs.Count <= 64 ? stackalloc uint[runs.Count] : new uint[runs.Count];
-            for (int r = 0; r < runs.Count; r++)
-            {
-                writeCursor[r] = cursor;
-                runs[r] = new Scene3D.SkinnedMeshRun(runs[r].Mesh, cursor, runs[r].Count);
-                cursor += runs[r].Count;
-            }
-
-            for (int i = 0; i < (int)cursor; i++) instanceData.Add(default);
+            instanceData.Clear();
             for (int i = 0; i < items.Count; i++)
             {
                 var inst = items[i];
-                int slot = FindRun(runs, inst.Mesh);
-                uint dst = writeCursor[slot]++;
-                instanceData[(int)dst] = new SkinnedInstanceData
+                instanceData.Add(new SkinnedInstanceData
                 {
                     Model = inst.World,
                     Tint = inst.Tint,
                     Emissive = inst.Material.Emissive,
                     SpecParams = new Vector4(inst.Material.Specular, inst.Material.Shininess, 0f, 0f),
-                    BoneOffset = inst.BoneOffset,
-                };
+                });
             }
-        }
-
-        static int FindRun(List<Scene3D.SkinnedMeshRun> runs, SkinnedMeshHandle mesh)
-        {
-            for (int r = 0; r < runs.Count; r++)
-                if (runs[r].Mesh.Index == mesh.Index && runs[r].Mesh.Generation == mesh.Generation) return r;
-            return -1;
         }
 
         public void Dispose()

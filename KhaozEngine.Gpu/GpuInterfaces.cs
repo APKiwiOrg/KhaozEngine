@@ -113,8 +113,16 @@ namespace KhaozEngine.Gpu
         void SetPipeline(IGpuPipeline p);
         /// <summary>Bind a resource set to graphics slot <paramref name="slot"/>.</summary>
         void SetGraphicsResourceSet(uint slot, IGpuResourceSet set);
+        /// <summary>Bind a resource set whose dynamic-offset buffer binding is rebased by <paramref name="dynamicOffset"/>
+        /// bytes for this draw. The set must have exactly one element declared dynamic (see
+        /// <see cref="GpuResourceLayoutElement.Dynamic"/>); the offset must satisfy the backend's uniform-buffer
+        /// offset alignment (256 bytes is safe across Metal/D3D11/Vulkan).</summary>
+        void SetGraphicsResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset);
         /// <summary>Bind a vertex buffer to slot <paramref name="slot"/>.</summary>
         void SetVertexBuffer(uint slot, IGpuBuffer b);
+        /// <summary>Bind a vertex buffer to slot <paramref name="slot"/> starting at <paramref name="offsetBytes"/>
+        /// into the buffer, so a draw reads its slice of a shared buffer as if from the buffer's start.</summary>
+        void SetVertexBuffer(uint slot, IGpuBuffer b, uint offsetBytes);
         /// <summary>Bind the index buffer with element format <paramref name="fmt"/>.</summary>
         void SetIndexBuffer(IGpuBuffer b, GpuIndexFormat fmt);
         /// <summary>Set scissor rect for output <paramref name="index"/>.</summary>

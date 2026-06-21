@@ -84,11 +84,28 @@ namespace KhaozEngine.Gpu
         public GpuResourceKind Kind { get; }
         /// <summary>Which shader stages see it.</summary>
         public GpuShaderStages Stages { get; }
+        /// <summary>When true, the buffer bound here is rebased per draw by a byte offset supplied to
+        /// <see cref="IGpuCommandList.SetGraphicsResourceSet(uint,IGpuResourceSet,uint)"/> (a dynamic-offset
+        /// uniform/structured buffer). The set binds a <see cref="GpuBufferRange"/> whose size is the per-draw
+        /// window; the offset varies per draw. Lets many draws read their own slice of one shared buffer without
+        /// recreating the set or re-uploading.</summary>
+        public bool Dynamic { get; }
 
-        public GpuResourceLayoutElement(string name, GpuResourceKind kind, GpuShaderStages stages)
+        public GpuResourceLayoutElement(string name, GpuResourceKind kind, GpuShaderStages stages, bool dynamic = false)
         {
-            Name = name; Kind = kind; Stages = stages;
+            Name = name; Kind = kind; Stages = stages; Dynamic = dynamic;
         }
+    }
+
+    /// <summary>A windowed view of a buffer bound to a resource set: <paramref name="Buffer"/> starting at
+    /// <see cref="Offset"/> for <see cref="Size"/> bytes. Used for dynamic-offset bindings (offset 0 + the window
+    /// size; the per-draw offset is supplied at draw time). Engine mirror of <c>DeviceBufferRange</c>.</summary>
+    public readonly struct GpuBufferRange : IGpuBindableResource
+    {
+        public IGpuBuffer Buffer { get; }
+        public uint Offset { get; }
+        public uint Size { get; }
+        public GpuBufferRange(IGpuBuffer buffer, uint offset, uint size) { Buffer = buffer; Offset = offset; Size = size; }
     }
 
     /// <summary>Describes a resource layout (the binding slots of a set). Engine mirror of

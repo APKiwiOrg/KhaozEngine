@@ -407,6 +407,11 @@ produces from a point chain, or what a consumer's per-segment layout (e.g. an ac
 base-to-tip transform walk) computes. Rotating a single bone "in place" does not bend the rest of
 the mesh - that is by design, since the caller owns the kinematics.
 
+**Limits.** One skinned mesh has at most 128 bones (the per-draw bone window); a mesh with more
+throws on `DrawSkinned`. Many skinned meshes per frame are fine: each skinned `DrawSkinned` is its
+own draw call (they are not GPU-instanced), so a creature with several tentacles costs one draw per
+tentacle, still far below the dozens of rigid-segment draws it replaces.
+
 **Determinism: presentation only.** Bone matrices and `DrawSkinned` must never feed simulation,
 RNG, or netcode. Skinning is a render-time visual; drive bones from already-computed gameplay
 state, not the reverse.

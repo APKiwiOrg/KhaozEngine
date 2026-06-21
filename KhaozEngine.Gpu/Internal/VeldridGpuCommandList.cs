@@ -27,8 +27,14 @@ namespace KhaozEngine.Gpu.Internal
         public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set)
             => CommandList.SetGraphicsResourceSet(slot, ((VeldridGpuResourceSet)set).Set);
 
+        public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset)
+            => CommandList.SetGraphicsResourceSet(slot, ((VeldridGpuResourceSet)set).Set, 1u, ref dynamicOffset);
+
         public void SetVertexBuffer(uint slot, IGpuBuffer b)
             => CommandList.SetVertexBuffer(slot, ((VeldridGpuBuffer)b).Buffer);
+
+        public void SetVertexBuffer(uint slot, IGpuBuffer b, uint offsetBytes)
+            => CommandList.SetVertexBuffer(slot, ((VeldridGpuBuffer)b).Buffer, offsetBytes);
 
         public void SetIndexBuffer(IGpuBuffer b, GpuIndexFormat fmt)
             => CommandList.SetIndexBuffer(((VeldridGpuBuffer)b).Buffer, VeldridMap.ToVeldrid(fmt));

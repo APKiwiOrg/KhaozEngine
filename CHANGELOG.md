@@ -5,6 +5,24 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.9.0
+
+Fix + additive (non-breaking): `KhaozEngine.Gui` hover glow now reads as a natural soft bloom instead of a hard
+amber/blue rim hugging the widget edge. The old `GuiDraw.HoverGlow` expanded the glow quad by only half the
+softness, so the SDF soft falloff was truncated at ~50% coverage on the quad's own flat edge and looked like a
+tacked-in outline. The glow (and the `FillStyled` drop shadow) now route through a shared `GuiDraw.SoftRoundedQuad`
+helper that keeps the SDF box body-sized (so coverage peaks on the body outline) while expanding the quad well past
+it, letting the falloff fade smoothly to zero before the quad edge; the body is drawn on top, hiding the steep
+inner half so only the soft outer halo shows. `GuiStyle.Modern`'s glow/shadow alphas were retuned (`GlowColor` a
+`0.35 -> 0.5`, `GlowSize` `10 -> 11`, `ShadowColor` a `0.40 -> 0.55`) for the new look. Applies to every widget
+honouring `GlowColor`/`GlowSize` (`Button`, `GuiSurface`, `Slider`, `Toggle`, `Dropdown`, `TextInput`).
+
+To support this, `SpriteBatch.DrawRounded` gains an optional `inset` parameter (default `0`, byte-identical to
+today): it shrinks the SDF box by that many draw units on every side WITHOUT shrinking the quad, giving the
+rasterised quad fragments beyond the shape's `d=0` edge for a soft falloff to fade across. The flat `GuiStyle`
+fast path (glow off) and all non-`inset` `DrawRounded` callers stay byte-identical; existing goldens are unmoved.
+New gated golden `gui_button_glow` (Metal baked; D3D11/Vulkan grids bake in CI).
+
 ## 7.8.0
 
 Additive (non-breaking): the remaining retained `KhaozEngine.Gui` widgets gain a `GuiStyle Style` field (mirroring

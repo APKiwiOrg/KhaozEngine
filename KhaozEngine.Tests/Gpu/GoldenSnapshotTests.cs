@@ -284,5 +284,36 @@ namespace KhaozEngine.Tests.Gpu
 
             GoldenCompare.AssertOrUpdate("scene2d_modern", rgba, W, H);
         }
+
+        /// <summary>
+        /// Hover-glow bloom regression: renders two hovered Modern buttons through the production
+        /// <see cref="KhaozEngine.Gui.GuiDraw.HoverGlow"/> + <see cref="KhaozEngine.Gui.GuiDraw.FillStyled"/> path
+        /// at two GlowSize values, so the committed grid locks the soft additive halo (peak on the body edge,
+        /// fading to zero outward). The pre-fix code drew a hard ~50%-coverage rim hugging the edge; that reads as
+        /// a bright outer ring in the cells just outside the body, which this golden pins against.
+        /// </summary>
+        [GpuFact]
+        public void Golden2D_HoverGlow()
+        {
+            byte[] rgba = Render2DSnapshot.Capture(W, H, new Color(0.10f, 0.11f, 0.14f, 1f), ctx =>
+            {
+                Texture2D white = ctx.CreateTexture(new byte[] { 255, 255, 255, 255 }, 1, 1);
+                ctx.Batch.Begin();
+
+                // Default Modern glow (GlowSize 11), top-left.
+                var style = KhaozEngine.Gui.GuiStyle.Modern;
+                KhaozEngine.Gui.GuiDraw.HoverGlow(ctx.Batch, white, new KhaozEngine.Windowing.Rect(60, 60, 200, 80), style);
+                KhaozEngine.Gui.GuiDraw.FillStyled(ctx.Batch, white, new KhaozEngine.Windowing.Rect(60, 60, 200, 80), style, style.Hover, style.Border);
+
+                // Wider glow (GlowSize 22), bottom-right, to capture the falloff at a second value.
+                var wide = KhaozEngine.Gui.GuiStyle.Modern; wide.GlowSize = 22f;
+                KhaozEngine.Gui.GuiDraw.HoverGlow(ctx.Batch, white, new KhaozEngine.Windowing.Rect(250, 190, 180, 90), wide);
+                KhaozEngine.Gui.GuiDraw.FillStyled(ctx.Batch, white, new KhaozEngine.Windowing.Rect(250, 190, 180, 90), wide, wide.Hover, wide.Border);
+
+                ctx.Batch.End();
+            });
+
+            GoldenCompare.AssertOrUpdate("gui_button_glow", rgba, W, H);
+        }
     }
 }

@@ -296,17 +296,21 @@ void main() {
         /// Rounded-rect draw with optional vertical gradient, soft edge, and stroke. <paramref name="cornerRadius"/>
         /// in draw units; <paramref name="softness"/> 0 = crisp fwidth AA, &gt;0 = soft falloff (shadow/glow);
         /// <paramref name="strokeWidth"/> 0 = filled, &gt;0 = ring (border, needs roughly &gt;=1 draw-unit to be
-        /// visible). Alpha-shaped by an SDF in the shared shader; batches with everything. Use the white texture for
-        /// solid fills. Note: even <paramref name="cornerRadius"/> 0 takes the SDF path (square corners with AA),
-        /// which is not byte-identical to and a touch costlier than the plain <see cref="Draw(Texture2D, Vector4, Color)"/>
-        /// overloads; use those for a flat quad.
+        /// visible). <paramref name="inset"/> shrinks the SDF box by that many draw units on every side WITHOUT
+        /// shrinking the quad, so the rasterised quad has fragments beyond the shape's <c>d=0</c> edge for a soft
+        /// falloff to fade across; pass <c>inset &gt;= softness/2</c> for a glow/shadow bloom that resolves to zero
+        /// before the quad edge instead of truncating at ~50% coverage on the flat edge (a hard rim). Default 0 =
+        /// SDF box == quad (today's behaviour). Alpha-shaped by an SDF in the shared shader; batches with
+        /// everything. Use the white texture for solid fills. Note: even <paramref name="cornerRadius"/> 0 takes
+        /// the SDF path (square corners with AA), which is not byte-identical to and a touch costlier than the
+        /// plain <see cref="Draw(Texture2D, Vector4, Color)"/> overloads; use those for a flat quad.
         /// </summary>
         public void DrawRounded(Texture2D tex, Vector4 destRect, Vector4 srcUV, Color top, Color bottom,
-            float cornerRadius, float softness = 0f, float strokeWidth = 0f)
+            float cornerRadius, float softness = 0f, float strokeWidth = 0f, float inset = 0f)
         {
             float x = destRect.X, y = destRect.Y, w = destRect.Z, h = destRect.W;
             var (lTL, lTR, lBR, lBL) = RoundedLocals(w, h);
-            Vector4 shape = RoundedShape(w, h, cornerRadius, softness);
+            Vector4 shape = RoundedShape(w, h, cornerRadius, softness, inset);
             Vector2 mode = RoundedMode(strokeWidth);
             EmitQuad(tex, new Vector2(x, y), new Vector2(x + w, y), new Vector2(x + w, y + h), new Vector2(x, y + h),
                 srcUV, (Vector4)top, (Vector4)bottom, lTL, lTR, lBR, lBL, shape, mode);
@@ -314,8 +318,8 @@ void main() {
 
         /// <summary>Rounded-rect convenience: single colour, whole-texture UV.</summary>
         public void DrawRounded(Texture2D tex, Vector4 destRect, Color color,
-            float cornerRadius, float softness = 0f, float strokeWidth = 0f) =>
-            DrawRounded(tex, destRect, new Vector4(0, 0, 1, 1), color, color, cornerRadius, softness, strokeWidth);
+            float cornerRadius, float softness = 0f, float strokeWidth = 0f, float inset = 0f) =>
+            DrawRounded(tex, destRect, new Vector4(0, 0, 1, 1), color, color, cornerRadius, softness, strokeWidth, inset);
 
         // Typed Rect overloads: a Color and a destination rect can no longer be swapped at a call site. Reuses
         // Windowing.Rect (x, y, w, h) for the rect; forwards to the Vector4-dest forms so the batch path is identical.
@@ -387,9 +391,13 @@ void main() {
             return (new Vector2(-hx, -hy), new Vector2(hx, -hy), new Vector2(hx, hy), new Vector2(-hx, hy));
         }
 
-        /// <summary>Packs the SDF Shape attribute = (halfX, halfY, radius, softness). Pure / headless.</summary>
-        internal static Vector4 RoundedShape(float w, float h, float radius, float softness) =>
-            new Vector4(w * 0.5f, h * 0.5f, radius, softness);
+        /// <summary>
+        /// Packs the SDF Shape attribute = (halfX, halfY, radius, softness). <paramref name="inset"/> shrinks the
+        /// half-extents on every side so the SDF box sits inside a larger quad (used by soft glows/shadows so the
+        /// falloff has room to fade to zero within the quad). Pure / headless.
+        /// </summary>
+        internal static Vector4 RoundedShape(float w, float h, float radius, float softness, float inset = 0f) =>
+            new Vector4(w * 0.5f - inset, h * 0.5f - inset, radius, softness);
 
         /// <summary>Packs the Mode attribute = (strokeWidth, 1). Pure / headless. modeFlag 1 enables the SDF branch.</summary>
         internal static Vector2 RoundedMode(float strokeWidth) => new Vector2(strokeWidth, 1f);

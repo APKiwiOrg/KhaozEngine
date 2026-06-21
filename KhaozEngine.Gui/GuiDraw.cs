@@ -46,20 +46,10 @@ namespace KhaozEngine.Gui
 
             var dest = new Vector4(r.X, r.Y, r.Width, r.Height);
 
-            // Soft drop shadow under everything. Expand the quad by ShadowSize (half per side) so the SDF soft
-            // falloff has fragments OUTSIDE the body to fade through (same pattern as HoverGlow); without the
-            // expansion the softness would only ramp at the quad's own edge and read as a hard offset strip.
+            // Soft drop shadow under everything, as a body-edge bloom offset by ShadowOffset (same helper as the
+            // hover glow). The body is drawn on top, so only the soft outer falloff shows.
             if (style.ShadowSize > 0f && style.ShadowColor.W > 0f)
-            {
-                float ss = style.ShadowSize;
-                var shadow = new Vector4(
-                    r.X + style.ShadowOffset.X - ss * 0.5f,
-                    r.Y + style.ShadowOffset.Y - ss * 0.5f,
-                    r.Width + ss,
-                    r.Height + ss);
-                batch.DrawRounded(white, shadow, (Color)style.ShadowColor,
-                    style.CornerRadius + ss * 0.5f, softness: ss);
-            }
+                SoftRoundedQuad(batch, white, r, style.CornerRadius, style.ShadowColor, style.ShadowSize, style.ShadowOffset);
 
             // Rounded body: vertical gradient (scale of the state colour) or flat.
             Vector4 top = bodyColor, bottom = bodyColor;
@@ -75,16 +65,56 @@ namespace KhaozEngine.Gui
                 batch.DrawRounded(white, dest, (Color)borderColor, style.CornerRadius, softness: 0f, strokeWidth: style.BorderThickness);
         }
 
-        /// <summary>Draw a hover glow halo behind/around <paramref name="r"/> (additive) when the style enables it.</summary>
+        /// <summary>
+        /// Draw a hover glow halo behind <paramref name="r"/> (additive) when the style enables it. A soft bloom
+        /// that peaks at the body edge and fades smoothly to zero <c>GlowSize</c> draw units out; the caller draws
+        /// the body on top, hiding the steep inner half so only the outer halo reads. Call this BEFORE the body.
+        /// </summary>
         public static void HoverGlow(SpriteBatch batch, Texture2D white, Rect r, in GuiStyle style)
         {
             if (style.GlowSize <= 0f || style.GlowColor.W <= 0f) return;
             var prev = batch.BlendMode;
             batch.BlendMode = BlendMode.Additive;
-            float g = style.GlowSize;
-            var dest = new Vector4(r.X - g * 0.5f, r.Y - g * 0.5f, r.Width + g, r.Height + g);
-            batch.DrawRounded(white, dest, (Color)style.GlowColor, style.CornerRadius + g * 0.5f, softness: g);
+            SoftRoundedQuad(batch, white, r, style.CornerRadius, style.GlowColor, style.GlowSize, Vector2.Zero);
             batch.BlendMode = prev;
+        }
+
+        /// <summary>
+        /// Draw a soft rounded "bloom" of <paramref name="color"/> around <paramref name="body"/> (optionally
+        /// shifted by <paramref name="offset"/>): the SDF falloff peaks (coverage 0.5) on the body outline and
+        /// fades to zero <paramref name="spread"/> draw units outward, fully resolved inside the quad geometry so
+        /// there is no hard rim. Shared by <see cref="HoverGlow"/> (additive) and the <see cref="FillStyled"/> drop
+        /// shadow (alpha); the caller sets the blend mode. The body is expected to be drawn over the top.
+        /// </summary>
+        static void SoftRoundedQuad(SpriteBatch batch, Texture2D white, Rect body, float cornerRadius,
+            Vector4 color, float spread, Vector2 offset)
+        {
+            var (quad, softness, inset) = SoftQuadGeometry(body, spread, offset);
+            batch.DrawRounded(white, quad, (Color)color, cornerRadius, softness: softness, inset: inset);
+        }
+
+        /// <summary>
+        /// Pure geometry for <see cref="SoftRoundedQuad"/>: given a <paramref name="body"/> rect, a
+        /// <paramref name="spread"/> (how far the bloom reaches beyond the body) and an <paramref name="offset"/>,
+        /// returns the expanded quad, the SDF <c>softness</c> and the <c>inset</c> to pass to
+        /// <see cref="SpriteBatch.DrawRounded(Texture2D, Vector4, Color, float, float, float, float)"/>.
+        /// <para>
+        /// The SDF box is kept body-sized (so its <c>d=0</c> edge lies on the body outline) by insetting the quad
+        /// back down: <c>softness = 2*spread</c> (coverage 0.5 at the body edge falls to 0 over <c>spread</c>
+        /// units), and the quad is grown by <c>2*spread</c> per side (== <c>inset</c>) so even the rounded corners,
+        /// where the SDF distance grows ~√2 faster, resolve to zero well before the quad edge. Pure / headless.
+        /// </para>
+        /// </summary>
+        internal static (Vector4 quad, float softness, float inset) SoftQuadGeometry(Rect body, float spread, Vector2 offset)
+        {
+            float pad = spread * 2f;
+            float softness = spread * 2f;
+            var quad = new Vector4(
+                body.X + offset.X - pad,
+                body.Y + offset.Y - pad,
+                body.Width + pad * 2f,
+                body.Height + pad * 2f);
+            return (quad, softness, pad);
         }
 
         /// <summary>

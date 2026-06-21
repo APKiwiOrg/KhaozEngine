@@ -90,14 +90,17 @@ namespace KhaozEngine.Gui
             {
                 var s = Default;
                 s.CornerRadius = 7f;
+                // Shadow/glow are now body-edge blooms (GuiDraw.SoftRoundedQuad): coverage peaks at 0.5 on the
+                // outline and fades to zero over the given size. Alphas are raised vs the old truncated-rim look
+                // to compensate for that 0.5 peak factor while staying gentle.
                 s.ShadowSize = 8f;
-                s.ShadowColor = new Vector4(0f, 0f, 0f, 0.40f);
+                s.ShadowColor = new Vector4(0f, 0f, 0f, 0.55f);
                 s.ShadowOffset = new Vector2(0f, 3f);
                 s.FillMode = GuiFill.VerticalGradient;
                 s.GradientTopScale = 1.12f;
                 s.GradientBottomScale = 0.85f;
-                s.GlowColor = new Vector4(0.55f, 0.80f, 1f, 0.35f);
-                s.GlowSize = 10f;
+                s.GlowColor = new Vector4(0.55f, 0.80f, 1f, 0.5f);
+                s.GlowSize = 11f;
                 return s;
             }
         }

@@ -27,6 +27,24 @@ namespace KhaozEngine.Tests.Render2D
         }
 
         [Fact]
+        public void RoundedShape_InsetShrinksTheSdfBoxInsideTheQuad()
+        {
+            // The quad keeps its full w x h (its fragments span the whole rect), but the SDF box the shader
+            // shapes against is inset by `inset` on every side. This is what lets a soft falloff resolve to zero
+            // INSIDE the quad geometry (no truncation at the quad's flat edge) - the hover-glow bloom fix.
+            Vector4 s = SpriteBatch.RoundedShape(200f, 100f, radius: 8f, softness: 3f, inset: 12f);
+            Assert.Equal(new Vector4(100f - 12f, 50f - 12f, 8f, 3f), s);
+        }
+
+        [Fact]
+        public void RoundedShape_DefaultInsetIsZero_ByteIdenticalToToday()
+        {
+            // Omitting inset must produce exactly the pre-fix packing (half-extents == quad half-extents).
+            Assert.Equal(SpriteBatch.RoundedShape(200f, 100f, 8f, 3f),
+                         SpriteBatch.RoundedShape(200f, 100f, 8f, 3f, inset: 0f));
+        }
+
+        [Fact]
         public void RoundedLocals_ZeroSize_AllZero()
         {
             var (tl, tr, br, bl) = SpriteBatch.RoundedLocals(0f, 0f);

@@ -28,6 +28,15 @@ jobs:
       - run: dotnet restore
       - run: dotnet build -c Release --no-restore
       - run: dotnet test -c Release --no-build
+      # Determinism guard: the FP-scope tests must stay byte-identical under both JIT tiering modes.
+      # (The default run above covers ambient tiering; these pin the two extremes explicitly.)
+      - name: Determinism under JIT tiering 0 and 1
+        run: |
+          for tc in 0 1; do
+            echo "DOTNET_TieredCompilation=$tc"
+            DOTNET_TieredCompilation=$tc dotnet test -c Release --no-build \
+              --filter "FullyQualifiedName~DeterministicFp"
+          done
       - run: dotnet pack -c Release -o ./artifacts --no-build
       - name: Publish to GitHub Packages (tags only)
         if: startsWith(github.ref, 'refs/tags/v')

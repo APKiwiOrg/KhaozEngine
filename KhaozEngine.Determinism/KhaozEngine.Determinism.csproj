@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Determinism</PackageId>
+    <Version>$(KhaozEngine5xVersion)</Version>
+    <Description>Cross-platform deterministic floating-point environment control for fixed-tick / lockstep sims: DeterministicFpScope forces the CPU FP control register (ARM64 FPCR, x86 MXCSR) to a canonical IEEE state (round-to-nearest, FTZ/DAZ off, default exception masking) for the duration of a sim tick or sim-thread, and restores it afterward. Allocation-free. BCL-only (libc/ucrt fenv via P/Invoke); no native build assets.</Description>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+</Project>

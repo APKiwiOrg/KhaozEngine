@@ -123,6 +123,69 @@ void main() {
     oDepth = vec4(vDepth, vDepth, vDepth, 1.0);
 }";
 
+        // ---- Skinned model vertex shader. Same per-frame UBO (set 0, binding 0) and same per-instance stream as
+        //      ModelVert, but with two extra per-vertex attributes (bone indices + weights) and one extra
+        //      per-instance attribute (the bone offset into the shared bone buffer). The bone matrices for EVERY
+        //      skinned draw this frame live in one read-only structured buffer (set 1, binding 0); each instance
+        //      reads its own contiguous range starting at IBoneOffset. Outputs match ModelVert exactly so the
+        //      shared ModelFrag links and the lit/colour path is identical. ----
+        public const string SkinnedModelVert = @"#version 450
+layout(set=0, binding=0) uniform U {
+    mat4 ViewProj;
+    vec4 LightDir; vec4 LightColor; vec4 Ambient; vec4 Params;
+    vec4 FillDir; vec4 FillColor; vec4 CameraPos;
+    vec4 PointPosRadius[16];
+    vec4 PointColorIntensity[16];
+};
+layout(set=1, binding=0) readonly buffer Bones { mat4 bones[]; };
+layout(location=0) in vec3 Position;
+layout(location=1) in vec3 Normal;
+layout(location=2) in vec4 Color;
+layout(location=3) in vec2 TexCoord;
+layout(location=4) in vec4 BoneIndices;  // up to 4 bone indices, float-encoded
+layout(location=5) in vec4 BoneWeights;  // 4 weights, normalized at load
+layout(location=6)  in vec4 IModel0;     // per-instance model matrix rows
+layout(location=7)  in vec4 IModel1;
+layout(location=8)  in vec4 IModel2;
+layout(location=9)  in vec4 IModel3;
+layout(location=10) in vec4 ITint;
+layout(location=11) in vec4 IEmissive;
+layout(location=12) in vec4 ISpecParams;
+layout(location=13) in float IBoneOffset; // base index into bones[] for this instance's palette
+layout(location=0) out vec3 vNormalW;
+layout(location=1) out vec4 vColor;
+layout(location=2) out float vDepth;
+layout(location=3) out vec3 vWorldPos;
+layout(location=4) out vec2 vUv;
+layout(location=5) out vec4 vTint;
+layout(location=6) out vec4 vEmissive;
+layout(location=7) out vec4 vSpecParams;
+void main() {
+    int o = int(IBoneOffset);
+    float total = BoneWeights.x + BoneWeights.y + BoneWeights.z + BoneWeights.w;
+    mat4 skin;
+    if (total < 1e-6) {
+        skin = mat4(1.0);
+    } else {
+        skin = BoneWeights.x * bones[o + int(BoneIndices.x)]
+             + BoneWeights.y * bones[o + int(BoneIndices.y)]
+             + BoneWeights.z * bones[o + int(BoneIndices.z)]
+             + BoneWeights.w * bones[o + int(BoneIndices.w)];
+    }
+    mat4 Model = mat4(IModel0, IModel1, IModel2, IModel3);
+    vec4 local = skin * vec4(Position, 1.0);
+    vec4 world = Model * local;
+    gl_Position = ViewProj * world;
+    vNormalW = normalize(mat3(Model) * mat3(skin) * Normal);
+    vColor = Color;
+    vDepth = gl_Position.z / gl_Position.w;
+    vWorldPos = world.xyz;
+    vUv = TexCoord;
+    vTint = ITint;
+    vEmissive = IEmissive;
+    vSpecParams = ISpecParams;
+}";
+
         // ---- Debug line overlay. Standalone mat4 ViewProj UBO (64 bytes), its own layout/buffer,
         //      separate from the model UBO. Depth disabled + alpha blend = overlay. ----
         public const string LineVert = @"#version 450

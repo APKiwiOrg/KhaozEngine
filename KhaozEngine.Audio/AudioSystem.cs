@@ -24,6 +24,7 @@ public sealed class AudioSystem : IDisposable
     private readonly List<string> _sfxNames = new();
     private readonly Dictionary<string, int> _sfx = new();   // name -> backend handle
     private readonly HashSet<string> _warnedSfx = new();     // warn-once for unknown SFX
+    private readonly HashSet<string> _warnedSfxLists = new(); // warn-once for an all-unloaded candidate list (keyed on the joined list)
     private List<string>? _rotationPoolNames;                // null = random rotation draws from ALL tracks
     private readonly HashSet<string> _warnedPoolNames = new(); // debug-once for pool names not registered
     private bool _warnedEmptyPool;                           // warn-once for an empty resolved pool fallback
@@ -528,6 +529,53 @@ public sealed class AudioSystem : IDisposable
     /// </summary>
     public void PlaySfx3D(string name, Vector3 position, float volume = 1f, float pitch = 1f)
         => PlaySfxInternal(name, volume, pitch, positional: true, position);
+
+    /// <summary>
+    /// Whether <paramref name="name"/> resolves to a loaded SFX buffer (so a subsequent <see cref="PlaySfx(string,float,float)"/>
+    /// will be heard). A name that was registered but whose file was missing / failed to load returns <c>false</c>.
+    /// Lets a game pick among variant keys without triggering the unknown-name warn-once.
+    /// </summary>
+    public bool IsSfxLoaded(string name) => _sfx.ContainsKey(name);
+
+    /// <summary>
+    /// Plays the first loaded SFX in <paramref name="candidateKeys"/> (priority order) as a non-positional one-shot,
+    /// returning <c>true</c> when one was played. The engine is convention-agnostic: the game builds the candidate
+    /// list (e.g. a per-entity variant followed by a shared fallback). A <c>null</c> / empty list is a no-op
+    /// returning <c>false</c>. If none of the candidates is loaded it warns once (deduped on the joined list) and
+    /// returns <c>false</c>. Same gain / guard behavior as <see cref="PlaySfx(string,float,float)"/>.
+    /// </summary>
+    public bool PlaySfx(IReadOnlyList<string> candidateKeys, float volume = 1f, float pitch = 1f)
+        => PlayFirstAvailable(candidateKeys, volume, pitch, positional: false, default);
+
+    /// <summary>
+    /// Plays the first loaded SFX in <paramref name="candidateKeys"/> (priority order) as a positional one-shot at
+    /// <paramref name="position"/>, returning <c>true</c> when one was played. Same first-available / null-empty /
+    /// warn-once semantics as <see cref="PlaySfx(IReadOnlyList{string},float,float)"/>; same positional behavior as
+    /// <see cref="PlaySfx3D(string,Vector3,float,float)"/>.
+    /// </summary>
+    public bool PlaySfx3D(IReadOnlyList<string> candidateKeys, Vector3 position, float volume = 1f, float pitch = 1f)
+        => PlayFirstAvailable(candidateKeys, volume, pitch, positional: true, position);
+
+    // Plays the first candidate that resolves to a loaded buffer (reusing PlaySfxInternal's gain math + guard), or
+    // warns once on the joined list and returns false if none load. Null / empty list is a silent no-op (false).
+    private bool PlayFirstAvailable(IReadOnlyList<string> candidateKeys, float volume, float pitch, bool positional, Vector3 position)
+    {
+        if (candidateKeys is null || candidateKeys.Count == 0) return false;
+
+        for (int i = 0; i < candidateKeys.Count; i++)
+        {
+            string name = candidateKeys[i];
+            if (IsSfxLoaded(name))
+            {
+                PlaySfxInternal(name, volume, pitch, positional, position);
+                return true;
+            }
+        }
+
+        string joined = string.Join(",", candidateKeys);
+        if (_warnedSfxLists.Add(joined)) _logger.Warn($"PlaySfx: none of [{joined}] is a loaded SFX; ignoring.");
+        return false;
+    }
 
     private void PlaySfxInternal(string name, float volume, float pitch, bool positional, Vector3 position)
     {

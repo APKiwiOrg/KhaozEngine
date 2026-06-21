@@ -230,6 +230,23 @@ done
 After editing, run `./scripts/check-doc-versions.sh` (CI runs it too) to confirm the engine-version line
 still matches `Directory.Build.props`.
 
+## Bumping a consumer's engine pin (gotchas)
+
+When a consumer raises its `KhaozEngine.*` pin, two things bite if skipped:
+
+- **A passing local build does not prove the bump works.** Once any consumer (or the engine itself) has
+  restored a version, that version sits in the machine NuGet cache (`~/.nuget/packages`), so a local restore
+  resolves it even if no configured source actually serves it. CI restores cold. Verify the way CI does:
+  `dotnet restore <proj> --packages /tmp/cold && dotnet test <proj> --no-restore`. A cold `--packages` dir
+  forces resolution from the consumer's real sources only.
+- **Vendored-feed consumers must refresh the vendored nupkgs, not just the `<PackageReference>`.** Nullwake
+  restores in CI from an in-repo feed (`Nullwake/vendor/khaozengine`, declared in its `nuget.config`), NOT from
+  `~/KhaozEngine/local-feed`. Bumping the pin without copying the new-version nupkgs into that folder fails CI
+  with `NU1102` even though the local build is green. Copy the matching `KhaozEngine.*.<ver>.nupkg` set from
+  `local-feed` into the vendored dir (keep it to the packages that consumer actually uses) and commit them with
+  the bump. (Hardpoint/SpaceGame restore from `local-feed`/GitHub Packages directly and have no vendored feed to
+  refresh.)
+
 _Last verified: 2026-06-21. The shared line `<KhaozEngine5xVersion>` = **7.9.0** is the engine: the new
 zero-dependency `Primitives` leaf + the custom-stack packages + the graduated foundation + the four umbrella
 metapackages (Game2D/Game3D/Server/Foundation). The legacy 4.x `<Version>` line was deleted from

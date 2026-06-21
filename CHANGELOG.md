@@ -5,6 +5,25 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.10.0
+
+Runtime skinned / deformable mesh support in Render3D. New `Scene3D.LoadSkinnedMesh` /
+`DrawSkinned` / `UnloadSkinnedMesh` add GPU bone-palette skinning: a smooth mesh bends under
+pure code control (tentacles, limbs, cables, soft-body), one skinned draw replacing many rigid
+segments. `SkinnedMeshBuilder.BuildTube` generates a procedural tube weighted to a bone chain;
+`GltfLoader.LoadSkinned` reads authored glb rigs (JOINTS_0/WEIGHTS_0 + inverse-bind, embedded
+images still ignored); `PolylineFrames.Build` turns a chain of points into joint transforms.
+`DrawSkinned` takes per-frame joint world transforms (the mesh's `RestPose` = no deform) and
+composes them with the skin's inverse-bind. Every skinned draw's bones share one growable
+structured buffer, indexed per-instance, so instances of one mesh draw in a single instanced
+call. Skinning rewrites position + normal only; the lit colour path
+(`albedo = vColor * vTint * texRgb`), tint, and texture semantics are unchanged. Bones are
+independent joints (no implicit parent hierarchy): the caller supplies each bone's world
+transform, so forward kinematics for a chain is the caller's responsibility (PolylineFrames or a
+consumer's per-segment layout). New types: `SkinnedVertex`, `SkinnedGltfMesh`,
+`SkinnedMeshHandle`, `Axis`, `SkinningMath` (pure, headless-testable). Presentation only: must not
+touch sim/RNG/netcode.
+
 ## 7.9.0
 
 Fix + additive (non-breaking): `KhaozEngine.Gui` hover glow now reads as a natural soft bloom instead of a hard

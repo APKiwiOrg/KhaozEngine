@@ -97,7 +97,7 @@ fine-grained use - a wire-contract project references just `Netcode.Abstractions
 | Consumer | Project(s) | References | Version |
 |---|---|---|---|
 | **Hardpoint** (7.x, 3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic); adopted the updater glue (`Updates` via Foundation, overlay via Gui) — dormant; uses `Collision.Segment2D` (7.4.0) for swept projectile collision | **7.9.0** |
-| **Nullwake** (7.x, 2D) | `Nullwake.Core` | `KhaozEngine.Game2D` + `Diagnostics`/`Persistence`/`Windowing`; uses `AttentionBeacon` (7.6.0) for the timed-reward tappable pulse | **7.9.0** |
+| **Nullwake** (7.x, 2D) | `Nullwake.Core` | `KhaozEngine.Game2D` + `Diagnostics`/`Persistence`/`Windowing`; uses `AttentionBeacon` (7.6.0) for the timed-reward tappable pulse | **7.11.0** |
 | **SpaceGame** (7.x, 2D) | `SpaceGame.Core` (head) / `SpaceGame.Sim` (lockstep sim) | `Game2D` + `Netcode.LiteNetLib` + `Primitives` (head); `Ecs`/`Collision`/`Diagnostics`/`Content`/`Serialization`/`App`/`Netcode`/`Pooling` + `Primitives` (sim); `Netcode.Abstractions` (contracts); `Updates` (tools); manifest signing adopted (`ke-updater sign` + embedded RSA public key) | **7.3.0** |
 
 Both games now run on the loop facade (5.57.0): **Hardpoint** is a `GameApp3D` subclass (`HardpointGame`) over a
@@ -135,7 +135,7 @@ through a thin one between frames (used in `ProjectileSystem`'s ballistic branch
 **Carried to 7.9.0** (`7.7.0 -> 7.9.0`) for the soft hover-glow fix; intervening releases touch nothing else
 Hardpoint consumes.
 
-### Nullwake - 7.x, 2D (on `KhaozEngine.Game2D` 7.9.0)
+### Nullwake - 7.x, 2D (on `KhaozEngine.Game2D` 7.11.0)
 
 Fully migrated off MonoGame (the migration landed on Nullwake `main`). `Nullwake.Core` references one package,
 **`KhaozEngine.Game2D`** (the 2D runtime + the Render3D-free `Game` loop framework + the foundation). The shell
@@ -172,6 +172,12 @@ carried along and touch nothing Nullwake consumes.
 releases (modern primitives + icon system, retained widgets gaining `GuiStyle`, softer hover glow) and are inert
 here because Nullwake keeps its widgets in-repo; this is pure pin alignment ahead of converging those widgets onto
 the engine.
+
+**Carried to 7.11.0** as pure pin alignment. 7.10.0 (`DeterministicFpScope` for lockstep-sim FP determinism) and
+7.11.0 (Render3D runtime skinned/deformable meshes) are both inert for Nullwake: it has no lockstep sim and no
+Render3D dependency. The new `KhaozEngine.Determinism` package arrives transitively via `Foundation` but is unused.
+The vendored feed (`Nullwake/vendor/khaozengine`) was refreshed to the 7.11.0 nupkg set plus the new
+`Determinism` package.
 
 ### SpaceGame - on 7.3.0 (MonoGame-free, manifest signing adopted)
 
@@ -247,12 +253,12 @@ When a consumer raises its `KhaozEngine.*` pin, two things bite if skipped:
   the bump. (Hardpoint/SpaceGame restore from `local-feed`/GitHub Packages directly and have no vendored feed to
   refresh.)
 
-_Last verified: 2026-06-21. The shared line `<KhaozEngine5xVersion>` = **7.9.0** is the engine: the new
+_Last verified: 2026-06-21. The shared line `<KhaozEngine5xVersion>` = **7.11.0** is the engine: the new
 zero-dependency `Primitives` leaf + the custom-stack packages + the graduated foundation + the four umbrella
 metapackages (Game2D/Game3D/Server/Foundation). The legacy 4.x `<Version>` line was deleted from
 `Directory.Build.props` and its old MonoGame nupkgs pruned from the feed (recoverable from GitHub Packages).
 **Hardpoint** (3D) is on **7.9.0** via `Game3D` + `Foundation` (bumped for `Collision.Segment2D` at 7.4.0,
-carried to 7.9.0 for the hover-glow fix), **Nullwake** (2D) is on **7.9.0** via `Game2D` (+ `Diagnostics`/
+carried to 7.9.0 for the hover-glow fix), **Nullwake** (2D) is on **7.11.0** via `Game2D` (+ `Diagnostics`/
 `Persistence`/`Windowing`), and **SpaceGame** (2D) is on **7.3.0** via `Game2D` + the split-out
 `SpaceGame.Sim` - all three fully off MonoGame, each pinning
 the engine on its own schedule, referencing the engine in one line (plus the sim's foundation pins), and running on the

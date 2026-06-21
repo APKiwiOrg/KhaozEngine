@@ -5,17 +5,26 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
-## 7.14.1
+## 7.15.1
 
-Fix: GPU use-after-free when a model/skinned instance or bone buffer grows. `EnsureInstanceCapacity` /
-`EnsureBoneCapacity` (`ModelRenderer`, `SkinnedModelRenderer`) disposed the old buffer inline on a 2x capacity
-grow and immediately allocated a new one; a prior frame's command list could still be reading the old buffer on
-the GPU, so the growth frame read freed/reallocated memory. With many skinned draws per frame and the count
-rising frame to frame (e.g. enemies spawning), this dropped the affected draws and occasionally produced a
-full-screen garbage triangle. Grown-out buffers (and the bone resource set) are now RETIRED and freed only when
-the renderer is disposed, never inline while potentially in flight; geometric growth bounds the retired set to a
-few entries. No API or behaviour change otherwise; single-frame rendering was already correct (a render-to-texture
-test draws 192 skinned meshes across two mesh handles with the last still rendering).
+Two changes toward diagnosing a multi-frame skinned-mesh corruption (the GPU reads stale/wrong buffer data on
+some frames under a real pipelined game loop; not reproducible in the single-frame render-to-texture harness):
+
+- Fix a GPU use-after-free on buffer growth. `EnsureInstanceCapacity` / `EnsureBoneCapacity` (`ModelRenderer`,
+  `SkinnedModelRenderer`) disposed the old buffer inline on a 2x capacity grow and immediately allocated a new
+  one; a prior frame's command list could still be reading the old buffer on the GPU, so the growth frame read
+  freed/reallocated memory. Grown-out buffers (and the bone resource set) are now RETIRED and freed only at
+  renderer disposal, never inline while potentially in flight; geometric growth bounds the retired set. Single-
+  frame rendering was already correct (a render-to-texture test draws 192 skinned meshes across two mesh handles
+  with the last still rendering). NOTE: this did NOT resolve the live multi-frame symptom on its own.
+
+- Additive: `GpuFrameCapture.ArmNext(path)` captures one WHOLE frame to an Xcode Metal GPU trace
+  (`MTLCaptureManager` -> `.gputrace`) when armed, for diagnosing stale-buffer reads on Metal (RenderDoc cannot
+  capture Metal). The capture is bracketed between two swapchain presents, so every command buffer of the frame
+  is recorded - the offscreen mesh/skinned render-to-texture pass AND the 2D/composite pass (a frame spans
+  several Submits; wrapping one Submit would miss the skinned pass). Requires `MTL_CAPTURE_ENABLED=1` set before
+  launch; no-op off Metal and when not armed. Debug aid; drives the Objective-C runtime, command queue reached by
+  reflection on Veldrid.
 
 ## 7.14.0
 

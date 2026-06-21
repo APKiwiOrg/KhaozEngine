@@ -374,6 +374,45 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
 
 ---
 
+## Skinned / deformable meshes (runtime bone control)
+
+Render3D supports GPU bone-palette skinning for organic, code-driven deformation (tentacles,
+limbs, cables, soft-body) without authored animation tracks. One skinned draw replaces many
+rigid-segment draws.
+
+```csharp
+// Procedural: a tube weighted to a bone chain.
+SkinnedGltfMesh tube = SkinnedMeshBuilder.BuildTube(radius: 0.4f, length: 5f,
+    ringSegments: 12, radialSegments: 8, boneCount: 8, axis: Axis.Z);
+SkinnedMeshHandle h = scene.LoadSkinnedMesh(tube, albedoTex);
+
+// Or load an authored rig (reads JOINTS_0/WEIGHTS_0 + inverse-bind; embedded images ignored):
+// SkinnedMeshHandle h = scene.LoadSkinnedMesh(GltfLoader.LoadSkinned("creature.glb"), albedoTex);
+
+// Each frame: supply one joint world transform per bone (model space). Passing tube.RestPose
+// gives no deformation. A chain of points can be turned into frames with PolylineFrames.Build.
+scene.Begin();
+scene.DrawSkinned(h, boneMatrices, model: Matrix4x4.Identity, tint: Color.White);
+```
+
+The bone matrices are joint **world** transforms (model space); the engine composes them with the
+mesh's inverse-bind. Skinning rewrites position and normal only, so the lit colour path
+(`albedo = vColor * vTint * texRgb`), tint, and texture semantics are unchanged.
+
+**Bones are independent joints (no implicit hierarchy).** The engine does NOT chain bones
+parent-to-child for you: each entry in `boneMatrices` is that bone's full world transform, applied
+directly. To bend a tentacle/limb smoothly you supply already-composed world transforms that encode
+the chain (each joint inheriting its ancestors' rotation), exactly what `PolylineFrames.Build`
+produces from a point chain, or what a consumer's per-segment layout (e.g. an accumulated
+base-to-tip transform walk) computes. Rotating a single bone "in place" does not bend the rest of
+the mesh - that is by design, since the caller owns the kinematics.
+
+**Determinism: presentation only.** Bone matrices and `DrawSkinned` must never feed simulation,
+RNG, or netcode. Skinning is a render-time visual; drive bones from already-computed gameplay
+state, not the reverse.
+
+---
+
 ## ECS (`KhaozEngine.Ecs`)
 
 Independent of input/rendering. A struct-based archetype ECS: components are **structs** implementing

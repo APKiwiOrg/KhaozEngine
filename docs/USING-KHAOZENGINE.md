@@ -461,6 +461,13 @@ one track via `PlayMode`, `CurrentTrack`/`TrackChanged`), SFX one-shots, and 3D 
 (`PlaySfx`/`PlaySfx3D`/`SetListener`, a 16-voice pool, per-channel volume). `LoadContent(directory)` +
 `Update()` per frame.
 
+`IsSfxLoaded(name)` reports whether a name resolved to a loaded buffer, and the `PlaySfx`/`PlaySfx3D`
+overloads taking an `IReadOnlyList<string>` of candidate keys play the first loaded one in priority order
+(returning whether any played). The engine stays convention-agnostic: the game builds the candidate list
+(e.g. a per-entity variant then a shared fallback like `towers/railgun/fire` -> `towers/default/fire`);
+the engine just plays the first that loaded. An all-unloaded list warns once and is a no-op; null/empty is a
+silent no-op.
+
 **Authoring SFX assets (`ke-sfxbake`).** The `KhaozEngine.Sfx.Tool` dotnet tool bulk-generates and bakes a
 game's sound effects from a `sfx.manifest.jsonc` (prompt -> ElevenLabs sound-effects API -> ffmpeg/oggenc ->
 your asset tree). It defaults to the formats this `AudioSystem` wants: mono OGG Vorbis (mono because OpenAL only

@@ -5,6 +5,10 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.16.0
+
+Additive (`KhaozEngine.Audio`): `AudioSystem` gains a loaded-check and first-available SFX play. `bool IsSfxLoaded(string name)` reports whether a name resolved to a loaded buffer (registered-but-file-missing returns false), so a game can ask "is this loaded?" without tripping the unknown-name warn-once. New first-available overloads `bool PlaySfx(IReadOnlyList<string> candidateKeys, float volume = 1f, float pitch = 1f)` and `bool PlaySfx3D(IReadOnlyList<string> candidateKeys, Vector3 position, float volume = 1f, float pitch = 1f)` take candidate keys in priority order and play the first loaded one (reusing the existing gain math + never-disables-music guard), returning true; a null/empty list is a no-op returning false, and an all-unloaded list warns once (deduped on the joined list, not per call) and returns false. Lets consumer games (Hardpoint first) do per-entity sound variants with a shared fallback ("play `towers/railgun/fire` if loaded, else `towers/default/fire`") while the fallback CONVENTION stays game-side: the engine provides the primitive, the game builds the candidate list. The single-key `PlaySfx`/`PlaySfx3D` overloads are unchanged (`PlaySfx("x")` still binds to the string overload; no overload ambiguity), and behaviour of every existing member is unchanged.
+
 ## 7.15.0
 
 Additive: new `GuiSurface.HoverCaptured` property (`KhaozEngine.Gui`). True when the pointer's CURRENT position

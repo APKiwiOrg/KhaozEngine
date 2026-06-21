@@ -9,9 +9,10 @@ cross-platform readiness, testability/correctness/gaps. This is the synthesis.
 > `Toggle`/`Slider`/`Dropdown`/`TextInput` now auto-reserve, paradigm documented, 5.48.0), P1#7 (leaks: layout
 > dispose + `Scene3D.UnloadMesh`), P1#9 (foundation graduated onto the 5.x line, 5.46.0), P2#10 (per-frame
 > allocs), P2#11 (`GltfLoader` weld + index ceiling, 5.48.0), P2#12 (typed `Color`/`Rect`, 5.48.0), P2#13 (shared
-> `GpuReadback`, 5.48.0). **Still open:** P1#8 cross-platform Vulkan/GL verification (Metal + D3D11 green in CI;
-> Vulkan/GL need real GPU hardware) and the capability backlog below (shadows, skinning, touch, asset pipeline,
-> on-screen profiling), tackled as games demand.
+> `GpuReadback`, 5.48.0), capability-backlog/skinning (runtime bone-palette GPU skinning: `Scene3D.DrawSkinned`,
+> `SkinnedMeshBuilder`, `GltfLoader.LoadSkinned`). **Still open:** P1#8 cross-platform Vulkan/GL verification
+> (Metal + D3D11 green in CI; Vulkan/GL need real GPU hardware) and the capability backlog below (shadows,
+> keyframe animation playback, touch, asset pipeline, on-screen profiling), tackled as games demand.
 
 ## Verdict
 

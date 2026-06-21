@@ -53,8 +53,8 @@ version/release work.
   the `README.md` `<PackageReference>` example) → `dotnet pack -c Release -o ./local-feed` (cumulative within a
   release) → commit → `git tag vX.Y.Z` → push `main` + the tag (CI publishes to GitHub Packages on `v*`).
   `local-feed/` is a gitignored dev convenience; GitHub Packages (every published `v*`) is the durable store, so
-  `local-feed` may be pruned to the current major-line floor (currently `6.0.0`) without losing anything
-  recoverable.
+  `local-feed` may be pruned up to the lowest version any consumer still pins (currently `7.3.0`) without losing
+  anything recoverable.
 - `scripts/check-doc-versions.sh` enforces those three declarations match the **5.x line**
   (`<KhaozEngine5xVersion>`, which is the engine); CI runs it on every push, so a forgotten bump fails the
   build. Consumer pins are exempt and may lag.
@@ -78,9 +78,9 @@ version/release work.
   (repack to `local-feed`, single tag `vX.Y.Z`); `check-doc-versions.sh` enforces this line. The 5.x line
   dropped the `-experimental` suffix at `5.31.0` (the tag is plain `vX.Y.Z`); the foundation graduated onto it
   at `5.46.0`. **The legacy 4.x MonoGame `<Version>` line + its six packages (`UI`/`Graphics`/`Screens`/
-  `Sprites`/`Input`/`Time`) were DELETED from the repo; there is no 4.x line any more.** SpaceGame (the lone
-  remaining 4.x consumer) still resolves the already-published `4.9.0` nupkgs from the feed until its 6.x port
-  lands. See `docs/ROADMAP.md` ("The post-MonoGame pivot").
+  `Sprites`/`Input`/`Time`) were DELETED from the repo; there is no 4.x line any more.** All three consumers
+  have finished porting onto the 7.x line and no longer reference 4.x (per-consumer pins live in
+  `docs/CONSUMERS.md`). See `docs/ROADMAP.md` ("The post-MonoGame pivot").
 - **Commit subjects:** conventional-commit style `area(scope): summary`, e.g.
   `audio(4.3.1): MacOsMusicBackend loads built .ogg` or `docs(consumers): ...`.
   On a release/version-bump commit, use the new version as the scope (`audio(4.3.1):`).

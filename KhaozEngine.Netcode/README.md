@@ -1,6 +1,6 @@
 # KhaozEngine.Netcode
 
-Game-agnostic, transport-free netcode primitives for MonoGame games.
+Game-agnostic, transport-free netcode primitives.
 
 ## UnitAxisQuantizer
 

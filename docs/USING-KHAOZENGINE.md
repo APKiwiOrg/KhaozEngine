@@ -133,12 +133,14 @@ public sealed class MyGame3D : GameApp3D
 engine-native, `System.Numerics`:
 
 ```csharp
-public readonly record struct InputState(
-    IReadOnlySet<Key> KeysDown, KeysPressed, KeysReleased,
-    IReadOnlySet<MouseButton> MouseDown, MousePressed,
-    Vector2 MousePosition, Vector2 MouseDelta, float ScrollDelta,
-    int Width, int Height,
-    IReadOnlyList<GamepadState> Gamepads, IReadOnlyList<TouchPoint> Touches);
+public sealed class InputState   // immutable per-frame snapshot; InputState.Empty is a blank one
+{
+    // read-only properties; the constructor takes them in this order:
+    IReadOnlySet<Key> KeysDown, KeysPressed, KeysReleased;
+    IReadOnlySet<MouseButton> MouseDown, MousePressed;
+    Vector2 MousePosition, MouseDelta;  float ScrollDelta;  int Width, Height;
+    IReadOnlyList<GamepadState> Gamepads, Touches;  // ctor args optional, default empty
+}
 
 bool IsDown(Key) / WasPressed(Key) / WasReleased(Key);
 bool IsDown(MouseButton) / WasPressed(MouseButton);

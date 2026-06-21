@@ -1,6 +1,6 @@
 # KhaozEngine.Ecs
 
-A struct-based **archetype** entity-component-system for MonoGame. Entities are versioned handles;
+A game-agnostic, struct-based **archetype** entity-component-system. Entities are versioned handles;
 components are `struct`s implementing `IComponent`, stored in contiguous archetype columns. Provides
 `ref` access, `With`/`Without` queries with `ForEach` (arities 1-8), an `EntityCommandBuffer` for
 deferred structural changes, typed `Resources`, and ordered `ISystem`s. Independent of the

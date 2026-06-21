@@ -1,6 +1,6 @@
 # Cross-platform desktop GPU
 
-KhaozEngine's 6.x custom stack (Render2D / Render3D) runs on Veldrid. Each desktop OS gets a native graphics
+KhaozEngine's custom stack (Render2D / Render3D) runs on Veldrid. Each desktop OS gets a native graphics
 backend; the GPU golden-snapshot net verifies rendering on each one through a CI matrix.
 
 ## Platform → backend (desktop scope)

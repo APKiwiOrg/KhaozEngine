@@ -13,8 +13,13 @@ which one wins.
 | [CHANGELOG.md](../CHANGELOG.md) | Newest-first, per-package, every version. | Release history (full detail). Nothing else should restate the per-version story. |
 | [CHANGENOTES.md](../CHANGENOTES.md) | The high-level history digest: one or two sentences per version, newest first. | The scannable "story over time". Distilled from CHANGELOG; updated on every version bump. |
 | [CONSUMERS.md](CONSUMERS.md) | Current state only: which game pins which package at which version, and notable non-adoptions with reasons. | The version + adoption matrices. |
+| [CROSS-PLATFORM.md](CROSS-PLATFORM.md) | Desktop GPU story: platform → Veldrid backend mapping (Metal/D3D11/Vulkan), the golden-snapshot net, the CI matrix. | How rendering is verified per OS. |
 | [ROADMAP.md](ROADMAP.md) | Larger feature areas not yet scheduled; shipped items marked. | The backlog. |
 | `../<Package>/README.md` | One-paragraph purpose + a snippet per package. | Per-package quick reference. |
+
+Dated reference: [ENGINE-AUDIT-5x-2026-06-16.md](ENGINE-AUDIT-5x-2026-06-16.md) is a point-in-time 5.x audit
+(P0/P1/P2 risk register). Not a living doc; the CHANGELOG and design specs cite its item numbers, so it stays
+put rather than being edited in place.
 
 The **engine current version** lives in `../Directory.Build.props` (`<KhaozEngine5xVersion>`). Docs that restate it
 (CONSUMERS "Engine current version", ROADMAP "Current released version", the README PackageReference

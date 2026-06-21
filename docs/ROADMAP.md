@@ -4,8 +4,9 @@ Larger feature areas identified but not yet scheduled. Current released version:
 `<KhaozEngine5xVersion>` line, which is the engine: the custom MonoGame-free stack plus the graduated foundation packages). The legacy 4.x
 line and its six genuinely-MonoGame packages (`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`) were
 DELETED from the engine source, so the engine itself is now entirely MonoGame-free. All three consumers are
-off MonoGame too and all pin `6.3.0`: Hardpoint (`Game3D` + `Foundation`), Nullwake (`Game2D`), and SpaceGame
-(`Game2D` + the split-out `SpaceGame.Sim`). The breaking 6.0.0 `Primitives.Color` migration has been adopted
+off MonoGame too and pin the 7.x line on their own schedule: Hardpoint (`Game3D` + `Foundation`), Nullwake
+(`Game2D`), and SpaceGame (`Game2D` + the split-out `SpaceGame.Sim`) - exact pins in CONSUMERS.md. The
+breaking 6.0.0 `Primitives.Color` migration has been adopted
 everywhere, so the post-MonoGame pivot is fully complete on both the engine and consumer sides. As of 6.0.0
 there is also a new zero-dependency `KhaozEngine.Primitives` leaf at the bottom of the graph (`Color`,
 `DeterministicRng`, `XorRng`, `MathUtil`, `ViewportMath`, `Easing`).
@@ -51,14 +52,14 @@ via AOT, and ~21 existing C# packages + 3 games would be thrown away by a rewrit
 - **Audio:** `OpenAL` via `Silk.NET.OpenAL` (or a small custom backend) replaces MonoGame audio.
 - **Texture/content:** `StbImageSharp` etc.
 
-### Current status (as of 6.3.0)
+### Current status (snapshot captured at 6.3.0)
 
-_(Historical snapshot below; current state is 6.3.0 - see CONSUMERS.md / CHANGELOG.md. The table captured
+_(Historical snapshot below; current state is 7.9.0 - see CONSUMERS.md / CHANGELOG.md. The table captured
 the moment every subsystem was first proven on the custom stack; the version markers in it are left as a
 record of when each landed.)_
 
 **Every subsystem needed to drop MonoGame is now proven on the custom stack — no feasibility unknowns
-remain; the rest is productization + porting.** Shipped engine packages (shared version, now at 6.3.0):
+remain; the rest is productization + porting.** Shipped engine packages (shared version, now at 7.9.0):
 
 | Subsystem | Status |
 |---|---|
@@ -141,8 +142,9 @@ first; **Phase A shipped in `5.13.0-experimental`**: multi-instance `Scene3D` (`
    OpenAL streaming backend (WAV/OGG/MP3) - the first existing package ported off MonoGame, and the last
    *unproven* subsystem now proven. Still to do: move Input/Screens/UI/Sprites/Effects + content load off
    MonoGame onto the custom foundation.
-5. **Migrate the games (done).** All three are off MonoGame and pin `6.3.0` (Hardpoint, Nullwake, SpaceGame),
-   including the breaking 6.0.0 `Primitives.Color` adoption. The 4.x MonoGame line was retired (packages
+5. **Migrate the games (done).** All three are off MonoGame and pin the 7.x line (Hardpoint, Nullwake,
+   SpaceGame; exact pins in CONSUMERS.md), including the breaking 6.0.0 `Primitives.Color` adoption. The 4.x
+   MonoGame line was retired (packages
    deleted, feed pruned to the 6.x floor).
 6. **Mobile.** iOS/Android platform layers (lifecycle, touch, packaging, stores).
 
@@ -231,7 +233,7 @@ is folding the richer features above into `Effects.ParticleSystem`.)
 
 **Shipped (5.34.0).** `KhaozEngine.Audio` gained SFX one-shots + 3D positional audio over a 16-voice pool
 (`PlaySfx`/`PlaySfx3D`/`SetListener`, per-channel volume) on top of the streaming music backend, so it is no
-longer music-only. SpaceGame (now ported, on `6.3.0`) may still keep its game-side SFX mixing
+longer music-only. SpaceGame (now ported, on `7.3.0`) may still keep its game-side SFX mixing
 (`AudioVolumeMixer`) layered over the engine audio.
 
 ## Shipped (closed roadmap items)
@@ -243,5 +245,5 @@ longer music-only. SpaceGame (now ported, on `6.3.0`) may still keep its game-si
 
 ---
 _Source: coordinated promote-into-KE effort, 2026-06-11; shipped-items reconciled 2026-06-13 at 4.0.0.
-The engine is now one MonoGame-free shared version line, currently 6.3.0 (see CONSUMERS.md / CHANGELOG.md).
+The engine is now one MonoGame-free shared version line, currently 7.9.0 (see CONSUMERS.md / CHANGELOG.md).
 Update as items are scheduled or shipped._

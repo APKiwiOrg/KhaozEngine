@@ -3,7 +3,6 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
-using System.Threading.Tasks;
 using KhaozEngine.Determinism;
 using KhaozEngine.Primitives;
 using Xunit;
@@ -22,38 +21,55 @@ public class DeterministicFpHarnessTests
     private const ulong Seed = 99173;   // the SpaceGame repro seed
     private const int Ticks = 3600;
 
+    // IMPORTANT: every test here corrupts the calling thread's FP rounding mode. It MUST be restored in
+    // a finally on every thread touched, or the corrupted rounding leaks into a reused thread and breaks
+    // unrelated FP-sensitive tests (xUnit shares threads). For the same reason these tests never corrupt a
+    // ThreadPool thread (which is reused) - cross-thread coverage uses dedicated threads that die on join.
+
     [Fact]
     public void MiniSimIsSensitiveToRounding_AndScopeForcesCanonical()
     {
-        // Baseline: canonical rounding (nearest).
-        FpPoke.SetRoundToNearest();
-        ulong canonical = MiniSim.RunHash(Seed, Ticks);
+        try
+        {
+            // Baseline: canonical rounding (nearest).
+            FpPoke.SetRoundToNearest();
+            ulong canonical = MiniSim.RunHash(Seed, Ticks);
 
-        // Corrupt: round toward zero. The sim accumulates many rounding-sensitive terms, so this
-        // must change the result -- otherwise the harness would be vacuous.
-        FpPoke.SetRoundTowardZero();
-        ulong corrupted = MiniSim.RunHash(Seed, Ticks);
-        Assert.NotEqual(canonical, corrupted);
+            // Corrupt: round toward zero. The sim accumulates many rounding-sensitive terms, so this
+            // must change the result -- otherwise the harness would be vacuous.
+            FpPoke.SetRoundTowardZero();
+            ulong corrupted = MiniSim.RunHash(Seed, Ticks);
+            Assert.NotEqual(canonical, corrupted);
 
-        // With the scope active on the corrupted thread, the result must match the canonical baseline.
-        ulong scoped;
-        using (DeterministicFpScope.Enter())
-            scoped = MiniSim.RunHash(Seed, Ticks);
-        Assert.Equal(canonical, scoped);
+            // With the scope active on the corrupted thread, the result must match the canonical baseline.
+            ulong scoped;
+            using (DeterministicFpScope.Enter())
+                scoped = MiniSim.RunHash(Seed, Ticks);
+            Assert.Equal(canonical, scoped);
 
-        // And the scope must have restored the corrupted rounding on dispose.
-        Assert.Equal(FpPoke.RoundTowardZero, FpPoke.GetRound());
-        FpPoke.SetRoundToNearest();
+            // And the scope must have restored the corrupted rounding on dispose.
+            Assert.Equal(FpPoke.RoundTowardZero, FpPoke.GetRound());
+        }
+        finally
+        {
+            FpPoke.SetRoundToNearest();
+        }
     }
 
     [Fact]
     public void ByteIdenticalAcrossRepeatedRuns_WithScope()
     {
-        FpPoke.SetRoundTowardZero();   // hostile ambient state
-        ulong first = RunScoped();
-        for (int i = 0; i < 16; i++)
-            Assert.Equal(first, RunScoped());
-        FpPoke.SetRoundToNearest();
+        try
+        {
+            FpPoke.SetRoundTowardZero();   // hostile ambient state
+            ulong first = RunScoped();
+            for (int i = 0; i < 16; i++)
+                Assert.Equal(first, RunScoped());
+        }
+        finally
+        {
+            FpPoke.SetRoundToNearest();
+        }
 
         static ulong RunScoped()
         {
@@ -63,35 +79,41 @@ public class DeterministicFpHarnessTests
     }
 
     [Fact]
-    public async Task ByteIdenticalAcrossThreads_WithScope()
+    public void ByteIdenticalAcrossThreads_WithScope()
     {
-        // Each worker pre-corrupts its own thread's FP state differently, then runs under the scope.
-        // The scope must neutralize the difference so every thread agrees -- the lockstep invariant.
-        ulong onMain;
-        FpPoke.SetRoundTowardZero();
-        using (DeterministicFpScope.Enter())
-            onMain = MiniSim.RunHash(Seed, Ticks);
-        FpPoke.SetRoundToNearest();
+        // Each worker pre-corrupts its own thread's FP state, runs under the scope, and restores nearest
+        // in a finally. The scope must neutralize the ambient difference so every thread agrees -- the
+        // lockstep invariant. Dedicated threads only (never the ThreadPool): they die on Join, so a
+        // corrupted state cannot leak into a reused worker that later runs another test.
+        ulong onMain = RunWorker(FpPoke.RoundTowardZero);
+        ulong onThreadA = RunOnDedicatedThread(FpPoke.RoundTowardZero);
+        ulong onThreadB = RunOnDedicatedThread(FpPoke.RoundToNearest);
 
-        ulong onPool = await Task.Run(() =>
+        Assert.Equal(onMain, onThreadA);
+        Assert.Equal(onMain, onThreadB);
+
+        static ulong RunWorker(int ambientRounding)
         {
-            FpPoke.SetRoundTowardZero();
-            using (DeterministicFpScope.Enter())
-                return MiniSim.RunHash(Seed, Ticks);
-        });
+            try
+            {
+                FpPoke.SetRound(ambientRounding);
+                using (DeterministicFpScope.Enter())
+                    return MiniSim.RunHash(Seed, Ticks);
+            }
+            finally
+            {
+                FpPoke.SetRoundToNearest();
+            }
+        }
 
-        ulong onDedicated = 0;
-        var thread = new Thread(() =>
+        static ulong RunOnDedicatedThread(int ambientRounding)
         {
-            FpPoke.SetRoundToNearest();   // a different ambient state than the pool worker
-            using (DeterministicFpScope.Enter())
-                onDedicated = MiniSim.RunHash(Seed, Ticks);
-        });
-        thread.Start();
-        thread.Join();
-
-        Assert.Equal(onMain, onPool);
-        Assert.Equal(onMain, onDedicated);
+            ulong result = 0;
+            var thread = new Thread(() => result = RunWorker(ambientRounding));
+            thread.Start();
+            thread.Join();
+            return result;
+        }
     }
 }
 
@@ -168,8 +190,9 @@ internal static class FpPoke
         return IntPtr.Zero;
     }
 
-    public static void SetRoundToNearest() => FeSetRound(RoundToNearest);
-    public static void SetRoundTowardZero() => Assert.Equal(0, FeSetRound(RoundTowardZero));
+    public static void SetRound(int mode) => Assert.Equal(0, FeSetRound(mode));
+    public static void SetRoundToNearest() => SetRound(RoundToNearest);
+    public static void SetRoundTowardZero() => SetRound(RoundTowardZero);
     public static int GetRound() => FeGetRound();
 
     [DllImport(Lib, EntryPoint = "fesetround")]

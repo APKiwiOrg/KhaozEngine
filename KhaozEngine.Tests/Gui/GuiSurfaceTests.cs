@@ -116,6 +116,49 @@ namespace KhaozEngine.Tests.Gui
         }
 
         [Fact]
+        public void HoverCaptured_is_true_over_a_panel_with_no_press()
+        {
+            var ui = Surface();
+            var p = new Pointer();   // never pressed
+
+            p.Update(Frame(new Vector2(50, 50), false));    // current position inside the panel, no button down
+            ui.Begin(null, p);
+            ui.Panel(new Rect(0, 0, 300, 200), GuiStyle.Default.Fill);
+            Assert.True(ui.HoverCaptured);                   // hover gate fires with no press...
+            Assert.False(ui.PointerCaptured);               // ...while the press gate stays closed
+        }
+
+        [Fact]
+        public void HoverCaptured_is_false_when_position_outside_everything()
+        {
+            var ui = Surface();
+            var p = new Pointer();
+
+            p.Update(Frame(new Vector2(500, 400), false));  // current position far from any widget
+            ui.Begin(null, p);
+            ui.Panel(new Rect(0, 0, 100, 100), GuiStyle.Default.Fill);
+            ui.Button(null!, Btn, "Go");
+            Assert.False(ui.HoverCaptured);
+        }
+
+        [Fact]
+        public void HoverCaptured_tracks_current_position_not_press_origin()
+        {
+            var ui = Surface();
+            var p = new Pointer();
+            var panel = new Rect(0, 0, 300, 200);
+
+            p.Update(Frame(new Vector2(50, 50), false));
+            p.Update(Frame(new Vector2(50, 50), true));     // press-origin inside the panel
+            p.Update(Frame(new Vector2(500, 400), true));   // drag the live position off the panel
+
+            ui.Begin(null, p);
+            ui.Panel(panel, GuiStyle.Default.Fill);
+            Assert.True(ui.PointerCaptured);                // press-origin still inside -> captured
+            Assert.False(ui.HoverCaptured);                // but the cursor is no longer over UI
+        }
+
+        [Fact]
         public void Begin_clears_the_blocked_set_each_frame()
         {
             var ui = Surface();

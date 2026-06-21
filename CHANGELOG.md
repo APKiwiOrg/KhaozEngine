@@ -5,6 +5,18 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.15.0
+
+Additive: new `GuiSurface.HoverCaptured` property (`KhaozEngine.Gui`). True when the pointer's CURRENT position
+is inside any widget rect reserved this frame (the same per-frame `_blocked` set `PointerCaptured` tests), but
+against the live position rather than the press origin, and with no press-in-progress guard. `PointerCaptured`
+gates on the press origin and early-returns unless a press is down or just released, so it answers "did the
+user press on the UI"; there was no equivalent for "is the cursor merely over the UI right now". Games need
+that to suppress world HOVER affordances (tooltips, hover reticles, hover highlights) while the cursor sits
+over a panel without clicking. `IsHovering`/`HoveredRect` don't cover it: `_hoveredRect` is only set by
+interactive widgets (Button/IconButton/Slider), whereas `_blocked` is also populated by `Panel`, so
+`HoverCaptured` covers panel backgrounds too. No behaviour change to existing members.
+
 ## 7.14.0
 
 Additive: new `KhaozEngine.Sfx.Tool` package, the `ke-sfxbake` dotnet tool (`PackAsTool`, rides the shared

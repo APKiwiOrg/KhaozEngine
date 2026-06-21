@@ -56,6 +56,15 @@ namespace KhaozEngine.Render3D
         // Reused per-frame grouping buffers (cleared, not realloc) for GPU instancing.
         readonly List<ModelRenderer.InstanceData> _instanceData = new();
         readonly List<MeshRun> _runs = new();
+        // Skinned mesh storage, parallel to the rigid mesh storage above.
+        readonly List<SkinnedMeshEntry?> _skinnedMeshes = new();
+        readonly MeshSlotMap _skinnedSlots = new();
+        readonly SkinnedSceneInstances _skinnedInstances = new();
+        // Per-frame composed bone palette for every skinned draw (cleared each Begin), and reused grouping buffers.
+        readonly List<Matrix4x4> _boneMatrices = new();
+        readonly List<SkinnedModelRenderer.SkinnedInstanceData> _skinnedInstanceData = new();
+        readonly List<SkinnedMeshRun> _skinnedRuns = new();
+        SkinnedModelRenderer _skinnedModel = null!;   // set in the constructor after _model
         Vector3 _billboardRight, _billboardUp;
         bool _billboardBasisValid;
 
@@ -73,6 +82,7 @@ namespace KhaozEngine.Render3D
             _targetOutput = targetOutput;
             _res = new RenderResources(gd, Post.RenderWidth, Post.RenderHeight);
             _model = new ModelRenderer(gd, _res.ModelFB.Outputs);
+            _skinnedModel = new SkinnedModelRenderer(gd, _res.ModelFB.Outputs, _model);
             _post = new PixelPostProcess(gd, _res.PingAFB.Outputs, targetOutput);
             _post.BindTargets(_res);
             _lines = new LineRenderer(gd, targetOutput);
@@ -167,11 +177,73 @@ namespace KhaozEngine.Render3D
             _meshes[h.Index] = null;
         }
 
+        /// <summary>Upload a skinned mesh to the GPU once; returns a handle to draw it with
+        /// <see cref="DrawSkinned"/>. Untextured (samples the 1x1 white default, so colour is the baked vertex
+        /// colour times any per-instance tint).</summary>
+        public SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh) => LoadSkinnedInternal(mesh, null);
+
+        /// <summary>Upload a skinned mesh and bind <paramref name="texture"/> as its albedo
+        /// (<c>texRgb * vColor * vTint</c>). An invalid handle falls back to untextured.</summary>
+        public SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh, TextureHandle texture)
+        {
+            IGpuResourceSet? material = texture.IsValid ? _model.CreateMaterialSet(_textures[texture.ListIndex]) : null;
+            return LoadSkinnedInternal(mesh, material);
+        }
+
+        SkinnedMeshHandle LoadSkinnedInternal(SkinnedGltfMesh mesh, IGpuResourceSet? material)
+        {
+            var f = _gd.Factory;
+            var vb = f.CreateBuffer(new GpuBufferDescription((uint)(mesh.Vertices.Length * SkinnedVertex.SizeInBytes), GpuBufferUsage.VertexBuffer));
+            _gd.UpdateBuffer(vb, 0, mesh.Vertices);
+            var ib = f.CreateBuffer(new GpuBufferDescription((uint)(mesh.Indices.Length * sizeof(ushort)), GpuBufferUsage.IndexBuffer));
+            _gd.UpdateBuffer(ib, 0, mesh.Indices);
+
+            int index = _skinnedSlots.Alloc(out int generation);
+            var entry = new SkinnedMeshEntry(vb, ib, mesh.Indices.Length, material, mesh.InverseBind);
+            if (index < _skinnedMeshes.Count) _skinnedMeshes[index] = entry;
+            else _skinnedMeshes.Add(entry);
+            return new SkinnedMeshHandle(index, generation);
+        }
+
+        /// <summary>Queue one skinned draw. <paramref name="boneMatrices"/> are this frame's joint world
+        /// transforms (model space), one per bone in the mesh's skin; the engine composes them with the mesh's
+        /// inverse-bind. Passing the mesh's <see cref="SkinnedGltfMesh.RestPose"/> yields no deformation.
+        /// Presentation only - never feed sim/RNG/netcode from bone state.</summary>
+        public void DrawSkinned(SkinnedMeshHandle h, ReadOnlySpan<Matrix4x4> boneMatrices, Matrix4x4 model, Color tint)
+            => DrawSkinned(h, boneMatrices, model, tint, Material.None);
+
+        /// <summary>As <see cref="DrawSkinned(SkinnedMeshHandle,ReadOnlySpan{Matrix4x4},Matrix4x4,Color)"/> with an
+        /// explicit <paramref name="material"/> (emissive + specular).</summary>
+        public void DrawSkinned(SkinnedMeshHandle h, ReadOnlySpan<Matrix4x4> boneMatrices, Matrix4x4 model, Color tint, Material material)
+        {
+            if (!_skinnedSlots.IsValid(h.Index, h.Generation)) return;
+            var entry = _skinnedMeshes[h.Index];
+            if (entry is null) return;
+            uint boneOffset = ComposeBonesInto(_boneMatrices, boneMatrices, entry.InverseBind);
+            _skinnedInstances.Add(h, model, tint, material, boneOffset);
+        }
+
+        /// <summary>Free a skinned mesh's GPU buffers and release its slot. A <c>default</c> handle is a no-op; a
+        /// stale handle throws.</summary>
+        public void UnloadSkinnedMesh(SkinnedMeshHandle h)
+        {
+            if (h.Generation == 0) return;
+            _skinnedSlots.Free(h.Index, h.Generation);
+            var m = _skinnedMeshes[h.Index];
+            if (m is { } e) { e.Vb.Dispose(); e.Ib.Dispose(); e.MaterialSet?.Dispose(); }
+            _skinnedMeshes[h.Index] = null;
+        }
+
+        /// <summary>Skinned draws queued this frame. Internal: lets tests assert Begin clears the queue.</summary>
+        internal int SkinnedInstanceCount => _skinnedInstances.Items.Count;
+
         /// <summary>Start a frame: clear the instance queue, the point-light queue, the debug-line queue, the
         /// filled-overlay queue, and the billboard queues. Call before submitting.</summary>
         public void Begin()
         {
             _instances.Begin();
+            _skinnedInstances.Begin();
+            _boneMatrices.Clear();
             _lights.Clear();
             _lineVerts.Clear();
             _fillVerts.Clear();
@@ -488,6 +560,24 @@ namespace KhaozEngine.Render3D
                 }
             }
 
+            // Skinned pass: same model framebuffer + frame UBO, separate pipeline. Upload this frame's whole bone
+            // palette once, then one instanced draw per unique skinned mesh (instances read their own bone range).
+            var skinnedItems = _skinnedInstances.Items;
+            if (skinnedItems.Count > 0)
+            {
+                SkinnedModelRenderer.GroupSkinnedInstances(skinnedItems, _skinnedInstanceData, _skinnedRuns);
+                _skinnedModel.UploadBones(cl, CollectionsMarshal.AsSpan(_boneMatrices));
+                _skinnedModel.UploadInstances(cl, CollectionsMarshal.AsSpan(_skinnedInstanceData));
+                _skinnedModel.BindPass(cl);
+                foreach (var run in _skinnedRuns)
+                {
+                    if (!_skinnedSlots.IsValid(run.Mesh.Index, run.Mesh.Generation)) continue;
+                    var m = _skinnedMeshes[run.Mesh.Index];
+                    if (m is not { } entry) continue;
+                    _skinnedModel.DrawSkinnedMeshInstanced(cl, entry.Vb, entry.Ib, entry.IndexCount, run.Start, run.Count, entry.MaterialSet);
+                }
+            }
+
             // Textured billboards: drawn into the SAME model framebuffer (still bound), after the meshes, with the
             // depth test on (no write). This is what gives mesh/sprite depth interleaving; then the whole MRT
             // (meshes + textured billboards) goes through the post chain together.
@@ -563,6 +653,7 @@ namespace KhaozEngine.Render3D
         public void Dispose()
         {
             _model.Dispose();
+            _skinnedModel.Dispose();
             _post.Dispose();
             _lines.Dispose();
             _fills.Dispose();
@@ -571,6 +662,8 @@ namespace KhaozEngine.Render3D
             _res.Dispose();
             foreach (var m in _meshes)
                 if (m is { } mesh) { mesh.Vb.Dispose(); mesh.Ib.Dispose(); mesh.MaterialSet?.Dispose(); }
+            foreach (var m in _skinnedMeshes)
+                if (m is { } e) { e.Vb.Dispose(); e.Ib.Dispose(); e.MaterialSet?.Dispose(); }
             foreach (var s in _texBillboardSets) s?.Dispose();
             _texBillboardSets.Clear();
             foreach (var t in _textures) t.Dispose();
@@ -588,6 +681,20 @@ namespace KhaozEngine.Render3D
             public Mesh(IGpuBuffer vb, IGpuBuffer ib, int indexCount, IGpuResourceSet? materialSet = null)
             {
                 Vb = vb; Ib = ib; IndexCount = indexCount; MaterialSet = materialSet;
+            }
+        }
+
+        /// <summary>A GPU-resident skinned mesh: its vertex/index buffers, index count, optional material set, and
+        /// the CPU-side inverse-bind matrices needed to compose per-frame bone palettes at DrawSkinned time.</summary>
+        sealed class SkinnedMeshEntry
+        {
+            public readonly IGpuBuffer Vb, Ib;
+            public readonly int IndexCount;
+            public readonly IGpuResourceSet? MaterialSet;
+            public readonly Matrix4x4[] InverseBind;
+            public SkinnedMeshEntry(IGpuBuffer vb, IGpuBuffer ib, int indexCount, IGpuResourceSet? materialSet, Matrix4x4[] inverseBind)
+            {
+                Vb = vb; Ib = ib; IndexCount = indexCount; MaterialSet = materialSet; InverseBind = inverseBind;
             }
         }
 
@@ -664,6 +771,21 @@ namespace KhaozEngine.Render3D
                     start = i;
                 }
             }
+        }
+
+        /// <summary>Compose <paramref name="boneMatrices"/> (per-frame joint world transforms) with
+        /// <paramref name="inverseBind"/> into <paramref name="dst"/>, appending one skin matrix per bone, and
+        /// return the start offset (in matrices) of the appended block. Pure + headless-testable. Throws if the
+        /// two inputs differ in length.</summary>
+        internal static uint ComposeBonesInto(List<Matrix4x4> dst, ReadOnlySpan<Matrix4x4> boneMatrices, Matrix4x4[] inverseBind)
+        {
+            if (boneMatrices.Length != inverseBind.Length)
+                throw new ArgumentException(
+                    $"boneMatrices length {boneMatrices.Length} must equal the mesh bone count {inverseBind.Length}.");
+            uint offset = (uint)dst.Count;
+            for (int b = 0; b < boneMatrices.Length; b++)
+                dst.Add(SkinningMath.Compose(boneMatrices[b], inverseBind[b]));
+            return offset;
         }
 
         /// <summary>

@@ -105,7 +105,7 @@ public sealed class WorldSerializer
     /// <summary>Deserializes a world from a JSON string.</summary>
     public World Load(string json)
     {
-        if (JsonNode.Parse(json) is not JsonObject root)
+        if (Jsonc.ParseNode(json) is not JsonObject root)
             throw new InvalidOperationException("Empty or invalid save document.");
 
         // Read the version BEFORE deserializing so a future save is rejected, not mis-read. A missing

@@ -7,19 +7,21 @@ namespace KhaozEngine.Serialization;
 /// Each property returns a single shared, effectively read-only instance (System.Text.Json freezes
 /// options on first use), suitable as a fallback default. Callers that need converters or other
 /// tweaks should construct their own options and pass them through the relevant API instead.
+///
+/// <para>JSONC (JSON with comments and trailing commas) is the engine standard for hand-authored config,
+/// manifests, settings, and saves. The canonical read policy lives in <see cref="Jsonc"/>; <see cref="TolerantRead"/>
+/// is the same instance under its historical name. Writing stays plain JSON (<see cref="IndentedWrite"/>) because
+/// System.Text.Json cannot emit comments.</para>
 /// </summary>
 public static class JsonDefaults
 {
-    /// <summary>Tolerant reader for loading config: case-insensitive property names, <c>//</c> comments
-    /// skipped, and trailing commas allowed. Used by config/content loading.</summary>
-    public static JsonSerializerOptions TolerantRead { get; } = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        ReadCommentHandling = JsonCommentHandling.Skip,
-        AllowTrailingCommas = true,
-    };
+    /// <summary>Tolerant reader for loading config: case-insensitive property names, comments skipped, and
+    /// trailing commas allowed. This is the engine JSONC read policy; it is the same instance as
+    /// <see cref="Jsonc.Options"/>, kept under this name for back-compat. Used by config/content loading.</summary>
+    public static JsonSerializerOptions TolerantRead => Jsonc.Options;
 
     /// <summary>Human-readable writer for files a person might open: <see cref="JsonSerializerOptions.WriteIndented"/>.
+    /// System.Text.Json cannot emit comments, so this writes plain JSON; JSONC is a read-time convenience only.
     /// Used by saves/settings persistence.</summary>
     public static JsonSerializerOptions IndentedWrite { get; } = new()
     {

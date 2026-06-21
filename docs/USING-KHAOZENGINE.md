@@ -507,8 +507,14 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   facade (paths + queue + settings + encoder).
 - **`KhaozEngine.Content`**: config loading + JSON-schema validation: `ConfigLoader` (disk-then-embedded),
   `JsonSchemaValidator`, build-time schema enforcement via the bundled `Content.Validator` tool.
-- **`KhaozEngine.Serialization`**: shared `System.Text.Json` baselines (`JsonDefaults.TolerantRead` /
-  `IndentedWrite` / `IncludeFields`). Consumed by Content/Persistence/Ecs.
+- **`KhaozEngine.Serialization`**: shared `System.Text.Json` baselines. **JSONC (JSON with `//` / `/* */`
+  comments and trailing commas) is the engine standard for hand-authored config, manifests, settings, and
+  saves**: the `Jsonc` class is the single read policy every engine JSON load routes through (`Jsonc.Deserialize`
+  / `DeserializeFile` / `ParseDocument` / `ParseNode`, or the raw `Jsonc.Options` / `DocumentOptions` /
+  `NodeOptions`). `JsonDefaults.TolerantRead` is the same instance under its old name. JSONC is read-time only -
+  `System.Text.Json` cannot emit comments, so generated files (settings/saves) are written as plain indented JSON
+  via `JsonDefaults.IndentedWrite`, and signed/wire formats (the `Updates` manifest, AOT apply-config) stay
+  strict JSON by design. Consumed by Content/Persistence/Ecs.
 - **`KhaozEngine.Localization`**: `LocalizationManager` (discover cultures + set the thread culture).
 - **`KhaozEngine.Platform`**: `Clipboard` (cross-platform text + image, best-effort, never throws).
 - **`KhaozEngine.Pooling`**: `ObjectPool<T>` (O(1) rent/return, swap-removal compaction).

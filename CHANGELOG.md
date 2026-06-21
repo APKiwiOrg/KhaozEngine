@@ -5,6 +5,25 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.13.0
+
+Additive: JSONC (JSON with `//` and `/* */` comments and trailing commas) is now the documented engine standard
+for hand-authored config, content manifests, settings, and saves. New `KhaozEngine.Serialization.Jsonc` class is
+the single canonical read policy every engine JSON load routes through, with one accessor per System.Text.Json
+reader (`Jsonc.Options` for `JsonSerializer`, `Jsonc.DocumentOptions` for `JsonDocument`, `Jsonc.NodeOptions` for
+`JsonNode`) plus convenience helpers (`Deserialize<T>`, `DeserializeFile<T>`, `ParseDocument`, `ParseNode`).
+`JsonDefaults.TolerantRead` now returns the same instance as `Jsonc.Options` (was an equivalent but separate
+options object; behaviour unchanged, still case-insensitive + comments-skipped + trailing-commas). Routed the two
+call sites that still parsed JSON with their own or no options through the shared policy: `JsonSchemaValidator`
+(dropped its private `DocOptions`) and `WorldSerializer.Load` (its bare `JsonNode.Parse` now accepts comments and
+trailing commas, so hand-edited saves load). `ConfigLoader` and `KhaozEngine.Persistence` already used
+`JsonDefaults.TolerantRead`, so they inherit the canonical instance with no change.
+
+Write side is unchanged and stays plain JSON by design: System.Text.Json cannot emit comments, so generated files
+(settings, saves) are written with `JsonDefaults.IndentedWrite` and signed/wire formats (the `KhaozEngine.Updates`
+manifest, the AOT apply-update config) keep their own strict options. JSONC is a read-time convenience; authored
+files keep their comments because the engine only reads them, never rewrites them in place. No public API removed.
+
 ## 7.12.0
 
 Fix + additive: multi-instance skinned meshes now render correctly. Drawing more than one skinned mesh in a

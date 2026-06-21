@@ -2,23 +2,19 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using Json.Schema;
+using KhaozEngine.Serialization;
 
 namespace KhaozEngine.Content;
 
 /// <summary>Result of validating a JSON instance against a schema.</summary>
 public sealed record ValidationReport(bool IsValid, IReadOnlyList<string> Errors);
 
-/// <summary>Validates JSON instances against JSON Schema (via Json.Schema / JsonSchema.Net).</summary>
+/// <summary>Validates JSON instances against JSON Schema (via Json.Schema / JsonSchema.Net).
+/// Instances and schemas are parsed with the engine JSONC policy (<see cref="Jsonc"/>), so data files may carry
+/// comments and trailing commas.</summary>
 public static class JsonSchemaValidator
 {
-    private static readonly JsonDocumentOptions DocOptions = new()
-    {
-        CommentHandling = JsonCommentHandling.Skip,
-        AllowTrailingCommas = true,
-    };
-
     /// <summary>Validates an instance JSON string against a schema JSON string.</summary>
     public static ValidationReport Validate(string instanceJson, string schemaJson)
     {
@@ -27,7 +23,7 @@ public static class JsonSchemaValidator
         // registered schemas is not permitted" in the global static SchemaRegistry.
         BuildOptions buildOpts = new() { SchemaRegistry = new SchemaRegistry() };
         JsonSchema schema = JsonSchema.FromText(schemaJson, buildOpts);
-        using JsonDocument doc = JsonDocument.Parse(instanceJson, DocOptions);
+        using JsonDocument doc = Jsonc.ParseDocument(instanceJson);
         EvaluationResults result = schema.Evaluate(doc.RootElement, new EvaluationOptions { OutputFormat = OutputFormat.List });
         if (result.IsValid) return new ValidationReport(true, Array.Empty<string>());
 
@@ -64,7 +60,7 @@ public static class JsonSchemaValidator
             string json = File.ReadAllText(jsonFile);
 
             string? schemaRef;
-            try { schemaRef = JsonNode.Parse(json, documentOptions: DocOptions)?["$schema"]?.GetValue<string>(); }
+            try { schemaRef = Jsonc.ParseNode(json)?["$schema"]?.GetValue<string>(); }
             catch (JsonException ex) { log.WriteLine($"FAIL  {fileName}: invalid JSON -- {ex.Message}"); allValid = false; continue; }
 
             if (string.IsNullOrWhiteSpace(schemaRef)) { log.WriteLine($"WARN  {fileName}: no $schema, skipping"); continue; }

@@ -221,6 +221,13 @@ namespace KhaozEngine.Render3D.Rendering
         public IGpuResourceSet CreateMaterialSet(IGpuTexture albedo) =>
             _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_layout, _ubo, albedo, _sampler));
 
+        /// <summary>The material resource layout (set 0: UBO + albedo + sampler). Shared with the skinned
+        /// pipeline so both passes bind the same material sets.</summary>
+        internal IGpuResourceLayout MaterialLayout => _layout;
+
+        /// <summary>The white-default material set, bound for skinned meshes with no texture.</summary>
+        internal IGpuResourceSet DefaultMaterialSet => _defaultSet;
+
         /// <summary>Ensure the persistent instance buffer holds at least <paramref name="instanceCount"/>
         /// instances, then upload <paramref name="instances"/> starting at offset 0. Geometric 2x growth.</summary>
         public void UploadInstances(IGpuCommandList cl, ReadOnlySpan<InstanceData> instances)

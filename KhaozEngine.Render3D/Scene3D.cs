@@ -601,6 +601,16 @@ namespace KhaozEngine.Render3D
             public MeshRun(int meshIndex, uint start, uint count) : this(new MeshHandle(meshIndex), start, count) { }
         }
 
+        /// <summary>A contiguous run of skinned instances of one mesh handle inside the flat skinned-instance
+        /// array.</summary>
+        internal readonly struct SkinnedMeshRun
+        {
+            public readonly SkinnedMeshHandle Mesh;
+            public readonly uint Start;
+            public readonly uint Count;
+            public SkinnedMeshRun(SkinnedMeshHandle mesh, uint start, uint count) { Mesh = mesh; Start = start; Count = count; }
+        }
+
         /// <summary>Two handles name the same mesh slot occupant (index AND generation match).</summary>
         internal static bool SameHandle(MeshHandle a, MeshHandle b) =>
             a.Index == b.Index && a.Generation == b.Generation;

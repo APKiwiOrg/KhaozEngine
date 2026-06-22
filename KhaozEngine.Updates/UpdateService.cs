@@ -89,6 +89,7 @@ public sealed class UpdateService : IDisposable, IUpdateStatus
 
         DetectInterruptedApply();
         CleanStaleStagingDirs();
+        CleanStaleRelocateDirs();
     }
 
     /// <summary>Checks for a newer build and computes the download plan (with resume).</summary>
@@ -380,7 +381,8 @@ public sealed class UpdateService : IDisposable, IUpdateStatus
                 FilesToDelete = new List<string>(pendingDeletes),
                 GameExePath = Environment.ProcessPath ?? Path.Combine(installDir, options.UpdaterExecutableName.Replace("Updater", "")),
                 ParentPid = Environment.ProcessId,
-                ManifestDestPath = localManifestPath
+                ManifestDestPath = localManifestPath,
+                AppDataDir = appDataDir
             };
 
             string applyConfigPath = Path.Combine(appDataDir, "apply-update.json");
@@ -532,6 +534,29 @@ public sealed class UpdateService : IDisposable, IUpdateStatus
         catch
         {
             // Non-fatal.
+        }
+    }
+
+    /// <summary>
+    /// Backstop sweep for the updater's self-relocation scratch dirs. The relocated updater deletes its own
+    /// scratch dir via a detached one-shot after it exits; this removes anything left if that did not run
+    /// (e.g. the machine died mid-update). By the time the game is running, no relocation is in flight, so
+    /// the whole <c>updater-relocate</c> tree is safe to clear best-effort (locked files just stay for the
+    /// next sweep).
+    /// </summary>
+    private void CleanStaleRelocateDirs()
+    {
+        try
+        {
+            string relocateRoot = Path.Combine(appDataDir, "updater-relocate");
+            if (Directory.Exists(relocateRoot))
+            {
+                Directory.Delete(relocateRoot, recursive: true);
+            }
+        }
+        catch
+        {
+            // Best-effort: a binary still locked by an exiting relocated updater stays for the next sweep.
         }
     }
 

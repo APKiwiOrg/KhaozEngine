@@ -48,26 +48,33 @@ public sealed class ApplyResult
 /// </summary>
 public static class UpdateApplier
 {
-    public const int MaxCopyRetries = 10;
+    // Generous lock-wait budget: a just-exited game's DLLs can stay locked for several seconds while
+    // Windows tears down the process and antivirus scans the closed files. 40 x 500ms = 20s of retry
+    // per contended file (on top of the 30s parent-exit wait) clears that window; an unlocked file
+    // still succeeds on the first attempt with no delay, so the common path is unaffected.
+    public const int MaxCopyRetries = 40;
     public const int RetryDelayMilliseconds = 500;
-    public const int MaxParentWaitSeconds = 15;
+    public const int MaxParentWaitSeconds = 30;
     private const string RollbackDirName = ".ke-update-rollback";
     private const string ProgressMarkerName = "apply-in-progress.json";
+    private const string RelocateDirName = "updater-relocate";
+    private const string RelocatedFlag = "--relocated";
 
     /// <summary>
-    /// CLI entry point for an updater shim. Expects <c>--apply &lt;apply-update.json&gt;</c>, reads and
-    /// parses the config, runs <see cref="Apply"/>, then deletes the config file. Returns a process exit
-    /// code (0 on success).
+    /// CLI entry point for an updater shim. Expects <c>--apply &lt;apply-update.json&gt;</c> (with an
+    /// optional <c>--relocated</c> flag), reads and parses the config, optionally relocates the updater
+    /// out of the install dir (see <see cref="TryRelocate"/>), runs <see cref="Apply"/>, then deletes the
+    /// config file. Returns a process exit code (0 on success).
     /// </summary>
     public static int Run(string[] args, IUpdaterEnvironment environment)
     {
-        if (args.Length < 2 || args[0] != "--apply")
+        (string? configPath, bool relocated) = ParseArgs(args);
+        if (configPath is null)
         {
-            environment.Log("Usage: <updater> --apply <apply-update.json>");
+            environment.Log("Usage: <updater> --apply <apply-update.json> [--relocated]");
             return 1;
         }
 
-        string configPath = args[1];
         ApplyUpdateConfig? config;
         try
         {
@@ -85,13 +92,213 @@ public static class UpdateApplier
             return 1;
         }
 
+        // Stage 1: when the updater is running from inside the install dir (Windows, where a process
+        // locks its own loaded .exe/.dll), copy ourselves to a scratch dir and re-launch from there so
+        // the install-dir updater binaries are free to be overwritten. Hand off and exit.
+        if (!relocated && TryRelocate(config, configPath, environment))
+        {
+            return 0;
+        }
+
         ApplyResult result = Apply(config, environment);
 
         try { environment.DeleteFile(configPath); }
         catch (Exception ex) { environment.Log($"Cleanup: could not delete apply config {configPath}: {ex.Message}"); }
 
+        // Stage 2 ran from the scratch dir; schedule its removal now that the apply is done. The detached
+        // one-shot fires after this process exits and unlocks the relocated binaries, so nothing is left
+        // behind. (A boot-time sweep in UpdateService is the backstop if this machine dies first.) Guard:
+        // never schedule deletion of anything inside the install dir, in case --relocated is ever misused
+        // while running in place.
+        if (relocated)
+        {
+            string selfBase = environment.GetSelfBaseDirectory();
+            if (!string.IsNullOrEmpty(selfBase) && !IsDirInside(selfBase, config.InstallDir))
+            {
+                try { environment.ScheduleDirectoryDeletion(selfBase); }
+                catch (Exception ex) { environment.Log($"Could not schedule relocate-dir cleanup: {ex.Message}"); }
+            }
+        }
+
         return result.ExitCode;
     }
+
+    private static (string? ConfigPath, bool Relocated) ParseArgs(string[] args)
+    {
+        string? configPath = null;
+        bool relocated = false;
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (args[i] == "--apply" && i + 1 < args.Length)
+            {
+                configPath = args[i + 1];
+                i++;
+            }
+            else if (args[i] == RelocatedFlag)
+            {
+                relocated = true;
+            }
+        }
+        return (configPath, relocated);
+    }
+
+    /// <summary>
+    /// Relocates the running updater out of the install dir so it can overwrite its own binaries. Copies
+    /// just the updater's dependency closure (resolved from its <c>.deps.json</c>) into
+    /// <c>&lt;AppDataDir&gt;/updater-relocate/&lt;version&gt;</c>, launches that copy with
+    /// <c>--relocated</c>, and returns true (the caller exits). Returns false when relocation is not
+    /// needed (the environment reports no self-exe, i.e. non-Windows; or the updater already runs outside
+    /// the install dir) or could not be staged, in which case the caller applies in place.
+    /// </summary>
+    private static bool TryRelocate(ApplyUpdateConfig config, string configPath, IUpdaterEnvironment environment)
+    {
+        string? selfExe = environment.GetSelfExecutablePath();
+        if (string.IsNullOrEmpty(selfExe))
+        {
+            return false; // no relocation needed (POSIX) or self-path undeterminable
+        }
+
+        string selfDir = environment.GetSelfBaseDirectory();
+        if (string.IsNullOrEmpty(selfDir) || !IsDirInside(selfDir, config.InstallDir))
+        {
+            return false; // already running outside the install dir; safe to apply in place
+        }
+
+        string appDataDir = !string.IsNullOrEmpty(config.AppDataDir)
+            ? config.AppDataDir
+            : Path.GetDirectoryName(config.ManifestDestPath) ?? string.Empty;
+        if (string.IsNullOrEmpty(appDataDir))
+        {
+            environment.Log("Cannot resolve a scratch dir for relocation; applying in place.");
+            return false;
+        }
+
+        string apphostName = Path.GetFileName(selfExe);
+        string depsPath = Path.Combine(selfDir, Path.GetFileNameWithoutExtension(apphostName) + ".deps.json");
+        string depsJson = string.Empty;
+        if (environment.FileExists(depsPath))
+        {
+            try { depsJson = environment.ReadAllText(depsPath); }
+            catch (Exception ex) { environment.Log($"Could not read updater deps {depsPath}: {ex.Message}"); }
+        }
+
+        IReadOnlyList<string> closure = ResolveUpdaterClosure(depsJson, apphostName);
+
+        string version = string.IsNullOrEmpty(config.TargetVersion) ? "pending" : config.TargetVersion;
+        string relocateDir = Path.Combine(appDataDir, RelocateDirName, version);
+
+        try
+        {
+            environment.DeleteDirectory(relocateDir);
+            environment.CreateDirectory(relocateDir);
+
+            foreach (string relative in closure)
+            {
+                string src = Path.Combine(selfDir, ToNative(relative));
+                if (!environment.FileExists(src))
+                {
+                    continue; // closure entry not present on disk (e.g. framework asset); skip
+                }
+                string dst = Path.Combine(relocateDir, ToNative(relative));
+                string? dstDir = Path.GetDirectoryName(dst);
+                if (!string.IsNullOrEmpty(dstDir))
+                {
+                    environment.CreateDirectory(dstDir);
+                }
+                environment.CopyFile(src, dst, overwrite: true);
+            }
+
+            string relocatedExe = Path.Combine(relocateDir, apphostName);
+            if (!environment.FileExists(relocatedExe))
+            {
+                environment.Log("Relocation incomplete (updater exe not copied); applying in place.");
+                return false;
+            }
+
+            environment.Log($"Relocated updater to {relocateDir}; launching staged apply.");
+            environment.LaunchRelocatedUpdater(relocatedExe, configPath, relocateDir);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            environment.Log($"Relocation failed ({ex.Message}); applying in place.");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// The set of files a framework-dependent updater needs to run, as bare filenames in its base
+    /// directory: the host quartet (<c>&lt;app&gt;.exe</c>/<c>&lt;app&gt;.dll</c>/<c>.runtimeconfig.json</c>/
+    /// <c>.deps.json</c>) plus every runtime/native/resource asset listed in the <c>.deps.json</c> targets
+    /// (its managed dependency DLLs). The deps target keys are package-relative paths
+    /// (<c>lib/&lt;tfm&gt;/Name.dll</c>); a published app flattens those to the app root, so each is reduced
+    /// to its filename. The shared .NET framework is resolved from the machine, not copied. Pure, so it is
+    /// unit-testable against a sample deps document. (Localized satellite assemblies in culture subdirs are
+    /// not handled; the updater is not localized.)
+    /// </summary>
+    public static IReadOnlyList<string> ResolveUpdaterClosure(string depsJsonText, string apphostFileName)
+    {
+        var result = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        void Add(string file)
+        {
+            string name = Path.GetFileName(file.Replace('\\', '/'));
+            if (!string.IsNullOrEmpty(name) && seen.Add(name))
+            {
+                result.Add(name);
+            }
+        }
+
+        string baseName = Path.GetFileNameWithoutExtension(apphostFileName);
+        Add(apphostFileName);
+        Add(baseName + ".dll");
+        Add(baseName + ".runtimeconfig.json");
+        Add(baseName + ".deps.json");
+
+        if (string.IsNullOrEmpty(depsJsonText))
+        {
+            return result;
+        }
+
+        try
+        {
+            using JsonDocument doc = JsonDocument.Parse(depsJsonText);
+            if (doc.RootElement.TryGetProperty("targets", out JsonElement targets)
+                && targets.ValueKind == JsonValueKind.Object)
+            {
+                foreach (JsonProperty target in targets.EnumerateObject())
+                {
+                    if (target.Value.ValueKind != JsonValueKind.Object) continue;
+                    foreach (JsonProperty library in target.Value.EnumerateObject())
+                    {
+                        if (library.Value.ValueKind != JsonValueKind.Object) continue;
+
+                        // "runtime"/"native"/"resources" and "runtimeTargets" all map asset-path keys
+                        // (package-relative) -> metadata. The published file is the flattened filename.
+                        foreach (string section in AssetSections)
+                        {
+                            if (library.Value.TryGetProperty(section, out JsonElement files)
+                                && files.ValueKind == JsonValueKind.Object)
+                            {
+                                foreach (JsonProperty file in files.EnumerateObject())
+                                {
+                                    Add(file.Name);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            // Malformed deps.json: the host quartet is the best-effort closure.
+        }
+
+        return result;
+    }
+
+    private static readonly string[] AssetSections = { "runtime", "native", "resources", "runtimeTargets" };
 
     /// <summary>Applies a staged update described by <paramref name="config"/> using <paramref name="environment"/>.</summary>
     public static ApplyResult Apply(ApplyUpdateConfig config, IUpdaterEnvironment environment)
@@ -380,6 +587,22 @@ public static class UpdateApplier
     }
 
     private static string ToNative(string relativePath) => relativePath.Replace('/', Path.DirectorySeparatorChar);
+
+    /// <summary>True when <paramref name="childDir"/> is <paramref name="parentDir"/> or nested under it.</summary>
+    private static bool IsDirInside(string childDir, string parentDir)
+    {
+        if (string.IsNullOrEmpty(childDir) || string.IsNullOrEmpty(parentDir))
+        {
+            return false;
+        }
+        string child = Path.GetFullPath(childDir).TrimEnd(Path.DirectorySeparatorChar);
+        string parent = Path.GetFullPath(parentDir).TrimEnd(Path.DirectorySeparatorChar);
+        StringComparison cmp = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        return string.Equals(child, parent, cmp)
+            || child.StartsWith(parent + Path.DirectorySeparatorChar, cmp);
+    }
 
     /// <summary>
     /// True when <paramref name="relativePath"/> is a plain forward-slash relative path that stays

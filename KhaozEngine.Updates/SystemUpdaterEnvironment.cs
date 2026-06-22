@@ -26,6 +26,8 @@ public sealed class SystemUpdaterEnvironment : IUpdaterEnvironment
 
     public bool FileExists(string path) => File.Exists(path);
 
+    public string ReadAllText(string path) => File.ReadAllText(path);
+
     public void WriteAllText(string path, string content) => File.WriteAllText(path, content);
 
     public void CreateDirectory(string path) => Directory.CreateDirectory(path);
@@ -71,6 +73,58 @@ public sealed class SystemUpdaterEnvironment : IUpdaterEnvironment
             UseShellExecute = true,
             WorkingDirectory = workingDirectory
         });
+    }
+
+    // Windows is the only OS where a running process locks its own loaded .exe/.dll, so it is the only
+    // OS where the updater must relocate out of the install dir to overwrite its own binaries. Returning
+    // null elsewhere makes the applier skip relocation and apply in place (POSIX replaces the file's inode).
+    public string? GetSelfExecutablePath()
+        => OperatingSystem.IsWindows() ? Environment.ProcessPath : null;
+
+    public string GetSelfBaseDirectory() => AppContext.BaseDirectory;
+
+    public void LaunchRelocatedUpdater(string updaterExePath, string applyConfigPath, string workingDirectory)
+    {
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = updaterExePath,
+            ArgumentList = { "--apply", applyConfigPath, "--relocated" },
+            UseShellExecute = false,
+            WorkingDirectory = workingDirectory
+        });
+    }
+
+    public void ScheduleDirectoryDeletion(string directory)
+    {
+        // Detached OS one-shot: wait a few seconds for THIS process to exit (releasing the locks on the
+        // relocated binaries), then delete the scratch dir. Best-effort; the game's boot-time sweep is the
+        // backstop if the machine dies before this runs.
+        try
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = "cmd.exe",
+                    Arguments = $"/c timeout /t 3 /nobreak > nul & rmdir /s /q \"{directory}\"",
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                });
+            }
+            else
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = "/bin/sh",
+                    ArgumentList = { "-c", $"sleep 3; rm -rf '{directory}'" },
+                    UseShellExecute = false
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"Could not schedule deletion of {directory}: {ex.Message}");
+        }
     }
 
     public void ClearQuarantine(string installDir)

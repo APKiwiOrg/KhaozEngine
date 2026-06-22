@@ -100,7 +100,7 @@ fine-grained use - a wire-contract project references just `Netcode.Abstractions
 |---|---|---|---|
 | **Hardpoint** (7.x, 3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic); auto-updater LIVE (`Updates` via Foundation, overlay via Gui) against a server-less static-blob feed + OIDC CI publish; uses `Collision.Segment2D` (7.4.0) for swept projectile collision | **7.11.0** |
 | **Nullwake** (7.x, 2D) | `Nullwake.Core` | `KhaozEngine.Game2D` + `Diagnostics`/`Persistence`/`Windowing`; uses `AttentionBeacon` (7.6.0) for the timed-reward tappable pulse | **7.12.0** |
-| **SpaceGame** (7.x, 2D) | `SpaceGame.Core` (head) / `SpaceGame.Sim` (lockstep sim) | `Game2D` + `Netcode.LiteNetLib` + `Primitives` (head); `Ecs`/`Collision`/`Diagnostics`/`Content`/`Serialization`/`App`/`Netcode`/`Pooling` + `Primitives` (sim); `Netcode.Abstractions` (contracts); `Updates` (tools); manifest signing adopted (`ke-updater sign` + embedded RSA public key) | **7.3.0** |
+| **SpaceGame** (7.x, 2D + Render3D) | `SpaceGame.Core` (head) / `SpaceGame.Sim` (lockstep sim) | `Game2D` + `Render3D` + `Gpu` + `Netcode.LiteNetLib` + `Primitives` (head); `Ecs`/`Collision`/`Diagnostics`/`Content`/`Serialization`/`App`/`Netcode`/`Pooling`/`Determinism` + `Primitives` (sim); `Netcode.Abstractions` (contracts); `Updates` (tools); manifest signing adopted (`ke-updater sign` + embedded RSA public key) | **7.18.0** |
 
 Both games now run on the loop facade (5.57.0): **Hardpoint** is a `GameApp3D` subclass (`HardpointGame`) over a
 `SceneManager` + `IGameScene3D` scene stack; **Nullwake** is a `GameApp` subclass (`NullwakeGame`) over a
@@ -185,9 +185,11 @@ Render3D dependency. The new `KhaozEngine.Determinism` package arrives transitiv
 The vendored feed (`Nullwake/vendor/khaozengine`) was refreshed to the 7.12.0 nupkg set plus the new
 `Determinism` package.
 
-### SpaceGame - on 7.3.0 (MonoGame-free, manifest signing adopted)
+### SpaceGame - on 7.18.0 (MonoGame-free, manifest signing adopted)
 
-SpaceGame completed its de-MonoGame migration onto the 5.x stack (merged `96255c9`) and now pins **7.3.0**.
+SpaceGame completed its de-MonoGame migration onto the 5.x stack (merged `96255c9`) and now pins **7.18.0**
+(it adds `Render3D` for the 2.5D mesh layer; 7.18.0 is the windowed-Metal skinned-mesh fix - tentacles now
+CPU-skinned through the no-bone model pipeline).
 There is no MonoGame and no `.mgcb`; the desktop head `SpaceGame.Desktop` runs Silk/GLFW + Veldrid through the
 `GameApp` facade. Input is the immutable `InputState` snapshot via `InputManager`/`Pointer`.
 

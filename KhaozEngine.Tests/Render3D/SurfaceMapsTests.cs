@@ -8,8 +8,8 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void Albedo_only_leaves_normal_and_roughness_invalid()
         {
-            var maps = new Scene3D.SurfaceMaps(new Scene3D.TextureHandle());
-            Assert.False(maps.Albedo.IsValid);   // default handle is invalid
+            var maps = new Scene3D.SurfaceMaps(new Scene3D.TextureHandle(0)); // valid: stored as index+1
+            Assert.True(maps.Albedo.IsValid);
             Assert.False(maps.Normal.IsValid);
             Assert.False(maps.Roughness.IsValid);
         }

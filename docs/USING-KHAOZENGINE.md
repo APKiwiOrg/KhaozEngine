@@ -394,6 +394,20 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
   billboards, and a debug-draw overlay (`DebugLine/Ray/Box/Grid/Axes/Circle`). `Post` is the
   `PixelPostProcess` (pixelation / quantize / dither / cel bands / palette for the chunky retro look; the smooth
   look is the default).
+- PBR-lite materials (since 7.25.0): the rigid lit model pass takes an optional tangent-space NORMAL map and a
+  ROUGHNESS map alongside the albedo. Load each map with `LoadTexture`, then bind them with `Scene3D.SurfaceMaps`:
+  `scene.LoadMesh(mesh, new Scene3D.SurfaceMaps(albedo, normal, roughness))` - any handle may be `default` to fall
+  back to its 1x1 default (white albedo / flat normal / zero roughness). Normal mapping needs per-vertex tangents,
+  so it applies to glTF meshes (`GltfLoader.Load` reads the `TANGENT` accessor, or computes one from the UVs) and
+  `MeshAssembler` output; `MeshPrimitives` carry no tangent, so a normal map is inert on a primitive (it stays lit
+  by its geometric normal). Roughness uses the glTF metallic-roughness `.g` convention (0 = smooth/glossy,
+  1 = matte; metallic is ignored) and modulates the Blinn-Phong specular. Meshes with no maps render exactly as
+  before. Skinned meshes are albedo-only this release. The pure `SurfaceShading` helper mirrors the shader math
+  (handy for headless tests / tooling).
+- Smooth / realistic look: a realistic material is still quantized + outlined by the FULLSCREEN post passes
+  (palette, edge outline, cel bands), so call `scene.Post.UseSmoothPreset()` (since 7.25.0) to turn those off
+  (cel bands / quantize / dither / outline / starfield / pixelated) in one call for a smooth look. Lighting and
+  colours are left untouched; flip individual `Post` toggles back on as needed.
 - Translucent filled overlay (alpha-blended flat shapes, drawn under the debug lines): `DebugFilledQuad`
   (ground tiles / rects), `DebugFilledCircle` (discs / ranges), and `DebugFilledFan(center, rim, color, closed)`
   (since 7.5.0) for an arbitrary, already-ordered boundary polygon - fan an outline out from a centre point to

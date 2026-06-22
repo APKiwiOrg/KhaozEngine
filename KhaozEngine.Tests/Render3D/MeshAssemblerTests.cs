@@ -7,8 +7,9 @@ using Xunit;
 namespace KhaozEngine.Tests.Render3D
 {
     /// <summary>
-    /// Welding + overflow rules for the mesh assembler that backs <see cref="GltfLoader"/>. Covers the bugs the
-    /// old position-only weld had: it merged UV seams and hard edges, and silently truncated indices past 65535.
+    /// Welding rules for the mesh assembler that backs <see cref="GltfLoader"/>. Covers the bugs the old
+    /// position-only weld had: it merged UV seams and hard edges. (Large-mesh / 32-bit-index behaviour, which
+    /// replaced the old ushort-ceiling throw, lives in <see cref="Uint32IndexTests"/>.)
     /// </summary>
     public class MeshAssemblerTests
     {
@@ -106,24 +107,6 @@ namespace KhaozEngine.Tests.Render3D
         {
             Assert.Throws<ArgumentException>(() =>
                 MeshAssembler.Build(new List<MeshCorner> { C(A, null, Vector2.Zero), C(B, null, Vector2.Zero) }));
-        }
-
-        [Fact]
-        public void Throws_Past_The_Ushort_Index_Ceiling_Instead_Of_Truncating()
-        {
-            // 65537 unique vertices would need index 65536, which a ushort cannot hold. The old loader cast
-            // (ushort)i and silently wrapped, corrupting geometry; the assembler must throw instead.
-            int triCount = (ushort.MaxValue + 2 + 2) / 3 + 1; // enough unique corners to pass 65536 verts
-            var corners = new List<MeshCorner>(triCount * 3);
-            int made = 0;
-            for (int t = 0; made <= ushort.MaxValue + 1; t++)
-            {
-                // every corner a distinct position -> no welding, vertex count == corner count
-                corners.Add(C(new Vector3(made++, 0, 0), Vector3.UnitZ, Vector2.Zero));
-                corners.Add(C(new Vector3(made++, 1, 0), Vector3.UnitZ, Vector2.Zero));
-                corners.Add(C(new Vector3(made++, 0, 1), Vector3.UnitZ, Vector2.Zero));
-            }
-            Assert.Throws<InvalidOperationException>(() => MeshAssembler.Build(corners));
         }
     }
 }

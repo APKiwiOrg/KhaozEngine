@@ -31,7 +31,8 @@ namespace KhaozEngine.Render3D
     /// merge only when their position, normal, AND uv all match (quantized) - so hard edges (distinct normals)
     /// and UV seams (distinct uvs) are preserved, unlike a position-only weld. When a corner has no source
     /// normal, an area-weighted face normal is accumulated across the faces that share it (a smooth default),
-    /// and such corners weld on position+uv only. Throws past the ushort index ceiling rather than truncating.
+    /// and such corners weld on position+uv only. Emits 32-bit indices and lets <see cref="GltfMesh"/> pick the GPU
+    /// index width, so meshes past the 65,536-vertex ceiling load instead of throwing/truncating.
     /// </summary>
     internal static class MeshAssembler
     {
@@ -86,13 +87,8 @@ namespace KhaozEngine.Render3D
                 indices.Add(Resolve(c2, faceN));
             }
 
-            // ushort index ceiling: indices 0..65535 fit, so 65536 vertices is the valid maximum (mirrors
-            // MeshBuilder). Truncating past this is what silently corrupted large meshes - throw instead.
-            if (positions.Count > ushort.MaxValue + 1)
-                throw new InvalidOperationException(
-                    $"MeshAssembler welded {positions.Count} vertices, which exceeds the ushort index ceiling " +
-                    $"({ushort.MaxValue + 1}). Split the mesh or move the pipeline to 32-bit indices.");
-
+            // 32-bit indices: no ushort ceiling. GltfMesh picks UInt16 for meshes that still fit (<= 65536 verts)
+            // and UInt32 beyond, so large welded meshes load instead of throwing/truncating.
             var verts = new ModelVertex[positions.Count];
             for (int i = 0; i < positions.Count; i++)
             {
@@ -100,8 +96,8 @@ namespace KhaozEngine.Render3D
                 verts[i] = new ModelVertex(positions[i], n, colors[i], uvs[i]);
             }
 
-            var outIndices = new ushort[indices.Count];
-            for (int i = 0; i < indices.Count; i++) outIndices[i] = (ushort)indices[i];
+            var outIndices = new uint[indices.Count];
+            for (int i = 0; i < indices.Count; i++) outIndices[i] = (uint)indices[i];
             return new GltfMesh(verts, outIndices);
         }
     }

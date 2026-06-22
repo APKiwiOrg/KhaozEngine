@@ -151,24 +151,16 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void Build_Allows_Exactly_65536_Vertices()
         {
-            // indices 0..65535 all fit in a ushort, so 65536 vertices is the valid maximum.
+            // indices 0..65535 all fit in a ushort, so 65536 vertices still selects a 16-bit index buffer.
             var mesh = new MeshBuilder()
                 .Add(FlatPart(ushort.MaxValue + 1), Matrix4x4.Identity)
                 .Build();
             Assert.Equal(ushort.MaxValue + 1, mesh.Vertices.Length);
+            Assert.Equal(KhaozEngine.Gpu.GpuIndexFormat.UInt16, mesh.IndexFormat);
         }
 
-        [Fact]
-        public void Build_Throws_When_Exceeding_65536_Vertices()
-        {
-            // 65537 vertices would need index 65536, which overflows ushort.
-            var builder = new MeshBuilder()
-                .Add(FlatPart(ushort.MaxValue + 1), Matrix4x4.Identity)
-                .Add(FlatPart(1), Matrix4x4.Identity);
-
-            Assert.Equal(ushort.MaxValue + 2, builder.VertexCount);
-            Assert.Throws<InvalidOperationException>(() => builder.Build());
-        }
+        // Fusing past 65,536 vertices no longer throws: it produces a 32-bit-indexed mesh. See
+        // Uint32IndexTests.MeshBuilder_Fuses_Across_The_65536_Boundary_With_UInt32.
 
         [Fact]
         public void Empty_Build_Yields_Empty_Mesh()

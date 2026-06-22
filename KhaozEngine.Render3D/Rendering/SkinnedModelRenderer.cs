@@ -150,13 +150,13 @@ namespace KhaozEngine.Render3D.Rendering
         /// (set 1) via the per-draw dynamic offset, the geometry, and its element of the instance buffer (rebased so
         /// it reads as instance 0). One <c>instanceCount=1</c> draw.</summary>
         public void DrawSkinnedInstance(IGpuCommandList cl, IGpuBuffer vb, IGpuBuffer ib, int indexCount,
-            uint instanceIndex, uint boneSlot, IGpuResourceSet? materialSet)
+            GpuIndexFormat indexFormat, uint instanceIndex, uint boneSlot, IGpuResourceSet? materialSet)
         {
             cl.SetGraphicsResourceSet(0, materialSet ?? _model.DefaultMaterialSet);
             cl.SetGraphicsResourceSet(1, _boneSet!, boneSlot * SlotBytes);
             cl.SetVertexBuffer(0, vb);
             cl.SetVertexBuffer(1, _instanceBuffer!, instanceIndex * SkinnedInstanceData.SizeInBytes);
-            cl.SetIndexBuffer(ib, GpuIndexFormat.UInt16);
+            cl.SetIndexBuffer(ib, indexFormat);
             cl.DrawIndexed((uint)indexCount, 1, 0, 0, 0);
         }
 

@@ -136,14 +136,32 @@ namespace KhaozEngine.Render3D
             var f = _gd.Factory;
             var vb = f.CreateBuffer(new GpuBufferDescription((uint)(mesh.Vertices.Length * ModelVertex.SizeInBytes), GpuBufferUsage.VertexBuffer));
             _gd.UpdateBuffer(vb, 0, mesh.Vertices);
-            var ib = f.CreateBuffer(new GpuBufferDescription((uint)(mesh.Indices.Length * sizeof(ushort)), GpuBufferUsage.IndexBuffer));
-            _gd.UpdateBuffer(ib, 0, mesh.Indices);
+            var ib = CreateIndexBuffer(mesh.Indices32, mesh.IndexFormat);
 
             int index = _slots.Alloc(out int generation);
-            var slot = new Mesh(vb, ib, mesh.Indices.Length, material);
+            var slot = new Mesh(vb, ib, mesh.Indices32.Length, mesh.IndexFormat, material);
             if (index < _meshes.Count) _meshes[index] = slot;   // reused freed slot
             else _meshes.Add(slot);                              // fresh appended slot
             return new MeshHandle(index, generation);
+        }
+
+        /// <summary>Create + fill a GPU index buffer matching the mesh's chosen <see cref="GpuIndexFormat"/>. A
+        /// 16-bit mesh uploads a narrowed <see cref="ushort"/> buffer (byte-identical to the pre-32-bit path, so
+        /// existing renders are unchanged); a 32-bit mesh uploads the full <see cref="uint"/> indices.</summary>
+        IGpuBuffer CreateIndexBuffer(uint[] indices32, GpuIndexFormat format)
+        {
+            var f = _gd.Factory;
+            if (format == GpuIndexFormat.UInt32)
+            {
+                var ib = f.CreateBuffer(new GpuBufferDescription((uint)(indices32.Length * sizeof(uint)), GpuBufferUsage.IndexBuffer));
+                _gd.UpdateBuffer(ib, 0, indices32);
+                return ib;
+            }
+            var i16 = new ushort[indices32.Length];
+            for (int i = 0; i < i16.Length; i++) i16[i] = (ushort)indices32[i];
+            var ib16 = f.CreateBuffer(new GpuBufferDescription((uint)(i16.Length * sizeof(ushort)), GpuBufferUsage.IndexBuffer));
+            _gd.UpdateBuffer(ib16, 0, i16);
+            return ib16;
         }
 
         /// <summary>Decode a PNG/JPG file into an albedo texture (RGBA8) and return a handle for
@@ -201,11 +219,10 @@ namespace KhaozEngine.Render3D
             var f = _gd.Factory;
             var vb = f.CreateBuffer(new GpuBufferDescription((uint)(mesh.Vertices.Length * SkinnedVertex.SizeInBytes), GpuBufferUsage.VertexBuffer));
             _gd.UpdateBuffer(vb, 0, mesh.Vertices);
-            var ib = f.CreateBuffer(new GpuBufferDescription((uint)(mesh.Indices.Length * sizeof(ushort)), GpuBufferUsage.IndexBuffer));
-            _gd.UpdateBuffer(ib, 0, mesh.Indices);
+            var ib = CreateIndexBuffer(mesh.Indices32, mesh.IndexFormat);
 
             int index = _skinnedSlots.Alloc(out int generation);
-            var entry = new SkinnedMeshEntry(vb, ib, mesh.Indices.Length, material, mesh.InverseBind);
+            var entry = new SkinnedMeshEntry(vb, ib, mesh.Indices32.Length, mesh.IndexFormat, material, mesh.InverseBind);
             // Cache the source vertices (parallel to _skinnedMeshes) for per-frame CPU skinning - no GPU readback.
             if (index < _skinnedMeshes.Count) { _skinnedMeshes[index] = entry; _skinnedCpuVerts[index] = mesh.Vertices; }
             else { _skinnedMeshes.Add(entry); _skinnedCpuVerts.Add(mesh.Vertices); }
@@ -568,7 +585,7 @@ namespace KhaozEngine.Render3D
                     if (!_slots.IsValid(run.Mesh.Index, run.Mesh.Generation)) continue;
                     var m = _meshes[run.Mesh.Index];
                     if (m is not { } mesh) continue;
-                    _model.DrawMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, run.Start, run.Count, mesh.MaterialSet);
+                    _model.DrawMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, run.Start, run.Count, mesh.MaterialSet);
                 }
             }
 
@@ -607,7 +624,7 @@ namespace KhaozEngine.Render3D
                         Emissive = it.Material.Emissive,
                         SpecParams = new Vector4(it.Material.Specular, it.Material.Shininess, 0f, 0f),
                     });
-                    _cpuSkinnedDraws.Add(new CpuSkinnedDraw(entry.Ib, entry.IndexCount, baseVertex, entry.MaterialSet));
+                    _cpuSkinnedDraws.Add(new CpuSkinnedDraw(entry.Ib, entry.IndexCount, entry.IndexFormat, baseVertex, entry.MaterialSet));
                 }
                 if (_cpuSkinnedDraws.Count > 0)
                 {
@@ -616,7 +633,7 @@ namespace KhaozEngine.Render3D
                     for (int d = 0; d < _cpuSkinnedDraws.Count; d++)
                     {
                         var dr = _cpuSkinnedDraws[d];
-                        _model.DrawCpuSkinned(cl, dr.Ib, dr.IndexCount, dr.BaseVertex, (uint)d, dr.MaterialSet);
+                        _model.DrawCpuSkinned(cl, dr.Ib, dr.IndexCount, dr.IndexFormat, dr.BaseVertex, (uint)d, dr.MaterialSet);
                     }
                 }
             }
@@ -716,13 +733,15 @@ namespace KhaozEngine.Render3D
         {
             public readonly IGpuBuffer Vb, Ib;
             public readonly int IndexCount;
+            /// <summary>GPU index width of <see cref="Ib"/> (UInt16 for meshes up to 65,536 verts, else UInt32).</summary>
+            public readonly GpuIndexFormat IndexFormat;
             /// <summary>Per-mesh material resource set (UBO + albedo + sampler), or null => the renderer's white
             /// default. The texture itself is owned in Scene3D's <c>_textures</c> list, not here, so a texture can
             /// be shared by several meshes; only the set is owned per mesh.</summary>
             public readonly IGpuResourceSet? MaterialSet;
-            public Mesh(IGpuBuffer vb, IGpuBuffer ib, int indexCount, IGpuResourceSet? materialSet = null)
+            public Mesh(IGpuBuffer vb, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, IGpuResourceSet? materialSet = null)
             {
-                Vb = vb; Ib = ib; IndexCount = indexCount; MaterialSet = materialSet;
+                Vb = vb; Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat; MaterialSet = materialSet;
             }
         }
 
@@ -732,11 +751,12 @@ namespace KhaozEngine.Render3D
         {
             public readonly IGpuBuffer Vb, Ib;
             public readonly int IndexCount;
+            public readonly GpuIndexFormat IndexFormat;
             public readonly IGpuResourceSet? MaterialSet;
             public readonly Matrix4x4[] InverseBind;
-            public SkinnedMeshEntry(IGpuBuffer vb, IGpuBuffer ib, int indexCount, IGpuResourceSet? materialSet, Matrix4x4[] inverseBind)
+            public SkinnedMeshEntry(IGpuBuffer vb, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, IGpuResourceSet? materialSet, Matrix4x4[] inverseBind)
             {
-                Vb = vb; Ib = ib; IndexCount = indexCount; MaterialSet = materialSet; InverseBind = inverseBind;
+                Vb = vb; Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat; MaterialSet = materialSet; InverseBind = inverseBind;
             }
         }
 
@@ -746,11 +766,12 @@ namespace KhaozEngine.Render3D
         {
             public readonly IGpuBuffer Ib;
             public readonly int IndexCount;
+            public readonly GpuIndexFormat IndexFormat;
             public readonly int BaseVertex;
             public readonly IGpuResourceSet? MaterialSet;
-            public CpuSkinnedDraw(IGpuBuffer ib, int indexCount, int baseVertex, IGpuResourceSet? materialSet)
+            public CpuSkinnedDraw(IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, int baseVertex, IGpuResourceSet? materialSet)
             {
-                Ib = ib; IndexCount = indexCount; BaseVertex = baseVertex; MaterialSet = materialSet;
+                Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat; BaseVertex = baseVertex; MaterialSet = materialSet;
             }
         }
 

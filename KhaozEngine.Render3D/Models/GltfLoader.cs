@@ -47,13 +47,14 @@ namespace KhaozEngine.Render3D
         /// plus JOINTS_0/WEIGHTS_0 and the skin's inverse-bind matrices + rest-pose joint world transforms.
         /// Embedded images are ignored (bind a PNG albedo separately, as with <see cref="Load"/>). Throws if the
         /// mesh has no skin/joint data (use <see cref="Load"/> for rigid meshes). Indexed directly (no re-weld) so
-        /// joints/weights stay aligned to their vertices; throws past the ushort index ceiling.</summary>
+        /// joints/weights stay aligned to their vertices; emits 32-bit indices so rigs past the 65,536-vertex
+        /// ceiling load (<see cref="SkinnedGltfMesh"/> picks the GPU index width).</summary>
         public static SkinnedGltfMesh LoadSkinned(string path)
         {
             ModelRoot root = ModelRoot.Load(path);
 
             var verts = new List<SkinnedVertex>();
-            var indices = new List<ushort>();
+            var indices = new List<uint>();
             Skin? skin = null;
 
             foreach (var mesh in root.LogicalMeshes)
@@ -89,10 +90,9 @@ namespace KhaozEngine.Render3D
                 }
                 foreach (var (a, b, c) in prim.GetTriangleIndices())
                 {
-                    Checked(baseIndex + a); Checked(baseIndex + b); Checked(baseIndex + c);
-                    indices.Add((ushort)(baseIndex + a));
-                    indices.Add((ushort)(baseIndex + b));
-                    indices.Add((ushort)(baseIndex + c));
+                    indices.Add((uint)(baseIndex + a));
+                    indices.Add((uint)(baseIndex + b));
+                    indices.Add((uint)(baseIndex + c));
                 }
             }
 
@@ -110,12 +110,6 @@ namespace KhaozEngine.Render3D
             }
 
             return new SkinnedGltfMesh(verts.ToArray(), indices.ToArray(), inverseBind, restPose);
-
-            void Checked(int i)
-            {
-                if (i > ushort.MaxValue)
-                    throw new InvalidOperationException("skinned glTF exceeds the 65535 ushort vertex ceiling: " + path);
-            }
         }
 
         static Vector4 ReadBaseColor(GltfMaterial? mat)

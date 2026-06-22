@@ -15,7 +15,7 @@ namespace KhaozEngine.Render3D
     public sealed class MeshBuilder
     {
         readonly List<ModelVertex> _vertices = new();
-        readonly List<ushort> _indices = new();
+        readonly List<uint> _indices = new();
 
         /// <summary>Total vertices accumulated so far.</summary>
         public int VertexCount => _vertices.Count;
@@ -45,8 +45,8 @@ namespace KhaozEngine.Render3D
                 _vertices.Add(new ModelVertex(pos, nrm, color ?? v.Color, v.Uv));
             }
 
-            foreach (var idx in part.Indices)
-                _indices.Add((ushort)(idx + offset));
+            foreach (var idx in part.Indices32)
+                _indices.Add(idx + (uint)offset);
 
             return this;
         }
@@ -70,17 +70,10 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>
-        /// Returns the accumulated mesh. A mesh with exactly <c>ushort.MaxValue + 1</c> (65536) vertices is valid
-        /// because indices 0..65535 all fit in a <see cref="ushort"/>; this throws only at 65537+ vertices, where
-        /// the highest index would overflow the index type.
+        /// Returns the accumulated mesh. Indices are 32-bit, so parts fuse freely across the 65,536-vertex
+        /// boundary; <see cref="GltfMesh"/> picks the GPU index width (UInt16 while it still fits, UInt32 beyond),
+        /// so a fused mesh that stays small keeps its byte-identical 16-bit index buffer.
         /// </summary>
-        public GltfMesh Build()
-        {
-            if (_vertices.Count > ushort.MaxValue + 1)
-                throw new InvalidOperationException(
-                    $"MeshBuilder accumulated {_vertices.Count} vertices, which exceeds the ushort index ceiling ({ushort.MaxValue + 1}).");
-
-            return new GltfMesh(_vertices.ToArray(), _indices.ToArray());
-        }
+        public GltfMesh Build() => new GltfMesh(_vertices.ToArray(), _indices.ToArray());
     }
 }

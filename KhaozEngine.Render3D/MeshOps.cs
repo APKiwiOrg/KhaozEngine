@@ -48,7 +48,7 @@ namespace KhaozEngine.Render3D
                 outVerts[i] = new ModelVertex(v.Position, n, v.Color, v.Uv);
             }
 
-            var outIndices = (ushort[])mesh.Indices.Clone();
+            var outIndices = (uint[])mesh.Indices32.Clone();
             return new GltfMesh(outVerts, outIndices);
         }
 
@@ -62,18 +62,18 @@ namespace KhaozEngine.Render3D
         {
             if (mesh is null) throw new ArgumentNullException(nameof(mesh));
             var verts = (ModelVertex[])mesh.Vertices.Clone();
-            var idx = mesh.Indices;
+            var idx = mesh.Indices32;
 
             for (int t = 0; t + 2 < idx.Length; t += 3)
             {
-                int a = idx[t], b = idx[t + 1], c = idx[t + 2];
+                int a = (int)idx[t], b = (int)idx[t + 1], c = (int)idx[t + 2];
                 Vector3 p0 = verts[a].Position, p1 = verts[b].Position, p2 = verts[c].Position;
                 Vector3 face = Vector3.Cross(p1 - p0, p2 - p0);
                 Vector3 n = face.LengthSquared() > 1e-12f ? Vector3.Normalize(face) : Vector3.UnitY;
                 verts[a].Normal = n; verts[b].Normal = n; verts[c].Normal = n;
             }
 
-            return new GltfMesh(verts, (ushort[])idx.Clone());
+            return new GltfMesh(verts, (uint[])idx.Clone());
         }
     }
 }

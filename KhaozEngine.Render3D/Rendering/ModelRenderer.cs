@@ -264,12 +264,12 @@ namespace KhaozEngine.Render3D.Rendering
         /// bound (<see cref="BindPass"/>/<see cref="SetFrameUniforms"/>). Binds <paramref name="materialSet"/> (or
         /// the white default when null) as resource set 0 before drawing, so each mesh can carry its own albedo.</summary>
         public void DrawMeshInstanced(IGpuCommandList cl, IGpuBuffer vb, IGpuBuffer ib, int indexCount,
-            uint instanceStart, uint instanceCount, IGpuResourceSet? materialSet = null)
+            GpuIndexFormat indexFormat, uint instanceStart, uint instanceCount, IGpuResourceSet? materialSet = null)
         {
             cl.SetGraphicsResourceSet(0, materialSet ?? _defaultSet);
             cl.SetVertexBuffer(0, vb);
             cl.SetVertexBuffer(1, _instanceBuffer!);
-            cl.SetIndexBuffer(ib, GpuIndexFormat.UInt16);
+            cl.SetIndexBuffer(ib, indexFormat);
             cl.DrawIndexed((uint)indexCount, instanceCount, 0, 0, instanceStart);
         }
 
@@ -303,12 +303,12 @@ namespace KhaozEngine.Render3D.Rendering
         /// vertexOffset), and its instance data is element <paramref name="drawIndex"/> of the skinned instance
         /// buffer (selected by instanceStart). One <c>instanceCount=1</c> draw. <see cref="BindPass"/> +
         /// <see cref="SetFrameUniforms"/> must already be bound (the rigid pass shares the frame UBO).</summary>
-        public void DrawCpuSkinned(IGpuCommandList cl, IGpuBuffer ib, int indexCount, int baseVertex, uint drawIndex, IGpuResourceSet? materialSet)
+        public void DrawCpuSkinned(IGpuCommandList cl, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, int baseVertex, uint drawIndex, IGpuResourceSet? materialSet)
         {
             cl.SetGraphicsResourceSet(0, materialSet ?? _defaultSet);
             cl.SetVertexBuffer(0, _skinnedVertexBuffer!);
             cl.SetVertexBuffer(1, _skinnedInstanceBuffer!);
-            cl.SetIndexBuffer(ib, GpuIndexFormat.UInt16);
+            cl.SetIndexBuffer(ib, indexFormat);
             cl.DrawIndexed((uint)indexCount, 1, 0, baseVertex, drawIndex);
         }
 

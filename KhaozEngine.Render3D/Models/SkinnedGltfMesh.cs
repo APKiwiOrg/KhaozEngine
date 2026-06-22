@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using KhaozEngine.Gpu;
 
 namespace KhaozEngine.Render3D
 {
@@ -24,19 +25,58 @@ namespace KhaozEngine.Render3D
     public sealed class SkinnedGltfMesh
     {
         public SkinnedVertex[] Vertices { get; }
-        public ushort[] Indices { get; }
+
+        /// <summary>Authoritative index buffer (32-bit). Always valid regardless of mesh size.</summary>
+        public uint[] Indices32 { get; }
+
+        /// <summary>The narrowest GPU index-buffer width this mesh needs: <see cref="GpuIndexFormat.UInt16"/> when
+        /// the largest index fits in 16 bits, else <see cref="GpuIndexFormat.UInt32"/>.</summary>
+        public GpuIndexFormat IndexFormat { get; }
+
+        ushort[]? _indices16;
+
+        /// <summary>Back-compat 16-bit index view. Returns the narrowed indices for meshes that fit; <b>throws</b>
+        /// <see cref="InvalidOperationException"/> for a 32-bit mesh - read <see cref="Indices32"/> instead.</summary>
+        public ushort[] Indices
+        {
+            get
+            {
+                if (IndexFormat == GpuIndexFormat.UInt32)
+                    throw new InvalidOperationException(
+                        "This skinned mesh uses 32-bit indices (more than 65536 vertices); read Indices32 instead of Indices.");
+                return _indices16 ??= MeshIndices.Narrow(Indices32);
+            }
+        }
+
         /// <summary>One inverse-bind matrix per bone: maps a model-space vertex into bone-local space at rest.</summary>
         public Matrix4x4[] InverseBind { get; }
         /// <summary>One rest (bind-pose) joint world transform per bone. Passing these to
         /// Scene3D.DrawSkinned yields the identity deform (the mesh does not move).</summary>
         public Matrix4x4[] RestPose { get; }
         public int BoneCount => InverseBind.Length;
-        public int TriangleCount => Indices.Length / 3;
+        public int TriangleCount => Indices32.Length / 3;
 
+        /// <summary>Construct from 16-bit indices (the common path: <see cref="SkinnedMeshBuilder"/> + small rigs).</summary>
         public SkinnedGltfMesh(SkinnedVertex[] vertices, ushort[] indices, Matrix4x4[] inverseBind, Matrix4x4[] restPose)
         {
             Vertices = vertices ?? throw new ArgumentNullException(nameof(vertices));
-            Indices = indices ?? throw new ArgumentNullException(nameof(indices));
+            if (indices is null) throw new ArgumentNullException(nameof(indices));
+            _indices16 = indices;
+            Indices32 = MeshIndices.Widen(indices);
+            IndexFormat = GpuIndexFormat.UInt16;
+            InverseBind = inverseBind ?? throw new ArgumentNullException(nameof(inverseBind));
+            RestPose = restPose ?? throw new ArgumentNullException(nameof(restPose));
+            if (RestPose.Length != InverseBind.Length)
+                throw new ArgumentException("RestPose and InverseBind must have one entry per bone.");
+        }
+
+        /// <summary>Construct from 32-bit indices. <see cref="IndexFormat"/> is chosen from the largest index value,
+        /// enabling skinned meshes past the 65,536-vertex ceiling.</summary>
+        public SkinnedGltfMesh(SkinnedVertex[] vertices, uint[] indices, Matrix4x4[] inverseBind, Matrix4x4[] restPose)
+        {
+            Vertices = vertices ?? throw new ArgumentNullException(nameof(vertices));
+            Indices32 = indices ?? throw new ArgumentNullException(nameof(indices));
+            IndexFormat = MeshIndices.ChooseFormat(indices);
             InverseBind = inverseBind ?? throw new ArgumentNullException(nameof(inverseBind));
             RestPose = restPose ?? throw new ArgumentNullException(nameof(restPose));
             if (RestPose.Length != InverseBind.Length)

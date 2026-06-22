@@ -36,6 +36,14 @@ public sealed class ApplyUpdateConfig
 
     /// <summary>Where the shim copies the new manifest so the next launch sees the updated state.</summary>
     public string ManifestDestPath { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The game's per-user app-data directory. The shim places its relocation scratch dir under here
+    /// (<c>updater-relocate/&lt;version&gt;</c>) so the self-relocated updater copy lives inside the app's
+    /// own data area, never in a shared/system temp location, and is swept on the next launch. When empty
+    /// the shim falls back to the manifest dest directory.
+    /// </summary>
+    public string AppDataDir { get; set; } = string.Empty;
 }
 
 /// <summary>

@@ -54,5 +54,21 @@ namespace KhaozEngine.Render3D
             return total < 1e-8f ? Vector4.Zero : w / total;
         }
 
+        /// <summary>True only if every component of <paramref name="indices"/> (the float-encoded JOINTS_0
+        /// 4-tuple) is an integer in <c>[0, boneCount)</c>. <see cref="BlendSkinMatrix"/> reads the palette
+        /// unconditionally for all four bones, so a glTF whose JOINTS_0 carries an out-of-range index would
+        /// index past the per-draw palette window at draw time (a crash mid-frame). A skinned-mesh loader
+        /// validates each vertex with this so a malformed/malicious rig is rejected at load instead.</summary>
+        public static bool AreBoneIndicesValid(Vector4 indices, int boneCount)
+        {
+            return InRange(indices.X) && InRange(indices.Y) && InRange(indices.Z) && InRange(indices.W);
+
+            bool InRange(float f)
+            {
+                int i = (int)f;
+                return i >= 0 && i < boneCount;
+            }
+        }
+
     }
 }

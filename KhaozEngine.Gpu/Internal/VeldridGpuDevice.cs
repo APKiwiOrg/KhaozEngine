@@ -13,7 +13,9 @@ namespace KhaozEngine.Gpu.Internal
     {
         internal GraphicsDevice GraphicsDevice { get; }
         readonly bool _ownsDevice;
-        readonly VeldridGpuFramebuffer? _swapchainFb;
+        // NOT readonly: re-wrapped on resize. D3D11/Vulkan rebuild the swapchain framebuffer (a new object) when
+        // the swapchain resizes, so a wrapper cached once would dangle on the disposed old framebuffer.
+        VeldridGpuFramebuffer? _swapchainFb;
         readonly VeldridGpuSampler _pointSampler;
         readonly VeldridGpuSampler _linearSampler;
 
@@ -65,7 +67,18 @@ namespace KhaozEngine.Gpu.Internal
 
         public void Unmap(IGpuTexture staging) => GraphicsDevice.Unmap(((VeldridGpuTexture)staging).Texture);
 
-        public void ResizeSwapchain(uint w, uint h) => GraphicsDevice.MainSwapchain?.Resize(w, h);
+        public void ResizeSwapchain(uint w, uint h)
+        {
+            var sc = GraphicsDevice.MainSwapchain;
+            if (sc == null) return;
+            sc.Resize(w, h);
+            // D3D11/Vulkan dispose the old swapchain framebuffer and build a new one on resize; Metal keeps the
+            // same framebuffer object and resolves a fresh drawable each frame. Re-wrap only on a real object
+            // change so SwapchainFramebuffer never hands back a disposed framebuffer (the Windows black-screen
+            // after going fullscreen / maximising / drag-resizing), and Metal keeps its stable wrapper.
+            if (!ReferenceEquals(_swapchainFb?.Framebuffer, sc.Framebuffer))
+                _swapchainFb = new VeldridGpuFramebuffer(sc.Framebuffer, ownsFramebuffer: false);
+        }
 
         bool _capturing;
         string _capturePath = "";

@@ -1,0 +1,18 @@
+<Project>
+  <!-- Surface the inherited CETCompat default in the build log so the security-posture
+       change is discoverable, not silent. Dual-gated so the message is honest:
+         * _KhaozEngineCetDefaulted == true: our props applied the default (the marker is set
+           alongside it). A head that pins CETCompat in Directory.Build.props is seen by the
+           props condition before the marker, so it never gets set.
+         * CETCompat == false: re-checked here because this .targets is imported AFTER the
+           project body, so it sees the FINAL value. A head that overrides to true in its
+           .csproj body flips CETCompat after the props ran (marker already set), and this
+           second clause suppresses the now-stale message.
+       Importance="normal" shows at -v normal and in IDE build output; the default minimal
+       `dotnet build` stays quiet, so it informs without spamming every CLI build. -->
+  <Target Name="KhaozEngineReportCetDefault" BeforeTargets="Build"
+          Condition="'$(_KhaozEngineCetDefaulted)' == 'true' and '$(CETCompat)' == 'false'">
+    <Message Importance="normal"
+             Text="KhaozEngine: CETCompat defaulted off (Windows-x64 apphost CET/shadow-stack disabled for old-Windows compatibility). Set &lt;CETCompat&gt;true&lt;/CETCompat&gt; in this game head to re-enable." />
+  </Target>
+</Project>

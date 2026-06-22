@@ -4,7 +4,7 @@ Which game uses which packages, at which version. Current state only - for the p
 [`../CHANGELOG.md`](../CHANGELOG.md). Update this whenever a consumer bumps a `<PackageReference>` or the
 engine ships a new version.
 
-**Engine current version:** `7.22.0` (the shared `<KhaozEngine5xVersion>` line, which is the engine): the
+**Engine current version:** `7.24.0` (the shared `<KhaozEngine5xVersion>` line, which is the engine): the
 custom MonoGame-free stack (`Primitives`/`Gpu`/`Windowing`/`Render2D`/`Render3D`/`Gui`/`Audio`/`Particles`/`Effects`/`Game`/`Game.Render3D`) **plus**
 the MonoGame-free foundation packages that graduated onto it at `5.46.0`
 (`Ecs`/`Serialization`/`Content`/`Diagnostics`/`App`/`Localization`/`Persistence`/`Pooling`/`Platform`/
@@ -13,6 +13,15 @@ the MonoGame-free foundation packages that graduated onto it at `5.46.0`
 the author-time `KhaozEngine.Sfx.Tool` package (the `ke-sfxbake` dotnet tool: manifest-driven bulk SFX
 generation + bake via the ElevenLabs API + ffmpeg/oggenc); both are tools,
 not libraries, so no consumer references them via `<PackageReference>` and they are in no umbrella metapackage.
+
+> **7.23.0 (CET off on game heads):** `KhaozEngine.Foundation` ships an overridable `<CETCompat>false</CETCompat>`
+> build default via `buildTransitive` props (plus a build-log note via targets). Every game head inherits it
+> whether Foundation is referenced directly or pulled transitively through `Game2D`/`Game3D`, so heads no longer
+> set it themselves. .NET 9+ marks the x64 apphost CET-compatible, which hard-aborts at boot on Windows 10 builds
+> with partial CET support (e.g. 20H2); managed/memory-safe games keep DEP/ASLR + signed updates, so this is a
+> narrow, reversible tradeoff for old-Windows compatibility. Override per head with `<CETCompat>true</CETCompat>`.
+> On adopting 7.23.0 a head may drop its own manual `<CETCompat>false</CETCompat>` line (keeping it is harmless).
+
 **The legacy 4.x line + its six
 genuinely-MonoGame packages (`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`) were DELETED from the repo**, so
 the engine is now entirely MonoGame-free with a single version line in `Directory.Build.props` (the doc-version

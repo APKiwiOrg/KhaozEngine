@@ -59,6 +59,34 @@ These are not style preferences. Breaking them re-introduces the exact bugs this
 
 ---
 
+## Game head build settings (CETCompat)
+
+Referencing any KhaozEngine umbrella (`Game2D`/`Game3D`/`Server`, or `Foundation` directly) makes your game
+head inherit one build-property default from `KhaozEngine.Foundation`:
+
+```xml
+<CETCompat>false</CETCompat>   <!-- inherited; you don't write this -->
+```
+
+.NET 9+ marks the x64 apphost CET / shadow-stack compatible by default. On Windows 10 builds with only partial
+CET support (e.g. 20H2) that hard-aborts at boot: *"Your Windows doesn't fully support CET."* `CETCompat` is an
+apphost (game-head) MSBuild property, and the engine ships libraries, not an apphost, so it cannot be set from
+engine code; Foundation ships it as a `buildTransitive` props default instead, which every head inherits whether
+Foundation is a direct reference or pulled in through `Game2D`/`Game3D`. A `normal`-importance build message
+announces it (visible at `-v normal` and in IDE build output; the default minimal `dotnet build` stays quiet).
+
+**This is the standard for all KhaozEngine games: leave it inherited.** CET is a hardware ROP mitigation over the
+small native surface; KhaozEngine games are overwhelmingly managed (memory-safe), and DEP/ASLR plus the signed
+auto-updater remain, so disabling it buys broad old-Windows compatibility for a narrow, reversible tradeoff. To
+opt back in for a specific head, set `<CETCompat>true</CETCompat>` in that head's `Directory.Build.props` or
+`.csproj` (your value wins, and the inherited default plus its build message step aside).
+
+**New game head checklist:** `CETCompat` is the one engine-imposed build-property default. Pin your umbrella
+package version, set your own `RuntimeIdentifier` / publish settings as usual, and leave `CETCompat` inherited
+unless you have a specific reason to re-enable it.
+
+---
+
 ## Wiring a game (`KhaozEngine.Game` + `KhaozEngine.Game.Render3D`)
 
 `GameApp` is the abstract 2D game-loop facade. It owns the `AppWindow`, `GameClock`, an `IDesignViewport`, the

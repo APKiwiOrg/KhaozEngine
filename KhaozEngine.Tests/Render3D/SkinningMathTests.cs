@@ -59,5 +59,20 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(1f, n.X + n.Y + n.Z + n.W, 4);
             Assert.Equal(Vector4.Zero, SkinningMath.NormalizeWeights(Vector4.Zero));
         }
+
+        // BlendSkinMatrix reads composedBones[(int)index] for all four bones unconditionally, so an
+        // out-of-range JOINTS_0 value from a malicious/malformed glTF would index past the palette
+        // (>= the 128-slot window throws mid-frame). AreBoneIndicesValid is the load-time guard.
+        [Theory]
+        [InlineData(0f, 1f, 2f, 3f, 4, true)]    // all in [0,4)
+        [InlineData(3f, 0f, 0f, 0f, 4, true)]    // 3 is the max valid for boneCount 4
+        [InlineData(4f, 0f, 0f, 0f, 4, false)]   // 4 == boneCount, out of range
+        [InlineData(0f, 0f, 0f, 128f, 128, false)] // 128 == palette window size, would index past it
+        [InlineData(-1f, 0f, 0f, 0f, 4, false)]  // negative
+        public void AreBoneIndicesValid_RequiresEveryComponentInRange(
+            float x, float y, float z, float w, int boneCount, bool expected)
+        {
+            Assert.Equal(expected, SkinningMath.AreBoneIndicesValid(new Vector4(x, y, z, w), boneCount));
+        }
     }
 }

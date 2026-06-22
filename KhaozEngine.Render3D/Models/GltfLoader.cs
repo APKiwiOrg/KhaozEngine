@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using KhaozEngine.Render3D.Rendering;
 using SharpGLTF.Schema2;
 // KhaozEngine.Render3D now defines its own Material struct; alias the glTF one to disambiguate.
 using GltfMaterial = SharpGLTF.Schema2.Material;
@@ -107,6 +108,18 @@ namespace KhaozEngine.Render3D
                 throw new InvalidOperationException("glTF has no skinned mesh (JOINTS_0/WEIGHTS_0 + skin): " + path);
 
             int boneCount = skin.JointsCount;
+
+            // Reject a malformed/malicious rig at load. The CPU skinning path slices the bone palette to
+            // exactly MaxBonesPerDraw and reads it unconditionally per vertex (SkinningMath.BlendSkinMatrix),
+            // so an oversized joint count or an out-of-range JOINTS_0 index would otherwise throw mid-frame.
+            if (boneCount > SkinnedModelRenderer.MaxBonesPerDraw)
+                throw new InvalidOperationException(
+                    $"glTF skin has {boneCount} joints, over the {SkinnedModelRenderer.MaxBonesPerDraw}-bone per-draw cap: {path}");
+            foreach (SkinnedVertex v in verts)
+                if (!SkinningMath.AreBoneIndicesValid(v.BoneIndices, boneCount))
+                    throw new InvalidOperationException(
+                        $"glTF JOINTS_0 references a bone index outside [0,{boneCount}): {path}");
+
             var inverseBind = new Matrix4x4[boneCount];
             var restPose = new Matrix4x4[boneCount];
             for (int b = 0; b < boneCount; b++)

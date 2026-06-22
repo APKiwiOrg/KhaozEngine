@@ -17,6 +17,9 @@ public static class UnitAxisQuantizer
     /// <summary>
     /// Dequantize a signed byte back to [-1,1] (<c>value / 127f</c>). Symmetric inverse of
     /// <see cref="Quantize"/>; the divisor is fixed by the wire codec scheme (hash-gated).
+    /// The input is clamped to [-127,127] first so a hostile or garbage wire byte of -128
+    /// (which <see cref="Quantize"/> never emits) cannot escape the [-1,1] contract; no value
+    /// <see cref="Quantize"/> can produce is affected, so the hash-gated round-trip is unchanged.
     /// </summary>
-    public static float Dequantize(sbyte value) => value / 127f;
+    public static float Dequantize(sbyte value) => System.Math.Clamp((int)value, -127, 127) / 127f;
 }

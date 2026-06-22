@@ -1,0 +1,20 @@
+<Project>
+  <!-- KhaozEngine game-head default: opt out of CET / shadow-stack apphost compatibility.
+
+       .NET 9+ marks the x64 apphost CET-compatible by default. On Windows 10 builds with
+       only partial CET / shadow-stack support (e.g. 20H2) that hard-aborts at boot:
+       "Your Windows doesn't fully support CET." KhaozEngine games are overwhelmingly
+       managed (memory-safe) over a small native surface; DEP/ASLR and the signed
+       auto-updater stay in force. Disabling CET buys broad old-Windows compatibility for
+       a narrow, reversible tradeoff. This rides on KhaozEngine.Foundation, which every
+       game head (Game2D/Game3D/Server all depend on it) inherits, so the standard applies
+       without each head re-deciding. Harmless off Windows-x64 (CETCompat is a no-op there).
+
+       Overridable: set <CETCompat>true</CETCompat> in your game head to re-enable. The
+       condition below means a head that already pins CETCompat (either value) wins and the
+       default stays out of the way. -->
+  <PropertyGroup Condition="'$(CETCompat)' == ''">
+    <CETCompat>false</CETCompat>
+    <_KhaozEngineCetDefaulted>true</_KhaozEngineCetDefaulted>
+  </PropertyGroup>
+</Project>

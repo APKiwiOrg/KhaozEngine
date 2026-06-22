@@ -27,6 +27,16 @@ public class UnitAxisQuantizerTests
         Assert.Equal(expected, UnitAxisQuantizer.Dequantize(value), 5);
     }
 
+    [Fact]
+    public void Dequantize_MinSByte_StaysWithinUnitRange()
+    {
+        // Quantize never emits -128 (it clamps to [-127,127]), but a hostile or garbage wire byte
+        // can carry it. Dequantize must keep the documented [-1,1] contract regardless of the byte.
+        float v = UnitAxisQuantizer.Dequantize(-128);
+        Assert.True(v >= -1f && v <= 1f, $"Dequantize(-128) = {v} escaped [-1,1]");
+        Assert.Equal(-1f, v, 5);
+    }
+
     [Theory]
     [InlineData(0.25f)]
     [InlineData(-0.8f)]

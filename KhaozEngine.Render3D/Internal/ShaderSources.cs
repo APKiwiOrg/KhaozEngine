@@ -2,7 +2,7 @@ namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
     /// GLSL #version 450 shader sources, cross-compiled at load via the GPU seam's SPIR-V path
-    /// (GLSL -> SPIR-V -> MSL/HLSL/GLSL). Post shaders use the separate texture2D + sampler style
+    /// (GLSL -> SPIR-V -> MSL/HLSL/GLSL). The model and post shaders use the separate texture2D + sampler style
     /// (not combined sampler2D) so the
     /// ResourceLayout binding order is unambiguous. The model pass writes 3 MRT color targets
     /// (lit color, encoded normal, linear-ish depth) so the edge pass never samples a depth texture.
@@ -53,7 +53,7 @@ void main() {
     gl_Position = ViewProj * world;
     vNormalW = normalize(mat3(Model) * Normal);
     vColor = Color;
-    vDepth = gl_Position.z / gl_Position.w;
+    vDepth = gl_Position.z / gl_Position.w; // 0..1 in clip space; linear for ortho
     vWorldPos = world.xyz;
     vUv = TexCoord;
     vTint = ITint;
@@ -76,7 +76,7 @@ layout(set=0, binding=0) uniform U {
     vec4 PointColorIntensity[16];
 };
 layout(set=0, binding=1) uniform texture2D Albedo;       // 1x1 white default keeps untextured meshes unchanged
-layout(set=0, binding=2) uniform texture2D NormalMap;    // 1x1 flat default (0,0,1); only sampled when a tangent exists
+layout(set=0, binding=2) uniform texture2D NormalMap;    // 1x1 flat default: texel (0.5,0.5,1.0) decodes to tangent-space (0,0,1); only sampled when a tangent exists
 layout(set=0, binding=3) uniform texture2D RoughnessMap; // 1x1 zero default => spec uses per-instance params
 layout(set=0, binding=4) uniform sampler Samp;           // shared sampler for all three textures (EdgeFrag-style)
 layout(location=0) in vec3 vNormalW;
@@ -106,6 +106,7 @@ void main() {
     }
     vec3 texRgb = texture(sampler2D(Albedo, Samp), vUv).rgb; // white (1,1,1) for untextured meshes
     vec3 albedo = vColor.rgb * vTint.rgb * texRgb;
+    // TBN perturb + roughness->spec mirror the CPU helper SurfaceShading.cs (PerturbNormal/ApplyRoughness); keep in sync.
     // Roughness modulation (glTF metallic-roughness .g convention; metallic ignored). rough 0 (default)
     // collapses to today's per-instance spec exactly: strength*(1-0)=strength, mix(exp,8,0)=exp.
     float rough = texture(sampler2D(RoughnessMap, Samp), vUv).g;
@@ -120,6 +121,10 @@ void main() {
     vec3 H = normalize(-normalize(LightDir.xyz) + V);
     float spec = pow(max(dot(N,H),0.0), specExp) * specStrength * step(0.0001, ndlKey);
     vec3 specColor = LightColor.rgb*spec;
+    // Dynamic point/effect lights (muzzle flashes, explosions, thrusters): accumulate diffuse (+ cheap
+    // specular) with a windowed distance attenuation, on top of the key+fill term and back-face gated by
+    // max(dot(N,L),0). Params.y is the host-capped active count; zero leaves diffuse/specColor untouched,
+    // so the lit term stays bit-identical to the key+fill+ambient path.
     int npl = int(Params.y);
     for (int i = 0; i < npl; i++) {
         vec3 toL = PointPosRadius[i].xyz - vWorldPos;
@@ -128,6 +133,7 @@ void main() {
         vec3 L = (dist > 1e-4) ? toL / dist : vec3(0.0);
         float ndl = max(dot(N, L), 0.0);
         if (bands >= 1.0) ndl = floor(ndl*bands+0.5)/bands;
+        // Smooth falloff: 1 at the light, easing to exactly 0 at its radius; scaled by intensity.
         float f = clamp(1.0 - (dist*dist)/max(radius*radius, 1e-6), 0.0, 1.0);
         float att = f * f * PointColorIntensity[i].w;
         vec3 lc = PointColorIntensity[i].rgb;

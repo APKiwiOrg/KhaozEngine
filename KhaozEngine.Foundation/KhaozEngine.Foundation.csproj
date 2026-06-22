@@ -23,4 +23,13 @@
     <ProjectReference Include="../KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
     <ProjectReference Include="../KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
   </ItemGroup>
+  <!-- Ship the game-head build defaults (CETCompat=false, overridable) so every consuming
+       head inherits the standard. buildTransitive/ makes it flow whether Foundation is a
+       direct reference (Server, gameplay-logic libs) or pulled in via Game2D/Game3D. -->
+  <ItemGroup>
+    <None Include="build/KhaozEngine.Foundation.props" Pack="true" PackagePath="build/KhaozEngine.Foundation.props" />
+    <None Include="build/KhaozEngine.Foundation.props" Pack="true" PackagePath="buildTransitive/KhaozEngine.Foundation.props" />
+    <None Include="build/KhaozEngine.Foundation.targets" Pack="true" PackagePath="build/KhaozEngine.Foundation.targets" />
+    <None Include="build/KhaozEngine.Foundation.targets" Pack="true" PackagePath="buildTransitive/KhaozEngine.Foundation.targets" />
+  </ItemGroup>
 </Project>

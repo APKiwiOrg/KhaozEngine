@@ -20,8 +20,8 @@ tentacles game-side and is the likely host; the engine pieces below are game-agn
 |----|---------|--------|
 | A | 32-bit mesh indices (lifts the 65,536-vertex cap) | **shipped 7.22.0** |
 | B | PBR-lite materials on the **rigid** lit pass (normal + roughness maps, `SurfaceMaps`, `UseSmoothPreset`) | **shipped 7.25.0** |
-| C | 3D beam/laser primitive (`Scene3D.DrawBeam`) | **in flight** (own worktree) |
-| D | `ProceduralChainSolver` (3D writhe + FABRIK reach + slam envelope) | **shipped 7.26.0** |
+| C | 3D beam/laser primitive (`Scene3D.DrawBeam` + `BeamStyle`) | **shipped 7.26.0** |
+| D | `ProceduralChainSolver` (3D writhe + FABRIK reach + slam envelope) | **shipped 7.27.0** |
 | E | PBR-lite on the **skinned** pass (normal/roughness on rigged meshes) | **not started** (see gap) |
 
 ### The skinned-PBR gap (E)
@@ -43,7 +43,7 @@ surface detail** — flat albedo + lighting only. Two ways forward:
 Recommendation: treat E as the next engine prompt once C lands. Until then, develop against the split
 approach or the albedo-only placeholder.
 
-## Asset-export contract (against 7.26.0)
+## Asset-export contract (against 7.27.0)
 
 A model handed to the engine for this boss must meet:
 

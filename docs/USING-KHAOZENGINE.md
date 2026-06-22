@@ -420,6 +420,30 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
   like the draw queue. Only the first `Scene3D.MaxPointLights` (16) queued in a frame are uploaded - the host
   picks the N nearest to the action so a dense scene stays within the GPU budget. Zero lights renders
   byte-identical to the key+fill path. Presentation only: never feed a light back into simulation/collision.
+- 3D beams (since 7.26.0): `scene.DrawBeam(a, b, width, color, BeamStyle?)` queues a camera-facing, additive,
+  depth-interleaved glowing beam between two world points (lasers, thrusters, tethers): a bright core in a soft
+  halo. It draws INTO the model pass with the depth test on (no write), like the textured billboard, so geometry
+  occludes it. `color` tints the core; `BeamStyle` (default `BeamStyle.Default`) splits core/glow colour and adds
+  `CoreFraction`, `GlowSoftness`, end `Taper`, and time-driven `PulseSpeed`/`PulseAmount` + `ScrollSpeed`.
+  Animation reads `scene.EffectTimeSeconds`, a per-frame clock you set in your draw callback (it is NOT cleared by
+  `Begin`); leave it at 0 for a static beam. A degenerate beam (`a` ~= `b` or `width <= 0`) is a no-op.
+
+  ```csharp
+  scene.EffectTimeSeconds = totalSeconds;                 // once per frame (host clock)
+  var style = BeamStyle.Default with { Taper = 0.15f, PulseSpeed = 8f, PulseAmount = 0.2f, ScrollSpeed = 1.5f };
+  scene.DrawBeam(muzzle, hit, 0.4f, new Color(1f, 0.3f, 0.9f, 1f), style);
+  ```
+
+  Recommended combo for an impactful beam: pair `DrawBeam` with an `AddLight` at each endpoint (so the beam lights
+  nearby geometry) and a `ParticleSystem` spark burst at the impact point:
+
+  ```csharp
+  scene.DrawBeam(muzzle, hit, 0.4f, beamColor, style);
+  scene.AddLight(muzzle, beamColor, radius: 4f, intensity: 2f);
+  scene.AddLight(hit,    beamColor, radius: 5f, intensity: 3f);   // brighter flash at the impact
+  // sparks at the impact: loop your particle system's Active span and DrawBillboard each (Additive)
+  ```
+
 - Transparent compositing: set `Post.TransparentBackground = true` (default on for `Render3DPreview`) to emit the
   background as alpha 0 so a captured `Texture2D` overlays a 2D scene; the stylized post chain preserves the
   per-pixel alpha (geometry opaque, cleared background clear). Leave `Starfield` off when transparent.

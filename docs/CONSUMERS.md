@@ -4,7 +4,7 @@ Which game uses which packages, at which version. Current state only - for the p
 [`../CHANGELOG.md`](../CHANGELOG.md). Update this whenever a consumer bumps a `<PackageReference>` or the
 engine ships a new version.
 
-**Engine current version:** `7.26.0` (the shared `<KhaozEngine5xVersion>` line, which is the engine): the
+**Engine current version:** `7.27.0` (the shared `<KhaozEngine5xVersion>` line, which is the engine): the
 custom MonoGame-free stack (`Primitives`/`Gpu`/`Windowing`/`Render2D`/`Render3D`/`Gui`/`Audio`/`Particles`/`Effects`/`Game`/`Game.Render3D`) **plus**
 the MonoGame-free foundation packages that graduated onto it at `5.46.0`
 (`Ecs`/`Serialization`/`Content`/`Diagnostics`/`App`/`Localization`/`Persistence`/`Pooling`/`Platform`/
@@ -109,7 +109,7 @@ fine-grained use - a wire-contract project references just `Netcode.Abstractions
 |---|---|---|---|
 | **Hardpoint** (7.x, 3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic); auto-updater LIVE (`Updates` via Foundation, overlay via Gui) against a server-less static-blob feed + OIDC CI publish, self-relocating updater (7.20.0); `HardpointUpdater` pins `KhaozEngine.Updates` directly; uses `Collision.Segment2D` (7.4.0) for swept projectile collision | **7.20.1** |
 | **Nullwake** (7.x, 2D) | `Nullwake.Core` | `KhaozEngine.Game2D` + `Diagnostics`/`Persistence`/`Windowing` + `Updates` (shim, dormant); uses `AttentionBeacon` (7.6.0) for the timed-reward tappable pulse | **7.20.0** |
-| **SpaceGame** (7.x, 2D + Render3D) | `SpaceGame.Core` (head) / `SpaceGame.Sim` (lockstep sim) | `Game2D` + `Render3D` + `Gpu` + `Netcode.LiteNetLib` + `Primitives` (head); `Ecs`/`Collision`/`Diagnostics`/`Content`/`Serialization`/`App`/`Netcode`/`Pooling`/`Determinism` + `Primitives` (sim); `Netcode.Abstractions` (contracts); `Updates` (tools); manifest signing adopted (`ke-updater sign` + embedded RSA public key) | **7.18.0** |
+| **SpaceGame** (7.x, 2D + Render3D) | `SpaceGame.Core` (head) / `SpaceGame.Sim` (lockstep sim) | `Game2D` + `Render3D` + `Gpu` + `Netcode.LiteNetLib` + `Primitives` (head); `Ecs`/`Collision`/`Diagnostics`/`Content`/`Serialization`/`App`/`Netcode`/`Pooling`/`Determinism` + `Primitives` (sim); `Netcode.Abstractions` (contracts); `Updates` (tools); manifest signing adopted (`ke-updater sign` + embedded RSA public key) | **7.24.0** |
 
 Both games now run on the loop facade (5.57.0): **Hardpoint** is a `GameApp3D` subclass (`HardpointGame`) over a
 `SceneManager` + `IGameScene3D` scene stack; **Nullwake** is a `GameApp` subclass (`NullwakeGame`) over a
@@ -194,11 +194,11 @@ Render3D dependency. The new `KhaozEngine.Determinism` package arrives transitiv
 The vendored feed (`Nullwake/vendor/khaozengine`) was refreshed to the 7.12.0 nupkg set plus the new
 `Determinism` package.
 
-### SpaceGame - on 7.18.0 (MonoGame-free, manifest signing adopted)
+### SpaceGame - on 7.24.0 (MonoGame-free, manifest signing adopted)
 
-SpaceGame completed its de-MonoGame migration onto the 5.x stack (merged `96255c9`) and now pins **7.18.0**
-(it adds `Render3D` for the 2.5D mesh layer; 7.18.0 is the windowed-Metal skinned-mesh fix - tentacles now
-CPU-skinned through the no-bone model pipeline).
+SpaceGame completed its de-MonoGame migration onto the 5.x stack (merged `96255c9`) and now pins **7.24.0**
+(it adds `Render3D` for the 2.5D mesh layer; 7.24.0 is the netcode + skinned-mesh security-hardening release -
+quantizer input clamp, command-queue caps, and skinned-rig load validation, all backward-compatible).
 There is no MonoGame and no `.mgcb`; the desktop head `SpaceGame.Desktop` runs Silk/GLFW + Veldrid through the
 `GameApp` facade. Input is the immutable `InputState` snapshot via `InputManager`/`Pointer`.
 

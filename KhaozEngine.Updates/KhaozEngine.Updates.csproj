@@ -16,6 +16,6 @@
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="templates/publish-update.sh" Pack="true" PackagePath="templates/" />
+    <None Include="templates/*.sh" Pack="true" PackagePath="templates/" />
   </ItemGroup>
 </Project>

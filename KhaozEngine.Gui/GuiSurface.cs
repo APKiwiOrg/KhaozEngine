@@ -296,5 +296,22 @@ namespace KhaozEngine.Gui
                 return false;
             }
         }
+
+        /// <summary>True when the pointer's CURRENT position is inside any widget rect reserved this frame
+        /// (the same per-frame <c>_blocked</c> set <see cref="PointerCaptured"/> tests, but against the live
+        /// position rather than the press origin, and with no press-in-progress guard). Use to suppress world
+        /// HOVER affordances (tooltips, hover highlights) while the cursor is over UI. Because <c>_blocked</c>
+        /// includes <see cref="Panel(Rect, Vector4)"/> rects, this covers panel backgrounds, not just the
+        /// interactive widgets tracked by <see cref="HoveredRect"/>.</summary>
+        public bool HoverCaptured
+        {
+            get
+            {
+                Vector2 pos = _pointer.Position;
+                foreach (var r in _blocked)
+                    if (r.Contains(pos)) return true;
+                return false;
+            }
+        }
     }
 }

@@ -4,12 +4,12 @@ Which game uses which packages, at which version. Current state only - for the p
 [`../CHANGELOG.md`](../CHANGELOG.md). Update this whenever a consumer bumps a `<PackageReference>` or the
 engine ships a new version.
 
-**Engine current version:** `7.15.1` (the shared `<KhaozEngine5xVersion>` line, which is the engine): the
+**Engine current version:** `7.17.0` (the shared `<KhaozEngine5xVersion>` line, which is the engine): the
 custom MonoGame-free stack (`Primitives`/`Gpu`/`Windowing`/`Render2D`/`Render3D`/`Gui`/`Audio`/`Particles`/`Effects`/`Game`/`Game.Render3D`) **plus**
 the MonoGame-free foundation packages that graduated onto it at `5.46.0`
 (`Ecs`/`Serialization`/`Content`/`Diagnostics`/`App`/`Localization`/`Persistence`/`Pooling`/`Platform`/
 `Updates`/`Collision`/`Netcode`/`Netcode.Abstractions`/`Netcode.LiteNetLib`). 7.3.0 also adds the publish-side
-`KhaozEngine.Updates.Tool` package (the `ke-updater` dotnet tool: manifest/genkey/sign/verify), and 7.15.1 adds
+`KhaozEngine.Updates.Tool` package (the `ke-updater` dotnet tool: manifest/genkey/sign/verify), and 7.14.0 adds
 the author-time `KhaozEngine.Sfx.Tool` package (the `ke-sfxbake` dotnet tool: manifest-driven bulk SFX
 generation + bake via the ElevenLabs API + ffmpeg/oggenc); both are tools,
 not libraries, so no consumer references them via `<PackageReference>` and they are in no umbrella metapackage.
@@ -98,7 +98,7 @@ fine-grained use - a wire-contract project references just `Netcode.Abstractions
 
 | Consumer | Project(s) | References | Version |
 |---|---|---|---|
-| **Hardpoint** (7.x, 3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic); adopted the updater glue (`Updates` via Foundation, overlay via Gui) — dormant; uses `Collision.Segment2D` (7.4.0) for swept projectile collision | **7.9.0** |
+| **Hardpoint** (7.x, 3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic); auto-updater LIVE (`Updates` via Foundation, overlay via Gui) against a server-less static-blob feed + OIDC CI publish; uses `Collision.Segment2D` (7.4.0) for swept projectile collision | **7.11.0** |
 | **Nullwake** (7.x, 2D) | `Nullwake.Core` | `KhaozEngine.Game2D` + `Diagnostics`/`Persistence`/`Windowing`; uses `AttentionBeacon` (7.6.0) for the timed-reward tappable pulse | **7.12.0** |
 | **SpaceGame** (7.x, 2D) | `SpaceGame.Core` (head) / `SpaceGame.Sim` (lockstep sim) | `Game2D` + `Netcode.LiteNetLib` + `Primitives` (head); `Ecs`/`Collision`/`Diagnostics`/`Content`/`Serialization`/`App`/`Netcode`/`Pooling` + `Primitives` (sim); `Netcode.Abstractions` (contracts); `Updates` (tools); manifest signing adopted (`ke-updater sign` + embedded RSA public key) | **7.3.0** |
 
@@ -109,7 +109,7 @@ options' `WindowFactory`/`ViewportFactory`. Neither hand-writes the `AppWindow.R
 
 ## Notes (current state per consumer)
 
-### Hardpoint - 7.x, full-3D (on `KhaozEngine.Game3D` 7.9.0)
+### Hardpoint - 7.x, full-3D (on `KhaozEngine.Game3D` 7.11.0)
 
 A full-3D iso tower-defense entirely on the 7.x stack, zero legacy MonoGame packages. Two projects:
 
@@ -126,9 +126,13 @@ A full-3D iso tower-defense entirely on the 7.x stack, zero legacy MonoGame pack
   App `AppDataPaths`/`BuildMetadata`, Localization, Persistence `SettingsManager<CampaignSaveData>`). A logic
   library deliberately pulls no renderer.
 
-Adopted the 7.3.0 auto-updater glue (`UpdateService` + `UpdateOverlayView` wired into `HardpointGame`, a
-one-line `HardpointUpdater` shim, an embedded RSA public key). It ships **dormant** (`Enabled = false`, no feed
-queried) until Hardpoint has a distribution channel; flip-on checklist is in the game's `Updates/README.md`.
+Auto-updater is **live** (`UpdateService` + `UpdateOverlayView` wired into `HardpointGame`, a one-line
+`HardpointUpdater` shim, an embedded RSA public key, `Enabled = true`). It consumes a **server-less
+static-blob feed** (the `publish-update-static.sh` recipe): `HttpUpdateSource` with `ServerBaseUrl` = the
+`hardpointupdates` Azure Blob host + `LatestVersionPath = "releases/latest-{platform}.json"`. Releases are
+signed and published per-RID (osx-arm64/win-x64/linux-x64) by a GitHub Actions workflow that OIDC-logs into
+Azure, pulls the signing key from `hardpoint-kv`, and runs the publish script. Runbook: the game's
+`Updates/README.md`. First validated by a 0.0.9 -> 0.1.0 self-update.
 
 **Bumped to 7.4.0** to adopt `KhaozEngine.Collision.Segment2D.DistanceToSegment`: the swept (look-ahead)
 collision primitive that lets a fast tower projectile hit the next enemy along its path instead of tunnelling

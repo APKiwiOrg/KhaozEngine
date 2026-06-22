@@ -461,6 +461,13 @@ one track via `PlayMode`, `CurrentTrack`/`TrackChanged`), SFX one-shots, and 3D 
 (`PlaySfx`/`PlaySfx3D`/`SetListener`, a 16-voice pool, per-channel volume). `LoadContent(directory)` +
 `Update()` per frame.
 
+`IsSfxLoaded(name)` reports whether a name resolved to a loaded buffer, and the `PlaySfx`/`PlaySfx3D`
+overloads taking an `IReadOnlyList<string>` of candidate keys play the first loaded one in priority order
+(returning whether any played). The engine stays convention-agnostic: the game builds the candidate list
+(e.g. a per-entity variant then a shared fallback like `towers/railgun/fire` -> `towers/default/fire`);
+the engine just plays the first that loaded. An all-unloaded list warns once and is a no-op; null/empty is a
+silent no-op.
+
 **Authoring SFX assets (`ke-sfxbake`).** The `KhaozEngine.Sfx.Tool` dotnet tool bulk-generates and bakes a
 game's sound effects from a `sfx.manifest.jsonc` (prompt -> ElevenLabs sound-effects API -> ffmpeg/oggenc ->
 your asset tree). It defaults to the formats this `AudioSystem` wants: mono OGG Vorbis (mono because OpenAL only
@@ -503,6 +510,56 @@ Rules for consumers:
 
 ---
 
+## Install / update stamp (`KhaozEngine.App.AppInstallStamp`)
+
+A local record of when the **current app version** first ran on this machine and when it last changed - the
+thing an About screen surfaces as "Installed" / "Updated". It is distinct from the build's release date, which
+stays a per-game build property read via `BuildMetadata`.
+
+The core is a pure, storage-free resolver. `utcNow` is injected (no hidden `DateTime.UtcNow`), so it is
+deterministic and snapshot/headless replay stays stable:
+
+```csharp
+public sealed record AppInstallStamp(string Version, DateTime FirstInstalledAtUtc, DateTime UpdatedAtUtc);
+public readonly record struct AppInstallStampResult(AppInstallStamp Stamp, bool Changed);
+
+AppInstallStampResult AppInstallStamp.Resolve(AppInstallStamp? previous, string currentVersion, DateTime utcNow);
+```
+
+- **First run** (`previous` is null): both dates are set to `utcNow`; `Changed` is true.
+- **Same version**: returns `previous` untouched (same reference); `Changed` is false.
+- **Different version** (upgrade *or* downgrade): `FirstInstalledAtUtc` is preserved, `Version` + `UpdatedAtUtc`
+  are bumped; `Changed` is true. Versions are compared for ordinal inequality only - no semver ordering - so a
+  downgrade is treated exactly like an upgrade. (A null `currentVersion` throws.)
+
+**Recommended pattern.** Don't invent a separate file: store the stamp on the game's existing settings/save DTO,
+resolve once at boot, and persist only if it changed.
+
+```csharp
+public sealed class GameSettings
+{
+    public AppInstallStamp? Install { get; set; }
+    // ... the rest of the game's settings
+}
+```
+
+With `KhaozEngine.Persistence` (how games like Hardpoint persist), the `StampInstall` extension wires the
+resolver to a `SettingsManager<T>` - it resolves against the live settings and saves only when changed:
+
+```csharp
+string version = BuildMetadata.Read("Version", "0.0.0", typeof(MyGame).Assembly);
+AppInstallStampResult stamp = settingsManager.StampInstall(
+    read:  s => s.Install,
+    write: (s, v) => s.Install = v,
+    currentVersion: version,
+    utcNow: DateTime.UtcNow);   // inject a fixed instant in tests / deterministic capture
+```
+
+Then the About screen reads `settings.Install` and renders `UpdatedAtUtc.ToLocalTime()`. Without Persistence,
+call `AppInstallStamp.Resolve(...)` directly over whatever the game already persists.
+
+---
+
 ## Foundation packages (brief)
 
 The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, GPU-free):
@@ -510,10 +567,11 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
 - **`KhaozEngine.Primitives`**: the zero-dependency leaf: `Color` (`FromHex`/`ToHex`, `* float`, `Lerp`),
   `DeterministicRng`, `XorRng`, `MathUtil`, `ViewportMath`, `Easing`. The bottom of the dependency graph.
 - **`KhaozEngine.App`**: app identity / data paths: `AppDataPaths` (publisher-rooted: `<base>/APKiwi/<game>/`),
-  `BuildMetadata`, `ServiceLocator`.
+  `BuildMetadata`, `ServiceLocator`, and `AppInstallStamp` (local first-ran/updated stamp; see "Install / update
+  stamp" below).
 - **`KhaozEngine.Persistence`**: crash-safe saves: `AtomicJsonWriter`, `PersistenceQueue` (coalesced async
-  writes), `SettingsManager<T>` + `FileSettingsStorage`, `SaveEncoder` (Base64 + HMAC), and the `GameStorage`
-  facade (paths + queue + settings + encoder).
+  writes), `SettingsManager<T>` + `FileSettingsStorage`, `SaveEncoder` (Base64 + HMAC), the `GameStorage`
+  facade (paths + queue + settings + encoder), and the `SettingsManager<T>.StampInstall(...)` convenience.
 - **`KhaozEngine.Content`**: config loading + JSON-schema validation: `ConfigLoader` (disk-then-embedded),
   `JsonSchemaValidator`, build-time schema enforcement via the bundled `Content.Validator` tool.
 - **`KhaozEngine.Serialization`**: shared `System.Text.Json` baselines. **JSONC (JSON with `//` / `/* */`
@@ -531,7 +589,9 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
 - **`KhaozEngine.Determinism`**: `DeterministicFpScope` - forces a canonical CPU floating-point environment
   for fixed-tick / lockstep sims (see "Deterministic floating point" below).
 - **`KhaozEngine.Updates`**: delta auto-update pipeline (SHA256 manifests + diffing, resumable staged downloads,
-  cross-platform staged-apply).
+  cross-platform staged-apply). Feeds either a dynamic API or a server-less static blob (no backend - the
+  client reads the full `LatestVersionInfo` straight from `latest-{platform}.json`); both have a ready-to-fill
+  publish template. See the package README "Publish + feed layout".
 - **`KhaozEngine.Netcode` / `.Abstractions` / `.LiteNetLib`**: transport-free netcode primitives
   (`UnitAxisQuantizer`, `ClientPrediction`, `RemoteCommandQueue`), the zero-dependency channel-split contract
   (`IChannelSplittable<TSelf>` + `NetChannelReliability`), and the LiteNetLib transport binding.

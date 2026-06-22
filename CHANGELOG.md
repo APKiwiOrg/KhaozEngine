@@ -5,26 +5,25 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
-## 7.15.1
+## 7.17.0
 
-Two changes toward diagnosing a multi-frame skinned-mesh corruption (the GPU reads stale/wrong buffer data on
-some frames under a real pipelined game loop; not reproducible in the single-frame render-to-texture harness):
+Additive (`KhaozEngine.App` + `KhaozEngine.Persistence`): a generic local install/update stamp so any game can show when the current app version first ran on a machine. New serializable record `AppInstallStamp { string Version; DateTime FirstInstalledAtUtc; DateTime UpdatedAtUtc; }` and the pure resolver `AppInstallStampResult AppInstallStamp.Resolve(AppInstallStamp? previous, string currentVersion, DateTime utcNow)` (with `readonly record struct AppInstallStampResult(AppInstallStamp Stamp, bool Changed)`). The resolver is storage-free and deterministic - `utcNow` is injected, there is no hidden `DateTime.UtcNow`, so headless / snapshot replay stays stable. First run (previous null) sets both dates to `utcNow` and reports changed; a same-version re-run returns the previous stamp by reference and reports not changed; a different version (upgrade OR downgrade - ordinal string inequality only, no semver ordering) preserves `FirstInstalledAtUtc` while bumping `Version` + `UpdatedAtUtc` and reports changed. A null `currentVersion` throws `ArgumentNullException`. Optional thin convenience in `KhaozEngine.Persistence` (which already depends on `App`): the extension `AppInstallStampResult SettingsManager<T>.StampInstall(Func<T,AppInstallStamp?> read, Action<T,AppInstallStamp> write, string currentVersion, DateTime utcNow)` resolves against the manager's live settings and, only if changed, writes the stamp back via the setter and calls `Save()` (a no-op run does not save). Recommended pattern: store an `AppInstallStamp` field on the game's existing settings/save DTO, call `Resolve` (or `StampInstall`) once at boot, persist if changed; the engine does not impose a separate file. `BuildDate` (the build's release date) stays a per-game build property surfaced via `BuildMetadata` and is deliberately out of scope here - this feature is only the local first-ran/updated stamp. Headless tests cover first run, no-op re-run, upgrade, downgrade, null-version, and the persistence convenience (writes+saves on change, no save on no-op). No behaviour change to existing members.
 
-- Fix a GPU use-after-free on buffer growth. `EnsureInstanceCapacity` / `EnsureBoneCapacity` (`ModelRenderer`,
-  `SkinnedModelRenderer`) disposed the old buffer inline on a 2x capacity grow and immediately allocated a new
-  one; a prior frame's command list could still be reading the old buffer on the GPU, so the growth frame read
-  freed/reallocated memory. Grown-out buffers (and the bone resource set) are now RETIRED and freed only at
-  renderer disposal, never inline while potentially in flight; geometric growth bounds the retired set. Single-
-  frame rendering was already correct (a render-to-texture test draws 192 skinned meshes across two mesh handles
-  with the last still rendering). NOTE: this did NOT resolve the live multi-frame symptom on its own.
+## 7.16.0
 
-- Additive: `GpuFrameCapture.ArmNext(path)` captures one WHOLE frame to an Xcode Metal GPU trace
-  (`MTLCaptureManager` -> `.gputrace`) when armed, for diagnosing stale-buffer reads on Metal (RenderDoc cannot
-  capture Metal). The capture is bracketed between two swapchain presents, so every command buffer of the frame
-  is recorded - the offscreen mesh/skinned render-to-texture pass AND the 2D/composite pass (a frame spans
-  several Submits; wrapping one Submit would miss the skinned pass). Requires `MTL_CAPTURE_ENABLED=1` set before
-  launch; no-op off Metal and when not armed. Debug aid; drives the Objective-C runtime, command queue reached by
-  reflection on Veldrid.
+Additive (`KhaozEngine.Audio`): `AudioSystem` gains a loaded-check and first-available SFX play. `bool IsSfxLoaded(string name)` reports whether a name resolved to a loaded buffer (registered-but-file-missing returns false), so a game can ask "is this loaded?" without tripping the unknown-name warn-once. New first-available overloads `bool PlaySfx(IReadOnlyList<string> candidateKeys, float volume = 1f, float pitch = 1f)` and `bool PlaySfx3D(IReadOnlyList<string> candidateKeys, Vector3 position, float volume = 1f, float pitch = 1f)` take candidate keys in priority order and play the first loaded one (reusing the existing gain math + never-disables-music guard), returning true; a null/empty list is a no-op returning false, and an all-unloaded list warns once (deduped on the joined list, not per call) and returns false. Lets consumer games (Hardpoint first) do per-entity sound variants with a shared fallback ("play `towers/railgun/fire` if loaded, else `towers/default/fire`") while the fallback CONVENTION stays game-side: the engine provides the primitive, the game builds the candidate list. The single-key `PlaySfx`/`PlaySfx3D` overloads are unchanged (`PlaySfx("x")` still binds to the string overload; no overload ambiguity), and behaviour of every existing member is unchanged.
+
+## 7.15.0
+
+Additive: new `GuiSurface.HoverCaptured` property (`KhaozEngine.Gui`). True when the pointer's CURRENT position
+is inside any widget rect reserved this frame (the same per-frame `_blocked` set `PointerCaptured` tests), but
+against the live position rather than the press origin, and with no press-in-progress guard. `PointerCaptured`
+gates on the press origin and early-returns unless a press is down or just released, so it answers "did the
+user press on the UI"; there was no equivalent for "is the cursor merely over the UI right now". Games need
+that to suppress world HOVER affordances (tooltips, hover reticles, hover highlights) while the cursor sits
+over a panel without clicking. `IsHovering`/`HoveredRect` don't cover it: `_hoveredRect` is only set by
+interactive widgets (Button/IconButton/Slider), whereas `_blocked` is also populated by `Panel`, so
+`HoverCaptured` covers panel backgrounds too. No behaviour change to existing members.
 
 ## 7.14.0
 

@@ -314,8 +314,9 @@ namespace KhaozEngine.Tests.Gpu
                 setup: scene =>
                 {
                     // A flat XZ quad (normal +Y supplied), UVs mapping +X->+U, +Z->+V, built via MeshAssembler
-                    // so it carries a real tangent (along +X). Spans [-1.5,1.5] in X and Z.
-                    Vector3 A = new(-1.5f, 0, -1.5f), B = new(1.5f, 0, -1.5f), C = new(1.5f, 0, 1.5f), D = new(-1.5f, 0, 1.5f);
+                    // so it carries a real tangent (along +X). Large (spans [-4,4]) so it fills the frame: the
+                    // normal-tilt + roughness gradient then reads across most of the grid, not a thin diamond.
+                    Vector3 A = new(-4f, 0, -4f), B = new(4f, 0, -4f), C = new(4f, 0, 4f), D = new(-4f, 0, 4f);
                     Vector3 up = Vector3.UnitY;
                     var corners = new System.Collections.Generic.List<MeshCorner>
                     {

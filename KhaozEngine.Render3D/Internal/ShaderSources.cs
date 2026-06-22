@@ -14,26 +14,30 @@ namespace KhaozEngine.Render3D.Internal
         //      instanceStepRate 1). The Model matrix is reconstructed from 4 instance vec4 rows: InstanceData.Model
         //      is a System.Numerics Matrix4x4 stored row-major, read here as IModel0..3 (the rows). mat4(IModel0..3)
         //      builds the matrix COLUMNS from those rows = the transpose, which is exactly how GLSL read the old
-        //      row-major UBO Model. So Model * vec4(pos) reproduces the previous world transform. ----
+        //      row-major UBO Model. So Model * vec4(pos) reproduces the previous world transform.
+        //      Per-vertex layout: locations 0..4 are position/normal/color/texcoord/tangent. The tangent (location 4)
+        //      carries model-space tangent xyz + handedness w; zero tangent = no TBN (primitives, untangented meshes).
+        //      Per-instance data shifts to locations 5..11 (IModel0..3, ITint, IEmissive, ISpecParams). ----
         public const string ModelVert = @"#version 450
 layout(set=0, binding=0) uniform U {
     mat4 ViewProj;
     vec4 LightDir; vec4 LightColor; vec4 Ambient; vec4 Params;
     vec4 FillDir; vec4 FillColor; vec4 CameraPos;
-    vec4 PointPosRadius[16];      // per-frame point lights: xyz = world pos, w = radius
-    vec4 PointColorIntensity[16]; // rgb = colour, w = intensity (unused in the vertex stage)
+    vec4 PointPosRadius[16];
+    vec4 PointColorIntensity[16];
 };
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
 layout(location=2) in vec4 Color;
 layout(location=3) in vec2 TexCoord;
-layout(location=4) in vec4 IModel0;   // per-instance model matrix rows
-layout(location=5) in vec4 IModel1;
-layout(location=6) in vec4 IModel2;
-layout(location=7) in vec4 IModel3;
-layout(location=8) in vec4 ITint;
-layout(location=9) in vec4 IEmissive;
-layout(location=10) in vec4 ISpecParams;
+layout(location=4) in vec4 Tangent;      // model-space tangent (xyz) + handedness (w); zero => no TBN
+layout(location=5) in vec4 IModel0;      // per-instance model matrix rows
+layout(location=6) in vec4 IModel1;
+layout(location=7) in vec4 IModel2;
+layout(location=8) in vec4 IModel3;
+layout(location=9) in vec4 ITint;
+layout(location=10) in vec4 IEmissive;
+layout(location=11) in vec4 ISpecParams;
 layout(location=0) out vec3 vNormalW;
 layout(location=1) out vec4 vColor;
 layout(location=2) out float vDepth;
@@ -42,18 +46,20 @@ layout(location=4) out vec2 vUv;
 layout(location=5) out vec4 vTint;
 layout(location=6) out vec4 vEmissive;
 layout(location=7) out vec4 vSpecParams;
+layout(location=8) out vec4 vTangent;
 void main() {
     mat4 Model = mat4(IModel0, IModel1, IModel2, IModel3);
     vec4 world = Model * vec4(Position, 1.0);
     gl_Position = ViewProj * world;
     vNormalW = normalize(mat3(Model) * Normal);
     vColor = Color;
-    vDepth = gl_Position.z / gl_Position.w; // 0..1 in clip space; linear for ortho
+    vDepth = gl_Position.z / gl_Position.w;
     vWorldPos = world.xyz;
     vUv = TexCoord;
     vTint = ITint;
     vEmissive = IEmissive;
     vSpecParams = ISpecParams;
+    vTangent = vec4(mat3(Model) * Tangent.xyz, Tangent.w); // rotate tangent to world; preserve handedness
 }";
 
         public const string ModelFrag = @"#version 450
@@ -64,42 +70,56 @@ layout(set=0, binding=0) uniform U {
     vec4 Ambient;
     vec4 Params;     // x = CelBands, y = active point-light count
     vec4 FillDir;    // xyz = fill light travel direction
-    vec4 FillColor;  // fill light colour
+    vec4 FillColor;
     vec4 CameraPos;  // xyz = eye position
-    vec4 PointPosRadius[16];      // point lights: xyz = world pos, w = radius (active count in Params.y)
-    vec4 PointColorIntensity[16]; // point lights: rgb = colour, w = intensity
+    vec4 PointPosRadius[16];
+    vec4 PointColorIntensity[16];
 };
-layout(set=0, binding=1) uniform texture2D Albedo;   // per-mesh albedo; 1x1 white default keeps untextured meshes unchanged
-layout(set=0, binding=2) uniform sampler AlbedoSamp;
+layout(set=0, binding=1) uniform texture2D Albedo;       // 1x1 white default keeps untextured meshes unchanged
+layout(set=0, binding=2) uniform texture2D NormalMap;    // 1x1 flat default (0,0,1); only sampled when a tangent exists
+layout(set=0, binding=3) uniform texture2D RoughnessMap; // 1x1 zero default => spec uses per-instance params
+layout(set=0, binding=4) uniform sampler Samp;           // shared sampler for all three textures (EdgeFrag-style)
 layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;
 layout(location=2) in float vDepth;
 layout(location=3) in vec3 vWorldPos;
-layout(location=4) in vec2 vUv; // albedo sample coord
-layout(location=5) in vec4 vTint;       // per-instance RGBA, multiplies the lit color
-layout(location=6) in vec4 vEmissive;   // per-instance self-illumination, added after lighting
+layout(location=4) in vec2 vUv;
+layout(location=5) in vec4 vTint;
+layout(location=6) in vec4 vEmissive;
 layout(location=7) in vec4 vSpecParams; // x = specular strength, y = shininess exponent
+layout(location=8) in vec4 vTangent;    // world-space tangent (xyz) + handedness (w); zero => geometric normal
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
 void main() {
-    vec3 N = normalize(vNormalW);
-    vec3 texRgb = texture(sampler2D(Albedo, AlbedoSamp), vUv).rgb; // white (1,1,1) for untextured meshes
+    vec3 Ngeo = normalize(vNormalW);
+    // Perturb the lighting normal via a TBN only when a tangent exists. Zero tangent (primitives, skinned,
+    // untangented meshes) => geometric normal, bit-identical to the pre-PBR pass. A flat normal sample
+    // (0,0,1) also yields Ngeo, so a tangent-bearing mesh with no normal map is unchanged too.
+    vec3 N = Ngeo;
+    if (dot(vTangent.xyz, vTangent.xyz) > 1e-10) {
+        vec3 T = normalize(vTangent.xyz);
+        T = normalize(T - Ngeo * dot(Ngeo, T));
+        vec3 B = cross(Ngeo, T) * vTangent.w;
+        vec3 nTS = texture(sampler2D(NormalMap, Samp), vUv).xyz * 2.0 - 1.0;
+        N = normalize(mat3(T, B, Ngeo) * nTS);
+    }
+    vec3 texRgb = texture(sampler2D(Albedo, Samp), vUv).rgb; // white (1,1,1) for untextured meshes
     vec3 albedo = vColor.rgb * vTint.rgb * texRgb;
+    // Roughness modulation (glTF metallic-roughness .g convention; metallic ignored). rough 0 (default)
+    // collapses to today's per-instance spec exactly: strength*(1-0)=strength, mix(exp,8,0)=exp.
+    float rough = texture(sampler2D(RoughnessMap, Samp), vUv).g;
+    float specStrength = vSpecParams.x * (1.0 - rough);
+    float specExp = max(mix(vSpecParams.y, 8.0, rough), 1.0);
     float ndlKey  = max(dot(N, -normalize(LightDir.xyz)), 0.0);
     float ndlFill = max(dot(N, -normalize(FillDir.xyz)), 0.0);
     float bands = Params.x;
     if (bands >= 1.0) { ndlKey = floor(ndlKey*bands+0.5)/bands; ndlFill = floor(ndlFill*bands+0.5)/bands; }
     vec3 diffuse = LightColor.rgb*ndlKey + FillColor.rgb*ndlFill;
-    // Blinn-Phong specular from the key light only, gated by key ndl so back faces don't shine.
     vec3 V = normalize(CameraPos.xyz - vWorldPos);
     vec3 H = normalize(-normalize(LightDir.xyz) + V);
-    float spec = pow(max(dot(N,H),0.0), max(vSpecParams.y,1.0)) * vSpecParams.x * step(0.0001, ndlKey);
+    float spec = pow(max(dot(N,H),0.0), specExp) * specStrength * step(0.0001, ndlKey);
     vec3 specColor = LightColor.rgb*spec;
-    // Dynamic point/effect lights (muzzle flashes, explosions, thrusters): accumulate diffuse (+ cheap
-    // specular) with a windowed distance attenuation, added on top of the key+fill term and back-face gated
-    // by max(dot(N,L),0) like the key term. Params.y is the host-capped active count; zero leaves diffuse and
-    // specColor untouched, so the lit term stays bit-identical to the key+fill+ambient-only path.
     int npl = int(Params.y);
     for (int i = 0; i < npl; i++) {
         vec3 toL = PointPosRadius[i].xyz - vWorldPos;
@@ -108,18 +128,17 @@ void main() {
         vec3 L = (dist > 1e-4) ? toL / dist : vec3(0.0);
         float ndl = max(dot(N, L), 0.0);
         if (bands >= 1.0) ndl = floor(ndl*bands+0.5)/bands;
-        // Smooth falloff: 1 at the light, easing to exactly 0 at its radius; scaled by intensity.
         float f = clamp(1.0 - (dist*dist)/max(radius*radius, 1e-6), 0.0, 1.0);
         float att = f * f * PointColorIntensity[i].w;
         vec3 lc = PointColorIntensity[i].rgb;
         diffuse += lc * (ndl * att);
         vec3 Hp = normalize(L + V);
-        float sp = pow(max(dot(N,Hp),0.0), max(vSpecParams.y,1.0)) * vSpecParams.x * step(0.0001, ndl);
+        float sp = pow(max(dot(N,Hp),0.0), specExp) * specStrength * step(0.0001, ndl);
         specColor += lc * (sp * att);
     }
     vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor + vEmissive.rgb;
     oColor = vec4(lit, 1.0);
-    oNormal = vec4(N * 0.5 + 0.5, 1.0);
+    oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0); // GEOMETRIC normal for the edge pass (not the perturbed one)
     oDepth = vec4(vDepth, vDepth, vDepth, 1.0);
 }";
 
@@ -128,8 +147,9 @@ void main() {
         //      DYNAMIC-OFFSET uniform buffer (set 1, binding 0): each skinned draw rebinds it with a per-draw byte
         //      offset, so the shader reads bones[0..N] for THIS draw without any per-instance index. (A per-instance
         //      bone-offset attribute into a single shared buffer mis-fetched for every draw past the first on the
-        //      Metal/Veldrid backend; dynamic-offset rebasing avoids it.) Outputs match ModelVert exactly so the
-        //      shared ModelFrag links and the lit/colour path is identical. ----
+        //      Metal/Veldrid backend; dynamic-offset rebasing avoids it.) Outputs match ModelVert (locations 0..8)
+        //      so the shared ModelFrag links from either shader. vTangent is emitted as zero: skinned meshes carry
+        //      no tangents this release, so ModelFrag falls back to the geometric normal (bit-identical to pre-PBR). ----
         public const string SkinnedModelVert = @"#version 450
 layout(set=0, binding=0) uniform U {
     mat4 ViewProj;
@@ -160,6 +180,7 @@ layout(location=4) out vec2 vUv;
 layout(location=5) out vec4 vTint;
 layout(location=6) out vec4 vEmissive;
 layout(location=7) out vec4 vSpecParams;
+layout(location=8) out vec4 vTangent;
 void main() {
     float total = BoneWeights.x + BoneWeights.y + BoneWeights.z + BoneWeights.w;
     mat4 skin;
@@ -183,6 +204,7 @@ void main() {
     vTint = ITint;
     vEmissive = IEmissive;
     vSpecParams = ISpecParams;
+    vTangent = vec4(0.0); // no tangents on skinned meshes; ModelFrag falls back to geometric normal
 }";
 
         // ---- Debug line overlay. Standalone mat4 ViewProj UBO (64 bytes), its own layout/buffer,

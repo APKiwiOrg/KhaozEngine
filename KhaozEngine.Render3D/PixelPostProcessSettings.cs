@@ -97,9 +97,9 @@ namespace KhaozEngine.Render3D
         public Color FillLightColor = new(0.20f, 0.24f, 0.34f, 1f);
 
         /// <summary>Dial the stylized post chain down for a smooth/realistic look: cel bands off, palette
-        /// quantize + dither off, edge outline off, starfield off. Lighting, colours, and render scaling are
-        /// left untouched. Pair with normal/roughness maps (PBR-lite) for a semi-realistic material - the post
-        /// chain otherwise still quantizes/outlines a realistic surface.</summary>
+        /// quantize + dither off, edge outline off, starfield off, smooth (non-pixelated) upscale. Lighting,
+        /// colours, and render scaling are left untouched. Pair with normal/roughness maps (PBR-lite) for a
+        /// semi-realistic material - the post chain otherwise still quantizes/outlines a realistic surface.</summary>
         public void UseSmoothPreset()
         {
             CelBands = 0;
@@ -107,6 +107,7 @@ namespace KhaozEngine.Render3D
             Dither = false;
             Outline = false;
             Starfield = false;
+            Pixelated = false;
         }
     }
 }

@@ -115,6 +115,22 @@ namespace KhaozEngine.Render3D
             internal int ListIndex => Index - 1;
         }
 
+        /// <summary>A bundle of optional surface maps for <see cref="LoadMesh(GltfMesh,SurfaceMaps)"/>:
+        /// albedo, tangent-space normal, and roughness (glTF metallic-roughness .g convention). Any invalid
+        /// (<c>default</c>) handle falls back to the renderer's default for that slot (white albedo, flat
+        /// normal, zero roughness), so binding only some maps is fine. Load each map with
+        /// <see cref="LoadTexture(string)"/> / <see cref="LoadTexture(byte[],int,int)"/>.</summary>
+        public readonly struct SurfaceMaps
+        {
+            public readonly TextureHandle Albedo;
+            public readonly TextureHandle Normal;
+            public readonly TextureHandle Roughness;
+            public SurfaceMaps(TextureHandle albedo, TextureHandle normal = default, TextureHandle roughness = default)
+            {
+                Albedo = albedo; Normal = normal; Roughness = roughness;
+            }
+        }
+
         /// <summary>Upload a loaded mesh to the GPU once; returns a handle to instance it with <see cref="Draw"/>.
         /// Reuses a slot freed by <see cref="UnloadMesh"/> when one is available. The mesh is untextured (samples the
         /// renderer's 1x1 white default, so its colour is the baked vertex colour times any per-instance tint).</summary>
@@ -128,6 +144,21 @@ namespace KhaozEngine.Render3D
             IGpuResourceSet? material = null;
             if (texture.IsValid)
                 material = _model.CreateMaterialSet(_textures[texture.ListIndex]);
+            return LoadMeshInternal(mesh, material);
+        }
+
+        /// <summary>Upload a mesh and bind a full PBR-lite material (<paramref name="maps"/>): albedo + optional
+        /// normal + optional roughness. Invalid handles fall back to the renderer defaults. Normal perturbation
+        /// requires the mesh to carry tangents (glTF meshes via <see cref="GltfLoader"/>, or
+        /// MeshAssembler output); primitives have none and are lit by their geometric normal.</summary>
+        public MeshHandle LoadMesh(GltfMesh mesh, SurfaceMaps maps)
+        {
+            IGpuTexture? a = maps.Albedo.IsValid ? _textures[maps.Albedo.ListIndex] : null;
+            IGpuTexture? n = maps.Normal.IsValid ? _textures[maps.Normal.ListIndex] : null;
+            IGpuTexture? r = maps.Roughness.IsValid ? _textures[maps.Roughness.ListIndex] : null;
+            IGpuResourceSet? material = (a != null || n != null || r != null)
+                ? _model.CreateMaterialSet(a, n, r)
+                : null;
             return LoadMeshInternal(mesh, material);
         }
 

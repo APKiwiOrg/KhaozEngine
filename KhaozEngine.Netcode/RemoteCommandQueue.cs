@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace KhaozEngine.Netcode;
@@ -7,17 +8,36 @@ namespace KhaozEngine.Netcode;
 /// dequeues them in seq order once per simulation tick, independent of tick-number alignment between
 /// client and host. Duplicate deliveries (the client's redundancy retransmit) are silently ignored.
 /// Determinism-neutral: it only orders and de-duplicates, never altering command values.
+///
+/// Hostile-input bounding: every (slot, seq) is attacker-controlled off the wire, so the queue rejects
+/// a seq at or below the slot's processed high-water mark (replays and stale/regressed seqs cannot be
+/// reprocessed and cannot move the acknowledged seq backwards), caps the per-slot buffer (keeping only
+/// the most recent commands so a flood cannot grow memory without bound), and caps the number of distinct
+/// slots (so spraying slot ids cannot grow the slot map without bound).
 /// </summary>
 public sealed class RemoteCommandQueue<TCommand>
 {
     private readonly Dictionary<int, SortedList<int, TCommand>> queuesBySlot = new();
     private readonly Dictionary<int, int> lastAcknowledgedSeqBySlot = new();
     private readonly TCommand neutralCommand;
+    private readonly int maxQueuedPerSlot;
+    private readonly int maxSlots;
 
     /// <param name="neutralCommand">Returned by <see cref="Dequeue"/> when a slot's queue is empty.</param>
-    public RemoteCommandQueue(TCommand neutralCommand)
+    /// <param name="maxQueuedPerSlot">Max buffered (undequeued) commands per slot. When full, the oldest
+    /// buffered command is dropped to make room for a newer one. Must be positive.</param>
+    /// <param name="maxSlots">Max number of distinct slots tracked. A command for a new slot beyond this
+    /// cap is ignored. Must be positive.</param>
+    public RemoteCommandQueue(TCommand neutralCommand, int maxQueuedPerSlot = 256, int maxSlots = 64)
     {
+        if (maxQueuedPerSlot <= 0)
+            throw new ArgumentOutOfRangeException(nameof(maxQueuedPerSlot), maxQueuedPerSlot, "must be positive");
+        if (maxSlots <= 0)
+            throw new ArgumentOutOfRangeException(nameof(maxSlots), maxSlots, "must be positive");
+
         this.neutralCommand = neutralCommand;
+        this.maxQueuedPerSlot = maxQueuedPerSlot;
+        this.maxSlots = maxSlots;
     }
 
     /// <summary>Clears all per-slot queues and acknowledgement tracking.</summary>
@@ -27,7 +47,12 @@ public sealed class RemoteCommandQueue<TCommand>
         lastAcknowledgedSeqBySlot.Clear();
     }
 
-    /// <summary>Stores a command. Negative seq and duplicate (slot, seq) pairs are ignored.</summary>
+    /// <summary>
+    /// Stores a command. Ignored when: seq is negative; seq is at or below the slot's processed
+    /// high-water mark (replay / stale); the (slot, seq) pair is already buffered; or the slot is new and
+    /// the distinct-slot cap is reached. When the per-slot buffer is full, the oldest buffered command is
+    /// evicted to admit a newer seq (a seq not newer than the oldest buffered is dropped instead).
+    /// </summary>
     public void Store(int slot, int seq, in TCommand command)
     {
         if (seq < 0)
@@ -35,26 +60,53 @@ public sealed class RemoteCommandQueue<TCommand>
             return;
         }
 
+        // Reject replays and stale seqs against the per-slot processed high-water mark.
+        if (seq <= lastAcknowledgedSeqBySlot.GetValueOrDefault(slot, -1))
+        {
+            return;
+        }
+
         if (!queuesBySlot.TryGetValue(slot, out SortedList<int, TCommand>? queue))
         {
+            // Bound the number of distinct slots so a hostile peer cannot grow the slot map without limit.
+            if (queuesBySlot.Count >= maxSlots)
+            {
+                return;
+            }
+
             queue = new SortedList<int, TCommand>();
             queuesBySlot[slot] = queue;
         }
 
-        if (!queue.ContainsKey(seq))
+        if (queue.ContainsKey(seq))
         {
-            queue[seq] = command;
+            return;
         }
+
+        if (queue.Count >= maxQueuedPerSlot)
+        {
+            // Buffer full: keep the most recent commands. Drop the incoming seq if it is not newer than
+            // the oldest buffered; otherwise evict the oldest (lowest seq) to make room.
+            if (seq <= queue.Keys[0])
+            {
+                return;
+            }
+
+            queue.RemoveAt(0);
+        }
+
+        queue[seq] = command;
     }
 
     /// <summary>
     /// Dequeues the lowest-seq command for <paramref name="slot"/>, or the neutral command if empty.
     /// <paramref name="lastAcknowledgedSeq"/> reflects the highest seq processed so far (the host stamps
-    /// this on its snapshot so the client can reconcile).
+    /// this on its snapshot so the client can reconcile). The high-water mark only ever advances.
     /// </summary>
     public TCommand Dequeue(int slot, out int lastAcknowledgedSeq)
     {
-        lastAcknowledgedSeq = lastAcknowledgedSeqBySlot.GetValueOrDefault(slot, -1);
+        int prevAck = lastAcknowledgedSeqBySlot.GetValueOrDefault(slot, -1);
+        lastAcknowledgedSeq = prevAck;
 
         if (!queuesBySlot.TryGetValue(slot, out SortedList<int, TCommand>? queue) || queue.Count == 0)
         {
@@ -64,8 +116,9 @@ public sealed class RemoteCommandQueue<TCommand>
         int seq = queue.Keys[0];
         TCommand command = queue.Values[0];
         queue.RemoveAt(0);
-        lastAcknowledgedSeqBySlot[slot] = seq;
-        lastAcknowledgedSeq = seq;
+        int ack = seq > prevAck ? seq : prevAck; // monotonic; Store guarantees seq > prevAck, belt-and-suspenders
+        lastAcknowledgedSeqBySlot[slot] = ack;
+        lastAcknowledgedSeq = ack;
         return command;
     }
 

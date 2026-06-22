@@ -98,7 +98,7 @@ fine-grained use - a wire-contract project references just `Netcode.Abstractions
 
 | Consumer | Project(s) | References | Version |
 |---|---|---|---|
-| **Hardpoint** (7.x, 3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic); auto-updater LIVE (`Updates` via Foundation, overlay via Gui) against a server-less static-blob feed + OIDC CI publish, self-relocating updater (7.20.0); `HardpointUpdater` pins `KhaozEngine.Updates` directly; uses `Collision.Segment2D` (7.4.0) for swept projectile collision | **7.20.0** |
+| **Hardpoint** (7.x, 3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic); auto-updater LIVE (`Updates` via Foundation, overlay via Gui) against a server-less static-blob feed + OIDC CI publish, self-relocating updater (7.20.0); `HardpointUpdater` pins `KhaozEngine.Updates` directly; uses `Collision.Segment2D` (7.4.0) for swept projectile collision | **7.20.1** |
 | **Nullwake** (7.x, 2D) | `Nullwake.Core` | `KhaozEngine.Game2D` + `Diagnostics`/`Persistence`/`Windowing` + `Updates` (shim, dormant); uses `AttentionBeacon` (7.6.0) for the timed-reward tappable pulse | **7.20.0** |
 | **SpaceGame** (7.x, 2D + Render3D) | `SpaceGame.Core` (head) / `SpaceGame.Sim` (lockstep sim) | `Game2D` + `Render3D` + `Gpu` + `Netcode.LiteNetLib` + `Primitives` (head); `Ecs`/`Collision`/`Diagnostics`/`Content`/`Serialization`/`App`/`Netcode`/`Pooling`/`Determinism` + `Primitives` (sim); `Netcode.Abstractions` (contracts); `Updates` (tools); manifest signing adopted (`ke-updater sign` + embedded RSA public key) | **7.18.0** |
 
@@ -109,7 +109,7 @@ options' `WindowFactory`/`ViewportFactory`. Neither hand-writes the `AppWindow.R
 
 ## Notes (current state per consumer)
 
-### Hardpoint - 7.x, full-3D (on `KhaozEngine.Game3D` 7.20.0)
+### Hardpoint - 7.x, full-3D (on `KhaozEngine.Game3D` 7.20.1)
 
 A full-3D iso tower-defense entirely on the 7.x stack, zero legacy MonoGame packages. Two projects:
 
@@ -265,7 +265,7 @@ _Last verified: 2026-06-21. The shared line `<KhaozEngine5xVersion>` = **7.12.0*
 zero-dependency `Primitives` leaf + the custom-stack packages + the graduated foundation + the four umbrella
 metapackages (Game2D/Game3D/Server/Foundation). The legacy 4.x `<Version>` line was deleted from
 `Directory.Build.props` and its old MonoGame nupkgs pruned from the feed (recoverable from GitHub Packages).
-**Hardpoint** (3D) is on **7.20.0** via `Game3D` + `Foundation` (bumped for `Collision.Segment2D` at 7.4.0,
+**Hardpoint** (3D) is on **7.20.1** via `Game3D` + `Foundation` (bumped for `Collision.Segment2D` at 7.4.0,
 carried to 7.9.0 for the hover-glow fix), **Nullwake** (2D) is on **7.12.0** via `Game2D` (+ `Diagnostics`/
 `Persistence`/`Windowing`), and **SpaceGame** (2D) is on **7.3.0** via `Game2D` + the split-out
 `SpaceGame.Sim` - all three fully off MonoGame, each pinning

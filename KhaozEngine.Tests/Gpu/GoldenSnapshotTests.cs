@@ -285,6 +285,63 @@ namespace KhaozEngine.Tests.Gpu
             GoldenCompare.AssertOrUpdate("scene2d_modern", rgba, W, H);
         }
 
+        [GpuFact]
+        public void Golden3D_NormalRoughness()
+        {
+            const int TexN = 64;
+            // Normal map: tangent-space normal tilts toward +x as u increases (a smooth diffuse gradient under
+            // the fixed key light). Roughness map: 0 at u=0 (smooth, full spec) -> 1 at u=1 (matte).
+            var normalPx = new byte[TexN * TexN * 4];
+            var roughPx = new byte[TexN * TexN * 4];
+            for (int y = 0; y < TexN; y++)
+                for (int x = 0; x < TexN; x++)
+                {
+                    float u = (x + 0.5f) / TexN;
+                    float tiltX = (u - 0.5f) * 1.4f;                 // -0.7 .. +0.7
+                    float nz = MathF.Sqrt(MathF.Max(0f, 1f - tiltX * tiltX));
+                    int i = (y * TexN + x) * 4;
+                    normalPx[i + 0] = (byte)(System.Math.Clamp((tiltX * 0.5f + 0.5f) * 255f, 0f, 255f));
+                    normalPx[i + 1] = 128;                            // no tilt along bitangent
+                    normalPx[i + 2] = (byte)(System.Math.Clamp((nz * 0.5f + 0.5f) * 255f, 0f, 255f));
+                    normalPx[i + 3] = 255;
+                    byte rough = (byte)System.Math.Clamp(u * 255f, 0f, 255f);
+                    roughPx[i + 0] = rough; roughPx[i + 1] = rough; roughPx[i + 2] = rough; roughPx[i + 3] = 255;
+                }
+
+            MeshHandle quad = default;
+
+            byte[] rgba = Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    // A flat XZ quad (normal +Y supplied), UVs mapping +X->+U, +Z->+V, built via MeshAssembler
+                    // so it carries a real tangent (along +X). Spans [-1.5,1.5] in X and Z.
+                    Vector3 A = new(-1.5f, 0, -1.5f), B = new(1.5f, 0, -1.5f), C = new(1.5f, 0, 1.5f), D = new(-1.5f, 0, 1.5f);
+                    Vector3 up = Vector3.UnitY;
+                    var corners = new System.Collections.Generic.List<MeshCorner>
+                    {
+                        new(A, up, Vector4.One, new Vector2(0, 0)), new(B, up, Vector4.One, new Vector2(1, 0)), new(C, up, Vector4.One, new Vector2(1, 1)),
+                        new(A, up, Vector4.One, new Vector2(0, 0)), new(C, up, Vector4.One, new Vector2(1, 1)), new(D, up, Vector4.One, new Vector2(0, 1)),
+                    };
+                    GltfMesh mesh = MeshAssembler.Build(corners);
+
+                    Scene3D.TextureHandle nrm = scene.LoadTexture(normalPx, TexN, TexN);
+                    Scene3D.TextureHandle rgh = scene.LoadTexture(roughPx, TexN, TexN);
+                    quad = scene.LoadMesh(mesh, new Scene3D.SurfaceMaps(default, nrm, rgh));
+
+                    scene.Post.UseSmoothPreset();   // smooth look so the normal/roughness gradient reads cleanly
+                    scene.Camera.Frame(Vector3.Zero, new Vector3(2.4f, 3.2f, 2.4f));
+                },
+                drawFrame: scene =>
+                {
+                    // Light grey, shiny: the spec highlight is visible on the smooth (low-u) side and fades to
+                    // matte on the rough (high-u) side.
+                    scene.Draw(quad, Matrix4x4.Identity, new Color(0.75f, 0.76f, 0.8f, 1f), Material.Shiny(0.9f, 48f));
+                },
+                frames: 2);
+
+            GoldenCompare.AssertOrUpdate("scene3d_normalmap", rgba, W, H);
+        }
+
         /// <summary>
         /// Hover-glow bloom regression: renders two hovered Modern buttons through the production
         /// <see cref="KhaozEngine.Gui.GuiDraw.HoverGlow"/> + <see cref="KhaozEngine.Gui.GuiDraw.FillStyled"/> path

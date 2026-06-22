@@ -61,7 +61,9 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuResourceLayout _layout;
         readonly IGpuSampler _sampler;          // shared linear/wrap sampler (the device built-in, NOT owned here)
         readonly IGpuTexture _white;            // 1x1 white default; white*vColor*vTint == vColor*vTint (untextured invariant)
-        readonly IGpuResourceSet _defaultSet;   // UBO + white + sampler; bound for meshes with no material set
+        readonly IGpuTexture _flatNormal;       // 1x1 (128,128,255): tangent-space (0,0,1); no-map normal default
+        readonly IGpuTexture _defaultRough;     // 1x1 (0,0,0): roughness 0 (fully smooth); no-map spec default
+        readonly IGpuResourceSet _defaultSet;   // UBO + white + flatNormal + defaultRough + sampler; bound for meshes with no material set
         readonly IGpuPipeline _pipeline;
         readonly IGpuShaderSet _shaders;
 
@@ -88,7 +90,9 @@ namespace KhaozEngine.Render3D.Rendering
             _layout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
                 new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("Albedo", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("AlbedoSampler", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
+                new GpuResourceLayoutElement("NormalMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("RoughnessMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("Sampler", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
 
             // Use the device's built-in linear sampler (wrap-addressed) - the SAME one Render2D samples its
             // textures (incl. a 1x1 white) through, which verifies correctly on D3D11/WARP. A custom
@@ -103,18 +107,28 @@ namespace KhaozEngine.Render3D.Rendering
                 1, 1, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
             gd.UpdateTexture(_white, new byte[] { 255, 255, 255, 255 }, 0, 0, 1, 1);
 
-            _defaultSet = factory.CreateResourceSet(new GpuResourceSetDescription(_layout, _ubo, _white, _sampler));
+            // No-map defaults. Flat normal (0,0,1 in tangent space) and zero roughness reproduce today's
+            // geometric-normal lighting and per-instance specular exactly, so untextured meshes are unchanged.
+            _flatNormal = factory.CreateTexture(GpuTextureDescription.Texture2D(
+                1, 1, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
+            gd.UpdateTexture(_flatNormal, DefaultMaps.FlatNormalTexel(), 0, 0, 1, 1);
+            _defaultRough = factory.CreateTexture(GpuTextureDescription.Texture2D(
+                1, 1, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
+            gd.UpdateTexture(_defaultRough, DefaultMaps.ZeroRoughnessTexel(), 0, 0, 1, 1);
+
+            _defaultSet = factory.CreateResourceSet(new GpuResourceSetDescription(_layout, _ubo, _white, _flatNormal, _defaultRough, _sampler));
 
             _shaders = factory.CreateShadersFromSpirv(ShaderSources.ModelVert, ShaderSources.ModelFrag);
 
-            // Slot 0: per-vertex geometry (locations 0..3).
+            // Slot 0: per-vertex geometry (locations 0..4).
             var vertexLayout = new GpuVertexLayoutDescription(
                 new GpuVertexElement("Position", GpuVertexElementFormat.Float3),
                 new GpuVertexElement("Normal", GpuVertexElementFormat.Float3),
                 new GpuVertexElement("Color", GpuVertexElementFormat.Float4),
-                new GpuVertexElement("TexCoord", GpuVertexElementFormat.Float2));
+                new GpuVertexElement("TexCoord", GpuVertexElementFormat.Float2),
+                new GpuVertexElement("Tangent", GpuVertexElementFormat.Float4));
 
-            // Slot 1: per-instance data (locations 4..10), one step per instance. SPIRV binds these by location
+            // Slot 1: per-instance data (locations 5..11), one step per instance. SPIRV binds these by location
             // order, so the names are placeholders.
             var instanceLayout = new GpuVertexLayoutDescription(
                 stride: InstanceData.SizeInBytes,
@@ -225,11 +239,14 @@ namespace KhaozEngine.Render3D.Rendering
             // per-frame uniforms uploaded into _ubo.
         }
 
-        /// <summary>Build a per-mesh material resource set binding <paramref name="albedo"/> (plus the shared frame
-        /// UBO and sampler). The returned set is owned by the caller (Scene3D) and disposed when its mesh unloads.
-        /// </summary>
-        public IGpuResourceSet CreateMaterialSet(IGpuTexture albedo) =>
-            _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_layout, _ubo, albedo, _sampler));
+        /// <summary>Build a per-mesh material resource set binding <paramref name="albedo"/> (white default
+        /// when null), <paramref name="normal"/> (flat-normal default when null), and
+        /// <paramref name="roughness"/> (zero-roughness default when null), plus the shared frame UBO and
+        /// sampler. Owned by the caller (Scene3D) and disposed when the mesh unloads. Passing only an albedo
+        /// reproduces the pre-PBR single-texture material exactly.</summary>
+        public IGpuResourceSet CreateMaterialSet(IGpuTexture? albedo = null, IGpuTexture? normal = null, IGpuTexture? roughness = null) =>
+            _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(
+                _layout, _ubo, albedo ?? _white, normal ?? _flatNormal, roughness ?? _defaultRough, _sampler));
 
         /// <summary>The material resource layout (set 0: UBO + albedo + sampler). Shared with the skinned
         /// pipeline so both passes bind the same material sets.</summary>
@@ -315,7 +332,7 @@ namespace KhaozEngine.Render3D.Rendering
         public void Dispose()
         {
             _pipeline.Dispose(); _defaultSet.Dispose(); _layout.Dispose();
-            _white.Dispose(); // _sampler is the device built-in (non-owning); do not dispose it.
+            _white.Dispose(); _flatNormal.Dispose(); _defaultRough.Dispose(); // _sampler is the device built-in (non-owning); do not dispose it.
             _shaders.Dispose();
             _ubo.Dispose();
             _instanceBuffer?.Dispose();

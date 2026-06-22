@@ -286,6 +286,67 @@ void main() {
     oDepth  = vec4(0.0);   // discarded (PreserveDestination blend on attachment 2)
 }";
 
+        // ---- Additive glowing beam (lasers/thrusters/tethers). Drawn INTO the model MRT alongside the meshes
+        //      with the depth test on (no write), so geometry occludes it (like the textured billboard). A
+        //      camera-facing strip carries (across,along) UV; the core+halo profile is computed in the fragment
+        //      shader from the across coordinate, with optional end taper + time-driven pulse/scroll. Per-beam
+        //      style is baked per-vertex (split core/glow colour + two packed param vectors); the only uniform is
+        //      ViewProj + Time, so the whole frame's beams render in one draw. Writes all 3 MRT targets to match
+        //      the framebuffer; only colour matters (normal/depth use a PreserveDestination blend). ----
+        public const string BeamVert = @"#version 450
+layout(set=0, binding=0) uniform U { mat4 ViewProj; vec4 Time; };
+layout(location=0) in vec3 Position;
+layout(location=1) in vec2 Uv;
+layout(location=2) in vec4 CoreColor;
+layout(location=3) in vec4 GlowColor;
+layout(location=4) in vec4 Shape;   // x=coreFrac, y=glowSoftness, z=taper
+layout(location=5) in vec4 Anim;    // x=pulseSpeed, y=pulseAmount, z=scrollSpeed
+layout(location=0) out vec2 vUv;
+layout(location=1) out vec4 vCoreColor;
+layout(location=2) out vec4 vGlowColor;
+layout(location=3) out vec4 vShape;
+layout(location=4) out vec4 vAnim;
+void main() {
+    gl_Position = ViewProj * vec4(Position, 1.0);
+    vUv = Uv;
+    vCoreColor = CoreColor;
+    vGlowColor = GlowColor;
+    vShape = Shape;
+    vAnim = Anim;
+}";
+
+        public const string BeamFrag = @"#version 450
+layout(set=0, binding=0) uniform U { mat4 ViewProj; vec4 Time; };
+layout(location=0) in vec2 vUv;
+layout(location=1) in vec4 vCoreColor;
+layout(location=2) in vec4 vGlowColor;
+layout(location=3) in vec4 vShape;   // x=coreFrac, y=glowSoftness, z=taper
+layout(location=4) in vec4 vAnim;    // x=pulseSpeed, y=pulseAmount, z=scrollSpeed
+layout(location=0) out vec4 oColor;
+layout(location=1) out vec4 oNormal;
+layout(location=2) out vec4 oDepth;
+void main() {
+    float coreFrac = max(vShape.x, 0.02);
+    float glowSoft = max(vShape.y, 0.5);
+    float taper    = clamp(vShape.z, 0.0, 0.5);
+    float d = abs(vUv.x * 2.0 - 1.0);                       // 0 at the axis, 1 at the edge
+    float core = 1.0 - smoothstep(coreFrac * 0.6, coreFrac, d);
+    float glow = pow(max(1.0 - d, 0.0), glowSoft);
+    float taperFade = (taper > 0.0)
+        ? smoothstep(0.0, taper, vUv.y) * smoothstep(0.0, taper, 1.0 - vUv.y)
+        : 1.0;
+    float pulse = 1.0 + vAnim.y * sin(Time.x * vAnim.x);
+    float flow  = (vAnim.z != 0.0)
+        ? 0.85 + 0.15 * sin((vUv.y - Time.x * vAnim.z) * 6.2831853)
+        : 1.0;
+    float master = max(taperFade * pulse, 0.0);
+    vec3 rgb = vCoreColor.rgb * vCoreColor.a * core * flow
+             + vGlowColor.rgb * vGlowColor.a * glow;
+    oColor  = vec4(rgb, master);   // Additive (src.a / one): out.rgb = rgb*master + dst.rgb
+    oNormal = vec4(0.0);           // discarded (PreserveDestination on attachment 1)
+    oDepth  = vec4(0.0);           // discarded (PreserveDestination on attachment 2)
+}";
+
         // ---- Shared fullscreen triangle ----
         public const string FullscreenVert = @"#version 450
 layout(location=0) out vec2 vUv;

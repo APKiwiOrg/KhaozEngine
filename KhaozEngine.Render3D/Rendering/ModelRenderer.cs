@@ -67,6 +67,13 @@ namespace KhaozEngine.Render3D.Rendering
 
         IGpuBuffer? _instanceBuffer;
         uint _instanceCapacity;          // capacity in instances
+        // CPU-skinned path: skinned meshes are deformed on the CPU each frame and drawn through THIS no-bone model
+        // pipeline (the bone-buffer GPU read corrupts past element 0 in the windowed Veldrid/Metal swapchain context;
+        // CPU skinning + the proven-clean rigid path sidesteps it - see Scene3D's skinned block). One concatenated
+        // transient vertex stream (all skinned draws' deformed verts) + a parallel per-draw instance stream, both
+        // grown geometrically and retired like _instanceBuffer.
+        IGpuBuffer? _skinnedVertexBuffer; uint _skinnedVertexCapacity;     // capacity in ModelVertex
+        IGpuBuffer? _skinnedInstanceBuffer; uint _skinnedInstanceCapacity; // capacity in InstanceData
         // Instance buffers replaced by a grow are retired here (a prior in-flight frame may still read them);
         // disposed only in Dispose. Bounded by geometric growth.
         readonly List<IDisposable> _retired = new();
@@ -266,6 +273,45 @@ namespace KhaozEngine.Render3D.Rendering
             cl.DrawIndexed((uint)indexCount, instanceCount, 0, 0, instanceStart);
         }
 
+        /// <summary>Upload this frame's CPU-skinned geometry: <paramref name="verts"/> is every skinned draw's
+        /// deformed vertices concatenated; <paramref name="instances"/> is one <see cref="InstanceData"/> per draw
+        /// (its world transform / tint / material), parallel to the draw order. Both buffers grow geometrically and
+        /// retire (not dispose) the replaced buffer, matching the instance-buffer lifetime rule.</summary>
+        public void UploadCpuSkinned(IGpuCommandList cl, ReadOnlySpan<ModelVertex> verts, ReadOnlySpan<InstanceData> instances)
+        {
+            if (verts.Length == 0 || instances.Length == 0) return;
+            if (_skinnedVertexBuffer == null || _skinnedVertexCapacity < (uint)verts.Length)
+            {
+                if (_skinnedVertexBuffer != null) _retired.Add(_skinnedVertexBuffer);
+                _skinnedVertexCapacity = Math.Max((uint)verts.Length, _skinnedVertexCapacity == 0 ? 4096u : _skinnedVertexCapacity * 2);
+                _skinnedVertexBuffer = _gd.Factory.CreateBuffer(
+                    new GpuBufferDescription(_skinnedVertexCapacity * ModelVertex.SizeInBytes, GpuBufferUsage.VertexBuffer));
+            }
+            if (_skinnedInstanceBuffer == null || _skinnedInstanceCapacity < (uint)instances.Length)
+            {
+                if (_skinnedInstanceBuffer != null) _retired.Add(_skinnedInstanceBuffer);
+                _skinnedInstanceCapacity = Math.Max((uint)instances.Length, _skinnedInstanceCapacity == 0 ? 64u : _skinnedInstanceCapacity * 2);
+                _skinnedInstanceBuffer = _gd.Factory.CreateBuffer(
+                    new GpuBufferDescription(_skinnedInstanceCapacity * InstanceData.SizeInBytes, GpuBufferUsage.VertexBuffer));
+            }
+            cl.UpdateBuffer(_skinnedVertexBuffer!, 0, verts);
+            cl.UpdateBuffer(_skinnedInstanceBuffer!, 0, instances);
+        }
+
+        /// <summary>Draw one CPU-skinned mesh through the model pipeline: its deformed vertices live at
+        /// <paramref name="baseVertex"/>.. in the shared skinned vertex buffer (added per index via the draw's
+        /// vertexOffset), and its instance data is element <paramref name="drawIndex"/> of the skinned instance
+        /// buffer (selected by instanceStart). One <c>instanceCount=1</c> draw. <see cref="BindPass"/> +
+        /// <see cref="SetFrameUniforms"/> must already be bound (the rigid pass shares the frame UBO).</summary>
+        public void DrawCpuSkinned(IGpuCommandList cl, IGpuBuffer ib, int indexCount, int baseVertex, uint drawIndex, IGpuResourceSet? materialSet)
+        {
+            cl.SetGraphicsResourceSet(0, materialSet ?? _defaultSet);
+            cl.SetVertexBuffer(0, _skinnedVertexBuffer!);
+            cl.SetVertexBuffer(1, _skinnedInstanceBuffer!);
+            cl.SetIndexBuffer(ib, GpuIndexFormat.UInt16);
+            cl.DrawIndexed((uint)indexCount, 1, 0, baseVertex, drawIndex);
+        }
+
         public void Dispose()
         {
             _pipeline.Dispose(); _defaultSet.Dispose(); _layout.Dispose();
@@ -273,6 +319,8 @@ namespace KhaozEngine.Render3D.Rendering
             _shaders.Dispose();
             _ubo.Dispose();
             _instanceBuffer?.Dispose();
+            _skinnedVertexBuffer?.Dispose();
+            _skinnedInstanceBuffer?.Dispose();
             foreach (var r in _retired) r.Dispose();
             _retired.Clear();
         }

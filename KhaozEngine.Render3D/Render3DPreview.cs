@@ -126,6 +126,10 @@ namespace KhaozEngine.Render3D
             return _texture;
         }
 
+        /// <summary>Read the current preview target back to CPU RGBA bytes (fences the GPU). For diagnostics /
+        /// snapshot tests; not a per-frame path.</summary>
+        public byte[] ReadbackRgba() => KhaozEngine.Gpu.GpuReadback.ToRgba(_gd, _target, Width, Height);
+
         public void Dispose()
         {
             Scene.Dispose();

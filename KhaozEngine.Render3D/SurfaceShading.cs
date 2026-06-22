@@ -35,7 +35,12 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Modulate the per-instance Blinn-Phong spec by roughness (0..1): strength scales by
         /// (1 - rough); the exponent eases from <paramref name="baseExponent"/> to
-        /// <see cref="MinSpecExponent"/>, clamped to at least 1. Roughness 0 returns the inputs unchanged.</summary>
+        /// <see cref="MinSpecExponent"/>, clamped to at least 1. Roughness 0 returns the inputs unchanged
+        /// (the no-map byte-identity invariant: do NOT clamp baseExponent toward the floor before the mix,
+        /// or a low-shininess instance with no roughness map would shift). A baseExponent below
+        /// <see cref="MinSpecExponent"/> therefore eases UPWARD with roughness; in practice instance
+        /// shininess is well above the floor (Material defaults 32/48), so the highlight broadens as
+        /// expected.</summary>
         public static (float strength, float exponent) ApplyRoughness(float baseStrength, float baseExponent, float rough)
         {
             float strength = baseStrength * (1f - rough);
@@ -43,6 +48,9 @@ namespace KhaozEngine.Render3D
             return (strength, exponent);
         }
 
+        // Degenerate (near-zero) input returns v unchanged rather than NaN. Callers pass a non-zero
+        // geometric normal / tangent, so this only guards pathological meshes; the GLSL side uses the
+        // unguarded normalize() builtin on the same (non-zero) inputs, so the mirrored result matches.
         static Vector3 SafeNormalize(Vector3 v)
         {
             float len = v.Length();

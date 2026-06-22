@@ -30,6 +30,23 @@ namespace KhaozEngine.Render3D
             return m;
         }
 
+        /// <summary>CPU mirror of the skinned vertex shader's deform: blend the 4-bone skin matrix from
+        /// <paramref name="composedBones"/> (this draw's palette, already inverseBind*jointWorld) and apply it to the
+        /// vertex - position as a point, normal as a direction (re-normalized) - producing a rigid
+        /// <see cref="ModelVertex"/> that the no-bone model pipeline draws. <c>Vector3.Transform</c> /
+        /// <c>TransformNormal</c> reproduce the shader's <c>skin * pos</c> / <c>mat3(skin) * normal</c> exactly (the
+        /// System.Numerics row-vector transform equals the std140 column-major read of the same uploaded matrix), so
+        /// the CPU-skinned result is pixel-equal to correct GPU skinning. Presentation only.</summary>
+        public static ModelVertex SkinVertex(in SkinnedVertex v, ReadOnlySpan<Matrix4x4> composedBones)
+        {
+            Matrix4x4 skin = BlendSkinMatrix(composedBones, v.BoneIndices, v.BoneWeights);
+            Vector3 p = Vector3.Transform(v.Position, skin);
+            Vector3 n = Vector3.TransformNormal(v.Normal, skin);
+            float len = n.Length();
+            n = len > 1e-8f ? n / len : v.Normal;
+            return new ModelVertex(p, n, v.Color, v.Uv);
+        }
+
         /// <summary>Normalize a 4-weight vector to sum to 1; an all-zero input stays zero (identity fallback).</summary>
         public static Vector4 NormalizeWeights(Vector4 w)
         {

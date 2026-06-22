@@ -6,14 +6,19 @@ using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D.Rendering
 {
-    /// <summary>Draws skinned meshes into the model MRT. Reuses ModelRenderer's frame UBO + lit fragment shader;
-    /// adds a skinned vertex shader and two per-vertex attributes (bone indices + weights). The bone palette is a
-    /// DYNAMIC-OFFSET uniform buffer: every skinned draw's bones are packed into per-draw slots in one buffer, and
-    /// each draw rebinds the bone set with its slot's byte offset so the shader reads bones[0..N] for that draw.
-    /// Each skinned instance is its own draw (no GPU instancing): indexing a single shared bone buffer by a
-    /// per-instance attribute mis-fetched for every draw past the first on the Metal/Veldrid backend, so per-draw
-    /// dynamic-offset rebasing is used instead. The instance data (model/tint) still streams via a per-instance
-    /// vertex buffer, rebased per draw to its element.</summary>
+    /// <summary>GPU skinned-mesh draw path: a skinned vertex shader + a per-draw dynamic-offset bone uniform buffer.
+    /// <para><b>DORMANT - not used for drawing.</b> <see cref="Scene3D"/> deforms skinned meshes on the CPU
+    /// (<see cref="SkinningMath.SkinVertex"/>) and draws them through the no-bone <see cref="ModelRenderer"/>
+    /// pipeline, because the GPU bone-buffer read corrupts past element 0 in the WINDOWED Veldrid/Metal
+    /// swapchain-present context (extensively bisected: only <c>bones[0]</c> survives; a constant <c>bones[1]</c> or
+    /// any data-dependent index reads garbage, independent of buffer type / binding / dynamic offset / submit
+    /// structure; headless/fenced is clean). This class is retained for (1) its slot/instance-layout static helpers
+    /// and bone-cap constants (<see cref="MaxBonesPerDraw"/>, <see cref="SlotBytes"/>, <see cref="SkinnedInstanceData"/>,
+    /// <see cref="BuildInstanceData"/>) used by Scene3D and the headless tests, and (2) a revivable GPU-skinning
+    /// reference for backends where the read is sound. Its instance draw path is correct headless (fenced).</para>
+    /// The bone palette is a DYNAMIC-OFFSET uniform buffer: every skinned draw's bones are packed into per-draw slots
+    /// in one buffer, each draw rebinding the bone set with its slot's byte offset. Each skinned instance is its own
+    /// draw; instance data (model/tint) streams via a per-instance vertex buffer, rebased per draw to its element.</summary>
     internal sealed class SkinnedModelRenderer : IDisposable
     {
         /// <summary>Per-instance stream for the skinned pass: model + tint + emissive + spec. 64 + 16*3 = 112 bytes
@@ -44,6 +49,11 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuBuffer? _instanceBuffer; uint _instanceCapacity;          // capacity in instances
         IGpuBuffer? _boneBuffer; uint _boneSlotCapacity;             // capacity in per-draw slots
         IGpuResourceSet? _boneSet;                                   // binds the bone buffer as a one-slot dynamic window
+        // Buffers/sets replaced by a capacity grow are RETIRED here, not disposed inline: a prior frame's command
+        // list may still be reading the old buffer on the GPU when this frame grows, and disposing it then is a
+        // use-after-free (garbage / dropped draws on the growth frame). Geometric growth bounds this to a handful
+        // of entries ever (they stop accumulating once the high-water-mark is reached); freed only in Dispose.
+        readonly List<IDisposable> _retired = new();
 
         public SkinnedModelRenderer(IGpuDevice gd, GpuOutputDescription modelOutputs, ModelRenderer model)
         {
@@ -109,7 +119,8 @@ namespace KhaozEngine.Render3D.Rendering
         void EnsureBoneCapacity(uint slotCount)
         {
             if (_boneBuffer != null && _boneSlotCapacity >= slotCount) return;
-            _boneBuffer?.Dispose(); _boneSet?.Dispose();
+            if (_boneBuffer != null) _retired.Add(_boneBuffer);   // may still be read by an in-flight frame; retire, don't dispose
+            if (_boneSet != null) _retired.Add(_boneSet);
             _boneSlotCapacity = Math.Max(slotCount, _boneSlotCapacity == 0 ? 8u : _boneSlotCapacity * 2);
             _boneBuffer = _gd.Factory.CreateBuffer(new GpuBufferDescription(_boneSlotCapacity * SlotBytes, GpuBufferUsage.UniformBuffer));
             // The set binds a single-slot WINDOW (offset 0, size SlotBytes); the per-draw offset selects the slot.
@@ -127,7 +138,7 @@ namespace KhaozEngine.Render3D.Rendering
         void EnsureInstanceCapacity(uint count)
         {
             if (_instanceBuffer != null && _instanceCapacity >= count) return;
-            _instanceBuffer?.Dispose();
+            if (_instanceBuffer != null) _retired.Add(_instanceBuffer);   // retire (may be in flight), don't dispose inline
             _instanceCapacity = Math.Max(count, _instanceCapacity == 0 ? 64u : _instanceCapacity * 2);
             _instanceBuffer = _gd.Factory.CreateBuffer(
                 new GpuBufferDescription(_instanceCapacity * SkinnedInstanceData.SizeInBytes, GpuBufferUsage.VertexBuffer));
@@ -173,6 +184,8 @@ namespace KhaozEngine.Render3D.Rendering
         {
             _pipeline.Dispose(); _shaders.Dispose(); _boneLayout.Dispose();
             _boneSet?.Dispose(); _boneBuffer?.Dispose(); _instanceBuffer?.Dispose();
+            foreach (var r in _retired) r.Dispose();
+            _retired.Clear();
         }
     }
 }

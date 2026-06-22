@@ -64,8 +64,14 @@ namespace KhaozEngine.Render3D
         // Per-frame bone palette, slot-packed: draw i's composed matrices live at [i*MaxBonesPerDraw ..], padded to
         // the per-draw window so each draw's dynamic-offset bind selects exactly its slice. Cleared each Begin().
         readonly List<Matrix4x4> _boneMatrices = new();
-        readonly List<SkinnedModelRenderer.SkinnedInstanceData> _skinnedInstanceData = new();
-        SkinnedModelRenderer _skinnedModel = null!;   // set in the constructor after _model
+        // CPU skinning (the bone-buffer GPU read corrupts past element 0 in the windowed Veldrid/Metal swapchain
+        // context, so skinned meshes are deformed on the CPU and drawn through the proven-clean no-bone model
+        // pipeline). _skinnedCpuVerts caches each loaded mesh's source vertices (parallel to _skinnedMeshes); the
+        // three reused lists are the per-frame deformed-vertex stream, the per-draw instance data, and the draw list.
+        readonly List<SkinnedVertex[]?> _skinnedCpuVerts = new();
+        readonly List<ModelVertex> _cpuSkinnedVerts = new();
+        readonly List<ModelRenderer.InstanceData> _cpuSkinnedInstances = new();
+        readonly List<CpuSkinnedDraw> _cpuSkinnedDraws = new();
         Vector3 _billboardRight, _billboardUp;
         bool _billboardBasisValid;
 
@@ -83,7 +89,6 @@ namespace KhaozEngine.Render3D
             _targetOutput = targetOutput;
             _res = new RenderResources(gd, Post.RenderWidth, Post.RenderHeight);
             _model = new ModelRenderer(gd, _res.ModelFB.Outputs);
-            _skinnedModel = new SkinnedModelRenderer(gd, _res.ModelFB.Outputs, _model);
             _post = new PixelPostProcess(gd, _res.PingAFB.Outputs, targetOutput);
             _post.BindTargets(_res);
             _lines = new LineRenderer(gd, targetOutput);
@@ -201,8 +206,9 @@ namespace KhaozEngine.Render3D
 
             int index = _skinnedSlots.Alloc(out int generation);
             var entry = new SkinnedMeshEntry(vb, ib, mesh.Indices.Length, material, mesh.InverseBind);
-            if (index < _skinnedMeshes.Count) _skinnedMeshes[index] = entry;
-            else _skinnedMeshes.Add(entry);
+            // Cache the source vertices (parallel to _skinnedMeshes) for per-frame CPU skinning - no GPU readback.
+            if (index < _skinnedMeshes.Count) { _skinnedMeshes[index] = entry; _skinnedCpuVerts[index] = mesh.Vertices; }
+            else { _skinnedMeshes.Add(entry); _skinnedCpuVerts.Add(mesh.Vertices); }
             return new SkinnedMeshHandle(index, generation);
         }
 
@@ -237,6 +243,7 @@ namespace KhaozEngine.Render3D
             var m = _skinnedMeshes[h.Index];
             if (m is { } e) { e.Vb.Dispose(); e.Ib.Dispose(); e.MaterialSet?.Dispose(); }
             _skinnedMeshes[h.Index] = null;
+            _skinnedCpuVerts[h.Index] = null;
         }
 
         /// <summary>Skinned draws queued this frame. Internal: lets tests assert Begin clears the queue.</summary>
@@ -565,25 +572,52 @@ namespace KhaozEngine.Render3D
                 }
             }
 
-            // Skinned pass: same model framebuffer + frame UBO, separate pipeline. Upload this frame's slot-packed
-            // bone palette + the per-instance data once, then draw each skinned instance separately, selecting its
-            // bone slot (and its instance-buffer element) by index. Each skinned instance is its own instanceCount=1
-            // draw rebased to bone slot i: a per-instance index into one shared bone buffer mis-fetched past the
-            // first draw on Metal/Veldrid, so dynamic-offset rebasing is used instead.
+            // Skinned pass: CPU-skin each draw and route it through the no-bone model pipeline. The GPU bone-buffer
+            // read corrupts past element 0 in the windowed Veldrid/Metal swapchain context (only bones[0] survives;
+            // a constant bones[1] or any data-dependent index reads garbage - extensively bisected via the offscreen
+            // repro), independent of buffer type / binding / dynamic offset / submit structure. The rigid model
+            // pipeline (no bone read) renders cleanly in the same context, so skinned meshes are deformed on the CPU
+            // here (SkinningMath.SkinVertex mirrors the shader's blend exactly) and drawn through it. _boneMatrices
+            // holds each draw's slot-packed composed palette (built in DrawSkinned); deform the cached source verts
+            // into one concatenated stream, upload it + the per-draw instance data, then draw each.
             var skinnedItems = _skinnedInstances.Items;
             if (skinnedItems.Count > 0)
             {
-                SkinnedModelRenderer.BuildInstanceData(skinnedItems, _skinnedInstanceData);
-                _skinnedModel.UploadBones(cl, CollectionsMarshal.AsSpan(_boneMatrices));
-                _skinnedModel.UploadInstances(cl, CollectionsMarshal.AsSpan(_skinnedInstanceData));
-                _skinnedModel.BindPass(cl);
+                _cpuSkinnedVerts.Clear();
+                _cpuSkinnedInstances.Clear();
+                _cpuSkinnedDraws.Clear();
+                var boneSpan = CollectionsMarshal.AsSpan(_boneMatrices);
+                const int cap = SkinnedModelRenderer.MaxBonesPerDraw;
                 for (int i = 0; i < skinnedItems.Count; i++)
                 {
                     var it = skinnedItems[i];
                     if (!_skinnedSlots.IsValid(it.Mesh.Index, it.Mesh.Generation)) continue;
-                    var m = _skinnedMeshes[it.Mesh.Index];
-                    if (m is not { } entry) continue;
-                    _skinnedModel.DrawSkinnedInstance(cl, entry.Vb, entry.Ib, entry.IndexCount, (uint)i, (uint)i, entry.MaterialSet);
+                    var entry = _skinnedMeshes[it.Mesh.Index];
+                    if (entry is null) continue;
+                    var src = _skinnedCpuVerts[it.Mesh.Index];
+                    if (src is null) continue;
+                    int baseVertex = _cpuSkinnedVerts.Count;
+                    var palette = boneSpan.Slice(i * cap, cap);   // this draw's composed bone window (slot i)
+                    for (int v = 0; v < src.Length; v++)
+                        _cpuSkinnedVerts.Add(SkinningMath.SkinVertex(src[v], palette));
+                    _cpuSkinnedInstances.Add(new ModelRenderer.InstanceData
+                    {
+                        Model = it.World,
+                        Tint = it.Tint,
+                        Emissive = it.Material.Emissive,
+                        SpecParams = new Vector4(it.Material.Specular, it.Material.Shininess, 0f, 0f),
+                    });
+                    _cpuSkinnedDraws.Add(new CpuSkinnedDraw(entry.Ib, entry.IndexCount, baseVertex, entry.MaterialSet));
+                }
+                if (_cpuSkinnedDraws.Count > 0)
+                {
+                    _model.UploadCpuSkinned(cl, CollectionsMarshal.AsSpan(_cpuSkinnedVerts), CollectionsMarshal.AsSpan(_cpuSkinnedInstances));
+                    _model.BindPass(cl);   // re-bind the model pipeline (the skinned draws follow the rigid run)
+                    for (int d = 0; d < _cpuSkinnedDraws.Count; d++)
+                    {
+                        var dr = _cpuSkinnedDraws[d];
+                        _model.DrawCpuSkinned(cl, dr.Ib, dr.IndexCount, dr.BaseVertex, (uint)d, dr.MaterialSet);
+                    }
                 }
             }
 
@@ -662,7 +696,6 @@ namespace KhaozEngine.Render3D
         public void Dispose()
         {
             _model.Dispose();
-            _skinnedModel.Dispose();
             _post.Dispose();
             _lines.Dispose();
             _fills.Dispose();
@@ -704,6 +737,20 @@ namespace KhaozEngine.Render3D
             public SkinnedMeshEntry(IGpuBuffer vb, IGpuBuffer ib, int indexCount, IGpuResourceSet? materialSet, Matrix4x4[] inverseBind)
             {
                 Vb = vb; Ib = ib; IndexCount = indexCount; MaterialSet = materialSet; InverseBind = inverseBind;
+            }
+        }
+
+        /// <summary>One CPU-skinned draw: the mesh's index buffer + count, the base vertex of its deformed verts in
+        /// the shared skinned vertex stream, and its optional material set. Built per frame in RenderInternal.</summary>
+        readonly struct CpuSkinnedDraw
+        {
+            public readonly IGpuBuffer Ib;
+            public readonly int IndexCount;
+            public readonly int BaseVertex;
+            public readonly IGpuResourceSet? MaterialSet;
+            public CpuSkinnedDraw(IGpuBuffer ib, int indexCount, int baseVertex, IGpuResourceSet? materialSet)
+            {
+                Ib = ib; IndexCount = indexCount; BaseVertex = baseVertex; MaterialSet = materialSet;
             }
         }
 

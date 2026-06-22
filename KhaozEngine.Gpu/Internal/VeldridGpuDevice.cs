@@ -67,10 +67,37 @@ namespace KhaozEngine.Gpu.Internal
 
         public void ResizeSwapchain(uint w, uint h) => GraphicsDevice.MainSwapchain?.Resize(w, h);
 
+        bool _capturing;
+        string _capturePath = "";
+
         public void Present()
         {
+            // Bracket a WHOLE frame for an armed Metal GPU capture: a frame's GPU work spans several Submits
+            // (the offscreen mesh/skinned render-to-texture, then the 2D/composite pass) and ends at this present.
+            // Wrapping a single Submit caught the wrong command buffer; instead start the capture at one present
+            // and stop at the next, so every command buffer of the intervening frame (incl. the skinned pass) is
+            // recorded. Decision is pure + headless-testable; the Metal interop runs only when it says to.
+            bool consume = false;
+            if (!_capturing && Backend == GpuBackendKind.Metal && GpuFrameCapture.TryConsume(out string p))
+            {
+                consume = true;
+                _capturePath = p;
+            }
+            var action = GpuFrameCapture.NextAction(_capturing, consume);
+
             if (GraphicsDevice.MainSwapchain != null)
                 GraphicsDevice.SwapBuffers(GraphicsDevice.MainSwapchain);
+
+            switch (action)
+            {
+                case GpuFrameCapture.CaptureAction.StartAfterPresent:
+                    _capturing = MetalFrameCapture.Start(GraphicsDevice, _capturePath);
+                    break;
+                case GpuFrameCapture.CaptureAction.StopAfterPresent:
+                    MetalFrameCapture.Stop(GraphicsDevice);
+                    _capturing = false;
+                    break;
+            }
         }
 
         // ---- IGpuResourceFactory ----

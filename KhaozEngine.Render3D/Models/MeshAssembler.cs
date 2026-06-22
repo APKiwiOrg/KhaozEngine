@@ -6,7 +6,8 @@ namespace KhaozEngine.Render3D
 {
     /// <summary>
     /// One corner of a triangle fed to <see cref="MeshAssembler"/>: a position, an optional source normal
-    /// (null = "compute a smooth normal from face winding"), a base color, and a UV.
+    /// (null = "compute a smooth normal from face winding"), a base color, a UV, and an optional source tangent
+    /// (xyz = model-space direction, w = +/-1 handedness; null = compute from UV+position gradient).
     /// </summary>
     internal readonly struct MeshCorner
     {
@@ -15,14 +16,16 @@ namespace KhaozEngine.Render3D
         public readonly bool HasNormal;
         public readonly Vector4 Color;
         public readonly Vector2 Uv;
+        public readonly Vector4? Tangent;  // source tangent (xyz dir, w handedness); null => compute from UV+pos
 
-        public MeshCorner(Vector3 position, Vector3? normal, Vector4 color, Vector2 uv)
+        public MeshCorner(Vector3 position, Vector3? normal, Vector4 color, Vector2 uv, Vector4? tangent = null)
         {
             Position = position;
             HasNormal = normal.HasValue;
             Normal = normal ?? default;
             Color = color;
             Uv = uv;
+            Tangent = tangent;
         }
     }
 
@@ -31,13 +34,36 @@ namespace KhaozEngine.Render3D
     /// merge only when their position, normal, AND uv all match (quantized) - so hard edges (distinct normals)
     /// and UV seams (distinct uvs) are preserved, unlike a position-only weld. When a corner has no source
     /// normal, an area-weighted face normal is accumulated across the faces that share it (a smooth default),
-    /// and such corners weld on position+uv only. Emits 32-bit indices and lets <see cref="GltfMesh"/> pick the GPU
-    /// index width, so meshes past the 65,536-vertex ceiling load instead of throwing/truncating.
+    /// and such corners weld on position+uv only. Also computes per-vertex tangents via the Lengyel UV+position
+    /// method, accumulated and Gram-Schmidt orthogonalized against the finalized normal. A supplied source
+    /// tangent on the corner wins over the computed one. Degenerate UVs (no UV gradient) yield a zero tangent
+    /// (the shader falls back to the geometric normal). Emits 32-bit indices and lets <see cref="GltfMesh"/>
+    /// pick the GPU index width, so meshes past the 65,536-vertex ceiling load instead of throwing/truncating.
     /// </summary>
     internal static class MeshAssembler
     {
         // Quantization scales: positions to 1e-4, normals (unit) to 1e-3, uvs to 1e-4.
         static long Q(float v, float scale) => (long)MathF.Round(v * scale);
+
+        // Finalize one vertex's tangent: a supplied source tangent (normalized, handedness preserved) wins;
+        // otherwise Gram-Schmidt orthogonalize the accumulated s-direction against the normal and take the
+        // handedness sign from the bitangent. Degenerate input (no UV gradient) => zero tangent (shader falls
+        // back to the geometric normal).
+        static Vector4 ResolveTangent(Vector3 n, Vector3 sdir, Vector3 tdir, Vector4? source)
+        {
+            if (source.HasValue)
+            {
+                var s = source.Value;
+                var t = new Vector3(s.X, s.Y, s.Z);
+                if (t.LengthSquared() <= 1e-12f) return Vector4.Zero;
+                return new Vector4(Vector3.Normalize(t), s.W == 0f ? 1f : s.W);
+            }
+            Vector3 ortho = sdir - n * Vector3.Dot(n, sdir);
+            if (ortho.LengthSquared() <= 1e-12f) return Vector4.Zero;
+            ortho = Vector3.Normalize(ortho);
+            float w = Vector3.Dot(Vector3.Cross(n, sdir), tdir) < 0f ? -1f : 1f;
+            return new Vector4(ortho, w);
+        }
 
         public static GltfMesh Build(IReadOnlyList<MeshCorner> corners)
         {
@@ -50,10 +76,13 @@ namespace KhaozEngine.Render3D
             var colors = new List<Vector4>();
             var uvs = new List<Vector2>();
             var computed = new List<bool>();      // true => normals[i] is an accumulator to normalize at the end
+            var tan1 = new List<Vector3>();       // accumulated UV-space s-direction per welded vertex
+            var tan2 = new List<Vector3>();       // accumulated UV-space t-direction per welded vertex
+            var srcTangent = new List<Vector4?>();// source tangent if the corner supplied one
             var weld = new Dictionary<(long, long, long, bool, long, long, long, long, long), int>();
             var indices = new List<int>(corners.Count);
 
-            int Resolve(in MeshCorner c, Vector3 faceN)
+            int Resolve(in MeshCorner c, Vector3 faceN, Vector3 sdir, Vector3 tdir)
             {
                 var key = (Q(c.Position.X, 1e4f), Q(c.Position.Y, 1e4f), Q(c.Position.Z, 1e4f),
                            c.HasNormal,
@@ -65,6 +94,8 @@ namespace KhaozEngine.Render3D
                 if (weld.TryGetValue(key, out int existing))
                 {
                     if (!c.HasNormal) normals[existing] += faceN; // keep smoothing across shared faces
+                    tan1[existing] += sdir;                       // accumulate tangent dirs across shared faces
+                    tan2[existing] += tdir;
                     return existing;
                 }
 
@@ -74,6 +105,9 @@ namespace KhaozEngine.Render3D
                 uvs.Add(c.Uv);
                 normals.Add(c.HasNormal ? c.Normal : faceN);
                 computed.Add(!c.HasNormal);
+                tan1.Add(sdir);
+                tan2.Add(tdir);
+                srcTangent.Add(c.Tangent);
                 weld[key] = idx;
                 return idx;
             }
@@ -82,9 +116,21 @@ namespace KhaozEngine.Render3D
             {
                 MeshCorner c0 = corners[t], c1 = corners[t + 1], c2 = corners[t + 2];
                 Vector3 faceN = Vector3.Cross(c1.Position - c0.Position, c2.Position - c0.Position);
-                indices.Add(Resolve(c0, faceN));
-                indices.Add(Resolve(c1, faceN));
-                indices.Add(Resolve(c2, faceN));
+                // Lengyel per-face tangent (s) / bitangent (t) directions from the UV gradient.
+                Vector3 e1 = c1.Position - c0.Position, e2 = c2.Position - c0.Position;
+                float du1 = c1.Uv.X - c0.Uv.X, dv1 = c1.Uv.Y - c0.Uv.Y;
+                float du2 = c2.Uv.X - c0.Uv.X, dv2 = c2.Uv.Y - c0.Uv.Y;
+                float r = du1 * dv2 - du2 * dv1;
+                Vector3 sdir = Vector3.Zero, tdir = Vector3.Zero;
+                if (MathF.Abs(r) > 1e-12f)
+                {
+                    float f = 1f / r;
+                    sdir = (e1 * dv2 - e2 * dv1) * f;
+                    tdir = (e2 * du1 - e1 * du2) * f;
+                }
+                indices.Add(Resolve(c0, faceN, sdir, tdir));
+                indices.Add(Resolve(c1, faceN, sdir, tdir));
+                indices.Add(Resolve(c2, faceN, sdir, tdir));
             }
 
             // 32-bit indices: no ushort ceiling. GltfMesh picks UInt16 for meshes that still fit (<= 65536 verts)
@@ -93,7 +139,7 @@ namespace KhaozEngine.Render3D
             for (int i = 0; i < positions.Count; i++)
             {
                 Vector3 n = normals[i].LengthSquared() > 1e-12f ? Vector3.Normalize(normals[i]) : Vector3.UnitY;
-                verts[i] = new ModelVertex(positions[i], n, colors[i], uvs[i]);
+                verts[i] = new ModelVertex(positions[i], n, colors[i], uvs[i], ResolveTangent(n, tan1[i], tan2[i], srcTangent[i]));
             }
 
             var outIndices = new uint[indices.Count];

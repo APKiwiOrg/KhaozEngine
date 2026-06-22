@@ -234,9 +234,9 @@ namespace KhaozEngine.Render3D.Rendering
         public void BindPass(IGpuCommandList cl)
         {
             cl.SetPipeline(_pipeline);
-            // The material resource set (UBO + albedo + sampler) is bound per mesh in DrawMeshInstanced, because
-            // the albedo texture varies per mesh; the shared UBO is part of each set, so it still sees fresh
-            // per-frame uniforms uploaded into _ubo.
+            // The material resource set (UBO + albedo + normal + roughness + sampler) is bound per mesh in
+            // DrawMeshInstanced, because the textures vary per mesh; the shared UBO is part of each set, so it
+            // still sees fresh per-frame uniforms uploaded into _ubo.
         }
 
         /// <summary>Build a per-mesh material resource set binding <paramref name="albedo"/> (white default
@@ -248,8 +248,8 @@ namespace KhaozEngine.Render3D.Rendering
             _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(
                 _layout, _ubo, albedo ?? _white, normal ?? _flatNormal, roughness ?? _defaultRough, _sampler));
 
-        /// <summary>The material resource layout (set 0: UBO + albedo + sampler). Shared with the skinned
-        /// pipeline so both passes bind the same material sets.</summary>
+        /// <summary>The material resource layout (set 0: UBO + albedo + normal + roughness + sampler). Shared
+        /// with the skinned pipeline so both passes bind the same material sets.</summary>
         internal IGpuResourceLayout MaterialLayout => _layout;
 
         /// <summary>The white-default material set, bound for skinned meshes with no texture.</summary>

@@ -14,6 +14,11 @@
     <ProjectReference Include="../KhaozEngine.Gpu/KhaozEngine.Gpu.csproj" />
     <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
     <None Include="README.md" Pack="true" PackagePath="\" />
+    <!-- Engine default font (Roboto, Apache-2.0), embedded so a game gets it transitively and never depends on a
+         system-font path. Read via DefaultFont.Bytes; LogicalName fixes the manifest resource name. -->
+    <EmbeddedResource Include="Assets/Roboto-Regular.ttf">
+      <LogicalName>KhaozEngine.Render2D.DefaultFont.ttf</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Tests" />

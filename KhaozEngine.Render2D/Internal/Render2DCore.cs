@@ -37,6 +37,12 @@ namespace KhaozEngine.Render2D.Internal
         public SpriteFont LoadFont(string ttfPath, float pixelHeight, int oversample = 1) =>
             SpriteFont.Build(Gd, File.ReadAllBytes(ttfPath), pixelHeight, oversample);
 
+        public SpriteFont LoadFont(byte[] ttf, float pixelHeight, int oversample = 1) =>
+            SpriteFont.Build(Gd, ttf, pixelHeight, oversample);
+
+        public SpriteFont LoadDefaultFont(float pixelHeight, int oversample = 1) =>
+            SpriteFont.Build(Gd, DefaultFont.Bytes, pixelHeight, oversample);
+
         public void Dispose() { Batch.Dispose(); if (_ownsDevice) Gd.Dispose(); }
 
         /// <summary>

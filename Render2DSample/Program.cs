@@ -5,8 +5,6 @@ using System.Numerics;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 
-const string FontPath = "/System/Library/Fonts/Supplemental/Arial.ttf";
-
 static byte[] Checker(int size)
 {
     var px = new byte[size * size * 4];
@@ -45,8 +43,8 @@ if (args.Contains("--smoke"))
     {
         var white = ctx.CreateTexture(new byte[] { 255, 255, 255, 255 }, 1, 1);
         var checker = ctx.CreateTexture(Checker(64), 64, 64);
-        var big = ctx.LoadFont(FontPath, 40f);
-        var small = ctx.LoadFont(FontPath, 22f);
+        var big = ctx.LoadDefaultFont(40f);
+        var small = ctx.LoadDefaultFont(22f);
         Scene(ctx.Batch, white, checker, big, small, ctx.Width);
     });
     int nonBg = 0;
@@ -62,8 +60,8 @@ var window = new KhaozEngine.Windowing.AppWindow("KhaozEngine.Render2D — sampl
 var surface = new Render2DSurface(window);
 var whiteT = surface.CreateTexture(new byte[] { 255, 255, 255, 255 }, 1, 1);
 var checkerT = surface.CreateTexture(Checker(64), 64, 64);
-var bigF = surface.LoadFont(FontPath, 40f);
-var smallF = surface.LoadFont(FontPath, 22f);
+var bigF = surface.LoadDefaultFont(40f);
+var smallF = surface.LoadDefaultFont(22f);
 Console.WriteLine("Esc quit");
 window.Run(frame =>
 {

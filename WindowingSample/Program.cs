@@ -20,7 +20,7 @@ Log.Configure(loggerOptions);
 // resize and gestures stay aligned. No MonoGame.
 var window = new AppWindow("KhaozEngine.Windowing - input demo", 960, 540) { ClearColor = new Color(0.03f, 0.04f, 0.06f, 1f) };
 var surface = new Render2DSurface(window);
-var font = surface.LoadFont("/System/Library/Fonts/Supplemental/Arial.ttf", 26f);
+var font = surface.LoadDefaultFont(26f);
 var white = surface.CreateTexture(new byte[] { 255, 255, 255, 255 }, 1, 1);
 
 var viewport = new DesignViewport(960, 540, ScaleMode.Fit);

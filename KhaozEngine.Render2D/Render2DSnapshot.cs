@@ -18,6 +18,12 @@ namespace KhaozEngine.Render2D
         public Texture2D LoadTexture(string pngPath) => _core.LoadTexture(pngPath);
         public Texture2D CreateTexture(byte[] rgba, int width, int height) => _core.CreateTexture(rgba, width, height);
         public SpriteFont LoadFont(string ttfPath, float pixelHeight, int oversample = 1) => _core.LoadFont(ttfPath, pixelHeight, oversample);
+        /// <summary>Bake a <see cref="SpriteFont"/> from raw TTF bytes (no filesystem path) - the cross-platform core path.</summary>
+        public SpriteFont LoadFont(byte[] ttf, float pixelHeight, int oversample = 1) => _core.LoadFont(ttf, pixelHeight, oversample);
+        /// <summary>Bake a <see cref="SpriteFont"/> from a <see cref="FontManager"/> key (resolved to bytes, then baked).</summary>
+        public SpriteFont LoadFont(FontManager fonts, string key, float pixelHeight, int oversample = 1) => _core.LoadFont(fonts.GetFontBytes(key), pixelHeight, oversample);
+        /// <summary>Bake a <see cref="SpriteFont"/> from the engine's embedded default face (<see cref="DefaultFont"/>); no system font, no path.</summary>
+        public SpriteFont LoadDefaultFont(float pixelHeight, int oversample = 1) => _core.LoadDefaultFont(pixelHeight, oversample);
     }
 
     /// <summary>Headless offscreen 2D render to a CPU RGBA buffer (no window). For tooling/tests; needs a Metal GPU.</summary>

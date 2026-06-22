@@ -37,6 +37,16 @@ namespace KhaozEngine.Render2D
         /// </summary>
         public SpriteFont LoadFont(string ttfPath, float pixelHeight, int oversample = 1) => _core.LoadFont(ttfPath, pixelHeight, oversample);
 
+        /// <summary>Bake a <see cref="SpriteFont"/> from raw TTF bytes (no filesystem path) - the cross-platform core path.</summary>
+        public SpriteFont LoadFont(byte[] ttf, float pixelHeight, int oversample = 1) => _core.LoadFont(ttf, pixelHeight, oversample);
+
+        /// <summary>Bake a <see cref="SpriteFont"/> from a <see cref="FontManager"/> key (resolved to bytes, then baked).</summary>
+        public SpriteFont LoadFont(FontManager fonts, string key, float pixelHeight, int oversample = 1) =>
+            _core.LoadFont(fonts.GetFontBytes(key), pixelHeight, oversample);
+
+        /// <summary>Bake a <see cref="SpriteFont"/> from the engine's embedded default face (<see cref="DefaultFont"/>); no system font, no path.</summary>
+        public SpriteFont LoadDefaultFont(float pixelHeight, int oversample = 1) => _core.LoadDefaultFont(pixelHeight, oversample);
+
         /// <summary>Bind this frame's command list/viewport to the batch. Call once per frame before drawing.</summary>
         public void NewFrame(Frame frame) => _core.Batch.NewFrame(frame.Commands, frame.Width, frame.Height);
 

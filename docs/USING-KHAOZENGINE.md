@@ -229,13 +229,40 @@ modal.
 
 ```csharp
 Texture2D logo = Surface2D.LoadTexture("logo.png");                 // PNG via StbImageSharp
-SpriteFont font = Surface2D.LoadFont("/path/Arial.ttf", 32f);       // runtime TTF via stb_truetype
+SpriteFont font = Surface2D.LoadDefaultFont(32f);                    // engine's embedded font (no system font, no path)
 
 batch.Begin(Viewport, SamplerMode.Point);        // design-viewport space, crisp pixels; or Begin(camera) / Begin()
 batch.Draw(logo, new Vector2(100, 100), Color.White);
 batch.DrawString(font, "Hello", new Vector2(100, 60), Color.White);
 batch.End();
 ```
+
+### Fonts: no system font, no hard-coded path
+
+The engine never depends on a system font and you should never hard-code one (e.g. the macOS-only
+`/System/Library/Fonts/Supplemental/Arial.ttf`, which throws `DirectoryNotFoundException` on Windows/Linux).
+`Render2DSurface`/`Render2DContext` give you three ways to bake a `SpriteFont`, none of which need a system path:
+
+```csharp
+// 1. The engine's embedded default face (Roboto, Apache-2.0) - shipped transitively, nothing to bundle.
+SpriteFont ui = Surface2D.LoadDefaultFont(32f);
+
+// 2. Raw TTF bytes you loaded yourself (your own bundled asset, a pak, a download...).
+byte[] ttf = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "assets", "fonts", "title.ttf"));
+SpriteFont title = Surface2D.LoadFont(ttf, 48f);
+
+// 3. A FontManager key (the SFX-style register/resolve shape). The reserved "default" key is pre-registered
+//    to the embedded face; register your own keys from the content dir or from bytes, then bake by key.
+var fonts = new FontManager();                       // content dir defaults to {BaseDirectory}/assets/fonts
+fonts.RegisterFont("title");                         // probes assets/fonts/title.ttf (then .otf); key == path, no ext
+fonts.RegisterFont(FontManager.DefaultKey, ttf);     // override the default with your own face if you like
+SpriteFont byKey = Surface2D.LoadFont(fonts, "title", 48f);
+```
+
+`LoadFont(string path, ...)` still exists for an explicit absolute path, but games should prefer the byte /
+default / `FontManager` overloads so nothing breaks across platforms. `oversample > 1` (2-3) keeps text crisp
+when a design-viewport upscales; layout/metrics are reported at the logical size regardless. The same overloads
+exist on `Render2DContext` (the `Render2DSnapshot` headless callback).
 
 - `Begin` overloads: `Begin(Camera2D, SamplerMode)` (world space), `Begin(IDesignViewport, SamplerMode)`
   (design space), `Begin(SamplerMode)` (raw screen). `SamplerMode` is `Linear` (default) or `Point`.

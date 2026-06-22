@@ -35,8 +35,8 @@ sealed class GuiSampleApp : GameApp
     {
         _assets = new GuiAssets(
             Surface2D.CreateTexture(new byte[] { 255, 255, 255, 255 }, 1, 1),
-            Surface2D.LoadFont("/System/Library/Fonts/Supplemental/Arial.ttf", 40f),
-            Surface2D.LoadFont("/System/Library/Fonts/Supplemental/Arial.ttf", 26f));
+            Surface2D.LoadDefaultFont(40f),
+            Surface2D.LoadDefaultFont(26f));
 
         _stack = new ScreenStack();
         _stack.Add(new MenuScreen(_assets, Viewport, Quit));

@@ -24,8 +24,8 @@ audio.LoadContent(musicDir);
 var ctx = new GameCtx(
     window,
     surface.CreateTexture(new byte[] { 255, 255, 255, 255 }, 1, 1),
-    surface.LoadFont("/System/Library/Fonts/Supplemental/Arial.ttf", 56f),
-    surface.LoadFont("/System/Library/Fonts/Supplemental/Arial.ttf", 26f),
+    surface.LoadDefaultFont(56f),
+    surface.LoadDefaultFont(26f),
     new Random());
 
 var stack = new ScreenStack();

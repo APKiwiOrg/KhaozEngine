@@ -46,11 +46,13 @@ Wire data arrives from untrusted peers or clients. Two shapes:
 
 - **Client -> authoritative server.** A server running the sim consumes commands from clients it does
   not trust. The netcode primitives are built to not trust the wire: `RemoteCommandQueue<TCommand>`
-  dedups retransmits, rejects negative sequence numbers, and returns a neutral command for an empty
-  slot, so a malformed or replayed command stream degrades to "no input" rather than corrupting the
-  per-slot queue. `UnitAxisQuantizer` is a fixed-range 8-bit codec: a dequantized axis is always in
-  `[-1, 1]` regardless of the byte received, so a hostile byte cannot push an out-of-range magnitude
-  into the sim.
+  dedups retransmits, rejects negative sequence numbers and any seq at or below a slot's processed
+  high-water mark (so a replayed or stale seq cannot be reprocessed or regress the acknowledged seq),
+  caps the per-slot buffer and the number of distinct slots (so a flood cannot grow memory without
+  bound), and returns a neutral command for an empty slot, so a malformed or replayed command stream
+  degrades to "no input" rather than corrupting or unbounding the queue. `UnitAxisQuantizer` is a
+  fixed-range 8-bit codec: `Dequantize` clamps its input, so a decoded axis is always in `[-1, 1]`
+  regardless of the byte received and a hostile byte cannot push an out-of-range magnitude into the sim.
 - **Server -> predicting client.** `ClientPrediction<TState, TCommand>` reconciles against an
   authoritative basis; a client cannot be trusted to self-report its own state.
 
@@ -78,9 +80,11 @@ that is the transport's and the game's responsibility.
 - **Serialization** (`KhaozEngine.Serialization`): shared `System.Text.Json` defaults (tolerant-read).
   The engine does not use `BinaryFormatter` or any known-unsafe deserializer; JSON is the wire/disk format.
 - **glTF meshes** (`KhaozEngine.Render3D`): `GltfLoader.Load` / `LoadSkinned` parse mesh data. Meshes a
-  game ships are trusted. A game that loads meshes from an untrusted source is parsing untrusted bytes in
-  managed code (bounded by managed memory-safety, but it can still throw or produce degenerate geometry);
-  the game owns that decision.
+  game ships are trusted. `LoadSkinned` validates the rig at load (rejects a joint count over the
+  128-bone per-draw cap and any `JOINTS_0` index outside `[0, jointCount)`) so a malformed skin fails
+  cleanly at load instead of indexing past the bone palette mid-frame. A game that loads meshes from an
+  untrusted source is still parsing untrusted bytes in managed code (bounded by managed memory-safety,
+  but it can throw or produce degenerate geometry); the game owns that decision.
 
 ### 3. The update channel (highest impact)
 
@@ -169,7 +173,8 @@ The engine provides primitives and one hardened channel; a game still has to use
 - A memory-safe managed core; native surface bounded to three patchable libs.
 - The update channel's signing + apply-time guards, *once wired* (signed manifests, origin lock, path/
   symlink guards, size caps, downgrade rejection).
-- Input-bounding netcode primitives (`RemoteCommandQueue` dedup/seq-checks, `UnitAxisQuantizer` range).
+- Input-bounding netcode primitives (`RemoteCommandQueue` dedup + high-water seq-reject + per-slot/slot
+  caps, `UnitAxisQuantizer` clamp).
 - A JSON-schema validation primitive (runtime + build-time) for content.
 - An HMAC tamper-deterrent on saves (deterrent, not a boundary).
 - The CETCompat default + DEP/ASLR on every head.

@@ -70,4 +70,60 @@ public class RemoteCommandQueueTests
         Assert.Equal(-1, q.GetLastAcknowledgedSeq(0));
         Assert.Equal(-999, q.Dequeue(0, out _));
     }
+
+    [Fact]
+    public void Store_ReplayOfAlreadyDequeuedSeq_IsRejected()
+    {
+        var q = NewQueue();
+        q.Store(0, 0, 100);
+        q.Dequeue(0, out _);          // process seq 0; high-water mark is now 0
+        q.Store(0, 0, 999);           // replay of an already-processed seq -> must be dropped
+        Assert.Equal(-999, q.Dequeue(0, out int ack)); // nothing reprocessed
+        Assert.Equal(0, ack);
+    }
+
+    [Fact]
+    public void Store_StaleLowerSeqAfterHigherProcessed_DoesNotRegressAck()
+    {
+        var q = NewQueue();
+        q.Store(0, 5, 55);
+        q.Dequeue(0, out _);          // ack high-water -> 5
+        q.Store(0, 3, 33);           // stale (below high-water) -> dropped
+        Assert.Equal(-999, q.Dequeue(0, out int ack));
+        Assert.Equal(5, ack);        // ack must not regress to 3
+    }
+
+    [Fact]
+    public void Store_PerSlotQueue_IsCappedToMostRecentCommands()
+    {
+        // A hostile peer flooding distinct seqs must not grow the per-slot queue without bound.
+        var q = new RemoteCommandQueue<int>(neutralCommand: -999, maxQueuedPerSlot: 3, maxSlots: 8);
+        for (int seq = 0; seq < 100; seq++) q.Store(0, seq, seq);
+        Assert.Equal(97, q.Dequeue(0, out _)); // only the 3 most recent survive
+        Assert.Equal(98, q.Dequeue(0, out _));
+        Assert.Equal(99, q.Dequeue(0, out _));
+        Assert.Equal(-999, q.Dequeue(0, out _)); // queue never held more than the cap
+    }
+
+    [Fact]
+    public void Store_DistinctSlotCount_IsCapped()
+    {
+        // A hostile peer spraying distinct slot ids must not grow the slot map without bound.
+        var q = new RemoteCommandQueue<int>(neutralCommand: -999, maxQueuedPerSlot: 8, maxSlots: 2);
+        q.Store(0, 0, 10);
+        q.Store(1, 0, 11);
+        q.Store(2, 0, 12);           // third distinct slot, over the cap -> ignored
+        Assert.Equal(10, q.Dequeue(0, out _));
+        Assert.Equal(11, q.Dequeue(1, out _));
+        Assert.Equal(-999, q.Dequeue(2, out _)); // never stored
+    }
+
+    [Fact]
+    public void Ctor_NonPositiveCaps_Throw()
+    {
+        Assert.Throws<System.ArgumentOutOfRangeException>(
+            () => new RemoteCommandQueue<int>(neutralCommand: 0, maxQueuedPerSlot: 0, maxSlots: 8));
+        Assert.Throws<System.ArgumentOutOfRangeException>(
+            () => new RemoteCommandQueue<int>(neutralCommand: 0, maxQueuedPerSlot: 8, maxSlots: 0));
+    }
 }

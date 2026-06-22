@@ -31,6 +31,7 @@ namespace KhaozEngine.Render3D
         readonly FillRenderer _fills;
         readonly BillboardRenderer _billboards;
         readonly TexturedBillboardRenderer _texBillboards;
+        readonly BeamRenderer _beams;
         readonly RenderResources _res;
         // Slot-indexed GPU mesh storage parallel to _slots; a freed slot's entry is null until reused.
         readonly List<Mesh?> _meshes = new();
@@ -53,6 +54,10 @@ namespace KhaozEngine.Render3D
         readonly List<TexturedBillboardItem> _texBillboardItems = new();
         readonly List<TexturedBillboardRun> _texBillboardRuns = new();
         readonly List<BillboardRenderer.BillboardVertex> _texBillboardVerts = new();
+        // Glowing beams (lasers/thrusters/tethers): queued in submission order, flushed as one additive draw
+        // into the model FB alongside the textured billboards (depth-interleaved, so geometry occludes them).
+        readonly List<BeamItem> _beamItems = new();
+        readonly List<BeamRenderer.BeamVertex> _beamVerts = new();
         // Reused per-frame grouping buffers (cleared, not realloc) for GPU instancing.
         readonly List<ModelRenderer.InstanceData> _instanceData = new();
         readonly List<MeshRun> _runs = new();
@@ -78,6 +83,13 @@ namespace KhaozEngine.Render3D
         public IsoCamera3D Camera { get; } = new();
         public PixelPostProcessSettings Post { get; } = new();
 
+        /// <summary>Host-set per-frame clock (seconds) driving beam pulse/scroll (see <see cref="DrawBeam"/> /
+        /// <see cref="BeamStyle"/>). Set it once per frame in your draw callback (it runs after <see cref="Begin"/>),
+        /// e.g. <c>scene.EffectTimeSeconds = totalSeconds</c>. NOT cleared by <see cref="Begin"/> - the host owns it.
+        /// Presentation only; zero (never set) renders a static beam. A generic clock so future time-driven 3D
+        /// effects can share it.</summary>
+        public float EffectTimeSeconds { get; set; }
+
         /// <summary>Maximum dynamic point lights consumed in one frame. <see cref="AddLight"/> accepts any number,
         /// but only the first <see cref="MaxPointLights"/> queued are uploaded (extras are dropped); the host is
         /// expected to pick the N nearest per frame so a dense bullet-hell stays within budget.</summary>
@@ -97,6 +109,9 @@ namespace KhaozEngine.Render3D
             // Textured billboards draw INTO the model MRT (depth-interleaved with meshes), so they target the model
             // framebuffer's output description, not the final target like the overlay renderers above.
             _texBillboards = new TexturedBillboardRenderer(gd, _res.ModelFB.Outputs);
+            // Beams draw into the same model MRT as the textured billboards (depth-interleaved), so they target the
+            // model framebuffer's output description.
+            _beams = new BeamRenderer(gd, _res.ModelFB.Outputs);
         }
 
         /// <summary>An opaque handle to an albedo texture loaded with <see cref="LoadTexture(string)"/> /
@@ -310,6 +325,7 @@ namespace KhaozEngine.Render3D
             _billboardAlpha.Clear();
             _billboardAdditive.Clear();
             _texBillboardItems.Clear();
+            _beamItems.Clear();
             _billboardBasisValid = false;
         }
 
@@ -544,6 +560,45 @@ namespace KhaozEngine.Render3D
         /// <see cref="Begin"/> clears the queue and the overloads enqueue.</summary>
         internal int TexturedBillboardCount => _texBillboardItems.Count;
 
+        // ---- Glowing beams (lasers/thrusters/tethers): a camera-facing strip a->b, additive, depth-interleaved
+        //      into the model pass so geometry occludes it. Soft core+halo + optional taper/pulse/scroll in the
+        //      fragment shader; animation reads EffectTimeSeconds. ----
+
+        /// <summary>
+        /// Queue an additive glowing beam from <paramref name="a"/> to <paramref name="b"/> (world points),
+        /// <paramref name="width"/> world units across (the quad spans <paramref name="width"/>, i.e. ±width/2 from
+        /// the axis), tinted by <paramref name="color"/> (the core colour unless <paramref name="style"/> overrides
+        /// it). A camera-facing strip with a bright core + soft halo; optional end taper and time-driven pulse/scroll
+        /// come from <paramref name="style"/> (null =&gt; <see cref="BeamStyle.Default"/>) and
+        /// <see cref="EffectTimeSeconds"/>. Drawn INTO the model pass with the depth test on (no write), like the
+        /// textured billboard, so a nearer mesh occludes the beam. Cleared in <see cref="Begin"/>. A degenerate beam
+        /// (<paramref name="a"/>≈<paramref name="b"/> or <paramref name="width"/> &lt;= 0) is a silent no-op.
+        /// Presentation only.
+        /// </summary>
+        public void DrawBeam(Vector3 a, Vector3 b, float width, Color color, BeamStyle? style = null)
+        {
+            if (width <= 0f || (b - a).LengthSquared() < 1e-12f) return;   // degenerate: nothing to draw
+            BeamStyle s = style ?? BeamStyle.Default;
+            Vector4 core = s.CoreColor ?? color;
+            Vector4 glow = s.GlowColor is Color g ? g : new Vector4(core.X, core.Y, core.Z, core.W * 0.4f);
+            _beamItems.Add(new BeamItem
+            {
+                A = a, B = b, Width = width,
+                CoreColor = core,
+                GlowColor = glow,
+                Shape = new Vector4(s.CoreFraction, s.GlowSoftness, s.Taper, 0f),
+                Anim = new Vector4(s.PulseSpeed, s.PulseAmount, s.ScrollSpeed, 0f),
+            });
+        }
+
+        /// <summary>Count of beams queued this frame. Internal: lets tests assert <see cref="Begin"/> clears the
+        /// queue and <see cref="DrawBeam"/> enqueues.</summary>
+        internal int BeamCount => _beamItems.Count;
+
+        /// <summary>The beams queued this frame (resolved colours/params). Internal: lets tests assert colour
+        /// resolution.</summary>
+        internal IReadOnlyList<BeamItem> BeamItems => _beamItems;
+
         // Current internal render-target size (physical pixels). Exposed for tests to assert MatchViewport resizes
         // and FixedInternal stays put; not part of the public surface.
         internal int RenderTargetWidth => _res.Width;
@@ -674,6 +729,10 @@ namespace KhaozEngine.Render3D
             // (meshes + textured billboards) goes through the post chain together.
             DrawTexturedBillboards(cl);
 
+            // Beams: same model FB (still bound), after the textured billboards, before the post chain - so they
+            // depth-interleave with the meshes and go through the pixel post like everything else in the model pass.
+            DrawBeams(cl);
+
             _post.Run(cl, _res, target, Post);
 
             // Filled overlay: rebind `target` and draw the accumulated translucent triangles on top of the post
@@ -727,6 +786,30 @@ namespace KhaozEngine.Render3D
             }
         }
 
+        /// <summary>Build each queued beam's camera-facing strip (via <see cref="BeamGeometry"/>) into one vertex
+        /// stream and draw them all in a single additive pass into the model FB. The model FB is still bound from
+        /// the mesh pass; its depth buffer holds the meshes' depth so the beams interleave. No-op when nothing is
+        /// queued.</summary>
+        void DrawBeams(IGpuCommandList cl)
+        {
+            if (_beamItems.Count == 0) return;
+
+            Vector3 viewDir = Camera.Forward;   // constant across the frame, matching the billboard basis
+            _beamVerts.Clear();
+            Span<Vector3> pos = stackalloc Vector3[6];
+            Span<Vector2> uv = stackalloc Vector2[6];
+            foreach (var it in _beamItems)
+            {
+                int n = BeamGeometry.Triangles(it.A, it.B, viewDir, it.Width, pos, uv);
+                for (int v = 0; v < n; v++)
+                    _beamVerts.Add(new BeamRenderer.BeamVertex(pos[v], uv[v], it.CoreColor, it.GlowColor, it.Shape, it.Anim));
+            }
+            if (_beamVerts.Count == 0) return;
+
+            _beams.SetFrameUniforms(cl, Camera.ViewProjection, EffectTimeSeconds);
+            _beams.Draw(cl, CollectionsMarshal.AsSpan(_beamVerts), _res.ModelFB);
+        }
+
         /// <summary>Get (creating on first use) the textured-billboard resource set for the texture at
         /// <paramref name="texListIndex"/>. Cached parallel to <c>_textures</c>; disposed in <see cref="Dispose"/>.</summary>
         IGpuResourceSet GetTexBillboardSet(int texListIndex)
@@ -749,6 +832,7 @@ namespace KhaozEngine.Render3D
             _fills.Dispose();
             _billboards.Dispose();
             _texBillboards.Dispose();
+            _beams.Dispose();
             _res.Dispose();
             foreach (var m in _meshes)
                 if (m is { } mesh) { mesh.Vb.Dispose(); mesh.Ib.Dispose(); mesh.MaterialSet?.Dispose(); }
@@ -843,6 +927,19 @@ namespace KhaozEngine.Render3D
             {
                 TexIndex = texIndex; Blend = blend; Start = start; Count = count;
             }
+        }
+
+        /// <summary>One queued beam: world endpoints + width, resolved core/glow colours (RGBA as Vector4), and two
+        /// packed param vectors (Shape: coreFrac/glowSoftness/taper; Anim: pulseSpeed/pulseAmount/scrollSpeed).
+        /// Built in <see cref="DrawBeam"/>; consumed in <see cref="DrawBeams"/>.</summary>
+        internal struct BeamItem
+        {
+            public Vector3 A, B;
+            public float Width;
+            public Vector4 CoreColor;
+            public Vector4 GlowColor;
+            public Vector4 Shape;
+            public Vector4 Anim;
         }
 
         /// <summary>

@@ -95,5 +95,18 @@ namespace KhaozEngine.Render3D
         public Vector3 FillLightDirection = new(0.6f, -0.3f, 0.5f);
         /// <summary>Fill light colour (dim cool by default).</summary>
         public Color FillLightColor = new(0.20f, 0.24f, 0.34f, 1f);
+
+        /// <summary>Dial the stylized post chain down for a smooth/realistic look: cel bands off, palette
+        /// quantize + dither off, edge outline off, starfield off. Lighting, colours, and render scaling are
+        /// left untouched. Pair with normal/roughness maps (PBR-lite) for a semi-realistic material - the post
+        /// chain otherwise still quantizes/outlines a realistic surface.</summary>
+        public void UseSmoothPreset()
+        {
+            CelBands = 0;
+            Quantize = false;
+            Dither = false;
+            Outline = false;
+            Starfield = false;
+        }
     }
 }

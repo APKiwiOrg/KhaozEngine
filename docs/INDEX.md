@@ -14,6 +14,7 @@ which one wins.
 | [CHANGENOTES.md](../CHANGENOTES.md) | The high-level history digest: one or two sentences per version, newest first. | The scannable "story over time". Distilled from CHANGELOG; updated on every version bump. |
 | [CONSUMERS.md](CONSUMERS.md) | Current state only: which game pins which package at which version, and notable non-adoptions with reasons. | The version + adoption matrices. |
 | [CROSS-PLATFORM.md](CROSS-PLATFORM.md) | Desktop GPU story: platform → Veldrid backend mapping (Metal/D3D11/Vulkan), the golden-snapshot net, the CI matrix. | How rendering is verified per OS. |
+| [SECURITY-BASELINE.md](SECURITY-BASELINE.md) | The engine-wide security posture: threat model (where untrusted bytes enter), layered defenses (managed memory-safety, input validation, patched deps, signed updates, the CETCompat tradeoff), what's out of scope, and per-game vs engine responsibilities. | The security posture every game inherits. |
 | [ROADMAP.md](ROADMAP.md) | Larger feature areas not yet scheduled; shipped items marked. | The backlog. |
 | `../<Package>/README.md` | One-paragraph purpose + a snippet per package. | Per-package quick reference. |
 

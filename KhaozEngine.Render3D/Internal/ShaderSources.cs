@@ -76,7 +76,7 @@ layout(set=0, binding=0) uniform U {
     vec4 PointColorIntensity[16];
 };
 layout(set=0, binding=1) uniform texture2D Albedo;       // 1x1 white default keeps untextured meshes unchanged
-layout(set=0, binding=2) uniform texture2D NormalMap;    // 1x1 flat default: texel (0.5,0.5,1.0) decodes to tangent-space (0,0,1); only sampled when a tangent exists
+layout(set=0, binding=2) uniform texture2D NormalMap;    // 1x1 flat default: texel (0.5,0.5,1.0) decodes to tangent-space (0,0,1); sampled up front, applied only when a tangent exists
 layout(set=0, binding=3) uniform texture2D RoughnessMap; // 1x1 zero default => spec uses per-instance params
 layout(set=0, binding=4) uniform sampler Samp;           // shared sampler for all three textures (EdgeFrag-style)
 layout(location=0) in vec3 vNormalW;
@@ -93,6 +93,15 @@ layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
 void main() {
     vec3 Ngeo = normalize(vNormalW);
+    // Sample ALL material maps up front, unconditionally, in binding order (Albedo, NormalMap, RoughnessMap).
+    // This ordering is load-bearing on Metal: SPIRV-Cross assigns MSL texture indices in the order textures are
+    // first sampled, so sampling a higher-binding map first (e.g. the normal map inside the TBN branch) made the
+    // albedo sampler read the normal map - untextured meshes came out flat-normal coloured (R,G ~0.5). Sampling
+    // binding 0 (Albedo) first and unconditionally keeps the indices matching the resource layout. (D3D11/Vulkan
+    // bind by explicit decoration and are order-insensitive; this is purely the Metal path.) Mirrors EdgeFrag.
+    vec3 texRgb = texture(sampler2D(Albedo, Samp), vUv).rgb;       // white (1,1,1) for untextured meshes
+    vec3 normalTex = texture(sampler2D(NormalMap, Samp), vUv).xyz; // flat (0.5,0.5,1.0) default => (0,0,1)
+    float rough = texture(sampler2D(RoughnessMap, Samp), vUv).g;   // 0 default => per-instance spec unchanged
     // Perturb the lighting normal via a TBN only when a tangent exists. Zero tangent (primitives, skinned,
     // untangented meshes) => geometric normal, bit-identical to the pre-PBR pass. A flat normal sample
     // (0,0,1) also yields Ngeo, so a tangent-bearing mesh with no normal map is unchanged too.
@@ -101,15 +110,13 @@ void main() {
         vec3 T = normalize(vTangent.xyz);
         T = normalize(T - Ngeo * dot(Ngeo, T));
         vec3 B = cross(Ngeo, T) * vTangent.w;
-        vec3 nTS = texture(sampler2D(NormalMap, Samp), vUv).xyz * 2.0 - 1.0;
+        vec3 nTS = normalTex * 2.0 - 1.0;
         N = normalize(mat3(T, B, Ngeo) * nTS);
     }
-    vec3 texRgb = texture(sampler2D(Albedo, Samp), vUv).rgb; // white (1,1,1) for untextured meshes
     vec3 albedo = vColor.rgb * vTint.rgb * texRgb;
     // TBN perturb + roughness->spec mirror the CPU helper SurfaceShading.cs (PerturbNormal/ApplyRoughness); keep in sync.
     // Roughness modulation (glTF metallic-roughness .g convention; metallic ignored). rough 0 (default)
     // collapses to today's per-instance spec exactly: strength*(1-0)=strength, mix(exp,8,0)=exp.
-    float rough = texture(sampler2D(RoughnessMap, Samp), vUv).g;
     float specStrength = vSpecParams.x * (1.0 - rough);
     float specExp = max(mix(vSpecParams.y, 8.0, rough), 1.0);
     float ndlKey  = max(dot(N, -normalize(LightDir.xyz)), 0.0);

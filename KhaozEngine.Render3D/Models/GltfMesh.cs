@@ -4,16 +4,22 @@ using KhaozEngine.Gpu;
 
 namespace KhaozEngine.Render3D
 {
-    /// <summary>Interleaved vertex: position, normal, base color (RGBA), texture UV. 48 bytes.</summary>
+    /// <summary>Interleaved vertex: position, normal, base color (RGBA), texture UV, and a tangent
+    /// (xyz = model-space tangent direction, w = +/-1 bitangent handedness). 64 bytes. A zero tangent
+    /// (the default from the back-compat ctors) signals "no TBN" to the shader, which then lights with the
+    /// geometric normal - so untangented meshes (primitives, skinned) render exactly as before.</summary>
     public struct ModelVertex
     {
         public Vector3 Position;
         public Vector3 Normal;
         public Vector4 Color;
         public Vector2 Uv;
-        public ModelVertex(Vector3 p, Vector3 n, Vector4 c, Vector2 uv) { Position = p; Normal = n; Color = c; Uv = uv; }
-        public ModelVertex(Vector3 p, Vector3 n, Vector4 c) : this(p, n, c, Vector2.Zero) { } // back-compat
-        public const uint SizeInBytes = 48; // 3*4 + 3*4 + 4*4 + 2*4
+        public Vector4 Tangent;
+        public ModelVertex(Vector3 p, Vector3 n, Vector4 c, Vector2 uv, Vector4 tangent)
+        { Position = p; Normal = n; Color = c; Uv = uv; Tangent = tangent; }
+        public ModelVertex(Vector3 p, Vector3 n, Vector4 c, Vector2 uv) : this(p, n, c, uv, Vector4.Zero) { }
+        public ModelVertex(Vector3 p, Vector3 n, Vector4 c) : this(p, n, c, Vector2.Zero, Vector4.Zero) { } // back-compat
+        public const uint SizeInBytes = 64; // 3*4 + 3*4 + 4*4 + 2*4 + 4*4
     }
 
     /// <summary>CPU-side loaded mesh. GPU buffers are created internally by the renderer. Indices are stored as

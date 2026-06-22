@@ -179,6 +179,34 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuFact]
+        public void Golden3D_Beam_DepthInterleaved()
+        {
+            MeshHandle box = default;
+
+            byte[] rgba = Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    box = scene.LoadMesh(MeshPrimitives.Box(1.2f));
+                    scene.Post.Starfield = false;   // flat background so the occlusion + glow read clearly
+                    scene.Camera.Frame(Vector3.Zero, new Vector3(4.5f, 4.5f, 4.5f));
+                    scene.EffectTimeSeconds = 0f;   // static frame => deterministic golden (no pulse/scroll)
+                },
+                drawFrame: scene =>
+                {
+                    // Opaque green box at the origin.
+                    scene.Draw(box, Matrix4x4.Identity, new Color(0.15f, 0.7f, 0.2f, 1f));
+                    // A bright magenta beam straight through the box (left -> right): the box occludes the centre,
+                    // the glowing tapered ends poke out either side - locks the depth-interleave AND the additive glow.
+                    scene.DrawBeam(new Vector3(-3f, 0f, 0f), new Vector3(3f, 0f, 0f), 0.5f,
+                        new Color(1f, 0.2f, 0.9f, 1f),
+                        BeamStyle.Default with { Taper = 0.15f });
+                },
+                frames: 2);
+
+            GoldenCompare.AssertOrUpdate("scene3d_beam", rgba, W, H);
+        }
+
+        [GpuFact]
         public void Golden2D_FixedScene()
         {
             byte[] rgba = Render2DSnapshot.Capture(W, H, new Color(0.07f, 0.08f, 0.11f, 1f), ctx =>

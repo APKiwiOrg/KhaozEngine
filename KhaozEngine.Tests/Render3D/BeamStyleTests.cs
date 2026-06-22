@@ -15,6 +15,7 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(2f, d.GlowSoftness, 4);
             Assert.Equal(0f, d.Taper, 4);
             Assert.Equal(0f, d.PulseSpeed, 4);
+            Assert.Equal(0f, d.PulseAmount, 4);
             Assert.Equal(0f, d.ScrollSpeed, 4);
         }
 

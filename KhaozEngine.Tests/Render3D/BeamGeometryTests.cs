@@ -91,6 +91,18 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void Corners_VerticalAxisParallelToViewDir_UsesUnitXFallback_FiniteWithProperWidth()
+        {
+            // axis = +Y AND viewDir = +Y => cross degenerates onto the |axis.Y| >= 0.99 branch (reference = UnitX).
+            Assert.True(BeamGeometry.Corners(new Vector3(0, -3, 0), new Vector3(0, 3, 0), Vector3.UnitY, 0.6f, out var aL, out var aR, out _, out _));
+            foreach (var c in new[] { aL.X, aL.Y, aL.Z, aR.X, aR.Y, aR.Z })
+                Assert.False(float.IsNaN(c));
+            Vector3 side = Vector3.Normalize(aR - aL);
+            Assert.Equal(0f, Vector3.Dot(side, Vector3.UnitY), 4);   // side perpendicular to the vertical axis
+            Assert.Equal(0.6f, Vector3.Distance(aL, aR), 4);
+        }
+
+        [Fact]
         public void Triangles_ThrowsWhenSpanTooSmall()
         {
             Assert.Throws<ArgumentException>(() =>

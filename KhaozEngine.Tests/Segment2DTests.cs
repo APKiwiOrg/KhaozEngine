@@ -79,4 +79,59 @@ public class Segment2DTests
         Assert.True(distance <= enemyRadius);
         Assert.Equal(0.5f, t, Eps); // closest approach is at the midpoint, usable for ordering hits along the path
     }
+
+    [Fact]
+    public void SegmentToSegmentParallelSeparatedMeasuresGap()
+    {
+        // Two horizontal segments 3 units apart; closest approach is the perpendicular gap.
+        float distance = Segment2D.SegmentToSegmentDistance(
+            Vector2.Zero, new Vector2(10f, 0f), new Vector2(0f, 3f), new Vector2(10f, 3f));
+
+        Assert.Equal(3f, distance, Eps);
+    }
+
+    [Fact]
+    public void SegmentToSegmentCrossingHasZeroDistance()
+    {
+        // A horizontal and a vertical segment that intersect at (5,0): distance is exactly 0.
+        float distance = Segment2D.SegmentToSegmentDistance(
+            Vector2.Zero, new Vector2(10f, 0f), new Vector2(5f, -5f), new Vector2(5f, 5f));
+
+        Assert.Equal(0f, distance, Eps);
+    }
+
+    [Fact]
+    public void SegmentToSegmentDisjointMeasuresClosestEndpoints()
+    {
+        // Non-parallel, non-touching: seg1's 'b' end (1,0) is closest to seg2's lower end (3,0), gap 2.
+        float distance = Segment2D.SegmentToSegmentDistance(
+            Vector2.Zero, new Vector2(1f, 0f), new Vector2(3f, 0f), new Vector2(3f, 4f));
+
+        Assert.Equal(2f, distance, Eps);
+    }
+
+    [Fact]
+    public void SegmentToSegmentBothDegenerateReducesToPointDistance()
+    {
+        // Both segments are points: distance is |p1 - p2| = |(3,4)| = 5.
+        float distance = Segment2D.SegmentToSegmentDistance(
+            Vector2.Zero, Vector2.Zero, new Vector2(3f, 4f), new Vector2(3f, 4f));
+
+        Assert.Equal(5f, distance, Eps);
+    }
+
+    [Fact]
+    public void SegmentToSegmentOneDegenerateReducesToPointToSegment()
+    {
+        // seg1 is the point (5,3); seg2 is the x-axis span [0,10]. Matches DistanceToSegment exactly.
+        var point = new Vector2(5f, 3f);
+        var a = Vector2.Zero;
+        var b = new Vector2(10f, 0f);
+
+        float viaSegSeg = Segment2D.SegmentToSegmentDistance(point, point, a, b);
+        float viaPointSeg = Segment2D.DistanceToSegment(point, a, b, out _);
+
+        Assert.Equal(3f, viaSegSeg, Eps);
+        Assert.Equal(viaPointSeg, viaSegSeg, Eps);
+    }
 }

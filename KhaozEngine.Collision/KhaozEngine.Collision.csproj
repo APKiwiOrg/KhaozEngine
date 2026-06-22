@@ -3,7 +3,7 @@
     <PackageId>KhaozEngine.Collision</PackageId>
     <!-- Graduated onto the shared 5.x line at 5.46.0 (was the 4.x <Version>); MonoGame-free foundation. -->
     <Version>$(KhaozEngine5xVersion)</Version>
-    <Description>Game-agnostic 2D collision + broadphase primitives: circle/circle intersection with optional per-pixel precise refinement, and a uniform spatial hash grid. Deterministic float math + iteration order for lockstep sims.</Description>
+    <Description>Game-agnostic 2D collision + broadphase primitives: circle/circle and capsule (pill) intersection with optional per-pixel precise refinement, point/segment + segment/segment geometry, grid raycast, and a uniform spatial hash grid. Deterministic float math + iteration order for lockstep sims.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>

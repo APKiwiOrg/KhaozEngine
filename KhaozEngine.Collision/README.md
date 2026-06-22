@@ -4,6 +4,12 @@ Game-agnostic 2D collision + broadphase primitives.
 
 - **`CircleCollision`** - circle/circle overlap (`Intersects`) with optional per-pixel precise refinement
   (`DoCollidersCollide`). Touching circles count as intersecting (`distanceSquared <= combined^2`).
+- **`CapsuleCollision`** - capsule (pill) collision, where a capsule is a segment `[a, b]` inflated by a radius.
+  `Intersects(a, b, capsuleRadius, circleCenter, circleRadius)` (circle vs capsule),
+  `Contains(a, b, capsuleRadius, point)` (point in capsule), and
+  `Intersects(a1, b1, radiusA, a2, b2, radiusB)` (capsule vs capsule). Each is a distance-vs-summed-radii test
+  built on `Segment2D`; touching counts (`<=`); a degenerate `a == b` reduces exactly to a circle (matches
+  `CircleCollision`).
 - **`SpatialHashGrid`** - uniform spatial hash for broadphase candidate queries. Rebuild each tick with
   `BeginRebuild(capacity)` + one `Add(index, position, radius)` per item, then `QueryCandidates` /
   `GetQueryIndex`.
@@ -11,7 +17,10 @@ Game-agnostic 2D collision + broadphase primitives.
   from a point to the segment `[a, b]` (the clamped closest point, not the infinite line) plus the clamped
   `[0, 1]` projection parameter `t` (`~0` near `a`, `~1` near `b`) for ordering hits along a swept path. A
   degenerate segment (`a == b`) returns `|p - a|`, `t = 0`. The primitive a swept (look-ahead) collision needs
-  so a fast mover cannot tunnel through a thin target between two frames. Deterministic explicit-component math.
+  so a fast mover cannot tunnel through a thin target between two frames. `SegmentToSegmentDistance(a1, b1, a2, b2)`
+  returns the shortest distance between two segments (clamped closest points, `0` for crossing; degenerate
+  endpoint-pairs reduce to point/segment then point/point) - the building block `CapsuleCollision` uses for
+  capsule/capsule. Deterministic explicit-component math.
 - **`GridRay`** - exact 2D grid line-of-sight / segment-raycast. `IsClear(from, to, cellSize, blocks)` walks
   every cell the segment touches (Amanatides&Woo 4-connected supercover, not fixed-step sampling) and returns
   true when none satisfy the caller's `blocks(x, y)` predicate; endpoint cells are excluded by default

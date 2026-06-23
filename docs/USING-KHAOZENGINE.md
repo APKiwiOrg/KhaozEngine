@@ -561,6 +561,33 @@ state, not the reverse.
 
 ---
 
+## Attack telegraphs / danger zones
+
+`KhaozEngine.Telegraphs` (2D) + `KhaozEngine.Telegraphs.Render3D` (ground plane) draw animated
+danger-zone indicators. Presentation only: feed shape + position + a 0..1 progress + a TelegraphStyle
+from your own sim each frame; the engine holds no telegraph state (safe under lockstep, never in the
+determinism hash).
+
+3D (ground plane), `using KhaozEngine.Telegraphs;`:
+
+    float progress = 1f - emitter.TelegraphSeconds / window;   // 0 at telegraph start, 1 at impact
+    scene.GroundCircle(emitter.Target, emitter.Radius, progress, TelegraphStyle.Fire);
+    scene.GroundRing(emitter.Target, 0f, emitter.ShockwaveRadius, progress, TelegraphStyle.Generic);
+
+2D:
+
+    tg.Begin(spriteBatch, primitiveRenderer);
+    tg.Circle(center, radius, progress, TelegraphStyle.Generic);
+    tg.End();
+
+Shapes: Circle, Ring, Beam, Cone, Arc. Styles: Generic / Fire / Poison presets, or a TelegraphStyle
+(fill/outline color, edge thickness, opacity, FillMode, TelegraphAnim flags
+[OutlinePulse | FillSweep | ColorRamp | ImpactFlash], blend). The 3D path paints onto the ground/terrain
+via the depth buffer and is occluded by meshes. (EdgeThickness is authored in 2D pixels; the 3D ground
+path derives its own world-space edge from the decal size.)
+
+---
+
 ## ECS (`KhaozEngine.Ecs`)
 
 Independent of input/rendering. A struct-based archetype ECS: components are **structs** implementing

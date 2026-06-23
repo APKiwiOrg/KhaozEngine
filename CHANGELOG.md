@@ -5,6 +5,23 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.34.0
+
+Attack telegraph / danger-zone indicator system (presentation-only). Two new packages:
+`KhaozEngine.Telegraphs` (style model + the pure `TelegraphResolve` progress->visual mapping + the
+immediate-mode `TelegraphRenderer2D` 2D path; in the `Game2D` umbrella) and
+`KhaozEngine.Telegraphs.Render3D` (the `Scene3D` ground-plane extensions
+`GroundCircle/Ring/Beam/Cone/Arc`; in the `Game3D` umbrella). Shapes: circle, ring, beam, cone, arc.
+Styles: `Generic`/`Fire`/`Poison` presets plus a `TelegraphStyle` (fill/outline color, edge thickness,
+opacity, fill mode, composable `OutlinePulse | FillSweep | ColorRamp | ImpactFlash` animations,
+alpha/additive blend, reserved `Safe` zone sense). Render3D gains a generic `DrawGroundDecal` primitive:
+a depth-sampling ground decal (new `DecalVert`/`DecalFrag` shaders + a pass between the beam pass and the
+post chain) that reconstructs each pixel's surface position from the linear-depth buffer, paints an
+analytic shape SDF onto the ground/terrain within a Y-band, is occluded by meshes, and rejects
+no-geometry background via a read-only hardware depth test. Render2D gains generic `DrawFilledSector` /
+`DrawFilledArcBand` primitives. Telegraphs hold no sim state and never enter a game's determinism hash.
+New GPU golden `telegraph_ground` (Metal baked; D3D11 + Vulkan baked via cross-platform-gpu.yml).
+
 ## 7.33.0
 
 Generic headless snapshot harness so a game's art/UI screenshot tool is just its scenes, not capture/encode/write/log boilerplate. Three new packages. `KhaozEngine.Imaging` (BCL-only, zero engine deps) is the new canonical home for the dependency-free RGBA8 PNG encoder: `PngWriter.Save(string path, ReadOnlySpan<byte> rgba, int w, int h)` and `PngWriter.Encode(...)`. The previously-internal-to-Render2D `KhaozEngine.Render2D.Png` is now a thin back-compat shim that forwards to `PngWriter` (no behaviour change; existing callers such as SpaceGame's clipboard-copy `Png.Encode` keep working), and `Render2D` gains a project reference to `Imaging`. `KhaozEngine.Snapshot` (depends on `Render2D` + `Imaging`, NO Render3D) adds `SnapshotRunner`: construct with `new SnapshotRunner(string outDir, Action<string>? log = null)` (creates the dir; logger defaults to `Console.WriteLine`), then `Shot2D(name, w, h, Color clear, Action<Render2DContext> draw)` runs `Render2DSnapshot.Capture`, PNG-encodes, writes `<outDir>/<name>.png`, logs the path, and returns it; `Save(name, rgba, w, h)` is the shared encode+write+log+`Count` sink for an already-captured buffer; `Done()` emits the final `done -> <dir> (N shots)` summary; `OutDir`/`Count` are exposed. `SnapshotHost` makes a tool's `Program.cs` one line: `Main(string[] args, Action<SnapshotRunner> register, Action<string>? log = null)` (and a `Run` returning the dir) resolves `outDir` from `args[0]` or the deterministic `SnapshotHost.DefaultOutDir` (`<temp>/ke-snapshots`, no timestamp), runs `register` against a fresh runner, prints the summary, returns exit code 0. `KhaozEngine.Snapshot.Render3D` (depends on `Snapshot` + `Render3D`) adds the `Shot3D(this SnapshotRunner, name, w, h, Action<Scene3D> setup, Action<Scene3D> drawFrame, int frames = 1)` extension wrapping `Render3DSnapshot.Capture` through the same sink. The 3D path is split into its own package so a Game2D-only game (SpaceGame, Nullwake) uses `Shot2D` without dragging in the 3D renderer; both snapshot packages are tooling and are intentionally NOT in the `Game2D`/`Game3D` umbrellas, so a snapshot tool project references `KhaozEngine.Snapshot` (2D) plus `KhaozEngine.Snapshot.Render3D` (3D) directly. Deterministic (no timestamps in output/filenames), window-free (the underlying capture still needs a GPU device). New `SnapshotSample` console app is a runnable one-2D-one-3D acceptance example (`dotnet run --project SnapshotSample -- <dir>`). Headless-tested (16 new no-GPU tests: `PngWriter` signature/round-trip/reject-bad-length/file-write, `SnapshotRunner` dir-creation/named-write/path-return/decode/log/count/summary/default-logger, `SnapshotHost` args-dir/default-dir/exit-code) plus a gated `[GpuFact]` end-to-end (`SnapshotHarnessGpuTests`: a runner drives one `Shot2D` + one `Shot3D` to a temp dir, both PNGs decode to the requested size). SemVer: additive (three new packages; `Render2D.Png` behaviour byte-unchanged), so minor.

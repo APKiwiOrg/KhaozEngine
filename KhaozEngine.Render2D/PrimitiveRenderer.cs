@@ -201,6 +201,88 @@ namespace KhaozEngine.Render2D
                 effectiveBorder);
         }
 
+        /// <summary>
+        /// Segment count for a sector/arc spanning <paramref name="sweep"/> radians at <paramref name="radius"/>:
+        /// proportional to arc length, floored at 2 and clamped to 96 so a thin sweep stays cheap and a wide one
+        /// stays smooth. Pure; extracted for headless tests.
+        /// </summary>
+        public static int SectorSegments(float radius, float sweep) =>
+            Math.Clamp((int)MathF.Ceiling(MathF.Abs(sweep) * MathF.Max(radius, 1f) * 0.25f), 2, 96);
+
+        /// <summary>
+        /// The rim point of a sector at normalized angle <paramref name="t"/> in [0,1] across the sweep:
+        /// angle = <paramref name="dirAngle"/> - <paramref name="halfAngle"/> + t * (2 * halfAngle), at
+        /// <paramref name="radius"/> from <paramref name="center"/>. Pure; extracted for headless tests.
+        /// </summary>
+        public static Vector2 SectorRimPoint(Vector2 center, float dirAngle, float halfAngle, float radius, float t)
+        {
+            float a = dirAngle - halfAngle + t * (2f * halfAngle);
+            return center + new Vector2(MathF.Cos(a) * radius, MathF.Sin(a) * radius);
+        }
+
+        /// <summary>
+        /// Draws a filled sector (pie wedge) centered at <paramref name="center"/>, facing
+        /// <paramref name="dirAngle"/> radians, spanning +/- <paramref name="halfAngle"/>, out to
+        /// <paramref name="radius"/>. Built as a fan of thin overlapping triangles, each drawn as a rotated quad
+        /// (no triangle path in SpriteBatch). No-op when radius or sweep is non-positive.
+        /// </summary>
+        public void DrawFilledSector(SpriteBatch batch, Vector2 center, float dirAngle, float halfAngle, float radius, Color color)
+        {
+            if (radius <= 0f || halfAngle <= 0f) return;
+            int segs = SectorSegments(radius, 2f * halfAngle);
+            Vector2 prev = SectorRimPoint(center, dirAngle, halfAngle, radius, 0f);
+            for (int i = 1; i <= segs; i++)
+            {
+                Vector2 cur = SectorRimPoint(center, dirAngle, halfAngle, radius, i / (float)segs);
+                FillTriangleQuad(batch, center, prev, cur, color);
+                prev = cur;
+            }
+        }
+
+        /// <summary>
+        /// Draws a filled arc band (annulus slice) between <paramref name="innerR"/> and <paramref name="outerR"/>,
+        /// from <paramref name="startAngle"/> spanning <paramref name="sweep"/> radians, around
+        /// <paramref name="center"/>. For a full ring pass sweep = MathF.Tau. No-op for non-positive sizes.
+        /// </summary>
+        public void DrawFilledArcBand(SpriteBatch batch, Vector2 center, float innerR, float outerR, float startAngle, float sweep, Color color)
+        {
+            if (outerR <= 0f || sweep == 0f) return;
+            innerR = MathF.Max(0f, innerR);
+            int segs = SectorSegments(outerR, sweep);
+            float step = sweep / segs;
+            void Pt(float a, float r, out Vector2 p) => p = center + new Vector2(MathF.Cos(a) * r, MathF.Sin(a) * r);
+            Pt(startAngle, innerR, out var pi0);
+            Pt(startAngle, outerR, out var po0);
+            for (int i = 1; i <= segs; i++)
+            {
+                float a = startAngle + i * step;
+                Pt(a, innerR, out var pi1);
+                Pt(a, outerR, out var po1);
+                // Two triangles per band segment, each as a rotated quad.
+                FillTriangleQuad(batch, pi0, po0, po1, color);
+                FillTriangleQuad(batch, pi0, po1, pi1, color);
+                pi0 = pi1; po0 = po1;
+            }
+        }
+
+        // Approximate a filled triangle (a,b,c) by a rotated quad spanning its longest edge with height to the
+        // opposite vertex. Slight overdraw between adjacent fan triangles is harmless for translucent zones.
+        void FillTriangleQuad(SpriteBatch batch, Vector2 a, Vector2 b, Vector2 c, Color color)
+        {
+            // Use edge a->c as the base; place a quad of width=|ac|, height=2*distance(b, line ac), centered so it
+            // covers the triangle. For a fan this reduces to overlapping wedges that fill the sector.
+            Vector2 baseEdge = c - a;
+            float len = baseEdge.Length();
+            if (len <= 1e-4f) return;
+            float angle = MathF.Atan2(baseEdge.Y, baseEdge.X);
+            // Height: perpendicular distance from b to line ac.
+            Vector2 n = new(-baseEdge.Y / len, baseEdge.X / len);
+            float h = MathF.Abs(Vector2.Dot(b - a, n));
+            if (h <= 1e-4f) h = 1f;
+            // Rotated quad origin at a, extending along the base and half the height each side of it.
+            batch.Draw(_white, a - n * h, new Vector2(len, h * 2f), new Vector2(0f, 0.5f), angle, FullUV, color);
+        }
+
         /// <summary>Disposes the owned 1x1 white pixel (no-op when constructed over a caller-supplied texture).</summary>
         public void Dispose()
         {

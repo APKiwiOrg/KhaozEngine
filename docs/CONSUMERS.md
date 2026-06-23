@@ -4,7 +4,7 @@ Which game uses which packages, at which version. Current state only - for the p
 [`../CHANGELOG.md`](../CHANGELOG.md). Update this whenever a consumer bumps a `<PackageReference>` or the
 engine ships a new version.
 
-**Engine current version:** `7.33.0` (the shared `<KhaozEngine5xVersion>` line, which is the engine): the
+**Engine current version:** `7.34.0` (the shared `<KhaozEngine5xVersion>` line, which is the engine): the
 custom MonoGame-free stack (`Primitives`/`Imaging`/`Gpu`/`Windowing`/`Render2D`/`Render3D`/`Gui`/`Audio`/`Particles`/`Effects`/`Game`/`Game.Render3D`) **plus**
 the MonoGame-free foundation packages that graduated onto it at `5.46.0`
 (`Ecs`/`Serialization`/`Content`/`Diagnostics`/`App`/`Localization`/`Persistence`/`Pooling`/`Platform`/
@@ -18,6 +18,10 @@ not libraries, so no consumer references them via `<PackageReference>` and they 
 The snapshot packages are dev/screenshot tooling and are deliberately in NO umbrella metapackage, so a game's
 snapshot tool project references them directly (`Snapshot` for 2D, plus `Snapshot.Render3D` for 3D); `Imaging`
 arrives transitively via `Render2D` (whose `Png` is now a shim over `PngWriter`).
+7.34.0 adds the attack-telegraph system as two libraries: `KhaozEngine.Telegraphs` (style + the pure
+progress->visual resolve + the 2D `TelegraphRenderer2D`, in the `Game2D` umbrella) and
+`KhaozEngine.Telegraphs.Render3D` (the `Scene3D` ground-plane `Ground*` extensions, in the `Game3D`
+umbrella). Render3D also gained a generic `DrawGroundDecal` depth-sampling primitive.
 
 > **7.23.0 (CET off on game heads):** `KhaozEngine.Foundation` ships an overridable `<CETCompat>false</CETCompat>`
 > build default via `buildTransitive` props (plus a build-log note via targets). Every game head inherits it
@@ -103,8 +107,8 @@ fine-grained use - a wire-contract project references just `Netcode.Abstractions
 
 | Metapackage | Pulls in | For |
 |---|---|---|
-| `KhaozEngine.Game2D` | 2D runtime (Windowing/Render2D/Gui/Audio/Particles) + `Game` (the Render3D-free loop framework) + `Foundation` | a desktop 2D game |
-| `KhaozEngine.Game3D` | `Game2D` + `Render3D` + `Game.Render3D` (the 3D scene bridge: GameApp3D/IGameScene3D/SceneManager.Draw3D) | a desktop 3D game |
+| `KhaozEngine.Game2D` | 2D runtime (Windowing/Render2D/Gui/Audio/Particles/Effects/Telegraphs) + `Game` (the Render3D-free loop framework) + `Foundation` | a desktop 2D game |
+| `KhaozEngine.Game3D` | `Game2D` + `Render3D` + `Telegraphs.Render3D` + `Game.Render3D` (the 3D scene bridge: GameApp3D/IGameScene3D/SceneManager.Draw3D) | a desktop 3D game |
 | `KhaozEngine.Server` | `Foundation` + netcode (`Netcode`/`.Abstractions`/`.LiteNetLib`) | a headless sim server (no GPU) |
 | `KhaozEngine.Foundation` | the GPU-free foundation (Primitives/App/Content/Diagnostics/Ecs/Localization/Persistence/Serialization/Pooling/Collision/Platform/Updates) | a gameplay-logic library (no renderer) |
 

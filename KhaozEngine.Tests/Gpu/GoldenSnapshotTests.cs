@@ -94,6 +94,61 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuFact]
+        public void Golden3D_GroundDecals()
+        {
+            MeshHandle floor = default, box = default;
+
+            byte[] rgba = Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    floor = scene.LoadMesh(MeshPrimitives.Tile(8f, 0.1f));
+                    box = scene.LoadMesh(MeshPrimitives.Box(0.9f));
+                    scene.Camera.Frame(new Vector3(0.4f, 0.4f, -0.2f), new Vector3(6f, 4f, 6f));
+                },
+                drawFrame: scene =>
+                {
+                    scene.Draw(floor, Matrix4x4.CreateTranslation(0f, 0f, 0f));
+                    // A box the cone decal must be occluded by where it overlaps.
+                    scene.Draw(box, Matrix4x4.CreateTranslation(1.3f, 0.45f, -1.1f),
+                        new Color(0.15f, 0.75f, 0.2f, 1f));
+
+                    // Red filled circle, partway through its sweep (fill smaller than the outline ring).
+                    scene.DrawGroundDecal(new GroundDecal
+                    {
+                        Shape = DecalShape.Circle, Center = new Vector3(-1.2f, 0.0f, 0.6f),
+                        Size = new Vector4(1.4f, 0, 0, 0),
+                        FillColor = new Color(0.95f, 0.15f, 0.1f, 0.55f),
+                        OutlineColor = new Color(1f, 0.8f, 0.2f, 0.9f),
+                        EdgeThickness = 0.08f, FillFraction = 0.7f, FlashAdd = 0f,
+                        Blend = DecalBlend.Alpha, YTolerance = 0.3f, MaxStep = 0.4f,
+                    });
+                    // Cyan ring (annulus) off to the other side.
+                    scene.DrawGroundDecal(new GroundDecal
+                    {
+                        Shape = DecalShape.Ring, Center = new Vector3(1.6f, 0.0f, 1.6f),
+                        Size = new Vector4(0.7f, 1.3f, 0, 0),
+                        FillColor = new Color(0.2f, 0.8f, 0.9f, 0.55f),
+                        OutlineColor = new Color(0.7f, 1f, 1f, 0.9f),
+                        EdgeThickness = 0.08f, FillFraction = 1f, FlashAdd = 0f,
+                        Blend = DecalBlend.Alpha, YTolerance = 0.3f, MaxStep = 0.4f,
+                    });
+                    // Orange cone facing +X, running under the box (occlusion check on an oriented shape).
+                    scene.DrawGroundDecal(new GroundDecal
+                    {
+                        Shape = DecalShape.Cone, Center = new Vector3(0.2f, 0.0f, -1.6f),
+                        Rotation = 0f, Size = new Vector4(2.2f, 0.5f, 0, 0),
+                        FillColor = new Color(0.9f, 0.5f, 0.1f, 0.55f),
+                        OutlineColor = new Color(1f, 0.85f, 0.3f, 0.9f),
+                        EdgeThickness = 0.08f, FillFraction = 1f, FlashAdd = 0f,
+                        Blend = DecalBlend.Alpha, YTolerance = 0.3f, MaxStep = 0.4f,
+                    });
+                },
+                frames: 2);
+
+            GoldenCompare.AssertOrUpdate("telegraph_ground", rgba, W, H);
+        }
+
+        [GpuFact]
         public void Golden3D_TexturedMesh()
         {
             // Deterministic 64x64 checkerboard (8x8 cells) in two contrasting colours.

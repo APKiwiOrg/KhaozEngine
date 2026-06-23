@@ -130,7 +130,8 @@ namespace KhaozEngine.Render3D
             internal int ListIndex => Index - 1;
         }
 
-        /// <summary>A bundle of optional surface maps for <see cref="LoadMesh(GltfMesh,SurfaceMaps)"/>:
+        /// <summary>A bundle of optional surface maps for <see cref="LoadMesh(GltfMesh,SurfaceMaps)"/> and
+        /// <see cref="LoadSkinnedMesh(SkinnedGltfMesh,SurfaceMaps)"/>:
         /// albedo, tangent-space normal, and roughness (glTF metallic-roughness .g convention). Any invalid
         /// (<c>default</c>) handle falls back to the renderer's default for that slot (white albedo, flat
         /// normal, zero roughness), so binding only some maps is fine. Load each map with
@@ -257,6 +258,23 @@ namespace KhaozEngine.Render3D
         public SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh, TextureHandle texture)
         {
             IGpuResourceSet? material = texture.IsValid ? _model.CreateMaterialSet(_textures[texture.ListIndex]) : null;
+            return LoadSkinnedInternal(mesh, material);
+        }
+
+        /// <summary>Upload a skinned mesh and bind a full PBR-lite material (<paramref name="maps"/>): albedo +
+        /// optional normal + optional roughness, mirroring <see cref="LoadMesh(GltfMesh,SurfaceMaps)"/>. Invalid
+        /// handles fall back to the renderer defaults (white albedo / flat normal / zero roughness). Normal
+        /// perturbation requires the mesh to carry tangents - skinned glTF via <see cref="GltfLoader.LoadSkinned"/>
+        /// or <see cref="SkinnedMeshBuilder"/> output both compute them; a tangent-less skinned vertex is lit by its
+        /// geometric normal. The tangent rides the per-frame CPU skin deform so the TBN tracks the pose.</summary>
+        public SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh, SurfaceMaps maps)
+        {
+            IGpuTexture? a = maps.Albedo.IsValid ? _textures[maps.Albedo.ListIndex] : null;
+            IGpuTexture? n = maps.Normal.IsValid ? _textures[maps.Normal.ListIndex] : null;
+            IGpuTexture? r = maps.Roughness.IsValid ? _textures[maps.Roughness.ListIndex] : null;
+            IGpuResourceSet? material = (a != null || n != null || r != null)
+                ? _model.CreateMaterialSet(a, n, r)
+                : null;
             return LoadSkinnedInternal(mesh, material);
         }
 

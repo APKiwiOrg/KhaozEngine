@@ -8,10 +8,19 @@ namespace KhaozEngine.Tests.Render3D
     public class SkinnedMeshTypesTests
     {
         [Fact]
-        public void SkinnedVertex_LayoutIs80Bytes()
+        public void SkinnedVertex_LayoutIs96Bytes_WithTangent()
         {
-            Assert.Equal(80u, SkinnedVertex.SizeInBytes);
-            Assert.Equal(80, System.Runtime.InteropServices.Marshal.SizeOf<SkinnedVertex>());
+            Assert.Equal(96u, SkinnedVertex.SizeInBytes);
+            Assert.Equal(96, System.Runtime.InteropServices.Marshal.SizeOf<SkinnedVertex>());
+        }
+
+        [Fact]
+        public void SkinnedVertex_DefaultTangentIsZero()
+        {
+            // The tangent field defaults to Vector4.Zero, so every existing object-initializer call site that
+            // does not set Tangent gets the no-TBN fallback (geometric-normal lighting) unchanged.
+            var v = new SkinnedVertex { Position = Vector3.UnitX, Normal = Vector3.UnitY };
+            Assert.Equal(Vector4.Zero, v.Tangent);
         }
 
         [Fact]

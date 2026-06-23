@@ -51,18 +51,22 @@ namespace KhaozEngine.Render3D
             return MeshAssembler.Build(corners);
         }
 
-        /// <summary>Load a rigged glb/glTF as a <see cref="SkinnedGltfMesh"/>: reads POSITION/NORMAL/TEXCOORD_0
-        /// plus JOINTS_0/WEIGHTS_0 and the skin's inverse-bind matrices + rest-pose joint world transforms.
-        /// Embedded images are ignored (bind a PNG albedo separately, as with <see cref="Load"/>). Throws if the
-        /// mesh has no skin/joint data (use <see cref="Load"/> for rigid meshes). Indexed directly (no re-weld) so
-        /// joints/weights stay aligned to their vertices; emits 32-bit indices so rigs past the 65,536-vertex
-        /// ceiling load (<see cref="SkinnedGltfMesh"/> picks the GPU index width).</summary>
+        /// <summary>Load a rigged glb/glTF as a <see cref="SkinnedGltfMesh"/>: reads POSITION/NORMAL/TEXCOORD_0/TANGENT
+        /// plus JOINTS_0/WEIGHTS_0 and the skin's inverse-bind matrices + rest-pose joint world transforms. A missing
+        /// TANGENT is computed from UV+position (Lengyel, accumulated over the index list then Gram-Schmidt
+        /// orthogonalized against the normal) so a normal-mapped skinned mesh perturbs correctly; a mesh with no UV
+        /// gradient keeps a zero tangent (lit by the geometric normal). Embedded images are ignored (bind a PNG
+        /// albedo separately, as with <see cref="Load"/>). Throws if the mesh has no skin/joint data (use
+        /// <see cref="Load"/> for rigid meshes). Indexed directly (no re-weld) so joints/weights stay aligned to
+        /// their vertices; emits 32-bit indices so rigs past the 65,536-vertex ceiling load
+        /// (<see cref="SkinnedGltfMesh"/> picks the GPU index width).</summary>
         public static SkinnedGltfMesh LoadSkinned(string path)
         {
             ModelRoot root = ModelRoot.Load(path);
 
             var verts = new List<SkinnedVertex>();
             var indices = new List<uint>();
+            var srcTangent = new List<Vector4?>();   // glTF TANGENT per vertex if present; null => compute
             Skin? skin = null;
 
             foreach (var mesh in root.LogicalMeshes)
@@ -80,6 +84,9 @@ namespace KhaozEngine.Render3D
 
                 var normals = prim.GetVertexAccessor("NORMAL")?.AsVector3Array();
                 var texcoords = prim.GetVertexAccessor("TEXCOORD_0")?.AsVector2Array();
+                // TANGENT is a vec4 (xyz = tangent direction, w = bitangent sign per glTF spec); when absent,
+                // it is computed below from UV+position.
+                var tangents = prim.GetVertexAccessor("TANGENT")?.AsVector4Array();
                 Vector4 baseColor = ReadBaseColor(prim.Material);
 
                 int baseIndex = verts.Count;
@@ -95,6 +102,7 @@ namespace KhaozEngine.Render3D
                         BoneIndices = joints[i],
                         BoneWeights = w,
                     });
+                    srcTangent.Add(tangents != null && i < tangents.Count ? tangents[i] : (Vector4?)null);
                 }
                 foreach (var (a, b, c) in prim.GetTriangleIndices())
                 {
@@ -106,6 +114,8 @@ namespace KhaozEngine.Render3D
 
             if (verts.Count == 0 || skin == null)
                 throw new InvalidOperationException("glTF has no skinned mesh (JOINTS_0/WEIGHTS_0 + skin): " + path);
+
+            ComputeSkinnedTangents(verts, indices, srcTangent);
 
             int boneCount = skin.JointsCount;
 
@@ -130,6 +140,35 @@ namespace KhaozEngine.Render3D
             }
 
             return new SkinnedGltfMesh(verts.ToArray(), indices.ToArray(), inverseBind, restPose);
+        }
+
+        // Resolve a per-vertex tangent for the skinned mesh and write it into each SkinnedVertex.Tangent. A glTF
+        // TANGENT (srcTangent[i]) wins; otherwise accumulate the Lengyel UV-space direction over the triangle list
+        // (directly indexed, no weld - shared corners share a global index, so their face contributions sum) and
+        // Gram-Schmidt orthogonalize against the vertex normal. Degenerate UVs => zero tangent (geometric normal).
+        // Mirrors MeshAssembler's tangent path via the shared TangentMath helper.
+        static void ComputeSkinnedTangents(List<SkinnedVertex> verts, List<uint> indices, List<Vector4?> srcTangent)
+        {
+            int n = verts.Count;
+            var tan1 = new Vector3[n];
+            var tan2 = new Vector3[n];
+            for (int t = 0; t + 2 < indices.Count; t += 3)
+            {
+                int i0 = (int)indices[t], i1 = (int)indices[t + 1], i2 = (int)indices[t + 2];
+                TangentMath.FaceDirections(
+                    verts[i0].Position, verts[i1].Position, verts[i2].Position,
+                    verts[i0].Uv, verts[i1].Uv, verts[i2].Uv, out Vector3 sdir, out Vector3 tdir);
+                tan1[i0] += sdir; tan1[i1] += sdir; tan1[i2] += sdir;
+                tan2[i0] += tdir; tan2[i1] += tdir; tan2[i2] += tdir;
+            }
+            for (int i = 0; i < n; i++)
+            {
+                Vector3 nrm = verts[i].Normal;
+                nrm = nrm.LengthSquared() > 1e-12f ? Vector3.Normalize(nrm) : Vector3.UnitY;
+                SkinnedVertex v = verts[i];
+                v.Tangent = TangentMath.Resolve(nrm, tan1[i], tan2[i], srcTangent[i]);
+                verts[i] = v;
+            }
         }
 
         static Vector4 ReadBaseColor(GltfMaterial? mat)

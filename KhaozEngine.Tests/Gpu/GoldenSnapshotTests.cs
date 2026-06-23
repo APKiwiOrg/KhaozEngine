@@ -372,6 +372,77 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
+        /// Skinned PBR-lite (gap E): a bent procedural tube drawn through the CPU-skinning path with a tangent-space
+        /// normal map + roughness gradient bound via <see cref="Scene3D.LoadSkinnedMesh(SkinnedGltfMesh,Scene3D.SurfaceMaps)"/>.
+        /// The tube carries computed tangents that ride the per-frame skin deform, so the TBN tracks the bent pose
+        /// and the normal map perturbs the lit surface (vs the rest-pose albedo-only render). Locks the skinned
+        /// normal/roughness shading on Metal; D3D11 + Vulkan follow in CI.
+        /// </summary>
+        [GpuFact]
+        public void Golden3D_SkinnedNormalRoughness()
+        {
+            const int TexN = 64;
+            // Normal map tilts toward +x as u (along the tube) increases; roughness 0 at the base -> 1 at the tip.
+            var normalPx = new byte[TexN * TexN * 4];
+            var roughPx = new byte[TexN * TexN * 4];
+            for (int y = 0; y < TexN; y++)
+                for (int x = 0; x < TexN; x++)
+                {
+                    float u = (x + 0.5f) / TexN;
+                    float tiltX = (u - 0.5f) * 1.4f;
+                    float nz = MathF.Sqrt(MathF.Max(0f, 1f - tiltX * tiltX));
+                    int i = (y * TexN + x) * 4;
+                    normalPx[i + 0] = (byte)(System.Math.Clamp((tiltX * 0.5f + 0.5f) * 255f, 0f, 255f));
+                    normalPx[i + 1] = 128;
+                    normalPx[i + 2] = (byte)(System.Math.Clamp((nz * 0.5f + 0.5f) * 255f, 0f, 255f));
+                    normalPx[i + 3] = 255;
+                    byte rough = (byte)System.Math.Clamp(u * 255f, 0f, 255f);
+                    roughPx[i + 0] = rough; roughPx[i + 1] = rough; roughPx[i + 2] = rough; roughPx[i + 3] = 255;
+                }
+
+            // A tube along Z (carries computed tangents), and a fixed bent pose so the deformed TBN is exercised.
+            var tube = SkinnedMeshBuilder.BuildTube(0.5f, 4f, 12, 12, 6, Axis.Z);
+            var bent = (Matrix4x4[])tube.RestPose.Clone();
+            {
+                const float perJoint = 0.30f;
+                Matrix4x4 accum = Matrix4x4.Identity;
+                Vector3 prevRest = tube.RestPose[0].Translation;
+                Vector3 tip = prevRest;
+                for (int b = 0; b < tube.BoneCount; b++)
+                {
+                    Vector3 restPos = tube.RestPose[b].Translation;
+                    Vector3 seg = Vector3.Transform(restPos - prevRest, accum);
+                    tip += seg;
+                    accum = Matrix4x4.CreateRotationX(perJoint) * accum;
+                    bent[b] = Matrix4x4.CreateTranslation(-restPos) * accum * Matrix4x4.CreateTranslation(tip);
+                    prevRest = restPos;
+                }
+            }
+
+            SkinnedMeshHandle handle = default;
+
+            byte[] rgba = Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    Scene3D.TextureHandle nrm = scene.LoadTexture(normalPx, TexN, TexN);
+                    Scene3D.TextureHandle rgh = scene.LoadTexture(roughPx, TexN, TexN);
+                    handle = scene.LoadSkinnedMesh(tube, new Scene3D.SurfaceMaps(default, nrm, rgh));
+
+                    scene.Post.UseSmoothPreset();
+                    // Frame the bent tube: it bows off the Z axis, centred roughly around (0, 0.8, 1.6).
+                    scene.Camera.Frame(new Vector3(0, 0.8f, 1.6f), new Vector3(3.6f, 3.4f, 4.6f));
+                },
+                drawFrame: scene =>
+                {
+                    scene.DrawSkinned(handle, bent, Matrix4x4.Identity,
+                        new Color(0.75f, 0.76f, 0.8f, 1f), Material.Shiny(0.9f, 48f));
+                },
+                frames: 2);
+
+            GoldenCompare.AssertOrUpdate("scene3d_skinned_normalmap", rgba, W, H);
+        }
+
+        /// <summary>
         /// Hover-glow bloom regression: renders two hovered Modern buttons through the production
         /// <see cref="KhaozEngine.Gui.GuiDraw.HoverGlow"/> + <see cref="KhaozEngine.Gui.GuiDraw.FillStyled"/> path
         /// at two GlowSize values, so the committed grid locks the soft additive halo (peak on the body edge,

@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using KhaozEngine.Render3D;
 using Xunit;
@@ -58,6 +59,57 @@ namespace KhaozEngine.Tests.Render3D
             var n = SkinningMath.NormalizeWeights(new Vector4(1, 1, 2, 0));
             Assert.Equal(1f, n.X + n.Y + n.Z + n.W, 4);
             Assert.Equal(Vector4.Zero, SkinningMath.NormalizeWeights(Vector4.Zero));
+        }
+
+        // ---- Tangent carried through CPU skinning (the skinned PBR-lite path). ----
+
+        // The no-tangent skinned vertex (the default, no normal map) must produce a ModelVertex byte-identical
+        // to the pre-tangent path: position/normal/color/uv from the skin deform and a ZERO tangent. This is the
+        // regression guard for "the no-maps / zero-tangent skinned path stays byte-identical".
+        [Fact]
+        public void SkinVertex_ZeroTangent_ProducesZeroTangentModelVertex()
+        {
+            var bones = new[] { Matrix4x4.CreateRotationZ(0.7f) * Matrix4x4.CreateTranslation(3, 1, 0) };
+            var v = new SkinnedVertex
+            {
+                Position = new Vector3(1, 2, 0), Normal = Vector3.UnitX,
+                Color = new Vector4(0.3f, 0.4f, 0.5f, 1f), Uv = new Vector2(0.25f, 0.75f),
+                BoneIndices = new Vector4(0, 0, 0, 0), BoneWeights = new Vector4(1, 0, 0, 0),
+                Tangent = Vector4.Zero,
+            };
+            ModelVertex got = SkinningMath.SkinVertex(v, bones);
+
+            // Tangent stays exactly zero (the no-TBN fallback).
+            Assert.Equal(Vector4.Zero, got.Tangent);
+            // Position/normal match a direct skin transform; color/uv pass through.
+            Vector3 expectP = Vector3.Transform(v.Position, bones[0]);
+            Vector3 expectN = Vector3.Normalize(Vector3.TransformNormal(v.Normal, bones[0]));
+            Assert.True(Vector3.Distance(got.Position, expectP) < 1e-5f);
+            Assert.True(Vector3.Distance(got.Normal, expectN) < 1e-5f);
+            Assert.Equal(v.Color, got.Color);
+            Assert.Equal(v.Uv, got.Uv);
+        }
+
+        // A real tangent rides through the same skin rotation as the normal and keeps its handedness w, so the
+        // deformed mesh's TBN tracks the pose. With a pure rotation the tangent rotates and stays unit-length.
+        [Fact]
+        public void SkinVertex_Tangent_RotatesWithSkinAndKeepsHandedness()
+        {
+            var rot = Matrix4x4.CreateRotationZ(MathF.PI / 2f);   // +X -> +Y
+            var bones = new[] { rot };
+            var v = new SkinnedVertex
+            {
+                Position = Vector3.UnitX, Normal = Vector3.UnitZ,
+                Color = Vector4.One, Uv = Vector2.Zero,
+                BoneIndices = new Vector4(0, 0, 0, 0), BoneWeights = new Vector4(1, 0, 0, 0),
+                Tangent = new Vector4(1, 0, 0, -1),               // tangent +X, handedness -1
+            };
+            ModelVertex got = SkinningMath.SkinVertex(v, bones);
+
+            var tDir = new Vector3(got.Tangent.X, got.Tangent.Y, got.Tangent.Z);
+            Assert.True(Vector3.Distance(tDir, Vector3.UnitY) < 1e-5f, $"tangent should rotate +X->+Y, got {tDir}");
+            Assert.Equal(-1f, got.Tangent.W);                    // handedness preserved
+            Assert.True(MathF.Abs(tDir.Length() - 1f) < 1e-5f);  // re-normalized
         }
 
         // BlendSkinMatrix reads composedBones[(int)index] for all four bones unconditionally, so an

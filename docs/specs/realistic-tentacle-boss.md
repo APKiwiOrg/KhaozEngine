@@ -22,28 +22,24 @@ tentacles game-side and is the likely host; the engine pieces below are game-agn
 | B | PBR-lite materials on the **rigid** lit pass (normal + roughness maps, `SurfaceMaps`, `UseSmoothPreset`) | **shipped 7.25.0** |
 | C | 3D beam/laser primitive (`Scene3D.DrawBeam` + `BeamStyle`) | **shipped 7.26.0** |
 | D | `ProceduralChainSolver` (3D writhe + FABRIK reach + slam envelope) | **shipped 7.27.0** |
-| E | PBR-lite on the **skinned** pass (normal/roughness on rigged meshes) | **not started** (see gap) |
+| E | PBR-lite on the **skinned** pass (normal/roughness on rigged meshes) | **shipped 7.28.0** |
 
-### The skinned-PBR gap (E)
+### The skinned-PBR gap (E) — shipped 7.28.0
 
-B added normal/roughness maps to the **rigid** model pass only. The 7.25.0 changelog is explicit:
-*"Skinned meshes stay albedo-only this release (no tangents; normal maps would be inert)."* The
-tentacles (and a one-piece skinned octopus) are skinned, so under the current engine **they get no
-surface detail** — flat albedo + lighting only. Two ways forward:
+B added normal/roughness maps to the **rigid** model pass only; 7.25.0 left skinned meshes albedo-only
+(no tangents, so normal maps would be inert). **7.28.0 ships E**: skinned meshes now take normal +
+roughness maps too. `SkinnedVertex` carries a tangent (xyz + handedness `w`, defaulting to zero =
+geometric normal); `GltfLoader.LoadSkinned` reads glTF `TANGENT` or computes it from UV+position, and
+`SkinnedMeshBuilder.BuildTube` computes one from its ring UVs. Bind maps with
+`Scene3D.LoadSkinnedMesh(mesh, SurfaceMaps)` (mirrors the rigid overload; 1x1 white / flat-normal /
+zero-roughness defaults). The tangent rides the per-frame CPU skin deform into the shared `ModelFrag`,
+so the TBN tracks the bent pose and the existing roughness math applies — and the rigid pass's
+Metal albedo-first binding-order fix covers the skinned pass for free (it reuses `ModelFrag`). The
+no-maps / zero-tangent path is byte-identical to 7.27.0 (committed skinned goldens unchanged). So the
+fully-rigged realistic octopus now gets surface detail everywhere; the mesh-split workaround below is no
+longer required (still valid if you want it for other reasons).
 
-- **Split the mesh**: body as a separate **rigid** mesh (full normal/roughness via `SurfaceMaps`) +
-  **skinned** tentacles (albedo-only). The body looks detailed, the tentacles read smoother. Simplest,
-  no new engine work, some visual inconsistency at the join.
-- **Ship E**: extend the tangent attribute + `SurfaceMaps` binding + TBN/roughness math to the skinned
-  model pass so a fully-rigged realistic octopus gets surface detail everywhere. This is the real
-  unlock for "seamless semi-realistic," and it is generic (every game with rigged characters wants it).
-  Scope mirrors B but on `SkinnedModelRenderer` + the skinned vertex/shader; watch the same
-  Metal texture-binding-order trap B documented.
-
-Recommendation: treat E as the next engine prompt once C lands. Until then, develop against the split
-approach or the albedo-only placeholder.
-
-## Asset-export contract (against 7.27.0)
+## Asset-export contract (against 7.28.0)
 
 A model handed to the engine for this boss must meet:
 
@@ -64,11 +60,13 @@ A model handed to the engine for this boss must meet:
 **Textures / materials**
 - Engine does **not** auto-read glTF material textures. Bind explicitly: load PNGs with
   `Scene3D.LoadTexture(path)` and pass `new SurfaceMaps(albedo, normal, roughness)` to
-  `LoadMesh(mesh, maps)` (rigid). Albedo / normal / roughness as separate PNGs.
+  `LoadMesh(mesh, maps)` (rigid) or `LoadSkinnedMesh(mesh, maps)` (skinned, 7.28.0+). Albedo / normal /
+  roughness as separate PNGs.
 - Roughness uses the glTF metallic-roughness `.g` convention (metallic ignored).
-- Export `TANGENT` for rigid normal-mapped parts (the loader falls back to a computed tangent; a zero
-  tangent means "use the geometric normal").
-- **Skinned parts are albedo-only until E ships** (normal/roughness bound to a skinned mesh are inert).
+- Export `TANGENT` for normal-mapped parts, rigid or skinned (the loader falls back to a computed
+  tangent; a zero tangent means "use the geometric normal").
+- **Skinned parts now take normal/roughness maps too (E shipped 7.28.0)** — bind them via
+  `LoadSkinnedMesh(mesh, SurfaceMaps)`, same as rigid.
 
 **Look**
 - `scene.Post.UseSmoothPreset()` turns off cel bands / palette / dither / edge outline for a smooth

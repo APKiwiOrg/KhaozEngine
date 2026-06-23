@@ -83,7 +83,31 @@ namespace KhaozEngine.Render3D
                 idx.Add((ushort)b); idx.Add((ushort)d); idx.Add((ushort)c);
             }
 
-            return new SkinnedGltfMesh(verts.ToArray(), idx.ToArray(), inverseBind, restPose);
+            // Per-vertex tangents from the UV+position gradient (Lengyel, shared math), so the tube takes a
+            // normal map on the skinned pass. The UV runs U along the tube and V around it, so the tangent
+            // follows the run axis (roughly the bend direction) - a sensible TBN for a tentacle/cable.
+            var vertsArr = verts.ToArray();
+            ComputeTubeTangents(vertsArr, idx);
+            return new SkinnedGltfMesh(vertsArr, idx.ToArray(), inverseBind, restPose);
+        }
+
+        // Accumulate the Lengyel UV-space tangent direction per vertex over the index list and Gram-Schmidt
+        // orthogonalize against the radial normal. Mirrors GltfLoader.LoadSkinned's tangent pass.
+        static void ComputeTubeTangents(SkinnedVertex[] verts, List<ushort> idx)
+        {
+            var tan1 = new Vector3[verts.Length];
+            var tan2 = new Vector3[verts.Length];
+            for (int t = 0; t + 2 < idx.Count; t += 3)
+            {
+                int i0 = idx[t], i1 = idx[t + 1], i2 = idx[t + 2];
+                TangentMath.FaceDirections(
+                    verts[i0].Position, verts[i1].Position, verts[i2].Position,
+                    verts[i0].Uv, verts[i1].Uv, verts[i2].Uv, out Vector3 sdir, out Vector3 tdir);
+                tan1[i0] += sdir; tan1[i1] += sdir; tan1[i2] += sdir;
+                tan2[i0] += tdir; tan2[i1] += tdir; tan2[i2] += tdir;
+            }
+            for (int i = 0; i < verts.Length; i++)
+                verts[i].Tangent = TangentMath.Resolve(verts[i].Normal, tan1[i], tan2[i], null);
         }
 
         static Vector3 AlongAxis(Axis axis, float v) => axis switch

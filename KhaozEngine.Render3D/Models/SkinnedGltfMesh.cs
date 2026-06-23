@@ -5,8 +5,12 @@ using KhaozEngine.Gpu;
 
 namespace KhaozEngine.Render3D
 {
-    /// <summary>Interleaved skinned vertex: position, normal, base color (RGBA), UV, then 4 bone indices
-    /// (float-encoded, portable across GL/Metal/Vulkan) and 4 bone weights (normalized at load). 80 bytes.</summary>
+    /// <summary>Interleaved skinned vertex: position, normal, base color (RGBA), UV, 4 bone indices
+    /// (float-encoded, portable across GL/Metal/Vulkan), 4 bone weights (normalized at load), and a tangent
+    /// (xyz = model-space tangent direction, w = +/-1 bitangent handedness) mirroring <see cref="ModelVertex"/>.
+    /// 96 bytes. A zero tangent (the default, since the field defaults to <c>Vector4.Zero</c>) signals "no TBN":
+    /// the skin transform carries it to the produced <see cref="ModelVertex"/>, and the shared model fragment
+    /// shader then lights with the geometric normal - so untangented skinned meshes render exactly as before.</summary>
     [StructLayout(LayoutKind.Sequential)]
     public struct SkinnedVertex
     {
@@ -16,7 +20,8 @@ namespace KhaozEngine.Render3D
         public Vector2 Uv;           // 40
         public Vector4 BoneIndices;  // 48 (up to 4 bone indices, float-encoded)
         public Vector4 BoneWeights;  // 64 (sum to 1; all-zero falls back to identity in the shader)
-        public const uint SizeInBytes = 80; // 12 + 12 + 16 + 8 + 16 + 16
+        public Vector4 Tangent;      // 80 (xyz model-space tangent + handedness w; zero => no TBN, geometric normal)
+        public const uint SizeInBytes = 96; // 12 + 12 + 16 + 8 + 16 + 16 + 16
     }
 
     /// <summary>CPU-side skinned mesh: skinned vertices + indices + the skin's per-bone inverse-bind matrices and

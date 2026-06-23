@@ -32,11 +32,14 @@ namespace KhaozEngine.Render3D
 
         /// <summary>CPU mirror of the skinned vertex shader's deform: blend the 4-bone skin matrix from
         /// <paramref name="composedBones"/> (this draw's palette, already inverseBind*jointWorld) and apply it to the
-        /// vertex - position as a point, normal as a direction (re-normalized) - producing a rigid
+        /// vertex - position as a point, normal AND tangent as directions (re-normalized) - producing a rigid
         /// <see cref="ModelVertex"/> that the no-bone model pipeline draws. <c>Vector3.Transform</c> /
         /// <c>TransformNormal</c> reproduce the shader's <c>skin * pos</c> / <c>mat3(skin) * normal</c> exactly (the
         /// System.Numerics row-vector transform equals the std140 column-major read of the same uploaded matrix), so
-        /// the CPU-skinned result is pixel-equal to correct GPU skinning. Presentation only.</summary>
+        /// the CPU-skinned result is pixel-equal to correct GPU skinning. The tangent rides through the same skin
+        /// rotation as the normal (so the deformed mesh's TBN tracks the pose) and keeps its handedness
+        /// <c>w</c>. A zero source tangent stays zero (the no-TBN fallback), so a tangent-less skinned mesh yields a
+        /// <see cref="ModelVertex"/> byte-identical to the pre-tangent path. Presentation only.</summary>
         public static ModelVertex SkinVertex(in SkinnedVertex v, ReadOnlySpan<Matrix4x4> composedBones)
         {
             Matrix4x4 skin = BlendSkinMatrix(composedBones, v.BoneIndices, v.BoneWeights);
@@ -44,7 +47,19 @@ namespace KhaozEngine.Render3D
             Vector3 n = Vector3.TransformNormal(v.Normal, skin);
             float len = n.Length();
             n = len > 1e-8f ? n / len : v.Normal;
-            return new ModelVertex(p, n, v.Color, v.Uv);
+            // Tangent: rotate the xyz by the same skin matrix (direction transform), preserve handedness w.
+            // A zero source tangent (the common case: no normal map) stays zero, so the produced ModelVertex
+            // carries Vector4.Zero exactly - the no-TBN fallback, bit-identical to the pre-tangent path.
+            var tDir = new Vector3(v.Tangent.X, v.Tangent.Y, v.Tangent.Z);
+            Vector4 tangent = Vector4.Zero;
+            if (tDir.LengthSquared() > 1e-12f)
+            {
+                Vector3 td = Vector3.TransformNormal(tDir, skin);
+                float tl = td.Length();
+                td = tl > 1e-8f ? td / tl : tDir;
+                tangent = new Vector4(td, v.Tangent.W);
+            }
+            return new ModelVertex(p, n, v.Color, v.Uv, tangent);
         }
 
         /// <summary>Normalize a 4-weight vector to sum to 1; an all-zero input stays zero (identity fallback).</summary>

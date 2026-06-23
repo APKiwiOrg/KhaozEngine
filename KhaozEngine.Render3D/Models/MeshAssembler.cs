@@ -45,26 +45,6 @@ namespace KhaozEngine.Render3D
         // Quantization scales: positions to 1e-4, normals (unit) to 1e-3, uvs to 1e-4.
         static long Q(float v, float scale) => (long)MathF.Round(v * scale);
 
-        // Finalize one vertex's tangent: a supplied source tangent (normalized, handedness preserved) wins;
-        // otherwise Gram-Schmidt orthogonalize the accumulated s-direction against the normal and take the
-        // handedness sign from the bitangent. Degenerate input (no UV gradient) => zero tangent (shader falls
-        // back to the geometric normal).
-        static Vector4 ResolveTangent(Vector3 n, Vector3 sdir, Vector3 tdir, Vector4? source)
-        {
-            if (source.HasValue)
-            {
-                var s = source.Value;
-                var t = new Vector3(s.X, s.Y, s.Z);
-                if (t.LengthSquared() <= 1e-12f) return Vector4.Zero;
-                return new Vector4(Vector3.Normalize(t), s.W == 0f ? 1f : s.W);
-            }
-            Vector3 ortho = sdir - n * Vector3.Dot(n, sdir);
-            if (ortho.LengthSquared() <= 1e-12f) return Vector4.Zero;
-            ortho = Vector3.Normalize(ortho);
-            float w = Vector3.Dot(Vector3.Cross(n, sdir), tdir) < 0f ? -1f : 1f;
-            return new Vector4(ortho, w);
-        }
-
         public static GltfMesh Build(IReadOnlyList<MeshCorner> corners)
         {
             if (corners == null) throw new ArgumentNullException(nameof(corners));
@@ -116,18 +96,9 @@ namespace KhaozEngine.Render3D
             {
                 MeshCorner c0 = corners[t], c1 = corners[t + 1], c2 = corners[t + 2];
                 Vector3 faceN = Vector3.Cross(c1.Position - c0.Position, c2.Position - c0.Position);
-                // Lengyel per-face tangent (s) / bitangent (t) directions from the UV gradient.
-                Vector3 e1 = c1.Position - c0.Position, e2 = c2.Position - c0.Position;
-                float du1 = c1.Uv.X - c0.Uv.X, dv1 = c1.Uv.Y - c0.Uv.Y;
-                float du2 = c2.Uv.X - c0.Uv.X, dv2 = c2.Uv.Y - c0.Uv.Y;
-                float r = du1 * dv2 - du2 * dv1;
-                Vector3 sdir = Vector3.Zero, tdir = Vector3.Zero;
-                if (MathF.Abs(r) > 1e-12f)
-                {
-                    float f = 1f / r;
-                    sdir = (e1 * dv2 - e2 * dv1) * f;
-                    tdir = (e2 * du1 - e1 * du2) * f;
-                }
+                // Lengyel per-face tangent (s) / bitangent (t) directions from the UV gradient (shared math).
+                TangentMath.FaceDirections(c0.Position, c1.Position, c2.Position, c0.Uv, c1.Uv, c2.Uv,
+                    out Vector3 sdir, out Vector3 tdir);
                 indices.Add(Resolve(c0, faceN, sdir, tdir));
                 indices.Add(Resolve(c1, faceN, sdir, tdir));
                 indices.Add(Resolve(c2, faceN, sdir, tdir));
@@ -139,7 +110,7 @@ namespace KhaozEngine.Render3D
             for (int i = 0; i < positions.Count; i++)
             {
                 Vector3 n = normals[i].LengthSquared() > 1e-12f ? Vector3.Normalize(normals[i]) : Vector3.UnitY;
-                verts[i] = new ModelVertex(positions[i], n, colors[i], uvs[i], ResolveTangent(n, tan1[i], tan2[i], srcTangent[i]));
+                verts[i] = new ModelVertex(positions[i], n, colors[i], uvs[i], TangentMath.Resolve(n, tan1[i], tan2[i], srcTangent[i]));
             }
 
             var outIndices = new uint[indices.Count];

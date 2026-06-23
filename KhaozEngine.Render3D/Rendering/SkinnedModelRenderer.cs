@@ -71,7 +71,8 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuVertexElement("Color", GpuVertexElementFormat.Float4),
                 new GpuVertexElement("TexCoord", GpuVertexElementFormat.Float2),
                 new GpuVertexElement("BoneIndices", GpuVertexElementFormat.Float4),
-                new GpuVertexElement("BoneWeights", GpuVertexElementFormat.Float4));
+                new GpuVertexElement("BoneWeights", GpuVertexElementFormat.Float4),
+                new GpuVertexElement("Tangent", GpuVertexElementFormat.Float4)); // matches SkinnedVertex (offset 80)
 
             var instanceLayout = new GpuVertexLayoutDescription(
                 stride: SkinnedInstanceData.SizeInBytes,

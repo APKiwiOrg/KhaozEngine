@@ -156,13 +156,18 @@ void main() {
 }";
 
         // ---- Skinned model vertex shader. Same per-frame UBO (set 0, binding 0) and same per-instance stream as
-        //      ModelVert, plus two per-vertex attributes (bone indices + weights). The bone palette is a
-        //      DYNAMIC-OFFSET uniform buffer (set 1, binding 0): each skinned draw rebinds it with a per-draw byte
-        //      offset, so the shader reads bones[0..N] for THIS draw without any per-instance index. (A per-instance
-        //      bone-offset attribute into a single shared buffer mis-fetched for every draw past the first on the
-        //      Metal/Veldrid backend; dynamic-offset rebasing avoids it.) Outputs match ModelVert (locations 0..8)
-        //      so the shared ModelFrag links from either shader. vTangent is emitted as zero: skinned meshes carry
-        //      no tangents this release, so ModelFrag falls back to the geometric normal (bit-identical to pre-PBR). ----
+        //      ModelVert, plus per-vertex bone indices + weights AND a tangent (location 6, mirroring ModelVert's
+        //      per-vertex tangent). The bone palette is a DYNAMIC-OFFSET uniform buffer (set 1, binding 0): each
+        //      skinned draw rebinds it with a per-draw byte offset, so the shader reads bones[0..N] for THIS draw
+        //      without any per-instance index. (A per-instance bone-offset attribute into a single shared buffer
+        //      mis-fetched for every draw past the first on the Metal/Veldrid backend; dynamic-offset rebasing avoids
+        //      it.) The per-instance stream shifts from locations 6..12 to 7..13 to make room for the tangent.
+        //      Outputs match ModelVert (locations 0..8) so the shared ModelFrag links from either shader. The tangent
+        //      rides the skin+model rotation like the normal and keeps its handedness w; a zero tangent (untangented
+        //      skinned mesh) carries through as zero, so ModelFrag falls back to the geometric normal
+        //      (bit-identical to the pre-PBR pass). NB Scene3D draws skinned meshes via CPU skinning through the rigid
+        //      ModelRenderer pipeline (the GPU bone read corrupts past element 0 in the windowed Veldrid/Metal
+        //      context); this shader is the revivable GPU-skinning reference and stays in sync with SkinningMath. ----
         public const string SkinnedModelVert = @"#version 450
 layout(set=0, binding=0) uniform U {
     mat4 ViewProj;
@@ -178,13 +183,14 @@ layout(location=2) in vec4 Color;
 layout(location=3) in vec2 TexCoord;
 layout(location=4) in vec4 BoneIndices;  // up to 4 bone indices, float-encoded
 layout(location=5) in vec4 BoneWeights;  // 4 weights, normalized at load
-layout(location=6)  in vec4 IModel0;     // per-instance model matrix rows
-layout(location=7)  in vec4 IModel1;
-layout(location=8)  in vec4 IModel2;
-layout(location=9)  in vec4 IModel3;
-layout(location=10) in vec4 ITint;
-layout(location=11) in vec4 IEmissive;
-layout(location=12) in vec4 ISpecParams;
+layout(location=6) in vec4 Tangent;      // model-space tangent (xyz) + handedness (w); zero => no TBN
+layout(location=7)  in vec4 IModel0;     // per-instance model matrix rows
+layout(location=8)  in vec4 IModel1;
+layout(location=9)  in vec4 IModel2;
+layout(location=10) in vec4 IModel3;
+layout(location=11) in vec4 ITint;
+layout(location=12) in vec4 IEmissive;
+layout(location=13) in vec4 ISpecParams;
 layout(location=0) out vec3 vNormalW;
 layout(location=1) out vec4 vColor;
 layout(location=2) out float vDepth;
@@ -209,7 +215,8 @@ void main() {
     vec4 local = skin * vec4(Position, 1.0);
     vec4 world = Model * local;
     gl_Position = ViewProj * world;
-    vNormalW = normalize(mat3(Model) * mat3(skin) * Normal);
+    mat3 deform = mat3(Model) * mat3(skin); // rotate normal + tangent through skin then model
+    vNormalW = normalize(deform * Normal);
     vColor = Color;
     vDepth = gl_Position.z / gl_Position.w;
     vWorldPos = world.xyz;
@@ -217,7 +224,11 @@ void main() {
     vTint = ITint;
     vEmissive = IEmissive;
     vSpecParams = ISpecParams;
-    vTangent = vec4(0.0); // no tangents on skinned meshes; ModelFrag falls back to geometric normal
+    // Carry the tangent through the same deform; preserve handedness. Zero tangent stays zero (ModelFrag then
+    // lights with the geometric normal), matching SkinningMath.SkinVertex (the CPU path Scene3D actually uses).
+    vTangent = (dot(Tangent.xyz, Tangent.xyz) > 1e-10)
+        ? vec4(deform * Tangent.xyz, Tangent.w)
+        : vec4(0.0);
 }";
 
         // ---- Debug line overlay. Standalone mat4 ViewProj UBO (64 bytes), its own layout/buffer,

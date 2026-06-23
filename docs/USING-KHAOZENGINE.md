@@ -402,8 +402,10 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
   `MeshAssembler` output; `MeshPrimitives` carry no tangent, so a normal map is inert on a primitive (it stays lit
   by its geometric normal). Roughness uses the glTF metallic-roughness `.g` convention (0 = smooth/glossy,
   1 = matte; metallic is ignored) and modulates the Blinn-Phong specular. Meshes with no maps render exactly as
-  before. Skinned meshes are albedo-only this release. The pure `SurfaceShading` helper mirrors the shader math
-  (handy for headless tests / tooling).
+  before. Skinned meshes take normal/roughness too (since 7.28.0): bind via
+  `scene.LoadSkinnedMesh(mesh, new Scene3D.SurfaceMaps(albedo, normal, roughness))`; `GltfLoader.LoadSkinned` and
+  `SkinnedMeshBuilder.BuildTube` compute tangents, and the tangent rides the per-frame skin deform so the TBN
+  tracks the pose. The pure `SurfaceShading` helper mirrors the shader math (handy for headless tests / tooling).
 - Smooth / realistic look: a realistic material is still quantized + outlined by the FULLSCREEN post passes
   (palette, edge outline, cel bands), so call `scene.Post.UseSmoothPreset()` (since 7.25.0) to turn those off
   (cel bands / quantize / dither / outline / starfield / pixelated) in one call for a smooth look. Lighting and
@@ -479,7 +481,10 @@ SkinnedGltfMesh tube = SkinnedMeshBuilder.BuildTube(radius: 0.4f, length: 5f,
     ringSegments: 12, radialSegments: 8, boneCount: 8, axis: Axis.Z);
 SkinnedMeshHandle h = scene.LoadSkinnedMesh(tube, albedoTex);
 
-// Or load an authored rig (reads JOINTS_0/WEIGHTS_0 + inverse-bind; embedded images ignored):
+// PBR-lite on a skinned mesh (since 7.28.0): bind normal + roughness alongside the albedo.
+// SkinnedMeshHandle h = scene.LoadSkinnedMesh(tube, new Scene3D.SurfaceMaps(albedoTex, normalTex, roughTex));
+
+// Or load an authored rig (reads JOINTS_0/WEIGHTS_0 + inverse-bind + TANGENT; embedded images ignored):
 // SkinnedMeshHandle h = scene.LoadSkinnedMesh(GltfLoader.LoadSkinned("creature.glb"), albedoTex);
 
 // Each frame: supply one joint world transform per bone (model space). Passing tube.RestPose

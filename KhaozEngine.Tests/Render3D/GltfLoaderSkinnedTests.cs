@@ -82,6 +82,47 @@ namespace KhaozEngine.Tests.Render3D
             finally { File.Delete(path); }
         }
 
+        // A rigged triangle WITH UVs (no authored TANGENT) so the loader computes a per-vertex tangent from
+        // UV+position. The computed tangents must be finite and either zero or unit (the model shader's
+        // contract), and at least one vertex carries a real tangent (the triangle has a UV gradient).
+        [Fact]
+        public void LoadSkinned_ComputesTangentsFromUvWhenAbsent()
+        {
+            var mesh = new MeshBuilder<VertexPositionNormal, VertexTexture1, VertexJoints4>("uvskin");
+            var prim = mesh.UsePrimitive(MaterialBuilder.CreateDefault());
+
+            VertexBuilder<VertexPositionNormal, VertexTexture1, VertexJoints4> V(Vector3 p, Vector2 uv, int bone) =>
+                new(new VertexPositionNormal(p, Vector3.UnitZ), new VertexTexture1(uv), new VertexJoints4((bone, 1f)));
+
+            prim.AddTriangle(
+                V(new Vector3(0, 0, 0), new Vector2(0, 0), 0),
+                V(new Vector3(1, 0, 0), new Vector2(1, 0), 1),
+                V(new Vector3(0, 1, 0), new Vector2(0, 1), 1));
+
+            var bone0 = new NodeBuilder("bone0");
+            var bone1 = bone0.CreateNode("bone1");
+            bone1.LocalTransform = Matrix4x4.CreateTranslation(0, 1, 0);
+            var scene = new SceneBuilder();
+            scene.AddSkinnedMesh(mesh, Matrix4x4.Identity, bone0, bone1);
+            string path = Path.Combine(Path.GetTempPath(), $"ke_uvskin_{Guid.NewGuid():N}.glb");
+            scene.ToGltf2().SaveGLB(path);
+            try
+            {
+                SkinnedGltfMesh m = GltfLoader.LoadSkinned(path);
+                int real = 0;
+                foreach (var v in m.Vertices)
+                {
+                    var t = new Vector3(v.Tangent.X, v.Tangent.Y, v.Tangent.Z);
+                    Assert.True(float.IsFinite(t.X) && float.IsFinite(t.Y) && float.IsFinite(t.Z) && float.IsFinite(v.Tangent.W));
+                    float len = t.Length();
+                    Assert.True(len < 1e-4f || (len > 0.99f && len < 1.01f), $"tangent neither zero nor unit: {len}");
+                    if (len > 0.99f) { real++; Assert.True(v.Tangent.W == 1f || v.Tangent.W == -1f); }
+                }
+                Assert.True(real > 0, "a UV-bearing triangle should yield at least one real tangent");
+            }
+            finally { File.Delete(path); }
+        }
+
         [Fact]
         public void LoadSkinned_OnUnriggedMesh_Throws()
         {

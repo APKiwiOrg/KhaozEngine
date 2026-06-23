@@ -96,4 +96,58 @@ public class MigrationChainTests
         Assert.Equal(1, result.Ver);   // no steps, nothing to do
         Assert.Empty(result.Steps);
     }
+
+    [Fact]
+    public void Migrate_VersionBelowOldestStep_LeavesValueAndWarns()
+    {
+        var logger = new FakeLogger();
+        var chain = MigrationChain.For<Poco>(p => p.Ver, (p, v) => p.Ver = v)
+            .Step(2, p => { p.Steps.Add(2); return p; })   // oldest step is from v2
+            .Build(3);
+
+        var result = chain.Migrate(new Poco { Ver = 1 }, logger);   // file is older than any step
+
+        Assert.Equal(1, result.Ver);
+        Assert.Empty(result.Steps);
+        Assert.Contains(logger.Entries, e => e.Level == LogLevel.Warn);
+    }
+
+    [Fact]
+    public void Migrate_StepThrows_HaltsAndKeepsCompletedSteps_AndLogsError()
+    {
+        var logger = new FakeLogger();
+        var chain = MigrationChain.For<Poco>(p => p.Ver, (p, v) => p.Ver = v)
+            .Step(1, p => { p.Steps.Add(1); return p; })                       // 1 -> 2 ok
+            .Step(2, p => throw new InvalidOperationException("boom"))          // 2 -> 3 throws
+            .Step(3, p => { p.Steps.Add(3); return p; })                       // never reached
+            .Build(4);
+
+        var result = chain.Migrate(new Poco { Ver = 1 }, logger);
+
+        Assert.Equal(2, result.Ver);                  // only the first step's bump stuck
+        Assert.Equal(new[] { 1 }, result.Steps);      // step 3 never ran
+        Assert.Contains(logger.Entries, e => e.Level == LogLevel.Error);
+    }
+
+    [Fact]
+    public void Migrate_GetVersionDelegateThrows_Swallowed_ReturnsValue_AndLogsError()
+    {
+        var logger = new FakeLogger();
+        var chain = MigrationChain.For<Poco>(_ => throw new InvalidOperationException("bad get"), (p, v) => p.Ver = v)
+            .Step(1, p => p)
+            .Build(2);
+        var value = new Poco { Ver = 1 };
+
+        var result = chain.Migrate(value, logger);
+
+        Assert.Same(value, result);
+        Assert.Contains(logger.Entries, e => e.Level == LogLevel.Error);
+    }
+
+    [Fact]
+    public void Migrate_NullValue_ReturnsNull()
+    {
+        var chain = MigrationChain.For<Poco>(p => p.Ver, (p, v) => p.Ver = v).Step(1, p => p).Build(2);
+        Assert.Null(chain.Migrate(null!));
+    }
 }

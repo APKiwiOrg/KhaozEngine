@@ -472,8 +472,10 @@ float sdBox(vec2 p, vec2 b) { vec2 d = abs(p) - b; return length(max(d, 0.0)) + 
 
 void main() {
     float depth = texture(sampler2D(DepthTex, Samp), vUv).r;
-    // Reconstruct world position from NDC (xy from screen UV, z from sampled depth).
-    vec4 ndc = vec4(vUv * 2.0 - 1.0, depth, 1.0);
+    // Reconstruct world position from NDC (xy from screen UV, z from sampled depth). The depth texture's
+    // sampling origin is top-left (v=0 maps to NDC y=+1), so the y term is negated; without this the
+    // reconstructed world Y ramps across the screen and the Y-band gate clips every shape to a strip.
+    vec4 ndc = vec4(vUv.x * 2.0 - 1.0, 1.0 - vUv.y * 2.0, depth, 1.0);
     vec4 wp = InvViewProj * ndc;
     vec3 world = wp.xyz / wp.w;
 

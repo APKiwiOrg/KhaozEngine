@@ -42,7 +42,7 @@ namespace KhaozEngine.Render3D.Rendering
         {
             _gd = gd;
             var f = gd.Factory;
-            _shaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert, ShaderSources.DecalFrag);
+            _shaders = f.CreateShadersFromSpirv(ShaderSources.DecalVert, ShaderSources.DecalFrag);
             _ubo = f.CreateBuffer(new GpuBufferDescription(160, GpuBufferUsage.UniformBuffer));
             _layout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 new GpuResourceLayoutElement("DepthTex", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
@@ -57,7 +57,10 @@ namespace KhaozEngine.Render3D.Rendering
             {
                 BlendFactor = Vector4.Zero,
                 BlendAttachments = new[] { blend },
-                DepthStencil = GpuDepthStencilState.Disabled,
+                // Read-only depth test: the far-plane quad (DecalVert) passes Greater only where stored depth is
+                // nearer than the far plane, i.e. only on scene geometry; background (cleared far) is rejected. No
+                // depth write, so the scene depth is untouched for any later pass.
+                DepthStencil = new GpuDepthStencilState(depthTestEnabled: true, depthWriteEnabled: false, GpuComparison.Greater),
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: false, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },
@@ -90,8 +93,8 @@ namespace KhaozEngine.Render3D.Rendering
             };
         }
 
-        /// <summary>Draw all queued decals into ColorOnlyFB. Caller guarantees the model pass is complete (depth
-        /// written) and the framebuffer is free to rebind. No-op when empty.</summary>
+        /// <summary>Draw all queued decals into ColorDepthFB (lit color + read-only scene depth). Caller guarantees
+        /// the model pass is complete (depth written) and the framebuffer is free to rebind. No-op when empty.</summary>
         public void Draw(IGpuCommandList cl, RenderResources res, Matrix4x4 viewProj, ReadOnlySpan<GroundDecal> decals)
         {
             if (decals.Length == 0) return;
@@ -102,7 +105,7 @@ namespace KhaozEngine.Render3D.Rendering
             {
                 var u = PackUbo(decals[i], inv);
                 cl.UpdateBuffer(_ubo, 0, in u);
-                cl.SetFramebuffer(res.ColorOnlyFB);
+                cl.SetFramebuffer(res.ColorDepthFB);
                 cl.SetPipeline(decals[i].Blend == DecalBlend.Additive ? _additivePipe : _alphaPipe);
                 cl.SetGraphicsResourceSet(0, _set!);
                 cl.Draw(3);

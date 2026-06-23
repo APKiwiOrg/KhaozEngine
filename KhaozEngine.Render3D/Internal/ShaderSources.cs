@@ -450,8 +450,20 @@ void main() {
         //      to terrain but does not climb walls), and blends fill+outline with an fwidth AA edge. One draw per
         //      decal (per-decal UBO). Renders into ColorTex (ColorOnlyFB) before the post chain, with alpha or
         //      additive blend. ----
+        // Fullscreen triangle at the FAR plane (z=1). The ground-decal pass renders this with the scene
+        // depth-stencil bound read-only and a Greater depth test, so a fragment passes only where the stored
+        // depth is nearer than the far plane - i.e. only where scene geometry was drawn. Background pixels
+        // (cleared to the far plane) fail the test and are never shaded, independent of the background color.
+        public const string DecalVert = @"#version 450
+layout(location=0) out vec2 vUv;
+void main() {
+    vec2 p = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);
+    vUv = p;
+    gl_Position = vec4(p * 2.0 - 1.0, 1.0, 1.0);
+}";
+
         public const string DecalFrag = @"#version 450
-layout(set=0, binding=0) uniform texture2D DepthTex;
+layout(set=0, binding=0) uniform texture2D DepthTex;   // .r = linear depth (single-channel R32F)
 layout(set=0, binding=1) uniform sampler Samp;
 layout(set=0, binding=2) uniform Decal {
     mat4 InvViewProj;
@@ -471,10 +483,15 @@ float sdRing(vec2 p, float ri, float ro) { float d = length(p); return max(ri - 
 float sdBox(vec2 p, vec2 b) { vec2 d = abs(p) - b; return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0); }
 
 void main() {
+    // Skip pixels with no scene geometry. The single-channel depth target carries no usable alpha marker
+    // (sampling R32F returns a=1 by default), and its .r at the background is just the clear color, so
+    // reconstructing from it lands at arbitrary world points that smear the decal across the background. The
+    // normal target IS RGBA8 and the model writes its alpha = 1 on geometry (the clear leaves 0), so use it.
+    // No-geometry background pixels are already rejected by the hardware depth test (see DecalVert). Reconstruct
+    // the surface world position from the sampled linear depth. The depth texture's sampling origin is top-left
+    // (v=0 maps to NDC y=+1), so the y term is negated; without this the reconstructed world Y ramps across the
+    // screen and the Y-band gate clips every shape to a strip.
     float depth = texture(sampler2D(DepthTex, Samp), vUv).r;
-    // Reconstruct world position from NDC (xy from screen UV, z from sampled depth). The depth texture's
-    // sampling origin is top-left (v=0 maps to NDC y=+1), so the y term is negated; without this the
-    // reconstructed world Y ramps across the screen and the Y-band gate clips every shape to a strip.
     vec4 ndc = vec4(vUv.x * 2.0 - 1.0, 1.0 - vUv.y * 2.0, depth, 1.0);
     vec4 wp = InvViewProj * ndc;
     vec3 world = wp.xyz / wp.w;

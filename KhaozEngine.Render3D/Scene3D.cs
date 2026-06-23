@@ -114,9 +114,9 @@ namespace KhaozEngine.Render3D
             // Beams draw into the same model MRT as the textured billboards (depth-interleaved), so they target the
             // model framebuffer's output description.
             _beams = new BeamRenderer(gd, _res.ModelFB.Outputs);
-            // Ground decals render into the lit color attachment (ColorOnlyFB) before the post chain, so they use
-            // the model framebuffer's output description (same color format).
-            _decalRenderer = new Rendering.GroundDecalRenderer(gd, _res.ColorOnlyFB.Outputs);
+            // Ground decals render into the lit color attachment + read-only scene depth (ColorDepthFB) before the
+            // post chain, so they pass that framebuffer's output description (color format + depth format).
+            _decalRenderer = new Rendering.GroundDecalRenderer(gd, _res.ColorDepthFB.Outputs);
         }
 
         /// <summary>An opaque handle to an albedo texture loaded with <see cref="LoadTexture(string)"/> /

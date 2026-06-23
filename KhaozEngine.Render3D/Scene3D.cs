@@ -47,6 +47,7 @@ namespace KhaozEngine.Render3D
         readonly List<ModelRenderer.PointLightData> _lights = new();
         readonly List<LineRenderer.LineVertex> _lineVerts = new();
         readonly List<FillRenderer.FillVertex> _fillVerts = new();
+        readonly List<GroundDecal> _decals = new();
         readonly List<BillboardRenderer.BillboardVertex> _billboardAlpha = new();
         readonly List<BillboardRenderer.BillboardVertex> _billboardAdditive = new();
         // Textured depth-interleaved billboards: queued in submission order (NOT split by blend, so additive and
@@ -367,6 +368,7 @@ namespace KhaozEngine.Render3D
             _lights.Clear();
             _lineVerts.Clear();
             _fillVerts.Clear();
+            _decals.Clear();
             _billboardAlpha.Clear();
             _billboardAdditive.Clear();
             _texBillboardItems.Clear();
@@ -540,6 +542,15 @@ namespace KhaozEngine.Render3D
         /// <summary>Count of queued filled-overlay vertices this frame (3 per triangle). Internal: lets tests
         /// assert <see cref="Begin"/> clears the queue and the builders queue the expected geometry.</summary>
         internal int FillVertexCount => _fillVerts.Count;
+
+        /// <summary>Queue one generic shaped ground decal for this frame (painted onto the ground/terrain via the
+        /// depth buffer, under the meshes, through the post chain). Presentation only; cleared in <see cref="Begin"/>.
+        /// The telegraph wrappers build these from a style + progress.</summary>
+        public void DrawGroundDecal(in GroundDecal decal) => _decals.Add(decal);
+
+        /// <summary>Count of ground decals queued this frame. Internal: lets tests assert <see cref="Begin"/> clears
+        /// the queue and <see cref="DrawGroundDecal"/> enqueues.</summary>
+        internal int DecalCount => _decals.Count;
 
         // ---- Camera-facing billboard overlay (immediate-mode; queued this frame, drawn on top after lines). ----
 

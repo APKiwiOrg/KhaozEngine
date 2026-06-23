@@ -300,4 +300,51 @@ public class SettingsManagerTests
             if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
         }
     }
+
+    [Fact]
+    public void Migrations_RunOnExplicitReload()
+    {
+        var storage = new FakeStorage { ToLoad = new VersionedBox { SchemaVersion = 1, Value = 0 } };
+        var chain = MigrationChain.For<VersionedBox>()
+            .Step(1, b => { b.Value = 7; return b; })
+            .Build(2);
+        var mgr = new SettingsManager<VersionedBox>(storage, logger: null, sanitizeOnLoad: null, migrations: chain);
+        Assert.Equal(2, mgr.Settings.SchemaVersion);   // ctor load already migrated
+
+        // Point storage at a fresh v1 value and reload explicitly via the public Load().
+        storage.ToLoad = new VersionedBox { SchemaVersion = 1, Value = 100 };
+        mgr.Load();
+
+        Assert.Equal(2, mgr.Settings.SchemaVersion);   // chain ran again on the manual reload
+        Assert.Equal(7, mgr.Settings.Value);           // step applied to the reloaded value (else it would be 100)
+    }
+
+    [Fact]
+    public void GameStorage_Load_AbsentFile_WithChain_ReturnsUntouchedDefault()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "ke-migrate-absent-" + Path.GetRandomFileName());
+        try
+        {
+            var env = new FakeAppDataEnvironment { IsMacOS = true };
+            env.Folders[Environment.SpecialFolder.ApplicationData] = root;
+            var paths = new AppDataPaths("APKiwi", "MigrateAbsent", env);
+
+            using var storage = new GameStorage(paths);
+            var chain = MigrationChain.For<SaveDoc>()
+                .Step(1, s => { s.Items.Add("from-v1"); return s; })
+                .Build(2);
+
+            var loaded = storage.Load<SaveDoc>("nosave.json", chain);
+
+            // Absent file => new SaveDoc() at SchemaVersion 0, which predates the chain's oldest
+            // step (1); the chain leaves it untouched per the "predates oldest step" policy.
+            Assert.NotNull(loaded);
+            Assert.Empty(loaded.Items);
+            Assert.Equal(0, loaded.SchemaVersion);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
 }

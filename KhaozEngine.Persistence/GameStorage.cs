@@ -73,34 +73,40 @@ public sealed class GameStorage : IDisposable
     /// <summary>
     /// Builds a <see cref="SettingsManager{T}"/> over <see cref="Settings"/> (which loads on
     /// construction), using the facade's logger. <paramref name="sanitizeOnLoad"/> is applied after
-    /// every load (clamp fields, migrate a schema version, etc.).
+    /// every load (clamp fields, normalize, etc.); <paramref name="migrations"/> is an optional versioned
+    /// migration chain run before it.
     /// </summary>
-    public SettingsManager<T> CreateSettingsManager<T>(Func<T, T>? sanitizeOnLoad = null) where T : new()
-        => new SettingsManager<T>(Settings, logger, sanitizeOnLoad);
+    public SettingsManager<T> CreateSettingsManager<T>(Func<T, T>? sanitizeOnLoad = null, MigrationChain<T>? migrations = null) where T : new()
+        => new SettingsManager<T>(Settings, logger, sanitizeOnLoad, migrations);
 
     /// <summary>
-    /// Loads <paramref name="fileName"/> and deserializes to <typeparamref name="T"/>. Returns a new
-    /// <typeparamref name="T"/> if the file is absent. If an encoder is configured and the content is
-    /// encoded, it is decoded transparently first (lenient: recovers JSON even on HMAC mismatch).
-    /// Reads committed on-disk state, so after a <see cref="Save{T}"/> call <see cref="Flush"/> before
-    /// loading the same file. Parsing tolerates comments and trailing commas (saves are written as
-    /// human-editable indented JSON).
+    /// Loads <paramref name="fileName"/> and deserializes to <typeparamref name="T"/>, then runs the optional
+    /// <paramref name="migrations"/> chain. Returns a new <typeparamref name="T"/> if the file is absent. If an
+    /// encoder is configured and the content is encoded, it is decoded transparently first (lenient: recovers
+    /// JSON even on HMAC mismatch). Reads committed on-disk state, so after a <see cref="Save{T}"/> call
+    /// <see cref="Flush"/> before loading the same file. Parsing tolerates comments and trailing commas (saves
+    /// are written as human-editable indented JSON).
     /// </summary>
-    public T Load<T>(string fileName) where T : new()
+    public T Load<T>(string fileName, MigrationChain<T>? migrations = null) where T : new()
     {
         string path = Paths.GetFilePath(fileName);
+        T value;
         if (!File.Exists(path))
         {
-            return new T();
+            value = new T();
         }
-
-        string content = File.ReadAllText(path);
-        if (Encoder is not null && Encoder.IsEncoded(content))
+        else
         {
-            content = Encoder.Decode(content) ?? content;
+            string content = File.ReadAllText(path);
+            if (Encoder is not null && Encoder.IsEncoded(content))
+            {
+                content = Encoder.Decode(content) ?? content;
+            }
+
+            value = JsonSerializer.Deserialize<T>(content, JsonDefaults.TolerantRead) ?? new T();
         }
 
-        return JsonSerializer.Deserialize<T>(content, JsonDefaults.TolerantRead) ?? new T();
+        return migrations is null ? value : migrations.Migrate(value, logger);
     }
 
     /// <summary>True when <paramref name="fileName"/> exists in the app-data directory.</summary>

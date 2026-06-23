@@ -237,4 +237,67 @@ public class SettingsManagerTests
         Assert.Equal(42, mgr.Settings.Value);   // throw swallowed; unsanitized value used
         Assert.Contains(logger.Entries, e => e.Level == LogLevel.Error);
     }
+
+    // GameStorage integration tests (Task 6).
+
+    private sealed class SaveDoc : ISchemaVersioned
+    {
+        public int SchemaVersion { get; set; }
+        public System.Collections.Generic.List<string> Items { get; set; } = new();
+    }
+
+    [Fact]
+    public void GameStorage_Load_WithChain_MigratesOldFileToCurrent()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "ke-migrate-" + Path.GetRandomFileName());
+        try
+        {
+            var env = new FakeAppDataEnvironment { IsMacOS = true };
+            env.Folders[Environment.SpecialFolder.ApplicationData] = root;
+            var paths = new AppDataPaths("APKiwi", "MigrateSave", env);
+            File.WriteAllText(paths.GetFilePath("save.json"), "{\"SchemaVersion\":1,\"Items\":[]}");
+
+            using var storage = new GameStorage(paths);
+            var chain = MigrationChain.For<SaveDoc>()
+                .Step(1, s => { s.Items.Add("from-v1"); return s; })
+                .Build(2);
+
+            var loaded = storage.Load<SaveDoc>("save.json", chain);
+
+            Assert.Equal(2, loaded.SchemaVersion);
+            Assert.Contains("from-v1", loaded.Items);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void GameStorage_CreateSettingsManager_ForwardsChain()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "ke-migrate-sm-" + Path.GetRandomFileName());
+        try
+        {
+            var env = new FakeAppDataEnvironment { IsMacOS = true };
+            env.Folders[Environment.SpecialFolder.ApplicationData] = root;
+            var paths = new AppDataPaths("APKiwi", "MigrateSm", env);
+
+            using var storage = new GameStorage(paths);
+            File.WriteAllText(paths.GetFilePath(storage.Settings.SettingsFileName), "{\"SchemaVersion\":1,\"Value\":3}");
+
+            var chain = MigrationChain.For<VersionedBox>()
+                .Step(1, b => { b.Value += 100; return b; })
+                .Build(2);
+
+            var mgr = storage.CreateSettingsManager<VersionedBox>(sanitizeOnLoad: null, migrations: chain);
+
+            Assert.Equal(2, mgr.Settings.SchemaVersion);
+            Assert.Equal(103, mgr.Settings.Value);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
 }

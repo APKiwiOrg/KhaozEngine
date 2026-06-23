@@ -89,12 +89,21 @@ public class MigrationChainTests
     }
 
     [Fact]
-    public void Build_EmptyChain_IsAllowed_AndNoOps()
+    public void Build_EmptyChain_IsAllowed_AndIsSilentNoOp()
     {
+        var logger = new FakeLogger();
         var chain = MigrationChain.For<Poco>(p => p.Ver, (p, v) => p.Ver = v).Build(3);
-        var result = chain.Migrate(new Poco { Ver = 1 });
+        var result = chain.Migrate(new Poco { Ver = 1 }, logger);
         Assert.Equal(1, result.Ver);   // no steps, nothing to do
         Assert.Empty(result.Steps);
+        Assert.Empty(logger.Entries);  // empty chain warns about nothing
+    }
+
+    [Fact]
+    public void Step_NullMigrate_Throws()
+    {
+        var builder = MigrationChain.For<Poco>(p => p.Ver, (p, v) => p.Ver = v);
+        Assert.Throws<ArgumentNullException>(() => builder.Step(1, null!));
     }
 
     [Fact]

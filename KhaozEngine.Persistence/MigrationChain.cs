@@ -20,10 +20,11 @@ public static class MigrationChain
 
     /// <summary>
     /// Begins a chain for a type that implements <see cref="ISchemaVersioned"/>; the version field is read
-    /// and written through <see cref="ISchemaVersioned.SchemaVersion"/>.
+    /// and written through <see cref="ISchemaVersioned.SchemaVersion"/>. The type must be a reference type;
+    /// use the delegate overload for value types.
     /// </summary>
     public static MigrationChainBuilder<T> For<T>()
-        where T : ISchemaVersioned, new()
+        where T : class, ISchemaVersioned, new()
         => new(v => v.SchemaVersion, (v, n) => v.SchemaVersion = n);
 }
 
@@ -47,7 +48,7 @@ public sealed class MigrationChainBuilder<T> where T : new()
     /// <summary>
     /// Registers the transform that takes a value from <paramref name="fromVersion"/> to
     /// <paramref name="fromVersion"/> + 1. The transform does ONLY the data change (mutate in place or
-    /// return a replacement); the chain stamps the version field afterwards. Returning null keeps the input.
+    /// return a replacement); the chain stamps the version field afterwards.
     /// </summary>
     /// <exception cref="ArgumentNullException"><paramref name="migrate"/> is null.</exception>
     /// <exception cref="ArgumentException">A step from <paramref name="fromVersion"/> is already registered.</exception>
@@ -134,6 +135,7 @@ public sealed class MigrationChain<T> where T : new()
     public T Migrate(T value, ILogger? logger = null)
     {
         if (value is null) return value;
+        if (steps.Count == 0) return value;   // empty chain: silent no-op, nothing to migrate
         logger ??= Log.Get("MigrationChain");
 
         try

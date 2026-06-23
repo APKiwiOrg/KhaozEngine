@@ -3,6 +3,8 @@ using System.Numerics;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 
+// Namespace is KhaozEngine.Telegraphs (the 2D core's namespace), not .Render3D, on purpose: a consumer that has
+// `using KhaozEngine.Telegraphs;` for TelegraphStyle/presets then also gets the Ground* extension methods in scope.
 namespace KhaozEngine.Telegraphs
 {
     /// <summary>

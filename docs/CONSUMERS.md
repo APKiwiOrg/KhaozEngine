@@ -107,8 +107,8 @@ fine-grained use - a wire-contract project references just `Netcode.Abstractions
 
 | Metapackage | Pulls in | For |
 |---|---|---|
-| `KhaozEngine.Game2D` | 2D runtime (Windowing/Render2D/Gui/Audio/Particles) + `Game` (the Render3D-free loop framework) + `Foundation` | a desktop 2D game |
-| `KhaozEngine.Game3D` | `Game2D` + `Render3D` + `Game.Render3D` (the 3D scene bridge: GameApp3D/IGameScene3D/SceneManager.Draw3D) | a desktop 3D game |
+| `KhaozEngine.Game2D` | 2D runtime (Windowing/Render2D/Gui/Audio/Particles/Effects/Telegraphs) + `Game` (the Render3D-free loop framework) + `Foundation` | a desktop 2D game |
+| `KhaozEngine.Game3D` | `Game2D` + `Render3D` + `Telegraphs.Render3D` + `Game.Render3D` (the 3D scene bridge: GameApp3D/IGameScene3D/SceneManager.Draw3D) | a desktop 3D game |
 | `KhaozEngine.Server` | `Foundation` + netcode (`Netcode`/`.Abstractions`/`.LiteNetLib`) | a headless sim server (no GPU) |
 | `KhaozEngine.Foundation` | the GPU-free foundation (Primitives/App/Content/Diagnostics/Ecs/Localization/Persistence/Serialization/Pooling/Collision/Platform/Updates) | a gameplay-logic library (no renderer) |
 

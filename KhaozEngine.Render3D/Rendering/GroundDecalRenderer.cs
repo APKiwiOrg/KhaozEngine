@@ -8,11 +8,13 @@ using KhaozEngine.Render3D.Internal;
 namespace KhaozEngine.Render3D.Rendering
 {
     /// <summary>
-    /// Draws the queued <see cref="GroundDecal"/>s as a fullscreen pass per decal into the lit color attachment
-    /// (ColorOnlyFB), sampling the linear depth to reconstruct each pixel's surface world position and painting the
-    /// decal's analytic shape onto the ground/terrain. Runs after the model+beam passes and before the post chain,
-    /// so decals are occluded by geometry (Y-band gate) and flow through quantize/blit. One draw per decal with a
-    /// per-decal UBO (no per-instance vertex attributes). Two pipelines: alpha and additive.
+    /// Draws the queued <see cref="GroundDecal"/>s as a far-plane fullscreen pass per decal into the lit color
+    /// attachment + read-only scene depth (ColorDepthFB), sampling the linear depth to reconstruct each pixel's
+    /// surface world position and painting the decal's analytic shape onto the ground/terrain. Runs after the
+    /// model+beam passes and before the post chain, so decals are occluded by geometry (the read-only depth test
+    /// rejects no-geometry background; the Y-band gate keeps shapes off vertical faces) and flow through
+    /// quantize/blit. One draw per decal with a per-decal UBO (no per-instance vertex attributes). Two pipelines:
+    /// alpha and additive.
     /// </summary>
     internal sealed class GroundDecalRenderer : IDisposable
     {

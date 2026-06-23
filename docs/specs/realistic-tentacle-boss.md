@@ -23,6 +23,7 @@ tentacles game-side and is the likely host; the engine pieces below are game-agn
 | C | 3D beam/laser primitive (`Scene3D.DrawBeam` + `BeamStyle`) | **shipped 7.26.0** |
 | D | `ProceduralChainSolver` (3D writhe + FABRIK reach + slam envelope) | **shipped 7.27.0** |
 | E | PBR-lite on the **skinned** pass (normal/roughness on rigged meshes) | **shipped 7.28.0** |
+| F | Opt-in glTF material texture auto-read (`GltfLoader.LoadWithMaterial` / `LoadSkinnedWithMaterial` → `GltfMaterialMaps`) | **shipped 7.29.0** |
 
 ### The skinned-PBR gap (E) — shipped 7.28.0
 
@@ -39,7 +40,7 @@ no-maps / zero-tangent path is byte-identical to 7.27.0 (committed skinned golde
 fully-rigged realistic octopus now gets surface detail everywhere; the mesh-split workaround below is no
 longer required (still valid if you want it for other reasons).
 
-## Asset-export contract (against 7.28.0)
+## Asset-export contract (against 7.29.0)
 
 A model handed to the engine for this boss must meet:
 
@@ -58,11 +59,19 @@ A model handed to the engine for this boss must meet:
   against the rig and rejects out-of-range ones — see 7.24.0.)
 
 **Textures / materials**
-- Engine does **not** auto-read glTF material textures. Bind explicitly: load PNGs with
-  `Scene3D.LoadTexture(path)` and pass `new SurfaceMaps(albedo, normal, roughness)` to
-  `LoadMesh(mesh, maps)` (rigid) or `LoadSkinnedMesh(mesh, maps)` (skinned, 7.28.0+). Albedo / normal /
-  roughness as separate PNGs.
-- Roughness uses the glTF metallic-roughness `.g` convention (metallic ignored).
+- Two ways to bind, your choice:
+  - **Explicit (the default, fully under your control):** load PNGs with `Scene3D.LoadTexture(path)` and
+    pass `new SurfaceMaps(albedo, normal, roughness)` to `LoadMesh(mesh, maps)` (rigid) or
+    `LoadSkinnedMesh(mesh, maps)` (skinned, 7.28.0+). Albedo / normal / roughness as separate PNGs.
+  - **Auto-read off the glb (opt-in, shipped 7.29.0 — F):** `GltfLoader.LoadWithMaterial(path)` (rigid) /
+    `LoadSkinnedWithMaterial(path)` (skinned) return the mesh PLUS a `GltfMaterialMaps` of the material's
+    decoded baseColor / normal / metallicRoughness textures (embedded or external). Hand it to
+    `scene.LoadSurfaceMaps(maps)` → `SurfaceMaps`, or use the one-call `LoadMesh(mesh, maps)` /
+    `LoadSkinnedMesh(mesh, maps)` `GltfMaterialMaps` overloads. A material with no (or missing/undecodable)
+    textures yields an all-absent bundle and falls back to the renderer defaults — no throw. The default
+    `Load`/`LoadSkinned` + explicit-`SurfaceMaps` path is unchanged, so auto-read is purely additive.
+- Roughness uses the glTF metallic-roughness `.g` convention (metallic ignored); auto-read passes the packed
+  texture through unchanged (no repack).
 - Export `TANGENT` for normal-mapped parts, rigid or skinned (the loader falls back to a computed
   tangent; a zero tangent means "use the geometric normal").
 - **Skinned parts now take normal/roughness maps too (E shipped 7.28.0)** — bind them via

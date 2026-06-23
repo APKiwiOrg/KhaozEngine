@@ -406,6 +406,18 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
   `scene.LoadSkinnedMesh(mesh, new Scene3D.SurfaceMaps(albedo, normal, roughness))`; `GltfLoader.LoadSkinned` and
   `SkinnedMeshBuilder.BuildTube` compute tangents, and the tangent rides the per-frame skin deform so the TBN
   tracks the pose. The pure `SurfaceShading` helper mirrors the shader math (handy for headless tests / tooling).
+- Auto-read glTF material textures (opt-in, since 7.29.0): instead of exporting PNGs and binding them by hand, let
+  the loader read the material's textures straight off the glb. `GltfLoader.LoadWithMaterial(path)` returns
+  `(GltfMesh Mesh, GltfMaterialMaps Maps)` and `LoadSkinnedWithMaterial(path)` the skinned equivalent; the mesh is
+  identical to `Load`/`LoadSkinned`, and `GltfMaterialMaps` carries the decoded baseColor / normal /
+  metallicRoughness textures as raw RGBA8 `DecodedImage?` (the loader has no GPU device, so it decodes only -
+  metallicRoughness passes through unchanged since the shader reads roughness from `.g`, normal stays
+  tangent-space RGB). Upload them with `scene.LoadSurfaceMaps(maps)` → `SurfaceMaps`, or skip a step with the
+  one-call overloads `scene.LoadMesh(mesh, maps)` / `scene.LoadSkinnedMesh(mesh, maps)` (both taking a
+  `GltfMaterialMaps`). Embedded GLB images and external image files are both read; a material with no textures - or
+  a missing/undecodable image - yields an all-absent bundle (`maps.IsEmpty`) and falls back to the renderer
+  defaults, never a throw. The default explicit-`SurfaceMaps` path is unchanged, so this is purely a convenience
+  on top.
 - Smooth / realistic look: a realistic material is still quantized + outlined by the FULLSCREEN post passes
   (palette, edge outline, cel bands), so call `scene.Post.UseSmoothPreset()` (since 7.25.0) to turn those off
   (cel bands / quantize / dither / outline / starfield / pixelated) in one call for a smooth look. Lighting and

@@ -26,9 +26,24 @@
 
 name: cross-platform-gpu
 
+# Cost control: the macOS leg bills at 10x, so don't fire this matrix on EVERY push. On push it runs
+# only when something that can change a GPU golden is touched (rendering stack, the GPU seam, the GPU
+# test dir, or this workflow). Docs/netcode/etc. pushes skip it. PRs + manual bake still run as before.
+concurrency:
+  group: cross-platform-gpu-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'KhaozEngine.Render3D/**'
+      - 'KhaozEngine.Render2D/**'
+      - 'KhaozEngine.Gpu/**'
+      - 'KhaozEngine.Gui/**'
+      - 'KhaozEngine.Primitives/**'
+      - 'KhaozEngine.Tests/Gpu/**'
+      - '.github/workflows/cross-platform-gpu.yml'
   pull_request:
     branches: [ main ]
   workflow_dispatch:

@@ -1,4 +1,10 @@
 name: ci
+# Cancel a superseded in-flight run on the SAME ref (rapid push series stop stacking). Grouped by ref so
+# a tag run (refs/tags/v*) gets its own group and is never cancelled by a branch push - the publish leg
+# (tags only) is safe.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 on:
   push:
     branches: [ main ]

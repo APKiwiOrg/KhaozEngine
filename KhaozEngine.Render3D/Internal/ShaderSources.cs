@@ -488,11 +488,15 @@ void main() {
     // reconstructing from it lands at arbitrary world points that smear the decal across the background. The
     // normal target IS RGBA8 and the model writes its alpha = 1 on geometry (the clear leaves 0), so use it.
     // No-geometry background pixels are already rejected by the hardware depth test (see DecalVert). Reconstruct
-    // the surface world position from the sampled linear depth. The depth texture's sampling origin is top-left
-    // (v=0 maps to NDC y=+1), so the y term is negated; without this the reconstructed world Y ramps across the
-    // screen and the Y-band gate clips every shape to a strip.
-    float depth = texture(sampler2D(DepthTex, Samp), vUv).r;
-    vec4 ndc = vec4(vUv.x * 2.0 - 1.0, 1.0 - vUv.y * 2.0, depth, 1.0);
+    // the surface world position from the linear depth. Sample by integer pixel (texelFetch at gl_FragCoord) and
+    // build NDC from gl_FragCoord, NOT from an interpolated UV: render-target texture SAMPLING has a
+    // backend-dependent Y origin (Veldrid does not normalize it; the post passes hide this because they sample and
+    // write at the same UV so any flip cancels, but a reconstruction does not), whereas gl_FragCoord is upper-left
+    // on every backend. Reconstruct with the RAW (un-clip-corrected) inverse view-projection, matching the
+    // backend-independent Camera.ScreenToRay picking convention. This keeps the decal identical on Metal/D3D11/Vulkan.
+    ivec2 sz = textureSize(sampler2D(DepthTex, Samp), 0);
+    float depth = texelFetch(sampler2D(DepthTex, Samp), ivec2(gl_FragCoord.xy), 0).r;
+    vec4 ndc = vec4(gl_FragCoord.x / float(sz.x) * 2.0 - 1.0, 1.0 - gl_FragCoord.y / float(sz.y) * 2.0, depth, 1.0);
     vec4 wp = InvViewProj * ndc;
     vec3 world = wp.xyz / wp.w;
 

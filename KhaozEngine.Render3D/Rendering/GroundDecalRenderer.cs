@@ -79,7 +79,7 @@ namespace KhaozEngine.Render3D.Rendering
             _bound = res; _boundW = res.Width; _boundH = res.Height;
         }
 
-        /// <summary>Pure: pack a decal + the (already clip-corrected, inverted) view-projection into the UBO.</summary>
+        /// <summary>Pure: pack a decal + the (raw, inverted) view-projection into the UBO.</summary>
         public static DecalUbo PackUbo(in GroundDecal d, Matrix4x4 invViewProj)
         {
             Vector4 fill = d.FillColor; Vector4 outline = d.OutlineColor;
@@ -101,8 +101,11 @@ namespace KhaozEngine.Render3D.Rendering
         {
             if (decals.Length == 0) return;
             BindTargets(res);
-            Matrix4x4 clipVp = GpuClip.Correct(viewProj, _gd.Capabilities);
-            Matrix4x4.Invert(clipVp, out var inv);
+            // Reconstruct with the RAW view-projection inverse (NOT GpuClip-corrected): the decal frag does a
+            // screen->world unprojection like Camera.ScreenToRay picking, which is CPU/backend-independent. Using
+            // the clip-corrected matrix here desynced Vulkan; combined with the frag's texelFetch(gl_FragCoord)
+            // sampling (no UV Y-origin dependence), the reconstruction is now uniform across all backends.
+            Matrix4x4.Invert(viewProj, out var inv);
             for (int i = 0; i < decals.Length; i++)
             {
                 var u = PackUbo(decals[i], inv);

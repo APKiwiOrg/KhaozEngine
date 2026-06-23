@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using KhaozEngine.Render3D;
 using Xunit;
@@ -29,6 +30,24 @@ namespace KhaozEngine.Tests.Render3D
             var frames = PolylineFrames.Build(pts, Axis.Z, Vector3.UnitY);
             Vector3 localZ = Vector3.TransformNormal(Vector3.UnitZ, frames[1]);
             Assert.True(localZ.X > 0.5f, $"run axis should bend toward +X, got {localZ}");
+        }
+
+        [Fact]
+        public void BuildInto_MatchesAllocatingBuild()
+        {
+            var pts = new[] { new Vector3(0, 0, 0), new Vector3(1, 0, 1), new Vector3(2, 0, 1) };
+            var expected = PolylineFrames.Build(pts, Axis.Z, Vector3.UnitY);
+            var into = new Matrix4x4[pts.Length];
+            PolylineFrames.BuildInto(pts, Axis.Z, Vector3.UnitY, into);
+            Assert.Equal(expected, into);
+        }
+
+        [Fact]
+        public void BuildInto_RejectsTooSmallDestination()
+        {
+            var pts = new[] { new Vector3(0, 0, 0), new Vector3(0, 0, 1) };
+            var into = new Matrix4x4[1];
+            Assert.Throws<ArgumentException>(() => PolylineFrames.BuildInto(pts, Axis.Z, Vector3.UnitY, into));
         }
     }
 }

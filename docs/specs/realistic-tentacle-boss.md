@@ -24,6 +24,7 @@ tentacles game-side and is the likely host; the engine pieces below are game-agn
 | D | `ProceduralChainSolver` (3D writhe + FABRIK reach + slam envelope) | **shipped 7.27.0** |
 | E | PBR-lite on the **skinned** pass (normal/roughness on rigged meshes) | **shipped 7.28.0** |
 | F | Opt-in glTF material texture auto-read (`GltfLoader.LoadWithMaterial` / `LoadSkinnedWithMaterial` → `GltfMaterialMaps`) | **shipped 7.29.0** |
+| G | Turn-key `SkinnedLimb` component (bundles BuildTube + solver + frames + DrawSkinned) | **shipped 7.30.0** |
 
 ### The skinned-PBR gap (E) — shipped 7.28.0
 
@@ -94,6 +95,16 @@ Blender animation and no engine animation-clip player needed.
 - `SlamEnvelope(phase, snap)` → `[0,1]` power-stroke to drive `reachWeight`/whip over time.
 - Hand the spine to `PolylineFrames.Build(spine, Axis.Z, up)` → `Scene3D.DrawSkinned(handle, bones, model, tint)`.
 
+**Turn-key path (G, shipped 7.30.0):** `SkinnedLimb` bundles `BuildTube` + `ProceduralChainSolver` +
+`PolylineFrames` + `DrawSkinned` into one stateful component, so a tentacle is `new SkinnedLimb(scene,
+radius, length, ringSegments, radialSegments, boneCount, cfg, Axis.Z)` once, then per frame
+`limb.Update(root, forward, up, clock)` (or the `Update(..., target, reachWeight)` reach overload) +
+`limb.Draw(scene, model, tint)`. It owns the tube handle + reusable scratch buffers (zero per-frame
+alloc), `Dispose` unloads the mesh, and a mutable `Config` retunes the writhe live (e.g. enrage). Four
+tentacles = four `SkinnedLimb`s, each with its own `clock`/`Config`/`reachWeight`. Drop to the raw
+`Solve`/`SolveReach` + `PolylineFrames` + `DrawSkinned` calls above only when you need to deviate from
+that orchestration (a shared tube uploaded once across limbs, a custom frame builder, etc.).
+
 Per-tentacle independence (different cadences, damage windows, slam types) = a per-tentacle `clock`
 offset + `cfg` + `SlamEnvelope` phase. SpaceGame's game-side 2D `SlathTentacleLayout` can later be
 retired onto this solver.
@@ -110,5 +121,6 @@ waits on: the target game decided, C shipped (for the beam), and an asset (or th
 
 - **Blender**: `tools/blender/make_placeholder_octopus.py` emits a rigged stand-in `.glb` matching the
   rig contract above. Validates the import path before a real asset exists.
-- **Zero-Blender**: compose `SkinnedMeshBuilder.BuildTube()` ×4 + a body primitive in-engine and drive
-  them with `ProceduralChainSolver` for an instant, no-asset stand-in.
+- **Zero-Blender**: stand up four `SkinnedLimb`s (7.30.0; each wraps a `BuildTube` + the solver) plus a
+  body primitive in-engine for an instant, no-asset stand-in — or, pre-7.30.0, compose
+  `SkinnedMeshBuilder.BuildTube()` ×4 by hand and drive them with `ProceduralChainSolver`.

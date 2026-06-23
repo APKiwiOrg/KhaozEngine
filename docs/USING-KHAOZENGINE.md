@@ -505,6 +505,31 @@ scene.Begin();
 scene.DrawSkinned(h, boneMatrices, model: Matrix4x4.Identity, tint: Color.White);
 ```
 
+**Turn-key: `SkinnedLimb` (since 7.30.0).** Wiring `BuildTube` + the chain solver + `PolylineFrames`
++ `DrawSkinned` by hand every frame is the manual path above. `SkinnedLimb` bundles all of it into one
+stateful component so a tentacle / cable / tail stands up in two calls (construct, then per-frame
+`Update` + `Draw`), with reusable scratch buffers so the motion path allocates nothing per frame:
+
+```csharp
+// Construct once: builds the tube and uploads it (optionally with a texture / SurfaceMaps).
+var limb = new SkinnedLimb(scene, radius: 0.4f, length: 5f, ringSegments: 12, radialSegments: 8,
+    boneCount: 8, ChainConfig.Writhe, Axis.Z);            // + a TextureHandle / SurfaceMaps overload
+
+// Each frame: writhe only, or writhe + FABRIK reach toward a target.
+limb.Update(root, forward: Vector3.UnitZ, up: Vector3.UnitY, clockSeconds: t);
+// limb.Update(root, forward, up, t, target: grabPoint, reachWeight: solver.SlamWeight);
+scene.Begin();
+limb.Draw(scene, model: Matrix4x4.Identity, tint: Color.White);   // + a Material overload
+// limb.Config = ChainConfig.Calm;  // retune the writhe at runtime (mutable)
+// limb.Dispose();                  // frees the tube's GPU buffers when the limb is retired
+```
+
+`limb.Bones` (`ReadOnlySpan<Matrix4x4>`) and `limb.Spine` expose the current pose for game reads
+(copy if you keep it past the next `Update`). The whole solve->frames->bones step is headless-testable
+with no GPU via `SkinnedLimb.CreateHeadless(boneCount, config, axis)` (a limb with no GPU mesh; its
+`Draw` is a no-op). Reach for the manual `BuildTube` + `ProceduralChainSolver` + `PolylineFrames` calls
+only when you need to deviate from this orchestration.
+
 The bone matrices are joint **world** transforms (model space); the engine composes them with the
 mesh's inverse-bind. Skinning rewrites position and normal only, so the lit colour path
 (`albedo = vColor * vTint * texRgb`), tint, and texture semantics are unchanged.

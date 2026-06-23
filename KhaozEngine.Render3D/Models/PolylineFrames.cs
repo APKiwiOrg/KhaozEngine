@@ -15,6 +15,19 @@ namespace KhaozEngine.Render3D
         {
             if (points.Length == 0) return Array.Empty<Matrix4x4>();
             var frames = new Matrix4x4[points.Length];
+            BuildInto(points, runAxis, up, frames);
+            return frames;
+        }
+
+        /// <summary>As <see cref="Build"/>, but writes into a caller-owned <paramref name="framesOut"/> span
+        /// instead of allocating - so a per-frame animator (e.g. <see cref="SkinnedLimb"/>) can reuse one buffer
+        /// with zero per-frame garbage. <paramref name="framesOut"/> must be at least <paramref name="points"/>
+        /// long; only the first <c>points.Length</c> entries are written.</summary>
+        public static void BuildInto(ReadOnlySpan<Vector3> points, Axis runAxis, Vector3 up, Span<Matrix4x4> framesOut)
+        {
+            if (framesOut.Length < points.Length)
+                throw new ArgumentException(
+                    $"framesOut length {framesOut.Length} is smaller than points length {points.Length}", nameof(framesOut));
             Vector3 prevDir = AxisVec(runAxis);
             for (int i = 0; i < points.Length; i++)
             {
@@ -22,9 +35,8 @@ namespace KhaozEngine.Render3D
                 if (dir.LengthSquared() < 1e-10f) dir = prevDir;
                 dir = Vector3.Normalize(dir);
                 prevDir = dir;
-                frames[i] = OrientAxisTo(runAxis, dir, up) * Matrix4x4.CreateTranslation(points[i]);
+                framesOut[i] = OrientAxisTo(runAxis, dir, up) * Matrix4x4.CreateTranslation(points[i]);
             }
-            return frames;
         }
 
         static Vector3 AxisVec(Axis a) => a switch

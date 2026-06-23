@@ -150,4 +150,18 @@ public class MigrationChainTests
         var chain = MigrationChain.For<Poco>(p => p.Ver, (p, v) => p.Ver = v).Step(1, p => p).Build(2);
         Assert.Null(chain.Migrate(null!));
     }
+
+    [Fact]
+    public void For_InterfaceForm_ReadsAndWritesSchemaVersion()
+    {
+        var chain = MigrationChain.For<Doc>()                       // zero-config: uses ISchemaVersioned
+            .Step(1, d => { d.Steps.Add(1); return d; })
+            .Step(2, d => { d.Steps.Add(2); return d; })
+            .Build(3);
+
+        var result = chain.Migrate(new Doc { SchemaVersion = 1 });
+
+        Assert.Equal(3, result.SchemaVersion);
+        Assert.Equal(new[] { 1, 2 }, result.Steps);
+    }
 }

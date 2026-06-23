@@ -13,6 +13,9 @@
     <ProjectReference Include="../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
     <ProjectReference Include="../KhaozEngine.Gpu/KhaozEngine.Gpu.csproj" />
     <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
+    <!-- The dependency-free PNG encoder lives in the BCL-only KhaozEngine.Imaging now; the Png class below is a
+         thin back-compat shim that forwards to KhaozEngine.Imaging.PngWriter. -->
+    <ProjectReference Include="../KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />
     <None Include="README.md" Pack="true" PackagePath="\" />
     <!-- Engine default font (Roboto, Apache-2.0), embedded so a game gets it transitively and never depends on a
          system-font path. Read via DefaultFont.Bytes; LogicalName fixes the manifest resource name. -->

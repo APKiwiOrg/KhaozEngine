@@ -16,6 +16,7 @@
   <Project Path="KhaozEngine.Server/KhaozEngine.Server.csproj" />
   <Project Path="KhaozEngine.Gpu/KhaozEngine.Gpu.csproj" />
   <Project Path="KhaozEngine.Gui/KhaozEngine.Gui.csproj" />
+  <Project Path="KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />
   <Project Path="KhaozEngine.Localization/KhaozEngine.Localization.csproj" />
   <Project Path="KhaozEngine.Netcode.Abstractions/KhaozEngine.Netcode.Abstractions.csproj" />
   <Project Path="KhaozEngine.Netcode/KhaozEngine.Netcode.csproj" />
@@ -31,6 +32,8 @@
   <Project Path="KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
   <Project Path="KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
   <Project Path="KhaozEngine.Sfx.Tool/KhaozEngine.Sfx.Tool.csproj" />
+  <Project Path="KhaozEngine.Snapshot/KhaozEngine.Snapshot.csproj" />
+  <Project Path="KhaozEngine.Snapshot.Render3D/KhaozEngine.Snapshot.Render3D.csproj" />
   <Project Path="KhaozEngine.Tests/KhaozEngine.Tests.csproj" />
   <Project Path="KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
   <Project Path="KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
@@ -41,6 +44,7 @@
   <Project Path="MiniGame/MiniGame.csproj" />
   <Project Path="Render3DSample/Render3DSample.csproj" />
   <Project Path="SceneSample/SceneSample.csproj" />
+  <Project Path="SnapshotSample/SnapshotSample.csproj" />
   <Project Path="tools/PixelLabSheetAssembler/PixelLabSheetAssembler.csproj" />
   <Project Path="tools/PixelLabSheetAssembler.Tests/PixelLabSheetAssembler.Tests.csproj" />
 </Solution>

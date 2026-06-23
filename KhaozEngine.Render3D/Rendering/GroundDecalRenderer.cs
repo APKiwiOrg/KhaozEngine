@@ -16,7 +16,8 @@ namespace KhaozEngine.Render3D.Rendering
     /// </summary>
     internal sealed class GroundDecalRenderer : IDisposable
     {
-        /// <summary>176-byte UBO matching the Decal block in <see cref="ShaderSources.DecalFrag"/>.</summary>
+        /// <summary>160-byte UBO matching the Decal block in <see cref="ShaderSources.DecalFrag"/>
+        /// (mat4 + 6 vec4; every member 16-byte aligned, so std140 needs no extra padding).</summary>
         public struct DecalUbo
         {
             public Matrix4x4 InvViewProj; // 64
@@ -42,7 +43,7 @@ namespace KhaozEngine.Render3D.Rendering
             _gd = gd;
             var f = gd.Factory;
             _shaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert, ShaderSources.DecalFrag);
-            _ubo = f.CreateBuffer(new GpuBufferDescription(176, GpuBufferUsage.UniformBuffer));
+            _ubo = f.CreateBuffer(new GpuBufferDescription(160, GpuBufferUsage.UniformBuffer));
             _layout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 new GpuResourceLayoutElement("DepthTex", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("Samp", GpuResourceKind.Sampler, GpuShaderStages.Fragment),

@@ -16,6 +16,7 @@
     <ProjectReference Include="../KhaozEngine.Audio/KhaozEngine.Audio.csproj" />
     <ProjectReference Include="../KhaozEngine.Particles/KhaozEngine.Particles.csproj" />
     <ProjectReference Include="../KhaozEngine.Effects/KhaozEngine.Effects.csproj" />
+    <ProjectReference Include="../KhaozEngine.Telegraphs/KhaozEngine.Telegraphs.csproj" />
     <ProjectReference Include="../KhaozEngine.Game/KhaozEngine.Game.csproj" />
     <!-- shared MonoGame-free foundation -->
     <ProjectReference Include="../KhaozEngine.Foundation/KhaozEngine.Foundation.csproj" />

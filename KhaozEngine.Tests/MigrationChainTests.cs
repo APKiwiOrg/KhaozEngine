@@ -62,4 +62,38 @@ public class MigrationChainTests
         Assert.Equal(5, result.Ver);
         Assert.Empty(result.Steps);
     }
+
+    [Fact]
+    public void Build_GapInSteps_Throws()
+    {
+        var builder = MigrationChain.For<Poco>(p => p.Ver, (p, v) => p.Ver = v)
+            .Step(1, p => p)    // 1 -> 2
+            .Step(3, p => p);   // 3 -> 4, but 2 -> 3 is missing
+        Assert.Throws<ArgumentException>(() => builder.Build(4));
+    }
+
+    [Fact]
+    public void Build_StepAtOrAboveCurrent_Throws()
+    {
+        var builder = MigrationChain.For<Poco>(p => p.Ver, (p, v) => p.Ver = v)
+            .Step(1, p => p)
+            .Step(2, p => p);   // targets 3, but current is 2
+        Assert.Throws<ArgumentException>(() => builder.Build(2));
+    }
+
+    [Fact]
+    public void Step_DuplicateFromVersion_Throws()
+    {
+        var builder = MigrationChain.For<Poco>(p => p.Ver, (p, v) => p.Ver = v).Step(1, p => p);
+        Assert.Throws<ArgumentException>(() => builder.Step(1, p => p));
+    }
+
+    [Fact]
+    public void Build_EmptyChain_IsAllowed_AndNoOps()
+    {
+        var chain = MigrationChain.For<Poco>(p => p.Ver, (p, v) => p.Ver = v).Build(3);
+        var result = chain.Migrate(new Poco { Ver = 1 });
+        Assert.Equal(1, result.Ver);   // no steps, nothing to do
+        Assert.Empty(result.Steps);
+    }
 }

@@ -133,6 +133,10 @@ namespace KhaozEngine.Game
 
         void ApplyPush(GameScene scene)
         {
+            // A scene transition spends the in-flight pointer gesture: the press/release that triggered the
+            // push must not also be honoured as a tap by a widget the new scene draws this same frame under the
+            // same press-origin (the campaign-map "release auto-selects the difficulty" click-through).
+            Pointer?.ConsumeGesture();
             scene.Manager = this;
             _scenes.Add(scene);
             scene.OnEnter();
@@ -141,6 +145,7 @@ namespace KhaozEngine.Game
         void ApplyPop()
         {
             if (_scenes.Count == 0) return;
+            Pointer?.ConsumeGesture();   // same rule on the way down (see ApplyPush).
             GameScene top = _scenes[_scenes.Count - 1];
             top.OnExit();
             _scenes.RemoveAt(_scenes.Count - 1);

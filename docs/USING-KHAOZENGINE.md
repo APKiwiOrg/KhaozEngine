@@ -200,6 +200,14 @@ im.Update(input, viewport);   // once per frame, BEFORE you query
 - `IsHoveringIn(Rect)` - inside and not pressed (desktop hover).
 - `IsPointerIn(Rect)`, `IsReleasedOutside(Rect)`, `IsDraggingIn(Rect)`, `GetDragDelta(Rect)`.
 
+**Gesture consumption (cross-layer click-through):** `IsTapIn` is purely geometric, so a release that swaps the
+layout mid-gesture (push an overlay, open a popup) would let a widget that appears under the press-origin act on a
+gesture that began before it existed. Call `ConsumeGesture()` to spend the current press/release: `IsTapIn`/
+`IsTapFromTo` then report false until the next fresh press (`IsConsumed` exposes the flag; drag/hover/press
+queries are left intact, so a slider grab survives). `SceneManager` already calls this on every push/pop, so a
+scene transition can't double-fire a tap on a freshly-drawn widget; call it yourself if you change the
+interactive layout mid-gesture without a scene transition.
+
 **Region blocking (the other half of click-through):** `BlockInputRegion(Rect)` from the higher overlay each
 frame; `IsInputBlocked(Vector2)` from the layer beneath before acting. Cleared at the start of every `Update`.
 

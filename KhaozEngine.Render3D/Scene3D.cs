@@ -32,6 +32,7 @@ namespace KhaozEngine.Render3D
         readonly BillboardRenderer _billboards;
         readonly TexturedBillboardRenderer _texBillboards;
         readonly BeamRenderer _beams;
+        readonly Rendering.GroundDecalRenderer _decalRenderer;
         readonly RenderResources _res;
         // Slot-indexed GPU mesh storage parallel to _slots; a freed slot's entry is null until reused.
         readonly List<Mesh?> _meshes = new();
@@ -113,6 +114,9 @@ namespace KhaozEngine.Render3D
             // Beams draw into the same model MRT as the textured billboards (depth-interleaved), so they target the
             // model framebuffer's output description.
             _beams = new BeamRenderer(gd, _res.ModelFB.Outputs);
+            // Ground decals render into the lit color attachment (ColorOnlyFB) before the post chain, so they use
+            // the model framebuffer's output description (same color format).
+            _decalRenderer = new Rendering.GroundDecalRenderer(gd, _res.ColorOnlyFB.Outputs);
         }
 
         /// <summary>An opaque handle to an albedo texture loaded with <see cref="LoadTexture(string)"/> /
@@ -789,6 +793,12 @@ namespace KhaozEngine.Render3D
             // depth-interleave with the meshes and go through the pixel post like everything else in the model pass.
             DrawBeams(cl);
 
+            // Ground decals: after the model pass wrote depth (meshes + textured billboards + beams), paint the
+            // queued decals onto the reconstructed surface into ColorTex, BEFORE post - so they conform to the
+            // ground, are occluded by geometry (Y-band), and flow through the pixel post like the meshes.
+            if (_decals.Count > 0)
+                _decalRenderer.Draw(cl, _res, Camera.ViewProjection, System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_decals));
+
             _post.Run(cl, _res, target, Post);
 
             // Filled overlay: rebind `target` and draw the accumulated translucent triangles on top of the post
@@ -889,6 +899,7 @@ namespace KhaozEngine.Render3D
             _billboards.Dispose();
             _texBillboards.Dispose();
             _beams.Dispose();
+            _decalRenderer.Dispose();
             _res.Dispose();
             foreach (var m in _meshes)
                 if (m is { } mesh) { mesh.Vb.Dispose(); mesh.Ib.Dispose(); mesh.MaterialSet?.Dispose(); }

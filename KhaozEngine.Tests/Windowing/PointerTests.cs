@@ -126,5 +126,47 @@ namespace KhaozEngine.Tests.Windowing
             p.Update(Frame(Inside, false));   // cleared each Update
             Assert.False(p.IsBlocked(Inside));
         }
+
+        [Fact]
+        public void ConsumeGesture_suppresses_the_tap_for_the_rest_of_the_gesture()
+        {
+            // The campaign-map bug timing: on the release frame IsTapIn would fire, but a consume triggered
+            // earlier that frame (a scene push) must suppress it so a freshly-drawn widget ignores the gesture.
+            var p = new Pointer();
+            p.Update(Frame(Inside, false));
+            p.Update(Frame(Inside, true));    // press inside
+            p.Update(Frame(Inside, false));   // release inside -> a complete tap
+            Assert.True(p.IsTapIn(Box));      // ...which IsTapIn honours
+            p.ConsumeGesture();               // gesture claimed (e.g. it pushed an overlay)
+            Assert.True(p.IsConsumed);
+            Assert.False(p.IsTapIn(Box));     // suppressed for the rest of this gesture
+        }
+
+        [Fact]
+        public void A_fresh_press_clears_a_consumed_gesture()
+        {
+            var p = new Pointer();
+            p.Update(Frame(Inside, true));    // press
+            p.ConsumeGesture();
+            p.Update(Frame(Inside, false));   // release of the consumed gesture
+            Assert.True(p.IsConsumed);
+            Assert.False(p.IsTapIn(Box));     // still suppressed
+
+            p.Update(Frame(Inside, true));    // a brand-new press starts a fresh, unconsumed gesture
+            Assert.False(p.IsConsumed);
+            p.Update(Frame(Inside, false));   // release inside
+            Assert.True(p.IsTapIn(Box));      // taps normally again
+        }
+
+        [Fact]
+        public void ConsumeGesture_does_not_block_a_held_drag_grab()
+        {
+            // Consuming the tap must not kill an in-progress slider/drag grab (press-origin based), only the tap.
+            var p = new Pointer();
+            p.Update(Frame(Inside, true));    // press began inside -> grabbed
+            p.ConsumeGesture();
+            Assert.True(p.IsDragStartIn(Box));
+            Assert.True(p.IsPressingIn(Box));
+        }
     }
 }

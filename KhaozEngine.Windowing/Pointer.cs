@@ -13,6 +13,7 @@ namespace KhaozEngine.Windowing
     {
         readonly List<Rect> _blocked = new();
         bool _down, _wasDown, _mid, _wasMid, _right, _wasRight;
+        bool _consumed;   // current gesture claimed by a consumer; reset on the next fresh press
         Vector2 _pos, _prevPos, _pressOrigin;
 
         /// <summary>Current pointer position (pixels).</summary>
@@ -57,7 +58,8 @@ namespace KhaozEngine.Windowing
             _mid = input.IsDown(MouseButton.Middle) && inWindow;
             _right = input.IsDown(MouseButton.Right) && inWindow;
 
-            if (IsJustPressed) _pressOrigin = _pos;
+            // A fresh press starts a fresh, unconsumed gesture.
+            if (IsJustPressed) { _pressOrigin = _pos; _consumed = false; }
         }
 
         /// <summary>Reserve a region for an overlay this frame; the layer beneath checks <see cref="IsBlocked"/>. Cleared each <see cref="Update"/>.</summary>
@@ -70,12 +72,24 @@ namespace KhaozEngine.Windowing
             return false;
         }
 
-        /// <summary>True on release only if the press-origin AND the release are both inside <paramref name="bounds"/> (the click-through invariant).</summary>
-        public bool IsTapIn(Rect bounds) => IsJustReleased && bounds.Contains(_pressOrigin) && bounds.Contains(_pos);
+        /// <summary>
+        /// Mark the current press/release gesture as already handled, so the tap queries
+        /// (<see cref="IsTapIn"/>, <see cref="IsTapFromTo"/>) report false for the rest of this gesture. Cleared
+        /// automatically on the next fresh press. Call when a gesture triggers a context change (a scene push/pop,
+        /// an overlay opening) so a widget that appears mid-gesture does not act on a press that began before it
+        /// existed. Leaves drag/hover/press-visual queries untouched.
+        /// </summary>
+        public void ConsumeGesture() => _consumed = true;
 
-        /// <summary>True on release when the press began in <paramref name="pressOriginBounds"/> and the release is in <paramref name="releaseBounds"/>.</summary>
+        /// <summary>True while the current gesture has been claimed via <see cref="ConsumeGesture"/> (until the next fresh press).</summary>
+        public bool IsConsumed => _consumed;
+
+        /// <summary>True on release only if the press-origin AND the release are both inside <paramref name="bounds"/> (the click-through invariant) and the gesture has not been consumed via <see cref="ConsumeGesture"/>.</summary>
+        public bool IsTapIn(Rect bounds) => !_consumed && IsJustReleased && bounds.Contains(_pressOrigin) && bounds.Contains(_pos);
+
+        /// <summary>True on release when the press began in <paramref name="pressOriginBounds"/> and the release is in <paramref name="releaseBounds"/>, and the gesture has not been consumed via <see cref="ConsumeGesture"/>.</summary>
         public bool IsTapFromTo(Rect pressOriginBounds, Rect releaseBounds) =>
-            IsJustReleased && pressOriginBounds.Contains(_pressOrigin) && releaseBounds.Contains(_pos);
+            !_consumed && IsJustReleased && pressOriginBounds.Contains(_pressOrigin) && releaseBounds.Contains(_pos);
 
         public bool IsPointerIn(Rect bounds) => bounds.Contains(_pos);
         public bool IsHoveringIn(Rect bounds) => !_down && bounds.Contains(_pos);

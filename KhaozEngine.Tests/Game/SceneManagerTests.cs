@@ -1,5 +1,7 @@
 using System.Collections.Generic;
+using System.Numerics;
 using KhaozEngine.Game;
+using KhaozEngine.Windowing;
 using Xunit;
 
 namespace KhaozEngine.Tests.Game
@@ -36,6 +38,25 @@ namespace KhaozEngine.Tests.Game
         static (SceneManager m, List<string> log) NewManager()
         {
             return (new SceneManager(), new List<string>());
+        }
+
+        static InputState Frame(Vector2 pos, bool leftDown)
+        {
+            var down = new HashSet<MouseButton>();
+            if (leftDown) down.Add(MouseButton.Left);
+            return new InputState(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
+                down, new HashSet<MouseButton>(), pos, Vector2.Zero, 0, 960, 540);
+        }
+
+        // A pointer mid-gesture: pressed and released inside `rect`, so IsTapIn(rect) is true until consumed.
+        static Pointer MidTapPointer(Rect rect)
+        {
+            var at = new Vector2(rect.X + rect.Width / 2f, rect.Y + rect.Height / 2f);
+            var p = new Pointer();
+            p.Update(Frame(at, false));
+            p.Update(Frame(at, true));    // press inside
+            p.Update(Frame(at, false));   // release inside -> a complete tap
+            return p;
         }
 
         [Fact]
@@ -303,6 +324,49 @@ namespace KhaozEngine.Tests.Game
             Assert.Equal(1, b.Resizes);
             Assert.Equal(1280, a.LastResizeW);
             Assert.Equal(720, b.LastResizeH);
+        }
+
+        [Fact]
+        public void Push_consumes_the_in_flight_pointer_gesture()
+        {
+            // Campaign-map click-through: the release that pushes an overlay must not also register as a tap on
+            // an overlay button drawn the same frame under the same press-origin.
+            var rect = new Rect(100, 100, 120, 40);
+            var p = MidTapPointer(rect);
+            Assert.True(p.IsTapIn(rect));            // the gesture would tap...
+
+            var (m, log) = NewManager();
+            m.Pointer = p;
+            m.Push(new FakeScene("overlay", log));   // ...but pushing on that release claims it
+
+            Assert.True(p.IsConsumed);
+            Assert.False(p.IsTapIn(rect));           // overlay widgets see no tap
+        }
+
+        [Fact]
+        public void Pop_consumes_the_in_flight_pointer_gesture()
+        {
+            var rect = new Rect(100, 100, 120, 40);
+            var (m, log) = NewManager();
+            m.Push(new FakeScene("a", log));
+            m.Push(new FakeScene("b", log));
+            var p = MidTapPointer(rect);
+            m.Pointer = p;                            // wired after the setup pushes, so only the Pop consumes it
+            Assert.True(p.IsTapIn(rect));
+
+            m.Pop();
+
+            Assert.True(p.IsConsumed);
+            Assert.False(p.IsTapIn(rect));
+        }
+
+        [Fact]
+        public void Transitions_are_safe_when_no_pointer_is_set()
+        {
+            var (m, log) = NewManager();   // Pointer left null
+            m.Push(new FakeScene("a", log));
+            m.Pop();
+            Assert.Equal(0, m.Count);      // null-safe consume: no throw
         }
 
         [Fact]

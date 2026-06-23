@@ -18,7 +18,32 @@ namespace KhaozEngine.Telegraphs
         const float DefaultYTolerance = 0.3f;
         const float DefaultMaxStep = 0.5f;
 
+        // Fraction of a decal's characteristic size used as the world-space edge/outline width on the ground.
+        const float EdgeFraction = 0.05f;
+        const float MinEdgeWorld = 0.03f;
+        const float MaxEdgeWorld = 0.3f;
+
         static DecalBlend Blend(TelegraphBlend b) => b == TelegraphBlend.Additive ? DecalBlend.Additive : DecalBlend.Alpha;
+
+        // The ground decal shader treats EdgeThickness as WORLD units (it drives the SDF fill/outline AA bands),
+        // whereas TelegraphStyle.EdgeThickness is authored in 2D pixels. Passing the pixel value straight through
+        // makes the AA band metres wide and smears the decal across the whole ground, so the 3D path derives its
+        // own world-space edge as a small fraction of the decal's characteristic size (auto-scaling: a big AoE
+        // gets a proportionally bigger rim). ResolvedTelegraph.EdgeThickness (the pixel value) is intentionally
+        // not used here; it is for TelegraphRenderer2D.
+        static float WorldEdge(DecalShape shape, Vector4 size)
+        {
+            float charSize = shape switch
+            {
+                DecalShape.Circle => size.X,        // radius
+                DecalShape.Ring => size.Y,          // outer radius
+                DecalShape.Beam => size.Y * 2f,     // width
+                DecalShape.Cone => size.X,          // range
+                DecalShape.Arc => size.X,           // radius
+                _ => size.X,
+            };
+            return Math.Clamp(charSize * EdgeFraction, MinEdgeWorld, MaxEdgeWorld);
+        }
 
         static GroundDecal Base(DecalShape shape, Vector3 center, float rotation, Vector4 size, in ResolvedTelegraph r) => new()
         {
@@ -28,7 +53,7 @@ namespace KhaozEngine.Telegraphs
             Size = size,
             FillColor = r.FillColor,
             OutlineColor = r.OutlineColor,
-            EdgeThickness = r.EdgeThickness,
+            EdgeThickness = WorldEdge(shape, size),
             FillFraction = r.FillFraction,
             FlashAdd = r.FlashAdd,
             Blend = Blend(r.Blend),

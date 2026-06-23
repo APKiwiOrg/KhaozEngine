@@ -146,6 +146,53 @@ public class SettingsManagerTests
 
     private sealed class Box { public int Value { get; set; } }
 
+    private sealed class VersionedBox : ISchemaVersioned
+    {
+        public int SchemaVersion { get; set; }
+        public int Value { get; set; }
+    }
+
+    [Fact]
+    public void Migrations_RunOnLoad_BeforeSanitize()
+    {
+        // Box starts at version 1 with Value 1. Chain bumps Value to 10 (v1->v2), sanitize then clamps to <= 5.
+        var storage = new FakeStorage { ToLoad = new VersionedBox { SchemaVersion = 1, Value = 1 } };
+        var chain = MigrationChain.For<VersionedBox>()
+            .Step(1, b => { b.Value = 10; return b; })
+            .Build(2);
+
+        var mgr = new SettingsManager<VersionedBox>(
+            storage, logger: null,
+            sanitizeOnLoad: b => { b.Value = Math.Min(b.Value, 5); return b; },
+            migrations: chain);
+
+        Assert.Equal(2, mgr.Settings.SchemaVersion);   // chain ran
+        Assert.Equal(5, mgr.Settings.Value);           // sanitize ran AFTER the chain (10 -> clamp 5)
+    }
+
+    [Fact]
+    public void Migrations_RunOnInitialCtorLoad_NoSanitize()
+    {
+        var storage = new FakeStorage { ToLoad = new VersionedBox { SchemaVersion = 1, Value = 0 } };
+        var chain = MigrationChain.For<VersionedBox>()
+            .Step(1, b => { b.Value = 42; return b; })
+            .Build(2);
+
+        var mgr = new SettingsManager<VersionedBox>(storage, logger: null, sanitizeOnLoad: null, migrations: chain);
+
+        Assert.Equal(2, mgr.Settings.SchemaVersion);
+        Assert.Equal(42, mgr.Settings.Value);
+    }
+
+    [Fact]
+    public void Migrations_Null_BehaviourUnchanged()
+    {
+        var storage = new FakeStorage { ToLoad = new VersionedBox { SchemaVersion = 1, Value = 7 } };
+        var mgr = new SettingsManager<VersionedBox>(storage);   // no chain, no sanitize
+        Assert.Equal(1, mgr.Settings.SchemaVersion);            // untouched
+        Assert.Equal(7, mgr.Settings.Value);
+    }
+
     [Fact]
     public void SanitizeOnLoad_RunsOnInitialCtorLoad()
     {

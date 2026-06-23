@@ -14,6 +14,7 @@ public sealed class SettingsManager<T> where T : new()
     private readonly ISettingsStorage storage;
     private readonly ILogger logger;
     private readonly Func<T, T>? sanitizeOnLoad;
+    private readonly MigrationChain<T>? migrations;
     private T settings = new();
 
     /// <summary>The underlying storage.</summary>
@@ -41,13 +42,19 @@ public sealed class SettingsManager<T> where T : new()
     /// Clamp fields, migrate a schema-version field, etc.; return the sanitized object, which becomes
     /// <see cref="Settings"/>. A hook that throws is swallowed/logged and the unsanitized value is used.
     /// </param>
+    /// <param name="migrations">
+    /// Optional versioned migration chain run on every load BEFORE <paramref name="sanitizeOnLoad"/>: it
+    /// steps the loaded value from its stored schema version up to the chain's current version. Null = no
+    /// migration (back-compat). See <see cref="MigrationChain{T}"/>.
+    /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="storage"/> is null.</exception>
-    public SettingsManager(ISettingsStorage storage, ILogger? logger = null, Func<T, T>? sanitizeOnLoad = null)
+    public SettingsManager(ISettingsStorage storage, ILogger? logger = null, Func<T, T>? sanitizeOnLoad = null, MigrationChain<T>? migrations = null)
     {
         this.storage = storage ?? throw new ArgumentNullException(nameof(storage));
         // Generic type name would render as "SettingsManager`1"; use a clean fixed category instead.
         this.logger = logger ?? Log.Get("SettingsManager");
         this.sanitizeOnLoad = sanitizeOnLoad;
+        this.migrations = migrations;
         Load();
     }
 
@@ -80,6 +87,11 @@ public sealed class SettingsManager<T> where T : new()
         {
             logger.Error("Failed to load settings; using defaults.", ex);
             loaded = new T();
+        }
+
+        if (migrations is not null)
+        {
+            loaded = migrations.Migrate(loaded, logger);
         }
 
         if (sanitizeOnLoad is not null)

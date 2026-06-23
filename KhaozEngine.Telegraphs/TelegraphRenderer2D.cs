@@ -7,10 +7,9 @@ namespace KhaozEngine.Telegraphs
 {
     /// <summary>
     /// Immediate-mode 2D telegraph renderer. Call <see cref="Begin"/> with an already-<c>Begin</c>-ed
-    /// <see cref="SpriteBatch"/>, issue shape draws (fed from the game's sim each frame), then <see cref="End"/>.
-    /// Holds no per-frame state beyond the active batch; safe to feed from a deterministic sim. Owns a private
-    /// 1x1-white <see cref="PrimitiveRenderer"/> created lazily from the first batch's device context is NOT
-    /// possible (SpriteBatch exposes no device), so the caller supplies a PrimitiveRenderer to <see cref="Begin"/>.
+    /// <see cref="SpriteBatch"/> and a <see cref="PrimitiveRenderer"/> (both owned by the caller), issue shape
+    /// draws (fed from the game's sim each frame), then <see cref="End"/>. This renderer owns neither; it holds
+    /// no per-frame state and is safe to feed from a deterministic sim.
     /// </summary>
     public sealed class TelegraphRenderer2D
     {
@@ -122,7 +121,7 @@ namespace KhaozEngine.Telegraphs
             float outer = radius + bandWidth * 0.5f;
             if (r.FillMode != FillMode.Outline)
                 p.DrawFilledArcBand(b, center, inner, outer, startAngle, sweepAngle * r.FillFraction, WithFlash(r.FillColor, r.FlashAdd));
-            if (r.FillMode != FillMode.Fill)
+            if (r.FillMode != FillMode.Fill && MathF.Abs(sweepAngle) >= MathF.Tau - 0.01f)
             {
                 p.DrawRing(b, center, inner, r.EdgeThickness, r.OutlineColor);
                 p.DrawRing(b, center, outer, r.EdgeThickness, r.OutlineColor);

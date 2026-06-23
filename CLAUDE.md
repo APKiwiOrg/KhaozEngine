@@ -64,9 +64,13 @@ version/release work.
 - SemVer: additive = minor, fixes = patch, breaking = major.
 - **One shared version line - the engine is now entirely MonoGame-free.** `Directory.Build.props` carries a
   single `<KhaozEngine5xVersion>` governing **the whole engine**: the zero-dependency `Primitives` leaf
-  (`Color`/`DeterministicRng`/`XorRng`/`MathUtil`/`ViewportMath`/`Easing`, new at `6.0.0`), the custom-stack
+  (`Color`/`DeterministicRng`/`XorRng`/`MathUtil`/`ViewportMath`/`Easing`, new at `6.0.0`), the BCL-only
+  `Imaging` leaf (`PngWriter`, the dependency-free RGBA8 PNG encoder; `Render2D.Png` is a shim over it, new at
+  `7.33.0`), the custom-stack
   packages (`KhaozEngine.Gpu`,
-  `Windowing`, `Render2D`, `Render3D`, `Gui`, `Audio`, `Particles`, `Effects`, `Game`, `Game.Render3D`) and the
+  `Windowing`, `Render2D`, `Render3D`, `Gui`, `Audio`, `Particles`, `Effects`, `Game`, `Game.Render3D`), the
+  headless snapshot harness libraries (`Snapshot` = 2D `SnapshotRunner`/`SnapshotHost`; `Snapshot.Render3D` = the
+  `Shot3D` extension; tooling, in NO umbrella, referenced directly by a game's snapshot tool, new at `7.33.0`) and the
   MonoGame-free foundation (`Ecs`/`Serialization`/`Content`/`Diagnostics`/`App`/`Localization`/`Persistence`/
   `Pooling`/`Platform`/`Updates`/`Collision`/`Netcode`/`Netcode.Abstractions`/`Netcode.LiteNetLib`) plus the four
   code-free umbrella metapackages (`Foundation`, `Game2D`, `Game3D`, `Server`). (`KhaozEngine.Content.Validator`

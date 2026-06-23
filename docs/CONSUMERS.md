@@ -4,8 +4,8 @@ Which game uses which packages, at which version. Current state only - for the p
 [`../CHANGELOG.md`](../CHANGELOG.md). Update this whenever a consumer bumps a `<PackageReference>` or the
 engine ships a new version.
 
-**Engine current version:** `7.32.0` (the shared `<KhaozEngine5xVersion>` line, which is the engine): the
-custom MonoGame-free stack (`Primitives`/`Gpu`/`Windowing`/`Render2D`/`Render3D`/`Gui`/`Audio`/`Particles`/`Effects`/`Game`/`Game.Render3D`) **plus**
+**Engine current version:** `7.33.0` (the shared `<KhaozEngine5xVersion>` line, which is the engine): the
+custom MonoGame-free stack (`Primitives`/`Imaging`/`Gpu`/`Windowing`/`Render2D`/`Render3D`/`Gui`/`Audio`/`Particles`/`Effects`/`Game`/`Game.Render3D`) **plus**
 the MonoGame-free foundation packages that graduated onto it at `5.46.0`
 (`Ecs`/`Serialization`/`Content`/`Diagnostics`/`App`/`Localization`/`Persistence`/`Pooling`/`Platform`/
 `Updates`/`Collision`/`Netcode`/`Netcode.Abstractions`/`Netcode.LiteNetLib`). 7.3.0 also adds the publish-side
@@ -13,6 +13,11 @@ the MonoGame-free foundation packages that graduated onto it at `5.46.0`
 the author-time `KhaozEngine.Sfx.Tool` package (the `ke-sfxbake` dotnet tool: manifest-driven bulk SFX
 generation + bake via the ElevenLabs API + ffmpeg/oggenc); both are tools,
 not libraries, so no consumer references them via `<PackageReference>` and they are in no umbrella metapackage.
+7.33.0 adds the headless snapshot harness as two libraries (`KhaozEngine.Snapshot` = 2D `SnapshotRunner`/`SnapshotHost`;
+`KhaozEngine.Snapshot.Render3D` = the `Shot3D` extension) plus the BCL-only `KhaozEngine.Imaging` (`PngWriter`).
+The snapshot packages are dev/screenshot tooling and are deliberately in NO umbrella metapackage, so a game's
+snapshot tool project references them directly (`Snapshot` for 2D, plus `Snapshot.Render3D` for 3D); `Imaging`
+arrives transitively via `Render2D` (whose `Png` is now a shim over `PngWriter`).
 
 > **7.23.0 (CET off on game heads):** `KhaozEngine.Foundation` ships an overridable `<CETCompat>false</CETCompat>`
 > build default via `buildTransitive` props (plus a build-log note via targets). Every game head inherits it

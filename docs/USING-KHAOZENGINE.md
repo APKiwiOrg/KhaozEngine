@@ -842,6 +842,60 @@ the `InputState` builder patterns.
 
 ---
 
+## Headless snapshots / screenshots (`KhaozEngine.Snapshot`)
+
+For an art/UI screenshot tool, you only want to write the *scenes* - not the capture/encode/write/log boilerplate
+around each one. `SnapshotRunner` wraps the existing headless capture helpers (`Render2DSnapshot.Capture` /
+`Render3DSnapshot.Capture`) with: capture → PNG-encode → write `<outDir>/<name>.png` → log the path, plus a final
+`done -> <dir> (N shots)` summary. Deterministic (no timestamps), window-free; the underlying capture still needs
+a GPU device, so a snapshot tool runs on a dev box / GPU CI, not the headless unit-test lane.
+
+```csharp
+var runner = new SnapshotRunner("/tmp/shots");        // creates the dir; logger defaults to Console.WriteLine
+
+// 2D: you build your own GuiSurface/theme/scene inside the callback (the Render2DSnapshot context).
+runner.Shot2D("menu", 1280, 720, clear: new Color(0.08f, 0.09f, 0.12f, 1f), ctx =>
+{
+    ctx.Batch.Begin();
+    /* draw your UI/sprites here */
+    ctx.Batch.End();
+});
+
+// 3D: setup runs once (load meshes, frame the camera), drawFrame runs per frame.
+runner.Shot3D("boss", 1280, 720,
+    setup:     scene => { var h = scene.LoadMesh(MeshPrimitives.Box(1f)); scene.Camera.Frame(Vector3.Zero, new Vector3(3,3,3)); /* ... */ },
+    drawFrame: scene => scene.Draw(h, Matrix4x4.Identity, Color.White));
+
+runner.Done();                                          // prints "done -> /tmp/shots (2 shots)"
+```
+
+The per-shot boilerplate this replaces (x14 in Hardpoint's tool):
+
+```csharp
+// before                                            // after
+byte[] rgba = Render3DSnapshot.Capture(W, H, setup, drawFrame);
+string path = Path.Combine(outDir, name + ".png");   runner.Shot3D(name, W, H, setup, drawFrame);
+PngWriter.Save(path, rgba, W, H);                     // (capture + encode + write + log, one call)
+Console.WriteLine(path);
+```
+
+- **`SnapshotHost`** makes a tool's `Program.cs` one line: `static int Main(string[] a) => SnapshotHost.Main(a, Register);`
+  resolves `outDir` from `args[0]` (a deterministic temp default - `SnapshotHost.DefaultOutDir` - otherwise), runs
+  your `register` delegate against a fresh runner, prints the summary, returns exit code 0.
+- **`SnapshotRunner.Save(name, rgba, w, h)`** is the shared sink (encode + write + log + bump `Count`) if you
+  captured a buffer some other way. `OutDir` and `Count` are exposed.
+- **PNG encoder**: `KhaozEngine.Imaging.PngWriter.Save(path, rgba, w, h)` / `.Encode(...)` is a dependency-free,
+  BCL-only RGBA8 PNG writer (no ImageSharp). `KhaozEngine.Render2D.Png` is a back-compat shim that forwards to it.
+
+**Packaging / which package to reference.** The 2D core (`KhaozEngine.Snapshot`) deliberately does **not** depend
+on Render3D, so a Game2D-only game (SpaceGame, Nullwake) can use `Shot2D` without dragging in the 3D renderer. The
+`Shot3D` method is an extension in **`KhaozEngine.Snapshot.Render3D`** (which adds the Render3D dependency). These
+are tooling packages and are **not** in the `Game2D`/`Game3D` umbrellas, so a snapshot tool project adds the ref(s)
+it needs directly: `KhaozEngine.Snapshot` for 2D, plus `KhaozEngine.Snapshot.Render3D` for 3D. A runnable example
+lives in `SnapshotSample` (`dotnet run --project SnapshotSample -- /tmp/ke-snapshot-demo`).
+
+---
+
 ## Versioning & change process
 
 - **One shared version** across the whole engine: `<KhaozEngine5xVersion>` in `Directory.Build.props`. Every

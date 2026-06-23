@@ -714,7 +714,8 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   stamp" below).
 - **`KhaozEngine.Persistence`**: crash-safe saves: `AtomicJsonWriter`, `PersistenceQueue` (coalesced async
   writes), `SettingsManager<T>` + `FileSettingsStorage`, `SaveEncoder` (Base64 + HMAC), the `GameStorage`
-  facade (paths + queue + settings + encoder), and the `SettingsManager<T>.StampInstall(...)` convenience.
+  facade (paths + queue + settings + encoder), the `SettingsManager<T>.StampInstall(...)` convenience, and
+  versioned schema migration via `MigrationChain<T>` (see "Versioned save migrations" below).
 - **`KhaozEngine.Content`**: config loading + JSON-schema validation: `ConfigLoader` (disk-then-embedded),
   `JsonSchemaValidator`, build-time schema enforcement via the bundled `Content.Validator` tool.
 - **`KhaozEngine.Serialization`**: shared `System.Text.Json` baselines. **JSONC (JSON with `//` / `/* */`
@@ -740,6 +741,38 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   (`IChannelSplittable<TSelf>` + `NetChannelReliability`), and the LiteNetLib transport binding.
 
 ---
+
+## Versioned save migrations (`MigrationChain<T>`)
+
+`SettingsManager<T>` and `GameStorage` take an optional `MigrationChain<T>` that upgrades an old on-disk
+schema to the current one on load, before the `sanitizeOnLoad` clamp pass. Register one stepper per version
+instead of branching inside a single sanitize callback:
+
+```csharp
+// Type carries an int version field; implement ISchemaVersioned for the zero-config factory.
+public sealed class CampaignSaveData : ISchemaVersioned
+{
+    public int SchemaVersion { get; set; } = 3;   // default = current, so a fresh save no-ops
+    // ... fields ...
+}
+
+var migrations = MigrationChain.For<CampaignSaveData>()      // or For<T>(getVersion, setVersion) for a plain POCO
+    .Step(1, d => { /* v1 -> v2 data change */ return d; })
+    .Step(2, d => { /* v2 -> v3 data change */ return d; })
+    .Build(currentVersion: 3);
+
+// Settings file:
+var mgr = storage.CreateSettingsManager<CampaignSaveData>(sanitizeOnLoad: Clamp, migrations: migrations);
+// Or a raw save file:
+var save = storage.Load<CampaignSaveData>("campaign.json", migrations);
+```
+
+Each `Step` does only the data transform; the chain stamps the version after each step. `Build` throws on a
+gap, a duplicate `fromVersion`, or a step at/beyond `currentVersion` (caught at startup). `Migrate` never
+throws on a bad save: a save at/above current is left untouched, one older than the oldest step is logged and
+returned as-is, and a throwing step halts the chain with the partially-migrated value. The opt-in
+`For<T>()` factory is reference-type only; use the `For<T>(getVersion, setVersion)` delegate overload for any
+other type.
 
 ## Deterministic floating point (`KhaozEngine.Determinism`)
 

@@ -108,7 +108,7 @@ fine-grained use - a wire-contract project references just `Netcode.Abstractions
 | Consumer | Project(s) | References | Version |
 |---|---|---|---|
 | **Hardpoint** (7.x, 3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic); auto-updater LIVE (`Updates` via Foundation, overlay via Gui) against a server-less static-blob feed + OIDC CI publish, self-relocating updater (7.20.0); `HardpointUpdater` pins `KhaozEngine.Updates` directly; uses `Collision.Segment2D` (7.4.0) for swept projectile collision | **7.20.1** |
-| **Nullwake** (7.x, 2D) | `Nullwake.Core` | `KhaozEngine.Game2D` + `Diagnostics`/`Persistence`/`Windowing` + `Updates` (shim, dormant); uses `AttentionBeacon` (7.6.0) for the timed-reward tappable pulse | **7.20.0** |
+| **Nullwake** (7.x, 2D) | `Nullwake.Core` | `KhaozEngine.Game2D` + `Diagnostics`/`Persistence`/`Windowing` + `Updates` (shim, dormant); uses `AttentionBeacon` (7.6.0) for the timed-reward tappable pulse | **7.32.0** |
 | **SpaceGame** (7.x, 2D + Render3D) | `SpaceGame.Core` (head) / `SpaceGame.Sim` (lockstep sim) | `Game2D` + `Render3D` + `Gpu` + `Netcode.LiteNetLib` + `Primitives` (head); `Ecs`/`Collision`/`Diagnostics`/`Content`/`Serialization`/`App`/`Netcode`/`Pooling`/`Determinism` + `Primitives` (sim); `Netcode.Abstractions` (contracts); `Updates` (tools); manifest signing adopted (`ke-updater sign` + embedded RSA public key) | **7.24.0** |
 
 Both games now run on the loop facade (5.57.0): **Hardpoint** is a `GameApp3D` subclass (`HardpointGame`) over a
@@ -150,7 +150,7 @@ through a thin one between frames (used in `ProjectileSystem`'s ballistic branch
 **Carried to 7.9.0** (`7.7.0 -> 7.9.0`) for the soft hover-glow fix; intervening releases touch nothing else
 Hardpoint consumes.
 
-### Nullwake - 7.x, 2D (on `KhaozEngine.Game2D` 7.20.0)
+### Nullwake - 7.x, 2D (on `KhaozEngine.Game2D` 7.32.0)
 
 Fully migrated off MonoGame (the migration landed on Nullwake `main`). `Nullwake.Core` references one package,
 **`KhaozEngine.Game2D`** (the 2D runtime + the Render3D-free `Game` loop framework + the foundation). The shell
@@ -193,6 +193,21 @@ the engine.
 Render3D dependency. The new `KhaozEngine.Determinism` package arrives transitively via `Foundation` but is unused.
 The vendored feed (`Nullwake/vendor/khaozengine`) was refreshed to the 7.12.0 nupkg set plus the new
 `Determinism` package.
+
+**Bumped to 7.32.0** (from 7.20.0, all `KhaozEngine.*` pins incl. the dormant `Updates`, vendored feed
+refreshed to the 7.32.0 set). Mostly carried: 7.13-7.30 are Render3D / Netcode / Collision / tooling that
+Nullwake does not consume. The two consumer-touching releases are inert here: 7.23.0 ships the
+`CETCompat=false` default via `Foundation` build props (Nullwake keeps its own explicit `<CETCompat>false`
+in `Directory.Build.props` - now redundant but harmless, its pin wins), and 7.31.0's `Pointer.ConsumeGesture`
++ `SceneManager` auto-consume change nothing because Nullwake drives a `Gui.ScreenStack`, not `SceneManager`,
+and never opts into consuming. **7.32.0 `MigrationChain<T>` was evaluated for the save path and deliberately
+NOT adopted:** Nullwake's `SaveMigrator` runs at the JSON-DOM level before deserialize so it can do
+structural renames (V4->V5 turns the `activeSurgeBuff` object into the `activeSurgeBuffs` array, which a
+typed post-deserialize chain can't express once the old key is dropped), and `LocalSaveSystem` uses its own
+`SaveEncoder` + `AtomicJsonWriter` path rather than `SettingsManager<T>`/`GameStorage` (the only hosts the
+chain wires into). Remaining V0-V4 steps are pure version bumps for additive fields, so there is nothing for
+a typed chain to do. `MigrationChain<T>` remains a good fit for a future typed value transform on a loaded
+`GameState`, just not for what Nullwake migrates today.
 
 ### SpaceGame - on 7.24.0 (MonoGame-free, manifest signing adopted)
 

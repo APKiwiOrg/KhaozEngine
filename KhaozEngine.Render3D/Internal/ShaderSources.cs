@@ -443,5 +443,99 @@ void main() {
     float outA = (Params.y > 0.5) ? s.a : 1.0;
     oColor = vec4(col, outA);
 }";
+
+        // ---- Ground decal: paint an analytic danger-zone shape onto the surface under each pixel. Reconstructs the
+        //      surface world position from the sampled linear depth (DepthTex) via InvViewProj, evaluates the shape
+        //      SDF in shape-local space on the XZ plane, gates by a Y-band around the ground height (so it conforms
+        //      to terrain but does not climb walls), and blends fill+outline with an fwidth AA edge. One draw per
+        //      decal (per-decal UBO). Renders into ColorTex (ColorOnlyFB) before the post chain, with alpha or
+        //      additive blend. ----
+        public const string DecalFrag = @"#version 450
+layout(set=0, binding=0) uniform texture2D DepthTex;
+layout(set=0, binding=1) uniform sampler Samp;
+layout(set=0, binding=2) uniform Decal {
+    mat4 InvViewProj;
+    vec4 Center;    // xyz world center, w = rotation (radians about +Y)
+    vec4 Size;      // per-shape params (see GroundDecal.Size)
+    vec4 Fill;      // rgb, a = fill alpha (already opacity-scaled)
+    vec4 Outline;   // rgb, a = outline alpha
+    vec4 Params;    // x=edgeThickness, y=fillFraction, z=flashAdd, w=shapeIndex
+    vec4 Gate;      // x=groundY, y=yTolerance, z=maxStep, w=unused
+};
+layout(location=0) in vec2 vUv;
+layout(location=0) out vec4 oColor;
+
+// 2D SDFs in shape-local space (origin at decal center, +x along the decal's facing for oriented shapes).
+float sdCircle(vec2 p, float r) { return length(p) - r; }
+float sdRing(vec2 p, float ri, float ro) { float d = length(p); return max(ri - d, d - ro); }
+float sdBox(vec2 p, vec2 b) { vec2 d = abs(p) - b; return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0); }
+
+void main() {
+    float depth = texture(sampler2D(DepthTex, Samp), vUv).r;
+    // Reconstruct world position from NDC (xy from screen UV, z from sampled depth).
+    vec4 ndc = vec4(vUv * 2.0 - 1.0, depth, 1.0);
+    vec4 wp = InvViewProj * ndc;
+    vec3 world = wp.xyz / wp.w;
+
+    // Y-band gate: only paint surfaces near the ground plane (conform to terrain, not walls).
+    float gateLo = Gate.x - Gate.y;
+    float gateHi = Gate.x + Gate.z;
+    if (world.y < gateLo || world.y > gateHi) discard;
+
+    // Into shape-local XZ (translate by center, rotate by -rotation so +x is the facing axis).
+    vec2 q = world.xz - Center.xz;
+    float c = cos(-Center.w), s = sin(-Center.w);
+    vec2 local = vec2(q.x * c - q.y * s, q.x * s + q.y * c);
+
+    int shape = int(Params.w + 0.5);
+    float edge = max(Params.x, 1e-4);
+    float fillFrac = clamp(Params.y, 0.0, 1.0);
+    float sd;        // signed distance to the shape boundary (negative inside)
+    float swept;     // signed distance to the swept (animated) fill boundary
+
+    if (shape == 0) {              // Circle: Size.x = radius
+        sd = sdCircle(local, Size.x);
+        swept = sdCircle(local, Size.x * fillFrac);
+    } else if (shape == 1) {       // Ring: Size.x=innerR, Size.y=outerR
+        sd = sdRing(local, Size.x, Size.y);
+        swept = sdRing(local, Size.x, Size.x + (Size.y - Size.x) * fillFrac);
+    } else if (shape == 2) {       // Beam: Size.x=halfLength, Size.y=halfWidth (origin at one end -> shift by halfLength)
+        vec2 b = vec2(Size.x, Size.y);
+        vec2 p = local - vec2(Size.x, 0.0);
+        sd = sdBox(p, b);
+        swept = sdBox(p, vec2(Size.x * fillFrac, Size.y));
+    } else if (shape == 3) {       // Cone: Size.x=range, Size.y=halfAngle. Sector via radius + angle test.
+        float ang = atan(local.y, local.x);
+        float inAng = abs(ang) - Size.y;             // <=0 inside the angular wedge
+        float inRad = length(local) - Size.x;        // <=0 inside the range
+        sd = max(inRad, inAng);
+        swept = max(length(local) - Size.x * fillFrac, inAng);
+    } else {                       // Arc: Size.x=radius, Size.y=halfBandWidth, Size.z=startAngle, Size.w=sweep
+        float ang = atan(local.y, local.x) - Size.z;
+        ang = mod(ang + 6.2831853, 6.2831853);       // 0..2pi from start
+        float band = abs(length(local) - Size.x) - Size.y;
+        float halfSweep = Size.w * 0.5;
+        float inAng = abs(ang - halfSweep) - halfSweep;  // <=0 within [0, sweep]
+        sd = max(band, inAng);
+        float sweptHalf = (Size.w * fillFrac) * 0.5;
+        swept = max(band, abs(ang - sweptHalf) - sweptHalf);
+    }
+
+    // Fill: inside the swept boundary, AA across one edge width.
+    float fillA = (1.0 - smoothstep(0.0, edge, swept)) * Fill.a;
+    // Outline: a band straddling the FULL shape boundary.
+    float outlineA = (1.0 - smoothstep(edge, edge * 2.0, abs(sd))) * Outline.a;
+
+    vec3 rgb = Fill.rgb;
+    float a = fillA;
+    // Composite the outline over the fill.
+    rgb = mix(rgb, Outline.rgb, outlineA <= 0.0 ? 0.0 : outlineA / max(outlineA + fillA, 1e-4));
+    a = max(a, outlineA);
+    // Impact flash: brighten toward white.
+    rgb = clamp(rgb + Params.z, 0.0, 1.0);
+
+    if (a <= 0.001) discard;
+    oColor = vec4(rgb, a);
+}";
     }
 }

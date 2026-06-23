@@ -20,6 +20,7 @@ namespace KhaozEngine.Render3D.Internal
         public IGpuTexture DepthColorTex = null!;
         public IGpuTexture DepthStencil = null!;
         public IGpuFramebuffer ModelFB = null!;
+        public IGpuFramebuffer ColorOnlyFB = null!;
 
         public IGpuTexture PingA = null!, PingB = null!;
         public IGpuFramebuffer PingAFB = null!, PingBFB = null!;
@@ -52,6 +53,10 @@ namespace KhaozEngine.Render3D.Internal
             DepthStencil = Tex(uw, uh, GpuPixelFormat.D32FloatS8UInt, GpuTextureUsage.DepthStencil);
             ModelFB = _gd.Factory.CreateFramebuffer(DepthStencil, ColorTex, NormalTex, DepthColorTex);
 
+            // Single-target view over the lit color attachment (no depth), so a pass can blend into ColorTex while
+            // sampling DepthColorTex (a different texture) - used by the ground-decal pass before the post chain.
+            ColorOnlyFB = _gd.Factory.CreateFramebuffer(null, ColorTex);
+
             PingA = Tex(uw, uh, GpuPixelFormat.R8G8B8A8UNorm, rt);
             PingB = Tex(uw, uh, GpuPixelFormat.R8G8B8A8UNorm, rt);
             PingAFB = _gd.Factory.CreateFramebuffer(null, PingA);
@@ -60,7 +65,7 @@ namespace KhaozEngine.Render3D.Internal
 
         void DisposeTargets()
         {
-            ModelFB?.Dispose(); PingAFB?.Dispose(); PingBFB?.Dispose();
+            ModelFB?.Dispose(); ColorOnlyFB?.Dispose(); PingAFB?.Dispose(); PingBFB?.Dispose();
             ColorTex?.Dispose(); NormalTex?.Dispose(); DepthColorTex?.Dispose(); DepthStencil?.Dispose();
             PingA?.Dispose(); PingB?.Dispose();
         }

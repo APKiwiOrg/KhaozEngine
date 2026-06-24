@@ -55,6 +55,17 @@ version/release work.
   `local-feed/` is a gitignored dev convenience; GitHub Packages (every published `v*`) is the durable store, so
   `local-feed` may be pruned up to the lowest version any consumer still pins (currently `7.3.0`) without losing
   anything recoverable.
+- **Full doc sweep on EVERY feature / bug / change - not just the guard-checked declarations.**
+  `check-doc-versions.sh` only verifies the 3 version strings; it does NOT catch package/feature docs drifting,
+  so those silently rot (7.34.0 shipped with the `README.md` package table and this `CLAUDE.md` package map both
+  missing the two new packages). After ANY change, sweep ALL docs that could reference what you touched and update
+  every one. When a package is ADDED/REMOVED: the `README.md` package-catalog table + the repo-layout block, this
+  `CLAUDE.md` package enumeration (the `<KhaozEngine5xVersion>` list above) + the umbrella descriptions,
+  `docs/CONSUMERS.md` (the umbrella/package table), and `docs/USING-KHAOZENGINE.md` (a usage section for new public
+  API). For a behaviour/bug change: `CHANGELOG.md` + `CHANGENOTES.md` AND any doc, README, or code comment that
+  described the OLD behaviour. Mechanical check before committing: grep the new (or removed) type / package / flag
+  name across `*.md` + `CLAUDE.md` and confirm every place that should mention it does (and no stale doc still
+  describes what you removed).
 - `scripts/check-doc-versions.sh` enforces those three declarations match the **5.x line**
   (`<KhaozEngine5xVersion>`, which is the engine); CI runs it on every push, so a forgotten bump fails the
   build. Consumer pins are exempt and may lag.

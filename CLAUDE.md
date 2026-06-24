@@ -70,7 +70,10 @@ version/release work.
   packages (`KhaozEngine.Gpu`,
   `Windowing`, `Render2D`, `Render3D`, `Gui`, `Audio`, `Particles`, `Effects`, `Game`, `Game.Render3D`), the
   headless snapshot harness libraries (`Snapshot` = 2D `SnapshotRunner`/`SnapshotHost`; `Snapshot.Render3D` = the
-  `Shot3D` extension; tooling, in NO umbrella, referenced directly by a game's snapshot tool, new at `7.33.0`) and the
+  `Shot3D` extension; tooling, in NO umbrella, referenced directly by a game's snapshot tool, new at `7.33.0`), the
+  attack-telegraph libraries (`Telegraphs` = `TelegraphStyle`/`TelegraphResolve`/`TelegraphRenderer2D`, in the
+  `Game2D` umbrella; `Telegraphs.Render3D` = the `Scene3D` ground-plane `Ground*` extensions over the generic
+  `Render3D.DrawGroundDecal` depth-sampling decal primitive, in the `Game3D` umbrella; new at `7.34.0`) and the
   MonoGame-free foundation (`Ecs`/`Serialization`/`Content`/`Diagnostics`/`App`/`Localization`/`Persistence`/
   `Pooling`/`Platform`/`Updates`/`Collision`/`Netcode`/`Netcode.Abstractions`/`Netcode.LiteNetLib`) plus the four
   code-free umbrella metapackages (`Foundation`, `Game2D`, `Game3D`, `Server`). (`KhaozEngine.Content.Validator`

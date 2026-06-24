@@ -19,6 +19,8 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 | **KhaozEngine.Audio** | `AudioSystem`: an OpenAL (Silk.NET.OpenAL) streaming music backend + SFX one-shots and 3D positional audio over a voice pool. WAV/OGG/MP3. Random track rotation is scopeable via `SetRotationPool` (e.g. menu-only music while every track stays playable on demand). | Diagnostics |
 | **KhaozEngine.Particles** | Pure, deterministic particle simulation (xorshift, `System.Numerics` + BCL only): `ParticleSystem` pool, `EmitterConfig` presets, `RateAccumulator`. | Pure .NET |
 | **KhaozEngine.Effects** | Game-feel visual effects: `ScreenShake` (trauma-based), parallax helpers. | Pure .NET |
+| **KhaozEngine.Telegraphs** | Attack-telegraph / danger-zone indicators (presentation-only): `TelegraphStyle` (+ `Generic`/`Fire`/`Poison` presets), the pure `TelegraphResolve` progress->visual mapping, and the immediate-mode `TelegraphRenderer2D` (circle/ring/beam/cone/arc). In the `Game2D` umbrella. | Render2D, Primitives |
+| **KhaozEngine.Telegraphs.Render3D** | The ground-plane arm of telegraphs: `Scene3D.GroundCircle/Ring/Beam/Cone/Arc` extensions that paint danger zones flat on the ground/terrain via the engine's depth-sampling `DrawGroundDecal` primitive. In the `Game3D` umbrella. | Telegraphs, Render3D |
 | **KhaozEngine.Game** | The 2D game-loop facade: `GameApp` (abstract base owning the per-frame compose: clock/viewport/input/draw) + `GameAppOptions`, and a `SceneManager`/`GameScene` state stack (Push/Pop/Replace/SwitchTo, overlay DrawBelow/UpdateBelow). | Windowing, Render2D, Gui |
 | **KhaozEngine.Game.Render3D** | The 3D bridge for the Game framework: `GameApp3D` (a `GameApp` that stands up a `Render3DSurface` + drives the 3D pass), `IGameScene3D`, and a `SceneManager.Draw3D` extension. Kept separate so a 2D game pulls no 3D renderer. | Game, Render3D |
 | **KhaozEngine.Ecs** | A struct-based archetype `World`/`Entity`/`ISystem` ECS: by-ref component access, `ForEach`, command buffer, system groups, `CachedQuery`, `WorldSerializer`. (`DeterministicRng` moved to `KhaozEngine.Primitives` in 6.0.0.) | Serialization |
@@ -148,6 +150,7 @@ dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj
 # Custom render/runtime stack
 KhaozEngine.Gpu/   KhaozEngine.Windowing/   KhaozEngine.Render2D/   KhaozEngine.Render3D/   KhaozEngine.Gui/
 KhaozEngine.Audio/   KhaozEngine.Particles/   KhaozEngine.Effects/   KhaozEngine.Game/   KhaozEngine.Game.Render3D/
+KhaozEngine.Telegraphs/   KhaozEngine.Telegraphs.Render3D/
 # Foundation (GPU-free, pure .NET)
 KhaozEngine.Primitives/
 KhaozEngine.Ecs/   KhaozEngine.Serialization/   KhaozEngine.Content/   KhaozEngine.Content.Validator/

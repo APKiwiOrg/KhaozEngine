@@ -54,12 +54,12 @@ via AOT, and ~21 existing C# packages + 3 games would be thrown away by a rewrit
 
 ### Current status (snapshot captured at 6.3.0)
 
-_(Historical snapshot below; current state is 7.12.0 - see CONSUMERS.md / CHANGELOG.md. The table captured
+_(Historical snapshot below; current state is 7.34.0 - see CONSUMERS.md / CHANGELOG.md. The table captured
 the moment every subsystem was first proven on the custom stack; the version markers in it are left as a
 record of when each landed.)_
 
 **Every subsystem needed to drop MonoGame is now proven on the custom stack — no feasibility unknowns
-remain; the rest is productization + porting.** Shipped engine packages (shared version, now at 7.12.0):
+remain; the rest is productization + porting.** Shipped engine packages (shared version, now at 7.34.0):
 
 | Subsystem | Status |
 |---|---|
@@ -245,5 +245,5 @@ longer music-only. SpaceGame (now ported, on `7.3.0`) may still keep its game-si
 
 ---
 _Source: coordinated promote-into-KE effort, 2026-06-11; shipped-items reconciled 2026-06-13 at 4.0.0.
-The engine is now one MonoGame-free shared version line, currently 7.12.0 (see CONSUMERS.md / CHANGELOG.md).
+The engine is now one MonoGame-free shared version line, currently 7.34.0 (see CONSUMERS.md / CHANGELOG.md).
 Update as items are scheduled or shipped._

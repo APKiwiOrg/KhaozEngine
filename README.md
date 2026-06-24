@@ -202,8 +202,8 @@ Author-time dotnet tools that ship as packages on the shared version line (not r
 
 | Game | References | Status |
 |---|---|---|
-| **Hardpoint** (3D) | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic) | On 6.3.0, fully off MonoGame. |
-| **Nullwake** (2D) | `KhaozEngine.Game2D` | On 6.3.0, fully off MonoGame. Source of the widgets, transitions, and the click-through fix. |
-| **SpaceGame** (2D) | `KhaozEngine.Game2D` (head) + foundation pins on `SpaceGame.Sim` | On 6.3.0, fully off MonoGame. Deterministic lockstep sim split into `SpaceGame.Sim`. |
+| **Hardpoint** (3D) | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic) | On 7.33.0, fully off MonoGame. |
+| **Nullwake** (2D) | `KhaozEngine.Game2D` | On 7.33.0, fully off MonoGame. Source of the widgets, transitions, and the click-through fix. |
+| **SpaceGame** (2D) | `KhaozEngine.Game2D` (head) + foundation pins on `SpaceGame.Sim` | On 7.34.0, fully off MonoGame. Deterministic lockstep sim split into `SpaceGame.Sim`. |
 
 Full per-package version + adoption matrix: [`docs/CONSUMERS.md`](docs/CONSUMERS.md).

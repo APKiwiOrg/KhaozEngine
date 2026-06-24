@@ -62,11 +62,13 @@ not surprises.**
    Metal-only) — an opaque device/frame abstraction + a backend factory (platform probe + `KE_GRAPHICS_BACKEND`
    override). Funnel the 2 device-creation sites + 2 snapshot factories through it. Stop exposing raw Veldrid on
    `AppWindow`.
-2. **Two submission-perf ceilings.** (performance)
+2. **Two submission-perf ceilings.** (performance) _[RESOLVED 5.48.0 — both fixed; see status banner. The
+   present-tense text below is the original 5.22.0 finding, kept for the historical record.]_
    - 3D: `ModelRenderer.DrawInstance` does UBO-upload + pipeline/set bind + draw **per instance** into a single
      shared UBO. Ceiling ~150-300 instances. **Fix:** group instances by `MeshHandle`; dynamic instance UBO/SSBO
      or GPU instancing; hoist the invariant `SetPipeline`/`SetGraphicsResourceSet` out of the loop (trivial,
-     do first).
+     do first). _(Done: current `ModelRenderer` issues real `cl.DrawIndexed(..., instanceCount, ...)` instanced
+     draws over persistent retire-not-dispose instance buffers.)_
    - 2D: `SpriteBatch.Flush` calls `CreateBuffer` + `verts.ToArray()` per run **every frame** and disposes them
      next frame. **Fix:** one persistent growable vertex buffer (the Line/Billboard renderers already do this);
      drop `ToArray()` (use `CollectionsMarshal.AsSpan`).

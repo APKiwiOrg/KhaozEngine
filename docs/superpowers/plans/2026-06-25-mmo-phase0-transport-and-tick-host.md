@@ -1001,7 +1001,7 @@ public class FixedTickHostSimulatorIntegrationTests
 
         var state = new PosState(0f);
         // 0.3s elapsed -> exactly 3 ticks.
-        int produced = host.Advance(0.3f, _ =>
+        int produced = host.Advance(0.3f, tickIndex => // named (not `_`) so the `out _` discard below is unambiguous
         {
             MoveCmd cmd = queue.Dequeue(slot: 0, out _);
             state = sim.Step(state, cmd, dt);

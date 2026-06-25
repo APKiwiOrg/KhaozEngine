@@ -71,6 +71,21 @@ public sealed class CellSim
     public int Tick(float elapsedSeconds, int maxTicksPerFrame = 8) =>
         tickHost.Advance(elapsedSeconds, _ => World.Update(TickSeconds), maxTicksPerFrame);
 
+    /// <summary>
+    /// Rebuilds this cell's <see cref="Interest"/> grid from the current positions of every entity in its world
+    /// (owned <b>and</b> ghosts), read via <paramref name="accessor"/>. Call before querying AoI for a client so
+    /// the home cell's full neighbourhood (owned + border ghosts) is indexed.
+    /// </summary>
+    public void RebuildInterest(CellPositionAccessor accessor)
+    {
+        ArgumentNullException.ThrowIfNull(accessor);
+        Interest.Clear();
+        World.ForEach<NetId>((Entity e, ref NetId id) =>
+        {
+            if (accessor(World, e, out float x, out float y)) Interest.Insert(id.Value, x, y);
+        });
+    }
+
     /// <summary>Source cells this cell currently holds a ghost view for (may include emptied views).</summary>
     public IReadOnlyCollection<CellCoord> GhostSources => ghostViews.Keys;
 

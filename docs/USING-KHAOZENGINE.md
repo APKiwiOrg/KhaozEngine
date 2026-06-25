@@ -1137,7 +1137,26 @@ any prior ghost of it) and acks; the owner releases it. The entity keeps its `Ne
 destination cell is created if needed. The in-process link completes the whole handshake within the call (so the
 exactly-once invariant holds at every call boundary); a networked link would keep the entity `Migrating` on the
 source until the ack arrives - never double-simulated, never permanently lost. Game systems must treat
-`Migrating` entities as frozen, like `Ghost`s. A dedicated-server template is the next Phase 3 stage.
+`Migrating` entities as frozen, like `Ghost`s.
+
+**Client home-cell serving (Phase 3D).** Each client is served its entire area-of-interest from a single **home
+cell** - the cell that owns its player. Because of the invariant **overlap margin >= interest radius**, that cell
+already holds (as border ghosts) everything within the player's interest, so no client-side multi-cell
+aggregation is needed:
+
+```csharp
+host.BindClient(slot, playerNetId);                // bind a session slot to its player entity
+// each serve cycle (after Tick -> ProcessHandoffs -> SyncGhosts):
+byte[] aoi = host.SnapshotForClient(slot, interestRadius: 32f);   // owned + ghosts within interest, from the home cell
+// ship `aoi` over your NetServer session; the client applies it with ClientReplicationView
+host.TryGetHomeCell(slot, out CellSim home);       // the cell currently serving this client
+```
+
+`SnapshotForClient` throws if `interestRadius > OverlapMargin` (the home-cell guarantee would break) or if the
+player is not currently owned. When the player crosses a boundary, `ProcessHandoffs` moves ownership and the home
+cell **re-binds automatically** (it is derived from the current owner); the new home cell already held the
+player's surroundings as ghosts, so the client's view is continuous across the crossing (nothing in-interest
+disappears then reappears). A dedicated-server template wiring this together is the next Phase 3 stage.
 
 ---
 

@@ -36,6 +36,7 @@ public sealed class ShardHost
     private readonly ICellLink link;
     private readonly Dictionary<CellCoord, CellSim> cells = new();
     private readonly List<CellSim> ordered = new();
+    private readonly Dictionary<int, int> clientPlayerNetId = new(); // session slot -> the client's player NetId
 
     /// <param name="cellSize">World-grid cell edge length in world units. Must be &gt; 0.</param>
     /// <param name="tickSeconds">Fixed timestep shared by every cell, seconds per tick. Must be &gt; 0.</param>
@@ -256,6 +257,58 @@ public sealed class ShardHost
         cell = null!;
         entity = default;
         return false;
+    }
+
+    /// <summary>
+    /// Binds a client (session <paramref name="slot"/>, e.g. from <c>NetServer</c>) to its player entity
+    /// (<paramref name="playerNetId"/>). The client's <b>home cell</b> is then derived as the cell that currently
+    /// owns that player, so it follows the player across handoffs automatically (seamless re-bind).
+    /// </summary>
+    public void BindClient(int slot, int playerNetId) => clientPlayerNetId[slot] = playerNetId;
+
+    /// <summary>Removes a client binding. Returns false if the slot was not bound.</summary>
+    public bool UnbindClient(int slot) => clientPlayerNetId.Remove(slot);
+
+    /// <summary>Whether a client is bound to <paramref name="slot"/>.</summary>
+    public bool IsClientBound(int slot) => clientPlayerNetId.ContainsKey(slot);
+
+    /// <summary>
+    /// The cell currently serving <paramref name="slot"/> - the cell that owns the client's player. False if the
+    /// slot is unbound or the player is not currently owned by any cell.
+    /// </summary>
+    public bool TryGetHomeCell(int slot, out CellSim cell)
+    {
+        cell = null!;
+        return clientPlayerNetId.TryGetValue(slot, out int playerNetId) && TryGetOwner(playerNetId, out cell, out _);
+    }
+
+    /// <summary>
+    /// Builds the area-of-interest snapshot for a client from its <b>single home cell</b>: the entities (owned and
+    /// border ghosts) within <paramref name="interestRadius"/> of the client's player, serialized via the
+    /// Replication codecs. Relies on the invariant <see cref="OverlapMargin"/> &gt;= <paramref name="interestRadius"/>
+    /// (so the home cell already holds, as ghosts, everything in the player's interest) and throws if it is
+    /// violated. On a player crossing, the home cell re-binds automatically, so the next snapshot comes from the new
+    /// cell - which already held the surroundings as ghosts, so the client's view is continuous.
+    /// </summary>
+    public byte[] SnapshotForClient(int slot, float interestRadius)
+    {
+        if (positionAccessor is null)
+            throw new InvalidOperationException("SnapshotForClient requires a position accessor.");
+        if (interestRadius < 0f)
+            throw new ArgumentOutOfRangeException(nameof(interestRadius), interestRadius, "Interest radius must be >= 0.");
+        if (interestRadius > OverlapMargin)
+            throw new InvalidOperationException(
+                $"Interest radius {interestRadius} exceeds overlap margin {OverlapMargin}: the home cell can't hold the full AoI as ghosts. Increase OverlapMargin so it is >= the interest radius.");
+        if (!clientPlayerNetId.TryGetValue(slot, out int playerNetId))
+            throw new InvalidOperationException($"No client bound to slot {slot}.");
+        if (!TryGetOwner(playerNetId, out CellSim home, out Entity player))
+            throw new InvalidOperationException($"Client {slot}'s player {playerNetId} is not owned by any cell.");
+        if (!positionAccessor(home.World, player, out float px, out float py))
+            throw new InvalidOperationException($"Client {slot}'s player {playerNetId} has no position.");
+
+        home.RebuildInterest(positionAccessor);
+        System.Collections.Generic.HashSet<int> interest = home.Interest.Query(px, py, interestRadius);
+        return SnapshotWriter.WriteFiltered(home.World, registry, interest);
     }
 
     /// <summary>

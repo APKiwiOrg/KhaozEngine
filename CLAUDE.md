@@ -102,10 +102,13 @@ version/release work.
   with cross-cell border ghosting (`ICellLink`/`InProcessCellLink` inter-cell messaging seam, `CellMessage`, a
   `Ghost` read-only-mirror tag, `CellPositionAccessor`, and `ShardHost.SyncGhosts`/`OverlapMargin`); Phase 3C added
   authority handoff (a `Migrating` tag, `Migrate`/`MigrateAck` message kinds, kind-scoped `ICellLink.Drain`, and
-  `ShardHost.ProcessHandoffs`/`OwnerCount`/`TryGetOwner`) - exactly-once cell-crossing transfer (no dup/loss). Note:
+  `ShardHost.ProcessHandoffs`/`OwnerCount`/`TryGetOwner`) - exactly-once cell-crossing transfer (no dup/loss);
+  Phase 3D added client home-cell serving (`ShardHost.BindClient`/`UnbindClient`/`TryGetHomeCell`/
+  `SnapshotForClient`, `CellSim.RebuildInterest`) - a client's whole AoI is served from the single cell owning its
+  player (invariant overlap margin >= interest radius, enforced), re-binding seamlessly on a crossing. Note:
   the package id is `KhaozEngine.Sharding`, NOT `KhaozEngine.World` - a namespace whose leaf is literally `World`
-  would shadow the ECS `World` type. `Sharding` (3A + 3B + 3C) is built and held UNPUBLISHED pending the Phase 3
-  batch release (policy B), so it carries no version attribution yet.) (`KhaozEngine.Content.Validator`
+  would shadow the ECS `World` type. `Sharding` (3A + 3B + 3C + 3D) is built and held UNPUBLISHED pending the
+  Phase 3 batch release (policy B), so it carries no version attribution yet.) (`KhaozEngine.Content.Validator`
   is a build-time tool, `IsPackable=false`, shipped inside the `Content` package rather than versioned itself.)
   `KhaozEngine.Updates.Tool` (the `ke-updater` dotnet tool: manifest/genkey/sign/verify, shipped at `7.3.0`)
   and `KhaozEngine.Sfx.Tool` (the `ke-sfxbake` dotnet tool: manifest-driven bulk SFX generation + bake via the

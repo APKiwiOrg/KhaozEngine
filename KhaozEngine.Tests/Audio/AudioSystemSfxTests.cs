@@ -33,6 +33,17 @@ public sealed class AudioSystemSfxTests : IDisposable
     }
 
     [Fact]
+    public void StopAllSfx_StopsEveryVoice_OnTheBackend()
+    {
+        var (audio, sfx) = NewLoaded();
+        audio.PlaySfx("blip");
+
+        audio.StopAllSfx();
+
+        Assert.Equal(1, sfx.StopAllCount);
+    }
+
+    [Fact]
     public void RegisterSfxAndLoadContentMapsTheName()
     {
         var (audio, sfx) = NewLoaded();

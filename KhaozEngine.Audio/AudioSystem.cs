@@ -556,6 +556,12 @@ public sealed class AudioSystem : IDisposable
     public bool PlaySfx3D(IReadOnlyList<string> candidateKeys, Vector3 position, float volume = 1f, float pitch = 1f)
         => PlayFirstAvailable(candidateKeys, volume, pitch, positional: true, position);
 
+    /// <summary>
+    /// Stops every currently-playing SFX voice immediately (music is unaffected). Useful on a scene / screen
+    /// transition or pause so lingering one-shots do not bleed across the cut. A no-op when nothing is playing.
+    /// </summary>
+    public void StopAllSfx() => _sfxBackend.StopAll();
+
     // Plays the first candidate that resolves to a loaded buffer (reusing PlaySfxInternal's gain math + guard), or
     // warns once on the joined list and returns false if none load. Null / empty list is a silent no-op (false).
     private bool PlayFirstAvailable(IReadOnlyList<string> candidateKeys, float volume, float pitch, bool positional, Vector3 position)

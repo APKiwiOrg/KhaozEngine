@@ -5,15 +5,15 @@ using KhaozEngine.Gpu.Internal;
 namespace KhaozEngine.Gpu
 {
     /// <summary>
-    /// TRANSITIONAL Veldrid bridge created via <see cref="CreateForWindow"/> / <see cref="CreateHeadless()"/>.
-    /// Phase 3a centralizes backend selection (no more hard-coded <c>GraphicsBackend.Metal</c>) and surfaces
-    /// <see cref="GpuCapabilities"/>, but still exposes the raw Veldrid <see cref="GraphicsDevice"/> so the
-    /// existing renderers keep working unchanged. Phase 3b/3c replace <see cref="Device"/> with the wrapped
-    /// engine GPU types and this transitional accessor goes away.
+    /// Owns a Veldrid device created via <see cref="CreateForWindow"/> / <see cref="CreateHeadless()"/> plus the
+    /// engine-owned <see cref="GpuDevice"/> wrapping it. Centralizes backend selection (no hard-coded
+    /// <c>GraphicsBackend.Metal</c>) and surfaces <see cref="GpuCapabilities"/>. Renderers consume
+    /// <see cref="GpuDevice"/>; the raw Veldrid device stays a private implementation detail of this context.
     /// </summary>
     public sealed class GpuDeviceContext : IDisposable
     {
         readonly bool _ownsDevice;
+        readonly GraphicsDevice _device;
 
         /// <summary>The selected graphics backend (from <see cref="GpuBackendSelector"/>).</summary>
         public GpuBackendKind Backend { get; }
@@ -22,21 +22,15 @@ namespace KhaozEngine.Gpu
         public GpuCapabilities Capabilities { get; }
 
         /// <summary>
-        /// The underlying Veldrid device — the implementation detail behind <see cref="GpuDevice"/>. Internal as
-        /// of phase 3d: no renderer consumes it; consumers use the engine-owned <see cref="GpuDevice"/>.
-        /// </summary>
-        internal GraphicsDevice Device { get; }
-
-        /// <summary>
-        /// The engine-owned GPU device wrapping the same underlying Veldrid <see cref="Device"/>. Phase-3b
-        /// renderers (Render2D) consume this instead of the raw device, so Veldrid stays hidden. The wrapper is
-        /// non-owning — disposal flows through this context's <see cref="Dispose"/>.
+        /// The engine-owned GPU device wrapping the underlying Veldrid device. Renderers (Render2D / Render3D)
+        /// consume this instead of the raw device, so Veldrid stays hidden. The wrapper is non-owning: disposal
+        /// flows through this context's <see cref="Dispose"/>.
         /// </summary>
         public IGpuDevice GpuDevice { get; }
 
         GpuDeviceContext(GraphicsDevice device, GpuBackendKind backend, bool ownsDevice)
         {
-            Device = device;
+            _device = device;
             Backend = backend;
             _ownsDevice = ownsDevice;
             Capabilities = new GpuCapabilities(device.IsClipSpaceYInverted, device.IsDepthRangeZeroToOne);
@@ -109,7 +103,7 @@ namespace KhaozEngine.Gpu
 
         public void Dispose()
         {
-            if (_ownsDevice) Device.Dispose();
+            if (_ownsDevice) _device.Dispose();
         }
     }
 }

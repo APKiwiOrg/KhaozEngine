@@ -6,9 +6,8 @@ using Veldrid.SPIRV;
 namespace KhaozEngine.Gpu.Internal
 {
     /// <summary>The Veldrid-backed <see cref="IGpuDevice"/> + <see cref="IGpuResourceFactory"/>. Wraps a
-    /// <see cref="GraphicsDevice"/>; all Veldrid types stay confined here. The wrapped device is the SAME
-    /// underlying object exposed transitionally by <see cref="GpuDeviceContext.Device"/>, so 2D (migrated) and
-    /// 3D (still raw until phase 3c) share one device.</summary>
+    /// <see cref="GraphicsDevice"/>; all Veldrid types stay confined here. The wrapped device is the same
+    /// underlying object <see cref="GpuDeviceContext"/> owns, so the 2D and 3D renderers share one device.</summary>
     internal sealed class VeldridGpuDevice : IGpuDevice, IGpuResourceFactory
     {
         internal GraphicsDevice GraphicsDevice { get; }

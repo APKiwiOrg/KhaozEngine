@@ -30,6 +30,7 @@
   <Project Path="KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
   <Project Path="KhaozEngine.Replication/KhaozEngine.Replication.csproj" />
   <Project Path="KhaozEngine.Simulation/KhaozEngine.Simulation.csproj" />
+  <Project Path="KhaozEngine.WorldStore/KhaozEngine.WorldStore.csproj" />
   <Project Path="KhaozEngine.Render2D/KhaozEngine.Render2D.csproj" />
   <Project Path="KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
   <Project Path="KhaozEngine.Telegraphs/KhaozEngine.Telegraphs.csproj" />

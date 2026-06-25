@@ -19,5 +19,7 @@
     <ProjectReference Include="../KhaozEngine.Simulation/KhaozEngine.Simulation.csproj" />
     <!-- entity replication -->
     <ProjectReference Include="../KhaozEngine.Replication/KhaozEngine.Replication.csproj" />
+    <!-- world store -->
+    <ProjectReference Include="../KhaozEngine.WorldStore/KhaozEngine.WorldStore.csproj" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.WorldStore</PackageId>
+    <Version>$(KhaozEngine5xVersion)</Version>
+    <Description>Server-side durable persistence seam for an authoritative world: IWorldStore, an async keyed byte[] store designed for a database backend (not local JSON save files), plus a dependency-free thread-safe InMemoryWorldStore reference/test implementation. Real backends (SQLite/Postgres/cloud) implement the seam as infrastructure. Part of the MMO netcode stack. Zero dependencies.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Tests" />
+  </ItemGroup>
+</Project>

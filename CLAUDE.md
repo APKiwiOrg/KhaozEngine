@@ -111,8 +111,8 @@ version/release work.
   `NetServer` session layer + per-client home-cell serving + `RemoteCommandQueue` input + `WorldStore` on
   `FixedTickHost`; a sample, `IsPackable=false`, not itself a package). Note:
   the package id is `KhaozEngine.Sharding`, NOT `KhaozEngine.World` - a namespace whose leaf is literally `World`
-  would shadow the ECS `World` type. `Sharding` (3A + 3B + 3C + 3D + 3E) is built and held UNPUBLISHED pending the
-  Phase 3 batch release (policy B), so it carries no version attribution yet.) (`KhaozEngine.Content.Validator`
+  would shadow the ECS `World` type. `Sharding` (3A + 3B + 3C + 3D + 3E) shipped at `7.38.0` as the Phase 3 batch.)
+  (`KhaozEngine.Content.Validator`
   is a build-time tool, `IsPackable=false`, shipped inside the `Content` package rather than versioned itself.)
   `KhaozEngine.Updates.Tool` (the `ke-updater` dotnet tool: manifest/genkey/sign/verify, shipped at `7.3.0`)
   and `KhaozEngine.Sfx.Tool` (the `ke-sfxbake` dotnet tool: manifest-driven bulk SFX generation + bake via the

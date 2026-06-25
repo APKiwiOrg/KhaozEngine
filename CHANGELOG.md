@@ -5,6 +5,42 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.38.0
+
+MMO netcode stack, Phase 3: seamless sharded world topology. A new package `KhaozEngine.Sharding` (in the
+`Server` umbrella) partitions the world into a uniform grid of authoritative cells run in one process, with
+seamless cross-boundary movement, plus a reference dedicated-server sample. Design:
+`docs/superpowers/specs/2026-06-25-mmo-phase3-seamless-shard-design.md`.
+
+- **Cell grid** (3A): `CellCoord` (world position -> integer cell coord; `FromWorld` floor math mirroring
+  `InterestGrid`), `CellSim` (one cell = an ECS `World` + a `FixedTickHost` + a `ServerReplicator` + an
+  `InterestGrid`; `Tick` steps the cell's systems per fixed tick), and `ShardHost` (owns the `CellCoord->CellSim`
+  map, creates cells on demand, `CellFor`/`CoordFor`/`TryGetCell`, routes spawns by position via `SpawnAt`, ticks
+  every cell at one shared fixed rate).
+- **Cross-cell ghosting** (3B): the `ICellLink` inter-cell messaging seam (`CellMessage`/`CellMessageKind`) with
+  the in-process `InProcessCellLink` default; `ShardHost.SyncGhosts` mirrors owned entities within an
+  `OverlapMargin` of a cell edge into the neighbour(s) across it as read-only `Ghost` entities (edge + corner
+  neighbours) via the Replication codecs, over a game-supplied `CellPositionAccessor`. A cell's world = owned +
+  ghosts; the owner stays the sole simulator.
+- **Authority handoff** (3C): `ShardHost.ProcessHandoffs` transfers ownership when an entity crosses a boundary
+  with exactly-once semantics (never two owners, never zero) via a `Migrate`/`MigrateAck` handshake over a
+  kind-scoped `ICellLink.Drain`, a `Migrating` freeze tag, and `OwnerCount`/`TryGetOwner`. The entity keeps its
+  `NetId`; the in-process link completes the handshake within the call.
+- **Client home-cell serving** (3D): `ShardHost.BindClient`/`UnbindClient`/`TryGetHomeCell`/`SnapshotForClient`
+  (+ `CellSim.RebuildInterest`) serve a client its whole area-of-interest from the single cell owning its player,
+  relying on and enforcing the invariant overlap margin >= interest radius; the home cell re-binds automatically
+  on a crossing, so the client's view is continuous (nothing in-interest disappears then reappears).
+- **Reference dedicated server** (3E): `MmoServerSample` (a sample, `IsPackable=false`) wires a multi-cell
+  `ShardHost` over the `NetServer` session layer (any `INetTransport`), per-client home-cell serving,
+  `RemoteCommandQueue` input, and `IWorldStore` persistence, on a `FixedTickHost`. `ICellLink` is finalized as the
+  inter-cell seam with a documented network-impl contract (route by target `CellCoord`, kind-scoped FIFO `Drain`,
+  reliable delivery) for an infrastructure implementation. End-to-end headless test over `LoopbackTransport`
+  (connect -> join -> cross a boundary -> re-bind -> continuous, single-ownership view); a `LiveSocket` smoke runs
+  over real LiteNetLib UDP.
+
+In-process and deterministic (no sockets in tests); multi-process distribution is infrastructure implementing the
+seams. Additive (one new package + a new sample), minor.
+
 ## 7.37.0
 
 Window-focus tracking so games (and the Gui) can ignore input while the window is in the background. Fixes the

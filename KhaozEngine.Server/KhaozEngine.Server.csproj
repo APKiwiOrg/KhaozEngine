@@ -17,5 +17,7 @@
     <ProjectReference Include="../KhaozEngine.Netcode.LiteNetLib/KhaozEngine.Netcode.LiteNetLib.csproj" />
     <!-- simulation host -->
     <ProjectReference Include="../KhaozEngine.Simulation/KhaozEngine.Simulation.csproj" />
+    <!-- entity replication -->
+    <ProjectReference Include="../KhaozEngine.Replication/KhaozEngine.Replication.csproj" />
   </ItemGroup>
 </Project>

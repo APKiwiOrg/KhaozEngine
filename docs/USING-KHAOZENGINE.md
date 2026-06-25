@@ -971,7 +971,89 @@ host.Advance(elapsedSeconds, tickIndex =>
 ```
 
 This is the server-side spine: drain per-connection commands once per fixed tick and step the sim, with no
-window or GPU. Later phases add entity replication, interest management, and zoning on top.
+window or GPU.
+
+### Sessions (`NetServer` / `NetClient`)
+
+Above the raw transport, the session layer turns connections into authenticated, slotted players. The server
+runs a Hello/Welcome/Reject handshake, authenticates via an `IConnectionAuthenticator` (ship
+`AllowAllAuthenticator` for dev; real auth is your account service), assigns a player slot, and raises events:
+
+```csharp
+var server = new NetServer(serverTransport, maxPlayers: 64, new AllowAllAuthenticator());
+server.Poll();
+while (server.TryDequeueEvent(out ServerSessionEvent ev))
+{
+    if (ev.Kind == ServerSessionEventKind.Joined)      commandQueues.Add(ev.Slot);
+    else if (ev.Kind == ServerSessionEventKind.Left)   commandQueues.Remove(ev.Slot);
+    else /* Data */                                     HandleCommand(ev.Slot, ev.Data, ev.Reliability);
+}
+server.SendTo(slot, snapshotBytes, NetChannelReliability.UnreliableSequenced);
+
+var client = new NetClient(clientTransport, token);
+client.Poll();
+while (client.TryDequeueEvent(out ClientSessionEvent ce)) { /* Joined(ce.Slot) / Rejected / Data / Disconnected */ }
+```
+
+Slots are the same small-int key `RemoteCommandQueue` uses, so commands and replication line up.
+
+### Entity replication (`KhaozEngine.Replication`)
+
+Replicate the authoritative ECS `World` to clients. Register each replicated component once (server and client
+must agree on type ids), then snapshot on the server and apply on the client:
+
+```csharp
+var registry = new ReplicationRegistry();
+registry.Register<Position>(1,
+    write: (p, bw) => { bw.Write(p.X); bw.Write(p.Y); },
+    read:  br => new Position { X = br.ReadSingle(), Y = br.ReadSingle() },
+    lerp:  (a, b, t) => Position.Lerp(a, b, t));     // optional -> interpolatable
+
+// Server: entities carrying a NetId are replicated.
+byte[] full = SnapshotWriter.Write(serverWorld, registry);
+
+// Client:
+var view = new ClientReplicationView(registry);
+view.Apply(clientWorld, full);                        // spawn new, despawn gone, update existing
+view.Interpolate(clientWorld, renderAlpha);           // smooth interpolatable components between snapshots
+```
+
+For bandwidth, use the delta path: `ServerReplicator` keeps per-client acked baselines and sends only what
+changed; the client applies deltas and acks the seq it received:
+
+```csharp
+var replicator = new ServerReplicator(registry);
+int seq = replicator.Capture(serverWorld);            // once per tick
+byte[] delta = replicator.WriteFor(slot);             // only changes since this client's baseline
+// ...client: view.ApplyDelta(clientWorld, delta); then send view.LastAppliedSeq back ->
+replicator.Acknowledge(slot, ackedSeq);
+```
+
+### Area of interest (`InterestGrid`)
+
+Send each client only nearby entities. Rebuild the grid each tick from positions, query per client viewpoint,
+and write an interest-filtered snapshot; the existing `Apply` spawns entities that entered the client's view
+and despawns those that left:
+
+```csharp
+grid.Clear();
+serverWorld.ForEach<NetId, Position>((e, ref NetId id, ref Position p) => grid.Insert(id.Value, p.X, p.Y));
+HashSet<int> interest = grid.Query(viewX, viewY, viewRadius);
+byte[] snap = SnapshotWriter.WriteFiltered(serverWorld, registry, interest);
+```
+
+### Durable state (`KhaozEngine.WorldStore`)
+
+Persist authoritative character/world records through `IWorldStore` (async, keyed `byte[]`, DB-shaped). Use
+`InMemoryWorldStore` for tests/dev; a real server implements the seam over SQLite/Postgres/cloud (infra):
+
+```csharp
+IWorldStore store = new InMemoryWorldStore();
+await store.SaveAsync($"char/{accountId}", SerializeCharacter(state));
+byte[]? loaded = await store.LoadAsync($"char/{accountId}");
+```
+
+Later phases add zoning/sharding + a dedicated-server template on top.
 
 ---
 

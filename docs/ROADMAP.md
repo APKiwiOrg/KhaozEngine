@@ -1,6 +1,6 @@
 # KhaozEngine roadmap / backlog
 
-Larger feature areas identified but not yet scheduled. Current released version: **7.35.0** (the shared
+Larger feature areas identified but not yet scheduled. Current released version: **7.36.0** (the shared
 `<KhaozEngine5xVersion>` line, which is the engine: the custom MonoGame-free stack plus the graduated foundation packages). The legacy 4.x
 line and its six genuinely-MonoGame packages (`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`) were
 DELETED from the engine source, so the engine itself is now entirely MonoGame-free. All three consumers are
@@ -35,9 +35,16 @@ dedicated-server template.
   gained `LiteNetLibServerTransport`/`LiteNetLibClientTransport` (UDP); and the new `KhaozEngine.Simulation`
   package added `FixedTickHost` (the headless fixed-timestep accumulator). Plan:
   `docs/superpowers/plans/2026-06-25-mmo-phase0-transport-and-tick-host.md`.
-- **Open:** Phases 1-3 (replication, interest management, world-store, zoning), plus the existing-system
-  upgrades they force (ECS job scheduling, an incremental spatial index, AoI). SpaceGame is the intended first
-  adopter / testbed once Phase 1 lands.
+- **Phases 1 + 2 shipped (`7.36.0`).** 1D session lifecycle (`NetServer`/`NetClient`, handshake,
+  `IConnectionAuthenticator`, `SlotAllocator`, session events) in `KhaozEngine.Netcode`. 1C entity replication
+  (new `KhaozEngine.Replication`): `NetId`, `ReplicationRegistry`, `SnapshotWriter`, `ClientReplicationView`
+  (full-state + baseline/delta + interpolation), `ServerReplicator`. 2E interest management (`InterestGrid` +
+  `SnapshotWriter.WriteFiltered`). 2F world store (new `KhaozEngine.WorldStore`): `IWorldStore` async seam +
+  `InMemoryWorldStore`. Plans: `docs/superpowers/plans/2026-06-25-mmo-phase1d-session-lifecycle.md`,
+  `...-phase1c-entity-replication.md`.
+- **Open:** Phase 3 (zoning/sharding + dedicated-server template). Refinements: ECS job scheduling, delta+AoI
+  unification, delta bit-packing/quantization, a SQLite `IWorldStore`. SpaceGame is the intended first adopter /
+  testbed.
 
 ## The post-MonoGame pivot (6.x line): strategic direction
 

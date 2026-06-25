@@ -5,6 +5,30 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.36.0
+
+MMO netcode stack, Phases 1 + 2 (session lifecycle, entity replication, interest management, world store).
+Builds on the Phase 0 transport seam + fixed-tick host. Two new packages; design + decomposition in
+`docs/superpowers/specs/2026-06-25-mmo-netcode-stack-design.md`.
+
+- **Session lifecycle** (`KhaozEngine.Netcode`, 1D): `NetServer` / `NetClient` over `INetTransport` — a
+  Hello/Welcome/Reject handshake (`SessionFrame`/`SessionOpcode`), `IConnectionAuthenticator` seam (+ the dev
+  `AllowAllAuthenticator`), `SlotAllocator` (lowest-free player slot, recycled, capped), and Joined/Left/Data
+  session events (`ServerSessionEvent` / `ClientSessionEvent`).
+- **Entity replication** (new package `KhaozEngine.Replication`, depends on `Ecs` only, 1C): `NetId` identity,
+  a closure-based `ReplicationRegistry` (per-type serialize/deserialize/lerp/capture/remove over the public
+  `World` API), `SnapshotWriter` (full-state, `byte[]`), `ClientReplicationView` (`Apply` + `ApplyDelta`:
+  spawn/despawn/update + interpolation), and `ServerReplicator` (per-slot acked baselines + baseline+delta
+  encode — only changed entities/components per client).
+- **Interest management / AoI** (`KhaozEngine.Replication`, 2E): `InterestGrid` (uniform spatial hash,
+  exact-radius query) + `SnapshotWriter.WriteFiltered` (per-client interest-filtered snapshot; the existing
+  `ClientReplicationView.Apply` then spawns entities that entered the set and despawns those that left).
+- **World store** (new package `KhaozEngine.WorldStore`, zero deps, 2F): `IWorldStore` — an async keyed `byte[]`
+  durable-state seam shaped for a database backend — plus a thread-safe `InMemoryWorldStore` reference impl
+  (SQLite/Postgres/cloud implement the seam as infrastructure).
+- Both new packages added to the `KhaozEngine.Server` umbrella. All headless-tested over `LoopbackTransport` /
+  in-process. Additive (two new packages + new public API), minor.
+
 ## 7.35.0
 
 MMO netcode stack, Phase 0 (transport seam + fixed-tick host). First foundation of the authoritative

@@ -5,6 +5,32 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.40.0
+
+GLFW-backed text clipboard: text get/set now works on Windows and Linux (it was a silent no-op before). The
+inherited SDL2 text path needed an `SDL_Init` the engine's Silk.NET/GLFW windowing never calls, so it produced
+nothing on the shipped runtime and fell through (macOS still worked via NSPasteboard; Windows/Linux did not).
+Additive surface plus a bug fix. Non-breaking, minor.
+
+- **Platform: text clipboard now dispatches through a registered provider seam.** `Clipboard` gains
+  `RegisterTextProvider(Func<string?> read, Func<string, bool> write)` and `ClearTextProvider()`. Text get/set
+  tries the registered provider first, then macOS `NSPasteboard`, then the mobile bridge (the same dispatch shape
+  as before, with the provider replacing the dead SDL2 link). A `read` that returns `null`, or a provider that
+  throws, means "could not read" and falls through to the OS backends; an empty (non-null) string is a produced
+  value and wins. The image paths (Windows `CF_DIB`, macOS / mobile PNG) are unchanged. The SDL2 `DllImport`s and
+  their `SdlGetText` / `TrySdlFree` helpers were removed.
+- **Windowing: `AppWindow` wires the GLFW clipboard automatically.** A new internal `GlfwClipboard` reads/writes
+  via Silk's `Glfw.GetClipboardString` / `SetClipboardString` over the window's native GLFW handle; `AppWindow`
+  registers it on construction and calls `Clipboard.ClearTextProvider()` on `Dispose` (so a torn-down GLFW handle
+  is never dereferenced). It is the primary text path on every desktop platform, including macOS, with
+  `NSPasteboard` kept as the fallback for windowless / headless consumers that never open an `AppWindow`.
+  `KhaozEngine.Windowing` now references `KhaozEngine.Platform` and `Silk.NET.GLFW` and enables
+  `AllowUnsafeBlocks` (the native `WindowHandle*`).
+- **Tested.** The pure provider adapters (`ReadFromProvider` / `WriteToProvider`: no-provider, null result, empty
+  string, and exception cases), the retyped set-dispatch spine, and the public `RegisterTextProvider` /
+  `ClearTextProvider` routing on `Clipboard` are headless-tested. The native GLFW path cannot be validated
+  headless, so it needs an on-device check: a windowed copy/paste round-trip on Windows (and ideally Linux).
+
 ## 7.39.0
 
 Cruft cleanup pass: remove superseded / dead code and fix doc drift accreted from the MonoGame -> Silk pivot and

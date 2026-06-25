@@ -20,15 +20,19 @@ Clipboard.TrySetClipboardImageRgba32(w, h, rgbaPixels);      // Windows (CF_DIB)
 
 Backend dispatch:
 
-- **Text get/set:** SDL2 first (used if an SDL2 library is present on the host), then a macOS
-  `NSPasteboard` fallback, then the mobile bridge on Android/iOS.
+- **Text get/set:** a registered window/GLFW text provider first, then a macOS `NSPasteboard` fallback,
+  then the mobile bridge on Android/iOS. `KhaozEngine.Windowing.AppWindow` registers the GLFW provider at
+  startup, so a windowed game has a working text clipboard on Windows, Linux, and macOS. A windowless or
+  headless consumer registers no provider: on macOS it still falls back to `NSPasteboard`, but on
+  Windows/Linux text get/set returns the empty/`false` result. (The inherited SDL2 text path was removed:
+  it needed an `SDL_Init` the GLFW host never calls, so it did nothing on the shipped runtime.)
 - **PNG image:** macOS `NSPasteboard` and the mobile bridge. Windows is intentionally not attempted for
   PNG (no reliable image-paste path), so it returns `false`.
 - **RGBA32 image:** Windows only, written as a bottom-up `CF_DIB`. Other platforms return `false`.
 
-The SDL2 / `user32` / `kernel32` / `libobjc` entry points are resolved at runtime by the host process.
-When a backend (or SDL2) is missing the call falls through and ultimately returns the empty/`false` result
-rather than throwing.
+The `user32` / `kernel32` / `libobjc` entry points are resolved at runtime by the host process. When a
+backend (or the GLFW provider) is missing the call falls through and ultimately returns the empty/`false`
+result rather than throwing.
 
 ### Mobile bridge (Android / iOS)
 

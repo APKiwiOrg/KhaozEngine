@@ -4,9 +4,10 @@ using Xunit;
 
 namespace KhaozEngine.Tests;
 
-// The native clipboard backends (SDL2 / Windows GDI / macOS NSPasteboard / mobile bridge) cannot run
-// headless. These tests drive the pure dispatch/fallback spine with fake backends, exercise the pure
-// CF_DIB packing, and cover the public input guards that short-circuit before any native call.
+// The native clipboard backends (GLFW text provider / Windows GDI / macOS NSPasteboard / mobile bridge)
+// cannot run headless. These tests drive the pure dispatch/fallback spine with fake backends, exercise the
+// pure CF_DIB packing, the pure provider get/set adapters, the registered-provider routing on the public
+// facade, and the public input guards that short-circuit before any native call.
 public class ClipboardTests
 {
     private static ClipboardInterop.TryGetTextBackend GetReturning(bool result, string text)
@@ -84,7 +85,7 @@ public class ClipboardTests
         Assert.Equal(string.Empty, result);
     }
 
-    // ---- DispatchSetText ----
+    // ---- DispatchSetText (first backend = the registered window/GLFW text provider) ----
 
     [Theory]
     [InlineData(null)]
@@ -93,7 +94,7 @@ public class ClipboardTests
     {
         bool result = ClipboardInterop.DispatchSetText(
             text,
-            () => throw new Xunit.Sdk.XunitException("SDL must not be called for empty input"),
+            () => throw new Xunit.Sdk.XunitException("provider must not be called for empty input"),
             isMacOs: true, _ => throw new Xunit.Sdk.XunitException("macOS must not be called"),
             isMobile: true, _ => throw new Xunit.Sdk.XunitException("mobile must not be called"));
 
@@ -101,11 +102,11 @@ public class ClipboardTests
     }
 
     [Fact]
-    public void SetText_returns_true_when_sdl_succeeds_without_fallback()
+    public void SetText_returns_true_when_provider_succeeds_without_fallback()
     {
         bool result = ClipboardInterop.DispatchSetText(
             "hello",
-            () => 0,
+            () => true,
             isMacOs: true, _ => throw new Xunit.Sdk.XunitException("macOS must not be called"),
             isMobile: true, _ => throw new Xunit.Sdk.XunitException("mobile must not be called"));
 
@@ -113,12 +114,12 @@ public class ClipboardTests
     }
 
     [Fact]
-    public void SetText_falls_back_to_macos_when_sdl_returns_nonzero()
+    public void SetText_falls_back_to_macos_when_provider_fails()
     {
         string? captured = null;
         bool result = ClipboardInterop.DispatchSetText(
             "hello",
-            () => 1,
+            () => false,
             isMacOs: true, t => { captured = t; return true; },
             isMobile: true, _ => throw new Xunit.Sdk.XunitException("mobile must not be called"));
 
@@ -127,11 +128,11 @@ public class ClipboardTests
     }
 
     [Fact]
-    public void SetText_falls_back_when_sdl_throws()
+    public void SetText_falls_back_when_provider_throws()
     {
         bool result = ClipboardInterop.DispatchSetText(
             "hello",
-            () => throw new DllNotFoundException("no SDL"),
+            () => throw new DllNotFoundException("no provider"),
             isMacOs: false, _ => throw new Xunit.Sdk.XunitException("macOS must not be called"),
             isMobile: true, _ => true);
 
@@ -143,11 +144,76 @@ public class ClipboardTests
     {
         bool result = ClipboardInterop.DispatchSetText(
             "hello",
-            () => 1,
+            () => false,
             isMacOs: false, _ => throw new Xunit.Sdk.XunitException("macOS must not be called"),
             isMobile: false, _ => throw new Xunit.Sdk.XunitException("mobile must not be called"));
 
         Assert.False(result);
+    }
+
+    // ---- ReadFromProvider / WriteToProvider (pure adapters between the registered provider and the spine) ----
+
+    [Fact]
+    public void ReadFromProvider_reports_not_produced_when_no_provider_is_registered()
+    {
+        (bool produced, string text) = ClipboardInterop.ReadFromProvider(null);
+        Assert.False(produced);
+        Assert.Equal(string.Empty, text);
+    }
+
+    [Fact]
+    public void ReadFromProvider_reports_not_produced_when_read_returns_null()
+    {
+        // null read result means "couldn't read" (e.g. GLFW not initialised) and must fall through.
+        (bool produced, string text) = ClipboardInterop.ReadFromProvider(() => null);
+        Assert.False(produced);
+        Assert.Equal(string.Empty, text);
+    }
+
+    [Fact]
+    public void ReadFromProvider_treats_empty_string_as_produced()
+    {
+        // An empty (but non-null) clipboard is a produced value; it wins over the OS fallbacks.
+        (bool produced, string text) = ClipboardInterop.ReadFromProvider(() => string.Empty);
+        Assert.True(produced);
+        Assert.Equal(string.Empty, text);
+    }
+
+    [Fact]
+    public void ReadFromProvider_returns_the_provider_text()
+    {
+        (bool produced, string text) = ClipboardInterop.ReadFromProvider(() => "clip");
+        Assert.True(produced);
+        Assert.Equal("clip", text);
+    }
+
+    [Fact]
+    public void ReadFromProvider_swallows_provider_exceptions_and_falls_through()
+    {
+        (bool produced, string text) = ClipboardInterop.ReadFromProvider(() => throw new DllNotFoundException("no glfw"));
+        Assert.False(produced);
+        Assert.Equal(string.Empty, text);
+    }
+
+    [Fact]
+    public void WriteToProvider_returns_false_when_no_provider_is_registered()
+    {
+        Assert.False(ClipboardInterop.WriteToProvider(null, "x"));
+    }
+
+    [Fact]
+    public void WriteToProvider_returns_the_provider_result_and_forwards_the_text()
+    {
+        string? captured = null;
+        Assert.True(ClipboardInterop.WriteToProvider(t => { captured = t; return true; }, "x"));
+        Assert.Equal("x", captured);
+        Assert.False(ClipboardInterop.WriteToProvider(_ => false, "x"));
+    }
+
+    [Fact]
+    public void WriteToProvider_swallows_provider_exceptions()
+    {
+        Assert.False(ClipboardInterop.WriteToProvider(_ => throw new DllNotFoundException("no glfw"), "x"));
     }
 
     // ---- DispatchSetImagePng ----
@@ -288,6 +354,57 @@ public class ClipboardTests
         finally
         {
             Clipboard.MobileBridgeTypeName = original;
+        }
+    }
+
+    // ---- Registered text provider routing (the GLFW/window seam AppWindow wires at startup) ----
+
+    [Fact]
+    public void RegisterTextProvider_routes_TryGetClipboardText_through_the_provider()
+    {
+        try
+        {
+            // A produced value wins before any OS backend, so this is deterministic on every host.
+            Clipboard.RegisterTextProvider(() => "from-provider", _ => true);
+            Assert.Equal("from-provider", Clipboard.TryGetClipboardText());
+        }
+        finally
+        {
+            Clipboard.ClearTextProvider();
+        }
+    }
+
+    [Fact]
+    public void RegisterTextProvider_routes_TrySetClipboardText_through_the_provider()
+    {
+        try
+        {
+            string? captured = null;
+            Clipboard.RegisterTextProvider(() => null, t => { captured = t; return true; });
+            Assert.True(Clipboard.TrySetClipboardText("hello"));
+            Assert.Equal("hello", captured);
+        }
+        finally
+        {
+            Clipboard.ClearTextProvider();
+        }
+    }
+
+    [Fact]
+    public void ClearTextProvider_then_register_swaps_the_active_provider()
+    {
+        try
+        {
+            Clipboard.RegisterTextProvider(() => "A", _ => true);
+            Assert.Equal("A", Clipboard.TryGetClipboardText());
+
+            Clipboard.ClearTextProvider();
+            Clipboard.RegisterTextProvider(() => "B", _ => true);
+            Assert.Equal("B", Clipboard.TryGetClipboardText());
+        }
+        finally
+        {
+            Clipboard.ClearTextProvider();
         }
     }
 

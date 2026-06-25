@@ -1,13 +1,36 @@
 namespace KhaozEngine.Platform;
 
 /// <summary>
-/// Cross-platform system-clipboard access. Each call tries the available platform backends in order
-/// (SDL2, then macOS <c>NSPasteboard</c>, then an optional mobile bridge; Windows GDI for RGBA images)
-/// and returns a best-effort result. Nothing here throws: a missing or failing backend yields an empty
-/// string or <c>false</c>.
+/// Cross-platform system-clipboard access. Text get/set tries a registered window/GLFW provider first, then
+/// macOS <c>NSPasteboard</c>, then an optional mobile bridge; RGBA images use Windows GDI (and macOS / mobile
+/// for PNG). Each call returns a best-effort result. Nothing here throws: a missing or failing backend yields
+/// an empty string or <c>false</c>.
 /// </summary>
+/// <remarks>
+/// The text provider is the GLFW clipboard wired by <c>KhaozEngine.Windowing.AppWindow</c> at startup. It is
+/// what makes text get/set work on Windows and Linux (and is the primary text path on macOS too); a windowless
+/// or headless consumer that never opens an <c>AppWindow</c> registers no provider and so has no text clipboard
+/// on Windows/Linux, falling back to <c>NSPasteboard</c> on macOS. See <see cref="RegisterTextProvider"/>.
+/// </remarks>
 public static class Clipboard
 {
+    /// <summary>
+    /// Registers the window-system text-clipboard provider (the GLFW clipboard, wired by
+    /// <c>KhaozEngine.Windowing.AppWindow</c>). It is preferred over <c>NSPasteboard</c> / the mobile bridge for
+    /// text get and set. <paramref name="read"/> returns the clipboard text, or <c>null</c> when it could not
+    /// read (so dispatch falls through to the OS backends); <paramref name="write"/> returns <c>true</c> on
+    /// success. Provider exceptions are swallowed and treated as a fall-through. Games do not call this directly;
+    /// <c>AppWindow</c> does it, and calls <see cref="ClearTextProvider"/> on dispose.
+    /// </summary>
+    public static void RegisterTextProvider(System.Func<string?> read, System.Func<string, bool> write)
+        => ClipboardInterop.RegisterTextProvider(read, write);
+
+    /// <summary>
+    /// Removes any registered text provider, reverting text get/set to the <c>NSPasteboard</c> / mobile
+    /// backends. <c>AppWindow</c> calls this on dispose so a torn-down GLFW handle is never dereferenced.
+    /// </summary>
+    public static void ClearTextProvider() => ClipboardInterop.ClearTextProvider();
+
     /// <summary>
     /// Fully-qualified type name of the consumer's mobile clipboard bridge, used to resolve the
     /// Android/iOS backend by reflection across loaded assemblies. The named type must expose static

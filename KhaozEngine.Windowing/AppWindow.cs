@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Primitives;
+using KhaozEngine.Platform;
 using Silk.NET.Input;
 using Silk.NET.Maths;
 using Silk.NET.Windowing;
@@ -92,6 +93,18 @@ namespace KhaozEngine.Windowing
 
             _input = _window.CreateInput();
             WireInput();
+
+            // Wire the GLFW text clipboard into Platform.Clipboard. Platform is BCL-only and can't reference
+            // Silk, so AppWindow (which owns the GLFW window) registers the provider; this is what makes text
+            // get/set work on Windows and Linux, and is the primary text path on macOS too. Capture the native
+            // GLFW handle by value (no `this` capture); Dispose clears the provider before GLFW is torn down.
+            nint glfwWindow = _window.Native?.Glfw ?? 0;
+            if (glfwWindow != 0)
+            {
+                Clipboard.RegisterTextProvider(
+                    () => GlfwClipboard.ReadText(glfwWindow),
+                    text => GlfwClipboard.WriteText(glfwWindow, text));
+            }
 
             _lastMouse = Vector2.Zero;
         }
@@ -321,6 +334,9 @@ namespace KhaozEngine.Windowing
 
         public void Dispose()
         {
+            // Unregister the GLFW clipboard provider before GLFW is torn down so a later Clipboard call can
+            // never dereference this window's freed GLFW handle.
+            try { Clipboard.ClearTextProvider(); } catch { }
             try { _input?.Dispose(); } catch { }
             try { _cl?.Dispose(); } catch { }
             try { _gpu?.Dispose(); } catch { }

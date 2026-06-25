@@ -6,18 +6,21 @@ using System.Threading;
 namespace KhaozEngine.Platform;
 
 // Cross-platform clipboard native interop. The public entry points live on Clipboard; this class
-// holds the per-platform marshaling (SDL2 / Windows GDI / macOS Objective-C / reflection-resolved
-// mobile bridge) plus the pure dispatch/fallback spine the headless tests drive with fakes.
+// holds the per-platform marshaling (Windows GDI / macOS Objective-C / reflection-resolved mobile
+// bridge) plus the pure dispatch/fallback spine the headless tests drive with fakes.
 //
-// CAVEAT: the SDL2 text path needs an SDL video subsystem the HOST has initialised. The engine's windowing is
-// Silk.NET/GLFW and never calls SDL_Init, so on the shipped runtime SDL get/set produce nothing and fall
-// through: macOS uses NSPasteboard, but Windows/Linux text clipboard currently no-ops (Windows image paste
-// still works via GDI). A GLFW-backed text path is the proper fix (tracked).
+// Text get/set goes through an optional registered text provider FIRST, then macOS NSPasteboard, then the
+// mobile bridge. KhaozEngine.Windowing's AppWindow registers a GLFW-backed provider at startup (via
+// Clipboard.RegisterTextProvider); that is what makes text get/set work on Windows and Linux, and it is the
+// primary text path on macOS too (NSPasteboard stays as the fallback for windowless/headless consumers). The
+// SDL2 text path this code was ported with is gone: it needed an SDL video subsystem the GLFW host never
+// initialises, so it produced nothing on the shipped runtime.
 //
-// The native marshaling below is ported verbatim from SpaceGame's ClipboardInterop; the only
-// behavioural changes from that source are (1) the dispatch methods delegate to the pure
-// Dispatch*/BuildWindowsDib helpers so the ordering/fallback logic is testable without touching
-// native code, and (2) the mobile bridge type name is configurable instead of hard-coded.
+// The native marshaling below is ported from SpaceGame's ClipboardInterop; the behavioural changes from that
+// source are (1) the dispatch methods delegate to the pure Dispatch* / BuildWindowsDib / ReadFromProvider /
+// WriteToProvider helpers so the ordering/fallback logic is testable without touching native code, (2) the
+// mobile bridge type name is configurable instead of hard-coded, and (3) the SDL2 text path is replaced by
+// the registered provider seam.
 internal static class ClipboardInterop
 {
     private const uint GlobalMoveable = 0x0002;
@@ -39,14 +42,9 @@ internal static class ClipboardInterop
     /// <summary>Delegate matching a try-get-text backend (<c>bool Backend(out string text)</c>).</summary>
     internal delegate bool TryGetTextBackend(out string text);
 
-    [DllImport("SDL2", CallingConvention = CallingConvention.Cdecl)]
-    private static extern IntPtr SDL_GetClipboardText();
-
-    [DllImport("SDL2", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int SDL_SetClipboardText(string text);
-
-    [DllImport("SDL2", CallingConvention = CallingConvention.Cdecl)]
-    private static extern void SDL_free(IntPtr memory);
+    private static readonly object TextProviderLock = new();
+    private static Func<string?>? textProviderRead;
+    private static Func<string, bool>? textProviderWrite;
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool OpenClipboard(IntPtr newOwner);
@@ -119,10 +117,33 @@ internal static class ClipboardInterop
         }
     }
 
+    // Registers the window-system text-clipboard provider (GLFW, wired by AppWindow). read() returns the
+    // clipboard text, or null when it could not read (e.g. GLFW not initialised) so dispatch falls through to
+    // the OS backends; write() returns true on success. Preferred over NSPasteboard / mobile for text get/set.
+    internal static void RegisterTextProvider(Func<string?> read, Func<string, bool> write)
+    {
+        lock (TextProviderLock)
+        {
+            textProviderRead = read;
+            textProviderWrite = write;
+        }
+    }
+
+    // Removes any registered text provider. AppWindow calls this on dispose, before GLFW is torn down, so a
+    // stale window handle can never be dereferenced by a later clipboard call.
+    internal static void ClearTextProvider()
+    {
+        lock (TextProviderLock)
+        {
+            textProviderRead = null;
+            textProviderWrite = null;
+        }
+    }
+
     public static string TryGetClipboardText()
     {
         return DispatchGetText(
-            SdlGetText,
+            () => ReadFromProvider(textProviderRead),
             OperatingSystem.IsMacOS(),
             TryGetClipboardTextMacOs,
             OperatingSystem.IsAndroid() || OperatingSystem.IsIOS(),
@@ -133,7 +154,7 @@ internal static class ClipboardInterop
     {
         return DispatchSetText(
             text,
-            () => SDL_SetClipboardText(text),
+            () => WriteToProvider(textProviderWrite, text),
             OperatingSystem.IsMacOS(),
             TrySetClipboardTextMacOs,
             OperatingSystem.IsAndroid() || OperatingSystem.IsIOS(),
@@ -163,13 +184,13 @@ internal static class ClipboardInterop
     // ---- Pure dispatch/fallback spine (headless-testable; no native calls of its own) ----
 
     internal static string DispatchGetText(
-        Func<(bool produced, string text)> sdlGet,
+        Func<(bool produced, string text)> providerGet,
         bool isMacOs,
         TryGetTextBackend macOsGet,
         bool isMobile,
         TryGetTextBackend mobileGet)
     {
-        (bool produced, string text) = sdlGet();
+        (bool produced, string text) = providerGet();
         if (produced)
         {
             return text;
@@ -190,7 +211,7 @@ internal static class ClipboardInterop
 
     internal static bool DispatchSetText(
         string text,
-        Func<int> sdlSet,
+        Func<bool> providerSet,
         bool isMacOs,
         Func<string, bool> macOsSet,
         bool isMobile,
@@ -203,7 +224,7 @@ internal static class ClipboardInterop
 
         try
         {
-            if (sdlSet() == 0)
+            if (providerSet())
             {
                 return true;
             }
@@ -224,6 +245,46 @@ internal static class ClipboardInterop
         }
 
         return false;
+    }
+
+    // Pure adapter: turns the registered text-read provider into the (produced, text) shape the spine wants.
+    // A null provider, a null result, or a provider exception all mean "not produced" so dispatch falls
+    // through to the OS backends. An empty (non-null) string is a produced value and wins over the fallbacks.
+    internal static (bool produced, string text) ReadFromProvider(Func<string?>? read)
+    {
+        if (read is null)
+        {
+            return (false, string.Empty);
+        }
+
+        try
+        {
+            string? text = read();
+            return text is null ? (false, string.Empty) : (true, text);
+        }
+        catch
+        {
+            return (false, string.Empty);
+        }
+    }
+
+    // Pure adapter: invokes the registered text-write provider. A null provider or a provider exception is
+    // treated as failure (false) so dispatch falls through to the OS backends.
+    internal static bool WriteToProvider(Func<string, bool>? write, string text)
+    {
+        if (write is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            return write(text);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     internal static bool DispatchSetImagePng(
@@ -312,32 +373,6 @@ internal static class ClipboardInterop
         }
 
         return dibBuffer;
-    }
-
-    private static (bool produced, string text) SdlGetText()
-    {
-        IntPtr textPointer = IntPtr.Zero;
-        try
-        {
-            textPointer = SDL_GetClipboardText();
-            if (textPointer != IntPtr.Zero)
-            {
-                return (true, Marshal.PtrToStringUTF8(textPointer) ?? string.Empty);
-            }
-        }
-        catch
-        {
-            // Fall through to platform fallback.
-        }
-        finally
-        {
-            if (textPointer != IntPtr.Zero)
-            {
-                TrySdlFree(textPointer);
-            }
-        }
-
-        return (false, string.Empty);
     }
 
     private static bool TrySetClipboardDibWindows(int width, int height, byte[] rgbaPixels)
@@ -771,18 +806,6 @@ internal static class ClipboardInterop
 
         IntPtr clearSelector = sel_registerName("clearContents");
         _ = NInt_objc_msgSend(pasteboard, clearSelector);
-    }
-
-    private static void TrySdlFree(IntPtr memory)
-    {
-        try
-        {
-            SDL_free(memory);
-        }
-        catch
-        {
-            // Ignore free failures.
-        }
     }
 
     private static void WriteInt16(byte[] target, int offset, short value)

@@ -766,7 +766,10 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   via `JsonDefaults.IndentedWrite`, and signed/wire formats (the `Updates` manifest, AOT apply-config) stay
   strict JSON by design. Consumed by Content/Persistence/Ecs.
 - **`KhaozEngine.Localization`**: `LocalizationManager` (discover cultures + set the thread culture).
-- **`KhaozEngine.Platform`**: `Clipboard` (cross-platform text + image, best-effort, never throws).
+- **`KhaozEngine.Platform`**: `Clipboard` (cross-platform text + image, best-effort, never throws). Text get/set
+  uses the GLFW provider `AppWindow` registers at startup (the working Windows/Linux/macOS path), so a windowed
+  game gets a working text clipboard for free; a windowless/headless tool registers none and has text only on
+  macOS (via `NSPasteboard`).
 - **`KhaozEngine.Pooling`**: `ObjectPool<T>` (O(1) rent/return, swap-removal compaction).
 - **`KhaozEngine.Collision`**: deterministic `CircleCollision` + `SpatialHashGrid` (bit-identical for lockstep).
 - **`KhaozEngine.Determinism`**: `DeterministicFpScope` - forces a canonical CPU floating-point environment

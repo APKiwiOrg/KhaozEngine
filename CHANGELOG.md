@@ -5,6 +5,41 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.39.0
+
+Cruft cleanup pass: remove superseded / dead code and fix doc drift accreted from the MonoGame -> Silk pivot and
+the phased MMO build. No consumer-visible behaviour change; additive surface only. Non-breaking, minor.
+
+- **Render3D: removed the dormant GPU skinned-mesh path.** `SkinnedModelRenderer` (internal) and its
+  `SkinnedModelVert` shader were never instantiated anywhere (engine, tests, or any consumer): `Scene3D` skins on
+  the CPU via `SkinningMath` through the rigid `ModelRenderer` pipeline, because the GPU bone read corrupts past
+  element 0 in the windowed Veldrid/Metal context. Deleted the renderer, the shader source, and the two
+  `ModelRenderer` members only it used (`MaterialLayout` / `DefaultMaterialSet`). The one still-live constant, the
+  per-skin bone cap, moved to `SkinningMath.MaxBonesPerDraw` (now public) and is consumed by `Scene3D` +
+  `GltfLoader`. The orphaned instance-build test was removed; the headless skinned GPU test (which actually drives
+  the CPU path) had its misleading "proves SkinnedModelVert cross-compiles" comment corrected.
+- **Audio: new `AudioSystem.StopAllSfx()`.** Surfaces the existing `ISfxBackend.StopAll` through the facade (stop
+  every SFX voice on a scene / screen transition or pause; music unaffected). Was implemented by every backend but
+  unreachable through `AudioSystem`. Additive.
+- **Gpu: `GpuDeviceContext.Device` is no longer an exposed accessor.** The raw Veldrid device is now a private
+  field; renderers already consume the engine-owned `IGpuDevice`. Refreshed the `GpuDeviceContext` /
+  `VeldridGpuDevice` docs and the package description, which still narrated a "transitional ... phase 3b/3c"
+  Veldrid-hiding migration that had already landed.
+- **Telegraphs: `TelegraphStyle.ZoneSense.Safe` documented as reserved / no-op.** It renders identically to
+  `Danger` in v1; the field now says so explicitly (kept, not removed, so presets can declare intent ahead of the
+  feature).
+- **Platform: documented the SDL2-clipboard limitation.** The clipboard's SDL2 text path needs an SDL video
+  subsystem the host has initialised; the engine's Silk.NET/GLFW windowing never calls `SDL_Init`, so on the
+  shipped runtime SDL get/set produce nothing and fall through (macOS uses NSPasteboard; Windows/Linux text
+  clipboard currently no-ops; Windows image paste still works via GDI). Code unchanged this release; a GLFW-backed
+  text path is the proper fix, tracked as a follow-up.
+- **Doc drift swept.** Added `KhaozEngine.Determinism` to the CLAUDE.md package map; rewrote the ROADMAP "Particle
+  unification" section (the `Effects.ParticleSystem` it described was removed when `Effects` narrowed to
+  `ScreenShake`); trimmed Gui doc-comments pointing at the deleted 4.x `UI.*` types; dropped the stale "(MonoGame)"
+  framing from the Netcode type-forward + decoupling-test comments (the `DoesNotContain("MonoGame.Framework")`
+  guards stay); fixed stale "SDL2 window" / "from SDL" / "future Silk.NET backend" comments; dropped "experimental"
+  from three csproj line comments.
+
 ## 7.38.0
 
 MMO netcode stack, Phase 3: seamless sharded world topology. A new package `KhaozEngine.Sharding` (in the

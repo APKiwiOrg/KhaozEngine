@@ -1,6 +1,6 @@
 # KhaozEngine roadmap / backlog
 
-Larger feature areas identified but not yet scheduled. Current released version: **7.38.0** (the shared
+Larger feature areas identified but not yet scheduled. Current released version: **7.39.0** (the shared
 `<KhaozEngine5xVersion>` line, which is the engine: the custom MonoGame-free stack plus the graduated foundation packages). The legacy 4.x
 line and its six genuinely-MonoGame packages (`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`) were
 DELETED from the engine source, so the engine itself is now entirely MonoGame-free. All three consumers are
@@ -249,13 +249,15 @@ non-uniform-scale support to the camera, or Nullwake's projection stays game-spe
 A screen-shake effect that perturbs the camera, composed onto the render camera in `KhaozEngine.Render2D`.
 Trauma-based decay. Pairs with the follow-camera layer above.
 
-## Particle unification (`KhaozEngine.Effects`)
+## Particle unification
 
-`Effects.ParticleSystem` is rect-based and pooled. SpaceGame's `ParticleManager` has richer features kept
-game-side: textured sprites, particle tails / trails, and on-death recursion (a dying particle spawns
-children). Fold these into the engine so SpaceGame can adopt and converge. (As of 6.4.0 the `Game2D` umbrella
-SpaceGame's head uses pulls `KhaozEngine.Effects` transitively, so the package is now on hand; the open work
-is folding the richer features above into `Effects.ParticleSystem`.)
+**Superseded.** The old `Effects.ParticleSystem` (rect-based, pooled) was removed when `KhaozEngine.Effects`
+narrowed to just `ScreenShake`. Particle simulation now lives in two deliberate places: `KhaozEngine.Particles`
+(3D, render-agnostic pool consumed via billboards) and `KhaozEngine.Render2D.Vfx.Particle2DSystem` (2D
+screen-space pool with its own draw). They share the same emit / integrate / lerp-over-life model but differ in
+dimensionality and recycle policy. SpaceGame's richer game-side features (textured sprites, tails / trails,
+on-death recursion) stay game-side; a future pass could factor out the shared sim core, but there is no single
+`Effects` particle target any more.
 
 ## SFX audio (`KhaozEngine.Audio`)
 

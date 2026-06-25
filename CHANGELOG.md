@@ -5,6 +5,28 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.37.0
+
+Window-focus tracking so games (and the Gui) can ignore input while the window is in the background. Fixes the
+Hardpoint symptom where moving the mouse over the (unfocused) window still fired UI hover SFX.
+
+- **`InputState.WindowFocused`** (`KhaozEngine.Windowing`): new `bool` on the per-frame snapshot, true while the
+  owning window has OS focus. Added as a trailing optional ctor arg (`windowFocused = true`) so the many existing
+  `new InputState(...)` builders keep compiling and keep reporting focused. `InputState.Empty` is `false` (a blank
+  snapshot is "no window / not focused"). `AppWindow` subscribes to Silk's `IView.FocusChanged` and stamps the bit
+  onto every frame (windows open focused). Gate world input (clicks, scroll-zoom, hotkeys) on it, e.g.
+  `if (Input.WindowFocused) { ... }`.
+- **`Pointer.WindowFocused`** (`KhaozEngine.Windowing`): the pointer reads the bit from `InputState` on each
+  `Update`. `IsHoveringIn` now returns false while unfocused (a background window reports no hover). The
+  press-origin / tap queries (`IsTapIn` / `IsPressingIn` / `IsDragStartIn` / ...) are deliberately NOT focus-gated,
+  so the press-origin click-through invariant is unchanged.
+- **`GuiSurface`** (`KhaozEngine.Gui`): hover (`IsHovering` / `HoverEntered`) and both capture gates
+  (`PointerCaptured` / `HoverCaptured`) report false while the window is unfocused, via `Pointer.WindowFocused`.
+  No new `Begin` overload and no game code needed: a game already calls `pointer.Update(input)`, so the focus bit
+  flows through automatically. This kills background-window UI hover SFX / highlights for every consumer.
+
+Additive (new public API; the default-focused path preserves all existing behaviour), minor.
+
 ## 7.36.0
 
 MMO netcode stack, Phases 1 + 2 (session lifecycle, entity replication, interest management, world store).

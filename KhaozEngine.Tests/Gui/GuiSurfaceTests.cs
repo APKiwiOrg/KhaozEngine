@@ -10,16 +10,66 @@ namespace KhaozEngine.Tests.Gui
     {
         static readonly Rect Btn = new(100, 100, 120, 40);
 
-        static InputState Frame(Vector2 pos, bool down)
+        static InputState Frame(Vector2 pos, bool down) => Frame(pos, down, true);
+
+        static InputState Frame(Vector2 pos, bool down, bool focused)
         {
             var b = new HashSet<MouseButton>();
             if (down) b.Add(MouseButton.Left);
             return new InputState(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
-                b, new HashSet<MouseButton>(), pos, Vector2.Zero, 0, 960, 540);
+                b, new HashSet<MouseButton>(), pos, Vector2.Zero, 0, 960, 540, windowFocused: focused);
         }
 
         // Surface needs no texture for headless interaction; null white is never drawn (batch is null).
         static GuiSurface Surface() => new(null!, null);
+
+        [Fact]
+        public void Unfocused_window_suppresses_button_hover_and_hover_enter()
+        {
+            var ui = Surface();
+            var p = new Pointer();
+            var inside = new Vector2(150, 120);
+
+            // Cursor over the button, but the window is NOT focused: no hover, no hover-enter (kills hover SFX).
+            p.Update(Frame(inside, false, focused: false));
+            ui.Begin(null, p);
+            ui.Button(null!, Btn, "Go");
+            Assert.False(ui.IsHovering);
+            Assert.False(ui.HoverEntered);
+            Assert.Null(ui.HoveredRect);
+
+            // Focus returns: hover + hover-enter resume normally.
+            p.Update(Frame(inside, false, focused: true));
+            ui.Begin(null, p);
+            ui.Button(null!, Btn, "Go");
+            Assert.True(ui.IsHovering);
+            Assert.True(ui.HoverEntered);
+            Assert.Equal(Btn, ui.HoveredRect);
+        }
+
+        [Fact]
+        public void Unfocused_window_suppresses_pointer_and_hover_capture()
+        {
+            var ui = Surface();
+            var p = new Pointer();
+            var panel = new Rect(0, 0, 300, 200);
+            var at = new Vector2(50, 50);
+
+            // Press-origin inside the panel, but the window is unfocused: neither capture gate fires.
+            p.Update(Frame(at, false, focused: false));
+            p.Update(Frame(at, true, focused: false));
+            ui.Begin(null, p);
+            ui.Panel(panel, GuiStyle.Default.Fill);
+            Assert.False(ui.PointerCaptured);
+            Assert.False(ui.HoverCaptured);
+
+            // Focus returns with the press still held: capture engages.
+            p.Update(Frame(at, true, focused: true));
+            ui.Begin(null, p);
+            ui.Panel(panel, GuiStyle.Default.Fill);
+            Assert.True(ui.PointerCaptured);
+            Assert.True(ui.HoverCaptured);
+        }
 
         [Fact]
         public void Tap_inside_a_button_returns_true_only_on_release_and_false_while_held()

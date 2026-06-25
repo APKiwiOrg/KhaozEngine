@@ -39,17 +39,26 @@ namespace KhaozEngine.Windowing
         public IReadOnlyList<GamepadState> Gamepads { get; }
         /// <summary>Active touch points this frame (empty on desktop).</summary>
         public IReadOnlyList<TouchPoint> Touches { get; }
+        /// <summary>
+        /// True while the window owning this snapshot has OS input focus (the frontmost window). The render loop
+        /// keeps running while unfocused and the cursor position stays live, so consumers that should ignore input
+        /// when the window is in the background gate on this (e.g. world clicks / hotkeys). The GUI hover/capture
+        /// gates already honour it via <see cref="Pointer.WindowFocused"/>. Defaults to <c>true</c> (windows open
+        /// focused) so existing builders keep reporting focused.
+        /// </summary>
+        public bool WindowFocused { get; }
 
         public static readonly InputState Empty = new(
             new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
             new HashSet<MouseButton>(), new HashSet<MouseButton>(),
-            Vector2.Zero, Vector2.Zero, 0, 0, 0);
+            Vector2.Zero, Vector2.Zero, 0, 0, 0, windowFocused: false);
 
         public InputState(
             IReadOnlySet<Key> down, IReadOnlySet<Key> pressed, IReadOnlySet<Key> released,
             IReadOnlySet<MouseButton> mouseDown, IReadOnlySet<MouseButton> mousePressed,
             Vector2 mousePosition, Vector2 mouseDelta, float scrollDelta, int width, int height,
-            IReadOnlyList<GamepadState>? gamepads = null, IReadOnlyList<TouchPoint>? touches = null)
+            IReadOnlyList<GamepadState>? gamepads = null, IReadOnlyList<TouchPoint>? touches = null,
+            bool windowFocused = true)
         {
             KeysDown = down; KeysPressed = pressed; KeysReleased = released;
             MouseDown = mouseDown; MousePressed = mousePressed;
@@ -57,6 +66,7 @@ namespace KhaozEngine.Windowing
             Width = width; Height = height;
             Gamepads = gamepads ?? System.Array.Empty<GamepadState>();
             Touches = touches ?? System.Array.Empty<TouchPoint>();
+            WindowFocused = windowFocused;
         }
 
         /// <summary>The gamepad at <paramref name="index"/>, or <see cref="GamepadState.Disconnected"/> if absent.</summary>

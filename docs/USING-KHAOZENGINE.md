@@ -168,6 +168,7 @@ public sealed class InputState   // immutable per-frame snapshot; InputState.Emp
     IReadOnlySet<MouseButton> MouseDown, MousePressed;
     Vector2 MousePosition, MouseDelta;  float ScrollDelta;  int Width, Height;
     IReadOnlyList<GamepadState> Gamepads, Touches;  // ctor args optional, default empty
+    bool WindowFocused;                             // optional trailing ctor arg, default true (Empty = false)
 }
 
 bool IsDown(Key) / WasPressed(Key) / WasReleased(Key);
@@ -177,6 +178,12 @@ GamepadState Gamepad(int i = 0);  GamepadState PrimaryGamepad { get; }
 
 `Key` and `MouseButton` are engine enums; `GamepadState` exposes `ButtonsDown/Pressed/Released`,
 `LeftStick`/`RightStick` (+ `LeftStickDeadzoned(...)`), triggers, and `IsDown/WasPressed/WasReleased`.
+
+`WindowFocused` is `true` while the window owning this snapshot is the frontmost (OS-focused) window. The render
+loop keeps running and the cursor stays live while the window is in the background, so gate input that should stop
+when unfocused on it (e.g. `if (Input.WindowFocused) { /* world clicks, scroll-zoom, hotkeys */ }`). The Gui hover
+and capture gates already honour it for free (below), so the common "don't trigger UI hover while in the
+background" case needs no game code. Defaults to `true` (windows open focused); `InputState.Empty` is `false`.
 
 ### InputManager + Pointer - the higher-level read
 
@@ -197,7 +204,9 @@ im.Update(input, viewport);   // once per frame, BEFORE you query
   click-through invariant.
 - `IsTapFromTo(originRect, releaseRect)` - press in one rect, release in another (tap-scrim-to-dismiss).
 - `IsPressingIn(Rect)` - held, press began inside, still inside ("pressed" visual).
-- `IsHoveringIn(Rect)` - inside and not pressed (desktop hover).
+- `IsHoveringIn(Rect)` - inside and not pressed (desktop hover). Also false while the window is unfocused (a
+  background window reports no hover; `Pointer.WindowFocused` carries the bit). The press-origin / tap queries
+  above are deliberately NOT focus-gated, so the click-through invariant is unchanged.
 - `IsPointerIn(Rect)`, `IsReleasedOutside(Rect)`, `IsDraggingIn(Rect)`, `GetDragDelta(Rect)`.
 
 **Gesture consumption (cross-layer click-through):** `IsTapIn` is purely geometric, so a release that swaps the
@@ -246,7 +255,10 @@ if (gui.Button(font, new Rect(60, 90, 200, 36), "Resume")) Resume();
 ```
 
 `GuiSurface` also exposes hover state (`IsHovering`/`HoverEntered`/`HoveredRect`) and a `Slider`. The
-`PointerCaptured` gate lets a game suppress world clicks when the pointer is over UI.
+`PointerCaptured` gate lets a game suppress world clicks when the pointer is over UI. While the window is
+unfocused, hover (`IsHovering`/`HoverEntered`) and both capture gates (`PointerCaptured`/`HoverCaptured`) report
+false automatically (via `Pointer.WindowFocused`), so a background window fires no UI hover SFX or highlights
+without any game code.
 
 **Retained `ScreenStack`** - a routed stack of `Screen`s (top-to-bottom input, bottom-to-top draw, transitions),
 for menu-heavy games. `Add`/`Remove`, `Update(dt, input[, viewport])`, `Draw(batch)`. A `Screen` reads input via

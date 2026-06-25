@@ -37,5 +37,41 @@ namespace KhaozEngine.Tests.Windowing
             Assert.False(InputState.Empty.WasPressed(Key.Space));
             Assert.False(InputState.Empty.IsDown(MouseButton.Left));
         }
+
+        [Fact]
+        public void WindowFocused_defaults_true_when_the_param_is_omitted()
+        {
+            // Existing builders (and games) that never pass the new trailing arg keep reporting focused,
+            // preserving the current hit-test behaviour.
+            var s = new InputState(
+                new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
+                new HashSet<MouseButton>(), new HashSet<MouseButton>(),
+                Vector2.Zero, Vector2.Zero, 0, 800, 600);
+
+            Assert.True(s.WindowFocused);
+        }
+
+        [Fact]
+        public void WindowFocused_round_trips_through_the_constructor()
+        {
+            var focused = new InputState(
+                new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
+                new HashSet<MouseButton>(), new HashSet<MouseButton>(),
+                Vector2.Zero, Vector2.Zero, 0, 800, 600, windowFocused: true);
+            var unfocused = new InputState(
+                new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
+                new HashSet<MouseButton>(), new HashSet<MouseButton>(),
+                Vector2.Zero, Vector2.Zero, 0, 800, 600, windowFocused: false);
+
+            Assert.True(focused.WindowFocused);
+            Assert.False(unfocused.WindowFocused);
+        }
+
+        [Fact]
+        public void Empty_is_not_focused()
+        {
+            // A blank snapshot is genuinely "no window / not focused".
+            Assert.False(InputState.Empty.WindowFocused);
+        }
     }
 }

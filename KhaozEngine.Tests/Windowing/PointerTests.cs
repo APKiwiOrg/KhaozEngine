@@ -11,13 +11,52 @@ namespace KhaozEngine.Tests.Windowing
         static readonly Vector2 Outside = new(10, 10);
         static readonly Rect Box = new(100, 100, 200, 80);
 
-        static InputState Frame(Vector2 pos, bool leftDown)
+        static InputState Frame(Vector2 pos, bool leftDown) => Frame(pos, leftDown, true);
+
+        static InputState Frame(Vector2 pos, bool leftDown, bool focused)
         {
             var down = new HashSet<MouseButton>();
             if (leftDown) down.Add(MouseButton.Left);
             return new InputState(
                 new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
-                down, new HashSet<MouseButton>(), pos, Vector2.Zero, 0, 960, 540);
+                down, new HashSet<MouseButton>(), pos, Vector2.Zero, 0, 960, 540, windowFocused: focused);
+        }
+
+        [Fact]
+        public void WindowFocused_defaults_true_and_reflects_the_input_snapshot()
+        {
+            var p = new Pointer();
+            Assert.True(p.WindowFocused);                  // fresh pointer assumes focused
+
+            p.Update(Frame(Inside, false, focused: false));
+            Assert.False(p.WindowFocused);
+
+            p.Update(Frame(Inside, false, focused: true));
+            Assert.True(p.WindowFocused);
+        }
+
+        [Fact]
+        public void IsHoveringIn_is_suppressed_while_the_window_is_unfocused()
+        {
+            var p = new Pointer();
+
+            p.Update(Frame(Inside, false, focused: false)); // cursor over the box, window NOT focused
+            Assert.False(p.IsHoveringIn(Box));              // no hover while unfocused
+
+            p.Update(Frame(Inside, false, focused: true));  // focus returns
+            Assert.True(p.IsHoveringIn(Box));               // hover resumes
+        }
+
+        [Fact]
+        public void Press_origin_queries_stay_live_while_unfocused()  // focus gates HOVER only, not the click-through invariant
+        {
+            var p = new Pointer();
+            p.Update(Frame(Inside, false, focused: false));
+            p.Update(Frame(Inside, true, focused: false));  // press inside while unfocused
+            Assert.True(p.IsPressingIn(Box));               // press-origin invariant unaffected by focus
+            Assert.True(p.IsDragStartIn(Box));
+            p.Update(Frame(Inside, false, focused: false)); // release inside while unfocused
+            Assert.True(p.IsTapIn(Box));                    // tap still resolves; focus does not neutralize it
         }
 
         [Fact]

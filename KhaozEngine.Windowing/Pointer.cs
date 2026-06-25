@@ -14,6 +14,7 @@ namespace KhaozEngine.Windowing
         readonly List<Rect> _blocked = new();
         bool _down, _wasDown, _mid, _wasMid, _right, _wasRight;
         bool _consumed;   // current gesture claimed by a consumer; reset on the next fresh press
+        bool _focused = true;   // OS window focus, from InputState.WindowFocused; windows start focused
         Vector2 _pos, _prevPos, _pressOrigin;
 
         /// <summary>Current pointer position (pixels).</summary>
@@ -33,6 +34,14 @@ namespace KhaozEngine.Windowing
         public bool IsRightJustPressed => _right && !_wasRight;
         public bool IsRightJustReleased => !_right && _wasRight;
 
+        /// <summary>
+        /// True while the owning window has OS focus (from <see cref="InputState.WindowFocused"/>; <c>true</c> until
+        /// the first <see cref="Update"/>). The hover query <see cref="IsHoveringIn"/> is gated on this so a
+        /// background window reports no hover, while the press-origin / tap queries stay live (focus gates HOVER
+        /// only, never the click-through invariant). Read it to drop other hover affordances while unfocused.
+        /// </summary>
+        public bool WindowFocused => _focused;
+
         /// <summary>Derive the pointer from this frame's input. Call once per frame before hit-testing.</summary>
         public void Update(InputState input) => Update(input, null);
 
@@ -47,6 +56,7 @@ namespace KhaozEngine.Windowing
             _blocked.Clear();
             _wasDown = _down; _wasMid = _mid; _wasRight = _right;
             _prevPos = _pos;
+            _focused = input.WindowFocused;
 
             Vector2 screen = input.MousePosition;
             // Only count presses while the pointer is inside the client area (raw window space).
@@ -92,7 +102,10 @@ namespace KhaozEngine.Windowing
             !_consumed && IsJustReleased && pressOriginBounds.Contains(_pressOrigin) && releaseBounds.Contains(_pos);
 
         public bool IsPointerIn(Rect bounds) => bounds.Contains(_pos);
-        public bool IsHoveringIn(Rect bounds) => !_down && bounds.Contains(_pos);
+        /// <summary>True when the pointer hovers <paramref name="bounds"/> (over it, no button down) AND the window
+        /// has focus - a background window reports no hover, so hover affordances (tooltips, UI hover SFX) stay
+        /// silent while unfocused. The press-origin queries below are deliberately NOT focus-gated.</summary>
+        public bool IsHoveringIn(Rect bounds) => _focused && !_down && bounds.Contains(_pos);
         public bool IsPressingIn(Rect bounds) => _down && bounds.Contains(_pressOrigin) && bounds.Contains(_pos);
         public bool IsReleasedOutside(Rect bounds) => IsJustReleased && !bounds.Contains(_pos);
         public bool IsDraggingIn(Rect bounds) => _down && bounds.Contains(_pressOrigin);

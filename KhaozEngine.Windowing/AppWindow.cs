@@ -52,6 +52,7 @@ namespace KhaozEngine.Windowing
         readonly SilkGamepadReader _gamepads = new();
         Vector2 _lastMouse;
         float _wheelAccum;
+        bool _focused = true;   // windows open focused; Silk's FocusChanged keeps this in sync.
 
         readonly int _maxFrames;
         int _frameCount;
@@ -207,6 +208,9 @@ namespace KhaozEngine.Windowing
 
         void WireInput()
         {
+            // Track OS focus so BuildInput can stamp it onto the snapshot. Silk keeps the render loop running and
+            // reports a live cursor while unfocused, so without this consumers would see hover/clicks as if focused.
+            _window.FocusChanged += focused => _focused = focused;
             foreach (IKeyboard kb in _input.Keyboards)
             {
                 kb.KeyDown += (_, key, _) => { if (MapKey(key, out Key k) && _keysDown.Add(k)) _pressed.Add(k); };
@@ -236,7 +240,7 @@ namespace KhaozEngine.Windowing
                 new HashSet<MouseButton>(_mouseDown), new HashSet<MouseButton>(_mousePressed),
                 pos, delta, _wheelAccum,
                 _window.FramebufferSize.X, _window.FramebufferSize.Y,
-                _gamepads.Read(_input.Gamepads));
+                _gamepads.Read(_input.Gamepads), windowFocused: _focused);
 
             _pressed.Clear();
             _released.Clear();

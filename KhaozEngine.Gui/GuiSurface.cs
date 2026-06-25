@@ -281,12 +281,15 @@ namespace KhaozEngine.Gui
 
         /// <summary>
         /// True when the stored pointer's press-origin lies inside any widget reserved this frame (the
-        /// click-through gate). Use to suppress world/board input when the user pressed on the UI.
+        /// click-through gate). Use to suppress world/board input when the user pressed on the UI. Always false
+        /// while the window is unfocused (a background window captures nothing).
         /// </summary>
         public bool PointerCaptured
         {
             get
             {
+                // A background window captures no input, so the click-through gate stays open while unfocused.
+                if (!_pointer.WindowFocused) return false;
                 // PressOrigin defaults to (0,0) and is only meaningful once a press has happened, so a
                 // never-pressed pointer must not capture a widget that merely sits at the origin.
                 if (!_pointer.IsDown && !_pointer.IsJustReleased) return false;
@@ -302,11 +305,13 @@ namespace KhaozEngine.Gui
         /// position rather than the press origin, and with no press-in-progress guard). Use to suppress world
         /// HOVER affordances (tooltips, hover highlights) while the cursor is over UI. Because <c>_blocked</c>
         /// includes <see cref="Panel(Rect, Vector4)"/> rects, this covers panel backgrounds, not just the
-        /// interactive widgets tracked by <see cref="HoveredRect"/>.</summary>
+        /// interactive widgets tracked by <see cref="HoveredRect"/>. Always false while the window is unfocused
+        /// (the pointer is treated as not over anything in the background).</summary>
         public bool HoverCaptured
         {
             get
             {
+                if (!_pointer.WindowFocused) return false;
                 Vector2 pos = _pointer.Position;
                 foreach (var r in _blocked)
                     if (r.Contains(pos)) return true;

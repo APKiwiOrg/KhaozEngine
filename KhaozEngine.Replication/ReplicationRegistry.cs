@@ -38,6 +38,18 @@ public sealed class ReplicationRegistry
 
         void Deserialize(World w, Entity e, BinaryReader br) => w.Set(e, read(br));
 
+        byte[]? CaptureData(World w, Entity e)
+        {
+            if (!w.TryGet<T>(e, out T v)) return null;
+            using var ms = new MemoryStream();
+            using var bw = new BinaryWriter(ms);
+            write(v, bw);
+            bw.Flush();
+            return ms.ToArray();
+        }
+
+        void RemoveComponent(World w, Entity e) => w.Remove<T>(e);
+
         Action<World, Entity, byte[], byte[], float>? lerpFromBytes = null;
         if (lerp is not null)
         {
@@ -49,7 +61,7 @@ public sealed class ReplicationRegistry
             };
         }
 
-        var codec = new ComponentCodec(typeId, TrySerialize, Deserialize, lerpFromBytes);
+        var codec = new ComponentCodec(typeId, TrySerialize, Deserialize, lerpFromBytes, CaptureData, RemoveComponent);
         ordered.Add(codec);
         byId[typeId] = codec;
     }
@@ -64,12 +76,15 @@ public sealed class ReplicationRegistry
 internal sealed class ComponentCodec
 {
     public ComponentCodec(ushort typeId, Func<World, Entity, BinaryWriter, bool> trySerialize,
-        Action<World, Entity, BinaryReader> deserialize, Action<World, Entity, byte[], byte[], float>? lerpFromBytes)
+        Action<World, Entity, BinaryReader> deserialize, Action<World, Entity, byte[], byte[], float>? lerpFromBytes,
+        Func<World, Entity, byte[]?> captureData, Action<World, Entity> removeComponent)
     {
         TypeId = typeId;
         TrySerialize = trySerialize;
         Deserialize = deserialize;
         LerpFromBytes = lerpFromBytes;
+        CaptureData = captureData;
+        RemoveComponent = removeComponent;
     }
 
     public ushort TypeId { get; }
@@ -79,6 +94,12 @@ internal sealed class ComponentCodec
 
     /// <summary>Reads the component data and sets it on the entity.</summary>
     public Action<World, Entity, BinaryReader> Deserialize { get; }
+
+    /// <summary>Returns just the component's data bytes (no type id) if present, else null. Used for delta capture.</summary>
+    public Func<World, Entity, byte[]?> CaptureData { get; }
+
+    /// <summary>Removes the component from the entity (for delta-applied component removals).</summary>
+    public Action<World, Entity> RemoveComponent { get; }
 
     /// <summary>Reads two raw component byte slices, lerps, and sets the result. Null if not interpolatable.</summary>
     public Action<World, Entity, byte[], byte[], float>? LerpFromBytes { get; }

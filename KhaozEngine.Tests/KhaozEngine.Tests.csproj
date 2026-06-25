@@ -44,6 +44,7 @@
     <ProjectReference Include="../KhaozEngine.Snapshot/KhaozEngine.Snapshot.csproj" />
     <ProjectReference Include="../KhaozEngine.Snapshot.Render3D/KhaozEngine.Snapshot.Render3D.csproj" />
     <ProjectReference Include="../KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
+    <ProjectReference Include="../KhaozEngine.Simulation/KhaozEngine.Simulation.csproj" />
     <ProjectReference Include="../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
     <ProjectReference Include="../KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
     <ProjectReference Include="../KhaozEngine.Sfx.Tool/KhaozEngine.Sfx.Tool.csproj" />

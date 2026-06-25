@@ -1118,8 +1118,26 @@ if (east.TryGetGhost(netId, out Entity ghost)) { /* read ghost.Get<Position>(), 
 Ghosts are tagged with `Ghost { Source }` and are read-only - the owner cell stays the sole simulator, so game
 systems must exclude `Ghost`-tagged entities from authoritative mutation. `SyncGhosts` only mirrors to cells that
 already exist (it never creates a neighbor), re-mirrors each sync (a moved owner updates its ghost; one that
-leaves the border is despawned), and assumes globally-unique `NetId`s across cells. Authority handoff on a
-crossing and a dedicated-server template are later Phase 3 stages.
+leaves the border is despawned), and assumes globally-unique `NetId`s across cells.
+
+**Authority handoff (Phase 3C).** When an owned entity's position crosses into another cell, `ProcessHandoffs()`
+transfers authority with **exactly-once** semantics (never two owners, never zero):
+
+```csharp
+host.ProcessHandoffs();   // after Tick(); typically Tick -> ProcessHandoffs -> SyncGhosts each host step
+
+// who owns it now (and the owned entity):
+if (host.TryGetOwner(netId, out CellSim owner, out Entity owned)) { /* ... */ }
+int owners = host.OwnerCount(netId);   // == 1 for a live entity at every call boundary
+```
+
+The owner captures the entity's full registered component set, sends a `Migrate` over `ICellLink`, and freezes it
+(`Migrating`, not simulated, not counted as an owner); the destination adopts it as a new owned entity (despawning
+any prior ghost of it) and acks; the owner releases it. The entity keeps its `NetId` across the move, and the
+destination cell is created if needed. The in-process link completes the whole handshake within the call (so the
+exactly-once invariant holds at every call boundary); a networked link would keep the entity `Migrating` on the
+source until the ack arrives - never double-simulated, never permanently lost. Game systems must treat
+`Migrating` entities as frozen, like `Ghost`s. A dedicated-server template is the next Phase 3 stage.
 
 ---
 

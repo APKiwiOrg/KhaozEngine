@@ -16,7 +16,7 @@ NOT duplicated (it's in `CHANGELOG.md` + `docs/superpowers/specs|plans/`). If a 
 | 2 | Interest management (AoI) + world-store seam | **shipped `7.36.0`** |
 | 3A | Cell grid + `CellSim` + `ShardHost` (new package `KhaozEngine.Sharding`) | **BUILT, held unpublished** (policy B - batches with 3B–3E) |
 | 3B | Cross-cell ghosting over `ICellLink` (`ICellLink`/`InProcessCellLink`, `Ghost`, `ShardHost.SyncGhosts`) | **BUILT, held unpublished** (policy B - batches with 3A/3C–3E) |
-| 3C | Authority handoff (seamless crossing) | TO-DO (needs 3B) → `mmo-3c-authority-handoff.md` |
+| 3C | Authority handoff (seamless crossing; `Migrating`, `ProcessHandoffs`, exactly-once) | **BUILT, held unpublished** (policy B - batches with 3A/3B/3D–3E) |
 | 3D | Client home-cell serving + re-bind | TO-DO (needs 3C) → `mmo-3d-client-serving-rebind.md` |
 | 3E | Dedicated-server template + `ICellLink` net seam | TO-DO (needs 3D) → `mmo-3e-server-template-celllink.md` |
 | R | Refinements (see bottom) | TO-DO, independent / later |

@@ -91,9 +91,10 @@ public sealed class ShardHost
     public CellCoord CoordFor(float worldX, float worldY) => CellCoord.FromWorld(worldX, worldY, CellSize);
 
     /// <summary>The <see cref="CellSim"/> containing a world position, creating it if it does not exist yet.</summary>
-    public CellSim CellFor(float worldX, float worldY)
+    public CellSim CellFor(float worldX, float worldY) => GetOrCreateCell(CoordFor(worldX, worldY));
+
+    private CellSim GetOrCreateCell(CellCoord coord)
     {
-        CellCoord coord = CoordFor(worldX, worldY);
         if (!cells.TryGetValue(coord, out CellSim? cell))
         {
             cell = new CellSim(coord, tickSeconds, registry, interestCellSize);
@@ -160,9 +161,8 @@ public sealed class ShardHost
         {
             CellSim target = ordered[i];
             var receivedFrom = new HashSet<CellCoord>();
-            foreach (CellMessage msg in link.Drain(target.Coord))
+            foreach (CellMessage msg in link.Drain(target.Coord, CellMessageKind.GhostSync))
             {
-                if (msg.Kind != CellMessageKind.GhostSync) continue;
                 target.ApplyGhostSnapshot(msg.Source, msg.Payload);
                 receivedFrom.Add(msg.Source);
             }
@@ -173,6 +173,89 @@ public sealed class ShardHost
             if (stale is not null)
                 foreach (CellCoord source in stale) target.ClearGhostsFrom(source);
         }
+    }
+
+    /// <summary>
+    /// Transfers authority for entities that crossed a cell boundary since the last call, with exactly-once
+    /// semantics (never two owners, never zero). For each owned entity whose position now falls in another cell,
+    /// the owner captures its full registered component set (Replication codecs), sends a
+    /// <see cref="CellMessageKind.Migrate"/> over the link and freezes it (<see cref="Migrating"/>); the
+    /// destination adopts it as owned (despawning any prior ghost of it) and acks; the owner then releases
+    /// (despawns) it. The in-process link completes the whole Migrate -&gt; ack -&gt; release handshake within this
+    /// call, so at every call boundary each entity is owned by exactly one cell. The entity keeps its
+    /// <see cref="NetId"/>. Creates the destination cell if it does not exist. Requires a position accessor.
+    /// </summary>
+    /// <remarks>
+    /// A networked <see cref="ICellLink"/> would instead span calls: a migrated entity stays <see cref="Migrating"/>
+    /// (frozen, not counted as an owner, not simulated) on the source until the ack arrives, while the destination
+    /// owns it once received - so there is never double-simulation and no permanent duplication or loss, only
+    /// in-flight latency.
+    /// </remarks>
+    public void ProcessHandoffs()
+    {
+        if (positionAccessor is null)
+            throw new InvalidOperationException("ProcessHandoffs requires a position accessor.");
+
+        // Phase 1: detect crossings with a read-only scan, then send Migrate + freeze (mutations after the scan).
+        var crossings = new List<(CellSim source, Entity entity, int netId, CellCoord dest)>();
+        foreach (CellSim owner in ordered.ToArray())
+        {
+            World w = owner.World;
+            CellCoord oc = owner.Coord;
+            w.ForEach<NetId>((Entity e, ref NetId id) =>
+            {
+                if (w.Has<Ghost>(e) || w.Has<Migrating>(e)) return;
+                if (!positionAccessor!(w, e, out float x, out float y)) return;
+                CellCoord dest = CoordFor(x, y);
+                if (dest != oc) crossings.Add((owner, e, id.Value, dest));
+            });
+        }
+        foreach ((CellSim source, Entity entity, int netId, CellCoord dest) in crossings)
+        {
+            GetOrCreateCell(dest); // ensure the destination exists to receive the migrate
+            byte[] capture = SnapshotWriter.WriteFiltered(source.World, registry, new HashSet<int> { netId });
+            link.Send(new CellMessage(source.Coord, dest, CellMessageKind.Migrate, capture));
+            source.World.Set(entity, new Migrating { Destination = dest });
+        }
+
+        // Phase 2: destinations adopt the migrated entities and ack their source.
+        foreach (CellSim cell in ordered.ToArray())
+        {
+            foreach (CellMessage msg in link.Drain(cell.Coord, CellMessageKind.Migrate))
+            {
+                foreach (int netId in cell.AdoptFromMigrate(msg.Payload))
+                    link.Send(new CellMessage(cell.Coord, msg.Source, CellMessageKind.MigrateAck, BitConverter.GetBytes(netId)));
+            }
+        }
+
+        // Phase 3: sources release the frozen entity once its destination acked.
+        foreach (CellSim cell in ordered.ToArray())
+        {
+            foreach (CellMessage msg in link.Drain(cell.Coord, CellMessageKind.MigrateAck))
+                cell.ReleaseMigrating(BitConverter.ToInt32(msg.Payload, 0));
+        }
+    }
+
+    /// <summary>
+    /// How many cells currently own (authoritatively hold) the entity with <paramref name="netId"/>. For a live
+    /// entity this is exactly 1 at every <see cref="ProcessHandoffs"/> call boundary (0 = lost, 2 = duplicated).
+    /// </summary>
+    public int OwnerCount(int netId)
+    {
+        int n = 0;
+        for (int i = 0; i < ordered.Count; i++)
+            if (ordered[i].TryGetOwned(netId, out _)) n++;
+        return n;
+    }
+
+    /// <summary>Finds the cell that owns <paramref name="netId"/> and the owned entity. False if no cell owns it.</summary>
+    public bool TryGetOwner(int netId, out CellSim cell, out Entity entity)
+    {
+        for (int i = 0; i < ordered.Count; i++)
+            if (ordered[i].TryGetOwned(netId, out entity)) { cell = ordered[i]; return true; }
+        cell = null!;
+        entity = default;
+        return false;
     }
 
     /// <summary>
@@ -190,7 +273,7 @@ public sealed class ShardHost
 
         world.ForEach<NetId>((Entity e, ref NetId id) =>
         {
-            if (world.Has<Ghost>(e)) return;                          // never re-ghost a ghost
+            if (world.Has<Ghost>(e) || world.Has<Migrating>(e)) return; // never ghost a ghost or a leaving entity
             if (!positionAccessor!(world, e, out float x, out float y)) return;
 
             bool nearW = x - minX < m, nearE = maxX - x < m, nearS = y - minY < m, nearN = maxY - y < m;

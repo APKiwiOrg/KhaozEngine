@@ -8,11 +8,18 @@ public enum CellMessageKind : byte
 {
     /// <summary>A border-overlap ghost snapshot mirrored from the source cell to the target.</summary>
     GhostSync = 1,
+
+    /// <summary>An authority-handoff request: the source serialized a crossing entity for the target to adopt.</summary>
+    Migrate = 2,
+
+    /// <summary>The target's acknowledgement that it adopted a migrated entity, so the source can release it.</summary>
+    MigrateAck = 3,
 }
 
 /// <summary>
 /// A message from one cell to another, delivered at a tick/sync boundary. The payload is an opaque
-/// <c>byte[]</c> (for <see cref="CellMessageKind.GhostSync"/>, a <see cref="KhaozEngine.Replication"/> snapshot).
+/// <c>byte[]</c> (for <see cref="CellMessageKind.GhostSync"/>/<see cref="CellMessageKind.Migrate"/>, a
+/// <see cref="KhaozEngine.Replication"/> snapshot; for <see cref="CellMessageKind.MigrateAck"/>, the acked NetId).
 /// </summary>
 public readonly struct CellMessage
 {
@@ -47,8 +54,12 @@ public interface ICellLink
     /// <summary>Queues a message for its target cell.</summary>
     void Send(in CellMessage message);
 
-    /// <summary>Returns and removes all messages queued for <paramref name="target"/>, in send (FIFO) order.</summary>
-    IReadOnlyList<CellMessage> Drain(CellCoord target);
+    /// <summary>
+    /// Returns and removes the messages of <paramref name="kind"/> queued for <paramref name="target"/>, in send
+    /// (FIFO) order, leaving messages of other kinds queued. Kind-scoped so multi-kind protocols (ghost sync,
+    /// migrate, ack) can drain their own messages in separate passes without discarding each other's.
+    /// </summary>
+    IReadOnlyList<CellMessage> Drain(CellCoord target, CellMessageKind kind);
 }
 
 /// <summary>In-process, deterministic <see cref="ICellLink"/>: per-target FIFO in-memory queues.</summary>
@@ -67,10 +78,18 @@ public sealed class InProcessCellLink : ICellLink
         inbox.Add(message);
     }
 
-    public IReadOnlyList<CellMessage> Drain(CellCoord target)
+    public IReadOnlyList<CellMessage> Drain(CellCoord target, CellMessageKind kind)
     {
         if (!inboxes.TryGetValue(target, out List<CellMessage>? inbox) || inbox.Count == 0) return Empty;
-        inboxes[target] = new List<CellMessage>();
-        return inbox;
+
+        List<CellMessage>? taken = null;
+        List<CellMessage>? remaining = null;
+        foreach (CellMessage m in inbox)
+        {
+            if (m.Kind == kind) (taken ??= new List<CellMessage>()).Add(m);
+            else (remaining ??= new List<CellMessage>()).Add(m);
+        }
+        inboxes[target] = remaining ?? new List<CellMessage>();
+        return taken ?? Empty;
     }
 }

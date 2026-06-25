@@ -80,7 +80,9 @@ public sealed class CellSim
         get
         {
             int n = 0;
-            foreach (ClientReplicationView view in ghostViews.Values) n += view.Entities.Count;
+            foreach (ClientReplicationView view in ghostViews.Values)
+                foreach (KeyValuePair<int, Entity> kv in view.Entities)
+                    if (World.IsAlive(kv.Value)) n++;
             return n;
         }
     }
@@ -125,5 +127,62 @@ public sealed class CellSim
             ghostViews[source] = view;
         }
         return view;
+    }
+
+    /// <summary>
+    /// Finds an entity this cell <b>owns</b> by its <see cref="NetId"/> value: present, alive, and neither a
+    /// <see cref="Ghost"/> nor <see cref="Migrating"/> (i.e. authoritatively simulated here).
+    /// </summary>
+    public bool TryGetOwned(int netId, out Entity entity)
+    {
+        Entity found = default;
+        bool ok = false;
+        World.ForEach<NetId>((Entity e, ref NetId id) =>
+        {
+            if (id.Value == netId && !World.Has<Ghost>(e) && !World.Has<Migrating>(e)) { found = e; ok = true; }
+        });
+        entity = found;
+        return ok;
+    }
+
+    /// <summary>
+    /// Adopts a migrated entity into this cell as a freshly owned entity from <paramref name="snapshot"/> (a
+    /// single-entity <see cref="KhaozEngine.Replication"/> capture). Any existing ghost of the same NetId here is
+    /// despawned so the owned copy is the only one. Returns the adopted NetId values.
+    /// </summary>
+    public IReadOnlyList<int> AdoptFromMigrate(byte[] snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        // Throwaway view: spawns the entity (and sets NetId + components), then is discarded so the entity is
+        // untracked = a normal owned entity.
+        var adopter = new ClientReplicationView(registry);
+        adopter.Apply(World, snapshot);
+        var netIds = new List<int>(adopter.Entities.Count);
+        foreach (KeyValuePair<int, Entity> kv in adopter.Entities) netIds.Add(kv.Key);
+        foreach (int netId in netIds) DespawnGhost(netId); // drop any pre-existing ghost of the now-owned entity
+        return netIds;
+    }
+
+    /// <summary>Releases (despawns) the <see cref="Migrating"/> entity with <paramref name="netId"/> after its destination acked.</summary>
+    public bool ReleaseMigrating(int netId)
+    {
+        Entity found = default;
+        bool ok = false;
+        World.ForEach<NetId, Migrating>((Entity e, ref NetId id, ref Migrating _) =>
+        {
+            if (id.Value == netId) { found = e; ok = true; }
+        });
+        if (ok && World.IsAlive(found)) World.Despawn(found);
+        return ok;
+    }
+
+    private void DespawnGhost(int netId)
+    {
+        foreach (ClientReplicationView view in ghostViews.Values)
+            if (view.TryGetEntity(netId, out Entity g))
+            {
+                if (World.IsAlive(g)) World.Despawn(g); // view's stale entry self-heals on the next ghost sync
+                return;
+            }
     }
 }

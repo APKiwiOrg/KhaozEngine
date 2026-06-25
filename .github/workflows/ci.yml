@@ -33,7 +33,9 @@ jobs:
       - run: mkdir -p local-feed
       - run: dotnet restore
       - run: dotnet build -c Release --no-restore
-      - run: dotnet test -c Release --no-build
+      # Exclude live-socket smokes (real UDP, fixed port) from CI: they are a manual/local smoke, covered
+      # headlessly by LoopbackTransport. Run them locally with the full (unfiltered) test command.
+      - run: dotnet test -c Release --no-build --filter "Category!=LiveSocket"
       # Determinism guard: the FP-scope tests must stay byte-identical under both JIT tiering modes.
       # (The default run above covers ambient tiering; these pin the two extremes explicitly.)
       - name: Determinism under JIT tiering 0 and 1

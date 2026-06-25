@@ -750,7 +750,7 @@ namespace KhaozEngine.Render3D
                 _cpuSkinnedInstances.Clear();
                 _cpuSkinnedDraws.Clear();
                 var boneSpan = CollectionsMarshal.AsSpan(_boneMatrices);
-                const int cap = SkinnedModelRenderer.MaxBonesPerDraw;
+                const int cap = SkinningMath.MaxBonesPerDraw;
                 for (int i = 0; i < skinnedItems.Count; i++)
                 {
                     var it = skinnedItems[i];
@@ -1047,7 +1047,7 @@ namespace KhaozEngine.Render3D
             if (boneMatrices.Length != inverseBind.Length)
                 throw new ArgumentException(
                     $"boneMatrices length {boneMatrices.Length} must equal the mesh bone count {inverseBind.Length}.");
-            int cap = SkinnedModelRenderer.MaxBonesPerDraw;
+            int cap = SkinningMath.MaxBonesPerDraw;
             if (boneMatrices.Length > cap)
                 throw new ArgumentException($"a skinned mesh has {boneMatrices.Length} bones, over the {cap}-bone per-draw cap.");
             int need = (slot + 1) * cap;

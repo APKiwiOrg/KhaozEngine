@@ -9,7 +9,7 @@ namespace KhaozEngine.Tests.Render3D
 {
     public class Scene3DSkinnedQueueTests
     {
-        const int Cap = SkinnedModelRenderer.MaxBonesPerDraw;
+        const int Cap = SkinningMath.MaxBonesPerDraw;
 
         [Fact]
         public void ComposeBonesIntoSlot_RestPose_FillsIdentityWindow()

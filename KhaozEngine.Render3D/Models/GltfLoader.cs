@@ -195,9 +195,9 @@ namespace KhaozEngine.Render3D
             // Reject a malformed/malicious rig at load. The CPU skinning path slices the bone palette to
             // exactly MaxBonesPerDraw and reads it unconditionally per vertex (SkinningMath.BlendSkinMatrix),
             // so an oversized joint count or an out-of-range JOINTS_0 index would otherwise throw mid-frame.
-            if (boneCount > SkinnedModelRenderer.MaxBonesPerDraw)
+            if (boneCount > SkinningMath.MaxBonesPerDraw)
                 throw new InvalidOperationException(
-                    $"glTF skin has {boneCount} joints, over the {SkinnedModelRenderer.MaxBonesPerDraw}-bone per-draw cap: {path}");
+                    $"glTF skin has {boneCount} joints, over the {SkinningMath.MaxBonesPerDraw}-bone per-draw cap: {path}");
             foreach (SkinnedVertex v in verts)
                 if (!SkinningMath.AreBoneIndicesValid(v.BoneIndices, boneCount))
                     throw new InvalidOperationException(

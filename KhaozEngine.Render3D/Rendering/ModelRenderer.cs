@@ -248,13 +248,6 @@ namespace KhaozEngine.Render3D.Rendering
             _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(
                 _layout, _ubo, albedo ?? _white, normal ?? _flatNormal, roughness ?? _defaultRough, _sampler));
 
-        /// <summary>The material resource layout (set 0: UBO + albedo + normal + roughness + sampler). Shared
-        /// with the skinned pipeline so both passes bind the same material sets.</summary>
-        internal IGpuResourceLayout MaterialLayout => _layout;
-
-        /// <summary>The white-default material set, bound for skinned meshes with no texture.</summary>
-        internal IGpuResourceSet DefaultMaterialSet => _defaultSet;
-
         /// <summary>Ensure the persistent instance buffer holds at least <paramref name="instanceCount"/>
         /// instances, then upload <paramref name="instances"/> starting at offset 0. Geometric 2x growth.</summary>
         public void UploadInstances(IGpuCommandList cl, ReadOnlySpan<InstanceData> instances)
@@ -269,7 +262,7 @@ namespace KhaozEngine.Render3D.Rendering
             if (_instanceBuffer != null && _instanceCapacity >= instanceCount) return;
             // Retire (don't dispose inline): a prior frame's command list may still be reading the old buffer on
             // the GPU when this frame grows; disposing it then is a use-after-free. Geometric growth bounds the
-            // retired count; freed in Dispose. (Same reasoning as SkinnedModelRenderer.)
+            // retired count; freed in Dispose.
             if (_instanceBuffer != null) _retired.Add(_instanceBuffer);
             _instanceCapacity = Math.Max(instanceCount, _instanceCapacity == 0 ? 64u : _instanceCapacity * 2);
             _instanceBuffer = _gd.Factory.CreateBuffer(

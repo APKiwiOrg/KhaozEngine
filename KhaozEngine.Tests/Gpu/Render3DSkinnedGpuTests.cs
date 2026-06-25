@@ -8,9 +8,11 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
 {
-    // Exercises the skinned pipeline on a live headless device: proves SkinnedModelVert cross-compiles, the bone
-    // SSBO binds at set 1, the instanced skinned draw runs, and a bent pose deforms the mesh (a bent capture
-    // differs from the rest-pose capture). Skipped unless KE_GPU_TESTS=1.
+    // Exercises Scene3D's CPU skinning path on a live headless device: a skinned tube loads, the per-frame bone
+    // palette composes, and a bent FK pose deforms the mesh (a bent capture differs from the rest-pose capture).
+    // Scene3D skins on the CPU through the rigid ModelRenderer pipeline; the dormant GPU SkinnedModelRenderer /
+    // SkinnedModelVert path was removed (the GPU bone read corrupted past element 0 on windowed Veldrid/Metal).
+    // Skipped unless KE_GPU_TESTS=1.
     public sealed class Render3DSkinnedGpuTests
     {
         const int W = 128, H = 128;

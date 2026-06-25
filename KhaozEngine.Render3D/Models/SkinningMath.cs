@@ -4,11 +4,17 @@ using System.Numerics;
 namespace KhaozEngine.Render3D
 {
     /// <summary>Pure, GPU-free skinning math: composing a per-bone skin matrix from a joint world transform and
-    /// the bone's inverse-bind, blending the 4-bone palette by weights, and normalizing weights. This is the
-    /// CPU mirror of the skinned vertex shader's blend, so the deform is headless-unit-testable. Presentation
-    /// only: never feed skinning results into simulation/RNG/netcode.</summary>
+    /// the bone's inverse-bind, blending the 4-bone palette by weights, and normalizing weights. Scene3D skins
+    /// meshes on the CPU through this, so the deform is headless-unit-testable. Presentation only: never feed
+    /// skinning results into simulation/RNG/netcode.</summary>
     public static class SkinningMath
     {
+        /// <summary>Max bones in one skinned mesh's palette (the per-skin bone cap). A skinned mesh
+        /// (tentacle / limb / creature) must have at most this many joints: <see cref="BlendSkinMatrix"/>
+        /// and the CPU bone-palette packing in <c>Scene3D</c> slot meshes at this stride, and the glTF
+        /// loader rejects skins with more joints. (Was on the now-removed GPU SkinnedModelRenderer.)</summary>
+        public const int MaxBonesPerDraw = 128;
+
         /// <summary>The model-space skinning matrix for one bone: <c>inverseBind * jointWorld</c>. When
         /// <paramref name="jointWorld"/> equals the bone's rest world transform this is the identity (no deform).</summary>
         public static Matrix4x4 Compose(Matrix4x4 jointWorld, Matrix4x4 inverseBind) => inverseBind * jointWorld;

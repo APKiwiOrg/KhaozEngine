@@ -45,10 +45,28 @@ public readonly struct CellMessage
 }
 
 /// <summary>
-/// Seam for cell-to-cell messaging (ghost sync now; authority handoff later). The in-process implementation
-/// (<see cref="InProcessCellLink"/>) delivers in-memory and deterministically; a network implementation across
-/// nodes is infrastructure. Messages are buffered per target and applied when the host drains them at a boundary.
+/// The inter-cell messaging seam: how cells exchange ghost-sync, migrate, and ack messages
+/// (<see cref="CellMessageKind"/>). <see cref="ShardHost"/> drives it - <see cref="ShardHost.SyncGhosts"/> and
+/// <see cref="ShardHost.ProcessHandoffs"/> <see cref="Send"/> messages and <see cref="Drain"/> them at tick/sync
+/// boundaries. The shipped default is the in-process <see cref="InProcessCellLink"/> (in-memory, deterministic,
+/// whole handshake within a single host pass); a cross-process / cross-machine implementation is infrastructure.
 /// </summary>
+/// <remarks>
+/// <para><b>Network-impl contract</b> (for an infra implementation that carries messages between nodes):</para>
+/// <list type="bullet">
+/// <item>A <see cref="CellMessage"/> is fully serializable: <see cref="CellMessage.Source"/>/<see cref="CellMessage.Target"/>
+/// are two ints each, <see cref="CellMessage.Kind"/> is a byte, <see cref="CellMessage.Payload"/> is an opaque
+/// <c>byte[]</c> (a Replication snapshot for ghost/migrate; a NetId for ack). Route a sent message to the node
+/// hosting its <see cref="CellMessage.Target"/> cell and surface it from that node's <see cref="Drain"/>.</item>
+/// <item><see cref="Drain"/> must be <b>kind-scoped</b> and preserve per-(target, kind) <b>FIFO</b> order, and must
+/// not drop or reorder other kinds - the host drains migrate and ack in separate passes and relies on acks
+/// surviving the migrate pass.</item>
+/// <item>Delivery should be reliable and at-least-once; the handoff protocol tolerates an ack arriving a later
+/// boundary (the entity stays <see cref="Migrating"/> on the source meanwhile), but a permanently dropped migrate
+/// or ack would strand an entity, so use a reliable channel.</item>
+/// <item>Cross-node clock sync (so cells drain on compatible boundaries) is the infra's concern, out of engine scope.</item>
+/// </list>
+/// </remarks>
 public interface ICellLink
 {
     /// <summary>Queues a message for its target cell.</summary>

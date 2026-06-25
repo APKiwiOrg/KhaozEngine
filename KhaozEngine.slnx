@@ -51,6 +51,7 @@
   <Project Path="Render3DSample/Render3DSample.csproj" />
   <Project Path="SceneSample/SceneSample.csproj" />
   <Project Path="SnapshotSample/SnapshotSample.csproj" />
+  <Project Path="MmoServerSample/MmoServerSample.csproj" />
   <Project Path="tools/PixelLabSheetAssembler/PixelLabSheetAssembler.csproj" />
   <Project Path="tools/PixelLabSheetAssembler.Tests/PixelLabSheetAssembler.Tests.csproj" />
 </Solution>

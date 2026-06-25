@@ -105,9 +105,13 @@ version/release work.
   `ShardHost.ProcessHandoffs`/`OwnerCount`/`TryGetOwner`) - exactly-once cell-crossing transfer (no dup/loss);
   Phase 3D added client home-cell serving (`ShardHost.BindClient`/`UnbindClient`/`TryGetHomeCell`/
   `SnapshotForClient`, `CellSim.RebuildInterest`) - a client's whole AoI is served from the single cell owning its
-  player (invariant overlap margin >= interest radius, enforced), re-binding seamlessly on a crossing. Note:
+  player (invariant overlap margin >= interest radius, enforced), re-binding seamlessly on a crossing; Phase 3E
+  finalized `ICellLink` with a documented network-impl contract (in-process impl shipped; network = infra) and
+  added the reference dedicated-server sample `MmoServerSample` (the `MmoServer` class wiring `ShardHost` +
+  `NetServer` session layer + per-client home-cell serving + `RemoteCommandQueue` input + `WorldStore` on
+  `FixedTickHost`; a sample, `IsPackable=false`, not itself a package). Note:
   the package id is `KhaozEngine.Sharding`, NOT `KhaozEngine.World` - a namespace whose leaf is literally `World`
-  would shadow the ECS `World` type. `Sharding` (3A + 3B + 3C + 3D) is built and held UNPUBLISHED pending the
+  would shadow the ECS `World` type. `Sharding` (3A + 3B + 3C + 3D + 3E) is built and held UNPUBLISHED pending the
   Phase 3 batch release (policy B), so it carries no version attribution yet.) (`KhaozEngine.Content.Validator`
   is a build-time tool, `IsPackable=false`, shipped inside the `Content` package rather than versioned itself.)
   `KhaozEngine.Updates.Tool` (the `ke-updater` dotnet tool: manifest/genkey/sign/verify, shipped at `7.3.0`)

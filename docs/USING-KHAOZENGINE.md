@@ -1156,7 +1156,17 @@ host.TryGetHomeCell(slot, out CellSim home);       // the cell currently serving
 player is not currently owned. When the player crosses a boundary, `ProcessHandoffs` moves ownership and the home
 cell **re-binds automatically** (it is derived from the current owner); the new home cell already held the
 player's surroundings as ghosts, so the client's view is continuous across the crossing (nothing in-interest
-disappears then reappears). A dedicated-server template wiring this together is the next Phase 3 stage.
+disappears then reappears).
+
+**Reference dedicated server (Phase 3E).** `MmoServerSample` wires the whole stack into a runnable headless
+server: a multi-cell `ShardHost` driven over the `NetServer` session layer (any `INetTransport` - LiteNetLib in
+production, `LoopbackTransport` in tests), per-client home-cell AoI serving, `RemoteCommandQueue` input, and
+`IWorldStore` persistence, all on a `FixedTickHost`. Its `MmoServer` class is transport-injected: `Poll()` ingests
+join/leave + client input, `Tick(dt)` steps one authoritative frame (apply input -> `ProcessHandoffs` ->
+`SyncGhosts` -> serve each client). `dotnet run --project MmoServerSample` boots it on a UDP socket; a thin client
+connects and walks across cell boundaries. The `ICellLink` seam is finalized with the in-process impl shipped and
+a documented network-impl contract (route by target `CellCoord`, kind-scoped FIFO `Drain`, reliable delivery) for
+an infra implementation to drop in.
 
 ---
 

@@ -1,6 +1,6 @@
 # KhaozEngine roadmap / backlog
 
-Larger feature areas identified but not yet scheduled. Current released version: **7.34.0** (the shared
+Larger feature areas identified but not yet scheduled. Current released version: **7.35.0** (the shared
 `<KhaozEngine5xVersion>` line, which is the engine: the custom MonoGame-free stack plus the graduated foundation packages). The legacy 4.x
 line and its six genuinely-MonoGame packages (`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`) were
 DELETED from the engine source, so the engine itself is now entirely MonoGame-free. All three consumers are
@@ -17,6 +17,27 @@ under each area as **Shipped** so the remaining work is clear. (The primitive/ca
 release once put in `KhaozEngine.Graphics` now lives in `KhaozEngine.Render2D` / `KhaozEngine.Effects` on the
 MonoGame-free stack; the 4.x `Graphics`/`UI` packages were deleted. Roadmap references below use the current
 package names.)
+
+## MMO / authoritative-multiplayer netcode stack (program)
+
+**Decision (2026-06-25):** build the server + netcode track toward an authoritative, persistent-world,
+MMO-scale multiplayer game. Authoritative client-server (server simulates, clients predict + interpolate),
+not lockstep. Full architecture + the engine-vs-infra boundary + the phased decomposition are in
+`docs/superpowers/specs/2026-06-25-mmo-netcode-stack-design.md`. The render-scale track (frustum culling,
+world streaming, LOD, tilemap) is a separate plan, not part of this program.
+
+Phases (each sub-project gets its own spec + plan): **0** transport seam + fixed-tick host · **1** entity
+replication + session lifecycle · **2** interest management + world-store seam · **3** zoning/sharding +
+dedicated-server template.
+
+- **Phase 0 shipped (`7.35.0`).** `KhaozEngine.Netcode` gained the `INetTransport` byte-transport seam
+  (`NetConnectionId`/`NetEvent`) + a deterministic in-memory `LoopbackTransport`; `KhaozEngine.Netcode.LiteNetLib`
+  gained `LiteNetLibServerTransport`/`LiteNetLibClientTransport` (UDP); and the new `KhaozEngine.Simulation`
+  package added `FixedTickHost` (the headless fixed-timestep accumulator). Plan:
+  `docs/superpowers/plans/2026-06-25-mmo-phase0-transport-and-tick-host.md`.
+- **Open:** Phases 1-3 (replication, interest management, world-store, zoning), plus the existing-system
+  upgrades they force (ECS job scheduling, an incremental spatial index, AoI). SpaceGame is the intended first
+  adopter / testbed once Phase 1 lands.
 
 ## The post-MonoGame pivot (6.x line): strategic direction
 

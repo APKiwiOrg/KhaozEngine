@@ -923,6 +923,58 @@ lives in `SnapshotSample` (`dotnet run --project SnapshotSample -- /tmp/ke-snaps
 
 ---
 
+## Multiplayer: transport seam + fixed-tick host (`KhaozEngine.Netcode` / `KhaozEngine.Simulation`)
+
+Phase 0 of the authoritative-multiplayer stack (full design:
+`docs/superpowers/specs/2026-06-25-mmo-netcode-stack-design.md`). Two pieces a game wires together; both are
+headless and deterministic.
+
+**`INetTransport`** is the byte-transport seam - the only thing above it that knows about the wire. You drive
+it by pumping then draining:
+
+```csharp
+transport.Poll();                               // pump the underlying transport
+while (transport.TryDequeueEvent(out NetEvent ev))
+{
+    switch (ev.Type)
+    {
+        case NetEventType.Connected:    /* ev.Connection joined */          break;
+        case NetEventType.Disconnected: /* ev.Connection left */            break;
+        case NetEventType.Data:         Handle(ev.Connection, ev.Data, ev.Reliability); break;
+    }
+}
+transport.Send(target, payload, NetChannelReliability.UnreliableSequenced);
+```
+
+Implementations:
+
+- **`LoopbackTransport`** (in `KhaozEngine.Netcode`) - a deterministic, socket-free, thread-free in-memory
+  pair for headless tests and single-process local play. `var (server, client) = LoopbackTransport.CreatePair();`
+  A `Send` on one surfaces as a `Data` event on the other after that other endpoint `Poll`s; both see the peer
+  as connection id 1. This is what netcode tests run on - no real sockets needed.
+- **`LiteNetLibServerTransport(port)` / `LiteNetLibClientTransport(host, port)`** (in
+  `KhaozEngine.Netcode.LiteNetLib`) - reliable-UDP over LiteNetLib, reusing `ChannelSplitter.ToDeliveryMethod`
+  for the reliability mapping. A peer is surfaced as `NetConnectionId` = `peer.Id + 1`.
+
+**`FixedTickHost`** (in `KhaozEngine.Simulation`) decouples the simulation rate from the render/frame rate: feed
+it variable elapsed time, it calls your tick callback a whole number of times at a fixed `dt`. Deterministic
+(same elapsed-time sequence -> same tick count), with a spiral-of-death guard.
+
+```csharp
+var host = new FixedTickHost(tickSeconds: 1f / 30f);   // 30 Hz authoritative tick
+// each network pump / frame:
+host.Advance(elapsedSeconds, tickIndex =>
+{
+    var cmd = commandQueue.Dequeue(slot, out _);       // RemoteCommandQueue
+    state = simulator.Step(state, cmd, host.TickSeconds);  // ITickSimulator
+});
+```
+
+This is the server-side spine: drain per-connection commands once per fixed tick and step the sim, with no
+window or GPU. Later phases add entity replication, interest management, and zoning on top.
+
+---
+
 ## Versioning & change process
 
 - **One shared version** across the whole engine: `<KhaozEngine5xVersion>` in `Directory.Build.props`. Every

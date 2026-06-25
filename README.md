@@ -36,8 +36,9 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 | **KhaozEngine.Determinism** | `DeterministicFpScope` / `DeterministicFp`: pins the CPU floating-point environment to a canonical IEEE state (round-to-nearest-even, FTZ/DAZ off, traps masked) for a fixed-tick / lockstep sim, then restores it, so a fixed-seed host sim doesn't drift across threads/machines. Pure-managed P/Invoke over `<fenv.h>`; `IsSupported` no-ops safely where unwired. | Pure .NET |
 | **KhaozEngine.Updates** | Delta auto-update pipeline: SHA256 manifests + diffing, a host-agnostic update source, an `UpdateService` state machine with resumable staged downloads, and a cross-platform staged-apply core (`UpdateApplier`). | Diagnostics |
 | **KhaozEngine.Netcode.Abstractions** | The zero-dependency channel-split contract: `IChannelSplittable<TSelf>` + `NetChannelReliability`. Reference this alone from a transport-agnostic DTO project (e.g. one shared with a web server). | Pure .NET |
-| **KhaozEngine.Netcode** | Transport-free netcode primitives (`System.Numerics`): `UnitAxisQuantizer` (deterministic 8-bit axis codec), `ClientPrediction<TState,TCommand>`, `RemoteCommandQueue<TCommand>`. Type-forwards the channel-split contract from Abstractions. | Netcode.Abstractions |
-| **KhaozEngine.Netcode.LiteNetLib** | LiteNetLib transport binding: `ChannelSplitter` maps `NetChannelReliability` to LiteNetLib's `DeliveryMethod`. | LiteNetLib, Netcode |
+| **KhaozEngine.Netcode** | Transport-free netcode primitives (`System.Numerics`): `UnitAxisQuantizer` (deterministic 8-bit axis codec), `ClientPrediction<TState,TCommand>`, `RemoteCommandQueue<TCommand>`, and the `INetTransport` byte-transport seam (`NetConnectionId`/`NetEvent`) with a deterministic in-memory `LoopbackTransport` for headless tests + local play. Type-forwards the channel-split contract from Abstractions. | Netcode.Abstractions |
+| **KhaozEngine.Netcode.LiteNetLib** | LiteNetLib transport binding: `ChannelSplitter` maps `NetChannelReliability` to LiteNetLib's `DeliveryMethod`, plus `LiteNetLibServerTransport`/`LiteNetLibClientTransport` (`INetTransport` over reliable-UDP). | LiteNetLib, Netcode |
+| **KhaozEngine.Simulation** | Headless simulation-host primitives: `FixedTickHost`, a deterministic fixed-timestep accumulator (turns variable elapsed time into whole fixed-dt ticks, with a spiral-of-death backlog guard) that decouples sim rate from render rate. The base of the authoritative server loop. | Pure .NET |
 | **KhaozEngine.Content.Validator** | Build-time JSON-schema enforcement tool for content (`IsPackable=false`; ships inside the Content package). | Content |
 | **KhaozEngine.Sfx.Tool** | The `ke-sfxbake` dotnet tool (`PackAsTool`): manifest-driven bulk SFX generation + bake. Reads a per-game `sfx.manifest.jsonc`, generates each effect via the ElevenLabs sound-effects REST API, encodes with ffmpeg/oggenc, idempotent via `.sfxmeta` sidecars. Author-time tool, not a runtime package. | Serialization |
 
@@ -47,7 +48,7 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 |---|---|---|
 | **KhaozEngine.Game2D** | 2D runtime (Windowing/Render2D/Gui/Audio/Particles/Effects) + `Game` + `Foundation` | a desktop 2D game |
 | **KhaozEngine.Game3D** | `Game2D` + `Render3D` + `Game.Render3D` (the 3D scene bridge) | a desktop 3D game |
-| **KhaozEngine.Server** | `Foundation` + netcode (`Netcode`/`.Abstractions`/`.LiteNetLib`) | a headless sim server (no GPU) |
+| **KhaozEngine.Server** | `Foundation` + netcode (`Netcode`/`.Abstractions`/`.LiteNetLib`) + `Simulation` (the fixed-tick host) | a headless sim server (no GPU) |
 | **KhaozEngine.Foundation** | the GPU-free foundation (Primitives/App/Content/Diagnostics/Ecs/Localization/Persistence/Serialization/Pooling/Collision/Determinism/Platform/Updates) | a gameplay-logic library (no renderer) |
 
 Target framework `net10.0`. MonoGame-free: Silk.NET windowing/input (GLFW natives bundled per-RID), Veldrid
@@ -121,10 +122,10 @@ Published to a private GitHub Packages feed on tagged releases, and packed to a 
 ```
 ```xml
 <!-- One reference per project via an umbrella metapackage. Pick the bundle that fits: -->
-<PackageReference Include="KhaozEngine.Game2D"     Version="7.34.0" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
-<PackageReference Include="KhaozEngine.Game3D"     Version="7.34.0" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
-<PackageReference Include="KhaozEngine.Server"     Version="7.34.0" />  <!-- headless: foundation + netcode, no graphics -->
-<PackageReference Include="KhaozEngine.Foundation" Version="7.34.0" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
+<PackageReference Include="KhaozEngine.Game2D"     Version="7.35.0" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
+<PackageReference Include="KhaozEngine.Game3D"     Version="7.35.0" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
+<PackageReference Include="KhaozEngine.Server"     Version="7.35.0" />  <!-- headless: foundation + netcode, no graphics -->
+<PackageReference Include="KhaozEngine.Foundation" Version="7.35.0" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
 ```
 
 The metapackages have no code; they just pull in the granular packages. You can still reference those
@@ -156,7 +157,7 @@ KhaozEngine.Primitives/
 KhaozEngine.Ecs/   KhaozEngine.Serialization/   KhaozEngine.Content/   KhaozEngine.Content.Validator/
 KhaozEngine.Diagnostics/   KhaozEngine.App/   KhaozEngine.Localization/   KhaozEngine.Persistence/
 KhaozEngine.Pooling/   KhaozEngine.Platform/   KhaozEngine.Collision/   KhaozEngine.Updates/
-KhaozEngine.Netcode/   KhaozEngine.Netcode.Abstractions/   KhaozEngine.Netcode.LiteNetLib/
+KhaozEngine.Netcode/   KhaozEngine.Netcode.Abstractions/   KhaozEngine.Netcode.LiteNetLib/   KhaozEngine.Simulation/
 # Umbrella metapackages
 KhaozEngine.Foundation/   KhaozEngine.Game2D/   KhaozEngine.Game3D/   KhaozEngine.Server/
 # Tests, samples, tools

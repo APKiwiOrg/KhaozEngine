@@ -5,6 +5,25 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.35.0
+
+MMO netcode stack, Phase 0 (transport seam + fixed-tick host). First foundation of the authoritative
+multiplayer program (`docs/superpowers/specs/2026-06-25-mmo-netcode-stack-design.md`).
+
+- `KhaozEngine.Netcode`: new `INetTransport` byte-transport seam (`Poll` / `TryDequeueEvent` / `Send` /
+  `Disconnect`) with the `NetConnectionId`, `NetEvent`, `NetEventType` value types, plus `LoopbackTransport` -
+  a deterministic, socket-free, thread-free in-memory transport pair for headless tests and local play
+  (`CreatePair` returns two linked endpoints; a Send surfaces on the peer after it Polls).
+- `KhaozEngine.Netcode.LiteNetLib`: `LiteNetLibServerTransport` / `LiteNetLibClientTransport` implement
+  `INetTransport` over reliable-UDP, reusing `ChannelSplitter.ToDeliveryMethod` for the reliability mapping
+  (peer surfaced as `NetConnectionId` = `peer.Id + 1`).
+- New package `KhaozEngine.Simulation` (zero-dependency leaf): `FixedTickHost`, a headless fixed-timestep
+  accumulator that turns variable elapsed time into a deterministic whole number of fixed-dt ticks (with a
+  spiral-of-death backlog guard), decoupling simulation rate from render rate. Promoted from SpaceGame's
+  `FixedStepRunDriver`, reduced to a single authoritative tick stream. Added to the `KhaozEngine.Server` umbrella.
+- All headless-tested over the loopback transport; the live UDP round-trip is a `Category=LiveSocket` smoke.
+  Additive (new package + new public API), minor.
+
 ## 7.34.0
 
 Attack telegraph / danger-zone indicator system (presentation-only). Two new packages:

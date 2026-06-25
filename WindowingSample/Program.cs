@@ -4,6 +4,7 @@ using System.IO;
 using System.Numerics;
 using KhaozEngine.Audio;
 using KhaozEngine.Diagnostics;
+using KhaozEngine.Platform;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
@@ -46,6 +47,12 @@ audio.LoadContent(sfxDir);
 audio.SetListener(Vector3.Zero, new Vector3(0, 0, -1), new Vector3(0, 1, 0));
 string lastSfx = "none";
 
+// Clipboard round-trip check (exercises the GLFW text provider AppWindow wires into Platform.Clipboard;
+// this is the path that was a no-op on Windows/Linux before 7.40.0). C writes a known string and reads it
+// straight back (PASS = the engine's own set+get round-trips); V pastes whatever the OS clipboard holds, so
+// copying text in another app then pressing V proves cross-app get works too.
+string clipboardStatus = "clipboard: C = copy + verify round-trip,  V = paste from OS";
+
 // When running headless under KE_MAX_FRAMES (no interactive keypresses), auto-fire the SFX so the OpenAL
 // Play / Play3D path is exercised before the smoke run exits.
 bool autoSmoke = int.TryParse(Environment.GetEnvironmentVariable("KE_MAX_FRAMES"), out int _);
@@ -69,6 +76,23 @@ window.Run(frame =>
     // SFX one-shots: Z = non-positional blip, X = positional thud 8 units to the listener's right.
     if (input.WasPressed(Key.Z)) { audio.PlaySfx("blip"); lastSfx = "blip"; }
     if (input.WasPressed(Key.X)) { audio.PlaySfx3D("thud", new Vector3(8, 0, 0)); lastSfx = "thud (3D)"; }
+
+    // Clipboard: C = write a known string and read it back (self round-trip); V = paste the OS clipboard.
+    if (input.WasPressed(Key.C))
+    {
+        string payload = $"KhaozEngine clipboard {clock.ElapsedScaledSeconds:0.0}s";
+        bool setOk = Clipboard.TrySetClipboardText(payload);
+        string readBack = Clipboard.TryGetClipboardText();
+        bool roundTrip = setOk && readBack == payload;
+        clipboardStatus = $"copy {(setOk ? "ok" : "FAIL")}  |  round-trip {(roundTrip ? "PASS" : "FAIL")}: \"{readBack}\"";
+        Console.WriteLine($"clipboard: set={setOk} roundTrip={roundTrip} value=\"{readBack}\"");
+    }
+    if (input.WasPressed(Key.V))
+    {
+        string pasted = Clipboard.TryGetClipboardText();
+        clipboardStatus = string.IsNullOrEmpty(pasted) ? "paste: <empty / unavailable>" : $"paste: \"{pasted}\"";
+        Console.WriteLine($"clipboard paste: \"{pasted}\"");
+    }
     if (autoSmoke)
     {
         frameNo++;
@@ -126,7 +150,8 @@ window.Run(frame =>
 
     string gstate = gestures.IsDragging ? "dragging" : "idle";
     string padInfo = pad.IsConnected ? $"pad: stick {pad.LeftStick.X:0.0},{pad.LeftStick.Y:0.0}" : "pad: none";
-    surface.Batch.DrawString(font, "Drag box  -  tap  -  long-press reset  -  Space pause  -  1/2/3 speed  -  Z blip  -  X 3D thud", new Vector2(20, 18), new Color(0.92f, 0.96f, 1f, 1f));
+    surface.Batch.DrawString(font, "Drag box  -  tap  -  long-press reset  -  Space pause  -  1/2/3 speed  -  Z blip  -  X 3D thud  -  C/V clipboard", new Vector2(20, 18), new Color(0.92f, 0.96f, 1f, 1f));
+    surface.Batch.DrawString(font, clipboardStatus, new Vector2(20, 470), new Color(0.85f, 0.8f, 1f, 1f));
     surface.Batch.DrawString(font,
         $"gesture: {gstate}    clock: {(clock.IsPaused ? "PAUSED" : $"x{clock.TimeScale:0.0}")}    sim t={clock.ElapsedScaledSeconds:0.0}s    sfx: {lastSfx}    {padInfo}",
         new Vector2(20, 500), new Color(0.7f, 0.85f, 1f, 1f));

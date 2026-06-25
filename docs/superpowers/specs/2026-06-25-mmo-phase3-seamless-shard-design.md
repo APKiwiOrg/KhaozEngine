@@ -58,7 +58,7 @@ protocol.
 ## Decomposition (staged; each its own scoping doc → plan → build)
 
 - **3A** Cell grid + `CellSim` + `ShardHost` (in-process; ticks all cells; entity→cell by position; no crossing
-  yet). New package `KhaozEngine.World`.
+  yet). New package `KhaozEngine.Sharding`.
 - **3B** Cross-cell ghosting over `ICellLink` (`ICellLink` seam + in-process impl; border-overlap mirrors via
   Replication; a cell's World holds owned + ghost entities).
 - **3C** Authority handoff (migrate handshake on boundary crossing; no dup/loss; deterministic).

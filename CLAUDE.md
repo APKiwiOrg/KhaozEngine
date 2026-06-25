@@ -87,7 +87,7 @@ version/release work.
   `Render3D.DrawGroundDecal` depth-sampling decal primitive, in the `Game3D` umbrella; new at `7.34.0`) and the
   MonoGame-free foundation (`Ecs`/`Serialization`/`Content`/`Diagnostics`/`App`/`Localization`/`Persistence`/
   `Pooling`/`Platform`/`Updates`/`Collision`/`Netcode`/`Netcode.Abstractions`/`Netcode.LiteNetLib`/`Simulation`/
-  `Replication`/`WorldStore`)
+  `Replication`/`WorldStore`/`Sharding`)
   plus the four
   code-free umbrella metapackages (`Foundation`, `Game2D`, `Game3D`, `Server`). (`Simulation` = the headless
   `FixedTickHost` fixed-tick accumulator, new at `7.35.0` with the MMO netcode stack's Phase 0; `Netcode` gained
@@ -96,7 +96,12 @@ version/release work.
   session layer; new `Replication` = authoritative ECS replication (`NetId`/`ReplicationRegistry`/`SnapshotWriter`/
   `ClientReplicationView`/`ServerReplicator` full-state+delta+interpolation, `InterestGrid` AoI); new `WorldStore` =
   the `IWorldStore` async durable-state seam + `InMemoryWorldStore`. Both new packages are in the `Server`
-  umbrella.) (`KhaozEngine.Content.Validator`
+  umbrella. Phase 3A added `Sharding` = the in-process world-cell-grid topology
+  (`CellCoord`/`CellSim`/`ShardHost`; a cell = an ECS `World` + `FixedTickHost` + `ServerReplicator` +
+  `InterestGrid`), depends on `Ecs`/`Simulation`/`Replication`, also in the `Server` umbrella. Note: the package
+  id is `KhaozEngine.Sharding`, NOT `KhaozEngine.World` - a namespace whose leaf is literally `World` would shadow
+  the ECS `World` type. `Sharding` is built and held UNPUBLISHED pending the Phase 3 batch release (policy B), so it
+  carries no version attribution yet.) (`KhaozEngine.Content.Validator`
   is a build-time tool, `IsPackable=false`, shipped inside the `Content` package rather than versioned itself.)
   `KhaozEngine.Updates.Tool` (the `ke-updater` dotnet tool: manifest/genkey/sign/verify, shipped at `7.3.0`)
   and `KhaozEngine.Sfx.Tool` (the `ke-sfxbake` dotnet tool: manifest-driven bulk SFX generation + bake via the

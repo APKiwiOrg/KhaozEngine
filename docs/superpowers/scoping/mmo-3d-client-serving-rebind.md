@@ -13,7 +13,7 @@ the invariant **overlap margin ≥ max client interest radius** (so the home cel
 everything within the player's interest). When the player crosses a boundary, **re-bind** the client to the new
 home cell seamlessly — no gap, no missing surroundings.
 
-## Deliverable (in `KhaozEngine.World`)
+## Deliverable (in `KhaozEngine.Sharding`)
 - Per-client home-cell tracking: a client (session slot from `NetServer`) is bound to the cell owning its player
   entity. Replication to that client = the home cell's `ServerReplicator` filtered by the client's interest
   (`SnapshotWriter.WriteFiltered` / delta) over owned + ghost entities.

@@ -12,7 +12,7 @@ Make entities near a cell boundary visible to the adjacent cell as read-only **g
 visibility / targeting work across borders. Introduce the `ICellLink` seam for cell↔cell messaging with an
 in-process, deterministic implementation.
 
-## Deliverable (in `KhaozEngine.World`)
+## Deliverable (in `KhaozEngine.Sharding`)
 - `ICellLink` — seam for sending messages between cells (ghost sync payloads keyed by source/target
   `CellCoord`). In-process impl delivers in-memory, applied at tick boundaries (deterministic). Network impl is
   infra (out of scope here; just keep the seam clean).

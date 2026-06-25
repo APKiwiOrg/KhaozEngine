@@ -11,7 +11,7 @@ Phase 3 design spec ("Authority handoff"), `CLAUDE.md`, `MMO-EXECUTION-ORDER.md`
 When an owned entity crosses a cell boundary, transfer authority to the new cell with **exactly-once** semantics:
 never two owners (duplication), never zero (loss).
 
-## Deliverable (in `KhaozEngine.World`)
+## Deliverable (in `KhaozEngine.Sharding`)
 - Crossing detection: each tick, an owned entity whose position left the owner cell triggers a handoff to the
   destination `CellCoord`.
 - Migrate handshake over `ICellLink`: source serializes the entity's full authoritative component set (reuse the

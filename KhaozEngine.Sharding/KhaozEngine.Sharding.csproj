@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Sharding</PackageId>
+    <Version>$(KhaozEngine5xVersion)</Version>
+    <Description>World topology for an authoritative server: a uniform grid of authoritative cells. CellCoord (world position -&gt; integer cell coordinate), CellSim (one cell = an ECS World + a FixedTickHost + a ServerReplicator + an InterestGrid), and ShardHost (owns the CellCoord-&gt;CellSim map, creates cells on demand, routes entities to the cell containing their position, and ticks every cell at one fixed rate in-process). The in-process container the rest of the seamless-shard topology (cross-cell ghosting, authority handoff) builds on. Part of the MMO netcode stack.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
+    <ProjectReference Include="../KhaozEngine.Simulation/KhaozEngine.Simulation.csproj" />
+    <ProjectReference Include="../KhaozEngine.Replication/KhaozEngine.Replication.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Tests" />
+  </ItemGroup>
+</Project>

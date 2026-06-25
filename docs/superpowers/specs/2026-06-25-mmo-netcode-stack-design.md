@@ -81,7 +81,7 @@ deployment implements those seams and is the game's / ops' responsibility.
 | 2 · Sim host | `KhaozEngine.Simulation` (new code package; the code-free `Server` metapackage pulls it in) | headless fixed-tick authoritative loop, command drain, sim step | `FixedTickHost`, `ITickSimulator` (exists), `TickClock` | Ecs, Netcode |
 | 3 · Replication | `KhaozEngine.Replication` (new) | entity identity + baseline/delta snapshot sync + client apply | `NetId`, `ReplicationRegistry`, `[Replicated]`, `SnapshotWriter`/`SnapshotReader`, `ClientWorldView` | Ecs, Netcode |
 | 4 · Interest (AoI) | `KhaozEngine.Replication` (+ spatial upgrade in `Collision`) | per-client relevancy set + enter/leave diff | `IInterestManager`, `GridInterestManager`, `InterestSet` | Layer 3, Collision |
-| 5 · Zoning / shard | `KhaozEngine.World` (new) | world partition, cross-zone handoff, gateway, instancing | `IZone`, `ZoneHost`, `ZoneHandoff`, `IZoneRouter`, `InstanceManager` | Layers 1–4 |
+| 5 · Zoning / shard | `KhaozEngine.Sharding` (new) | world partition, cross-zone handoff, gateway, instancing | `CellCoord`, `CellSim`, `ShardHost`, `ICellLink` | Layers 1–4 |
 | 6 · World store | `KhaozEngine.WorldStore` (new) | async DB-oriented persistence seam + dirty flush + recovery | `IWorldStore`, `ICharacterStore`, `UnitOfWork`, `SqliteWorldStore` | Persistence, Ecs |
 | 7 · Template | reference sample on the `Server` metapackage | reference dedicated-server wiring 0–6 | sample project | all |
 

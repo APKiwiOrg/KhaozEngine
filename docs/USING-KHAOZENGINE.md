@@ -1053,7 +1053,34 @@ await store.SaveAsync($"char/{accountId}", SerializeCharacter(state));
 byte[]? loaded = await store.LoadAsync($"char/{accountId}");
 ```
 
-Later phases add zoning/sharding + a dedicated-server template on top.
+### World cell grid (`KhaozEngine.Sharding`)
+
+Partition a seamless world into a uniform grid of authoritative **cells** and run them in one process. A
+`ShardHost` owns the `CellCoord -> CellSim` map, creates cells on demand, routes a world position (and the
+entities spawned there) to the cell that contains it, and ticks every cell at one shared fixed rate. Each
+`CellSim` bundles an ECS `World` + a `FixedTickHost` + a `ServerReplicator` + an `InterestGrid`:
+
+```csharp
+var registry = new ReplicationRegistry();
+// register replicated components ...
+var host = new ShardHost(cellSize: 256f, tickSeconds: 1f / 30f, registry);
+
+// Spawn into the cell that owns a position (the cell is created on first touch):
+Entity e = host.SpawnAt(worldX, worldY, out CellSim cell);
+cell.World.Set(e, new NetId(nextId++));
+cell.World.Set(e, new Position { X = worldX, Y = worldY });
+
+// One host tick advances every cell's fixed-tick sim (cells step their ECS systems per tick):
+host.Tick(elapsedSeconds);
+
+// Per cell, capture/query when you choose (snapshot rate is decoupled from tick rate):
+foreach (CellSim c in host.Cells)
+    c.Replicator.Capture(c.World);
+```
+
+`CellCoord.FromWorld(x, y, cellSize)` floors a position into its cell (same math as `InterestGrid`).
+Phase 3A is the in-process container only - no cross-cell crossing, ghosting, or authority handoff yet (later
+Phase 3 stages add those, plus a dedicated-server template).
 
 ---
 

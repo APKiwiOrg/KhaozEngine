@@ -41,6 +41,7 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 | **KhaozEngine.Simulation** | Headless simulation-host primitives: `FixedTickHost`, a deterministic fixed-timestep accumulator (turns variable elapsed time into whole fixed-dt ticks, with a spiral-of-death backlog guard) that decouples sim rate from render rate. The base of the authoritative server loop. | Pure .NET |
 | **KhaozEngine.Replication** | Authoritative ECS replication: `NetId` + a closure-based `ReplicationRegistry`, `SnapshotWriter` (full-state + `WriteFiltered` per-client interest), `ClientReplicationView` (`Apply`/`ApplyDelta`: spawn/despawn/update + interpolation), `ServerReplicator` (per-slot acked baselines + baseline/delta), and `InterestGrid` (area-of-interest spatial query). Transport-free (snapshots are `byte[]`). | Ecs |
 | **KhaozEngine.WorldStore** | Server-side durable-state seam: `IWorldStore` (async keyed `byte[]`, DB-shaped) + a thread-safe `InMemoryWorldStore` reference impl. Real DB backends implement the seam as infra. | Pure .NET |
+| **KhaozEngine.Sharding** | World topology for an authoritative server: a uniform grid of authoritative cells. `CellCoord` (world position -> integer cell coord), `CellSim` (one cell = an ECS `World` + `FixedTickHost` + `ServerReplicator` + `InterestGrid`), `ShardHost` (owns the cell map, creates cells on demand, routes entities to the cell containing their position, ticks every cell at one fixed rate in-process). The container the seamless-shard topology builds on. | Ecs, Simulation, Replication |
 | **KhaozEngine.Content.Validator** | Build-time JSON-schema enforcement tool for content (`IsPackable=false`; ships inside the Content package). | Content |
 | **KhaozEngine.Sfx.Tool** | The `ke-sfxbake` dotnet tool (`PackAsTool`): manifest-driven bulk SFX generation + bake. Reads a per-game `sfx.manifest.jsonc`, generates each effect via the ElevenLabs sound-effects REST API, encodes with ffmpeg/oggenc, idempotent via `.sfxmeta` sidecars. Author-time tool, not a runtime package. | Serialization |
 
@@ -50,7 +51,7 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 |---|---|---|
 | **KhaozEngine.Game2D** | 2D runtime (Windowing/Render2D/Gui/Audio/Particles/Effects) + `Game` + `Foundation` | a desktop 2D game |
 | **KhaozEngine.Game3D** | `Game2D` + `Render3D` + `Game.Render3D` (the 3D scene bridge) | a desktop 3D game |
-| **KhaozEngine.Server** | `Foundation` + netcode (`Netcode`/`.Abstractions`/`.LiteNetLib`) + `Simulation` (fixed-tick host) + `Replication` + `WorldStore` | a headless sim server (no GPU) |
+| **KhaozEngine.Server** | `Foundation` + netcode (`Netcode`/`.Abstractions`/`.LiteNetLib`) + `Simulation` (fixed-tick host) + `Replication` + `WorldStore` + `Sharding` (cell grid) | a headless sim server (no GPU) |
 | **KhaozEngine.Foundation** | the GPU-free foundation (Primitives/App/Content/Diagnostics/Ecs/Localization/Persistence/Serialization/Pooling/Collision/Determinism/Platform/Updates) | a gameplay-logic library (no renderer) |
 
 Target framework `net10.0`. MonoGame-free: Silk.NET windowing/input (GLFW natives bundled per-RID), Veldrid
@@ -160,7 +161,7 @@ KhaozEngine.Ecs/   KhaozEngine.Serialization/   KhaozEngine.Content/   KhaozEngi
 KhaozEngine.Diagnostics/   KhaozEngine.App/   KhaozEngine.Localization/   KhaozEngine.Persistence/
 KhaozEngine.Pooling/   KhaozEngine.Platform/   KhaozEngine.Collision/   KhaozEngine.Updates/
 KhaozEngine.Netcode/   KhaozEngine.Netcode.Abstractions/   KhaozEngine.Netcode.LiteNetLib/   KhaozEngine.Simulation/
-KhaozEngine.Replication/   KhaozEngine.WorldStore/
+KhaozEngine.Replication/   KhaozEngine.WorldStore/   KhaozEngine.Sharding/
 # Umbrella metapackages
 KhaozEngine.Foundation/   KhaozEngine.Game2D/   KhaozEngine.Game3D/   KhaozEngine.Server/
 # Tests, samples, tools

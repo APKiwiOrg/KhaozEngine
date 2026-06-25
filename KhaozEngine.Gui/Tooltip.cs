@@ -22,8 +22,7 @@ namespace KhaozEngine.Gui
     /// A floating, auto-sized text bubble anchored near a point. <see cref="ComputeBounds"/> is a pure layout
     /// function (sizes to content, prefers above the anchor, flips below when there's no room, clamps into the
     /// viewport) testable with a fake <see cref="ITextMeasurer"/>. The instance API is <see cref="Show"/> /
-    /// <see cref="Hide"/> + <see cref="Draw"/>. Ported from the 4.x <c>UI.Tooltip</c> (game LayoutConstants dropped;
-    /// the top margin is configurable via <see cref="TooltipMetrics"/>).
+    /// <see cref="Hide"/> + <see cref="Draw"/>. The top margin is configurable via <see cref="TooltipMetrics"/>.
     /// </summary>
     public sealed class Tooltip
     {

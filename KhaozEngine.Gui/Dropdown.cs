@@ -14,7 +14,7 @@ namespace KhaozEngine.Gui
     /// A selector over <see cref="Pointer"/>: the trigger shows the current option; a tap opens a list below it;
     /// tapping an option selects + closes; a release outside dismisses. Because the open list extends past the
     /// trigger, drawing is split: <see cref="Draw"/> renders the trigger (inside any clip), <see cref="DrawOverlay"/>
-    /// renders the open list (call last / unclipped so it sits on top). Ported from the 4.x <c>UI.Dropdown</c>.
+    /// renders the open list (call last / unclipped so it sits on top).
     /// </summary>
     public sealed class Dropdown
     {

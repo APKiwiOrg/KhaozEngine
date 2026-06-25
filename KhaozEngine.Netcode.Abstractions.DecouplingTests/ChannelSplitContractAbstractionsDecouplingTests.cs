@@ -8,8 +8,8 @@ namespace KhaozEngine.Netcode.Abstractions.DecouplingTests;
 /// <summary>
 /// Proves the channel-split contract is dependency-free: a batch DTO can implement
 /// <see cref="IChannelSplittable{TSelf}"/> with ONLY a reference to KhaozEngine.Netcode.Abstractions,
-/// no MonoGame and no UDP transport in scope. This project deliberately omits KhaozEngine.Netcode
-/// (MonoGame), KhaozEngine.Netcode.LiteNetLib, MonoGame, and LiteNetLib, so the dummy DTO below
+/// no UDP transport in scope. This project deliberately omits KhaozEngine.Netcode,
+/// KhaozEngine.Netcode.LiteNetLib, and LiteNetLib, so the dummy DTO below
 /// compiling is the structural guarantee that mirrors SpaceGame.Multiplayer.Contracts (MessagePack-only,
 /// also referenced by the ASP.NET leaderboard server SpaceGame.Web).
 /// </summary>

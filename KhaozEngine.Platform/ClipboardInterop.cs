@@ -9,6 +9,11 @@ namespace KhaozEngine.Platform;
 // holds the per-platform marshaling (SDL2 / Windows GDI / macOS Objective-C / reflection-resolved
 // mobile bridge) plus the pure dispatch/fallback spine the headless tests drive with fakes.
 //
+// CAVEAT: the SDL2 text path needs an SDL video subsystem the HOST has initialised. The engine's windowing is
+// Silk.NET/GLFW and never calls SDL_Init, so on the shipped runtime SDL get/set produce nothing and fall
+// through: macOS uses NSPasteboard, but Windows/Linux text clipboard currently no-ops (Windows image paste
+// still works via GDI). A GLFW-backed text path is the proper fix (tracked).
+//
 // The native marshaling below is ported verbatim from SpaceGame's ClipboardInterop; the only
 // behavioural changes from that source are (1) the dispatch methods delegate to the pure
 // Dispatch*/BuildWindowsDib helpers so the ordering/fallback logic is testable without touching

@@ -34,8 +34,8 @@ namespace KhaozEngine.Windowing
     /// <summary>
     /// Immutable per-frame snapshot of one gamepad: which buttons are held / went down / went up this frame,
     /// the two analog sticks (raw, -1..1), and the two triggers (0..1). Built frame-by-frame like
-    /// <see cref="InputState"/>, so it is headless-testable; <see cref="AppWindow"/> fills it from SDL when a
-    /// controller is connected. Use <see cref="LeftStickDeadzoned"/>/<see cref="RightStickDeadzoned"/> rather
+    /// <see cref="InputState"/>, so it is headless-testable; <see cref="AppWindow"/> fills it from Silk.NET/GLFW
+    /// when a controller is connected. Use <see cref="LeftStickDeadzoned"/>/<see cref="RightStickDeadzoned"/> rather
     /// than the raw sticks for movement.
     /// </summary>
     public sealed class GamepadState

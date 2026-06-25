@@ -22,8 +22,7 @@ namespace KhaozEngine.Gui
     /// A modal dialog: dimmed scrim, centered panel auto-sized to its rows (clamped between <see cref="MinHeight"/>
     /// and <see cref="MaxHeightFraction"/> of the viewport), a title bar, label/value content rows, and a footer
     /// with a dismiss button (plus an optional primary action). <see cref="Update"/> blocks the pointer over the
-    /// panel so the screen beneath ignores clicks. Ported from the 4.x <c>UI.PopupPanel</c> (internal scroll
-    /// dropped — that lives in <see cref="ScrollablePanel"/>; game LayoutConstants dropped).
+    /// panel so the screen beneath ignores clicks. Internal scroll lives in <see cref="ScrollablePanel"/>.
     /// </summary>
     public sealed class PopupPanel
     {

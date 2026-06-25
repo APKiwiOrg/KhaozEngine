@@ -51,6 +51,9 @@ namespace KhaozEngine.Telegraphs
         public FillMode FillMode;
         public TelegraphAnim Animation;
         public TelegraphBlend Blend;
+        /// <summary>Whether the shape marks the danger area (default) or the safe area. RESERVED: the v1 resolver
+        /// and renderers ignore this, so <see cref="ZoneSense.Safe"/> currently renders identically to
+        /// <see cref="ZoneSense.Danger"/>. Kept so styles / presets can declare intent ahead of the feature.</summary>
         public ZoneSense ZoneSense;
 
         /// <summary>Neutral red-orange danger zone: alpha-blended outline + fill, all animations on.</summary>

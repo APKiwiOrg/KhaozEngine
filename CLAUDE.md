@@ -77,7 +77,9 @@ version/release work.
   single `<KhaozEngine5xVersion>` governing **the whole engine**: the zero-dependency `Primitives` leaf
   (`Color`/`DeterministicRng`/`XorRng`/`MathUtil`/`ViewportMath`/`Easing`, new at `6.0.0`), the BCL-only
   `Imaging` leaf (`PngWriter`, the dependency-free RGBA8 PNG encoder; `Render2D.Png` is a shim over it, new at
-  `7.33.0`), the custom-stack
+  `7.33.0`), the BCL-only `Determinism` leaf (`DeterministicFp`/`DeterministicFpScope`, the canonical CPU
+  floating-point-environment pin for fixed-tick / lockstep sims; in the `Foundation` umbrella, currently
+  consumed by no game but available transitively), the custom-stack
   packages (`KhaozEngine.Gpu`,
   `Windowing`, `Render2D`, `Render3D`, `Gui`, `Audio`, `Particles`, `Effects`, `Game`, `Game.Render3D`), the
   headless snapshot harness libraries (`Snapshot` = 2D `SnapshotRunner`/`SnapshotHost`; `Snapshot.Render3D` = the

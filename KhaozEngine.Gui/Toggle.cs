@@ -9,7 +9,7 @@ namespace KhaozEngine.Gui
     /// A two-state switch over <see cref="Pointer"/>: a valid tap (press and release both inside
     /// <see cref="Bounds"/>, the click-through invariant) flips <see cref="IsOn"/> and fires
     /// <see cref="OnChanged"/>. Drawn as a track with a thumb that slides to the on/off side. Call
-    /// <see cref="Update"/> then <see cref="Draw"/> each frame. Ported from the 4.x <c>UI.Toggle</c>.
+    /// <see cref="Update"/> then <see cref="Draw"/> each frame.
     /// </summary>
     public sealed class Toggle
     {

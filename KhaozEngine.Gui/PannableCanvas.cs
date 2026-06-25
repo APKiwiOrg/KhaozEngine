@@ -16,9 +16,8 @@ namespace KhaozEngine.Gui
     /// <see cref="ContentBounds"/>, call <see cref="Update"/> to pan/clamp, then <see cref="Draw"/> with a
     /// world-space draw callback. Query <see cref="TryGetTap"/> for the world point(s) tapped this frame.</para>
     ///
-    /// <para>This release is pan-only (drag + wheel). Two-finger pinch zoom is a follow-up; the 4.x
-    /// MonoGame canvas had it via a <c>PinchGestureTracker</c>, but the 5.x <see cref="Pointer"/> exposes no
-    /// pinch yet. <see cref="MinZoom"/>/<see cref="MaxZoom"/> still bound <see cref="Focus"/>.</para>
+    /// <para>This release is pan-only (drag + wheel). Two-finger pinch zoom is a follow-up.
+    /// <see cref="MinZoom"/>/<see cref="MaxZoom"/> still bound <see cref="Focus"/>.</para>
     /// </summary>
     public sealed class PannableCanvas
     {

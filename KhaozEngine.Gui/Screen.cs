@@ -14,8 +14,8 @@ namespace KhaozEngine.Gui
     /// <summary>
     /// Base class for a screen in the <see cref="ScreenStack"/>. One UI surface (gameplay, menu, modal, HUD).
     /// Override <see cref="Update"/> (return whether it consumed input) and <see cref="Draw"/>. Read input via
-    /// <c>Manager.Pointer</c> / <c>Manager.Input</c>. Ported from the MonoGame <c>GameScreen</c> (touch
-    /// gestures / per-player scoping / pause hooks are follow-ups).
+    /// <c>Manager.Pointer</c> / <c>Manager.Input</c>. Touch gestures / per-player scoping / pause hooks are
+    /// follow-ups.
     /// </summary>
     public abstract class Screen
     {

@@ -10,8 +10,7 @@ namespace KhaozEngine.Gui
     /// inside scroll a fixed-height item list, clamped to range. The owner draws each item itself, positioned via
     /// <see cref="ItemBounds"/>, between <see cref="BeginClip"/> and <see cref="EndClip"/> (which set/clear the
     /// SpriteBatch scissor so rows are clipped to <see cref="Bounds"/>). Hit-test rows with
-    /// <see cref="TappedItemIndex"/>. Ported from the 4.x <c>UI.ScrollablePanel</c> (game nav-bar/VirtualResolution
-    /// coupling dropped; clipping now via the engine's <see cref="SpriteBatch"/> scissor instead of MonoGame's).
+    /// <see cref="TappedItemIndex"/>. Clipping is via the engine's <see cref="SpriteBatch"/> scissor.
     /// </summary>
     public sealed class ScrollablePanel
     {

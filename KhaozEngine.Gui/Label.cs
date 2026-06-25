@@ -8,7 +8,7 @@ namespace KhaozEngine.Gui
     /// <summary>
     /// A non-interactive text widget: draws <see cref="Text"/> in <see cref="Font"/> aligned within
     /// <see cref="Bounds"/>, optionally word-wrapped. Pure presentation over the (tested) <see cref="TextLayout"/>
-    /// helpers; no per-frame update. Ported from the 4.x <c>UI</c> label/text usage.
+    /// helpers; no per-frame update.
     /// </summary>
     public sealed class Label
     {

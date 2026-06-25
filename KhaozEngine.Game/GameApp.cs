@@ -42,7 +42,7 @@ namespace KhaozEngine.Game
             _surface2D = new Render2DSurface(_window);
         }
 
-        /// <summary>The underlying window (owns the GPU device, the SDL2 window, and the raw frame loop).</summary>
+        /// <summary>The underlying window (owns the GPU device, the Silk.NET/GLFW window, and the raw frame loop).</summary>
         protected AppWindow Window => _window;
         /// <summary>The game clock (pause / time-scale over the raw frame delta). Updated each frame before <see cref="OnUpdate"/>.</summary>
         protected GameClock Clock => _clock;

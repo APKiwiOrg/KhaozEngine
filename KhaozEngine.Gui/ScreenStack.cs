@@ -8,8 +8,8 @@ namespace KhaozEngine.Gui
     /// <summary>
     /// Owns the screen stack and routes input top-to-bottom: the first visible, non-passthrough screen that
     /// reports consuming input blocks the screens below it; a non-passthrough (modal) screen also stops them
-    /// updating. Drawing runs bottom-to-top. Also drives transitions. Ported from the MonoGame
-    /// <c>ScreenManager</c> (uses dt + the engine-native <see cref="Pointer"/>/<see cref="InputState"/>).
+    /// updating. Drawing runs bottom-to-top. Also drives transitions. Uses dt + the engine-native
+    /// <see cref="Pointer"/>/<see cref="InputState"/>.
     /// </summary>
     public sealed class ScreenStack
     {

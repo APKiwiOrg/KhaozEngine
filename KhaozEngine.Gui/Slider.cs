@@ -9,7 +9,7 @@ namespace KhaozEngine.Gui
     /// A horizontal slider over <see cref="Pointer"/>: <see cref="Bounds"/> is the interactive track. A press
     /// that begins inside the track starts a drag and jumps the value to the pointer; dragging keeps tracking
     /// (clamped 0..1) until release. A press that began elsewhere is ignored, like the click-through invariant.
-    /// Call <see cref="Update"/> then <see cref="Draw"/> each frame. Ported from the 4.x <c>UI.Slider</c>.
+    /// Call <see cref="Update"/> then <see cref="Draw"/> each frame.
     /// </summary>
     public sealed class Slider
     {

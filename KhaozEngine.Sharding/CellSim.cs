@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using KhaozEngine.Ecs;
 using KhaozEngine.Replication;
 using KhaozEngine.Simulation;
@@ -13,15 +14,21 @@ namespace KhaozEngine.Sharding;
 /// cell's ECS systems once per whole fixed tick.
 /// </summary>
 /// <remarks>
-/// Phase 3A: a self-contained, deterministic, headless container. No cross-cell crossing, ghosting, or authority
-/// handoff yet (those are later Phase 3 stages); a cell here simulates only its own world. The
-/// <see cref="ServerReplicator"/> and <see cref="InterestGrid"/> are exposed but not auto-driven by
-/// <see cref="Tick"/> - snapshot rate is intentionally decoupled from tick rate, so the host/game captures and
-/// queries when it chooses.
+/// A cell's world holds its <b>owned</b> entities plus read-only <b>ghosts</b> (<see cref="Ghost"/>) mirrored
+/// from neighboring cells via <see cref="ApplyGhostSnapshot"/> (border overlap, Phase 3B). The cell only
+/// simulates its owned entities; ghosts are read for cross-border collision / visibility / targeting. Authority
+/// handoff (an entity changing owner cell) is a later stage. The <see cref="ServerReplicator"/> and
+/// <see cref="InterestGrid"/> are exposed but not auto-driven by <see cref="Tick"/> - snapshot rate is
+/// intentionally decoupled from tick rate, so the host/game captures and queries when it chooses.
 /// </remarks>
 public sealed class CellSim
 {
+    /// <summary>An empty full-state snapshot (entity count 0): applying it despawns all of a view's ghosts.</summary>
+    private static readonly byte[] EmptySnapshot = new byte[4];
+
     private readonly FixedTickHost tickHost;
+    private readonly ReplicationRegistry registry;
+    private readonly Dictionary<CellCoord, ClientReplicationView> ghostViews = new();
 
     /// <param name="coord">This cell's coordinate in the world grid.</param>
     /// <param name="tickSeconds">Fixed timestep, seconds per tick (e.g. <c>1f / 30f</c>). Must be &gt; 0.</param>
@@ -33,6 +40,7 @@ public sealed class CellSim
         Coord = coord;
         World = new World();
         tickHost = new FixedTickHost(tickSeconds);
+        this.registry = registry;
         Replicator = new ServerReplicator(registry);
         Interest = new InterestGrid(interestCellSize);
     }
@@ -62,4 +70,60 @@ public sealed class CellSim
     /// </summary>
     public int Tick(float elapsedSeconds, int maxTicksPerFrame = 8) =>
         tickHost.Advance(elapsedSeconds, _ => World.Update(TickSeconds), maxTicksPerFrame);
+
+    /// <summary>Source cells this cell currently holds a ghost view for (may include emptied views).</summary>
+    public IReadOnlyCollection<CellCoord> GhostSources => ghostViews.Keys;
+
+    /// <summary>Total number of live ghosts mirrored into this cell from all sources.</summary>
+    public int GhostCount
+    {
+        get
+        {
+            int n = 0;
+            foreach (ClientReplicationView view in ghostViews.Values) n += view.Entities.Count;
+            return n;
+        }
+    }
+
+    /// <summary>Finds a ghost entity in this cell by its (owner-assigned) <see cref="NetId"/> value.</summary>
+    public bool TryGetGhost(int netId, out Entity entity)
+    {
+        foreach (ClientReplicationView view in ghostViews.Values)
+            if (view.TryGetEntity(netId, out entity) && World.IsAlive(entity)) return true;
+        entity = default;
+        return false;
+    }
+
+    /// <summary>
+    /// Mirrors a border snapshot from a neighboring <paramref name="source"/> cell into this cell's world as
+    /// read-only ghosts: entities new to the snapshot are spawned, present ones updated, and ones that left the
+    /// source's border despawned (full-state per source). Every resulting ghost is tagged <see cref="Ghost"/>
+    /// with its <paramref name="source"/>. The snapshot is a <see cref="KhaozEngine.Replication"/> snapshot of the
+    /// source's border entities.
+    /// </summary>
+    public void ApplyGhostSnapshot(CellCoord source, byte[] snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ClientReplicationView view = GhostViewFor(source);
+        view.Apply(World, snapshot);
+        foreach (KeyValuePair<int, Entity> kv in view.Entities)
+            if (World.IsAlive(kv.Value)) World.Set(kv.Value, new Ghost { Source = source });
+    }
+
+    /// <summary>Despawns every ghost this cell holds from <paramref name="source"/> (the source stopped mirroring).</summary>
+    public void ClearGhostsFrom(CellCoord source)
+    {
+        if (ghostViews.TryGetValue(source, out ClientReplicationView? view))
+            view.Apply(World, EmptySnapshot);
+    }
+
+    private ClientReplicationView GhostViewFor(CellCoord source)
+    {
+        if (!ghostViews.TryGetValue(source, out ClientReplicationView? view))
+        {
+            view = new ClientReplicationView(registry);
+            ghostViews[source] = view;
+        }
+        return view;
+    }
 }

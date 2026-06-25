@@ -1079,8 +1079,35 @@ foreach (CellSim c in host.Cells)
 ```
 
 `CellCoord.FromWorld(x, y, cellSize)` floors a position into its cell (same math as `InterestGrid`).
-Phase 3A is the in-process container only - no cross-cell crossing, ghosting, or authority handoff yet (later
-Phase 3 stages add those, plus a dedicated-server template).
+
+**Border ghosting (Phase 3B).** Give the host an `overlapMargin` and a `CellPositionAccessor`, then call
+`SyncGhosts()`: owned entities within the margin of a cell edge are mirrored into the neighbor across that edge
+(corners mirror into the two edge neighbors plus the diagonal) as read-only **ghosts**, so a cell's systems can
+see across borders for collision / visibility / targeting. Mirroring runs over the `ICellLink` seam (in-process
+`InProcessCellLink` shipped; a network link is infra) using the Replication codecs:
+
+```csharp
+// positionAccessor reads the game's own position component:
+static bool PosOf(World w, Entity e, out float x, out float y)
+{
+    if (w.TryGet(e, out Position p)) { x = p.X; y = p.Y; return true; }
+    x = y = 0f; return false;
+}
+var host = new ShardHost(cellSize: 256f, tickSeconds: 1f / 30f, registry,
+    interestCellSize: 256f, overlapMargin: 32f, positionAccessor: PosOf);
+
+host.SyncGhosts();   // mirror border entities to existing neighbor cells
+
+// In a neighbor, mirrored entities carry a Ghost component (with the owner CellCoord):
+host.TryGetCell(new CellCoord(1, 0), out CellSim east);
+if (east.TryGetGhost(netId, out Entity ghost)) { /* read ghost.Get<Position>(), do not mutate */ }
+```
+
+Ghosts are tagged with `Ghost { Source }` and are read-only - the owner cell stays the sole simulator, so game
+systems must exclude `Ghost`-tagged entities from authoritative mutation. `SyncGhosts` only mirrors to cells that
+already exist (it never creates a neighbor), re-mirrors each sync (a moved owner updates its ghost; one that
+leaves the border is despawned), and assumes globally-unique `NetId`s across cells. Authority handoff on a
+crossing and a dedicated-server template are later Phase 3 stages.
 
 ---
 

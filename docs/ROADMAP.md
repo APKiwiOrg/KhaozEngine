@@ -1,6 +1,6 @@
 # KhaozEngine roadmap / backlog
 
-Larger feature areas identified but not yet scheduled. Current released version: **7.42.0** (the shared
+Larger feature areas identified but not yet scheduled. Current released version: **7.43.0** (the shared
 `<KhaozEngine5xVersion>` line, which is the engine: the custom MonoGame-free stack plus the graduated foundation packages). The legacy 4.x
 line and its six genuinely-MonoGame packages (`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`) were
 DELETED from the engine source, so the engine itself is now entirely MonoGame-free. All three consumers are
@@ -49,6 +49,22 @@ dedicated-server template.
   the conditional system scheduler was benchmark-gated and de-scoped.
 - **Open refinements:** delta+AoI unification, delta bit-packing/quantization, a SQLite `IWorldStore`. SpaceGame is the
   intended first adopter / testbed.
+
+## Overworld / render-scale track (program)
+
+The client-side world track the netcode program deferred: terrain, world streaming, LOD, prop scatter. Build
+spine is **terrain -> character + camera -> streaming -> props**, with an asset-normalize pipeline underneath.
+Reference pattern: `github.com/levy-street/world-of-claudecraft` (engine-agnostic pure-math world gen).
+
+- **Terrain shipped (`7.43.0`).** The first sub-project: `KhaozEngine.Terrain` (render-free analytic
+  `TerrainField` - deterministic stateless coordinate-hash height field with biome bands + Lake/Ridge/Flatten
+  features + `TerrainCollision`) and `KhaozEngine.Terrain.Render3D` (chunked-LOD mesh builder with skirts,
+  per-vertex splat weights, height/slope vertex-colour ramp, chunk AABB). Analytic field (no baked heightmaps),
+  authoritative-server/visual-client (plain `float`). Spec:
+  `docs/superpowers/specs/2026-06-27-terrain-system-design.md`.
+- **Next sub-projects:** asset glTF-kit ingest + scale-normalize, world streaming / frustum+distance culling
+  wired to `Sharding`, deterministic prop scatter (instanced), procedural dungeon generator, and the world-client
+  glue (character controller + camera follow). PBR splat textures and a water shader are terrain-material upgrades.
 
 ## The post-MonoGame pivot (6.x line): strategic direction
 

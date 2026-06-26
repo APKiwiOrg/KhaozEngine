@@ -5,6 +5,42 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.43.0
+
+Terrain system: the first sub-project of the overworld render-scale track. Two new packages give the engine a
+deterministic analytic ground field and a chunked-LOD mesh builder for it, modeled on the world-of-claudecraft
+`terrainHeight`/`baseHeight`/`shapeAt` pipeline. The locked design decisions: an **analytic field** (height comes
+from a deterministic `SampleHeight(x, z, seed)` evaluated at runtime, not baked heightmaps, so there are no terrain
+assets to stream and server/client agree automatically), **authoritative server + visual client** (plain `float`,
+no `DeterministicFp`; the replication layer corrects the invisible cross-platform float drift), and **stateless
+coordinate-hash noise** (height at a point depends only on `(x, z, seed)`, never on which neighbour cells are
+loaded, which the sharded-streaming world needs). The mesh builder stays CPU-only and headless-testable: it asserts
+on produced vertex data, never a GPU device. Additive, minor.
+
+- **New package `KhaozEngine.Terrain`** (render-free leaf, in the `Foundation` umbrella; references only
+  `Primitives`, never `Render3D`). `TerrainField` is the single source of truth for ground height:
+  `SampleHeight(x, z)` folds three layers in order - biome shape (`BiomeBand`s smoothstep-blended along Z give
+  designed meadow/mountain regions), base fractal coordinate-hash noise (`TerrainNoise.Fbm`/`Turbulence` over a
+  stateless integer-mix `Hash2`/`ValueNoise`), then an ordered `ITerrainFeature[]` (`LakeFeature` carves a basin,
+  `RidgeFeature` raises a gaussian wall pierced by a pass, `FlattenFeature` levels a hub). Plus `SampleNormal`
+  (central finite difference), `SampleBiome`, `WaterLevel`, a `TerrainConfig`, the `TerrainPresets.Clearing()`
+  greybox-parity preset, and `TerrainCollision` (`GroundHeight` + slope `IsWalkable`) for the sim to keep entities
+  on the ground. `TerrainCollision` lives here (not in `Collision`) so the dependency edge stays
+  `Terrain -> Primitives` and the field is not dragged into 2D collision consumers.
+- **New package `KhaozEngine.Terrain.Render3D`** (companion, in the `Game3D` umbrella; references the leaf +
+  `Render3D`). `TerrainChunkBuilder.Build(field, region, lod)` meshes one finite chunk off the analytic field: a
+  `(res+1)^2` grid of field-sampled vertices into a Render3D `GltfMesh`, ~0.3 m edge skirts that hide cracks where
+  a dense chunk meets a coarse neighbour, a per-vertex `TerrainSplatWeights` set (grass/dirt/rock/sand/snow, baked
+  from height + slope, plumbed for the later PBR splat-TEXTURE upgrade) rendered now as a height/slope vertex-colour
+  ramp (`TerrainRamp`), and a `TerrainChunkBounds` AABB for frustum culling. `TerrainLod.PickLod(distance)` maps
+  camera distance to one of three tiers (dense near, coarse far). `Scene3D.LoadTerrainChunk`/`DrawTerrainChunk`
+  extensions upload and draw a built chunk.
+- **Scope:** this slice is the terrain foundation only. World streaming (which chunks load/unload and when), prop
+  scatter, PBR splat textures, the character controller, and a water shader are later sub-projects of the overworld
+  program and are deliberately out of scope here.
+- **Umbrellas:** `KhaozEngine.Foundation` now includes `Terrain`; `KhaozEngine.Game3D` now includes
+  `Terrain.Render3D`.
+
 ## 7.42.0
 
 Parallel `ForEach`: an ECS `World` can now fan a hot query's per-entity work across CPU cores - the entities axis,

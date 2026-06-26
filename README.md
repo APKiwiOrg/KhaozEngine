@@ -21,6 +21,7 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 | **KhaozEngine.Effects** | Game-feel visual effects: `ScreenShake` (trauma-based), parallax helpers. | Pure .NET |
 | **KhaozEngine.Telegraphs** | Attack-telegraph / danger-zone indicators (presentation-only): `TelegraphStyle` (+ `Generic`/`Fire`/`Poison` presets), the pure `TelegraphResolve` progress->visual mapping, and the immediate-mode `TelegraphRenderer2D` (circle/ring/beam/cone/arc). In the `Game2D` umbrella. | Render2D, Primitives |
 | **KhaozEngine.Telegraphs.Render3D** | The ground-plane arm of telegraphs: `Scene3D.GroundCircle/Ring/Beam/Cone/Arc` extensions that paint danger zones flat on the ground/terrain via the engine's depth-sampling `DrawGroundDecal` primitive. In the `Game3D` umbrella. | Telegraphs, Render3D |
+| **KhaozEngine.Terrain.Render3D** | The render arm of terrain: `TerrainChunkBuilder` meshes finite chunks off a `TerrainField` into Render3D `GltfMesh`es with distance LOD (`TerrainLod.PickLod`), ~0.3 m skirts, per-vertex splat weights + a height/slope vertex-colour ramp, and a chunk AABB; plus `Scene3D.LoadTerrainChunk`/`DrawTerrainChunk`. In the `Game3D` umbrella. | Terrain, Render3D |
 | **KhaozEngine.Game** | The 2D game-loop facade: `GameApp` (abstract base owning the per-frame compose: clock/viewport/input/draw) + `GameAppOptions`, and a `SceneManager`/`GameScene` state stack (Push/Pop/Replace/SwitchTo, overlay DrawBelow/UpdateBelow). | Windowing, Render2D, Gui |
 | **KhaozEngine.Game.Render3D** | The 3D bridge for the Game framework: `GameApp3D` (a `GameApp` that stands up a `Render3DSurface` + drives the 3D pass), `IGameScene3D`, and a `SceneManager.Draw3D` extension. Kept separate so a 2D game pulls no 3D renderer. | Game, Render3D |
 | **KhaozEngine.Ecs** | A struct-based archetype `World`/`Entity`/`ISystem` ECS: by-ref component access, `ForEach`, opt-in data-parallel `ParallelForEach` (fans archetype rows across the `IJobScheduler` worker pool, with an `AccessSet` read/write-declaration model + a debug hazard guard + per-worker command buffers), command buffer, system groups, `CachedQuery`, `WorldSerializer`. (`DeterministicRng` moved to `KhaozEngine.Primitives` in 6.0.0.) | Serialization, Simulation |
@@ -33,6 +34,7 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 | **KhaozEngine.Platform** | `Clipboard`: cross-platform system-clipboard facade. Text via a registered window/GLFW provider (wired by Windowing's `AppWindow`) with a macOS `NSPasteboard` fallback; images via Windows CF_DIB / macOS / optional mobile bridge. Best-effort and never-throwing. | Pure .NET |
 | **KhaozEngine.Pooling** | `ObjectPool<T>`: fixed-capacity free-list pool with O(1) rent/return, active/free tracking, swap-removal compaction. | Pure .NET |
 | **KhaozEngine.Collision** | Deterministic 2D collision + broadphase: `CircleCollision` and `SpatialHashGrid`. Bit-identical math for lockstep sims (`System.Numerics`). | Pure .NET |
+| **KhaozEngine.Terrain** | Render-free analytic terrain: `TerrainField` (`SampleHeight`/`SampleNormal`/`SampleBiome`/`WaterLevel`) folds biome-band shaping, stateless coordinate-hash fractal noise (`TerrainNoise`), and ordered features (`LakeFeature`/`RidgeFeature`/`FlattenFeature`); height at a point depends only on `(x, z, seed)`. Plus `TerrainCollision` (ground height + slope walkability) and `TerrainPresets.Clearing()`. Plain `float`; server and client sample the same field. In the `Foundation` umbrella. | Primitives |
 | **KhaozEngine.Determinism** | `DeterministicFpScope` / `DeterministicFp`: pins the CPU floating-point environment to a canonical IEEE state (round-to-nearest-even, FTZ/DAZ off, traps masked) for a fixed-tick / lockstep sim, then restores it, so a fixed-seed host sim doesn't drift across threads/machines. Pure-managed P/Invoke over `<fenv.h>`; `IsSupported` no-ops safely where unwired. | Pure .NET |
 | **KhaozEngine.Updates** | Delta auto-update pipeline: SHA256 manifests + diffing, a host-agnostic update source, an `UpdateService` state machine with resumable staged downloads, and a cross-platform staged-apply core (`UpdateApplier`). | Diagnostics |
 | **KhaozEngine.Netcode.Abstractions** | The zero-dependency channel-split contract: `IChannelSplittable<TSelf>` + `NetChannelReliability`. Reference this alone from a transport-agnostic DTO project (e.g. one shared with a web server). | Pure .NET |
@@ -50,9 +52,9 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 | Metapackage | Pulls in | For |
 |---|---|---|
 | **KhaozEngine.Game2D** | 2D runtime (Windowing/Render2D/Gui/Audio/Particles/Effects) + `Game` + `Foundation` | a desktop 2D game |
-| **KhaozEngine.Game3D** | `Game2D` + `Render3D` + `Game.Render3D` (the 3D scene bridge) | a desktop 3D game |
+| **KhaozEngine.Game3D** | `Game2D` + `Render3D` + `Game.Render3D` (the 3D scene bridge) + `Telegraphs.Render3D` + `Terrain.Render3D` (chunked-LOD terrain mesh builder) | a desktop 3D game |
 | **KhaozEngine.Server** | `Foundation` + netcode (`Netcode`/`.Abstractions`/`.LiteNetLib`) + `Simulation` (fixed-tick host) + `Replication` + `WorldStore` + `Sharding` (cell grid) | a headless sim server (no GPU) |
-| **KhaozEngine.Foundation** | the GPU-free foundation (Primitives/App/Content/Diagnostics/Ecs/Localization/Persistence/Serialization/Pooling/Collision/Determinism/Platform/Updates) | a gameplay-logic library (no renderer) |
+| **KhaozEngine.Foundation** | the GPU-free foundation (Primitives/App/Content/Diagnostics/Ecs/Localization/Persistence/Serialization/Pooling/Collision/Terrain/Determinism/Platform/Updates) | a gameplay-logic library (no renderer) |
 
 Target framework `net10.0`. MonoGame-free: Silk.NET windowing/input (GLFW natives bundled per-RID), Veldrid
 behind `KhaozEngine.Gpu` for the GPU, Silk.NET.OpenAL for audio. `System.Numerics` math throughout.
@@ -125,10 +127,10 @@ Published to a private GitHub Packages feed on tagged releases, and packed to a 
 ```
 ```xml
 <!-- One reference per project via an umbrella metapackage. Pick the bundle that fits: -->
-<PackageReference Include="KhaozEngine.Game2D"     Version="7.42.0" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
-<PackageReference Include="KhaozEngine.Game3D"     Version="7.42.0" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
-<PackageReference Include="KhaozEngine.Server"     Version="7.42.0" />  <!-- headless: foundation + netcode, no graphics -->
-<PackageReference Include="KhaozEngine.Foundation" Version="7.42.0" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
+<PackageReference Include="KhaozEngine.Game2D"     Version="7.43.0" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
+<PackageReference Include="KhaozEngine.Game3D"     Version="7.43.0" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
+<PackageReference Include="KhaozEngine.Server"     Version="7.43.0" />  <!-- headless: foundation + netcode, no graphics -->
+<PackageReference Include="KhaozEngine.Foundation" Version="7.43.0" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
 ```
 
 The metapackages have no code; they just pull in the granular packages. You can still reference those
@@ -154,12 +156,12 @@ dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj
 # Custom render/runtime stack
 KhaozEngine.Gpu/   KhaozEngine.Windowing/   KhaozEngine.Render2D/   KhaozEngine.Render3D/   KhaozEngine.Gui/
 KhaozEngine.Audio/   KhaozEngine.Particles/   KhaozEngine.Effects/   KhaozEngine.Game/   KhaozEngine.Game.Render3D/
-KhaozEngine.Telegraphs/   KhaozEngine.Telegraphs.Render3D/
+KhaozEngine.Telegraphs/   KhaozEngine.Telegraphs.Render3D/   KhaozEngine.Terrain.Render3D/
 # Foundation (GPU-free, pure .NET)
 KhaozEngine.Primitives/
 KhaozEngine.Ecs/   KhaozEngine.Serialization/   KhaozEngine.Content/   KhaozEngine.Content.Validator/
 KhaozEngine.Diagnostics/   KhaozEngine.App/   KhaozEngine.Localization/   KhaozEngine.Persistence/
-KhaozEngine.Pooling/   KhaozEngine.Platform/   KhaozEngine.Collision/   KhaozEngine.Updates/
+KhaozEngine.Pooling/   KhaozEngine.Platform/   KhaozEngine.Collision/   KhaozEngine.Terrain/   KhaozEngine.Updates/
 KhaozEngine.Netcode/   KhaozEngine.Netcode.Abstractions/   KhaozEngine.Netcode.LiteNetLib/   KhaozEngine.Simulation/
 KhaozEngine.Replication/   KhaozEngine.WorldStore/   KhaozEngine.Sharding/
 # Umbrella metapackages

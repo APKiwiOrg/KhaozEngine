@@ -600,6 +600,51 @@ path derives its own world-space edge from the decal size.)
 
 ---
 
+## Terrain (`KhaozEngine.Terrain` / `KhaozEngine.Terrain.Render3D`)
+
+The overworld ground is an **analytic field**, not a baked heightmap. `TerrainField.SampleHeight(x, z)` is the
+single source of truth for ground height; it depends only on `(x, z, seed)` (never on which neighbour chunks
+are loaded), so the authoritative server and the visual client evaluate the same math and streamed chunks line
+up. Plain `float` (NOT `DeterministicFp`): the tiny cross-platform float drift is invisible and the replication
+layer corrects it. The leaf (`KhaozEngine.Terrain`) is render-free and lives in the `Foundation` umbrella, so a
+headless server references it without pulling in `Render3D`.
+
+Build a field (server and client both do this), `using KhaozEngine.Terrain;`:
+
+    var field = new TerrainField(TerrainPresets.Clearing());   // gentle meadow -> mountains + a lake basin
+    float h = field.SampleHeight(x, z);                        // ground height (Y up)
+    Vector3 n = field.SampleNormal(x, z);                      // finite-difference normal, for lighting/slope
+    BiomeId b = field.SampleBiome(x, z);
+
+`TerrainConfig` composes the field: `BiomeBand[]` (designed regions smoothstep-blended along Z, each with a
+base height + hill amplitude + `BiomeId`), the base-noise knobs, and an ordered `ITerrainFeature[]` folded in
+order: `LakeFeature` (carves a basin), `RidgeFeature` (a gaussian wall pierced by a pass), `FlattenFeature`
+(levels a hub). Write your own `ITerrainFeature` (`float Apply(float x, float z, float h)`) for new shapes.
+
+The sim keeps entities on the ground with `TerrainCollision` (render-free, in the leaf):
+
+    var col = new TerrainCollision(field);
+    float ground = col.GroundHeight(x, z);                 // = field.SampleHeight
+    bool ok = col.IsWalkable(x, z, maxSlopeRadians);       // false on terrain steeper than the budget
+
+On the client, `KhaozEngine.Terrain.Render3D` (in the `Game3D` umbrella) meshes finite chunks off the field,
+`using KhaozEngine.Terrain;`:
+
+    int lod = TerrainLod.PickLod(distanceToCamera);        // 0 dense (near) .. 2 coarse (far)
+    var region = new TerrainChunkRegion { OriginX = cx, OriginZ = cz, Size = TerrainChunkRegion.DefaultSize };
+    TerrainChunkMesh chunk = TerrainChunkBuilder.Build(field, region, lod);
+    var handle = scene.LoadTerrainChunk(chunk);            // cache this; rebuild cadence is streaming's job
+    scene.DrawTerrainChunk(handle);                        // each frame
+
+Each chunk is a Render3D `GltfMesh` (vertex colours = a height/slope ramp), with ~0.3 m edge skirts to hide
+cracks where a dense chunk meets a coarse neighbour, a `TerrainChunkBounds` AABB for frustum culling, and a
+parallel `TerrainSplatWeights[]` (grass/dirt/rock/sand/snow per vertex). The splat weights are **plumbed now**
+so the later PBR splat-texture upgrade is a drop-in; this slice just blends the five palette colours into the
+vertex colour. *Which* chunks exist and *when* they rebuild (world streaming), prop scatter, the character
+controller, and a real water shader are later sub-projects, not part of this one.
+
+---
+
 ## ECS (`KhaozEngine.Ecs`)
 
 Independent of input/rendering. A struct-based archetype ECS: components are **structs** implementing

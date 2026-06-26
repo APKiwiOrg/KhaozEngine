@@ -8,7 +8,11 @@ This section is the engine's instance of the global "Branching, worktrees, and f
 default (worktree per change; finish by merge to `main` + commit + push). It wins where it differs:
 heavy parallel dev makes the worktree mandatory (with the trivial-change exception below), and a
 finished release is a full publish (merge + push `main` + push the `vX.Y.Z` tag + pack to
-`local-feed`), not a held local merge. There is a lot of parallel development on this engine.
+`local-feed`). **The publish (push + tag) is routinely HELD and BATCHED, and confirmed with the
+user before pushing:** CI publishes every package to GitHub Packages on each `v*` tag, so related
+work is committed + packed locally across several version bumps and pushed together, not
+per-feature (the merge to `main` happens as work finishes; only the push/tag is batched). There
+is a lot of parallel development on this engine.
 Before you touch anything:
 1. Check for ongoing parallel work first: `git worktree list`, `git branch -a`,
    and `git fetch && git status` to see other branches/trees in flight.
@@ -22,6 +26,13 @@ version/release work.
 
 - **How to create the tree:** prefer the native `EnterWorktree` tool, not
   `git worktree add`. The native tool is what the parallel-dev workflow expects.
+  **But this repo holds/batches pushes, so local `main` is routinely ahead of
+  `origin/main`, and `EnterWorktree` branches from `origin/<default-branch>` by
+  default - a tree it makes then silently lacks your unpushed commits.** If the
+  change builds on unpushed local work (e.g. the next layer atop a just-merged but
+  unpushed one), create the tree from local HEAD instead:
+  `git worktree add .claude/worktrees/<name> -b worktree-<name> main`, then
+  `EnterWorktree` with its `path` to switch in.
 - **Branch / tree naming:** `feature/<short-name>` for new features, `fix/<short-name>`
   for bug fixes, `<batchN>-promote` for game-code-into-engine promotion batches
   (e.g. `batch1-promote`). Keep the worktree directory name matching the branch.
@@ -53,8 +64,8 @@ version/release work.
   the `README.md` `<PackageReference>` example) → `dotnet pack -c Release -o ./local-feed` (cumulative within a
   release) → commit → `git tag vX.Y.Z` → push `main` + the tag (CI publishes to GitHub Packages on `v*`).
   `local-feed/` is a gitignored dev convenience; GitHub Packages (every published `v*`) is the durable store, so
-  `local-feed` may be pruned up to the lowest version any consumer still pins (currently `7.3.0`) without losing
-  anything recoverable.
+  `local-feed` may be pruned up to the lowest version any consumer still pins (see `docs/CONSUMERS.md`; do not prune
+  below it) without losing anything recoverable.
 - **Full doc sweep on EVERY feature / bug / change - not just the guard-checked declarations.**
   `check-doc-versions.sh` only verifies the 3 version strings; it does NOT catch package/feature docs drifting,
   so those silently rot (7.34.0 shipped with the `README.md` package table and this `CLAUDE.md` package map both
@@ -73,76 +84,46 @@ version/release work.
   whenever a consumer bumps a `KhaozEngine.*` `<PackageReference>`, and the engine-version line on
   every release. Refresh snippet is at the bottom of that file.
 - SemVer: additive = minor, fixes = patch, breaking = major.
-- **One shared version line - the engine is now entirely MonoGame-free.** `Directory.Build.props` carries a
-  single `<KhaozEngine5xVersion>` governing **the whole engine**: the zero-dependency `Primitives` leaf
-  (`Color`/`DeterministicRng`/`XorRng`/`MathUtil`/`ViewportMath`/`Easing`, new at `6.0.0`), the BCL-only
-  `Imaging` leaf (`PngWriter`, the dependency-free RGBA8 PNG encoder; `Render2D.Png` is a shim over it, new at
-  `7.33.0`), the BCL-only `Determinism` leaf (`DeterministicFp`/`DeterministicFpScope`, the canonical CPU
-  floating-point-environment pin for fixed-tick / lockstep sims; in the `Foundation` umbrella, currently
-  consumed by no game but available transitively), the custom-stack
-  packages (`KhaozEngine.Gpu`,
-  `Windowing`, `Render2D`, `Render3D`, `Gui`, `Audio`, `Particles`, `Effects`, `Game`, `Game.Render3D`), the
-  headless snapshot harness libraries (`Snapshot` = 2D `SnapshotRunner`/`SnapshotHost`; `Snapshot.Render3D` = the
-  `Shot3D` extension; tooling, in NO umbrella, referenced directly by a game's snapshot tool, new at `7.33.0`), the
-  attack-telegraph libraries (`Telegraphs` = `TelegraphStyle`/`TelegraphResolve`/`TelegraphRenderer2D`, in the
-  `Game2D` umbrella; `Telegraphs.Render3D` = the `Scene3D` ground-plane `Ground*` extensions over the generic
-  `Render3D.DrawGroundDecal` depth-sampling decal primitive, in the `Game3D` umbrella; new at `7.34.0`) and the
-  MonoGame-free foundation (`Ecs`/`Serialization`/`Content`/`Diagnostics`/`App`/`Localization`/`Persistence`/
-  `Pooling`/`Platform`/`Updates`/`Collision`/`Netcode`/`Netcode.Abstractions`/`Netcode.LiteNetLib`/`Simulation`/
-  `Replication`/`WorldStore`/`Sharding`)
-  plus the four
-  code-free umbrella metapackages (`Foundation`, `Game2D`, `Game3D`, `Server`). (`Simulation` = the headless
-  `FixedTickHost` fixed-tick accumulator plus (from `7.41.0`) the `IJobScheduler` worker-pool seam
-  (`SingleThreadedJobScheduler` inline default + `ThreadPoolJobScheduler` over `Parallel.For`), the shared
-  parallel-job-system primitive; new at `7.35.0` with the MMO netcode stack's Phase 0; `Netcode` gained
-  the `INetTransport` seam + `LoopbackTransport` and `Netcode.LiteNetLib` gained the UDP `INetTransport` bindings
-  the same release. `7.36.0` added the MMO stack's Phases 1+2: `Netcode` gained the `NetServer`/`NetClient`
-  session layer; new `Replication` = authoritative ECS replication (`NetId`/`ReplicationRegistry`/`SnapshotWriter`/
-  `ClientReplicationView`/`ServerReplicator` full-state+delta+interpolation, `InterestGrid` AoI); new `WorldStore` =
-  the `IWorldStore` async durable-state seam + `InMemoryWorldStore`. Both new packages are in the `Server`
-  umbrella. Phase 3A added `Sharding` = the in-process world-cell-grid topology
-  (`CellCoord`/`CellSim`/`ShardHost`; a cell = an ECS `World` + `FixedTickHost` + `ServerReplicator` +
-  `InterestGrid`), depends on `Ecs`/`Simulation`/`Replication`, also in the `Server` umbrella; Phase 3B extended it
-  with cross-cell border ghosting (`ICellLink`/`InProcessCellLink` inter-cell messaging seam, `CellMessage`, a
-  `Ghost` read-only-mirror tag, `CellPositionAccessor`, and `ShardHost.SyncGhosts`/`OverlapMargin`); Phase 3C added
-  authority handoff (a `Migrating` tag, `Migrate`/`MigrateAck` message kinds, kind-scoped `ICellLink.Drain`, and
-  `ShardHost.ProcessHandoffs`/`OwnerCount`/`TryGetOwner`) - exactly-once cell-crossing transfer (no dup/loss);
-  Phase 3D added client home-cell serving (`ShardHost.BindClient`/`UnbindClient`/`TryGetHomeCell`/
-  `SnapshotForClient`, `CellSim.RebuildInterest`) - a client's whole AoI is served from the single cell owning its
-  player (invariant overlap margin >= interest radius, enforced), re-binding seamlessly on a crossing; Phase 3E
-  finalized `ICellLink` with a documented network-impl contract (in-process impl shipped; network = infra) and
-  added the reference dedicated-server sample `MmoServerSample` (the `MmoServer` class wiring `ShardHost` +
-  `NetServer` session layer + per-client home-cell serving + `RemoteCommandQueue` input + `WorldStore` on
-  `FixedTickHost`; a sample, `IsPackable=false`, not itself a package). Note:
-  the package id is `KhaozEngine.Sharding`, NOT `KhaozEngine.World` - a namespace whose leaf is literally `World`
-  would shadow the ECS `World` type. `Sharding` (3A + 3B + 3C + 3D + 3E) shipped at `7.38.0` as the Phase 3 batch.
-  `7.41.0` made `ShardHost.Tick` fan its independent cells across an opt-in `IJobScheduler` (default inline, so the
-  single-threaded path is byte-unchanged); `SyncGhosts`/`ProcessHandoffs` stay sequential. This is layer 1 of the
-  parallel-job-system program (`docs/superpowers/specs/2026-06-26-ecs-parallel-job-system-design.md`); the headless
-  server-tick benchmark it is measured on is the `KhaozEngine.Benchmarks` project (jobs-0, no package).
-  `7.42.0` added layer 2, the **entities axis**, in `KhaozEngine.Ecs`: opt-in `World.ParallelForEach<...>` (arity 1-8
-  pure + arity 1-4 buffered) fans a matched archetype's rows across the same `IJobScheduler` (default inline = byte-
-  identical to `ForEach`), with the `AccessSet`/`Access` read/write component-access declaration model
-  (`ConflictsWith`, the vocabulary a future system scheduler would reuse - layer 3 was evaluated via the benchmark's
-  `--gate` and de-scoped, so the parallel-job-system program is complete at the entities axis), a default-on debug hazard guard
-  (`World.ParallelHazardChecks` + `ParallelAccessViolationException`: any reentrant world call from a worker action
-  throws), and per-worker `EntityCommandBuffer`s merged in row order for thread-safe deterministic deferred structural
-  changes. `KhaozEngine.Ecs` now references `KhaozEngine.Simulation` for the seam (still acyclic - Simulation is a
-  zero-dependency leaf). The benchmark gained an `EntitiesAxisBenchmark` per-row-work sweep (shows the fork/join
-  crossover: parallel < 1x for trivial work, scaling toward ~P× as per-row work grows).)
-  (`KhaozEngine.Content.Validator`
-  is a build-time tool, `IsPackable=false`, shipped inside the `Content` package rather than versioned itself.)
-  `KhaozEngine.Updates.Tool` (the `ke-updater` dotnet tool: manifest/genkey/sign/verify, shipped at `7.3.0`)
-  and `KhaozEngine.Sfx.Tool` (the `ke-sfxbake` dotnet tool: manifest-driven bulk SFX generation + bake via the
-  ElevenLabs API + ffmpeg/oggenc, shipped at `7.14.0`) are both `PackAsTool` and ride the same shared version line.
-  All packable projects set `<Version>$(KhaozEngine5xVersion)</Version>` in their csproj. Bump it to release ALL
-  packages together
-  (repack to `local-feed`, single tag `vX.Y.Z`); `check-doc-versions.sh` enforces this line. The 5.x line
-  dropped the `-experimental` suffix at `5.31.0` (the tag is plain `vX.Y.Z`); the foundation graduated onto it
-  at `5.46.0`. **The legacy 4.x MonoGame `<Version>` line + its six packages (`UI`/`Graphics`/`Screens`/
-  `Sprites`/`Input`/`Time`) were DELETED from the repo; there is no 4.x line any more.** All three consumers
-  have finished porting onto the 7.x line and no longer reference 4.x (per-consumer pins live in
-  `docs/CONSUMERS.md`). See `docs/ROADMAP.md` ("The post-MonoGame pivot").
+- **One shared version line - the engine is entirely MonoGame-free.** `Directory.Build.props` carries a single
+  `<KhaozEngine5xVersion>` governing the WHOLE engine; every packable project sets
+  `<Version>$(KhaozEngine5xVersion)</Version>` in its csproj, so one bump releases all packages together (repack to
+  `local-feed`, single tag `vX.Y.Z`). `check-doc-versions.sh` enforces this line. **Per-version history lives in
+  `CHANGELOG.md` / `CHANGENOTES.md`, not here** - below is the durable package catalog only:
+  - **Leaves (minimal deps):** `Primitives` (`Color`/`DeterministicRng`/`XorRng`/`MathUtil`/`ViewportMath`/`Easing`,
+    zero-dependency), `Imaging` (`PngWriter`, the dependency-free RGBA8 PNG encoder; `Render2D.Png` shims it),
+    `Determinism` (`DeterministicFp`/`DeterministicFpScope`, the CPU FP-environment pin for fixed-tick/lockstep sims;
+    in the `Foundation` umbrella).
+  - **Render/runtime stack:** `Gpu`, `Windowing`, `Render2D`, `Render3D`, `Gui`, `Audio`, `Particles`, `Effects`,
+    `Game`, `Game.Render3D`.
+  - **Foundation (MonoGame-free):** `Ecs`, `Serialization`, `Content`, `Diagnostics`, `App`, `Localization`,
+    `Persistence`, `Pooling`, `Platform`, `Updates`, `Collision`, `Netcode`, `Netcode.Abstractions`,
+    `Netcode.LiteNetLib`, `Simulation`, `Replication`, `WorldStore`, `Sharding`.
+  - **Server / parallel-job core types:** `Simulation` = `FixedTickHost` + the `IJobScheduler` worker-pool seam
+    (`SingleThreadedJobScheduler` inline default + `ThreadPoolJobScheduler`); `Netcode` =
+    `INetTransport`/`LoopbackTransport` + the `NetServer`/`NetClient` session layer; `Replication` = authoritative ECS
+    replication (`NetId`/`ReplicationRegistry`/`SnapshotWriter`/`ClientReplicationView`/`ServerReplicator` +
+    `InterestGrid` AoI); `WorldStore` = `IWorldStore` async seam + `InMemoryWorldStore`; `Sharding` = the in-process
+    cell-grid topology (`CellCoord`/`CellSim`/`ShardHost`; a cell = an ECS `World` + `FixedTickHost` +
+    `ServerReplicator` + `InterestGrid`) with cross-cell ghosting / exactly-once handoff / home-cell AoI serving over
+    the `ICellLink` seam, plus the `MmoServerSample` reference server (`IsPackable=false`). `Ecs` also has opt-in
+    data-parallel `World.ParallelForEach` + the `AccessSet` access-declaration model + the `ParallelHazardChecks`
+    guard, so it depends on `Simulation` (acyclic - `Simulation` is a zero-dependency leaf). The parallel-job-system
+    program (cells + entities axes shipped; the system-scheduler layer was benchmark-gated and de-scoped) is
+    `docs/superpowers/specs/2026-06-26-ecs-parallel-job-system-design.md`; its benchmark is the `KhaozEngine.Benchmarks`
+    project (no package; `--gate` runs the system-scheduler gate).
+  - **Snapshot + telegraph libs:** `Snapshot` (2D `SnapshotRunner`/`SnapshotHost`) + `Snapshot.Render3D` (`Shot3D`),
+    in NO umbrella (a game's snapshot tool refs them directly); `Telegraphs`
+    (`TelegraphStyle`/`TelegraphResolve`/`TelegraphRenderer2D`, in `Game2D`) + `Telegraphs.Render3D` (the `Scene3D`
+    `Ground*` extensions over `Render3D.DrawGroundDecal`, in `Game3D`).
+  - **Umbrellas (code-free metapackages):** `Foundation`, `Game2D`, `Game3D`, `Server`.
+  - **Tools, same version line:** `Updates.Tool` (`ke-updater`: manifest/genkey/sign/verify) and `Sfx.Tool`
+    (`ke-sfxbake`: ElevenLabs-driven SFX bake) are `PackAsTool`; `Content.Validator` is a build-time tool
+    (`IsPackable=false`, shipped inside the `Content` package, not separately versioned).
+  - **Gotchas / history:** the package id is `KhaozEngine.Sharding`, NOT `KhaozEngine.World` (a `World` leaf would
+    shadow the ECS `World` type). The legacy 4.x MonoGame line + its six packages
+    (`UI`/`Graphics`/`Screens`/`Sprites`/`Input`/`Time`) were DELETED - there is no 4.x line; all three consumers are
+    on the 7.x line (pins in `docs/CONSUMERS.md`). The line dropped `-experimental` at `5.31.0`; the foundation
+    graduated onto it at `5.46.0`. See `docs/ROADMAP.md` ("The post-MonoGame pivot").
 - **Commit subjects:** conventional-commit style `area(scope): summary`, e.g.
   `audio(4.3.1): MacOsMusicBackend loads built .ogg` or `docs(consumers): ...`.
   On a release/version-bump commit, use the new version as the scope (`audio(4.3.1):`).

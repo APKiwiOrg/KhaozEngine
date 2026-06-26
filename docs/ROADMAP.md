@@ -42,9 +42,13 @@ dedicated-server template.
   `SnapshotWriter.WriteFiltered`). 2F world store (new `KhaozEngine.WorldStore`): `IWorldStore` async seam +
   `InMemoryWorldStore`. Plans: `docs/superpowers/plans/2026-06-25-mmo-phase1d-session-lifecycle.md`,
   `...-phase1c-entity-replication.md`.
-- **Open:** Phase 3 (zoning/sharding + dedicated-server template). Refinements: ECS job scheduling, delta+AoI
-  unification, delta bit-packing/quantization, a SQLite `IWorldStore`. SpaceGame is the intended first adopter /
-  testbed.
+- **Phase 3 shipped (`7.38.0`).** Seamless sharded world grid (`KhaozEngine.Sharding`): cell grid, cross-cell
+  ghosting, exactly-once authority handoff, per-client home-cell serving, `MmoServerSample` reference server.
+- **ECS job scheduling shipped** as its own program (`docs/superpowers/specs/2026-06-26-ecs-parallel-job-system-design.md`):
+  worker-pool seam + parallel cell ticks (`7.41.0`), parallel `ForEach` + read/write access declarations (`7.42.0`);
+  the conditional system scheduler was benchmark-gated and de-scoped.
+- **Open refinements:** delta+AoI unification, delta bit-packing/quantization, a SQLite `IWorldStore`. SpaceGame is the
+  intended first adopter / testbed.
 
 ## The post-MonoGame pivot (6.x line): strategic direction
 

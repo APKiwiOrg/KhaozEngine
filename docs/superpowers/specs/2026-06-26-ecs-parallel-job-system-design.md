@@ -69,20 +69,24 @@ result can be asserted equal to the single-threaded result. (Exact shape is laye
 
 ## Decomposition (each its own scoping doc → plan → build)
 
-- **0 · Benchmark harness** — `jobs-0-benchmark-harness.md`. A headless, repeatable benchmark of one server tick across
-  a matrix of (cells, entities/cell, systems), reporting wall-clock + entities/sec, single-threaded baseline. The
-  measurement that justifies (or de-scopes) each later layer. No public API; a benchmark project + a `LiveSocket`-style
-  excluded-from-CI trait so it does not gate CI.
-- **1 · Parallel cell ticks** — `jobs-1-parallel-cell-ticks.md`. A worker-pool seam + `ShardHost.Tick` (and the handoff/
-  ghost passes where safe) fanning independent cells across cores. Opt-in (`ShardHost` takes a scheduler; default = inline
-  single-threaded). Acceptance: parallel tick == single-threaded tick (same world state) and scales ~P× with cell count
-  in the benchmark.
-- **2 · Parallel `ForEach` + access declarations** — `jobs-2-parallel-foreach-access.md`. `World.ParallelForEach<...>`
-  partitioning archetype rows across the worker pool; a read/write access declaration model so a debug-mode hazard check
-  rejects unsafe actions (cross-entity writes, inline structural changes); a thread-safe path for deferred structural
-  changes (per-worker command buffers merged deterministically). Acceptance: parallel == single-threaded result; debug
-  hazard check catches a deliberate violation; scales with E for a hot archetype.
-- **3 · System scheduler (conditional)** — *was* `jobs-3-system-scheduler.md` (deleted on de-scope). `ISystem` access
+Each sub-project had its own scoping doc under `docs/superpowers/scoping/`, **deleted on completion** (standard
+practice — see `JOBS-EXECUTION-ORDER.md`), so the filenames below are historical pointers, not live links.
+
+- **0 · Benchmark harness** — *shipped* (was `jobs-0-benchmark-harness.md`). A headless, repeatable benchmark of one
+  server tick across a matrix of (cells, entities/cell, systems), reporting wall-clock + entities/sec, single-threaded
+  baseline. The measurement that justifies (or de-scopes) each later layer. No public API; a benchmark project + a
+  `LiveSocket`-style excluded-from-CI trait so it does not gate CI. → `KhaozEngine.Benchmarks`.
+- **1 · Parallel cell ticks** — *shipped `7.41.0`* (was `jobs-1-parallel-cell-ticks.md`). A worker-pool seam +
+  `ShardHost.Tick` (and the handoff/ghost passes where safe) fanning independent cells across cores. Opt-in
+  (`ShardHost` takes a scheduler; default = inline single-threaded). Acceptance met: parallel tick == single-threaded
+  tick (same world state) and scales ~P× with cell count in the benchmark.
+- **2 · Parallel `ForEach` + access declarations** — *shipped `7.42.0`* (was `jobs-2-parallel-foreach-access.md`).
+  `World.ParallelForEach<...>` partitioning archetype rows across the worker pool; a read/write access declaration
+  model (`AccessSet`) so a debug-mode hazard check rejects unsafe actions (cross-entity writes, inline structural
+  changes); a thread-safe path for deferred structural changes (per-worker command buffers merged deterministically).
+  Acceptance met: parallel == single-threaded result; debug hazard check catches a deliberate violation; scales with E
+  for a hot archetype (past the fork/join crossover).
+- **3 · System scheduler (conditional)** — *evaluated + de-scoped* (was `jobs-3-system-scheduler.md`). `ISystem` access
   declarations → a per-world dependency graph → run non-conflicting systems concurrently on the worker pool,
   deterministically. Gated on the benchmark showing per-cell critical path (not cell count, not a hot system) is the
   bottleneck. **The gate was evaluated and not met (verdict below); no scheduler was built.**

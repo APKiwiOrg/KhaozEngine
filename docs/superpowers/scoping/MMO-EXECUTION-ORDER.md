@@ -42,8 +42,10 @@ The **refinements** (below) are independent and can run in parallel with Phase 3
 
 ## Refinements (independent; schedule as needed, own chats)
 
-- **ECS job scheduling** — read/write component access decls + parallel `ForEach`, so a cell tick (or N cells)
-  uses multiple cores. The single biggest server-scale ceiling. Touches `KhaozEngine.Ecs` core.
+- **ECS job scheduling** — ✅ **DONE** (its own completed program: `docs/superpowers/specs/2026-06-26-ecs-parallel-job-system-design.md`
+  + `JOBS-EXECUTION-ORDER.md`). Shipped the worker-pool seam + parallel cell ticks (`7.41.0`) and parallel `ForEach`
+  with read/write access declarations (`7.42.0`); the conditional system scheduler was benchmark-gated and de-scoped
+  (the entities axis already saturates cores). Was the single biggest server-scale ceiling.
 - **Delta + AoI unification** — currently AoI uses interest-filtered full snapshots; fuse with per-client delta
   baselines so interest-filtered deltas are sent (less bandwidth still).
 - **Delta bit-packing / quantization** — replace the `BinaryWriter`-level component encoding with bit-packing +

@@ -83,5 +83,6 @@ boundary re-binds without losing its surroundings. All deterministic, no sockets
 ## Open / deferred (infra or later)
 
 Multi-process/distributed cells, network `ICellLink`, cross-node clock sync, cell discovery/orchestration,
-load-based split/merge. Plus program-wide refinements: ECS job scheduling (per-cell parallel ticks), delta+AoI
+load-based split/merge. Plus program-wide refinements: ~~ECS job scheduling (per-cell parallel ticks)~~ **done** (its
+own program, `7.41.0`/`7.42.0` — see `docs/superpowers/specs/2026-06-26-ecs-parallel-job-system-design.md`), delta+AoI
 unification, delta bit-packing/quantization, a SQLite `IWorldStore`.

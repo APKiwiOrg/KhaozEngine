@@ -172,8 +172,10 @@ Sub-projects within a phase that have no dependency between them can run as conc
   flush + crash recovery, `MigrationChain` reuse for stored blobs; `SqliteWorldStore` reference impl. *Needs
   0B.* *Acceptance:* server character/world state survives a process restart via SQLite; concurrent writes are
   transactional; load is async and off the tick thread.
-- **(2X · ECS job scheduling)** — prerequisite sub-project if server entity counts demand it; read/write access
-  declarations + parallel `ForEach`. Scoped separately because it touches the ECS core.
+- **(2X · ECS job scheduling)** — ✅ **DONE**, scoped + built separately as its own program
+  (`docs/superpowers/specs/2026-06-26-ecs-parallel-job-system-design.md`): worker-pool seam + parallel cell ticks
+  (`7.41.0`), parallel `ForEach` + read/write access declarations (`7.42.0`); the conditional system scheduler was
+  benchmark-gated and de-scoped. Touched the ECS core as expected.
 
 ### Phase 3 — Topology
 - **3G · Zoning / sharding / instancing.** `IZone`/`ZoneHost`, cross-zone `ZoneHandoff` (WorldSerializer subset

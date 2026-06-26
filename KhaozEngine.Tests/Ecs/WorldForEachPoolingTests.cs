@@ -13,6 +13,7 @@ file struct Pos : IComponent { public float X; }
 /// the GC-allocation reuse assertion proves zero per-call allocation, and the pool/nesting tests prove
 /// the recycling is correct and aliasing-free.
 /// </summary>
+[Collection("AllocSensitive")]  // its zero-alloc assertion must not run alongside the GC-churning parallel tests
 public class WorldForEachPoolingTests
 {
     private static World MakeWorld(int entities)

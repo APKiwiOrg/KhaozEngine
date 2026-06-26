@@ -8,6 +8,9 @@ namespace KhaozEngine.Tests.Render3D
     // Headless tests for the turn-key SkinnedLimb convenience component. The whole motion pipeline
     // (ProceduralChainSolver -> PolylineFrames -> bones) runs GPU-free via SkinnedLimb.CreateHeadless,
     // so no device is needed; only the tube upload + Draw are GPU-bound (covered in Gpu/SkinnedLimbGpuTests).
+    // In the AllocSensitive collection: its zero-alloc assertion must not run while the parallel-ForEach tests
+    // churn the GC on other threads.
+    [Collection("AllocSensitive")]
     public class SkinnedLimbTests
     {
         static readonly ChainConfig Writhe = ChainConfig.Writhe;

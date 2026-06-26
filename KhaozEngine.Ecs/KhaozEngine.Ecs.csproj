@@ -12,6 +12,9 @@
     <ProjectReference Include="../KhaozEngine.Pooling/KhaozEngine.Pooling.csproj" />
     <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
     <ProjectReference Include="../KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
+    <!-- Parallel ForEach (7.42.0) fans archetype row ranges across the shared IJobScheduler worker-pool seam,
+         which lives in KhaozEngine.Simulation (a zero-dependency leaf, so this reference is acyclic). -->
+    <ProjectReference Include="../KhaozEngine.Simulation/KhaozEngine.Simulation.csproj" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 </Project>

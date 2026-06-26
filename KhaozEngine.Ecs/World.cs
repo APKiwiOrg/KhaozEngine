@@ -22,6 +22,30 @@ public sealed partial class World
     internal int ArchetypeGen;
     private readonly Archetype _empty;
 
+    // Hazard guard for ParallelForEach: true while a parallel section runs. Any reentrant world structural /
+    // component / query call from a worker action breaks per-row-purity and throws (see ThrowIfInParallelSection).
+    private volatile bool _inParallelSection;
+
+    /// <summary>
+    /// Whether ParallelForEach actions are checked for per-row-purity: a reentrant world call from inside a parallel
+    /// action throws <see cref="ParallelAccessViolationException"/>. On by default so dev/tests catch hazards; the
+    /// cost is one bool check per world call (negligible outside a parallel section). A shipping server may set this
+    /// false in a proven-pure hot loop for maximum speed.
+    /// </summary>
+    public bool ParallelHazardChecks { get; set; } = true;
+
+    // Bracket a parallel section (ParallelForEach). Worker actions run while the flag is set.
+    internal void BeginParallelSection() => _inParallelSection = true;
+    internal void EndParallelSection() => _inParallelSection = false;
+
+    // Called at the top of every world structural / component / query entry point. While a parallel section is
+    // active, any such reentrant call breaks the per-row-pure contract, so throw (when the guard is enabled).
+    private void ThrowIfInParallelSection(string operation)
+    {
+        if (ParallelHazardChecks && _inParallelSection)
+            throw new ParallelAccessViolationException(operation);
+    }
+
     public World()
     {
         _empty = new Archetype(Array.Empty<int>(), Reg);
@@ -37,6 +61,7 @@ public sealed partial class World
     /// <summary>Creates a new entity with no components.</summary>
     public Entity Spawn()
     {
+        ThrowIfInParallelSection(nameof(Spawn));
         int id = _free.Count > 0 ? _free.Pop() : _nextId++;
         if (id >= _records.Length) Array.Resize(ref _records, Math.Max(_records.Length * 2, id + 1));
         ref Record rec = ref _records[id];
@@ -51,6 +76,7 @@ public sealed partial class World
     /// <summary>Removes an entity (no-op on a stale/dead handle). Bumps the slot version and recycles the id.</summary>
     public void Despawn(Entity e)
     {
+        ThrowIfInParallelSection(nameof(Despawn));
         if (!IsAlive(e)) return;
         DetachHierarchyOnDespawn(e);
         ref Record rec = ref _records[e.Id];

@@ -11,6 +11,7 @@ public sealed partial class World
     /// <summary>Adds or overwrites component <typeparamref name="T"/> (adding triggers an archetype move).</summary>
     public void Set<T>(Entity e, T value) where T : struct, IComponent
     {
+        ThrowIfInParallelSection(nameof(Set));
         if (!IsAlive(e)) throw new InvalidOperationException("Stale entity handle.");
         int id = Reg.Id<T>();
         bool adding = !_records[e.Id].Archetype.Has(id);
@@ -25,6 +26,7 @@ public sealed partial class World
     /// <summary>Adds component <typeparamref name="T"/>; throws if already present.</summary>
     public void Add<T>(Entity e, T value) where T : struct, IComponent
     {
+        ThrowIfInParallelSection(nameof(Add));
         if (!IsAlive(e)) throw new InvalidOperationException("Stale entity handle.");
         if (_records[e.Id].Archetype.Has(Reg.Id<T>()))
             throw new InvalidOperationException($"Entity already has {typeof(T).Name}.");
@@ -34,6 +36,7 @@ public sealed partial class World
     /// <summary>Removes component <typeparamref name="T"/> (no-op if absent).</summary>
     public void Remove<T>(Entity e) where T : struct, IComponent
     {
+        ThrowIfInParallelSection(nameof(Remove));
         if (!IsAlive(e)) throw new InvalidOperationException("Stale entity handle.");
         int id = Reg.Id<T>();
         if (_records[e.Id].Archetype.Has(id))
@@ -46,6 +49,7 @@ public sealed partial class World
     /// <summary>Returns a live ref to component <typeparamref name="T"/>. Throws if absent or a tag.</summary>
     public ref T Get<T>(Entity e) where T : struct, IComponent
     {
+        ThrowIfInParallelSection(nameof(Get));
         if (!IsAlive(e)) throw new InvalidOperationException("Stale entity handle.");
         int id = Reg.Id<T>();
         Record r = _records[e.Id];
@@ -55,6 +59,7 @@ public sealed partial class World
     /// <summary>Copies out component <typeparamref name="T"/> if present.</summary>
     public bool TryGet<T>(Entity e, out T value) where T : struct, IComponent
     {
+        ThrowIfInParallelSection(nameof(TryGet));
         if (Has<T>(e)) { value = Get<T>(e); return true; }
         value = default;
         return false;

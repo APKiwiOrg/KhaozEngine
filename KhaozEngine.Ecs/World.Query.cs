@@ -26,6 +26,10 @@ public sealed partial class World
 
     private Query RentForEachQuery(out PoolableQuery? rented)
     {
+        // Renting a query is the shared entry for every ForEach/ParallelForEach. Guarding here rejects reentrant
+        // iteration (a ForEach or nested ParallelForEach) from inside a parallel action. The outer ParallelForEach
+        // rents BEFORE its parallel section starts, so it never trips its own guard.
+        ThrowIfInParallelSection("ForEach");
         rented = _forEachQueryPool.Rent();
         return rented?.Query ?? new Query(this);   // pool exhausted (nested) -> fresh, un-pooled instance
     }

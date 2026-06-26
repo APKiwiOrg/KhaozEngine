@@ -3,7 +3,7 @@ using System.Collections.Generic;
 namespace KhaozEngine.Ecs;
 
 /// <summary>A reusable query: With/Without filters over archetypes, iterated by ForEach (ref) or Entities().</summary>
-public sealed class Query
+public sealed partial class Query
 {
     private readonly World _world;
     private readonly List<int> _with = new();

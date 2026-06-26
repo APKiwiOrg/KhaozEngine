@@ -2,7 +2,7 @@
   <PropertyGroup>
     <PackageId>KhaozEngine.Game3D</PackageId>
     <Version>$(KhaozEngine5xVersion)</Version>
-    <Description>Umbrella metapackage for a desktop 3D game on the KhaozEngine 5.x stack: a strict superset of KhaozEngine.Game2D plus Render3D and Game.Render3D (the 3D scene integration: GameApp3D, IGameScene3D, and the SceneManager.Draw3D extension). One reference gives the full 2D + 3D + game-loop stack. No networking (Netcode) - add KhaozEngine.Netcode.LiteNetLib if you need it. Contains no code; just dependencies.</Description>
+    <Description>Umbrella metapackage for a desktop 3D game on the KhaozEngine 5.x stack: a strict superset of KhaozEngine.Game2D plus Render3D and Game.Render3D (the 3D scene integration: GameApp3D, IGameScene3D, and the SceneManager.Draw3D extension), the Ground* telegraph extensions, and Terrain.Render3D (the chunked-LOD terrain mesh builder over KhaozEngine.Terrain's analytic field). One reference gives the full 2D + 3D + game-loop stack. No networking (Netcode) - add KhaozEngine.Netcode.LiteNetLib if you need it. Contains no code; just dependencies.</Description>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <SuppressDependenciesWhenPacking>false</SuppressDependenciesWhenPacking>
@@ -15,5 +15,6 @@
     <ProjectReference Include="../KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
     <ProjectReference Include="../KhaozEngine.Game.Render3D/KhaozEngine.Game.Render3D.csproj" />
     <ProjectReference Include="../KhaozEngine.Telegraphs.Render3D/KhaozEngine.Telegraphs.Render3D.csproj" />
+    <ProjectReference Include="../KhaozEngine.Terrain.Render3D/KhaozEngine.Terrain.Render3D.csproj" />
   </ItemGroup>
 </Project>

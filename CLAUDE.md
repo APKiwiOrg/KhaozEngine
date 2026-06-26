@@ -96,7 +96,7 @@ version/release work.
   - **Render/runtime stack:** `Gpu`, `Windowing`, `Render2D`, `Render3D`, `Gui`, `Audio`, `Particles`, `Effects`,
     `Game`, `Game.Render3D`.
   - **Foundation (MonoGame-free):** `Ecs`, `Serialization`, `Content`, `Diagnostics`, `App`, `Localization`,
-    `Persistence`, `Pooling`, `Platform`, `Updates`, `Collision`, `Netcode`, `Netcode.Abstractions`,
+    `Persistence`, `Pooling`, `Platform`, `Updates`, `Collision`, `Terrain`, `Netcode`, `Netcode.Abstractions`,
     `Netcode.LiteNetLib`, `Simulation`, `Replication`, `WorldStore`, `Sharding`.
   - **Server / parallel-job core types:** `Simulation` = `FixedTickHost` + the `IJobScheduler` worker-pool seam
     (`SingleThreadedJobScheduler` inline default + `ThreadPoolJobScheduler`); `Netcode` =
@@ -115,6 +115,16 @@ version/release work.
     in NO umbrella (a game's snapshot tool refs them directly); `Telegraphs`
     (`TelegraphStyle`/`TelegraphResolve`/`TelegraphRenderer2D`, in `Game2D`) + `Telegraphs.Render3D` (the `Scene3D`
     `Ground*` extensions over `Render3D.DrawGroundDecal`, in `Game3D`).
+  - **Terrain libs (render-free leaf + companion):** `Terrain` (render-free leaf, in `Foundation`) = the analytic
+    `TerrainField` (`SampleHeight`/`SampleNormal`/`SampleBiome`/`WaterLevel`) folding biome-band shaping + stateless
+    coordinate-hash fractal noise (`TerrainNoise`) + ordered `ITerrainFeature`s (`LakeFeature`/`RidgeFeature`/
+    `FlattenFeature`), plus `TerrainCollision` and `TerrainPresets.Clearing()`. Height depends only on `(x,z,seed)`
+    (load-order independent for sharded streaming); plain `float` (authoritative server + visual client, NOT
+    `DeterministicFp`). `Terrain.Render3D` (companion, in `Game3D`) = `TerrainChunkBuilder` (chunked-LOD mesh off the
+    field: skirts, per-vertex splat weights plumbed for the later PBR upgrade, height/slope vertex-colour ramp,
+    chunk AABB) + `TerrainLod.PickLod` + `Scene3D.LoadTerrainChunk`/`DrawTerrainChunk`. First overworld render-scale
+    sub-project (`docs/superpowers/specs/2026-06-27-terrain-system-design.md`); streaming/props/PBR-textures/water
+    are later sub-projects.
   - **Umbrellas (code-free metapackages):** `Foundation`, `Game2D`, `Game3D`, `Server`.
   - **Tools, same version line:** `Updates.Tool` (`ke-updater`: manifest/genkey/sign/verify) and `Sfx.Tool`
     (`ke-sfxbake`: ElevenLabs-driven SFX bake) are `PackAsTool`; `Content.Validator` is a build-time tool

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- Measurement tool, not a shipped package: never packed, never on the version line. The timing loop
+         only runs via `dotnet run`; CI's `dotnet test` never invokes it, so it stays out of CI's timed path.
+         (The harness's deterministic/structural behaviour IS covered in KhaozEngine.Tests, which run in CI.) -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The real server-tick path being measured: ShardHost (Sharding) -> CellSim -> FixedTickHost (Simulation)
+         -> World.Update (Ecs). Replication is a ShardHost ctor dependency; Primitives gives the seeded RNG. -->
+    <ProjectReference Include="../KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
+    <ProjectReference Include="../KhaozEngine.Simulation/KhaozEngine.Simulation.csproj" />
+    <ProjectReference Include="../KhaozEngine.Sharding/KhaozEngine.Sharding.csproj" />
+    <ProjectReference Include="../KhaozEngine.Replication/KhaozEngine.Replication.csproj" />
+    <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
+  </ItemGroup>
+</Project>

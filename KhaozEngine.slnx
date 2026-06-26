@@ -52,6 +52,7 @@
   <Project Path="SceneSample/SceneSample.csproj" />
   <Project Path="SnapshotSample/SnapshotSample.csproj" />
   <Project Path="MmoServerSample/MmoServerSample.csproj" />
+  <Project Path="KhaozEngine.Benchmarks/KhaozEngine.Benchmarks.csproj" />
   <Project Path="tools/PixelLabSheetAssembler/PixelLabSheetAssembler.csproj" />
   <Project Path="tools/PixelLabSheetAssembler.Tests/PixelLabSheetAssembler.Tests.csproj" />
 </Solution>

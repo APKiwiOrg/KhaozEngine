@@ -11,13 +11,24 @@ using KhaozEngine.Simulation;
 // World.ParallelForEach (the cell axis can't help a single cell). Run with:
 //   dotnet run --project KhaozEngine.Benchmarks -c Release
 //   dotnet run --project KhaozEngine.Benchmarks -c Release -- --quick     (fast smoke: small N, few ticks)
+//   dotnet run --project KhaozEngine.Benchmarks -c Release -- --gate      (jobs-3 system-scheduler GATE evaluation)
 // See KhaozEngine.Benchmarks/README.md for how to read the output.
 
 bool quick = Array.IndexOf(args, "--quick") >= 0;
 
+CultureInfo ci = CultureInfo.InvariantCulture;
+
+// jobs-3 gate: a separate, focused run that measures whether overlapping non-conflicting systems (layer 3) could
+// beat what layers 1+2 already give on a single cell. It is the measurement the system-scheduler decision is gated
+// on, so it runs alone (not part of the normal cell/entities benchmark).
+if (Array.IndexOf(args, "--gate") >= 0)
+{
+    RunSystemAxisGate(ci, quick);
+    return;
+}
+
 IReadOnlyList<BenchmarkConfig> matrix = quick ? QuickMatrix() : BenchmarkMatrix.Default();
 
-CultureInfo ci = CultureInfo.InvariantCulture;
 Console.WriteLine("KhaozEngine server-tick benchmark - cell axis (jobs-1) + entities axis (jobs-2)");
 Console.WriteLine($"cores={Environment.ProcessorCount}  framework={Environment.Version}  mode={(quick ? "quick" : "full")}");
 Console.WriteLine();
@@ -95,4 +106,47 @@ static IReadOnlyList<BenchmarkConfig> QuickMatrix()
         new BenchmarkConfig { Name = "one hot cell",     GridWidth = 1,  GridHeight = 1,  EntitiesPerCell = n,        WarmupTicks = 5, TimedTicks = 20 },
         new BenchmarkConfig { Name = "mid (4x4 cells)",  GridWidth = 4,  GridHeight = 4,  EntitiesPerCell = n / 16,   WarmupTicks = 5, TimedTicks = 20 },
     };
+}
+
+// jobs-3 GATE: for a single cell of distinct systems, compare the per-cell tick three ways - all systems
+// single-threaded sequential (T_seq, the baseline), each system via ParallelForEach sequential between systems
+// (T_layer2, what we ship), and the most optimistic overlap of the single-threaded systems honouring the
+// AccessSet conflict graph (T_layer3 ceiling). Build layer 3 only if T_layer3 < T_layer2 at an entity count where
+// the cell costs real time. See SystemAxisGate.
+static void RunSystemAxisGate(CultureInfo ci, bool quick)
+{
+    int work = quick ? 16 : 48;
+    int warmup = quick ? 5 : 15;
+    int timed = quick ? 20 : 50;
+    int[] entityLevels = quick ? new[] { 256, 4096, 65536 } : new[] { 256, 1024, 4096, 16384, 65536, 262144 };
+    var scheduler = new ThreadPoolJobScheduler();
+
+    Console.WriteLine("KhaozEngine jobs-3 system-scheduler GATE evaluation");
+    Console.WriteLine($"cores={Environment.ProcessorCount}  framework={Environment.Version}  per-row work={work}  systems=7 (4 Pos/Vel cluster + 3 independent)");
+    Console.WriteLine();
+
+    // Prime both code paths to completion before timing (background tier-1 JIT otherwise inflates an early row).
+    _ = SystemAxisGate.Measure(4096, work, warmup, timed, scheduler);
+
+    const string h = "{0,9} {1,11} {2,11} {3,9} {4,13} {5,9} {6,13}";
+    Console.WriteLine(string.Format(ci, h, "entities", "T_seq ms", "T_l2 ms", "l2 x", "T_l3ceil ms", "l3 x", "verdict"));
+    Console.WriteLine(new string('-', 9 + 11 + 11 + 9 + 13 + 9 + 13 + 6));
+    foreach (int e in entityLevels)
+    {
+        SystemAxisGate.Row r = SystemAxisGate.Measure(e, work, warmup, timed, scheduler);
+        Console.WriteLine(string.Format(ci, h,
+            e,
+            r.SeqMs.ToString("F3", ci),
+            r.Layer2Ms.ToString("F3", ci),
+            r.Layer2Speedup.ToString("F2", ci) + "x",
+            r.Layer3CeilMs.ToString("F3", ci),
+            r.Layer3Speedup.ToString("F2", ci) + "x",
+            r.Layer3BeatsLayer2 ? "L3 WINS" : "L2 wins"));
+    }
+    Console.WriteLine();
+    Console.WriteLine("T_seq    = all 7 systems single-threaded, sequential (today's per-cell tick).");
+    Console.WriteLine("T_l2     = each system via ParallelForEach, sequential between systems (jobs-2, shipped).");
+    Console.WriteLine("T_l3ceil = most optimistic overlap of the single-threaded systems (list-schedule of measured");
+    Console.WriteLine("           solo costs honouring the AccessSet conflict graph on all cores) - the best layer 3 alone.");
+    Console.WriteLine("GATE: build the system scheduler only if 'L3 WINS' at an entity count where the cell costs real time.");
 }

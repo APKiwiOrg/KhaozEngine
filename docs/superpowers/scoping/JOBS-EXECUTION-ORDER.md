@@ -12,15 +12,18 @@ kickoff for a **fresh chat**. Only current work lives here; completed work is NO
 | # | What | State |
 |---|---|---|
 | 0 | Benchmark harness (measure the server tick) | **DONE** → `KhaozEngine.Benchmarks` (project + README; no package, no version bump) |
-| 1 | Parallel cell ticks (`ShardHost` across cores) | **TO-DO** (unblocked by 0) → `jobs-1-parallel-cell-ticks.md` |
-| 2 | Parallel `ForEach` + R/W access declarations | TO-DO (unblocked by 0; independent of 1) → `jobs-2-parallel-foreach-access.md` |
+| 1 | Parallel cell ticks (`ShardHost` across cores) | **DONE** (`7.41.0`) → `IJobScheduler` seam in `Simulation` + opt-in `ShardHost.Scheduler` |
+| 2 | Parallel `ForEach` + R/W access declarations | **TO-DO** (unblocked by 0; independent of 1) → `jobs-2-parallel-foreach-access.md` |
 | 3 | System scheduler (conditional, measured) | TO-DO (needs 2 + a benchmark verdict) → `jobs-3-system-scheduler.md` |
 
 **Baseline numbers (jobs-0, single-threaded).** At equal N=65,536 entities, S=4 systems, 30 Hz, on a 12-core box:
 many-small-cells (C=1024) ≈ 3.0 ms/tick (~21M entities/sec); one-hot-cell (C=1) ≈ 0.45 ms/tick (~144M
-entities/sec); mid (C=64) ≈ 0.48 ms/tick (~135M entities/sec). The ~6× gap at equal N is pure per-cell overhead -
-exactly what layer 1 (parallel cell ticks) moves. Re-measure with
-`dotnet run --project KhaozEngine.Benchmarks -c Release`.
+entities/sec); mid (C=64) ≈ 0.48 ms/tick (~135M entities/sec). The ~6× gap at equal N is pure per-cell overhead.
+
+**jobs-1 (parallel cell ticks, `7.41.0`).** Same box/config, cells fanned across 12 cores: many-small-cells
+**~10.5× speedup** (near-linear in P, since C=1024 >> cores), mid (C=64) **~4×**, one-hot-cell (C=1) **~1×** (a
+single cell can't be split by the cell axis - that is layer 2, parallel `ForEach`). Re-measure with
+`dotnet run --project KhaozEngine.Benchmarks -c Release` (now prints inline vs parallel + speedup).
 
 ## Execution order (go)
 

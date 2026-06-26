@@ -5,6 +5,43 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.42.0
+
+Parallel `ForEach`: an ECS `World` can now fan a hot query's per-entity work across CPU cores - the entities axis,
+which breaks the single-hot-cell ceiling the cell axis (7.41.0) leaves. Archetype rows are independent memory, so a
+per-row-pure action over disjoint row ranges is race-free and order-independent: the parallel result is bit-identical
+to the sequential `ForEach` regardless of how rows partition. Opt-in and default-inline, so the existing `ForEach`
+path is byte-unchanged and lockstep / single-player sims are untouched. Layer 2 of the parallel-job-system program
+(`docs/superpowers/specs/2026-06-26-ecs-parallel-job-system-design.md`), built on the jobs-0 benchmark and the 7.41.0
+`IJobScheduler` seam. Additive, minor.
+
+- **Ecs: `World.ParallelForEach<...>` overloads (arity 1-8).** Mirror `ForEach<...>`, partitioning each matched
+  archetype's row range `[0,Count)` into a few contiguous chunks per core and fanning them across an `IJobScheduler`
+  (trailing optional arg; default an inline `SingleThreadedJobScheduler`, so omitting it is identical to `ForEach`).
+  Chunk boundaries depend only on row count and core count, never the scheduler, so inline and thread-pool produce
+  the same partition. The action must be **per-row-pure** (touch only the `ref` components handed in for the current
+  entity). `KhaozEngine.Ecs` now references `KhaozEngine.Simulation` for the seam (a zero-dependency leaf, so the
+  reference stays acyclic).
+- **Ecs: a read/write access-declaration model (`AccessSet` / `Access`).** `Access.Read<T>()` / `Access.Write<T>()`
+  build an immutable `AccessSet` describing a unit of work's component reads vs writes; `a.ConflictsWith(b)` is true
+  iff one writes a type the other touches (write-write or read-write hazard; two readers never conflict). Keyed by
+  `Type` so a declaration is world-portable; write beats read for the same type. This is the shared vocabulary the
+  system scheduler (layer 3) reuses to decide which systems may overlap.
+- **Ecs: a debug hazard guard.** While a `ParallelForEach` section runs, any reentrant world call from a worker
+  action - a structural change (`Spawn`/`Despawn`/`Set`/`Add`/`Remove`), a component read/write through the world
+  API (`Get`/`TryGet`), or a nested `ForEach`/`ParallelForEach` - throws `ParallelAccessViolationException` (it
+  breaks per-row-purity). On by default (`World.ParallelHazardChecks`, one bool check per world call, negligible
+  outside a section); a shipping server may disable it for a proven-pure hot loop.
+- **Ecs: a thread-safe deferred-structural-change path.** Buffered `ParallelForEach<...>(RefBufferAction<...>)`
+  overloads (arity 1-4) hand each worker chunk its own `EntityCommandBuffer`; the buffers are played back in
+  archetype-then-chunk (row) order after the section, so recorded `Create`/`Set`/etc. land identically to a
+  sequential `ForEach` recording into one buffer - and deterministically run to run. Inline structural changes inside
+  a parallel action stay forbidden (the hazard guard catches them); this is the supported way to mutate structure.
+- **Benchmark: an entities-axis sweep.** New `EntitiesAxisBenchmark`; the exe prints a one-hot-`World` section
+  sweeping per-row work, `ForEach` vs `ParallelForEach`. It shows the honest crossover: trivial per-row work is
+  fork/join-bound (parallel < 1x), but as the per-row compute grows toward a real hot system it amortizes the
+  fork/join and scales toward ~P× (on a 12-core box: ~0.3x at work=1, ~5x at work=32, ~7.5x at work=512).
+
 ## 7.41.0
 
 Parallel cell ticks: a `ShardHost` can now tick its independent cells across CPU cores - the biggest MMO-shape

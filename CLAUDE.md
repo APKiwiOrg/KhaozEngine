@@ -119,7 +119,16 @@ version/release work.
   `7.41.0` made `ShardHost.Tick` fan its independent cells across an opt-in `IJobScheduler` (default inline, so the
   single-threaded path is byte-unchanged); `SyncGhosts`/`ProcessHandoffs` stay sequential. This is layer 1 of the
   parallel-job-system program (`docs/superpowers/specs/2026-06-26-ecs-parallel-job-system-design.md`); the headless
-  server-tick benchmark it is measured on is the `KhaozEngine.Benchmarks` project (jobs-0, no package).)
+  server-tick benchmark it is measured on is the `KhaozEngine.Benchmarks` project (jobs-0, no package).
+  `7.42.0` added layer 2, the **entities axis**, in `KhaozEngine.Ecs`: opt-in `World.ParallelForEach<...>` (arity 1-8
+  pure + arity 1-4 buffered) fans a matched archetype's rows across the same `IJobScheduler` (default inline = byte-
+  identical to `ForEach`), with the `AccessSet`/`Access` read/write component-access declaration model
+  (`ConflictsWith`, the vocabulary layer 3's scheduler will reuse), a default-on debug hazard guard
+  (`World.ParallelHazardChecks` + `ParallelAccessViolationException`: any reentrant world call from a worker action
+  throws), and per-worker `EntityCommandBuffer`s merged in row order for thread-safe deterministic deferred structural
+  changes. `KhaozEngine.Ecs` now references `KhaozEngine.Simulation` for the seam (still acyclic - Simulation is a
+  zero-dependency leaf). The benchmark gained an `EntitiesAxisBenchmark` per-row-work sweep (shows the fork/join
+  crossover: parallel < 1x for trivial work, scaling toward ~P× as per-row work grows).)
   (`KhaozEngine.Content.Validator`
   is a build-time tool, `IsPackable=false`, shipped inside the `Content` package rather than versioned itself.)
   `KhaozEngine.Updates.Tool` (the `ke-updater` dotnet tool: manifest/genkey/sign/verify, shipped at `7.3.0`)

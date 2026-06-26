@@ -605,7 +605,8 @@ path derives its own world-space edge from the decal size.)
 Independent of input/rendering. A struct-based archetype ECS: components are **structs** implementing
 `IComponent`. `World` exposes `Spawn()` / `Despawn(e)` (with an `EntityCommandBuffer` via `World.Commands` for
 deferred structural changes), component access `Add/Set/Has/TryGet/Remove<T>` plus `ref T Get<T>` (by-ref, no
-boxing), iteration via `Query()` and `ForEach<T1..T8>(RefAction<…>)`, parent/child hierarchy
+boxing), iteration via `Query()` and `ForEach<T1..T8>(RefAction<…>)` (plus opt-in data-parallel `ParallelForEach`,
+see "Parallel `ForEach` + access declarations" below), parent/child hierarchy
 (`SetParent`/`DespawnTree`), per-`World` resources (`SetResource/GetResource<T>`), and systems grouped + ordered
 (`AddSystem(ISystem, group)`, `SetGroupOrder`, `Update(float dt)`). `CachedQuery` reuses a query across ticks to
 avoid per-tick allocation; `DeterministicRng` (xorshift128+/splitmix64, `CreateDerived(name)` for per-stream
@@ -1010,8 +1011,59 @@ Opt-in and default-off: a lockstep / single-player sim simply never sets a sched
 determinism is untouched. The cross-cell passes (`SyncGhosts`, `ProcessHandoffs`) mutate neighbouring cells via the
 `ICellLink`, so they are not cell-independent and deliberately stay single-threaded. Measure on the headless
 `KhaozEngine.Benchmarks` server-tick benchmark (`dotnet run --project KhaozEngine.Benchmarks -c Release`): on a
-12-core box it shows ~10x at 1024 cells, and ~1x for a single hot cell (one cell can't be split - that is the next
-layer, parallel `ForEach`).
+12-core box it shows ~10x at 1024 cells, and ~1x for a single hot cell (one cell can't be split by the cell axis -
+that is the entities axis, parallel `ForEach`, below).
+
+### Parallel `ForEach` + access declarations (`World.ParallelForEach`, `AccessSet`)
+
+The cell axis above can't speed up a single hot cell holding most of the entities. The **entities axis** can:
+`World.ParallelForEach<...>` mirrors `ForEach<...>` but partitions each matched archetype's rows across the same
+`IJobScheduler`, so one hot system over many entities uses every core. Archetype rows are independent memory, so a
+**per-row-pure** action (it touches only the `ref` components handed in for the current entity) is race-free and
+order-independent - the result is bit-identical to the sequential `ForEach` no matter how the rows partition. It is
+opt-in: the scheduler is a trailing optional arg defaulting to inline, so omitting it is exactly `ForEach`.
+
+```csharp
+// Hot integrate over a single big world - fanned across cores. Bit-identical to the ForEach version.
+world.ParallelForEach<Position, Velocity>((Entity _, ref Position p, ref Velocity v) =>
+{
+    p.X += v.X * dt;   // per-row-pure: only THIS entity's components, no cross-entity reads, no structural changes
+    p.Y += v.Y * dt;
+}, new ThreadPoolJobScheduler());
+```
+
+**The per-row-pure contract is enforced (debug guard).** While a parallel section runs, any reentrant world call
+from a worker action - a structural change (`Spawn`/`Despawn`/`Set`/`Add`/`Remove`), a component read/write through
+the world (`Get`/`TryGet`), or a nested `ForEach`/`ParallelForEach` - throws `ParallelAccessViolationException`,
+because it breaks per-row-purity. The guard is on by default (`World.ParallelHazardChecks`, one bool check per world
+call); a shipping server may set it `false` for a proven-pure hot loop.
+
+**Need structural changes from a parallel action?** Use the buffered overload: each worker chunk gets its own
+`EntityCommandBuffer`, and the buffers replay in row order after the section - thread-safe and deterministic, identical
+to a sequential `ForEach` recording into one buffer.
+
+```csharp
+world.ParallelForEach<Health>((Entity e, ref Health h, EntityCommandBuffer cmd) =>
+{
+    if (h.Value <= 0) cmd.Despawn(e);   // recorded now, applied deterministically at the join (never inline)
+}, new ThreadPoolJobScheduler());
+```
+
+**`AccessSet` - the read/write declaration model.** `Access.Read<T>()` / `Access.Write<T>()` build an immutable
+declaration of which components a unit of work reads vs writes; `a.ConflictsWith(b)` is true iff one writes a type the
+other touches (write-write or read-write; two readers never conflict). `ParallelForEach`'s own safety is the runtime
+guard above, but `AccessSet` is the explicit vocabulary a future system scheduler reuses to decide which systems may
+run concurrently.
+
+```csharp
+AccessSet move = Access.Write<Position>().Read<Velocity>();
+AccessSet ai   = Access.Write<Brain>().Read<Position>();
+bool canOverlap = !move.ConflictsWith(ai);   // false: ai reads Position, move writes it
+```
+
+Benchmark the entities axis on `KhaozEngine.Benchmarks` (the "entities axis" sweep): a fork/join has a fixed cost, so
+trivial per-row work is overhead-bound (parallel < 1x) while a realistic hot system scales toward ~P× - the sweep
+prints the crossover so the win is only claimed where it's real.
 
 ### Sessions (`NetServer` / `NetClient`)
 

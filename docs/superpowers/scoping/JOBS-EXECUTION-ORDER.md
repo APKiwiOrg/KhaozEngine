@@ -13,7 +13,7 @@ kickoff for a **fresh chat**. Only current work lives here; completed work is NO
 |---|---|---|
 | 0 | Benchmark harness (measure the server tick) | **DONE** → `KhaozEngine.Benchmarks` (project + README; no package, no version bump) |
 | 1 | Parallel cell ticks (`ShardHost` across cores) | **DONE** (`7.41.0`) → `IJobScheduler` seam in `Simulation` + opt-in `ShardHost.Scheduler` |
-| 2 | Parallel `ForEach` + R/W access declarations | **TO-DO** (unblocked by 0; independent of 1) → `jobs-2-parallel-foreach-access.md` |
+| 2 | Parallel `ForEach` + R/W access declarations | **DONE** (`7.42.0`) → `World.ParallelForEach` (arity 1-8 pure + 1-4 buffered) + `AccessSet`/`Access` + the `ParallelHazardChecks` debug guard, all in `KhaozEngine.Ecs` |
 | 3 | System scheduler (conditional, measured) | TO-DO (needs 2 + a benchmark verdict) → `jobs-3-system-scheduler.md` |
 
 **Baseline numbers (jobs-0, single-threaded).** At equal N=65,536 entities, S=4 systems, 30 Hz, on a 12-core box:
@@ -24,6 +24,14 @@ entities/sec); mid (C=64) ≈ 0.48 ms/tick (~135M entities/sec). The ~6× gap at
 **~10.5× speedup** (near-linear in P, since C=1024 >> cores), mid (C=64) **~4×**, one-hot-cell (C=1) **~1×** (a
 single cell can't be split by the cell axis - that is layer 2, parallel `ForEach`). Re-measure with
 `dotnet run --project KhaozEngine.Benchmarks -c Release` (now prints inline vs parallel + speedup).
+
+**jobs-2 (parallel `ForEach`, the entities axis, `7.42.0`).** `World.ParallelForEach` fans one hot archetype's rows
+across cores - the win the cell axis can't give a single hot cell. The benchmark's new entities-axis section sweeps
+per-row work on one hot World (E=65,536) on the same 12-core box, because the result is a **crossover, not a single
+number**: a fork/join has a fixed cost, so trivial per-row work is overhead-bound (work=1 ≈ **0.3×**, a loss) while a
+realistic hot system amortizes it and scales toward ~P× (work=32 ≈ **5×**, work=128 ≈ **6.7×**, work=512 ≈ **7.5×**).
+Correctness (parallel result == single-threaded, the hazard guard catches violations, buffered structural changes
+replay deterministically) is headless-tested over the inline scheduler in `KhaozEngine.Tests`.
 
 ## Execution order (go)
 

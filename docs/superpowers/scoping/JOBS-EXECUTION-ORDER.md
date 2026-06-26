@@ -14,7 +14,11 @@ kickoff for a **fresh chat**. Only current work lives here; completed work is NO
 | 0 | Benchmark harness (measure the server tick) | **DONE** → `KhaozEngine.Benchmarks` (project + README; no package, no version bump) |
 | 1 | Parallel cell ticks (`ShardHost` across cores) | **DONE** (`7.41.0`) → `IJobScheduler` seam in `Simulation` + opt-in `ShardHost.Scheduler` |
 | 2 | Parallel `ForEach` + R/W access declarations | **DONE** (`7.42.0`) → `World.ParallelForEach` (arity 1-8 pure + 1-4 buffered) + `AccessSet`/`Access` + the `ParallelHazardChecks` debug guard, all in `KhaozEngine.Ecs` |
-| 3 | System scheduler (conditional, measured) | TO-DO (needs 2 + a benchmark verdict) → `jobs-3-system-scheduler.md` |
+| 3 | System scheduler (conditional, measured) | **EVALUATED → DE-SCOPED** (gate not met; no code shipped) → the `--gate` benchmark verdict below. Re-open only if a real game's per-cell profile changes the picture. |
+
+**The program is complete at layer 2.** Layers 0-2 shipped; layer 3 was measurement-gated and the measurement said no
+(below). Nothing is wasted: the `AccessSet` model layer 3 would need is already in `KhaozEngine.Ecs`, so it can be
+built later if a game's profile ever justifies it.
 
 **Baseline numbers (jobs-0, single-threaded).** At equal N=65,536 entities, S=4 systems, 30 Hz, on a 12-core box:
 many-small-cells (C=1024) ≈ 3.0 ms/tick (~21M entities/sec); one-hot-cell (C=1) ≈ 0.45 ms/tick (~144M
@@ -33,13 +37,33 @@ realistic hot system amortizes it and scales toward ~P× (work=32 ≈ **5×**, w
 Correctness (parallel result == single-threaded, the hazard guard catches violations, buffered structural changes
 replay deterministically) is headless-tested over the inline scheduler in `KhaozEngine.Tests`.
 
-## Execution order (go)
+**jobs-3 GATE (system scheduler) — EVALUATED, gate NOT met, de-scoped.** The scoping doc said build the system
+scheduler only if a single cell's tick is bottlenecked by the *sum of distinct systems* such that overlapping the
+non-conflicting ones would beat what layers 1+2 already give. The `--gate` benchmark
+(`dotnet run --project KhaozEngine.Benchmarks -c Release -- --gate`) models a realistic 7-system cell (a 4-system
+Pos/Vel conflict cluster + 3 independent bookkeeping systems) and compares, per entity count: `T_seq` (all systems
+single-threaded), `T_l2` (each system via `ParallelForEach`, what we ship), and `T_l3ceil` (the most optimistic
+overlap of the single-threaded systems, list-scheduled over the `AccessSet` conflict graph on all cores). Verdict on a
+12-core box, stable across runs:
+- Layer 3's cross-system overlap is **capped at ~2.1×** (the conflict-graph width), exactly the "small, DAG-width-
+  capped multiplier" the spec's big-O table predicts. It does **not** grow with entity count.
+- Layer 2 parallelizes *within* each system, uncapped by system count, and **scales to ~5-6.4×**. For any cell heavy
+  enough to be a bottleneck (≥16k entities) **layer 2 already beats the best-possible layer 3 by 2.4-3×** (e.g. at
+  65,536: `T_l2`≈3.8 ms vs `T_l3ceil`≈9.2 ms). They compete for the same cores, and layer 2 ~reaches the total-work/P
+  floor, so layer 3 adds nothing on top.
+- The only entity counts where layer 3 "wins" are E=256 (a ~0.2 ms cell — the cell axis's domain, fanned in bulk by
+  layer 1) and E=4096 (noise in layer 2's fork/join crossover; flips run-to-run). Neither is a real per-cell bottleneck.
 
-**Measurement first, then biggest/cheapest/safest axis first:** `0 → 1 → 2 → (3 only if the benchmark says so)`.
-Layer 1 (cells) and layer 2 (entities) are independent of each other and could run as concurrent worktrees once 0
-lands, but 1 is the bigger MMO win for less risk, so do it first. Layer 3 (the system scheduler) is the conditional
-capstone: build it only if the benchmark shows the **per-cell critical path** (not cell count, not a hot system) is the
-remaining bottleneck — see the program spec's big-O table.
+So the systems axis is the wrong tool here: the bottleneck a hot cell has is *entities*, which layer 2 already splits
+across all cores. Re-run `--gate` if a future game's per-cell system mix changes (many tiny independent systems over
+few entities is the regime that would flip it); the `AccessSet` foundation is in place to build the scheduler then.
+
+## Execution order (done)
+
+**Measurement first, then biggest/cheapest/safest axis first:** `0 → 1 → 2 → (3 gated)`. Layers 0-2 shipped. Layer 3
+(the system scheduler) was the conditional capstone, gated on the benchmark showing the per-cell critical path of
+distinct systems as the remaining bottleneck. The `--gate` measurement (above) showed it is not — layer 2 already wins
+that ground — so layer 3 was de-scoped, per the spec's "stop and record why".
 
 ## How to run one (each doc = one fresh chat)
 

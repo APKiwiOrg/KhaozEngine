@@ -123,7 +123,8 @@ version/release work.
   `7.42.0` added layer 2, the **entities axis**, in `KhaozEngine.Ecs`: opt-in `World.ParallelForEach<...>` (arity 1-8
   pure + arity 1-4 buffered) fans a matched archetype's rows across the same `IJobScheduler` (default inline = byte-
   identical to `ForEach`), with the `AccessSet`/`Access` read/write component-access declaration model
-  (`ConflictsWith`, the vocabulary layer 3's scheduler will reuse), a default-on debug hazard guard
+  (`ConflictsWith`, the vocabulary a future system scheduler would reuse - layer 3 was evaluated via the benchmark's
+  `--gate` and de-scoped, so the parallel-job-system program is complete at the entities axis), a default-on debug hazard guard
   (`World.ParallelHazardChecks` + `ParallelAccessViolationException`: any reentrant world call from a worker action
   throws), and per-worker `EntityCommandBuffer`s merged in row order for thread-safe deterministic deferred structural
   changes. `KhaozEngine.Ecs` now references `KhaozEngine.Simulation` for the seam (still acyclic - Simulation is a

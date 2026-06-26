@@ -1,7 +1,37 @@
-bin/
-obj/
+# ===== Standard base - keep in sync across Nullwake / SpaceGame / Hardpoint =====
+
+# Build outputs
+**/bin/
+**/obj/
+
+# .NET / IDE
 *.user
+*.suo
+*.sln.docstates
+*.lscache
 .vs/
+
+# OS metadata
+.DS_Store
+**/.DS_Store
+Thumbs.db
+
+# Local environment / secrets
+.env
+.env.local
+.env.*.local
+.env.production
+
+# Local AI / tooling settings
+.claude/settings.local.json
+.claude/worktrees/
+.superpowers/
+
+# Build / publish artifacts
 artifacts/
+
+# ===== End standard base =====
+
+# ----- KhaozEngine-specific -----
+# Dev-only local NuGet feed (packed packages live here; the durable store is GitHub Packages - see CLAUDE.md)
 local-feed/
-.claude/

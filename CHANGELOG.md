@@ -5,6 +5,29 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.41.0
+
+Parallel cell ticks: a `ShardHost` can now tick its independent cells across CPU cores - the biggest MMO-shape
+server-scale win for the least risk, since cells are disjoint `World`s and the fan-out is hazard-free. Opt-in and
+default-off, so the single-threaded path is byte-unchanged and lockstep / single-player sims are untouched. Layer 1
+of the parallel-job-system program (`docs/superpowers/specs/2026-06-26-ecs-parallel-job-system-design.md`), built on
+the jobs-0 benchmark. Additive, minor.
+
+- **Simulation: a worker-pool seam (`IJobScheduler`).** New `IJobScheduler.For(int count, Action<int> body)` runs
+  N independent jobs and blocks until all complete. `SingleThreadedJobScheduler` (the default everywhere) runs them
+  inline in index order - deterministic, allocation-free, the single-threaded baseline a parallel result is asserted
+  equal to. `ThreadPoolJobScheduler` (optional `maxDegreeOfParallelism`) fans them across the BCL thread pool via
+  `Parallel.For`, with a fast path for `count <= 1`. This is the one seam layers 2-3 (parallel `ForEach`, the system
+  scheduler) will reuse.
+- **Sharding: `ShardHost` ticks cells across the scheduler.** `ShardHost` gains a settable `Scheduler` property and a
+  trailing optional ctor arg, defaulting to an inline `SingleThreadedJobScheduler`. `Tick` fans the per-cell sim steps
+  across it over a reused cell-list snapshot; because each cell touches only its own `World`, the parallel result is
+  identical to the single-threaded one. `SyncGhosts` and `ProcessHandoffs` stay single-threaded (they mutate
+  neighbouring cells via the `ICellLink`, so they are not cell-independent).
+- **Benchmark reports inline vs parallel.** `ServerTickBenchmark.Run` takes an optional scheduler; the exe now prints
+  inline ms/tick, parallel ms/tick, and the speedup per regime. On a 12-core box at N=65,536: many small cells
+  (C=1024) ~10x, mid (C=64) ~4x, one hot cell (C=1) ~1x (a single cell can't split - that is layer 2).
+
 ## 7.40.0
 
 GLFW-backed text clipboard: text get/set now works on Windows and Linux (it was a silent no-op before). The

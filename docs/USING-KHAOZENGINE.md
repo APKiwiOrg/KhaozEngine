@@ -988,6 +988,31 @@ host.Advance(elapsedSeconds, tickIndex =>
 This is the server-side spine: drain per-connection commands once per fixed tick and step the sim, with no
 window or GPU.
 
+### Worker-pool seam (`IJobScheduler`) + parallel cell ticks
+
+**`IJobScheduler`** (in `KhaozEngine.Simulation`) is the engine's one worker-pool abstraction: `For(int count,
+Action<int> body)` runs `count` independent jobs and blocks until all finish. Two implementations ship:
+`SingleThreadedJobScheduler` (the default everywhere - runs jobs inline in index order, deterministic and
+allocation-free) and `ThreadPoolJobScheduler` (fans them across the BCL thread pool via `Parallel.For`, optional
+`maxDegreeOfParallelism`).
+
+A `ShardHost`'s cells are disjoint `World`s, so its `Tick` is embarrassingly parallel. Opt in by assigning a
+scheduler; everything else is unchanged, and the parallel result is identical to the single-threaded one:
+
+```csharp
+var host = new ShardHost(cellSize: 256f, tickSeconds: 1f / 30f, registry);
+host.Scheduler = new ThreadPoolJobScheduler();   // tick cells across cores (default is inline single-threaded)
+
+host.Tick(elapsedSeconds);   // per-cell sim steps now fan across the pool; SyncGhosts/ProcessHandoffs stay sequential
+```
+
+Opt-in and default-off: a lockstep / single-player sim simply never sets a scheduler and its single-threaded
+determinism is untouched. The cross-cell passes (`SyncGhosts`, `ProcessHandoffs`) mutate neighbouring cells via the
+`ICellLink`, so they are not cell-independent and deliberately stay single-threaded. Measure on the headless
+`KhaozEngine.Benchmarks` server-tick benchmark (`dotnet run --project KhaozEngine.Benchmarks -c Release`): on a
+12-core box it shows ~10x at 1024 cells, and ~1x for a single hot cell (one cell can't be split - that is the next
+layer, parallel `ForEach`).
+
 ### Sessions (`NetServer` / `NetClient`)
 
 Above the raw transport, the session layer turns connections into authenticated, slotted players. The server

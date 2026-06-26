@@ -92,7 +92,9 @@ version/release work.
   `Replication`/`WorldStore`/`Sharding`)
   plus the four
   code-free umbrella metapackages (`Foundation`, `Game2D`, `Game3D`, `Server`). (`Simulation` = the headless
-  `FixedTickHost` fixed-tick accumulator, new at `7.35.0` with the MMO netcode stack's Phase 0; `Netcode` gained
+  `FixedTickHost` fixed-tick accumulator plus (from `7.41.0`) the `IJobScheduler` worker-pool seam
+  (`SingleThreadedJobScheduler` inline default + `ThreadPoolJobScheduler` over `Parallel.For`), the shared
+  parallel-job-system primitive; new at `7.35.0` with the MMO netcode stack's Phase 0; `Netcode` gained
   the `INetTransport` seam + `LoopbackTransport` and `Netcode.LiteNetLib` gained the UDP `INetTransport` bindings
   the same release. `7.36.0` added the MMO stack's Phases 1+2: `Netcode` gained the `NetServer`/`NetClient`
   session layer; new `Replication` = authoritative ECS replication (`NetId`/`ReplicationRegistry`/`SnapshotWriter`/
@@ -113,7 +115,11 @@ version/release work.
   `NetServer` session layer + per-client home-cell serving + `RemoteCommandQueue` input + `WorldStore` on
   `FixedTickHost`; a sample, `IsPackable=false`, not itself a package). Note:
   the package id is `KhaozEngine.Sharding`, NOT `KhaozEngine.World` - a namespace whose leaf is literally `World`
-  would shadow the ECS `World` type. `Sharding` (3A + 3B + 3C + 3D + 3E) shipped at `7.38.0` as the Phase 3 batch.)
+  would shadow the ECS `World` type. `Sharding` (3A + 3B + 3C + 3D + 3E) shipped at `7.38.0` as the Phase 3 batch.
+  `7.41.0` made `ShardHost.Tick` fan its independent cells across an opt-in `IJobScheduler` (default inline, so the
+  single-threaded path is byte-unchanged); `SyncGhosts`/`ProcessHandoffs` stay sequential. This is layer 1 of the
+  parallel-job-system program (`docs/superpowers/specs/2026-06-26-ecs-parallel-job-system-design.md`); the headless
+  server-tick benchmark it is measured on is the `KhaozEngine.Benchmarks` project (jobs-0, no package).)
   (`KhaozEngine.Content.Validator`
   is a build-time tool, `IsPackable=false`, shipped inside the `Content` package rather than versioned itself.)
   `KhaozEngine.Updates.Tool` (the `ke-updater` dotnet tool: manifest/genkey/sign/verify, shipped at `7.3.0`)

@@ -1,10 +1,10 @@
-# KhaozEngine.Benchmarks - server-tick benchmark (jobs-0)
+# KhaozEngine.Benchmarks - server-tick benchmark (jobs-0/1)
 
-A headless, repeatable benchmark of **one single-threaded server tick** across a matrix of
-(cells `C`, entities/cell `E`, systems `S`). This is sub-project 0 of the parallel-job-system program
-(`docs/superpowers/specs/2026-06-26-ecs-parallel-job-system-design.md`): the **single-threaded baseline** every
-later layer (parallel cell ticks, parallel `ForEach`, the system scheduler) must move. Without it we'd optimize
-blind, so this lands first.
+A headless, repeatable benchmark of **one server tick** across a matrix of (cells `C`, entities/cell `E`,
+systems `S`), of the parallel-job-system program (`docs/superpowers/specs/2026-06-26-ecs-parallel-job-system-design.md`).
+jobs-0 established the **single-threaded baseline** every later layer must move; jobs-1 added parallel cell ticks, so
+each regime is now run **inline and across cores** with the speedup reported. Without the benchmark we'd optimize
+blind, so it landed first.
 
 Not a shipped package (`IsPackable=false`) and not on the engine version line. The timing loop only runs via
 `dotnet run`; CI's `dotnet test` never invokes it, so it stays out of CI's timed path. The harness's deterministic
@@ -35,27 +35,31 @@ Always run in `-c Release`. Debug numbers are not representative.
 
 ## Read it
 
+Each regime is run twice - inline (`SingleThreadedJobScheduler`) and across cores (`ThreadPoolJobScheduler`):
+
 ```
-regime                   C         E           N   S     ms/tick     entities/sec    comp-visits/sec
--------------------------------------------------------------------------------------------------------
-many small cells      1024        64       65536   4       x.xxx      nnn,nnn,nnn        nnn,nnn,nnn
-one hot cell             1     65536       65536   4       x.xxx      nnn,nnn,nnn        nnn,nnn,nnn
-mid (8x8 cells)         64      1024       65536   4       x.xxx      nnn,nnn,nnn        nnn,nnn,nnn
+regime                   C         E           N   S   inline ms      par ms  speedup   par entities/sec
+--------------------------------------------------------------------------------------------------------
+many small cells      1024        64       65536   4       2.970       0.284   10.46x        230,866,242
+one hot cell             1     65536       65536   4       0.442       0.446    0.99x        147,031,538
+mid (8x8 cells)         64      1024       65536   4       0.486       0.119    4.07x        548,808,776
 ```
 
-- **ms/tick** - mean wall-clock for one server tick (every cell advanced once). The headline latency.
-- **entities/sec** - `N` processed per tick / per-tick seconds. Headline throughput.
-- **comp-visits/sec** - `S × entities/sec`: the real `O(S·N)` work rate (each of `S` systems passes over all `N`
-  entities every tick). Lets rows with different `S` stay comparable.
+(Representative 12-core run; absolute numbers vary by machine.)
 
-The three regimes are the shapes the program's big-O table distinguishes, held at **equal N** so the numbers compare
-directly. On the single-threaded baseline they should be close (the work is `O(S·N)` regardless of shape); the gap is
-mostly per-cell overhead. They diverge under the later parallel layers - **many small cells** is what layer 1
-(parallel cell ticks) speeds up; **one hot cell** is the degenerate case only layer 2 (parallel `ForEach`) can split.
+- **inline ms** - mean wall-clock for one single-threaded server tick. The jobs-0 baseline.
+- **par ms** - same tick with cells fanned across cores (`ShardHost.Scheduler = new ThreadPoolJobScheduler()`).
+- **speedup** - `inline ms / par ms`. Scales ~linearly with cores **up to the cell count**.
+- **par entities/sec** - parallel throughput (`N` per tick / per-tick seconds).
+
+The three regimes are the shapes the program's big-O table distinguishes, held at **equal N**. **Many small cells**
+(C >> cores) is the dominant MMO shape and the one parallel cell ticks speeds up most (near-linear in cores).
+**One hot cell** (C=1) can't be split by the cell axis at all (~1x) - that is the next layer's job (parallel
+`ForEach`, jobs-2). **Mid** lands in between.
 
 ## Parameterising
 
 `BenchmarkConfig` exposes `GridWidth`/`GridHeight` (-> `C`), `EntitiesPerCell` (`E`), `Systems` (`S`), `WarmupTicks`,
 `TimedTicks`, `Seed`, `CellSize`, `TickSeconds`. `BenchmarkMatrix.Default()` is the standard matrix; construct your own
-`BenchmarkConfig` and call `ServerTickBenchmark.Run(config)` to compare a single point (a later layer does exactly
-this to show its win).
+`BenchmarkConfig` and call `ServerTickBenchmark.Run(config, scheduler)` (pass a `ThreadPoolJobScheduler` for the
+parallel path, or omit for inline) to compare a single point - a later layer does exactly this to show its win.

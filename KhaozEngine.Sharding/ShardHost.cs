@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using KhaozEngine.Ecs;
 using KhaozEngine.Replication;
+using KhaozEngine.Simulation;
 
 namespace KhaozEngine.Sharding;
 
@@ -25,7 +26,9 @@ public delegate bool CellPositionAccessor(World world, Entity entity, out float 
 /// <see cref="Ghost"/> entities (read-only; the owner stays the sole simulator). Authority handoff (an entity
 /// changing owner on a crossing) is a later Phase 3 stage. Deterministic and headless. Cells are retained in
 /// creation order (<see cref="Cells"/>) so iteration is stable. Replicated entities are assumed to carry
-/// globally-unique <see cref="NetId"/>s across cells.
+/// globally-unique <see cref="NetId"/>s across cells. Because cells are disjoint <see cref="World"/>s,
+/// <see cref="Tick"/> fans them across an opt-in <see cref="Scheduler"/> (default single-threaded) for
+/// near-linear-in-cores throughput; the cross-cell passes stay single-threaded.
 /// </remarks>
 public sealed class ShardHost
 {
@@ -37,6 +40,8 @@ public sealed class ShardHost
     private readonly Dictionary<CellCoord, CellSim> cells = new();
     private readonly List<CellSim> ordered = new();
     private readonly Dictionary<int, int> clientPlayerNetId = new(); // session slot -> the client's player NetId
+    private IJobScheduler scheduler;
+    private CellSim[] tickBuffer = Array.Empty<CellSim>(); // reused per-tick fan-out snapshot of `ordered`
 
     /// <param name="cellSize">World-grid cell edge length in world units. Must be &gt; 0.</param>
     /// <param name="tickSeconds">Fixed timestep shared by every cell, seconds per tick. Must be &gt; 0.</param>
@@ -45,8 +50,10 @@ public sealed class ShardHost
     /// <param name="overlapMargin">Border overlap distance: owned entities within this distance of a cell edge are mirrored as ghosts into the neighbor across that edge. Must be &gt;= 0; 0 disables ghosting.</param>
     /// <param name="positionAccessor">Reads an entity's world position (over the game's position component). Required when <paramref name="overlapMargin"/> &gt; 0.</param>
     /// <param name="cellLink">Inter-cell message transport. Defaults to a fresh in-process <see cref="InProcessCellLink"/>.</param>
+    /// <param name="scheduler">Worker pool that <see cref="Tick"/> fans the independent per-cell sim steps across. Defaults to an inline <see cref="SingleThreadedJobScheduler"/> (single-threaded, byte-unchanged behaviour); pass a <see cref="ThreadPoolJobScheduler"/> to tick cells across cores. Also settable later via <see cref="Scheduler"/>.</param>
     public ShardHost(float cellSize, float tickSeconds, ReplicationRegistry registry, float interestCellSize,
-        float overlapMargin, CellPositionAccessor? positionAccessor = null, ICellLink? cellLink = null)
+        float overlapMargin, CellPositionAccessor? positionAccessor = null, ICellLink? cellLink = null,
+        IJobScheduler? scheduler = null)
     {
         if (cellSize <= 0f)
             throw new ArgumentOutOfRangeException(nameof(cellSize), cellSize, "Cell size must be positive.");
@@ -63,6 +70,7 @@ public sealed class ShardHost
         OverlapMargin = overlapMargin;
         this.positionAccessor = positionAccessor;
         link = cellLink ?? new InProcessCellLink();
+        this.scheduler = scheduler ?? new SingleThreadedJobScheduler();
     }
 
     /// <summary>Convenience overload: no border ghosting (overlap margin 0).</summary>
@@ -81,6 +89,18 @@ public sealed class ShardHost
 
     /// <summary>The inter-cell message transport ghost sync runs over.</summary>
     public ICellLink CellLink => link;
+
+    /// <summary>
+    /// The worker pool <see cref="Tick"/> fans the independent per-cell sim steps across. Defaults to an inline
+    /// <see cref="SingleThreadedJobScheduler"/>; assign a <see cref="ThreadPoolJobScheduler"/> to tick cells across
+    /// cores. Set it during setup, not concurrently with a tick. Only <see cref="Tick"/> is parallelized; the
+    /// cross-cell passes (<see cref="SyncGhosts"/>, <see cref="ProcessHandoffs"/>) stay single-threaded.
+    /// </summary>
+    public IJobScheduler Scheduler
+    {
+        get => scheduler;
+        set => scheduler = value ?? throw new ArgumentNullException(nameof(value));
+    }
 
     /// <summary>Number of cells currently instantiated.</summary>
     public int CellCount => ordered.Count;
@@ -121,12 +141,20 @@ public sealed class ShardHost
 
     /// <summary>
     /// Advances every cell by <paramref name="elapsedSeconds"/> at the shared fixed rate (see
-    /// <see cref="CellSim.Tick"/>). Steps owned-entity simulation only; ghost mirroring is <see cref="SyncGhosts"/>.
+    /// <see cref="CellSim.Tick"/>), fanning the independent per-cell sim steps across <see cref="Scheduler"/>.
+    /// Steps owned-entity simulation only; ghost mirroring is <see cref="SyncGhosts"/>. Cells are disjoint
+    /// <see cref="World"/>s touching only their own state, so the fan-out is embarrassingly parallel and the
+    /// parallel result is identical to the single-threaded one. The cell list is snapshotted before fanning (a
+    /// sim step never creates cells, and <c>ordered</c> is append-only, so the reused buffer stays valid while the
+    /// count is unchanged), giving the scheduler a stable index space.
     /// </summary>
     public void Tick(float elapsedSeconds, int maxTicksPerFrame = 8)
     {
-        for (int i = 0; i < ordered.Count; i++)
-            ordered[i].Tick(elapsedSeconds, maxTicksPerFrame);
+        int n = ordered.Count;
+        if (n == 0) return;
+        if (tickBuffer.Length != n) tickBuffer = ordered.ToArray();
+        CellSim[] snapshot = tickBuffer;
+        scheduler.For(n, i => snapshot[i].Tick(elapsedSeconds, maxTicksPerFrame));
     }
 
     /// <summary>
@@ -135,7 +163,8 @@ public sealed class ShardHost
     /// <see cref="CellLink"/>, using the Replication codecs); each cell then applies inbound snapshots into its
     /// world as <see cref="Ghost"/> entities and despawns ghosts from any source that stopped mirroring. No-op when
     /// <see cref="OverlapMargin"/> is 0. Deterministic. Ghosting only targets cells that already exist (it never
-    /// creates a neighbor).
+    /// creates a neighbor). Runs single-threaded (unlike <see cref="Tick"/>): each cell writes ghosts into its
+    /// <em>neighbours'</em> worlds via the <see cref="ICellLink"/>, so the passes are not cell-independent.
     /// </summary>
     public void SyncGhosts()
     {
@@ -190,7 +219,8 @@ public sealed class ShardHost
     /// A networked <see cref="ICellLink"/> would instead span calls: a migrated entity stays <see cref="Migrating"/>
     /// (frozen, not counted as an owner, not simulated) on the source until the ack arrives, while the destination
     /// owns it once received - so there is never double-simulation and no permanent duplication or loss, only
-    /// in-flight latency.
+    /// in-flight latency. Runs single-threaded (unlike <see cref="Tick"/>): handoff moves entities
+    /// <em>between</em> cells via the <see cref="ICellLink"/>, so the work is not cell-independent.
     /// </remarks>
     public void ProcessHandoffs()
     {

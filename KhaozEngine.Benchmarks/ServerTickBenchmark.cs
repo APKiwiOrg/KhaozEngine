@@ -3,6 +3,7 @@ using KhaozEngine.Ecs;
 using KhaozEngine.Primitives;
 using KhaozEngine.Replication;
 using KhaozEngine.Sharding;
+using KhaozEngine.Simulation;
 
 namespace KhaozEngine.Benchmarks;
 
@@ -58,10 +59,13 @@ public static class ServerTickBenchmark
     /// Builds the host, runs <see cref="BenchmarkConfig.WarmupTicks"/> un-timed ticks (JIT/cache warm), then times
     /// <see cref="BenchmarkConfig.TimedTicks"/> ticks and returns the measurement. Per-tick wall-clock divides the
     /// elapsed time by the ticks <em>actually</em> produced, so float accumulator drift can't skew the figure.
+    /// Pass a <paramref name="scheduler"/> (e.g. a <see cref="ThreadPoolJobScheduler"/>) to fan the per-cell ticks
+    /// across cores; the default is the inline single-threaded baseline.
     /// </summary>
-    public static BenchmarkResult Run(BenchmarkConfig config)
+    public static BenchmarkResult Run(BenchmarkConfig config, IJobScheduler? scheduler = null)
     {
         ShardHost host = Build(config);
+        if (scheduler is not null) host.Scheduler = scheduler;
         float dt = config.TickSeconds;
 
         // maxTicksPerFrame:1 + feeding exactly dt ⇒ each ShardHost.Tick advances every cell by exactly one tick.

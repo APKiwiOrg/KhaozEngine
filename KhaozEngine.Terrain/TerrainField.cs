@@ -45,5 +45,34 @@ namespace KhaozEngine.Terrain
             if (wSum > 1e-6f) { baseH /= wSum; hill /= wSum; }
             return (baseH, hill, best);
         }
+
+        /// <summary>The one source of truth for ground height at a world point. Folds biome shape, base
+        /// coordinate-hash noise, then each feature in order. Stateless in (x,z,seed).</summary>
+        public float SampleHeight(float x, float z)
+        {
+            var shape = ShapeAt(z);
+            float gentle = _cfg.GentleAmplitude * TerrainNoise.Fbm(x * _cfg.GentleFrequency, z * _cfg.GentleFrequency, _cfg.Seed);
+            float detail = TerrainNoise.Turbulence(x * _cfg.DetailFrequency, z * _cfg.DetailFrequency, _cfg.Seed, _cfg.DetailOctaves);
+            float h = shape.baseHeight + gentle + shape.hillAmp * detail;
+
+            var feats = _cfg.Features;
+            if (feats != null)
+                for (int i = 0; i < feats.Length; i++)
+                    h = feats[i].Apply(x, z, h);
+            return h;
+        }
+
+        /// <summary>Surface normal via central finite difference (eps = 1 m). Flat ground returns +Y.</summary>
+        public Vector3 SampleNormal(float x, float z)
+        {
+            const float eps = 1f;
+            float hxp = SampleHeight(x + eps, z), hxm = SampleHeight(x - eps, z);
+            float hzp = SampleHeight(x, z + eps), hzm = SampleHeight(x, z - eps);
+            var n = new Vector3(-(hxp - hxm) / (2f * eps), 1f, -(hzp - hzm) / (2f * eps));
+            return Vector3.Normalize(n);
+        }
+
+        /// <summary>The dominant biome at the world point (from the band blend).</summary>
+        public BiomeId SampleBiome(float x, float z) => ShapeAt(z).biome;
     }
 }

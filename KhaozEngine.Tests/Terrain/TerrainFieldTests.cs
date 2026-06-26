@@ -51,5 +51,47 @@ namespace KhaozEngine.Tests.Terrain
             // at z=48 the two bands are 50/50: baseHeight ~= mean(0, 34) = 17.
             Assert.Equal(17f, f.ShapeAt(48f).baseHeight, 0);
         }
+
+        [Fact]
+        public void SampleHeight_is_deterministic_across_instances()
+        {
+            var a = TwoBand(); var b = TwoBand();
+            Assert.Equal(a.SampleHeight(12.3f, 45.6f), b.SampleHeight(12.3f, 45.6f));
+        }
+
+        [Fact]
+        public void SampleHeight_locality_independent_of_query_path()
+        {
+            // sampling a far point first must not change a later sample (statelessness).
+            var f = TwoBand();
+            float direct = f.SampleHeight(5f, 5f);
+            _ = f.SampleHeight(9999f, -9999f);
+            Assert.Equal(direct, f.SampleHeight(5f, 5f));
+        }
+
+        [Fact]
+        public void Mountains_rise_above_meadow()
+        {
+            var f = TwoBand();
+            Assert.True(f.SampleHeight(0f, 120f) > f.SampleHeight(0f, 0f) + 20f);
+        }
+
+        [Fact]
+        public void Normal_on_flat_meadow_points_up()
+        {
+            var f = TwoBand();
+            var n = f.SampleNormal(0f, 0f);
+            Assert.True(n.Y > 0.99f);
+        }
+
+        [Fact]
+        public void Normal_tilts_on_a_slope()
+        {
+            var f = TwoBand();
+            // the mountain ramp climbs toward +Z, so its normal leans toward -Z.
+            var n = f.SampleNormal(0f, 50f);
+            Assert.True(n.Y < 0.999f);
+            Assert.True(n.Z < 0f);
+        }
     }
 }

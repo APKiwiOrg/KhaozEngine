@@ -38,6 +38,17 @@ namespace KhaozEngine.Render3D
         public float NearPlane = 0.1f;
         public float FarPlane = 500f;
 
+        /// <summary>
+        /// Optional ground-height sampler. When set, <see cref="Eye"/> is kept at least <see cref="GroundClearance"/>
+        /// above the ground at its own XZ, so the camera does not sink through terrain when the target is in a dip
+        /// (the surrounding ground rises behind it). Terrain-agnostic: a plain delegate, no terrain dependency
+        /// (mirrors how <c>CharacterController3D</c> takes ground height). Null (the default) leaves the eye purely
+        /// geometric.
+        /// </summary>
+        public Func<float, float, float>? GroundHeight;
+        /// <summary>Minimum gap kept between the eye and the ground when <see cref="GroundHeight"/> is set. Default 0.5.</summary>
+        public float GroundClearance = 0.5f;
+
         float _pitch = MathF.PI / 6f;   // 30 deg, a comfortable default tilt
         float _distance = 8f;
 
@@ -65,7 +76,20 @@ namespace KhaozEngine.Render3D
             }
         }
 
-        public Vector3 Eye => Target + DirToEye * _distance + new Vector3(0f, HeightOffset, 0f);
+        public Vector3 Eye
+        {
+            get
+            {
+                Vector3 eye = Target + DirToEye * _distance + new Vector3(0f, HeightOffset, 0f);
+                if (GroundHeight is { } ground)
+                {
+                    float floor = ground(eye.X, eye.Z) + GroundClearance;
+                    if (eye.Y < floor) eye.Y = floor;   // keep the eye out of the terrain in a dip
+                }
+                return eye;
+            }
+        }
+
         public Vector3 Forward => Vector3.Normalize(Target - Eye);
 
         public Matrix4x4 View => Matrix4x4.CreateLookAt(Eye, Target, Vector3.UnitY);

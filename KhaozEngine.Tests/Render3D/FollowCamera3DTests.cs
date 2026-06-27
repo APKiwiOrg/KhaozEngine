@@ -70,5 +70,37 @@ namespace KhaozEngine.Tests.Render3D
             Vector2 ndc = new(clip.X / clip.W, clip.Y / clip.W);
             Assert.True(MathF.Abs(ndc.X) < 1e-3f && MathF.Abs(ndc.Y) < 1e-3f, ndc.ToString());
         }
+
+        [Fact]
+        public void Eye_is_lifted_above_high_ground_at_its_xz()
+        {
+            // Ground higher than the geometric eye (a dip: terrain rises behind the character) lifts the eye
+            // so it never sinks below the surface.
+            var cam = new FollowCamera3D { Target = Vector3.Zero, GroundClearance = 0.5f };
+            cam.Pitch = 0.3f; cam.Distance = 9f;
+            float geomEyeY = cam.Eye.Y;       // before a ground delegate is attached
+            cam.GroundHeight = (x, z) => 50f; // ground far above the geometric eye
+            Assert.True(cam.Eye.Y >= 50f + 0.5f - 1e-4f, $"eye Y {cam.Eye.Y} not lifted above ground+clearance");
+            Assert.True(cam.Eye.Y > geomEyeY, "eye should have been lifted");
+        }
+
+        [Fact]
+        public void Eye_is_unchanged_when_ground_is_below()
+        {
+            var cam = new FollowCamera3D { Target = Vector3.Zero };
+            cam.Pitch = 0.3f; cam.Distance = 9f;
+            float geomEyeY = cam.Eye.Y;
+            cam.GroundHeight = (x, z) => -1000f;   // ground far below the eye: no clamp
+            Assert.Equal(geomEyeY, cam.Eye.Y, 4);
+        }
+
+        [Fact]
+        public void Eye_is_geometric_when_no_ground_delegate()
+        {
+            var cam = new FollowCamera3D { Target = Vector3.Zero, HeightOffset = 0f, MinPitch = 0f };
+            cam.Pitch = 0f; cam.Distance = 10f;
+            Assert.Null(cam.GroundHeight);
+            Assert.True(Vector3.Distance(cam.Eye, new Vector3(0, 0, 10)) < 1e-4f, cam.Eye.ToString());
+        }
     }
 }

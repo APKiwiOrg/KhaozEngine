@@ -70,8 +70,9 @@ sealed class TerrainWalkApp : GameApp3D
         _character.SetXZ(0f, 0f);
         _character.Update(InputState.Empty, 0f, 0f, _terrain.GroundHeight);   // settle Y onto the ground
 
-        // Follow camera drives rendering via the scene override.
-        _camera = new FollowCamera3D { Target = _character.Position, HeightOffset = 1.2f };
+        // Follow camera drives rendering via the scene override; the ground delegate keeps the eye above the
+        // terrain so it does not sink through the floor when the character is in a dip.
+        _camera = new FollowCamera3D { Target = _character.Position, HeightOffset = 1.2f, GroundHeight = _terrain.GroundHeight };
         _camera.Distance = 9f;
         _camController = new FollowCameraController(_camera);
         sc.CameraOverride = _camera;

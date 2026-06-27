@@ -2,14 +2,19 @@ using System;
 using System.Numerics;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Netcode;
+using KhaozEngine.Netcode.LiteNetLib;
 using KhaozEngine.NetWorld;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace KhaozEngine.Tests.NetWorld;
 
 public class WorldRoundTripTests
 {
     static readonly Func<float, float, float> Flat = (x, z) => 0f;
+
+    private readonly ITestOutputHelper output;
+    public WorldRoundTripTests(ITestOutputHelper output) => this.output = output;
 
     static (WorldServer server, WorldServerConfig config) NewServer(INetTransport t)
     {
@@ -99,11 +104,14 @@ public class WorldRoundTripTests
     [Fact]
     public void LiveSocket_client_connects_and_is_served_its_player()
     {
-        const int port = 47720;
+        // Bind to an OS-assigned ephemeral port, never a fixed one: a hardcoded port collides with any other
+        // process (a stale server, a parallel test run) that happens to hold it.
+        using LiteNetLibServerTransport? st = LiveSocketSupport.TryBindServer(out int port);
+        if (st is null) { output.WriteLine(LiveSocketSupport.NoFreePortReason); return; }
+
         var config = new WorldServerConfig { TickSeconds = 1f / 30f, InterestRadius = 500f, MaxPlayers = 8 };
-        using var st = new KhaozEngine.Netcode.LiteNetLib.LiteNetLibServerTransport(port);
         var server = new WorldServer(st, config, Flat, MoveTuning.Default);
-        using var ct = new KhaozEngine.Netcode.LiteNetLib.LiteNetLibClientTransport("127.0.0.1", port);
+        using var ct = new LiteNetLibClientTransport("127.0.0.1", port);
         var client = new WorldClient(ct, Flat, MoveTuning.Default, new WorldClientConfig { TickSeconds = config.TickSeconds });
 
         var sw = System.Diagnostics.Stopwatch.StartNew();

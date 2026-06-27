@@ -4,11 +4,15 @@ using System.Threading;
 using KhaozEngine.Netcode;
 using KhaozEngine.Netcode.LiteNetLib;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace KhaozEngine.Tests.Netcode;
 
 public class LiteNetLibTransportTests
 {
+    private readonly ITestOutputHelper output;
+    public LiteNetLibTransportTests(ITestOutputHelper output) => this.output = output;
+
     [Fact]
     public void Server_ConstructAndDispose_DoesNotThrow()
     {
@@ -20,8 +24,10 @@ public class LiteNetLibTransportTests
     [Fact]
     public void ClientServer_OverLocalhost_RoundTripsAMessage()
     {
-        const int port = 47654;
-        using var server = new LiteNetLibServerTransport(port);
+        // OS-assigned ephemeral port, never a fixed one - a hardcoded port collides with any other process
+        // (a stale server, a parallel test run) that happens to hold it.
+        using LiteNetLibServerTransport? server = LiveSocketSupport.TryBindServer(out int port);
+        if (server is null) { output.WriteLine(LiveSocketSupport.NoFreePortReason); return; }
         using var client = new LiteNetLibClientTransport("127.0.0.1", port);
 
         NetConnectionId clientOnServer = PumpUntilId(server, client,

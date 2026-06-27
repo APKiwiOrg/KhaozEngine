@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Collision;
 
 namespace KhaozEngine.Locomotion;
 
@@ -18,10 +19,13 @@ public static class CharacterMovement
     /// <param name="groundHeight">Terrain height at (x, z).</param>
     /// <param name="tuning">Speed/half-height/slope constants.</param>
     /// <param name="groundNormal">Optional ground normal at (x, z); when given, gates a step by slope.</param>
+    /// <param name="colliders">Optional static-world colliders; when given, the capsule footprint
+    /// (<see cref="MoveTuning.CapsuleRadius"/>) is pushed out of any prop/building it overlaps (slide along
+    /// surfaces). Null or empty leaves the XZ untouched. The same set + math runs on server and client.</param>
     /// <returns>The advanced position (Y on the ground + half-height).</returns>
     public static Vector3 Step(Vector3 position, in MoveCommand cmd, float dt,
         Func<float, float, float> groundHeight, in MoveTuning tuning,
-        Func<float, float, Vector3>? groundNormal = null)
+        Func<float, float, Vector3>? groundNormal = null, WorldColliders? colliders = null)
     {
         if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
 
@@ -45,6 +49,15 @@ public static class CharacterMovement
                 if (MathF.Acos(ny) > tuning.MaxSlopeRadians) blocked = true;
             }
             if (!blocked) { position.X = nx; position.Z = nz; }
+        }
+
+        // Static-world collision: push the capsule footprint out of any prop/building it now overlaps, sliding
+        // along surfaces. Null/empty set leaves the XZ untouched. Same set + math on server and client.
+        if (colliders is not null && !colliders.IsEmpty)
+        {
+            Vector2 resolved = colliders.Resolve(new Vector2(position.X, position.Z), tuning.CapsuleRadius);
+            position.X = resolved.X;
+            position.Z = resolved.Y;
         }
 
         position.Y = groundHeight(position.X, position.Z) + tuning.CapsuleHalfHeight;

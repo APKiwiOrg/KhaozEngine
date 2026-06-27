@@ -28,9 +28,10 @@ public sealed class WorldServerConfig
 /// runs the shared <see cref="PlayerMoveSimulator"/> (ground-clamped), and serves every client a per-area-of-
 /// interest snapshot (<see cref="SnapshotWriter.WriteFiltered"/> over an <see cref="InterestGrid"/>) prefixed
 /// with that client's net id + last-acked move seq so the client can reconcile. Headless, transport-injected.
-/// Multi-cell sharding folds in with world streaming later; this is the single-world slice.
+/// The multi-cell variant is <see cref="ShardedWorldServer"/> (the same movement stack run across a cell grid);
+/// this is the single-world slice. Both share <see cref="WorldPersistence"/> via <see cref="IWorldPersistenceHost"/>.
 /// </summary>
-public sealed class WorldServer
+public sealed class WorldServer : IWorldPersistenceHost
 {
     private readonly WorldServerConfig config;
     private readonly ReplicationRegistry registry = MoveProtocol.CreateRegistry();

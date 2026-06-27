@@ -109,11 +109,13 @@ version/release work.
     `WorldStore.SqlServer` = `SqlServerWorldStore` over Microsoft.Data.SqlClient (prod = Azure SQL); both = one
     `world_store(key,data,updated_at)` table, schema bootstrap on construction, dialect upsert (SQLite ON CONFLICT /
     SQL Server MERGE HOLDLOCK), raw parameterized async ADO.NET, no EF/ORM. The save/load orchestration is
-    `NetWorld.WorldPersistence` (+ `PlayerRecord`), wiring `IWorldStore` into the `WorldServer` connect/disconnect/tick
-    lifecycle (load-on-join / save-on-leave / periodic dirty snapshot), backend-agnostic. `Sharding` = the in-process
+    `NetWorld.WorldPersistence` (+ `PlayerRecord`), wiring `IWorldStore` into the server connect/disconnect/tick
+    lifecycle via `IWorldPersistenceHost` (both `WorldServer` and `ShardedWorldServer`; load-on-join / save-on-leave /
+    periodic dirty snapshot), backend-agnostic. `Sharding` = the in-process
     cell-grid topology (`CellCoord`/`CellSim`/`ShardHost`; a cell = an ECS `World` + `FixedTickHost` +
     `ServerReplicator` + `InterestGrid`) with cross-cell ghosting / exactly-once handoff / home-cell AoI serving over
-    the `ICellLink` seam, plus the `MmoServerSample` reference server (`IsPackable=false`). `Ecs` also has opt-in
+    the `ICellLink` seam, plus the `MmoServerSample` toy-2D reference server (`IsPackable=false`); the overworld
+    movement stack runs on it via `NetWorld.ShardedWorldServer` (6b). `Ecs` also has opt-in
     data-parallel `World.ParallelForEach` + the `AccessSet` access-declaration model + the `ParallelHazardChecks`
     guard, so it depends on `Simulation` (acyclic - `Simulation` is a zero-dependency leaf). The parallel-job-system
     program (cells + entities axes shipped; the system-scheduler layer was benchmark-gated and de-scoped) is
@@ -142,19 +144,28 @@ version/release work.
     `Foundation`, deps Primitives only) = `CharacterMovement.Step` (pure XZ move from a `MoveCommand` + ground
     delegate + one `MoveTuning`, ground-clamped + slope gate) shared by the local `CharacterController3D`
     (Game.Render3D wraps it), the server sim, and client prediction. `NetWorld` (in `Server`, deps
-    Locomotion/Netcode/Replication/Ecs/Serialization/WorldStore) = `PlayerMoveSimulator` (`ITickSimulator` over
+    Locomotion/Netcode/Replication/Ecs/Serialization/WorldStore/**Sharding**) = `PlayerMoveSimulator` (`ITickSimulator` over
     `CharacterMovement.Step`), `WorldServer` (single-`World` authoritative: per-player `RemoteCommandQueue` +
     ground-clamped sim + per-client AoI via `SnapshotWriter.WriteFiltered`+`InterestGrid`, framed `[localNetId][ack]`;
     a persistence seam = `PlayerJoined`/`PlayerLeaving` events + accountId-from-connect-token + `SetPlayerState`),
-    `WorldClient` (`NetClient`+`ClientReplicationView`+`ClientPrediction` -> `EntityRenderState[]`, local
+    `ShardedWorldServer` (+ `ShardedWorldServerConfig`, the multi-cell variant = the same movement stack run across a
+    `Sharding.ShardHost` cell grid: routes each client's `MoveCommand` to the owning cell, steps each cell's
+    `PlayerMovementSystem` via `ShardHost.Tick` scheduler-fanned, exactly-once handoff on boundary crossings -
+    `NetId` stable - border ghosting, single home-cell AoI framed identically; `PendingMove` = the per-tick command
+    a cell applies to an owned player, server-local + not replicated/migrated; the `WorldClient`/`MoveProtocol` are
+    UNCHANGED), `WorldClient` (`NetClient`+`ClientReplicationView`+`ClientPrediction` -> `EntityRenderState[]`, local
     predicted/reconciled, remotes replicated), and `WorldPersistence` (+ `PlayerRecord`, a forward-tolerant JSON
-    record): wires an `IWorldStore` into the `WorldServer` lifecycle (load-on-join / save-on-leave / periodic dirty
-    snapshot, keys `player:{accountId}`) so the world survives a restart, backend-agnostic. `PlayerMoveState :
+    record): wires an `IWorldStore` into the server lifecycle via `IWorldPersistenceHost` (the seam `WorldServer` AND
+    `ShardedWorldServer` both implement) - load-on-join / save-on-leave / periodic dirty snapshot, keys
+    `player:{accountId}`, player-keyed + cell-agnostic (a loaded player spawns at its saved position in whatever cell
+    contains it) - so the world survives a restart, backend-agnostic. `PlayerMoveState :
     IPredictedState` lives in NetWorld (not Locomotion) so the movement core + local controller stay netcode-free;
     `CharacterMovement.Step` takes/returns `Vector3`. Demos (`IsPackable=false`): `NetworkedWalkServer` (headless,
-    persists via `SqliteWorldStore`) + `NetworkedWalkSample` (windowed `--connect` client, sends a stable account token).
+    multi-cell `ShardedWorldServer`, persists via `SqliteWorldStore`) + `NetworkedWalkSample` (windowed `--connect`
+    client, sends a stable account token).
     Networked-overworld render-scale sub-project (`docs/superpowers/specs/2026-06-27-networked-overworld-design.md`);
-    persistence sub-project (`docs/superpowers/specs/2026-06-27-persistent-worldstore-design.md`).
+    persistence sub-project (`docs/superpowers/specs/2026-06-27-persistent-worldstore-design.md`); multi-cell sharding
+    sub-project 6b (`docs/superpowers/specs/2026-06-27-multicell-sharding-design.md`).
   - **Umbrellas (code-free metapackages):** `Foundation`, `Game2D`, `Game3D`, `Server`.
   - **Tools, same version line:** `Updates.Tool` (`ke-updater`: manifest/genkey/sign/verify) and `Sfx.Tool`
     (`ke-sfxbake`: ElevenLabs-driven SFX bake) are `PackAsTool`; `Content.Validator` is a build-time tool

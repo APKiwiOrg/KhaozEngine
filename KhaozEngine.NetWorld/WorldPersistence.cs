@@ -26,7 +26,7 @@ public sealed class WorldPersistenceConfig
 /// </summary>
 public sealed class WorldPersistence
 {
-    private readonly WorldServer server;
+    private readonly IWorldPersistenceHost server;
     private readonly IWorldStore store;
     private readonly WorldPersistenceConfig config;
 
@@ -39,7 +39,7 @@ public sealed class WorldPersistence
     private readonly List<Task> pending = new();
     private float sinceSave;
 
-    public WorldPersistence(WorldServer server, IWorldStore store, WorldPersistenceConfig? config = null)
+    public WorldPersistence(IWorldPersistenceHost server, IWorldStore store, WorldPersistenceConfig? config = null)
     {
         this.server = server ?? throw new ArgumentNullException(nameof(server));
         this.store = store ?? throw new ArgumentNullException(nameof(store));

@@ -94,4 +94,30 @@ public class WorldRoundTripTests
             if (!e.IsLocal && e.Id.Value == remoteNetId) return e.Position;
         throw new Xunit.Sdk.XunitException($"remote {remoteNetId} not visible");
     }
+
+    [Trait("Category", "LiveSocket")]
+    [Fact]
+    public void LiveSocket_client_connects_and_is_served_its_player()
+    {
+        const int port = 47720;
+        var config = new WorldServerConfig { TickSeconds = 1f / 30f, InterestRadius = 500f, MaxPlayers = 8 };
+        using var st = new KhaozEngine.Netcode.LiteNetLib.LiteNetLibServerTransport(port);
+        var server = new WorldServer(st, config, Flat, MoveTuning.Default);
+        using var ct = new KhaozEngine.Netcode.LiteNetLib.LiteNetLibClientTransport("127.0.0.1", port);
+        var client = new WorldClient(ct, Flat, MoveTuning.Default, new WorldClientConfig { TickSeconds = config.TickSeconds });
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        bool served = false;
+        while (sw.ElapsedMilliseconds < 3000 && !served)
+        {
+            server.Poll();
+            server.Tick(config.TickSeconds);
+            client.Poll();
+            if (client.Joined && client.LocalNetId > 0)
+                foreach (EntityRenderState e in client.Snapshot())
+                    if (e.IsLocal) served = true;
+            System.Threading.Thread.Sleep(10);
+        }
+        Assert.True(served, "client never received its player over a live socket");
+    }
 }

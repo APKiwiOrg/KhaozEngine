@@ -28,6 +28,12 @@
     <!-- SourceLink + symbols so games keep step-into-source debugging. -->
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <!-- Read only the repo's .git/config for SourceLink, never the global ~/.gitconfig.
+         ~/.gitconfig is a symlink into iCloud here, and the File Provider intermittently
+         denies the read mid-sync, failing the build with "Access to the path is denied".
+         .git/config carries the remote URL + commit, which is all SourceLink needs; CI
+         already forces this same scope. -->
+    <GitRepositoryConfigurationScope>local</GitRepositoryConfigurationScope>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
 

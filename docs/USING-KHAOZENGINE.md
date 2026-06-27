@@ -488,6 +488,15 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
   frame instead (1:1, no upscale blur on large / Retina windows; capped at `Post.MaxRenderWidth` x
   `MaxRenderHeight`, default 3840x2160, aspect preserved). Leave it `FixedInternal` for the chunky/`Pixelated`
   look.
+- Edge outline: `Post.Outline` (on by default) draws a depth/normal toon outline. `OutlineColor`,
+  `OutlineDepthThreshold` (depth-discontinuity sensitivity), and `OutlineNormalThreshold` (interior-crease
+  sensitivity from the geometric normal) tune it. The outline is perspective-correct (since 7.51.0): under a
+  perspective camera (`FollowCamera3D`) the depth test is linearized to view-space distance and distance-relative,
+  so a given threshold is stable on zoom and distance instead of popping (the orthographic `IsoCamera3D` path is
+  unchanged). The normal term carries silhouettes + creases; keep the depth threshold conservative on near-grazing
+  ground planes (a grazing plane has genuinely high per-pixel depth change, so a low depth threshold lights it up).
+  `Post.OutlineDistanceFade` (default off, perspective only) fades the outline out between `OutlineFadeStart` and
+  `OutlineFadeEnd` view-space units so far terrain/foliage stops aliasing into mush.
 - `IsoCamera3D`: `Azimuth`/`Elevation`/`Target`/`OrthoSize`/`Zoom`, `Frame(target, azimuth, size)`,
   `ScreenToRay`, `ScreenToGround`, and the `View`/`Projection`/`ViewProjection` matrices.
 - `IsoCameraController`: input-agnostic gestures driving an `IsoCamera3D` (pure `System.Numerics`, headless-testable;

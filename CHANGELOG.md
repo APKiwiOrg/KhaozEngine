@@ -5,6 +5,45 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.51.0
+
+Perspective-correct toon outline plus two outline bug fixes in `KhaozEngine.Render3D` (`Internal/ShaderSources`
+`EdgeFrag` + `BlitFrag`, `Rendering/PixelPostProcess`). The depth/normal edge outline was built for the
+orthographic `IsoCamera3D`; the overworld's perspective `FollowCamera3D` is the first to drive it and exposed
+three issues, all fixed here. The orthographic path is unchanged (the outline-on iso-camera goldens are
+byte-identical).
+
+- **Bug A (vertical flip on pass parity).** Each fullscreen post pass flips the image vertically, so the
+  on-screen orientation depended on the parity of how many optional passes (quantize / outline / dither) ran -
+  toggling `Outline` rendered the scene upside down. `BlitFrag` now cancels the flip based on the preceding
+  post-pass count (new `Final.Params.z` = flipV, set in `PixelPostProcess.PrepareUniforms`), so every
+  combination is upright. Outline-on (the default and the committed outline-on goldens) is byte-identical; the
+  two outline-off goldens (`scene3d_normalmap`, `scene3d_skinned_normalmap`) were encoding the upside-down image
+  and are re-baked upright on all three backends.
+- **Bug B (dead normal-edge term on Metal).** `EdgeFrag` sampled its MRT inputs in the order Color, Depth,
+  Normal, but the resource layout binds them Color, Normal, Depth. On Metal SPIRV-Cross assigns MSL texture
+  indices by first-sample order, so Normal and Depth were swapped and the normal-crease term silently read depth
+  data (the same class of bug already documented in `ModelFrag` for Albedo/NormalMap/Roughness). The shader now
+  samples in binding order, so the normal term catches interior creases the depth term misses. D3D11/Vulkan bind
+  by explicit decoration and were unaffected.
+- **Fix C (perspective-correct depth threshold).** Under perspective the stored `z/w` is non-linear, so a fixed
+  threshold over-detected near and under-detected far and the outline popped on zoom/distance. `EdgeFrag` now
+  reconstructs view-space eye distance from the camera near/far (plumbed into the `Edge` UBO from
+  `Scene3D`/`PixelPostProcess` via the new internal `OutlineMath`, which derives perspective-vs-ortho + near/far
+  from the projection matrix, so no camera-interface change) and compares a second-difference (Laplacian) of
+  linearized depth relative to depth - stable at any zoom and far less prone to grazing-plane flooding than a
+  first difference. The orthographic branch keeps the original raw `abs(d - d0) > threshold` per-neighbour test,
+  byte-identical.
+- **Optional D (distance fade).** New `PixelPostProcessSettings.OutlineDistanceFade` (default off) +
+  `OutlineFadeStart`/`OutlineFadeEnd` fade the outline out beyond a view-space distance (perspective only); off
+  by default so the ortho path and existing look are unchanged.
+
+New GPU golden `perspective_outline` (a perspective `FollowCamera3D` scene) locks the corrected stable outline +
+the interior crease + the upright orientation; baked on Metal, D3D11, and Vulkan. New headless `OutlineMath`
+tests cover the linearization (identity for ortho, near/far recovery, and a relative depth metric that stays
+stable across two zoom levels where the raw metric collapses). Additive (one new public knob); no new package;
+minor.
+
 ## 7.50.0
 
 Multi-cell server sharding, overworld render-scale sub-project 6b (finishes "6" with 6a streaming). The

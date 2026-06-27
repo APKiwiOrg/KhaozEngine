@@ -2,7 +2,7 @@
   <PropertyGroup>
     <PackageId>KhaozEngine.Server</PackageId>
     <Version>$(KhaozEngine5xVersion)</Version>
-    <Description>Umbrella metapackage for a headless / server-side build on the KhaozEngine 5.x stack: the MonoGame-free, GPU-free Foundation (Ecs/Serialization/Content/Persistence/Diagnostics/App/Localization/Collision/Pooling/Platform/Updates), the networking layer (Netcode/Netcode.Abstractions/Netcode.LiteNetLib), and the MMO server stack (Simulation fixed-tick host, Replication snapshot/delta sync, WorldStore durable-state seam, Sharding cell-grid topology / ShardHost, and NetWorld single-World authoritative movement server + client glue). Pulls in NO graphics, windowing, audio, or GPU, so an authoritative sim server or tool stays lean. (A contracts-only project that just needs the wire types should reference KhaozEngine.Netcode.Abstractions directly instead.) Contains no code; just dependencies.</Description>
+    <Description>Umbrella metapackage for a headless / server-side build on the KhaozEngine 5.x stack: the MonoGame-free, GPU-free Foundation (Ecs/Serialization/Content/Persistence/Diagnostics/App/Localization/Collision/Pooling/Platform/Updates), the networking layer (Netcode/Netcode.Abstractions/Netcode.LiteNetLib), and the MMO server stack (Simulation fixed-tick host, Replication snapshot/delta sync, the WorldStore durable-state seam (IWorldStore + InMemoryWorldStore only; the SQLite / SQL Server backends are opt-in sibling packages, not bundled), Sharding cell-grid topology / ShardHost, and NetWorld single-World authoritative movement server + client glue). Pulls in NO graphics, windowing, audio, or GPU, so an authoritative sim server or tool stays lean. (A contracts-only project that just needs the wire types should reference KhaozEngine.Netcode.Abstractions directly instead.) Contains no code; just dependencies.</Description>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <SuppressDependenciesWhenPacking>false</SuppressDependenciesWhenPacking>
@@ -19,10 +19,12 @@
     <ProjectReference Include="../KhaozEngine.Simulation/KhaozEngine.Simulation.csproj" />
     <!-- entity replication -->
     <ProjectReference Include="../KhaozEngine.Replication/KhaozEngine.Replication.csproj" />
-    <!-- world store (durable-state seam + opt-in SQLite / SQL Server backends) -->
+    <!-- world store: ONLY the dependency-free durable-state seam (IWorldStore + InMemoryWorldStore).
+         The SQLite / SQL Server backends are deliberately NOT bundled here: pulling them in dragged
+         Microsoft.Data.Sqlite -> SQLitePCLRaw (NU1903) + Microsoft.Data.SqlClient into every umbrella
+         consumer, even those using one backend or none. Consumers add the backend package they want
+         explicitly (KhaozEngine.WorldStore.Sqlite or .SqlServer). -->
     <ProjectReference Include="../KhaozEngine.WorldStore/KhaozEngine.WorldStore.csproj" />
-    <ProjectReference Include="../KhaozEngine.WorldStore.Sqlite/KhaozEngine.WorldStore.Sqlite.csproj" />
-    <ProjectReference Include="../KhaozEngine.WorldStore.SqlServer/KhaozEngine.WorldStore.SqlServer.csproj" />
     <!-- world topology (cell grid / shard host) -->
     <ProjectReference Include="../KhaozEngine.Sharding/KhaozEngine.Sharding.csproj" />
     <!-- networked-world movement layer (server sim + client glue, render-free) -->

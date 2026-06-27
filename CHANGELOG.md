@@ -5,6 +5,19 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.49.1
+
+Packaging fix (security): the `KhaozEngine.Server` umbrella no longer bundles the `WorldStore.Sqlite` /
+`WorldStore.SqlServer` backends. They had been transitive references on the umbrella, so every Server consumer
+pulled `Microsoft.Data.Sqlite` -> SQLitePCLRaw (high-sev `NU1903` / `GHSA-2m69-gcr7-jv3q`) +
+`Microsoft.Data.SqlClient`, even when using one backend or none, which defeated the engine's own opt-in-sibling
+-backend design. The umbrella now carries only the dependency-free `KhaozEngine.WorldStore` core (`IWorldStore`
++ `InMemoryWorldStore`); consumers add the backend package they want (`KhaozEngine.WorldStore.Sqlite` or
+`.SqlServer`) explicitly. Non-breaking in practice: the demo `NetworkedWalkServer` references `WorldStore.Sqlite`
+directly and Ruinborne references `WorldStore.SqlServer` directly, so nothing relied on the umbrella for a
+backend. A project referencing only `KhaozEngine.Server` no longer pulls SQLitePCLRaw / Microsoft.Data.Sqlite.
+Patch.
+
 ## 7.49.0
 
 Persistent world store: the authoritative world now survives a server restart (it was in-memory only). Two new

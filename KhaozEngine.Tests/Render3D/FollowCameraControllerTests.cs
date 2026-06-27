@@ -25,9 +25,21 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void Drag_with_button_held_changes_yaw_and_pitch()
         {
+            // Default mapping: drag right turns the view left (yaw -=), drag down looks up (pitch +=).
             var cam = new FollowCamera3D { Yaw = 0f };
             cam.Pitch = 0.5f;
             var ctl = new FollowCameraController(cam);
+            ctl.Update(Frame(mouseDelta: new Vector2(10, 4), down: MouseButton.Left), 1f / 60f);
+            Assert.Equal(-10f * ctl.OrbitYawSpeed, cam.Yaw, 5);
+            Assert.Equal(0.5f + 4f * ctl.OrbitPitchSpeed, cam.Pitch, 5);
+        }
+
+        [Fact]
+        public void Invert_flags_flip_each_axis()
+        {
+            var cam = new FollowCamera3D { Yaw = 0f };
+            cam.Pitch = 0.5f;
+            var ctl = new FollowCameraController(cam) { InvertX = true, InvertY = true };
             ctl.Update(Frame(mouseDelta: new Vector2(10, 4), down: MouseButton.Left), 1f / 60f);
             Assert.Equal(10f * ctl.OrbitYawSpeed, cam.Yaw, 5);
             Assert.Equal(0.5f - 4f * ctl.OrbitPitchSpeed, cam.Pitch, 5);

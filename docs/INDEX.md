@@ -18,10 +18,6 @@ which one wins.
 | [RENDER-PIPELINE.md](RENDER-PIPELINE.md) | High-level (container-level) Mermaid map of how a C# draw call becomes rendered triangles: Render2D/Render3D -> the Gpu seam -> Veldrid -> backend -> GPU, plus the geometry-upload and GLSL->SPIR-V side-flows. | Understanding the render path. |
 | `../<Package>/README.md` | One-paragraph purpose + a snippet per package. | Per-package quick reference. |
 
-Dated reference: [ENGINE-AUDIT-5x-2026-06-16.md](ENGINE-AUDIT-5x-2026-06-16.md) is a point-in-time 5.x audit
-(P0/P1/P2 risk register). Not a living doc; the CHANGELOG and design specs cite its item numbers, so it stays
-put rather than being edited in place.
-
 The **engine current version** lives in `../Directory.Build.props` (`<KhaozEngineVersion>`). Docs that restate it
 (CONSUMERS "Engine current version", ROADMAP "Current released version", the README PackageReference
 example) are guarded by [`../scripts/check-doc-versions.sh`](../scripts/check-doc-versions.sh), which CI

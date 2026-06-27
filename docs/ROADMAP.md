@@ -86,6 +86,13 @@ constraint, then commits to one. This supersedes the "out of scope" items the re
 - PBR splat textures + a water shader: terrain-material upgrades on the chunk mesher's already-plumbed splat
   weights.
 
+## Rendering
+
+- Shadows: 3D shadow rendering (shadow maps). A named gap from the 5.x engine audit; the MRT / depth
+  infrastructure already exists.
+- Depth-sorted transparency (3D): transparent meshes and billboards currently render unsorted, so overlapping
+  alpha is draw-order dependent. Sort back-to-front (or add order-independent transparency) for correct blending.
+
 ## Cross-platform reach
 
 - Mobile: iOS / Android platform layers (lifecycle, touch, packaging, store submission). Silk.NET is the
@@ -95,6 +102,13 @@ constraint, then commits to one. This supersedes the "out of scope" items the re
 - Live gamepad smoke: polling is best-effort + compile-verified; needs an on-device pass with a physical
   controller.
 - Richer text entry: IME / locale / dead-keys (the current `TextEntry` is US-layout key-mapping).
+
+## Tooling & developer experience
+
+- On-screen profiling / diagnostics overlay: a live frame-time / draw-call / memory overlay (logging only
+  today). The Gui makes it cheap to build.
+- Asset hot-reload: reload meshes, textures, and shaders at runtime during development. The prop asset pipeline
+  shipped (7.46.0); hot-reload did not.
 
 ## Possible future factoring (unscheduled)
 

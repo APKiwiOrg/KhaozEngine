@@ -1747,26 +1747,26 @@ Each metapackage ships no assembly (`IncludeBuildOutput=false`), just a NuGet de
 
 ## 5.48.0 (custom 5.x line)
 
-Engine-audit cleanups (`docs/ENGINE-AUDIT-5x-2026-06-16.md`): a real mesh-loader bug fix plus three quality
+Engine-audit cleanups: a real mesh-loader bug fix plus three quality
 items. No behavioural change to existing scenes - the GPU goldens are pixel-identical.
 
-- **`Render3D.GltfLoader` no longer silently corrupts meshes (audit P2#11).** It welded vertices by *position
+- **`Render3D.GltfLoader` no longer silently corrupts meshes (5.x engine audit).** It welded vertices by *position
   only* (merging away hard edges and UV seams) and cast indices to `ushort` with no bound check (silently
   truncating any mesh past 65535 vertices). It now honours the glTF `NORMAL` attribute, welds on
   (position, normal, uv) so hard edges and UV seams survive, and **throws** past the ushort index ceiling
   instead of truncating (matching `MeshBuilder`). The welding/normal/overflow logic moved to a new internal
   `MeshAssembler` that's unit-tested without needing a glTF file on disk. (No golden uses `GltfLoader`, so
   procedural-mesh output is unchanged.)
-- **Typed `Color` and `Rect` overloads on `SpriteBatch.Draw`/`DrawString` (audit P2#12).** Destination rect and
+- **Typed `Color` and `Rect` overloads on `SpriteBatch.Draw`/`DrawString` (5.x engine audit).** Destination rect and
   color were both a bare `Vector4` and could be swapped at a call site. New `Render2D.Color` struct (RGBA float,
   implicit to `Vector4`, `FromBytes`/`WithAlpha`/`White`/...) and typed overloads; the rect overloads reuse the
   existing `Windowing.Rect`. The untyped `Vector4` overloads stay, so nothing breaks.
-- **Retained widgets reserve their rect, like `Button` (audit P1#6, click-through).** `Toggle`, `Slider`,
+- **Retained widgets reserve their rect, like `Button` (5.x engine audit, click-through).** `Toggle`, `Slider`,
   `Dropdown`, and `TextInput` now call `Pointer.BlockRegion` during `Update` (the open `Dropdown` reserves its
   whole expanded list), so a layer beneath can't be clicked through them. `GuiSurface`'s docs now spell out when
   to use the immediate vs retained paradigm. (`Button` already did this; the audit's specific Button complaint
   was resolved earlier.)
-- **Shared `Gpu.GpuReadback.ToRgba` (audit P2#13).** The headless texture-readback (staging blit + map +
+- **Shared `Gpu.GpuReadback.ToRgba` (5.x engine audit).** The headless texture-readback (staging blit + map +
   row-pitch de-stride) was duplicated verbatim in the Render2D and Render3D snapshot helpers; both now call the
   one helper in `KhaozEngine.Gpu`. Pure refactor - goldens verified pixel-identical on Metal.
 
@@ -1786,7 +1786,7 @@ from Nullwake, where it replaced the pillarboxed fixed-aspect viewport on deskto
 ## 5.46.0 (custom 5.x line)
 
 **The MonoGame-free foundation packages graduated from the 4.x line onto the 5.x line, so a 5.x game pins only
-5.x packages** (audit P1#9). 14 packages move from `<Version>` (`4.12.0`) to `<KhaozEngine5xVersion>` (`5.46.0`):
+5.x packages** (5.x engine audit). 14 packages move from `<Version>` (`4.12.0`) to `<KhaozEngine5xVersion>` (`5.46.0`):
 `Ecs`, `Serialization`, `Content`, `Diagnostics`, `App`, `Localization`, `Persistence`, `Pooling`, `Platform`,
 `Updates`, `Collision`, `Netcode`, `Netcode.Abstractions`, `Netcode.LiteNetLib`. The 5.x line is now the 8
 custom-stack packages + these 14 = 22 packages, all at `5.46.0`.
@@ -2110,16 +2110,16 @@ change; the `KhaozEngine.Gpu` seam already abstracts the backend.
   driven P0 (correctness net, instancing, the full graphics-backend seam) and P1 work (GameApp facade, Gui +
   mesh fixes), the stack is the engine: a self-contained, MonoGame-free, single-GPU-abstraction game framework
   that Hardpoint ships on. The 5.x tag is now plain `vX.Y.Z`.
-- **P1#9 resolved (documented).** The 4.x line is clarified to carry BOTH the legacy MonoGame-based packages
+- **Foundation-line clarification resolved (documented).** The 4.x line is clarified to carry BOTH the legacy MonoGame-based packages
   AND the permanent MonoGame-free foundation packages the 5.x stack depends on (`Ecs`/`Serialization`/`Content`/
   `Diagnostics`/...); those graduate to the unified line when MonoGame is finally dropped, rather than churning
   consumers now. (CLAUDE.md governance + `Directory.Build.props` comments updated.)
 
 ## 5.30.0-experimental (custom 5.x line)
 
-P1 batch 2 (see `docs/ENGINE-AUDIT-5x-2026-06-16.md`): the game-loop framework + POC cleanup.
+P1 batch 2 (5.x engine audit): the game-loop framework + POC cleanup.
 
-### KhaozEngine.Game (NEW package — P1#4)
+### KhaozEngine.Game (NEW package, 5.x engine audit)
 
 - **`GameApp` loop facade.** A subclass base that owns the window, clock, design viewport, pointer, and the 2D/
   (optional) 3D surfaces, and drives the per-frame composition in the correct order — so a game overrides
@@ -2128,7 +2128,7 @@ P1 batch 2 (see `docs/ENGINE-AUDIT-5x-2026-06-16.md`): the game-loop framework +
   title/size/design-size/clear-colour/`Enable3D`. The raw `AppWindow.Run` path stays for special needs. Both
   the 3D (`Render3DSample`) and 2D (`GuiSample`) samples now run on it.
 
-### KhaozEngine.Render3D (P1#5 — POC debt removed)
+### KhaozEngine.Render3D (POC debt removed, 5.x engine audit)
 
 - **Deleted `Render3DHost`** and its private `Key`/`FrameInfo` (a second window/loop + a second `Key` enum that
   duplicated Windowing). The standalone 3D demo path is now `GameApp`; the only public key enum is
@@ -2136,9 +2136,9 @@ P1 batch 2 (see `docs/ENGINE-AUDIT-5x-2026-06-16.md`): the game-loop framework +
 
 ## 5.29.0-experimental (custom 5.x line)
 
-P1 batch 1 (see `docs/ENGINE-AUDIT-5x-2026-06-16.md`): two contained fixes.
+P1 batch 1 (5.x engine audit): two contained fixes.
 
-### KhaozEngine.Gui (P1#6 — styling unification)
+### KhaozEngine.Gui (styling unification, 5.x engine audit)
 
 - The retained `Button` now uses `GuiStyle` (its hardcoded `Color`/`HoverColor`/`PressColor`/`TextColor` fields
   are replaced by a single `Style` + `Enabled`/`Selected`), and both the retained `Button` and the immediate
@@ -2147,7 +2147,7 @@ P1 batch 1 (see `docs/ENGINE-AUDIT-5x-2026-06-16.md`): two contained fixes.
   rect (`Pointer.BlockRegion`), closing the click-through gap in the retained path, and a disabled button never
   fires.
 
-### KhaozEngine.Render3D (P1#7b — mesh lifecycle)
+### KhaozEngine.Render3D (mesh lifecycle, 5.x engine audit)
 
 - `Scene3D.UnloadMesh(MeshHandle)` frees a mesh's GPU buffers and recycles its slot, so a game that streams or
   swaps content no longer leaks. `MeshHandle` gains a generation; handles are validated on draw, so a stale
@@ -2158,7 +2158,7 @@ P1 batch 1 (see `docs/ENGINE-AUDIT-5x-2026-06-16.md`): two contained fixes.
 ## 5.28.0-experimental (custom 5.x line)
 
 P0 hardening, stage 3 — graphics-backend seam, **phase 3d of 4 (final)**. Lockdown: the consumer-facing
-renderer/windowing/Gui packages are confirmed Veldrid-free. The **graphics-backend seam (P0#1) is complete** —
+renderer/windowing/Gui packages are confirmed Veldrid-free. The **graphics-backend seam is complete** -
 Veldrid is contained to `KhaozEngine.Gpu` (all GPU) + Windowing's internal SDL2 window/input, and a future
 Silk.NET backend is a new `IGpuDevice` impl, not a consumer-visible change.
 
@@ -2222,7 +2222,7 @@ goldens pixel-identical).
 ## 5.25.0-experimental (custom 5.x line)
 
 P0 hardening, stage 3 of 3 — the graphics-backend seam, **phase 3a of 4** (foundation). See
-`docs/ENGINE-AUDIT-5x-2026-06-16.md` + `docs/superpowers/specs/2026-06-16-gpu-backend-seam-design.md`. Behaviour
+`docs/superpowers/specs/2026-06-16-gpu-backend-seam-design.md`. Behaviour
 on Metal is unchanged (both goldens pass pixel-identical).
 
 ### KhaozEngine.Gpu (NEW package)
@@ -2243,7 +2243,7 @@ on Metal is unchanged (both goldens pass pixel-identical).
 
 ## 5.24.0-experimental (custom 5.x line)
 
-P0 hardening, stage 2 of 3 (see `docs/ENGINE-AUDIT-5x-2026-06-16.md`): submission performance. Internal
+P0 hardening, stage 2 of 3 (5.x engine audit): submission performance. Internal
 rewrite; `Scene3D.Draw`/`SpriteBatch.Draw` public APIs unchanged. Guarded by the stage-1 golden-snapshot net
 (both 3D + 2D goldens pass pixel-equivalent).
 
@@ -2264,7 +2264,7 @@ rewrite; `Scene3D.Draw`/`SpriteBatch.Draw` public APIs unchanged. Guarded by the
 
 ## 5.23.0-experimental (custom 5.x line)
 
-P0 hardening, stage 1 of 3 (see `docs/ENGINE-AUDIT-5x-2026-06-16.md`): correctness net + low-risk fixes. No
+P0 hardening, stage 1 of 3 (5.x engine audit): correctness net + low-risk fixes. No
 public API change.
 
 ### KhaozEngine.Render3D / Render2D / Gui (fixes + perf)

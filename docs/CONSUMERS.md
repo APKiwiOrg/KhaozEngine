@@ -43,8 +43,8 @@ consumers are on the 7.x line, so nothing relies on a pre-6.x feed entry.
 > 4.x `<Version>` line to the 5.x `<KhaozEngineVersion>` line so a 5.x game pins **only** 5.x packages. Same
 > assemblies, namespaces, and public API: a consumer just swaps `Version="4.12.0"` to `Version="5.46.0"` on
 > those `<PackageReference>`s. The old `4.12.0` foundation nupkgs stay in the feed (cumulative pack), so a
-> consumer that hasn't bumped (Hardpoint, SpaceGame) keeps resolving its pin and nothing breaks. This is audit
-> item P1#9. The genuinely-MonoGame packages stay on 4.x until SpaceGame migrates, then they're deleted.
+> consumer that hasn't bumped (Hardpoint, SpaceGame) keeps resolving its pin and nothing breaks. This was a 5.x
+> engine-audit item. The genuinely-MonoGame packages stay on 4.x until SpaceGame migrates, then they're deleted.
 
 > 4.12.0 (breaking, shipped as a 4.x minor since the version-number jump to 5.x is reserved for the custom
 > stack): `KhaozEngine.Collision` (`CircleCollision`, `SpatialHashGrid`, `ICircleCollider`) and

@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Collision;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Windowing;
 
@@ -32,14 +33,20 @@ namespace KhaozEngine.Game
         /// for normal hills, low enough that a RimFeature mountain wall is rejected).</summary>
         public float MaxSlopeRadians = MathF.PI * 45f / 180f;
 
+        /// <summary>Capsule footprint radius for static-world collision (metres). Default 0.4.</summary>
+        public float CapsuleRadius = 0.4f;
+
         /// <summary>
         /// Advance the character for one frame. <paramref name="cameraYaw"/> is the follow camera's yaw (radians);
         /// <paramref name="groundHeight"/> returns terrain height at (x, z); <paramref name="groundNormal"/> is
-        /// optional and, when given, gates moves by slope. Touches no input statics.
+        /// optional and, when given, gates moves by slope; <paramref name="colliders"/> is optional and, when
+        /// given, pushes the capsule footprint out of static props/buildings (the same set + math the server runs).
+        /// Touches no input statics.
         /// </summary>
         public void Update(in InputState input, float dt, float cameraYaw,
                            Func<float, float, float> groundHeight,
-                           Func<float, float, Vector3>? groundNormal = null)
+                           Func<float, float, Vector3>? groundNormal = null,
+                           WorldColliders? colliders = null)
         {
             if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
 
@@ -52,8 +59,8 @@ namespace KhaozEngine.Game
             bool run = input.IsDown(Key.LeftShift) || input.IsDown(Key.RightShift);
 
             var cmd = new MoveCommand(move, run, cameraYaw);
-            var tuning = new MoveTuning(WalkSpeed, RunSpeed, CapsuleHalfHeight, MaxSlopeRadians);
-            _position = CharacterMovement.Step(_position, cmd, dt, groundHeight, tuning, groundNormal);
+            var tuning = new MoveTuning(WalkSpeed, RunSpeed, CapsuleHalfHeight, MaxSlopeRadians, CapsuleRadius);
+            _position = CharacterMovement.Step(_position, cmd, dt, groundHeight, tuning, groundNormal, colliders);
         }
 
         /// <summary>Teleport the character; Y is recomputed from the ground delegate on the next <see cref="Update"/>.</summary>

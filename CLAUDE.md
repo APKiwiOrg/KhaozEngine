@@ -130,7 +130,10 @@ version/release work.
     coordinate-hash fractal noise (`TerrainNoise`) + ordered `ITerrainFeature`s (`LakeFeature`/`RidgeFeature`/
     `FlattenFeature`/`RimFeature` (+ `RimPass`) - the bounded-zone enclosing wall, a smoothstep ramp to a jagged
     crest with road-out corridors, circular MVP shaped around a "distance to the play-area boundary"), plus
-    `TerrainCollision` (`GroundHeight`/`GroundNormal` (the slope-gate delegate)/`IsWalkable`) and
+    `TerrainCollision` (`GroundHeight`/`GroundNormal` (the slope-gate delegate)/`IsWalkable`),
+    `PropColliders.FromScatter` (deps `Collision`: builds a `Collision.WorldColliders` from deterministic scatter
+    placements - footprint per prop id with a default-shape fallback - plus an explicit obstacle/building list;
+    streaming-consistent, same coordinate-hash as the rendered scatter), and
     `TerrainPresets.Clearing()`/`BoundedClearing()`. Height depends only on `(x,z,seed)`
     (load-order independent for sharded streaming); plain `float` (authoritative server + visual client, NOT
     `DeterministicFp`). `Terrain.Render3D` (companion, in `Game3D`) = `TerrainChunkBuilder` (chunked-LOD mesh off the
@@ -143,16 +146,26 @@ version/release work.
     (`docs/superpowers/specs/2026-06-27-terrain-system-design.md`); world streaming is sub-project 6a
     (`docs/superpowers/specs/2026-06-27-world-streaming-design.md`); multi-cell server sharding (6b), PBR-textures,
     and water are later sub-projects.
+  - **Static-world collision (in `Collision`):** `BoxCollision` (circle-vs-AABB / oriented-box / circle
+    minimum-translation push-out), `ColliderShape` (unplaced cylinder/box prop footprint), `WorldCollider` (one
+    placed static collider), `WorldColliders` (a `SpatialHashGrid`-backed queryable set: `Query(x,z,radius)` +
+    an iterate-and-slide `Resolve` that pushes a capsule footprint out of overlaps, slide along surfaces).
+    Render-free, kinematic, XZ-plane, authoritative (NOT a physics engine). `Collision` stays a `System.Numerics`
+    leaf; `Locomotion`/`NetWorld`/`Terrain`/`Render3D` reference it (acyclic). `Render3D.AssetEntry` carries an
+    optional `ColliderShape Collider` (manifest `"collider": { "type": "cylinder"|"box", ... }`).
   - **Locomotion + networked-world libs (render-free movement + the netcode wiring):** `Locomotion` (leaf, in
-    `Foundation`, deps Primitives only) = `CharacterMovement.Step` (pure XZ move from a `MoveCommand` + ground
+    `Foundation`, deps Primitives + Collision) = `CharacterMovement.Step` (pure XZ move from a `MoveCommand` + ground
     delegate + one `MoveTuning`, ground-clamped + slope gate - the slope gate runs only when a `groundNormal`
-    delegate is passed, e.g. `TerrainCollision.GroundNormal`, so the rim wall can't be climbed) shared by the local
+    delegate is passed, e.g. `TerrainCollision.GroundNormal`, so the rim wall can't be climbed - plus optional
+    static-world collision via a nullable `WorldColliders`: the capsule footprint (`MoveTuning.CapsuleRadius`,
+    default 0.4) is pushed out of props/buildings, null/empty = unchanged) shared by the local
     `CharacterController3D` (Game.Render3D wraps it), the server sim, and client prediction. `NetWorld` (in
-    `Server`, deps Locomotion/Netcode/Replication/Ecs/Serialization/WorldStore/**Sharding**) = `WorldBounds`
+    `Server`, deps Locomotion/**Collision**/Netcode/Replication/Ecs/Serialization/WorldStore/**Sharding**) = `WorldBounds`
     (abstract `Contains`/`Clamp` + `CircleBounds`/`RectBounds`, the authoritative play-area shape; `Clamp` =
     nearest in-bounds point, idempotent inside + clamp-and-slide outside) wired as a nullable bound through the
     movement step (off = unbounded, unchanged), `PlayerMoveSimulator` (`ITickSimulator` over
-    `CharacterMovement.Step`, clamps to `WorldBounds`), `WorldServer` (single-`World` authoritative: per-player `RemoteCommandQueue` +
+    `CharacterMovement.Step`, clamps to `WorldBounds`; resolves the optional `WorldColliders` inside `Step` so the
+    server is authoritative + identical to client prediction), `WorldServer` (single-`World` authoritative: per-player `RemoteCommandQueue` +
     ground-clamped sim + per-client AoI via `SnapshotWriter.WriteFiltered`+`InterestGrid`, framed `[localNetId][ack]`;
     a persistence seam = `PlayerJoined`/`PlayerLeaving` events + accountId-from-connect-token + `SetPlayerState`),
     `ShardedWorldServer` (+ `ShardedWorldServerConfig`, the multi-cell variant = the same movement stack run across a

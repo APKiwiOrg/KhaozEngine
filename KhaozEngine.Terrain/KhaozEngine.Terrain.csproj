@@ -6,6 +6,8 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
+    <!-- PropColliders.FromScatter turns scatter placements into a Collision.WorldColliders set. -->
+    <ProjectReference Include="../KhaozEngine.Collision/KhaozEngine.Collision.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Tests" />

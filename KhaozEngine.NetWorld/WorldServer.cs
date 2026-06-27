@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Text;
+using KhaozEngine.Collision;
 using KhaozEngine.Ecs;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Netcode;
@@ -50,12 +51,12 @@ public sealed class WorldServer : IWorldPersistenceHost
 
     public WorldServer(INetTransport transport, WorldServerConfig config,
         Func<float, float, float> groundHeight, MoveTuning tuning,
-        Func<float, float, Vector3>? groundNormal = null, WorldBounds? bounds = null)
+        Func<float, float, Vector3>? groundNormal = null, WorldBounds? bounds = null, WorldColliders? colliders = null)
     {
         ArgumentNullException.ThrowIfNull(transport);
         this.config = config ?? throw new ArgumentNullException(nameof(config));
         if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
-        simulator = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds);
+        simulator = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds, colliders);
         net = new NetServer(transport, config.MaxPlayers, new AllowAllAuthenticator());
         interest = new InterestGrid(MathF.Max(1f, config.InterestRadius));
     }

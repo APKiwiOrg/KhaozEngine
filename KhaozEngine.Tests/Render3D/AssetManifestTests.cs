@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using KhaozEngine.Collision;
 using KhaozEngine.Render3D;
 using Xunit;
 
@@ -71,6 +72,55 @@ namespace KhaozEngine.Tests.Render3D
             var m = AssetManifest.Parse(Json);
             Assert.Equal("pine_a", m.Find("pine_a")!.Value.Id);
             Assert.Null(m.Find("missing"));
+        }
+
+        [Fact]
+        public void Parse_CylinderCollider()
+        {
+            const string json = """
+            { "props": [ { "id": "pine", "file": "pine.glb", "heightMeters": 6,
+                           "collider": { "type": "cylinder", "radius": 0.45 } } ] }
+            """;
+            AssetManifest m = AssetManifest.Parse(json);
+            ColliderShape? col = m.Props[0].Collider;
+            Assert.True(col.HasValue);
+            Assert.Equal(ColliderKind.Cylinder, col!.Value.Kind);
+            Assert.Equal(0.45f, col.Value.Radius, 4);
+        }
+
+        [Fact]
+        public void Parse_BoxCollider()
+        {
+            const string json = """
+            { "props": [ { "id": "inn", "file": "inn.glb", "heightMeters": 5,
+                           "collider": { "type": "box", "halfW": 3, "halfD": 2 } } ] }
+            """;
+            AssetManifest m = AssetManifest.Parse(json);
+            ColliderShape? col = m.Props[0].Collider;
+            Assert.True(col.HasValue);
+            Assert.Equal(ColliderKind.Box, col!.Value.Kind);
+            Assert.Equal(3f, col.Value.HalfW, 4);
+            Assert.Equal(2f, col.Value.HalfD, 4);
+        }
+
+        [Fact]
+        public void Parse_NoCollider_IsNull()
+        {
+            const string json = """
+            { "props": [ { "id": "rock", "file": "rock.glb", "heightMeters": 1 } ] }
+            """;
+            AssetManifest m = AssetManifest.Parse(json);
+            Assert.False(m.Props[0].Collider.HasValue);
+        }
+
+        [Fact]
+        public void Parse_UnknownColliderType_Throws()
+        {
+            const string json = """
+            { "props": [ { "id": "x", "file": "x.glb", "heightMeters": 1,
+                           "collider": { "type": "sphere" } } ] }
+            """;
+            Assert.ThrowsAny<Exception>(() => AssetManifest.Parse(json));
         }
     }
 }

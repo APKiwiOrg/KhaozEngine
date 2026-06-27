@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using KhaozEngine.Collision;
 
 namespace KhaozEngine.Render3D
 {
@@ -21,9 +22,14 @@ namespace KhaozEngine.Render3D
         public float HeightMeters { get; }
         public string Source { get; }
         public string License { get; }
-        public AssetEntry(string id, string file, float heightMeters, string source, string license)
+        /// <summary>Optional static-collision footprint for this prop (a cylinder radius or box half-extents, at
+        /// unit scale). Null when the manifest declares none. Placed per scatter instance by
+        /// <c>KhaozEngine.Terrain.PropColliders.FromScatter</c>.</summary>
+        public ColliderShape? Collider { get; }
+        public AssetEntry(string id, string file, float heightMeters, string source, string license,
+                          ColliderShape? collider = null)
         {
-            Id = id; File = file; HeightMeters = heightMeters; Source = source; License = license;
+            Id = id; File = file; HeightMeters = heightMeters; Source = source; License = license; Collider = collider;
         }
     }
 
@@ -83,13 +89,27 @@ namespace KhaozEngine.Render3D
                 if (string.IsNullOrWhiteSpace(p.File))
                     throw new InvalidOperationException($"AssetManifest entry '{p.Id}' missing 'file'.");
                 entries.Add(new AssetEntry(p.Id!, ResolveFile(p.File!, baseDir), p.HeightMeters,
-                                           p.Source ?? "", p.License ?? ""));
+                                           p.Source ?? "", p.License ?? "", ParseCollider(p.Id!, p.Collider)));
             }
             return new AssetManifest(entries);
         }
 
         static string ResolveFile(string file, string? baseDir)
             => string.IsNullOrEmpty(baseDir) || Path.IsPathRooted(file) ? file : Path.Combine(baseDir, file);
+
+        // Optional per-prop collision footprint: { "type": "cylinder", "radius" } or { "type": "box", "halfW", "halfD" }.
+        static ColliderShape? ParseCollider(string id, Dto.ColliderDto? c)
+        {
+            if (c == null) return null;
+            switch ((c.Type ?? "").Trim().ToLowerInvariant())
+            {
+                case "cylinder": return ColliderShape.Cylinder(c.Radius);
+                case "box": return ColliderShape.Box(c.HalfW, c.HalfD);
+                default:
+                    throw new InvalidOperationException(
+                        $"AssetManifest entry '{id}' has unknown collider type '{c.Type}' (expected 'cylinder' or 'box').");
+            }
+        }
 
         static readonly JsonSerializerOptions Options = new() { PropertyNameCaseInsensitive = true };
 
@@ -104,6 +124,15 @@ namespace KhaozEngine.Render3D
                 [JsonPropertyName("heightMeters")] public float HeightMeters { get; set; }
                 [JsonPropertyName("source")] public string? Source { get; set; }
                 [JsonPropertyName("license")] public string? License { get; set; }
+                [JsonPropertyName("collider")] public ColliderDto? Collider { get; set; }
+            }
+
+            public sealed class ColliderDto
+            {
+                [JsonPropertyName("type")] public string? Type { get; set; }
+                [JsonPropertyName("radius")] public float Radius { get; set; }
+                [JsonPropertyName("halfW")] public float HalfW { get; set; }
+                [JsonPropertyName("halfD")] public float HalfD { get; set; }
             }
         }
     }

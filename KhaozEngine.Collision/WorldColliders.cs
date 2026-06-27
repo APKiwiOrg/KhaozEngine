@@ -75,11 +75,16 @@ public sealed class WorldColliders
         return p;
     }
 
-    /// <summary>Height-aware push-out: like <see cref="Resolve(Vector2,float,int)"/> but a collider is skipped once
-    /// the capsule's feet (<paramref name="footY"/>) are at or above that collider's <see cref="WorldCollider.Top"/>
-    /// minus <paramref name="skin"/> (you are standing on it, not hitting its side). Lets the capsule stand on a
-    /// rock/roof without being shoved off, while a thin blocker (top = +inf) always blocks.</summary>
-    public Vector2 Resolve(Vector2 position, float radius, float footY, float skin = 0.05f, int iterations = 4)
+    /// <summary>Height-aware push-out: like <see cref="Resolve(Vector2,float,int)"/> but a collider is skipped while
+    /// the capsule is standing on top of the prop (rather than hitting its side), so a rock/roof is not shoved off.
+    /// You count as standing when the feet (<paramref name="footY"/>) are at or above either: the collider's max
+    /// solid <see cref="WorldCollider.Top"/> (a flat platform, or a dome's peak), or the walkable surface under the
+    /// player (<paramref name="surfaceTop"/>) - a domed prop's surface sits BELOW its max top, so gating only on
+    /// <c>Top</c> mis-reads "standing on the dome" as a side hit and pushes you off (the bug this fixes). All within
+    /// <paramref name="skin"/>. A thin blocker (a tree: <c>Top = +inf</c>, no surface) is never standable and always
+    /// blocks. <paramref name="surfaceTop"/> defaults to +inf (no surface known) -> falls back to <c>Top</c>-only.</summary>
+    public Vector2 Resolve(Vector2 position, float radius, float footY,
+        float surfaceTop = float.PositiveInfinity, float skin = 0.05f, int iterations = 4)
     {
         if (colliders.Length == 0) return position;
         Vector2 p = position;
@@ -90,7 +95,11 @@ public sealed class WorldColliders
             for (int i = 0; i < n; i++)
             {
                 WorldCollider c = colliders[grid.GetQueryIndex(i)];
-                if (footY >= c.Top - skin) continue;          // standing on/above it -> not a side hit
+                if (footY >= c.Top - skin) continue;          // at/above the max solid top -> standing, not a side hit
+                // At/above the walkable surface under us -> standing on this prop's surface (a dome's surface is below
+                // its max top). Only for props that actually provide a surface (finite Top); a thin blocker
+                // (Top = +inf) has no surface and must always block, even while the feet rest on a neighbour's surface.
+                if (!float.IsInfinity(c.Top) && footY >= surfaceTop - skin) continue;
                 if (c.Resolve(p, radius, out Vector2 push)) { p += push; any = true; }
             }
             if (!any) break;

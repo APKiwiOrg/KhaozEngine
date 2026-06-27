@@ -12,11 +12,12 @@ namespace KhaozEngine.Locomotion;
 /// </summary>
 public readonly struct MoveCommand
 {
-    public MoveCommand(Vector2 move, bool run, float cameraYaw)
+    public MoveCommand(Vector2 move, bool run, float cameraYaw, bool jump = false)
     {
         Move = move;
         Run = run;
         CameraYaw = cameraYaw;
+        Jump = jump;
     }
 
     /// <summary>Camera-relative input axis: X = right/strafe, Y = forward (each nominally in [-1,1]).</summary>
@@ -27,6 +28,10 @@ public readonly struct MoveCommand
 
     /// <summary>Follow-camera yaw (radians) used to resolve <see cref="Move"/> into a world direction.</summary>
     public float CameraYaw { get; }
+
+    /// <summary>True when a jump is requested this tick. The vertical <see cref="CharacterMovement"/> step launches
+    /// only when grounded (or within coyote-time); a press just before landing fires on contact (jump-buffer).</summary>
+    public bool Jump { get; }
 
     /// <summary>A no-input command (zero move).</summary>
     public static MoveCommand Idle => default;

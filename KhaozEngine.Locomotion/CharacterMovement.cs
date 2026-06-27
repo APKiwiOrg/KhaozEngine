@@ -5,14 +5,21 @@ using KhaozEngine.Collision;
 namespace KhaozEngine.Locomotion;
 
 /// <summary>
-/// Pure XZ-plane character locomotion: the single movement step run by the local controller, the
-/// authoritative server sim, and client-side prediction alike. <see cref="Step"/> resolves a
-/// camera-relative <see cref="MoveCommand"/> into a world move, normalizes diagonals, applies walk/run
-/// speed over <paramref name="dt"/>, optionally rejects a step onto too-steep ground, then clamps Y onto
-/// the ground delegate plus the capsule half-height. No input, render, physics, or netcode dependency.
+/// Character locomotion: the single movement step run by the local controller, the authoritative server sim,
+/// and client-side prediction alike. Two overloads share one horizontal core (camera-relative move, normalized
+/// diagonals, walk/run speed, optional slope gate + static-collision resolve + bounds clamp):
+/// <list type="bullet">
+/// <item><see cref="Step(Vector3, in MoveCommand, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, WorldColliders?)"/>
+/// is the original horizontal-only step: Y is a pure function of XZ (ground + half-height), no air.</item>
+/// <item><see cref="Step(in MoveState, in MoveCommand, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, WorldColliders?, Func{float, float, Vector2}?)"/>
+/// is the vertical-physics step: gravity, jump (coyote + jump-buffer), land/clamp, and air control over the
+/// carried <see cref="MoveState"/>.</item>
+/// </list>
+/// No input, render, physics, or netcode dependency.
 /// </summary>
 public static class CharacterMovement
 {
+    /// <summary>Horizontal-only step (no vertical physics): Y is clamped onto the ground + half-height every tick.</summary>
     /// <param name="position">Current capsule-centre world position.</param>
     /// <param name="cmd">Movement intent (camera-relative axis + run + camera yaw).</param>
     /// <param name="dt">Timestep in seconds.</param>
@@ -29,6 +36,89 @@ public static class CharacterMovement
     {
         if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
 
+        (float x, float z) = ResolveHorizontal(position.X, position.Z, cmd, dt, tuning, groundNormal, colliders,
+            clampXz: null, speedScale: 1f);
+        return new Vector3(x, groundHeight(x, z) + tuning.CapsuleHalfHeight, z);
+    }
+
+    /// <summary>Vertical-physics step: horizontal move (air-controlled while airborne) plus gravity, ground
+    /// contact, and jump (coyote-time + jump-buffer), evolving the carried <see cref="MoveState"/>. The same step
+    /// runs authoritatively on the server and in client prediction, so state must round-trip identically.</summary>
+    /// <param name="state">The carried kinematic state (position + vertical velocity + grounded + feel timers).</param>
+    /// <param name="cmd">Movement intent including the jump bit.</param>
+    /// <param name="dt">Timestep in seconds.</param>
+    /// <param name="groundHeight">Terrain height at (x, z).</param>
+    /// <param name="tuning">Speed/half-height/slope + gravity/jump/fall/feel constants.</param>
+    /// <param name="groundNormal">Optional ground normal; when given, gates a horizontal step by slope.</param>
+    /// <param name="colliders">Optional static-world colliders (capsule footprint push-out).</param>
+    /// <param name="clampXz">Optional XZ clamp (e.g. a play-area bound); applied after the move/collide so the
+    /// vertical axis is then resolved at the clamped position. The same delegate runs on server and client.</param>
+    /// <returns>The advanced <see cref="MoveState"/>.</returns>
+    public static MoveState Step(in MoveState state, in MoveCommand cmd, float dt,
+        Func<float, float, float> groundHeight, in MoveTuning tuning,
+        Func<float, float, Vector3>? groundNormal = null, WorldColliders? colliders = null,
+        Func<float, float, Vector2>? clampXz = null)
+    {
+        if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
+
+        // 1. Horizontal: full control while grounded, scaled by AirControl while airborne.
+        float speedScale = state.Grounded ? 1f : tuning.AirControl;
+        (float x, float z) = ResolveHorizontal(state.Position.X, state.Position.Z, cmd, dt, tuning, groundNormal,
+            colliders, clampXz, speedScale);
+
+        // 2. Jump-buffer countdown: a press arms it for JumpBuffer seconds; otherwise it bleeds down.
+        //    A jump is requested if pressed this tick or still within a buffered window from a recent press.
+        bool jumpRequested = cmd.Jump || state.JumpBufferRemaining > 0f;
+        float jumpBuffer = cmd.Jump ? tuning.JumpBuffer : MathF.Max(0f, state.JumpBufferRemaining - dt);
+
+        // 3. Gravity integrate (clamp to terminal fall speed).
+        float vVel = state.VerticalVelocity - tuning.Gravity * dt;
+        if (vVel < -tuning.MaxFallSpeed) vVel = -tuning.MaxFallSpeed;
+        float y = state.Position.Y + vVel * dt;
+
+        // 4. Ground contact, with a grounded skin so a downhill run does not jitter grounded/airborne.
+        float groundY = groundHeight(x, z) + tuning.CapsuleHalfHeight;
+        bool grounded;
+        float tSinceGround;
+        if (vVel <= 0f && (y <= groundY || (state.Grounded && y <= groundY + tuning.GroundedEpsilon)))
+        {
+            y = groundY;
+            vVel = 0f;
+            grounded = true;
+            tSinceGround = 0f;
+        }
+        else
+        {
+            grounded = false;
+            tSinceGround = state.TimeSinceGrounded + dt;
+        }
+
+        // 5. Jump after contact (so a buffered jump fires on the landing tick): grounded or within coyote-time,
+        //    and a jump is requested. Consume both windows so there is no double-jump at the apex.
+        if (jumpRequested && (grounded || tSinceGround <= tuning.CoyoteTime))
+        {
+            vVel = tuning.JumpSpeed;
+            grounded = false;
+            tSinceGround = tuning.CoyoteTime + dt;   // out of coyote: no second jump at the apex
+            jumpBuffer = 0f;                         // consume the buffered request
+        }
+
+        return new MoveState
+        {
+            Position = new Vector3(x, y, z),
+            VerticalVelocity = vVel,
+            Grounded = grounded,
+            TimeSinceGrounded = tSinceGround,
+            JumpBufferRemaining = jumpBuffer,
+        };
+    }
+
+    /// <summary>Shared horizontal resolve: camera-relative move (normalized diagonals, walk/run speed scaled by
+    /// <paramref name="speedScale"/>), optional slope gate, static-collision push-out, then optional XZ clamp.</summary>
+    private static (float x, float z) ResolveHorizontal(float x, float z, in MoveCommand cmd, float dt,
+        in MoveTuning tuning, Func<float, float, Vector3>? groundNormal, WorldColliders? colliders,
+        Func<float, float, Vector2>? clampXz, float speedScale)
+    {
         // Camera-relative ground basis (matches FollowCamera3D's yaw convention).
         float sY = MathF.Sin(cmd.CameraYaw), cY = MathF.Cos(cmd.CameraYaw);
         Vector3 forward = new(-sY, 0f, -cY);
@@ -38,9 +128,9 @@ public static class CharacterMovement
         if (move.LengthSquared() > 1e-6f)
         {
             move = Vector3.Normalize(move);   // normalized diagonals
-            float speed = cmd.Run ? tuning.RunSpeed : tuning.WalkSpeed;
-            float nx = position.X + move.X * speed * dt;
-            float nz = position.Z + move.Z * speed * dt;
+            float speed = (cmd.Run ? tuning.RunSpeed : tuning.WalkSpeed) * speedScale;
+            float nx = x + move.X * speed * dt;
+            float nz = z + move.Z * speed * dt;
 
             bool blocked = false;
             if (groundNormal is not null)
@@ -48,19 +138,26 @@ public static class CharacterMovement
                 float ny = Math.Clamp(groundNormal(nx, nz).Y, 0f, 1f);
                 if (MathF.Acos(ny) > tuning.MaxSlopeRadians) blocked = true;
             }
-            if (!blocked) { position.X = nx; position.Z = nz; }
+            if (!blocked) { x = nx; z = nz; }
         }
 
         // Static-world collision: push the capsule footprint out of any prop/building it now overlaps, sliding
         // along surfaces. Null/empty set leaves the XZ untouched. Same set + math on server and client.
         if (colliders is not null && !colliders.IsEmpty)
         {
-            Vector2 resolved = colliders.Resolve(new Vector2(position.X, position.Z), tuning.CapsuleRadius);
-            position.X = resolved.X;
-            position.Z = resolved.Y;
+            Vector2 resolved = colliders.Resolve(new Vector2(x, z), tuning.CapsuleRadius);
+            x = resolved.X;
+            z = resolved.Y;
         }
 
-        position.Y = groundHeight(position.X, position.Z) + tuning.CapsuleHalfHeight;
-        return position;
+        // Optional play-area clamp (clamp-and-slide), applied after the move/collide.
+        if (clampXz is not null)
+        {
+            Vector2 c = clampXz(x, z);
+            x = c.X;
+            z = c.Y;
+        }
+
+        return (x, z);
     }
 }

@@ -1,7 +1,7 @@
 # KhaozEngine
 
 Shared, game-agnostic engine - a custom MonoGame-free 2D/3D render + windowing/input + Gui + ECS + netcode
-stack (Hardpoint, Nullwake, SpaceGame all run on it). See README.md and docs/USING-KHAOZENGINE.md.
+stack (Hardpoint, Nullwake, SpaceGame, Ruinborne all run on it). See README.md and docs/USING-KHAOZENGINE.md.
 
 ## Before starting ANY engine work (concurrent-dev rule)
 This section is the engine's instance of the global "Branching, worktrees, and finishing work"

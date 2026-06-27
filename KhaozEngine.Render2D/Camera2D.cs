@@ -68,7 +68,7 @@ namespace KhaozEngine.Render2D
         /// <c>min(viewportWidth / rectWidth, viewportHeight / rectHeight)</c> - clamped to
         /// <paramref name="minZoom"/>/<paramref name="maxZoom"/>, then centres <see cref="Position"/> on the
         /// rect. Pure and headless; ignores <see cref="Rotation"/> like the other axis-aligned helpers. Does
-        /// not clamp to world bounds - call <see cref="ClampPosition"/> after if the rect is a sub-region.
+        /// not clamp to world bounds - call <see cref="ClampPosition(System.Numerics.Vector2, KhaozEngine.Windowing.Rect, int, int)"/> after if the rect is a sub-region.
         /// </summary>
         public void Focus(Rect worldRect, int viewportWidth, int viewportHeight, float paddingFraction = 0f,
             float minZoom = 0.0001f, float maxZoom = float.MaxValue)

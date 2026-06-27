@@ -183,9 +183,9 @@ void main() {
 
         /// <summary>
         /// Flush pending draws, then clip subsequent draws to <paramref name="rect"/>. When a design viewport is
-        /// active (<see cref="Begin(Windowing.IDesignViewport)"/>) <paramref name="rect"/> is in design space and
+        /// active (<see cref="Begin(Windowing.IDesignViewport, SamplerMode)"/>) <paramref name="rect"/> is in design space and
         /// is mapped through it; otherwise it is in window points. Pair with <see cref="ClearScissor"/>. The
-        /// current transform is preserved, so no <see cref="Begin"/> is needed around it.
+        /// current transform is preserved, so no <see cref="Begin(Camera2D, SamplerMode)"/> is needed around it.
         /// </summary>
         public void SetScissor(Windowing.Rect rect)
         {
@@ -231,7 +231,7 @@ void main() {
         /// <summary>
         /// Begin a batch in screen space (pixels, top-left origin) with a <paramref name="transform"/> applied to
         /// every draw before projection - so a whole composed group (a sprite + its overlaid text) rotates,
-        /// scales, or translates as one. <see cref="DrawString"/> has no rotation of its own, so a model transform
+        /// scales, or translates as one. <see cref="DrawString(KhaozEngine.Render2D.SpriteFont, string, System.Numerics.Vector2, KhaozEngine.Primitives.Color)"/> has no rotation of its own, so a model transform
         /// here is how text tilts with its panel. Build <paramref name="transform"/> in screen space (e.g.
         /// rotate-about-a-pivot = <c>Translate(-p) * RotationZ(a) * Translate(p)</c>).
         /// </summary>
@@ -444,7 +444,7 @@ void main() {
         /// <summary>
         /// Draw the accumulated runs (in submission order) and clear them, keeping the current transform and
         /// scissor. Used by <see cref="End"/> and by the scissor calls so a clip can be applied mid-batch
-        /// without a <see cref="Begin"/> that would reset the design-viewport transform.
+        /// without a <see cref="Begin(KhaozEngine.Render2D.Camera2D, KhaozEngine.Render2D.SamplerMode)"/> that would reset the design-viewport transform.
         /// </summary>
         void Flush()
         {

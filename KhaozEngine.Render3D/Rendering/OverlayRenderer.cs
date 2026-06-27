@@ -15,7 +15,7 @@ namespace KhaozEngine.Render3D.Rendering
     /// overlay primitive is a small wrapper rather than another copy of this plumbing.
     /// </summary>
     /// <typeparam name="TVertex">The vertex struct (position + colour, optionally UV). Must be a blittable
-    /// value type whose layout matches <paramref name="vertexLayout"/> and whose size is <c>stride</c>.</typeparam>
+    /// value type whose layout matches <c>vertexLayout</c> and whose size is <c>stride</c>.</typeparam>
     internal sealed class OverlayRenderer<TVertex> : IDisposable where TVertex : unmanaged
     {
         readonly IGpuDevice _gd;

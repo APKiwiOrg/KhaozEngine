@@ -29,7 +29,7 @@ namespace KhaozEngine.Render2D
 
     /// <summary>
     /// A bitmap font rasterized at load time from a TrueType file (stb_truetype) into a single atlas.
-    /// Draw with <see cref="SpriteBatch.DrawString"/>.
+    /// Draw with <see cref="SpriteBatch.DrawString(KhaozEngine.Render2D.SpriteFont, string, System.Numerics.Vector2, KhaozEngine.Primitives.Color)"/>.
     /// <para>
     /// An <c>oversample</c> factor rasterizes the atlas at <c>pixelHeight * oversample</c> while reporting all
     /// layout metrics (<see cref="Measure"/>, <see cref="LineHeight"/>, glyph advances) at the logical

@@ -97,7 +97,7 @@ namespace KhaozEngine.Gpu
         }
     }
 
-    /// <summary>A windowed view of a buffer bound to a resource set: <paramref name="Buffer"/> starting at
+    /// <summary>A windowed view of a buffer bound to a resource set: <see cref="Buffer"/> starting at
     /// <see cref="Offset"/> for <see cref="Size"/> bytes. Used for dynamic-offset bindings (offset 0 + the window
     /// size; the per-draw offset is supplied at draw time). Engine mirror of <c>DeviceBufferRange</c>.</summary>
     public readonly struct GpuBufferRange : IGpuBindableResource

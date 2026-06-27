@@ -594,25 +594,25 @@ internal static class ClipboardInterop
             Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
             for (int i = 0; i < assemblies.Length; i++)
             {
-                Type bridgeType = assemblies[i].GetType(bridgeTypeName, throwOnError: false, ignoreCase: false);
+                Type? bridgeType = assemblies[i].GetType(bridgeTypeName, throwOnError: false, ignoreCase: false);
                 if (bridgeType is null)
                 {
                     continue;
                 }
 
-                MethodInfo tryGetMethod = bridgeType.GetMethod(
+                MethodInfo? tryGetMethod = bridgeType.GetMethod(
                     "TryGetClipboardText",
                     BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static,
                     binder: null,
                     types: new[] { typeof(string).MakeByRefType() },
                     modifiers: null);
-                MethodInfo trySetTextMethod = bridgeType.GetMethod(
+                MethodInfo? trySetTextMethod = bridgeType.GetMethod(
                     "TrySetClipboardText",
                     BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static,
                     binder: null,
                     types: new[] { typeof(string) },
                     modifiers: null);
-                MethodInfo trySetImageMethod = bridgeType.GetMethod(
+                MethodInfo? trySetImageMethod = bridgeType.GetMethod(
                     "TrySetClipboardImagePng",
                     BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static,
                     binder: null,

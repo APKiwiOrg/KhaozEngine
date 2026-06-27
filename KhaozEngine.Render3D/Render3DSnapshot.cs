@@ -12,9 +12,9 @@ namespace KhaozEngine.Render3D
     {
         /// <summary>
         /// Render a multi-instance scene offscreen and return the final image as RGBA8 (w*h*4 bytes).
-        /// <paramref name="setup"/> runs once (load meshes via <see cref="Scene3D.LoadMesh"/>, configure
+        /// <paramref name="setup"/> runs once (load meshes via <see cref="Scene3D.LoadMesh(KhaozEngine.Render3D.GltfMesh)"/>, configure
         /// camera/post); <paramref name="drawFrame"/> runs each frame after <see cref="Scene3D.Begin"/> to
-        /// queue instances via <see cref="Scene3D.Draw"/>.
+        /// queue instances via <see cref="Scene3D.Draw(KhaozEngine.Render3D.MeshHandle, System.Numerics.Matrix4x4)"/>.
         /// </summary>
         public static byte[] Capture(int width, int height, Action<Scene3D> setup, Action<Scene3D> drawFrame, int frames = 1)
         {

@@ -31,7 +31,7 @@ namespace KhaozEngine.Render2D
             camera.Rotation = Rotation;
         }
 
-        /// <summary>Per-field linear interpolation (Position via <see cref="Vector2.Lerp"/>; Zoom/Rotation
+        /// <summary>Per-field linear interpolation (Position via <see cref="Vector2.Lerp(System.Numerics.Vector2, System.Numerics.Vector2, float)"/>; Zoom/Rotation
         /// scalar). Rotation is interpolated linearly - no shortest-arc wrap; callers supply sane angles.</summary>
         public static CameraState Lerp(CameraState a, CameraState b, float t) => new(
             Vector2.Lerp(a.Position, b.Position, t),

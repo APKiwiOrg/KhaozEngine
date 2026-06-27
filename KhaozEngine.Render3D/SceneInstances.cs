@@ -5,7 +5,7 @@ using KhaozEngine.Primitives;
 namespace KhaozEngine.Render3D
 {
     /// <summary>
-    /// The per-frame instance queue for <see cref="Scene3D"/>: <see cref="Begin"/> clears it, <see cref="Add"/>
+    /// The per-frame instance queue for <see cref="Scene3D"/>: <see cref="Begin"/> clears it, <see cref="Add(KhaozEngine.Render3D.MeshHandle, System.Numerics.Matrix4x4, KhaozEngine.Primitives.Color)"/>
     /// queues one (mesh, world) draw, and the renderer consumes <see cref="Items"/> in submission order. Pure /
     /// headless so the queueing is testable without a GPU.
     /// </summary>

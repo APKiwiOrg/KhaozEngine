@@ -27,7 +27,7 @@ namespace KhaozEngine.Render3D
     /// it never creates a <see cref="Scene3D.TextureHandle"/>; the upload stays in <see cref="Scene3D"/>). Any map a
     /// material doesn't reference - or whose image is missing/external-unresolved/undecodable - is left
     /// <c>null</c> (absent, never a throw), so a material with no textures yields an all-null
-    /// <see cref="GltfMaterialMaps"/>. <see cref="MetallicRoughness"/> is glTF's packed ORM-style texture passed
+    /// <see cref="GltfMaterialMaps"/>. <see cref="Roughness"/> is glTF's packed ORM-style texture passed
     /// through unchanged (the model shader samples <c>.g</c> for roughness); <see cref="Normal"/> is the
     /// tangent-space RGB normal map unchanged. Feed the bundle to <see cref="Scene3D.LoadSurfaceMaps"/> (or the
     /// <see cref="Scene3D.LoadMesh(GltfMesh,GltfMaterialMaps)"/> overload) to upload only the present maps.</summary>

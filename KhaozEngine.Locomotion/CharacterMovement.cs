@@ -8,7 +8,7 @@ namespace KhaozEngine.Locomotion;
 /// Pure XZ-plane character locomotion: the single movement step run by the local controller, the
 /// authoritative server sim, and client-side prediction alike. <see cref="Step"/> resolves a
 /// camera-relative <see cref="MoveCommand"/> into a world move, normalizes diagonals, applies walk/run
-/// speed over <paramref name="dt"/>, optionally rejects a step onto too-steep ground, then clamps Y onto
+/// speed over <c>dt</c>, optionally rejects a step onto too-steep ground, then clamps Y onto
 /// the ground delegate plus the capsule half-height. No input, render, physics, or netcode dependency.
 /// </summary>
 public static class CharacterMovement

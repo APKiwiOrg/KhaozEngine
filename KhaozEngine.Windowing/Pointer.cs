@@ -5,7 +5,7 @@ namespace KhaozEngine.Windowing
 {
     /// <summary>
     /// Bounds-aware pointer over the mouse, with the press-origin click-through invariant. Feed it the
-    /// frame's <see cref="InputState"/> via <see cref="Update"/>; then hit-test with the bounds helpers
+    /// frame's <see cref="InputState"/> via <see cref="Update(KhaozEngine.Windowing.InputState)"/>; then hit-test with the bounds helpers
     /// (<see cref="IsTapIn"/>, <see cref="IsPressingIn"/>, ...) rather than raw position + button checks.
     /// Ported from the MonoGame <c>InputManager</c> core (desktop/mouse; touch/gamepad are follow-ups; pinch/swipe
     /// gestures live in <c>PinchRecognizer</c>/<c>GestureRecognizer</c>).
@@ -37,7 +37,7 @@ namespace KhaozEngine.Windowing
 
         /// <summary>
         /// True while the owning window has OS focus (from <see cref="InputState.WindowFocused"/>; <c>true</c> until
-        /// the first <see cref="Update"/>). The hover query <see cref="IsHoveringIn"/> is gated on this so a
+        /// the first <see cref="Update(KhaozEngine.Windowing.InputState)"/>). The hover query <see cref="IsHoveringIn"/> is gated on this so a
         /// background window reports no hover, while the press-origin / tap queries stay live (focus gates HOVER
         /// only, never the click-through invariant). Read it to drop other hover affordances while unfocused.
         /// </summary>
@@ -73,7 +73,7 @@ namespace KhaozEngine.Windowing
             if (IsJustPressed) { _pressOrigin = _pos; _consumed = false; }
         }
 
-        /// <summary>Reserve a region for an overlay this frame; the layer beneath checks <see cref="IsBlocked"/>. Cleared each <see cref="Update"/>.</summary>
+        /// <summary>Reserve a region for an overlay this frame; the layer beneath checks <see cref="IsBlocked"/>. Cleared each <see cref="Update(KhaozEngine.Windowing.InputState)"/>.</summary>
         public void BlockRegion(Rect region) => _blocked.Add(region);
 
         /// <summary>True if the point is inside any region reserved this frame via <see cref="BlockRegion"/>.</summary>

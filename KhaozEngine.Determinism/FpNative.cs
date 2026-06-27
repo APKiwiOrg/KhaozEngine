@@ -14,9 +14,14 @@ internal static class FpNative
 {
     private const string Lib = "ke_fpenv";
 
+    // CA2255: this ModuleInitializer is the intended mechanism here - it registers the native-library
+    // resolver for ke_fpenv before any P/Invoke runs. The "libraries shouldn't use ModuleInitializer"
+    // guidance targets accidental/incidental use; here it is deliberate and required, so suppress it.
+#pragma warning disable CA2255
     [ModuleInitializer]
     internal static void Init() =>
         NativeLibrary.SetDllImportResolver(typeof(FpNative).Assembly, Resolve);
+#pragma warning restore CA2255
 
     private static IntPtr Resolve(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
     {

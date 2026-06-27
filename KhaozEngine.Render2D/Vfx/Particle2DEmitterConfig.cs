@@ -4,7 +4,7 @@ using KhaozEngine.Primitives;
 namespace KhaozEngine.Render2D.Vfx
 {
     /// <summary>
-    /// Data-driven preset for a burst of 2D particles - every tunable for <see cref="Particle2DSystem.Emit"/>.
+    /// Data-driven preset for a burst of 2D particles - every tunable for <see cref="Particle2DSystem.Emit(in KhaozEngine.Render2D.Vfx.Particle2DEmitterConfig, System.Numerics.Vector2, int)"/>.
     /// Immutable; derive variants with <c>with</c> expressions, e.g.
     /// <c>cfg with { MaxSpeed = 120f }</c>. Build these from data so a consumer can keep presets in content.
     /// </summary>

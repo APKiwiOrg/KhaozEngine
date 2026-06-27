@@ -5,7 +5,7 @@ namespace KhaozEngine.NetWorld;
 
 /// <summary>
 /// The server-side surface <see cref="WorldPersistence"/> drives, so the same persistence wiring (load-on-join,
-/// save-on-leave, periodic dirty snapshot, keyed <c>player:{accountId}</c>) serves both the single-<see cref="World"/>
+/// save-on-leave, periodic dirty snapshot, keyed <c>player:{accountId}</c>) serves both the single-<see cref="KhaozEngine.Ecs.World"/>
 /// <see cref="WorldServer"/> and the multi-cell <see cref="ShardedWorldServer"/>. Player-keyed and cell-agnostic:
 /// <see cref="SetPlayerState"/> places a loaded player at its saved position wherever that falls (a sharded host
 /// relocates it to the containing cell on its next handoff pass).

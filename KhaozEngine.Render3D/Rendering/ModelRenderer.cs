@@ -248,7 +248,7 @@ namespace KhaozEngine.Render3D.Rendering
             _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(
                 _layout, _ubo, albedo ?? _white, normal ?? _flatNormal, roughness ?? _defaultRough, _sampler));
 
-        /// <summary>Ensure the persistent instance buffer holds at least <paramref name="instanceCount"/>
+        /// <summary>Ensure the persistent instance buffer holds at least <paramref name="instances"/>.Length
         /// instances, then upload <paramref name="instances"/> starting at offset 0. Geometric 2x growth.</summary>
         public void UploadInstances(IGpuCommandList cl, ReadOnlySpan<InstanceData> instances)
         {

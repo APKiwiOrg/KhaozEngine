@@ -21,7 +21,7 @@ namespace KhaozEngine.Gui
     /// </summary>
     public static class Layout
     {
-        /// <summary>Resolve a child rect of <paramref name="size"/> anchored within <paramref name="parent"/>.</summary>
+        /// <summary>Resolve a child rect of <paramref name="width"/> x <paramref name="height"/> anchored within <paramref name="parent"/>.</summary>
         public static Rect Resolve(Rect parent, Anchor anchor, float width, float height,
             float marginX = 0f, float marginY = 0f)
         {

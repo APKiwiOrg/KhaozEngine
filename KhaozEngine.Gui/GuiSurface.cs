@@ -19,7 +19,7 @@ namespace KhaozEngine.Gui
     /// <para>
     /// <b>Immediate vs retained:</b> use <see cref="GuiSurface"/> for HUDs/menus authored fresh each frame inside a
     /// <c>window.Run</c> loop - no instances to keep, one call site per widget, styled by <see cref="GuiStyle"/>.
-    /// Use the retained widgets (<see cref="Button"/>, <see cref="Toggle"/>, <see cref="Slider"/>,
+    /// Use the retained widgets (<see cref="Button(KhaozEngine.Render2D.SpriteFont, KhaozEngine.Windowing.Rect, string)"/>, <see cref="Toggle"/>, <see cref="Slider(KhaozEngine.Windowing.Rect, float)"/>,
     /// <see cref="Dropdown"/>, <see cref="TextInput"/>, ...) when a control owns persistent state across frames
     /// (focus, drag, open/closed) or sits in a long-lived screen object: construct once, call <c>Update</c> then
     /// <c>Draw</c> each frame. Both paradigms reserve their rect on the <see cref="Pointer"/> for the same
@@ -230,7 +230,7 @@ namespace KhaozEngine.Gui
         /// An immediate-mode horizontal slider. Returns the (possibly updated) value in [0,1]. While the pointer is
         /// pressed with its press-origin inside <paramref name="rect"/> (the same press-origin invariant as
         /// <see cref="Button(SpriteFont, Rect, string)"/>, via <see cref="Pointer.IsDragStartIn"/> - shared with the
-        /// retained <see cref="Slider"/>), the value tracks
+        /// retained <see cref="Slider(KhaozEngine.Windowing.Rect, float)"/>), the value tracks
         /// the pointer X clamped to [0,1] - the drag keeps control even if the cursor strays off the track, which
         /// <c>IsPressingIn</c> would not. The handle half-width is inset so the ends reach exactly 0 and 1. The
         /// caller owns the value's range mapping (volumes are already 0..1), persistence, and any side-effects.

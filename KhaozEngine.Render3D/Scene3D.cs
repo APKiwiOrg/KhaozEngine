@@ -10,14 +10,14 @@ using KhaozEngine.Render3D.Rendering;
 
 namespace KhaozEngine.Render3D
 {
-    /// <summary>Blend mode for <see cref="Scene3D.DrawBillboard"/>: standard <see cref="Alpha"/> transparency,
+    /// <summary>Blend mode for <see cref="Scene3D.DrawBillboard(System.Numerics.Vector3, float, KhaozEngine.Primitives.Color, KhaozEngine.Render3D.BillboardBlend)"/>: standard <see cref="Alpha"/> transparency,
     /// or <see cref="Additive"/> (source-alpha/one) for glowy accumulation (sparks, muzzle flashes).</summary>
     public enum BillboardBlend { Alpha, Additive }
 
     /// <summary>
     /// A drawable 3D scene: an <see cref="IsoCamera3D"/>, a set of uploaded meshes, a per-frame instance queue,
-    /// and the pixel post chain. Load meshes once with <see cref="LoadMesh"/>; each frame call
-    /// <see cref="Begin"/>, queue instances with <see cref="Draw"/>, then have the surface/host render. Owns its
+    /// and the pixel post chain. Load meshes once with <see cref="LoadMesh(KhaozEngine.Render3D.GltfMesh)"/>; each frame call
+    /// <see cref="Begin"/>, queue instances with <see cref="Draw(KhaozEngine.Render3D.MeshHandle, System.Numerics.Matrix4x4)"/>, then have the surface/host render. Owns its
     /// GPU resources (via the KhaozEngine.Gpu seam) but records into a caller-supplied command list (see
     /// <see cref="Render3DSurface"/>); the public surface stays backend-free.
     /// </summary>
@@ -165,7 +165,7 @@ namespace KhaozEngine.Render3D
             }
         }
 
-        /// <summary>Upload a loaded mesh to the GPU once; returns a handle to instance it with <see cref="Draw"/>.
+        /// <summary>Upload a loaded mesh to the GPU once; returns a handle to instance it with <see cref="Draw(KhaozEngine.Render3D.MeshHandle, System.Numerics.Matrix4x4)"/>.
         /// Reuses a slot freed by <see cref="UnloadMesh"/> when one is available. The mesh is untextured (samples the
         /// renderer's 1x1 white default, so its colour is the baked vertex colour times any per-instance tint).</summary>
         public MeshHandle LoadMesh(GltfMesh mesh) => LoadMeshInternal(mesh, null);
@@ -294,7 +294,7 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>Upload a skinned mesh to the GPU once; returns a handle to draw it with
-        /// <see cref="DrawSkinned"/>. Untextured (samples the 1x1 white default, so colour is the baked vertex
+        /// <see cref="DrawSkinned(KhaozEngine.Render3D.SkinnedMeshHandle, System.ReadOnlySpan{System.Numerics.Matrix4x4}, System.Numerics.Matrix4x4, KhaozEngine.Primitives.Color)"/>. Untextured (samples the 1x1 white default, so colour is the baked vertex
         /// colour times any per-instance tint).</summary>
         public SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh) => LoadSkinnedInternal(mesh, null);
 

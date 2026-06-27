@@ -43,7 +43,7 @@ public interface ISfxFileProbe
 
 /// <summary>
 /// Decides, per entry, whether to generate or skip - the idempotency + cost-control core. Default is
-/// skip-existing-unchanged; <paramref name="force"/> regenerates everything.
+/// skip-existing-unchanged; <c>force</c> regenerates everything.
 /// </summary>
 public static class SfxPlanner
 {

@@ -219,7 +219,7 @@ public sealed class AudioSystem : IDisposable
     }
 
     /// <summary>
-    /// SFX volume (0.0 - 1.0). Scaled by master volume. Applied per <see cref="PlaySfx"/> (no eager apply,
+    /// SFX volume (0.0 - 1.0). Scaled by master volume. Applied per <see cref="PlaySfx(string, float, float)"/> (no eager apply,
     /// since SFX are fire-and-forget one-shots).
     /// </summary>
     public float SfxVolume
@@ -525,7 +525,7 @@ public sealed class AudioSystem : IDisposable
     /// <summary>
     /// Plays a registered SFX as a positional one-shot at <paramref name="position"/> in world space
     /// (attenuates / pans relative to the listener; see <see cref="SetListener"/>). Same gain / unknown-name /
-    /// guard behavior as <see cref="PlaySfx"/>.
+    /// guard behavior as <see cref="PlaySfx(string, float, float)"/>.
     /// </summary>
     public void PlaySfx3D(string name, Vector3 position, float volume = 1f, float pitch = 1f)
         => PlaySfxInternal(name, volume, pitch, positional: true, position);
@@ -604,7 +604,7 @@ public sealed class AudioSystem : IDisposable
     }
 
     /// <summary>
-    /// Sets the 3D listener pose used by <see cref="PlaySfx3D"/> for attenuation / panning. No-op for
+    /// Sets the 3D listener pose used by <see cref="PlaySfx3D(string, System.Numerics.Vector3, float, float)"/> for attenuation / panning. No-op for
     /// non-positional SFX.
     /// </summary>
     public void SetListener(Vector3 position, Vector3 forward, Vector3 up)

@@ -14,7 +14,7 @@ namespace KhaozEngine.Collision;
 /// Rebuild each tick with <see cref="BeginRebuild"/> then one <see cref="Add"/> per live item, in the order
 /// the indices should chain. The grid is generic over the item collection: the index you pass to
 /// <see cref="Add"/> is exactly what <see cref="GetQueryIndex"/> hands back, so it can index whatever rows or
-/// array the caller owns. Pass a <paramref name="capacity"/> to <see cref="BeginRebuild"/> that exceeds the
+/// array the caller owns. Pass a <c>capacity</c> to <see cref="BeginRebuild"/> that exceeds the
 /// largest index you will add.
 /// </remarks>
 public sealed class SpatialHashGrid

@@ -4,7 +4,7 @@ namespace KhaozEngine.Gui
 {
     /// <summary>
     /// String ids for the engine's core UI icon set (registered into an <see cref="IconAtlas"/> by
-    /// <see cref="IconAtlas.Bake"/>). Games register their own ids alongside these via
+    /// <see cref="IconAtlas.Bake(KhaozEngine.Render2D.Render2DSurface, int)"/>). Games register their own ids alongside these via
     /// <see cref="IconAtlas.Register"/>. Outline style, single-colour, tinted at draw time.
     /// </summary>
     public static class Icons

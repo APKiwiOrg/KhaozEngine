@@ -679,7 +679,7 @@ var camController = new FollowCameraController(camera);
 scene.CameraOverride = camera;   // a sibling camera drives the render path; null = built-in iso Camera
 
 // each frame:
-character.Update(input, dt, camera.Yaw, terrain.GroundHeight);   // WASD camera-relative, ground-clamped
+character.Update(input, dt, camera.Yaw, terrain.GroundHeight);   // WASD camera-relative; Space jumps; gravity + landing
 camera.Target = character.Position;
 camera.AspectRatio = (float)frameWidth / frameHeight;
 camController.Update(input, dt);
@@ -687,12 +687,23 @@ camController.Update(input, dt);
 
 `CharacterController3D` is terrain-agnostic: it takes ground height (and optionally ground normal) as delegates,
 so any height source works. Pair it with `TerrainCollision.GroundHeight` for analytic terrain. WASD is
-camera-relative on XZ (normalized diagonals, left/right shift to run); `Position` is the capsule centre and its Y
-clamps to the ground plus `CapsuleHalfHeight` each frame. Speeds, capsule half-height, max slope, the camera
-distance/pitch limits, orbit/zoom sensitivity, per-axis drag inversion (`FollowCameraController.InvertX` /
-`InvertY`, for an "invert axis" setting), and the camera ground-clamp (`FollowCamera3D.GroundHeight` /
-`GroundClearance`) are public fields (feel-tuned later). See `TerrainWalkSample` for the full wiring. Animation/walk-cycle, netcode-driven movement, chunk streaming, prop/obstacle collision, and
-physics beyond the ground-clamp are later sub-projects, not part of this one.
+camera-relative on XZ (normalized diagonals, left/right shift to run); `Position` is the capsule centre.
+
+**Jump + gravity (vertical physics).** `Update` reads `Space` (edge-triggered) as a jump and runs the vertical
+movement step: while airborne the character falls under `Gravity` (clamped to `MaxFallSpeed`) until it lands back
+on the ground; a jump launches at `JumpSpeed` only when grounded (or within `CoyoteTime` of leaving the ground),
+and a jump pressed just before landing fires on contact (`JumpBuffer`). `character.Grounded` and
+`character.VerticalVelocity` are exposed (e.g. for jump/land animation or SFX). The feel is tunable via public
+fields - `Gravity` (25), `JumpSpeed` (8, apex ~1.28 m), `MaxFallSpeed` (50), `CoyoteTime` (0.1), `JumpBuffer`
+(0.1), `AirControl` (1, horizontal control while airborne), `GroundedEpsilon` (0.3, the slope skin so a downhill
+run does not flicker grounded/airborne) - matching `MoveTuning`. Run off a cliff or the bounded-clearing rim and
+you fall.
+
+Speeds, capsule half-height, max slope, the vertical-feel fields above, the camera distance/pitch limits,
+orbit/zoom sensitivity, per-axis drag inversion (`FollowCameraController.InvertX` / `InvertY`, for an "invert axis"
+setting), and the camera ground-clamp (`FollowCamera3D.GroundHeight` / `GroundClearance`) are public fields
+(feel-tuned later). See `TerrainWalkSample` for the full wiring (Space to jump). Animation/walk-cycle, chunk
+streaming, and standing on / jumping onto props & buildings are later sub-projects, not part of this one.
 
 ---
 
@@ -912,14 +923,23 @@ Threaded/background chunk build (an `IJobScheduler` build) and multi-cell server
 ## Networked overworld (`KhaozEngine.Locomotion` + `KhaozEngine.NetWorld`)
 
 The movement math lives in one render-free place so local feel and networked feel are the same code.
-`KhaozEngine.Locomotion` (leaf, `Foundation` umbrella) is `CharacterMovement.Step` (a pure XZ move from a
-`MoveCommand` (camera-relative WASD axis + run + camera yaw) over a timestep, normalized diagonals,
-ground-clamped via a height delegate + optional slope gate) and one `MoveTuning`. The local
-`CharacterController3D` wraps it; the authoritative server and client prediction run the same `Step`.
+`KhaozEngine.Locomotion` (leaf, `Foundation` umbrella) is `CharacterMovement.Step` (camera-relative move from a
+`MoveCommand` (WASD axis + run + camera yaw + jump) over a timestep, normalized diagonals, ground-clamped via a
+height delegate + optional slope gate) and one `MoveTuning`. It has two overloads: the horizontal-only
+`Step(Vector3,...) -> Vector3` (Y clamped to the ground each tick), and the vertical-physics
+`Step(in MoveState,...) -> MoveState` that adds gravity, jump (coyote-time + jump-buffer), and air control over the
+carried `MoveState` (position + vertical velocity + grounded + feel timers). The local `CharacterController3D`
+wraps the vertical step; the authoritative server and client prediction run the same `Step`, so the vertical axis
+reconciles identically.
 
 ```csharp
 using KhaozEngine.Locomotion;
+// Horizontal-only (top-down / no air):
 Vector3 next = CharacterMovement.Step(pos, new MoveCommand(move, run, cameraYaw), dt, terrain.GroundHeight, MoveTuning.Default);
+
+// Vertical physics (gravity + jump): carry the MoveState across ticks.
+MoveState s = CharacterMovement.Step(s, new MoveCommand(move, run, cameraYaw, jump), dt, terrain.GroundHeight, MoveTuning.Default);
+// s.Position, s.VerticalVelocity, s.Grounded
 ```
 
 `KhaozEngine.NetWorld` (`Server` umbrella; deps Locomotion/Netcode/Replication/Ecs, render-free) wires that

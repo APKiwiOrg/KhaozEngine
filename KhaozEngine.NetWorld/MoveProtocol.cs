@@ -11,6 +11,9 @@ public static class MoveProtocol
     /// <summary>Type id of <see cref="ReplicatedPosition"/> in the shared registry.</summary>
     public const ushort PositionTypeId = 1;
 
+    /// <summary>Type id of <see cref="MovementState"/> (vertical axis) in the shared registry.</summary>
+    public const ushort MovementTypeId = 2;
+
     /// <summary>The replicated-component registry (must match on server and client).</summary>
     public static ReplicationRegistry CreateRegistry()
     {
@@ -20,13 +23,31 @@ public static class MoveProtocol
             write: (p, bw) => { bw.Write(p.Value.X); bw.Write(p.Value.Y); bw.Write(p.Value.Z); },
             read: br => new ReplicatedPosition { Value = new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle()) },
             lerp: (a, b, t) => new ReplicatedPosition { Value = Vector3.Lerp(a.Value, b.Value, t) });
+        // Vertical movement state. Not interpolated: remotes render from ReplicatedPosition; only the local owner
+        // reads this (as its exact authoritative reconciliation basis), and the booleans/timers must not be blended.
+        r.Register<MovementState>(
+            MovementTypeId,
+            write: (m, bw) =>
+            {
+                bw.Write(m.VerticalVelocity);
+                bw.Write(m.Grounded);
+                bw.Write(m.TimeSinceGrounded);
+                bw.Write(m.JumpBufferRemaining);
+            },
+            read: br => new MovementState
+            {
+                VerticalVelocity = br.ReadSingle(),
+                Grounded = br.ReadBoolean(),
+                TimeSinceGrounded = br.ReadSingle(),
+                JumpBufferRemaining = br.ReadSingle(),
+            });
         return r;
     }
 
-    // Move: [seq:int][move.x:float][move.y:float][run:byte][cameraYaw:float] = 17 bytes.
-    private const int MoveSize = 4 + 4 + 4 + 1 + 4;
+    // Move: [seq:int][move.x:float][move.y:float][run:byte][cameraYaw:float][jump:byte] = 18 bytes.
+    private const int MoveSize = 4 + 4 + 4 + 1 + 4 + 1;
 
-    /// <summary>Encodes a client move command.</summary>
+    /// <summary>Encodes a client move command (including the jump bit).</summary>
     public static byte[] EncodeMove(int seq, in MoveCommand cmd)
     {
         var b = new byte[MoveSize];
@@ -35,6 +56,7 @@ public static class MoveProtocol
         BitConverter.TryWriteBytes(b.AsSpan(8, 4), cmd.Move.Y);
         b[12] = cmd.Run ? (byte)1 : (byte)0;
         BitConverter.TryWriteBytes(b.AsSpan(13, 4), cmd.CameraYaw);
+        b[17] = cmd.Jump ? (byte)1 : (byte)0;
         return b;
     }
 
@@ -47,7 +69,8 @@ public static class MoveProtocol
             var move = new Vector2(BitConverter.ToSingle(data.Slice(4, 4)), BitConverter.ToSingle(data.Slice(8, 4)));
             bool run = data[12] != 0;
             float yaw = BitConverter.ToSingle(data.Slice(13, 4));
-            cmd = new MoveCommand(move, run, yaw);
+            bool jump = data[17] != 0;
+            cmd = new MoveCommand(move, run, yaw, jump);
             return true;
         }
         seq = -1;

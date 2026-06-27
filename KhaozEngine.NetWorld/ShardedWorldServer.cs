@@ -112,7 +112,8 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
             && host.TryGetOwner(netId, out CellSim cell, out Entity e)
             && cell.World.TryGet(e, out ReplicatedPosition rp))
         {
-            state = new PlayerMoveState { Position = rp.Value };
+            cell.World.TryGet(e, out MovementState ms);   // default (grounded, 0) if absent
+            state = PlayerMoveState.From(rp.Value, ms);
             return true;
         }
         state = default;
@@ -125,7 +126,10 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
     public void SetPlayerState(int slot, in PlayerMoveState state)
     {
         if (netIdBySlot.TryGetValue(slot, out int netId) && host.TryGetOwner(netId, out CellSim cell, out Entity e))
+        {
             cell.World.Set(e, new ReplicatedPosition { Value = state.Position });
+            cell.World.Set(e, MovementState.From(state));
+        }
     }
 
     /// <summary>Ingests session events (join/leave) and client input. Call once before <see cref="Tick"/>.</summary>
@@ -195,6 +199,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
         Entity e = host.SpawnAt(state.Position.X, state.Position.Z, out CellSim cell);
         cell.World.Set(e, new NetId(netId));
         cell.World.Set(e, new ReplicatedPosition { Value = state.Position });
+        cell.World.Set(e, MovementState.From(state));   // vertical axis: present at spawn, carried across handoff
         EnsureWired(cell);
 
         string accountId = token is { Length: > 0 } ? Encoding.UTF8.GetString(token) : $"guest:{slot}";

@@ -5,6 +5,34 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.54.0
+
+Vertical character physics (gravity + jump), character-physics sub-project A. Movement was purely horizontal
+(`CharacterMovement.Step` ground-clamped Y every tick - no air, no falling); this adds the vertical axis,
+server-authoritative with client prediction from the start, over terrain. New `KhaozEngine.Locomotion.MoveState`
+(the kinematic state carried tick-to-tick: capsule position + `VerticalVelocity` + `Grounded` + the coyote /
+jump-buffer feel timers) and a new `CharacterMovement.Step(in MoveState, ...) -> MoveState` overload integrate
+gravity (clamped to `MaxFallSpeed`), do land-and-clamp ground contact (with a `GroundedEpsilon` skin so a downhill
+run does not jitter grounded/airborne), and jump (coyote-time + jump-buffer, both consumed on a jump so there is no
+double-jump at the apex), with `AirControl`-scaled horizontal movement while airborne. The original
+`Step(Vector3, ...) -> Vector3` overload is unchanged (horizontal-only, instant ground-clamp), so this stays an
+additive minor bump. `MoveCommand` gains a `Jump` bit (the move wire format grows by one byte); `MoveTuning` gains
+`Gravity`/`JumpSpeed`/`MaxFallSpeed`/`CoyoteTime`/`JumpBuffer`/`AirControl`/`GroundedEpsilon` (defaults
+25 / 8 / 50 / 0.1 / 0.1 / 1 / 0.3; jump apex ~1.28 m). `KhaozEngine.NetWorld.PlayerMoveState` now wraps a
+`MoveState` (still exposes `Position`, plus `VerticalVelocity` / `Grounded`). New replicated `MovementState`
+component (type id 2) carries the vertical axis on the wire alongside `ReplicatedPosition`, so it survives a sharded
+cell handoff (handoff transfers registered components) and reaches the client as the exact reconciliation basis.
+`PlayerMoveSimulator` / `PlayerMovementSystem` step the vertical state (the play-area `WorldBounds` is now folded
+into the step as an XZ clamp, so an airborne player is not snapped to the ground at the wall);
+`WorldServer` / `ShardedWorldServer` write and replicate it (added at spawn); `WorldClient` reconciles
+`y` / `VerticalVelocity` / `Grounded` alongside XZ - the full authoritative basis (`ReplicatedPosition` +
+`MovementState`) is rebased and the unacked commands replay the same `Step`, so a jump in flight reconciles and
+converges with no permanent desync and no snap once converged. `CharacterController3D` jumps on Space
+(edge-triggered) and exposes `Grounded` / `VerticalVelocity`; `TerrainWalkSample` jumps, and you can run off the
+rim/cliffs and fall. Out of scope (named): standing on / jumping onto props & buildings (sub-project B), building
+interiors / ledges, step-height over terrain ledges, double/wall-jump, climbing, swimming, fall damage, and a full
+physics engine (still a kinematic character controller). Additive; no new package; minor.
+
 ## 7.53.2
 
 Security dependency fix, and a clean build is now warning-free (0 warnings). `KhaozEngine.WorldStore.Sqlite`

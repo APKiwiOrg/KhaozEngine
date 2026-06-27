@@ -157,12 +157,19 @@ version/release work.
     tall prop = bottom trunk slice so a tree's canopy isn't solid; cylinder or oriented box by aspect ratio),
     `PropFootprint.DeriveAll(AssetManifest)` building the `id -> ColliderShape` lookup `PropColliders.FromScatter` takes.
   - **Locomotion + networked-world libs (render-free movement + the netcode wiring):** `Locomotion` (leaf, in
-    `Foundation`, deps Primitives + Collision) = `CharacterMovement.Step` (pure XZ move from a `MoveCommand` + ground
-    delegate + one `MoveTuning`, ground-clamped + slope gate - the slope gate runs only when a `groundNormal`
-    delegate is passed, e.g. `TerrainCollision.GroundNormal`, so the rim wall can't be climbed - plus optional
-    static-world collision via a nullable `WorldColliders`: the capsule footprint (`MoveTuning.CapsuleRadius`,
-    default 0.4) is pushed out of props/buildings, null/empty = unchanged) shared by the local
-    `CharacterController3D` (Game.Render3D wraps it), the server sim, and client prediction. `NetWorld` (in
+    `Foundation`, deps Primitives + Collision) = `CharacterMovement.Step`, two overloads sharing one horizontal core
+    (camera-relative move from a `MoveCommand` + ground delegate + one `MoveTuning`, slope gate - runs only when a
+    `groundNormal` delegate is passed, e.g. `TerrainCollision.GroundNormal`, so the rim wall can't be climbed - plus
+    optional static-world collision via a nullable `WorldColliders`: the capsule footprint
+    (`MoveTuning.CapsuleRadius`, default 0.4) is pushed out of props/buildings, null/empty = unchanged): the original
+    `Step(Vector3,...) -> Vector3` is horizontal-only (Y instant-clamped to ground + half-height), and
+    `Step(in MoveState,...) -> MoveState` is the vertical-physics step (gravity terminal-clamped to `MaxFallSpeed`,
+    land-and-clamp ground contact with a `GroundedEpsilon` slope skin, jump with coyote-time + jump-buffer and no
+    apex double-jump, `AirControl`-scaled airborne XZ, plus an optional `clampXz` for the play-area bound). `MoveState`
+    = the carried kinematic state (position + `VerticalVelocity` + `Grounded` + coyote/buffer timers); `MoveCommand`
+    has a `Jump` bit; `MoveTuning` carries `Gravity`/`JumpSpeed`/`MaxFallSpeed`/`CoyoteTime`/`JumpBuffer`/`AirControl`/
+    `GroundedEpsilon`. Shared by the local `CharacterController3D` (Game.Render3D wraps it, jumps on Space), the
+    server sim, and client prediction. `NetWorld` (in
     `Server`, deps Locomotion/**Collision**/Netcode/Replication/Ecs/Serialization/WorldStore/**Sharding**) = `WorldBounds`
     (abstract `Contains`/`Clamp` + `CircleBounds`/`RectBounds`, the authoritative play-area shape; `Clamp` =
     nearest in-bounds point, idempotent inside + clamp-and-slide outside) wired as a nullable bound through the
@@ -183,8 +190,13 @@ version/release work.
     `ShardedWorldServer` both implement) - load-on-join / save-on-leave / periodic dirty snapshot, keys
     `player:{accountId}`, player-keyed + cell-agnostic (a loaded player spawns at its saved position in whatever cell
     contains it) - so the world survives a restart, backend-agnostic. `PlayerMoveState :
-    IPredictedState` lives in NetWorld (not Locomotion) so the movement core + local controller stay netcode-free;
-    `CharacterMovement.Step` takes/returns `Vector3`. Demos (`IsPackable=false`): `NetworkedWalkServer` (headless,
+    IPredictedState` lives in NetWorld (not Locomotion) so the movement core + local controller stay netcode-free; it
+    wraps a `Locomotion.MoveState` (exposes `Position` + `VerticalVelocity` + `Grounded`). The vertical axis rides
+    the wire as a replicated `MovementState` component (type id 2, alongside `ReplicatedPosition`), so it survives a
+    cell handoff and forms the client's exact reconcile basis: `WorldServer`/`ShardedWorldServer` write it (added at
+    spawn), and `WorldClient` reconciles `y`/`VerticalVelocity`/`Grounded` alongside XZ (full basis rebased + unacked
+    commands replay the same `Step`, so a jump in flight converges with no permanent desync). Demos
+    (`IsPackable=false`): `NetworkedWalkServer` (headless,
     multi-cell `ShardedWorldServer`, persists via `SqliteWorldStore`) + `NetworkedWalkSample` (windowed `--connect`
     client, sends a stable account token).
     Networked-overworld render-scale sub-project (`docs/superpowers/specs/2026-06-27-networked-overworld-design.md`);

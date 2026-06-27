@@ -19,6 +19,7 @@ public class PlayerMovementSystemTests
         Entity e = w.Spawn();
         w.Set(e, new NetId(netId));
         w.Set(e, new ReplicatedPosition { Value = pos });
+        w.Set(e, new MovementState());
         w.Set(e, new PendingMove { Command = cmd });
         return e;
     }
@@ -54,6 +55,34 @@ public class PlayerMovementSystemTests
 
         Assert.Equal(5f, w.Get<ReplicatedPosition>(ghost).Value.X, 3);     // unchanged
         Assert.Equal(7f, w.Get<ReplicatedPosition>(migrating).Value.X, 3); // unchanged
+    }
+
+    [Fact]
+    public void Step_JumpCommand_LaunchesOwnedPlayer()
+    {
+        var w = new World();
+        var sys = new PlayerMovementSystem(Flat, MoveTuning.Default);
+        Entity e = SpawnPlayer(w, 1, new Vector3(0f, 0f, 0f),
+            new MoveCommand(Vector2.Zero, run: false, cameraYaw: 0f, jump: true));
+
+        sys.Update(w, 0.1f);
+
+        MovementState ms = w.Get<MovementState>(e);
+        Assert.True(ms.VerticalVelocity > 0f, $"jump should launch, got vVel {ms.VerticalVelocity}");
+        Assert.False(ms.Grounded);
+    }
+
+    [Fact]
+    public void Step_AirbornePlayer_FallsUnderGravity()
+    {
+        var w = new World();
+        var sys = new PlayerMovementSystem(Flat, MoveTuning.Default);
+        Entity e = SpawnPlayer(w, 1, new Vector3(0f, 20f, 0f), MoveCommand.Idle);
+
+        sys.Update(w, 0.1f);
+
+        Assert.True(w.Get<MovementState>(e).VerticalVelocity < 0f, "should accelerate downward");
+        Assert.True(w.Get<ReplicatedPosition>(e).Value.Y < 20f, "should descend");
     }
 
     [Fact]

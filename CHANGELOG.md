@@ -5,6 +5,27 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.53.2
+
+Security dependency fix, and a clean build is now warning-free (0 warnings). `KhaozEngine.WorldStore.Sqlite`
+direct-references `SQLitePCLRaw.lib.e_sqlite3` 3.50.3 (which bundles the patched SQLite 3.50.3) to override the
+vulnerable 2.1.11 that `Microsoft.Data.Sqlite` 10.0.9 still pulls transitively: CVE-2025-6965 / NU1903, a
+memory-corruption bug in SQLite before 3.50.2 (High, CVSS 7.2). Only the native binary moves; the managed
+`SQLitePCLRaw.core` / `provider.e_sqlite3` stay at 2.1.11 (the versions Microsoft.Data.Sqlite is built against),
+so `SqliteWorldStore` behaviour is unchanged. The pin is a temporary override, to be dropped once
+Microsoft.Data.Sqlite references a patched SQLitePCLRaw of its own. (Complements 7.49.1, which stopped the
+`KhaozEngine.Server` umbrella from bundling the SQLite backend at all.)
+
+Separately, a clean (non-incremental) build surfaced a backlog of pre-existing warnings that incremental builds
+hid; all are now fixed, none runtime-affecting. Test-only: CS8604 (clipboard null/empty-guard tests), CS8600
+(font `out byte[]?`), and xUnit1031 (sharded-persistence tests made `async`/`await` instead of blocking
+`GetAwaiter().GetResult()`). Engine code: CS0419 x32 overloaded-member `<see cref>`s disambiguated by appending
+the intended overload's parameter list (generics in `{}`, `in` modifier kept); CS1734 x7 / CS1574 x3 paramref/cref
+targets corrected (a real parameter, a property, or `<c>` where a method param was referenced from a type-level
+doc); CS8600 x4 nullable reflection locals (`GetType`/`GetMethod`) in `ClipboardInterop`; and CA2255 on
+`FpNative`'s deliberate `[ModuleInitializer]` (the native-library resolver registration) suppressed with
+justification. No public API or behaviour change. Fix; no new package; patch.
+
 ## 7.53.1
 
 Rigid glTF now honours node world transforms (glTF conformance). `KhaozEngine.Render3D.GltfLoader`'s rigid path

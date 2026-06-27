@@ -7,7 +7,13 @@ Server-side durable persistence seam for an authoritative world.
   The game serializes a character/zone/account record to bytes (via its own serializer) and persists it by key.
 - **`InMemoryWorldStore`** - a thread-safe, dependency-free reference implementation for tests and local dev.
 
-Real backends (SQLite, Postgres, cloud KV) implement `IWorldStore` as **infrastructure** - the engine ships
-the seam + the in-memory reference, not a DB driver. Zero dependencies.
+This core package is dependency-free (the seam + the in-memory reference). Durable backends are opt-in sibling
+packages, each pulling its own DB driver so this core stays clean:
+
+- **`KhaozEngine.WorldStore.Sqlite`** (`SqliteWorldStore`, Microsoft.Data.Sqlite) - embedded dev/test + single-node.
+- **`KhaozEngine.WorldStore.SqlServer`** (`SqlServerWorldStore`, Microsoft.Data.SqlClient) - production / Azure SQL.
+
+The save/load orchestration that wires an `IWorldStore` into the server lifecycle (load-on-join / save-on-leave /
+periodic snapshot) is `WorldPersistence` in `KhaozEngine.NetWorld`.
 
 Part of the MMO netcode stack (Phase 2). See `docs/superpowers/specs/2026-06-25-mmo-netcode-stack-design.md`.

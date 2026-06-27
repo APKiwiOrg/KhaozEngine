@@ -5,6 +5,45 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.49.0
+
+Persistent world store: the authoritative world now survives a server restart (it was in-memory only). Two new
+opt-in `IWorldStore` backend packages (each pulls its own ADO.NET provider without touching the dependency-free
+`KhaozEngine.WorldStore` core, same pattern as `Netcode.LiteNetLib`), plus a backend-agnostic save/load
+orchestration in `KhaozEngine.NetWorld`. Two new packages; additive; minor.
+
+- NEW `KhaozEngine.WorldStore.Sqlite` (`Server` umbrella): `SqliteWorldStore : IWorldStore` over
+  `Microsoft.Data.Sqlite`. The embedded, zero-infra dev/test + single-node backend (and what keeps persistence
+  headless-testable). One `world_store(key, data, updated_at)` table bootstrapped on construction, upsert via
+  `INSERT ... ON CONFLICT(key) DO UPDATE`, raw parameterized async ADO.NET, no EF/ORM. Holds one connection,
+  serializes ops behind a semaphore. `SqliteWorldStoreOptions` (or a raw connection-string ctor) injects the
+  connection string; `IDisposable`.
+- NEW `KhaozEngine.WorldStore.SqlServer` (`Server` umbrella): `SqlServerWorldStore : IWorldStore` over
+  `Microsoft.Data.SqlClient` (production = Azure SQL). Same contract; `world_store([key], data, updated_at)`
+  table, `MERGE ... WITH (HOLDLOCK)` upsert, short-lived pooled connection per op, raw parameterized async
+  ADO.NET, no EF/ORM. `SqlServerWorldStoreOptions` / raw connection-string ctor.
+- NEW `KhaozEngine.NetWorld.WorldPersistence` (+ `WorldPersistenceConfig`, `PlayerRecord`): wires an
+  `IWorldStore` into the `WorldServer` lifecycle - load-on-join (spawn at the saved position, default if absent),
+  save-on-leave, and a periodic snapshot (`SaveIntervalSeconds`, default 30) of players whose state changed since
+  their last save. Keys `player:{accountId}`. Backend-agnostic (only `IWorldStore` + `KhaozEngine.Serialization`).
+  Async loads are applied to the server on the server thread inside `Update(dt)` (never from a background
+  continuation), so a genuinely-async backend can't race the tick loop; `FlushAsync()` reaches a quiescent,
+  fully-persisted point (shutdown / tests). `PlayerRecord` is a forward-tolerant JSON DTO (unknown / missing
+  fields ignored), so adding fields later never breaks an old save.
+- `WorldServer` gains a persistence seam (no new wire protocol): `PlayerJoined`/`PlayerLeaving` events,
+  `TryGetAccountId`/`TryGetPlayerState`/`JoinedSlots`/`SetPlayerState`. The account id derives from the connect
+  token the client already presents in its Hello, now surfaced on `ServerSessionEvent.Joined` (carried in `Data`)
+  and `NetServer` (empty token -> `guest:{slot}` fallback). `KhaozEngine.NetWorld` now also depends on
+  `KhaozEngine.WorldStore` + `KhaozEngine.Serialization`.
+- `NetworkedWalkServer` persists players via `SqliteWorldStore` + `WorldPersistence` (optional `[dbPath]` arg,
+  flush on Ctrl+C); `NetworkedWalkSample` sends a stable account token (optional third arg, default `player1`),
+  so walking somewhere, disconnecting, and reconnecting (or restarting the server) restores position.
+- Tests: one shared `IWorldStore` conformance suite (save/load round-trip, overwrite, load-absent -> null,
+  delete present/absent, exists, key isolation, byte-exactness, basic concurrency) run against `InMemoryWorldStore`
+  + `SqliteWorldStore` always, and `SqlServerWorldStore` gated behind `KE_SQLSERVER_TEST_CONNSTRING` (skipped in
+  CI). Plus `WorldPersistence` load-on-join / save-on-leave / periodic-snapshot tests and the restart-survival
+  proof (reopen a fresh store + server on the same SQLite file -> the player is restored).
+
 ## 7.48.0
 
 Client world streaming, overworld render-scale sub-project 6a: the world is now effectively endless. New

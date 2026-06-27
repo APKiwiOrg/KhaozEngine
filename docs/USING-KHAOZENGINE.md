@@ -1364,16 +1364,72 @@ HashSet<int> interest = grid.Query(viewX, viewY, viewRadius);
 byte[] snap = SnapshotWriter.WriteFiltered(serverWorld, registry, interest);
 ```
 
-### Durable state (`KhaozEngine.WorldStore`)
+### Durable state (`KhaozEngine.WorldStore` + backends)
 
 Persist authoritative character/world records through `IWorldStore` (async, keyed `byte[]`, DB-shaped). Use
-`InMemoryWorldStore` for tests/dev; a real server implements the seam over SQLite/Postgres/cloud (infra):
+`InMemoryWorldStore` for tests/dev; for real durability pick a backend package (each pulls its own ADO.NET
+provider; the dep-free `KhaozEngine.WorldStore` core stays clean):
+
+- **`KhaozEngine.WorldStore.Sqlite`** - `SqliteWorldStore` over `Microsoft.Data.Sqlite`. Embedded, zero-infra;
+  the dev/test + single-node backend (and what keeps persistence headless-testable).
+- **`KhaozEngine.WorldStore.SqlServer`** - `SqlServerWorldStore` over `Microsoft.Data.SqlClient`. The production
+  backend (Azure SQL).
+
+Both bootstrap one `world_store(key, data, updated_at)` table on construction, upsert via dialect SQL (SQLite
+`ON CONFLICT`, SQL Server `MERGE WITH (HOLDLOCK)`), raw parameterized async ADO.NET, no EF/ORM. The same
+contract, so dev and prod differ only in which line you construct:
 
 ```csharp
-IWorldStore store = new InMemoryWorldStore();
-await store.SaveAsync($"char/{accountId}", SerializeCharacter(state));
-byte[]? loaded = await store.LoadAsync($"char/{accountId}");
+using KhaozEngine.WorldStore.Sqlite;
+IWorldStore store = new SqliteWorldStore("Data Source=world.db");   // dev/test + single-node
+await store.SaveAsync($"player:{accountId}", bytes);
+byte[]? loaded = await store.LoadAsync($"player:{accountId}");
 ```
+
+### Persisting players so the world survives a restart (`WorldPersistence`)
+
+`KhaozEngine.NetWorld.WorldPersistence` wires an `IWorldStore` into the `WorldServer` lifecycle so the
+authoritative world survives a restart. It is backend-agnostic (only `IWorldStore` + `KhaozEngine.Serialization`):
+**load-on-join** (spawn at the saved position, or the default if absent), **save-on-leave**, and a **periodic
+snapshot** of players whose state changed since their last save. Players are keyed `player:{accountId}`, where
+the `accountId` is the connect token the client presented in its Hello (opaque; real auth is the game's). The
+record is a forward-tolerant JSON `PlayerRecord` (adding fields later never breaks an old save).
+
+```csharp
+using KhaozEngine.NetWorld;
+using KhaozEngine.WorldStore.Sqlite;
+
+var server = new WorldServer(transport, config, groundHeight, MoveTuning.Default);
+using var store = new SqliteWorldStore("Data Source=world.db");
+var persistence = new WorldPersistence(server, store,
+    new WorldPersistenceConfig { SaveIntervalSeconds = 10f });
+
+// per server frame:
+server.Poll();
+server.Tick(dt);
+persistence.Update(dt);     // applies any load-on-join state (on this thread) + runs the periodic snapshot
+// on shutdown (e.g. Ctrl+C):
+await persistence.FlushAsync();
+```
+
+The client must present a **stable** account token for reconnect/restart to restore the same player:
+
+```csharp
+var client = new WorldClient(transport, groundHeight, MoveTuning.Default,
+    token: System.Text.Encoding.UTF8.GetBytes(accountId));
+```
+
+**Azure SQL (Ruinborne).** For production, swap the backend - same `IWorldStore`, so `WorldPersistence` is
+unchanged:
+
+```csharp
+using KhaozEngine.WorldStore.SqlServer;
+using var store = new SqlServerWorldStore(
+    "Server=tcp:<srv>.database.windows.net,1433;Database=<db>;Authentication=Active Directory Default;Encrypt=True;");
+```
+
+Out of scope here (later sub-projects): per-cell / world-snapshot persistence (pairs with multi-cell sharding),
+record-schema migrations, and accounts/auth.
 
 ### World cell grid (`KhaozEngine.Sharding`)
 

@@ -9,12 +9,14 @@ using KhaozEngine.Render3D;
 using KhaozEngine.Terrain;
 using KhaozEngine.Windowing;
 
-// Walkable overworld slice: drive a greybox capsule over the shipped analytic terrain
+// Walkable overworld slice: drive an animated KayKit CC0 character over the shipped analytic terrain
 // (TerrainPresets.Clearing) with a third-person follow camera. WASD move, mouse-drag orbit,
 // scroll zoom, shift run, Esc quit. The terrain field is wrapped in TerrainCollision for the
 // ground-clamp; the world is STREAMED (TerrainStreamer loads/unloads chunks + their props in a
-// ring around the player, so walking any direction streams the world forever) and the capsule is
-// static (no walk-cycle yet). Honors KE_MAX_FRAMES so a headless smoke run renders N frames then exits 0.
+// ring around the player, so walking any direction streams the world forever) and the character
+// idles/walks/runs and jumps/falls via AnimatedCharacter off the controller's movement state (it
+// falls back to a greybox capsule if the asset fails to load). Honors KE_MAX_FRAMES so a headless
+// smoke run renders N frames then exits 0.
 bool bounded = Array.Exists(args, a => a is "bounded" or "--bounded");
 Console.WriteLine(bounded
     ? "Bounded clearing - mountains ring the play area; ONE pass to the NORTH (+Z) is the way out. You can't climb the walls. WASD move | space jump | mouse-drag orbit | scroll zoom | shift run | Esc quit"

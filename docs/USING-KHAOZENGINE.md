@@ -591,6 +591,68 @@ state, not the reverse.
 
 ---
 
+## Animated characters (glTF clip playback + locomotion blend) (since 7.56.0)
+
+The skinned path above poses a mesh from bone matrices you supply. To play *authored glTF animation
+clips* (idle/walk/run/jump) and crossfade them off a character's movement, ingest the rig through the
+skinned loader (which now also reads the joint hierarchy) and read its clips:
+
+```csharp
+// Skinned-ingest a rigged + animated glb (rig + animation channels preserved; NOT the flatten-prop path).
+var (mesh, maps) = GltfLoader.LoadSkinnedWithMaterial("knight.glb");
+SkinnedMeshHandle handle = scene.LoadSkinnedMesh(mesh, maps);
+Skeleton skeleton = mesh.Skeleton!;                       // the joint hierarchy LoadSkinned now attaches
+
+// Read every clip and map the ones you want to locomotion states.
+var byName = new Dictionary<string, AnimationClip>();
+foreach (AnimationClip c in GltfLoader.LoadAnimations("knight.glb")) byName[c.Name] = c;
+var clips = new Dictionary<LocomotionState, AnimationClip>
+{
+    [LocomotionState.Idle] = byName["Idle"],
+    [LocomotionState.Walk] = byName["Walking_A"],
+    [LocomotionState.Run]  = byName["Running_A"],
+    [LocomotionState.Jump] = byName["Jump_Start"],
+    [LocomotionState.Fall] = byName["Jump_Idle"],
+};
+
+// AnimatedCharacter (KhaozEngine.Game / Game.Render3D) wraps the skeleton + clips + player + state machine.
+var character = new AnimatedCharacter(skeleton, clips, new LocomotionThresholds(0.1f, 4.5f), crossfade: 0.15f);
+```
+
+Each frame, feed it the movement state your controller already computes, then draw with its pose
+(the bone palette `DrawSkinned` consumes - it is joint-WORLD, the loader-attached skeleton composes it):
+
+```csharp
+// horizontalSpeed e.g. from the XZ position delta over dt; Grounded / VerticalVelocity from the controller.
+character.Update(horizontalSpeed, controller.Grounded, controller.VerticalVelocity, dt);
+scene.DrawSkinned(handle, character.Pose, model, Color.White);   // model places + faces + scales the character
+```
+
+`AnimatedCharacter` picks the clip via `LocomotionStateMachine.Evaluate` (speed picks idle/walk/run;
+while airborne the air state wins - rising = `Jump`, otherwise `Fall`) and crossfades between clips
+(per-joint TRS blend, composed once). A movement state with no clip in the map falls back to `Idle`
+(then to the first clip), so a partial clip set never throws.
+
+**Local AND remote players.** Drive one `AnimatedCharacter` per visible character: the local player from
+its own movement, each remote player from its *replicated* position / `VerticalVelocity` / `Grounded`
+(derive horizontal speed from the replicated position delta if no velocity is replicated). It is purely
+client-cosmetic - the clip is chosen from already-known state, so there are **no netcode changes** and the
+server stays authoritative on position only.
+
+**Lower-level pieces** (if you are not using `AnimatedCharacter`): `AnimationSampler.SampleToBonePalette(clip,
+skeleton, time)` is a one-shot pose; `AnimationPlayer` holds a playhead, loops, and crossfades
+(`Play(clip, crossfade)` then `Update(dt)` then `GetBonePalette(buffer)`). `JointPose` is the TRS unit clips
+interpolate; `InterpolationMode` is LINEAR or STEP (CUBICSPLINE is read as its value keys).
+
+**Out of scope.** Animation events (attack hitframes, footstep sounds), root motion, IK, additive/facial
+layers, and full blend trees beyond the locomotion state machine are not provided - drive those from your
+own gameplay layer.
+
+**Determinism: presentation only.** As with raw skinning, the sampled pose / bone palette is render-time
+visual - never feed it back into simulation, RNG, or netcode.
+
+---
+
 ## Attack telegraphs / danger zones
 
 `KhaozEngine.Telegraphs` (2D) + `KhaozEngine.Telegraphs.Render3D` (ground plane) draw animated
@@ -702,8 +764,8 @@ you fall.
 Speeds, capsule half-height, max slope, the vertical-feel fields above, the camera distance/pitch limits,
 orbit/zoom sensitivity, per-axis drag inversion (`FollowCameraController.InvertX` / `InvertY`, for an "invert axis"
 setting), and the camera ground-clamp (`FollowCamera3D.GroundHeight` / `GroundClearance`) are public fields
-(feel-tuned later). See `TerrainWalkSample` for the full wiring (Space to jump). Animation/walk-cycle, chunk
-streaming, and standing on / jumping onto props & buildings are later sub-projects, not part of this one.
+(feel-tuned later). See `TerrainWalkSample` for the full wiring (Space to jump); it now drives an animated
+character off this controller's movement state (see "Animated characters" above) rather than a static capsule.
 
 ---
 

@@ -1,6 +1,7 @@
 {
   "version": "0.2.0",
   "configurations": [
+    // ---- Windowed samples (a window opens; the console shows logs) ----
     {
       "name": "Run WindowingSample (input + SFX demo)",
       "type": "coreclr",
@@ -55,6 +56,121 @@
       "cwd": "${workspaceFolder}/MiniGame",
       "console": "internalConsole",
       "stopAtEntry": false
+    },
+    {
+      "name": "Run SceneSample (SceneManager demo)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/SceneSample/bin/Debug/net10.0/SceneSample.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}/SceneSample",
+      "console": "internalConsole",
+      "stopAtEntry": false
+    },
+    {
+      "name": "Run TerrainWalkSample (endless terrain)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/TerrainWalkSample/bin/Debug/net10.0/TerrainWalkSample.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}/TerrainWalkSample",
+      "console": "internalConsole",
+      "stopAtEntry": false
+    },
+    {
+      "name": "Run TerrainWalkSample (bounded clearing + rim wall)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/TerrainWalkSample/bin/Debug/net10.0/TerrainWalkSample.dll",
+      "args": ["bounded"],
+      "cwd": "${workspaceFolder}/TerrainWalkSample",
+      "console": "internalConsole",
+      "stopAtEntry": false
+    },
+    {
+      "name": "Run SlathRepro (SpaceGame offscreen-preview repro)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/SlathRepro/bin/Debug/net10.0/SlathRepro.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}/SlathRepro",
+      "console": "internalConsole",
+      "stopAtEntry": false
+    },
+
+    // ---- Networked overworld demo ----
+    // Start the server first, then one or two clients (or use the "Networked Walk: server + 2 clients" compound).
+    {
+      "name": "Run NetworkedWalkServer (headless walk server)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/NetworkedWalkServer/bin/Debug/net10.0/NetworkedWalkServer.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}/NetworkedWalkServer",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    },
+    {
+      "name": "Run NetworkedWalkSample (client, player1)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/NetworkedWalkSample/bin/Debug/net10.0/NetworkedWalkSample.dll",
+      "args": ["127.0.0.1", "47700", "player1"],
+      "cwd": "${workspaceFolder}/NetworkedWalkSample",
+      "console": "internalConsole",
+      "stopAtEntry": false
+    },
+    {
+      "name": "Run NetworkedWalkSample (client 2, player2)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/NetworkedWalkSample/bin/Debug/net10.0/NetworkedWalkSample.dll",
+      "args": ["127.0.0.1", "47700", "player2"],
+      "cwd": "${workspaceFolder}/NetworkedWalkSample",
+      "console": "internalConsole",
+      "stopAtEntry": false
+    },
+    {
+      "name": "Run MmoServerSample (headless reference MMO server)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/MmoServerSample/bin/Debug/net10.0/MmoServerSample.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}/MmoServerSample",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    },
+
+    // ---- Headless / tool-like samples ----
+    {
+      "name": "Run SnapshotSample (bakes PNG snapshots, then exits)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/SnapshotSample/bin/Debug/net10.0/SnapshotSample.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}/SnapshotSample",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Networked Walk: server + 2 clients",
+      "configurations": [
+        "Run NetworkedWalkServer (headless walk server)",
+        "Run NetworkedWalkSample (client, player1)",
+        "Run NetworkedWalkSample (client 2, player2)"
+      ],
+      "stopAll": true
     }
   ]
 }

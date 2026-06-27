@@ -30,7 +30,7 @@ public sealed class WorldServerConfig
 /// with that client's net id + last-acked move seq so the client can reconcile. Headless, transport-injected.
 /// Multi-cell sharding folds in with world streaming later; this is the single-world slice.
 /// </summary>
-public sealed class WorldServer
+public sealed class WorldServer : IWorldPersistenceHost
 {
     private readonly WorldServerConfig config;
     private readonly ReplicationRegistry registry = MoveProtocol.CreateRegistry();

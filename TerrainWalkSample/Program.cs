@@ -83,7 +83,7 @@ sealed class TerrainWalkApp : GameApp3D
         // Character spawns on the ground at the origin.
         _character = new CharacterController3D { CapsuleHalfHeight = CapsuleHalfHeight };
         _character.SetXZ(0f, 0f);
-        _character.Update(InputState.Empty, 0f, 0f, _terrain.GroundHeight, _bounded ? _terrain.GroundNormal : null);   // settle Y onto the ground
+        _character.Update(InputState.Empty, 0f, 0f, _terrain.GroundHeight, _terrain.GroundNormal);   // settle Y onto the ground (slope gate wired so cliffs aren't climbable)
 
         // Follow camera drives rendering via the scene override; the ground delegate keeps the eye above the
         // terrain so it does not sink through the floor when the character is in a dip.
@@ -139,7 +139,7 @@ sealed class TerrainWalkApp : GameApp3D
         if (Input.WasPressed(Key.H)) { post.OutlineNormalThreshold = MathF.Min(2f, post.OutlineNormalThreshold + 0.05f); Console.WriteLine($"[post] OutlineNormalThreshold = {post.OutlineNormalThreshold:0.00}"); }
         if (Input.WasPressed(Key.G)) { post.OutlineNormalThreshold = MathF.Max(0f, post.OutlineNormalThreshold - 0.05f); Console.WriteLine($"[post] OutlineNormalThreshold = {post.OutlineNormalThreshold:0.00}"); }
 
-        _character.Update(Input, dt, _camera.Yaw, _terrain.GroundHeight, _bounded ? _terrain.GroundNormal : null);
+        _character.Update(Input, dt, _camera.Yaw, _terrain.GroundHeight, _terrain.GroundNormal);   // slope gate always on: can't climb cliffs/rim
 
         // Stream the world around the new player position (loads/unloads/re-LODs within MaxLoadsPerFrame).
         _streamer.Update(_character.Position, dt);

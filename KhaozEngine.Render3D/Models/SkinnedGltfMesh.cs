@@ -58,11 +58,18 @@ namespace KhaozEngine.Render3D
         /// <summary>One rest (bind-pose) joint world transform per bone. Passing these to
         /// Scene3D.DrawSkinned yields the identity deform (the mesh does not move).</summary>
         public Matrix4x4[] RestPose { get; }
+
+        /// <summary>The joint hierarchy this mesh poses through (parent links + rest-local TRS + bone-to-node map),
+        /// or <c>null</c> for meshes built without one (e.g. <see cref="SkinnedMeshBuilder"/>'s code-driven rigs).
+        /// Set by <see cref="GltfLoader.LoadSkinned"/> from the glTF skin; required to play
+        /// <see cref="AnimationClip"/>s on the mesh.</summary>
+        public Skeleton? Skeleton { get; }
+
         public int BoneCount => InverseBind.Length;
         public int TriangleCount => Indices32.Length / 3;
 
         /// <summary>Construct from 16-bit indices (the common path: <see cref="SkinnedMeshBuilder"/> + small rigs).</summary>
-        public SkinnedGltfMesh(SkinnedVertex[] vertices, ushort[] indices, Matrix4x4[] inverseBind, Matrix4x4[] restPose)
+        public SkinnedGltfMesh(SkinnedVertex[] vertices, ushort[] indices, Matrix4x4[] inverseBind, Matrix4x4[] restPose, Skeleton? skeleton = null)
         {
             Vertices = vertices ?? throw new ArgumentNullException(nameof(vertices));
             if (indices is null) throw new ArgumentNullException(nameof(indices));
@@ -73,11 +80,12 @@ namespace KhaozEngine.Render3D
             RestPose = restPose ?? throw new ArgumentNullException(nameof(restPose));
             if (RestPose.Length != InverseBind.Length)
                 throw new ArgumentException("RestPose and InverseBind must have one entry per bone.");
+            Skeleton = skeleton;
         }
 
         /// <summary>Construct from 32-bit indices. <see cref="IndexFormat"/> is chosen from the largest index value,
         /// enabling skinned meshes past the 65,536-vertex ceiling.</summary>
-        public SkinnedGltfMesh(SkinnedVertex[] vertices, uint[] indices, Matrix4x4[] inverseBind, Matrix4x4[] restPose)
+        public SkinnedGltfMesh(SkinnedVertex[] vertices, uint[] indices, Matrix4x4[] inverseBind, Matrix4x4[] restPose, Skeleton? skeleton = null)
         {
             Vertices = vertices ?? throw new ArgumentNullException(nameof(vertices));
             Indices32 = indices ?? throw new ArgumentNullException(nameof(indices));
@@ -86,6 +94,7 @@ namespace KhaozEngine.Render3D
             RestPose = restPose ?? throw new ArgumentNullException(nameof(restPose));
             if (RestPose.Length != InverseBind.Length)
                 throw new ArgumentException("RestPose and InverseBind must have one entry per bone.");
+            Skeleton = skeleton;
         }
     }
 }

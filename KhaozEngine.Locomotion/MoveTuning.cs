@@ -21,7 +21,8 @@ public readonly record struct MoveTuning(
     float CoyoteTime = 0.1f,
     float JumpBuffer = 0.1f,
     float AirControl = 1f,
-    float GroundedEpsilon = 0.3f)
+    float GroundedEpsilon = 0.3f,
+    float StepHeight = 0.4f)
 {
     /// <summary>Walkable-slice defaults: walk 3 m/s, run 6 m/s, capsule half-height 0.9 m, max slope 45 deg
     /// (steep enough for normal hills, low enough that a RimFeature mountain wall is rejected, so the slope gate
@@ -56,6 +57,10 @@ public readonly record struct MoveTuning(
 
     /// <summary>Grounded skin (metres): while already grounded, ground within this distance below the feet keeps
     /// the capsule grounded (snaps it down), so a downhill slope does not jitter grounded/airborne. Kept small so
-    /// it is a slope-stick, not a step-up over ledges (which is out of scope).</summary>
+    /// it is a slope-stick, distinct from the larger <see cref="StepHeight"/> mount.</summary>
     public float GroundedEpsilon { get; init; } = GroundedEpsilon;
+
+    /// <summary>Max upward support rise (metres) auto-mounted while grounded without a jump (a low rock/curb/log);
+    /// a larger rise behaves as a wall (the move is blocked). Used by the surface-aware vertical step.</summary>
+    public float StepHeight { get; init; } = StepHeight;
 }

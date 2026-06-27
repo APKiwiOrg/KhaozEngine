@@ -414,6 +414,15 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
   billboards, and a debug-draw overlay (`DebugLine/Ray/Box/Grid/Axes/Circle`). `Post` is the
   `PixelPostProcess` (pixelation / quantize / dither / cel bands / palette for the chunky retro look; the smooth
   look is the default).
+- Rigid glTF honours node world transforms (since 7.53.1): `GltfLoader.Load` / `LoadWithMaterial` walk the scene
+  graph and bake each mesh node's world matrix into the loaded vertices (POSITION by the world matrix, NORMAL +
+  TANGENT.xyz by the normal matrix, correct under non-uniform scale), matching the already-node-aware skinned
+  path. So a Blender export or a multi-piece / instanced kit that positions geometry via nodes loads correctly
+  with no manual baking; a mesh instanced by several nodes loads one placed copy per node. The kit-ingest
+  `transform_apply` step (Blender) is therefore no longer required for placement, only harmless if kept; an
+  identity-node or pre-baked asset is byte-identical to before. (`PropLoader.LoadProp` additionally renormalizes
+  to the manifest height, so props were already placement-robust; this matters most for `GltfLoader.Load` used
+  directly.)
 - PBR-lite materials (since 7.25.0): the rigid lit model pass takes an optional tangent-space NORMAL map and a
   ROUGHNESS map alongside the albedo. Load each map with `LoadTexture`, then bind them with `Scene3D.SurfaceMaps`:
   `scene.LoadMesh(mesh, new Scene3D.SurfaceMaps(albedo, normal, roughness))` - any handle may be `default` to fall

@@ -5,6 +5,25 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.53.1
+
+Rigid glTF now honours node world transforms (glTF conformance). `KhaozEngine.Render3D.GltfLoader`'s rigid path
+(`Load` / `LoadWithMaterial`, via `BuildRigid`) walked `root.LogicalMeshes` with raw `POSITION` and ignored the
+scene graph, so a mesh positioned by its node (Blender exports, multi-piece / instanced kits) loaded mis-placed,
+and a mesh instanced by several nodes loaded once at the local origin. `BuildRigid` now walks the scene nodes:
+`POSITION` is baked by `node.WorldMatrix`, and `NORMAL` + `TANGENT.xyz` by the normal matrix (transpose of the
+inverse upper-3x3, renormalized, `TANGENT.w` / bitangent sign preserved) so they stay correct under non-uniform
+scale. A mesh referenced by N nodes emits N transformed copies; a mesh referenced by no node loads once at
+identity; an exact-identity world matrix is a no-op fast path, so identity-node and pre-baked assets are
+byte-identical to before. This matches the skinned path (`BuildSkinned`), which already baked `node.WorldMatrix`.
+The kit-ingest `transform_apply` bake is no longer required for placement (still harmless). `LoadWithMaterial`'s
+per-primitive material mapping is unchanged (base color still read per primitive, now aligned with the transformed
+corners). Regression sweep: no GPU golden or automated test loads an affected asset, so nothing was re-baked. The
+only assets with non-identity mesh nodes are the seven `TerrainWalkSample` props (translation + uniform scale, no
+rotation), loaded through `PropLoader.Normalize`, which re-measures and renormalizes and is algebraically invariant
+to translation + uniform scale, so the sample renders unchanged. Out of scope (named): morph targets, rigid-mesh
+animation, camera/light nodes, the skinned path, the asset pipeline / scatter. Fix; no new package; patch.
+
 ## 7.53.0
 
 Mesh-derived prop collider footprints (follow-up to 7.52.0 static world collision). New

@@ -122,9 +122,14 @@ version/release work.
     (load-order independent for sharded streaming); plain `float` (authoritative server + visual client, NOT
     `DeterministicFp`). `Terrain.Render3D` (companion, in `Game3D`) = `TerrainChunkBuilder` (chunked-LOD mesh off the
     field: skirts, per-vertex splat weights plumbed for the later PBR upgrade, height/slope vertex-colour ramp,
-    chunk AABB) + `TerrainLod.PickLod` + `Scene3D.LoadTerrainChunk`/`DrawTerrainChunk`. First overworld render-scale
-    sub-project (`docs/superpowers/specs/2026-06-27-terrain-system-design.md`); streaming/props/PBR-textures/water
-    are later sub-projects.
+    chunk AABB) + `TerrainLod.PickLod` + `Scene3D.LoadTerrainChunk`/`DrawTerrainChunk`, plus the `TerrainStreamer`
+    client world-streaming layer (`ChunkCoord`/`ChunkGrid` coord<->world, `IChunkSink` load/unload seam,
+    `StreamerConfig`, and the production `Scene3DChunkSink` that builds the chunk mesh + scatters props on load,
+    re-LODs on tier crossing, frees on unload, and draws the loaded ring; ring load/unload with a hysteresis band,
+    distance-LOD re-meshing, amortized main-thread loading). First overworld render-scale sub-project
+    (`docs/superpowers/specs/2026-06-27-terrain-system-design.md`); world streaming is sub-project 6a
+    (`docs/superpowers/specs/2026-06-27-world-streaming-design.md`); multi-cell server sharding (6b), PBR-textures,
+    and water are later sub-projects.
   - **Locomotion + networked-world libs (render-free movement + the netcode wiring):** `Locomotion` (leaf, in
     `Foundation`, deps Primitives only) = `CharacterMovement.Step` (pure XZ move from a `MoveCommand` + ground
     delegate + one `MoveTuning`, ground-clamped + slope gate) shared by the local `CharacterController3D`

@@ -11,8 +11,9 @@ using KhaozEngine.Windowing;
 // Walkable overworld slice: drive a greybox capsule over the shipped analytic terrain
 // (TerrainPresets.Clearing) with a third-person follow camera. WASD move, mouse-drag orbit,
 // scroll zoom, shift run, Esc quit. The terrain field is wrapped in TerrainCollision for the
-// ground-clamp; nothing here is streamed (fixed chunk grid) and the capsule is static (no
-// walk-cycle yet). Honors KE_MAX_FRAMES so a headless smoke run renders N frames then exits 0.
+// ground-clamp; the world is STREAMED (TerrainStreamer loads/unloads chunks + their props in a
+// ring around the player, so walking any direction streams the world forever) and the capsule is
+// static (no walk-cycle yet). Honors KE_MAX_FRAMES so a headless smoke run renders N frames then exits 0.
 Console.WriteLine("TerrainWalkSample - WASD move | mouse-drag orbit | scroll zoom | shift run | Esc quit");
 using (var app = new TerrainWalkApp())
     app.Run();
@@ -21,19 +22,20 @@ return 0;
 sealed class TerrainWalkApp : GameApp3D
 {
     // Tuning surface (feel-tuned later).
-    const int GridRadius = 3;                 // 7x7 chunks (2*radius+1)
     const float CapsuleRadius = 0.3f;
     const float CapsuleHalfHeight = 0.9f;     // 1.8 m total (height 1.2 + 2*radius 0.6)
     const float PropDrawRadius = 90f;         // distance-cull ring for instanced props around the player
 
     TerrainField _field = null!;
     TerrainCollision _terrain = null!;
-    readonly List<MeshHandle> _chunks = new();
     MeshHandle _capsule;
 
-    // One uploaded mesh per kit id + the deterministic scatter placements (queued each frame, distance-culled).
+    // One uploaded mesh per kit id; the streamer scatters per-chunk props from these on demand.
     readonly Dictionary<string, MeshHandle> _propMeshes = new();
-    IReadOnlyList<PropPlacement> _placements = Array.Empty<PropPlacement>();
+
+    // Streams terrain chunks + props in a ring around the player so the world is effectively endless.
+    TerrainStreamer _streamer = null!;
+    Scene3DChunkSink _chunkSink = null!;
 
     CharacterController3D _character = null!;
     FollowCamera3D _camera = null!;
@@ -58,16 +60,6 @@ sealed class TerrainWalkApp : GameApp3D
         _field = new TerrainField(TerrainPresets.Clearing());
         _terrain = new TerrainCollision(_field);
 
-        // Fixed NxN grid of chunks around the origin, meshed at the densest LOD (no streaming here).
-        float size = TerrainChunkRegion.DefaultSize;
-        for (int gz = -GridRadius; gz <= GridRadius; gz++)
-            for (int gx = -GridRadius; gx <= GridRadius; gx++)
-            {
-                var region = new TerrainChunkRegion { OriginX = gx * size, OriginZ = gz * size, Size = size };
-                var chunk = TerrainChunkBuilder.Build(_field, region, lod: 0);
-                _chunks.Add(sc.LoadTerrainChunk(chunk));
-            }
-
         // 1.8 m greybox capsule (height 1.2 + 2*radius 0.6); mesh bottom sits at y=0 in local space.
         _capsule = sc.LoadMesh(MeshPrimitives.Capsule(radius: CapsuleRadius, height: 1.2f, segments: 16, rings: 6));
 
@@ -90,9 +82,22 @@ sealed class TerrainWalkApp : GameApp3D
         foreach (AssetEntry entry in manifest.Props)
             _propMeshes[entry.Id] = sc.LoadMesh(PropLoader.LoadProp(entry));
 
-        // Deterministic coordinate-hash forest ring around the clearing (parity with the greybox scatter).
-        _placements = PropScatter.Generate(_field, ScatterConfig.ForestRing(), new RectArea(-58f, -58f, 58f, 16f));
-        Console.WriteLine($"Scattered {_placements.Count} props across the clearing ({_propMeshes.Count} kit meshes).");
+        // Endless streamed world: the sink builds chunk meshes + deterministic per-chunk props (same coordinate-hash
+        // scatter as before, now over every chunk's area), the streamer keeps a ring of them loaded around the player
+        // within a per-frame budget. Prime the first ring before the first frame so the player spawns on solid ground.
+        _chunkSink = new Scene3DChunkSink(sc, _field, ScatterConfig.ForestRing(), _propMeshes,
+            chunkSize: TerrainChunkRegion.DefaultSize, propDrawRadius: PropDrawRadius);
+        _streamer = new TerrainStreamer(StreamerConfig.Default, _chunkSink);
+        // Prime the FULL initial ring at load time (this is the loading moment, not a frame, so the per-frame
+        // MaxLoadsPerFrame budget is irrelevant here): pump until the loaded set stops growing. From here on
+        // OnUpdate amortizes the streaming so a brisk walk never hitches.
+        int loadedBefore = -1;
+        while (_streamer.Loaded.Count != loadedBefore)
+        {
+            loadedBefore = _streamer.Loaded.Count;
+            _streamer.Update(_character.Position, 0f);
+        }
+        Console.WriteLine($"Streaming the world: primed {_streamer.Loaded.Count} chunks ({_propMeshes.Count} prop kit meshes).");
     }
 
     protected override void OnUpdate(float dt)
@@ -101,6 +106,9 @@ sealed class TerrainWalkApp : GameApp3D
 
         _character.Update(Input, dt, _camera.Yaw, _terrain.GroundHeight);
 
+        // Stream the world around the new player position (loads/unloads/re-LODs within MaxLoadsPerFrame).
+        _streamer.Update(_character.Position, dt);
+
         _camera.Target = _character.Position;
         _camera.AspectRatio = FrameHeight > 0 ? (float)FrameWidth / FrameHeight : _camera.AspectRatio;
         _camController.Update(Input, dt);
@@ -108,11 +116,8 @@ sealed class TerrainWalkApp : GameApp3D
 
     protected override void OnDraw3D(Scene3D scene)
     {
-        foreach (var chunk in _chunks)
-            scene.DrawTerrainChunk(chunk);
-
-        // Instanced forest within the draw radius of the player (distance-culled; batches per kit mesh).
-        scene.DrawProps(_placements, _propMeshes, _character.Position, PropDrawRadius);
+        // Streamed terrain + props: the sink draws every loaded chunk mesh and its in-range props.
+        _chunkSink.Draw(_character.Position);
 
         // Draw the capsule so its base sits on the ground (Position is the capsule centre).
         Vector3 p = _character.Position;

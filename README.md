@@ -21,7 +21,7 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 | **KhaozEngine.Effects** | Game-feel visual effects: `ScreenShake` (trauma-based), parallax helpers. | Pure .NET |
 | **KhaozEngine.Telegraphs** | Attack-telegraph / danger-zone indicators (presentation-only): `TelegraphStyle` (+ `Generic`/`Fire`/`Poison` presets), the pure `TelegraphResolve` progress->visual mapping, and the immediate-mode `TelegraphRenderer2D` (circle/ring/beam/cone/arc). In the `Game2D` umbrella. | Render2D, Primitives |
 | **KhaozEngine.Telegraphs.Render3D** | The ground-plane arm of telegraphs: `Scene3D.GroundCircle/Ring/Beam/Cone/Arc` extensions that paint danger zones flat on the ground/terrain via the engine's depth-sampling `DrawGroundDecal` primitive. In the `Game3D` umbrella. | Telegraphs, Render3D |
-| **KhaozEngine.Terrain.Render3D** | The render arm of terrain: `TerrainChunkBuilder` meshes finite chunks off a `TerrainField` into Render3D `GltfMesh`es with distance LOD (`TerrainLod.PickLod`), ~0.3 m skirts, per-vertex splat weights + a height/slope vertex-colour ramp, and a chunk AABB; plus `Scene3D.LoadTerrainChunk`/`DrawTerrainChunk`. In the `Game3D` umbrella. | Terrain, Render3D |
+| **KhaozEngine.Terrain.Render3D** | The render arm of terrain: `TerrainChunkBuilder` meshes finite chunks off a `TerrainField` into Render3D `GltfMesh`es with distance LOD (`TerrainLod.PickLod`), ~0.3 m skirts, per-vertex splat weights + a height/slope vertex-colour ramp, and a chunk AABB; plus `Scene3D.LoadTerrainChunk`/`DrawTerrainChunk` and the `TerrainStreamer` client world-streaming layer (`ChunkCoord`/`ChunkGrid`, `IChunkSink`, `StreamerConfig`, `Scene3DChunkSink`: an endless ring of chunks + props with a hysteresis band, distance-LOD re-meshing, and amortized main-thread loading). In the `Game3D` umbrella. | Terrain, Render3D |
 | **KhaozEngine.Game** | The 2D game-loop facade: `GameApp` (abstract base owning the per-frame compose: clock/viewport/input/draw) + `GameAppOptions`, and a `SceneManager`/`GameScene` state stack (Push/Pop/Replace/SwitchTo, overlay DrawBelow/UpdateBelow). | Windowing, Render2D, Gui |
 | **KhaozEngine.Game.Render3D** | The 3D bridge for the Game framework: `GameApp3D` (a `GameApp` that stands up a `Render3DSurface` + drives the 3D pass), `IGameScene3D`, and a `SceneManager.Draw3D` extension. Kept separate so a 2D game pulls no 3D renderer. | Game, Render3D |
 | **KhaozEngine.Ecs** | A struct-based archetype `World`/`Entity`/`ISystem` ECS: by-ref component access, `ForEach`, opt-in data-parallel `ParallelForEach` (fans archetype rows across the `IJobScheduler` worker pool, with an `AccessSet` read/write-declaration model + a debug hazard guard + per-worker command buffers), command buffer, system groups, `CachedQuery`, `WorldSerializer`. (`DeterministicRng` moved to `KhaozEngine.Primitives` in 6.0.0.) | Serialization, Simulation |
@@ -54,7 +54,7 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 | Metapackage | Pulls in | For |
 |---|---|---|
 | **KhaozEngine.Game2D** | 2D runtime (Windowing/Render2D/Gui/Audio/Particles/Effects) + `Game` + `Foundation` | a desktop 2D game |
-| **KhaozEngine.Game3D** | `Game2D` + `Render3D` + `Game.Render3D` (the 3D scene bridge) + `Telegraphs.Render3D` + `Terrain.Render3D` (chunked-LOD terrain mesh builder) | a desktop 3D game |
+| **KhaozEngine.Game3D** | `Game2D` + `Render3D` + `Game.Render3D` (the 3D scene bridge) + `Telegraphs.Render3D` + `Terrain.Render3D` (chunked-LOD terrain mesh + world streaming) | a desktop 3D game |
 | **KhaozEngine.Server** | `Foundation` + netcode (`Netcode`/`.Abstractions`/`.LiteNetLib`) + `Simulation` (fixed-tick host) + `Replication` + `WorldStore` + `Sharding` (cell grid) + `NetWorld` (authoritative movement server + client glue) | a headless sim server (no GPU) |
 | **KhaozEngine.Foundation** | the GPU-free foundation (Primitives/App/Content/Diagnostics/Ecs/Localization/Locomotion/Persistence/Serialization/Pooling/Collision/Terrain/Determinism/Platform/Updates) | a gameplay-logic library (no renderer) |
 
@@ -129,10 +129,10 @@ Published to a private GitHub Packages feed on tagged releases, and packed to a 
 ```
 ```xml
 <!-- One reference per project via an umbrella metapackage. Pick the bundle that fits: -->
-<PackageReference Include="KhaozEngine.Game2D"     Version="7.47.0" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
-<PackageReference Include="KhaozEngine.Game3D"     Version="7.47.0" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
-<PackageReference Include="KhaozEngine.Server"     Version="7.47.0" />  <!-- headless: foundation + netcode, no graphics -->
-<PackageReference Include="KhaozEngine.Foundation" Version="7.47.0" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
+<PackageReference Include="KhaozEngine.Game2D"     Version="7.48.0" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
+<PackageReference Include="KhaozEngine.Game3D"     Version="7.48.0" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
+<PackageReference Include="KhaozEngine.Server"     Version="7.48.0" />  <!-- headless: foundation + netcode, no graphics -->
+<PackageReference Include="KhaozEngine.Foundation" Version="7.48.0" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
 ```
 
 The metapackages have no code; they just pull in the granular packages. You can still reference those

@@ -5,6 +5,48 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.48.0
+
+Client world streaming, overworld render-scale sub-project 6a: the world is now effectively endless. New
+streaming layer in the existing `KhaozEngine.Terrain.Render3D` package keeps a ring of terrain chunks (+ their
+deterministic props) loaded around the player; `TerrainWalkSample` walks an endless world instead of a fixed
+7x7 grid. Server stays single-`World` (multi-cell sharding is 6b). Additive in one existing package; no new
+package; minor.
+
+- **`ChunkCoord` + `ChunkGrid` (new, `KhaozEngine.Terrain.Render3D`)** - the streaming grid. `ChunkCoord(int X,
+  int Z)` is the integer index of a square chunk; `ChunkGrid` maps a coord to and from world space for a chunk
+  size: `CoordOf(worldX, worldZ, size)` (floors toward negative infinity, matching Sharding's `CellCoord`),
+  `CenterOf`, `RegionOf` (a `TerrainChunkRegion`), and `AreaOf` (a half-open `RectArea` so adjacent chunks tile
+  `PropScatter` exactly once). One source of truth shared by the streamer, the sink, and the tests.
+- **`IChunkSink` (new, `KhaozEngine.Terrain.Render3D`)** - the load/unload callback seam the streamer drives:
+  `object Load(ChunkCoord coord, int lod)` (returns an opaque handle), `void ReLod(ChunkCoord coord, object
+  handle, int lod)`, `void Unload(ChunkCoord coord, object handle)`. All GPU work lives behind it, so the
+  streamer is headless-testable with a fake sink.
+- **`StreamerConfig` (new, `KhaozEngine.Terrain.Render3D`)** - `(int LoadRadius, int UnloadRadius, int
+  MaxLoadsPerFrame, float ChunkSize)` in chunk units, with `StreamerConfig.Default` = LoadRadius 4 (~240 m view) /
+  UnloadRadius 6 (2-chunk hysteresis band) / MaxLoadsPerFrame 3 / 60 m chunks. `UnloadRadius > LoadRadius` is the
+  hysteresis that stops churn when the player oscillates across a chunk boundary.
+- **`TerrainStreamer` (new, `KhaozEngine.Terrain.Render3D`)** - keeps the world loaded in a ring around the
+  player. `Update(Vector3 playerPos, float dt)`: (1) unloads chunks beyond `UnloadRadius` (Euclidean
+  chunk-distance, immediate), (2) loads chunks inside the `LoadRadius` disk not yet loaded, (3) re-LODs loaded
+  chunks whose `TerrainLod.PickLod(metre-distance-to-center)` tier changed, processing at most `MaxLoadsPerFrame`
+  load/re-LOD ops per update (nearest first) so a build burst never hitches. `Loaded` exposes the loaded set;
+  `LodOf(coord)` the current tier. Pure bookkeeping (no GPU, no field), fully headless-tested via a fake sink:
+  loaded set equals the expected disk, moving loads/unloads the right chunks, oscillation does not churn,
+  requested LOD equals `PickLod(distance)` with a tier crossing yielding a ReLod, at most `MaxLoadsPerFrame` ops
+  per update with the backlog draining over frames, and nearest-first ordering.
+- **`Scene3DChunkSink : IChunkSink` (new, `KhaozEngine.Terrain.Render3D`)** - the production sink (ships in the
+  package so every game gets streaming for free). `Load` builds the chunk mesh at the requested LOD
+  (`TerrainChunkBuilder`) + scatters its props (`PropScatter.Generate` over the chunk's `RectArea`) and uploads
+  the mesh; `ReLod` rebuilds the mesh at the new tier in place (props are LOD-independent, kept); `Unload` frees
+  the mesh; `Draw(Vector3 focus)` queues every loaded chunk mesh + its in-range props (XZ-culled to a
+  `propDrawRadius`). The per-chunk prop scatter matches `PropScatter.Generate` for the chunk area (headless-tested).
+- **`TerrainWalkSample` now streams an endless world** - the fixed 7x7 chunk grid is replaced by a
+  `TerrainStreamer` + `Scene3DChunkSink` driven by the player position; the full initial ring is primed at load
+  time, then `OnUpdate` amortizes streaming so a brisk walk never outruns the load budget. Terrain and props are
+  computed per-area from the seed, so this composes with the networked client unchanged (each client streams
+  locally; nothing about the world is replicated).
+
 ## 7.47.0
 
 Networked overworld, the fifth overworld render-scale sub-project: the 3D walkable client and the shipped

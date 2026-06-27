@@ -126,7 +126,8 @@ namespace KhaozEngine.Tests.Render2D
         public void TryGetFontBytes_reports_presence()
         {
             var fonts = new FontManager();
-            Assert.True(fonts.TryGetFontBytes(FontManager.DefaultKey, out byte[] def));
+            Assert.True(fonts.TryGetFontBytes(FontManager.DefaultKey, out byte[]? def));
+            Assert.NotNull(def);
             Assert.NotEmpty(def);
             Assert.False(fonts.TryGetFontBytes("nope", out _));
         }

@@ -93,7 +93,7 @@ public class ClipboardTests
     public void SetText_returns_false_for_null_or_empty_without_touching_backends(string? text)
     {
         bool result = ClipboardInterop.DispatchSetText(
-            text,
+            text!,   // intentionally exercising the null/empty guard; null is the point of the test
             () => throw new Xunit.Sdk.XunitException("provider must not be called for empty input"),
             isMacOs: true, _ => throw new Xunit.Sdk.XunitException("macOS must not be called"),
             isMobile: true, _ => throw new Xunit.Sdk.XunitException("mobile must not be called"));
@@ -321,7 +321,7 @@ public class ClipboardTests
     [InlineData("")]
     public void Clipboard_TrySetClipboardText_returns_false_for_null_or_empty(string? text)
     {
-        Assert.False(Clipboard.TrySetClipboardText(text));
+        Assert.False(Clipboard.TrySetClipboardText(text!));   // null is the case under test
     }
 
     [Fact]

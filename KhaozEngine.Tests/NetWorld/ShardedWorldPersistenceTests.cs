@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using System.Text;
+using System.Threading.Tasks;
 using KhaozEngine.Ecs;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Netcode;
@@ -26,14 +27,14 @@ public class ShardedWorldPersistenceTests
     };
 
     [Fact]
-    public void LoadOnJoin_SpawnsAtSavedPosition_InTheContainingCell()
+    public async Task LoadOnJoin_SpawnsAtSavedPosition_InTheContainingCell()
     {
         var store = new InMemoryWorldStore();
         byte[] token = Encoding.UTF8.GetBytes("acct-1");
 
         // Pre-seed a save at x=35 (cell 3), z=5 - a different cell from the default spawn at x=5 (cell 0).
         var saved = new PlayerMoveState { Position = new Vector3(35f, MoveTuning.Default.CapsuleHalfHeight, 5f) };
-        store.SaveAsync("player:acct-1", PlayerRecord.From(saved).Encode()).GetAwaiter().GetResult();
+        await store.SaveAsync("player:acct-1", PlayerRecord.From(saved).Encode());
 
         var (st, ct) = LoopbackTransport.CreatePair();
         var cfg = Cfg(_ => new Vector3(5f, 0f, 5f));          // default spawn cell (0,0)
@@ -53,7 +54,7 @@ public class ShardedWorldPersistenceTests
     }
 
     [Fact]
-    public void SaveOnLeave_ThenRestart_RestoresPositionAcrossCells()
+    public async Task SaveOnLeave_ThenRestart_RestoresPositionAcrossCells()
     {
         var store = new InMemoryWorldStore();          // shared across the two "runs" = a restart
         byte[] token = Encoding.UTF8.GetBytes("acct-roam");
@@ -80,7 +81,7 @@ public class ShardedWorldPersistenceTests
 
             ct.Disconnect(default);                            // client drops -> server fires Left -> save-on-leave
             for (int i = 0; i < 10; i++) { server.Poll(); server.Tick(cfg.TickSeconds); persistence.Update(cfg.TickSeconds); }
-            persistence.FlushAsync().GetAwaiter().GetResult();   // ensure save-on-leave landed
+            await persistence.FlushAsync();   // ensure save-on-leave landed
             Assert.Equal(0, server.PlayerCount);
         }
 

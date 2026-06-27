@@ -5,6 +5,47 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.46.0
+
+Prop scatter + asset pipeline, the fourth overworld render-scale sub-project: the walkable terrain is now
+forested. Additive public API in three existing packages (Render3D, Terrain, Terrain.Render3D); no new
+package; minor.
+
+- **`AssetManifest` + `AssetEntry` (`KhaozEngine.Render3D`)** - parses a prop-kit manifest, a JSON
+  `{ "props": [ { id, file, heightMeters, source, license } ] }`. `Parse(json, baseDir?)` / `Load(path)`
+  resolve a relative `file` against the manifest directory; the manifest is also the CC0 provenance record.
+  Malformed JSON / a missing `props` array / an entry missing `id` or `file` throws
+  `InvalidOperationException` with context.
+- **`PropLoader` + `PropValidation` (`KhaozEngine.Render3D`)** - `LoadProp(entry)` loads the (decompressed)
+  glTF via `GltfLoader`, then `Normalize` scales the mesh uniformly to its declared `heightMeters`, drops the
+  origin to the base (feet on the ground), and re-centres X/Z on the origin. Validation throws loudly on an
+  implausible declared-vs-actual size (the 1.8 m human-scale guard): a declared height outside
+  `PropValidation.MinHeightMeters..MaxHeightMeters`, or an implied raw-to-declared scale outside
+  `MinScale..MaxScale` (the asset is in the wrong units). The engine still has no meshopt decoder - kit assets
+  are decompressed offline (`gltf-transform`) as an ingest step.
+- **`PropScatter` + `PropPlacement` + `ScatterConfig` + `BiomeScatterRule` + `PropKind` + `RectArea`
+  (`KhaozEngine.Terrain`, render-free leaf)** - `PropScatter.Generate(field, config, area)` returns
+  deterministic coordinate-hash placements (reusing `TerrainNoise.Hash2`): a jittered grid with per-biome
+  density + weighted kind mix, exclusions (below `WaterLevel`, inside a clearing radius, above a height cap),
+  and per-instance scale/yaw/variant from independent hashes. `Y` comes from `field.SampleHeight`. A placement
+  depends only on `(cell, seed)`, so generating over an area equals the union over its tiles (streaming-ready,
+  half-open `RectArea` on cell centres). `ScatterConfig.ForestRing()` reproduces the greybox forest ring
+  (`tools/blender/make_clearing_greybox.py`: cell 4.5 m, clearing radius 26 m, keep 0.55, off-mountain at
+  height > 6 m, scale 0.8..1.35).
+- **`PropRenderer.Queue` + `Scene3D.DrawProps` (`KhaozEngine.Terrain.Render3D`)** - given placements + a
+  `id -> MeshHandle` map + a focus point + a draw radius, queues `SceneInstances.Add` (scale + yaw +
+  translation) for placements within the horizontal (XZ) radius and distance-culls the rest, skipping unknown
+  ids. Pure use of the existing instancing path, so an N-tree forest batches into a handful of draws (one per
+  kit mesh). `DrawProps` is the Scene3D convenience; `Queue` is the headless-testable core.
+- **`TerrainWalkSample`** - loads a small committed CC0 Quaternius nature kit (3 pine / 2 oak / 2 rock,
+  decompressed to plain glTF) through the pipeline, scatters `ScatterConfig.ForestRing()` over the clearing,
+  and draws the forest instanced around the player (distance-culled). Walk through it.
+- **Ingest note** - kit glTF is meshopt-compressed; the engine loads only plain glTF 2.0. Decompress offline:
+  `npx --yes @gltf-transform/cli@latest cp <in>.glb <out>.glb` (and `dequantize` / texture-flatten as needed).
+  See `docs/USING-KHAOZENGINE.md` (Prop scatter + asset pipeline) and the kit `CREDITS.md`.
+- Out of scope (named so they are not forgotten): a meshopt decoder, mesh-LOD/impostors, PBR splat textures,
+  prop/obstacle collision, chunk streaming, animated props. All later sub-projects.
+
 ## 7.45.0
 
 Follow-camera tuning (drag direction + terrain ground-clamp), correcting two issues found playtesting the

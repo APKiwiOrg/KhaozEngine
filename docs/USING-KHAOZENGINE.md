@@ -678,6 +678,66 @@ physics beyond the ground-clamp are later sub-projects, not part of this one.
 
 ---
 
+## Prop scatter + asset pipeline (`AssetManifest` / `PropScatter` / `Scene3D.DrawProps`)
+
+Forest (or rock, or bush) the terrain in three parts: an **asset pipeline** that normalizes kit glTF, a
+**render-free scatter** that decides where props go, and an **instanced render helper** that draws the
+in-range ones.
+
+**1. Asset pipeline (`KhaozEngine.Render3D`).** A prop kit ships a JSON manifest plus its glTF files:
+
+```json
+{ "props": [ { "id": "pine_a", "file": "pine_a.glb", "heightMeters": 12, "source": "Quaternius", "license": "CC0" } ] }
+```
+
+`AssetManifest.Load(path)` parses it (relative `file` resolves against the manifest directory; it is also the
+provenance record). `PropLoader.LoadProp(entry)` loads the glTF via `GltfLoader`, scales the mesh uniformly to
+the declared `heightMeters`, drops the origin to the base (feet on the ground), and re-centres X/Z on the
+origin. Validation throws loudly on an implausible declared-vs-actual size (the 1.8 m human-scale guard): a
+height outside `PropValidation.MinHeightMeters..MaxHeightMeters`, or an implied raw-to-declared scale outside
+`MinScale..MaxScale` (the asset is in the wrong units). `using KhaozEngine.Render3D;`:
+
+```csharp
+var manifest = AssetManifest.Load(Path.Combine(AppContext.BaseDirectory, "assets/props/props.manifest.json"));
+var meshes = new Dictionary<string, MeshHandle>();
+foreach (AssetEntry e in manifest.Props)
+    meshes[e.Id] = scene.LoadMesh(PropLoader.LoadProp(e));   // one uploaded mesh per id
+```
+
+> **Decompress kit glTF offline.** The loader reads **plain glTF 2.0 only** - it has no meshopt decoder, and
+> chokes on required extensions (`EXT_meshopt_compression`, `KHR_mesh_quantization`, `EXT_texture_webp`). Bake
+> kit assets to plain glTF as an ingest step with [`gltf-transform`](https://gltf-transform.dev), e.g.
+> `npx --yes @gltf-transform/cli@latest cp <in>.glb <out>.glb` (drops meshopt), plus `dequantize` and a
+> texture-flatten where the kit uses quantization / webp. The committed `TerrainWalkSample` kit was baked this
+> way (see its `assets/props/CREDITS.md`); multi-material props are flattened to per-material flat base colours
+> so the single-mesh loader colours them correctly.
+
+**2. Scatter (`KhaozEngine.Terrain`, render-free leaf).** `PropScatter.Generate(field, config, area)` returns
+deterministic `PropPlacement[]` via the same coordinate hash as the terrain (`TerrainNoise.Hash2`): a jittered
+grid, per-biome density + weighted kind mix, exclusions (below `WaterLevel`, inside a clearing radius, above a
+height cap), and per-instance scale/yaw/variant. `Y` is `field.SampleHeight`. A placement depends only on
+`(cell, seed)`, so `Generate` over an area equals the union over its tiles - **streaming-ready** (generate per
+cell as the world streams). `ScatterConfig` is data-driven; `ScatterConfig.ForestRing()` is the greybox-parity
+default. `using KhaozEngine.Terrain;`:
+
+```csharp
+var placements = PropScatter.Generate(field, ScatterConfig.ForestRing(), new RectArea(-58, -58, 58, 16));
+```
+
+**3. Instanced draw (`KhaozEngine.Terrain.Render3D`).** Each frame, `Scene3D.DrawProps` queues the existing
+instancing path for placements within a **horizontal** draw radius of a focus point (the player) and
+distance-culls the rest, so an N-tree forest batches into a handful of draws (one per kit mesh):
+
+```csharp
+scene.DrawProps(placements, meshes, focus: character.Position, drawRadius: 90f);   // each frame
+```
+
+`PropRenderer.Queue(SceneInstances, ...)` is the same logic against a raw instance queue (headless-testable).
+See `TerrainWalkSample` for the full wiring. Mesh-LOD/impostors, PBR splat textures, prop/obstacle collision,
+chunk streaming, and animated props are later sub-projects, not part of this one.
+
+---
+
 ## ECS (`KhaozEngine.Ecs`)
 
 Independent of input/rendering. A struct-based archetype ECS: components are **structs** implementing

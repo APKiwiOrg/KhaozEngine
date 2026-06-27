@@ -1,6 +1,6 @@
 # KhaozEngine roadmap / backlog
 
-Larger feature areas identified but not yet scheduled. Current released version: **7.45.0** (the shared
+Larger feature areas identified but not yet scheduled. Current released version: **7.46.0** (the shared
 `<KhaozEngine5xVersion>` line, which is the engine: the custom MonoGame-free stack plus the graduated foundation packages). The legacy 4.x
 line and its six genuinely-MonoGame packages (`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`) were
 DELETED from the engine source, so the engine itself is now entirely MonoGame-free. All three consumers are
@@ -62,9 +62,19 @@ Reference pattern: `github.com/levy-street/world-of-claudecraft` (engine-agnosti
   per-vertex splat weights, height/slope vertex-colour ramp, chunk AABB). Analytic field (no baked heightmaps),
   authoritative-server/visual-client (plain `float`). Spec:
   `docs/superpowers/specs/2026-06-27-terrain-system-design.md`.
-- **Next sub-projects:** asset glTF-kit ingest + scale-normalize, world streaming / frustum+distance culling
-  wired to `Sharding`, deterministic prop scatter (instanced), procedural dungeon generator, and the world-client
-  glue (character controller + camera follow). PBR splat textures and a water shader are terrain-material upgrades.
+- **Walkable slice shipped (`7.44.0`, camera tuned `7.45.0`).** The second sub-project: `FollowCamera3D` +
+  `FollowCameraController` (`KhaozEngine.Render3D`, a third-person orbit camera) and `CharacterController3D`
+  (`KhaozEngine.Game.Render3D`, terrain-agnostic WASD ground-clamped locomotion), plus `TerrainWalkSample`.
+  Spec: `docs/superpowers/specs/2026-06-27-walkable-slice-design.md`.
+- **Prop scatter + asset pipeline shipped (`7.46.0`).** The fourth sub-project (asset/render foundation folded
+  in): `AssetManifest` + `PropLoader` (`KhaozEngine.Render3D`, kit manifest parse + scale-normalize to
+  `heightMeters` + the 1.8 m validation guard), `PropScatter` (`KhaozEngine.Terrain`, deterministic
+  coordinate-hash placement, streaming-ready), and `PropRenderer`/`Scene3D.DrawProps`
+  (`KhaozEngine.Terrain.Render3D`, instanced + distance-culled). `TerrainWalkSample` forests the clearing with a
+  committed CC0 Quaternius kit. Spec: `docs/superpowers/specs/2026-06-27-prop-scatter-design.md`.
+- **Next sub-projects:** world streaming / frustum+distance culling wired to `Sharding`, procedural dungeon
+  generator, and animated characters/creatures (needs a glTF animation-clip-playback feature). PBR splat
+  textures and a water shader are terrain-material upgrades.
 
 ## The post-MonoGame pivot (6.x line): strategic direction
 

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Numerics;
 using KhaozEngine.Game;
 using KhaozEngine.Primitives;
@@ -23,11 +24,16 @@ sealed class TerrainWalkApp : GameApp3D
     const int GridRadius = 3;                 // 7x7 chunks (2*radius+1)
     const float CapsuleRadius = 0.3f;
     const float CapsuleHalfHeight = 0.9f;     // 1.8 m total (height 1.2 + 2*radius 0.6)
+    const float PropDrawRadius = 90f;         // distance-cull ring for instanced props around the player
 
     TerrainField _field = null!;
     TerrainCollision _terrain = null!;
     readonly List<MeshHandle> _chunks = new();
     MeshHandle _capsule;
+
+    // One uploaded mesh per kit id + the deterministic scatter placements (queued each frame, distance-culled).
+    readonly Dictionary<string, MeshHandle> _propMeshes = new();
+    IReadOnlyList<PropPlacement> _placements = Array.Empty<PropPlacement>();
 
     CharacterController3D _character = null!;
     FollowCamera3D _camera = null!;
@@ -76,6 +82,17 @@ sealed class TerrainWalkApp : GameApp3D
         _camera.Distance = 9f;
         _camController = new FollowCameraController(_camera);
         sc.CameraOverride = _camera;
+
+        // Load the committed CC0 prop kit through the asset pipeline (decompressed glTF -> normalized to its
+        // manifest heightMeters with the origin dropped to the base), one uploaded mesh per id.
+        string manifestPath = Path.Combine(AppContext.BaseDirectory, "assets", "props", "props.manifest.json");
+        AssetManifest manifest = AssetManifest.Load(manifestPath);
+        foreach (AssetEntry entry in manifest.Props)
+            _propMeshes[entry.Id] = sc.LoadMesh(PropLoader.LoadProp(entry));
+
+        // Deterministic coordinate-hash forest ring around the clearing (parity with the greybox scatter).
+        _placements = PropScatter.Generate(_field, ScatterConfig.ForestRing(), new RectArea(-58f, -58f, 58f, 16f));
+        Console.WriteLine($"Scattered {_placements.Count} props across the clearing ({_propMeshes.Count} kit meshes).");
     }
 
     protected override void OnUpdate(float dt)
@@ -93,6 +110,9 @@ sealed class TerrainWalkApp : GameApp3D
     {
         foreach (var chunk in _chunks)
             scene.DrawTerrainChunk(chunk);
+
+        // Instanced forest within the draw radius of the player (distance-culled; batches per kit mesh).
+        scene.DrawProps(_placements, _propMeshes, _character.Position, PropDrawRadius);
 
         // Draw the capsule so its base sits on the ground (Position is the capsule centre).
         Vector3 p = _character.Position;

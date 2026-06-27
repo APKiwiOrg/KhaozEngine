@@ -35,6 +35,7 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 | **KhaozEngine.Pooling** | `ObjectPool<T>`: fixed-capacity free-list pool with O(1) rent/return, active/free tracking, swap-removal compaction. | Pure .NET |
 | **KhaozEngine.Collision** | Deterministic 2D collision + broadphase: `CircleCollision` and `SpatialHashGrid`. Bit-identical math for lockstep sims (`System.Numerics`). | Pure .NET |
 | **KhaozEngine.Terrain** | Render-free analytic terrain: `TerrainField` (`SampleHeight`/`SampleNormal`/`SampleBiome`/`WaterLevel`) folds biome-band shaping, stateless coordinate-hash fractal noise (`TerrainNoise`), and ordered features (`LakeFeature`/`RidgeFeature`/`FlattenFeature`); height at a point depends only on `(x, z, seed)`. Plus `TerrainCollision` (ground height + slope walkability) and `TerrainPresets.Clearing()`. Plain `float`; server and client sample the same field. In the `Foundation` umbrella. | Primitives |
+| **KhaozEngine.Locomotion** | Render-free character locomotion core: `CharacterMovement.Step` (a pure XZ-plane move from a `MoveCommand` (camera-relative WASD axis + run + camera yaw) over a timestep, normalized diagonals, ground-clamped via a height delegate with an optional slope gate) and one `MoveTuning` source of truth shared by the local `CharacterController3D`, the authoritative server sim, and client prediction. No input/render/netcode. In the `Foundation` umbrella. | Primitives |
 | **KhaozEngine.Determinism** | `DeterministicFpScope` / `DeterministicFp`: pins the CPU floating-point environment to a canonical IEEE state (round-to-nearest-even, FTZ/DAZ off, traps masked) for a fixed-tick / lockstep sim, then restores it, so a fixed-seed host sim doesn't drift across threads/machines. Pure-managed P/Invoke over `<fenv.h>`; `IsSupported` no-ops safely where unwired. | Pure .NET |
 | **KhaozEngine.Updates** | Delta auto-update pipeline: SHA256 manifests + diffing, a host-agnostic update source, an `UpdateService` state machine with resumable staged downloads, and a cross-platform staged-apply core (`UpdateApplier`). | Diagnostics |
 | **KhaozEngine.Netcode.Abstractions** | The zero-dependency channel-split contract: `IChannelSplittable<TSelf>` + `NetChannelReliability`. Reference this alone from a transport-agnostic DTO project (e.g. one shared with a web server). | Pure .NET |
@@ -44,6 +45,7 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 | **KhaozEngine.Replication** | Authoritative ECS replication: `NetId` + a closure-based `ReplicationRegistry`, `SnapshotWriter` (full-state + `WriteFiltered` per-client interest), `ClientReplicationView` (`Apply`/`ApplyDelta`: spawn/despawn/update + interpolation), `ServerReplicator` (per-slot acked baselines + baseline/delta), and `InterestGrid` (area-of-interest spatial query). Transport-free (snapshots are `byte[]`). | Ecs |
 | **KhaozEngine.WorldStore** | Server-side durable-state seam: `IWorldStore` (async keyed `byte[]`, DB-shaped) + a thread-safe `InMemoryWorldStore` reference impl. Real DB backends implement the seam as infra. | Pure .NET |
 | **KhaozEngine.Sharding** | World topology for an authoritative server: a uniform grid of authoritative cells. `CellCoord` (world position -> integer cell coord), `CellSim` (one cell = an ECS `World` + `FixedTickHost` + `ServerReplicator` + `InterestGrid` + read-only border ghosts), `ShardHost` (owns the cell map, creates cells on demand, routes entities to the cell containing their position, ticks every cell at one fixed rate, `SyncGhosts` mirrors border-overlap entities into neighbor cells as `Ghost`s over the `ICellLink` seam, `ProcessHandoffs` transfers authority on a boundary crossing with exactly-once semantics, and `SnapshotForClient` serves a bound client its whole area-of-interest from its single home cell with seamless re-bind on crossing). `Tick` fans the independent cells across an opt-in `IJobScheduler` (default inline) for near-linear-in-cores throughput. The in-process container the seamless-shard topology builds on. | Ecs, Simulation, Replication |
+| **KhaozEngine.NetWorld** | Render-free networked-world layer wiring movement to the authoritative netcode stack: `PlayerMoveSimulator` (`ITickSimulator`, runs `CharacterMovement.Step` server-authoritatively and inside client prediction), `WorldServer` (single-`World` authoritative server: per-player command queue + ground-clamped sim + per-client AoI snapshots over `SnapshotWriter`+`InterestGrid`, headered with the receiver's net id + last-acked seq), and `WorldClient` (wraps `NetClient`+`ClientReplicationView`+`ClientPrediction`, exposes `EntityRenderState[]`: local predicted, remotes replicated). In the `Server` umbrella. | Locomotion, Netcode, Replication, Ecs |
 | **KhaozEngine.Content.Validator** | Build-time JSON-schema enforcement tool for content (`IsPackable=false`; ships inside the Content package). | Content |
 | **KhaozEngine.Sfx.Tool** | The `ke-sfxbake` dotnet tool (`PackAsTool`): manifest-driven bulk SFX generation + bake. Reads a per-game `sfx.manifest.jsonc`, generates each effect via the ElevenLabs sound-effects REST API, encodes with ffmpeg/oggenc, idempotent via `.sfxmeta` sidecars. Author-time tool, not a runtime package. | Serialization |
 
@@ -53,8 +55,8 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 |---|---|---|
 | **KhaozEngine.Game2D** | 2D runtime (Windowing/Render2D/Gui/Audio/Particles/Effects) + `Game` + `Foundation` | a desktop 2D game |
 | **KhaozEngine.Game3D** | `Game2D` + `Render3D` + `Game.Render3D` (the 3D scene bridge) + `Telegraphs.Render3D` + `Terrain.Render3D` (chunked-LOD terrain mesh builder) | a desktop 3D game |
-| **KhaozEngine.Server** | `Foundation` + netcode (`Netcode`/`.Abstractions`/`.LiteNetLib`) + `Simulation` (fixed-tick host) + `Replication` + `WorldStore` + `Sharding` (cell grid) | a headless sim server (no GPU) |
-| **KhaozEngine.Foundation** | the GPU-free foundation (Primitives/App/Content/Diagnostics/Ecs/Localization/Persistence/Serialization/Pooling/Collision/Terrain/Determinism/Platform/Updates) | a gameplay-logic library (no renderer) |
+| **KhaozEngine.Server** | `Foundation` + netcode (`Netcode`/`.Abstractions`/`.LiteNetLib`) + `Simulation` (fixed-tick host) + `Replication` + `WorldStore` + `Sharding` (cell grid) + `NetWorld` (authoritative movement server + client glue) | a headless sim server (no GPU) |
+| **KhaozEngine.Foundation** | the GPU-free foundation (Primitives/App/Content/Diagnostics/Ecs/Localization/Locomotion/Persistence/Serialization/Pooling/Collision/Terrain/Determinism/Platform/Updates) | a gameplay-logic library (no renderer) |
 
 Target framework `net10.0`. MonoGame-free: Silk.NET windowing/input (GLFW natives bundled per-RID), Veldrid
 behind `KhaozEngine.Gpu` for the GPU, Silk.NET.OpenAL for audio. `System.Numerics` math throughout.
@@ -127,10 +129,10 @@ Published to a private GitHub Packages feed on tagged releases, and packed to a 
 ```
 ```xml
 <!-- One reference per project via an umbrella metapackage. Pick the bundle that fits: -->
-<PackageReference Include="KhaozEngine.Game2D"     Version="7.46.0" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
-<PackageReference Include="KhaozEngine.Game3D"     Version="7.46.0" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
-<PackageReference Include="KhaozEngine.Server"     Version="7.46.0" />  <!-- headless: foundation + netcode, no graphics -->
-<PackageReference Include="KhaozEngine.Foundation" Version="7.46.0" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
+<PackageReference Include="KhaozEngine.Game2D"     Version="7.47.0" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
+<PackageReference Include="KhaozEngine.Game3D"     Version="7.47.0" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
+<PackageReference Include="KhaozEngine.Server"     Version="7.47.0" />  <!-- headless: foundation + netcode, no graphics -->
+<PackageReference Include="KhaozEngine.Foundation" Version="7.47.0" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
 ```
 
 The metapackages have no code; they just pull in the granular packages. You can still reference those
@@ -162,13 +164,15 @@ KhaozEngine.Primitives/
 KhaozEngine.Ecs/   KhaozEngine.Serialization/   KhaozEngine.Content/   KhaozEngine.Content.Validator/
 KhaozEngine.Diagnostics/   KhaozEngine.App/   KhaozEngine.Localization/   KhaozEngine.Persistence/
 KhaozEngine.Pooling/   KhaozEngine.Platform/   KhaozEngine.Collision/   KhaozEngine.Terrain/   KhaozEngine.Updates/
+KhaozEngine.Locomotion/
 KhaozEngine.Netcode/   KhaozEngine.Netcode.Abstractions/   KhaozEngine.Netcode.LiteNetLib/   KhaozEngine.Simulation/
-KhaozEngine.Replication/   KhaozEngine.WorldStore/   KhaozEngine.Sharding/
+KhaozEngine.Replication/   KhaozEngine.WorldStore/   KhaozEngine.Sharding/   KhaozEngine.NetWorld/
 # Umbrella metapackages
 KhaozEngine.Foundation/   KhaozEngine.Game2D/   KhaozEngine.Game3D/   KhaozEngine.Server/
 # Tests, samples, tools
 KhaozEngine.Tests/   GuiSample/   Render2DSample/   Render3DSample/   SceneSample/   WindowingSample/   MiniGame/
-SnapshotSample/   MmoServerSample/ (reference dedicated MMO server)
+SnapshotSample/   TerrainWalkSample/   MmoServerSample/ (reference dedicated MMO server)
+NetworkedWalkServer/ + NetworkedWalkSample/ (networked walkable overworld: headless server + windowed client)
 KhaozEngine.Updates.Tool/ (ke-updater)   KhaozEngine.Sfx.Tool/ (ke-sfxbake)
 tools/   docs/USING-KHAOZENGINE.md
 Directory.Build.props (shared version)   nuget.config   .github/workflows/ci.yml

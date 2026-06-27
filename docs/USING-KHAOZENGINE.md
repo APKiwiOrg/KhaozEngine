@@ -738,6 +738,60 @@ chunk streaming, and animated props are later sub-projects, not part of this one
 
 ---
 
+## Networked overworld (`KhaozEngine.Locomotion` + `KhaozEngine.NetWorld`)
+
+The movement math lives in one render-free place so local feel and networked feel are the same code.
+`KhaozEngine.Locomotion` (leaf, `Foundation` umbrella) is `CharacterMovement.Step` (a pure XZ move from a
+`MoveCommand` (camera-relative WASD axis + run + camera yaw) over a timestep, normalized diagonals,
+ground-clamped via a height delegate + optional slope gate) and one `MoveTuning`. The local
+`CharacterController3D` wraps it; the authoritative server and client prediction run the same `Step`.
+
+```csharp
+using KhaozEngine.Locomotion;
+Vector3 next = CharacterMovement.Step(pos, new MoveCommand(move, run, cameraYaw), dt, terrain.GroundHeight, MoveTuning.Default);
+```
+
+`KhaozEngine.NetWorld` (`Server` umbrella; deps Locomotion/Netcode/Replication/Ecs, render-free) wires that
+core to the shipped authoritative netcode for a **single authoritative `World`** (multi-cell `Sharding` folds
+in with streaming later):
+
+- **`WorldServer`** (headless): a `NetServer` session spawns one player entity per connection, drains that
+  client's queued `MoveCommand` each tick via `RemoteCommandQueue`, runs `PlayerMoveSimulator`
+  (`ITickSimulator` over `CharacterMovement.Step`, ground-clamped), and serves each client a per-area-of-
+  interest snapshot (`SnapshotWriter.WriteFiltered` over an `InterestGrid`) framed with the receiver's net id
+  + last-acked move seq. Drive it on a `FixedTickHost` like `MmoServerSample`. The terrain is injected as a
+  plain ground delegate, so NetWorld has no terrain dependency.
+
+```csharp
+using KhaozEngine.NetWorld;
+var server = new WorldServer(transport, new WorldServerConfig { TickSeconds = 1f/30f, InterestRadius = 200f },
+                            terrain.GroundHeight, MoveTuning.Default);
+// loop: server.Poll(); clock.Advance(elapsed, _ => server.Tick(1f/30f));
+```
+
+- **`WorldClient`** (render-free): wraps `NetClient` + `ClientReplicationView` + `ClientPrediction`. `Poll()`
+  ingests AoI snapshots, applies remote entities, and reconciles the local avatar against the authoritative
+  basis; `SendInput(cmd)` predicts one tick forward and transmits it; `Snapshot()` returns
+  `IReadOnlyList<EntityRenderState>` (`{ NetId Id; Vector3 Position; bool IsLocal; }`) for the renderer - the
+  local player is the predicted position, remotes the replicated one.
+
+```csharp
+var client = new WorldClient(transport, terrain.GroundHeight, MoveTuning.Default, new WorldClientConfig { TickSeconds = 1f/30f });
+// per fixed tick: client.SendInput(new MoveCommand(move, run, camera.Yaw));
+// per frame:      client.Poll(); client.AdvancePresentation(dt);
+foreach (EntityRenderState e in client.Snapshot())
+    scene.Draw(capsule, Matrix4x4.CreateTranslation(e.Position - up * halfHeight), e.IsLocal ? localTint : remoteTint);
+```
+
+Client and server must build the **same** terrain field (`TerrainPresets.Clearing()`) and use the same
+`MoveTuning` so prediction matches authority. Props are **not** replicated - each client scatters them
+deterministically from the seed, so only players consume bandwidth. Demos (`IsPackable=false`):
+`NetworkedWalkServer` (headless) and `NetworkedWalkSample` (the windowed `--connect` client); run the server,
+then two clients on localhost to see two players. Spec:
+`docs/superpowers/specs/2026-06-27-networked-overworld-design.md`.
+
+---
+
 ## ECS (`KhaozEngine.Ecs`)
 
 Independent of input/rendering. A struct-based archetype ECS: components are **structs** implementing

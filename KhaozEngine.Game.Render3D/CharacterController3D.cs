@@ -1,17 +1,18 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Locomotion;
 using KhaozEngine.Windowing;
 
 namespace KhaozEngine.Game
 {
     /// <summary>
-    /// Terrain-agnostic third-person locomotion for the walkable slice. WASD moves the character on the XZ plane
-    /// relative to a camera yaw (forward = the camera's look direction projected onto the ground); diagonals are
-    /// normalized; left/right shift runs. Each frame the Y is clamped onto a caller-supplied ground-height
-    /// delegate (plus a capsule half-height so the feet sit on the ground), and an optional ground-normal delegate
-    /// rejects a step onto terrain steeper than <see cref="MaxSlopeRadians"/>. Pure System.Numerics + the input
-    /// snapshot: no reference to KhaozEngine.Terrain, no physics beyond ground-clamp (no jump/gravity). The speeds
-    /// and half-height are public fields, feel-tuned later.
+    /// Terrain-agnostic third-person locomotion for the walkable slice. WASD moves the character on the XZ
+    /// plane relative to a camera yaw (forward = the camera's look direction projected onto the ground);
+    /// diagonals are normalized; left/right shift runs. A thin input adapter over the shared
+    /// <see cref="CharacterMovement.Step"/> core (KhaozEngine.Locomotion): the same code runs the local feel
+    /// and the networked authoritative/predicted movement, with one <see cref="MoveTuning"/> source of truth.
+    /// Reads only the immutable input snapshot; no terrain dependency, no physics beyond ground-clamp.
+    /// The speeds and half-height are public fields, feel-tuned later.
     /// </summary>
     public sealed class CharacterController3D
     {
@@ -41,33 +42,17 @@ namespace KhaozEngine.Game
         {
             if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
 
-            // Camera-relative ground basis (matches FollowCamera3D's yaw convention).
-            float sY = MathF.Sin(cameraYaw), cY = MathF.Cos(cameraYaw);
-            Vector3 forward = new(-sY, 0f, -cY);
-            Vector3 right = new(cY, 0f, -sY);
+            // Map the input snapshot to a camera-relative move axis and run the shared movement step.
+            Vector2 move = Vector2.Zero;
+            if (input.IsDown(Key.W)) move.Y += 1f;
+            if (input.IsDown(Key.S)) move.Y -= 1f;
+            if (input.IsDown(Key.D)) move.X += 1f;
+            if (input.IsDown(Key.A)) move.X -= 1f;
+            bool run = input.IsDown(Key.LeftShift) || input.IsDown(Key.RightShift);
 
-            Vector3 move = Vector3.Zero;
-            if (input.IsDown(Key.W)) move += forward;
-            if (input.IsDown(Key.S)) move -= forward;
-            if (input.IsDown(Key.D)) move += right;
-            if (input.IsDown(Key.A)) move -= right;
-            if (move.LengthSquared() > 1e-6f)
-            {
-                move = Vector3.Normalize(move);   // normalized diagonals
-                float speed = (input.IsDown(Key.LeftShift) || input.IsDown(Key.RightShift)) ? RunSpeed : WalkSpeed;
-                float nx = _position.X + move.X * speed * dt;
-                float nz = _position.Z + move.Z * speed * dt;
-
-                bool blocked = false;
-                if (groundNormal is not null)
-                {
-                    float ny = Math.Clamp(groundNormal(nx, nz).Y, 0f, 1f);
-                    if (MathF.Acos(ny) > MaxSlopeRadians) blocked = true;
-                }
-                if (!blocked) { _position.X = nx; _position.Z = nz; }
-            }
-
-            _position.Y = groundHeight(_position.X, _position.Z) + CapsuleHalfHeight;
+            var cmd = new MoveCommand(move, run, cameraYaw);
+            var tuning = new MoveTuning(WalkSpeed, RunSpeed, CapsuleHalfHeight, MaxSlopeRadians);
+            _position = CharacterMovement.Step(_position, cmd, dt, groundHeight, tuning, groundNormal);
         }
 
         /// <summary>Teleport the character; Y is recomputed from the ground delegate on the next <see cref="Update"/>.</summary>

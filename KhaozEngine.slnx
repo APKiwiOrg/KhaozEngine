@@ -18,6 +18,8 @@
   <Project Path="KhaozEngine.Gui/KhaozEngine.Gui.csproj" />
   <Project Path="KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />
   <Project Path="KhaozEngine.Localization/KhaozEngine.Localization.csproj" />
+  <Project Path="KhaozEngine.Locomotion/KhaozEngine.Locomotion.csproj" />
+  <Project Path="KhaozEngine.NetWorld/KhaozEngine.NetWorld.csproj" />
   <Project Path="KhaozEngine.Netcode.Abstractions/KhaozEngine.Netcode.Abstractions.csproj" />
   <Project Path="KhaozEngine.Netcode/KhaozEngine.Netcode.csproj" />
   <Project Path="KhaozEngine.Netcode.LiteNetLib/KhaozEngine.Netcode.LiteNetLib.csproj" />
@@ -54,6 +56,8 @@
   <Project Path="SceneSample/SceneSample.csproj" />
   <Project Path="SnapshotSample/SnapshotSample.csproj" />
   <Project Path="MmoServerSample/MmoServerSample.csproj" />
+  <Project Path="NetworkedWalkServer/NetworkedWalkServer.csproj" />
+  <Project Path="NetworkedWalkSample/NetworkedWalkSample.csproj" />
   <Project Path="KhaozEngine.Benchmarks/KhaozEngine.Benchmarks.csproj" />
   <Project Path="tools/PixelLabSheetAssembler/PixelLabSheetAssembler.csproj" />
   <Project Path="tools/PixelLabSheetAssembler.Tests/PixelLabSheetAssembler.Tests.csproj" />

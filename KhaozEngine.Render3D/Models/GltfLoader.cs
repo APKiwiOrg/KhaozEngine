@@ -78,35 +78,85 @@ namespace KhaozEngine.Render3D
         {
             var corners = new List<MeshCorner>();
 
+            // Walk the scene graph, not the bare mesh list: glTF positions geometry via nodes, so a mesh's
+            // POSITION/NORMAL/TANGENT are mesh-local and must be baked by the node's world transform (matching
+            // BuildSkinned, which already bakes node.WorldMatrix). A mesh referenced by several nodes emits one
+            // transformed copy per node (instancing); a mesh referenced by no node still loads once at identity,
+            // so the historical mesh-walk output for pre-baked / single-node assets stays byte-identical.
             foreach (var mesh in root.LogicalMeshes)
+            {
+                bool placed = false;
+                foreach (var node in root.LogicalNodes)
+                {
+                    if (node.Mesh != mesh) continue;
+                    placed = true;
+                    AppendMeshCorners(corners, mesh, node.WorldMatrix);
+                }
+                if (!placed) AppendMeshCorners(corners, mesh, Matrix4x4.Identity);
+            }
+            if (corners.Count == 0) throw new InvalidOperationException("glTF has no triangles: " + path);
+
+            return MeshAssembler.Build(corners);
+        }
+
+        // Append one mesh's primitives as transformed triangle corners. POSITION goes through the node world
+        // matrix; NORMAL and TANGENT.xyz go through the normal matrix (transpose of the inverse upper-3x3),
+        // renormalized, so they stay correct under non-uniform scale (TANGENT.w / bitangent sign preserved). An
+        // exact-identity world matrix is a no-op fast path - raw accessor values pass straight through, so an
+        // identity-node asset is byte-identical to the old mesh-walk loader. Per-primitive material base color
+        // is read per primitive exactly as before, so LoadWithMaterial's material mapping stays aligned with the
+        // transformed corners. SharpGLTF exposes the standard glTF attributes by name (same accessor pattern as
+        // POSITION); a missing NORMAL/TANGENT is left null for MeshAssembler to compute from winding / UV.
+        static void AppendMeshCorners(List<MeshCorner> corners, Mesh mesh, Matrix4x4 world)
+        {
+            bool identity = world.IsIdentity;
+            // Normal matrix = transpose(inverse(world)); TransformNormal uses its upper 3x3 = (A^-1)^T, the
+            // correct map for normals/tangents under non-uniform scale. A non-invertible (zero-scale) matrix
+            // falls back to the world matrix itself (degenerate either way).
+            Matrix4x4 normalMatrix = identity
+                ? Matrix4x4.Identity
+                : (Matrix4x4.Invert(world, out Matrix4x4 inv) ? Matrix4x4.Transpose(inv) : world);
+
             foreach (var prim in mesh.Primitives)
             {
                 var pos = prim.GetVertexAccessor("POSITION")?.AsVector3Array();
                 if (pos == null) continue;
-                // NORMAL / TEXCOORD_0 / TANGENT if present (SharpGLTF exposes the standard glTF attributes by
-                // name, same accessor pattern as POSITION). Source normals are honoured so the artist's hard
-                // edges survive; when absent, MeshAssembler computes a smooth normal from winding.
-                // TANGENT is a vec4 (xyz = tangent direction, w = bitangent sign per glTF spec); when absent,
-                // MeshAssembler computes tangents from UV+position.
+                // Source normals are honoured so the artist's hard edges survive; TANGENT is a vec4 (xyz =
+                // tangent direction, w = bitangent sign per glTF spec). When absent, MeshAssembler computes them.
                 var srcNormals = prim.GetVertexAccessor("NORMAL")?.AsVector3Array();
                 var texcoords = prim.GetVertexAccessor("TEXCOORD_0")?.AsVector2Array();
                 var srcTangents = prim.GetVertexAccessor("TANGENT")?.AsVector4Array();
                 Vector4 baseColor = ReadBaseColor(prim.Material);
 
-                Vector3? Norm(int i) => srcNormals != null && i < srcNormals.Count ? srcNormals[i] : (Vector3?)null;
+                Vector3 Pos(int i) => identity ? pos[i] : Vector3.Transform(pos[i], world);
+                Vector3? Norm(int i)
+                {
+                    if (srcNormals == null || i >= srcNormals.Count) return null;
+                    Vector3 n = srcNormals[i];
+                    if (identity) return n;
+                    Vector3 t = Vector3.TransformNormal(n, normalMatrix);
+                    float len2 = t.LengthSquared();
+                    return len2 > 1e-12f ? t / MathF.Sqrt(len2) : n;   // degenerate transform => keep source dir
+                }
                 Vector2 Uv(int i) => texcoords != null && i < texcoords.Count ? texcoords[i] : Vector2.Zero;
-                Vector4? Tan(int i) => srcTangents != null && i < srcTangents.Count ? srcTangents[i] : (Vector4?)null;
+                Vector4? Tan(int i)
+                {
+                    if (srcTangents == null || i >= srcTangents.Count) return null;
+                    Vector4 src = srcTangents[i];
+                    if (identity) return src;
+                    Vector3 t = Vector3.TransformNormal(new Vector3(src.X, src.Y, src.Z), normalMatrix);
+                    float len2 = t.LengthSquared();
+                    if (len2 > 1e-12f) t /= MathF.Sqrt(len2);
+                    return new Vector4(t, src.W);   // keep the bitangent-sign handedness
+                }
 
                 foreach (var (a, b, c) in prim.GetTriangleIndices())
                 {
-                    corners.Add(new MeshCorner(pos[a], Norm(a), baseColor, Uv(a), Tan(a)));
-                    corners.Add(new MeshCorner(pos[b], Norm(b), baseColor, Uv(b), Tan(b)));
-                    corners.Add(new MeshCorner(pos[c], Norm(c), baseColor, Uv(c), Tan(c)));
+                    corners.Add(new MeshCorner(Pos(a), Norm(a), baseColor, Uv(a), Tan(a)));
+                    corners.Add(new MeshCorner(Pos(b), Norm(b), baseColor, Uv(b), Tan(b)));
+                    corners.Add(new MeshCorner(Pos(c), Norm(c), baseColor, Uv(c), Tan(c)));
                 }
             }
-            if (corners.Count == 0) throw new InvalidOperationException("glTF has no triangles: " + path);
-
-            return MeshAssembler.Build(corners);
         }
 
         /// <summary>Load a rigged glb/glTF as a <see cref="SkinnedGltfMesh"/>: reads POSITION/NORMAL/TEXCOORD_0/TANGENT

@@ -63,5 +63,13 @@ namespace KhaozEngine.Tests
             // Relative linear metric is ~equal near and far (both ~0.05) -> a fixed threshold is stable.
             Assert.Equal(relNear, relFar, 2);
         }
+
+        [Fact]
+        public void Outline_distance_fade_defaults_off()
+        {
+            var s = new KhaozEngine.Render3D.PixelPostProcessSettings();
+            Assert.False(s.OutlineDistanceFade);
+            Assert.True(s.OutlineFadeStart < s.OutlineFadeEnd);
+        }
     }
 }

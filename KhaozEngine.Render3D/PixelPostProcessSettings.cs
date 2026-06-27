@@ -71,6 +71,16 @@ namespace KhaozEngine.Render3D
         public float OutlineDepthThreshold = 0.2f;
         public float OutlineNormalThreshold = 0.45f;
 
+        /// <summary>Fade the edge outline out with distance so far foliage/terrain stops aliasing into mush.
+        /// Default OFF (the ortho path and existing look are unchanged). When on, outline strength ramps from
+        /// full at <see cref="OutlineFadeStart"/> view-space units to zero at <see cref="OutlineFadeEnd"/>.
+        /// Only meaningful under a perspective camera.</summary>
+        public bool OutlineDistanceFade = false;
+        /// <summary>View-space eye distance where the outline begins to fade (see <see cref="OutlineDistanceFade"/>).</summary>
+        public float OutlineFadeStart = 40f;
+        /// <summary>View-space eye distance where the outline has fully faded (see <see cref="OutlineDistanceFade"/>).</summary>
+        public float OutlineFadeEnd = 120f;
+
         /// <summary>Scene background (cleared behind the model). Dark = space.</summary>
         public Color BackgroundColor = new(0.02f, 0.03f, 0.06f, 1f);
 

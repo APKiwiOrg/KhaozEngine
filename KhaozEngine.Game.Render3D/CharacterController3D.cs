@@ -28,8 +28,9 @@ namespace KhaozEngine.Game
         /// <summary>Half the capsule height, added to the ground so the feet sit on the ground. Default 0.9 (a 1.8 m capsule).</summary>
         public float CapsuleHalfHeight = 0.9f;
         /// <summary>Reject a step onto ground steeper than this (angle between surface normal and +Y), when a
-        /// ground-normal delegate is supplied. Default ~50 deg.</summary>
-        public float MaxSlopeRadians = MathF.PI * 50f / 180f;
+        /// ground-normal delegate is supplied. Default 45 deg (matches <see cref="MoveTuning.Default"/>: walkable
+        /// for normal hills, low enough that a RimFeature mountain wall is rejected).</summary>
+        public float MaxSlopeRadians = MathF.PI * 45f / 180f;
 
         /// <summary>
         /// Advance the character for one frame. <paramref name="cameraYaw"/> is the follow camera's yaw (radians);

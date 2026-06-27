@@ -97,7 +97,8 @@ sealed class NetworkedWalkApp : GameApp3D
         _transport = new LiteNetLibClientTransport(_host, _port);
         _client = new WorldClient(_transport, _terrain.GroundHeight, MoveTuning.Default,
             new WorldClientConfig { TickSeconds = TickSeconds },
-            token: System.Text.Encoding.UTF8.GetBytes(_account));
+            token: System.Text.Encoding.UTF8.GetBytes(_account),
+            groundNormal: _terrain.GroundNormal);   // gate prediction identically to the server's authoritative gate
         _clientClock = new FixedTickHost(TickSeconds);
     }
 

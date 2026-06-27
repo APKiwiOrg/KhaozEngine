@@ -49,6 +49,26 @@ public class MovementBoundsTests
     }
 
     [Fact]
+    public void Server_and_client_sims_gate_a_steep_slope_identically()
+    {
+        // A near-vertical wall for x>2; the authoritative server sim and the client prediction sim share the
+        // same groundNormal, so the slope gate decides identically every tick - a hacked client can't climb the
+        // rim, and prediction never diverges from the server at the wall.
+        Func<float, float, Vector3> normal = (x, z) => x > 2f ? new Vector3(1f, 0.05f, 0f) : new Vector3(0f, 1f, 0f);
+        var serverSim = new PlayerMoveSimulator((x, z) => 0f, MoveTuning.Default, groundNormal: normal);
+        var clientSim = new PlayerMoveSimulator((x, z) => 0f, MoveTuning.Default, groundNormal: normal);
+        var server = new PlayerMoveState { Position = Vector3.Zero };
+        var client = new PlayerMoveState { Position = Vector3.Zero };
+        for (int i = 0; i < 200; i++)
+        {
+            server = serverSim.Step(server, East, 1f / 30f);
+            client = clientSim.Step(client, East, 1f / 30f);
+            Assert.Equal(server.Position, client.Position);           // identical decision every tick
+        }
+        Assert.True(server.Position.X <= 2f + 1e-3f, $"server climbed the wall to x={server.Position.X}");
+    }
+
+    [Fact]
     public void Bounded_prediction_reconciles_against_a_bounded_server_with_no_persistent_error()
     {
         var bounds = new CircleBounds(new Vector2(0f, 0f), 5f);

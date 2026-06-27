@@ -72,6 +72,31 @@ public class CharacterMovementTests
         Assert.True(MathF.Abs(p.X) < 1e-6f && MathF.Abs(p.Z) < 1e-6f, p.ToString());
     }
 
+    // A ground normal tilted in +X so the surface slope (angle from +Y) is exactly `degrees`.
+    static Func<float, float, Vector3> SlopeNormal(float degrees)
+    {
+        float a = degrees * MathF.PI / 180f;
+        var n = new Vector3(MathF.Sin(a), MathF.Cos(a), 0f);
+        return (x, z) => n;
+    }
+
+    [Fact]
+    public void Default_max_slope_blocks_a_47_degree_wall()
+    {
+        // The rim mountains read as "too steep to climb": the default budget must reject a 47 deg slope
+        // (it did NOT at the old 50 deg default - that let you walk up near-cliffs).
+        Vector3 p = CharacterMovement.Step(Vector3.Zero, Cmd(0f, 1f), 1f, FlatGround, Tuning, SlopeNormal(47f));
+        Assert.True(MathF.Abs(p.X) < 1e-6f && MathF.Abs(p.Z) < 1e-6f, $"climbed a 47 deg wall: {p}");
+    }
+
+    [Fact]
+    public void Default_max_slope_allows_a_gentle_30_degree_slope()
+    {
+        // A walkable hill (well under the budget) still moves - the gate only blocks the rim, not normal terrain.
+        Vector3 p = CharacterMovement.Step(Vector3.Zero, Cmd(0f, 1f), 1f, FlatGround, Tuning, SlopeNormal(30f));
+        Assert.True(MathF.Abs(p.Z) > 0.1f, $"a 30 deg slope should be walkable: {p}");
+    }
+
     [Fact]
     public void Deterministic_same_inputs_same_output()
     {

@@ -98,26 +98,32 @@ sealed class TerrainWalkApp : GameApp3D
         sc.CameraOverride = _camera;
 
         // Load the committed CC0 prop kit through the asset pipeline (decompressed glTF -> normalized to its
-        // manifest heightMeters with the origin dropped to the base), one uploaded mesh per id.
+        // manifest heightMeters with the origin dropped to the base), one uploaded mesh per id. Each prop's
+        // collision footprint is derived from its actual mesh (PropFootprint): a tree's trunk slice, a rock's full
+        // footprint - so colliders are correctly sized with no hand-authored radii (an explicit manifest collider
+        // would still win).
         string manifestPath = Path.Combine(AppContext.BaseDirectory, "assets", "props", "props.manifest.json");
         AssetManifest manifest = AssetManifest.Load(manifestPath);
+        var colliderShapes = new Dictionary<string, ColliderShape>();
         foreach (AssetEntry entry in manifest.Props)
-            _propMeshes[entry.Id] = sc.LoadMesh(PropLoader.LoadProp(entry));
+        {
+            GltfMesh mesh = PropLoader.LoadProp(entry);
+            _propMeshes[entry.Id] = sc.LoadMesh(mesh);
+            colliderShapes[entry.Id] = entry.Collider ?? PropFootprint.Derive(mesh);
+        }
 
         // Static-world collision: make the nearby scattered props solid, plus a hand-placed "inn" box sitting in
         // the clearing so the box collider path is demonstrable. Built from the SAME deterministic scatter the
         // streamer renders (so colliders line up with the visible trees), over a fixed ring around spawn
-        // (streaming colliders is a later piece). Each prop's footprint comes from its manifest collider; anything
-        // without one falls back to a 0.5 m cylinder.
+        // (streaming colliders is a later piece).
         var colliderArea = new RectArea(-120f, -120f, 120f, 120f);
         IReadOnlyList<PropPlacement> colliderPlacements = PropScatter.Generate(_field, ScatterConfig.ForestRing(), colliderArea);
         var inn = WorldCollider.Box(new Vector2(0f, 12f), new Vector2(3f, 2.5f), yaw: 0f);
         _colliders = PropColliders.FromScatter(
             colliderPlacements,
-            id => manifest.Find(id)?.Collider,
-            defaultShape: ColliderShape.Cylinder(0.5f),
+            id => colliderShapes.TryGetValue(id, out ColliderShape s) ? s : (ColliderShape?)null,
             obstacles: new[] { inn });
-        Console.WriteLine($"Static collision: {_colliders.Count} solid colliders (props + 1 building). Walk into a tree or the inn (12 m north, +Z) - you can't pass through.");
+        Console.WriteLine($"Static collision: {_colliders.Count} solid colliders (mesh-derived prop footprints + 1 building). Walk into a tree or the inn (12 m north, +Z) - you can't pass through.");
 
         // Endless streamed world: the sink builds chunk meshes + deterministic per-chunk props (same coordinate-hash
         // scatter as before, now over every chunk's area), the streamer keeps a ring of them loaded around the player

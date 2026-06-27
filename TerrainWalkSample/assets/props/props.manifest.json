@@ -1,12 +1,12 @@
 {
-  "_comment": "Prop-kit asset manifest for TerrainWalkSample. heightMeters is the real-world height the loader normalizes each mesh to (origin dropped to the base). Optional 'collider' is the static-collision footprint at unit scale (PropColliders.FromScatter scales it by the per-instance scale): a trunk-sized cylinder for the trees, a wider one for rocks. CC0 Quaternius nature props, decompressed + flattened to plain glTF offline (see CREDITS.md). Ids are referenced by ScatterConfig.ForestRing().",
+  "_comment": "Prop-kit asset manifest for TerrainWalkSample. heightMeters is the real-world height the loader normalizes each mesh to (origin dropped to the base). Collision footprints are derived from the actual mesh at load time (PropFootprint), so no hand-authored 'collider' is needed here - a tree yields its trunk slice, a rock its full footprint. An explicit 'collider' { type, ... } per entry would override the derived one. CC0 Quaternius nature props, decompressed + flattened to plain glTF offline (see CREDITS.md). Ids are referenced by ScatterConfig.ForestRing().",
   "props": [
-    { "id": "pine_a", "file": "pine_a.glb", "heightMeters": 12.0, "source": "Quaternius Stylized Nature (via world-of-claudecraft)", "license": "CC0", "collider": { "type": "cylinder", "radius": 0.5 } },
-    { "id": "pine_b", "file": "pine_b.glb", "heightMeters": 11.0, "source": "Quaternius Stylized Nature (via world-of-claudecraft)", "license": "CC0", "collider": { "type": "cylinder", "radius": 0.5 } },
-    { "id": "pine_c", "file": "pine_c.glb", "heightMeters": 10.0, "source": "Quaternius Stylized Nature (via world-of-claudecraft)", "license": "CC0", "collider": { "type": "cylinder", "radius": 0.45 } },
-    { "id": "oak_a", "file": "oak_a.glb", "heightMeters": 9.0, "source": "Quaternius Stylized Nature (via world-of-claudecraft)", "license": "CC0", "collider": { "type": "cylinder", "radius": 0.55 } },
-    { "id": "oak_b", "file": "oak_b.glb", "heightMeters": 8.0, "source": "Quaternius Stylized Nature (via world-of-claudecraft)", "license": "CC0", "collider": { "type": "cylinder", "radius": 0.5 } },
-    { "id": "rock_a", "file": "rock_a.glb", "heightMeters": 1.8, "source": "Quaternius Stylized Nature (via world-of-claudecraft)", "license": "CC0", "collider": { "type": "cylinder", "radius": 0.7 } },
-    { "id": "rock_b", "file": "rock_b.glb", "heightMeters": 1.4, "source": "Quaternius Stylized Nature (via world-of-claudecraft)", "license": "CC0", "collider": { "type": "cylinder", "radius": 0.6 } }
+    { "id": "pine_a", "file": "pine_a.glb", "heightMeters": 12.0, "source": "Quaternius Stylized Nature (via world-of-claudecraft)", "license": "CC0" },
+    { "id": "pine_b", "file": "pine_b.glb", "heightMeters": 11.0, "source": "Quaternius Stylized Nature (via world-of-claudecraft)", "license": "CC0" },
+    { "id": "pine_c", "file": "pine_c.glb", "heightMeters": 10.0, "source": "Quaternius Stylized Nature (via world-of-claudecraft)", "license": "CC0" },
+    { "id": "oak_a", "file": "oak_a.glb", "heightMeters": 9.0, "source": "Quaternius Stylized Nature (via world-of-claudecraft)", "license": "CC0" },
+    { "id": "oak_b", "file": "oak_b.glb", "heightMeters": 8.0, "source": "Quaternius Stylized Nature (via world-of-claudecraft)", "license": "CC0" },
+    { "id": "rock_a", "file": "rock_a.glb", "heightMeters": 1.8, "source": "Quaternius Stylized Nature (via world-of-claudecraft)", "license": "CC0" },
+    { "id": "rock_b", "file": "rock_b.glb", "heightMeters": 1.4, "source": "Quaternius Stylized Nature (via world-of-claudecraft)", "license": "CC0" }
   ]
 }

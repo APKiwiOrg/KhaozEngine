@@ -811,19 +811,29 @@ the local controller, the authoritative server, and client prediction all resolv
 
 Build a `WorldColliders` set, then pass it wherever movement runs (null/empty = today's behaviour, unchanged):
 
+Collider footprints are derived from each prop's actual mesh by default (`KhaozEngine.Render3D.PropFootprint`), so
+you do not hand-author radii: a short prop (rock/crate) uses its full XZ footprint, a tall prop (tree) uses only the
+bottom ~1 m trunk slice so its canopy is not solid, and the footprint becomes a cylinder (round) or an oriented box
+(oblong) by aspect ratio. An explicit `AssetEntry.Collider` in the manifest still wins per prop.
+
 ```csharp
 using KhaozEngine.Collision;
+using KhaozEngine.Render3D;
 using KhaozEngine.Terrain;
 
-// From the deterministic prop scatter (footprint per prop id from the manifest, default cylinder otherwise) plus
-// a hand-placed obstacle/building list. Because it shares the coordinate-hash scatter, the colliders line up with
-// the rendered props and a tiled build equals a whole-area build (streaming-consistent).
+// Per-prop collider shapes: explicit manifest collider wins, else derive from the loaded mesh. (When you already
+// load each mesh to render it, call PropFootprint.Derive(mesh) inline to avoid loading twice; PropFootprint.DeriveAll
+// is the turn-key path that loads + derives for a whole manifest, honouring any explicit AssetEntry.Collider.)
+IReadOnlyDictionary<string, ColliderShape> shapes = PropFootprint.DeriveAll(manifest);
+
+// From the deterministic prop scatter plus a hand-placed obstacle/building list. Because it shares the
+// coordinate-hash scatter, the colliders line up with the rendered props and a tiled build equals a whole-area
+// build (streaming-consistent).
 IReadOnlyList<PropPlacement> placements = PropScatter.Generate(field, ScatterConfig.ForestRing(), area);
 var inn = WorldCollider.Box(center: new Vector2(0f, 12f), halfExtents: new Vector2(3f, 2.5f), yaw: 0f);
 WorldColliders colliders = PropColliders.FromScatter(
     placements,
-    id => manifest.Find(id)?.Collider,          // AssetEntry.Collider (manifest "collider": {...})
-    defaultShape: ColliderShape.Cylinder(0.5f), // used when a prop declares no collider
+    id => shapes.TryGetValue(id, out ColliderShape s) ? s : (ColliderShape?)null,
     obstacles: new[] { inn });                  // explicit buildings/obstacles
 
 // Local (single-player) controller:
@@ -836,11 +846,9 @@ var sharded = new ShardedWorldServer(transport, shardConfig, terrain.GroundHeigh
                                      terrain.GroundNormal, bounds: null, colliders: colliders);
 ```
 
-Collider metadata in the prop manifest is optional, per entry:
+To override the derived footprint for a specific prop, declare a `collider` on its manifest entry:
 
 ```json
-{ "id": "pine_a", "file": "pine_a.glb", "heightMeters": 12.0,
-  "collider": { "type": "cylinder", "radius": 0.5 } }
 { "id": "inn", "file": "inn.glb", "heightMeters": 5.0,
   "collider": { "type": "box", "halfW": 3.0, "halfD": 2.0 } }
 ```
@@ -848,9 +856,9 @@ Collider metadata in the prop manifest is optional, per entry:
 The capsule footprint radius is `MoveTuning.CapsuleRadius` (default 0.4; `CharacterController3D.CapsuleRadius`
 mirrors it). Resolution is minimum-translation push-out applied so the capsule **slides** along surfaces (the
 move's tangential component survives; only the penetrating component is removed), iterated a few times so corners
-settle. `TerrainWalkSample` makes the nearby scattered props solid plus a hand-placed inn (12 m north). Out of
-scope (named): dynamic/moving colliders, player-vs-player, vertical/3D collision, gravity/jump/step-height, a
-general physics engine, navmesh.
+settle. `TerrainWalkSample` makes the nearby scattered props solid (footprints derived from the meshes) plus a
+hand-placed inn (12 m north). Out of scope (named): dynamic/moving colliders, player-vs-player, vertical/3D
+collision, gravity/jump/step-height, a general physics engine, navmesh.
 
 ---
 

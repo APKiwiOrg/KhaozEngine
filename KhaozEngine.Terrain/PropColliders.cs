@@ -25,6 +25,21 @@ namespace KhaozEngine.Terrain
             ColliderShape? defaultShape = null,
             IEnumerable<WorldCollider>? obstacles = null,
             float cellSize = 8f)
+            => FromScatter(placements, shapeForId, topForId: null, defaultShape, obstacles, cellSize);
+
+        /// <summary>As the base <c>FromScatter</c> overload, but stamps each placed collider's
+        /// <see cref="WorldCollider.Top"/> for height-aware blocking. <paramref name="topForId"/> returns the
+        /// prop's <b>unit-scale</b> solid top height (a walkable-solid's baked <c>PropSurface.MaxHeight</c>), which
+        /// is placed as <c>placement.Y + unitTop * placement.Scale</c>; return <see cref="float.PositiveInfinity"/>
+        /// for a thin blocker (always blocks, e.g. a tree). A null <paramref name="topForId"/> leaves every
+        /// collider always-blocking.</summary>
+        public static WorldColliders FromScatter(
+            IReadOnlyList<PropPlacement> placements,
+            Func<string, ColliderShape?> shapeForId,
+            Func<string, float>? topForId,
+            ColliderShape? defaultShape = null,
+            IEnumerable<WorldCollider>? obstacles = null,
+            float cellSize = 8f)
         {
             if (placements == null) throw new ArgumentNullException(nameof(placements));
             if (shapeForId == null) throw new ArgumentNullException(nameof(shapeForId));
@@ -34,7 +49,15 @@ namespace KhaozEngine.Terrain
             {
                 ColliderShape? shape = shapeForId(p.Id) ?? defaultShape;
                 if (shape is ColliderShape s)
-                    list.Add(s.Place(new Vector2(p.X, p.Z), p.Scale, p.Yaw));
+                {
+                    float top = float.PositiveInfinity;
+                    if (topForId != null)
+                    {
+                        float unit = topForId(p.Id);
+                        top = float.IsInfinity(unit) ? unit : p.Y + unit * p.Scale;
+                    }
+                    list.Add(s.Place(new Vector2(p.X, p.Z), p.Scale, p.Yaw, top));
+                }
             }
             if (obstacles != null)
                 list.AddRange(obstacles);

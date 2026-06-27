@@ -876,9 +876,63 @@ To override the derived footprint for a specific prop, declare a `collider` on i
 The capsule footprint radius is `MoveTuning.CapsuleRadius` (default 0.4; `CharacterController3D.CapsuleRadius`
 mirrors it). Resolution is minimum-translation push-out applied so the capsule **slides** along surfaces (the
 move's tangential component survives; only the penetrating component is removed), iterated a few times so corners
-settle. `TerrainWalkSample` makes the nearby scattered props solid (footprints derived from the meshes) plus a
-hand-placed inn (12 m north). Out of scope (named): dynamic/moving colliders, player-vs-player, vertical/3D
-collision, gravity/jump/step-height, a general physics engine, navmesh.
+settle. `TerrainWalkSample` makes the nearby scattered props solid (footprints derived from the meshes). Out of
+scope for the XZ collider itself: dynamic/moving colliders, player-vs-player, a general physics engine, navmesh.
+Vertical movement (jump/gravity) is the `KhaozEngine.Locomotion` vertical step; standing on props is below.
+
+---
+
+## Walkable prop/building surfaces (`PropSurface` / `WorldSurfaces` / `ke-propbake`)
+
+On top of the vertical physics (jump/gravity), a rock/log/solid-building can be a surface you **stand on and jump
+onto**, walking over its real top contour. Each walkable-solid prop kind bakes (offline) a render-free top-down
+height map; at runtime the player's support height becomes `max(terrain, prop surface)`, and the static-collision
+push-out becomes height-aware so a roof you stand on is not shoved off. Single-valued top contour (no overhangs);
+buildings are solid blocks; trees stay thin trunk-blockers.
+
+Bake the surfaces as the last kit-ingest step (re-ingest = re-bake), then load + place them:
+
+```bash
+# Bakes <id>.surf next to each walkable-solid prop's glTF and stamps the manifest (surface/heightmap fields).
+dotnet ke-propbake path/to/props.manifest.json
+```
+
+```csharp
+using KhaozEngine.Collision;
+using KhaozEngine.Render3D;
+using KhaozEngine.Terrain;
+
+AssetManifest manifest = AssetManifest.Load(manifestPath);
+// Render-free read of the baked .surf heightmaps (id -> PropSurface); the headless server reads the same files.
+IReadOnlyDictionary<string, PropSurface> surfaces = PropSurfaceLoader.LoadAll(manifest);
+
+IReadOnlyList<PropPlacement> placements = PropScatter.Generate(field, ScatterConfig.ForestRing(), area);
+
+// Surfaces: one per walkable-solid placement (+ a hand-placed building roof obstacle).
+WorldSurfaces worldSurfaces = PropSurfaces.FromScatter(
+    placements,
+    id => surfaces.TryGetValue(id, out PropSurface s) ? s : null,
+    obstacles: new[] { roofSurface });
+
+// Colliders: height-aware - each collider's Top is the prop's placed surface top (a thin blocker stays +inf).
+WorldColliders worldColliders = PropColliders.FromScatter(
+    placements,
+    id => colliderShapeFor(id),
+    topForId: id => surfaces.TryGetValue(id, out PropSurface s) ? s.MaxHeight : float.PositiveInfinity,
+    obstacles: new[] { buildingCollider });
+
+// Pass both wherever movement runs (local + the authoritative server resolve identically; null = terrain only):
+character.Update(input, dt, cameraYaw, terrain.GroundHeight, terrain.GroundNormal, worldColliders, worldSurfaces);
+var server = new WorldServer(transport, config, terrain.GroundHeight, MoveTuning.Default,
+                             terrain.GroundNormal, bounds: null, colliders: worldColliders, surfaces: worldSurfaces);
+```
+
+You mount a surface by **jumping** above its top and landing on it (the height-aware collider blocks the sides
+until your feet clear the top, which also prevents a teleport-up when airborne over a tall surface); a low edge
+within `MoveTuning.StepHeight` (default 0.4 m) is auto-mounted without a jump (step-up). `TerrainWalkSample` makes
+the scattered rocks solid + jumpable and adds a jumpable platform with a walkable roof. Out of scope (named):
+overhangs / interiors / caves, full 3D mesh collision, dynamic/moving surfaces, player-vs-player, fall damage,
+climbing/mantling, streaming surfaces.
 
 ---
 

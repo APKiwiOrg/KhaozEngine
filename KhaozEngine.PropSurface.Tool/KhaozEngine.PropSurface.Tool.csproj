@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>ke-propbake</ToolCommandName>
+    <PackageId>KhaozEngine.PropSurface.Tool</PackageId>
+    <RootNamespace>KhaozEngine.PropSurface</RootNamespace>
+    <Version>$(KhaozEngineVersion)</Version>
+    <Description>The ke-propbake CLI: bakes a top-down walkable-surface heightmap (.surf) for each walkable-solid prop in a kit manifest (rocks/logs/buildings, classified by mesh shape), writing a render-free binary next to the glTF and stamping the manifest's 'surface'/'heightmap' fields. Run as the last kit-ingest step (re-ingest = re-bake). Author-time dev tool, not a runtime package.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
+  </ItemGroup>
+</Project>

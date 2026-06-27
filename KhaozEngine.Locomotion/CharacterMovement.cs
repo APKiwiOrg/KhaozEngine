@@ -53,18 +53,37 @@ public static class CharacterMovement
     /// <param name="colliders">Optional static-world colliders (capsule footprint push-out).</param>
     /// <param name="clampXz">Optional XZ clamp (e.g. a play-area bound); applied after the move/collide so the
     /// vertical axis is then resolved at the clamped position. The same delegate runs on server and client.</param>
+    /// <param name="surfaces">Optional walkable prop/building surfaces; when given, the support height the capsule
+    /// lands/rests on is <c>max(terrain, surface)</c> (stand on / jump onto rocks + roofs), the static-collision
+    /// push-out becomes height-aware (a prop's side blocks only while the feet are below its top), and a support
+    /// rise no greater than <see cref="MoveTuning.StepHeight"/> is auto-mounted (step-up). Null = terrain only,
+    /// unchanged. The same set + math runs on server and client.</param>
     /// <returns>The advanced <see cref="MoveState"/>.</returns>
     public static MoveState Step(in MoveState state, in MoveCommand cmd, float dt,
         Func<float, float, float> groundHeight, in MoveTuning tuning,
         Func<float, float, Vector3>? groundNormal = null, WorldColliders? colliders = null,
-        Func<float, float, Vector2>? clampXz = null)
+        Func<float, float, Vector2>? clampXz = null, WorldSurfaces? surfaces = null)
     {
         if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
 
-        // 1. Horizontal: full control while grounded, scaled by AirControl while airborne.
+        // Support height = the higher of the terrain and any walkable prop surface under (x, z).
+        float Support(float sx, float sz)
+        {
+            float g = groundHeight(sx, sz);
+            float? s = surfaces?.Query(sx, sz);
+            return s.HasValue && s.Value > g ? s.Value : g;
+        }
+
+        // 1. Horizontal: full control while grounded, scaled by AirControl while airborne. The capsule foot Y makes
+        //    the static-collision push-out height-aware (a prop's side blocks only while the feet are below its top).
+        float footY = state.Position.Y - tuning.CapsuleHalfHeight;
+        float supBefore = Support(state.Position.X, state.Position.Z);
         float speedScale = state.Grounded ? 1f : tuning.AirControl;
         (float x, float z) = ResolveHorizontal(state.Position.X, state.Position.Z, cmd, dt, tuning, groundNormal,
-            colliders, clampXz, speedScale);
+            colliders, clampXz, speedScale, footY);
+
+        // 1b. Step-up gate: while grounded, a support rise taller than the step height is a wall (revert the move).
+        if (state.Grounded && Support(x, z) - supBefore > tuning.StepHeight) { x = state.Position.X; z = state.Position.Z; }
 
         // 2. Jump-buffer countdown: a press arms it for JumpBuffer seconds; otherwise it bleeds down.
         //    A jump is requested if pressed this tick or still within a buffered window from a recent press.
@@ -76,8 +95,9 @@ public static class CharacterMovement
         if (vVel < -tuning.MaxFallSpeed) vVel = -tuning.MaxFallSpeed;
         float y = state.Position.Y + vVel * dt;
 
-        // 4. Ground contact, with a grounded skin so a downhill run does not jitter grounded/airborne.
-        float groundY = groundHeight(x, z) + tuning.CapsuleHalfHeight;
+        // 4. Ground contact onto the support height (terrain or a prop top), with a grounded skin so a downhill
+        //    run does not jitter grounded/airborne.
+        float groundY = Support(x, z) + tuning.CapsuleHalfHeight;
         bool grounded;
         float tSinceGround;
         if (vVel <= 0f && (y <= groundY || (state.Grounded && y <= groundY + tuning.GroundedEpsilon)))
@@ -117,7 +137,7 @@ public static class CharacterMovement
     /// <paramref name="speedScale"/>), optional slope gate, static-collision push-out, then optional XZ clamp.</summary>
     private static (float x, float z) ResolveHorizontal(float x, float z, in MoveCommand cmd, float dt,
         in MoveTuning tuning, Func<float, float, Vector3>? groundNormal, WorldColliders? colliders,
-        Func<float, float, Vector2>? clampXz, float speedScale)
+        Func<float, float, Vector2>? clampXz, float speedScale, float footY = float.PositiveInfinity)
     {
         // Camera-relative ground basis (matches FollowCamera3D's yaw convention).
         float sY = MathF.Sin(cmd.CameraYaw), cY = MathF.Cos(cmd.CameraYaw);
@@ -142,10 +162,13 @@ public static class CharacterMovement
         }
 
         // Static-world collision: push the capsule footprint out of any prop/building it now overlaps, sliding
-        // along surfaces. Null/empty set leaves the XZ untouched. Same set + math on server and client.
+        // along surfaces. Height-aware when a finite footY is supplied (a prop's side blocks only while the feet
+        // are below its top, so standing on a rock/roof is not shoved off). Null/empty set leaves the XZ untouched.
         if (colliders is not null && !colliders.IsEmpty)
         {
-            Vector2 resolved = colliders.Resolve(new Vector2(x, z), tuning.CapsuleRadius);
+            Vector2 resolved = float.IsInfinity(footY)
+                ? colliders.Resolve(new Vector2(x, z), tuning.CapsuleRadius)
+                : colliders.Resolve(new Vector2(x, z), tuning.CapsuleRadius, footY);
             x = resolved.X;
             z = resolved.Y;
         }

@@ -15,7 +15,7 @@ public enum ColliderKind
 /// One placed static collider in world space (XZ): a <see cref="ColliderKind.Cylinder"/> (centre + radius) or a
 /// <see cref="ColliderKind.Box"/> (centre + half-extents + yaw). The unit <see cref="WorldColliders"/> stores
 /// and the player capsule's footprint resolves against. Built from a prop's <see cref="ColliderShape"/> via
-/// <see cref="ColliderShape.Place"/> or hand-authored for a building. Render-free, plain float.
+/// <c>ColliderShape.Place</c> or hand-authored for a building. Render-free, plain float.
 /// </summary>
 public readonly struct WorldCollider
 {
@@ -29,20 +29,25 @@ public readonly struct WorldCollider
     public Vector2 HalfExtents { get; }
     /// <summary>Box rotation about its centre (radians). Unused for a cylinder.</summary>
     public float Yaw { get; }
+    /// <summary>The prop's solid top world Y. Height-aware resolution blocks the capsule only while its feet are
+    /// below <see cref="Top"/> (the side); at or above it the capsule is standing on top and is not pushed.
+    /// Default <see cref="float.PositiveInfinity"/> = always blocks (a thin blocker like a tree trunk).</summary>
+    public float Top { get; }
 
-    WorldCollider(ColliderKind kind, Vector2 center, float radius, Vector2 halfExtents, float yaw)
+    WorldCollider(ColliderKind kind, Vector2 center, float radius, Vector2 halfExtents, float yaw, float top)
     {
-        Kind = kind; Center = center; Radius = radius; HalfExtents = halfExtents; Yaw = yaw;
+        Kind = kind; Center = center; Radius = radius; HalfExtents = halfExtents; Yaw = yaw; Top = top;
     }
 
-    /// <summary>A cylinder collider at <paramref name="center"/> with <paramref name="radius"/>.</summary>
-    public static WorldCollider Cylinder(Vector2 center, float radius)
-        => new(ColliderKind.Cylinder, center, radius, Vector2.Zero, 0f);
+    /// <summary>A cylinder collider at <paramref name="center"/> with <paramref name="radius"/>; optional solid
+    /// <paramref name="top"/> world Y for height-aware blocking (default always-blocks).</summary>
+    public static WorldCollider Cylinder(Vector2 center, float radius, float top = float.PositiveInfinity)
+        => new(ColliderKind.Cylinder, center, radius, Vector2.Zero, 0f, top);
 
     /// <summary>An oriented-box collider at <paramref name="center"/>, <paramref name="halfExtents"/>,
-    /// rotated <paramref name="yaw"/> radians.</summary>
-    public static WorldCollider Box(Vector2 center, Vector2 halfExtents, float yaw)
-        => new(ColliderKind.Box, center, 0f, halfExtents, yaw);
+    /// rotated <paramref name="yaw"/> radians; optional solid <paramref name="top"/> world Y (default always-blocks).</summary>
+    public static WorldCollider Box(Vector2 center, Vector2 halfExtents, float yaw, float top = float.PositiveInfinity)
+        => new(ColliderKind.Box, center, 0f, halfExtents, yaw, top);
 
     /// <summary>Conservative broad-phase radius (used to insert into the spatial hash). Cylinder = its radius;
     /// box = its half-diagonal.</summary>

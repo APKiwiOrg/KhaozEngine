@@ -157,6 +157,20 @@ version/release work.
     `Render3D.PropFootprint.Derive(GltfMesh)` sizes the collider from the actual mesh (short prop = full footprint,
     tall prop = bottom trunk slice so a tree's canopy isn't solid; cylinder or oriented box by aspect ratio),
     `PropFootprint.DeriveAll(AssetManifest)` building the `id -> ColliderShape` lookup `PropColliders.FromScatter` takes.
+  - **Walkable prop/building surfaces (stand on / jump onto rocks + roofs, sub-project B on the 7.54.0 vertical
+    physics):** in `Collision`, `PropSurface` (a unit-scale top-down max-height grid + bilinear `SampleLocal` +
+    binary IO; single-valued top contour, no overhangs), `WorldSurface` (a placed surface, scale/yaw applied at
+    query time), and `WorldSurfaces` (a `SpatialHashGrid` set whose `Query(x,z)` returns the max prop-top under
+    you); plus `WorldCollider.Top` + a height-aware `WorldColliders.Resolve(position,radius,footY)` that blocks a
+    side only while the feet are below its top (so a roof isn't shoved off; a thin blocker keeps `Top = +inf`).
+    `Locomotion.MoveTuning` gains `StepHeight`, and the vertical `CharacterMovement.Step` takes an optional
+    `WorldSurfaces?` (support = `max(terrain, surface)`, height-aware block, step-up; null = unchanged), threaded
+    server-authoritative + predicted through `PlayerMoveSimulator`/`PlayerMovementSystem`/`WorldServer`/
+    `ShardedWorldServer`/`CharacterController3D`. `Render3D.PropSurfaceBake` bakes the grid from a normalized mesh
+    (+ `IsWalkableSolid` classification: rock/log/building -> surface, tree -> thin blocker, no surface);
+    `Render3D.PropSurfaceLoader` reads the baked `.surf` render-free; `AssetEntry` gains `Surface` + `Heightmap`.
+    `Terrain.PropSurfaces.FromScatter` builds the set (+ a top-aware `PropColliders.FromScatter` overload stamps
+    each collider's top). The offline bake is the `ke-propbake` tool (folded into kit ingest; re-ingest = re-bake).
   - **Locomotion + networked-world libs (render-free movement + the netcode wiring):** `Locomotion` (leaf, in
     `Foundation`, deps Primitives + Collision) = `CharacterMovement.Step`, two overloads sharing one horizontal core
     (camera-relative move from a `MoveCommand` + ground delegate + one `MoveTuning`, slope gate - runs only when a
@@ -204,9 +218,11 @@ version/release work.
     persistence sub-project (`docs/superpowers/specs/2026-06-27-persistent-worldstore-design.md`); multi-cell sharding
     sub-project 6b (`docs/superpowers/specs/2026-06-27-multicell-sharding-design.md`).
   - **Umbrellas (code-free metapackages):** `Foundation`, `Game2D`, `Game3D`, `Server`.
-  - **Tools, same version line:** `Updates.Tool` (`ke-updater`: manifest/genkey/sign/verify) and `Sfx.Tool`
-    (`ke-sfxbake`: ElevenLabs-driven SFX bake) are `PackAsTool`; `Content.Validator` is a build-time tool
-    (`IsPackable=false`, shipped inside the `Content` package, not separately versioned).
+  - **Tools, same version line:** `Updates.Tool` (`ke-updater`: manifest/genkey/sign/verify), `Sfx.Tool`
+    (`ke-sfxbake`: ElevenLabs-driven SFX bake), and `PropSurface.Tool` (`ke-propbake`: bakes a walkable-surface
+    `.surf` heightmap per walkable-solid prop in a kit manifest, folded into kit ingest) are `PackAsTool`;
+    `Content.Validator` is a build-time tool (`IsPackable=false`, shipped inside the `Content` package, not
+    separately versioned).
   - **Gotchas / history:** the package id is `KhaozEngine.Sharding`, NOT `KhaozEngine.World` (a `World` leaf would
     shadow the ECS `World` type). The legacy 4.x MonoGame line + its six packages
     (`UI`/`Graphics`/`Screens`/`Sprites`/`Input`/`Time`) were DELETED - there is no 4.x line; all three consumers are

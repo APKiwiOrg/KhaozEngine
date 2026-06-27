@@ -57,18 +57,23 @@ namespace KhaozEngine.Game
         public float AirControl = 1f;
         /// <summary>Grounded skin (metres) so a downhill run does not jitter grounded/airborne. Default 0.3.</summary>
         public float GroundedEpsilon = 0.3f;
+        /// <summary>Max upward support rise (metres) auto-mounted while grounded without a jump (a low rock/curb).
+        /// Default 0.4.</summary>
+        public float StepHeight = 0.4f;
 
         /// <summary>
         /// Advance the character for one frame. <paramref name="cameraYaw"/> is the follow camera's yaw (radians);
         /// <paramref name="groundHeight"/> returns terrain height at (x, z); <paramref name="groundNormal"/> is
         /// optional and, when given, gates moves by slope; <paramref name="colliders"/> is optional and, when
-        /// given, pushes the capsule footprint out of static props/buildings (the same set + math the server runs).
-        /// Space (just pressed) requests a jump. Touches no input statics.
+        /// given, pushes the capsule footprint out of static props/buildings; <paramref name="surfaces"/> is
+        /// optional and, when given, lets the capsule stand on / jump onto walkable prop surfaces (the same set +
+        /// math the server runs). Space (just pressed) requests a jump. Touches no input statics.
         /// </summary>
         public void Update(in InputState input, float dt, float cameraYaw,
                            Func<float, float, float> groundHeight,
                            Func<float, float, Vector3>? groundNormal = null,
-                           WorldColliders? colliders = null)
+                           WorldColliders? colliders = null,
+                           WorldSurfaces? surfaces = null)
         {
             if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
 
@@ -86,9 +91,9 @@ namespace KhaozEngine.Game
             {
                 Gravity = Gravity, JumpSpeed = JumpSpeed, MaxFallSpeed = MaxFallSpeed,
                 CoyoteTime = CoyoteTime, JumpBuffer = JumpBuffer, AirControl = AirControl,
-                GroundedEpsilon = GroundedEpsilon,
+                GroundedEpsilon = GroundedEpsilon, StepHeight = StepHeight,
             };
-            _state = CharacterMovement.Step(_state, cmd, dt, groundHeight, tuning, groundNormal, colliders);
+            _state = CharacterMovement.Step(_state, cmd, dt, groundHeight, tuning, groundNormal, colliders, surfaces: surfaces);
         }
 
         /// <summary>Teleport the character; Y/vertical state re-settle from the ground delegate on the next <see cref="Update"/>.</summary>

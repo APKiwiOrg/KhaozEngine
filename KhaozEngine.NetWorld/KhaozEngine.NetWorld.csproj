@@ -10,6 +10,7 @@
     <ProjectReference Include="../KhaozEngine.Netcode/KhaozEngine.Netcode.csproj" />
     <ProjectReference Include="../KhaozEngine.Replication/KhaozEngine.Replication.csproj" />
     <ProjectReference Include="../KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
+    <ProjectReference Include="../KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <ItemGroup>

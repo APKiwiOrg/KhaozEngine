@@ -56,6 +56,16 @@ sealed class TerrainWalkApp : GameApp3D
     {
         var sc = Scene;
 
+        // --- rendering consult (outline flicker) ---------------------------------------------
+        // The depth/normal edge outline was built for the orthographic IsoCamera3D (linear z/w); this sample
+        // is the first to drive it with a PERSPECTIVE FollowCamera3D, where z/w is non-linear, so a fixed depth
+        // threshold pops edges in/out on zoom, and the fixed 1600x900 internal target under-samples the dense
+        // foliage on HiDPI (shimmer on rotate). MatchViewport renders the outline at native window res - the
+        // free game-side half of the fix. Live keys below A/B the rest.
+        sc.Post.RenderScale = RenderScale.MatchViewport;
+        Console.WriteLine("Render debug: [M] RenderScale Fixed<->MatchViewport | [O] outline on/off | " +
+                          "[K]/[L] depth-threshold -/+ | [G]/[H] normal-threshold -/+");
+
         // Analytic field + collision wrapper for the ground-clamp.
         _field = new TerrainField(TerrainPresets.Clearing());
         _terrain = new TerrainCollision(_field);
@@ -103,6 +113,24 @@ sealed class TerrainWalkApp : GameApp3D
     protected override void OnUpdate(float dt)
     {
         if (Input.WasPressed(Key.Escape)) { Quit(); return; }
+
+        // --- rendering consult: live A/B of the outline knobs ---
+        var post = Scene.Post;
+        if (Input.WasPressed(Key.M))
+        {
+            post.RenderScale = post.RenderScale == RenderScale.MatchViewport
+                ? RenderScale.FixedInternal : RenderScale.MatchViewport;
+            Console.WriteLine($"[post] RenderScale = {post.RenderScale}");
+        }
+        if (Input.WasPressed(Key.O))
+        {
+            post.Outline = !post.Outline;
+            Console.WriteLine($"[post] Outline = {post.Outline}");
+        }
+        if (Input.WasPressed(Key.L)) { post.OutlineDepthThreshold = MathF.Min(2f, post.OutlineDepthThreshold + 0.05f); Console.WriteLine($"[post] OutlineDepthThreshold = {post.OutlineDepthThreshold:0.00}"); }
+        if (Input.WasPressed(Key.K)) { post.OutlineDepthThreshold = MathF.Max(0f, post.OutlineDepthThreshold - 0.05f); Console.WriteLine($"[post] OutlineDepthThreshold = {post.OutlineDepthThreshold:0.00}"); }
+        if (Input.WasPressed(Key.H)) { post.OutlineNormalThreshold = MathF.Min(2f, post.OutlineNormalThreshold + 0.05f); Console.WriteLine($"[post] OutlineNormalThreshold = {post.OutlineNormalThreshold:0.00}"); }
+        if (Input.WasPressed(Key.G)) { post.OutlineNormalThreshold = MathF.Max(0f, post.OutlineNormalThreshold - 0.05f); Console.WriteLine($"[post] OutlineNormalThreshold = {post.OutlineNormalThreshold:0.00}"); }
 
         _character.Update(Input, dt, _camera.Yaw, _terrain.GroundHeight);
 

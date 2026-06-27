@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 
 namespace KhaozEngine.Terrain
 {
@@ -14,6 +15,11 @@ namespace KhaozEngine.Terrain
 
         /// <summary>Ground height at the world point (= TerrainField.SampleHeight).</summary>
         public float GroundHeight(float x, float z) => _field.SampleHeight(x, z);
+
+        /// <summary>Surface normal at the world point (= TerrainField.SampleNormal). Pass this as the
+        /// <c>groundNormal</c> slope-gate delegate to CharacterMovement.Step so steep terrain (the rim wall)
+        /// cannot be walked up.</summary>
+        public Vector3 GroundNormal(float x, float z) => _field.SampleNormal(x, z);
 
         /// <summary>True when the surface slope at (x,z) is no steeper than <paramref name="maxSlopeRadians"/>
         /// (the angle between the surface normal and +Y).</summary>

@@ -5,6 +5,43 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.51.0
+
+Bounded play area: the engine's first border/bounds mechanism, the missing capability for designed bounded
+zones (a start town/lake ringed by impassable mountains with one road out). Two complementary pieces plus the
+wiring that finally activates the dormant slope gate. Additive; no new package; minor.
+
+- **`KhaozEngine.Terrain.RimFeature`** (+ `RimPass`): an `ITerrainFeature` that raises terrain into an enclosing
+  wall around a bounded region - unchanged inside `InnerRadius`, a smoothstep ramp up to `WallHeight` by
+  `OuterRadius` and held there beyond (a plateau, so you cannot see/walk past it), modulated by a coordinate-hash
+  jagged crest (`Ruggedness`, reusing `TerrainNoise.Fbm`) so it reads as mountains not a smooth berm. `RimPass`
+  (heading + half-width + falloff) cuts a corridor through the wall on its heading side (the road out). MVP is
+  circular; `Apply` is shaped around a "distance to the play-area boundary" (here distance from `Center`) so a
+  later rect/polygon variant swaps only the distance metric and reuses the ramp. Pure in (x, z) like every feature.
+- **`KhaozEngine.NetWorld.WorldBounds`** (abstract `Contains`/`Clamp`) + **`CircleBounds`** + **`RectBounds`**: the
+  authoritative play-area shape. `Clamp` returns the nearest in-bounds point - a no-op inside (idempotent) and a
+  projection onto the boundary outside, which yields clamp-and-slide when applied every tick (the tangential part
+  of a blocked move survives, so movement stays smooth instead of hard-stopping).
+- **Movement clamp**: `PlayerMoveSimulator` and `PlayerMovementSystem` take a nullable `WorldBounds` and clamp the
+  new XZ (re-deriving Y from the ground) after `CharacterMovement.Step`; threaded through `WorldServer`,
+  `ShardedWorldServer` (so the clamp is authoritative across the cell grid), and `WorldClient` (so client
+  prediction clamps identically and reconciliation stays clean at the wall). Null bounds = today's unbounded
+  behaviour, unchanged.
+- **Slope-gate wiring**: `TerrainCollision.GroundNormal(x, z)` is exposed (= `TerrainField.SampleNormal`) so it can
+  be passed as the `groundNormal` slope-gate delegate that `CharacterMovement.Step` already supported but nothing
+  passed before. With it wired, terrain steeper than `MoveTuning.MaxSlopeRadians` (default 50 deg) blocks the step,
+  so the rim wall cannot be climbed; the same delegate runs on the server sim (authoritative - a hacked client
+  still cannot climb the rim) and in client prediction.
+- **`TerrainPresets.BoundedClearing()`**: the first ready-made bounded zone - a single gentle meadow ringed by a
+  `RimFeature` mountain wall with one +Z pass and a carved lake. `TerrainWalkSample bounded` (a `bounded` arg)
+  walks it with the slope gate wired, so you are held inside by the mountains and the +Z pass is the one way out.
+- Headless tests: `RimFeature` (unchanged inside, ramps to ~`WallHeight`, jagged-but-bounded crest, pass corridor
+  open + heading-side-only, deterministic, composes with Lake/Flatten, rim unwalkable while the pass stays
+  walkable); `WorldBounds` (`Contains`/`Clamp` for circle + rect, outside clamps onto the boundary, idempotent
+  inside, rect slide); movement integration (player held inside a circle bound, slide along a rect edge, slope gate
+  blocks too-steep ground, bounded prediction reconciles against a bounded server with no persistent error,
+  `WorldServer` + `ShardedWorldServer` both hold a player inside).
+
 ## 7.50.0
 
 Multi-cell server sharding, overworld render-scale sub-project 6b (finishes "6" with 6a streaming). The

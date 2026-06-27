@@ -1,0 +1,82 @@
+using System;
+using System.Numerics;
+using KhaozEngine.Locomotion;
+using Xunit;
+
+namespace KhaozEngine.Tests.Locomotion;
+
+public class CharacterMovementTests
+{
+    static readonly Func<float, float, float> FlatGround = (x, z) => 0f;
+    static readonly MoveTuning Tuning = MoveTuning.Default with { CapsuleHalfHeight = 0f };
+
+    static MoveCommand Cmd(float x, float y, bool run = false, float yaw = 0f) =>
+        new(new Vector2(x, y), run, yaw);
+
+    [Fact]
+    public void W_at_yaw_zero_moves_toward_negative_z()
+    {
+        Vector3 p = CharacterMovement.Step(Vector3.Zero, Cmd(0f, 1f), 1f, FlatGround, Tuning);
+        Assert.True(p.Z < 0f, p.ToString());
+        Assert.True(MathF.Abs(p.X) < 1e-4f, p.ToString());
+        Assert.Equal(Tuning.WalkSpeed, MathF.Abs(p.Z), 4);
+    }
+
+    [Fact]
+    public void Diagonal_is_normalized()
+    {
+        Vector3 p = CharacterMovement.Step(Vector3.Zero, Cmd(1f, 1f), 1f, FlatGround, Tuning);
+        float horiz = new Vector2(p.X, p.Z).Length();
+        Assert.Equal(Tuning.WalkSpeed, horiz, 3);
+    }
+
+    [Fact]
+    public void Run_is_faster_than_walk()
+    {
+        Vector3 walk = CharacterMovement.Step(Vector3.Zero, Cmd(0f, 1f), 1f, FlatGround, Tuning);
+        Vector3 run = CharacterMovement.Step(Vector3.Zero, Cmd(0f, 1f, run: true), 1f, FlatGround, Tuning);
+        Assert.True(MathF.Abs(run.Z) > MathF.Abs(walk.Z));
+        Assert.Equal(Tuning.RunSpeed, MathF.Abs(run.Z), 3);
+    }
+
+    [Fact]
+    public void Idle_does_not_move_horizontally()
+    {
+        Vector3 p = CharacterMovement.Step(new Vector3(5f, 0f, 7f), Cmd(0f, 0f), 1f, FlatGround, Tuning);
+        Assert.Equal(5f, p.X, 6);
+        Assert.Equal(7f, p.Z, 6);
+    }
+
+    [Fact]
+    public void Y_clamps_to_ground_plus_half_height()
+    {
+        Func<float, float, float> bumpy = (x, z) => 5f;
+        var t = MoveTuning.Default with { CapsuleHalfHeight = 0.9f };
+        Vector3 p = CharacterMovement.Step(Vector3.Zero, Cmd(0f, 1f), 0.5f, bumpy, t);
+        Assert.Equal(5f + 0.9f, p.Y, 4);
+    }
+
+    [Fact]
+    public void Camera_relative_yaw_rotates_movement()
+    {
+        Vector3 p = CharacterMovement.Step(Vector3.Zero, Cmd(0f, 1f, yaw: MathF.PI / 2f), 1f, FlatGround, Tuning);
+        Assert.True(p.X < 0f, p.ToString());
+        Assert.True(MathF.Abs(p.Z) < 1e-3f, p.ToString());
+    }
+
+    [Fact]
+    public void Step_onto_too_steep_ground_is_rejected()
+    {
+        Func<float, float, Vector3> steep = (x, z) => Vector3.Normalize(new Vector3(1f, 0.05f, 0f));
+        Vector3 p = CharacterMovement.Step(Vector3.Zero, Cmd(0f, 1f), 1f, FlatGround, Tuning, steep);
+        Assert.True(MathF.Abs(p.X) < 1e-6f && MathF.Abs(p.Z) < 1e-6f, p.ToString());
+    }
+
+    [Fact]
+    public void Deterministic_same_inputs_same_output()
+    {
+        Vector3 a = CharacterMovement.Step(Vector3.Zero, Cmd(1f, 1f, run: true, yaw: 0.7f), 0.123f, FlatGround, Tuning);
+        Vector3 b = CharacterMovement.Step(Vector3.Zero, Cmd(1f, 1f, run: true, yaw: 0.7f), 0.123f, FlatGround, Tuning);
+        Assert.Equal(a, b);
+    }
+}

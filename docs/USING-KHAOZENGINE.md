@@ -1368,7 +1368,9 @@ byte[] snap = SnapshotWriter.WriteFiltered(serverWorld, registry, interest);
 
 Persist authoritative character/world records through `IWorldStore` (async, keyed `byte[]`, DB-shaped). Use
 `InMemoryWorldStore` for tests/dev; for real durability pick a backend package (each pulls its own ADO.NET
-provider; the dep-free `KhaozEngine.WorldStore` core stays clean):
+provider; the dep-free `KhaozEngine.WorldStore` core stays clean). The `KhaozEngine.Server` umbrella carries
+**only** the dep-free core (since 7.49.1) - add the backend `<PackageReference>` you want explicitly, so a
+server using one backend or none never pulls the other's provider:
 
 - **`KhaozEngine.WorldStore.Sqlite`** - `SqliteWorldStore` over `Microsoft.Data.Sqlite`. Embedded, zero-infra;
   the dev/test + single-node backend (and what keeps persistence headless-testable).

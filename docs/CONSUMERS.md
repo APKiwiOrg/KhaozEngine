@@ -4,7 +4,7 @@ Which game uses which packages, at which version. Current state only - for the p
 [`../CHANGELOG.md`](../CHANGELOG.md). Update this whenever a consumer bumps a `<PackageReference>` or the
 engine ships a new version.
 
-**Engine current version:** `7.49.0` (the shared `<KhaozEngine5xVersion>` line, which is the engine): the
+**Engine current version:** `7.49.1` (the shared `<KhaozEngine5xVersion>` line, which is the engine): the
 custom MonoGame-free stack (`Primitives`/`Imaging`/`Gpu`/`Windowing`/`Render2D`/`Render3D`/`Gui`/`Audio`/`Particles`/`Effects`/`Game`/`Game.Render3D`) **plus**
 the MonoGame-free foundation packages that graduated onto it at `5.46.0`
 (`Ecs`/`Serialization`/`Content`/`Diagnostics`/`App`/`Localization`/`Locomotion`/`Persistence`/`Pooling`/`Platform`/
@@ -109,7 +109,7 @@ fine-grained use - a wire-contract project references just `Netcode.Abstractions
 |---|---|---|
 | `KhaozEngine.Game2D` | 2D runtime (Windowing/Render2D/Gui/Audio/Particles/Effects/Telegraphs) + `Game` (the Render3D-free loop framework) + `Foundation` | a desktop 2D game |
 | `KhaozEngine.Game3D` | `Game2D` + `Render3D` + `Telegraphs.Render3D` + `Terrain.Render3D` (chunked-LOD terrain mesh + world streaming) + `Game.Render3D` (the 3D scene bridge: GameApp3D/IGameScene3D/SceneManager.Draw3D) | a desktop 3D game |
-| `KhaozEngine.Server` | `Foundation` + netcode (`Netcode`/`.Abstractions`/`.LiteNetLib`) + `Simulation` (fixed-tick host) + `Replication` + `WorldStore` (+ `.Sqlite` / `.SqlServer` durable backends) + `Sharding` (cell-grid topology / ShardHost) + `NetWorld` (single-World authoritative movement server + client glue + `WorldPersistence`) | a headless sim server (no GPU) |
+| `KhaozEngine.Server` | `Foundation` + netcode (`Netcode`/`.Abstractions`/`.LiteNetLib`) + `Simulation` (fixed-tick host) + `Replication` + `WorldStore` (the dependency-free `IWorldStore` seam only; the `.Sqlite` / `.SqlServer` backends are **opt-in** and added by the consumer, **not bundled** - 7.49.1) + `Sharding` (cell-grid topology / ShardHost) + `NetWorld` (single-World authoritative movement server + client glue + `WorldPersistence`) | a headless sim server (no GPU) |
 | `KhaozEngine.Foundation` | the GPU-free foundation (Primitives/App/Content/Diagnostics/Ecs/Localization/Locomotion/Persistence/Serialization/Pooling/Collision/Terrain/Platform/Updates) | a gameplay-logic library (no renderer) |
 
 ## Consumer matrix
@@ -119,6 +119,7 @@ fine-grained use - a wire-contract project references just `Netcode.Abstractions
 | **Hardpoint** (7.x, 3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic); auto-updater LIVE (`Updates` via Foundation, overlay via Gui) against a server-less static-blob feed + OIDC CI publish, self-relocating updater (7.20.0); `HardpointUpdater` pins `KhaozEngine.Updates` directly (7.20.1); uses `Collision.Segment2D` (7.4.0) for swept projectile collision, `Snapshot`/`Snapshot.Render3D` (7.33.0, dev tool) | **7.33.0** |
 | **Nullwake** (7.x, 2D) | `Nullwake.Core` | `KhaozEngine.Game2D` + `Diagnostics`/`Persistence`/`Windowing` + `Updates` (shim, dormant); uses `AttentionBeacon` (7.6.0) for the timed-reward tappable pulse, `Snapshot` (7.33.0, dev tool) for headless screen captures | **7.33.0** |
 | **SpaceGame** (7.x, 2D + Render3D) | `SpaceGame.Core` (head) / `SpaceGame.Sim` (lockstep sim) | `Game2D` + `Render3D` + `Gpu` + `Netcode.LiteNetLib` + `Primitives` (head); `Ecs`/`Collision`/`Diagnostics`/`Content`/`Serialization`/`App`/`Netcode`/`Pooling`/`Determinism` + `Primitives` (sim); `Netcode.Abstractions` (contracts); `Updates` (tools); `Render3D`/`Snapshot`/`Determinism` for the 2.5D mesh layer; manifest signing adopted (`ke-updater sign` + embedded RSA public key) | **7.34.0** |
+| **Ruinborne** (7.x, 3D MMO) | `Ruinborne.Client` / `Ruinborne.Server` | client: `KhaozEngine.Game3D` + `NetWorld` + `Netcode.LiteNetLib` + `Simulation`; server: `KhaozEngine.Server` umbrella + `WorldStore.SqlServer` (Azure SQL via `WorldPersistence`; the backend is added explicitly since 7.49.1 no longer bundles it). Single `<KhaozEngineVersion>` pin, vendored feed (`vendor/khaozengine`, refreshed via `scripts/refresh-engine.sh`). Bumps to **7.49.1** to clear `NU1903` | **7.49.0** |
 
 Both games now run on the loop facade (5.57.0): **Hardpoint** is a `GameApp3D` subclass (`HardpointGame`) over a
 `SceneManager` + `IGameScene3D` scene stack; **Nullwake** is a `GameApp` subclass (`NullwakeGame`) over a
@@ -274,6 +275,7 @@ There is no MonoGame and no `.mgcb`; the desktop head `SpaceGame.Desktop` runs S
 | Hardpoint | `~/Hardpoint`         | migrated                     |
 | Nullwake  | `~/Nullwake/Nullwake` |                              |
 | SpaceGame | `~/SpaceGame/SpaceGame`|                             |
+| Ruinborne | `~/Ruinborne`         | `APKiwi/Ruinborne` (private) |
 
 ## How to refresh this file
 

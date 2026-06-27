@@ -570,5 +570,46 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(TopMinusBottom(true) > 0.02f, "outline-on is upside down");
             Assert.True(TopMinusBottom(false) > 0.02f, "outline-off is upside down (Bug A)");
         }
+
+        // Perspective-camera outline: locks the corrected stable outline (Fix C linearized relative depth) AND
+        // Bug B's interior-crease normal term under a perspective FollowCamera3D, upright (Bug A) by construction.
+        // The pitch is steep enough that the near floor is not at extreme grazing (where a depth edge floods on any
+        // plane); the outline reads as silhouettes (floor edges + objects) plus the box's interior creases.
+        [GpuFact]
+        public void Golden3D_PerspectiveOutline()
+        {
+            MeshHandle floor = default, box = default, sphere = default;
+            var follow = new FollowCamera3D
+            {
+                Target = new Vector3(0f, 0.5f, 0f),
+                Pitch = 0.7f, Yaw = 0.5f, Distance = 9f, HeightOffset = 1.2f,
+                AspectRatio = (float)W / H,
+            };
+            byte[] rgba = Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    floor = scene.LoadMesh(MeshPrimitives.Tile(14f, 0.1f));
+                    box = scene.LoadMesh(MeshPrimitives.Box(1.2f));
+                    sphere = scene.LoadMesh(MeshPrimitives.Sphere(0.7f));
+                    scene.Post.Starfield = false;
+                    scene.Post.BackgroundColor = new Color(0.10f, 0.12f, 0.16f, 1f);
+                    scene.Post.Outline = true;
+                    scene.Post.OutlineColor = new Color(0.02f, 0.02f, 0.04f, 1f);
+                    scene.Post.OutlineDepthThreshold = 0.3f;     // medium (relative Laplacian under perspective)
+                    scene.Post.OutlineNormalThreshold = 0.45f;
+                    scene.CameraOverride = follow;
+                },
+                drawFrame: scene =>
+                {
+                    scene.Draw(floor, Matrix4x4.CreateTranslation(0, 0, 0));
+                    scene.Draw(box, Matrix4x4.CreateTranslation(-1.6f, 0.6f, 0.4f),
+                        new Color(0.2f, 0.55f, 0.85f, 1f));
+                    scene.Draw(sphere, Matrix4x4.CreateTranslation(1.5f, 0.7f, -0.6f),
+                        new Color(0.85f, 0.35f, 0.2f, 1f));
+                },
+                frames: 2);
+
+            GoldenCompare.AssertOrUpdate("perspective_outline", rgba, W, H);
+        }
     }
 }

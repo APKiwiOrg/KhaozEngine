@@ -6,6 +6,7 @@ using KhaozEngine.Locomotion;
 using KhaozEngine.Netcode;
 using KhaozEngine.NetWorld;
 using KhaozEngine.Replication;
+using KhaozEngine.Sharding;
 using Xunit;
 
 namespace KhaozEngine.Tests.NetWorld;
@@ -135,5 +136,67 @@ public class VerticalPhysicsTests
         Assert.True(server.TryGetPlayerState(client.Slot, out PlayerMoveState s2));
         Assert.True(s2.Grounded, "should land");
         Assert.Equal(0f, s2.VerticalVelocity, 3);
+    }
+
+    [Fact]
+    public void ShardedWorldServer_launches_on_jump()
+    {
+        var (st, ct) = LoopbackTransport.CreatePair();
+        var cfg = new ShardedWorldServerConfig
+        {
+            TickSeconds = 1f / 30f, CellSize = 60f, OverlapMargin = 24f, InterestRadius = 24f,
+            SpawnPosition = _ => Vector3.Zero,
+        };
+        var server = new ShardedWorldServer(st, cfg, Flat, MoveTuning.Default);
+        var client = new NetClient(ct);
+        for (int i = 0; i < 10; i++) { client.Poll(); server.Poll(); server.Tick(cfg.TickSeconds); }
+        Assert.True(server.TryGetPlayerNetId(client.Slot, out _));
+
+        var jump = new MoveCommand(Vector2.Zero, run: false, cameraYaw: 0f, jump: true);
+        bool launched = false;
+        for (int i = 0; i < 5; i++)
+        {
+            client.Send(MoveProtocol.EncodeMove(i, i == 0 ? jump : MoveCommand.Idle), NetChannelReliability.ReliableOrdered);
+            client.Poll(); server.Poll(); server.Tick(cfg.TickSeconds);
+            if (server.TryGetPlayerState(client.Slot, out PlayerMoveState s) && s.VerticalVelocity > 0f) launched = true;
+        }
+        Assert.True(launched, "sharded server should launch the player on jump and expose it via TryGetPlayerState");
+    }
+
+    [Fact]
+    public void ShardedWorldServer_keeps_vertical_state_across_a_cell_handoff()
+    {
+        var (st, ct) = LoopbackTransport.CreatePair();
+        var cfg = new ShardedWorldServerConfig
+        {
+            TickSeconds = 1f / 30f, CellSize = 8f, OverlapMargin = 4f, InterestRadius = 4f,
+            SpawnPosition = _ => Vector3.Zero,
+        };
+        var server = new ShardedWorldServer(st, cfg, Flat, MoveTuning.Default);
+        var client = new NetClient(ct);
+        for (int i = 0; i < 10; i++) { client.Poll(); server.Poll(); server.Tick(cfg.TickSeconds); }
+        Assert.True(server.TryGetPlayerNetId(client.Slot, out int netId));
+
+        // Hold jump + run east: the player auto-bhops across cell boundaries, so most boundary crossings happen
+        // while airborne. The vertical state must survive the handoff (registered component), not reset to grounded.
+        var cmd = new MoveCommand(new Vector2(1f, 0f), run: true, cameraYaw: 0f, jump: true);
+        CellCoord? prevCell = null;
+        int handoffs = 0;
+        bool airborneAcrossHandoff = false;
+        for (int i = 0; i < 400; i++)
+        {
+            client.Send(MoveProtocol.EncodeMove(i, cmd), NetChannelReliability.ReliableOrdered);
+            client.Poll(); server.Poll(); server.Tick(cfg.TickSeconds);
+            if (!server.Host.TryGetOwner(netId, out CellSim cell, out Entity e)) continue;
+            MovementState ms = cell.World.Get<MovementState>(e);
+            if (prevCell is CellCoord pc && pc != cell.Coord)
+            {
+                handoffs++;
+                if (!ms.Grounded && MathF.Abs(ms.VerticalVelocity) > 0.01f) airborneAcrossHandoff = true;
+            }
+            prevCell = cell.Coord;
+        }
+        Assert.True(handoffs >= 2, $"expected several cell handoffs, saw {handoffs}");
+        Assert.True(airborneAcrossHandoff, "an airborne crosser must keep its vertical state across the handoff");
     }
 }

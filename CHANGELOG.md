@@ -5,6 +5,30 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.56.1
+
+Fix: jumping onto a domed rock no longer shoves you off its side onto the ground. The height-aware side-block in
+`KhaozEngine.Collision.WorldColliders.Resolve(footY)` decided "am I standing on this prop?" by comparing the feet
+against the collider's single max solid `Top`. On a domed/bumpy prop the walkable surface (`WorldSurfaces.Query`)
+sits below that max almost everywhere, so standing on the surface (`footY < Top`) was mis-read as a side hit and
+the capsule was pushed out by its radius, off the rock and onto the terrain. Only a flat-topped prop (surface near
+`Top`) stood correctly.
+
+The "standing on it" gate now also accepts the walkable surface height under the player: `Resolve` gains an
+optional `surfaceTop` parameter and skips a collider's side-block when `footY >= surfaceTop - skin` (in addition to
+the existing `footY >= Top - skin`). `CharacterMovement.Step` threads the per-position surface
+(`surfaces.Query(x, z)`, or +inf when there is none) into the height-aware `Resolve`, so a domed rock is standable
+across its whole top. A genuine below-the-surface side approach is still blocked, and a thin blocker (a tree:
+`Top = +inf`, no surface) always blocks, even while the feet rest on a neighbouring prop's surface. Server-side
+(`PlayerMoveSimulator`/`PlayerMovementSystem`) and client prediction (`CharacterController3D`) run the same step,
+so the fix is authoritative and reconciles cleanly. New optional `WorldColliders.Resolve` parameter `surfaceTop`
+(defaults to +inf = `Top`-only, the old behaviour); no breaking change.
+
+Known limitation (out of scope, noted): the surface fed to the gate is the max prop-top under the player, not
+per-collider. Standing on a shorter walkable prop next to a taller one can let the capsule walk through the taller
+one's side (its finite `Top` is gated against the shorter surface). Trees and below-surface approaches are
+unaffected; coupling each surface to its own collider is the precise fix if this ever matters.
+
 ## 7.56.0
 
 Animated characters: glTF animation-clip playback + a locomotion blend, so skinned capsules become characters

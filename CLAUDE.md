@@ -161,8 +161,11 @@ version/release work.
     physics):** in `Collision`, `PropSurface` (a unit-scale top-down max-height grid + bilinear `SampleLocal` +
     binary IO; single-valued top contour, no overhangs), `WorldSurface` (a placed surface, scale/yaw applied at
     query time), and `WorldSurfaces` (a `SpatialHashGrid` set whose `Query(x,z)` returns the max prop-top under
-    you); plus `WorldCollider.Top` + a height-aware `WorldColliders.Resolve(position,radius,footY)` that blocks a
-    side only while the feet are below its top (so a roof isn't shoved off; a thin blocker keeps `Top = +inf`).
+    you); plus `WorldCollider.Top` + a height-aware `WorldColliders.Resolve(position,radius,footY,surfaceTop)` that
+    blocks a side only while the feet are below the walkable surface they stand on (`surfaceTop`, falling back to the
+    collider's max `Top` when no surface is known) - so a domed rock, whose surface sits below its peak, isn't shoved
+    off; a thin blocker (a tree: `Top = +inf`, no surface) always blocks. (Gating on `Top` alone, fixed in 7.56.1,
+    shoved you off domed props everywhere but the exact peak.)
     `Locomotion.MoveTuning` gains `StepHeight`, and the vertical `CharacterMovement.Step` takes an optional
     `WorldSurfaces?` (support = `max(terrain, surface)`, height-aware block, step-up; null = unchanged), threaded
     server-authoritative + predicted through `PlayerMoveSimulator`/`PlayerMovementSystem`/`WorldServer`/

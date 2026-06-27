@@ -37,28 +37,9 @@ namespace KhaozEngine.Render3D
         public static GltfMesh LoadProp(AssetEntry entry, PropValidation? validation = null)
             => Normalize(LoadRaw(entry), entry.HeightMeters, validation, entry.Id);
 
-        /// <summary>Like <see cref="LoadProp"/> but also auto-reads the first textured material's decoded maps (for
-        /// callers that upload textures); the mesh is normalized identically. A kit baked to flat per-material
-        /// base colours (no textures) yields an all-absent <see cref="GltfMaterialMaps"/>, which is the expected
-        /// case for the committed CC0 props.</summary>
-        public static (GltfMesh Mesh, GltfMaterialMaps Maps) LoadPropWithMaterial(AssetEntry entry, PropValidation? validation = null)
-        {
-            (GltfMesh raw, GltfMaterialMaps maps) = LoadRawWithMaterial(entry);
-            return (Normalize(raw, entry.HeightMeters, validation, entry.Id), maps);
-        }
-
         static GltfMesh LoadRaw(AssetEntry entry)
         {
             try { return GltfLoader.Load(entry.File); }
-            catch (Exception ex)
-            {
-                throw new InvalidOperationException($"PropLoader could not load prop '{entry.Id}' from '{entry.File}': {ex.Message}", ex);
-            }
-        }
-
-        static (GltfMesh, GltfMaterialMaps) LoadRawWithMaterial(AssetEntry entry)
-        {
-            try { return GltfLoader.LoadWithMaterial(entry.File); }
             catch (Exception ex)
             {
                 throw new InvalidOperationException($"PropLoader could not load prop '{entry.Id}' from '{entry.File}': {ex.Message}", ex);

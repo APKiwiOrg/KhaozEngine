@@ -33,7 +33,7 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 | **KhaozEngine.Serialization** | Shared `System.Text.Json` defaults (`JsonDefaults`: tolerant-read / indented-write / include-fields) so Content, Persistence, and Ecs serialize consistently. | Pure .NET |
 | **KhaozEngine.Platform** | `Clipboard`: cross-platform system-clipboard facade. Text via a registered window/GLFW provider (wired by Windowing's `AppWindow`) with a macOS `NSPasteboard` fallback; images via Windows CF_DIB / macOS / optional mobile bridge. Best-effort and never-throwing. | Pure .NET |
 | **KhaozEngine.Pooling** | `ObjectPool<T>`: fixed-capacity free-list pool with O(1) rent/return, active/free tracking, swap-removal compaction. | Pure .NET |
-| **KhaozEngine.Collision** | Deterministic 2D collision + broadphase: `CircleCollision` and `SpatialHashGrid`. Bit-identical math for lockstep sims (`System.Numerics`). | Pure .NET |
+| **KhaozEngine.Collision** | Deterministic 2D collision + broadphase: `CircleCollision`, `SpatialHashGrid`, and static-world collision (`BoxCollision` circle-vs-AABB/oriented-box push-out, `WorldCollider`/`WorldColliders` the queryable set the kinematic capsule slides against). Bit-identical math for lockstep sims (`System.Numerics`). | Pure .NET |
 | **KhaozEngine.Terrain** | Render-free analytic terrain: `TerrainField` (`SampleHeight`/`SampleNormal`/`SampleBiome`/`WaterLevel`) folds biome-band shaping, stateless coordinate-hash fractal noise (`TerrainNoise`), and ordered features (`LakeFeature`/`RidgeFeature`/`FlattenFeature`); height at a point depends only on `(x, z, seed)`. Plus `TerrainCollision` (ground height + slope walkability) and `TerrainPresets.Clearing()`. Plain `float`; server and client sample the same field. In the `Foundation` umbrella. | Primitives |
 | **KhaozEngine.Locomotion** | Render-free character locomotion core: `CharacterMovement.Step` (a pure XZ-plane move from a `MoveCommand` (camera-relative WASD axis + run + camera yaw) over a timestep, normalized diagonals, ground-clamped via a height delegate with an optional slope gate) and one `MoveTuning` source of truth shared by the local `CharacterController3D`, the authoritative server sim, and client prediction. No input/render/netcode. In the `Foundation` umbrella. | Primitives |
 | **KhaozEngine.Determinism** | `DeterministicFpScope` / `DeterministicFp`: pins the CPU floating-point environment to a canonical IEEE state (round-to-nearest-even, FTZ/DAZ off, traps masked) for a fixed-tick / lockstep sim, then restores it, so a fixed-seed host sim doesn't drift across threads/machines. Pure-managed P/Invoke over `<fenv.h>`; `IsSupported` no-ops safely where unwired. | Pure .NET |
@@ -131,10 +131,10 @@ Published to a private GitHub Packages feed on tagged releases, and packed to a 
 ```
 ```xml
 <!-- One reference per project via an umbrella metapackage. Pick the bundle that fits: -->
-<PackageReference Include="KhaozEngine.Game2D"     Version="7.51.2" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
-<PackageReference Include="KhaozEngine.Game3D"     Version="7.51.2" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
-<PackageReference Include="KhaozEngine.Server"     Version="7.51.2" />  <!-- headless: foundation + netcode, no graphics -->
-<PackageReference Include="KhaozEngine.Foundation" Version="7.51.2" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
+<PackageReference Include="KhaozEngine.Game2D"     Version="7.52.0" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
+<PackageReference Include="KhaozEngine.Game3D"     Version="7.52.0" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
+<PackageReference Include="KhaozEngine.Server"     Version="7.52.0" />  <!-- headless: foundation + netcode, no graphics -->
+<PackageReference Include="KhaozEngine.Foundation" Version="7.52.0" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
 ```
 
 The metapackages have no code; they just pull in the granular packages. You can still reference those

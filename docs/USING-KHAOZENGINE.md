@@ -798,7 +798,59 @@ var client = new WorldClient(transport, terrain.GroundHeight, MoveTuning.Default
 A `RimPass` corresponds to an opening in the play area (or the bounds is simply larger than the walled region until
 gate/zone-transition content exists - those are later). `TerrainWalkSample bounded` (pass `bounded` as an arg) is
 the windowed demo: held inside by the mountains, out through the +Z pass. The circular rim is the MVP; a
-rect/polygon rim, plus prop/building collision and gravity/jump, are named follow-ups.
+rect/polygon rim and gravity/jump are named follow-ups (prop/building collision shipped, see below).
+
+---
+
+## Static world collision (`WorldColliders` / `PropColliders`)
+
+Props and buildings can be made solid: a kinematic capsule-vs-static-collider push-out in the XZ plane
+(authoritative, the standard MMO character-controller approach, NOT a physics engine). The math + the queryable
+set live in `KhaozEngine.Collision`; movement integration is a single nullable parameter on the shared step, so
+the local controller, the authoritative server, and client prediction all resolve identically.
+
+Build a `WorldColliders` set, then pass it wherever movement runs (null/empty = today's behaviour, unchanged):
+
+```csharp
+using KhaozEngine.Collision;
+using KhaozEngine.Terrain;
+
+// From the deterministic prop scatter (footprint per prop id from the manifest, default cylinder otherwise) plus
+// a hand-placed obstacle/building list. Because it shares the coordinate-hash scatter, the colliders line up with
+// the rendered props and a tiled build equals a whole-area build (streaming-consistent).
+IReadOnlyList<PropPlacement> placements = PropScatter.Generate(field, ScatterConfig.ForestRing(), area);
+var inn = WorldCollider.Box(center: new Vector2(0f, 12f), halfExtents: new Vector2(3f, 2.5f), yaw: 0f);
+WorldColliders colliders = PropColliders.FromScatter(
+    placements,
+    id => manifest.Find(id)?.Collider,          // AssetEntry.Collider (manifest "collider": {...})
+    defaultShape: ColliderShape.Cylinder(0.5f), // used when a prop declares no collider
+    obstacles: new[] { inn });                  // explicit buildings/obstacles
+
+// Local (single-player) controller:
+character.Update(input, dt, cameraYaw, terrain.GroundHeight, terrain.GroundNormal, colliders);
+
+// Authoritative server + client prediction (same set + math both sides):
+var server = new WorldServer(transport, config, terrain.GroundHeight, MoveTuning.Default,
+                             terrain.GroundNormal, bounds: null, colliders: colliders);
+var sharded = new ShardedWorldServer(transport, shardConfig, terrain.GroundHeight, MoveTuning.Default,
+                                     terrain.GroundNormal, bounds: null, colliders: colliders);
+```
+
+Collider metadata in the prop manifest is optional, per entry:
+
+```json
+{ "id": "pine_a", "file": "pine_a.glb", "heightMeters": 12.0,
+  "collider": { "type": "cylinder", "radius": 0.5 } }
+{ "id": "inn", "file": "inn.glb", "heightMeters": 5.0,
+  "collider": { "type": "box", "halfW": 3.0, "halfD": 2.0 } }
+```
+
+The capsule footprint radius is `MoveTuning.CapsuleRadius` (default 0.4; `CharacterController3D.CapsuleRadius`
+mirrors it). Resolution is minimum-translation push-out applied so the capsule **slides** along surfaces (the
+move's tangential component survives; only the penetrating component is removed), iterated a few times so corners
+settle. `TerrainWalkSample` makes the nearby scattered props solid plus a hand-placed inn (12 m north). Out of
+scope (named): dynamic/moving colliders, player-vs-player, vertical/3D collision, gravity/jump/step-height, a
+general physics engine, navmesh.
 
 ---
 

@@ -5,6 +5,31 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.52.0
+
+Static world collision: kinematic capsule-vs-static-collider in the XZ plane, authoritative, the standard MMO
+character-controller approach (NOT a physics engine). `KhaozEngine.Collision` gains the geometry: `BoxCollision`
+(circle-vs-AABB, circle-vs-oriented-box, circle-vs-circle minimum-translation push-out), `ColliderShape` (an
+unplaced cylinder/box prop footprint), `WorldCollider` (one placed static collider), and `WorldColliders` (a
+`SpatialHashGrid`-backed queryable set with `Query(x,z,radius)` plus an iterate-and-slide `Resolve` that pushes a
+capsule footprint out of overlaps, removing only the penetrating component so motion slides along surfaces).
+`KhaozEngine.Locomotion.MoveTuning` gains `CapsuleRadius` (default 0.4, a defaulted 5th positional param so
+existing call sites are unchanged), and `CharacterMovement.Step` takes an optional `WorldColliders?`; the push-out
+runs inside the single movement step, so `CharacterController3D` (local + prediction), `PlayerMoveSimulator`,
+`PlayerMovementSystem`, `WorldServer`, and `ShardedWorldServer` all resolve identically (server-authoritative +
+client-prediction-consistent). A null or empty collider set leaves movement exactly as before. `AssetEntry` carries
+an optional `Collider` (manifest `"collider": { "type": "cylinder", "radius" }` or `{ "type": "box", "halfW",
+"halfD" }`), and `KhaozEngine.Terrain.PropColliders.FromScatter` builds a `WorldColliders` from deterministic
+scatter placements (footprint per prop id, with a default-shape fallback) plus an explicit obstacle/building list -
+streaming-consistent because it shares the coordinate-hash scatter. `KhaozEngine.Locomotion`, `KhaozEngine.NetWorld`,
+`KhaozEngine.Terrain`, and `KhaozEngine.Render3D` now reference `KhaozEngine.Collision` (acyclic; Collision stays a
+`System.Numerics` leaf). `TerrainWalkSample` makes the nearby scattered props solid and adds a hand-placed inn box
+(12 m north). Headless tests cover the push-out math (depth + direction, glancing slide vs head-on stop), the
+oriented-box-equals-AABB-at-zero-yaw identity, `WorldColliders` built-from-scatter matching the scatter + `Query`
+neighbours + obstacle inclusion, movement push-out / cannot-enter / slide-along-wall, server-resolves-identically-
+to-client, and no-collider-unchanged. Out of scope (named): dynamic/moving colliders, player-vs-player, vertical /
+full-3D collision, gravity / jump / step-height, a general physics engine, navmesh. Additive; no new package; minor.
+
 ## 7.51.2
 
 Perspective-correct toon outline plus two outline bug fixes in `KhaozEngine.Render3D` (`Internal/ShaderSources`

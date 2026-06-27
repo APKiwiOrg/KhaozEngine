@@ -116,7 +116,10 @@ public sealed class WorldClient
 
         if (view.TryGetEntity(localNetId, out Entity local) && world.TryGet(local, out ReplicatedPosition p))
         {
-            var basis = new PlayerMoveState { Position = p.Value };
+            // Build the full authoritative basis from BOTH replicated components - position and the vertical axis
+            // (MovementState) - so prediction replay reproduces the jump/fall, not just the XZ plane.
+            world.TryGet(local, out MovementState ms);           // default (grounded, 0) until first replicated
+            PlayerMoveState basis = PlayerMoveState.From(p.Value, ms);
             if (first) prediction.Reset(basis);                  // seed prediction at the authoritative spawn
             prediction.Reconcile(authoritativeTick++, basis, ackSeq);
         }

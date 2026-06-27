@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.Render3D;
 using KhaozEngine.Terrain;
 using Xunit;
 
@@ -176,6 +177,28 @@ namespace KhaozEngine.Tests.Terrain
 
             Assert.Single(sink.Loads);
             Assert.Equal(new ChunkCoord(0, 0), sink.Loads[0].coord);   // the player's own chunk first
+        }
+
+        [Fact]
+        public void Sink_scatters_props_matching_PropScatter_for_the_chunk_area()
+        {
+            var field = new TerrainField(TerrainPresets.Clearing());
+            ScatterConfig scatter = ScatterConfig.ForestRing();
+            float size = 60f;
+            var sink = new Scene3DChunkSink(scene: null!, field, scatter,
+                propMeshes: new Dictionary<string, MeshHandle>(), chunkSize: size, propDrawRadius: 90f);
+
+            var coord = new ChunkCoord(-2, -2);   // a meadow chunk with props
+            var expected = PropScatter.Generate(field, scatter, ChunkGrid.AreaOf(coord, size));
+            IReadOnlyList<PropPlacement> got = sink.ScatterFor(coord);
+
+            Assert.Equal(expected.Count, got.Count);
+            for (int i = 0; i < expected.Count; i++)
+            {
+                Assert.Equal(expected[i].Id, got[i].Id);
+                Assert.Equal(expected[i].X, got[i].X, 3);
+                Assert.Equal(expected[i].Z, got[i].Z, 3);
+            }
         }
     }
 }

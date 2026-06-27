@@ -656,6 +656,7 @@ at a clamped `Pitch`/`Distance` and always looks at the target (same Y-up conven
 
 ```csharp
 var camera = new FollowCamera3D { Target = character.Position, Distance = 9f };
+camera.GroundHeight = terrain.GroundHeight;   // keep the eye above the ground in a dip (optional, terrain-agnostic)
 var camController = new FollowCameraController(camera);
 scene.CameraOverride = camera;   // a sibling camera drives the render path; null = built-in iso Camera
 
@@ -670,9 +671,9 @@ camController.Update(input, dt);
 so any height source works. Pair it with `TerrainCollision.GroundHeight` for analytic terrain. WASD is
 camera-relative on XZ (normalized diagonals, left/right shift to run); `Position` is the capsule centre and its Y
 clamps to the ground plus `CapsuleHalfHeight` each frame. Speeds, capsule half-height, max slope, the camera
-distance/pitch limits, orbit/zoom sensitivity, and per-axis drag inversion (`FollowCameraController.InvertX` /
-`InvertY`, for an "invert axis" setting) are public fields (feel-tuned later). See `TerrainWalkSample` for
-the full wiring. Animation/walk-cycle, netcode-driven movement, chunk streaming, prop/obstacle collision, and
+distance/pitch limits, orbit/zoom sensitivity, per-axis drag inversion (`FollowCameraController.InvertX` /
+`InvertY`, for an "invert axis" setting), and the camera ground-clamp (`FollowCamera3D.GroundHeight` /
+`GroundClearance`) are public fields (feel-tuned later). See `TerrainWalkSample` for the full wiring. Animation/walk-cycle, netcode-driven movement, chunk streaming, prop/obstacle collision, and
 physics beyond the ground-clamp are later sub-projects, not part of this one.
 
 ---

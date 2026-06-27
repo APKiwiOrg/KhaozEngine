@@ -7,11 +7,15 @@ using KhaozEngine.Replication;
 using KhaozEngine.Sharding;
 using MmoServerSample;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace KhaozEngine.Tests.Sharding;
 
 public class MmoServerEndToEndTests
 {
+    private readonly ITestOutputHelper output;
+    public MmoServerEndToEndTests(ITestOutputHelper output) => this.output = output;
+
     private static void PumpNet(MmoServer server, NetClient client, int rounds = 10)
     {
         for (int i = 0; i < rounds; i++) { server.Poll(); client.Poll(); }
@@ -87,9 +91,12 @@ public class MmoServerEndToEndTests
     [Fact]
     public void LiveSocket_ClientConnects_AndIsServedItsPlayer()
     {
-        const int port = 47655;
+        // OS-assigned ephemeral port, never a fixed one - a hardcoded port collides with any other process
+        // (a stale server, a parallel test run) that happens to hold it.
+        using LiteNetLibServerTransport? serverTransport = LiveSocketSupport.TryBindServer(out int port);
+        if (serverTransport is null) { output.WriteLine(LiveSocketSupport.NoFreePortReason); return; }
+
         var config = new MmoServerConfig { SpawnX = 50f, SpawnY = 50f };
-        using var serverTransport = new LiteNetLibServerTransport(port);
         var server = new MmoServer(serverTransport, config);
         server.SpawnNpc(60f, 50f);
 

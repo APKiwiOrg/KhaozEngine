@@ -35,7 +35,8 @@ var config = new ShardedWorldServerConfig
 };
 
 using var transport = new LiteNetLibServerTransport(port);
-var server = new ShardedWorldServer(transport, config, terrain.GroundHeight, MoveTuning.Default);
+var server = new ShardedWorldServer(transport, config, terrain.GroundHeight, MoveTuning.Default,
+    groundNormal: terrain.GroundNormal);   // authoritative slope gate: a hacked client still can't climb steep terrain
 
 // Persist players keyed by the account token the client presents in its Hello. Swap SqliteWorldStore for
 // SqlServerWorldStore (KhaozEngine.WorldStore.SqlServer) to persist to Azure SQL instead - same IWorldStore.

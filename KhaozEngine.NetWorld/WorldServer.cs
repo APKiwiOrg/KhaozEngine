@@ -50,12 +50,12 @@ public sealed class WorldServer : IWorldPersistenceHost
 
     public WorldServer(INetTransport transport, WorldServerConfig config,
         Func<float, float, float> groundHeight, MoveTuning tuning,
-        Func<float, float, Vector3>? groundNormal = null)
+        Func<float, float, Vector3>? groundNormal = null, WorldBounds? bounds = null)
     {
         ArgumentNullException.ThrowIfNull(transport);
         this.config = config ?? throw new ArgumentNullException(nameof(config));
         if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
-        simulator = new PlayerMoveSimulator(groundHeight, tuning, groundNormal);
+        simulator = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds);
         net = new NetServer(transport, config.MaxPlayers, new AllowAllAuthenticator());
         interest = new InterestGrid(MathF.Max(1f, config.InterestRadius));
     }

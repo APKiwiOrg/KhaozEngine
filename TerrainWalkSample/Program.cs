@@ -14,8 +14,11 @@ using KhaozEngine.Windowing;
 // ground-clamp; the world is STREAMED (TerrainStreamer loads/unloads chunks + their props in a
 // ring around the player, so walking any direction streams the world forever) and the capsule is
 // static (no walk-cycle yet). Honors KE_MAX_FRAMES so a headless smoke run renders N frames then exits 0.
-Console.WriteLine("TerrainWalkSample - WASD move | mouse-drag orbit | scroll zoom | shift run | Esc quit");
-using (var app = new TerrainWalkApp())
+bool bounded = Array.Exists(args, a => a is "bounded" or "--bounded");
+Console.WriteLine(bounded
+    ? "Bounded clearing - mountains ring the play area; ONE pass to the NORTH (+Z) is the way out. You can't climb the walls. WASD move | mouse-drag orbit | scroll zoom | shift run | Esc quit"
+    : "TerrainWalkSample - WASD move | mouse-drag orbit | scroll zoom | shift run | Esc quit");
+using (var app = new TerrainWalkApp(bounded))
     app.Run();
 return 0;
 
@@ -41,16 +44,20 @@ sealed class TerrainWalkApp : GameApp3D
     FollowCamera3D _camera = null!;
     FollowCameraController _camController = null!;
 
-    public TerrainWalkApp()
+    // Bounded mode: enclose the clearing in a RimFeature mountain wall and wire the slope gate so the rim
+    // can't be climbed (the player is held inside; the +Z pass is the one way out).
+    readonly bool _bounded;
+
+    public TerrainWalkApp(bool bounded = false)
         : base(new GameAppOptions
         {
-            Title = "KhaozEngine - Terrain walk",
+            Title = bounded ? "KhaozEngine - Bounded clearing" : "KhaozEngine - Terrain walk",
             Width = 1280,
             Height = 720,
             ScaleMode = ScaleMode.Fit,
             ClearColor = new Color(0.45f, 0.62f, 0.85f, 1f),   // sky
         })
-    { }
+    { _bounded = bounded; }
 
     protected override void OnLoad()
     {
@@ -66,8 +73,8 @@ sealed class TerrainWalkApp : GameApp3D
         Console.WriteLine("Render debug: [M] RenderScale Fixed<->MatchViewport | [O] outline on/off | " +
                           "[K]/[L] depth-threshold -/+ | [G]/[H] normal-threshold -/+");
 
-        // Analytic field + collision wrapper for the ground-clamp.
-        _field = new TerrainField(TerrainPresets.Clearing());
+        // Analytic field + collision wrapper for the ground-clamp. Bounded mode rings the clearing in mountains.
+        _field = new TerrainField(_bounded ? TerrainPresets.BoundedClearing() : TerrainPresets.Clearing());
         _terrain = new TerrainCollision(_field);
 
         // 1.8 m greybox capsule (height 1.2 + 2*radius 0.6); mesh bottom sits at y=0 in local space.
@@ -76,7 +83,7 @@ sealed class TerrainWalkApp : GameApp3D
         // Character spawns on the ground at the origin.
         _character = new CharacterController3D { CapsuleHalfHeight = CapsuleHalfHeight };
         _character.SetXZ(0f, 0f);
-        _character.Update(InputState.Empty, 0f, 0f, _terrain.GroundHeight);   // settle Y onto the ground
+        _character.Update(InputState.Empty, 0f, 0f, _terrain.GroundHeight, _terrain.GroundNormal);   // settle Y onto the ground (slope gate wired so cliffs aren't climbable)
 
         // Follow camera drives rendering via the scene override; the ground delegate keeps the eye above the
         // terrain so it does not sink through the floor when the character is in a dip.
@@ -132,7 +139,7 @@ sealed class TerrainWalkApp : GameApp3D
         if (Input.WasPressed(Key.H)) { post.OutlineNormalThreshold = MathF.Min(2f, post.OutlineNormalThreshold + 0.05f); Console.WriteLine($"[post] OutlineNormalThreshold = {post.OutlineNormalThreshold:0.00}"); }
         if (Input.WasPressed(Key.G)) { post.OutlineNormalThreshold = MathF.Max(0f, post.OutlineNormalThreshold - 0.05f); Console.WriteLine($"[post] OutlineNormalThreshold = {post.OutlineNormalThreshold:0.00}"); }
 
-        _character.Update(Input, dt, _camera.Yaw, _terrain.GroundHeight);
+        _character.Update(Input, dt, _camera.Yaw, _terrain.GroundHeight, _terrain.GroundNormal);   // slope gate always on: can't climb cliffs/rim
 
         // Stream the world around the new player position (loads/unloads/re-LODs within MaxLoadsPerFrame).
         _streamer.Update(_character.Position, dt);

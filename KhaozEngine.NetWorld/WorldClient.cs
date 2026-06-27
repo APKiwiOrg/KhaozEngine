@@ -34,14 +34,15 @@ public sealed class WorldClient
     private int authoritativeTick;
 
     public WorldClient(INetTransport transport, Func<float, float, float> groundHeight, MoveTuning tuning,
-        WorldClientConfig? config = null, byte[]? token = null, Func<float, float, Vector3>? groundNormal = null)
+        WorldClientConfig? config = null, byte[]? token = null, Func<float, float, Vector3>? groundNormal = null,
+        WorldBounds? bounds = null)
     {
         ArgumentNullException.ThrowIfNull(transport);
         if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
         config ??= new WorldClientConfig();
         net = new NetClient(transport, token);
         view = new ClientReplicationView(registry);
-        var simulator = new PlayerMoveSimulator(groundHeight, tuning, groundNormal);
+        var simulator = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds);
         PredictionSettings settings = config.Prediction ?? (PredictionSettings.Default with { TickSeconds = config.TickSeconds });
         prediction = new ClientPrediction<PlayerMoveState, MoveCommand>(simulator, settings);
     }

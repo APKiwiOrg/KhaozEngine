@@ -747,6 +747,61 @@ and animated props are later sub-projects, not part of this one.
 
 ---
 
+## Bounded zones (`RimFeature` + `WorldBounds` + the slope gate)
+
+A designed zone (a start town/lake ringed by impassable mountains with one road out) wants a border that is both
+**diegetic** (you see why you can't pass) and **enforced** (the authoritative server won't let you). Three pieces
+compose it:
+
+**1. `RimFeature` (the visual wall, `KhaozEngine.Terrain`).** An `ITerrainFeature` that raises terrain into an
+enclosing wall around a bounded region: unchanged inside `InnerRadius`, a smoothstep ramp up to `WallHeight` by
+`OuterRadius` (and held there beyond - a plateau, so you cannot see/walk past it), modulated by a coordinate-hash
+jagged crest (`Ruggedness`) so it reads as mountains not a berm. `RimPass`es cut corridors through the wall on a
+heading (the road out). `using KhaozEngine.Terrain;` (+ `System.Numerics` for `Vector2`):
+
+```csharp
+var rim = new RimFeature(
+    center: Vector2.Zero, innerRadius: 38f, outerRadius: 56f, wallHeight: 30f,
+    ruggedness: 0.3f, seed: 5,
+    passes: new[] { new RimPass(angleRadians: MathF.PI / 2f /* +Z */, halfWidth: 10f, falloff: 6f) });
+// add it to a TerrainConfig.Features list, or just use the ready-made preset:
+var field = new TerrainField(TerrainPresets.BoundedClearing());   // meadow ringed by a rim, one +Z pass, a lake
+```
+
+**2. The slope gate (so the wall can't be climbed).** `CharacterMovement.Step` already rejects a step onto ground
+steeper than `MoveTuning.MaxSlopeRadians` (default 45 deg) - but only when a `groundNormal` delegate is supplied.
+Pass `TerrainCollision.GroundNormal` as that delegate everywhere movement runs, so the steep rim blocks and the
+gentle pass corridor stays walkable. Local controller:
+
+```csharp
+var terrain = new TerrainCollision(field);
+character.Update(input, dt, camera.Yaw, terrain.GroundHeight, terrain.GroundNormal);   // groundNormal = the slope gate
+```
+
+**3. `WorldBounds` (the authoritative hard stop, `KhaozEngine.NetWorld`).** A play-area shape the server clamps
+movement to every tick, so the rim can't be glitched past. `WorldBounds.Clamp(x, z)` returns the nearest in-bounds
+point - a no-op inside (idempotent) and a projection onto the boundary outside, which produces **clamp-and-slide**
+(the tangential part of a blocked move survives, so movement stays smooth). Two shapes ship: `CircleBounds` and
+`RectBounds`. Wire it (nullable - null = today's unbounded behaviour) into the movement step; pass the same bounds
+to the client so prediction clamps identically and reconciliation stays clean at the wall:
+
+```csharp
+WorldBounds bounds = new CircleBounds(center: Vector2.Zero, radius: 56f);
+var server = new WorldServer(transport, cfg, terrain.GroundHeight, MoveTuning.Default,
+                             groundNormal: terrain.GroundNormal, bounds: bounds);          // authoritative
+var client = new WorldClient(transport, terrain.GroundHeight, MoveTuning.Default,
+                             groundNormal: terrain.GroundNormal, bounds: bounds);          // predicts identically
+// ShardedWorldServer takes the same (groundNormal, bounds) params - the clamp is authoritative across the cell grid.
+```
+
+`RimFeature` makes the edge *look* enclosed; the slope gate stops you walking up it; `WorldBounds` *guarantees* it.
+A `RimPass` corresponds to an opening in the play area (or the bounds is simply larger than the walled region until
+gate/zone-transition content exists - those are later). `TerrainWalkSample bounded` (pass `bounded` as an arg) is
+the windowed demo: held inside by the mountains, out through the +Z pass. The circular rim is the MVP; a
+rect/polygon rim, plus prop/building collision and gravity/jump, are named follow-ups.
+
+---
+
 ## World streaming (`TerrainStreamer` / `Scene3DChunkSink`)
 
 `TerrainStreamer` (`KhaozEngine.Terrain.Render3D`) makes the world effectively endless: it keeps a ring of

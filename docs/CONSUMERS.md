@@ -34,14 +34,14 @@ umbrella). Render3D also gained a generic `DrawGroundDecal` depth-sampling primi
 **The legacy 4.x line + its six
 genuinely-MonoGame packages (`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`) were DELETED from the repo**, so
 the engine is now entirely MonoGame-free with a single version line in `Directory.Build.props` (the doc-version
-guard checks it). All three consumers are now off MonoGame (SpaceGame finished its port and pins 7.3.0). The
-legacy `4.9.0` nupkgs have been pruned from `local-feed` (which now floors at the 6.x line); they remain
-recoverable from GitHub Packages, the durable store. All three consumers are on the 6.x line, so nothing
-relies on a pre-6.x feed entry.
+guard checks it). All four consumers are MonoGame-free: Hardpoint, Nullwake, and SpaceGame migrated off it, and
+Ruinborne was built native on the 7.x stack. The legacy `4.9.0` nupkgs have been pruned from `local-feed`
+(which now floors at the 6.x line); they remain recoverable from GitHub Packages, the durable store. All four
+consumers are on the 7.x line, so nothing relies on a pre-6.x feed entry.
 
 > **5.46.0 (graduation, non-breaking re-version):** the 14 MonoGame-free foundation packages moved from the
 > 4.x `<Version>` line to the 5.x `<KhaozEngineVersion>` line so a 5.x game pins **only** 5.x packages. Same
-> assemblies, namespaces, and public API — a consumer just swaps `Version="4.12.0"` to `Version="5.46.0"` on
+> assemblies, namespaces, and public API: a consumer just swaps `Version="4.12.0"` to `Version="5.46.0"` on
 > those `<PackageReference>`s. The old `4.12.0` foundation nupkgs stay in the feed (cumulative pack), so a
 > consumer that hasn't bumped (Hardpoint, SpaceGame) keeps resolving its pin and nothing breaks. This is audit
 > item P1#9. The genuinely-MonoGame packages stay on 4.x until SpaceGame migrates, then they're deleted.
@@ -116,10 +116,10 @@ fine-grained use - a wire-contract project references just `Netcode.Abstractions
 
 | Consumer | Project(s) | References | Version |
 |---|---|---|---|
-| **Hardpoint** (7.x, 3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic); auto-updater LIVE (`Updates` via Foundation, overlay via Gui) against a server-less static-blob feed + OIDC CI publish, self-relocating updater (7.20.0); `HardpointUpdater` pins `KhaozEngine.Updates` directly (7.20.1); uses `Collision.Segment2D` (7.4.0) for swept projectile collision, `Snapshot`/`Snapshot.Render3D` (7.33.0, dev tool) | **7.33.0** |
+| **Hardpoint** (7.x, 3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic); auto-updater LIVE (`Updates` via Foundation, overlay via Gui) against a server-less static-blob feed + OIDC CI publish, self-relocating updater (7.20.0); `HardpointUpdater` pins `KhaozEngine.Updates` directly (7.20.1); uses `Collision.Segment2D` (7.4.0) for swept projectile collision, `Snapshot`/`Snapshot.Render3D` (7.33.0, dev tool) | **7.37.0** |
 | **Nullwake** (7.x, 2D) | `Nullwake.Core` | `KhaozEngine.Game2D` + `Diagnostics`/`Persistence`/`Windowing` + `Updates` (shim, dormant); uses `AttentionBeacon` (7.6.0) for the timed-reward tappable pulse, `Snapshot` (7.33.0, dev tool) for headless screen captures | **7.33.0** |
-| **SpaceGame** (7.x, 2D + Render3D) | `SpaceGame.Core` (head) / `SpaceGame.Sim` (lockstep sim) | `Game2D` + `Render3D` + `Gpu` + `Netcode.LiteNetLib` + `Primitives` (head); `Ecs`/`Collision`/`Diagnostics`/`Content`/`Serialization`/`App`/`Netcode`/`Pooling`/`Determinism` + `Primitives` (sim); `Netcode.Abstractions` (contracts); `Updates` (tools); `Render3D`/`Snapshot`/`Determinism` for the 2.5D mesh layer; manifest signing adopted (`ke-updater sign` + embedded RSA public key) | **7.34.0** |
-| **Ruinborne** (7.x, 3D MMO) | `Ruinborne.Client` / `Ruinborne.Server` | client: `KhaozEngine.Game3D` + `NetWorld` + `Netcode.LiteNetLib` + `Simulation`; server: `KhaozEngine.Server` umbrella + `WorldStore.SqlServer` (Azure SQL via `WorldPersistence`; the backend is added explicitly since 7.49.1 no longer bundles it). Single `<KhaozEngineVersion>` pin, vendored feed (`vendor/khaozengine`, refreshed via `scripts/refresh-engine.sh`). Bumps to **7.49.1** to clear `NU1903` | **7.49.0** |
+| **SpaceGame** (7.x, 2D + Render3D) | `SpaceGame.Core` (head) / `SpaceGame.Sim` (lockstep sim) | `Game2D` + `Render3D` + `Netcode.LiteNetLib` + `Primitives` (head); `Ecs`/`Collision`/`Diagnostics`/`Content`/`Serialization`/`App`/`Netcode`/`Pooling`/`Determinism` + `Primitives` (sim); `Netcode.Abstractions` (contracts); `Render3D` + `Determinism` for the 2.5D mesh layer; manifest signing via the `ke-updater` tool (embedded RSA public key) | **7.34.0** |
+| **Ruinborne** (7.x, 3D MMO) | `Ruinborne.Client` / `Ruinborne.Server` | client: `KhaozEngine.Game3D` + `Foundation` + `NetWorld` + `Netcode.LiteNetLib` + `Netcode.Abstractions` + `Simulation` + `Updates`; server: `KhaozEngine.Server` umbrella + `WorldStore.SqlServer` (Azure SQL via `WorldPersistence`; the backend is added explicitly since 7.49.1 no longer bundles it). Single `<KhaozEngineVersion>` pin in `Directory.Build.props`, vendored feed (`vendor/khaozengine`, refreshed via `scripts/refresh-engine.sh`). | **7.51.2** |
 
 Both games now run on the loop facade (5.57.0): **Hardpoint** is a `GameApp3D` subclass (`HardpointGame`) over a
 `SceneManager` + `IGameScene3D` scene stack; **Nullwake** is a `GameApp` subclass (`NullwakeGame`) over a
@@ -128,7 +128,7 @@ options' `WindowFactory`/`ViewportFactory`. Neither hand-writes the `AppWindow.R
 
 ## Notes (current state per consumer)
 
-### Hardpoint - 7.x, full-3D (on `KhaozEngine.Game3D` 7.33.0)
+### Hardpoint - 7.x, full-3D (on `KhaozEngine.Game3D` 7.37.0)
 
 A full-3D iso tower-defense entirely on the 7.x stack, zero legacy MonoGame packages. Two projects:
 
@@ -163,6 +163,11 @@ Hardpoint consumes.
 **Bumped to 7.33.0** (head pins `Game3D`/`Foundation`/`Snapshot`/`Snapshot.Render3D`) to adopt the headless
 snapshot harness for dev screen captures; the `HardpointUpdater` shim stays pinned at `KhaozEngine.Updates`
 7.20.1 separately. 7.10-7.32 are Render3D / Netcode / Collision / tooling carried as pin alignment.
+
+**Bumped to 7.37.0** (`Game3D` + `Foundation`) to adopt window-focus input gating (`InputState.WindowFocused`),
+which fixes Hardpoint's UI hover SFX firing while another app is frontmost. `Snapshot`/`Snapshot.Render3D` stay
+at 7.33.0 (dev tool) and the `HardpointUpdater` shim at `KhaozEngine.Updates` 7.20.1, both separate. 7.34-7.36
+(attack telegraphs, MMO netcode phases 0-2) are carried as pin alignment.
 
 ### Nullwake - 7.x, 2D (on `KhaozEngine.Game2D` 7.33.0)
 
@@ -235,8 +240,7 @@ arrives transitively via `Render2D`).
 ### SpaceGame - on 7.34.0 (MonoGame-free, manifest signing adopted)
 
 SpaceGame completed its de-MonoGame migration onto the 5.x stack (merged `96255c9`) and now pins **7.34.0**
-(it adds `Render3D`/`Snapshot`/`Determinism` for the 2.5D mesh layer and tracks the current engine line; the
-`SpaceGameUpdater` shim stays pinned at `KhaozEngine.Updates` 7.24.0 separately). Notable intervening adoptions:
+(it adds `Render3D` + `Determinism` for the 2.5D mesh layer and tracks the engine line). Notable intervening adoptions:
 7.10.0 `DeterministicFpScope` for lockstep FP determinism, and the 7.24.0 netcode + skinned-mesh
 security-hardening release (quantizer input clamp, command-queue caps, skinned-rig load validation).
 There is no MonoGame and no `.mgcb`; the desktop head `SpaceGame.Desktop` runs Silk/GLFW + Veldrid through the
@@ -255,8 +259,8 @@ There is no MonoGame and no `.mgcb`; the desktop head `SpaceGame.Desktop` runs S
 - **Contracts (`SpaceGame.Multiplayer.Contracts`):** `Netcode.Abstractions` only - the MonoGame-free DTO
   project (also referenced by the ASP.NET leaderboard server) so `EntityUpdateBatchDto` can implement
   `IChannelSplittable` without pulling in MonoGame or LiteNetLib.
-- **Tools:** `SpaceGameUpdater` (thin shim, forwards to `KhaozEngine.Updates.UpdaterShim.Main`) + `ke-updater`
-  dotnet tool for manifest generation and signing (no bespoke `ManifestGenerator` project).
+- **Tools:** the `ke-updater` dotnet tool for manifest generation and signing (no bespoke `ManifestGenerator`
+  project; the head no longer carries a `KhaozEngine.Updates` package reference).
 - **Auto-update signing (7.3.0):** manifests are signed via `ke-updater sign`; the client verifies
   `manifest.json.sig` against an embedded RSA public key (`SpaceGame.Core/Resources/update-signing-public.pem`)
   and rejects unsigned or wrong-key feeds. Private key is CI secret `UPDATE_PRIVATE_KEY`, never committed.
@@ -267,6 +271,22 @@ There is no MonoGame and no `.mgcb`; the desktop head `SpaceGame.Desktop` runs S
 - **Lockstep determinism:** the `StateHash` baseline is **`17709480852979803671`** (the tentacle-hitbox
   re-baseline). It held byte-identical across the 6.x and 7.x bumps. (The pre-migration `5562709684599485702`
   is stale.)
+
+### Ruinborne - on 7.51.2 (3D MMO, native on 7.x)
+
+The 3D MMO, built native on the 7.x stack (never MonoGame). Two heads off a single `<KhaozEngineVersion>` pin
+in `Directory.Build.props` (every `KhaozEngine.*` reference uses `Version="$(KhaozEngineVersion)"`), restored
+from a vendored in-repo feed (`vendor/khaozengine`, refreshed via `scripts/refresh-engine.sh`):
+
+- **`Ruinborne.Client`** references `KhaozEngine.Game3D` (3D renderer + windowing + Gui + overworld terrain
+  streaming) + `NetWorld` (the networked-world client: prediction / reconcile) + `Netcode.LiteNetLib` (UDP
+  transport) + `Netcode.Abstractions` + `Simulation` + `Updates` (plus `Foundation`).
+- **`Ruinborne.Server`** is the headless authoritative MMO server: the `KhaozEngine.Server` umbrella (netcode +
+  `Simulation` + `Replication` + `Sharding` + `NetWorld`) + `WorldStore.SqlServer` (Azure SQL persistence via
+  `WorldPersistence`; the backend is referenced explicitly since 7.49.1 stopped bundling it in the umbrella).
+
+Pinned at **7.51.2** (carried up from 7.49.x). The DACPAC / managed schema-deploy story this server needs for
+consistent, versioned prod DB deploys is the top near-term roadmap item (see [`ROADMAP.md`](ROADMAP.md)).
 
 ## Repo locations
 
@@ -280,11 +300,11 @@ There is no MonoGame and no `.mgcb`; the desktop head `SpaceGame.Desktop` runs S
 ## How to refresh this file
 
 ```sh
-# engine version (source of truth) - the 5.x line is the engine; 4.x is legacy-MonoGame-only
-grep -iE '<KhaozEngineVersion>|<Version>' ~/KhaozEngine/Directory.Build.props
+# engine version (source of truth) - the single <KhaozEngineVersion> line is the engine
+grep -iE '<KhaozEngineVersion>' ~/KhaozEngine/Directory.Build.props
 
 # what each consumer pins
-for d in ~/Hardpoint ~/Nullwake ~/SpaceGame; do
+for d in ~/Hardpoint ~/Nullwake/Nullwake ~/SpaceGame/SpaceGame ~/Ruinborne; do
   find "$d" -name '*.csproj' -not -path '*/bin/*' -not -path '*/obj/*' \
     -exec grep -l KhaozEngine {} \; | while read f; do
       echo "-- $f"; grep -i KhaozEngine "$f"; done
@@ -311,14 +331,13 @@ When a consumer raises its `KhaozEngine.*` pin, two things bite if skipped:
   the bump. (Hardpoint/SpaceGame restore from `local-feed`/GitHub Packages directly and have no vendored feed to
   refresh.)
 
-_Last verified: 2026-06-25. The shared line `<KhaozEngineVersion>` = **7.34.0** is the engine: the new
-zero-dependency `Primitives` leaf + the custom-stack packages + the graduated foundation + the four umbrella
-metapackages (Game2D/Game3D/Server/Foundation). The legacy 4.x `<Version>` line was deleted from
-`Directory.Build.props` and its old MonoGame nupkgs pruned from the feed (recoverable from GitHub Packages).
-**Hardpoint** (3D) is on **7.33.0** via `Game3D` + `Foundation` (+ `Snapshot` dev tool; `Updates` pinned
-separately at 7.20.1), **Nullwake** (2D) is on **7.33.0** via `Game2D` (+ `Diagnostics`/
-`Persistence`/`Windowing`/`Snapshot`), and **SpaceGame** (2D) is on **7.34.0** via `Game2D` + `Render3D` + the
-split-out `SpaceGame.Sim` (`Updates` pinned separately at 7.24.0) - all three fully off MonoGame, each pinning
-the engine on its own schedule, referencing the engine in one line (plus the sim's foundation pins), and running on the
-`GameApp3D`/`GameApp` loop facade. The breaking 6.0.0 `Primitives.Color` migration has been adopted by all
-three. SpaceGame adopted manifest signing (`ke-updater sign` + embedded RSA public key) at 7.3.0._
+_Last verified: 2026-06-28. The shared `<KhaozEngineVersion>` line = **7.54.0** is the engine (the
+zero-dependency `Primitives` leaf + the custom MonoGame-free stack + the graduated foundation + the four umbrella
+metapackages Game2D/Game3D/Server/Foundation). Consumer pins lag on each game's own schedule:
+**Hardpoint** (3D) on **7.37.0** via `Game3D` + `Foundation` (`Snapshot`/`Snapshot.Render3D` 7.33.0 dev tool,
+`Updates` 7.20.1 separate), **Nullwake** (2D) on **7.33.0** via `Game2D` (+ `Diagnostics`/`Persistence`/
+`Windowing`/`Snapshot`/`Updates`), **SpaceGame** (2D + Render3D) on **7.34.0** via `Game2D` + `Render3D` head +
+the split-out `SpaceGame.Sim` foundation pins, and **Ruinborne** (3D MMO) on **7.51.2** via a single
+`<KhaozEngineVersion>` pin across the `Game3D` client and the `Server` + `WorldStore.SqlServer` headless server.
+All four are MonoGame-free, each referencing the engine through umbrella metapackages (plus granular pins), and
+the breaking 6.0.0 `Primitives.Color` migration is adopted across all of them._

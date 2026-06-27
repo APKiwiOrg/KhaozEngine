@@ -5,6 +5,33 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.55.0
+
+Walkable prop/building surfaces (stand on / jump onto rocks + roofs), character-physics sub-project B, building on
+the 7.54.0 vertical physics. Each walkable-solid prop kind bakes a render-free top-down max-height grid (single-
+valued top contour; no overhangs), placed by the deterministic scatter and queried at runtime so the player's
+support height becomes `max(terrain, prop surface)`. New in `KhaozEngine.Collision`: `PropSurface` (the unit-scale
+height grid + bilinear `SampleLocal` + versioned binary IO), `WorldSurface` (a placed surface, scale/yaw applied at
+query time so client + server match), and `WorldSurfaces` (a `SpatialHashGrid`-backed set whose `Query(x,z)`
+returns the max top under you). `WorldCollider` gains a `Top` (the prop's solid top) and `WorldColliders` a
+height-aware `Resolve(position, radius, footY)` that blocks a prop's side only while the feet are below its top, so
+standing on a roof is not shoved off (a thin blocker keeps `Top = +inf` and always blocks). `KhaozEngine.Locomotion`:
+`MoveTuning` gains `StepHeight` (default 0.4) and the vertical `CharacterMovement.Step` takes an optional
+`WorldSurfaces?` - the capsule lands/rests on the higher of terrain and a prop surface, the static-collision
+push-out is height-aware, and a support rise no greater than the step height is auto-mounted (step-up); null = the
+7.54.0 terrain-only behaviour. `KhaozEngine.Render3D`: `PropSurfaceBake.Bake(GltfMesh)` rasterizes the grid from a
+normalized mesh and `IsWalkableSolid` classifies walkable-solid (rock/log/building) vs thin-blocker (tree);
+`PropSurfaceLoader` reads the baked `.surf` render-free and bakes-to-file for tooling; `AssetEntry` gains
+`Surface` + `Heightmap`. New tool package `KhaozEngine.PropSurface.Tool` (`ke-propbake`): folds the surface bake
+into kit ingest (bakes a `.surf` per walkable-solid prop next to the glTF, stamps the manifest; re-ingest = re-bake).
+`KhaozEngine.Terrain.PropSurfaces.FromScatter` builds the surface set from the scatter + an obstacle list, and a
+top-aware `PropColliders.FromScatter` overload stamps each collider's `Top`. `WorldSurfaces` threads through
+`PlayerMoveSimulator`/`PlayerMovementSystem`/`WorldServer`/`ShardedWorldServer`/`CharacterController3D`, server-
+authoritative + client-predicted (the surface is a deterministic function of (x,z), like terrain). `TerrainWalkSample`
+makes the scattered rocks solid + jumpable and adds a jumpable platform with a walkable roof; trees stay thin
+blockers. Out of scope (named): overhangs/interiors/caves, full 3D mesh collision, dynamic/moving surfaces,
+player-vs-player, fall damage, climbing/mantling, streaming surfaces. Additive; new tool package; minor.
+
 ## 7.54.0
 
 Vertical character physics (gravity + jump), character-physics sub-project A. Movement was purely horizontal

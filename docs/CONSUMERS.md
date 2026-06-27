@@ -4,14 +4,16 @@ Which game uses which packages, at which version. Current state only - for the p
 [`../CHANGELOG.md`](../CHANGELOG.md). Update this whenever a consumer bumps a `<PackageReference>` or the
 engine ships a new version.
 
-**Engine current version:** `7.54.0` (the shared `<KhaozEngine5xVersion>` line, which is the engine): the
+**Engine current version:** `7.55.0` (the shared `<KhaozEngine5xVersion>` line, which is the engine): the
 custom MonoGame-free stack (`Primitives`/`Imaging`/`Gpu`/`Windowing`/`Render2D`/`Render3D`/`Gui`/`Audio`/`Particles`/`Effects`/`Game`/`Game.Render3D`) **plus**
 the MonoGame-free foundation packages that graduated onto it at `5.46.0`
 (`Ecs`/`Serialization`/`Content`/`Diagnostics`/`App`/`Localization`/`Locomotion`/`Persistence`/`Pooling`/`Platform`/
 `Updates`/`Collision`/`Netcode`/`Netcode.Abstractions`/`Netcode.LiteNetLib`/`WorldStore`/`WorldStore.Sqlite`/`WorldStore.SqlServer`/`NetWorld`). 7.3.0 also adds the publish-side
 `KhaozEngine.Updates.Tool` package (the `ke-updater` dotnet tool: manifest/genkey/sign/verify), and 7.14.0 adds
 the author-time `KhaozEngine.Sfx.Tool` package (the `ke-sfxbake` dotnet tool: manifest-driven bulk SFX
-generation + bake via the ElevenLabs API + ffmpeg/oggenc); both are tools,
+generation + bake via the ElevenLabs API + ffmpeg/oggenc), and 7.55.0 adds the author-time
+`KhaozEngine.PropSurface.Tool` package (the `ke-propbake` dotnet tool: bakes a walkable-surface `.surf` heightmap
+per walkable-solid prop in a kit manifest, folded into kit ingest); all are tools,
 not libraries, so no consumer references them via `<PackageReference>` and they are in no umbrella metapackage.
 7.33.0 adds the headless snapshot harness as two libraries (`KhaozEngine.Snapshot` = 2D `SnapshotRunner`/`SnapshotHost`;
 `KhaozEngine.Snapshot.Render3D` = the `Shot3D` extension) plus the BCL-only `KhaozEngine.Imaging` (`PngWriter`).

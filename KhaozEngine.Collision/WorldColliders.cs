@@ -9,7 +9,7 @@ namespace KhaozEngine.Collision;
 /// A render-free, broad-phased set of static world colliders (cylinders + oriented boxes) the kinematic capsule
 /// resolves against. Backed by the existing <see cref="SpatialHashGrid"/>: each collider is inserted at its
 /// centre with its <see cref="WorldCollider.BoundingRadius"/>, so <see cref="Query"/> and the per-tick
-/// <see cref="Resolve"/> only test nearby candidates. Immutable after construction (the static world). Build it
+/// <c>Resolve</c> only test nearby candidates. Immutable after construction (the static world). Build it
 /// from deterministic scatter placements + a hand-placed obstacle list (see
 /// <c>KhaozEngine.Terrain.PropColliders.FromScatter</c>). A null or empty set leaves movement unchanged.
 /// </summary>
@@ -40,7 +40,7 @@ public sealed class WorldColliders
 
     /// <summary>The colliders whose broad-phase cells fall within <paramref name="radius"/> of (x, z): a
     /// superset of those that could overlap a circle of that radius. Allocates a list (for queries/tests);
-    /// the per-tick path uses the allocation-free <see cref="Resolve"/>.</summary>
+    /// the per-tick path uses the allocation-free <c>Resolve</c>.</summary>
     public IReadOnlyList<WorldCollider> Query(float x, float z, float radius)
     {
         var list = new List<WorldCollider>();

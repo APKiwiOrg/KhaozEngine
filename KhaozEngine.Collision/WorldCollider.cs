@@ -15,7 +15,7 @@ public enum ColliderKind
 /// One placed static collider in world space (XZ): a <see cref="ColliderKind.Cylinder"/> (centre + radius) or a
 /// <see cref="ColliderKind.Box"/> (centre + half-extents + yaw). The unit <see cref="WorldColliders"/> stores
 /// and the player capsule's footprint resolves against. Built from a prop's <see cref="ColliderShape"/> via
-/// <see cref="ColliderShape.Place"/> or hand-authored for a building. Render-free, plain float.
+/// <c>ColliderShape.Place</c> or hand-authored for a building. Render-free, plain float.
 /// </summary>
 public readonly struct WorldCollider
 {

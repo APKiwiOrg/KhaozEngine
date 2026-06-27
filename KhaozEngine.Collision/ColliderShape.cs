@@ -5,7 +5,7 @@ namespace KhaozEngine.Collision;
 /// <summary>
 /// A prop-local (unplaced, unit-scale) collider declaration: the optional collision footprint carried on an
 /// asset entry. A <see cref="ColliderKind.Cylinder"/> stores a <see cref="Radius"/>; a
-/// <see cref="ColliderKind.Box"/> stores <see cref="HalfW"/> / <see cref="HalfD"/>. <see cref="Place"/> turns
+/// <see cref="ColliderKind.Box"/> stores <see cref="HalfW"/> / <see cref="HalfD"/>. <c>Place</c> turns
 /// it into a world-space <see cref="WorldCollider"/> at a scatter placement (centre, scale, yaw).
 /// </summary>
 public readonly struct ColliderShape

@@ -33,7 +33,7 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 | **KhaozEngine.Serialization** | Shared `System.Text.Json` defaults (`JsonDefaults`: tolerant-read / indented-write / include-fields) so Content, Persistence, and Ecs serialize consistently. | Pure .NET |
 | **KhaozEngine.Platform** | `Clipboard`: cross-platform system-clipboard facade. Text via a registered window/GLFW provider (wired by Windowing's `AppWindow`) with a macOS `NSPasteboard` fallback; images via Windows CF_DIB / macOS / optional mobile bridge. Best-effort and never-throwing. | Pure .NET |
 | **KhaozEngine.Pooling** | `ObjectPool<T>`: fixed-capacity free-list pool with O(1) rent/return, active/free tracking, swap-removal compaction. | Pure .NET |
-| **KhaozEngine.Collision** | Deterministic 2D collision + broadphase: `CircleCollision`, `SpatialHashGrid`, and static-world collision (`BoxCollision` circle-vs-AABB/oriented-box push-out, `WorldCollider`/`WorldColliders` the queryable set the kinematic capsule slides against). Bit-identical math for lockstep sims (`System.Numerics`). | Pure .NET |
+| **KhaozEngine.Collision** | Deterministic 2D collision + broadphase: `CircleCollision`, `SpatialHashGrid`, static-world collision (`BoxCollision` circle-vs-AABB/oriented-box push-out, `WorldCollider`/`WorldColliders` with height-aware blocking), and walkable prop surfaces (`PropSurface`/`WorldSurface`/`WorldSurfaces` top-surface height grids you stand on / jump onto). Bit-identical math for lockstep sims (`System.Numerics`). | Pure .NET |
 | **KhaozEngine.Terrain** | Render-free analytic terrain: `TerrainField` (`SampleHeight`/`SampleNormal`/`SampleBiome`/`WaterLevel`) folds biome-band shaping, stateless coordinate-hash fractal noise (`TerrainNoise`), and ordered features (`LakeFeature`/`RidgeFeature`/`FlattenFeature`); height at a point depends only on `(x, z, seed)`. Plus `TerrainCollision` (ground height + slope walkability) and `TerrainPresets.Clearing()`. Plain `float`; server and client sample the same field. In the `Foundation` umbrella. | Primitives |
 | **KhaozEngine.Locomotion** | Render-free character locomotion core: `CharacterMovement.Step` from a `MoveCommand` (camera-relative WASD axis + run + camera yaw + jump) over a timestep, normalized diagonals, ground-clamped via a height delegate with an optional slope gate. Two overloads share one horizontal core: `Step(Vector3,...)` (horizontal-only, Y instant-clamped) and the vertical-physics `Step(in MoveState,...)` (gravity + jump with coyote-time/jump-buffer + air control over a carried `MoveState`). One `MoveTuning` source of truth (speeds + gravity/jump/fall/feel) shared by the local `CharacterController3D`, the authoritative server sim, and client prediction. No input/render/netcode. In the `Foundation` umbrella. | Primitives, Collision |
 | **KhaozEngine.Determinism** | `DeterministicFpScope` / `DeterministicFp`: pins the CPU floating-point environment to a canonical IEEE state (round-to-nearest-even, FTZ/DAZ off, traps masked) for a fixed-tick / lockstep sim, then restores it, so a fixed-seed host sim doesn't drift across threads/machines. Pure-managed P/Invoke over `<fenv.h>`; `IsSupported` no-ops safely where unwired. | Pure .NET |
@@ -50,6 +50,7 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 | **KhaozEngine.NetWorld** | Render-free networked-world layer wiring movement to the authoritative netcode stack: `PlayerMoveState` (wraps a `Locomotion.MoveState`: position + vertical velocity + grounded) + the replicated `MovementState` component carrying the vertical axis on the wire (survives a sharded handoff, forms the client's exact reconcile basis); `PlayerMoveSimulator`/`PlayerMovementSystem` (run `CharacterMovement.Step` server-authoritatively and inside client prediction), `WorldServer`/`ShardedWorldServer` (authoritative sim + per-client AoI snapshots over `SnapshotWriter`+`InterestGrid`, headered with the receiver's net id + last-acked seq), and `WorldClient` (wraps `NetClient`+`ClientReplicationView`+`ClientPrediction`, reconciles position + the vertical axis, exposes `EntityRenderState[]`: local predicted, remotes replicated). Also `WorldPersistence` (+ `PlayerRecord`): wires an `IWorldStore` into the server lifecycle (load-on-join / save-on-leave / periodic dirty snapshot) so the world survives a restart, backend-agnostic. In the `Server` umbrella. | Locomotion, Collision, Netcode, Replication, Ecs, Sharding, WorldStore, Serialization |
 | **KhaozEngine.Content.Validator** | Build-time JSON-schema enforcement tool for content (`IsPackable=false`; ships inside the Content package). | Content |
 | **KhaozEngine.Sfx.Tool** | The `ke-sfxbake` dotnet tool (`PackAsTool`): manifest-driven bulk SFX generation + bake. Reads a per-game `sfx.manifest.jsonc`, generates each effect via the ElevenLabs sound-effects REST API, encodes with ffmpeg/oggenc, idempotent via `.sfxmeta` sidecars. Author-time tool, not a runtime package. | Serialization |
+| **KhaozEngine.PropSurface.Tool** | The `ke-propbake` dotnet tool (`PackAsTool`): bakes a walkable-surface `.surf` heightmap per walkable-solid prop (rocks/logs/buildings) in a kit manifest and stamps the `surface`/`heightmap` fields. Run as the last kit-ingest step (re-ingest = re-bake). Author-time tool, not a runtime package. | Render3D |
 
 **Umbrella metapackages** (code-free curated dependency groups - one `<PackageReference>` instead of a dozen):
 
@@ -131,10 +132,10 @@ Published to a private GitHub Packages feed on tagged releases, and packed to a 
 ```
 ```xml
 <!-- One reference per project via an umbrella metapackage. Pick the bundle that fits: -->
-<PackageReference Include="KhaozEngine.Game2D"     Version="7.54.0" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
-<PackageReference Include="KhaozEngine.Game3D"     Version="7.54.0" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
-<PackageReference Include="KhaozEngine.Server"     Version="7.54.0" />  <!-- headless: foundation + netcode, no graphics -->
-<PackageReference Include="KhaozEngine.Foundation" Version="7.54.0" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
+<PackageReference Include="KhaozEngine.Game2D"     Version="7.55.0" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
+<PackageReference Include="KhaozEngine.Game3D"     Version="7.55.0" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
+<PackageReference Include="KhaozEngine.Server"     Version="7.55.0" />  <!-- headless: foundation + netcode, no graphics -->
+<PackageReference Include="KhaozEngine.Foundation" Version="7.55.0" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
 ```
 
 The metapackages have no code; they just pull in the granular packages. You can still reference those
@@ -176,7 +177,7 @@ KhaozEngine.Foundation/   KhaozEngine.Game2D/   KhaozEngine.Game3D/   KhaozEngin
 KhaozEngine.Tests/   GuiSample/   Render2DSample/   Render3DSample/   SceneSample/   WindowingSample/   MiniGame/
 SnapshotSample/   TerrainWalkSample/   MmoServerSample/ (reference dedicated MMO server)
 NetworkedWalkServer/ + NetworkedWalkSample/ (networked walkable overworld: headless server + windowed client)
-KhaozEngine.Updates.Tool/ (ke-updater)   KhaozEngine.Sfx.Tool/ (ke-sfxbake)
+KhaozEngine.Updates.Tool/ (ke-updater)   KhaozEngine.Sfx.Tool/ (ke-sfxbake)   KhaozEngine.PropSurface.Tool/ (ke-propbake)
 tools/   docs/USING-KHAOZENGINE.md
 Directory.Build.props (shared version)   nuget.config   .github/workflows/ci.yml
 ```

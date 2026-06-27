@@ -527,5 +527,89 @@ namespace KhaozEngine.Tests.Gpu
 
             GoldenCompare.AssertOrUpdate("gui_button_glow", rgba, W, H);
         }
+
+        // Bug A: outline-on and outline-off must render the SAME vertical orientation. Each fullscreen post pass
+        // flips vertically, so the parity of (quantize + outline + blit) used to leak through as an upside-down
+        // image when the optional passes toggled. Render a vertically asymmetric scene (a bright emissive sphere
+        // high in the world => near the TOP of the frame) both ways and assert the top third is brighter than the
+        // bottom third in BOTH (i.e. upright in both).
+        [GpuFact]
+        public void Golden3D_OutlineToggle_DoesNotFlip()
+        {
+            float TopMinusBottom(bool outline)
+            {
+                MeshHandle floor = default, sphere = default;
+                byte[] rgba = Render3DSnapshot.Capture(W, H,
+                    setup: scene =>
+                    {
+                        floor = scene.LoadMesh(MeshPrimitives.Tile(10f, 0.1f));
+                        sphere = scene.LoadMesh(MeshPrimitives.Sphere(0.8f));
+                        scene.Post.Outline = outline;
+                        scene.Post.Starfield = false;
+                        scene.Camera.Frame(new Vector3(0, 0.5f, 0), new Vector3(6f, 5f, 6f));
+                    },
+                    drawFrame: scene =>
+                    {
+                        scene.Draw(floor, Matrix4x4.Identity);
+                        scene.Draw(sphere, Matrix4x4.CreateTranslation(0, 3f, 0),
+                            new Color(1f, 0.1f, 0.1f, 1f), Material.Glowing(new Color(1f, 0.1f, 0.1f, 1f)));
+                    },
+                    frames: 2);
+                // "Redness" = R - G isolates the red sphere (high) from the white floor (~0) and dark bg (~0).
+                double top = 0, bot = 0; int nt = 0, nb = 0;
+                for (int y = 0; y < H; y++)
+                    for (int x = 0; x < W; x++)
+                    {
+                        int i = (y * W + x) * 4;
+                        double redness = (rgba[i] - rgba[i + 1]) / 255.0;
+                        if (y < H / 3) { top += redness; nt++; } else if (y >= 2 * H / 3) { bot += redness; nb++; }
+                    }
+                return (float)(top / nt - bot / nb);
+            }
+            // The bright red sphere sits high => the top third is redder than the bottom in BOTH configs (upright).
+            Assert.True(TopMinusBottom(true) > 0.02f, "outline-on is upside down");
+            Assert.True(TopMinusBottom(false) > 0.02f, "outline-off is upside down (Bug A)");
+        }
+
+        // Perspective-camera outline: locks the corrected stable outline (Fix C linearized relative depth) AND
+        // Bug B's interior-crease normal term under a perspective FollowCamera3D, upright (Bug A) by construction.
+        // The pitch is steep enough that the near floor is not at extreme grazing (where a depth edge floods on any
+        // plane); the outline reads as silhouettes (floor edges + objects) plus the box's interior creases.
+        [GpuFact]
+        public void Golden3D_PerspectiveOutline()
+        {
+            MeshHandle floor = default, box = default, sphere = default;
+            var follow = new FollowCamera3D
+            {
+                Target = new Vector3(0f, 0.5f, 0f),
+                Pitch = 0.7f, Yaw = 0.5f, Distance = 9f, HeightOffset = 1.2f,
+                AspectRatio = (float)W / H,
+            };
+            byte[] rgba = Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    floor = scene.LoadMesh(MeshPrimitives.Tile(14f, 0.1f));
+                    box = scene.LoadMesh(MeshPrimitives.Box(1.2f));
+                    sphere = scene.LoadMesh(MeshPrimitives.Sphere(0.7f));
+                    scene.Post.Starfield = false;
+                    scene.Post.BackgroundColor = new Color(0.10f, 0.12f, 0.16f, 1f);
+                    scene.Post.Outline = true;
+                    scene.Post.OutlineColor = new Color(0.02f, 0.02f, 0.04f, 1f);
+                    scene.Post.OutlineDepthThreshold = 0.3f;     // medium (relative Laplacian under perspective)
+                    scene.Post.OutlineNormalThreshold = 0.45f;
+                    scene.CameraOverride = follow;
+                },
+                drawFrame: scene =>
+                {
+                    scene.Draw(floor, Matrix4x4.CreateTranslation(0, 0, 0));
+                    scene.Draw(box, Matrix4x4.CreateTranslation(-1.6f, 0.6f, 0.4f),
+                        new Color(0.2f, 0.55f, 0.85f, 1f));
+                    scene.Draw(sphere, Matrix4x4.CreateTranslation(1.5f, 0.7f, -0.6f),
+                        new Color(0.85f, 0.35f, 0.2f, 1f));
+                },
+                frames: 2);
+
+            GoldenCompare.AssertOrUpdate("perspective_outline", rgba, W, H);
+        }
     }
 }

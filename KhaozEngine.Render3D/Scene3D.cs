@@ -723,7 +723,10 @@ namespace KhaozEngine.Render3D
         internal void RenderInternal(IGpuCommandList cl, int viewportW, int viewportH, IGpuFramebuffer target)
         {
             EnsureSize(viewportW, viewportH);
-            _post.PrepareUniforms(cl, _res, Post);
+            // Edge pass needs the camera's depth convention (perspective vs ortho + near/far) to linearize depth
+            // under perspective; derived from the projection matrix so no camera-interface change is required.
+            var camDepth = Internal.OutlineMath.ExtractCameraDepth(ActiveCamera.Projection);
+            _post.PrepareUniforms(cl, _res, Post, camDepth);
 
             _model.BeginModelPass(cl, _res, Post);
             Matrix4x4 vp = ActiveCamera.ViewProjection;

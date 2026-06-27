@@ -14,7 +14,7 @@ namespace KhaozEngine.Render3D.Rendering
     /// </summary>
     internal sealed class PixelPostProcess : IDisposable
     {
-        struct EdgeUbo { public Vector4 OutlineColor; public Vector4 Texel; public Vector4 Thresh; }
+        struct EdgeUbo { public Vector4 OutlineColor; public Vector4 Texel; public Vector4 Thresh; public Vector4 Fade; }
         struct FinalUbo { public Vector4 BgColor; public Vector4 Params; }
 
         readonly IGpuDevice _gd;
@@ -36,7 +36,7 @@ namespace KhaozEngine.Render3D.Rendering
             var f = gd.Factory;
 
             _palBuf = f.CreateBuffer(new GpuBufferDescription(1040, GpuBufferUsage.UniformBuffer)); // 64 vec4 + 1 vec4
-            _edgeBuf = f.CreateBuffer(new GpuBufferDescription(48, GpuBufferUsage.UniformBuffer));
+            _edgeBuf = f.CreateBuffer(new GpuBufferDescription(64, GpuBufferUsage.UniformBuffer)); // 4 vec4
             _finalBuf = f.CreateBuffer(new GpuBufferDescription(32, GpuBufferUsage.UniformBuffer)); // 2 vec4
 
             // Each pass is its own vert+frag pair (FullscreenVert is the shared vertex source).
@@ -100,7 +100,7 @@ namespace KhaozEngine.Render3D.Rendering
         int _boundW, _boundH;
 
         /// <summary>Upload post UBOs. Call BEFORE any SetFramebuffer this frame (no active render pass).</summary>
-        public void PrepareUniforms(IGpuCommandList cl, RenderResources res, PixelPostProcessSettings s)
+        public void PrepareUniforms(IGpuCommandList cl, RenderResources res, PixelPostProcessSettings s, in CameraDepth cam)
         {
             var pal = _palScratch;
             // Zero the 256-float palette region so stale colors from a larger previous palette don't leak.
@@ -118,15 +118,29 @@ namespace KhaozEngine.Render3D.Rendering
             var edge = new EdgeUbo
             {
                 OutlineColor = s.OutlineColor,
-                Texel = new Vector4(1f / res.Width, 1f / res.Height, 0, 0),
-                Thresh = new Vector4(s.OutlineDepthThreshold, s.OutlineNormalThreshold, 0, 0),
+                // Texel.xy = 1/size; .z = isPerspective (gates the Fix C linearization); .w = distance-fade on.
+                Texel = new Vector4(1f / res.Width, 1f / res.Height,
+                                    cam.IsPerspective ? 1f : 0f,
+                                    (cam.IsPerspective && s.OutlineDistanceFade) ? 1f : 0f),
+                // Thresh.x = depth threshold; .y = normal threshold; .z = near; .w = far.
+                Thresh = new Vector4(s.OutlineDepthThreshold, s.OutlineNormalThreshold, cam.Near, cam.Far),
+                // Fade.x = fade start (view depth); .y = fade end.
+                Fade = new Vector4(s.OutlineFadeStart, s.OutlineFadeEnd, 0f, 0f),
             };
             cl.UpdateBuffer(_edgeBuf, 0, in edge);
+
+            // Bug A: each fullscreen post pass flips vertically; the on-screen orientation depends on the parity of
+            // (quantize + outline + blit). The blit cancels it so EVERY config is upright: flip the sampled V iff the
+            // number of preceding post passes (quantize + outline) is EVEN. The default (outline on, quantize off)
+            // has 1 preceding pass (odd) => no flip => byte-identical to the committed outline-on goldens. This rule
+            // depends only on the settings, matching Run's pass sequence exactly.
+            int precedingPasses = (s.Quantize ? 1 : 0) + (s.Outline ? 1 : 0);
+            float flipV = (precedingPasses % 2) == 0 ? 1f : 0f;
 
             var final = new FinalUbo
             {
                 BgColor = s.BackgroundColor,
-                Params = new Vector4(s.Starfield ? 1f : 0f, s.TransparentBackground ? 1f : 0f, 0, 0),
+                Params = new Vector4(s.Starfield ? 1f : 0f, s.TransparentBackground ? 1f : 0f, flipV, 0),
             };
             cl.UpdateBuffer(_finalBuf, 0, in final);
         }

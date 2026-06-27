@@ -8,6 +8,11 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Committed CC0 Quaternius prop kit (decompressed to plain glTF offline) + manifest, copied next to the
+         exe so AssetManifest.Load resolves them at runtime. See assets/props/CREDITS.md. -->
+    <None Include="assets/props/**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Game/KhaozEngine.Game.csproj" />
     <ProjectReference Include="../KhaozEngine.Game.Render3D/KhaozEngine.Game.Render3D.csproj" />
     <ProjectReference Include="../KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />

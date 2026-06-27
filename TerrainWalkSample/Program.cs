@@ -17,8 +17,8 @@ using KhaozEngine.Windowing;
 // static (no walk-cycle yet). Honors KE_MAX_FRAMES so a headless smoke run renders N frames then exits 0.
 bool bounded = Array.Exists(args, a => a is "bounded" or "--bounded");
 Console.WriteLine(bounded
-    ? "Bounded clearing - mountains ring the play area; ONE pass to the NORTH (+Z) is the way out. You can't climb the walls. WASD move | mouse-drag orbit | scroll zoom | shift run | Esc quit"
-    : "TerrainWalkSample - WASD move | mouse-drag orbit | scroll zoom | shift run | Esc quit");
+    ? "Bounded clearing - mountains ring the play area; ONE pass to the NORTH (+Z) is the way out. You can't climb the walls. WASD move | space jump | mouse-drag orbit | scroll zoom | shift run | Esc quit"
+    : "TerrainWalkSample - WASD move | space jump (run off a cliff and fall) | mouse-drag orbit | scroll zoom | shift run | Esc quit");
 using (var app = new TerrainWalkApp(bounded))
     app.Run();
 return 0;

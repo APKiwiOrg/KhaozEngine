@@ -18,6 +18,16 @@ namespace KhaozEngine.Tests.Render3D
                 Vector2.Zero, Vector2.Zero, 0f, 800, 600);
         }
 
+        // Edge-triggered keys (KeysPressed populated) so WasPressed(...) sees them this frame.
+        static InputState Pressed(params Key[] pressed)
+        {
+            var p = new HashSet<Key>(pressed);
+            return new InputState(
+                p, p, new HashSet<Key>(),
+                new HashSet<MouseButton>(), new HashSet<MouseButton>(),
+                Vector2.Zero, Vector2.Zero, 0f, 800, 600);
+        }
+
         static readonly Func<float, float, float> FlatGround = (x, z) => 0f;
 
         [Fact]
@@ -104,6 +114,28 @@ namespace KhaozEngine.Tests.Render3D
             var c = new CharacterController3D { CapsuleHalfHeight = 0f };
             c.Update(Keys(Key.W), dt: 1f, cameraYaw: 0f, FlatGround, steep);
             Assert.True(MathF.Abs(c.Position.X) < 1e-6f && MathF.Abs(c.Position.Z) < 1e-6f, c.Position.ToString());
+        }
+
+        [Fact]
+        public void Space_launches_a_jump_when_grounded()
+        {
+            var c = new CharacterController3D { CapsuleHalfHeight = 0f };
+            c.Update(Keys(), dt: 1f / 60f, cameraYaw: 0f, FlatGround);   // settle grounded on flat ground
+            Assert.True(c.Grounded);
+
+            c.Update(Pressed(Key.Space), dt: 1f / 60f, cameraYaw: 0f, FlatGround);
+            Assert.True(c.VerticalVelocity > 0f, $"jump should launch, got {c.VerticalVelocity}");
+            Assert.False(c.Grounded);
+        }
+
+        [Fact]
+        public void Stays_grounded_with_no_jump_on_flat_ground()
+        {
+            var c = new CharacterController3D { CapsuleHalfHeight = 0.9f };
+            for (int i = 0; i < 30; i++) c.Update(Keys(Key.W), dt: 1f / 60f, cameraYaw: 0f, FlatGround);
+            Assert.True(c.Grounded);
+            Assert.Equal(0.9f, c.Position.Y, 4);
+            Assert.Equal(0f, c.VerticalVelocity, 4);
         }
     }
 }

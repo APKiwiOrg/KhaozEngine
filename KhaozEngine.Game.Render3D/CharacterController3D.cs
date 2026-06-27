@@ -9,18 +9,25 @@ namespace KhaozEngine.Game
     /// <summary>
     /// Terrain-agnostic third-person locomotion for the walkable slice. WASD moves the character on the XZ
     /// plane relative to a camera yaw (forward = the camera's look direction projected onto the ground);
-    /// diagonals are normalized; left/right shift runs. A thin input adapter over the shared
-    /// <see cref="CharacterMovement.Step"/> core (KhaozEngine.Locomotion): the same code runs the local feel
-    /// and the networked authoritative/predicted movement, with one <see cref="MoveTuning"/> source of truth.
-    /// Reads only the immutable input snapshot; no terrain dependency, no physics beyond ground-clamp.
-    /// The speeds and half-height are public fields, feel-tuned later.
+    /// diagonals are normalized; left/right shift runs; Space jumps. A thin input adapter over the shared
+    /// vertical <see cref="CharacterMovement.Step(in MoveState, in MoveCommand, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, WorldColliders?, Func{float, float, Vector2}?)"/>
+    /// core (KhaozEngine.Locomotion): the same code runs the local feel and the networked authoritative/predicted
+    /// movement, with one <see cref="MoveTuning"/> source of truth. Reads only the immutable input snapshot; no
+    /// terrain dependency, no physics beyond gravity + ground contact. Speeds, half-height, and the vertical-feel
+    /// constants are public fields, feel-tuned later.
     /// </summary>
     public sealed class CharacterController3D
     {
-        Vector3 _position;
+        MoveState _state;
 
-        /// <summary>Current world position (the capsule centre: ground height + <see cref="CapsuleHalfHeight"/>).</summary>
-        public Vector3 Position => _position;
+        /// <summary>Current world position (the capsule centre: ground height + <see cref="CapsuleHalfHeight"/> while grounded).</summary>
+        public Vector3 Position => _state.Position;
+
+        /// <summary>True while the capsule is resting on the ground (false while jumping or falling).</summary>
+        public bool Grounded => _state.Grounded;
+
+        /// <summary>Current vertical velocity (m/s, positive up).</summary>
+        public float VerticalVelocity => _state.VerticalVelocity;
 
         /// <summary>Metres per second while walking. Default 3.</summary>
         public float WalkSpeed = 3f;
@@ -36,12 +43,27 @@ namespace KhaozEngine.Game
         /// <summary>Capsule footprint radius for static-world collision (metres). Default 0.4.</summary>
         public float CapsuleRadius = 0.4f;
 
+        /// <summary>Gravity acceleration magnitude (m/s^2). Default 25.</summary>
+        public float Gravity = 25f;
+        /// <summary>Jump launch velocity (m/s). Default 8 (apex ~1.28 m).</summary>
+        public float JumpSpeed = 8f;
+        /// <summary>Terminal fall speed (m/s). Default 50.</summary>
+        public float MaxFallSpeed = 50f;
+        /// <summary>Coyote-time window (seconds): jump still fires shortly after leaving the ground. Default 0.1.</summary>
+        public float CoyoteTime = 0.1f;
+        /// <summary>Jump-buffer window (seconds): a jump pressed just before landing fires on contact. Default 0.1.</summary>
+        public float JumpBuffer = 0.1f;
+        /// <summary>Horizontal control while airborne (1 = full). Default 1.</summary>
+        public float AirControl = 1f;
+        /// <summary>Grounded skin (metres) so a downhill run does not jitter grounded/airborne. Default 0.3.</summary>
+        public float GroundedEpsilon = 0.3f;
+
         /// <summary>
         /// Advance the character for one frame. <paramref name="cameraYaw"/> is the follow camera's yaw (radians);
         /// <paramref name="groundHeight"/> returns terrain height at (x, z); <paramref name="groundNormal"/> is
         /// optional and, when given, gates moves by slope; <paramref name="colliders"/> is optional and, when
         /// given, pushes the capsule footprint out of static props/buildings (the same set + math the server runs).
-        /// Touches no input statics.
+        /// Space (just pressed) requests a jump. Touches no input statics.
         /// </summary>
         public void Update(in InputState input, float dt, float cameraYaw,
                            Func<float, float, float> groundHeight,
@@ -50,20 +72,26 @@ namespace KhaozEngine.Game
         {
             if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
 
-            // Map the input snapshot to a camera-relative move axis and run the shared movement step.
+            // Map the input snapshot to a camera-relative move axis + jump and run the shared movement step.
             Vector2 move = Vector2.Zero;
             if (input.IsDown(Key.W)) move.Y += 1f;
             if (input.IsDown(Key.S)) move.Y -= 1f;
             if (input.IsDown(Key.D)) move.X += 1f;
             if (input.IsDown(Key.A)) move.X -= 1f;
             bool run = input.IsDown(Key.LeftShift) || input.IsDown(Key.RightShift);
+            bool jump = input.WasPressed(Key.Space);   // edge-triggered: one jump per press (buffer handles timing)
 
-            var cmd = new MoveCommand(move, run, cameraYaw);
-            var tuning = new MoveTuning(WalkSpeed, RunSpeed, CapsuleHalfHeight, MaxSlopeRadians, CapsuleRadius);
-            _position = CharacterMovement.Step(_position, cmd, dt, groundHeight, tuning, groundNormal, colliders);
+            var cmd = new MoveCommand(move, run, cameraYaw, jump);
+            var tuning = new MoveTuning(WalkSpeed, RunSpeed, CapsuleHalfHeight, MaxSlopeRadians, CapsuleRadius)
+            {
+                Gravity = Gravity, JumpSpeed = JumpSpeed, MaxFallSpeed = MaxFallSpeed,
+                CoyoteTime = CoyoteTime, JumpBuffer = JumpBuffer, AirControl = AirControl,
+                GroundedEpsilon = GroundedEpsilon,
+            };
+            _state = CharacterMovement.Step(_state, cmd, dt, groundHeight, tuning, groundNormal, colliders);
         }
 
-        /// <summary>Teleport the character; Y is recomputed from the ground delegate on the next <see cref="Update"/>.</summary>
-        public void SetXZ(float x, float z) { _position.X = x; _position.Z = z; }
+        /// <summary>Teleport the character; Y/vertical state re-settle from the ground delegate on the next <see cref="Update"/>.</summary>
+        public void SetXZ(float x, float z) { _state.Position.X = x; _state.Position.Z = z; }
     }
 }

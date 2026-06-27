@@ -11,13 +11,23 @@ public class MoveProtocolTests
     [Fact]
     public void Move_round_trips()
     {
-        var cmd = new MoveCommand(new Vector2(0.5f, -1f), run: true, cameraYaw: 1.23f);
+        var cmd = new MoveCommand(new Vector2(0.5f, -1f), run: true, cameraYaw: 1.23f, jump: true);
         byte[] wire = MoveProtocol.EncodeMove(seq: 42, cmd);
         Assert.True(MoveProtocol.TryDecodeMove(wire, out int seq, out MoveCommand back));
         Assert.Equal(42, seq);
         Assert.Equal(cmd.Move, back.Move);
         Assert.Equal(cmd.Run, back.Run);
         Assert.Equal(cmd.CameraYaw, back.CameraYaw, 5);
+        Assert.True(back.Jump);
+    }
+
+    [Fact]
+    public void Move_round_trips_without_jump()
+    {
+        var cmd = new MoveCommand(new Vector2(0.5f, -1f), run: false, cameraYaw: 0f, jump: false);
+        byte[] wire = MoveProtocol.EncodeMove(seq: 1, cmd);
+        Assert.True(MoveProtocol.TryDecodeMove(wire, out _, out MoveCommand back));
+        Assert.False(back.Jump);
     }
 
     [Fact]

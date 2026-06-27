@@ -44,10 +44,10 @@ public static class MoveProtocol
         return r;
     }
 
-    // Move: [seq:int][move.x:float][move.y:float][run:byte][cameraYaw:float] = 17 bytes.
-    private const int MoveSize = 4 + 4 + 4 + 1 + 4;
+    // Move: [seq:int][move.x:float][move.y:float][run:byte][cameraYaw:float][jump:byte] = 18 bytes.
+    private const int MoveSize = 4 + 4 + 4 + 1 + 4 + 1;
 
-    /// <summary>Encodes a client move command.</summary>
+    /// <summary>Encodes a client move command (including the jump bit).</summary>
     public static byte[] EncodeMove(int seq, in MoveCommand cmd)
     {
         var b = new byte[MoveSize];
@@ -56,6 +56,7 @@ public static class MoveProtocol
         BitConverter.TryWriteBytes(b.AsSpan(8, 4), cmd.Move.Y);
         b[12] = cmd.Run ? (byte)1 : (byte)0;
         BitConverter.TryWriteBytes(b.AsSpan(13, 4), cmd.CameraYaw);
+        b[17] = cmd.Jump ? (byte)1 : (byte)0;
         return b;
     }
 
@@ -68,7 +69,8 @@ public static class MoveProtocol
             var move = new Vector2(BitConverter.ToSingle(data.Slice(4, 4)), BitConverter.ToSingle(data.Slice(8, 4)));
             bool run = data[12] != 0;
             float yaw = BitConverter.ToSingle(data.Slice(13, 4));
-            cmd = new MoveCommand(move, run, yaw);
+            bool jump = data[17] != 0;
+            cmd = new MoveCommand(move, run, yaw, jump);
             return true;
         }
         seq = -1;

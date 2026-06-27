@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Ecs;
 using KhaozEngine.Locomotion;
+using KhaozEngine.Netcode;
 using KhaozEngine.NetWorld;
 using KhaozEngine.Replication;
 using Xunit;
@@ -95,5 +96,44 @@ public class VerticalPhysicsTests
         Assert.True(ms.Grounded);
         Assert.Equal(0.2f, ms.TimeSinceGrounded, 4);
         Assert.Equal(0.05f, ms.JumpBufferRemaining, 4);
+    }
+
+    // Reads the (single) player's replicated vertical velocity straight off a server's authoritative world.
+    static float ServerVerticalVelocity(World world)
+    {
+        float v = float.NaN;
+        world.ForEach<NetId, MovementState>((Entity e, ref NetId _, ref MovementState ms) => v = ms.VerticalVelocity);
+        return v;
+    }
+
+    [Fact]
+    public void WorldServer_replicates_a_jump_then_landing()
+    {
+        var (st, ct) = LoopbackTransport.CreatePair();
+        var cfg = new WorldServerConfig { TickSeconds = 1f / 30f, SpawnPosition = _ => Vector3.Zero };
+        var server = new WorldServer(st, cfg, Flat, MoveTuning.Default);
+        var client = new NetClient(ct);
+        for (int i = 0; i < 10; i++) { client.Poll(); server.Poll(); server.Tick(cfg.TickSeconds); }
+        Assert.True(server.TryGetPlayerNetId(client.Slot, out _));
+
+        var jump = new MoveCommand(Vector2.Zero, run: false, cameraYaw: 0f, jump: true);
+        client.Send(MoveProtocol.EncodeMove(0, jump), NetChannelReliability.ReliableOrdered);
+        bool launched = false;
+        for (int i = 0; i < 5; i++)
+        {
+            client.Poll(); server.Poll(); server.Tick(cfg.TickSeconds);
+            if (ServerVerticalVelocity(server.World) > 0f) launched = true;   // catch the launch tick
+        }
+        Assert.True(launched, "server should replicate the launch (MovementState)");
+        Assert.True(server.TryGetPlayerState(client.Slot, out PlayerMoveState s1) && !s1.Grounded);
+
+        for (int i = 0; i < 120; i++)
+        {
+            client.Send(MoveProtocol.EncodeMove(i + 1, MoveCommand.Idle), NetChannelReliability.ReliableOrdered);
+            client.Poll(); server.Poll(); server.Tick(cfg.TickSeconds);
+        }
+        Assert.True(server.TryGetPlayerState(client.Slot, out PlayerMoveState s2));
+        Assert.True(s2.Grounded, "should land");
+        Assert.Equal(0f, s2.VerticalVelocity, 3);
     }
 }

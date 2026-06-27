@@ -23,4 +23,14 @@ public struct MovementState : IComponent
 
     /// <summary>Seconds of jump-buffer remaining (jump-buffer accounting).</summary>
     public float JumpBufferRemaining;
+
+    /// <summary>The vertical part of a full <see cref="PlayerMoveState"/> (the position is in
+    /// <see cref="ReplicatedPosition"/>).</summary>
+    public static MovementState From(in PlayerMoveState state) => new()
+    {
+        VerticalVelocity = state.Move.VerticalVelocity,
+        Grounded = state.Move.Grounded,
+        TimeSinceGrounded = state.Move.TimeSinceGrounded,
+        JumpBufferRemaining = state.Move.JumpBufferRemaining,
+    };
 }

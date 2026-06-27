@@ -94,6 +94,7 @@ public sealed class WorldServer : IWorldPersistenceHost
         if (!entityBySlot.TryGetValue(slot, out Entity e)) return;
         stateBySlot[slot] = state;
         world.Set(e, new ReplicatedPosition { Value = state.Position });
+        world.Set(e, MovementState.From(state));
     }
 
     /// <summary>Ingests session events (join/leave) and client input. Call once before <see cref="Tick"/>.</summary>
@@ -131,6 +132,7 @@ public sealed class WorldServer : IWorldPersistenceHost
             PlayerMoveState state = simulator.Step(stateBySlot[slot], cmd, dt);
             stateBySlot[slot] = state;
             world.Set(entityBySlot[slot], new ReplicatedPosition { Value = state.Position });
+            world.Set(entityBySlot[slot], MovementState.From(state));   // replicate the vertical axis
         }
 
         // Rebuild AoI index from current positions.
@@ -162,6 +164,7 @@ public sealed class WorldServer : IWorldPersistenceHost
         Entity e = world.Spawn();
         world.Set(e, new NetId(netId));
         world.Set(e, new ReplicatedPosition { Value = state.Position });
+        world.Set(e, MovementState.From(state));   // vertical axis present from the first snapshot
 
         string accountId = token is { Length: > 0 } ? Encoding.UTF8.GetString(token) : $"guest:{slot}";
         netIdBySlot[slot] = netId;

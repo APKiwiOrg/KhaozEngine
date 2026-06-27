@@ -34,4 +34,18 @@ public struct PlayerMoveState : IPredictedState<PlayerMoveState>
         m.Position = new Vector3(position.X, Move.Position.Y, position.Y);
         return new PlayerMoveState { Move = m };
     }
+
+    /// <summary>Rebuilds a full state from the two replicated components: the 3D <paramref name="position"/>
+    /// (<see cref="ReplicatedPosition"/>) plus the vertical <paramref name="movement"/> (<see cref="MovementState"/>).</summary>
+    public static PlayerMoveState From(Vector3 position, in MovementState movement) => new()
+    {
+        Move = new MoveState
+        {
+            Position = position,
+            VerticalVelocity = movement.VerticalVelocity,
+            Grounded = movement.Grounded,
+            TimeSinceGrounded = movement.TimeSinceGrounded,
+            JumpBufferRemaining = movement.JumpBufferRemaining,
+        },
+    };
 }

@@ -319,27 +319,67 @@ void main() {
 }";
 
         // ---- Depth/normal edge outline ----
+        // Bug B fix: sample ColorTex, NormalTex, DepthTex UP FRONT in BINDING ORDER. On Metal SPIRV-Cross assigns
+        // MSL texture indices by first-sample order, so sampling Depth before Normal (the old order) swapped the
+        // two samplers and the normal-edge term silently read depth data (mirrors the ModelFrag Albedo/NormalMap/
+        // Roughness fix; D3D11/Vulkan bind by explicit decoration and are order-insensitive).
+        // Fix C: under perspective the stored z/w is non-linear, so a fixed threshold pops on zoom/distance.
+        // Linearize to view-space eye distance (Thresh.zw = near/far) and compare a depth delta RELATIVE to view
+        // depth. Orthographic (Texel.z == 0) keeps the original raw abs(d-d0) > Thresh.x test, byte-identical.
+        // linearizeDepth mirrors OutlineMath.LinearizeDepth (keep in sync).
         public const string EdgeFrag = @"#version 450
 layout(set=0, binding=0) uniform texture2D ColorTex;
 layout(set=0, binding=1) uniform texture2D NormalTex;
 layout(set=0, binding=2) uniform texture2D DepthTex;
 layout(set=0, binding=3) uniform sampler Samp;
-layout(set=0, binding=4) uniform Edge { vec4 OutlineColor; vec4 Texel; vec4 Thresh; }; // Texel.xy=1/size; Thresh.x=depth,.y=normal
+layout(set=0, binding=4) uniform Edge { vec4 OutlineColor; vec4 Texel; vec4 Thresh; vec4 Fade; };
+// Texel.xy=1/size, .z=isPerspective, .w=distanceFadeOn; Thresh.x=depth, .y=normal, .z=near, .w=far; Fade.xy=start/end
 layout(location=0) in vec2 vUv;
 layout(location=0) out vec4 oColor;
+float linearizeDepth(float d, float near, float far) { return (near * far) / (far - d * (far - near)); }
 void main() {
+    // Up-front, in binding order (Color, Normal, Depth) - see Bug B note above.
     vec4 baseSrc = texture(sampler2D(ColorTex, Samp), vUv);
     vec3 base = baseSrc.rgb;
-    float d0 = texture(sampler2D(DepthTex, Samp), vUv).r;
     vec3 n0 = texture(sampler2D(NormalTex, Samp), vUv).rgb * 2.0 - 1.0;
+    float d0 = texture(sampler2D(DepthTex, Samp), vUv).r;
+
+    bool persp = Texel.z > 0.5;
+    float near = Thresh.z, far = Thresh.w;
+    vec2 ex = vec2(Texel.x, 0.0), ey = vec2(0.0, Texel.y);
+
+    // Four-neighbour samples (binding order preserved: Normal first, then Depth).
+    vec3 nL = texture(sampler2D(NormalTex, Samp), vUv - ex).rgb * 2.0 - 1.0;
+    vec3 nR = texture(sampler2D(NormalTex, Samp), vUv + ex).rgb * 2.0 - 1.0;
+    vec3 nU = texture(sampler2D(NormalTex, Samp), vUv + ey).rgb * 2.0 - 1.0;
+    vec3 nD = texture(sampler2D(NormalTex, Samp), vUv - ey).rgb * 2.0 - 1.0;
+    float dL = texture(sampler2D(DepthTex, Samp), vUv - ex).r;
+    float dR = texture(sampler2D(DepthTex, Samp), vUv + ex).r;
+    float dU = texture(sampler2D(DepthTex, Samp), vUv + ey).r;
+    float dD = texture(sampler2D(DepthTex, Samp), vUv - ey).r;
+
     float edge = 0.0;
-    vec2 offs[4] = vec2[4](vec2(Texel.x, 0), vec2(-Texel.x, 0), vec2(0, Texel.y), vec2(0, -Texel.y));
-    for (int i = 0; i < 4; i++) {
-        float d = texture(sampler2D(DepthTex, Samp), vUv + offs[i]).r;
-        vec3 n = texture(sampler2D(NormalTex, Samp), vUv + offs[i]).rgb * 2.0 - 1.0;
-        if (abs(d - d0) > Thresh.x) edge = 1.0;
-        if ((1.0 - dot(n, n0)) > Thresh.y) edge = 1.0;
+    // Normal-crease edge: fire if ANY neighbour's geometric normal turns by more than the threshold. Flat
+    // surfaces (constant normal) never fire; this catches interior creases the depth term misses (Bug B).
+    if ((1.0 - dot(nL, n0)) > Thresh.y || (1.0 - dot(nR, n0)) > Thresh.y ||
+        (1.0 - dot(nU, n0)) > Thresh.y || (1.0 - dot(nD, n0)) > Thresh.y) edge = 1.0;
+
+    float lin0 = persp ? linearizeDepth(d0, near, far) : d0;
+    if (persp) {
+        // Perspective depth edge: a SECOND difference (Laplacian) of view-space depth, relative to depth. It is
+        // ~0 on smooth surfaces - including a steep grazing ground plane (constant slope => zero curvature), which
+        // a first difference floods - and spikes at silhouettes / occlusion steps. Stable at any zoom.
+        float lL = linearizeDepth(dL, near, far), lR = linearizeDepth(dR, near, far);
+        float lU = linearizeDepth(dU, near, far), lD = linearizeDepth(dD, near, far);
+        float lap = max(abs(lL + lR - 2.0 * lin0), abs(lU + lD - 2.0 * lin0));
+        if (lap > Thresh.x * lin0) edge = 1.0;
+        if (Texel.w > 0.5) edge *= 1.0 - smoothstep(Fade.x, Fade.y, lin0);   // optional distance fade (default off)
+    } else {
+        // Ortho: raw linear z/w, per-neighbour first difference (UNCHANGED, byte-identical to the original loop).
+        if (abs(dL - d0) > Thresh.x || abs(dR - d0) > Thresh.x ||
+            abs(dU - d0) > Thresh.x || abs(dD - d0) > Thresh.x) edge = 1.0;
     }
+
     oColor = vec4(mix(base, OutlineColor.rgb, edge), baseSrc.a); // preserve background alpha marker
 }";
 

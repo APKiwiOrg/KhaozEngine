@@ -640,8 +640,8 @@ Each chunk is a Render3D `GltfMesh` (vertex colours = a height/slope ramp), with
 cracks where a dense chunk meets a coarse neighbour, a `TerrainChunkBounds` AABB for frustum culling, and a
 parallel `TerrainSplatWeights[]` (grass/dirt/rock/sand/snow per vertex). The splat weights are **plumbed now**
 so the later PBR splat-texture upgrade is a drop-in; this slice just blends the five palette colours into the
-vertex colour. *Which* chunks exist and *when* they rebuild (world streaming), prop scatter, the character
-controller, and a real water shader are later sub-projects, not part of this one.
+vertex colour. *Which* chunks exist and *when* they rebuild is the **World streaming** sub-project below
+(`TerrainStreamer`); a real water shader and PBR splat textures are later sub-projects, not part of this one.
 
 ---
 
@@ -734,7 +734,45 @@ scene.DrawProps(placements, meshes, focus: character.Position, drawRadius: 90f);
 
 `PropRenderer.Queue(SceneInstances, ...)` is the same logic against a raw instance queue (headless-testable).
 See `TerrainWalkSample` for the full wiring. Mesh-LOD/impostors, PBR splat textures, prop/obstacle collision,
-chunk streaming, and animated props are later sub-projects, not part of this one.
+and animated props are later sub-projects, not part of this one.
+
+---
+
+## World streaming (`TerrainStreamer` / `Scene3DChunkSink`)
+
+`TerrainStreamer` (`KhaozEngine.Terrain.Render3D`) makes the world effectively endless: it keeps a ring of
+terrain chunks (and their props) loaded around the player and unloads the ones left behind, so you can walk
+any direction forever. It is pure bookkeeping (no GPU, no field), so the real mesh/prop/draw work lives behind
+an `IChunkSink`; the package ships a production sink (`Scene3DChunkSink`) and the streamer is headless-tested
+with a fake one. `using KhaozEngine.Terrain;`:
+
+```csharp
+var field = new TerrainField(TerrainPresets.Clearing());
+var sink  = new Scene3DChunkSink(scene, field, ScatterConfig.ForestRing(), propMeshes,
+                                 chunkSize: TerrainChunkRegion.DefaultSize, propDrawRadius: 90f);
+var streamer = new TerrainStreamer(StreamerConfig.Default, sink);
+
+// each frame:
+streamer.Update(playerPos, dt);   // load ring / unload (hysteresis) / re-LOD, amortized to MaxLoadsPerFrame
+// in your 3D draw pass:
+sink.Draw(playerPos);             // draws every loaded chunk + its in-range props
+```
+
+`Update(playerPos, dt)` each frame: (1) **loads** chunks inside `LoadRadius` (Euclidean chunk-distance) that
+are not yet loaded, (2) **unloads** chunks past `UnloadRadius` immediately, (3) **re-LODs** loaded chunks whose
+`TerrainLod.PickLod(distance-to-chunk-center)` tier changed (the chunk is rebuilt at the new resolution), and
+(4) **amortizes**: at most `MaxLoadsPerFrame` load/re-LOD ops per update (nearest first), so a build burst never
+hitches. `UnloadRadius > LoadRadius` is a **hysteresis band** that stops churn when the player oscillates across
+a chunk boundary. `StreamerConfig.Default` is LoadRadius 4 (~240 m view) / UnloadRadius 6 / MaxLoadsPerFrame 3 /
+60 m chunks. At load time (a loading moment, not a frame) pump `Update` until `streamer.Loaded.Count` stops
+growing to prime the full first ring before the first frame.
+
+`ChunkGrid` maps a `ChunkCoord(int X, int Z)` to and from world space for a chunk size (`CoordOf`/`CenterOf`/
+`RegionOf`/`AreaOf`); `AreaOf` is half-open so adjacent chunks tile `PropScatter` exactly once. Because
+`TerrainField.SampleHeight` and `PropScatter.Generate` are per-area deterministic, streaming is orthogonal to
+replication: the **networked client streams locally with the same code** (nothing about the world is sent over
+the wire). For a custom mesh/prop pipeline, implement `IChunkSink` yourself and pass it to `TerrainStreamer`.
+Threaded/background chunk build (an `IJobScheduler` build) and multi-cell server sharding are later sub-projects.
 
 ---
 

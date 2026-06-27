@@ -1,6 +1,6 @@
 # KhaozEngine roadmap / backlog
 
-Larger feature areas identified but not yet scheduled. Current released version: **7.47.0** (the shared
+Larger feature areas identified but not yet scheduled. Current released version: **7.48.0** (the shared
 `<KhaozEngine5xVersion>` line, which is the engine: the custom MonoGame-free stack plus the graduated foundation packages). The legacy 4.x
 line and its six genuinely-MonoGame packages (`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`) were
 DELETED from the engine source, so the engine itself is now entirely MonoGame-free. All three consumers are
@@ -80,8 +80,15 @@ Reference pattern: `github.com/levy-street/world-of-claudecraft` (engine-agnosti
   two clients walk the same terrain on localhost (props stay client-side deterministic scatter, not replicated).
   Single `World`; multi-cell sharding folds in with streaming next. Spec:
   `docs/superpowers/specs/2026-06-27-networked-overworld-design.md`.
-- **Next sub-projects:** world streaming / frustum+distance culling wired to `Sharding` (and multi-cell handoff
-  for the networked world), procedural dungeon generator, and animated characters/creatures (needs a glTF
+- **Client world streaming shipped (`7.48.0`).** Sub-project 6a (walk an endless world): `TerrainStreamer` +
+  `Scene3DChunkSink` (`KhaozEngine.Terrain.Render3D`) keep a ring of terrain chunks (+ their deterministic props)
+  loaded around the player - load inside `LoadRadius`, unload past `UnloadRadius` (hysteresis), re-LOD on a
+  `TerrainLod.PickLod` tier crossing, amortized to `MaxLoadsPerFrame` per update (no hitch). `ChunkCoord`/
+  `ChunkGrid` map coord<->world; `IChunkSink` is the GPU-free-testable seam. `TerrainWalkSample` now walks
+  forever; terrain/props are per-area deterministic so it composes with the networked client unchanged. Server
+  stays single-`World`. Spec: `docs/superpowers/specs/2026-06-27-world-streaming-design.md`.
+- **Next sub-projects:** multi-cell server sharding (6b: `WorldServer` onto `ShardHost` - ghosting + handoff +
+  client cell transitions), a procedural dungeon generator, and animated characters/creatures (needs a glTF
   animation-clip-playback feature). PBR splat textures and a water shader are terrain-material upgrades.
 
 ## The post-MonoGame pivot (6.x line): strategic direction

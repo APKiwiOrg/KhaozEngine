@@ -15,7 +15,7 @@
          foundation (Ecs/Serialization/Content/Diagnostics/App/Localization/Locomotion/Persistence/Pooling/Platform/
          Updates/Collision/Netcode/Netcode.Abstractions/Netcode.LiteNetLib/NetWorld). Bump here to release them
          together; this is the version the doc-version guard checks. -->
-    <KhaozEngine5xVersion>7.47.0</KhaozEngine5xVersion>
+    <KhaozEngine5xVersion>7.48.0</KhaozEngine5xVersion>
     <Authors>APKiwi</Authors>
     <Company>Khaoz</Company>
     <PackageProjectUrl>https://github.com/APKiwi/KhaozEngine</PackageProjectUrl>

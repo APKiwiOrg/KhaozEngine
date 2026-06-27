@@ -31,8 +31,12 @@ public readonly struct ColliderShape
     public static ColliderShape Box(float halfW, float halfD) => new(ColliderKind.Box, 0f, halfW, halfD);
 
     /// <summary>Place this shape at <paramref name="center"/> scaled by <paramref name="scale"/> and rotated by
-    /// <paramref name="yaw"/> (radians); a cylinder ignores yaw.</summary>
-    public WorldCollider Place(Vector2 center, float scale, float yaw) => Kind == ColliderKind.Cylinder
-        ? WorldCollider.Cylinder(center, Radius * scale)
-        : WorldCollider.Box(center, new Vector2(HalfW * scale, HalfD * scale), yaw);
+    /// <paramref name="yaw"/> (radians); a cylinder ignores yaw. The collider always-blocks (top = +inf).</summary>
+    public WorldCollider Place(Vector2 center, float scale, float yaw) => Place(center, scale, yaw, float.PositiveInfinity);
+
+    /// <summary>Place this shape with a solid <paramref name="top"/> world Y for height-aware blocking (the side
+    /// blocks only while the capsule's feet are below <paramref name="top"/>).</summary>
+    public WorldCollider Place(Vector2 center, float scale, float yaw, float top) => Kind == ColliderKind.Cylinder
+        ? WorldCollider.Cylinder(center, Radius * scale, top)
+        : WorldCollider.Box(center, new Vector2(HalfW * scale, HalfD * scale), yaw, top);
 }

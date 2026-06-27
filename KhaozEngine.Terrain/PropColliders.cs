@@ -25,6 +25,19 @@ namespace KhaozEngine.Terrain
             ColliderShape? defaultShape = null,
             IEnumerable<WorldCollider>? obstacles = null,
             float cellSize = 8f)
+            => FromScatter(placements, shapeForId, topForId: null, defaultShape, obstacles, cellSize);
+
+        /// <summary>As <see cref="FromScatter(IReadOnlyList{PropPlacement},Func{string,ColliderShape?},ColliderShape?,IEnumerable{WorldCollider},float)"/>,
+        /// but stamps each placed collider's <see cref="WorldCollider.Top"/> from <paramref name="topForId"/> (the
+        /// prop's solid top world Y, for height-aware blocking - a walkable-solid's baked surface top; +inf for a
+        /// thin blocker). A null <paramref name="topForId"/> leaves every collider always-blocking.</summary>
+        public static WorldColliders FromScatter(
+            IReadOnlyList<PropPlacement> placements,
+            Func<string, ColliderShape?> shapeForId,
+            Func<string, float>? topForId,
+            ColliderShape? defaultShape = null,
+            IEnumerable<WorldCollider>? obstacles = null,
+            float cellSize = 8f)
         {
             if (placements == null) throw new ArgumentNullException(nameof(placements));
             if (shapeForId == null) throw new ArgumentNullException(nameof(shapeForId));
@@ -34,7 +47,10 @@ namespace KhaozEngine.Terrain
             {
                 ColliderShape? shape = shapeForId(p.Id) ?? defaultShape;
                 if (shape is ColliderShape s)
-                    list.Add(s.Place(new Vector2(p.X, p.Z), p.Scale, p.Yaw));
+                {
+                    float top = topForId?.Invoke(p.Id) ?? float.PositiveInfinity;
+                    list.Add(s.Place(new Vector2(p.X, p.Z), p.Scale, p.Yaw, top));
+                }
             }
             if (obstacles != null)
                 list.AddRange(obstacles);

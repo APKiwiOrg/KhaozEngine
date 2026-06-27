@@ -122,5 +122,37 @@ namespace KhaozEngine.Tests.Render3D
             """;
             Assert.ThrowsAny<Exception>(() => AssetManifest.Parse(json));
         }
+
+        [Fact]
+        public void Parse_HeightmapAndSurfaceFlag()
+        {
+            const string json = """
+            { "props": [ { "id": "rock", "file": "rock.glb", "heightMeters": 1.8,
+                           "surface": true, "heightmap": "rock.surf" } ] }
+            """;
+            AssetManifest m = AssetManifest.Parse(json);
+            Assert.True(m.Props[0].Surface);
+            Assert.Equal("rock.surf", m.Props[0].Heightmap);
+        }
+
+        [Fact]
+        public void Parse_NoHeightmap_DefaultsNullAndFalse()
+        {
+            const string json = """{ "props": [ { "id": "x", "file": "x.glb", "heightMeters": 1 } ] }""";
+            AssetManifest m = AssetManifest.Parse(json);
+            Assert.Null(m.Props[0].Heightmap);
+            Assert.False(m.Props[0].Surface);
+        }
+
+        [Fact]
+        public void Parse_RelativeHeightmap_ResolvesAgainstBaseDir()
+        {
+            const string json = """
+            { "props": [ { "id": "rock", "file": "rock.glb", "heightMeters": 1.8, "heightmap": "rock.surf" } ] }
+            """;
+            string baseDir = Path.Combine("X", "kit");
+            AssetManifest m = AssetManifest.Parse(json, baseDir);
+            Assert.Equal(Path.Combine(baseDir, "rock.surf"), m.Props[0].Heightmap);
+        }
     }
 }

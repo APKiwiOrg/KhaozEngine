@@ -5,6 +5,21 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.53.0
+
+Mesh-derived prop collider footprints (follow-up to 7.52.0 static world collision). New
+`KhaozEngine.Render3D.PropFootprint.Derive(GltfMesh)` turns a `PropLoader`-normalized prop mesh into a correctly
+sized `ColliderShape` with no hand-authored radii: a short prop (<= `PropFootprintOptions.SolidHeightMeters`,
+default 2.5 m) uses its full XZ footprint, a tall prop uses only the bottom `TrunkHeightMeters` (default 1 m)
+slice so a tree's wide canopy is excluded while a building's vertical walls still measure their full footprint,
+and the footprint becomes a cylinder (radius = the larger half-extent, never under-covering) or an oriented box
+when its long/short aspect exceeds `BoxAspectThreshold` (default 1.5). `PropFootprint.DeriveAll(AssetManifest)`
+builds the `id -> ColliderShape` lookup `KhaozEngine.Terrain.PropColliders.FromScatter` takes (an explicit
+`AssetEntry.Collider` still wins; otherwise the glTF is loaded headlessly and its footprint derived). This fixes
+under-sized rock colliders in `TerrainWalkSample` (the boulders read ~1.0-1.24 m radius from the mesh, not the
+0.6-0.7 m guessed before, so the capsule no longer sinks into them); the sample now derives every prop's
+footprint from its mesh and drops the hand-authored manifest radii. Additive; no new package; minor.
+
 ## 7.52.0
 
 Static world collision: kinematic capsule-vs-static-collider in the XZ plane, authoritative, the standard MMO

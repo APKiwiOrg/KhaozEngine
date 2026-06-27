@@ -152,7 +152,10 @@ version/release work.
     an iterate-and-slide `Resolve` that pushes a capsule footprint out of overlaps, slide along surfaces).
     Render-free, kinematic, XZ-plane, authoritative (NOT a physics engine). `Collision` stays a `System.Numerics`
     leaf; `Locomotion`/`NetWorld`/`Terrain`/`Render3D` reference it (acyclic). `Render3D.AssetEntry` carries an
-    optional `ColliderShape Collider` (manifest `"collider": { "type": "cylinder"|"box", ... }`).
+    optional `ColliderShape Collider` (manifest `"collider": { "type": "cylinder"|"box", ... }`); when omitted,
+    `Render3D.PropFootprint.Derive(GltfMesh)` sizes the collider from the actual mesh (short prop = full footprint,
+    tall prop = bottom trunk slice so a tree's canopy isn't solid; cylinder or oriented box by aspect ratio),
+    `PropFootprint.DeriveAll(AssetManifest)` building the `id -> ColliderShape` lookup `PropColliders.FromScatter` takes.
   - **Locomotion + networked-world libs (render-free movement + the netcode wiring):** `Locomotion` (leaf, in
     `Foundation`, deps Primitives + Collision) = `CharacterMovement.Step` (pure XZ move from a `MoveCommand` + ground
     delegate + one `MoveTuning`, ground-clamped + slope gate - the slope gate runs only when a `groundNormal`

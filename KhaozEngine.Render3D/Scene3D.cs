@@ -83,6 +83,19 @@ namespace KhaozEngine.Render3D
         bool _billboardBasisValid;
 
         public IsoCamera3D Camera { get; } = new();
+
+        /// <summary>
+        /// Optional camera that overrides the built-in <see cref="Camera"/> for rendering this scene. Set it to a
+        /// sibling camera (e.g. <see cref="FollowCamera3D"/>) to drive the view/projection from something other than
+        /// the iso camera; null (the default) uses <see cref="Camera"/>. The override supplies only the read-only
+        /// camera surface (<see cref="IIsoCamera3D"/>), so the caller owns its aspect ratio: set it from the
+        /// framebuffer each frame. <see cref="Camera"/>'s aspect is still maintained by the scene.
+        /// </summary>
+        public IIsoCamera3D? CameraOverride { get; set; }
+
+        /// <summary>The camera the render path reads this frame: <see cref="CameraOverride"/> if set, else <see cref="Camera"/>.</summary>
+        IIsoCamera3D ActiveCamera => CameraOverride ?? Camera;
+
         public PixelPostProcessSettings Post { get; } = new();
 
         /// <summary>Host-set per-frame clock (seconds) driving beam pulse/scroll (see <see cref="DrawBeam"/> /
@@ -567,7 +580,7 @@ namespace KhaozEngine.Render3D
             // Camera basis is constant across a frame's billboards; compute it once (on the first call) and reuse.
             if (!_billboardBasisValid)
             {
-                BillboardGeometry.CameraBasis(Camera.Forward, out _billboardRight, out _billboardUp);
+                BillboardGeometry.CameraBasis(ActiveCamera.Forward, out _billboardRight, out _billboardUp);
                 _billboardBasisValid = true;
             }
             Span<Vector3> pos = stackalloc Vector3[6];
@@ -713,8 +726,8 @@ namespace KhaozEngine.Render3D
             _post.PrepareUniforms(cl, _res, Post);
 
             _model.BeginModelPass(cl, _res, Post);
-            Matrix4x4 vp = Camera.ViewProjection;
-            Vector3 eye = Camera.Eye;
+            Matrix4x4 vp = ActiveCamera.ViewProjection;
+            Vector3 eye = ActiveCamera.Eye;
             _model.SetFrameUniforms(cl, vp, eye, Post, CollectionsMarshal.AsSpan(_lights));
             _model.BindPass(cl);
 
@@ -797,28 +810,28 @@ namespace KhaozEngine.Render3D
             // queued decals onto the reconstructed surface into ColorTex, BEFORE post - so they conform to the
             // ground, are occluded by geometry (Y-band), and flow through the pixel post like the meshes.
             if (_decals.Count > 0)
-                _decalRenderer.Draw(cl, _res, Camera.ViewProjection, System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_decals));
+                _decalRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_decals));
 
             _post.Run(cl, _res, target, Post);
 
             // Filled overlay: rebind `target` and draw the accumulated translucent triangles on top of the post
             // image, BEFORE the lines so an outline drawn on top of a fill reads crisp. Depth disabled + alpha
-            // blend; same Camera.ViewProjection as the model pass (so fills line up with geometry and picking).
+            // blend; same ActiveCamera.ViewProjection as the model pass (so fills line up with geometry and picking).
             if (_fillVerts.Count > 0)
-                _fills.Draw(cl, Camera.ViewProjection, CollectionsMarshal.AsSpan(_fillVerts), target);
+                _fills.Draw(cl, ActiveCamera.ViewProjection, CollectionsMarshal.AsSpan(_fillVerts), target);
 
             // Debug overlay: rebind `target` and draw the accumulated lines on top of the post image, with
-            // depth disabled and alpha blend. Camera.ViewProjection matches the model pass (unflipped, so
+            // depth disabled and alpha blend. ActiveCamera.ViewProjection matches the model pass (unflipped, so
             // lines line up with rendered geometry and with ScreenToGround picking).
             if (_lineVerts.Count > 0)
-                _lines.Draw(cl, Camera.ViewProjection, CollectionsMarshal.AsSpan(_lineVerts), target);
+                _lines.Draw(cl, ActiveCamera.ViewProjection, CollectionsMarshal.AsSpan(_lineVerts), target);
 
             // Billboards: after the line pass, additive first (glow) then alpha, same overlay framebuffer +
             // ViewProjection. Each rebinds `target` (no clear) and uploads its own vertex span.
             if (_billboardAdditive.Count > 0)
-                _billboards.Draw(cl, Camera.ViewProjection, CollectionsMarshal.AsSpan(_billboardAdditive), target, additive: true);
+                _billboards.Draw(cl, ActiveCamera.ViewProjection, CollectionsMarshal.AsSpan(_billboardAdditive), target, additive: true);
             if (_billboardAlpha.Count > 0)
-                _billboards.Draw(cl, Camera.ViewProjection, CollectionsMarshal.AsSpan(_billboardAlpha), target, additive: false);
+                _billboards.Draw(cl, ActiveCamera.ViewProjection, CollectionsMarshal.AsSpan(_billboardAlpha), target, additive: false);
         }
 
         /// <summary>Coalesce the queued textured billboards into same-(texture,blend) runs (submission order
@@ -831,8 +844,8 @@ namespace KhaozEngine.Render3D
             CoalesceTexturedBillboards(_texBillboardItems, _texBillboardRuns);
 
             // Camera basis is constant across the frame; compute once and reuse for every quad.
-            BillboardGeometry.CameraBasis(Camera.Forward, out Vector3 right, out Vector3 up);
-            _texBillboards.SetViewProj(cl, Camera.ViewProjection);
+            BillboardGeometry.CameraBasis(ActiveCamera.Forward, out Vector3 right, out Vector3 up);
+            _texBillboards.SetViewProj(cl, ActiveCamera.ViewProjection);
 
             Span<Vector3> pos = stackalloc Vector3[6];
             Span<Vector2> uv = stackalloc Vector2[6];
@@ -860,7 +873,7 @@ namespace KhaozEngine.Render3D
         {
             if (_beamItems.Count == 0) return;
 
-            Vector3 viewDir = Camera.Forward;   // constant across the frame, matching the billboard basis
+            Vector3 viewDir = ActiveCamera.Forward;   // constant across the frame, matching the billboard basis
             _beamVerts.Clear();
             Span<Vector3> pos = stackalloc Vector3[6];
             Span<Vector2> uv = stackalloc Vector2[6];
@@ -872,7 +885,7 @@ namespace KhaozEngine.Render3D
             }
             if (_beamVerts.Count == 0) return;
 
-            _beams.SetFrameUniforms(cl, Camera.ViewProjection, EffectTimeSeconds);
+            _beams.SetFrameUniforms(cl, ActiveCamera.ViewProjection, EffectTimeSeconds);
             _beams.Draw(cl, CollectionsMarshal.AsSpan(_beamVerts), _res.ModelFB);
         }
 

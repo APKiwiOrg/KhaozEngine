@@ -5,6 +5,42 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.44.0
+
+Walkable overworld slice: sub-project 2 of the overworld render-scale track, making the terrain shipped in
+7.43.0 walkable in a window. Additive, minor (new public API in two existing packages, `KhaozEngine.Render3D`
+and `KhaozEngine.Game.Render3D`; no new package). The locked design: a **third-person follow camera** (orbit
+behind a moving target, mouse-look) built as a sibling of `IsoCamera3D`, a **greybox capsule character** (the
+engine has no glTF keyframe-clip playback yet, so the capsule is static), and **local/direct movement** over a
+**fixed chunk grid** (no netcode, no streaming). Camera + character are the reusable basis for the later
+world-client glue.
+
+- **New `FollowCamera3D` (`KhaozEngine.Render3D`)** - a perspective third-person camera that orbits behind a
+  `Target` at a clamped `Pitch`/`Distance` and always looks at the target. Sibling of `IsoCamera3D`: same Y-up
+  right-handed convention, same `Eye`/`Forward`/`ScreenToRay`/`ScreenToGround`, implements `IIsoCamera3D`. Perspective
+  (not orthographic) so scroll-zoom-via-distance reads naturally. Tuning is exposed as fields (`MinPitch`/`MaxPitch`,
+  `MinDistance`/`MaxDistance`, `HeightOffset`, `FieldOfView`, near/far).
+- **New `FollowCameraController` (`KhaozEngine.Render3D`)** - drives a `FollowCamera3D` from the immutable
+  `InputState` snapshot: hold the `OrbitButton` and drag to swing yaw/pitch, scroll to zoom. Touches no input
+  statics (headless-testable). Sensitivity (`OrbitYawSpeed`/`OrbitPitchSpeed`/`ZoomStep`) and the orbit button are
+  fields. Mirrors `IsoCameraController`.
+- **New `Scene3D.CameraOverride` (`KhaozEngine.Render3D`)** - optional `IIsoCamera3D` that overrides the built-in
+  iso `Camera` for the render path, so a sibling camera (e.g. `FollowCamera3D`) can drive the view/projection. Null
+  by default (behaviour unchanged). The caller owns the override's aspect ratio (set it from the framebuffer each
+  frame); the built-in `Camera`'s aspect is still maintained by the scene.
+- **New `CharacterController3D` (`KhaozEngine.Game.Render3D`)** - terrain-agnostic third-person locomotion: WASD
+  moves camera-relative on the XZ plane (normalized diagonals, left/right shift to run), and each frame the Y is
+  clamped onto a caller-supplied ground-height delegate plus a capsule half-height, with an optional ground-normal
+  slope gate that rejects steps onto too-steep ground. References no terrain package (ground supplied as delegates)
+  and does no physics beyond the ground-clamp (no jump/gravity). Speeds, half-height, and max slope are fields.
+- **New `TerrainWalkSample`** (`IsPackable=false`, not published) - a windowed sample that walks a 1.8 m greybox
+  capsule (from `MeshPrimitives.Capsule`) over a fixed 7x7 grid of `TerrainPresets.Clearing()` chunks
+  (`Scene3D.LoadTerrainChunk`/`DrawTerrainChunk`) with the follow camera, ground-clamped through `TerrainCollision`.
+  Controls: WASD move, mouse-drag orbit, scroll zoom, shift run, Esc quit.
+
+Out of scope (later sub-projects): animation/walk-cycle (needs a glTF animation-clip feature first), netcode-driven
+movement, chunk streaming, prop/obstacle collision, jump/gravity/physics beyond ground-clamp.
+
 ## 7.43.0
 
 Terrain system: the first sub-project of the overworld render-scale track. Two new packages give the engine a

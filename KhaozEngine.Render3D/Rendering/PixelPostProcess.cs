@@ -129,10 +129,18 @@ namespace KhaozEngine.Render3D.Rendering
             };
             cl.UpdateBuffer(_edgeBuf, 0, in edge);
 
+            // Bug A: each fullscreen post pass flips vertically; the on-screen orientation depends on the parity of
+            // (quantize + outline + blit). The blit cancels it so EVERY config is upright: flip the sampled V iff the
+            // number of preceding post passes (quantize + outline) is EVEN. The default (outline on, quantize off)
+            // has 1 preceding pass (odd) => no flip => byte-identical to the committed outline-on goldens. This rule
+            // depends only on the settings, matching Run's pass sequence exactly.
+            int precedingPasses = (s.Quantize ? 1 : 0) + (s.Outline ? 1 : 0);
+            float flipV = (precedingPasses % 2) == 0 ? 1f : 0f;
+
             var final = new FinalUbo
             {
                 BgColor = s.BackgroundColor,
-                Params = new Vector4(s.Starfield ? 1f : 0f, s.TransparentBackground ? 1f : 0f, 0, 0),
+                Params = new Vector4(s.Starfield ? 1f : 0f, s.TransparentBackground ? 1f : 0f, flipV, 0),
             };
             cl.UpdateBuffer(_finalBuf, 0, in final);
         }

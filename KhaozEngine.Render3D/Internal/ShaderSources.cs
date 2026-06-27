@@ -390,12 +390,15 @@ void main() {
         public const string BlitFrag = @"#version 450
 layout(set=0, binding=0) uniform texture2D Src;
 layout(set=0, binding=1) uniform sampler Samp;
-layout(set=0, binding=2) uniform Final { vec4 BgColor; vec4 Params; }; // Params.x=starsOn, .y=transparentBg
+layout(set=0, binding=2) uniform Final { vec4 BgColor; vec4 Params; }; // Params.x=starsOn, .y=transparentBg, .z=flipV
 layout(location=0) in vec2 vUv;
 layout(location=0) out vec4 oColor;
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 void main() {
-    vec4 s = texture(sampler2D(Src, Samp), vUv);
+    // Bug A: each fullscreen post pass flips vertically, so the orientation depends on the parity of how many
+    // ran. The blit cancels it (Params.z = flipV) so every config is upright. Starfield stays in screen space.
+    vec2 suv = (Params.z > 0.5) ? vec2(vUv.x, 1.0 - vUv.y) : vUv;
+    vec4 s = texture(sampler2D(Src, Samp), suv);
     vec3 col = s.rgb;
     if (Params.x > 0.5 && s.a < 0.5) {                   // background (alpha marker) -> stars
         vec2 cell = floor(vUv * vec2(220.0, 124.0));

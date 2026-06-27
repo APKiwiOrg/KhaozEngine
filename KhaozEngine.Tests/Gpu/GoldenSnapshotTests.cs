@@ -527,5 +527,48 @@ namespace KhaozEngine.Tests.Gpu
 
             GoldenCompare.AssertOrUpdate("gui_button_glow", rgba, W, H);
         }
+
+        // Bug A: outline-on and outline-off must render the SAME vertical orientation. Each fullscreen post pass
+        // flips vertically, so the parity of (quantize + outline + blit) used to leak through as an upside-down
+        // image when the optional passes toggled. Render a vertically asymmetric scene (a bright emissive sphere
+        // high in the world => near the TOP of the frame) both ways and assert the top third is brighter than the
+        // bottom third in BOTH (i.e. upright in both).
+        [GpuFact]
+        public void Golden3D_OutlineToggle_DoesNotFlip()
+        {
+            float TopMinusBottom(bool outline)
+            {
+                MeshHandle floor = default, sphere = default;
+                byte[] rgba = Render3DSnapshot.Capture(W, H,
+                    setup: scene =>
+                    {
+                        floor = scene.LoadMesh(MeshPrimitives.Tile(10f, 0.1f));
+                        sphere = scene.LoadMesh(MeshPrimitives.Sphere(0.8f));
+                        scene.Post.Outline = outline;
+                        scene.Post.Starfield = false;
+                        scene.Camera.Frame(new Vector3(0, 0.5f, 0), new Vector3(6f, 5f, 6f));
+                    },
+                    drawFrame: scene =>
+                    {
+                        scene.Draw(floor, Matrix4x4.Identity);
+                        scene.Draw(sphere, Matrix4x4.CreateTranslation(0, 3f, 0),
+                            new Color(1f, 0.1f, 0.1f, 1f), Material.Glowing(new Color(1f, 0.1f, 0.1f, 1f)));
+                    },
+                    frames: 2);
+                // "Redness" = R - G isolates the red sphere (high) from the white floor (~0) and dark bg (~0).
+                double top = 0, bot = 0; int nt = 0, nb = 0;
+                for (int y = 0; y < H; y++)
+                    for (int x = 0; x < W; x++)
+                    {
+                        int i = (y * W + x) * 4;
+                        double redness = (rgba[i] - rgba[i + 1]) / 255.0;
+                        if (y < H / 3) { top += redness; nt++; } else if (y >= 2 * H / 3) { bot += redness; nb++; }
+                    }
+                return (float)(top / nt - bot / nb);
+            }
+            // The bright red sphere sits high => the top third is redder than the bottom in BOTH configs (upright).
+            Assert.True(TopMinusBottom(true) > 0.02f, "outline-on is upside down");
+            Assert.True(TopMinusBottom(false) > 0.02f, "outline-off is upside down (Bug A)");
+        }
     }
 }

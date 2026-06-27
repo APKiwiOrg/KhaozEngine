@@ -27,15 +27,18 @@ public sealed class PlayerMovementSystem : ISystem
     private readonly Func<float, float, Vector3>? groundNormal;
     private readonly MoveTuning tuning;
     private readonly WorldColliders? colliders;
+    private readonly WorldSurfaces? surfaces;
     private readonly Func<float, float, Vector2>? clampXz;
 
     public PlayerMovementSystem(Func<float, float, float> groundHeight, MoveTuning tuning,
-        Func<float, float, Vector3>? groundNormal = null, WorldBounds? bounds = null, WorldColliders? colliders = null)
+        Func<float, float, Vector3>? groundNormal = null, WorldBounds? bounds = null, WorldColliders? colliders = null,
+        WorldSurfaces? surfaces = null)
     {
         this.groundHeight = groundHeight ?? throw new ArgumentNullException(nameof(groundHeight));
         this.tuning = tuning;
         this.groundNormal = groundNormal;
         this.colliders = colliders;
+        this.surfaces = surfaces;
         this.clampXz = bounds is null ? null : bounds.Clamp;   // play-area bound folded into the step (XZ only)
     }
 
@@ -54,7 +57,7 @@ public sealed class PlayerMovementSystem : ISystem
                 TimeSinceGrounded = ms.TimeSinceGrounded,
                 JumpBufferRemaining = ms.JumpBufferRemaining,
             };
-            state = CharacterMovement.Step(state, move.Command, dt, groundHeight, tuning, groundNormal, colliders, clampXz);
+            state = CharacterMovement.Step(state, move.Command, dt, groundHeight, tuning, groundNormal, colliders, clampXz, surfaces);
 
             pos.Value = state.Position;
             ms.VerticalVelocity = state.VerticalVelocity;

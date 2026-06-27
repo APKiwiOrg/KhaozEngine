@@ -17,15 +17,18 @@ public sealed class PlayerMoveSimulator : ITickSimulator<PlayerMoveState, MoveCo
     private readonly Func<float, float, Vector3>? groundNormal;
     private readonly MoveTuning tuning;
     private readonly WorldColliders? colliders;
+    private readonly WorldSurfaces? surfaces;
     private readonly Func<float, float, Vector2>? clampXz;
 
     public PlayerMoveSimulator(Func<float, float, float> groundHeight, MoveTuning tuning,
-        Func<float, float, Vector3>? groundNormal = null, WorldBounds? bounds = null, WorldColliders? colliders = null)
+        Func<float, float, Vector3>? groundNormal = null, WorldBounds? bounds = null, WorldColliders? colliders = null,
+        WorldSurfaces? surfaces = null)
     {
         this.groundHeight = groundHeight ?? throw new ArgumentNullException(nameof(groundHeight));
         this.tuning = tuning;
         this.groundNormal = groundNormal;
         this.colliders = colliders;
+        this.surfaces = surfaces;
         // Fold the play-area bound into the step as an XZ clamp, so the vertical axis is resolved at the clamped
         // position (an airborne player is not snapped to the ground at the wall) and the server/client stay identical.
         this.clampXz = bounds is null ? null : bounds.Clamp;
@@ -37,7 +40,7 @@ public sealed class PlayerMoveSimulator : ITickSimulator<PlayerMoveState, MoveCo
     /// and clamped into the play area when a <see cref="WorldBounds"/> is set.</summary>
     public PlayerMoveState Step(in PlayerMoveState state, in MoveCommand command, float dt)
     {
-        MoveState m = CharacterMovement.Step(state.Move, command, dt, groundHeight, tuning, groundNormal, colliders, clampXz);
+        MoveState m = CharacterMovement.Step(state.Move, command, dt, groundHeight, tuning, groundNormal, colliders, clampXz, surfaces);
         return new PlayerMoveState { Move = m };
     }
 }

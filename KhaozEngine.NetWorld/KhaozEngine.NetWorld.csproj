@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.NetWorld</PackageId>
+    <Version>$(KhaozEngine5xVersion)</Version>
+    <Description>Render-free networked-world layer wiring the movement core to the authoritative netcode stack. PlayerMoveSimulator (ITickSimulator) runs CharacterMovement.Step both server-authoritatively and inside client prediction. WorldServer is a single-World authoritative server: NetServer session layer, a per-player command queue, ground-clamped movement, and per-client area-of-interest snapshots (SnapshotWriter + InterestGrid) with a [localNetId][ack] header. WorldClient wraps NetClient + ClientReplicationView + ClientPrediction and exposes EntityRenderState[] (local predicted, remotes replicated). No render, window, or GPU dependency. Single-World slice of the MMO overworld; multi-cell sharding folds in with world streaming later.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Locomotion/KhaozEngine.Locomotion.csproj" />
+    <ProjectReference Include="../KhaozEngine.Netcode/KhaozEngine.Netcode.csproj" />
+    <ProjectReference Include="../KhaozEngine.Replication/KhaozEngine.Replication.csproj" />
+    <ProjectReference Include="../KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Tests" />
+  </ItemGroup>
+</Project>

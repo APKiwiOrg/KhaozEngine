@@ -670,7 +670,8 @@ camController.Update(input, dt);
 so any height source works. Pair it with `TerrainCollision.GroundHeight` for analytic terrain. WASD is
 camera-relative on XZ (normalized diagonals, left/right shift to run); `Position` is the capsule centre and its Y
 clamps to the ground plus `CapsuleHalfHeight` each frame. Speeds, capsule half-height, max slope, the camera
-distance/pitch limits, and orbit/zoom sensitivity are public fields (feel-tuned later). See `TerrainWalkSample` for
+distance/pitch limits, orbit/zoom sensitivity, and per-axis drag inversion (`FollowCameraController.InvertX` /
+`InvertY`, for an "invert axis" setting) are public fields (feel-tuned later). See `TerrainWalkSample` for
 the full wiring. Animation/walk-cycle, netcode-driven movement, chunk streaming, prop/obstacle collision, and
 physics beyond the ground-clamp are later sub-projects, not part of this one.
 

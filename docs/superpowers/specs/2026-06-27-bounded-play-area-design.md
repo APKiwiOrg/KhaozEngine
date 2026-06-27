@@ -44,7 +44,23 @@ public readonly struct RimPass { public float AngleRadians, HalfWidth, Falloff; 
 - `Passes` cut corridors through the wall (lower the rim along a heading) so a road can leave.
 - MVP is a **circular** rim; a rectangular variant (`RimRectFeature`) and arbitrary polygons are the
   obvious extensions — design `Apply` around a "distance to the play-area boundary" so the shape can
-  generalize later. `TerrainCollision.IsWalkable` already gates the steep walls (you can't climb out).
+  generalize later.
+
+### 1b. Slope-gate wiring — the rim only works as a border if it can't be climbed
+
+`CharacterMovement.Step` (Locomotion) ALREADY has a slope gate
+(`MoveTuning.MaxSlopeRadians`, default 50°: `if (acos(groundNormal.Y) > MaxSlopeRadians) blocked`), but
+it only runs when a `groundNormal` delegate is passed, and **nothing passes it today** — `TerrainWalkSample`
+and the controllers call `Update(... , GroundHeight)` with no normal, so `groundNormal` is null and the
+player walks straight up cliffs. This is NOT a missing physics system; the gate is unwired.
+
+Fix: expose `TerrainCollision.GroundNormal(x,z)` (it already has `SampleNormal`/`IsWalkable`), and pass it
+as the `groundNormal` delegate everywhere movement runs: `CharacterController3D` (local + prediction) AND
+the server sim (`PlayerMoveSimulator` → `WorldServer`/`ShardedWorldServer`), so the gate is **authoritative**
+(a hacked client still can't climb the rim). Tune `MaxSlopeRadians` down (50° is steep) so the rim mountains
+exceed it and block. `blocked` currently stops the XZ move entirely — keep that, but consider slide-along
+(project the move onto the walkable direction) as a feel follow-up. With this wired, the rim is a real
+diegetic border; `WorldBounds` is the belt-and-braces hard stop behind it.
 
 ### 2. `WorldBounds` — `KhaozEngine.NetWorld`
 
@@ -72,13 +88,19 @@ and *guarantees* it.
   and a `RimPass` corridor stays low (a gap); deterministic; composes with `Lake`/`Flatten`.
 - **WorldBounds**: `Contains`/`Clamp` correct for `Circle` + `Rect`; a point outside clamps onto the
   boundary; clamping is idempotent inside.
-- **Movement integration**: a player driving into the wall is clamped and stays inside; driving through a
-  pass region (where bounds open) is allowed; the clamp doesn't break prediction/reconciliation.
+- **Slope gate**: with the `groundNormal` delegate wired, a player driving at a slope steeper than
+  `MaxSlopeRadians` is blocked (cannot climb the rim); a gentle slope is walkable; the server sim gates
+  identically to the client (authoritative) so prediction stays consistent.
+- **Movement integration**: a player driving into the wall is held inside (slope gate + `WorldBounds`);
+  driving through a pass region is allowed; neither breaks prediction/reconciliation.
 
 ## Scope
 
 ### In scope
 
+- **Slope-gate wiring**: `TerrainCollision.GroundNormal(x,z)`, passed as the `groundNormal` delegate
+  through `CharacterController3D` (local + prediction) and `PlayerMoveSimulator` →
+  `WorldServer`/`ShardedWorldServer` (authoritative); tune `MoveTuning.MaxSlopeRadians` so the rim blocks.
 - `RimFeature` (+ `RimPass`) in `KhaozEngine.Terrain`; circular MVP, `Apply` shaped for later
   rect/polygon generalization.
 - `WorldBounds` (`CircleBounds` + `RectBounds`) in `KhaozEngine.NetWorld`, clamped in the movement step
@@ -96,6 +118,11 @@ and *guarantees* it.
   rim ships circular).
 - **Water shader, PBR rock on the rim** — visual polish, separate.
 - **Navmesh, gates/doors at passes, zone-transition on reaching a pass** — later.
+- **Static prop / building collision** (capsule-vs-prop colliders so you can't walk through trees or
+  the inn), **gravity / falling / jump**, and **step-height over small ledges** — these are the NEXT
+  character-physics features (a separate sub-project, needed once the CC0 buildings are placed in the
+  town). This spec only wires the slope gate that stops cliff-climbing; it is not a general physics
+  system. Named here so it is not forgotten.
 
 ## Engine-first
 

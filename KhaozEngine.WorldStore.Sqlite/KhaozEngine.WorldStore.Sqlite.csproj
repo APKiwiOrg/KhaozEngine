@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.WorldStore.Sqlite</PackageId>
-    <Version>$(KhaozEngine5xVersion)</Version>
+    <Version>$(KhaozEngineVersion)</Version>
     <Description>SQLite IWorldStore backend over Microsoft.Data.Sqlite: SqliteWorldStore persists the authoritative keyed byte[] world store to an embedded SQLite database (one world_store table, schema bootstrapped on construction, upsert via INSERT ... ON CONFLICT, raw parameterized async ADO.NET, no EF/ORM). The zero-infra dev/test and single-node backend; what keeps server persistence headless-testable. Opt-in: pulls Microsoft.Data.Sqlite without touching the dependency-free KhaozEngine.WorldStore core.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>

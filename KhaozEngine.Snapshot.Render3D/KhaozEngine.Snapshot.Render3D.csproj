@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.Snapshot.Render3D</PackageId>
-    <Version>$(KhaozEngine5xVersion)</Version>
+    <Version>$(KhaozEngineVersion)</Version>
     <Description>The 3D arm of the KhaozEngine snapshot harness: a Shot3D extension on SnapshotRunner that wraps Render3DSnapshot.Capture (setup + drawFrame) with the same encode -> write -> log path as the 2D shots. Kept in a separate package so a 2D-only game (KhaozEngine.Snapshot) never drags in Render3D; add this only when a tool needs 3D shots. MonoGame-free, deterministic, no-window.</Description>
   </PropertyGroup>
   <ItemGroup>

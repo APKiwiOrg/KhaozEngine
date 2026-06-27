@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.Telegraphs</PackageId>
-    <Version>$(KhaozEngine5xVersion)</Version>
+    <Version>$(KhaozEngineVersion)</Version>
     <Description>Presentation-only attack-telegraph / danger-zone indicators for KhaozEngine. A data-driven, immediate-mode renderer for animated danger shapes (circle, ring, beam, cone, arc) driven by a 0..1 telegraph progress and a styleable TelegraphStyle (fill/outline, color ramp, fill sweep, outline pulse, impact flash, element presets). This package is the render-free style + resolve core plus the 2D path (TelegraphRenderer2D over Render2D); add KhaozEngine.Telegraphs.Render3D for the ground-plane 3D path. Holds no simulation state - safe to feed from a deterministic/lockstep game without touching its hash, exactly like the skinned-mesh animation layers.</Description>
   </PropertyGroup>
   <ItemGroup>

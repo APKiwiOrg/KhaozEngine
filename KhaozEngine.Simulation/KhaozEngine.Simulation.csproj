@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.Simulation</PackageId>
-    <Version>$(KhaozEngine5xVersion)</Version>
+    <Version>$(KhaozEngineVersion)</Version>
     <Description>Headless simulation host primitives for an authoritative server: FixedTickHost, a fixed-timestep accumulator that converts variable real-elapsed time into a whole number of fixed-dt ticks, decoupling simulation rate from frame/render rate (with a spiral-of-death backlog guard). Deterministic and dependency-free. The foundation the authoritative server loop is built on.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>

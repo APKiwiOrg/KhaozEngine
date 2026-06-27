@@ -4,7 +4,7 @@ Which game uses which packages, at which version. Current state only - for the p
 [`../CHANGELOG.md`](../CHANGELOG.md). Update this whenever a consumer bumps a `<PackageReference>` or the
 engine ships a new version.
 
-**Engine current version:** `7.54.0` (the shared `<KhaozEngine5xVersion>` line, which is the engine): the
+**Engine current version:** `7.54.0` (the shared `<KhaozEngineVersion>` line, which is the engine): the
 custom MonoGame-free stack (`Primitives`/`Imaging`/`Gpu`/`Windowing`/`Render2D`/`Render3D`/`Gui`/`Audio`/`Particles`/`Effects`/`Game`/`Game.Render3D`) **plus**
 the MonoGame-free foundation packages that graduated onto it at `5.46.0`
 (`Ecs`/`Serialization`/`Content`/`Diagnostics`/`App`/`Localization`/`Locomotion`/`Persistence`/`Pooling`/`Platform`/
@@ -40,7 +40,7 @@ recoverable from GitHub Packages, the durable store. All three consumers are on 
 relies on a pre-6.x feed entry.
 
 > **5.46.0 (graduation, non-breaking re-version):** the 14 MonoGame-free foundation packages moved from the
-> 4.x `<Version>` line to the 5.x `<KhaozEngine5xVersion>` line so a 5.x game pins **only** 5.x packages. Same
+> 4.x `<Version>` line to the 5.x `<KhaozEngineVersion>` line so a 5.x game pins **only** 5.x packages. Same
 > assemblies, namespaces, and public API — a consumer just swaps `Version="4.12.0"` to `Version="5.46.0"` on
 > those `<PackageReference>`s. The old `4.12.0` foundation nupkgs stay in the feed (cumulative pack), so a
 > consumer that hasn't bumped (Hardpoint, SpaceGame) keeps resolving its pin and nothing breaks. This is audit
@@ -91,7 +91,7 @@ relies on a pre-6.x feed entry.
 `6.0.0`: `Color`, `DeterministicRng`, `XorRng`, `MathUtil`, `ViewportMath`, `Easing`) **plus** the custom-stack
 packages `Gpu`, `Windowing`, `Render2D`, `Render3D`, `Gui`, `Audio`, `Particles`, `Effects`, `Game`, `Game.Render3D` (the
 `-experimental` suffix was dropped at `5.31.0`) **plus** the 14 graduated foundation packages **plus** the four
-umbrella metapackages all share `<KhaozEngine5xVersion>`. The stack packages replace
+umbrella metapackages all share `<KhaozEngineVersion>`. The stack packages replace
 the legacy 4.x MonoGame rendering/UI/input/audio/screens/effects/time packages (UI->Gui, Graphics->Render2D,
 Screens->Gui ScreenStack + Game SceneManager, Input->Windowing, Effects->Particles, Time->Windowing.GameClock).
 See [`ROADMAP.md`](ROADMAP.md), "The post-MonoGame pivot".
@@ -281,7 +281,7 @@ There is no MonoGame and no `.mgcb`; the desktop head `SpaceGame.Desktop` runs S
 
 ```sh
 # engine version (source of truth) - the 5.x line is the engine; 4.x is legacy-MonoGame-only
-grep -iE '<KhaozEngine5xVersion>|<Version>' ~/KhaozEngine/Directory.Build.props
+grep -iE '<KhaozEngineVersion>|<Version>' ~/KhaozEngine/Directory.Build.props
 
 # what each consumer pins
 for d in ~/Hardpoint ~/Nullwake ~/SpaceGame; do
@@ -311,7 +311,7 @@ When a consumer raises its `KhaozEngine.*` pin, two things bite if skipped:
   the bump. (Hardpoint/SpaceGame restore from `local-feed`/GitHub Packages directly and have no vendored feed to
   refresh.)
 
-_Last verified: 2026-06-25. The shared line `<KhaozEngine5xVersion>` = **7.34.0** is the engine: the new
+_Last verified: 2026-06-25. The shared line `<KhaozEngineVersion>` = **7.34.0** is the engine: the new
 zero-dependency `Primitives` leaf + the custom-stack packages + the graduated foundation + the four umbrella
 metapackages (Game2D/Game3D/Server/Foundation). The legacy 4.x `<Version>` line was deleted from
 `Directory.Build.props` and its old MonoGame nupkgs pruned from the feed (recoverable from GitHub Packages).

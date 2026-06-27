@@ -2,8 +2,8 @@
 #
 # Guards against the docs drifting behind the engine version.
 #
-# Source of truth: <KhaozEngine5xVersion> in Directory.Build.props. The 5.x line IS
-# the engine now (the MonoGame-free foundation packages graduated onto it at 5.46.0),
+# Source of truth: <KhaozEngineVersion> in Directory.Build.props. This single version line IS
+# the engine (the MonoGame-free foundation packages graduated onto it at 5.46.0),
 # so the "engine current version" the docs declare must equal that. A few docs declare
 # that version in prose; this script checks exactly those declarations and nothing else.
 #
@@ -18,12 +18,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-ver=$(grep -oE '<KhaozEngine5xVersion>[^<]+</KhaozEngine5xVersion>' Directory.Build.props | head -1 | sed -E 's#</?KhaozEngine5xVersion>##g')
+ver=$(grep -oE '<KhaozEngineVersion>[^<]+</KhaozEngineVersion>' Directory.Build.props | head -1 | sed -E 's#</?KhaozEngineVersion>##g')
 if [ -z "$ver" ]; then
-  echo "could not read <KhaozEngine5xVersion> from Directory.Build.props" >&2
+  echo "could not read <KhaozEngineVersion> from Directory.Build.props" >&2
   exit 1
 fi
-echo "engine version (Directory.Build.props KhaozEngine5xVersion): $ver"
+echo "engine version (Directory.Build.props KhaozEngineVersion): $ver"
 
 fail=0
 expect() {

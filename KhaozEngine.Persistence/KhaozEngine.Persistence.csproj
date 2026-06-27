@@ -2,7 +2,7 @@
   <PropertyGroup>
     <PackageId>KhaozEngine.Persistence</PackageId>
     <!-- Graduated onto the shared 5.x line at 5.46.0 (was the 4.x <Version>); MonoGame-free foundation. -->
-    <Version>$(KhaozEngine5xVersion)</Version>
+    <Version>$(KhaozEngineVersion)</Version>
     <Description>Game-agnostic save/persistence helpers: SaveEncoder (Base64 + HMAC-SHA256 tamper-deterrent), AtomicJsonWriter + PersistenceQueue (crash-safe atomic writes with per-path coalescing), and SettingsManager (typed settings storage). Pure .NET (+ KhaozEngine.Diagnostics, KhaozEngine.App), no MonoGame dependency.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>

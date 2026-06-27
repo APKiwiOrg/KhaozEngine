@@ -2,7 +2,7 @@
   <PropertyGroup>
     <PackageId>KhaozEngine.Serialization</PackageId>
     <!-- Graduated onto the shared 5.x line at 5.46.0 (was the 4.x <Version>); MonoGame-free foundation. -->
-    <Version>$(KhaozEngine5xVersion)</Version>
+    <Version>$(KhaozEngineVersion)</Version>
     <Description>Shared System.Text.Json defaults (tolerant read, indented write, include-fields) so config, persistence, and ECS serialize JSON the same way. Pure BCL, no MonoGame dependency.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>

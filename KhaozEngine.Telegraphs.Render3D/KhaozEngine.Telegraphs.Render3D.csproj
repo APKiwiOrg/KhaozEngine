@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.Telegraphs.Render3D</PackageId>
-    <Version>$(KhaozEngine5xVersion)</Version>
+    <Version>$(KhaozEngineVersion)</Version>
     <Description>The 3D arm of the KhaozEngine telegraph system: Scene3D ground-plane extensions (GroundCircle/Ring/Beam/Cone/Arc) that map a TelegraphStyle + 0..1 progress onto Render3D's generic depth-sampling DrawGroundDecal primitive, so danger zones lie flat on the ground/terrain under the meshes and animate over the telegraph window. Kept separate from KhaozEngine.Telegraphs so a 2D-only game never drags in Render3D. Presentation only, holds no sim state. MonoGame-free.</Description>
   </PropertyGroup>
   <ItemGroup>

@@ -2,7 +2,7 @@
   <PropertyGroup>
     <PackageId>KhaozEngine.Platform</PackageId>
     <!-- Graduated onto the shared 5.x line at 5.46.0 (was the 4.x <Version>); MonoGame-free foundation. -->
-    <Version>$(KhaozEngine5xVersion)</Version>
+    <Version>$(KhaozEngineVersion)</Version>
     <Description>Game-agnostic native platform interop. Cross-platform clipboard get/set (text + image): text via a registered window/GLFW provider (wired by KhaozEngine.Windowing.AppWindow, the working Windows/Linux/macOS text path) with a macOS NSPasteboard fallback, plus Windows GDI (images) and an optional reflection-resolved mobile bridge. Pure BCL P/Invoke, no MonoGame dependency.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>

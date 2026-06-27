@@ -2,7 +2,7 @@
   <PropertyGroup>
     <PackageId>KhaozEngine.Content</PackageId>
     <!-- Graduated onto the shared 5.x line at 5.46.0 (was the 4.x <Version>); MonoGame-free foundation. -->
-    <Version>$(KhaozEngine5xVersion)</Version>
+    <Version>$(KhaozEngineVersion)</Version>
     <Description>Game-agnostic config loading (embedded/disk JSON) + JSON-schema validation, with build-time schema enforcement.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);BundleValidator</TargetsForTfmSpecificContentInPackage>

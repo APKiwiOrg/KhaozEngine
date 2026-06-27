@@ -54,12 +54,13 @@ version/release work.
 
 ## Build / test / release
 - `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj` - every new behaviour ships with a headless test.
-- **Always update BOTH `CHANGELOG.md` AND `CHANGENOTES.md` on every version bump.** `CHANGELOG.md` gets the
-  newest-first detailed entry (public API / behaviour change); `CHANGENOTES.md` gets a newest-first one-or-two
-  sentence digest line (the high-level "history over time" view). Both go in the SAME commit as the
-  `Directory.Build.props` version bump. Never bump the version (or tag a release) without both.
-- Release ritual, in order: bump `<KhaozEngine5xVersion>` in `Directory.Build.props` → add the
-  `CHANGELOG.md` entry → add the one-line `CHANGENOTES.md` entry → update the engine-version declarations the
+- **Always add a `CHANGELOG.md` entry on every version bump.** Newest-first, detailed (public API / behaviour
+  change), with a tight one-line summary as the entry's first sentence so the file doubles as the high-level
+  "history over time" view. It goes in the SAME commit as the `Directory.Build.props` version bump. Never bump
+  the version (or tag a release) without it. (There is no separate `CHANGENOTES.md` - it was folded into
+  `CHANGELOG.md`; one file is the single source of truth.)
+- Release ritual, in order: bump `<KhaozEngineVersion>` in `Directory.Build.props` → add the
+  `CHANGELOG.md` entry → update the engine-version declarations the
   guard checks (`docs/CONSUMERS.md` "Engine current version", `docs/ROADMAP.md` "Current released version", and
   the `README.md` `<PackageReference>` example) → `dotnet pack -c Release -o ./local-feed` (cumulative within a
   release) → commit → `git tag vX.Y.Z` → push `main` + the tag (CI publishes to GitHub Packages on `v*`).
@@ -71,24 +72,24 @@ version/release work.
   so those silently rot (7.34.0 shipped with the `README.md` package table and this `CLAUDE.md` package map both
   missing the two new packages). After ANY change, sweep ALL docs that could reference what you touched and update
   every one. When a package is ADDED/REMOVED: the `README.md` package-catalog table + the repo-layout block, this
-  `CLAUDE.md` package enumeration (the `<KhaozEngine5xVersion>` list above) + the umbrella descriptions,
+  `CLAUDE.md` package enumeration (the `<KhaozEngineVersion>` list above) + the umbrella descriptions,
   `docs/CONSUMERS.md` (the umbrella/package table), and `docs/USING-KHAOZENGINE.md` (a usage section for new public
-  API). For a behaviour/bug change: `CHANGELOG.md` + `CHANGENOTES.md` AND any doc, README, or code comment that
+  API). For a behaviour/bug change: `CHANGELOG.md` AND any doc, README, or code comment that
   described the OLD behaviour. Mechanical check before committing: grep the new (or removed) type / package / flag
   name across `*.md` + `CLAUDE.md` and confirm every place that should mention it does (and no stale doc still
   describes what you removed).
-- `scripts/check-doc-versions.sh` enforces those three declarations match the **5.x line**
-  (`<KhaozEngine5xVersion>`, which is the engine); CI runs it on every push, so a forgotten bump fails the
+- `scripts/check-doc-versions.sh` enforces those three declarations match the **engine version line**
+  (`<KhaozEngineVersion>`); CI runs it on every push, so a forgotten bump fails the
   build. Consumer pins are exempt and may lag.
 - **`docs/CONSUMERS.md` tracks which game pins which package version.** Update its version matrix
   whenever a consumer bumps a `KhaozEngine.*` `<PackageReference>`, and the engine-version line on
   every release. Refresh snippet is at the bottom of that file.
 - SemVer: additive = minor, fixes = patch, breaking = major.
 - **One shared version line - the engine is entirely MonoGame-free.** `Directory.Build.props` carries a single
-  `<KhaozEngine5xVersion>` governing the WHOLE engine; every packable project sets
-  `<Version>$(KhaozEngine5xVersion)</Version>` in its csproj, so one bump releases all packages together (repack to
+  `<KhaozEngineVersion>` governing the WHOLE engine; every packable project sets
+  `<Version>$(KhaozEngineVersion)</Version>` in its csproj, so one bump releases all packages together (repack to
   `local-feed`, single tag `vX.Y.Z`). `check-doc-versions.sh` enforces this line. **Per-version history lives in
-  `CHANGELOG.md` / `CHANGENOTES.md`, not here** - below is the durable package catalog only:
+  `CHANGELOG.md`, not here** - below is the durable package catalog only:
   - **Leaves (minimal deps):** `Primitives` (`Color`/`DeterministicRng`/`XorRng`/`MathUtil`/`ViewportMath`/`Easing`,
     zero-dependency), `Imaging` (`PngWriter`, the dependency-free RGBA8 PNG encoder; `Render2D.Png` shims it),
     `Determinism` (`DeterministicFp`/`DeterministicFpScope`, the CPU FP-environment pin for fixed-tick/lockstep sims;

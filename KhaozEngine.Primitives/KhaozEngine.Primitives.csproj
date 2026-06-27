@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>KhaozEngine.Primitives</PackageId>
-    <Version>$(KhaozEngine5xVersion)</Version>
+    <Version>$(KhaozEngineVersion)</Version>
     <Description>Zero-dependency shared primitives for KhaozEngine: Color, deterministic and fast RNG, and pure math helpers (clamp/lerp, viewport fit/cover, easing). System.Numerics only.</Description>
   </PropertyGroup>
 

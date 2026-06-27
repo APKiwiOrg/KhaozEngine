@@ -10,19 +10,18 @@ which one wins.
 |---|---|---|
 | [README.md](../README.md) | Top-level overview: the package table (granular packages + umbrella metapackages), the one hard rule, quickstart wiring, repo layout. | The package list + what each package owns. |
 | [USING-KHAOZENGINE.md](USING-KHAOZENGINE.md) | The consumer contract: hard rules, the data-flow model, per-layer API reference, headless-test patterns. Read before wiring a game in. | How a game must use the engine. |
-| [CHANGELOG.md](../CHANGELOG.md) | Newest-first, per-package, every version. | Release history (full detail). Nothing else should restate the per-version story. |
-| [CHANGENOTES.md](../CHANGENOTES.md) | The high-level history digest: one or two sentences per version, newest first. | The scannable "story over time". Distilled from CHANGELOG; updated on every version bump. |
+| [CHANGELOG.md](../CHANGELOG.md) | Newest-first, every version; each entry leads with a one-line summary, so the file doubles as the scannable "story over time". | Release history (full detail + the high-level digest). The single source for the per-version story; nothing else restates it. |
 | [CONSUMERS.md](CONSUMERS.md) | Current state only: which game pins which package at which version, and notable non-adoptions with reasons. | The version + adoption matrices. |
 | [CROSS-PLATFORM.md](CROSS-PLATFORM.md) | Desktop GPU story: platform → Veldrid backend mapping (Metal/D3D11/Vulkan), the golden-snapshot net, the CI matrix. | How rendering is verified per OS. |
 | [SECURITY-BASELINE.md](SECURITY-BASELINE.md) | The engine-wide security posture: threat model (where untrusted bytes enter), layered defenses (managed memory-safety, input validation, patched deps, signed updates, the CETCompat tradeoff), what's out of scope, and per-game vs engine responsibilities. | The security posture every game inherits. |
-| [ROADMAP.md](ROADMAP.md) | Larger feature areas not yet scheduled; shipped items marked. | The backlog. |
+| [ROADMAP.md](ROADMAP.md) | Future work only: planned features and missing pieces, newest priorities first. No shipped/done sections (that history is in CHANGELOG). | The forward backlog. |
 | `../<Package>/README.md` | One-paragraph purpose + a snippet per package. | Per-package quick reference. |
 
 Dated reference: [ENGINE-AUDIT-5x-2026-06-16.md](ENGINE-AUDIT-5x-2026-06-16.md) is a point-in-time 5.x audit
 (P0/P1/P2 risk register). Not a living doc; the CHANGELOG and design specs cite its item numbers, so it stays
 put rather than being edited in place.
 
-The **engine current version** lives in `../Directory.Build.props` (`<KhaozEngine5xVersion>`). Docs that restate it
+The **engine current version** lives in `../Directory.Build.props` (`<KhaozEngineVersion>`). Docs that restate it
 (CONSUMERS "Engine current version", ROADMAP "Current released version", the README PackageReference
 example) are guarded by [`../scripts/check-doc-versions.sh`](../scripts/check-doc-versions.sh), which CI
 runs on every push. Consumer *pins* are allowed to lag and are not checked.
@@ -30,8 +29,8 @@ runs on every push. Consumer *pins* are allowed to lag and are not checked.
 ## Process docs
 
 - [../CLAUDE.md](../CLAUDE.md) - concurrent-dev rule (worktree per change), the release ritual, build/test commands.
-- Release ritual, short form: bump `Directory.Build.props` `<KhaozEngine5xVersion>` -> add the `CHANGELOG.md` entry ->
-  add the one-line `CHANGENOTES.md` entry -> update the engine-version line in `CONSUMERS.md` (+ ROADMAP / README) ->
+- Release ritual, short form: bump `Directory.Build.props` `<KhaozEngineVersion>` -> add the `CHANGELOG.md` entry ->
+  update the engine-version line in `CONSUMERS.md` (+ ROADMAP / README) ->
   `dotnet pack -c Release -o ./local-feed` -> commit -> `git tag vX.Y.Z` -> push `main` + tag.
 
 ## Design archive (`docs/superpowers/`)

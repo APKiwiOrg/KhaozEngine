@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.Foundation</PackageId>
-    <Version>$(KhaozEngine5xVersion)</Version>
+    <Version>$(KhaozEngineVersion)</Version>
     <Description>Umbrella metapackage for the MonoGame-free, GPU-free foundation: App, Content, Diagnostics, Ecs, Localization, Locomotion, Persistence, Serialization, Pooling, Collision, Platform, Terrain, Updates. One reference for a gameplay-logic library or any non-rendering project that wants the engine's shared building blocks without pulling Windowing/Render/Gui/Audio or any GPU. (Networking lives in KhaozEngine.Netcode*; the game-runtime bundles are KhaozEngine.Game2D/Game3D; a headless server is KhaozEngine.Server.) Contains no code; just dependencies.</Description>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>

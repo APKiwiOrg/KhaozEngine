@@ -5,7 +5,7 @@
     <ToolCommandName>ke-sfxbake</ToolCommandName>
     <PackageId>KhaozEngine.Sfx.Tool</PackageId>
     <RootNamespace>KhaozEngine.Sfx</RootNamespace>
-    <Version>$(KhaozEngine5xVersion)</Version>
+    <Version>$(KhaozEngineVersion)</Version>
     <Description>The ke-sfxbake CLI: manifest-driven bulk SFX generation + bake for KhaozEngine. Reads a per-game JSONC manifest, generates each effect via the ElevenLabs Sound Effects REST API, normalizes/encodes with ffmpeg or oggenc, and writes the result into the game's asset tree with an idempotency sidecar. Author-time dev tool, not a runtime package.</Description>
   </PropertyGroup>
   <ItemGroup>

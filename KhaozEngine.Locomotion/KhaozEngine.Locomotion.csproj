@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.Locomotion</PackageId>
-    <Version>$(KhaozEngine5xVersion)</Version>
+    <Version>$(KhaozEngineVersion)</Version>
     <Description>Render-free character locomotion core for KhaozEngine. CharacterMovement.Step is a pure XZ-plane move: a MoveCommand (camera-relative WASD axis + run + camera yaw) advances a Vector3 position over a timestep, normalized diagonals, ground-clamped via a height delegate (feet on the ground) with an optional slope gate. One MoveTuning is the single source of truth shared by the local CharacterController3D, the authoritative server sim, and client-side prediction, so local and networked movement run identical code. Depends only on System.Numerics; no input, no render, no netcode.</Description>
   </PropertyGroup>
   <ItemGroup>

@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.WorldStore</PackageId>
-    <Version>$(KhaozEngine5xVersion)</Version>
+    <Version>$(KhaozEngineVersion)</Version>
     <Description>Server-side durable persistence seam for an authoritative world: IWorldStore, an async keyed byte[] store designed for a database backend (not local JSON save files), plus a dependency-free thread-safe InMemoryWorldStore reference/test implementation. Durable backends are opt-in sibling packages (KhaozEngine.WorldStore.Sqlite, KhaozEngine.WorldStore.SqlServer), each pulling its own DB driver so this core stays dependency-free. Part of the MMO netcode stack. Zero dependencies.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>

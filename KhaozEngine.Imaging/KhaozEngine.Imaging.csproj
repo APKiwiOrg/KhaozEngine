@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.Imaging</PackageId>
-    <Version>$(KhaozEngine5xVersion)</Version>
+    <Version>$(KhaozEngineVersion)</Version>
     <Description>Dependency-free image I/O for KhaozEngine: a minimal built-in PNG encoder (PngWriter) for 8-bit RGBA buffers, using only the BCL (ZLibStream + a CRC-32 table) so nothing pulls in a third-party image library. The canonical home for the encoder the headless snapshot helpers (KhaozEngine.Snapshot) and Render2D's clipboard-copy path use. Not a general image library (RGBA8 encode only; no decode/palette/interlace).</Description>
   </PropertyGroup>
   <ItemGroup>

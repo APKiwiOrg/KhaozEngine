@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.Server</PackageId>
-    <Version>$(KhaozEngine5xVersion)</Version>
+    <Version>$(KhaozEngineVersion)</Version>
     <Description>Umbrella metapackage for a headless / server-side build on the KhaozEngine 5.x stack: the MonoGame-free, GPU-free Foundation (Ecs/Serialization/Content/Persistence/Diagnostics/App/Localization/Collision/Pooling/Platform/Updates), the networking layer (Netcode/Netcode.Abstractions/Netcode.LiteNetLib), and the MMO server stack (Simulation fixed-tick host, Replication snapshot/delta sync, the WorldStore durable-state seam (IWorldStore + InMemoryWorldStore only; the SQLite / SQL Server backends are opt-in sibling packages, not bundled), Sharding cell-grid topology / ShardHost, and NetWorld single-World authoritative movement server + client glue). Pulls in NO graphics, windowing, audio, or GPU, so an authoritative sim server or tool stays lean. (A contracts-only project that just needs the wire types should reference KhaozEngine.Netcode.Abstractions directly instead.) Contains no code; just dependencies.</Description>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>

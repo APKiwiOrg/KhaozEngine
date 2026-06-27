@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.Terrain</PackageId>
-    <Version>$(KhaozEngine5xVersion)</Version>
+    <Version>$(KhaozEngineVersion)</Version>
     <Description>Render-free analytic terrain field for KhaozEngine. A deterministic TerrainField evaluates SampleHeight/SampleNormal/SampleBiome from a single coordinate-hash function (height at (x,z) depends only on (x,z,seed), never on which neighbour cells are loaded), folding biome-band shaping, fractal coordinate-hash noise, and an ordered feature list (LakeFeature/RidgeFeature/FlattenFeature). Plain float (authoritative server samples the same field the visual client renders). TerrainCollision wraps it for ground-follow and walkability. No render dependency - add KhaozEngine.Terrain.Render3D to mesh it.</Description>
   </PropertyGroup>
   <ItemGroup>

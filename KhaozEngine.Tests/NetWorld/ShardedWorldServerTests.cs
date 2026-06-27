@@ -163,4 +163,45 @@ public class ShardedWorldServerTests
 
         Assert.Equal(Run(new SingleThreadedJobScheduler()), Run(new ThreadPoolJobScheduler()));
     }
+
+    [Fact]
+    public void RealWorldClient_WalksAcrossBoundary_NoSnap_NetIdStable()
+    {
+        var (st, ct) = LoopbackTransport.CreatePair();
+        var cfg = SmallCells(_ => new Vector3(8f, 0f, 5f));   // cell (0,0), near east edge
+        var server = new ShardedWorldServer(st, cfg, Flat, MoveTuning.Default);
+        var client = new WorldClient(ct, Flat, MoveTuning.Default, new WorldClientConfig { TickSeconds = cfg.TickSeconds });
+
+        // Connect + first serves to seed the prediction basis.
+        for (int i = 0; i < 6; i++) { server.Poll(); server.Tick(cfg.TickSeconds); client.Poll(); }
+        Assert.True(client.Joined);
+        Assert.True(client.LocalNetId > 0);
+        int localNetId = client.LocalNetId;
+
+        float maxStep = MoveTuning.Default.RunSpeed * cfg.TickSeconds * 2f;
+        float prevX = LocalX(client);
+        bool crossed = false;
+        for (int i = 0; i < 120; i++)
+        {
+            client.SendInput(East);
+            server.Poll();
+            server.Tick(cfg.TickSeconds);
+            client.Poll();
+
+            Assert.Equal(localNetId, client.LocalNetId);          // stable identity across the migrate
+            float x = LocalX(client);
+            Assert.True(x - prevX <= maxStep + 1e-3f, $"client view snapped {prevX}->{x} at handoff");
+            prevX = x;
+            if (server.Host.TryGetOwner(localNetId, out CellSim owner, out _) && owner.Coord.X >= 1) crossed = true;
+        }
+        Assert.True(crossed, "player never crossed the boundary");
+        Assert.True(LocalX(client) > 10f, "client's local avatar should be past the x=10 boundary");
+    }
+
+    private static float LocalX(WorldClient client)
+    {
+        foreach (EntityRenderState e in client.Snapshot())
+            if (e.IsLocal) return e.Position.X;
+        throw new Xunit.Sdk.XunitException("no local entity in client snapshot");
+    }
 }

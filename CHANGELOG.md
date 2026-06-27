@@ -5,7 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
-## 7.51.0
+## 7.51.2
 
 Perspective-correct toon outline plus two outline bug fixes in `KhaozEngine.Render3D` (`Internal/ShaderSources`
 `EdgeFrag` + `BlitFrag`, `Rendering/PixelPostProcess`). The depth/normal edge outline was built for the

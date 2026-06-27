@@ -645,6 +645,37 @@ controller, and a real water shader are later sub-projects, not part of this one
 
 ---
 
+## Third-person follow camera + character controller (`FollowCamera3D` / `CharacterController3D`)
+
+For a walkable 3D world, pair `FollowCamera3D` (`KhaozEngine.Render3D`) with `CharacterController3D`
+(`KhaozEngine.Game.Render3D`). The camera is a perspective sibling of `IsoCamera3D`: it orbits behind a `Target`
+at a clamped `Pitch`/`Distance` and always looks at the target (same Y-up convention, same `Eye`/`Forward`/
+`ScreenToGround`; it implements `IIsoCamera3D`). Drive it from the input snapshot with `FollowCameraController`
+(hold the orbit button and drag to swing yaw/pitch, scroll to zoom). To render through it, set
+`Scene3D.CameraOverride` (null = the built-in iso `Camera`) and feed the override its aspect ratio each frame:
+
+```csharp
+var camera = new FollowCamera3D { Target = character.Position, Distance = 9f };
+var camController = new FollowCameraController(camera);
+scene.CameraOverride = camera;   // a sibling camera drives the render path; null = built-in iso Camera
+
+// each frame:
+character.Update(input, dt, camera.Yaw, terrain.GroundHeight);   // WASD camera-relative, ground-clamped
+camera.Target = character.Position;
+camera.AspectRatio = (float)frameWidth / frameHeight;
+camController.Update(input, dt);
+```
+
+`CharacterController3D` is terrain-agnostic: it takes ground height (and optionally ground normal) as delegates,
+so any height source works. Pair it with `TerrainCollision.GroundHeight` for analytic terrain. WASD is
+camera-relative on XZ (normalized diagonals, left/right shift to run); `Position` is the capsule centre and its Y
+clamps to the ground plus `CapsuleHalfHeight` each frame. Speeds, capsule half-height, max slope, the camera
+distance/pitch limits, and orbit/zoom sensitivity are public fields (feel-tuned later). See `TerrainWalkSample` for
+the full wiring. Animation/walk-cycle, netcode-driven movement, chunk streaming, prop/obstacle collision, and
+physics beyond the ground-clamp are later sub-projects, not part of this one.
+
+---
+
 ## ECS (`KhaozEngine.Ecs`)
 
 Independent of input/rendering. A struct-based archetype ECS: components are **structs** implementing

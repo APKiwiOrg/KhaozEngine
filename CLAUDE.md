@@ -217,6 +217,24 @@ version/release work.
     Networked-overworld render-scale sub-project (`docs/superpowers/specs/2026-06-27-networked-overworld-design.md`);
     persistence sub-project (`docs/superpowers/specs/2026-06-27-persistent-worldstore-design.md`); multi-cell sharding
     sub-project 6b (`docs/superpowers/specs/2026-06-27-multicell-sharding-design.md`).
+  - **Animated characters (glTF clip playback + locomotion blend, 7.56.0):** the GPU-free animation layer in
+    `Render3D` beside the rig/skinning - `GltfLoader.LoadAnimations(path)` reads SharpGLTF `LogicalAnimations` into
+    `AnimationClip`s (per-joint TRS keyframe tracks - `JointTrack`/`Vector3Track`/`QuaternionTrack` keyed by glTF
+    logical node index, `InterpolationMode` LINEAR/STEP, CUBICSPLINE reduced to its value keys), and
+    `GltfLoader.LoadSkinned` now also attaches a `Skeleton` (topologically-ordered parent links + rest-local
+    `JointPose` TRS + bone-to-node map + logical-node lookup) to `SkinnedGltfMesh` (new optional
+    `SkinnedGltfMesh.Skeleton`; old constructors unchanged). `AnimationSampler` samples a clip -> per-node local
+    poses -> composes the hierarchy into the joint-WORLD bone palette `Scene3D.DrawSkinned` consumes
+    (`SamplePose`/`Compose`/`SampleToBonePalette`/`BlendPoses`/`Wrap`); `AnimationPlayer` advances + loops a clip and
+    crossfades into a new one (blends the two clips' local TRS, composes once). In `Game.Render3D`: `LocomotionState`
+    (Idle/Walk/Run/Jump/Fall) + `LocomotionThresholds` + `LocomotionStateMachine.Evaluate(speed,grounded,vVel,t)`
+    (speed picks idle/walk/run; airborne wins - rising=Jump else Fall), and `AnimatedCharacter` (wraps a mesh
+    `Skeleton` + per-state clips + `AnimationPlayer` + the SM; movement state + dt -> bone palette, driven the same
+    for the LOCAL and REMOTE players). Client-cosmetic (picked from already-replicated movement; NO netcode/server
+    animation). `TerrainWalkSample` walks a committed KayKit CC0 rigged+animated character (skinned-ingest preserves
+    the rig + clips; NOT the flatten-prop path). Out of scope: animation events, root motion, IK, additive/facial
+    layers, full blend trees, networked animation. Design:
+    `docs/superpowers/specs/2026-06-27-animated-characters-design.md`.
   - **Umbrellas (code-free metapackages):** `Foundation`, `Game2D`, `Game3D`, `Server`.
   - **Tools, same version line:** `Updates.Tool` (`ke-updater`: manifest/genkey/sign/verify), `Sfx.Tool`
     (`ke-sfxbake`: ElevenLabs-driven SFX bake), and `PropSurface.Tool` (`ke-propbake`: bakes a walkable-surface

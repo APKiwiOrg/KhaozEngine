@@ -9,12 +9,14 @@ using KhaozEngine.Render3D;
 using KhaozEngine.Terrain;
 using KhaozEngine.Windowing;
 
-// Walkable overworld slice: drive a greybox capsule over the shipped analytic terrain
+// Walkable overworld slice: drive an animated KayKit CC0 character over the shipped analytic terrain
 // (TerrainPresets.Clearing) with a third-person follow camera. WASD move, mouse-drag orbit,
 // scroll zoom, shift run, Esc quit. The terrain field is wrapped in TerrainCollision for the
 // ground-clamp; the world is STREAMED (TerrainStreamer loads/unloads chunks + their props in a
-// ring around the player, so walking any direction streams the world forever) and the capsule is
-// static (no walk-cycle yet). Honors KE_MAX_FRAMES so a headless smoke run renders N frames then exits 0.
+// ring around the player, so walking any direction streams the world forever) and the character
+// idles/walks/runs and jumps/falls via AnimatedCharacter off the controller's movement state (it
+// falls back to a greybox capsule if the asset fails to load). Honors KE_MAX_FRAMES so a headless
+// smoke run renders N frames then exits 0.
 bool bounded = Array.Exists(args, a => a is "bounded" or "--bounded");
 Console.WriteLine(bounded
     ? "Bounded clearing - mountains ring the play area; ONE pass to the NORTH (+Z) is the way out. You can't climb the walls. WASD move | space jump | mouse-drag orbit | scroll zoom | shift run | Esc quit"
@@ -35,6 +37,16 @@ sealed class TerrainWalkApp : GameApp3D
     MeshHandle _capsule;
     MeshHandle _platformMesh;
     Matrix4x4 _platformXform;
+
+    // Animated character (replaces the static capsule). The KayKit CC0 rig is skinned-ingested so its animation
+    // channels survive; AnimatedCharacter drives idle/walk/run/jump/fall off the same movement state the controller
+    // computes. Falls back to the greybox capsule if the asset fails to load.
+    SkinnedMeshHandle _characterMesh;
+    AnimatedCharacter _animChar = null!;
+    bool _animated;
+    float _charScale = 1f;
+    float _facingYaw;
+    Vector3 _prevCharPos;
 
     // One uploaded mesh per kit id; the streamer scatters per-chunk props from these on demand.
     readonly Dictionary<string, MeshHandle> _propMeshes = new();
@@ -93,6 +105,12 @@ sealed class TerrainWalkApp : GameApp3D
         _character = new CharacterController3D { CapsuleHalfHeight = CapsuleHalfHeight, CapsuleRadius = CapsuleRadius };
         _character.SetXZ(0f, 0f);
         _character.Update(InputState.Empty, 0f, 0f, _terrain.GroundHeight, _terrain.GroundNormal);   // settle Y onto the ground (slope gate wired so cliffs aren't climbable)
+        _prevCharPos = _character.Position;
+
+        // Animated character: skinned-ingest the committed KayKit CC0 rig (LoadSkinned + LoadAnimations preserve the
+        // rig + animation channels - NOT the flatten-prop path), map its clip names to the locomotion states, and
+        // build an AnimatedCharacter. The capsule stays as a fallback if the asset is missing/unreadable.
+        TryLoadAnimatedCharacter(sc);
 
         // Follow camera drives rendering via the scene override; the ground delegate keeps the eye above the
         // terrain so it does not sink through the floor when the character is in a dip.
@@ -191,6 +209,19 @@ sealed class TerrainWalkApp : GameApp3D
 
         _character.Update(Input, dt, _camera.Yaw, _terrain.GroundHeight, _terrain.GroundNormal, _colliders, _surfaces);   // slope gate on; props solid; rocks/platform standable (jump onto, walk the top)
 
+        // Animate the character off the same movement state: horizontal speed from the XZ position delta over dt
+        // (so it reflects collision-clamped motion, not just input), facing turned toward the move direction, and
+        // the vertical state straight from the controller. Client-cosmetic; no effect on movement/collision.
+        if (_animated && dt > 1e-5f)
+        {
+            Vector3 cur = _character.Position;
+            Vector3 d = cur - _prevCharPos; d.Y = 0f;
+            float horizSpeed = d.Length() / dt;
+            if (d.LengthSquared() > 1e-6f) _facingYaw = MathF.Atan2(d.X, d.Z);
+            _animChar.Update(horizSpeed, _character.Grounded, _character.VerticalVelocity, dt);
+            _prevCharPos = cur;
+        }
+
         // Stream the world around the new player position (loads/unloads/re-LODs within MaxLoadsPerFrame).
         _streamer.Update(_character.Position, dt);
 
@@ -207,9 +238,66 @@ sealed class TerrainWalkApp : GameApp3D
         // The hand-placed jumpable platform (a solid box with a walkable roof).
         scene.Draw(_platformMesh, _platformXform, new Color(0.62f, 0.6f, 0.66f, 1f));
 
-        // Draw the capsule so its base sits on the ground (Position is the capsule centre).
+        // Draw the character so its feet sit on the ground (Position is the capsule centre; feet = centre - half).
         Vector3 p = _character.Position;
-        scene.Draw(_capsule, Matrix4x4.CreateTranslation(p.X, p.Y - CapsuleHalfHeight, p.Z), new Color(0.85f, 0.55f, 0.25f, 1f));
+        float footY = p.Y - CapsuleHalfHeight;
+        if (_animated)
+        {
+            Matrix4x4 model = Matrix4x4.CreateScale(_charScale)
+                              * Matrix4x4.CreateRotationY(_facingYaw)
+                              * Matrix4x4.CreateTranslation(p.X, footY, p.Z);
+            scene.DrawSkinned(_characterMesh, _animChar.Pose, model, Color.White);
+        }
+        else
+        {
+            scene.Draw(_capsule, Matrix4x4.CreateTranslation(p.X, footY, p.Z), new Color(0.85f, 0.55f, 0.25f, 1f));
+        }
+    }
+
+    // Skinned-ingest the committed KayKit CC0 character + its animation clips, map the clip names to the
+    // locomotion states, and build the AnimatedCharacter. On any failure the sample keeps the capsule.
+    void TryLoadAnimatedCharacter(Scene3D sc)
+    {
+        try
+        {
+            string charPath = Path.Combine(AppContext.BaseDirectory, "assets", "character", "Knight.glb");
+            (SkinnedGltfMesh charMesh, GltfMaterialMaps charMaps) = GltfLoader.LoadSkinnedWithMaterial(charPath);
+            if (charMesh.Skeleton is null) { Console.WriteLine("Character has no skeleton; using the capsule."); return; }
+            _characterMesh = sc.LoadSkinnedMesh(charMesh, charMaps);
+
+            var byName = new Dictionary<string, AnimationClip>();
+            foreach (AnimationClip c in GltfLoader.LoadAnimations(charPath)) byName[c.Name] = c;
+            var clips = new Dictionary<LocomotionState, AnimationClip>();
+            void Map(LocomotionState st, string name) { if (byName.TryGetValue(name, out AnimationClip? c)) clips[st] = c; }
+            Map(LocomotionState.Idle, "Idle");
+            Map(LocomotionState.Walk, "Walking_A");
+            Map(LocomotionState.Run, "Running_A");
+            Map(LocomotionState.Jump, "Jump_Start");   // brief rising tuck
+            Map(LocomotionState.Fall, "Jump_Idle");    // airborne float (covers most of the descent)
+            if (clips.Count == 0) { Console.WriteLine("Character has no expected clips; using the capsule."); return; }
+
+            // Scale the model to ~the 1.8 m capsule height so it lines up with the camera + collision footprint.
+            float modelHeight = ModelHeight(charMesh);
+            _charScale = modelHeight > 0.01f ? (CapsuleHalfHeight * 2f) / modelHeight : 1f;
+
+            // Thresholds split walk/run between the controller's 3 m/s walk and 6 m/s run.
+            _animChar = new AnimatedCharacter(charMesh.Skeleton, clips, new LocomotionThresholds(0.1f, 4.5f), crossfade: 0.15f);
+            _animated = true;
+            Console.WriteLine($"Animated character: {charMesh.BoneCount} bones, states [{string.Join(", ", clips.Keys)}], scale {_charScale:0.00}.");
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine($"Character load failed ({e.Message}); falling back to the capsule.");
+            _animated = false;
+        }
+    }
+
+    // Model-space height (max - min Y) of the rest mesh, for the capsule-match scale.
+    static float ModelHeight(SkinnedGltfMesh mesh)
+    {
+        float min = float.MaxValue, max = float.MinValue;
+        foreach (SkinnedVertex v in mesh.Vertices) { min = MathF.Min(min, v.Position.Y); max = MathF.Max(max, v.Position.Y); }
+        return max - min;
     }
 
     // A flat (constant-height) unit PropSurface covering [-half.X, half.X] x [-half.Y, half.Y] at the given height

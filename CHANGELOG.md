@@ -5,6 +5,34 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.56.0
+
+Animated characters: glTF animation-clip playback + a locomotion blend, so skinned capsules become characters
+that idle/walk/run and jump/fall. `KhaozEngine.Render3D` gains a GPU-free animation layer beside the existing
+rig/skinning: `GltfLoader.LoadAnimations(path)` reads SharpGLTF `LogicalAnimations` into `AnimationClip`s
+(per-joint TRS keyframe tracks keyed by glTF logical node index, with `InterpolationMode` LINEAR/STEP, CUBICSPLINE
+reduced to its value keys), and `GltfLoader.LoadSkinned` now also attaches a `Skeleton` (the joint hierarchy:
+topologically-ordered parent links + rest-local `JointPose` TRS + bone-to-node map + a logical-node lookup) to
+`SkinnedGltfMesh` (new optional `SkinnedGltfMesh.Skeleton`; existing constructors unchanged). `AnimationSampler`
+samples a clip at a time into per-node local poses and composes the hierarchy into the joint-WORLD bone palette
+`Scene3D.DrawSkinned` already consumes (`SamplePose`/`Compose`/`SampleToBonePalette`/`BlendPoses`/`Wrap`);
+`AnimationPlayer` advances + loops a clip and CROSSFADES into a new one over a short blend (blends the two clips'
+local TRS, composes once). New public types: `JointPose`, `Skeleton`, `AnimationClip` (+ `JointTrack` /
+`Vector3Track` / `QuaternionTrack` / `InterpolationMode`), `AnimationSampler`, `AnimationPlayer`.
+`KhaozEngine.Game.Render3D` adds the locomotion mapping: `LocomotionState` (Idle/Walk/Run/Jump/Fall),
+`LocomotionThresholds`, and `LocomotionStateMachine.Evaluate(horizontalSpeed, grounded, verticalVelocity, thresholds)`
+(speed picks idle/walk/run; the air state wins while airborne - rising = Jump, otherwise Fall), plus
+`AnimatedCharacter`, which wraps a mesh `Skeleton` + the per-state clips + an `AnimationPlayer` + the state machine
+and turns a movement state (`speed`, `Grounded`, `VerticalVelocity`) + `dt` into the bone palette for the skinned
+draw - driven identically for the LOCAL player (own movement) and REMOTE players (replicated movement). Purely
+client-cosmetic: clips are picked from already-known/replicated movement state, no netcode or server-side animation
+changes. `TerrainWalkSample` swaps the greybox capsule for a committed KayKit CC0 rigged + animated character
+(Character Pack: Adventurers, skinned-ingested so the rig + 76 animation clips survive - NOT the flatten-prop path),
+mapping `Idle`/`Walking_A`/`Running_A`/`Jump_Start`/`Jump_Idle` to the locomotion states; it idles, walks, runs,
+and jumps/falls, facing its move direction. Out of scope (unchanged): animation events, root motion, IK,
+additive/facial layers, full blend trees, networked animation, the prop flatten path. All new pose/palette/SM math
+is headless-tested; no GPU golden added (the math coverage is sufficient).
+
 ## 7.55.0
 
 Walkable prop/building surfaces (stand on / jump onto rocks + roofs), character-physics sub-project B, building on

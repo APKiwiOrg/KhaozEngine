@@ -262,8 +262,125 @@ namespace KhaozEngine.Render3D
                 restPose[b] = node.WorldMatrix;     // bind-pose joint world transform
             }
 
-            return new SkinnedGltfMesh(verts.ToArray(), indices.ToArray(), inverseBind, restPose);
+            Skeleton skeleton = BuildSkeleton(skin);
+            return new SkinnedGltfMesh(verts.ToArray(), indices.ToArray(), inverseBind, restPose, skeleton);
         }
+
+        /// <summary>Build the poseable joint hierarchy from a glTF skin: the skeleton node set is every joint plus
+        /// all of its visual ancestors (so a static armature/root offset above the joints is composed in), ordered
+        /// parents-before-children. Each node carries its rest-local TRS (from the node's local matrix) and its glTF
+        /// logical index (the key an <see cref="AnimationClip"/> channel targets); <see cref="Skeleton.JointToNode"/>
+        /// maps each skin bone (in joint order, aligned with InverseBind/RestPose) to its skeleton node.</summary>
+        static Skeleton BuildSkeleton(Skin skin)
+        {
+            int jointCount = skin.JointsCount;
+            var jointNodes = new Node[jointCount];
+            for (int b = 0; b < jointCount; b++) jointNodes[b] = skin.GetJoint(b).Joint;
+
+            // Node set = joints + every visual ancestor up to a scene root.
+            var nodeSet = new HashSet<Node>();
+            foreach (Node jn in jointNodes)
+                for (Node? n = jn; n != null; n = n.VisualParent) nodeSet.Add(n);
+
+            // Topological order: ascending by ancestor depth, so a parent always precedes its children.
+            var ordered = nodeSet.ToList();
+            ordered.Sort((a, b) => NodeDepth(a).CompareTo(NodeDepth(b)));
+            var indexOf = new Dictionary<Node, int>(ordered.Count);
+            for (int i = 0; i < ordered.Count; i++) indexOf[ordered[i]] = i;
+
+            var parents = new int[ordered.Count];
+            var restLocal = new JointPose[ordered.Count];
+            var nodeLogical = new int[ordered.Count];
+            for (int i = 0; i < ordered.Count; i++)
+            {
+                Node node = ordered[i];
+                Node? parent = node.VisualParent;
+                parents[i] = parent != null && indexOf.TryGetValue(parent, out int pi) ? pi : -1;
+                restLocal[i] = JointPose.FromMatrix(node.LocalMatrix);   // local transform relative to the parent
+                nodeLogical[i] = node.LogicalIndex;
+            }
+
+            var jointToNode = new int[jointCount];
+            for (int b = 0; b < jointCount; b++) jointToNode[b] = indexOf[jointNodes[b]];
+
+            return new Skeleton(parents, restLocal, nodeLogical, jointToNode);
+        }
+
+        static int NodeDepth(Node node)
+        {
+            int d = 0;
+            for (Node? n = node.VisualParent; n != null; n = n.VisualParent) d++;
+            return d;
+        }
+
+        /// <summary>Read every glTF animation as an <see cref="AnimationClip"/> (additive: leaves
+        /// <see cref="Load"/> / <see cref="LoadSkinned"/> unchanged). Each animation's channels are grouped by
+        /// target node into a <see cref="JointTrack"/> (translation / rotation / scale), keyed by the node's glTF
+        /// logical index so the clip resolves against the mesh <see cref="Skeleton"/>; per channel the sampler keys
+        /// are read with their interpolation (STEP held, LINEAR interpolated, CUBICSPLINE reduced to its value keys
+        /// and treated as linear). Clip duration is the latest key across all channels. A glb with no animations
+        /// returns an empty list.</summary>
+        public static IReadOnlyList<AnimationClip> LoadAnimations(string path)
+        {
+            ModelRoot root = ModelRoot.Load(path);
+            var clips = new List<AnimationClip>(root.LogicalAnimations.Count);
+            foreach (SharpGLTF.Schema2.Animation anim in root.LogicalAnimations)
+            {
+                var byNode = new Dictionary<int, JointTrack>();
+                float duration = 0f;
+                foreach (AnimationChannel channel in anim.Channels)
+                {
+                    Node? target = channel.TargetNode;
+                    if (target == null) continue;
+                    int logical = target.LogicalIndex;
+                    if (!byNode.TryGetValue(logical, out JointTrack? track))
+                    {
+                        track = new JointTrack(logical);
+                        byNode[logical] = track;
+                    }
+
+                    var ts = channel.GetTranslationSampler();
+                    if (ts != null) { track.Translation = ReadVector3Track(ts, ref duration); continue; }
+                    var rs = channel.GetRotationSampler();
+                    if (rs != null) { track.Rotation = ReadQuaternionTrack(rs, ref duration); continue; }
+                    var ss = channel.GetScaleSampler();
+                    if (ss != null) { track.Scale = ReadVector3Track(ss, ref duration); continue; }
+                    // A morph-weights channel (or any other path) is out of scope for skeletal playback: skip it.
+                }
+
+                // Drop a node whose only channels were skipped (no TRS track).
+                var tracks = byNode.Values.Where(t => t.Translation != null || t.Rotation != null || t.Scale != null).ToList();
+                clips.Add(new AnimationClip(anim.Name ?? string.Empty, duration, tracks));
+            }
+            return clips;
+        }
+
+        static Vector3Track ReadVector3Track(IAnimationSampler<Vector3> s, ref float duration)
+        {
+            var times = new List<float>();
+            var values = new List<Vector3>();
+            if (s.InterpolationMode == AnimationInterpolationMode.CUBICSPLINE)
+                foreach (var (key, value) in s.GetCubicKeys()) { times.Add(key); values.Add(value.Value); }
+            else
+                foreach (var (key, value) in s.GetLinearKeys()) { times.Add(key); values.Add(value); }
+            if (times.Count > 0) duration = MathF.Max(duration, times[times.Count - 1]);
+            return new Vector3Track(times.ToArray(), values.ToArray(), MapInterp(s.InterpolationMode));
+        }
+
+        static QuaternionTrack ReadQuaternionTrack(IAnimationSampler<Quaternion> s, ref float duration)
+        {
+            var times = new List<float>();
+            var values = new List<Quaternion>();
+            if (s.InterpolationMode == AnimationInterpolationMode.CUBICSPLINE)
+                foreach (var (key, value) in s.GetCubicKeys()) { times.Add(key); values.Add(value.Value); }
+            else
+                foreach (var (key, value) in s.GetLinearKeys()) { times.Add(key); values.Add(value); }
+            if (times.Count > 0) duration = MathF.Max(duration, times[times.Count - 1]);
+            return new QuaternionTrack(times.ToArray(), values.ToArray(), MapInterp(s.InterpolationMode));
+        }
+
+        static InterpolationMode MapInterp(AnimationInterpolationMode m) =>
+            m == AnimationInterpolationMode.STEP ? InterpolationMode.Step : InterpolationMode.Linear;
 
         // Resolve a per-vertex tangent for the skinned mesh and write it into each SkinnedVertex.Tangent. A glTF
         // TANGENT (srcTangent[i]) wins; otherwise accumulate the Lengyel UV-space direction over the triangle list

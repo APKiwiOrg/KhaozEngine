@@ -11,6 +11,9 @@
     <!-- Committed CC0 Quaternius prop kit (decompressed to plain glTF offline) + manifest, copied next to the
          exe so AssetManifest.Load resolves them at runtime. See assets/props/CREDITS.md. -->
     <None Include="assets/props/**" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Committed CC0 KayKit rigged + animated character (skinned-ingest, animations preserved). See
+         assets/character/CREDITS.md. -->
+    <None Include="assets/character/**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Game/KhaozEngine.Game.csproj" />

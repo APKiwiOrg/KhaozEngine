@@ -74,4 +74,27 @@ public sealed class WorldColliders
         }
         return p;
     }
+
+    /// <summary>Height-aware push-out: like <see cref="Resolve(Vector2,float,int)"/> but a collider is skipped once
+    /// the capsule's feet (<paramref name="footY"/>) are at or above that collider's <see cref="WorldCollider.Top"/>
+    /// minus <paramref name="skin"/> (you are standing on it, not hitting its side). Lets the capsule stand on a
+    /// rock/roof without being shoved off, while a thin blocker (top = +inf) always blocks.</summary>
+    public Vector2 Resolve(Vector2 position, float radius, float footY, float skin = 0.05f, int iterations = 4)
+    {
+        if (colliders.Length == 0) return position;
+        Vector2 p = position;
+        for (int it = 0; it < iterations; it++)
+        {
+            int n = grid.QueryCandidates(p, radius);
+            bool any = false;
+            for (int i = 0; i < n; i++)
+            {
+                WorldCollider c = colliders[grid.GetQueryIndex(i)];
+                if (footY >= c.Top - skin) continue;          // standing on/above it -> not a side hit
+                if (c.Resolve(p, radius, out Vector2 push)) { p += push; any = true; }
+            }
+            if (!any) break;
+        }
+        return p;
+    }
 }

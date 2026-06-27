@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.WorldStore.SqlServer</PackageId>
+    <Version>$(KhaozEngine5xVersion)</Version>
+    <Description>SQL Server / Azure SQL IWorldStore backend over Microsoft.Data.SqlClient: SqlServerWorldStore persists the authoritative keyed byte[] world store to a SQL Server database (one world_store table, schema bootstrapped on construction, upsert via MERGE WITH (HOLDLOCK), raw parameterized async ADO.NET, no EF/ORM). The production backend (Azure SQL); same IWorldStore contract as the SQLite dev/test backend. Opt-in: pulls Microsoft.Data.SqlClient without touching the dependency-free KhaozEngine.WorldStore core.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.6" />
+    <ProjectReference Include="../KhaozEngine.WorldStore/KhaozEngine.WorldStore.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Tests" />
+  </ItemGroup>
+</Project>

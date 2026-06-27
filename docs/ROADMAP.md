@@ -10,27 +10,7 @@ Each near-term item gets its own design spec + plan under `docs/superpowers/` wh
 
 ## Near-term (next up)
 
-### 1. Database deploy consistency (DACPAC)
-
-Persistence today is `KhaozEngine.WorldStore` with two backends: `WorldStore.Sqlite` (dev/test, single-node)
-and `WorldStore.SqlServer` (prod, Azure SQL). Both bootstrap their schema imperatively on construction (one
-`world_store(key, data, updated_at)` table, dialect upsert). That works for a single-table KV store, but there
-is no declarative, versioned schema-deploy artifact. Ruinborne (the SQL Server MMO consumer) needs a managed,
-repeatable prod DB deploy and has none; the other DB-backed projects already use a DACPAC.
-
-Goal: a canonical DACPAC / SSDT schema-deploy story for the SQL Server backend so prod deploys are declarative,
-diffable, and versioned, while the SQLite path stays in schema parity for dev/test (one schema, two dialects).
-
-Open decisions for the spec:
-- Engine-first vs per-game: does the engine ship the canonical schema as a `KhaozEngine.WorldStore.SqlServer`
-  SSDT/DACPAC project (every game gets the same deploy), or does each game own a DACPAC over a documented engine
-  schema? Persistence/schema is a default-centralize domain, so the engine-shipped DACPAC is the likely call,
-  but it needs sign-off when scheduled.
-- Single source of truth: keep the declarative schema (DACPAC) and the imperative bootstrap in sync, by either
-  generating one from the other or making the DACPAC authoritative and reducing the bootstrap to a guard/assert.
-- Cross-repo: Ruinborne is the immediate consumer that adopts this once it lands.
-
-### 2. Engine-level Discord social SDK
+### 1. Engine-level Discord social SDK
 
 Discord integration (rich presence, join/invite, lobbies, OAuth identity) is currently done bespoke per game.
 Centralize it: a `KhaozEngine.Social` seam (`ISocialProvider`: presence, invites/friends, identity, optionally
@@ -43,7 +23,7 @@ Discord from the engine. Retire the game-specific Discord implementations once t
   `Social` core seam stays dependency-free, mirroring the opt-in-backend pattern (`Netcode.LiteNetLib`,
   `WorldStore.*`). Per-RID bundling is the same concern as Audio/Windowing.
 
-### 3. Physics engine
+### 2. Physics engine
 
 Movement today is a kinematic character controller, not a physics engine: `CharacterMovement.Step` does gravity
 + jump (coyote/buffer/terminal-clamp), ground-clamp onto a height delegate, and capsule push-out versus static
@@ -70,6 +50,23 @@ Plan: a design spike + spec that prototypes both against the server-determinism 
 constraint, then commits to one. This supersedes the "out of scope" items the recent movement releases deferred
 (standing on props/buildings, interiors/ledges, step-height, double/wall-jump, climbing, swimming, fall damage).
 
+### 3. Visual fidelity (textures + materials)
+
+The world is geometrically rich but visually flat: terrain renders a height/slope vertex-colour ramp, and props
+come in flat base-colour (the prop loader flattens each material's texture to a single factor during ingest, so
+trees/rocks/buildings carry no surface detail). Goal: make the ground, mountains, trees, and props actually look
+good, not just read as shapes.
+
+- Terrain PBR splat: real textured materials (grass / rock / dirt / sand / snow) blended by the splat weights the
+  chunk mesher already bakes per vertex, plus normal maps, replacing the vertex-colour ramp on the ground and
+  mountains.
+- Textured props: per-material albedo / normal on meshes (trees, rocks, buildings) - needs the glTF loader /
+  prop renderer to stop flattening textures to a base-colour factor (today's limitation; same area as the rigid
+  node-transform fix).
+- Water: a real water shader for the lake / sea (currently a flat plane at the water level).
+- Lighting polish: pairs with shadows (see Rendering) + an HDRI/sky direction for a cohesive look.
+- CC0-asset-friendly throughout (ambientCG terrain textures, the kit textures), no new heavy dependencies.
+
 ## Netcode / MMO refinements
 
 - Delta + AoI unification: fold the interest-grid filtering into the delta encoder (one pass instead of two).
@@ -83,8 +80,7 @@ constraint, then commits to one. This supersedes the "out of scope" items the re
   SpaceGame 2.5D rigged-creature direction and pairs with the physics work).
 - Per-cell world-state snapshot persistence: persist cell/world state, not just player records (pairs with
   sharding).
-- PBR splat textures + a water shader: terrain-material upgrades on the chunk mesher's already-plumbed splat
-  weights.
+- Visual fidelity (terrain PBR splat, textured props, water): promoted to Near-term (see above).
 
 ## Rendering
 

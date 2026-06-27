@@ -18,9 +18,12 @@ using KhaozEngine.Windowing;
 // the server, then two of these clients on localhost to see two players. Usage: NetworkedWalkSample [host] [port].
 string host = args.Length > 0 ? args[0] : "127.0.0.1";
 int port = args.Length > 1 && int.TryParse(args[1], out int p) ? p : 47700;
+// A stable account id so reconnecting (or after a server restart) restores this player's saved position.
+// Pass a third arg to use distinct accounts for two clients on one box, e.g. "player1" and "player2".
+string account = args.Length > 2 ? args[2] : "player1";
 
-Console.WriteLine($"NetworkedWalkSample -> {host}:{port} | WASD move | mouse-drag orbit | scroll zoom | shift run | Esc quit");
-using (var app = new NetworkedWalkApp(host, port))
+Console.WriteLine($"NetworkedWalkSample -> {host}:{port} as '{account}' | WASD move | mouse-drag orbit | scroll zoom | shift run | Esc quit");
+using (var app = new NetworkedWalkApp(host, port, account))
     app.Run();
 return 0;
 
@@ -34,6 +37,7 @@ sealed class NetworkedWalkApp : GameApp3D
 
     readonly string _host;
     readonly int _port;
+    readonly string _account;
 
     TerrainField _field = null!;
     TerrainCollision _terrain = null!;
@@ -50,7 +54,7 @@ sealed class NetworkedWalkApp : GameApp3D
     FixedTickHost _clientClock = null!;
     Vector3 _localPos = Vector3.Zero;
 
-    public NetworkedWalkApp(string host, int port)
+    public NetworkedWalkApp(string host, int port, string account)
         : base(new GameAppOptions
         {
             Title = "KhaozEngine - Networked walk",
@@ -59,7 +63,7 @@ sealed class NetworkedWalkApp : GameApp3D
             ScaleMode = ScaleMode.Fit,
             ClearColor = new Color(0.45f, 0.62f, 0.85f, 1f),
         })
-    { _host = host; _port = port; }
+    { _host = host; _port = port; _account = account; }
 
     protected override void OnLoad()
     {
@@ -92,7 +96,8 @@ sealed class NetworkedWalkApp : GameApp3D
         // Connect: same terrain field on both ends keeps client prediction identical to the server.
         _transport = new LiteNetLibClientTransport(_host, _port);
         _client = new WorldClient(_transport, _terrain.GroundHeight, MoveTuning.Default,
-            new WorldClientConfig { TickSeconds = TickSeconds });
+            new WorldClientConfig { TickSeconds = TickSeconds },
+            token: System.Text.Encoding.UTF8.GetBytes(_account));
         _clientClock = new FixedTickHost(TickSeconds);
     }
 

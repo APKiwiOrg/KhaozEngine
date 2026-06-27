@@ -7,7 +7,9 @@ namespace KhaozEngine.WorldStore;
 /// Async, keyed durable store for authoritative server state (accounts, characters, zones), shaped for a
 /// database backend rather than the per-user local JSON files of <c>KhaozEngine.Persistence</c>. The game
 /// serializes a record to bytes by its own means and persists it under a stable key. Implementations:
-/// <see cref="InMemoryWorldStore"/> (engine, for tests/dev); SQLite/Postgres/cloud are infrastructure.
+/// <see cref="InMemoryWorldStore"/> (this dependency-free core, for tests/dev); durable backends are the opt-in
+/// sibling packages KhaozEngine.WorldStore.Sqlite (dev/test + single-node) and KhaozEngine.WorldStore.SqlServer
+/// (production / Azure SQL).
 /// </summary>
 public interface IWorldStore
 {

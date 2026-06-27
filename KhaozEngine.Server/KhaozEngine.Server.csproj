@@ -19,8 +19,10 @@
     <ProjectReference Include="../KhaozEngine.Simulation/KhaozEngine.Simulation.csproj" />
     <!-- entity replication -->
     <ProjectReference Include="../KhaozEngine.Replication/KhaozEngine.Replication.csproj" />
-    <!-- world store -->
+    <!-- world store (durable-state seam + opt-in SQLite / SQL Server backends) -->
     <ProjectReference Include="../KhaozEngine.WorldStore/KhaozEngine.WorldStore.csproj" />
+    <ProjectReference Include="../KhaozEngine.WorldStore.Sqlite/KhaozEngine.WorldStore.Sqlite.csproj" />
+    <ProjectReference Include="../KhaozEngine.WorldStore.SqlServer/KhaozEngine.WorldStore.SqlServer.csproj" />
     <!-- world topology (cell grid / shard host) -->
     <ProjectReference Include="../KhaozEngine.Sharding/KhaozEngine.Sharding.csproj" />
     <!-- networked-world movement layer (server sim + client glue, render-free) -->

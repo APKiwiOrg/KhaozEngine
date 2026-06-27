@@ -97,12 +97,20 @@ version/release work.
     `Game`, `Game.Render3D`.
   - **Foundation (MonoGame-free):** `Ecs`, `Serialization`, `Content`, `Diagnostics`, `App`, `Localization`,
     `Locomotion`, `Persistence`, `Pooling`, `Platform`, `Updates`, `Collision`, `Terrain`, `Netcode`,
-    `Netcode.Abstractions`, `Netcode.LiteNetLib`, `Simulation`, `Replication`, `WorldStore`, `Sharding`, `NetWorld`.
+    `Netcode.Abstractions`, `Netcode.LiteNetLib`, `Simulation`, `Replication`, `WorldStore`, `WorldStore.Sqlite`,
+    `WorldStore.SqlServer`, `Sharding`, `NetWorld`.
   - **Server / parallel-job core types:** `Simulation` = `FixedTickHost` + the `IJobScheduler` worker-pool seam
     (`SingleThreadedJobScheduler` inline default + `ThreadPoolJobScheduler`); `Netcode` =
     `INetTransport`/`LoopbackTransport` + the `NetServer`/`NetClient` session layer; `Replication` = authoritative ECS
     replication (`NetId`/`ReplicationRegistry`/`SnapshotWriter`/`ClientReplicationView`/`ServerReplicator` +
-    `InterestGrid` AoI); `WorldStore` = `IWorldStore` async seam + `InMemoryWorldStore`; `Sharding` = the in-process
+    `InterestGrid` AoI); `WorldStore` = `IWorldStore` async keyed-blob seam + `InMemoryWorldStore` (dep-free core),
+    with two opt-in durable backends each pulling their own ADO.NET provider (same `Netcode.LiteNetLib` pattern):
+    `WorldStore.Sqlite` = `SqliteWorldStore` over Microsoft.Data.Sqlite (dev/test + single-node, always-tested) and
+    `WorldStore.SqlServer` = `SqlServerWorldStore` over Microsoft.Data.SqlClient (prod = Azure SQL); both = one
+    `world_store(key,data,updated_at)` table, schema bootstrap on construction, dialect upsert (SQLite ON CONFLICT /
+    SQL Server MERGE HOLDLOCK), raw parameterized async ADO.NET, no EF/ORM. The save/load orchestration is
+    `NetWorld.WorldPersistence` (+ `PlayerRecord`), wiring `IWorldStore` into the `WorldServer` connect/disconnect/tick
+    lifecycle (load-on-join / save-on-leave / periodic dirty snapshot), backend-agnostic. `Sharding` = the in-process
     cell-grid topology (`CellCoord`/`CellSim`/`ShardHost`; a cell = an ECS `World` + `FixedTickHost` +
     `ServerReplicator` + `InterestGrid`) with cross-cell ghosting / exactly-once handoff / home-cell AoI serving over
     the `ICellLink` seam, plus the `MmoServerSample` reference server (`IsPackable=false`). `Ecs` also has opt-in
@@ -134,14 +142,19 @@ version/release work.
     `Foundation`, deps Primitives only) = `CharacterMovement.Step` (pure XZ move from a `MoveCommand` + ground
     delegate + one `MoveTuning`, ground-clamped + slope gate) shared by the local `CharacterController3D`
     (Game.Render3D wraps it), the server sim, and client prediction. `NetWorld` (in `Server`, deps
-    Locomotion/Netcode/Replication/Ecs) = `PlayerMoveSimulator` (`ITickSimulator` over `CharacterMovement.Step`),
-    `WorldServer` (single-`World` authoritative: per-player `RemoteCommandQueue` + ground-clamped sim + per-client
-    AoI via `SnapshotWriter.WriteFiltered`+`InterestGrid`, framed `[localNetId][ack]`), and `WorldClient`
-    (`NetClient`+`ClientReplicationView`+`ClientPrediction` -> `EntityRenderState[]`, local predicted/reconciled,
-    remotes replicated). `PlayerMoveState : IPredictedState` lives in NetWorld (not Locomotion) so the movement
-    core + local controller stay netcode-free; `CharacterMovement.Step` takes/returns `Vector3`. Demos
-    (`IsPackable=false`): `NetworkedWalkServer` (headless) + `NetworkedWalkSample` (windowed `--connect` client).
-    Networked-overworld render-scale sub-project (`docs/superpowers/specs/2026-06-27-networked-overworld-design.md`).
+    Locomotion/Netcode/Replication/Ecs/Serialization/WorldStore) = `PlayerMoveSimulator` (`ITickSimulator` over
+    `CharacterMovement.Step`), `WorldServer` (single-`World` authoritative: per-player `RemoteCommandQueue` +
+    ground-clamped sim + per-client AoI via `SnapshotWriter.WriteFiltered`+`InterestGrid`, framed `[localNetId][ack]`;
+    a persistence seam = `PlayerJoined`/`PlayerLeaving` events + accountId-from-connect-token + `SetPlayerState`),
+    `WorldClient` (`NetClient`+`ClientReplicationView`+`ClientPrediction` -> `EntityRenderState[]`, local
+    predicted/reconciled, remotes replicated), and `WorldPersistence` (+ `PlayerRecord`, a forward-tolerant JSON
+    record): wires an `IWorldStore` into the `WorldServer` lifecycle (load-on-join / save-on-leave / periodic dirty
+    snapshot, keys `player:{accountId}`) so the world survives a restart, backend-agnostic. `PlayerMoveState :
+    IPredictedState` lives in NetWorld (not Locomotion) so the movement core + local controller stay netcode-free;
+    `CharacterMovement.Step` takes/returns `Vector3`. Demos (`IsPackable=false`): `NetworkedWalkServer` (headless,
+    persists via `SqliteWorldStore`) + `NetworkedWalkSample` (windowed `--connect` client, sends a stable account token).
+    Networked-overworld render-scale sub-project (`docs/superpowers/specs/2026-06-27-networked-overworld-design.md`);
+    persistence sub-project (`docs/superpowers/specs/2026-06-27-persistent-worldstore-design.md`).
   - **Umbrellas (code-free metapackages):** `Foundation`, `Game2D`, `Game3D`, `Server`.
   - **Tools, same version line:** `Updates.Tool` (`ke-updater`: manifest/genkey/sign/verify) and `Sfx.Tool`
     (`ke-sfxbake`: ElevenLabs-driven SFX bake) are `PackAsTool`; `Content.Validator` is a build-time tool

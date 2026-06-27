@@ -12,6 +12,12 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   an `InterestGrid`) prefixed with that client's net id + last-acked move seq.
 - **`WorldClient`** wraps `NetClient` + `ClientReplicationView` + `ClientPrediction` and exposes
   `EntityRenderState[]` (local player predicted + reconciled, remotes from replicated positions).
+- **`WorldPersistence`** (+ `WorldPersistenceConfig`, `PlayerRecord`) wires an
+  [`IWorldStore`](../KhaozEngine.WorldStore) into the `WorldServer` lifecycle so the world survives a restart:
+  load-on-join (spawn at the saved position, default if absent), save-on-leave, and a periodic snapshot of
+  players dirty since their last save. Keyed `player:{accountId}`; backend-agnostic (only `IWorldStore` +
+  `KhaozEngine.Serialization`). Pick a backend: `KhaozEngine.WorldStore.Sqlite` (dev/test) or
+  `KhaozEngine.WorldStore.SqlServer` (prod / Azure SQL).
 
 No render, window, or GPU dependency: the server is headless and the client glue is render-free (a sample
 renders a capsule per `EntityRenderState`). This is the single-`World` slice of the MMO overworld;

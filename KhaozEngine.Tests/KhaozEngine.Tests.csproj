@@ -50,6 +50,8 @@
     <ProjectReference Include="../KhaozEngine.Replication/KhaozEngine.Replication.csproj" />
     <ProjectReference Include="../KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
     <ProjectReference Include="../KhaozEngine.WorldStore/KhaozEngine.WorldStore.csproj" />
+    <ProjectReference Include="../KhaozEngine.WorldStore.Sqlite/KhaozEngine.WorldStore.Sqlite.csproj" />
+    <ProjectReference Include="../KhaozEngine.WorldStore.SqlServer/KhaozEngine.WorldStore.SqlServer.csproj" />
     <ProjectReference Include="../KhaozEngine.Sharding/KhaozEngine.Sharding.csproj" />
     <ProjectReference Include="../KhaozEngine.Simulation/KhaozEngine.Simulation.csproj" />
     <ProjectReference Include="../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />

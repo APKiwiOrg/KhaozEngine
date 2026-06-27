@@ -82,7 +82,7 @@ public sealed class NetServer
         var slotBytes = new byte[4];
         BitConverter.TryWriteBytes(slotBytes, newSlot);
         transport.Send(ev.Connection, SessionFrame.Write(SessionOpcode.Welcome, slotBytes), NetChannelReliability.ReliableOrdered);
-        inbox.Enqueue(ServerSessionEvent.Joined(newSlot));
+        inbox.Enqueue(ServerSessionEvent.Joined(newSlot, token));
     }
 
     private void RemovePeer(NetConnectionId conn, int slot)

@@ -1,6 +1,6 @@
 # KhaozEngine roadmap / backlog
 
-Larger feature areas identified but not yet scheduled. Current released version: **7.48.0** (the shared
+Larger feature areas identified but not yet scheduled. Current released version: **7.49.0** (the shared
 `<KhaozEngine5xVersion>` line, which is the engine: the custom MonoGame-free stack plus the graduated foundation packages). The legacy 4.x
 line and its six genuinely-MonoGame packages (`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`) were
 DELETED from the engine source, so the engine itself is now entirely MonoGame-free. All three consumers are
@@ -87,6 +87,11 @@ Reference pattern: `github.com/levy-street/world-of-claudecraft` (engine-agnosti
   `ChunkGrid` map coord<->world; `IChunkSink` is the GPU-free-testable seam. `TerrainWalkSample` now walks
   forever; terrain/props are per-area deterministic so it composes with the networked client unchanged. Server
   stays single-`World`. Spec: `docs/superpowers/specs/2026-06-27-world-streaming-design.md`.
+- **Persistent world store shipped (`7.49.0`).** The authoritative world now survives a server restart: two opt-in
+  `IWorldStore` backends - `KhaozEngine.WorldStore.Sqlite` (`SqliteWorldStore`, dev/test + single-node, always-tested)
+  and `KhaozEngine.WorldStore.SqlServer` (`SqlServerWorldStore`, prod = Azure SQL) - plus `KhaozEngine.NetWorld`'s
+  `WorldPersistence` (load-on-join / save-on-leave / periodic dirty snapshot, keys `player:{accountId}`, backend-agnostic).
+  Per-cell snapshot persistence pairs with 6b. Spec: `docs/superpowers/specs/2026-06-27-persistent-worldstore-design.md`.
 - **Next sub-projects:** multi-cell server sharding (6b: `WorldServer` onto `ShardHost` - ghosting + handoff +
   client cell transitions), a procedural dungeon generator, and animated characters/creatures (needs a glTF
   animation-clip-playback feature). PBR splat textures and a water shader are terrain-material upgrades.

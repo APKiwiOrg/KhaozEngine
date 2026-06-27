@@ -828,6 +828,47 @@ deterministically from the seed, so only players consume bandwidth. Demos (`IsPa
 then two clients on localhost to see two players. Spec:
 `docs/superpowers/specs/2026-06-27-networked-overworld-design.md`.
 
+### Sharded authoritative server (many players / a large world)
+
+For scale, swap `WorldServer` for **`ShardedWorldServer`**: the *same* movement stack run across a
+`KhaozEngine.Sharding` `ShardHost` grid of authoritative cells, so the world holds many players / a huge area
+without one giant `World`. The **`WorldClient` and `MoveProtocol` are identical** - a client cannot tell it is
+talking to a sharded server (a player's `NetId` is stable across cell handoffs, so its replication view +
+prediction continue without a respawn; there is no cell concept on the client).
+
+```csharp
+using KhaozEngine.NetWorld;
+var field = new TerrainField(TerrainPresets.Clearing());
+var terrain = new TerrainCollision(field);
+var config = new ShardedWorldServerConfig
+{
+    CellSize = 60f,          // align to the terrain / streaming chunk grid (one chunk per cell here)
+    OverlapMargin = 24f,     // border ghost band; MUST be >= InterestRadius
+    InterestRadius = 24f,
+};
+var server = new ShardedWorldServer(transport, config, terrain.GroundHeight, MoveTuning.Default);
+server.Scheduler = new ThreadPoolJobScheduler();   // optional: tick cells across cores (deterministic)
+
+// Persistence is identical to the single-World server (player-keyed, cell-agnostic):
+var persistence = new WorldPersistence(server, store);
+
+while (running)   // per fixed tick:
+{
+    server.Poll();                       // join/leave + client input
+    server.Tick(config.TickSeconds);     // route input to owning cell -> per-cell movement -> handoff -> ghost sync -> serve home-cell AoI
+    persistence.Update(config.TickSeconds);
+}
+```
+
+Each tick routes every client's `MoveCommand` to the cell that **owns** its player, steps each cell's
+`PlayerMovementSystem` (the shared `CharacterMovement.Step`, ground-clamped) via `ShardHost.Tick`, transfers
+authority for boundary crossers exactly-once, refreshes border ghosts, then serves each client its single
+home-cell area-of-interest (owned + ghosts). Walking across a boundary hands off with no hitch; two players in
+adjacent cells see each other via ghosting. `WorldServer` stays the single-`World` option for a modest player
+count; both share `WorldPersistence` via `IWorldPersistenceHost`. The `NetworkedWalkServer` demo is a multi-cell
+`ShardedWorldServer` (cellSize 60) over `TerrainPresets.Clearing()`. Spec:
+`docs/superpowers/specs/2026-06-27-multicell-sharding-design.md`.
+
 ---
 
 ## ECS (`KhaozEngine.Ecs`)

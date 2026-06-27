@@ -5,6 +5,47 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.50.0
+
+Multi-cell server sharding, overworld render-scale sub-project 6b (finishes "6" with 6a streaming). The
+authoritative overworld now runs across a grid of cells with seamless cross-cell ghosting + exactly-once
+handoff, so the world holds many players / a huge area without one giant `World`. This is integration, not new
+netcode: it wires the existing movement stack onto the shipped `KhaozEngine.Sharding` `ShardHost`.
+
+- **`KhaozEngine.NetWorld.ShardedWorldServer`** (+ `ShardedWorldServerConfig`): the single-`World` `WorldServer`
+  movement stack run across a `ShardHost` cell grid. Each tick routes every client's `MoveCommand` to the cell
+  that **owns** its player (`TryGetOwner`), steps every cell's new `PlayerMovementSystem` (`CharacterMovement.Step`,
+  ground-clamped) via `ShardHost.Tick` (fanned across the opt-in scheduler - cells are disjoint worlds, so the
+  result is scheduler-independent), transfers authority for boundary crossers exactly-once
+  (`ShardHost.ProcessHandoffs`, the player's `NetId` stable across the migrate), refreshes border ghosts
+  (`ShardHost.SyncGhosts`), then serves each client its single **home-cell** area-of-interest snapshot (owned +
+  ghosts) framed with the existing `[localNetId][ack]` header. `Scheduler` is settable (default single-threaded;
+  pass a `ThreadPoolJobScheduler` to tick cells across cores, deterministically).
+- **`WorldClient` and `MoveProtocol` are unchanged.** A player's `NetId` is stable across handoff, so the client's
+  replication view + prediction continue without a respawn or hitch; the client has no cell concept. The
+  single-`World` `WorldServer` path is intact.
+- **`PlayerMovementSystem`** (ECS `ISystem`): advances each owned player's `ReplicatedPosition` via the shared
+  `CharacterMovement.Step`; skips read-only `Ghost`s and in-flight `Migrating` entities (the owner is the sole
+  simulator). Stateless, one instance shared across cells.
+- **`PendingMove`** component: the per-tick command a cell's `PlayerMovementSystem` applies to an owned player
+  (server-local, not replication-registered, not carried across a handoff - the post-handoff cell re-routes).
+- **`IWorldPersistenceHost`**: extracted from `WorldServer` so the shipped `WorldPersistence` (load-on-join,
+  save-on-leave, periodic dirty snapshot, keyed `player:{accountId}`) drives both the single-`World` `WorldServer`
+  and the new `ShardedWorldServer` unchanged. Player-keyed and cell-agnostic: a loaded player spawns at its saved
+  position in whatever cell contains it (the next handoff pass relocates the entity there). `WorldServer` now
+  implements `IWorldPersistenceHost` (no behaviour change).
+- `KhaozEngine.NetWorld` now references `KhaozEngine.Sharding` (acyclic; both are already in the `Server` umbrella,
+  so a sharded game server is one umbrella reference plus its `WorldStore.*` backend). No new package.
+- Demo: `NetworkedWalkServer` now drives a multi-cell `ShardedWorldServer` (cellSize 60 = one terrain chunk) over
+  `TerrainPresets.Clearing()`, persisting via SQLite; `NetworkedWalkSample` (client) is unchanged.
+- Headless tests (over `InProcessCellLink` + `LoopbackTransport`/in-memory hub): handoff exactly-once (NetId
+  stable, position continuous, no dup/drop), ghosting (two adjacent-border players each see the other; a far
+  player does not), AoI = owned + in-range ghosts, movement continuity through a handoff with the real unchanged
+  `WorldClient` (no prediction snap), persistence across cells (load-on-join into the saved position's cell +
+  restart-survival), and multi-cell determinism (single-threaded `ShardHost.Tick` == `ThreadPoolJobScheduler`).
+
+Additive API in existing packages; no new package; minor.
+
 ## 7.49.1
 
 Packaging fix (security): the `KhaozEngine.Server` umbrella no longer bundles the `WorldStore.Sqlite` /

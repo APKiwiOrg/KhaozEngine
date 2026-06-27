@@ -1,6 +1,6 @@
 # KhaozEngine roadmap / backlog
 
-Larger feature areas identified but not yet scheduled. Current released version: **7.49.1** (the shared
+Larger feature areas identified but not yet scheduled. Current released version: **7.50.0** (the shared
 `<KhaozEngine5xVersion>` line, which is the engine: the custom MonoGame-free stack plus the graduated foundation packages). The legacy 4.x
 line and its six genuinely-MonoGame packages (`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`) were
 DELETED from the engine source, so the engine itself is now entirely MonoGame-free. All three consumers are
@@ -78,7 +78,7 @@ Reference pattern: `github.com/levy-street/world-of-claudecraft` (engine-agnosti
   single-`World` authoritative server over `NetServer`/`Replication`/`InterestGrid`, and `WorldClient` -
   prediction + reconciliation, `EntityRenderState[]`). Demos `NetworkedWalkServer` + `NetworkedWalkSample` let
   two clients walk the same terrain on localhost (props stay client-side deterministic scatter, not replicated).
-  Single `World`; multi-cell sharding folds in with streaming next. Spec:
+  Single `World` at this stage (multi-cell sharding shipped later as 6b, `7.50.0`). Spec:
   `docs/superpowers/specs/2026-06-27-networked-overworld-design.md`.
 - **Client world streaming shipped (`7.48.0`).** Sub-project 6a (walk an endless world): `TerrainStreamer` +
   `Scene3DChunkSink` (`KhaozEngine.Terrain.Render3D`) keep a ring of terrain chunks (+ their deterministic props)
@@ -92,9 +92,18 @@ Reference pattern: `github.com/levy-street/world-of-claudecraft` (engine-agnosti
   and `KhaozEngine.WorldStore.SqlServer` (`SqlServerWorldStore`, prod = Azure SQL) - plus `KhaozEngine.NetWorld`'s
   `WorldPersistence` (load-on-join / save-on-leave / periodic dirty snapshot, keys `player:{accountId}`, backend-agnostic).
   Per-cell snapshot persistence pairs with 6b. Spec: `docs/superpowers/specs/2026-06-27-persistent-worldstore-design.md`.
-- **Next sub-projects:** multi-cell server sharding (6b: `WorldServer` onto `ShardHost` - ghosting + handoff +
-  client cell transitions), a procedural dungeon generator, and animated characters/creatures (needs a glTF
-  animation-clip-playback feature). PBR splat textures and a water shader are terrain-material upgrades.
+- **Multi-cell server sharding shipped (`7.50.0`).** Sub-project 6b (finishes "6" with 6a streaming): the
+  authoritative overworld now runs across a grid of cells. `KhaozEngine.NetWorld.ShardedWorldServer` (+
+  `ShardedWorldServerConfig`) wires the existing movement stack onto a `KhaozEngine.Sharding` `ShardHost` -
+  per-cell `PlayerMovementSystem` stepped via `ShardHost.Tick` (scheduler-fanned, deterministic), exactly-once
+  authority handoff on boundary crossings (`ProcessHandoffs`, `NetId` stable), border ghosting (`SyncGhosts`),
+  and a single home-cell area-of-interest snapshot per client framed identically - so the unchanged `WorldClient`
+  walks across cell boundaries seamlessly and sees neighbour players. `WorldPersistence` is reused via the new
+  `IWorldPersistenceHost`, player-keyed across cells. `NetWorld` now references `Sharding`. Spec:
+  `docs/superpowers/specs/2026-06-27-multicell-sharding-design.md`.
+- **Next sub-projects:** a procedural dungeon generator, animated characters/creatures (needs a glTF
+  animation-clip-playback feature), and per-cell world-state snapshot persistence (pairs with sharding). PBR splat
+  textures and a water shader are terrain-material upgrades.
 
 ## The post-MonoGame pivot (6.x line): strategic direction
 

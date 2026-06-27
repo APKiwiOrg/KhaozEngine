@@ -1,7 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.Ecs;
 using KhaozEngine.Locomotion;
 using KhaozEngine.NetWorld;
+using KhaozEngine.Replication;
 using Xunit;
 
 namespace KhaozEngine.Tests.NetWorld;
@@ -65,5 +68,32 @@ public class VerticalPhysicsTests
         Assert.False(s.Grounded);
         Assert.True(s.Position.Y > MoveTuning.Default.CapsuleHalfHeight + 0.1f,
             $"airborne Y was snapped to ground at the wall: {s.Position.Y}");
+    }
+
+    [Fact]
+    public void MovementState_round_trips_through_the_replication_registry()
+    {
+        ReplicationRegistry registry = MoveProtocol.CreateRegistry();
+        var server = new World();
+        Entity e = server.Spawn();
+        server.Set(e, new NetId(7));
+        server.Set(e, new ReplicatedPosition { Value = new Vector3(1f, 2f, 3f) });
+        server.Set(e, new MovementState
+        {
+            VerticalVelocity = 5.5f, Grounded = true, TimeSinceGrounded = 0.2f, JumpBufferRemaining = 0.05f,
+        });
+
+        byte[] snapshot = SnapshotWriter.WriteFiltered(server, registry, new HashSet<int> { 7 });
+
+        var view = new ClientReplicationView(registry);
+        var client = new World();
+        view.Apply(client, snapshot);
+
+        Assert.True(view.TryGetEntity(7, out Entity ce));
+        MovementState ms = client.Get<MovementState>(ce);
+        Assert.Equal(5.5f, ms.VerticalVelocity, 4);
+        Assert.True(ms.Grounded);
+        Assert.Equal(0.2f, ms.TimeSinceGrounded, 4);
+        Assert.Equal(0.05f, ms.JumpBufferRemaining, 4);
     }
 }

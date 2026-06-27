@@ -11,6 +11,9 @@ public static class MoveProtocol
     /// <summary>Type id of <see cref="ReplicatedPosition"/> in the shared registry.</summary>
     public const ushort PositionTypeId = 1;
 
+    /// <summary>Type id of <see cref="MovementState"/> (vertical axis) in the shared registry.</summary>
+    public const ushort MovementTypeId = 2;
+
     /// <summary>The replicated-component registry (must match on server and client).</summary>
     public static ReplicationRegistry CreateRegistry()
     {
@@ -20,6 +23,24 @@ public static class MoveProtocol
             write: (p, bw) => { bw.Write(p.Value.X); bw.Write(p.Value.Y); bw.Write(p.Value.Z); },
             read: br => new ReplicatedPosition { Value = new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle()) },
             lerp: (a, b, t) => new ReplicatedPosition { Value = Vector3.Lerp(a.Value, b.Value, t) });
+        // Vertical movement state. Not interpolated: remotes render from ReplicatedPosition; only the local owner
+        // reads this (as its exact authoritative reconciliation basis), and the booleans/timers must not be blended.
+        r.Register<MovementState>(
+            MovementTypeId,
+            write: (m, bw) =>
+            {
+                bw.Write(m.VerticalVelocity);
+                bw.Write(m.Grounded);
+                bw.Write(m.TimeSinceGrounded);
+                bw.Write(m.JumpBufferRemaining);
+            },
+            read: br => new MovementState
+            {
+                VerticalVelocity = br.ReadSingle(),
+                Grounded = br.ReadBoolean(),
+                TimeSinceGrounded = br.ReadSingle(),
+                JumpBufferRemaining = br.ReadSingle(),
+            });
         return r;
     }
 

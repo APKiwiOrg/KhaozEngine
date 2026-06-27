@@ -7,15 +7,17 @@ metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the p
 
 ## 7.45.0
 
-Follow-camera drag tuning. The `FollowCameraController` (7.44.0) drag mapping is corrected so it turns the view
-the way the hand pulls (drag right turns the view left, drag down looks up) - the previous default felt inverted
-on both axes. Adds `InvertX` / `InvertY` bool fields (default false) so either drag axis can be flipped back or
-surfaced as an "invert axis" game setting. Behaviour-only change to the new-in-7.44.0 controller plus two additive
-fields; minor.
+Follow-camera tuning (drag direction + terrain ground-clamp), correcting two issues found playtesting the
+7.44.0 walkable slice. Behaviour fixes to the new-in-7.44.0 follow camera plus additive fields; minor.
 
 - **`FollowCameraController.InvertX` / `InvertY` (`KhaozEngine.Render3D`)** - per-axis drag inversion, default
-  false. The default orbit mapping is now `Yaw -= dx`, `Pitch += dy` (was `Yaw += dx`, `Pitch -= dy`); setting a
-  flag restores the old direction for that axis.
+  false. The default orbit mapping is now `Yaw -= dx`, `Pitch += dy` (was `Yaw += dx`, `Pitch -= dy`, which felt
+  inverted on both axes); setting a flag restores the old direction for that axis (e.g. an "invert axis" setting).
+- **`FollowCamera3D.GroundHeight` / `GroundClearance` (`KhaozEngine.Render3D`)** - optional ground-height delegate
+  + clearance that keeps the eye above the ground at its own XZ, so the camera no longer sinks through the floor
+  when the target is in a dip (the surrounding terrain rises behind it). Terrain-agnostic (a plain delegate, the
+  same pattern `CharacterController3D` uses); null (default) leaves the eye purely geometric, so existing behaviour
+  is unchanged. `TerrainWalkSample` wires it to `TerrainCollision.GroundHeight`.
 
 ## 7.44.0
 

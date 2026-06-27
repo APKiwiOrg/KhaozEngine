@@ -58,7 +58,8 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
     private int nextNetId = 1;
 
     public ShardedWorldServer(INetTransport transport, ShardedWorldServerConfig config,
-        Func<float, float, float> groundHeight, MoveTuning tuning, Func<float, float, Vector3>? groundNormal = null)
+        Func<float, float, float> groundHeight, MoveTuning tuning, Func<float, float, Vector3>? groundNormal = null,
+        WorldBounds? bounds = null)
     {
         ArgumentNullException.ThrowIfNull(transport);
         this.config = config ?? throw new ArgumentNullException(nameof(config));
@@ -68,8 +69,8 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
                 $"InterestRadius {config.InterestRadius} must be <= OverlapMargin {config.OverlapMargin} so the home cell can hold the full AoI as ghosts.",
                 nameof(config));
 
-        movement = new PlayerMovementSystem(groundHeight, tuning, groundNormal);
-        spawnClamp = new PlayerMoveSimulator(groundHeight, tuning, groundNormal);
+        movement = new PlayerMovementSystem(groundHeight, tuning, groundNormal, bounds);
+        spawnClamp = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds);
         host = new ShardHost(
             cellSize: config.CellSize,
             tickSeconds: config.TickSeconds,

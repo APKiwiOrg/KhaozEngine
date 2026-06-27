@@ -35,3 +35,8 @@ artifacts/
 # ----- KhaozEngine-specific -----
 # Dev-only local NuGet feed (packed packages live here; the durable store is GitHub Packages - see CLAUDE.md)
 local-feed/
+
+# Runtime world DB written by the NetworkedWalkServer demo (SqliteWorldStore default path), plus its WAL/SHM sidecars
+networked-walk-world.db
+networked-walk-world.db-wal
+networked-walk-world.db-shm

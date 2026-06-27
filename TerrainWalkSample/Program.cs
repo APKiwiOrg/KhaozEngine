@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
+using KhaozEngine.Collision;
 using KhaozEngine.Game;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
@@ -44,6 +45,9 @@ sealed class TerrainWalkApp : GameApp3D
     FollowCamera3D _camera = null!;
     FollowCameraController _camController = null!;
 
+    // Static-world collision: the nearby scattered props (+ a hand-placed inn) are solid.
+    WorldColliders _colliders = null!;
+
     // Bounded mode: enclose the clearing in a RimFeature mountain wall and wire the slope gate so the rim
     // can't be climbed (the player is held inside; the +Z pass is the one way out).
     readonly bool _bounded;
@@ -80,8 +84,9 @@ sealed class TerrainWalkApp : GameApp3D
         // 1.8 m greybox capsule (height 1.2 + 2*radius 0.6); mesh bottom sits at y=0 in local space.
         _capsule = sc.LoadMesh(MeshPrimitives.Capsule(radius: CapsuleRadius, height: 1.2f, segments: 16, rings: 6));
 
-        // Character spawns on the ground at the origin.
-        _character = new CharacterController3D { CapsuleHalfHeight = CapsuleHalfHeight };
+        // Character spawns on the ground at the origin. CapsuleRadius matches the visible greybox capsule so the
+        // collision footprint lines up with what's drawn.
+        _character = new CharacterController3D { CapsuleHalfHeight = CapsuleHalfHeight, CapsuleRadius = CapsuleRadius };
         _character.SetXZ(0f, 0f);
         _character.Update(InputState.Empty, 0f, 0f, _terrain.GroundHeight, _terrain.GroundNormal);   // settle Y onto the ground (slope gate wired so cliffs aren't climbable)
 
@@ -98,6 +103,21 @@ sealed class TerrainWalkApp : GameApp3D
         AssetManifest manifest = AssetManifest.Load(manifestPath);
         foreach (AssetEntry entry in manifest.Props)
             _propMeshes[entry.Id] = sc.LoadMesh(PropLoader.LoadProp(entry));
+
+        // Static-world collision: make the nearby scattered props solid, plus a hand-placed "inn" box sitting in
+        // the clearing so the box collider path is demonstrable. Built from the SAME deterministic scatter the
+        // streamer renders (so colliders line up with the visible trees), over a fixed ring around spawn
+        // (streaming colliders is a later piece). Each prop's footprint comes from its manifest collider; anything
+        // without one falls back to a 0.5 m cylinder.
+        var colliderArea = new RectArea(-120f, -120f, 120f, 120f);
+        IReadOnlyList<PropPlacement> colliderPlacements = PropScatter.Generate(_field, ScatterConfig.ForestRing(), colliderArea);
+        var inn = WorldCollider.Box(new Vector2(0f, 12f), new Vector2(3f, 2.5f), yaw: 0f);
+        _colliders = PropColliders.FromScatter(
+            colliderPlacements,
+            id => manifest.Find(id)?.Collider,
+            defaultShape: ColliderShape.Cylinder(0.5f),
+            obstacles: new[] { inn });
+        Console.WriteLine($"Static collision: {_colliders.Count} solid colliders (props + 1 building). Walk into a tree or the inn (12 m north, +Z) - you can't pass through.");
 
         // Endless streamed world: the sink builds chunk meshes + deterministic per-chunk props (same coordinate-hash
         // scatter as before, now over every chunk's area), the streamer keeps a ring of them loaded around the player
@@ -139,7 +159,7 @@ sealed class TerrainWalkApp : GameApp3D
         if (Input.WasPressed(Key.H)) { post.OutlineNormalThreshold = MathF.Min(2f, post.OutlineNormalThreshold + 0.05f); Console.WriteLine($"[post] OutlineNormalThreshold = {post.OutlineNormalThreshold:0.00}"); }
         if (Input.WasPressed(Key.G)) { post.OutlineNormalThreshold = MathF.Max(0f, post.OutlineNormalThreshold - 0.05f); Console.WriteLine($"[post] OutlineNormalThreshold = {post.OutlineNormalThreshold:0.00}"); }
 
-        _character.Update(Input, dt, _camera.Yaw, _terrain.GroundHeight, _terrain.GroundNormal);   // slope gate always on: can't climb cliffs/rim
+        _character.Update(Input, dt, _camera.Yaw, _terrain.GroundHeight, _terrain.GroundNormal, _colliders);   // slope gate always on (can't climb cliffs/rim); props + inn are solid
 
         // Stream the world around the new player position (loads/unloads/re-LODs within MaxLoadsPerFrame).
         _streamer.Update(_character.Position, dt);

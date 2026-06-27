@@ -1,7 +1,8 @@
 # Walkable prop/building surfaces design (stand on rocks + roofs)
 
 Date: 2026-06-27
-Status: approved design, ready for implementation plan (implementation HELD until sub-project A lands)
+Status: approved design, ready for implementation plan. Sub-project A (vertical character physics) SHIPPED in
+7.54.0, so B is unblocked; the dependency contract below is reconciled to A's real 7.54.0 API.
 Area: engine (Render3D bake + Collision/Terrain query + Locomotion/NetWorld integration)
 
 ## Context
@@ -14,10 +15,12 @@ The goal is vertical traversal: **jump onto and stand on rocks, logs, and (solid
 real top-surface contours.** This is the next overworld character-physics program, and it splits into two
 sub-projects:
 
-- **Sub-project A (vertical character physics)** - gravity, jump, grounded/fall - is being built concurrently in
-  a separate chat. It adds vertical velocity + a grounded flag to the player state, a `Jump` input, gravity/jump
-  tuning, and makes `CharacterMovement.Step` integrate vertical motion instead of clamping Y to the ground.
-  Authoritative + client-predicted. **A is a hard dependency of this work and is not in scope here.**
+- **Sub-project A (vertical character physics)** - gravity, jump, grounded/fall - **shipped in 7.54.0**. It added
+  the `Locomotion.MoveState` kinematic state (position + `VerticalVelocity` + `Grounded` + coyote/jump-buffer
+  timers), a vertical `CharacterMovement.Step(in MoveState, ...) -> MoveState` overload (the old `Vector3` overload
+  is unchanged), a `MoveCommand.Jump` bit, gravity/jump fields on `MoveTuning`, the replicated `MovementState`
+  component, and the authoritative + client-predicted vertical reconciliation. **A is a hard dependency of this
+  work and is not in scope here.**
 - **Sub-project B (this spec) - walkable prop/building surfaces** - gives A something to land on: each
   rock/building exposes a baked top-surface height field, the player's support height becomes
   `max(terrain, prop surface)`, and the XZ blocking becomes height-aware so standing on a roof does not get you
@@ -27,16 +30,21 @@ This spec is **B only**.
 
 ## Dependency on sub-project A (coordination contract)
 
-B integrates at A's movement seam. B assumes A provides (exact names reconciled against A when it lands - this is
-the one tight coupling point, flagged in Open items):
+B integrates at A's 7.54.0 movement seam (now concrete):
 
-- Player state carries **vertical velocity** and a **grounded** flag (today `PlayerMoveState` is just
-  `Vector3 Position`).
-- `MoveCommand` carries a **`Jump`** bit; a jump fires only when grounded.
-- `MoveTuning` carries **gravity + jump speed** (and B adds a **step height**; see below).
-- `CharacterMovement.Step` computes a **support height** the player lands/rests on (today that is
-  `groundHeight(x,z) + CapsuleHalfHeight`). **B's job is to make that support height include prop surfaces** and
-  to make the existing XZ push-out height-aware.
+- A's vertical step is `CharacterMovement.Step(in MoveState state, in MoveCommand cmd, float dt,
+  Func<float,float,float> groundHeight, in MoveTuning tuning, Func<float,float,Vector3>? groundNormal,
+  WorldColliders? colliders, Func<float,float,Vector2>? clampXz) -> MoveState`. **Ground contact lands the capsule
+  on `groundHeight(x,z) + tuning.CapsuleHalfHeight`** (the support height B must extend), and its shared
+  `ResolveHorizontal` pushes the capsule out of `WorldColliders` **unconditionally** (the push-out B must make
+  height-aware).
+- `MoveState` carries `Position` / `VerticalVelocity` / `Grounded` (+ feel timers); `MoveCommand.Jump` is the jump
+  bit; `MoveTuning` carries `Gravity`/`JumpSpeed`/`MaxFallSpeed`/`CoyoteTime`/`JumpBuffer`/`AirControl`/
+  `GroundedEpsilon` (B adds a **`StepHeight`** field next to these).
+- `NetWorld.PlayerMoveState` wraps a `MoveState`; the vertical axis rides the wire as the replicated
+  `MovementState` component; `PlayerMoveSimulator`/`PlayerMovementSystem`/`WorldServer`/`ShardedWorldServer`/
+  `WorldClient` already step + replicate + reconcile it. B threads `WorldSurfaces` through these the same way
+  7.52.0 threaded `WorldColliders`.
 
 Everything B builds that is *upstream* of that seam - the bake, the asset, `WorldSurfaces`, the query math, the
 `FromScatter` builder - is **independent of A** and can be built and tested before A lands. Only the final
@@ -104,23 +112,29 @@ Mirrors `PropColliders.FromScatter`. Given the deterministic scatter placements 
 the placement `scale`/`yaw`, base Y from the placement) and return a `WorldSurfaces`. Streaming-consistent because
 it shares the coordinate-hash scatter, exactly like the colliders.
 
-### 5. Movement integration (depends on A)
+### 5. Movement integration (against A's 7.54.0 seam)
 
-In `CharacterMovement.Step`, once A's vertical model exists:
+B threads a nullable `WorldSurfaces?` through the vertical `CharacterMovement.Step(in MoveState, ...)` overload
+(and `ResolveHorizontal`), exactly as 7.52.0 added `WorldColliders?`; null = today's terrain-only behaviour.
 
-- **Support height = `max(terrain(x,z), WorldSurfaces.Query(x,z) ?? -inf)`.** A's gravity/landing uses this as the
-  surface the capsule rests on, so falling onto a rock lands you on its top, and walking over the top follows the
-  baked contour.
-- **Height-aware XZ blocking (the crux).** Today `WorldColliders` push the capsule out of a footprint
-  unconditionally; that would shove you off a roof you are standing on. Make the push-out **conditional on
-  height**: resolve a prop's XZ overlap only while the capsule's feet are **below that prop's top surface** (you
-  are hitting the side), and skip it once you are at/above the top (you are supported, not blocked). So sides
-  block, tops carry.
+- **Support height** - A lands the capsule on `groundHeight(x,z) + CapsuleHalfHeight`. B makes the effective
+  ground `max(terrain(x,z), WorldSurfaces.Query(x,z) ?? terrain)`, so falling onto a rock lands you on its top and
+  walking over the top follows the baked contour. (Passing a composed `groundHeight` delegate also works, but a
+  first-class `WorldSurfaces?` param keeps the height-aware blocking below in one place and matches the collider
+  precedent.)
+- **Height-aware XZ blocking (the crux).** `ResolveHorizontal` currently calls `colliders.Resolve(xz, radius)`
+  unconditionally, which would shove you off a roof you stand on. Make it height-aware: a blocker is skipped once
+  the capsule's feet are at/above that prop's top (you are supported, not blocked) and applied while below (you
+  hit the side). Mechanism: each `WorldCollider` gains a **top height** (the prop's solid top = its baked surface
+  max for a walkable-solid; its full height for a thin-blocker so a tree is never mounted), and `Resolve` takes
+  the capsule foot Y, skipping colliders with `footY >= top - skin`. So sides block, tops carry; trees are
+  unchanged (their top is unreachable).
 - **Step-up.** A small upward support step (rise `<= MoveTuning.StepHeight`, default ~0.4 m) is taken
   automatically without a jump, so you can mount a low rock/curb/log by walking into it; a rise greater than the
-  step height behaves as a wall (blocked unless jumped). New tuning field `StepHeight` on `MoveTuning` (B adds it
-  next to A's gravity/jump fields).
-- **Grounded on a surface** counts as grounded for A's jump (you can jump again off a rock).
+  step height behaves as a wall (blocked unless jumped). New `StepHeight` field on `MoveTuning`, beside A's
+  gravity/jump fields.
+- **Grounded on a surface** counts as `MoveState.Grounded` for A's jump/coyote logic (you can jump again off a
+  rock), since it flows from the same `groundHeight` contact test.
 
 ### 6. Authoritative + client-predicted
 
@@ -192,9 +206,9 @@ stand on top of a hand-placed solid building, walk off an edge and fall (A) back
 
 ## Open items to confirm during implementation
 
-- **A's final API** (player-state vertical fields, `MoveCommand.Jump`, the support-height seam in
-  `CharacterMovement.Step`) - reconcile B's integration against it when A lands; hold the integration task until
-  then.
+- ~~A's final API~~ - **resolved**: A shipped in 7.54.0; the dependency contract + integration sections above are
+  reconciled to its real API (`MoveState`, the vertical `Step` overload, `MoveTuning` vertical fields,
+  `MovementState`). No longer held.
 - **Render-free server access to the kit index.** `AssetManifest` lives in `Render3D`; the headless server needs
   the `id -> PropSurface` / `id -> collider` mapping render-free. Options: a render-free kit-index model the
   server reads (the heightmaps are already render-free), or the server builds its surface set from the render-free

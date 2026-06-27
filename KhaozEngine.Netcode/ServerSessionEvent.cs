@@ -22,14 +22,20 @@ public readonly struct ServerSessionEvent
     /// <summary>The player slot the event concerns.</summary>
     public int Slot { get; }
 
-    /// <summary>Game payload for a <see cref="ServerSessionEventKind.Data"/> event; empty otherwise.</summary>
+    /// <summary>Game payload for a <see cref="ServerSessionEventKind.Data"/> event; for a
+    /// <see cref="ServerSessionEventKind.Joined"/> event it carries the connect token the client presented in
+    /// its Hello (empty if none). Empty for <see cref="ServerSessionEventKind.Left"/>.</summary>
     public byte[] Data { get; }
 
     /// <summary>The channel a <see cref="ServerSessionEventKind.Data"/> event arrived on.</summary>
     public NetChannelReliability Reliability { get; }
 
-    public static ServerSessionEvent Joined(int slot) =>
-        new(ServerSessionEventKind.Joined, slot, Array.Empty<byte>(), NetChannelReliability.ReliableOrdered);
+    /// <summary>A player joined; <paramref name="token"/> is the connect token from their Hello (carried in Data).</summary>
+    public static ServerSessionEvent Joined(int slot, byte[] token) =>
+        new(ServerSessionEventKind.Joined, slot, token ?? Array.Empty<byte>(), NetChannelReliability.ReliableOrdered);
+
+    /// <summary>A player joined with no connect token.</summary>
+    public static ServerSessionEvent Joined(int slot) => Joined(slot, Array.Empty<byte>());
 
     public static ServerSessionEvent Left(int slot) =>
         new(ServerSessionEventKind.Left, slot, Array.Empty<byte>(), NetChannelReliability.ReliableOrdered);

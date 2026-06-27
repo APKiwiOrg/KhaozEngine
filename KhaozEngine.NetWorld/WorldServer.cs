@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Text;
 using KhaozEngine.Ecs;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Netcode;
@@ -43,6 +44,7 @@ public sealed class WorldServer
     private readonly Dictionary<int, Entity> entityBySlot = new();
     private readonly Dictionary<int, PlayerMoveState> stateBySlot = new();
     private readonly Dictionary<int, int> lastAckBySlot = new();
+    private readonly Dictionary<int, string> accountIdBySlot = new();
     private int nextNetId = 1;
 
     public WorldServer(INetTransport transport, WorldServerConfig config,
@@ -66,6 +68,32 @@ public sealed class WorldServer
     /// <summary>The net id of the player entity for a joined slot.</summary>
     public bool TryGetPlayerNetId(int slot, out int netId) => netIdBySlot.TryGetValue(slot, out netId);
 
+    /// <summary>Raised after a player entity has spawned: (slot, accountId). The accountId is the connect token
+    /// (UTF-8) or <c>guest:{slot}</c> when none was presented. A persistence layer loads the saved record here.</summary>
+    public event Action<int, string>? PlayerJoined;
+
+    /// <summary>Raised just before a player despawns: (slot, accountId, final state). A persistence layer
+    /// serializes and saves the final state here (the entity is gone after this returns).</summary>
+    public event Action<int, string, PlayerMoveState>? PlayerLeaving;
+
+    /// <summary>The account id for a joined slot (connect token or <c>guest:{slot}</c> fallback).</summary>
+    public bool TryGetAccountId(int slot, out string accountId) => accountIdBySlot.TryGetValue(slot, out accountId!);
+
+    /// <summary>The current authoritative movement state for a joined slot.</summary>
+    public bool TryGetPlayerState(int slot, out PlayerMoveState state) => stateBySlot.TryGetValue(slot, out state);
+
+    /// <summary>The slots of all currently joined players.</summary>
+    public IReadOnlyCollection<int> JoinedSlots => netIdBySlot.Keys;
+
+    /// <summary>Overrides a joined player's authoritative state (and its replicated position). Used by
+    /// load-on-join to place the player at the saved position; no-op for an unknown slot.</summary>
+    public void SetPlayerState(int slot, in PlayerMoveState state)
+    {
+        if (!entityBySlot.TryGetValue(slot, out Entity e)) return;
+        stateBySlot[slot] = state;
+        world.Set(e, new ReplicatedPosition { Value = state.Position });
+    }
+
     /// <summary>Ingests session events (join/leave) and client input. Call once before <see cref="Tick"/>.</summary>
     public void Poll()
     {
@@ -75,7 +103,7 @@ public sealed class WorldServer
             switch (ev.Kind)
             {
                 case ServerSessionEventKind.Joined:
-                    OnJoin(ev.Slot);
+                    OnJoin(ev.Slot, ev.Data);
                     break;
                 case ServerSessionEventKind.Left:
                     OnLeave(ev.Slot);
@@ -122,7 +150,7 @@ public sealed class WorldServer
         }
     }
 
-    private void OnJoin(int slot)
+    private void OnJoin(int slot, byte[] token)
     {
         Vector3 spawn = config.SpawnPosition?.Invoke(slot) ?? new Vector3(slot * 2f, 0f, 0f);
         // Ground-clamp the spawn (an idle step settles Y onto the terrain + half-height).
@@ -133,18 +161,26 @@ public sealed class WorldServer
         world.Set(e, new NetId(netId));
         world.Set(e, new ReplicatedPosition { Value = state.Position });
 
+        string accountId = token is { Length: > 0 } ? Encoding.UTF8.GetString(token) : $"guest:{slot}";
         netIdBySlot[slot] = netId;
         entityBySlot[slot] = e;
         stateBySlot[slot] = state;
         lastAckBySlot[slot] = -1;
+        accountIdBySlot[slot] = accountId;
+
+        PlayerJoined?.Invoke(slot, accountId);
     }
 
     private void OnLeave(int slot)
     {
+        if (accountIdBySlot.TryGetValue(slot, out string? acct) && stateBySlot.TryGetValue(slot, out PlayerMoveState final))
+            PlayerLeaving?.Invoke(slot, acct, final);
+
         if (entityBySlot.TryGetValue(slot, out Entity e) && world.IsAlive(e)) world.Despawn(e);
         netIdBySlot.Remove(slot);
         entityBySlot.Remove(slot);
         stateBySlot.Remove(slot);
         lastAckBySlot.Remove(slot);
+        accountIdBySlot.Remove(slot);
     }
 }

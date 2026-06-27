@@ -5,6 +5,18 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.45.0
+
+Follow-camera drag tuning. The `FollowCameraController` (7.44.0) drag mapping is corrected so it turns the view
+the way the hand pulls (drag right turns the view left, drag down looks up) - the previous default felt inverted
+on both axes. Adds `InvertX` / `InvertY` bool fields (default false) so either drag axis can be flipped back or
+surfaced as an "invert axis" game setting. Behaviour-only change to the new-in-7.44.0 controller plus two additive
+fields; minor.
+
+- **`FollowCameraController.InvertX` / `InvertY` (`KhaozEngine.Render3D`)** - per-axis drag inversion, default
+  false. The default orbit mapping is now `Yaw -= dx`, `Pitch += dy` (was `Yaw += dx`, `Pitch -= dy`); setting a
+  flag restores the old direction for that axis.
+
 ## 7.44.0
 
 Walkable overworld slice: sub-project 2 of the overworld render-scale track, making the terrain shipped in

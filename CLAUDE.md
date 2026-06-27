@@ -128,7 +128,10 @@ version/release work.
   - **Terrain libs (render-free leaf + companion):** `Terrain` (render-free leaf, in `Foundation`) = the analytic
     `TerrainField` (`SampleHeight`/`SampleNormal`/`SampleBiome`/`WaterLevel`) folding biome-band shaping + stateless
     coordinate-hash fractal noise (`TerrainNoise`) + ordered `ITerrainFeature`s (`LakeFeature`/`RidgeFeature`/
-    `FlattenFeature`), plus `TerrainCollision` and `TerrainPresets.Clearing()`. Height depends only on `(x,z,seed)`
+    `FlattenFeature`/`RimFeature` (+ `RimPass`) - the bounded-zone enclosing wall, a smoothstep ramp to a jagged
+    crest with road-out corridors, circular MVP shaped around a "distance to the play-area boundary"), plus
+    `TerrainCollision` (`GroundHeight`/`GroundNormal` (the slope-gate delegate)/`IsWalkable`) and
+    `TerrainPresets.Clearing()`/`BoundedClearing()`. Height depends only on `(x,z,seed)`
     (load-order independent for sharded streaming); plain `float` (authoritative server + visual client, NOT
     `DeterministicFp`). `Terrain.Render3D` (companion, in `Game3D`) = `TerrainChunkBuilder` (chunked-LOD mesh off the
     field: skirts, per-vertex splat weights plumbed for the later PBR upgrade, height/slope vertex-colour ramp,
@@ -142,19 +145,24 @@ version/release work.
     and water are later sub-projects.
   - **Locomotion + networked-world libs (render-free movement + the netcode wiring):** `Locomotion` (leaf, in
     `Foundation`, deps Primitives only) = `CharacterMovement.Step` (pure XZ move from a `MoveCommand` + ground
-    delegate + one `MoveTuning`, ground-clamped + slope gate) shared by the local `CharacterController3D`
-    (Game.Render3D wraps it), the server sim, and client prediction. `NetWorld` (in `Server`, deps
-    Locomotion/Netcode/Replication/Ecs/Serialization/WorldStore/**Sharding**) = `PlayerMoveSimulator` (`ITickSimulator` over
-    `CharacterMovement.Step`), `WorldServer` (single-`World` authoritative: per-player `RemoteCommandQueue` +
+    delegate + one `MoveTuning`, ground-clamped + slope gate - the slope gate runs only when a `groundNormal`
+    delegate is passed, e.g. `TerrainCollision.GroundNormal`, so the rim wall can't be climbed) shared by the local
+    `CharacterController3D` (Game.Render3D wraps it), the server sim, and client prediction. `NetWorld` (in
+    `Server`, deps Locomotion/Netcode/Replication/Ecs/Serialization/WorldStore/**Sharding**) = `WorldBounds`
+    (abstract `Contains`/`Clamp` + `CircleBounds`/`RectBounds`, the authoritative play-area shape; `Clamp` =
+    nearest in-bounds point, idempotent inside + clamp-and-slide outside) wired as a nullable bound through the
+    movement step (off = unbounded, unchanged), `PlayerMoveSimulator` (`ITickSimulator` over
+    `CharacterMovement.Step`, clamps to `WorldBounds`), `WorldServer` (single-`World` authoritative: per-player `RemoteCommandQueue` +
     ground-clamped sim + per-client AoI via `SnapshotWriter.WriteFiltered`+`InterestGrid`, framed `[localNetId][ack]`;
     a persistence seam = `PlayerJoined`/`PlayerLeaving` events + accountId-from-connect-token + `SetPlayerState`),
     `ShardedWorldServer` (+ `ShardedWorldServerConfig`, the multi-cell variant = the same movement stack run across a
     `Sharding.ShardHost` cell grid: routes each client's `MoveCommand` to the owning cell, steps each cell's
-    `PlayerMovementSystem` via `ShardHost.Tick` scheduler-fanned, exactly-once handoff on boundary crossings -
+    `PlayerMovementSystem` (also clamps to the optional `WorldBounds`) via `ShardHost.Tick` scheduler-fanned, exactly-once handoff on boundary crossings -
     `NetId` stable - border ghosting, single home-cell AoI framed identically; `PendingMove` = the per-tick command
     a cell applies to an owned player, server-local + not replicated/migrated; the `WorldClient`/`MoveProtocol` are
     UNCHANGED), `WorldClient` (`NetClient`+`ClientReplicationView`+`ClientPrediction` -> `EntityRenderState[]`, local
-    predicted/reconciled, remotes replicated), and `WorldPersistence` (+ `PlayerRecord`, a forward-tolerant JSON
+    predicted/reconciled - prediction clamps to the same `WorldBounds` so reconciliation stays clean at the wall -
+    remotes replicated), and `WorldPersistence` (+ `PlayerRecord`, a forward-tolerant JSON
     record): wires an `IWorldStore` into the server lifecycle via `IWorldPersistenceHost` (the seam `WorldServer` AND
     `ShardedWorldServer` both implement) - load-on-join / save-on-leave / periodic dirty snapshot, keys
     `player:{accountId}`, player-keyed + cell-agnostic (a loaded player spawns at its saved position in whatever cell

@@ -22,13 +22,15 @@ public sealed class PlayerMovementSystem : ISystem
     private readonly Func<float, float, float> groundHeight;
     private readonly Func<float, float, Vector3>? groundNormal;
     private readonly MoveTuning tuning;
+    private readonly WorldBounds? bounds;
 
     public PlayerMovementSystem(Func<float, float, float> groundHeight, MoveTuning tuning,
-        Func<float, float, Vector3>? groundNormal = null)
+        Func<float, float, Vector3>? groundNormal = null, WorldBounds? bounds = null)
     {
         this.groundHeight = groundHeight ?? throw new ArgumentNullException(nameof(groundHeight));
         this.tuning = tuning;
         this.groundNormal = groundNormal;
+        this.bounds = bounds;
     }
 
     public void Update(World world, float dt)
@@ -36,7 +38,13 @@ public sealed class PlayerMovementSystem : ISystem
         world.ForEach<NetId, ReplicatedPosition, PendingMove>((Entity e, ref NetId _, ref ReplicatedPosition pos, ref PendingMove move) =>
         {
             if (world.Has<Ghost>(e) || world.Has<Migrating>(e)) return;   // owner is the only simulator
-            pos.Value = CharacterMovement.Step(pos.Value, move.Command, dt, groundHeight, tuning, groundNormal);
+            Vector3 p = CharacterMovement.Step(pos.Value, move.Command, dt, groundHeight, tuning, groundNormal);
+            if (bounds is not null)
+            {
+                Vector2 c = bounds.Clamp(p.X, p.Z);
+                p = new Vector3(c.X, groundHeight(c.X, c.Y) + tuning.CapsuleHalfHeight, c.Y);
+            }
+            pos.Value = p;
         });
     }
 }

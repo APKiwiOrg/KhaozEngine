@@ -760,7 +760,7 @@ var field = new TerrainField(TerrainPresets.BoundedClearing());   // meadow ring
 ```
 
 **2. The slope gate (so the wall can't be climbed).** `CharacterMovement.Step` already rejects a step onto ground
-steeper than `MoveTuning.MaxSlopeRadians` (default 50 deg) - but only when a `groundNormal` delegate is supplied.
+steeper than `MoveTuning.MaxSlopeRadians` (default 45 deg) - but only when a `groundNormal` delegate is supplied.
 Pass `TerrainCollision.GroundNormal` as that delegate everywhere movement runs, so the steep rim blocks and the
 gentle pass corridor stays walkable. Local controller:
 

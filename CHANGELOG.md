@@ -5,6 +5,21 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.51.1
+
+Slope-gate completion for the bounded play area (follow-up to 7.51.0): the rim is only a real border if it
+can't be walked up. Patch; no API change.
+
+- **`MoveTuning.Default.MaxSlopeRadians` lowered 50 deg -> 45 deg** (and the matching
+  `CharacterController3D.MaxSlopeRadians` default), so a `RimFeature` mountain wall clearly exceeds the budget and
+  is rejected while normal hills stay walkable. 50 deg was nearly a cliff and still walkable.
+- **Slope gate wired everywhere movement runs:** `TerrainWalkSample` now passes `TerrainCollision.GroundNormal`
+  as the `groundNormal` delegate in BOTH modes (not just bounded) - it previously passed only `GroundHeight`, so
+  the gate was dormant and you could walk straight up cliffs. The reference `NetworkedWalkServer` (authoritative)
+  and `NetworkedWalkSample` (client prediction) now pass `GroundNormal` too, so a hacked client still can't climb.
+- Headless tests: the default budget blocks a 47 deg slope (it did not at 50 deg) and allows a gentle 30 deg
+  slope; the authoritative server sim and the client prediction sim gate a steep slope identically every tick.
+
 ## 7.51.0
 
 Bounded play area: the engine's first border/bounds mechanism, the missing capability for designed bounded

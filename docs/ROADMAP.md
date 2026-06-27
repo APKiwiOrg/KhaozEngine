@@ -1,6 +1,6 @@
 # KhaozEngine roadmap / backlog
 
-Larger feature areas identified but not yet scheduled. Current released version: **7.46.0** (the shared
+Larger feature areas identified but not yet scheduled. Current released version: **7.47.0** (the shared
 `<KhaozEngine5xVersion>` line, which is the engine: the custom MonoGame-free stack plus the graduated foundation packages). The legacy 4.x
 line and its six genuinely-MonoGame packages (`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`) were
 DELETED from the engine source, so the engine itself is now entirely MonoGame-free. All three consumers are
@@ -72,9 +72,17 @@ Reference pattern: `github.com/levy-street/world-of-claudecraft` (engine-agnosti
   coordinate-hash placement, streaming-ready), and `PropRenderer`/`Scene3D.DrawProps`
   (`KhaozEngine.Terrain.Render3D`, instanced + distance-culled). `TerrainWalkSample` forests the clearing with a
   committed CC0 Quaternius kit. Spec: `docs/superpowers/specs/2026-06-27-prop-scatter-design.md`.
-- **Next sub-projects:** world streaming / frustum+distance culling wired to `Sharding`, procedural dungeon
-  generator, and animated characters/creatures (needs a glTF animation-clip-playback feature). PBR splat
-  textures and a water shader are terrain-material upgrades.
+- **Networked overworld shipped (`7.47.0`).** The fifth sub-project (the client and the authoritative server
+  meet): `KhaozEngine.Locomotion` (render-free `CharacterMovement.Step` + `MoveTuning`, one movement core the
+  local `CharacterController3D` now wraps) and `KhaozEngine.NetWorld` (`PlayerMoveSimulator`, `WorldServer` -
+  single-`World` authoritative server over `NetServer`/`Replication`/`InterestGrid`, and `WorldClient` -
+  prediction + reconciliation, `EntityRenderState[]`). Demos `NetworkedWalkServer` + `NetworkedWalkSample` let
+  two clients walk the same terrain on localhost (props stay client-side deterministic scatter, not replicated).
+  Single `World`; multi-cell sharding folds in with streaming next. Spec:
+  `docs/superpowers/specs/2026-06-27-networked-overworld-design.md`.
+- **Next sub-projects:** world streaming / frustum+distance culling wired to `Sharding` (and multi-cell handoff
+  for the networked world), procedural dungeon generator, and animated characters/creatures (needs a glTF
+  animation-clip-playback feature). PBR splat textures and a water shader are terrain-material upgrades.
 
 ## The post-MonoGame pivot (6.x line): strategic direction
 

@@ -5,6 +5,61 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.47.0
+
+Networked overworld, the fifth overworld render-scale sub-project: the 3D walkable client and the shipped
+authoritative server stack meet, so two clients see each other walking the same terrain. Two new packages
+(`Locomotion`, `NetWorld`) + a controller refactor + two demo exes; additive; minor.
+
+- **`KhaozEngine.Locomotion` (new render-free leaf, `Foundation` umbrella; deps Primitives only)** - the shared
+  movement core. `CharacterMovement.Step(Vector3 position, in MoveCommand cmd, float dt, Func<float,float,float>
+  groundHeight, in MoveTuning tuning, Func<float,float,Vector3>? groundNormal = null)` is a pure XZ move:
+  resolves a camera-relative `MoveCommand` (`Vector2 Move` (X = right/strafe, Y = forward) + `bool Run` +
+  `float CameraYaw`) into a world direction, normalizes diagonals, applies walk/run speed over `dt`, optionally
+  rejects a step onto too-steep ground, and clamps Y onto the ground delegate + the capsule half-height.
+  `MoveTuning(WalkSpeed, RunSpeed, CapsuleHalfHeight, MaxSlopeRadians)` with `MoveTuning.Default` (walk 3, run 6,
+  half-height 0.9, ~50 deg) is the one source of truth. No input/render/netcode dependency.
+- **`CharacterController3D` (`KhaozEngine.Game.Render3D`) refactored to wrap `CharacterMovement.Step`** - the
+  walkable-slice controller now maps the input snapshot to a `MoveCommand` + `MoveTuning` from its public fields
+  and delegates to the shared core, so local feel and networked feel are the same code. Public API, behaviour,
+  and the existing tests are unchanged; it gains a `KhaozEngine.Locomotion` reference.
+- **`KhaozEngine.NetWorld` (new render-free package, `Server` umbrella; deps Locomotion/Netcode/Replication/Ecs)**
+  - the networked-world layer:
+  - `PlayerMoveState : IPredictedState<PlayerMoveState>` (a `Vector3 Position`; the interface is satisfied over
+    its XZ plane) and `ReplicatedPosition : IComponent` (the one replicated, interpolatable component).
+  - `PlayerMoveSimulator : ITickSimulator<PlayerMoveState, MoveCommand>` runs `CharacterMovement.Step` both
+    server-authoritatively and inside client prediction (identical code, in lockstep).
+  - `WorldServer` - a single-`World` authoritative movement server over an injected `INetTransport`: a
+    `NetServer`/`AllowAllAuthenticator` session spawns one player entity per connection, `Poll` ingests joins/
+    leaves and decoded `MoveCommand`s into a `RemoteCommandQueue`, and `Tick(dt)` advances each player, then
+    serves each client a per-area-of-interest snapshot (`SnapshotWriter.WriteFiltered` over an `InterestGrid`)
+    framed with that client's net id + last-acked move seq. The terrain is an injected ground delegate (no
+    terrain dependency).
+  - `WorldClient` - wraps `NetClient` + `ClientReplicationView` + `ClientPrediction`. `Poll()` applies AoI
+    snapshots and reconciles the local avatar against the authoritative basis; `SendInput(cmd)` predicts one
+    tick and transmits; `Snapshot()` returns `IReadOnlyList<EntityRenderState>` (`{ NetId Id; Vector3 Position;
+    bool IsLocal; }`) - local predicted/reconciled, remotes replicated.
+  - `MoveProtocol` - the shared wire codec: the `ReplicationRegistry`, the move encoding
+    `[seq][move.x][move.y][run][cameraYaw]`, and the server frame `[localNetId][ackSeq][snapshot]`.
+  - Design note: `PlayerMoveState`/`IPredictedState` live in `NetWorld` (not `Locomotion`) and
+    `CharacterMovement.Step` takes/returns `Vector3`, so the movement core and the local controller stay
+    netcode-free and the `Foundation` umbrella keeps its no-networking guarantee. The single-`World` slice
+    serves full-state per-AoI snapshots (the shipped `MmoServer.SnapshotForClient` pattern); the
+    `ServerReplicator` baseline/delta path folds in with multi-cell sharding + streaming later.
+- **Demos (`IsPackable=false`)** - `NetworkedWalkServer` (a headless `WorldServer` on a `FixedTickHost` over
+  LiteNetLib UDP, terrain `TerrainPresets.Clearing()`) and `NetworkedWalkSample` (a windowed `--connect [host]
+  [port]` client running a `WorldClient`, rendering a capsule per `EntityRenderState` - local predicted with the
+  follow camera on it, remotes from replicated positions - over the same terrain + deterministic prop scatter).
+  Props are not replicated; each client scatters them from the seed. Run the server, then two clients on
+  localhost to see two players.
+- **Tests (headless, over `LoopbackTransport` / an in-memory hub; one live-socket smoke)** - `CharacterMovement`
+  step semantics; `PlayerMoveSimulator` tick + ground-clamp; a single-client round-trip (a client's
+  `MoveCommand` moves its server entity and returns via replication); two clients each seeing the other move;
+  `ClientPrediction` reconciling an injected misprediction (local converges to the server basis; unacked
+  commands replay).
+
+Spec: `docs/superpowers/specs/2026-06-27-networked-overworld-design.md`.
+
 ## 7.46.0
 
 Prop scatter + asset pipeline, the fourth overworld render-scale sub-project: the walkable terrain is now

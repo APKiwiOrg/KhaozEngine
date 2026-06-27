@@ -96,8 +96,8 @@ version/release work.
   - **Render/runtime stack:** `Gpu`, `Windowing`, `Render2D`, `Render3D`, `Gui`, `Audio`, `Particles`, `Effects`,
     `Game`, `Game.Render3D`.
   - **Foundation (MonoGame-free):** `Ecs`, `Serialization`, `Content`, `Diagnostics`, `App`, `Localization`,
-    `Persistence`, `Pooling`, `Platform`, `Updates`, `Collision`, `Terrain`, `Netcode`, `Netcode.Abstractions`,
-    `Netcode.LiteNetLib`, `Simulation`, `Replication`, `WorldStore`, `Sharding`.
+    `Locomotion`, `Persistence`, `Pooling`, `Platform`, `Updates`, `Collision`, `Terrain`, `Netcode`,
+    `Netcode.Abstractions`, `Netcode.LiteNetLib`, `Simulation`, `Replication`, `WorldStore`, `Sharding`, `NetWorld`.
   - **Server / parallel-job core types:** `Simulation` = `FixedTickHost` + the `IJobScheduler` worker-pool seam
     (`SingleThreadedJobScheduler` inline default + `ThreadPoolJobScheduler`); `Netcode` =
     `INetTransport`/`LoopbackTransport` + the `NetServer`/`NetClient` session layer; `Replication` = authoritative ECS
@@ -125,6 +125,18 @@ version/release work.
     chunk AABB) + `TerrainLod.PickLod` + `Scene3D.LoadTerrainChunk`/`DrawTerrainChunk`. First overworld render-scale
     sub-project (`docs/superpowers/specs/2026-06-27-terrain-system-design.md`); streaming/props/PBR-textures/water
     are later sub-projects.
+  - **Locomotion + networked-world libs (render-free movement + the netcode wiring):** `Locomotion` (leaf, in
+    `Foundation`, deps Primitives only) = `CharacterMovement.Step` (pure XZ move from a `MoveCommand` + ground
+    delegate + one `MoveTuning`, ground-clamped + slope gate) shared by the local `CharacterController3D`
+    (Game.Render3D wraps it), the server sim, and client prediction. `NetWorld` (in `Server`, deps
+    Locomotion/Netcode/Replication/Ecs) = `PlayerMoveSimulator` (`ITickSimulator` over `CharacterMovement.Step`),
+    `WorldServer` (single-`World` authoritative: per-player `RemoteCommandQueue` + ground-clamped sim + per-client
+    AoI via `SnapshotWriter.WriteFiltered`+`InterestGrid`, framed `[localNetId][ack]`), and `WorldClient`
+    (`NetClient`+`ClientReplicationView`+`ClientPrediction` -> `EntityRenderState[]`, local predicted/reconciled,
+    remotes replicated). `PlayerMoveState : IPredictedState` lives in NetWorld (not Locomotion) so the movement
+    core + local controller stay netcode-free; `CharacterMovement.Step` takes/returns `Vector3`. Demos
+    (`IsPackable=false`): `NetworkedWalkServer` (headless) + `NetworkedWalkSample` (windowed `--connect` client).
+    Networked-overworld render-scale sub-project (`docs/superpowers/specs/2026-06-27-networked-overworld-design.md`).
   - **Umbrellas (code-free metapackages):** `Foundation`, `Game2D`, `Game3D`, `Server`.
   - **Tools, same version line:** `Updates.Tool` (`ke-updater`: manifest/genkey/sign/verify) and `Sfx.Tool`
     (`ke-sfxbake`: ElevenLabs-driven SFX bake) are `PackAsTool`; `Content.Validator` is a build-time tool

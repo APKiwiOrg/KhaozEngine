@@ -180,6 +180,52 @@ Directory.Build.props (shared version)   nuget.config   .github/workflows/ci.yml
 
 CI builds, tests, packs, and on a `v*` tag publishes to GitHub Packages.
 
+## Running the samples
+
+Each sample is a runnable head (`dotnet run --project <name>`) proving one slice of the engine, no MonoGame.
+The windowed ones open a GPU window (need a display); the server / snapshot heads are headless.
+
+**Interactive (windowed)** - open a window, drive with keyboard + mouse:
+
+| Sample | Demonstrates | Run | Controls |
+|---|---|---|---|
+| `WindowingSample` | Windowing + **input**: gestures (drag/tap/long-press), `GameClock` pause + time-scale, clipboard | `dotnet run --project WindowingSample` | Space pause, 1/2/3 slow/normal/fast, drag / tap / long-press, Esc quit |
+| `GuiSample` | **Gui** screen stack: a menu pushes modal Settings / Widgets / Immediate screens | `dotnet run --project GuiSample` | Click buttons, Esc quit |
+| `SceneSample` | `SceneManager` push / switch / overlay / pop | `dotnet run --project SceneSample` | Key or click to start, Esc pushes a pause overlay, Esc again pops |
+| `Render2DSample` | 2D: sprites, text, alpha blend, batched quads | `dotnet run --project Render2DSample` | Esc quit |
+| `Render3DSample` | 3D mesh viewer + retro post (cel / outline / palette) | `dotnet run --project Render3DSample` | Space model, O outline, A starfield, R retro, C cel, P palette, W/S zoom, arrows orbit, Esc quit |
+| `TerrainWalkSample` | **Walkable streamed 3D overworld** (follow camera + character controller, endless chunk streaming) | `dotnet run --project TerrainWalkSample` | WASD move, mouse-drag orbit, scroll zoom, Shift run, Esc quit |
+| `MiniGame` | A whole tiny game (Windowing + Render2D + Gui + Audio): "Catcher" | `dotnet run --project MiniGame` | A/D or arrows move, Esc quit |
+
+**Networked** - run the server, then one or two clients (two clients = two players on the same terrain):
+
+```bash
+dotnet run --project NetworkedWalkServer        # headless authoritative server on UDP :47700
+dotnet run --project NetworkedWalkSample        # windowed client; same controls as TerrainWalkSample
+# optional args: NetworkedWalkSample [host] [port]   (defaults 127.0.0.1 47700)
+```
+
+**Headless (no window)**:
+
+| Sample | What it does | Run |
+|---|---|---|
+| `SnapshotSample` | Writes a 2D + a 3D PNG via the snapshot harness (needs a GPU device, not a display) | `dotnet run --project SnapshotSample -- /tmp/ke-snapshot-demo` |
+| `MmoServerSample` | Reference dedicated MMO server (cell grid + seamless handoff) on a UDP socket | `dotnet run --project MmoServerSample` |
+
+**Windowed smoke (CI / quick check).** Every windowed sample honors `KE_MAX_FRAMES=N`: render N frames, then
+exit 0. So any of them doubles as a smoke test on a GPU box without needing someone to close the window:
+
+```bash
+KE_MAX_FRAMES=5 dotnet run --project TerrainWalkSample
+```
+
+`Render2DSample` and `Render3DSample` also take `--smoke` (capture one frame, print a pass/fail line, exit with a
+code), with extra `Render3DSample` flags `--retro --pico --gb --asteroid`, e.g.:
+
+```bash
+dotnet run --project Render3DSample -- --smoke --retro --gb
+```
+
 ## Dev tools
 
 Author-time dotnet tools that ship as packages on the shared version line (not runtime dependencies):

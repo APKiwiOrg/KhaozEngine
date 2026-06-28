@@ -23,6 +23,7 @@ Immediate-mode + retained UI on the custom MonoGame-free stack.
   - `ScrollablePanel` — wheel/drag scrolling fixed-height list; rows drawn between `BeginClip`/`EndClip` (scissor),
     hit-test with `TappedItemIndex`.
 - `TextEntry` — headless key→char text-entry helper (US layout + shift), used by `TextInput`. No SDL plumbing.
+  Ctrl/Super (Cmd) held suppresses character entry so shortcut chords like Ctrl+V / Cmd+V paste instead of typing.
 
 Text wrap/alignment lives in `KhaozEngine.Render2D.TextLayout` (over the `ITextMeasurer` seam, so the layout
 math is headless-testable); clipping uses `SpriteBatch` scissor (`SetScissor`/`ClearScissor`, DPI-aware). Ported

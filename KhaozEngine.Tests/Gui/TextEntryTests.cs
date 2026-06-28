@@ -72,5 +72,33 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal("12", TextEntry.Apply("12", Frame(new[] { Key.A }), filter: DigitsOnly));
             Assert.Equal("123", TextEntry.Apply("12", Frame(new[] { Key.D3 }), filter: DigitsOnly));
         }
+
+        [Fact]
+        public void Ctrl_held_does_not_type_the_letter()
+        {
+            // Ctrl+V is a paste shortcut, not a 'v' keystroke.
+            Assert.Equal("abc", TextEntry.Apply("abc", Frame(new[] { Key.V }, held: new[] { Key.LeftControl })));
+            Assert.Equal("abc", TextEntry.Apply("abc", Frame(new[] { Key.V }, held: new[] { Key.RightControl })));
+        }
+
+        [Fact]
+        public void Super_held_does_not_type_the_letter()
+        {
+            // Cmd+V (macOS paste) must not append 'v' either.
+            Assert.Equal("abc", TextEntry.Apply("abc", Frame(new[] { Key.V }, held: new[] { Key.LeftSuper })));
+            Assert.Equal("abc", TextEntry.Apply("abc", Frame(new[] { Key.V }, held: new[] { Key.RightSuper })));
+        }
+
+        [Fact]
+        public void Bare_V_still_appends()
+        {
+            Assert.Equal("v", TextEntry.Apply("", Frame(new[] { Key.V })));
+        }
+
+        [Fact]
+        public void Shift_still_types_with_no_modifier_block()
+        {
+            Assert.Equal("A", TextEntry.Apply("", Frame(new[] { Key.A }, held: new[] { Key.LeftShift })));
+        }
     }
 }

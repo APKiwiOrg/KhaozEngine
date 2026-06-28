@@ -5,6 +5,16 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.59.1
+
+Fix: holding Ctrl or Super (Cmd) while a focused `TextInput`/`TextEntry` field is active no longer types the
+printable key, so shortcut chords like Ctrl+V / Cmd+V paste instead of inserting a stray letter. `TextEntry.Apply`
+only checked Shift, so any Ctrl/Cmd chord still mapped its key and appended the letter into the buffer (in a
+consumer this corrupted a pasted token, leaving a stray `v` from Cmd+V). `Apply` now returns right after the
+Backspace handling when LeftControl/RightControl or LeftSuper/RightSuper is down; Shift remains a text modifier
+and still applies (so Shift+A is still `A`). Headless tests cover Ctrl+V and Cmd+V leaving the buffer unchanged,
+bare V still appending `v`, and Shift+A still uppercasing.
+
 ## 7.59.0
 
 Fix: a player who reconnects (or any player who lands on a recycled slot) can move again instead of freezing,

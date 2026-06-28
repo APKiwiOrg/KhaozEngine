@@ -7,6 +7,8 @@ namespace KhaozEngine.Gui
     /// Headless text-entry helper: maps a frame's <see cref="InputState"/> key presses to typed characters and
     /// applies them to a string buffer (append printable, Backspace deletes). Works off the engine-native
     /// <see cref="Key"/> enum + shift state, so it needs no SDL text-input plumbing and is fully unit-testable.
+    /// Holding Ctrl or Super (Cmd) suppresses character entry so shortcut chords like Ctrl+V / Cmd+V don't type
+    /// the letter into the field; Shift is a text modifier and still applies.
     /// US keyboard layout for shifted symbols. Used by the <see cref="TextInput"/> widget.
     /// Limitations vs a real IME: no locale layouts, dead keys, or composition.
     /// </summary>
@@ -20,6 +22,12 @@ namespace KhaozEngine.Gui
         {
             if (input.WasPressed(Key.Backspace) && current.Length > 0)
                 current = current[..^1];
+
+            // Ctrl/Super held = a shortcut chord (Ctrl+V / Cmd+V paste, etc.), not text entry.
+            // Don't type the printable key (Backspace above still works); Shift is a text modifier, not a chord.
+            if (input.IsDown(Key.LeftControl) || input.IsDown(Key.RightControl)
+                || input.IsDown(Key.LeftSuper) || input.IsDown(Key.RightSuper))
+                return current;
 
             bool shift = input.IsDown(Key.LeftShift) || input.IsDown(Key.RightShift);
 

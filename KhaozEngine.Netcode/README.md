@@ -47,12 +47,17 @@ Tune via `PredictionSettings` (tick rate, buffer cap, hard-snap distance, correc
 ## RemoteCommandQueue&lt;TCommand&gt;
 
 Host-side per-slot, seq-ordered command queue. Dedups retransmits and negative seqs, returns a neutral
-command for an empty slot, and tracks the last acknowledged seq per slot to stamp on snapshots.
+command for an empty slot, and tracks the last acknowledged seq per slot to stamp on snapshots. As anti-replay
+it also rejects any seq at or below a slot's processed high-water mark, so a slot's state must be cleared when
+that slot is released for reuse: `Forget(slot)` drops the slot's buffered commands and high-water mark
+(idempotent), letting the next session that recycles the slot restart its seqs from 0. The authoritative servers
+(`WorldServer`/`ShardedWorldServer`) call this on disconnect; without it a recycled slot freezes the new player.
 
 ```csharp
 var queue = new RemoteCommandQueue<MyCommand>(neutralCommand: MyCommand.Idle);
 queue.Store(slot, seq, command);                       // on receive
 var cmd = queue.Dequeue(slot, out int lastAckedSeq);   // once per sim tick
+queue.Forget(slot);                                    // on disconnect, before the slot is recycled
 ```
 
 ## IChannelSplittable&lt;TSelf&gt; + NetChannelReliability

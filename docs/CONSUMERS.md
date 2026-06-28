@@ -119,7 +119,7 @@ fine-grained use - a wire-contract project references just `Netcode.Abstractions
 | Consumer | Project(s) | References | Version |
 |---|---|---|---|
 | **Hardpoint** (7.x, 3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic); auto-updater LIVE (`Updates` via Foundation, overlay via Gui) against a server-less static-blob feed + OIDC CI publish, self-relocating updater (7.20.0); `HardpointUpdater` pins `KhaozEngine.Updates` directly (7.20.1); uses `Collision.Segment2D` (7.4.0) for swept projectile collision, `Snapshot`/`Snapshot.Render3D` (7.33.0, dev tool) | **7.37.0** |
-| **Nullwake** (7.x, 2D) | `Nullwake.Core` | `KhaozEngine.Game2D` + `Diagnostics`/`Persistence`/`Windowing` + `Updates` (shim, dormant); uses `AttentionBeacon` (7.6.0) for the timed-reward tappable pulse, `Snapshot` (7.33.0, dev tool) for headless screen captures | **7.33.0** |
+| **Nullwake** (7.x, 2D) | `Nullwake.Core` | `KhaozEngine.Game2D` + `Diagnostics`/`Persistence`/`Windowing` + `Updates` (shim, dormant); uses `AttentionBeacon` (7.6.0) for the timed-reward tappable pulse, `Snapshot` (7.33.0, dev tool) for headless screen captures, `Clipboard` paste + `Pointer.WindowFocused` gating (7.40/7.37) in name entry | **7.68.0** |
 | **SpaceGame** (7.x, 2D + Render3D) | `SpaceGame.Core` (head) / `SpaceGame.Sim` (lockstep sim) | `Game2D` + `Render3D` + `Netcode.LiteNetLib` + `Primitives` (head); `Ecs`/`Collision`/`Diagnostics`/`Content`/`Serialization`/`App`/`Netcode`/`Pooling`/`Determinism` + `Primitives` (sim); `Netcode.Abstractions` (contracts); `Render3D` + `Determinism` for the 2.5D mesh layer; manifest signing via the `ke-updater` tool (embedded RSA public key) | **7.34.0** |
 | **Ruinborne** (7.x, 3D MMO) | `Ruinborne.Client` / `Ruinborne.Server` | client: `KhaozEngine.Game3D` + `Foundation` + `NetWorld` + `Netcode.LiteNetLib` + `Netcode.Abstractions` + `Simulation` + `Updates`; server: `KhaozEngine.Server` umbrella + `WorldStore.SqlServer` (Azure SQL via `WorldPersistence`; the backend is added explicitly since 7.49.1 no longer bundles it). Single `<KhaozEngineVersion>` pin in `Directory.Build.props`, vendored feed (`vendor/khaozengine`, refreshed via `scripts/refresh-engine.sh`). | **7.51.2** |
 
@@ -171,7 +171,7 @@ which fixes Hardpoint's UI hover SFX firing while another app is frontmost. `Sna
 at 7.33.0 (dev tool) and the `HardpointUpdater` shim at `KhaozEngine.Updates` 7.20.1, both separate. 7.34-7.36
 (attack telegraphs, MMO netcode phases 0-2) are carried as pin alignment.
 
-### Nullwake - 7.x, 2D (on `KhaozEngine.Game2D` 7.33.0)
+### Nullwake - 7.x, 2D (on `KhaozEngine.Game2D` 7.68.0)
 
 Fully migrated off MonoGame (the migration landed on Nullwake `main`). `Nullwake.Core` references one package,
 **`KhaozEngine.Game2D`** (the 2D runtime + the Render3D-free `Game` loop framework + the foundation). The shell
@@ -229,6 +229,21 @@ typed post-deserialize chain can't express once the old key is dropped), and `Lo
 chain wires into). Remaining V0-V4 steps are pure version bumps for additive fields, so there is nothing for
 a typed chain to do. `MigrationChain<T>` remains a good fit for a future typed value transform on a loaded
 `GameState`, just not for what Nullwake migrates today.
+
+**Bumped to 7.68.0** (from 7.33.0; all `KhaozEngine.*` pins incl. the dormant `Updates` and the `Snapshot`
+dev tool, vendored feed refreshed to the 7.68.0 set plus the new transitive deps
+`Telegraphs`/`Terrain`/`Locomotion`/`Simulation`). 7.34-7.68 are overwhelmingly 3D / terrain / netcode /
+MMO (Ruinborne, Hardpoint) and inert here. Three 2D/desktop items were adopted, all in Nullwake's own UI
+widgets (the engine's `Gui.TextEntry` is unused): **7.40** GLFW clipboard - `TextInput` paste (Ctrl/Cmd+V)
+now works on Windows/Linux too (it had been a dead flag), filtered through the name char-validator and
+length cap; a **7.59.1-class** chord fix - a held Ctrl/Cmd no longer types a stray letter into the field;
+and **7.37** window-focus gating - reward/surge taps are gated on `Pointer.WindowFocused` so a click that
+only re-focuses the window does not also collect (hover SFX/highlights are auto-gated by the bump).
+**7.63 hold-to-repeat was NOT adopted:** `TextInputHandler` polls keys via `InputManager`, which forwards
+`IsKeyDown`/`IsKeyJustPressed` but not the new `InputState.WasTyped`/`WasRepeated`, so OS key-repeat is
+invisible to the game; adopting it cleanly needs a small additive `InputManager.IsKeyTyped`/`IsKeyRepeated`
+accessor on the engine (queued, not a consumer workaround). **7.39 `AudioSystem.StopAllSfx()` has no use
+here** - Nullwake plays music only, no SFX.
 
 **Bumped to 7.33.0** to adopt the generic headless snapshot harness (`KhaozEngine.Snapshot`). Nullwake's
 dev-only `tools/SnapshotTool` (renders the layered screen stack to PNGs for visual review) moved off its

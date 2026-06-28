@@ -58,6 +58,9 @@ namespace KhaozEngine.Gpu.Internal
         public void UpdateTexture(IGpuTexture texture, byte[] data, uint x, uint y, uint width, uint height)
             => GraphicsDevice.UpdateTexture(((VeldridGpuTexture)texture).Texture, data, x, y, 0, width, height, 1, 0, 0);
 
+        public void UpdateTexture(IGpuTexture texture, byte[] data, uint x, uint y, uint width, uint height, uint mipLevel, uint arrayLayer)
+            => GraphicsDevice.UpdateTexture(((VeldridGpuTexture)texture).Texture, data, x, y, 0, width, height, 1, mipLevel, arrayLayer);
+
         public MappedData Map(IGpuTexture staging, GpuMapMode mode)
         {
             MappedResource m = GraphicsDevice.Map(((VeldridGpuTexture)staging).Texture, VeldridMap.ToVeldrid(mode));

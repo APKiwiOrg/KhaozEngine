@@ -212,7 +212,9 @@ version/release work.
     `NetId` stable - border ghosting, single home-cell AoI framed identically; `PendingMove` = the per-tick command
     a cell applies to an owned player, server-local + not replicated/migrated; the `WorldClient`/`MoveProtocol` are
     UNCHANGED), `WorldClient` (`NetClient`+`ClientReplicationView`+`ClientPrediction` -> `EntityRenderState[]`, local
-    predicted/reconciled - prediction clamps to the same `WorldBounds` so reconciliation stays clean at the wall -
+    predicted/reconciled - prediction runs against the same optional `WorldBounds`/`WorldColliders`/`WorldSurfaces`
+    as the server (trailing ctor params mirroring `WorldServer`, default null = terrain-only), so it predicts around
+    solid props and clamps at the wall instead of rubber-banding, keeping reconciliation a no-op -
     remotes replicated), and `WorldPersistence` (+ `PlayerRecord`, a forward-tolerant JSON
     record): wires an `IWorldStore` into the server lifecycle via `IWorldPersistenceHost` (the seam `WorldServer` AND
     `ShardedWorldServer` both implement) - load-on-join / save-on-leave / periodic dirty snapshot, keys

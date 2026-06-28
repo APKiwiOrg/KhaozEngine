@@ -926,6 +926,9 @@ var server = new WorldServer(transport, config, terrain.GroundHeight, MoveTuning
                              terrain.GroundNormal, bounds: null, colliders: colliders);
 var sharded = new ShardedWorldServer(transport, shardConfig, terrain.GroundHeight, MoveTuning.Default,
                                      terrain.GroundNormal, bounds: null, colliders: colliders);
+// The networked prediction client takes the same set, so it predicts around props instead of rubber-banding:
+var client = new WorldClient(transport, terrain.GroundHeight, MoveTuning.Default,
+                             groundNormal: terrain.GroundNormal, colliders: colliders);
 ```
 
 To override the derived footprint for a specific prop, declare a `collider` on its manifest entry:
@@ -986,10 +989,13 @@ WorldColliders worldColliders = PropColliders.FromScatter(
     topForId: id => surfaces.TryGetValue(id, out PropSurface s) ? s.MaxHeight : float.PositiveInfinity,
     obstacles: new[] { buildingCollider });
 
-// Pass both wherever movement runs (local + the authoritative server resolve identically; null = terrain only):
+// Pass both wherever movement runs (local + the authoritative server + the prediction client resolve identically;
+// null = terrain only):
 character.Update(input, dt, cameraYaw, terrain.GroundHeight, terrain.GroundNormal, worldColliders, worldSurfaces);
 var server = new WorldServer(transport, config, terrain.GroundHeight, MoveTuning.Default,
                              terrain.GroundNormal, bounds: null, colliders: worldColliders, surfaces: worldSurfaces);
+var client = new WorldClient(transport, terrain.GroundHeight, MoveTuning.Default,
+                             groundNormal: terrain.GroundNormal, colliders: worldColliders, surfaces: worldSurfaces);
 ```
 
 You mount a surface by **jumping** up onto it (the height-aware collider blocks the sides only until your feet clear
@@ -1087,7 +1093,10 @@ var server = new WorldServer(transport, new WorldServerConfig { TickSeconds = 1f
   ingests AoI snapshots, applies remote entities, and reconciles the local avatar against the authoritative
   basis; `SendInput(cmd)` predicts one tick forward and transmits it; `Snapshot()` returns
   `IReadOnlyList<EntityRenderState>` (`{ NetId Id; Vector3 Position; bool IsLocal; }`) for the renderer - the
-  local player is the predicted position, remotes the replicated one.
+  local player is the predicted position, remotes the replicated one. Optional trailing ctor params
+  `WorldBounds? bounds`, `WorldColliders? colliders`, `WorldSurfaces? surfaces` (mirroring `WorldServer`) feed the
+  internal prediction simulator, so the client predicts against the **same** play-area bound + static
+  props/buildings + walkable surfaces the server is authoritative over (null = terrain only).
 
 ```csharp
 var client = new WorldClient(transport, terrain.GroundHeight, MoveTuning.Default, new WorldClientConfig { TickSeconds = 1f/30f });

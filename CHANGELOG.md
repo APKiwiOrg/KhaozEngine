@@ -5,6 +5,24 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.60.0
+
+`WorldClient` can now predict against the same static prop/building colliders and walkable surfaces the server is
+authoritative over, so a networked consumer can make props solid without the client rubber-banding.
+
+The collision system (`WorldColliders`/`WorldSurfaces`, shipped 7.55.0 + the 7.56/7.58 domed-rock fixes) already
+ran in the single-player `CharacterController3D` and on the server via `PlayerMoveSimulator`/`WorldServer`/
+`ShardedWorldServer`, but the networked prediction client `WorldClient` built its internal simulator with no
+colliders/surfaces. A consumer that wired colliders server-side only would have the client predict straight
+through every tree while the server clamped at the collider, so every snapshot reconcile-snapped the player back.
+
+`WorldClient`'s ctor gains two optional trailing params mirroring `WorldServer`:
+`WorldClient(..., WorldBounds? bounds = null, WorldColliders? colliders = null, WorldSurfaces? surfaces = null)`.
+They are passed straight to the internal `PlayerMoveSimulator` (which already threaded both into
+`CharacterMovement.Step`), so prediction and authority run identical math once the client is given the same set.
+Defaults `null` preserve the terrain-only behaviour for every existing caller (no breaking change). Additive
+(new optional params + new test coverage), so minor.
+
 ## 7.59.0
 
 Fix: a player who reconnects (or any player who lands on a recycled slot) can move again instead of freezing,

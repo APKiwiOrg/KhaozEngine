@@ -1,0 +1,8 @@
+<Directives xmlns="http://schemas.microsoft.com/netfx/2013/01/metadata">
+  <!-- BepuPhysics 2.4.0 uses Activator.CreateInstance in Solver.Register<T> to instantiate
+       TypeProcessor subclasses. Under NativeAOT the trimmer removes their parameterless
+       constructors. Preserve all of them explicitly so the reflection call succeeds at runtime. -->
+  <Application>
+    <Assembly Name="BepuPhysics" Dynamic="Required All" />
+  </Application>
+</Directives>

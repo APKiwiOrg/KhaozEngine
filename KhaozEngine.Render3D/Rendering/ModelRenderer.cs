@@ -69,7 +69,7 @@ namespace KhaozEngine.Render3D.Rendering
 
         // Splat-terrain pipeline (5-layer texture-array PBR, weights in vertex Color, triplanar). Shares _ubo
         // (frame uniforms) and the instance buffer; its own layout/sampler/shaders/pipeline.
-        readonly IGpuResourceLayout _splatLayout;
+        readonly IGpuResourceLayout _splatLayout;  // U (frame + params, one UBO) + AlbedoArray + NormalArray + Sampler
         readonly IGpuSampler _terrainSampler;   // wrap + anisotropic (trilinear fallback); OWNED here (dispose it)
         readonly IGpuShaderSet _splatShaders;
         readonly IGpuPipeline _splatPipeline;
@@ -169,19 +169,24 @@ namespace KhaozEngine.Render3D.Rendering
                 Outputs = modelOutputs,
             });
 
+            // ONE descriptor set, ONE uniform buffer: the splat material's combined UBO carries the frame uniforms
+            // (re-synced each frame, see WriteFrameUniformsTo) PLUS the per-material splat params appended at offset
+            // UboBytes (see SplatVert/SplatFrag). Metal (via Veldrid/SPIRV-Cross) mis-binds a SECOND uniform buffer
+            // in a pipeline (the second reads the first buffer's bytes), which zeroed the per-layer tint and blacked
+            // out the terrain; folding the params into the one frame UBO matches the model pass's proven shape
+            // (1 UBO + textures + sampler).
             _splatLayout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
                 new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("AlbedoArray", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("NormalArray", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("Sampler", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("SplatParams", GpuResourceKind.UniformBuffer, GpuShaderStages.Fragment)));
+                new GpuResourceLayoutElement("Sampler", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
 
             // Tileable detail textures REPEAT across the world, so wrap addressing; anisotropic for grazing ground
             // (CreateSampler falls back to trilinear when the backend lacks anisotropy).
             _terrainSampler = factory.CreateSampler(new GpuSamplerDescription(
                 GpuSamplerFilter.Anisotropic, GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap, maximumAnisotropy: 8));
 
-            _splatShaders = factory.CreateShadersFromSpirv(ShaderSources.ModelVert, ShaderSources.SplatFrag);
+            _splatShaders = factory.CreateShadersFromSpirv(ShaderSources.SplatVert, ShaderSources.SplatFrag);
 
             _splatPipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription
             {
@@ -223,7 +228,7 @@ namespace KhaozEngine.Render3D.Rendering
             // identity on Metal/D3D (byte-identical render) and flips clip-Y on inverted-Y backends (Vulkan).
             // Applied only to the GPU-uploaded matrix; IsoCamera3D.ScreenToGround picking keeps the raw
             // Camera.ViewProjection, so render and picking stay consistent (an earlier unconditional flip broke both).
-            var ubo = new FrameUbo
+            _frame = new FrameUbo
             {
                 ViewProj = GpuClip.Correct(viewProj, _gd.Capabilities),
                 Dir = new Vector4(Vector3.Normalize(s.LightDirection), 0f),
@@ -234,11 +239,23 @@ namespace KhaozEngine.Render3D.Rendering
                 FillColor = s.FillLightColor,
                 CameraPos = new Vector4(cameraPos, 1f),
             };
-            cl.UpdateBuffer(_ubo, 0, in ubo);
-            // Point-light arrays follow the 176-byte header in the same UBO. Always upload the full fixed-size
-            // arrays (zero-filled tail) so a previous frame's lights never leak past the active count.
-            cl.UpdateBuffer(_ubo, HeaderBytes, (ReadOnlySpan<Vector4>)_lightPosRadius);
-            cl.UpdateBuffer(_ubo, HeaderBytes + LightArrayBytes, (ReadOnlySpan<Vector4>)_lightColorIntensity);
+            WriteFrameUniformsTo(cl, _ubo);
+        }
+
+        // Cached this-frame uniforms (set in SetFrameUniforms), re-uploaded into each splat material's combined UBO
+        // by WriteFrameUniformsTo so the splat pipeline reads the current frame from its own single UBO.
+        FrameUbo _frame;
+
+        /// <summary>Upload the cached frame uniforms (header + the two point-light arrays) into <paramref name="dst"/>
+        /// at offset 0. <paramref name="dst"/> must be at least <see cref="UboBytes"/> bytes; a splat material's
+        /// combined UBO is larger (params follow at <see cref="UboBytes"/>) and that tail is left untouched.</summary>
+        public void WriteFrameUniformsTo(IGpuCommandList cl, IGpuBuffer dst)
+        {
+            cl.UpdateBuffer(dst, 0, in _frame);
+            // Point-light arrays follow the 176-byte header. Always upload the full fixed-size arrays (zero-filled
+            // tail) so a previous frame's lights never leak past the active count.
+            cl.UpdateBuffer(dst, HeaderBytes, (ReadOnlySpan<Vector4>)_lightPosRadius);
+            cl.UpdateBuffer(dst, HeaderBytes + LightArrayBytes, (ReadOnlySpan<Vector4>)_lightColorIntensity);
         }
 
         /// <summary>Pure, headless-testable packing of the host light list into the two fixed-size UBO arrays:
@@ -282,19 +299,31 @@ namespace KhaozEngine.Render3D.Rendering
             _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(
                 _layout, _ubo, albedo ?? _white, normal ?? _flatNormal, roughness ?? _defaultRough, _sampler));
 
-        /// <summary>Build a splat-terrain material resource set: the shared frame UBO + the two 5-layer texture
-        /// arrays (albedo, tangent-space normal) + the terrain (wrap/anisotropic) sampler + the per-material params
-        /// UBO. Shared across every chunk using this material; owned by Scene3D, NOT per mesh.</summary>
-        public IGpuResourceSet CreateSplatMaterialSet(IGpuTexture albedoArray, IGpuTexture normalArray, IGpuBuffer splatParams) =>
-            _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(
-                _splatLayout, _ubo, albedoArray, normalArray, _terrainSampler, splatParams));
+        /// <summary>Create a splat material's combined UBO: <see cref="UboBytes"/> of frame uniforms (re-synced each
+        /// frame via <see cref="WriteFrameUniformsTo"/>) followed by the per-material <paramref name="data"/> at
+        /// offset <see cref="UboBytes"/>. One uniform buffer holds both, so the splat pipeline binds a single UBO
+        /// (see SplatVert/SplatFrag). Owned by Scene3D; shared by every chunk using this material.</summary>
+        public IGpuBuffer CreateSplatParamsUbo(in SplatParamsData data)
+        {
+            var ubo = _gd.Factory.CreateBuffer(new GpuBufferDescription(UboBytes + SplatParamsData.SizeInBytes, GpuBufferUsage.UniformBuffer));
+            _gd.UpdateBuffer(ubo, UboBytes, in data);
+            return ubo;
+        }
 
-        /// <summary>Bind the splat-terrain pipeline for the splat pass (call once before the splat draw loop). The
-        /// frame UBO (shared with the model pass) is already populated by <see cref="SetFrameUniforms"/>.</summary>
+        /// <summary>Build a splat-terrain material resource set: the combined frame+params UBO + the two 5-layer
+        /// texture arrays (albedo, tangent-space normal) + the terrain (wrap/anisotropic) sampler. Shared across
+        /// every chunk using this material; owned by Scene3D, NOT per mesh.</summary>
+        public IGpuResourceSet CreateSplatMaterialSet(IGpuBuffer combinedUbo, IGpuTexture albedoArray, IGpuTexture normalArray) =>
+            _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(
+                _splatLayout, combinedUbo, albedoArray, normalArray, _terrainSampler));
+
+        /// <summary>Bind the splat-terrain pipeline for the splat pass (call once before the splat draw loop). Each
+        /// material's combined UBO must already hold this frame's uniforms (<see cref="WriteFrameUniformsTo"/>).</summary>
         public void BindSplatPass(IGpuCommandList cl) => cl.SetPipeline(_splatPipeline);
 
         /// <summary>Draw one splat-terrain mesh run through the splat pipeline, reusing the shared instance buffer
-        /// (terrain instances are identity-transform, white-tint). <see cref="BindSplatPass"/> must be bound.</summary>
+        /// (terrain instances are identity-transform, white-tint). <paramref name="splatSet"/> carries the material's
+        /// combined UBO + texture arrays + sampler. <see cref="BindSplatPass"/> must be bound.</summary>
         public void DrawSplatMeshInstanced(IGpuCommandList cl, IGpuBuffer vb, IGpuBuffer ib, int indexCount,
             GpuIndexFormat indexFormat, uint instanceStart, uint instanceCount, IGpuResourceSet splatSet)
         {

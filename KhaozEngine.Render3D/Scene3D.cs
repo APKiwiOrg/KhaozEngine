@@ -305,10 +305,11 @@ namespace KhaozEngine.Render3D
             _gd.WaitForIdle();
 
             var data = SplatMaterialConfig.BuildParams(layers, triplanarSharpness, projection, baseSpecStrength);
-            var ubo = f.CreateBuffer(new GpuBufferDescription(SplatParamsData.SizeInBytes, GpuBufferUsage.UniformBuffer));
-            _gd.UpdateBuffer(ubo, 0, in data);
+            // Combined UBO: frame uniforms (re-synced each frame in the splat pass) + these params appended. One
+            // uniform buffer for the whole splat pipeline (Metal mis-binds a second UBO; see ModelRenderer).
+            var ubo = _model.CreateSplatParamsUbo(in data);
 
-            var set = _model.CreateSplatMaterialSet(albedo, normal, ubo);
+            var set = _model.CreateSplatMaterialSet(ubo, albedo, normal);
             _splatMaterials.Add(new SplatMaterialEntry(albedo, normal, ubo, set));
             return new SplatMaterialHandle(_splatMaterials.Count - 1);
         }
@@ -825,6 +826,10 @@ namespace KhaozEngine.Render3D
                     _model.DrawMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, run.Start, run.Count, mesh.MaterialSet);
                 }
                 // Splat-terrain pass: same uploaded instance buffer, the dedicated 5-layer texture-array pipeline.
+                // Each material's combined UBO holds frame + params in one buffer, so re-sync this frame's uniforms
+                // into every loaded material's UBO before drawing (usually one terrain material).
+                for (int i = 0; i < _splatMaterials.Count; i++)
+                    if (_splatMaterials[i] is { } syncSm) _model.WriteFrameUniformsTo(cl, syncSm.Ubo);
                 bool splatBound = false;
                 foreach (var run in _runs)
                 {
@@ -1037,16 +1042,17 @@ namespace KhaozEngine.Render3D
             }
         }
 
-        /// <summary>A loaded splat-terrain material: the two 5-layer texture arrays (albedo, normal), the per-material
-        /// params UBO, and the resource set. Owned by Scene3D; shared by every mesh that uses it.</summary>
+        /// <summary>A loaded splat-terrain material: the two 5-layer texture arrays (albedo, normal), the combined
+        /// frame+params UBO (frame portion re-synced each frame), and the resource set. Owned by Scene3D; shared by
+        /// every mesh that uses it.</summary>
         sealed class SplatMaterialEntry
         {
             public readonly IGpuTexture AlbedoArray, NormalArray;
-            public readonly IGpuBuffer ParamsUbo;
+            public readonly IGpuBuffer Ubo;
             public readonly IGpuResourceSet Set;
-            public SplatMaterialEntry(IGpuTexture albedo, IGpuTexture normal, IGpuBuffer paramsUbo, IGpuResourceSet set)
-            { AlbedoArray = albedo; NormalArray = normal; ParamsUbo = paramsUbo; Set = set; }
-            public void Dispose() { Set.Dispose(); AlbedoArray.Dispose(); NormalArray.Dispose(); ParamsUbo.Dispose(); }
+            public SplatMaterialEntry(IGpuTexture albedo, IGpuTexture normal, IGpuBuffer ubo, IGpuResourceSet set)
+            { AlbedoArray = albedo; NormalArray = normal; Ubo = ubo; Set = set; }
+            public void Dispose() { Set.Dispose(); AlbedoArray.Dispose(); NormalArray.Dispose(); Ubo.Dispose(); }
         }
 
         /// <summary>A GPU-resident skinned mesh: its vertex/index buffers, index count, optional material set, and

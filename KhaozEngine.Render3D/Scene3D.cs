@@ -296,14 +296,13 @@ namespace KhaozEngine.Render3D
                 _gd.UpdateTexture(normal, layers[L].NormalRgba, 0, 0, w, h, mipLevel: 0, arrayLayer: (uint)L);
             }
             // Generate both mip chains in one transient command list.
-            var cl = f.CreateCommandList();
+            using var cl = f.CreateCommandList();
             cl.Begin();
             cl.GenerateMipmaps(albedo);
             cl.GenerateMipmaps(normal);
             cl.End();
             _gd.Submit(cl);
             _gd.WaitForIdle();
-            cl.Dispose();
 
             var data = SplatMaterialConfig.BuildParams(layers, triplanarSharpness, projection, baseSpecStrength);
             var ubo = f.CreateBuffer(new GpuBufferDescription(SplatParamsData.SizeInBytes, GpuBufferUsage.UniformBuffer));

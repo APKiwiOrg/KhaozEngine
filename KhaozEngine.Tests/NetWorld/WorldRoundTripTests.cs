@@ -100,6 +100,60 @@ public class WorldRoundTripTests
         throw new Xunit.Sdk.XunitException($"remote {remoteNetId} not visible");
     }
 
+    [Fact]
+    public void Reconnect_on_recycled_slot_can_move()
+    {
+        var hub = new InMemoryHub();
+        var config = new WorldServerConfig { TickSeconds = 1f / 30f, InterestRadius = 500f, MaxPlayers = 8 };
+        var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default);
+
+        // Client A joins on slot 0 and plays enough ticks to push that slot's processed high-water mark up.
+        INetTransport aTransport = hub.CreateClient();
+        var a = new NetClient(aTransport);
+        int slotA = JoinNetClient(server, a, config);
+
+        var forward = new MoveCommand(new Vector2(0f, 1f), run: false, cameraYaw: 0f);   // -Z
+        const int played = 40;
+        for (int seq = 0; seq < played; seq++)
+        {
+            a.Send(MoveProtocol.EncodeMove(seq, forward), NetChannelReliability.ReliableOrdered);
+            a.Poll(); server.Poll(); server.Tick(config.TickSeconds);
+        }
+        Assert.True(server.TryGetPlayerState(slotA, out PlayerMoveState aState));
+        Assert.True(aState.Position.Z < -0.1f, "A should have moved before leaving");
+
+        // A disconnects; the server frees slot 0 for reuse.
+        hub.DisconnectClient(aTransport);
+        server.Poll(); server.Tick(config.TickSeconds);
+        Assert.Equal(0, server.PlayerCount);
+
+        // Client B joins on the recycled slot 0, sending forward commands that legitimately restart at seq 0.
+        var b = new NetClient(hub.CreateClient());
+        int slotB = JoinNetClient(server, b, config);
+        Assert.Equal(slotA, slotB);   // same slot, recycled
+
+        Assert.True(server.TryGetPlayerState(slotB, out PlayerMoveState bSpawn));
+        float zSpawn = bSpawn.Position.Z;
+        for (int seq = 0; seq < 20; seq++)
+        {
+            b.Send(MoveProtocol.EncodeMove(seq, forward), NetChannelReliability.ReliableOrdered);
+            b.Poll(); server.Poll(); server.Tick(config.TickSeconds);
+        }
+        Assert.True(server.TryGetPlayerState(slotB, out PlayerMoveState bMoved));
+        Assert.True(bMoved.Position.Z < zSpawn - 0.1f,
+            $"reconnect on recycled slot froze the player: spawn z {zSpawn} -> {bMoved.Position.Z}");
+    }
+
+    static int JoinNetClient(WorldServer server, NetClient client, WorldServerConfig cfg)
+    {
+        for (int i = 0; i < 200; i++)
+        {
+            client.Poll(); server.Poll(); server.Tick(cfg.TickSeconds);
+            if (client.Slot >= 0 && server.TryGetPlayerNetId(client.Slot, out _)) return client.Slot;
+        }
+        throw new Xunit.Sdk.XunitException("client never joined");
+    }
+
     [Trait("Category", "LiveSocket")]
     [Fact]
     public void LiveSocket_client_connects_and_is_served_its_player()

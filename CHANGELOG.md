@@ -5,6 +5,32 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.67.0
+
+`ReplicatedCharacterAnimators` now derives velocity over a short sliding window instead of a single frame's
+position delta, fixing the animation strobe/freeze on a plateauing position stream (local AND remote players).
+
+- Game.Render3D: the bridge's locomotion derivation was reading speed from one frame's position delta, but the
+  position it is fed PLATEAUS between server ticks - `ClientPrediction.RenderedState` clamps the inter-tick
+  fraction at 1, so once interpolation saturates the rendered position is constant until the next `Predict`.
+  Whenever render fps > tick rate that yields one or more zero-delta frames per tick; those frames read speed 0
+  and strobed the locomotion state Idle<->moving every frame, and `AnimationPlayer.Play` restarts the clip on
+  every state change - so the clip never advanced past its first frames (the animation "froze") while the draw
+  transform kept moving (the avatar "glided"). Hit the local predicted player and every remote.
+- Fix: `ReplicatedCharacterAnimators.Update` accumulates displacement + elapsed time per entity and recomputes the
+  derived velocity only when the window fills (default one tick), holding the last good velocity across the
+  intervening zero-delta frames; both the planar speed/facing AND the vertical velocity used by the grounded
+  heuristic come from this windowed velocity. A genuine stop (no displacement across a whole window) still
+  resolves to Idle within one window (~33 ms, imperceptible). Frame-rate independent.
+- API: `CharacterAnimatorTuning.VelocityWindowSeconds` (default `1/30`) exposes the window length - set it to one
+  tick of your position source; `<= 0` reverts to the old per-frame derivation. Additive; existing tuning unchanged.
+- Tests: headless plateau/strobe regression (a render-fps > tick-rate sample stream that moves every Nth frame
+  and holds between - asserts the state stays steady Walk with no Idle strobe), a real-stop-settles-to-Idle guard,
+  windowed speed-band selection (Walk vs Run picked by the windowed speed, not a single frame), and a
+  `VelocityWindowSeconds` hold-duration test. Existing lifecycle/facing/air-state/first-frame tests stay green.
+- `NetworkedWalkSample` already draws via the bridge (since 7.66.0), so this path is now visually exercised
+  in-engine; the sample needs no change.
+
 ## 7.66.0
 
 Sample-character swap + the bridge demo: `TerrainWalkSample` now walks the CC0 Quaternius Universal character (one

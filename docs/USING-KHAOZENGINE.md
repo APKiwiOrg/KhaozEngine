@@ -650,8 +650,9 @@ server stays authoritative on position only.
 **Driving one per networked player** (`ReplicatedCharacterAnimators`, since 7.65.0). Rather than wiring a brain
 per entity by hand, hand the set a factory (or a shared skeleton + clip map) and feed it one position sample
 per visible entity each frame. It creates a brain on a new id, drops one whose id is gone (no leak on
-disconnect), derives planar speed / vertical velocity / facing from the position deltas (the one signal every
-netcode surfaces for every entity), and returns draw-ready transforms + bone palettes:
+disconnect), derives planar speed / vertical velocity / facing from the position displacement averaged over a
+short window (the one signal every netcode surfaces for every entity), and returns draw-ready transforms +
+bone palettes:
 
 ```csharp
 // One brain per entity, off the shared (immutable) skeleton + clip map (applies the tuning's thresholds/crossfade).
@@ -678,6 +679,15 @@ foreach (CharacterPose p in animators.Live)
 The set is render-free and headless-testable (owns no GPU handle, never calls `Scene3D`). Facing assumes the
 asset's rest pose looks down +Z; set `CharacterAnimatorTuning.FacingYawOffset` if yours does not. A
 `CharacterPose.Pose` is the brain's own buffer reused each frame - draw it this frame, do not retain it.
+
+The derived velocity is averaged over a short sliding window (`CharacterAnimatorTuning.VelocityWindowSeconds`,
+default 1/30 s = one tick) rather than a single frame's delta. That matters because the position you feed
+PLATEAUS between server ticks - `ClientPrediction.RenderedState` clamps the inter-tick fraction at 1, so once
+the interpolation saturates the rendered position is constant until the next `Predict`. Whenever render fps >
+tick rate that produces zero-delta frames; a single-frame derivation would read speed 0 on them and strobe the
+locomotion state Idle&lt;-&gt;moving every frame (restarting the clip and freezing the animation while the avatar
+glides). The window holds the last good velocity across the plateau; set it to one tick of your source. A
+genuine stop still resolves to Idle within one window; `&lt;= 0` reverts to per-frame derivation.
 
 **Lower-level pieces** (if you are not using `AnimatedCharacter`): `AnimationSampler.SampleToBonePalette(clip,
 skeleton, time)` is a one-shot pose; `AnimationPlayer` holds a playhead, loops, and crossfades

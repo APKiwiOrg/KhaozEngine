@@ -144,6 +144,98 @@ namespace KhaozEngine.Tests.Game
         }
 
         [Fact]
+        public void Plateau_WindowedVelocity_StaysWalk_NoIdleStrobe()
+        {
+            // 90 fps render over a 30 Hz tick: the position advances one tick-step on every 3rd render
+            // frame and is IDENTICAL on the two in-between frames - exactly what ClientPrediction.RenderedState
+            // produces once inter-tick interpolation saturates (frac clamps to 1, so the rendered position is
+            // constant between Predicts). The windowed velocity (1 tick) must hold the speed across those
+            // zero-delta frames so the locomotion state stays Walk. Before the fix the hold frames read speed 0
+            // and strobed Idle, restarting the clip every frame.
+            const float renderDt = 1f / 90f;
+            const float tickStep = 3f / 30f;          // 3 m/s (Walk band) advanced once per 30 Hz tick
+            var a = NewAnimators();
+
+            var pos = Vector3.Zero;
+            var states = new List<LocomotionState>();
+            for (int i = 0; i < 90; i++)              // 30 ticks worth of render frames
+            {
+                if (i > 0 && i % 3 == 0) pos += new Vector3(tickStep, 0, 0);   // move on every 3rd frame, hold between
+                a.Update(new[] { Pos(1, pos) }, renderDt);
+                states.Add(a.Live[0].State);
+            }
+
+            // After the first window warms the velocity up, the state is steady Walk on every frame, including
+            // the zero-delta hold frames - no Idle strobe.
+            for (int i = 6; i < states.Count; i++)
+                Assert.Equal(LocomotionState.Walk, states[i]);
+        }
+
+        [Fact]
+        public void Plateau_RealStop_SettlesToIdle()
+        {
+            // Walking via the same plateau stream, then a GENUINE stop (position held longer than one window)
+            // must settle to Idle - the fix must not make a stopped character keep "walking".
+            const float renderDt = 1f / 90f;
+            const float tickStep = 3f / 30f;
+            var a = NewAnimators();
+
+            var pos = Vector3.Zero;
+            for (int i = 0; i < 30; i++)
+            {
+                if (i > 0 && i % 3 == 0) pos += new Vector3(tickStep, 0, 0);
+                a.Update(new[] { Pos(1, pos) }, renderDt);
+            }
+            Assert.Equal(LocomotionState.Walk, a.Live[0].State);
+
+            // Hold position for well over one window -> windowed speed 0 -> Idle.
+            for (int i = 0; i < 12; i++) a.Update(new[] { Pos(1, pos) }, renderDt);
+            Assert.Equal(LocomotionState.Idle, a.Live[0].State);
+        }
+
+        [Fact]
+        public void Plateau_SpeedBands_WindowedSpeedPicksWalkVsRun()
+        {
+            // The Walk/Run threshold is crossed by the WINDOWED speed, not a single frame's delta (which on a
+            // plateau stream spikes high on move frames and is 0 on hold frames).
+            const float renderDt = 1f / 90f;
+
+            // Run band: 6 m/s >= the 4.5 run threshold.
+            var run = NewAnimators();
+            var rp = Vector3.Zero;
+            for (int i = 0; i < 30; i++) { if (i > 0 && i % 3 == 0) rp += new Vector3(6f / 30f, 0, 0); run.Update(new[] { Pos(1, rp) }, renderDt); }
+            Assert.Equal(LocomotionState.Run, run.Live[0].State);
+
+            // Walk band: 3 m/s between the 0.1 walk and 4.5 run thresholds.
+            var walk = NewAnimators();
+            var wp = Vector3.Zero;
+            for (int i = 0; i < 30; i++) { if (i > 0 && i % 3 == 0) wp += new Vector3(3f / 30f, 0, 0); walk.Update(new[] { Pos(1, wp) }, renderDt); }
+            Assert.Equal(LocomotionState.Walk, walk.Live[0].State);
+        }
+
+        [Fact]
+        public void VelocityWindowSeconds_HoldsVelocityForTheConfiguredDuration()
+        {
+            // A longer window holds the last velocity across a longer plateau. Establish a walk velocity over a
+            // full window, then hold the position for less than the window - the state must stay Walk.
+            var tuning = CharacterAnimatorTuning.Default;
+            tuning.VelocityWindowSeconds = 0.25f;
+            var a = NewAnimators(tuning);
+
+            const float dt = 1f / 60f;
+            var pos = Vector3.Zero;
+            for (int i = 0; i < 20; i++) { pos += new Vector3(3f * dt, 0, 0); a.Update(new[] { Pos(1, pos) }, dt); }
+            Assert.Equal(LocomotionState.Walk, a.Live[0].State);
+
+            // Hold for 10 frames (~0.17 s < 0.25 s window): the held velocity keeps it Walk, not Idle.
+            for (int i = 0; i < 10; i++)
+            {
+                a.Update(new[] { Pos(1, pos) }, dt);
+                Assert.Equal(LocomotionState.Walk, a.Live[0].State);
+            }
+        }
+
+        [Fact]
         public void ConvenienceCtor_AppliesTuningThresholds()
         {
             // RunSpeed lowered to 1 m/s via tuning; the convenience ctor must thread it into the brains it builds.

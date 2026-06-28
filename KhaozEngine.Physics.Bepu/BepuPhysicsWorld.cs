@@ -26,8 +26,11 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
     private readonly BufferPool _pool;
     private readonly BepuSim _sim;
 
-    // Seam int id -> Bepu StaticHandle mapping
-    private readonly Dictionary<int, BepuStaticHandle> _handles = new();
+    // Seam int id -> (Bepu StaticHandle, shape TypedIndex) mapping.
+    // The TypedIndex is stored so we can remove the shape from _sim.Shapes on RemoveStatic;
+    // Statics.Remove only removes the body entry, not the shape, so without this the shape
+    // pool grows unbounded across streaming load/unload cycles.
+    private readonly Dictionary<int, (BepuStaticHandle Handle, TypedIndex Shape)> _handles = new();
     private int _nextId;
 
     public BepuPhysicsWorld()
@@ -47,15 +50,19 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
         var bepuHandle = _sim.Statics.Add(desc);
 
         int id = _nextId++;
-        _handles[id] = bepuHandle;
+        _handles[id] = (bepuHandle, shapeIndex);
         return new SeamHandle(id);
     }
 
     public void RemoveStatic(SeamHandle handle)
     {
-        if (_handles.TryGetValue(handle.Value, out var bepuHandle))
+        if (_handles.TryGetValue(handle.Value, out var entry))
         {
-            _sim.Statics.Remove(bepuHandle);
+            _sim.Statics.Remove(entry.Handle);
+            // Remove the shape from the shape pool. Compound shapes need recursive removal
+            // to free child shapes; simple convex shapes (Box, Sphere, Capsule, etc.) use Remove.
+            // RecursivelyRemoveAndDispose handles both cases safely.
+            _sim.Shapes.RecursivelyRemoveAndDispose(entry.Shape, _pool);
             _handles.Remove(handle.Value);
         }
     }
@@ -199,9 +206,9 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
         }
         else
         {
-            // Generic fallback: use a zero-length sweep. The capsule's AABB overlaps but we
-            // don't have a specific analytical test. Report a small MTV in the capsule-to-static
-            // direction so the controller is pushed out.
+            // Generic fallback for ConvexHull/Mesh/Compound shapes: the false-positive rate equals
+            // the AABB-vs-geometry overlap slack for these types. SP2 should wire the collision-task
+            // manifold path for a proper analytical result.
             var toStatic = staticPose.Position - capsulePose.Position;
             float dist = toStatic.Length();
             if (dist < 1e-6f) toStatic = Vector3.UnitY;
@@ -213,26 +220,17 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
 
     private bool TryGetBoxHalfExtents(TypedIndex shapeIndex, out Vector3 halfExtents)
     {
-        try
-        {
-            ref var box = ref _sim.Shapes.GetShape<Box>(shapeIndex.Index);
-            // TypedIndex.Type must match Box's type id; if wrong type GetShape will have wrong data.
-            // Bepu stores shapes by type in typed batches; GetShape<Box>(index) is only valid when
-            // the TypedIndex.Type matches Box.TypeId. Check via TypeId property.
-            var boxTypeId = default(Box).TypeId;
-            if (shapeIndex.Type != boxTypeId)
-            {
-                halfExtents = default;
-                return false;
-            }
-            halfExtents = new Vector3(box.HalfWidth, box.HalfHeight, box.HalfLength);
-            return true;
-        }
-        catch
+        // Check the type id BEFORE calling GetShape: GetShape<Box>(index) reads from
+        // the Box batch unconditionally and interprets mismatched-type memory as a Box.
+        var boxTypeId = default(Box).TypeId;
+        if (shapeIndex.Type != boxTypeId)
         {
             halfExtents = default;
             return false;
         }
+        ref var box = ref _sim.Shapes.GetShape<Box>(shapeIndex.Index);
+        halfExtents = new Vector3(box.HalfWidth, box.HalfHeight, box.HalfLength);
+        return true;
     }
 
     private bool TryGetSphereRadius(TypedIndex shapeIndex, out float radius)
@@ -267,10 +265,34 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
         float t = segLenSq > 1e-10f ? Math.Clamp(Vector3.Dot(-relP0, segDir) / segLenSq, 0f, 1f) : 0f;
         var sphereCentreLocal = relP0 + segDir * t;
 
-        // Sphere vs AABB: clamp sphere centre to box, find penetration.
-        return SpherePenetratesBox(sphereCentreLocal, r, halfExtents, boxOrientation, out mtv)
-            || SpherePenetratesBox(relP0, r, halfExtents, boxOrientation, out mtv)
-            || SpherePenetratesBox(relP1, r, halfExtents, boxOrientation, out mtv);
+        // Evaluate all three candidate sphere centres and return the deepest MTV.
+        // Short-circuit OR would return the FIRST penetrating candidate, not the deepest,
+        // giving a wrong push direction when a shallower candidate happens to test first.
+        bool anyHit = false;
+        Vector3 deepestMtv = default;
+        float deepestDepthSq = 0f;
+
+        if (SpherePenetratesBox(sphereCentreLocal, r, halfExtents, boxOrientation, out var mtv0))
+        {
+            float dsq = mtv0.LengthSquared();
+            if (dsq > deepestDepthSq) { deepestDepthSq = dsq; deepestMtv = mtv0; }
+            anyHit = true;
+        }
+        if (SpherePenetratesBox(relP0, r, halfExtents, boxOrientation, out var mtv1))
+        {
+            float dsq = mtv1.LengthSquared();
+            if (dsq > deepestDepthSq) { deepestDepthSq = dsq; deepestMtv = mtv1; }
+            anyHit = true;
+        }
+        if (SpherePenetratesBox(relP1, r, halfExtents, boxOrientation, out var mtv2))
+        {
+            float dsq = mtv2.LengthSquared();
+            if (dsq > deepestDepthSq) { deepestDepthSq = dsq; deepestMtv = mtv2; }
+            anyHit = true;
+        }
+
+        mtv = deepestMtv;
+        return anyHit;
     }
 
     private static bool SpherePenetratesBox(
@@ -327,7 +349,7 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
         // Reverse-lookup seam id from Bepu handle.
         foreach (var kv in _handles)
         {
-            if (kv.Value.Value == bepuHandle.Value)
+            if (kv.Value.Handle.Value == bepuHandle.Value)
                 return new SeamHandle(kv.Key);
         }
         return new SeamHandle(-1);

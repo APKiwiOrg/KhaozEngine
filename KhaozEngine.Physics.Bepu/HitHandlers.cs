@@ -1,12 +1,9 @@
-using System;
-using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using BepuPhysics;
 using BepuPhysics.Collidables;
 using BepuPhysics.CollisionDetection;
 using BepuPhysics.Trees;
-using BepuUtilities;
 using KhaozEngine.Physics;
 
 using BepuStaticHandle = BepuPhysics.StaticHandle;
@@ -92,6 +89,8 @@ internal struct SweepHitHandler : ISweepHitHandler
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void OnHitAtZeroT(ref float maximumT, CollidableReference collidable)
     {
+        // t=0 means the sweep started already penetrating; Bepu reports a zero normal here,
+        // so the caller cannot determine a push-out direction from this hit alone.
         if (0f < HitT)
         {
             HitT = 0f;
@@ -102,21 +101,5 @@ internal struct SweepHitHandler : ISweepHitHandler
             maximumT = 0f;
             DidHit = true;
         }
-    }
-}
-
-/// <summary>Broad-phase overlap enumerator that collects static collidable references.</summary>
-internal struct StaticOverlapCollector : IOverlapHandler
-{
-    public readonly List<int> BroadPhaseLeafIndices;
-
-    public StaticOverlapCollector(List<int> list) => BroadPhaseLeafIndices = list;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Handle(int indexA, int indexB)
-    {
-        // BroadPhase.GetOverlaps reports overlaps of the query against the static tree leaves.
-        // indexB is the leaf in the static tree.
-        BroadPhaseLeafIndices.Add(indexB);
     }
 }

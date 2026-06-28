@@ -29,8 +29,8 @@
     <ProjectReference Include="../KhaozEngine.Sharding/KhaozEngine.Sharding.csproj" />
     <!-- networked-world movement layer (server sim + client glue, render-free) -->
     <ProjectReference Include="../KhaozEngine.NetWorld/KhaozEngine.NetWorld.csproj" />
-    <!-- physics seam + BepuPhysics backend (static bodies, raycast/sweep/penetration) -->
+    <!-- physics seam only; the BepuPhysics backend (KhaozEngine.Physics.Bepu) is an opt-in sibling
+         package, not bundled here - matching the WorldStore.Sqlite/.SqlServer pattern above -->
     <ProjectReference Include="../KhaozEngine.Physics/KhaozEngine.Physics.csproj" />
-    <ProjectReference Include="../KhaozEngine.Physics.Bepu/KhaozEngine.Physics.Bepu.csproj" />
   </ItemGroup>
 </Project>

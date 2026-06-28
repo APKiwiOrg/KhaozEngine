@@ -102,6 +102,18 @@ flowchart LR
    shader (lit / cel / textured), and writes the framebuffer. `AppWindow` calls `Present()` to put the
    swapchain image on screen.
 
+## Terrain splat pipeline (second model-pass pipeline)
+
+Terrain chunks rendered with a `TerrainLayeredMaterial` take a separate pipeline path inside `ModelRenderer`:
+the `SplatFrag` shader samples two `texture2DArray`s (albedo + normal, 5 layers) and blends them per-fragment
+using the splat weights baked into `ModelVertex.Color` (4 packed channels; the 5th is `1 - sum`). World-space
+triplanar projection (`SplatProjection`) tiles each layer without seams across chunk borders. The two arrays
+are created once per `TerrainLayeredMaterial` and shared by every chunk that uses it; a per-layer-scalar-roughness
+params UBO provides roughness per layer. Anisotropic filtering is applied where the device supports it
+(`GpuSamplerFilter.Anisotropic` + `MaximumAnisotropy`; falls back to trilinear). Mipmaps are generated at
+load time via `IGpuCommandList.GenerateMipmaps`. A mesh with no splat material (`SplatMaterial == -1`) skips
+the splat pass entirely and renders through the standard model pipeline, unchanged.
+
 ## Where to look in the code
 
 | Box | Type / file |
@@ -109,6 +121,7 @@ flowchart LR
 | Frame loop + window + swapchain | `KhaozEngine.Windowing/AppWindow.cs` (`Run`, `GpuDeviceContext.CreateForWindow`, `Present`) |
 | 3D submission API | `KhaozEngine.Render3D/Scene3D.cs` (`LoadMesh`, `Begin`, `Draw`) + `Render3DSurface.cs` |
 | 3D instanced draws + post | `KhaozEngine.Render3D/Internal/` (`ModelRenderer`), `PixelPostProcessSettings.cs` |
+| Terrain splat pipeline | `KhaozEngine.Render3D/Internal/ShaderSources.cs` (`SplatFrag`), `Scene3D.cs` (`LoadSplatMaterial`), `KhaozEngine.Terrain.Render3D/TerrainScene3D.cs` (`LoadTerrainMaterial`) |
 | 2D batching | `KhaozEngine.Render2D/SpriteBatch.cs` + `Render2DSurface.cs` |
 | The backend seam | `KhaozEngine.Gpu/GpuDeviceContext.cs`, `GpuBackendSelector.cs`, `GpuCapabilities.cs`, `GpuClip.cs` |
 | Veldrid binding | `KhaozEngine.Gpu/Internal/VeldridGpuDevice.cs` |

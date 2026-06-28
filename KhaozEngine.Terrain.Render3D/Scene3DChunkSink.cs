@@ -20,10 +20,12 @@ namespace KhaozEngine.Terrain
         readonly IReadOnlyDictionary<string, MeshHandle> _propMeshes;
         readonly float _chunkSize;
         readonly float _propDrawRadius;
+        readonly Scene3D.SplatMaterialHandle _material;
         readonly Dictionary<ChunkCoord, ChunkLoad> _loaded = new();
 
         public Scene3DChunkSink(Scene3D scene, TerrainField field, ScatterConfig scatter,
-                                IReadOnlyDictionary<string, MeshHandle> propMeshes, float chunkSize, float propDrawRadius)
+                                IReadOnlyDictionary<string, MeshHandle> propMeshes, float chunkSize, float propDrawRadius,
+                                Scene3D.SplatMaterialHandle material = default)
         {
             _scene = scene;
             _field = field ?? throw new ArgumentNullException(nameof(field));
@@ -31,6 +33,7 @@ namespace KhaozEngine.Terrain
             _propMeshes = propMeshes ?? throw new ArgumentNullException(nameof(propMeshes));
             _chunkSize = chunkSize;
             _propDrawRadius = propDrawRadius;
+            _material = material;
         }
 
         /// <summary>The mutable handle for one loaded chunk (the streamer treats it as opaque).</summary>
@@ -50,7 +53,7 @@ namespace KhaozEngine.Terrain
             var mesh = TerrainChunkBuilder.Build(_field, ChunkGrid.RegionOf(coord, _chunkSize), lod);
             var load = new ChunkLoad
             {
-                Mesh = _scene.LoadTerrainChunk(mesh),
+                Mesh = _material.IsValid ? _scene.LoadTerrainChunk(mesh, _material) : _scene.LoadTerrainChunk(mesh),
                 Props = ScatterFor(coord),
                 Lod = lod,
             };
@@ -63,7 +66,7 @@ namespace KhaozEngine.Terrain
             var load = (ChunkLoad)handle;
             _scene.UnloadMesh(load.Mesh);
             var mesh = TerrainChunkBuilder.Build(_field, ChunkGrid.RegionOf(coord, _chunkSize), lod);
-            load.Mesh = _scene.LoadTerrainChunk(mesh);
+            load.Mesh = _material.IsValid ? _scene.LoadTerrainChunk(mesh, _material) : _scene.LoadTerrainChunk(mesh);
             load.Lod = lod;
             // Props are LOD-independent; keep load.Props.
         }

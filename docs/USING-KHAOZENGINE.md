@@ -724,12 +724,13 @@ On the client, `KhaozEngine.Terrain.Render3D` (in the `Game3D` umbrella) meshes 
     var handle = scene.LoadTerrainChunk(chunk);            // cache this; rebuild cadence is streaming's job
     scene.DrawTerrainChunk(handle);                        // each frame
 
-Each chunk is a Render3D `GltfMesh` (vertex colours = a height/slope ramp), with ~0.3 m edge skirts to hide
-cracks where a dense chunk meets a coarse neighbour, a `TerrainChunkBounds` AABB for frustum culling, and a
-parallel `TerrainSplatWeights[]` (grass/dirt/rock/sand/snow per vertex). The splat weights are **plumbed now**
-so the later PBR splat-texture upgrade is a drop-in; this slice just blends the five palette colours into the
-vertex colour. *Which* chunks exist and *when* they rebuild is the **World streaming** sub-project below
-(`TerrainStreamer`); a real water shader and PBR splat textures are later sub-projects, not part of this one.
+Each chunk is a Render3D `GltfMesh` with ~0.3 m edge skirts to hide cracks where a dense chunk meets a coarse
+neighbour, a `TerrainChunkBounds` AABB for frustum culling, and per-vertex splat weights (grass/dirt/rock/sand/snow
+in `ModelVertex.Color`). With a `SplatMaterialHandle` supplied the weights drive the PBR splat pipeline (five
+tileable PBR layers, triplanar); without one the weights are blended into a height/slope vertex-colour ramp
+(the fallback). *Which* chunks exist and *when* they rebuild is the **World streaming** sub-project below
+(`TerrainStreamer`). See "Textured terrain (PBR splat)" below for the material API. A real water shader is a
+later sub-project.
 
 ---
 
@@ -838,8 +839,8 @@ scene.DrawProps(placements, meshes, focus: character.Position, drawRadius: 90f);
 ```
 
 `PropRenderer.Queue(SceneInstances, ...)` is the same logic against a raw instance queue (headless-testable).
-See `TerrainWalkSample` for the full wiring. Mesh-LOD/impostors, PBR splat textures, prop/obstacle collision,
-and animated props are later sub-projects, not part of this one.
+See `TerrainWalkSample` for the full wiring. Mesh-LOD/impostors, textured prop materials, and animated props are
+later sub-projects. Terrain PBR splat textures shipped 7.64.0 (see "Textured terrain" below).
 
 ---
 
@@ -1060,6 +1061,58 @@ growing to prime the full first ring before the first frame.
 replication: the **networked client streams locally with the same code** (nothing about the world is sent over
 the wire). For a custom mesh/prop pipeline, implement `IChunkSink` yourself and pass it to `TerrainStreamer`.
 Threaded/background chunk build (an `IJobScheduler` build) and multi-cell server sharding are later sub-projects.
+
+---
+
+## Textured terrain (PBR splat) (since 7.64.0)
+
+Terrain chunks can render five tileable PBR layers (grass/dirt/rock/sand/snow) blended per-fragment by the splat
+weights baked into each vertex, with world-space triplanar tiling, normal maps, mips, and anisotropic filtering.
+Without a material supplied the chunk falls back to the height/slope vertex-colour ramp (byte-identical).
+
+**1. Load the material.** `TerrainMaterialPresets.Procedural()` returns a ready-made `TerrainLayeredMaterial`
+built from five `TerrainMaterialLayer`s (one per biome layer). Each layer carries an albedo image, a normal map,
+a tiling scale, and a roughness scalar. Call `LoadTerrainMaterial` on the `Scene3D`-backed extension to upload
+all layers to the GPU as texture arrays:
+
+```csharp
+using KhaozEngine.Terrain;
+
+// scene is your Scene3D (from GameApp3D.Scene or Render3DSurface.Scene).
+TerrainLayeredMaterial mat = TerrainMaterialPresets.Procedural();   // placeholder 1x1 solid-colour layers
+Scene3D.SplatMaterialHandle splatHandle = scene.LoadTerrainMaterial(mat);
+```
+
+Supply real PBR textures by constructing `TerrainLayeredMaterial` directly with `TerrainMaterialLayer` instances
+whose `Albedo`/`Normal` fields are `SplatLayerImage`s loaded from PNG bytes.
+
+**2. Pass the handle to the streamer.** `Scene3DChunkSink` accepts an optional `SplatMaterialHandle`; when set,
+every chunk it loads uses the textured splat pipeline instead of the ramp:
+
+```csharp
+var sink = new Scene3DChunkSink(scene, field, ScatterConfig.ForestRing(), propMeshes,
+                                chunkSize: TerrainChunkRegion.DefaultSize, propDrawRadius: 90f,
+                                splatMaterial: splatHandle);   // optional; omit for the ramp fallback
+var streamer = new TerrainStreamer(StreamerConfig.Default, sink);
+```
+
+Or load a single chunk directly with the textured overload:
+
+```csharp
+int lod = TerrainLod.PickLod(distanceToCamera);
+var region = new TerrainChunkRegion { OriginX = cx, OriginZ = cz, Size = TerrainChunkRegion.DefaultSize };
+TerrainChunkMesh chunk = TerrainChunkBuilder.Build(field, region, lod);
+var handle = scene.LoadTerrainChunk(chunk, splatHandle);   // textured overload
+scene.DrawTerrainChunk(handle);
+```
+
+**3. Unload when done.** Call `scene.UnloadSplatMaterial(splatHandle)` to free the GPU texture arrays (the
+two `texture2DArray`s - albedo + normal - are shared by all chunks using this material). The material may be
+reloaded; each `LoadTerrainMaterial` call allocates a fresh set of arrays.
+
+**Out of scope.** Runtime layer blending tweaks, streaming of different materials per biome region, and
+per-chunk material overrides are not provided - swap the handle on `Scene3DChunkSink` and rebuild the ring to
+change the look at stream time.
 
 ---
 

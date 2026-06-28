@@ -39,6 +39,9 @@ namespace KhaozEngine.Render3D
         readonly MeshSlotMap _slots = new();
         // Loaded albedo textures, indexed by TextureHandle.Index. Shared across meshes; disposed in Dispose.
         readonly List<IGpuTexture> _textures = new();
+        // Loaded splat-terrain materials, indexed by SplatMaterialHandle.ListIndex. Each owns its two texture
+        // arrays + params UBO + resource set; shared across meshes; disposed in Dispose / UnloadSplatMaterial.
+        readonly List<SplatMaterialEntry?> _splatMaterials = new();
         // Per-texture billboard resource sets, parallel to _textures (ListIndex), created lazily the first time a
         // texture is used for a textured billboard. Disposed in Dispose.
         readonly List<IGpuResourceSet?> _texBillboardSets = new();
@@ -148,6 +151,18 @@ namespace KhaozEngine.Render3D
             internal int ListIndex => Index - 1;
         }
 
+        /// <summary>An opaque handle to a splat-terrain material (5 tileable layers + triplanar params) loaded with
+        /// <see cref="LoadSplatMaterial"/>. Pass it to <see cref="LoadMesh(GltfMesh,SplatMaterialHandle)"/> to draw a
+        /// mesh through the splat pipeline. Shared across many meshes (e.g. every terrain chunk).</summary>
+        public readonly struct SplatMaterialHandle
+        {
+            internal readonly int Index;
+            internal SplatMaterialHandle(int index) { Index = index + 1; } // store +1 so default == Invalid
+            public static SplatMaterialHandle Invalid => default;
+            public bool IsValid => Index != 0;
+            internal int ListIndex => Index - 1;
+        }
+
         /// <summary>A bundle of optional surface maps for <see cref="LoadMesh(GltfMesh,SurfaceMaps)"/> and
         /// <see cref="LoadSkinnedMesh(SkinnedGltfMesh,SurfaceMaps)"/>:
         /// albedo, tangent-space normal, and roughness (glTF metallic-roughness .g convention). Any invalid
@@ -196,7 +211,16 @@ namespace KhaozEngine.Render3D
             return LoadMeshInternal(mesh, material);
         }
 
-        MeshHandle LoadMeshInternal(GltfMesh mesh, IGpuResourceSet? material)
+        /// <summary>Upload a mesh and draw it through the splat-terrain pipeline with <paramref name="material"/>
+        /// (its vertex <c>Color</c> carries the packed splat weights). An invalid handle falls back to the untextured
+        /// model path. The splat material is shared (owned by the scene); unloading the mesh does NOT free it.</summary>
+        public MeshHandle LoadMesh(GltfMesh mesh, SplatMaterialHandle material)
+        {
+            if (!material.IsValid) return LoadMesh(mesh);
+            return LoadMeshInternal(mesh, null, material.ListIndex);
+        }
+
+        MeshHandle LoadMeshInternal(GltfMesh mesh, IGpuResourceSet? material, int splatMaterial = -1)
         {
             var f = _gd.Factory;
             var vb = f.CreateBuffer(new GpuBufferDescription((uint)(mesh.Vertices.Length * ModelVertex.SizeInBytes), GpuBufferUsage.VertexBuffer));
@@ -204,7 +228,7 @@ namespace KhaozEngine.Render3D
             var ib = CreateIndexBuffer(mesh.Indices32, mesh.IndexFormat);
 
             int index = _slots.Alloc(out int generation);
-            var slot = new Mesh(vb, ib, mesh.Indices32.Length, mesh.IndexFormat, material);
+            var slot = new Mesh(vb, ib, mesh.Indices32.Length, mesh.IndexFormat, material, splatMaterial);
             if (index < _meshes.Count) _meshes[index] = slot;   // reused freed slot
             else _meshes.Add(slot);                              // fresh appended slot
             return new MeshHandle(index, generation);
@@ -250,6 +274,45 @@ namespace KhaozEngine.Render3D
             return new TextureHandle(_textures.Count - 1);
         }
 
+        /// <summary>Upload a 5-layer splat-terrain material: two texture arrays (albedo + tangent-space normal, one
+        /// layer per <see cref="SplatLayerImage"/>, all the same <paramref name="width"/> x <paramref name="height"/>
+        /// RGBA8), with full mip chains generated, plus a params UBO (per-layer tint/tiling/roughness + triplanar
+        /// sharpness + projection + base specular). Returns a handle to draw meshes through the splat pipeline. The
+        /// material is owned by the scene and freed in <see cref="Dispose"/> (or <see cref="UnloadSplatMaterial"/>);
+        /// it is shared across every mesh that references it (e.g. all terrain chunks).</summary>
+        public SplatMaterialHandle LoadSplatMaterial(int width, int height, IReadOnlyList<SplatLayerImage> layers,
+            float triplanarSharpness = 8f, SplatProjection projection = SplatProjection.Triplanar, float baseSpecStrength = 0.15f)
+        {
+            if (layers.Count != SplatMaterialConfig.LayerCount)
+                throw new ArgumentException($"a splat material needs exactly {SplatMaterialConfig.LayerCount} layers, got {layers.Count}.", nameof(layers));
+            var f = _gd.Factory;
+            uint w = (uint)width, h = (uint)height, mips = SplatMaterialConfig.MipLevelCount(width, height);
+            const GpuTextureUsage usage = GpuTextureUsage.Sampled | GpuTextureUsage.GenerateMipmaps;
+            var albedo = f.CreateTexture(GpuTextureDescription.Texture2DArray(w, h, GpuPixelFormat.R8G8B8A8UNorm, usage, (uint)layers.Count, mips));
+            var normal = f.CreateTexture(GpuTextureDescription.Texture2DArray(w, h, GpuPixelFormat.R8G8B8A8UNorm, usage, (uint)layers.Count, mips));
+            for (int L = 0; L < layers.Count; L++)
+            {
+                _gd.UpdateTexture(albedo, layers[L].AlbedoRgba, 0, 0, w, h, mipLevel: 0, arrayLayer: (uint)L);
+                _gd.UpdateTexture(normal, layers[L].NormalRgba, 0, 0, w, h, mipLevel: 0, arrayLayer: (uint)L);
+            }
+            // Generate both mip chains in one transient command list.
+            using var cl = f.CreateCommandList();
+            cl.Begin();
+            cl.GenerateMipmaps(albedo);
+            cl.GenerateMipmaps(normal);
+            cl.End();
+            _gd.Submit(cl);
+            _gd.WaitForIdle();
+
+            var data = SplatMaterialConfig.BuildParams(layers, triplanarSharpness, projection, baseSpecStrength);
+            var ubo = f.CreateBuffer(new GpuBufferDescription(SplatParamsData.SizeInBytes, GpuBufferUsage.UniformBuffer));
+            _gd.UpdateBuffer(ubo, 0, in data);
+
+            var set = _model.CreateSplatMaterialSet(albedo, normal, ubo);
+            _splatMaterials.Add(new SplatMaterialEntry(albedo, normal, ubo, set));
+            return new SplatMaterialHandle(_splatMaterials.Count - 1);
+        }
+
         /// <summary>Upload a glTF material's auto-read <see cref="GltfMaterialMaps"/> (from
         /// <see cref="GltfLoader.LoadWithMaterial"/> / <see cref="GltfLoader.LoadSkinnedWithMaterial"/>) into a
         /// <see cref="SurfaceMaps"/>: one <see cref="LoadTexture(byte[],int,int)"/> per present map. An absent map
@@ -291,6 +354,17 @@ namespace KhaozEngine.Render3D
             // _textures and may be shared by other meshes (freed in Dispose).
             if (m is { } mesh) { mesh.Vb.Dispose(); mesh.Ib.Dispose(); mesh.MaterialSet?.Dispose(); }
             _meshes[h.Index] = null;
+        }
+
+        /// <summary>Free a splat-terrain material's GPU resources (its texture arrays, params UBO, resource set) and
+        /// release its slot. A <c>default</c>/Invalid handle is a no-op. Meshes still referencing it must be unloaded
+        /// first (they hold no reference after this).</summary>
+        public void UnloadSplatMaterial(SplatMaterialHandle h)
+        {
+            if (!h.IsValid) return;
+            var m = _splatMaterials[h.ListIndex];
+            m?.Dispose();
+            _splatMaterials[h.ListIndex] = null;
         }
 
         /// <summary>Upload a skinned mesh to the GPU once; returns a handle to draw it with
@@ -747,7 +821,21 @@ namespace KhaozEngine.Render3D
                     if (!_slots.IsValid(run.Mesh.Index, run.Mesh.Generation)) continue;
                     var m = _meshes[run.Mesh.Index];
                     if (m is not { } mesh) continue;
+                    if (mesh.SplatMaterial >= 0) continue;   // drawn in the splat pass below
                     _model.DrawMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, run.Start, run.Count, mesh.MaterialSet);
+                }
+                // Splat-terrain pass: same uploaded instance buffer, the dedicated 5-layer texture-array pipeline.
+                bool splatBound = false;
+                foreach (var run in _runs)
+                {
+                    if (!_slots.IsValid(run.Mesh.Index, run.Mesh.Generation)) continue;
+                    var m = _meshes[run.Mesh.Index];
+                    if (m is not { } mesh) continue;
+                    if (mesh.SplatMaterial < 0) continue;
+                    var sm = _splatMaterials[mesh.SplatMaterial];
+                    if (sm is null) continue;
+                    if (!splatBound) { _model.BindSplatPass(cl); splatBound = true; }
+                    _model.DrawSplatMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, run.Start, run.Count, sm.Set);
                 }
             }
 
@@ -925,6 +1013,8 @@ namespace KhaozEngine.Render3D
             _texBillboardSets.Clear();
             foreach (var t in _textures) t.Dispose();
             _textures.Clear();
+            foreach (var s in _splatMaterials) s?.Dispose();
+            _splatMaterials.Clear();
         }
 
         readonly struct Mesh
@@ -937,10 +1027,26 @@ namespace KhaozEngine.Render3D
             /// default. The texture itself is owned in Scene3D's <c>_textures</c> list, not here, so a texture can
             /// be shared by several meshes; only the set is owned per mesh.</summary>
             public readonly IGpuResourceSet? MaterialSet;
-            public Mesh(IGpuBuffer vb, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, IGpuResourceSet? materialSet = null)
+            /// <summary>Index into Scene3D's splat-material list when this mesh draws through the splat pipeline, else
+            /// -1 (the normal model pipeline). Splat meshes carry no per-mesh <see cref="MaterialSet"/> (the splat set
+            /// is shared and owned by the scene), so unload frees only Vb/Ib.</summary>
+            public readonly int SplatMaterial;
+            public Mesh(IGpuBuffer vb, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, IGpuResourceSet? materialSet = null, int splatMaterial = -1)
             {
-                Vb = vb; Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat; MaterialSet = materialSet;
+                Vb = vb; Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat; MaterialSet = materialSet; SplatMaterial = splatMaterial;
             }
+        }
+
+        /// <summary>A loaded splat-terrain material: the two 5-layer texture arrays (albedo, normal), the per-material
+        /// params UBO, and the resource set. Owned by Scene3D; shared by every mesh that uses it.</summary>
+        sealed class SplatMaterialEntry
+        {
+            public readonly IGpuTexture AlbedoArray, NormalArray;
+            public readonly IGpuBuffer ParamsUbo;
+            public readonly IGpuResourceSet Set;
+            public SplatMaterialEntry(IGpuTexture albedo, IGpuTexture normal, IGpuBuffer paramsUbo, IGpuResourceSet set)
+            { AlbedoArray = albedo; NormalArray = normal; ParamsUbo = paramsUbo; Set = set; }
+            public void Dispose() { Set.Dispose(); AlbedoArray.Dispose(); NormalArray.Dispose(); ParamsUbo.Dispose(); }
         }
 
         /// <summary>A GPU-resident skinned mesh: its vertex/index buffers, index count, optional material set, and

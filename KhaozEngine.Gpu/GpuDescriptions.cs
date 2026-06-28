@@ -47,6 +47,13 @@ namespace KhaozEngine.Gpu
         /// <summary>Convenience for a single-mip, single-layer 2D texture (mirrors <c>TextureDescription.Texture2D</c>).</summary>
         public static GpuTextureDescription Texture2D(uint width, uint height, GpuPixelFormat format, GpuTextureUsage usage)
             => new(width, height, format, usage, 1, 1);
+
+        /// <summary>Convenience for a 2D texture ARRAY with explicit layer + mip counts (the splat-terrain layer
+        /// stacks). The ctor already carries <see cref="MipLevels"/>/<see cref="ArrayLayers"/>; this names the
+        /// array case.</summary>
+        public static GpuTextureDescription Texture2DArray(uint width, uint height, GpuPixelFormat format,
+            GpuTextureUsage usage, uint arrayLayers, uint mipLevels)
+            => new(width, height, format, usage, mipLevels, arrayLayers);
     }
 
     /// <summary>Describes a GPU sampler. Engine mirror of Veldrid <c>SamplerDescription</c> (the subset used).</summary>
@@ -60,13 +67,18 @@ namespace KhaozEngine.Gpu
         public GpuSamplerAddress AddressModeW { get; }
         /// <summary>Min/mag/mip filtering.</summary>
         public GpuSamplerFilter Filter { get; }
+        /// <summary>Max anisotropy when <see cref="Filter"/> is <see cref="GpuSamplerFilter.Anisotropic"/>
+        /// (ignored otherwise). 0 keeps the historical behaviour.</summary>
+        public uint MaximumAnisotropy { get; }
 
         public GpuSamplerDescription(GpuSamplerFilter filter,
             GpuSamplerAddress addressU = GpuSamplerAddress.Clamp,
             GpuSamplerAddress addressV = GpuSamplerAddress.Clamp,
-            GpuSamplerAddress addressW = GpuSamplerAddress.Clamp)
+            GpuSamplerAddress addressW = GpuSamplerAddress.Clamp,
+            uint maximumAnisotropy = 0)
         {
             Filter = filter; AddressModeU = addressU; AddressModeV = addressV; AddressModeW = addressW;
+            MaximumAnisotropy = maximumAnisotropy;
         }
 
         /// <summary>Point (nearest) sampler clamped on all axes.</summary>

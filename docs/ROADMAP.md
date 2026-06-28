@@ -4,7 +4,7 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **7.63.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **7.64.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan under `docs/superpowers/` when it is scheduled.
 
@@ -58,14 +58,10 @@ slope), which is this physics layer's job rather than another patch to the kinem
 
 ### 3. Visual fidelity (textures + materials)
 
-The world is geometrically rich but visually flat: terrain renders a height/slope vertex-colour ramp, and props
-come in flat base-colour (the prop loader flattens each material's texture to a single factor during ingest, so
-trees/rocks/buildings carry no surface detail). Goal: make the ground, mountains, trees, and props actually look
-good, not just read as shapes.
+The terrain now renders PBR splat textures (shipped 7.64.0). Props still come in flat base-colour (the prop
+loader flattens each material's texture to a single factor during ingest, so trees/rocks/buildings carry no
+surface detail). Goal: make props, trees, and buildings actually look good, not just read as shapes.
 
-- Terrain PBR splat: real textured materials (grass / rock / dirt / sand / snow) blended by the splat weights the
-  chunk mesher already bakes per vertex, plus normal maps, replacing the vertex-colour ramp on the ground and
-  mountains.
 - Textured props: per-material albedo / normal on meshes (trees, rocks, buildings) - needs the glTF loader /
   prop renderer to stop flattening textures to a base-colour factor (today's limitation; same area as the rigid
   node-transform fix).
@@ -86,7 +82,7 @@ good, not just read as shapes.
   SpaceGame 2.5D rigged-creature direction and pairs with the physics work).
 - Per-cell world-state snapshot persistence: persist cell/world state, not just player records (pairs with
   sharding).
-- Visual fidelity (terrain PBR splat, textured props, water): promoted to Near-term (see above).
+- Visual fidelity (textured props, water): see Near-term item #3 above.
 
 ## Rendering
 

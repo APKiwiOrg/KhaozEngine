@@ -94,7 +94,10 @@ version/release work.
     zero-dependency), `Imaging` (`PngWriter`, the dependency-free RGBA8 PNG encoder; `Render2D.Png` shims it),
     `Determinism` (`DeterministicFp`/`DeterministicFpScope`, the CPU FP-environment pin for fixed-tick/lockstep sims;
     in the `Foundation` umbrella).
-  - **Render/runtime stack:** `Gpu`, `Windowing`, `Render2D`, `Render3D`, `Gui`, `Audio`, `Particles`, `Effects`,
+  - **Render/runtime stack:** `Gpu`, `Windowing`, `Render2D`, `Render3D` (includes the splat-material pipeline:
+    `SplatProjection`/`SplatLayerImage`/`SplatMaterialConfig`/`SplatMath`, `Scene3D.LoadSplatMaterial`/
+    `SplatMaterialHandle`/`UnloadSplatMaterial`, `Scene3D.LoadMesh(GltfMesh, SplatMaterialHandle)`; the `SplatFrag`
+    shader + a second model-pass pipeline in `ModelRenderer`), `Gui`, `Audio`, `Particles`, `Effects`,
     `Game`, `Game.Render3D`.
   - **Foundation (MonoGame-free):** `Ecs`, `Serialization`, `Content`, `Diagnostics`, `App`, `Localization`,
     `Locomotion`, `Persistence`, `Pooling`, `Platform`, `Updates`, `Collision`, `Terrain`, `Netcode`,
@@ -144,15 +147,20 @@ version/release work.
     `TerrainPresets.Clearing()`/`BoundedClearing()`. Height depends only on `(x,z,seed)`
     (load-order independent for sharded streaming); plain `float` (authoritative server + visual client, NOT
     `DeterministicFp`). `Terrain.Render3D` (companion, in `Game3D`) = `TerrainChunkBuilder` (chunked-LOD mesh off the
-    field: skirts, per-vertex splat weights plumbed for the later PBR upgrade, height/slope vertex-colour ramp,
-    chunk AABB) + `TerrainLod.PickLod` + `Scene3D.LoadTerrainChunk`/`DrawTerrainChunk`, plus the `TerrainStreamer`
-    client world-streaming layer (`ChunkCoord`/`ChunkGrid` coord<->world, `IChunkSink` load/unload seam,
-    `StreamerConfig`, and the production `Scene3DChunkSink` that builds the chunk mesh + scatters props on load,
-    re-LODs on tier crossing, frees on unload, and draws the loaded ring; ring load/unload with a hysteresis band,
-    distance-LOD re-meshing, amortized main-thread loading). First overworld render-scale sub-project
-    (`docs/superpowers/specs/2026-06-27-terrain-system-design.md`); world streaming is sub-project 6a
-    (`docs/superpowers/specs/2026-06-27-world-streaming-design.md`); multi-cell server sharding (6b), PBR-textures,
-    and water are later sub-projects.
+    field: skirts, per-vertex splat weights, chunk AABB) + `TerrainLod.PickLod` + `Scene3D.LoadTerrainChunk`/
+    `DrawTerrainChunk`, plus the `TerrainStreamer` client world-streaming layer (`ChunkCoord`/`ChunkGrid`
+    coord<->world, `IChunkSink` load/unload seam, `StreamerConfig`, and the production `Scene3DChunkSink` that
+    builds the chunk mesh + scatters props on load, re-LODs on tier crossing, frees on unload, and draws the
+    loaded ring; ring load/unload with a hysteresis band, distance-LOD re-meshing, amortized main-thread loading),
+    plus the PBR splat-material layer (shipped 7.64.0): `TerrainSplatPacking`, `TerrainMaterialLayer`/
+    `TerrainLayeredMaterial`, `TerrainMaterialPresets` (procedural placeholder), `TerrainScene3D.LoadTerrainMaterial`
+    + a textured `LoadTerrainChunk` overload, and an optional material slot on `Scene3DChunkSink` - supply a
+    `TerrainLayeredMaterial` to render five tileable PBR layers (grass/dirt/rock/sand/snow) blended per-fragment
+    by the baked splat weights via world-space triplanar tiling, normal maps, mips, and anisotropic filtering;
+    omit it for the height/slope vertex-colour ramp fallback (byte-identical). First overworld render-scale
+    sub-project (`docs/superpowers/specs/2026-06-27-terrain-system-design.md`); world streaming is sub-project 6a
+    (`docs/superpowers/specs/2026-06-27-world-streaming-design.md`); multi-cell server sharding (6b) and water are
+    later sub-projects.
   - **Static-world collision (in `Collision`):** `BoxCollision` (circle-vs-AABB / oriented-box / circle
     minimum-translation push-out), `ColliderShape` (unplaced cylinder/box prop footprint), `WorldCollider` (one
     placed static collider), `WorldColliders` (a `SpatialHashGrid`-backed queryable set: `Query(x,z,radius)` +

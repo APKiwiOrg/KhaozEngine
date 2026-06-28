@@ -141,6 +141,10 @@ namespace KhaozEngine.Gpu
         void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged;
         /// <summary>Copy a whole texture (e.g. render target -> staging) for readback.</summary>
         void CopyTexture(IGpuTexture src, IGpuTexture dst);
+
+        /// <summary>Generate the full mip chain of <paramref name="texture"/> from its base level. The texture must
+        /// be created with <see cref="GpuTextureUsage.GenerateMipmaps"/> and a mip count &gt; 1.</summary>
+        void GenerateMipmaps(IGpuTexture texture);
     }
 
     /// <summary>The GPU device: backend info, capabilities, the resource factory, the swapchain framebuffer,
@@ -175,6 +179,10 @@ namespace KhaozEngine.Gpu
 
         /// <summary>Upload CPU RGBA (or format-matching) bytes into a texture sub-region (mip 0, layer 0).</summary>
         void UpdateTexture(IGpuTexture texture, byte[] data, uint x, uint y, uint width, uint height);
+
+        /// <summary>Upload CPU bytes into a texture sub-region at an explicit <paramref name="mipLevel"/> and
+        /// <paramref name="arrayLayer"/> (the splat-terrain layer stacks upload each layer's base mip).</summary>
+        void UpdateTexture(IGpuTexture texture, byte[] data, uint x, uint y, uint width, uint height, uint mipLevel, uint arrayLayer);
 
         /// <summary>Map a staging resource for CPU access.</summary>
         MappedData Map(IGpuTexture staging, GpuMapMode mode);

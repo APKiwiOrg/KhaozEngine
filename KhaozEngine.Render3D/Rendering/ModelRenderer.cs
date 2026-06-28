@@ -67,6 +67,13 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuPipeline _pipeline;
         readonly IGpuShaderSet _shaders;
 
+        // Splat-terrain pipeline (5-layer texture-array PBR, weights in vertex Color, triplanar). Shares _ubo
+        // (frame uniforms) and the instance buffer; its own layout/sampler/shaders/pipeline.
+        readonly IGpuResourceLayout _splatLayout;
+        readonly IGpuSampler _terrainSampler;   // wrap + anisotropic (trilinear fallback); OWNED here (dispose it)
+        readonly IGpuShaderSet _splatShaders;
+        readonly IGpuPipeline _splatPipeline;
+
         IGpuBuffer? _instanceBuffer;
         uint _instanceCapacity;          // capacity in instances
         // CPU-skinned path: skinned meshes are deformed on the CPU each frame and drawn through THIS no-bone model
@@ -161,6 +168,33 @@ namespace KhaozEngine.Render3D.Rendering
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout },
                 Outputs = modelOutputs,
             });
+
+            _splatLayout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
+                new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("AlbedoArray", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("NormalArray", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("Sampler", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("SplatParams", GpuResourceKind.UniformBuffer, GpuShaderStages.Fragment)));
+
+            // Tileable detail textures REPEAT across the world, so wrap addressing; anisotropic for grazing ground
+            // (CreateSampler falls back to trilinear when the backend lacks anisotropy).
+            _terrainSampler = factory.CreateSampler(new GpuSamplerDescription(
+                GpuSamplerFilter.Anisotropic, GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap, maximumAnisotropy: 8));
+
+            _splatShaders = factory.CreateShadersFromSpirv(ShaderSources.ModelVert, ShaderSources.SplatFrag);
+
+            _splatPipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription
+            {
+                BlendFactor = Vector4.Zero,
+                BlendAttachments = new[] { GpuBlendAttachment.OverrideBlend, GpuBlendAttachment.OverrideBlend, GpuBlendAttachment.OverrideBlend },
+                DepthStencil = GpuDepthStencilState.DepthOnlyLessEqual,
+                Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
+                Topology = GpuPrimitiveTopology.TriangleList,
+                ResourceLayouts = new[] { _splatLayout },
+                ShaderSet = _splatShaders,
+                VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout },
+                Outputs = modelOutputs,
+            });
         }
 
         /// <summary>Bind + clear the model framebuffer once per frame, before drawing instances.</summary>
@@ -248,6 +282,29 @@ namespace KhaozEngine.Render3D.Rendering
             _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(
                 _layout, _ubo, albedo ?? _white, normal ?? _flatNormal, roughness ?? _defaultRough, _sampler));
 
+        /// <summary>Build a splat-terrain material resource set: the shared frame UBO + the two 5-layer texture
+        /// arrays (albedo, tangent-space normal) + the terrain (wrap/anisotropic) sampler + the per-material params
+        /// UBO. Shared across every chunk using this material; owned by Scene3D, NOT per mesh.</summary>
+        public IGpuResourceSet CreateSplatMaterialSet(IGpuTexture albedoArray, IGpuTexture normalArray, IGpuBuffer splatParams) =>
+            _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(
+                _splatLayout, _ubo, albedoArray, normalArray, _terrainSampler, splatParams));
+
+        /// <summary>Bind the splat-terrain pipeline for the splat pass (call once before the splat draw loop). The
+        /// frame UBO (shared with the model pass) is already populated by <see cref="SetFrameUniforms"/>.</summary>
+        public void BindSplatPass(IGpuCommandList cl) => cl.SetPipeline(_splatPipeline);
+
+        /// <summary>Draw one splat-terrain mesh run through the splat pipeline, reusing the shared instance buffer
+        /// (terrain instances are identity-transform, white-tint). <see cref="BindSplatPass"/> must be bound.</summary>
+        public void DrawSplatMeshInstanced(IGpuCommandList cl, IGpuBuffer vb, IGpuBuffer ib, int indexCount,
+            GpuIndexFormat indexFormat, uint instanceStart, uint instanceCount, IGpuResourceSet splatSet)
+        {
+            cl.SetGraphicsResourceSet(0, splatSet);
+            cl.SetVertexBuffer(0, vb);
+            cl.SetVertexBuffer(1, _instanceBuffer!);
+            cl.SetIndexBuffer(ib, indexFormat);
+            cl.DrawIndexed((uint)indexCount, instanceCount, 0, 0, instanceStart);
+        }
+
         /// <summary>Ensure the persistent instance buffer holds at least <paramref name="instances"/>.Length
         /// instances, then upload <paramref name="instances"/> starting at offset 0. Geometric 2x growth.</summary>
         public void UploadInstances(IGpuCommandList cl, ReadOnlySpan<InstanceData> instances)
@@ -327,6 +384,7 @@ namespace KhaozEngine.Render3D.Rendering
             _pipeline.Dispose(); _defaultSet.Dispose(); _layout.Dispose();
             _white.Dispose(); _flatNormal.Dispose(); _defaultRough.Dispose(); // _sampler is the device built-in (non-owning); do not dispose it.
             _shaders.Dispose();
+            _splatPipeline.Dispose(); _splatLayout.Dispose(); _splatShaders.Dispose(); _terrainSampler.Dispose();
             _ubo.Dispose();
             _instanceBuffer?.Dispose();
             _skinnedVertexBuffer?.Dispose();

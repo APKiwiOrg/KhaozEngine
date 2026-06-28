@@ -61,6 +61,9 @@ namespace KhaozEngine.Gpu.Internal
         public void CopyTexture(IGpuTexture src, IGpuTexture dst)
             => CommandList.CopyTexture(((VeldridGpuTexture)src).Texture, ((VeldridGpuTexture)dst).Texture);
 
+        public void GenerateMipmaps(IGpuTexture texture)
+            => CommandList.GenerateMipmaps(((VeldridGpuTexture)texture).Texture);
+
         public void Dispose() { if (_owns) CommandList.Dispose(); }
     }
 }

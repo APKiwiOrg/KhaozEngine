@@ -58,6 +58,9 @@ namespace KhaozEngine.Gpu.Internal
         public void UpdateTexture(IGpuTexture texture, byte[] data, uint x, uint y, uint width, uint height)
             => GraphicsDevice.UpdateTexture(((VeldridGpuTexture)texture).Texture, data, x, y, 0, width, height, 1, 0, 0);
 
+        public void UpdateTexture(IGpuTexture texture, byte[] data, uint x, uint y, uint width, uint height, uint mipLevel, uint arrayLayer)
+            => GraphicsDevice.UpdateTexture(((VeldridGpuTexture)texture).Texture, data, x, y, 0, width, height, 1, mipLevel, arrayLayer);
+
         public MappedData Map(IGpuTexture staging, GpuMapMode mode)
         {
             MappedResource m = GraphicsDevice.Map(((VeldridGpuTexture)staging).Texture, VeldridMap.ToVeldrid(mode));
@@ -134,9 +137,18 @@ namespace KhaozEngine.Gpu.Internal
 
         public IGpuSampler CreateSampler(in GpuSamplerDescription d)
         {
+            // Anisotropic requires device support; fall back to trilinear so the splat-terrain sampler still
+            // runs on a backend that lacks it (the path degrades, it does not break).
+            var filter = d.Filter;
+            uint maxAniso = d.MaximumAnisotropy;
+            if (filter == GpuSamplerFilter.Anisotropic && !GraphicsDevice.Features.SamplerAnisotropy)
+            {
+                filter = GpuSamplerFilter.MinLinearMagLinearMipLinear;
+                maxAniso = 0;
+            }
             var desc = new SamplerDescription(
                 VeldridMap.ToVeldrid(d.AddressModeU), VeldridMap.ToVeldrid(d.AddressModeV), VeldridMap.ToVeldrid(d.AddressModeW),
-                VeldridMap.ToVeldrid(d.Filter), null, 0, 0, uint.MaxValue, 0, SamplerBorderColor.TransparentBlack);
+                VeldridMap.ToVeldrid(filter), null, maxAniso, 0, uint.MaxValue, 0, SamplerBorderColor.TransparentBlack);
             return new VeldridGpuSampler(GraphicsDevice.ResourceFactory.CreateSampler(desc));
         }
 

@@ -224,10 +224,13 @@ namespace KhaozEngine.Gpu
     /// use (point vs linear min/mag/mip).</summary>
     public enum GpuSamplerFilter
     {
-        /// <summary>Nearest-neighbour (point) sampling — the pixelated upscale + crisp 2D path.</summary>
+        /// <summary>Nearest-neighbour (point) sampling - the pixelated upscale + crisp 2D path.</summary>
         MinPointMagPointMipPoint,
-        /// <summary>Bilinear sampling — the smooth upscale path.</summary>
+        /// <summary>Bilinear sampling - the smooth upscale path.</summary>
         MinLinearMagLinearMipLinear,
+        /// <summary>Anisotropic filtering (grazing-angle quality for tiled ground). Requires device support;
+        /// the impl falls back to <see cref="MinLinearMagLinearMipLinear"/> when the backend lacks it.</summary>
+        Anisotropic,
     }
 
     /// <summary>Sampler addressing (wrap) mode. Mirrors Veldrid <c>SamplerAddressMode</c>.</summary>

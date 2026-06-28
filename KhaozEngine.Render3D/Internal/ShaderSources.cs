@@ -155,14 +155,67 @@ void main() {
     oDepth = vec4(vDepth, vDepth, vDepth, 1.0);
 }";
 
-        // ---- Splat-terrain fragment shader. Pairs with ModelVert (which forwards the packed weights as vColor and
-        //      the world position/normal). Reads two 5-layer texture arrays (albedo, tangent-space normal) + a
-        //      shared sampler + a per-material params UBO, blends the five layers by the per-vertex weights, tiles
-        //      each layer in WORLD space with triplanar projection (no per-vertex tangent needed), and lights with
-        //      the SAME key+fill+ambient+point-light+cel model as ModelFrag. Writes the same 3 MRT targets
-        //      (geometric normal to attachment 1 for the edge pass). KEEP THE LIGHTING IN SYNC WITH ModelFrag.
-        //      Sample the two arrays in binding order (Albedo then Normal) - the Metal SPIRV-Cross first-sample-order
-        //      constraint, same as ModelFrag/EdgeFrag. ----
+        // ---- Splat-terrain vertex shader. Identical to ModelVert, except the per-frame UBO (binding 0) carries the
+        //      per-material splat params appended after the point-light arrays - so the splat pipeline binds exactly
+        //      ONE uniform buffer. (Veldrid/SPIRV-Cross on Metal mis-binds a SECOND uniform buffer in a set: it reads
+        //      the first buffer's bytes, which zeroed the per-layer tint and blacked out the terrain. One UBO total
+        //      sidesteps it.) The params tail is unused by the vertex stage but declared so the block layout matches
+        //      SplatFrag exactly. ----
+        public const string SplatVert = @"#version 450
+layout(set=0, binding=0) uniform U {
+    mat4 ViewProj;
+    vec4 LightDir; vec4 LightColor; vec4 Ambient; vec4 Params;
+    vec4 FillDir; vec4 FillColor; vec4 CameraPos;
+    vec4 PointPosRadius[16];
+    vec4 PointColorIntensity[16];
+    vec4 TintTiling[5];   // per-material params appended (offset 688): xyz = tint, w = tiles/metre
+    vec4 Roughness;       // x..w = roughness for layers 0..3
+    vec4 Misc;            // x = layer4 roughness, y = triplanarSharpness, z = projectionMode, w = baseSpecStrength
+};
+layout(location=0) in vec3 Position;
+layout(location=1) in vec3 Normal;
+layout(location=2) in vec4 Color;
+layout(location=3) in vec2 TexCoord;
+layout(location=4) in vec4 Tangent;
+layout(location=5) in vec4 IModel0;
+layout(location=6) in vec4 IModel1;
+layout(location=7) in vec4 IModel2;
+layout(location=8) in vec4 IModel3;
+layout(location=9) in vec4 ITint;
+layout(location=10) in vec4 IEmissive;
+layout(location=11) in vec4 ISpecParams;
+layout(location=0) out vec3 vNormalW;
+layout(location=1) out vec4 vColor;
+layout(location=2) out float vDepth;
+layout(location=3) out vec3 vWorldPos;
+layout(location=4) out vec2 vUv;
+layout(location=5) out vec4 vTint;
+layout(location=6) out vec4 vEmissive;
+layout(location=7) out vec4 vSpecParams;
+layout(location=8) out vec4 vTangent;
+void main() {
+    mat4 Model = mat4(IModel0, IModel1, IModel2, IModel3);
+    vec4 world = Model * vec4(Position, 1.0);
+    gl_Position = ViewProj * world;
+    vNormalW = normalize(mat3(Model) * Normal);
+    vColor = Color;
+    vDepth = gl_Position.z / gl_Position.w;
+    vWorldPos = world.xyz;
+    vUv = TexCoord;
+    vTint = ITint;
+    vEmissive = IEmissive;
+    vSpecParams = ISpecParams;
+    vTangent = vec4(mat3(Model) * Tangent.xyz, Tangent.w);
+}";
+
+        // ---- Splat-terrain fragment shader. Pairs with SplatVert. Reads two 5-layer texture arrays (albedo,
+        //      tangent-space normal) + a shared sampler; the per-material params (per-layer tint/tiling/roughness +
+        //      globals) ride in the SAME UBO as the frame uniforms (binding 0, appended after the light arrays), so
+        //      the pipeline binds ONE uniform buffer (see SplatVert). Blends the five layers by the per-vertex
+        //      weights, tiles each in WORLD space with triplanar projection (no per-vertex tangent), and lights with
+        //      the SAME key+fill+ambient+point-light+cel model as ModelFrag. Writes the same 3 MRT targets (geometric
+        //      normal to attachment 1 for the edge pass). KEEP THE LIGHTING IN SYNC WITH ModelFrag. Sample the two
+        //      arrays in binding order (Albedo then Normal) - the Metal SPIRV-Cross first-sample-order constraint. ----
         public const string SplatFrag = @"#version 450
 layout(set=0, binding=0) uniform U {
     mat4 ViewProj;
@@ -170,15 +223,13 @@ layout(set=0, binding=0) uniform U {
     vec4 FillDir; vec4 FillColor; vec4 CameraPos;
     vec4 PointPosRadius[16];
     vec4 PointColorIntensity[16];
-};
-layout(set=0, binding=1) uniform texture2DArray AlbedoArray;
-layout(set=0, binding=2) uniform texture2DArray NormalArray;
-layout(set=0, binding=3) uniform sampler Samp;
-layout(set=0, binding=4) uniform SplatParams {
     vec4 TintTiling[5];   // xyz = tint, w = tiles/metre
     vec4 Roughness;       // x..w = roughness for layers 0..3
     vec4 Misc;            // x = layer4 roughness, y = triplanarSharpness, z = projectionMode, w = baseSpecStrength
 };
+layout(set=0, binding=1) uniform texture2DArray AlbedoArray;
+layout(set=0, binding=2) uniform texture2DArray NormalArray;
+layout(set=0, binding=3) uniform sampler Samp;
 layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;       // packed weights (grass,dirt,rock,sand); snow = 1 - sum
 layout(location=2) in float vDepth;

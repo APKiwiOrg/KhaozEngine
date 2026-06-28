@@ -93,5 +93,27 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(0.4f, cam.Pitch, 5);
             Assert.Equal(7f, cam.Distance, 5);
         }
+
+        [Fact]
+        public void Update_advances_target_damping_when_enabled()
+        {
+            var cam = new FollowCamera3D { Target = Vector3.Zero, EnableTargetDamping = true, TargetDampingRate = 10f };
+            var ctl = new FollowCameraController(cam);
+            ctl.Update(Frame(), 1f / 60f);                 // initialise at the origin target
+            cam.Target = new Vector3(10, 0, 0);
+            for (int i = 0; i < 5; i++) ctl.Update(Frame(), 1f / 60f);
+            float x = cam.EffectiveTarget.X;
+            Assert.True(x > 0f && x < 10f, $"controller should be easing the target, got {x}");
+        }
+
+        [Fact]
+        public void Update_does_not_damp_when_disabled()
+        {
+            var cam = new FollowCamera3D { Target = Vector3.Zero };   // damping off (default)
+            var ctl = new FollowCameraController(cam);
+            cam.Target = new Vector3(10, 0, 0);
+            ctl.Update(Frame(), 1f / 60f);
+            Assert.Equal(cam.Target, cam.EffectiveTarget);           // immediate, unchanged behaviour
+        }
     }
 }

@@ -20,6 +20,47 @@ namespace KhaozEngine.Render3D
         /// <summary>Orbit angle about the Y (up) axis, radians. Yaw 0 puts the eye on +Z looking toward -Z.</summary>
         public float Yaw = 0f;
 
+        /// <summary>
+        /// Opt-in target damping. When true, the camera follows a smoothed <see cref="EffectiveTarget"/> that eases
+        /// toward <see cref="Target"/> each <see cref="AdvanceTarget"/> call instead of snapping - belt-and-suspenders
+        /// against residual avatar jitter on a remote server. Default OFF, so existing consumers (which read
+        /// <see cref="Eye"/>/<see cref="View"/> without driving the damping) are completely unchanged.
+        /// </summary>
+        public bool EnableTargetDamping = false;
+        /// <summary>Exponential follow rate (per second) used when <see cref="EnableTargetDamping"/> is on; higher is
+        /// snappier. Frame-rate independent. Default 10.</summary>
+        public float TargetDampingRate = 10f;
+
+        Vector3 _dampedTarget;
+        bool _dampedInit;
+
+        /// <summary>
+        /// The point the camera geometry actually uses: <see cref="Target"/> when damping is off (or before the first
+        /// <see cref="AdvanceTarget"/> call), otherwise the smoothed target that eases toward <see cref="Target"/>.
+        /// </summary>
+        public Vector3 EffectiveTarget => EnableTargetDamping && _dampedInit ? _dampedTarget : Target;
+
+        /// <summary>
+        /// Advances the optional target damping by <paramref name="dt"/> seconds (call once per render frame, e.g. via
+        /// <see cref="FollowCameraController.Update"/>). A no-op for the camera geometry while
+        /// <see cref="EnableTargetDamping"/> is off (it just keeps the smoothed target synced so enabling later starts
+        /// without a lurch). The first call after enabling locks the smoothed target onto the current
+        /// <see cref="Target"/>; subsequent calls ease it in frame-rate-independently.
+        /// </summary>
+        public void AdvanceTarget(float dt)
+        {
+            if (!EnableTargetDamping || !_dampedInit)
+            {
+                _dampedTarget = Target;   // disabled, or first frame: lock onto the live target (no lurch)
+                _dampedInit = true;
+                return;
+            }
+            if (dt <= 0f || !(TargetDampingRate > 0f) || !float.IsFinite(TargetDampingRate))
+                return;                   // nothing to advance, or a degenerate rate: hold the smoothed target
+            float a = 1f - MathF.Exp(-TargetDampingRate * dt);   // exponential smoothing -> frame-rate independent
+            _dampedTarget = Vector3.Lerp(_dampedTarget, Target, a);
+        }
+
         /// <summary>Lower clamp for <see cref="Pitch"/>, radians (kept &gt; 0 so the view never goes flat). Default ~6 deg.</summary>
         public float MinPitch = MathF.PI / 30f;
         /// <summary>Upper clamp for <see cref="Pitch"/>, radians (kept &lt; 90 deg so LookAt never degenerates). Default ~80 deg.</summary>
@@ -80,7 +121,7 @@ namespace KhaozEngine.Render3D
         {
             get
             {
-                Vector3 eye = Target + DirToEye * _distance + new Vector3(0f, HeightOffset, 0f);
+                Vector3 eye = EffectiveTarget + DirToEye * _distance + new Vector3(0f, HeightOffset, 0f);
                 if (GroundHeight is { } ground)
                 {
                     float floor = ground(eye.X, eye.Z) + GroundClearance;
@@ -90,9 +131,9 @@ namespace KhaozEngine.Render3D
             }
         }
 
-        public Vector3 Forward => Vector3.Normalize(Target - Eye);
+        public Vector3 Forward => Vector3.Normalize(EffectiveTarget - Eye);
 
-        public Matrix4x4 View => Matrix4x4.CreateLookAt(Eye, Target, Vector3.UnitY);
+        public Matrix4x4 View => Matrix4x4.CreateLookAt(Eye, EffectiveTarget, Vector3.UnitY);
         public Matrix4x4 Projection => Matrix4x4.CreatePerspectiveFieldOfView(FieldOfView, AspectRatio, NearPlane, FarPlane);
         public Matrix4x4 ViewProjection => View * Projection;
 

@@ -67,7 +67,7 @@ public class BepuDeterminismGateTests
 
         // Headless-step + query check.
         Assert.True(a.rayT > 0f, $"Ray should hit the static box (got {a.rayT})");
-        Assert.True(a.sweepT >= 0f, $"Capsule sweep should hit the static box (got {a.sweepT})");
+        Assert.True(a.sweepT > 0f && a.sweepT < 100f, "sweep should hit the static box within range");
 
         // Determinism: exact bit-identical on the same binary.
         Assert.Equal(a.rayT, b.rayT);

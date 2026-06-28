@@ -307,10 +307,12 @@ public static class CharacterMovement
                 if (wallNormalLen > 1e-5f)
                 {
                     wallNormal /= wallNormalLen;
+                    // Correct collide-and-slide order: consume what was already advanced, THEN project
+                    // the residue onto the wall plane. The old order projected first and subtracted
+                    // second, which double-accounted and under-slid on oblique (non-perpendicular) walls.
+                    remaining -= dir * advance;
                     float dot = Vector3.Dot(remaining, wallNormal);
                     remaining -= wallNormal * dot;
-                    // Remove the already-advanced portion of the slide.
-                    remaining -= dir * advance;
                 }
                 else
                 {

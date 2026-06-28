@@ -105,7 +105,10 @@ version/release work.
     `INetTransport`/`LoopbackTransport` + the `NetServer`/`NetClient` session layer (the `IConnectionAuthenticator`
     gate returns a verified `subject` on accept, surfaced as `ServerSessionEvent.Subject`; `AllowAllAuthenticator`
     = token-as-subject dev default, `SignedToken`/`HmacTokenAuthenticator` = zero-dep HMAC-SHA256 signed
-    connect-token `v1.<subject>.<expUnix>.<base64url-mac>`); `Replication` = authoritative ECS
+    connect-token `v1.<subject>.<expUnix>.<base64url-mac>` (+ a v2
+    `v2.<subject>.<base64url-name>.<expUnix>.<base64url-mac>` carrying an optional cosmetic display-name claim,
+    surfaced via the opt-in `IConnectionDisplayName` companion interface as `ServerSessionEvent.DisplayName` -
+    distinct from `subject`/account id, empty for v1)); `Replication` = authoritative ECS
     replication (`NetId`/`ReplicationRegistry`/`SnapshotWriter`/`ClientReplicationView`/`ServerReplicator` +
     `InterestGrid` AoI); `WorldStore` = `IWorldStore` async keyed-blob seam + `InMemoryWorldStore` (dep-free core),
     with two opt-in durable backends each pulling their own ADO.NET provider (same `Netcode.LiteNetLib` pattern):
@@ -205,7 +208,7 @@ version/release work.
     ground-clamped sim + per-client AoI via `SnapshotWriter.WriteFiltered`+`InterestGrid`, framed `[localNetId][ack]`;
     a persistence seam = `PlayerJoined`/`PlayerLeaving` events + accountId-from-verified-subject (the
     authenticator's `subject`, `guest:{slot}` when empty) + an optional `IConnectionAuthenticator` ctor arg
-    (default `AllowAllAuthenticator`) + `SetPlayerState`),
+    (default `AllowAllAuthenticator`) + `SetPlayerState` + `SetPlayerDisplayName`),
     `ShardedWorldServer` (+ `ShardedWorldServerConfig`, the multi-cell variant = the same movement stack run across a
     `Sharding.ShardHost` cell grid: routes each client's `MoveCommand` to the owning cell, steps each cell's
     `PlayerMovementSystem` (also clamps to the optional `WorldBounds`) via `ShardHost.Tick` scheduler-fanned, exactly-once handoff on boundary crossings -
@@ -225,7 +228,11 @@ version/release work.
     the wire as a replicated `MovementState` component (type id 2, alongside `ReplicatedPosition`), so it survives a
     cell handoff and forms the client's exact reconcile basis: `WorldServer`/`ShardedWorldServer` write it (added at
     spawn), and `WorldClient` reconciles `y`/`VerticalVelocity`/`Grounded` alongside XZ (full basis rebased + unacked
-    commands replay the same `Step`, so a jump in flight converges with no permanent desync). Demos
+    commands replay the same `Step`, so a jump in flight converges with no permanent desync). A player's cosmetic
+    display name rides as a replicated `PlayerIdentity { DisplayName }` component (type id 3, length-prefixed UTF-8
+    capped at `MoveProtocol.MaxDisplayNameBytes` = 64, no lerp): set it via `WorldServer`/`ShardedWorldServer`
+    `SetPlayerDisplayName(slot,name)` or carry it on a v2 `SignedToken` claim (auto-applied at join), and read it off
+    the additive `EntityRenderState.DisplayName` (`null` when absent; distinct from the account id). Demos
     (`IsPackable=false`): `NetworkedWalkServer` (headless,
     multi-cell `ShardedWorldServer`, persists via `SqliteWorldStore`) + `NetworkedWalkSample` (windowed `--connect`
     client, sends a stable account token).

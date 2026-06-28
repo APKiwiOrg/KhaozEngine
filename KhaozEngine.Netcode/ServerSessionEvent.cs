@@ -8,13 +8,15 @@ public enum ServerSessionEventKind { Joined, Left, Data }
 /// <summary>One server-side session event: a player joined/left, or sent game data.</summary>
 public readonly struct ServerSessionEvent
 {
-    public ServerSessionEvent(ServerSessionEventKind kind, int slot, byte[] data, NetChannelReliability reliability, string subject = "")
+    public ServerSessionEvent(ServerSessionEventKind kind, int slot, byte[] data, NetChannelReliability reliability,
+        string subject = "", string displayName = "")
     {
         Kind = kind;
         Slot = slot;
         Data = data ?? Array.Empty<byte>();
         Reliability = reliability;
         Subject = subject ?? string.Empty;
+        DisplayName = displayName ?? string.Empty;
     }
 
     /// <summary>The event kind.</summary>
@@ -36,10 +38,22 @@ public readonly struct ServerSessionEvent
     /// the other event kinds.</summary>
     public string Subject { get; }
 
+    /// <summary>For a <see cref="ServerSessionEventKind.Joined"/> event, the verified human display name the
+    /// authenticator surfaced from the connect token (via <see cref="IConnectionDisplayName"/>), empty when the
+    /// authenticator does not provide one or the token carries none. Cosmetic; distinct from <see cref="Subject"/>.
+    /// Empty for the other event kinds.</summary>
+    public string DisplayName { get; }
+
+    /// <summary>A player joined; <paramref name="token"/> is the connect token from their Hello (carried in Data),
+    /// <paramref name="subject"/> the verified identity the authenticator bound the connection to, and
+    /// <paramref name="displayName"/> the optional verified display name from the token.</summary>
+    public static ServerSessionEvent Joined(int slot, byte[] token, string subject, string displayName) =>
+        new(ServerSessionEventKind.Joined, slot, token ?? Array.Empty<byte>(), NetChannelReliability.ReliableOrdered, subject, displayName);
+
     /// <summary>A player joined; <paramref name="token"/> is the connect token from their Hello (carried in Data),
     /// <paramref name="subject"/> the verified identity the authenticator bound the connection to.</summary>
     public static ServerSessionEvent Joined(int slot, byte[] token, string subject) =>
-        new(ServerSessionEventKind.Joined, slot, token ?? Array.Empty<byte>(), NetChannelReliability.ReliableOrdered, subject);
+        Joined(slot, token, subject, string.Empty);
 
     /// <summary>A player joined; <paramref name="token"/> is the connect token from their Hello (carried in Data).</summary>
     public static ServerSessionEvent Joined(int slot, byte[] token) => Joined(slot, token, string.Empty);

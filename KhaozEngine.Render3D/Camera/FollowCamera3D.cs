@@ -96,6 +96,11 @@ namespace KhaozEngine.Render3D
         public Matrix4x4 Projection => Matrix4x4.CreatePerspectiveFieldOfView(FieldOfView, AspectRatio, NearPlane, FarPlane);
         public Matrix4x4 ViewProjection => View * Projection;
 
+        /// <summary>Project a world point to a screen pixel (forward inverse of <see cref="ScreenToRay"/>); false
+        /// when the point is not in front of the camera. See <see cref="IIsoCamera3D.WorldToScreen"/>.</summary>
+        public bool WorldToScreen(Vector3 world, int viewportWidth, int viewportHeight, out Vector2 screenPixel) =>
+            CameraProjection.WorldToScreen(ViewProjection, world, viewportWidth, viewportHeight, out screenPixel);
+
         /// <summary>Unproject a screen pixel (top-left origin, y-down) into a world ray (mirrors IsoCamera3D).</summary>
         public Ray ScreenToRay(Vector2 screenPixel, int viewportWidth, int viewportHeight)
         {

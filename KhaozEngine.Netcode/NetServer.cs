@@ -82,7 +82,9 @@ public sealed class NetServer
         var slotBytes = new byte[4];
         BitConverter.TryWriteBytes(slotBytes, newSlot);
         transport.Send(ev.Connection, SessionFrame.Write(SessionOpcode.Welcome, slotBytes), NetChannelReliability.ReliableOrdered);
-        inbox.Enqueue(ServerSessionEvent.Joined(newSlot, token, subject));
+        // Surface a verified display name from the token when the authenticator can provide one (opt-in seam).
+        string displayName = authenticator is IConnectionDisplayName named ? named.ReadDisplayName(token) : string.Empty;
+        inbox.Enqueue(ServerSessionEvent.Joined(newSlot, token, subject, displayName));
     }
 
     private void RemovePeer(NetConnectionId conn, int slot)

@@ -1092,8 +1092,8 @@ var server = new WorldServer(transport, new WorldServerConfig { TickSeconds = 1f
 - **`WorldClient`** (render-free): wraps `NetClient` + `ClientReplicationView` + `ClientPrediction`. `Poll()`
   ingests AoI snapshots, applies remote entities, and reconciles the local avatar against the authoritative
   basis; `SendInput(cmd)` predicts one tick forward and transmits it; `Snapshot()` returns
-  `IReadOnlyList<EntityRenderState>` (`{ NetId Id; Vector3 Position; bool IsLocal; }`) for the renderer - the
-  local player is the predicted position, remotes the replicated one. Optional trailing ctor params
+  `IReadOnlyList<EntityRenderState>` (`{ NetId Id; Vector3 Position; bool IsLocal; string? DisplayName; }`) for the
+  renderer - the local player is the predicted position, remotes the replicated one. Optional trailing ctor params
   `WorldBounds? bounds`, `WorldColliders? colliders`, `WorldSurfaces? surfaces` (mirroring `WorldServer`) feed the
   internal prediction simulator, so the client predicts against the **same** play-area bound + static
   props/buildings + walkable surfaces the server is authoritative over (null = terrain only).
@@ -1112,6 +1112,39 @@ deterministically from the seed, so only players consume bandwidth. Demos (`IsPa
 `NetworkedWalkServer` (headless) and `NetworkedWalkSample` (the windowed `--connect` client); run the server,
 then two clients on localhost to see two players. Spec:
 `docs/superpowers/specs/2026-06-27-networked-overworld-design.md`.
+
+### Player display names / nameplates
+
+A player can carry a replicated **display name** (a cosmetic label like "Daniel", kept distinct from the account
+id / verified token subject). Set it server-side - from a `PlayerJoined` handler against your DB, or carry it on the
+connect token and let the server auto-apply it:
+
+```csharp
+// (a) DB-sourced: set it when the player joins.
+server.PlayerJoined += (slot, accountId) => server.SetPlayerDisplayName(slot, LookupName(accountId));
+
+// (b) Token-sourced: mint a v2 SignedToken with a name claim; HmacTokenAuthenticator + the server auto-apply it.
+string token = SignedToken.Mint(accountId, "Daniel", DateTimeOffset.UtcNow.AddHours(8), secret);
+// client: new WorldClient(transport, ground, tuning, cfg, token: Encoding.UTF8.GetBytes(token));
+```
+
+It rides every AoI snapshot (UTF-8, capped at `MoveProtocol.MaxDisplayNameBytes` = 64 bytes) and surfaces on the
+client as `EntityRenderState.DisplayName` (`null` when the entity has none). Draw it above the avatar by projecting
+the head with the camera and using the `WorldLabel` helper, in your 2D pass after the 3D scene:
+
+```csharp
+batch.Begin();
+foreach (EntityRenderState e in client.Snapshot())
+    if (e.DisplayName is { } name)
+        WorldLabel.Draw(batch, font, camera, e.Position, new Vector3(0, headHeight, 0), name, Color.White, fbW, fbH);
+batch.End();
+```
+
+`WorldLabel.Draw` projects via the new `IIsoCamera3D.WorldToScreen(world, w, h, out pixel)` (the forward inverse of
+`ScreenToRay`; `false` when the point is behind the camera) and draws centered `SpriteFont` text. If you want to
+place labels yourself, call `WorldToScreen` directly. Labels are screen-space and drawn on top - they are **not**
+depth-tested, so a name is not hidden when its owner stands behind terrain or a prop (occluded nameplates are out
+of scope).
 
 ### Sharded authoritative server (many players / a large world)
 

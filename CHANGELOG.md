@@ -1,9 +1,49 @@
 # Changelog
 
-All notable changes to KhaozEngine. One shared version line `<KhaozEngine5xVersion>` in `Directory.Build.props`
+All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion>` in `Directory.Build.props`
 governs the whole MonoGame-free engine (custom stack + graduated foundation packages + the four umbrella
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
+
+## 7.61.0
+
+Players can now carry a replicated display name (a nameplate string like "Daniel", distinct from the account id),
+and any world point can be projected to a screen pixel - the two halves a consumer needs to float a name above a
+remote player's head.
+
+**A - display-name replication (`KhaozEngine.NetWorld` + `KhaozEngine.Netcode`).** A new `PlayerIdentity { string
+DisplayName }` component is registered in `MoveProtocol.CreateRegistry()` as type id 3
+(`MoveProtocol.IdentityTypeId`), with a length-prefixed UTF-8 codec capped at `MoveProtocol.MaxDisplayNameBytes`
+(64) and no lerp - the cap is enforced on both ends (write truncates at a UTF-8 char boundary, read clamps), so a
+hostile or corrupt name can neither exceed the bound on the wire nor blow the read buffer. The name is re-sent in
+every AoI snapshot (names are static, so simple over clever at this player scale). Set it server-side via
+`WorldServer.SetPlayerDisplayName(slot, name)` / `ShardedWorldServer.SetPlayerDisplayName(slot, name)` (e.g. from a
+`PlayerJoined` handler against the game's DB), and read it client-side off the new additive
+`EntityRenderState.DisplayName` (`null` when the entity carries no identity; the existing 3-arg ctor and every
+current `Snapshot()` caller are unchanged).
+
+The display name can also ride in on the connect token: `SignedToken` gains a v2 format
+(`v2.<subject>.<base64url-name>.<expUnix>.<mac>`) minted with the new `Mint(subject, displayName, expiry, secret)`
+overload and read with the new `TryVerify(..., out subject, out displayName, out reason)` overload. v1 tokens are
+unchanged and still verify (empty name). A new opt-in `IConnectionDisplayName` companion interface lets an
+authenticator surface that verified name; `HmacTokenAuthenticator` implements it, `NetServer` probes for it and
+includes the name on `ServerSessionEvent.DisplayName`, and `WorldServer`/`ShardedWorldServer` auto-apply a
+non-empty token name at join. So token games get nameplates for free while DB-sourced names use the setter. The
+account id / verified subject and the persistence path are unchanged - the display name is purely additive and
+cosmetic. `IConnectionAuthenticator` itself is untouched (the seam is the new optional companion interface), so
+`AllowAllAuthenticator` and existing custom authenticators keep compiling and just yield an empty name.
+
+**B - world-space text (`KhaozEngine.Render3D`).** `IIsoCamera3D` gains
+`WorldToScreen(Vector3 world, int viewportWidth, int viewportHeight, out Vector2 screenPixel)` - the forward
+inverse of the existing `ScreenToRay`, implemented for both `FollowCamera3D` and `IsoCamera3D` (pure
+`System.Numerics`, round-trips against `ScreenToRay`, returns `false` for a point not in front of the camera). A
+new `WorldLabel.Draw(...)` static helper projects a world anchor + offset and draws centered screen-space text via
+`SpriteBatch.DrawString`, reusing the shipped `SpriteFont` path (no per-name texture). Labels are drawn on top
+(screen-space, not depth-tested): occluded/depth-tested nameplates are out of scope.
+
+Additive across the board (new component + type id, new optional `EntityRenderState` field, new token format/overloads
++ companion interface, new camera method + label helper), so minor. Bumps the `NetWorld`/`Server` and `Game3D`
+umbrellas. A consumer (Ruinborne) sets each player's display name server-side and draws it above the avatar head.
 
 ## 7.60.0
 

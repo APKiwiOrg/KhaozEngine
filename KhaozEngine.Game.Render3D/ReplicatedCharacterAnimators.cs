@@ -68,7 +68,7 @@ namespace KhaozEngine.Game
     /// retain it.</summary>
     public readonly struct CharacterPose
     {
-        public CharacterPose(int id, Matrix4x4 world, IReadOnlyList<Matrix4x4> pose, LocomotionState state, bool isLocal)
+        public CharacterPose(int id, Matrix4x4 world, Matrix4x4[] pose, LocomotionState state, bool isLocal)
         {
             Id = id;
             World = world;
@@ -86,8 +86,10 @@ namespace KhaozEngine.Game
         /// <see cref="CharacterAnimatorTuning.FacingYawOffset"/> for assets that do not.</summary>
         public Matrix4x4 World { get; }
 
-        /// <summary>Joint-WORLD bone palette for <c>Scene3D.DrawSkinned</c>. Transient (see the type remarks).</summary>
-        public IReadOnlyList<Matrix4x4> Pose { get; }
+        /// <summary>Joint-WORLD bone palette for <c>Scene3D.DrawSkinned</c> (a <c>Matrix4x4[]</c>, so it passes
+        /// straight to the span-taking draw call - same type as <see cref="AnimatedCharacter.Pose"/>). Transient (see
+        /// the type remarks).</summary>
+        public Matrix4x4[] Pose { get; }
 
         /// <summary>The locomotion state chosen this frame (handy for debug overlays).</summary>
         public LocomotionState State { get; }

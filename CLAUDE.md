@@ -270,8 +270,10 @@ version/release work.
     `LocomotionStateMachine`; tuned by `CharacterAnimatorTuning`. NO netcode dependency (the consumer maps its
     `EntityRenderState` -> `CharacterSample` in a 3-line loop, keeping `Game.Render3D` off `NetWorld`); the optional
     read-only `WorldClient.LocalRenderState`/`LocalGrounded`/`LocalVerticalVelocity` (in `NetWorld`, 7.65.0) fill the
-    local sample's exact-movement fields. `TerrainWalkSample` walks a committed KayKit CC0 rigged+animated character (skinned-ingest preserves
-    the rig + clips; NOT the flatten-prop path). Out of scope: animation events, root motion, IK, additive/facial
+    local sample's exact-movement fields. `TerrainWalkSample` walks a committed Quaternius Universal CC0 rigged+animated
+    character (clips named exactly Idle/Walk/Run/Jump/Fall; skinned-ingest preserves the rig + clips; NOT the flatten-prop
+    path), and `NetworkedWalkSample` drives one animated avatar per replicated player through `ReplicatedCharacterAnimators`
+    (the same asset). Out of scope: animation events, root motion, IK, additive/facial
     layers, full blend trees, networked animation. Design:
     `docs/superpowers/specs/2026-06-27-animated-characters-design.md`.
   - **Umbrellas (code-free metapackages):** `Foundation`, `Game2D`, `Game3D`, `Server`.

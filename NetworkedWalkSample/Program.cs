@@ -13,9 +13,13 @@ using KhaozEngine.Terrain;
 using KhaozEngine.Windowing;
 
 // Networked walkable overworld client: connects to a NetworkedWalkServer, drives the local player through a
-// WorldClient (predicted + reconciled), and renders a capsule per replicated EntityRenderState over the same
-// analytic terrain + deterministic prop scatter as the solo TerrainWalkSample (props are NOT networked). Run
-// the server, then two of these clients on localhost to see two players. Usage: NetworkedWalkSample [host] [port].
+// WorldClient (predicted + reconciled), and renders an animated character per replicated EntityRenderState over
+// the same analytic terrain + deterministic prop scatter as the solo TerrainWalkSample (props are NOT networked).
+// The per-player avatars are driven by ReplicatedCharacterAnimators: WorldClient.Snapshot() is mapped to one
+// CharacterSample per entity each frame (the LOCAL player carries its exact grounded + vertical velocity from the
+// new WorldClient accessors; remotes are position-only and the bridge derives speed / air state / facing from the
+// position delta). Falls back to a capsule per entity if the character asset fails to load. Run the server, then
+// two of these clients on localhost to see two animated players. Usage: NetworkedWalkSample [host] [port] [account].
 string host = args.Length > 0 ? args[0] : "127.0.0.1";
 int port = args.Length > 1 && int.TryParse(args[1], out int p) ? p : 47700;
 // A stable account id so reconnecting (or after a server restart) restores this player's saved position.
@@ -45,6 +49,13 @@ sealed class NetworkedWalkApp : GameApp3D
     MeshHandle _capsule;
     readonly Dictionary<string, MeshHandle> _propMeshes = new();
     IReadOnlyList<PropPlacement> _placements = Array.Empty<PropPlacement>();
+
+    // Per-player animated avatars driven by the position stream the netcode surfaces (ReplicatedCharacterAnimators):
+    // one AnimatedCharacter per replicated entity, lifecycle-managed. Capsule fallback if the asset fails to load.
+    SkinnedMeshHandle _characterMesh;
+    ReplicatedCharacterAnimators? _animators;
+    bool _animated;
+    readonly List<CharacterSample> _samples = new();
 
     FollowCamera3D _camera = null!;
     FollowCameraController _camController = null!;
@@ -81,6 +92,10 @@ sealed class NetworkedWalkApp : GameApp3D
             }
 
         _capsule = sc.LoadMesh(MeshPrimitives.Capsule(radius: CapsuleRadius, height: 1.2f, segments: 16, rings: 6));
+
+        // The animated-avatar bridge: one skinned mesh shared by every player, one AnimatedCharacter brain per
+        // replicated entity. Capsule fallback if the asset is missing/unreadable.
+        TryLoadAnimators(sc);
 
         _camera = new FollowCamera3D { Target = Vector3.Zero, HeightOffset = 1.2f, GroundHeight = _terrain.GroundHeight };
         _camera.Distance = 9f;
@@ -120,8 +135,20 @@ sealed class NetworkedWalkApp : GameApp3D
 
         _client.AdvancePresentation(dt);
 
+        // Map the replicated render states to engine-neutral samples and advance the avatar bridge once per frame.
+        // The local player carries its exact movement (so its jump/fall read true, not finite-differenced); remotes
+        // are position-only and the bridge derives speed / air state / facing from the position delta. Feet position
+        // (centre minus the capsule half-height) so the model's feet, not its centre, sit on the ground.
+        _samples.Clear();
         foreach (EntityRenderState e in _client.Snapshot())
+        {
             if (e.IsLocal) _localPos = e.Position;
+            var feet = new Vector3(e.Position.X, e.Position.Y - CapsuleHalfHeight, e.Position.Z);
+            _samples.Add(e.IsLocal
+                ? new CharacterSample(e.Id.Value, feet, isLocal: true, _client.LocalGrounded, _client.LocalVerticalVelocity)
+                : new CharacterSample(e.Id.Value, feet));
+        }
+        _animators?.Update(_samples, dt);
 
         _camera.Target = _localPos;
         _camera.AspectRatio = FrameHeight > 0 ? (float)FrameWidth / FrameHeight : _camera.AspectRatio;
@@ -135,12 +162,74 @@ sealed class NetworkedWalkApp : GameApp3D
 
         scene.DrawProps(_placements, _propMeshes, _localPos, PropDrawRadius);
 
-        foreach (EntityRenderState e in _client.Snapshot())
+        if (_animated && _animators is not null)
         {
-            Vector3 p = e.Position;
-            Color tint = e.IsLocal ? new Color(0.85f, 0.55f, 0.25f, 1f) : new Color(0.30f, 0.55f, 0.85f, 1f);
-            scene.Draw(_capsule, Matrix4x4.CreateTranslation(p.X, p.Y - CapsuleHalfHeight, p.Z), tint);
+            // Draw the bridge's live avatars: World already places + faces + scales each (scale baked via the tuning).
+            foreach (CharacterPose pose in _animators.Live)
+            {
+                Color tint = pose.IsLocal ? new Color(0.85f, 0.55f, 0.25f, 1f) : new Color(0.30f, 0.55f, 0.85f, 1f);
+                scene.DrawSkinned(_characterMesh, pose.Pose, pose.World, tint);
+            }
         }
+        else
+        {
+            foreach (EntityRenderState e in _client.Snapshot())
+            {
+                Vector3 p = e.Position;
+                Color tint = e.IsLocal ? new Color(0.85f, 0.55f, 0.25f, 1f) : new Color(0.30f, 0.55f, 0.85f, 1f);
+                scene.Draw(_capsule, Matrix4x4.CreateTranslation(p.X, p.Y - CapsuleHalfHeight, p.Z), tint);
+            }
+        }
+    }
+
+    // Skinned-ingest the committed Quaternius Universal CC0 character + its clips, then build a
+    // ReplicatedCharacterAnimators (one AnimatedCharacter brain per replicated entity). On any failure the sample
+    // keeps the per-entity capsule.
+    void TryLoadAnimators(Scene3D sc)
+    {
+        try
+        {
+            string charPath = Path.Combine(AppContext.BaseDirectory, "assets", "character", "Player.glb");
+            (SkinnedGltfMesh charMesh, GltfMaterialMaps charMaps) = GltfLoader.LoadSkinnedWithMaterial(charPath);
+            if (charMesh.Skeleton is null) { Console.WriteLine("Character has no skeleton; using capsules."); return; }
+            _characterMesh = sc.LoadSkinnedMesh(charMesh, charMaps);
+
+            var byName = new Dictionary<string, AnimationClip>();
+            foreach (AnimationClip c in GltfLoader.LoadAnimations(charPath)) byName[c.Name] = c;
+            var clips = new Dictionary<LocomotionState, AnimationClip>();
+            void Map(LocomotionState st, string name) { if (byName.TryGetValue(name, out AnimationClip? c)) clips[st] = c; }
+            Map(LocomotionState.Idle, "Idle");
+            Map(LocomotionState.Walk, "Walk");
+            Map(LocomotionState.Run, "Run");
+            Map(LocomotionState.Jump, "Jump");
+            Map(LocomotionState.Fall, "Fall");
+            if (clips.Count == 0) { Console.WriteLine("Character has no expected clips; using capsules."); return; }
+
+            // Auto-fit the model to the 1.8 m capsule height (asset-agnostic) and bake that scale into the bridge tuning.
+            float modelHeight = ModelHeight(charMesh);
+            float scale = modelHeight > 0.01f ? (CapsuleHalfHeight * 2f) / modelHeight : 1f;
+            CharacterAnimatorTuning tuning = CharacterAnimatorTuning.Default;
+            tuning.Scale = scale;
+            tuning.Locomotion = new LocomotionThresholds(0.1f, 4.5f);   // split walk/run at the server's 3/6 m/s feel
+
+            // The convenience ctor builds one brain per entity off the shared skeleton + clips, applying the tuning.
+            _animators = new ReplicatedCharacterAnimators(charMesh.Skeleton, clips, tuning);
+            _animated = true;
+            Console.WriteLine($"Animated avatars: {charMesh.BoneCount} bones, states [{string.Join(", ", clips.Keys)}], scale {scale:0.00}.");
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine($"Character load failed ({e.Message}); falling back to capsules.");
+            _animated = false;
+        }
+    }
+
+    // Model-space height (max - min Y) of the rest mesh, for the capsule-match scale.
+    static float ModelHeight(SkinnedGltfMesh mesh)
+    {
+        float min = float.MaxValue, max = float.MinValue;
+        foreach (SkinnedVertex v in mesh.Vertices) { min = MathF.Min(min, v.Position.Y); max = MathF.Max(max, v.Position.Y); }
+        return max - min;
     }
 
     protected override void OnDispose()

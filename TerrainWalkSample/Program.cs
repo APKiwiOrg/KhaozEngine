@@ -9,7 +9,7 @@ using KhaozEngine.Render3D;
 using KhaozEngine.Terrain;
 using KhaozEngine.Windowing;
 
-// Walkable overworld slice: drive an animated KayKit CC0 character over the shipped analytic terrain
+// Walkable overworld slice: drive an animated Quaternius Universal CC0 character over the shipped analytic terrain
 // (TerrainPresets.Clearing) with a third-person follow camera. WASD move, mouse-drag orbit,
 // scroll zoom, shift run, Esc quit. The terrain field is wrapped in TerrainCollision for the
 // ground-clamp; the world is STREAMED (TerrainStreamer loads/unloads chunks + their props in a
@@ -38,7 +38,7 @@ sealed class TerrainWalkApp : GameApp3D
     MeshHandle _platformMesh;
     Matrix4x4 _platformXform;
 
-    // Animated character (replaces the static capsule). The KayKit CC0 rig is skinned-ingested so its animation
+    // Animated character (replaces the static capsule). The Quaternius Universal CC0 rig is skinned-ingested so its animation
     // channels survive; AnimatedCharacter drives idle/walk/run/jump/fall off the same movement state the controller
     // computes. Falls back to the greybox capsule if the asset fails to load.
     SkinnedMeshHandle _characterMesh;
@@ -107,8 +107,8 @@ sealed class TerrainWalkApp : GameApp3D
         _character.Update(InputState.Empty, 0f, 0f, _terrain.GroundHeight, _terrain.GroundNormal);   // settle Y onto the ground (slope gate wired so cliffs aren't climbable)
         _prevCharPos = _character.Position;
 
-        // Animated character: skinned-ingest the committed KayKit CC0 rig (LoadSkinned + LoadAnimations preserve the
-        // rig + animation channels - NOT the flatten-prop path), map its clip names to the locomotion states, and
+        // Animated character: skinned-ingest the committed Quaternius Universal CC0 rig (LoadSkinned + LoadAnimations
+        // preserve the rig + animation channels - NOT the flatten-prop path), map its clip names to the locomotion states, and
         // build an AnimatedCharacter. The capsule stays as a fallback if the asset is missing/unreadable.
         TryLoadAnimatedCharacter(sc);
 
@@ -257,13 +257,13 @@ sealed class TerrainWalkApp : GameApp3D
         }
     }
 
-    // Skinned-ingest the committed KayKit CC0 character + its animation clips, map the clip names to the
+    // Skinned-ingest the committed Quaternius Universal CC0 character + its animation clips, map the clip names to the
     // locomotion states, and build the AnimatedCharacter. On any failure the sample keeps the capsule.
     void TryLoadAnimatedCharacter(Scene3D sc)
     {
         try
         {
-            string charPath = Path.Combine(AppContext.BaseDirectory, "assets", "character", "Knight.glb");
+            string charPath = Path.Combine(AppContext.BaseDirectory, "assets", "character", "Player.glb");
             (SkinnedGltfMesh charMesh, GltfMaterialMaps charMaps) = GltfLoader.LoadSkinnedWithMaterial(charPath);
             if (charMesh.Skeleton is null) { Console.WriteLine("Character has no skeleton; using the capsule."); return; }
             _characterMesh = sc.LoadSkinnedMesh(charMesh, charMaps);
@@ -273,10 +273,10 @@ sealed class TerrainWalkApp : GameApp3D
             var clips = new Dictionary<LocomotionState, AnimationClip>();
             void Map(LocomotionState st, string name) { if (byName.TryGetValue(name, out AnimationClip? c)) clips[st] = c; }
             Map(LocomotionState.Idle, "Idle");
-            Map(LocomotionState.Walk, "Walking_A");
-            Map(LocomotionState.Run, "Running_A");
-            Map(LocomotionState.Jump, "Jump_Start");   // brief rising tuck
-            Map(LocomotionState.Fall, "Jump_Idle");    // airborne float (covers most of the descent)
+            Map(LocomotionState.Walk, "Walk");
+            Map(LocomotionState.Run, "Run");           // a forward jog
+            Map(LocomotionState.Jump, "Jump");         // airborne loop (rising)
+            Map(LocomotionState.Fall, "Fall");         // airborne loop (descending)
             if (clips.Count == 0) { Console.WriteLine("Character has no expected clips; using the capsule."); return; }
 
             // Scale the model to ~the 1.8 m capsule height so it lines up with the camera + collision footprint.

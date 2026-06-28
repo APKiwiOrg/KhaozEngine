@@ -607,20 +607,20 @@ skinned loader (which now also reads the joint hierarchy) and read its clips:
 
 ```csharp
 // Skinned-ingest a rigged + animated glb (rig + animation channels preserved; NOT the flatten-prop path).
-var (mesh, maps) = GltfLoader.LoadSkinnedWithMaterial("knight.glb");
+var (mesh, maps) = GltfLoader.LoadSkinnedWithMaterial("player.glb");
 SkinnedMeshHandle handle = scene.LoadSkinnedMesh(mesh, maps);
 Skeleton skeleton = mesh.Skeleton!;                       // the joint hierarchy LoadSkinned now attaches
 
-// Read every clip and map the ones you want to locomotion states.
+// Read every clip and map the ones you want to locomotion states (clip names are whatever your asset uses).
 var byName = new Dictionary<string, AnimationClip>();
-foreach (AnimationClip c in GltfLoader.LoadAnimations("knight.glb")) byName[c.Name] = c;
+foreach (AnimationClip c in GltfLoader.LoadAnimations("player.glb")) byName[c.Name] = c;
 var clips = new Dictionary<LocomotionState, AnimationClip>
 {
     [LocomotionState.Idle] = byName["Idle"],
-    [LocomotionState.Walk] = byName["Walking_A"],
-    [LocomotionState.Run]  = byName["Running_A"],
-    [LocomotionState.Jump] = byName["Jump_Start"],
-    [LocomotionState.Fall] = byName["Jump_Idle"],
+    [LocomotionState.Walk] = byName["Walk"],
+    [LocomotionState.Run]  = byName["Run"],
+    [LocomotionState.Jump] = byName["Jump"],
+    [LocomotionState.Fall] = byName["Fall"],
 };
 
 // AnimatedCharacter (KhaozEngine.Game / Game.Render3D) wraps the skeleton + clips + player + state machine.

@@ -106,4 +106,66 @@ public sealed class WorldColliders
         }
         return p;
     }
+
+    /// <summary>Surface-aware push-out: the height-aware <see cref="Resolve(Vector2,float,float,float,float,int)"/>
+    /// but the "am I standing on this prop?" height per collider is the WALKABLE SURFACE at the point where the
+    /// capsule would step onto it (the rim toward the player), sampled from <paramref name="surfaces"/> - not the
+    /// player's own position, and not the prop's single max <see cref="WorldCollider.Top"/>. This lets a DOMED prop
+    /// (a cylinder collider to its peak over a surface that ramps from a low rim) be mounted by walking/jumping up
+    /// from the side once the feet clear the rim, instead of only by dropping onto it from above the peak. A flat-top
+    /// prop's rim equals its top, so it stays mountable only from on top; a thin blocker (a tree: <c>Top = +inf</c>,
+    /// no surface) always blocks; <paramref name="surfaces"/> null falls back to <c>Top</c>-only blocking.</summary>
+    public Vector2 Resolve(Vector2 position, float radius, float footY, WorldSurfaces? surfaces,
+        float skin = 0.05f, int iterations = 4)
+    {
+        if (colliders.Length == 0) return position;
+        Vector2 p = position;
+        for (int it = 0; it < iterations; it++)
+        {
+            int n = grid.QueryCandidates(p, radius);
+            bool any = false;
+            for (int i = 0; i < n; i++)
+            {
+                WorldCollider c = colliders[grid.GetQueryIndex(i)];
+                if (footY >= c.Top - skin) continue;          // at/above the max solid top -> standing, not a side hit
+                // Surface-aware side-block (only for props that provide a surface; a thin blocker like a tree keeps
+                // Top = +inf and always blocks). Two ways to be "on" rather than "hitting the side":
+                if (surfaces is not null && !float.IsInfinity(c.Top))
+                {
+                    // (a) The capsule centre is already over the walkable footprint -> the vertical support places it
+                    //     on the surface (snap-up / step-up); a horizontal shove here would fling it off a domed top
+                    //     whenever the feet briefly dip below the rising surface mid-traverse.
+                    if (surfaces.Query(p.X, p.Y).HasValue) continue;
+                    // (b) Outside the footprint, approaching: mount once the feet clear the rim where we'd step on
+                    //     (a domed prop's rim sits well below its peak, so it is mountable by walking/jumping up).
+                    float? rim = RimHeightToward(c, p, surfaces);
+                    if (rim.HasValue && footY >= rim.Value - skin) continue;
+                }
+                if (c.Resolve(p, radius, out Vector2 push)) { p += push; any = true; }
+            }
+            if (!any) break;
+        }
+        return p;
+    }
+
+    // The walkable surface height where the capsule would step onto collider <paramref name="c"/> from the player's
+    // side: march inward along the line from the prop centre toward the player and take the OUTERMOST covered sample
+    // (the lowest standable height on this side = the rim), or null if no covered surface is found. The collider
+    // footprint can be a touch wider than the baked surface grid, so the outermost few samples may be uncovered.
+    static float? RimHeightToward(WorldCollider c, Vector2 p, WorldSurfaces surfaces)
+    {
+        Vector2 d = p - c.Center;
+        float len = d.Length();
+        if (len < 1e-4f) return surfaces.Query(c.Center.X, c.Center.Y);
+        Vector2 dir = d / len;
+        float reach = MathF.Min(len, c.BoundingRadius);   // don't sample past the player or the footprint
+        const int samples = 8;
+        for (int k = samples; k >= 1; k--)                // from the footprint edge inward; first hit = the rim
+        {
+            float t = reach * k / samples;
+            float? s = surfaces.Query(c.Center.X + dir.X * t, c.Center.Y + dir.Y * t);
+            if (s.HasValue) return s;
+        }
+        return null;
+    }
 }

@@ -55,6 +55,20 @@ public sealed class WorldClient
     /// <summary>True once the session handshake has joined.</summary>
     public bool Joined { get; private set; }
 
+    /// <summary>The local player's full predicted/reconciled render state (position + vertical velocity + grounded).
+    /// Exact movement the client already knows for its own avatar - use it to fill the local entity's
+    /// <c>KhaozEngine.Game.CharacterSample</c> exact-movement fields (so a replicated-animator bridge reads true air
+    /// state instead of finite-differencing position). Defaults (grounded false, zero velocity) until the first
+    /// snapshot seeds prediction.</summary>
+    public PlayerMoveState LocalRenderState => prediction.RenderedState;
+
+    /// <summary>The local player's predicted grounded flag (shorthand for <see cref="LocalRenderState"/>.Grounded).</summary>
+    public bool LocalGrounded => prediction.RenderedState.Grounded;
+
+    /// <summary>The local player's predicted vertical velocity, m/s positive up (shorthand for
+    /// <see cref="LocalRenderState"/>.VerticalVelocity).</summary>
+    public float LocalVerticalVelocity => prediction.RenderedState.VerticalVelocity;
+
     /// <summary>Pumps the session: ingests AoI snapshots, applies remote replication, reconciles the local avatar.</summary>
     public void Poll()
     {

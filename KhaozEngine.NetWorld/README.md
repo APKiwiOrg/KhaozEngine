@@ -18,7 +18,10 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   each client its single home-cell area-of-interest snapshot (owned + ghosts) framed identically. The
   `WorldClient` and `MoveProtocol` are unchanged - a client cannot tell it is talking to a sharded server.
 - **`WorldClient`** wraps `NetClient` + `ClientReplicationView` + `ClientPrediction` and exposes
-  `EntityRenderState[]` (local player predicted + reconciled, remotes from replicated positions).
+  `EntityRenderState[]` (local player predicted + reconciled, remotes from replicated positions). Optional
+  `WorldBounds`/`WorldColliders`/`WorldSurfaces` ctor params (mirroring `WorldServer`) make the client predict
+  against the same play-area bound + static props + walkable surfaces the server is authoritative over, so a
+  solid-prop world predicts straight instead of rubber-banding (null = terrain only).
 - **`WorldPersistence`** (+ `WorldPersistenceConfig`, `PlayerRecord`) wires an
   [`IWorldStore`](../KhaozEngine.WorldStore) into the server lifecycle through **`IWorldPersistenceHost`** (the
   surface `WorldServer` and `ShardedWorldServer` both implement) so the world survives a restart: load-on-join

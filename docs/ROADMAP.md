@@ -50,6 +50,12 @@ Plan: a design spike + spec that prototypes both against the server-determinism 
 constraint, then commits to one. This supersedes the "out of scope" items the recent movement releases deferred
 (standing on props/buildings, interiors/ledges, step-height, double/wall-jump, climbing, swimming, fall damage).
 
+Known limitation it should resolve (deferred here on 2026-06-28): a capsule standing on the rising flank of a domed
+prop clips its body into the slope. The static collider is a 2D XZ footprint and the walkable top is point-sampled
+at the capsule centre, so nothing pushes the body out of the prop's 3D slope (you stand cleanly on top near the
+peak, but sink into the side lower down). The robust fix is real capsule-vs-surface resolution (rest against the
+slope), which is this physics layer's job rather than another patch to the kinematic controller.
+
 ### 3. Visual fidelity (textures + materials)
 
 The world is geometrically rich but visually flat: terrain renders a height/slope vertex-colour ramp, and props

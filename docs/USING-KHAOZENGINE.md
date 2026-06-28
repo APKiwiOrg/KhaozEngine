@@ -999,7 +999,9 @@ a domed top instead of shoving you off); a low edge
 within `MoveTuning.StepHeight` (default 0.4 m) is auto-mounted without a jump (step-up). `TerrainWalkSample` makes
 the scattered rocks solid + jumpable and adds a jumpable platform with a walkable roof. Out of scope (named):
 overhangs / interiors / caves, full 3D mesh collision, dynamic/moving surfaces, player-vs-player, fall damage,
-climbing/mantling, streaming surfaces.
+climbing/mantling, streaming surfaces. Known limitation: a capsule on a domed prop's rising flank clips its body
+into the slope (2D footprint collider + point-sampled top = no 3D slope push-out); the robust fix is capsule-vs-
+surface resolution, deferred to the physics-engine pass (see `docs/ROADMAP.md`).
 
 ---
 

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Text;
 using KhaozEngine.Collision;
 using KhaozEngine.Ecs;
 using KhaozEngine.Locomotion;
@@ -52,13 +51,13 @@ public sealed class WorldServer : IWorldPersistenceHost
     public WorldServer(INetTransport transport, WorldServerConfig config,
         Func<float, float, float> groundHeight, MoveTuning tuning,
         Func<float, float, Vector3>? groundNormal = null, WorldBounds? bounds = null, WorldColliders? colliders = null,
-        WorldSurfaces? surfaces = null)
+        WorldSurfaces? surfaces = null, IConnectionAuthenticator? authenticator = null)
     {
         ArgumentNullException.ThrowIfNull(transport);
         this.config = config ?? throw new ArgumentNullException(nameof(config));
         if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
         simulator = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds, colliders, surfaces);
-        net = new NetServer(transport, config.MaxPlayers, new AllowAllAuthenticator());
+        net = new NetServer(transport, config.MaxPlayers, authenticator ?? new AllowAllAuthenticator());
         interest = new InterestGrid(MathF.Max(1f, config.InterestRadius));
     }
 
@@ -71,8 +70,9 @@ public sealed class WorldServer : IWorldPersistenceHost
     /// <summary>The net id of the player entity for a joined slot.</summary>
     public bool TryGetPlayerNetId(int slot, out int netId) => netIdBySlot.TryGetValue(slot, out netId);
 
-    /// <summary>Raised after a player entity has spawned: (slot, accountId). The accountId is the connect token
-    /// (UTF-8) or <c>guest:{slot}</c> when none was presented. A persistence layer loads the saved record here.</summary>
+    /// <summary>Raised after a player entity has spawned: (slot, accountId). The accountId is the verified subject
+    /// the <see cref="IConnectionAuthenticator"/> bound the connection to, or <c>guest:{slot}</c> when that subject
+    /// is empty. A persistence layer loads the saved record here.</summary>
     public event Action<int, string>? PlayerJoined;
 
     /// <summary>Raised just before a player despawns: (slot, accountId, final state). A persistence layer
@@ -107,7 +107,7 @@ public sealed class WorldServer : IWorldPersistenceHost
             switch (ev.Kind)
             {
                 case ServerSessionEventKind.Joined:
-                    OnJoin(ev.Slot, ev.Data);
+                    OnJoin(ev.Slot, ev.Subject);
                     break;
                 case ServerSessionEventKind.Left:
                     OnLeave(ev.Slot);
@@ -155,7 +155,7 @@ public sealed class WorldServer : IWorldPersistenceHost
         }
     }
 
-    private void OnJoin(int slot, byte[] token)
+    private void OnJoin(int slot, string subject)
     {
         Vector3 spawn = config.SpawnPosition?.Invoke(slot) ?? new Vector3(slot * 2f, 0f, 0f);
         // Ground-clamp the spawn (an idle step settles Y onto the terrain + half-height).
@@ -167,7 +167,7 @@ public sealed class WorldServer : IWorldPersistenceHost
         world.Set(e, new ReplicatedPosition { Value = state.Position });
         world.Set(e, MovementState.From(state));   // vertical axis present from the first snapshot
 
-        string accountId = token is { Length: > 0 } ? Encoding.UTF8.GetString(token) : $"guest:{slot}";
+        string accountId = string.IsNullOrEmpty(subject) ? $"guest:{slot}" : subject;
         netIdBySlot[slot] = netId;
         entityBySlot[slot] = e;
         stateBySlot[slot] = state;

@@ -1611,15 +1611,31 @@ prints the crossover so the win is only claimed where it's real.
 ### Sessions (`NetServer` / `NetClient`)
 
 Above the raw transport, the session layer turns connections into authenticated, slotted players. The server
-runs a Hello/Welcome/Reject handshake, authenticates via an `IConnectionAuthenticator` (ship
-`AllowAllAuthenticator` for dev; real auth is your account service), assigns a player slot, and raises events:
+runs a Hello/Welcome/Reject handshake, authenticates via an `IConnectionAuthenticator`, assigns a player slot, and
+raises events. The authenticator decides accept/reject **and**, on accept, returns the **verified subject** the
+connection is bound to (the stable account/player identity) - that subject rides the `Joined` event as
+`ev.Subject`:
 
 ```csharp
-var server = new NetServer(serverTransport, maxPlayers: 64, new AllowAllAuthenticator());
+bool TryAuthenticate(ReadOnlySpan<byte> token, out string subject, out string rejectReason);
+```
+
+Ship `AllowAllAuthenticator` for dev (it accepts everyone and uses the connect token, decoded UTF-8, as the
+subject; empty token -> empty subject). For an exposed server, gate on a signed bearer token instead:
+
+```csharp
+// Issuer (your account service) mints a short-lived token bound to the player's account id:
+byte[] secret = LoadSharedSecret();                                  // same secret on issuer + game server
+string token = SignedToken.Mint("acct-42", DateTimeOffset.UtcNow.AddHours(1), secret);
+// ...hand `token` to the client; it presents it as its connect token (the NetClient `token` arg).
+
+// Game server verifies it (zero-dependency HMAC-SHA256, expiry-checked, fixed-time compare):
+var auth = new HmacTokenAuthenticator(secret, () => DateTimeOffset.UtcNow);
+var server = new NetServer(serverTransport, maxPlayers: 64, auth);
 server.Poll();
 while (server.TryDequeueEvent(out ServerSessionEvent ev))
 {
-    if (ev.Kind == ServerSessionEventKind.Joined)      commandQueues.Add(ev.Slot);
+    if (ev.Kind == ServerSessionEventKind.Joined)      Bind(ev.Slot, ev.Subject);   // subject = verified "acct-42"
     else if (ev.Kind == ServerSessionEventKind.Left)   commandQueues.Remove(ev.Slot);
     else /* Data */                                     HandleCommand(ev.Slot, ev.Data, ev.Reliability);
 }
@@ -1629,6 +1645,12 @@ var client = new NetClient(clientTransport, token);
 client.Poll();
 while (client.TryDequeueEvent(out ClientSessionEvent ce)) { /* Joined(ce.Slot) / Rejected / Data / Disconnected */ }
 ```
+
+`SignedToken` is `v1.<subject>.<expUnix>.<base64url-HMACSHA256>` (the subject may not contain `.`); a re-issued
+token for the same account carries the same subject, so persistence keyed on the subject survives token rotation.
+`WorldServer`/`ShardedWorldServer` take the authenticator as an optional last constructor argument (default
+`AllowAllAuthenticator`) and use `ev.Subject` as the persisted `accountId`, falling back to `guest:{slot}` when it
+is empty.
 
 Slots are the same small-int key `RemoteCommandQueue` uses, so commands and replication line up.
 
@@ -1707,7 +1729,9 @@ byte[]? loaded = await store.LoadAsync($"player:{accountId}");
 authoritative world survives a restart. It is backend-agnostic (only `IWorldStore` + `KhaozEngine.Serialization`):
 **load-on-join** (spawn at the saved position, or the default if absent), **save-on-leave**, and a **periodic
 snapshot** of players whose state changed since their last save. Players are keyed `player:{accountId}`, where
-the `accountId` is the connect token the client presented in its Hello (opaque; real auth is the game's). The
+the `accountId` is the **verified subject** the `IConnectionAuthenticator` bound the connection to (with
+`AllowAllAuthenticator` that is the connect token decoded UTF-8; with `HmacTokenAuthenticator` it is the
+`SignedToken` subject, stable across token re-issue), or `guest:{slot}` when the subject is empty. The
 record is a forward-tolerant JSON `PlayerRecord` (adding fields later never breaks an old save).
 
 ```csharp
@@ -1727,11 +1751,14 @@ persistence.Update(dt);     // applies any load-on-join state (on this thread) +
 await persistence.FlushAsync();
 ```
 
-The client must present a **stable** account token for reconnect/restart to restore the same player:
+The client must present a **stable** account token for reconnect/restart to restore the same player. With the
+dev `AllowAllAuthenticator` the token *is* the account id; with `HmacTokenAuthenticator` the client presents a
+minted `SignedToken` whose subject is the account id (`SignedToken.Mint(accountId, expiry, secret)`), and the
+server keys on that verified subject either way:
 
 ```csharp
 var client = new WorldClient(transport, groundHeight, MoveTuning.Default,
-    token: System.Text.Encoding.UTF8.GetBytes(accountId));
+    token: System.Text.Encoding.UTF8.GetBytes(accountId));   // dev: raw id; prod: SignedToken.Mint(...) bytes
 ```
 
 **Azure SQL (Ruinborne).** For production, swap the backend - same `IWorldStore`, so `WorldPersistence` is

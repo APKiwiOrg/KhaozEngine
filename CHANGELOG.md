@@ -5,6 +5,43 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.57.0
+
+Connection auth now yields a verified identity, and the engine ships a signed connect-token so an exposed server
+can gate joins and persist on a stable subject. `IConnectionAuthenticator.TryAuthenticate` changes signature to
+`bool TryAuthenticate(ReadOnlySpan<byte> token, out string subject, out string rejectReason)`: on accept it returns
+the verified `subject` (the stable account/player identity) the connection is bound to, not just accept/reject.
+`AllowAllAuthenticator` returns the connect token decoded UTF-8 as the subject (empty when the token is empty), so
+the dev default behaves exactly as before. The subject rides `NetServer`'s `Joined` event as the new
+`ServerSessionEvent.Subject` (empty for the other event kinds; the `Joined` factory gains an optional `subject`
+arg, the token still travels in `Data`). `WorldServer` and `ShardedWorldServer` gain an optional last constructor
+argument `IConnectionAuthenticator authenticator = null` (default `AllowAllAuthenticator`), passed to the internal
+`NetServer`, and their `OnJoin` now uses `ev.Subject` as the persisted `accountId`, falling back to `guest:{slot}`
+when it is empty (was: decode the raw connect token). With the allow-all default the derived accountId is
+unchanged (token-as-subject), so every existing caller and persisted key is preserved.
+
+New in `KhaozEngine.Netcode`: `SignedToken`, a zero-dependency (BCL-only HMAC-SHA256) stateless connect-token.
+`SignedToken.Mint(string subject, DateTimeOffset expiry, byte[] secret)` produces
+`v1.<subject>.<expUnix>.<base64url-HMACSHA256>` (the signature covers `v1.<subject>.<expUnix>`; the subject may not
+contain `.` so the four fields split cleanly - `Mint` throws `ArgumentException` if it does).
+`SignedToken.TryVerify(string token, byte[] secret, DateTimeOffset now, out string subject, out string reason)`
+checks the signature with a fixed-time compare (`CryptographicOperations.FixedTimeEquals`) before expiry and
+returns the embedded subject on success, or false with a short reason (`"malformed"` / `"bad signature"` /
+`"expired"`) and an empty subject. `HmacTokenAuthenticator(byte[] secret, Func<DateTimeOffset> clock)` implements
+the authenticator seam over `TryVerify` (clock injected for determinism / NTP correction). Because a re-issued
+token for the same account carries the same subject, persistence keyed on the subject survives token rotation.
+
+Headless tests cover mint/verify roundtrip + token format, expiry rejection, tamper rejection, wrong-secret
+rejection, subject-with-dot rejected at mint, malformed-token rejection, `HmacTokenAuthenticator` accept/reject,
+`AllowAllAuthenticator` token-as-subject (empty when no token), and `WorldServer` binding the verified subject as
+its `accountId` (plus rejecting a client whose token was signed with the wrong secret).
+
+SemVer note: `IConnectionAuthenticator.TryAuthenticate` is a public interface, so its new signature is technically
+source-breaking for an external implementer of a custom authenticator (the engine's own `AllowAllAuthenticator` /
+`HmacTokenAuthenticator` and all *callers* are updated and behaviour-preserving). Versioned **minor**, treating
+the auth seam as infra-internal and the change as additive in spirit (new types + optional ctor args, defaults
+preserve allow-all); a custom authenticator adopts by adding the `out string subject` parameter.
+
 ## 7.56.1
 
 Fix: jumping onto a domed rock no longer shoves you off its side onto the ground. The height-aware side-block in

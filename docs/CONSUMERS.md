@@ -37,9 +37,10 @@ umbrella). Render3D also gained a generic `DrawGroundDecal` depth-sampling primi
 genuinely-MonoGame packages (`Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`) were DELETED from the repo**, so
 the engine is now entirely MonoGame-free with a single version line in `Directory.Build.props` (the doc-version
 guard checks it). All four consumers are MonoGame-free: Hardpoint, Nullwake, and SpaceGame migrated off it, and
-Ruinborne was built native on the 7.x stack. `local-feed` is pruned to its current floor of `7.20.1` - the
-lowest version any consumer still pins (Hardpoint's `HardpointUpdater` shim on `KhaozEngine.Updates` 7.20.1);
-everything below is recoverable from GitHub Packages, the durable store. All four consumers are on the 7.x line.
+Ruinborne was built native on the 7.x stack. `local-feed` is pruned to its current floor of `7.68.0`: SpaceGame
+is the only consumer that restores from it (Hardpoint, Nullwake, and Ruinborne each vendor their own in-repo
+feed), and SpaceGame pins `7.68.0`. Everything below is recoverable from GitHub Packages, the durable store. All
+four consumers are on the 7.x line.
 
 > **5.46.0 (graduation, non-breaking re-version):** the 14 MonoGame-free foundation packages moved from the
 > 4.x `<Version>` line to the 5.x `<KhaozEngineVersion>` line so a 5.x game pins **only** 5.x packages. Same
@@ -118,7 +119,7 @@ fine-grained use - a wire-contract project references just `Netcode.Abstractions
 
 | Consumer | Project(s) | References | Version |
 |---|---|---|---|
-| **Hardpoint** (7.x, 3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic); auto-updater LIVE (`Updates` via Foundation, overlay via Gui) against a server-less static-blob feed + OIDC CI publish, self-relocating updater (7.20.0); `HardpointUpdater` pins `KhaozEngine.Updates` directly (7.20.1); uses `Collision.Segment2D` (7.4.0) for swept projectile collision, `Snapshot`/`Snapshot.Render3D` (7.33.0, dev tool) | **7.68.0** |
+| **Hardpoint** (7.x, 3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic); auto-updater LIVE (`Updates` via Foundation, overlay via Gui) against a server-less static-blob feed + OIDC CI publish, self-relocating updater (7.20.0); uses `Collision.Segment2D` (7.4.0) for swept projectile collision. Every KhaozEngine ref (incl. the `HardpointUpdater` shim's `Updates` + the dev `SnapshotTool`'s `Snapshot`/`Snapshot.Render3D`) shares one `<KhaozEngineVersion>` in a root `Directory.Build.props`; top-level `Hardpoint.slnx` (src/ + tools/), vendored feed (`Hardpoint/vendor/khaozengine`) | **7.68.0** |
 | **Nullwake** (7.x, 2D) | `Nullwake.Core` | `KhaozEngine.Game2D` + `Diagnostics`/`Persistence`/`Windowing` + `Updates` (shim, dormant); uses `AttentionBeacon` (7.6.0) for the timed-reward tappable pulse, `Snapshot` (7.33.0, dev tool) for headless screen captures, `Clipboard` paste + `Pointer.WindowFocused` gating (7.40/7.37) in name entry | **7.68.0** |
 | **SpaceGame** (7.x, 2D + Render3D) | `SpaceGame.Core` (head) / `SpaceGame.Sim` (lockstep sim) | `Game2D` + `Render3D` + `Netcode.LiteNetLib` + `Primitives` (head); `Ecs`/`Collision`/`Diagnostics`/`Content`/`Serialization`/`App`/`Netcode`/`Pooling`/`Determinism` + `Primitives` (sim); `Netcode.Abstractions` (contracts); `Render3D` + `Determinism` for the 2.5D mesh layer; manifest signing via the `ke-updater` tool (embedded RSA public key) | **7.68.0** |
 | **Ruinborne** (7.x, 3D MMO) | `Ruinborne.Client` / `Ruinborne.Server` | client: `KhaozEngine.Game3D` + `Foundation` + `NetWorld` + `Netcode.LiteNetLib` + `Netcode.Abstractions` + `Simulation` + `Updates`; server: `KhaozEngine.Server` umbrella + `WorldStore.SqlServer` (Azure SQL via `WorldPersistence`; the backend is added explicitly since 7.49.1 no longer bundles it). Single `<KhaozEngineVersion>` pin in `Directory.Build.props`, vendored feed (`vendor/khaozengine`, refreshed via `scripts/refresh-engine.sh`). | **7.68.0** |
@@ -173,9 +174,20 @@ at 7.33.0 (dev tool) and the `HardpointUpdater` shim at `KhaozEngine.Updates` 7.
 
 **Bumped to 7.68.0** (`Game3D` + `Foundation`), tracking the engine line at its head. 7.38-7.67 are
 overwhelmingly terrain / world-streaming / sharding / animated-character work (Ruinborne-driven) carried as pin
-alignment, with nothing Hardpoint-specific to adopt. `Snapshot`/`Snapshot.Render3D` stay at 7.33.0 (dev tool)
-and the `HardpointUpdater` shim at `KhaozEngine.Updates` 7.20.1, both still separate (these two are the
-`local-feed` floor).
+alignment, with nothing Hardpoint-specific to adopt.
+
+**Pin model centralized (engine-pin auto-sync), 2026-06-29.** Previously the `HardpointUpdater` shim (`Updates`)
+and the dev `SnapshotTool` (`Snapshot`/`Snapshot.Render3D`) drifted far behind the heads (7.20.1 / 7.33.0): each
+project hardcoded its own pin, and the `tools/` projects sit outside the inner `Hardpoint/` tree so they never
+inherited `Hardpoint/Directory.Build.props`. Now a repo-root `Directory.Build.props` holds a single
+`<KhaozEngineVersion>` (the inner one imports it), and every KhaozEngine `<PackageReference>` uses
+`Version="$(KhaozEngineVersion)"`, so one bump moves the game heads, the updater shim, and the tools together
+(Ruinborne's model). A top-level `Hardpoint.slnx` (src/ + tools/ folders) groups all six projects so a solution
+build covers the tools, and the missing `Snapshot`/`Snapshot.Render3D` nupkgs were added to the vendored feed
+(`Hardpoint/vendor/khaozengine`) - the tool had only ever resolved them from the machine cache and would fail a
+cold restore. All KhaozEngine refs are now a uniform 7.68.0. (Note: the publish-clients CI watches the inner
+`Hardpoint/Directory.Build.props`, so engine-pin bumps now live in the root file and no longer trip a client
+publish; only a game `<Version>` bump does.)
 
 ### Nullwake - 7.x, 2D (on `KhaozEngine.Game2D` 7.68.0)
 
@@ -348,23 +360,26 @@ When a consumer raises its `KhaozEngine.*` pin, two things bite if skipped:
   resolves it even if no configured source actually serves it. CI restores cold. Verify the way CI does:
   `dotnet restore <proj> --packages /tmp/cold && dotnet test <proj> --no-restore`. A cold `--packages` dir
   forces resolution from the consumer's real sources only.
-- **Vendored-feed consumers must refresh the vendored nupkgs, not just the `<PackageReference>`.** Nullwake
-  restores in CI from an in-repo feed (`Nullwake/vendor/khaozengine`, declared in its `nuget.config`), NOT from
-  `~/KhaozEngine/local-feed`. Bumping the pin without copying the new-version nupkgs into that folder fails CI
-  with `NU1102` even though the local build is green. Copy the matching `KhaozEngine.*.<ver>.nupkg` set from
-  `local-feed` into the vendored dir (keep it to the packages that consumer actually uses) and commit them with
-  the bump. (Hardpoint/SpaceGame restore from `local-feed`/GitHub Packages directly and have no vendored feed to
-  refresh.)
+- **Vendored-feed consumers must refresh the vendored nupkgs, not just the `<PackageReference>`.** Hardpoint
+  (`Hardpoint/vendor/khaozengine`), Nullwake (`Nullwake/vendor/khaozengine`), and Ruinborne (`vendor/khaozengine`)
+  each restore in CI from an in-repo feed declared in their `nuget.config`, NOT from `~/KhaozEngine/local-feed`.
+  Bumping the pin without copying the new-version nupkgs into that folder fails CI with `NU1102` even though the
+  local build is green. Copy the matching `KhaozEngine.*.<ver>.nupkg` set from `local-feed` into the vendored dir
+  (keep it to the packages that consumer actually uses) and commit them with the bump. **Watch the side projects:**
+  Hardpoint's `tools/` projects live outside the inner tree and reference the snapshot packages directly, so the
+  vendored feed must carry those too (a gap that silently fell back to the machine cache until 2026-06-29). Only
+  SpaceGame restores from `local-feed`/GitHub Packages directly (no vendored feed), so it alone sets the
+  `local-feed` floor.
 
-_Last verified: 2026-06-28. The shared `<KhaozEngineVersion>` line = **7.68.0** is the engine (the
+_Last verified: 2026-06-29. The shared `<KhaozEngineVersion>` line = **7.69.1** is the engine (the
 zero-dependency `Primitives` leaf + the custom MonoGame-free stack + the graduated foundation + the four umbrella
-metapackages Game2D/Game3D/Server/Foundation). All four consumers now track the engine head at **7.68.0**:
-**Hardpoint** (3D) via `Game3D` + `Foundation` (with `Snapshot`/`Snapshot.Render3D` 7.33.0 dev tool and the
-`Updates` 7.20.1 updater shim pinned separately - these two are the `local-feed` floor), **Nullwake** (2D) via
-`Game2D` (+ `Diagnostics`/`Persistence`/`Windowing`/`Snapshot`/`Updates`, all at 7.68.0), **SpaceGame**
-(2D + Render3D) via `Game2D` + `Render3D` head + the split-out `SpaceGame.Sim` foundation pins (all at 7.68.0),
-and **Ruinborne** (3D MMO) via a single `<KhaozEngineVersion>` pin across the `Game3D` client and the
-`Server` + `WorldStore.SqlServer` headless server. All four are MonoGame-free, each referencing the engine
-through umbrella metapackages (plus granular pins), and the breaking 6.0.0 `Primitives.Color` migration is
-adopted across all of them. `local-feed` is pruned to its **7.20.1** floor (lowest pin = Hardpoint's `Updates`
-shim); everything older lives in GitHub Packages, the durable store._
+metapackages Game2D/Game3D/Server/Foundation). All four consumers currently pin **7.68.0** (one behind the head):
+**Hardpoint** (3D) via `Game3D` + `Foundation`, with the `HardpointUpdater` shim and the dev `SnapshotTool` now
+sharing the same root `<KhaozEngineVersion>` (no more separate 7.20.1 / 7.33.0 sub-pins), **Nullwake** (2D) via
+`Game2D` (+ `Diagnostics`/`Persistence`/`Windowing`/`Snapshot`/`Updates`), **SpaceGame** (2D + Render3D) via
+`Game2D` + `Render3D` head + the split-out `SpaceGame.Sim` foundation pins, and **Ruinborne** (3D MMO) via a
+single `<KhaozEngineVersion>` pin across the `Game3D` client and the `Server` + `WorldStore.SqlServer` headless
+server. All four are MonoGame-free, each referencing the engine through umbrella metapackages (plus granular
+pins), and the breaking 6.0.0 `Primitives.Color` migration is adopted across all of them. `local-feed` is pruned
+to its **7.68.0** floor - SpaceGame is the only consumer restoring from it (the other three vendor their own
+in-repo feed); everything older lives in GitHub Packages, the durable store._

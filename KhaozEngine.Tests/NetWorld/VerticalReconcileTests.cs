@@ -96,6 +96,7 @@ public class VerticalReconcileTests
         {
             client.SendInput(i == 0 ? Jump : MoveCommand.Idle);
             server.Poll(); server.Tick(config.TickSeconds); client.Poll();
+            client.AdvancePresentation(config.TickSeconds); // drive the render smoothing (the vertical axis now eases through it)
             maxY = MathF.Max(maxY, LocalY(client));
         }
         Assert.True(maxY > groundedY + 0.5f, $"the predicted player never left the ground (peak {maxY} vs {groundedY})");
@@ -105,6 +106,7 @@ public class VerticalReconcileTests
         {
             client.SendInput(MoveCommand.Idle);
             server.Poll(); server.Tick(config.TickSeconds); client.Poll();
+            client.AdvancePresentation(config.TickSeconds);
         }
         (float landedY, bool grounded) = ServerState(server, client.LocalNetId);
         Assert.True(grounded, "server player should be grounded after the arc");

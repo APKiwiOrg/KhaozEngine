@@ -44,6 +44,7 @@ public class WorldRoundTripTests
             server.Poll();
             server.Tick(config.TickSeconds);
             client.Poll();
+            client.AdvancePresentation(config.TickSeconds); // drive the render smoothing toward the predicted position
         }
 
         float zAfter = LocalZ(client);

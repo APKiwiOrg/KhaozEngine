@@ -16,5 +16,8 @@
     <ProjectReference Include="../KhaozEngine.Game.Render3D/KhaozEngine.Game.Render3D.csproj" />
     <ProjectReference Include="../KhaozEngine.Telegraphs.Render3D/KhaozEngine.Telegraphs.Render3D.csproj" />
     <ProjectReference Include="../KhaozEngine.Terrain.Render3D/KhaozEngine.Terrain.Render3D.csproj" />
+    <!-- physics seam + BepuPhysics backend (static bodies, raycast/sweep/penetration) -->
+    <ProjectReference Include="../KhaozEngine.Physics/KhaozEngine.Physics.csproj" />
+    <ProjectReference Include="../KhaozEngine.Physics.Bepu/KhaozEngine.Physics.Bepu.csproj" />
   </ItemGroup>
 </Project>

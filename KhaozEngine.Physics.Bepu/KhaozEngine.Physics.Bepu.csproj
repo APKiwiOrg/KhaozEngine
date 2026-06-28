@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Physics.Bepu</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <Description>BepuPhysics v2 backend for the KhaozEngine.Physics seam. Implements IPhysicsWorld over a single-threaded, deterministic BepuPhysics Simulation: static bodies from the seam shapes, Step, and raycast/sweep/overlap queries. Pure managed (no native libraries); the only assembly that references BepuPhysics, so consumers depend on the dependency-free seam and pick this backend like Netcode.LiteNetLib or WorldStore.Sqlite.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="BepuPhysics" Version="2.4.0" />
+    <ProjectReference Include="../KhaozEngine.Physics/KhaozEngine.Physics.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Tests" />
+  </ItemGroup>
+</Project>

@@ -261,7 +261,16 @@ version/release work.
     (speed picks idle/walk/run; airborne wins - rising=Jump else Fall), and `AnimatedCharacter` (wraps a mesh
     `Skeleton` + per-state clips + `AnimationPlayer` + the SM; movement state + dt -> bone palette, driven the same
     for the LOCAL and REMOTE players). Client-cosmetic (picked from already-replicated movement; NO netcode/server
-    animation). `TerrainWalkSample` walks a committed KayKit CC0 rigged+animated character (skinned-ingest preserves
+    animation). The position-driven multi-player bridge (7.65.0) is `ReplicatedCharacterAnimators` (in `Game.Render3D`):
+    owns one `AnimatedCharacter` per networked entity keyed by a stable id, fed an engine-neutral `CharacterSample[]`
+    (position-only, or position + exact movement) each frame via `Update(samples, dt)` -> draw-ready `CharacterPose`s
+    (`Live`, each `World` = `scale * RotationY(facingYaw) * Translation` + the bone palette); derives planar speed /
+    vertical velocity / facing yaw from the position delta (exact grounded + vVel honored when a sample carries them,
+    e.g. the local player), lifecycle-creates/-drops per id (no leak on disconnect), holds yaw at rest, reuses
+    `LocomotionStateMachine`; tuned by `CharacterAnimatorTuning`. NO netcode dependency (the consumer maps its
+    `EntityRenderState` -> `CharacterSample` in a 3-line loop, keeping `Game.Render3D` off `NetWorld`); the optional
+    read-only `WorldClient.LocalRenderState`/`LocalGrounded`/`LocalVerticalVelocity` (in `NetWorld`, 7.65.0) fill the
+    local sample's exact-movement fields. `TerrainWalkSample` walks a committed KayKit CC0 rigged+animated character (skinned-ingest preserves
     the rig + clips; NOT the flatten-prop path). Out of scope: animation events, root motion, IK, additive/facial
     layers, full blend trees, networked animation. Design:
     `docs/superpowers/specs/2026-06-27-animated-characters-design.md`.

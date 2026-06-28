@@ -23,7 +23,7 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 | **KhaozEngine.Telegraphs.Render3D** | The ground-plane arm of telegraphs: `Scene3D.GroundCircle/Ring/Beam/Cone/Arc` extensions that paint danger zones flat on the ground/terrain via the engine's depth-sampling `DrawGroundDecal` primitive. In the `Game3D` umbrella. | Telegraphs, Render3D |
 | **KhaozEngine.Terrain.Render3D** | The render arm of terrain: `TerrainChunkBuilder` meshes finite chunks off a `TerrainField` into Render3D `GltfMesh`es with distance LOD (`TerrainLod.PickLod`), ~0.3 m skirts, per-vertex splat weights, and a chunk AABB; plus `Scene3D.LoadTerrainChunk`/`DrawTerrainChunk`, the `TerrainStreamer` client world-streaming layer (`ChunkCoord`/`ChunkGrid`, `IChunkSink`, `StreamerConfig`, `Scene3DChunkSink`: an endless ring of chunks + props with a hysteresis band, distance-LOD re-meshing, and amortized main-thread loading), and the PBR splat-material layer (`TerrainMaterialLayer`/`TerrainLayeredMaterial`, `TerrainMaterialPresets`, `TerrainScene3D.LoadTerrainMaterial` - supply a `TerrainLayeredMaterial` to render five tileable PBR layers blended by the baked splat weights; omit it for the height/slope vertex-colour ramp fallback). In the `Game3D` umbrella. | Terrain, Render3D |
 | **KhaozEngine.Game** | The 2D game-loop facade: `GameApp` (abstract base owning the per-frame compose: clock/viewport/input/draw) + `GameAppOptions`, and a `SceneManager`/`GameScene` state stack (Push/Pop/Replace/SwitchTo, overlay DrawBelow/UpdateBelow). | Windowing, Render2D, Gui |
-| **KhaozEngine.Game.Render3D** | The 3D bridge for the Game framework: `GameApp3D` (a `GameApp` that stands up a `Render3DSurface` + drives the 3D pass), `IGameScene3D`, and a `SceneManager.Draw3D` extension. Kept separate so a 2D game pulls no 3D renderer. | Game, Render3D |
+| **KhaozEngine.Game.Render3D** | The 3D bridge for the Game framework: `GameApp3D` (a `GameApp` that stands up a `Render3DSurface` + drives the 3D pass), `IGameScene3D`, and a `SceneManager.Draw3D` extension; plus the animated-character layer (`AnimatedCharacter` + `ReplicatedCharacterAnimators`, the position-driven per-player animator bridge). Kept separate so a 2D game pulls no 3D renderer. | Game, Render3D |
 | **KhaozEngine.Ecs** | A struct-based archetype `World`/`Entity`/`ISystem` ECS: by-ref component access, `ForEach`, opt-in data-parallel `ParallelForEach` (fans archetype rows across the `IJobScheduler` worker pool, with an `AccessSet` read/write-declaration model + a debug hazard guard + per-worker command buffers), command buffer, system groups, `CachedQuery`, `WorldSerializer`. (`DeterministicRng` moved to `KhaozEngine.Primitives` in 6.0.0.) | Serialization, Simulation |
 | **KhaozEngine.Content** | Config/content loading (embedded or disk JSON) with JSON-schema validation + build-time schema enforcement. | Diagnostics, Serialization (+ JsonSchema.Net) |
 | **KhaozEngine.Diagnostics** | Logging service: levels, pluggable sinks (rotating file / console / debug / in-memory), category loggers, a static `Log` facade over an injectable `LogManager`, crash hooks. | Pure .NET |
@@ -132,10 +132,10 @@ Published to a private GitHub Packages feed on tagged releases, and packed to a 
 ```
 ```xml
 <!-- One reference per project via an umbrella metapackage. Pick the bundle that fits: -->
-<PackageReference Include="KhaozEngine.Game2D"     Version="7.64.0" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
-<PackageReference Include="KhaozEngine.Game3D"     Version="7.64.0" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
-<PackageReference Include="KhaozEngine.Server"     Version="7.64.0" />  <!-- headless: foundation + netcode, no graphics -->
-<PackageReference Include="KhaozEngine.Foundation" Version="7.64.0" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
+<PackageReference Include="KhaozEngine.Game2D"     Version="7.65.0" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
+<PackageReference Include="KhaozEngine.Game3D"     Version="7.65.0" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
+<PackageReference Include="KhaozEngine.Server"     Version="7.65.0" />  <!-- headless: foundation + netcode, no graphics -->
+<PackageReference Include="KhaozEngine.Foundation" Version="7.65.0" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
 ```
 
 The metapackages have no code; they just pull in the granular packages. You can still reference those

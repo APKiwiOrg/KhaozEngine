@@ -5,6 +5,24 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.69.1
+
+Fixes the terrain PBR splat material rendering as flat white on Direct3D11 (Windows) while correct on Metal and
+Vulkan. The cause was an interpolant-signature gap, not the shader math; the fix is one shader change with
+byte-identical output on every backend.
+
+- Render3D - `SplatFrag` declared the `vUv` interpolant at location 4 but never read it, so SPIRV-Cross dropped it
+  and left a hole in the pixel-input semantics (`vWorldPos`@3 then `vTint`@5, a gap at TEXCOORD4). FXC/WARP
+  miscompiled the gapped signature: the highest live interpolant (`vEmissive`) read garbage and saturated the whole
+  terrain to white. (Metal and Vulkan tolerate the gap, which is why it shipped in 7.64.0.) The splat interpolants
+  are now ordered so the fragment-used ones (`vNormalW`/`vColor`/`vDepth`/`vWorldPos`/`vTint`/`vEmissive`) are
+  contiguous 0..5 and the fragment-unused `vUv`/`vSpecParams`/`vTangent` sit at 6..8; `SplatFrag` declares only the
+  gap-free prefix 0..5. No API or behaviour change; Metal/Vulkan output is byte-identical, D3D11 now renders the
+  textured terrain.
+- Tests - new `SplatTerrainGoldenTests` (named `*Golden*` so the `cross-platform-gpu` matrix runs it on every
+  backend) guards the regression. The pre-existing splat tests lacked `Golden` in their name, so the D3D11 leg never
+  exercised them - which is how the white terrain shipped unnoticed.
+
 ## 7.69.0
 
 `TextEntry` is now fully consumable by a retained, custom-rendered widget (one that holds an `InputManager` and

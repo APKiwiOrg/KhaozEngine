@@ -1,11 +1,14 @@
+using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Gui;
+using KhaozEngine.Platform;
 using KhaozEngine.Windowing;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gui
 {
+    [Collection("ClipboardSerial")]   // paste tests mutate the static Clipboard provider; serialize with ClipboardTests
     public class TextEntryTests
     {
         // Build a frame where `pressed` keys went down this frame, `held` keys are held (for shift / chords),
@@ -26,6 +29,14 @@ namespace KhaozEngine.Tests.Gui
         // A frame where `repeated` keys fired an OS auto-repeat tick (held, past the delay) with NO fresh press edge.
         static InputState Repeat(IEnumerable<Key> repeated, IEnumerable<Key>? held = null)
             => Frame(System.Array.Empty<Key>(), held, repeated);
+
+        // Pins the system clipboard to a known text for the scope of a test, so the paste path is deterministic on
+        // every host (a produced provider value wins before the OS NSPasteboard/GDI backends). Disposes back to none.
+        sealed class FakeClipboard : IDisposable
+        {
+            public FakeClipboard(string text) => Clipboard.RegisterTextProvider(() => text, _ => true);
+            public void Dispose() => Clipboard.ClearTextProvider();
+        }
 
         [Fact]
         public void Typing_a_letter_appends_it_lowercase()
@@ -83,7 +94,9 @@ namespace KhaozEngine.Tests.Gui
         [Fact]
         public void Ctrl_held_does_not_type_the_letter()
         {
-            // Ctrl+V is a paste shortcut, not a 'v' keystroke.
+            // Ctrl+V is a paste shortcut, not a 'v' keystroke. With an empty clipboard, paste appends nothing,
+            // so the literal 'v' must never reach the field. (Paste-with-content is covered separately below.)
+            using var _ = new FakeClipboard("");
             Assert.Equal("abc", TextEntry.Apply("abc", Frame(new[] { Key.V }, held: new[] { Key.LeftControl })));
             Assert.Equal("abc", TextEntry.Apply("abc", Frame(new[] { Key.V }, held: new[] { Key.RightControl })));
         }
@@ -91,7 +104,8 @@ namespace KhaozEngine.Tests.Gui
         [Fact]
         public void Super_held_does_not_type_the_letter()
         {
-            // Cmd+V (macOS paste) must not append 'v' either.
+            // Cmd+V (macOS paste) must not append 'v' either; empty clipboard -> no change.
+            using var _ = new FakeClipboard("");
             Assert.Equal("abc", TextEntry.Apply("abc", Frame(new[] { Key.V }, held: new[] { Key.LeftSuper })));
             Assert.Equal("abc", TextEntry.Apply("abc", Frame(new[] { Key.V }, held: new[] { Key.RightSuper })));
         }
@@ -172,6 +186,110 @@ namespace KhaozEngine.Tests.Gui
             // Backspace is not a chord-typed character, so its repeat must survive even while Ctrl/Cmd is held.
             Assert.Equal("ab", TextEntry.Apply("abc", Repeat(new[] { Key.Backspace }, held: new[] { Key.LeftControl })));
             Assert.Equal("ab", TextEntry.Apply("abc", Repeat(new[] { Key.Backspace }, held: new[] { Key.LeftSuper })));
+        }
+
+        // ---- Clipboard paste: Ctrl/Cmd+V appends clipboard text, filtered + length-capped like typed chars. ----
+
+        [Fact]
+        public void Ctrl_V_pastes_clipboard_text()
+        {
+            using var _ = new FakeClipboard("XY");
+            Assert.Equal("abXY", TextEntry.Apply("ab", Frame(new[] { Key.V }, held: new[] { Key.LeftControl })));
+        }
+
+        [Fact]
+        public void Cmd_V_pastes_clipboard_text()
+        {
+            using var _ = new FakeClipboard("XY");
+            Assert.Equal("abXY", TextEntry.Apply("ab", Frame(new[] { Key.V }, held: new[] { Key.LeftSuper })));
+        }
+
+        [Fact]
+        public void Paste_does_not_also_type_a_v()
+        {
+            // The paste chord consumes the V press: only the clipboard text lands, never a literal 'v'.
+            using var _ = new FakeClipboard("X");
+            Assert.Equal("X", TextEntry.Apply("", Frame(new[] { Key.V }, held: new[] { Key.LeftControl })));
+        }
+
+        [Fact]
+        public void Paste_runs_clipboard_text_through_the_filter()
+        {
+            bool DigitsOnly(char c) => char.IsDigit(c);
+            using var _ = new FakeClipboard("a1b2c3");
+            Assert.Equal("123", TextEntry.Apply("", Frame(new[] { Key.V }, held: new[] { Key.LeftControl }), filter: DigitsOnly));
+        }
+
+        [Fact]
+        public void Paste_honors_maxLength()
+        {
+            using var _ = new FakeClipboard("XYZW");
+            Assert.Equal("abXY", TextEntry.Apply("ab", Frame(new[] { Key.V }, held: new[] { Key.LeftControl }), maxLength: 4));
+        }
+
+        [Fact]
+        public void Paste_into_a_full_field_appends_nothing()
+        {
+            using var _ = new FakeClipboard("XYZ");
+            Assert.Equal("ab", TextEntry.Apply("ab", Frame(new[] { Key.V }, held: new[] { Key.LeftControl }), maxLength: 2));
+        }
+
+        [Fact]
+        public void Empty_clipboard_paste_is_a_noop()
+        {
+            using var _ = new FakeClipboard("");
+            Assert.Equal("ab", TextEntry.Apply("ab", Frame(new[] { Key.V }, held: new[] { Key.LeftControl })));
+        }
+
+        [Fact]
+        public void Paste_is_suppressed_when_allowPaste_is_false()
+        {
+            using var _ = new FakeClipboard("XY");
+            Assert.Equal("ab", TextEntry.Apply("ab", Frame(new[] { Key.V }, held: new[] { Key.LeftControl }), allowPaste: false));
+        }
+
+        [Fact]
+        public void Other_modifier_chords_do_not_paste()
+        {
+            // Ctrl+C (or any non-V chord) is not a paste; the clipboard is left untouched.
+            using var _ = new FakeClipboard("XY");
+            Assert.Equal("ab", TextEntry.Apply("ab", Frame(new[] { Key.C }, held: new[] { Key.LeftControl })));
+        }
+
+        [Fact]
+        public void Paste_fires_on_the_press_edge_not_on_auto_repeat()
+        {
+            // Holding Ctrl+V pastes once (on the press edge); the OS repeat ticks for V must not re-paste.
+            using var _ = new FakeClipboard("XY");
+            Assert.Equal("ab", TextEntry.Apply("ab", Repeat(new[] { Key.V }, held: new[] { Key.LeftControl })));
+        }
+
+        // ---- Feeding TextEntry from an InputManager (the retained-widget path). ----
+
+        [Fact]
+        public void InputManager_State_exposes_the_polled_snapshot()
+        {
+            var mgr = new InputManager();
+            var frame = Frame(new[] { Key.A });
+            mgr.Update(frame);
+            Assert.Same(frame, mgr.State);
+        }
+
+        [Fact]
+        public void Apply_via_InputManager_round_trips_a_typed_character()
+        {
+            var mgr = new InputManager();
+            mgr.Update(Frame(new[] { Key.I }));
+            Assert.Equal("hi", TextEntry.Apply("h", mgr));
+        }
+
+        [Fact]
+        public void Apply_via_InputManager_pastes_when_allowed()
+        {
+            using var _ = new FakeClipboard("XY");
+            var mgr = new InputManager();
+            mgr.Update(Frame(new[] { Key.V }, held: new[] { Key.LeftControl }));
+            Assert.Equal("abXY", TextEntry.Apply("ab", mgr, maxLength: 32, filter: null, allowPaste: true));
         }
     }
 }

@@ -8,6 +8,7 @@ namespace KhaozEngine.Tests;
 // cannot run headless. These tests drive the pure dispatch/fallback spine with fake backends, exercise the
 // pure CF_DIB packing, the pure provider get/set adapters, the registered-provider routing on the public
 // facade, and the public input guards that short-circuit before any native call.
+[Collection("ClipboardSerial")]   // mutates the static text provider; must not run parallel to other clipboard users
 public class ClipboardTests
 {
     private static ClipboardInterop.TryGetTextBackend GetReturning(bool result, string text)

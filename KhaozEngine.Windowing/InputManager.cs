@@ -39,6 +39,14 @@ namespace KhaozEngine.Windowing
         public Pointer Pointer => _pointer;
 
         /// <summary>
+        /// This frame's immutable input snapshot (the value last handed to <see cref="Update"/>;
+        /// <see cref="InputState.Empty"/> before the first call). Exposed so a retained widget that drives this
+        /// manager can feed the same frame to headless helpers that take an <see cref="InputState"/> (e.g. the
+        /// text-entry editing core) without reaching for the raw window input. Read-only; the snapshot is immutable.
+        /// </summary>
+        public InputState State => _input;
+
+        /// <summary>
         /// Poll input for this frame. Call once, before screens update. Pass <paramref name="viewport"/>
         /// to map the pointer into design space (so bounds helpers match draws made via the same viewport);
         /// pass null for raw window-pixel coordinates.

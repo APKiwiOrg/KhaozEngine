@@ -5,6 +5,30 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.69.0
+
+`TextEntry` is now fully consumable by a retained, custom-rendered widget (one that holds an `InputManager` and
+draws itself), and clipboard paste is centralized into it - so a consumer can delete its duplicate text-entry loop
+instead of the engine growing per-key accessors. Additive and non-breaking; the immediate-mode `TextInput` widget
+gets paste for free.
+
+- Windowing - `InputManager.State` exposes the current frame's immutable `InputState` snapshot (the value last
+  handed to `Update`; `InputState.Empty` before the first call). A retained widget that drives an `InputManager`
+  can now feed the same frame to headless helpers that take an `InputState` (the text-entry editing core) without
+  reaching for the raw window input. Read-only.
+- Gui - `TextEntry.Apply` centralizes Ctrl+V / Cmd+V clipboard paste: on the paste chord it appends
+  `Clipboard.TryGetClipboardText()` to the buffer, running each char through the same `filter` + `maxLength` path
+  as typed characters. Gated by a new trailing `bool allowPaste = true` parameter (opt out with `false`); paste
+  fires on the V press edge only, so holding the chord doesn't re-paste on every OS auto-repeat tick. The Gui
+  `TextInput` widget benefits automatically. Dependency-free (`Clipboard` was already reachable from `Gui` via
+  `Windowing` -> `Platform`).
+- Gui - new `TextEntry.Apply(string, InputManager, ...)` convenience overload that reads `InputManager.State`, so
+  a manager-holding widget can call the editing core directly (printable map + hold-to-repeat + paste) in one line.
+- Tests - `TextEntryTests` cover paste (filtered + length-capped append via an injected fake clipboard provider,
+  paste does not also type a `v`, press-edge-only, `allowPaste: false` suppresses, empty-clipboard/full-field
+  no-ops, non-V chords don't paste) and the `InputManager`-feed path (round-trip + `State` snapshot). Clipboard
+  tests serialize via a new `ClipboardSerial` collection so the static provider seam isn't raced cross-class.
+
 ## 7.68.0
 
 Animated-avatar polish on the 7.67.0 windowing: a state-change DEBOUNCE stops the locomotion clip restarting on a

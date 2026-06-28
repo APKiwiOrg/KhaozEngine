@@ -235,6 +235,14 @@ who)`, `IsNewButtonPress(button, PlayerIndex?, out who)`, `IsMenuUp/Down(PlayerI
 (PlayerIndex?, out who)`, `IsSelectNext/Previous(PlayerIndex?)`, `IsPauseGame(PlayerIndex?, Rect?)`. Pass `null`
 for the player to accept "any connected controller".
 
+**Feeding the text-entry core:** `State` returns this frame's `InputState` snapshot (the value last passed to
+`Update`), so a retained, custom-rendered widget that holds an `InputManager` can drive the headless
+`TextEntry.Apply(text, input, maxLength, filter, allowPaste)` editing core - the full printable map, hold-to-repeat,
+and Ctrl/Cmd+V clipboard paste - without reaching for the raw window input. There is an `InputManager` overload of
+`Apply` that reads `State` for you, so the call is one line; pass `allowPaste: false` to suppress paste. Paste
+appends `Clipboard.TryGetClipboardText()` through the same `filter` + `maxLength` path as typed chars (so a digits
+filter strips letters out of pasted text too), firing on the V press edge only.
+
 ### Rect, viewport, clock
 
 - `Rect(X, Y, Width, Height)` is the engine's rectangle (`Right`/`Bottom`/`Contains(Vector2)`).

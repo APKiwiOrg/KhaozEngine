@@ -8,9 +8,9 @@ namespace KhaozEngine.Gui
 {
     /// <summary>
     /// A single-line text field over <see cref="Pointer"/> + <see cref="TextEntry"/>: a tap inside focuses it,
-    /// a tap outside unfocuses; while focused, this frame's typed keys edit <see cref="Text"/>. Draws a bordered
-    /// field with the text (or <see cref="Placeholder"/>) and a blinking caret. Typed input comes from the
-    /// headless key-mapping in TextEntry.
+    /// a tap outside unfocuses; while focused, this frame's typed keys edit <see cref="Text"/> (and Ctrl+V / Cmd+V
+    /// pastes the clipboard). Draws a bordered field with the text (or <see cref="Placeholder"/>) and a blinking
+    /// caret. Typed input comes from the headless key-mapping in TextEntry.
     /// </summary>
     public sealed class TextInput
     {

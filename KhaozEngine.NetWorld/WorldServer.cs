@@ -157,6 +157,11 @@ public sealed class WorldServer : IWorldPersistenceHost
 
     private void OnJoin(int slot, string subject)
     {
+        // Belt-and-suspenders: clear any stale command-queue state on the (recycled) slot before spawning, in case
+        // a prior occupant's Left was ever missed. A fresh session's seqs restart at 0; a stale high-water mark
+        // would reject every one and freeze the player (see OnLeave).
+        commands.Forget(slot);
+
         Vector3 spawn = config.SpawnPosition?.Invoke(slot) ?? new Vector3(slot * 2f, 0f, 0f);
         // Ground-clamp the spawn (an idle step settles Y onto the terrain + half-height).
         PlayerMoveState state = simulator.Step(new PlayerMoveState { Position = spawn }, MoveCommand.Idle, config.TickSeconds);
@@ -188,5 +193,9 @@ public sealed class WorldServer : IWorldPersistenceHost
         stateBySlot.Remove(slot);
         lastAckBySlot.Remove(slot);
         accountIdBySlot.Remove(slot);
+        // Drop the slot's command-queue state too. The SlotAllocator recycles this slot to the next connection,
+        // whose seqs legitimately restart at 0; without this the stale high-water mark rejects every command and
+        // freezes the recycled player (it self-heals only once their seq crawls past the dead mark, minutes later).
+        commands.Forget(slot);
     }
 }

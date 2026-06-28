@@ -1534,7 +1534,10 @@ host.Advance(elapsedSeconds, tickIndex =>
 ```
 
 This is the server-side spine: drain per-connection commands once per fixed tick and step the sim, with no
-window or GPU.
+window or GPU. When a connection drops, call `commandQueue.Forget(slot)` before that slot is recycled to a new
+connection: the queue rejects any seq at or below a slot's high-water mark (anti-replay), and a recycled slot
+whose mark is stale would reject the new player's seq-0-onward input and freeze them. (`WorldServer` and
+`ShardedWorldServer` do this for you.)
 
 ### Worker-pool seam (`IJobScheduler`) + parallel cell ticks
 

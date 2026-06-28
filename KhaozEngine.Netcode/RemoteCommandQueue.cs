@@ -48,6 +48,18 @@ public sealed class RemoteCommandQueue<TCommand>
     }
 
     /// <summary>
+    /// Drops all per-slot state for <paramref name="slot"/>: its buffered commands and its processed high-water
+    /// mark. Idempotent for an unknown slot. Call this when a slot is released so the next session to recycle it
+    /// restarts cleanly from high-water -1 (its seqs legitimately begin at 0 again). Replay protection is unweakened:
+    /// it holds within a live session; a recycled slot is a new session whose seqs reset by design.
+    /// </summary>
+    public void Forget(int slot)
+    {
+        queuesBySlot.Remove(slot);
+        lastAcknowledgedSeqBySlot.Remove(slot);
+    }
+
+    /// <summary>
     /// Stores a command. Ignored when: seq is negative; seq is at or below the slot's processed
     /// high-water mark (replay / stale); the (slot, seq) pair is already buffered; or the slot is new and
     /// the distinct-slot cap is reached. When the per-slot buffer is full, the oldest buffered command is

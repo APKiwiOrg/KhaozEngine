@@ -50,7 +50,10 @@ Wire data arrives from untrusted peers or clients. Two shapes:
   high-water mark (so a replayed or stale seq cannot be reprocessed or regress the acknowledged seq),
   caps the per-slot buffer and the number of distinct slots (so a flood cannot grow memory without
   bound), and returns a neutral command for an empty slot, so a malformed or replayed command stream
-  degrades to "no input" rather than corrupting or unbounding the queue. `UnitAxisQuantizer` is a
+  degrades to "no input" rather than corrupting or unbounding the queue. The high-water mark is scoped to a
+  live session: `Forget(slot)` clears it when a slot is released, so the next connection that recycles the
+  slot (a new session whose seqs legitimately restart at 0) is accepted while replay protection still holds
+  within each session. `UnitAxisQuantizer` is a
   fixed-range 8-bit codec: `Dequantize` clamps its input, so a decoded axis is always in `[-1, 1]`
   regardless of the byte received and a hostile byte cannot push an out-of-range magnitude into the sim.
 - **Server -> predicting client.** `ClientPrediction<TState, TCommand>` reconciles against an

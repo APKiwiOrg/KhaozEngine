@@ -5,6 +5,29 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.59.0
+
+Fix: a player who reconnects (or any player who lands on a recycled slot) can move again instead of freezing,
+shaking at spawn, for the minutes it used to take to self-heal. The 7.x anti-replay pass made
+`RemoteCommandQueue<TCommand>.Store` reject any seq at or below a slot's processed high-water mark, but the
+servers never cleared that per-slot state when a slot was released. `SlotAllocator` recycles the lowest free
+slot, so the next client to land on it inherited the prior occupant's high-water mark (often tens of thousands
+of ticks). That client's prediction restarts its seq at 0, so every command it sent was rejected as stale: the
+queue stayed empty, the server froze the player at spawn and stamped each snapshot with the dead ack, and the
+client's reconcile then dropped all pending inputs and snapped back each frame (the shake). It cleared only once
+the client's seq crawled past the dead mark.
+
+New `RemoteCommandQueue<TCommand>.Forget(int slot)` drops a slot's buffered commands and its high-water mark
+(idempotent for an unknown slot). `WorldServer` and `ShardedWorldServer` now call it on `OnLeave` (when the slot
+is released) and at the top of `OnJoin` (belt-and-suspenders for a missed Left). Forgetting on release does not
+weaken anti-replay: a new connection on a recycled slot is a new session whose seqs legitimately restart from 0,
+and replay protection still holds within a live session. Additive (`Forget` is new public API) + bugfix.
+
+Known follow-up (separate, minor): `WorldClient.OnSnapshot` zeroes `nextSeq` via `prediction.Reset` on the first
+snapshot, after the client may have already sent pre-basis commands during the connect window. On a clean slot
+that causes a brief latency-proportional re-send-rejection hitch (not the multi-minute freeze fixed here).
+Candidate fixes: gate input send until the basis is established, or stop zeroing `nextSeq` on `Reset`.
+
 ## 7.58.0
 
 Fix: you can now walk/jump up the side of a domed rock onto its top, instead of only being able to drop onto it

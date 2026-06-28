@@ -119,6 +119,55 @@ public class RemoteCommandQueueTests
     }
 
     [Fact]
+    public void Forget_ClearsSlotStateAndAck()
+    {
+        // Drive a slot's high-water mark up the way a session does (store + dequeue, repeatedly).
+        var q = NewQueue();
+        q.Store(0, 0, 10); q.Dequeue(0, out _);
+        q.Store(0, 1, 11); q.Dequeue(0, out _);
+        q.Store(0, 2, 12); q.Dequeue(0, out _);
+        Assert.Equal(2, q.GetLastAcknowledgedSeq(0));   // high-water now 2
+
+        q.Forget(0);                                    // slot released + recycled to a new session
+        Assert.Equal(-1, q.GetLastAcknowledgedSeq(0));  // high-water reset to "never processed"
+
+        // A recycled session restarts its seq at 0; that must now be accepted again, not rejected as a replay.
+        q.Store(0, 0, 77);
+        Assert.Equal(77, q.Dequeue(0, out int ack));    // command flows again
+        Assert.Equal(0, ack);                           // ack is the fresh seq, not the stale mark
+    }
+
+    [Fact]
+    public void Forget_UnknownSlot_IsNoOp()
+    {
+        var q = NewQueue();
+        q.Forget(123);                                  // never seen -> no throw
+        Assert.Equal(-1, q.GetLastAcknowledgedSeq(123));
+    }
+
+    [Fact]
+    public void Forget_DoesNotAffectOtherSlots()
+    {
+        var q = NewQueue();
+        q.Store(0, 0, 1); q.Dequeue(0, out _);          // slot 0 high-water 0
+        q.Store(1, 5, 2); q.Dequeue(1, out _);          // slot 1 high-water 5
+        q.Forget(0);
+        Assert.Equal(-1, q.GetLastAcknowledgedSeq(0));  // only slot 0 forgotten
+        Assert.Equal(5, q.GetLastAcknowledgedSeq(1));   // slot 1 untouched
+    }
+
+    [Fact]
+    public void Forget_DropsBufferedUndequeuedCommands()
+    {
+        // A command buffered but not yet dequeued for the leaving slot must not leak to the recycling session.
+        var q = NewQueue();
+        q.Store(0, 7, 70);                              // buffered, never dequeued (high-water still -1)
+        q.Forget(0);
+        Assert.Equal(-999, q.Dequeue(0, out int ack));  // nothing left to hand the new session
+        Assert.Equal(-1, ack);
+    }
+
+    [Fact]
     public void Ctor_NonPositiveCaps_Throw()
     {
         Assert.Throws<System.ArgumentOutOfRangeException>(

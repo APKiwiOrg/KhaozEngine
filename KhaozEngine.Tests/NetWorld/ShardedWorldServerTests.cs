@@ -198,6 +198,46 @@ public class ShardedWorldServerTests
         Assert.True(LocalX(client) > 10f, "client's local avatar should be past the x=10 boundary");
     }
 
+    [Fact]
+    public void Reconnect_OnRecycledSlot_CanMove()
+    {
+        var hub = new InMemoryHub();
+        var cfg = SmallCells(_ => new Vector3(5f, 0f, 5f));   // both players spawn in cell (0,0)
+        var server = new ShardedWorldServer(hub.Server, cfg, Flat, MoveTuning.Default);
+
+        // Client A joins on slot 0 and plays enough ticks to push that slot's processed high-water mark up.
+        INetTransport aTransport = hub.CreateClient();
+        var a = new NetClient(aTransport);
+        int slotA = JoinClient(server, a, cfg);
+
+        const int played = 40;
+        for (int seq = 0; seq < played; seq++)
+        {
+            a.Send(MoveProtocol.EncodeMove(seq, East), NetChannelReliability.ReliableOrdered);
+            a.Poll(); server.Poll(); server.Tick(cfg.TickSeconds);
+        }
+
+        // A disconnects; the server frees slot 0 for reuse.
+        hub.DisconnectClient(aTransport);
+        server.Poll(); server.Tick(cfg.TickSeconds);
+        Assert.Equal(0, server.PlayerCount);
+
+        // Client B joins on the recycled slot 0, sending east commands that legitimately restart at seq 0.
+        var b = new NetClient(hub.CreateClient());
+        int slotB = JoinClient(server, b, cfg);
+        Assert.Equal(slotA, slotB);   // same slot, recycled
+        Assert.True(server.TryGetPlayerNetId(slotB, out int bNet));
+
+        float xSpawn = OwnedX(server, bNet);
+        for (int seq = 0; seq < 20; seq++)
+        {
+            b.Send(MoveProtocol.EncodeMove(seq, East), NetChannelReliability.ReliableOrdered);
+            b.Poll(); server.Poll(); server.Tick(cfg.TickSeconds);
+        }
+        Assert.True(OwnedX(server, bNet) > xSpawn + 0.1f,
+            $"reconnect on recycled slot froze the player: spawn x {xSpawn} -> {OwnedX(server, bNet)}");
+    }
+
     private static float LocalX(WorldClient client)
     {
         foreach (EntityRenderState e in client.Snapshot())

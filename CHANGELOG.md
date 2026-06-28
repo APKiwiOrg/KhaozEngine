@@ -5,6 +5,25 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.66.0
+
+Sample-character swap + the bridge demo: `TerrainWalkSample` now walks the CC0 Quaternius Universal character (one
+glb with `Idle`/`Walk`/`Run`/`Jump`/`Fall`) instead of the old KayKit Knight, and `NetworkedWalkSample` renders one
+animated avatar per replicated player through the 7.65.0 `ReplicatedCharacterAnimators` bridge instead of capsules.
+
+- Samples: `TerrainWalkSample` swaps `Knight.glb` for the committed CC0 Quaternius Universal `Player.glb` (body +
+  five in-place locomotion clips named exactly `Idle`/`Walk`/`Run`/`Jump`/`Fall`, one 65-bone universal rig; baked
+  from Quaternius "Universal Base Characters" + "Universal Animation Library"). The clip map uses those five names;
+  the existing auto-fit scale (model height -> 1.8 m capsule) is unchanged. `NetworkedWalkSample` now drives a
+  `ReplicatedCharacterAnimators` over `WorldClient.Snapshot()` (local player fed its exact movement via the new
+  `WorldClient.LocalGrounded`/`LocalVerticalVelocity`; remotes position-only) and draws over `Live`, with the capsule
+  kept as the missing-asset fallback. This is the sample exercising the bridge end to end.
+- `CharacterPose.Pose` is now a `Matrix4x4[]` (was `IReadOnlyList<Matrix4x4>`), the same type as
+  `AnimatedCharacter.Pose`, so it passes straight to the span-taking `Scene3D.DrawSkinned` with no copy. Refines the
+  7.65.0 bridge before it is published.
+- Asset metadata: `assets/character/CREDITS.md` rewritten for the Quaternius Universal packs (CC0) with the bake
+  provenance; the KayKit `LICENSE.txt` was dropped (CC0 note folded into CREDITS).
+
 ## 7.65.1
 
 Terrain PBR splat materials render correctly on Metal (shipped broken in 7.64.0, which rendered the textured ground

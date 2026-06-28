@@ -16,7 +16,7 @@
          Updates/Collision/Netcode/Netcode.Abstractions/Netcode.LiteNetLib/WorldStore/WorldStore.Sqlite/
          WorldStore.SqlServer/NetWorld). Bump here to release them together; this is the version the
          doc-version guard checks. -->
-    <KhaozEngineVersion>7.65.1</KhaozEngineVersion>
+    <KhaozEngineVersion>7.66.0</KhaozEngineVersion>
     <Authors>APKiwi</Authors>
     <Company>Khaoz</Company>
     <PackageProjectUrl>https://github.com/APKiwi/KhaozEngine</PackageProjectUrl>

@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - **Target / language:** `net10.0`, `Nullable=enable`, `ImplicitUsings=disable`, `LangVersion=latest` (inherited from `Directory.Build.props`).
-- **One shared version line:** every packable project sets `<Version>$(KhaozEngineVersion)</Version>`; the bump happens once at the end of the batch (Task 9), not per task. Current value `7.69.1`. This batch breaks public ctors, so it is a **major** bump (`8.0.0`).
+- **One shared version line:** every packable project sets `<Version>$(KhaozEngineVersion)</Version>`; the bump happens once at the end of the batch (Task 9), not per task. Current value `7.70.0`. This batch breaks public ctors, so it is a **major** bump (`8.0.0`).
 - **Seam is dependency-free:** `KhaozEngine.Physics` references only `System.Numerics` (+ `KhaozEngine.Primitives` if a shared type is wanted). `BepuPhysics` types appear ONLY inside `KhaozEngine.Physics.Bepu`. No consumer references Bepu directly.
 - **Determinism model:** authoritative server + client prediction/reconcile (NOT lockstep). The Bepu `Step` runs single-threaded (null thread dispatcher) with fixed solver iteration counts so a single binary is run-to-run deterministic; cross-architecture bit-exactness is NOT required.
 - **Every new behaviour ships a headless test** in `KhaozEngine.Tests` (xUnit). No real GPU/window in tests.

@@ -53,7 +53,7 @@ namespace KhaozEngine.Terrain
         // Deterministic value noise from a coordinate hash (no RNG; tileable enough for a placeholder).
         static float Noise(int x, int y)
         {
-            uint h = (uint)(x * 374761393 + y * 668265263);
+            uint h = (uint)x * 374761393u + (uint)y * 668265263u;
             h = (h ^ (h >> 13)) * 1274126177u;
             return ((h ^ (h >> 16)) & 0xFFFF) / 65535f;
         }

@@ -30,7 +30,13 @@ namespace KhaozEngine.Tests.Terrain
 
             Assert.Equal(chunk.Mesh.Vertices.Length, packed.Vertices.Length);
             for (int i = 0; i < packed.Vertices.Length; i++)
+            {
                 Assert.Equal(TerrainSplatPacking.Pack(chunk.Splat[i]), packed.Vertices[i].Color);
+                Assert.Equal(chunk.Mesh.Vertices[i].Position, packed.Vertices[i].Position);
+                Assert.Equal(chunk.Mesh.Vertices[i].Normal, packed.Vertices[i].Normal);
+                Assert.Equal(chunk.Mesh.Vertices[i].Uv, packed.Vertices[i].Uv);
+                Assert.Equal(chunk.Mesh.Vertices[i].Tangent, packed.Vertices[i].Tangent);
+            }
         }
 
         [Fact]

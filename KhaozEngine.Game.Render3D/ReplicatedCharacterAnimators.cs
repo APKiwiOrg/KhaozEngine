@@ -144,6 +144,16 @@ namespace KhaozEngine.Game
         /// still resolves to Idle within one window. &lt;= 0 reverts to per-frame derivation. Default 1/30.</summary>
         public float VelocityWindowSeconds;
 
+        /// <summary>Seconds a newly-evaluated GROUND state (idle/walk/run) must persist before the brains this set
+        /// builds switch to it - passed to <see cref="AnimatedCharacter"/> as its <c>stateDebounceSeconds</c>. The
+        /// derived speed still ripples a little even after windowing (the prediction/reconcile render stream is not
+        /// perfectly smooth, and a remote's replicated position arrives as a ~30 Hz staircase), so without a debounce
+        /// the state chatters across a band threshold and restarts the clip every few seconds (the "stutter"). Air
+        /// states (jump/fall) are exempt and switch instantly. Applied to brains the set CONSTRUCTS (the skeleton+clips
+        /// ctor); a <c>Func&lt;AnimatedCharacter&gt;</c> factory owns its own debounce. Default
+        /// <see cref="AnimatedCharacter.DefaultStateDebounceSeconds"/>; 0 = switch immediately.</summary>
+        public float StateDebounceSeconds;
+
         public static CharacterAnimatorTuning Default => new CharacterAnimatorTuning
         {
             Locomotion = LocomotionThresholds.Default,
@@ -154,6 +164,7 @@ namespace KhaozEngine.Game
             Scale = 1f,
             FacingYawOffset = 0f,
             VelocityWindowSeconds = 1f / 30f,
+            StateDebounceSeconds = AnimatedCharacter.DefaultStateDebounceSeconds,
         };
     }
 
@@ -212,7 +223,7 @@ namespace KhaozEngine.Game
         {
             if (skeleton is null) throw new ArgumentNullException(nameof(skeleton));
             if (clips is null) throw new ArgumentNullException(nameof(clips));
-            return () => new AnimatedCharacter(skeleton, clips, tuning.Locomotion, tuning.Crossfade);
+            return () => new AnimatedCharacter(skeleton, clips, tuning.Locomotion, tuning.Crossfade, tuning.StateDebounceSeconds);
         }
 
         /// <summary>The live characters this frame, in sample order. Iterate and draw each with

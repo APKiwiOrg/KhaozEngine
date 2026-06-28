@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using KhaozEngine.Game;
+using KhaozEngine.Netcode;
 using KhaozEngine.Render3D;
 using Xunit;
 
@@ -9,6 +11,20 @@ namespace KhaozEngine.Tests.Game
 {
     public class ReplicatedCharacterAnimatorsTests
     {
+        // Minimal predicted state + simulator: integrate a constant velocity command. Isolates
+        // ClientPrediction's rendered-position behaviour (the bridge's real input) from movement physics.
+        readonly struct WalkState : IPredictedState<WalkState>
+        {
+            public WalkState(Vector2 pos) { Position = pos; }
+            public Vector2 Position { get; }
+            public WalkState WithPosition(Vector2 position) => new WalkState(position);
+        }
+
+        sealed class ConstVelSim : ITickSimulator<WalkState, Vector2>
+        {
+            public WalkState Step(in WalkState state, in Vector2 cmd, float dt) => new WalkState(state.Position + cmd * dt);
+        }
+
         const float Dt = 1f / 30f;
 
         // One-bone skeleton + per-state parked clips, mirroring AnimatedCharacterTests so the same brain drives here.
@@ -165,9 +181,9 @@ namespace KhaozEngine.Tests.Game
                 states.Add(a.Live[0].State);
             }
 
-            // After the first window warms the velocity up, the state is steady Walk on every frame, including
-            // the zero-delta hold frames - no Idle strobe.
-            for (int i = 6; i < states.Count; i++)
+            // After the first window warms the velocity up and the debounce commits Walk, the state is steady Walk
+            // on every frame, including the zero-delta hold frames - no Idle strobe.
+            for (int i = 20; i < states.Count; i++)
                 Assert.Equal(LocomotionState.Walk, states[i]);
         }
 
@@ -188,8 +204,8 @@ namespace KhaozEngine.Tests.Game
             }
             Assert.Equal(LocomotionState.Walk, a.Live[0].State);
 
-            // Hold position for well over one window -> windowed speed 0 -> Idle.
-            for (int i = 0; i < 12; i++) a.Update(new[] { Pos(1, pos) }, renderDt);
+            // Hold position for well over one window + the debounce -> windowed speed 0 -> Idle.
+            for (int i = 0; i < 24; i++) a.Update(new[] { Pos(1, pos) }, renderDt);
             Assert.Equal(LocomotionState.Idle, a.Live[0].State);
         }
 
@@ -224,7 +240,7 @@ namespace KhaozEngine.Tests.Game
 
             const float dt = 1f / 60f;
             var pos = Vector3.Zero;
-            for (int i = 0; i < 20; i++) { pos += new Vector3(3f * dt, 0, 0); a.Update(new[] { Pos(1, pos) }, dt); }
+            for (int i = 0; i < 30; i++) { pos += new Vector3(3f * dt, 0, 0); a.Update(new[] { Pos(1, pos) }, dt); }
             Assert.Equal(LocomotionState.Walk, a.Live[0].State);
 
             // Hold for 10 frames (~0.17 s < 0.25 s window): the held velocity keeps it Walk, not Idle.
@@ -233,6 +249,90 @@ namespace KhaozEngine.Tests.Game
                 a.Update(new[] { Pos(1, pos) }, dt);
                 Assert.Equal(LocomotionState.Walk, a.Live[0].State);
             }
+        }
+
+        [Fact]
+        public void RealPrediction_SteadyWalk_StaysWalk_NoPeriodicReset()
+        {
+            // Faithful repro of the in-engine NetworkedWalkSample path: drive a real ClientPrediction at a
+            // non-integer frames-per-tick ratio (144 fps render / 30 Hz tick = 4.8) with a steady 3 m/s walk,
+            // sample RenderedState each frame, and feed it through the bridge exactly as the sample does.
+            // A steady walk must read a steady Walk - it must never flip to Run (or Idle), which would restart
+            // the clip ("resets the animation to frame 0 every few seconds").
+            var settings = new PredictionSettings(TickSeconds: 1f / 30f, MaxPendingCommands: 256,
+                HardSnapDistance: 100f, CorrectionRate: 8f, CorrectionDeadZone: 0.03f);
+            var pred = new ClientPrediction<WalkState, Vector2>(new ConstVelSim(), settings);
+            pred.Reset(new WalkState(Vector2.Zero));
+
+            var tuning = CharacterAnimatorTuning.Default;
+            tuning.Locomotion = new LocomotionThresholds(0.1f, 4.5f);   // the sample's split (walk 3 / run 6)
+            var a = NewAnimators(tuning);
+
+            const float renderDt = 1f / 144f;
+            var vel = new Vector2(3f, 0f);   // steady 3 m/s walk, mid Walk band
+            float tickAccum = 0f;
+            var states = new List<LocomotionState>();
+            for (int frame = 0; frame < 2000; frame++)
+            {
+                tickAccum += renderDt;
+                while (tickAccum >= settings.TickSeconds) { pred.Predict(vel); tickAccum -= settings.TickSeconds; }
+                pred.AdvancePresentation(renderDt);
+                Vector2 p = pred.RenderedState.Position;
+                a.Update(new[] { Pos(1, new Vector3(p.X, 0f, p.Y)) }, renderDt);
+                states.Add(a.Live[0].State);
+            }
+
+            // After warm-up (a few windows) the state must be steady Walk for the rest of the run.
+            var after = states.GetRange(40, states.Count - 40);
+            var distinct = after.Distinct().ToArray();
+            Assert.True(distinct.Length == 1 && distinct[0] == LocomotionState.Walk,
+                $"steady walk should stay Walk; saw {string.Join("/", distinct)} " +
+                $"(Run frames: {after.Count(s => s == LocomotionState.Run)}, Idle frames: {after.Count(s => s == LocomotionState.Idle)})");
+        }
+
+        [Fact]
+        public void RealPrediction_WalkWithReconcileBeat_StaysWalk_NoPeriodicReset()
+        {
+            // The in-engine symptom: every few seconds the avatar's clip resets to frame 0. The local player's
+            // rendered position comes from ClientPrediction; SendInput Predicts once per client tick (frac->0, ramps)
+            // while Poll Reconciles once per server snapshot (frac->1, collapses the interpolation). The server and
+            // client tick on INDEPENDENT clocks, so those two ~30 Hz events beat slowly: a ~1-tick window then
+            // occasionally captures ~2 steps (speed -> Run) or ~0 steps (speed -> Idle), flipping the locomotion
+            // state and restarting the clip. Reconcile against the exact predicted basis (matching physics, localhost)
+            // so ONLY the frac collapse + the beat are exercised, not a real correction.
+            var settings = new PredictionSettings(TickSeconds: 1f / 30f, MaxPendingCommands: 256,
+                HardSnapDistance: 100f, CorrectionRate: 8f, CorrectionDeadZone: 0.03f);
+            var pred = new ClientPrediction<WalkState, Vector2>(new ConstVelSim(), settings);
+            pred.Reset(new WalkState(Vector2.Zero));
+
+            var tuning = CharacterAnimatorTuning.Default;
+            tuning.Locomotion = new LocomotionThresholds(0.1f, 4.5f);
+            var a = NewAnimators(tuning);
+
+            const float renderDt = 1f / 144f;
+            var vel = new Vector2(3f, 0f);
+            float clientTick = 0f, serverTick = 0f;
+            const float clientPeriod = 1f / 30f;
+            const float serverPeriod = 1f / 30.05f;   // independent crystal: a slow beat against the client tick
+            int seq = 0, recTick = 0;
+            var states = new List<LocomotionState>();
+            for (int frame = 0; frame < 4000; frame++)   // ~28 s at 144 fps - several beat periods
+            {
+                serverTick += renderDt;
+                while (serverTick >= serverPeriod) { pred.Reconcile(recTick++, pred.PredictedState, seq - 1); serverTick -= serverPeriod; }
+                clientTick += renderDt;
+                while (clientTick >= clientPeriod) { seq = pred.Predict(vel) + 1; clientTick -= clientPeriod; }
+                pred.AdvancePresentation(renderDt);
+                Vector2 p = pred.RenderedState.Position;
+                a.Update(new[] { Pos(1, new Vector3(p.X, 0f, p.Y)) }, renderDt);
+                states.Add(a.Live[0].State);
+            }
+
+            var after = states.GetRange(40, states.Count - 40);
+            var distinct = after.Distinct().ToArray();
+            Assert.True(distinct.Length == 1 && distinct[0] == LocomotionState.Walk,
+                $"steady walk should stay Walk through the reconcile beat; saw {string.Join("/", distinct)} " +
+                $"(Run frames: {after.Count(s => s == LocomotionState.Run)}, Idle frames: {after.Count(s => s == LocomotionState.Idle)})");
         }
 
         [Fact]

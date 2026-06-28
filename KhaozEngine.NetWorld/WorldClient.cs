@@ -101,7 +101,10 @@ public sealed class WorldClient
     /// <summary>Advances the prediction's inter-tick smoothing (call once per render frame).</summary>
     public void AdvancePresentation(float dt) => prediction.AdvancePresentation(dt);
 
-    /// <summary>The current renderable set: local player predicted, remotes from the latest replicated position.</summary>
+    /// <summary>The current renderable set: local player predicted, remotes from the latest replicated position.
+    /// Each entry also carries the exact grounded flag + vertical velocity (local: predicted; remote: replicated
+    /// <see cref="MovementState"/>) so an animator bridge reads true air state instead of finite-differencing the
+    /// terrain-following position.</summary>
     public IReadOnlyList<EntityRenderState> Snapshot()
     {
         var list = new List<EntityRenderState>();
@@ -110,17 +113,29 @@ public sealed class WorldClient
             if (!world.IsAlive(kv.Value)) continue;
             bool isLocal = kv.Key == LocalNetId;
             Vector3 pos;
+            bool grounded;
+            float verticalVelocity;
             if (isLocal)
             {
-                pos = prediction.RenderedState.Position;
+                // The local avatar's exact air state is the predicted/reconciled state.
+                PlayerMoveState rs = prediction.RenderedState;
+                pos = rs.Position;
+                grounded = rs.Grounded;
+                verticalVelocity = rs.VerticalVelocity;
             }
             else
             {
+                // Remotes: surface the replicated vertical state (MovementState rides alongside the position) so a
+                // consumer animates jump/fall from the authoritative flag instead of finite-differencing the
+                // terrain-following position (which reads "airborne" the faster a remote moves over a slope). Default
+                // grounded when a remote has no MovementState yet, so it never spuriously starts airborne.
                 world.TryGet(kv.Value, out ReplicatedPosition rp);
                 pos = rp.Value;
+                grounded = world.TryGet(kv.Value, out MovementState ms) ? ms.Grounded : true;
+                verticalVelocity = ms.VerticalVelocity;
             }
             string? name = world.TryGet(kv.Value, out PlayerIdentity identity) ? identity.DisplayName : null;
-            list.Add(new EntityRenderState(new NetId(kv.Key), pos, isLocal, name));
+            list.Add(new EntityRenderState(new NetId(kv.Key), pos, isLocal, name, grounded, verticalVelocity));
         }
         return list;
     }

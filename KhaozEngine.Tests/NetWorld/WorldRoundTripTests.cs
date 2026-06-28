@@ -102,6 +102,50 @@ public class WorldRoundTripTests
     }
 
     [Fact]
+    public void Remote_render_state_surfaces_replicated_grounded_and_vertical_velocity()
+    {
+        // The animator bridge needs the EXACT air state for remotes (deriving it from a remote's terrain-following
+        // position misfires - the faster it moves over a slope, the more it looks like falling). Snapshot() must
+        // surface the replicated MovementState (grounded + vertical velocity) on each remote's EntityRenderState.
+        var hub = new InMemoryHub();
+        var config = new WorldServerConfig { TickSeconds = 1f / 30f, InterestRadius = 500f, MaxPlayers = 8 };
+        var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default);
+        var a = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default, new WorldClientConfig { TickSeconds = config.TickSeconds });
+        var b = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default, new WorldClientConfig { TickSeconds = config.TickSeconds });
+
+        for (int i = 0; i < 6; i++) { server.Poll(); server.Tick(config.TickSeconds); a.Poll(); b.Poll(); }
+        Assert.True(a.Joined && b.Joined);
+
+        // At rest on flat ground, B sees A grounded with ~zero vertical velocity.
+        for (int i = 0; i < 6; i++)
+        {
+            a.SendInput(MoveCommand.Idle); b.SendInput(MoveCommand.Idle);
+            server.Poll(); server.Tick(config.TickSeconds); a.Poll(); b.Poll();
+        }
+        EntityRenderState rest = RemoteState(b, a.LocalNetId);
+        Assert.True(rest.Grounded, "B should see A grounded at rest");
+        Assert.True(MathF.Abs(rest.VerticalVelocity) < 1e-2f, $"vertical velocity should be ~0 at rest, got {rest.VerticalVelocity}");
+
+        // A jumps: B must read A airborne + rising from the replicated MovementState, not derived from position.
+        a.SendInput(new MoveCommand(Vector2.Zero, run: false, cameraYaw: 0f, jump: true));
+        for (int i = 0; i < 2; i++)
+        {
+            b.SendInput(MoveCommand.Idle);
+            server.Poll(); server.Tick(config.TickSeconds); a.Poll(); b.Poll();
+        }
+        EntityRenderState jumping = RemoteState(b, a.LocalNetId);
+        Assert.False(jumping.Grounded, "B should see A leave the ground");
+        Assert.True(jumping.VerticalVelocity > 0f, $"B should see A rising, got {jumping.VerticalVelocity}");
+    }
+
+    static EntityRenderState RemoteState(WorldClient observer, int remoteNetId)
+    {
+        foreach (EntityRenderState e in observer.Snapshot())
+            if (!e.IsLocal && e.Id.Value == remoteNetId) return e;
+        throw new Xunit.Sdk.XunitException($"remote {remoteNetId} not visible");
+    }
+
+    [Fact]
     public void Reconnect_on_recycled_slot_can_move()
     {
         var hub = new InMemoryHub();

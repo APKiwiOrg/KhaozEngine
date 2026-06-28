@@ -73,6 +73,47 @@ namespace KhaozEngine.Tests.Game
         }
 
         [Fact]
+        public void GroundState_BriefSpike_DoesNotSwitchClip_ButSustainedDoes()
+        {
+            // A one-frame excursion in the movement signal (e.g. a position-derived speed spike) must NOT switch the
+            // ground state and restart the clip; a SUSTAINED change commits after the debounce window.
+            var c = new AnimatedCharacter(OneBone(), Clips());   // default debounce
+            const float dt = 1f / 60f;
+            Settle(c, 3f, true, 0f);
+            Assert.Equal(LocomotionState.Walk, c.State);
+
+            c.Update(9f, true, 0f, dt);    // single-frame Run spike
+            c.Update(3f, true, 0f, dt);    // back to walk
+            c.Update(3f, true, 0f, dt);
+            Assert.Equal(LocomotionState.Walk, c.State);   // the spike never committed
+
+            Settle(c, 9f, true, 0f);       // sustained run
+            Assert.Equal(LocomotionState.Run, c.State);
+        }
+
+        [Fact]
+        public void StateDebounceZero_SwitchesGroundStateImmediately()
+        {
+            var c = new AnimatedCharacter(OneBone(), Clips(), stateDebounceSeconds: 0f);
+            const float dt = 1f / 60f;
+            for (int i = 0; i < 5; i++) c.Update(3f, true, 0f, dt);
+            Assert.Equal(LocomotionState.Walk, c.State);
+            c.Update(9f, true, 0f, dt);    // one frame -> immediate Run (pre-7.68.0 behaviour)
+            Assert.Equal(LocomotionState.Run, c.State);
+        }
+
+        [Fact]
+        public void AirState_CommitsImmediately_EvenWithDebounce()
+        {
+            // A real jump/fall must read instantly - air states are exempt from the ground-state debounce.
+            var c = new AnimatedCharacter(OneBone(), Clips());   // default debounce
+            Settle(c, 3f, true, 0f);
+            Assert.Equal(LocomotionState.Walk, c.State);
+            c.Update(3f, false, 5f, 1f / 60f);   // one airborne frame
+            Assert.Equal(LocomotionState.Jump, c.State);
+        }
+
+        [Fact]
         public void MissingClip_FallsBackToIdle_NoThrow()
         {
             // Only Idle present: a Run state must fall back to Idle rather than throw.

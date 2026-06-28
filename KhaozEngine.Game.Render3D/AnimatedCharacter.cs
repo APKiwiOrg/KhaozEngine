@@ -16,40 +16,72 @@ namespace KhaozEngine.Game
     /// Idle is also absent, the first supplied clip), so a partial clip set never throws.</summary>
     public sealed class AnimatedCharacter
     {
+        /// <summary>Default seconds a newly-evaluated GROUND state must persist before it is committed (the
+        /// <c>stateDebounceSeconds</c> ctor parameter). ~2.4 ticks at 30 Hz - long enough to reject a single-tick
+        /// excursion in a derived movement signal, short enough to be imperceptible on a genuine transition.</summary>
+        public const float DefaultStateDebounceSeconds = 0.08f;
+
         readonly AnimationPlayer _player;
         readonly IReadOnlyDictionary<LocomotionState, AnimationClip> _clips;
         readonly LocomotionThresholds _thresholds;
         readonly float _crossfade;
+        readonly float _stateDebounce;
         readonly AnimationClip _fallback;
         Matrix4x4[] _pose;
+        LocomotionState _candidate;   // last evaluated state awaiting commit
+        float _candidateAge;          // seconds the candidate has differed from the committed State
 
         public LocomotionState State { get; private set; }
 
+        /// <param name="stateDebounceSeconds">Seconds a newly-evaluated GROUND state must persist before it is
+        /// committed and the clip switches. A brief excursion in the movement signal (e.g. a one-tick spike in a
+        /// position-derived speed - which the replicated-animator bridge sees from the prediction/reconcile render
+        /// stream) would otherwise flip the state and restart the clip every time it happens. Air states (jump/fall)
+        /// are exempt and commit immediately, so a real jump never lags. Default
+        /// <see cref="DefaultStateDebounceSeconds"/>; pass 0 to commit immediately (the pre-7.68.0 behaviour).</param>
         public AnimatedCharacter(Skeleton skeleton, IReadOnlyDictionary<LocomotionState, AnimationClip> clips,
-            LocomotionThresholds? thresholds = null, float crossfade = 0.15f)
+            LocomotionThresholds? thresholds = null, float crossfade = 0.15f,
+            float stateDebounceSeconds = DefaultStateDebounceSeconds)
         {
             if (skeleton is null) throw new ArgumentNullException(nameof(skeleton));
             _clips = clips ?? throw new ArgumentNullException(nameof(clips));
             if (clips.Count == 0) throw new ArgumentException("at least one clip is required.", nameof(clips));
             _thresholds = thresholds ?? LocomotionThresholds.Default;
             _crossfade = crossfade;
+            _stateDebounce = MathF.Max(0f, stateDebounceSeconds);
             _fallback = ResolveFallback(clips);
             _player = new AnimationPlayer(skeleton);
             _pose = new Matrix4x4[skeleton.BoneCount];
 
             // Pose the first frame on Idle (no crossfade) so a character drawn before its first Update is not at rest-T.
             State = LocomotionState.Idle;
+            _candidate = LocomotionState.Idle;
             _player.Play(ClipFor(LocomotionState.Idle), crossfade: 0f);
             _player.GetBonePalette(_pose);
         }
 
-        /// <summary>Advance the animation for one frame from the movement state.</summary>
+        /// <summary>Advance the animation for one frame from the movement state. A ground state (idle/walk/run) takes
+        /// effect only after it has persisted for the debounce window, so a brief excursion in a derived movement
+        /// signal does not restart the clip; air states (jump/fall) commit immediately.</summary>
         public void Update(float horizontalSpeed, bool grounded, float verticalVelocity, float dt)
         {
-            State = LocomotionStateMachine.Evaluate(horizontalSpeed, grounded, verticalVelocity, _thresholds);
+            LocomotionState evaluated = LocomotionStateMachine.Evaluate(horizontalSpeed, grounded, verticalVelocity, _thresholds);
+            CommitState(evaluated, grounded, dt);
             _player.Play(ClipFor(State), _crossfade);
             _player.Update(dt);
             _player.GetBonePalette(_pose);
+        }
+
+        // Debounce ground-state transitions: a new ground state commits only after it has held continuously for the
+        // debounce window, so a one-frame/one-tick flicker in the movement signal cannot restart the clip. Becoming
+        // airborne (or switching air state) commits immediately - a real jump/fall must read instantly.
+        void CommitState(LocomotionState evaluated, bool grounded, float dt)
+        {
+            if (evaluated == State) { _candidate = State; _candidateAge = 0f; return; }
+            if (!grounded || _stateDebounce <= 0f) { State = evaluated; _candidate = evaluated; _candidateAge = 0f; return; }
+            if (evaluated != _candidate) { _candidate = evaluated; _candidateAge = 0f; }
+            _candidateAge += dt;
+            if (_candidateAge >= _stateDebounce) { State = _candidate; _candidateAge = 0f; }
         }
 
         /// <summary>The current joint-WORLD bone palette (length skeleton bone count). Feed to

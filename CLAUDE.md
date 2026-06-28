@@ -265,9 +265,12 @@ version/release work.
     owns one `AnimatedCharacter` per networked entity keyed by a stable id, fed an engine-neutral `CharacterSample[]`
     (position-only, or position + exact movement) each frame via `Update(samples, dt)` -> draw-ready `CharacterPose`s
     (`Live`, each `World` = `scale * RotationY(facingYaw) * Translation` + the bone palette); derives planar speed /
-    vertical velocity / facing yaw from the position delta (exact grounded + vVel honored when a sample carries them,
-    e.g. the local player), lifecycle-creates/-drops per id (no leak on disconnect), holds yaw at rest, reuses
-    `LocomotionStateMachine`; tuned by `CharacterAnimatorTuning`. NO netcode dependency (the consumer maps its
+    vertical velocity / facing yaw from the position displacement averaged over a short window
+    (`CharacterAnimatorTuning.VelocityWindowSeconds`, default 1/30 s = one tick - holds velocity across the
+    zero-delta frames a plateauing `ClientPrediction.RenderedState` produces when render fps > tick rate, so the
+    locomotion state does not strobe Idle<->moving; `<= 0` reverts to per-frame; 7.67.0 fix) (exact grounded + vVel
+    honored when a sample carries them, e.g. the local player), lifecycle-creates/-drops per id (no leak on
+    disconnect), holds yaw at rest, reuses `LocomotionStateMachine`; tuned by `CharacterAnimatorTuning`. NO netcode dependency (the consumer maps its
     `EntityRenderState` -> `CharacterSample` in a 3-line loop, keeping `Game.Render3D` off `NetWorld`); the optional
     read-only `WorldClient.LocalRenderState`/`LocalGrounded`/`LocalVerticalVelocity` (in `NetWorld`, 7.65.0) fill the
     local sample's exact-movement fields. `TerrainWalkSample` walks a committed Quaternius Universal CC0 rigged+animated

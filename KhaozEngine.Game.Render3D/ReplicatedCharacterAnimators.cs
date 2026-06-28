@@ -11,9 +11,11 @@ namespace KhaozEngine.Game
     /// game and the <c>Game.Render3D</c> package keeps its layering (no dependency on a netcode package).
     ///
     /// The only universally-available signal is <see cref="Position"/> over time, so by default the bridge DERIVES
-    /// planar speed, vertical velocity, and facing from successive samples. For the local player (whose exact
-    /// movement the client already knows) pass the exact-movement constructor so <see cref="HasMovement"/> is set and
-    /// the grounded flag + vertical velocity are taken verbatim instead of derived.</summary>
+    /// planar speed, vertical velocity, and facing from successive samples (averaged over a short window - see
+    /// <see cref="CharacterAnimatorTuning.VelocityWindowSeconds"/> - so a plateauing position stream does not strobe
+    /// the state). For the local player (whose exact movement the client already knows) pass the exact-movement
+    /// constructor so <see cref="HasMovement"/> is set and the grounded flag + vertical velocity are taken verbatim
+    /// instead of derived.</summary>
     public readonly struct CharacterSample
     {
         /// <summary>Position-only sample: speed, vertical velocity, and grounded are all derived from the position
@@ -132,6 +134,16 @@ namespace KhaozEngine.Game
         /// set this (e.g. <see cref="MathF.PI"/>) for an asset authored facing another axis. Default 0.</summary>
         public float FacingYawOffset;
 
+        /// <summary>Length (seconds) of the sliding window the bridge averages position displacement over to derive
+        /// velocity, instead of using a single frame's delta. This makes the derived speed frame-rate independent and
+        /// robust to ZERO-DELTA frames: <c>ClientPrediction.RenderedState</c> plateaus once inter-tick interpolation
+        /// saturates (the rendered position is constant between server ticks), so whenever render fps &gt; tick rate
+        /// some frames have no position change; a single-frame derivation reads speed 0 on those frames and strobes
+        /// the locomotion state Idle&lt;-&gt;moving (which restarts the clip every frame). Averaging over ~1 tick holds
+        /// the last good velocity across the plateau. Set to one tick of the source (default 1/30 s); a genuine stop
+        /// still resolves to Idle within one window. &lt;= 0 reverts to per-frame derivation. Default 1/30.</summary>
+        public float VelocityWindowSeconds;
+
         public static CharacterAnimatorTuning Default => new CharacterAnimatorTuning
         {
             Locomotion = LocomotionThresholds.Default,
@@ -141,6 +153,7 @@ namespace KhaozEngine.Game
             GroundedVerticalEpsilon = 0.5f,
             Scale = 1f,
             FacingYawOffset = 0f,
+            VelocityWindowSeconds = 1f / 30f,
         };
     }
 
@@ -150,7 +163,8 @@ namespace KhaozEngine.Game
     /// remote, since position-over-time is the one signal every netcode surfaces for every entity.
     ///
     /// Per <see cref="Update"/>: a new id is created via the factory; a tracked id absent from the samples is dropped
-    /// (no leak on disconnect); planar speed / vertical velocity / facing are derived from the position delta (the
+    /// (no leak on disconnect); planar speed / vertical velocity / facing are derived from the position displacement
+    /// averaged over a short window (so a plateauing / zero-delta position stream does not strobe the state; the
     /// exact grounded flag + vertical velocity are used instead when the sample <see cref="CharacterSample.HasMovement"/>);
     /// the locomotion state machine inside <see cref="AnimatedCharacter"/> picks the clip. The set owns no GPU handle
     /// and never calls <c>Scene3D</c> - iterate <see cref="Live"/> and draw - so it is fully headless-testable.
@@ -163,6 +177,9 @@ namespace KhaozEngine.Game
             public Vector3 PrevPosition;
             public bool HasPrev;
             public float Yaw;
+            public Vector3 DispAccum;   // displacement summed within the current velocity window
+            public float TimeAccum;     // elapsed time summed within the current velocity window
+            public Vector3 Velocity;    // last closed-window velocity, held across zero-delta frames
         }
 
         readonly Func<AnimatedCharacter> _factory;
@@ -226,16 +243,29 @@ namespace KhaozEngine.Game
                     _entries[s.Id] = e;
                 }
 
-                // Derive planar + vertical velocity from the position delta. The first frame for an id (or a
-                // non-positive dt) has no usable delta -> zero velocity (Idle), never NaN.
-                Vector3 planarVel = Vector3.Zero;
-                float derivedVertical = 0f;
+                // Derive velocity over a short time WINDOW, not a single frame. The rendered position PLATEAUS
+                // between server ticks - ClientPrediction.RenderedState clamps the inter-tick fraction at 1, so once
+                // interpolation saturates the position is constant until the next Predict - which means render fps >
+                // tick rate yields one or more ZERO-DELTA frames per tick. A single-frame derivation reads speed 0 on
+                // those frames and strobes the locomotion state Idle<->moving every frame (and AnimationPlayer.Play
+                // restarts the clip on every state change, freezing the animation). Averaging displacement over ~1
+                // tick and HOLDING the last good velocity between window closes keeps the speed steady across the
+                // plateau. The first frame for an id (or a non-positive dt) has no usable delta -> velocity stays
+                // zero (Idle), never NaN. window <= 0 reverts to per-frame derivation (closes every frame).
                 if (e.HasPrev && dt > 0f)
                 {
-                    Vector3 d = s.Position - e.PrevPosition;
-                    planarVel = new Vector3(d.X / dt, 0f, d.Z / dt);
-                    derivedVertical = d.Y / dt;
+                    e.DispAccum += s.Position - e.PrevPosition;
+                    e.TimeAccum += dt;
+                    if (e.TimeAccum >= _tuning.VelocityWindowSeconds)
+                    {
+                        e.Velocity = e.DispAccum / e.TimeAccum;
+                        e.DispAccum = Vector3.Zero;
+                        e.TimeAccum = 0f;
+                    }
                 }
+
+                Vector3 planarVel = new Vector3(e.Velocity.X, 0f, e.Velocity.Z);
+                float derivedVertical = e.Velocity.Y;
                 float horizontalSpeed = planarVel.Length();
 
                 // Exact movement (local player) wins over the derived signals when present.

@@ -226,7 +226,12 @@ version/release work.
     predicted/reconciled - prediction runs against the same optional `WorldBounds`/`WorldColliders`/`WorldSurfaces`
     as the server (trailing ctor params mirroring `WorldServer`, default null = terrain-only), so it predicts around
     solid props and clamps at the wall instead of rubber-banding, keeping reconciliation a no-op -
-    remotes replicated), and `WorldPersistence` (+ `PlayerRecord`, a forward-tolerant JSON
+    remotes replicated AND smoothly interpolated: a render-time presentation clock in `AdvancePresentation` ramps
+    each remote between its last two snapshots via `ClientReplicationView.Interpolate` (`ReplicatedPosition`'s lerp;
+    `MovementState` stays un-interpolated), so a remote glides instead of teleporting one ~tick-rate snapshot-step
+    per ingest - default-on `WorldClientConfig.InterpolateRemotes` (=`true`; ~one tick of remote render latency,
+    renders ~one snapshot in the past, no extrapolation; `false` = raw latest, the pre-7.70.0 behaviour)), and
+    `WorldPersistence` (+ `PlayerRecord`, a forward-tolerant JSON
     record): wires an `IWorldStore` into the server lifecycle via `IWorldPersistenceHost` (the seam `WorldServer` AND
     `ShardedWorldServer` both implement) - load-on-join / save-on-leave / periodic dirty snapshot, keys
     `player:{accountId}`, player-keyed + cell-agnostic (a loaded player spawns at its saved position in whatever cell

@@ -5,6 +5,39 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.70.0
+
+Remote players now render smoothly between snapshots: `WorldClient` interpolates each remote's replicated position
+across the last two snapshots at render time, so they glide instead of teleporting one ~30 Hz snapshot-step per
+ingest. Closes the 7.69.0 KNOWN-FOLLOWUP (remotes were smooth in animation but steppy in POSITION). Default-on and
+additive; the local predicted avatar is untouched.
+
+- NetWorld - the interpolation machinery already existed (`ReplicatedPosition` is registered with a `Vector3.Lerp`,
+  and `ClientReplicationView` double-buffers the last two snapshots for `Interpolate(world, alpha)`), but nothing
+  drove it: `WorldClient.Snapshot()` read each remote at the raw latest `ReplicatedPosition`, constant between the
+  discrete server snapshots. `WorldClient` now runs a presentation clock (mirroring the local
+  `ClientPrediction.AdvancePresentation`, but for remotes): it resets on each applied snapshot and ramps `alpha`
+  0..1 across one estimated inter-snapshot interval, calling `ClientReplicationView.Interpolate` from
+  `AdvancePresentation(dt)`. So a remote renders ~one snapshot in the past and is always interpolated between two
+  snapshots it HAS (no extrapolation). The interval is seeded to the tick and refined by an EMA of the real render
+  time between snapshots (clamped to `[0.5x, 4x]` the tick), so a send-rate that differs from the sim tick, or mild
+  jitter, doesn't desync the ramp; a late snapshot holds the remote at the current value (alpha pinned at 1) until
+  the next arrives.
+- NetWorld - new `WorldClientConfig.InterpolateRemotes` (default `true`). This is a behaviour change for ALL
+  NetWorld consumers (Hardpoint, Nullwake, SpaceGame, Ruinborne): every remote gains ~one tick (~33 ms) of render
+  latency in exchange for smooth motion - universally wanted for an avatar walking around, and all four are
+  server-authoritative (no client-side hit-test on a remote's position that the delay would break). Set it `false`
+  to restore the raw-latest-position behaviour (no delay, steppy remotes). `MovementState` is deliberately still
+  not interpolated (only the local owner predicts the vertical axis; remotes render from `ReplicatedPosition`), so
+  the replicated air-state the 7.68.0 animator bridge reads is unaffected. No protocol change, no new component, no
+  consumer code change to adopt.
+- Tests - headless `RemoteInterpolationTests` drive a two-client `WorldClient` through snapshots at a
+  higher-than-tick frame rate: a remote renders ~midway between two snapshots (not the latest), the ramp is
+  monotonic and never overshoots the current value, a late snapshot holds at current without extrapolating then
+  resumes on the next, the local avatar's render position is untouched by remote interpolation, `InterpolateRemotes
+  = false` returns the raw latest, and a brand-new remote with only one snapshot (no `previous`) renders at its
+  spawn without throwing.
+
 ## 7.69.1
 
 Fixes the terrain PBR splat material rendering as flat white on Direct3D11 (Windows) while correct on Metal and

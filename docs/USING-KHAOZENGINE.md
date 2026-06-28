@@ -660,15 +660,13 @@ var animators = new ReplicatedCharacterAnimators(skeleton, clips, CharacterAnima
 // ...or full control per brain: new ReplicatedCharacterAnimators(() => new AnimatedCharacter(skeleton, clips), tuning);
 
 // Each frame: map the netcode's render states to engine-neutral samples (keeps Game.Render3D off NetWorld).
+// Feed the EXACT grounded + vertical velocity for EVERY entity (since 7.68.0 EntityRenderState carries them for
+// remotes too - local from prediction, remote from the replicated MovementState). Horizontal speed + facing are
+// still derived from the position stream. Do NOT derive air state for remotes from position: a remote's vertical
+// motion is mostly terrain-following, so the faster it moves over a slope the more a position delta reads "falling".
 var samples = new List<CharacterSample>();
 foreach (EntityRenderState e in client.Snapshot())
-{
-    samples.Add(e.IsLocal
-        // Local player: feed exact grounded + vertical velocity (WorldClient surfaces them, since 7.65.0).
-        ? new CharacterSample(e.Id.Value, e.Position, isLocal: true, client.LocalGrounded, client.LocalVerticalVelocity)
-        // Remote: position only - speed / air state / facing are derived from the position delta.
-        : new CharacterSample(e.Id.Value, e.Position));
-}
+    samples.Add(new CharacterSample(e.Id.Value, e.Position, e.IsLocal, e.Grounded, e.VerticalVelocity));
 animators.Update(samples, dt);
 
 // Draw: World already places + faces + scales the avatar (Scale + FacingYawOffset live on the tuning).
@@ -688,6 +686,15 @@ tick rate that produces zero-delta frames; a single-frame derivation would read 
 locomotion state Idle&lt;-&gt;moving every frame (restarting the clip and freezing the animation while the avatar
 glides). The window holds the last good velocity across the plateau; set it to one tick of your source. A
 genuine stop still resolves to Idle within one window; `&lt;= 0` reverts to per-frame derivation.
+
+Even windowed, the derived speed ripples a little - the prediction/reconcile render stream is not perfectly
+smooth, and a remote's replicated position arrives as a ~30 Hz staircase - enough to occasionally cross a band
+threshold and, since `AnimationPlayer.Play` restarts a clip on every state change, reset the walk/run cycle to
+frame 0 every few seconds (worst while sprinting, where the ripple straddles the walk/run split). So
+`AnimatedCharacter` DEBOUNCES ground-state transitions: a new idle/walk/run takes effect only after it has held
+for `stateDebounceSeconds` (ctor param / `CharacterAnimatorTuning.StateDebounceSeconds`, default
+`AnimatedCharacter.DefaultStateDebounceSeconds` = 0.08 s), so a one-tick excursion is ignored; air states
+(jump/fall) are exempt and switch instantly so a real jump never lags. Pass 0 to switch immediately.
 
 **Lower-level pieces** (if you are not using `AnimatedCharacter`): `AnimationSampler.SampleToBonePalette(clip,
 skeleton, time)` is a one-shot pose; `AnimationPlayer` holds a playhead, loops, and crossfades
@@ -1201,8 +1208,11 @@ var server = new WorldServer(transport, new WorldServerConfig { TickSeconds = 1f
 - **`WorldClient`** (render-free): wraps `NetClient` + `ClientReplicationView` + `ClientPrediction`. `Poll()`
   ingests AoI snapshots, applies remote entities, and reconciles the local avatar against the authoritative
   basis; `SendInput(cmd)` predicts one tick forward and transmits it; `Snapshot()` returns
-  `IReadOnlyList<EntityRenderState>` (`{ NetId Id; Vector3 Position; bool IsLocal; string? DisplayName; }`) for the
-  renderer - the local player is the predicted position, remotes the replicated one. Optional trailing ctor params
+  `IReadOnlyList<EntityRenderState>` (`{ NetId Id; Vector3 Position; bool IsLocal; string? DisplayName; bool
+  Grounded; float VerticalVelocity; }`) for the renderer - the local player is the predicted position, remotes the
+  replicated one. `Grounded` + `VerticalVelocity` are the EXACT air state (local: predicted; remote: replicated
+  `MovementState`), surfaced for every entity so an animator bridge reads jump/fall for remotes instead of
+  finite-differencing their terrain-following position. Optional trailing ctor params
   `WorldBounds? bounds`, `WorldColliders? colliders`, `WorldSurfaces? surfaces` (mirroring `WorldServer`) feed the
   internal prediction simulator, so the client predicts against the **same** play-area bound + static
   props/buildings + walkable surfaces the server is authoritative over (null = terrain only). The local avatar's

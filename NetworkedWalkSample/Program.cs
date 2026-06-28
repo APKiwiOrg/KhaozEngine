@@ -26,7 +26,7 @@ int port = args.Length > 1 && int.TryParse(args[1], out int p) ? p : 47700;
 // Pass a third arg to use distinct accounts for two clients on one box, e.g. "player1" and "player2".
 string account = args.Length > 2 ? args[2] : "player1";
 
-Console.WriteLine($"NetworkedWalkSample -> {host}:{port} as '{account}' | WASD move | mouse-drag orbit | scroll zoom | shift run | Esc quit");
+Console.WriteLine($"NetworkedWalkSample -> {host}:{port} as '{account}' | WASD move | space jump | shift run | mouse-drag orbit | scroll zoom | Esc quit");
 using (var app = new NetworkedWalkApp(host, port, account))
     app.Run();
 return 0;
@@ -64,6 +64,7 @@ sealed class NetworkedWalkApp : GameApp3D
     LiteNetLibClientTransport _transport = null!;
     FixedTickHost _clientClock = null!;
     Vector3 _localPos = Vector3.Zero;
+    bool _jumpQueued;   // latches a Space press between fixed ticks so a jump is never dropped on a non-tick frame
 
     public NetworkedWalkApp(string host, int port, string account)
         : base(new GameAppOptions
@@ -130,23 +131,26 @@ sealed class NetworkedWalkApp : GameApp3D
         if (Input.IsDown(Key.D)) move.X += 1f;
         if (Input.IsDown(Key.A)) move.X -= 1f;
         bool run = Input.IsDown(Key.LeftShift) || Input.IsDown(Key.RightShift);
-        var cmd = new MoveCommand(move, run, _camera.Yaw);
+        if (Input.WasPressed(Key.Space)) _jumpQueued = true;   // latch; consumed on the next tick so it never misses
+        bool jump = _jumpQueued;
+        _jumpQueued = false;
+        var cmd = new MoveCommand(move, run, _camera.Yaw, jump);
         _clientClock.Advance(dt, _ => _client.SendInput(cmd));
 
         _client.AdvancePresentation(dt);
 
         // Map the replicated render states to engine-neutral samples and advance the avatar bridge once per frame.
-        // The local player carries its exact movement (so its jump/fall read true, not finite-differenced); remotes
-        // are position-only and the bridge derives speed / air state / facing from the position delta. Feet position
-        // (centre minus the capsule half-height) so the model's feet, not its centre, sit on the ground.
+        // Every entity carries its EXACT grounded flag + vertical velocity (local: predicted; remote: replicated
+        // MovementState surfaced via EntityRenderState), so jump/fall read true for remotes too - deriving "airborne"
+        // from a remote's terrain-following position misfires (the faster it moves over a slope, the more it looks
+        // like falling). Horizontal speed + facing are still derived from the position stream (windowed + debounced in
+        // the bridge). Feet position (centre minus the capsule half-height) so the model's feet sit on the ground.
         _samples.Clear();
         foreach (EntityRenderState e in _client.Snapshot())
         {
             if (e.IsLocal) _localPos = e.Position;
             var feet = new Vector3(e.Position.X, e.Position.Y - CapsuleHalfHeight, e.Position.Z);
-            _samples.Add(e.IsLocal
-                ? new CharacterSample(e.Id.Value, feet, isLocal: true, _client.LocalGrounded, _client.LocalVerticalVelocity)
-                : new CharacterSample(e.Id.Value, feet));
+            _samples.Add(new CharacterSample(e.Id.Value, feet, e.IsLocal, e.Grounded, e.VerticalVelocity));
         }
         _animators?.Update(_samples, dt);
 

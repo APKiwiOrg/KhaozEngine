@@ -5,6 +5,40 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.68.0
+
+Animated-avatar polish on the 7.67.0 windowing: a state-change DEBOUNCE stops the locomotion clip restarting on a
+brief speed spike, and remotes now animate jump/fall from the REPLICATED air state instead of finite-differencing
+their terrain-following position. Fixes the "every few seconds" clip reset (worst while sprinting) and remotes
+spuriously playing the jump animation. `NetworkedWalkSample` gains jump input + drives remotes off the exact air state.
+
+- Game.Render3D - state debounce: after the 7.67.0 windowing, the derived speed still ripples enough to cross a
+  band threshold every few seconds (the prediction/reconcile render stream is not perfectly smooth, and a remote's
+  replicated position arrives as a ~30 Hz staircase), and `AnimationPlayer.Play` restarts the clip on every state
+  change - so the walk/run cycle visibly reset to frame 0 (worst while sprinting, where the ripple straddles the
+  walk/run split). `AnimatedCharacter` now DEBOUNCES ground-state transitions: a new idle/walk/run commits only
+  after it has held for `stateDebounceSeconds` (new ctor param, default `AnimatedCharacter.DefaultStateDebounceSeconds`
+  = 0.08 s ~ 2.4 ticks), so a one-tick excursion is ignored; air states (jump/fall) are exempt and switch instantly.
+  `CharacterAnimatorTuning.StateDebounceSeconds` threads it through the bridge's skeleton+clips ctor. Additive; pass 0
+  for the pre-7.68.0 immediate switching.
+- NetWorld - exact remote air state: a remote's vertical motion is mostly terrain-following, and terrain-follow
+  vertical scales with horizontal speed - so deriving "airborne" from a remote's position delta read jump/fall the
+  faster it moved over a slope (very visible when sprinting). The grounded flag + vertical velocity are already
+  replicated (`MovementState`); `EntityRenderState` now carries `Grounded` + `VerticalVelocity` for every entity
+  (local: predicted; remote: replicated `MovementState`, defaulting grounded when absent), and `WorldClient.Snapshot()`
+  populates them. Additive (new `EntityRenderState` ctor + properties); existing ctors unchanged. A consumer now feeds
+  the exact air state into `CharacterSample` for remotes too, not just the local player.
+- `NetworkedWalkSample`: Space now jumps (latched so a press is never dropped on a non-tick frame), and every avatar
+  (local AND remote) is driven from its exact `EntityRenderState.Grounded`/`VerticalVelocity`, so the bridge no longer
+  finite-differences remote position for air state. Makes jump + the remote animation path visually testable in-engine.
+- Tests: headless reconcile-beat regression (a real `ClientPrediction` at 144 fps / 30 Hz tick, Predict vs Reconcile
+  on independent clocks - asserts a steady walk stays Walk with no Run strobe), `AnimatedCharacter` debounce unit tests
+  (brief spike rejected, sustained committed, debounce 0 = immediate, air instant), and a two-client `WorldClient` test
+  that a jumping remote surfaces grounded=false + vertical velocity > 0 on its `EntityRenderState`.
+- KNOWN-FOLLOWUP (not in this release): remotes still render at the raw ~30 Hz replicated position (no entity
+  interpolation), so their POSITION can look slightly steppy independent of the animation; smoothing that is a separate
+  netcode feature.
+
 ## 7.67.0
 
 `ReplicatedCharacterAnimators` now derives velocity over a short sliding window instead of a single frame's

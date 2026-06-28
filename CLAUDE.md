@@ -270,10 +270,19 @@ version/release work.
     zero-delta frames a plateauing `ClientPrediction.RenderedState` produces when render fps > tick rate, so the
     locomotion state does not strobe Idle<->moving; `<= 0` reverts to per-frame; 7.67.0 fix) (exact grounded + vVel
     honored when a sample carries them, e.g. the local player), lifecycle-creates/-drops per id (no leak on
-    disconnect), holds yaw at rest, reuses `LocomotionStateMachine`; tuned by `CharacterAnimatorTuning`. NO netcode dependency (the consumer maps its
-    `EntityRenderState` -> `CharacterSample` in a 3-line loop, keeping `Game.Render3D` off `NetWorld`); the optional
-    read-only `WorldClient.LocalRenderState`/`LocalGrounded`/`LocalVerticalVelocity` (in `NetWorld`, 7.65.0) fill the
-    local sample's exact-movement fields. `TerrainWalkSample` walks a committed Quaternius Universal CC0 rigged+animated
+    disconnect), holds yaw at rest, reuses `LocomotionStateMachine`; tuned by `CharacterAnimatorTuning`. `AnimatedCharacter`
+    additionally DEBOUNCES ground-state transitions (`stateDebounceSeconds` ctor param /
+    `CharacterAnimatorTuning.StateDebounceSeconds`, default `AnimatedCharacter.DefaultStateDebounceSeconds` = 0.08 s):
+    a new idle/walk/run commits only after it has held that long, so the residual ripple in the derived speed (the
+    prediction/reconcile render stream isn't perfectly smooth; a remote's replicated position is a ~30 Hz staircase)
+    can't restart the clip every few seconds - worst while sprinting, where the ripple straddles the walk/run split;
+    air states switch instantly; `0` = immediate (pre-7.68.0). NO netcode dependency (the consumer maps its
+    `EntityRenderState` -> `CharacterSample` in a 3-line loop, keeping `Game.Render3D` off `NetWorld`). For EXACT air
+    state, `EntityRenderState` carries `Grounded` + `VerticalVelocity` for EVERY entity (7.68.0; local = predicted,
+    remote = replicated `MovementState` surfaced by `WorldClient.Snapshot()`), so a consumer feeds the exact air state
+    for remotes too - deriving "airborne" from a remote's terrain-following position misfires (the faster it moves over
+    a slope, the more it looks like falling); the read-only `WorldClient.LocalRenderState`/`LocalGrounded`/
+    `LocalVerticalVelocity` (7.65.0) remain for the local sample. `TerrainWalkSample` walks a committed Quaternius Universal CC0 rigged+animated
     character (clips named exactly Idle/Walk/Run/Jump/Fall; skinned-ingest preserves the rig + clips; NOT the flatten-prop
     path), and `NetworkedWalkSample` drives one animated avatar per replicated player through `ReplicatedCharacterAnimators`
     (the same asset). Out of scope: animation events, root motion, IK, additive/facial

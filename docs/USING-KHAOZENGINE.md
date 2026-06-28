@@ -949,10 +949,11 @@ Vertical movement (jump/gravity) is the `KhaozEngine.Locomotion` vertical step; 
 On top of the vertical physics (jump/gravity), a rock/log/solid-building can be a surface you **stand on and jump
 onto**, walking over its real top contour. Each walkable-solid prop kind bakes (offline) a render-free top-down
 height map; at runtime the player's support height becomes `max(terrain, prop surface)`, and the static-collision
-push-out becomes height-aware so a rock/roof you stand on is not shoved off: a prop's side blocks only while your
-feet are below the walkable surface under you (not its single max top), so a domed rock - whose surface sits below
-its peak - is standable across its whole top. Single-valued top contour (no overhangs); buildings are solid blocks;
-trees stay thin trunk-blockers (always solid).
+push-out becomes height-aware off the walkable surface (not the prop's single max top): a prop's side blocks only
+while your feet are below the surface where you stand or step on, so a domed rock - whose surface ramps from a low
+rim up to its peak - is both standable across its whole top AND mountable by walking/jumping up its side (you clear
+the rim, not the peak). A flat-top prop (rim = top) stays mountable only from above. Single-valued top contour (no
+overhangs); buildings are solid blocks; trees stay thin trunk-blockers (always solid).
 
 Bake the surfaces as the last kit-ingest step (re-ingest = re-bake), then load + place them:
 
@@ -991,9 +992,10 @@ var server = new WorldServer(transport, config, terrain.GroundHeight, MoveTuning
                              terrain.GroundNormal, bounds: null, colliders: worldColliders, surfaces: worldSurfaces);
 ```
 
-You mount a surface by **jumping** above its top and landing on it (the height-aware collider blocks the sides
-until your feet reach the walkable surface under you, which also prevents a teleport-up when airborne over a tall
-surface, and keeps you standing across a domed top instead of shoving you off); a low edge
+You mount a surface by **jumping** up onto it (the height-aware collider blocks the sides only until your feet clear
+the surface where you step on - the low rim of a domed rock, or a flat top's roof, so a tall flat-top is mountable
+only from above - which also prevents a teleport-up when airborne over a tall surface and keeps you standing across
+a domed top instead of shoving you off); a low edge
 within `MoveTuning.StepHeight` (default 0.4 m) is auto-mounted without a jump (step-up). `TerrainWalkSample` makes
 the scattered rocks solid + jumpable and adds a jumpable platform with a walkable roof. Out of scope (named):
 overhangs / interiors / caves, full 3D mesh collision, dynamic/moving surfaces, player-vs-player, fall damage,

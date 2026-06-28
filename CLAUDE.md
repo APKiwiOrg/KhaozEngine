@@ -164,11 +164,16 @@ version/release work.
     physics):** in `Collision`, `PropSurface` (a unit-scale top-down max-height grid + bilinear `SampleLocal` +
     binary IO; single-valued top contour, no overhangs), `WorldSurface` (a placed surface, scale/yaw applied at
     query time), and `WorldSurfaces` (a `SpatialHashGrid` set whose `Query(x,z)` returns the max prop-top under
-    you); plus `WorldCollider.Top` + a height-aware `WorldColliders.Resolve(position,radius,footY,surfaceTop)` that
-    blocks a side only while the feet are below the walkable surface they stand on (`surfaceTop`, falling back to the
-    collider's max `Top` when no surface is known) - so a domed rock, whose surface sits below its peak, isn't shoved
-    off; a thin blocker (a tree: `Top = +inf`, no surface) always blocks. (Gating on `Top` alone, fixed in 7.56.1,
-    shoved you off domed props everywhere but the exact peak.)
+    you); plus `WorldCollider.Top` + a height-aware `WorldColliders.Resolve(position,radius,footY,WorldSurfaces?)`
+    that blocks a side only while the feet are below the WALKABLE SURFACE (not the prop's single max `Top`): a
+    collider is skipped when the capsule centre is already over its footprint (the vertical support/step-up places
+    you, so a domed top is never shoved off mid-traverse) or, approaching from outside, once the feet clear the rim
+    height where you step onto it (sampled inward from the footprint edge toward the player) - so a domed rock is
+    standable AND mountable by walking/jumping up its side, while a flat-top prop (rim = `Top`) stays mountable only
+    from above and a thin blocker (a tree: `Top = +inf`, no surface) always blocks. (History: gating on the peak `Top`
+    alone shoved you off domed tops everywhere but the peak (fixed 7.56.1 by an explicit `surfaceTop` scalar - that
+    overload remains); gating on the peak also made the side a wall up to peak height so you could only drop onto a
+    rock from above (fixed 7.58.0 by this `WorldSurfaces` overload).)
     `Locomotion.MoveTuning` gains `StepHeight`, and the vertical `CharacterMovement.Step` takes an optional
     `WorldSurfaces?` (support = `max(terrain, surface)`, height-aware block, step-up; null = unchanged), threaded
     server-authoritative + predicted through `PlayerMoveSimulator`/`PlayerMovementSystem`/`WorldServer`/

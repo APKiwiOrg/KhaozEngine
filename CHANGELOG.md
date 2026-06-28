@@ -5,6 +5,31 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.58.0
+
+Fix: you can now walk/jump up the side of a domed rock onto its top, instead of only being able to drop onto it
+from directly above. A domed prop's static collider is a vertical cylinder (radius = the footprint) whose `Top` is
+the rock's PEAK, paired with a walkable surface that ramps from a low rim up to that peak. The height-aware
+side-block gated "am I standing on it?" on the peak, so the rock's whole side acted as a wall up to peak height:
+the cylinder kept the capsule centre outside the surface footprint and a jump's apex is below the peak, so the only
+way on was to land from above. (7.56.1 fixed standing on the surface once already on top; the side approach was
+unchanged.)
+
+New `WorldColliders.Resolve(position, radius, footY, WorldSurfaces? surfaces, ...)` overload gates the side-block on
+the WALKABLE SURFACE per collider rather than the prop's peak: a collider is skipped (you are on it, not hitting its
+side) when either the capsule centre is already over the walkable footprint - the vertical support/step-up places
+it, so a domed top is never shoved off mid-traverse - or, approaching from outside, once the feet clear the rim
+height where you would step onto the prop (sampled inward from the footprint edge toward the player). A flat-top
+prop's rim equals its top, so it stays mountable only from on top; a thin blocker (a tree: `Top = +inf`, no surface)
+always blocks; a below-rim approach into the base still blocks. `CharacterMovement.Step` threads the `surfaces`
+through, so the server sim and client prediction run the same step. Additive: the new overload sits beside the
+7.56.1 scalar-`surfaceTop` overload; no breaking change. Verified against the shipped `rock_a` (footprint radius
+1.31, peak 1.79): a jump up its side now mounts it.
+
+Known limitation (unchanged from 7.56.1): the "over the footprint" / rim sample is the max prop-surface there, not
+per-collider, so standing on a shorter walkable prop hard against a taller one can let the capsule walk through the
+taller one's side. Trees and below-rim approaches are unaffected.
+
 ## 7.57.0
 
 Connection auth now yields a verified identity, and the engine ships a signed connect-token so an exposed server

@@ -76,15 +76,14 @@ public static class CharacterMovement
         }
 
         // 1. Horizontal: full control while grounded, scaled by AirControl while airborne. The capsule foot Y makes
-        //    the static-collision push-out height-aware. The side-block compares the feet against the WALKABLE SURFACE
-        //    under the player, not the prop's max top, so standing on a domed rock (surface below its peak) is not
-        //    mis-read as a side hit and shoved off. No surface here (terrain only) -> +inf -> Top-only gating.
+        //    the static-collision push-out height-aware: a prop's side blocks only while the feet are below the
+        //    WALKABLE SURFACE where you would step onto it (the rim toward you), so standing on a domed rock is not
+        //    shoved off AND the dome is mountable by walking/jumping up its side. No surfaces -> Top-only gating.
         float footY = state.Position.Y - tuning.CapsuleHalfHeight;
-        float surfaceTop = surfaces?.Query(state.Position.X, state.Position.Z) ?? float.PositiveInfinity;
         float supBefore = Support(state.Position.X, state.Position.Z);
         float speedScale = state.Grounded ? 1f : tuning.AirControl;
         (float x, float z) = ResolveHorizontal(state.Position.X, state.Position.Z, cmd, dt, tuning, groundNormal,
-            colliders, clampXz, speedScale, footY, surfaceTop);
+            colliders, clampXz, speedScale, footY, surfaces);
 
         // 1b. Step-up gate: while grounded, a support rise taller than the step height is a wall (revert the move).
         if (state.Grounded && Support(x, z) - supBefore > tuning.StepHeight) { x = state.Position.X; z = state.Position.Z; }
@@ -142,7 +141,7 @@ public static class CharacterMovement
     private static (float x, float z) ResolveHorizontal(float x, float z, in MoveCommand cmd, float dt,
         in MoveTuning tuning, Func<float, float, Vector3>? groundNormal, WorldColliders? colliders,
         Func<float, float, Vector2>? clampXz, float speedScale, float footY = float.PositiveInfinity,
-        float surfaceTop = float.PositiveInfinity)
+        WorldSurfaces? surfaces = null)
     {
         // Camera-relative ground basis (matches FollowCamera3D's yaw convention).
         float sY = MathF.Sin(cmd.CameraYaw), cY = MathF.Cos(cmd.CameraYaw);
@@ -168,13 +167,13 @@ public static class CharacterMovement
 
         // Static-world collision: push the capsule footprint out of any prop/building it now overlaps, sliding
         // along surfaces. Height-aware when a finite footY is supplied: a prop's side blocks only while the feet are
-        // below the surface they stand on (surfaceTop, or the prop's max top when no surface is known), so standing
-        // on a rock/roof is not shoved off. Null/empty set leaves the XZ untouched.
+        // below the walkable surface where the capsule would step onto it (the rim toward the player), so standing on
+        // a rock/roof is not shoved off AND a domed prop is mountable from its side. Null/empty set leaves XZ untouched.
         if (colliders is not null && !colliders.IsEmpty)
         {
             Vector2 resolved = float.IsInfinity(footY)
                 ? colliders.Resolve(new Vector2(x, z), tuning.CapsuleRadius)
-                : colliders.Resolve(new Vector2(x, z), tuning.CapsuleRadius, footY, surfaceTop);
+                : colliders.Resolve(new Vector2(x, z), tuning.CapsuleRadius, footY, surfaces);
             x = resolved.X;
             z = resolved.Y;
         }

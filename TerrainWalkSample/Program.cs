@@ -170,8 +170,11 @@ sealed class TerrainWalkApp : GameApp3D
         // Endless streamed world: the sink builds chunk meshes + deterministic per-chunk props (same coordinate-hash
         // scatter as before, now over every chunk's area), the streamer keeps a ring of them loaded around the player
         // within a per-frame budget. Prime the first ring before the first frame so the player spawns on solid ground.
+        // Textured terrain (PBR splat). A procedural placeholder material so the sample needs no binary assets;
+        // real games wire CC0 tileable albedo/normal per layer.
+        var terrainMaterial = sc.LoadTerrainMaterial(TerrainMaterialPresets.Procedural());
         _chunkSink = new Scene3DChunkSink(sc, _field, ScatterConfig.ForestRing(), _propMeshes,
-            chunkSize: TerrainChunkRegion.DefaultSize, propDrawRadius: PropDrawRadius);
+            chunkSize: TerrainChunkRegion.DefaultSize, propDrawRadius: PropDrawRadius, material: terrainMaterial);
         _streamer = new TerrainStreamer(StreamerConfig.Default, _chunkSink);
         // Prime the FULL initial ring at load time (this is the loading moment, not a frame, so the per-frame
         // MaxLoadsPerFrame budget is irrelevant here): pump until the loaded set stops growing. From here on

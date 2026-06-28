@@ -184,15 +184,22 @@ layout(location=8) in vec4 IModel3;
 layout(location=9) in vec4 ITint;
 layout(location=10) in vec4 IEmissive;
 layout(location=11) in vec4 ISpecParams;
+// Interpolant locations are ordered so the SplatFrag-USED outputs (vNormalW,vColor,vDepth,vWorldPos,vTint,vEmissive)
+// occupy a CONTIGUOUS 0..5 block, and the fragment-UNUSED outputs (vUv,vSpecParams,vTangent) sit above at 6..8.
+// SplatFrag declares only the gap-free prefix 0..5. This is load-bearing on D3D11: a HOLE in the pixel-input
+// semantics (the old layout had vUv at TEXCOORD4 declared-but-unused, dropped by SPIRV-Cross, leaving a gap between
+// vWorldPos@3 and vTint@5) miscompiles on FXC/WARP - the highest live interpolant (vEmissive) read garbage and blew
+// the whole terrain to flat white (Metal/Vulkan tolerated the gap). Keep the used interpolants contiguous from 0;
+// do NOT reintroduce a fragment-unused interpolant below location 6.
 layout(location=0) out vec3 vNormalW;
 layout(location=1) out vec4 vColor;
 layout(location=2) out float vDepth;
 layout(location=3) out vec3 vWorldPos;
-layout(location=4) out vec2 vUv;
-layout(location=5) out vec4 vTint;
-layout(location=6) out vec4 vEmissive;
-layout(location=7) out vec4 vSpecParams;
-layout(location=8) out vec4 vTangent;
+layout(location=4) out vec4 vTint;
+layout(location=5) out vec4 vEmissive;
+layout(location=6) out vec2 vUv;         // fragment-unused (world-space UV is used); kept above the live block
+layout(location=7) out vec4 vSpecParams; // fragment-unused (base spec from Misc.w)
+layout(location=8) out vec4 vTangent;    // fragment-unused (triplanar derives its own basis)
 void main() {
     mat4 Model = mat4(IModel0, IModel1, IModel2, IModel3);
     vec4 world = Model * vec4(Position, 1.0);
@@ -230,15 +237,16 @@ layout(set=0, binding=0) uniform U {
 layout(set=0, binding=1) uniform texture2DArray AlbedoArray;
 layout(set=0, binding=2) uniform texture2DArray NormalArray;
 layout(set=0, binding=3) uniform sampler Samp;
+// Declare ONLY the interpolants this fragment reads, as a CONTIGUOUS 0..5 block (no gap). SplatVert emits these
+// same six at 0..5 and the fragment-unused vUv/vSpecParams/vTangent at 6..8 (which this shader does not declare).
+// A hole in the pixel-input semantics (e.g. declaring vUv@4 but never using it) makes FXC/WARP miscompile and the
+// terrain renders flat white - the live interpolants must be gap-free from location 0. See the SplatVert note.
 layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;       // packed weights (grass,dirt,rock,sand); snow = 1 - sum
 layout(location=2) in float vDepth;
 layout(location=3) in vec3 vWorldPos;
-layout(location=4) in vec2 vUv;          // grid uv (unused; world-space UV is used instead)
-layout(location=5) in vec4 vTint;
-layout(location=6) in vec4 vEmissive;
-layout(location=7) in vec4 vSpecParams;  // unused for terrain (base spec comes from Misc.w)
-layout(location=8) in vec4 vTangent;     // unused (triplanar derives its own basis)
+layout(location=4) in vec4 vTint;
+layout(location=5) in vec4 vEmissive;
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;

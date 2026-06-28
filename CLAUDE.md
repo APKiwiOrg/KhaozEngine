@@ -102,7 +102,10 @@ version/release work.
     `WorldStore.SqlServer`, `Sharding`, `NetWorld`.
   - **Server / parallel-job core types:** `Simulation` = `FixedTickHost` + the `IJobScheduler` worker-pool seam
     (`SingleThreadedJobScheduler` inline default + `ThreadPoolJobScheduler`); `Netcode` =
-    `INetTransport`/`LoopbackTransport` + the `NetServer`/`NetClient` session layer; `Replication` = authoritative ECS
+    `INetTransport`/`LoopbackTransport` + the `NetServer`/`NetClient` session layer (the `IConnectionAuthenticator`
+    gate returns a verified `subject` on accept, surfaced as `ServerSessionEvent.Subject`; `AllowAllAuthenticator`
+    = token-as-subject dev default, `SignedToken`/`HmacTokenAuthenticator` = zero-dep HMAC-SHA256 signed
+    connect-token `v1.<subject>.<expUnix>.<base64url-mac>`); `Replication` = authoritative ECS
     replication (`NetId`/`ReplicationRegistry`/`SnapshotWriter`/`ClientReplicationView`/`ServerReplicator` +
     `InterestGrid` AoI); `WorldStore` = `IWorldStore` async keyed-blob seam + `InMemoryWorldStore` (dep-free core),
     with two opt-in durable backends each pulling their own ADO.NET provider (same `Netcode.LiteNetLib` pattern):
@@ -195,7 +198,9 @@ version/release work.
     `CharacterMovement.Step`, clamps to `WorldBounds`; resolves the optional `WorldColliders` inside `Step` so the
     server is authoritative + identical to client prediction), `WorldServer` (single-`World` authoritative: per-player `RemoteCommandQueue` +
     ground-clamped sim + per-client AoI via `SnapshotWriter.WriteFiltered`+`InterestGrid`, framed `[localNetId][ack]`;
-    a persistence seam = `PlayerJoined`/`PlayerLeaving` events + accountId-from-connect-token + `SetPlayerState`),
+    a persistence seam = `PlayerJoined`/`PlayerLeaving` events + accountId-from-verified-subject (the
+    authenticator's `subject`, `guest:{slot}` when empty) + an optional `IConnectionAuthenticator` ctor arg
+    (default `AllowAllAuthenticator`) + `SetPlayerState`),
     `ShardedWorldServer` (+ `ShardedWorldServerConfig`, the multi-cell variant = the same movement stack run across a
     `Sharding.ShardHost` cell grid: routes each client's `MoveCommand` to the owning cell, steps each cell's
     `PlayerMovementSystem` (also clamps to the optional `WorldBounds`) via `ShardHost.Tick` scheduler-fanned, exactly-once handoff on boundary crossings -

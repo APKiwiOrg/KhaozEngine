@@ -65,7 +65,7 @@ public sealed class NetServer
         if (op != SessionOpcode.Hello) return;
 
         byte[] token = SessionFrame.ReadBody(ev.Data);
-        if (!authenticator.TryAuthenticate(token, out string reason))
+        if (!authenticator.TryAuthenticate(token, out string subject, out string reason))
         {
             transport.Send(ev.Connection, SessionFrame.Write(SessionOpcode.Reject, Encoding.UTF8.GetBytes(reason)), NetChannelReliability.ReliableOrdered);
             transport.Disconnect(ev.Connection);
@@ -82,7 +82,7 @@ public sealed class NetServer
         var slotBytes = new byte[4];
         BitConverter.TryWriteBytes(slotBytes, newSlot);
         transport.Send(ev.Connection, SessionFrame.Write(SessionOpcode.Welcome, slotBytes), NetChannelReliability.ReliableOrdered);
-        inbox.Enqueue(ServerSessionEvent.Joined(newSlot, token));
+        inbox.Enqueue(ServerSessionEvent.Joined(newSlot, token, subject));
     }
 
     private void RemovePeer(NetConnectionId conn, int slot)

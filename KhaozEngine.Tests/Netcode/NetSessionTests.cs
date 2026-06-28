@@ -70,8 +70,9 @@ public class NetSessionTests
 
     private sealed class DenyAll : IConnectionAuthenticator
     {
-        public bool TryAuthenticate(ReadOnlySpan<byte> token, out string rejectReason)
+        public bool TryAuthenticate(ReadOnlySpan<byte> token, out string subject, out string rejectReason)
         {
+            subject = string.Empty;
             rejectReason = "nope";
             return false;
         }

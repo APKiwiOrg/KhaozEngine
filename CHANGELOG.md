@@ -5,6 +5,29 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.63.0
+
+Holding a key in a `KhaozEngine.Gui` text field now auto-repeats - a held Backspace deletes continuously and a held
+character key keeps typing, at the OS repeat delay + rate - instead of acting once on the press edge.
+
+**OS key auto-repeat surfaced through `InputState` (`KhaozEngine.Windowing`).** `InputState` gains an additive
+`KeysRepeated` set plus `WasRepeated(Key)` (true on a frame the key fired an OS auto-repeat tick) and
+`WasTyped(Key)` (`WasPressed(key) || WasRepeated(key)`, the "a character was typed this frame" signal). `WasPressed`
+keeps its press-edge-only meaning (auto-repeat excluded), so existing callers are unchanged; the constructor's new
+`repeated` argument is the last optional parameter and defaults to empty, so every current builder still compiles.
+`AppWindow` fills it from GLFW's `REPEAT` key action: Silk's high-level keyboard maps only PRESS/RELEASE and drops
+REPEAT, so `AppWindow` now installs its own GLFW key callback (the only place allowed to touch the GLFW statics) and
+CHAINS to Silk's previous callback, so KeyDown/KeyUp - and thus the existing pressed/released sets - keep working
+unchanged. GLFW key codes share the Silk key integer values, so the existing key mapping is reused (no second table).
+
+**`TextEntry.Apply` honours it (`KhaozEngine.Gui`).** Backspace and the printable-key loop now act on `WasTyped`
+instead of `WasPressed`, so a held key repeats at the OS rate. The signature is unchanged, so `TextInput.Update` and
+every other caller get hold-to-repeat for free. The Ctrl/Super chord suppression still runs before the printable
+loop, so holding Cmd/Ctrl never machine-guns a letter into the field; Backspace-repeat still works under a held
+modifier. Out of scope (unchanged `TextEntry` non-goals): caret movement / selection / word-delete, and IME / dead
+keys / locale layouts. Headless tests cover repeat-driven delete/type, `maxLength`/filter under repeat, the chord
+block on repeat ticks, and the `WasPressed`-excludes-repeat / `WasTyped`-is-the-union contract.
+
 ## 7.62.0
 
 Players can now carry a replicated display name (a nameplate string like "Daniel", distinct from the account id),

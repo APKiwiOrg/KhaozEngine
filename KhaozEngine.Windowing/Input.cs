@@ -28,6 +28,15 @@ namespace KhaozEngine.Windowing
         public IReadOnlySet<Key> KeysDown { get; }
         public IReadOnlySet<Key> KeysPressed { get; }
         public IReadOnlySet<Key> KeysReleased { get; }
+        /// <summary>
+        /// Keys that fired an OS auto-repeat tick this frame (a held key past the OS repeat delay, recurring at the
+        /// OS repeat rate). Surfaced from GLFW's <c>REPEAT</c> key action by <see cref="AppWindow"/>; empty in
+        /// headless frames unless a test marks them. Distinct from <see cref="KeysPressed"/> (the press edge): a held
+        /// key produces one entry here per repeat tick but is never added to <see cref="KeysPressed"/> after the
+        /// initial press. Read it via <see cref="WasRepeated"/>, or <see cref="WasTyped"/> for the press-or-repeat
+        /// signal text entry wants.
+        /// </summary>
+        public IReadOnlySet<Key> KeysRepeated { get; }
         public IReadOnlySet<MouseButton> MouseDown { get; }
         public IReadOnlySet<MouseButton> MousePressed { get; }
         public Vector2 MousePosition { get; }
@@ -48,6 +57,8 @@ namespace KhaozEngine.Windowing
         /// </summary>
         public bool WindowFocused { get; }
 
+        static readonly IReadOnlySet<Key> EmptyKeys = new HashSet<Key>();
+
         public static readonly InputState Empty = new(
             new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
             new HashSet<MouseButton>(), new HashSet<MouseButton>(),
@@ -58,9 +69,10 @@ namespace KhaozEngine.Windowing
             IReadOnlySet<MouseButton> mouseDown, IReadOnlySet<MouseButton> mousePressed,
             Vector2 mousePosition, Vector2 mouseDelta, float scrollDelta, int width, int height,
             IReadOnlyList<GamepadState>? gamepads = null, IReadOnlyList<TouchPoint>? touches = null,
-            bool windowFocused = true)
+            bool windowFocused = true, IReadOnlySet<Key>? repeated = null)
         {
             KeysDown = down; KeysPressed = pressed; KeysReleased = released;
+            KeysRepeated = repeated ?? EmptyKeys;
             MouseDown = mouseDown; MousePressed = mousePressed;
             MousePosition = mousePosition; MouseDelta = mouseDelta; ScrollDelta = scrollDelta;
             Width = width; Height = height;
@@ -80,6 +92,13 @@ namespace KhaozEngine.Windowing
         public bool IsDown(Key key) => KeysDown.Contains(key);
         /// <summary>True only on the frame <paramref name="key"/> went down (excludes auto-repeat).</summary>
         public bool WasPressed(Key key) => KeysPressed.Contains(key);
+        /// <summary>True on a frame <paramref name="key"/> fired an OS auto-repeat tick (held past the repeat delay).</summary>
+        public bool WasRepeated(Key key) => KeysRepeated.Contains(key);
+        /// <summary>
+        /// True on the press edge OR an auto-repeat tick: the "a character was typed this frame" signal for
+        /// hold-to-repeat text entry. Equivalent to <c>WasPressed(key) || WasRepeated(key)</c>.
+        /// </summary>
+        public bool WasTyped(Key key) => KeysPressed.Contains(key) || KeysRepeated.Contains(key);
         /// <summary>True only on the frame <paramref name="key"/> went up.</summary>
         public bool WasReleased(Key key) => KeysReleased.Contains(key);
         public bool IsDown(MouseButton button) => MouseDown.Contains(button);

@@ -18,12 +18,15 @@ Immediate-mode + retained UI on the custom MonoGame-free stack.
   - `Toggle` — two-state switch flipped by a valid tap; fires `OnChanged`.
   - `Dropdown` — trigger + option list (opens below); two-phase draw (`Draw` trigger / `DrawOverlay` list last).
   - `TextInput` — single-line field; tap-to-focus, typed keys edit the text (via `TextEntry`), blinking caret.
+    A held key auto-repeats (Backspace deletes / a character keeps typing) at the OS repeat rate.
   - `Tooltip` — auto-sized floating bubble; `ComputeBounds` (flip/clamp) is a pure, testable layout function.
   - `PopupPanel` — modal dialog: scrim + title + `PopupRow` content + dismiss/primary footer; blocks the pointer.
   - `ScrollablePanel` — wheel/drag scrolling fixed-height list; rows drawn between `BeginClip`/`EndClip` (scissor),
     hit-test with `TappedItemIndex`.
 - `TextEntry` — headless key→char text-entry helper (US layout + shift), used by `TextInput`. No SDL plumbing.
   Ctrl/Super (Cmd) held suppresses character entry so shortcut chords like Ctrl+V / Cmd+V paste instead of typing.
+  Acts on `InputState.WasTyped` (press edge OR OS auto-repeat tick), so a held Backspace or character key repeats at
+  the OS rate; the chord suppression still blocks repeated character entry while Ctrl/Cmd is held.
 
 Text wrap/alignment lives in `KhaozEngine.Render2D.TextLayout` (over the `ITextMeasurer` seam, so the layout
 math is headless-testable); clipping uses `SpriteBatch` scissor (`SetScissor`/`ClearScissor`, DPI-aware). Ported

@@ -10,6 +10,9 @@ using Silk.NET.Windowing.Glfw;
 using KhaozEngine.Gpu;
 using SilkKey = Silk.NET.Input.Key;
 using SilkMouseButton = Silk.NET.Input.MouseButton;
+// GLFW interop for key auto-repeat. Targeted aliases instead of `using Silk.NET.GLFW;` to avoid clashing
+// with Silk.NET.Windowing's Monitor / the engine's own MouseButton.
+using GlfwInputAction = Silk.NET.GLFW.InputAction;
 
 namespace KhaozEngine.Windowing
 {
@@ -48,6 +51,13 @@ namespace KhaozEngine.Windowing
         readonly HashSet<Key> _keysDown = new();
         readonly HashSet<Key> _pressed = new();
         readonly HashSet<Key> _released = new();
+        // Keys that fired a GLFW REPEAT this frame (held past the OS repeat delay). Silk's high-level keyboard drops
+        // REPEAT, so we capture it off the raw GLFW key callback; snapshotted + cleared per frame like _pressed.
+        readonly HashSet<Key> _repeated = new();
+        // The chained GLFW key callback (held so the native delegate isn't GC'd) and Silk's previous callback we
+        // re-invoke from it so the high-level KeyDown/KeyUp keep firing. See WireKeyRepeat.
+        Silk.NET.GLFW.GlfwCallbacks.KeyCallback? _keyCallback;
+        Silk.NET.GLFW.GlfwCallbacks.KeyCallback? _prevKeyCallback;
         readonly HashSet<MouseButton> _mouseDown = new();
         readonly HashSet<MouseButton> _mousePressed = new();
         readonly SilkGamepadReader _gamepads = new();
@@ -235,6 +245,34 @@ namespace KhaozEngine.Windowing
                 m.MouseUp += (_, btn) => { if (MapMouse(btn, out MouseButton b)) _mouseDown.Remove(b); };
                 m.Scroll += (_, wheel) => _wheelAccum += wheel.Y;
             }
+            WireKeyRepeat();
+        }
+
+        /// <summary>
+        /// Capture OS key auto-repeat. GLFW fires a <c>REPEAT</c> key action while a key is held (after the user's
+        /// OS repeat delay, then at the OS repeat rate), but Silk's high-level keyboard maps only PRESS/RELEASE and
+        /// drops REPEAT, so <see cref="WireInput"/>'s KeyDown/KeyUp never see it. We install our own GLFW key callback
+        /// to record repeats into <see cref="_repeated"/>, then CHAIN to Silk's previous callback so its KeyDown/KeyUp
+        /// (and thus <see cref="_pressed"/>/<see cref="_released"/>) keep working unchanged. GLFW key codes share the
+        /// <see cref="SilkKey"/> integer values, so we reuse <see cref="MapKey"/>. Per the input hard rule, this is the
+        /// only place the GLFW statics are touched; callbacks run on the GLFW/main thread during the frame poll (same
+        /// as the KeyDown handler), so the shared sets need no locking.
+        /// </summary>
+        unsafe void WireKeyRepeat()
+        {
+            nint glfwWindow = _window.Native?.Glfw ?? 0;
+            if (glfwWindow == 0) return; // non-GLFW backend: repeat stays empty; press/release are unaffected.
+
+            var glfw = Silk.NET.GLFW.GlfwProvider.GLFW.Value;
+            var handle = (Silk.NET.GLFW.WindowHandle*)glfwWindow;
+            _keyCallback = (window, key, code, action, mods) =>
+            {
+                if (action == GlfwInputAction.Repeat && MapKey((SilkKey)(int)key, out Key k))
+                    _repeated.Add(k);
+                _prevKeyCallback?.Invoke(window, key, code, action, mods); // keep Silk's KeyDown/KeyUp alive
+            };
+            // SetKeyCallback returns the previously-installed callback (Silk's); capture it to re-invoke above.
+            _prevKeyCallback = glfw.SetKeyCallback(handle, _keyCallback);
         }
 
         InputState BuildInput()
@@ -253,10 +291,11 @@ namespace KhaozEngine.Windowing
                 new HashSet<MouseButton>(_mouseDown), new HashSet<MouseButton>(_mousePressed),
                 pos, delta, _wheelAccum,
                 _window.FramebufferSize.X, _window.FramebufferSize.Y,
-                _gamepads.Read(_input.Gamepads), windowFocused: _focused);
+                _gamepads.Read(_input.Gamepads), windowFocused: _focused, repeated: new HashSet<Key>(_repeated));
 
             _pressed.Clear();
             _released.Clear();
+            _repeated.Clear();
             _mousePressed.Clear();
             _lastMouse = pos;
             _wheelAccum = 0f;

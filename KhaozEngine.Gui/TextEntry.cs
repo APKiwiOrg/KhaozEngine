@@ -10,21 +10,25 @@ namespace KhaozEngine.Gui
     /// Holding Ctrl or Super (Cmd) suppresses character entry so shortcut chords like Ctrl+V / Cmd+V don't type
     /// the letter into the field; Shift is a text modifier and still applies.
     /// US keyboard layout for shifted symbols. Used by the <see cref="TextInput"/> widget.
+    /// Hold-to-repeat works because it acts on <see cref="InputState.WasTyped"/> (press edge OR an OS auto-repeat
+    /// tick), so a held Backspace or character key deletes / types at the OS repeat rate.
     /// Limitations vs a real IME: no locale layouts, dead keys, or composition.
     /// </summary>
     public static class TextEntry
     {
         /// <summary>
-        /// Returns <paramref name="current"/> after applying this frame's key presses: Backspace removes the
+        /// Returns <paramref name="current"/> after applying this frame's typed keys: Backspace removes the
         /// last char; printable keys append (subject to <paramref name="maxLength"/> and <paramref name="filter"/>).
+        /// Acts on the press-or-repeat signal (<see cref="InputState.WasTyped"/>), so holding a key auto-repeats.
         /// </summary>
         public static string Apply(string current, InputState input, int maxLength = int.MaxValue, Func<char, bool>? filter = null)
         {
-            if (input.WasPressed(Key.Backspace) && current.Length > 0)
+            if (input.WasTyped(Key.Backspace) && current.Length > 0)
                 current = current[..^1];
 
             // Ctrl/Super held = a shortcut chord (Ctrl+V / Cmd+V paste, etc.), not text entry.
             // Don't type the printable key (Backspace above still works); Shift is a text modifier, not a chord.
+            // This gate runs before the printable loop, so it also blocks repeat ticks (no machine-gunning a chord key).
             if (input.IsDown(Key.LeftControl) || input.IsDown(Key.RightControl)
                 || input.IsDown(Key.LeftSuper) || input.IsDown(Key.RightSuper))
                 return current;
@@ -34,7 +38,7 @@ namespace KhaozEngine.Gui
             // Iterate the printable range in enum order for deterministic multi-key frames.
             for (Key k = Key.A; k <= Key.Grave; k++)
             {
-                if (!input.WasPressed(k)) continue;
+                if (!input.WasTyped(k)) continue;
                 if (!TryMapChar(k, shift, out char c)) continue;
                 if (current.Length >= maxLength) continue;
                 if (filter != null && !filter(c)) continue;

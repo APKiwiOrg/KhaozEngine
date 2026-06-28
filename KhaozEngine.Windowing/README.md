@@ -7,7 +7,9 @@ Windowing + input foundation for the custom MonoGame-free stack.
   `InputState`, framebuffer size, and the GPU command list to draw into. `AppWindow.Scaled(...)` fits a
   design-sized window to the display.
 - `InputState` — per-frame keyboard + mouse + gamepad + touch snapshot (`IsDown`/`WasPressed` for
-  `Key`/`MouseButton`, mouse position/delta/scroll, `Gamepad(i)`). Immutable; no MonoGame.
+  `Key`/`MouseButton`, mouse position/delta/scroll, `Gamepad(i)`). Immutable; no MonoGame. `WasRepeated(Key)` /
+  `WasTyped(Key)` surface OS key auto-repeat (`AppWindow` fills it from GLFW's `REPEAT` action; `WasPressed` stays
+  press-edge only) so text fields hold-to-repeat.
 - `InputManager` / `Pointer` — the higher-level read: unified pointer, edges, bounds helpers (`IsTapIn` etc.),
   region blocking, keyboard/gamepad/menu navigation.
 - `GameClock` (pause/timescale), `DesignViewport` / `AdaptiveViewport` (letterbox/fill/stretch + responsive).

@@ -155,6 +155,132 @@ void main() {
     oDepth = vec4(vDepth, vDepth, vDepth, 1.0);
 }";
 
+        // ---- Splat-terrain fragment shader. Pairs with ModelVert (which forwards the packed weights as vColor and
+        //      the world position/normal). Reads two 5-layer texture arrays (albedo, tangent-space normal) + a
+        //      shared sampler + a per-material params UBO, blends the five layers by the per-vertex weights, tiles
+        //      each layer in WORLD space with triplanar projection (no per-vertex tangent needed), and lights with
+        //      the SAME key+fill+ambient+point-light+cel model as ModelFrag. Writes the same 3 MRT targets
+        //      (geometric normal to attachment 1 for the edge pass). KEEP THE LIGHTING IN SYNC WITH ModelFrag.
+        //      Sample the two arrays in binding order (Albedo then Normal) - the Metal SPIRV-Cross first-sample-order
+        //      constraint, same as ModelFrag/EdgeFrag. ----
+        public const string SplatFrag = @"#version 450
+layout(set=0, binding=0) uniform U {
+    mat4 ViewProj;
+    vec4 LightDir; vec4 LightColor; vec4 Ambient; vec4 Params;
+    vec4 FillDir; vec4 FillColor; vec4 CameraPos;
+    vec4 PointPosRadius[16];
+    vec4 PointColorIntensity[16];
+};
+layout(set=0, binding=1) uniform texture2DArray AlbedoArray;
+layout(set=0, binding=2) uniform texture2DArray NormalArray;
+layout(set=0, binding=3) uniform sampler Samp;
+layout(set=0, binding=4) uniform SplatParams {
+    vec4 TintTiling[5];   // xyz = tint, w = tiles/metre
+    vec4 Roughness;       // x..w = roughness for layers 0..3
+    vec4 Misc;            // x = layer4 roughness, y = triplanarSharpness, z = projectionMode, w = baseSpecStrength
+};
+layout(location=0) in vec3 vNormalW;
+layout(location=1) in vec4 vColor;       // packed weights (grass,dirt,rock,sand); snow = 1 - sum
+layout(location=2) in float vDepth;
+layout(location=3) in vec3 vWorldPos;
+layout(location=4) in vec2 vUv;          // grid uv (unused; world-space UV is used instead)
+layout(location=5) in vec4 vTint;
+layout(location=6) in vec4 vEmissive;
+layout(location=7) in vec4 vSpecParams;  // unused for terrain (base spec comes from Misc.w)
+layout(location=8) in vec4 vTangent;     // unused (triplanar derives its own basis)
+layout(location=0) out vec4 oColor;
+layout(location=1) out vec4 oNormal;
+layout(location=2) out vec4 oDepth;
+
+vec3 sampleAlbedo(int layer, vec2 uvx, vec2 uvy, vec2 uvz, vec3 bw) {
+    vec3 ax = texture(sampler2DArray(AlbedoArray, Samp), vec3(uvx, float(layer))).rgb;
+    vec3 ay = texture(sampler2DArray(AlbedoArray, Samp), vec3(uvy, float(layer))).rgb;
+    vec3 az = texture(sampler2DArray(AlbedoArray, Samp), vec3(uvz, float(layer))).rgb;
+    return ax*bw.x + ay*bw.y + az*bw.z;
+}
+
+// Whiteout triplanar normal blend (reorient each plane's tangent-space normal into world space, no vertex tangent).
+vec3 sampleNormal(int layer, vec2 uvx, vec2 uvy, vec2 uvz, vec3 bw, vec3 Ngeo) {
+    vec3 nx = texture(sampler2DArray(NormalArray, Samp), vec3(uvx, float(layer))).xyz * 2.0 - 1.0;
+    vec3 ny = texture(sampler2DArray(NormalArray, Samp), vec3(uvy, float(layer))).xyz * 2.0 - 1.0;
+    vec3 nz = texture(sampler2DArray(NormalArray, Samp), vec3(uvz, float(layer))).xyz * 2.0 - 1.0;
+    nx = vec3(nx.xy + Ngeo.zy, abs(nx.z) * Ngeo.x);
+    ny = vec3(ny.xy + Ngeo.xz, abs(ny.z) * Ngeo.y);
+    nz = vec3(nz.xy + Ngeo.xy, abs(nz.z) * Ngeo.z);
+    return normalize(nx.zyx * bw.x + ny.xzy * bw.y + nz.xyz * bw.z);
+}
+
+void main() {
+    vec3 Ngeo = normalize(vNormalW);
+
+    // Reconstruct + renormalize the five weights (4 packed in vColor, snow = 1 - sum).
+    float a0 = vColor.r, a1 = vColor.g, a2 = vColor.b, a3 = vColor.a;
+    float a4 = clamp(1.0 - (a0 + a1 + a2 + a3), 0.0, 1.0);
+    float wsum = a0 + a1 + a2 + a3 + a4;
+    if (wsum > 1e-5) { a0/=wsum; a1/=wsum; a2/=wsum; a3/=wsum; a4/=wsum; } else { a0 = 1.0; a1 = a2 = a3 = a4 = 0.0; }
+    float w[5] = float[5](a0, a1, a2, a3, a4);
+    float rgh[5] = float[5](Roughness.x, Roughness.y, Roughness.z, Roughness.w, Misc.x);
+
+    // Triplanar blend weights (planar mode forces the XZ plane).
+    int projMode = int(Misc.z + 0.5);
+    vec3 bw;
+    if (projMode == 1) { bw = vec3(0.0, 1.0, 0.0); }
+    else {
+        bw = pow(abs(Ngeo), vec3(max(Misc.y, 0.001)));
+        bw /= max(bw.x + bw.y + bw.z, 1e-5);
+    }
+
+    vec3 albedo = vec3(0.0);
+    vec3 Nsum = vec3(0.0);
+    float rough = 0.0;
+    for (int L = 0; L < 5; L++) {
+        float wl = w[L];
+        if (wl <= 0.001) continue;
+        float tile = TintTiling[L].w;
+        vec2 uvx = vWorldPos.yz * tile;
+        vec2 uvy = vWorldPos.xz * tile;
+        vec2 uvz = vWorldPos.xy * tile;
+        albedo += wl * sampleAlbedo(L, uvx, uvy, uvz, bw) * TintTiling[L].xyz;
+        Nsum   += wl * sampleNormal(L, uvx, uvy, uvz, bw, Ngeo);
+        rough  += wl * rgh[L];
+    }
+    albedo *= vTint.rgb;
+    vec3 N = (dot(Nsum, Nsum) > 1e-8) ? normalize(Nsum) : Ngeo;
+
+    // Lighting: mirror ModelFrag. Base specular from Misc.w, modulated by the blended roughness.
+    float specStrength = Misc.w * (1.0 - rough);
+    float specExp = max(mix(48.0, 8.0, rough), 1.0);
+    float ndlKey  = max(dot(N, -normalize(LightDir.xyz)), 0.0);
+    float ndlFill = max(dot(N, -normalize(FillDir.xyz)), 0.0);
+    float bands = Params.x;
+    if (bands >= 1.0) { ndlKey = floor(ndlKey*bands+0.5)/bands; ndlFill = floor(ndlFill*bands+0.5)/bands; }
+    vec3 diffuse = LightColor.rgb*ndlKey + FillColor.rgb*ndlFill;
+    vec3 V = normalize(CameraPos.xyz - vWorldPos);
+    vec3 H = normalize(-normalize(LightDir.xyz) + V);
+    float spec = pow(max(dot(N,H),0.0), specExp) * specStrength * step(0.0001, ndlKey);
+    vec3 specColor = LightColor.rgb*spec;
+    int npl = int(Params.y);
+    for (int i = 0; i < npl; i++) {
+        vec3 toL = PointPosRadius[i].xyz - vWorldPos;
+        float radius = PointPosRadius[i].w;
+        float dist = length(toL);
+        vec3 L = (dist > 1e-4) ? toL / dist : vec3(0.0);
+        float ndl = max(dot(N, L), 0.0);
+        if (bands >= 1.0) ndl = floor(ndl*bands+0.5)/bands;
+        float f = clamp(1.0 - (dist*dist)/max(radius*radius, 1e-6), 0.0, 1.0);
+        float att = f * f * PointColorIntensity[i].w;
+        vec3 lc = PointColorIntensity[i].rgb;
+        diffuse += lc * (ndl * att);
+        vec3 Hp = normalize(L + V);
+        float sp = pow(max(dot(N,Hp),0.0), specExp) * specStrength * step(0.0001, ndl);
+        specColor += lc * (sp * att);
+    }
+    vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor + vEmissive.rgb;
+    oColor = vec4(lit, 1.0);
+    oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0); // GEOMETRIC normal for the edge pass
+    oDepth = vec4(vDepth, vDepth, vDepth, 1.0);
+}";
+
         // ---- Debug line overlay. Standalone mat4 ViewProj UBO (64 bytes), its own layout/buffer,
         //      separate from the model UBO. Depth disabled + alpha blend = overlay. ----
         public const string LineVert = @"#version 450

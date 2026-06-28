@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Text;
 using KhaozEngine.Collision;
 using KhaozEngine.Ecs;
 using KhaozEngine.Locomotion;
@@ -60,7 +59,8 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
 
     public ShardedWorldServer(INetTransport transport, ShardedWorldServerConfig config,
         Func<float, float, float> groundHeight, MoveTuning tuning, Func<float, float, Vector3>? groundNormal = null,
-        WorldBounds? bounds = null, WorldColliders? colliders = null, WorldSurfaces? surfaces = null)
+        WorldBounds? bounds = null, WorldColliders? colliders = null, WorldSurfaces? surfaces = null,
+        IConnectionAuthenticator? authenticator = null)
     {
         ArgumentNullException.ThrowIfNull(transport);
         this.config = config ?? throw new ArgumentNullException(nameof(config));
@@ -79,7 +79,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
             interestCellSize: config.CellSize,
             overlapMargin: config.OverlapMargin,
             positionAccessor: PositionAccessor);
-        net = new NetServer(transport, config.MaxPlayers, new AllowAllAuthenticator());
+        net = new NetServer(transport, config.MaxPlayers, authenticator ?? new AllowAllAuthenticator());
     }
 
     /// <summary>The shard topology (cells, ownership, ghosts).</summary>
@@ -141,7 +141,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
             switch (ev.Kind)
             {
                 case ServerSessionEventKind.Joined:
-                    OnJoin(ev.Slot, ev.Data);
+                    OnJoin(ev.Slot, ev.Subject);
                     break;
                 case ServerSessionEventKind.Left:
                     OnLeave(ev.Slot);
@@ -189,7 +189,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
         }
     }
 
-    private void OnJoin(int slot, byte[] token)
+    private void OnJoin(int slot, string subject)
     {
         Vector3 spawn = config.SpawnPosition?.Invoke(slot) ?? new Vector3(slot * 2f, 0f, 0f);
         // Ground-clamp the spawn (an idle step settles Y onto the terrain + half-height).
@@ -202,7 +202,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
         cell.World.Set(e, MovementState.From(state));   // vertical axis: present at spawn, carried across handoff
         EnsureWired(cell);
 
-        string accountId = token is { Length: > 0 } ? Encoding.UTF8.GetString(token) : $"guest:{slot}";
+        string accountId = string.IsNullOrEmpty(subject) ? $"guest:{slot}" : subject;
         netIdBySlot[slot] = netId;
         lastAckBySlot[slot] = -1;
         accountIdBySlot[slot] = accountId;

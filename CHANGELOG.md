@@ -5,6 +5,26 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.64.0
+
+Terrain PBR splat-textured materials: the terrain now renders five tileable PBR layers (grass/dirt/rock/sand/snow)
+blended per-fragment by the baked splat weights, with world-space triplanar tiling, normal maps, mips, and
+anisotropic filtering (opt-in; omit the material and the height/slope vertex-colour ramp path is byte-identical).
+
+- Render3D: a new "splat" pipeline (`SplatFrag`, sibling of the model pipeline in `ModelRenderer`, shares the
+  frame UBO + instance buffer). Two `texture2DArray`s (albedo + normal, 5 layers) + a per-layer-scalar-roughness
+  params UBO; the five weights ride in the existing `ModelVertex.Color` (4 packed + a 5th derived as 1 - sum), so
+  the vertex format is unchanged. New public API: `SplatProjection`, `SplatLayerImage`, `SplatMaterialConfig`/
+  `SplatParamsData`, `SplatMath`, `Scene3D.SplatMaterialHandle`, `Scene3D.LoadSplatMaterial`,
+  `Scene3D.LoadMesh(GltfMesh, SplatMaterialHandle)`, `Scene3D.UnloadSplatMaterial`.
+- Terrain.Render3D: `TerrainSplatPacking`, `TerrainMaterialLayer`/`TerrainLayeredMaterial`,
+  `TerrainMaterialPresets` (procedural placeholder), `TerrainScene3D.LoadTerrainMaterial` + the textured
+  `LoadTerrainChunk` overload, and an optional material on `Scene3DChunkSink`. With no material the ramp path is
+  byte-identical.
+- Gpu seam: `GpuSamplerFilter.Anisotropic` + `GpuSamplerDescription.MaximumAnisotropy` (trilinear fallback when
+  the device lacks anisotropy), `GpuTextureDescription.Texture2DArray`, an `UpdateTexture` overload with
+  mip/array-layer, and `IGpuCommandList.GenerateMipmaps`.
+
 ## 7.63.0
 
 Holding a key in a `KhaozEngine.Gui` text field now auto-repeats - a held Backspace deletes continuously and a held

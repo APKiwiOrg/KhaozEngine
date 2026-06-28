@@ -1218,7 +1218,8 @@ var server = new WorldServer(transport, new WorldServerConfig { TickSeconds = 1f
   basis; `SendInput(cmd)` predicts one tick forward and transmits it; `Snapshot()` returns
   `IReadOnlyList<EntityRenderState>` (`{ NetId Id; Vector3 Position; bool IsLocal; string? DisplayName; bool
   Grounded; float VerticalVelocity; }`) for the renderer - the local player is the predicted position, remotes the
-  replicated one. `Grounded` + `VerticalVelocity` are the EXACT air state (local: predicted; remote: replicated
+  replicated one (smoothly interpolated between snapshots by default - see `InterpolateRemotes` below).
+  `Grounded` + `VerticalVelocity` are the EXACT air state (local: predicted; remote: replicated
   `MovementState`), surfaced for every entity so an animator bridge reads jump/fall for remotes instead of
   finite-differencing their terrain-following position. Optional trailing ctor params
   `WorldBounds? bounds`, `WorldColliders? colliders`, `WorldSurfaces? surfaces` (mirroring `WorldServer`) feed the
@@ -1226,8 +1227,12 @@ var server = new WorldServer(transport, new WorldServerConfig { TickSeconds = 1f
   props/buildings + walkable surfaces the server is authoritative over (null = terrain only). The local avatar's
   rendered position is smoothed in 3D - the inter-tick interpolation and the reconciliation glide both carry the
   vertical axis, so a jump/fall eases instead of stair-stepping or popping, and a snapshot landing mid inter-tick
-  no longer jolts the avatar (the source of the moving/jumping jitter on a remote server). Call
-  `AdvancePresentation(dt)` once per render frame to drive that smoothing.
+  no longer jolts the avatar (the source of the moving/jumping jitter on a remote server). Remotes are smoothed too:
+  with `WorldClientConfig.InterpolateRemotes` (default `true`), `AdvancePresentation` interpolates each remote's
+  replicated position between its last two snapshots, so a remote glides instead of teleporting one ~tick-rate
+  snapshot-step per ingest - at the cost of ~one tick (~33 ms) of remote render latency (it renders ~one snapshot in
+  the past, never extrapolating). Set `InterpolateRemotes = false` to read the raw latest position instead. Call
+  `AdvancePresentation(dt)` once per render frame to drive both the local smoothing and the remote interpolation.
 
 ```csharp
 var client = new WorldClient(transport, terrain.GroundHeight, MoveTuning.Default, new WorldClientConfig { TickSeconds = 1f/30f });

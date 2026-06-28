@@ -16,6 +16,12 @@ public sealed class WorldClientConfig
     public float TickSeconds { get; init; } = 1f / 30f;
     /// <summary>Override prediction settings; defaults to <see cref="PredictionSettings.Default"/> at <see cref="TickSeconds"/>.</summary>
     public PredictionSettings? Prediction { get; init; }
+
+    /// <summary>Smooth remote players between the discrete (~tick-rate) replicated snapshots by interpolating their
+    /// positions at render time (one snapshot of interpolation delay), instead of teleporting one snapshot-step per
+    /// ingest. Default <c>true</c>: every remote glides, at the cost of ~one tick of remote render latency. Set
+    /// <c>false</c> to restore the raw-latest-position behaviour (no delay, but steppy remotes).</summary>
+    public bool InterpolateRemotes { get; init; } = true;
 }
 
 /// <summary>
@@ -34,6 +40,17 @@ public sealed class WorldClient
     private readonly ClientPrediction<PlayerMoveState, MoveCommand> prediction;
     private int authoritativeTick;
 
+    // Remote interpolation: render replicated remotes ~one snapshot in the past, lerping between the last two
+    // snapshots so they glide instead of teleporting one snapshot-step per ingest. The drive is a presentation
+    // clock (mirrors ClientPrediction.AdvancePresentation, but for remotes) that resets on each snapshot and ramps
+    // alpha 0..1 across one estimated inter-snapshot interval, feeding ClientReplicationView.Interpolate.
+    private const float IntervalSmoothing = 0.1f;     // EMA weight on each freshly measured inter-snapshot interval
+    private readonly bool interpolateRemotes;
+    private readonly float tickSeconds;
+    private float snapshotInterval;                   // estimated seconds between snapshots (seeded to the tick)
+    private float secondsSinceSnapshot;               // presentation clock since the last applied snapshot
+    private bool sawFirstSnapshot;                    // gate the interval EMA until there is a real interval to measure
+
     public WorldClient(INetTransport transport, Func<float, float, float> groundHeight, MoveTuning tuning,
         WorldClientConfig? config = null, byte[]? token = null, Func<float, float, Vector3>? groundNormal = null,
         WorldBounds? bounds = null, WorldColliders? colliders = null, WorldSurfaces? surfaces = null)
@@ -48,6 +65,9 @@ public sealed class WorldClient
         var simulator = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds, colliders, surfaces);
         PredictionSettings settings = config.Prediction ?? (PredictionSettings.Default with { TickSeconds = config.TickSeconds });
         prediction = new ClientPrediction<PlayerMoveState, MoveCommand>(simulator, settings);
+        interpolateRemotes = config.InterpolateRemotes;
+        tickSeconds = config.TickSeconds;
+        snapshotInterval = config.TickSeconds;        // server sends at the sim tick today; refined by measurement
     }
 
     /// <summary>Net id of the local player, or -1 until the first snapshot identifies it.</summary>
@@ -98,13 +118,27 @@ public sealed class WorldClient
         return seq;
     }
 
-    /// <summary>Advances the prediction's inter-tick smoothing (call once per render frame).</summary>
-    public void AdvancePresentation(float dt) => prediction.AdvancePresentation(dt);
+    /// <summary>Advances render-time smoothing (call once per render frame): the local avatar's inter-tick
+    /// prediction smoothing, plus - when <see cref="WorldClientConfig.InterpolateRemotes"/> is set - remote
+    /// interpolation. Remotes ramp from the previous snapshot to the current one across one estimated inter-snapshot
+    /// interval (alpha 0..1, clamped), so between the discrete ~tick-rate snapshots they glide rather than teleport.
+    /// A late snapshot holds the remote at the current value (alpha pinned at 1, no extrapolation) until the next
+    /// arrives. Idempotent within a frame: it rewrites the same lerped state, so multiple <see cref="Snapshot"/>
+    /// reads per frame are consistent.</summary>
+    public void AdvancePresentation(float dt)
+    {
+        prediction.AdvancePresentation(dt);                   // local avatar (unaffected by remote interpolation)
+        if (!interpolateRemotes) return;
+        secondsSinceSnapshot += dt;
+        float alpha = snapshotInterval > 0f ? Math.Clamp(secondsSinceSnapshot / snapshotInterval, 0f, 1f) : 1f;
+        view.Interpolate(world, alpha);                       // remotes only; the local entry renders from prediction
+    }
 
-    /// <summary>The current renderable set: local player predicted, remotes from the latest replicated position.
-    /// Each entry also carries the exact grounded flag + vertical velocity (local: predicted; remote: replicated
-    /// <see cref="MovementState"/>) so an animator bridge reads true air state instead of finite-differencing the
-    /// terrain-following position.</summary>
+    /// <summary>The current renderable set: local player predicted, remotes from the replicated position (smoothly
+    /// interpolated between the last two snapshots when <see cref="WorldClientConfig.InterpolateRemotes"/> is set -
+    /// the default - else the raw latest). Each entry also carries the exact grounded flag + vertical velocity
+    /// (local: predicted; remote: replicated <see cref="MovementState"/>) so an animator bridge reads true air state
+    /// instead of finite-differencing the terrain-following position.</summary>
     public IReadOnlyList<EntityRenderState> Snapshot()
     {
         var list = new List<EntityRenderState>();
@@ -147,6 +181,22 @@ public sealed class WorldClient
         LocalNetId = localNetId;
         view.Apply(world, snapshot);
 
+        if (interpolateRemotes)
+        {
+            // Refine the inter-snapshot interval from the render time actually elapsed since the previous snapshot
+            // (clamped to a sane band so jitter, a queued double-apply, or a dropped snapshot can't desync the ramp),
+            // then restart the interpolation clock. Skip the very first snapshot: there is no prior interval yet.
+            if (sawFirstSnapshot)
+            {
+                float measured = Math.Clamp(secondsSinceSnapshot, 0.5f * tickSeconds, 4f * tickSeconds);
+                snapshotInterval += IntervalSmoothing * (measured - snapshotInterval);
+            }
+            sawFirstSnapshot = true;
+            secondsSinceSnapshot = 0f;
+        }
+
+        // Reconcile reads the freshly applied 'current' here, BEFORE any AdvancePresentation interpolates the world,
+        // so the local prediction basis is the true authoritative value, never an interpolated one.
         if (view.TryGetEntity(localNetId, out Entity local) && world.TryGet(local, out ReplicatedPosition p))
         {
             // Build the full authoritative basis from BOTH replicated components - position and the vertical axis

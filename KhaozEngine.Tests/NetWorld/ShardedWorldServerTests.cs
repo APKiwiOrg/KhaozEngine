@@ -187,6 +187,7 @@ public class ShardedWorldServerTests
             server.Poll();
             server.Tick(cfg.TickSeconds);
             client.Poll();
+            client.AdvancePresentation(cfg.TickSeconds);          // drive the render smoothing (presentation per frame)
 
             Assert.Equal(localNetId, client.LocalNetId);          // stable identity across the migrate
             float x = LocalX(client);

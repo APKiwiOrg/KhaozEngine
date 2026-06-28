@@ -39,8 +39,10 @@ namespace KhaozEngine.Render3D
         /// swings <see cref="FollowCamera3D.Yaw"/> (horizontal) and tilts <see cref="FollowCamera3D.Pitch"/>
         /// (vertical); the wheel scales <see cref="FollowCamera3D.Distance"/>. The default mapping turns the view
         /// the way the hand pulls (drag right turns left, drag down looks up); flip either axis with
-        /// <see cref="InvertX"/> / <see cref="InvertY"/>. Pitch and distance are clamped by the camera.
-        /// <paramref name="dt"/> is unused (gestures are delta-based) and kept for a uniform controller signature.
+        /// <see cref="InvertX"/> / <see cref="InvertY"/>. Pitch and distance are clamped by the camera. The orbit/zoom
+        /// gestures are delta-based, but <paramref name="dt"/> drives the camera's optional target damping
+        /// (<see cref="FollowCamera3D.AdvanceTarget"/>), so pass the real frame time - it is a no-op unless
+        /// <see cref="FollowCamera3D.EnableTargetDamping"/> is on.
         /// </summary>
         public void Update(in InputState input, float dt)
         {
@@ -58,6 +60,8 @@ namespace KhaozEngine.Render3D
             float scroll = input.ScrollDelta;
             if (scroll != 0f)
                 Camera.Distance *= MathF.Pow(ZoomStep, -scroll);   // setter clamps; +scroll -> closer
+
+            Camera.AdvanceTarget(dt);   // drives the opt-in target damping (no-op while disabled)
         }
     }
 }

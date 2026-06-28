@@ -27,11 +27,24 @@ public struct PlayerMoveState : IPredictedState<PlayerMoveState>
 
     readonly Vector2 IPredictedState<PlayerMoveState>.Position => new(Move.Position.X, Move.Position.Z);
 
+    /// <summary>The vertical axis (height) carried through render smoothing, so a jump/fall eases on screen.</summary>
+    readonly float IPredictedState<PlayerMoveState>.Vertical => Move.Position.Y;
+
     /// <summary>Returns a copy with the planar (XZ) position replaced; Y and the vertical state are preserved.</summary>
     public readonly PlayerMoveState WithPosition(Vector2 position)
     {
         MoveState m = Move;
         m.Position = new Vector3(position.X, Move.Position.Y, position.Y);
+        return new PlayerMoveState { Move = m };
+    }
+
+    /// <summary>Returns a copy with the smoothed planar (XZ) AND vertical (Y) render position applied; the rest of
+    /// the kinematic state (velocity, grounded, timers) is preserved. Builds the rendered presentation state so the
+    /// height eases alongside the ground plane instead of stair-stepping or popping.</summary>
+    readonly PlayerMoveState IPredictedState<PlayerMoveState>.WithRenderState(Vector2 position, float vertical)
+    {
+        MoveState m = Move;
+        m.Position = new Vector3(position.X, vertical, position.Y);
         return new PlayerMoveState { Move = m };
     }
 

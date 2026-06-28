@@ -767,6 +767,12 @@ setting), and the camera ground-clamp (`FollowCamera3D.GroundHeight` / `GroundCl
 (feel-tuned later). See `TerrainWalkSample` for the full wiring (Space to jump); it now drives an animated
 character off this controller's movement state (see "Animated characters" above) rather than a static capsule.
 
+**Optional target damping (off by default).** Set `FollowCamera3D.EnableTargetDamping = true` (rate
+`TargetDampingRate`, default 10/s) to have the camera follow a smoothed `EffectiveTarget` that eases toward
+`Target` each frame instead of snapping 1:1 - belt-and-suspenders against residual avatar jitter on a remote
+server. `FollowCameraController.Update(input, dt)` drives it (so pass the real frame `dt`); with damping off the
+camera reads `Target` directly and is unchanged. Read `EffectiveTarget` for the smoothed look-at point.
+
 ---
 
 ## Prop scatter + asset pipeline (`AssetManifest` / `PropScatter` / `Scene3D.DrawProps`)
@@ -1096,7 +1102,11 @@ var server = new WorldServer(transport, new WorldServerConfig { TickSeconds = 1f
   local player is the predicted position, remotes the replicated one. Optional trailing ctor params
   `WorldBounds? bounds`, `WorldColliders? colliders`, `WorldSurfaces? surfaces` (mirroring `WorldServer`) feed the
   internal prediction simulator, so the client predicts against the **same** play-area bound + static
-  props/buildings + walkable surfaces the server is authoritative over (null = terrain only).
+  props/buildings + walkable surfaces the server is authoritative over (null = terrain only). The local avatar's
+  rendered position is smoothed in 3D - the inter-tick interpolation and the reconciliation glide both carry the
+  vertical axis, so a jump/fall eases instead of stair-stepping or popping, and a snapshot landing mid inter-tick
+  no longer jolts the avatar (the source of the moving/jumping jitter on a remote server). Call
+  `AdvancePresentation(dt)` once per render frame to drive that smoothing.
 
 ```csharp
 var client = new WorldClient(transport, terrain.GroundHeight, MoveTuning.Default, new WorldClientConfig { TickSeconds = 1f/30f });

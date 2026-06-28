@@ -102,5 +102,64 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Null(cam.GroundHeight);
             Assert.True(Vector3.Distance(cam.Eye, new Vector3(0, 0, 10)) < 1e-4f, cam.Eye.ToString());
         }
+
+        [Fact]
+        public void Target_damping_is_off_by_default_so_the_effective_target_tracks_the_target()
+        {
+            var cam = new FollowCamera3D { Target = new Vector3(5, 1, -3) };
+            Assert.False(cam.EnableTargetDamping);
+            Assert.Equal(cam.Target, cam.EffectiveTarget);
+            // Moving the target is reflected immediately, with no AdvanceTarget call - existing consumers unchanged.
+            cam.Target = new Vector3(9, 2, 4);
+            Assert.Equal(cam.Target, cam.EffectiveTarget);
+            cam.AdvanceTarget(1f / 60f);              // a no-op while disabled
+            Assert.Equal(cam.Target, cam.EffectiveTarget);
+        }
+
+        [Fact]
+        public void Enabled_target_damping_eases_the_effective_target_toward_the_target_and_converges()
+        {
+            var cam = new FollowCamera3D { Target = Vector3.Zero, EnableTargetDamping = true, TargetDampingRate = 10f };
+            cam.AdvanceTarget(1f / 60f);             // first enabled step locks onto the current target (no lurch)
+            Assert.Equal(Vector3.Zero, cam.EffectiveTarget);
+
+            cam.Target = new Vector3(10, 0, 0);
+            cam.AdvanceTarget(1f / 60f);             // one step: eased partway, not all the way
+            float x1 = cam.EffectiveTarget.X;
+            Assert.True(x1 > 0f && x1 < 10f, $"should ease partway, got {x1}");
+
+            for (int i = 0; i < 600; i++) cam.AdvanceTarget(1f / 60f);
+            Assert.True(Vector3.Distance(cam.EffectiveTarget, cam.Target) < 1e-3f, cam.EffectiveTarget.ToString());
+        }
+
+        [Fact]
+        public void Target_damping_is_frame_rate_independent()
+        {
+            var coarse = new FollowCamera3D { Target = Vector3.Zero, EnableTargetDamping = true, TargetDampingRate = 8f };
+            var fine = new FollowCamera3D { Target = Vector3.Zero, EnableTargetDamping = true, TargetDampingRate = 8f };
+            coarse.AdvanceTarget(0f); fine.AdvanceTarget(0f);   // initialise both at the origin target
+            coarse.Target = new Vector3(10, 0, 0);
+            fine.Target = new Vector3(10, 0, 0);
+
+            // 0.2s of damping as one coarse step vs twenty fine steps -> the same effective target (exp smoothing).
+            coarse.AdvanceTarget(0.2f);
+            for (int i = 0; i < 20; i++) fine.AdvanceTarget(0.01f);
+
+            Assert.Equal(fine.EffectiveTarget.X, coarse.EffectiveTarget.X, 2);
+        }
+
+        [Fact]
+        public void Enabled_damping_drives_the_eye_and_view_through_the_effective_target()
+        {
+            var cam = new FollowCamera3D { Target = Vector3.Zero, Yaw = 0f, HeightOffset = 0f, MinPitch = 0f,
+                EnableTargetDamping = true, TargetDampingRate = 10f };
+            cam.Pitch = 0f; cam.Distance = 10f;
+            cam.AdvanceTarget(1f / 60f);             // lock onto origin
+            cam.Target = new Vector3(20, 0, 0);      // jump the target far away
+            // The eye has NOT teleported: it is still built around the (un-advanced) effective target near the origin.
+            Assert.True(cam.Eye.X < 1f, $"eye should still be near the origin target, got {cam.Eye}");
+            for (int i = 0; i < 600; i++) cam.AdvanceTarget(1f / 60f);
+            Assert.True(Vector3.Distance(cam.Eye, new Vector3(20, 0, 10)) < 1e-2f, cam.Eye.ToString());
+        }
     }
 }

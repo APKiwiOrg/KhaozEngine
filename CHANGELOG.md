@@ -5,6 +5,41 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.61.0
+
+Client-prediction render smoothing is now 3D and pop-free, so a networked avatar (and the follow camera tracking
+it) stops jittering when moving or jumping against a remote/high-latency server.
+
+Three fixes in `KhaozEngine.Netcode` `ClientPrediction`, plus an opt-in camera knob:
+
+- **Vertical axis smoothed (was XZ-only).** Both the inter-tick interpolation and the reconciliation glide now
+  carry the vertical axis, so a jump/fall eases instead of stair-stepping at the tick rate and popping on every
+  vertical misprediction. `IPredictedState<TSelf>` gains two default-implemented members - `float Vertical` and
+  `TSelf WithRenderState(Vector2 position, float vertical)` - both defaulting to the old planar behaviour, so
+  existing 2D implementers compile and behave unchanged (additive, non-breaking). `NetWorld.PlayerMoveState`
+  overrides both to carry its `Y`, and `WorldClient`'s rendered local avatar now eases its height.
+- **Mid-tick reconcile no longer pops (the moving jitter).** `Reconcile` previously discarded the un-played
+  remainder of the inter-tick interpolation (it measured continuity from the full-tick position and collapsed the
+  lerp), so a snapshot arriving mid inter-tick jolted the avatar forward by up to one tick of motion - irregular
+  on a remote server, hence visible jitter. It now anchors the smoothing offset to the ACTUAL on-screen
+  (inter-tick interpolated) position, so the rendered position is continuous across the rebase. The hard-snap /
+  smoothing decision is gated on the pure prediction-divergence magnitude (3D), independent of the in-flight
+  smoothing offset, so a residual glide never spuriously hard-snaps.
+- **`PredictionSettings.Default.CorrectionDeadZone` lowered 1.5 -> 0.03 (3 cm).** At 1.5 world units every
+  realistic latency misprediction snapped instead of gliding; the small default smooths them. The dead-zone is now
+  a presentation-side cleanup threshold (the decaying offset snaps to zero once within it) rather than a reconcile
+  gate. `HardSnapDistance` (100) and `CorrectionRate` (8) are unchanged. This changes feel for every prediction
+  consumer; sanity-check the other games on adoption.
+- **`FollowCamera3D` opt-in target damping (default OFF).** `EnableTargetDamping` + `TargetDampingRate` (10/s) make
+  the camera follow a smoothed `EffectiveTarget` that eases toward `Target`, driven frame-rate-independently by
+  `FollowCameraController.Update(input, dt)` (now uses its `dt`). Default off, so `Eye`/`View` read `Target`
+  directly and every existing consumer is byte-for-byte unchanged. Belt-and-suspenders for any residual jitter.
+
+Additive API (default-interface-method hooks + new optional camera fields) and behaviour-only changes to the
+render smoothing, so minor. Headless tests cover the vertical inter-tick ease, a sub-hard-snap vertical correction
+easing over frames, mid-tick reconcile continuity (planar + vertical), the new dead-zone default, and the camera
+damping (convergence + frame-rate independence).
+
 ## 7.60.0
 
 `WorldClient` can now predict against the same static prop/building colliders and walkable surfaces the server is

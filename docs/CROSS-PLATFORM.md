@@ -69,6 +69,41 @@ and Vulkan (Linux/lavapipe). The overall workflow is green only when all three v
 The fast inner-loop CI (`.github/workflows/ci.yml`: build/test/pack/publish, GPU tests skipped) is separate and
 untouched.
 
+## Authoring shaders that pass on all three backends
+
+The GLSL shaders cross-compile through SPIRV-Cross to MSL (Metal), HLSL→FXC (Direct3D11), and SPIR-V (Vulkan).
+The three backends do NOT fail the same way, so a shader that renders correctly on Metal can be silently wrong on
+D3D11 or Vulkan. The golden matrix above is the net; these are the traps it has caught. (Per-shader specifics live
+in the `ShaderSources.cs` source comments; this is the consolidated checklist.)
+
+- **Keep a fragment shader's input interpolants CONTIGUOUS from location 0.** If a fragment declares an `in`
+  interpolant it never reads, SPIRV-Cross drops it and leaves a HOLE in the pixel-input signature (e.g.
+  `vWorldPos`@3 then `vTint`@5, with location 4 absent). On D3D11/WARP that gap misaligns the interpolant
+  registers and the highest live interpolant reads garbage: `SplatFrag`'s declared-but-unused `vUv`@4 corrupted
+  `vEmissive` and rendered the whole terrain flat white (fixed 7.69.1), while Metal and Vulkan tolerated it.
+  Declare only the interpolants the fragment uses, contiguous from 0; if the paired vertex shader emits extras (a
+  shared interpolant layout), number those ABOVE the fragment's live block. (`ModelFrag` is unaffected because it
+  reads all of its interpolants.) Note: this is NOT an FXC optimizer miscompile - disabling FXC optimization does
+  not fix it; the gapped signature is the cause.
+- **Sample all textures up front, in binding order.** SPIRV-Cross assigns MSL texture indices in the order
+  textures are first SAMPLED, not by `binding=`, so sampling a higher-binding texture first makes a lower one read
+  the wrong texture on Metal (untextured meshes came out flat-normal coloured). See the `ModelFrag` / `EdgeFrag` /
+  `SplatFrag` comments.
+- **One uniform buffer per pipeline.** A second fragment UBO reads the first UBO's bytes on Metal; fold extra
+  per-material data into the frame UBO (the splat pipeline appends its params after the light arrays in one
+  combined UBO). See `SplatVert` / `SplatFrag`.
+- **A new render feature needs a pixel-READBACK assertion, not just "it did not throw"** - and name the regression
+  test `*Golden*` so the `cross-platform-gpu` matrix actually runs it per backend. The original splat tests lacked
+  `Golden` in their names, so the D3D11 leg never exercised them and the white-terrain bug shipped in 7.64.0.
+
+When a backend-specific render bug reproduces ONLY on the CI rasterizer (WARP / lavapipe), dump the SPIRV-Cross
+output locally to read what that backend's compiler receives:
+`Veldrid.SPIRV.SpirvCompilation.CompileVertexFragment(vsGlslBytes, fsGlslBytes, CrossCompileTarget.HLSL, new CrossCompileOptions())`
+is a pure cross-compile that runs on any OS and is byte-identical to what FXC sees on Windows - diff the broken
+shader's signature against a working sibling. Bisect with many cheap Windows-only `cross-platform-gpu`
+`workflow_dispatch` runs (each ~3 min); keep the macOS leg OUT of the bisect loop (it bills 10×) and restore the
+full three-backend matrix only to verify the final fix.
+
 ## Remaining productization gaps
 
 This release delivers the **verification mechanism**, not a finished cross-platform product. Open items:

@@ -114,6 +114,11 @@ params UBO provides roughness per layer. Anisotropic filtering is applied where 
 load time via `IGpuCommandList.GenerateMipmaps`. A mesh with no splat material (`SplatMaterial == -1`) skips
 the splat pass entirely and renders through the standard model pipeline, unchanged.
 
+`SplatVert`/`SplatFrag` keep their pixel-input interpolants contiguous from location 0 on purpose: a gap (a
+fragment-unused interpolant declared below a used one) miscompiles on D3D11/WARP and rendered the terrain flat
+white until 7.69.1. The cross-backend shader-authoring rules are in `docs/CROSS-PLATFORM.md` ("Authoring shaders
+that pass on all three backends").
+
 ## Where to look in the code
 
 | Box | Type / file |

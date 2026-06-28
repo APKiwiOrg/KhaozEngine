@@ -83,6 +83,11 @@ namespace KhaozEngine.Render3D
             OrthoSize = needed * Zoom * margin;
         }
 
+        /// <summary>Project a world point to a screen pixel (forward inverse of <see cref="ScreenToRay"/>); false
+        /// when the point is not in front of the camera. See <see cref="IIsoCamera3D.WorldToScreen"/>.</summary>
+        public bool WorldToScreen(Vector3 world, int viewportWidth, int viewportHeight, out Vector2 screenPixel) =>
+            CameraProjection.WorldToScreen(ViewProjection, world, viewportWidth, viewportHeight, out screenPixel);
+
         /// <summary>
         /// Unproject a screen pixel (top-left origin, y-down) into a world ray. For this orthographic camera
         /// the direction equals <see cref="Forward"/>; the math is general so it still holds if a perspective

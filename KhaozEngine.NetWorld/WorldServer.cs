@@ -98,6 +98,17 @@ public sealed class WorldServer : IWorldPersistenceHost
         world.Set(e, MovementState.From(state));
     }
 
+    /// <summary>Sets the display name replicated for a joined player (added to its entity as a
+    /// <see cref="PlayerIdentity"/>, so the next snapshot carries it to every client in range). Cosmetic and
+    /// independent of the account id. Call it from a <see cref="PlayerJoined"/> handler (e.g. resolved from the
+    /// game's DB), or rely on the <see cref="KhaozEngine.Netcode.SignedToken"/> display-name claim auto-applied at
+    /// join. No-op for an unknown slot.</summary>
+    public void SetPlayerDisplayName(int slot, string name)
+    {
+        if (!entityBySlot.TryGetValue(slot, out Entity e)) return;
+        world.Set(e, new PlayerIdentity { DisplayName = name ?? string.Empty });
+    }
+
     /// <summary>Ingests session events (join/leave) and client input. Call once before <see cref="Tick"/>.</summary>
     public void Poll()
     {
@@ -107,7 +118,7 @@ public sealed class WorldServer : IWorldPersistenceHost
             switch (ev.Kind)
             {
                 case ServerSessionEventKind.Joined:
-                    OnJoin(ev.Slot, ev.Subject);
+                    OnJoin(ev.Slot, ev.Subject, ev.DisplayName);
                     break;
                 case ServerSessionEventKind.Left:
                     OnLeave(ev.Slot);
@@ -155,7 +166,7 @@ public sealed class WorldServer : IWorldPersistenceHost
         }
     }
 
-    private void OnJoin(int slot, string subject)
+    private void OnJoin(int slot, string subject, string displayName)
     {
         // Belt-and-suspenders: clear any stale command-queue state on the (recycled) slot before spawning, in case
         // a prior occupant's Left was ever missed. A fresh session's seqs restart at 0; a stale high-water mark
@@ -178,6 +189,10 @@ public sealed class WorldServer : IWorldPersistenceHost
         stateBySlot[slot] = state;
         lastAckBySlot[slot] = -1;
         accountIdBySlot[slot] = accountId;
+
+        // A display name carried on the connect token (a SignedToken claim) is applied here so token games get
+        // nameplates for free; a DB-sourced name is set from the PlayerJoined handler instead (or overrides this).
+        if (!string.IsNullOrEmpty(displayName)) world.Set(e, new PlayerIdentity { DisplayName = displayName });
 
         PlayerJoined?.Invoke(slot, accountId);
     }

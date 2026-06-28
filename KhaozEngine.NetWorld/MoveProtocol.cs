@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Text;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Replication;
 
@@ -13,6 +14,14 @@ public static class MoveProtocol
 
     /// <summary>Type id of <see cref="MovementState"/> (vertical axis) in the shared registry.</summary>
     public const ushort MovementTypeId = 2;
+
+    /// <summary>Type id of <see cref="PlayerIdentity"/> (display name) in the shared registry.</summary>
+    public const ushort IdentityTypeId = 3;
+
+    /// <summary>Upper bound on a replicated <see cref="PlayerIdentity.DisplayName"/>'s UTF-8 encoding, in bytes.
+    /// The codec truncates a longer name on write (at a UTF-8 char boundary) and clamps on read, so a hostile or
+    /// corrupt name can never exceed this on the wire or blow the read buffer.</summary>
+    public const int MaxDisplayNameBytes = 64;
 
     /// <summary>The replicated-component registry (must match on server and client).</summary>
     public static ReplicationRegistry CreateRegistry()
@@ -41,7 +50,43 @@ public static class MoveProtocol
                 TimeSinceGrounded = br.ReadSingle(),
                 JumpBufferRemaining = br.ReadSingle(),
             });
+        // Display name. Length-prefixed UTF-8, capped at MaxDisplayNameBytes. Not interpolated (strings do not blend);
+        // re-sent in every AoI snapshot (names are static, so this is wasteful but simple and consistent at the
+        // MaxPlayers scale this server targets). The cap is enforced on BOTH ends: write truncates, read clamps -
+        // a player can never push an oversized string onto the wire (cf. the hostile-safe TryDecodeMove path).
+        r.Register<PlayerIdentity>(
+            IdentityTypeId,
+            write: (pi, bw) => WriteDisplayName(bw, pi.DisplayName),
+            read: br => new PlayerIdentity { DisplayName = ReadDisplayName(br) });
         return r;
+    }
+
+    /// <summary>Writes a display name as <c>[ushort byteLen][UTF-8 bytes]</c>, truncated to
+    /// <see cref="MaxDisplayNameBytes"/> at a UTF-8 character boundary so a multibyte glyph is never split.</summary>
+    private static void WriteDisplayName(System.IO.BinaryWriter bw, string? name)
+    {
+        byte[] utf8 = Encoding.UTF8.GetBytes(name ?? string.Empty);
+        int len = utf8.Length;
+        if (len > MaxDisplayNameBytes)
+        {
+            len = MaxDisplayNameBytes;
+            // Back up off a continuation byte (0b10xxxxxx) so we cut on a character boundary, not mid-codepoint.
+            while (len > 0 && (utf8[len] & 0xC0) == 0x80) len--;
+        }
+        bw.Write((ushort)len);
+        bw.Write(utf8, 0, len);
+    }
+
+    /// <summary>Reads a display name written by <see cref="WriteDisplayName"/>. The declared length is clamped to
+    /// <see cref="MaxDisplayNameBytes"/> before allocating, and any surplus is skipped, so a corrupt/oversized
+    /// length prefix can neither over-allocate nor desync the rest of the entity's component stream.</summary>
+    private static string ReadDisplayName(System.IO.BinaryReader br)
+    {
+        int declared = br.ReadUInt16();
+        int take = Math.Min(declared, MaxDisplayNameBytes);
+        byte[] bytes = br.ReadBytes(take);
+        for (int surplus = declared - take; surplus > 0; surplus--) br.ReadByte(); // stay frame-aligned (defensive)
+        return Encoding.UTF8.GetString(bytes);
     }
 
     // Move: [seq:int][move.x:float][move.y:float][run:byte][cameraYaw:float][jump:byte] = 18 bytes.

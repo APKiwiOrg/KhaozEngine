@@ -105,7 +105,8 @@ public sealed class WorldClient
                 world.TryGet(kv.Value, out ReplicatedPosition rp);
                 pos = rp.Value;
             }
-            list.Add(new EntityRenderState(new NetId(kv.Key), pos, isLocal));
+            string? name = world.TryGet(kv.Value, out PlayerIdentity identity) ? identity.DisplayName : null;
+            list.Add(new EntityRenderState(new NetId(kv.Key), pos, isLocal, name));
         }
         return list;
     }

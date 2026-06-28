@@ -132,6 +132,16 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
         }
     }
 
+    /// <summary>Sets the display name replicated for a joined player (added to its owning cell's entity as a
+    /// <see cref="PlayerIdentity"/>; it migrates with the entity across cell handoffs since the registered component
+    /// is transferred). Cosmetic and independent of the account id; the same seam as
+    /// <see cref="WorldServer.SetPlayerDisplayName"/>. No-op for an unknown slot.</summary>
+    public void SetPlayerDisplayName(int slot, string name)
+    {
+        if (netIdBySlot.TryGetValue(slot, out int netId) && host.TryGetOwner(netId, out CellSim cell, out Entity e))
+            cell.World.Set(e, new PlayerIdentity { DisplayName = name ?? string.Empty });
+    }
+
     /// <summary>Ingests session events (join/leave) and client input. Call once before <see cref="Tick"/>.</summary>
     public void Poll()
     {
@@ -141,7 +151,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
             switch (ev.Kind)
             {
                 case ServerSessionEventKind.Joined:
-                    OnJoin(ev.Slot, ev.Subject);
+                    OnJoin(ev.Slot, ev.Subject, ev.DisplayName);
                     break;
                 case ServerSessionEventKind.Left:
                     OnLeave(ev.Slot);
@@ -189,7 +199,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
         }
     }
 
-    private void OnJoin(int slot, string subject)
+    private void OnJoin(int slot, string subject, string displayName)
     {
         // Belt-and-suspenders: clear any stale command-queue state on the (recycled) slot before spawning, in case
         // a prior occupant's Left was ever missed. A fresh session's seqs restart at 0; a stale high-water mark
@@ -205,6 +215,8 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
         cell.World.Set(e, new NetId(netId));
         cell.World.Set(e, new ReplicatedPosition { Value = state.Position });
         cell.World.Set(e, MovementState.From(state));   // vertical axis: present at spawn, carried across handoff
+        // A display name on the connect token rides along the same way (a registered component, migrated on handoff).
+        if (!string.IsNullOrEmpty(displayName)) cell.World.Set(e, new PlayerIdentity { DisplayName = displayName });
         EnsureWired(cell);
 
         string accountId = string.IsNullOrEmpty(subject) ? $"guest:{slot}" : subject;

@@ -647,6 +647,38 @@ its own movement, each remote player from its *replicated* position / `VerticalV
 client-cosmetic - the clip is chosen from already-known state, so there are **no netcode changes** and the
 server stays authoritative on position only.
 
+**Driving one per networked player** (`ReplicatedCharacterAnimators`, since 7.65.0). Rather than wiring a brain
+per entity by hand, hand the set a factory (or a shared skeleton + clip map) and feed it one position sample
+per visible entity each frame. It creates a brain on a new id, drops one whose id is gone (no leak on
+disconnect), derives planar speed / vertical velocity / facing from the position deltas (the one signal every
+netcode surfaces for every entity), and returns draw-ready transforms + bone palettes:
+
+```csharp
+// One brain per entity, off the shared (immutable) skeleton + clip map (applies the tuning's thresholds/crossfade).
+var animators = new ReplicatedCharacterAnimators(skeleton, clips, CharacterAnimatorTuning.Default);
+// ...or full control per brain: new ReplicatedCharacterAnimators(() => new AnimatedCharacter(skeleton, clips), tuning);
+
+// Each frame: map the netcode's render states to engine-neutral samples (keeps Game.Render3D off NetWorld).
+var samples = new List<CharacterSample>();
+foreach (EntityRenderState e in client.Snapshot())
+{
+    samples.Add(e.IsLocal
+        // Local player: feed exact grounded + vertical velocity (WorldClient surfaces them, since 7.65.0).
+        ? new CharacterSample(e.Id.Value, e.Position, isLocal: true, client.LocalGrounded, client.LocalVerticalVelocity)
+        // Remote: position only - speed / air state / facing are derived from the position delta.
+        : new CharacterSample(e.Id.Value, e.Position));
+}
+animators.Update(samples, dt);
+
+// Draw: World already places + faces + scales the avatar (Scale + FacingYawOffset live on the tuning).
+foreach (CharacterPose p in animators.Live)
+    scene.DrawSkinned(handle, p.Pose, p.World, p.IsLocal ? Color.White : Color.LightGray);
+```
+
+The set is render-free and headless-testable (owns no GPU handle, never calls `Scene3D`). Facing assumes the
+asset's rest pose looks down +Z; set `CharacterAnimatorTuning.FacingYawOffset` if yours does not. A
+`CharacterPose.Pose` is the brain's own buffer reused each frame - draw it this frame, do not retain it.
+
 **Lower-level pieces** (if you are not using `AnimatedCharacter`): `AnimationSampler.SampleToBonePalette(clip,
 skeleton, time)` is a one-shot pose; `AnimationPlayer` holds a playhead, loops, and crossfades
 (`Play(clip, crossfade)` then `Update(dt)` then `GetBonePalette(buffer)`). `JointPose` is the TRS unit clips

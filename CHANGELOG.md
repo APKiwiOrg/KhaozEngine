@@ -5,6 +5,30 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.65.0
+
+Position-driven replicated character animators: drive one `AnimatedCharacter` per networked player (local AND every
+remote) from the world positions the netcode already surfaces, with locomotion (idle/walk/run/jump/fall) and facing
+derived per entity. The reusable glue that was missing for an animated-avatar overworld; the rigged glTF asset stays
+game content.
+
+- Game.Render3D: `ReplicatedCharacterAnimators` owns one `AnimatedCharacter` per entity and turns a per-frame stream
+  of position samples into draw-ready poses + transforms. New public API: `CharacterSample` (engine-neutral per-entity
+  input - position-only, or position + exact movement; no netcode type, so the package keeps its layering and stays
+  usable by non-NetWorld games), `CharacterPose` (the per-character output: `World` = `scale * RotationY(facingYaw) *
+  Translation`, the bone `Pose`, the `LocomotionState`, `IsLocal`), `CharacterAnimatorTuning` (`Locomotion`/`Crossfade`
+  applied to brains the set constructs + `YawSmoothing`/`MinPlanarSpeedForFacing`/`GroundedVerticalEpsilon`/`Scale`/
+  `FacingYawOffset`), and `ReplicatedCharacterAnimators` itself (a `Func<AnimatedCharacter>` factory ctor + a
+  convenience skeleton-plus-clips ctor). `Update(samples, dt)`: lifecycle (create on a new id, drop on an absent one,
+  no leak on disconnect), derives planar speed / vertical velocity / facing from the position delta (exact grounded +
+  vertical velocity used instead when a sample carries them), reuses `LocomotionStateMachine` for the clip, holds yaw
+  below the facing threshold. Owns no GPU handle and never calls `Scene3D` - iterate `Live` and `DrawSkinned` yourself
+  - so it is fully headless-testable. Client-cosmetic: no netcode/server changes, the server stays authoritative on
+  position.
+- NetWorld: `WorldClient` gains read-only `LocalRenderState` (the predicted `PlayerMoveState`), `LocalGrounded`, and
+  `LocalVerticalVelocity` so a consumer can fill `CharacterSample`'s exact-movement fields for the local avatar
+  instead of finite-differencing its position. Additive, no wire change.
+
 ## 7.64.0
 
 Terrain PBR splat-textured materials: the terrain now renders five tileable PBR layers (grass/dirt/rock/sand/snow)

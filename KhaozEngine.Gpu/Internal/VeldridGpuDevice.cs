@@ -134,9 +134,18 @@ namespace KhaozEngine.Gpu.Internal
 
         public IGpuSampler CreateSampler(in GpuSamplerDescription d)
         {
+            // Anisotropic requires device support; fall back to trilinear so the splat-terrain sampler still
+            // runs on a backend that lacks it (the path degrades, it does not break).
+            var filter = d.Filter;
+            uint maxAniso = d.MaximumAnisotropy;
+            if (filter == GpuSamplerFilter.Anisotropic && !GraphicsDevice.Features.SamplerAnisotropy)
+            {
+                filter = GpuSamplerFilter.MinLinearMagLinearMipLinear;
+                maxAniso = 0;
+            }
             var desc = new SamplerDescription(
                 VeldridMap.ToVeldrid(d.AddressModeU), VeldridMap.ToVeldrid(d.AddressModeV), VeldridMap.ToVeldrid(d.AddressModeW),
-                VeldridMap.ToVeldrid(d.Filter), null, 0, 0, uint.MaxValue, 0, SamplerBorderColor.TransparentBlack);
+                VeldridMap.ToVeldrid(filter), null, maxAniso, 0, uint.MaxValue, 0, SamplerBorderColor.TransparentBlack);
             return new VeldridGpuSampler(GraphicsDevice.ResourceFactory.CreateSampler(desc));
         }
 

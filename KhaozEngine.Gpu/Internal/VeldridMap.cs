@@ -162,6 +162,7 @@ namespace KhaozEngine.Gpu.Internal
         {
             GpuSamplerFilter.MinPointMagPointMipPoint => SamplerFilter.MinPoint_MagPoint_MipPoint,
             GpuSamplerFilter.MinLinearMagLinearMipLinear => SamplerFilter.MinLinear_MagLinear_MipLinear,
+            GpuSamplerFilter.Anisotropic => SamplerFilter.Anisotropic,
             _ => throw new ArgumentOutOfRangeException(nameof(f), f, "Unmapped GpuSamplerFilter"),
         };
 

@@ -147,5 +147,11 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(d.DepthTestEnabled);
             Assert.False(d.DepthWriteEnabled);
         }
+
+        [Fact]
+        public void AnisotropicFilterMapsToVeldrid()
+        {
+            Assert.Equal(SamplerFilter.Anisotropic, VeldridMap.ToVeldrid(GpuSamplerFilter.Anisotropic));
+        }
     }
 }

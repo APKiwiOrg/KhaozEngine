@@ -60,13 +60,18 @@ namespace KhaozEngine.Gpu
         public GpuSamplerAddress AddressModeW { get; }
         /// <summary>Min/mag/mip filtering.</summary>
         public GpuSamplerFilter Filter { get; }
+        /// <summary>Max anisotropy when <see cref="Filter"/> is <see cref="GpuSamplerFilter.Anisotropic"/>
+        /// (ignored otherwise). 0 keeps the historical behaviour.</summary>
+        public uint MaximumAnisotropy { get; }
 
         public GpuSamplerDescription(GpuSamplerFilter filter,
             GpuSamplerAddress addressU = GpuSamplerAddress.Clamp,
             GpuSamplerAddress addressV = GpuSamplerAddress.Clamp,
-            GpuSamplerAddress addressW = GpuSamplerAddress.Clamp)
+            GpuSamplerAddress addressW = GpuSamplerAddress.Clamp,
+            uint maximumAnisotropy = 0)
         {
             Filter = filter; AddressModeU = addressU; AddressModeV = addressV; AddressModeW = addressW;
+            MaximumAnisotropy = maximumAnisotropy;
         }
 
         /// <summary>Point (nearest) sampler clamped on all axes.</summary>

@@ -5,6 +5,18 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.65.1
+
+Terrain PBR splat materials render correctly on Metal (shipped broken in 7.64.0, which rendered the textured ground
+~black). The 7.64.0 splat pipeline bound a SECOND uniform buffer (per-material params) alongside the frame UBO;
+Veldrid/SPIRV-Cross on Metal mis-binds a second uniform buffer (it reads the first buffer's bytes), so the per-layer
+tint read garbage and the albedo zeroed out (black ground, smeared to flat red/green under the night lights). The
+params now ride in the SINGLE frame UBO (appended after the point-light arrays, re-synced per material each frame via
+a splat-specific vertex shader), matching the model pass's proven one-UBO + textures + sampler shape. No public API
+change. Adds an on-device regression test that renders a textured chunk and asserts the ground is lit + multi-channel,
+not the black/primary output (the original test only checked it rendered without throwing, which is how the bug
+shipped).
+
 ## 7.65.0
 
 Position-driven replicated character animators: drive one `AnimatedCharacter` per networked player (local AND every

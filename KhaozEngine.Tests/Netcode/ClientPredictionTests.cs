@@ -160,6 +160,28 @@ public class ClientPredictionTests
     }
 
     [Fact]
+    public void Reseed_reseeds_state_but_keeps_the_seq_monotonic_and_keeps_pending()
+    {
+        // The reconnect path. After a mid-session reconnect the predicted state must jump to the authoritative
+        // basis, but the sequence counter must NOT rewind the way Reset rewinds it: the fresh server has already
+        // advanced its ack from the commands sent in the join gap, so the next command has to stay ahead of that
+        // ack (continue at the high seq), not collide at 0 and be rejected as stale.
+        var p = NewPrediction();
+        p.Predict(new Vector2(60f, 0f)); // seq 0, X = 1
+        p.Predict(new Vector2(60f, 0f)); // seq 1, X = 2
+        p.Predict(new Vector2(60f, 0f)); // seq 2, X = 3 ; nextSeq now 3
+
+        p.Reseed(new FakeState(new Vector2(99f, 0f)));
+        Assert.Equal(99f, p.PredictedState.Position.X, 3);   // state re-seeded to the basis
+        Assert.Equal(3, p.Predict(new Vector2(0f, 0f)));     // seq continues at 3 (Reset would restart it at 0)
+
+        // Pending was kept (not cleared): a reconcile with nothing acked replays the retained commands on top of
+        // the basis. Basis 0, replay seqs 0..3 (1 + 1 + 1 + 0 units) -> X = 3 (Reset-then-replay would give 0).
+        p.Reconcile(1, new FakeState(Vector2.Zero), lastAcknowledgedSeq: -1);
+        Assert.Equal(3f, p.PredictedState.Position.X, 3);
+    }
+
+    [Fact]
     public void RenderedState_eases_between_ticks_so_it_stays_smooth_above_the_tick_rate()
     {
         var p = NewPrediction();

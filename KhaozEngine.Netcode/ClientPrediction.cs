@@ -78,6 +78,30 @@ public sealed class ClientPrediction<TState, TCommand>
         nextSeq = 0;
     }
 
+    /// <summary>
+    /// Re-seeds the predicted state onto <paramref name="basis"/> after a mid-session RECONNECT, WITHOUT resetting
+    /// the command sequence counter. Unlike <see cref="Reset"/>, this keeps <c>nextSeq</c> monotonic across the
+    /// reconnect: a fresh server starts its per-connection acknowledgement watermark at -1, but the client kept
+    /// sending commands (with the continuing high seq) in the gap between the new session joining and its first
+    /// snapshot, so that watermark has already advanced to a high value. Zeroing the counter (as <see cref="Reset"/>
+    /// does) would make every post-reconnect command land at or below that watermark, the server would reject them
+    /// all as stale, and the player would be pinned at the authoritative position forever. Pending commands are
+    /// kept on purpose: the very next <see cref="Reconcile"/> drops the ones the new server has acknowledged and
+    /// replays the rest on top of <paramref name="basis"/>, so the local avatar snaps cleanly to the reconnect
+    /// position with no render glide and no lost input.
+    /// </summary>
+    public void Reseed(in TState basis)
+    {
+        predictedState = basis;
+        previousPredictedPosition = basis.Position;
+        previousPredictedVertical = basis.Vertical;
+        secondsSinceLastPredict = settings.TickSeconds; // start fully on the current state (frac = 1)
+        renderOffset = Vector2.Zero;
+        verticalRenderOffset = 0f;
+        // nextSeq intentionally preserved (monotonic across the reconnect); pendingCommands intentionally kept
+        // (the following Reconcile drops acked / replays unacked against the new server's ack).
+    }
+
     /// <summary>Predicts one command forward and retains it for reconciliation. Returns its seq.</summary>
     public int Predict(in TCommand command)
     {

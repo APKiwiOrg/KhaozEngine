@@ -55,6 +55,11 @@ public sealed class WorldClient : IDisposable
     private ClientReplicationView view;
     private readonly ClientPrediction<PlayerMoveState, MoveCommand> prediction;
     private int authoritativeTick;
+    // True once prediction has been seeded by the first snapshot of the whole session. Distinguishes the genuine
+    // initial connect (seed from seq 0) from the first snapshot of a RECONNECT (re-seed but keep the command seq
+    // counter monotonic - see ClientPrediction.Reseed). Never reset by StartAttempt, so every post-reconnect first
+    // snapshot takes the reconnect path.
+    private bool seededPredictionOnce;
     private WorldConnectionState state = WorldConnectionState.Connecting;
     private DisconnectReason disconnectReason = DisconnectReason.None;
     private string disconnectReasonDetail = string.Empty;
@@ -471,7 +476,16 @@ public sealed class WorldClient : IDisposable
             // (MovementState) - so prediction replay reproduces the jump/fall, not just the XZ plane.
             world.TryGet(local, out MovementState ms);           // default (grounded, 0) until first replicated
             PlayerMoveState basis = PlayerMoveState.From(p.Value, ms);
-            if (first) prediction.Reset(basis);                  // seed prediction at the authoritative spawn
+            if (first)
+            {
+                // First snapshot of the genuine initial connect: seed prediction at the authoritative spawn from
+                // seq 0 (client + server both start fresh). First snapshot of a RECONNECT (we have seeded before):
+                // re-seed the predicted state but keep the seq counter monotonic - the fresh server already advanced
+                // its ack from the commands sent in the join gap, so zeroing the seq would get every post-reconnect
+                // command rejected as stale and pin the avatar forever.
+                if (seededPredictionOnce) prediction.Reseed(basis);
+                else { prediction.Reset(basis); seededPredictionOnce = true; }
+            }
             ReconciliationResult rr = prediction.Reconcile(authoritativeTick++, basis, ackSeq);
             RecordCorrection(rr.PositionError);                  // NetStats: predicted-vs-authoritative delta (m)
         }

@@ -44,6 +44,13 @@ Draw(prediction.RenderedState);
 
 Tune via `PredictionSettings` (tick rate, buffer cap, hard-snap distance, correction rate, dead-zone).
 
+On a mid-session **reconnect**, call `Reseed(basis)` (not `Reset`) when the first post-reconnect snapshot lands.
+It re-seeds the predicted state to the authoritative basis but keeps the command sequence counter **monotonic**:
+the fresh server has already advanced its per-connection ack from the commands sent in the join gap, so a `Reset`
+back to seq 0 would make every subsequent command land at or below that ack and be rejected as stale (the player
+freezes). `Reset` is only for the genuine initial connect. `Reconcile` then prunes acked / replays unacked from
+the retained pending buffer.
+
 ## RemoteCommandQueue&lt;TCommand&gt;
 
 Host-side per-slot, seq-ordered command queue. Dedups retransmits and negative seqs, returns a neutral

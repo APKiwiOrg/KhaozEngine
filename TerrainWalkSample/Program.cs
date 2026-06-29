@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
-using KhaozEngine.Collision;
 using KhaozEngine.Game;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
@@ -40,7 +39,7 @@ sealed class TerrainWalkApp : GameApp3D
 
     // Animated character (replaces the static capsule). The Quaternius Universal CC0 rig is skinned-ingested so its animation
     // channels survive; AnimatedCharacter drives idle/walk/run/jump/fall off the same movement state the controller
-    // computes. Falls back to the greybox capsule if the asset fails to load.
+    // computes. Falls back to the greybox capsule if the asset is missing/unreadable.
     SkinnedMeshHandle _characterMesh;
     AnimatedCharacter _animChar = null!;
     bool _animated;
@@ -58,11 +57,6 @@ sealed class TerrainWalkApp : GameApp3D
     CharacterController3D _character = null!;
     FollowCamera3D _camera = null!;
     FollowCameraController _camController = null!;
-
-    // Static-world collision: the nearby scattered props (+ a hand-placed platform) are solid.
-    WorldColliders _colliders = null!;
-    // Walkable surfaces: rocks + a hand-placed platform you can jump onto and walk across the top of.
-    WorldSurfaces _surfaces = null!;
 
     // Bounded mode: enclose the clearing in a RimFeature mountain wall and wire the slope gate so the rim
     // can't be climbed (the player is held inside; the +Z pass is the one way out).
@@ -120,52 +114,27 @@ sealed class TerrainWalkApp : GameApp3D
         sc.CameraOverride = _camera;
 
         // Load the committed CC0 prop kit through the asset pipeline (decompressed glTF -> normalized to its
-        // manifest heightMeters with the origin dropped to the base), one uploaded mesh per id. Each prop's
-        // collision footprint is derived from its actual mesh (PropFootprint): a tree's trunk slice, a rock's full
-        // footprint - so colliders are correctly sized with no hand-authored radii (an explicit manifest collider
-        // would still win).
+        // manifest heightMeters with the origin dropped to the base), one uploaded mesh per id. Prop collision
+        // footprints are derived from the actual mesh geometry (PropFootprint) - explicit manifest entries still
+        // win, but for most props this gives correct sizing automatically.
         string manifestPath = Path.Combine(AppContext.BaseDirectory, "assets", "props", "props.manifest.json");
         AssetManifest manifest = AssetManifest.Load(manifestPath);
-        var colliderShapes = new Dictionary<string, ColliderShape>();
         foreach (AssetEntry entry in manifest.Props)
         {
             GltfMesh mesh = PropLoader.LoadProp(entry);
             _propMeshes[entry.Id] = sc.LoadMesh(mesh);
-            colliderShapes[entry.Id] = entry.Collider ?? PropFootprint.Derive(mesh);
         }
-        // Baked walkable-surface heightmaps (rocks); trees have none (thin blockers). Render-free read.
-        IReadOnlyDictionary<string, PropSurface> surfaceShapes = PropSurfaceLoader.LoadAll(manifest);
 
-        // Static-world collision + walkable surfaces, from the SAME deterministic scatter the streamer renders (so
-        // they line up with the visible props), over a fixed ring around spawn (streaming both is a later piece).
-        // Rocks get a top-surface (jump onto + walk the top) AND a height-aware collider (their top from the baked
-        // surface, so the sides block + slide while standing on top is supported); trees stay thin trunk-blockers.
-        // A hand-placed jumpable platform (1 m) sits in the clearing so the building-roof path is demonstrable.
-        var colliderArea = new RectArea(-120f, -120f, 120f, 120f);
-        IReadOnlyList<PropPlacement> colliderPlacements = PropScatter.Generate(_field, ScatterConfig.ForestRing(), colliderArea);
-
+        // A hand-placed visible platform box in the clearing so there is something to look at.
         const float platformHeight = 1.0f;
         var platformCenter = new Vector2(0f, 12f);
         var platformHalf = new Vector2(3f, 2.5f);
         float platformBaseY = _terrain.GroundHeight(platformCenter.X, platformCenter.Y);
-        var platformCollider = WorldCollider.Box(platformCenter, platformHalf, yaw: 0f, top: platformBaseY + platformHeight);
-        var platformSurface = new WorldSurface(FlatSurface(platformHalf, platformHeight), platformCenter, scale: 1f, yaw: 0f, baseY: platformBaseY);
-        // Visible platform box so the jump-onto target is not invisible (spans baseY..baseY+height over the footprint).
         _platformMesh = sc.LoadMesh(MeshPrimitives.Box(1f));
         _platformXform = Matrix4x4.CreateScale(2f * platformHalf.X, platformHeight, 2f * platformHalf.Y)
                          * Matrix4x4.CreateTranslation(platformCenter.X, platformBaseY + platformHeight * 0.5f, platformCenter.Y);
 
-        _colliders = PropColliders.FromScatter(
-            colliderPlacements,
-            id => colliderShapes.TryGetValue(id, out ColliderShape s) ? s : (ColliderShape?)null,
-            topForId: id => surfaceShapes.TryGetValue(id, out PropSurface s) ? s.MaxHeight : float.PositiveInfinity,
-            obstacles: new[] { platformCollider });
-        _surfaces = PropSurfaces.FromScatter(
-            colliderPlacements,
-            id => surfaceShapes.TryGetValue(id, out PropSurface s) ? s : null,
-            obstacles: new[] { platformSurface });
-        Console.WriteLine($"Static collision + surfaces: {_colliders.Count} colliders, {_surfaces.Count} walkable surfaces. " +
-                          "Jump (Space) onto a rock or the platform (12 m, +Z) and walk across its top; trees block you.");
+        Console.WriteLine("Static-world physics not yet wired (IPhysicsWorld adoption in progress). Terrain-only collision active.");
 
         // Endless streamed world: the sink builds chunk meshes + deterministic per-chunk props (same coordinate-hash
         // scatter as before, now over every chunk's area), the streamer keeps a ring of them loaded around the player
@@ -210,7 +179,7 @@ sealed class TerrainWalkApp : GameApp3D
         if (Input.WasPressed(Key.H)) { post.OutlineNormalThreshold = MathF.Min(2f, post.OutlineNormalThreshold + 0.05f); Console.WriteLine($"[post] OutlineNormalThreshold = {post.OutlineNormalThreshold:0.00}"); }
         if (Input.WasPressed(Key.G)) { post.OutlineNormalThreshold = MathF.Max(0f, post.OutlineNormalThreshold - 0.05f); Console.WriteLine($"[post] OutlineNormalThreshold = {post.OutlineNormalThreshold:0.00}"); }
 
-        _character.Update(Input, dt, _camera.Yaw, _terrain.GroundHeight, _terrain.GroundNormal, _colliders, _surfaces);   // slope gate on; props solid; rocks/platform standable (jump onto, walk the top)
+        _character.Update(Input, dt, _camera.Yaw, _terrain.GroundHeight, _terrain.GroundNormal);   // slope gate on; prop physics not yet wired
 
         // Animate the character off the same movement state: horizontal speed from the XZ position delta over dt
         // (so it reflects collision-clamped motion, not just input), facing turned toward the move direction, and
@@ -238,7 +207,7 @@ sealed class TerrainWalkApp : GameApp3D
         // Streamed terrain + props: the sink draws every loaded chunk mesh and its in-range props.
         _chunkSink.Draw(_character.Position);
 
-        // The hand-placed jumpable platform (a solid box with a walkable roof).
+        // The hand-placed visible platform.
         scene.Draw(_platformMesh, _platformXform, new Color(0.62f, 0.6f, 0.66f, 1f));
 
         // Draw the character so its feet sit on the ground (Position is the capsule centre; feet = centre - half).
@@ -301,17 +270,5 @@ sealed class TerrainWalkApp : GameApp3D
         float min = float.MaxValue, max = float.MinValue;
         foreach (SkinnedVertex v in mesh.Vertices) { min = MathF.Min(min, v.Position.Y); max = MathF.Max(max, v.Position.Y); }
         return max - min;
-    }
-
-    // A flat (constant-height) unit PropSurface covering [-half.X, half.X] x [-half.Y, half.Y] at the given height
-    // (a building roof / platform top). Cell ~0.5 m.
-    static PropSurface FlatSurface(Vector2 half, float height)
-    {
-        const float cell = 0.5f;
-        int w = (int)MathF.Ceiling(2f * half.X / cell) + 1;
-        int h = (int)MathF.Ceiling(2f * half.Y / cell) + 1;
-        var heights = new float[w * h];
-        for (int k = 0; k < heights.Length; k++) heights[k] = height;
-        return new PropSurface(w, h, cell, -half.X, -half.Y, heights);
     }
 }

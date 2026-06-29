@@ -2220,6 +2220,77 @@ using var store = new SqlServerWorldStore(
 Out of scope here (later sub-projects): per-cell / world-snapshot persistence (pairs with multi-cell sharding),
 record-schema migrations, and accounts/auth.
 
+### Reconnect + server notices (`KhaozEngine.NetWorld` 8.2.0)
+
+**Auto-reconnect client.** Use the factory ctor so `WorldClient` owns the transport lifecycle and reconnects automatically on drop:
+
+```csharp
+using var client = new WorldClient(
+    connect: () => new LiteNetLibClientTransport("127.0.0.1", 9000),
+    groundHeight: terrain.SampleHeight,
+    tuning: MoveTuning.Default,
+    token: myAccountTokenBytes);     // stable identity - used on every reconnect attempt
+
+client.ConnectionStateChanged += (_, state) =>
+{
+    if (state == ConnectionState.Reconnecting)
+        ShowReconnectingUI(client.ReconnectAttempt, client.SecondsUntilNextRetry);
+    else if (state == ConnectionState.Connected)
+        HideReconnectingUI();
+    else if (state == ConnectionState.Disconnected)
+        ShowDisconnectedUI(client.DisconnectReason, client.DisconnectReasonDetail);
+};
+```
+
+Pass real frame dt to `Poll` so the timeout and reconnect timers advance:
+
+```csharp
+// per frame:
+client.Poll(dt);          // dt = 0 pumps the net only (no timeout/reconnect); pass real frame seconds normally
+client.AdvancePresentation(dt);
+EntityRenderState[] snapshot = client.Snapshot();
+```
+
+`ConnectionState` values: `Connecting` (initial handshake), `Connected` (in-session), `Reconnecting` (between drop and re-join), `Disconnected` (terminal - bad token or explicit give-up). `DisconnectReason` values: `None`, `RejectedToken`, `Unreachable`, `ServerShutdown`, `Timeout`. The single-transport ctor `WorldClient(INetTransport, ...)` is unchanged (no reconnect, `IDisposable` is a no-op).
+
+**Server notices.** Broadcast a typed notice to every connected client:
+
+```csharp
+// on the server (WorldServer or ShardedWorldServer):
+server.BroadcastNotice(new ServerNotice(
+    ServerNoticeKind.Maintenance,
+    message: "Server restarting in 60 seconds",
+    secondsUntil: 60f));
+
+// on the client:
+client.NoticeReceived += (_, notice) =>
+    ShowNotice(notice.Kind, notice.Message, notice.SecondsUntil);
+// or poll the latest:
+if (client.LastNotice is { } n) ShowBanner(n.Message);
+```
+
+`ServerNoticeKind` values: `Custom`, `Maintenance`, `Shutdown`.
+
+**Graceful drain (server shutdown).** Call `BeginDrain`, tick until complete, flush persistence, then dispose:
+
+```csharp
+// signal all clients (broadcasts the notice, starts the tick-driven countdown):
+server.BeginDrain(new ServerNotice(ServerNoticeKind.Shutdown, "Server shutting down", secondsUntil: 5f),
+    graceSeconds: 5f);
+
+// in the server loop (or a short spin after the loop):
+while (!server.IsDrainComplete)
+{
+    server.Poll();
+    server.Tick(dt);
+    persistence.Update(dt);
+}
+await persistence.FlushAsync();
+// dispose server / transport
+```
+
+`IsDraining` is true once `BeginDrain` has been called; `IsDrainComplete` flips when the grace period has elapsed and all clients have been disconnected. The drain is tick-driven (no wall-clock sleep); the host controls how fast ticks run.
+
 ### World cell grid (`KhaozEngine.Sharding`)
 
 Partition a seamless world into a uniform grid of authoritative **cells** and run them in one process. A

@@ -285,6 +285,17 @@ version/release work.
     (`IsPackable=false`): `NetworkedWalkServer` (headless,
     multi-cell `ShardedWorldServer`, persists via `SqliteWorldStore`) + `NetworkedWalkSample` (windowed `--connect`
     client, sends a stable account token).
+    8.2.0 additive: `WorldClient` exposes a live `ConnectionState` machine (Connecting/Connected/Reconnecting/Disconnected)
+    + `ConnectionStateChanged` + `DisconnectReason`/`DisconnectReasonDetail` (RejectedToken/Unreachable/ServerShutdown/Timeout);
+    a factory ctor `WorldClient(Func<INetTransport> connect, ...)` adds auto-reconnect with `ReconnectBackoff` and
+    `ReconnectAttempt`/`SecondsUntilNextRetry` for a "reconnecting..." UI (`WorldClient` is now `IDisposable`);
+    `Poll(float dt = 0f)` (dt 0 = net-only, no health timers; pass real dt for timeout/reconnect detection);
+    server->client notice channel: `ServerNotice { Kind, Message, SecondsUntil, Payload }` / `ServerNoticeKind`
+    (Custom/Maintenance/Shutdown), `WorldServer.BroadcastNotice` + `ShardedWorldServer.BroadcastNotice`, surfaced on
+    `WorldClient.NoticeReceived` + `LastNotice`; graceful drain: `BeginDrain(notice, graceSeconds)` /
+    `IsDraining` / `IsDrainComplete` on both servers (tick-driven; host calls `WorldPersistence.FlushAsync()` then
+    disposes the transport on completion); wire: 1-byte `ServerFrameKind` envelope on the server->client Data stream
+    (snapshot vs notice, internal protocol only).
     Networked-overworld render-scale sub-project (`docs/superpowers/specs/2026-06-27-networked-overworld-design.md`);
     persistence sub-project (`docs/superpowers/specs/2026-06-27-persistent-worldstore-design.md`); multi-cell sharding
     sub-project 6b (`docs/superpowers/specs/2026-06-27-multicell-sharding-design.md`).

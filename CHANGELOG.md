@@ -5,6 +5,16 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 8.3.0
+
+Mid-session reconnect + a server->client notice channel in NetWorld, so a client survives a server restart gracefully.
+
+- `WorldClient` now exposes a live connection state machine (`ConnectionState`: Connecting / Connected / Reconnecting / Disconnected, with `ConnectionStateChanged`), a disconnect reason (`DisconnectReason`: None / RejectedToken / Unreachable / ServerShutdown / Timeout, plus `DisconnectReasonDetail`), and a fast mid-session disconnect detector (transport drop, or `WorldClientConfig.DisconnectTimeoutSeconds` of no snapshots, default 3s). `Joined` is now `ConnectionState == Connected`. The previously swallowed `Rejected` session event is surfaced as `RejectedToken` + detail.
+- New `WorldClient(Func<INetTransport> connect, ...)` ctor adds auto-reconnect with backoff (`WorldClientConfig.AutoReconnect`, default true when a factory is supplied; `ReconnectBackoff`; `RetryOnReject`). It rebuilds the transport + session resuming the same connect token, keeps the prediction object, and rebuilds the replication view so the local avatar re-syncs to the authoritative (persistence-restored) state with no duplicate or desync. `ReconnectAttempt` + `SecondsUntilNextRetry` drive a "reconnecting..." UI. `WorldClient` is now `IDisposable` (it owns the transports the factory builds). The existing `WorldClient(INetTransport, ...)` ctor is unchanged (single-shot, no reconnect).
+- `WorldClient.Poll()` is now `Poll(float dt = 0f)`; existing `Poll()` calls are unchanged (dt 0 pumps the net but freezes the health timers). Reconnect/timeout detection needs the consumer to pass real frame dt.
+- Server->client notices: `ServerNotice { Kind, Message, SecondsUntil, Payload }` (`ServerNoticeKind` Custom / Maintenance / Shutdown), `WorldServer.BroadcastNotice` + `ShardedWorldServer.BroadcastNotice`, surfaced on `WorldClient.NoticeReceived` + `LastNotice`. Graceful drain: `BeginDrain(notice, graceSeconds)` + `IsDraining` / `IsDrainComplete` on both servers (tick-driven, no wall clock); the host flushes `WorldPersistence.FlushAsync()` then disposes the transport on completion.
+- Wire note: the server->client Data stream now carries a 1-byte `ServerFrameKind` envelope (snapshot vs notice). Internal protocol only (server + client ship from the same engine version); no public-API break.
+
 ## 8.2.0
 
 Additive: a reusable diagnostics/telemetry overlay banner - an F1-toggled corner HUD widget, a frame-time meter, a JSON-Lines session recorder, and a client network-stats seam. Drives Ruinborne's alpha telemetry HUD; every game gets the same pieces. No breaking changes; the new `INetTransport.Stats` is a default interface method so existing transports are untouched. The shared `ClientNetStats` snapshot lives in `KhaozEngine.Diagnostics` (the low telemetry leaf) so the Gui overlay can name it without `KhaozEngine.Gui` taking a dependency on the server/netcode stack; `KhaozEngine.Gui` and `KhaozEngine.NetWorld` each gain a cheap project reference to `KhaozEngine.Diagnostics`.

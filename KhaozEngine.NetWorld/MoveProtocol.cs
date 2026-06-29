@@ -164,4 +164,100 @@ public static class MoveProtocol
         snapshot = Array.Empty<byte>();
         return false;
     }
+
+    /// <summary>Upper bound on a <see cref="ServerNotice.Message"/>'s UTF-8 encoding, in bytes. Truncated on write
+    /// (at a char boundary) and clamped on read, so a corrupt length can neither over-allocate nor desync.</summary>
+    public const int MaxNoticeMessageBytes = 256;
+
+    /// <summary>Upper bound on a <see cref="ServerNotice.Payload"/>, in bytes (same hostile-safe contract).</summary>
+    public const int MaxNoticePayloadBytes = 512;
+
+    // Notice: [kind:byte][flags:byte][secondsUntil:float?][msgLen:ushort][msg utf8][payloadLen:ushort][payload].
+    // flags bit0 = secondsUntil present. Lengths are capped on write and clamped on read.
+    private const byte NoticeFlagHasSeconds = 0x01;
+
+    /// <summary>Encodes a <see cref="ServerNotice"/>. Message + payload are capped at their byte limits.</summary>
+    public static byte[] EncodeNotice(in ServerNotice notice)
+    {
+        using var ms = new System.IO.MemoryStream();
+        using var bw = new System.IO.BinaryWriter(ms);
+        bw.Write((byte)notice.Kind);
+        byte flags = notice.SecondsUntil.HasValue ? NoticeFlagHasSeconds : (byte)0;
+        bw.Write(flags);
+        if (notice.SecondsUntil.HasValue) bw.Write(notice.SecondsUntil.Value);
+        WriteCapped(bw, Encoding.UTF8.GetBytes(notice.Message ?? string.Empty), MaxNoticeMessageBytes, utf8Boundary: true);
+        WriteCapped(bw, notice.Payload ?? Array.Empty<byte>(), MaxNoticePayloadBytes, utf8Boundary: false);
+        bw.Flush();
+        return ms.ToArray();
+    }
+
+    /// <summary>Best-effort decode of a notice frame. Never throws: a short/corrupt buffer yields a safe default
+    /// (Custom, empty message, no seconds, empty payload), and declared lengths are clamped before allocating.</summary>
+    public static ServerNotice DecodeNotice(ReadOnlySpan<byte> data)
+    {
+        if (data.Length < 2) return new ServerNotice(ServerNoticeKind.Custom, string.Empty);
+        int i = 0;
+        var kind = (ServerNoticeKind)data[i++];
+        byte flags = data[i++];
+        float? seconds = null;
+        if ((flags & NoticeFlagHasSeconds) != 0)
+        {
+            if (data.Length < i + 4) return new ServerNotice(kind, string.Empty);
+            seconds = BitConverter.ToSingle(data.Slice(i, 4));
+            i += 4;
+            if (!float.IsFinite(seconds.Value)) seconds = null;   // hostile-safe: drop a NaN/Inf countdown
+        }
+        string message = ReadCapped(data, ref i, MaxNoticeMessageBytes, out byte[] msgBytes)
+            ? Encoding.UTF8.GetString(msgBytes) : string.Empty;
+        byte[] payload = ReadCapped(data, ref i, MaxNoticePayloadBytes, out byte[] payloadBytes) ? payloadBytes : Array.Empty<byte>();
+        return new ServerNotice(kind, message, seconds, payload);
+    }
+
+    private static void WriteCapped(System.IO.BinaryWriter bw, byte[] bytes, int cap, bool utf8Boundary)
+    {
+        int len = Math.Min(bytes.Length, cap);
+        if (utf8Boundary)
+            while (len > 0 && len < bytes.Length && (bytes[len] & 0xC0) == 0x80) len--;  // do not split a codepoint
+        bw.Write((ushort)len);
+        bw.Write(bytes, 0, len);
+    }
+
+    private static bool ReadCapped(ReadOnlySpan<byte> data, ref int i, int cap, out byte[] bytes)
+    {
+        if (data.Length < i + 2) { bytes = Array.Empty<byte>(); return false; }
+        int declared = BitConverter.ToUInt16(data.Slice(i, 2));
+        i += 2;
+        int take = Math.Min(Math.Min(declared, cap), Math.Max(0, data.Length - i));
+        bytes = data.Slice(i, take).ToArray();
+        i += declared;   // advance by the declared length so a later field stays frame-aligned (clamped read above)
+        return true;
+    }
+
+    /// <summary>The kind of server-to-client frame riding the Data channel: a per-client snapshot, or an
+    /// out-of-band notice. The first byte of every server-to-client Data payload.</summary>
+    public enum ServerFrameKind : byte { Snapshot = 0, Notice = 1 }
+
+    /// <summary>Wraps a server-to-client payload with its 1-byte kind tag so snapshots and
+    /// notices share the Data channel. The receiver demuxes via <see cref="TryDecodeServerFrame"/>.</summary>
+    public static byte[] EncodeServerFrame(ServerFrameKind kind, ReadOnlySpan<byte> payload)
+    {
+        var b = new byte[1 + payload.Length];
+        b[0] = (byte)kind;
+        payload.CopyTo(b.AsSpan(1));
+        return b;
+    }
+
+    /// <summary>Splits a server frame into its kind and inner payload. False if empty.</summary>
+    public static bool TryDecodeServerFrame(ReadOnlySpan<byte> data, out ServerFrameKind kind, out byte[] payload)
+    {
+        if (data.Length >= 1)
+        {
+            kind = (ServerFrameKind)data[0];
+            payload = data.Slice(1).ToArray();
+            return true;
+        }
+        kind = ServerFrameKind.Snapshot;
+        payload = Array.Empty<byte>();
+        return false;
+    }
 }

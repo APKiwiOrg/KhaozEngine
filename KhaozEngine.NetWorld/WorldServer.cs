@@ -53,6 +53,7 @@ public sealed class WorldServer : IWorldPersistenceHost
     private readonly InterestGrid interest;
     private readonly RemoteCommandQueue<MoveCommand> commands = new(neutralCommand: default);
     private readonly PlayerMoveSimulator simulator;
+    private readonly DrainController drain = new();
 
     private readonly Dictionary<int, int> netIdBySlot = new();
     private readonly Dictionary<int, Entity> entityBySlot = new();
@@ -89,6 +90,31 @@ public sealed class WorldServer : IWorldPersistenceHost
     /// <summary>Disconnects a player's connection (a kick) - the policy seam a game's <see cref="OnSuspiciousActivity"/>
     /// handler calls. No-op for an unknown slot.</summary>
     public void Disconnect(int slot) => net.Disconnect(slot);
+
+    /// <summary>Broadcasts a <see cref="ServerNotice"/> to every connected client (reliable-ordered), surfaced on
+    /// <see cref="WorldClient.NoticeReceived"/>. Out-of-band: rides the Data channel alongside snapshots via the
+    /// frame envelope, so it never disturbs the movement stream.</summary>
+    public void BroadcastNotice(in ServerNotice notice)
+    {
+        byte[] envelope = MoveProtocol.EncodeServerFrame(MoveProtocol.ServerFrameKind.Notice, MoveProtocol.EncodeNotice(notice));
+        net.Broadcast(envelope, NetChannelReliability.ReliableOrdered);
+    }
+
+    /// <summary>True while a graceful drain is in progress (see <see cref="BeginDrain"/>).</summary>
+    public bool IsDraining => drain.IsDraining;
+
+    /// <summary>True once a graceful drain's grace period has elapsed. The host then flushes persistence
+    /// (<c>WorldPersistence.FlushAsync</c>) and disposes the transport to close the sockets.</summary>
+    public bool IsDrainComplete => drain.IsComplete;
+
+    /// <summary>Begins a graceful drain: broadcasts <paramref name="notice"/> now (warn players), then runs a
+    /// <paramref name="graceSeconds"/> countdown over <see cref="Tick"/> while still serving snapshots, so clients
+    /// see the warning. When <see cref="IsDrainComplete"/> flips, the host should flush persistence and close.</summary>
+    public void BeginDrain(in ServerNotice notice, float graceSeconds)
+    {
+        BroadcastNotice(notice);
+        drain.Begin(graceSeconds);
+    }
 
     /// <summary>The authoritative ECS world.</summary>
     public World World => world;
@@ -218,13 +244,15 @@ public sealed class WorldServer : IWorldPersistenceHost
             HashSet<int> set = interest.Query(p.X, p.Z, config.InterestRadius);
             byte[] snapshot = SnapshotWriter.WriteFiltered(world, registry, set);
             byte[] frame = MoveProtocol.EncodeSnapshotFrame(netId, lastAckBySlot[slot], snapshot);
-            net.SendTo(slot, frame, NetChannelReliability.ReliableOrdered);
+            byte[] envelope = MoveProtocol.EncodeServerFrame(MoveProtocol.ServerFrameKind.Snapshot, frame);
+            net.SendTo(slot, envelope, NetChannelReliability.ReliableOrdered);
         }
 
         // Clear the per-tick ECS change-tracking + event sets so they don't accumulate on a long-running server.
         // The authoritative path serves full AoI snapshots (SnapshotWriter.WriteFiltered), never the change sets,
         // so clearing here is safe; a consumer that reads them opts out via WorldServerConfig.AdvanceWorldTick.
         if (config.AdvanceWorldTick) world.AdvanceTick();
+        drain.Advance(dt);
     }
 
     private void OnJoin(int slot, string subject, string displayName)

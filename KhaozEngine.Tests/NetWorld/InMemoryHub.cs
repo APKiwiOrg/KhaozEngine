@@ -104,7 +104,13 @@ public sealed class InMemoryHub
 
         public ClientEndpoint(InMemoryHub hub, int connId) { this.hub = hub; this.connId = connId; }
 
-        public void MarkDisconnected() { disconnected = true; pending.Clear(); }
+        public void MarkDisconnected()
+        {
+            disconnected = true;
+            pending.Clear();
+            // Surface the drop to the NetClient so it emits a ClientSessionEvent.Disconnected.
+            inbox.Enqueue(NetEvent.Disconnected(ServerId));
+        }
 
         public void EnqueueFromServer(byte[] data, NetChannelReliability r)
         {

@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
 using KhaozEngine.Game;
+using KhaozEngine.Physics;
+using KhaozEngine.Physics.Bepu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using KhaozEngine.Terrain;
@@ -14,8 +16,10 @@ using KhaozEngine.Windowing;
 // ground-clamp; the world is STREAMED (TerrainStreamer loads/unloads chunks + their props in a
 // ring around the player, so walking any direction streams the world forever) and the character
 // idles/walks/runs and jumps/falls via AnimatedCharacter off the controller's movement state (it
-// falls back to a greybox capsule if the asset fails to load). Honors KE_MAX_FRAMES so a headless
-// smoke run renders N frames then exits 0.
+// falls back to a greybox capsule if the asset fails to load). Prop collision is active: each prop
+// mesh is baked to a PhysicsShape at startup (PropCollisionBake.Bake) and registered with a
+// BepuPhysicsWorld that the streamer adds/removes statics per chunk load/unload. Honors
+// KE_MAX_FRAMES so a headless smoke run renders N frames then exits 0.
 bool bounded = Array.Exists(args, a => a is "bounded" or "--bounded");
 Console.WriteLine(bounded
     ? "Bounded clearing - mountains ring the play area; ONE pass to the NORTH (+Z) is the way out. You can't climb the walls. WASD move | space jump | mouse-drag orbit | scroll zoom | shift run | Esc quit"
@@ -49,6 +53,11 @@ sealed class TerrainWalkApp : GameApp3D
 
     // One uploaded mesh per kit id; the streamer scatters per-chunk props from these on demand.
     readonly Dictionary<string, MeshHandle> _propMeshes = new();
+
+    // Physics world: one BepuPhysicsWorld instance shared by the chunk sink (adds/removes prop statics on
+    // stream load/unload) and CharacterController3D (resolves the capsule against those statics). Baked
+    // from the in-memory prop meshes at startup so no offline .coll files are required.
+    BepuPhysicsWorld _physicsWorld = null!;
 
     // Streams terrain chunks + props in a ring around the player so the world is effectively endless.
     TerrainStreamer _streamer = null!;
@@ -94,15 +103,38 @@ sealed class TerrainWalkApp : GameApp3D
         // 1.8 m greybox capsule (height 1.2 + 2*radius 0.6); mesh bottom sits at y=0 in local space.
         _capsule = sc.LoadMesh(MeshPrimitives.Capsule(radius: CapsuleRadius, height: 1.2f, segments: 16, rings: 6));
 
+        // --- Physics world setup ----------------------------------------------------------
+        // Build a BepuPhysicsWorld and bake each prop mesh to a PhysicsShape at startup.
+        // PropCollisionBake.Bake works from the already-normalized in-memory GltfMesh so no pre-baked
+        // .coll files are needed. The shapes dictionary is passed to Scene3DChunkSink; on each chunk
+        // load/unload the sink adds/removes the per-placement statics so the character collides against
+        // exactly the props in the currently-loaded ring.
+        _physicsWorld = new BepuPhysicsWorld();
+        var collisionShapes = new Dictionary<string, PhysicsShape>();
+
+        // Load the committed CC0 prop kit through the asset pipeline (decompressed glTF -> normalized to its
+        // manifest heightMeters with the origin dropped to the base), one uploaded mesh per id. Prop collision
+        // footprints are baked from the actual mesh geometry (PropCollisionBake).
+        string manifestPath = Path.Combine(AppContext.BaseDirectory, "assets", "props", "props.manifest.json");
+        AssetManifest manifest = AssetManifest.Load(manifestPath);
+        foreach (AssetEntry entry in manifest.Props)
+        {
+            GltfMesh mesh = PropLoader.LoadProp(entry);
+            _propMeshes[entry.Id] = sc.LoadMesh(mesh);
+            // Bake the collision shape from the same in-memory normalized mesh before it is uploaded.
+            collisionShapes[entry.Id] = PropCollisionBake.Bake(mesh);
+        }
+        Console.WriteLine($"Physics: baked {collisionShapes.Count} prop collision shapes.");
+
         // Character spawns on the ground at the origin. CapsuleRadius matches the visible greybox capsule so the
         // collision footprint lines up with what's drawn.
         _character = new CharacterController3D { CapsuleHalfHeight = CapsuleHalfHeight, CapsuleRadius = CapsuleRadius };
         _character.SetXZ(0f, 0f);
-        _character.Update(InputState.Empty, 0f, 0f, _terrain.GroundHeight, _terrain.GroundNormal);   // settle Y onto the ground (slope gate wired so cliffs aren't climbable)
+        _character.Update(InputState.Empty, 0f, 0f, _terrain.GroundHeight, _terrain.GroundNormal, _physicsWorld);
         _prevCharPos = _character.Position;
 
         // Animated character: skinned-ingest the committed Quaternius Universal CC0 rig (LoadSkinned + LoadAnimations
-        // preserve the rig + animation channels - NOT the flatten-prop path), map its clip names to the locomotion states, and
+        // preserve the rig + animation channels - NOT the flatten-prop path), map the clip names to the locomotion states, and
         // build an AnimatedCharacter. The capsule stays as a fallback if the asset is missing/unreadable.
         TryLoadAnimatedCharacter(sc);
 
@@ -113,18 +145,6 @@ sealed class TerrainWalkApp : GameApp3D
         _camController = new FollowCameraController(_camera);
         sc.CameraOverride = _camera;
 
-        // Load the committed CC0 prop kit through the asset pipeline (decompressed glTF -> normalized to its
-        // manifest heightMeters with the origin dropped to the base), one uploaded mesh per id. Prop collision
-        // footprints are derived from the actual mesh geometry (PropFootprint) - explicit manifest entries still
-        // win, but for most props this gives correct sizing automatically.
-        string manifestPath = Path.Combine(AppContext.BaseDirectory, "assets", "props", "props.manifest.json");
-        AssetManifest manifest = AssetManifest.Load(manifestPath);
-        foreach (AssetEntry entry in manifest.Props)
-        {
-            GltfMesh mesh = PropLoader.LoadProp(entry);
-            _propMeshes[entry.Id] = sc.LoadMesh(mesh);
-        }
-
         // A hand-placed visible platform box in the clearing so there is something to look at.
         const float platformHeight = 1.0f;
         var platformCenter = new Vector2(0f, 12f);
@@ -134,16 +154,17 @@ sealed class TerrainWalkApp : GameApp3D
         _platformXform = Matrix4x4.CreateScale(2f * platformHalf.X, platformHeight, 2f * platformHalf.Y)
                          * Matrix4x4.CreateTranslation(platformCenter.X, platformBaseY + platformHeight * 0.5f, platformCenter.Y);
 
-        Console.WriteLine("Static-world physics not yet wired (IPhysicsWorld adoption in progress). Terrain-only collision active.");
-
         // Endless streamed world: the sink builds chunk meshes + deterministic per-chunk props (same coordinate-hash
         // scatter as before, now over every chunk's area), the streamer keeps a ring of them loaded around the player
-        // within a per-frame budget. Prime the first ring before the first frame so the player spawns on solid ground.
+        // within a per-frame budget. The physics world and collision-shapes dictionary are threaded through so prop
+        // statics are added/removed as chunks stream. Prime the first ring before the first frame so the player
+        // spawns on solid ground.
         // Textured terrain (PBR splat). A procedural placeholder material so the sample needs no binary assets;
         // real games wire CC0 tileable albedo/normal per layer.
         var terrainMaterial = sc.LoadTerrainMaterial(TerrainMaterialPresets.Procedural());
         _chunkSink = new Scene3DChunkSink(sc, _field, ScatterConfig.ForestRing(), _propMeshes,
-            chunkSize: TerrainChunkRegion.DefaultSize, propDrawRadius: PropDrawRadius, material: terrainMaterial);
+            chunkSize: TerrainChunkRegion.DefaultSize, propDrawRadius: PropDrawRadius, material: terrainMaterial,
+            physics: _physicsWorld, collisionShapes: collisionShapes);
         _streamer = new TerrainStreamer(StreamerConfig.Default, _chunkSink);
         // Prime the FULL initial ring at load time (this is the loading moment, not a frame, so the per-frame
         // MaxLoadsPerFrame budget is irrelevant here): pump until the loaded set stops growing. From here on
@@ -154,7 +175,9 @@ sealed class TerrainWalkApp : GameApp3D
             loadedBefore = _streamer.Loaded.Count;
             _streamer.Update(_character.Position, 0f);
         }
-        Console.WriteLine($"Streaming the world: primed {_streamer.Loaded.Count} chunks ({_propMeshes.Count} prop kit meshes).");
+        // Step the physics world once after the initial ring loads so Bepu's broad phase is current.
+        _physicsWorld.Step(1f / 30f);
+        Console.WriteLine($"Streaming the world: primed {_streamer.Loaded.Count} chunks ({_propMeshes.Count} prop kit meshes). Prop collision: active.");
     }
 
     protected override void OnUpdate(float dt)
@@ -179,7 +202,10 @@ sealed class TerrainWalkApp : GameApp3D
         if (Input.WasPressed(Key.H)) { post.OutlineNormalThreshold = MathF.Min(2f, post.OutlineNormalThreshold + 0.05f); Console.WriteLine($"[post] OutlineNormalThreshold = {post.OutlineNormalThreshold:0.00}"); }
         if (Input.WasPressed(Key.G)) { post.OutlineNormalThreshold = MathF.Max(0f, post.OutlineNormalThreshold - 0.05f); Console.WriteLine($"[post] OutlineNormalThreshold = {post.OutlineNormalThreshold:0.00}"); }
 
-        _character.Update(Input, dt, _camera.Yaw, _terrain.GroundHeight, _terrain.GroundNormal);   // slope gate on; prop physics not yet wired
+        // Physics world ticks once per frame before movement so newly-streamed props are registered.
+        _physicsWorld.Step(dt);
+
+        _character.Update(Input, dt, _camera.Yaw, _terrain.GroundHeight, _terrain.GroundNormal, _physicsWorld);
 
         // Animate the character off the same movement state: horizontal speed from the XZ position delta over dt
         // (so it reflects collision-clamped motion, not just input), facing turned toward the move direction, and
@@ -224,6 +250,12 @@ sealed class TerrainWalkApp : GameApp3D
         {
             scene.Draw(_capsule, Matrix4x4.CreateTranslation(p.X, footY, p.Z), new Color(0.85f, 0.55f, 0.25f, 1f));
         }
+    }
+
+    protected override void OnDispose()
+    {
+        _physicsWorld?.Dispose();
+        base.OnDispose();
     }
 
     // Skinned-ingest the committed Quaternius Universal CC0 character + its animation clips, map the clip names to the

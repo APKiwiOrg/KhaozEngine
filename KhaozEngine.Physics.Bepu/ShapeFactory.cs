@@ -41,24 +41,20 @@ internal static class ShapeFactory
 
     private static TypedIndex AddTriangleMesh(BepuSim sim, BufferPool pool, TriangleMeshShape tm)
     {
+        // Mesh takes OWNERSHIP of the triangle buffer (its Triangles field; Mesh.Dispose(pool) returns it).
+        // Do NOT return the buffer here - the mesh owns it and RecursivelyRemoveAndDispose will return it
+        // when the shape is later removed. Returning it here would cause a double-return and use-after-free.
         int triCount = tm.Indices.Length / 3;
         pool.Take<Triangle>(triCount, out var triangles);
-        try
+        for (int i = 0; i < triCount; i++)
         {
-            for (int i = 0; i < triCount; i++)
-            {
-                triangles[i] = new Triangle(
-                    tm.Vertices[tm.Indices[i * 3]],
-                    tm.Vertices[tm.Indices[i * 3 + 1]],
-                    tm.Vertices[tm.Indices[i * 3 + 2]]);
-            }
-            var mesh = new Mesh(triangles.Slice(triCount), Vector3.One, pool);
-            return sim.Shapes.Add(mesh);
+            triangles[i] = new Triangle(
+                tm.Vertices[tm.Indices[i * 3]],
+                tm.Vertices[tm.Indices[i * 3 + 1]],
+                tm.Vertices[tm.Indices[i * 3 + 2]]);
         }
-        finally
-        {
-            pool.Return(ref triangles);
-        }
+        var mesh = new Mesh(triangles.Slice(triCount), Vector3.One, pool);
+        return sim.Shapes.Add(mesh);
     }
 
     private static TypedIndex AddCompound(BepuSim sim, BufferPool pool, CompoundShape co)

@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
@@ -55,5 +56,112 @@ public class BepuPhysicsWorldTests
         world.RemoveStatic(h);
         world.Step(1f / 60f);
         Assert.False(world.Raycast(Vector3.Zero, Vector3.UnitZ, 100f, out _));
+    }
+
+    /// <summary>
+    /// Repeatedly add a TriangleMeshShape, raycast it (assert hit), remove it, step, and interleave
+    /// Box/Sphere adds to churn the pool. Verifies the Mesh buffer-ownership fix: the triangle buffer
+    /// must NOT be returned by AddTriangleMesh (the Mesh owns it; RecursivelyRemoveAndDispose returns it).
+    /// Without the fix, pool corruption manifests within a few iterations as crashes or wrong raycast results.
+    /// </summary>
+    [Fact]
+    public void TriangleMesh_AddRemoveStep_Repeatedly_NoCorruption()
+    {
+        // A flat quad (two triangles) forming a 2x2 m floor at z=5.
+        // Vertices:
+        //   v0 = (-1, -1, 5), v1 = (1, -1, 5), v2 = (1, 1, 5), v3 = (-1, 1, 5)
+        // Two triangles: [0,1,2] and [0,2,3]
+        var verts = new[]
+        {
+            new Vector3(-1f, -1f, 5f),
+            new Vector3( 1f, -1f, 5f),
+            new Vector3( 1f,  1f, 5f),
+            new Vector3(-1f,  1f, 5f),
+        };
+        var indices = new[] { 0, 1, 2,  0, 2, 3 };
+        var meshShape = new TriangleMeshShape(verts, indices);
+
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+
+        for (int iter = 0; iter < 50; iter++)
+        {
+            // Add the triangle mesh and a couple of box/sphere statics to churn the pool.
+            var meshHandle = world.AddStatic(meshShape, Pose.At(Vector3.Zero));
+            var boxHandle  = world.AddStatic(new BoxShape(new Vector3(0.5f, 0.5f, 0.5f)), Pose.At(new Vector3(10f, 0f, 0f)));
+            var sphHandle  = world.AddStatic(new SphereShape(0.3f), Pose.At(new Vector3(-10f, 0f, 0f)));
+
+            world.Step(1f / 60f);
+
+            // Ray from origin along +Z: must hit the quad at z=5.
+            bool hit = world.Raycast(Vector3.Zero, Vector3.UnitZ, 100f, out RayHit rh);
+            Assert.True(hit, $"iter {iter}: raycast should hit the triangle mesh");
+            // The face normal should point roughly along -Z (back toward the ray origin).
+            Assert.True(Vector3.Dot(rh.Normal, -Vector3.UnitZ) > 0.5f,
+                $"iter {iter}: hit normal should face -Z, was {rh.Normal}");
+            // Hit distance should be close to 5 m (the z-plane).
+            Assert.True(MathF.Abs(rh.Distance - 5f) < 0.5f,
+                $"iter {iter}: expected hit near z=5, got distance={rh.Distance:F3}");
+
+            // Sweep capsule toward the mesh: must also hit.
+            var cap = new CapsuleShape(0.3f, 0.6f);
+            bool swept = world.SweepCapsule(cap, Pose.At(Vector3.Zero), Vector3.UnitZ, 100f, out SweepHit sh);
+            Assert.True(swept, $"iter {iter}: sweep should hit the triangle mesh");
+
+            // Remove everything and step to let Bepu's broadphase flush.
+            world.RemoveStatic(meshHandle);
+            world.RemoveStatic(boxHandle);
+            world.RemoveStatic(sphHandle);
+            world.Step(1f / 60f);
+        }
+
+        // After all iterations the world must be empty: raycast hits nothing.
+        Assert.False(world.Raycast(Vector3.Zero, Vector3.UnitZ, 100f, out _),
+            "world should be empty after all removes");
+    }
+
+    /// <summary>
+    /// Add a ConvexHullShape (8 points of a 1x1x1 cube) placed at z=5, raycast and sweep-capsule
+    /// toward it, and assert hits at the expected approximate distance.
+    ///
+    /// Note: ConvexHullHelper.CreateShape recenters the hull to its point-cloud centroid.
+    /// The discarded first out-parameter is that centroid offset. We supply unit-cube points
+    /// centered at the origin so the centroid is (0,0,0) and the static pose sets world position.
+    /// </summary>
+    [Fact]
+    public void ConvexHull_BlocksAndIsHitByQueries()
+    {
+        // 8 corners of a unit cube centered at origin in local space.
+        // ConvexHullHelper.CreateShape recenters to the point centroid (which is the origin here).
+        // We place the static at z=5 in world space so the face nearest the origin is at z=4.5.
+        var points = new[]
+        {
+            new Vector3(-0.5f, -0.5f, -0.5f),
+            new Vector3( 0.5f, -0.5f, -0.5f),
+            new Vector3( 0.5f,  0.5f, -0.5f),
+            new Vector3(-0.5f,  0.5f, -0.5f),
+            new Vector3(-0.5f, -0.5f,  0.5f),
+            new Vector3( 0.5f, -0.5f,  0.5f),
+            new Vector3( 0.5f,  0.5f,  0.5f),
+            new Vector3(-0.5f,  0.5f,  0.5f),
+        };
+        var hullShape = new ConvexHullShape(points);
+
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        // Place the hull centroid at z=5; nearest face is at z=4.5.
+        world.AddStatic(hullShape, Pose.At(new Vector3(0f, 0f, 5f)));
+        world.Step(1f / 60f);
+
+        // Raycast from origin along +Z: should hit at approximately z=4.5 => distance ~4.5.
+        bool rayHit = world.Raycast(Vector3.Zero, Vector3.UnitZ, 100f, out RayHit rh);
+        Assert.True(rayHit, "raycast should hit the convex hull");
+        Assert.True(rh.Distance > 3.5f && rh.Distance < 5.5f,
+            $"expected hit near distance 4.5, got {rh.Distance:F3}");
+
+        // Sweep capsule from origin along +Z: should also stop before or at the hull.
+        var cap = new CapsuleShape(0.3f, 0.6f);
+        bool swept = world.SweepCapsule(cap, Pose.At(Vector3.Zero), Vector3.UnitZ, 100f, out SweepHit sh);
+        Assert.True(swept, "sweep should hit the convex hull");
+        Assert.True(sh.Distance > 0f && sh.Distance < 5.5f,
+            $"expected sweep to contact hull, got distance={sh.Distance:F3}");
     }
 }

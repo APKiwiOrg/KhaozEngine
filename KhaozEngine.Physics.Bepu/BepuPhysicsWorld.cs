@@ -206,15 +206,12 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
         }
         else
         {
-            // Generic fallback for ConvexHull/Mesh/Compound shapes: the false-positive rate equals
-            // the AABB-vs-geometry overlap slack for these types. SP2 should wire the collision-task
-            // manifold path for a proper analytical result.
-            var toStatic = staticPose.Position - capsulePose.Position;
-            float dist = toStatic.Length();
-            if (dist < 1e-6f) toStatic = Vector3.UnitY;
-            else toStatic /= dist;
-            mtv = -toStatic * r; // approximate: push away by radius
-            return true;
+            // Hull/mesh/compound depenetration is deferred to SP2's collision-manifold path.
+            // SP1 reports no penetration for these shapes and relies on the swept collide-and-slide
+            // to keep the capsule out. Returning true here caused spurious nudges near rocks due to
+            // AABB-vs-geometry overlap slack being misread as actual penetration.
+            mtv = default;
+            return false;
         }
     }
 
@@ -352,6 +349,7 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
             if (kv.Value.Handle.Value == bepuHandle.Value)
                 return new SeamHandle(kv.Key);
         }
+        System.Diagnostics.Debug.Assert(false, "BepuPhysicsWorld: ray/sweep hit a static that cannot be resolved by seam handle - this is a bug");
         return new SeamHandle(-1);
     }
 

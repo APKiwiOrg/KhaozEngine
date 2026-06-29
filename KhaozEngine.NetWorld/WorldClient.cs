@@ -22,6 +22,10 @@ public sealed class WorldClientConfig
     /// ingest. Default <c>true</c>: every remote glides, at the cost of ~one tick of remote render latency. Set
     /// <c>false</c> to restore the raw-latest-position behaviour (no delay, but steppy remotes).</summary>
     public bool InterpolateRemotes { get; init; } = true;
+
+    /// <summary>Mid-session disconnect detector: declare the session lost after this many seconds with no server
+    /// snapshot (only advances when <see cref="WorldClient.Poll(float)"/> is called with dt &gt; 0). Default 3s.</summary>
+    public float DisconnectTimeoutSeconds { get; init; } = 3f;
 }
 
 /// <summary>
@@ -42,6 +46,9 @@ public sealed class WorldClient
     private WorldConnectionState state = WorldConnectionState.Connecting;
     private DisconnectReason disconnectReason = DisconnectReason.None;
     private string disconnectReasonDetail = string.Empty;
+    private readonly float disconnectTimeout;
+    private float secondsSinceServerFrame;
+    private bool sawShutdownNotice;
 
     // Remote interpolation: render replicated remotes ~one snapshot in the past, lerping between the last two
     // snapshots so they glide instead of teleporting one snapshot-step per ingest. The drive is a presentation
@@ -71,6 +78,7 @@ public sealed class WorldClient
         interpolateRemotes = config.InterpolateRemotes;
         tickSeconds = config.TickSeconds;
         snapshotInterval = config.TickSeconds;        // server sends at the sim tick today; refined by measurement
+        disconnectTimeout = config.DisconnectTimeoutSeconds;
     }
 
     /// <summary>Net id of the local player, or -1 until the first snapshot identifies it.</summary>
@@ -121,10 +129,15 @@ public sealed class WorldClient
     /// <see cref="LocalRenderState"/>.VerticalVelocity).</summary>
     public float LocalVerticalVelocity => prediction.RenderedState.VerticalVelocity;
 
-    /// <summary>Pumps the session: ingests AoI snapshots, applies remote replication, reconciles the local avatar.</summary>
-    public void Poll()
+    /// <summary>Pumps the session: ingests AoI snapshots, applies remote replication, reconciles the local avatar.
+    /// Pass <paramref name="dt"/> (seconds elapsed since last call) to drive the snapshot-starvation detector - after
+    /// <see cref="WorldClientConfig.DisconnectTimeoutSeconds"/> with no server frame the state transitions to
+    /// <see cref="WorldConnectionState.Disconnected"/> with <see cref="DisconnectReason.Timeout"/>. The detector only
+    /// advances when dt &gt; 0; callers that pass 0 (the default) disable it for that call.</summary>
+    public void Poll(float dt = 0f)
     {
         net.Poll();
+        bool gotFrame = false;
         while (net.TryDequeueEvent(out ClientSessionEvent ev))
         {
             switch (ev.Kind)
@@ -132,9 +145,11 @@ public sealed class WorldClient
                 case ClientSessionEventKind.Joined:
                     disconnectReason = DisconnectReason.None;
                     disconnectReasonDetail = string.Empty;
+                    secondsSinceServerFrame = 0f;
                     SetState(WorldConnectionState.Connected);
                     break;
                 case ClientSessionEventKind.Data:
+                    gotFrame = true;
                     OnServerFrame(ev.Data);
                     break;
                 case ClientSessionEventKind.Rejected:
@@ -145,10 +160,21 @@ public sealed class WorldClient
                 case ClientSessionEventKind.Disconnected:
                     if (state != WorldConnectionState.Disconnected)
                     {
-                        disconnectReason = DisconnectReason.Unreachable;
+                        disconnectReason = sawShutdownNotice ? DisconnectReason.ServerShutdown : DisconnectReason.Unreachable;
                         SetState(WorldConnectionState.Disconnected);
                     }
                     break;
+            }
+        }
+        if (gotFrame) secondsSinceServerFrame = 0f;
+
+        if (state == WorldConnectionState.Connected && dt > 0f)
+        {
+            secondsSinceServerFrame += dt;
+            if (secondsSinceServerFrame >= disconnectTimeout)
+            {
+                disconnectReason = DisconnectReason.Timeout;
+                SetState(WorldConnectionState.Disconnected);
             }
         }
     }
@@ -227,6 +253,7 @@ public sealed class WorldClient
                 break;
             case MoveProtocol.ServerFrameKind.Notice:
                 ServerNotice notice = MoveProtocol.TryDecodeNotice(payload);
+                if (notice.Kind == ServerNoticeKind.Shutdown) sawShutdownNotice = true;
                 LastNotice = notice;
                 NoticeReceived?.Invoke(notice);
                 break;

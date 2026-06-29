@@ -59,9 +59,25 @@ internal static class ShapeFactory
 
     private static TypedIndex AddConvexHull(BepuSim sim, BufferPool pool, ConvexHullShape ch)
     {
+        // Bepu RECENTERS a ConvexHull on its computed centre of mass (the second out param). The prop is
+        // placed at its mesh-local origin (base, XZ-centred on the placement), so a bare hull sits about its
+        // centre-of-mass height BELOW the visual mesh and the character sinks into rocks. Wrap it in a
+        // single-child compound offset by +centre so the hull's mesh-local frame lines up with the placement
+        // (mirrors AddBaseAlignedCylinder; without this a 1.8 m rock collider is ~0.9 m too low).
         var span = ch.Points.AsSpan();
-        ConvexHullHelper.CreateShape(span, pool, out _, out var hull);
-        return sim.Shapes.Add(hull);
+        ConvexHullHelper.CreateShape(span, pool, out var centre, out var hull);
+        var builder = new CompoundBuilder(pool, sim.Shapes, 1);
+        try
+        {
+            var hullIndex = sim.Shapes.Add(hull);
+            builder.AddForKinematic(hullIndex, new RigidPose(centre, Quaternion.Identity), 1f);
+            builder.BuildKinematicCompound(out var children);
+            return sim.Shapes.Add(new Compound(children));
+        }
+        finally
+        {
+            builder.Dispose();
+        }
     }
 
     private static TypedIndex AddTriangleMesh(BepuSim sim, BufferPool pool, TriangleMeshShape tm)

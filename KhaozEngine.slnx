@@ -29,6 +29,7 @@
   <Project Path="KhaozEngine.Persistence/KhaozEngine.Persistence.csproj" />
   <Project Path="KhaozEngine.Physics/KhaozEngine.Physics.csproj" />
   <Project Path="KhaozEngine.Physics.Bepu/KhaozEngine.Physics.Bepu.csproj" />
+  <Project Path="KhaozEngine.Physics.HeadlessLoaderTests/KhaozEngine.Physics.HeadlessLoaderTests.csproj" />
   <Project Path="KhaozEngine.Platform/KhaozEngine.Platform.csproj" />
   <Project Path="KhaozEngine.Pooling/KhaozEngine.Pooling.csproj" />
   <Project Path="KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />

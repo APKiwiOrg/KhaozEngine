@@ -18,10 +18,12 @@ namespace KhaozEngine.Render3D
     /// runtime reads the baked binary via <see cref="PropCollisionLoader"/>.</summary>
     public static class PropCollisionBake
     {
-        /// <summary>Binary magic: "KECL" (KhaozEngine Collision).</summary>
-        public const uint Magic = 0x4B45434C;
-        /// <summary>Format version written by this implementation.</summary>
-        public const byte Version = 1;
+        /// <summary>Binary magic: "KECL" (KhaozEngine Collision). Single-sourced from
+        /// <see cref="PropCollisionFormat.Magic"/> (the render-free format now lives in KhaozEngine.Physics).</summary>
+        public const uint Magic = PropCollisionFormat.Magic;
+        /// <summary>Format version written by this implementation. Single-sourced from
+        /// <see cref="PropCollisionFormat.Version"/>.</summary>
+        public const byte Version = PropCollisionFormat.Version;
 
         /// <summary>Triangle count above which a non-walkable-solid mesh is treated as a building and gets a
         /// <see cref="TriangleMeshShape"/> (concave interiors) rather than a <see cref="ConvexHullShape"/>. Open
@@ -241,45 +243,11 @@ namespace KhaozEngine.Render3D
             return new TriangleMeshShape(positions.ToArray(), indices);
         }
 
-        // Shape kind byte written to the binary.
-        const byte KindConvexHull = 1;
-        const byte KindTriangleMesh = 2;
-        const byte KindCylinder = 3;
-
         /// <summary>Serialize <paramref name="shape"/> to <paramref name="stream"/> in the KECL binary format.
-        /// Magic (uint32 LE) + version (byte) + kind (byte) + payload.</summary>
+        /// Magic (uint32 LE) + version (byte) + kind (byte) + payload. Delegates to the render-free
+        /// <see cref="PropCollisionFormat.Write"/> so the bake tool and the headless server share one
+        /// byte-identical encoder.</summary>
         public static void Write(PhysicsShape shape, Stream stream)
-        {
-            if (shape == null) throw new ArgumentNullException(nameof(shape));
-            if (stream == null) throw new ArgumentNullException(nameof(stream));
-            using var w = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true);
-            w.Write(Magic);
-            w.Write(Version);
-            switch (shape)
-            {
-                case ConvexHullShape hull:
-                    w.Write(KindConvexHull);
-                    w.Write(hull.Points.Length);
-                    foreach (Vector3 p in hull.Points)
-                    { w.Write(p.X); w.Write(p.Y); w.Write(p.Z); }
-                    break;
-                case CylinderShape cyl:
-                    w.Write(KindCylinder);
-                    w.Write(cyl.Radius);
-                    w.Write(cyl.Length);
-                    break;
-                case TriangleMeshShape mesh:
-                    w.Write(KindTriangleMesh);
-                    w.Write(mesh.Vertices.Length);
-                    foreach (Vector3 v in mesh.Vertices)
-                    { w.Write(v.X); w.Write(v.Y); w.Write(v.Z); }
-                    w.Write(mesh.Indices.Length);
-                    foreach (int idx in mesh.Indices)
-                        w.Write(idx);
-                    break;
-                default:
-                    throw new NotSupportedException($"PropCollisionBake.Write: unsupported shape type {shape.GetType().Name}");
-            }
-        }
+            => PropCollisionFormat.Write(shape, stream);
     }
 }

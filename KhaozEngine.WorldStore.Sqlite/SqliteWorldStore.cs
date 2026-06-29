@@ -1,7 +1,10 @@
 using System;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
+using KhaozEngine.WorldStore;
 
 namespace KhaozEngine.WorldStore.Sqlite;
 
@@ -16,7 +19,7 @@ public sealed record SqliteWorldStoreOptions(string ConnectionString);
 /// data) and serializes operations with a semaphore, so SQLite never sees concurrent commands on the shared
 /// connection. The embedded dev/test and single-node backend.
 /// </summary>
-public sealed class SqliteWorldStore : IWorldStore, IDisposable
+public sealed class SqliteWorldStore : IWorldStore, IEnumerableWorldStore, IDisposable
 {
     private readonly SqliteConnection connection;
     private readonly SemaphoreSlim gate = new(1, 1);
@@ -98,6 +101,38 @@ public sealed class SqliteWorldStore : IWorldStore, IDisposable
         }
         finally { gate.Release(); }
     }
+
+    public async IAsyncEnumerable<WorldStoreEntry> EnumerateAsync(
+        string? keyPrefix = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            using SqliteCommand cmd = connection.CreateCommand();
+            if (string.IsNullOrEmpty(keyPrefix))
+            {
+                cmd.CommandText = "SELECT key, updated_at, LENGTH(data) FROM world_store;";
+            }
+            else
+            {
+                cmd.CommandText = "SELECT key, updated_at, LENGTH(data) FROM world_store WHERE key LIKE $p ESCAPE '\\';";
+                cmd.Parameters.AddWithValue("$p", LikeEscape(keyPrefix) + "%");
+            }
+            await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                string key = reader.GetString(0);
+                var updated = DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(1));
+                long size = reader.GetInt64(2);
+                yield return new WorldStoreEntry(key, updated, size);
+            }
+        }
+        finally { gate.Release(); }
+    }
+
+    // Escapes SQLite LIKE metacharacters so a supplied prefix matches literally (ESCAPE '\').
+    internal static string LikeEscape(string s) =>
+        s.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
 
     public void Dispose()
     {

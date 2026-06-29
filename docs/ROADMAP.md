@@ -4,7 +4,7 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **7.70.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **8.0.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan under `docs/superpowers/` when it is scheduled.
 
@@ -23,38 +23,24 @@ Discord from the engine. Retire the game-specific Discord implementations once t
   `Social` core seam stays dependency-free, mirroring the opt-in-backend pattern (`Netcode.LiteNetLib`,
   `WorldStore.*`). Per-RID bundling is the same concern as Audio/Windowing.
 
-### 2. Physics engine
+### 2. Physics engine (SP1 shipped 8.0.0; SP2 + SP3 remaining)
 
-Movement today is a kinematic character controller, not a physics engine: `CharacterMovement.Step` does gravity
-+ jump (coyote/buffer/terminal-clamp), ground-clamp onto a height delegate, and capsule push-out versus static
-prop/building colliders (`KhaozEngine.Collision`), all XZ-plane and authoritative. It has no notion of arbitrary
-geometry, so the world cannot answer the questions gameplay needs: standing on / jumping onto props and
-buildings, building interiors (floors/walls/stairs), what is a ledge, where a character can jump up, where a
-jump lands, line-of-sight.
+**Sub-project 1 (SP1, SHIPPED 8.0.0):** `KhaozEngine.Physics` seam (dependency-free, in `Foundation`) +
+`KhaozEngine.Physics.Bepu` opt-in backend (BepuPhysics v2 2.4.0, pure-managed, Apache-2.0). Static bodies only.
+`CharacterMovement.Step` now collide-and-slides capsule-vs-mesh against `IPhysicsWorld?` (prop convex hulls +
+building triangle meshes baked by `ke-propbake`); downward probe computes vertical support so domed surfaces are
+walkable. The old `WorldColliders?`/`WorldSurfaces?` 2D footprint path is retired from the movement stack (BREAKING).
+`WorldServer`/`WorldClient`/`ShardedWorldServer`/`PlayerMoveSimulator`/`PlayerMovementSystem` ctors now take
+`IPhysicsWorld?` in place of the pair. Terrain height stays analytic.
 
-Goal: a real physics layer (likely a render-free, server-authoritative `KhaozEngine.Physics` package the
-character controller and collision layers fold into) with dynamic bodies and collision queries
-(raycast/sweep/overlap) for ledge detection, jump targeting, and AI. It must run headless on the authoritative
-server, deterministically, and match client prediction: the same authoritative + predicted contract the movement
-stack already holds.
+**Sub-project 2 (SP2, next):** dynamic rigid bodies + their replication. A body that falls / bounces / rests
+needs a replication component (like `MovementState` for players); `Scene3DChunkSink` would drive `AddDynamic`/
+step per loaded chunk, and `WorldClient` would interpolate dynamic-body positions from replicated snapshots.
+Enables physics-driven crates, barrels, falling debris. Terrain-as-physics-geometry (the whole terrain mesh fed
+into a `TriangleMesh` body) also lands here: a static terrain body replaces the `TerrainCollision` delegate in
+the `Step` call so all surfaces (terrain + props + buildings) share one query path.
 
-Key decision, explicitly do we need C/C++:
-- Managed (e.g. BepuPhysics v2): pure .NET, no native libs, keeps the MonoGame-free / .NET-everywhere thesis
-  intact (iOS AOT, no per-RID native bundling), good perf, broadly deterministic. The post-MonoGame pivot chose
-  .NET ("no C++") for exactly these reasons.
-- Native (e.g. Jolt or Bullet via bindings): more mature/complete and potentially faster at MMO scale, but
-  reintroduces the per-RID native-bundling + AOT-compat burden the engine spent effort eliminating, and
-  cross-platform determinism is harder.
-
-Plan: a design spike + spec that prototypes both against the server-determinism requirement and the iOS/AOT
-constraint, then commits to one. This supersedes the "out of scope" items the recent movement releases deferred
-(standing on props/buildings, interiors/ledges, step-height, double/wall-jump, climbing, swimming, fall damage).
-
-Known limitation it should resolve (deferred here on 2026-06-28): a capsule standing on the rising flank of a domed
-prop clips its body into the slope. The static collider is a 2D XZ footprint and the walkable top is point-sampled
-at the capsule centre, so nothing pushes the body out of the prop's 3D slope (you stand cleanly on top near the
-peak, but sink into the side lower down). The robust fix is real capsule-vs-surface resolution (rest against the
-slope), which is this physics layer's job rather than another patch to the kinematic controller.
+**Sub-project 3 (SP3, later):** constraints, joints, and vehicles. Hinges, sliders, ragdolls, wheeled vehicles.
 
 ### 3. Visual fidelity (textures + materials)
 

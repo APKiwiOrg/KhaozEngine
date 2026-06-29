@@ -4,11 +4,12 @@ Which game uses which packages, at which version. Current state only - for the p
 [`../CHANGELOG.md`](../CHANGELOG.md). Update this whenever a consumer bumps a `<PackageReference>` or the
 engine ships a new version.
 
-**Engine current version:** `7.70.0` (the shared `<KhaozEngineVersion>` line, which is the engine): the
+**Engine current version:** `8.0.0` (the shared `<KhaozEngineVersion>` line, which is the engine): the
 custom MonoGame-free stack (`Primitives`/`Imaging`/`Gpu`/`Windowing`/`Render2D`/`Render3D`/`Gui`/`Audio`/`Particles`/`Effects`/`Game`/`Game.Render3D`) **plus**
 the MonoGame-free foundation packages that graduated onto it at `5.46.0`
 (`Ecs`/`Serialization`/`Content`/`Diagnostics`/`App`/`Localization`/`Locomotion`/`Persistence`/`Pooling`/`Platform`/
-`Updates`/`Collision`/`Netcode`/`Netcode.Abstractions`/`Netcode.LiteNetLib`/`WorldStore`/`WorldStore.Sqlite`/`WorldStore.SqlServer`/`NetWorld`). 7.3.0 also adds the publish-side
+`Updates`/`Collision`/`Physics`/`Netcode`/`Netcode.Abstractions`/`Netcode.LiteNetLib`/`WorldStore`/`WorldStore.Sqlite`/`WorldStore.SqlServer`/`NetWorld`).
+`Physics.Bepu` (the BepuPhysics v2 backend) is opt-in and added explicitly, like `WorldStore.Sqlite`. 7.3.0 also adds the publish-side
 `KhaozEngine.Updates.Tool` package (the `ke-updater` dotnet tool: manifest/genkey/sign/verify), and 7.14.0 adds
 the author-time `KhaozEngine.Sfx.Tool` package (the `ke-sfxbake` dotnet tool: manifest-driven bulk SFX
 generation + bake via the ElevenLabs API + ffmpeg/oggenc), and 7.55.0 adds the author-time
@@ -113,7 +114,7 @@ fine-grained use - a wire-contract project references just `Netcode.Abstractions
 | `KhaozEngine.Game2D` | 2D runtime (Windowing/Render2D/Gui/Audio/Particles/Effects/Telegraphs) + `Game` (the Render3D-free loop framework) + `Foundation` | a desktop 2D game |
 | `KhaozEngine.Game3D` | `Game2D` + `Render3D` + `Telegraphs.Render3D` + `Terrain.Render3D` (chunked-LOD terrain mesh + world streaming) + `Game.Render3D` (the 3D scene bridge: GameApp3D/IGameScene3D/SceneManager.Draw3D) | a desktop 3D game |
 | `KhaozEngine.Server` | `Foundation` + netcode (`Netcode`/`.Abstractions`/`.LiteNetLib`) + `Simulation` (fixed-tick host) + `Replication` + `WorldStore` (the dependency-free `IWorldStore` seam only; the `.Sqlite` / `.SqlServer` backends are **opt-in** and added by the consumer, **not bundled** - 7.49.1) + `Sharding` (cell-grid topology / ShardHost) + `NetWorld` (single-World `WorldServer` **and** the multi-cell `ShardedWorldServer` over `ShardHost` + client glue + `WorldPersistence` via `IWorldPersistenceHost`) | a headless sim server (no GPU) |
-| `KhaozEngine.Foundation` | the GPU-free foundation (Primitives/App/Content/Diagnostics/Ecs/Localization/Locomotion/Persistence/Serialization/Pooling/Collision/Terrain/Platform/Updates) | a gameplay-logic library (no renderer) |
+| `KhaozEngine.Foundation` | the GPU-free foundation (Primitives/App/Content/Diagnostics/Ecs/Localization/Locomotion/Persistence/Serialization/Pooling/Collision/Physics/Terrain/Platform/Updates) | a gameplay-logic library (no renderer) |
 
 ## Consumer matrix
 
@@ -371,9 +372,11 @@ When a consumer raises its `KhaozEngine.*` pin, two things bite if skipped:
   SpaceGame restores from `local-feed`/GitHub Packages directly (no vendored feed), so it alone sets the
   `local-feed` floor.
 
-_Last verified: 2026-06-29. The shared `<KhaozEngineVersion>` line = **7.69.1** is the engine (the
-zero-dependency `Primitives` leaf + the custom MonoGame-free stack + the graduated foundation + the four umbrella
-metapackages Game2D/Game3D/Server/Foundation). All four consumers currently pin **7.68.0** (one behind the head):
+_Last verified: 2026-06-29. The shared `<KhaozEngineVersion>` line = **8.0.0** is the engine (the
+zero-dependency `Primitives` leaf + the custom MonoGame-free stack + the graduated foundation (now including
+`Physics`) + the four umbrella metapackages Game2D/Game3D/Server/Foundation; `Physics.Bepu` is opt-in).
+All four consumers currently pin **7.68.0** (behind the 8.0.0 head; 8.0.0 is a BREAKING release - consumers
+adopt on their own schedule):
 **Hardpoint** (3D) via `Game3D` + `Foundation`, with the `HardpointUpdater` shim and the dev `SnapshotTool` now
 sharing the same root `<KhaozEngineVersion>` (no more separate 7.20.1 / 7.33.0 sub-pins), **Nullwake** (2D) via
 `Game2D` (+ `Diagnostics`/`Persistence`/`Windowing`/`Snapshot`/`Updates`), **SpaceGame** (2D + Render3D) via

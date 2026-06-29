@@ -100,9 +100,10 @@ version/release work.
     shader + a second model-pass pipeline in `ModelRenderer`), `Gui`, `Audio`, `Particles`, `Effects`,
     `Game`, `Game.Render3D`.
   - **Foundation (MonoGame-free):** `Ecs`, `Serialization`, `Content`, `Diagnostics`, `App`, `Localization`,
-    `Locomotion`, `Persistence`, `Pooling`, `Platform`, `Updates`, `Collision`, `Terrain`, `Netcode`,
+    `Locomotion`, `Persistence`, `Pooling`, `Platform`, `Updates`, `Collision`, `Physics`, `Terrain`, `Netcode`,
     `Netcode.Abstractions`, `Netcode.LiteNetLib`, `Simulation`, `Replication`, `WorldStore`, `WorldStore.Sqlite`,
-    `WorldStore.SqlServer`, `Sharding`, `NetWorld`.
+    `WorldStore.SqlServer`, `Sharding`, `NetWorld`. `Physics.Bepu` is opt-in (NOT in any umbrella; add
+    explicitly like `WorldStore.Sqlite`).
   - **Server / parallel-job core types:** `Simulation` = `FixedTickHost` + the `IJobScheduler` worker-pool seam
     (`SingleThreadedJobScheduler` inline default + `ThreadPoolJobScheduler`); `Netcode` =
     `INetTransport`/`LoopbackTransport` + the `NetServer`/`NetClient` session layer (the `IConnectionAuthenticator`
@@ -161,57 +162,52 @@ version/release work.
     sub-project (`docs/superpowers/specs/2026-06-27-terrain-system-design.md`); world streaming is sub-project 6a
     (`docs/superpowers/specs/2026-06-27-world-streaming-design.md`); multi-cell server sharding (6b) and water are
     later sub-projects.
+  - **3D physics seam + backend (8.0.0):** `Physics` (dependency-free, in `Foundation`) = `IPhysicsWorld`
+    (static bodies, `Step(dt)`, spatial queries: `Raycast` -> `RayHit`, `SweepCapsule` -> `SweepHit`,
+    `ComputePenetration`), value-type `PhysicsShape` subclasses (`Sphere`/`Capsule`/`Box`/`Cylinder`/
+    `ConvexHull`/`TriangleMesh`/`Compound`), `Pose` (position + quaternion, `Pose.At`/`Pose.AtY`),
+    `PhysicsMaterial`, `QueryFilter`, `StaticHandle`, `RayHit`/`SweepHit`. `Physics.Bepu` (opt-in, NOT in any
+    umbrella; add explicitly like `WorldStore.Sqlite`) = `BepuPhysicsWorld : IPhysicsWorld` over BepuPhysics v2
+    2.4.0 (pure-managed, Apache-2.0, no native libs). `ke-propbake` now also bakes a 3D `CollisionShape` (convex
+    hull / triangle mesh) per prop into the kit manifest; `PropCollisionLoader` reads it; `Scene3DChunkSink` calls
+    `AddStatic`/`RemoveStatic` on chunk load/unload. `CharacterMovement.Step` accepts `IPhysicsWorld?`
+    (collide-and-slide capsule sweep + downward probe for vertical prop support; terrain stays analytic). The old
+    2D `WorldColliders?`/`WorldSurfaces?` `Step` overloads are removed (BREAKING 8.0.0). `KhaozEngine.Collision`
+    remains in `Foundation` for 2D games / lockstep sims; it is no longer on the 3D movement path.
   - **Static-world collision (in `Collision`):** `BoxCollision` (circle-vs-AABB / oriented-box / circle
     minimum-translation push-out), `ColliderShape` (unplaced cylinder/box prop footprint), `WorldCollider` (one
     placed static collider), `WorldColliders` (a `SpatialHashGrid`-backed queryable set: `Query(x,z,radius)` +
     an iterate-and-slide `Resolve` that pushes a capsule footprint out of overlaps, slide along surfaces).
-    Render-free, kinematic, XZ-plane, authoritative (NOT a physics engine). `Collision` stays a `System.Numerics`
-    leaf; `Locomotion`/`NetWorld`/`Terrain`/`Render3D` reference it (acyclic). `Render3D.AssetEntry` carries an
-    optional `ColliderShape Collider` (manifest `"collider": { "type": "cylinder"|"box", ... }`); when omitted,
-    `Render3D.PropFootprint.Derive(GltfMesh)` sizes the collider from the actual mesh (short prop = full footprint,
-    tall prop = bottom trunk slice so a tree's canopy isn't solid; cylinder or oriented box by aspect ratio),
-    `PropFootprint.DeriveAll(AssetManifest)` building the `id -> ColliderShape` lookup `PropColliders.FromScatter` takes.
-  - **Walkable prop/building surfaces (stand on / jump onto rocks + roofs, sub-project B on the 7.54.0 vertical
-    physics):** in `Collision`, `PropSurface` (a unit-scale top-down max-height grid + bilinear `SampleLocal` +
-    binary IO; single-valued top contour, no overhangs), `WorldSurface` (a placed surface, scale/yaw applied at
-    query time), and `WorldSurfaces` (a `SpatialHashGrid` set whose `Query(x,z)` returns the max prop-top under
-    you); plus `WorldCollider.Top` + a height-aware `WorldColliders.Resolve(position,radius,footY,WorldSurfaces?)`
-    that blocks a side only while the feet are below the WALKABLE SURFACE (not the prop's single max `Top`): a
-    collider is skipped when the capsule centre is already over its footprint (the vertical support/step-up places
-    you, so a domed top is never shoved off mid-traverse) or, approaching from outside, once the feet clear the rim
-    height where you step onto it (sampled inward from the footprint edge toward the player) - so a domed rock is
-    standable AND mountable by walking/jumping up its side, while a flat-top prop (rim = `Top`) stays mountable only
-    from above and a thin blocker (a tree: `Top = +inf`, no surface) always blocks. (History: gating on the peak `Top`
-    alone shoved you off domed tops everywhere but the peak (fixed 7.56.1 by an explicit `surfaceTop` scalar - that
-    overload remains); gating on the peak also made the side a wall up to peak height so you could only drop onto a
-    rock from above (fixed 7.58.0 by this `WorldSurfaces` overload).)
-    `Locomotion.MoveTuning` gains `StepHeight`, and the vertical `CharacterMovement.Step` takes an optional
-    `WorldSurfaces?` (support = `max(terrain, surface)`, height-aware block, step-up; null = unchanged), threaded
-    server-authoritative + predicted through `PlayerMoveSimulator`/`PlayerMovementSystem`/`WorldServer`/
-    `ShardedWorldServer`/`CharacterController3D`. `Render3D.PropSurfaceBake` bakes the grid from a normalized mesh
-    (+ `IsWalkableSolid` classification: rock/log/building -> surface, tree -> thin blocker, no surface);
-    `Render3D.PropSurfaceLoader` reads the baked `.surf` render-free; `AssetEntry` gains `Surface` + `Heightmap`.
-    `Terrain.PropSurfaces.FromScatter` builds the set (+ a top-aware `PropColliders.FromScatter` overload stamps
-    each collider's top). The offline bake is the `ke-propbake` tool (folded into kit ingest; re-ingest = re-bake).
+    Render-free, kinematic, XZ-plane. `Collision` stays a `System.Numerics` leaf. Pre-8.0.0 the movement
+    path used `WorldColliders`/`WorldSurfaces`; since 8.0.0 the 3D movement path uses `IPhysicsWorld` (the
+    `Physics` seam) instead. `Collision` is still used by 2D games and lockstep sims.
+  - **Walkable prop/building surfaces (in `Collision`, pre-8.0.0 3D path, now superseded by `IPhysicsWorld`):**
+    `PropSurface` (unit-scale top-down max-height grid + bilinear `SampleLocal` + binary IO), `WorldSurface`,
+    `WorldSurfaces` (spatial-hash set, `Query(x,z)` returns max prop-top); the `ke-propbake` tool bakes `.surf`
+    heightmaps; `AssetEntry` carries `Surface`/`Heightmap`. These types remain in `Collision` but are no longer
+    wired into `CharacterMovement.Step` / `PlayerMoveSimulator` / `WorldServer` / `WorldClient` since 8.0.0
+    (replaced by the `IPhysicsWorld` down-probe).
   - **Locomotion + networked-world libs (render-free movement + the netcode wiring):** `Locomotion` (leaf, in
     `Foundation`, deps Primitives + Collision) = `CharacterMovement.Step`, two overloads sharing one horizontal core
     (camera-relative move from a `MoveCommand` + ground delegate + one `MoveTuning`, slope gate - runs only when a
     `groundNormal` delegate is passed, e.g. `TerrainCollision.GroundNormal`, so the rim wall can't be climbed - plus
-    optional static-world collision via a nullable `WorldColliders`: the capsule footprint
-    (`MoveTuning.CapsuleRadius`, default 0.4) is pushed out of props/buildings, null/empty = unchanged): the original
-    `Step(Vector3,...) -> Vector3` is horizontal-only (Y instant-clamped to ground + half-height), and
-    `Step(in MoveState,...) -> MoveState` is the vertical-physics step (gravity terminal-clamped to `MaxFallSpeed`,
-    land-and-clamp ground contact with a `GroundedEpsilon` slope skin, jump with coyote-time + jump-buffer and no
-    apex double-jump, `AirControl`-scaled airborne XZ, plus an optional `clampXz` for the play-area bound). `MoveState`
-    = the carried kinematic state (position + `VerticalVelocity` + `Grounded` + coyote/buffer timers); `MoveCommand`
-    has a `Jump` bit; `MoveTuning` carries `Gravity`/`JumpSpeed`/`MaxFallSpeed`/`CoyoteTime`/`JumpBuffer`/`AirControl`/
-    `GroundedEpsilon`. Shared by the local `CharacterController3D` (Game.Render3D wraps it, jumps on Space), the
+    optional 3D physics collision via a nullable `IPhysicsWorld?` (8.0.0, replaces the old `WorldColliders?` pair):
+    a sweep-capsule probe + downward support probe, so the character collide-and-slides against convex hulls /
+    triangle meshes from baked prop collision shapes and stands correctly on domed surfaces; terrain height stays
+    analytic; null = terrain-only): the original `Step(Vector3,...) -> Vector3` is horizontal-only (Y instant-clamped
+    to ground + half-height), and `Step(in MoveState,...) -> MoveState` is the vertical-physics step (gravity
+    terminal-clamped to `MaxFallSpeed`, land-and-clamp ground contact with a `GroundedEpsilon` slope skin, jump with
+    coyote-time + jump-buffer and no apex double-jump, `AirControl`-scaled airborne XZ, plus an optional `clampXz`
+    for the play-area bound). `MoveState` = the carried kinematic state (position + `VerticalVelocity` + `Grounded` +
+    coyote/buffer timers); `MoveCommand` has a `Jump` bit; `MoveTuning` carries
+    `Gravity`/`JumpSpeed`/`MaxFallSpeed`/`CoyoteTime`/`JumpBuffer`/`AirControl`/`GroundedEpsilon`/`CapsuleRadius`
+    (default 0.4). Shared by the local `CharacterController3D` (Game.Render3D wraps it, jumps on Space), the
     server sim, and client prediction. `NetWorld` (in
-    `Server`, deps Locomotion/**Collision**/Netcode/Replication/Ecs/Serialization/WorldStore/**Sharding**) = `WorldBounds`
-    (abstract `Contains`/`Clamp` + `CircleBounds`/`RectBounds`, the authoritative play-area shape; `Clamp` =
-    nearest in-bounds point, idempotent inside + clamp-and-slide outside) wired as a nullable bound through the
-    movement step (off = unbounded, unchanged), `PlayerMoveSimulator` (`ITickSimulator` over
-    `CharacterMovement.Step`, clamps to `WorldBounds`; resolves the optional `WorldColliders` inside `Step` so the
+    `Server`, deps Locomotion/**Collision**/**Physics**/Netcode/Replication/Ecs/Serialization/WorldStore/**Sharding**) =
+    `WorldBounds` (abstract `Contains`/`Clamp` + `CircleBounds`/`RectBounds`, the authoritative play-area shape;
+    `Clamp` = nearest in-bounds point, idempotent inside + clamp-and-slide outside) wired as a nullable bound through
+    the movement step (off = unbounded, unchanged), `PlayerMoveSimulator` (`ITickSimulator` over
+    `CharacterMovement.Step`, clamps to `WorldBounds`; resolves the optional `IPhysicsWorld?` inside `Step` so the
     server is authoritative + identical to client prediction), `WorldServer` (single-`World` authoritative: per-player `RemoteCommandQueue` +
     ground-clamped sim + per-client AoI via `SnapshotWriter.WriteFiltered`+`InterestGrid`, framed `[localNetId][ack]`;
     a persistence seam = `PlayerJoined`/`PlayerLeaving` events + accountId-from-verified-subject (the
@@ -223,7 +219,7 @@ version/release work.
     `NetId` stable - border ghosting, single home-cell AoI framed identically; `PendingMove` = the per-tick command
     a cell applies to an owned player, server-local + not replicated/migrated; the `WorldClient`/`MoveProtocol` are
     UNCHANGED), `WorldClient` (`NetClient`+`ClientReplicationView`+`ClientPrediction` -> `EntityRenderState[]`, local
-    predicted/reconciled - prediction runs against the same optional `WorldBounds`/`WorldColliders`/`WorldSurfaces`
+    predicted/reconciled - prediction runs against the same optional `WorldBounds`/`IPhysicsWorld?`
     as the server (trailing ctor params mirroring `WorldServer`, default null = terrain-only), so it predicts around
     solid props and clamps at the wall instead of rubber-banding, keeping reconciliation a no-op -
     remotes replicated AND smoothly interpolated: a render-time presentation clock in `AdvancePresentation` ramps

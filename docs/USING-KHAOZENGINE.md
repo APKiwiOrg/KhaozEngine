@@ -956,14 +956,123 @@ rect/polygon rim and gravity/jump are named follow-ups (prop/building collision 
 
 ---
 
-## Static world collision (`WorldColliders` / `PropColliders`)
+## 3D physics (`KhaozEngine.Physics` / `KhaozEngine.Physics.Bepu`) (since 8.0.0)
+
+The physics layer is split into a dependency-free seam (`KhaozEngine.Physics`, in `Foundation`) and an opt-in
+backend (`KhaozEngine.Physics.Bepu`, NOT in any umbrella, added explicitly like `WorldStore.Sqlite`). This is the
+same opt-in-backend pattern the `WorldStore.*` durable backends use.
+
+**Seam (`KhaozEngine.Physics`)** - what every caller sees:
+- `IPhysicsWorld`: `AddStatic(shape, pose, material) -> StaticHandle`, `RemoveStatic(handle)`, `Step(float dt)`,
+  `Raycast(origin, dir, maxDist, filter?) -> RayHit?`, `SweepCapsule(pose, dir, dist, radius, filter?) -> SweepHit?`,
+  `ComputePenetration(shape, pose, filter?) -> PenetrationResult?`.
+- Value-type shapes: `PhysicsShape.Sphere(r)`, `.Capsule(radius, length)`, `.Box(halfExtents)`,
+  `.Cylinder(radius, height)`, `.ConvexHull(points)`, `.TriangleMesh(verts, indices)`, `.Compound(children)`.
+- `Pose.At(Vector3)` / `Pose.AtY(Vector3, float yaw)` (position + quaternion orientation).
+- `PhysicsMaterial(restitution, friction, density)`.
+- `QueryFilter` (category/mask bits; `QueryFilter.All` matches everything).
+- `StaticHandle`, `RayHit` (position, normal, distance, handle), `SweepHit` (same + sweep fraction `T`).
+
+**Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
+
+```xml
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="8.0.0" />
+```
+
+```csharp
+using KhaozEngine.Physics;
+using KhaozEngine.Physics.Bepu;
+
+// Create a single-threaded deterministic Simulation (gravity optional, default -9.81 Y):
+IPhysicsWorld physics = BepuPhysicsWorld.Create(gravity: new Vector3(0, -9.81f, 0));
+
+// Add a static mesh (triangle mesh for a building, convex hull for a rock).
+// Shapes come from PropCollisionLoader (baked by ke-propbake) or built inline:
+StaticHandle rockHandle = physics.AddStatic(
+    PhysicsShape.ConvexHull(rockPoints),
+    Pose.AtY(new Vector3(10f, 0f, 5f), yaw: MathF.PI / 4),
+    PhysicsMaterial.Default);
+
+// Step the simulation each tick (usually driven by FixedTickHost in the server loop):
+physics.Step(dt);
+
+// Raycast for line-of-sight / AI queries:
+RayHit? hit = physics.Raycast(origin: eye, dir: forward, maxDist: 50f);
+if (hit is { } h) Console.WriteLine($"hit at {h.Position}, normal {h.Normal}");
+
+// Remove a static when a chunk unloads:
+physics.RemoveStatic(rockHandle);
+```
+
+**Wiring into character movement** - pass the physics world as `IPhysicsWorld?` wherever the movement step runs.
+The step performs a sweep-capsule collide-and-slide against all static bodies + a downward probe for vertical
+support. Terrain height stays analytic; null = terrain-only.
+
+```csharp
+using KhaozEngine.Locomotion;
+using KhaozEngine.Physics;
+using KhaozEngine.Physics.Bepu;
+
+IPhysicsWorld physics = BepuPhysicsWorld.Create();
+// ... add statics from the streamer ...
+
+// Local single-player controller (CharacterController3D takes IPhysicsWorld? as a ctor param):
+var character = new CharacterController3D(terrain.GroundHeight, MoveTuning.Default,
+                                          groundNormal: terrain.GroundNormal, physics: physics);
+character.Update(input, dt, cameraYaw);
+
+// Authoritative server (WorldServer / ShardedWorldServer - IPhysicsWorld? replaces WorldColliders?/WorldSurfaces?):
+var server = new WorldServer(transport, config, terrain.GroundHeight, MoveTuning.Default,
+                             terrain.GroundNormal, bounds: null, physics: physics);
+var sharded = new ShardedWorldServer(transport, shardConfig, terrain.GroundHeight, MoveTuning.Default,
+                                     terrain.GroundNormal, bounds: null, physics: physics);
+
+// Prediction client (same physics world, so client predicts around props instead of rubber-banding):
+var client = new WorldClient(transport, terrain.GroundHeight, MoveTuning.Default,
+                             groundNormal: terrain.GroundNormal, physics: physics);
+```
+
+**Wiring into the chunk streamer** - `Scene3DChunkSink` accepts an `IPhysicsWorld?` and calls `AddStatic`/
+`RemoveStatic` for each prop in `LoadChunk`/`UnloadChunk`. Collision shapes come from `PropCollisionLoader`,
+which reads the `CollisionShape` baked by `ke-propbake` alongside the `.surf` heightmap:
+
+```csharp
+using KhaozEngine.Render3D;
+using KhaozEngine.Physics;
+
+AssetManifest manifest = AssetManifest.Load(manifestPath);
+// Load baked 3D collision shapes (ke-propbake stamps CollisionShape on each walkable-solid entry):
+IReadOnlyDictionary<string, PhysicsShape> collisionShapes = PropCollisionLoader.LoadAll(manifest);
+
+var sink = new Scene3DChunkSink(
+    scene, field, manifest, scatterConfig, streamConfig,
+    collisionShapes: collisionShapes,     // pass the baked shapes
+    physics: physics);                    // the physics world to add/remove statics in
+
+// The streamer drives the sink - props appear in / leave the physics world as chunks load / unload.
+```
+
+**NativeAOT note:** `BepuPhysicsWorld` requires an `rd.xml` shim for `Dynamic=Required All` on `BepuPhysics`
+when publishing under NativeAOT (iOS/AOT reach). Desktop and headless server targets are fine without it.
+
+**What's next (sub-project 2):** dynamic rigid bodies + replication, terrain-as-physics-geometry (replace the
+`TerrainCollision` delegate with a static terrain `TriangleMesh` body). See `docs/ROADMAP.md` item #2.
+
+---
+
+## Static world collision (`WorldColliders` / `PropColliders`) (pre-8.0.0; retained for 2D / lockstep)
+
+**Since 8.0.0 the 3D movement path uses `IPhysicsWorld` (see the section above) rather than `WorldColliders`.
+The `WorldColliders` approach documented here is kept for 2D games and deterministic lockstep sims that do not
+use the `Physics` package.** The API and types are unchanged; only the `CharacterMovement.Step` / `WorldServer` /
+`WorldClient` / `ShardedWorldServer` / `PlayerMoveSimulator` / `PlayerMovementSystem` ctors no longer accept them.
 
 Props and buildings can be made solid: a kinematic capsule-vs-static-collider push-out in the XZ plane
 (authoritative, the standard MMO character-controller approach, NOT a physics engine). The math + the queryable
-set live in `KhaozEngine.Collision`; movement integration is a single nullable parameter on the shared step, so
-the local controller, the authoritative server, and client prediction all resolve identically.
+set live in `KhaozEngine.Collision`; previously movement integration was a single nullable parameter on the
+shared step, so the local controller, the authoritative server, and client prediction all resolved identically.
 
-Build a `WorldColliders` set, then pass it wherever movement runs (null/empty = today's behaviour, unchanged):
+Build a `WorldColliders` set:
 
 Collider footprints are derived from each prop's actual mesh by default (`KhaozEngine.Render3D.PropFootprint`), so
 you do not hand-author radii: a short prop (rock/crate) uses its full XZ footprint, a tall prop (tree) uses only the
@@ -1076,10 +1185,9 @@ only from above - which also prevents a teleport-up when airborne over a tall su
 a domed top instead of shoving you off); a low edge
 within `MoveTuning.StepHeight` (default 0.4 m) is auto-mounted without a jump (step-up). `TerrainWalkSample` makes
 the scattered rocks solid + jumpable and adds a jumpable platform with a walkable roof. Out of scope (named):
-overhangs / interiors / caves, full 3D mesh collision, dynamic/moving surfaces, player-vs-player, fall damage,
-climbing/mantling, streaming surfaces. Known limitation: a capsule on a domed prop's rising flank clips its body
-into the slope (2D footprint collider + point-sampled top = no 3D slope push-out); the robust fix is capsule-vs-
-surface resolution, deferred to the physics-engine pass (see `docs/ROADMAP.md`).
+overhangs / interiors / caves, dynamic/moving surfaces, player-vs-player, fall damage, climbing/mantling. Note:
+since 8.0.0 the 3D movement path uses `IPhysicsWorld` (capsule-vs-mesh sweep) instead of `WorldColliders`/
+`WorldSurfaces`, which resolves the old domed-flank clipping. This section applies to 2D / lockstep consumers.
 
 ---
 

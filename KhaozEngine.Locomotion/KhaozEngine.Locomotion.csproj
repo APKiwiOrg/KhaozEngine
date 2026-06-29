@@ -6,7 +6,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
-    <ProjectReference Include="../KhaozEngine.Collision/KhaozEngine.Collision.csproj" />
     <ProjectReference Include="../KhaozEngine.Physics/KhaozEngine.Physics.csproj" />
   </ItemGroup>
   <ItemGroup>

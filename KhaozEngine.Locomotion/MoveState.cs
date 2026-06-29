@@ -4,7 +4,7 @@ namespace KhaozEngine.Locomotion;
 
 /// <summary>
 /// The full kinematic state carried tick-to-tick by the vertical-aware
-/// <see cref="CharacterMovement.Step(in MoveState, in MoveCommand, float, System.Func{float, float, float}, in MoveTuning, System.Func{float, float, Vector3}?, KhaozEngine.Collision.WorldColliders?, System.Func{float, float, Vector2}?)"/>:
+/// <see cref="CharacterMovement.Step(in MoveState, in MoveCommand, float, System.Func{float, float, float}, in MoveTuning, System.Func{float, float, Vector3}?, KhaozEngine.Physics.IPhysicsWorld?, System.Func{float, float, Vector2}?)"/>:
 /// the capsule-centre <see cref="Position"/> plus the vertical axis. <see cref="VerticalVelocity"/> and
 /// <see cref="Grounded"/> are the predicted/replicated state; <see cref="TimeSinceGrounded"/> (coyote-time
 /// accounting) and <see cref="JumpBufferRemaining"/> (jump-buffer countdown) are the feel timers the step

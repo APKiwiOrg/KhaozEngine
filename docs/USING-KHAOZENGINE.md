@@ -2263,7 +2263,7 @@ server.BroadcastNotice(new ServerNotice(
     secondsUntil: 60f));
 
 // on the client:
-client.NoticeReceived += (_, notice) =>
+client.NoticeReceived += notice =>
     ShowNotice(notice.Kind, notice.Message, notice.SecondsUntil);
 // or poll the latest:
 if (client.LastNotice is { } n) ShowBanner(n.Message);

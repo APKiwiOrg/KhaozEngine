@@ -11,7 +11,7 @@ public class ServerNoticeTests
     public void Round_trips_kind_message_and_seconds()
     {
         var n = new ServerNotice(ServerNoticeKind.Maintenance, "Restarting soon", secondsUntil: 30f);
-        ServerNotice back = MoveProtocol.TryDecodeNotice(MoveProtocol.EncodeNotice(n));
+        ServerNotice back = MoveProtocol.DecodeNotice(MoveProtocol.EncodeNotice(n));
         Assert.Equal(ServerNoticeKind.Maintenance, back.Kind);
         Assert.Equal("Restarting soon", back.Message);
         Assert.True(back.SecondsUntil.HasValue);
@@ -24,7 +24,7 @@ public class ServerNoticeTests
     {
         byte[] payload = { 9, 8, 7 };
         var n = new ServerNotice(ServerNoticeKind.Custom, "evt", secondsUntil: null, payload: payload);
-        ServerNotice back = MoveProtocol.TryDecodeNotice(MoveProtocol.EncodeNotice(n));
+        ServerNotice back = MoveProtocol.DecodeNotice(MoveProtocol.EncodeNotice(n));
         Assert.Equal(ServerNoticeKind.Custom, back.Kind);
         Assert.False(back.SecondsUntil.HasValue);
         Assert.Equal(payload, back.Payload);
@@ -37,14 +37,14 @@ public class ServerNoticeTests
         var n = new ServerNotice(ServerNoticeKind.Custom, huge);
         byte[] wire = MoveProtocol.EncodeNotice(n);
         Assert.True(wire.Length < 1000, $"oversize message not capped: {wire.Length} bytes");
-        ServerNotice back = MoveProtocol.TryDecodeNotice(wire);
+        ServerNotice back = MoveProtocol.DecodeNotice(wire);
         Assert.True(Encoding.UTF8.GetByteCount(back.Message) <= MoveProtocol.MaxNoticeMessageBytes);
     }
 
     [Fact]
     public void Corrupt_short_buffer_decodes_to_a_safe_default_without_throwing()
     {
-        ServerNotice back = MoveProtocol.TryDecodeNotice(Array.Empty<byte>());
+        ServerNotice back = MoveProtocol.DecodeNotice(Array.Empty<byte>());
         Assert.Equal(string.Empty, back.Message);
     }
 }

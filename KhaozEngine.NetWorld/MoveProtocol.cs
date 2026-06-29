@@ -193,7 +193,7 @@ public static class MoveProtocol
 
     /// <summary>Best-effort decode of a notice frame. Never throws: a short/corrupt buffer yields a safe default
     /// (Custom, empty message, no seconds, empty payload), and declared lengths are clamped before allocating.</summary>
-    public static ServerNotice TryDecodeNotice(ReadOnlySpan<byte> data)
+    public static ServerNotice DecodeNotice(ReadOnlySpan<byte> data)
     {
         if (data.Length < 2) return new ServerNotice(ServerNoticeKind.Custom, string.Empty);
         int i = 0;

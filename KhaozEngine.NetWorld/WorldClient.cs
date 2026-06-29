@@ -387,7 +387,7 @@ public sealed class WorldClient : IDisposable
                 OnSnapshot(payload);
                 break;
             case MoveProtocol.ServerFrameKind.Notice:
-                ServerNotice notice = MoveProtocol.TryDecodeNotice(payload);
+                ServerNotice notice = MoveProtocol.DecodeNotice(payload);
                 if (notice.Kind == ServerNoticeKind.Shutdown) sawShutdownNotice = true;
                 LastNotice = notice;
                 NoticeReceived?.Invoke(notice);

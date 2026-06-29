@@ -86,34 +86,36 @@ public static class CharacterMovement
         if (vVel < -t.MaxFallSpeed) vVel = -t.MaxFallSpeed;
         float desiredY = s.Position.Y + vVel * dt;
 
-        // 3. Candidate position: move freely, then resolve against PROPS in full 3D.
-        // Move-then-depenetrate can tunnel only if one tick's motion exceeds ~the capsule radius (0.4 m).
-        // Walk/run is ~0.05-0.1 m/tick and jump rise ~0.13 m/tick, all well under; only a near-terminal fall
-        // (~0.8 m/tick) onto a thin prop top could skip it, and the analytic terrain below still catches the
-        // capsule (it never falls through the world). A vertical anti-tunnel sweep can be added later if needed.
-        Vector3 pos = new(dx, desiredY, dz);
+        // 3. Candidate position: SWEEP from the current pose to the target (collide-and-slide), then settle.
+        // The swept move can never cross a face (substepped to a fraction of the capsule radius), so the capsule
+        // never begins a tick inside a wall - enforcing the depenetration contract for real. A one-sided building
+        // mesh is now both rich (every triangle blocks) and trap-proof (no entry => no inner-face suck-through).
+        Vector3 start = s.Position;
+        Vector3 target = new(dx, desiredY, dz);
+        Vector3 pos;
         bool propGrounded = false;
-        if (world is not null)
+        if (world is null)
         {
+            pos = target;
+        }
+        else
+        {
+            pos = SweptMove(world, capsule, start, target, t, s.Grounded);
+
+            // Settle pass: residual-overlap depenetration (rarely fires now; the swept move starts known-outside).
             const int ResolveIterations = 6;
-            const float ResolveSlop = 0.01f;    // allow up to 1 cm residual overlap so the capsule settles, not jitters
-            const float MaxCorrection = 0.5f;   // never move more than this in one push-out (anti-fling safety)
+            const float ResolveSlop = 0.01f;
+            const float MaxCorrection = 0.5f;
             for (int i = 0; i < ResolveIterations; i++)
             {
                 if (!world.ComputePenetration(capsule, Pose.At(pos), out Vector3 mtv)) break;
                 float len = mtv.Length();
                 if (len <= 1e-6f) break;
-                // An upward-dominant push = resting on a prop top/slope -> grounded support from the prop. Record
-                // this from the contact itself, BEFORE the slop early-out, so a capsule that has settled to within
-                // the slop still reads as prop-grounded (else it loses support and drops onto the terrain, shoving
-                // itself back into the prop side - the exact micro-drop the slop is meant to prevent).
                 if (mtv.Y > 0.5f * len) propGrounded = true;
-                if (len <= ResolveSlop) break;                 // within slop -> settled, stop pushing
+                if (len <= ResolveSlop) break;
                 float push = MathF.Min(len - ResolveSlop, MaxCorrection);
-                Vector3 dir = mtv / len;
-                pos += dir * push;
+                pos += mtv / len * push;
             }
-            // Re-clamp XZ after depenetration so a prop cannot shove the capsule out of the play area.
             if (clampXz is not null) { Vector2 c = clampXz(pos.X, pos.Z); pos.X = c.X; pos.Z = c.Y; }
         }
 
@@ -156,7 +158,10 @@ public static class CharacterMovement
 
         bool grounded;
         float tSinceGround;
-        bool onGround = vVel <= 0f && (pos.Y <= groundY || (s.Grounded && pos.Y <= groundY + t.GroundedEpsilon));
+        // The swept resolver leaves the capsule at SkinWidth above a surface (not flush). Extend the landing
+        // threshold by SkinWidth so a swept-settled capsule on a flat prop top counts as grounded on the first
+        // contact tick (without this, pos.Y = groundY + SkinWidth > groundY and the capsule falls forever).
+        bool onGround = vVel <= 0f && (pos.Y <= groundY + SkinWidth || (s.Grounded && pos.Y <= groundY + t.GroundedEpsilon));
         if (onGround) pos.Y = groundY;          // snap onto the support surface (generalizes the old terrain clamp)
         if (pos.Y < groundY) pos.Y = groundY;   // and never rest below it, even on a tick that is not "onGround"
         if (onGround || propGrounded)
@@ -227,6 +232,60 @@ public static class CharacterMovement
     /// <summary>The upright capsule for a tuning: radius + cylindrical length so total height = 2*halfHeight.</summary>
     public static CapsuleShape CapsuleFor(in MoveTuning tuning)
         => new(tuning.CapsuleRadius, MathF.Max(0.01f, 2f * tuning.CapsuleHalfHeight - 2f * tuning.CapsuleRadius));
+
+    // Swept collide-and-slide tuning. SubstepFraction keeps each swept query <= a fraction of the capsule radius
+    // so a fast move (jump/run/terminal fall) can never advance past a thin wall in one sweep (anti-tunnel).
+    private const float SubstepFraction = 0.5f;
+    private const int   SlideIterations = 4;
+    private const float SkinWidth       = 0.01f;
+
+    /// <summary>Move the capsule from <paramref name="start"/> toward <paramref name="target"/> by a substepped
+    /// swept collide-and-slide over <see cref="IPhysicsWorld.SweepCapsule"/>. The displacement is split into
+    /// substeps no longer than <see cref="SubstepFraction"/> * the capsule radius, so even a near-terminal fall or
+    /// fast jump never crosses a face. Deterministic (Bepu Sweep is deterministic single-threaded; the substep
+    /// count is a deterministic length).</summary>
+    private static Vector3 SweptMove(IPhysicsWorld world, CapsuleShape capsule, Vector3 start, Vector3 target,
+        in MoveTuning t, bool grounded)
+    {
+        Vector3 full = target - start;
+        float fullLen = full.Length();
+        if (fullLen <= 1e-6f) return target;
+
+        float maxStep = MathF.Max(0.01f, t.CapsuleRadius * SubstepFraction);
+        int substeps = (int)MathF.Ceiling(fullLen / maxStep);
+        if (substeps < 1) substeps = 1;
+        Vector3 stepDelta = full / substeps;
+
+        Vector3 pos = start;
+        for (int i = 0; i < substeps; i++)
+            pos = SlideSubstep(world, capsule, pos, stepDelta, t, grounded);
+        return pos;
+    }
+
+    /// <summary>Collide-and-slide one substep's displacement: sweep, advance to the contact minus a skin, project
+    /// the remainder onto the contact plane, iterate (resolves inner corners). No step-up in this overload.</summary>
+    private static Vector3 SlideSubstep(IPhysicsWorld world, CapsuleShape capsule, Vector3 pos, Vector3 delta,
+        in MoveTuning t, bool grounded)
+    {
+        for (int iter = 0; iter < SlideIterations; iter++)
+        {
+            float dist = delta.Length();
+            if (dist <= 1e-6f) break;
+            Vector3 dir = delta / dist;
+            if (!world.SweepCapsule(capsule, Pose.At(pos), dir, dist, out SweepHit hit))
+            {
+                pos += delta;     // clear path for the remainder of this substep
+                break;
+            }
+            pos += dir * MathF.Max(0f, hit.Distance - SkinWidth);
+            Vector3 remaining = delta - dir * hit.Distance;
+            Vector3 n = hit.Normal;
+            if (n.LengthSquared() > 1e-12f) n = Vector3.Normalize(n);
+            else break;           // degenerate contact (deep/zero-distance): let the settle pass handle it
+            delta = remaining - Vector3.Dot(remaining, n) * n;   // slide along the contact plane
+        }
+        return pos;
+    }
 
     // Desired world XZ position after camera-relative input + slope gate, WITHOUT collision.
     // Handles the input/slope section only; prop collision is resolved separately by the 3D

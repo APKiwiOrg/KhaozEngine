@@ -1676,6 +1676,83 @@ Rules for consumers:
 
 ---
 
+## Diagnostics overlay + telemetry recording (`DiagnosticsOverlay` / `FrameStats` / `TelemetryRecorder` / `WorldClient.NetStats`) (since 8.2.0)
+
+A reusable in-game telemetry HUD for every game: an F1-toggled corner panel that shows whatever rows the
+game hands it, a frame-time meter, a client network-stats snapshot, and a crash-safe session recorder. The
+widget is content-agnostic - **the game assembles the rows each frame**, so the metric catalog stays
+game-owned; the engine ships populators for the common Performance / Network sections.
+
+The four pieces (`FrameStats`, `TelemetryRecorder`, `ClientNetStats` are in `KhaozEngine.Diagnostics`;
+`DiagnosticsOverlay` + `DiagnosticsOverlayTheme` in `KhaozEngine.Gui`; `WorldClient.NetStats` in
+`KhaozEngine.NetWorld`). All reachable from a `Game3D` + `NetWorld` consumer.
+
+**OnLoad** - build the meter, recorder, and overlay once:
+
+```csharp
+_frameStats = new FrameStats();                                   // KhaozEngine.Diagnostics
+_recorder   = new TelemetryRecorder();                            // KhaozEngine.Diagnostics
+_overlay    = new DiagnosticsOverlay(new DiagnosticsOverlayTheme  // KhaozEngine.Gui
+{
+    Corner = OverlayCorner.TopLeft,        // anchor; TopRight/BottomLeft/BottomRight also available
+    Scale = 0.5f,                          // text scale
+    // ToggleKey defaults to Key.F1; set TriggerButton for an optional gamepad toggle.
+});
+_overlay.Visible = overlayOnByDefault;     // e.g. true for an alpha build, false on release (F1 still works)
+```
+
+**OnUpdate(dt)** - sample, assemble sections, drive the toggle:
+
+```csharp
+_frameStats.Sample(dt);
+
+// Reuse a buffer to stay allocation-light; the engine populators cover the common cases.
+_sections.Clear();
+_sections.Add(DiagnosticsOverlay.PerformanceSection(_frameStats));
+_sections.Add(DiagnosticsOverlay.NetworkSection(_client?.NetStats ?? default));  // default => "not connected"
+_sections.Add(new OverlaySection("World", _worldRows));   // custom rows are always available
+_overlay.SetSections(_sections);
+_overlay.Update(Input, dt);                // reads the toggle key, advances the fade, returns Visible
+```
+
+**OnDraw2D(batch)** - draw it over the scene (under any modal screen):
+
+```csharp
+_overlay.Draw(batch, font, white, viewport);   // no-op when hidden / faded out / empty
+```
+
+`WorldClient.NetStats` is a read-only `ClientNetStats` snapshot (RTT, packet loss, in/out byte rates, AoI
+snapshot rate, and the prediction-reconciliation correction magnitude - last + rolling average; `Connected`
+tracks `Joined`). RTT / loss / bytes come from the transport (the LiteNetLib UDP binding fills them; the
+in-memory loopback reports zeros); the snapshot rate and correction come from `WorldClient` itself. The byte
+and snapshot rates refresh once per ~1s window as you pump `WorldClient.AdvancePresentation(dt)` each frame.
+Reading `NetStats` never mutates state. No `WorldClient` ctor or method signature changed to add it.
+
+**Recording.** `TelemetryRecorder` streams **raw numeric channels** (not the overlay's formatted strings) to
+a JSON Lines file, so the output is chartable. It flushes after every line, so a crash leaves a valid partial
+file. The arm/confirm UX is the game's to build; the recorder is just the mechanism:
+
+```csharp
+_recorder.Start(path);                                   // opens <path>, creating parent dirs
+// each frame while recording, from the same source data behind the rows:
+_recorder.Sample(elapsedSeconds, new[]
+{
+    new TelemetryChannel("fps", _frameStats.Fps),
+    new TelemetryChannel("rttMs", stats.RttMs),
+    new TelemetryChannel("correctionM", stats.LastCorrectionMeters),
+});
+_recorder.Stop();                                        // flush + close (also via Dispose())
+```
+
+Each line is one object: `{"t":12.34,"fps":59.7,"rttMs":48,"correctionM":0.02}`. Non-finite values serialize
+as JSON `null` so every line stays parseable.
+
+`DiagnosticsOverlay.Update`, `FrameStats`, and `TelemetryRecorder` are headless-testable (no GPU); only `Draw`
+needs a `SpriteBatch`. Like `UpdateOverlayView`, the widget never reads raw input - it consumes the immutable
+`InputState` snapshot.
+
+---
+
 ## Install / update stamp (`KhaozEngine.App.AppInstallStamp`)
 
 A local record of when the **current app version** first ran on this machine and when it last changed - the

@@ -119,7 +119,10 @@ version/release work.
     session inbox and both `Netcode.LiteNetLib` transport inboxes use it via an optional `maxQueuedEvents` ctor arg
     + a `DroppedEventCount` property, so a stalled/flooded host can't grow undrained events (each Data event pins a
     payload buffer) without bound; mirrors the per-slot bounding `RemoteCommandQueue` already does, never bites a
-    drain-each-poll host); `Replication` = authoritative ECS
+    drain-each-poll host); plus `NetTransportStats` + the default-interface `INetTransport.Stats` (transport-agnostic
+    RTT / loss / cumulative byte counters, `Unavailable` by default so the loopback + any external transport keep
+    compiling untouched; the `Netcode.LiteNetLib` client binding sets `EnableStatistics` and fills it from the server
+    peer), forwarded by `NetClient.TransportStats` and surfaced to games as `WorldClient.NetStats`; `Replication` = authoritative ECS
     replication (`NetId`/`ReplicationRegistry`/`SnapshotWriter`/`ClientReplicationView`/`ServerReplicator` +
     `InterestGrid` AoI); `WorldStore` = `IWorldStore` async keyed-blob seam + `InMemoryWorldStore` (dep-free core),
     with two opt-in durable backends each pulling their own ADO.NET provider (same `Netcode.LiteNetLib` pattern):
@@ -266,7 +269,12 @@ version/release work.
     each remote between its last two snapshots via `ClientReplicationView.Interpolate` (`ReplicatedPosition`'s lerp;
     `MovementState` stays un-interpolated), so a remote glides instead of teleporting one ~tick-rate snapshot-step
     per ingest - default-on `WorldClientConfig.InterpolateRemotes` (=`true`; ~one tick of remote render latency,
-    renders ~one snapshot in the past, no extrapolation; `false` = raw latest, the pre-7.70.0 behaviour)), and
+    renders ~one snapshot in the past, no extrapolation; `false` = raw latest, the pre-7.70.0 behaviour); plus the
+    read-only `WorldClient.NetStats` -> a `Diagnostics.ClientNetStats` diagnostics snapshot of transport RTT / loss /
+    byte rates, the AoI snapshot ingest rate, and the prediction-correction magnitude (last + a 64-sample rolling avg
+    from the formerly-discarded `ReconciliationResult.PositionError`); rates roll over a ~1s window driven by
+    `AdvancePresentation`, `Connected` tracks `Joined`, reading it never mutates state, no ctor/signature change so
+    `NetWorld` now also references `Diagnostics`), and
     `WorldPersistence` (+ `PlayerRecord`, a forward-tolerant JSON
     record): wires an `IWorldStore` into the server lifecycle via `IWorldPersistenceHost` (the seam `WorldServer` AND
     `ShardedWorldServer` both implement) - load-on-join / save-on-leave / periodic dirty snapshot, keys
@@ -329,6 +337,17 @@ version/release work.
     (the same asset). Out of scope: animation events, root motion, IK, additive/facial
     layers, full blend trees, networked animation. Design:
     `docs/superpowers/specs/2026-06-27-animated-characters-design.md`.
+  - **Diagnostics / telemetry overlay (8.2.0):** three render-free types in `Diagnostics` - `FrameStats` (rolling
+    fps / frame-ms avg-min-max / `ManagedBytes` meter off a `Sample(dt)` stream), `TelemetryRecorder` (+
+    `TelemetryChannel`: a crash-safe JSON-Lines session recorder, flushed per line, non-finite -> JSON `null`), and
+    `ClientNetStats` (the connection-health snapshot shape; defined HERE, not in `NetWorld`, so the Gui overlay can
+    name it without `Gui` -> server/netcode stack) - plus the `DiagnosticsOverlay` widget + `DiagnosticsOverlayTheme`
+    (+ `OverlayRow`/`OverlaySection`) in `Gui`: a pure presenter modeled on `UpdateOverlayView` (F1-toggled corner
+    panel, game-assembled sections each frame via `SetSections`, `PerformanceSection(FrameStats)` /
+    `NetworkSection(in ClientNetStats)` populators, headless-testable `Update`, `Draw` over `GuiDraw` + `SpriteBatch`).
+    `Gui` and `NetWorld` each gained a project reference to the `Diagnostics` leaf. Surfaced live via
+    `WorldClient.NetStats` (above). Drives Ruinborne's alpha telemetry HUD; design
+    `Ruinborne/docs/superpowers/specs/2026-06-29-telemetry-overlay-design.md`.
   - **Umbrellas (code-free metapackages):** `Foundation`, `Game2D`, `Game3D`, `Server`.
   - **Tools, same version line:** `Updates.Tool` (`ke-updater`: manifest/genkey/sign/verify), `Sfx.Tool`
     (`ke-sfxbake`: ElevenLabs-driven SFX bake), and `PropSurface.Tool` (`ke-propbake`: bakes a walkable-surface

@@ -963,15 +963,18 @@ backend (`KhaozEngine.Physics.Bepu`, NOT in any umbrella, added explicitly like 
 same opt-in-backend pattern the `WorldStore.*` durable backends use.
 
 **Seam (`KhaozEngine.Physics`)** - what every caller sees:
-- `IPhysicsWorld`: `AddStatic(shape, pose, material) -> StaticHandle`, `RemoveStatic(handle)`, `Step(float dt)`,
-  `Raycast(origin, dir, maxDist, filter?) -> RayHit?`, `SweepCapsule(pose, dir, dist, radius, filter?) -> SweepHit?`,
-  `ComputePenetration(shape, pose, filter?) -> PenetrationResult?`.
-- Value-type shapes: `PhysicsShape.Sphere(r)`, `.Capsule(radius, length)`, `.Box(halfExtents)`,
-  `.Cylinder(radius, height)`, `.ConvexHull(points)`, `.TriangleMesh(verts, indices)`, `.Compound(children)`.
-- `Pose.At(Vector3)` / `Pose.AtY(Vector3, float yaw)` (position + quaternion orientation).
-- `PhysicsMaterial(restitution, friction, density)`.
-- `QueryFilter` (category/mask bits; `QueryFilter.All` matches everything).
-- `StaticHandle`, `RayHit` (position, normal, distance, handle), `SweepHit` (same + sweep fraction `T`).
+- `IPhysicsWorld`: `AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null) -> StaticHandle`,
+  `RemoveStatic(StaticHandle handle)`, `Step(float dt)`,
+  `Raycast(Vector3 origin, Vector3 direction, float maxDistance, out RayHit hit, QueryFilter filter = default) -> bool`,
+  `SweepCapsule(CapsuleShape capsule, Pose pose, Vector3 direction, float maxDistance, out SweepHit hit, QueryFilter filter = default) -> bool`,
+  `ComputePenetration(CapsuleShape capsule, Pose pose, out Vector3 mtv) -> bool` (mtv = minimum translation vector, push-out direction * depth).
+- Concrete shape classes (all extend `PhysicsShape`): `SphereShape(radius)`, `CapsuleShape(radius, length)`,
+  `BoxShape(halfExtents)`, `CylinderShape(radius, length)`, `ConvexHullShape(points)`,
+  `TriangleMeshShape(vertices, indices)`, `CompoundShape(children)`.
+- `Pose(Vector3 position, Quaternion orientation)` / `Pose.At(Vector3 position)` (identity orientation).
+- `PhysicsMaterial(float Friction, float Restitution)`. `PhysicsMaterial.Default` = full friction, no bounce.
+- `QueryFilter(uint Layers)` (layer mask; `QueryFilter.All` / default matches every body).
+- `StaticHandle`, `RayHit(Distance, Point, Normal, Body)`, `SweepHit(Distance, Point, Normal, Body)`.
 
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
@@ -983,37 +986,38 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 
-// Create a single-threaded deterministic Simulation (gravity optional, default -9.81 Y):
-IPhysicsWorld physics = BepuPhysicsWorld.Create(gravity: new Vector3(0, -9.81f, 0));
+// Create a single-threaded deterministic Simulation (SP1 = static bodies only; no gravity parameter):
+IPhysicsWorld physics = new BepuPhysicsWorld();
 
 // Add a static mesh (triangle mesh for a building, convex hull for a rock).
 // Shapes come from PropCollisionLoader (baked by ke-propbake) or built inline:
 StaticHandle rockHandle = physics.AddStatic(
-    PhysicsShape.ConvexHull(rockPoints),
-    Pose.AtY(new Vector3(10f, 0f, 5f), yaw: MathF.PI / 4),
+    new ConvexHullShape(rockPoints),
+    Pose.At(new Vector3(10f, 0f, 5f)),
     PhysicsMaterial.Default);
 
 // Step the simulation each tick (usually driven by FixedTickHost in the server loop):
 physics.Step(dt);
 
 // Raycast for line-of-sight / AI queries:
-RayHit? hit = physics.Raycast(origin: eye, dir: forward, maxDist: 50f);
-if (hit is { } h) Console.WriteLine($"hit at {h.Position}, normal {h.Normal}");
+if (physics.Raycast(eye, forward, maxDistance: 50f, out RayHit hit))
+    Console.WriteLine($"hit at {hit.Point}, normal {hit.Normal}");
 
 // Remove a static when a chunk unloads:
 physics.RemoveStatic(rockHandle);
 ```
 
 **Wiring into character movement** - pass the physics world as `IPhysicsWorld?` wherever the movement step runs.
-The step performs a sweep-capsule collide-and-slide against all static bodies + a downward probe for vertical
-support. Terrain height stays analytic; null = terrain-only.
+The step moves the capsule freely to its desired position, then depenetrates it against all static bodies in
+full 3D (`ComputePenetration` push-out, up to 6 iterations), plus a downward sweep probe for vertical support
+from prop tops. Terrain height stays analytic; null = terrain-only.
 
 ```csharp
 using KhaozEngine.Locomotion;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 
-IPhysicsWorld physics = BepuPhysicsWorld.Create();
+IPhysicsWorld physics = new BepuPhysicsWorld();
 // ... add statics from the streamer ...
 
 // Local single-player controller (CharacterController3D takes IPhysicsWorld? as a ctor param):
@@ -1033,7 +1037,7 @@ var client = new WorldClient(transport, terrain.GroundHeight, MoveTuning.Default
 ```
 
 **Wiring into the chunk streamer** - `Scene3DChunkSink` accepts an `IPhysicsWorld?` and calls `AddStatic`/
-`RemoveStatic` for each prop in `LoadChunk`/`UnloadChunk`. Collision shapes come from `PropCollisionLoader`,
+`RemoveStatic` for each prop in `Load`/`Unload`. Collision shapes come from `PropCollisionLoader`,
 which reads the `CollisionShape` baked by `ke-propbake` alongside the `.surf` heightmap:
 
 ```csharp

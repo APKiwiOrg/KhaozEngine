@@ -185,15 +185,19 @@ version/release work.
   - **3D physics seam + backend (8.0.0):** `Physics` (dependency-free, in `Foundation`) = `IPhysicsWorld`
     (static bodies, `Step(dt)`, spatial queries: `Raycast` -> `RayHit`, `SweepCapsule` -> `SweepHit`,
     `ComputePenetration`), value-type `PhysicsShape` subclasses (`Sphere`/`Capsule`/`Box`/`Cylinder`/
-    `ConvexHull`/`TriangleMesh`/`Compound`), `Pose` (position + quaternion, `Pose.At`/`Pose.AtY`),
-    `PhysicsMaterial`, `QueryFilter`, `StaticHandle`, `RayHit`/`SweepHit`. `Physics.Bepu` (opt-in, NOT in any
-    umbrella; add explicitly like `WorldStore.Sqlite`) = `BepuPhysicsWorld : IPhysicsWorld` over BepuPhysics v2
-    2.4.0 (pure-managed, Apache-2.0, no native libs). `ke-propbake` now also bakes a 3D `CollisionShape` (convex
-    hull / triangle mesh) per prop into the kit manifest; `PropCollisionLoader` reads it; `Scene3DChunkSink` calls
-    `AddStatic`/`RemoveStatic` on chunk load/unload. `CharacterMovement.Step` accepts `IPhysicsWorld?`
-    (collide-and-slide capsule sweep + downward probe for vertical prop support; terrain stays analytic). The old
-    2D `WorldColliders?`/`WorldSurfaces?` `Step` overloads are removed (BREAKING 8.0.0). `KhaozEngine.Collision`
-    remains in `Foundation` for 2D games / lockstep sims; it is no longer on the 3D movement path.
+    `ConvexHull`/`TriangleMesh`/`Compound`), `Pose` (position + quaternion, `Pose.At(Vector3)`),
+    `PhysicsMaterial(Friction, Restitution)`, `QueryFilter`, `StaticHandle`, `RayHit`/`SweepHit`. `Physics.Bepu`
+    (opt-in, NOT in any umbrella; add explicitly like `WorldStore.Sqlite`) = `BepuPhysicsWorld : IPhysicsWorld`
+    over BepuPhysics v2 2.4.0 (pure-managed, Apache-2.0, no native libs); constructed via `new BepuPhysicsWorld()`
+    (no factory, no gravity param in SP1). `ke-propbake` now also bakes a 3D `CollisionShape` per prop into the
+    kit manifest: trees -> trunk `CylinderShape` (walk under the canopy; percentile-based trunk radius), rocks/
+    solid props -> `ConvexHullShape` (base-aligned compound, full deduplicated vertex set), buildings ->
+    `TriangleMeshShape` (concave interior); `PropCollisionLoader` reads it; `Scene3DChunkSink.Load`/`Unload` call
+    `AddStatic`/`RemoveStatic` on chunk load/unload. `CharacterMovement.Step` accepts `IPhysicsWorld?` (3D
+    move-and-depenetrate against static bodies + downward support sweep so the character stands correctly on prop
+    tops; terrain stays analytic). The old 2D `WorldColliders?`/`WorldSurfaces?` `Step` overloads are removed
+    (BREAKING 8.0.0). `KhaozEngine.Collision` remains in `Foundation` for 2D games / lockstep sims; it is no
+    longer on the 3D movement path.
   - **Static-world collision (in `Collision`):** `BoxCollision` (circle-vs-AABB / oriented-box / circle
     minimum-translation push-out), `ColliderShape` (unplaced cylinder/box prop footprint), `WorldCollider` (one
     placed static collider), `WorldColliders` (a `SpatialHashGrid`-backed queryable set: `Query(x,z,radius)` +
@@ -208,7 +212,7 @@ version/release work.
     wired into `CharacterMovement.Step` / `PlayerMoveSimulator` / `WorldServer` / `WorldClient` since 8.0.0
     (replaced by the `IPhysicsWorld` down-probe).
   - **Locomotion + networked-world libs (render-free movement + the netcode wiring):** `Locomotion` (leaf, in
-    `Foundation`, deps Primitives + Collision) = `CharacterMovement.Step`, two overloads sharing one horizontal core
+    `Foundation`, deps Primitives + Physics) = `CharacterMovement.Step`, two overloads sharing one horizontal core
     (camera-relative move from a `MoveCommand` + ground delegate + one `MoveTuning`, slope gate - runs only when a
     `groundNormal` delegate is passed, e.g. `TerrainCollision.GroundNormal`, so the rim wall can't be climbed - plus
     optional 3D physics collision via a nullable `IPhysicsWorld?` (8.0.0, replaces the old `WorldColliders?` pair):
@@ -321,7 +325,7 @@ version/release work.
   - **Umbrellas (code-free metapackages):** `Foundation`, `Game2D`, `Game3D`, `Server`.
   - **Tools, same version line:** `Updates.Tool` (`ke-updater`: manifest/genkey/sign/verify), `Sfx.Tool`
     (`ke-sfxbake`: ElevenLabs-driven SFX bake), and `PropSurface.Tool` (`ke-propbake`: bakes a walkable-surface
-    `.surf` heightmap per walkable-solid prop in a kit manifest, folded into kit ingest) are `PackAsTool`;
+    `.surf` heightmap AND a 3D collision shape per walkable-solid prop in a kit manifest, folded into kit ingest) are `PackAsTool`;
     `Content.Validator` is a build-time tool (`IsPackable=false`, shipped inside the `Content` package, not
     separately versioned).
   - **Gotchas / history:** the package id is `KhaozEngine.Sharding`, NOT `KhaozEngine.World` (a `World` leaf would

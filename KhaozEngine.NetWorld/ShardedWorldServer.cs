@@ -73,13 +73,14 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
     private readonly List<(int slot, PlayerMoveState prev, MoveCommand cmd)> correctionScratch = new();
     private readonly DrainController drain = new();
     private readonly AdminCommandBuffer admin = new();
+    private readonly IBanStore? banStore;
     private readonly MoveTuning tuning;
     private int nextNetId = 1;
 
     public ShardedWorldServer(INetTransport transport, ShardedWorldServerConfig config,
         Func<float, float, float> groundHeight, MoveTuning tuning, Func<float, float, Vector3>? groundNormal = null,
         WorldBounds? bounds = null, IPhysicsWorld? physics = null,
-        IConnectionAuthenticator? authenticator = null)
+        IConnectionAuthenticator? authenticator = null, IBanStore? banStore = null)
     {
         ArgumentNullException.ThrowIfNull(transport);
         this.config = config ?? throw new ArgumentNullException(nameof(config));
@@ -100,6 +101,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
             overlapMargin: config.OverlapMargin,
             positionAccessor: PositionAccessor);
         net = new NetServer(transport, config.MaxPlayers, authenticator ?? new AllowAllAuthenticator());
+        this.banStore = banStore;
     }
 
     /// <summary>The shard topology (cells, ownership, ghosts).</summary>
@@ -382,6 +384,14 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
 
     private void OnJoin(int slot, string subject, string displayName)
     {
+        string accountId = string.IsNullOrEmpty(subject) ? $"guest:{slot}" : subject;
+        if (banStore is not null && banStore.IsBanned(accountId))
+        {
+            SendNoticeTo(slot, new ServerNotice(ServerNoticeKind.Custom, "banned"));
+            net.Disconnect(slot);
+            return;
+        }
+
         // Belt-and-suspenders: clear any stale command-queue state on the (recycled) slot before spawning, in case
         // a prior occupant's Left was ever missed. A fresh session's seqs restart at 0; a stale high-water mark
         // would reject every one and freeze the player (see OnLeave).
@@ -399,8 +409,6 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
         // A display name on the connect token rides along the same way (a registered component, migrated on handoff).
         if (!string.IsNullOrEmpty(displayName)) cell.World.Set(e, new PlayerIdentity { DisplayName = displayName });
         EnsureWired(cell);
-
-        string accountId = string.IsNullOrEmpty(subject) ? $"guest:{slot}" : subject;
         netIdBySlot[slot] = netId;
         lastAckBySlot[slot] = -1;
         accountIdBySlot[slot] = accountId;

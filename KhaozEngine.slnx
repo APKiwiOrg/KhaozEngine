@@ -14,6 +14,7 @@
   <Project Path="KhaozEngine.Game2D/KhaozEngine.Game2D.csproj" />
   <Project Path="KhaozEngine.Game3D/KhaozEngine.Game3D.csproj" />
   <Project Path="KhaozEngine.Server/KhaozEngine.Server.csproj" />
+  <Project Path="KhaozEngine.Server.Admin/KhaozEngine.Server.Admin.csproj" />
   <Project Path="KhaozEngine.Gpu/KhaozEngine.Gpu.csproj" />
   <Project Path="KhaozEngine.Gui/KhaozEngine.Gui.csproj" />
   <Project Path="KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />

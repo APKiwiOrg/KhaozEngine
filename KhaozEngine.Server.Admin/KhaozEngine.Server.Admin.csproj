@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Server.Admin</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <Description>Opt-in HTTPS admin endpoint for a KhaozEngine game server: a minimal Kestrel listener (TLS + a single bearer token) exposing the generic ServerAdmin surface (list/teleport/kick/broadcast online players, enumerate persisted accounts, ban/unban) as a small REST API. The ONLY package that references ASP.NET Core (via a FrameworkReference); deliberately NOT bundled in the KhaozEngine.Server umbrella, so a sim server that does not want an admin endpoint never pulls the web stack. Off until the consumer wires a port, certificate, and token.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="../KhaozEngine.NetWorld/KhaozEngine.NetWorld.csproj" />
+    <ProjectReference Include="../KhaozEngine.WorldStore/KhaozEngine.WorldStore.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Tests" />
+  </ItemGroup>
+</Project>

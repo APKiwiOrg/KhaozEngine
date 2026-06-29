@@ -238,6 +238,7 @@ namespace KhaozEngine.Terrain
                 int hz = (int)MathF.Round(host.Z * 100f);
 
                 int count = config.CountMin + (int)(CompanionHash01(hx, hz, config.Seed, SaltCompanionCount, 0) * span);
+                if (count > config.CountMax) count = config.CountMax;   // hash maps to [0,1]; keep count within the inclusive bound
 
                 for (int j = 0; j < count; j++)
                 {

@@ -7,8 +7,8 @@ metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the p
 
 ## 7.71.0
 
-Ground-cover scatter: the chunk sink now holds multiple prop layers and a deterministic understory-companion
-primitive rings host props with foliage, so a dense short-radius ground cover rides alongside the sparse trees
+Ground-cover scatter: the chunk sink now holds multiple prop layers, and a deterministic understory-companion
+pass rings each host prop with foliage, so a dense short-radius ground cover rides alongside the sparse trees
 and trees are dressed at the base instead of standing on bare ground. Additive; no new material, no protocol or
 collision change.
 

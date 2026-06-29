@@ -1191,11 +1191,12 @@ var layers = new PropLayer[]
     PropLayer.CompanionLayer(hostLayerIndex: 0,              // companions of layer 0 (trees)
         new CompanionConfig
         {
-            HostKinds  = new[] { "oak", "pine" },   // which tree ids get companions
-            Count      = 6,                          // foliage instances per host
-            MinRadius  = 0.6f,
-            MaxRadius  = 1.2f,
-            Kind       = "fern_small",
+            HostKinds  = new[] { "oak", "pine" },              // which tree ids get companions
+            CountMin   = 4,                                     // foliage instances per host (inclusive range)
+            CountMax   = 6,
+            RadiusMin  = 0.6f,
+            RadiusMax  = 1.2f,
+            Kinds      = new[] { new PropKind("fern_small", 1f) },
         },
         fernMeshes, drawRadius: 8f),
 };
@@ -1209,7 +1210,7 @@ The single-layer ctor (`new Scene3DChunkSink(scene, field, ScatterConfig, meshes
 is unchanged and byte-identical to pre-7.71.0 builds.
 
 `PropScatter.GenerateCompanions(field, hosts, config)` is the underlying primitive if you want companions
-outside the streamer: it returns a `List<PropPlacement>` that is tiling-invariant (companions over a host set
+outside the streamer: it returns a `IReadOnlyList<PropPlacement>` that is tiling-invariant (companions over a host set
 equal the union over any chunk tiling), with `Y` resampled from the field and `MaxHeight` filtering out
 off-mountain placements.
 

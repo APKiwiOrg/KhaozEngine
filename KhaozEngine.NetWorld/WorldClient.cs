@@ -26,6 +26,17 @@ public sealed class WorldClientConfig
     /// <summary>Mid-session disconnect detector: declare the session lost after this many seconds with no server
     /// snapshot (only advances when <see cref="WorldClient.Poll(float)"/> is called with dt &gt; 0). Default 3s.</summary>
     public float DisconnectTimeoutSeconds { get; init; } = 3f;
+
+    /// <summary>Auto-reconnect on a mid-session drop (honored only when the factory ctor is used). Default true:
+    /// the client rebuilds the transport, resumes the same token, and re-syncs without a manual rebuild.</summary>
+    public bool AutoReconnect { get; init; } = true;
+
+    /// <summary>Keep retrying even after a token rejection. Default false: a rejected token is terminal (it will not
+    /// fix itself), surfaced as <see cref="DisconnectReason.RejectedToken"/>.</summary>
+    public bool RetryOnReject { get; init; } = false;
+
+    /// <summary>Backoff schedule for auto-reconnect.</summary>
+    public ReconnectBackoff Reconnect { get; init; } = ReconnectBackoff.Default;
 }
 
 /// <summary>
@@ -35,12 +46,12 @@ public sealed class WorldClientConfig
 /// player against the authoritative basis), <see cref="SendInput"/>s once per tick (predicts + transmits), and
 /// reads <see cref="Snapshot"/> to render a capsule per entity (local predicted, remotes replicated). Render-free.
 /// </summary>
-public sealed class WorldClient
+public sealed class WorldClient : IDisposable
 {
-    private readonly NetClient net;
-    private readonly World world = new();
+    private NetClient net;
+    private World world = new();
     private readonly ReplicationRegistry registry = MoveProtocol.CreateRegistry();
-    private readonly ClientReplicationView view;
+    private ClientReplicationView view;
     private readonly ClientPrediction<PlayerMoveState, MoveCommand> prediction;
     private int authoritativeTick;
     private WorldConnectionState state = WorldConnectionState.Connecting;
@@ -61,13 +72,50 @@ public sealed class WorldClient
     private float secondsSinceSnapshot;               // presentation clock since the last applied snapshot
     private bool sawFirstSnapshot;                    // gate the interval EMA until there is a real interval to measure
 
+    // Reconnect fields
+    private readonly Func<INetTransport>? connectFactory;   // null = single-shot instance path
+    private INetTransport? ownedTransport;                  // disposed by us when factory-built
+    private readonly byte[]? token;
+    private readonly bool autoReconnect;
+    private readonly bool retryOnReject;
+    private readonly ReconnectBackoff backoff;
+    private int attempt;                 // 0 while initial-connecting or connected; 1.. while reconnecting
+    private bool awaitingBackoff;        // true while waiting out the inter-attempt delay
+    private float retryWaitRemaining;    // backoff countdown
+    private float attemptDeadlineRemaining;  // current live attempt's join deadline
+
+    /// <summary>Single-shot client over a caller-owned transport: no auto-reconnect (a drop is terminal, observable
+    /// via <see cref="ConnectionState"/> + <see cref="DisconnectReason"/>). The caller owns disposing the transport.</summary>
     public WorldClient(INetTransport transport, Func<float, float, float> groundHeight, MoveTuning tuning,
         WorldClientConfig? config = null, byte[]? token = null, Func<float, float, Vector3>? groundNormal = null,
         WorldBounds? bounds = null, IPhysicsWorld? physics = null)
+        : this(connectFactory: null, transport, groundHeight, tuning, config, token, groundNormal, bounds, physics)
+    {
+        ArgumentNullException.ThrowIfNull(transport);
+    }
+
+    /// <summary>Reconnect-capable client: <paramref name="connect"/> is invoked once for the initial connection and
+    /// again per reconnect attempt (rebuilding the transport + session), resuming the same <paramref name="token"/>.
+    /// Auto-reconnect is on by default (see <see cref="WorldClientConfig.AutoReconnect"/>). This client owns and
+    /// disposes the transports it builds; dispose the client to close the current one.</summary>
+    public WorldClient(Func<INetTransport> connect, Func<float, float, float> groundHeight, MoveTuning tuning,
+        WorldClientConfig? config = null, byte[]? token = null, Func<float, float, Vector3>? groundNormal = null,
+        WorldBounds? bounds = null, IPhysicsWorld? physics = null)
+        : this(connect ?? throw new ArgumentNullException(nameof(connect)), connect(), groundHeight, tuning, config,
+               token, groundNormal, bounds, physics)
+    {
+    }
+
+    private WorldClient(Func<INetTransport>? connectFactory, INetTransport transport,
+        Func<float, float, float> groundHeight, MoveTuning tuning, WorldClientConfig? config, byte[]? token,
+        Func<float, float, Vector3>? groundNormal, WorldBounds? bounds, IPhysicsWorld? physics)
     {
         ArgumentNullException.ThrowIfNull(transport);
         if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
         config ??= new WorldClientConfig();
+        this.connectFactory = connectFactory;
+        this.token = token;
+        ownedTransport = connectFactory is not null ? transport : null;   // we dispose only what we built
         net = new NetClient(transport, token);
         view = new ClientReplicationView(registry);
         // Predict against the SAME physics world the server is authoritative over (mirrors WorldServer),
@@ -79,6 +127,10 @@ public sealed class WorldClient
         tickSeconds = config.TickSeconds;
         snapshotInterval = config.TickSeconds;        // server sends at the sim tick today; refined by measurement
         disconnectTimeout = config.DisconnectTimeoutSeconds;
+        autoReconnect = config.AutoReconnect;
+        retryOnReject = config.RetryOnReject;
+        backoff = config.Reconnect;
+        attemptDeadlineRemaining = disconnectTimeout;   // also bound the initial connect
     }
 
     /// <summary>Net id of the local player, or -1 until the first snapshot identifies it.</summary>
@@ -100,6 +152,13 @@ public sealed class WorldClient
     /// <summary>Extra detail for the reason (the authenticator's reject string for
     /// <see cref="DisconnectReason.RejectedToken"/>); empty otherwise.</summary>
     public string DisconnectReasonDetail => disconnectReasonDetail;
+
+    /// <summary>Number of the in-flight reconnect attempt (0 while connected or on the initial connect). Render
+    /// "reconnecting (attempt N)..." from this and <see cref="SecondsUntilNextRetry"/>.</summary>
+    public int ReconnectAttempt => attempt;
+
+    /// <summary>Seconds until the next reconnect attempt fires while waiting out backoff; 0 otherwise.</summary>
+    public float SecondsUntilNextRetry => awaitingBackoff ? MathF.Max(0f, retryWaitRemaining) : 0f;
 
     private void SetState(WorldConnectionState next)
     {
@@ -130,12 +189,22 @@ public sealed class WorldClient
     public float LocalVerticalVelocity => prediction.RenderedState.VerticalVelocity;
 
     /// <summary>Pumps the session: ingests AoI snapshots, applies remote replication, reconciles the local avatar.
-    /// Pass <paramref name="dt"/> (seconds elapsed since last call) to drive the snapshot-starvation detector - after
-    /// <see cref="WorldClientConfig.DisconnectTimeoutSeconds"/> with no server frame the state transitions to
-    /// <see cref="WorldConnectionState.Disconnected"/> with <see cref="DisconnectReason.Timeout"/>. The detector only
-    /// advances when dt &gt; 0; callers that pass 0 (the default) disable it for that call.</summary>
+    /// Pass <paramref name="dt"/> (seconds elapsed since last call) to drive the snapshot-starvation detector and
+    /// reconnect backoff timer. After <see cref="WorldClientConfig.DisconnectTimeoutSeconds"/> with no server frame
+    /// the state transitions to <see cref="WorldConnectionState.Reconnecting"/> (factory ctor) or
+    /// <see cref="WorldConnectionState.Disconnected"/> (instance ctor), with the appropriate
+    /// <see cref="DisconnectReason"/>. The detector only advances when dt &gt; 0; callers that pass 0 (the default)
+    /// disable it for that call.</summary>
     public void Poll(float dt = 0f)
     {
+        // Waiting out a backoff delay between attempts: count down, then start the next attempt.
+        if (awaitingBackoff)
+        {
+            retryWaitRemaining -= dt;
+            if (retryWaitRemaining > 0f) return;
+            StartAttempt();
+        }
+
         net.Poll();
         bool gotFrame = false;
         while (net.TryDequeueEvent(out ClientSessionEvent ev))
@@ -145,6 +214,8 @@ public sealed class WorldClient
                 case ClientSessionEventKind.Joined:
                     disconnectReason = DisconnectReason.None;
                     disconnectReasonDetail = string.Empty;
+                    sawShutdownNotice = false;
+                    attempt = 0;
                     secondsSinceServerFrame = 0f;
                     SetState(WorldConnectionState.Connected);
                     break;
@@ -155,28 +226,92 @@ public sealed class WorldClient
                 case ClientSessionEventKind.Rejected:
                     disconnectReason = DisconnectReason.RejectedToken;
                     disconnectReasonDetail = ev.RejectReason;
-                    SetState(WorldConnectionState.Disconnected);
+                    FailAttempt(allowReconnect: retryOnReject);
                     break;
                 case ClientSessionEventKind.Disconnected:
                     if (state != WorldConnectionState.Disconnected)
                     {
                         disconnectReason = sawShutdownNotice ? DisconnectReason.ServerShutdown : DisconnectReason.Unreachable;
-                        SetState(WorldConnectionState.Disconnected);
+                        FailAttempt(allowReconnect: true);
                     }
                     break;
             }
         }
         if (gotFrame) secondsSinceServerFrame = 0f;
+        if (dt <= 0f) return;
 
-        if (state == WorldConnectionState.Connected && dt > 0f)
+        if (state == WorldConnectionState.Connected)
         {
             secondsSinceServerFrame += dt;
             if (secondsSinceServerFrame >= disconnectTimeout)
             {
                 disconnectReason = DisconnectReason.Timeout;
-                SetState(WorldConnectionState.Disconnected);
+                FailAttempt(allowReconnect: true);
             }
         }
+        else if (!awaitingBackoff && state != WorldConnectionState.Disconnected)
+        {
+            // A live attempt (initial Connecting or a reconnect attempt) that never joins: enforce a join deadline
+            // so a down server (no transport-drop event over loopback) still fails the attempt and backs off.
+            attemptDeadlineRemaining -= dt;
+            if (attemptDeadlineRemaining <= 0f)
+            {
+                if (disconnectReason == DisconnectReason.None) disconnectReason = DisconnectReason.Timeout;
+                FailAttempt(allowReconnect: true);
+            }
+        }
+    }
+
+    private bool CanReconnect => connectFactory is not null && autoReconnect;
+
+    // A live attempt failed (drop, reject, or join-deadline). Either schedule another attempt or go terminal.
+    private void FailAttempt(bool allowReconnect)
+    {
+        if (allowReconnect && CanReconnect && (backoff.MaxAttempts == 0 || attempt < backoff.MaxAttempts))
+        {
+            attempt = Math.Max(1, attempt + 1);
+            retryWaitRemaining = backoff.DelayForAttempt(attempt);
+            awaitingBackoff = true;
+            SetState(WorldConnectionState.Reconnecting);
+        }
+        else
+        {
+            awaitingBackoff = false;
+            SetState(WorldConnectionState.Disconnected);
+        }
+    }
+
+    // Build a fresh transport + session for the next attempt, keeping prediction; drop stale replicated entities.
+    private void StartAttempt()
+    {
+        awaitingBackoff = false;
+        DisposeCurrentTransport();
+        INetTransport transport = connectFactory!();
+        ownedTransport = transport;
+        net = new NetClient(transport, token);
+        world = new World();
+        view = new ClientReplicationView(registry);
+        LocalNetId = -1;
+        secondsSinceServerFrame = 0f;
+        attemptDeadlineRemaining = disconnectTimeout;
+        // Reset remote-interpolation bookkeeping so the new stream starts clean.
+        snapshotInterval = tickSeconds;
+        secondsSinceSnapshot = 0f;
+        sawFirstSnapshot = false;
+        // state stays Reconnecting until this attempt's Joined.
+    }
+
+    private void DisposeCurrentTransport()
+    {
+        if (connectFactory is not null) ownedTransport?.Dispose();
+        ownedTransport = null;
+    }
+
+    /// <summary>Closes the current transport (if this client built it). Idempotent.</summary>
+    public void Dispose()
+    {
+        DisposeCurrentTransport();
+        SetState(WorldConnectionState.Disconnected);
     }
 
     /// <summary>Predicts one command forward and transmits it. Returns the assigned seq.</summary>

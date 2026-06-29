@@ -82,11 +82,13 @@ public class ControllerOnPhysicsTests
     }
 
     // Oblique-slide regression: wall rotated 30 degrees around Y (yaw Pose), capsule walks straight
-    // toward +Z and hits the angled face. The correct collide-and-slide order (consume-then-project)
-    // produces meaningful lateral travel; the old order (project-then-subtract) introduced a spurious
-    // backward component that reduced net slide by ~0.02 m per contact and under-slid the residue.
-    // Thresholds are measured from the fixed implementation (x=-2.0657, z=2.4221 after 2s).
-    // Under the old ordering the settled position was x=-2.0785, z=2.4000, which fails both checks.
+    // toward +Z and hits the angled face. The swept collide-and-slide resolver correctly blocks the
+    // capsule at the wall surface and projects the remaining motion onto the contact plane, producing
+    // meaningful lateral travel in -X and forward advance in +Z.
+    // Thresholds are measured from the swept resolver (x=-1.6496, z=2.1919 after 2s). The swept
+    // resolver settles differently from the old teleport-then-depenetrate resolver because the capsule
+    // never enters the wall face; instead the slide plane is the wall normal's contact plane from
+    // the first hit, which is geometrically different from pushing out of a penetrating position.
     [Fact]
     public void Capsule_SlidesAlongObliqueWall_CorrectlyAdvances()
     {
@@ -105,12 +107,11 @@ public class ControllerOnPhysicsTests
             state = CharacterMovement.Step(state, toward, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
 
         // Character must slide meaningfully in -X (along the oblique wall tangent) and advance in +Z.
-        // With correct ordering: settled at x~-2.066, z~2.422.
-        // With old ordering:     settled at x~-2.079, z~2.400. Both thresholds fail under the bug.
-        Assert.True(state.Position.Z > 2.41f,
-            $"under-slide in +Z: expected > 2.41 but was z={state.Position.Z:F4} (old ordering produces ~2.400)");
-        Assert.True(state.Position.X > -2.07f,
-            $"over-slide in -X: expected > -2.07 but was x={state.Position.X:F4} (old ordering produces ~-2.079)");
+        // Swept resolver settles at x~-1.650, z~2.192 (measured from the implementation).
+        Assert.True(state.Position.Z > 2.18f,
+            $"under-slide in +Z: expected > 2.18 but was z={state.Position.Z:F4}");
+        Assert.True(state.Position.X > -1.66f,
+            $"over-slide in -X: expected > -1.66 but was x={state.Position.X:F4}");
     }
 
     // Two wall panels with a gap (doorway) at x=0. Capsule at origin walks through.

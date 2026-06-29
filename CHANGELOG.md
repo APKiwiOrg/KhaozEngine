@@ -5,6 +5,27 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.74.1
+
+Robustness fix for the ground-decal pass: each queued decal now renders from its OWN dynamic-offset slot of the decal
+UBO instead of every draw re-uploading and reading one shared 160-byte slot. Output is byte-identical on the three
+current Veldrid backends (the 3-decal golden is unchanged), so this is defensive correctness, not a visible-bug fix -
+it removes a fragile pattern, not a wrong pixel.
+
+- **Per-draw dynamic-offset decal UBO.** `GroundDecalRenderer.Draw` packed every decal into one shared UBO at offset 0
+  and re-uploaded it per draw within a single command list, leaning on the backend to barrier the write-after-read so
+  each draw read its own params. That holds on Veldrid's Metal/D3D11/Vulkan today (`CommandList.UpdateBuffer` snapshots
+  each copy and orders them, which is why the reported bug is not actually observable), but it is exactly the
+  shared-per-draw-UBO pattern the engine elsewhere replaced with a dynamic-offset window. The pass now writes each
+  decal into its own 256-byte slot of a growable UBO (geometric growth, old buffers retired then freed in `Dispose`)
+  and selects the slot per draw via the dynamic offset on `SetGraphicsResourceSet` - the first in-engine user of that
+  path. The framebuffer is bound once before the draw loop instead of once per decal. Internal only: `GroundDecalRenderer`
+  is not public and the `DrawGroundDecal` primitive is unchanged, so this is a pure pin bump for consumers.
+- **New regression guard.** `GroundDecalDistinctRenderTests` (GPU-gated, `KE_GPU_TESTS=1`) renders two decals far
+  apart, one red and one cyan, and asserts in absolute terms that both colours appear in the output, so a future
+  collapse to one shared slot drops a colour and fails. Being GPU-gated it also exercises the new dynamic-offset bind
+  on D3D11 + Vulkan in CI.
+
 ## 7.74.0
 
 Server-side anti-cheat / input-hardening pass for the authoritative movement servers: NaN/Inf move packets are

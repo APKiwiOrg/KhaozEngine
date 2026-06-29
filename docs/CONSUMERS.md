@@ -4,11 +4,11 @@ Which game uses which packages, at which version. Current state only - for the p
 [`../CHANGELOG.md`](../CHANGELOG.md). Update this whenever a consumer bumps a `<PackageReference>` or the
 engine ships a new version.
 
-**Engine current version:** `8.4.1` (the shared `<KhaozEngineVersion>` line, which *is* the engine). The
+**Engine current version:** `8.4.2` (the shared `<KhaozEngineVersion>` line, which *is* the engine). The
 engine is entirely MonoGame-free on a single version line in `Directory.Build.props` (the doc-version guard
 checks it): the custom render/runtime stack + the graduated MonoGame-free foundation + the four umbrella
 metapackages, all sharing one version. `Physics.Bepu` and the `WorldStore.Sqlite`/`.SqlServer` backends are
-opt-in and referenced explicitly; `Server.Admin` (the Kestrel HTTPS admin endpoint, 8.4.0) is likewise opt-in
+opt-in and referenced explicitly; `Server.Admin` (the Kestrel HTTPS admin endpoint, 8.4.2) is likewise opt-in
 and NOT in the `Server` umbrella - add it explicitly when the server needs an admin endpoint, so a sim server
 without one never pulls the ASP.NET Core web stack; the author/publish tools (`ke-updater`/`ke-sfxbake`/`ke-propbake`) ship as
 dotnet tools in no umbrella, so no consumer references them via `<PackageReference>`. Full package catalog:

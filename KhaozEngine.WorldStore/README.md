@@ -16,7 +16,7 @@ packages, each pulling its own DB driver so this core stays clean:
 The save/load orchestration that wires an `IWorldStore` into the server lifecycle (load-on-join / save-on-leave /
 periodic snapshot) is `WorldPersistence` in `KhaozEngine.NetWorld`.
 
-**Account enumeration (since 8.4.0).** Stores can opt into **`IEnumerableWorldStore`**: `EnumerateAsync(keyPrefix?)`
+**Account enumeration (since 8.4.2).** Stores can opt into **`IEnumerableWorldStore`**: `EnumerateAsync(keyPrefix?)`
 streams `WorldStoreEntry { Key, UpdatedAt, Size? }` records. `InMemoryWorldStore`, `SqliteWorldStore`, and
 `SqlServerWorldStore` all implement it. Feature-detect with `store is IEnumerableWorldStore`. The `ServerAdmin`
 facade in `KhaozEngine.NetWorld` uses it for account listing and bans.

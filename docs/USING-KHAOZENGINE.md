@@ -2382,7 +2382,7 @@ await persistence.FlushAsync();
 
 `IsDraining` is true once `BeginDrain` has been called; `IsDrainComplete` flips when the grace period has elapsed and all clients have been disconnected. The drain is tick-driven (no wall-clock sleep); the host controls how fast ticks run.
 
-### Server administration (`ServerAdmin` / `IBanStore` / `IEnumerableWorldStore` / `KhaozEngine.Server.Admin`) (since 8.4.0)
+### Server administration (`ServerAdmin` / `IBanStore` / `IEnumerableWorldStore` / `KhaozEngine.Server.Admin`) (since 8.4.2)
 
 A generic, opt-in admin surface for a live server. Nothing changes for a server that does not use it.
 

@@ -318,7 +318,7 @@ version/release work.
     Networked-overworld render-scale sub-project (`docs/superpowers/specs/2026-06-27-networked-overworld-design.md`);
     persistence sub-project (`docs/superpowers/specs/2026-06-27-persistent-worldstore-design.md`); multi-cell sharding
     sub-project 6b (`docs/superpowers/specs/2026-06-27-multicell-sharding-design.md`).
-    8.4.0 additive: a generic server-admin surface - `IAdminControllable` (`ListOnline`/`Teleport`/`Kick`/`Broadcast`,
+    8.4.2 additive: a generic server-admin surface - `IAdminControllable` (`ListOnline`/`Teleport`/`Kick`/`Broadcast`,
     queued + applied on the host thread, online snapshot published per tick) implemented by BOTH `WorldServer` and
     `ShardedWorldServer`; `PlayerRef`/`OnlinePlayer`; an `IBanStore` seam (`InMemoryBanStore` + `WorldStoreBanStore`
     over the `IWorldStore` keyspace `ban:{accountId}`, sync `IsBanned` consulted at connect via the trailing optional
@@ -377,7 +377,7 @@ version/release work.
     `Gui` and `NetWorld` each gained a project reference to the `Diagnostics` leaf. Surfaced live via
     `WorldClient.NetStats` (above). Drives Ruinborne's alpha telemetry HUD; design
     `Ruinborne/docs/superpowers/specs/2026-06-29-telemetry-overlay-design.md`.
-  - **Server admin endpoint (8.4.0):** `Server.Admin` = the opt-in HTTPS admin endpoint (`AdminHttpServer` over
+  - **Server admin endpoint (8.4.2):** `Server.Admin` = the opt-in HTTPS admin endpoint (`AdminHttpServer` over
     Kestrel minimal hosting, `AdminEndpointOptions`, `AdminTlsCertificate` incl. `CreateSelfSigned`) exposing
     `ServerAdmin` as a bearer-token REST API. The ONLY package referencing ASP.NET Core (via `FrameworkReference`);
     NOT in any umbrella - added explicitly like `WorldStore.Sqlite` / `Physics.Bepu`.

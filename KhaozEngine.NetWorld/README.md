@@ -40,7 +40,7 @@ No render, window, or GPU dependency: the servers are headless and the client gl
 renders a capsule per `EntityRenderState`). `WorldServer` is the single-`World` slice; `ShardedWorldServer` is
 the multi-cell variant (overworld sub-project 6b).
 
-## Server administration (since 8.4.0)
+## Server administration (since 8.4.2)
 
 Both `WorldServer` and `ShardedWorldServer` implement **`IAdminControllable`**: `ListOnline()` returns the
 connected players as a snapshot (published once per tick); `Teleport(PlayerRef, Vector3)`, `Kick(PlayerRef, reason)`,

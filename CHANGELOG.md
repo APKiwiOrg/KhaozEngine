@@ -5,6 +5,16 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 8.4.2
+
+Generic, opt-in server administration surface: live admin commands, world-store enumeration, an account-ban seam, and an opt-in HTTPS admin endpoint.
+
+- **Admin command surface.** `WorldServer` and `ShardedWorldServer` now implement `IAdminControllable`: `ListOnline()` (a per-tick published snapshot of connected players: slot, account id, display name, position, grounded, vertical velocity, net id) plus `Teleport(PlayerRef, Vector3)`, `Kick(PlayerRef, reason)`, and `Broadcast(text)`, all queued and applied on the host thread between ticks (thread-safe to call from an HTTP handler). `PlayerRef.Slot(n)` / `PlayerRef.Account(id)` target a player. The existing `Disconnect(slot)` on both servers is retained as the lower-level kick (signature unchanged); it now also removes the slot from authoritative state immediately, so a kick reflects in `PlayerCount` / `ListOnline` without waiting for the transport disconnect event.
+- **`IEnumerableWorldStore`.** Optional `IWorldStore` capability: `EnumerateAsync(keyPrefix?)` streams `WorldStoreEntry { Key, UpdatedAt, Size? }`. Implemented on `InMemoryWorldStore`, `SqliteWorldStore`, and `SqlServerWorldStore`. `InMemoryWorldStore` now tracks a per-key write timestamp (optional injectable clock; external behaviour unchanged).
+- **Ban seam.** `IBanStore` (`InMemoryBanStore` default; `WorldStoreBanStore` persists over the `IWorldStore` keyspace `ban:{accountId}`, hydrated via enumeration). Consulted at connect via the new trailing optional `banStore:` ctor arg on both servers; a banned account is rejected before spawn. `ServerAdmin.BanAsync` persists then kicks an online account.
+- **`ServerAdmin` facade** composing all three (transport-agnostic, headless-testable).
+- **`KhaozEngine.Server.Admin`** (new, opt-in, NOT in the `Server` umbrella): a minimal Kestrel HTTPS admin endpoint (`AdminHttpServer`, `AdminEndpointOptions`, `AdminTlsCertificate` incl. `CreateSelfSigned`) over `ServerAdmin` with a single bearer token. The only package that references ASP.NET Core (via `FrameworkReference`); a server that does not reference it is unchanged and MonoGame-free.
+
 ## 8.4.1
 
 Fix: mid-session auto-reconnect no longer drops all input - movement keeps working after the client re-joins a restarted server.

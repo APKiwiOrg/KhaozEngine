@@ -284,4 +284,37 @@ public class ChunkStaticsTests
         var box = Assert.IsType<BoxShape>(addedShape);
         Assert.Equal(new Vector3(2f, 2f, 2f), box.HalfExtents);
     }
+
+    [Fact]
+    public void ScaleShape_CylinderDimsScaled()
+    {
+        var cyl = new CylinderShape(0.5f, 2.0f);
+        var scaled = (CylinderShape)ChunkStatics.ScaleShape(cyl, 2f);
+        Assert.Equal(1.0f, scaled.Radius, 4);
+        Assert.Equal(4.0f, scaled.Length, 4);
+    }
+
+    [Fact]
+    public void ScaleShape_CompoundChildOffsetsAndShapesScaled()
+    {
+        var child1 = new CompoundChild(new BoxShape(new Vector3(1f, 1f, 1f)), Pose.At(new Vector3(1f, 0f, 0f)));
+        var child2 = new CompoundChild(new BoxShape(new Vector3(0.5f, 0.5f, 0.5f)), Pose.At(new Vector3(0f, 2f, 0f)));
+        var compound = new CompoundShape(new[] { child1, child2 });
+
+        var scaled = (CompoundShape)ChunkStatics.ScaleShape(compound, 3f);
+
+        Assert.Equal(2, scaled.Children.Length);
+
+        var scaledChild1 = scaled.Children[0];
+        Assert.Equal(new Vector3(3f, 0f, 0f), scaledChild1.Local.Position);
+        Assert.Equal(Quaternion.Identity, scaledChild1.Local.Orientation);
+        var scaledBox1 = Assert.IsType<BoxShape>(scaledChild1.Shape);
+        Assert.Equal(new Vector3(3f, 3f, 3f), scaledBox1.HalfExtents);
+
+        var scaledChild2 = scaled.Children[1];
+        Assert.Equal(new Vector3(0f, 6f, 0f), scaledChild2.Local.Position);
+        Assert.Equal(Quaternion.Identity, scaledChild2.Local.Orientation);
+        var scaledBox2 = Assert.IsType<BoxShape>(scaledChild2.Shape);
+        Assert.Equal(new Vector3(1.5f, 1.5f, 1.5f), scaledBox2.HalfExtents);
+    }
 }

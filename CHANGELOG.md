@@ -5,6 +5,20 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.72.0
+
+`WorldLabel.Draw` takes an optional `cullFrom` anchor so third-person games cull nameplates on viewer-player-to-target
+distance instead of camera-to-target. With an orbit camera offset from the player, the old camera-eye `maxDistance`
+ring popped labels in/out as the camera rotated even when nobody moved; passing the player position fixes it. Additive,
+fully back-compatible.
+
+- `KhaozEngine.Render3D`: `WorldLabel.Draw(..., float maxDistance = 0f, Vector3? cullFrom = null)` - new trailing
+  `cullFrom` param. `maxDistance` is now measured from `cullFrom`, defaulting to `null` = the camera eye (the prior
+  behaviour, byte-identical for existing callers, which all pass no `cullFrom`).
+- `KhaozEngine.Render3D`: new `WorldLabel.ShouldCull(worldPos, cullFrom, maxDistance)` static - the distance cull
+  predicate factored out of `Draw` (which needs a GPU `SpriteBatch`) so it is headless-testable. `maxDistance <= 0`
+  never culls; the boundary is exclusive (a target exactly on the ring draws).
+
 ## 7.71.0
 
 Ground-cover scatter: the chunk sink now holds multiple prop layers, and a deterministic understory-companion

@@ -1325,6 +1325,18 @@ place labels yourself, call `WorldToScreen` directly. Labels are screen-space an
 depth-tested, so a name is not hidden when its owner stands behind terrain or a prop (occluded nameplates are out
 of scope).
 
+For a distance cap, pass `maxDistance` (in metres). By default the ring is measured from the camera eye; for a
+third-person camera that orbits offset from the player, pass `cullFrom: localPlayerPos` so labels cull on
+player-to-target distance and don't pop in/out as the camera rotates around a stationary scene:
+
+```csharp
+WorldLabel.Draw(batch, font, camera, e.Position, headOffset, name, Color.White, fbW, fbH,
+    maxDistance: 90f, cullFrom: localPlayerPos);
+```
+
+The cull predicate is also exposed render-free as `WorldLabel.ShouldCull(worldPos, cullFrom, maxDistance)` if you
+want to filter the label set before drawing.
+
 ### Sharded authoritative server (many players / a large world)
 
 For scale, swap `WorldServer` for **`ShardedWorldServer`**: the *same* movement stack run across a

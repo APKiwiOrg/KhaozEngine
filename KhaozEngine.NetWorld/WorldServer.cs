@@ -20,6 +20,14 @@ public sealed class WorldServerConfig
     public int MaxPlayers { get; init; } = 16;
     /// <summary>Per-slot spawn position (XZ used; Y is ground-clamped). Default spreads players along +X.</summary>
     public Func<int, Vector3>? SpawnPosition { get; init; }
+    /// <summary>When true (the default), each <see cref="WorldServer.Tick"/> calls <see cref="World.AdvanceTick"/>
+    /// once on the authoritative world, clearing the per-tick change-tracking sets
+    /// (<see cref="World.Added{T}"/>/<see cref="World.Changed{T}"/>/<see cref="World.Removed{T}"/>) and the event
+    /// buffer (<see cref="World.Events{T}"/>). The authoritative movement path does not consume those, and without
+    /// the clear they grow unbounded on a long-running server (one entry per <c>Set</c>/<c>Despawn</c>, never
+    /// reclaimed). Set false ONLY if your own systems read change-tracking/events and you call
+    /// <see cref="World.AdvanceTick"/> yourself at your chosen point in the frame.</summary>
+    public bool AdvanceWorldTick { get; init; } = true;
 }
 
 /// <summary>
@@ -164,6 +172,11 @@ public sealed class WorldServer : IWorldPersistenceHost
             byte[] frame = MoveProtocol.EncodeSnapshotFrame(netId, lastAckBySlot[slot], snapshot);
             net.SendTo(slot, frame, NetChannelReliability.ReliableOrdered);
         }
+
+        // Clear the per-tick ECS change-tracking + event sets so they don't accumulate on a long-running server.
+        // The authoritative path serves full AoI snapshots (SnapshotWriter.WriteFiltered), never the change sets,
+        // so clearing here is safe; a consumer that reads them opts out via WorldServerConfig.AdvanceWorldTick.
+        if (config.AdvanceWorldTick) world.AdvanceTick();
     }
 
     private void OnJoin(int slot, string subject, string displayName)

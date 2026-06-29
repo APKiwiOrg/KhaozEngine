@@ -192,8 +192,15 @@ version/release work.
     (no factory, no gravity param in SP1). `ke-propbake` now also bakes a 3D `CollisionShape` per prop into the
     kit manifest: trees -> trunk `CylinderShape` (walk under the canopy; percentile-based trunk radius), rocks/
     solid props -> `ConvexHullShape` (base-aligned compound, full deduplicated vertex set), buildings ->
-    `TriangleMeshShape` (concave interior); `PropCollisionLoader` reads it; `Scene3DChunkSink.Load`/`Unload` call
-    `AddStatic`/`RemoveStatic` on chunk load/unload. `CharacterMovement.Step` accepts `IPhysicsWorld?` (3D
+    `TriangleMeshShape` (concave interior). The render-free KECL `.coll` format lives in `Physics` as
+    `PropCollisionFormat` (8.1.0): `Write`/`Read` (the encoder/decoder) + headless `LoadDirectory(dir)` (maps
+    `<id>.coll` -> shape) / `Load(IEnumerable<(id,collPath)>)` loaders, needing only `System.IO` + `PhysicsShape`,
+    so an authoritative server referencing just `Physics` (+ opt-in `Physics.Bepu`) builds the same world a client
+    predicts against - no `Render3D`/`Gpu`/`Windowing`. `Render3D.PropCollisionBake.Write` /
+    `PropCollisionLoader.Read` delegate to it (byte-identical, public API unchanged); the manifest-driven
+    `PropCollisionLoader.LoadAll(AssetManifest)` + the shape-producing `Bake(GltfMesh)` stay in `Render3D`.
+    `Scene3DChunkSink.Load`/`Unload` call `AddStatic`/`RemoveStatic` on chunk load/unload.
+    `CharacterMovement.Step` accepts `IPhysicsWorld?` (3D
     move-and-depenetrate against static bodies + downward support sweep so the character stands correctly on prop
     tops; terrain stays analytic). The old 2D `WorldColliders?`/`WorldSurfaces?` `Step` overloads are removed
     (BREAKING 8.0.0). `KhaozEngine.Collision` remains in `Foundation` for 2D games / lockstep sims; it is no

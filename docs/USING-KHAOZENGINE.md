@@ -1056,6 +1056,34 @@ var sink = new Scene3DChunkSink(
 // The streamer drives the sink - props appear in / leave the physics world as chunks load / unload.
 ```
 
+**Headless server: load baked collision without Render3D (8.1.0).** `PropCollisionLoader.LoadAll` lives in
+`KhaozEngine.Render3D` because `AssetManifest` does, and Render3D pulls `Gpu` + `Windowing` (Silk.NET/GLFW). An
+authoritative server must not carry those. The render-free KECL `.coll` reader and manifest-free loaders are in
+the dependency-free `KhaozEngine.Physics` package as `PropCollisionFormat`, so a server referencing only
+`KhaozEngine.Physics` (+ the opt-in `KhaozEngine.Physics.Bepu` backend - both reachable from the `Server`
+umbrella) builds the exact same `BepuPhysicsWorld` the client predicts against. The shapes are byte-identical, so
+`ComputePenetration` / `SweepCapsule` match and client prediction reconciles.
+
+```csharp
+using KhaozEngine.Physics;
+using KhaozEngine.Physics.Bepu;
+
+// A flat kit of baked shapes shipped to the server as <id>.coll files (no manifest needed):
+IReadOnlyDictionary<string, PhysicsShape> shapes = PropCollisionFormat.LoadDirectory(kitDir);
+// ...or explicit (id, path) pairs if the layout differs:
+//   PropCollisionFormat.Load(new[] { ("rock_01", "/data/rock_01.coll"), ("oak", "/data/oak.coll") });
+
+IPhysicsWorld physics = new BepuPhysicsWorld();
+foreach ((string id, Pose pose) in placements)        // the server's deterministic prop placements
+    physics.AddStatic(shapes[id], pose);
+physics.Step(dt);                                     // now authoritative against the same shapes the client uses
+```
+
+The client still loads via `PropCollisionLoader.LoadAll(manifest)` (Render3D); both decode through
+`PropCollisionFormat`, so the bytes - and therefore the queries - are identical. The shape-producing
+`PropCollisionBake.Bake(GltfMesh)` (and `ke-propbake`) stay in Render3D: baking is an offline/client concern,
+only loading goes headless.
+
 **NativeAOT note:** `BepuPhysicsWorld` requires an `rd.xml` shim for `Dynamic=Required All` on `BepuPhysics`
 when publishing under NativeAOT (iOS/AOT reach). Desktop and headless server targets are fine without it.
 

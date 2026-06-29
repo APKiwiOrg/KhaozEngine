@@ -15,21 +15,31 @@ namespace KhaozEngine.Terrain
     /// loaded chunk + each layer's in-range props (XZ-culled to that layer's draw radius) every frame. Companions
     /// attach to their host's chunk, so each host emits its companions exactly once (a host lives in one chunk),
     /// even when they spill geometrically into a neighbour. Ships in the package so every game gets streaming for
-    /// free.</summary>
-    public sealed class Scene3DChunkSink : IChunkSink
+    /// free.
+    /// <para>Disposal: <see cref="Dispose"/> unloads every still-loaded chunk's GPU mesh and clears the ring, so
+    /// tearing the sink down while the same <see cref="Scene3D"/> survives (level change / world reload / a teleport
+    /// that rebuilds streaming) frees the loaded ring instead of leaking one set of terrain meshes per teardown. The
+    /// splat <c>material</c> is caller-owned by default: it is shared across chunks and NOT freed on teardown, so the
+    /// caller must <see cref="Scene3D.UnloadSplatMaterial"/> it when done (or reuse it for the rebuilt sink). Pass
+    /// <c>ownsMaterial: true</c> to hand ownership to the sink, whose <see cref="Dispose"/> then frees it too. The
+    /// material is never disposed per-chunk.</para></summary>
+    public sealed class Scene3DChunkSink : IChunkSink, IDisposable
     {
         readonly Scene3D _scene;
         readonly TerrainField _field;
         readonly IReadOnlyList<PropLayer> _layers;
         readonly float _chunkSize;
         readonly Scene3D.SplatMaterialHandle _material;
+        readonly bool _ownsMaterial;
         readonly Dictionary<ChunkCoord, ChunkLoad> _loaded = new();
+        bool _disposed;
 
         /// <summary>Multi-layer sink. Each <see cref="PropLayer"/> is a scatter layer or a companion layer; a
         /// companion layer's <see cref="PropLayer.HostLayerIndex"/> must point at a scatter layer in
-        /// <paramref name="layers"/>.</summary>
+        /// <paramref name="layers"/>. The splat <paramref name="material"/> is caller-owned unless
+        /// <paramref name="ownsMaterial"/> is set (see the class remarks).</summary>
         public Scene3DChunkSink(Scene3D scene, TerrainField field, IReadOnlyList<PropLayer> layers,
-                                float chunkSize, Scene3D.SplatMaterialHandle material = default)
+                                float chunkSize, Scene3D.SplatMaterialHandle material = default, bool ownsMaterial = false)
         {
             _scene = scene;
             _field = field ?? throw new ArgumentNullException(nameof(field));
@@ -55,12 +65,15 @@ namespace KhaozEngine.Terrain
             }
             _chunkSize = chunkSize;
             _material = material;
+            _ownsMaterial = ownsMaterial;
         }
 
-        /// <summary>Single-layer sink (back-compat): one scatter config, one mesh set, one draw radius.</summary>
+        /// <summary>Single-layer sink (back-compat): one scatter config, one mesh set, one draw radius. The splat
+        /// <paramref name="material"/> is caller-owned unless <paramref name="ownsMaterial"/> is set (see the class
+        /// remarks).</summary>
         public Scene3DChunkSink(Scene3D scene, TerrainField field, ScatterConfig scatter,
                                 IReadOnlyDictionary<string, MeshHandle> propMeshes, float chunkSize, float propDrawRadius,
-                                Scene3D.SplatMaterialHandle material = default)
+                                Scene3D.SplatMaterialHandle material = default, bool ownsMaterial = false)
             : this(scene, field,
                    new[]
                    {
@@ -69,7 +82,7 @@ namespace KhaozEngine.Terrain
                            propMeshes ?? throw new ArgumentNullException(nameof(propMeshes)),
                            propDrawRadius),
                    },
-                   chunkSize, material)
+                   chunkSize, material, ownsMaterial)
         {
         }
 
@@ -143,6 +156,21 @@ namespace KhaozEngine.Terrain
                 for (int i = 0; i < _layers.Count; i++)
                     _scene.DrawProps(load.LayerProps[i], _layers[i].Meshes, focus, _layers[i].DrawRadius);
             }
+        }
+
+        /// <summary>Free every still-loaded chunk's GPU mesh and clear the ring, so a sink teardown while the same
+        /// <see cref="Scene3D"/> survives does not leak the loaded ring. The shared splat material is freed only when
+        /// the sink was constructed with <c>ownsMaterial: true</c>; otherwise it is caller-owned and left intact.
+        /// Idempotent (a second call is a no-op).</summary>
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            foreach (ChunkLoad load in _loaded.Values)
+                _scene.UnloadMesh(load.Mesh);
+            _loaded.Clear();
+            if (_ownsMaterial && _material.IsValid)
+                _scene.UnloadSplatMaterial(_material);
         }
     }
 }

@@ -1119,6 +1119,24 @@ replication: the **networked client streams locally with the same code** (nothin
 the wire). For a custom mesh/prop pipeline, implement `IChunkSink` yourself and pass it to `TerrainStreamer`.
 Threaded/background chunk build (an `IJobScheduler` build) and multi-cell server sharding are later sub-projects.
 
+**Teardown / rebuild (since 7.75.0).** Both `Scene3DChunkSink` and `TerrainStreamer` are `IDisposable`. Steady-state
+walking already frees each chunk as it leaves the ring, but if you tear streaming down and rebuild it while the
+**same `Scene3D` survives** (level change, world reload, a teleport that recreates the streamer), the
+currently-loaded ring of chunk meshes would otherwise leak until whole-scene `Scene3D.Dispose`. Flush it first:
+
+```csharp
+// rebuild streaming, REUSING the same sink + scene (e.g. teleport to a new region):
+streamer.UnloadAll();                         // frees every loaded chunk through the sink; sink stays alive
+streamer = new TerrainStreamer(StreamerConfig.Default, sink);
+
+// OR full teardown of the ring AND the sink's owned GPU resources:
+streamer.Dispose();                           // = UnloadAll() then disposes the sink if it is IDisposable
+```
+
+The splat material handed to `Scene3DChunkSink` is **caller-owned by default**: it is shared across chunks and is
+never freed per-chunk, so you must `scene.UnloadSplatMaterial(handle)` it yourself (or reuse it for the rebuilt
+sink). Pass `ownsMaterial: true` to the ctor to hand it to the sink, whose `Dispose` then frees it too.
+
 ---
 
 ## Textured terrain (PBR splat) (since 7.64.0)
@@ -1149,7 +1167,8 @@ every chunk it loads uses the textured splat pipeline instead of the ramp:
 ```csharp
 var sink = new Scene3DChunkSink(scene, field, ScatterConfig.ForestRing(), propMeshes,
                                 chunkSize: TerrainChunkRegion.DefaultSize, propDrawRadius: 90f,
-                                splatMaterial: splatHandle);   // optional; omit for the ramp fallback
+                                material: splatHandle);   // optional; omit for the ramp fallback
+                                                          // (add ownsMaterial: true to have sink.Dispose() free it)
 var streamer = new TerrainStreamer(StreamerConfig.Default, sink);
 ```
 
@@ -1168,8 +1187,8 @@ two `texture2DArray`s - albedo + normal - are shared by all chunks using this ma
 reloaded; each `LoadTerrainMaterial` call allocates a fresh set of arrays.
 
 **Out of scope.** Runtime layer blending tweaks, streaming of different materials per biome region, and
-per-chunk material overrides are not provided - swap the handle on `Scene3DChunkSink` and rebuild the ring to
-change the look at stream time.
+per-chunk material overrides are not provided - swap the handle on `Scene3DChunkSink` and rebuild the ring
+(`streamer.UnloadAll()` then a fresh sink with the new handle) to change the look at stream time.
 
 ---
 

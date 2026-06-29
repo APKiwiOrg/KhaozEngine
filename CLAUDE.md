@@ -161,7 +161,12 @@ version/release work.
     cover, long for trees); companion layers derive their placements per chunk from their host scatter layer so
     each host emits companions exactly once even when they spill into a neighbour chunk; the existing single-layer
     ctor is unchanged and byte-identical; ring load/unload with a hysteresis band, distance-LOD re-meshing,
-    amortized main-thread loading),
+    amortized main-thread loading; both `Scene3DChunkSink` and `TerrainStreamer` are `IDisposable` (7.75.0 leak fix):
+    `TerrainStreamer.UnloadAll()` flushes the loaded ring through the sink (rebuild streaming while reusing the same
+    sink), `Dispose()` does that plus disposes the sink if `IDisposable`, and `Scene3DChunkSink.Dispose()` unloads
+    every still-loaded chunk's GPU mesh so a streaming teardown against a surviving `Scene3D` frees the ring instead of
+    leaking it; the splat material is caller-owned by default (free it via `Scene3D.UnloadSplatMaterial`, never
+    per-chunk) unless the opt-in `ownsMaterial` ctor flag hands it to the sink's `Dispose`),
     plus the PBR splat-material layer (shipped 7.64.0): `TerrainSplatPacking`, `TerrainMaterialLayer`/
     `TerrainLayeredMaterial`, `TerrainMaterialPresets` (procedural placeholder), `TerrainScene3D.LoadTerrainMaterial`
     + a textured `LoadTerrainChunk` overload, and an optional material slot on `Scene3DChunkSink` - supply a

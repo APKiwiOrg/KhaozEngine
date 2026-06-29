@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using KhaozEngine.Render3D;
 using KhaozEngine.Terrain;
@@ -6,18 +8,21 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Terrain
 {
-    // Records every sink op so tests can assert load/unload/relod behaviour with no GPU.
-    sealed class FakeChunkSink : IChunkSink
+    // Records every sink op so tests can assert load/unload/relod behaviour with no GPU. Implements IDisposable so
+    // the TerrainStreamer.Dispose() "dispose the sink it owns" path is observable headless (DisposeCount).
+    sealed class FakeChunkSink : IChunkSink, IDisposable
     {
         public readonly List<(ChunkCoord coord, int lod)> Loads = new();
         public readonly List<(ChunkCoord coord, int lod)> ReLods = new();
         public readonly List<ChunkCoord> Unloads = new();
         // Per-Update op counts (load + relod), reset by the test harness between Updates.
         public int OpsThisFrame;
+        public int DisposeCount;
 
         public object Load(ChunkCoord coord, int lod) { Loads.Add((coord, lod)); OpsThisFrame++; return new Box(coord); }
         public void ReLod(ChunkCoord coord, object handle, int lod) { ReLods.Add((coord, lod)); OpsThisFrame++; }
         public void Unload(ChunkCoord coord, object handle) { Unloads.Add(coord); }
+        public void Dispose() => DisposeCount++;
 
         public void ResetFrame() => OpsThisFrame = 0;
         sealed class Box { public Box(ChunkCoord c) { Coord = c; } public ChunkCoord Coord; }
@@ -199,6 +204,70 @@ namespace KhaozEngine.Tests.Terrain
                 Assert.Equal(expected[i].X, got[i].X, 3);
                 Assert.Equal(expected[i].Z, got[i].Z, 3);
             }
+        }
+
+        [Fact]
+        public void UnloadAll_unloads_every_loaded_chunk_and_empties_the_ring()
+        {
+            var cfg = new StreamerConfig(LoadRadius: 3, UnloadRadius: 5, MaxLoadsPerFrame: 100, ChunkSize: 60f);
+            var sink = new FakeChunkSink();
+            var s = new TerrainStreamer(cfg, sink);
+            Pump(s, sink, new Vector3(30f, 0f, 30f), frames: 2);   // fill the load disk
+
+            var loaded = new HashSet<ChunkCoord>(s.Loaded);
+            Assert.NotEmpty(loaded);                               // not vacuous
+            int unloadsBefore = sink.Unloads.Count;
+
+            s.UnloadAll();
+
+            // Every chunk that was loaded got exactly one Unload, and the ring is now empty.
+            var freshUnloads = new HashSet<ChunkCoord>(sink.Unloads.Skip(unloadsBefore));
+            Assert.Equal(loaded, freshUnloads);
+            Assert.Empty(s.Loaded);
+            Assert.Equal(0, sink.DisposeCount);                    // UnloadAll keeps the sink alive (rebuild-same-sink path)
+        }
+
+        [Fact]
+        public void UnloadAll_then_rebuild_with_the_same_sink_reloads_the_ring()
+        {
+            var cfg = new StreamerConfig(LoadRadius: 2, UnloadRadius: 4, MaxLoadsPerFrame: 100, ChunkSize: 60f);
+            var sink = new FakeChunkSink();
+            var pos = new Vector3(30f, 0f, 30f);
+
+            var first = new TerrainStreamer(cfg, sink);
+            Pump(first, sink, pos, 2);
+            var loaded = new HashSet<ChunkCoord>(first.Loaded);
+            first.UnloadAll();
+            Assert.Empty(first.Loaded);
+
+            // Same sink survives, so a fresh streamer can reload the same ring (no GPU leak between rebuilds).
+            var second = new TerrainStreamer(cfg, sink);
+            Pump(second, sink, pos, 2);
+            Assert.Equal(loaded, new HashSet<ChunkCoord>(second.Loaded));
+            Assert.Equal(0, sink.DisposeCount);
+        }
+
+        [Fact]
+        public void Dispose_flushes_the_ring_and_disposes_the_owned_sink_idempotently()
+        {
+            var cfg = new StreamerConfig(LoadRadius: 3, UnloadRadius: 5, MaxLoadsPerFrame: 100, ChunkSize: 60f);
+            var sink = new FakeChunkSink();
+            var s = new TerrainStreamer(cfg, sink);
+            Pump(s, sink, new Vector3(30f, 0f, 30f), 2);
+
+            var loaded = new HashSet<ChunkCoord>(s.Loaded);
+            Assert.NotEmpty(loaded);
+            int unloadsBefore = sink.Unloads.Count;
+
+            s.Dispose();
+
+            Assert.Equal(loaded, new HashSet<ChunkCoord>(sink.Unloads.Skip(unloadsBefore)));   // ring flushed
+            Assert.Empty(s.Loaded);
+            Assert.Equal(1, sink.DisposeCount);                   // owned sink disposed once
+
+            s.Dispose();                                          // second dispose is a no-op
+            Assert.Equal(1, sink.DisposeCount);
+            Assert.Equal(loaded.Count, sink.Unloads.Count - unloadsBefore);   // no re-unload
         }
     }
 }

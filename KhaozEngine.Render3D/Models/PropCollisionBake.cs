@@ -151,19 +151,28 @@ namespace KhaozEngine.Render3D
         /// spatially-EXTREME points (largest distance from the centroid), never by striding.</summary>
         static ConvexHullShape BakeConvexHull(GltfMesh mesh)
         {
-            // Deduplicate vertices by spatial bucketing (deterministic, grid-based) at 5 mm resolution.
+            var positions = new List<Vector3>(mesh.Vertices.Length);
+            foreach (ModelVertex v in mesh.Vertices) positions.Add(v.Position);
+            return HullFromPoints(positions);
+        }
+
+        /// <summary>Build a TRUE convex hull from arbitrary local-space points: deduplicate (5 mm spatial bucket),
+        /// sort deterministically (streaming consistency: server and client must bake the identical shape), then hand
+        /// the FULL deduplicated set to <see cref="ConvexHullShape"/> (Bepu's hull helper discards interior points).
+        /// Only when the count exceeds <see cref="MaxHullPoints"/> (a guard for pathologically high-poly meshes) does it
+        /// cap, and then by keeping the spatially-EXTREME points (never striding). Shared by <see cref="BakeConvexHull"/>
+        /// (whole mesh) and <see cref="BakeTrunkHull"/> (filtered trunk verts).</summary>
+        static ConvexHullShape HullFromPoints(IReadOnlyList<Vector3> pts)
+        {
             var unique = new Dictionary<(int, int, int), Vector3>();
-            foreach (ModelVertex v in mesh.Vertices)
+            foreach (Vector3 p in pts)
             {
-                int bx = (int)MathF.Round(v.Position.X * 200f);
-                int by = (int)MathF.Round(v.Position.Y * 200f);
-                int bz = (int)MathF.Round(v.Position.Z * 200f);
-                unique.TryAdd((bx, by, bz), v.Position);
+                int bx = (int)MathF.Round(p.X * 200f);
+                int by = (int)MathF.Round(p.Y * 200f);
+                int bz = (int)MathF.Round(p.Z * 200f);
+                unique.TryAdd((bx, by, bz), p);
             }
 
-            // Sort by bucket key (ascending, lexicographic) before copying so the ordering is a contract, not a
-            // Dictionary implementation detail. Required for streaming consistency: server and client must bake the
-            // identical shape from the same mesh.
             var sortedKeys = new List<(int, int, int)>(unique.Keys);
             sortedKeys.Sort((a, b) =>
             {
@@ -175,8 +184,6 @@ namespace KhaozEngine.Render3D
             Vector3[] points = new Vector3[sortedKeys.Count];
             for (int i = 0; i < sortedKeys.Count; i++) points[i] = unique[sortedKeys[i]];
 
-            // Pass the full deduplicated set to the hull (Bepu discards interior points). Only cap pathologically
-            // high-poly meshes, and then keep the spatially-extreme points so the hull-defining extremes survive.
             if (points.Length > MaxHullPoints)
                 points = KeepExtremePoints(points, MaxHullPoints);
 

@@ -74,10 +74,15 @@ version/release work.
   every one. When a package is ADDED/REMOVED: the `README.md` package-catalog table + the repo-layout block, this
   `CLAUDE.md` package enumeration (the `<KhaozEngineVersion>` list above) + the umbrella descriptions,
   `docs/CONSUMERS.md` (the umbrella/package table), and `docs/USING-KHAOZENGINE.md` (a usage section for new public
-  API). For a behaviour/bug change: `CHANGELOG.md` AND any doc, README, or code comment that
+  API). When public API is ADDED/CHANGED WITHIN an existing package (no package add/remove): also update **that
+  package's own `<Package>/README.md`** - the `PackageReadmeFile` that ships *inside the nupkg*, so it is what NuGet
+  consumers read, and it rots independently of the root catalog (the `NetWorld` README still described the pre-8.0.0
+  `WorldColliders`/`WorldSurfaces` ctor params two releases later; 8.2.0's telemetry types were missing from the
+  `Diagnostics`/`Gui`/`Netcode` READMEs on the first sweep) - and `docs/DEPENDENCY-SEAMS.md` whenever a dependency
+  edge or a seam member changed. For a behaviour/bug change: `CHANGELOG.md` AND any doc, README, or code comment that
   described the OLD behaviour. Mechanical check before committing: grep the new (or removed) type / package / flag
-  name across `*.md` + `CLAUDE.md` and confirm every place that should mention it does (and no stale doc still
-  describes what you removed).
+  name across **ALL `*.md` recursively** (root, `docs/`, AND every per-package `<Package>/README.md`) + `CLAUDE.md`
+  and confirm every place that should mention it does (and no stale doc still describes what you removed).
 - `scripts/check-doc-versions.sh` enforces those three declarations match the **engine version line**
   (`<KhaozEngineVersion>`); CI runs it on every push, so a forgotten bump fails the
   build. Consumer pins are exempt and may lag.

@@ -23,6 +23,12 @@ Immediate-mode + retained UI on the custom MonoGame-free stack.
   - `PopupPanel` — modal dialog: scrim + title + `PopupRow` content + dismiss/primary footer; blocks the pointer.
   - `ScrollablePanel` — wheel/drag scrolling fixed-height list; rows drawn between `BeginClip`/`EndClip` (scissor),
     hit-test with `TappedItemIndex`.
+- `DiagnosticsOverlay` (+ `DiagnosticsOverlayTheme`, `OverlayRow`/`OverlaySection`) — a reusable in-game
+  telemetry HUD, a pure presenter modeled on `UpdateOverlayView`. The game assembles sections each frame and
+  feeds them via `SetSections`; `Update(InputState, dt)` toggles on `Theme.ToggleKey` (default F1; optional
+  gamepad button) and fades (headless-testable, `InputState.Empty` inert); `Draw` renders a corner panel
+  (`Theme.Corner`) of titles + right-aligned values. `PerformanceSection(FrameStats)` /
+  `NetworkSection(in ClientNetStats)` populators cover the common cases (from `KhaozEngine.Diagnostics`).
 - `TextEntry` — headless key→char text-entry helper (US layout + shift), used by `TextInput`. No SDL plumbing.
   Ctrl/Super (Cmd) held suppresses character entry so shortcut chords like Ctrl+V / Cmd+V paste instead of typing.
   Acts on `InputState.WasTyped` (press edge OR OS auto-repeat tick), so a held Backspace or character key repeats at

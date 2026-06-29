@@ -86,3 +86,13 @@ readonly record struct EntityBatch(/* ...fields... */) : IChannelSplittable<Enti
 LiteNetLib `DeliveryMethod` mapping and the `ChannelSplitter.Send` orchestration live in the
 **`KhaozEngine.Netcode.LiteNetLib`** package, so adding the split only pulls in a UDP transport on the
 sending side, not in the DTO project.
+
+## NetTransportStats + INetTransport.Stats (since 8.2.0)
+
+`INetTransport` carries an optional `Stats` member implemented as a **default interface method** returning
+`NetTransportStats.Unavailable`, so the in-memory `LoopbackTransport` and any external transport keep compiling
+unchanged (not a breaking change). `NetTransportStats` is a transport-agnostic snapshot (`Connected`, `RttMs`,
+`PacketLoss` 0..1, cumulative `BytesReceivedTotal` / `BytesSentTotal`). `NetClient.TransportStats` forwards it;
+the `KhaozEngine.Netcode.LiteNetLib` client binding sets `NetManager.EnableStatistics` and fills it from the
+server peer. Games read it (with the snapshot rate + prediction-correction magnitude) via
+`KhaozEngine.NetWorld`'s `WorldClient.NetStats`.

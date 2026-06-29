@@ -35,14 +35,20 @@ namespace KhaozEngine.Render3D
         /// <param name="viewportWidth">Framebuffer width in pixels.</param>
         /// <param name="viewportHeight">Framebuffer height in pixels.</param>
         /// <param name="scale">Uniform text scale (matches <see cref="SpriteFont.Measure"/> * scale).</param>
-        /// <param name="maxDistance">If &gt; 0, labels whose anchor is farther than this from the camera eye are
-        /// culled. 0 (default) draws regardless of distance.</param>
+        /// <param name="maxDistance">If &gt; 0, labels whose anchor is farther than this from <paramref name="cullFrom"/>
+        /// (or the camera eye when <paramref name="cullFrom"/> is null) are culled. 0 (default) draws regardless of
+        /// distance.</param>
+        /// <param name="cullFrom">Optional anchor the <paramref name="maxDistance"/> ring is measured from. Defaults to
+        /// null = the camera eye (the prior behaviour). Pass the viewer-player's position so nameplates cull on
+        /// player-to-target distance rather than camera-to-target - with an orbit camera offset from the player the
+        /// camera-eye ring pops labels in/out as the camera rotates even when nobody moves.</param>
         public static bool Draw(SpriteBatch batch, SpriteFont font, IIsoCamera3D camera, Vector3 worldPos,
             Vector3 offset, string text, Color color, int viewportWidth, int viewportHeight,
-            float scale = 1f, float maxDistance = 0f)
+            float scale = 1f, float maxDistance = 0f, Vector3? cullFrom = null)
         {
             if (batch is null || font is null || camera is null || string.IsNullOrEmpty(text)) return false;
-            if (maxDistance > 0f && Vector3.DistanceSquared(worldPos, camera.Eye) > maxDistance * maxDistance) return false;
+            Vector3 cullOrigin = cullFrom ?? camera.Eye;
+            if (ShouldCull(worldPos, cullOrigin, maxDistance)) return false;
             if (!camera.WorldToScreen(worldPos + offset, viewportWidth, viewportHeight, out Vector2 pixel)) return false;
 
             Vector2 size = font.Measure(text) * scale;
@@ -51,5 +57,14 @@ namespace KhaozEngine.Render3D
             batch.DrawString(font, text, topLeft, color, scale);
             return true;
         }
+
+        /// <summary>
+        /// The distance cull predicate, factored out of <see cref="Draw"/> so it is headless-testable (Draw itself
+        /// needs a GPU <see cref="SpriteBatch"/>). Returns <c>true</c> when the label should be culled: when
+        /// <paramref name="maxDistance"/> &gt; 0 and <paramref name="worldPos"/> is farther than that from
+        /// <paramref name="cullFrom"/>. A <paramref name="maxDistance"/> of 0 (or less) never culls.
+        /// </summary>
+        public static bool ShouldCull(Vector3 worldPos, Vector3 cullFrom, float maxDistance)
+            => maxDistance > 0f && Vector3.DistanceSquared(worldPos, cullFrom) > maxDistance * maxDistance;
     }
 }

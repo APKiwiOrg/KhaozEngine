@@ -30,6 +30,7 @@ public sealed class LiteNetLibClientTransport : INetTransport
         if (connectionKey is null) throw new ArgumentNullException(nameof(connectionKey));
         inbox = new BoundedEventQueue<NetEvent>(maxQueuedEvents);
         manager = new NetManager(listener);
+        manager.EnableStatistics = true; // cheap; lets Stats report per-peer bytes/loss to the diagnostics overlay
         WireListener();
         if (!manager.Start())
             throw new InvalidOperationException("Failed to start client transport.");
@@ -80,6 +81,30 @@ public sealed class LiteNetLibClientTransport : INetTransport
     {
         if (peersById.TryGetValue(connection.Value - 1, out NetPeer? peer))
             peer.Disconnect();
+    }
+
+    /// <summary>
+    /// Connection stats for the server peer (the client holds a single peer). RTT comes from LiteNetLib's RTT
+    /// estimator; loss and byte counters from per-peer <see cref="NetStatistics"/> (populated because
+    /// <c>EnableStatistics</c> is on). <see cref="NetTransportStats.Unavailable"/> until the peer connects.
+    /// </summary>
+    public NetTransportStats Stats
+    {
+        get
+        {
+            foreach (NetPeer peer in peersById.Values)
+            {
+                NetStatistics st = peer.Statistics;
+                float loss = st is null ? 0f : Math.Clamp(st.PacketLossPercent / 100f, 0f, 1f);
+                return new NetTransportStats(
+                    connected: true,
+                    rttMs: peer.RoundTripTime,
+                    packetLoss: loss,
+                    bytesReceivedTotal: st?.BytesReceived ?? 0L,
+                    bytesSentTotal: st?.BytesSent ?? 0L);
+            }
+            return NetTransportStats.Unavailable;
+        }
     }
 
     public void Dispose() => manager.Stop();

@@ -22,4 +22,11 @@ public interface INetTransport : IDisposable
 
     /// <summary>Disconnects a single connection. No-op if the connection is unknown.</summary>
     void Disconnect(NetConnectionId connection);
+
+    /// <summary>
+    /// Live connection statistics (RTT, packet loss, cumulative byte counters). Optional: the default returns
+    /// <see cref="NetTransportStats.Unavailable"/>, so existing transports (e.g. the in-memory loopback) need not
+    /// implement it; the LiteNetLib UDP binding overrides it. Surfaced to games via <c>WorldClient.NetStats</c>.
+    /// </summary>
+    NetTransportStats Stats => NetTransportStats.Unavailable;
 }

@@ -5,6 +5,35 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 8.4.1
+
+Fix: mid-session auto-reconnect no longer drops all input - movement keeps working after the client re-joins a restarted server.
+
+- Bug (8.3.0 regression): after an auto-reconnect, `WorldClient` reset the prediction sequence counter back to 0 on the first post-reconnect snapshot. But the client keeps sending commands (with the continuing high seq) in the gap between the new session joining and its first snapshot, so the fresh server has already advanced its per-connection ack to a high value. With the counter reset to 0, every subsequent command landed at or below that ack and `RemoteCommandQueue` rejected it as stale - the local avatar was pinned at the authoritative spawn and predicted movement rubber-banded back, permanently. The previous reconnect test only sent input *after* the first snapshot, so it never exercised the gap.
+- Fix: `ClientPrediction` gains **`Reseed(in TState basis)`** - it re-seeds the predicted state to the authoritative basis (visual continuity) but keeps `nextSeq` **monotonic** across the reconnect and keeps the pending buffer, so the following `Reconcile` prunes acked / replays unacked against the new server's ack. `WorldClient` now distinguishes the genuine initial connect (still `Reset`, seq from 0) from the first snapshot of a reconnect (`Reseed`, seq preserved) via a one-shot seeded flag that survives `StartAttempt`. `Reset` is unchanged and stays the initial-connect path. No public-API break (additive method; reconnect behaviour only).
+- Regression coverage: a NetWorld test now sends input continuously *through* the reconnect handshake (filling the pre-first-snapshot gap) and asserts the avatar actually moves in response to post-reconnect input, plus a `ClientPrediction` unit test pinning `Reseed`'s seq-monotonic + pending-kept contract.
+
+## 8.4.0
+
+Character movement now collide-and-slides against static meshes with a swept resolver (one-sided building
+meshes are rich AND trap-proof, no tunneling), stairs/curbs are walkable via a step-up probe, and `ke-propbake`
+bakes a leaning trunk-hull collider for every tree.
+
+- **Locomotion (behavior change, all NetWorld/Simulation consumers):** `CharacterMovement.Step(in MoveState, ...)`
+  resolves the move by a substepped swept collide-and-slide over `IPhysicsWorld.SweepCapsule` instead of
+  teleport-then-depenetrate. A fast move (jump/run/terminal fall) can no longer tunnel through a thin one-sided
+  wall, and the capsule never enters a closed mesh (so it can never get stuck inside a building). Depenetration
+  is retained as a residual-overlap settle pass. A new step-up probe finally wires `MoveTuning.StepHeight`, so
+  stair treads/curbs below `StepHeight` are walkable. Deterministic; `world == null` is byte-identical. No
+  `Step` signature change.
+- **Render3D / PropCollisionBake (additive):** `BakeTrunkHull` bakes a tree's collision as a convex hull of the
+  lower trunk that follows the leaning centreline (excludes canopy and wide low branches) instead of a vertical
+  cylinder; `BakeTrunkCylinder` remains the degenerate fallback. `PropBakePlan.For` single-sources the
+  per-prop bake decision. `HullFromPoints` is the shared hull builder used by both `BakeTrunkHull` and
+  `BakeConvexHull`.
+- **ke-propbake (additive):** now writes a `.coll` for every prop (trees gain a trunk-hull collider where they
+  had none) and a `.surf` only for walkable solids.
+
 ## 8.3.0
 
 Mid-session reconnect + a server->client notice channel in NetWorld, so a client survives a server restart gracefully.

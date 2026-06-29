@@ -57,7 +57,7 @@ directly (`new BepuPhysicsWorld()`) and hands the `IPhysicsWorld` down.
 ```mermaid
 flowchart LR
     KIT["Prop kit glTF + manifest"] --> BAKE["ke-propbake (PropSurface.Tool)<br/>one CollisionShape per walkable-solid prop"]
-    BAKE --> COLL[".coll per prop<br/>tree -> trunk Cylinder<br/>rock/solid -> base-aligned ConvexHull<br/>building -> concave TriangleMesh"]
+    BAKE --> COLL[".coll per prop<br/>tree -> trunk Hull (leaning ConvexHull)<br/>rock/solid -> base-aligned ConvexHull<br/>building -> concave TriangleMesh"]
     COLL --> LOAD["client: PropCollisionLoader.LoadAll(manifest) (Render3D)<br/>headless server: PropCollisionFormat.LoadDirectory (Physics, no Render3D)<br/>-> id -> PhysicsShape map"]
     LOAD --> SINK["Scene3DChunkSink.Load / Unload"]
     SINK --> STAT["ChunkStatics.AddAll / RemoveAll<br/>-> IPhysicsWorld.AddStatic / RemoveStatic"]

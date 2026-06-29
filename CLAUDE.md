@@ -197,10 +197,12 @@ version/release work.
     `PhysicsMaterial(Friction, Restitution)`, `QueryFilter`, `StaticHandle`, `RayHit`/`SweepHit`. `Physics.Bepu`
     (opt-in, NOT in any umbrella; add explicitly like `WorldStore.Sqlite`) = `BepuPhysicsWorld : IPhysicsWorld`
     over BepuPhysics v2 2.4.0 (pure-managed, Apache-2.0, no native libs); constructed via `new BepuPhysicsWorld()`
-    (no factory, no gravity param in SP1). `ke-propbake` now also bakes a 3D `CollisionShape` per prop into the
-    kit manifest: trees -> trunk `CylinderShape` (walk under the canopy; percentile-based trunk radius), rocks/
-    solid props -> `ConvexHullShape` (base-aligned compound, full deduplicated vertex set), buildings ->
-    `TriangleMeshShape` (concave interior). The render-free KECL `.coll` format lives in `Physics` as
+    (no factory, no gravity param in SP1). `ke-propbake` bakes a 3D collision shape per prop into the
+    kit manifest: trees -> trunk `ConvexHullShape` tracking the lean via `PropCollisionBake.BakeTrunkHull`
+    (percentile-filtered lower-trunk verts, cylinder fallback on degenerate; 8.4.0), rocks/
+    solid props -> `ConvexHullShape` (base-aligned compound, full deduplicated vertex set via `HullFromPoints`), buildings ->
+    `TriangleMeshShape` (concave interior); `PropBakePlan.For` single-sources the per-prop bake decision (8.4.0).
+    The render-free KECL `.coll` format lives in `Physics` as
     `PropCollisionFormat` (8.1.0): `Write`/`Read` (the encoder/decoder) + headless `LoadDirectory(dir)` (maps
     `<id>.coll` -> shape) / `Load(IEnumerable<(id,collPath)>)` loaders, needing only `System.IO` + `PhysicsShape`,
     so an authoritative server referencing just `Physics` (+ opt-in `Physics.Bepu`) builds the same world a client
@@ -208,9 +210,11 @@ version/release work.
     `PropCollisionLoader.Read` delegate to it (byte-identical, public API unchanged); the manifest-driven
     `PropCollisionLoader.LoadAll(AssetManifest)` + the shape-producing `Bake(GltfMesh)` stay in `Render3D`.
     `Scene3DChunkSink.Load`/`Unload` call `AddStatic`/`RemoveStatic` on chunk load/unload.
-    `CharacterMovement.Step` accepts `IPhysicsWorld?` (3D
-    move-and-depenetrate against static bodies + downward support sweep so the character stands correctly on prop
-    tops; terrain stays analytic). The old 2D `WorldColliders?`/`WorldSurfaces?` `Step` overloads are removed
+    `CharacterMovement.Step` accepts `IPhysicsWorld?` (8.4.0: substepped swept collide-and-slide via
+    `SweepCapsule` + a step-up probe wiring `MoveTuning.StepHeight`; walkable contacts followed; steep contacts
+    block-and-slide; depenetration retained as a residual settle pass; no tunneling through thin meshes; no
+    trapping inside closed meshes; terrain stays analytic; `null` = terrain-only; no signature change).
+    The old 2D `WorldColliders?`/`WorldSurfaces?` `Step` overloads are removed
     (BREAKING 8.0.0). `KhaozEngine.Collision` remains in `Foundation` for 2D games / lockstep sims; it is no
     longer on the 3D movement path.
   - **Static-world collision (in `Collision`):** `BoxCollision` (circle-vs-AABB / oriented-box / circle
@@ -230,17 +234,19 @@ version/release work.
     `Foundation`, deps Primitives + Physics) = `CharacterMovement.Step`, two overloads sharing one horizontal core
     (camera-relative move from a `MoveCommand` + ground delegate + one `MoveTuning`, slope gate - runs only when a
     `groundNormal` delegate is passed, e.g. `TerrainCollision.GroundNormal`, so the rim wall can't be climbed - plus
-    optional 3D physics collision via a nullable `IPhysicsWorld?` (8.0.0, replaces the old `WorldColliders?` pair):
-    a sweep-capsule probe + downward support probe, so the character collide-and-slides against convex hulls /
-    triangle meshes from baked prop collision shapes and stands correctly on domed surfaces; terrain height stays
-    analytic; null = terrain-only): the original `Step(Vector3,...) -> Vector3` is horizontal-only (Y instant-clamped
+    optional 3D physics collision via a nullable `IPhysicsWorld?` (8.0.0, replaces the old `WorldColliders?` pair;
+    8.4.0: now resolved by a substepped swept collide-and-slide over `SweepCapsule` - no tunneling through thin
+    one-sided walls, capsule never trapped inside a closed mesh - plus a step-up probe wiring `MoveTuning.StepHeight`
+    so stair treads/curbs below `StepHeight` are auto-mounted; walkable contacts followed; steep contacts
+    block-and-slide; depenetration retained as a residual settle pass; `null` = terrain-only, byte-identical):
+    terrain height stays analytic): the original `Step(Vector3,...) -> Vector3` is horizontal-only (Y instant-clamped
     to ground + half-height), and `Step(in MoveState,...) -> MoveState` is the vertical-physics step (gravity
     terminal-clamped to `MaxFallSpeed`, land-and-clamp ground contact with a `GroundedEpsilon` slope skin, jump with
     coyote-time + jump-buffer and no apex double-jump, `AirControl`-scaled airborne XZ, plus an optional `clampXz`
     for the play-area bound). `MoveState` = the carried kinematic state (position + `VerticalVelocity` + `Grounded` +
     coyote/buffer timers); `MoveCommand` has a `Jump` bit; `MoveTuning` carries
-    `Gravity`/`JumpSpeed`/`MaxFallSpeed`/`CoyoteTime`/`JumpBuffer`/`AirControl`/`GroundedEpsilon`/`CapsuleRadius`
-    (default 0.4). Shared by the local `CharacterController3D` (Game.Render3D wraps it, jumps on Space), the
+    `Gravity`/`JumpSpeed`/`MaxFallSpeed`/`CoyoteTime`/`JumpBuffer`/`AirControl`/`GroundedEpsilon`/`CapsuleRadius`/`StepHeight`
+    (default 0.4 / 0.4). Shared by the local `CharacterController3D` (Game.Render3D wraps it, jumps on Space), the
     server sim, and client prediction. `NetWorld` (in
     `Server`, deps Locomotion/**Collision**/**Physics**/Netcode/Replication/Ecs/Serialization/WorldStore/**Sharding**) =
     `WorldBounds` (abstract `Contains`/`Clamp` + `CircleBounds`/`RectBounds`, the authoritative play-area shape;
@@ -377,8 +383,9 @@ version/release work.
     NOT in any umbrella - added explicitly like `WorldStore.Sqlite` / `Physics.Bepu`.
   - **Umbrellas (code-free metapackages):** `Foundation`, `Game2D`, `Game3D`, `Server`.
   - **Tools, same version line:** `Updates.Tool` (`ke-updater`: manifest/genkey/sign/verify), `Sfx.Tool`
-    (`ke-sfxbake`: ElevenLabs-driven SFX bake), and `PropSurface.Tool` (`ke-propbake`: bakes a walkable-surface
-    `.surf` heightmap AND a 3D collision shape per walkable-solid prop in a kit manifest, folded into kit ingest) are `PackAsTool`;
+    (`ke-sfxbake`: ElevenLabs-driven SFX bake), and `PropSurface.Tool` (`ke-propbake`: bakes a `.coll` collision
+    shape for EVERY prop (trees get a `BakeTrunkHull` leaning-trunk hull; 8.4.0) and a `.surf` heightmap for
+    walkable solids only, folded into kit ingest; `PropBakePlan.For` single-sources the per-prop bake decision) are `PackAsTool`;
     `Content.Validator` is a build-time tool (`IsPackable=false`, shipped inside the `Content` package, not
     separately versioned).
   - **Gotchas / history:** the package id is `KhaozEngine.Sharding`, NOT `KhaozEngine.World` (a `World` leaf would

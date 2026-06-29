@@ -5,6 +5,38 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.74.0
+
+Server-side anti-cheat / input-hardening pass for the authoritative movement servers: NaN/Inf move packets are
+rejected, per-connection message floods are rate-limited, and an anomaly hook surfaces malformed/flood/movement-
+correction signals for the game to act on. All additive and opt-in - the 18-byte `MoveCommand` wire format and the
+authoritative movement model are unchanged, every new knob is off by default, so consumers adopt as a pure pin bump.
+
+- **NaN/Inf rejection on move decode.** `MoveProtocol.TryDecodeMove` now returns false (hostile-safe, treated as a
+  malformed packet) when the move axis or camera yaw is NaN or infinite. Left unchecked a NaN slips past
+  `CircleBounds.Clamp` (every NaN comparison is false) and replicates a poisoned position to every client in range.
+  The wire format and the round-trip for valid commands are unchanged.
+- **Defense-in-depth finite guard in `CharacterMovement.Step`.** Both overloads now hold the last good position/state
+  instead of ever returning a non-finite one, so a misbehaving ground/bounds/tuning delegate can't inject a NaN/Inf
+  the clamps would miss. (A pathological *command* was already neutralized by the move gate - the camera-relative
+  basis is purely horizontal, so any non-finite axis poisons the move vector and fails the apply gate - this guard
+  closes the remaining delegate path.) New public `CharacterMovement.IntendedHorizontalTarget` exposes the
+  unconstrained move target the correction signal compares against. Behaviour for finite inputs is byte-identical.
+- **Per-connection message rate limiting (flood protection).** New `KhaozEngine.Netcode.RateLimiter` (a deterministic,
+  headless token bucket: per-step `Refill` + `TryConsume`, no wall-clock). `WorldServer`/`ShardedWorldServer` refill
+  one bucket per connection per poll and drop over-budget messages. Configured via `AntiCheatConfig.MaxMessagesPerSecond`
+  / `MessageBurst` / `DisconnectOnRateLimit`; off by default (`MaxMessagesPerSecond = 0` = unlimited). New
+  `NetServer.Disconnect(int slot)` + `WorldServer`/`ShardedWorldServer` `Disconnect(int slot)` give the game a kick seam.
+  Per-IP connection-attempt limiting is not included: the `INetTransport` seam exposes no remote address.
+- **Server anomaly hook (signal, not policy).** New `OnSuspiciousActivity` event on `WorldServer` and
+  `ShardedWorldServer`, firing a value-type `SuspiciousActivity { Slot, Reason, Magnitude }` (`SuspiciousReason` =
+  `MalformedPacket` / `RateLimited` / `MovementCorrection`). The engine signals; the game decides policy (log / kick /
+  ban). `MovementCorrection` fires when the authoritative sim has to deny a player's intended move beyond
+  `AntiCheatConfig.MaxCorrectionDistance` for `CorrectionStreak` consecutive ticks (the client keeps driving into the
+  slope gate / static collision / play-area boundary) - a server-side proxy, since the authoritative model carries no
+  client position to reconcile against. Off by default; a legitimate player brushing a wall does not trip it.
+- New `AntiCheatConfig` on `WorldServerConfig.AntiCheat` and `ShardedWorldServerConfig.AntiCheat` (default = all off).
+
 ## 7.73.0
 
 Memory-leak fixes from a leak audit: the authoritative servers now clear their ECS change-tracking each tick,

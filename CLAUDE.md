@@ -111,7 +111,9 @@ version/release work.
     connect-token `v1.<subject>.<expUnix>.<base64url-mac>` (+ a v2
     `v2.<subject>.<base64url-name>.<expUnix>.<base64url-mac>` carrying an optional cosmetic display-name claim,
     surfaced via the opt-in `IConnectionDisplayName` companion interface as `ServerSessionEvent.DisplayName` -
-    distinct from `subject`/account id, empty for v1)); `Replication` = authoritative ECS
+    distinct from `subject`/account id, empty for v1)); plus `RateLimiter` (a deterministic, headless token bucket -
+    per-step `Refill`/`TryConsume`, no wall-clock - for per-connection message-flood protection) and
+    `NetServer.Disconnect(slot)` (a kick seam); `Replication` = authoritative ECS
     replication (`NetId`/`ReplicationRegistry`/`SnapshotWriter`/`ClientReplicationView`/`ServerReplicator` +
     `InterestGrid` AoI); `WorldStore` = `IWorldStore` async keyed-blob seam + `InMemoryWorldStore` (dep-free core),
     with two opt-in durable backends each pulling their own ADO.NET provider (same `Netcode.LiteNetLib` pattern):
@@ -224,7 +226,16 @@ version/release work.
     ground-clamped sim + per-client AoI via `SnapshotWriter.WriteFiltered`+`InterestGrid`, framed `[localNetId][ack]`;
     a persistence seam = `PlayerJoined`/`PlayerLeaving` events + accountId-from-verified-subject (the
     authenticator's `subject`, `guest:{slot}` when empty) + an optional `IConnectionAuthenticator` ctor arg
-    (default `AllowAllAuthenticator`) + `SetPlayerState` + `SetPlayerDisplayName`),
+    (default `AllowAllAuthenticator`) + `SetPlayerState` + `SetPlayerDisplayName`; plus an opt-in server-side
+    anti-cheat layer (shipped 7.74.0, same on both servers) = `WorldServerConfig.AntiCheat` /
+    `ShardedWorldServerConfig.AntiCheat` (an `AntiCheatConfig`, all off by default):
+    `MoveProtocol.TryDecodeMove` rejects a NaN/Inf move axis or yaw as malformed (always-on; defense-in-depth finite
+    guard in `CharacterMovement.Step`), per-connection message rate limiting via the `Netcode.RateLimiter` token
+    bucket, and an `OnSuspiciousActivity` signal hook firing a value-type `SuspiciousActivity { Slot, Reason,
+    Magnitude }` (`SuspiciousReason` = `MalformedPacket`/`RateLimited`/`MovementCorrection`; the last fires on a
+    streak of authoritative move corrections beyond `MaxCorrectionDistance` - the client driving into the slope
+    gate / collision / bound - measured via `CharacterMovement.IntendedHorizontalTarget`) + a `Disconnect(slot)`
+    kick seam; signal not policy, the game decides),
     `ShardedWorldServer` (+ `ShardedWorldServerConfig`, the multi-cell variant = the same movement stack run across a
     `Sharding.ShardHost` cell grid: routes each client's `MoveCommand` to the owning cell, steps each cell's
     `PlayerMovementSystem` (also clamps to the optional `WorldBounds`) via `ShardHost.Tick` scheduler-fanned, exactly-once handoff on boundary crossings -

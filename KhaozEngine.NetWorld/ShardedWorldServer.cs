@@ -26,12 +26,17 @@ public sealed class ShardedWorldServerConfig
     public int MaxPlayers { get; init; } = 64;
     /// <summary>Per-slot spawn position (XZ used; Y is ground-clamped). Default spreads players along +X near origin.</summary>
     public Func<int, Vector3>? SpawnPosition { get; init; }
+
     /// <summary>When true (the default), each <see cref="ShardedWorldServer.Tick"/> calls
     /// <see cref="World.AdvanceTick"/> once on every cell's world, clearing the per-tick change-tracking sets and
     /// event buffer so they don't accumulate on a long-running server (one entry per <c>Set</c>/<c>Despawn</c> in
     /// the owning cell, never reclaimed otherwise). The authoritative movement path doesn't consume them. Set false
     /// ONLY if your own systems read a cell's change-tracking/events and you advance each cell's tick yourself.</summary>
     public bool AdvanceWorldTick { get; init; } = true;
+
+    /// <summary>Opt-in server-side anti-cheat / input-hardening knobs (rate limiting, movement-correction anomaly).
+    /// All off by default, so behaviour is unchanged until a consumer tightens it.</summary>
+    public AntiCheatConfig AntiCheat { get; init; } = new();
 }
 
 /// <summary>
@@ -60,7 +65,13 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
     private readonly Dictionary<int, int> netIdBySlot = new();
     private readonly Dictionary<int, int> lastAckBySlot = new();
     private readonly Dictionary<int, string> accountIdBySlot = new();
+    private readonly Dictionary<int, RateLimiter> rateBySlot = new();
+    private readonly Dictionary<int, int> correctionStreakBySlot = new();
     private readonly HashSet<CellCoord> wiredCells = new();
+    // Per-tick scratch: the pre-step state of each owned player whose command we routed this frame, so we can
+    // measure the authoritative correction after the cells step. Reused across ticks (single-threaded orchestration).
+    private readonly List<(int slot, PlayerMoveState prev, MoveCommand cmd)> correctionScratch = new();
+    private readonly MoveTuning tuning;
     private int nextNetId = 1;
 
     public ShardedWorldServer(INetTransport transport, ShardedWorldServerConfig config,
@@ -76,6 +87,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
                 $"InterestRadius {config.InterestRadius} must be <= OverlapMargin {config.OverlapMargin} so the home cell can hold the full AoI as ghosts.",
                 nameof(config));
 
+        this.tuning = tuning;
         movement = new PlayerMovementSystem(groundHeight, tuning, groundNormal, bounds, colliders, surfaces);
         spawnClamp = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds, colliders, surfaces);
         host = new ShardHost(
@@ -104,6 +116,19 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
     public event Action<int, string>? PlayerJoined;
     /// <inheritdoc/>
     public event Action<int, string, PlayerMoveState>? PlayerLeaving;
+
+    /// <summary>Raised when the server flags a connection as suspicious: a malformed/NaN move packet, a per-
+    /// connection message-rate trip, or a sustained streak of large authoritative movement corrections. The engine
+    /// signals; the game decides the policy (log / kick via <see cref="Disconnect"/> / ban). Allocation-free. The
+    /// same hook contract as <see cref="WorldServer.OnSuspiciousActivity"/>.</summary>
+    public event Action<SuspiciousActivity>? OnSuspiciousActivity;
+
+    private void Raise(int slot, SuspiciousReason reason, float magnitude = 0f) =>
+        OnSuspiciousActivity?.Invoke(new SuspiciousActivity(slot, reason, magnitude));
+
+    /// <summary>Disconnects a player's connection (a kick) - the policy seam a game's <see cref="OnSuspiciousActivity"/>
+    /// handler calls. No-op for an unknown slot.</summary>
+    public void Disconnect(int slot) => net.Disconnect(slot);
 
     /// <inheritdoc/>
     public IReadOnlyCollection<int> JoinedSlots => netIdBySlot.Keys;
@@ -152,6 +177,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
     public void Poll()
     {
         net.Poll();
+        foreach (RateLimiter limiter in rateBySlot.Values) limiter.Refill();   // one budget top-up per poll
         while (net.TryDequeueEvent(out ServerSessionEvent ev))
         {
             switch (ev.Kind)
@@ -163,18 +189,37 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
                     OnLeave(ev.Slot);
                     break;
                 case ServerSessionEventKind.Data:
-                    if (netIdBySlot.ContainsKey(ev.Slot)
-                        && MoveProtocol.TryDecodeMove(ev.Data, out int seq, out MoveCommand cmd))
-                        commands.Store(ev.Slot, seq, cmd);
+                    HandleData(ev.Slot, ev.Data);
                     break;
             }
         }
+    }
+
+    private void HandleData(int slot, byte[] data)
+    {
+        if (!netIdBySlot.ContainsKey(slot)) return;
+        // Flood protection: an over-budget message is dropped and flagged (and optionally the connection is kicked).
+        if (rateBySlot.TryGetValue(slot, out RateLimiter? limiter) && !limiter.TryConsume())
+        {
+            Raise(slot, SuspiciousReason.RateLimited);
+            if (config.AntiCheat.DisconnectOnRateLimit) net.Disconnect(slot);
+            return;
+        }
+        // Malformed / NaN / Inf packets are rejected by the decode and flagged.
+        if (!MoveProtocol.TryDecodeMove(data, out int seq, out MoveCommand cmd))
+        {
+            Raise(slot, SuspiciousReason.MalformedPacket);
+            return;
+        }
+        commands.Store(slot, seq, cmd);
     }
 
     /// <summary>Steps one authoritative server frame across every cell, then serves each client its home-cell AoI.</summary>
     public void Tick(float dt)
     {
         var slots = new List<int>(netIdBySlot.Keys);
+        bool trackCorrection = config.AntiCheat.CorrectionEnabled;
+        correctionScratch.Clear();
 
         // 1. Route each client's input to the cell that owns its player.
         foreach (int slot in slots)
@@ -182,7 +227,17 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
             MoveCommand cmd = commands.Dequeue(slot, out int ack);
             lastAckBySlot[slot] = ack;
             if (host.TryGetOwner(netIdBySlot[slot], out CellSim cell, out Entity e))
+            {
                 cell.World.Set(e, new PendingMove { Command = cmd });
+                // Snapshot the pre-step state so the post-step correction (how far the cell sim denied the move)
+                // can be measured after the cells tick. Movement happens inside PlayerMovementSystem, so we bracket
+                // host.Tick rather than threading the metric through the ECS.
+                if (trackCorrection && cell.World.TryGet(e, out ReplicatedPosition rp))
+                {
+                    cell.World.TryGet(e, out MovementState ms);
+                    correctionScratch.Add((slot, PlayerMoveState.From(rp.Value, ms), cmd));
+                }
+            }
         }
 
         // 2. Make sure every (possibly newly-created) cell runs the movement system.
@@ -194,6 +249,15 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
         // 4. Authority follows entities across boundaries (exactly-once), then refresh border ghosts.
         host.ProcessHandoffs();
         host.SyncGhosts();
+
+        // 4b. Movement-correction anomaly: compare each routed player's post-step position to its intended move.
+        foreach ((int slot, PlayerMoveState prev, MoveCommand cmd) in correctionScratch)
+        {
+            if (!TryGetPlayerState(slot, out PlayerMoveState after)) continue;
+            float correction = MovementAnomaly.CorrectionDistance(prev, cmd, after, dt, tuning);
+            if (MovementAnomaly.RegisterCorrection(correctionStreakBySlot, slot, correction, config.AntiCheat))
+                Raise(slot, SuspiciousReason.MovementCorrection, correction);
+        }
 
         // 5. Serve each client its home-cell area-of-interest, framed for the unchanged WorldClient.
         foreach (int slot in slots)
@@ -235,6 +299,10 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
         netIdBySlot[slot] = netId;
         lastAckBySlot[slot] = -1;
         accountIdBySlot[slot] = accountId;
+        // Fresh per-connection anti-cheat state (a recycled slot starts from a full bucket / zero streak).
+        RateLimiter? limiter = config.AntiCheat.CreateLimiter(config.TickSeconds);
+        if (limiter is not null) rateBySlot[slot] = limiter; else rateBySlot.Remove(slot);
+        correctionStreakBySlot[slot] = 0;
         host.BindClient(slot, netId);
 
         PlayerJoined?.Invoke(slot, accountId);
@@ -253,6 +321,8 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
         netIdBySlot.Remove(slot);
         lastAckBySlot.Remove(slot);
         accountIdBySlot.Remove(slot);
+        rateBySlot.Remove(slot);
+        correctionStreakBySlot.Remove(slot);
         // Drop the slot's command-queue state too. The SlotAllocator recycles this slot to the next connection,
         // whose seqs legitimately restart at 0; without this the stale high-water mark rejects every command and
         // freezes the recycled player (it self-heals only once their seq crawls past the dead mark, minutes later).

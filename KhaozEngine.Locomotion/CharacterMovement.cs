@@ -38,7 +38,11 @@ public static class CharacterMovement
 
         (float x, float z) = ResolveHorizontal(position.X, position.Z, cmd, dt, tuning, groundNormal, colliders,
             clampXz: null, speedScale: 1f);
-        return new Vector3(x, groundHeight(x, z) + tuning.CapsuleHalfHeight, z);
+        var result = new Vector3(x, groundHeight(x, z) + tuning.CapsuleHalfHeight, z);
+        // Defense-in-depth: never return a non-finite position from a finite input. A pathological command is
+        // already neutralized by the move gate, but a misbehaving groundHeight/bound could still inject a NaN/Inf
+        // that slips past every clamp and replicates to every client in range; hold the last good position instead.
+        return IsFinite(result) ? result : position;
     }
 
     /// <summary>Vertical-physics step: horizontal move (air-controlled while airborne) plus gravity, ground
@@ -126,7 +130,7 @@ public static class CharacterMovement
             jumpBuffer = 0f;                         // consume the buffered request
         }
 
-        return new MoveState
+        var result = new MoveState
         {
             Position = new Vector3(x, y, z),
             VerticalVelocity = vVel,
@@ -134,6 +138,40 @@ public static class CharacterMovement
             TimeSinceGrounded = tSinceGround,
             JumpBufferRemaining = jumpBuffer,
         };
+        // Defense-in-depth: a finite input state must never produce a non-finite result. A pathological command is
+        // gated out upstream, but a misbehaving ground/bound/tuning value could inject a NaN/Inf that would slip
+        // past every clamp and replicate; hold the last good state instead of propagating a poisoned position.
+        return IsFinite(result.Position) && float.IsFinite(result.VerticalVelocity) ? result : state;
+    }
+
+    /// <summary>True when every component of <paramref name="v"/> is finite (neither NaN nor infinite).</summary>
+    private static bool IsFinite(in Vector3 v) =>
+        float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z);
+
+    /// <summary>The unconstrained horizontal target the camera-relative move would reach in one step, before the
+    /// slope gate, static collision, or play-area clamp deny any of it. The XZ distance from this to the position a
+    /// constrained <see cref="Step(in MoveState, in MoveCommand, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, WorldColliders?, Func{float, float, Vector2}?, WorldSurfaces?)"/>
+    /// actually produced is the authoritative "correction" the server applied this tick - a server-side anti-cheat
+    /// signal: a client repeatedly driving into a wall, slope, or boundary keeps this large. Pass
+    /// <paramref name="speedScale"/> = the value the step used (1 grounded, <see cref="MoveTuning.AirControl"/>
+    /// airborne) so the comparison isolates only the denial, not the air-control scaling. Mirrors the basis +
+    /// speed of <see cref="ResolveHorizontal"/> (pre-gate).</summary>
+    public static Vector2 IntendedHorizontalTarget(Vector3 position, in MoveCommand cmd, float dt,
+        in MoveTuning tuning, float speedScale = 1f)
+    {
+        float sY = MathF.Sin(cmd.CameraYaw), cY = MathF.Cos(cmd.CameraYaw);
+        Vector3 forward = new(-sY, 0f, -cY);
+        Vector3 right = new(cY, 0f, -sY);
+        Vector3 move = right * cmd.Move.X + forward * cmd.Move.Y;
+        float x = position.X, z = position.Z;
+        if (move.LengthSquared() > 1e-6f)
+        {
+            move = Vector3.Normalize(move);
+            float speed = (cmd.Run ? tuning.RunSpeed : tuning.WalkSpeed) * speedScale;
+            x += move.X * speed * dt;
+            z += move.Z * speed * dt;
+        }
+        return new Vector2(x, z);
     }
 
     /// <summary>Shared horizontal resolve: camera-relative move (normalized diagonals, walk/run speed scaled by

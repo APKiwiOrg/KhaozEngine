@@ -164,4 +164,32 @@ public static class MoveProtocol
         snapshot = Array.Empty<byte>();
         return false;
     }
+
+    /// <summary>The kind of server-to-client frame riding the Data channel: a per-client snapshot, or an
+    /// out-of-band notice. The first byte of every server-to-client Data payload.</summary>
+    public enum ServerFrameKind : byte { Snapshot = 0, Notice = 1 }
+
+    /// <summary>Wraps a server-to-client payload with its 1-byte kind tag so snapshots and
+    /// notices share the Data channel. The receiver demuxes via <see cref="TryDecodeServerFrame"/>.</summary>
+    public static byte[] EncodeServerFrame(ServerFrameKind kind, ReadOnlySpan<byte> payload)
+    {
+        var b = new byte[1 + payload.Length];
+        b[0] = (byte)kind;
+        payload.CopyTo(b.AsSpan(1));
+        return b;
+    }
+
+    /// <summary>Splits a server frame into its kind and inner payload. False if empty.</summary>
+    public static bool TryDecodeServerFrame(ReadOnlySpan<byte> data, out ServerFrameKind kind, out byte[] payload)
+    {
+        if (data.Length >= 1)
+        {
+            kind = (ServerFrameKind)data[0];
+            payload = data.Slice(1).ToArray();
+            return true;
+        }
+        kind = ServerFrameKind.Snapshot;
+        payload = Array.Empty<byte>();
+        return false;
+    }
 }

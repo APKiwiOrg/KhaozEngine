@@ -39,6 +39,9 @@ public sealed class WorldClient
     private readonly ClientReplicationView view;
     private readonly ClientPrediction<PlayerMoveState, MoveCommand> prediction;
     private int authoritativeTick;
+    private WorldConnectionState state = WorldConnectionState.Connecting;
+    private DisconnectReason disconnectReason = DisconnectReason.None;
+    private string disconnectReasonDetail = string.Empty;
 
     // Remote interpolation: render replicated remotes ~one snapshot in the past, lerping between the last two
     // snapshots so they glide instead of teleporting one snapshot-step per ingest. The drive is a presentation
@@ -72,8 +75,30 @@ public sealed class WorldClient
 
     /// <summary>Net id of the local player, or -1 until the first snapshot identifies it.</summary>
     public int LocalNetId { get; private set; } = -1;
-    /// <summary>True once the session handshake has joined.</summary>
-    public bool Joined { get; private set; }
+
+    /// <summary>True once the session handshake has joined (equivalent to
+    /// <see cref="ConnectionState"/> == <see cref="WorldConnectionState.Connected"/>).</summary>
+    public bool Joined => state == WorldConnectionState.Connected;
+
+    /// <summary>The live connection state. Observe transitions via <see cref="ConnectionStateChanged"/>.</summary>
+    public WorldConnectionState ConnectionState => state;
+
+    /// <summary>Raised on every <see cref="ConnectionState"/> transition (new state passed).</summary>
+    public event Action<WorldConnectionState>? ConnectionStateChanged;
+
+    /// <summary>Why the session was lost (or could not be established); <see cref="DisconnectReason.None"/> while healthy.</summary>
+    public DisconnectReason DisconnectReason => disconnectReason;
+
+    /// <summary>Extra detail for the reason (the authenticator's reject string for
+    /// <see cref="DisconnectReason.RejectedToken"/>); empty otherwise.</summary>
+    public string DisconnectReasonDetail => disconnectReasonDetail;
+
+    private void SetState(WorldConnectionState next)
+    {
+        if (state == next) return;
+        state = next;
+        ConnectionStateChanged?.Invoke(next);
+    }
 
     /// <summary>Raised when the server pushes a <see cref="ServerNotice"/> (e.g. a maintenance/restart warning).</summary>
     public event Action<ServerNotice>? NoticeReceived;
@@ -105,13 +130,24 @@ public sealed class WorldClient
             switch (ev.Kind)
             {
                 case ClientSessionEventKind.Joined:
-                    Joined = true;
+                    disconnectReason = DisconnectReason.None;
+                    disconnectReasonDetail = string.Empty;
+                    SetState(WorldConnectionState.Connected);
                     break;
                 case ClientSessionEventKind.Data:
                     OnServerFrame(ev.Data);
                     break;
+                case ClientSessionEventKind.Rejected:
+                    disconnectReason = DisconnectReason.RejectedToken;
+                    disconnectReasonDetail = ev.RejectReason;
+                    SetState(WorldConnectionState.Disconnected);
+                    break;
                 case ClientSessionEventKind.Disconnected:
-                    Joined = false;
+                    if (state != WorldConnectionState.Disconnected)
+                    {
+                        disconnectReason = DisconnectReason.Unreachable;
+                        SetState(WorldConnectionState.Disconnected);
+                    }
                     break;
             }
         }

@@ -113,7 +113,12 @@ version/release work.
     surfaced via the opt-in `IConnectionDisplayName` companion interface as `ServerSessionEvent.DisplayName` -
     distinct from `subject`/account id, empty for v1)); plus `RateLimiter` (a deterministic, headless token bucket -
     per-step `Refill`/`TryConsume`, no wall-clock - for per-connection message-flood protection) and
-    `NetServer.Disconnect(slot)` (a kick seam); `Replication` = authoritative ECS
+    `NetServer.Disconnect(slot)` (a kick seam); plus `BoundedEventQueue<T>` (a drop-oldest hard cap - keeps the
+    newest, evicts the oldest at capacity, `DefaultCapacity` 10,000, `DroppedCount` observable - the `NetServer`
+    session inbox and both `Netcode.LiteNetLib` transport inboxes use it via an optional `maxQueuedEvents` ctor arg
+    + a `DroppedEventCount` property, so a stalled/flooded host can't grow undrained events (each Data event pins a
+    payload buffer) without bound; mirrors the per-slot bounding `RemoteCommandQueue` already does, never bites a
+    drain-each-poll host); `Replication` = authoritative ECS
     replication (`NetId`/`ReplicationRegistry`/`SnapshotWriter`/`ClientReplicationView`/`ServerReplicator` +
     `InterestGrid` AoI); `WorldStore` = `IWorldStore` async keyed-blob seam + `InMemoryWorldStore` (dep-free core),
     with two opt-in durable backends each pulling their own ADO.NET provider (same `Netcode.LiteNetLib` pattern):

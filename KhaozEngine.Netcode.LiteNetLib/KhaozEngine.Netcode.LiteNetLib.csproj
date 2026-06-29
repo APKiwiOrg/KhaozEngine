@@ -3,7 +3,7 @@
     <PackageId>KhaozEngine.Netcode.LiteNetLib</PackageId>
     <!-- Graduated onto the shared 5.x line at 5.46.0 (was the 4.x <Version>); MonoGame-free foundation. -->
     <Version>$(KhaozEngineVersion)</Version>
-    <Description>LiteNetLib transport binding for the channel-split kernel. The transport-free split contract (IChannelSplittable&lt;T&gt; + NetChannelReliability) now lives in KhaozEngine.Netcode; this package adds ChannelSplitter, which maps NetChannelReliability to LiteNetLib's DeliveryMethod (ToDeliveryMethod) and drives "split, send each non-empty part on its channel" (Sequenced vs ReliableOrdered) via Send, so reliable events never head-of-line-block position updates. The game keeps its own batch type and field layout.</Description>
+    <Description>LiteNetLib transport binding for the channel-split kernel. The transport-free split contract (IChannelSplittable&lt;T&gt; + NetChannelReliability) now lives in KhaozEngine.Netcode; this package adds ChannelSplitter, which maps NetChannelReliability to LiteNetLib's DeliveryMethod (ToDeliveryMethod) and drives "split, send each non-empty part on its channel" (Sequenced vs ReliableOrdered) via Send, so reliable events never head-of-line-block position updates. The server/client transports bound their undrained event inboxes with Netcode's BoundedEventQueue (optional maxQueuedEvents ctor arg + DroppedEventCount) so a stalled or flooded host cannot grow memory without bound. The game keeps its own batch type and field layout.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>

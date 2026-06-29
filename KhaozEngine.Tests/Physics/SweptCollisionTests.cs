@@ -92,6 +92,42 @@ public class SweptCollisionTests
     }
 
     [Fact]
+    public void Stairs_WithRisersUnderStepHeight_AreWalkable()
+    {
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        // Three solid box steps, each riser 0.25 m (< StepHeight 0.4). Step s spans z[2+0.4s, 2+0.4s+0.4] and
+        // y[0, 0.25*(s+1)]. One-sided-mesh richness/trap behavior is covered by the sibling thin-wall / closed-
+        // shell tests; this fixture isolates the step-up probe (shape-agnostic: it sweeps).
+        for (int s = 0; s < 3; s++)
+        {
+            float topY = 0.25f * (s + 1);
+            float zCentre = 2f + 0.4f * s + 0.2f;
+            world.AddStatic(new BoxShape(new Vector3(3f, topY * 0.5f, 0.2f)),
+                Pose.At(new Vector3(0f, topY * 0.5f, zCentre)));
+        }
+        world.Step(1f / 60f);
+
+        var state = new MoveState { Position = new Vector3(0f, 0.9f, 0f), Grounded = true };
+        var fwd = new MoveCommand(new Vector2(0f, -1f), run: false, cameraYaw: 0f, jump: false);   // toward +Z
+        // Walk forward and track the peak elevation/advance: the step-up probe mounts the capsule onto each tread,
+        // so it climbs the 3-step staircase, then walks off the far end back to terrain (the staircase is only
+        // ~1.2 m deep, far shorter than 300 ticks of travel). Asserting on the peak (not the final resting state)
+        // isolates "did it climb the stairs", independent of how far past the finite staircase it walks.
+        float peakY = state.Position.Y, peakZ = state.Position.Z;
+        for (int i = 0; i < 300; i++)
+        {
+            state = CharacterMovement.Step(state, fwd, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
+            if (state.Position.Y > peakY) peakY = state.Position.Y;
+            if (state.Position.Z > peakZ) peakZ = state.Position.Z;
+        }
+
+        // Climbed at least the first step: capsule centre rose from 0.9 (terrain rest) onto a tread
+        // (>= 0.25 + halfHeight), and advanced onto the stairs.
+        Assert.True(peakY > 0.9f + 0.2f, $"did not climb the stairs, peak y={peakY}");
+        Assert.True(peakZ > 2.2f, $"did not advance onto the stairs, peak z={peakZ}");
+    }
+
+    [Fact]
     public void FastPath_IsDeterministic_AcrossTwoWorlds()
     {
         static MoveState RunOnce()

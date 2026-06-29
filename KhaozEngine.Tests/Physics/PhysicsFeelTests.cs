@@ -186,48 +186,38 @@ public class PhysicsFeelTests
         }
     }
 
-    // ---- Test 5: tree -> thin trunk cylinder bake (rejects foliage outliers) + KECL round-trip ----
-    // The FIX-1 regression lock: a conifer-like mesh with a dense thin trunk core PLUS sparse low foliage
-    // points spreading far out within the trunk slice must bake to ~the trunk core radius (the 30th-percentile
-    // euclidean XZ radius), NOT the max (which used to grab the foliage and make the trunk far too fat).
+    // ---- Test 5: tree -> thin trunk HULL bake (rejects foliage outliers) + KECL round-trip ----
+    // Regression lock: a conifer-like mesh with a dense thin trunk core PLUS sparse low foliage points spreading
+    // far out must bake to ~the trunk core extent (the radial-core filter rejects the outliers), NOT a fat hull.
+    // Trees bake a leaning-trunk ConvexHullShape (8.3.0), not a cylinder.
     [Fact]
-    public void Tree_BakesTrunkCylinder_RoundTrips()
+    public void Tree_BakesTrunkHull_RoundTrips()
     {
-        // Trunk core half-width 0.25 (euclid corner radius ~0.354); sparse foliage points at radius ~1.2 sitting
-        // low in the trunk slice (these are the outliers the old max grabbed).
         const float trunkCore = 0.25f;
         GltfMesh tree = FeelMeshes.ConiferTree(trunkCore: trunkCore, height: 6f, canopyRadius: 2.5f,
             foliageRadius: 1.2f, foliageCount: 6);
-        // Sanity: this fixture must classify as a tree (not a walkable solid).
         Assert.True(PropCollisionBake.IsTree(tree), "tree fixture must classify as a tree");
 
         PhysicsShape shape = PropCollisionBake.Bake(tree);
-        var cyl = Assert.IsType<CylinderShape>(shape);
+        var hull = Assert.IsType<ConvexHullShape>(shape);
 
-        // The euclidean corner radius of the trunk core is sqrt(2)*0.25 ~= 0.354. The percentile must land on the
-        // dense trunk cluster, well below the foliage outlier radius (1.2). Assert a thin range that the max
-        // (>= 1.2) would blow through.
-        float trunkCornerR = MathF.Sqrt(2f) * trunkCore;
-        Assert.True(cyl.Radius < 0.6f,
-            $"trunk radius must reject foliage outliers (~trunk core, not the max), was {cyl.Radius:F3}");
-        Assert.True(cyl.Radius >= PropCollisionBake.TrunkRadiusFloor,
-            $"trunk radius must be at least the floor, was {cyl.Radius:F3}");
-        Assert.True(MathF.Abs(cyl.Radius - trunkCornerR) < 0.05f,
-            $"trunk radius must be ~the trunk core corner radius ({trunkCornerR:F3}), was {cyl.Radius:F3}");
-        // Length ~= full prop height.
-        Assert.True(MathF.Abs(cyl.Length - 6f) < 1e-2f, $"length must be the full height (~6), was {cyl.Length:F3}");
+        // Every hull point stays near the trunk core (corner radius sqrt(2)*0.25 ~= 0.354), well under the foliage
+        // radius (1.2): the radial-core filter rejected the foliage outliers. Thin trunk, not a fat foliage hull.
+        foreach (Vector3 p in hull.Points)
+        {
+            float r = MathF.Sqrt(p.X * p.X + p.Z * p.Z);
+            Assert.True(r < 0.6f, $"trunk hull must reject foliage outliers (~trunk core, not the foliage), r={r:F3}");
+        }
 
         using var ms = new MemoryStream();
         PropCollisionBake.Write(shape, ms);
-        ms.Position = 0;
-        // Kind byte 3 follows magic (4) + version (1).
+        // Kind byte 1 (convex hull) follows magic (4) + version (1).
         ms.Position = 5;
-        Assert.Equal(3, ms.ReadByte());
+        Assert.Equal(1, ms.ReadByte());
         ms.Position = 0;
         PhysicsShape loaded = PropCollisionLoader.Read(ms);
-        var roundTrip = Assert.IsType<CylinderShape>(loaded);
-        Assert.Equal(cyl.Radius, roundTrip.Radius, 5);
-        Assert.Equal(cyl.Length, roundTrip.Length, 5);
+        var roundTrip = Assert.IsType<ConvexHullShape>(loaded);
+        Assert.Equal(hull.Points.Length, roundTrip.Points.Length);
     }
 
     // ---- Test 6: walk straight into the trunk blocks at ~trunkRadius+capsuleRadius; offset passes freely ----
@@ -237,17 +227,19 @@ public class PhysicsFeelTests
     {
         GltfMesh tree = FeelMeshes.ConiferTree(trunkCore: 0.25f, height: 6f, canopyRadius: 2.5f,
             foliageRadius: 1.2f, foliageCount: 6);
-        var cyl = (CylinderShape)PropCollisionBake.Bake(tree);
-        float trunkRadius = cyl.Radius;
+        var hull = (ConvexHullShape)PropCollisionBake.Bake(tree);
+        // Trunk half-extent in XZ (the face the capsule meets head-on); the hull excludes the foliage outliers.
+        float trunkRadius = 0f;
+        foreach (Vector3 p in hull.Points)
+            trunkRadius = MathF.Max(trunkRadius, MathF.Max(MathF.Abs(p.X), MathF.Abs(p.Z)));
         const float capsuleRadius = 0.4f;
 
-        // Re-confirm the radius is thin (the fat-trunk regression lock at the movement layer).
-        Assert.True(trunkRadius < 0.6f, $"baked trunk radius must be thin, was {trunkRadius:F3}");
+        // Re-confirm the trunk is thin (the fat-trunk regression lock at the movement layer).
+        Assert.True(trunkRadius < 0.6f, $"baked trunk extent must be thin, was {trunkRadius:F3}");
 
         using IPhysicsWorld world = new BepuPhysicsWorld();
-        // Place the cylinder static the runtime way (ChunkStatics.AddAll): at the prop BASE (y=0). The
-        // Bepu backend lifts the cylinder +Length/2 so it spans base -> top. Static at origin.
-        world.AddStatic(cyl, Pose.At(Vector3.Zero));
+        // Place the trunk hull static at the prop BASE (origin), the runtime way.
+        world.AddStatic(hull, Pose.At(Vector3.Zero));
         world.Step(1f / 60f);
 
         // (a) Walk straight at the trunk: blocked at ~ -(trunkRadius + capsuleRadius) on the -X side.

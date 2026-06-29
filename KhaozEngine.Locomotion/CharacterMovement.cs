@@ -94,13 +94,15 @@ public static class CharacterMovement
         Vector3 target = new(dx, desiredY, dz);
         Vector3 pos;
         bool propGrounded = false;
+        bool steppedUp = false;
+        float steppedFloorY = 0f;
         if (world is null)
         {
             pos = target;
         }
         else
         {
-            pos = SweptMove(world, capsule, start, target, t, s.Grounded);
+            pos = SweptMove(world, capsule, start, target, t, s.Grounded, out steppedUp, out steppedFloorY);
 
             // Settle pass: residual-overlap depenetration (rarely fires now; the swept move starts known-outside).
             const int ResolveIterations = 6;
@@ -133,13 +135,18 @@ public static class CharacterMovement
         //    horizontal the prior version established is untouched, and a low dome cannot be walked up its side).
         float terrainGroundY = groundHeight(pos.X, pos.Z) + halfH;
         float groundY = terrainGroundY;
+        if (steppedUp)
+        {
+            if (steppedFloorY > groundY) groundY = steppedFloorY;
+            propGrounded = true;   // standing on the stepped ledge
+        }
         // A small "standing on a prop" skin (NOT the larger GroundedEpsilon mount band): a capsule whose carried
         // Y is above terrain by more than this is genuinely on a prop, so the sweep keeps following the prop
         // surface (e.g. down the far side of a dome it mounted), while one at terrain level walking into a flank
         // is below it and the sweep stays off (depenetration blocks the base). Too large a skin would snap the
         // capsule off the prop surface onto terrain mid-descent and clip it into the prop.
         const float OnPropSkin = 0.05f;
-        bool overProp = !s.Grounded || s.Position.Y > terrainGroundY + OnPropSkin;
+        bool overProp = !s.Grounded || s.Position.Y > terrainGroundY + OnPropSkin || steppedUp;
         if (world is not null && overProp)
         {
             float probeStart = pos.Y + 2f * halfH;                 // above the head, clear of a standable prop
@@ -238,6 +245,12 @@ public static class CharacterMovement
     private const float SubstepFraction = 0.5f;
     private const int   SlideIterations = 4;
     private const float SkinWidth       = 0.01f;
+    // Contact counts as a wall/riser (step-up candidate) rather than a floor/ceiling when |normal.Y| is small.
+    private const float StepUpNormalY = 0.5f;
+    // On a degenerate (zero-normal) contact, lift the capsule this far and re-sweep the horizontal remainder to
+    // tell a floor-under-the-feet (clears when raised) from a wall-beside-the-body (still hits). Small enough not
+    // to clear a real low wall/riser, large enough to lift the sphere bottom off a curved support's point contact.
+    private const float DegenerateFloorProbe = 0.05f;
 
     /// <summary>Move the capsule from <paramref name="start"/> toward <paramref name="target"/> by a substepped
     /// swept collide-and-slide over <see cref="IPhysicsWorld.SweepCapsule"/>. The displacement is split into
@@ -245,8 +258,9 @@ public static class CharacterMovement
     /// fast jump never crosses a face. Deterministic (Bepu Sweep is deterministic single-threaded; the substep
     /// count is a deterministic length).</summary>
     private static Vector3 SweptMove(IPhysicsWorld world, CapsuleShape capsule, Vector3 start, Vector3 target,
-        in MoveTuning t, bool grounded)
+        in MoveTuning t, bool grounded, out bool steppedUp, out float steppedFloorY)
     {
+        steppedUp = false; steppedFloorY = 0f;
         Vector3 full = target - start;
         float fullLen = full.Length();
         if (fullLen <= 1e-6f) return target;
@@ -258,15 +272,23 @@ public static class CharacterMovement
 
         Vector3 pos = start;
         for (int i = 0; i < substeps; i++)
-            pos = SlideSubstep(world, capsule, pos, stepDelta, t, grounded);
+        {
+            pos = SlideSubstep(world, capsule, pos, stepDelta, t, grounded, out bool stepped, out float floorY);
+            if (stepped) { steppedUp = true; steppedFloorY = floorY; }
+        }
         return pos;
     }
 
-    /// <summary>Collide-and-slide one substep's displacement: sweep, advance to the contact minus a skin, project
-    /// the remainder onto the contact plane, iterate (resolves inner corners). No step-up in this overload.</summary>
+    /// <summary>Collide-and-slide one substep's displacement: sweep, advance to the contact minus a skin, then by
+    /// contact class - a WALKABLE contact (floor/slope/prop-top, normal up enough to stand on) passes the remainder
+    /// through (step 4 sets the resting Y so the capsule follows the surface), a STEEP contact (wall/riser) either
+    /// steps up over a low ledge or projects the remainder onto the contact plane (slide), iterating to resolve
+    /// inner corners.</summary>
     private static Vector3 SlideSubstep(IPhysicsWorld world, CapsuleShape capsule, Vector3 pos, Vector3 delta,
-        in MoveTuning t, bool grounded)
+        in MoveTuning t, bool grounded, out bool steppedUp, out float steppedFloorY)
     {
+        steppedUp = false; steppedFloorY = 0f;
+        float cosMaxSlope = MathF.Cos(t.MaxSlopeRadians);
         for (int iter = 0; iter < SlideIterations; iter++)
         {
             float dist = delta.Length();
@@ -280,11 +302,101 @@ public static class CharacterMovement
             pos += dir * MathF.Max(0f, hit.Distance - SkinWidth);
             Vector3 remaining = delta - dir * hit.Distance;
             Vector3 n = hit.Normal;
-            if (n.LengthSquared() > 1e-12f) n = Vector3.Normalize(n);
-            else break;           // degenerate contact (deep/zero-distance): let the settle pass handle it
-            delta = remaining - Vector3.Dot(remaining, n) * n;   // slide along the contact plane
+            if (n.LengthSquared() <= 1e-12f)
+            {
+                // Degenerate (zero-distance / deep) contact: Bepu gives no usable slide plane (a capsule resting
+                // point-on-point atop a curved support, or pressed flush against a thin one-sided wall, both report
+                // dist=0 with a zero normal). The two cases need OPPOSITE handling: the curved FLOOR under the feet
+                // must let the horizontal remainder through (so the capsule walks across a dome / mounts on landing),
+                // while the WALL beside the body must block it (advancing would tunnel straight through a thin quad).
+                // Discriminate by re-sweeping the horizontal remainder from a slightly RAISED pose: lifting the
+                // capsule a few cm clears a contact that is UNDER the feet (a dome top) but not one that extends up
+                // BESIDE the body (a wall), since a wall spans the full capsule height. Clear => floor: advance.
+                Vector3 horizRem = new(remaining.X, 0f, remaining.Z);
+                float horizRemLen = horizRem.Length();
+                if (horizRemLen > 1e-6f)
+                {
+                    Vector3 raised = pos; raised.Y += DegenerateFloorProbe;
+                    Vector3 horizRemDir = horizRem / horizRemLen;
+                    if (!world.SweepCapsule(capsule, Pose.At(raised), horizRemDir, horizRemLen, out _))
+                    {
+                        pos += remaining;   // floor under the feet: follow the surface, step 4 sets the resting Y
+                    }
+                }
+                break;
+            }
+            n = Vector3.Normalize(n);
+
+            // Walkable ground / slope / prop-top (normal up enough to STAND on, n.Y >= cos(maxSlope)): this is
+            // FLOOR, not a wall - do NOT block horizontal travel. Advance the remainder and let step 4 (analytic
+            // terrain + the downward support sweep) set the resting Y, so the capsule follows the surface (walks
+            // across a domed rock, mounts it on landing) instead of being walled-off by its own support.
+            if (n.Y >= cosMaxSlope)
+            {
+                pos += remaining;
+                break;
+            }
+
+            // Step-up: only while grounded, only over a near-vertical contact (a riser/wall), only on the
+            // horizontal remainder. Climbs a stair tread; a real wall has no ledge within StepHeight so it slides.
+            if (grounded && MathF.Abs(n.Y) < StepUpNormalY &&
+                TryStepUp(world, capsule, pos, remaining, t, out Vector3 stepped))
+            {
+                steppedUp = true; steppedFloorY = stepped.Y;
+                pos = stepped;
+                break;
+            }
+
+            delta = remaining - Vector3.Dot(remaining, n) * n;   // wall: slide along the contact plane
         }
         return pos;
+    }
+
+    /// <summary>Classic up/forward/down step probe over the horizontal remainder: sweep up by
+    /// <see cref="MoveTuning.StepHeight"/> (headroom), sweep forward, sweep down; accept only if it lands on a
+    /// walkable-slope ledge strictly higher than the start (a stair tread/curb). A vertical wall has no such ledge
+    /// within StepHeight, so this returns false and the caller slides. Returns the stepped capsule centre.</summary>
+    private static bool TryStepUp(IPhysicsWorld world, CapsuleShape capsule, Vector3 pos, Vector3 remaining,
+        in MoveTuning t, out Vector3 stepped)
+    {
+        stepped = pos;
+        Vector3 horiz = new(remaining.X, 0f, remaining.Z);
+        float horizLen = horiz.Length();
+        if (horizLen <= 1e-6f) return false;
+        Vector3 horizDir = horiz / horizLen;
+        float step = t.StepHeight;
+        // Probe forward at least the capsule radius: the per-tick remainder after the contact is only a few mm
+        // (walk speed * dt minus the swept distance), far too short to carry the raised capsule over the step lip
+        // and onto the tread. One radius clears a curb/tread whose depth is within the capsule footprint; a real
+        // wall still blocks the forward sweep entirely (caught by the "no forward progress" guard below), so this
+        // only helps genuine ledges.
+        float probeLen = MathF.Max(horizLen, capsule.Radius);
+
+        // 1. Up by StepHeight (stop short of any ceiling).
+        Vector3 up = pos;
+        if (world.SweepCapsule(capsule, Pose.At(pos), Vector3.UnitY, step, out SweepHit upHit))
+            up.Y += MathF.Max(0f, upHit.Distance - SkinWidth);
+        else
+            up.Y += step;
+
+        // 2. Forward along the horizontal remainder from the raised pose.
+        Vector3 fwd = up;
+        if (world.SweepCapsule(capsule, Pose.At(up), horizDir, probeLen, out SweepHit fwdHit))
+            fwd += horizDir * MathF.Max(0f, fwdHit.Distance - SkinWidth);
+        else
+            fwd += horizDir * probeLen;
+        // No forward progress above the obstacle => it is a wall, not a step.
+        float advanced = Vector3.Distance(new Vector3(fwd.X, 0f, fwd.Z), new Vector3(pos.X, 0f, pos.Z));
+        if (advanced <= 1e-4f) return false;
+
+        // 3. Down by StepHeight to settle onto the ledge; must be walkable slope and strictly higher than pos.
+        if (!world.SweepCapsule(capsule, Pose.At(fwd), -Vector3.UnitY, step + SkinWidth, out SweepHit downHit))
+            return false;
+        if (downHit.Normal.Y < MathF.Cos(t.MaxSlopeRadians)) return false;   // too steep to stand on
+        Vector3 landed = fwd; landed.Y -= MathF.Max(0f, downHit.Distance - SkinWidth);
+        if (landed.Y <= pos.Y + 1e-4f) return false;                        // did not actually rise
+        stepped = landed;
+        return true;
     }
 
     // Desired world XZ position after camera-relative input + slope gate, WITHOUT collision.

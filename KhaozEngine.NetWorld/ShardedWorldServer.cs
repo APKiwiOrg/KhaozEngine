@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using KhaozEngine.Collision;
+using KhaozEngine.Physics;
 using KhaozEngine.Ecs;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Netcode;
@@ -59,7 +59,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
 
     public ShardedWorldServer(INetTransport transport, ShardedWorldServerConfig config,
         Func<float, float, float> groundHeight, MoveTuning tuning, Func<float, float, Vector3>? groundNormal = null,
-        WorldBounds? bounds = null, WorldColliders? colliders = null, WorldSurfaces? surfaces = null,
+        WorldBounds? bounds = null, IPhysicsWorld? physics = null,
         IConnectionAuthenticator? authenticator = null)
     {
         ArgumentNullException.ThrowIfNull(transport);
@@ -70,8 +70,8 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
                 $"InterestRadius {config.InterestRadius} must be <= OverlapMargin {config.OverlapMargin} so the home cell can hold the full AoI as ghosts.",
                 nameof(config));
 
-        movement = new PlayerMovementSystem(groundHeight, tuning, groundNormal, bounds, colliders, surfaces);
-        spawnClamp = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds, colliders, surfaces);
+        movement = new PlayerMovementSystem(groundHeight, tuning, groundNormal, bounds, physics);
+        spawnClamp = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds, physics);
         host = new ShardHost(
             cellSize: config.CellSize,
             tickSeconds: config.TickSeconds,

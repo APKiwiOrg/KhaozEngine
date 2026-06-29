@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using KhaozEngine.Collision;
+using KhaozEngine.Physics;
 using KhaozEngine.Ecs;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Netcode;
@@ -53,16 +53,16 @@ public sealed class WorldClient
 
     public WorldClient(INetTransport transport, Func<float, float, float> groundHeight, MoveTuning tuning,
         WorldClientConfig? config = null, byte[]? token = null, Func<float, float, Vector3>? groundNormal = null,
-        WorldBounds? bounds = null, WorldColliders? colliders = null, WorldSurfaces? surfaces = null)
+        WorldBounds? bounds = null, IPhysicsWorld? physics = null)
     {
         ArgumentNullException.ThrowIfNull(transport);
         if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
         config ??= new WorldClientConfig();
         net = new NetClient(transport, token);
         view = new ClientReplicationView(registry);
-        // Predict against the SAME static colliders/surfaces the server is authoritative over (mirrors WorldServer),
+        // Predict against the SAME physics world the server is authoritative over (mirrors WorldServer),
         // so a solid-prop consumer predicts straight rather than rubber-banding. Defaults null = terrain-only.
-        var simulator = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds, colliders, surfaces);
+        var simulator = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds, physics);
         PredictionSettings settings = config.Prediction ?? (PredictionSettings.Default with { TickSeconds = config.TickSeconds });
         prediction = new ClientPrediction<PlayerMoveState, MoveCommand>(simulator, settings);
         interpolateRemotes = config.InterpolateRemotes;

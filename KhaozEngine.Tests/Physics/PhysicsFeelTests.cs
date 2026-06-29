@@ -274,6 +274,56 @@ public class PhysicsFeelTests
             $"offset lane should not be deflected, final Z={freeState.Position.Z:F3} (lane {laneZ:F3})");
     }
 
+    // ---- Test 9: a FAST jump-landing onto a faceted rock settles feet ON the top, not sunk ----
+    // The downward support-sweep floor regression lock. A fast one-tick plunge into a convex hull can leave the
+    // capsule sunk (deep-penetration depenetration under-reports the depth in the landing tick); the support
+    // sweep from above the head is accurate even when sunk and pins the capsule's feet to the hull top.
+    [Fact]
+    public void JumpLanding_SettlesFeetOnTop_NotSunk()
+    {
+        // A faceted convex-hull rock, symmetric in Y about its own centre (so the hull's centroid - which Bepu
+        // recenters the shape to - sits at the placed pose). Placed at centre y=0.7 with the top facet ring at
+        // +0.7 in local space, its world-space top facet is at y=1.4 (base near y=0). Mid ring (widest) and
+        // top/bottom facets make it faceted, not a smooth dome.
+        const float topY = 1.4f;     // world-space top facet (centre 0.7 + local halfTall 0.7)
+        const float halfTall = 0.7f;
+        var points = new[]
+        {
+            // top facet (+halfTall), half-width 0.9
+            new Vector3( 0.9f,  halfTall,  0.9f), new Vector3(-0.9f,  halfTall,  0.9f),
+            new Vector3( 0.9f,  halfTall, -0.9f), new Vector3(-0.9f,  halfTall, -0.9f),
+            // mid ring (widest, faceted shoulders), half-width 1.5
+            new Vector3( 1.5f, 0f,  0f), new Vector3(-1.5f, 0f,  0f),
+            new Vector3( 0f,   0f,  1.5f), new Vector3( 0f,   0f, -1.5f),
+            new Vector3( 1.05f, 0f,  1.05f), new Vector3(-1.05f, 0f,  1.05f),
+            new Vector3( 1.05f, 0f, -1.05f), new Vector3(-1.05f, 0f, -1.05f),
+            // bottom facet (-halfTall), mirror of the top so the centroid is at the geometric centre
+            new Vector3( 0.9f, -halfTall,  0.9f), new Vector3(-0.9f, -halfTall,  0.9f),
+            new Vector3( 0.9f, -halfTall, -0.9f), new Vector3(-0.9f, -halfTall, -0.9f),
+        };
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        world.AddStatic(new ConvexHullShape(points), Pose.At(new Vector3(0f, 0.7f, 0f)));
+        world.Step(1f / 60f);
+
+        // Sanity: a ray straight down the axis confirms the world-space top facet is at ~topY.
+        bool rayHit = world.Raycast(new Vector3(0f, 6f, 0f), -Vector3.UnitY, 12f, out RayHit topRay);
+        Assert.True(rayHit, "rock top ray must hit");
+        Assert.True(MathF.Abs((6f - topRay.Distance) - topY) < 0.05f,
+            $"fixture top facet must be at ~{topY}, was {6f - topRay.Distance:F3}");
+
+        // Drop from well above (centre y=4) straight onto the top facet (x=z=0): a fast landing.
+        var state = new MoveState { Position = new Vector3(0f, 4f, 0f), Grounded = false };
+        var idle = new MoveCommand(Vector2.Zero, run: false, cameraYaw: 0f, jump: false);
+        for (int i = 0; i < 240; i++)
+            state = CharacterMovement.Step(state, idle, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
+
+        float feetY = state.Position.Y - Tuning.CapsuleHalfHeight;
+        Assert.True(MathF.Abs(feetY - topY) < 0.1f,
+            $"feet must settle on the rock top (~{topY}, not ~0.5 m sunk), feet={feetY:F3}, pos={state.Position}");
+        Assert.True(state.Grounded, $"landed capsule must be grounded, pos={state.Position}");
+        Assert.Equal(0f, state.VerticalVelocity, 3);
+    }
+
     // ---- Test 7: box and sphere statics still depenetrate via the general path ----
     [Fact]
     public void BoxAndSphere_StillDepenetrate()

@@ -113,18 +113,53 @@ public static class CharacterMovement
             if (clampXz is not null) { Vector2 c = clampXz(pos.X, pos.Z); pos.X = c.X; pos.Z = c.Y; }
         }
 
-        // 4. Terrain ground contact (UNCHANGED analytic floor) on the RESOLVED xz, with the grounded skin.
+        // 4. Support floor (analytic terrain + a downward prop sweep). The physics world holds only props
+        //    (terrain is analytic), so the floor is the HIGHER of the terrain height and the prop surface
+        //    directly under the capsule. The prop surface comes from a downward capsule sweep from ABOVE the
+        //    head, which stays accurate even when a fast jump-landing has plunged the capsule deep into a hull
+        //    (the landing-tick depenetration can under-report a one-tick deep penetration and leave the capsule
+        //    sunk; the sweep does not). The capsule never rests below this floor.
+        //
+        //    The prop sweep only CONTRIBUTES the floor when the capsule is airborne (landing/jumping onto a prop)
+        //    or already standing on a prop (its carried Y is above the terrain slope-stick band). A capsule
+        //    walking horizontally into a rising prop flank while grounded on terrain stays in the band, so the
+        //    prop sweep is skipped and the move-and-depenetrate alone blocks it at the base (the perfect
+        //    horizontal the prior version established is untouched, and a low dome cannot be walked up its side).
         float terrainGroundY = groundHeight(pos.X, pos.Z) + halfH;
+        float groundY = terrainGroundY;
+        // A small "standing on a prop" skin (NOT the larger GroundedEpsilon mount band): a capsule whose carried
+        // Y is above terrain by more than this is genuinely on a prop, so the sweep keeps following the prop
+        // surface (e.g. down the far side of a dome it mounted), while one at terrain level walking into a flank
+        // is below it and the sweep stays off (depenetration blocks the base). Too large a skin would snap the
+        // capsule off the prop surface onto terrain mid-descent and clip it into the prop.
+        const float OnPropSkin = 0.05f;
+        bool overProp = !s.Grounded || s.Position.Y > terrainGroundY + OnPropSkin;
+        if (world is not null && overProp)
+        {
+            float probeStart = pos.Y + 2f * halfH;                 // above the head, clear of a standable prop
+            float maxProbe = (probeStart - terrainGroundY) + 2f * halfH;
+            // Require an UPWARD-facing hit. A tall wall the capsule is beside extends above the head, so the sweep
+            // starts already inside the wall side and Bepu reports a zero-distance hit with a degenerate (zero)
+            // normal - NOT a floor, and it must not lift the capsule onto the wall top. A real prop top under the
+            // capsule gives a positive-distance hit with an up normal.
+            if (world.SweepCapsule(capsule, Pose.At(new Vector3(pos.X, probeStart, pos.Z)),
+                    -Vector3.UnitY, maxProbe, out SweepHit floorHit) && floorHit.Normal.Y > 0f)
+            {
+                float propCentreY = probeStart - floorHit.Distance; // capsule centre resting on the prop surface
+                if (propCentreY > groundY) groundY = propCentreY;
+            }
+        }
+
         bool grounded;
         float tSinceGround;
-        bool onTerrain = vVel <= 0f && (pos.Y <= terrainGroundY ||
-                         (s.Grounded && pos.Y <= terrainGroundY + t.GroundedEpsilon));
-        if (onTerrain) pos.Y = terrainGroundY;
-        if (onTerrain || propGrounded)
+        bool onGround = vVel <= 0f && (pos.Y <= groundY || (s.Grounded && pos.Y <= groundY + t.GroundedEpsilon));
+        if (onGround) pos.Y = groundY;          // snap onto the support surface (generalizes the old terrain clamp)
+        if (pos.Y < groundY) pos.Y = groundY;   // and never rest below it, even on a tick that is not "onGround"
+        if (onGround || propGrounded)
         {
             grounded = true;
             tSinceGround = 0f;
-            if (vVel < 0f) vVel = 0f;   // landed on terrain or a prop -> stop falling
+            if (vVel < 0f) vVel = 0f;            // landed on terrain or a prop -> stop falling
         }
         else
         {

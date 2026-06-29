@@ -2231,13 +2231,13 @@ using var client = new WorldClient(
     tuning: MoveTuning.Default,
     token: myAccountTokenBytes);     // stable identity - used on every reconnect attempt
 
-client.ConnectionStateChanged += (_, state) =>
+client.ConnectionStateChanged += state =>
 {
-    if (state == ConnectionState.Reconnecting)
+    if (state == WorldConnectionState.Reconnecting)
         ShowReconnectingUI(client.ReconnectAttempt, client.SecondsUntilNextRetry);
-    else if (state == ConnectionState.Connected)
+    else if (state == WorldConnectionState.Connected)
         HideReconnectingUI();
-    else if (state == ConnectionState.Disconnected)
+    else if (state == WorldConnectionState.Disconnected)
         ShowDisconnectedUI(client.DisconnectReason, client.DisconnectReasonDetail);
 };
 ```
@@ -2251,7 +2251,7 @@ client.AdvancePresentation(dt);
 EntityRenderState[] snapshot = client.Snapshot();
 ```
 
-`ConnectionState` values: `Connecting` (initial handshake), `Connected` (in-session), `Reconnecting` (between drop and re-join), `Disconnected` (terminal - bad token or explicit give-up). `DisconnectReason` values: `None`, `RejectedToken`, `Unreachable`, `ServerShutdown`, `Timeout`. The single-transport ctor `WorldClient(INetTransport, ...)` is unchanged (no reconnect, `IDisposable` is a no-op).
+`ConnectionState` (a `WorldConnectionState`) is one of: `Connecting` (initial handshake), `Connected` (in-session), `Reconnecting` (between drop and re-join), `Disconnected` (terminal - bad token or explicit give-up). `DisconnectReason` values: `None`, `RejectedToken`, `Unreachable`, `ServerShutdown`, `Timeout`. The single-transport ctor `WorldClient(INetTransport, ...)` is unchanged (no reconnect, `IDisposable` is a no-op).
 
 **Server notices.** Broadcast a typed notice to every connected client:
 

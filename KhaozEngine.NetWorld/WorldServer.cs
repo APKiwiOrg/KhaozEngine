@@ -53,6 +53,7 @@ public sealed class WorldServer : IWorldPersistenceHost
     private readonly InterestGrid interest;
     private readonly RemoteCommandQueue<MoveCommand> commands = new(neutralCommand: default);
     private readonly PlayerMoveSimulator simulator;
+    private readonly DrainController drain = new();
 
     private readonly Dictionary<int, int> netIdBySlot = new();
     private readonly Dictionary<int, Entity> entityBySlot = new();
@@ -97,6 +98,22 @@ public sealed class WorldServer : IWorldPersistenceHost
     {
         byte[] envelope = MoveProtocol.EncodeServerFrame(MoveProtocol.ServerFrameKind.Notice, MoveProtocol.EncodeNotice(notice));
         net.Broadcast(envelope, NetChannelReliability.ReliableOrdered);
+    }
+
+    /// <summary>True while a graceful drain is in progress (see <see cref="BeginDrain"/>).</summary>
+    public bool IsDraining => drain.IsDraining;
+
+    /// <summary>True once a graceful drain's grace period has elapsed. The host then flushes persistence
+    /// (<c>WorldPersistence.FlushAsync</c>) and disposes the transport to close the sockets.</summary>
+    public bool IsDrainComplete => drain.IsComplete;
+
+    /// <summary>Begins a graceful drain: broadcasts <paramref name="notice"/> now (warn players), then runs a
+    /// <paramref name="graceSeconds"/> countdown over <see cref="Tick"/> while still serving snapshots, so clients
+    /// see the warning. When <see cref="IsDrainComplete"/> flips, the host should flush persistence and close.</summary>
+    public void BeginDrain(in ServerNotice notice, float graceSeconds)
+    {
+        BroadcastNotice(notice);
+        drain.Begin(graceSeconds);
     }
 
     /// <summary>The authoritative ECS world.</summary>
@@ -235,6 +252,7 @@ public sealed class WorldServer : IWorldPersistenceHost
         // The authoritative path serves full AoI snapshots (SnapshotWriter.WriteFiltered), never the change sets,
         // so clearing here is safe; a consumer that reads them opts out via WorldServerConfig.AdvanceWorldTick.
         if (config.AdvanceWorldTick) world.AdvanceTick();
+        drain.Advance(dt);
     }
 
     private void OnJoin(int slot, string subject, string displayName)

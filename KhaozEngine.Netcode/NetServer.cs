@@ -109,6 +109,14 @@ public sealed class NetServer
             transport.Send(conn, SessionFrame.Write(SessionOpcode.Data, payload), reliability);
     }
 
+    /// <summary>Disconnects one slot's connection (a kick). The transport surfaces the resulting Disconnected event
+    /// on a later poll, which frees the slot (and a recycling join may reuse it). No-op for an unknown slot.</summary>
+    public void Disconnect(int slot)
+    {
+        if (connectionBySlot.TryGetValue(slot, out NetConnectionId conn))
+            transport.Disconnect(conn);
+    }
+
     /// <summary>Sends game data to every joined slot.</summary>
     public void Broadcast(ReadOnlySpan<byte> payload, NetChannelReliability reliability)
     {

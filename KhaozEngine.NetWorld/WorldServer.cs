@@ -20,6 +20,10 @@ public sealed class WorldServerConfig
     public int MaxPlayers { get; init; } = 16;
     /// <summary>Per-slot spawn position (XZ used; Y is ground-clamped). Default spreads players along +X.</summary>
     public Func<int, Vector3>? SpawnPosition { get; init; }
+
+    /// <summary>Opt-in server-side anti-cheat / input-hardening knobs (rate limiting, movement-correction anomaly).
+    /// All off by default, so behaviour is unchanged until a consumer tightens it.</summary>
+    public AntiCheatConfig AntiCheat { get; init; } = new();
 }
 
 /// <summary>
@@ -46,6 +50,9 @@ public sealed class WorldServer : IWorldPersistenceHost
     private readonly Dictionary<int, PlayerMoveState> stateBySlot = new();
     private readonly Dictionary<int, int> lastAckBySlot = new();
     private readonly Dictionary<int, string> accountIdBySlot = new();
+    private readonly Dictionary<int, RateLimiter> rateBySlot = new();
+    private readonly Dictionary<int, int> correctionStreakBySlot = new();
+    private readonly MoveTuning tuning;
     private int nextNetId = 1;
 
     public WorldServer(INetTransport transport, WorldServerConfig config,
@@ -56,10 +63,23 @@ public sealed class WorldServer : IWorldPersistenceHost
         ArgumentNullException.ThrowIfNull(transport);
         this.config = config ?? throw new ArgumentNullException(nameof(config));
         if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
+        this.tuning = tuning;
         simulator = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds, colliders, surfaces);
         net = new NetServer(transport, config.MaxPlayers, authenticator ?? new AllowAllAuthenticator());
         interest = new InterestGrid(MathF.Max(1f, config.InterestRadius));
     }
+
+    /// <summary>Raised when the server flags a connection as suspicious: a malformed/NaN move packet, a per-
+    /// connection message-rate trip, or a sustained streak of large authoritative movement corrections. The engine
+    /// signals; the game decides the policy (log / kick via <see cref="Disconnect"/> / ban). Allocation-free.</summary>
+    public event Action<SuspiciousActivity>? OnSuspiciousActivity;
+
+    private void Raise(int slot, SuspiciousReason reason, float magnitude = 0f) =>
+        OnSuspiciousActivity?.Invoke(new SuspiciousActivity(slot, reason, magnitude));
+
+    /// <summary>Disconnects a player's connection (a kick) - the policy seam a game's <see cref="OnSuspiciousActivity"/>
+    /// handler calls. No-op for an unknown slot.</summary>
+    public void Disconnect(int slot) => net.Disconnect(slot);
 
     /// <summary>The authoritative ECS world.</summary>
     public World World => world;
@@ -113,6 +133,7 @@ public sealed class WorldServer : IWorldPersistenceHost
     public void Poll()
     {
         net.Poll();
+        foreach (RateLimiter limiter in rateBySlot.Values) limiter.Refill();   // one budget top-up per poll
         while (net.TryDequeueEvent(out ServerSessionEvent ev))
         {
             switch (ev.Kind)
@@ -124,12 +145,36 @@ public sealed class WorldServer : IWorldPersistenceHost
                     OnLeave(ev.Slot);
                     break;
                 case ServerSessionEventKind.Data:
-                    if (netIdBySlot.ContainsKey(ev.Slot)
-                        && MoveProtocol.TryDecodeMove(ev.Data, out int seq, out MoveCommand cmd))
-                        commands.Store(ev.Slot, seq, cmd);
+                    HandleData(ev.Slot, ev.Data);
                     break;
             }
         }
+    }
+
+    private void HandleData(int slot, byte[] data)
+    {
+        if (!netIdBySlot.ContainsKey(slot)) return;
+        // Flood protection: an over-budget message is dropped and flagged (and optionally the connection is kicked).
+        if (rateBySlot.TryGetValue(slot, out RateLimiter? limiter) && !limiter.TryConsume())
+        {
+            Raise(slot, SuspiciousReason.RateLimited);
+            if (config.AntiCheat.DisconnectOnRateLimit) net.Disconnect(slot);
+            return;
+        }
+        // Malformed / NaN / Inf packets are rejected by the decode and flagged.
+        if (!MoveProtocol.TryDecodeMove(data, out int seq, out MoveCommand cmd))
+        {
+            Raise(slot, SuspiciousReason.MalformedPacket);
+            return;
+        }
+        commands.Store(slot, seq, cmd);
+    }
+
+    private void TrackCorrection(int slot, in PlayerMoveState prev, in MoveCommand cmd, in PlayerMoveState after, float dt)
+    {
+        float correction = MovementAnomaly.CorrectionDistance(prev, cmd, after, dt, tuning);
+        if (MovementAnomaly.RegisterCorrection(correctionStreakBySlot, slot, correction, config.AntiCheat))
+            Raise(slot, SuspiciousReason.MovementCorrection, correction);
     }
 
     /// <summary>Steps one authoritative frame: apply each client's queued input, then serve every client its AoI.</summary>
@@ -141,10 +186,12 @@ public sealed class WorldServer : IWorldPersistenceHost
         {
             MoveCommand cmd = commands.Dequeue(slot, out int ack);
             lastAckBySlot[slot] = ack;
-            PlayerMoveState state = simulator.Step(stateBySlot[slot], cmd, dt);
+            PlayerMoveState prev = stateBySlot[slot];
+            PlayerMoveState state = simulator.Step(prev, cmd, dt);
             stateBySlot[slot] = state;
             world.Set(entityBySlot[slot], new ReplicatedPosition { Value = state.Position });
             world.Set(entityBySlot[slot], MovementState.From(state));   // replicate the vertical axis
+            if (config.AntiCheat.CorrectionEnabled) TrackCorrection(slot, prev, cmd, state, dt);
         }
 
         // Rebuild AoI index from current positions.
@@ -189,6 +236,10 @@ public sealed class WorldServer : IWorldPersistenceHost
         stateBySlot[slot] = state;
         lastAckBySlot[slot] = -1;
         accountIdBySlot[slot] = accountId;
+        // Fresh per-connection anti-cheat state (a recycled slot starts from a full bucket / zero streak).
+        RateLimiter? limiter = config.AntiCheat.CreateLimiter(config.TickSeconds);
+        if (limiter is not null) rateBySlot[slot] = limiter; else rateBySlot.Remove(slot);
+        correctionStreakBySlot[slot] = 0;
 
         // A display name carried on the connect token (a SignedToken claim) is applied here so token games get
         // nameplates for free; a DB-sourced name is set from the PlayerJoined handler instead (or overrides this).
@@ -208,6 +259,8 @@ public sealed class WorldServer : IWorldPersistenceHost
         stateBySlot.Remove(slot);
         lastAckBySlot.Remove(slot);
         accountIdBySlot.Remove(slot);
+        rateBySlot.Remove(slot);
+        correctionStreakBySlot.Remove(slot);
         // Drop the slot's command-queue state too. The SlotAllocator recycles this slot to the next connection,
         // whose seqs legitimately restart at 0; without this the stale high-water mark rejects every command and
         // freezes the recycled player (it self-heals only once their seq crawls past the dead mark, minutes later).

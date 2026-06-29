@@ -105,17 +105,29 @@ public static class MoveProtocol
         return b;
     }
 
-    /// <summary>Decodes a client move command. False (hostile-safe) if the payload is malformed.</summary>
+    /// <summary>Decodes a client move command. False (hostile-safe) if the payload is malformed: too short, or
+    /// carrying a NaN/infinite move axis or camera yaw.</summary>
     public static bool TryDecodeMove(ReadOnlySpan<byte> data, out int seq, out MoveCommand cmd)
     {
         if (data.Length >= MoveSize)
         {
-            seq = BitConverter.ToInt32(data.Slice(0, 4));
-            var move = new Vector2(BitConverter.ToSingle(data.Slice(4, 4)), BitConverter.ToSingle(data.Slice(8, 4)));
-            bool run = data[12] != 0;
+            float moveX = BitConverter.ToSingle(data.Slice(4, 4));
+            float moveY = BitConverter.ToSingle(data.Slice(8, 4));
             float yaw = BitConverter.ToSingle(data.Slice(13, 4));
+            // Hostile-safe: a reverse-engineered client can put any bit pattern on the wire, so reject a NaN or
+            // infinite move axis / camera yaw as malformed. Left unchecked, a NaN slips past CircleBounds.Clamp
+            // (every NaN comparison is false) and replicates a poisoned position to every client in range; an Inf
+            // axis normalizes to a NaN direction. Reject here so a poisoned value never reaches the authoritative sim.
+            if (!float.IsFinite(moveX) || !float.IsFinite(moveY) || !float.IsFinite(yaw))
+            {
+                seq = -1;
+                cmd = default;
+                return false;
+            }
+            seq = BitConverter.ToInt32(data.Slice(0, 4));
+            bool run = data[12] != 0;
             bool jump = data[17] != 0;
-            cmd = new MoveCommand(move, run, yaw, jump);
+            cmd = new MoveCommand(new Vector2(moveX, moveY), run, yaw, jump);
             return true;
         }
         seq = -1;

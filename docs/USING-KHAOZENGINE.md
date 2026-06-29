@@ -1378,6 +1378,50 @@ count; both share `WorldPersistence` via `IWorldPersistenceHost`. The `Networked
 `ShardedWorldServer` (cellSize 60) over `TerrainPresets.Clearing()`. Spec:
 `docs/superpowers/specs/2026-06-27-multicell-sharding-design.md`.
 
+### Server-side anti-cheat / input-hardening (since 7.74.0)
+
+The authoritative movement model already prevents teleport, speedhack, noclip, wall-climb, token forgery, and
+replay (the client sends only an 18-byte `MoveCommand`; the server re-simulates). Three additional hardening
+layers ship on both `WorldServer` and `ShardedWorldServer`, all **additive and opt-in** (the wire format is
+unchanged; defaults are off):
+
+1. **NaN/Inf rejection (always on, no config).** `MoveProtocol.TryDecodeMove` rejects a move axis or camera yaw
+   that is NaN or infinite as a malformed packet, so a poisoned value can never reach the sim (a NaN would slip
+   past `CircleBounds.Clamp` - every NaN comparison is false - and replicate to every client in range).
+   `CharacterMovement.Step` carries a defense-in-depth finite guard (it holds the last good position rather than
+   ever returning a non-finite one).
+2. **Per-connection message rate limiting** via `AntiCheatConfig.MaxMessagesPerSecond` (+ `MessageBurst`,
+   `DisconnectOnRateLimit`). Over-budget messages are dropped; backed by the deterministic `Netcode.RateLimiter`.
+3. **An anomaly signal hook** - `OnSuspiciousActivity` - the engine signals, the game decides policy.
+
+```csharp
+var config = new WorldServerConfig
+{
+    AntiCheat = new AntiCheatConfig
+    {
+        MaxMessagesPerSecond = 90f,     // ~3x the 30 Hz tick; 0 (default) = unlimited
+        MessageBurst = 30f,             // allow a short burst
+        MaxCorrectionDistance = 0.25f,  // per-tick "intended move denied" distance that counts as a correction
+        CorrectionStreak = 30,          // consecutive corrected ticks before the signal fires; 0/default off
+    },
+};
+var server = new WorldServer(transport, config, terrain.GroundHeight, MoveTuning.Default, bounds: bounds);
+
+server.OnSuspiciousActivity += a =>
+{
+    // a.Slot, a.Reason (MalformedPacket | RateLimited | MovementCorrection), a.Magnitude (correction distance)
+    log.Warn($"suspicious: slot {a.Slot} {a.Reason} ({a.Magnitude:0.00})");
+    if (a.Reason == SuspiciousReason.MovementCorrection) server.Disconnect(a.Slot);   // your policy: log / kick / ban
+};
+```
+
+`MovementCorrection` fires when the authoritative sim has to deny a player's *intended* move (the slope gate,
+static collision, or play-area bound pulls them back) by more than `MaxCorrectionDistance` for `CorrectionStreak`
+consecutive ticks - a cheat hammering a wall trips it; a legitimate player brushing one does not. It is a
+server-side proxy: the authoritative model carries no client position to reconcile against, so the engine measures
+how far it had to correct the client's intent (via `CharacterMovement.IntendedHorizontalTarget`). Per-IP
+connection-attempt limiting is out of scope: the `INetTransport` seam exposes no remote address.
+
 ---
 
 ## ECS (`KhaozEngine.Ecs`)

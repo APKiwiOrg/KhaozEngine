@@ -200,12 +200,12 @@ public static class CharacterMovement
 
     /// <summary>The unconstrained horizontal target the camera-relative move would reach in one step, before the
     /// slope gate, static collision, or play-area clamp deny any of it. The XZ distance from this to the position a
-    /// constrained <see cref="Step(in MoveState, in MoveCommand, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, WorldColliders?, Func{float, float, Vector2}?, WorldSurfaces?)"/>
+    /// constrained <see cref="Step(in MoveState, in MoveCommand, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, IPhysicsWorld?, Func{float, float, Vector2}?)"/>
     /// actually produced is the authoritative "correction" the server applied this tick - a server-side anti-cheat
     /// signal: a client repeatedly driving into a wall, slope, or boundary keeps this large. Pass
     /// <paramref name="speedScale"/> = the value the step used (1 grounded, <see cref="MoveTuning.AirControl"/>
     /// airborne) so the comparison isolates only the denial, not the air-control scaling. Mirrors the basis +
-    /// speed of <see cref="ResolveHorizontal"/> (pre-gate).</summary>
+    /// speed of <see cref="DesiredHorizontal"/> (pre-gate).</summary>
     public static Vector2 IntendedHorizontalTarget(Vector3 position, in MoveCommand cmd, float dt,
         in MoveTuning tuning, float speedScale = 1f)
     {

@@ -791,15 +791,24 @@ git commit -m "locomotion: swept collide-and-slide so one-sided meshes are trap-
 
 ---
 
-### Task 6: Step-up probe (wire `MoveTuning.StepHeight`, stairs walkable)
+### Task 6: Step-up probe + walkable-surface-following (wire `MoveTuning.StepHeight`; stairs walkable; restore dome walking/mounting)
+
+**Context (read first):** Task 5 landed the swept anti-tunnel core but hard-blocks on EVERY contact, which broke two prop-locomotion behaviors the old depenetrate resolver had: walking across / standing on a convex prop top (you get stuck, "moved 0.000") and mounting a dome by jumping onto it. The full physics suite is currently RED on FOUR tests after Task 5:
+- `PhysicsFeelTests.DomedRockTop_SettlesAndMoves` (stuck on a dome top) - this task's surface-following fixes it.
+- `ControllerOnPhysicsTests.Capsule_MountsDomeFromSide_ByJumping` (no longer mounts) - this task's surface-following fixes it.
+- `PhysicsFeelTests.Tree_BakesTrunkCylinder_RoundTrips` and `PhysicsFeelTests.Tree_WalkUnderCanopy_VsWalkIntoTrunk` - a Task 2 GAP: these still assert trees bake a `CylinderShape`, but trees now bake a trunk HULL. This task updates them to the hull behavior. (Same intent: thin trunk, foliage rejected, walk-into-trunk blocks.)
+
+This task must end with the FULL physics suite green.
+
+**The fix:** classify each sweep contact. A WALKABLE contact (`n.Y >= cos(MaxSlopeRadians)` - a floor/slope/prop-top you can stand on) is FLOOR, not a wall: do not block horizontal travel; let step 4's analytic terrain + downward support sweep set the resting Y (the capsule follows the surface). Only STEEP contacts (walls/risers) block-and-slide, with a step-up probe over low ledges. This restores dome walking/mounting AND keeps walls trap-proof, and it is more principled than the old behavior (props now respect the same slope gate as terrain - you can walk up a prop until it gets steeper than `MaxSlopeRadians`, then it walls off).
 
 **Files:**
-- Modify: `KhaozEngine.Locomotion/CharacterMovement.cs` (add `TryStepUp`, thread a stepped flag through `SweptMove`/`SlideSubstep`, integrate with the floor block)
-- Test: `KhaozEngine.Tests/Physics/SweptCollisionTests.cs` (add the stairs test)
+- Modify: `KhaozEngine.Locomotion/CharacterMovement.cs` (add surface-following + `TryStepUp`, thread a stepped flag through `SweptMove`/`SlideSubstep`, integrate with the floor block)
+- Test: `KhaozEngine.Tests/Physics/SweptCollisionTests.cs` (add the stairs test); `KhaozEngine.Tests/Physics/PhysicsFeelTests.cs` (update the two stale tree tests to the hull behavior)
 
 **Interfaces:**
 - Consumes: `IPhysicsWorld.SweepCapsule`, `MoveTuning.StepHeight`, `MoveTuning.MaxSlopeRadians`.
-- Produces: internal `TryStepUp(...)`; `SweptMove` gains `out bool steppedUp, out float steppedFloorY`.
+- Produces: internal `TryStepUp(...)`; `SweptMove`/`SlideSubstep` gain `out bool steppedUp, out float steppedFloorY`; `SlideSubstep` gains the walkable-contact pass-through branch.
 
 - [ ] **Step 1: Write the failing stairs test**
 
@@ -873,6 +882,7 @@ private static Vector3 SlideSubstep(IPhysicsWorld world, CapsuleShape capsule, V
     in MoveTuning t, bool grounded, out bool steppedUp, out float steppedFloorY)
 {
     steppedUp = false; steppedFloorY = 0f;
+    float cosMaxSlope = MathF.Cos(t.MaxSlopeRadians);
     for (int iter = 0; iter < SlideIterations; iter++)
     {
         float dist = delta.Length();
@@ -886,8 +896,24 @@ private static Vector3 SlideSubstep(IPhysicsWorld world, CapsuleShape capsule, V
         pos += dir * MathF.Max(0f, hit.Distance - SkinWidth);
         Vector3 remaining = delta - dir * hit.Distance;
         Vector3 n = hit.Normal;
-        if (n.LengthSquared() > 1e-12f) n = Vector3.Normalize(n);
-        else break;
+        if (n.LengthSquared() <= 1e-12f)
+        {
+            // Degenerate (zero-distance / deep) contact: no reliable slide plane. Advance the remainder so the
+            // capsule is never stuck pressed against a curved support; the settle pass + floor-snap correct Y.
+            pos += remaining;
+            break;
+        }
+        n = Vector3.Normalize(n);
+
+        // Walkable ground / slope / prop-top (normal up enough to STAND on, n.Y >= cos(maxSlope)): this is
+        // FLOOR, not a wall - do NOT block horizontal travel. Advance the remainder and let step 4 (analytic
+        // terrain + the downward support sweep) set the resting Y, so the capsule follows the surface (walks
+        // across a domed rock, mounts it on landing) instead of being walled-off by its own support.
+        if (n.Y >= cosMaxSlope)
+        {
+            pos += remaining;
+            break;
+        }
 
         // Step-up: only while grounded, only over a near-vertical contact (a riser/wall), only on the
         // horizontal remainder. Climbs a stair tread; a real wall has no ledge within StepHeight so it slides.
@@ -899,7 +925,7 @@ private static Vector3 SlideSubstep(IPhysicsWorld world, CapsuleShape capsule, V
             break;
         }
 
-        delta = remaining - Vector3.Dot(remaining, n) * n;
+        delta = remaining - Vector3.Dot(remaining, n) * n;   // wall: slide along the contact plane
     }
     return pos;
 }
@@ -970,16 +996,84 @@ And change the existing `bool overProp = !s.Grounded || s.Position.Y > terrainGr
 
 This prevents the grounded-floor logic from snapping the stepped capsule back down to terrain, and keeps it grounded on the tread. Leave the rest of steps 4-5 unchanged.
 
-- [ ] **Step 4: Run the stairs test + full physics suite**
+- [ ] **Step 4: Fix the two stale tree tests in `PhysicsFeelTests.cs` (Task 2 gap)**
+
+These assert trees bake a `CylinderShape`; trees now bake a trunk `ConvexHullShape` (8.3.0). Update them to the hull behavior, preserving intent (thin trunk, foliage rejected, walk-into-trunk blocks, offset passes). The `ConiferTree` fixture bakes a hull (trunk-band verts at corner radius ~0.354 survive the radial-core filter; foliage at radius 1.2 and the canopy are excluded).
+
+Replace the WHOLE `Tree_BakesTrunkCylinder_RoundTrips` method (rename to `Tree_BakesTrunkHull_RoundTrips`) with:
+
+```csharp
+// ---- Test 5: tree -> thin trunk HULL bake (rejects foliage outliers) + KECL round-trip ----
+// Regression lock: a conifer-like mesh with a dense thin trunk core PLUS sparse low foliage points spreading
+// far out must bake to ~the trunk core extent (the radial-core filter rejects the outliers), NOT a fat hull.
+// Trees bake a leaning-trunk ConvexHullShape (8.3.0), not a cylinder.
+[Fact]
+public void Tree_BakesTrunkHull_RoundTrips()
+{
+    const float trunkCore = 0.25f;
+    GltfMesh tree = FeelMeshes.ConiferTree(trunkCore: trunkCore, height: 6f, canopyRadius: 2.5f,
+        foliageRadius: 1.2f, foliageCount: 6);
+    Assert.True(PropCollisionBake.IsTree(tree), "tree fixture must classify as a tree");
+
+    PhysicsShape shape = PropCollisionBake.Bake(tree);
+    var hull = Assert.IsType<ConvexHullShape>(shape);
+
+    // Every hull point stays near the trunk core (corner radius sqrt(2)*0.25 ~= 0.354), well under the foliage
+    // radius (1.2): the radial-core filter rejected the foliage outliers. Thin trunk, not a fat foliage hull.
+    foreach (Vector3 p in hull.Points)
+    {
+        float r = MathF.Sqrt(p.X * p.X + p.Z * p.Z);
+        Assert.True(r < 0.6f, $"trunk hull must reject foliage outliers (~trunk core, not the foliage), r={r:F3}");
+    }
+
+    using var ms = new MemoryStream();
+    PropCollisionBake.Write(shape, ms);
+    // Kind byte 1 (convex hull) follows magic (4) + version (1).
+    ms.Position = 5;
+    Assert.Equal(1, ms.ReadByte());
+    ms.Position = 0;
+    PhysicsShape loaded = PropCollisionLoader.Read(ms);
+    var roundTrip = Assert.IsType<ConvexHullShape>(loaded);
+    Assert.Equal(hull.Points.Length, roundTrip.Points.Length);
+}
+```
+
+In `Tree_WalkUnderCanopy_VsWalkIntoTrunk`, replace the cylinder cast + radius derivation + static add (the first lines that read `var cyl = (CylinderShape)...` through `world.AddStatic(cyl, Pose.At(Vector3.Zero));`) with:
+
+```csharp
+        var hull = (ConvexHullShape)PropCollisionBake.Bake(tree);
+        // Trunk half-extent in XZ (the face the capsule meets head-on); the hull excludes the foliage outliers.
+        float trunkRadius = 0f;
+        foreach (Vector3 p in hull.Points)
+            trunkRadius = MathF.Max(trunkRadius, MathF.Max(MathF.Abs(p.X), MathF.Abs(p.Z)));
+        const float capsuleRadius = 0.4f;
+
+        // Re-confirm the trunk is thin (the fat-trunk regression lock at the movement layer).
+        Assert.True(trunkRadius < 0.6f, $"baked trunk extent must be thin, was {trunkRadius:F3}");
+
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        // Place the trunk hull static at the prop BASE (origin), the runtime way.
+        world.AddStatic(hull, Pose.At(Vector3.Zero));
+```
+
+Leave the rest of the test (the walk-into-trunk block assertion and the offset free-passage assertion) unchanged - they hold against the thin trunk hull via the swept resolver (the trunk faces are vertical walls, so they block; the offset lane clears the trunk). If the block-position threshold is slightly off because the hull face half-extent (0.25) differs from the old cylinder radius, re-derive it intent-preserving (blocks before the trunk, does not tunnel in).
+
+- [ ] **Step 5: Run the full physics suite green**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~Physics"`
-Expected: PASS — stairs climb, and all prior swept/controller tests stay green. If the stairs test climbs only one step, that is acceptable per the assertion (Y rose > 0.2 m, advanced onto the stairs); the test asserts walkability, not reaching the top.
+Expected: PASS (entire physics + controller + feel suite). Specifically the four that were red after Task 5 are now green:
+- `Stairs_WithRisersUnderStepHeight_AreWalkable` (step-up).
+- `DomedRockTop_SettlesAndMoves` (surface-following: settles AND walks across the top).
+- `Capsule_MountsDomeFromSide_ByJumping` (surface-following: mounts on landing).
+- `Tree_BakesTrunkHull_RoundTrips` + `Tree_WalkUnderCanopy_VsWalkIntoTrunk` (hull behavior).
 
-- [ ] **Step 5: Commit**
+If a dome/feel test's measured numeric threshold shifted (it is a behavior change), re-derive it intent-preserving: the capsule must MOVE across the top (not stuck), MOUNT on landing, and NEVER penetrate. Do not weaken the no-stuck or no-penetration intent. If a test fails for a reason that is NOT a threshold (real penetration, real stuck, lost grounding), STOP and report BLOCKED with details - do not paper over it.
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add KhaozEngine.Locomotion/CharacterMovement.cs KhaozEngine.Tests/Physics/SweptCollisionTests.cs
-git commit -m "locomotion: step-up probe wires StepHeight so stairs/curbs are walkable"
+git add KhaozEngine.Locomotion/CharacterMovement.cs KhaozEngine.Tests/Physics/SweptCollisionTests.cs KhaozEngine.Tests/Physics/PhysicsFeelTests.cs
+git commit -m "locomotion: step-up + walkable-surface-following (stairs walkable; dome walk/mount restored)"
 ```
 
 ---

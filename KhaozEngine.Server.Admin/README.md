@@ -6,7 +6,7 @@ enumerate persisted accounts, ban/unban.
 
 This is the only KhaozEngine package that references ASP.NET Core (via a `FrameworkReference`), and it is **not**
 bundled in the `KhaozEngine.Server` umbrella - add it explicitly when you want an admin endpoint, so a sim server
-that does not never pulls the web stack.
+that does not need one never pulls the web stack.
 
 ```csharp
 var admin = new ServerAdmin(worldServer, new WorldStoreBanStore(store), store);

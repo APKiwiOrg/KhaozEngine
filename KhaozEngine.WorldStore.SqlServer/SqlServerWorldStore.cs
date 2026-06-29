@@ -1,7 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Data;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using KhaozEngine.WorldStore;
 using Microsoft.Data.SqlClient;
 
 namespace KhaozEngine.WorldStore.SqlServer;
@@ -17,7 +20,7 @@ public sealed record SqlServerWorldStoreOptions(string ConnectionString);
 /// Opens a short-lived pooled connection per operation (SqlClient pools by connection string). The production
 /// backend; identical contract to the SQLite dev/test backend.
 /// </summary>
-public sealed class SqlServerWorldStore : IWorldStore
+public sealed class SqlServerWorldStore : IWorldStore, IEnumerableWorldStore
 {
     private readonly string connectionString;
 
@@ -98,4 +101,33 @@ public sealed class SqlServerWorldStore : IWorldStore
         object? result = await cmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
         return result is not null;
     }
+
+    public async IAsyncEnumerable<WorldStoreEntry> EnumerateAsync(
+        string? keyPrefix = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        await using var conn = new SqlConnection(connectionString);
+        await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using SqlCommand cmd = conn.CreateCommand();
+        if (string.IsNullOrEmpty(keyPrefix))
+        {
+            cmd.CommandText = "SELECT [key], updated_at, DATALENGTH(data) FROM dbo.world_store;";
+        }
+        else
+        {
+            cmd.CommandText = "SELECT [key], updated_at, DATALENGTH(data) FROM dbo.world_store WHERE [key] LIKE @p ESCAPE '\\';";
+            cmd.Parameters.AddWithValue("@p", LikeEscape(keyPrefix) + "%");
+        }
+        await using SqlDataReader reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            string key = reader.GetString(0);
+            var updated = new DateTimeOffset(DateTime.SpecifyKind(reader.GetDateTime(1), DateTimeKind.Utc), TimeSpan.Zero);
+            long? size = reader.IsDBNull(2) ? null : Convert.ToInt64(reader.GetValue(2));
+            yield return new WorldStoreEntry(key, updated, size);
+        }
+    }
+
+    // Escapes SQL Server LIKE metacharacters (incl. the '[' set marker) so a supplied prefix matches literally.
+    internal static string LikeEscape(string s) =>
+        s.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_").Replace("[", "\\[");
 }

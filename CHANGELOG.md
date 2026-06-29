@@ -5,6 +5,31 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.73.0
+
+Memory-leak fixes from a leak audit: the authoritative servers now clear their ECS change-tracking each tick,
+`Scene3D` can unload textures, and `SpriteBatch` evicts unused resource sets. Three independent
+long-running/streaming leaks, all additive and back-compatible.
+
+- **Server ECS change-tracking no longer accumulates.** `WorldServer.Tick` and `ShardedWorldServer.Tick` now call
+  `World.AdvanceTick()` once per tick (per cell for the sharded server), clearing the per-tick change sets
+  (`Added`/`Changed`/`Removed`) and the event buffer (`Events`). Nothing called `AdvanceTick` in production before
+  (only tests), so on a long-running server those sets grew unbounded - one entry per `Set`/`Despawn`, never
+  reclaimed - a slow OOM. The authoritative path serves full AoI snapshots and never reads the change sets, so the
+  clear is safe. New opt-out `WorldServerConfig.AdvanceWorldTick` / `ShardedWorldServerConfig.AdvanceWorldTick`
+  (default `true`); set `false` only if your own systems read a world's change-tracking/events and you advance the
+  tick yourself.
+- **`Scene3D.UnloadTexture(TextureHandle)`** frees a texture loaded with `LoadTexture` (and its lazily-created
+  textured-billboard set) and nulls its slot, mirroring `UnloadSplatMaterial`. Textures previously freed only at
+  `Scene3D.Dispose`, so a long-lived scene that streams or reloads textured assets leaked one native GPU texture per
+  load. The slot is not recycled (handles stay stable); a shared texture is the caller's to unload (the scene can't
+  know who else references it).
+- **`SpriteBatch` evicts unused `(texture,sampler)` resource sets.** The set cache grew one `IGpuResourceSet` per
+  distinct texture ever drawn and freed them only at `Dispose`, so a long-lived batch streaming many textures leaked
+  a set per texture (plus a dangling reference to each texture the game later disposed). It now stamps each texture's
+  last-drawn frame and, in `NewFrame`, disposes the sets for any texture not drawn within `SetEvictAfterFrames`
+  (~10s at 60fps); a returning texture rebuilds its set transparently. Rendered output unchanged.
+
 ## 7.72.0
 
 `WorldLabel.Draw` takes an optional `cullFrom` anchor so third-person games cull nameplates on viewer-player-to-target

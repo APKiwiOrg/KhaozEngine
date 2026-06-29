@@ -154,6 +154,13 @@ sealed class TerrainWalkApp : GameApp3D
         _platformXform = Matrix4x4.CreateScale(2f * platformHalf.X, platformHeight, 2f * platformHalf.Y)
                          * Matrix4x4.CreateTranslation(platformCenter.X, platformBaseY + platformHeight * 0.5f, platformCenter.Y);
 
+        // Matching static collider so the player can stand on / not walk through the platform.
+        // BoxShape takes half-extents; ShapeFactory doubles them to Bepu full extents (3 -> 6).
+        // The platform never unloads, so the handle is not retained.
+        _physicsWorld.AddStatic(
+            new BoxShape(new Vector3(platformHalf.X, platformHeight * 0.5f, platformHalf.Y)),
+            Pose.At(new Vector3(platformCenter.X, platformBaseY + platformHeight * 0.5f, platformCenter.Y)));
+
         // Endless streamed world: the sink builds chunk meshes + deterministic per-chunk props (same coordinate-hash
         // scatter as before, now over every chunk's area), the streamer keeps a ring of them loaded around the player
         // within a per-frame budget. The physics world and collision-shapes dictionary are threaded through so prop

@@ -221,7 +221,7 @@ public class PhysicsFeelTests
     }
 
     // ---- Test 6: walk straight into the trunk blocks at ~trunkRadius+capsuleRadius; offset passes freely ----
-    // Drives the REAL CharacterMovement.Step against the thin baked trunk cylinder.
+    // Drives the REAL CharacterMovement.Step against the thin baked trunk hull.
     [Fact]
     public void Tree_WalkUnderCanopy_VsWalkIntoTrunk()
     {

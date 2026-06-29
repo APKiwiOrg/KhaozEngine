@@ -168,7 +168,7 @@ public static class CharacterMovement
         // The swept resolver leaves the capsule at SkinWidth above a surface (not flush). Extend the landing
         // threshold by SkinWidth so a swept-settled capsule on a flat prop top counts as grounded on the first
         // contact tick (without this, pos.Y = groundY + SkinWidth > groundY and the capsule falls forever).
-        bool onGround = vVel <= 0f && (pos.Y <= groundY + SkinWidth || (s.Grounded && pos.Y <= groundY + t.GroundedEpsilon));
+        bool onGround = vVel <= 0f && (pos.Y <= groundY + (world is not null ? SkinWidth : 0f) || (s.Grounded && pos.Y <= groundY + t.GroundedEpsilon));
         if (onGround) pos.Y = groundY;          // snap onto the support surface (generalizes the old terrain clamp)
         if (pos.Y < groundY) pos.Y = groundY;   // and never rest below it, even on a tick that is not "onGround"
         if (onGround || propGrounded)
@@ -242,6 +242,9 @@ public static class CharacterMovement
 
     // Swept collide-and-slide tuning. SubstepFraction keeps each swept query <= a fraction of the capsule radius
     // so a fast move (jump/run/terminal fall) can never advance past a thin wall in one sweep (anti-tunnel).
+    // The walkable-contact pass-through and the degenerate-contact advance in SlideSubstep advance the remainder
+    // UNSWEPT, so this must stay below ~1.0 (each substep under one radius) or such an advance could mask and
+    // tunnel a wall in the same substep.
     private const float SubstepFraction = 0.5f;
     private const int   SlideIterations = 4;
     private const float SkinWidth       = 0.01f;

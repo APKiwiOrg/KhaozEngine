@@ -10,12 +10,12 @@
 
 ## Global Constraints
 
-- Engine is MonoGame-free; one shared version line `<KhaozEngineVersion>` in `Directory.Build.props`. Target bump: **8.3.0**.
+- Engine is MonoGame-free; one shared version line `<KhaozEngineVersion>` in `Directory.Build.props`. Target bump: **8.4.0**.
 - No em-dashes anywhere (code comments, docs, commit messages). Use periods/commas/parentheses.
 - Every new behavior ships with a headless test in `KhaozEngine.Tests`.
 - `AppWindow` is the only class touching raw input; not relevant here but do not add input deps.
 - Determinism is mandatory: the same binary must resolve an identical path to a byte-identical pose (server authority == client prediction). `world == null` paths must stay byte-identical to today.
-- Conventional commit subjects `area(scope): summary`; on the version-bump commit the scope is the new version, e.g. `locomotion(8.3.0): ...`.
+- Conventional commit subjects `area(scope): summary`; on the version-bump commit the scope is the new version, e.g. `locomotion(8.4.0): ...`.
 - Public API of `CharacterMovement.Step` must not change signature (internal behavior only).
 - Run tests with: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj`. A single test: append `--filter "FullyQualifiedName~TestName"`.
 
@@ -998,7 +998,7 @@ This prevents the grounded-floor logic from snapping the stepped capsule back do
 
 - [ ] **Step 4: Fix the two stale tree tests in `PhysicsFeelTests.cs` (Task 2 gap)**
 
-These assert trees bake a `CylinderShape`; trees now bake a trunk `ConvexHullShape` (8.3.0). Update them to the hull behavior, preserving intent (thin trunk, foliage rejected, walk-into-trunk blocks, offset passes). The `ConiferTree` fixture bakes a hull (trunk-band verts at corner radius ~0.354 survive the radial-core filter; foliage at radius 1.2 and the canopy are excluded).
+These assert trees bake a `CylinderShape`; trees now bake a trunk `ConvexHullShape` (8.4.0). Update them to the hull behavior, preserving intent (thin trunk, foliage rejected, walk-into-trunk blocks, offset passes). The `ConiferTree` fixture bakes a hull (trunk-band verts at corner radius ~0.354 survive the radial-core filter; foliage at radius 1.2 and the canopy are excluded).
 
 Replace the WHOLE `Tree_BakesTrunkCylinder_RoundTrips` method (rename to `Tree_BakesTrunkHull_RoundTrips`) with:
 
@@ -1006,7 +1006,7 @@ Replace the WHOLE `Tree_BakesTrunkCylinder_RoundTrips` method (rename to `Tree_B
 // ---- Test 5: tree -> thin trunk HULL bake (rejects foliage outliers) + KECL round-trip ----
 // Regression lock: a conifer-like mesh with a dense thin trunk core PLUS sparse low foliage points spreading
 // far out must bake to ~the trunk core extent (the radial-core filter rejects the outliers), NOT a fat hull.
-// Trees bake a leaning-trunk ConvexHullShape (8.3.0), not a cylinder.
+// Trees bake a leaning-trunk ConvexHullShape (8.4.0), not a cylinder.
 [Fact]
 public void Tree_BakesTrunkHull_RoundTrips()
 {
@@ -1078,21 +1078,21 @@ git commit -m "locomotion: step-up + walkable-surface-following (stairs walkable
 
 ---
 
-### Task 7: Release 8.3.0 — version, changelog, doc sweep, pack, tag
+### Task 7: Release 8.4.0 — version, changelog, doc sweep, pack, tag
 
 **Files:**
 - Modify: `Directory.Build.props` (`<KhaozEngineVersion>`), `CHANGELOG.md`, `docs/CONSUMERS.md`, `docs/ROADMAP.md`, `README.md`, `CLAUDE.md`, `KhaozEngine.Locomotion/README.md`, `KhaozEngine.Render3D/README.md`, `docs/USING-KHAOZENGINE.md`.
 
 - [ ] **Step 1: Bump the version**
 
-Edit `Directory.Build.props`: `<KhaozEngineVersion>8.2.0</KhaozEngineVersion>` → `<KhaozEngineVersion>8.3.0</KhaozEngineVersion>`.
+Edit `Directory.Build.props`: `<KhaozEngineVersion>8.3.0</KhaozEngineVersion>` → `<KhaozEngineVersion>8.4.0</KhaozEngineVersion>`. (The branch was synced with `main` at 8.3.0; 8.3.0 was the concurrent reconnect-and-notices release, so this feature is 8.4.0.)
 
 - [ ] **Step 2: Add the CHANGELOG entry (newest-first, one-line digest first sentence)**
 
-Prepend an `## 8.3.0` section. First sentence is the digest; then bullet the behavior change (Part A) and the additive baker change (Part B). Example:
+Prepend an `## 8.4.0` section. First sentence is the digest; then bullet the behavior change (Part A) and the additive baker change (Part B). Example:
 
 ```markdown
-## 8.3.0
+## 8.4.0
 
 Character movement now collide-and-slides against static meshes with a swept resolver (one-sided building
 meshes are rich AND trap-proof, no tunneling), stairs/curbs are walkable via a step-up probe, and `ke-propbake`
@@ -1115,14 +1115,14 @@ bakes a leaning trunk-hull collider for every tree.
 
 - [ ] **Step 3: Update the three guard-checked declarations**
 
-- `docs/CONSUMERS.md` "Engine current version" → `8.3.0`.
-- `docs/ROADMAP.md` "Current released version" → `8.3.0`.
-- `README.md` `<PackageReference … Version="…">` example → `8.3.0`.
+- `docs/CONSUMERS.md` "Engine current version" → `8.4.0`.
+- `docs/ROADMAP.md` "Current released version" → `8.4.0`.
+- `README.md` `<PackageReference … Version="…">` example → `8.4.0`.
 
 - [ ] **Step 4: Run the doc-version guard**
 
 Run: `bash scripts/check-doc-versions.sh`
-Expected: PASS (the three declarations match `<KhaozEngineVersion>` 8.3.0).
+Expected: PASS (the three declarations match `<KhaozEngineVersion>` 8.4.0).
 
 - [ ] **Step 5: Full doc sweep**
 
@@ -1144,22 +1144,18 @@ Expected: PASS (entire suite green).
 - [ ] **Step 7: Pack to local-feed**
 
 Run: `mkdir -p local-feed && dotnet pack -c Release -o ./local-feed`
-Expected: all packable projects pack at 8.3.0 into `./local-feed`.
+Expected: all packable projects pack at 8.4.0 into `./local-feed`.
 
 - [ ] **Step 8: Commit the release**
 
 ```bash
 git add -A
-git commit -m "locomotion(8.3.0): swept trap-proof character collision + trunk-hull baker"
+git commit -m "locomotion(8.4.0): swept trap-proof character collision + trunk-hull baker"
 ```
 
-- [ ] **Step 9: Tag (HELD — do not push)**
+- [ ] **Step 9: Do NOT tag in the worktree**
 
-```bash
-git tag v8.3.0
-```
-
-Do NOT push `main` or the tag. Per engine policy, the push + tag are held/batched and confirmed with the user first. The merge back to `main` and the push happen after review, on user confirmation.
+The tag `v8.4.0` is created by the controller on `main` AFTER the branch is merged (so the tag points at the release commit on `main`, not a pre-merge worktree commit), and the durable `dotnet pack -c Release -o ./local-feed` is re-run from the main repo root at that point (a worktree's `local-feed` is discarded when the worktree is removed). Per engine policy the push + tag are held/batched and confirmed with the user first. This task ends at the committed release on the feature branch (version bumped, CHANGELOG + docs swept, full suite green, `dotnet pack` verified to succeed).
 
 ---
 

@@ -145,7 +145,7 @@ public static class CharacterMovement
         => new(tuning.CapsuleRadius, MathF.Max(0.01f, 2f * tuning.CapsuleHalfHeight - 2f * tuning.CapsuleRadius));
 
     // Desired world XZ position after camera-relative input + slope gate, WITHOUT collision.
-    // Mirrors the input/slope section of the old ResolveHorizontal; collision is handled separately by SlideHorizontal.
+    // Handles the input/slope section only; collision is handled separately by SlideHorizontal.
     private static (float x, float z) DesiredHorizontal(float x, float z, in MoveCommand cmd, float dt,
         in MoveTuning tuning, Func<float, float, Vector3>? groundNormal, float speedScale)
     {

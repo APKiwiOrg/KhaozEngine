@@ -146,4 +146,99 @@ public class ControllerOnPhysicsTests
         // Grounded on flat terrain: y = groundHeight(x,z) + halfHeight = 0 + 0.9 = 0.9.
         Assert.Equal(0.9f, moved.Position.Y, 3);
     }
+
+    // Regression for the historically bug-prone "domed prop is mountable by jumping onto it from the side"
+    // path. The dome: SphereShape(2) centred at (0,-1,0), top surface at y=1. Capsule starts grounded on
+    // flat terrain at (0, 0.9, 3.5), walks toward -Z (into the dome) while jumping from tick 0. Jump apex
+    // ~2.18 m clears the dome top (capsule rests at ~1.9 m on the dome). The step-up gate is bypassed while
+    // airborne, so ProbeSupport settles the capsule on the dome surface.
+    // Asserts: grounded on the dome (Y > terrain rest height + 0.5 m margin) and no penetration.
+    [Fact]
+    public void Capsule_MountsDomeFromSide_ByJumping()
+    {
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        world.AddStatic(new SphereShape(2f), Pose.At(new Vector3(0f, -1f, 0f)));
+        world.Step(1f / 60f);
+
+        // Start grounded outside the dome footprint, slightly left of centre so we approach along -Z.
+        // At yaw=0: forward = (0,0,-1). Move.Y=1 => direction (0,0,-1) = toward -Z => toward dome.
+        var state = new MoveState { Position = new Vector3(0f, 0.9f, 3.5f), Grounded = true };
+        // Jump from the very first tick and keep walking toward the dome.
+        var cmdJump   = new MoveCommand(new Vector2(0f, 1f), run: false, cameraYaw: 0f, jump: true);
+        var cmdWalk   = new MoveCommand(new Vector2(0f, 1f), run: false, cameraYaw: 0f, jump: false);
+
+        for (int i = 0; i < 180; i++)
+        {
+            // Hold jump input for 6 ticks (~0.1 s) to ensure it registers, then release.
+            var cmd = i < 6 ? cmdJump : cmdWalk;
+            state = CharacterMovement.Step(state, cmd, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
+        }
+
+        // Assert 1: grounded on the dome. The dome top is at y=1; capsule rests somewhere on the dome
+        // flank with centre above terrain-rest height (0.9). A 0.1 m margin above terrain rest is enough
+        // to prove it settled on the dome surface and not back on flat terrain.
+        const float CapsuleHalfHeight = 0.9f;
+        Assert.True(state.Grounded,
+            $"should be grounded on the dome, grounded={state.Grounded}, pos={state.Position}");
+        Assert.True(state.Position.Y > CapsuleHalfHeight + 0.1f,
+            $"should rest on the dome (elevated above terrain), Y={state.Position.Y:F4} expected > {CapsuleHalfHeight + 0.1f}");
+
+        // Assert 2: no penetration - same segment-distance check as the dome-rest test.
+        var sphereCentre = new Vector3(0f, -1f, 0f);
+        float cx = state.Position.X, cz = state.Position.Z, cy = state.Position.Y;
+        float capsuleCylinderHalfLen = 0.5f;
+        float segMinY = cy - capsuleCylinderHalfLen;
+        float segMaxY = cy + capsuleCylinderHalfLen;
+        float closestY = MathF.Max(segMinY, MathF.Min(sphereCentre.Y, segMaxY));
+        var closestPt = new Vector3(cx, closestY, cz);
+        float distCentreToSegment = Vector3.Distance(sphereCentre, closestPt);
+        const float SphereRadius = 2f;
+        const float CapsuleRadius = 0.4f;
+        const float PenetrationSkin = 0.05f;
+        Assert.True(
+            distCentreToSegment >= SphereRadius + CapsuleRadius - PenetrationSkin,
+            $"capsule clips into dome: dist={distCentreToSegment:F4} < {SphereRadius + CapsuleRadius - PenetrationSkin:F4}, pos={state.Position}");
+    }
+
+    // Regression for the no-tunnel base-blocking invariant: walking horizontally into the dome at ground
+    // level must never penetrate the sphere, whether the capsule stops, slides laterally, or rides up.
+    // Dome: SphereShape(2) centred at (0,-1,0). Capsule starts at (0, 0.9, 3.0) and walks toward -Z.
+    [Fact]
+    public void Capsule_BlockedAtDomeBase_DoesNotPenetrate()
+    {
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        world.AddStatic(new SphereShape(2f), Pose.At(new Vector3(0f, -1f, 0f)));
+        world.Step(1f / 60f);
+
+        // At yaw=0: Move.Y=1 => direction (0,0,-1) = toward -Z => toward dome centre.
+        var state = new MoveState { Position = new Vector3(0f, 0.9f, 3.0f), Grounded = true };
+        var cmd = new MoveCommand(new Vector2(0f, 1f), run: false, cameraYaw: 0f, jump: false);
+
+        var sphereCentre = new Vector3(0f, -1f, 0f);
+        const float SphereRadius = 2f;
+        const float CapsuleRadius = 0.4f;
+        const float PenetrationSkin = 0.05f;
+        float capsuleCylinderHalfLen = 0.5f;
+        float minSeparation = SphereRadius + CapsuleRadius - PenetrationSkin;
+
+        for (int i = 0; i < 120; i++)
+        {
+            state = CharacterMovement.Step(state, cmd, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
+
+            // Check no-penetration EVERY tick.
+            float cx = state.Position.X, cz = state.Position.Z, cy = state.Position.Y;
+            float segMinY = cy - capsuleCylinderHalfLen;
+            float segMaxY = cy + capsuleCylinderHalfLen;
+            float closestY = MathF.Max(segMinY, MathF.Min(sphereCentre.Y, segMaxY));
+            var closestPt = new Vector3(cx, closestY, cz);
+            float dist = Vector3.Distance(sphereCentre, closestPt);
+            Assert.True(dist >= minSeparation,
+                $"tick {i}: capsule clips into dome: dist={dist:F4} < {minSeparation:F4}, pos={state.Position}");
+        }
+
+        // Bonus: capsule must not have passed through the dome entirely (Z should remain > -2.5 or similar).
+        // If it tunnelled, Z would be near 0 or past; blocked or slid it stays > 1.0.
+        Assert.True(state.Position.Z > 1.0f,
+            $"capsule tunnelled through dome, ended at z={state.Position.Z:F4}");
+    }
 }

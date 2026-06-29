@@ -1,14 +1,18 @@
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Netcode;
 using KhaozEngine.NetWorld;
 using KhaozEngine.Server.Admin;
+using KhaozEngine.WorldStore;
 using Xunit;
 
 namespace KhaozEngine.Tests.ServerAdminEndpoint;
@@ -127,5 +131,57 @@ public class AdminHttpServerTests
             $"Notice did not arrive within 30 ticks. LastNotice={wc.LastNotice?.Kind}/{wc.LastNotice?.Message}");
 
         await http.StopAsync();
+    }
+
+    /// <summary>
+    /// GET /accounts (a read) must thread the request's cancellation token (RequestAborted) into
+    /// ListAccountsAsync, so a long enumeration stops when the client disconnects. A real request token is
+    /// cancellable; default(CancellationToken) is not, so CanBeCanceled proves the handler forwarded it.
+    /// </summary>
+    [Fact]
+    public async Task GetAccounts_ThreadsRequestCancellationToken()
+    {
+        var (st, ct) = LoopbackTransport.CreatePair();
+        var config = new WorldServerConfig { TickSeconds = 1f / 30f, MaxPlayers = 4 };
+        var server = new WorldServer(st, config, Flat, MoveTuning.Default);
+        var store = new TokenCapturingAccountStore();
+        var admin = new ServerAdmin(server, bans: null, accounts: store);
+
+        int port = FreePort();
+        var opts = new AdminEndpointOptions
+        {
+            Port = port,
+            BearerToken = "secret",
+            Certificate = AdminTlsCertificate.CreateSelfSigned("localhost"),
+        };
+        await using var http = new AdminHttpServer(admin, opts);
+        await http.StartAsync();
+
+        using var handler = new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true };
+        using var hc = new HttpClient(handler);
+        hc.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "secret");
+
+        HttpResponseMessage resp = await hc.GetAsync($"https://127.0.0.1:{port}/admin/accounts?prefix=player:");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        Assert.True(store.Captured.CanBeCanceled,
+            "GET /accounts should thread the request's RequestAborted token into ListAccountsAsync, not pass default.");
+
+        await http.StopAsync();
+    }
+
+    // Records the cancellation token handed to EnumerateAsync so the test can confirm the HTTP layer forwarded the
+    // request token (a cancellable one) rather than default.
+    private sealed class TokenCapturingAccountStore : IEnumerableWorldStore
+    {
+        public CancellationToken Captured { get; private set; }
+
+        public async IAsyncEnumerable<WorldStoreEntry> EnumerateAsync(
+            string? keyPrefix = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            Captured = cancellationToken;
+            await Task.CompletedTask;
+            yield break;
+        }
     }
 }

@@ -68,9 +68,11 @@ public sealed class AdminHttpServer : IAsyncDisposable
             return Results.Accepted();
         });
 
-        g.MapGet("/accounts", async Task<IResult> (string? prefix) =>
+        // A read: thread the request's cancellation token (RequestAborted) so a long account enumeration stops if the
+        // client disconnects, instead of running to completion against a dropped connection.
+        g.MapGet("/accounts", async Task<IResult> (HttpContext ctx, string? prefix) =>
             admin.AccountsSupported
-                ? Results.Json(await admin.ListAccountsAsync(prefix))
+                ? Results.Json(await admin.ListAccountsAsync(prefix, ctx.RequestAborted))
                 : Results.StatusCode(StatusCodes.Status501NotImplemented));
 
         g.MapGet("/bans", IResult () =>
@@ -78,6 +80,8 @@ public sealed class AdminHttpServer : IAsyncDisposable
                 ? Results.Json(admin.ListBans())
                 : Results.StatusCode(StatusCodes.Status501NotImplemented));
 
+        // Mutations deliberately do NOT thread RequestAborted: a 202-accepted ban/unban should complete atomically
+        // rather than abort half-applied if the client disconnects mid-write (a DB-backed ban store is not transactional).
         g.MapPost("/ban", async Task<IResult> (BanRequest r) =>
         {
             if (!admin.BansSupported) return Results.StatusCode(StatusCodes.Status501NotImplemented);

@@ -55,6 +55,7 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
     private readonly PlayerMoveSimulator simulator;
     private readonly DrainController drain = new();
     private readonly AdminCommandBuffer admin = new();
+    private readonly IBanStore? banStore;
 
     private readonly Dictionary<int, int> netIdBySlot = new();
     private readonly Dictionary<int, Entity> entityBySlot = new();
@@ -69,7 +70,7 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
     public WorldServer(INetTransport transport, WorldServerConfig config,
         Func<float, float, float> groundHeight, MoveTuning tuning,
         Func<float, float, Vector3>? groundNormal = null, WorldBounds? bounds = null, IPhysicsWorld? physics = null,
-        IConnectionAuthenticator? authenticator = null)
+        IConnectionAuthenticator? authenticator = null, IBanStore? banStore = null)
     {
         ArgumentNullException.ThrowIfNull(transport);
         this.config = config ?? throw new ArgumentNullException(nameof(config));
@@ -77,6 +78,7 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
         this.tuning = tuning;
         simulator = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds, physics);
         net = new NetServer(transport, config.MaxPlayers, authenticator ?? new AllowAllAuthenticator());
+        this.banStore = banStore;
         interest = new InterestGrid(MathF.Max(1f, config.InterestRadius));
     }
 
@@ -337,6 +339,14 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
 
     private void OnJoin(int slot, string subject, string displayName)
     {
+        string accountId = string.IsNullOrEmpty(subject) ? $"guest:{slot}" : subject;
+        if (banStore is not null && banStore.IsBanned(accountId))
+        {
+            SendNoticeTo(slot, new ServerNotice(ServerNoticeKind.Custom, "banned"));
+            net.Disconnect(slot);
+            return;
+        }
+
         // Belt-and-suspenders: clear any stale command-queue state on the (recycled) slot before spawning, in case
         // a prior occupant's Left was ever missed. A fresh session's seqs restart at 0; a stale high-water mark
         // would reject every one and freeze the player (see OnLeave).
@@ -352,7 +362,6 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
         world.Set(e, new ReplicatedPosition { Value = state.Position });
         world.Set(e, MovementState.From(state));   // vertical axis present from the first snapshot
 
-        string accountId = string.IsNullOrEmpty(subject) ? $"guest:{slot}" : subject;
         netIdBySlot[slot] = netId;
         entityBySlot[slot] = e;
         stateBySlot[slot] = state;

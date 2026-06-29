@@ -189,7 +189,7 @@ public class PhysicsFeelTests
     // ---- Test 5: tree -> thin trunk HULL bake (rejects foliage outliers) + KECL round-trip ----
     // Regression lock: a conifer-like mesh with a dense thin trunk core PLUS sparse low foliage points spreading
     // far out must bake to ~the trunk core extent (the radial-core filter rejects the outliers), NOT a fat hull.
-    // Trees bake a leaning-trunk ConvexHullShape (8.3.0), not a cylinder.
+    // Trees bake a leaning-trunk ConvexHullShape (8.4.0), not a cylinder.
     [Fact]
     public void Tree_BakesTrunkHull_RoundTrips()
     {

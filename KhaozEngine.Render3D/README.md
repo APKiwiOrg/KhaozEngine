@@ -15,6 +15,11 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   (`PixelPostProcessSettings.TransparentBackground`) so it composites cleanly.
 - `PixelPostProcessSettings` / `Palette` / `Palettes` — palette quantization, Bayer dither, depth/normal
   edge outline, cel bands, all independently toggleable (the smooth look is the default).
+- `PropCollisionBake` — offline bakes a `PhysicsShape` from a normalized prop mesh for the `.coll` format.
+  Classification: trees -> `BakeTrunkHull` (convex hull of the lower trunk following the leaning centreline;
+  `BakeTrunkCylinder` is the degenerate fallback); buildings -> `TriangleMeshShape`; rocks/short solids ->
+  `BakeConvexHull`. `PropBakePlan.For` single-sources the per-prop bake decision. `HullFromPoints` is the
+  shared hull builder used by both trunk and solid paths.
 
 Renderer deps (Veldrid/Veldrid.SPIRV/SharpGLTF) are confined to this package via `KhaozEngine.Gpu`. See
 `docs/USING-KHAOZENGINE.md` and `docs/superpowers/specs/2026-06-15-render3d-custom-engine-design.md`.

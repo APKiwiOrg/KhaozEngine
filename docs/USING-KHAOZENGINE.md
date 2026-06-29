@@ -1169,12 +1169,14 @@ push-out becomes height-aware off the walkable surface (not the prop's single ma
 while your feet are below the surface where you stand or step on, so a domed rock - whose surface ramps from a low
 rim up to its peak - is both standable across its whole top AND mountable by walking/jumping up its side (you clear
 the rim, not the peak). A flat-top prop (rim = top) stays mountable only from above. Single-valued top contour (no
-overhangs); buildings are solid blocks; trees stay thin trunk-blockers (always solid).
+overhangs); buildings are solid blocks; trees have a trunk-hull collider (8.4.0: leaning convex hull of the lower
+trunk baked by `ke-propbake`; the IPhysicsWorld sweep path handles the block).
 
 Bake the surfaces as the last kit-ingest step (re-ingest = re-bake), then load + place them:
 
 ```bash
-# Bakes <id>.surf next to each walkable-solid prop's glTF and stamps the manifest (surface/heightmap fields).
+# Bakes a .coll collision shape for EVERY prop (trees get a leaning trunk-hull; 8.4.0) and a .surf heightmap
+# for walkable solids only, then stamps the manifest with both.
 dotnet ke-propbake path/to/props.manifest.json
 ```
 
@@ -1387,13 +1389,25 @@ carried `MoveState` (position + vertical velocity + grounded + feel timers). The
 wraps the vertical step; the authoritative server and client prediction run the same `Step`, so the vertical axis
 reconciles identically.
 
+**3D collision (8.4.0 swept resolver).** When an `IPhysicsWorld` is supplied, the vertical-physics step resolves
+against static props via a **substepped swept collide-and-slide** (`SweepCapsule`): the capsule is advanced in
+substeps no larger than a fraction of its radius, so a fast jump / sprint / terminal fall cannot tunnel through a
+thin one-sided wall, and the capsule can never be trapped inside a closed building mesh. Walkable contacts (slope
+at or below the gate) are followed so the character walks across prop tops and mounts domed surfaces; steep contacts
+block and redirect tangentially. A **step-up probe** wires `MoveTuning.StepHeight`: a stair tread or curb below
+`StepHeight` (default 0.4 m) is auto-mounted without a jump. Depenetration is retained as a residual settle pass.
+Pass `world: null` for terrain-only (byte-identical). Client `WorldClient` and server `WorldServer` /
+`ShardedWorldServer` both accept the same optional `IPhysicsWorld?`, so prediction and authority resolve against
+the same baked shapes.
+
 ```csharp
 using KhaozEngine.Locomotion;
 // Horizontal-only (top-down / no air):
 Vector3 next = CharacterMovement.Step(pos, new MoveCommand(move, run, cameraYaw), dt, terrain.GroundHeight, MoveTuning.Default);
 
-// Vertical physics (gravity + jump): carry the MoveState across ticks.
-MoveState s = CharacterMovement.Step(s, new MoveCommand(move, run, cameraYaw, jump), dt, terrain.GroundHeight, MoveTuning.Default);
+// Vertical physics (gravity + jump + swept 3D collision):
+MoveState s = CharacterMovement.Step(s, new MoveCommand(move, run, cameraYaw, jump), dt, terrain.GroundHeight, MoveTuning.Default,
+                                     groundNormal: terrain.GroundNormal, world: physicsWorld);
 // s.Position, s.VerticalVelocity, s.Grounded
 ```
 

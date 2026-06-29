@@ -13,8 +13,8 @@ namespace KhaozEngine.Locomotion;
 /// is the horizontal-only step: Y is a pure function of XZ (ground + half-height), no air.</item>
 /// <item><see cref="Step(in MoveState, in MoveCommand, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, IPhysicsWorld?, Func{float, float, Vector2}?)"/>
 /// is the vertical-physics step: gravity, jump (coyote + jump-buffer), land/clamp, air control, plus 3D
-/// move-and-depenetrate prop resolution via an <see cref="IPhysicsWorld"/>, over the carried
-/// <see cref="MoveState"/>.</item>
+/// swept collide-and-slide prop resolution via an <see cref="IPhysicsWorld"/> (substepped
+/// <see cref="IPhysicsWorld.SweepCapsule"/> + step-up probe), over the carried <see cref="MoveState"/>.</item>
 /// </list>
 /// No input, render, or netcode dependency.
 /// </summary>
@@ -42,14 +42,18 @@ public static class CharacterMovement
         return IsFinite(result) ? result : position;
     }
 
-    /// <summary>Vertical-physics step resolving collision against a 3D <see cref="IPhysicsWorld"/>: the capsule
-    /// moves freely to its desired position, then is depenetrated against the props in full 3D
-    /// (<see cref="IPhysicsWorld.ComputePenetration"/> push-out, iterated up to <c>ResolveIterations</c> times).
-    /// An upward-dominant push-out means the capsule is resting on a prop top/slope, so it counts as grounded
-    /// support; a horizontal push-out is a wall, and moving in then being pushed out perpendicular yields net
-    /// tangential progress (sliding, no dead-stop). The analytic terrain stays the floor (resolved on the final
-    /// XZ). <paramref name="world"/> null = terrain only (unchanged). The same world + math runs on the
-    /// authoritative server and in client prediction (deterministic single-threaded depenetration).</summary>
+    /// <summary>Vertical-physics step resolving collision against a 3D <see cref="IPhysicsWorld"/> via a
+    /// substepped swept collide-and-slide (<see cref="IPhysicsWorld.SweepCapsule"/>): the capsule is swept from
+    /// its current pose to the desired target in substeps no larger than a fraction of the capsule radius, so a
+    /// fast move (jump / run / terminal fall) can never tunnel through a thin one-sided wall, and the capsule
+    /// never enters a closed mesh (no inner-face suck-through). Walkable contacts (slope at or below the slope gate)
+    /// are followed (walk across / mount a domed prop top); steep contacts block and redirect the velocity
+    /// tangentially (no dead-stop). A step-up probe wires <see cref="MoveTuning.StepHeight"/>: a stair tread or
+    /// curb below <c>StepHeight</c> is mounted without a jump. Depenetration via
+    /// <see cref="IPhysicsWorld.ComputePenetration"/> is retained as a residual-overlap settle pass (rarely
+    /// fires after the swept move). The analytic terrain stays the floor (resolved on the final XZ).
+    /// <paramref name="world"/> null = terrain only (byte-identical to pre-8.4.0). The same world + math runs
+    /// on the authoritative server and in client prediction (deterministic single-threaded).</summary>
     /// <param name="state">The carried kinematic state (position + vertical velocity + grounded + feel timers).</param>
     /// <param name="cmd">Movement intent including the jump bit.</param>
     /// <param name="dt">Timestep in seconds.</param>
@@ -131,7 +135,7 @@ public static class CharacterMovement
         //    The prop sweep only CONTRIBUTES the floor when the capsule is airborne (landing/jumping onto a prop)
         //    or already standing on a prop (its carried Y is above the terrain slope-stick band). A capsule
         //    walking horizontally into a rising prop flank while grounded on terrain stays in the band, so the
-        //    prop sweep is skipped and the move-and-depenetrate alone blocks it at the base (the perfect
+        //    prop sweep is skipped and the depenetrate settle pass alone blocks it at the base (the perfect
         //    horizontal the prior version established is untouched, and a low dome cannot be walked up its side).
         float terrainGroundY = groundHeight(pos.X, pos.Z) + halfH;
         float groundY = terrainGroundY;
@@ -403,8 +407,8 @@ public static class CharacterMovement
     }
 
     // Desired world XZ position after camera-relative input + slope gate, WITHOUT collision.
-    // Handles the input/slope section only; prop collision is resolved separately by the 3D
-    // move-and-depenetrate block in the vertical-physics Step overload.
+    // Handles the input/slope section only; prop collision is resolved separately by the swept
+    // collide-and-slide block in the vertical-physics Step overload.
     private static (float x, float z) DesiredHorizontal(float x, float z, in MoveCommand cmd, float dt,
         in MoveTuning tuning, Func<float, float, Vector3>? groundNormal, float speedScale)
     {

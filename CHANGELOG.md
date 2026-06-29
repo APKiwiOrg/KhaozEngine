@@ -5,6 +5,27 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 8.4.0
+
+Character movement now collide-and-slides against static meshes with a swept resolver (one-sided building
+meshes are rich AND trap-proof, no tunneling), stairs/curbs are walkable via a step-up probe, and `ke-propbake`
+bakes a leaning trunk-hull collider for every tree.
+
+- **Locomotion (behavior change, all NetWorld/Simulation consumers):** `CharacterMovement.Step(in MoveState, ...)`
+  resolves the move by a substepped swept collide-and-slide over `IPhysicsWorld.SweepCapsule` instead of
+  teleport-then-depenetrate. A fast move (jump/run/terminal fall) can no longer tunnel through a thin one-sided
+  wall, and the capsule never enters a closed mesh (so it can never get stuck inside a building). Depenetration
+  is retained as a residual-overlap settle pass. A new step-up probe finally wires `MoveTuning.StepHeight`, so
+  stair treads/curbs below `StepHeight` are walkable. Deterministic; `world == null` is byte-identical. No
+  `Step` signature change.
+- **Render3D / PropCollisionBake (additive):** `BakeTrunkHull` bakes a tree's collision as a convex hull of the
+  lower trunk that follows the leaning centreline (excludes canopy and wide low branches) instead of a vertical
+  cylinder; `BakeTrunkCylinder` remains the degenerate fallback. `PropBakePlan.For` single-sources the
+  per-prop bake decision. `HullFromPoints` is the shared hull builder used by both `BakeTrunkHull` and
+  `BakeConvexHull`.
+- **ke-propbake (additive):** now writes a `.coll` for every prop (trees gain a trunk-hull collider where they
+  had none) and a `.surf` only for walkable solids.
+
 ## 8.3.0
 
 Mid-session reconnect + a server->client notice channel in NetWorld, so a client survives a server restart gracefully.

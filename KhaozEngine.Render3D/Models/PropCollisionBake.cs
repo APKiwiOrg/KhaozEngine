@@ -7,15 +7,18 @@ using KhaozEngine.Physics;
 namespace KhaozEngine.Render3D
 {
     /// <summary>Bakes a 3D collision shape from a <see cref="PropLoader"/>-normalized prop mesh (base y=0, XZ
-    /// centred on origin). Trees get a trunk-only <see cref="CylinderShape"/> (walk under the canopy); buildings
-    /// (tall, non-convex: walls, doorways, interiors) get a <see cref="TriangleMeshShape"/>; every other short
-    /// solid prop (rocks, logs) gets a <see cref="ConvexHullShape"/>. A convex hull can never trap the capsule
-    /// (there is always a unique shortest exit), unlike a one-sided non-convex triangle mesh whose conflicting
-    /// per-triangle contacts can suck the capsule through the near face and pin it inside. The hull is the TRUE
-    /// minimal hull of the full deduplicated vertex set (Bepu's hull helper discards interior points), not a
-    /// stride-downsampled under-approximation, so it is a smooth convex polytope rather than a lumpy one.
-    /// The Bepu backend then builds its internal representation from the shape seam. Offline/tooling only; the
-    /// runtime reads the baked binary via <see cref="PropCollisionLoader"/>.</summary>
+    /// centred on origin). Trees get a trunk-only <see cref="ConvexHullShape"/> tracking the lean via
+    /// <see cref="BakeTrunkHull"/> (percentile-filtered lower-trunk vertices following the leaning centreline;
+    /// <see cref="BakeTrunkCylinder"/> is the degenerate fallback); buildings (tall, non-convex: walls, doorways,
+    /// interiors) get a <see cref="TriangleMeshShape"/>; every other short solid prop (rocks, logs) gets a
+    /// <see cref="ConvexHullShape"/>. A convex hull can never trap the capsule (there is always a unique shortest
+    /// exit), unlike a one-sided non-convex triangle mesh whose conflicting per-triangle contacts can suck the
+    /// capsule through the near face and pin it inside. The hull is the TRUE minimal hull of the full deduplicated
+    /// vertex set (Bepu's hull helper discards interior points), not a stride-downsampled under-approximation, so
+    /// it is a smooth convex polytope rather than a lumpy one. The Bepu backend then builds its internal
+    /// representation from the shape seam. <see cref="PropBakePlan.For"/> single-sources the per-prop bake
+    /// decision. Offline/tooling only; the runtime reads the baked binary via
+    /// <see cref="PropCollisionLoader"/>.</summary>
     public static class PropCollisionBake
     {
         /// <summary>Binary magic: "KECL" (KhaozEngine Collision). Single-sourced from
@@ -105,9 +108,10 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>Bake a collision shape from a normalized prop mesh. Classification priority:
-        /// tree -> trunk <see cref="CylinderShape"/> (walk under the canopy); building -> <see cref="TriangleMeshShape"/>
-        /// (concave interior); rock/short-solid -> <see cref="ConvexHullShape"/> (a convex shape can never trap
-        /// the capsule, unlike a one-sided non-convex mesh).</summary>
+        /// tree -> trunk <see cref="ConvexHullShape"/> tracking the lean (cylinder fallback on degenerate) via
+        /// <see cref="BakeTrunkHull"/>; building -> <see cref="TriangleMeshShape"/> (concave interior);
+        /// rock/short-solid -> <see cref="ConvexHullShape"/> (a convex shape can never trap the capsule, unlike
+        /// a one-sided non-convex mesh). <see cref="PropBakePlan.For"/> single-sources this decision.</summary>
         public static PhysicsShape Bake(GltfMesh normalizedMesh)
         {
             if (normalizedMesh == null) throw new ArgumentNullException(nameof(normalizedMesh));

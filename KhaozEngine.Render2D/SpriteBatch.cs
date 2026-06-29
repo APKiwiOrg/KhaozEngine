@@ -92,6 +92,22 @@ void main() {
         sealed class AdditiveKey { public readonly IGpuTexture Tex; public AdditiveKey(IGpuTexture t) => Tex = t; }
         readonly Dictionary<IGpuTexture, AdditiveKey> _additiveKeys = new();
 
+        // The (texture,sampler) resource-set cache (_sets) and the per-texture _additiveKeys are created on first
+        // draw of a texture and, without eviction, are only freed at Dispose. A long-lived batch (one per surface,
+        // app-lifetime) that streams many distinct textures (sprite streaming, level reloads) would then leak one
+        // ResourceSet per (texture,sampler) ever drawn - plus a dangling reference to each texture the game later
+        // disposed. So: stamp each texture's last-drawn frame and, in NewFrame, dispose the sets for any texture not
+        // drawn within SetEvictAfterFrames (recreated on next draw if it returns). Bounds the cache to the recent
+        // working set. A monotonic frame counter (NewFrame); _texLastUsedFrame holds only textures still in-window.
+        long _frame;
+        readonly Dictionary<IGpuTexture, long> _texLastUsedFrame = new();
+        /// <summary>A (texture,sampler) set unused for this many frames is disposed (recreated on next draw). ~10s
+        /// at 60fps. Settable for tests.</summary>
+        internal int SetEvictAfterFrames = 600;
+        readonly List<IGpuTexture> _evictScratch = new();
+        /// <summary>Live (texture,sampler) resource sets currently cached. For tests.</summary>
+        internal int CachedSetCount => _sets.Count;
+
         const uint VertexSizeBytes = 64;       // V = Pos(8)+Uv(8)+Color(16)+Local(8)+Shape(16)+Mode(8)
         // One growable vertex buffer PER flush-within-a-frame. A frame can flush several times (every
         // SetScissor/ClearScissor forces one), and a buffer referenced by an already-recorded Draw must not be
@@ -211,6 +227,28 @@ void main() {
         internal void NewFrame(IGpuCommandList cl, int viewportW, int viewportH)
         {
             _cl = cl; _vw = viewportW; _vh = viewportH; _flushIndex = 0;
+            _frame++;
+            EvictStaleSets();
+        }
+
+        // Dispose the cached resource set(s) for any texture not drawn within SetEvictAfterFrames, so the cache
+        // tracks the recent working set instead of growing once per distinct texture ever drawn. Disposing a set
+        // releases only the descriptor binding, never the texture (the game owns that), so it is safe even after the
+        // game has disposed the texture. A returning texture rebuilds its set on the next Flush.
+        void EvictStaleSets()
+        {
+            if (_texLastUsedFrame.Count == 0) return;
+            long cutoff = _frame - SetEvictAfterFrames;
+            _evictScratch.Clear();
+            foreach (var kv in _texLastUsedFrame)
+                if (kv.Value <= cutoff) _evictScratch.Add(kv.Key);
+            foreach (IGpuTexture tex in _evictScratch)
+            {
+                if (_sets.Remove((tex, _linearSampler), out IGpuResourceSet? s1)) s1.Dispose();
+                if (_sets.Remove((tex, _pointSampler), out IGpuResourceSet? s2)) s2.Dispose();
+                _additiveKeys.Remove(tex);
+                _texLastUsedFrame.Remove(tex);
+            }
         }
 
         /// <summary>Begin a batch in world space through <paramref name="camera"/>, sampled per <paramref name="sampler"/>
@@ -468,6 +506,7 @@ void main() {
                 IGpuTexture tex; IGpuPipeline pipeline;
                 if (key is AdditiveKey ak) { tex = ak.Tex; pipeline = _additivePipeline; }
                 else { tex = (IGpuTexture)key; pipeline = _pipeline; }
+                _texLastUsedFrame[tex] = _frame;   // stamp for the unused-set eviction sweep in NewFrame
                 _cl.SetPipeline(pipeline);
                 // Upload directly from the run's backing List<V> — no ToArray() copy.
                 _gd.UpdateBuffer(vb, byteOffset, (ReadOnlySpan<V>)CollectionsMarshal.AsSpan(verts));

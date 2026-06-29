@@ -27,6 +27,13 @@ public sealed class ShardedWorldServerConfig
     /// <summary>Per-slot spawn position (XZ used; Y is ground-clamped). Default spreads players along +X near origin.</summary>
     public Func<int, Vector3>? SpawnPosition { get; init; }
 
+    /// <summary>When true (the default), each <see cref="ShardedWorldServer.Tick"/> calls
+    /// <see cref="World.AdvanceTick"/> once on every cell's world, clearing the per-tick change-tracking sets and
+    /// event buffer so they don't accumulate on a long-running server (one entry per <c>Set</c>/<c>Despawn</c> in
+    /// the owning cell, never reclaimed otherwise). The authoritative movement path doesn't consume them. Set false
+    /// ONLY if your own systems read a cell's change-tracking/events and you advance each cell's tick yourself.</summary>
+    public bool AdvanceWorldTick { get; init; } = true;
+
     /// <summary>Opt-in server-side anti-cheat / input-hardening knobs (rate limiting, movement-correction anomaly).
     /// All off by default, so behaviour is unchanged until a consumer tightens it.</summary>
     public AntiCheatConfig AntiCheat { get; init; } = new();
@@ -260,6 +267,12 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
             byte[] frame = MoveProtocol.EncodeSnapshotFrame(netId, lastAckBySlot[slot], snapshot);
             net.SendTo(slot, frame, NetChannelReliability.ReliableOrdered);
         }
+
+        // 6. Clear each cell's per-tick ECS change-tracking + event sets so they don't accumulate on a long-running
+        //    server. One fixed sub-tick ran per cell this frame (maxTicksPerFrame: 1), so one advance per cell here
+        //    matches. Opt out via ShardedWorldServerConfig.AdvanceWorldTick if a cell's change sets are consumed.
+        if (config.AdvanceWorldTick)
+            foreach (CellSim cell in host.Cells) cell.World.AdvanceTick();
     }
 
     private void OnJoin(int slot, string subject, string displayName)

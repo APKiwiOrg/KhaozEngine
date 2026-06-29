@@ -71,6 +71,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
     // Per-tick scratch: the pre-step state of each owned player whose command we routed this frame, so we can
     // measure the authoritative correction after the cells step. Reused across ticks (single-threaded orchestration).
     private readonly List<(int slot, PlayerMoveState prev, MoveCommand cmd)> correctionScratch = new();
+    private readonly DrainController drain = new();
     private readonly MoveTuning tuning;
     private int nextNetId = 1;
 
@@ -129,6 +130,28 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
     /// <summary>Disconnects a player's connection (a kick) - the policy seam a game's <see cref="OnSuspiciousActivity"/>
     /// handler calls. No-op for an unknown slot.</summary>
     public void Disconnect(int slot) => net.Disconnect(slot);
+
+    /// <summary>Broadcasts a <see cref="ServerNotice"/> to every connected client (reliable-ordered). Same contract
+    /// as <see cref="WorldServer.BroadcastNotice"/>.</summary>
+    public void BroadcastNotice(in ServerNotice notice)
+    {
+        byte[] envelope = MoveProtocol.EncodeServerFrame(MoveProtocol.ServerFrameKind.Notice, MoveProtocol.EncodeNotice(notice));
+        net.Broadcast(envelope, NetChannelReliability.ReliableOrdered);
+    }
+
+    /// <summary>True while a graceful drain is in progress.</summary>
+    public bool IsDraining => drain.IsDraining;
+
+    /// <summary>True once a graceful drain's grace has elapsed (host then flushes persistence + closes).</summary>
+    public bool IsDrainComplete => drain.IsComplete;
+
+    /// <summary>Begins a graceful drain (broadcast + grace countdown). Same contract as
+    /// <see cref="WorldServer.BeginDrain"/>.</summary>
+    public void BeginDrain(in ServerNotice notice, float graceSeconds)
+    {
+        BroadcastNotice(notice);
+        drain.Begin(graceSeconds);
+    }
 
     /// <inheritdoc/>
     public IReadOnlyCollection<int> JoinedSlots => netIdBySlot.Keys;
@@ -274,6 +297,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
         //    matches. Opt out via ShardedWorldServerConfig.AdvanceWorldTick if a cell's change sets are consumed.
         if (config.AdvanceWorldTick)
             foreach (CellSim cell in host.Cells) cell.World.AdvanceTick();
+        drain.Advance(dt);
     }
 
     private void OnJoin(int slot, string subject, string displayName)

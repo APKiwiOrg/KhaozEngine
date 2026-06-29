@@ -34,11 +34,16 @@ namespace KhaozEngine.Render3D
         /// Resolved against the manifest directory like <see cref="File"/>. Read render-free by
         /// <c>PropSurfaceLoader</c> and the headless server.</summary>
         public string? Heightmap { get; }
+        /// <summary>Path to the baked 3D collision shape (<c>.coll</c>) for this prop, or null when none.
+        /// Resolved against the manifest directory like <see cref="File"/>. Read by
+        /// <c>PropCollisionLoader</c> into a <c>KhaozEngine.Physics.PhysicsShape</c>.</summary>
+        public string? CollisionShape { get; }
         public AssetEntry(string id, string file, float heightMeters, string source, string license,
-                          ColliderShape? collider = null, bool surface = false, string? heightmap = null)
+                          ColliderShape? collider = null, bool surface = false, string? heightmap = null,
+                          string? collisionShape = null)
         {
             Id = id; File = file; HeightMeters = heightMeters; Source = source; License = license; Collider = collider;
-            Surface = surface; Heightmap = heightmap;
+            Surface = surface; Heightmap = heightmap; CollisionShape = collisionShape;
         }
     }
 
@@ -98,9 +103,10 @@ namespace KhaozEngine.Render3D
                 if (string.IsNullOrWhiteSpace(p.File))
                     throw new InvalidOperationException($"AssetManifest entry '{p.Id}' missing 'file'.");
                 string? heightmap = string.IsNullOrWhiteSpace(p.Heightmap) ? null : ResolveFile(p.Heightmap!, baseDir);
+                string? collisionShape = string.IsNullOrWhiteSpace(p.CollisionShape) ? null : ResolveFile(p.CollisionShape!, baseDir);
                 entries.Add(new AssetEntry(p.Id!, ResolveFile(p.File!, baseDir), p.HeightMeters,
                                            p.Source ?? "", p.License ?? "", ParseCollider(p.Id!, p.Collider),
-                                           p.Surface, heightmap));
+                                           p.Surface, heightmap, collisionShape));
             }
             return new AssetManifest(entries);
         }
@@ -138,6 +144,7 @@ namespace KhaozEngine.Render3D
                 [JsonPropertyName("collider")] public ColliderDto? Collider { get; set; }
                 [JsonPropertyName("surface")] public bool Surface { get; set; }
                 [JsonPropertyName("heightmap")] public string? Heightmap { get; set; }
+                [JsonPropertyName("collisionShape")] public string? CollisionShape { get; set; }
             }
 
             public sealed class ColliderDto

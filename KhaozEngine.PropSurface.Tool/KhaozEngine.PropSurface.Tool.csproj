@@ -10,5 +10,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
+    <!-- PropCollisionBake references KhaozEngine.Physics via Render3D; the tool also uses it directly. -->
+    <ProjectReference Include="../KhaozEngine.Physics/KhaozEngine.Physics.csproj" />
   </ItemGroup>
 </Project>

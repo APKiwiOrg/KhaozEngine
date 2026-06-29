@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using KhaozEngine.Collision;
+using KhaozEngine.Physics;
 using KhaozEngine.Render3D;
 
 // ke-propbake <manifest.json>
@@ -52,10 +53,18 @@ foreach (AssetEntry entry in manifest.Props)
     PropSurface surface = PropSurfaceBake.Bake(mesh);
     using (FileStream fs = File.Create(outPath)) surface.Write(fs);
 
+    // Bake the 3D collision shape (.coll) alongside the .surf.
+    string collName = entry.Id + ".coll";
+    string collPath = Path.Combine(dir, collName);
+    PhysicsShape coll = PropCollisionBake.Bake(mesh);
+    using (FileStream cfs = File.Create(collPath)) PropCollisionBake.Write(coll, cfs);
+    string collKind = coll is TriangleMeshShape ? "triangle-mesh" : "convex-hull";
+
     JsonObject node = props.OfType<JsonObject>().First(p => (string?)p["id"] == entry.Id);
     node["surface"] = true;
     node["heightmap"] = surfName;
-    Console.WriteLine($"  + {entry.Id}: baked {surfName} ({surface.Width}x{surface.Height}, top {surface.MaxHeight:0.00} m)");
+    node["collisionShape"] = collName;
+    Console.WriteLine($"  + {entry.Id}: baked {surfName} ({surface.Width}x{surface.Height}, top {surface.MaxHeight:0.00} m) + {collName} ({collKind})");
     baked++;
 }
 

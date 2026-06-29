@@ -25,6 +25,8 @@
     <ProjectReference Include="../KhaozEngine.Render2D/KhaozEngine.Render2D.csproj" />
     <!-- AssetEntry.Collider carries an optional static-collision footprint (ColliderShape). -->
     <ProjectReference Include="../KhaozEngine.Collision/KhaozEngine.Collision.csproj" />
+    <!-- PropCollisionBake/PropCollisionLoader use the physics shape seam (no Bepu dependency). -->
+    <ProjectReference Include="../KhaozEngine.Physics/KhaozEngine.Physics.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Tests" />

@@ -560,14 +560,15 @@ public class SweptCollisionTests
         WalkSpeed: 3f, RunSpeed: 6f, CapsuleHalfHeight: 0.9f, MaxSlopeRadians: 0.9f);
     private static float Flat(float x, float z) => 0f;
 
-    // One-sided thin quad wall in the XY plane at z=2 (normal +Z, facing -Z toward the approaching capsule),
-    // spanning x[-3,3], y[0,3]. A single quad => two triangles, ~0.0 m thick: the classic tunnel trap.
+    // One-sided thin quad wall in the XY plane at z=2 (front face normal -Z, toward the approaching capsule),
+    // spanning x[-10,10] (wide enough to block for a full sliding test), y[0,3]. A single quad => two triangles,
+    // ~0.0 m thick: the classic tunnel trap.
     private static TriangleMeshShape ThinWallAtZ2()
     {
         var v = new[]
         {
-            new Vector3(-3f, 0f, 2f), new Vector3(3f, 0f, 2f),
-            new Vector3(3f, 3f, 2f), new Vector3(-3f, 3f, 2f),
+            new Vector3(-10f, 0f, 2f), new Vector3(10f, 0f, 2f),
+            new Vector3(10f, 3f, 2f), new Vector3(-10f, 3f, 2f),
         };
         // Wound so the front face normal points -Z (toward the capsule coming from z<2).
         var idx = new[] { 0, 2, 1, 0, 3, 2 };
@@ -581,11 +582,14 @@ public class SweptCollisionTests
         world.AddStatic(ThinWallAtZ2());
         world.Step(1f / 60f);
 
-        // Drive at run speed straight toward +Z (Move.Y=-1 at yaw=0 => +Z), large dt to force a >radius step.
+        // Drive straight toward +Z (Move.Y=-1 at yaw=0 => +Z). A LARGE dt (0.1 s) at run speed makes one tick's
+        // displacement ~0.6 m, well over the 0.4 m capsule radius - the regime where the old teleport-then-
+        // depenetrate resolver tunnels through the one-sided quad (low-frame-rate clients hit exactly this).
+        const float BigDt = 0.1f;
         var state = new MoveState { Position = new Vector3(0f, 0.9f, 0f), Grounded = true };
         var run = new MoveCommand(new Vector2(0f, -1f), run: true, cameraYaw: 0f, jump: false);
-        for (int i = 0; i < 240; i++)
-            state = CharacterMovement.Step(state, run, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
+        for (int i = 0; i < 60; i++)
+            state = CharacterMovement.Step(state, run, BigDt, Flat, Tuning, groundNormal: null, world: world);
 
         // The capsule centre must stay on the near side of the wall (z < 2 - radius + skin), never past it.
         Assert.True(state.Position.Z < 1.65f, $"tunneled through the thin wall, z={state.Position.Z}");
@@ -802,35 +806,20 @@ git commit -m "locomotion: swept collide-and-slide so one-sided meshes are trap-
 Add to `SweptCollisionTests.cs`:
 
 ```csharp
-// A 3-step staircase of one-sided box-room-free triangle "treads": each tread is a horizontal quad at
-// increasing height with a vertical riser quad below its leading edge. Risers are 0.25 m (< StepHeight 0.4).
-private static TriangleMeshShape Staircase()
-{
-    var v = new System.Collections.Generic.List<Vector3>();
-    var idx = new System.Collections.Generic.List<int>();
-    void Quad(Vector3 a, Vector3 b, Vector3 c, Vector3 d)
-    {
-        int b0 = v.Count; v.Add(a); v.Add(b); v.Add(c); v.Add(d);
-        idx.Add(b0); idx.Add(b0 + 1); idx.Add(b0 + 2);
-        idx.Add(b0); idx.Add(b0 + 2); idx.Add(b0 + 3);
-    }
-    for (int s = 0; s < 3; s++)
-    {
-        float y = 0.25f * (s + 1);          // tread top height
-        float z0 = 2f + 0.4f * s;           // leading edge of this tread
-        // Tread top (normal +Y), spanning x[-3,3], from z0 to z0+0.4.
-        Quad(new Vector3(-3f, y, z0), new Vector3(3f, y, z0), new Vector3(3f, y, z0 + 0.4f), new Vector3(-3f, y, z0 + 0.4f));
-        // Riser front (normal -Z) from y-0.25 to y at z0.
-        Quad(new Vector3(-3f, y - 0.25f, z0), new Vector3(-3f, y, z0), new Vector3(3f, y, z0), new Vector3(3f, y - 0.25f, z0));
-    }
-    return new TriangleMeshShape(v.ToArray(), idx.ToArray());
-}
-
 [Fact]
 public void Stairs_WithRisersUnderStepHeight_AreWalkable()
 {
     using IPhysicsWorld world = new BepuPhysicsWorld();
-    world.AddStatic(Staircase());
+    // Three solid box steps, each riser 0.25 m (< StepHeight 0.4). Step s spans z[2+0.4s, 2+0.4s+0.4] and
+    // y[0, 0.25*(s+1)]. One-sided-mesh richness/trap behavior is covered by the sibling thin-wall / closed-
+    // shell tests; this fixture isolates the step-up probe (shape-agnostic: it sweeps).
+    for (int s = 0; s < 3; s++)
+    {
+        float topY = 0.25f * (s + 1);
+        float zCentre = 2f + 0.4f * s + 0.2f;
+        world.AddStatic(new BoxShape(new Vector3(3f, topY * 0.5f, 0.2f)),
+            Pose.At(new Vector3(0f, topY * 0.5f, zCentre)));
+    }
     world.Step(1f / 60f);
 
     var state = new MoveState { Position = new Vector3(0f, 0.9f, 0f), Grounded = true };
@@ -838,8 +827,8 @@ public void Stairs_WithRisersUnderStepHeight_AreWalkable()
     for (int i = 0; i < 300; i++)
         state = CharacterMovement.Step(state, fwd, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
 
-    // Climbed at least the first riser: capsule centre rose from 0.9 (terrain) toward the top tread
-    // (0.75 + halfHeight). Require it climbed clearly above terrain rest and advanced onto the stairs.
+    // Climbed at least the first step: capsule centre rose from 0.9 (terrain rest) onto a tread
+    // (>= 0.25 + halfHeight), and advanced onto the stairs.
     Assert.True(state.Position.Y > 0.9f + 0.2f, $"did not climb the stairs, y={state.Position.Y}");
     Assert.True(state.Position.Z > 2.2f, $"did not advance onto the stairs, z={state.Position.Z}");
 }

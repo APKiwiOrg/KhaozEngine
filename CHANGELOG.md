@@ -5,6 +5,12 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 8.4.3
+
+The admin HTTPS endpoint's `GET /accounts` now threads the request's cancellation token into the account enumeration, so a long listing stops if the client disconnects.
+
+- `AdminHttpServer` forwards `HttpContext.RequestAborted` to `ServerAdmin.ListAccountsAsync` on `GET /accounts` (a read). The mutating routes (`POST /ban` / `/unban`) deliberately remain uncancellable by client disconnect, so a 202-accepted ban completes atomically rather than aborting half-applied against a non-transactional store.
+
 ## 8.4.2
 
 Generic, opt-in server administration surface: live admin commands, world-store enumeration, an account-ban seam, and an opt-in HTTPS admin endpoint.

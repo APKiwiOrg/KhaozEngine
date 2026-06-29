@@ -143,15 +143,23 @@ version/release work.
     `TerrainCollision` (`GroundHeight`/`GroundNormal` (the slope-gate delegate)/`IsWalkable`),
     `PropColliders.FromScatter` (deps `Collision`: builds a `Collision.WorldColliders` from deterministic scatter
     placements - footprint per prop id with a default-shape fallback - plus an explicit obstacle/building list;
-    streaming-consistent, same coordinate-hash as the rendered scatter), and
+    streaming-consistent, same coordinate-hash as the rendered scatter),
+    `PropScatter.GenerateCompanions(TerrainField, IReadOnlyList<PropPlacement>, CompanionConfig)` (pure,
+    render-free, tiling-invariant: rings each host whose id is in `CompanionConfig.HostKinds` with `Count`
+    foliage instances hashed off the host's centimetre-quantized world XZ; `Y` resampled from the field;
+    `MaxHeight` excludes off-mountain companions; new `CompanionConfig` type), and
     `TerrainPresets.Clearing()`/`BoundedClearing()`. Height depends only on `(x,z,seed)`
     (load-order independent for sharded streaming); plain `float` (authoritative server + visual client, NOT
     `DeterministicFp`). `Terrain.Render3D` (companion, in `Game3D`) = `TerrainChunkBuilder` (chunked-LOD mesh off the
     field: skirts, per-vertex splat weights, chunk AABB) + `TerrainLod.PickLod` + `Scene3D.LoadTerrainChunk`/
     `DrawTerrainChunk`, plus the `TerrainStreamer` client world-streaming layer (`ChunkCoord`/`ChunkGrid`
-    coord<->world, `IChunkSink` load/unload seam, `StreamerConfig`, and the production `Scene3DChunkSink` that
-    builds the chunk mesh + scatters props on load, re-LODs on tier crossing, frees on unload, and draws the
-    loaded ring; ring load/unload with a hysteresis band, distance-LOD re-meshing, amortized main-thread loading),
+    coord<->world, `IChunkSink` load/unload seam, `StreamerConfig`, and the production `Scene3DChunkSink` (now
+    multi-layer via N `PropLayer`s): each `PropLayer` (tagged struct) is either `PropLayer.ScatterLayer(...)` or
+    `PropLayer.CompanionLayer(hostLayerIndex, ...)` with its own mesh set and draw radius (short for dense ground
+    cover, long for trees); companion layers derive their placements per chunk from their host scatter layer so
+    each host emits companions exactly once even when they spill into a neighbour chunk; the existing single-layer
+    ctor is unchanged and byte-identical; ring load/unload with a hysteresis band, distance-LOD re-meshing,
+    amortized main-thread loading),
     plus the PBR splat-material layer (shipped 7.64.0): `TerrainSplatPacking`, `TerrainMaterialLayer`/
     `TerrainLayeredMaterial`, `TerrainMaterialPresets` (procedural placeholder), `TerrainScene3D.LoadTerrainMaterial`
     + a textured `LoadTerrainChunk` overload, and an optional material slot on `Scene3DChunkSink` - supply a

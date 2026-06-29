@@ -1173,6 +1173,49 @@ change the look at stream time.
 
 ---
 
+## Ground-cover scatter and understory companions (since 7.71.0)
+
+`Scene3DChunkSink` now accepts N `PropLayer`s, so a scene can have sparse tall trees at a long draw radius
+alongside dense short-radius ground cover, with a companion layer that rings each tree base with foliage.
+Foliage ids carry no collider - this is render-only; the server, client prediction, and collision are untouched.
+
+```csharp
+using KhaozEngine.Terrain;
+using KhaozEngine.Terrain.Render3D;
+
+// Three layers: trees (scatter), ferns (scatter, short radius), fern ring around each tree (companion).
+var layers = new PropLayer[]
+{
+    PropLayer.ScatterLayer(TreeScatterConfig(),  treeMeshes,  drawRadius: 90f),   // layer 0: trees
+    PropLayer.ScatterLayer(FernScatterConfig(),  fernMeshes,  drawRadius: 40f),   // layer 1: ferns
+    PropLayer.CompanionLayer(hostLayerIndex: 0,              // companions of layer 0 (trees)
+        new CompanionConfig
+        {
+            HostKinds  = new[] { "oak", "pine" },              // which tree ids get companions
+            CountMin   = 4,                                     // foliage instances per host (inclusive range)
+            CountMax   = 6,
+            RadiusMin  = 0.6f,
+            RadiusMax  = 1.2f,
+            Kinds      = new[] { new PropKind("fern_small", 1f) },
+        },
+        fernMeshes, drawRadius: 8f),
+};
+
+var sink     = new Scene3DChunkSink(scene, field, layers,
+                                    chunkSize: TerrainChunkRegion.DefaultSize);
+var streamer = new TerrainStreamer(StreamerConfig.Default, sink);
+```
+
+The single-layer ctor (`new Scene3DChunkSink(scene, field, ScatterConfig, meshes, chunkSize, propDrawRadius)`)
+is unchanged and byte-identical to pre-7.71.0 builds.
+
+`PropScatter.GenerateCompanions(field, hosts, config)` is the underlying primitive if you want companions
+outside the streamer: it returns a `IReadOnlyList<PropPlacement>` that is tiling-invariant (companions over a host set
+equal the union over any chunk tiling), with `Y` resampled from the field and `MaxHeight` filtering out
+off-mountain placements.
+
+---
+
 ## Networked overworld (`KhaozEngine.Locomotion` + `KhaozEngine.NetWorld`)
 
 The movement math lives in one render-free place so local feel and networked feel are the same code.

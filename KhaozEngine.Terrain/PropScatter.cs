@@ -110,6 +110,31 @@ namespace KhaozEngine.Terrain
         };
     }
 
+    /// <summary>Inputs for <see cref="PropScatter.GenerateCompanions"/>: rings each host prop whose
+    /// <see cref="PropPlacement.Id"/> is in <see cref="HostKinds"/> with a few small-foliage instances, so
+    /// trees are dressed at the base instead of standing on bare ground. Every value (count, ring angle/radius,
+    /// kind, scale, yaw) hashes off the host's centimetre-quantized world XZ + per-channel salts, so it is
+    /// deterministic and tiling-invariant (the host set is tiling-invariant and each host maps independently to
+    /// its companions). Render-only: companion ids carry no collider.</summary>
+    public sealed class CompanionConfig
+    {
+        public int Seed = 1337;
+        /// <summary>Host ids that spawn companions (e.g. the tree kit ids). A host whose Id is not here spawns none.</summary>
+        public string[] HostKinds = Array.Empty<string>();
+        /// <summary>Weighted companion kit ids (bush / fern / ...).</summary>
+        public PropKind[] Kinds = Array.Empty<PropKind>();
+        public int CountMin = 2;
+        public int CountMax = 4;
+        /// <summary>Ring offset from the host base, metres.</summary>
+        public float RadiusMin = 0.6f;
+        public float RadiusMax = 1.8f;
+        public float ScaleMin = 0.7f;
+        public float ScaleMax = 1.1f;
+        /// <summary>Skip a companion whose resampled ground height exceeds this (same off-mountain exclusion as
+        /// the host layer); null = no cap.</summary>
+        public float? MaxHeight;
+    }
+
     /// <summary>Deterministic coordinate-hash prop scatter over the analytic terrain field. Every placement for a
     /// grid cell depends only on (cell, seed) - never on call order or which neighbouring cells are queried - so
     /// <see cref="Generate"/> over a large area equals the union of <see cref="Generate"/> over its tiles
@@ -124,6 +149,14 @@ namespace KhaozEngine.Terrain
         const int SaltKind = 0x77C0FFEE;
         const int SaltScale = 0x0BADF00D;
         const int SaltYaw = 0x13579BDF;
+
+        // Independent companion hash channels (distinct from the scatter salts above).
+        const int SaltCompanionCount = 0x2C1B3A4D;
+        const int SaltCompanionAngle = 0x6E5F7081;
+        const int SaltCompanionRadius = 0x3461F8B2;
+        const int SaltCompanionKind = 0x51C0FFEE;
+        const int SaltCompanionScale = 0x1ADF00D5;
+        const int SaltCompanionYaw = 0x24681357;
 
         /// <summary>Generate the placements whose cell centres fall in <paramref name="area"/>. Identical regardless
         /// of area tiling.</summary>
@@ -174,6 +207,77 @@ namespace KhaozEngine.Terrain
                 }
             }
             return result;
+        }
+
+        /// <summary>Ring each host whose <see cref="PropPlacement.Id"/> is in <paramref name="config"/>'s
+        /// <see cref="CompanionConfig.HostKinds"/> with <c>Count</c> small-foliage companions in a jittered ring,
+        /// Y resampled from the field. Pure per-host: count/angle/radius/kind/scale/yaw hash off the host's
+        /// centimetre-quantized world XZ + per-channel salts (never the host's list index, which is not
+        /// tiling-invariant), so the result is deterministic and the union over any tiling of the hosts equals
+        /// the whole. Render-only - companion placements carry no collider.</summary>
+        public static IReadOnlyList<PropPlacement> GenerateCompanions(
+            TerrainField field, IReadOnlyList<PropPlacement> hosts, CompanionConfig config)
+        {
+            if (field == null) throw new ArgumentNullException(nameof(field));
+            if (hosts == null) throw new ArgumentNullException(nameof(hosts));
+            if (config == null) throw new ArgumentNullException(nameof(config));
+
+            var result = new List<PropPlacement>();
+            if (config.Kinds.Length == 0 || config.HostKinds.Length == 0 || config.CountMax < config.CountMin)
+                return result;
+
+            int span = config.CountMax - config.CountMin + 1;
+
+            for (int i = 0; i < hosts.Count; i++)
+            {
+                PropPlacement host = hosts[i];
+                if (!IsHostKind(config.HostKinds, host.Id)) continue;
+
+                // Centimetre-quantized host position is the stable, tiling-invariant per-host hash key.
+                int hx = (int)MathF.Round(host.X * 100f);
+                int hz = (int)MathF.Round(host.Z * 100f);
+
+                int count = config.CountMin + (int)(CompanionHash01(hx, hz, config.Seed, SaltCompanionCount, 0) * span);
+                if (count > config.CountMax) count = config.CountMax;   // hash maps to [0,1]; keep count within the inclusive bound
+
+                for (int j = 0; j < count; j++)
+                {
+                    float angle = CompanionHash01(hx, hz, config.Seed, SaltCompanionAngle, j) * MathF.Tau;
+                    float radius = config.RadiusMin
+                                   + CompanionHash01(hx, hz, config.Seed, SaltCompanionRadius, j) * (config.RadiusMax - config.RadiusMin);
+                    float x = host.X + radius * MathF.Cos(angle);
+                    float z = host.Z + radius * MathF.Sin(angle);
+
+                    float y = field.SampleHeight(x, z);
+                    if (config.MaxHeight is float cap && y > cap) continue;
+
+                    int variant = PickKind(config.Kinds, CompanionHash01(hx, hz, config.Seed, SaltCompanionKind, j));
+                    float scale = config.ScaleMin
+                                  + CompanionHash01(hx, hz, config.Seed, SaltCompanionScale, j) * (config.ScaleMax - config.ScaleMin);
+                    float yaw = CompanionHash01(hx, hz, config.Seed, SaltCompanionYaw, j) * MathF.Tau;
+
+                    result.Add(new PropPlacement(config.Kinds[variant].Id, x, y, z, scale, yaw, variant));
+                }
+            }
+            return result;
+        }
+
+        static bool IsHostKind(string[] hostKinds, string id)
+        {
+            for (int i = 0; i < hostKinds.Length; i++)
+                if (string.Equals(hostKinds[i], id, StringComparison.Ordinal)) return true;
+            return false;
+        }
+
+        // Per-host, per-companion hash channel: mixes the companion index j into seed^salt so a host's N
+        // companions are uncorrelated. Returns [0, 1).
+        static float CompanionHash01(int hx, int hz, int seed, int salt, int j)
+        {
+            unchecked
+            {
+                int mixed = (int)((uint)(seed ^ salt) ^ ((uint)j * 0x9E3779B1u));
+                return TerrainNoise.Hash2(hx, hz, mixed) * 0.5f + 0.5f;
+            }
         }
 
         // Hash2 returns [-1, 1); map to [0, 1).

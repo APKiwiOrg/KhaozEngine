@@ -8,8 +8,9 @@ using KhaozEngine.Physics;
 using KhaozEngine.Render3D;
 
 // ke-propbake <manifest.json>
-// For each walkable-solid prop in the kit manifest, bake a top-surface heightmap (<id>.surf) next to the glTF and
-// stamp the manifest entry's "surface": true + "heightmap": "<id>.surf". Idempotent: re-running re-bakes + restamps.
+// For each prop in the kit manifest, bake a 3D collision shape (.coll). For walkable-solid props only, also bake a
+// top-surface heightmap (.surf) and stamp "surface": true + "heightmap". Stamp every prop's "collisionShape".
+// Idempotent: re-running re-bakes + restamps.
 if (args.Length < 1 || args[0] is "-h" or "--help")
 {
     Console.Error.WriteLine("usage: ke-propbake <props.manifest.json>");
@@ -34,40 +35,45 @@ try { root = JsonNode.Parse(File.ReadAllText(manifestPath))!; }
 catch (Exception ex) { Console.Error.WriteLine($"ke-propbake: cannot parse manifest JSON: {ex.Message}"); return 1; }
 JsonArray props = root["props"]!.AsArray();
 
-int baked = 0, skipped = 0;
+int baked = 0, blockers = 0;
 foreach (AssetEntry entry in manifest.Props)
 {
     GltfMesh mesh;
     try { mesh = PropLoader.LoadProp(entry); }
     catch (Exception ex) { Console.Error.WriteLine($"  ! {entry.Id}: {ex.Message}"); continue; }
 
-    if (!PropSurfaceBake.IsWalkableSolid(mesh))
-    {
-        Console.WriteLine($"  - {entry.Id}: thin blocker (no surface)");
-        skipped++;
-        continue;
-    }
-
-    string surfName = entry.Id + ".surf";
-    string outPath = Path.Combine(dir, surfName);
-    PropSurface surface = PropSurfaceBake.Bake(mesh);
-    using (FileStream fs = File.Create(outPath)) surface.Write(fs);
-
-    // Bake the 3D collision shape (.coll) alongside the .surf.
-    string collName = entry.Id + ".coll";
-    string collPath = Path.Combine(dir, collName);
-    PhysicsShape coll = PropCollisionBake.Bake(mesh);
-    using (FileStream cfs = File.Create(collPath)) PropCollisionBake.Write(coll, cfs);
-    string collKind = coll is TriangleMeshShape ? "triangle-mesh" : "convex-hull";
-
+    PropBakePlan plan = PropBakePlan.For(mesh);
     JsonObject node = props.OfType<JsonObject>().First(p => (string?)p["id"] == entry.Id);
-    node["surface"] = true;
-    node["heightmap"] = surfName;
+
+    // Always bake the collision shape (.coll) and stamp collisionShape.
+    string collName = entry.Id + ".coll";
+    using (FileStream cfs = File.Create(Path.Combine(dir, collName))) PropCollisionBake.Write(plan.Coll, cfs);
     node["collisionShape"] = collName;
-    Console.WriteLine($"  + {entry.Id}: baked {surfName} ({surface.Width}x{surface.Height}, top {surface.MaxHeight:0.00} m) + {collName} ({collKind})");
-    baked++;
+    string collKind = plan.Coll switch
+    {
+        TriangleMeshShape => "triangle-mesh",
+        CylinderShape     => "cylinder",
+        ConvexHullShape   => "convex-hull",
+        _                 => "shape",
+    };
+
+    // Only walkable solids also get a top-surface heightmap (.surf).
+    if (plan.Surface is { } surface)
+    {
+        string surfName = entry.Id + ".surf";
+        using (FileStream fs = File.Create(Path.Combine(dir, surfName))) surface.Write(fs);
+        node["surface"] = true;
+        node["heightmap"] = surfName;
+        Console.WriteLine($"  + {entry.Id}: baked {surfName} ({surface.Width}x{surface.Height}, top {surface.MaxHeight:0.00} m) + {collName} ({collKind})");
+        baked++;
+    }
+    else
+    {
+        Console.WriteLine($"  + {entry.Id}: baked {collName} ({collKind}) [thin blocker, no surface]");
+        blockers++;
+    }
 }
 
 File.WriteAllText(manifestPath, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-Console.WriteLine($"ke-propbake: {baked} surface(s) baked, {skipped} blocker(s) skipped; manifest stamped.");
+Console.WriteLine($"ke-propbake: {baked} surface(s) + {baked + blockers} collision shape(s) baked, {blockers} blocker(s); manifest stamped.");
 return 0;

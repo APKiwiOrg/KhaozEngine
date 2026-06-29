@@ -180,16 +180,24 @@ public static class CharacterMovement
         const float Skin = 0.02f;
         const int MaxIterations = 4;
 
-        // Depenetrate the start position.
-        var current = from;
-        if (world.ComputePenetration(capsule, Pose.At(current), out Vector3 mtv))
-            current += mtv;
-
         // Horizontal remaining displacement (keep Y fixed throughout).
+        var current = from;
         var remaining = new Vector3(to.X - current.X, 0f, to.Z - current.Z);
 
         for (int iter = 0; iter < MaxIterations; iter++)
         {
+            // Depenetrate at the top of EVERY iteration (not just once before the loop): a swept slide
+            // can advance the capsule into a fresh overlap, and recovering it each pass is what makes a
+            // rock standable/mountable instead of trapping. Apply ONLY the XZ component - this is the
+            // horizontal solver (returns from.Y); pushing Y here would shove the capsule sideways off a
+            // domed top it is resting on. Vertical support is owned by ProbeSupport / the ground step.
+            if (world.ComputePenetration(capsule, Pose.At(current), out Vector3 mtv))
+            {
+                current.X += mtv.X;
+                current.Z += mtv.Z;
+                remaining = new Vector3(to.X - current.X, 0f, to.Z - current.Z);
+            }
+
             float remainLen = remaining.Length();
             if (remainLen < 1e-5f) break;
 

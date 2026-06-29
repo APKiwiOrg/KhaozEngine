@@ -24,12 +24,37 @@ internal static class ShapeFactory
             CapsuleShape c    => sim.Shapes.Add(new Capsule(c.Radius, c.Length)),
             // BoxShape HalfExtents -> Bepu Box full width/height/depth
             BoxShape b        => sim.Shapes.Add(new Box(b.HalfExtents.X * 2f, b.HalfExtents.Y * 2f, b.HalfExtents.Z * 2f)),
-            CylinderShape cy  => sim.Shapes.Add(new Cylinder(cy.Radius, cy.Length)),
+            CylinderShape cy  => AddBaseAlignedCylinder(sim, pool, cy),
             ConvexHullShape ch => AddConvexHull(sim, pool, ch),
             TriangleMeshShape tm => AddTriangleMesh(sim, pool, tm),
             CompoundShape co  => AddCompound(sim, pool, co),
             _ => throw new NotSupportedException($"PhysicsShape type '{shape.GetType().Name}' is not supported by the Bepu backend.")
         };
+    }
+
+    // Bepu's Cylinder is CENTRED on the body pose, but the rest of the seam's shapes (convex hulls and
+    // triangle meshes baked by PropCollisionBake) carry their Y range in their geometry with the base at
+    // y=0, and the runtime places every prop static at the prop BASE (the terrain height at scatter time;
+    // see ChunkStatics.AddAll). A bare Cylinder placed at the base would sit half-buried (its centre at
+    // the base), blocking only the top half at the wrong height. Wrap it in a single-child compound whose
+    // child is lifted +Length/2 in Y, so a CylinderShape behaves base-aligned like a hull/mesh: it spans
+    // base -> base+Length when the static pose is at the base. The trunk-cylinder bake (Fix B) depends on
+    // this so a tree blocks at trunk-radius height instead of half-buried.
+    private static TypedIndex AddBaseAlignedCylinder(BepuSim sim, BufferPool pool, CylinderShape cy)
+    {
+        var builder = new CompoundBuilder(pool, sim.Shapes, 1);
+        try
+        {
+            var cylIndex = sim.Shapes.Add(new Cylinder(cy.Radius, cy.Length));
+            var localPose = new RigidPose(new Vector3(0f, cy.Length * 0.5f, 0f), Quaternion.Identity);
+            builder.AddForKinematic(cylIndex, in localPose, 1f);
+            builder.BuildKinematicCompound(out var children);
+            return sim.Shapes.Add(new Compound(children));
+        }
+        finally
+        {
+            builder.Dispose();
+        }
     }
 
     private static TypedIndex AddConvexHull(BepuSim sim, BufferPool pool, ConvexHullShape ch)

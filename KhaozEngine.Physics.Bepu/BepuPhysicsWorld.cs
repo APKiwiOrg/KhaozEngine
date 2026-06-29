@@ -106,238 +106,65 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
         return true;
     }
 
-    public bool ComputePenetration(CapsuleShape capsule, Pose pose, out Vector3 mtv)
+    public unsafe bool ComputePenetration(CapsuleShape capsule, Pose pose, out Vector3 mtv)
     {
-        // Compute a conservative AABB for the capsule in world space.
+        // General capsule-vs-static depenetration over EVERY shape type (box, sphere, cylinder, convex
+        // hull, triangle mesh, compound) via one BepuPhysics CollisionBatcher manifold query. This
+        // replaced the per-shape analytic switch (which only handled box/sphere and reported no
+        // penetration for hulls/meshes, trapping the capsule inside rocks). The deepest single contact
+        // across all candidate pairs is the MTV.
+        //
+        // Mesh statics are ONE-SIDED (only front/CW-wound faces generate contacts). That is fine here:
+        // the swept collide-and-slide always precedes this depenetration from a known-outside position,
+        // so the capsule never begins a tick already through a wall.
         var bepuCapsule = new Capsule(capsule.Radius, capsule.Length);
-        bepuCapsule.ComputeBounds(pose.Orientation, out var bepuMin, out var bepuMax);
-        var boundsMin = pose.Position + bepuMin;
-        var boundsMax = pose.Position + bepuMax;
+        bepuCapsule.ComputeBounds(pose.Orientation, out var bMin, out var bMax);
 
-        // Collect all statics whose AABB overlaps the capsule AABB.
         var collector = new OverlapCollector();
-        _sim.BroadPhase.GetOverlaps(boundsMin, boundsMax, ref collector);
+        _sim.BroadPhase.GetOverlaps(pose.Position + bMin, pose.Position + bMax, ref collector);
+        if (collector.Found.Count == 0) { mtv = default; return false; }
 
-        if (collector.Found.Count == 0)
+        var callbacks = new PenetrationCallbacks();
+        // Reuse the live collision-task registry off NarrowPhase. dt = 0 so there is no velocity-bound
+        // expansion; speculativeMargin = 0 below so only real penetration (depth >= 0) reaches the callback.
+        var batcher = new CollisionBatcher<PenetrationCallbacks>(
+            _pool, _sim.Shapes, _sim.NarrowPhase.CollisionTaskRegistry, 0f, callbacks);
+        try
         {
-            mtv = default;
-            return false;
-        }
-
-        // For each candidate, compute the capsule-vs-shape penetration analytically.
-        // Accumulate the deepest MTV (largest depth, dominant axis).
-        Vector3 deepest = Vector3.Zero;
-        float deepestDepth = 0f;
-
-        foreach (var collidable in collector.Found)
-        {
-            if (collidable.Mobility != CollidableMobility.Static)
-                continue;
-
-            _sim.Statics.GetDescription(collidable.StaticHandle, out var desc);
-            var staticPose = new Pose(desc.Pose.Position, desc.Pose.Orientation);
-
-            bool overlap = ComputeCapsuleShapeMtv(capsule, pose, desc.Shape, staticPose, out var candidateMtv);
-            if (overlap)
+            int capsuleType = bepuCapsule.TypeId;
+            int capsuleSize = Unsafe.SizeOf<Capsule>();
+            foreach (var collidable in collector.Found)
             {
-                float depth = candidateMtv.Length();
-                if (depth > deepestDepth)
-                {
-                    deepestDepth = depth;
-                    deepest = candidateMtv;
-                }
+                if (collidable.Mobility != CollidableMobility.Static) continue;
+                _sim.Statics.GetDescription(collidable.StaticHandle, out var desc);
+                _sim.Shapes[desc.Shape.Type].GetShapeData(desc.Shape.Index, out var staticData, out _);
+
+                // A = static, B = capsule. The capsule is an ephemeral stack value; CacheShapeB copies
+                // it into the batcher's pool so no transient shape registration is needed in _sim.Shapes.
+                batcher.CacheShapeB(desc.Shape.Type, capsuleType,
+                    Unsafe.AsPointer(ref bepuCapsule), capsuleSize, out var cachedCapsule);
+                var offsetB = pose.Position - desc.Pose.Position; // capsule relative to static (A)
+                var staticOrientation = desc.Pose.Orientation;
+                var capsuleOrientation = pose.Orientation;
+                var continuation = new PairContinuation(0);
+                batcher.AddDirectly(desc.Shape.Type, capsuleType, staticData, cachedCapsule,
+                    in offsetB, in staticOrientation, in capsuleOrientation, 0f, in continuation);
             }
         }
-
-        if (deepestDepth <= 0f)
+        finally
         {
-            mtv = default;
-            return false;
+            // Flush executes all collision testers synchronously AND returns every pool buffer the
+            // batcher took. It must run on every path, so it lives in finally.
+            batcher.Flush();
         }
 
-        mtv = deepest;
-        return true;
-    }
-
-    // Analytical penetration per shape type. Returns true and an MTV when overlapping.
-    private bool ComputeCapsuleShapeMtv(CapsuleShape capsule, Pose capsulePose, TypedIndex shapeIndex, Pose staticPose, out Vector3 mtv)
-    {
-        // For SP1: only Box statics are tested. Implement capsule-vs-box analytically.
-        // For other shapes, fall back to a sweep-based approximation.
-
-        // The capsule's local Y axis is the segment axis.
-        // Capsule segment endpoints in world space:
-        var localHalfAxis = Vector3.Transform(new Vector3(0, capsule.Length * 0.5f, 0), capsulePose.Orientation);
-        var p0 = capsulePose.Position - localHalfAxis; // bottom sphere centre
-        var p1 = capsulePose.Position + localHalfAxis; // top sphere centre
-        float r = capsule.Radius;
-
-        // Transform capsule segment into static body local space.
-        var invOri = Quaternion.Inverse(staticPose.Orientation);
-        var relP0 = Vector3.Transform(p0 - staticPose.Position, invOri);
-        var relP1 = Vector3.Transform(p1 - staticPose.Position, invOri);
-
-        // Probe the shape type by checking against known type IDs.
-        Vector3 halfExtents;
-        if (TryGetBoxHalfExtents(shapeIndex, out halfExtents))
-        {
-            return ComputeCapsuleVsBoxMtv(relP0, relP1, r, halfExtents, staticPose.Orientation, out mtv);
-        }
-        else if (TryGetSphereRadius(shapeIndex, out float sphereR))
-        {
-            // Capsule vs sphere: find closest point on segment to sphere centre (relOrigin = zero).
-            var segDir = relP1 - relP0;
-            float segLenSq = segDir.LengthSquared();
-            float t2 = segLenSq > 1e-10f ? Math.Clamp(Vector3.Dot(-relP0, segDir) / segLenSq, 0f, 1f) : 0f;
-            var closest = relP0 + segDir * t2;
-            float dist = closest.Length();
-            float combinedR = r + sphereR;
-            if (dist >= combinedR)
-            {
-                mtv = default;
-                return false;
-            }
-            float depth = combinedR - dist;
-            var dirWS = dist > 1e-6f
-                ? Vector3.Transform(-closest / dist, staticPose.Orientation)
-                : Vector3.UnitY;
-            mtv = dirWS * depth;
-            return true;
-        }
-        else
-        {
-            // Hull/mesh/compound depenetration is deferred to SP2's collision-manifold path.
-            // SP1 reports no penetration for these shapes and relies on the swept collide-and-slide
-            // to keep the capsule out. Returning true here caused spurious nudges near rocks due to
-            // AABB-vs-geometry overlap slack being misread as actual penetration.
-            mtv = default;
-            return false;
-        }
-    }
-
-    private bool TryGetBoxHalfExtents(TypedIndex shapeIndex, out Vector3 halfExtents)
-    {
-        // Check the type id BEFORE calling GetShape: GetShape<Box>(index) reads from
-        // the Box batch unconditionally and interprets mismatched-type memory as a Box.
-        var boxTypeId = default(Box).TypeId;
-        if (shapeIndex.Type != boxTypeId)
-        {
-            halfExtents = default;
-            return false;
-        }
-        ref var box = ref _sim.Shapes.GetShape<Box>(shapeIndex.Index);
-        halfExtents = new Vector3(box.HalfWidth, box.HalfHeight, box.HalfLength);
-        return true;
-    }
-
-    private bool TryGetSphereRadius(TypedIndex shapeIndex, out float radius)
-    {
-        var sphereTypeId = default(Sphere).TypeId;
-        if (shapeIndex.Type != sphereTypeId)
-        {
-            radius = 0f;
-            return false;
-        }
-        ref var sphere = ref _sim.Shapes.GetShape<Sphere>(shapeIndex.Index);
-        radius = sphere.Radius;
-        return true;
-    }
-
-    // Analytical capsule-vs-AABB MTV in the AABB's local space.
-    // capsule segment endpoints (relP0, relP1) and radius r are already in local space.
-    // halfExtents are the box half-extents. orientation transforms local -> world.
-    private static bool ComputeCapsuleVsBoxMtv(
-        Vector3 relP0, Vector3 relP1, float r, Vector3 halfExtents,
-        Quaternion boxOrientation, out Vector3 mtv)
-    {
-        // Find closest point on the segment to the AABB, then compute sphere-vs-AABB for that sphere.
-        // We test penetration of the capsule as the union of spheres along the segment.
-        // For each sphere endpoint plus the parametric closest point, find the best (deepest) MTV.
-
-        // Find t in [0,1] that minimises distance from segment point to AABB.
-        // We use the closest point on segment to the AABB centre (origin in local space).
-        var segDir = relP1 - relP0;
-        float segLenSq = segDir.LengthSquared();
-        // t for closest point on segment to AABB centre (origin):
-        float t = segLenSq > 1e-10f ? Math.Clamp(Vector3.Dot(-relP0, segDir) / segLenSq, 0f, 1f) : 0f;
-        var sphereCentreLocal = relP0 + segDir * t;
-
-        // Evaluate all three candidate sphere centres and return the deepest MTV.
-        // Short-circuit OR would return the FIRST penetrating candidate, not the deepest,
-        // giving a wrong push direction when a shallower candidate happens to test first.
-        bool anyHit = false;
-        Vector3 deepestMtv = default;
-        float deepestDepthSq = 0f;
-
-        if (SpherePenetratesBox(sphereCentreLocal, r, halfExtents, boxOrientation, out var mtv0))
-        {
-            float dsq = mtv0.LengthSquared();
-            if (dsq > deepestDepthSq) { deepestDepthSq = dsq; deepestMtv = mtv0; }
-            anyHit = true;
-        }
-        if (SpherePenetratesBox(relP0, r, halfExtents, boxOrientation, out var mtv1))
-        {
-            float dsq = mtv1.LengthSquared();
-            if (dsq > deepestDepthSq) { deepestDepthSq = dsq; deepestMtv = mtv1; }
-            anyHit = true;
-        }
-        if (SpherePenetratesBox(relP1, r, halfExtents, boxOrientation, out var mtv2))
-        {
-            float dsq = mtv2.LengthSquared();
-            if (dsq > deepestDepthSq) { deepestDepthSq = dsq; deepestMtv = mtv2; }
-            anyHit = true;
-        }
-
-        mtv = deepestMtv;
-        return anyHit;
-    }
-
-    private static bool SpherePenetratesBox(
-        Vector3 sphereCentreLocal, float r, Vector3 halfExtents,
-        Quaternion boxOrientation, out Vector3 mtvWorld)
-    {
-        // Clamp to AABB to get the closest point on the surface.
-        var clampedLocal = new Vector3(
-            Math.Clamp(sphereCentreLocal.X, -halfExtents.X, halfExtents.X),
-            Math.Clamp(sphereCentreLocal.Y, -halfExtents.Y, halfExtents.Y),
-            Math.Clamp(sphereCentreLocal.Z, -halfExtents.Z, halfExtents.Z));
-
-        var delta = sphereCentreLocal - clampedLocal;
-        float distSq = delta.LengthSquared();
-
-        if (distSq >= r * r && !(distSq < 1e-10f))
-        {
-            // Not penetrating (or exactly on surface).
-            mtvWorld = default;
-            return false;
-        }
-
-        Vector3 mtvLocal;
-
-        if (distSq < 1e-10f)
-        {
-            // Sphere centre is inside the AABB: find the minimum penetration axis.
-            // Compute distance to each face and pick the shallowest (minimum push).
-            float dx = halfExtents.X - MathF.Abs(sphereCentreLocal.X);
-            float dy = halfExtents.Y - MathF.Abs(sphereCentreLocal.Y);
-            float dz = halfExtents.Z - MathF.Abs(sphereCentreLocal.Z);
-
-            if (dx <= dy && dx <= dz)
-                mtvLocal = new Vector3(MathF.Sign(sphereCentreLocal.X) * (dx + r), 0, 0);
-            else if (dy <= dz)
-                mtvLocal = new Vector3(0, MathF.Sign(sphereCentreLocal.Y) * (dy + r), 0);
-            else
-                mtvLocal = new Vector3(0, 0, MathF.Sign(sphereCentreLocal.Z) * (dz + r));
-        }
-        else
-        {
-            // Sphere centre outside but intersecting: push along the delta direction.
-            float dist = MathF.Sqrt(distSq);
-            float depth = r - dist;
-            mtvLocal = (delta / dist) * depth;
-        }
-
-        mtvWorld = Vector3.Transform(mtvLocal, boxOrientation);
+        callbacks = batcher.Callbacks; // read accumulated result AFTER flush
+        if (callbacks.DeepestDepth <= 0f) { mtv = default; return false; }
+        // With A = static, B = capsule, the BepuPhysics 2.4.0 contact normal points from the CAPSULE
+        // toward the STATIC (the "into the surface" direction; verified empirically and locked by the
+        // hull-penetration sign test). The minimum-translation vector that pushes the capsule OUT is the
+        // negation, applied by the caller as capsulePos += mtv.
+        mtv = -callbacks.DeepestNormal * callbacks.DeepestDepth;
         return true;
     }
 
@@ -366,6 +193,43 @@ internal struct OverlapCollector : IBreakableForEach<CollidableReference>
     public readonly List<CollidableReference> Found = new();
     public OverlapCollector() { }
     public bool LoopBody(CollidableReference item) { Found.Add(item); return true; }
+}
+
+// CollisionBatcher callbacks for capsule-vs-static depenetration: keep the single deepest contact
+// across all pairs. With A = static, B = capsule, the contact normal points capsule -> static; the
+// caller negates it to get the push-OUT MTV. We take the deepest single contact, NOT a sum (summing
+// two touching surfaces pushes diagonally into neither; the slide loop resolves any residual next
+// iteration).
+internal struct PenetrationCallbacks : ICollisionCallbacks
+{
+    public Vector3 DeepestNormal;   // unit, points capsule -> static (caller negates for push-out)
+    public float DeepestDepth;      // > 0 = penetrating
+
+    public bool AllowCollisionTesting(int pairId, int childA, int childB) => true;
+
+    public void OnChildPairCompleted(int pairId, int childA, int childB, ref ConvexContactManifold m)
+        => Accumulate(ref m);
+
+    public void OnPairCompleted<TManifold>(int pairId, ref TManifold m)
+        where TManifold : unmanaged, IContactManifold<TManifold>
+        => Accumulate(ref m);
+
+    // Accumulating in BOTH OnChildPairCompleted and OnPairCompleted is safe (deepest-wins is idempotent).
+    // A non-convex (mesh/compound) result fans out per overlapping triangle/child into a
+    // NonconvexContactManifold; the generic IContactManifold<T> handles convex and non-convex alike.
+    private void Accumulate<TManifold>(ref TManifold m)
+        where TManifold : unmanaged, IContactManifold<TManifold>
+    {
+        for (int i = 0; i < m.Count; i++)
+        {
+            m.GetContact(i, out _, out var normal, out float depth, out _);
+            if (depth > DeepestDepth)
+            {
+                DeepestDepth = depth;
+                DeepestNormal = normal;
+            }
+        }
+    }
 }
 
 // Minimal no-gravity pose integrator (no dynamic bodies in SP1).

@@ -38,6 +38,12 @@ namespace KhaozEngine.Render3D
                         points[i] = new Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
                     return new ConvexHullShape(points);
                 }
+                case 3: // CylinderShape
+                {
+                    float radius = r.ReadSingle();
+                    float length = r.ReadSingle();
+                    return new CylinderShape(radius, length);
+                }
                 case 2: // TriangleMeshShape
                 {
                     int vCount = r.ReadInt32();

@@ -47,14 +47,53 @@ namespace KhaozEngine.Render3D
             return (maxY - minY) > PropSurfaceBakeOptions.Default.SolidHeightMeters;
         }
 
-        /// <summary>Bake a collision shape from a normalized prop mesh. Returns a
-        /// <see cref="ConvexHullShape"/> for solid props and a <see cref="TriangleMeshShape"/> for buildings.</summary>
+        /// <summary>True when the mesh is a tree (or any non-walkable-solid prop): a thin trunk near the
+        /// base with a canopy spreading out above. Reuses the canopy-spread classification already in
+        /// <see cref="PropSurfaceBake.IsWalkableSolid"/> (walkable-solid = rock/log/building; everything
+        /// else = tree). Trees get a trunk-only <see cref="CylinderShape"/> so the player can walk under
+        /// the canopy instead of into a full-mesh convex hull.</summary>
+        public static bool IsTree(GltfMesh normalizedMesh)
+        {
+            if (normalizedMesh == null) throw new ArgumentNullException(nameof(normalizedMesh));
+            return !PropSurfaceBake.IsWalkableSolid(normalizedMesh);
+        }
+
+        /// <summary>Bake a collision shape from a normalized prop mesh. Classification priority:
+        /// tree -> trunk <see cref="CylinderShape"/>; building -> <see cref="TriangleMeshShape"/>;
+        /// rock/solid -> <see cref="ConvexHullShape"/>.</summary>
         public static PhysicsShape Bake(GltfMesh normalizedMesh)
         {
             if (normalizedMesh == null) throw new ArgumentNullException(nameof(normalizedMesh));
-            if (IsBuilding(normalizedMesh))
-                return BakeTriangleMesh(normalizedMesh);
+            if (IsTree(normalizedMesh))     return BakeTrunkCylinder(normalizedMesh);
+            if (IsBuilding(normalizedMesh)) return BakeTriangleMesh(normalizedMesh);
             return BakeConvexHull(normalizedMesh);
+        }
+
+        /// <summary>Bake a trunk-only cylinder from a tree mesh: radius = the largest XZ half-extent of
+        /// the geometry in the bottom <c>trunkHeightMeters</c> (the trunk slice, not the canopy), length =
+        /// the full prop height. Placed base-aligned at runtime (the Bepu backend lifts the cylinder
+        /// +Length/2 so it spans base -> top; see ShapeFactory).</summary>
+        static CylinderShape BakeTrunkCylinder(GltfMesh mesh)
+        {
+            const float trunkHeightMeters = 1.0f;
+            float minY = float.MaxValue, maxY = float.MinValue;
+            foreach (ModelVertex v in mesh.Vertices)
+            {
+                if (v.Position.Y < minY) minY = v.Position.Y;
+                if (v.Position.Y > maxY) maxY = v.Position.Y;
+            }
+            float captureTop = minY + trunkHeightMeters;
+            float hx = 0f, hz = 0f;
+            foreach (ModelVertex v in mesh.Vertices)
+            {
+                if (v.Position.Y > captureTop) continue;
+                float ax = MathF.Abs(v.Position.X), az = MathF.Abs(v.Position.Z);
+                if (ax > hx) hx = ax;
+                if (az > hz) hz = az;
+            }
+            float radius = MathF.Max(hx, hz);   // largest trunk half-extent
+            float length = maxY - minY;          // full prop height
+            return new CylinderShape(radius, length);
         }
 
         static ConvexHullShape BakeConvexHull(GltfMesh mesh)
@@ -133,6 +172,7 @@ namespace KhaozEngine.Render3D
         // Shape kind byte written to the binary.
         const byte KindConvexHull = 1;
         const byte KindTriangleMesh = 2;
+        const byte KindCylinder = 3;
 
         /// <summary>Serialize <paramref name="shape"/> to <paramref name="stream"/> in the KECL binary format.
         /// Magic (uint32 LE) + version (byte) + kind (byte) + payload.</summary>
@@ -150,6 +190,11 @@ namespace KhaozEngine.Render3D
                     w.Write(hull.Points.Length);
                     foreach (Vector3 p in hull.Points)
                     { w.Write(p.X); w.Write(p.Y); w.Write(p.Z); }
+                    break;
+                case CylinderShape cyl:
+                    w.Write(KindCylinder);
+                    w.Write(cyl.Radius);
+                    w.Write(cyl.Length);
                     break;
                 case TriangleMeshShape mesh:
                     w.Write(KindTriangleMesh);

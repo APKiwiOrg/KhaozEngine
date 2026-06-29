@@ -31,25 +31,30 @@ namespace KhaozEngine.Tests.Terrain
         public void ScatterLayer_factory_sets_a_scatter_layer()
         {
             ScatterConfig cfg = OneKind("pine_a", 1, 8f);
-            PropLayer layer = PropLayer.ScatterLayer(cfg, NoMeshes(), 90f);
+            var meshes = NoMeshes();
+            PropLayer layer = PropLayer.ScatterLayer(cfg, meshes, 90f);
 
             Assert.False(layer.IsCompanion);
             Assert.Same(cfg, layer.Scatter);
             Assert.Null(layer.Companions);
+            Assert.Equal(-1, layer.HostLayerIndex);
             Assert.Equal(90f, layer.DrawRadius);
+            Assert.Same(meshes, layer.Meshes);
         }
 
         [Fact]
         public void CompanionLayer_factory_sets_a_companion_layer()
         {
             var comp = new CompanionConfig { HostKinds = new[] { "pine_a" }, Kinds = new[] { new PropKind("bush", 1f) } };
-            PropLayer layer = PropLayer.CompanionLayer(0, comp, NoMeshes(), 40f);
+            var meshes = NoMeshes();
+            PropLayer layer = PropLayer.CompanionLayer(0, comp, meshes, 40f);
 
             Assert.True(layer.IsCompanion);
             Assert.Same(comp, layer.Companions);
             Assert.Null(layer.Scatter);
             Assert.Equal(0, layer.HostLayerIndex);
             Assert.Equal(40f, layer.DrawRadius);
+            Assert.Same(meshes, layer.Meshes);
         }
     }
 }

@@ -20,6 +20,8 @@ namespace KhaozEngine.Terrain
         public IReadOnlyDictionary<string, MeshHandle> Meshes { get; }
         public float DrawRadius { get; }
 
+        // Invariant (enforced by the private ctor + ScatterLayer/CompanionLayer factories): a non-companion
+        // layer always has a non-null Scatter, and a companion layer always has a non-null Companions.
         public bool IsCompanion => Companions != null;
 
         PropLayer(ScatterConfig? scatter, CompanionConfig? companions, int hostLayerIndex,

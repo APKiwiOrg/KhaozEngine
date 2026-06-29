@@ -38,7 +38,7 @@ namespace KhaozEngine.Render3D
         readonly List<Mesh?> _meshes = new();
         readonly MeshSlotMap _slots = new();
         // Loaded albedo textures, indexed by TextureHandle.Index. Shared across meshes; disposed in Dispose.
-        readonly List<IGpuTexture> _textures = new();
+        readonly List<IGpuTexture?> _textures = new();   // a slot is nulled by UnloadTexture (handle stays stable, not recycled)
         // Loaded splat-terrain materials, indexed by SplatMaterialHandle.ListIndex. Each owns its two texture
         // arrays + params UBO + resource set; shared across meshes; disposed in Dispose / UnloadSplatMaterial.
         readonly List<SplatMaterialEntry?> _splatMaterials = new();
@@ -192,7 +192,7 @@ namespace KhaozEngine.Render3D
         {
             IGpuResourceSet? material = null;
             if (texture.IsValid)
-                material = _model.CreateMaterialSet(_textures[texture.ListIndex]);
+                material = _model.CreateMaterialSet(_textures[texture.ListIndex]!);
             return LoadMeshInternal(mesh, material);
         }
 
@@ -368,6 +368,28 @@ namespace KhaozEngine.Render3D
             _splatMaterials[h.ListIndex] = null;
         }
 
+        /// <summary>Free the GPU texture backing <paramref name="h"/> (and its lazily-created textured-billboard
+        /// resource set) and null its slot. A <c>default</c>/Invalid handle is a no-op; unloading an
+        /// already-unloaded slot is also a no-op. The slot is NOT recycled, so handles stay stable. Because a
+        /// texture can be shared by several meshes/materials, the scene can't know who else references it - any mesh
+        /// still bound to this texture must be unloaded first or simply not drawn afterwards (mirrors
+        /// <see cref="UnloadSplatMaterial"/>). Without this, textures only free at <see cref="Dispose"/>, so a
+        /// long-lived scene that streams or reloads textured assets leaks one native texture per load.</summary>
+        public void UnloadTexture(TextureHandle h)
+        {
+            if (!h.IsValid) return;
+            int i = h.ListIndex;
+            _textures[i]?.Dispose();
+            _textures[i] = null;
+            if (i < _texBillboardSets.Count) { _texBillboardSets[i]?.Dispose(); _texBillboardSets[i] = null; }
+        }
+
+        /// <summary>Number of texture slots still holding a live GPU texture (loaded and not yet unloaded). For tests.</summary>
+        internal int LiveTextureCount
+        {
+            get { int n = 0; foreach (var t in _textures) if (t != null) n++; return n; }
+        }
+
         /// <summary>Upload a skinned mesh to the GPU once; returns a handle to draw it with
         /// <see cref="DrawSkinned(KhaozEngine.Render3D.SkinnedMeshHandle, System.ReadOnlySpan{System.Numerics.Matrix4x4}, System.Numerics.Matrix4x4, KhaozEngine.Primitives.Color)"/>. Untextured (samples the 1x1 white default, so colour is the baked vertex
         /// colour times any per-instance tint).</summary>
@@ -377,7 +399,7 @@ namespace KhaozEngine.Render3D
         /// (<c>texRgb * vColor * vTint</c>). An invalid handle falls back to untextured.</summary>
         public SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh, TextureHandle texture)
         {
-            IGpuResourceSet? material = texture.IsValid ? _model.CreateMaterialSet(_textures[texture.ListIndex]) : null;
+            IGpuResourceSet? material = texture.IsValid ? _model.CreateMaterialSet(_textures[texture.ListIndex]!) : null;
             return LoadSkinnedInternal(mesh, material);
         }
 
@@ -993,7 +1015,7 @@ namespace KhaozEngine.Render3D
             var set = _texBillboardSets[texListIndex];
             if (set is null)
             {
-                set = _texBillboards.CreateTextureSet(_textures[texListIndex]);
+                set = _texBillboards.CreateTextureSet(_textures[texListIndex]!);
                 _texBillboardSets[texListIndex] = set;
             }
             return set;
@@ -1016,7 +1038,7 @@ namespace KhaozEngine.Render3D
                 if (m is { } e) { e.Vb.Dispose(); e.Ib.Dispose(); e.MaterialSet?.Dispose(); }
             foreach (var s in _texBillboardSets) s?.Dispose();
             _texBillboardSets.Clear();
-            foreach (var t in _textures) t.Dispose();
+            foreach (var t in _textures) t?.Dispose();
             _textures.Clear();
             foreach (var s in _splatMaterials) s?.Dispose();
             _splatMaterials.Clear();

@@ -52,7 +52,7 @@ public sealed class ShardedWorldServerConfig
 /// respawn. Headless, transport-injected. Persistence is the shipped <see cref="WorldPersistence"/> via
 /// <see cref="IWorldPersistenceHost"/>, player-keyed across cells.
 /// </summary>
-public sealed class ShardedWorldServer : IWorldPersistenceHost
+public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllable
 {
     private readonly ShardedWorldServerConfig config;
     private readonly ReplicationRegistry registry = MoveProtocol.CreateRegistry();
@@ -72,6 +72,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
     // measure the authoritative correction after the cells step. Reused across ticks (single-threaded orchestration).
     private readonly List<(int slot, PlayerMoveState prev, MoveCommand cmd)> correctionScratch = new();
     private readonly DrainController drain = new();
+    private readonly AdminCommandBuffer admin = new();
     private readonly MoveTuning tuning;
     private int nextNetId = 1;
 
@@ -128,8 +129,9 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
         OnSuspiciousActivity?.Invoke(new SuspiciousActivity(slot, reason, magnitude));
 
     /// <summary>Disconnects a player's connection (a kick) - the policy seam a game's <see cref="OnSuspiciousActivity"/>
-    /// handler calls. No-op for an unknown slot.</summary>
-    public void Disconnect(int slot) => net.Disconnect(slot);
+    /// handler calls. Immediately removes the slot from authoritative state via <see cref="OnLeave"/> and closes the
+    /// transport connection. No-op for an unknown slot.</summary>
+    public void Disconnect(int slot) { net.Disconnect(slot); OnLeave(slot); }
 
     /// <summary>Broadcasts a <see cref="ServerNotice"/> to every connected client (reliable-ordered). Same contract
     /// as <see cref="WorldServer.BroadcastNotice"/>.</summary>
@@ -240,6 +242,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
     /// <summary>Steps one authoritative server frame across every cell, then serves each client its home-cell AoI.</summary>
     public void Tick(float dt)
     {
+        admin.Drain(ApplyAdminCommand);
         var slots = new List<int>(netIdBySlot.Keys);
         bool trackCorrection = config.AntiCheat.CorrectionEnabled;
         correctionScratch.Clear();
@@ -298,6 +301,83 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
         if (config.AdvanceWorldTick)
             foreach (CellSim cell in host.Cells) cell.World.AdvanceTick();
         drain.Advance(dt);
+        admin.Publish(BuildOnlineSnapshot());
+    }
+
+    /// <inheritdoc/>
+    public IReadOnlyList<OnlinePlayer> ListOnline() => admin.Online;
+
+    /// <inheritdoc/>
+    public void Teleport(PlayerRef target, Vector3 position) =>
+        admin.Enqueue(new AdminCommand { Kind = AdminCommandKind.Teleport, Target = target, Position = position });
+
+    /// <inheritdoc/>
+    public void Kick(PlayerRef target, string reason) =>
+        admin.Enqueue(new AdminCommand { Kind = AdminCommandKind.Kick, Target = target, Text = reason ?? string.Empty });
+
+    /// <inheritdoc/>
+    public void Broadcast(string text) =>
+        admin.Enqueue(new AdminCommand { Kind = AdminCommandKind.Broadcast, Text = text ?? string.Empty });
+
+    private int ResolveSlot(in PlayerRef target)
+    {
+        if (target.IsSlot) return netIdBySlot.ContainsKey(target.SlotValue) ? target.SlotValue : -1;
+        foreach (KeyValuePair<int, string> kv in accountIdBySlot)
+            if (kv.Value == target.AccountValue) return kv.Key;
+        return -1;
+    }
+
+    private void SendNoticeTo(int slot, in ServerNotice notice)
+    {
+        byte[] envelope = MoveProtocol.EncodeServerFrame(MoveProtocol.ServerFrameKind.Notice, MoveProtocol.EncodeNotice(notice));
+        net.SendTo(slot, envelope, NetChannelReliability.ReliableOrdered);
+    }
+
+    private void ApplyAdminCommand(AdminCommand cmd)
+    {
+        switch (cmd.Kind)
+        {
+            case AdminCommandKind.Teleport:
+            {
+                int slot = ResolveSlot(cmd.Target);
+                if (slot >= 0 && TryGetPlayerState(slot, out PlayerMoveState st))
+                {
+                    st.Position = cmd.Position;
+                    st.VerticalVelocity = 0f;
+                    SetPlayerState(slot, st);
+                }
+                break;
+            }
+            case AdminCommandKind.Kick:
+            {
+                int slot = ResolveSlot(cmd.Target);
+                if (slot >= 0)
+                {
+                    SendNoticeTo(slot, new ServerNotice(ServerNoticeKind.Custom, cmd.Text));
+                    Disconnect(slot);
+                }
+                break;
+            }
+            case AdminCommandKind.Broadcast:
+                BroadcastNotice(new ServerNotice(ServerNoticeKind.Custom, cmd.Text));
+                break;
+        }
+    }
+
+    private OnlinePlayer[] BuildOnlineSnapshot()
+    {
+        var list = new List<OnlinePlayer>(netIdBySlot.Count);
+        foreach (int slot in netIdBySlot.Keys)
+        {
+            if (!netIdBySlot.TryGetValue(slot, out int netId)) continue;
+            string acct = accountIdBySlot.TryGetValue(slot, out string? a) ? a : string.Empty;
+            TryGetPlayerState(slot, out PlayerMoveState st);
+            string name = string.Empty;
+            if (host.TryGetOwner(netId, out CellSim cell, out Entity e) && cell.World.TryGet(e, out PlayerIdentity pi))
+                name = pi.DisplayName ?? string.Empty;
+            list.Add(new OnlinePlayer(slot, acct, name, st.Position, st.Grounded, st.VerticalVelocity, netId));
+        }
+        return list.ToArray();
     }
 
     private void OnJoin(int slot, string subject, string displayName)
@@ -333,6 +413,10 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
         PlayerJoined?.Invoke(slot, accountId);
     }
 
+    // Idempotent by design: safe to call more than once for the same slot. The TryGetValue guards below make a repeat
+    // call a no-op (PlayerLeaving cannot double-fire, save-on-leave cannot double-persist), and every Remove is a
+    // no-op on a missing key. This is load-bearing: Disconnect(slot) calls OnLeave synchronously, and a real transport
+    // may later surface a Left event for the same slot through Poll, calling OnLeave a second time.
     private void OnLeave(int slot)
     {
         if (netIdBySlot.TryGetValue(slot, out int netId))

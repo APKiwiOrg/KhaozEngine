@@ -16,6 +16,8 @@ which one wins.
 | [SECURITY-BASELINE.md](SECURITY-BASELINE.md) | The engine-wide security posture: threat model (where untrusted bytes enter), layered defenses (managed memory-safety, input validation, patched deps, signed updates, the CETCompat tradeoff), what's out of scope, and per-game vs engine responsibilities. | The security posture every game inherits. |
 | [ROADMAP.md](ROADMAP.md) | Future work only: planned features and missing pieces, newest priorities first. No shipped/done sections (that history is in CHANGELOG). | The forward backlog. |
 | [RENDER-PIPELINE.md](RENDER-PIPELINE.md) | High-level (container-level) Mermaid map of how a C# draw call becomes rendered triangles: Render2D/Render3D -> the Gpu seam -> Veldrid -> backend -> GPU, plus the geometry-upload and GLSL->SPIR-V side-flows. | Understanding the render path. |
+| [PHYSICS-PIPELINE.md](PHYSICS-PIPELINE.md) | High-level (container-level) Mermaid map of how a character move becomes a collision-resolved position: Locomotion -> the `IPhysicsWorld` seam -> Physics.Bepu -> BepuPhysics, plus the shape-bake and authoritative-vs-predicted side-flows. | Understanding the physics path. |
+| [DEPENDENCY-SEAMS.md](DEPENDENCY-SEAMS.md) | The convention RENDER-PIPELINE and PHYSICS-PIPELINE are instances of: how every third-party library (GPU, physics, netcode, persistence, audio, windowing) is wrapped behind a dependency-free seam with an opt-in backend, and how to add a new backend. | The seam + swappable-backend pattern. |
 | `../<Package>/README.md` | One-paragraph purpose + a snippet per package. | Per-package quick reference. |
 
 The **engine current version** lives in `../Directory.Build.props` (`<KhaozEngineVersion>`). Docs that restate it

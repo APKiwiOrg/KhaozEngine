@@ -15,3 +15,7 @@ One `world_store(key, data, updated_at)` table, bootstrapped on construction; up
 `INSERT ... ON CONFLICT(key) DO UPDATE`; raw parameterized async ADO.NET (no EF/ORM). Dispose the store to
 close the connection. For production / Azure SQL use `KhaozEngine.WorldStore.SqlServer` against the same
 `IWorldStore` contract.
+
+`SqliteWorldStore` implements **`IEnumerableWorldStore`** (since 8.4.0): `EnumerateAsync(keyPrefix?)` streams
+`WorldStoreEntry { Key, UpdatedAt, Size? }` records via a streaming SQLite cursor, optionally filtered by key
+prefix. Used by `ServerAdmin` for account enumeration and ban persistence.

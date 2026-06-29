@@ -15,3 +15,7 @@ byte[]? loaded = await store.LoadAsync("player:42");
 One `world_store([key], data, updated_at)` table, bootstrapped on construction; upsert via
 `MERGE ... WITH (HOLDLOCK)`; raw parameterized async ADO.NET (no EF/ORM); a short-lived pooled connection per
 operation. For dev/test use `KhaozEngine.WorldStore.Sqlite` against the same contract.
+
+`SqlServerWorldStore` implements **`IEnumerableWorldStore`** (since 8.4.0): `EnumerateAsync(keyPrefix?)` streams
+`WorldStoreEntry { Key, UpdatedAt, Size? }` records via a streaming SQL Server cursor, optionally filtered by key
+prefix. Used by `ServerAdmin` for account enumeration and ban persistence.

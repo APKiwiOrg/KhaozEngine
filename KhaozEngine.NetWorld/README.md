@@ -39,3 +39,23 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
 No render, window, or GPU dependency: the servers are headless and the client glue is render-free (a sample
 renders a capsule per `EntityRenderState`). `WorldServer` is the single-`World` slice; `ShardedWorldServer` is
 the multi-cell variant (overworld sub-project 6b).
+
+## Server administration (since 8.4.0)
+
+Both `WorldServer` and `ShardedWorldServer` implement **`IAdminControllable`**: `ListOnline()` returns the
+connected players as a snapshot (published once per tick); `Teleport(PlayerRef, Vector3)`, `Kick(PlayerRef, reason)`,
+and `Broadcast(text)` are queued and applied on the host thread between ticks, safe to call from another thread.
+Target a player by `PlayerRef.Slot(n)` or `PlayerRef.Account("...")`.
+
+**`IBanStore`** is consulted at connect: a banned account is rejected before it spawns. `InMemoryBanStore` is
+the in-memory default; `WorldStoreBanStore` persists over any `IWorldStore` keyspace (`ban:{accountId}`) with a
+synchronous in-memory cache (call `LoadAsync()` once at startup). Pass either as the trailing `banStore:` ctor
+arg on `WorldServer` or `ShardedWorldServer`. Bans key on the verified account id; guests are not bannable.
+
+The **`ServerAdmin`** facade composes an `IAdminControllable` server, an optional `IBanStore`, and an optional
+`IEnumerableWorldStore`: `BanAsync` persists and kicks if the account is online; `ListAccountsAsync(prefix)`
+materializes the account enumeration. Unwired capabilities throw `NotSupportedException` (feature-detect via
+`BansSupported` / `AccountsSupported`).
+
+For the opt-in Kestrel HTTPS endpoint that exposes `ServerAdmin` as a REST API, see
+[`KhaozEngine.Server.Admin`](../KhaozEngine.Server.Admin).

@@ -2368,6 +2368,53 @@ await persistence.FlushAsync();
 
 `IsDraining` is true once `BeginDrain` has been called; `IsDrainComplete` flips when the grace period has elapsed and all clients have been disconnected. The drain is tick-driven (no wall-clock sleep); the host controls how fast ticks run.
 
+## Server administration (`ServerAdmin` / `IBanStore` / `IEnumerableWorldStore` / `KhaozEngine.Server.Admin`) (since 8.4.0)
+
+A generic, opt-in admin surface for a live server. Nothing changes for a server that does not use it.
+
+**Live commands.** Both `WorldServer` and `ShardedWorldServer` implement `IAdminControllable`:
+`ListOnline()` returns the connected players (slot, account id, display name, position, grounded, vertical velocity,
+net id) from a snapshot published once per tick; `Teleport(PlayerRef, Vector3)`, `Kick(PlayerRef, reason)`, and
+`Broadcast(text)` are queued and applied on the host thread between ticks, so you can call them safely from another
+thread (an HTTP handler). Target a player by `PlayerRef.Slot(n)` or `PlayerRef.Account("...")`.
+
+**Bans.** `IBanStore` is consulted at connect (alongside the authenticator): a banned account is rejected before it
+spawns. `InMemoryBanStore` is the default; `WorldStoreBanStore` persists over any `IWorldStore` keyspace
+(`ban:{accountId}`) and caches in memory so the connect check stays synchronous (call `LoadAsync()` once at startup
+to hydrate from the store). Pass it as the trailing `banStore:` ctor arg on either server. Bans key on the verified
+account id; guests are not bannable.
+
+**Account enumeration.** Stores opt into `IEnumerableWorldStore` (`InMemoryWorldStore`, `SqliteWorldStore`,
+`SqlServerWorldStore` all do): `EnumerateAsync(keyPrefix?)` streams `WorldStoreEntry { Key, UpdatedAt, Size? }`.
+Feature-detect with `store is IEnumerableWorldStore`.
+
+**Facade.** `ServerAdmin(IAdminControllable server, IBanStore? bans = null, IEnumerableWorldStore? accounts = null)`
+composes the three: `BanAsync` persists then kicks if the account is online; `ListAccountsAsync(prefix)` materializes
+the enumeration; unwired capabilities throw `NotSupportedException` (feature-detect via `BansSupported` /
+`AccountsSupported`).
+
+**HTTPS endpoint (`KhaozEngine.Server.Admin`).** An opt-in package (the only one that pulls ASP.NET Core, via a
+`FrameworkReference`; not in the `Server` umbrella - add it explicitly). It hosts a minimal Kestrel REST API over a
+`ServerAdmin`, TLS + a single bearer token:
+
+```csharp
+var admin = new ServerAdmin(worldServer, new WorldStoreBanStore(store), store);
+var endpoint = new AdminHttpServer(admin, new AdminEndpointOptions
+{
+    Port = 9443,
+    BearerToken = "<long-random-secret>",
+    Certificate = AdminTlsCertificate.CreateSelfSigned("my-game-admin"),   // pin its thumbprint in your console
+});
+await endpoint.StartAsync();
+// ... run the server loop ...
+await endpoint.StopAsync();
+```
+
+Routes (all under `/admin`, all require `Authorization: Bearer <token>`): `GET /online`, `POST /teleport`,
+`POST /kick`, `POST /broadcast`, `GET /accounts?prefix=`, `GET /bans`, `POST /ban`, `POST /unban`. Mutations return
+202; capabilities not wired return 501. Bind defaults to loopback. There are no changes to the game client wire
+protocol.
+
 ### World cell grid (`KhaozEngine.Sharding`)
 
 Partition a seamless world into a uniform grid of authoritative **cells** and run them in one process. A

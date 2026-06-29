@@ -58,7 +58,7 @@ directly (`new BepuPhysicsWorld()`) and hands the `IPhysicsWorld` down.
 flowchart LR
     KIT["Prop kit glTF + manifest"] --> BAKE["ke-propbake (PropSurface.Tool)<br/>one CollisionShape per walkable-solid prop"]
     BAKE --> COLL[".coll per prop<br/>tree -> trunk Cylinder<br/>rock/solid -> base-aligned ConvexHull<br/>building -> concave TriangleMesh"]
-    COLL --> LOAD["PropCollisionLoader.LoadAll(manifest)<br/>-> id -> PhysicsShape map"]
+    COLL --> LOAD["client: PropCollisionLoader.LoadAll(manifest) (Render3D)<br/>headless server: PropCollisionFormat.LoadDirectory (Physics, no Render3D)<br/>-> id -> PhysicsShape map"]
     LOAD --> SINK["Scene3DChunkSink.Load / Unload"]
     SINK --> STAT["ChunkStatics.AddAll / RemoveAll<br/>-> IPhysicsWorld.AddStatic / RemoveStatic"]
 ```
@@ -100,7 +100,11 @@ snapping the player back.
    exactly like a netcode transport or a WorldStore backend.
 5. Static bodies got into that simulation from the bake side-flow: `ke-propbake` wrote a `.coll` shape per
    prop, `PropCollisionLoader` read them into an id -> `PhysicsShape` map, and `Scene3DChunkSink` (via
-   `ChunkStatics`) called `AddStatic`/`RemoveStatic` as chunks streamed in and out.
+   `ChunkStatics`) called `AddStatic`/`RemoveStatic` as chunks streamed in and out. The `.coll` decode itself is
+   the render-free `PropCollisionFormat` in `KhaozEngine.Physics`, so a headless authoritative server (no
+   Render3D/Gpu/Windowing) loads the same shapes via `PropCollisionFormat.LoadDirectory`/`Load` and builds an
+   identical `BepuPhysicsWorld` to predict against; the client's `PropCollisionLoader.LoadAll(manifest)` decodes
+   through the same code, so the shapes - and therefore the queries - are byte-identical.
 
 ## Where to look in the code
 
@@ -111,5 +115,5 @@ snapping the player back.
 | Movement that resolves vs the seam | [`KhaozEngine.Locomotion/CharacterMovement.cs`](../KhaozEngine.Locomotion/CharacterMovement.cs) (`Step`) |
 | Local controller / server sim / client prediction | `KhaozEngine.Game.Render3D/CharacterController3D.cs`, `KhaozEngine.NetWorld/PlayerMoveSimulator.cs`, `WorldClient.cs` |
 | Shape bake (offline) | [`KhaozEngine.PropSurface.Tool/Program.cs`](../KhaozEngine.PropSurface.Tool/Program.cs) (`ke-propbake`), `KhaozEngine.Render3D/Models/PropCollisionBake.cs` |
-| Shape load + chunk statics | `KhaozEngine.Render3D/Models/PropCollisionLoader.cs`, [`KhaozEngine.Terrain.Render3D/ChunkStatics.cs`](../KhaozEngine.Terrain.Render3D/ChunkStatics.cs) |
+| Shape load + chunk statics | `KhaozEngine.Render3D/Models/PropCollisionLoader.cs` (client/manifest), [`KhaozEngine.Physics/PropCollisionFormat.cs`](../KhaozEngine.Physics/PropCollisionFormat.cs) (render-free format + headless loaders), [`KhaozEngine.Terrain.Render3D/ChunkStatics.cs`](../KhaozEngine.Terrain.Render3D/ChunkStatics.cs) |
 | Design archive | `docs/superpowers/specs/` + `plans/` (the 8.0.0 physics-foundation feature) |

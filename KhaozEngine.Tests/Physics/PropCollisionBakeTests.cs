@@ -44,6 +44,64 @@ public class PropCollisionBakeTests
     }
 
     [Fact]
+    public void TrunkHull_TracksLean_AndExcludesCanopy()
+    {
+        GltfMesh tree = TestMeshes.LeaningTree();
+        Assert.True(PropCollisionBake.IsTree(tree), "leaning-tree fixture must classify as a tree");
+        PhysicsShape shape = PropCollisionBake.BakeTrunkHull(tree);
+        var hull = Assert.IsType<ConvexHullShape>(shape);
+
+        // Canopy (y >= 3.5) is excluded: no hull point above the trunk-band cap (~2.6 m with a 0.1 m margin).
+        foreach (Vector3 p in hull.Points)
+            Assert.True(p.Y <= 2.6f, $"hull point above the trunk cap (canopy not excluded): y={p.Y}");
+
+        // The trunk leans toward +X with height: the highest hull point sits clearly off the vertical axis,
+        // i.e. the hull follows the leaning trunk rather than a base-pinned vertical cylinder.
+        Vector3 highest = hull.Points[0];
+        foreach (Vector3 p in hull.Points) if (p.Y > highest.Y) highest = p;
+        Assert.True(highest.X > 0.3f, $"hull does not track the lean; highest point X={highest.X}");
+    }
+
+    [Fact]
+    public void TrunkHull_ExcludesWideLowBranches()
+    {
+        GltfMesh tree = TestMeshes.StraightTrunkWithLowBranches();
+        PhysicsShape shape = PropCollisionBake.BakeTrunkHull(tree);
+        var hull = Assert.IsType<ConvexHullShape>(shape);
+
+        // Low branches spread to |X|~1.5 at y~1; the radial-core filter drops them, so the hull stays near the
+        // ~0.2 m trunk core (well under 0.6 m) for any point at branch height.
+        foreach (Vector3 p in hull.Points)
+            if (p.Y is > 0.8f and < 1.2f)
+                Assert.True(MathF.Abs(p.X) < 0.6f && MathF.Abs(p.Z) < 0.6f,
+                    $"wide low branch survived the core filter: {p}");
+    }
+
+    [Fact]
+    public void TrunkHull_IsSolid_PushesACapsuleOut()
+    {
+        GltfMesh tree = TestMeshes.LeaningTree();
+        PhysicsShape shape = PropCollisionBake.BakeTrunkHull(tree);
+        using KhaozEngine.Physics.IPhysicsWorld world = new KhaozEngine.Physics.Bepu.BepuPhysicsWorld();
+        world.AddStatic(shape, KhaozEngine.Physics.Pose.At(Vector3.Zero));
+        world.Step(1f / 60f);
+
+        // A capsule overlapping the trunk near the base is pushed out (non-trapping solid).
+        var capsule = new KhaozEngine.Physics.CapsuleShape(0.4f, 1.0f);
+        bool overlap = world.ComputePenetration(capsule, KhaozEngine.Physics.Pose.At(new Vector3(0.1f, 0.6f, 0f)), out Vector3 mtv);
+        Assert.True(overlap, "capsule overlapping the trunk hull should report penetration");
+        Assert.True(mtv.Length() > 0f, "push-out MTV should be non-zero");
+    }
+
+    [Fact]
+    public void TrunkHull_DegenerateTrunk_FallsBackToCylinder()
+    {
+        GltfMesh tree = TestMeshes.CollinearTrunkTree();
+        PhysicsShape shape = PropCollisionBake.BakeTrunkHull(tree);
+        Assert.IsType<CylinderShape>(shape);
+    }
+
+    [Fact]
     public void Building_BakesATriangleMesh()
     {
         GltfMesh house = TestMeshes.BoxRoomWithDoorway();
@@ -142,6 +200,65 @@ static class TestMeshes
         }
 
         return new GltfMesh(verts.ToArray(), idx.ToArray());
+    }
+
+    /// <summary>A tall tree whose trunk centreline LEANS toward +X with height (centre X = 0.2*y), a thin
+    /// trunk core (ring radius ~0.18) from y=0..3, and a wide canopy (|x|,|z| up to 2) from y=3.5..5. Tall
+    /// (height 5 > 2.5) with a canopy spread > 1.6x the base, so IsWalkableSolid is false (a tree).</summary>
+    public static GltfMesh LeaningTree()
+    {
+        var verts = new List<ModelVertex>();
+        var idx = new List<uint>();
+        // Trunk rings: centre leans +X with height; small radius so it is clearly a thin trunk.
+        for (float y = 0f; y <= 3f + 1e-3f; y += 0.5f)
+        {
+            float cx = 0.2f * y;            // lean
+            const float r = 0.18f;
+            AddRing(verts, idx, new Vector3(cx, y, 0f), r);
+        }
+        // Canopy: wide spread well above the trunk band.
+        for (float y = 3.5f; y <= 5f + 1e-3f; y += 0.5f)
+            AddRing(verts, idx, new Vector3(0.6f, y, 0f), 2.0f);
+        return new GltfMesh(verts.ToArray(), idx.ToArray());
+    }
+
+    /// <summary>A straight (un-leaning) tall tree with a thin trunk plus a few WIDE low branch verts at y~1
+    /// (|x| up to 1.5), and a wide canopy above. Used to prove the radial-core filter drops the branches.</summary>
+    public static GltfMesh StraightTrunkWithLowBranches()
+    {
+        var verts = new List<ModelVertex>();
+        var idx = new List<uint>();
+        for (float y = 0f; y <= 3f + 1e-3f; y += 0.5f) AddRing(verts, idx, new Vector3(0f, y, 0f), 0.18f);
+        // Wide low branches at y~1.
+        foreach (float ang in new[] { 0f, 1.57f, 3.14f, 4.71f })
+            AddRing(verts, idx, new Vector3(1.5f * MathF.Cos(ang), 1f, 1.5f * MathF.Sin(ang)), 0.1f);
+        for (float y = 3.5f; y <= 5f + 1e-3f; y += 0.5f) AddRing(verts, idx, new Vector3(0f, y, 0f), 2.0f);
+        return new GltfMesh(verts.ToArray(), idx.ToArray());
+    }
+
+    /// <summary>A degenerate tree: the trunk band is a single COLLINEAR column of verts on the Y axis (no
+    /// volume), with a wide canopy above so it still classifies as a tree. The trunk hull is degenerate so
+    /// BakeTrunkHull must fall back to a cylinder.</summary>
+    public static GltfMesh CollinearTrunkTree()
+    {
+        var verts = new List<ModelVertex>();
+        var idx = new List<uint>();
+        for (float y = 0f; y <= 3f + 1e-3f; y += 0.5f) { uint b = (uint)verts.Count; verts.Add(V(0, y, 0)); idx.Add(b); idx.Add(b); idx.Add(b); }
+        for (float y = 3.5f; y <= 5f + 1e-3f; y += 0.5f) AddRing(verts, idx, new Vector3(0f, y, 0f), 2.0f);
+        return new GltfMesh(verts.ToArray(), idx.ToArray());
+    }
+
+    /// <summary>Add an 8-vertex ring (octagon) of radius r centred at c, as 8 degenerate triangles (verts only;
+    /// the bake reads positions, not winding).</summary>
+    static void AddRing(List<ModelVertex> verts, List<uint> idx, Vector3 c, float r)
+    {
+        for (int k = 0; k < 8; k++)
+        {
+            float a = k * MathF.PI / 4f;
+            uint b = (uint)verts.Count;
+            verts.Add(V(c.X + r * MathF.Cos(a), c.Y, c.Z + r * MathF.Sin(a)));
+            idx.Add(b); idx.Add(b); idx.Add(b);
+        }
     }
 
     static void AddQuad(List<ModelVertex> verts, List<uint> idx,

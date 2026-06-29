@@ -56,6 +56,21 @@ namespace KhaozEngine.Render3D
         /// cylinder.</summary>
         public const float TrunkRadiusFloor = 0.12f;
 
+        /// <summary>Hard cap (metres) on the trunk-hull band height. The hull uses the player-reachable lower trunk;
+        /// the canopy is excluded above min(this, <see cref="FoliageBaseFraction"/> * height).</summary>
+        public const float TrunkHullMaxMeters = 3.0f;
+
+        /// <summary>Fraction of the tree height treated as the trunk band (foliage starts above it). The trunk-hull
+        /// cap is min(<see cref="TrunkHullMaxMeters"/>, this * height).</summary>
+        public const float FoliageBaseFraction = 0.5f;
+
+        /// <summary>Keep trunk-band verts within this multiple of the percentile core radius of the running centreline;
+        /// drops spreading low branches while keeping the trunk core.</summary>
+        public const float TrunkCoreRadiusFactor = 1.6f;
+
+        /// <summary>Height (metres) of each centreline bin used to track a leaning trunk's drift with height.</summary>
+        public const float TrunkCentrelineBinMeters = 0.25f;
+
         /// <summary>True when the mesh is a tree (or any non-walkable-solid prop): a thin trunk near the
         /// base with a canopy spreading out above. Reuses the canopy-spread classification already in
         /// <see cref="PropSurfaceBake.IsWalkableSolid"/> (walkable-solid = rock/log/building; everything
@@ -96,7 +111,7 @@ namespace KhaozEngine.Render3D
         public static PhysicsShape Bake(GltfMesh normalizedMesh)
         {
             if (normalizedMesh == null) throw new ArgumentNullException(nameof(normalizedMesh));
-            if (IsTree(normalizedMesh))     return BakeTrunkCylinder(normalizedMesh);
+            if (IsTree(normalizedMesh))     return BakeTrunkHull(normalizedMesh);
             if (IsBuilding(normalizedMesh)) return BakeTriangleMesh(normalizedMesh);
             return BakeConvexHull(normalizedMesh);
         }
@@ -138,6 +153,87 @@ namespace KhaozEngine.Render3D
 
             float length = height;   // full prop height
             return new CylinderShape(radius, length);
+        }
+
+        /// <summary>Bake a convex hull of the player-reachable lower trunk that FOLLOWS a leaning trunk (real
+        /// Quaternius trees lean 0.3-0.9 m over their height, so a base-pinned vertical cylinder is not where the
+        /// trunk is by mid-height). Keep verts below the trunk-band cap (min(<see cref="TrunkHullMaxMeters"/>,
+        /// <see cref="FoliageBaseFraction"/> * height)), build a per-height-bin centreline so the kept set tracks the
+        /// lean, and drop verts beyond <see cref="TrunkCoreRadiusFactor"/> * the percentile core radius of that
+        /// centreline (rejects spreading low branches). Degenerate trunk (&lt; 4 surviving verts or coplanar) falls
+        /// back to <see cref="BakeTrunkCylinder"/>. A trunk is roughly convex, so the hull loses no useful detail and
+        /// can never trap the capsule.</summary>
+        public static PhysicsShape BakeTrunkHull(GltfMesh mesh)
+        {
+            float minY = float.MaxValue, maxY = float.MinValue;
+            foreach (ModelVertex v in mesh.Vertices)
+            {
+                if (v.Position.Y < minY) minY = v.Position.Y;
+                if (v.Position.Y > maxY) maxY = v.Position.Y;
+            }
+            float height = maxY - minY;
+            float cap = minY + MathF.Min(TrunkHullMaxMeters, FoliageBaseFraction * height);
+
+            // Trunk-band verts (drop the canopy).
+            var band = new List<Vector3>();
+            foreach (ModelVertex v in mesh.Vertices)
+                if (v.Position.Y <= cap) band.Add(v.Position);
+            if (band.Count < 4) return BakeTrunkCylinder(mesh);
+
+            // Running centreline: bin by height, centroid XZ per bin (tracks the lean). Vertical bin index off minY.
+            var binSum = new Dictionary<int, (Vector3 sum, int n)>();
+            foreach (Vector3 p in band)
+            {
+                int bin = (int)MathF.Floor((p.Y - minY) / TrunkCentrelineBinMeters);
+                if (binSum.TryGetValue(bin, out var acc)) binSum[bin] = (acc.sum + p, acc.n + 1);
+                else binSum[bin] = (p, 1);
+            }
+            Vector3 Centreline(Vector3 p)
+            {
+                int bin = (int)MathF.Floor((p.Y - minY) / TrunkCentrelineBinMeters);
+                var acc = binSum[bin];
+                Vector3 c = acc.sum / acc.n;
+                return new Vector3(c.X, p.Y, c.Z);   // XZ centroid at this height
+            }
+
+            // Percentile core radius (XZ distance from each vert to its bin centreline).
+            var radii = new List<float>(band.Count);
+            foreach (Vector3 p in band)
+            {
+                Vector3 c = Centreline(p);
+                radii.Add(MathF.Sqrt((p.X - c.X) * (p.X - c.X) + (p.Z - c.Z) * (p.Z - c.Z)));
+            }
+            radii.Sort();
+            float coreRadius = MathF.Max(TrunkRadiusFloor, radii[(int)(TrunkRadiusPercentile * (radii.Count - 1))]);
+            float keepRadius = TrunkCoreRadiusFactor * coreRadius;
+
+            var kept = new List<Vector3>(band.Count);
+            foreach (Vector3 p in band)
+            {
+                Vector3 c = Centreline(p);
+                float dx = p.X - c.X, dz = p.Z - c.Z;
+                if (dx * dx + dz * dz <= keepRadius * keepRadius) kept.Add(p);
+            }
+            if (kept.Count < 4 || IsCoplanar(kept)) return BakeTrunkCylinder(mesh);
+            return HullFromPoints(kept);
+        }
+
+        /// <summary>True when all points lie (within a tolerance) on a single plane, so a convex hull would be
+        /// degenerate. Picks the plane from the first non-collinear triple and checks every point's distance to it.</summary>
+        static bool IsCoplanar(IReadOnlyList<Vector3> pts)
+        {
+            const float Eps = 1e-4f;
+            Vector3 p0 = pts[0];
+            // Find an edge a = p_i - p0 with length > eps.
+            Vector3 a = Vector3.Zero;
+            foreach (Vector3 p in pts) { Vector3 d = p - p0; if (d.LengthSquared() > Eps) { a = d; break; } }
+            if (a.LengthSquared() <= Eps) return true; // all coincident
+            // Find a normal n = a x (p_j - p0) that is non-degenerate (a non-collinear point).
+            Vector3 n = Vector3.Zero;
+            foreach (Vector3 p in pts) { Vector3 c = Vector3.Cross(a, p - p0); if (c.LengthSquared() > Eps) { n = Vector3.Normalize(c); break; } }
+            if (n.LengthSquared() <= Eps) return true; // all collinear
+            foreach (Vector3 p in pts) if (MathF.Abs(Vector3.Dot(p - p0, n)) > 1e-3f) return false;
+            return true;
         }
 
         /// <summary>Bake a TRUE convex hull from a short solid prop (a rock). Deduplicate the vertices (a 5 mm

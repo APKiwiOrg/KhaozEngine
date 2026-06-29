@@ -1623,8 +1623,12 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   client reads the full `LatestVersionInfo` straight from `latest-{platform}.json`); both have a ready-to-fill
   publish template. See the package README "Publish + feed layout".
 - **`KhaozEngine.Netcode` / `.Abstractions` / `.LiteNetLib`**: transport-free netcode primitives
-  (`UnitAxisQuantizer`, `ClientPrediction`, `RemoteCommandQueue`), the zero-dependency channel-split contract
-  (`IChannelSplittable<TSelf>` + `NetChannelReliability`), and the LiteNetLib transport binding.
+  (`UnitAxisQuantizer`, `ClientPrediction`, `RemoteCommandQueue`, `BoundedEventQueue<T>`), the zero-dependency
+  channel-split contract (`IChannelSplittable<TSelf>` + `NetChannelReliability`), and the LiteNetLib transport
+  binding. `BoundedEventQueue<T>` is the defensive hard cap (drop-oldest, keep-newest, `DroppedCount` observable)
+  the `NetServer` session inbox and the LiteNetLib transport inboxes use so a stalled or flooded host can't grow
+  undrained events without bound; tune it with the optional `maxQueuedEvents` ctor arg (default 10,000) and watch
+  `DroppedEventCount`, which stays 0 for a host that drains each poll as contracted.
 
 ---
 

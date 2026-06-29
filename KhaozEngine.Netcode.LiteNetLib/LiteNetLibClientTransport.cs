@@ -14,22 +14,30 @@ public sealed class LiteNetLibClientTransport : INetTransport
 {
     private readonly EventBasedNetListener listener = new();
     private readonly NetManager manager;
-    private readonly Queue<NetEvent> inbox = new();
+    private readonly BoundedEventQueue<NetEvent> inbox;
     private readonly Dictionary<int, NetPeer> peersById = new();
 
     /// <param name="host">Server host/IP to connect to.</param>
     /// <param name="port">Server UDP port.</param>
     /// <param name="connectionKey">Shared key presented to the server; must match the server's key.</param>
-    public LiteNetLibClientTransport(string host, int port, string connectionKey = "khaoz")
+    /// <param name="maxQueuedEvents">Defensive hard cap on undrained transport events. Under the drain-each-poll
+    /// contract this never bites; a stalled or flooded host drops the oldest event (each Data event holds a fresh
+    /// payload buffer) instead of growing memory without bound. Drops are counted in <see cref="DroppedEventCount"/>.</param>
+    public LiteNetLibClientTransport(string host, int port, string connectionKey = "khaoz",
+        int maxQueuedEvents = BoundedEventQueue<NetEvent>.DefaultCapacity)
     {
         if (host is null) throw new ArgumentNullException(nameof(host));
         if (connectionKey is null) throw new ArgumentNullException(nameof(connectionKey));
+        inbox = new BoundedEventQueue<NetEvent>(maxQueuedEvents);
         manager = new NetManager(listener);
         WireListener();
         if (!manager.Start())
             throw new InvalidOperationException("Failed to start client transport.");
         manager.Connect(host, port, connectionKey);
     }
+
+    /// <summary>Total transport events dropped because the undrained inbox hit its cap; 0 under normal draining.</summary>
+    public long DroppedEventCount => inbox.DroppedCount;
 
     private static NetConnectionId ToId(NetPeer peer) => new(peer.Id + 1);
 
@@ -60,12 +68,7 @@ public sealed class LiteNetLibClientTransport : INetTransport
 
     public void Poll() => manager.PollEvents();
 
-    public bool TryDequeueEvent(out NetEvent ev)
-    {
-        if (inbox.Count > 0) { ev = inbox.Dequeue(); return true; }
-        ev = default;
-        return false;
-    }
+    public bool TryDequeueEvent(out NetEvent ev) => inbox.TryDequeue(out ev);
 
     public void Send(NetConnectionId target, ReadOnlySpan<byte> payload, NetChannelReliability reliability)
     {

@@ -5,6 +5,29 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.76.0
+
+Defensive hard cap on the netcode event inboxes so a stalled or hostile host can't grow them without bound. The
+session inbox in `NetServer` and the raw transport inboxes in `LiteNetLibServerTransport`/`LiteNetLibClientTransport`
+were unbounded `Queue`s drained only by the host; under the documented drain-each-poll contract they stay tiny, but a
+host that stops draining (a bug, or a peer flooding it) pinned every undrained Data event's payload buffer with no
+ceiling. All additive and on-by-default-but-generous - the cap (10,000 events) never bites a correctly draining host,
+so consumers adopt as a pure pin bump.
+
+- **New `KhaozEngine.Netcode.BoundedEventQueue<T>`.** A FIFO event queue with a hard upper bound: at capacity a new
+  item evicts the oldest (drop-oldest, keep-newest), so the count never grows past `Capacity`. Mirrors the bounding
+  `RemoteCommandQueue` already applies to per-slot command buffers, applied here to the event inboxes. Each eviction is
+  counted in `DroppedCount` so the overflow is observable (a non-zero value means the host is not draining as
+  contracted, or is under attack) without forcing a logging dependency into the netcode leaf. Single-threaded by
+  contract like the rest of the stack. `DefaultCapacity = 10,000`.
+- **`NetServer` inbox is now bounded.** New optional ctor arg `maxQueuedEvents` (default
+  `BoundedEventQueue<ServerSessionEvent>.DefaultCapacity`) and a read-only `NetServer.DroppedEventCount`. Existing
+  callers are unchanged (the default is far above any single poll's events).
+- **`LiteNetLibServerTransport` / `LiteNetLibClientTransport` inboxes are now bounded.** Each gains an optional
+  `maxQueuedEvents` ctor arg (same default) and a read-only `DroppedEventCount`. The drop-oldest eviction releases the
+  oldest undrained Data event's `byte[]` payload, the buffer the audit flagged as pinned.
+- Behaviour is byte-identical for a host that drains to empty every tick (the contract): the cap is purely defensive.
+
 ## 7.75.1
 
 Robustness fix for the ground-decal pass: each queued decal now renders from its OWN dynamic-offset slot of the decal

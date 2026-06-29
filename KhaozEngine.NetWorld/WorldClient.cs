@@ -75,6 +75,13 @@ public sealed class WorldClient
     /// <summary>True once the session handshake has joined.</summary>
     public bool Joined { get; private set; }
 
+    /// <summary>Raised when the server pushes a <see cref="ServerNotice"/> (e.g. a maintenance/restart warning).</summary>
+    public event Action<ServerNotice>? NoticeReceived;
+
+    /// <summary>The most recent <see cref="ServerNotice"/> received, or null if none. Lets a consumer that attaches
+    /// late, or polls instead of subscribing, still read the latest notice.</summary>
+    public ServerNotice? LastNotice { get; private set; }
+
     /// <summary>The local player's full predicted/reconciled render state (position + vertical velocity + grounded).
     /// Exact movement the client already knows for its own avatar - use it to fill the local entity's
     /// <c>KhaozEngine.Game.CharacterSample</c> exact-movement fields (so a replicated-animator bridge reads true air
@@ -182,7 +189,11 @@ public sealed class WorldClient
             case MoveProtocol.ServerFrameKind.Snapshot:
                 OnSnapshot(payload);
                 break;
-            // Notice handling is wired in a later task.
+            case MoveProtocol.ServerFrameKind.Notice:
+                ServerNotice notice = MoveProtocol.TryDecodeNotice(payload);
+                LastNotice = notice;
+                NoticeReceived?.Invoke(notice);
+                break;
         }
     }
 

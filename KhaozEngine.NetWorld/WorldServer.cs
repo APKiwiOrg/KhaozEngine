@@ -90,6 +90,15 @@ public sealed class WorldServer : IWorldPersistenceHost
     /// handler calls. No-op for an unknown slot.</summary>
     public void Disconnect(int slot) => net.Disconnect(slot);
 
+    /// <summary>Broadcasts a <see cref="ServerNotice"/> to every connected client (reliable-ordered), surfaced on
+    /// <see cref="WorldClient.NoticeReceived"/>. Out-of-band: rides the Data channel alongside snapshots via the
+    /// frame envelope, so it never disturbs the movement stream.</summary>
+    public void BroadcastNotice(in ServerNotice notice)
+    {
+        byte[] envelope = MoveProtocol.EncodeServerFrame(MoveProtocol.ServerFrameKind.Notice, MoveProtocol.EncodeNotice(notice));
+        net.Broadcast(envelope, NetChannelReliability.ReliableOrdered);
+    }
+
     /// <summary>The authoritative ECS world.</summary>
     public World World => world;
     /// <summary>The replicated-component registry; clients build the matching one via MoveProtocol.</summary>

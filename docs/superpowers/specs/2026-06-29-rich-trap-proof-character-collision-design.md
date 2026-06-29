@@ -7,10 +7,10 @@ geometry (buildings, trees) richly and without ever getting trapped. Both belong
 movement resolver and the prop-collision baker), so every game with detailed building/tree statics
 benefits, not just Ruinborne.
 
-- **Part A** — swept collide-and-slide in `KhaozEngine.Locomotion/CharacterMovement.cs`, so a detailed
+- **Part A** - swept collide-and-slide in `KhaozEngine.Locomotion/CharacterMovement.cs`, so a detailed
   one-sided building triangle mesh is rich (pillars, stairs, eaves all collide) AND can never be
   tunneled into. Includes a step-up probe (stairs/curbs walkable).
-- **Part B** — `BakeTrunkHull` in `KhaozEngine.Render3D/PropCollisionBake.cs` (trunk collision follows
+- **Part B** - `BakeTrunkHull` in `KhaozEngine.Render3D/PropCollisionBake.cs` (trunk collision follows
   the real leaning trunk instead of a vertical cylinder) + `ke-propbake` always emits a tree `.coll`.
 
 ## Problem
@@ -21,8 +21,8 @@ Town buildings bake as full-detail **one-sided** triangle meshes (`.coll`, kind 
 stairs, eaves, ~6000 verts). The current `Step(in MoveState, …)` resolves horizontal motion by
 **moving the capsule to the desired position, then depenetrating** (`ComputePenetration`, up to 6
 iters). There is no swept collide-and-slide for the horizontal move, so the resolver's own documented
-contract — *"the swept collide-and-slide always precedes this depenetration from a known-outside
-position, so the capsule never begins a tick already through a wall"* — is **not actually enforced**.
+contract - *"the swept collide-and-slide always precedes this depenetration from a known-outside
+position, so the capsule never begins a tick already through a wall"* - is **not actually enforced**.
 A fast move (jump, run-brush) whose one-tick displacement exceeds ~the capsule radius (0.4 m) tunnels
 through a thin wall. Once inside, the inner faces generate no contacts (one-sided, can't eject) and
 the outer faces shove it back in → stuck forever.
@@ -37,7 +37,7 @@ trapping; only robust swept mesh collision gives both.
 `ke-propbake` bakes a tree's collision as a single **vertical** `CylinderShape`
 (`BakeTrunkCylinder`), and skips thin blockers entirely so trees ship **no** `.coll` at all (the game
 hand-builds a cylinder in code). Real Quaternius trees **lean**: the trunk centreline drifts
-0.3–0.9 m horizontally over its height. A base-pinned vertical cylinder is not where the trunk is by
+0.3-0.9 m horizontally over its height. A base-pinned vertical cylinder is not where the trunk is by
 mid-height → the player walks into the visible leaning trunk; widening it just makes a fat invisible
 blocker.
 
@@ -60,7 +60,7 @@ blocker.
    collide-and-slide is a behavior change, so those thresholds get re-derived from the new
    implementation (intent preserved: meaningful tangential slide, no penetration).
 
-## Part A — swept collide-and-slide resolver
+## Part A - swept collide-and-slide resolver
 
 Replace the teleport-then-depenetrate horizontal/vertical resolution (step 3 of the current
 `Step(in MoveState, …)`) with a swept collide-and-slide from the **current** pose to the target.
@@ -75,7 +75,7 @@ keeps the terrain-only path byte-identical (early-out before any sweep).
 
 1. **Full-3D displacement.** Compute `target = (dx, desiredY, dz)` as today (horizontal after the
    slope gate; `desiredY` after vertical integrate). Sweep `target - start`, so a fast fall onto a
-   roof or a jump into an eave is caught too — not only horizontal walls. (Subsumes the
+   roof or a jump into an eave is caught too - not only horizontal walls. (Subsumes the
    "vertical anti-tunnel sweep can be added later" note in the current code.)
 2. **Substep.** Split the displacement into `n = max(1, ceil(|d| / (CapsuleRadius * SubstepFraction)))`
    substeps (`SubstepFraction ≈ 0.5` → ≤0.2 m each). Walk/run/jump = 1 substep; near-terminal fall ≈4.
@@ -85,13 +85,13 @@ keeps the terrain-only path byte-identical (early-out before any sweep).
    - Sweep the capsule from `pos` along `delta/dist` for `dist`.
    - **Miss:** `pos += delta`; done with this substep.
    - **Hit at distance `h`, normal `n`:** advance `pos += dir * max(0, h - SkinWidth)` (`SkinWidth ≈ 0.01`);
-     compute the remaining displacement `r = delta - dir * h`; **try step-up** (below) — if it
+     compute the remaining displacement `r = delta - dir * h`; **try step-up** (below) - if it
      consumed the move, continue; else **slide**: `delta = r - dot(r, n) * n` and iterate (resolves
      inner corners where two walls meet).
 4. **Step-up (included).** Only when **grounded** and the contact is near-vertical (`|n.Y|` below a
    small threshold, i.e. a wall/riser not a floor/ceiling), attempt the classic up/forward/down probe
    on the **horizontal** remainder:
-   - Sweep up by `StepHeight` (abort the step-up if blocked — no headroom).
+   - Sweep up by `StepHeight` (abort the step-up if blocked - no headroom).
    - From the raised pose, sweep forward along the horizontal remainder.
    - Sweep down by `StepHeight`; if it lands on a walkable-slope ledge (`hit.Normal.Y` above the
      slope-gate cosine) **higher than the pre-step pos**, accept the stepped pose; else revert and
@@ -117,14 +117,14 @@ single-threaded (same guarantee `ComputePenetration` already relies on); the sli
 ### Cost
 
 Typical 1 substep × ≤4 slide sweeps + a few step-up sweeps; worst case (terminal fall) ≈4 substeps.
-A handful of broad-phase-bounded sweeps per tick — within the server tick budget.
+A handful of broad-phase-bounded sweeps per tick - within the server tick budget.
 
 ### Tuning constants (private, drive via tests)
 
 `SubstepFraction` (~0.5), `SlideIterations` (~4), `SkinWidth` (~0.01), step-up `|n.Y|` threshold.
 `StepHeight` comes from `MoveTuning` (already 0.4 m). No public API/signature change to `Step`.
 
-## Part B — trunk-hull baker + tool emits tree `.coll`
+## Part B - trunk-hull baker + tool emits tree `.coll`
 
 ### `BakeTrunkHull(GltfMesh)` in `PropCollisionBake.cs`
 
@@ -133,7 +133,7 @@ Height-cap + running-centreline radial-core filter (no submeshes available):
 1. Compute `minY/maxY`, `height`. `trunkCap = minY + min(TrunkHullMaxMeters, FoliageBaseFraction * height)`.
 2. Keep verts with `y ≤ trunkCap` (drop the canopy).
 3. Build a **running centreline**: bin the kept verts by height (e.g. 0.25 m bins), centroid XZ per
-   bin — this tracks the lean.
+   bin - this tracks the lean.
 4. Compute the `TrunkRadiusPercentile` percentile of each kept vert's XZ distance to its bin
    centreline → `coreRadius` (floored at `TrunkRadiusFloor`). Keep verts within
    `TrunkCoreRadiusFactor * coreRadius` of their bin centreline (drops spreading low branches).
@@ -168,12 +168,12 @@ static PropBakePlan For(GltfMesh mesh) =>
 Decouple the bakes:
 - **Always** write `<id>.coll` (via `PropBakePlan.For`) and stamp `node["collisionShape"]` for every prop.
 - Only write `<id>.surf` + stamp `surface: true`/`heightmap` when `plan.Surface is not null`
-  (`IsWalkableSolid`) — unchanged for buildings/rocks/logs.
+  (`IsWalkableSolid`) - unchanged for buildings/rocks/logs.
 - Accurate kind label: `cylinder` / `convex-hull` / `triangle-mesh`.
 - A tree prints e.g. `+ pine_a: baked pine_a.coll (convex-hull) [thin blocker, no surface]`; a
   walkable-solid prints the surf + coll line as today. Final summary counts both.
 
-## Tests (headless, xUnit — engine convention)
+## Tests (headless, xUnit - engine convention)
 
 ### Part A (real `BepuPhysicsWorld`, `ControllerOnPhysicsTests` pattern)
 - **No tunnel through a thin one-sided wall:** capsule driven at jump/run speed straight at a 0.1 m
@@ -209,7 +209,7 @@ all NetWorld/Simulation consumers in Part A and the additive tree `.coll` in Par
 guard-checked declarations (`docs/CONSUMERS.md` engine version, `docs/ROADMAP.md` current version,
 `README.md` `<PackageReference>` example). Full doc sweep:
 
-- `CLAUDE.md` package map — Locomotion (swept resolver + step-up, `StepHeight` now wired), Render3D
+- `CLAUDE.md` package map - Locomotion (swept resolver + step-up, `StepHeight` now wired), Render3D
   `PropCollisionBake` (trunk hull + `PropBakePlan`), `PropSurface.Tool` (emits tree `.coll`).
 - Per-package READMEs that ship in the nupkg: `KhaozEngine.Locomotion/README.md`,
   `KhaozEngine.Render3D/README.md`.
@@ -218,13 +218,13 @@ guard-checked declarations (`docs/CONSUMERS.md` engine version, `docs/ROADMAP.md
   across **all** `*.md` + `CLAUDE.md`; confirm nothing still describes the old vertical-cylinder /
   teleport-then-depenetrate behavior.
 
-`dotnet pack -c Release -o ./local-feed`; commit; `git tag v8.3.0`. Push + tag are **held/batched** —
+`dotnet pack -c Release -o ./local-feed`; commit; `git tag v8.3.0`. Push + tag are **held/batched** -
 confirm with the user before pushing (engine policy).
 
 ## Out of scope / downstream
 
 - **Ruinborne adoption** (separate game chat): drop `RuinbornePhysics.Solidify` (buildings load raw
-  triangle-mesh `.coll` again — full detail, now trap-proof), drop `RuinbornePhysics.TreeCollisionShape`
+  triangle-mesh `.coll` again - full detail, now trap-proof), drop `RuinbornePhysics.TreeCollisionShape`
   (trees load the trunk-hull `.coll` like rocks), re-bake the 5 trees with `ke-propbake`, move both
   items to "Adopted" in `docs/ENGINE-ADOPTION.md`. The engine chat can hand back the 5 baked tree
   `.coll` if running the tool from Ruinborne is awkward.

@@ -21,7 +21,7 @@
 
 ---
 
-## Part B — trunk-hull baker + tool emits tree `.coll`
+## Part B - trunk-hull baker + tool emits tree `.coll`
 
 (Done first: additive, self-contained, no behavior change to existing movement tests.)
 
@@ -32,14 +32,14 @@
 - Test: `KhaozEngine.Tests/Physics/PropCollisionBakeTests.cs` (existing `SolidProp_BakesAConvexHull_RoundTrips` is the regression guard)
 
 **Interfaces:**
-- Produces: `static ConvexHullShape HullFromPoints(IReadOnlyList<Vector3> points)` — dedups (5 mm bucket), deterministic lexicographic sort, caps at `MaxHullPoints` via `KeepExtremePoints`, returns `ConvexHullShape`. Used by `BakeConvexHull` (Task 1) and `BakeTrunkHull` (Task 2).
+- Produces: `static ConvexHullShape HullFromPoints(IReadOnlyList<Vector3> points)` - dedups (5 mm bucket), deterministic lexicographic sort, caps at `MaxHullPoints` via `KeepExtremePoints`, returns `ConvexHullShape`. Used by `BakeConvexHull` (Task 1) and `BakeTrunkHull` (Task 2).
 
 - [ ] **Step 1: Confirm the existing hull regression test passes before refactor**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~SolidProp_BakesAConvexHull_RoundTrips"`
 Expected: PASS (baseline before refactor; the octahedron bakes to a 6-point hull).
 
-- [ ] **Step 2: Refactor — extract `HullFromPoints`, make `BakeConvexHull` delegate**
+- [ ] **Step 2: Refactor - extract `HullFromPoints`, make `BakeConvexHull` delegate**
 
 Replace the body of `BakeConvexHull` (the dedup + sort + cap + `new ConvexHullShape`) so it gathers the mesh vertex positions and calls the new helper. Add the helper directly below it:
 
@@ -91,7 +91,7 @@ Leave `KeepExtremePoints` unchanged. Add `using System.Collections.Generic;` if 
 - [ ] **Step 3: Run the regression test to verify it still passes**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~SolidProp_BakesAConvexHull_RoundTrips"`
-Expected: PASS (identical hull — the refactor is behavior-preserving; the octahedron still bakes to 6 points).
+Expected: PASS (identical hull - the refactor is behavior-preserving; the octahedron still bakes to 6 points).
 
 - [ ] **Step 4: Commit**
 
@@ -102,7 +102,7 @@ git commit -m "render3d: extract HullFromPoints shared hull builder"
 
 ---
 
-### Task 2: `BakeTrunkHull` — leaning-trunk hull
+### Task 2: `BakeTrunkHull` - leaning-trunk hull
 
 **Files:**
 - Modify: `KhaozEngine.Render3D/Models/PropCollisionBake.cs` (add constants + `BakeTrunkHull`)
@@ -110,7 +110,7 @@ git commit -m "render3d: extract HullFromPoints shared hull builder"
 
 **Interfaces:**
 - Consumes: `HullFromPoints` (Task 1), existing `BakeTrunkCylinder`, `TrunkRadiusPercentile`, `TrunkRadiusFloor`.
-- Produces: `static PhysicsShape BakeTrunkHull(GltfMesh mesh)` — `ConvexHullShape` of the lower trunk band tracking the lean; falls back to `BakeTrunkCylinder` on degenerate input.
+- Produces: `static PhysicsShape BakeTrunkHull(GltfMesh mesh)` - `ConvexHullShape` of the lower trunk band tracking the lean; falls back to `BakeTrunkCylinder` on degenerate input.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -242,7 +242,7 @@ static void AddRing(List<ModelVertex> verts, List<uint> idx, Vector3 c, float r)
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~TrunkHull"`
-Expected: FAIL — `BakeTrunkHull` does not exist yet (compile error / missing method).
+Expected: FAIL - `BakeTrunkHull` does not exist yet (compile error / missing method).
 
 - [ ] **Step 3: Implement `BakeTrunkHull` + constants**
 
@@ -416,7 +416,7 @@ public class PropBakePlanTests
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~PropBakePlan"`
-Expected: FAIL — `PropBakePlan` does not exist.
+Expected: FAIL - `PropBakePlan` does not exist.
 
 - [ ] **Step 3: Implement `PropBakePlan`**
 
@@ -528,7 +528,7 @@ git commit -m "propbake: always emit a .coll per prop (trees get a trunk-hull co
 
 ---
 
-## Part A — swept collide-and-slide resolver
+## Part A - swept collide-and-slide resolver
 
 ### Task 5: Swept collide-and-slide (anti-tunnel, no step-up yet)
 
@@ -669,7 +669,7 @@ Expected: `FastMove_DoesNotTunnelThroughThinOneSidedWall` FAILS (the teleport-th
 
 - [ ] **Step 3: Implement the swept collide-and-slide (no step-up)**
 
-In `CharacterMovement.cs`, replace the candidate-position + depenetration block (the `Vector3 pos = new(dx, desiredY, dz);` through the closing of the `if (world is not null) { ... }` that ends with the post-depenetration `clampXz` re-clamp — current lines ~89-118) with:
+In `CharacterMovement.cs`, replace the candidate-position + depenetration block (the `Vector3 pos = new(dx, desiredY, dz);` through the closing of the `if (world is not null) { ... }` that ends with the post-depenetration `clampXz` re-clamp - current lines ~89-118) with:
 
 ```csharp
 // 3. Candidate position: SWEEP from the current pose to the target (collide-and-slide), then settle.
@@ -846,7 +846,7 @@ public void Stairs_WithRisersUnderStepHeight_AreWalkable()
 - [ ] **Step 2: Run to verify it fails**
 
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj --filter "FullyQualifiedName~Stairs_WithRisersUnderStepHeight_AreWalkable"`
-Expected: FAIL — the riser face blocks the swept move; the capsule stops at the first riser (Y stays ~0.9).
+Expected: FAIL - the riser face blocks the swept move; the capsule stops at the first riser (Y stays ~0.9).
 
 - [ ] **Step 3: Add `TryStepUp` and thread the stepped result**
 
@@ -1078,7 +1078,7 @@ git commit -m "locomotion: step-up + walkable-surface-following (stairs walkable
 
 ---
 
-### Task 7: Release 8.4.0 — version, changelog, doc sweep, pack, tag
+### Task 7: Release 8.4.0 - version, changelog, doc sweep, pack, tag
 
 **Files:**
 - Modify: `Directory.Build.props` (`<KhaozEngineVersion>`), `CHANGELOG.md`, `docs/CONSUMERS.md`, `docs/ROADMAP.md`, `README.md`, `CLAUDE.md`, `KhaozEngine.Locomotion/README.md`, `KhaozEngine.Render3D/README.md`, `docs/USING-KHAOZENGINE.md`.
@@ -1162,5 +1162,5 @@ The tag `v8.4.0` is created by the controller on `main` AFTER the branch is merg
 ## Self-Review (completed during planning)
 
 - **Spec coverage:** Part A swept resolver → Task 5; step-up/stairs → Task 6; trunk hull → Task 2; `HullFromPoints` refactor → Task 1; `PropBakePlan` → Task 3; tool decouple → Task 4; release + doc sweep → Task 7. All spec test bullets mapped to a step.
-- **Type consistency:** `HullFromPoints(IReadOnlyList<Vector3>)` defined Task 1, used Task 2. `PropBakePlan(PhysicsShape Coll, PropSurface? Surface)` / `.For` defined Task 3, used Task 4. `SweptMove`/`SlideSubstep` defined Task 5, extended (out params) Task 6 with all call sites updated. `BakeTrunkHull` returns `PhysicsShape` (hull or cylinder fallback) — tests assert the concrete type per fixture.
+- **Type consistency:** `HullFromPoints(IReadOnlyList<Vector3>)` defined Task 1, used Task 2. `PropBakePlan(PhysicsShape Coll, PropSurface? Surface)` / `.For` defined Task 3, used Task 4. `SweptMove`/`SlideSubstep` defined Task 5, extended (out params) Task 6 with all call sites updated. `BakeTrunkHull` returns `PhysicsShape` (hull or cylinder fallback) - tests assert the concrete type per fixture.
 - **No placeholders:** every code step shows complete code; the one measured-threshold step (Task 5 Step 5) is an explicit re-derivation procedure for a deliberate behavior change, not a TODO.

@@ -127,6 +127,65 @@ public class SweptCollisionTests
         Assert.True(peakZ > 2.2f, $"did not advance onto the stairs, peak z={peakZ}");
     }
 
+    // A CLOSED one-sided box mesh (6 outward-wound quads = 12 triangles), centred at `c`, half-extent `h`. This is
+    // the trap-risk shape: a hollow building shell whose INNER faces generate no contacts, so if the capsule ever
+    // got inside it could never eject. The swept resolver must keep it OUTSIDE at all times.
+    private static TriangleMeshShape ClosedOneSidedBox(Vector3 c, float h)
+    {
+        var v = new System.Collections.Generic.List<Vector3>();
+        var idx = new System.Collections.Generic.List<int>();
+        void Quad(Vector3 a, Vector3 b, Vector3 cc, Vector3 d)
+        {
+            int b0 = v.Count; v.Add(a + c); v.Add(b + c); v.Add(cc + c); v.Add(d + c);
+            idx.Add(b0); idx.Add(b0 + 1); idx.Add(b0 + 2);
+            idx.Add(b0); idx.Add(b0 + 2); idx.Add(b0 + 3);
+        }
+        // Outward-wound faces (front normal = cross(v1-v0, v2-v0) points AWAY from the centre).
+        Quad(new(h, -h, -h), new(h, h, -h), new(h, h, h), new(h, -h, h));       // +X
+        Quad(new(-h, -h, h), new(-h, h, h), new(-h, h, -h), new(-h, -h, -h));   // -X
+        Quad(new(-h, h, -h), new(-h, h, h), new(h, h, h), new(h, h, -h));       // +Y
+        Quad(new(-h, -h, -h), new(h, -h, -h), new(h, -h, h), new(-h, -h, h));   // -Y
+        Quad(new(-h, -h, h), new(h, -h, h), new(h, h, h), new(-h, h, h));       // +Z
+        Quad(new(-h, -h, -h), new(-h, h, -h), new(h, h, -h), new(h, -h, -h));   // -Z
+        return new TriangleMeshShape(v.ToArray(), idx.ToArray());
+    }
+
+    [Fact]
+    public void FastMove_NeverEntersClosedOneSidedShell()
+    {
+        // Closed hollow box (building shell) half-extent 1.5 centred at (0,0,4): AABB x,y in [-1.5,1.5], z in [2.5,5.5].
+        // One-sided faces => the inside cannot eject. Drive hard (BigDt=0.1 ~0.6 m/tick at run = >radius, the tunnel
+        // regime) at the near face AND at a corner; the capsule centre must NEVER be inside the shell.
+        var box = ClosedOneSidedBox(new Vector3(0f, 0f, 4f), 1.5f);
+        const float BigDt = 0.1f;
+        static bool Inside(Vector3 p) =>
+            p.X > -1.5f && p.X < 1.5f && p.Y > -1.5f && p.Y < 1.5f && p.Z > 2.5f && p.Z < 5.5f;
+
+        using (IPhysicsWorld world = new BepuPhysicsWorld())
+        {
+            world.AddStatic(box, Pose.At(Vector3.Zero)); world.Step(1f / 60f);
+            var state = new MoveState { Position = new Vector3(0f, 0.9f, 0f), Grounded = true };
+            var run = new MoveCommand(new Vector2(0f, -1f), run: true, cameraYaw: 0f, jump: false);   // toward +Z
+            for (int i = 0; i < 300; i++)
+            {
+                state = CharacterMovement.Step(state, run, BigDt, Flat, Tuning, groundNormal: null, world: world);
+                Assert.False(Inside(state.Position), $"tick {i}: capsule entered the closed shell at {state.Position}");
+            }
+        }
+
+        using (IPhysicsWorld world = new BepuPhysicsWorld())
+        {
+            world.AddStatic(box, Pose.At(Vector3.Zero)); world.Step(1f / 60f);
+            var state = new MoveState { Position = new Vector3(-3f, 0.9f, 0f), Grounded = true };
+            var diag = new MoveCommand(Vector2.Normalize(new Vector2(1f, -1f)), run: true, cameraYaw: 0f, jump: false); // +X +Z, at a corner
+            for (int i = 0; i < 300; i++)
+            {
+                state = CharacterMovement.Step(state, diag, BigDt, Flat, Tuning, groundNormal: null, world: world);
+                Assert.False(Inside(state.Position), $"tick {i}: capsule entered the closed shell (corner) at {state.Position}");
+            }
+        }
+    }
+
     [Fact]
     public void FastPath_IsDeterministic_AcrossTwoWorlds()
     {

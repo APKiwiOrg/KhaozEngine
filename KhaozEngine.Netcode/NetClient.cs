@@ -25,6 +25,9 @@ public sealed class NetClient
     /// <summary>The assigned slot once <see cref="ClientSessionEventKind.Joined"/> has been observed, else -1.</summary>
     public int Slot { get; private set; } = -1;
 
+    /// <summary>Live transport statistics (RTT, loss, byte counters); <see cref="NetTransportStats.Unavailable"/> for loopback.</summary>
+    public NetTransportStats TransportStats => transport.Stats;
+
     /// <summary>Pumps the transport: sends Hello on connect, turns Welcome/Reject/Data into session events.</summary>
     public void Poll()
     {

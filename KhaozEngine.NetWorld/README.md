@@ -21,9 +21,13 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   `EntityRenderState[]` (local player predicted + reconciled, remotes from replicated positions - smoothly
   interpolated between snapshots by default, so a remote glides instead of teleporting one ~tick-rate snapshot-step
   per ingest; `AdvancePresentation(dt)` drives it, opt out with `WorldClientConfig.InterpolateRemotes = false`).
-  Optional `WorldBounds`/`WorldColliders`/`WorldSurfaces` ctor params (mirroring `WorldServer`) make the client predict
-  against the same play-area bound + static props + walkable surfaces the server is authoritative over, so a
+  Optional `WorldBounds`/`IPhysicsWorld?` ctor params (mirroring `WorldServer`, since 8.0.0) make the client predict
+  against the same play-area bound + static physics bodies the server is authoritative over, so a
   solid-prop world predicts straight instead of rubber-banding (null = terrain only).
+  `WorldClient.NetStats` (a `KhaozEngine.Diagnostics.ClientNetStats`) surfaces connection health for a telemetry
+  overlay: RTT / loss / byte rates from the transport, the AoI snapshot ingest rate, and the
+  prediction-reconciliation correction magnitude (last + rolling average); `Connected` tracks `Joined`. Rates
+  refresh once per ~1s window as `AdvancePresentation(dt)` is pumped. Reading it never mutates state.
 - **`WorldPersistence`** (+ `WorldPersistenceConfig`, `PlayerRecord`) wires an
   [`IWorldStore`](../KhaozEngine.WorldStore) into the server lifecycle through **`IWorldPersistenceHost`** (the
   surface `WorldServer` and `ShardedWorldServer` both implement) so the world survives a restart: load-on-join

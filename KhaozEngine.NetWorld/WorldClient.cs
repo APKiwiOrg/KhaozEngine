@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.Diagnostics;
 using KhaozEngine.Physics;
 using KhaozEngine.Ecs;
 using KhaozEngine.Locomotion;
@@ -83,6 +84,24 @@ public sealed class WorldClient : IDisposable
     private bool awaitingBackoff;        // true while waiting out the inter-attempt delay
     private float retryWaitRemaining;    // backoff countdown
     private float attemptDeadlineRemaining;  // current live attempt's join deadline
+
+    // --- NetStats: a diagnostics-only snapshot of connection health, surfaced via NetStats. Rates are computed
+    // over a rolling ~1s window driven by AdvancePresentation(dt) (the canonical per-frame call); snapshot count and
+    // correction magnitude are captured at ingest in Poll/OnSnapshot. Nothing here affects simulation.
+    private const float StatsWindowSeconds = 1f;
+    private float statsElapsed;                        // seconds accumulated in the current window
+    private int snapshotsSinceWindow;                  // AoI snapshots applied since the window opened
+    private bool statsBaselineSet;                     // whether the byte-counter baseline has been captured
+    private long bytesInBaseline;
+    private long bytesOutBaseline;
+    private float snapshotsPerSec;                     // last completed window's rates (reported by NetStats)
+    private float bytesInPerSec;
+    private float bytesOutPerSec;
+    private float lastCorrection;                      // magnitude of the most recent reconciliation correction (m)
+    private readonly float[] correctionRing = new float[64];
+    private float correctionSum;
+    private int correctionCount;
+    private int correctionHead;
 
     /// <summary>Single-shot client over a caller-owned transport: no auto-reconnect (a drop is terminal, observable
     /// via <see cref="ConnectionState"/> + <see cref="DisconnectReason"/>). The caller owns disposing the transport.</summary>
@@ -187,6 +206,32 @@ public sealed class WorldClient : IDisposable
     /// <summary>The local player's predicted vertical velocity, m/s positive up (shorthand for
     /// <see cref="LocalRenderState"/>.VerticalVelocity).</summary>
     public float LocalVerticalVelocity => prediction.RenderedState.VerticalVelocity;
+
+    /// <summary>
+    /// A read-only snapshot of this client's connection health for a diagnostics/telemetry overlay: RTT, packet
+    /// loss, and byte rates (from the transport - 0 over loopback), the AoI snapshot ingest rate, and the
+    /// prediction-reconciliation correction magnitude (last + rolling average). <see cref="ClientNetStats.Connected"/>
+    /// tracks <see cref="Joined"/>. Rates refresh once per ~1s window as <see cref="AdvancePresentation"/> is pumped;
+    /// reading this never mutates state.
+    /// </summary>
+    public ClientNetStats NetStats
+    {
+        get
+        {
+            NetTransportStats t = net.TransportStats;
+            return new ClientNetStats
+            {
+                Connected = Joined,
+                RttMs = t.RttMs,
+                PacketLoss = t.PacketLoss,
+                BytesInPerSec = bytesInPerSec,
+                BytesOutPerSec = bytesOutPerSec,
+                SnapshotsPerSec = snapshotsPerSec,
+                LastCorrectionMeters = lastCorrection,
+                AvgCorrectionMeters = correctionCount > 0 ? correctionSum / correctionCount : 0f,
+            };
+        }
+    }
 
     /// <summary>Pumps the session: ingests AoI snapshots, applies remote replication, reconciles the local avatar.
     /// Pass <paramref name="dt"/> (seconds elapsed since last call) to drive the snapshot-starvation detector and
@@ -332,6 +377,7 @@ public sealed class WorldClient : IDisposable
     public void AdvancePresentation(float dt)
     {
         prediction.AdvancePresentation(dt);                   // local avatar (unaffected by remote interpolation)
+        UpdateNetStatsWindow(dt);
         if (!interpolateRemotes) return;
         secondsSinceSnapshot += dt;
         float alpha = snapshotInterval > 0f ? Math.Clamp(secondsSinceSnapshot / snapshotInterval, 0f, 1f) : 1f;
@@ -398,6 +444,7 @@ public sealed class WorldClient : IDisposable
     private void OnSnapshot(byte[] data)
     {
         if (!MoveProtocol.TryDecodeSnapshotFrame(data, out int localNetId, out int ackSeq, out byte[] snapshot)) return;
+        snapshotsSinceWindow++;                                  // NetStats: AoI snapshot ingest rate
         bool first = LocalNetId < 0;
         LocalNetId = localNetId;
         view.Apply(world, snapshot);
@@ -425,7 +472,54 @@ public sealed class WorldClient : IDisposable
             world.TryGet(local, out MovementState ms);           // default (grounded, 0) until first replicated
             PlayerMoveState basis = PlayerMoveState.From(p.Value, ms);
             if (first) prediction.Reset(basis);                  // seed prediction at the authoritative spawn
-            prediction.Reconcile(authoritativeTick++, basis, ackSeq);
+            ReconciliationResult rr = prediction.Reconcile(authoritativeTick++, basis, ackSeq);
+            RecordCorrection(rr.PositionError);                  // NetStats: predicted-vs-authoritative delta (m)
         }
+    }
+
+    // --- NetStats helpers (diagnostics only) ---
+
+    /// <summary>Roll the byte/snapshot-rate window forward by <paramref name="dt"/>; recompute rates each ~1s.</summary>
+    private void UpdateNetStatsWindow(float dt)
+    {
+        if (dt > 0f) statsElapsed += dt;
+
+        NetTransportStats t = net.TransportStats;
+        if (!statsBaselineSet)
+        {
+            bytesInBaseline = t.BytesReceivedTotal;
+            bytesOutBaseline = t.BytesSentTotal;
+            statsBaselineSet = true;
+        }
+
+        if (statsElapsed >= StatsWindowSeconds)
+        {
+            snapshotsPerSec = snapshotsSinceWindow / statsElapsed;
+            bytesInPerSec = (t.BytesReceivedTotal - bytesInBaseline) / statsElapsed;
+            bytesOutPerSec = (t.BytesSentTotal - bytesOutBaseline) / statsElapsed;
+            statsElapsed = 0f;
+            snapshotsSinceWindow = 0;
+            bytesInBaseline = t.BytesReceivedTotal;
+            bytesOutBaseline = t.BytesSentTotal;
+        }
+    }
+
+    /// <summary>Record one reconciliation correction magnitude into the last-value + rolling-average buffer.</summary>
+    private void RecordCorrection(float meters)
+    {
+        if (float.IsNaN(meters) || float.IsInfinity(meters) || meters < 0f) return;
+        lastCorrection = meters;
+        if (correctionCount < correctionRing.Length)
+        {
+            correctionRing[correctionHead] = meters;
+            correctionSum += meters;
+            correctionCount++;
+        }
+        else
+        {
+            correctionSum += meters - correctionRing[correctionHead];
+            correctionRing[correctionHead] = meters;
+        }
+        correctionHead = (correctionHead + 1) % correctionRing.Length;
     }
 }

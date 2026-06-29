@@ -1,6 +1,6 @@
 # KhaozEngine.Diagnostics
 
-Game-agnostic logging service. Pure .NET, no MonoGame dependency.
+Game-agnostic logging **and runtime telemetry**. Pure .NET, no MonoGame dependency.
 
 ## Quick start
 
@@ -49,3 +49,12 @@ Do **not** prefix the message with the category: `Log.Info("[CloudSave] saved")`
 (OS-correct app-data paths live in `KhaozEngine.App` as `AppDataPaths`; resolve `FileSinkOptions.Path` through it.)
 
 Logging never throws and never blocks the caller (writes happen on a background thread; `Flush`/`Shutdown` drain them).
+
+## Telemetry (since 8.2.0)
+
+Headless, renderer-free building blocks for an in-game diagnostics/telemetry HUD. The
+[`KhaozEngine.Gui`](../KhaozEngine.Gui) `DiagnosticsOverlay` renders them; the recorder writes them to disk.
+
+- `FrameStats` - per-frame meter. `Sample(dt)` once per frame, then read `Fps`, `FrameMsAvg`/`FrameMsMin`/`FrameMsMax` over a rolling window (default ~1s; `new FrameStats(windowSeconds)`) and `ManagedBytes` (`GC.GetTotalMemory(false)`). Non-positive / NaN / infinite `dt` are ignored. Unit-testable from a synthetic dt stream.
+- `TelemetryRecorder` + `TelemetryChannel(string Name, double Value)` - streams a session to a JSON Lines file, one object per `Sample(elapsedSeconds, channels)` (`{"t":12.34,"fps":59.7,...}`), flushed per line so a crash leaves a valid partial file. `Start(path)` / `Stop()` / `IsRecording` / `CurrentPath`; `IDisposable`. Records raw numbers; non-finite values serialize as JSON `null`.
+- `ClientNetStats` - the connection-health snapshot (`RttMs`, `PacketLoss`, `BytesInPerSec`/`BytesOutPerSec`, `SnapshotsPerSec`, `LastCorrectionMeters`/`AvgCorrectionMeters`, `Connected`) that `KhaozEngine.NetWorld`'s `WorldClient.NetStats` fills and the overlay renders. It lives here (not in NetWorld) so the Gui overlay can name it without depending on the server/netcode stack.

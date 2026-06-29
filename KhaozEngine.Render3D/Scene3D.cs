@@ -390,6 +390,19 @@ namespace KhaozEngine.Render3D
             get { int n = 0; foreach (var t in _textures) if (t != null) n++; return n; }
         }
 
+        /// <summary>Number of mesh slots still holding a live GPU mesh (loaded and not yet unloaded). For tests
+        /// (e.g. a streaming sink's teardown must return this to its pre-load baseline - no leaked chunk meshes).</summary>
+        internal int LiveMeshCount
+        {
+            get { int n = 0; foreach (var m in _meshes) if (m != null) n++; return n; }
+        }
+
+        /// <summary>Number of splat-material slots still holding a live material (loaded and not yet unloaded). For tests.</summary>
+        internal int LiveSplatMaterialCount
+        {
+            get { int n = 0; foreach (var m in _splatMaterials) if (m != null) n++; return n; }
+        }
+
         /// <summary>Upload a skinned mesh to the GPU once; returns a handle to draw it with
         /// <see cref="DrawSkinned(KhaozEngine.Render3D.SkinnedMeshHandle, System.ReadOnlySpan{System.Numerics.Matrix4x4}, System.Numerics.Matrix4x4, KhaozEngine.Primitives.Color)"/>. Untextured (samples the 1x1 white default, so colour is the baked vertex
         /// colour times any per-instance tint).</summary>

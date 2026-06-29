@@ -5,7 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
-## 7.75.0
+## 7.76.0
 
 Defensive hard cap on the netcode event inboxes so a stalled or hostile host can't grow them without bound. The
 session inbox in `NetServer` and the raw transport inboxes in `LiteNetLibServerTransport`/`LiteNetLibClientTransport`
@@ -27,6 +27,53 @@ so consumers adopt as a pure pin bump.
   `maxQueuedEvents` ctor arg (same default) and a read-only `DroppedEventCount`. The drop-oldest eviction releases the
   oldest undrained Data event's `byte[]` payload, the buffer the audit flagged as pinned.
 - Behaviour is byte-identical for a host that drains to empty every tick (the contract): the cap is purely defensive.
+
+## 7.75.1
+
+Robustness fix for the ground-decal pass: each queued decal now renders from its OWN dynamic-offset slot of the decal
+UBO instead of every draw re-uploading and reading one shared 160-byte slot. Output is byte-identical on the three
+current Veldrid backends (the 3-decal golden is unchanged), so this is defensive correctness, not a visible-bug fix -
+it removes a fragile pattern, not a wrong pixel.
+
+- **Per-draw dynamic-offset decal UBO.** `GroundDecalRenderer.Draw` packed every decal into one shared UBO at offset 0
+  and re-uploaded it per draw within a single command list, leaning on the backend to barrier the write-after-read so
+  each draw read its own params. That holds on Veldrid's Metal/D3D11/Vulkan today (`CommandList.UpdateBuffer` snapshots
+  each copy and orders them, which is why the reported bug is not actually observable), but it is exactly the
+  shared-per-draw-UBO pattern the engine elsewhere replaced with a dynamic-offset window. The pass now writes each
+  decal into its own 256-byte slot of a growable UBO (geometric growth, old buffers retired then freed in `Dispose`)
+  and selects the slot per draw via the dynamic offset on `SetGraphicsResourceSet` - the first in-engine user of that
+  path. The framebuffer is bound once before the draw loop instead of once per decal. Internal only: `GroundDecalRenderer`
+  is not public and the `DrawGroundDecal` primitive is unchanged, so this is a pure pin bump for consumers.
+- **New regression guard.** `GroundDecalDistinctRenderTests` (GPU-gated, `KE_GPU_TESTS=1`) renders two decals far
+  apart, one red and one cyan, and asserts in absolute terms that both colours appear in the output, so a future
+  collapse to one shared slot drops a colour and fails. Being GPU-gated it also exercises the new dynamic-offset bind
+  on D3D11 + Vulkan in CI.
+
+## 7.75.0
+
+Memory-leak fix for terrain world streaming: `Scene3DChunkSink` and `TerrainStreamer` now implement `IDisposable`,
+so tearing streaming down and rebuilding it while the same `Scene3D` survives (level change / world reload / a
+teleport that rebuilds streaming) frees the loaded ring of chunk meshes instead of leaking one full ring of native
+GPU buffers per teardown. Additive and opt-in - steady-state walking already freed each chunk as it left the ring,
+and existing call sites are unchanged (a default-`false` `ownsMaterial` ctor flag and the new disposal members).
+
+- **`Scene3DChunkSink : IDisposable`.** New `Dispose()` unloads every still-loaded chunk's GPU mesh
+  (`Scene3D.UnloadMesh` over the `_loaded` ring) and clears the ring; idempotent. Previously these meshes only freed
+  at whole-scene `Scene3D.Dispose`, so a sink rebuilt against a surviving scene leaked one ring of terrain meshes per
+  teardown.
+- **Shared-material ownership made explicit.** The splat `material` handed to `Scene3DChunkSink` is shared across
+  chunks and stays **caller-owned by default** (the caller must `Scene3D.UnloadSplatMaterial` it, or reuse it for the
+  rebuilt sink); the material is never disposed per-chunk. New opt-in `ownsMaterial` ctor flag (default `false`, both
+  ctors) hands ownership to the sink, whose `Dispose` then frees the material alongside the meshes.
+- **`TerrainStreamer : IDisposable` + `UnloadAll()`.** `UnloadAll()` flushes the loaded ring through the sink (after
+  it `Loaded` is empty) without touching the sink itself - call it to rebuild streaming while reusing the same sink.
+  `Dispose()` does that and then disposes the sink if it is `IDisposable` (turn-key teardown of the ring + the sink's
+  GPU resources); idempotent.
+- **Test-only live counters.** `Scene3D` gains internal `LiveMeshCount` / `LiveSplatMaterialCount` (mirroring the
+  existing `LiveTextureCount`) so the leak fix is asserted directly. Coverage: a headless `[Fact]` set drives
+  `TerrainStreamer.UnloadAll`/`Dispose` through the fake `IChunkSink` (every loaded chunk unloaded, ring emptied,
+  owned-sink dispose idempotent), and a `[GpuFact]` set proves `Scene3DChunkSink.Dispose` returns the live mesh count
+  to baseline and frees the material only when `ownsMaterial` is set.
 
 ## 7.74.0
 

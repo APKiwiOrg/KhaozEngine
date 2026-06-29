@@ -44,7 +44,7 @@ public sealed class WorldServerConfig
 /// The multi-cell variant is <see cref="ShardedWorldServer"/> (the same movement stack run across a cell grid);
 /// this is the single-world slice. Both share <see cref="WorldPersistence"/> via <see cref="IWorldPersistenceHost"/>.
 /// </summary>
-public sealed class WorldServer : IWorldPersistenceHost
+public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
 {
     private readonly WorldServerConfig config;
     private readonly ReplicationRegistry registry = MoveProtocol.CreateRegistry();
@@ -54,6 +54,7 @@ public sealed class WorldServer : IWorldPersistenceHost
     private readonly RemoteCommandQueue<MoveCommand> commands = new(neutralCommand: default);
     private readonly PlayerMoveSimulator simulator;
     private readonly DrainController drain = new();
+    private readonly AdminCommandBuffer admin = new();
 
     private readonly Dictionary<int, int> netIdBySlot = new();
     private readonly Dictionary<int, Entity> entityBySlot = new();
@@ -88,8 +89,9 @@ public sealed class WorldServer : IWorldPersistenceHost
         OnSuspiciousActivity?.Invoke(new SuspiciousActivity(slot, reason, magnitude));
 
     /// <summary>Disconnects a player's connection (a kick) - the policy seam a game's <see cref="OnSuspiciousActivity"/>
-    /// handler calls. No-op for an unknown slot.</summary>
-    public void Disconnect(int slot) => net.Disconnect(slot);
+    /// handler calls. Immediately removes the slot from the authoritative state so <see cref="PlayerCount"/> reflects
+    /// the kick without waiting for the transport event. No-op for an unknown slot.</summary>
+    public void Disconnect(int slot) { net.Disconnect(slot); OnLeave(slot); }
 
     /// <summary>Broadcasts a <see cref="ServerNotice"/> to every connected client (reliable-ordered), surfaced on
     /// <see cref="WorldClient.NoticeReceived"/>. Out-of-band: rides the Data channel alongside snapshots via the
@@ -215,6 +217,7 @@ public sealed class WorldServer : IWorldPersistenceHost
     /// <summary>Steps one authoritative frame: apply each client's queued input, then serve every client its AoI.</summary>
     public void Tick(float dt)
     {
+        admin.Drain(ApplyAdminCommand);
         // Authoritative movement: one command per player per tick.
         var slots = new List<int>(netIdBySlot.Keys);
         foreach (int slot in slots)
@@ -253,6 +256,83 @@ public sealed class WorldServer : IWorldPersistenceHost
         // so clearing here is safe; a consumer that reads them opts out via WorldServerConfig.AdvanceWorldTick.
         if (config.AdvanceWorldTick) world.AdvanceTick();
         drain.Advance(dt);
+        admin.Publish(BuildOnlineSnapshot());
+    }
+
+    /// <inheritdoc/>
+    public IReadOnlyList<OnlinePlayer> ListOnline() => admin.Online;
+
+    /// <inheritdoc/>
+    public void Teleport(PlayerRef target, Vector3 position) =>
+        admin.Enqueue(new AdminCommand { Kind = AdminCommandKind.Teleport, Target = target, Position = position });
+
+    /// <inheritdoc/>
+    public void Kick(PlayerRef target, string reason) =>
+        admin.Enqueue(new AdminCommand { Kind = AdminCommandKind.Kick, Target = target, Text = reason ?? string.Empty });
+
+    /// <inheritdoc/>
+    public void Broadcast(string text) =>
+        admin.Enqueue(new AdminCommand { Kind = AdminCommandKind.Broadcast, Text = text ?? string.Empty });
+
+    private int ResolveSlot(in PlayerRef target)
+    {
+        if (target.IsSlot) return netIdBySlot.ContainsKey(target.SlotValue) ? target.SlotValue : -1;
+        foreach (KeyValuePair<int, string> kv in accountIdBySlot)
+            if (kv.Value == target.AccountValue) return kv.Key;
+        return -1;
+    }
+
+    private void SendNoticeTo(int slot, in ServerNotice notice)
+    {
+        byte[] envelope = MoveProtocol.EncodeServerFrame(MoveProtocol.ServerFrameKind.Notice, MoveProtocol.EncodeNotice(notice));
+        net.SendTo(slot, envelope, NetChannelReliability.ReliableOrdered);
+    }
+
+    private void ApplyAdminCommand(AdminCommand cmd)
+    {
+        switch (cmd.Kind)
+        {
+            case AdminCommandKind.Teleport:
+            {
+                int slot = ResolveSlot(cmd.Target);
+                if (slot >= 0 && stateBySlot.TryGetValue(slot, out PlayerMoveState st))
+                {
+                    st.Position = cmd.Position;
+                    st.VerticalVelocity = 0f;
+                    SetPlayerState(slot, st);
+                }
+                break;
+            }
+            case AdminCommandKind.Kick:
+            {
+                int slot = ResolveSlot(cmd.Target);
+                if (slot >= 0)
+                {
+                    SendNoticeTo(slot, new ServerNotice(ServerNoticeKind.Custom, cmd.Text));
+                    Disconnect(slot);
+                }
+                break;
+            }
+            case AdminCommandKind.Broadcast:
+                BroadcastNotice(new ServerNotice(ServerNoticeKind.Custom, cmd.Text));
+                break;
+        }
+    }
+
+    private OnlinePlayer[] BuildOnlineSnapshot()
+    {
+        var list = new List<OnlinePlayer>(netIdBySlot.Count);
+        foreach (int slot in netIdBySlot.Keys)
+        {
+            string acct = accountIdBySlot.TryGetValue(slot, out string? a) ? a : string.Empty;
+            PlayerMoveState st = stateBySlot.TryGetValue(slot, out PlayerMoveState s) ? s : default;
+            int netId = netIdBySlot[slot];
+            string name = string.Empty;
+            if (entityBySlot.TryGetValue(slot, out Entity e) && world.TryGet(e, out PlayerIdentity pi))
+                name = pi.DisplayName ?? string.Empty;
+            list.Add(new OnlinePlayer(slot, acct, name, st.Position, st.Grounded, st.VerticalVelocity, netId));
+        }
+        return list.ToArray();
     }
 
     private void OnJoin(int slot, string subject, string displayName)

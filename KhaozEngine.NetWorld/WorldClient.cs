@@ -101,7 +101,7 @@ public sealed class WorldClient
                     Joined = true;
                     break;
                 case ClientSessionEventKind.Data:
-                    OnSnapshot(ev.Data);
+                    OnServerFrame(ev.Data);
                     break;
                 case ClientSessionEventKind.Disconnected:
                     Joined = false;
@@ -172,6 +172,18 @@ public sealed class WorldClient
             list.Add(new EntityRenderState(new NetId(kv.Key), pos, isLocal, name, grounded, verticalVelocity));
         }
         return list;
+    }
+
+    private void OnServerFrame(byte[] data)
+    {
+        if (!MoveProtocol.TryDecodeServerFrame(data, out MoveProtocol.ServerFrameKind kind, out byte[] payload)) return;
+        switch (kind)
+        {
+            case MoveProtocol.ServerFrameKind.Snapshot:
+                OnSnapshot(payload);
+                break;
+            // Notice handling is wired in a later task.
+        }
     }
 
     private void OnSnapshot(byte[] data)

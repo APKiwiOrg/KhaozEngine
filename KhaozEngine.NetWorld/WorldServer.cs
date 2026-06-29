@@ -218,7 +218,8 @@ public sealed class WorldServer : IWorldPersistenceHost
             HashSet<int> set = interest.Query(p.X, p.Z, config.InterestRadius);
             byte[] snapshot = SnapshotWriter.WriteFiltered(world, registry, set);
             byte[] frame = MoveProtocol.EncodeSnapshotFrame(netId, lastAckBySlot[slot], snapshot);
-            net.SendTo(slot, frame, NetChannelReliability.ReliableOrdered);
+            byte[] envelope = MoveProtocol.EncodeServerFrame(MoveProtocol.ServerFrameKind.Snapshot, frame);
+            net.SendTo(slot, envelope, NetChannelReliability.ReliableOrdered);
         }
 
         // Clear the per-tick ECS change-tracking + event sets so they don't accumulate on a long-running server.

@@ -265,7 +265,8 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost
             if (!netIdBySlot.TryGetValue(slot, out int netId)) continue;
             byte[] snapshot = host.SnapshotForClient(slot, config.InterestRadius);
             byte[] frame = MoveProtocol.EncodeSnapshotFrame(netId, lastAckBySlot[slot], snapshot);
-            net.SendTo(slot, frame, NetChannelReliability.ReliableOrdered);
+            byte[] envelope = MoveProtocol.EncodeServerFrame(MoveProtocol.ServerFrameKind.Snapshot, frame);
+            net.SendTo(slot, envelope, NetChannelReliability.ReliableOrdered);
         }
 
         // 6. Clear each cell's per-tick ECS change-tracking + event sets so they don't accumulate on a long-running

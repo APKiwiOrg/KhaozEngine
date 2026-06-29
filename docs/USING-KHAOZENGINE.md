@@ -1068,7 +1068,7 @@ use the `Physics` package.** The API and types are unchanged; only the `Characte
 `WorldClient` / `ShardedWorldServer` / `PlayerMoveSimulator` / `PlayerMovementSystem` ctors no longer accept them.
 
 Props and buildings can be made solid: a kinematic capsule-vs-static-collider push-out in the XZ plane
-(authoritative, the standard MMO character-controller approach, NOT a physics engine). The math + the queryable
+(authoritative, the standard MMO character-controller approach, predating the 8.0.0 physics layer). The math + the queryable
 set live in `KhaozEngine.Collision`; previously movement integration was a single nullable parameter on the
 shared step, so the local controller, the authoritative server, and client prediction all resolved identically.
 
@@ -1330,9 +1330,9 @@ var server = new WorldServer(transport, new WorldServerConfig { TickSeconds = 1f
   `Grounded` + `VerticalVelocity` are the EXACT air state (local: predicted; remote: replicated
   `MovementState`), surfaced for every entity so an animator bridge reads jump/fall for remotes instead of
   finite-differencing their terrain-following position. Optional trailing ctor params
-  `WorldBounds? bounds`, `WorldColliders? colliders`, `WorldSurfaces? surfaces` (mirroring `WorldServer`) feed the
-  internal prediction simulator, so the client predicts against the **same** play-area bound + static
-  props/buildings + walkable surfaces the server is authoritative over (null = terrain only). The local avatar's
+  `WorldBounds? bounds`, `IPhysicsWorld? physics` (mirroring `WorldServer`) feed the
+  internal prediction simulator, so the client predicts around the **same** static
+  props/buildings and play-area bound the server is authoritative over (null = terrain only). The local avatar's
   rendered position is smoothed in 3D - the inter-tick interpolation and the reconciliation glide both carry the
   vertical axis, so a jump/fall eases instead of stair-stepping or popping, and a snapshot landing mid inter-tick
   no longer jolts the avatar (the source of the moving/jumping jitter on a remote server). Remotes are smoothed too:

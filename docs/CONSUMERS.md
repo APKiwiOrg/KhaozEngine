@@ -13,8 +13,7 @@ the MonoGame-free foundation packages that graduated onto it at `5.46.0`
 `KhaozEngine.Updates.Tool` package (the `ke-updater` dotnet tool: manifest/genkey/sign/verify), and 7.14.0 adds
 the author-time `KhaozEngine.Sfx.Tool` package (the `ke-sfxbake` dotnet tool: manifest-driven bulk SFX
 generation + bake via the ElevenLabs API + ffmpeg/oggenc), and 7.55.0 adds the author-time
-`KhaozEngine.PropSurface.Tool` package (the `ke-propbake` dotnet tool: bakes a walkable-surface `.surf` heightmap
-per walkable-solid prop in a kit manifest, folded into kit ingest); all are tools,
+`KhaozEngine.PropSurface.Tool` package (the `ke-propbake` dotnet tool: bakes a walkable-surface `.surf` heightmap and 3D collision shapes per walkable-solid prop in a kit manifest, consumed by `PropCollisionLoader` for physics integration, folded into kit ingest); all are tools,
 not libraries, so no consumer references them via `<PackageReference>` and they are in no umbrella metapackage.
 7.33.0 adds the headless snapshot harness as two libraries (`KhaozEngine.Snapshot` = 2D `SnapshotRunner`/`SnapshotHost`;
 `KhaozEngine.Snapshot.Render3D` = the `Shot3D` extension) plus the BCL-only `KhaozEngine.Imaging` (`PngWriter`).

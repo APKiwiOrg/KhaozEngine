@@ -1,7 +1,7 @@
 using KhaozEngine.Server.Admin;
 using Xunit;
 
-namespace KhaozEngine.Tests.ServerAdmin;
+namespace KhaozEngine.Tests.ServerAdminEndpoint;
 
 public class AdminTlsCertificateTests
 {

@@ -8,7 +8,6 @@ using KhaozEngine.Netcode;
 using KhaozEngine.NetWorld;
 using KhaozEngine.WorldStore;
 using Xunit;
-using NetWorldServerAdmin = KhaozEngine.NetWorld.ServerAdmin;
 
 namespace KhaozEngine.Tests.NetWorld;
 
@@ -26,7 +25,7 @@ public class ServerAdminTests
         var client = new NetClient(ct, Encoding.UTF8.GetBytes("evil"));
         for (int i = 0; i < 200 && server.PlayerCount == 0; i++) { client.Poll(); server.Poll(); server.Tick(config.TickSeconds); }
 
-        var admin = new NetWorldServerAdmin(server, bans);
+        var admin = new ServerAdmin(server, bans);
         await admin.BanAsync("evil", "cheating");
         for (int i = 0; i < 60 && server.PlayerCount > 0; i++) { server.Poll(); server.Tick(config.TickSeconds); client.Poll(); }
 
@@ -44,7 +43,7 @@ public class ServerAdminTests
         var store = new InMemoryWorldStore();
         await store.SaveAsync("player:1", new byte[] { 1 });
 
-        var admin = new NetWorldServerAdmin(server, bans: null, accounts: store);
+        var admin = new ServerAdmin(server, bans: null, accounts: store);
         IReadOnlyList<WorldStoreEntry> accounts = await admin.ListAccountsAsync("player:");
 
         Assert.Single(accounts);

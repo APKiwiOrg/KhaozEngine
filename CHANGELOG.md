@@ -5,6 +5,28 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 7.71.0
+
+Ground-cover scatter: the chunk sink now holds multiple prop layers and a deterministic understory-companion
+primitive rings host props with foliage, so a dense short-radius ground cover rides alongside the sparse trees
+and trees are dressed at the base instead of standing on bare ground. Additive; no new material, no protocol or
+collision change.
+
+- `KhaozEngine.Terrain`: `PropScatter.GenerateCompanions(field, hosts, CompanionConfig)` - a pure, render-free,
+  deterministic primitive that rings each host whose id is in `HostKinds` with `Count` foliage instances in a
+  jittered ring (count/angle/radius/kind/scale/yaw hashed off the host's centimetre-quantized world XZ, so it is
+  tiling-invariant: companions over a host set equal the union of companions over any tiling of it). `Y` resampled
+  from the field; `MaxHeight` excludes off-mountain companions. New `CompanionConfig`.
+- `KhaozEngine.Terrain.Render3D`: `Scene3DChunkSink` generalized to N `PropLayer`s, each with its own scatter or
+  companion config, mesh set, and draw radius (short for dense ground cover, long for trees). New `PropLayer`
+  tagged struct (`PropLayer.ScatterLayer(...)` / `PropLayer.CompanionLayer(hostLayerIndex, ...)`). Companion
+  layers are derived per chunk from their host scatter layer, so each host emits its companions exactly once even
+  when they spill into a neighbour chunk. The existing single-layer ctor is unchanged and byte-identical.
+- Render-only by construction: foliage ids carry no collider, so the server, client prediction, and collision are
+  untouched.
+- Non-goals (deferred): alpha-cutout grass cards / billboards (needs a transparent material pass), wind sway,
+  distance alpha-fade at the cull boundary.
+
 ## 7.70.0
 
 Remote players now render smoothly between snapshots: `WorldClient` interpolates each remote's replicated position

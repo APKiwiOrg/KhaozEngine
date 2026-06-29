@@ -16,14 +16,24 @@ public sealed class NetServer
     private readonly SlotAllocator slots;
     private readonly Dictionary<int, NetConnectionId> connectionBySlot = new();
     private readonly Dictionary<NetConnectionId, int> slotByConnection = new();
-    private readonly Queue<ServerSessionEvent> inbox = new();
+    private readonly BoundedEventQueue<ServerSessionEvent> inbox;
 
-    public NetServer(INetTransport transport, int maxPlayers, IConnectionAuthenticator authenticator)
+    /// <param name="maxQueuedEvents">Defensive hard cap on undrained session events. The drain-to-empty contract
+    /// (Poll then drain via <see cref="TryDequeueEvent"/> every tick) keeps this far below the cap; it only bites a
+    /// host that stalls or is flooded, where the oldest event is dropped to keep memory bounded (Data events each
+    /// pin a payload buffer). Drops are counted in <see cref="DroppedEventCount"/>.</param>
+    public NetServer(INetTransport transport, int maxPlayers, IConnectionAuthenticator authenticator,
+        int maxQueuedEvents = BoundedEventQueue<ServerSessionEvent>.DefaultCapacity)
     {
         this.transport = transport ?? throw new ArgumentNullException(nameof(transport));
         this.authenticator = authenticator ?? throw new ArgumentNullException(nameof(authenticator));
         slots = new SlotAllocator(maxPlayers);
+        inbox = new BoundedEventQueue<ServerSessionEvent>(maxQueuedEvents);
     }
+
+    /// <summary>Total session events dropped because the undrained inbox hit its cap. Non-zero means the host is
+    /// not draining as contracted (a stall) or a peer is flooding; under normal operation this stays 0.</summary>
+    public long DroppedEventCount => inbox.DroppedCount;
 
     /// <summary>Pumps the transport and processes handshake/data/disconnect into session events.</summary>
     public void Poll()
@@ -95,18 +105,21 @@ public sealed class NetServer
     }
 
     /// <summary>Drains one session event. False when none remain this poll.</summary>
-    public bool TryDequeueEvent(out ServerSessionEvent ev)
-    {
-        if (inbox.Count > 0) { ev = inbox.Dequeue(); return true; }
-        ev = default;
-        return false;
-    }
+    public bool TryDequeueEvent(out ServerSessionEvent ev) => inbox.TryDequeue(out ev);
 
     /// <summary>Sends game data to one slot. No-op for an unknown slot.</summary>
     public void SendTo(int slot, ReadOnlySpan<byte> payload, NetChannelReliability reliability)
     {
         if (connectionBySlot.TryGetValue(slot, out NetConnectionId conn))
             transport.Send(conn, SessionFrame.Write(SessionOpcode.Data, payload), reliability);
+    }
+
+    /// <summary>Disconnects one slot's connection (a kick). The transport surfaces the resulting Disconnected event
+    /// on a later poll, which frees the slot (and a recycling join may reuse it). No-op for an unknown slot.</summary>
+    public void Disconnect(int slot)
+    {
+        if (connectionBySlot.TryGetValue(slot, out NetConnectionId conn))
+            transport.Disconnect(conn);
     }
 
     /// <summary>Sends game data to every joined slot.</summary>

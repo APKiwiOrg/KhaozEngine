@@ -426,7 +426,7 @@ scene.DrawBillboard(pos, size, color, BillboardBlend.Additive);
 scene.DebugCircle(center, up, radius, color);                        // immediate-mode debug overlay
 ```
 
-- `Scene3D`: `LoadMesh`/`LoadTexture`/`UnloadMesh`, `Begin()`, `Draw(handle, transform[, tint[, material]])`,
+- `Scene3D`: `LoadMesh`/`LoadTexture`/`UnloadMesh`/`UnloadTexture`, `Begin()`, `Draw(handle, transform[, tint[, material]])`,
   billboards, and a debug-draw overlay (`DebugLine/Ray/Box/Grid/Axes/Circle`). `Post` is the
   `PixelPostProcess` (pixelation / quantize / dither / cel bands / palette for the chunky retro look; the smooth
   look is the default).
@@ -1227,6 +1227,24 @@ replication: the **networked client streams locally with the same code** (nothin
 the wire). For a custom mesh/prop pipeline, implement `IChunkSink` yourself and pass it to `TerrainStreamer`.
 Threaded/background chunk build (an `IJobScheduler` build) and multi-cell server sharding are later sub-projects.
 
+**Teardown / rebuild (since 7.75.0).** Both `Scene3DChunkSink` and `TerrainStreamer` are `IDisposable`. Steady-state
+walking already frees each chunk as it leaves the ring, but if you tear streaming down and rebuild it while the
+**same `Scene3D` survives** (level change, world reload, a teleport that recreates the streamer), the
+currently-loaded ring of chunk meshes would otherwise leak until whole-scene `Scene3D.Dispose`. Flush it first:
+
+```csharp
+// rebuild streaming, REUSING the same sink + scene (e.g. teleport to a new region):
+streamer.UnloadAll();                         // frees every loaded chunk through the sink; sink stays alive
+streamer = new TerrainStreamer(StreamerConfig.Default, sink);
+
+// OR full teardown of the ring AND the sink's owned GPU resources:
+streamer.Dispose();                           // = UnloadAll() then disposes the sink if it is IDisposable
+```
+
+The splat material handed to `Scene3DChunkSink` is **caller-owned by default**: it is shared across chunks and is
+never freed per-chunk, so you must `scene.UnloadSplatMaterial(handle)` it yourself (or reuse it for the rebuilt
+sink). Pass `ownsMaterial: true` to the ctor to hand it to the sink, whose `Dispose` then frees it too.
+
 ---
 
 ## Textured terrain (PBR splat) (since 7.64.0)
@@ -1257,7 +1275,8 @@ every chunk it loads uses the textured splat pipeline instead of the ramp:
 ```csharp
 var sink = new Scene3DChunkSink(scene, field, ScatterConfig.ForestRing(), propMeshes,
                                 chunkSize: TerrainChunkRegion.DefaultSize, propDrawRadius: 90f,
-                                splatMaterial: splatHandle);   // optional; omit for the ramp fallback
+                                material: splatHandle);   // optional; omit for the ramp fallback
+                                                          // (add ownsMaterial: true to have sink.Dispose() free it)
 var streamer = new TerrainStreamer(StreamerConfig.Default, sink);
 ```
 
@@ -1276,8 +1295,51 @@ two `texture2DArray`s - albedo + normal - are shared by all chunks using this ma
 reloaded; each `LoadTerrainMaterial` call allocates a fresh set of arrays.
 
 **Out of scope.** Runtime layer blending tweaks, streaming of different materials per biome region, and
-per-chunk material overrides are not provided - swap the handle on `Scene3DChunkSink` and rebuild the ring to
-change the look at stream time.
+per-chunk material overrides are not provided - swap the handle on `Scene3DChunkSink` and rebuild the ring
+(`streamer.UnloadAll()` then a fresh sink with the new handle) to change the look at stream time.
+
+---
+
+## Ground-cover scatter and understory companions (since 7.71.0)
+
+`Scene3DChunkSink` now accepts N `PropLayer`s, so a scene can have sparse tall trees at a long draw radius
+alongside dense short-radius ground cover, with a companion layer that rings each tree base with foliage.
+Foliage ids carry no collider - this is render-only; the server, client prediction, and collision are untouched.
+
+```csharp
+using KhaozEngine.Terrain;
+using KhaozEngine.Terrain.Render3D;
+
+// Three layers: trees (scatter), ferns (scatter, short radius), fern ring around each tree (companion).
+var layers = new PropLayer[]
+{
+    PropLayer.ScatterLayer(TreeScatterConfig(),  treeMeshes,  drawRadius: 90f),   // layer 0: trees
+    PropLayer.ScatterLayer(FernScatterConfig(),  fernMeshes,  drawRadius: 40f),   // layer 1: ferns
+    PropLayer.CompanionLayer(hostLayerIndex: 0,              // companions of layer 0 (trees)
+        new CompanionConfig
+        {
+            HostKinds  = new[] { "oak", "pine" },              // which tree ids get companions
+            CountMin   = 4,                                     // foliage instances per host (inclusive range)
+            CountMax   = 6,
+            RadiusMin  = 0.6f,
+            RadiusMax  = 1.2f,
+            Kinds      = new[] { new PropKind("fern_small", 1f) },
+        },
+        fernMeshes, drawRadius: 8f),
+};
+
+var sink     = new Scene3DChunkSink(scene, field, layers,
+                                    chunkSize: TerrainChunkRegion.DefaultSize);
+var streamer = new TerrainStreamer(StreamerConfig.Default, sink);
+```
+
+The single-layer ctor (`new Scene3DChunkSink(scene, field, ScatterConfig, meshes, chunkSize, propDrawRadius)`)
+is unchanged and byte-identical to pre-7.71.0 builds.
+
+`PropScatter.GenerateCompanions(field, hosts, config)` is the underlying primitive if you want companions
+outside the streamer: it returns a `IReadOnlyList<PropPlacement>` that is tiling-invariant (companions over a host set
+equal the union over any chunk tiling), with `Y` resampled from the field and `MaxHeight` filtering out
+off-mountain placements.
 
 ---
 
@@ -1390,6 +1452,18 @@ place labels yourself, call `WorldToScreen` directly. Labels are screen-space an
 depth-tested, so a name is not hidden when its owner stands behind terrain or a prop (occluded nameplates are out
 of scope).
 
+For a distance cap, pass `maxDistance` (in metres). By default the ring is measured from the camera eye; for a
+third-person camera that orbits offset from the player, pass `cullFrom: localPlayerPos` so labels cull on
+player-to-target distance and don't pop in/out as the camera rotates around a stationary scene:
+
+```csharp
+WorldLabel.Draw(batch, font, camera, e.Position, headOffset, name, Color.White, fbW, fbH,
+    maxDistance: 90f, cullFrom: localPlayerPos);
+```
+
+The cull predicate is also exposed render-free as `WorldLabel.ShouldCull(worldPos, cullFrom, maxDistance)` if you
+want to filter the label set before drawing.
+
 ### Sharded authoritative server (many players / a large world)
 
 For scale, swap `WorldServer` for **`ShardedWorldServer`**: the *same* movement stack run across a
@@ -1430,6 +1504,50 @@ adjacent cells see each other via ghosting. `WorldServer` stays the single-`Worl
 count; both share `WorldPersistence` via `IWorldPersistenceHost`. The `NetworkedWalkServer` demo is a multi-cell
 `ShardedWorldServer` (cellSize 60) over `TerrainPresets.Clearing()`. Spec:
 `docs/superpowers/specs/2026-06-27-multicell-sharding-design.md`.
+
+### Server-side anti-cheat / input-hardening (since 7.74.0)
+
+The authoritative movement model already prevents teleport, speedhack, noclip, wall-climb, token forgery, and
+replay (the client sends only an 18-byte `MoveCommand`; the server re-simulates). Three additional hardening
+layers ship on both `WorldServer` and `ShardedWorldServer`, all **additive and opt-in** (the wire format is
+unchanged; defaults are off):
+
+1. **NaN/Inf rejection (always on, no config).** `MoveProtocol.TryDecodeMove` rejects a move axis or camera yaw
+   that is NaN or infinite as a malformed packet, so a poisoned value can never reach the sim (a NaN would slip
+   past `CircleBounds.Clamp` - every NaN comparison is false - and replicate to every client in range).
+   `CharacterMovement.Step` carries a defense-in-depth finite guard (it holds the last good position rather than
+   ever returning a non-finite one).
+2. **Per-connection message rate limiting** via `AntiCheatConfig.MaxMessagesPerSecond` (+ `MessageBurst`,
+   `DisconnectOnRateLimit`). Over-budget messages are dropped; backed by the deterministic `Netcode.RateLimiter`.
+3. **An anomaly signal hook** - `OnSuspiciousActivity` - the engine signals, the game decides policy.
+
+```csharp
+var config = new WorldServerConfig
+{
+    AntiCheat = new AntiCheatConfig
+    {
+        MaxMessagesPerSecond = 90f,     // ~3x the 30 Hz tick; 0 (default) = unlimited
+        MessageBurst = 30f,             // allow a short burst
+        MaxCorrectionDistance = 0.25f,  // per-tick "intended move denied" distance that counts as a correction
+        CorrectionStreak = 30,          // consecutive corrected ticks before the signal fires; 0/default off
+    },
+};
+var server = new WorldServer(transport, config, terrain.GroundHeight, MoveTuning.Default, bounds: bounds);
+
+server.OnSuspiciousActivity += a =>
+{
+    // a.Slot, a.Reason (MalformedPacket | RateLimited | MovementCorrection), a.Magnitude (correction distance)
+    log.Warn($"suspicious: slot {a.Slot} {a.Reason} ({a.Magnitude:0.00})");
+    if (a.Reason == SuspiciousReason.MovementCorrection) server.Disconnect(a.Slot);   // your policy: log / kick / ban
+};
+```
+
+`MovementCorrection` fires when the authoritative sim has to deny a player's *intended* move (the slope gate,
+static collision, or play-area bound pulls them back) by more than `MaxCorrectionDistance` for `CorrectionStreak`
+consecutive ticks - a cheat hammering a wall trips it; a legitimate player brushing one does not. It is a
+server-side proxy: the authoritative model carries no client position to reconcile against, so the engine measures
+how far it had to correct the client's intent (via `CharacterMovement.IntendedHorizontalTarget`). Per-IP
+connection-attempt limiting is out of scope: the `INetTransport` seam exposes no remote address.
 
 ---
 
@@ -1613,8 +1731,12 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   client reads the full `LatestVersionInfo` straight from `latest-{platform}.json`); both have a ready-to-fill
   publish template. See the package README "Publish + feed layout".
 - **`KhaozEngine.Netcode` / `.Abstractions` / `.LiteNetLib`**: transport-free netcode primitives
-  (`UnitAxisQuantizer`, `ClientPrediction`, `RemoteCommandQueue`), the zero-dependency channel-split contract
-  (`IChannelSplittable<TSelf>` + `NetChannelReliability`), and the LiteNetLib transport binding.
+  (`UnitAxisQuantizer`, `ClientPrediction`, `RemoteCommandQueue`, `BoundedEventQueue<T>`), the zero-dependency
+  channel-split contract (`IChannelSplittable<TSelf>` + `NetChannelReliability`), and the LiteNetLib transport
+  binding. `BoundedEventQueue<T>` is the defensive hard cap (drop-oldest, keep-newest, `DroppedCount` observable)
+  the `NetServer` session inbox and the LiteNetLib transport inboxes use so a stalled or flooded host can't grow
+  undrained events without bound; tune it with the optional `maxQueuedEvents` ctor arg (default 10,000) and watch
+  `DroppedEventCount`, which stays 0 for a host that drains each poll as contracted.
 
 ---
 

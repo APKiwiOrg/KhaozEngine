@@ -9,12 +9,19 @@ namespace KhaozEngine.Terrain
     /// loaded and re-LODs for loaded chunks whose <see cref="TerrainLod.PickLod"/> tier changed, then processes at
     /// most <c>MaxLoadsPerFrame</c> of those (nearest first) through the injected <see cref="IChunkSink"/>. Pure
     /// bookkeeping (no GPU, no field), so it is fully headless-testable; the sink does the real work. Load/unload
-    /// use Euclidean chunk-distance; the hysteresis band (UnloadRadius &gt; LoadRadius) stops churn at boundaries.</summary>
-    public sealed class TerrainStreamer
+    /// use Euclidean chunk-distance; the hysteresis band (UnloadRadius &gt; LoadRadius) stops churn at boundaries.
+    /// <para>Teardown: <see cref="UnloadAll"/> flushes the loaded ring through the sink (frees every loaded chunk),
+    /// which a streaming rebuild (level change / world reload / teleport) must call first so the previous ring's GPU
+    /// meshes are freed instead of leaked. <see cref="Dispose"/> does that and then disposes the sink if it is
+    /// <see cref="IDisposable"/> - i.e. it assumes it owns the sink it was given (turn-key teardown). To rebuild
+    /// streaming while REUSING the same sink, call <see cref="UnloadAll"/> and hand the same sink to the new
+    /// streamer; call <see cref="Dispose"/> only when the sink (and its GPU resources) should go too.</para></summary>
+    public sealed class TerrainStreamer : IDisposable
     {
         readonly StreamerConfig _config;
         readonly IChunkSink _sink;
         readonly Dictionary<ChunkCoord, Entry> _loaded = new();
+        bool _disposed;
 
         sealed class Entry { public object Handle = null!; public int Lod; }
 
@@ -29,6 +36,27 @@ namespace KhaozEngine.Terrain
 
         /// <summary>The LOD tier a loaded chunk is currently built at, or -1 if not loaded.</summary>
         public int LodOf(ChunkCoord coord) => _loaded.TryGetValue(coord, out Entry? e) ? e.Lod : -1;
+
+        /// <summary>Unload every currently-loaded chunk through the sink and clear the ring (after this <see cref="Loaded"/>
+        /// is empty). Call before a streaming rebuild that keeps the same sink/scene alive so the previous ring's GPU
+        /// meshes are freed rather than leaked. Does NOT dispose the sink (see <see cref="Dispose"/> for that).</summary>
+        public void UnloadAll()
+        {
+            foreach (KeyValuePair<ChunkCoord, Entry> kv in _loaded)
+                _sink.Unload(kv.Key, kv.Value.Handle);
+            _loaded.Clear();
+        }
+
+        /// <summary>Flush the loaded ring (<see cref="UnloadAll"/>) then dispose the sink if it is
+        /// <see cref="IDisposable"/>. Idempotent. Use this for full teardown; use <see cref="UnloadAll"/> to rebuild
+        /// while keeping the sink.</summary>
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            UnloadAll();
+            (_sink as IDisposable)?.Dispose();
+        }
 
         public void Update(Vector3 playerPos, float dt)
         {

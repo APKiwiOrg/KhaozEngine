@@ -36,6 +36,22 @@ public class MoveProtocolTests
         Assert.False(MoveProtocol.TryDecodeMove(new byte[] { 1, 2, 3 }, out _, out _));
     }
 
+    [Theory]
+    [InlineData(float.NaN, 0f, 0f)]
+    [InlineData(0f, float.NaN, 0f)]
+    [InlineData(0f, 0f, float.NaN)]
+    [InlineData(float.PositiveInfinity, 0f, 0f)]
+    [InlineData(0f, float.NegativeInfinity, 0f)]
+    [InlineData(0f, 0f, float.PositiveInfinity)]
+    public void Move_decode_rejects_nan_or_infinite_floats(float moveX, float moveY, float yaw)
+    {
+        // A reverse-engineered client can put any bit pattern on the wire. EncodeMove writes the raw bits,
+        // so a crafted NaN/Inf move axis or camera yaw round-trips through the encoder unchanged; the decoder
+        // must reject it (hostile-safe: treat as a malformed packet) so a poisoned value never reaches the sim.
+        byte[] wire = MoveProtocol.EncodeMove(seq: 7, new MoveCommand(new Vector2(moveX, moveY), run: false, cameraYaw: yaw));
+        Assert.False(MoveProtocol.TryDecodeMove(wire, out _, out _));
+    }
+
     [Fact]
     public void Snapshot_frame_round_trips()
     {

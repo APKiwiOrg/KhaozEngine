@@ -38,4 +38,27 @@ public class PlayerMoveSimulatorTests
         for (int i = 0; i < 3; i++) s = sim.Step(s, cmd, 1f / 30f);
         Assert.Equal(-MoveTuning.Default.WalkSpeed * 3f / 30f, s.Position.Z, 4);
     }
+
+    [Theory]
+    [InlineData(float.NaN, float.NaN, float.NaN)]
+    [InlineData(float.PositiveInfinity, 0f, 0f)]
+    [InlineData(0f, float.NegativeInfinity, 0f)]
+    [InlineData(1f, 0f, float.NaN)]
+    [InlineData(float.PositiveInfinity, float.NegativeInfinity, float.PositiveInfinity)]
+    public void Pathological_command_never_produces_a_non_finite_position(float moveX, float moveY, float yaw)
+    {
+        // A pathological command (constructed directly, as if it had bypassed the wire decode) must never drive
+        // the authoritative state to a NaN/Inf position - that would replicate a poisoned ReplicatedPosition to
+        // every client in range. Run several ticks so any accumulation surfaces.
+        var sim = new PlayerMoveSimulator((x, z) => 0f, MoveTuning.Default);
+        var s = new PlayerMoveState { Position = new Vector3(3f, 0f, -2f) };
+        var cmd = new MoveCommand(new Vector2(moveX, moveY), run: true, cameraYaw: yaw, jump: true);
+        for (int i = 0; i < 5; i++)
+        {
+            s = sim.Step(s, cmd, 1f / 30f);
+            Assert.True(float.IsFinite(s.Position.X) && float.IsFinite(s.Position.Y) && float.IsFinite(s.Position.Z),
+                $"tick {i}: non-finite position {s.Position}");
+            Assert.True(float.IsFinite(s.VerticalVelocity), $"tick {i}: non-finite vVel {s.VerticalVelocity}");
+        }
+    }
 }

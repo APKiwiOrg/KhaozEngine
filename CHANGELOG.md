@@ -17,6 +17,169 @@ Introduces a full 3D physics seam (`KhaozEngine.Physics`) and a BepuPhysics v2 b
 - Collision - `KhaozEngine.Collision` (the `WorldColliders`/`WorldSurfaces` 2D footprint package) is NOT removed and stays in `Foundation`; it may still be used for 2D games or lockstep sims that do not use the physics layer. It is simply no longer on the 3D movement path.
 - Out of scope (sub-project 2, next): dynamic rigid bodies + their replication, terrain as physics geometry, constraints/joints/vehicles.
 
+## 7.76.0
+
+Defensive hard cap on the netcode event inboxes so a stalled or hostile host can't grow them without bound. The
+session inbox in `NetServer` and the raw transport inboxes in `LiteNetLibServerTransport`/`LiteNetLibClientTransport`
+were unbounded `Queue`s drained only by the host; under the documented drain-each-poll contract they stay tiny, but a
+host that stops draining (a bug, or a peer flooding it) pinned every undrained Data event's payload buffer with no
+ceiling. All additive and on-by-default-but-generous - the cap (10,000 events) never bites a correctly draining host,
+so consumers adopt as a pure pin bump.
+
+- **New `KhaozEngine.Netcode.BoundedEventQueue<T>`.** A FIFO event queue with a hard upper bound: at capacity a new
+  item evicts the oldest (drop-oldest, keep-newest), so the count never grows past `Capacity`. Mirrors the bounding
+  `RemoteCommandQueue` already applies to per-slot command buffers, applied here to the event inboxes. Each eviction is
+  counted in `DroppedCount` so the overflow is observable (a non-zero value means the host is not draining as
+  contracted, or is under attack) without forcing a logging dependency into the netcode leaf. Single-threaded by
+  contract like the rest of the stack. `DefaultCapacity = 10,000`.
+- **`NetServer` inbox is now bounded.** New optional ctor arg `maxQueuedEvents` (default
+  `BoundedEventQueue<ServerSessionEvent>.DefaultCapacity`) and a read-only `NetServer.DroppedEventCount`. Existing
+  callers are unchanged (the default is far above any single poll's events).
+- **`LiteNetLibServerTransport` / `LiteNetLibClientTransport` inboxes are now bounded.** Each gains an optional
+  `maxQueuedEvents` ctor arg (same default) and a read-only `DroppedEventCount`. The drop-oldest eviction releases the
+  oldest undrained Data event's `byte[]` payload, the buffer the audit flagged as pinned.
+- Behaviour is byte-identical for a host that drains to empty every tick (the contract): the cap is purely defensive.
+
+## 7.75.1
+
+Robustness fix for the ground-decal pass: each queued decal now renders from its OWN dynamic-offset slot of the decal
+UBO instead of every draw re-uploading and reading one shared 160-byte slot. Output is byte-identical on the three
+current Veldrid backends (the 3-decal golden is unchanged), so this is defensive correctness, not a visible-bug fix -
+it removes a fragile pattern, not a wrong pixel.
+
+- **Per-draw dynamic-offset decal UBO.** `GroundDecalRenderer.Draw` packed every decal into one shared UBO at offset 0
+  and re-uploaded it per draw within a single command list, leaning on the backend to barrier the write-after-read so
+  each draw read its own params. That holds on Veldrid's Metal/D3D11/Vulkan today (`CommandList.UpdateBuffer` snapshots
+  each copy and orders them, which is why the reported bug is not actually observable), but it is exactly the
+  shared-per-draw-UBO pattern the engine elsewhere replaced with a dynamic-offset window. The pass now writes each
+  decal into its own 256-byte slot of a growable UBO (geometric growth, old buffers retired then freed in `Dispose`)
+  and selects the slot per draw via the dynamic offset on `SetGraphicsResourceSet` - the first in-engine user of that
+  path. The framebuffer is bound once before the draw loop instead of once per decal. Internal only: `GroundDecalRenderer`
+  is not public and the `DrawGroundDecal` primitive is unchanged, so this is a pure pin bump for consumers.
+- **New regression guard.** `GroundDecalDistinctRenderTests` (GPU-gated, `KE_GPU_TESTS=1`) renders two decals far
+  apart, one red and one cyan, and asserts in absolute terms that both colours appear in the output, so a future
+  collapse to one shared slot drops a colour and fails. Being GPU-gated it also exercises the new dynamic-offset bind
+  on D3D11 + Vulkan in CI.
+
+## 7.75.0
+
+Memory-leak fix for terrain world streaming: `Scene3DChunkSink` and `TerrainStreamer` now implement `IDisposable`,
+so tearing streaming down and rebuilding it while the same `Scene3D` survives (level change / world reload / a
+teleport that rebuilds streaming) frees the loaded ring of chunk meshes instead of leaking one full ring of native
+GPU buffers per teardown. Additive and opt-in - steady-state walking already freed each chunk as it left the ring,
+and existing call sites are unchanged (a default-`false` `ownsMaterial` ctor flag and the new disposal members).
+
+- **`Scene3DChunkSink : IDisposable`.** New `Dispose()` unloads every still-loaded chunk's GPU mesh
+  (`Scene3D.UnloadMesh` over the `_loaded` ring) and clears the ring; idempotent. Previously these meshes only freed
+  at whole-scene `Scene3D.Dispose`, so a sink rebuilt against a surviving scene leaked one ring of terrain meshes per
+  teardown.
+- **Shared-material ownership made explicit.** The splat `material` handed to `Scene3DChunkSink` is shared across
+  chunks and stays **caller-owned by default** (the caller must `Scene3D.UnloadSplatMaterial` it, or reuse it for the
+  rebuilt sink); the material is never disposed per-chunk. New opt-in `ownsMaterial` ctor flag (default `false`, both
+  ctors) hands ownership to the sink, whose `Dispose` then frees the material alongside the meshes.
+- **`TerrainStreamer : IDisposable` + `UnloadAll()`.** `UnloadAll()` flushes the loaded ring through the sink (after
+  it `Loaded` is empty) without touching the sink itself - call it to rebuild streaming while reusing the same sink.
+  `Dispose()` does that and then disposes the sink if it is `IDisposable` (turn-key teardown of the ring + the sink's
+  GPU resources); idempotent.
+- **Test-only live counters.** `Scene3D` gains internal `LiveMeshCount` / `LiveSplatMaterialCount` (mirroring the
+  existing `LiveTextureCount`) so the leak fix is asserted directly. Coverage: a headless `[Fact]` set drives
+  `TerrainStreamer.UnloadAll`/`Dispose` through the fake `IChunkSink` (every loaded chunk unloaded, ring emptied,
+  owned-sink dispose idempotent), and a `[GpuFact]` set proves `Scene3DChunkSink.Dispose` returns the live mesh count
+  to baseline and frees the material only when `ownsMaterial` is set.
+
+## 7.74.0
+
+Server-side anti-cheat / input-hardening pass for the authoritative movement servers: NaN/Inf move packets are
+rejected, per-connection message floods are rate-limited, and an anomaly hook surfaces malformed/flood/movement-
+correction signals for the game to act on. All additive and opt-in - the 18-byte `MoveCommand` wire format and the
+authoritative movement model are unchanged, every new knob is off by default, so consumers adopt as a pure pin bump.
+
+- **NaN/Inf rejection on move decode.** `MoveProtocol.TryDecodeMove` now returns false (hostile-safe, treated as a
+  malformed packet) when the move axis or camera yaw is NaN or infinite. Left unchecked a NaN slips past
+  `CircleBounds.Clamp` (every NaN comparison is false) and replicates a poisoned position to every client in range.
+  The wire format and the round-trip for valid commands are unchanged.
+- **Defense-in-depth finite guard in `CharacterMovement.Step`.** Both overloads now hold the last good position/state
+  instead of ever returning a non-finite one, so a misbehaving ground/bounds/tuning delegate can't inject a NaN/Inf
+  the clamps would miss. (A pathological *command* was already neutralized by the move gate - the camera-relative
+  basis is purely horizontal, so any non-finite axis poisons the move vector and fails the apply gate - this guard
+  closes the remaining delegate path.) New public `CharacterMovement.IntendedHorizontalTarget` exposes the
+  unconstrained move target the correction signal compares against. Behaviour for finite inputs is byte-identical.
+- **Per-connection message rate limiting (flood protection).** New `KhaozEngine.Netcode.RateLimiter` (a deterministic,
+  headless token bucket: per-step `Refill` + `TryConsume`, no wall-clock). `WorldServer`/`ShardedWorldServer` refill
+  one bucket per connection per poll and drop over-budget messages. Configured via `AntiCheatConfig.MaxMessagesPerSecond`
+  / `MessageBurst` / `DisconnectOnRateLimit`; off by default (`MaxMessagesPerSecond = 0` = unlimited). New
+  `NetServer.Disconnect(int slot)` + `WorldServer`/`ShardedWorldServer` `Disconnect(int slot)` give the game a kick seam.
+  Per-IP connection-attempt limiting is not included: the `INetTransport` seam exposes no remote address.
+- **Server anomaly hook (signal, not policy).** New `OnSuspiciousActivity` event on `WorldServer` and
+  `ShardedWorldServer`, firing a value-type `SuspiciousActivity { Slot, Reason, Magnitude }` (`SuspiciousReason` =
+  `MalformedPacket` / `RateLimited` / `MovementCorrection`). The engine signals; the game decides policy (log / kick /
+  ban). `MovementCorrection` fires when the authoritative sim has to deny a player's intended move beyond
+  `AntiCheatConfig.MaxCorrectionDistance` for `CorrectionStreak` consecutive ticks (the client keeps driving into the
+  slope gate / static collision / play-area boundary) - a server-side proxy, since the authoritative model carries no
+  client position to reconcile against. Off by default; a legitimate player brushing a wall does not trip it.
+- New `AntiCheatConfig` on `WorldServerConfig.AntiCheat` and `ShardedWorldServerConfig.AntiCheat` (default = all off).
+
+## 7.73.0
+
+Memory-leak fixes from a leak audit: the authoritative servers now clear their ECS change-tracking each tick,
+`Scene3D` can unload textures, and `SpriteBatch` evicts unused resource sets. Three independent
+long-running/streaming leaks, all additive and back-compatible.
+
+- **Server ECS change-tracking no longer accumulates.** `WorldServer.Tick` and `ShardedWorldServer.Tick` now call
+  `World.AdvanceTick()` once per tick (per cell for the sharded server), clearing the per-tick change sets
+  (`Added`/`Changed`/`Removed`) and the event buffer (`Events`). Nothing called `AdvanceTick` in production before
+  (only tests), so on a long-running server those sets grew unbounded - one entry per `Set`/`Despawn`, never
+  reclaimed - a slow OOM. The authoritative path serves full AoI snapshots and never reads the change sets, so the
+  clear is safe. New opt-out `WorldServerConfig.AdvanceWorldTick` / `ShardedWorldServerConfig.AdvanceWorldTick`
+  (default `true`); set `false` only if your own systems read a world's change-tracking/events and you advance the
+  tick yourself.
+- **`Scene3D.UnloadTexture(TextureHandle)`** frees a texture loaded with `LoadTexture` (and its lazily-created
+  textured-billboard set) and nulls its slot, mirroring `UnloadSplatMaterial`. Textures previously freed only at
+  `Scene3D.Dispose`, so a long-lived scene that streams or reloads textured assets leaked one native GPU texture per
+  load. The slot is not recycled (handles stay stable); a shared texture is the caller's to unload (the scene can't
+  know who else references it).
+- **`SpriteBatch` evicts unused `(texture,sampler)` resource sets.** The set cache grew one `IGpuResourceSet` per
+  distinct texture ever drawn and freed them only at `Dispose`, so a long-lived batch streaming many textures leaked
+  a set per texture (plus a dangling reference to each texture the game later disposed). It now stamps each texture's
+  last-drawn frame and, in `NewFrame`, disposes the sets for any texture not drawn within `SetEvictAfterFrames`
+  (~10s at 60fps); a returning texture rebuilds its set transparently. Rendered output unchanged.
+
+## 7.72.0
+
+`WorldLabel.Draw` takes an optional `cullFrom` anchor so third-person games cull nameplates on viewer-player-to-target
+distance instead of camera-to-target. With an orbit camera offset from the player, the old camera-eye `maxDistance`
+ring popped labels in/out as the camera rotated even when nobody moved; passing the player position fixes it. Additive,
+fully back-compatible.
+
+- `KhaozEngine.Render3D`: `WorldLabel.Draw(..., float maxDistance = 0f, Vector3? cullFrom = null)` - new trailing
+  `cullFrom` param. `maxDistance` is now measured from `cullFrom`, defaulting to `null` = the camera eye (the prior
+  behaviour, byte-identical for existing callers, which all pass no `cullFrom`).
+- `KhaozEngine.Render3D`: new `WorldLabel.ShouldCull(worldPos, cullFrom, maxDistance)` static - the distance cull
+  predicate factored out of `Draw` (which needs a GPU `SpriteBatch`) so it is headless-testable. `maxDistance <= 0`
+  never culls; the boundary is exclusive (a target exactly on the ring draws).
+
+## 7.71.0
+
+Ground-cover scatter: the chunk sink now holds multiple prop layers, and a deterministic understory-companion
+pass rings each host prop with foliage, so a dense short-radius ground cover rides alongside the sparse trees
+and trees are dressed at the base instead of standing on bare ground. Additive; no new material, no protocol or
+collision change.
+
+- `KhaozEngine.Terrain`: `PropScatter.GenerateCompanions(field, hosts, CompanionConfig)` - a pure, render-free,
+  deterministic primitive that rings each host whose id is in `HostKinds` with `Count` foliage instances in a
+  jittered ring (count/angle/radius/kind/scale/yaw hashed off the host's centimetre-quantized world XZ, so it is
+  tiling-invariant: companions over a host set equal the union of companions over any tiling of it). `Y` resampled
+  from the field; `MaxHeight` excludes off-mountain companions. New `CompanionConfig`.
+- `KhaozEngine.Terrain.Render3D`: `Scene3DChunkSink` generalized to N `PropLayer`s, each with its own scatter or
+  companion config, mesh set, and draw radius (short for dense ground cover, long for trees). New `PropLayer`
+  tagged struct (`PropLayer.ScatterLayer(...)` / `PropLayer.CompanionLayer(hostLayerIndex, ...)`). Companion
+  layers are derived per chunk from their host scatter layer, so each host emits its companions exactly once even
+  when they spill into a neighbour chunk. The existing single-layer ctor is unchanged and byte-identical.
+- Render-only by construction: foliage ids carry no collider, so the server, client prediction, and collision are
+  untouched.
+- Non-goals (deferred): alpha-cutout grass cards / billboards (needs a transparent material pass), wind sway,
+  distance alpha-fade at the cull boundary.
+
 ## 7.70.0
 
 Remote players now render smoothly between snapshots: `WorldClient` interpolates each remote's replicated position

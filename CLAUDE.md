@@ -112,7 +112,14 @@ version/release work.
     connect-token `v1.<subject>.<expUnix>.<base64url-mac>` (+ a v2
     `v2.<subject>.<base64url-name>.<expUnix>.<base64url-mac>` carrying an optional cosmetic display-name claim,
     surfaced via the opt-in `IConnectionDisplayName` companion interface as `ServerSessionEvent.DisplayName` -
-    distinct from `subject`/account id, empty for v1)); `Replication` = authoritative ECS
+    distinct from `subject`/account id, empty for v1)); plus `RateLimiter` (a deterministic, headless token bucket -
+    per-step `Refill`/`TryConsume`, no wall-clock - for per-connection message-flood protection) and
+    `NetServer.Disconnect(slot)` (a kick seam); plus `BoundedEventQueue<T>` (a drop-oldest hard cap - keeps the
+    newest, evicts the oldest at capacity, `DefaultCapacity` 10,000, `DroppedCount` observable - the `NetServer`
+    session inbox and both `Netcode.LiteNetLib` transport inboxes use it via an optional `maxQueuedEvents` ctor arg
+    + a `DroppedEventCount` property, so a stalled/flooded host can't grow undrained events (each Data event pins a
+    payload buffer) without bound; mirrors the per-slot bounding `RemoteCommandQueue` already does, never bites a
+    drain-each-poll host); `Replication` = authoritative ECS
     replication (`NetId`/`ReplicationRegistry`/`SnapshotWriter`/`ClientReplicationView`/`ServerReplicator` +
     `InterestGrid` AoI); `WorldStore` = `IWorldStore` async keyed-blob seam + `InMemoryWorldStore` (dep-free core),
     with two opt-in durable backends each pulling their own ADO.NET provider (same `Netcode.LiteNetLib` pattern):
@@ -144,15 +151,28 @@ version/release work.
     `TerrainCollision` (`GroundHeight`/`GroundNormal` (the slope-gate delegate)/`IsWalkable`),
     `PropColliders.FromScatter` (deps `Collision`: builds a `Collision.WorldColliders` from deterministic scatter
     placements - footprint per prop id with a default-shape fallback - plus an explicit obstacle/building list;
-    streaming-consistent, same coordinate-hash as the rendered scatter), and
+    streaming-consistent, same coordinate-hash as the rendered scatter),
+    `PropScatter.GenerateCompanions(TerrainField, IReadOnlyList<PropPlacement>, CompanionConfig)` (pure,
+    render-free, tiling-invariant: rings each host whose id is in `CompanionConfig.HostKinds` with `Count`
+    foliage instances hashed off the host's centimetre-quantized world XZ; `Y` resampled from the field;
+    `MaxHeight` excludes off-mountain companions; new `CompanionConfig` type), and
     `TerrainPresets.Clearing()`/`BoundedClearing()`. Height depends only on `(x,z,seed)`
     (load-order independent for sharded streaming); plain `float` (authoritative server + visual client, NOT
     `DeterministicFp`). `Terrain.Render3D` (companion, in `Game3D`) = `TerrainChunkBuilder` (chunked-LOD mesh off the
     field: skirts, per-vertex splat weights, chunk AABB) + `TerrainLod.PickLod` + `Scene3D.LoadTerrainChunk`/
     `DrawTerrainChunk`, plus the `TerrainStreamer` client world-streaming layer (`ChunkCoord`/`ChunkGrid`
-    coord<->world, `IChunkSink` load/unload seam, `StreamerConfig`, and the production `Scene3DChunkSink` that
-    builds the chunk mesh + scatters props on load, re-LODs on tier crossing, frees on unload, and draws the
-    loaded ring; ring load/unload with a hysteresis band, distance-LOD re-meshing, amortized main-thread loading),
+    coord<->world, `IChunkSink` load/unload seam, `StreamerConfig`, and the production `Scene3DChunkSink` (now
+    multi-layer via N `PropLayer`s): each `PropLayer` (tagged struct) is either `PropLayer.ScatterLayer(...)` or
+    `PropLayer.CompanionLayer(hostLayerIndex, ...)` with its own mesh set and draw radius (short for dense ground
+    cover, long for trees); companion layers derive their placements per chunk from their host scatter layer so
+    each host emits companions exactly once even when they spill into a neighbour chunk; the existing single-layer
+    ctor is unchanged and byte-identical; ring load/unload with a hysteresis band, distance-LOD re-meshing,
+    amortized main-thread loading; both `Scene3DChunkSink` and `TerrainStreamer` are `IDisposable` (7.75.0 leak fix):
+    `TerrainStreamer.UnloadAll()` flushes the loaded ring through the sink (rebuild streaming while reusing the same
+    sink), `Dispose()` does that plus disposes the sink if `IDisposable`, and `Scene3DChunkSink.Dispose()` unloads
+    every still-loaded chunk's GPU mesh so a streaming teardown against a surviving `Scene3D` frees the ring instead of
+    leaking it; the splat material is caller-owned by default (free it via `Scene3D.UnloadSplatMaterial`, never
+    per-chunk) unless the opt-in `ownsMaterial` ctor flag hands it to the sink's `Dispose`),
     plus the PBR splat-material layer (shipped 7.64.0): `TerrainSplatPacking`, `TerrainMaterialLayer`/
     `TerrainLayeredMaterial`, `TerrainMaterialPresets` (procedural placeholder), `TerrainScene3D.LoadTerrainMaterial`
     + a textured `LoadTerrainChunk` overload, and an optional material slot on `Scene3DChunkSink` - supply a
@@ -212,7 +232,16 @@ version/release work.
     ground-clamped sim + per-client AoI via `SnapshotWriter.WriteFiltered`+`InterestGrid`, framed `[localNetId][ack]`;
     a persistence seam = `PlayerJoined`/`PlayerLeaving` events + accountId-from-verified-subject (the
     authenticator's `subject`, `guest:{slot}` when empty) + an optional `IConnectionAuthenticator` ctor arg
-    (default `AllowAllAuthenticator`) + `SetPlayerState` + `SetPlayerDisplayName`),
+    (default `AllowAllAuthenticator`) + `SetPlayerState` + `SetPlayerDisplayName`; plus an opt-in server-side
+    anti-cheat layer (shipped 7.74.0, same on both servers) = `WorldServerConfig.AntiCheat` /
+    `ShardedWorldServerConfig.AntiCheat` (an `AntiCheatConfig`, all off by default):
+    `MoveProtocol.TryDecodeMove` rejects a NaN/Inf move axis or yaw as malformed (always-on; defense-in-depth finite
+    guard in `CharacterMovement.Step`), per-connection message rate limiting via the `Netcode.RateLimiter` token
+    bucket, and an `OnSuspiciousActivity` signal hook firing a value-type `SuspiciousActivity { Slot, Reason,
+    Magnitude }` (`SuspiciousReason` = `MalformedPacket`/`RateLimited`/`MovementCorrection`; the last fires on a
+    streak of authoritative move corrections beyond `MaxCorrectionDistance` - the client driving into the slope
+    gate / collision / bound - measured via `CharacterMovement.IntendedHorizontalTarget`) + a `Disconnect(slot)`
+    kick seam; signal not policy, the game decides),
     `ShardedWorldServer` (+ `ShardedWorldServerConfig`, the multi-cell variant = the same movement stack run across a
     `Sharding.ShardHost` cell grid: routes each client's `MoveCommand` to the owning cell, steps each cell's
     `PlayerMovementSystem` (also clamps to the optional `WorldBounds`) via `ShardHost.Tick` scheduler-fanned, exactly-once handoff on boundary crossings -

@@ -70,9 +70,19 @@ namespace KhaozEngine.Render3D
                 unique.TryAdd((bx, by, bz), v.Position);
             }
 
-            Vector3[] points = new Vector3[unique.Count];
-            int idx = 0;
-            foreach (Vector3 p in unique.Values) points[idx++] = p;
+            // Sort by bucket key (ascending, lexicographic) before copying so the ordering is
+            // a contract, not a Dictionary implementation detail. Required for streaming consistency:
+            // server and client must bake the identical shape from the same mesh.
+            var sortedKeys = new List<(int, int, int)>(unique.Keys);
+            sortedKeys.Sort((a, b) =>
+            {
+                int c = a.Item1.CompareTo(b.Item1); if (c != 0) return c;
+                    c = a.Item2.CompareTo(b.Item2); if (c != 0) return c;
+                return a.Item3.CompareTo(b.Item3);
+            });
+
+            Vector3[] points = new Vector3[sortedKeys.Count];
+            for (int i = 0; i < sortedKeys.Count; i++) points[i] = unique[sortedKeys[i]];
 
             // If over budget, downsample by striding deterministically.
             if (points.Length > MaxHullPoints)

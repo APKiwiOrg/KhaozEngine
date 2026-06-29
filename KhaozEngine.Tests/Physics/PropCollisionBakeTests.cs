@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
@@ -14,14 +15,22 @@ public class PropCollisionBakeTests
     {
         GltfMesh rock = TestMeshes.UnitIcosphere();
         PhysicsShape shape = PropCollisionBake.Bake(rock);
-        Assert.IsType<ConvexHullShape>(shape);
+        var original = Assert.IsType<ConvexHullShape>(shape);
 
         using var ms = new MemoryStream();
         PropCollisionBake.Write(shape, ms);
         ms.Position = 0;
         PhysicsShape loaded = PropCollisionLoader.Read(ms);
         var hull = Assert.IsType<ConvexHullShape>(loaded);
+
+        // Lossless round-trip: same point count and a sampled point matches exactly.
+        Assert.Equal(original.Points.Length, hull.Points.Length);
         Assert.True(hull.Points.Length >= 4);
+        Vector3 orig0 = original.Points[0];
+        Vector3 load0 = hull.Points[0];
+        Assert.True(MathF.Abs(orig0.X - load0.X) < 1e-5f, $"Points[0].X mismatch: {orig0.X} vs {load0.X}");
+        Assert.True(MathF.Abs(orig0.Y - load0.Y) < 1e-5f, $"Points[0].Y mismatch: {orig0.Y} vs {load0.Y}");
+        Assert.True(MathF.Abs(orig0.Z - load0.Z) < 1e-5f, $"Points[0].Z mismatch: {orig0.Z} vs {load0.Z}");
     }
 
     [Fact]
@@ -37,15 +46,27 @@ public class PropCollisionBakeTests
     {
         GltfMesh house = TestMeshes.BoxRoomWithDoorway();
         PhysicsShape shape = PropCollisionBake.Bake(house);
+        var original = Assert.IsType<TriangleMeshShape>(shape);
 
         using var ms = new MemoryStream();
         PropCollisionBake.Write(shape, ms);
         ms.Position = 0;
         PhysicsShape loaded = PropCollisionLoader.Read(ms);
         var mesh = Assert.IsType<TriangleMeshShape>(loaded);
+
+        // Lossless round-trip: same vertex and index counts, sampled content matches.
+        Assert.Equal(original.Vertices.Length, mesh.Vertices.Length);
+        Assert.Equal(original.Indices.Length, mesh.Indices.Length);
         Assert.True(mesh.Vertices.Length >= 3);
         Assert.True(mesh.Indices.Length >= 3);
         Assert.Equal(0, mesh.Indices.Length % 3);
+
+        Vector3 origV0 = original.Vertices[0];
+        Vector3 loadV0 = mesh.Vertices[0];
+        Assert.True(MathF.Abs(origV0.X - loadV0.X) < 1e-5f, $"Vertices[0].X mismatch: {origV0.X} vs {loadV0.X}");
+        Assert.True(MathF.Abs(origV0.Y - loadV0.Y) < 1e-5f, $"Vertices[0].Y mismatch: {origV0.Y} vs {loadV0.Y}");
+        Assert.True(MathF.Abs(origV0.Z - loadV0.Z) < 1e-5f, $"Vertices[0].Z mismatch: {origV0.Z} vs {loadV0.Z}");
+        Assert.Equal(original.Indices[0], mesh.Indices[0]);
     }
 }
 

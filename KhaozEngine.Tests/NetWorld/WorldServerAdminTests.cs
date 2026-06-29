@@ -53,4 +53,32 @@ public class WorldServerAdminTests
         for (int i = 0; i < 60 && server.PlayerCount > 0; i++) { server.Poll(); server.Tick(config.TickSeconds); client.Poll(); }
         Assert.Equal(0, server.PlayerCount);
     }
+
+    [Fact]
+    public void Disconnect_IsIdempotent_SecondOnLeaveIsNoOp()
+    {
+        // Arrange
+        WorldServer server = JoinOne("alice", out _, out WorldServerConfig config, out int slot);
+        int leavingFired = 0;
+        server.PlayerLeaving += (int s, string acct, PlayerMoveState state) => leavingFired++;
+
+        // Act: first Disconnect - synchronous OnLeave fires PlayerLeaving once and clears slot state.
+        server.Disconnect(slot);
+        Assert.Equal(0, server.PlayerCount);
+        Assert.Equal(1, leavingFired);
+
+        // ListOnline is updated lazily by Tick; run one to confirm the snapshot is also empty.
+        server.Poll(); server.Tick(config.TickSeconds);
+        Assert.Empty(server.ListOnline());
+
+        // Act: second Disconnect - simulates a real transport surfacing a Left event for the same slot
+        // after Disconnect already cleaned it up. Must be a no-op: no throw, no double PlayerLeaving.
+        var ex = Record.Exception(() => server.Disconnect(slot));
+        Assert.Null(ex);
+        Assert.Equal(0, server.PlayerCount);
+        Assert.Equal(1, leavingFired);  // still 1, not 2
+
+        server.Poll(); server.Tick(config.TickSeconds);
+        Assert.Empty(server.ListOnline());
+    }
 }

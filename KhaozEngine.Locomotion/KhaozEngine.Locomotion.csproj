@@ -2,8 +2,12 @@
   <PropertyGroup>
     <PackageId>KhaozEngine.Locomotion</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
-    <Description>Render-free character locomotion core for KhaozEngine. CharacterMovement.Step is a pure XZ-plane move: a MoveCommand (camera-relative WASD axis + run + camera yaw) advances a Vector3 position over a timestep, normalized diagonals, ground-clamped via a height delegate (feet on the ground) with an optional slope gate. One MoveTuning is the single source of truth shared by the local CharacterController3D, the authoritative server sim, and client-side prediction, so local and networked movement run identical code. Depends on System.Numerics and the KhaozEngine.Physics seam (collide-and-slide + support probe against a physics world); no input, no render, no netcode.</Description>
+    <Description>Render-free character locomotion core for KhaozEngine. CharacterMovement.Step is shared by the local controller, authoritative server sim, and client prediction. The vertical-physics overload resolves 3D collision via a substepped swept collide-and-slide (SweepCapsule) plus a step-up probe wiring StepHeight, so fast moves cannot tunnel through thin meshes and the capsule cannot be trapped inside closed meshes. Walkable contacts are followed; steep contacts block and redirect. Depends on KhaozEngine.Physics; no input, no render, no netcode.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
     <ProjectReference Include="../KhaozEngine.Physics/KhaozEngine.Physics.csproj" />

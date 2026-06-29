@@ -4,7 +4,7 @@ Which game uses which packages, at which version. Current state only - for the p
 [`../CHANGELOG.md`](../CHANGELOG.md). Update this whenever a consumer bumps a `<PackageReference>` or the
 engine ships a new version.
 
-**Engine current version:** `8.3.0` (the shared `<KhaozEngineVersion>` line, which *is* the engine). The
+**Engine current version:** `8.4.0` (the shared `<KhaozEngineVersion>` line, which *is* the engine). The
 engine is entirely MonoGame-free on a single version line in `Directory.Build.props` (the doc-version guard
 checks it): the custom render/runtime stack + the graduated MonoGame-free foundation + the four umbrella
 metapackages, all sharing one version. `Physics.Bepu` and the `WorldStore.Sqlite`/`.SqlServer` backends are

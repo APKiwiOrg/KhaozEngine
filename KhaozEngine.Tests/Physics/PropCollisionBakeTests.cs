@@ -11,26 +11,34 @@ namespace KhaozEngine.Tests.Physics;
 public class PropCollisionBakeTests
 {
     [Fact]
-    public void SolidProp_BakesAConvexHull_RoundTrips()
+    public void SolidProp_BakesATriangleMesh_RoundTrips()
     {
+        // A rock-like short solid prop now bakes to a TRIANGLE MESH of the exact mesh (FIX 1), not a
+        // concavity-filling convex hull: the collider matches the visible surface so the capsule cannot clip it.
         GltfMesh rock = TestMeshes.UnitIcosphere();
+        Assert.False(PropCollisionBake.IsTree(rock), "rock fixture must classify as a solid prop, not a tree");
         PhysicsShape shape = PropCollisionBake.Bake(rock);
-        var original = Assert.IsType<ConvexHullShape>(shape);
+        var original = Assert.IsType<TriangleMeshShape>(shape);
 
         using var ms = new MemoryStream();
         PropCollisionBake.Write(shape, ms);
         ms.Position = 0;
         PhysicsShape loaded = PropCollisionLoader.Read(ms);
-        var hull = Assert.IsType<ConvexHullShape>(loaded);
+        var mesh = Assert.IsType<TriangleMeshShape>(loaded);
 
-        // Lossless round-trip: same point count and a sampled point matches exactly.
-        Assert.Equal(original.Points.Length, hull.Points.Length);
-        Assert.True(hull.Points.Length >= 4);
-        Vector3 orig0 = original.Points[0];
-        Vector3 load0 = hull.Points[0];
-        Assert.True(MathF.Abs(orig0.X - load0.X) < 1e-5f, $"Points[0].X mismatch: {orig0.X} vs {load0.X}");
-        Assert.True(MathF.Abs(orig0.Y - load0.Y) < 1e-5f, $"Points[0].Y mismatch: {orig0.Y} vs {load0.Y}");
-        Assert.True(MathF.Abs(orig0.Z - load0.Z) < 1e-5f, $"Points[0].Z mismatch: {orig0.Z} vs {load0.Z}");
+        // Lossless round-trip: same vertex/index counts and a sampled vertex + index match exactly. The index
+        // order is preserved (Bepu meshes are one-sided; outward winding must survive the bake + IO).
+        Assert.Equal(original.Vertices.Length, mesh.Vertices.Length);
+        Assert.Equal(original.Indices.Length, mesh.Indices.Length);
+        Assert.True(mesh.Vertices.Length >= 3);
+        Assert.Equal(0, mesh.Indices.Length % 3);
+        Vector3 origV0 = original.Vertices[0];
+        Vector3 loadV0 = mesh.Vertices[0];
+        Assert.True(MathF.Abs(origV0.X - loadV0.X) < 1e-5f, $"Vertices[0].X mismatch: {origV0.X} vs {loadV0.X}");
+        Assert.True(MathF.Abs(origV0.Y - loadV0.Y) < 1e-5f, $"Vertices[0].Y mismatch: {origV0.Y} vs {loadV0.Y}");
+        Assert.True(MathF.Abs(origV0.Z - loadV0.Z) < 1e-5f, $"Vertices[0].Z mismatch: {origV0.Z} vs {loadV0.Z}");
+        for (int i = 0; i < original.Indices.Length; i++)
+            Assert.Equal(original.Indices[i], mesh.Indices[i]);
     }
 
     [Fact]
@@ -96,8 +104,7 @@ static class TestMeshes
     }
 
     /// <summary>A hollow box room (4 walls + floor, no ceiling) with a missing wall segment simulating a
-    /// doorway. Has enough triangles to exceed <see cref="PropCollisionBake.BuildingTriangleThreshold"/>
-    /// and is tall enough not to be a walkable solid.</summary>
+    /// doorway. Tall and complex (a building); like every non-tree solid prop it bakes to a triangle mesh.</summary>
     public static GltfMesh BoxRoomWithDoorway()
     {
         var verts = new List<ModelVertex>();

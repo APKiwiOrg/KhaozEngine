@@ -7,25 +7,17 @@ using KhaozEngine.Physics;
 namespace KhaozEngine.Render3D
 {
     /// <summary>Bakes a 3D collision shape from a <see cref="PropLoader"/>-normalized prop mesh (base y=0, XZ
-    /// centred on origin). Solid props (rocks, logs) get a <see cref="ConvexHullShape"/>; buildings (non-convex:
-    /// walls, doorways, interiors) get a <see cref="TriangleMeshShape"/>. The Bepu backend then builds its
-    /// internal representation from the shape seam. Offline/tooling only; the runtime reads the baked binary via
-    /// <see cref="PropCollisionLoader"/>.</summary>
+    /// centred on origin). Trees get a trunk-only <see cref="CylinderShape"/> (walk under the canopy); every other
+    /// solid prop (rocks, logs, buildings) gets a <see cref="TriangleMeshShape"/> matching the exact visible mesh,
+    /// so the capsule collides against the surface it can see (no convex-hull concavity-filling, no facet jitter).
+    /// The Bepu backend then builds its internal representation from the shape seam. Offline/tooling only; the
+    /// runtime reads the baked binary via <see cref="PropCollisionLoader"/>.</summary>
     public static class PropCollisionBake
     {
         /// <summary>Binary magic: "KECL" (KhaozEngine Collision).</summary>
         public const uint Magic = 0x4B45434C;
         /// <summary>Format version written by this implementation.</summary>
         public const byte Version = 1;
-
-        /// <summary>Triangle count above which a non-walkable-solid mesh is treated as a building and gets a
-        /// <see cref="TriangleMeshShape"/> rather than a <see cref="ConvexHullShape"/>. Open tuning item: a
-        /// manifest hint ("collisionHint": "building") would be more reliable for complex assets.</summary>
-        public const int BuildingTriangleThreshold = 60;
-
-        /// <summary>Maximum number of points passed to <see cref="ConvexHullShape"/> before spatial
-        /// downsampling kicks in. The Bepu backend runs its own hull computation; this just limits the input.</summary>
-        public const int MaxHullPoints = 64;
 
         /// <summary>Fraction of a tree's height taken as the trunk slice for the trunk-radius bake, capped at
         /// <see cref="TrunkSliceMaxMeters"/>. The slice is the dense central trunk near the base; conifer foliage
@@ -45,26 +37,6 @@ namespace KhaozEngine.Render3D
         /// cylinder.</summary>
         public const float TrunkRadiusFloor = 0.12f;
 
-        /// <summary>True when the mesh should be treated as a building (non-convex interior, walls, doorways).
-        /// First cut: triangle count over the threshold AND the mesh is tall (height > SolidHeightMeters).
-        /// Short props (rocks, crates) stay convex-hull even if they happen to have many triangles.
-        /// Open tuning item: a manifest hint ("collisionHint": "building") would be more reliable for ambiguous
-        /// assets that are tall and complex but not actually buildings.</summary>
-        public static bool IsBuilding(GltfMesh normalizedMesh)
-        {
-            if (normalizedMesh == null) throw new ArgumentNullException(nameof(normalizedMesh));
-            int triCount = normalizedMesh.Indices32.Length / 3;
-            if (triCount < BuildingTriangleThreshold) return false;
-            // Short props (rocks/crates) stay convex-hulls regardless of triangle count.
-            float minY = float.MaxValue, maxY = float.MinValue;
-            foreach (ModelVertex v in normalizedMesh.Vertices)
-            {
-                if (v.Position.Y < minY) minY = v.Position.Y;
-                if (v.Position.Y > maxY) maxY = v.Position.Y;
-            }
-            return (maxY - minY) > PropSurfaceBakeOptions.Default.SolidHeightMeters;
-        }
-
         /// <summary>True when the mesh is a tree (or any non-walkable-solid prop): a thin trunk near the
         /// base with a canopy spreading out above. Reuses the canopy-spread classification already in
         /// <see cref="PropSurfaceBake.IsWalkableSolid"/> (walkable-solid = rock/log/building; everything
@@ -76,15 +48,15 @@ namespace KhaozEngine.Render3D
             return !PropSurfaceBake.IsWalkableSolid(normalizedMesh);
         }
 
-        /// <summary>Bake a collision shape from a normalized prop mesh. Classification priority:
-        /// tree -> trunk <see cref="CylinderShape"/>; building -> <see cref="TriangleMeshShape"/>;
-        /// rock/solid -> <see cref="ConvexHullShape"/>.</summary>
+        /// <summary>Bake a collision shape from a normalized prop mesh. A tree gets a trunk-only
+        /// <see cref="CylinderShape"/> (walk under the canopy); every other solid prop (rocks, logs, buildings)
+        /// gets a <see cref="TriangleMeshShape"/> of the exact mesh, so the collider matches the visible surface
+        /// instead of a concavity-filling convex approximation.</summary>
         public static PhysicsShape Bake(GltfMesh normalizedMesh)
         {
             if (normalizedMesh == null) throw new ArgumentNullException(nameof(normalizedMesh));
-            if (IsTree(normalizedMesh))     return BakeTrunkCylinder(normalizedMesh);
-            if (IsBuilding(normalizedMesh)) return BakeTriangleMesh(normalizedMesh);
-            return BakeConvexHull(normalizedMesh);
+            if (IsTree(normalizedMesh)) return BakeTrunkCylinder(normalizedMesh);
+            return BakeTriangleMesh(normalizedMesh);
         }
 
         /// <summary>Bake a trunk-only cylinder from a tree mesh. Radius = the
@@ -126,40 +98,6 @@ namespace KhaozEngine.Render3D
             return new CylinderShape(radius, length);
         }
 
-        static ConvexHullShape BakeConvexHull(GltfMesh mesh)
-        {
-            // Deduplicate vertices by spatial bucketing (deterministic, grid-based).
-            var unique = new Dictionary<(int, int, int), Vector3>();
-            foreach (ModelVertex v in mesh.Vertices)
-            {
-                // Bucket at 5 mm resolution to collapse near-duplicate verts.
-                int bx = (int)MathF.Round(v.Position.X * 200f);
-                int by = (int)MathF.Round(v.Position.Y * 200f);
-                int bz = (int)MathF.Round(v.Position.Z * 200f);
-                unique.TryAdd((bx, by, bz), v.Position);
-            }
-
-            // Sort by bucket key (ascending, lexicographic) before copying so the ordering is
-            // a contract, not a Dictionary implementation detail. Required for streaming consistency:
-            // server and client must bake the identical shape from the same mesh.
-            var sortedKeys = new List<(int, int, int)>(unique.Keys);
-            sortedKeys.Sort((a, b) =>
-            {
-                int c = a.Item1.CompareTo(b.Item1); if (c != 0) return c;
-                    c = a.Item2.CompareTo(b.Item2); if (c != 0) return c;
-                return a.Item3.CompareTo(b.Item3);
-            });
-
-            Vector3[] points = new Vector3[sortedKeys.Count];
-            for (int i = 0; i < sortedKeys.Count; i++) points[i] = unique[sortedKeys[i]];
-
-            // If over budget, downsample by striding deterministically.
-            if (points.Length > MaxHullPoints)
-                points = StrideDownsample(points, MaxHullPoints);
-
-            return new ConvexHullShape(points);
-        }
-
         static TriangleMeshShape BakeTriangleMesh(GltfMesh mesh)
         {
             // Collect unique vertex positions (deduplicated).
@@ -182,21 +120,14 @@ namespace KhaozEngine.Render3D
                 remapIdx[i] = mapped;
             }
 
+            // Preserve the source triangle winding in order: Bepu meshes are one-sided, and the outward-wound
+            // faces of the normalized prop mesh are what generate the contacts. Do NOT reverse or reorder.
             uint[] src = mesh.Indices32;
             var indices = new int[src.Length];
             for (int i = 0; i < src.Length; i++)
                 indices[i] = remapIdx[(int)src[i]];
 
             return new TriangleMeshShape(positions.ToArray(), indices);
-        }
-
-        static Vector3[] StrideDownsample(Vector3[] points, int target)
-        {
-            int stride = (int)MathF.Ceiling((float)points.Length / target);
-            var result = new List<Vector3>(target);
-            for (int i = 0; i < points.Length && result.Count < target; i += stride)
-                result.Add(points[i]);
-            return result.ToArray();
         }
 
         // Shape kind byte written to the binary.

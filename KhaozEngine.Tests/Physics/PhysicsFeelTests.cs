@@ -121,12 +121,16 @@ public class PhysicsFeelTests
         for (int i = 0; i < 120; i++)
             state = CharacterMovement.Step(state, idle, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
 
-        // (a) Settled on the dome top: the capsule rests well above terrain rest (0.9) and reports no clip.
+        // (a) Settled on the dome top: the capsule rests well above terrain rest (0.9) and does not clip deep.
+        // With the FIX-2 settle slop the capsule rests touching the surface (up to ~1 cm residual overlap), so
+        // the check is "no deep clip" (residual within the slop band), not exactly-zero penetration.
         Assert.True(state.Grounded, $"capsule must be grounded resting on the dome top, pos={state.Position}");
         Assert.True(state.Position.Y > 1.5f,
             $"capsule must settle ON the dome (elevated above terrain), Y={state.Position.Y:F3}");
-        bool penAtRest = world.ComputePenetration(cap, Pose.At(state.Position), out _);
-        Assert.False(penAtRest, $"a capsule resting on the dome top must not report penetration, pos={state.Position}");
+        bool penAtRest = world.ComputePenetration(cap, Pose.At(state.Position), out Vector3 restMtv);
+        float restOverlap = penAtRest ? restMtv.Length() : 0f;
+        Assert.True(restOverlap <= 0.01f + 1e-3f,
+            $"a capsule resting on the dome top must only touch (overlap within the settle slop), was {restOverlap:F4}, pos={state.Position}");
 
         // (b) Drive a horizontal command across the top and assert it actually moves (not stuck).
         float startX = state.Position.X;
@@ -294,6 +298,54 @@ public class PhysicsFeelTests
             bool sphPen = sphWorld.ComputePenetration(cap, Pose.At(new Vector3(1.2f, 0f, 0f)), out Vector3 sphMtv);
             Assert.True(sphPen, "sphere static must still depenetrate via the general path");
             Assert.True(sphMtv.X > 0f, $"sphere MTV must push out along +X, was {sphMtv}");
+        }
+    }
+
+    // ---- Test 8: FIX 2 - depenetration settle slop + per-iteration cap ----
+    // The resolve loop pushes out only the overlap beyond a ~1 cm slop and never more than the per-iteration cap,
+    // so a settled capsule rests touching-but-not-oscillating instead of micro-jittering around the surface.
+    [Fact]
+    public void Depenetration_SettlesWithinSlop_AndDoesNotJitter()
+    {
+        // The CharacterMovement constants under test (kept in sync with the resolve loop).
+        const float resolveSlop = 0.01f;
+
+        // A tall wall box so a body-height capsule hits a vertical face, not a step-up-able top.
+        static IPhysicsWorld MakeWall()
+        {
+            var w = new BepuPhysicsWorld();
+            w.AddStatic(new BoxShape(new Vector3(3f, 2f, 0.25f)), Pose.At(new Vector3(0f, 2f, 8f)));
+            w.Step(1f / 60f);
+            return w;
+        }
+        var cap = CharacterMovement.CapsuleFor(Tuning); // radius 0.4
+
+        // (a) Walk straight into the wall until settled, then confirm the residual overlap is within the slop band
+        // (NOT pushed to exactly zero) - the capsule rests touching the surface, leaving up to the slop overlap.
+        using (IPhysicsWorld world = MakeWall())
+        {
+            var state = new MoveState { Position = new Vector3(0f, 0.9f, 0f), Grounded = true };
+            var straight = new MoveCommand(new Vector2(0f, -1f), run: false, cameraYaw: 0f, jump: false);
+            for (int i = 0; i < 240; i++)
+                state = CharacterMovement.Step(state, straight, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
+
+            // A settled capsule leaves a residual overlap no deeper than the slop (within a tight numeric band):
+            // it is NOT depenetrated to exactly zero (that round-trip is what micro-oscillates).
+            bool pen = world.ComputePenetration(cap, Pose.At(state.Position), out Vector3 mtv);
+            float residual = pen ? mtv.Length() : 0f;
+            Assert.True(residual <= resolveSlop + 1e-3f,
+                $"settled residual overlap must be within the slop band, was {residual:F4} (slop {resolveSlop})");
+
+            // (b) No jitter: stepping the settled state again must not move the capsule's XZ measurably (the slop
+            // break means an already-settled capsule is not pushed, so it cannot oscillate frame-to-frame).
+            Vector3 before = state.Position;
+            for (int i = 0; i < 30; i++)
+                state = CharacterMovement.Step(state, straight, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
+            float xzDrift = MathF.Sqrt(
+                (state.Position.X - before.X) * (state.Position.X - before.X) +
+                (state.Position.Z - before.Z) * (state.Position.Z - before.Z));
+            Assert.True(xzDrift < 1e-3f,
+                $"a settled capsule must not oscillate (XZ drift over 30 idle-against-wall steps), drifted {xzDrift:F5}");
         }
     }
 }

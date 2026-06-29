@@ -51,6 +51,11 @@ sealed class TerrainWalkApp : GameApp3D
     float _facingYaw;
     Vector3 _prevCharPos;
 
+    // Max yaw turn rate (rad/s) when facing toward horizontal motion. A bounded turn means a one-frame collision
+    // jitter that flips the motion direction cannot snap the model around: it eases toward the new heading instead
+    // of spinning. ~12 rad/s ~= 690 deg/s, fast enough to feel responsive but never a 360 spaz.
+    const float MaxTurnRate = 12f;
+
     // One uploaded mesh per kit id; the streamer scatters per-chunk props from these on demand.
     readonly Dictionary<string, MeshHandle> _propMeshes = new();
 
@@ -222,7 +227,14 @@ sealed class TerrainWalkApp : GameApp3D
             Vector3 cur = _character.Position;
             Vector3 d = cur - _prevCharPos; d.Y = 0f;
             float horizSpeed = d.Length() / dt;
-            if (d.LengthSquared() > 1e-6f) _facingYaw = MathF.Atan2(d.X, d.Z);
+            // Face toward horizontal motion, but turn at a bounded rate so collision jitter cannot spin the model.
+            if (d.LengthSquared() > 1e-4f)   // raise the threshold so sub-cm jitter does not steer facing at all
+            {
+                float target = MathF.Atan2(d.X, d.Z);
+                float delta = Wrap(target - _facingYaw);          // shortest signed angle, in (-pi, pi]
+                float maxStep = MaxTurnRate * dt;                 // bounded yaw step this frame
+                _facingYaw = Wrap(_facingYaw + Math.Clamp(delta, -maxStep, maxStep));
+            }
             _animChar.Update(horizSpeed, _character.Grounded, _character.VerticalVelocity, dt);
             _prevCharPos = cur;
         }
@@ -263,6 +275,15 @@ sealed class TerrainWalkApp : GameApp3D
     {
         _physicsWorld?.Dispose();
         base.OnDispose();
+    }
+
+    // Normalize an angle to (-pi, pi] so the facing turn always takes the shortest path.
+    static float Wrap(float a)
+    {
+        a %= MathF.Tau;
+        if (a > MathF.PI) a -= MathF.Tau;
+        else if (a <= -MathF.PI) a += MathF.Tau;
+        return a;
     }
 
     // Skinned-ingest the committed Quaternius Universal CC0 character + its animation clips, map the clip names to the

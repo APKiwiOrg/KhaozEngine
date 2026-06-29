@@ -92,13 +92,22 @@ public static class CharacterMovement
         if (world is not null)
         {
             const int ResolveIterations = 6;
+            const float ResolveSlop = 0.01f;    // allow up to 1 cm residual overlap so the capsule settles, not jitters
+            const float MaxCorrection = 0.5f;   // never move more than this in one push-out (anti-fling safety)
             for (int i = 0; i < ResolveIterations; i++)
             {
                 if (!world.ComputePenetration(capsule, Pose.At(pos), out Vector3 mtv)) break;
-                pos += mtv;
-                // An upward-dominant push = resting on a prop top/slope -> grounded support from the prop.
                 float len = mtv.Length();
-                if (len > 1e-6f && mtv.Y > 0.5f * len) propGrounded = true;
+                if (len <= 1e-6f) break;
+                // An upward-dominant push = resting on a prop top/slope -> grounded support from the prop. Record
+                // this from the contact itself, BEFORE the slop early-out, so a capsule that has settled to within
+                // the slop still reads as prop-grounded (else it loses support and drops onto the terrain, shoving
+                // itself back into the prop side - the exact micro-drop the slop is meant to prevent).
+                if (mtv.Y > 0.5f * len) propGrounded = true;
+                if (len <= ResolveSlop) break;                 // within slop -> settled, stop pushing
+                float push = MathF.Min(len - ResolveSlop, MaxCorrection);
+                Vector3 dir = mtv / len;
+                pos += dir * push;
             }
             // Re-clamp XZ after depenetration so a prop cannot shove the capsule out of the play area.
             if (clampXz is not null) { Vector2 c = clampXz(pos.X, pos.Z); pos.X = c.X; pos.Z = c.Y; }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
+using KhaozEngine.Locomotion;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using KhaozEngine.Render3D;
@@ -11,10 +12,15 @@ namespace KhaozEngine.Tests.Physics;
 
 /// <summary>Covers the physics-feel refinement: the general CollisionBatcher depenetration path
 /// (replaces the box/sphere-only analytic switch that left the capsule trapped in hulls/meshes), the
-/// tree trunk-cylinder bake + base-aligned placement, the platform box, and the per-iteration slide
-/// depenetration. Test 1 (HullPenetration_PushesOut) LOCKS the contact-normal sign.</summary>
+/// thin-trunk-cylinder bake + base-aligned placement, the platform box, and the 3D move-and-depenetrate
+/// prop resolution in the vertical-physics CharacterMovement.Step overload (replacing the removed horizontal
+/// sweep-slide + downward support probe). Test 1 (HullPenetration_PushesOut) LOCKS the contact-normal sign.</summary>
 public class PhysicsFeelTests
 {
+    // CapsuleHalfHeight 0.9 => 1.8 m total; CapsuleRadius 0.4. Flat terrain for the prop-only feel tests.
+    static readonly MoveTuning Tuning = new(
+        WalkSpeed: 3f, RunSpeed: 6f, CapsuleHalfHeight: 0.9f, MaxSlopeRadians: 0.9f);
+    static float Flat(float x, float z) => 0f;
     // A 1x1x1 unit cube convex hull centred at origin (ConvexHullHelper recenters to centroid = origin).
     static ConvexHullShape UnitCubeHull()
     {
@@ -85,11 +91,12 @@ public class PhysicsFeelTests
         Assert.True(mtv.Length() > 0f, $"mesh MTV depth must be positive, was {mtv.Length():F4}");
     }
 
-    // ---- Test 3: capsule on a domed rock top settles (no penetration) and is not trapped ----
+    // ---- Test 3: capsule dropped on a domed rock top settles (no clip) and can move across it ----
+    // Drives the REAL CharacterMovement.Step (the 3D move-and-depenetrate path), not a manual nudge.
     [Fact]
     public void DomedRockTop_SettlesAndMoves()
     {
-        // A wide low dome hull (octahedron, half-width 1.5, height 1.0) at origin.
+        // A wide low dome hull (octahedron, half-width 1.5, height 1.0) at origin, base at y=0 (on the terrain).
         var points = new[]
         {
             new Vector3( 1.5f, 0f,  0f),
@@ -106,86 +113,103 @@ public class PhysicsFeelTests
         world.AddStatic(new ConvexHullShape(points), Pose.At(Vector3.Zero));
         world.Step(1f / 60f);
 
-        var cap = new CapsuleShape(0.4f, 1.0f);
-        // Rest the capsule above the dome top: top is at y=1.0, capsule half-height = length/2 + radius = 0.9,
-        // so a centre slightly above 1.9 is resting on the top with feet at the dome apex, not penetrating.
-        var settled = Pose.At(new Vector3(0f, 1.95f, 0f));
-        bool penAtRest = world.ComputePenetration(cap, settled, out _);
-        Assert.False(penAtRest, "a capsule resting on the dome top must not report penetration");
+        var cap = CharacterMovement.CapsuleFor(Tuning); // radius 0.4, length 1.0 -> half-height 0.9
 
-        // Now drive a horizontal command across the top for several ticks and assert it actually moves.
-        var world2 = world;
-        Vector3 from = settled.Position;
-        Vector3 cur = from;
-        for (int i = 0; i < 8; i++)
-        {
-            // Use ComputePenetration as the trap detector and a small manual XZ nudge to emulate movement:
-            // if the capsule were trapped, every step would be cancelled by a large opposing MTV.
-            Vector3 target = cur + new Vector3(0.1f, 0f, 0f);
-            if (world2.ComputePenetration(cap, Pose.At(target), out Vector3 mtv))
-            {
-                target.X += mtv.X;
-                target.Z += mtv.Z;
-            }
-            cur = new Vector3(target.X, from.Y, target.Z);
-        }
-        Assert.True(cur.X - from.X > 0.3f, $"capsule must move non-trivially across the rock top, moved {cur.X - from.X:F3}");
+        // Drop the capsule from above the dome apex (x=z=0) and let gravity settle it onto the top.
+        var state = new MoveState { Position = new Vector3(0f, 3.0f, 0f), Grounded = false };
+        var idle = new MoveCommand(Vector2.Zero, run: false, cameraYaw: 0f, jump: false);
+        for (int i = 0; i < 120; i++)
+            state = CharacterMovement.Step(state, idle, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
+
+        // (a) Settled on the dome top: the capsule rests well above terrain rest (0.9) and reports no clip.
+        Assert.True(state.Grounded, $"capsule must be grounded resting on the dome top, pos={state.Position}");
+        Assert.True(state.Position.Y > 1.5f,
+            $"capsule must settle ON the dome (elevated above terrain), Y={state.Position.Y:F3}");
+        bool penAtRest = world.ComputePenetration(cap, Pose.At(state.Position), out _);
+        Assert.False(penAtRest, $"a capsule resting on the dome top must not report penetration, pos={state.Position}");
+
+        // (b) Drive a horizontal command across the top and assert it actually moves (not stuck).
+        float startX = state.Position.X;
+        var walk = new MoveCommand(new Vector2(1f, 0f), run: false, cameraYaw: 0f, jump: false);
+        for (int i = 0; i < 30; i++)
+            state = CharacterMovement.Step(state, walk, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
+        Assert.True(MathF.Abs(state.Position.X - startX) > 0.3f,
+            $"capsule must move non-trivially across the rock top, moved {state.Position.X - startX:F3}");
     }
 
-    // ---- Test 4: platform box blocks walk-through and slides on an angled approach ----
+    // ---- Test 4: platform/wall box blocks walk-through and slides on an angled approach ----
+    // Drives the REAL CharacterMovement.Step: depenetration push-out yields net tangential progress (slide),
+    // never a hard dead-stop.
     [Fact]
     public void PlatformBox_BlocksAndSlides()
     {
-        using IPhysicsWorld world = new BepuPhysicsWorld();
-        // Box half-extents (3, 0.5, 2.5) at (0, y, 12): near face (toward -Z) at z = 12 - 2.5 = 9.5.
-        world.AddStatic(new BoxShape(new Vector3(3f, 0.5f, 2.5f)), Pose.At(new Vector3(0f, 0.5f, 12f)));
-        world.Step(1f / 60f);
-
-        var cap = new CapsuleShape(0.4f, 1.0f);
-
-        // Straight walk from z=8 toward +Z: must stop short of the near face (9.5 - capsule radius).
-        Vector3 cur = new Vector3(0f, 0.5f, 8f);
-        for (int i = 0; i < 40; i++)
+        // A tall wall box (half-extents 3, 2, 0.25) at (0, 2, 8): near face (toward -Z) at z = 8 - 0.25 = 7.75.
+        // Tall so a body-height capsule hits a vertical (wall) face, not a step-up-able top.
+        static IPhysicsWorld MakeWall()
         {
-            Vector3 target = cur + new Vector3(0f, 0f, 0.1f);
-            if (world.ComputePenetration(cap, Pose.At(target), out Vector3 mtv))
-            {
-                target.X += mtv.X;
-                target.Z += mtv.Z;
-            }
-            cur = new Vector3(target.X, 0.5f, target.Z);
+            var w = new BepuPhysicsWorld();
+            w.AddStatic(new BoxShape(new Vector3(3f, 2f, 0.25f)), Pose.At(new Vector3(0f, 2f, 8f)));
+            w.Step(1f / 60f);
+            return w;
         }
-        Assert.True(cur.Z < 9.5f, $"capsule must not pass through the platform near face, final Z={cur.Z:F3}");
+
+        // Straight walk toward +Z (Move.Y=-1 at yaw=0 => direction +Z): must stop short of the near face.
+        using (IPhysicsWorld world = MakeWall())
+        {
+            var state = new MoveState { Position = new Vector3(0f, 0.9f, 0f), Grounded = true };
+            var straight = new MoveCommand(new Vector2(0f, -1f), run: false, cameraYaw: 0f, jump: false);
+            for (int i = 0; i < 120; i++)
+                state = CharacterMovement.Step(state, straight, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
+            // Near face at z=7.75, capsule radius 0.4 -> stops centre near z=7.35.
+            Assert.True(state.Position.Z < 7.55f,
+                $"capsule must not pass through the wall near face, final Z={state.Position.Z:F3}");
+            Assert.True(MathF.Abs(state.Position.X) < 0.05f,
+                $"a straight approach should not drift laterally, final X={state.Position.X:F3}");
+        }
 
         // Angled approach (toward +Z and +X) must slide laterally along the face, not hard-stop in X.
-        Vector3 cur2 = new Vector3(0f, 0.5f, 8f);
-        for (int i = 0; i < 40; i++)
+        using (IPhysicsWorld world = MakeWall())
         {
-            Vector3 target = cur2 + new Vector3(0.07f, 0f, 0.07f);
-            if (world.ComputePenetration(cap, Pose.At(target), out Vector3 mtv))
-            {
-                target.X += mtv.X;
-                target.Z += mtv.Z;
-            }
-            cur2 = new Vector3(target.X, 0.5f, target.Z);
+            var state = new MoveState { Position = new Vector3(0f, 0.9f, 0f), Grounded = true };
+            // Move.X=+1 (right), Move.Y=-1 (toward +Z): a 45-degree push into the wall.
+            var angled = new MoveCommand(Vector2.Normalize(new Vector2(1f, -1f)), run: false, cameraYaw: 0f, jump: false);
+            for (int i = 0; i < 120; i++)
+                state = CharacterMovement.Step(state, angled, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
+            Assert.True(state.Position.X > 0.5f,
+                $"angled approach must slide laterally (X advances), final X={state.Position.X:F3}");
+            Assert.True(state.Position.Z < 7.55f,
+                $"angled approach must still be blocked at the wall, final Z={state.Position.Z:F3}");
         }
-        Assert.True(cur2.X > 0.5f, $"angled approach must slide laterally (X advances), final X={cur2.X:F3}");
     }
 
-    // ---- Test 5: tree -> trunk cylinder bake + KECL round-trip ----
+    // ---- Test 5: tree -> thin trunk cylinder bake (rejects foliage outliers) + KECL round-trip ----
+    // The FIX-1 regression lock: a conifer-like mesh with a dense thin trunk core PLUS sparse low foliage
+    // points spreading far out within the trunk slice must bake to ~the trunk core radius (the 30th-percentile
+    // euclidean XZ radius), NOT the max (which used to grab the foliage and make the trunk far too fat).
     [Fact]
     public void Tree_BakesTrunkCylinder_RoundTrips()
     {
-        GltfMesh tree = FeelMeshes.Tree(trunkRadius: 0.3f, height: 6f, canopyRadius: 2.5f);
+        // Trunk core half-width 0.25 (euclid corner radius ~0.354); sparse foliage points at radius ~1.2 sitting
+        // low in the trunk slice (these are the outliers the old max grabbed).
+        const float trunkCore = 0.25f;
+        GltfMesh tree = FeelMeshes.ConiferTree(trunkCore: trunkCore, height: 6f, canopyRadius: 2.5f,
+            foliageRadius: 1.2f, foliageCount: 6);
         // Sanity: this fixture must classify as a tree (not a walkable solid).
         Assert.True(PropCollisionBake.IsTree(tree), "tree fixture must classify as a tree");
 
         PhysicsShape shape = PropCollisionBake.Bake(tree);
         var cyl = Assert.IsType<CylinderShape>(shape);
 
-        // Radius ~= the trunk half-extent (small), NOT the canopy width.
-        Assert.True(cyl.Radius < 0.6f, $"trunk radius must be ~trunk half-extent (small), was {cyl.Radius:F3}");
-        Assert.True(cyl.Radius > 0.2f, $"trunk radius must be non-trivial, was {cyl.Radius:F3}");
+        // The euclidean corner radius of the trunk core is sqrt(2)*0.25 ~= 0.354. The percentile must land on the
+        // dense trunk cluster, well below the foliage outlier radius (1.2). Assert a thin range that the max
+        // (>= 1.2) would blow through.
+        float trunkCornerR = MathF.Sqrt(2f) * trunkCore;
+        Assert.True(cyl.Radius < 0.6f,
+            $"trunk radius must reject foliage outliers (~trunk core, not the max), was {cyl.Radius:F3}");
+        Assert.True(cyl.Radius >= PropCollisionBake.TrunkRadiusFloor,
+            $"trunk radius must be at least the floor, was {cyl.Radius:F3}");
+        Assert.True(MathF.Abs(cyl.Radius - trunkCornerR) < 0.05f,
+            $"trunk radius must be ~the trunk core corner radius ({trunkCornerR:F3}), was {cyl.Radius:F3}");
         // Length ~= full prop height.
         Assert.True(MathF.Abs(cyl.Length - 6f) < 1e-2f, $"length must be the full height (~6), was {cyl.Length:F3}");
 
@@ -202,13 +226,19 @@ public class PhysicsFeelTests
         Assert.Equal(cyl.Length, roundTrip.Length, 5);
     }
 
-    // ---- Test 6: walk under canopy passes; walk into trunk blocks at trunkRadius + capsuleRadius ----
+    // ---- Test 6: walk straight into the trunk blocks at ~trunkRadius+capsuleRadius; offset passes freely ----
+    // Drives the REAL CharacterMovement.Step against the thin baked trunk cylinder.
     [Fact]
     public void Tree_WalkUnderCanopy_VsWalkIntoTrunk()
     {
-        GltfMesh tree = FeelMeshes.Tree(trunkRadius: 0.3f, height: 6f, canopyRadius: 2.5f);
+        GltfMesh tree = FeelMeshes.ConiferTree(trunkCore: 0.25f, height: 6f, canopyRadius: 2.5f,
+            foliageRadius: 1.2f, foliageCount: 6);
         var cyl = (CylinderShape)PropCollisionBake.Bake(tree);
         float trunkRadius = cyl.Radius;
+        const float capsuleRadius = 0.4f;
+
+        // Re-confirm the radius is thin (the fat-trunk regression lock at the movement layer).
+        Assert.True(trunkRadius < 0.6f, $"baked trunk radius must be thin, was {trunkRadius:F3}");
 
         using IPhysicsWorld world = new BepuPhysicsWorld();
         // Place the cylinder static the runtime way (ChunkStatics.AddAll): at the prop BASE (y=0). The
@@ -216,38 +246,28 @@ public class PhysicsFeelTests
         world.AddStatic(cyl, Pose.At(Vector3.Zero));
         world.Step(1f / 60f);
 
-        var cap = new CapsuleShape(0.4f, 1.0f);
-        float capHalfHeight = 0.5f + 0.4f; // length/2 + radius
+        // (a) Walk straight at the trunk: blocked at ~ -(trunkRadius + capsuleRadius) on the -X side.
+        // Approach from -X (Move.X=+1 at yaw=0 => direction +X) on flat terrain.
+        var blockState = new MoveState { Position = new Vector3(-3f, 0.9f, 0f), Grounded = true };
+        var intoTrunk = new MoveCommand(new Vector2(1f, 0f), run: false, cameraYaw: 0f, jump: false);
+        for (int i = 0; i < 120; i++)
+            blockState = CharacterMovement.Step(blockState, intoTrunk, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
+        float expectedBlock = -(trunkRadius + capsuleRadius);
+        Assert.True(blockState.Position.X < expectedBlock + 0.15f,
+            $"walking into the trunk must block near x={expectedBlock:F3}, final X={blockState.Position.X:F3}");
+        Assert.True(blockState.Position.X > expectedBlock - 0.25f,
+            $"must not tunnel into the trunk, final X={blockState.Position.X:F3}");
 
-        // (a) Walk at a canopy-height offset OUTSIDE the trunk radius: free passage. Choose a lateral
-        // offset wider than trunk + capsule radius, at a Y where only the canopy would be (above the
-        // trunk slice) - the trunk cylinder does not reach laterally that far, so no penetration.
-        float canopyY = 4.0f; // well up the trunk, but the cylinder is only trunkRadius wide here
-        float clearX = trunkRadius + 0.4f + 0.5f; // safely outside the cylinder + capsule radius
-        bool penOutside = world.ComputePenetration(cap, Pose.At(new Vector3(clearX, canopyY, 0f)), out _);
-        Assert.False(penOutside, "walking outside the trunk radius (under the canopy) must be free");
-
-        // (b) Walk straight at the trunk at body height: blocked. Approach from -X toward the trunk.
-        Vector3 cur = new Vector3(-3f, capHalfHeight, 0f);
-        for (int i = 0; i < 60; i++)
-        {
-            Vector3 target = cur + new Vector3(0.1f, 0f, 0f);
-            if (world.ComputePenetration(cap, Pose.At(target), out Vector3 mtv))
-            {
-                target.X += mtv.X;
-                target.Z += mtv.Z;
-            }
-            cur = new Vector3(target.X, capHalfHeight, target.Z);
-        }
-        // Must be blocked at ~ -(trunkRadius + capsuleRadius) on the -X side.
-        float expectedBlock = -(trunkRadius + 0.4f);
-        Assert.True(cur.X < expectedBlock + 0.15f,
-            $"walking into the trunk must block near x={expectedBlock:F3}, final X={cur.X:F3}");
-        // And the trunk must genuinely block at the correct (low) height: the static cylinder spans
-        // base->top, so the capsule at body height collides. If it were half-buried, body-height contact
-        // would not stop it here.
-        bool blockedAtBody = world.ComputePenetration(cap, Pose.At(new Vector3(0f, capHalfHeight, 0f)), out _);
-        Assert.True(blockedAtBody, "capsule centred on the trunk at body height must penetrate (cylinder spans base->top)");
+        // (b) Walk along a lane offset well outside (trunkRadius + capsuleRadius): free passage past the tree.
+        // Lane at z = trunkRadius + capsuleRadius + 0.5 clears the trunk; walking +X must cross x=0 unobstructed.
+        float laneZ = trunkRadius + capsuleRadius + 0.5f;
+        var freeState = new MoveState { Position = new Vector3(-3f, 0.9f, laneZ), Grounded = true };
+        for (int i = 0; i < 120; i++)
+            freeState = CharacterMovement.Step(freeState, intoTrunk, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
+        Assert.True(freeState.Position.X > 2f,
+            $"walking offset (outside the trunk) must pass freely, final X={freeState.Position.X:F3}");
+        Assert.True(MathF.Abs(freeState.Position.Z - laneZ) < 0.1f,
+            $"offset lane should not be deflected, final Z={freeState.Position.Z:F3} (lane {laneZ:F3})");
     }
 
     // ---- Test 7: box and sphere statics still depenetrate via the general path ----
@@ -294,6 +314,42 @@ static class FeelMeshes
         AddBox(verts, idx, -trunkRadius, trunkRadius, 0f, canopyBase, -trunkRadius, trunkRadius);
         // Canopy: a wide box from canopyBase to height, half-width canopyRadius.
         AddBox(verts, idx, -canopyRadius, canopyRadius, canopyBase, height, -canopyRadius, canopyRadius);
+
+        return new GltfMesh(verts.ToArray(), idx.ToArray());
+    }
+
+    /// <summary>A conifer-like tree: a thin dense square trunk core PLUS a handful of SPARSE foliage points
+    /// (lowest branches) sitting LOW in the trunk slice, spread out at <paramref name="foliageRadius"/>. The
+    /// dense trunk corners dominate the bottom slice; the foliage points are the outliers that the old
+    /// <c>max(|x|,|z|)</c> trunk bake grabbed (making the trunk far too fat) and that the percentile bake must
+    /// reject. Still classifies as a tree (canopy spreads &gt; 1.6x the low slice).</summary>
+    public static GltfMesh ConiferTree(float trunkCore, float height, float canopyRadius,
+        float foliageRadius, int foliageCount)
+    {
+        var verts = new List<ModelVertex>();
+        var idx = new List<uint>();
+
+        float canopyBase = height * 0.5f;
+        // Dense trunk core: a square column from y=0 to canopyBase, half-width trunkCore.
+        AddBox(verts, idx, -trunkCore, trunkCore, 0f, canopyBase, -trunkCore, trunkCore);
+        // Wide canopy box on top.
+        AddBox(verts, idx, -canopyRadius, canopyRadius, canopyBase, height, -canopyRadius, canopyRadius);
+
+        // Sparse low foliage: tiny triangles placed LOW (y in [0.3, 0.9], inside the trunk slice) at
+        // foliageRadius from the axis, around the trunk. Few points => outliers, not the dense cluster.
+        for (int k = 0; k < foliageCount; k++)
+        {
+            float ang = MathF.Tau * k / foliageCount;
+            float fx = foliageRadius * MathF.Cos(ang);
+            float fz = foliageRadius * MathF.Sin(ang);
+            float fy = 0.3f + 0.6f * k / MathF.Max(1, foliageCount - 1); // 0.3..0.9, low in the slice
+            var a = new Vector3(fx, fy, fz);
+            var b = new Vector3(fx + 0.02f, fy, fz);
+            var c = new Vector3(fx, fy + 0.02f, fz);
+            uint b0 = (uint)verts.Count;
+            verts.Add(V(a)); verts.Add(V(b)); verts.Add(V(c));
+            idx.Add(b0); idx.Add(b0 + 1); idx.Add(b0 + 2);
+        }
 
         return new GltfMesh(verts.ToArray(), idx.ToArray());
     }

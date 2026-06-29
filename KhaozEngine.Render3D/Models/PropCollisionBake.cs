@@ -27,6 +27,24 @@ namespace KhaozEngine.Render3D
         /// downsampling kicks in. The Bepu backend runs its own hull computation; this just limits the input.</summary>
         public const int MaxHullPoints = 64;
 
+        /// <summary>Fraction of a tree's height taken as the trunk slice for the trunk-radius bake, capped at
+        /// <see cref="TrunkSliceMaxMeters"/>. The slice is the dense central trunk near the base; conifer foliage
+        /// (the lowest branches) sits above it but can still spread out within the cap, which is why the radius is
+        /// a low percentile (rejects sparse foliage outliers) rather than the max.</summary>
+        public const float TrunkSliceFraction = 0.2f;
+
+        /// <summary>Hard cap (metres) on the trunk slice height regardless of prop height.</summary>
+        public const float TrunkSliceMaxMeters = 1.0f;
+
+        /// <summary>Percentile (0..1) of the sliced vertices' euclidean XZ radius taken as the trunk radius. The
+        /// trunk is the dense central cluster; foliage points are sparse outliers far from the axis, so a low
+        /// percentile lands on the trunk core and rejects the foliage spread that the old max grabbed.</summary>
+        public const float TrunkRadiusPercentile = 0.30f;
+
+        /// <summary>Floor (metres) for the baked trunk radius so a degenerate mesh never yields a zero-radius
+        /// cylinder.</summary>
+        public const float TrunkRadiusFloor = 0.12f;
+
         /// <summary>True when the mesh should be treated as a building (non-convex interior, walls, doorways).
         /// First cut: triangle count over the threshold AND the mesh is tall (height > SolidHeightMeters).
         /// Short props (rocks, crates) stay convex-hull even if they happen to have many triangles.
@@ -69,30 +87,42 @@ namespace KhaozEngine.Render3D
             return BakeConvexHull(normalizedMesh);
         }
 
-        /// <summary>Bake a trunk-only cylinder from a tree mesh: radius = the largest XZ half-extent of
-        /// the geometry in the bottom <c>trunkHeightMeters</c> (the trunk slice, not the canopy), length =
-        /// the full prop height. Placed base-aligned at runtime (the Bepu backend lifts the cylinder
-        /// +Length/2 so it spans base -> top; see ShapeFactory).</summary>
+        /// <summary>Bake a trunk-only cylinder from a tree mesh. Radius = the
+        /// <see cref="TrunkRadiusPercentile"/> percentile of the euclidean XZ radius over the bottom-slice
+        /// vertices (slice = <c>min(<see cref="TrunkSliceMaxMeters"/>, <see cref="TrunkSliceFraction"/> * height)</c>),
+        /// floored at <see cref="TrunkRadiusFloor"/>; length = the full prop height. The percentile (not the max)
+        /// rejects the sparse low foliage/branch outliers that spread far from the axis and made the old
+        /// <c>max(|x|,|z|)</c> trunk far too fat (block radius ~0.9-1.5 m for a ~0.3-0.5 m trunk). Deterministic:
+        /// a pure vertex walk plus a value sort. Placed base-aligned at runtime (the Bepu backend lifts the
+        /// cylinder +Length/2 so it spans base -> top; see ShapeFactory, unchanged).</summary>
         static CylinderShape BakeTrunkCylinder(GltfMesh mesh)
         {
-            const float trunkHeightMeters = 1.0f;
             float minY = float.MaxValue, maxY = float.MinValue;
             foreach (ModelVertex v in mesh.Vertices)
             {
                 if (v.Position.Y < minY) minY = v.Position.Y;
                 if (v.Position.Y > maxY) maxY = v.Position.Y;
             }
-            float captureTop = minY + trunkHeightMeters;
-            float hx = 0f, hz = 0f;
+            float height = maxY - minY;
+            float sliceTop = minY + MathF.Min(TrunkSliceMaxMeters, TrunkSliceFraction * height);
+
+            // Euclidean XZ radius (distance from the cylinder axis) of every sliced vertex.
+            var radii = new List<float>();
             foreach (ModelVertex v in mesh.Vertices)
             {
-                if (v.Position.Y > captureTop) continue;
-                float ax = MathF.Abs(v.Position.X), az = MathF.Abs(v.Position.Z);
-                if (ax > hx) hx = ax;
-                if (az > hz) hz = az;
+                if (v.Position.Y > sliceTop) continue;
+                radii.Add(MathF.Sqrt(v.Position.X * v.Position.X + v.Position.Z * v.Position.Z));
             }
-            float radius = MathF.Max(hx, hz);   // largest trunk half-extent
-            float length = maxY - minY;          // full prop height
+
+            float radius = TrunkRadiusFloor;
+            if (radii.Count > 0)
+            {
+                radii.Sort();
+                int idx = (int)(TrunkRadiusPercentile * (radii.Count - 1));
+                radius = MathF.Max(TrunkRadiusFloor, radii[idx]);
+            }
+
+            float length = height;   // full prop height
             return new CylinderShape(radius, length);
         }
 

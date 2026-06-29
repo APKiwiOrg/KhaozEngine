@@ -370,6 +370,10 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
         PlayerJoined?.Invoke(slot, accountId);
     }
 
+    // Idempotent by design: safe to call more than once for the same slot. The TryGetValue guards below make a repeat
+    // call a no-op (PlayerLeaving cannot double-fire, save-on-leave cannot double-persist), and every Remove is a
+    // no-op on a missing key. This is load-bearing: Disconnect(slot) calls OnLeave synchronously, and a real transport
+    // may later surface a Left event for the same slot through Poll, calling OnLeave a second time.
     private void OnLeave(int slot)
     {
         if (accountIdBySlot.TryGetValue(slot, out string? acct) && stateBySlot.TryGetValue(slot, out PlayerMoveState final))

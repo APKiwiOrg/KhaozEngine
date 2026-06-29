@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.Physics;
 using KhaozEngine.Render3D;
 
 namespace KhaozEngine.Terrain
@@ -21,11 +22,15 @@ namespace KhaozEngine.Terrain
         readonly float _chunkSize;
         readonly float _propDrawRadius;
         readonly Scene3D.SplatMaterialHandle _material;
+        readonly IPhysicsWorld? _physics;
+        readonly IReadOnlyDictionary<string, PhysicsShape>? _collisionShapes;
         readonly Dictionary<ChunkCoord, ChunkLoad> _loaded = new();
 
         public Scene3DChunkSink(Scene3D scene, TerrainField field, ScatterConfig scatter,
                                 IReadOnlyDictionary<string, MeshHandle> propMeshes, float chunkSize, float propDrawRadius,
-                                Scene3D.SplatMaterialHandle material = default)
+                                Scene3D.SplatMaterialHandle material = default,
+                                IPhysicsWorld? physics = null,
+                                IReadOnlyDictionary<string, PhysicsShape>? collisionShapes = null)
         {
             _scene = scene;
             _field = field ?? throw new ArgumentNullException(nameof(field));
@@ -34,6 +39,8 @@ namespace KhaozEngine.Terrain
             _chunkSize = chunkSize;
             _propDrawRadius = propDrawRadius;
             _material = material;
+            _physics = physics;
+            _collisionShapes = collisionShapes;
         }
 
         /// <summary>The mutable handle for one loaded chunk (the streamer treats it as opaque).</summary>
@@ -42,6 +49,8 @@ namespace KhaozEngine.Terrain
             public MeshHandle Mesh;
             public IReadOnlyList<PropPlacement> Props = Array.Empty<PropPlacement>();
             public int Lod;
+            /// <summary>Static body handles added for this chunk's props; empty when no physics world is wired.</summary>
+            public List<StaticHandle> Statics = new();
         }
 
         /// <summary>The deterministic prop placements for a chunk's area (pure; headless-testable).</summary>
@@ -58,6 +67,8 @@ namespace KhaozEngine.Terrain
                 Lod = lod,
             };
             _loaded[coord] = load;
+            if (_physics is not null && _collisionShapes is not null)
+                ChunkStatics.AddAll(_physics, _collisionShapes, load.Props, load.Statics);
             return load;
         }
 
@@ -74,6 +85,8 @@ namespace KhaozEngine.Terrain
         public void Unload(ChunkCoord coord, object handle)
         {
             var load = (ChunkLoad)handle;
+            if (_physics is not null)
+                ChunkStatics.RemoveAll(_physics, load.Statics);
             _scene.UnloadMesh(load.Mesh);
             _loaded.Remove(coord);
         }

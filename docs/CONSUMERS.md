@@ -120,7 +120,7 @@ fine-grained use - a wire-contract project references just `Netcode.Abstractions
 | Consumer | Project(s) | References | Version |
 |---|---|---|---|
 | **Hardpoint** (7.x, 3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic); auto-updater LIVE (`Updates` via Foundation, overlay via Gui) against a server-less static-blob feed + OIDC CI publish, self-relocating updater (7.20.0); uses `Collision.Segment2D` (7.4.0) for swept projectile collision. Every KhaozEngine ref (incl. the `HardpointUpdater` shim's `Updates` + the dev `SnapshotTool`'s `Snapshot`/`Snapshot.Render3D`) shares one `<KhaozEngineVersion>` in a root `Directory.Build.props`; top-level `Hardpoint.slnx` (src/ + tools/), vendored feed (`Hardpoint/vendor/khaozengine`) | **7.68.0** |
-| **Nullwake** (7.x, 2D) | `Nullwake.Core` | `KhaozEngine.Game2D` + `Diagnostics`/`Persistence`/`Windowing` + `Updates` (shim, dormant); uses `AttentionBeacon` (7.6.0) for the timed-reward tappable pulse, `Snapshot` (7.33.0, dev tool) for headless screen captures, `Clipboard` paste + `Pointer.WindowFocused` gating (7.40/7.37) in name entry | **7.68.0** |
+| **Nullwake** (8.x, 2D) | `Nullwake.Core` | `KhaozEngine.Game2D` + `Diagnostics`/`Persistence`/`Windowing` + `Updates` (shim, dormant); uses `AttentionBeacon` (7.6.0) for the timed-reward tappable pulse, `Snapshot` (7.33.0, dev tool) for headless screen captures, `Clipboard` paste + `Pointer.WindowFocused` gating (7.40/7.37) in name entry | **8.0.0** |
 | **SpaceGame** (7.x, 2D + Render3D) | `SpaceGame.Core` (head) / `SpaceGame.Sim` (lockstep sim) | `Game2D` + `Render3D` + `Netcode.LiteNetLib` + `Primitives` (head); `Ecs`/`Collision`/`Diagnostics`/`Content`/`Serialization`/`App`/`Netcode`/`Pooling`/`Determinism` + `Primitives` (sim); `Netcode.Abstractions` (contracts); `Render3D` + `Determinism` for the 2.5D mesh layer; manifest signing via the `ke-updater` tool (embedded RSA public key) | **7.68.0** |
 | **Ruinborne** (7.x, 3D MMO) | `Ruinborne.Client` / `Ruinborne.Server` | client: `KhaozEngine.Game3D` + `Foundation` + `NetWorld` + `Netcode.LiteNetLib` + `Netcode.Abstractions` + `Simulation` + `Updates`; server: `KhaozEngine.Server` umbrella + `WorldStore.SqlServer` (Azure SQL via `WorldPersistence`; the backend is added explicitly since 7.49.1 no longer bundles it). Single `<KhaozEngineVersion>` pin in `Directory.Build.props`, vendored feed (`vendor/khaozengine`, refreshed via `scripts/refresh-engine.sh`). | **7.68.0** |
 
@@ -189,7 +189,7 @@ cold restore. All KhaozEngine refs are now a uniform 7.68.0. (Note: the publish-
 `Hardpoint/Directory.Build.props`, so engine-pin bumps now live in the root file and no longer trip a client
 publish; only a game `<Version>` bump does.)
 
-### Nullwake - 7.x, 2D (on `KhaozEngine.Game2D` 7.68.0)
+### Nullwake - 8.x, 2D (on `KhaozEngine.Game2D` 8.0.0)
 
 Fully migrated off MonoGame (the migration landed on Nullwake `main`). `Nullwake.Core` references one package,
 **`KhaozEngine.Game2D`** (the 2D runtime + the Render3D-free `Game` loop framework + the foundation). The shell
@@ -262,6 +262,15 @@ only re-focuses the window does not also collect (hover SFX/highlights are auto-
 invisible to the game; adopting it cleanly needs a small additive `InputManager.IsKeyTyped`/`IsKeyRepeated`
 accessor on the engine (queued, not a consumer workaround). **7.39 `AudioSystem.StopAllSfx()` has no use
 here** - Nullwake plays music only, no SFX.
+
+**Bumped to 8.0.0** (clean version bump, no code changes; all `KhaozEngine.*` pins incl. the dormant
+`Updates` and the `Snapshot` dev tool, vendored feed refreshed). 8.0.0's breaking changes are all 3D / MMO
+surface (`WorldServer`/`WorldClient`, `CharacterMovement`/`CharacterController3D`, `WorldColliders`/
+`WorldSurfaces`, `Scene3DChunkSink`, `TerrainStreamer`) and inert for a 2D `Game2D` consumer. The vendored
+feed (`Nullwake/vendor/khaozengine`) shrank to a 30-package closure: the 3D / netcode / server / tool
+packages the 2D stack no longer pulls were dropped (`Game3D`, `Render3D`, `Game.Render3D`,
+`Snapshot.Render3D`, `Netcode`/`.Abstractions`/`.LiteNetLib`, `Server`, `Sfx.Tool`, `Updates.Tool`) and
+`Physics` was added (transitive via `Foundation`). Verified self-sufficient via a vendor-feed-only restore.
 
 **Bumped to 7.33.0** to adopt the generic headless snapshot harness (`KhaozEngine.Snapshot`). Nullwake's
 dev-only `tools/SnapshotTool` (renders the layered screen stack to PNGs for visual review) moved off its
@@ -374,8 +383,8 @@ When a consumer raises its `KhaozEngine.*` pin, two things bite if skipped:
 _Last verified: 2026-06-29. The shared `<KhaozEngineVersion>` line = **8.0.0** is the engine (the
 zero-dependency `Primitives` leaf + the custom MonoGame-free stack + the graduated foundation (now including
 `Physics`) + the four umbrella metapackages Game2D/Game3D/Server/Foundation; `Physics.Bepu` is opt-in).
-All four consumers currently pin **7.68.0** (behind the 8.0.0 head; 8.0.0 is a BREAKING release - consumers
-adopt on their own schedule):
+**Nullwake** (2D) has adopted **8.0.0**; the other three still pin **7.68.0** (behind the 8.0.0 head;
+8.0.0 is a BREAKING release - consumers adopt on their own schedule):
 **Hardpoint** (3D) via `Game3D` + `Foundation`, with the `HardpointUpdater` shim and the dev `SnapshotTool` now
 sharing the same root `<KhaozEngineVersion>` (no more separate 7.20.1 / 7.33.0 sub-pins), **Nullwake** (2D) via
 `Game2D` (+ `Diagnostics`/`Persistence`/`Windowing`/`Snapshot`/`Updates`), **SpaceGame** (2D + Render3D) via

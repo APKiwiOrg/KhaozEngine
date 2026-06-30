@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace KhaozEngine.Server.Admin;
@@ -30,6 +31,10 @@ public sealed class AdminHttpServer : IAsyncDisposable
 
         WebApplicationBuilder builder = WebApplication.CreateSlimBuilder();
         builder.Logging.ClearProviders();
+        // System.Text.Json drops fields by default, so a Vector3 (X/Y/Z are fields) in a response DTO serializes as
+        // an empty {}. Register a scoped converter so OnlinePlayer.Position carries its components; scoped to this
+        // endpoint's JSON options (not a blanket IncludeFields, which would change every other type's serialization).
+        builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new Vector3JsonConverter()));
         builder.WebHost.ConfigureKestrel(k =>
             k.Listen(options.BindAddress, options.Port, listen => listen.UseHttps(options.Certificate.Certificate)));
         app = builder.Build();

@@ -5,6 +5,14 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 8.5.1
+
+Fix: the admin HTTPS endpoint's `GET /admin/online` was serializing each player's position as an empty `{}`, so every consumer read a zero position.
+
+- Root cause: `OnlinePlayer.Position` is a `System.Numerics.Vector3`, whose `X`/`Y`/`Z` are fields, not properties, and System.Text.Json does not serialize fields by default. Every other `OnlinePlayer` member is a property, so only the position came back empty.
+- Fix in `KhaozEngine.Server.Admin`: a scoped `Vector3JsonConverter` (internal) registered on the endpoint's `JsonSerializerOptions` via `ConfigureHttpJsonOptions`, so `position` now serializes as `{"x":..,"y":..,"z":..}` (and round-trips back). Scoped deliberately rather than a blanket `IncludeFields`, which would change how every other type serializes. The other admin GET DTOs (`BanRecord`, `WorldStoreEntry`) are all-property record structs and were unaffected; `POST /teleport` already takes `x`/`y`/`z` explicitly.
+- Test: `GET /admin/online` round-trips a NON-ZERO teleported position through the live endpoint (would have caught this).
+
 ## 8.5.0
 
 Additive, opt-in client/server resilience so an out-of-date client self-heals (updates before it connects) and a client/server version skew is never a hard crash. Motivated by a real failure: an old client (engine 7.x) connected to an upgraded server (8.4.3) and hard-crashed with an unhandled `InvalidOperationException: Snapshot references unregistered type id 256`. Three layers, all opt-in and with no change to existing `WorldClient` / `WorldServer` / `UpdateService` construction.

@@ -68,6 +68,62 @@ public class AdminHttpServerTests
     }
 
     /// <summary>
+    /// GET /online must serialize OnlinePlayer.Position (a System.Numerics.Vector3, whose X/Y/Z are FIELDS, not
+    /// properties) with its components. System.Text.Json drops fields by default, so without a scoped converter the
+    /// position serializes as an empty object and every consumer reads a zero position. Round-trips a NON-ZERO
+    /// position through the live endpoint to prove the components survive the wire.
+    /// </summary>
+    [Fact]
+    public async Task GetOnline_SerializesNonZeroPosition()
+    {
+        var (st, ct) = LoopbackTransport.CreatePair();
+        var config = new WorldServerConfig { TickSeconds = 1f / 30f, MaxPlayers = 4 };
+        var server = new WorldServer(st, config, Flat, MoveTuning.Default);
+        var client = new NetClient(ct, Encoding.UTF8.GetBytes("bob"));
+        for (int i = 0; i < 200 && server.PlayerCount == 0; i++) { client.Poll(); server.Poll(); server.Tick(config.TickSeconds); }
+        Assert.Equal(1, server.PlayerCount);
+
+        var admin = new ServerAdmin(server);
+
+        // Teleport the connected player off the origin and tick so the authoritative move + published online snapshot
+        // both carry the new position.
+        var moved = new System.Numerics.Vector3(12.5f, 0f, -7.25f);
+        admin.Teleport(PlayerRef.Slot(0), moved);
+        for (int i = 0; i < 5; i++) { server.Poll(); server.Tick(config.TickSeconds); }
+
+        int port = FreePort();
+        var opts = new AdminEndpointOptions
+        {
+            Port = port,
+            BearerToken = "secret",
+            Certificate = AdminTlsCertificate.CreateSelfSigned("localhost"),
+        };
+        await using var http = new AdminHttpServer(admin, opts);
+        await http.StartAsync();
+
+        using var handler = new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true };
+        using var hc = new HttpClient(handler);
+        hc.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "secret");
+
+        HttpResponseMessage ok = await hc.GetAsync($"https://127.0.0.1:{port}/admin/online");
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+        string body = await ok.Content.ReadAsStringAsync();
+
+        using var doc = System.Text.Json.JsonDocument.Parse(body);
+        System.Text.Json.JsonElement player = doc.RootElement[0];
+        System.Text.Json.JsonElement pos = player.GetProperty("position");
+
+        // The bug: position serializes as {} (no x/y/z), so consumers read a zero position.
+        Assert.Equal(System.Text.Json.JsonValueKind.Object, pos.ValueKind);
+        Assert.True(pos.TryGetProperty("x", out var px), $"position has no 'x' component: {pos.GetRawText()}");
+        Assert.True(pos.TryGetProperty("z", out var pz), $"position has no 'z' component: {pos.GetRawText()}");
+        Assert.Equal(12.5f, px.GetSingle(), 3);
+        Assert.Equal(-7.25f, pz.GetSingle(), 3);
+
+        await http.StopAsync();
+    }
+
+    /// <summary>
     /// POST /broadcast exercises BroadcastRequest DTO binding (the internal-DTO-vs-minimal-API-JSON-binding risk)
     /// and verifies end-to-end notice delivery to a connected WorldClient.
     /// </summary>

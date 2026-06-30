@@ -426,6 +426,50 @@ public class SweptCollisionTests
     }
 
     [Fact]
+    public void JumpUnderEaveAgainstWall_FallsBackToGround_NeverWedged()
+    {
+        // The porch/eave pin (tester screenshots: players frozen mid-jump under a building's awning/eave). A
+        // downward-facing overhang juts out OVER where a capsule stands at a wall base, forming a concave pocket
+        // (the wall blocks +Z, the eave blocks +Y). A capsule jumping up while pressing into the wall wedges in the
+        // pocket. A one-sided mesh has no inner-face contact and the single recovered normal cannot escape a two-
+        // face wedge, so the capsule froze, unable to fall. But a one-sided overhang can never SUPPORT the capsule
+        // from below, so gravity must always win: the capsule must fall back to the ground and end grounded.
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        // A TALL wall at z=2 (faces -Z, y[0,8]) - like a real building wall the jump cannot clear, so the capsule
+        // wedges under the eave instead of flinging over the top.
+        var wv = new[]
+        {
+            new Vector3(-10f, 0f, 2f), new Vector3(10f, 0f, 2f),
+            new Vector3(10f, 8f, 2f), new Vector3(-10f, 8f, 2f),
+        };
+        world.AddStatic(new TriangleMeshShape(wv, new[] { 0, 2, 1, 0, 3, 2 }), Pose.At(Vector3.Zero));   // -Z normal
+        // eave: a horizontal one-sided quad at y=2.5 jutting from the wall (z=2) out to z=1.3, facing DOWN.
+        var ev = new[]
+        {
+            new Vector3(-10f, 2.5f, 1.3f), new Vector3(10f, 2.5f, 1.3f),
+            new Vector3(10f, 2.5f, 2.0f), new Vector3(-10f, 2.5f, 2.0f),
+        };
+        world.AddStatic(new TriangleMeshShape(ev, new[] { 0, 1, 2, 0, 2, 3 }), Pose.At(Vector3.Zero));   // -Y normal
+        world.Step(1f / 60f);
+
+        var state = new MoveState { Position = new Vector3(0f, 0.9f, 0.3f), Grounded = true };
+        float restY = state.Position.Y;
+        var runJump = new MoveCommand(new Vector2(0f, -1f), run: true, cameraYaw: 0f, jump: true);   // +Z into the wall, jump
+        var run = new MoveCommand(new Vector2(0f, -1f), run: true, cameraYaw: 0f, jump: false);
+        float peakY = state.Position.Y;
+        for (int i = 0; i < 240; i++)
+        {
+            MoveCommand cmd = i == 0 ? runJump : run;
+            state = CharacterMovement.Step(state, cmd, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
+            if (state.Position.Y > peakY) peakY = state.Position.Y;
+        }
+        Assert.True(peakY > restY + 0.3f, $"did not jump (peak y={peakY:F2})");
+        Assert.True(state.Grounded, $"wedged under the eave, never fell (grounded={state.Grounded}, pos={state.Position})");
+        Assert.True(state.Position.Y < restY + 0.05f, $"hung under the eave instead of falling (y={state.Position.Y:F2})");
+        Assert.True(state.Position.Z < 1.65f, $"tunneled into the wall (z={state.Position.Z:F2})");
+    }
+
+    [Fact]
     public void GroundedWalkIntoTrunk_DoesNotStickOrFloat()
     {
         // The tester report: "stuck just walking into a tree". A GROUNDED capsule walking horizontally into a trunk
@@ -481,5 +525,56 @@ public class SweptCollisionTests
         Assert.Equal(BitConverter.SingleToInt32Bits(a.Position.X), BitConverter.SingleToInt32Bits(b.Position.X));
         Assert.Equal(BitConverter.SingleToInt32Bits(a.Position.Y), BitConverter.SingleToInt32Bits(b.Position.Y));
         Assert.Equal(BitConverter.SingleToInt32Bits(a.Position.Z), BitConverter.SingleToInt32Bits(b.Position.Z));
+    }
+
+    [Fact]
+    public void GateFires_DescendingBesideConvexProp_IsDeterministic_AndFalls()
+    {
+        // The wall-slide gravity gate runs a downward RAY FAN (a new query type). It must be deterministic so client
+        // prediction and server authority stay byte-identical (reconciliation). Drive the case that fires it: a
+        // capsule descending pressed against a convex prop's steep side (a wall-slide contact, no floor under the
+        // feet -> the gate forces gravity). Assert two independent worlds produce bit-identical results, AND that the
+        // gate let gravity win (the capsule falls back to the ground beside the prop - the desired 8.5.2 behaviour).
+        static MoveState RunOnce()
+        {
+            IPhysicsWorld world = new BepuPhysicsWorld();
+            world.AddStatic(TrunkHull(new Vector3(0f, 0f, 0.9f)), Pose.At(Vector3.Zero));   // trunk axis at z=0.9
+            world.Step(1f / 60f);
+            var s = new MoveState { Position = new Vector3(0f, 2.0f, 0f), Grounded = false, VerticalVelocity = -1f };
+            var cmd = new MoveCommand(new Vector2(0f, -1f), run: false, cameraYaw: 0f, jump: false);   // press +Z into the trunk
+            for (int i = 0; i < 120; i++)
+                s = CharacterMovement.Step(s, cmd, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
+            world.Dispose();
+            return s;
+        }
+
+        MoveState a = RunOnce(), b = RunOnce();
+        Assert.Equal(BitConverter.SingleToInt32Bits(a.Position.X), BitConverter.SingleToInt32Bits(b.Position.X));
+        Assert.Equal(BitConverter.SingleToInt32Bits(a.Position.Y), BitConverter.SingleToInt32Bits(b.Position.Y));
+        Assert.Equal(BitConverter.SingleToInt32Bits(a.Position.Z), BitConverter.SingleToInt32Bits(b.Position.Z));
+        Assert.True(a.Position.Y < 1.0f, $"gate did not let gravity win beside the convex prop (y={a.Position.Y:F2})");
+    }
+
+    [Fact]
+    public void WalkAlongThinLedge_StaysGrounded()
+    {
+        // The gate's 5-ray fan can miss a tread narrower than the ray spacing; the retained step-4 capsule sweep must
+        // still find it so the capsule stays standing (the gate only decides whether to let gravity through, it is
+        // not the floor authority). Walk a capsule along a thin raised ledge (0.15 m wide top at y=0.5); it must not
+        // drop off to the terrain below.
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        world.AddStatic(new BoxShape(new Vector3(5f, 0.25f, 0.075f)), Pose.At(new Vector3(0f, 0.25f, 0f)));   // top y=0.5
+        world.Step(1f / 60f);
+
+        var state = new MoveState { Position = new Vector3(-3f, 1.4f, 0f), Grounded = true };   // standing on the ledge top
+        var walk = new MoveCommand(new Vector2(1f, 0f), run: false, cameraYaw: 0f, jump: false);   // +X along the ledge
+        int airborne = 0;
+        for (int i = 0; i < 150; i++)
+        {
+            state = CharacterMovement.Step(state, walk, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
+            if (!state.Grounded) airborne++;
+        }
+        Assert.True(state.Position.Y > 1.2f, $"dropped off the thin ledge to the terrain (y={state.Position.Y:F2})");
+        Assert.True(airborne < 8, $"could not stay grounded on the thin ledge ({airborne}/150 airborne ticks)");
     }
 }

@@ -16,6 +16,10 @@
     <!-- Bundled libre font (Roboto, Apache-2.0) so the 2D golden has identical glyph input on every OS/runner,
          instead of a hard-coded macOS system-font path that doesn't exist on Windows/Linux CI. -->
     <None Include="Assets/Roboto-Regular.ttf" CopyToOutputDirectory="PreserveNewest" />
+    <!-- A captured real one-sided building collision mesh (a Ruinborne house with eaves/overhangs), used as a
+         realistic regression fixture for the swept resolver: complex one-sided geometry with eaves is exactly where
+         the resolver's one-sided-mesh handling must not pin or float the capsule. -->
+    <None Include="Physics/Fixtures/building_with_eaves.coll" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.App/KhaozEngine.App.csproj" />

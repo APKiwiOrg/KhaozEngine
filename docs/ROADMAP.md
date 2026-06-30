@@ -4,7 +4,7 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **8.8.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **8.8.1** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan under `docs/superpowers/` when it is scheduled.
 
@@ -41,6 +41,22 @@ into a `TriangleMesh` body) also lands here: a static terrain body replaces the 
 the `Step` call so all surfaces (terrain + props + buildings) share one query path.
 
 **Sub-project 3 (SP3, later):** constraints, joints, and vehicles. Hinges, sliders, ragdolls, wheeled vehicles.
+
+**Collision-proxy bake pipeline (structural, unscheduled).** Buildings currently collide as their FULL one-sided
+render mesh, so every decorative eave/awning/dormer is a collision surface. One-sided triangle meshes are
+pathological for a capsule resolver: `ComputePenetration` reports nothing on them, sweeps give zero normals at a
+tangent contact, and concave wall+eave pockets can wedge the capsule. The swept resolver has absorbed this with a
+run of targeted invariants (depenetrate-to-clearance 8.5.3, degenerate-contact normal recovery 8.6.1, the
+gravity-authoritative wall slide + downward ray-fan support gate 8.8.1) and it now never freezes - but "robust by
+accumulating resolver invariants" is not the end state. The clean structural fix is a SEPARATE COLLISION PROXY: a
+simplified, watertight collision mesh distinct from the render mesh (boxes for walls, an explicit ramp for stairs,
+no thin decorative overhangs as colliders), authored or auto-simplified in `ke-propbake`. That retires the
+one-sided-mesh problem class entirely while preserving the detail players actually stand on (treads, ledges).
+NOT done as a quick fix because: a 2026-06-30 investigation showed the obvious shortcuts each trade the pin for
+WORSE failures - two-sided meshes depenetrate the WRONG way (eject the capsule through the wall at the mid-plane),
+and convex DECOMPOSITION introduces interior wall-tunnel traps + a ~1800-static reconciliation surface. So this is
+a deliberate tooling-and-content project (proxy authoring/auto-gen + re-collision for every building), not a bug
+fix. The 8.8.1 "gravity always wins / never frozen" invariant is good to keep even once clean proxies exist.
 
 ### 3. Visual fidelity (textures + materials)
 

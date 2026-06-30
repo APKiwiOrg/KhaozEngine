@@ -169,7 +169,13 @@ public static class CharacterMovement
                 UnderFootprint(floorHit.Point, pos, capsule.Radius))
             {
                 float propCentreY = probeStart - floorHit.Distance; // capsule centre resting on the prop surface
-                if (propCentreY > groundY) groundY = propCentreY;
+                // Accept only a surface the capsule rests ON / lands ON / mounts within a step - NOT a downward-
+                // facing overhang (eave / awning / soffit) the capsule is BELOW. Bepu's downward sweep registers a
+                // thin overhang quad from above with an up-pointing contact normal that passes the walkable-up guard,
+                // so without this height cap a capsule jumping up under an eave has its feet snapped onto it - the
+                // "float up onto the awning/roof" bug. A real floor/dome-top under the feet sits at or just above the
+                // capsule centre (the swept move stops the capsule there); an overhang sits well above it.
+                if (propCentreY > groundY && propCentreY <= pos.Y + t.StepHeight) groundY = propCentreY;
             }
         }
 
@@ -268,6 +274,11 @@ public static class CharacterMovement
     private const float SubstepFraction = 0.5f;
     private const int   SlideIterations = 4;
     private const float SkinWidth       = 0.01f;
+    // Downward reach of the wall-slide gravity GATE (NOT the support height itself, which step 4 owns): a walkable
+    // floor within this far below the feet means "supported", so the wall slide keeps its usual on-slope projection;
+    // beyond it the slide must not cancel gravity. > StepHeight + SkinWidth (a step you could mount still counts as
+    // supported) and < body height (so it is a feet-local probe, not a whole-body one).
+    private const float FloorProbeReach = 0.5f;
     // Contact counts as a wall/riser (step-up candidate) rather than a floor/ceiling when |normal.Y| is small.
     private const float StepUpNormalY = 0.5f;
     // Depenetration-to-clearance passes before each sweep: push the capsule out of any prop/wall overlap to a small
@@ -346,21 +357,29 @@ public static class CharacterMovement
             Vector3 n = hit.Normal;
             if (n.LengthSquared() <= 1e-12f)
             {
-                // Degenerate contact: the sweep started TANGENT to a one-sided mesh (a building wall) so Bepu
-                // returns t=0 with a ZERO normal - no slide plane. This is the case 8.5.3's depenetrate-to-clearance
-                // cannot prevent: ComputePenetration reports NO overlap for a one-sided face (depth 0 at a tangent),
-                // so the capsule CAN reach the touching state - e.g. a jump that arrives airborne pressing in lands
-                // flush on the wall via a graze the sweep does not count as a hit. With a bare stop here the capsule
-                // freezes: it can neither fall nor strafe, pinned mid-wall (the tester's "stuck up the building").
-                // Recover the real contact normal by re-sweeping from a start pulled back along -dir (provably clear,
-                // so Bepu yields a real normal), then slide the remainder along it - the into-surface component is
-                // blocked while the along component (gravity, strafe, the rise of a jump) proceeds. If the move is
-                // genuinely parallel to the face (no normal recoverable) stop this substep; the next tick re-tries.
+                // Degenerate contact: the sweep started TANGENT to a one-sided mesh (a building wall/eave) so Bepu
+                // returns t=0 with a ZERO normal - no slide plane. 8.5.3's depenetrate-to-clearance cannot prevent
+                // this (`ComputePenetration` reports NO overlap for a one-sided face at a tangent), so the capsule
+                // CAN reach the touching state - e.g. a jump that arrives airborne pressing in lands flush on the
+                // wall, or jumps up into a downward-facing eave that overhangs the wall base. A bare stop froze the
+                // capsule mid-wall; a single recovered normal + slide frees the flat wall but NOT a two-face wedge
+                // (eave above + wall ahead), where the back-off re-sweep can even start inside adjacent geometry.
+                //
+                // INVARIANT: a one-sided mesh has no inner-face contacts, so it can never SUPPORT the capsule from
+                // below. The DOWNWARD (gravity) component must therefore ALWAYS proceed here - step 4 re-clamps it
+                // at the real support floor - which guarantees the capsule can fall out of ANY overhang/eave/corner
+                // wedge. The HORIZONTAL is still recovered + slid along the wall (so a strafe is not frozen and a
+                // walk straight in stays blocked); when no normal is recoverable the horizontal is blocked but
+                // gravity still wins.
+                pos.Y += MathF.Min(0f, remaining.Y);                       // gravity escape: never blocked by a one-sided mesh (step 4 clamps)
                 if (TryContactNormal(world, capsule, pos, dir, out Vector3 recovered))
                 {
-                    pos += recovered * SkinWidth;                                       // step off so the next sweep is clean
-                    if (recovered.Y >= cosMaxSlope) { pos += remaining; break; }        // degenerate floor: pass the remainder through
-                    delta = remaining - Vector3.Dot(remaining, recovered) * recovered;  // slide along the recovered wall plane
+                    if (recovered.Y >= cosMaxSlope) { Vector3 h = remaining; h.Y = 0f; pos += h; break; }  // walkable floor: pass horizontal
+                    pos += recovered * SkinWidth;                          // step off the wall so the next sweep is clean
+                    Vector3 horiz = new(remaining.X, 0f, remaining.Z);     // slide the horizontal along the wall's HORIZONTAL plane,
+                    Vector3 nH = new(recovered.X, 0f, recovered.Z);        // then RE-SWEEP it (continue) so a perpendicular wall (corner) still blocks
+                    if (nH.LengthSquared() > 1e-12f) { nH = Vector3.Normalize(nH); horiz -= Vector3.Dot(horiz, nH) * nH; }
+                    delta = horiz;
                     continue;
                 }
                 break;
@@ -387,9 +406,54 @@ public static class CharacterMovement
                 break;
             }
 
-            delta = remaining - Vector3.Dot(remaining, n) * n;   // wall: slide along the contact plane
+            // Wall slide: project the remainder onto the contact plane (block + slide along the wall). But a wall -
+            // including an UP-TILTED one-sided face (a building eave/awning pocket gives a real normal like
+            // n=(0.90,0.38,-0.20)) - must never hold the capsule UP against gravity. That projection bleeds the
+            // downward component, and over the iterations a concave pocket bleeds it to zero, freezing the capsule
+            // mid-air (the tester's "stuck on the wall / under the awning" pin, vVel railing to terminal while the
+            // position never moves). Authority on "am I supported" is a downward ray fan from the feet, NOT this
+            // contact normal: while descending with no walkable floor under the feet, keep the FULL downward
+            // remainder so gravity always wins (step 4 still clamps it at the real support floor). With a floor under
+            // the feet (grounded / landing / a rock side) this is byte-identical to the old projection, so the
+            // convex + grounded paths and reconciliation are unchanged.
+            Vector3 slid = remaining - Vector3.Dot(remaining, n) * n;
+            if (remaining.Y < 0f && !WalkableFloorUnderFeet(world, capsule, pos, t))
+            {
+                // Gravity escape: apply the downward remainder DIRECTLY to the position, not via slid.Y. At a wedge
+                // the contact is ~tangent (hit.Distance < SkinWidth), so the next iteration's sweep advances pos by
+                // ~0 and would never realize a delta.Y - the capsule would stay frozen even with gravity "in" delta.
+                // Stepping pos.Y here makes gravity win every tick (the gate already proved no floor within reach;
+                // step 4 still clamps at the real support floor). The horizontal slides on as usual.
+                pos.Y += remaining.Y;
+                slid.Y = 0f;
+            }
+            delta = slid;
         }
         return pos;
+    }
+
+    /// <summary>True when a walkable floor sits within <see cref="FloorProbeReach"/> below the capsule's feet, found
+    /// by a fixed 5-ray downward fan (centre + ±0.7R on each footprint axis). RAYS, not a capsule sweep: a ray has no
+    /// radius, so it never starts tangent to a one-sided face and never returns the zero-normal degeneracy that
+    /// defeats a capsule sweep there - it cleanly answers "is there ground under me". Used ONLY as the gravity GATE
+    /// in the wall slide; the actual support height still comes from step 4's capsule sweep, so a thin tread that
+    /// falls between the rays is still stood on (step 4 clamps it - the gate only decides whether to let gravity
+    /// through this tick). Deterministic: a fixed ray order over the deterministic Bepu raycast, with a small slope
+    /// epsilon so a contact exactly at the slope limit cannot flip branches across runtimes.</summary>
+    private static bool WalkableFloorUnderFeet(IPhysicsWorld world, CapsuleShape capsule, Vector3 pos, in MoveTuning t)
+    {
+        float cosMaxSlope = MathF.Cos(t.MaxSlopeRadians);
+        float feetY = pos.Y - t.CapsuleHalfHeight + SkinWidth;     // just above the feet, cast down
+        float r = 0.7f * capsule.Radius;
+        Span<Vector2> fan = stackalloc Vector2[] { new(0f, 0f), new(r, 0f), new(-r, 0f), new(0f, r), new(0f, -r) };
+        for (int i = 0; i < fan.Length; i++)
+        {
+            var origin = new Vector3(pos.X + fan[i].X, feetY, pos.Z + fan[i].Y);
+            if (world.Raycast(origin, -Vector3.UnitY, FloorProbeReach, out RayHit hit) &&
+                hit.Normal.Y >= cosMaxSlope - 1e-4f)
+                return true;
+        }
+        return false;
     }
 
     // Recovery sweep: pull back this many radii along -dir (a provably clear start, since a tangent capsule touches

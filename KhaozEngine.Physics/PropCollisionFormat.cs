@@ -25,6 +25,8 @@ public static class PropCollisionFormat
     internal const byte KindConvexHull = 1;
     internal const byte KindTriangleMesh = 2;
     internal const byte KindCylinder = 3;
+    internal const byte KindBox = 4;
+    internal const byte KindCompound = 5;
 
     /// <summary>Serialize <paramref name="shape"/> to <paramref name="stream"/> in the KECL binary format:
     /// Magic (uint32 LE) + version (byte) + kind (byte) + payload. The stream is left open.</summary>
@@ -35,6 +37,13 @@ public static class PropCollisionFormat
         using var w = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true);
         w.Write(Magic);
         w.Write(Version);
+        WriteShape(w, shape);
+    }
+
+    // Writes a single shape's kind byte + payload. Recurses for compound children. No magic/version here (the
+    // top-level Write emits those once), so the existing kind 1/2/3 byte layout is unchanged.
+    static void WriteShape(BinaryWriter w, PhysicsShape shape)
+    {
         switch (shape)
         {
             case ConvexHullShape hull:
@@ -57,9 +66,28 @@ public static class PropCollisionFormat
                 foreach (int idx in mesh.Indices)
                     w.Write(idx);
                 break;
+            case BoxShape box:
+                w.Write(KindBox);
+                w.Write(box.HalfExtents.X); w.Write(box.HalfExtents.Y); w.Write(box.HalfExtents.Z);
+                break;
+            case CompoundShape compound:
+                w.Write(KindCompound);
+                w.Write(compound.Children.Length);
+                foreach (CompoundChild child in compound.Children)
+                {
+                    WritePose(w, child.Local);
+                    WriteShape(w, child.Shape);
+                }
+                break;
             default:
                 throw new NotSupportedException($"PropCollisionFormat.Write: unsupported shape type {shape.GetType().Name}");
         }
+    }
+
+    static void WritePose(BinaryWriter w, Pose pose)
+    {
+        w.Write(pose.Position.X); w.Write(pose.Position.Y); w.Write(pose.Position.Z);
+        w.Write(pose.Orientation.X); w.Write(pose.Orientation.Y); w.Write(pose.Orientation.Z); w.Write(pose.Orientation.W);
     }
 
     /// <summary>Read a single baked shape from <paramref name="stream"/>. Throws
@@ -80,6 +108,11 @@ public static class PropCollisionFormat
             throw new InvalidOperationException(
                 $"PropCollisionFormat: unsupported version {version} (expected {Version}).");
 
+        return ReadShape(r);
+    }
+
+    static PhysicsShape ReadShape(BinaryReader r)
+    {
         byte kind = r.ReadByte();
         switch (kind)
         {
@@ -109,10 +142,34 @@ public static class PropCollisionFormat
                     indices[i] = r.ReadInt32();
                 return new TriangleMeshShape(verts, indices);
             }
+            case KindBox:
+            {
+                float hx = r.ReadSingle(), hy = r.ReadSingle(), hz = r.ReadSingle();
+                return new BoxShape(new Vector3(hx, hy, hz));
+            }
+            case KindCompound:
+            {
+                int childCount = r.ReadInt32();
+                var children = new CompoundChild[childCount];
+                for (int i = 0; i < childCount; i++)
+                {
+                    Pose local = ReadPose(r);
+                    PhysicsShape child = ReadShape(r);
+                    children[i] = new CompoundChild(child, local);
+                }
+                return new CompoundShape(children);
+            }
             default:
                 throw new InvalidOperationException(
                     $"PropCollisionFormat: unknown shape kind {kind}.");
         }
+    }
+
+    static Pose ReadPose(BinaryReader r)
+    {
+        var pos = new Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
+        var orient = new Quaternion(r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
+        return new Pose(pos, orient);
     }
 
     /// <summary>Read a single baked shape from a <c>.coll</c> file path. Convenience over the

@@ -5,6 +5,30 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 8.9.0
+
+Publish hardening for every consumer game, by default. Two changes, both automatic on the pin, nothing required of the games.
+
+- Single-file publish keeps natives loose (no boot crash). `KhaozEngine.Foundation`'s `buildTransitive` props seam
+  (already home to the `CETCompat=false` default) now also defaults `IncludeNativeLibrariesForSelfExtract=false` for
+  every head (direct `Foundation` ref or transitively via `Game2D`/`Game3D`/`Server`). KhaozEngine reaches
+  GLFW (Silk.NET windowing/input), Veldrid's backend, and OpenAL through native libs the runtime locates by probing
+  the apphost directory. With `PublishSingleFile=true`, .NET's default `IncludeNativeLibrariesForSelfExtract=true`
+  packs those natives INTO the self-extracting exe, where Silk.NET's loader can't find them: the game dies at boot
+  with *"Couldn't find a suitable window platform (GlfwPlatform - not applicable)"* (the crash a consumer Windows
+  build hit). Defaulting it off keeps the natives loose so the loader finds them. No-op unless the head sets
+  `PublishSingleFile=true`. Overridable exactly like `CETCompat`: set
+  `<IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>` in the head and its value wins.
+- No absolute build-box path in shipped DLLs. `Directory.Build.props` now sets `ContinuousIntegrationBuild=true` for
+  Release builds (the configuration `dotnet pack` always runs), turning on deterministic builds + the well-known
+  source-root pathmap. The source/PDB path embedded in each shipped DLL's PE debug directory is rewritten to
+  `/_/`-style instead of the packer's home path (e.g. `/Users/antonio/KhaozEngine/...`), which was recoverable via
+  `strings` even though PDBs themselves ship only in the never-pushed `.snupkg`. Local Debug builds keep real paths
+  for step-into. Respects an explicit `ContinuousIntegrationBuild` override.
+
+Adoption: the four games pick up the new pin at leisure. Nothing is blocked - this is pure future-proofing, and the
+single-file leak was a per-game publish setting now defaulted safe.
+
 ## 8.8.1
 
 Fix: a character can no longer get FROZEN against a complex building, and trees no longer block on their branches.

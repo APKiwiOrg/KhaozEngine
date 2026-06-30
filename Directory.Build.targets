@@ -1,0 +1,29 @@
+<Project>
+  <!-- Relativize the source/PDB paths embedded in packed (Release) DLLs so no absolute build-box
+       home path (e.g. /Users/antonio/KhaozEngine/...) ships in the shipped DLL's PE debug directory,
+       regardless of which machine packs the release. The embedded path is recoverable via `strings`
+       even though PDBs themselves ship only in the .snupkg (never pushed), so this closes the residual
+       leak. ContinuousIntegrationBuild turns on deterministic builds + the well-known source-root
+       pathmap, rewriting absolute paths to /_/-style.
+
+       Scoped to PACKABLE Release builds:
+         * Release because `dotnet pack` always runs -c Release, so every shipped package is covered
+           while local Debug builds keep real paths for step-into.
+         * IsPackable != false because the pathmap also rewrites [CallerFilePath], which the test and
+           sample projects use to locate the repo tree at runtime (CetCompatDefaultTests, GoldenCompare).
+           Those projects are never shipped, so they must keep real source paths. This lives in
+           Directory.Build.targets (imported AFTER the csproj body) precisely so IsPackable - set in the
+           project body - is visible; in Directory.Build.props it would not be.
+       Respects an explicit ContinuousIntegrationBuild override (CI may set it true itself).
+
+       DeterministicSourcePaths is set explicitly here, not left to the SDK default. The SDK defaults
+       it from ContinuousIntegrationBuild inside Sdk.targets, which is imported BEFORE this file - so by
+       the time we flip ContinuousIntegrationBuild on, that default has already evaluated to empty and no
+       pathmap is built (paths would stay absolute). DeterministicSourcePaths is what actually drives the
+       source-root pathmap, so we turn it on directly. SourceLink (referenced by every packable project)
+       populates the SourceRoot the pathmap needs. -->
+  <PropertyGroup Condition="'$(ContinuousIntegrationBuild)' == '' and '$(Configuration)' == 'Release' and '$(IsPackable)' != 'false'">
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+    <DeterministicSourcePaths Condition="'$(DeterministicSourcePaths)' == ''">true</DeterministicSourcePaths>
+  </PropertyGroup>
+</Project>

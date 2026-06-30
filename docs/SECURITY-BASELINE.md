@@ -122,7 +122,11 @@ The posture is defense in depth: no single control is the whole story.
    what makes the residual native surface patchable: when a runtime or native-lib CVE lands, the game
    re-publishes a self-contained build to pick up the fix and ships it (the signed updater is the
    delivery mechanism). Adoption path: a game bumps its `KhaozEngine.*` pin and re-publishes; the runtime
-   version travels with the publish, not the engine packages.
+   version travels with the publish, not the engine packages. If a head single-file publishes
+   (`PublishSingleFile=true`), the native libs must stay **loose** next to the exe, never bundled into the
+   self-extracting host (Silk.NET's loader probes the apphost directory and can't see bundled natives). Foundation
+   defaults `IncludeNativeLibrariesForSelfExtract=false` for every head so this is correct out of the box (engine
+   8.9.0; overridable per head). See [USING-KHAOZENGINE.md "Game head build settings"](USING-KHAOZENGINE.md#game-head-build-settings-cetcompat).
 
 4. **Signed, integrity-checked updates.** The update channel's mandatory signing + the apply-time guards
    (origin lock, path/symlink guards, size caps, downgrade rejection) are what keep category 3 from being

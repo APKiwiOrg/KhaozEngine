@@ -695,6 +695,11 @@ locomotion state Idle&lt;-&gt;moving every frame (restarting the clip and freezi
 glides). The window holds the last good velocity across the plateau; set it to one tick of your source. A
 genuine stop still resolves to Idle within one window; `&lt;= 0` reverts to per-frame derivation.
 
+For the LOCAL player you do not have to derive horizontal speed from the position stream at all: read
+`WorldClient.LocalHorizontalSpeed` (since 8.7.0), the predicted planar speed straight off the prediction tick.
+It is immune to reconciliation snaps and does not wobble under lag, so it is the clean drive for a local speed
+HUD / footstep audio / locomotion blend. Remotes still derive from the (windowed) position stream above.
+
 Even windowed, the derived speed ripples a little - the prediction/reconcile render stream is not perfectly
 smooth, and a remote's replicated position arrives as a ~30 Hz staircase - enough to occasionally cross a band
 threshold and, since `AnimationPlayer.Play` restarts a clip on every state change, reset the walk/run cycle to
@@ -1450,6 +1455,12 @@ var server = new WorldServer(transport, new WorldServerConfig { TickSeconds = 1f
   snapshot-step per ingest - at the cost of ~one tick (~33 ms) of remote render latency (it renders ~one snapshot in
   the past, never extrapolating). Set `InterpolateRemotes = false` to read the raw latest position instead. Call
   `AdvancePresentation(dt)` once per render frame to drive both the local smoothing and the remote interpolation.
+  Read-only local-avatar shorthands: `LocalRenderState` / `LocalGrounded` / `LocalVerticalVelocity`, plus
+  `LocalHorizontalSpeed` (since 8.7.0) - the predicted planar speed in m/s straight off
+  `ClientPrediction.PredictedHorizontalSpeed`, computed per prediction tick and immune to reconciliation snaps,
+  so it stays steady under lag. Use it to drive a speed HUD, footstep audio, or a locomotion blend instead of
+  differencing `LocalRenderState.Position`, which carries the decaying reconciliation render offset and wobbles
+  during a steady run.
 
 ```csharp
 var client = new WorldClient(transport, terrain.GroundHeight, MoveTuning.Default, new WorldClientConfig { TickSeconds = 1f/30f });

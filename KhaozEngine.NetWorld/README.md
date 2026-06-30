@@ -24,6 +24,11 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   Optional `WorldBounds`/`IPhysicsWorld?` ctor params (mirroring `WorldServer`, since 8.0.0) make the client predict
   against the same play-area bound + static physics bodies the server is authoritative over, so a
   solid-prop world predicts straight instead of rubber-banding (null = terrain only).
+  Read-only local-avatar shorthands: `LocalRenderState` / `LocalGrounded` / `LocalVerticalVelocity`, plus
+  `LocalHorizontalSpeed` (since 8.7.0) - the predicted planar speed in m/s straight off
+  `ClientPrediction.PredictedHorizontalSpeed`, computed per prediction tick and immune to reconciliation snaps,
+  so it stays steady under lag (the clean source for a speed HUD / footstep audio / locomotion blend, vs
+  differencing `LocalRenderState.Position`, which carries the decaying render offset and wobbles).
   `WorldClient.NetStats` (a `KhaozEngine.Diagnostics.ClientNetStats`) surfaces connection health for a telemetry
   overlay: RTT / loss / byte rates from the transport, the AoI snapshot ingest rate, and the
   prediction-reconciliation correction magnitude (last + rolling average); `Connected` tracks `Joined`. Rates

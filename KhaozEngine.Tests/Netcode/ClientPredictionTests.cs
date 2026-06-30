@@ -269,4 +269,63 @@ public class ClientPredictionTests
         p.Reconcile(1, new V3State(Vector2.Zero, 1f), lastAcknowledgedSeq: 0); // matching basis mid-tick
         Assert.Equal(before, p.RenderedState.Height, 3); // continuous vertical, no pop
     }
+
+    [Fact]
+    public void PredictedHorizontalSpeed_equals_per_tick_distance_over_tick_seconds()
+    {
+        var p = NewPrediction();
+        Assert.Equal(0f, p.PredictedHorizontalSpeed, 3); // no command yet
+
+        // A 5-12 vector has length 13; the tick advances by command * Tick so the per-tick distance is 13 * Tick,
+        // and the reported speed is that distance / Tick == 13. (Length, not just the X axis - planar magnitude.)
+        p.Predict(new Vector2(5f, 12f));
+        Assert.Equal(13f, p.PredictedHorizontalSpeed, 3);
+
+        // Steady input -> steady speed every tick.
+        p.Predict(new Vector2(5f, 12f));
+        Assert.Equal(13f, p.PredictedHorizontalSpeed, 3);
+    }
+
+    [Fact]
+    public void PredictedHorizontalSpeed_is_zero_under_zero_input()
+    {
+        var p = NewPrediction();
+        p.Predict(new Vector2(60f, 0f));   // moving
+        Assert.Equal(60f, p.PredictedHorizontalSpeed, 3);
+        p.Predict(Vector2.Zero);           // standing still
+        Assert.Equal(0f, p.PredictedHorizontalSpeed, 3);
+    }
+
+    [Fact]
+    public void PredictedHorizontalSpeed_ignores_the_reconcile_rebase_and_tracks_the_next_live_tick()
+    {
+        var p = NewPrediction();
+        p.Predict(new Vector2(60f, 0f)); // steady run, speed 60
+        p.Predict(new Vector2(60f, 0f));
+        Assert.Equal(60f, p.PredictedHorizontalSpeed, 3);
+
+        // A reconcile that rebases the predicted position a long way (a big snap) must NOT register as a huge
+        // instantaneous speed: speed is computed only in Predict, not over the rebase. It holds the last live value.
+        p.Reconcile(1, new FakeState(new Vector2(500f, 0f)), lastAcknowledgedSeq: -1);
+        Assert.Equal(60f, p.PredictedHorizontalSpeed, 3); // unchanged by the rebase, not 500-ish
+
+        // The next real commanded tick reports the steady commanded speed (off the rebased basis, not the snap).
+        p.Predict(new Vector2(60f, 0f));
+        Assert.Equal(60f, p.PredictedHorizontalSpeed, 3);
+    }
+
+    [Fact]
+    public void PredictedHorizontalSpeed_is_zeroed_by_Reset_and_Reseed()
+    {
+        var p = NewPrediction();
+        p.Predict(new Vector2(60f, 0f));
+        Assert.Equal(60f, p.PredictedHorizontalSpeed, 3);
+        p.Reset(new FakeState(Vector2.Zero));
+        Assert.Equal(0f, p.PredictedHorizontalSpeed, 3);
+
+        p.Predict(new Vector2(60f, 0f));
+        Assert.Equal(60f, p.PredictedHorizontalSpeed, 3);
+        p.Reseed(new FakeState(Vector2.Zero));
+        Assert.Equal(0f, p.PredictedHorizontalSpeed, 3);
+    }
 }

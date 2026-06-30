@@ -229,6 +229,13 @@ public sealed class WorldClient : IDisposable
     /// <see cref="LocalRenderState"/>.VerticalVelocity).</summary>
     public float LocalVerticalVelocity => prediction.RenderedState.VerticalVelocity;
 
+    /// <summary>The local player's predicted horizontal (planar ground-plane) speed in m/s, taken from the latest
+    /// prediction tick (the commanded, collision-clamped move). Use it to drive a speed HUD, footstep audio, or a
+    /// locomotion blend: it is the clean source that stays steady under lag, unlike differencing
+    /// <see cref="LocalRenderState"/>.Position, which carries the decaying reconciliation render offset and so wobbles
+    /// during a steady run. Zero until the first snapshot seeds prediction.</summary>
+    public float LocalHorizontalSpeed => prediction.PredictedHorizontalSpeed;
+
     /// <summary>
     /// A read-only snapshot of this client's connection health for a diagnostics/telemetry overlay: RTT, packet
     /// loss, and byte rates (from the transport - 0 over loopback), the AoI snapshot ingest rate, and the

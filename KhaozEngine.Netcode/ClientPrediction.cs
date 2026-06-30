@@ -36,6 +36,11 @@ public sealed class ClientPrediction<TState, TCommand>
     private Vector2 previousPredictedPosition;
     private float previousPredictedVertical;
     private float secondsSinceLastPredict;
+    // The local player's predicted horizontal (planar) speed, recomputed each Predict from the per-tick position
+    // delta. Computed ONLY in Predict (the commanded path), never in Reconcile, so a reconciliation rebase/snap is
+    // not mistaken for movement: a consumer HUD/audio/locomotion gets a clean steady value under lag instead of the
+    // wobble from differencing RenderedState.Position (which carries the decaying reconciliation render offset).
+    private float predictedHorizontalSpeed;
 
     public ClientPrediction(ITickSimulator<TState, TCommand> simulator, PredictionSettings? settings = null)
     {
@@ -45,6 +50,16 @@ public sealed class ClientPrediction<TState, TCommand>
 
     /// <summary>The current predicted (authority-tracking) state.</summary>
     public TState PredictedState => predictedState;
+
+    /// <summary>
+    /// The local player's predicted horizontal (planar) speed in units/sec, taken from the most recent
+    /// <see cref="Predict"/> tick (the commanded move, collision-clamped in the simulator step). Unlike differencing
+    /// <see cref="RenderedState"/>.Position - which carries the decaying reconciliation render offset, so a steady run
+    /// wobbles under lag - this is the clean source for a consumer HUD / audio / locomotion blend: it is computed only
+    /// on the commanded path and is therefore immune to reconciliation snaps. Zero until the first
+    /// <see cref="Predict"/>, and reset to zero by <see cref="Reset"/> / <see cref="Reseed"/>.
+    /// </summary>
+    public float PredictedHorizontalSpeed => predictedHorizontalSpeed;
 
     /// <summary>
     /// The state to draw: the predicted position (planar AND vertical) eased from the previous tick toward the
@@ -75,6 +90,7 @@ public sealed class ClientPrediction<TState, TCommand>
         pendingCommands.Clear();
         renderOffset = Vector2.Zero;
         verticalRenderOffset = 0f;
+        predictedHorizontalSpeed = 0f;
         nextSeq = 0;
     }
 
@@ -98,6 +114,7 @@ public sealed class ClientPrediction<TState, TCommand>
         secondsSinceLastPredict = settings.TickSeconds; // start fully on the current state (frac = 1)
         renderOffset = Vector2.Zero;
         verticalRenderOffset = 0f;
+        predictedHorizontalSpeed = 0f;
         // nextSeq intentionally preserved (monotonic across the reconnect); pendingCommands intentionally kept
         // (the following Reconcile drops acked / replays unacked against the new server's ack).
     }
@@ -112,6 +129,10 @@ public sealed class ClientPrediction<TState, TCommand>
         previousPredictedVertical = predictedState.Vertical;
         secondsSinceLastPredict = 0f;
         predictedState = simulator.Step(predictedState, command, settings.TickSeconds);
+        // Planar speed for this tick: the distance the predicted position actually moved (after the simulator's
+        // collision clamp) over the tick duration. IPredictedState.Position is planar, so this is horizontal for free.
+        Vector2 step = predictedState.Position - previousPredictedPosition;
+        predictedHorizontalSpeed = settings.TickSeconds > 0f ? step.Length() / settings.TickSeconds : 0f;
         if (pendingCommands.Count > settings.MaxPendingCommands)
         {
             // Bound memory if acknowledgements stop arriving (sustained loss); drop the oldest.

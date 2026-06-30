@@ -5,6 +5,14 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 8.7.0
+
+Additive: the local player's predicted horizontal speed is exposed for consumer HUDs / audio / locomotion blends, as a clean alternative to differencing the rendered position. No protocol or behaviour change.
+
+- `ClientPrediction<TState,TCommand>` (`KhaozEngine.Netcode`) gains `public float PredictedHorizontalSpeed`: the planar (ground-plane) speed in units/sec, recomputed each `Predict` from the per-tick position delta over `PredictionSettings.TickSeconds`. `IPredictedState.Position` is planar, so this is horizontal for free. Computed ONLY on the commanded `Predict` path, never in `Reconcile`, so a reconciliation rebase/snap is not mistaken for movement. Zero until the first `Predict`; zeroed by `Reset` / `Reseed`.
+- `WorldClient` (`KhaozEngine.NetWorld`) forwards it as `public float LocalHorizontalSpeed` (mirrors `LocalGrounded` / `LocalVerticalVelocity`). Use it instead of differencing `LocalRenderState.Position`, which carries the decaying reconciliation render offset and so wobbles during a steady run under lag.
+- Tests (`ClientPredictionTests`): known per-tick distance -> speed == distance / TickSeconds (planar magnitude, not just one axis); zero input -> 0; a reconcile rebase does not register as speed and the next live tick reports the steady commanded value; `Reset` / `Reseed` zero it.
+
 ## 8.6.1
 
 Fix: a jump INTO a one-sided building wall no longer pins the character partway up it (mid-jump pose, grounded=no, not falling). The case 8.5.3 did not cover: an airborne capsule pressing into a wall.

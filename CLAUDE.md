@@ -383,7 +383,9 @@ version/release work.
     remote = replicated `MovementState` surfaced by `WorldClient.Snapshot()`), so a consumer feeds the exact air state
     for remotes too - deriving "airborne" from a remote's terrain-following position misfires (the faster it moves over
     a slope, the more it looks like falling); the read-only `WorldClient.LocalRenderState`/`LocalGrounded`/
-    `LocalVerticalVelocity` (7.65.0) remain for the local sample. `TerrainWalkSample` walks a committed Quaternius Universal CC0 rigged+animated
+    `LocalVerticalVelocity` (7.65.0) - plus `LocalHorizontalSpeed` (8.7.0), the predicted planar speed straight off
+    `ClientPrediction.PredictedHorizontalSpeed` (computed per `Predict`, immune to reconciliation snaps, the clean
+    HUD/audio/locomotion source vs differencing the render position) - remain for the local sample. `TerrainWalkSample` walks a committed Quaternius Universal CC0 rigged+animated
     character (clips named exactly Idle/Walk/Run/Jump/Fall; skinned-ingest preserves the rig + clips; NOT the flatten-prop
     path), and `NetworkedWalkSample` drives one animated avatar per replicated player through `ReplicatedCharacterAnimators`
     (the same asset). Out of scope: animation events, root motion, IK, additive/facial

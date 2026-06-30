@@ -44,6 +44,13 @@ Draw(prediction.RenderedState);
 
 Tune via `PredictionSettings` (tick rate, buffer cap, hard-snap distance, correction rate, dead-zone).
 
+`PredictedHorizontalSpeed` is the local player's planar (ground-plane) speed in units/sec, recomputed each
+`Predict` from the per-tick position delta over `TickSeconds` (`IPredictedState.Position` is planar, so it is
+horizontal for free). It is computed **only** on the commanded `Predict` path, never in `Reconcile`, so a
+reconciliation rebase/snap never registers as movement - a clean steady value for a speed HUD, footstep audio,
+or a locomotion blend, unlike differencing `RenderedState.Position` (which carries the decaying render offset
+and wobbles under lag). Zero until the first `Predict`; zeroed by `Reset` / `Reseed`.
+
 On a mid-session **reconnect**, call `Reseed(basis)` (not `Reset`) when the first post-reconnect snapshot lands.
 It re-seeds the predicted state to the authoritative basis but keeps the command sequence counter **monotonic**:
 the fresh server has already advanced its per-connection ack from the commands sent in the join gap, so a `Reset`

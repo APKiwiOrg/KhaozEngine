@@ -8,7 +8,7 @@ engine ships a new version.
 engine is entirely MonoGame-free on a single version line in `Directory.Build.props` (the doc-version guard
 checks it): the custom render/runtime stack + the graduated MonoGame-free foundation + the four umbrella
 metapackages, all sharing one version. `Physics.Bepu` and the `WorldStore.Sqlite`/`.SqlServer` backends are
-opt-in and referenced explicitly; `Server.Admin` (the Kestrel HTTPS admin endpoint, 8.4.2) is likewise opt-in
+opt-in and referenced explicitly; `Server.Admin` (the Kestrel HTTPS admin endpoint) is likewise opt-in
 and NOT in the `Server` umbrella - add it explicitly when the server needs an admin endpoint, so a sim server
 without one never pulls the ASP.NET Core web stack; the author/publish tools (`ke-updater`/`ke-sfxbake`/`ke-propbake`) ship as
 dotnet tools in no umbrella, so no consumer references them via `<PackageReference>`. Full package catalog:
@@ -31,22 +31,20 @@ and added explicitly). This file tracks only which consumer pins which version (
 ## Consumer matrix
 
 Every consumer is MonoGame-free and references the engine through an umbrella metapackage (plus granular pins
-where needed). All four pin **8.0.0**.
+where needed). Each pins its own version (see the Version column).
 
 | Consumer | Project(s) | References | Version |
 |---|---|---|---|
-| **Hardpoint** (3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic); live auto-updater (`Updates` via Foundation, Gui overlay) against a server-less static-blob feed + OIDC CI publish; `Collision.Segment2D` for swept projectile collision. One root `Directory.Build.props` `<KhaozEngineVersion>` drives every ref (heads, the `HardpointUpdater` shim, the dev `SnapshotTool`); top-level `Hardpoint.slnx`, vendored feed (`Hardpoint/vendor/khaozengine`) | **8.0.0** |
-| **Nullwake** (2D) | `Nullwake.Core` | `KhaozEngine.Game2D` + `Diagnostics`/`Persistence`/`Windowing` + `Updates` (shim, dormant) + `Snapshot` (dev tool); uses `AttentionBeacon`, clipboard paste + `Pointer.WindowFocused` gating in name entry. Vendored feed (`Nullwake/vendor/khaozengine`) | **8.0.0** |
-| **SpaceGame** (2D + Render3D) | `SpaceGame.Core` (head) / `SpaceGame.Sim` (lockstep sim) | `Game2D` + `Render3D` + `Netcode.LiteNetLib` + `Primitives` (head); `Ecs`/`Collision`/`Diagnostics`/`Content`/`Serialization`/`App`/`Netcode`/`Pooling`/`Determinism` + `Primitives` (sim); `Netcode.Abstractions` (contracts); `Render3D` + `Determinism` for the 2.5D mesh layer; manifest signing via the `ke-updater` tool. Restores from `local-feed`/GitHub Packages directly (no vendored feed) | **8.0.0** |
-| **Ruinborne** (3D MMO) | `Ruinborne.Client` / `Ruinborne.Server` | client: `KhaozEngine.Game3D` + `Foundation` + `NetWorld` + `Netcode.LiteNetLib` + `Netcode.Abstractions` + `Simulation` + `Updates`; server: `KhaozEngine.Server` umbrella + `WorldStore.SqlServer` (Azure SQL via `WorldPersistence`). Single `<KhaozEngineVersion>` pin in `Directory.Build.props`, vendored feed (`vendor/khaozengine`, refreshed via `scripts/refresh-engine.sh`) | **8.8.0** |
+| **Hardpoint** (3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic); live auto-updater (`Updates` via Foundation, Gui overlay) against a server-less static-blob feed + OIDC CI publish; `Collision.Segment2D` for swept projectile collision. One root `Directory.Build.props` `<KhaozEngineVersion>` drives every ref (heads, the `HardpointUpdater` shim, the dev `SnapshotTool`); top-level `Hardpoint.slnx`, vendored feed (`Hardpoint/vendor/khaozengine`); `GameAppOptions.WindowIcons` (multi-size runtime window icon) | **8.10.0** |
+| **Nullwake** (2D) | `Nullwake.Core` | `KhaozEngine.Game2D` + `Diagnostics`/`Persistence`/`Windowing` + `Updates` (shim, dormant) + `Snapshot` (dev tool); uses `AttentionBeacon`, clipboard paste + `Pointer.WindowFocused` gating in name entry, and `GameAppOptions.WindowIcons` (multi-size runtime window icon). Vendored feed (`Nullwake/vendor/khaozengine`) | **8.10.0** |
+| **SpaceGame** (2D + Render3D) | `SpaceGame.Core` (head) / `SpaceGame.Sim` (lockstep sim) | `Game2D` + `Render3D` + `Netcode.LiteNetLib` + `Primitives` (head); `Ecs`/`Collision`/`Diagnostics`/`Content`/`Serialization`/`App`/`Netcode`/`Pooling`/`Determinism` + `Primitives` (sim); `Netcode.Abstractions` (contracts); `Render3D` + `Determinism` for the 2.5D mesh layer; manifest signing via the `ke-updater` tool; `GameAppOptions.WindowIcons` (multi-size runtime window icon). Vendored feed (`SpaceGame/vendor/khaozengine` via repo-root `nuget.config`) | **8.10.0** |
+| **Ruinborne** (3D MMO) | `Ruinborne.Client` / `Ruinborne.Server` | client: `KhaozEngine.Game3D` + `Foundation` + `NetWorld` + `Netcode.LiteNetLib` + `Netcode.Abstractions` + `Simulation` + `Updates`; server: `KhaozEngine.Server` umbrella + `WorldStore.SqlServer` (Azure SQL via `WorldPersistence`). Single `<KhaozEngineVersion>` pin in `Directory.Build.props`, vendored feed (`vendor/khaozengine`, refreshed via `scripts/refresh-engine.sh`); client uses `GameAppOptions.WindowIcons` (multi-size runtime window icon, client only) | **8.11.0** |
 
-## Runtime window icon (8.10.0)
+## Runtime window icon
 
-Pre-MonoGame-free, consumers got a runtime window/taskbar icon for free from MonoGame's SDL layer (it loaded an
-embedded `Icon.bmp` on every platform). The MonoGame-free `AppWindow` (Silk.NET/GLFW + Veldrid) had no icon API,
-so every consumer's running window showed the generic icon (Nullwake hit this on its first KhaozEngine release).
-
-8.10.0 adds the runtime icon API:
+The MonoGame-free `AppWindow` (Silk.NET/GLFW + Veldrid) needs an explicit icon API (unlike MonoGame's SDL layer,
+which loaded an embedded `Icon.bmp` for free), so a consumer that sets none shows the generic window icon. The
+runtime icon API:
 
 - **Option:** `GameAppOptions.WindowIconPath` (a PNG, convenience) or `GameAppOptions.WindowIcons`
   (`IReadOnlyList<ImageRgba>`, explicit multi-res 16/32/48 px so GLFW picks per DPI). `WindowIcons` wins over
@@ -107,8 +105,9 @@ When a consumer raises its `KhaozEngine.*` pin, two things bite if skipped:
   vendored feed must carry those too. Only SpaceGame restores from `local-feed`/GitHub Packages directly (no
   vendored feed), so it alone sets the `local-feed` floor.
 
-_Last verified: 2026-06-30. **Ruinborne** (3D MMO, the active consumer) now pins **8.8.0** (the current engine
-line; adopted in Ruinborne 0.1.40 for the reconnect input-backlog freeze fix); **Hardpoint**, **Nullwake**, and
+_Last verified: 2026-07-01. **Ruinborne** (3D MMO, the active consumer) now pins **8.11.0** (the current engine
+line; adopted the collision-proxy bake so buildings collide as a compound of convex boxes, no more getting stuck
+on detailed building geometry); **Hardpoint**, **Nullwake**, and
 **SpaceGame** remain on **8.0.0** (pre the 8.4.0 swept character resolver, so the 8.4.0+ swept-resolver /
 reconnect fixes do not affect them; only Ruinborne runs the 3D `CharacterMovement` swept collide-and-slide and the
 networked-world stack). Stack per consumer: **Hardpoint** (3D) via

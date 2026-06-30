@@ -8,7 +8,7 @@ shared "seam + opt-in backend" rule this is one instance of, see [DEPENDENCY-SEA
 The one idea, same as the GPU seam: **nothing above `KhaozEngine.Physics` touches BepuPhysics.** The seam is
 `IPhysicsWorld` plus value-type shapes/poses/queries (only `System.Numerics`); the backend
 (`KhaozEngine.Physics.Bepu`) is the sole assembly that references BepuPhysics, added explicitly like
-`Netcode.LiteNetLib` or `WorldStore.Sqlite`. Shipped 8.0.0.
+`Netcode.LiteNetLib` or `WorldStore.Sqlite`.
 
 ## The flow
 
@@ -125,4 +125,4 @@ snapping the player back.
 | Local controller / server sim / client prediction | `KhaozEngine.Game.Render3D/CharacterController3D.cs`, `KhaozEngine.NetWorld/PlayerMoveSimulator.cs`, `WorldClient.cs` |
 | Shape bake (offline) | [`KhaozEngine.PropSurface.Tool/Program.cs`](../KhaozEngine.PropSurface.Tool/Program.cs) (`ke-propbake`), `KhaozEngine.Render3D/Models/PropCollisionBake.cs` |
 | Shape load + chunk statics | `KhaozEngine.Render3D/Models/PropCollisionLoader.cs` (client/manifest), [`KhaozEngine.Physics/PropCollisionFormat.cs`](../KhaozEngine.Physics/PropCollisionFormat.cs) (render-free format + headless loaders), [`KhaozEngine.Terrain.Render3D/ChunkStatics.cs`](../KhaozEngine.Terrain.Render3D/ChunkStatics.cs) |
-| Design archive | `docs/superpowers/specs/` + `plans/` (the 8.0.0 physics-foundation feature) |
+| Design archive | `docs/superpowers/specs/` + `plans/` (the physics-foundation feature) |

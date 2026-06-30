@@ -116,7 +116,7 @@ the splat pass entirely and renders through the standard model pipeline, unchang
 
 `SplatVert`/`SplatFrag` keep their pixel-input interpolants contiguous from location 0 on purpose: a gap (a
 fragment-unused interpolant declared below a used one) miscompiles on D3D11/WARP and rendered the terrain flat
-white until 7.69.1. The cross-backend shader-authoring rules are in `docs/CROSS-PLATFORM.md` ("Authoring shaders
+white until a later fix. The cross-backend shader-authoring rules are in `docs/CROSS-PLATFORM.md` ("Authoring shaders
 that pass on all three backends").
 
 ## Where to look in the code

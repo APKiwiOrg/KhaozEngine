@@ -5,6 +5,45 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 8.11.0
+
+Additive: buildings can bake a SEPARATE simplified collision PROXY (a compound of convex pieces) distinct from the
+full-detail render mesh, so a capsule never wedges in cluttered building geometry while still standing on the body,
+stairs, and props. Opt-in per prop, so anything without a proxy bakes exactly as before. Consumers re-bake their
+building `.coll` to adopt. The structural fix for "players get stuck on detailed building geometry": every
+collision solid is convex, so there is always a unique shortest exit (no concave pockets, no one-sided-mesh
+degeneracies). Composes with the 8.8.1 gravity-authoritative resolver invariant, which is unchanged.
+
+- **`KhaozEngine.Physics` (format + scaling).** `PropCollisionFormat` gains two stable wire kinds, `KindBox = 4`
+  (half-extents) and `KindCompound = 5` (child count, then per child a 7-float local pose + a nested shape,
+  recursive). `Write`/`Read` now recurse over a shape. Existing kinds 1/2/3 are byte-identical and `Version` stays
+  1 (the new kinds are additive). New public `PhysicsShapeScale.Uniform(shape, scale)` scales every shape kind
+  including Box and Compound (child geometry plus each child's local-pose position, orientation unchanged), the
+  single home for per-placement uniform shape scaling.
+- **`KhaozEngine.Render3D` (bake).** `GltfLoader.LoadGroups(path)` loads one `GltfMesh` per logical glTF
+  node-with-mesh (object boundaries preserved, deterministic order), and `PropCollisionBake.BakeProxy(renderRaw,
+  heightMeters, proxyGroups)` hulls each proxy object into one convex child of a `CompoundShape`, normalized into
+  the render mesh's frame so the proxy overlays the building exactly. A degenerate group (fewer than 4
+  deduplicated or coplanar points) is skipped, and an all-empty proxy throws. `PropBakePlan.ForProxy` carries the
+  surface rule (the `.surf` walkable-top heightmap is still baked from the render mesh).
+- **Manifest + `ke-propbake`.** A new optional `collisionProxy` manifest field (`<id>_collision.glb`) points at the
+  authored proxy. When set, the tool bakes the `.coll` from the proxy (reported kind `compound`). Otherwise the
+  full-mesh / hull / cylinder bake is unchanged. Authoring tooling (Blender headless `bpy` scripts) lives in
+  `tools/proxy-authoring/`.
+- **`KhaozEngine.Physics.Bepu` (fix, enables the proxy).** `ShapeFactory` now builds a multi-child `CompoundShape`
+  by flattening its convex children to leaves (the ConvexHull centre-of-mass / Cylinder base offset folded into
+  each child pose) instead of nesting a per-child sub-compound. Two latent defects this retires, both previously
+  unreachable because the building proxy is the first multi-child compound the engine ever creates: the struct
+  `CompoundBuilder` was passed by value into the per-child add, so the compound came out empty, and a nested
+  sub-compound child made Bepu's broadphase sweep throw on the nonconvex child ("only ever called on convexes").
+- **Internal.** `KhaozEngine.Terrain.Render3D.ChunkStatics.ScaleShape` delegates to `PhysicsShapeScale.Uniform`
+  (the old per-type mirror is retired).
+- Coverage: format Box + nested-Compound round-trip + byte-identity, `LoadGroups` per-object grouping + zero-tri
+  throw, `BakeProxy` render-frame normalization + deterministic re-bake + degenerate-skip, `PhysicsShapeScale`
+  Box/Compound, a capsule sweep against a compound-of-hulls (no nested-compound bounds throw), and the goal metric
+  on a REAL baked blacksmith proxy fixture scanned for wedges (none found, with the solid body + furniture
+  standable). Full suite green.
+
 ## 8.10.0
 
 Runtime window/taskbar icon API: a game can hand a PNG (or decoded RGBA) to `GameAppOptions` and get its icon on the

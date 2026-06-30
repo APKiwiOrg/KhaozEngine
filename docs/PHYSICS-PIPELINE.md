@@ -57,16 +57,25 @@ directly (`new BepuPhysicsWorld()`) and hands the `IPhysicsWorld` down.
 ```mermaid
 flowchart LR
     KIT["Prop kit glTF + manifest"] --> BAKE["ke-propbake (PropSurface.Tool)<br/>one CollisionShape per walkable-solid prop"]
-    BAKE --> COLL[".coll per prop<br/>tree -> trunk Hull (leaning ConvexHull)<br/>rock/solid -> base-aligned ConvexHull<br/>building -> concave TriangleMesh"]
+    BAKE --> COLL[".coll per prop<br/>tree -> trunk Cylinder<br/>rock/solid -> base-aligned ConvexHull<br/>building -> full TriangleMesh<br/>building w/ collisionProxy -> Compound of convex boxes"]
     COLL --> LOAD["client: PropCollisionLoader.LoadAll(manifest) (Render3D)<br/>headless server: PropCollisionFormat.LoadDirectory (Physics, no Render3D)<br/>-> id -> PhysicsShape map"]
     LOAD --> SINK["Scene3DChunkSink.Load / Unload"]
     SINK --> STAT["ChunkStatics.AddAll / RemoveAll<br/>-> IPhysicsWorld.AddStatic / RemoveStatic"]
 ```
 
-Per-prop scale is applied to the shape geometry at add time; each static's Y is the placement's baked terrain
-height. Terrain height itself stays **analytic** (the `TerrainField`, not a physics body): the seam resolves
-props/buildings, the field resolves ground. (Bepu recenters `ConvexHull` and `Cylinder` on their centroid, so
-a base-placed prop is wrapped in a centroid-offset compound to avoid sinking; `TriangleMesh` is not recentered.)
+Per-prop scale is applied to the shape geometry at add time (the public `PhysicsShapeScale.Uniform` helper, which
+covers every shape kind incl. Box and Compound); each static's Y is the placement's baked terrain height. Terrain
+height itself stays **analytic** (the `TerrainField`, not a physics body): the seam resolves props/buildings, the
+field resolves ground. (Bepu recenters `ConvexHull` and `Cylinder` on their centroid, so a base-placed prop is
+wrapped in a centroid-offset compound to avoid sinking; `TriangleMesh` is not recentered.)
+
+A building may instead bake a simplified **collision proxy** (`PropCollisionBake.BakeProxy`, opt-in via a
+`collisionProxy` manifest field): an authored `<id>_collision.glb` of separate convex blocks (solid body, stairs,
+standable props, thin overhangs dropped) becomes a `CompoundShape` of convex hulls, one per object. Every collision
+solid is convex (unique shortest exit), which structurally removes the wedge/pin class that a building's full
+one-sided render mesh creates - the clean alternative to accumulating resolver invariants. The Bepu factory
+flattens a compound's convex children to leaves so the broadphase sweep handles them. See
+`tools/proxy-authoring/` for the authoring workflow.
 
 **The same move resolved twice (authoritative + predicted), against the same seam:**
 

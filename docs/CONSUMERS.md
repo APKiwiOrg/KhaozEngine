@@ -31,12 +31,12 @@ and added explicitly). This file tracks only which consumer pins which version (
 ## Consumer matrix
 
 Every consumer is MonoGame-free and references the engine through an umbrella metapackage (plus granular pins
-where needed). Pins vary by consumer (see the `Version` column).
+where needed). Each pins its own version (see the Version column).
 
 | Consumer | Project(s) | References | Version |
 |---|---|---|---|
 | **Hardpoint** (3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic); live auto-updater (`Updates` via Foundation, Gui overlay) against a server-less static-blob feed + OIDC CI publish; `Collision.Segment2D` for swept projectile collision. One root `Directory.Build.props` `<KhaozEngineVersion>` drives every ref (heads, the `HardpointUpdater` shim, the dev `SnapshotTool`); top-level `Hardpoint.slnx`, vendored feed (`Hardpoint/vendor/khaozengine`) | **8.0.0** |
-| **Nullwake** (2D) | `Nullwake.Core` | `KhaozEngine.Game2D` + `Diagnostics`/`Persistence`/`Windowing` + `Updates` (shim, dormant) + `Snapshot` (dev tool); uses `AttentionBeacon`, clipboard paste + `Pointer.WindowFocused` gating in name entry. Vendored feed (`Nullwake/vendor/khaozengine`) | **8.0.0** |
+| **Nullwake** (2D) | `Nullwake.Core` | `KhaozEngine.Game2D` + `Diagnostics`/`Persistence`/`Windowing` + `Updates` (shim, dormant) + `Snapshot` (dev tool); uses `AttentionBeacon`, clipboard paste + `Pointer.WindowFocused` gating in name entry, and `GameAppOptions.WindowIcons` (multi-size runtime window icon). Vendored feed (`Nullwake/vendor/khaozengine`) | **8.10.0** |
 | **SpaceGame** (2D + Render3D) | `SpaceGame.Core` (head) / `SpaceGame.Sim` (lockstep sim) | `Game2D` + `Render3D` + `Netcode.LiteNetLib` + `Primitives` (head); `Ecs`/`Collision`/`Diagnostics`/`Content`/`Serialization`/`App`/`Netcode`/`Pooling`/`Determinism` + `Primitives` (sim); `Netcode.Abstractions` (contracts); `Render3D` + `Determinism` for the 2.5D mesh layer; manifest signing via the `ke-updater` tool. Restores from `local-feed`/GitHub Packages directly (no vendored feed) | **8.0.0** |
 | **Ruinborne** (3D MMO) | `Ruinborne.Client` / `Ruinborne.Server` | client: `KhaozEngine.Game3D` + `Foundation` + `NetWorld` + `Netcode.LiteNetLib` + `Netcode.Abstractions` + `Simulation` + `Updates`; server: `KhaozEngine.Server` umbrella + `WorldStore.SqlServer` (Azure SQL via `WorldPersistence`). Single `<KhaozEngineVersion>` pin in `Directory.Build.props`, vendored feed (`vendor/khaozengine`, refreshed via `scripts/refresh-engine.sh`) | **8.8.0** |
 

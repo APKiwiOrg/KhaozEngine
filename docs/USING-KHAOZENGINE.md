@@ -1124,7 +1124,7 @@ when publishing under NativeAOT (iOS/AOT reach). Desktop and headless server tar
 ## Baking prop collision (`ke-propbake`)
 
 `ke-propbake` is the offline bake step - run it as the last kit-ingest step (re-ingest = re-bake). For every
-prop it writes a render-free `.coll` collision shape (trees get a leaning convex hull of the lower trunk;
+prop it writes a render-free `.coll` collision shape (trees get a leaning convex hull of the lower trunk,
 other solids get a hull/mesh from their geometry) and stamps the manifest:
 
 ```bash

@@ -17,4 +17,23 @@
     <CETCompat>false</CETCompat>
     <_KhaozEngineCetDefaulted>true</_KhaozEngineCetDefaulted>
   </PropertyGroup>
+
+  <!-- KhaozEngine game-head default: when single-file publishing, keep the native libraries
+       LOOSE next to the apphost instead of bundling them into the self-extracting exe.
+
+       KhaozEngine reaches GLFW (Silk.NET windowing/input), Veldrid's backend, and OpenAL
+       through native libs that the runtime locates by probing the apphost directory. With
+       PublishSingleFile=true, .NET defaults IncludeNativeLibrariesForSelfExtract=true, which
+       packs those natives INTO the self-extracting exe; Silk.NET's loader then can't find
+       them and the game dies at boot with "Couldn't find a suitable window platform
+       (GlfwPlatform - not applicable)". Defaulting it off keeps the natives loose so the
+       loader finds them. Harmless when NOT single-file publishing (the property is a no-op
+       unless PublishSingleFile is set).
+
+       Overridable: set <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+       in your game head to re-enable bundling. The condition means a head that already pins
+       it (either value) wins and this default stays out of the way. -->
+  <PropertyGroup Condition="'$(IncludeNativeLibrariesForSelfExtract)' == ''">
+    <IncludeNativeLibrariesForSelfExtract>false</IncludeNativeLibrariesForSelfExtract>
+  </PropertyGroup>
 </Project>

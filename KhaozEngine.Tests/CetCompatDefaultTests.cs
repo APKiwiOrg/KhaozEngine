@@ -42,6 +42,24 @@ public class CetCompatDefaultTests
     }
 
     [Fact]
+    public void PropsFile_DefaultsNativeLibsLoose_AndStaysOverridable()
+    {
+        // Single-file publish (PublishSingleFile=true) defaults IncludeNativeLibrariesForSelfExtract=true,
+        // which bundles GLFW/Veldrid/OpenAL into the self-extracting exe where Silk.NET's loader can't find
+        // them ("Couldn't find a suitable window platform"). Foundation defaults it off so the natives stay
+        // loose. Same buildTransitive asset / silent-drop failure mode as the CET default, hence guarded here.
+        string path = Path.Combine(FoundationDir(), "build", "KhaozEngine.Foundation.props");
+        Assert.True(File.Exists(path), $"Missing {path}");
+
+        XElement group = XDocument.Load(path).Root!
+            .Elements("PropertyGroup").Single(g => g.Elements("IncludeNativeLibrariesForSelfExtract").Any());
+
+        // Overridable: applies only when the head has not pinned the property itself.
+        Assert.Equal("'$(IncludeNativeLibrariesForSelfExtract)' == ''", (string?)group.Attribute("Condition"));
+        Assert.Equal("false", (string?)group.Element("IncludeNativeLibrariesForSelfExtract"));
+    }
+
+    [Fact]
     public void TargetsFile_AnnouncesTheDefault_OnlyWhenItWins()
     {
         string path = Path.Combine(FoundationDir(), "build", "KhaozEngine.Foundation.targets");

@@ -4,7 +4,7 @@ Which game uses which packages, at which version. Current state only - for the p
 [`../CHANGELOG.md`](../CHANGELOG.md). Update this whenever a consumer bumps a `<PackageReference>` or the
 engine ships a new version.
 
-**Engine current version:** `8.9.0` (the shared `<KhaozEngineVersion>` line, which *is* the engine). The
+**Engine current version:** `8.10.0` (the shared `<KhaozEngineVersion>` line, which *is* the engine). The
 engine is entirely MonoGame-free on a single version line in `Directory.Build.props` (the doc-version guard
 checks it): the custom render/runtime stack + the graduated MonoGame-free foundation + the four umbrella
 metapackages, all sharing one version. `Physics.Bepu` and the `WorldStore.Sqlite`/`.SqlServer` backends are
@@ -40,13 +40,13 @@ where needed). All four pin **8.0.0**.
 | **SpaceGame** (2D + Render3D) | `SpaceGame.Core` (head) / `SpaceGame.Sim` (lockstep sim) | `Game2D` + `Render3D` + `Netcode.LiteNetLib` + `Primitives` (head); `Ecs`/`Collision`/`Diagnostics`/`Content`/`Serialization`/`App`/`Netcode`/`Pooling`/`Determinism` + `Primitives` (sim); `Netcode.Abstractions` (contracts); `Render3D` + `Determinism` for the 2.5D mesh layer; manifest signing via the `ke-updater` tool. Restores from `local-feed`/GitHub Packages directly (no vendored feed) | **8.0.0** |
 | **Ruinborne** (3D MMO) | `Ruinborne.Client` / `Ruinborne.Server` | client: `KhaozEngine.Game3D` + `Foundation` + `NetWorld` + `Netcode.LiteNetLib` + `Netcode.Abstractions` + `Simulation` + `Updates`; server: `KhaozEngine.Server` umbrella + `WorldStore.SqlServer` (Azure SQL via `WorldPersistence`). Single `<KhaozEngineVersion>` pin in `Directory.Build.props`, vendored feed (`vendor/khaozengine`, refreshed via `scripts/refresh-engine.sh`) | **8.8.0** |
 
-## Runtime window icon (8.9.0)
+## Runtime window icon (8.10.0)
 
 Pre-MonoGame-free, consumers got a runtime window/taskbar icon for free from MonoGame's SDL layer (it loaded an
 embedded `Icon.bmp` on every platform). The MonoGame-free `AppWindow` (Silk.NET/GLFW + Veldrid) had no icon API,
 so every consumer's running window showed the generic icon (Nullwake hit this on its first KhaozEngine release).
 
-8.9.0 adds the runtime icon API:
+8.10.0 adds the runtime icon API:
 
 - **Option:** `GameAppOptions.WindowIconPath` (a PNG, convenience) or `GameAppOptions.WindowIcons`
   (`IReadOnlyList<ImageRgba>`, explicit multi-res 16/32/48 px so GLFW picks per DPI). `WindowIcons` wins over
@@ -58,7 +58,7 @@ so every consumer's running window showed the generic icon (Nullwake hit this on
   dependency pulled into the low-level windowing leaf).
 - **macOS caveat:** GLFW ignores window icons on Cocoa, so `SetIcon` is a deliberate **no-op on macOS** (never
   throws). The Dock/Finder icon is owned by the `.app` bundle's icns (each consumer's packaging already handles it).
-- **Per-consumer follow-up (not the engine release):** each desktop consumer pins 8.9.0, passes its icon PNG via
+- **Per-consumer follow-up (not the engine release):** each desktop consumer pins 8.10.0, passes its icon PNG via
   `GameAppOptions`, and (independently) re-adds `<ApplicationIcon>...Icon.ico</ApplicationIcon>` to its desktop-head
   csproj for the Windows `.exe` icon shown when the app is not running (that is per-repo, not an engine API).
 

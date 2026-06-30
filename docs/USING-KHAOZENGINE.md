@@ -62,10 +62,11 @@ These are not style preferences. Breaking them re-introduces the exact bugs this
 ## Game head build settings (CETCompat)
 
 Referencing any KhaozEngine umbrella (`Game2D`/`Game3D`/`Server`, or `Foundation` directly) makes your game
-head inherit one build-property default from `KhaozEngine.Foundation`:
+head inherit two build-property defaults from `KhaozEngine.Foundation`:
 
 ```xml
-<CETCompat>false</CETCompat>   <!-- inherited; you don't write this -->
+<CETCompat>false</CETCompat>                            <!-- inherited; you don't write this -->
+<IncludeNativeLibrariesForSelfExtract>false</IncludeNativeLibrariesForSelfExtract>  <!-- inherited -->
 ```
 
 .NET 9+ marks the x64 apphost CET / shadow-stack compatible by default. On Windows 10 builds with only partial
@@ -81,9 +82,24 @@ auto-updater remain, so disabling it buys broad old-Windows compatibility for a 
 opt back in for a specific head, set `<CETCompat>true</CETCompat>` in that head's `Directory.Build.props` or
 `.csproj` (your value wins, and the inherited default plus its build message step aside).
 
-**New game head checklist:** `CETCompat` is the one engine-imposed build-property default. Pin your umbrella
-package version, set your own `RuntimeIdentifier` / publish settings as usual, and leave `CETCompat` inherited
-unless you have a specific reason to re-enable it.
+### Publishing (self-contained, single-file)
+
+Publish each game **self-contained** for its RID (`dotnet publish -c Release -r <rid> --self-contained`): the
+game ships its own pinned .NET runtime plus the native libs (GLFW, Veldrid's backend, OpenAL) so a runtime or
+native-lib CVE is patched by re-publishing, not by waiting on an engine package bump. See
+[SECURITY-BASELINE.md](SECURITY-BASELINE.md).
+
+If you also single-file publish (`PublishSingleFile=true`), the native libs **must stay loose** next to the
+exe. KhaozEngine reaches GLFW/Veldrid/OpenAL through native libraries the runtime locates by probing the apphost
+directory. .NET's default for single-file is `IncludeNativeLibrariesForSelfExtract=true`, which packs them into
+the self-extracting exe where Silk.NET's loader can't find them, so the game dies at boot with *"Couldn't find a
+suitable window platform (GlfwPlatform - not applicable)"*. Foundation therefore defaults
+`IncludeNativeLibrariesForSelfExtract=false` (inherited, overridable the same way as `CETCompat`); leave it
+inherited. The default is a no-op unless you set `PublishSingleFile=true`.
+
+**New game head checklist:** `CETCompat` and `IncludeNativeLibrariesForSelfExtract` are the engine-imposed
+build-property defaults. Pin your umbrella package version, publish self-contained for your RID, and leave both
+defaults inherited unless you have a specific reason to re-enable either.
 
 ---
 

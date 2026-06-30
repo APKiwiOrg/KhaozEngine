@@ -51,8 +51,7 @@ These are not style preferences. Breaking them re-introduces the exact bugs this
 5. **Pass the design viewport to `Pointer.Update` / `InputManager.Update`** so hit-testing lines up with what's
    drawn. `GameApp` does this for you; if you build your own loop, do it yourself.
 6. **`System.Numerics` only** - `Vector2/3/4`, `Matrix4x4`. No XNA / MonoGame types anywhere. (An RGBA color
-   is `KhaozEngine.Primitives.Color`, not a bare `Vector4`, since the 6.0.0 color migration; GPU-layout structs
-   still use `Vector4`.)
+   is `KhaozEngine.Primitives.Color`, not a bare `Vector4`. GPU-layout structs still use `Vector4`.)
 7. **Don't fork the packages.** Need an API that isn't there? Add it to KhaozEngine, ship a headless test, bump
    the version, and consume the new version. Pinned versions are how games stay green during each other's
    migrations.
@@ -446,7 +445,7 @@ Vector3 ground = scene.Camera.ScreenToGround(pointer.Position, w, h, 0f); // pic
 scene.Begin();
 scene.Draw(board, Matrix4x4.Identity);
 scene.Draw(tower, transform, tint, Material.Shiny);
-scene.AddLight(muzzlePos, new Color(1f, 0.6f, 0.2f, 1f), radius: 6f, intensity: 3f); // point light (since 6.5.0)
+scene.AddLight(muzzlePos, new Color(1f, 0.6f, 0.2f, 1f), radius: 6f, intensity: 3f); // point light
 scene.DrawBillboard(pos, size, color, BillboardBlend.Additive);
 scene.DebugCircle(center, up, radius, color);                        // immediate-mode debug overlay
 ```
@@ -455,7 +454,7 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
   billboards, and a debug-draw overlay (`DebugLine/Ray/Box/Grid/Axes/Circle`). `Post` is the
   `PixelPostProcess` (pixelation / quantize / dither / cel bands / palette for the chunky retro look; the smooth
   look is the default).
-- Rigid glTF honours node world transforms (since 7.53.1): `GltfLoader.Load` / `LoadWithMaterial` walk the scene
+- Rigid glTF honours node world transforms: `GltfLoader.Load` / `LoadWithMaterial` walk the scene
   graph and bake each mesh node's world matrix into the loaded vertices (POSITION by the world matrix, NORMAL +
   TANGENT.xyz by the normal matrix, correct under non-uniform scale), matching the already-node-aware skinned
   path. So a Blender export or a multi-piece / instanced kit that positions geometry via nodes loads correctly
@@ -464,7 +463,7 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
   identity-node or pre-baked asset is byte-identical to before. (`PropLoader.LoadProp` additionally renormalizes
   to the manifest height, so props were already placement-robust; this matters most for `GltfLoader.Load` used
   directly.)
-- PBR-lite materials (since 7.25.0): the rigid lit model pass takes an optional tangent-space NORMAL map and a
+- PBR-lite materials: the rigid lit model pass takes an optional tangent-space NORMAL map and a
   ROUGHNESS map alongside the albedo. Load each map with `LoadTexture`, then bind them with `Scene3D.SurfaceMaps`:
   `scene.LoadMesh(mesh, new Scene3D.SurfaceMaps(albedo, normal, roughness))` - any handle may be `default` to fall
   back to its 1x1 default (white albedo / flat normal / zero roughness). Normal mapping needs per-vertex tangents,
@@ -472,11 +471,11 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
   `MeshAssembler` output; `MeshPrimitives` carry no tangent, so a normal map is inert on a primitive (it stays lit
   by its geometric normal). Roughness uses the glTF metallic-roughness `.g` convention (0 = smooth/glossy,
   1 = matte; metallic is ignored) and modulates the Blinn-Phong specular. Meshes with no maps render exactly as
-  before. Skinned meshes take normal/roughness too (since 7.28.0): bind via
+  before. Skinned meshes take normal/roughness too: bind via
   `scene.LoadSkinnedMesh(mesh, new Scene3D.SurfaceMaps(albedo, normal, roughness))`; `GltfLoader.LoadSkinned` and
   `SkinnedMeshBuilder.BuildTube` compute tangents, and the tangent rides the per-frame skin deform so the TBN
   tracks the pose. The pure `SurfaceShading` helper mirrors the shader math (handy for headless tests / tooling).
-- Auto-read glTF material textures (opt-in, since 7.29.0): instead of exporting PNGs and binding them by hand, let
+- Auto-read glTF material textures (opt-in): instead of exporting PNGs and binding them by hand, let
   the loader read the material's textures straight off the glb. `GltfLoader.LoadWithMaterial(path)` returns
   `(GltfMesh Mesh, GltfMaterialMaps Maps)` and `LoadSkinnedWithMaterial(path)` the skinned equivalent; the mesh is
   identical to `Load`/`LoadSkinned`, and `GltfMaterialMaps` carries the decoded baseColor / normal /
@@ -489,22 +488,22 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
   defaults, never a throw. The default explicit-`SurfaceMaps` path is unchanged, so this is purely a convenience
   on top.
 - Smooth / realistic look: a realistic material is still quantized + outlined by the FULLSCREEN post passes
-  (palette, edge outline, cel bands), so call `scene.Post.UseSmoothPreset()` (since 7.25.0) to turn those off
+  (palette, edge outline, cel bands), so call `scene.Post.UseSmoothPreset()` to turn those off
   (cel bands / quantize / dither / outline / starfield / pixelated) in one call for a smooth look. Lighting and
   colours are left untouched; flip individual `Post` toggles back on as needed.
 - Translucent filled overlay (alpha-blended flat shapes, drawn under the debug lines): `DebugFilledQuad`
   (ground tiles / rects), `DebugFilledCircle` (discs / ranges), and `DebugFilledFan(center, rim, color, closed)`
-  (since 7.5.0) for an arbitrary, already-ordered boundary polygon - fan an outline out from a centre point to
+  for an arbitrary, already-ordered boundary polygon - fan an outline out from a centre point to
   fill a star-shaped area (e.g. a turret's line-of-sight footprint) that a quad or disc can't express. Wind the
   rim CCW about the desired facing normal (`Vector3.UnitY` for a ground fan); `closed: true` (the default) seals
   the loop with a wrap triangle, `false` leaves an open arc.
-- Dynamic point lights (since 6.5.0): `scene.AddLight(worldPos, color, radius, intensity)` queues a per-frame
+- Dynamic point lights: `scene.AddLight(worldPos, color, radius, intensity)` queues a per-frame
   effect light (muzzle flashes, explosions, thrusters) that adds diffuse + cheap specular to the lit mesh pass,
   on top of the global key+fill+ambient term, with a smooth falloff to zero at `radius`. Cleared each `Begin()`
   like the draw queue. Only the first `Scene3D.MaxPointLights` (16) queued in a frame are uploaded - the host
   picks the N nearest to the action so a dense scene stays within the GPU budget. Zero lights renders
   byte-identical to the key+fill path. Presentation only: never feed a light back into simulation/collision.
-- 3D beams (since 7.26.0): `scene.DrawBeam(a, b, width, color, BeamStyle?)` queues a camera-facing, additive,
+- 3D beams: `scene.DrawBeam(a, b, width, color, BeamStyle?)` queues a camera-facing, additive,
   depth-interleaved glowing beam between two world points (lasers, thrusters, tethers): a bright core in a soft
   halo. It draws INTO the model pass with the depth test on (no write), like the textured billboard, so geometry
   occludes it. `color` tints the core; `BeamStyle` (default `BeamStyle.Default`) splits core/glow colour and adds
@@ -531,7 +530,7 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
 - Transparent compositing: set `Post.TransparentBackground = true` (default on for `Render3DPreview`) to emit the
   background as alpha 0 so a captured `Texture2D` overlays a 2D scene; the stylized post chain preserves the
   per-pixel alpha (geometry opaque, cleared background clear). Leave `Starfield` off when transparent.
-- Internal render-target sizing: `Post.RenderScale` (since 5.66.0). The default `FixedInternal` renders into a
+- Internal render-target sizing: `Post.RenderScale`. The default `FixedInternal` renders into a
   fixed `Post.RenderWidth` x `RenderHeight` target (1600x900) and blit-scales it to the window - the retro path
   (small fixed target + `Pixelated`), but on a window bigger than that target the smooth blit UPscales and
   softens. Set `Post.RenderScale = RenderScale.MatchViewport` to size the target to the actual framebuffer each
@@ -540,7 +539,7 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
   look.
 - Edge outline: `Post.Outline` (on by default) draws a depth/normal toon outline. `OutlineColor`,
   `OutlineDepthThreshold` (depth-discontinuity sensitivity), and `OutlineNormalThreshold` (interior-crease
-  sensitivity from the geometric normal) tune it. The outline is perspective-correct (since 7.51.0): under a
+  sensitivity from the geometric normal) tune it. The outline is perspective-correct: under a
   perspective camera (`FollowCamera3D`) the depth test is linearized to view-space distance and distance-relative,
   so a given threshold is stable on zoom and distance instead of popping (the orthographic `IsoCamera3D` path is
   unchanged). The normal term carries silhouettes + creases; keep the depth threshold conservative on near-grazing
@@ -552,7 +551,7 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
 - `IsoCameraController`: input-agnostic gestures driving an `IsoCamera3D` (pure `System.Numerics`, headless-testable;
   the game wires its own input policy - which button does what). Cursor-anchored `Zoom(wheelDelta, cursorPx, vw, vh)`
   and the grab-pan (`BeginPan`/`UpdatePan(cursorPx, vw, vh)`/`EndPan`, optional `PanMin`/`PanMax` target clamp). Orbit
-  gesture (since 5.68.0): `BeginOrbit(cursorPx)` / `UpdateOrbit(cursorPx)` / `EndOrbit()` swings `Azimuth` by the
+  gesture: `BeginOrbit(cursorPx)` / `UpdateOrbit(cursorPx)` / `EndOrbit()` swings `Azimuth` by the
   horizontal drag (`OrbitYawSpeed` rad/px) and tilts `Elevation` by the vertical drag (`OrbitPitchSpeed` rad/px,
   dragging up raises elevation), clamped to `[MinElevation, MaxElevation]` (defaults ~15 deg .. ~88 deg, kept off both
   the ground plane and the degenerate top so the view never goes flat/under the board). Orbit keeps `Target` fixed, so
@@ -572,7 +571,7 @@ SkinnedGltfMesh tube = SkinnedMeshBuilder.BuildTube(radius: 0.4f, length: 5f,
     ringSegments: 12, radialSegments: 8, boneCount: 8, axis: Axis.Z);
 SkinnedMeshHandle h = scene.LoadSkinnedMesh(tube, albedoTex);
 
-// PBR-lite on a skinned mesh (since 7.28.0): bind normal + roughness alongside the albedo.
+// PBR-lite on a skinned mesh: bind normal + roughness alongside the albedo.
 // SkinnedMeshHandle h = scene.LoadSkinnedMesh(tube, new Scene3D.SurfaceMaps(albedoTex, normalTex, roughTex));
 
 // Or load an authored rig (reads JOINTS_0/WEIGHTS_0 + inverse-bind + TANGENT; embedded images ignored):
@@ -584,7 +583,7 @@ scene.Begin();
 scene.DrawSkinned(h, boneMatrices, model: Matrix4x4.Identity, tint: Color.White);
 ```
 
-**Turn-key: `SkinnedLimb` (since 7.30.0).** Wiring `BuildTube` + the chain solver + `PolylineFrames`
+**Turn-key: `SkinnedLimb`.** Wiring `BuildTube` + the chain solver + `PolylineFrames`
 + `DrawSkinned` by hand every frame is the manual path above. `SkinnedLimb` bundles all of it into one
 stateful component so a tentacle / cable / tail stands up in two calls (construct, then per-frame
 `Update` + `Draw`), with reusable scratch buffers so the motion path allocates nothing per frame:
@@ -632,7 +631,7 @@ state, not the reverse.
 
 ---
 
-## Animated characters (glTF clip playback + locomotion blend) (since 7.56.0)
+## Animated characters (glTF clip playback + locomotion blend)
 
 The skinned path above poses a mesh from bone matrices you supply. To play *authored glTF animation
 clips* (idle/walk/run/jump) and crossfade them off a character's movement, ingest the rig through the
@@ -680,7 +679,7 @@ its own movement, each remote player from its *replicated* position / `VerticalV
 client-cosmetic - the clip is chosen from already-known state, so there are **no netcode changes** and the
 server stays authoritative on position only.
 
-**Driving one per networked player** (`ReplicatedCharacterAnimators`, since 7.65.0). Rather than wiring a brain
+**Driving one per networked player** (`ReplicatedCharacterAnimators`). Rather than wiring a brain
 per entity by hand, hand the set a factory (or a shared skeleton + clip map) and feed it one position sample
 per visible entity each frame. It creates a brain on a new id, drops one whose id is gone (no leak on
 disconnect), derives planar speed / vertical velocity / facing from the position displacement averaged over a
@@ -693,7 +692,7 @@ var animators = new ReplicatedCharacterAnimators(skeleton, clips, CharacterAnima
 // ...or full control per brain: new ReplicatedCharacterAnimators(() => new AnimatedCharacter(skeleton, clips), tuning);
 
 // Each frame: map the netcode's render states to engine-neutral samples (keeps Game.Render3D off NetWorld).
-// Feed the EXACT grounded + vertical velocity for EVERY entity (since 7.68.0 EntityRenderState carries them for
+// Feed the EXACT grounded + vertical velocity for EVERY entity (EntityRenderState carries them for
 // remotes too - local from prediction, remote from the replicated MovementState). Horizontal speed + facing are
 // still derived from the position stream. Do NOT derive air state for remotes from position: a remote's vertical
 // motion is mostly terrain-following, so the faster it moves over a slope the more a position delta reads "falling".
@@ -721,7 +720,7 @@ glides). The window holds the last good velocity across the plateau; set it to o
 genuine stop still resolves to Idle within one window; `&lt;= 0` reverts to per-frame derivation.
 
 For the LOCAL player you do not have to derive horizontal speed from the position stream at all: read
-`WorldClient.LocalHorizontalSpeed` (since 8.7.0), the predicted planar speed straight off the prediction tick.
+`WorldClient.LocalHorizontalSpeed`, the predicted planar speed straight off the prediction tick.
 It is immune to reconciliation snaps and does not wobble under lag, so it is the clean drive for a local speed
 HUD / footstep audio / locomotion blend. Remotes still derive from the (windowed) position stream above.
 
@@ -927,7 +926,7 @@ scene.DrawProps(placements, meshes, focus: character.Position, drawRadius: 90f);
 
 `PropRenderer.Queue(SceneInstances, ...)` is the same logic against a raw instance queue (headless-testable).
 See `TerrainWalkSample` for the full wiring. Mesh-LOD/impostors, textured prop materials, and animated props are
-later sub-projects. Terrain PBR splat textures shipped 7.64.0 (see "Textured terrain" below).
+later sub-projects. Terrain PBR splat textures are covered in "Textured terrain" below.
 
 ---
 
@@ -986,7 +985,7 @@ rect/polygon rim and gravity/jump are named follow-ups (prop/building collision 
 
 ---
 
-## 3D physics (`KhaozEngine.Physics` / `KhaozEngine.Physics.Bepu`) (since 8.0.0)
+## 3D physics (`KhaozEngine.Physics` / `KhaozEngine.Physics.Bepu`)
 
 The physics layer is split into a dependency-free seam (`KhaozEngine.Physics`, in `Foundation`) and an opt-in
 backend (`KhaozEngine.Physics.Bepu`, NOT in any umbrella, added explicitly like `WorldStore.Sqlite`). This is the
@@ -1009,7 +1008,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="8.0.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="8.10.0" />
 ```
 
 ```csharp
@@ -1086,7 +1085,7 @@ var sink = new Scene3DChunkSink(
 // The streamer drives the sink - props appear in / leave the physics world as chunks load / unload.
 ```
 
-**Headless server: load baked collision without Render3D (8.1.0).** `PropCollisionLoader.LoadAll` lives in
+**Headless server: load baked collision without Render3D.** `PropCollisionLoader.LoadAll` lives in
 `KhaozEngine.Render3D` because `AssetManifest` does, and Render3D pulls `Gpu` + `Windowing` (Silk.NET/GLFW). An
 authoritative server must not carry those. The render-free KECL `.coll` reader and manifest-free loaders are in
 the dependency-free `KhaozEngine.Physics` package as `PropCollisionFormat`, so a server referencing only
@@ -1122,136 +1121,38 @@ when publishing under NativeAOT (iOS/AOT reach). Desktop and headless server tar
 
 ---
 
-## Static world collision (`WorldColliders` / `PropColliders`) (pre-8.0.0; retained for 2D / lockstep)
+## Baking prop collision (`ke-propbake`)
 
-**Since 8.0.0 the 3D movement path uses `IPhysicsWorld` (see the section above) rather than `WorldColliders`.
-The `WorldColliders` approach documented here is kept for 2D games and deterministic lockstep sims that do not
-use the `Physics` package.** The API and types are unchanged; only the `CharacterMovement.Step` / `WorldServer` /
-`WorldClient` / `ShardedWorldServer` / `PlayerMoveSimulator` / `PlayerMovementSystem` ctors no longer accept them.
-
-Props and buildings can be made solid: a kinematic capsule-vs-static-collider push-out in the XZ plane
-(authoritative, the standard MMO character-controller approach, predating the 8.0.0 physics layer). The math + the queryable
-set live in `KhaozEngine.Collision`; previously movement integration was a single nullable parameter on the
-shared step, so the local controller, the authoritative server, and client prediction all resolved identically.
-
-Build a `WorldColliders` set:
-
-Collider footprints are derived from each prop's actual mesh by default (`KhaozEngine.Render3D.PropFootprint`), so
-you do not hand-author radii: a short prop (rock/crate) uses its full XZ footprint, a tall prop (tree) uses only the
-bottom ~1 m trunk slice so its canopy is not solid, and the footprint becomes a cylinder (round) or an oriented box
-(oblong) by aspect ratio. An explicit `AssetEntry.Collider` in the manifest still wins per prop.
-
-```csharp
-using KhaozEngine.Collision;
-using KhaozEngine.Render3D;
-using KhaozEngine.Terrain;
-
-// Per-prop collider shapes: explicit manifest collider wins, else derive from the loaded mesh. (When you already
-// load each mesh to render it, call PropFootprint.Derive(mesh) inline to avoid loading twice; PropFootprint.DeriveAll
-// is the turn-key path that loads + derives for a whole manifest, honouring any explicit AssetEntry.Collider.)
-IReadOnlyDictionary<string, ColliderShape> shapes = PropFootprint.DeriveAll(manifest);
-
-// From the deterministic prop scatter plus a hand-placed obstacle/building list. Because it shares the
-// coordinate-hash scatter, the colliders line up with the rendered props and a tiled build equals a whole-area
-// build (streaming-consistent).
-IReadOnlyList<PropPlacement> placements = PropScatter.Generate(field, ScatterConfig.ForestRing(), area);
-var inn = WorldCollider.Box(center: new Vector2(0f, 12f), halfExtents: new Vector2(3f, 2.5f), yaw: 0f);
-WorldColliders colliders = PropColliders.FromScatter(
-    placements,
-    id => shapes.TryGetValue(id, out ColliderShape s) ? s : (ColliderShape?)null,
-    obstacles: new[] { inn });                  // explicit buildings/obstacles
-
-// Local (single-player) controller:
-character.Update(input, dt, cameraYaw, terrain.GroundHeight, terrain.GroundNormal, colliders);
-
-// Authoritative server + client prediction (same set + math both sides):
-var server = new WorldServer(transport, config, terrain.GroundHeight, MoveTuning.Default,
-                             terrain.GroundNormal, bounds: null, colliders: colliders);
-var sharded = new ShardedWorldServer(transport, shardConfig, terrain.GroundHeight, MoveTuning.Default,
-                                     terrain.GroundNormal, bounds: null, colliders: colliders);
-// The networked prediction client takes the same set, so it predicts around props instead of rubber-banding:
-var client = new WorldClient(transport, terrain.GroundHeight, MoveTuning.Default,
-                             groundNormal: terrain.GroundNormal, colliders: colliders);
-```
-
-To override the derived footprint for a specific prop, declare a `collider` on its manifest entry:
-
-```json
-{ "id": "inn", "file": "inn.glb", "heightMeters": 5.0,
-  "collider": { "type": "box", "halfW": 3.0, "halfD": 2.0 } }
-```
-
-The capsule footprint radius is `MoveTuning.CapsuleRadius` (default 0.4; `CharacterController3D.CapsuleRadius`
-mirrors it). Resolution is minimum-translation push-out applied so the capsule **slides** along surfaces (the
-move's tangential component survives; only the penetrating component is removed), iterated a few times so corners
-settle. `TerrainWalkSample` makes the nearby scattered props solid (footprints derived from the meshes). Out of
-scope for the XZ collider itself: dynamic/moving colliders, player-vs-player, a general physics engine, navmesh.
-Vertical movement (jump/gravity) is the `KhaozEngine.Locomotion` vertical step; standing on props is below.
-
----
-
-## Walkable prop/building surfaces (`PropSurface` / `WorldSurfaces` / `ke-propbake`)
-
-On top of the vertical physics (jump/gravity), a rock/log/solid-building can be a surface you **stand on and jump
-onto**, walking over its real top contour. Each walkable-solid prop kind bakes (offline) a render-free top-down
-height map; at runtime the player's support height becomes `max(terrain, prop surface)`, and the static-collision
-push-out becomes height-aware off the walkable surface (not the prop's single max top): a prop's side blocks only
-while your feet are below the surface where you stand or step on, so a domed rock - whose surface ramps from a low
-rim up to its peak - is both standable across its whole top AND mountable by walking/jumping up its side (you clear
-the rim, not the peak). A flat-top prop (rim = top) stays mountable only from above. Single-valued top contour (no
-overhangs); buildings are solid blocks; trees have a trunk-hull collider (8.4.0: leaning convex hull of the lower
-trunk baked by `ke-propbake`; the IPhysicsWorld sweep path handles the block).
-
-Bake the surfaces as the last kit-ingest step (re-ingest = re-bake), then load + place them:
+`ke-propbake` is the offline bake step - run it as the last kit-ingest step (re-ingest = re-bake). For every
+prop it writes a render-free `.coll` collision shape (trees get a leaning convex hull of the lower trunk;
+other solids get a hull/mesh from their geometry) and stamps the manifest:
 
 ```bash
-# Bakes a .coll collision shape for EVERY prop (trees get a leaning trunk-hull; 8.4.0) and a .surf heightmap
-# for walkable solids only, then stamps the manifest with both.
+# Bakes a .coll collision shape for EVERY prop (trees get a leaning trunk-hull) and stamps the manifest.
 dotnet ke-propbake path/to/props.manifest.json
 ```
 
-```csharp
-using KhaozEngine.Collision;
-using KhaozEngine.Render3D;
-using KhaozEngine.Terrain;
+Those `.coll` shapes are what `PropCollisionLoader` (client) and `PropCollisionFormat` (headless server) load
+into the `IPhysicsWorld` - see "3D physics" above. The swept capsule-vs-mesh resolver makes a prop both solid
+and standable: vertical support comes from a downward sweep probe onto prop tops, so you walk and jump onto a
+prop's real top contour directly off its collision mesh (a domed rock is mountable up its flank and standable
+across its top). Out of scope: overhangs / interiors / caves, dynamic/moving props, player-vs-player.
 
-AssetManifest manifest = AssetManifest.Load(manifestPath);
-// Render-free read of the baked .surf heightmaps (id -> PropSurface); the headless server reads the same files.
-IReadOnlyDictionary<string, PropSurface> surfaces = PropSurfaceLoader.LoadAll(manifest);
+`ke-propbake` also writes a `.surf` top-down height map per walkable solid, read only by the legacy
+`WorldSurfaces` path below. The `IPhysicsWorld` path does not use it.
 
-IReadOnlyList<PropPlacement> placements = PropScatter.Generate(field, ScatterConfig.ForestRing(), area);
+---
 
-// Surfaces: one per walkable-solid placement (+ a hand-placed building roof obstacle).
-WorldSurfaces worldSurfaces = PropSurfaces.FromScatter(
-    placements,
-    id => surfaces.TryGetValue(id, out PropSurface s) ? s : null,
-    obstacles: new[] { roofSurface });
+## Static world collision (`WorldColliders` / `WorldSurfaces`) - legacy
 
-// Colliders: height-aware - each collider's Top is the prop's placed surface top (a thin blocker stays +inf).
-WorldColliders worldColliders = PropColliders.FromScatter(
-    placements,
-    id => colliderShapeFor(id),
-    topForId: id => surfaces.TryGetValue(id, out PropSurface s) ? s.MaxHeight : float.PositiveInfinity,
-    obstacles: new[] { buildingCollider });
-
-// Pass both wherever movement runs (local + the authoritative server + the prediction client resolve identically;
-// null = terrain only):
-character.Update(input, dt, cameraYaw, terrain.GroundHeight, terrain.GroundNormal, worldColliders, worldSurfaces);
-var server = new WorldServer(transport, config, terrain.GroundHeight, MoveTuning.Default,
-                             terrain.GroundNormal, bounds: null, colliders: worldColliders, surfaces: worldSurfaces);
-var client = new WorldClient(transport, terrain.GroundHeight, MoveTuning.Default,
-                             groundNormal: terrain.GroundNormal, colliders: worldColliders, surfaces: worldSurfaces);
-```
-
-You mount a surface by **jumping** up onto it (the height-aware collider blocks the sides only until your feet clear
-the surface where you step on - the low rim of a domed rock, or a flat top's roof, so a tall flat-top is mountable
-only from above - which also prevents a teleport-up when airborne over a tall surface and keeps you standing across
-a domed top instead of shoving you off); a low edge
-within `MoveTuning.StepHeight` (default 0.4 m) is auto-mounted without a jump (step-up). `TerrainWalkSample` makes
-the scattered rocks solid + jumpable and adds a jumpable platform with a walkable roof. Out of scope (named):
-overhangs / interiors / caves, dynamic/moving surfaces, player-vs-player, fall damage, climbing/mantling. Note:
-since 8.0.0 the 3D movement path uses `IPhysicsWorld` (capsule-vs-mesh sweep) instead of `WorldColliders`/
-`WorldSurfaces`, which resolves the old domed-flank clipping. This section applies to 2D / lockstep consumers.
+Before the physics layer, props and buildings were made solid with an XZ capsule-vs-static-collider push-out
+(plus a height-aware `.surf` walkable surface for standing and jumping onto prop tops), wired into the shared
+movement step. The 3D path now uses `IPhysicsWorld` (above), and the `CharacterMovement.Step` / `WorldServer` /
+`WorldClient` / `ShardedWorldServer` / `PlayerMoveSimulator` / `PlayerMovementSystem` ctors no longer take a
+collider/surface set. The queryable types (`WorldColliders` / `PropColliders` / `WorldCollider`, `WorldSurfaces`
+/ `PropSurfaces`, derived from the prop scatter via `PropFootprint` / `PropSurfaceLoader`) still exist for 2D
+games and lockstep sims that query them directly - see the `KhaozEngine.Collision` README. This path will be
+removed once no consumer needs it.
 
 ---
 
@@ -1291,7 +1192,7 @@ replication: the **networked client streams locally with the same code** (nothin
 the wire). For a custom mesh/prop pipeline, implement `IChunkSink` yourself and pass it to `TerrainStreamer`.
 Threaded/background chunk build (an `IJobScheduler` build) and multi-cell server sharding are later sub-projects.
 
-**Teardown / rebuild (since 7.75.0).** Both `Scene3DChunkSink` and `TerrainStreamer` are `IDisposable`. Steady-state
+**Teardown / rebuild.** Both `Scene3DChunkSink` and `TerrainStreamer` are `IDisposable`. Steady-state
 walking already frees each chunk as it leaves the ring, but if you tear streaming down and rebuild it while the
 **same `Scene3D` survives** (level change, world reload, a teleport that recreates the streamer), the
 currently-loaded ring of chunk meshes would otherwise leak until whole-scene `Scene3D.Dispose`. Flush it first:
@@ -1311,7 +1212,7 @@ sink). Pass `ownsMaterial: true` to the ctor to hand it to the sink, whose `Disp
 
 ---
 
-## Textured terrain (PBR splat) (since 7.64.0)
+## Textured terrain (PBR splat)
 
 Terrain chunks can render five tileable PBR layers (grass/dirt/rock/sand/snow) blended per-fragment by the splat
 weights baked into each vertex, with world-space triplanar tiling, normal maps, mips, and anisotropic filtering.
@@ -1364,7 +1265,7 @@ per-chunk material overrides are not provided - swap the handle on `Scene3DChunk
 
 ---
 
-## Ground-cover scatter and understory companions (since 7.71.0)
+## Ground-cover scatter and understory companions
 
 `Scene3DChunkSink` now accepts N `PropLayer`s, so a scene can have sparse tall trees at a long draw radius
 alongside dense short-radius ground cover, with a companion layer that rings each tree base with foliage.
@@ -1398,7 +1299,7 @@ var streamer = new TerrainStreamer(StreamerConfig.Default, sink);
 ```
 
 The single-layer ctor (`new Scene3DChunkSink(scene, field, ScatterConfig, meshes, chunkSize, propDrawRadius)`)
-is unchanged and byte-identical to pre-7.71.0 builds.
+is unchanged and byte-identical to the single-layer behaviour.
 
 `PropScatter.GenerateCompanions(field, hosts, config)` is the underlying primitive if you want companions
 outside the streamer: it returns a `IReadOnlyList<PropPlacement>` that is tiling-invariant (companions over a host set
@@ -1419,7 +1320,7 @@ carried `MoveState` (position + vertical velocity + grounded + feel timers). The
 wraps the vertical step; the authoritative server and client prediction run the same `Step`, so the vertical axis
 reconciles identically.
 
-**3D collision (8.4.0 swept resolver).** When an `IPhysicsWorld` is supplied, the vertical-physics step resolves
+**3D collision (swept resolver).** When an `IPhysicsWorld` is supplied, the vertical-physics step resolves
 against static props via a **substepped swept collide-and-slide** (`SweepCapsule`): the capsule is advanced in
 substeps no larger than a fraction of its radius, so a fast jump / sprint / terminal fall cannot tunnel through a
 thin one-sided wall, and the capsule can never be trapped inside a closed building mesh. Walkable contacts (slope
@@ -1461,9 +1362,9 @@ var server = new WorldServer(transport, new WorldServerConfig { TickSeconds = 1f
 
 - **`WorldClient`** (render-free): wraps `NetClient` + `ClientReplicationView` + `ClientPrediction`. `Poll()`
   ingests AoI snapshots, applies remote entities, and reconciles the local avatar against the authoritative
-  basis; `SendInput(cmd)` predicts one tick forward and transmits it (since 8.8.0 it is a no-op returning `-1`
+  basis; `SendInput(cmd)` predicts one tick forward and transmits it (a no-op returning `-1`
   unless `ConnectionState == Connected`, so a per-frame loop builds no stale-input backlog during a reconnect
-  outage); `RequestSelfRescue()` (since 8.6.0) asks the
+  outage); `RequestSelfRescue()` asks the
   server to teleport the local player to a server-decided safe spot (an "unstuck" - see below); `Snapshot()` returns
   `IReadOnlyList<EntityRenderState>` (`{ NetId Id; Vector3 Position; bool IsLocal; string? DisplayName; bool
   Grounded; float VerticalVelocity; }`) for the renderer - the local player is the predicted position, remotes the
@@ -1483,7 +1384,7 @@ var server = new WorldServer(transport, new WorldServerConfig { TickSeconds = 1f
   the past, never extrapolating). Set `InterpolateRemotes = false` to read the raw latest position instead. Call
   `AdvancePresentation(dt)` once per render frame to drive both the local smoothing and the remote interpolation.
   Read-only local-avatar shorthands: `LocalRenderState` / `LocalGrounded` / `LocalVerticalVelocity`, plus
-  `LocalHorizontalSpeed` (since 8.7.0) - the predicted planar speed in m/s straight off
+  `LocalHorizontalSpeed` - the predicted planar speed in m/s straight off
   `ClientPrediction.PredictedHorizontalSpeed`, computed per prediction tick and immune to reconciliation snaps,
   so it stays steady under lag. Use it to drive a speed HUD, footstep audio, or a locomotion blend instead of
   differencing `LocalRenderState.Position`, which carries the decaying reconciliation render offset and wobbles
@@ -1590,7 +1491,7 @@ count; both share `WorldPersistence` via `IWorldPersistenceHost`. The `Networked
 `ShardedWorldServer` (cellSize 60) over `TerrainPresets.Clearing()`. Spec:
 `docs/superpowers/specs/2026-06-27-multicell-sharding-design.md`.
 
-### Server-side anti-cheat / input-hardening (since 7.74.0)
+### Server-side anti-cheat / input-hardening
 
 The authoritative movement model already prevents teleport, speedhack, noclip, wall-climb, token forgery, and
 replay (the client sends only an 18-byte `MoveCommand`; the server re-simulates). Three additional hardening
@@ -1647,8 +1548,8 @@ see "Parallel `ForEach` + access declarations" below), parent/child hierarchy
 (`AddSystem(ISystem, group)`, `SetGroupOrder`, `Update(float dt)`). `CachedQuery` reuses a query across ticks to
 avoid per-tick allocation; `DeterministicRng` (xorshift128+/splitmix64, `CreateDerived(name)` for per-stream
 sub-RNGs) gives platform-stable RNG for lockstep sims; `WorldSerializer` round-trips a world as JSON (uses
-`KhaozEngine.Serialization.JsonDefaults.IncludeFields`). (`DeterministicRng` moved to `KhaozEngine.Primitives`
-in 6.0.0; the ECS still uses it for lockstep RNG.)
+`KhaozEngine.Serialization.JsonDefaults.IncludeFields`). (`DeterministicRng` lives in
+`KhaozEngine.Primitives`, and the ECS uses it for lockstep RNG.)
 
 ### `[ComponentId]` and save-format stability (policy)
 
@@ -1729,7 +1630,7 @@ Rules for consumers:
 
 ---
 
-## Diagnostics overlay + telemetry recording (`DiagnosticsOverlay` / `FrameStats` / `TelemetryRecorder` / `WorldClient.NetStats`) (since 8.2.0)
+## Diagnostics overlay + telemetry recording (`DiagnosticsOverlay` / `FrameStats` / `TelemetryRecorder` / `WorldClient.NetStats`)
 
 A reusable in-game telemetry HUD for every game: an F1-toggled corner panel that shows whatever rows the
 game hands it, a frame-time meter, a client network-stats snapshot, and a crash-safe session recorder. The
@@ -2281,7 +2182,7 @@ byte[] snap = SnapshotWriter.WriteFiltered(serverWorld, registry, interest);
 Persist authoritative character/world records through `IWorldStore` (async, keyed `byte[]`, DB-shaped). Use
 `InMemoryWorldStore` for tests/dev; for real durability pick a backend package (each pulls its own ADO.NET
 provider; the dep-free `KhaozEngine.WorldStore` core stays clean). The `KhaozEngine.Server` umbrella carries
-**only** the dep-free core (since 7.49.1) - add the backend `<PackageReference>` you want explicitly, so a
+**only** the dep-free core - add the backend `<PackageReference>` you want explicitly, so a
 server using one backend or none never pulls the other's provider:
 
 - **`KhaozEngine.WorldStore.Sqlite`** - `SqliteWorldStore` over `Microsoft.Data.Sqlite`. Embedded, zero-infra;
@@ -2350,7 +2251,7 @@ using var store = new SqlServerWorldStore(
 Out of scope here (later sub-projects): per-cell / world-snapshot persistence (pairs with multi-cell sharding),
 record-schema migrations, and accounts/auth.
 
-### Reconnect + server notices (`KhaozEngine.NetWorld` 8.2.0)
+### Reconnect + server notices (`KhaozEngine.NetWorld`)
 
 **Auto-reconnect client.** Use the factory ctor so `WorldClient` owns the transport lifecycle and reconnects automatically on drop:
 
@@ -2464,7 +2365,7 @@ await persistence.FlushAsync();
 
 `IsDraining` is true once `BeginDrain` has been called; `IsDrainComplete` flips when the grace period has elapsed and all clients have been disconnected. The drain is tick-driven (no wall-clock sleep); the host controls how fast ticks run.
 
-### Server administration (`ServerAdmin` / `IBanStore` / `IEnumerableWorldStore` / `KhaozEngine.Server.Admin`) (since 8.4.2)
+### Server administration (`ServerAdmin` / `IBanStore` / `IEnumerableWorldStore` / `KhaozEngine.Server.Admin`)
 
 A generic, opt-in admin surface for a live server. Nothing changes for a server that does not use it.
 
@@ -2511,7 +2412,7 @@ Routes (all under `/admin`, all require `Authorization: Bearer <token>`): `GET /
 202; capabilities not wired return 501. Bind defaults to loopback. There are no changes to the game client wire
 protocol.
 
-### Client self-rescue / unstuck (since 8.6.0)
+### Client self-rescue / unstuck
 
 Let a normal game client ask the authoritative server to teleport **itself** to a server-decided safe spot (a
 "return to spawn" / "unstuck", e.g. a `T` key). The server is authoritative, so a client-side position overwrite
@@ -2538,7 +2439,7 @@ identically (the sharded one teleports across cells). Under the hood it rides a 
 client->server channel (`MoveProtocol.ClientControlKind`), distinct by length from a move, so a server that predates
 the feature just ignores it.
 
-#### Reconnect input backlog (since 8.8.0)
+#### Reconnect input backlog
 
 A client that holds the movement key through a long auto-reconnect outage used to freeze/vibrate on rejoin: input
 sent while disconnected inflated the prediction sequence and the server replayed the stale backlog one move per

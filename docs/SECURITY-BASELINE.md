@@ -95,8 +95,8 @@ Package: `KhaozEngine.Updates`. This is the highest-impact surface in the engine
 replaces the running game's executables. A spoofed or compromised feed that the client accepts is remote
 code execution across every game that adopts the updater.
 
-Because of that impact, the update channel was hardened to close a full audit (10 findings, P0-P2) and
-shipped as engine **7.0.0**. The deep dive is the canonical reference:
+Because of that impact, the update channel was hardened to close a full audit (10 findings, P0-P2). The deep
+dive is the canonical reference:
 
 **[Updater hardening (7.0.0) design](superpowers/specs/2026-06-20-updater-hardening-7.0.0-design.md).**
 
@@ -125,15 +125,15 @@ The posture is defense in depth: no single control is the whole story.
    version travels with the publish, not the engine packages. If a head single-file publishes
    (`PublishSingleFile=true`), the native libs must stay **loose** next to the exe, never bundled into the
    self-extracting host (Silk.NET's loader probes the apphost directory and can't see bundled natives). Foundation
-   defaults `IncludeNativeLibrariesForSelfExtract=false` for every head so this is correct out of the box (engine
-   8.9.0; overridable per head). See [USING-KHAOZENGINE.md "Game head build settings"](USING-KHAOZENGINE.md#game-head-build-settings-cetcompat).
+   defaults `IncludeNativeLibrariesForSelfExtract=false` for every head so this is correct out of the box
+   (overridable per head). See [USING-KHAOZENGINE.md "Game head build settings"](USING-KHAOZENGINE.md#game-head-build-settings-cetcompat).
 
 4. **Signed, integrity-checked updates.** The update channel's mandatory signing + the apply-time guards
    (origin lock, path/symlink guards, size caps, downgrade rejection) are what keep category 3 from being
    an open RCE. See [the updater spec](superpowers/specs/2026-06-20-updater-hardening-7.0.0-design.md). A
    game must wire this correctly (next section) for the guarantee to hold.
 
-5. **CET / CETCompat decision (engine 7.23.0).** The x64 apphost defaults `CETCompat=false`, inherited
+5. **CET / CETCompat decision.** The x64 apphost defaults `CETCompat=false`, inherited
    from `KhaozEngine.Foundation` by every game head (directly or transitively through
    `Game2D`/`Game3D`/`Server`). This is a **deliberate, reversible tradeoff**, not an oversight:
 

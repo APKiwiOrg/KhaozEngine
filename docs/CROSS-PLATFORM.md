@@ -80,7 +80,7 @@ in the `ShaderSources.cs` source comments; this is the consolidated checklist.)
   interpolant it never reads, SPIRV-Cross drops it and leaves a HOLE in the pixel-input signature (e.g.
   `vWorldPos`@3 then `vTint`@5, with location 4 absent). On D3D11/WARP that gap misaligns the interpolant
   registers and the highest live interpolant reads garbage: `SplatFrag`'s declared-but-unused `vUv`@4 corrupted
-  `vEmissive` and rendered the whole terrain flat white (fixed 7.69.1), while Metal and Vulkan tolerated it.
+  `vEmissive` and rendered the whole terrain flat white (since fixed), while Metal and Vulkan tolerated it.
   Declare only the interpolants the fragment uses, contiguous from 0; if the paired vertex shader emits extras (a
   shared interpolant layout), number those ABOVE the fragment's live block. (`ModelFrag` is unaffected because it
   reads all of its interpolants.) Note: this is NOT an FXC optimizer miscompile - disabling FXC optimization does
@@ -94,7 +94,7 @@ in the `ShaderSources.cs` source comments; this is the consolidated checklist.)
   combined UBO). See `SplatVert` / `SplatFrag`.
 - **A new render feature needs a pixel-READBACK assertion, not just "it did not throw"** - and name the regression
   test `*Golden*` so the `cross-platform-gpu` matrix actually runs it per backend. The original splat tests lacked
-  `Golden` in their names, so the D3D11 leg never exercised them and the white-terrain bug shipped in 7.64.0.
+  `Golden` in their names, so the D3D11 leg never exercised them and the white-terrain bug shipped.
 
 When a backend-specific render bug reproduces ONLY on the CI rasterizer (WARP / lavapipe), dump the SPIRV-Cross
 output locally to read what that backend's compiler receives:
@@ -108,17 +108,16 @@ full three-backend matrix only to verify the final fix.
 
 This release delivers the **verification mechanism**, not a finished cross-platform product. Open items:
 
-1. **Windowed-app native bundling (mostly resolved in 5.33.0).** The headless golden tests use `CreateHeadless`
-   (no window), so they need no windowing natives. A shipped windowed game previously needed SDL2 bundled
-   per-RID, and on macOS SDL2 was copied from Homebrew (Veldrid.Sdl2 lacked an osx-arm64 native). **5.33.0
-   replaced Veldrid.Sdl2 with Silk.NET.Windowing (GLFW), which bundles its natives per-RID across desktop**, so
-   the SDL2 problem is gone (no `brew install sdl2`). `libveldrid-spirv` still rides along per-RID via the Veldrid
+1. **Windowed-app native bundling (mostly resolved).** The headless golden tests use `CreateHeadless`
+   (no window), so they need no windowing natives. The engine windows through Silk.NET.Windowing (GLFW), which
+   bundles its natives per-RID across desktop, so a shipped windowed game needs no hand-bundled SDL2 (no
+   `brew install sdl2` on macOS). `libveldrid-spirv` still rides along per-RID via the Veldrid
    GPU packages. The remaining work is run-verifying the windowed path on Windows/Linux hardware (the headless
    matrix above does not open a window).
 2. **OpenGL backend deferred.** D3D11 and Vulkan honor Veldrid's clip-space prefer-flags
    (clip-Y / 0..1 depth) like Metal, so they need no special handling. OpenGL's runtime clip-Y / depth
    derivation is the troublesome one and is out of scope here; the `gl` override parses but is unverified.
-   (Clip-space-Y itself is no longer a baked Metal assumption: as of 6.2.0 `GpuClip` derives the clip-Y sign
+   (Clip-space-Y itself is not a baked Metal assumption: `GpuClip` derives the clip-Y sign
    from `GpuCapabilities` - identity on Metal / D3D11, flipped on Vulkan. The non-Metal path is still
    unvalidated on real hardware, since the cross-platform-gpu Vulkan leg is the known-red one.)
 3. **Deferred port-hardening.** Two items are scoped but not yet built: GPU device-lost / device-removed

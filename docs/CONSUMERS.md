@@ -8,7 +8,7 @@ engine ships a new version.
 engine is entirely MonoGame-free on a single version line in `Directory.Build.props` (the doc-version guard
 checks it): the custom render/runtime stack + the graduated MonoGame-free foundation + the four umbrella
 metapackages, all sharing one version. `Physics.Bepu` and the `WorldStore.Sqlite`/`.SqlServer` backends are
-opt-in and referenced explicitly; `Server.Admin` (the Kestrel HTTPS admin endpoint, 8.4.2) is likewise opt-in
+opt-in and referenced explicitly; `Server.Admin` (the Kestrel HTTPS admin endpoint) is likewise opt-in
 and NOT in the `Server` umbrella - add it explicitly when the server needs an admin endpoint, so a sim server
 without one never pulls the ASP.NET Core web stack; the author/publish tools (`ke-updater`/`ke-sfxbake`/`ke-propbake`) ship as
 dotnet tools in no umbrella, so no consumer references them via `<PackageReference>`. Full package catalog:
@@ -31,7 +31,7 @@ and added explicitly). This file tracks only which consumer pins which version (
 ## Consumer matrix
 
 Every consumer is MonoGame-free and references the engine through an umbrella metapackage (plus granular pins
-where needed). All four pin **8.0.0**.
+where needed). Pins vary by consumer (see the `Version` column).
 
 | Consumer | Project(s) | References | Version |
 |---|---|---|---|
@@ -40,13 +40,11 @@ where needed). All four pin **8.0.0**.
 | **SpaceGame** (2D + Render3D) | `SpaceGame.Core` (head) / `SpaceGame.Sim` (lockstep sim) | `Game2D` + `Render3D` + `Netcode.LiteNetLib` + `Primitives` (head); `Ecs`/`Collision`/`Diagnostics`/`Content`/`Serialization`/`App`/`Netcode`/`Pooling`/`Determinism` + `Primitives` (sim); `Netcode.Abstractions` (contracts); `Render3D` + `Determinism` for the 2.5D mesh layer; manifest signing via the `ke-updater` tool. Restores from `local-feed`/GitHub Packages directly (no vendored feed) | **8.0.0** |
 | **Ruinborne** (3D MMO) | `Ruinborne.Client` / `Ruinborne.Server` | client: `KhaozEngine.Game3D` + `Foundation` + `NetWorld` + `Netcode.LiteNetLib` + `Netcode.Abstractions` + `Simulation` + `Updates`; server: `KhaozEngine.Server` umbrella + `WorldStore.SqlServer` (Azure SQL via `WorldPersistence`). Single `<KhaozEngineVersion>` pin in `Directory.Build.props`, vendored feed (`vendor/khaozengine`, refreshed via `scripts/refresh-engine.sh`) | **8.8.0** |
 
-## Runtime window icon (8.10.0)
+## Runtime window icon
 
-Pre-MonoGame-free, consumers got a runtime window/taskbar icon for free from MonoGame's SDL layer (it loaded an
-embedded `Icon.bmp` on every platform). The MonoGame-free `AppWindow` (Silk.NET/GLFW + Veldrid) had no icon API,
-so every consumer's running window showed the generic icon (Nullwake hit this on its first KhaozEngine release).
-
-8.10.0 adds the runtime icon API:
+The MonoGame-free `AppWindow` (Silk.NET/GLFW + Veldrid) needs an explicit icon API (unlike MonoGame's SDL layer,
+which loaded an embedded `Icon.bmp` for free), so a consumer that sets none shows the generic window icon. The
+runtime icon API:
 
 - **Option:** `GameAppOptions.WindowIconPath` (a PNG, convenience) or `GameAppOptions.WindowIcons`
   (`IReadOnlyList<ImageRgba>`, explicit multi-res 16/32/48 px so GLFW picks per DPI). `WindowIcons` wins over

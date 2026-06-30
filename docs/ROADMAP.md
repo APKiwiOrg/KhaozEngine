@@ -23,31 +23,26 @@ Discord from the engine. Retire the game-specific Discord implementations once t
   `Social` core seam stays dependency-free, mirroring the opt-in-backend pattern (`Netcode.LiteNetLib`,
   `WorldStore.*`). Per-RID bundling is the same concern as Audio/Windowing.
 
-### 2. Physics engine (SP1 shipped 8.0.0; SP2 + SP3 remaining)
+### 2. Physics engine: dynamic bodies + constraints
 
-**Sub-project 1 (SP1, SHIPPED 8.0.0):** `KhaozEngine.Physics` seam (dependency-free, in `Foundation`) +
-`KhaozEngine.Physics.Bepu` opt-in backend (BepuPhysics v2 2.4.0, pure-managed, Apache-2.0). Static bodies only.
-`CharacterMovement.Step` now collide-and-slides capsule-vs-mesh against `IPhysicsWorld?` (prop convex hulls +
-building triangle meshes baked by `ke-propbake`); downward probe computes vertical support so domed surfaces are
-walkable. The old `WorldColliders?`/`WorldSurfaces?` 2D footprint path is retired from the movement stack (BREAKING).
-`WorldServer`/`WorldClient`/`ShardedWorldServer`/`PlayerMoveSimulator`/`PlayerMovementSystem` ctors now take
-`IPhysicsWorld?` in place of the pair. Terrain height stays analytic.
+The static-body physics seam (`IPhysicsWorld` + the opt-in `KhaozEngine.Physics.Bepu` backend) is in place,
+and character movement collide-and-slides capsule-vs-mesh against it. What remains:
 
-**Sub-project 2 (SP2, next):** dynamic rigid bodies + their replication. A body that falls / bounces / rests
-needs a replication component (like `MovementState` for players); `Scene3DChunkSink` would drive `AddDynamic`/
-step per loaded chunk, and `WorldClient` would interpolate dynamic-body positions from replicated snapshots.
-Enables physics-driven crates, barrels, falling debris. Terrain-as-physics-geometry (the whole terrain mesh fed
-into a `TriangleMesh` body) also lands here: a static terrain body replaces the `TerrainCollision` delegate in
-the `Step` call so all surfaces (terrain + props + buildings) share one query path.
+**Dynamic rigid bodies + their replication.** A body that falls / bounces / rests needs a replication component
+(like `MovementState` for players); `Scene3DChunkSink` would drive `AddDynamic`/step per loaded chunk, and
+`WorldClient` would interpolate dynamic-body positions from replicated snapshots. Enables physics-driven crates,
+barrels, falling debris. Terrain-as-physics-geometry (the whole terrain mesh fed into a `TriangleMesh` body) also
+lands here: a static terrain body replaces the `TerrainCollision` delegate in the `Step` call so all surfaces
+(terrain + props + buildings) share one query path.
 
-**Sub-project 3 (SP3, later):** constraints, joints, and vehicles. Hinges, sliders, ragdolls, wheeled vehicles.
+**Constraints, joints, and vehicles.** Hinges, sliders, ragdolls, wheeled vehicles.
 
 **Collision-proxy bake pipeline (structural, unscheduled).** Buildings currently collide as their FULL one-sided
 render mesh, so every decorative eave/awning/dormer is a collision surface. One-sided triangle meshes are
 pathological for a capsule resolver: `ComputePenetration` reports nothing on them, sweeps give zero normals at a
 tangent contact, and concave wall+eave pockets can wedge the capsule. The swept resolver has absorbed this with a
-run of targeted invariants (depenetrate-to-clearance 8.5.3, degenerate-contact normal recovery 8.6.1, the
-gravity-authoritative wall slide + downward ray-fan support gate 8.8.1) and it now never freezes - but "robust by
+run of targeted invariants (depenetrate-to-clearance, degenerate-contact normal recovery, the
+gravity-authoritative wall slide + downward ray-fan support gate) and it now never freezes - but "robust by
 accumulating resolver invariants" is not the end state. The clean structural fix is a SEPARATE COLLISION PROXY: a
 simplified, watertight collision mesh distinct from the render mesh (boxes for walls, an explicit ramp for stairs,
 no thin decorative overhangs as colliders), authored or auto-simplified in `ke-propbake`. That retires the
@@ -56,11 +51,11 @@ NOT done as a quick fix because: a 2026-06-30 investigation showed the obvious s
 WORSE failures - two-sided meshes depenetrate the WRONG way (eject the capsule through the wall at the mid-plane),
 and convex DECOMPOSITION introduces interior wall-tunnel traps + a ~1800-static reconciliation surface. So this is
 a deliberate tooling-and-content project (proxy authoring/auto-gen + re-collision for every building), not a bug
-fix. The 8.8.1 "gravity always wins / never frozen" invariant is good to keep even once clean proxies exist.
+fix. The "gravity always wins / never frozen" invariant is good to keep even once clean proxies exist.
 
 ### 3. Visual fidelity (textures + materials)
 
-The terrain now renders PBR splat textures (shipped 7.64.0). Props still come in flat base-colour (the prop
+The terrain now renders PBR splat textures. Props still come in flat base-colour (the prop
 loader flattens each material's texture to a single factor during ingest, so trees/rocks/buildings carry no
 surface detail). Goal: make props, trees, and buildings actually look good, not just read as shapes.
 
@@ -108,7 +103,7 @@ surface detail). Goal: make props, trees, and buildings actually look good, not 
 - On-screen profiling / diagnostics overlay: a live frame-time / draw-call / memory overlay (logging only
   today). The Gui makes it cheap to build.
 - Asset hot-reload: reload meshes, textures, and shaders at runtime during development. The prop asset pipeline
-  shipped (7.46.0); hot-reload did not.
+  shipped, but hot-reload did not.
 
 ## Possible future factoring (unscheduled)
 

@@ -2,7 +2,7 @@
 
 Date: 2026-06-30
 Status: approved, ready for an implementation plan
-Engine target: 8.9.0 (additive minor)
+Engine target: 8.11.0 (additive minor)
 Roadmap entry retired by this work: "Collision-proxy bake pipeline (structural, unscheduled)" (Physics, item 2)
 
 ## Problem
@@ -61,7 +61,7 @@ capsule can neither walk nor jump out), while stairs climb and floors / ledges /
    (anvil, forge, workbench, counters, crates, pillars) are KEPT as convex pieces the player can stand on and bump
    into. Only thin one-sided decoration with no standable volume is dropped: roof eaves, awnings, dormers, soffits,
    trim. Those are the exact source of the angled-normal pockets and the balance-on-detail slips.
-3. **Rollout = all 7 Ruinborne buildings now.** Author all 7 proxies, re-bake their `.coll`, adopt the 8.9.0 pin,
+3. **Rollout = all 7 Ruinborne buildings now.** Author all 7 proxies, re-bake their `.coll`, adopt the 8.11.0 pin,
    run the scan metric on all 7, hand back for the alpha deploy.
 4. **Box kind included** in the format (near-free, the type + Bepu factory already exist, opens a future
    manifest-primitive path) even though the V1 auto-bake emits compound-of-hulls.
@@ -194,9 +194,9 @@ resolver's existing bit-identity tests continue to lock client/server reconcilia
 
 ## Rollout (engine release ritual, see CLAUDE.md)
 
-1. Bump `<KhaozEngineVersion>` 8.8.1 -> 8.9.0 (additive minor: new format kinds, `BakeProxy`, `LoadGroups`, public
+1. Bump `<KhaozEngineVersion>` 8.10.0 -> 8.11.0 (additive minor: new format kinds, `BakeProxy`, `LoadGroups`, public
    scale helper, manifest field; no behaviour change without a proxy). Re-check `origin/main` + `git tag` for a
-   concurrent bump first and take the next FREE version if 8.9.0 is claimed.
+   concurrent bump first and take the next FREE version if 8.11.0 is claimed.
 2. `CHANGELOG.md` entry, newest-first, tight first sentence, noting "consumers re-bake building `.coll`".
 3. Update the 3 guard-checked doc-version strings (`docs/CONSUMERS.md` "Engine current version", `docs/ROADMAP.md`
    "Current released version", `README.md` `<PackageReference>` example) so `scripts/check-doc-versions.sh` passes.
@@ -206,9 +206,9 @@ resolver's existing bit-identity tests continue to lock client/server reconcilia
    only if an edge changed. Grep the new type / field names across all `*.md` + `CLAUDE.md`. DELETE the ROADMAP
    "Collision-proxy bake pipeline" entry (it moves to the changelog).
 5. `dotnet pack -c Release -o ./local-feed`.
-6. CONFIRM WITH THE USER before `git tag v8.9.0` + push (publishes to GitHub Packages for all 4 games).
+6. CONFIRM WITH THE USER before `git tag v8.11.0` + push (publishes to GitHub Packages for all 4 games).
 7. Ruinborne: author all 7 building proxies, add `collisionProxy` to `buildings.manifest.json`, re-bake via
-   `ke-propbake`, pin 8.9.0 in `Directory.Build.props`, run the scan metric on all 7 buildings, hand back for the
+   `ke-propbake`, pin 8.11.0 in `Directory.Build.props`, run the scan metric on all 7 buildings, hand back for the
    alpha deploy. (`RuinbornePhysics.ScaleShape` delegates to the new public helper, so the new compound `.coll`
    scales correctly.)
 
@@ -240,4 +240,4 @@ Consumer (Ruinborne, after the engine ships):
 - `Ruinborne.Client/assets/buildings/buildings.manifest.json`: `collisionProxy` per building.
 - Re-baked `*.coll`.
 - `Ruinborne.Core/RuinbornePhysics.cs`: `ScaleShape` delegates to the new public helper (handles compound).
-- `Directory.Build.props`: pin 8.9.0.
+- `Directory.Build.props`: pin 8.11.0.

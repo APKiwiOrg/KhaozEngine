@@ -4,13 +4,13 @@
 
 **Goal:** Let a building bake a SEPARATE simplified collision proxy (a `CompoundShape` of convex pieces) distinct from its full-detail render mesh, so a capsule never wedges in cluttered interior geometry while still standing on floors, stairs, ledges, and furniture.
 
-**Architecture:** Each building authors a simplified proxy GLB (separate convex blocks). A new bake path hulls each proxy object into one convex child of a `CompoundShape`, normalized into the render mesh's frame so it overlays exactly. The `.coll` format gains Box + Compound kinds; a public `PhysicsShapeScale.Uniform` helper scales the new shapes; `ke-propbake` reads a `collisionProxy` manifest field. Convexity (unique shortest-exit MTV) structurally removes the wedge/pin/freeze class; the 8.8.1 resolver invariant is untouched. The proxy path is opt-in, so anything without a proxy bakes exactly as today (additive minor 8.9.0).
+**Architecture:** Each building authors a simplified proxy GLB (separate convex blocks). A new bake path hulls each proxy object into one convex child of a `CompoundShape`, normalized into the render mesh's frame so it overlays exactly. The `.coll` format gains Box + Compound kinds; a public `PhysicsShapeScale.Uniform` helper scales the new shapes; `ke-propbake` reads a `collisionProxy` manifest field. Convexity (unique shortest-exit MTV) structurally removes the wedge/pin/freeze class; the 8.8.1 resolver invariant is untouched. The proxy path is opt-in, so anything without a proxy bakes exactly as today (additive minor 8.11.0).
 
 **Tech Stack:** C# / net10.0, xUnit, BepuPhysics v2 (behind `KhaozEngine.Physics.Bepu`), SharpGLTF (glTF load + in-process test fixtures), `System.Numerics`.
 
 ## Global Constraints
 
-- Engine version line: bump `<KhaozEngineVersion>` in `Directory.Build.props` from `8.8.1` to `8.9.0` (re-check `origin/main` + `git tag` for a concurrent bump at release; take the next FREE version if claimed).
+- Engine version line: bump `<KhaozEngineVersion>` in `Directory.Build.props` from `8.10.0` to `8.11.0` (re-check `origin/main` + `git tag` for a concurrent bump at release; take the next FREE version if claimed).
 - Deterministic + byte-identical client vs server: both heads read the SAME committed `.coll`; the bake itself must be reproducible (stable logical-node child order, deterministic vertex sort). No wall-clock, no randomness.
 - Keep the 8.8.1 resolver invariant ("a wall never holds the capsule up against gravity"). Do NOT edit `CharacterMovement.cs`.
 - Full engine suite (~2496 tests) stays green; every new behaviour ships with a headless test.
@@ -41,11 +41,11 @@ Consumer (`~/Ruinborne`, after the engine ships):
 - `Ruinborne.Client/assets/buildings/buildings.manifest.json` (MODIFY) - `collisionProxy` per building.
 - Re-baked `Ruinborne.Client/assets/buildings/*.coll`.
 - `Ruinborne.Core/RuinbornePhysics.cs` (MODIFY) - `ScaleShape` delegates to the public helper.
-- `Directory.Build.props` (MODIFY) - pin 8.9.0.
+- `Directory.Build.props` (MODIFY) - pin 8.11.0.
 
 ---
 
-# Phase 1: Engine (ships 8.9.0)
+# Phase 1: Engine (ships 8.11.0)
 
 ## Task 1: Public `PhysicsShapeScale.Uniform` helper
 
@@ -1135,7 +1135,7 @@ git commit -m "tests(physics): real blacksmith proxy fixture + wedge-scan goal-m
 
 ---
 
-## Task 8: Release 8.9.0 (engine ritual)
+## Task 8: Release 8.11.0 (engine ritual)
 
 Bump the version, write the changelog, sweep docs, delete the roadmap entry, pack to local-feed. HOLD the tag + push for explicit user confirmation.
 
@@ -1150,7 +1150,7 @@ git fetch
 git tag | sort -V | tail -5
 grep KhaozEngineVersion Directory.Build.props
 ```
-If `origin/main` already advanced to 8.9.0 or tagged `v8.9.0`, take the next FREE version everywhere below.
+If `origin/main` already advanced to 8.11.0 or tagged `v8.11.0`, take the next FREE version everywhere below.
 
 - [ ] **Step 2: Run the FULL suite green before bumping**
 
@@ -1159,14 +1159,14 @@ Expected: all pass (~2496+ the new tests).
 
 - [ ] **Step 3: Bump the version**
 
-In `Directory.Build.props`, change `<KhaozEngineVersion>8.8.1</KhaozEngineVersion>` to `<KhaozEngineVersion>8.9.0</KhaozEngineVersion>`.
+In `Directory.Build.props`, change `<KhaozEngineVersion>8.10.0</KhaozEngineVersion>` to `<KhaozEngineVersion>8.11.0</KhaozEngineVersion>`.
 
 - [ ] **Step 4: Add the CHANGELOG entry (newest-first, tight first sentence, no em-dashes/semicolons)**
 
 Prepend to `CHANGELOG.md`:
 
 ```markdown
-## 8.9.0
+## 8.11.0
 
 Additive: buildings can bake a SEPARATE simplified collision PROXY (a compound of convex pieces) distinct from the
 full-detail render mesh, so a capsule never wedges in cluttered interior geometry while still standing on floors,
@@ -1200,12 +1200,12 @@ their building `.coll` to adopt.
 
 - [ ] **Step 5: Update the three guard-checked doc-version strings**
 
-- `docs/CONSUMERS.md`: "Engine current version" -> 8.9.0.
-- `docs/ROADMAP.md`: "Current released version: **8.9.0**".
-- `README.md`: the `<PackageReference>` example version -> 8.9.0.
+- `docs/CONSUMERS.md`: "Engine current version" -> 8.11.0.
+- `docs/ROADMAP.md`: "Current released version: **8.11.0**".
+- `README.md`: the `<PackageReference>` example version -> 8.11.0.
 
 Run: `bash scripts/check-doc-versions.sh`
-Expected: passes (all three match 8.9.0).
+Expected: passes (all three match 8.11.0).
 
 - [ ] **Step 6: Delete the ROADMAP "Collision-proxy bake pipeline" entry**
 
@@ -1231,24 +1231,24 @@ Confirm every doc that should mention each new name does, and no stale doc contr
 mkdir -p local-feed
 dotnet pack -c Release -o ./local-feed
 ```
-Expected: all packable projects pack at 8.9.0.
+Expected: all packable projects pack at 8.11.0.
 
 - [ ] **Step 9: Commit the release**
 
 ```bash
 git add -A
-git commit -m "release(8.9.0): collision-proxy bake pipeline (compound-of-convex building proxies)"
+git commit -m "release(8.11.0): collision-proxy bake pipeline (compound-of-convex building proxies)"
 ```
 
 - [ ] **Step 10: STOP. Ask the user to confirm tag + push.**
 
-Do NOT `git tag v8.9.0` or push yet. Surface to the user: the engine is committed + packed to local-feed; tagging publishes to GitHub Packages for all 4 games. Ask whether to (a) merge to `main` + tag + push now, or (b) hold and batch. Per the engine ritual, the merge-to-main / tag / push is held for explicit confirmation.
+Do NOT `git tag v8.11.0` or push yet. Surface to the user: the engine is committed + packed to local-feed; tagging publishes to GitHub Packages for all 4 games. Ask whether to (a) merge to `main` + tag + push now, or (b) hold and batch. Per the engine ritual, the merge-to-main / tag / push is held for explicit confirmation.
 
 ---
 
-# Phase 2: Ruinborne consumer (after the engine 8.9.0 is packed to local-feed)
+# Phase 2: Ruinborne consumer (after the engine 8.11.0 is packed to local-feed)
 
-> Do NOT start Phase 2 until Task 8 has packed 8.9.0 to `~/KhaozEngine/local-feed`. Work in a Ruinborne worktree per its repo rules.
+> Do NOT start Phase 2 until Task 8 has packed 8.11.0 to `~/KhaozEngine/local-feed`. Work in a Ruinborne worktree per its repo rules.
 
 ## Task 9: Author the remaining 6 proxies + manifest + re-bake
 
@@ -1278,7 +1278,7 @@ git add Ruinborne.Client/assets/buildings/
 git commit -m "buildings: authored collision proxies + re-baked compound .coll"
 ```
 
-## Task 10: Pin 8.9.0, delegate ScaleShape, verify all 7
+## Task 10: Pin 8.11.0, delegate ScaleShape, verify all 7
 
 **Files:**
 - Modify: `Ruinborne.Core/RuinbornePhysics.cs`
@@ -1287,14 +1287,14 @@ git commit -m "buildings: authored collision proxies + re-baked compound .coll"
 
 - [ ] **Step 1: Pin the engine version**
 
-In Ruinborne's `Directory.Build.props`, set `<KhaozEngineVersion>` (or the equivalent pin) to `8.9.0`. Restore against the engine local-feed.
+In Ruinborne's `Directory.Build.props`, set `<KhaozEngineVersion>` (or the equivalent pin) to `8.11.0`. Restore against the engine local-feed.
 
 - [ ] **Step 2: Delegate `RuinbornePhysics.ScaleShape` to the public helper**
 
 In `Ruinborne.Core/RuinbornePhysics.cs`, replace the private `ScaleShape` + its `ScalePoints`/`ScaleMesh` helpers with a delegation (it now also handles compound, which the old mirror threw on):
 
 ```csharp
-        // Per-placement uniform scale of a shape via the public engine helper (KhaozEngine.Physics 8.9.0+),
+        // Per-placement uniform scale of a shape via the public engine helper (KhaozEngine.Physics 8.11.0+),
         // which handles every shape kind including the new building-proxy compound-of-convex. Replaces the old
         // local mirror that only handled cylinder/hull/mesh and threw on compound.
         static PhysicsShape ScaleShape(PhysicsShape shape, float scale)
@@ -1334,12 +1334,12 @@ Expected: all pass.
 
 ```bash
 git add Ruinborne.Core/RuinbornePhysics.cs Directory.Build.props Ruinborne.Tests/RuinbornePhysicsTests.cs
-git commit -m "physics: adopt engine 8.9.0 collision-proxy bake; ScaleShape delegates; scan all 7 buildings"
+git commit -m "physics: adopt engine 8.11.0 collision-proxy bake; ScaleShape delegates; scan all 7 buildings"
 ```
 
 - [ ] **Step 6: Hand back for the alpha deploy**
 
-Surface to the user: all 7 building proxies re-baked + verified, engine 8.9.0 pinned. The alpha deploy is the user's action (provide the one-click boot command for a local windowed playtest from the Ruinborne worktree first).
+Surface to the user: all 7 building proxies re-baked + verified, engine 8.11.0 pinned. The alpha deploy is the user's action (provide the one-click boot command for a local windowed playtest from the Ruinborne worktree first).
 
 ---
 

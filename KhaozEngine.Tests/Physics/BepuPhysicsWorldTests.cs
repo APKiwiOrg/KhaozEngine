@@ -34,6 +34,38 @@ public class BepuPhysicsWorldTests
         Assert.True(h.Distance > 0f && h.Distance < 5f);  // contacts before the wall plane at z=4.5
     }
 
+    static ConvexHullShape BoxHull(Vector3 c, Vector3 h) => new(new[]
+    {
+        c + new Vector3(-h.X,-h.Y,-h.Z), c + new Vector3(h.X,-h.Y,-h.Z),
+        c + new Vector3(h.X, h.Y,-h.Z),  c + new Vector3(-h.X, h.Y,-h.Z),
+        c + new Vector3(-h.X,-h.Y, h.Z), c + new Vector3(h.X,-h.Y, h.Z),
+        c + new Vector3(h.X, h.Y, h.Z),  c + new Vector3(-h.X, h.Y, h.Z),
+    });
+
+    [Fact]
+    public void SweepCapsule_AgainstACompoundOfConvexHulls_HitsWithoutThrowing()
+    {
+        // A building collision proxy bakes a CompoundShape whose children are ConvexHullShapes. The Bepu factory
+        // must add them as FLAT convex leaves, not nested per-hull compounds: a compound-of-compounds makes the
+        // broadphase sweep's ComputeBounds throw ("This should only ever be called on convexes"). Two disjoint hull
+        // boxes; a sweep into each must register a hit (proving both leaves are flattened into the broadphase).
+        var compound = new CompoundShape(new[]
+        {
+            new CompoundChild(BoxHull(new Vector3(0f, 1f, 5f), new Vector3(1f, 1f, 0.5f)), Pose.At(Vector3.Zero)),
+            new CompoundChild(BoxHull(new Vector3(3f, 1f, 5f), new Vector3(1f, 1f, 0.5f)), Pose.At(Vector3.Zero)),
+        });
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        world.AddStatic(compound, Pose.At(Vector3.Zero));
+        world.Step(1f / 60f);
+
+        var cap = new CapsuleShape(0.4f, 1.0f);
+        bool hit = world.SweepCapsule(cap, Pose.At(new Vector3(0f, 1f, 0f)), Vector3.UnitZ, 100f, out SweepHit h);
+        Assert.True(hit, "sweep into a compound-of-hulls must register a hit (no nested-compound bounds throw)");
+        Assert.True(h.Distance > 0f && h.Distance < 5f);
+        Assert.True(world.SweepCapsule(cap, Pose.At(new Vector3(3f, 1f, 0f)), Vector3.UnitZ, 100f, out _),
+            "the second hull leaf must also be in the broadphase");
+    }
+
     [Fact]
     public void ComputePenetration_PushesOutOfAnOverlap()
     {

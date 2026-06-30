@@ -104,11 +104,7 @@ internal static class ShapeFactory
         try
         {
             foreach (var child in co.Children)
-            {
-                var childIndex = Add(sim, pool, child.Shape);
-                var localPose = new RigidPose(child.Local.Position, child.Local.Orientation);
-                builder.AddForKinematic(childIndex, in localPose, 1f);
-            }
+                AddFlattenedChild(sim, pool, ref builder, child.Shape, child.Local);
             builder.BuildKinematicCompound(out var compoundChildren);
             var compound = new Compound(compoundChildren);
             return sim.Shapes.Add(compound);
@@ -116,6 +112,73 @@ internal static class ShapeFactory
         finally
         {
             builder.Dispose();
+        }
+    }
+
+    // A Bepu compound's children MUST be convex leaves. Adding a child via the top-level Add() would wrap a
+    // ConvexHull or a base-aligned Cylinder in its OWN single-child compound (the centroid / base-offset wrappers
+    // above), giving a compound-of-compounds; Bepu's broadphase sweep then calls ComputeBounds on that
+    // nonconvex child and throws ("This should only ever be called on convexes"). So flatten here: add each
+    // convex shape as a DIRECT leaf and fold its internal recentering (ConvexHull centre-of-mass, Cylinder base
+    // lift) into the child's local pose, so a building proxy (a compound of convex hulls baked by
+    // PropCollisionBake.BakeProxy) is swept correctly. A nested CompoundShape is recursed into the SAME builder
+    // (pose-composed), so the final compound is always one flat level of convex leaves.
+    private static void AddFlattenedChild(BepuSim sim, BufferPool pool, ref CompoundBuilder builder, PhysicsShape shape, Pose local)
+    {
+        switch (shape)
+        {
+            case SphereShape s:
+            {
+                var p = new RigidPose(local.Position, local.Orientation);
+                builder.AddForKinematic(sim.Shapes.Add(new Sphere(s.Radius)), in p, 1f);
+                break;
+            }
+            case CapsuleShape c:
+            {
+                var p = new RigidPose(local.Position, local.Orientation);
+                builder.AddForKinematic(sim.Shapes.Add(new Capsule(c.Radius, c.Length)), in p, 1f);
+                break;
+            }
+            case BoxShape b:
+            {
+                var p = new RigidPose(local.Position, local.Orientation);
+                builder.AddForKinematic(
+                    sim.Shapes.Add(new Box(b.HalfExtents.X * 2f, b.HalfExtents.Y * 2f, b.HalfExtents.Z * 2f)), in p, 1f);
+                break;
+            }
+            case CylinderShape cy:
+            {
+                // Base-aligned: lift +Length/2 along the child's local Y (mirrors AddBaseAlignedCylinder).
+                Vector3 off = Vector3.Transform(new Vector3(0f, cy.Length * 0.5f, 0f), local.Orientation);
+                var p = new RigidPose(local.Position + off, local.Orientation);
+                builder.AddForKinematic(sim.Shapes.Add(new Cylinder(cy.Radius, cy.Length)), in p, 1f);
+                break;
+            }
+            case ConvexHullShape ch:
+            {
+                // Bepu recenters the hull on its centre of mass; place the leaf at +centre (in the child frame)
+                // so its mesh-local origin lands at child.Local (mirrors AddConvexHull, but as a direct leaf).
+                ConvexHullHelper.CreateShape(ch.Points.AsSpan(), pool, out Vector3 centre, out var hull);
+                Vector3 off = Vector3.Transform(centre, local.Orientation);
+                var p = new RigidPose(local.Position + off, local.Orientation);
+                builder.AddForKinematic(sim.Shapes.Add(hull), in p, 1f);
+                break;
+            }
+            case CompoundShape nested:
+                foreach (var c in nested.Children)
+                {
+                    Quaternion rot = Quaternion.Concatenate(c.Local.Orientation, local.Orientation);
+                    Vector3 pos = local.Position + Vector3.Transform(c.Local.Position, local.Orientation);
+                    AddFlattenedChild(sim, pool, ref builder, c.Shape, new Pose(pos, rot));
+                }
+                break;
+            case TriangleMeshShape:
+                throw new NotSupportedException(
+                    "A TriangleMeshShape inside a CompoundShape is not supported: a Bepu compound child must be " +
+                    "convex, and a mesh child breaks the broadphase sweep bounds. Use convex pieces in a proxy compound.");
+            default:
+                throw new NotSupportedException(
+                    $"PhysicsShape type '{shape.GetType().Name}' is not supported inside a CompoundShape.");
         }
     }
 }

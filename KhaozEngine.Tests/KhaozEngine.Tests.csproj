@@ -20,6 +20,10 @@
          realistic regression fixture for the swept resolver: complex one-sided geometry with eaves is exactly where
          the resolver's one-sided-mesh handling must not pin or float the capsule. -->
     <None Include="Physics/Fixtures/building_with_eaves.coll" CopyToOutputDirectory="PreserveNewest" />
+    <!-- A REAL authored collision PROXY (compound of convex boxes) baked by ke-propbake from a blacksmith
+         <id>_collision.glb. The goal-metric fixture for the collision-proxy pipeline: a convex proxy must be
+         wedge-free (the capsule can always walk or jump out) while keeping the body + furniture standable. -->
+    <None Include="Physics/Fixtures/blacksmith_proxy.coll" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.App/KhaozEngine.App.csproj" />

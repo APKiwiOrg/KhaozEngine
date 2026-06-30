@@ -22,15 +22,11 @@ the checked-in `CLAUDE.md`. Per-version history: `CHANGELOG.md`.
 
 ## Metapackages (the one-line entry points)
 
-Code-free NuGet metapackages, each a curated dependency group over the granular packages (which still exist for
-fine-grained use - a wire-contract project references just `Netcode.Abstractions`, etc.):
-
-| Metapackage | Pulls in | For |
-|---|---|---|
-| `KhaozEngine.Game2D` | 2D runtime (Windowing/Render2D/Gui/Audio/Particles/Effects/Telegraphs) + `Game` (the Render3D-free loop framework) + `Foundation` | a desktop 2D game |
-| `KhaozEngine.Game3D` | `Game2D` + `Render3D` + `Telegraphs.Render3D` + `Terrain.Render3D` (chunked-LOD terrain mesh + world streaming) + `Game.Render3D` (the 3D scene bridge: GameApp3D/IGameScene3D/SceneManager.Draw3D) | a desktop 3D game |
-| `KhaozEngine.Server` | `Foundation` + netcode (`Netcode`/`.Abstractions`/`.LiteNetLib`) + `Simulation` (fixed-tick host) + `Replication` + `WorldStore` (the dependency-free `IWorldStore` seam only; the `.Sqlite` / `.SqlServer` backends are opt-in and added by the consumer, not bundled) + `Sharding` (cell-grid topology / ShardHost) + `NetWorld` (single-World `WorldServer` and the multi-cell `ShardedWorldServer` + client glue + `WorldPersistence`) | a headless sim server (no GPU) |
-| `KhaozEngine.Foundation` | the GPU-free foundation (Primitives/App/Content/Diagnostics/Ecs/Localization/Locomotion/Persistence/Serialization/Pooling/Determinism/Collision/Physics/Terrain/Platform/Updates) | a gameplay-logic library (no renderer) |
+The four code-free umbrella metapackages (`Game2D` / `Game3D` / `Server` / `Foundation`) and exactly what each
+pulls in are the single-source "Umbrella metapackages" table in [`../README.md`](../README.md) - don't duplicate
+that table here. The granular packages still exist for fine-grained use (a wire-contract project references just
+`Netcode.Abstractions`, etc.; the `.Sqlite`/`.SqlServer` backends, `Physics.Bepu`, and `Server.Admin` are opt-in
+and added explicitly). This file tracks only which consumer pins which version (below).
 
 ## Consumer matrix
 

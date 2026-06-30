@@ -46,8 +46,8 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 | **KhaozEngine.Simulation** | Headless simulation-host primitives: `FixedTickHost`, a deterministic fixed-timestep accumulator (turns variable elapsed time into whole fixed-dt ticks, with a spiral-of-death backlog guard) that decouples sim rate from render rate; and `IJobScheduler`, the engine's worker-pool seam (`SingleThreadedJobScheduler` inline default + `ThreadPoolJobScheduler` over `Parallel.For`) for fanning independent jobs across cores. The base of the authoritative server loop. | Pure .NET |
 | **KhaozEngine.Replication** | Authoritative ECS replication: `NetId` + a closure-based `ReplicationRegistry`, `SnapshotWriter` (full-state + `WriteFiltered` per-client interest), `ClientReplicationView` (`Apply`/`ApplyDelta`: spawn/despawn/update + interpolation), `ServerReplicator` (per-slot acked baselines + baseline/delta), and `InterestGrid` (area-of-interest spatial query). Transport-free (snapshots are `byte[]`). | Ecs |
 | **KhaozEngine.WorldStore** | Server-side durable-state seam: `IWorldStore` (async keyed `byte[]`, DB-shaped) + a thread-safe `InMemoryWorldStore` reference impl. Durable backends are the two opt-in packages below. | Pure .NET |
-| **KhaozEngine.WorldStore.Sqlite** | SQLite `IWorldStore` backend over `Microsoft.Data.Sqlite` (`SqliteWorldStore`): one `world_store` table, `INSERT ... ON CONFLICT` upsert, raw parameterized async ADO.NET, no EF/ORM. The zero-infra dev/test + single-node backend (keeps persistence headless-testable). In the `Server` umbrella. | WorldStore, Microsoft.Data.Sqlite |
-| **KhaozEngine.WorldStore.SqlServer** | SQL Server / Azure SQL `IWorldStore` backend over `Microsoft.Data.SqlClient` (`SqlServerWorldStore`): `MERGE WITH (HOLDLOCK)` upsert, raw parameterized async ADO.NET, no EF/ORM. The production backend (Azure SQL); same contract as the SQLite one. In the `Server` umbrella. | WorldStore, Microsoft.Data.SqlClient |
+| **KhaozEngine.WorldStore.Sqlite** | SQLite `IWorldStore` backend over `Microsoft.Data.Sqlite` (`SqliteWorldStore`): one `world_store` table, `INSERT ... ON CONFLICT` upsert, raw parameterized async ADO.NET, no EF/ORM. The zero-infra dev/test + single-node backend (keeps persistence headless-testable). Opt-in (NOT in the `Server` umbrella; add explicitly alongside it). | WorldStore, Microsoft.Data.Sqlite |
+| **KhaozEngine.WorldStore.SqlServer** | SQL Server / Azure SQL `IWorldStore` backend over `Microsoft.Data.SqlClient` (`SqlServerWorldStore`): `MERGE WITH (HOLDLOCK)` upsert, raw parameterized async ADO.NET, no EF/ORM. The production backend (Azure SQL); same contract as the SQLite one. Opt-in (NOT in the `Server` umbrella; add explicitly alongside it). | WorldStore, Microsoft.Data.SqlClient |
 | **KhaozEngine.Sharding** | World topology for an authoritative server: a uniform grid of authoritative cells. `CellCoord` (world position -> integer cell coord), `CellSim` (one cell = an ECS `World` + `FixedTickHost` + `ServerReplicator` + `InterestGrid` + read-only border ghosts), `ShardHost` (owns the cell map, creates cells on demand, routes entities to the cell containing their position, ticks every cell at one fixed rate, `SyncGhosts` mirrors border-overlap entities into neighbor cells as `Ghost`s over the `ICellLink` seam, `ProcessHandoffs` transfers authority on a boundary crossing with exactly-once semantics, and `SnapshotForClient` serves a bound client its whole area-of-interest from its single home cell with seamless re-bind on crossing). `Tick` fans the independent cells across an opt-in `IJobScheduler` (default inline) for near-linear-in-cores throughput. The in-process container the seamless-shard topology builds on. | Ecs, Simulation, Replication |
 | **KhaozEngine.NetWorld** | Render-free networked-world layer wiring movement to the authoritative netcode stack: `PlayerMoveState` (wraps a `Locomotion.MoveState`: position + vertical velocity + grounded) + the replicated `MovementState` component carrying the vertical axis on the wire (survives a sharded handoff, forms the client's exact reconcile basis); `PlayerMoveSimulator`/`PlayerMovementSystem` (run `CharacterMovement.Step` server-authoritatively and inside client prediction), `WorldServer`/`ShardedWorldServer` (authoritative sim + per-client AoI snapshots over `SnapshotWriter`+`InterestGrid`, headered with the receiver's net id + last-acked seq, with an opt-in server-side anti-cheat layer - `AntiCheatConfig`: per-connection message rate limiting + an `OnSuspiciousActivity` signal hook for malformed/NaN, flood, and movement-correction anomalies - plus a `Disconnect(slot)` kick seam), and `WorldClient` (wraps `NetClient`+`ClientReplicationView`+`ClientPrediction`, reconciles position + the vertical axis, exposes `EntityRenderState[]`: local predicted, remotes replicated and smoothly interpolated between snapshots by default (a remote glides instead of teleporting one ~tick-rate snapshot-step per ingest, driven by `AdvancePresentation`; opt out with `WorldClientConfig.InterpolateRemotes = false`), each carrying the exact grounded flag + vertical velocity (local predicted, remote from the replicated `MovementState`) so an animator bridge reads jump/fall for remotes too; optional `WorldBounds`/`IPhysicsWorld?` ctor params mirror `WorldServer` so prediction runs against the same bound + solid props, no rubber-banding). Also `WorldPersistence` (+ `PlayerRecord`): wires an `IWorldStore` into the server lifecycle (load-on-join / save-on-leave / periodic dirty snapshot) so the world survives a restart, backend-agnostic. `WorldClient.NetStats` (`ClientNetStats`) surfaces connection health for a telemetry overlay: RTT / loss / byte rates from the transport, the AoI snapshot ingest rate, and the prediction-correction magnitude (last + rolling avg). `WorldClient.LocalHorizontalSpeed` (8.7.0) gives the local player's predicted planar speed (off `ClientPrediction.PredictedHorizontalSpeed`, computed per prediction tick, immune to reconciliation snaps) for a HUD / audio / locomotion blend, alongside `LocalGrounded` / `LocalVerticalVelocity`. Client self-rescue (8.6.0): `WorldClient.RequestSelfRescue()` asks the server to teleport the local player to a server-decided safe spot (an "unstuck"), gated by `WorldServerConfig.SelfRescueDestination` (null = off) + `SelfRescueCooldownSeconds` on both servers; reuses the admin Teleport apply path, rides a length-distinct control frame (`MoveProtocol.ClientControlKind`) so older servers ignore it. Reconnect input backlog (8.8.0): `WorldClient.SendInput` no-ops (returns `-1`) unless connected, so a per-frame send loop builds no stale-input backlog across a long reconnect outage, and `WorldServerConfig.MaxInputBacklog` / `ShardedWorldServerConfig.MaxInputBacklog` (default 8 ticks) caps how far behind live the server falls under a deep backlog (skip-to-newest, latest-wins), so a player is never frozen under minutes of old input on rejoin. In the `Server` umbrella. | Locomotion, Physics, Diagnostics, Collision, Netcode, Replication, Ecs, Sharding, WorldStore, Serialization |
 | **KhaozEngine.Server.Admin** | Opt-in HTTPS admin endpoint (Kestrel + bearer token over TLS) over the `ServerAdmin` surface (list/teleport/kick/broadcast, account enumeration, ban/unban). The only package that references ASP.NET Core; not in the `Server` umbrella. | NetWorld, WorldStore, Microsoft.AspNetCore.App |
@@ -59,9 +59,9 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 
 | Metapackage | Pulls in | For |
 |---|---|---|
-| **KhaozEngine.Game2D** | 2D runtime (Windowing/Render2D/Gui/Audio/Particles/Effects) + `Game` + `Foundation` | a desktop 2D game |
+| **KhaozEngine.Game2D** | 2D runtime (Windowing/Render2D/Gui/Audio/Particles/Effects/Telegraphs) + `Game` + `Foundation` | a desktop 2D game |
 | **KhaozEngine.Game3D** | `Game2D` + `Render3D` + `Game.Render3D` (the 3D scene bridge) + `Telegraphs.Render3D` + `Terrain.Render3D` (chunked-LOD terrain mesh + world streaming) | a desktop 3D game |
-| **KhaozEngine.Server** | `Foundation` + netcode (`Netcode`/`.Abstractions`/`.LiteNetLib`) + `Simulation` (fixed-tick host) + `Replication` + `WorldStore` (+ `.Sqlite` / `.SqlServer` durable backends) + `Sharding` (cell grid) + `NetWorld` (authoritative movement server + client glue + `WorldPersistence`) | a headless sim server (no GPU) |
+| **KhaozEngine.Server** | `Foundation` + netcode (`Netcode`/`.Abstractions`/`.LiteNetLib`) + `Simulation` (fixed-tick host) + `Replication` + `WorldStore` (the `IWorldStore` seam + `InMemoryWorldStore` only; the `.Sqlite` / `.SqlServer` durable backends are opt-in siblings, added explicitly, not bundled) + `Sharding` (cell grid) + `NetWorld` (authoritative movement server + client glue + `WorldPersistence`) | a headless sim server (no GPU) |
 | **KhaozEngine.Foundation** | the GPU-free foundation (Primitives/App/Content/Diagnostics/Ecs/Localization/Locomotion/Persistence/Serialization/Pooling/Collision/Physics/Terrain/Determinism/Platform/Updates) | a gameplay-logic library (no renderer) |
 
 Target framework `net10.0`. MonoGame-free: Silk.NET windowing/input (GLFW natives bundled per-RID), Veldrid
@@ -92,10 +92,9 @@ All docs are indexed in [`docs/INDEX.md`](docs/INDEX.md) (living docs vs the dat
 ## Quickstart (the canonical game-loop wiring)
 
 A game subclasses `GameApp` (2D) or `GameApp3D` (3D) and overrides the per-frame seams; the base owns the
-`AppWindow.Run` loop, clock, viewport, input, and the 2D batch.
+`AppWindow.Run` loop, clock, viewport, input, and the 2D batch. The smallest thing that runs:
 
 ```csharp
-using System.Numerics;
 using KhaozEngine.Game;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
@@ -104,14 +103,7 @@ public sealed class MyGame : GameApp
 {
     public MyGame() : base(GameAppOptions.For("My Game", 1280, 720)) { }
 
-    protected override void OnLoad() { /* load textures/fonts via Surface2D */ }
-
-    protected override void OnUpdate(float dt)
-    {
-        if (Input.WasPressed(Key.Escape)) Quit();
-        if (Pointer.IsTapIn(new Rect(300, 200, 200, 40))) { /* button hit, click-through-safe */ }
-    }
-
+    protected override void OnUpdate(float dt) { if (Input.WasPressed(Key.Escape)) Quit(); }
     protected override void OnDraw2D(SpriteBatch batch) { /* batch.Draw(...) / DrawString(...) */ }
 }
 
@@ -120,9 +112,8 @@ using var game = new MyGame();
 game.Run();
 ```
 
-A 3D game additionally overrides `OnDraw3D(Scene3D scene)` on `GameApp3D`; for a screen stack, push
-`GameScene`s onto the base's `SceneManager` (a 3D scene implements `IGameScene3D` and calls
-`SceneManager.Draw3D`).
+Full wiring reference (the 3D `OnDraw3D`/`GameApp3D` pass, scenes, input, fonts, the click-through-safe
+`Pointer.IsTapIn` pattern): [`docs/USING-KHAOZENGINE.md`](docs/USING-KHAOZENGINE.md), "Wiring a game".
 
 ## Consuming the packages
 

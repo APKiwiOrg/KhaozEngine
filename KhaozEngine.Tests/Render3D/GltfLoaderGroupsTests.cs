@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using System.Linq;
 using System.Numerics;
@@ -34,6 +35,16 @@ public class GltfLoaderGroupsTests
         string path = Path.Combine(Path.GetTempPath(), $"ke_groups_{System.Guid.NewGuid():N}.glb");
         scene.ToGltf2().SaveGLB(path);
         return path;
+    }
+
+    [Fact]
+    public void LoadGroups_NoTriangles_Throws()
+    {
+        var scene = new SceneBuilder();   // empty: no meshes, no triangles
+        string path = Path.Combine(Path.GetTempPath(), $"ke_groups_empty_{System.Guid.NewGuid():N}.glb");
+        scene.ToGltf2().SaveGLB(path);
+        try { Assert.Throws<InvalidOperationException>(() => GltfLoader.LoadGroups(path)); }
+        finally { File.Delete(path); }
     }
 
     [Fact]

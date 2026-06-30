@@ -46,6 +46,7 @@ public class PropCollisionBakeProxyTests
         {
             Assert.IsType<ConvexHullShape>(child.Shape);
             Assert.Equal(Quaternion.Identity, child.Local.Orientation);
+            Assert.Equal(Vector3.Zero, child.Local.Position);
         }
 
         // Render-frame normalization: scale 2x means the floor slab's top sits near y=1 (0.5 raw * 2).
@@ -53,6 +54,21 @@ public class PropCollisionBakeProxyTests
         float maxY = float.MinValue;
         foreach (var p in floorPts) maxY = MathF.Max(maxY, p.Y);
         Assert.InRange(maxY, 0.9f, 1.1f);
+    }
+
+    [Fact]
+    public void BakeProxy_AllGroupsDegenerate_Throws()
+    {
+        GltfMesh renderRaw = Box(new Vector3(-1, 0, -1), new Vector3(1, 4, 1));
+        // A single flat quad in the y=0 plane: 4 coplanar verts, 2 triangles. Coplanar => skipped.
+        var quadVerts = new ModelVertex[]
+        {
+            new() { Position = new Vector3(-1, 0, -1) }, new() { Position = new Vector3(1, 0, -1) },
+            new() { Position = new Vector3(1, 0, 1) },  new() { Position = new Vector3(-1, 0, 1) },
+        };
+        var quad = new GltfMesh(quadVerts, new uint[] { 0, 1, 2, 0, 2, 3 });
+        var groups = new List<GltfMesh> { quad };
+        Assert.Throws<InvalidOperationException>(() => PropCollisionBake.BakeProxy(renderRaw, 8f, groups));
     }
 
     [Fact]

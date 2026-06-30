@@ -392,8 +392,10 @@ namespace KhaozEngine.Render3D
             {
                 var pts = new List<Vector3>(group.Vertices.Length);
                 foreach (ModelVertex v in group.Vertices) pts.Add(Normalize(v.Position));
-                if (pts.Count < 4 || IsCoplanar(pts)) continue;     // not a solid convex piece, skip
-                children.Add(new CompoundChild(HullFromPoints(pts), Pose.At(Vector3.Zero)));
+                if (pts.Count < 4) continue;                          // obviously too few to be a solid piece
+                ConvexHullShape hull = HullFromPoints(pts);           // dedups (5 mm bucket) + sorts deterministically
+                if (hull.Points.Length < 4 || IsCoplanar(hull.Points)) continue;   // degenerate after dedup: skip
+                children.Add(new CompoundChild(hull, Pose.At(Vector3.Zero)));
             }
             if (children.Count == 0)
                 throw new InvalidOperationException("BakeProxy: no proxy group produced a convex hull (all empty/coplanar).");

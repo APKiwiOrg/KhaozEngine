@@ -14,4 +14,11 @@ public enum DisconnectReason
     ServerShutdown,
     /// <summary>No snapshot arrived within the configured timeout while the transport was still nominally up.</summary>
     Timeout,
+    /// <summary>The client is incompatible with the server's build/protocol. Set either when the connect-time
+    /// version handshake rejected the client (a <see cref="VersionCheckingAuthenticator"/> mismatch -
+    /// <see cref="WorldClient.DisconnectReasonDetail"/> carries the server's required version), or as a last-resort
+    /// backstop when a snapshot could not be decoded (an unregistered component type id from a newer protocol -
+    /// the detail carries the decode error). Not retried: the client must update. Show "client out of date,
+    /// please update".</summary>
+    IncompatibleVersion,
 }

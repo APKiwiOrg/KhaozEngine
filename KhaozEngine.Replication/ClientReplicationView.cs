@@ -86,6 +86,45 @@ public sealed class ClientReplicationView
         }
     }
 
+    /// <summary>
+    /// Non-throwing <see cref="Apply"/>: catches a malformed/incompatible snapshot (e.g. an unregistered
+    /// component type id from a newer server protocol) and returns <c>false</c> with the reason in
+    /// <paramref name="error"/> instead of throwing into the caller's frame loop. A failed apply may leave the
+    /// view partially updated, so the caller should treat <c>false</c> as terminal for the session (disconnect
+    /// and surface "client out of date"), not retry against the same stream. Returns <c>true</c> on success.
+    /// </summary>
+    public bool TryApply(World world, byte[] snapshot, out string? error)
+    {
+        try
+        {
+            Apply(world, snapshot);
+            error = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return false;
+        }
+    }
+
+    /// <summary>Non-throwing <see cref="ApplyDelta"/>: same contract as <see cref="TryApply"/> (a baseline
+    /// mismatch or an unregistered type id yields <c>false</c> + <paramref name="error"/> instead of a throw).</summary>
+    public bool TryApplyDelta(World world, byte[] delta, out string? error)
+    {
+        try
+        {
+            ApplyDelta(world, delta);
+            error = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return false;
+        }
+    }
+
     private Entity GetOrSpawn(World world, int netId)
     {
         if (entityByNetId.TryGetValue(netId, out Entity e) && world.IsAlive(e)) return e;

@@ -38,6 +38,15 @@ public sealed class WorldClientConfig
 
     /// <summary>Backoff schedule for auto-reconnect.</summary>
     public ReconnectBackoff Reconnect { get; init; } = ReconnectBackoff.Default;
+
+    /// <summary>Opt-in connect-time version handshake. When set, the client prepends this protocol/build version to
+    /// its connect token (see <see cref="ProtocolHandshake.WrapToken"/>); a server running a
+    /// <see cref="VersionCheckingAuthenticator"/> compares it and, on mismatch, rejects cleanly - surfaced here as
+    /// <see cref="DisconnectReason.IncompatibleVersion"/> (the required version in
+    /// <see cref="WorldClient.DisconnectReasonDetail"/>) instead of the client proceeding to receive snapshots it
+    /// cannot decode. Null (default) = no version sent: byte-identical to the pre-handshake wire, and a
+    /// version-checking server treats it as a legacy/unknown-version client.</summary>
+    public string? ProtocolVersion { get; init; }
 }
 
 /// <summary>
@@ -138,9 +147,11 @@ public sealed class WorldClient : IDisposable
         if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
         config ??= new WorldClientConfig();
         this.connectFactory = connectFactory;
-        this.token = token;
+        // Opt-in version handshake: wrap the token with the protocol version so a version-checking server can gate
+        // the connect. Store the wrapped form so each reconnect attempt resends it. Null = unwrapped (legacy wire).
+        this.token = config.ProtocolVersion is null ? token : ProtocolHandshake.WrapToken(config.ProtocolVersion, token);
         ownedTransport = connectFactory is not null ? transport : null;   // we dispose only what we built
-        net = new NetClient(transport, token);
+        net = new NetClient(transport, this.token);
         view = new ClientReplicationView(registry);
         // Predict against the SAME physics world the server is authoritative over (mirrors WorldServer),
         // so a solid-prop consumer predicts straight rather than rubber-banding. Defaults null = terrain-only.
@@ -193,6 +204,12 @@ public sealed class WorldClient : IDisposable
 
     /// <summary>Raised when the server pushes a <see cref="ServerNotice"/> (e.g. a maintenance/restart warning).</summary>
     public event Action<ServerNotice>? NoticeReceived;
+
+    /// <summary>Raised when an incoming snapshot could not be decoded (e.g. an unregistered component type id from a
+    /// newer server protocol). The client disconnects with <see cref="DisconnectReason.IncompatibleVersion"/>; the
+    /// argument is the decode error. A consumer can subscribe to log it or show "client out of date, please update"
+    /// without polling <see cref="DisconnectReason"/>.</summary>
+    public event Action<string>? SnapshotDecodeFailed;
 
     /// <summary>The most recent <see cref="ServerNotice"/> received, or null if none. Lets a consumer that attaches
     /// late, or polls instead of subscribing, still read the latest notice.</summary>
@@ -274,9 +291,19 @@ public sealed class WorldClient : IDisposable
                     OnServerFrame(ev.Data);
                     break;
                 case ClientSessionEventKind.Rejected:
-                    disconnectReason = DisconnectReason.RejectedToken;
-                    disconnectReasonDetail = ev.RejectReason;
-                    FailAttempt(allowReconnect: retryOnReject);
+                    if (ProtocolHandshake.TryParseIncompatibleReason(ev.RejectReason, out string requiredVersion))
+                    {
+                        // Version handshake rejected us: terminal (retrying the same build will keep failing).
+                        disconnectReason = DisconnectReason.IncompatibleVersion;
+                        disconnectReasonDetail = requiredVersion;
+                        FailAttempt(allowReconnect: false);
+                    }
+                    else
+                    {
+                        disconnectReason = DisconnectReason.RejectedToken;
+                        disconnectReasonDetail = ev.RejectReason;
+                        FailAttempt(allowReconnect: retryOnReject);
+                    }
                     break;
                 case ClientSessionEventKind.Disconnected:
                     if (state != WorldConnectionState.Disconnected)
@@ -449,10 +476,17 @@ public sealed class WorldClient : IDisposable
     private void OnSnapshot(byte[] data)
     {
         if (!MoveProtocol.TryDecodeSnapshotFrame(data, out int localNetId, out int ackSeq, out byte[] snapshot)) return;
+        // Last-resort backstop: a snapshot we can't decode (e.g. an unregistered component type id from a newer
+        // server protocol) must become a clean disconnect, never an unhandled exception in the consumer's frame
+        // loop. Surfaced as IncompatibleVersion so the consumer shows "client out of date, please update".
+        if (!view.TryApply(world, snapshot, out string? decodeError))
+        {
+            OnSnapshotDecodeFailed(decodeError);
+            return;
+        }
         snapshotsSinceWindow++;                                  // NetStats: AoI snapshot ingest rate
         bool first = LocalNetId < 0;
         LocalNetId = localNetId;
-        view.Apply(world, snapshot);
 
         if (interpolateRemotes)
         {
@@ -489,6 +523,18 @@ public sealed class WorldClient : IDisposable
             ReconciliationResult rr = prediction.Reconcile(authoritativeTick++, basis, ackSeq);
             RecordCorrection(rr.PositionError);                  // NetStats: predicted-vs-authoritative delta (m)
         }
+    }
+
+    // A snapshot could not be decoded: surface it as a clean, terminal disconnect (the client is out of date;
+    // reconnecting to the same build would just fail the same way) rather than letting the throw escape into the
+    // consumer's frame loop. Matches the connect-time handshake's DisconnectReason.IncompatibleVersion path.
+    private void OnSnapshotDecodeFailed(string? error)
+    {
+        string detail = string.IsNullOrEmpty(error) ? "snapshot decode failed" : error!;
+        disconnectReason = DisconnectReason.IncompatibleVersion;
+        disconnectReasonDetail = detail;
+        SnapshotDecodeFailed?.Invoke(detail);
+        FailAttempt(allowReconnect: false);
     }
 
     // --- NetStats helpers (diagnostics only) ---

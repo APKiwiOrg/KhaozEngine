@@ -19,7 +19,7 @@ namespace KhaozEngine.Updates;
 /// it never touches game simulation or RNG. Offline-safe: check failures fall back to <see
 /// cref="UpdateState.Idle"/>.
 /// </summary>
-public sealed class UpdateService : IDisposable, IUpdateStatus
+public sealed partial class UpdateService : IDisposable, IUpdateStatus
 {
     private readonly UpdateServiceOptions options;
     private readonly IUpdateSource source;
@@ -47,6 +47,10 @@ public sealed class UpdateService : IDisposable, IUpdateStatus
     private long totalDownloadBytes;
     private string? errorMessage;
     private bool required;
+    // True once the most recent CheckForUpdateAsync reached the feed and got version info (vs. a down/slow/
+    // unreachable feed, which leaves it false). Read by EnsureUpToDateAsync to tell "up to date" from "couldn't
+    // check" - both otherwise rest at Idle. Only meaningful immediately after a check.
+    private bool lastCheckReachedFeed;
 
     public UpdateState State => state;
     public string? RemoteVersion => remoteVersion;
@@ -101,6 +105,7 @@ public sealed class UpdateService : IDisposable, IUpdateStatus
         }
 
         SetState(UpdateState.Checking);
+        lastCheckReachedFeed = false;
 
         try
         {
@@ -110,6 +115,7 @@ public sealed class UpdateService : IDisposable, IUpdateStatus
                 SetState(UpdateState.Idle);
                 return;
             }
+            lastCheckReachedFeed = true;   // reached the feed and got version info (vs. a down/slow feed)
 
             if (!UpdateVersion.IsNewer(currentVersion, latest.Version))
             {

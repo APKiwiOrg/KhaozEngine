@@ -283,6 +283,149 @@ public class SweptCollisionTests
     }
 
     [Fact]
+    public void RunJumpIntoWall_ArrivingAirborne_FallsBackToGround_NeverPins()
+    {
+        // The tester report (the screenshot): run up to a town building and jump into it, and get PINNED partway up
+        // the wall (mid-jump pose, grounded=no, NOT falling - the position frozen while vertical velocity rails to
+        // terminal). The case the grounded-walk-into (horizontal) and airborne-fall-beside-clear (starts off the
+        // wall) tests miss: the capsule arrives at the one-sided wall WHILE AIRBORNE and pressing in, landing exactly
+        // TANGENT to it via a graze the swept move does not register as a hit (pos += delta lands it flush on the
+        // face). From then on every sweep starts touching, so SweepCapsule returns t=0 / zero-normal and the
+        // resolver's degenerate branch makes no progress - up OR down. ComputePenetration cannot reopen a gap (a
+        // one-sided face reports no overlap), so depenetrate-to-clearance is a no-op for buildings. The capsule must
+        // fall back to the ground and end grounded, never freeze pinned against the wall.
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        world.AddStatic(ThinWallAtZ2(), Pose.At(Vector3.Zero));   // wall at z=2, faces -Z, spans y[0,3]
+        world.Step(1f / 60f);
+
+        // Grounded a short run-up back from the wall; jump on the first tick and keep running +Z into it. The
+        // capsule clears the ground, rises, and reaches the wall on the way down - arriving airborne and tangent.
+        var state = new MoveState { Position = new Vector3(0f, 0.9f, -1.5f), Grounded = true };
+        float restY = state.Position.Y;
+        var runIntoJump = new MoveCommand(new Vector2(0f, -1f), run: true, cameraYaw: 0f, jump: true);
+        var runInto = new MoveCommand(new Vector2(0f, -1f), run: true, cameraYaw: 0f, jump: false);
+
+        float peakY = state.Position.Y;
+        for (int i = 0; i < 240; i++)
+        {
+            MoveCommand cmd = i == 0 ? runIntoJump : runInto;   // one jump press, then hold into the wall
+            state = CharacterMovement.Step(state, cmd, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
+            if (state.Position.Y > peakY) peakY = state.Position.Y;
+        }
+
+        // It actually jumped (left the ground during the arc).
+        Assert.True(peakY > restY + 0.5f, $"did not jump (rest y={restY:F2}, peak y={peakY:F2})");
+        // And came all the way back down: grounded on the terrain again, never pinned partway up the wall.
+        Assert.True(state.Grounded, $"pinned mid-jump against the wall (grounded={state.Grounded}, pos={state.Position})");
+        Assert.True(state.Position.Y < restY + 0.05f, $"hung partway up the wall instead of falling back (y={state.Position.Y:F2}, rest={restY:F2})");
+        // And did not tunnel through it.
+        Assert.True(state.Position.Z < 1.65f, $"tunneled into the wall (z={state.Position.Z:F2})");
+    }
+
+    [Fact]
+    public void RunJumpIntoTallClosedShell_NeverEnters_AndLands()
+    {
+        // The realistic building case for the jump fix: a CLOSED one-sided shell (a hollow building - the trap-risk
+        // shape, inner faces generate no contacts) taller than the jump, driven into at a run WHILE jumping. The
+        // capsule must never get inside the shell (the swept resolver's trap-proofing must survive the degenerate-
+        // contact recovery the jump fix adds), and must end grounded back on the terrain - not flung up and over.
+        // Near face at z=1.5 (faces -Z), shell spans x[-2.5,2.5], y[-1.5,3.5], z[1.5,6.5]; jump apex (~head y 3.0)
+        // stays below the y=3.5 roof, so the capsule presses a tall wall, never clearing it.
+        var box = ClosedOneSidedBox(new Vector3(0f, 1f, 4f), 2.5f);
+        static bool Inside(Vector3 p) =>
+            p.X > -2.5f && p.X < 2.5f && p.Y > -1.5f && p.Y < 3.5f && p.Z > 1.5f && p.Z < 6.5f;
+
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        world.AddStatic(box, Pose.At(Vector3.Zero));
+        world.Step(1f / 60f);
+
+        var state = new MoveState { Position = new Vector3(0f, 0.9f, -1f), Grounded = true };
+        var runJump = new MoveCommand(new Vector2(0f, -1f), run: true, cameraYaw: 0f, jump: true);   // +Z into the shell
+        var run = new MoveCommand(new Vector2(0f, -1f), run: true, cameraYaw: 0f, jump: false);
+        for (int i = 0; i < 360; i++)
+        {
+            MoveCommand cmd = (i % 60 == 0) ? runJump : run;   // jump repeatedly while held against the wall
+            state = CharacterMovement.Step(state, cmd, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
+            Assert.False(Inside(state.Position), $"tick {i}: capsule entered the closed shell at {state.Position}");
+        }
+        Assert.True(state.Grounded, $"did not settle grounded after jumping at the wall (pos={state.Position})");
+        Assert.True(state.Position.Y < 1.0f, $"flung up / left on the roof instead of on the ground (y={state.Position.Y:F2})");
+    }
+
+    [Fact]
+    public void JumpStraightUpAtWall_SlidesUpAndLands()
+    {
+        // The settled case (regression guard, passes pre-fix): a capsule grounded flush against a one-sided wall,
+        // jumping straight up while pressed in, slides UP the wall (up is parallel to the face) and lands back down.
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        world.AddStatic(ThinWallAtZ2(), Pose.At(Vector3.Zero));   // wall at z=2, faces -Z, spans y[0,3]
+        world.Step(1f / 60f);
+
+        var state = new MoveState { Position = new Vector3(0f, 0.9f, 0f), Grounded = true };
+        var into = new MoveCommand(new Vector2(0f, -1f), run: false, cameraYaw: 0f, jump: false);   // +Z into wall
+        for (int i = 0; i < 90; i++)
+            state = CharacterMovement.Step(state, into, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
+        Assert.True(state.Position.Z > 1.5f && state.Grounded, $"setup: did not settle grounded at the wall (pos={state.Position}, grounded={state.Grounded})");
+        float restY = state.Position.Y;
+
+        var jumpInto = new MoveCommand(new Vector2(0f, -1f), run: false, cameraYaw: 0f, jump: true);
+        float peakY = state.Position.Y;
+        for (int i = 0; i < 240; i++)
+        {
+            MoveCommand cmd = i == 0 ? jumpInto : into;
+            state = CharacterMovement.Step(state, cmd, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
+            if (state.Position.Y > peakY) peakY = state.Position.Y;
+        }
+
+        Assert.True(peakY > restY + 0.5f, $"did not rise up the wall on the jump (rest y={restY:F2}, peak y={peakY:F2})");
+        Assert.True(state.Grounded, $"pinned mid-jump against the wall (grounded={state.Grounded}, pos={state.Position})");
+        Assert.True(state.Position.Y < restY + 0.05f, $"hung partway up the wall instead of falling back (y={state.Position.Y:F2}, rest={restY:F2})");
+        Assert.True(state.Position.Z < 1.65f, $"tunneled into the wall (z={state.Position.Z:F2})");
+    }
+
+    // One-sided side wall at x=2 facing -X (ZY plane); with ThinWallAtZ2 it forms an inner corner at (x=2, z=2).
+    private static TriangleMeshShape SideWallAtX2()
+    {
+        var sv = new[]
+        {
+            new Vector3(2f, 0f, -10f), new Vector3(2f, 0f, 10f),
+            new Vector3(2f, 3f, 10f), new Vector3(2f, 3f, -10f),
+        };
+        return new TriangleMeshShape(sv, new[] { 0, 1, 2, 0, 2, 3 });
+    }
+
+    [Fact]
+    public void RunJumpIntoInnerCorner_ArrivingAirborne_FallsBackToGround()
+    {
+        // The corner variant of the jump pin (the screenshot shows a player pinned at a building CORNER): two
+        // one-sided walls meeting at an inner corner, run-jumped into so the capsule arrives airborne and tangent to
+        // BOTH faces at once. Each degenerate contact must recover independently so the capsule slides down the
+        // corner and lands, never freezing wedged mid-corner, and never tunnels either wall.
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        world.AddStatic(ThinWallAtZ2(), Pose.At(Vector3.Zero));    // z=2, faces -Z
+        world.AddStatic(SideWallAtX2(), Pose.At(Vector3.Zero));    // x=2, faces -X
+        world.Step(1f / 60f);
+
+        var state = new MoveState { Position = new Vector3(0f, 0.9f, 0f), Grounded = true };
+        float restY = state.Position.Y;
+        var diagJump = new MoveCommand(Vector2.Normalize(new Vector2(1f, -1f)), run: true, cameraYaw: 0f, jump: true);   // +X +Z into the corner
+        var diag = new MoveCommand(Vector2.Normalize(new Vector2(1f, -1f)), run: true, cameraYaw: 0f, jump: false);
+
+        float peakY = state.Position.Y;
+        for (int i = 0; i < 240; i++)
+        {
+            MoveCommand cmd = i == 0 ? diagJump : diag;
+            state = CharacterMovement.Step(state, cmd, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
+            if (state.Position.Y > peakY) peakY = state.Position.Y;
+        }
+
+        Assert.True(peakY > restY + 0.5f, $"did not jump (rest y={restY:F2}, peak y={peakY:F2})");
+        Assert.True(state.Grounded, $"pinned mid-jump in the corner (grounded={state.Grounded}, pos={state.Position})");
+        Assert.True(state.Position.Y < restY + 0.05f, $"hung in the corner instead of falling back (y={state.Position.Y:F2})");
+        Assert.True(state.Position.Z < 1.65f && state.Position.X < 1.65f, $"tunneled into a corner wall (pos={state.Position})");
+    }
+
+    [Fact]
     public void GroundedWalkIntoTrunk_DoesNotStickOrFloat()
     {
         // The tester report: "stuck just walking into a tree". A GROUNDED capsule walking horizontally into a trunk

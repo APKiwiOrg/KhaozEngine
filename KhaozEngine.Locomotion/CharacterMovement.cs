@@ -346,11 +346,23 @@ public static class CharacterMovement
             Vector3 n = hit.Normal;
             if (n.LengthSquared() <= 1e-12f)
             {
-                // Still degenerate after depenetration: the move is straight into a surface the capsule is exactly
-                // tangent to (depenetration left it right at the boundary). No slide plane and no clear advance INTO
-                // it, so stop this substep; the next substep/tick depenetrates + sweeps afresh. Rare now that every
-                // sweep starts clear - the old normal-less floor-vs-wall guessing (which froze strafes / hung falls)
-                // is gone.
+                // Degenerate contact: the sweep started TANGENT to a one-sided mesh (a building wall) so Bepu
+                // returns t=0 with a ZERO normal - no slide plane. This is the case 8.5.3's depenetrate-to-clearance
+                // cannot prevent: ComputePenetration reports NO overlap for a one-sided face (depth 0 at a tangent),
+                // so the capsule CAN reach the touching state - e.g. a jump that arrives airborne pressing in lands
+                // flush on the wall via a graze the sweep does not count as a hit. With a bare stop here the capsule
+                // freezes: it can neither fall nor strafe, pinned mid-wall (the tester's "stuck up the building").
+                // Recover the real contact normal by re-sweeping from a start pulled back along -dir (provably clear,
+                // so Bepu yields a real normal), then slide the remainder along it - the into-surface component is
+                // blocked while the along component (gravity, strafe, the rise of a jump) proceeds. If the move is
+                // genuinely parallel to the face (no normal recoverable) stop this substep; the next tick re-tries.
+                if (TryContactNormal(world, capsule, pos, dir, out Vector3 recovered))
+                {
+                    pos += recovered * SkinWidth;                                       // step off so the next sweep is clean
+                    if (recovered.Y >= cosMaxSlope) { pos += remaining; break; }        // degenerate floor: pass the remainder through
+                    delta = remaining - Vector3.Dot(remaining, recovered) * recovered;  // slide along the recovered wall plane
+                    continue;
+                }
                 break;
             }
             n = Vector3.Normalize(n);
@@ -378,6 +390,37 @@ public static class CharacterMovement
             delta = remaining - Vector3.Dot(remaining, n) * n;   // wall: slide along the contact plane
         }
         return pos;
+    }
+
+    // Recovery sweep: pull back this many radii along -dir (a provably clear start, since a tangent capsule touches
+    // at the surface) and re-sweep this many radii forward to read the contact normal. The re-contact sits at
+    // t = RecoverBackRadii * radius; the forward range is wider because Bepu's mesh sweep does not report a hit that
+    // lands in the far portion of the swept range (empirically it must sit within ~half) - so it is swept to
+    // RecoverSweepRadii * radius (> 2x the contact distance) to be registered reliably.
+    private const float RecoverBackRadii  = 1f;
+    private const float RecoverSweepRadii = 3f;
+
+    /// <summary>Recover the contact normal Bepu withholds when a capsule sweep starts TANGENT to a one-sided mesh
+    /// (it reports t=0 with a zero normal, leaving no slide plane). The capsule is pulled back along
+    /// <paramref name="dir"/> to a provably clear start and the sweep is re-run, so Bepu returns a real surface
+    /// normal at the face it re-contacts (at distance <c>RecoverBackRadii * radius</c>). Only the NEAREST hit's
+    /// NORMAL is read - the capsule is not advanced by this query - so the wider sweep range cannot tunnel; the
+    /// nearest hit is the touched face. Returns false when the move is parallel to the face (the back-off stays
+    /// tangent, no normal recoverable), in which case the caller leaves the substep be and the next tick re-tries.
+    /// Used only on the rare degenerate one-sided-mesh contact, so the convex-prop path (rocks, tree-trunk hulls;
+    /// depenetrated to clearance) never reaches here.</summary>
+    private static bool TryContactNormal(IPhysicsWorld world, CapsuleShape capsule, Vector3 pos, Vector3 dir,
+        out Vector3 normal)
+    {
+        normal = default;
+        Vector3 backed = pos - dir * (RecoverBackRadii * capsule.Radius);
+        if (world.SweepCapsule(capsule, Pose.At(backed), dir, RecoverSweepRadii * capsule.Radius, out SweepHit hit)
+            && hit.Normal.LengthSquared() > 1e-12f)
+        {
+            normal = Vector3.Normalize(hit.Normal);
+            return true;
+        }
+        return false;
     }
 
     /// <summary>Classic up/forward/down step probe over the horizontal remainder: sweep up by

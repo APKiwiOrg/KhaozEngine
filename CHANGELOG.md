@@ -5,6 +5,14 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 8.6.1
+
+Fix: a jump INTO a one-sided building wall no longer pins the character partway up it (mid-jump pose, grounded=no, not falling). The case 8.5.3 did not cover: an airborne capsule pressing into a wall.
+
+- Root cause: a capsule that arrives at a one-sided mesh WHILE AIRBORNE and pressing in lands exactly TANGENT to the face via a graze the swept move does not register as a hit (the clear-path advance places it flush on the wall). From then on every sweep starts touching, so `SweepCapsule` returns t=0 with a zero normal. 8.5.3's depenetrate-to-clearance cannot reopen a gap for a one-sided face (`ComputePenetration` reports no overlap at a tangent), so `SlideSubstep`'s degenerate branch - a bare stop since 8.5.3 - made no progress up OR down. The capsule froze, vertical velocity railing to terminal while the position never moved (the tester's "stuck up the building wall").
+- Fix: the degenerate branch now RECOVERS the real contact normal instead of stopping. `TryContactNormal` pulls the capsule back along -dir to a provably clear start and re-sweeps, so Bepu yields a real normal at the face it re-contacts (the forward range is widened past 2x the re-contact distance because Bepu's mesh sweep does not report a hit landing in the far portion of the swept range). The remainder is then slid along that plane: the into-surface component is blocked while the along component (gravity, strafe, the rise of a jump) proceeds. Only the nearest hit's normal is read (the capsule is not advanced by the query), so it cannot tunnel. The convex-prop path (rocks, tree-trunk hulls; depenetrated to clearance by 8.5.3) never reaches the degenerate branch, so its behaviour is byte-identical - reconciliation and determinism unchanged.
+- Coverage (`SweptCollisionTests`): run-jump INTO a one-sided wall arriving airborne falls back to the ground and ends grounded (never pins); the same into an inner corner and into a tall CLOSED building shell (never enters, lands); jump straight up at a wall still slides up and lands. Existing tunnel / slide / inner-corner / stairs / closed-shell / dome-walk / grounded-walk / float-up / determinism tests unchanged and green. Behaviour change for all NetWorld/Simulation consumers; automatic on the pin, no API change. Completes the swept-resolver one-sided-mesh handling begun in 8.4.0.
+
 ## 8.6.0
 
 Additive: a client-initiated self-rescue ("return to spawn" / "unstuck") seam, so a stuck player can ask the authoritative server to teleport it to a server-decided safe position. Off by default; no breaking changes; no protocol-version break.

@@ -59,6 +59,13 @@ version/release work.
   "history over time" view. It goes in the SAME commit as the `Directory.Build.props` version bump. Never bump
   the version (or tag a release) without it. (There is no separate `CHANGENOTES.md` - it was folded into
   `CHANGELOG.md`; one file is the single source of truth.)
+- **Before merging back / releasing, re-check for concurrent work and integrate it FIRST.** Parallel dev is
+  heavy here and local `main` is routinely ahead of `origin/main`, so always assume `main` moved under you. `git
+  fetch`; if `main` advanced past your tree's base, merge `main` INTO your tree first, resolve every conflict and
+  re-run the build + tests on the merged result THERE, so the merge back is clean (never resolve a pile of
+  conflicts on `main`). The shared `<KhaozEngineVersion>` line collides constantly: a concurrent chat may have
+  already bumped it and tagged that `vX.Y.Z`, so re-read the current version on the up-to-date `main` and take the
+  next FREE version for your bump + tag (and rebase your `CHANGELOG.md` entry onto it).
 - Release ritual, in order: bump `<KhaozEngineVersion>` in `Directory.Build.props` → add the
   `CHANGELOG.md` entry → update the engine-version declarations the
   guard checks (`docs/CONSUMERS.md` "Engine current version", `docs/ROADMAP.md` "Current released version", and

@@ -359,6 +359,47 @@ namespace KhaozEngine.Render3D
             return new TriangleMeshShape(positions.ToArray(), indices);
         }
 
+        /// <summary>Bake an authored collision PROXY (one convex piece per object) into a
+        /// <see cref="CompoundShape"/> of convex hulls, normalized into the RENDER mesh's frame so it overlays the
+        /// visual building exactly. The proxy is authored in the render glb's RAW coordinate frame (import the
+        /// render glb, model convex blocks on top, export the blocks only), so the bake derives the render mesh's
+        /// normalization (uniform scale to <paramref name="heightMeters"/>, drop base to y=0, recenter XZ on the
+        /// raw render bounds) from <paramref name="renderRaw"/> and applies that SAME transform to every proxy
+        /// group. Each group is hulled (<see cref="HullFromPoints"/>, deterministic) into one
+        /// <see cref="ConvexHullShape"/> child at identity local pose (the hull points carry world position,
+        /// matching <see cref="BakeConvexHull"/>). Child order = group order, so a re-bake is byte-reproducible.
+        /// A convex child can never trap the capsule (unique shortest exit), so a proxy of convex pieces retires
+        /// the one-sided-mesh wedge/pin class while keeping floors/stairs/ledges/furniture standable. A group with
+        /// fewer than 4 non-coplanar points is skipped; an all-empty proxy throws.</summary>
+        public static CompoundShape BakeProxy(GltfMesh renderRaw, float heightMeters, IReadOnlyList<GltfMesh> proxyGroups)
+        {
+            if (renderRaw == null) throw new ArgumentNullException(nameof(renderRaw));
+            if (proxyGroups == null) throw new ArgumentNullException(nameof(proxyGroups));
+
+            // Render mesh normalization (same formula as PropLoader.Normalize): scale to height, base->0, XZ centre.
+            var mn = new Vector3(float.MaxValue);
+            var mx = new Vector3(float.MinValue);
+            foreach (ModelVertex v in renderRaw.Vertices) { mn = Vector3.Min(mn, v.Position); mx = Vector3.Max(mx, v.Position); }
+            float rawHeight = mx.Y - mn.Y;
+            if (rawHeight <= 1e-6f) throw new InvalidOperationException("BakeProxy: render mesh has no measurable height.");
+            float scale = heightMeters / rawHeight;
+            float cx = (mn.X + mx.X) * 0.5f, cz = (mn.Z + mx.Z) * 0.5f, baseY = mn.Y;
+
+            Vector3 Normalize(Vector3 p) => new((p.X - cx) * scale, (p.Y - baseY) * scale, (p.Z - cz) * scale);
+
+            var children = new List<CompoundChild>(proxyGroups.Count);
+            foreach (GltfMesh group in proxyGroups)
+            {
+                var pts = new List<Vector3>(group.Vertices.Length);
+                foreach (ModelVertex v in group.Vertices) pts.Add(Normalize(v.Position));
+                if (pts.Count < 4 || IsCoplanar(pts)) continue;     // not a solid convex piece, skip
+                children.Add(new CompoundChild(HullFromPoints(pts), Pose.At(Vector3.Zero)));
+            }
+            if (children.Count == 0)
+                throw new InvalidOperationException("BakeProxy: no proxy group produced a convex hull (all empty/coplanar).");
+            return new CompoundShape(children.ToArray());
+        }
+
         /// <summary>Serialize <paramref name="shape"/> to <paramref name="stream"/> in the KECL binary format.
         /// Magic (uint32 LE) + version (byte) + kind (byte) + payload. Delegates to the render-free
         /// <see cref="PropCollisionFormat.Write"/> so the bake tool and the headless server share one

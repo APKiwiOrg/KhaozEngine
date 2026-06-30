@@ -42,7 +42,16 @@ configured base host), and caps both the manifest and each downloaded file at a 
   configurable endpoint, files laid out as siblings of the manifest - SpaceGame's Azure Blob layout,
   but the base URL and endpoint path are configuration). Implement the interface for any other backend.
 - **`UpdateService`** - the check -> download -> apply state machine with resumable staging. Process
-  control (shim launch, exit) is injectable, so the whole thing is headless-testable.
+  control (shim launch, exit) is injectable, so the whole thing is headless-testable. The individual
+  `CheckForUpdateAsync` / `StartDownloadAsync` / `ApplyUpdate` steps are for a fire-and-forget overlay;
+  for a startup gate see `EnsureUpToDateAsync` below.
+- **`EnsureUpToDateAsync`** - the composed startup gate. One awaitable call, run ONCE before connecting,
+  that self-heals an out-of-date client: if a newer signed build exists it downloads + verifies + applies +
+  relaunches (the process exits into the new version); otherwise it returns an `UpdateGateResult` to branch
+  on (`UpToDate` / `Updating` / `FeedUnreachable` / `Failed`). Bounded by a `checkTimeout` (default 10s) so a
+  down/slow feed falls through to `FeedUnreachable` and lets the game continue on the current build rather
+  than blocking startup. Reports `UpdateGateProgress` (phase + byte/file counts) for a "Downloading
+  update..." screen. See "Startup gate" below.
 - **`UpdateApplier`** + **`IUpdaterEnvironment`** - the cross-platform staged-apply core: back up each
   file before overwriting, copy with retries for locked files, roll everything back on any failure,
   install the new manifest, relaunch. A game's updater shim is just `UpdateApplier.Run(args, env)`.
@@ -79,6 +88,31 @@ await updates.CheckForUpdateAsync();             // offline-safe: failures fall 
 
 `InstallDir` defaults to `AppContext.BaseDirectory` and `Platform` to the current OS runtime id
 (`win-x64` / `osx-arm64` / `osx-x64` / `linux-x64`); override either if you publish differently.
+
+## Startup gate
+
+To make an out-of-date client self-heal *before* it connects (instead of running the steps fire-and-forget
+behind an overlay), run the composed gate once at startup and branch on the result:
+
+```csharp
+UpdateGateResult gate = await updates.EnsureUpToDateAsync(
+    progress: new Progress<UpdateGateProgress>(p => ShowUpdateScreen(p.Phase, p.BytesDownloaded, p.TotalBytes)),
+    checkTimeout: TimeSpan.FromSeconds(10));
+
+switch (gate.Outcome)
+{
+    case UpdateGateOutcome.UpToDate:        break;    // newest build (or nothing offered): proceed
+    case UpdateGateOutcome.Updating:        return;   // downloaded + applied: process is exiting into the new build
+    case UpdateGateOutcome.FeedUnreachable: break;    // feed down/slow/timed out: proceed on current build
+    case UpdateGateOutcome.Failed:          break;    // couldn't download/apply (gate.Error): proceed on current build
+}
+```
+
+`Updating` means the relaunch was launched and the process is exiting - in production the call does not return;
+a test with a non-exiting `ExitProcess` hook is the only place you observe it. `FeedUnreachable` and `Failed` are
+non-fatal by design: a startup gate must never block forever on a bad feed, so it falls through and lets the game
+continue on the current build. Pair it with the `KhaozEngine.NetWorld` connect-time version handshake as the
+backstop for the skew it could not prevent.
 
 ## The updater shim
 

@@ -2342,7 +2342,50 @@ client.AdvancePresentation(dt);
 EntityRenderState[] snapshot = client.Snapshot();
 ```
 
-`ConnectionState` (a `WorldConnectionState`) is one of: `Connecting` (initial handshake), `Connected` (in-session), `Reconnecting` (between drop and re-join), `Disconnected` (terminal - bad token or explicit give-up). `DisconnectReason` values: `None`, `RejectedToken`, `Unreachable`, `ServerShutdown`, `Timeout`. The single-transport ctor `WorldClient(INetTransport, ...)` is unchanged (no reconnect, `IDisposable` is a no-op).
+`ConnectionState` (a `WorldConnectionState`) is one of: `Connecting` (initial handshake), `Connected` (in-session), `Reconnecting` (between drop and re-join), `Disconnected` (terminal - bad token or explicit give-up). `DisconnectReason` values: `None`, `RejectedToken`, `Unreachable`, `ServerShutdown`, `Timeout`, `IncompatibleVersion` (the client is out of date - see "Version skew resilience" below). The single-transport ctor `WorldClient(INetTransport, ...)` is unchanged (no reconnect, `IDisposable` is a no-op).
+
+**Version skew resilience.** Two opt-in backstops so a client running an older build than the server never hard-crashes on a snapshot it cannot decode (and ideally never connects on a stale build at all). They compose with the existing token/auth flow.
+
+1. *Update before connecting (`KhaozEngine.Updates`).* Run the composed startup gate ONCE, before opening the transport, so an out-of-date client self-heals:
+
+```csharp
+UpdateGateResult gate = await updates.EnsureUpToDateAsync(
+    progress: new Progress<UpdateGateProgress>(p => ShowUpdateScreen(p.Phase, p.BytesDownloaded, p.TotalBytes)),
+    checkTimeout: TimeSpan.FromSeconds(10));   // bounded: a down feed won't stall startup
+
+switch (gate.Outcome)
+{
+    case UpdateGateOutcome.UpToDate:        break;                 // proceed to connect
+    case UpdateGateOutcome.Updating:        return;                // applying + relaunching; process is exiting
+    case UpdateGateOutcome.FeedUnreachable: break;                 // feed down/slow: proceed, handshake is the backstop
+    case UpdateGateOutcome.Failed:          break;                 // couldn't update: proceed, handshake is the backstop
+}
+```
+
+If a newer signed build exists the gate downloads, verifies, applies, and relaunches into it (the process exits - it does not return). A down/slow feed or a failed apply is non-fatal: the caller continues on the current build and relies on the handshake below.
+
+2. *Connect-time version handshake (`KhaozEngine.NetWorld`).* The backstop for when the gate could not run (feed down, dev build, server upgraded mid-session). The client declares its protocol/build version and the server rejects an incompatible one cleanly, before any snapshot is sent:
+
+```csharp
+// client: declare the version (wraps the connect token; null = no handshake, byte-identical to before)
+var client = new WorldClient(transport, terrain.SampleHeight, MoveTuning.Default,
+    new WorldClientConfig { ProtocolVersion = MyGame.ProtocolVersion }, token: myAccountTokenBytes);
+
+// server: gate on a consumer rule BEFORE the real auth check (compose with any IConnectionAuthenticator)
+var server = new WorldServer(transport, config, terrain.SampleHeight, MoveTuning.Default,
+    authenticator: new VersionCheckingAuthenticator(
+        serverVersion: MyGame.ProtocolVersion,
+        isCompatible: v => v == MyGame.ProtocolVersion,    // or a min-version / range rule
+        inner: new HmacTokenAuthenticator(secret, () => DateTimeOffset.UtcNow)));
+```
+
+A mismatch surfaces on the client as `DisconnectReason.IncompatibleVersion` with the server's required version in `DisconnectReasonDetail`; the client never proceeds to receive snapshots. A version-less client (one that did not set `ProtocolVersion`, e.g. an old build) presents version `""`, so the rule can reject it too. On a compatible version the inner token is delegated to the inner authenticator unchanged.
+
+3. *Graceful decode (last resort).* Even if both above are bypassed, an undecodable snapshot (an unregistered component type id from a newer protocol) becomes a clean `DisconnectReason.IncompatibleVersion` disconnect plus a `SnapshotDecodeFailed` event - never an unhandled exception in your frame loop:
+
+```csharp
+client.SnapshotDecodeFailed += err => ShowOutOfDateUI(err);   // "client out of date, please update"
+```
 
 **Server notices.** Broadcast a typed notice to every connected client:
 

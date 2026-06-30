@@ -40,6 +40,26 @@ No render, window, or GPU dependency: the servers are headless and the client gl
 renders a capsule per `EntityRenderState`). `WorldServer` is the single-`World` slice; `ShardedWorldServer` is
 the multi-cell variant (overworld sub-project 6b).
 
+## Version-skew resilience (since 8.5.0)
+
+Two opt-in backstops so a client on an older build than the server is rejected cleanly instead of hard-crashing
+on a snapshot it cannot decode. Both are additive: the wire and existing ctors are unchanged when unused.
+
+- **Connect-time version handshake.** Set `WorldClientConfig.ProtocolVersion` and `WorldClient` prepends its
+  protocol/build version to the connect token (`ProtocolHandshake.WrapToken`). Wrap your authenticator in a
+  **`VersionCheckingAuthenticator(serverVersion, isCompatible, inner?)`** and pass it as the existing
+  `authenticator:` arg on `WorldServer` / `ShardedWorldServer`: it unwraps the version, runs the
+  consumer-supplied `isCompatible` rule before the real auth check, and on mismatch rejects cleanly. The client
+  surfaces it as `DisconnectReason.IncompatibleVersion` with the server's required version in
+  `DisconnectReasonDetail`, and never proceeds to snapshots. A legacy/version-less client decodes as version
+  `""`, so the rule can reject it; a compatible version delegates the inner token to `inner` unchanged
+  (subject + display-name resolution identical).
+- **Graceful decode (last resort).** `WorldClient.OnSnapshot` decodes via `ClientReplicationView.TryApply`, so an
+  undecodable snapshot (an unregistered component type id from a newer protocol) becomes the same clean
+  `DisconnectReason.IncompatibleVersion` disconnect plus a **`SnapshotDecodeFailed`** event - never an unhandled
+  exception in the consumer's frame loop. Pair with the `KhaozEngine.Updates` startup gate
+  (`UpdateService.EnsureUpToDateAsync`) so a client self-heals before it ever connects.
+
 ## Server administration (since 8.4.2)
 
 Both `WorldServer` and `ShardedWorldServer` implement **`IAdminControllable`**: `ListOnline()` returns the

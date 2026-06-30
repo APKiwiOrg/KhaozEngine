@@ -305,7 +305,7 @@ version/release work.
     multi-cell `ShardedWorldServer`, persists via `SqliteWorldStore`) + `NetworkedWalkSample` (windowed `--connect`
     client, sends a stable account token).
     8.2.0 additive: `WorldClient` exposes a live `ConnectionState` machine (Connecting/Connected/Reconnecting/Disconnected)
-    + `ConnectionStateChanged` + `DisconnectReason`/`DisconnectReasonDetail` (RejectedToken/Unreachable/ServerShutdown/Timeout);
+    + `ConnectionStateChanged` + `DisconnectReason`/`DisconnectReasonDetail` (RejectedToken/Unreachable/ServerShutdown/Timeout/IncompatibleVersion);
     a factory ctor `WorldClient(Func<INetTransport> connect, ...)` adds auto-reconnect with `ReconnectBackoff` and
     `ReconnectAttempt`/`SecondsUntilNextRetry` for a "reconnecting..." UI (`WorldClient` is now `IDisposable`);
     `Poll(float dt = 0f)` (dt 0 = net-only, no health timers; pass real dt for timeout/reconnect detection);
@@ -325,6 +325,18 @@ version/release work.
     `banStore:` ctor arg, ban-while-online kicks); and the `ServerAdmin` facade composing them. `WorldStore` gains the
     opt-in `IEnumerableWorldStore` (`EnumerateAsync` + `WorldStoreEntry`) on `InMemoryWorldStore`/`SqliteWorldStore`/
     `SqlServerWorldStore`.
+    8.5.0 additive: opt-in version-skew resilience (an out-of-date client self-heals before connecting; a skew is
+    never a hard crash). (a) Startup update gate `UpdateService.EnsureUpToDateAsync` (in `Updates`) composes
+    check/download/apply+relaunch into one awaitable run-before-connecting gate, bounded by a check timeout, with
+    `UpdateGateResult`/`UpdateGateOutcome` (UpToDate/Updating/FeedUnreachable/Failed) + `UpdateGateProgress`
+    (`UpdateService` is now `partial`). (b) Connect-time version handshake: `WorldClientConfig.ProtocolVersion`
+    wraps the connect token (`ProtocolHandshake`), a `VersionCheckingAuthenticator` (an `IConnectionAuthenticator`
+    decorator passed as the existing `authenticator:` arg) gates on a consumer rule and rejects a skew as new
+    `DisconnectReason.IncompatibleVersion` (required version in the detail) before any snapshot. (c) Graceful
+    decode: `ClientReplicationView.TryApply`/`TryApplyDelta` (no throw) + `WorldClient` turns an undecodable
+    snapshot (unknown type id) into the same clean `IncompatibleVersion` disconnect + a `SnapshotDecodeFailed`
+    event instead of an unhandled game-loop throw. No change to existing `WorldClient`/`WorldServer`/`UpdateService`
+    construction.
   - **Animated characters (glTF clip playback + locomotion blend, 7.56.0):** the GPU-free animation layer in
     `Render3D` beside the rig/skinning - `GltfLoader.LoadAnimations(path)` reads SharpGLTF `LogicalAnimations` into
     `AnimationClip`s (per-joint TRS keyframe tracks - `JointTrack`/`Vector3Track`/`QuaternionTrack` keyed by glTF

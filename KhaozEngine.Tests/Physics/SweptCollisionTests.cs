@@ -186,6 +186,76 @@ public class SweptCollisionTests
         }
     }
 
+    // A tall solid prop (tree trunk / rock pillar): a convex-hull cylinder, radius `r`, spanning y[0, height],
+    // axis at `c`. Vertical sides (not walkable) + a flat top - the shape a player should be stopped at the base
+    // of, never hauled up the side of.
+    private static ConvexHullShape TrunkHull(Vector3 c, float r = 0.5f, float height = 3f)
+    {
+        var pts = new System.Collections.Generic.List<Vector3>();
+        for (int i = 0; i < 16; i++)
+        {
+            float a = i * MathF.PI * 2f / 16f;
+            var o = new Vector3(MathF.Cos(a) * r, 0f, MathF.Sin(a) * r);
+            pts.Add(c + o);
+            pts.Add(c + o + new Vector3(0f, height, 0f));
+        }
+        return new ConvexHullShape(pts.ToArray());
+    }
+
+    [Fact]
+    public void BesideAProp_CapsuleIsNotLiftedUpItsSide()
+    {
+        // Regression (the "float up trees/rocks/walls" bug): the downward support-floor sweep latched onto a prop
+        // the capsule is pressed BESIDE (not on) - it grazes the prop's top from the side, reports it as the floor,
+        // and the pos.Y = groundY snap HAULS the capsule up onto the prop top. It triggers once the capsule is even
+        // slightly above the terrain (airborne / a jump / uneven ground / a shove). A capsule beside a tall trunk
+        // must fall back to the ground, never be lifted onto the ~3 m trunk top.
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        world.AddStatic(TrunkHull(Vector3.Zero), Pose.At(Vector3.Zero));   // trunk axis at origin, top at y=3
+        world.Step(1f / 60f);
+
+        // Capsule tangent to the trunk's -Z side (centre z = -(0.5 + 0.4) = -0.9), airborne at y=1.5 so the support
+        // probe (which starts 1.8 m above the head) reaches above the trunk top and grazes it. Press toward +Z.
+        var state = new MoveState { Position = new Vector3(0f, 1.5f, -0.9f), Grounded = false, VerticalVelocity = 0f };
+        var intoTrunk = new MoveCommand(new Vector2(0f, -1f), run: false, cameraYaw: 0f, jump: false);
+
+        float peakY = state.Position.Y;
+        for (int i = 0; i < 120; i++)
+        {
+            state = CharacterMovement.Step(state, intoTrunk, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
+            if (state.Position.Y > peakY) peakY = state.Position.Y;
+        }
+
+        Assert.True(peakY < 1.6f, $"capsule was hauled up the trunk side (peak y={peakY}); it must not rise above its start");
+        Assert.True(state.Position.Y < 1.1f, $"capsule did not fall back to the ground beside the trunk (y={state.Position.Y})");
+    }
+
+    [Fact]
+    public void BesideAWall_AirborneCapsuleFallsInsteadOfHanging()
+    {
+        // The building case: a capsule airborne against a one-sided wall (the shape town buildings bake to) must
+        // FALL back down, not hang pinned partway up it (grounded=no, stuck) - the playtest "stuck up the building
+        // wall". Mirrors the trunk test with a thin one-sided mesh.
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        world.AddStatic(ThinWallAtZ2(), Pose.At(Vector3.Zero));   // wall at z=2, faces -Z, spans y[0,3]
+        world.Step(1f / 60f);
+
+        // Airborne at y=1.5, tangent to the wall front (z = 2 - 0.4 = 1.6), pressing +Z into it.
+        var state = new MoveState { Position = new Vector3(0f, 1.5f, 1.6f), Grounded = false, VerticalVelocity = 0f };
+        var intoWall = new MoveCommand(new Vector2(0f, -1f), run: false, cameraYaw: 0f, jump: false);
+
+        float peakY = state.Position.Y;
+        for (int i = 0; i < 120; i++)
+        {
+            state = CharacterMovement.Step(state, intoWall, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
+            if (state.Position.Y > peakY) peakY = state.Position.Y;
+        }
+
+        Assert.True(peakY < 1.6f, $"capsule rose up the wall (peak y={peakY})");
+        Assert.True(state.Position.Y < 1.1f, $"capsule hung on the wall instead of falling (y={state.Position.Y})");
+        Assert.True(state.Position.Z < 1.65f, $"capsule tunneled into the wall (z={state.Position.Z})");
+    }
+
     [Fact]
     public void FastPath_IsDeterministic_AcrossTwoWorlds()
     {

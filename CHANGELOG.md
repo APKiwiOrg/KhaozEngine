@@ -5,6 +5,15 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 8.5.2
+
+Fix: characters no longer "float up" / hang on the side of solid props (trees, rocks, building walls). Two defects in the 8.4.0 swept resolver, both when a capsule is pressed BESIDE a tall static (not standing on it):
+
+- `CharacterMovement.Step`'s downward support-floor sweep latched onto a prop the capsule is beside - it grazes the prop's surface ~one radius off the axis and was treated as the floor, hauling the capsule up the prop's side (or onto its top). The support hit must now be walkable-up (`Normal.Y >= cos(maxSlope)`) AND its contact point must sit under the capsule footprint (`UnderFootprint`, within ~0.9 of the radius of the axis); a sideways graze fails both and is ignored.
+- `SlideSubstep`'s degenerate (zero-normal, t=0) contact branch made NO vertical progress when a downward sweep grazed a prop/wall side, so gravity could not pull the capsule down past a surface it was touching - it hung mid-air (the "grounded=no, pinned partway up the wall" playtest report). The branch now lets a DOWNWARD remainder through unconditionally (step 4's support floor clamps it back up if it is genuinely a floor under the feet); an upward remainder stays blocked (no tunneling up through an overhang the head hit). The horizontal floor-vs-wall discrimination is unchanged.
+
+Regression coverage (`SweptCollisionTests`): a capsule airborne beside a tall convex-hull trunk, and beside a one-sided wall, must FALL back to the ground - never be lifted up the side or hung against it. The existing tunnel / slide / inner-corner / stairs / closed-shell / determinism tests are unchanged and still pass. Behavior change for all NetWorld/Simulation consumers; automatic on the pin, no API change.
+
 ## 8.5.1
 
 Fix: the admin HTTPS endpoint's `GET /admin/online` was serializing each player's position as an empty `{}`, so every consumer read a zero position.

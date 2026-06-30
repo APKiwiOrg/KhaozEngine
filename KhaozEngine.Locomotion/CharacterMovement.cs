@@ -155,12 +155,18 @@ public static class CharacterMovement
         {
             float probeStart = pos.Y + 2f * halfH;                 // above the head, clear of a standable prop
             float maxProbe = (probeStart - terrainGroundY) + 2f * halfH;
-            // Require an UPWARD-facing hit. A tall wall the capsule is beside extends above the head, so the sweep
-            // starts already inside the wall side and Bepu reports a zero-distance hit with a degenerate (zero)
-            // normal - NOT a floor, and it must not lift the capsule onto the wall top. A real prop top under the
-            // capsule gives a positive-distance hit with an up normal.
+            // The hit must be a FLOOR genuinely under the capsule, not a graze on the SIDE of a prop the capsule is
+            // pressed against. A swept-down capsule beside a tall prop (trunk / rock / building wall) grazes that
+            // prop ~one radius off the axis; treating that as floor used to HAUL the capsule up the prop's side, or
+            // hang it there mid-air, instead of letting it fall - the "float up trees/rocks/walls" bug. Two guards:
+            // (a) the contact is walkable-up (n.Y >= cos(maxSlope)), so a steep wall face / degenerate zero-normal
+            // side contact is rejected; and (b) its XZ point sits under the capsule footprint (near the axis), not
+            // out at the side. A real prop top under the feet passes both; a sideways graze fails both.
+            float cosMaxSlope = MathF.Cos(t.MaxSlopeRadians);
             if (world.SweepCapsule(capsule, Pose.At(new Vector3(pos.X, probeStart, pos.Z)),
-                    -Vector3.UnitY, maxProbe, out SweepHit floorHit) && floorHit.Normal.Y > 0f)
+                    -Vector3.UnitY, maxProbe, out SweepHit floorHit) &&
+                floorHit.Normal.Y >= cosMaxSlope &&
+                UnderFootprint(floorHit.Point, pos, capsule.Radius))
             {
                 float propCentreY = probeStart - floorHit.Distance; // capsule centre resting on the prop surface
                 if (propCentreY > groundY) groundY = propCentreY;
@@ -213,6 +219,17 @@ public static class CharacterMovement
     /// <summary>True when every component of <paramref name="v"/> is finite (neither NaN nor infinite).</summary>
     private static bool IsFinite(in Vector3 v) =>
         float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z);
+
+    /// <summary>True when an XZ contact point sits under the capsule's footprint (a floor the capsule rests ON),
+    /// as opposed to a graze ~one radius off the axis on the SIDE of an adjacent prop the capsule is pressed
+    /// against. The steepest walkable contact sits at about radius*sin(maxSlope) off-axis (~0.8 r for a 45-50 deg
+    /// gate); a vertical-side graze sits at the full radius. The 0.9 r cutoff separates them.</summary>
+    private static bool UnderFootprint(in Vector3 point, in Vector3 capsuleCentre, float radius)
+    {
+        float dx = point.X - capsuleCentre.X, dz = point.Z - capsuleCentre.Z;
+        float lim = 0.9f * radius;
+        return dx * dx + dz * dz <= lim * lim;
+    }
 
     /// <summary>The unconstrained horizontal target the camera-relative move would reach in one step, before the
     /// slope gate, static collision, or play-area clamp deny any of it. The XZ distance from this to the position a
@@ -312,13 +329,20 @@ public static class CharacterMovement
             if (n.LengthSquared() <= 1e-12f)
             {
                 // Degenerate (zero-distance / deep) contact: Bepu gives no usable slide plane (a capsule resting
-                // point-on-point atop a curved support, or pressed flush against a thin one-sided wall, both report
-                // dist=0 with a zero normal). The two cases need OPPOSITE handling: the curved FLOOR under the feet
-                // must let the horizontal remainder through (so the capsule walks across a dome / mounts on landing),
-                // while the WALL beside the body must block it (advancing would tunnel straight through a thin quad).
-                // Discriminate by re-sweeping the horizontal remainder from a slightly RAISED pose: lifting the
-                // capsule a few cm clears a contact that is UNDER the feet (a dome top) but not one that extends up
-                // BESIDE the body (a wall), since a wall spans the full capsule height. Clear => floor: advance.
+                // point-on-point atop a curved support, or pressed flush against a thin one-sided wall / a prop
+                // beside the body, both report dist=0 with a zero normal).
+                // VERTICAL: let a DOWNWARD remainder through unconditionally. A wall / prop BESIDE the body must
+                // never block a fall - blocking it here is what hung the capsule mid-air and let it "float up"
+                // trees/rocks/building walls (a downward sweep grazing the side reports t=0, and the old code made
+                // no vertical progress). Step 4's support-floor sweep clamps the capsule back up if this really is a
+                // floor under the feet, so over-descending into a floor is corrected. An UPWARD remainder stays
+                // blocked (don't tunnel up through an overhang the head hit).
+                if (remaining.Y < 0f) pos.Y += remaining.Y;
+                // HORIZONTAL: discriminate the curved FLOOR under the feet (let the remainder through, so the capsule
+                // walks across a dome / mounts on landing) from the WALL beside the body (block it, else advancing
+                // tunnels straight through a thin quad). Re-sweep the horizontal remainder from a slightly RAISED
+                // pose: lifting a few cm clears a contact UNDER the feet (a dome top) but not one that spans the full
+                // capsule height BESIDE the body (a wall). Clear => floor: advance.
                 Vector3 horizRem = new(remaining.X, 0f, remaining.Z);
                 float horizRemLen = horizRem.Length();
                 if (horizRemLen > 1e-6f)
@@ -327,7 +351,7 @@ public static class CharacterMovement
                     Vector3 horizRemDir = horizRem / horizRemLen;
                     if (!world.SweepCapsule(capsule, Pose.At(raised), horizRemDir, horizRemLen, out _))
                     {
-                        pos += remaining;   // floor under the feet: follow the surface, step 4 sets the resting Y
+                        pos += horizRem;   // floor under the feet: follow the surface, step 4 sets the resting Y
                     }
                 }
                 break;

@@ -108,14 +108,23 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>Bake a collision shape from a normalized prop mesh. Classification priority:
-        /// tree -> trunk <see cref="ConvexHullShape"/> tracking the lean (cylinder fallback on degenerate) via
-        /// <see cref="BakeTrunkHull"/>; building -> <see cref="TriangleMeshShape"/> (concave interior);
-        /// rock/short-solid -> <see cref="ConvexHullShape"/> (a convex shape can never trap the capsule, unlike
-        /// a one-sided non-convex mesh). <see cref="PropBakePlan.For"/> single-sources this decision.</summary>
+        /// tree -> trunk-only <see cref="CylinderShape"/> via <see cref="BakeTrunkCylinder"/>; building ->
+        /// <see cref="TriangleMeshShape"/> (concave interior); rock/short-solid -> <see cref="ConvexHullShape"/>
+        /// (a convex shape can never trap the capsule, unlike a one-sided non-convex mesh).
+        /// <para>Trees bake a thin trunk CYLINDER (radius = a low percentile of the bottom-slice XZ radius, i.e. the
+        /// pure trunk core), NOT a convex hull of the lower trunk. A hull tracks the lean but is corrupted by real
+        /// conifer geometry: the lowest branch ring sits inside the player-reachable band, its off-axis points pull
+        /// the per-bin centreline off the trunk, and the convex hull then balloons into an invisible chest-height
+        /// wall (the tester report "running into branches" - the real pines hulled to a ~2 m radius at chest height,
+        /// while a vertical trunk cylinder is ~0.3-0.5 m and cannot balloon by construction). The lean is small
+        /// (~0.1 m over the lower trunk) so a base-aligned cylinder still covers the visible trunk; the canopy and
+        /// branches generate no collision, so the player walks under them. <see cref="BakeTrunkHull"/> is retained
+        /// (it is the right shape for a clean trunk and is unit-tested) but is no longer the default for trees.</para>
+        /// <see cref="PropBakePlan.For"/> single-sources this decision.</summary>
         public static PhysicsShape Bake(GltfMesh normalizedMesh)
         {
             if (normalizedMesh == null) throw new ArgumentNullException(nameof(normalizedMesh));
-            if (IsTree(normalizedMesh))     return BakeTrunkHull(normalizedMesh);
+            if (IsTree(normalizedMesh))     return BakeTrunkCylinder(normalizedMesh);
             if (IsBuilding(normalizedMesh)) return BakeTriangleMesh(normalizedMesh);
             return BakeConvexHull(normalizedMesh);
         }

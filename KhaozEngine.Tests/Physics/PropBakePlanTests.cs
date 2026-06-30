@@ -13,7 +13,7 @@ public class PropBakePlanTests
         GltfMesh tree = TestMeshes.LeaningTree();
         PropBakePlan plan = PropBakePlan.For(tree);
         Assert.NotNull(plan.Coll);
-        Assert.IsType<ConvexHullShape>(plan.Coll);   // trunk hull
+        Assert.IsType<CylinderShape>(plan.Coll);     // thin trunk cylinder
         Assert.Null(plan.Surface);                   // thin blocker: no walkable top
     }
 

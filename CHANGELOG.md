@@ -5,6 +5,38 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 8.8.1
+
+Fix: a character can no longer get FROZEN against a complex building, and trees no longer block on their branches.
+Two independent fixes (resolver + tree bake), both automatic on the pin.
+
+- Building pin (resolver): jumping around a detailed building could pin the capsule mid-air against a wall+eave
+  concave pocket - it could neither rise nor fall, vertical velocity railing to terminal while the position stayed
+  frozen (the tester's "stuck on the wall / under the awning"). Root cause (verified by probe against the real
+  building meshes): the pocket walls are ANGLED, so a sweep into them returns a real normal with a small +Y (e.g.
+  n=(0.90,0.38,-0.20)); that routed the move to the plain wall-slide projection, which bled the downward component,
+  and over the slide iterations a concave pocket bled it to zero. The earlier 8.6.1 zero-normal recovery never
+  fired (the normal is non-zero). Fix: a wall may redirect HORIZONTAL motion but must never hold the capsule UP
+  against gravity. `CharacterMovement` now gates the wall slide on a downward RAY FAN from the feet
+  (`WalkableFloorUnderFeet`, 5 rays at ±0.7R - rays have no radius so they never hit the one-sided-mesh zero-normal
+  degeneracy): while descending with no walkable floor under the feet, the full downward remainder is applied
+  DIRECTLY to the position (a tangent sweep advances ~0, so it cannot be left in `delta`). Step 4's capsule support
+  sweep still owns the actual floor height, so a thin tread the fan misses is still stood on, and with a floor
+  under the feet the slide is byte-identical to before (the convex + grounded paths and reconciliation are
+  unchanged - locked by two bit-identity tests + a thin-ledge test). Also retains the 8.6.x degenerate-contact
+  recovery (flat walls) and the step-4 height cap that stops a float-up onto an overhead eave.
+- Tree branches (bake): the conifer `.coll` baked a convex hull of the lower trunk, but the lowest branch ring sits
+  inside the player-reachable band and its off-axis points pulled the per-bin centreline off the trunk, ballooning
+  the hull into a ~2 m-radius invisible chest-height wall (the tester's "running into branches"). `ke-propbake`
+  (`PropCollisionBake.Bake`) now bakes trees as a thin trunk CYLINDER (radius = a low percentile of the bottom
+  slice, i.e. the pure trunk core; it cannot balloon by construction), matching the original documented intent.
+  Consumers must RE-BAKE their tree `.coll` to adopt (the shape changes hull -> cylinder); `BakeTrunkHull` is
+  retained + tested but is no longer the tree default.
+- Coverage: `RealBuildingCollisionTests` (a captured real building mesh: jumping anywhere around it never pins the
+  capsule mid-air), the angled-pocket / corner / closed-shell / thin-ledge / convex-bit-identity tests in
+  `SweptCollisionTests`, and the trunk-cylinder bake tests. Full suite green. See the ROADMAP "Collision-proxy bake
+  pipeline" entry for the deliberate structural follow-up.
+
 ## 8.8.0
 
 Fix: reconnecting after a long outage no longer freezes/vibrates the player under a backlog of stale input. A game loop that keeps sending input while the client is not connected, plus a server that drained one move per tick, meant a multi-minute auto-reconnect outage replayed minutes of old input on rejoin (self-rescue couldn't help; only a relaunch did). Two complementary engine-side guards; no protocol-version break.

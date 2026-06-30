@@ -54,58 +54,13 @@ namespace KhaozEngine.Terrain
             handles.Clear();
         }
 
-        /// <summary>Return a new shape with all geometric dimensions scaled by <paramref name="scale"/>.
-        /// For convex hulls and triangle meshes, vertex positions are pre-multiplied. For primitives
-        /// (sphere, capsule, cylinder, box) all length fields are scaled uniformly. Compound children
-        /// are recursed. A scale of 1 returns the original instance unchanged.</summary>
-        /// <remarks>Limitation: non-uniform scale is not supported by this seam (the scatter always emits
-        /// a single uniform <c>Scale</c> float, so this is correct for all current prop placements).
-        /// A future per-axis scale would need the backend's per-axis support.</remarks>
+        /// <summary>Return a new shape with all geometric dimensions scaled uniformly by
+        /// <paramref name="scale"/> (delegates to the public <see cref="PhysicsShapeScale.Uniform"/> helper in
+        /// KhaozEngine.Physics, the single home for per-placement shape scaling). A scale of 1 returns the
+        /// original instance unchanged.</summary>
+        /// <remarks>Limitation: non-uniform (per-axis) scale is not modelled (the scatter emits a single uniform
+        /// <c>Scale</c> float per placement).</remarks>
         internal static PhysicsShape ScaleShape(PhysicsShape shape, float scale)
-        {
-            if (MathF.Abs(scale - 1f) < 1e-6f) return shape;
-
-            return shape switch
-            {
-                SphereShape s => new SphereShape(s.Radius * scale),
-                CapsuleShape c => new CapsuleShape(c.Radius * scale, c.Length * scale),
-                CylinderShape cy => new CylinderShape(cy.Radius * scale, cy.Length * scale),
-                BoxShape b => new BoxShape(b.HalfExtents * scale),
-                ConvexHullShape h => ScaleConvexHull(h, scale),
-                TriangleMeshShape m => ScaleTriangleMesh(m, scale),
-                CompoundShape co => ScaleCompound(co, scale),
-                _ => throw new NotSupportedException($"ChunkStatics.ScaleShape: unsupported shape type {shape.GetType().Name}."),
-            };
-        }
-
-        static ConvexHullShape ScaleConvexHull(ConvexHullShape h, float scale)
-        {
-            Vector3[] src = h.Points;
-            var dst = new Vector3[src.Length];
-            for (int i = 0; i < src.Length; i++) dst[i] = src[i] * scale;
-            return new ConvexHullShape(dst);
-        }
-
-        static TriangleMeshShape ScaleTriangleMesh(TriangleMeshShape m, float scale)
-        {
-            Vector3[] src = m.Vertices;
-            var dst = new Vector3[src.Length];
-            for (int i = 0; i < src.Length; i++) dst[i] = src[i] * scale;
-            return new TriangleMeshShape(dst, m.Indices);
-        }
-
-        static CompoundShape ScaleCompound(CompoundShape co, float scale)
-        {
-            CompoundChild[] src = co.Children;
-            var dst = new CompoundChild[src.Length];
-            for (int i = 0; i < src.Length; i++)
-            {
-                CompoundChild child = src[i];
-                dst[i] = new CompoundChild(
-                    ScaleShape(child.Shape, scale),
-                    new Pose(child.Local.Position * scale, child.Local.Orientation));
-            }
-            return new CompoundShape(dst);
-        }
+            => PhysicsShapeScale.Uniform(shape, scale);
     }
 }

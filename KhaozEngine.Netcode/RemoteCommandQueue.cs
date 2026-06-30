@@ -22,22 +22,34 @@ public sealed class RemoteCommandQueue<TCommand>
     private readonly TCommand neutralCommand;
     private readonly int maxQueuedPerSlot;
     private readonly int maxSlots;
+    private readonly int catchUpThreshold;
 
     /// <param name="neutralCommand">Returned by <see cref="Dequeue"/> when a slot's queue is empty.</param>
     /// <param name="maxQueuedPerSlot">Max buffered (undequeued) commands per slot. When full, the oldest
     /// buffered command is dropped to make room for a newer one. Must be positive.</param>
     /// <param name="maxSlots">Max number of distinct slots tracked. A command for a new slot beyond this
     /// cap is ignored. Must be positive.</param>
-    public RemoteCommandQueue(TCommand neutralCommand, int maxQueuedPerSlot = 256, int maxSlots = 64)
+    /// <param name="catchUpThreshold">Backlog catch-up cap. When a slot has MORE than this many buffered commands,
+    /// the next <see cref="Dequeue"/> skips the stale ones and jumps to the most recent (advancing the processed
+    /// high-water past everything skipped), so the host stays at most this many commands behind live input instead of
+    /// replaying a deep backlog one command per tick. <b>0 (the default) disables it</b>: <see cref="Dequeue"/> then
+    /// returns strictly oldest-first, one at a time, exactly as before. Enabling it is <b>lossy</b> (skipped commands
+    /// are discarded), so it is only correct for a latest-wins command stream such as movement, where the freshest
+    /// command supersedes the older ones. Must not be negative.</param>
+    public RemoteCommandQueue(TCommand neutralCommand, int maxQueuedPerSlot = 256, int maxSlots = 64,
+        int catchUpThreshold = 0)
     {
         if (maxQueuedPerSlot <= 0)
             throw new ArgumentOutOfRangeException(nameof(maxQueuedPerSlot), maxQueuedPerSlot, "must be positive");
         if (maxSlots <= 0)
             throw new ArgumentOutOfRangeException(nameof(maxSlots), maxSlots, "must be positive");
+        if (catchUpThreshold < 0)
+            throw new ArgumentOutOfRangeException(nameof(catchUpThreshold), catchUpThreshold, "must not be negative");
 
         this.neutralCommand = neutralCommand;
         this.maxQueuedPerSlot = maxQueuedPerSlot;
         this.maxSlots = maxSlots;
+        this.catchUpThreshold = catchUpThreshold;
     }
 
     /// <summary>Clears all per-slot queues and acknowledgement tracking.</summary>
@@ -123,6 +135,22 @@ public sealed class RemoteCommandQueue<TCommand>
         if (!queuesBySlot.TryGetValue(slot, out SortedList<int, TCommand>? queue) || queue.Count == 0)
         {
             return neutralCommand;
+        }
+
+        // Catch-up: a backlog deeper than the threshold (a reconnect flush, a delivery burst, an ungated client)
+        // would otherwise crawl out one command per Dequeue, replaying stale input for as many ticks as it is deep.
+        // Skip straight to the newest buffered command, advancing the high-water past everything skipped, so the host
+        // is at most catchUpThreshold behind live. Lossy by design and only valid for a latest-wins (movement) stream;
+        // disabled (0) keeps the strict oldest-first order.
+        if (catchUpThreshold > 0 && queue.Count > catchUpThreshold)
+        {
+            int newestIndex = queue.Count - 1;
+            int newestSeq = queue.Keys[newestIndex];
+            TCommand newest = queue.Values[newestIndex];
+            queue.Clear();
+            lastAcknowledgedSeqBySlot[slot] = newestSeq;   // Store guarantees buffered seqs > prevAck, so this advances
+            lastAcknowledgedSeq = newestSeq;
+            return newest;
         }
 
         int seq = queue.Keys[0];

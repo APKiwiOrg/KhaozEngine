@@ -104,3 +104,16 @@ away within ~1 RTT, so an unstuck must move the player on the server.
 Wire: a control frame distinct by length from a move (`MoveProtocol.ClientControlKind` /
 `EncodeClientControl` / `TryDecodeClientControl`), so it shares the client->server Data channel without aliasing
 and a server that predates the feature harmlessly ignores it (no protocol-version break).
+
+## Reconnect input backlog (since 8.8.0)
+
+Holding the movement key through a long auto-reconnect outage no longer freezes the player on rejoin. Two guards:
+
+- **Client:** `WorldClient.SendInput` is a no-op (predicts nothing, sends nothing, returns `-1`) unless
+  `ConnectionState == Connected`. A loop that calls it every frame regardless of state is safe: input produced
+  during the outage is dropped here instead of predicting the avatar away from authority and inflating the
+  sequence counter, so rejoin resumes cleanly.
+- **Server:** `WorldServerConfig.MaxInputBacklog` / `ShardedWorldServerConfig.MaxInputBacklog` (default 8 ticks;
+  0 disables) caps how far behind live the server can fall under a deep per-player backlog. When a slot's queued
+  moves exceed it, the server skips the stale ones and applies the most recent (latest-wins), instead of crawling
+  a flush/burst out one move per tick. Built on `RemoteCommandQueue`'s `catchUpThreshold`.

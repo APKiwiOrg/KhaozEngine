@@ -44,6 +44,15 @@ public sealed class WorldServerConfig
     /// <summary>Per-player minimum interval (seconds) between honored self-rescues; further requests inside the window
     /// are dropped. Default 5s. Ignored when <see cref="SelfRescueDestination"/> is null.</summary>
     public float SelfRescueCooldownSeconds { get; init; } = 5f;
+
+    /// <summary>Per-player input-backlog catch-up cap, in commands (ticks). When a client's queued move backlog grows
+    /// deeper than this, the server skips the stale moves and applies only the most recent, so it stays at most this
+    /// many ticks behind live input instead of replaying a deep backlog one move per tick. This bounds the
+    /// reconnect/lag-burst freeze where a player was driven by minutes-old input on rejoin (see
+    /// <see cref="WorldClient.SendInput"/>). Movement is latest-wins, so skipping intermediate moves is correct.
+    /// Default 8 (~0.27s at 30Hz) - well clear of normal one-per-tick play, which never reaches it. Set 0 to disable
+    /// (strict one-move-per-tick drain, the pre-8.8.0 behaviour).</summary>
+    public int MaxInputBacklog { get; init; } = 8;
 }
 
 /// <summary>
@@ -62,7 +71,7 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
     private readonly World world = new();
     private readonly NetServer net;
     private readonly InterestGrid interest;
-    private readonly RemoteCommandQueue<MoveCommand> commands = new(neutralCommand: default);
+    private readonly RemoteCommandQueue<MoveCommand> commands;
     private readonly PlayerMoveSimulator simulator;
     private readonly DrainController drain = new();
     private readonly AdminCommandBuffer admin = new();
@@ -92,6 +101,8 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
         this.config = config ?? throw new ArgumentNullException(nameof(config));
         if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
         this.tuning = tuning;
+        commands = new RemoteCommandQueue<MoveCommand>(neutralCommand: default,
+            catchUpThreshold: Math.Max(0, this.config.MaxInputBacklog));
         simulator = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds, physics);
         net = new NetServer(transport, config.MaxPlayers, authenticator ?? new AllowAllAuthenticator());
         this.banStore = banStore;

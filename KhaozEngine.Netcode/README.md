@@ -67,11 +67,21 @@ that slot is released for reuse: `Forget(slot)` drops the slot's buffered comman
 (idempotent), letting the next session that recycles the slot restart its seqs from 0. The authoritative servers
 (`WorldServer`/`ShardedWorldServer`) call this on disconnect; without it a recycled slot freezes the new player.
 
+Optional backlog catch-up: pass `catchUpThreshold` (default 0 = off) and a slot whose buffered backlog grows
+deeper than it collapses to its newest command on the next `Dequeue` (the high-water jumps past everything
+skipped), so the host stays at most that many commands behind live instead of crawling a deep backlog one per
+tick (e.g. a reconnect flush or a delivery burst replaying stale input). It is **lossy** (skipped commands are
+discarded), so only enable it for a latest-wins stream such as movement; the authoritative servers wire it via
+`WorldServerConfig.MaxInputBacklog`.
+
 ```csharp
 var queue = new RemoteCommandQueue<MyCommand>(neutralCommand: MyCommand.Idle);
 queue.Store(slot, seq, command);                       // on receive
 var cmd = queue.Dequeue(slot, out int lastAckedSeq);   // once per sim tick
 queue.Forget(slot);                                    // on disconnect, before the slot is recycled
+
+// latest-wins streams can cap how far behind live the host falls under a backlog:
+var moves = new RemoteCommandQueue<MyCommand>(neutralCommand: MyCommand.Idle, catchUpThreshold: 8);
 ```
 
 ## IChannelSplittable&lt;TSelf&gt; + NetChannelReliability

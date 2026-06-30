@@ -177,7 +177,8 @@ The engine provides primitives and one hardened channel; a game still has to use
 - The update channel's signing + apply-time guards, *once wired* (signed manifests, origin lock, path/
   symlink guards, size caps, downgrade rejection).
 - Input-bounding netcode primitives (`RemoteCommandQueue` dedup + high-water seq-reject + per-slot/slot
-  caps, `UnitAxisQuantizer` clamp).
+  caps + optional backlog catch-up wired by `WorldServerConfig.MaxInputBacklog`, so a flooded/ungated client
+  cannot make the server crawl a deep input backlog one move per tick, `UnitAxisQuantizer` clamp).
 - A JSON-schema validation primitive (runtime + build-time) for content.
 - An HMAC tamper-deterrent on saves (deterrent, not a boundary).
 - The CETCompat default + DEP/ASLR on every head.

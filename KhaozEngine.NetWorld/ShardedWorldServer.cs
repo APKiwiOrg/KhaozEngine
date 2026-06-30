@@ -48,6 +48,12 @@ public sealed class ShardedWorldServerConfig
     /// <summary>Per-player minimum interval (seconds) between honored self-rescues; further requests inside the window
     /// are dropped. Default 5s. Ignored when <see cref="SelfRescueDestination"/> is null.</summary>
     public float SelfRescueCooldownSeconds { get; init; } = 5f;
+
+    /// <summary>Per-player input-backlog catch-up cap, in commands (ticks); mirrors
+    /// <see cref="WorldServerConfig.MaxInputBacklog"/>. When a client's queued move backlog grows deeper than this the
+    /// server skips stale moves and applies only the most recent, so a reconnect flush / lag burst can't freeze a
+    /// player under minutes-old input on rejoin. Default 8 (~0.27s at 30Hz); 0 disables (pre-8.8.0 one-per-tick).</summary>
+    public int MaxInputBacklog { get; init; } = 8;
 }
 
 /// <summary>
@@ -69,7 +75,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
     private readonly ReplicationRegistry registry = MoveProtocol.CreateRegistry();
     private readonly ShardHost host;
     private readonly NetServer net;
-    private readonly RemoteCommandQueue<MoveCommand> commands = new(neutralCommand: default);
+    private readonly RemoteCommandQueue<MoveCommand> commands;
     private readonly PlayerMovementSystem movement;
     private readonly PlayerMoveSimulator spawnClamp;
 
@@ -107,6 +113,8 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
                 nameof(config));
 
         this.tuning = tuning;
+        commands = new RemoteCommandQueue<MoveCommand>(neutralCommand: default,
+            catchUpThreshold: Math.Max(0, this.config.MaxInputBacklog));
         movement = new PlayerMovementSystem(groundHeight, tuning, groundNormal, bounds, physics);
         spawnClamp = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds, physics);
         host = new ShardHost(

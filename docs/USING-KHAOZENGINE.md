@@ -1436,7 +1436,9 @@ var server = new WorldServer(transport, new WorldServerConfig { TickSeconds = 1f
 
 - **`WorldClient`** (render-free): wraps `NetClient` + `ClientReplicationView` + `ClientPrediction`. `Poll()`
   ingests AoI snapshots, applies remote entities, and reconciles the local avatar against the authoritative
-  basis; `SendInput(cmd)` predicts one tick forward and transmits it; `RequestSelfRescue()` (since 8.6.0) asks the
+  basis; `SendInput(cmd)` predicts one tick forward and transmits it (since 8.8.0 it is a no-op returning `-1`
+  unless `ConnectionState == Connected`, so a per-frame loop builds no stale-input backlog during a reconnect
+  outage); `RequestSelfRescue()` (since 8.6.0) asks the
   server to teleport the local player to a server-decided safe spot (an "unstuck" - see below); `Snapshot()` returns
   `IReadOnlyList<EntityRenderState>` (`{ NetId Id; Vector3 Position; bool IsLocal; string? DisplayName; bool
   Grounded; float VerticalVelocity; }`) for the renderer - the local player is the predicted position, remotes the
@@ -2510,6 +2512,18 @@ reconciles to the client exactly like an admin teleport. Both `WorldServer` and 
 identically (the sharded one teleports across cells). Under the hood it rides a short control frame on the existing
 client->server channel (`MoveProtocol.ClientControlKind`), distinct by length from a move, so a server that predates
 the feature just ignores it.
+
+#### Reconnect input backlog (since 8.8.0)
+
+A client that holds the movement key through a long auto-reconnect outage used to freeze/vibrate on rejoin: input
+sent while disconnected inflated the prediction sequence and the server replayed the stale backlog one move per
+tick. Two engine-side guards, both on by default, fix it with no protocol-version break:
+
+- `WorldClient.SendInput` is a no-op (returns `-1`, predicts/sends nothing) unless `ConnectionState == Connected`,
+  so a per-frame send loop accrues no backlog during the outage. No game-side guard needed.
+- `WorldServerConfig.MaxInputBacklog` / `ShardedWorldServerConfig.MaxInputBacklog` (default 8 ticks; 0 disables)
+  caps how far behind live the server falls: when a player's queued moves exceed it the server skips the stale ones
+  and applies the most recent (movement is latest-wins), so a flush/lag-burst can't drive minutes of old input.
 
 ### World cell grid (`KhaozEngine.Sharding`)
 

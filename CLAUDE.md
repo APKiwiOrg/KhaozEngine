@@ -273,7 +273,11 @@ version/release work.
     Magnitude }` (`SuspiciousReason` = `MalformedPacket`/`RateLimited`/`MovementCorrection`; the last fires on a
     streak of authoritative move corrections beyond `MaxCorrectionDistance` - the client driving into the slope
     gate / collision / bound - measured via `CharacterMovement.IntendedHorizontalTarget`) + a `Disconnect(slot)`
-    kick seam; signal not policy, the game decides),
+    kick seam; signal not policy, the game decides; plus `WorldServerConfig.MaxInputBacklog`
+    (8.8.0, default 8 ticks, default ON; mirrored on `ShardedWorldServerConfig`): a per-player input-backlog
+    catch-up cap wired into `RemoteCommandQueue`'s new optional `catchUpThreshold` ctor arg - a slot's queue deeper
+    than the cap collapses to its newest move (skips stale, advances the high-water), so a reconnect flush / lag
+    burst / ungated client can't make the server crawl minutes of stale input one move per tick),
     `ShardedWorldServer` (+ `ShardedWorldServerConfig`, the multi-cell variant = the same movement stack run across a
     `Sharding.ShardHost` cell grid: routes each client's `MoveCommand` to the owning cell, steps each cell's
     `PlayerMovementSystem` (also clamps to the optional `WorldBounds`) via `ShardHost.Tick` scheduler-fanned, exactly-once handoff on boundary crossings -
@@ -355,6 +359,12 @@ version/release work.
     from the 18-byte move so the two never alias on the client->server Data channel and a server predating the feature
     decodes it as a too-short malformed move and ignores it (no protocol-version break). The per-connection rate
     limiter also covers control frames; the cooldown is an always-on guard off a monotonic per-server clock.
+    8.8.0 fix (reconnect input backlog; no protocol-version break): holding input through a long auto-reconnect
+    outage no longer freezes/vibrates the player on rejoin. (a) `WorldClient.SendInput` is a no-op (predicts
+    nothing, sends nothing, returns `-1`) unless `ConnectionState == Connected`, so a per-frame send loop builds no
+    stale-input backlog and the prediction seq does not inflate during the outage (the `Reseed` monotonic-seq path
+    is unchanged). (b) The server-side catch-up cap above (`WorldServerConfig.MaxInputBacklog`, default on) bounds
+    the amplifier if a deep backlog ever reaches the server anyway.
   - **Animated characters (glTF clip playback + locomotion blend, 7.56.0):** the GPU-free animation layer in
     `Render3D` beside the rig/skinning - `GltfLoader.LoadAnimations(path)` reads SharpGLTF `LogicalAnimations` into
     `AnimationClip`s (per-joint TRS keyframe tracks - `JointTrack`/`Vector3Track`/`QuaternionTrack` keyed by glTF

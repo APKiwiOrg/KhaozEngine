@@ -398,9 +398,18 @@ public sealed class WorldClient : IDisposable
         SetState(WorldConnectionState.Disconnected);
     }
 
-    /// <summary>Predicts one command forward and transmits it. Returns the assigned seq.</summary>
+    /// <summary>Predicts one command forward and transmits it. Returns the assigned seq, or <c>-1</c> when the
+    /// session is not <see cref="WorldConnectionState.Connected"/> (nothing is predicted or sent). A game loop that
+    /// calls this every frame regardless of state is safe: input produced during a (possibly minutes-long)
+    /// auto-reconnect outage is dropped here rather than predicted forward and queued. Without this gate the
+    /// prediction sequence inflated and the predicted avatar marched away from authority for the whole outage, so on
+    /// rejoin the player was frozen/vibrating (driven by stale input) until the backlog drained - the relaunch-fixes-it
+    /// reconnect bug. The transports also drop sends while disconnected, so this is the engine-level guarantee that no
+    /// consumer's send loop can build that backlog, complementing the server-side catch-up cap
+    /// (<see cref="WorldServerConfig.MaxInputBacklog"/>).</summary>
     public int SendInput(in MoveCommand cmd)
     {
+        if (state != WorldConnectionState.Connected) return -1;
         int seq = prediction.Predict(cmd);
         net.Send(MoveProtocol.EncodeMove(seq, cmd), NetChannelReliability.ReliableOrdered);
         return seq;

@@ -58,6 +58,41 @@ namespace KhaozEngine.Render3D
     {
         public static GltfMesh Load(string path) => BuildRigid(ModelRoot.Load(path), path);
 
+        /// <summary>Load a rigid glb/glTF as ONE <see cref="GltfMesh"/> per logical node-with-mesh (object),
+        /// world-transform baked exactly as <see cref="Load"/> bakes it, in stable logical-node-then-mesh order.
+        /// Unlike <see cref="Load"/> (which flattens the whole scene into one mesh) this preserves the authoring
+        /// object boundaries, so an authored collision proxy modelled as separate convex blocks bakes one convex
+        /// piece per block. A mesh referenced by no node is loaded once at identity (parity with <see cref="Load"/>).
+        /// Deterministic group order (logical-node index, then any un-noded meshes) so a re-bake is reproducible.</summary>
+        public static IReadOnlyList<GltfMesh> LoadGroups(string path)
+        {
+            ModelRoot root = ModelRoot.Load(path);
+            var groups = new List<GltfMesh>();
+
+            // One group per (node -> mesh), in logical-node order.
+            foreach (var node in root.LogicalNodes)
+            {
+                if (node.Mesh is null) continue;
+                var corners = new List<MeshCorner>();
+                AppendMeshCorners(corners, node.Mesh, node.WorldMatrix);
+                if (corners.Count > 0) groups.Add(MeshAssembler.Build(corners));
+            }
+
+            // Parity with Load: a mesh referenced by no node still contributes once, at identity.
+            foreach (var mesh in root.LogicalMeshes)
+            {
+                bool placed = false;
+                foreach (var node in root.LogicalNodes) { if (node.Mesh == mesh) { placed = true; break; } }
+                if (placed) continue;
+                var corners = new List<MeshCorner>();
+                AppendMeshCorners(corners, mesh, Matrix4x4.Identity);
+                if (corners.Count > 0) groups.Add(MeshAssembler.Build(corners));
+            }
+
+            if (groups.Count == 0) throw new InvalidOperationException("glTF has no triangles: " + path);
+            return groups;
+        }
+
         /// <summary>Opt-in convenience: load a rigid glb/glTF AND auto-read its first textured material's baseColor,
         /// normal, and metallicRoughness textures, decoded to raw RGBA8 (no GPU - the returned
         /// <see cref="GltfMaterialMaps"/> holds CPU pixels). The <see cref="GltfMesh"/> is byte-identical to

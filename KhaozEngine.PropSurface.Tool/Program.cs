@@ -38,11 +38,26 @@ JsonArray props = root["props"]!.AsArray();
 int baked = 0, blockers = 0;
 foreach (AssetEntry entry in manifest.Props)
 {
-    GltfMesh mesh;
-    try { mesh = PropLoader.LoadProp(entry); }
+    GltfMesh mesh;            // normalized render mesh (for the .surf + non-proxy .coll)
+    PropBakePlan plan;
+    try
+    {
+        if (!string.IsNullOrWhiteSpace(entry.CollisionProxy))
+        {
+            // Authored proxy: bake the .coll from the proxy (compound of convex pieces) in the render mesh's frame.
+            GltfMesh renderRaw = GltfLoader.Load(entry.File);
+            mesh = PropLoader.Normalize(renderRaw, entry.HeightMeters);
+            var proxyGroups = GltfLoader.LoadGroups(entry.CollisionProxy!);
+            PhysicsShape proxyColl = PropCollisionBake.BakeProxy(renderRaw, entry.HeightMeters, proxyGroups);
+            plan = PropBakePlan.ForProxy(mesh, proxyColl);
+        }
+        else
+        {
+            mesh = PropLoader.LoadProp(entry);
+            plan = PropBakePlan.For(mesh);
+        }
+    }
     catch (Exception ex) { Console.Error.WriteLine($"  ! {entry.Id}: {ex.Message}"); continue; }
-
-    PropBakePlan plan = PropBakePlan.For(mesh);
     JsonObject node = props.OfType<JsonObject>().First(p => (string?)p["id"] == entry.Id);
 
     // Always bake the collision shape (.coll) and stamp collisionShape.
@@ -51,6 +66,7 @@ foreach (AssetEntry entry in manifest.Props)
     node["collisionShape"] = collName;
     string collKind = plan.Coll switch
     {
+        CompoundShape     => "compound",
         TriangleMeshShape => "triangle-mesh",
         CylinderShape     => "cylinder",
         ConvexHullShape   => "convex-hull",

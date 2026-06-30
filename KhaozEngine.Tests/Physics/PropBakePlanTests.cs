@@ -25,4 +25,20 @@ public class PropBakePlanTests
         Assert.NotNull(plan.Coll);
         Assert.NotNull(plan.Surface);                // walkable solid: surface baked
     }
+
+    [Fact]
+    public void ForProxy_UsesProxyColl_AndSurfaceFromRenderMesh()
+    {
+        GltfMesh render = TestMeshes.UnitIcosphere();   // walkable solid => gets a surface
+        var proxy = new KhaozEngine.Physics.CompoundShape(new[]
+        {
+            new KhaozEngine.Physics.CompoundChild(
+                new KhaozEngine.Physics.BoxShape(new System.Numerics.Vector3(1, 1, 1)),
+                KhaozEngine.Physics.Pose.At(System.Numerics.Vector3.Zero)),
+        });
+
+        PropBakePlan plan = PropBakePlan.ForProxy(render, proxy);
+        Assert.Same(proxy, plan.Coll);     // proxy compound is the collision shape
+        Assert.NotNull(plan.Surface);      // walkable solid => surface baked from the render mesh
+    }
 }

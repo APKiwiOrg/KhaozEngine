@@ -14,5 +14,13 @@ namespace KhaozEngine.Render3D
         public static PropBakePlan For(GltfMesh mesh) => new(
             PropCollisionBake.Bake(mesh),
             PropSurfaceBake.IsWalkableSolid(mesh) ? PropSurfaceBake.Bake(mesh) : null);
+
+        /// <summary>Plan the bakes for a prop whose collision is an AUTHORED proxy (a compound of convex pieces,
+        /// already baked via <see cref="PropCollisionBake.BakeProxy"/>): the proxy is the collision shape, and the
+        /// walkable top-surface heightmap is still derived from the normalized RENDER mesh (only for an
+        /// <see cref="PropSurfaceBake.IsWalkableSolid"/> prop), so the surface contract is unchanged.</summary>
+        public static PropBakePlan ForProxy(GltfMesh normalizedRender, PhysicsShape proxyColl) => new(
+            proxyColl,
+            PropSurfaceBake.IsWalkableSolid(normalizedRender) ? PropSurfaceBake.Bake(normalizedRender) : null);
     }
 }

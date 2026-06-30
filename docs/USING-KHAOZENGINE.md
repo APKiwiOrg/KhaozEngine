@@ -122,6 +122,15 @@ game.Run();
 and optional `WindowFactory` / `ViewportFactory` (e.g. `AppWindow.Scaled` for a display-fitted window, or an
 `AdaptiveViewport` for responsive layout). Use `GameAppOptions.For(title, w, h)` for the common case.
 
+**Runtime window/taskbar icon.** Set `WindowIconPath` to a PNG (the simple case) or `WindowIcons` to an explicit
+list of decoded `ImageRgba` (16/32/48 px so GLFW picks per DPI; `WindowIcons` wins over `WindowIconPath`). `GameApp`
+applies it during construction. On Windows and Linux/X11 this sets the title-bar + taskbar icon at runtime; on
+**macOS it is a deliberate no-op** (GLFW ignores window icons there - the `.app` bundle's icns owns the Dock/Finder
+icon). The Windows `.exe` icon shown when the app is not running is a separate per-game `<ApplicationIcon>` in the
+desktop csproj, independent of this API. Under the hood `GameApp` decodes the PNG via `Render2D.ImageRgba` and hands
+already-decoded `WindowIcon`s to `AppWindow.SetIcon(...)`, which a non-`GameApp` host can also call directly; the
+`KhaozEngine.Windowing` package itself stays decode-free (no Render2D dependency).
+
 `GameApp` seams: `OnLoad()`, `OnUpdate(float dt)`, `OnRenderWorld(Frame)` (the 3D pass; empty in 2D),
 `OnDraw2D(SpriteBatch)`, `OnResize(int, int)`, `OnDispose()`. Properties you read: `Window`, `Clock`, `Viewport`,
 `Pointer`, `Input` (the frame's `InputState`), `Surface2D`, `Batch`, `FrameWidth`/`FrameHeight`/`Dt`,

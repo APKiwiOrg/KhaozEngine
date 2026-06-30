@@ -12,7 +12,7 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 |---|---|---|
 | **KhaozEngine.Primitives** | The zero-dependency leaf (`System.Numerics` only): `Color` (`FromHex`/`ToHex`, `* float`, `Lerp`), `DeterministicRng`, `XorRng`, `MathUtil`, `ViewportMath`, `Easing`. The bottom of the dependency graph; an RGBA color anywhere in the public API is a `Color`. | Pure .NET |
 | **KhaozEngine.Gpu** | The GPU backend seam: backend selection (Metal/D3D11/Vulkan/OpenGL via RID), device + command-list abstraction over Veldrid. The only graphics-API-aware layer. | Pure .NET (+ Veldrid) |
-| **KhaozEngine.Windowing** | `AppWindow` (owns the Silk.NET/GLFW window + the per-frame `Run` loop), the immutable `InputState` snapshot, `InputManager`/`Pointer` (unified pointer, edges, `IsTapIn` press-origin invariant, region blocking, drag/scroll, keyboard/gamepad/menu-nav), `GameClock`, `DesignViewport`/`AdaptiveViewport`. Wires a GLFW text clipboard into `Platform.Clipboard`. | KhaozEngine.Gpu, Platform |
+| **KhaozEngine.Windowing** | `AppWindow` (owns the Silk.NET/GLFW window + the per-frame `Run` loop), the immutable `InputState` snapshot, `InputManager`/`Pointer` (unified pointer, edges, `IsTapIn` press-origin invariant, region blocking, drag/scroll, keyboard/gamepad/menu-nav), `GameClock`, `DesignViewport`/`AdaptiveViewport`. Wires a GLFW text clipboard into `Platform.Clipboard`. `AppWindow.SetIcon(WindowIcon...)` sets the runtime window/taskbar icon from decoded RGBA8 (Windows/Linux; no-op on macOS). | KhaozEngine.Gpu, Platform |
 | **KhaozEngine.Render2D** | `SpriteBatch` (textured quads + `DrawString` over stb_truetype `SpriteFont`, optional model transform + sampler mode), `Camera2D`, `Texture2D`, `ImageRgba` (CPU pixel/opaque-mask decode), `Render2DSurface`, scissor/point-sampling, offscreen capture. | Windowing, Gpu |
 | **KhaozEngine.Render3D** | Stylized 3D: `Scene3D` (multi-instance mesh draw, glTF + procedural meshes, per-mesh albedo textures, materials/lighting, billboards, runtime GPU bone-palette skinning for code-driven deformation, a splat-material pipeline for PBR terrain (`LoadSplatMaterial`/`SplatMaterialHandle`), debug draw), `IsoCamera3D` (ortho iso + screen-to-ground/ray picking), `PixelPostProcess`, `Render3DSurface`. | Ecs, Windowing, Gpu |
 | **KhaozEngine.Gui** | `GuiSurface` (immediate-mode UI: Panel/Label/Button/Slider/Toggle, hover, click-through gate), `ScreenStack` (top-to-bottom routed screen stack + widgets), `FocusNavigator` (menu navigation), `DiagnosticsOverlay` (F1-toggled corner telemetry HUD: game-built `OverlaySection`/`OverlayRow`s + `PerformanceSection`/`NetworkSection` populators, headless-testable `Update`). | Windowing, Render2D, Diagnostics |
@@ -126,10 +126,10 @@ Published to a private GitHub Packages feed on tagged releases, and packed to a 
 ```
 ```xml
 <!-- One reference per project via an umbrella metapackage. Pick the bundle that fits: -->
-<PackageReference Include="KhaozEngine.Game2D"     Version="8.8.1" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
-<PackageReference Include="KhaozEngine.Game3D"     Version="8.8.1" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
-<PackageReference Include="KhaozEngine.Server"     Version="8.8.1" />  <!-- headless: foundation + netcode, no graphics -->
-<PackageReference Include="KhaozEngine.Foundation" Version="8.8.1" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
+<PackageReference Include="KhaozEngine.Game2D"     Version="8.9.0" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
+<PackageReference Include="KhaozEngine.Game3D"     Version="8.9.0" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
+<PackageReference Include="KhaozEngine.Server"     Version="8.9.0" />  <!-- headless: foundation + netcode, no graphics -->
+<PackageReference Include="KhaozEngine.Foundation" Version="8.9.0" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
 ```
 
 The metapackages have no code; they just pull in the granular packages. You can still reference those

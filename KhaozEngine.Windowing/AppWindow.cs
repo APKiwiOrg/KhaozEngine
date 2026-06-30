@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Primitives;
 using KhaozEngine.Platform;
+using Silk.NET.Core;
 using Silk.NET.Input;
 using Silk.NET.Maths;
 using Silk.NET.Windowing;
@@ -203,6 +204,36 @@ namespace KhaozEngine.Windowing
 
         public bool Exists => !_window.IsClosing;
         public void Close() => _window.Close();
+
+        /// <summary>
+        /// Set the runtime window/taskbar icon from one or more already-decoded RGBA8 images (supply 16/32/48...
+        /// and GLFW picks per DPI; a single image is fine). Safe to call any time after construction - the native
+        /// handle exists from the ctor on. Passing nothing (or an empty list) is a no-op.
+        /// <para><b>Platform:</b> Windows and Linux/X11 apply it to the title bar + taskbar at runtime (this is the
+        /// regression fix vs MonoGame's embedded Icon.bmp). On macOS GLFW ignores window icons, so this is a
+        /// deliberate no-op (never throws); the Dock/Finder icon is owned by the .app bundle's icns. The Windows
+        /// .exe icon shown when the app is not running is a per-consumer <c>&lt;ApplicationIcon&gt;</c>, independent
+        /// of this API.</para>
+        /// </summary>
+        public void SetIcon(params WindowIcon[] icons)
+        {
+            // macOS: glfwSetWindowIcon is unsupported on Cocoa. Skip entirely so it can never raise a GLFW error.
+            if (OperatingSystem.IsMacOS()) return;
+            var raw = ToRawImages(icons);
+            if (raw.Length == 0) return;
+            _window.SetWindowIcon(raw);
+        }
+
+        /// <summary>Pure WindowIcon -> Silk <see cref="RawImage"/> mapping (RGBA8, top-left origin) feeding GLFW's
+        /// SetWindowIcon. Empty in -> empty out, so <see cref="SetIcon"/> no-ops. Kept seamable for headless tests.</summary>
+        internal static RawImage[] ToRawImages(IReadOnlyList<WindowIcon> icons)
+        {
+            if (icons == null || icons.Count == 0) return Array.Empty<RawImage>();
+            var raw = new RawImage[icons.Count];
+            for (int i = 0; i < icons.Count; i++)
+                raw[i] = new RawImage(icons[i].Width, icons[i].Height, icons[i].Pixels);
+            return raw;
+        }
 
         /// <summary>Run the frame loop until the window closes, calling <paramref name="onFrame"/> each frame.</summary>
         public void Run(Action<Frame> onFrame)

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
@@ -36,10 +37,33 @@ namespace KhaozEngine.Game
                 ?? new AppWindow(options.Title, options.Width, options.Height);
             _window.ClearColor = options.ClearColor;
 
+            // Runtime window/taskbar icon (Windows/Linux; no-op on macOS where the .app icns owns the Dock icon).
+            var icons = ResolveWindowIcons(options);
+            if (icons.Length > 0) _window.SetIcon(icons);
+
             _viewport = options.ViewportFactory?.Invoke(options)
                 ?? new DesignViewport(options.ResolvedDesignWidth, options.ResolvedDesignHeight, options.ScaleMode);
 
             _surface2D = new Render2DSurface(_window);
+        }
+
+        /// <summary>
+        /// Resolve the configured window icon(s) to <see cref="WindowIcon"/>s: explicit
+        /// <see cref="GameAppOptions.WindowIcons"/> win, else a single <see cref="GameAppOptions.WindowIconPath"/>
+        /// PNG is decoded via <see cref="ImageRgba.Load"/>, else none (empty). Keeps the Render2D decode in this
+        /// layer so KhaozEngine.Windowing stays decode-free.
+        /// </summary>
+        internal static WindowIcon[] ResolveWindowIcons(in GameAppOptions options)
+        {
+            IReadOnlyList<ImageRgba>? images = options.WindowIcons;
+            if ((images == null || images.Count == 0) && !string.IsNullOrEmpty(options.WindowIconPath))
+                images = new[] { ImageRgba.Load(options.WindowIconPath) };
+            if (images == null || images.Count == 0) return Array.Empty<WindowIcon>();
+
+            var icons = new WindowIcon[images.Count];
+            for (int i = 0; i < images.Count; i++)
+                icons[i] = new WindowIcon(images[i].Pixels, images[i].Width, images[i].Height);
+            return icons;
         }
 
         /// <summary>The underlying window (owns the GPU device, the Silk.NET/GLFW window, and the raw frame loop).</summary>

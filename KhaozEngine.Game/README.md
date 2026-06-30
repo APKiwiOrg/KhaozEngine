@@ -18,6 +18,11 @@ Subclass it and override `OnLoad` / `OnUpdate(dt)` / `OnDraw2D(batch)` / `OnResi
 `Quit()` to close. Construct with `GameAppOptions.For(title, w, h)` (set `DesignWidth/Height`,
 `ScaleMode`, `ClearColor` as needed).
 
+Set `GameAppOptions.WindowIconPath` (a PNG) or `WindowIcons` (explicit decoded `ImageRgba`, multi-res,
+wins over the path) for the runtime window/taskbar icon; `GameApp` decodes via `Render2D.ImageRgba`
+and applies it through `AppWindow.SetIcon`. Windows/Linux get the live icon; macOS is a no-op (the
+`.app` icns owns the Dock icon). The Windows `.exe` icon stays a per-game `<ApplicationIcon>`.
+
 It sits above `KhaozEngine.Windowing` + `Render2D` + `Gui` - **no 3D renderer dependency**, so a 2D
 game pulls no Render3D. For a 3D world pass, use `KhaozEngine.Game.Render3D` (`GameApp3D`, plus the
 `IGameScene3D` scene hook and the `SceneManager.Draw3D` extension). It is the optional convenience

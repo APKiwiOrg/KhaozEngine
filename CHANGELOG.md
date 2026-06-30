@@ -5,6 +5,25 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 8.9.0
+
+Runtime window/taskbar icon API: a game can hand a PNG (or decoded RGBA) to `GameAppOptions` and get its icon on the
+running window + taskbar on Windows/Linux. This closes the regression from dropping MonoGame, whose SDL layer loaded
+an embedded `Icon.bmp` for free; the MonoGame-free `AppWindow` (Silk.NET/GLFW + Veldrid) had no icon API at all, so
+every consumer's window showed the generic icon (Nullwake hit this on its first KhaozEngine release).
+
+- `KhaozEngine.Windowing`: new `WindowIcon` struct (already-decoded, tightly-packed RGBA8, top-left origin) and
+  `AppWindow.SetIcon(params WindowIcon[])`. Maps to Silk's `IWindow.SetWindowIcon(ReadOnlySpan<RawImage>)`. Callable
+  any time after construction. Windowing stays decode-free (no Render2D / StbImageSharp dependency) - it takes
+  already-decoded pixels; the decode lives one layer up.
+- `KhaozEngine.Game`: `GameAppOptions` gains `string? WindowIconPath` (convenience, decoded via
+  `KhaozEngine.Render2D.ImageRgba`) and `IReadOnlyList<ImageRgba>? WindowIcons` (explicit multi-res, e.g. 16/32/48 px
+  so GLFW picks per DPI). `WindowIcons` wins over `WindowIconPath`; `GameApp` applies them during construction.
+- Platform: Windows and Linux/X11 set the title-bar + taskbar icon at runtime. macOS is a deliberate, documented
+  no-op (GLFW ignores window icons there; the `.app` bundle icns owns the Dock/Finder icon) and never throws. The
+  Windows `.exe` icon shown when the app is not running stays a per-consumer `<ApplicationIcon>`, independent of this
+  API.
+
 ## 8.8.1
 
 Fix: a character can no longer get FROZEN against a complex building, and trees no longer block on their branches.

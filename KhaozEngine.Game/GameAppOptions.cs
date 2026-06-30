@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Primitives;
+using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
 
 namespace KhaozEngine.Game
@@ -41,6 +43,20 @@ namespace KhaozEngine.Game
         /// no-letterbox viewport.
         /// </summary>
         public Func<GameAppOptions, IDesignViewport>? ViewportFactory;
+
+        /// <summary>
+        /// Optional path to a PNG decoded (via <see cref="ImageRgba"/>) into the runtime window/taskbar icon.
+        /// A convenience for the common single-image case; ignored when <see cref="WindowIcons"/> is set.
+        /// macOS ignores window icons (the .app bundle icns owns the Dock icon) - see <see cref="AppWindow.SetIcon"/>.
+        /// </summary>
+        public string? WindowIconPath;
+
+        /// <summary>
+        /// Optional explicit, already-decoded icon images (e.g. 16/32/48 px) for GLFW to pick from per DPI. Takes
+        /// priority over <see cref="WindowIconPath"/>. Each is mapped to a <see cref="WindowIcon"/> and applied via
+        /// <see cref="AppWindow.SetIcon"/> (Windows/Linux runtime icon; no-op on macOS).
+        /// </summary>
+        public IReadOnlyList<ImageRgba>? WindowIcons;
 
         /// <summary>Resolved design width: <see cref="DesignWidth"/>, or <see cref="Width"/> when it is 0.</summary>
         internal int ResolvedDesignWidth => DesignWidth == 0 ? Width : DesignWidth;

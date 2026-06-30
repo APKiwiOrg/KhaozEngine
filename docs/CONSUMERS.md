@@ -4,7 +4,7 @@ Which game uses which packages, at which version. Current state only - for the p
 [`../CHANGELOG.md`](../CHANGELOG.md). Update this whenever a consumer bumps a `<PackageReference>` or the
 engine ships a new version.
 
-**Engine current version:** `8.5.2` (the shared `<KhaozEngineVersion>` line, which *is* the engine). The
+**Engine current version:** `8.5.3` (the shared `<KhaozEngineVersion>` line, which *is* the engine). The
 engine is entirely MonoGame-free on a single version line in `Directory.Build.props` (the doc-version guard
 checks it): the custom render/runtime stack + the graduated MonoGame-free foundation + the four umbrella
 metapackages, all sharing one version. `Physics.Bepu` and the `WorldStore.Sqlite`/`.SqlServer` backends are
@@ -42,7 +42,7 @@ where needed). All four pin **8.0.0**.
 | **Hardpoint** (3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic); live auto-updater (`Updates` via Foundation, Gui overlay) against a server-less static-blob feed + OIDC CI publish; `Collision.Segment2D` for swept projectile collision. One root `Directory.Build.props` `<KhaozEngineVersion>` drives every ref (heads, the `HardpointUpdater` shim, the dev `SnapshotTool`); top-level `Hardpoint.slnx`, vendored feed (`Hardpoint/vendor/khaozengine`) | **8.0.0** |
 | **Nullwake** (2D) | `Nullwake.Core` | `KhaozEngine.Game2D` + `Diagnostics`/`Persistence`/`Windowing` + `Updates` (shim, dormant) + `Snapshot` (dev tool); uses `AttentionBeacon`, clipboard paste + `Pointer.WindowFocused` gating in name entry. Vendored feed (`Nullwake/vendor/khaozengine`) | **8.0.0** |
 | **SpaceGame** (2D + Render3D) | `SpaceGame.Core` (head) / `SpaceGame.Sim` (lockstep sim) | `Game2D` + `Render3D` + `Netcode.LiteNetLib` + `Primitives` (head); `Ecs`/`Collision`/`Diagnostics`/`Content`/`Serialization`/`App`/`Netcode`/`Pooling`/`Determinism` + `Primitives` (sim); `Netcode.Abstractions` (contracts); `Render3D` + `Determinism` for the 2.5D mesh layer; manifest signing via the `ke-updater` tool. Restores from `local-feed`/GitHub Packages directly (no vendored feed) | **8.0.0** |
-| **Ruinborne** (3D MMO) | `Ruinborne.Client` / `Ruinborne.Server` | client: `KhaozEngine.Game3D` + `Foundation` + `NetWorld` + `Netcode.LiteNetLib` + `Netcode.Abstractions` + `Simulation` + `Updates`; server: `KhaozEngine.Server` umbrella + `WorldStore.SqlServer` (Azure SQL via `WorldPersistence`). Single `<KhaozEngineVersion>` pin in `Directory.Build.props`, vendored feed (`vendor/khaozengine`, refreshed via `scripts/refresh-engine.sh`) | **8.5.2** |
+| **Ruinborne** (3D MMO) | `Ruinborne.Client` / `Ruinborne.Server` | client: `KhaozEngine.Game3D` + `Foundation` + `NetWorld` + `Netcode.LiteNetLib` + `Netcode.Abstractions` + `Simulation` + `Updates`; server: `KhaozEngine.Server` umbrella + `WorldStore.SqlServer` (Azure SQL via `WorldPersistence`). Single `<KhaozEngineVersion>` pin in `Directory.Build.props`, vendored feed (`vendor/khaozengine`, refreshed via `scripts/refresh-engine.sh`) | **8.5.3** |
 
 ## Repo locations
 

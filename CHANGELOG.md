@@ -5,6 +5,14 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 8.5.3
+
+Fix: the swept resolver no longer freezes a character against a prop or wall ("stuck just walking into a tree" / a building). Completes the partial 8.5.2 float-up fix.
+
+- Root cause: a capsule resting against a static sits TANGENT to it, and Bepu's `SweepCapsule` from a touching start returns t=0 with a ZERO normal - no slide plane. The resolver could not tell motion INTO the surface (block) from ALONG it (slide), so a strafe / walk along a pressed-against trunk / rock / wall FROZE; earlier patches traded that for hangs or tunnels.
+- Fix: `SlideSubstep` now DEPENETRATES TO CLEARANCE before each sweep, using a slightly INFLATED capsule (radius + SkinWidth) for `ComputePenetration` so a tangent capsule registers as overlapping and is pushed to a real SkinWidth clearance. Every sweep then starts provably outside and yields a real contact normal: a fall sweeps parallel to a wall (clear -> falls), a strafe sweeps along the contact tangent (clear -> slides), a walk straight in hits at t>0 (slides / blocks). The old normal-less floor-vs-wall heuristic is removed. Convex statics (rocks, tree trunk hulls) depenetrate cleanly; one-sided meshes (buildings) cannot be depenetrated (`ComputePenetration` does not report one-sided-mesh overlap) but the swept move keeps the capsule a SkinWidth off them in steady state, so they never reach the touching state in play.
+- Coverage (`SweptCollisionTests`): grounded walk-into + strafe-around + walk-away for a convex-hull trunk AND a one-sided wall (no freeze); airborne fall beside both (no hang / float). Existing tunnel / slide / inner-corner / stairs / closed-shell / dome-walk / determinism tests unchanged and green. Behaviour change for all NetWorld/Simulation consumers; automatic on the pin, no API change.
+
 ## 8.5.2
 
 Fix: characters no longer "float up" / hang on the side of solid props (trees, rocks, building walls). Two defects in the 8.4.0 swept resolver, both when a capsule is pressed BESIDE a tall static (not standing on it):

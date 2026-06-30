@@ -233,15 +233,17 @@ public class SweptCollisionTests
     [Fact]
     public void BesideAWall_AirborneCapsuleFallsInsteadOfHanging()
     {
-        // The building case: a capsule airborne against a one-sided wall (the shape town buildings bake to) must
-        // FALL back down, not hang pinned partway up it (grounded=no, stuck) - the playtest "stuck up the building
-        // wall". Mirrors the trunk test with a thin one-sided mesh.
+        // The building case: a capsule airborne near a one-sided wall (the shape town buildings bake to) while
+        // pressing into it must FALL back down, not hang pinned partway up it (grounded=no, stuck) or get hauled up
+        // - the playtest "stuck up the building wall". Starts CLEAR of the wall (the swept move always keeps the
+        // capsule a SkinWidth off a one-sided mesh in steady state; an exact-tangent start can't be depenetrated
+        // since ComputePenetration does not report one-sided-mesh overlap, and never arises in play).
         using IPhysicsWorld world = new BepuPhysicsWorld();
         world.AddStatic(ThinWallAtZ2(), Pose.At(Vector3.Zero));   // wall at z=2, faces -Z, spans y[0,3]
         world.Step(1f / 60f);
 
-        // Airborne at y=1.5, tangent to the wall front (z = 2 - 0.4 = 1.6), pressing +Z into it.
-        var state = new MoveState { Position = new Vector3(0f, 1.5f, 1.6f), Grounded = false, VerticalVelocity = 0f };
+        // Airborne at y=1.5, clear of the wall (z=1.0, front edge z=1.4), pressing +Z into it while falling.
+        var state = new MoveState { Position = new Vector3(0f, 1.5f, 1.0f), Grounded = false, VerticalVelocity = 0f };
         var intoWall = new MoveCommand(new Vector2(0f, -1f), run: false, cameraYaw: 0f, jump: false);
 
         float peakY = state.Position.Y;
@@ -254,6 +256,66 @@ public class SweptCollisionTests
         Assert.True(peakY < 1.6f, $"capsule rose up the wall (peak y={peakY})");
         Assert.True(state.Position.Y < 1.1f, $"capsule hung on the wall instead of falling (y={state.Position.Y})");
         Assert.True(state.Position.Z < 1.65f, $"capsule tunneled into the wall (z={state.Position.Z})");
+    }
+
+    [Fact]
+    public void GroundedWalkIntoWall_StopsAndStrafes_NeverStuck()
+    {
+        // The building case of the tester's "stuck just walking into it": a grounded capsule walking into a
+        // one-sided wall (a town building) must STOP at the wall, then STRAFE freely along it (not freeze), and walk
+        // back away. Mirrors the trunk test with the one-sided mesh town buildings bake to.
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        world.AddStatic(ThinWallAtZ2(), Pose.At(Vector3.Zero));   // wall at z=2, faces -Z
+        world.Step(1f / 60f);
+
+        var state = new MoveState { Position = new Vector3(0f, 0.9f, 0f), Grounded = true };
+        var into = new MoveCommand(new Vector2(0f, -1f), run: false, cameraYaw: 0f, jump: false);   // +Z into wall
+        for (int i = 0; i < 200; i++)
+            state = CharacterMovement.Step(state, into, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
+        Assert.True(state.Position.Z < 1.65f && state.Position.Z > 1.5f, $"did not stop at the wall (z={state.Position.Z})");
+        Assert.True(state.Position.Y < 1.0f, $"rose up the wall (y={state.Position.Y})");
+
+        float xBefore = state.Position.X;
+        var strafe = new MoveCommand(new Vector2(1f, 0f), run: false, cameraYaw: 0f, jump: false);   // +X along the wall
+        for (int i = 0; i < 90; i++)
+            state = CharacterMovement.Step(state, strafe, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
+        Assert.True(state.Position.X > xBefore + 0.5f, $"frozen against the wall - could not strafe (x {xBefore:F2} -> {state.Position.X:F2})");
+    }
+
+    [Fact]
+    public void GroundedWalkIntoTrunk_DoesNotStickOrFloat()
+    {
+        // The tester report: "stuck just walking into a tree". A GROUNDED capsule walking horizontally into a trunk
+        // (the common case, vs the airborne float-up tests above) must not float up, not tunnel through, must still
+        // be able to STRAFE around it (not freeze in place), and must be able to walk back away.
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        world.AddStatic(TrunkHull(new Vector3(0f, 0f, 2f)), Pose.At(Vector3.Zero));   // trunk axis at z=2, top y=3
+        world.Step(1f / 60f);
+
+        var state = new MoveState { Position = new Vector3(0f, 0.9f, 0f), Grounded = true };
+        var into = new MoveCommand(new Vector2(0f, -1f), run: false, cameraYaw: 0f, jump: false);   // +Z into trunk
+        float peakY = state.Position.Y;
+        for (int i = 0; i < 120; i++)
+        {
+            state = CharacterMovement.Step(state, into, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
+            if (state.Position.Y > peakY) peakY = state.Position.Y;
+        }
+        Assert.True(peakY < 1.1f, $"floated up while walking into the trunk (peak y={peakY})");
+        Assert.True(state.Position.Z < 1.7f, $"walked through the trunk (z={state.Position.Z})");
+
+        // Pressed against the trunk -> strafe +X: must SLIDE around it, not be frozen.
+        float xBefore = state.Position.X;
+        var strafe = new MoveCommand(new Vector2(1f, 0f), run: false, cameraYaw: 0f, jump: false);   // +X
+        for (int i = 0; i < 90; i++)
+            state = CharacterMovement.Step(state, strafe, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
+        Assert.True(state.Position.X > xBefore + 0.5f, $"frozen against the trunk - could not strafe (x {xBefore:F2} -> {state.Position.X:F2})");
+
+        // And can walk back away (-Z).
+        float zBefore = state.Position.Z;
+        var away = new MoveCommand(new Vector2(0f, 1f), run: false, cameraYaw: 0f, jump: false);   // -Z
+        for (int i = 0; i < 60; i++)
+            state = CharacterMovement.Step(state, away, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
+        Assert.True(state.Position.Z < zBefore - 0.5f, $"could not walk away from the trunk (z {zBefore:F2} -> {state.Position.Z:F2})");
     }
 
     [Fact]

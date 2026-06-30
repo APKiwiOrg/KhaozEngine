@@ -263,18 +263,17 @@ public static class CharacterMovement
 
     // Swept collide-and-slide tuning. SubstepFraction keeps each swept query <= a fraction of the capsule radius
     // so a fast move (jump/run/terminal fall) can never advance past a thin wall in one sweep (anti-tunnel).
-    // The walkable-contact pass-through and the degenerate-contact advance in SlideSubstep advance the remainder
-    // UNSWEPT, so this must stay below ~1.0 (each substep under one radius) or such an advance could mask and
-    // tunnel a wall in the same substep.
+    // The walkable-contact pass-through advances the remainder UNSWEPT, so this must stay below ~1.0 (each substep
+    // under one radius) or such an advance could mask and tunnel a wall in the same substep.
     private const float SubstepFraction = 0.5f;
     private const int   SlideIterations = 4;
     private const float SkinWidth       = 0.01f;
     // Contact counts as a wall/riser (step-up candidate) rather than a floor/ceiling when |normal.Y| is small.
     private const float StepUpNormalY = 0.5f;
-    // On a degenerate (zero-normal) contact, lift the capsule this far and re-sweep the horizontal remainder to
-    // tell a floor-under-the-feet (clears when raised) from a wall-beside-the-body (still hits). Small enough not
-    // to clear a real low wall/riser, large enough to lift the sphere bottom off a curved support's point contact.
-    private const float DegenerateFloorProbe = 0.05f;
+    // Depenetration-to-clearance passes before each sweep: push the capsule out of any prop/wall overlap to a small
+    // positive clearance so the sweep starts provably outside and yields a REAL contact normal (Bepu reports a
+    // useless t=0 zero-normal from a touching start). A few passes clear an inner corner (two simultaneous contacts).
+    private const int   DepenIterations = 4;
 
     /// <summary>Move the capsule from <paramref name="start"/> toward <paramref name="target"/> by a substepped
     /// swept collide-and-slide over <see cref="IPhysicsWorld.SweepCapsule"/>. The displacement is split into
@@ -315,6 +314,25 @@ public static class CharacterMovement
         float cosMaxSlope = MathF.Cos(t.MaxSlopeRadians);
         for (int iter = 0; iter < SlideIterations; iter++)
         {
+            // Depenetrate to a small POSITIVE clearance FIRST, so the sweep below starts provably outside every
+            // static and returns a real contact normal. A capsule resting against a prop/wall sits exactly TANGENT
+            // (the swept move leaves a SkinWidth gap, then settles to ~touching), and a sweep from a touching start
+            // reports t=0 with a zero normal - no slide plane. Without this, that case had to GUESS into-vs-along,
+            // which froze a strafe, hung a fall, or tunneled. We query depenetration with a slightly INFLATED
+            // capsule (radius + SkinWidth): a tangent real capsule registers as overlapping the inflated probe, so
+            // the MTV pushes it to ~SkinWidth real clearance (a same-size query returns nothing at exact tangent and
+            // would leave it stuck). After this the sweep is clean: a fall sweeps PARALLEL to a wall it is beside
+            // (clear -> falls), a strafe sweeps along the contact tangent (clear -> slides), a walk straight in hits
+            // at t>0 with a real normal (slides / blocks). Terrain is analytic (not in the world), so flat ground
+            // never triggers this; only props/walls do. Iterated to clear an inner corner (two simultaneous
+            // contacts). One-sided meshes only contact from the front, so the MTV always pushes OUT - never through.
+            CapsuleShape probe = new(capsule.Radius + SkinWidth, capsule.Length);
+            for (int d = 0; d < DepenIterations; d++)
+            {
+                if (!world.ComputePenetration(probe, Pose.At(pos), out Vector3 push) || push.LengthSquared() <= 1e-12f) break;
+                pos += push;   // MTV is direction*depth; the inflated overlap depth lands the real capsule ~SkinWidth clear
+            }
+
             float dist = delta.Length();
             if (dist <= 1e-6f) break;
             Vector3 dir = delta / dist;
@@ -328,32 +346,11 @@ public static class CharacterMovement
             Vector3 n = hit.Normal;
             if (n.LengthSquared() <= 1e-12f)
             {
-                // Degenerate (zero-distance / deep) contact: Bepu gives no usable slide plane (a capsule resting
-                // point-on-point atop a curved support, or pressed flush against a thin one-sided wall / a prop
-                // beside the body, both report dist=0 with a zero normal).
-                // VERTICAL: let a DOWNWARD remainder through unconditionally. A wall / prop BESIDE the body must
-                // never block a fall - blocking it here is what hung the capsule mid-air and let it "float up"
-                // trees/rocks/building walls (a downward sweep grazing the side reports t=0, and the old code made
-                // no vertical progress). Step 4's support-floor sweep clamps the capsule back up if this really is a
-                // floor under the feet, so over-descending into a floor is corrected. An UPWARD remainder stays
-                // blocked (don't tunnel up through an overhang the head hit).
-                if (remaining.Y < 0f) pos.Y += remaining.Y;
-                // HORIZONTAL: discriminate the curved FLOOR under the feet (let the remainder through, so the capsule
-                // walks across a dome / mounts on landing) from the WALL beside the body (block it, else advancing
-                // tunnels straight through a thin quad). Re-sweep the horizontal remainder from a slightly RAISED
-                // pose: lifting a few cm clears a contact UNDER the feet (a dome top) but not one that spans the full
-                // capsule height BESIDE the body (a wall). Clear => floor: advance.
-                Vector3 horizRem = new(remaining.X, 0f, remaining.Z);
-                float horizRemLen = horizRem.Length();
-                if (horizRemLen > 1e-6f)
-                {
-                    Vector3 raised = pos; raised.Y += DegenerateFloorProbe;
-                    Vector3 horizRemDir = horizRem / horizRemLen;
-                    if (!world.SweepCapsule(capsule, Pose.At(raised), horizRemDir, horizRemLen, out _))
-                    {
-                        pos += horizRem;   // floor under the feet: follow the surface, step 4 sets the resting Y
-                    }
-                }
+                // Still degenerate after depenetration: the move is straight into a surface the capsule is exactly
+                // tangent to (depenetration left it right at the boundary). No slide plane and no clear advance INTO
+                // it, so stop this substep; the next substep/tick depenetrates + sweeps afresh. Rare now that every
+                // sweep starts clear - the old normal-less floor-vs-wall guessing (which froze strafes / hung falls)
+                // is gone.
                 break;
             }
             n = Vector3.Normalize(n);

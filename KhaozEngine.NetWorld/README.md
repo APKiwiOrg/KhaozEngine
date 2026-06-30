@@ -79,3 +79,23 @@ materializes the account enumeration. Unwired capabilities throw `NotSupportedEx
 
 For the opt-in Kestrel HTTPS endpoint that exposes `ServerAdmin` as a REST API, see
 [`KhaozEngine.Server.Admin`](../KhaozEngine.Server.Admin).
+
+## Client self-rescue / unstuck (since 8.6.0)
+
+A normal game client can ask the authoritative server to teleport **itself** to a server-decided safe position (a
+"return to spawn" / "unstuck"). Because the server is authoritative, a client-side position overwrite reconciles
+away within ~1 RTT, so an unstuck must move the player on the server.
+
+- **Client:** `WorldClient.RequestSelfRescue()` - fire-and-forget over the reliable channel; returns false (and
+  sends nothing) when not connected. The client never names a destination; it only asks (a client-supplied target
+  would be a teleport-anywhere cheat).
+- **Server:** set `WorldServerConfig.SelfRescueDestination` / `ShardedWorldServerConfig.SelfRescueDestination` (a
+  `Func<PlayerRef, Vector3>?`; **null = the feature is OFF**) to the safe spot to send the requesting player to. A
+  fixed point is just `_ => point`. The request reuses the admin `Teleport` apply path (position set, vertical
+  velocity zeroed), so it reconciles to the client exactly like an admin teleport. `SelfRescueCooldownSeconds`
+  (default 5s) rate-limits it per player. Both servers handle it identically; `ShardedWorldServer` teleports
+  across cells.
+
+Wire: a control frame distinct by length from a move (`MoveProtocol.ClientControlKind` /
+`EncodeClientControl` / `TryDecodeClientControl`), so it shares the client->server Data channel without aliasing
+and a server that predates the feature harmlessly ignores it (no protocol-version break).

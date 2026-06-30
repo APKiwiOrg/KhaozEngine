@@ -337,6 +337,17 @@ version/release work.
     snapshot (unknown type id) into the same clean `IncompatibleVersion` disconnect + a `SnapshotDecodeFailed`
     event instead of an unhandled game-loop throw. No change to existing `WorldClient`/`WorldServer`/`UpdateService`
     construction.
+    8.6.0 additive: client-initiated self-rescue ("return to spawn" / "unstuck"). `WorldClient.RequestSelfRescue()`
+    (fire-and-forget over the reliable channel, false when not connected) asks the authoritative server to teleport
+    the local player to a SERVER-decided safe spot (the client sends no position - not a teleport-anywhere). Gated by
+    `WorldServerConfig.SelfRescueDestination` / `ShardedWorldServerConfig.SelfRescueDestination` (a
+    `Func<PlayerRef, Vector3>?`, null = OFF) + `SelfRescueCooldownSeconds` (default 5s, per-player), handled
+    identically on BOTH servers (sharded teleports across cells) by reusing the admin Teleport apply path (position
+    set, vertical velocity zeroed) so it reconciles like an admin teleport. Wire: a new `MoveProtocol.ClientControlKind`
+    (+ `EncodeClientControl`/`TryDecodeClientControl`) - a 2-byte `[marker][kind]` control frame, distinct by length
+    from the 18-byte move so the two never alias on the client->server Data channel and a server predating the feature
+    decodes it as a too-short malformed move and ignores it (no protocol-version break). The per-connection rate
+    limiter also covers control frames; the cooldown is an always-on guard off a monotonic per-server clock.
   - **Animated characters (glTF clip playback + locomotion blend, 7.56.0):** the GPU-free animation layer in
     `Render3D` beside the rig/skinning - `GltfLoader.LoadAnimations(path)` reads SharpGLTF `LogicalAnimations` into
     `AnimationClip`s (per-joint TRS keyframe tracks - `JointTrack`/`Vector3Track`/`QuaternionTrack` keyed by glTF

@@ -68,4 +68,30 @@ public class MoveProtocolTests
     {
         Assert.False(MoveProtocol.TryDecodeSnapshotFrame(new byte[] { 1, 2 }, out _, out _, out _));
     }
+
+    [Fact]
+    public void Client_control_round_trips()
+    {
+        byte[] wire = MoveProtocol.EncodeClientControl(MoveProtocol.ClientControlKind.SelfRescue);
+        Assert.True(MoveProtocol.TryDecodeClientControl(wire, out MoveProtocol.ClientControlKind kind));
+        Assert.Equal(MoveProtocol.ClientControlKind.SelfRescue, kind);
+    }
+
+    [Fact]
+    public void Client_control_decode_rejects_a_move_frame()
+    {
+        // A move and a control frame share the client->server Data channel; they must never alias. A full move
+        // payload (18 bytes) is not a control frame, so the server's demux falls through to the move path.
+        byte[] move = MoveProtocol.EncodeMove(seq: 5, new MoveCommand(new Vector2(0f, 1f), run: false, cameraYaw: 0f));
+        Assert.False(MoveProtocol.TryDecodeClientControl(move, out _));
+    }
+
+    [Fact]
+    public void Move_decode_rejects_a_client_control_frame()
+    {
+        // Backward-safety: a control frame is shorter than a move, so a server that predates this feature decodes it
+        // as a (too-short) malformed move and ignores it - the self-rescue request is a harmless no-op, never a crash.
+        byte[] control = MoveProtocol.EncodeClientControl(MoveProtocol.ClientControlKind.SelfRescue);
+        Assert.False(MoveProtocol.TryDecodeMove(control, out _, out _));
+    }
 }

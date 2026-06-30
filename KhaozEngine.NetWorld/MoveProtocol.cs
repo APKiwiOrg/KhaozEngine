@@ -135,6 +135,42 @@ public static class MoveProtocol
         return false;
     }
 
+    /// <summary>A client-to-server control message that is NOT a movement command (e.g. a self-rescue / "unstuck"
+    /// request). They ride the same Data channel as <see cref="EncodeMove"/>, demuxed by <b>length</b>: a control
+    /// frame is <see cref="ClientControlSize"/> bytes, a move is <see cref="MoveSize"/> (18) - they never alias. The
+    /// payload is deliberately small and carries no position: the server alone owns the response (the destination of a
+    /// self-rescue), so a reverse-engineered client cannot turn it into a teleport-anywhere.</summary>
+    public enum ClientControlKind : byte
+    {
+        /// <summary>Ask the authoritative server to move THIS player to a server-decided safe position
+        /// (return-to-spawn / unstuck). The server resolves the destination and rate-limits it.</summary>
+        SelfRescue = 1,
+    }
+
+    // Control frame: [marker:byte][kind:byte] = 2 bytes. The marker is a fixed sentinel so a random 2-byte packet is
+    // unlikely to be taken for a control message; the size alone already keeps it distinct from an 18-byte move.
+    private const byte ClientControlMarker = 0xC5;
+    private const int ClientControlSize = 2;
+
+    /// <summary>Encodes a client control message as <c>[marker][kind]</c>. Shorter than a move frame, so a server
+    /// that predates this feature decodes it as a (too-short) malformed move and harmlessly ignores it - the request
+    /// becomes a no-op across version skew rather than a protocol break.</summary>
+    public static byte[] EncodeClientControl(ClientControlKind kind) => new byte[] { ClientControlMarker, (byte)kind };
+
+    /// <summary>Decodes a client control message written by <see cref="EncodeClientControl"/>. False for anything that
+    /// is not exactly a 2-byte marker-prefixed control frame - in particular a full move payload, so the server's
+    /// receive path can try this first and fall through to <see cref="TryDecodeMove"/> for ordinary input.</summary>
+    public static bool TryDecodeClientControl(ReadOnlySpan<byte> data, out ClientControlKind kind)
+    {
+        if (data.Length == ClientControlSize && data[0] == ClientControlMarker)
+        {
+            kind = (ClientControlKind)data[1];
+            return true;
+        }
+        kind = default;
+        return false;
+    }
+
     // Server->client frame: [localNetId:int][ackSeq:int][snapshot bytes...].
     private const int FrameHeader = 8;
 

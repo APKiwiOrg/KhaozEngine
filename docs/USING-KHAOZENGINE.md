@@ -1431,7 +1431,8 @@ var server = new WorldServer(transport, new WorldServerConfig { TickSeconds = 1f
 
 - **`WorldClient`** (render-free): wraps `NetClient` + `ClientReplicationView` + `ClientPrediction`. `Poll()`
   ingests AoI snapshots, applies remote entities, and reconciles the local avatar against the authoritative
-  basis; `SendInput(cmd)` predicts one tick forward and transmits it; `Snapshot()` returns
+  basis; `SendInput(cmd)` predicts one tick forward and transmits it; `RequestSelfRescue()` (since 8.6.0) asks the
+  server to teleport the local player to a server-decided safe spot (an "unstuck" - see below); `Snapshot()` returns
   `IReadOnlyList<EntityRenderState>` (`{ NetId Id; Vector3 Position; bool IsLocal; string? DisplayName; bool
   Grounded; float VerticalVelocity; }`) for the renderer - the local player is the predicted position, remotes the
   replicated one (smoothly interpolated between snapshots by default - see `InterpolateRemotes` below).
@@ -2471,6 +2472,33 @@ Routes (all under `/admin`, all require `Authorization: Bearer <token>`): `GET /
 `POST /kick`, `POST /broadcast`, `GET /accounts?prefix=`, `GET /bans`, `POST /ban`, `POST /unban`. Mutations return
 202; capabilities not wired return 501. Bind defaults to loopback. There are no changes to the game client wire
 protocol.
+
+### Client self-rescue / unstuck (since 8.6.0)
+
+Let a normal game client ask the authoritative server to teleport **itself** to a server-decided safe spot (a
+"return to spawn" / "unstuck", e.g. a `T` key). The server is authoritative, so a client-side position overwrite
+would reconcile away within ~1 RTT - the move has to happen on the server. Opt-in, off by default, additive (no
+wire-protocol break).
+
+```csharp
+// Server: hand the feature a destination provider (null = off). A fixed point is just _ => point.
+var config = new WorldServerConfig            // same knobs on ShardedWorldServerConfig
+{
+    TickSeconds = 1f / 30f,
+    SelfRescueDestination = _ => new Vector3(spawn.X, collision.GroundHeight(spawn.X, spawn.Z) + 0.9f, spawn.Z),
+    SelfRescueCooldownSeconds = 5f,           // per-player; spam inside the window is dropped
+};
+
+// Client: fire-and-forget. Returns false (sends nothing) if not connected.
+if (Input.WasPressed(Key.T)) client.RequestSelfRescue();
+```
+
+The client never names the destination (that would be a teleport-anywhere cheat); the **server** computes it from
+the `PlayerRef`. The request reuses the admin `Teleport` apply path (position set, vertical velocity zeroed), so it
+reconciles to the client exactly like an admin teleport. Both `WorldServer` and `ShardedWorldServer` handle it
+identically (the sharded one teleports across cells). Under the hood it rides a short control frame on the existing
+client->server channel (`MoveProtocol.ClientControlKind`), distinct by length from a move, so a server that predates
+the feature just ignores it.
 
 ### World cell grid (`KhaozEngine.Sharding`)
 

@@ -37,6 +37,17 @@ public sealed class ShardedWorldServerConfig
     /// <summary>Opt-in server-side anti-cheat / input-hardening knobs (rate limiting, movement-correction anomaly).
     /// All off by default, so behaviour is unchanged until a consumer tightens it.</summary>
     public AntiCheatConfig AntiCheat { get; init; } = new();
+
+    /// <summary>Server-owned destination for a client <see cref="WorldClient.RequestSelfRescue"/> ("unstuck" /
+    /// return-to-spawn): given the requesting player, returns the safe world position to teleport it to (across cells,
+    /// reusing the admin path - position set, vertical velocity zeroed). The client never supplies a position - the
+    /// server alone decides - so a hostile client can't teleport anywhere. A fixed point is just <c>_ =&gt; point</c>.
+    /// <b>Null (the default) =&gt; the feature is OFF</b>: a self-rescue request is ignored.</summary>
+    public Func<PlayerRef, Vector3>? SelfRescueDestination { get; init; }
+
+    /// <summary>Per-player minimum interval (seconds) between honored self-rescues; further requests inside the window
+    /// are dropped. Default 5s. Ignored when <see cref="SelfRescueDestination"/> is null.</summary>
+    public float SelfRescueCooldownSeconds { get; init; } = 5f;
 }
 
 /// <summary>
@@ -67,6 +78,11 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
     private readonly Dictionary<int, string> accountIdBySlot = new();
     private readonly Dictionary<int, RateLimiter> rateBySlot = new();
     private readonly Dictionary<int, int> correctionStreakBySlot = new();
+    // Self-rescue cooldown: a monotonic server-time accumulator (advanced one dt per Tick) plus, per slot, the
+    // earliest clock time the next self-rescue is honored. No wall-clock; double for long-uptime resolution. Entries
+    // are seeded only when a rescue is honored and cleared on leave.
+    private double selfRescueClock;
+    private readonly Dictionary<int, double> selfRescueReadyAt = new();
     private readonly HashSet<CellCoord> wiredCells = new();
     // Per-tick scratch: the pre-step state of each owned player whose command we routed this frame, so we can
     // measure the authoritative correction after the cells step. Reused across ticks (single-threaded orchestration).
@@ -232,6 +248,12 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
             if (config.AntiCheat.DisconnectOnRateLimit) net.Disconnect(slot);
             return;
         }
+        // Control messages (e.g. self-rescue) share the channel with moves; demux them first by their distinct length.
+        if (MoveProtocol.TryDecodeClientControl(data, out MoveProtocol.ClientControlKind control))
+        {
+            if (control == MoveProtocol.ClientControlKind.SelfRescue) HandleSelfRescue(slot);
+            return;
+        }
         // Malformed / NaN / Inf packets are rejected by the decode and flagged.
         if (!MoveProtocol.TryDecodeMove(data, out int seq, out MoveCommand cmd))
         {
@@ -239,6 +261,18 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
             return;
         }
         commands.Store(slot, seq, cmd);
+    }
+
+    // A client asked to be teleported to a safe spot. The server owns the destination (the client sends no position),
+    // so this can't be a teleport-anywhere. Honored at most once per SelfRescueCooldownSeconds per player; the move
+    // reuses the admin Teleport apply path (enqueued here on the host thread, applied at the next Tick's drain).
+    private void HandleSelfRescue(int slot)
+    {
+        if (config.SelfRescueDestination is null) return;                                   // feature off
+        if (selfRescueReadyAt.TryGetValue(slot, out double readyAt) && selfRescueClock < readyAt) return;  // cooling down
+        Vector3 dest = config.SelfRescueDestination(PlayerRef.Slot(slot));
+        admin.Enqueue(new AdminCommand { Kind = AdminCommandKind.Teleport, Target = PlayerRef.Slot(slot), Position = dest });
+        selfRescueReadyAt[slot] = selfRescueClock + Math.Max(0f, config.SelfRescueCooldownSeconds);
     }
 
     /// <summary>Steps one authoritative server frame across every cell, then serves each client its home-cell AoI.</summary>
@@ -303,6 +337,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
         if (config.AdvanceWorldTick)
             foreach (CellSim cell in host.Cells) cell.World.AdvanceTick();
         drain.Advance(dt);
+        selfRescueClock += dt;   // advance the self-rescue cooldown clock
         admin.Publish(BuildOnlineSnapshot());
     }
 
@@ -440,6 +475,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
         accountIdBySlot.Remove(slot);
         rateBySlot.Remove(slot);
         correctionStreakBySlot.Remove(slot);
+        selfRescueReadyAt.Remove(slot);
         // Drop the slot's command-queue state too. The SlotAllocator recycles this slot to the next connection,
         // whose seqs legitimately restart at 0; without this the stale high-water mark rejects every command and
         // freezes the recycled player (it self-heals only once their seq crawls past the dead mark, minutes later).

@@ -5,6 +5,15 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 8.6.0
+
+Additive: a client-initiated self-rescue ("return to spawn" / "unstuck") seam, so a stuck player can ask the authoritative server to teleport it to a server-decided safe position. Off by default; no breaking changes; no protocol-version break.
+
+- `WorldClient.RequestSelfRescue()` (new): fire-and-forget over the reliable channel; returns false (sends nothing) when not connected. The client never names a destination (that would be a teleport-anywhere cheat) - it only asks.
+- Wire: a new `MoveProtocol.ClientControlKind` (+ `EncodeClientControl`/`TryDecodeClientControl`). A control frame is a 2-byte `[marker][kind]`, distinct by length from the 18-byte move, so the two never alias on the shared client->server Data channel. Backward-safe both ways: an older server that predates this decodes the 2-byte frame as a (too-short) malformed move and ignores it - the request becomes a harmless no-op across version skew, not a protocol break - and a newer server still decodes ordinary 18-byte moves unchanged.
+- Server: `WorldServerConfig.SelfRescueDestination` / `ShardedWorldServerConfig.SelfRescueDestination` (a `Func<PlayerRef, Vector3>?`, null = feature OFF) plus `SelfRescueCooldownSeconds` (default 5s, per-player). The server owns the destination and rate-limits it. On a request it reuses the existing admin Teleport apply path (position set, vertical velocity zeroed), so the move reconciles to the client exactly like an admin teleport. Implemented identically on BOTH `WorldServer` and `ShardedWorldServer` (the latter teleports across cells); the `WorldClient` API is server-agnostic. The per-connection message rate limiter (when enabled) also covers control frames; the cooldown is an always-on, self-rescue-specific guard tracked off a monotonic per-server clock (no wall-clock).
+- Tests (`MoveProtocolTests`, `WorldServerSelfRescueTests`, `ShardedWorldServerSelfRescueTests`): control-frame round-trip + move/control non-aliasing + the old-server backward-safety decode; end-to-end teleport-to-destination + vertical-velocity reset + cooldown + disabled-when-null + returns-false-when-not-connected, on both servers.
+
 ## 8.5.3
 
 Fix: the swept resolver no longer freezes a character against a prop or wall ("stuck just walking into a tree" / a building). Completes the partial 8.5.2 float-up fix.

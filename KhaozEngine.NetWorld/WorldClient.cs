@@ -399,6 +399,20 @@ public sealed class WorldClient : IDisposable
         return seq;
     }
 
+    /// <summary>Asks the authoritative server to move THIS player to a server-decided safe position - a
+    /// "return to spawn" / "unstuck". Fire-and-forget over the reliable channel; the result reconciles back exactly
+    /// like an admin teleport. The client never names the destination (that would be a teleport-anywhere cheat): the
+    /// server owns it and rate-limits it (see <see cref="WorldServerConfig.SelfRescueDestination"/> /
+    /// <see cref="WorldServerConfig.SelfRescueCooldownSeconds"/>, mirrored on <see cref="ShardedWorldServerConfig"/>),
+    /// and the feature is off until the server configures a destination. Returns false (and sends nothing) when not
+    /// connected.</summary>
+    public bool RequestSelfRescue()
+    {
+        if (state != WorldConnectionState.Connected) return false;
+        net.Send(MoveProtocol.EncodeClientControl(MoveProtocol.ClientControlKind.SelfRescue), NetChannelReliability.ReliableOrdered);
+        return true;
+    }
+
     /// <summary>Advances render-time smoothing (call once per render frame): the local avatar's inter-tick
     /// prediction smoothing, plus - when <see cref="WorldClientConfig.InterpolateRemotes"/> is set - remote
     /// interpolation. Remotes ramp from the previous snapshot to the current one across one estimated inter-snapshot

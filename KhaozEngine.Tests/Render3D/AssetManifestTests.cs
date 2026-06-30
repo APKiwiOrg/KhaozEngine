@@ -154,5 +154,25 @@ namespace KhaozEngine.Tests.Render3D
             AssetManifest m = AssetManifest.Parse(json, baseDir);
             Assert.Equal(Path.Combine(baseDir, "rock.surf"), m.Props[0].Heightmap);
         }
+
+        [Fact]
+        public void Parse_ReadsAndResolvesCollisionProxy()
+        {
+            string json = """
+            { "props": [ { "id": "blacksmith", "file": "blacksmith.glb", "heightMeters": 5.0,
+                           "collisionProxy": "blacksmith_collision.glb" } ] }
+            """;
+            var manifest = AssetManifest.Parse(json, "/kit");
+            var e = manifest.Find("blacksmith")!.Value;
+            Assert.Equal(System.IO.Path.Combine("/kit", "blacksmith_collision.glb"), e.CollisionProxy);
+        }
+
+        [Fact]
+        public void Parse_NoCollisionProxy_IsNull()
+        {
+            string json = """{ "props": [ { "id": "rock", "file": "rock.glb", "heightMeters": 1.0 } ] }""";
+            var manifest = AssetManifest.Parse(json, "/kit");
+            Assert.Null(manifest.Find("rock")!.Value.CollisionProxy);
+        }
     }
 }

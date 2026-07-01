@@ -16,13 +16,15 @@ deterministic and reproducible (a committed box spec re-bakes the same proxy). R
 2. **See the interior** (roof occludes top-down) by re-rendering with roof/window materials removed:
    `blender -b --python render_roofless.py -- <building>.glb <outdir> RoofTiles_Red,Windows`
    (`loose_parts.py` dumps per-connected-component bounds when you need precise part extents.)
-3. **Author** a box/wedge spec JSON in the building's Blender frame (Z up), enveloping the substantial masses and
-   dropping decoration. See `examples/blacksmith_spec.json`. Schema:
+3. **Author** a box/wedge/cylinder spec JSON in the building's Blender frame (Z up), enveloping the substantial
+   masses and dropping decoration. See `examples/blacksmith_spec.json`. Schema:
    ```json
-   { "boxes":  [ { "name": "...", "min": [x,y,z], "max": [x,y,z] } ],
-     "wedges": [ { "name": "...", "min": [x,y,z], "max": [x,y,z], "axis": "x|y", "dir": 1 } ] }
+   { "boxes":     [ { "name": "...", "min": [x,y,z], "max": [x,y,z] } ],
+     "wedges":    [ { "name": "...", "min": [x,y,z], "max": [x,y,z], "axis": "x|y", "dir": 1 } ],
+     "cylinders": [ { "name": "...", "center": [x,y], "radius": 0.3, "z": [z0,z1], "segments": 8 } ] }
    ```
-   A wedge is a right-triangular prism (a stair ramp), the sloped face rising along `axis` in `dir`.
+   A wedge is a right-triangular prism (a stair ramp), the sloped face rising along `axis` in `dir`. A cylinder
+   is an n-gon prism for round masses (a well ring) - tighter than a box at the diagonals.
 4. **Build + verify** the proxy GLB and x-ray overlay renders (red proxy over the building):
    `blender -b --python build_proxy.py -- <building>.glb <spec>.json <out>_collision.glb <overlaydir>`
    Inspect `ov_top/front/right/persp.png`; adjust the spec until the proxy covers walls + furniture and drops the roof.
@@ -36,6 +38,34 @@ deterministic and reproducible (a committed box spec re-bakes the same proxy). R
   proxy, so it overlays the building exactly regardless of the proxy's own bbox.
 - Each Blender object becomes one convex hull child (`GltfLoader.LoadGroups` preserves object boundaries). Keep
   pieces as separate objects.
+
+## Capsule geometry rules (hard-won, engine 8.11.0 movement + Bepu)
+
+Author in WORLD metres and convert to the building's raw units via `heightMeters / rawHeight * placementScale`
+(each building has its OWN scale, so identical raw geometry needs different specs per building). For the default
+r=0.4 capsule, StepHeight 0.4, MaxSlope 40 deg, all limits below are world metres. Violating any of these read
+as fine in an overlay render but fails live (measured on the Ruinborne town set):
+
+- **Bodies**: hug the wall PLANES measured from the mesh (a z-band through the walls), never the full bbox
+  (that wraps roof/eave/jetty overhangs into an invisible fat edge). Drop overhangs, porch posts, rails, and
+  foot-level plinth relief. Put columns and the infill wall on ONE plane at the columns' face - separate column
+  boxes leave concave pockets.
+- **Entrance steps**: exactly ONE step-up-probe mount per approach, from flat ground, rise 0.2..0.32. Above
+  ~0.35 the walker's rest equilibrium tangent-penetrates the step edge and every probe sweep returns Bepu's
+  t=0 zero-normal degeneracy (dead). A SECOND probe mount from a tread also dies this way - later rises must be
+  <= 0.08, which an edge contact classifies as walkable floor (strolled over, no probe). Rises 0.094..0.2 are a
+  DEAD ZONE: too steep to be floor, too shallow-normal (|n.Y| > 0.5) to be a step-up riser - unclimbable.
+- **Treads**: >= ~0.3 deep (shallower sheds a resting capsule - depenetration ratchets it off edge contacts)
+  and >= ~0.3 TALL where the capsule rests against a door wall (the support sweep degenerates wall-tangent;
+  under ~0.3 the terrain reclaims the capsule and it falls THROUGH the tread and wedges inside it). The top
+  tread's front edge must sit >= ~0.45 from the door wall or the wall-stopped capsule (one radius out) never
+  stands on it.
+- **Ceilings**: nothing solid within the probe envelope (2.2 = raised feet 0.4 + 1.8 body) above any mount
+  zone - including a jetty/upper-floor box's underside AND the body box's own front-top edge (cap the body
+  well above head height or run it to full height; a low cap's corner corrupts the probe's sweeps).
+- **Gaps**: no slot between solids narrower than the capsule diameter (0.8) - extend blocks flush to walls and
+  to each other (a pinch slot wedges even with every solid convex).
+- **Round masses**: use a `cylinders` n-gon prism, not a box (a box is ~40% fat at the diagonals).
 
 ## The metric
 

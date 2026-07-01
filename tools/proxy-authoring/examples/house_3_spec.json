@@ -1,1 +1,45 @@
-{ "boxes": [ { "name": "body", "min": [-0.97, -1.07, 0.0], "max": [0.97, 1.06, 0.95] } ], "wedges": [] }
+{
+  "_comment": "house_3 collision proxy (Blender frame, Z up). Tight body at the measured wall planes (x +/-0.762, y -0.887..0.833, stone wall top z 0.94); the roof/eaves overhang (to +/-0.97 x, +/-1.07 y) is deliberately dropped, as are the foot-level plinth stones (z<0.05). Entrance on the -Y face at the arched door (x +/-0.238): TWO flat deep step boxes running back flush to the wall. Sized for the engine capsule (r=0.4, StepHeight 0.4, MaxSlope 40deg), not to the visible stones - every alternative fails a movement invariant: (1) treads shallower than ~0.25 m world shed a resting capsule (depenetration ratchets it off edge contacts = the slides-off-the-stairs playtest bug); (2) only ONE step-up-probe mount works, from flat ground - a second probe mount from a tread rests the capsule tangent on the next riser's convex edge and Bepu's t=0 zero-normal sweep degeneracy wedges the probe forever; (3) a rise <= 0.08 m world reads as walkable floor (edge normal.Y >= cos 40deg) and is strolled over with no probe; (4) the door wall stops the capsule centre one radius out (world z 4.10), so the top tread's front must sit at >= ~4.15 or the threshold is never stood on. Hence: step_lo top 0.0763 raw (0.32 m world, the one probe mount - rises >= ~0.35 rest the walker tangent-penetrating the step edge and the probe sweeps all return the t=0 degeneracy - tread 0.36 m), step_hi top 0.0954 raw (0.40 m world, +0.08 walk-over rise, front at the real stone tread edge y -0.999 = world 4.17, tread 0.47 m). Tops out feet 0.40 m at the door, 10 cm under the stone threshold - invisible, and stable/standable everywhere on the staircase. Bases extend -0.3 below terrain.",
+  "boxes": [
+    {
+      "name": "body",
+      "min": [
+        -0.762,
+        -0.887,
+        -0.3
+      ],
+      "max": [
+        0.762,
+        0.833,
+        0.94
+      ]
+    },
+    {
+      "name": "step_lo",
+      "min": [
+        -0.238,
+        -1.085,
+        -0.3
+      ],
+      "max": [
+        0.238,
+        -0.887,
+        0.0763
+      ]
+    },
+    {
+      "name": "step_hi",
+      "min": [
+        -0.238,
+        -0.999,
+        -0.3
+      ],
+      "max": [
+        0.238,
+        -0.887,
+        0.0954
+      ]
+    }
+  ],
+  "wedges": []
+}

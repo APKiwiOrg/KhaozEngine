@@ -1,1 +1,20 @@
-{ "boxes": [ { "name": "well_body", "min": [-0.34, -0.64, -0.25], "max": [0.34, 0.37, 0.22] } ], "wedges": [] }
+{
+  "_comment": "well collision proxy (Blender frame, Z up; ws = 2.639 world m per raw unit; the mesh base sits at raw z -0.252). The round stone ring as ONE octagonal prism (centre from the measured ring bounds, radius hugging the stones' outer faces, top at the rim z 0.12 raw = ~0.98 m world) - an 8-gon hull is tight at the diagonals where the old axis-aligned box was ~0.37 m world fat. The A-frame roof posts, crank arm and roof are dropped (thin/overhang). Base extends below terrain.",
+  "boxes": [],
+  "wedges": [],
+  "cylinders": [
+    {
+      "name": "ring",
+      "center": [
+        -0.006,
+        -0.049
+      ],
+      "radius": 0.335,
+      "z": [
+        -0.4,
+        0.12
+      ],
+      "segments": 8
+    }
+  ]
+}

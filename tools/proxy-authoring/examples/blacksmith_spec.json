@@ -1,11 +1,84 @@
 {
-  "_comment": "Blacksmith collision proxy in Blender frame (Z up). Drop roof/eaves/windows. Solid main body + forge + anvil + porch posts.",
+  "_comment": "blacksmith collision proxy (Blender frame, Z up; ws = 2.497 world m per raw unit). Main enclosed body at the measured wall planes (x -1.05..1.053, y +/-1.135, plinth/sill relief tolerated); the open smithy porch on the -X end keeps only its substantial furniture: the forge block (flush to the main body wall) and the freestanding anvil block - the porch posts, gable roof and workbench are dropped (thin/overhang rule). Front (-Y) entrance at the arched door (x +/-0.26): stone stoop + side steps modelled as the proven mount+walk-over pair - step_lo top 0.112 raw = 0.28 m world (the one probe mount, front extended ~8 cm world past the bottom stone), step_hi top 0.144 raw = 0.36 m world (+0.08 walk-over, front 0.45 m world from the wall so the door-stopped capsule stands ON it, ~8 cm under the visible stoop top). The firewood pile left of the door is one solid block extended flush to the wall AND to the forge face (the visible pile stops short of both, but the resulting 0.79 m slot between pile, forge and wall pinch-wedged the capsule - the fill is an unusable dead-end sliver); the loose ankle-height logs right of the door are dropped. Bases extend -0.3 below terrain.",
   "boxes": [
-    { "name": "main_body",   "min": [-1.05, -1.25, 0.0], "max": [1.05, 1.25, 2.45] },
-    { "name": "forge_hearth","min": [-1.62, -0.82, 0.0], "max": [-1.12, 0.08, 0.6] },
-    { "name": "anvil",       "min": [-2.40, -0.30, 0.0], "max": [-1.95, 0.30, 0.78] },
-    { "name": "post_back",   "min": [-2.22, -0.90, 0.0], "max": [-2.10, -0.65, 2.10] },
-    { "name": "post_front",  "min": [-2.22, 0.62, 0.0],  "max": [-2.10, 0.88, 2.10] }
+    {
+      "name": "main_body",
+      "min": [
+        -1.05,
+        -1.135,
+        -0.3
+      ],
+      "max": [
+        1.053,
+        1.135,
+        1.35
+      ]
+    },
+    {
+      "name": "forge",
+      "min": [
+        -1.62,
+        -0.82,
+        -0.3
+      ],
+      "max": [
+        -1.05,
+        0.08,
+        0.6
+      ]
+    },
+    {
+      "name": "anvil",
+      "min": [
+        -2.42,
+        -0.3,
+        -0.3
+      ],
+      "max": [
+        -2.08,
+        0.22,
+        0.304
+      ]
+    },
+    {
+      "name": "woodpile",
+      "min": [
+        -1.54,
+        -1.6,
+        -0.3
+      ],
+      "max": [
+        -1.05,
+        -0.82,
+        0.166
+      ]
+    },
+    {
+      "name": "step_lo",
+      "min": [
+        -0.26,
+        -1.594,
+        -0.3
+      ],
+      "max": [
+        0.25,
+        -1.135,
+        0.112
+      ]
+    },
+    {
+      "name": "step_hi",
+      "min": [
+        -0.26,
+        -1.32,
+        -0.3
+      ],
+      "max": [
+        0.25,
+        -1.135,
+        0.144
+      ]
+    }
   ],
   "wedges": []
 }

@@ -1,1 +1,45 @@
-{ "boxes": [ { "name": "body", "min": [-0.97, -1.10, 0.0], "max": [0.97, 1.13, 3.6] } ], "wedges": [] }
+{
+  "_comment": "bell_tower collision proxy (Blender frame, Z up; ws = 2.836 world m per raw unit). Same stone base module as house_3: base box at the measured wall planes (x +/-0.762, y -0.887..0.833) up to the base's wall top z 0.94; tower shaft above as its own tighter box at the tower core planes (x +/-0.635, y +/-0.68) up to z 3.35, below the bell story - the per-level beam rings (to +/-0.883/+/-0.972) and the bell roof are dropped overhangs. Entrance: the arched door + 3 stone steps on the -Y face; at this building's smaller world scale the whole staircase tops at ~0.33 m world, so ONE probe-mount step box (x +/-0.24, top 0.1058 raw = 0.30 m world) covers it, front extended ~8 cm world past the bottom stone, feet ~3 cm under the stone threshold. Bases extend -0.3 below terrain.",
+  "boxes": [
+    {
+      "name": "base",
+      "min": [
+        -0.762,
+        -0.887,
+        -0.3
+      ],
+      "max": [
+        0.762,
+        0.833,
+        0.94
+      ]
+    },
+    {
+      "name": "tower",
+      "min": [
+        -0.635,
+        -0.68,
+        0.94
+      ],
+      "max": [
+        0.635,
+        0.68,
+        3.35
+      ]
+    },
+    {
+      "name": "step",
+      "min": [
+        -0.24,
+        -1.092,
+        -0.3
+      ],
+      "max": [
+        0.24,
+        -0.887,
+        0.1058
+      ]
+    }
+  ],
+  "wedges": []
+}

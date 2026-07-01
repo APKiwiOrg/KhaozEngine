@@ -1,9 +1,12 @@
-"""Build a collision-proxy GLB from a JSON box/wedge spec, in the source building's frame.
+"""Build a collision-proxy GLB from a JSON box/wedge/cylinder spec, in the source building's frame.
 Usage: blender -b --python build_proxy.py -- <source.glb> <spec.json> <out_collision.glb> <overlay_dir>
 Spec JSON: { "boxes":[{"name","min":[x,y,z],"max":[x,y,z]}...],
-             "wedges":[{"name","min":[x,y,z],"max":[x,y,z],"axis":"x|y","dir":1|-1}...] }
+             "wedges":[{"name","min":[x,y,z],"max":[x,y,z],"axis":"x|y","dir":1|-1}...],
+             "cylinders":[{"name","center":[x,y],"radius":r,"z":[z0,z1],"segments":8}...] }
 A wedge is a right-triangular prism filling min..max, the sloped face rising along `axis` in `dir`
-(a ramp for stairs). Coordinates are Blender (Z up), same frame as the imported source.
+(a ramp for stairs). A cylinder is an n-gon prism (segments defaults to 8) for round masses like a
+well ring - the bake convex-hulls each object, so the prism collides as a tight n-gon hull instead
+of a fat box. Coordinates are Blender (Z up), same frame as the imported source.
 """
 import bpy, sys, os, json, math
 from mathutils import Vector
@@ -58,11 +61,23 @@ def add_wedge(name, mn, mx, axis, dr):
     o.color = (0.1,0.4,0.95,1.0)
     return o
 
+def add_cylinder(name, center, radius, z0, z1, segments):
+    me = bpy.data.meshes.new(name); bm = bmesh.new()
+    bmesh.ops.create_cone(bm, cap_ends=True, segments=segments, radius1=radius, radius2=radius, depth=z1-z0)
+    bm.to_mesh(me); bm.free()
+    o = bpy.data.objects.new(name, me)
+    o.location = (center[0], center[1], (z0+z1)/2)
+    bpy.context.scene.collection.objects.link(o)
+    o.color = (0.9,0.5,0.1,1.0)
+    return o
+
 proxy = []
 for b in spec.get("boxes", []):
     proxy.append(add_box(b["name"], b["min"], b["max"]))
 for w in spec.get("wedges", []):
     proxy.append(add_wedge(w["name"], w["min"], w["max"], w.get("axis","x"), w.get("dir",1)))
+for c in spec.get("cylinders", []):
+    proxy.append(add_cylinder(c["name"], c["center"], c["radius"], c["z"][0], c["z"][1], c.get("segments", 8)))
 
 # ---- export proxy only (select proxy objects, export selected) ----
 bpy.ops.object.select_all(action='DESELECT')

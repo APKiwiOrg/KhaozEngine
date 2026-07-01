@@ -1,1 +1,58 @@
-{ "boxes": [ { "name": "body", "min": [-1.12, -1.35, 0.0], "max": [1.10, 2.07, 1.8] } ], "wedges": [] }
+{
+  "_comment": "house_2 collision proxy (Blender frame, Z up; ws = 2.215 world m per raw unit). L-shaped: main ground body at the measured wall planes (x -0.73..0.79, y -0.855..0.79); the stone chimney column on the -X face as its own flush box (x -1.125..-0.70, y 0.135..0.565); the jettied upper floor + the +Y overhanging wing as one box (x -0.85..1.0, y -1.09..1.79), underside raised to 1.06 raw = 2.35 m world (the visible underside is 0.96 = 2.13, but the door-step probe below lifts the capsule head to 2.2 m, so the collision ceiling must clear that; the passage under the wing stays walkable); the thin wing support posts are dropped. Entrance: the arched door on the +X face with a single low stone kerb step (visible top ~0.11 m world - inside the engine's dead zone where an edge contact is neither walkable floor nor a step-up riser, and a 0.08 walk-over slab from analytic terrain does not lift either, so the collision step is a PROBE-mount box, top 0.1445 raw = 0.32 m world - treads under ~0.3 m world at a door-wall rest lose the wall-tangent support recovery and the capsule falls through - with the front extended to raw x 1.02 so the door-wall-stopped capsule stands fully ON the tread. Feet float ~21 cm over the low kerb at the door, the price of a mountable, standable entrance at this scale). Bases extend -0.3 below terrain.",
+  "boxes": [
+    {
+      "name": "body",
+      "min": [
+        -0.73,
+        -0.855,
+        -0.3
+      ],
+      "max": [
+        0.79,
+        0.79,
+        2.4
+      ]
+    },
+    {
+      "name": "chimney",
+      "min": [
+        -1.125,
+        0.135,
+        -0.3
+      ],
+      "max": [
+        -0.7,
+        0.565,
+        2.6
+      ]
+    },
+    {
+      "name": "upper_floor",
+      "min": [
+        -0.85,
+        -1.09,
+        1.06
+      ],
+      "max": [
+        1.0,
+        1.79,
+        2.6
+      ]
+    },
+    {
+      "name": "door_step",
+      "min": [
+        0.79,
+        -0.462,
+        -0.3
+      ],
+      "max": [
+        1.02,
+        0.396,
+        0.1445
+      ]
+    }
+  ],
+  "wedges": []
+}

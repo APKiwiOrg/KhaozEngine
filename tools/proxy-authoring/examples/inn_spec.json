@@ -1,1 +1,58 @@
-{ "boxes": [ { "name": "body", "min": [-1.55, -1.50, 0.0], "max": [1.50, 1.50, 2.6] } ], "wedges": [] }
+{
+  "_comment": "inn collision proxy (Blender frame, Z up; ws = 2.793 world m per raw unit). Ground body at the measured ground-floor wall planes (x -1.39..1.34 = the stone corner/mid columns' face so no concave pockets between columns, y +/-1.29); the porch posts + knee-rail benches (y to +/-1.94) and the porch awnings are dropped (thin/overhang). Upper jettied floor as its own box at the upper wall planes (x -1.78..1.76, y +/-1.19), underside z 1.0 = 2.79 m world, above walk-head so you walk under the jetty and only a jump clips it. Entrances: mirrored stone steps at the arched doors on BOTH +/-Y faces (x +/-0.24): the staircase run is only ~0.5 m world deep, too shallow for two capsule treads, so each door gets ONE probe-mount step box, top 0.1074 raw = 0.30 m world (probe-safe rise <= 0.32) with the front extended ~8 cm world past the bottom stone; feet stand ~0.09 m under the visible top stone tread at the door. Bases extend -0.3 below terrain.",
+  "boxes": [
+    {
+      "name": "body",
+      "min": [
+        -1.39,
+        -1.29,
+        -0.3
+      ],
+      "max": [
+        1.34,
+        1.29,
+        2.35
+      ]
+    },
+    {
+      "name": "upper_floor",
+      "min": [
+        -1.78,
+        -1.19,
+        1.0
+      ],
+      "max": [
+        1.76,
+        1.19,
+        2.4
+      ]
+    },
+    {
+      "name": "step_front",
+      "min": [
+        -0.24,
+        -1.498,
+        -0.3
+      ],
+      "max": [
+        0.24,
+        -1.29,
+        0.1074
+      ]
+    },
+    {
+      "name": "step_back",
+      "min": [
+        -0.24,
+        1.29,
+        -0.3
+      ],
+      "max": [
+        0.24,
+        1.498,
+        0.1074
+      ]
+    }
+  ],
+  "wedges": []
+}

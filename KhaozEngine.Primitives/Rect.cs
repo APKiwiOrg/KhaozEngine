@@ -1,6 +1,6 @@
 using System.Numerics;
 
-namespace KhaozEngine.Windowing
+namespace KhaozEngine.Primitives
 {
     /// <summary>An axis-aligned rectangle in pixels (top-left origin). Used for input hit-testing.</summary>
     public readonly record struct Rect(float X, float Y, float Width, float Height)

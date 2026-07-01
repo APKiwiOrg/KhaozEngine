@@ -1,6 +1,6 @@
 using System.Numerics;
 
-namespace KhaozEngine.Windowing
+namespace KhaozEngine.Primitives
 {
     /// <summary>
     /// The fakeable design-viewport seam that rendering and layout target: design size, per-axis scale +

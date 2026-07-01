@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Windowing;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Render2D
 {

@@ -1,6 +1,7 @@
 using KhaozEngine.Gui;
 using KhaozEngine.Windowing;
 using Xunit;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Tests.Gui
 {

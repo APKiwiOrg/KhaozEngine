@@ -1,4 +1,5 @@
 using KhaozEngine.Windowing;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Gui
 {

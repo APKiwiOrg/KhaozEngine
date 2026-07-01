@@ -120,7 +120,7 @@ void main() {
         IGpuCommandList _cl = null!;
         int _vw, _vh;
         Matrix4x4 _vp;
-        Windowing.IDesignViewport? _viewport;   // active design viewport (set by Begin(IDesignViewport)), else null
+        IDesignViewport? _viewport;   // active design viewport (set by Begin(IDesignViewport)), else null
 
         internal SpriteBatch(IGpuDevice gd, GpuOutputDescription output)
         {
@@ -168,7 +168,7 @@ void main() {
         /// (e.g. 2x Retina) and clamping to the framebuffer. Pure function — unit-tested headlessly.
         /// </summary>
         public static (uint X, uint Y, uint Width, uint Height) ComputeScissor(
-            Windowing.Rect rect, int viewportW, int viewportH, int framebufferW, int framebufferH)
+            Rect rect, int viewportW, int viewportH, int framebufferW, int framebufferH)
         {
             float sx = viewportW > 0 ? (float)framebufferW / viewportW : 1f;
             float sy = viewportH > 0 ? (float)framebufferH / viewportH : 1f;
@@ -181,29 +181,29 @@ void main() {
         }
 
         /// <summary>
-        /// As <see cref="ComputeScissor(Windowing.Rect,int,int,int,int)"/>, but first maps a clip rect given in
+        /// As <see cref="ComputeScissor(Rect,int,int,int,int)"/>, but first maps a clip rect given in
         /// design space through <paramref name="viewport"/> (scale + letterbox offset) into window points. Pass
         /// a null viewport to treat <paramref name="rect"/> as already in window points. Pure / headless.
         /// </summary>
         public static (uint X, uint Y, uint Width, uint Height) ComputeScissor(
-            Windowing.Rect rect, Windowing.IDesignViewport? viewport, int viewportW, int viewportH, int framebufferW, int framebufferH)
+            Rect rect, IDesignViewport? viewport, int viewportW, int viewportH, int framebufferW, int framebufferH)
         {
             if (viewport != null)
             {
                 var tl = viewport.DesignToScreen(new Vector2(rect.X, rect.Y));
                 var br = viewport.DesignToScreen(new Vector2(rect.Right, rect.Bottom));
-                rect = new Windowing.Rect(tl.X, tl.Y, br.X - tl.X, br.Y - tl.Y);
+                rect = new Rect(tl.X, tl.Y, br.X - tl.X, br.Y - tl.Y);
             }
             return ComputeScissor(rect, viewportW, viewportH, framebufferW, framebufferH);
         }
 
         /// <summary>
         /// Flush pending draws, then clip subsequent draws to <paramref name="rect"/>. When a design viewport is
-        /// active (<see cref="Begin(Windowing.IDesignViewport, SamplerMode)"/>) <paramref name="rect"/> is in design space and
+        /// active (<see cref="Begin(IDesignViewport, SamplerMode)"/>) <paramref name="rect"/> is in design space and
         /// is mapped through it; otherwise it is in window points. Pair with <see cref="ClearScissor"/>. The
         /// current transform is preserved, so no <see cref="Begin(Camera2D, SamplerMode)"/> is needed around it.
         /// </summary>
-        public void SetScissor(Windowing.Rect rect)
+        public void SetScissor(Rect rect)
         {
             Flush();
             var fb = _gd.SwapchainFramebuffer;
@@ -264,7 +264,7 @@ void main() {
         /// A scissor set while this is active (<see cref="SetScissor"/>) is mapped through the viewport too.
         /// Sampled per <paramref name="sampler"/> (default <see cref="SamplerMode.Linear"/>).
         /// </summary>
-        public void Begin(Windowing.IDesignViewport viewport, SamplerMode sampler = SamplerMode.Linear) { _sampler = Resolve(sampler); _vp = Clip(viewport.GetClipProjection(_vw, _vh)); _viewport = viewport; ResetBatches(); }
+        public void Begin(IDesignViewport viewport, SamplerMode sampler = SamplerMode.Linear) { _sampler = Resolve(sampler); _vp = Clip(viewport.GetClipProjection(_vw, _vh)); _viewport = viewport; ResetBatches(); }
 
         /// <summary>
         /// Begin a batch in screen space (pixels, top-left origin) with a <paramref name="transform"/> applied to
@@ -282,14 +282,14 @@ void main() {
         public void Begin(Camera2D camera, Matrix4x4 transform, SamplerMode sampler = SamplerMode.Linear) { _sampler = Resolve(sampler); _vp = Clip(ComposeModelViewProjection(transform, camera.GetViewProjection(_vw, _vh))); _viewport = null; ResetBatches(); }
 
         /// <summary>
-        /// As <see cref="Begin(Windowing.IDesignViewport, SamplerMode)"/>, with a model <paramref name="transform"/>
+        /// As <see cref="Begin(IDesignViewport, SamplerMode)"/>, with a model <paramref name="transform"/>
         /// (in design space) applied to every draw before the viewport projection - so a HUD card tilts about its
         /// pivot while its panel, icon, and text move together. The viewport's scale/letterbox still applies on top.
         /// Note: a <see cref="SetScissor"/> set during this pass is mapped through the viewport but NOT through
         /// <paramref name="transform"/> (the GPU scissor is axis-aligned in framebuffer space), so clip a rotated
         /// card by its un-rotated design bounds.
         /// </summary>
-        public void Begin(Windowing.IDesignViewport viewport, Matrix4x4 transform, SamplerMode sampler = SamplerMode.Linear) { _sampler = Resolve(sampler); _vp = Clip(ComposeModelViewProjection(transform, viewport.GetClipProjection(_vw, _vh))); _viewport = viewport; ResetBatches(); }
+        public void Begin(IDesignViewport viewport, Matrix4x4 transform, SamplerMode sampler = SamplerMode.Linear) { _sampler = Resolve(sampler); _vp = Clip(ComposeModelViewProjection(transform, viewport.GetClipProjection(_vw, _vh))); _viewport = viewport; ResetBatches(); }
 
         // Compose a model transform with a view-projection so a point maps as (p * model) * viewProjection. Pure /
         // headless-testable: getting the multiplication order backwards is the easy bug, so it has its own test.
@@ -360,12 +360,12 @@ void main() {
             DrawRounded(tex, destRect, new Vector4(0, 0, 1, 1), color, color, cornerRadius, softness, strokeWidth, inset);
 
         // Typed Rect overloads: a Color and a destination rect can no longer be swapped at a call site. Reuses
-        // Windowing.Rect (x, y, w, h) for the rect; forwards to the Vector4-dest forms so the batch path is identical.
-        public void Draw(Texture2D tex, Windowing.Rect destRect, Color color) =>
+        // Rect (x, y, w, h) for the rect; forwards to the Vector4-dest forms so the batch path is identical.
+        public void Draw(Texture2D tex, Rect destRect, Color color) =>
             Draw(tex, new Vector4(destRect.X, destRect.Y, destRect.Width, destRect.Height), color);
 
         /// <summary>dest in world units; src = (u0, v0, u1, v1) in 0..1.</summary>
-        public void Draw(Texture2D tex, Windowing.Rect destRect, Vector4 srcUV, Color color) =>
+        public void Draw(Texture2D tex, Rect destRect, Vector4 srcUV, Color color) =>
             Draw(tex, new Vector4(destRect.X, destRect.Y, destRect.Width, destRect.Height), srcUV, color);
 
         /// <summary>

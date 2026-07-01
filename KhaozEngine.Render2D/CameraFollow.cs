@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using KhaozEngine.Windowing;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Render2D
 {

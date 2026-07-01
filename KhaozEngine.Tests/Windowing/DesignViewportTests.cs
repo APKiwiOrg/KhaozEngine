@@ -1,6 +1,7 @@
 using System.Numerics;
 using KhaozEngine.Windowing;
 using Xunit;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Tests.Windowing
 {

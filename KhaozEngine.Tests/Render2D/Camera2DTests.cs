@@ -3,6 +3,7 @@ using System.Numerics;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
 using Xunit;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Tests.Render2D
 {

@@ -3,6 +3,7 @@ using System.Numerics;
 using KhaozEngine.Game;
 using KhaozEngine.Windowing;
 using Xunit;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Tests.Game
 {

@@ -3,6 +3,7 @@ using KhaozEngine.Gui;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
 using Xunit;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Tests.Gui
 {

@@ -7,7 +7,7 @@ namespace KhaozEngine.Tests.Render2D
 {
     /// <summary>
     /// The typed <see cref="Color"/> wrapper that de-foot-guns <c>SpriteBatch.Draw</c> (rect and color used to
-    /// both be a bare <see cref="Vector4"/>). The destination-rect type reuses <c>Windowing.Rect</c>.
+    /// both be a bare <see cref="Vector4"/>). The destination-rect type reuses <c>Rect</c>.
     /// </summary>
     public class ColorRectTests
     {
@@ -56,7 +56,7 @@ namespace KhaozEngine.Tests.Render2D
         public void WindowingRect_Used_As_DestRect_Reports_Edges_And_Contains()
         {
             // the rect type the typed Draw overload takes
-            var r = new KhaozEngine.Windowing.Rect(10f, 20f, 30f, 40f);
+            var r = new KhaozEngine.Primitives.Rect(10f, 20f, 30f, 40f);
             Assert.Equal(40f, r.Right);   // x + width
             Assert.Equal(60f, r.Bottom);  // y + height
             Assert.True(r.Contains(new Vector2(10f, 20f)));

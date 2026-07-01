@@ -292,8 +292,8 @@ namespace KhaozEngine.Tests.Gpu
                 ctx.Batch.Begin();
 
                 // Filled rect + outline rect on top of it.
-                prim.DrawFilledRect(ctx.Batch, new KhaozEngine.Windowing.Rect(30, 30, 130, 80), new Color(0.20f, 0.45f, 0.85f, 1f));
-                prim.DrawRect(ctx.Batch, new KhaozEngine.Windowing.Rect(30, 30, 130, 80), new Color(0.95f, 0.95f, 0.95f, 1f), 3f);
+                prim.DrawFilledRect(ctx.Batch, new KhaozEngine.Primitives.Rect(30, 30, 130, 80), new Color(0.20f, 0.45f, 0.85f, 1f));
+                prim.DrawRect(ctx.Batch, new KhaozEngine.Primitives.Rect(30, 30, 130, 80), new Color(0.95f, 0.95f, 0.95f, 1f), 3f);
 
                 // A couple of diagonal lines (rotated quads).
                 prim.DrawLine(ctx.Batch, new Vector2(40, 130), new Vector2(180, 210), new Color(0.95f, 0.35f, 0.2f, 1f), 4f);
@@ -307,11 +307,11 @@ namespace KhaozEngine.Tests.Gpu
                 prim.DrawFilledCircle(ctx.Batch, new Vector2(280, 200), 42f, new Color(0.3f, 0.7f, 0.9f, 1f));
 
                 // Vertical gradient panel.
-                prim.DrawVerticalGradient(ctx.Batch, new KhaozEngine.Windowing.Rect(360, 150, 90, 110),
+                prim.DrawVerticalGradient(ctx.Batch, new KhaozEngine.Primitives.Rect(360, 150, 90, 110),
                     new Color(0.9f, 0.9f, 0.95f, 1f), new Color(0.15f, 0.1f, 0.3f, 1f), bands: 16);
 
                 // Progress bar near the bottom.
-                prim.DrawProgressBar(ctx.Batch, new KhaozEngine.Windowing.Rect(40, 280, 400, 24), 0.62f,
+                prim.DrawProgressBar(ctx.Batch, new KhaozEngine.Primitives.Rect(40, 280, 400, 24), 0.62f,
                     new Color(0.2f, 0.8f, 0.35f, 1f), new Color(0.15f, 0.15f, 0.18f, 1f),
                     new Color(0.8f, 0.8f, 0.85f, 1f), 2f);
 
@@ -514,13 +514,13 @@ namespace KhaozEngine.Tests.Gpu
 
                 // Default Modern glow (GlowSize 11), top-left.
                 var style = KhaozEngine.Gui.GuiStyle.Modern;
-                KhaozEngine.Gui.GuiDraw.HoverGlow(ctx.Batch, white, new KhaozEngine.Windowing.Rect(60, 60, 200, 80), style);
-                KhaozEngine.Gui.GuiDraw.FillStyled(ctx.Batch, white, new KhaozEngine.Windowing.Rect(60, 60, 200, 80), style, style.Hover, style.Border);
+                KhaozEngine.Gui.GuiDraw.HoverGlow(ctx.Batch, white, new KhaozEngine.Primitives.Rect(60, 60, 200, 80), style);
+                KhaozEngine.Gui.GuiDraw.FillStyled(ctx.Batch, white, new KhaozEngine.Primitives.Rect(60, 60, 200, 80), style, style.Hover, style.Border);
 
                 // Wider glow (GlowSize 22), bottom-right, to capture the falloff at a second value.
                 var wide = KhaozEngine.Gui.GuiStyle.Modern; wide.GlowSize = 22f;
-                KhaozEngine.Gui.GuiDraw.HoverGlow(ctx.Batch, white, new KhaozEngine.Windowing.Rect(250, 190, 180, 90), wide);
-                KhaozEngine.Gui.GuiDraw.FillStyled(ctx.Batch, white, new KhaozEngine.Windowing.Rect(250, 190, 180, 90), wide, wide.Hover, wide.Border);
+                KhaozEngine.Gui.GuiDraw.HoverGlow(ctx.Batch, white, new KhaozEngine.Primitives.Rect(250, 190, 180, 90), wide);
+                KhaozEngine.Gui.GuiDraw.FillStyled(ctx.Batch, white, new KhaozEngine.Primitives.Rect(250, 190, 180, 90), wide, wide.Hover, wide.Border);
 
                 ctx.Batch.End();
             });

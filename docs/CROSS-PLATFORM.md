@@ -16,7 +16,7 @@ Backend selection is centralized in `KhaozEngine.Gpu.GpuBackendSelector`:
 - `Select()` reads the `KE_GRAPHICS_BACKEND` env override (`metal` / `vulkan` / `d3d11` / `gl`,
   case-insensitive), otherwise probes the OS (macOS → Metal, Windows → Direct3D11, Linux/other → Vulkan).
 - `CreateHeadless` builds the matching offscreen device (`GraphicsDevice.CreateVulkan` / `CreateD3D11` /
-  Metal). No window — so the golden tests need no SDL2.
+  Metal). No window - so the golden tests need no SDL2.
 
 ## Backend-aware goldens
 
@@ -52,7 +52,7 @@ Software rasterizers on the runners (no real GPU):
   also symlinks `libdl.so` → `libdl.so.2` and `libvulkan.so` → `libvulkan.so.1`.
 - Windows D3D11 → **WARP** software adapter (automatic fallback when no hardware adapter is present). Verified.
 
-Net result: **all three desktop backends are validated and blocking** — Metal (macOS), Direct3D11 (Windows/WARP),
+Net result: **all three desktop backends are validated and blocking** - Metal (macOS), Direct3D11 (Windows/WARP),
 and Vulkan (Linux/lavapipe). The overall workflow is green only when all three verify.
 
 ### Per-backend golden flow
@@ -125,4 +125,4 @@ This release delivers the **verification mechanism**, not a finished cross-platf
    (one place that answers OS / RID / capability questions). See
    `docs/superpowers/specs/2026-06-20-post-6.0.0-deferred-scope.md`.
 4. **Mobile (Android / iOS) is a separate project.** It needs native windowing/lifecycle, Native AOT, and
-   build-time shader pre-compilation — not covered by this desktop matrix.
+   build-time shader pre-compilation - not covered by this desktop matrix.

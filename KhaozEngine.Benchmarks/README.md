@@ -6,7 +6,7 @@ jobs-0 established the **single-threaded baseline** every later layer must move;
 **cell axis**), so each regime is run **inline and with cells fanned across cores**; jobs-2 added the **entities axis**,
 shown in a dedicated section where one hot cell's system fans its entity rows across cores via `World.ParallelForEach`.
 The `--gate` run is jobs-3's **decision tool**: it measured whether a system scheduler (the *systems axis*) was worth
-building, and the answer was no (see "jobs-3 gate" below) — the program is complete at layer 2.
+building, and the answer was no (see "jobs-3 gate" below). The program is complete at layer 2.
 Without the benchmark we'd optimize blind, so it landed first.
 
 Not a shipped package (`IsPackable=false`) and not on the engine version line. The timing loop only runs via
@@ -115,12 +115,12 @@ declaring a jobs-2 `AccessSet` - and compares the per-cell tick three ways, swep
   solo cost honouring the `AccessSet` conflict graph on all cores. The best a system scheduler could do alone.
 
 **Verdict: gate not met, layer 3 de-scoped.** Layer 3's overlap is capped at **~2.1×** (the conflict-graph width) and
-does not grow with `E`; layer 2 parallelizes *within* a system and scales to **~5–6×**, so for any cell heavy enough to
-matter (≥16k) layer 2 already beats the best-possible layer 3 by 2.4–3×. They share the same cores, layer 2 ~reaches
+does not grow with `E`; layer 2 parallelizes *within* a system and scales to **~5-6×**, so for any cell heavy enough to
+matter (≥16k) layer 2 already beats the best-possible layer 3 by 2.4-3×. They share the same cores, layer 2 ~reaches
 the total-work/P floor, and the only "L3 WINS" rows are a 0.2 ms cell (E=256, the cell axis's job) and fork/join noise
 (E=4096). A hot cell's bottleneck is *entities*, which layer 2 already splits across every core. Re-run `--gate` if a
 game ever has the opposite shape (many tiny independent systems over few entities). Full reasoning:
-`docs/superpowers/specs/2026-06-26-ecs-parallel-job-system-design.md` ("System scheduler — gate verdict").
+`docs/superpowers/specs/2026-06-26-ecs-parallel-job-system-design.md` ("System scheduler" gate verdict).
 
 ## Parameterising
 

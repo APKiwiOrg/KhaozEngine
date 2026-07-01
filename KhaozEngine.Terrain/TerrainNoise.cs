@@ -7,18 +7,13 @@ namespace KhaozEngine.Terrain
     /// arguments (lattice coords / world position + seed), never on call order or loaded state, so the height
     /// at a world point is identical regardless of which chunks are streamed in. Plain float (authoritative
     /// server and visual client evaluate the same math; tiny cross-platform float differences are corrected by
-    /// replication, per the terrain design decision). SmoothStep is defined here because Primitives.MathUtil
-    /// has Clamp01/Lerp/InverseLerp but no smoothstep.
+    /// replication, per the terrain design decision).
     /// </summary>
     public static class TerrainNoise
     {
-        /// <summary>Clamped Hermite smoothstep: 0 at x&lt;=a, 1 at x&gt;=b, smooth in between. Returns 0.5 at the midpoint.</summary>
+        /// <summary>Clamped Hermite smoothstep; forwards to <see cref="KhaozEngine.Primitives.MathUtil.SmoothStep"/> (single implementation, kept here so noise call sites read cohesively).</summary>
         public static float SmoothStep(float a, float b, float x)
-        {
-            if (a == b) return x < a ? 0f : 1f;
-            float t = Math.Clamp((x - a) / (b - a), 0f, 1f);
-            return t * t * (3f - 2f * t);
-        }
+            => KhaozEngine.Primitives.MathUtil.SmoothStep(a, b, x);
 
         /// <summary>Deterministic hash of an integer lattice point + seed to [-1, 1). Integer bit-mix (no Random).</summary>
         public static float Hash2(int gx, int gz, int seed)

@@ -105,17 +105,16 @@ When a consumer raises its `KhaozEngine.*` pin, two things bite if skipped:
   vendored feed must carry those too. Only SpaceGame restores from `local-feed`/GitHub Packages directly (no
   vendored feed), so it alone sets the `local-feed` floor.
 
-_Last verified: 2026-07-01. **Ruinborne** (3D MMO, the active consumer) now pins **8.11.0** (the current engine
+_Last verified: 2026-07-02. **Ruinborne** (3D MMO, the active consumer) now pins **8.11.0** (the current engine
 line; adopted the collision-proxy bake so buildings collide as a compound of convex boxes, no more getting stuck
 on detailed building geometry); **Hardpoint**, **Nullwake**, and
-**SpaceGame** remain on **8.0.0** (pre the 8.4.0 swept character resolver, so the 8.4.0+ swept-resolver /
-reconnect fixes do not affect them; only Ruinborne runs the 3D `CharacterMovement` swept collide-and-slide and the
+**SpaceGame** pin **8.10.0** (only Ruinborne runs the 3D `CharacterMovement` swept collide-and-slide and the
 networked-world stack). Stack per consumer: **Hardpoint** (3D) via
 `Game3D` + `Foundation`, **Nullwake** (2D) via `Game2D` (+ `Diagnostics`/`Persistence`/`Windowing`/`Snapshot`/`Updates`),
 **SpaceGame** (2D + Render3D) via `Game2D` + `Render3D` head + the split-out `SpaceGame.Sim` foundation pins, and
 **Ruinborne** (3D MMO) via a single `<KhaozEngineVersion>` pin across the `Game3D` client and the `Server` +
 `WorldStore.SqlServer` headless server. SpaceGame is the only consumer restoring from `local-feed` directly (the
-other three vendor their own in-repo feed); with SpaceGame now on 8.0.0, `local-feed` is pruned to its **8.0.0**
+other three vendor their own in-repo feed); with SpaceGame on 8.10.0, `local-feed` may be pruned to an **8.10.0**
 floor. Everything older lives in GitHub Packages, the durable store._
 </content>
 </invoke>

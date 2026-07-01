@@ -421,7 +421,7 @@ batch.End();
   `Intensity`. `RingCount = 0` and `GlintCount = 0` draw nothing; a null `ring`/`glow` skips that sub-effect.
 - `VfxTextures`: `BakeGlowPixels`/`BakeRingPixels` (pure RGBA8, headless) and `BakeGlow`/`BakeRing`/`White`
   (upload to a `Render2DSurface` / `Render2DContext`).
-- Screen shake is **not** here - use `KhaozEngine.Effects.ScreenShake` (trauma-based, camera-independent: `Add` /
+- Screen shake is **not** here - use `KhaozEngine.Particles.ScreenShake` (trauma-based, camera-independent: `Add` /
   `Update(dt)` / `Offset` / `Angle`); compose `Offset`/`Angle` onto your own camera.
 
 ---
@@ -1780,12 +1780,12 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   `System.Text.Json` cannot emit comments, so generated files (settings/saves) are written as plain indented JSON
   via `JsonDefaults.IndentedWrite`, and signed/wire formats (the `Updates` manifest, AOT apply-config) stay
   strict JSON by design. Consumed by Content/Persistence/Ecs.
-- **`KhaozEngine.Localization`**: `LocalizationManager` (discover cultures + set the thread culture).
+- **`KhaozEngine.App`** also carries `LocalizationManager` (discover cultures + set the thread culture; absorbed from the retired `KhaozEngine.Localization` in 9.0.0).
 - **`KhaozEngine.Platform`**: `Clipboard` (cross-platform text + image, best-effort, never throws). Text get/set
   uses the GLFW provider `AppWindow` registers at startup (the working Windows/Linux/macOS path), so a windowed
   game gets a working text clipboard for free; a windowless/headless tool registers none and has text only on
   macOS (via `NSPasteboard`).
-- **`KhaozEngine.Pooling`**: `ObjectPool<T>` (O(1) rent/return, swap-removal compaction).
+- **`KhaozEngine.Primitives`** also carries `ObjectPool<T>` (O(1) rent/return, swap-removal compaction; absorbed from the retired `KhaozEngine.Pooling` in 9.0.0).
 - **`KhaozEngine.Collision`**: deterministic `CircleCollision` + `SpatialHashGrid` (bit-identical for lockstep).
 - **`KhaozEngine.Determinism`**: `DeterministicFpScope` - forces a canonical CPU floating-point environment
   for fixed-tick / lockstep sims (see "Deterministic floating point" below).

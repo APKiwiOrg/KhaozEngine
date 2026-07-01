@@ -53,9 +53,30 @@ while read -r v; do
   expect README.md "PackageReference example version" "$v"
 done < <(grep -E 'PackageReference Include="KhaozEngine' README.md | grep -oE 'Version="[^"]+"' | sed -E 's/Version="([^"]+)"/\1/')
 
+# --- Package inventory guard -------------------------------------------------
+# Every packable KhaozEngine.* project must (a) have a row in the README.md catalog
+# (the package table or the umbrella table) and (b) ship its own README.md as the
+# nupkg PackageReadmeFile. This is what catches a new package landing undocumented
+# (8.x shipped Imaging/Snapshot/Snapshot.Render3D invisible for several releases).
+for csproj in KhaozEngine.*/KhaozEngine.*.csproj; do
+  dir=$(dirname "$csproj")
+  # skip non-packable projects (tests, probes, the bundled validator)
+  if grep -q '<IsPackable>false</IsPackable>' "$csproj"; then continue; fi
+  pkgid=$(grep -oE '<PackageId>[^<]+</PackageId>' "$csproj" | sed -E 's#</?PackageId>##g' | head -1)
+  [ -z "$pkgid" ] && pkgid=$(basename "$dir")
+  if ! grep -q "\*\*$pkgid\*\*" README.md; then
+    echo "FAIL  README.md: packable package $pkgid has no catalog row"
+    fail=1
+  fi
+  if [ ! -f "$dir/README.md" ] || ! grep -q '<PackageReadmeFile>' "$csproj"; then
+    echo "FAIL  $dir: packable package $pkgid is missing README.md / <PackageReadmeFile>"
+    fail=1
+  fi
+done
+
 if [ "$fail" -ne 0 ]; then
   echo
   echo "Doc version drift detected. Bump the declarations above to $ver (or fix Directory.Build.props)." >&2
   exit 1
 fi
-echo "all engine-version declarations match $ver"
+echo "all engine-version declarations match $ver; package inventory is documented"

@@ -134,6 +134,8 @@ namespace KhaozEngine.Render3D
             }
         }
 
+        // Intentionally NOT Serialization.JsonDefaults: manifests are authored by hand / external kit
+        // tooling, so tolerate any property casing rather than the engine's stricter save/wire defaults.
         static readonly JsonSerializerOptions Options = new() { PropertyNameCaseInsensitive = true };
 
         sealed class Dto

@@ -31,6 +31,8 @@ public sealed class UpdateManifest
     [JsonPropertyName("files")]
     public List<ManifestFileEntry> Files { get; set; } = new();
 
+    // Intentionally NOT Serialization.JsonDefaults: the update manifest is a stable camelCase wire
+    // format shared with offline manifest generators (ke-updater); changing it would orphan signed manifests.
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,

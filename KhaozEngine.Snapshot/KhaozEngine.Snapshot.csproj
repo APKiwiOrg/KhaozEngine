@@ -2,10 +2,12 @@
   <PropertyGroup>
     <PackageId>KhaozEngine.Snapshot</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <Description>Headless art/UI screenshot harness for KhaozEngine 2D. SnapshotRunner wraps Render2DSnapshot.Capture with the capture -> PNG encode (KhaozEngine.Imaging) -> write &lt;outDir&gt;/&lt;name&gt;.png -> log path -> final summary pipeline, so a game's screenshot tool is just its scenes, not capture/encode/write/log boilerplate. SnapshotHost gives a one-call CLI top-level (resolve outDir from args, run, print summary). Deterministic (no timestamps), no-window, MonoGame-free. 2D-only - has NO Render3D dependency; add KhaozEngine.Snapshot.Render3D for the Shot3D path.</Description>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Render2D/KhaozEngine.Render2D.csproj" />
     <ProjectReference Include="../KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 </Project>

@@ -5,9 +5,11 @@
     <ToolCommandName>ke-updater</ToolCommandName>
     <PackageId>KhaozEngine.Updates.Tool</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <Description>The ke-updater CLI: generate, sign, and verify KhaozEngine update manifests (RSA-2048). A dotnet tool wrapper over KhaozEngine.Updates.</Description>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 </Project>

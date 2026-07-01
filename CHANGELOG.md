@@ -5,6 +5,55 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 9.0.0
+
+**Package-structure major from the full engine review: three micro-packages retired (Effects into
+Particles, Pooling into Primitives, Localization into App), `Rect` + `IDesignViewport` moved down into
+Primitives, central package management, and every shipped package is now catalogued and carries its own
+nupkg README (CI-enforced).** No behaviour changes: the breakage is namespaces and package ids only.
+
+Breaking (adopters fix usings, umbrella consumers need no csproj changes):
+
+- **`KhaozEngine.Effects` retired.** `ScreenShake` moved into `KhaozEngine.Particles` (namespace
+  `KhaozEngine.Particles`), joining the other pure game-feel sims. The `Game2D` umbrella no longer
+  pulls an Effects package.
+- **`KhaozEngine.Pooling` retired.** `ObjectPool<T>` / `IPoolable` moved into `KhaozEngine.Primitives`
+  (namespace `KhaozEngine.Primitives`). Ecs consumes them from there.
+- **`KhaozEngine.Localization` retired.** `LocalizationManager` moved into `KhaozEngine.App`
+  (namespace `KhaozEngine.App`). App gains a Diagnostics dependency for its logging.
+- **`Rect` and `IDesignViewport` moved from Windowing to Primitives** (namespace
+  `KhaozEngine.Primitives`). Pure geometry and the design-viewport seam now sit at the bottom of the
+  dependency graph instead of coupling every renderer and Gui consumer to the windowing package. The
+  concrete `DesignViewport` / `AdaptiveViewport` stay in Windowing.
+- Migration: replace `using KhaozEngine.Effects` / `.Pooling` / `.Localization` with
+  `KhaozEngine.Particles` / `.Primitives` / `.App`, and add `using KhaozEngine.Primitives` where
+  `Rect` / `IDesignViewport` are named. Drop any direct `PackageReference` to the three retired ids.
+
+Build and packaging:
+
+- **Central package management.** New `Directory.Packages.props` pins every external package version
+  once; csprojs carry bare `PackageReference`s. This also ends the Silk.NET drift: Windowing moves
+  2.22.0 to 2.23.0, matching Audio (full suite + GPU goldens green on the bump).
+- **`MathUtil.SmoothStep(a, b, x)`** is the engine's single clamped Hermite smoothstep;
+  `TerrainNoise.SmoothStep` forwards to it (bit-identical, terrain fields unchanged). New headless tests.
+
+Docs and governance:
+
+- The README package catalog gains rows for the shipped-but-invisible **`Imaging`**, **`Snapshot`**,
+  **`Snapshot.Render3D`**, and **`Updates.Tool`** packages, and 12 drifted "Depends on" columns were
+  corrected against the csprojs (Render3D, Gui, Audio, Ecs, Terrain, NetWorld, Game.Render3D, Content,
+  Windowing, Render2D, Particles, App).
+- **18 packages that shipped without a nupkg README now have one** (Primitives, Determinism, Imaging,
+  the Snapshot pair, Physics, Physics.Bepu, the Terrain pair, the Telegraphs pair, all four umbrellas,
+  all three dotnet tools). `scripts/check-doc-versions.sh` (runs in CI) now FAILS when a packable
+  package has no catalog row or no `PackageReadmeFile`, so a package can never ship invisible again.
+- The two intentional non-`JsonDefaults` serializer configs (`AssetManifest` hand-authored manifests,
+  `UpdateManifest` signed camelCase wire format) now carry comments saying why they deviate.
+- `SlathRepro` (stale one-commit Metal bone-buffer repro, fix long shipped) deleted.
+- `docs/CONSUMERS.md` stale narrative corrected (Hardpoint / Nullwake / SpaceGame pin 8.10.0, not 8.0.0).
+
+Tests: full suite green including the Metal GPU goldens (2605 passed, 0 failed, 8 env-gated skips).
+
 ## 8.11.0
 
 Additive: buildings can bake a SEPARATE simplified collision PROXY (a compound of convex pieces) distinct from the

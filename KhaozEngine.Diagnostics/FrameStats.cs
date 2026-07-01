@@ -7,7 +7,7 @@ namespace KhaozEngine.Diagnostics;
 /// A headless frame-time meter: feed it one <see cref="Sample"/> per frame and read back the FPS and
 /// per-frame millisecond average/min/max over a rolling window (default ~1 second). Pure managed code, no
 /// renderer or GPU dependency, so it constructs and unit-tests from a synthetic <c>dt</c> stream. Intended
-/// to back a <c>Performance</c> section in <see cref="KhaozEngine.Gui.DiagnosticsOverlay"/>.
+/// to back a <c>Performance</c> section in <c>KhaozEngine.Gui.DiagnosticsOverlay</c>.
 /// </summary>
 public sealed class FrameStats
 {

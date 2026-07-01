@@ -13,7 +13,7 @@ namespace KhaozEngine.NetWorld;
 /// surfaced on the client as <see cref="DisconnectReason.IncompatibleVersion"/> with the required version in the
 /// detail. A legacy/non-opting client presents an unwrapped token, decoded as version <c>""</c>, so the rule sees
 /// an empty string and can reject unknown-version clients. On accept, the unwrapped inner token is delegated to
-/// <paramref name="inner"/> unchanged, so subject/display-name resolution is exactly as without the decorator.
+/// the wrapped inner authenticator unchanged, so subject/display-name resolution is exactly as without the decorator.
 /// Compose it like any authenticator: <c>new WorldServer(..., authenticator: new VersionCheckingAuthenticator(...))</c>.
 /// </summary>
 public sealed class VersionCheckingAuthenticator : IConnectionAuthenticator, IConnectionDisplayName

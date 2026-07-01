@@ -3,7 +3,7 @@ namespace KhaozEngine.Diagnostics;
 /// <summary>
 /// Immutable per-frame snapshot of a networked client's connection health, produced by
 /// <c>KhaozEngine.NetWorld.WorldClient.NetStats</c> and rendered by
-/// <see cref="KhaozEngine.Gui.DiagnosticsOverlay"/>'s network section.
+/// <c>KhaozEngine.Gui.DiagnosticsOverlay</c>'s network section.
 /// <para>
 /// It lives in <c>KhaozEngine.Diagnostics</c> (the low telemetry leaf) rather than alongside
 /// <c>WorldClient</c> so the Gui overlay can name the type without <c>KhaozEngine.Gui</c> taking a

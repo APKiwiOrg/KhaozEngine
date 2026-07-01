@@ -3,7 +3,7 @@ using KhaozEngine.Netcode;
 namespace KhaozEngine.Tests.NetWorld;
 
 /// <summary>
-/// A test harness for reconnect: holds the "current" <see cref="InMemoryHub"/>, hands a <see cref="WorldClient"/>
+/// A test harness for reconnect: holds the "current" <see cref="InMemoryHub"/>, hands a <see cref="KhaozEngine.NetWorld.WorldClient"/>
 /// factory (<see cref="Connect"/>) that attaches a fresh client endpoint to whichever hub is current, and
 /// <see cref="Restart"/> swaps in a brand-new hub (modelling a server process restart). The caller builds the
 /// server over <see cref="ServerTransport"/> after each (re)start.

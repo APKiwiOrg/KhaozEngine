@@ -15,7 +15,7 @@ namespace KhaozEngine.Render3D
     /// Call this from the consumer's 2D pass, BETWEEN the <see cref="SpriteBatch"/>'s <c>Begin</c>/<c>End</c> and
     /// after the 3D scene has been drawn. The label is screen-space and drawn on top: it is NOT depth-tested, so a
     /// name is not hidden when its owner stands behind terrain or a prop (occluded nameplates are out of scope).
-    /// Labels that project behind the camera, out of the depth range, or beyond <paramref name="maxDistance"/> are
+    /// Labels that project behind the camera, out of the depth range, or beyond <c>maxDistance</c> are
     /// skipped (returns <c>false</c>).
     /// </remarks>
     public static class WorldLabel

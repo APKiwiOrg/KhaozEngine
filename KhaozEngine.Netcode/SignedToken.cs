@@ -152,7 +152,7 @@ public static class SignedToken
 }
 
 /// <summary>
-/// <see cref="IConnectionAuthenticator"/> over <see cref="SignedToken.TryVerify"/>: accepts a connection iff its
+/// <see cref="IConnectionAuthenticator"/> over <see cref="SignedToken.TryVerify(string, byte[], System.DateTimeOffset, out string, out string)"/>: accepts a connection iff its
 /// connect token is a valid, unexpired <see cref="SignedToken"/> for the configured secret, binding the connection
 /// to the token's verified subject. The clock is injected so it is deterministically testable (and so a host can
 /// supply a monotonic/NTP-corrected time source).

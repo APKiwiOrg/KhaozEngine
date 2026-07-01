@@ -33,6 +33,10 @@ namespace KhaozEngine.Game
 
         public LocomotionState State { get; private set; }
 
+        /// <param name="skeleton">The rig the pose is evaluated on.</param>
+        /// <param name="clips">One animation clip per locomotion state (idle/walk/run/jump/fall).</param>
+        /// <param name="thresholds">Speed cutoffs mapping a planar speed to a ground state. Null uses defaults.</param>
+        /// <param name="crossfade">Seconds to blend from the previous clip on a state switch.</param>
         /// <param name="stateDebounceSeconds">Seconds a newly-evaluated GROUND state must persist before it is
         /// committed and the clip switches. A brief excursion in the movement signal (e.g. a one-tick spike in a
         /// position-derived speed - which the replicated-animator bridge sees from the prediction/reconcile render

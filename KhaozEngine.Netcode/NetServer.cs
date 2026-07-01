@@ -18,6 +18,9 @@ public sealed class NetServer
     private readonly Dictionary<NetConnectionId, int> slotByConnection = new();
     private readonly BoundedEventQueue<ServerSessionEvent> inbox;
 
+    /// <param name="transport">The byte transport to serve on (already listening).</param>
+    /// <param name="maxPlayers">Slot capacity. A Hello past this is answered with a full-server refusal.</param>
+    /// <param name="authenticator">Gate for incoming Hello tokens. Returns the verified subject on accept.</param>
     /// <param name="maxQueuedEvents">Defensive hard cap on undrained session events. The drain-to-empty contract
     /// (Poll then drain via <see cref="TryDequeueEvent"/> every tick) keeps this far below the cap; it only bites a
     /// host that stalls or is flooded, where the oldest event is dropped to keep memory bounded (Data events each

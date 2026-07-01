@@ -5,6 +5,24 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 9.0.1
+
+**Zero-warning patch: the whole build, restore, and pack pipeline now emits no warnings, and the
+pre-9.0.0 package READMEs are cleaned up to the current writing style.** No API or behaviour changes.
+
+- **NU1507 flood fixed.** `nuget.config` gains `packageSourceMapping` (external packages resolve from
+  nuget.org only, the local dev feed and GitHub Packages serve `KhaozEngine.*` ids only), which central
+  package management requires with multiple sources. Also a small supply-chain hardening: an external
+  package name can no longer resolve from the private feeds.
+- **All doc-comment warnings fixed** (CS1573/CS1574/CS1734/CS0419): Diagnostics and Primitives no
+  longer `cref` types in packages above them (plain text instead), class-level docs drop illegal
+  `paramref`s (`WorldLabel`, `VersionCheckingAuthenticator`), the `NetServer` and `AnimatedCharacter`
+  ctors document all their parameters, `SignedToken` names the exact `TryVerify` overload, and the
+  `RestartableHub` test helper fully qualifies `WorldClient`.
+- **README style cleanup.** The seven pre-9.0.0 package READMEs (Audio, Benchmarks, Gpu, Gui,
+  Particles, Render2D, Windowing) and `docs/CROSS-PLATFORM.md` drop their em/en-dashes per the
+  house writing rule. CHANGELOG history and the dated spec archive are untouched.
+
 ## 9.0.0
 
 **Package-structure major from the full engine review: three micro-packages retired (Effects into

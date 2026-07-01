@@ -7,7 +7,7 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="LiteNetLib" Version="2.1.2" />
+    <PackageReference Include="LiteNetLib" />
     <ProjectReference Include="../KhaozEngine.Netcode/KhaozEngine.Netcode.csproj" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>

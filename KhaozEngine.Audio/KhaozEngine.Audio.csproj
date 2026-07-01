@@ -8,12 +8,12 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Silk.NET.OpenAL" Version="2.23.0" />
+    <PackageReference Include="Silk.NET.OpenAL" />
     <!-- Bundle openal-soft as RID-specific natives so consumers don't depend on the deprecated macOS system
          OpenAL.framework (or a manually-installed lib). Flows to the consuming app's output via the runtime graph. -->
-    <PackageReference Include="Silk.NET.OpenAL.Soft.Native" Version="1.23.1" />
-    <PackageReference Include="NVorbis" Version="0.10.5" />
-    <PackageReference Include="NLayer" Version="1.16.0" />
+    <PackageReference Include="Silk.NET.OpenAL.Soft.Native" />
+    <PackageReference Include="NVorbis" />
+    <PackageReference Include="NLayer" />
     <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
     <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
     <InternalsVisibleTo Include="KhaozEngine.Tests" />

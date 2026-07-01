@@ -13,11 +13,11 @@
     <ProjectReference Include="../KhaozEngine.Platform/KhaozEngine.Platform.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Silk.NET.Windowing" Version="2.22.0" />
-    <PackageReference Include="Silk.NET.Windowing.Glfw" Version="2.22.0" />
-    <PackageReference Include="Silk.NET.Input" Version="2.22.0" />
-    <PackageReference Include="Silk.NET.Input.Glfw" Version="2.22.0" />
-    <PackageReference Include="Silk.NET.GLFW" Version="2.22.0" />
+    <PackageReference Include="Silk.NET.Windowing" />
+    <PackageReference Include="Silk.NET.Windowing.Glfw" />
+    <PackageReference Include="Silk.NET.Input" />
+    <PackageReference Include="Silk.NET.Input.Glfw" />
+    <PackageReference Include="Silk.NET.GLFW" />
     <ProjectReference Include="../KhaozEngine.Gpu/KhaozEngine.Gpu.csproj" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>

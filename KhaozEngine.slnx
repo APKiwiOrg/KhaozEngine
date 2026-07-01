@@ -7,7 +7,6 @@
   <Project Path="KhaozEngine.Determinism/KhaozEngine.Determinism.csproj" />
   <Project Path="KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
   <Project Path="KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
-  <Project Path="KhaozEngine.Effects/KhaozEngine.Effects.csproj" />
   <Project Path="KhaozEngine.Game/KhaozEngine.Game.csproj" />
   <Project Path="KhaozEngine.Game.Render3D/KhaozEngine.Game.Render3D.csproj" />
   <Project Path="KhaozEngine.Foundation/KhaozEngine.Foundation.csproj" />
@@ -18,7 +17,6 @@
   <Project Path="KhaozEngine.Gpu/KhaozEngine.Gpu.csproj" />
   <Project Path="KhaozEngine.Gui/KhaozEngine.Gui.csproj" />
   <Project Path="KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />
-  <Project Path="KhaozEngine.Localization/KhaozEngine.Localization.csproj" />
   <Project Path="KhaozEngine.Locomotion/KhaozEngine.Locomotion.csproj" />
   <Project Path="KhaozEngine.NetWorld/KhaozEngine.NetWorld.csproj" />
   <Project Path="KhaozEngine.Netcode.Abstractions/KhaozEngine.Netcode.Abstractions.csproj" />
@@ -32,7 +30,6 @@
   <Project Path="KhaozEngine.Physics.Bepu/KhaozEngine.Physics.Bepu.csproj" />
   <Project Path="KhaozEngine.Physics.HeadlessLoaderTests/KhaozEngine.Physics.HeadlessLoaderTests.csproj" />
   <Project Path="KhaozEngine.Platform/KhaozEngine.Platform.csproj" />
-  <Project Path="KhaozEngine.Pooling/KhaozEngine.Pooling.csproj" />
   <Project Path="KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
   <Project Path="KhaozEngine.Replication/KhaozEngine.Replication.csproj" />
   <Project Path="KhaozEngine.Simulation/KhaozEngine.Simulation.csproj" />

@@ -37,3 +37,29 @@ different version (upgrade or downgrade - ordinal string inequality only) preser
 `FirstInstalledAtUtc` and bumps `Version` + `UpdatedAtUtc`. Store the stamp on the game's existing
 settings DTO rather than a separate file; `KhaozEngine.Persistence` adds a `SettingsManager<T>.StampInstall(...)`
 convenience that resolves and saves only when changed.
+
+## LocalizationManager
+
+Localization helper (absorbed from the retired `KhaozEngine.Localization` package in 9.0.0). It does
+two things:
+
+- **Discover supported cultures** from a `ResourceManager` you inject (the cultures that
+  actually have a satellite resource set), always including the invariant culture.
+- **Set the current thread culture** (both `CurrentCulture` and `CurrentUICulture`).
+
+```csharp
+using System.Resources;
+using KhaozEngine.App;
+
+// Point it at YOUR game's resources (your assembly owns the satellite .resx files):
+var rm = new ResourceManager("MyGame.Core.Localization.Resources", typeof(MyGameMarker).Assembly);
+var loc = new LocalizationManager(rm);
+
+List<CultureInfo> cultures = loc.GetSupportedCultures();
+
+LocalizationManager.SetCulture("en-US");
+// Want a fallback instead of an exception on empty input? Do it at the call site:
+LocalizationManager.SetCulture(code ?? LocalizationManager.DefaultCultureCode);
+```
+
+`SetCulture` throws on null/empty input. `DefaultCultureCode` is `"en-US"`.

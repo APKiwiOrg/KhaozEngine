@@ -5,7 +5,7 @@ using System.Reflection;
 using System.Threading;
 using KhaozEngine.Content;
 using KhaozEngine.Diagnostics;
-using KhaozEngine.Localization;
+using KhaozEngine.App;
 using KhaozEngine.Persistence;
 using Xunit;
 

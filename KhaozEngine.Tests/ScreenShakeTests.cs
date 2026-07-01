@@ -1,6 +1,6 @@
 using System;
 using System.Numerics;
-using KhaozEngine.Effects;
+using KhaozEngine.Particles;
 using Xunit;
 
 namespace KhaozEngine.Tests;

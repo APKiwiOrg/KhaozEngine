@@ -3,7 +3,7 @@
   <PropertyGroup>
     <PackageId>KhaozEngine.Primitives</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
-    <Description>Zero-dependency shared primitives for KhaozEngine: Color, deterministic and fast RNG, and pure math helpers (clamp/lerp, viewport fit/cover, easing). System.Numerics only.</Description>
+    <Description>Zero-dependency shared primitives for KhaozEngine: Color, deterministic and fast RNG, pure math helpers (clamp/lerp/smoothstep, viewport fit/cover, easing), and the free-list ObjectPool (absorbed from the retired KhaozEngine.Pooling package in 9.0.0). System.Numerics only.</Description>
   </PropertyGroup>
 
 </Project>

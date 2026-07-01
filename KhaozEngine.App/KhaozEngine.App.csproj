@@ -3,10 +3,11 @@
     <PackageId>KhaozEngine.App</PackageId>
     <!-- Graduated onto the shared 5.x line at 5.46.0 (was the 4.x <Version>); MonoGame-free foundation. -->
     <Version>$(KhaozEngineVersion)</Version>
-    <Description>Game-agnostic app identity / runtime helpers. BuildMetadata reads AssemblyMetadata items at runtime. Pure BCL, no MonoGame dependency.</Description>
+    <Description>Game-agnostic app identity / runtime helpers. BuildMetadata reads AssemblyMetadata items at runtime; AppDataPaths gives a publisher-rooted OS-correct per-app data dir; ServiceLocator; LocalizationManager discovers satellite-resource cultures and sets the thread culture (absorbed from the retired KhaozEngine.Localization package in 9.0.0). Pure BCL.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <ItemGroup>

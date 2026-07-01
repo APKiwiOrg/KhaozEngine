@@ -13,6 +13,23 @@ Pure, deterministic, headless-testable particle simulation for the MonoGame-free
 Determinism: an internal xorshift32 RNG seeded by the ctor `seed`. Two systems with the same seed and the
 same `Emit`/`Update` calls produce identical particles. No `System.Random`, no wall-clock.
 
+## ScreenShake
+
+A trauma-based, deterministic screen-shake offset generator (absorbed from the retired
+`KhaozEngine.Effects` package in 9.0.0). Add trauma on impacts; the shake magnitude falls off as trauma
+squared and decays over time. Seeded smooth noise keeps it reproducible and headless-testable (no
+`System.Random` / wall-clock). It produces a positional `Offset` and a rotational `Angle` the game
+composes onto its render camera:
+
+```csharp
+var shake = new ScreenShake();
+shake.Add(0.6f);              // on an explosion / hit
+// each frame:
+shake.Update(dt);
+renderCamera.Position = camera.Position + shake.Offset;
+renderCamera.Rotation = camera.Rotation + shake.Angle;
+```
+
 Render-agnostic by design: this package never references a renderer. The game iterates `system.Active` and
 draws each particle (e.g. a Render3D camera-facing billboard). Part of the post-MonoGame 5.x line; see
 `docs/ROADMAP.md` ("The post-MonoGame pivot").

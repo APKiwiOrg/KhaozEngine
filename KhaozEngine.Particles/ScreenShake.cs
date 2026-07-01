@@ -1,7 +1,7 @@
 using System;
 using System.Numerics;
 
-namespace KhaozEngine.Effects
+namespace KhaozEngine.Particles
 {
     /// <summary>
     /// Trauma-based screen shake. Add trauma on impacts; the shake magnitude falls off as

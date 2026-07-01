@@ -1,6 +1,6 @@
 using System;
 
-namespace KhaozEngine.Pooling;
+namespace KhaozEngine.Primitives;
 
 /// <summary>
 /// Fixed-capacity free-list object pool. Items are created up front; <see cref="Rent"/> and

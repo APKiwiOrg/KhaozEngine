@@ -5,7 +5,7 @@ using System.Resources;
 using System.Threading;
 using KhaozEngine.Diagnostics;
 
-namespace KhaozEngine.Localization;
+namespace KhaozEngine.App;
 
 /// <summary>
 /// Manages localization settings for a game: retrieving the cultures backed by satellite

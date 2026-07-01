@@ -1,4 +1,4 @@
-using KhaozEngine.Pooling;
+using KhaozEngine.Primitives;
 using Xunit;
 
 namespace KhaozEngine.Tests;

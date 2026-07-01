@@ -1,4 +1,4 @@
-using KhaozEngine.Pooling;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Ecs;
 

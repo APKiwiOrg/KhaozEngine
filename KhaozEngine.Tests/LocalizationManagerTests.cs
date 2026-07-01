@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Resources;
 using System.Threading;
-using KhaozEngine.Localization;
+using KhaozEngine.App;
 using Xunit;
 
 namespace KhaozEngine.Tests;

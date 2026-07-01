@@ -9,7 +9,6 @@
   <ItemGroup>
     <!-- MonoGame-free: the ECS source uses no Xna types, so the custom 5.x stack can reuse it. Its only dep,
          KhaozEngine.Serialization, is pure BCL. -->
-    <ProjectReference Include="../KhaozEngine.Pooling/KhaozEngine.Pooling.csproj" />
     <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
     <ProjectReference Include="../KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
     <!-- Parallel ForEach (7.42.0) fans archetype row ranges across the shared IJobScheduler worker-pool seam,

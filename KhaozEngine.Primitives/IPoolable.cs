@@ -1,4 +1,4 @@
-namespace KhaozEngine.Pooling;
+namespace KhaozEngine.Primitives;
 
 /// <summary>
 /// An item that can live in an <see cref="ObjectPool{T}"/>. The pool owns <see cref="PoolIndex"/> (it stamps

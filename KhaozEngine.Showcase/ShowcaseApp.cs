@@ -31,6 +31,10 @@ namespace KhaozEngine.Showcase
             var small = Surface2D.LoadDefaultFont(22f);
             Rooms.Add(("2D sprites + text", () => new Room2D().Init(_white, checker, big, small)));
 
+            // RoomGui reuses the same big/small fonts (its own GuiAssets just wraps them alongside the white
+            // texture) - no new Surface2D calls needed beyond what Room2D already created above.
+            Rooms.Add(("GUI + widgets", () => new RoomGui().Init(_white, big, small)));
+
             // Rooms are registered here (added by later tasks).
             _scenes.Push(new MenuScene(_white, Rooms));
         }

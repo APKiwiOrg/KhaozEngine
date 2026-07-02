@@ -85,4 +85,34 @@ public class CellPersistenceTests
         byte[]? second = await store.LoadAsync("cell:0:0");
         Assert.Equal(first, second);
     }
+
+    [Fact]
+    public async Task SaveDirtyPass_DoesNotClobberSavedCell_WhileItsLoadIsInFlight()
+    {
+        var store = new InMemoryWorldStore();
+        // Seed a real saved blob for C00 (arbitrary non-empty snapshot bytes).
+        var seedHost = new FakeHost();
+        byte[] saved = new byte[] { 1, 0, 0, 0, 9, 9, 9, 9 };
+        seedHost.Snapshots[C00] = saved;
+        var seeder = new CellPersistence(seedHost, store);
+        seeder.SaveDirtyPass();
+        await seeder.FlushAsync();
+        byte[]? blobBefore = await store.LoadAsync("cell:0:0");
+        Assert.NotNull(blobBefore);
+
+        // Fresh persistence: the cell is created (load enqueued + restore pending, not drained).
+        var host = new FakeHost();
+        host.Snapshots[C00] = new byte[] { 0, 0, 0, 0 };   // the cell's pre-restore/default (empty) state
+        host.RestoreIds[C00] = new List<int> { 3 };
+        var cp = new CellPersistence(host, store);
+        host.RaiseCellCreated(C00);                        // load runs; restore enqueued; coord marked in-flight
+
+        cp.SaveDirtyPass();                                // periodic pass fires while the load is in flight
+
+        byte[]? blobAfter = await store.LoadAsync("cell:0:0");
+        Assert.Equal(blobBefore, blobAfter);               // stored blob NOT clobbered by pre-restore state
+
+        await cp.FlushAsync();                             // draining now applies the restore
+        Assert.True(host.Restored.ContainsKey(C00));
+    }
 }

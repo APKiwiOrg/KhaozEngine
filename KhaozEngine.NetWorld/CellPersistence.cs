@@ -43,6 +43,7 @@ public sealed class CellPersistence
     private readonly ConcurrentQueue<(CellCoord coord, byte[] snapshot)> restoreQueue = new();
     private readonly ConcurrentDictionary<CellCoord, byte[]> lastSaved = new();   // raw (unwrapped) snapshot per cell
     private readonly HashSet<CellCoord> loadRequested = new();                    // server-thread-only idempotency
+    private readonly ConcurrentDictionary<CellCoord, byte> loadsInFlight = new(); // coords with an outstanding load; SaveDirtyPass skips them so a periodic save can't clobber the stored blob with pre-restore state
     private readonly object pendingLock = new();
     private readonly List<Task> pending = new();
     private int lastSavedNextNetId;
@@ -63,14 +64,15 @@ public sealed class CellPersistence
     private void OnCellCreated(CellCoord coord)
     {
         if (!loadRequested.Add(coord)) return;          // load a given cell at most once
+        loadsInFlight[coord] = 0;                        // guard against a dirty-save clobbering the stored blob before the restore applies
         Track(LoadCellAsync(coord));
     }
 
     private async Task LoadCellAsync(CellCoord coord)
     {
         byte[]? blob = await store.LoadAsync(CellKey(coord)).ConfigureAwait(false);
-        if (blob is null) return;                       // no save -> cell stays as spawned
-        if (!TryUnwrap(blob, out byte[] snapshot)) return; // header/schema mismatch -> skip
+        if (blob is null) { loadsInFlight.TryRemove(coord, out _); return; }   // no save -> cell stays as spawned
+        if (!TryUnwrap(blob, out byte[] snapshot)) { loadsInFlight.TryRemove(coord, out _); return; } // header/schema mismatch -> skip
         lastSaved[coord] = snapshot;                    // loaded == clean baseline
         restoreQueue.Enqueue((coord, snapshot));
     }
@@ -92,6 +94,7 @@ public sealed class CellPersistence
             int max = 0;
             foreach (int id in ids) if (id > max) max = id;
             if (max > 0) host.EnsureNextNetIdAtLeast(max + 1);
+            loadsInFlight.TryRemove(r.coord, out _);     // restore applied; cell is now safe to dirty-save
         }
     }
 
@@ -100,6 +103,7 @@ public sealed class CellPersistence
     {
         foreach (CellCoord coord in new List<CellCoord>(host.LiveCellCoords))
         {
+            if (loadsInFlight.ContainsKey(coord)) continue;   // load outstanding: skip so a periodic save can't overwrite the stored blob with pre-restore state
             byte[]? snap = host.SnapshotCell(coord);
             if (snap is null) continue;
             if (lastSaved.TryGetValue(coord, out byte[]? prev) && prev.AsSpan().SequenceEqual(snap)) continue;

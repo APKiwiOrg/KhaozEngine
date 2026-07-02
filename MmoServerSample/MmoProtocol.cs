@@ -14,6 +14,12 @@ public struct Position : IComponent
 /// <summary>A client's per-tick movement input: a position delta to apply to its player.</summary>
 public readonly record struct MoveCommand(float Dx, float Dy);
 
+/// <summary>A static server-owned world resource (e.g. an ore vein). Non-player cell state that must survive a restart.</summary>
+public struct ResourceNode : IComponent
+{
+    public int Amount;
+}
+
 /// <summary>Shared wire helpers so the server and its clients agree on encodings.</summary>
 public static class MmoProtocol
 {
@@ -26,6 +32,10 @@ public static class MmoProtocol
             write: (p, bw) => { bw.Write(p.X); bw.Write(p.Y); },
             read: br => new Position { X = br.ReadSingle(), Y = br.ReadSingle() },
             lerp: (a, b, t) => new Position { X = a.X + (b.X - a.X) * t, Y = a.Y + (b.Y - a.Y) * t });
+        r.Register<ResourceNode>(
+            typeId: 2,
+            write: (n, bw) => bw.Write(n.Amount),
+            read: br => new ResourceNode { Amount = br.ReadInt32() });
         return r;
     }
 

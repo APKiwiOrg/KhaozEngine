@@ -26,6 +26,20 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   (dependency-free 3D convex-hull triangulation for `ConvexHullShape` proxies), `CollisionOverlayPalette` /
   `CollisionShapeKind` (per-kind color + name lookup) / `CollisionStatic` (the `PhysicsShape`+`Pose` input
   record). See `docs/USING-KHAOZENGINE.md`, "Collision-shape debug overlay".
+- Textured props: `PropLoader.LoadPropWithMaterial(AssetEntry, PropValidation?) -> (GltfMesh Mesh, GltfMaterialMaps
+  Maps)` loads + normalizes a prop like `LoadProp`, AND auto-reads its glTF's first textured material's
+  baseColor/normal/metallicRoughness textures (via `GltfLoader.LoadWithMaterial`). A prop whose glTF has no
+  textures yields an all-absent `GltfMaterialMaps` (`GltfMaterialMaps.IsEmpty`), never a throw, so it renders
+  exactly as `LoadProp`. Upload the result with `Scene3D.LoadMesh(GltfMesh, GltfMaterialMaps)`. Opt in per-asset
+  via the manifest `"textured": true` flag (`AssetEntry.Textured`, default false: renders with the flat
+  per-material base colour as before).
+  - `MeshOps.WithTangents(GltfMesh) -> GltfMesh` computes a per-vertex tangent from UV + position (Lengyel
+    accumulate, then Gram-Schmidt against the normal) so a UV-mapped primitive mesh (e.g. `MeshPrimitives.Box`)
+    can be normal-mapped. A vertex whose faces have no UV gradient keeps a zero tangent, which the shader reads
+    as "no TBN" (falls back to the geometric normal).
+  - `PropMaterialPresets.Procedural(int size = 64, int seed = 1337) -> GltfMaterialMaps` generates a
+    deterministic, asset-free mossy-stone albedo + derived tangent-space normal (raw RGBA, no PNG encoder, no
+    asset file) for samples and tests, mirroring `TerrainMaterialPresets.Procedural`.
 - `PropCollisionBake` - offline bakes a `PhysicsShape` from a normalized prop mesh for the `.coll` format.
   Classification: trees -> `BakeTrunkCylinder` (a thin trunk cylinder, `BakeTrunkHull` retained but no longer
   the default); buildings -> `TriangleMeshShape`; rocks/short solids -> `BakeConvexHull`. `PropBakePlan.For`

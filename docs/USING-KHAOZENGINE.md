@@ -1265,6 +1265,41 @@ per-chunk material overrides are not provided - swap the handle on `Scene3DChunk
 
 ---
 
+## Textured props
+
+Props (trees, rocks, buildings) can carry the same albedo/normal/roughness surface detail as terrain, instead
+of rendering with a single flat base-colour. A prop with no textures still renders exactly as before, so this
+is opt-in and backward compatible.
+
+**Real glTF textures.** Set `"textured": true` on the prop's manifest entry, then load it with
+`PropLoader.LoadPropWithMaterial` instead of `PropLoader.LoadProp`. It reads the glTF's first textured
+material's baseColor/normal/metallicRoughness textures alongside the normalized mesh, and upload both together
+with `Scene3D.LoadMesh(GltfMesh, GltfMaterialMaps)`:
+
+```csharp
+AssetEntry entry = manifest.Find("mossy_rock");   // manifest entry has "textured": true
+(GltfMesh mesh, GltfMaterialMaps maps) = PropLoader.LoadPropWithMaterial(entry);
+MeshHandle handle = scene.LoadMesh(mesh, maps);
+```
+
+If the glTF turns out to have no textures, `maps.IsEmpty` is true and the mesh renders with its flat
+per-material base colour, same as `LoadProp` - no throw, no special-casing needed at the call site.
+
+**Asset-free procedural placeholder.** For samples, tests, or prototyping without shipping binary textures,
+`PropMaterialPresets.Procedural()` generates a deterministic mossy-stone albedo + normal in memory (mirrors
+`TerrainMaterialPresets.Procedural`). Primitive meshes (e.g. `MeshPrimitives.Box`) have UVs but no tangents, so
+run them through `MeshOps.WithTangents` first to give normal maps something to map against:
+
+```csharp
+MeshHandle prop = scene.LoadMesh(
+    MeshOps.WithTangents(MeshPrimitives.Box(1.5f)),
+    PropMaterialPresets.Procedural());
+```
+
+`TerrainWalkSample` places one of these procedural textured blocks near spawn as a live demo.
+
+---
+
 ## Ground-cover scatter and understory companions
 
 `Scene3DChunkSink` now accepts N `PropLayer`s, so a scene can have sparse tall trees at a long draw radius

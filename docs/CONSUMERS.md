@@ -56,7 +56,7 @@ runtime icon API:
   dependency pulled into the low-level windowing leaf).
 - **macOS caveat:** GLFW ignores window icons on Cocoa, so `SetIcon` is a deliberate **no-op on macOS** (never
   throws). The Dock/Finder icon is owned by the `.app` bundle's icns (each consumer's packaging already handles it).
-- **Per-consumer follow-up (not the engine release):** each desktop consumer pins 8.10.0, passes its icon PNG via
+- **Per-consumer follow-up (not the engine release):** each desktop consumer passes its icon PNG via
   `GameAppOptions`, and (independently) re-adds `<ApplicationIcon>...Icon.ico</ApplicationIcon>` to its desktop-head
   csproj for the Windows `.exe` icon shown when the app is not running (that is per-repo, not an engine API).
 

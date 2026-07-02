@@ -115,4 +115,53 @@ public class CellPersistenceTests
         await cp.FlushAsync();                             // draining now applies the restore
         Assert.True(host.Restored.ContainsKey(C00));
     }
+
+    [Fact]
+    public async Task Load_SkipsBlobWithWrongSchemaVersion()
+    {
+        var store = new InMemoryWorldStore();
+        var hostV1 = new FakeHost();
+        hostV1.Snapshots[C00] = new byte[] { 0, 0, 0, 0 };
+        var v1 = new CellPersistence(hostV1, store, new CellPersistenceConfig { SchemaVersion = 1 });
+        v1.SaveDirtyPass();
+        await v1.FlushAsync();
+
+        // A reader on schema 2 must treat the v1 blob as unusable: no restore enqueued.
+        var hostV2 = new FakeHost();
+        var v2 = new CellPersistence(hostV2, store, new CellPersistenceConfig { SchemaVersion = 2 });
+        hostV2.RaiseCellCreated(C00);
+        await v2.FlushAsync();
+        Assert.False(hostV2.Restored.ContainsKey(C00));   // skipped, not mis-decoded
+    }
+
+    [Fact]
+    public async Task LoadMetaAsync_ResumesAllocatorAboveHighWater()
+    {
+        var store = new InMemoryWorldStore();
+        await store.SaveAsync("world:meta", new WorldMetaRecord { NextNetId = 500 }.Encode());
+        var host = new FakeHost();                         // starts NextNetId = 1
+        var cp = new CellPersistence(host, store);
+        await cp.LoadMetaAsync();
+        Assert.Equal(500, host.NextNetId);
+    }
+
+    [Fact]
+    public async Task PreloadAsync_InstantiatesEverySavedCell()
+    {
+        var store = new InMemoryWorldStore();
+        var seedHost = new FakeHost();
+        seedHost.Snapshots[new CellCoord(1, 2)] = new byte[] { 0, 0, 0, 0 };
+        seedHost.Snapshots[new CellCoord(-3, 4)] = new byte[] { 0, 0, 0, 0 };
+        var seeder = new CellPersistence(seedHost, store);
+        seeder.SaveDirtyPass();
+        await seeder.FlushAsync();
+
+        var host = new FakeHost();
+        var created = new List<CellCoord>();
+        host.CellCreated += created.Add;
+        var cp = new CellPersistence(host, store);
+        await cp.PreloadAsync();
+        Assert.Contains(new CellCoord(1, 2), created);
+        Assert.Contains(new CellCoord(-3, 4), created);
+    }
 }

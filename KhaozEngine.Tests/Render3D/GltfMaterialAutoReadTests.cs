@@ -71,7 +71,7 @@ namespace KhaozEngine.Tests.Render3D
 
         // A rigid textured triangle: baseColor=red, normal=flat-blue, metallicRoughness=green, each a distinct
         // embedded PNG so we can tell the three maps apart. Returns the glb path (caller deletes).
-        static string WriteTexturedTriangleGlb()
+        internal static string WriteTexturedTriangleGlb()
         {
             byte[] albedoPng = OnePixelPng(200, 10, 10);    // red
             byte[] normalPng = OnePixelPng(128, 128, 255);  // flat tangent-space normal
@@ -97,7 +97,7 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         // A rigid triangle with a baseColor FACTOR but no textures (the common "flat colour" material).
-        static string WriteUntexturedTriangleGlb()
+        internal static string WriteUntexturedTriangleGlb()
         {
             var mat = new MaterialBuilder("flat").WithBaseColor(new Vector4(0.2f, 0.6f, 0.9f, 1f));
             var mesh = new MeshBuilder<VertexPositionNormal, VertexEmpty>("m");

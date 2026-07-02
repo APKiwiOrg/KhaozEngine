@@ -35,6 +35,9 @@ namespace KhaozEngine.Showcase
             // texture) - no new Surface2D calls needed beyond what Room2D already created above.
             Rooms.Add(("GUI + widgets", () => new RoomGui().Init(_white, big, small)));
 
+            // RoomInput reuses the shared white texture and the small font for its HUD text.
+            Rooms.Add(("Input + audio", () => new RoomInput().Init(_white, small)));
+
             // Rooms are registered here (added by later tasks).
             _scenes.Push(new MenuScene(_white, Rooms));
         }

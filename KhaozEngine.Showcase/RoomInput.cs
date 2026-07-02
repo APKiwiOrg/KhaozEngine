@@ -40,6 +40,7 @@ namespace KhaozEngine.Showcase
         AudioSystem _audio = null!;
         string _lastSfx = "none";
         string _clipboardStatus = "clipboard: C = copy + verify round-trip,  V = paste from OS";
+        string _padInfo = "pad: none";
 
         /// <summary>Wire in the texture/font created on the app's Surface2D. Call once, right after
         /// construction and before the room is pushed.</summary>
@@ -107,6 +108,15 @@ namespace KhaozEngine.Showcase
             _clock.Update(dt);
             _orbit += _clock.ScaledDeltaSeconds * 1.6f;   // animation runs on SCALED time (freezes when paused)
 
+            // Gamepad (best-effort): left stick nudges the box, A resets it. No-op when no controller is connected.
+            var pad = m.Input.PrimaryGamepad;
+            if (pad.IsConnected)
+            {
+                _box += pad.LeftStickDeadzoned(0.2f) * (260f * dt);
+                if (pad.WasPressed(GamepadButton.A)) _box = new Vector2(300, 300);
+            }
+            _padInfo = pad.IsConnected ? $"pad: stick {pad.LeftStick.X:0.0},{pad.LeftStick.Y:0.0}" : "pad: none";
+
             // Gesture handling.
             var boxRect = new Rect(_box.X - 45, _box.Y - 45, 90, 90);
             if (_gestures.DragStarted && boxRect.Contains(_gestures.DragStart)) _grabbed = true;
@@ -151,7 +161,7 @@ namespace KhaozEngine.Showcase
             batch.DrawString(_font, "Drag box  -  tap  -  long-press reset  -  Space pause  -  1/2/3 speed  -  Z blip  -  X 3D thud  -  C/V clipboard  -  Esc for menu", new Vector2(20, 18), new Color(0.92f, 0.96f, 1f, 1f));
             batch.DrawString(_font, _clipboardStatus, new Vector2(20, 470), new Color(0.85f, 0.8f, 1f, 1f));
             batch.DrawString(_font,
-                $"gesture: {gstate}    clock: {(_clock.IsPaused ? "PAUSED" : $"x{_clock.TimeScale:0.0}")}    sim t={_clock.ElapsedScaledSeconds:0.0}s    sfx: {_lastSfx}",
+                $"gesture: {gstate}    clock: {(_clock.IsPaused ? "PAUSED" : $"x{_clock.TimeScale:0.0}")}    sim t={_clock.ElapsedScaledSeconds:0.0}s    sfx: {_lastSfx}    {_padInfo}",
                 new Vector2(20, 500), new Color(0.7f, 0.85f, 1f, 1f));
         }
     }

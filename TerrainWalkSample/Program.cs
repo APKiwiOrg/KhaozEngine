@@ -182,8 +182,9 @@ sealed class TerrainWalkApp : GameApp3D
 
         // Textured prop demo: a procedural mossy-stone block (albedo + normal), no binary asset.
         // Placed near spawn, clear of the platform (0, 12) and the collision-overlay proxy (8, 4).
+        // ScaleUv tiles the material 3x across each face so texels stay dense (crisp, not one stretched copy).
         _texturedProp = sc.LoadMesh(
-            MeshOps.WithTangents(MeshPrimitives.Box(1.5f)),
+            MeshOps.WithTangents(MeshOps.ScaleUv(MeshPrimitives.Box(1.5f), 3f)),
             PropMaterialPresets.Procedural());
         float propX = 3f, propZ = 3f;
         _texturedPropXform = Matrix4x4.CreateTranslation(propX, _terrain.GroundHeight(propX, propZ) + 0.75f, propZ);

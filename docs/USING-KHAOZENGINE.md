@@ -1290,11 +1290,12 @@ per-material base colour, same as `LoadProp` - no throw, no special-casing neede
 **Asset-free procedural placeholder.** For samples, tests, or prototyping without shipping binary textures,
 `PropMaterialPresets.Procedural()` generates a deterministic mossy-stone albedo + normal in memory (mirrors
 `TerrainMaterialPresets.Procedural`). Primitive meshes (e.g. `MeshPrimitives.Box`) have UVs but no tangents, so
-run them through `MeshOps.WithTangents` first to give normal maps something to map against:
+run them through `MeshOps.WithTangents` first to give normal maps something to map against. Tile the UVs with
+`MeshOps.ScaleUv` so the material repeats and reads crisp rather than as one stretched (blurry) copy:
 
 ```csharp
 MeshHandle prop = scene.LoadMesh(
-    MeshOps.WithTangents(MeshPrimitives.Box(1.5f)),
+    MeshOps.WithTangents(MeshOps.ScaleUv(MeshPrimitives.Box(1.5f), 3f)),
     PropMaterialPresets.Procedural());
 ```
 

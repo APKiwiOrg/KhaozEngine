@@ -37,7 +37,10 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
     accumulate, then Gram-Schmidt against the normal) so a UV-mapped primitive mesh (e.g. `MeshPrimitives.Box`)
     can be normal-mapped. A vertex whose faces have no UV gradient keeps a zero tangent, which the shader reads
     as "no TBN" (falls back to the geometric normal).
-  - `PropMaterialPresets.Procedural(int size = 64, int seed = 1337) -> GltfMaterialMaps` generates a
+  - `MeshOps.ScaleUv(GltfMesh, float scale) -> GltfMesh` multiplies every UV by `scale` so a material tiles
+    `scale` times across the original 0..1 span (denser texels read crisp instead of one stretched, blurry
+    copy). Apply before `WithTangents` when you want the tangent basis derived from the tiled UVs.
+  - `PropMaterialPresets.Procedural(int size = 256, int seed = 1337) -> GltfMaterialMaps` generates a
     deterministic, asset-free mossy-stone albedo + derived tangent-space normal (raw RGBA, no PNG encoder, no
     asset file) for samples and tests, mirroring `TerrainMaterialPresets.Procedural`.
 - `PropCollisionBake` - offline bakes a `PhysicsShape` from a normalized prop mesh for the `.coll` format.

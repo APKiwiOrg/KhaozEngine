@@ -7,7 +7,7 @@ metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the p
 
 ## 9.3.0
 
-Textured props: props can now carry albedo/normal/roughness surface detail. `PropLoader.LoadPropWithMaterial` reads a prop glTF's baseColor/normal/roughness textures (opt-in via the `textured` manifest flag), degrading to the flat render when a prop has none. `MeshOps.WithTangents` gives a UV-mapped primitive mesh a tangent basis so normal maps take effect, and `PropMaterialPresets.Procedural` generates an asset-free mossy-stone albedo+normal for samples and tests (mirrors `TerrainMaterialPresets.Procedural`). Additive and backward compatible, no new package. TerrainWalkSample shows a procedural textured stone block.
+Textured props: props can now carry albedo/normal/roughness surface detail. `PropLoader.LoadPropWithMaterial` reads a prop glTF's baseColor/normal/roughness textures (opt-in via the `textured` manifest flag), degrading to the flat render when a prop has none. `MeshOps.WithTangents` gives a UV-mapped primitive mesh a tangent basis so normal maps take effect, `MeshOps.ScaleUv` tiles a mesh's UVs so a material reads crisp instead of one stretched copy, and `PropMaterialPresets.Procedural` generates an asset-free mossy-stone albedo+normal for samples and tests (mirrors `TerrainMaterialPresets.Procedural`). Additive and backward compatible, no new package. TerrainWalkSample shows a procedural textured stone block.
 
 ## 9.2.0
 

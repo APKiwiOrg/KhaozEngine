@@ -36,5 +36,21 @@ namespace KhaozEngine.Tests.Render3D
                 Assert.Equal(box.Vertices[i].Uv, tan.Vertices[i].Uv);
             }
         }
+
+        [Fact]
+        public void ScaleUv_MultipliesEveryUv_PreservesEverythingElse()
+        {
+            GltfMesh box = MeshOps.WithTangents(MeshPrimitives.Box(1f));
+            GltfMesh tiled = MeshOps.ScaleUv(box, 3f);
+
+            Assert.Equal(box.Indices32, tiled.Indices32);
+            for (int i = 0; i < box.Vertices.Length; i++)
+            {
+                Assert.Equal(box.Vertices[i].Uv * 3f, tiled.Vertices[i].Uv);
+                Assert.Equal(box.Vertices[i].Position, tiled.Vertices[i].Position);
+                Assert.Equal(box.Vertices[i].Normal, tiled.Vertices[i].Normal);
+                Assert.Equal(box.Vertices[i].Tangent, tiled.Vertices[i].Tangent);
+            }
+        }
     }
 }

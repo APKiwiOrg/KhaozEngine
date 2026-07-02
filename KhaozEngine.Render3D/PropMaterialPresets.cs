@@ -13,7 +13,7 @@ namespace KhaozEngine.Render3D
         /// <summary>A mossy-stone albedo + a gentle derived tangent-space normal, each
         /// <paramref name="size"/> x <paramref name="size"/> RGBA8. Grey stone value-noise base with green moss
         /// mottling. The normal is the albedo-noise gradient (z dominant).</summary>
-        public static GltfMaterialMaps Procedural(int size = 64, int seed = 1337)
+        public static GltfMaterialMaps Procedural(int size = 256, int seed = 1337)
         {
             if (size < 1) size = 1;
             var albedo = new byte[size * size * 4];

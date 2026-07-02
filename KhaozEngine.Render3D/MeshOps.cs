@@ -110,5 +110,26 @@ namespace KhaozEngine.Render3D
             }
             return new GltfMesh(outVerts, (uint[])idx.Clone());
         }
+
+        /// <summary>
+        /// Returns a copy of <paramref name="mesh"/> with every vertex UV multiplied by <paramref name="scale"/>,
+        /// so a texture tiles <paramref name="scale"/> times across the original 0..1 span (the model sampler
+        /// wraps). Denser tiling means more texels per metre, which reads crisp instead of a single stretched
+        /// (blurry) copy. Positions, normals, colours, tangents and indices are unchanged. Apply this BEFORE
+        /// <see cref="WithTangents"/> when you want the tangent basis derived from the tiled UVs (a uniform UV
+        /// scale does not change tangent direction, so the order does not affect the basis).
+        /// </summary>
+        public static GltfMesh ScaleUv(GltfMesh mesh, float scale)
+        {
+            if (mesh is null) throw new ArgumentNullException(nameof(mesh));
+            var verts = mesh.Vertices;
+            var outVerts = new ModelVertex[verts.Length];
+            for (int i = 0; i < verts.Length; i++)
+            {
+                ModelVertex v = verts[i];
+                outVerts[i] = new ModelVertex(v.Position, v.Normal, v.Color, v.Uv * scale, v.Tangent);
+            }
+            return new GltfMesh(outVerts, (uint[])mesh.Indices32.Clone());
+        }
     }
 }

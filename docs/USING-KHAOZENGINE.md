@@ -451,7 +451,9 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
 ```
 
 - `Scene3D`: `LoadMesh`/`LoadTexture`/`UnloadMesh`/`UnloadTexture`, `Begin()`, `Draw(handle, transform[, tint[, material]])`,
-  billboards, and a debug-draw overlay (`DebugLine/Ray/Box/Grid/Axes/Circle`). `Post` is the
+  billboards, and a debug-draw overlay (`DebugLine/Ray/Box/Grid/Axes/Circle`). `LoadTexture` builds and generates a
+  full mip chain for each texture (from 9.2.0), so model/prop surfaces stay smooth at distance instead of aliasing
+  into "pixely" sparkle as the camera moves. `Post` is the
   `PixelPostProcess` (pixelation / quantize / dither / cel bands / palette for the chunky retro look; the smooth
   look is the default).
 - Rigid glTF honours node world transforms: `GltfLoader.Load` / `LoadWithMaterial` walk the scene
@@ -1262,6 +1264,42 @@ reloaded; each `LoadTerrainMaterial` call allocates a fresh set of arrays.
 **Out of scope.** Runtime layer blending tweaks, streaming of different materials per biome region, and
 per-chunk material overrides are not provided - swap the handle on `Scene3DChunkSink` and rebuild the ring
 (`streamer.UnloadAll()` then a fresh sink with the new handle) to change the look at stream time.
+
+---
+
+## Textured props
+
+Props (trees, rocks, buildings) can carry the same albedo/normal/roughness surface detail as terrain, instead
+of rendering with a single flat base-colour. A prop with no textures still renders exactly as before, so this
+is opt-in and backward compatible.
+
+**Real glTF textures.** Set `"textured": true` on the prop's manifest entry, then load it with
+`PropLoader.LoadPropWithMaterial` instead of `PropLoader.LoadProp`. It reads the glTF's first textured
+material's baseColor/normal/metallicRoughness textures alongside the normalized mesh, and upload both together
+with `Scene3D.LoadMesh(GltfMesh, GltfMaterialMaps)`:
+
+```csharp
+AssetEntry entry = manifest.Find("mossy_rock");   // manifest entry has "textured": true
+(GltfMesh mesh, GltfMaterialMaps maps) = PropLoader.LoadPropWithMaterial(entry);
+MeshHandle handle = scene.LoadMesh(mesh, maps);
+```
+
+If the glTF turns out to have no textures, `maps.IsEmpty` is true and the mesh renders with its flat
+per-material base colour, same as `LoadProp` - no throw, no special-casing needed at the call site.
+
+**Asset-free procedural placeholder.** For samples, tests, or prototyping without shipping binary textures,
+`PropMaterialPresets.Procedural()` generates a deterministic mossy-stone albedo + normal in memory (mirrors
+`TerrainMaterialPresets.Procedural`). Primitive meshes (e.g. `MeshPrimitives.Box`) have UVs but no tangents, so
+run them through `MeshOps.WithTangents` first to give normal maps something to map against. Tile the UVs with
+`MeshOps.ScaleUv` so the material repeats and reads crisp rather than as one stretched (blurry) copy:
+
+```csharp
+MeshHandle prop = scene.LoadMesh(
+    MeshOps.WithTangents(MeshOps.ScaleUv(MeshPrimitives.Box(1.5f), 3f)),
+    PropMaterialPresets.Procedural());
+```
+
+`TerrainWalkSample` places one of these procedural textured blocks near spawn as a live demo.
 
 ---
 

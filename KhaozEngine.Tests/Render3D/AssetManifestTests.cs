@@ -174,5 +174,21 @@ namespace KhaozEngine.Tests.Render3D
             var manifest = AssetManifest.Parse(json, "/kit");
             Assert.Null(manifest.Find("rock")!.Value.CollisionProxy);
         }
+
+        [Fact]
+        public void Parse_TexturedFlag_ReadWhenPresent()
+        {
+            string json = @"{ ""props"": [ { ""id"": ""p"", ""file"": ""p.glb"", ""heightMeters"": 2.0, ""textured"": true } ] }";
+            AssetManifest m = AssetManifest.Parse(json);
+            Assert.True(m.Props[0].Textured);
+        }
+
+        [Fact]
+        public void Parse_TexturedFlag_DefaultsFalseWhenAbsent()
+        {
+            string json = @"{ ""props"": [ { ""id"": ""p"", ""file"": ""p.glb"", ""heightMeters"": 2.0 } ] }";
+            AssetManifest m = AssetManifest.Parse(json);
+            Assert.False(m.Props[0].Textured);
+        }
     }
 }

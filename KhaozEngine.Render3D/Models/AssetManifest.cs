@@ -43,12 +43,17 @@ namespace KhaozEngine.Render3D
         /// of convex pieces) instead of the full render mesh. Resolved against the manifest directory like
         /// <see cref="File"/>.</summary>
         public string? CollisionProxy { get; }
+        /// <summary>True when this prop's glTF ships baseColor/normal/roughness textures that should be read and
+        /// bound (via <see cref="PropLoader.LoadPropWithMaterial"/>). Default false: the prop renders with its flat
+        /// per-material base colour as before. Degrades gracefully if a flagged asset turns out to have no textures.</summary>
+        public bool Textured { get; }
         public AssetEntry(string id, string file, float heightMeters, string source, string license,
                           ColliderShape? collider = null, bool surface = false, string? heightmap = null,
-                          string? collisionShape = null, string? collisionProxy = null)
+                          string? collisionShape = null, string? collisionProxy = null, bool textured = false)
         {
             Id = id; File = file; HeightMeters = heightMeters; Source = source; License = license; Collider = collider;
             Surface = surface; Heightmap = heightmap; CollisionShape = collisionShape; CollisionProxy = collisionProxy;
+            Textured = textured;
         }
     }
 
@@ -112,7 +117,7 @@ namespace KhaozEngine.Render3D
                 string? collisionProxy = string.IsNullOrWhiteSpace(p.CollisionProxy) ? null : ResolveFile(p.CollisionProxy!, baseDir);
                 entries.Add(new AssetEntry(p.Id!, ResolveFile(p.File!, baseDir), p.HeightMeters,
                                            p.Source ?? "", p.License ?? "", ParseCollider(p.Id!, p.Collider),
-                                           p.Surface, heightmap, collisionShape, collisionProxy));
+                                           p.Surface, heightmap, collisionShape, collisionProxy, p.Textured));
             }
             return new AssetManifest(entries);
         }
@@ -154,6 +159,7 @@ namespace KhaozEngine.Render3D
                 [JsonPropertyName("heightmap")] public string? Heightmap { get; set; }
                 [JsonPropertyName("collisionShape")] public string? CollisionShape { get; set; }
                 [JsonPropertyName("collisionProxy")] public string? CollisionProxy { get; set; }
+                [JsonPropertyName("textured")] public bool Textured { get; set; }
             }
 
             public sealed class ColliderDto

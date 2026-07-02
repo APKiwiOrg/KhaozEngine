@@ -46,6 +46,28 @@ namespace KhaozEngine.Render3D
             }
         }
 
+        /// <summary>Load + normalize a manifest entry like <see cref="LoadProp"/>, AND auto-read the glTF's first
+        /// textured material's baseColor/normal/metallicRoughness textures (opt-in, via
+        /// <see cref="GltfLoader.LoadWithMaterial"/>). Upload the mesh + maps with
+        /// <see cref="Scene3D.LoadMesh(GltfMesh,GltfMaterialMaps)"/>. A prop whose glTF has no textures yields an
+        /// all-absent <see cref="GltfMaterialMaps"/> (<see cref="GltfMaterialMaps.IsEmpty"/>), never a throw, so it
+        /// renders exactly as <see cref="LoadProp"/>. The mesh is identical to <see cref="LoadProp"/>'s.</summary>
+        public static (GltfMesh Mesh, GltfMaterialMaps Maps) LoadPropWithMaterial(AssetEntry entry, PropValidation? validation = null)
+        {
+            (GltfMesh raw, GltfMaterialMaps maps) = LoadRawWithMaterial(entry);
+            GltfMesh mesh = Normalize(raw, entry.HeightMeters, validation, entry.Id);
+            return (mesh, maps);
+        }
+
+        static (GltfMesh, GltfMaterialMaps) LoadRawWithMaterial(AssetEntry entry)
+        {
+            try { return GltfLoader.LoadWithMaterial(entry.File); }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"PropLoader could not load prop '{entry.Id}' from '{entry.File}': {ex.Message}", ex);
+            }
+        }
+
         /// <summary>Scale a raw mesh uniformly so its vertical (Y) extent equals <paramref name="heightMeters"/>,
         /// drop the base to y=0, and re-centre X/Z on the origin. Validates the declared height and the implied
         /// scale against <paramref name="validation"/> (default <see cref="PropValidation.Default"/>); throws

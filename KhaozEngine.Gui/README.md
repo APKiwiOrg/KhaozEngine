@@ -5,8 +5,10 @@ Immediate-mode + retained UI on the custom MonoGame-free stack.
 - `GuiSurface` - immediate-mode UI for a `Run`-loop game: `Begin(batch?, pointer)` then `Panel`/`Label`/`Swatch`/
   `Button`->bool/`Slider`/hover, with a `PointerCaptured` click-through gate. `FocusNavigator` drives
   keyboard/gamepad menu focus.
-- `ScreenStack` - owns a stack of `Screen`s; routes input top-to-bottom (input-consumption + modal layering,
+- `ScreenStack` - owns a stack of `Screen`s. Routes input top-to-bottom (input-consumption + modal layering,
   the click-through model), draws bottom-to-top, drives transitions. Exposes a shared `Pointer` + `InputState`.
+  Screens are ordered by `DrawOrder` ascending with a stable insert, so equal-`DrawOrder` screens keep insertion
+  order and `Screens[^1]` is the visually-topmost.
 - `Screen` - base UI surface: `Update(dt, receivesInput)` (returns whether it consumed input) + `Draw(SpriteBatch)`,
   with `DrawOrder` / `PassUpdateThrough` / `AlwaysReceivesInput` / transitions.
 - Core widgets, all bounds-aware over `Pointer` (press-origin click-through invariant), drawn with a 1x1 white

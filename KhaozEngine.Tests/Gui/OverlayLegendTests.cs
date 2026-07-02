@@ -7,7 +7,7 @@ namespace KhaozEngine.Tests.Gui;
 /// <summary>
 /// Headless coverage for <see cref="OverlayLegend"/>. A real <see cref="KhaozEngine.Render2D.SpriteFont"/> needs
 /// an <c>IGpuDevice</c> to bake its atlas (<c>SpriteFont.Build</c>), so it cannot be constructed in a default
-/// headless test run; the font-dependent layout math (row/column growth) is covered by the GPU golden instead.
+/// headless test run. The font-dependent layout math (row/column growth) is covered by the GPU golden instead.
 /// This file sticks to the font-free surface: entry storage and the empty-legend early return in
 /// <see cref="OverlayLegend.Measure"/>, which returns before touching the font.
 /// </summary>

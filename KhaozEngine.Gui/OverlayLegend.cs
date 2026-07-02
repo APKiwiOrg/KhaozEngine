@@ -30,7 +30,7 @@ namespace KhaozEngine.Gui
         /// <summary>Number of rows currently set.</summary>
         public int EntryCount => _entries.Count;
 
-        /// <summary>Set the rows drawn next <see cref="Draw"/>. The reference is stored as-is (no copy); a
+        /// <summary>Set the rows drawn next <see cref="Draw"/>. The reference is stored as-is (no copy), so a
         /// caller may reuse its own buffer between frames. <c>null</c> resets to empty.</summary>
         public void SetEntries(IReadOnlyList<LegendEntry> entries) => _entries = entries ?? Array.Empty<LegendEntry>();
 

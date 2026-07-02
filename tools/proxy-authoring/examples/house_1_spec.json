@@ -1,5 +1,5 @@
 {
-  "_comment": "house_1 collision proxy (Blender frame, Z up; ws = 2.124 world m per raw unit). Stone ground floor at the measured wall planes (x +/-0.762, y -0.887..0.827, the shared base module) run all the way up to z 2.6 (capping the body at the jetty underside left a front-top EDGE at 2.04 m world hanging over the doorstep landing zone, which corrupted the step-up probe's sweeps); the jettied timber upper floor as its own box at its wall planes (x +/-0.95, y +/-1.23), underside raised to 1.06 raw = 2.25 m world (the visible jetty is 0.96, but the step-up probe lifts the head to 2.2 m while mounting the doorstep below, so the collision ceiling must clear that; walking hugs the real stone wall and only a jump clips the jetty lip). Entrance: arched door + 3 stone steps on the -Y face; at this scale the staircase tops at ~0.25 m world, so ONE probe-mount step box (x +/-0.24) covers it, front extended ~8 cm world past the bottom stone. Its top is 0.1507 raw = 0.32 m world, ABOVE the 0.25 stone threshold: a tread under ~0.3 m world at a door-wall rest loses the engine's wall-tangent support recovery (the support sweep degenerates against the wall, terrain claims the capsule and it falls through the tread and wedges inside it); at 0.32 the recovery holds, at the cost of feet floating ~7 cm at the door. Bases extend -0.3 below terrain.",
+  "_comment": "house_1 collision proxy (Blender frame, Z up; ws = 2.124 world m per raw unit). Stone ground floor at the measured wall planes (x +/-0.762, y -0.887..0.827, the shared base module) run all the way up to z 2.6 (capping the body at the jetty underside left a front-top EDGE at 2.04 m world hanging over the doorstep landing zone, which corrupted the step-up probe's sweeps); the jettied timber upper floor as its own box at its wall planes (x +/-0.95, y +/-1.23), underside raised to 1.06 raw = 2.25 m world (the visible jetty is 0.96, but the step-up probe lifts the head to 2.2 m while mounting the doorstep below, so the collision ceiling must clear that; walking hugs the real stone wall and only a jump clips the jetty lip). Entrance: arched door + 3 stone steps on the -Y face; at this scale the staircase tops at ~0.25 m world, so ONE probe-mount step box (x +/-0.24) covers it, front extended ~8 cm world past the bottom stone. Its top is 0.1507 raw = 0.32 m world, ABOVE the 0.25 stone threshold: a tread under ~0.3 m world at a door-wall rest loses the engine's wall-tangent support recovery (the support sweep degenerates against the wall, terrain claims the capsule and it falls through the tread and wedges inside it); at 0.32 the recovery holds, at the cost of feet floating ~7 cm at the door. Bases extend -0.3 below terrain. Roof: two steep gable wedges (ridge along Y) matching the visible slope.",
   "boxes": [
     {
       "name": "body",
@@ -41,5 +41,36 @@
       ]
     }
   ],
-  "wedges": []
+  "wedges": [
+    {
+      "name": "roof_w",
+      "min": [
+        -1.072,
+        -1.251,
+        1.7
+      ],
+      "max": [
+        0.0,
+        1.251,
+        3.32
+      ],
+      "axis": "x",
+      "dir": 1
+    },
+    {
+      "name": "roof_e",
+      "min": [
+        0.0,
+        -1.251,
+        1.7
+      ],
+      "max": [
+        1.072,
+        1.251,
+        3.32
+      ],
+      "axis": "x",
+      "dir": -1
+    }
+  ]
 }

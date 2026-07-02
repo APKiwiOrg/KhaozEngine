@@ -40,6 +40,8 @@ namespace KhaozEngine.Gpu
         uint Width { get; }
         /// <summary>Texel height.</summary>
         uint Height { get; }
+        /// <summary>Mip-level count (1 == level 0 only, no mip chain).</summary>
+        uint MipLevels { get; }
         /// <summary>Pixel format.</summary>
         GpuPixelFormat Format { get; }
     }

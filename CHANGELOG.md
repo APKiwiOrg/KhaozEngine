@@ -5,6 +5,25 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 9.2.0
+
+**Model/prop textures now get a full mip chain, fixing the "everything goes pixely at distance when the camera
+moves" aliasing.** Additive minor, render-only bug fix, one new public API member.
+
+- **`Scene3D.LoadTexture(byte[], int, int)`** (and the `LoadTexture(string)` / `LoadSurfaceMaps` paths that route
+  through it) now creates each texture with a full mip chain (`floor(log2(max(w,h))) + 1` levels) and generates
+  it, mirroring the splat-terrain path. Before this, model/prop/glTF-surface textures were single-level, so the
+  trilinear model sampler had nothing to blend between and distant surfaces point-minified into sparkly
+  "pixely" noise the moment the camera moved (trees, props, and any non-splat ground in Ruinborne's testers'
+  reports). Splat terrain was already mipped + anisotropic, which is why floors were only affected "to an extent"
+  (the scattered props on them, not the ground). A 1x1 / single-level texture (e.g. the model pass's white
+  default) is left untouched, so that path is byte-for-byte unchanged and the D3D11 white-darkening sampler
+  regression stays fixed.
+- **`IGpuTexture.MipLevels`** (new, `KhaozEngine.Gpu`) - exposes a texture's mip-level count, symmetric with the
+  existing `Width`/`Height`/`Format`. Makes the mip-chain invariant testable (and is generally useful).
+- Load-time cost: `LoadTexture` now submits a one-shot mipmap-generation command list per multi-level texture
+  (as the splat path already did). This is a load-time stall, not per-frame, so it does not affect frame rate.
+
 ## 9.1.0
 
 **Collision-shape debug overlay: toggleable translucent color-coded proxies over the live scene, plus a

@@ -38,6 +38,9 @@ namespace KhaozEngine.Showcase
             // RoomInput reuses the shared white texture and the small font for its HUD text.
             Rooms.Add(("Input + audio", () => new RoomInput().Init(_white, small)));
 
+            // RoomMiniGame reuses the same big/small fonts as its title/HUD text (no new Surface2D calls needed).
+            Rooms.Add(("Mini-game (Catcher)", () => new RoomMiniGame().Init(_white, big, small)));
+
             // Rooms are registered here (added by later tasks).
             _scenes.Push(new MenuScene(_white, Rooms));
         }

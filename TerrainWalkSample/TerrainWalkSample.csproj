@@ -14,12 +14,18 @@
     <!-- Committed CC0 Quaternius Universal rigged + animated character (skinned-ingest, animations preserved). See
          assets/character/CREDITS.md. -->
     <None Include="assets/character/**" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Hand-placed building-proxy fixture for the collision-shape debug overlay (F2). Copied from
+         KhaozEngine.Tests/Physics/Fixtures/blacksmith_proxy.coll - a compound-of-convex .coll shape - so the
+         sample needs no ProjectReference on the test project. -->
+    <None Include="assets/blacksmith_proxy.coll" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Game/KhaozEngine.Game.csproj" />
     <ProjectReference Include="../KhaozEngine.Game.Render3D/KhaozEngine.Game.Render3D.csproj" />
+    <ProjectReference Include="../KhaozEngine.Gui/KhaozEngine.Gui.csproj" />
     <ProjectReference Include="../KhaozEngine.Physics/KhaozEngine.Physics.csproj" />
     <ProjectReference Include="../KhaozEngine.Physics.Bepu/KhaozEngine.Physics.Bepu.csproj" />
+    <ProjectReference Include="../KhaozEngine.Render2D/KhaozEngine.Render2D.csproj" />
     <ProjectReference Include="../KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
     <ProjectReference Include="../KhaozEngine.Terrain/KhaozEngine.Terrain.csproj" />
     <ProjectReference Include="../KhaozEngine.Terrain.Render3D/KhaozEngine.Terrain.Render3D.csproj" />

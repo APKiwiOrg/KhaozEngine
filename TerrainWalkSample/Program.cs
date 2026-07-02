@@ -3,10 +3,13 @@ using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
 using KhaozEngine.Game;
+using KhaozEngine.Gui;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using KhaozEngine.Primitives;
+using KhaozEngine.Render2D;
 using KhaozEngine.Render3D;
+using KhaozEngine.Render3D.Debug;
 using KhaozEngine.Terrain;
 using KhaozEngine.Windowing;
 
@@ -71,6 +74,15 @@ sealed class TerrainWalkApp : GameApp3D
     CharacterController3D _character = null!;
     FollowCamera3D _camera = null!;
     FollowCameraController _camController = null!;
+
+    // Collision-shape debug overlay (F2): a hand-placed building-proxy fixture drawn as translucent proxy
+    // meshes over the real collision, plus a legend panel while it is on. 2D draw needs its own font/white
+    // texture - the sample has no other 2D HUD, so this is the minimal setup (see GuiSample for the pattern).
+    List<CollisionStatic> _overlayStatics = null!;
+    CollisionShapeOverlay _collisionOverlay = null!;
+    OverlayLegend _legend = null!;
+    Texture2D _overlayWhite = null!;
+    SpriteFont _overlayFont = null!;
 
     // Bounded mode: enclose the clearing in a RimFeature mountain wall and wire the slope gate so the rim
     // can't be climbed (the player is held inside; the +Z pass is the one way out).
@@ -166,6 +178,30 @@ sealed class TerrainWalkApp : GameApp3D
             new BoxShape(new Vector3(platformHalf.X, platformHeight * 0.5f, platformHalf.Y)),
             Pose.At(new Vector3(platformCenter.X, platformBaseY + platformHeight * 0.5f, platformCenter.Y)));
 
+        // --- Collision-shape debug overlay (F2) ---------------------------------------------
+        // Hand-placed building-proxy acceptance fixture: a compound-of-convex .coll baked offline from the
+        // Ruinborne blacksmith prop (see KhaozEngine.Tests/Physics/Fixtures/blacksmith_proxy.coll), copied into
+        // this sample's Assets so no ProjectReference on the test project is needed. Placed near the walk path,
+        // clear of the platform (0, 12) and the lake (~-13, -2), with its base on the terrain ground height so
+        // it reads as standing on the meadow. Registered as real collision AND kept as a CollisionStatic so the
+        // overlay can render translucent proxies over it.
+        string proxyFixturePath = Path.Combine(AppContext.BaseDirectory, "assets", "blacksmith_proxy.coll");
+        PhysicsShape proxyShape = PropCollisionFormat.Read(proxyFixturePath);
+        var proxyPose = new Pose(new Vector3(8f, _terrain.GroundHeight(8f, 4f), 4f), Quaternion.Identity);
+        _physicsWorld.AddStatic(proxyShape, proxyPose);
+        _overlayStatics = new List<CollisionStatic> { new(proxyShape, proxyPose) };
+
+        _collisionOverlay = new CollisionShapeOverlay();
+        _collisionOverlay.Build(sc, _overlayStatics);
+
+        _legend = new OverlayLegend();
+        _legend.SetEntries(BuildLegendEntries(_collisionOverlay));
+
+        _overlayWhite = Surface2D.CreateTexture(new byte[] { 255, 255, 255, 255 }, 1, 1);
+        _overlayFont = Surface2D.LoadDefaultFont(20f);
+
+        Console.WriteLine("Collision overlay: [F2] toggle translucent collision-shape proxies + legend.");
+
         // Endless streamed world: the sink builds chunk meshes + deterministic per-chunk props (same coordinate-hash
         // scatter as before, now over every chunk's area), the streamer keeps a ring of them loaded around the player
         // within a per-frame budget. The physics world and collision-shapes dictionary are threaded through so prop
@@ -213,6 +249,12 @@ sealed class TerrainWalkApp : GameApp3D
         if (Input.WasPressed(Key.K)) { post.OutlineDepthThreshold = MathF.Max(0f, post.OutlineDepthThreshold - 0.05f); Console.WriteLine($"[post] OutlineDepthThreshold = {post.OutlineDepthThreshold:0.00}"); }
         if (Input.WasPressed(Key.H)) { post.OutlineNormalThreshold = MathF.Min(2f, post.OutlineNormalThreshold + 0.05f); Console.WriteLine($"[post] OutlineNormalThreshold = {post.OutlineNormalThreshold:0.00}"); }
         if (Input.WasPressed(Key.G)) { post.OutlineNormalThreshold = MathF.Max(0f, post.OutlineNormalThreshold - 0.05f); Console.WriteLine($"[post] OutlineNormalThreshold = {post.OutlineNormalThreshold:0.00}"); }
+
+        if (Input.WasPressed(Key.F2))
+        {
+            _collisionOverlay.Enabled = !_collisionOverlay.Enabled;
+            Console.WriteLine($"[overlay] Collision shape overlay = {_collisionOverlay.Enabled}");
+        }
 
         // Physics world ticks once per frame before movement so newly-streamed props are registered.
         _physicsWorld.Step(dt);
@@ -269,10 +311,29 @@ sealed class TerrainWalkApp : GameApp3D
         {
             scene.Draw(_capsule, Matrix4x4.CreateTranslation(p.X, footY, p.Z), new Color(0.85f, 0.55f, 0.25f, 1f));
         }
+
+        // Translucent collision-shape proxies over the real collision (no-op while disabled).
+        _collisionOverlay.Draw(scene);
+    }
+
+    protected override void OnDraw2D(SpriteBatch batch)
+    {
+        if (_collisionOverlay.Enabled)
+            _legend.Draw(batch, _overlayFont, _overlayWhite, Viewport.DesignBounds);
+    }
+
+    // Maps the overlay's present shape kinds through its palette into legend rows (swatch + name).
+    static IReadOnlyList<LegendEntry> BuildLegendEntries(CollisionShapeOverlay overlay)
+    {
+        var list = new List<LegendEntry>();
+        foreach (CollisionShapeKind kind in overlay.PresentKinds)
+            list.Add(new LegendEntry(overlay.Palette.For(kind), overlay.Palette.NameFor(kind)));
+        return list;
     }
 
     protected override void OnDispose()
     {
+        _collisionOverlay?.Dispose();
         _physicsWorld?.Dispose();
         base.OnDispose();
     }

@@ -23,7 +23,7 @@ namespace KhaozEngine.Showcase
     /// <see cref="AudioSystem.Update"/> runs, same as the sample) and disposing the <see cref="AudioSystem"/> in
     /// <see cref="OnExit"/> so leaving the room silences it, exactly like <see cref="RoomInput"/> manages its own
     /// audio lifecycle.</para>
-    /// <para>Key remap vs the sample: the sample used Escape to close the whole window; here Escape returns to
+    /// <para>Key remap vs the sample: the sample used Escape to close the whole window. Here Escape returns to
     /// the showcase menu once the room's own screen stack is back down to just the title screen (mirrors
     /// <see cref="RoomGui"/>'s Esc-pops-topmost-first convention), so nothing internal to this room needed a
     /// further remap.</para></summary>
@@ -96,7 +96,7 @@ namespace KhaozEngine.Showcase
     }
 
     /// <summary>Shared white texture, two font sizes, and the RNG, mirroring <c>MiniGame</c>'s <c>GameCtx</c>.
-    /// The sample also carried an <c>AppWindow</c> reference so Quit could close the whole window; the room's
+    /// The sample also carried an <c>AppWindow</c> reference so Quit could close the whole window. The room's
     /// Quit buttons pop back to the showcase menu instead (see <see cref="MiniGameTitleScreen"/>/
     /// <see cref="MiniGameGameOverScreen"/>).</summary>
     sealed class MiniGameCtx

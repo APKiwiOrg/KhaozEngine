@@ -20,7 +20,7 @@ namespace KhaozEngine.Showcase
     /// construction, keeping the constructor parameterless for the room registry's <c>Func&lt;GameScene&gt;</c>
     /// factory. Audio and clipboard are process-level (not app-instance-bound), so this room constructs its own
     /// <see cref="AudioSystem"/> and calls <see cref="Clipboard"/> directly, exactly as the sample did.
-    /// <para>Key remap vs the sample: the sample used Escape to close the whole window; here Escape returns to
+    /// <para>Key remap vs the sample: the sample used Escape to close the whole window. Here Escape returns to
     /// the showcase menu (see <see cref="ShowcaseApp"/>'s room convention), so nothing internal to this room used
     /// Escape for anything else and no remap was needed.</para></summary>
     public sealed class RoomInput : GameScene
@@ -89,7 +89,7 @@ namespace KhaozEngine.Showcase
             if (m.Input.WasPressed(Key.Z)) { _audio.PlaySfx("blip"); _lastSfx = "blip"; }
             if (m.Input.WasPressed(Key.X)) { _audio.PlaySfx3D("thud", new Vector3(8, 0, 0)); _lastSfx = "thud (3D)"; }
 
-            // Clipboard: C = write a known string and read it back (self round-trip); V = paste the OS clipboard.
+            // Clipboard: C = write a known string and read it back (self round-trip). V = paste the OS clipboard.
             if (m.Input.WasPressed(Key.C))
             {
                 string payload = $"KhaozEngine clipboard {_clock.ElapsedScaledSeconds:0.0}s";

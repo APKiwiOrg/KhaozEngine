@@ -691,7 +691,9 @@ namespace KhaozEngine.Render3D
         /// scene. It is occluded by nearer scene geometry (depth test) but never writes depth, so it never hides the
         /// scene. Drawn after the meshes/beams and before the pixel post, so it flows through the post chain like the
         /// rest of the model pass. A reusable overlay primitive: the collision-shape overlay is the first consumer;
-        /// nav / AoI / chunk-bounds layers reuse it. Presentation only; cleared in <see cref="Begin"/>.</summary>
+        /// nav / AoI / chunk-bounds layers reuse it. Presentation only; cleared in <see cref="Begin"/>.
+        /// Because depth-write is off, overlapping overlay meshes blend in submission order: there is no
+        /// per-fragment depth sorting between overlay draws.</summary>
         public void DrawOverlayMesh(MeshHandle mesh, Matrix4x4 world) => _overlayMeshDraws.Add((mesh, world));
 
         /// <summary>Count of overlay-mesh draws queued this frame. Internal: lets tests assert <see cref="Begin"/>

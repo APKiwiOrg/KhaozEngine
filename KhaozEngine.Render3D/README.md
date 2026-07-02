@@ -17,7 +17,7 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   edge outline, cel bands, all independently toggleable (the smooth look is the default).
 - `Scene3D.DrawOverlayMesh(MeshHandle mesh, Matrix4x4 world)` - queues a translucent, unlit,
   depth-tested-but-not-depth-writing, alpha-blended draw of an already-loaded mesh, colored by the mesh's
-  per-vertex color. A general overlay primitive (not collision-specific); drawn after the meshes/beams and
+  per-vertex color. A general overlay primitive, not collision-specific: drawn after the meshes/beams and
   before the pixel post.
 - `KhaozEngine.Render3D.Debug` - the collision-shape debug overlay, the first consumer of `DrawOverlayMesh`:
   `CollisionShapeOverlay` (build once from an `IReadOnlyList<CollisionStatic>`, `Enabled`-gated `Draw`,

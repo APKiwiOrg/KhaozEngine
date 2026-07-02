@@ -117,11 +117,9 @@ other three vendor their own in-repo feed); with SpaceGame on 9.0.1, `local-feed
 floor. Everything older lives in GitHub Packages, the durable store._
 
 **Engine now on 9.1.0** (collision-shape debug overlay: `Scene3D.DrawOverlayMesh`, `CollisionShapeOverlay` +
-friends in `KhaozEngine.Render3D.Debug`, `OverlayLegend` in `KhaozEngine.Gui`; render-only, additive). The
+friends in `KhaozEngine.Render3D.Debug`, `OverlayLegend` in `KhaozEngine.Gui`. Render-only, additive). The
 consumer pins in the table above still read **9.0.1** because none has adopted yet. **Ruinborne** is the
 natural first adopter (it is a `Game3D` client, the collision-heavy MMO consumer, and wants the overlay for
 debugging server-authoritative collision) - its bump is a trivial same-major pin move, `9.0.1` -> `9.1.0`, no
 migration and no source edits, same as its 9.0.0 -> 9.0.1 adoption above. Update its table row and the
 vendored feed nupkgs (see "Bumping a consumer's engine pin" below) when that adoption lands.
-</content>
-</invoke>

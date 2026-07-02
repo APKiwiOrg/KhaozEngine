@@ -37,8 +37,8 @@ Immediate-mode + retained UI on the custom MonoGame-free stack.
   `SetEntries(IReadOnlyList<LegendEntry>)`, `EntryCount`, `Measure(SpriteFont)` -> `Rect` (empty when no
   entries), `Draw(SpriteBatch, SpriteFont, Texture2D, Rect)`. No `Visible`/fade state of its own - the caller
   only calls `Draw` while its own overlay is on. `LegendEntry(Color Swatch, string Label)` is one row. The
-  collision-shape debug overlay (`KhaozEngine.Render3D.Debug.CollisionShapeOverlay`) is the first consumer;
-  reusable by any future overlay layer.
+  collision-shape debug overlay (`KhaozEngine.Render3D.Debug.CollisionShapeOverlay`) is the first consumer,
+  and it is reusable by any future overlay layer.
 
 Text wrap/alignment lives in `KhaozEngine.Render2D.TextLayout` (over the `ITextMeasurer` seam, so the layout
 math is headless-testable); clipping uses `SpriteBatch` scissor (`SetScissor`/`ClearScissor`, DPI-aware). Ported

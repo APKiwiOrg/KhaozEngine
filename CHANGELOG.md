@@ -37,7 +37,7 @@ legend.** Additive minor, render-only, new public API.
   is on). Reusable by any overlay layer, not just collision shapes.
 - **`readonly record struct LegendEntry(Color Swatch, string Label)`** (`KhaozEngine.Gui`, new) - one legend row.
 - Render-only: zero effect on simulation, determinism, or `.coll` bakes. The overlay reads existing
-  `PhysicsShape`/`Pose` data and draws it; nothing it does feeds back into physics or netcode.
+  `PhysicsShape`/`Pose` data and draws it. Nothing it does feeds back into physics or netcode.
 - First layer of an extensible overlay framework. `Scene3D.DrawOverlayMesh` is the reusable translucent-unlit
   primitive underneath it, so a future nav-mesh or AoI-bounds overlay is a new `Debug` type over the same pass,
   not a new render path.

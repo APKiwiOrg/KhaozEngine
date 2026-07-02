@@ -59,10 +59,12 @@ surface detail). Goal: make props, trees, and buildings actually look good, not 
 ## Overworld / world content
 
 - Procedural dungeon generator.
-- Animated characters / creatures: needs a glTF animation-clip-playback feature first (also unblocks the
-  SpaceGame 2.5D rigged-creature direction and pairs with the physics work).
 - Per-cell world-state snapshot persistence: persist cell/world state, not just player records (pairs with
   sharding).
+- Animated-creature adoption (game-side, not engine work): the engine animation stack shipped (glTF
+  animation-clip playback, `AnimatedCharacter` + locomotion blend, `ReplicatedCharacterAnimators`). SpaceGame's
+  2.5D rigged-creature direction can adopt it directly. Only reopen an engine item here if a concrete new gain
+  surfaces from that adoption (e.g. blend trees, additive layers, or IK the current player can't express).
 - Visual fidelity (textured props, water): see Near-term item #3 above.
 
 ## Rendering

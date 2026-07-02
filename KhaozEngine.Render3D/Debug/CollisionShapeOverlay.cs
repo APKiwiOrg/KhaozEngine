@@ -7,7 +7,7 @@ namespace KhaozEngine.Render3D.Debug;
 
 /// <summary>The first collision-overlay layer: builds one translucent proxy mesh per static shape
 /// from a fixed set (once, not per frame) and draws them through <see cref="Scene3D.DrawOverlayMesh"/>
-/// each frame while <see cref="Enabled"/>. Headless core is <see cref="BuildMeshes"/>; this class is
+/// each frame while <see cref="Enabled"/>. Headless core is <see cref="BuildMeshes"/>. This class is
 /// the thin GPU wrapper (mesh upload + draw-list bookkeeping).</summary>
 public sealed class CollisionShapeOverlay : IDisposable
 {

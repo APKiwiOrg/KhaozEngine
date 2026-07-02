@@ -22,8 +22,16 @@ namespace KhaozEngine.Showcase
         protected override void OnLoad()
         {
             _white = Surface2D.CreateTexture(new byte[] { 255, 255, 255, 255 }, 1, 1);
-            // Rooms are registered here (added by later tasks), e.g.:
-            //   Rooms.Add(("2D", () => new Room2D()));
+
+            // Room2D's texture/fonts are created here (Surface2D is only reachable from the app, not a
+            // GameScene) and wired into the room right after construction, so Room2D itself keeps a public
+            // parameterless constructor for the Func<GameScene> factory below.
+            var checker = Surface2D.CreateTexture(Room2D.Checker(64), 64, 64);
+            var big = Surface2D.LoadDefaultFont(40f);
+            var small = Surface2D.LoadDefaultFont(22f);
+            Rooms.Add(("2D sprites + text", () => new Room2D().Init(_white, checker, big, small)));
+
+            // Rooms are registered here (added by later tasks).
             _scenes.Push(new MenuScene(_white, Rooms));
         }
 

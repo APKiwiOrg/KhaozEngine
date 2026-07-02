@@ -40,6 +40,18 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   their last save. Keyed `player:{accountId}`; backend-agnostic and cell-agnostic (a loaded player spawns at its
   saved position in whatever cell contains it). Pick a backend: `KhaozEngine.WorldStore.Sqlite` (dev/test) or
   `KhaozEngine.WorldStore.SqlServer` (prod / Azure SQL).
+- **`CellPersistence`** (+ `CellPersistenceConfig`, `WorldMetaRecord`) wires an
+  [`IWorldStore`](../KhaozEngine.WorldStore) into a [`Sharding`](../KhaozEngine.Sharding) `ShardHost`-based server
+  through **`ICellPersistenceHost`** (the surface `ShardedWorldServer` implements) so a cell's authoritative
+  non-player entities survive a restart: lazy load-on-cell-create (subscribes to `ShardHost.CellCreated`, applies
+  on the server thread inside `Update`), a periodic snapshot of cells dirty since their last save
+  (`SaveIntervalSeconds`, default 30s), and a `WorldMetaRecord` NetId high-water mark so restored entities never
+  collide with a fresh spawn after restart. Cell records are keyed `cell:{x}:{y}`, and a versioned blob header
+  (`SchemaVersion`) skips a save it cannot safely decode instead of misreading it. `PreloadAsync` instantiates
+  every saved cell at boot (enumerating over an `IEnumerableWorldStore`), `LoadMetaAsync` resumes the NetId
+  allocator, and `FlushAsync` quiesces in-flight loads and saves at shutdown. Players are excluded (already
+  persisted player-keyed by `WorldPersistence`), and ghosts and migrating entities are excluded too - this is
+  cell-owned, non-player state only. Mirrors `WorldPersistence` but keyed by cell coordinate instead of account.
 
 No render, window, or GPU dependency: the servers are headless and the client glue is render-free (a sample
 renders a capsule per `EntityRenderState`). `WorldServer` is the single-`World` slice; `ShardedWorldServer` is

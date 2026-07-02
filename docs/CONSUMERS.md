@@ -38,7 +38,7 @@ where needed). Each pins its own version (see the Version column).
 | **Hardpoint** (3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic); live auto-updater (`Updates` via Foundation, Gui overlay) against a server-less static-blob feed + OIDC CI publish; `Collision.Segment2D` for swept projectile collision. One root `Directory.Build.props` `<KhaozEngineVersion>` drives every ref (heads, the `HardpointUpdater` shim, the dev `SnapshotTool`); top-level `Hardpoint.slnx`, vendored feed (`Hardpoint/vendor/khaozengine`); `GameAppOptions.WindowIcons` (multi-size runtime window icon) | **9.0.1** |
 | **Nullwake** (2D) | `Nullwake.Core` | `KhaozEngine.Game2D` + `Diagnostics`/`Persistence`/`Windowing` + `Updates` (shim, dormant) + `Snapshot` (dev tool); uses `AttentionBeacon`, clipboard paste + `Pointer.WindowFocused` gating in name entry, and `GameAppOptions.WindowIcons` (multi-size runtime window icon). Vendored feed (`Nullwake/vendor/khaozengine`) | **9.0.1** |
 | **SpaceGame** (2D + Render3D) | `SpaceGame.Core` (head) / `SpaceGame.Sim` (lockstep sim) | `Game2D` + `Render3D` + `Netcode.LiteNetLib` + `Primitives` (head); `Ecs`/`Collision`/`Diagnostics`/`Content`/`Serialization`/`App`/`Netcode`/`Determinism` + `Primitives` (sim); `Netcode.Abstractions` (contracts); `Render3D` + `Determinism` for the 2.5D mesh layer; manifest signing via the `ke-updater` tool; `GameAppOptions.WindowIcons` (multi-size runtime window icon). Vendored feed (`SpaceGame/vendor/khaozengine` via repo-root `nuget.config`) | **9.0.1** |
-| **Ruinborne** (3D MMO) | `Ruinborne.Client` / `Ruinborne.Server` | client: `KhaozEngine.Game3D` + `Foundation` + `NetWorld` + `Netcode.LiteNetLib` + `Netcode.Abstractions` + `Simulation` + `Updates`; server: `KhaozEngine.Server` umbrella + `WorldStore.SqlServer` (Azure SQL via `WorldPersistence`). Single `<KhaozEngineVersion>` pin in `Directory.Build.props`, vendored feed (`vendor/khaozengine`, refreshed via `scripts/refresh-engine.sh`); client uses `GameAppOptions.WindowIcons` (multi-size runtime window icon, client only) | **9.0.1** |
+| **Ruinborne** (3D MMO) | `Ruinborne.Client` / `Ruinborne.Server` | client: `KhaozEngine.Game3D` + `Foundation` + `NetWorld` + `Netcode.LiteNetLib` + `Netcode.Abstractions` + `Simulation` + `Updates`; server: `KhaozEngine.Server` umbrella + `WorldStore.SqlServer` (Azure SQL via `WorldPersistence`). Single `<KhaozEngineVersion>` pin in `Directory.Build.props`, vendored feed (`vendor/khaozengine`, refreshed via `scripts/refresh-engine.sh`); client uses `GameAppOptions.WindowIcons` (multi-size runtime window icon, client only) + the 9.1.0 `CollisionShapeOverlay`/`OverlayLegend` (F2 debug proxy view) | **9.1.0** |
 
 ## Runtime window icon
 
@@ -105,10 +105,10 @@ When a consumer raises its `KhaozEngine.*` pin, two things bite if skipped:
   vendored feed must carry those too. Only SpaceGame restores from `local-feed`/GitHub Packages directly (no
   vendored feed), so it alone sets the `local-feed` floor.
 
-_Last verified: 2026-07-02. **Ruinborne** (3D MMO, the active consumer) now pins **9.0.1** (the current engine
-line; adopted the 9.0.0 package-structure major + 9.0.1 zero-warning patch, no behaviour change and no source
-edits needed). **SpaceGame**, **Hardpoint**, and **Nullwake** also pin **9.0.1** (same 9.0.0 package-structure adoption:
-usings/package-id swaps only, no behaviour change), so all four consumers are on **9.0.1**. Stack per consumer: **Hardpoint** (3D) via
+_Last verified: 2026-07-02. **Ruinborne** (3D MMO, the active consumer) now pins **9.1.0** (the current engine
+line; adopted the collision-shape debug overlay as its F2 proxy viewer in 0.1.47, on top of the earlier 9.0.x
+package-structure adoption). **SpaceGame**, **Hardpoint**, and **Nullwake** pin **9.0.1** (the 9.0.0 package-structure adoption:
+usings/package-id swaps only, no behaviour change). Stack per consumer: **Hardpoint** (3D) via
 `Game3D` + `Foundation`, **Nullwake** (2D) via `Game2D` (+ `Diagnostics`/`Persistence`/`Windowing`/`Snapshot`/`Updates`),
 **SpaceGame** (2D + Render3D) via `Game2D` + `Render3D` head + the split-out `SpaceGame.Sim` foundation pins, and
 **Ruinborne** (3D MMO) via a single `<KhaozEngineVersion>` pin across the `Game3D` client and the `Server` +
@@ -116,10 +116,8 @@ usings/package-id swaps only, no behaviour change), so all four consumers are on
 other three vendor their own in-repo feed); with SpaceGame on 9.0.1, `local-feed` may be pruned to a **9.0.1**
 floor. Everything older lives in GitHub Packages, the durable store._
 
-**Engine now on 9.1.0** (collision-shape debug overlay: `Scene3D.DrawOverlayMesh`, `CollisionShapeOverlay` +
-friends in `KhaozEngine.Render3D.Debug`, `OverlayLegend` in `KhaozEngine.Gui`. Render-only, additive). The
-consumer pins in the table above still read **9.0.1** because none has adopted yet. **Ruinborne** is the
-natural first adopter (it is a `Game3D` client, the collision-heavy MMO consumer, and wants the overlay for
-debugging server-authoritative collision) - its bump is a trivial same-major pin move, `9.0.1` -> `9.1.0`, no
-migration and no source edits, same as its 9.0.0 -> 9.0.1 adoption above. Update its table row and the
-vendored feed nupkgs (see "Bumping a consumer's engine pin" below) when that adoption lands.
+**Engine on 9.1.0** (collision-shape debug overlay: `Scene3D.DrawOverlayMesh`, `CollisionShapeOverlay` +
+friends in `KhaozEngine.Render3D.Debug`, `OverlayLegend` in `KhaozEngine.Gui`. Render-only, additive).
+**Ruinborne adopted it in 0.1.47** (the F2 proxy viewer: `RuinbornePhysics.Populate` reports its statics, the
+client builds the overlay + legend, vendored feed refreshed to 9.1.0). SpaceGame/Hardpoint/Nullwake remain on
+9.0.1 - their bump is a trivial same-major pin move whenever wanted.

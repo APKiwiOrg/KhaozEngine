@@ -49,7 +49,10 @@ Hard-won rules this tool encodes (learned live on the Ruinborne town set - keep 
     same-plane merging requires spatial adjacency, or distant dormer tops union into one wide phantom
     band ("boxy roof"). Adjacency is CROSS-AXIS-ONLY for sloped slabs (tile strata stack along the
     slope axis, so any slope-axis gap is fine; separate dormers sit apart ACROSS the roof) but
-    both-axes for flat boxes.
+    both-axes for flat boxes. Merging also requires actual PLANE IDENTITY, not mere parallelism:
+    a row of identical dormers has equal angles and z-ends but planes offset along the slope axis,
+    so the row otherwise unions into one long band (seen live on the inn's 2x3 dormer rows, which
+    then ridge-trimmed into a flat strip across the dormers' mid-height).
   - Same-axis same-dir slabs contained inside a sibling are overdraw (tile strata) - dropped.
   - Body/story boxes stop at the ROOF FLOOR (merge mode clamps them; chimney* and the hand spec's
     "_keepTall" name list exempt - anti-pin fills like a forge extended into its hood MUST stay tall):
@@ -307,6 +310,19 @@ def fit_roofs(roof_floor):
             if p_["kind"] == "slab":
                 gap_cross = gap_y if p_.get("axis") == "x" else gap_x
                 if gap_cross > w2r(0.3): continue
+                # same PLANE, not merely parallel: a row of identical dormers has equal angles
+                # and z-ends but planes OFFSET along the slope axis - without this check the row
+                # unions into one long band across the roof (seen live on the inn's 2x3 dormers).
+                # Evaluate both planes at the midpoint between the pieces and require they agree.
+                axp = 0 if p_.get("axis") == "x" else 1
+                def _z_at(s, u):
+                    u0, u1 = s["min"][axp], s["max"][axp]
+                    if u1 - u0 < 1e-9: return (s["min"][2] + s["max"][2]) / 2
+                    f = (u - u0) / (u1 - u0)
+                    return s["min"][2] + (s["max"][2] - s["min"][2]) * f if s["dir"] > 0 \
+                           else s["max"][2] - (s["max"][2] - s["min"][2]) * f
+                u_mid = (m["min"][axp] + m["max"][axp] + p_["min"][axp] + p_["max"][axp]) / 4
+                if abs(_z_at(m, u_mid) - _z_at(p_, u_mid)) > w2r(0.2): continue
             elif max(gap_x, gap_y) > w2r(0.3):
                 continue
             hit = m; break

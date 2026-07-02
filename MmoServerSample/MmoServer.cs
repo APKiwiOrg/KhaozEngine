@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using KhaozEngine.Ecs;
 using KhaozEngine.Netcode;
+using KhaozEngine.NetWorld;
 using KhaozEngine.Replication;
 using KhaozEngine.Sharding;
 using KhaozEngine.WorldStore;
@@ -33,21 +35,25 @@ public sealed class MmoServerConfig
 /// <see cref="IWorldStore"/> persistence. Transport-injected and headless: <see cref="Poll"/> ingests session
 /// events + client input, <see cref="Tick"/> steps one authoritative server frame and serves every client.
 /// </summary>
-public sealed class MmoServer
+public sealed class MmoServer : ICellPersistenceHost
 {
     private readonly MmoServerConfig config;
     private readonly ReplicationRegistry registry;
     private readonly ShardHost host;
     private readonly NetServer net;
     private readonly RemoteCommandQueue<MoveCommand> commands = new(neutralCommand: default);
-    private readonly IWorldStore store = new InMemoryWorldStore();
+    private readonly IWorldStore store;
+    private readonly CellPersistence cellPersistence;
     private readonly Dictionary<int, int> playerNetIdBySlot = new();
     private int nextNetId = 1;
 
-    public MmoServer(INetTransport transport, MmoServerConfig config)
+    public MmoServer(INetTransport transport, MmoServerConfig config) : this(transport, config, new InMemoryWorldStore()) { }
+
+    public MmoServer(INetTransport transport, MmoServerConfig config, IWorldStore store)
     {
         ArgumentNullException.ThrowIfNull(transport);
         this.config = config ?? throw new ArgumentNullException(nameof(config));
+        this.store = store ?? throw new ArgumentNullException(nameof(store));
         registry = CreateRegistry();
         host = new ShardHost(
             cellSize: config.CellSize,
@@ -57,6 +63,8 @@ public sealed class MmoServer
             overlapMargin: config.OverlapMargin,
             positionAccessor: MmoProtocol.PositionAccessor);
         net = new NetServer(transport, config.MaxPlayers, new AllowAllAuthenticator());
+        cellPersistence = new CellPersistence(this, store);
+        host.CellCreated += cell => CellCreated?.Invoke(cell.Coord);
     }
 
     /// <summary>The shard topology (cells, ownership, ghosts).</summary>
@@ -73,6 +81,54 @@ public sealed class MmoServer
 
     /// <summary>Spawns a static server-owned entity (e.g. an NPC) at a world position. Returns its NetId.</summary>
     public int SpawnNpc(float x, float y) => SpawnEntity(x, y);
+
+    /// <summary>Spawns a persistable resource node at a world position. Returns its NetId.</summary>
+    public int SpawnResourceNode(float x, float y, int amount)
+    {
+        int netId = nextNetId++;
+        Entity e = host.SpawnAt(x, y, out CellSim cell);
+        cell.World.Set(e, new NetId(netId));
+        cell.World.Set(e, new Position { X = x, Y = y });
+        cell.World.Set(e, new ResourceNode { Amount = amount });
+        return netId;
+    }
+
+    /// <inheritdoc />
+    public event Action<CellCoord>? CellCreated;
+
+    /// <inheritdoc />
+    public IReadOnlyCollection<CellCoord> LiveCellCoords
+    {
+        get { var l = new List<CellCoord>(host.CellCount); foreach (CellSim c in host.Cells) l.Add(c.Coord); return l; }
+    }
+
+    /// <inheritdoc />
+    public byte[]? SnapshotCell(CellCoord coord) =>
+        host.TryGetCell(coord, out CellSim cell) ? cell.SnapshotOwned(new HashSet<int>(playerNetIdBySlot.Values)) : null;
+
+    /// <inheritdoc />
+    public IReadOnlyList<int> RestoreCell(CellCoord coord, byte[] snapshot) =>
+        host.TryGetCell(coord, out CellSim cell) ? cell.RestoreOwned(snapshot) : Array.Empty<int>();
+
+    /// <inheritdoc />
+    public void EnsureCell(CellCoord coord) => host.EnsureCell(coord);
+
+    /// <inheritdoc />
+    public int NextNetId => nextNetId;
+
+    /// <inheritdoc />
+    public void EnsureNextNetIdAtLeast(int atLeast) { if (atLeast > nextNetId) nextNetId = atLeast; }
+
+    /// <summary>Boot: resume the NetId allocator + instantiate saved cells, then apply restores. Call once before ticking.</summary>
+    public async Task PreloadAsync()
+    {
+        await cellPersistence.LoadMetaAsync();
+        await cellPersistence.PreloadAsync();
+        await cellPersistence.FlushAsync();
+    }
+
+    /// <summary>Shutdown: persist all dirty cells + the NetId high-water. Call once when stopping.</summary>
+    public Task FlushAsync() => cellPersistence.FlushAsync();
 
     /// <summary>Ingests session events (join/leave) and client input. Call once before <see cref="Tick"/>.</summary>
     public void Poll()
@@ -107,6 +163,8 @@ public sealed class MmoServer
     /// </summary>
     public void Tick(float dt)
     {
+        cellPersistence.Update(dt);
+
         // Apply one input per client to its (wherever-owned) player.
         foreach (KeyValuePair<int, int> kv in playerNetIdBySlot)
         {

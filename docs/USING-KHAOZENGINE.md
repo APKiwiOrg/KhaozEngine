@@ -1267,6 +1267,42 @@ per-chunk material overrides are not provided - swap the handle on `Scene3DChunk
 
 ---
 
+## Textured props
+
+Props (trees, rocks, buildings) can carry the same albedo/normal/roughness surface detail as terrain, instead
+of rendering with a single flat base-colour. A prop with no textures still renders exactly as before, so this
+is opt-in and backward compatible.
+
+**Real glTF textures.** Set `"textured": true` on the prop's manifest entry, then load it with
+`PropLoader.LoadPropWithMaterial` instead of `PropLoader.LoadProp`. It reads the glTF's first textured
+material's baseColor/normal/metallicRoughness textures alongside the normalized mesh, and upload both together
+with `Scene3D.LoadMesh(GltfMesh, GltfMaterialMaps)`:
+
+```csharp
+AssetEntry entry = manifest.Find("mossy_rock");   // manifest entry has "textured": true
+(GltfMesh mesh, GltfMaterialMaps maps) = PropLoader.LoadPropWithMaterial(entry);
+MeshHandle handle = scene.LoadMesh(mesh, maps);
+```
+
+If the glTF turns out to have no textures, `maps.IsEmpty` is true and the mesh renders with its flat
+per-material base colour, same as `LoadProp` - no throw, no special-casing needed at the call site.
+
+**Asset-free procedural placeholder.** For samples, tests, or prototyping without shipping binary textures,
+`PropMaterialPresets.Procedural()` generates a deterministic mossy-stone albedo + normal in memory (mirrors
+`TerrainMaterialPresets.Procedural`). Primitive meshes (e.g. `MeshPrimitives.Box`) have UVs but no tangents, so
+run them through `MeshOps.WithTangents` first to give normal maps something to map against. Tile the UVs with
+`MeshOps.ScaleUv` so the material repeats and reads crisp rather than as one stretched (blurry) copy:
+
+```csharp
+MeshHandle prop = scene.LoadMesh(
+    MeshOps.WithTangents(MeshOps.ScaleUv(MeshPrimitives.Box(1.5f), 3f)),
+    PropMaterialPresets.Procedural());
+```
+
+`TerrainWalkSample` places one of these procedural textured blocks near spawn as a live demo.
+
+---
+
 ## Ground-cover scatter and understory companions
 
 `Scene3DChunkSink` now accepts N `PropLayer`s, so a scene can have sparse tall trees at a long draw radius
@@ -2333,8 +2369,47 @@ using var store = new SqlServerWorldStore(
     "Server=tcp:<srv>.database.windows.net,1433;Database=<db>;Authentication=Active Directory Default;Encrypt=True;");
 ```
 
-Out of scope here (later sub-projects): per-cell / world-snapshot persistence (pairs with multi-cell sharding),
-record-schema migrations, and accounts/auth.
+Out of scope here (later sub-projects): record-schema migrations and accounts/auth.
+
+### Per-cell world persistence (`CellPersistence`)
+
+`KhaozEngine.NetWorld.CellPersistence` wires an `IWorldStore` into a `ShardHost`-based server (through
+`ICellPersistenceHost`, which `ShardedWorldServer` implements) so a cell's authoritative non-player entities
+survive a restart, next to `WorldPersistence` handling players. It is keyed by cell coordinate rather than
+account: **lazy load-on-cell-create** (a cell's saved state loads the first time that coordinate is
+instantiated), a **periodic dirty save** of cells changed since their last save, and a **NetId high-water
+record** so restored entities never collide with a freshly spawned one after a restart. Players are excluded
+(they persist separately, player-keyed, through `WorldPersistence`), and so are ghosts and migrating entities -
+only a cell's owned, non-player state is saved.
+
+```csharp
+using KhaozEngine.NetWorld;
+using KhaozEngine.WorldStore.Sqlite;
+
+var server = new ShardedWorldServer(transport, config, terrain.GroundHeight, MoveTuning.Default);
+using var store = new SqliteWorldStore("Data Source=world.db");
+var cellPersistence = new CellPersistence(server, store,
+    new CellPersistenceConfig { SaveIntervalSeconds = 30f });
+
+// at boot, before the first tick:
+await cellPersistence.LoadMetaAsync();   // resumes the NetId allocator above the saved high-water mark
+await cellPersistence.PreloadAsync();    // instantiates every saved cell so its load path runs
+
+// per fixed tick:
+server.Poll();
+server.Tick(config.TickSeconds);
+cellPersistence.Update(config.TickSeconds);   // applies completed cell loads + runs the periodic dirty save
+
+// on shutdown:
+await cellPersistence.FlushAsync();   // quiesces in-flight loads/saves, then a final dirty + meta save
+```
+
+A game supplies the `ICellPersistenceHost` its server implements: `ShardedWorldServer` already does, so most
+consumers wire `CellPersistence` straight onto it. A custom `ShardHost`-based server implements the same seam
+over `CellSim.SnapshotOwned`/`RestoreOwned` and `ShardHost.CellCreated`/`EnsureCell` (see
+[`KhaozEngine.Sharding`](../KhaozEngine.Sharding)). Cell records are keyed `cell:{x}:{y}`, distinct from the
+`player:{accountId}` keyspace `WorldPersistence` uses, so the two coexist on the same `IWorldStore` without
+collision.
 
 ### Reconnect + server notices (`KhaozEngine.NetWorld`)
 

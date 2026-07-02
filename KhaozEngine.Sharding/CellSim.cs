@@ -161,6 +161,52 @@ public sealed class CellSim
     }
 
     /// <summary>
+    /// A durable Replication snapshot of this cell's <b>persistable</b> entities: those it owns (present, not a
+    /// <see cref="Ghost"/>, not <see cref="Migrating"/>) whose <see cref="NetId"/> is not in
+    /// <paramref name="excludedNetIds"/> (the caller passes the player NetIds, which persist separately). Reuses the
+    /// same <see cref="SnapshotWriter"/> codec cells use for ghosting/migrate, so any registered component persists.
+    /// </summary>
+    public byte[] SnapshotOwned(IReadOnlySet<int> excludedNetIds)
+    {
+        ArgumentNullException.ThrowIfNull(excludedNetIds);
+        var ids = new HashSet<int>();
+        World.ForEach<NetId>((Entity e, ref NetId id) =>
+        {
+            if (World.Has<Ghost>(e) || World.Has<Migrating>(e)) return;
+            if (excludedNetIds.Contains(id.Value)) return;
+            ids.Add(id.Value);
+        });
+        return SnapshotWriter.WriteFiltered(World, registry, ids);
+    }
+
+    /// <summary>
+    /// Restores the entities in <paramref name="snapshot"/> into this cell's world as freshly owned entities
+    /// (a throwaway <see cref="ClientReplicationView"/>, exactly like <see cref="AdoptFromMigrate"/>), keeping their
+    /// <see cref="NetId"/>s. Returns the restored NetId values. Intended to run once on cell creation.
+    /// </summary>
+    public IReadOnlyList<int> RestoreOwned(byte[] snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        var view = new ClientReplicationView(registry);
+        view.Apply(World, snapshot);
+        var netIds = new List<int>(view.Entities.Count);
+        foreach (KeyValuePair<int, Entity> kv in view.Entities) netIds.Add(kv.Key);
+        return netIds;
+    }
+
+    /// <summary>The largest owned (non-ghost, non-migrating) <see cref="NetId"/> in this cell, or 0 if none.</summary>
+    public int MaxOwnedNetId()
+    {
+        int max = 0;
+        World.ForEach<NetId>((Entity e, ref NetId id) =>
+        {
+            if (World.Has<Ghost>(e) || World.Has<Migrating>(e)) return;
+            if (id.Value > max) max = id.Value;
+        });
+        return max;
+    }
+
+    /// <summary>
     /// Adopts a migrated entity into this cell as a freshly owned entity from <paramref name="snapshot"/> (a
     /// single-entity <see cref="KhaozEngine.Replication"/> capture). Any existing ghost of the same NetId here is
     /// despawned so the owned copy is the only one. Returns the adopted NetId values.

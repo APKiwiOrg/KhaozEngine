@@ -11,7 +11,16 @@ process.
   once per fixed tick.
 - **`ShardHost`** - owns the `CellCoord -> CellSim` map, creates cells on demand, exposes `CellFor(x, y)` /
   `CoordFor(x, y)`, routes spawns to the cell containing a position (`SpawnAt`), and `Tick(elapsedSeconds)` ticks
-  every live cell at one shared fixed rate.
+  every live cell at one shared fixed rate. `EnsureCell(coord)` gets or creates a cell by coordinate, and the
+  `CellCreated` event fires once per cell the first time its coordinate is instantiated (from `CellFor`,
+  `SpawnAt`, a handoff destination, or `EnsureCell`) - the load hook a per-cell persistence layer subscribes to.
+
+Per-cell persistence primitives on `CellSim`, storage-agnostic (no new dependency): `SnapshotOwned(excludedNetIds)`
+returns a durable Replication snapshot of the cell's owned (not `Ghost`, not `Migrating`) entities whose NetId is
+not in the excluded set, so a caller can persist non-player state while player entities persist separately.
+`RestoreOwned(snapshot)` adopts a snapshot's entities back into the cell as freshly owned, keeping their NetIds,
+and returns the restored NetId list. `MaxOwnedNetId()` reads the highest owned NetId (0 if none), useful for
+resuming an id allocator. See `KhaozEngine.NetWorld.CellPersistence` for the `IWorldStore` wiring built on these.
 
 Phase 3A of the seamless-shard topology: the in-process container. No cross-cell crossing or ghosting yet
 (that's 3B/3C). Deterministic and headless - no sockets, no window, no GPU. Depends on `KhaozEngine.Ecs`,

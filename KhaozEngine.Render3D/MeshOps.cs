@@ -75,5 +75,61 @@ namespace KhaozEngine.Render3D
 
             return new GltfMesh(verts, (uint[])idx.Clone());
         }
+
+        /// <summary>
+        /// Returns a copy of <paramref name="mesh"/> with a per-vertex tangent computed from its UVs + positions
+        /// (Lengyel accumulate then Gram-Schmidt against the normal), so a UV-mapped primitive (e.g.
+        /// <see cref="MeshPrimitives.Box"/>) can be normal-mapped. A vertex whose faces have no UV gradient keeps a
+        /// zero tangent, which the shader reads as "no TBN" (geometric normal). Positions, normals, colours, UVs and
+        /// indices are unchanged.
+        /// </summary>
+        public static GltfMesh WithTangents(GltfMesh mesh)
+        {
+            if (mesh is null) throw new ArgumentNullException(nameof(mesh));
+            var verts = mesh.Vertices;
+            var idx = mesh.Indices32;
+            var sdir = new Vector3[verts.Length];
+            var tdir = new Vector3[verts.Length];
+
+            for (int t = 0; t + 2 < idx.Length; t += 3)
+            {
+                int a = (int)idx[t], b = (int)idx[t + 1], c = (int)idx[t + 2];
+                TangentMath.FaceDirections(
+                    verts[a].Position, verts[b].Position, verts[c].Position,
+                    verts[a].Uv, verts[b].Uv, verts[c].Uv, out Vector3 s, out Vector3 td);
+                sdir[a] += s; sdir[b] += s; sdir[c] += s;
+                tdir[a] += td; tdir[b] += td; tdir[c] += td;
+            }
+
+            var outVerts = new ModelVertex[verts.Length];
+            for (int i = 0; i < verts.Length; i++)
+            {
+                ModelVertex v = verts[i];
+                Vector4 tan = TangentMath.Resolve(v.Normal, sdir[i], tdir[i], null);
+                outVerts[i] = new ModelVertex(v.Position, v.Normal, v.Color, v.Uv, tan);
+            }
+            return new GltfMesh(outVerts, (uint[])idx.Clone());
+        }
+
+        /// <summary>
+        /// Returns a copy of <paramref name="mesh"/> with every vertex UV multiplied by <paramref name="scale"/>,
+        /// so a texture tiles <paramref name="scale"/> times across the original 0..1 span (the model sampler
+        /// wraps). Denser tiling means more texels per metre, which reads crisp instead of a single stretched
+        /// (blurry) copy. Positions, normals, colours, tangents and indices are unchanged. Apply this BEFORE
+        /// <see cref="WithTangents"/> when you want the tangent basis derived from the tiled UVs (a uniform UV
+        /// scale does not change tangent direction, so the order does not affect the basis).
+        /// </summary>
+        public static GltfMesh ScaleUv(GltfMesh mesh, float scale)
+        {
+            if (mesh is null) throw new ArgumentNullException(nameof(mesh));
+            var verts = mesh.Vertices;
+            var outVerts = new ModelVertex[verts.Length];
+            for (int i = 0; i < verts.Length; i++)
+            {
+                ModelVertex v = verts[i];
+                outVerts[i] = new ModelVertex(v.Position, v.Normal, v.Color, v.Uv * scale, v.Tangent);
+            }
+            return new GltfMesh(outVerts, (uint[])mesh.Indices32.Clone());
+        }
     }
 }

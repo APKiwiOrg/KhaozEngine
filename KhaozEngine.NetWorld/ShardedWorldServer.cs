@@ -69,7 +69,7 @@ public sealed class ShardedWorldServerConfig
 /// respawn. Headless, transport-injected. Persistence is the shipped <see cref="WorldPersistence"/> via
 /// <see cref="IWorldPersistenceHost"/>, player-keyed across cells.
 /// </summary>
-public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllable
+public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllable, ICellPersistenceHost
 {
     private readonly ShardedWorldServerConfig config;
     private readonly ReplicationRegistry registry = MoveProtocol.CreateRegistry();
@@ -124,6 +124,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
             interestCellSize: config.CellSize,
             overlapMargin: config.OverlapMargin,
             positionAccessor: PositionAccessor);
+        host.CellCreated += cell => CellCreated?.Invoke(cell.Coord);
         net = new NetServer(transport, config.MaxPlayers, authenticator ?? new AllowAllAuthenticator());
         this.banStore = banStore;
     }
@@ -132,6 +133,40 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
     public ShardHost Host => host;
     /// <summary>The replicated-component registry; clients build the matching one via MoveProtocol.</summary>
     public ReplicationRegistry Registry => registry;
+
+    // --- ICellPersistenceHost: per-cell world-state persistence (non-player entities). ---
+
+    /// <inheritdoc />
+    public event Action<CellCoord>? CellCreated;
+
+    /// <inheritdoc />
+    public IReadOnlyCollection<CellCoord> LiveCellCoords
+    {
+        get
+        {
+            var coords = new List<CellCoord>(host.CellCount);
+            foreach (CellSim cell in host.Cells) coords.Add(cell.Coord);
+            return coords;
+        }
+    }
+
+    /// <inheritdoc />
+    public byte[]? SnapshotCell(CellCoord coord) =>
+        host.TryGetCell(coord, out CellSim cell) ? cell.SnapshotOwned(new HashSet<int>(netIdBySlot.Values)) : null;
+
+    /// <inheritdoc />
+    public IReadOnlyList<int> RestoreCell(CellCoord coord, byte[] snapshot) =>
+        host.TryGetCell(coord, out CellSim cell) ? cell.RestoreOwned(snapshot) : Array.Empty<int>();
+
+    /// <inheritdoc />
+    public void EnsureCell(CellCoord coord) => host.EnsureCell(coord);
+
+    /// <inheritdoc />
+    public int NextNetId => nextNetId;
+
+    /// <inheritdoc />
+    public void EnsureNextNetIdAtLeast(int atLeast) { if (atLeast > nextNetId) nextNetId = atLeast; }
+
     /// <summary>Number of joined players.</summary>
     public int PlayerCount => netIdBySlot.Count;
     /// <summary>The net id of the player entity for a joined slot.</summary>

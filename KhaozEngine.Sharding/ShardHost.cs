@@ -108,11 +108,21 @@ public sealed class ShardHost
     /// <summary>The instantiated cells, in creation order.</summary>
     public IReadOnlyCollection<CellSim> Cells => ordered;
 
+    /// <summary>
+    /// Raised once for each cell the first time its coordinate is instantiated (via <see cref="CellFor"/>,
+    /// <see cref="SpawnAt"/>, a handoff destination, or <see cref="EnsureCell"/>). The load hook for per-cell
+    /// persistence: a subscriber restores that cell's saved state. Fired synchronously on the creating thread.
+    /// </summary>
+    public event Action<CellSim>? CellCreated;
+
     /// <summary>The cell coordinate containing a world position. Pure - does not instantiate a cell.</summary>
     public CellCoord CoordFor(float worldX, float worldY) => CellCoord.FromWorld(worldX, worldY, CellSize);
 
     /// <summary>The <see cref="CellSim"/> containing a world position, creating it if it does not exist yet.</summary>
     public CellSim CellFor(float worldX, float worldY) => GetOrCreateCell(CoordFor(worldX, worldY));
+
+    /// <summary>Gets the cell at <paramref name="coord"/>, creating it (and raising <see cref="CellCreated"/>) if absent.</summary>
+    public CellSim EnsureCell(CellCoord coord) => GetOrCreateCell(coord);
 
     private CellSim GetOrCreateCell(CellCoord coord)
     {
@@ -121,6 +131,7 @@ public sealed class ShardHost
             cell = new CellSim(coord, tickSeconds, registry, interestCellSize);
             cells[coord] = cell;
             ordered.Add(cell);
+            CellCreated?.Invoke(cell);
         }
         return cell;
     }

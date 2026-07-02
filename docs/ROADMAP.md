@@ -4,7 +4,7 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **9.2.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **9.4.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan under `docs/superpowers/` when it is scheduled.
 
@@ -39,13 +39,16 @@ lands here: a static terrain body replaces the `TerrainCollision` delegate in th
 
 ### 3. Visual fidelity (textures + materials)
 
-The terrain now renders PBR splat textures. Props still come in flat base-colour (the prop
-loader flattens each material's texture to a single factor during ingest, so trees/rocks/buildings carry no
-surface detail). Goal: make props, trees, and buildings actually look good, not just read as shapes.
+The terrain now renders PBR splat textures. Props can now carry albedo/normal/roughness surface detail too
+(`PropLoader.LoadPropWithMaterial` reads a prop glTF's textures, opt-in via the `textured` manifest flag, and a
+prop with no textures still degrades to the flat render). Goal: make props, trees, and buildings actually look
+good, not just read as shapes.
 
-- Textured props: per-material albedo / normal on meshes (trees, rocks, buildings) - needs the glTF loader /
-  prop renderer to stop flattening textures to a base-colour factor (today's limitation; same area as the rigid
-  node-transform fix).
+- ~~Textured props~~ landed: `PropLoader.LoadPropWithMaterial` reads a prop's baseColor/normal/roughness
+  textures instead of flattening them to a base-colour factor. `MeshOps.WithTangents` gives a UV-mapped
+  primitive mesh a tangent basis so normal maps take effect, and `PropMaterialPresets.Procedural` generates an
+  asset-free mossy-stone albedo+normal for samples and tests. Remaining: real Quaternius kit re-ingest with
+  textures on (today's samples use the procedural preset or opt in per-asset), and multi-texture-per-primitive.
 - Water: a real water shader for the lake / sea (currently a flat plane at the water level).
 - Lighting polish: pairs with shadows (see Rendering) + an HDRI/sky direction for a cohesive look.
 - CC0-asset-friendly throughout (ambientCG terrain textures, the kit textures), no new heavy dependencies.
@@ -59,8 +62,6 @@ surface detail). Goal: make props, trees, and buildings actually look good, not 
 ## Overworld / world content
 
 - Procedural dungeon generator.
-- Per-cell world-state snapshot persistence: persist cell/world state, not just player records (pairs with
-  sharding).
 - Animated-creature adoption (game-side, not engine work): the engine animation stack shipped (glTF
   animation-clip playback, `AnimatedCharacter` + locomotion blend, `ReplicatedCharacterAnimators`). SpaceGame's
   2.5D rigged-creature direction can adopt it directly. Only reopen an engine item here if a concrete new gain

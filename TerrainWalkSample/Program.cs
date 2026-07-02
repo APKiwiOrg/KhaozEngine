@@ -43,6 +43,8 @@ sealed class TerrainWalkApp : GameApp3D
     MeshHandle _capsule;
     MeshHandle _platformMesh;
     Matrix4x4 _platformXform;
+    MeshHandle _texturedProp;
+    Matrix4x4 _texturedPropXform;
 
     // Animated character (replaces the static capsule). The Quaternius Universal CC0 rig is skinned-ingested so its animation
     // channels survive; AnimatedCharacter drives idle/walk/run/jump/fall off the same movement state the controller
@@ -178,6 +180,15 @@ sealed class TerrainWalkApp : GameApp3D
             new BoxShape(new Vector3(platformHalf.X, platformHeight * 0.5f, platformHalf.Y)),
             Pose.At(new Vector3(platformCenter.X, platformBaseY + platformHeight * 0.5f, platformCenter.Y)));
 
+        // Textured prop demo: a procedural mossy-stone block (albedo + normal), no binary asset.
+        // Placed near spawn, clear of the platform (0, 12) and the collision-overlay proxy (8, 4).
+        // ScaleUv tiles the material 3x across each face so texels stay dense (crisp, not one stretched copy).
+        _texturedProp = sc.LoadMesh(
+            MeshOps.WithTangents(MeshOps.ScaleUv(MeshPrimitives.Box(1.5f), 3f)),
+            PropMaterialPresets.Procedural());
+        float propX = 3f, propZ = 3f;
+        _texturedPropXform = Matrix4x4.CreateTranslation(propX, _terrain.GroundHeight(propX, propZ) + 0.75f, propZ);
+
         // --- Collision-shape debug overlay (F2) ---------------------------------------------
         // Hand-placed building-proxy acceptance fixture: a compound-of-convex .coll baked offline from the
         // Ruinborne blacksmith prop (see KhaozEngine.Tests/Physics/Fixtures/blacksmith_proxy.coll), copied into
@@ -296,6 +307,9 @@ sealed class TerrainWalkApp : GameApp3D
 
         // The hand-placed visible platform.
         scene.Draw(_platformMesh, _platformXform, new Color(0.62f, 0.6f, 0.66f, 1f));
+
+        // Textured prop demo: procedural mossy-stone block (albedo + normal maps).
+        scene.Draw(_texturedProp, _texturedPropXform, Color.White);
 
         // Draw the character so its feet sit on the ground (Position is the capsule centre; feet = centre - half).
         Vector3 p = _character.Position;

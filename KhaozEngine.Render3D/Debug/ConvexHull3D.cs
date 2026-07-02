@@ -10,6 +10,12 @@ public static class ConvexHull3D
 {
     const float Eps = 1e-6f;
 
+    /// <summary>
+    /// Builds the convex hull of <paramref name="points"/> as an outward-wound triangle mesh.
+    /// The internal tolerances (<see cref="Eps"/> and the derived face-visibility / seed-search
+    /// epsilons) assume roughly unit-scale input. A hull whose points span many orders of
+    /// magnitude larger or smaller than 1 may need those epsilons rescaled to its extent.
+    /// </summary>
     public static (Vector3[] Vertices, int[] Indices) Triangulate(IReadOnlyList<Vector3> points)
     {
         Vector3[] pts = Dedupe(points);
@@ -56,7 +62,11 @@ public static class ConvexHull3D
     /// <summary>
     /// Picks 4 non-coplanar points to seed the hull: the two points forming the longest
     /// segment among the extreme axis-aligned points, the point farthest from that segment's
-    /// line, and the point farthest from the resulting plane.
+    /// line, and the point farthest from the resulting plane. Both degeneracy checks (collinear
+    /// in step 2, coplanar in step 3) compare a true geometric distance, not a raw cross/dot
+    /// product: step 2 projects against a normalized direction vector, and step 3 normalizes
+    /// the plane normal before measuring distance, so neither check is skewed by segment length
+    /// or triangle area the way an unnormalized cross product would be.
     /// </summary>
     static bool InitialTetrahedron(Vector3[] pts, out int[] seed)
     {
@@ -136,10 +146,21 @@ public static class ConvexHull3D
     /// vertex of the visible triangle is swapped out for the new apex point).</summary>
     static (int A, int B, int C) OrientOutward(int a, int b, int apex) => (a, b, apex);
 
+    /// <summary>
+    /// True if <paramref name="point"/> lies strictly outside the plane of <paramref name="face"/>,
+    /// using the true perpendicular distance rather than the raw (unnormalized) cross-product
+    /// dot product. <c>|n|</c> is proportional to the triangle's area, so comparing the raw dot
+    /// product against a fixed epsilon silently under-reports visibility for sliver (small-area)
+    /// faces: a point can sit geometrically far outside the plane yet still score below <see
+    /// cref="Eps"/> once scaled down by the tiny area factor. Scaling the epsilon by <c>|n|</c>
+    /// instead (equivalent to normalizing <c>n</c> first) makes the test area-independent.
+    /// </summary>
     static bool InFront(Vector3[] pts, (int A, int B, int C) face, Vector3 point)
     {
         Vector3 n = Vector3.Cross(pts[face.B] - pts[face.A], pts[face.C] - pts[face.A]);
-        return Vector3.Dot(n, point - pts[face.A]) > Eps;
+        float nLen = n.Length();
+        if (nLen <= Eps) return false; // degenerate (near-zero-area) face: treat as not visible
+        return Vector3.Dot(n, point - pts[face.A]) > Eps * nLen;
     }
 
     /// <summary>Collects the boundary edges of the visible-face region: edges that appear in

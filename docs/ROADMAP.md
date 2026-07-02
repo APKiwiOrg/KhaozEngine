@@ -40,7 +40,7 @@ lands here: a static terrain body replaces the `TerrainCollision` delegate in th
 ### 3. Visual fidelity (textures + materials)
 
 The terrain now renders PBR splat textures. Props can now carry albedo/normal/roughness surface detail too
-(`PropLoader.LoadPropWithMaterial` reads a prop glTF's textures, opt-in via the `textured` manifest flag; a
+(`PropLoader.LoadPropWithMaterial` reads a prop glTF's textures, opt-in via the `textured` manifest flag, and a
 prop with no textures still degrades to the flat render). Goal: make props, trees, and buildings actually look
 good, not just read as shapes.
 

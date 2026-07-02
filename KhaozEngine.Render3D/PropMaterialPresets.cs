@@ -5,14 +5,14 @@ namespace KhaozEngine.Render3D
 {
     /// <summary>Procedural placeholder prop materials so the in-repo sample and tests show a textured prop without
     /// shipping binary textures. Real games supply a textured glTF (baseColor/normal) read via
-    /// <see cref="PropLoader.LoadPropWithMaterial"/>. Deterministic (a coordinate hash, no RNG); mirrors
+    /// <see cref="PropLoader.LoadPropWithMaterial"/>. Deterministic (a coordinate hash, no RNG). Mirrors
     /// <c>TerrainMaterialPresets.Procedural</c> and returns raw-RGBA <see cref="GltfMaterialMaps"/> (no PNG encoder,
     /// no asset file). Upload with <see cref="Scene3D.LoadMesh(GltfMesh,GltfMaterialMaps)"/>.</summary>
     public static class PropMaterialPresets
     {
         /// <summary>A mossy-stone albedo + a gentle derived tangent-space normal, each
         /// <paramref name="size"/> x <paramref name="size"/> RGBA8. Grey stone value-noise base with green moss
-        /// mottling; the normal is the albedo-noise gradient (z dominant).</summary>
+        /// mottling. The normal is the albedo-noise gradient (z dominant).</summary>
         public static GltfMaterialMaps Procedural(int size = 64, int seed = 1337)
         {
             if (size < 1) size = 1;

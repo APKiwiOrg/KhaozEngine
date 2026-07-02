@@ -260,6 +260,35 @@ def fit_roofs(roof_floor):
         areas = {id(m): (m["max"][0] - m["min"][0]) * (m["max"][1] - m["min"][1]) for m in slabs}
         biggest = max(areas.values())
         merged = [m for m in merged if m["kind"] != "slab" or areas[id(m)] > 0.15 * biggest]
+    # RIDGE TRIMMING: where two opposing slabs on the same axis OVERLAP on the slope axis (each was
+    # clamped to its own cluster's ridge, so where the fits differ they poke past each other - X tips at
+    # peaks, a full X where a dormer pair crosses), cut both at the overlap midpoint so they meet there.
+    # Bounded by construction: only shrinks within a real overlap, each slab keeps its own plane, and
+    # non-overlapping pairs (hip skirts across a flat cap) are untouched.
+    slabs = [m for m in merged if m["kind"] == "slab"]
+    for i in range(len(slabs)):
+        for j in range(i + 1, len(slabs)):
+            si, sj = slabs[i], slabs[j]
+            if si["axis"] != sj["axis"] or si["dir"] == sj["dir"]: continue
+            ax = 0 if si["axis"] == "x" else 1
+            cx = 1 - ax
+            if min(si["max"][cx], sj["max"][cx]) - max(si["min"][cx], sj["min"][cx]) <= 0: continue
+            if not (si["min"][2] < sj["max"][2] and sj["min"][2] < si["max"][2]): continue
+            o0 = max(si["min"][ax], sj["min"][ax]); o1 = min(si["max"][ax], sj["max"][ax])
+            if o1 <= o0: continue
+            u_m = (o0 + o1) / 2
+            for s in (si, sj):
+                u0, u1 = s["min"][ax], s["max"][ax]
+                if u1 - u0 < 1e-6: continue
+                # z of this slab's own plane at u_m (dir>0: z rises min->max with u; dir<0: falls)
+                f = (u_m - u0) / (u1 - u0)
+                z_at = (s["min"][2] + (s["max"][2] - s["min"][2]) * f) if s["dir"] > 0                        else (s["max"][2] - (s["max"][2] - s["min"][2]) * f)
+                if s["dir"] > 0 and u1 > u_m:        # ridge end is the high-u side
+                    s["max"][ax] = round(u_m, 3); s["max"][2] = round(z_at, 3)
+                elif s["dir"] < 0 and u0 < u_m:      # ridge end is the low-u side
+                    s["min"][ax] = round(u_m, 3); s["max"][2] = round(z_at, 3)
+    merged = [m for m in merged if m["kind"] != "slab"
+              or (m["max"][0] - m["min"][0] > 1e-3 and m["max"][1] - m["min"][1] > 1e-3)]
     return merged
 
 # =====================================================================================

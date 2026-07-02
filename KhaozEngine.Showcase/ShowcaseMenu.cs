@@ -3,7 +3,7 @@ using System.Collections.Generic;
 namespace KhaozEngine.Showcase
 {
     /// <summary>GPU-free menu navigation model: the room-name list plus a wrapping selected index.
-    /// The <see cref="MenuScene"/> is its view; this holds the logic so it stays headless-testable.</summary>
+    /// The <see cref="MenuScene"/> is its view. This holds the logic so it stays headless-testable.</summary>
     public sealed class ShowcaseMenu
     {
         readonly List<string> _rooms;

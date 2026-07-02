@@ -6,7 +6,7 @@ using KhaozEngine.Render2D;
 namespace KhaozEngine.Showcase
 {
     /// <summary>The showcase host: a GameApp holding a SceneManager and the room registry. Each room is a
-    /// (display name, factory) pair; MenuScene lists them and pushes the chosen one. Later rooms self-register
+    /// (display name, factory) pair. MenuScene lists them and pushes the chosen one. Later rooms self-register
     /// in OnLoad. Honors KE_MAX_FRAMES via the AppWindow loop (headless smoke renders N frames then exits 0).</summary>
     public sealed class ShowcaseApp : GameApp
     {

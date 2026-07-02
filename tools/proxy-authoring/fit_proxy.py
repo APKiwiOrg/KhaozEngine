@@ -219,9 +219,21 @@ def fit_roofs(roof_floor):
                       "min": [x0, y0, max(z0, z1 - w2r(0.30))], "max": [x1, y1, z1]})
                 continue
             dirn = 1 if (slope_a > 0) else -1
+            # clamp the slope-axis extent to where the FITTED PLANE meets the cluster's eave and ridge
+            # heights - the raw bbox overshoots past the ridge (cross-facing faces, dormers), which made
+            # opposing slabs cross in an X above the roof.
+            z_eave = max(z0, roof_floor - w2r(0.05))
+            z_ridge = z1
+            u_a = (z_eave - b) / slope_a
+            u_b = (z_ridge - b) / slope_a
+            u_lo2 = max(u0, min(u_a, u_b)); u_hi2 = min(u1, max(u_a, u_b))
+            if u_hi2 - u_lo2 < w2r(0.15): continue
+            z_at_lo = slope_a * u_lo2 + b; z_at_hi = slope_a * u_hi2 + b
+            mn_p = [x0, y0, min(z_at_lo, z_at_hi)]; mx_p = [x1, y1, max(z_at_lo, z_at_hi)]
+            if axis == "x": mn_p[0], mx_p[0] = u_lo2, u_hi2
+            else: mn_p[1], mx_p[1] = u_lo2, u_hi2
             emit({"kind": "slab", "name": f"roof_{key}", "axis": axis, "dir": dirn,
-                  "min": [x0, y0, max(roof_floor - w2r(0.05), z_lo_end)],
-                  "max": [x1, y1, min(z1 + w2r(0.05), z_hi_end)],
+                  "min": mn_p, "max": mx_p,
                   "thickness": w2r(0.35), "angleDeg": round(angle, 1)})
     # merge pieces lying on the SAME plane (tile strata / hip facets cluster apart but fit one plane):
     # same kind+axis+dir, angle within 3 deg, z ends within ~0.1 m -> union the bounds.
@@ -241,6 +253,13 @@ def fit_roofs(roof_floor):
             for i in range(3):
                 hit["min"][i] = min(hit["min"][i], p_["min"][i])
                 hit["max"][i] = max(hit["max"][i], p_["max"][i])
+    # drop dormer/trim slivers: a roof piece whose 2D footprint is tiny next to the main roof reads as
+    # decoration (and crossed slivers over the roof look broken in the overlay + snag sliding capsules)
+    slabs = [m for m in merged if m["kind"] == "slab"]
+    if slabs:
+        areas = {id(m): (m["max"][0] - m["min"][0]) * (m["max"][1] - m["min"][1]) for m in slabs}
+        biggest = max(areas.values())
+        merged = [m for m in merged if m["kind"] != "slab" or areas[id(m)] > 0.15 * biggest]
     return merged
 
 # =====================================================================================

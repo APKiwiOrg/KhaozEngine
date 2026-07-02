@@ -122,5 +122,45 @@ namespace KhaozEngine.Tests.Gui
             stack.Update(0.1f, InputState.Empty);
             Assert.DoesNotContain(s, stack.Screens); // removed when the out-transition completes
         }
+
+        [Fact]
+        public void Add_preserves_insertion_order_among_equal_DrawOrder()
+        {
+            var stack = new ScreenStack();
+            var added = new FakeScreen[64];
+            for (int i = 0; i < added.Length; i++)
+            {
+                added[i] = new FakeScreen { DrawOrder = 0 };
+                stack.Add(added[i]);
+            }
+
+            // Equal DrawOrder must keep insertion order, so the last-added is the topmost (last index).
+            for (int i = 0; i < added.Length; i++)
+                Assert.Same(added[i], stack.Screens[i]);
+            Assert.Same(added[^1], stack.Screens[^1]);
+        }
+
+        [Fact]
+        public void Add_sorts_by_DrawOrder_then_breaks_ties_by_insertion_order()
+        {
+            var stack = new ScreenStack();
+            // Interleave two DrawOrder groups, added in a known order within each group.
+            var low = new FakeScreen[20];
+            var high = new FakeScreen[20];
+            for (int i = 0; i < 20; i++)
+            {
+                low[i] = new FakeScreen { DrawOrder = 0 };
+                high[i] = new FakeScreen { DrawOrder = 10 };
+                stack.Add(low[i]);
+                stack.Add(high[i]);
+            }
+
+            // All DrawOrder=0 come first (in insertion order), then all DrawOrder=10 (in insertion order).
+            for (int i = 0; i < 20; i++)
+            {
+                Assert.Same(low[i], stack.Screens[i]);
+                Assert.Same(high[i], stack.Screens[20 + i]);
+            }
+        }
     }
 }

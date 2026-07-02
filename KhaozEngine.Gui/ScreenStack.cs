@@ -21,14 +21,17 @@ namespace KhaozEngine.Gui
         public Pointer Pointer { get; } = new();
         /// <summary>This frame's raw input snapshot (keyboard etc.).</summary>
         public InputState Input { get; private set; } = InputState.Empty;
-        /// <summary>The current screens, sorted by <see cref="Screen.DrawOrder"/> ascending.</summary>
+        /// <summary>The current screens, ordered by <see cref="Screen.DrawOrder"/> ascending, with insertion order
+        /// breaking ties. So the last element is the visually-topmost screen (highest draw order, and last added
+        /// among equals).</summary>
         public IReadOnlyList<Screen> Screens => _screens;
 
         /// <summary>Optional service container shared with the screens (a DI container or a service locator).
         /// Screens read it via <see cref="Screen.Services"/>. Set once after constructing the stack; null when unused.</summary>
         public System.IServiceProvider? Services { get; set; }
 
-        /// <summary>Adds a screen, applies its entry transition, calls LoadContent, and re-sorts by draw order.</summary>
+        /// <summary>Adds a screen, applies its entry transition, calls LoadContent, and inserts it in draw order
+        /// (a stable insert, so screens sharing a <see cref="Screen.DrawOrder"/> keep insertion order).</summary>
         public void Add(Screen screen)
         {
             screen.Manager = this;
@@ -38,8 +41,14 @@ namespace KhaozEngine.Gui
                 if (screen.TransitionOnDuration > 0f) screen.TransitionAlpha = 0f;
             }
             screen.LoadContent();
-            _screens.Add(screen);
-            _screens.Sort((a, b) => a.DrawOrder.CompareTo(b.DrawOrder));
+
+            // Stable insert: place after every existing screen with DrawOrder <= this one, so equal-DrawOrder
+            // screens keep insertion order and the last added is the topmost (Screens[^1]). A plain List.Sort is
+            // not stable, so it could reorder equal-DrawOrder screens and break code relying on that ordering.
+            int idx = _screens.Count;
+            for (int i = 0; i < _screens.Count; i++)
+                if (_screens[i].DrawOrder > screen.DrawOrder) { idx = i; break; }
+            _screens.Insert(idx, screen);
         }
 
         /// <summary>Removes a screen and calls its UnloadContent.</summary>

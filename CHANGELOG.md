@@ -5,6 +5,10 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 9.5.1
+
+`ScreenStack` now orders screens with a stable insert, so screens sharing a `DrawOrder` keep insertion order and `Screens[^1]` is reliably the visually-topmost. Bug fix, no API change. Before this, `Add` re-sorted the list with the non-stable `List.Sort`, which for larger stacks could reorder equal-`DrawOrder` screens and break code relying on last-is-topmost (for example an Esc-pops-topmost handler over a hosted screen stack). Small stacks were unaffected because `List.Sort` falls back to a stable insertion sort below its introsort threshold.
+
 ## 9.5.0
 
 Terrain sampler gains anisotropy + a mip LOD bias to tame the distance/grazing "fuzz" a high-frequency tiling albedo (e.g. a noisy grass texture) shimmers into as the camera moves. Additive minor, one new public sampler field.

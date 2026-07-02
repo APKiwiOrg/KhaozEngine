@@ -182,7 +182,7 @@ public static class CollisionShapeMesh
         {
             int s0 = s;
             int s1 = (s + 1) % segs;
-            inds.Add(bottomCenter); inds.Add(s1); inds.Add(s0);
+            inds.Add(bottomCenter); inds.Add(s0); inds.Add(s1);
         }
 
         // Top cap (fan, facing +Y).
@@ -190,7 +190,7 @@ public static class CollisionShapeMesh
         {
             int s0 = segs + s;
             int s1 = segs + (s + 1) % segs;
-            inds.Add(topCenter); inds.Add(s0); inds.Add(s1);
+            inds.Add(topCenter); inds.Add(s1); inds.Add(s0);
         }
 
         return (verts, inds.ToArray());
@@ -212,12 +212,19 @@ public static class CollisionShapeMesh
         var verts = new List<Vector3>();
         var inds = new List<int>();
 
-        // Bottom hemisphere: phi from PI (south pole) to PI/2 (equator).
+        // Bottom hemisphere: phi from PI (south pole) to PI/2 (equator, at yBottom - radius..yBottom).
         for (int r = 0; r <= hemiRings; r++)
         {
             float phi = MathF.PI - (MathF.PI * 0.5f) * r / hemiRings;
             EmitRing(verts, rowStarts, segs, yBottom, phi, radius);
         }
+        // Cylindrical wall: the bottom hemisphere's own equator ring (yBottom, radius) already
+        // forms one end of the wall. When length > 0, emit the matching ring at the top
+        // hemisphere's equator (yTop, radius) as a second, distinct ring so the two hemispheres
+        // are joined by a straight-walled cylinder instead of a slanted cone. When length == 0
+        // (a sphere) the two equators coincide, so skip to avoid a degenerate zero-height wall.
+        if (length > 0f)
+            EmitRing(verts, rowStarts, segs, yTop, MathF.PI * 0.5f, radius);
         // Top hemisphere: phi from PI/2 (equator) to 0 (north pole). Skip the equator (already emitted).
         for (int r = 1; r <= hemiRings; r++)
         {

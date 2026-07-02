@@ -32,14 +32,24 @@ Hard-won rules this tool encodes (learned live on the Ruinborne town set - keep 
     porch/awning roofs and pins capsules (the anvil bug class).
   - Slab slope-axis extents come from where the FITTED PLANE meets the cluster's eave/ridge heights,
     never the raw cluster bbox (bbox overshoot crossed opposing slabs into an X over the ridge).
+    Cluster extents are 2%-TRIMMED (eave z 4th-percentile): junction/eave-lip outlier verts otherwise
+    drag a slab past the visible roof edge or below the true eave line.
+  - Roof faces cluster by FACE-AABB DISTANCE, never centroid distance: two adjacent large low-poly
+    quads have centroids further apart than any workable reach (centroid clustering shattered
+    big-quad roofs the moment the reach was tightened enough to keep dormers separate). The cluster
+    keep-floor is an ABSOLUTE area (~0.35 m2 world), not relative to the mesh.
   - Opposing slabs that OVERLAP on the slope axis are trimmed at the overlap midpoint so they meet
     (own-cluster ridge clamps still poke past each other where the two fits differ). Overlap-midpoint
-    trimming is BOUNDED; plane-intersection pairing is not (tile-step riser faces land in the opposite
-    facing bin and poison the intersection - it silently deleted a hip roof once).
+    trimming is BOUNDED (lose at most ~0.25 m of ridge height); plane-intersection pairing is not
+    (tile-step riser faces land in the opposite facing bin and poison the intersection - it silently
+    deleted a hip roof once). When both capped cuts still cross, the pair meets EXACTLY at their
+    midpoint - two independently-capped cuts otherwise leave a small visible X tip above the crest.
   - DORMERS get their own small sloped slabs (an absolute ~0.35 m2 footprint floor drops only trim);
     never suppress them by relative size, and never let same-height flat caps MERGE across a roof -
     same-plane merging requires spatial adjacency, or distant dormer tops union into one wide phantom
-    band ("boxy roof").
+    band ("boxy roof"). Adjacency is CROSS-AXIS-ONLY for sloped slabs (tile strata stack along the
+    slope axis, so any slope-axis gap is fine; separate dormers sit apart ACROSS the roof) but
+    both-axes for flat boxes.
   - Same-axis same-dir slabs contained inside a sibling are overdraw (tile strata) - dropped.
   - Body/story boxes stop at the ROOF FLOOR (merge mode clamps them; chimney* and the hand spec's
     "_keepTall" name list exempt - anti-pin fills like a forge extended into its hood MUST stay tall):
@@ -201,18 +211,27 @@ def fit_roofs(roof_floor):
         else: key = "y+" if n.y > 0 else "y-"
         bins.setdefault(key, []).append(f)
     def clusters(faces, reach):
+        # adjacency by face-AABB distance, not centroid distance: two adjacent large low-poly quads have
+        # centroids far apart (centroid clustering shattered big-quad roofs when the reach was tightened
+        # to keep dormers separate), while their bounding boxes touch regardless of face size.
+        boxes = []
+        for n, vs, c, a in faces:
+            boxes.append(([min(v[i] for v in vs) for i in range(3)],
+                          [max(v[i] for v in vs) for i in range(3)]))
         parent = list(range(len(faces)))
         def find(i):
             while parent[i] != i: parent[i] = parent[parent[i]]; i = parent[i]
             return i
         for i in range(len(faces)):
             for j in range(i + 1, len(faces)):
-                if (faces[i][2] - faces[j][2]).length < reach:
+                gap = max(max(boxes[i][0][k], boxes[j][0][k]) - min(boxes[i][1][k], boxes[j][1][k])
+                          for k in range(3))
+                if gap < reach:
                     pi, pj = find(i), find(j)
                     if pi != pj: parent[pi] = pj
         out = {}
         for i, f in enumerate(faces): out.setdefault(find(i), []).append(f)
-        return [v for v in out.values() if sum(f[3] for f in v) > (raw_h * 0.10) ** 2]
+        return [v for v in out.values() if sum(f[3] for f in v) > w2r(0.4) * w2r(0.4)]
 
     pieces, seen = [], set()
     def emit(p):
@@ -223,10 +242,14 @@ def fit_roofs(roof_floor):
         seen.add(key); pieces.append(p)
 
     for key, faces in bins.items():
-        for cl in clusters(faces, reach=max(w2r(0.9), raw_h * 0.06)):
-            xs = [v.x for f in cl for v in f[1]]; ys = [v.y for f in cl for v in f[1]]
-            zs = [v.z for f in cl for v in f[1]]
-            x0, x1 = min(xs), max(xs); y0, y1 = min(ys), max(ys); z0, z1 = min(zs), max(zs)
+        for cl in clusters(faces, reach=w2r(0.3)):
+            xs = sorted(v.x for f in cl for v in f[1]); ys = sorted(v.y for f in cl for v in f[1])
+            zs = sorted(v.z for f in cl for v in f[1])
+            # 2%-trimmed extents: junction/eave-lip outlier verts must not drag a slab past the visible
+            # roof edges (cross-axis) or down past the true eave line (z)
+            k = max(0, len(xs) * 2 // 100)
+            x0, x1 = xs[k], xs[-1 - k]; y0, y1 = ys[k], ys[-1 - k]
+            z0, z1 = zs[max(0, len(zs) * 4 // 100)], zs[-1]
             angle = 0.0
             if key != "flat":
                 axis = "x" if key[0] == "x" else "y"
@@ -273,15 +296,19 @@ def fit_roofs(roof_floor):
             if (m["kind"], m.get("axis"), m.get("dir")) != (p_["kind"], p_.get("axis"), p_.get("dir")):
                 continue
             if abs(m.get("angleDeg", 0) - p_.get("angleDeg", 0)) > 3.0: continue
-            if abs(m["min"][2] - p_["min"][2]) > w2r(0.12) or abs(m["max"][2] - p_["max"][2]) > w2r(0.12):
+            if abs(m["min"][2] - p_["min"][2]) > w2r(0.2) or abs(m["max"][2] - p_["max"][2]) > w2r(0.2):
                 continue
-            # FLAT pieces only merge when their footprints touch (gap < 0.3 m world): distant dormer
-            # caps at the same height must NOT union into one wide phantom band across the roof.
-            # Sloped slabs merge freely (tile strata / gable-edge strips of one plane rejoin).
-            if p_["kind"] == "box":
-                gap_x = max(m["min"][0], p_["min"][0]) - min(m["max"][0], p_["max"][0])
-                gap_y = max(m["min"][1], p_["min"][1]) - min(m["max"][1], p_["max"][1])
-                if max(gap_x, gap_y) > w2r(0.3): continue
+            # same-plane merge adjacency: tile strata stack ALONG the slope axis while sharing the
+            # cross-axis span, but two separate dormers sit apart ACROSS the roof - so slabs only need
+            # to touch on the CROSS axis (any slope-axis gap is strata stacking), while flat boxes
+            # need both (distant same-height caps must not union into one wide phantom band).
+            gap_x = max(m["min"][0], p_["min"][0]) - min(m["max"][0], p_["max"][0])
+            gap_y = max(m["min"][1], p_["min"][1]) - min(m["max"][1], p_["max"][1])
+            if p_["kind"] == "slab":
+                gap_cross = gap_y if p_.get("axis") == "x" else gap_x
+                if gap_cross > w2r(0.3): continue
+            elif max(gap_x, gap_y) > w2r(0.3):
+                continue
             hit = m; break
         if hit is None:
             merged.append(dict(p_))
@@ -351,11 +378,36 @@ def fit_roofs(roof_floor):
                 if zmax - z_of(u_m) > w2r(0.25):
                     ff = (zmax - w2r(0.25) - zmin) / max(1e-9, zmax - zmin)
                     u_cut = u0 + (u1 - u0) * ff if sdir > 0 else u1 - (u1 - u0) * ff
-                z_at = z_of(u_cut)
-                if sdir > 0 and u1 > u_cut:          # ridge end is the high-u side
+                s["_ucut"] = u_cut
+            # apply: if both capped cuts still cross, meet EXACTLY at their midpoint (no visible X tip);
+            # otherwise each keeps its own capped cut
+    # second pass: resolve the recorded cuts pairwise (same pairs as above)
+    for i in range(len(slabs)):
+        for j in range(i + 1, len(slabs)):
+            si, sj = slabs[i], slabs[j]
+            if "_ucut" not in si and "_ucut" not in sj: continue
+            if si["axis"] != sj["axis"] or si["dir"] == sj["dir"]: continue
+            ax = 0 if si["axis"] == "x" else 1
+            hi = si if si["dir"] > 0 else sj      # ends at its ridge on the high-u side
+            lo = sj if si["dir"] > 0 else si      # ends at its ridge on the low-u side
+            u_hi_cut = hi.get("_ucut", hi["max"][ax])
+            u_lo_cut = lo.get("_ucut", lo["min"][ax])
+            if u_hi_cut > u_lo_cut:               # capped cuts still cross: meet at the midpoint
+                u_hi_cut = u_lo_cut = (u_hi_cut + u_lo_cut) / 2
+            for s, u_cut in ((hi, u_hi_cut), (lo, u_lo_cut)):
+                if "_ucut" not in s and abs(u_cut - (s["max"][ax] if s["dir"] > 0 else s["min"][ax])) < 1e-9:
+                    continue                       # untouched side of a one-sided trim
+                u0, u1 = s["min"][ax], s["max"][ax]
+                if u1 - u0 < 1e-6: continue
+                f = (u_cut - u0) / (u1 - u0)
+                z_at = s["min"][2] + (s["max"][2] - s["min"][2]) * f if s["dir"] > 0 \
+                       else s["max"][2] - (s["max"][2] - s["min"][2]) * f
+                if s["dir"] > 0 and u1 > u_cut:
                     s["max"][ax] = round(u_cut, 3); s["max"][2] = round(z_at, 3)
-                elif sdir < 0 and u0 < u_cut:        # ridge end is the low-u side
+                elif s["dir"] < 0 and u0 < u_cut:
                     s["min"][ax] = round(u_cut, 3); s["max"][2] = round(z_at, 3)
+    for m in merged:
+        m.pop("_ucut", None)
     merged = [m for m in merged if m["kind"] != "slab"
               or (m["max"][0] - m["min"][0] > 1e-3 and m["max"][1] - m["min"][1] > 1e-3)]
     return merged

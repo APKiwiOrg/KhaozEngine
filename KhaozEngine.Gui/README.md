@@ -33,6 +33,12 @@ Immediate-mode + retained UI on the custom MonoGame-free stack.
   Ctrl/Super (Cmd) held suppresses character entry so shortcut chords like Ctrl+V / Cmd+V paste instead of typing.
   Acts on `InputState.WasTyped` (press edge OR OS auto-repeat tick), so a held Backspace or character key repeats at
   the OS rate; the chord suppression still blocks repeated character entry while Ctrl/Cmd is held.
+- `OverlayLegend` (+ `LegendEntry`) - a domain-agnostic color-swatch + label panel for debug overlays:
+  `SetEntries(IReadOnlyList<LegendEntry>)`, `EntryCount`, `Measure(SpriteFont)` -> `Rect` (empty when no
+  entries), `Draw(SpriteBatch, SpriteFont, Texture2D, Rect)`. No `Visible`/fade state of its own - the caller
+  only calls `Draw` while its own overlay is on. `LegendEntry(Color Swatch, string Label)` is one row. The
+  collision-shape debug overlay (`KhaozEngine.Render3D.Debug.CollisionShapeOverlay`) is the first consumer;
+  reusable by any future overlay layer.
 
 Text wrap/alignment lives in `KhaozEngine.Render2D.TextLayout` (over the `ITextMeasurer` seam, so the layout
 math is headless-testable); clipping uses `SpriteBatch` scissor (`SetScissor`/`ClearScissor`, DPI-aware). Ported

@@ -1707,6 +1707,89 @@ needs a `SpriteBatch`. Like `UpdateOverlayView`, the widget never reads raw inpu
 
 ---
 
+## Collision-shape debug overlay (`CollisionShapeOverlay` / `OverlayLegend`)
+
+A toggleable translucent, color-coded proxy drawn over each collision static in the live scene, plus a legend
+panel naming the colors. Built from two pieces: `CollisionShapeOverlay` (`KhaozEngine.Render3D.Debug`) builds
+and draws the proxy meshes, and `OverlayLegend` (`KhaozEngine.Gui`) draws the swatch/label panel. Both are
+headless-testable except their `Draw` calls. `TerrainWalkSample` wires this behind an F2 toggle - read
+`TerrainWalkSample/Program.cs` for the full example.
+
+**The general primitive underneath it: `Scene3D.DrawOverlayMesh(MeshHandle mesh, Matrix4x4 world)`.** Queues a
+translucent, unlit, depth-tested-but-not-depth-writing, alpha-blended draw of an already-loaded mesh, colored
+by the mesh's per-vertex color. It never writes depth, so it never hides the scene, only sits over it; nearer
+scene geometry still occludes it. Drawn after the meshes/beams and before the pixel post. This is a reusable
+overlay pass, not collision-specific: `CollisionShapeOverlay` is the first consumer, and a future nav-mesh or
+area-of-interest-bounds overlay is a new type over the same `DrawOverlayMesh` call, not a new render path.
+
+**Build the static list.** The game collects the shapes it wants outlined as a flat
+`IReadOnlyList<CollisionStatic>` (`readonly record struct CollisionStatic(PhysicsShape Shape, Pose Pose)`) -
+typically the same `PhysicsShape`/`Pose` pairs already registered with `IPhysicsWorld`, or a hand-placed debug
+fixture:
+
+```csharp
+var statics = new List<CollisionStatic> { new(buildingProxyShape, buildingProxyPose) };
+```
+
+**OnLoad** - build the overlay once against the scene:
+
+```csharp
+_overlay = new CollisionShapeOverlay();      // KhaozEngine.Render3D.Debug
+_overlay.Build(scene, statics);              // uploads one proxy mesh per static; call again if the set changes
+_legend = new OverlayLegend();               // KhaozEngine.Gui
+_legend.SetEntries(BuildLegendEntries(_overlay));
+```
+
+`CollisionShapeMesh.Build(PhysicsShape, CollisionOverlayPalette) -> GltfMesh` is the headless core `Build` uses
+internally to turn a shape into a colored local-space mesh (box/sphere/capsule/cylinder/triangle mesh directly;
+`ConvexHullShape` via `ConvexHull3D.Triangulate(IReadOnlyList<Vector3>) -> (Vector3[] Vertices, int[] Indices)`,
+a dependency-free 3D convex-hull triangulator). `CompoundShape` recurses into its children so a compound
+contributes one proxy per child. You will not normally call these directly - `CollisionShapeOverlay.Build`
+does it for you - but they are public because a game may want a one-off proxy mesh outside the overlay flow.
+
+**OnUpdate(dt)** - drive the toggle:
+
+```csharp
+if (Input.WasPressed(Key.F2)) _overlay.Enabled = !_overlay.Enabled;
+```
+
+**OnDraw3D** / **OnDraw2D(batch)** - draw the proxies with the scene, the legend over the HUD:
+
+```csharp
+_overlay.Draw(scene);                                              // no-op unless Enabled; in the 3D pass
+_legend.Draw(batch, font, white, Viewport.DesignBounds);            // in the 2D pass; no-op when empty
+```
+
+**Palette.** `CollisionOverlayPalette` gives each `CollisionShapeKind` (`Box`/`Sphere`/`Capsule`/`Cylinder`/
+`ConvexHull`/`TriangleMesh`) a translucent color and a display name: `For(kind)` reads the color, the `this
+[kind]` indexer lets a game override it before calling `Build`, `NameFor(kind)` is the display label, and the
+static `KindOf(PhysicsShape) -> CollisionShapeKind` classifies a shape. Assign `_overlay.Palette` before
+`Build` to customize; a palette change after `Build` has no effect until the next rebuild.
+
+**Legend.** `OverlayLegend` is domain-agnostic - it just draws whatever `LegendEntry` (`readonly record struct
+LegendEntry(Color Swatch, string Label)`) rows it is given, so it is reusable by any future overlay, not just
+collision shapes. Build the rows from the overlay's `PresentKinds` (the distinct kinds actually present in the
+last-built static set, compound children counted individually) so the legend never lists a color that is not
+on screen:
+
+```csharp
+static IReadOnlyList<LegendEntry> BuildLegendEntries(CollisionShapeOverlay overlay)
+{
+    var entries = new List<LegendEntry>();
+    foreach (var kind in overlay.PresentKinds)
+        entries.Add(new LegendEntry(overlay.Palette.For(kind), overlay.Palette.NameFor(kind)));
+    return entries;
+}
+```
+
+`OverlayLegend.Measure(SpriteFont) -> Rect` returns the panel's size at the origin (empty when there are no
+entries, so a caller can skip drawing without touching the font) if you need to lay out other UI around it.
+
+Render-only: the overlay reads existing `PhysicsShape`/`Pose` data and draws it. Nothing here feeds back into
+simulation, determinism, or `.coll` bakes.
+
+---
+
 ## Install / update stamp (`KhaozEngine.App.AppInstallStamp`)
 
 A local record of when the **current app version** first ran on this machine and when it last changed - the

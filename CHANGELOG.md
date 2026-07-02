@@ -5,6 +5,45 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 9.1.0
+
+**Collision-shape debug overlay: toggleable translucent color-coded proxies over the live scene, plus a
+legend.** Additive minor, render-only, new public API.
+
+- **`Scene3D.DrawOverlayMesh(MeshHandle mesh, Matrix4x4 world)`** (`KhaozEngine.Render3D`). Queues a translucent,
+  unlit, depth-tested-but-not-depth-writing, alpha-blended draw of an already-loaded mesh, colored by the mesh's
+  per-vertex color. Occluded by nearer scene geometry but never hides it. A general overlay primitive, not tied
+  to collision shapes: the collision-shape overlay is the first consumer, and future debug layers (nav mesh,
+  area-of-interest bounds, chunk bounds) reuse the same pass.
+- **`KhaozEngine.Render3D.Debug` namespace** (new):
+  - `CollisionShapeOverlay` - builds one translucent proxy mesh per static shape once (not per frame) and draws
+    them through `DrawOverlayMesh` each frame while `Enabled`. `Palette` (a `CollisionOverlayPalette`) picks
+    per-kind colors, `Build(Scene3D, IReadOnlyList<CollisionStatic>)` uploads the meshes, `Draw(Scene3D)` is a
+    no-op unless `Enabled`, `PresentKinds` lists the distinct `CollisionShapeKind`s in the last-built set (for
+    driving a legend/filter UI), `IDisposable` frees the GPU mesh slots.
+  - `CollisionShapeMesh.Build(PhysicsShape, CollisionOverlayPalette) -> GltfMesh` - converts a `PhysicsShape`
+    into a colored local-space mesh (box/sphere/capsule/cylinder/convex hull/triangle mesh, recursing into
+    `CompoundShape` children), headless, no GPU.
+  - `ConvexHull3D.Triangulate(IReadOnlyList<Vector3> points) -> (Vector3[] Vertices, int[] Indices)` -
+    dependency-free 3D convex-hull triangulation, used to render `ConvexHullShape` proxies.
+  - `CollisionOverlayPalette` - per-kind color/name lookup: `For(kind)`, the `this[kind]` indexer (game can
+    override), `NameFor(kind)`, static `KindOf(PhysicsShape) -> CollisionShapeKind`.
+  - `enum CollisionShapeKind { Box, Sphere, Capsule, Cylinder, ConvexHull, TriangleMesh }`.
+  - `readonly record struct CollisionStatic(PhysicsShape Shape, Pose Pose)` - the input list a game hands the
+    overlay.
+- **`OverlayLegend`** (`KhaozEngine.Gui`, new). A domain-agnostic color-swatch + label panel: `SetEntries
+  (IReadOnlyList<LegendEntry>)`, `EntryCount`, `Measure(SpriteFont) -> Rect`, `Draw(SpriteBatch, SpriteFont,
+  Texture2D, Rect)`. No fade or `Visible` state of its own (the caller only calls `Draw` while its own overlay
+  is on). Reusable by any overlay layer, not just collision shapes.
+- **`readonly record struct LegendEntry(Color Swatch, string Label)`** (`KhaozEngine.Gui`, new) - one legend row.
+- Render-only: zero effect on simulation, determinism, or `.coll` bakes. The overlay reads existing
+  `PhysicsShape`/`Pose` data and draws it; nothing it does feeds back into physics or netcode.
+- First layer of an extensible overlay framework. `Scene3D.DrawOverlayMesh` is the reusable translucent-unlit
+  primitive underneath it, so a future nav-mesh or AoI-bounds overlay is a new `Debug` type over the same pass,
+  not a new render path.
+- `TerrainWalkSample` demonstrates the wiring: F2 toggles a hand-placed building-proxy fixture through
+  `CollisionShapeOverlay` + `OverlayLegend`.
+
 ## 9.0.1
 
 **Zero-warning patch: the whole build, restore, and pack pipeline now emits no warnings, and the

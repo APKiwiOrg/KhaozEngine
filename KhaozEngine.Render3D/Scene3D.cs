@@ -272,9 +272,23 @@ namespace KhaozEngine.Render3D
         /// is owned by the scene and freed in <see cref="Dispose"/>.</summary>
         public TextureHandle LoadTexture(byte[] rgba, int width, int height)
         {
-            var tex = _gd.Factory.CreateTexture(GpuTextureDescription.Texture2D(
-                (uint)width, (uint)height, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
-            _gd.UpdateTexture(tex, rgba, 0, 0, (uint)width, (uint)height);
+            uint w = (uint)width, h = (uint)height, mips = SplatMaterialConfig.MipLevelCount(width, height);
+            // A full mip chain is what stops distant model/prop surfaces from aliasing into "pixely" sparkle when the
+            // camera moves (level 0 alone point-minifies at range). Generate it exactly like the splat path; the model
+            // pass samples through the trilinear LinearSampler, which now has real mips to blend between. Skip the
+            // generate for a 1-level texture (e.g. a 1x1 default) so those stay byte-identical.
+            GpuTextureUsage usage = GpuTextureUsage.Sampled | (mips > 1 ? GpuTextureUsage.GenerateMipmaps : 0);
+            var tex = _gd.Factory.CreateTexture(new GpuTextureDescription(w, h, GpuPixelFormat.R8G8B8A8UNorm, usage, mips));
+            _gd.UpdateTexture(tex, rgba, 0, 0, w, h);
+            if (mips > 1)
+            {
+                using var cl = _gd.Factory.CreateCommandList();
+                cl.Begin();
+                cl.GenerateMipmaps(tex);
+                cl.End();
+                _gd.Submit(cl);
+                _gd.WaitForIdle();
+            }
             _textures.Add(tex);
             return new TextureHandle(_textures.Count - 1);
         }
@@ -394,6 +408,10 @@ namespace KhaozEngine.Render3D
         {
             get { int n = 0; foreach (var t in _textures) if (t != null) n++; return n; }
         }
+
+        /// <summary>Mip-level count of the GPU texture backing <paramref name="h"/> (0 if the slot is empty). For tests
+        /// (guards the mip-chain invariant that keeps distant model/prop surfaces from aliasing).</summary>
+        internal uint MipLevelsOf(TextureHandle h) => h.IsValid ? _textures[h.ListIndex]?.MipLevels ?? 0u : 0u;
 
         /// <summary>Number of mesh slots still holding a live GPU mesh (loaded and not yet unloaded). For tests
         /// (e.g. a streaming sink's teardown must return this to its pre-load baseline - no leaked chunk meshes).</summary>

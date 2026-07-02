@@ -451,7 +451,9 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
 ```
 
 - `Scene3D`: `LoadMesh`/`LoadTexture`/`UnloadMesh`/`UnloadTexture`, `Begin()`, `Draw(handle, transform[, tint[, material]])`,
-  billboards, and a debug-draw overlay (`DebugLine/Ray/Box/Grid/Axes/Circle`). `Post` is the
+  billboards, and a debug-draw overlay (`DebugLine/Ray/Box/Grid/Axes/Circle`). `LoadTexture` builds and generates a
+  full mip chain for each texture (from 9.2.0), so model/prop surfaces stay smooth at distance instead of aliasing
+  into "pixely" sparkle as the camera moves. `Post` is the
   `PixelPostProcess` (pixelation / quantize / dither / cel bands / palette for the chunky retro look; the smooth
   look is the default).
 - Rigid glTF honours node world transforms: `GltfLoader.Load` / `LoadWithMaterial` walk the scene

@@ -70,15 +70,22 @@ namespace KhaozEngine.Gpu
         /// <summary>Max anisotropy when <see cref="Filter"/> is <see cref="GpuSamplerFilter.Anisotropic"/>
         /// (ignored otherwise). 0 keeps the historical behaviour.</summary>
         public uint MaximumAnisotropy { get; }
+        /// <summary>Mip-level bias added to the computed LOD (whole mip levels; maps to Veldrid <c>LodBias</c>).
+        /// A positive value biases sampling toward blurrier mips, which tames grazing-angle / distance shimmer on
+        /// high-frequency tiling textures (e.g. noisy terrain albedo). 0 (default) keeps the historical behaviour.
+        /// Honoured on D3D11 / Vulkan; Metal's sampler has no LOD bias, so it is a no-op there.</summary>
+        public int MipLodBias { get; }
 
         public GpuSamplerDescription(GpuSamplerFilter filter,
             GpuSamplerAddress addressU = GpuSamplerAddress.Clamp,
             GpuSamplerAddress addressV = GpuSamplerAddress.Clamp,
             GpuSamplerAddress addressW = GpuSamplerAddress.Clamp,
-            uint maximumAnisotropy = 0)
+            uint maximumAnisotropy = 0,
+            int mipLodBias = 0)
         {
             Filter = filter; AddressModeU = addressU; AddressModeV = addressV; AddressModeW = addressW;
             MaximumAnisotropy = maximumAnisotropy;
+            MipLodBias = mipLodBias;
         }
 
         /// <summary>Point (nearest) sampler clamped on all axes.</summary>

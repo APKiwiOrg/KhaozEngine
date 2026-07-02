@@ -182,9 +182,12 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuResourceLayoutElement("Sampler", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
 
             // Tileable detail textures REPEAT across the world, so wrap addressing; anisotropic for grazing ground
-            // (CreateSampler falls back to trilinear when the backend lacks anisotropy).
+            // (CreateSampler falls back to trilinear when the backend lacks anisotropy). 16x anisotropy + a +1 mip
+            // LOD bias tame the shimmer/"fuzz" a high-frequency noisy albedo (e.g. grass) throws off at distance and
+            // grazing angles: aniso covers the directional grazing case, the bias nudges distant ground to a blurrier
+            // mip so the noise stops aliasing frame-to-frame. (Bias is a D3D11/Vulkan feature; Metal ignores it.)
             _terrainSampler = factory.CreateSampler(new GpuSamplerDescription(
-                GpuSamplerFilter.Anisotropic, GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap, maximumAnisotropy: 8));
+                GpuSamplerFilter.Anisotropic, GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap, maximumAnisotropy: 16, mipLodBias: 1));
 
             _splatShaders = factory.CreateShadersFromSpirv(ShaderSources.SplatVert, ShaderSources.SplatFrag);
 

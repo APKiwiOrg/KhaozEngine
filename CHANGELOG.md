@@ -5,6 +5,23 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 9.5.0
+
+Terrain sampler gains anisotropy + a mip LOD bias to tame the distance/grazing "fuzz" a high-frequency tiling albedo (e.g. a noisy grass texture) shimmers into as the camera moves. Additive minor, one new public sampler field.
+
+- **`GpuSamplerDescription.MipLodBias`** (new, `KhaozEngine.Gpu`) - a whole-mip-level bias added to the computed
+  LOD (maps to Veldrid `SamplerDescription.LodBias`). A positive value biases sampling toward blurrier mips, so a
+  high-frequency tiling texture stops aliasing frame-to-frame at distance. Default 0 keeps existing samplers
+  byte-identical. **LOD bias is a D3D11 / Vulkan feature; Metal's sampler has none and Veldrid throws on a
+  non-zero bias, so `CreateSampler` feature-guards it to 0 when unsupported** (mirrors the existing anisotropy
+  fallback) - the sampler still builds on Metal, it just misses the extra distance blur there.
+- **Terrain sampler** (`ModelRenderer`, the splat/terrain pipeline) now uses `maximumAnisotropy: 16` (was 8) and
+  `mipLodBias: 1`. Anisotropy covers the grazing-angle case (a floor viewed near-parallel); the bias nudges
+  distant ground to a blurrier mip so a noisy albedo stops sparkling. This is a rendering-quality change to
+  terrain only - the model/prop pass and its goldens are untouched. Note the underlying texture's own
+  high-frequency content is the root cause of the shimmer; the sampler levers reduce it, they do not remove a
+  too-noisy source texture.
+
 ## 9.4.0
 
 Per-cell world-state persistence: a `ShardHost` cell's authoritative non-player entities (mobs, resource nodes, dropped items) now survive a server restart, keyed per cell in an `IWorldStore`. Reuses the existing Replication snapshot codec, so any registered component persists. Additive minor, new public API.

@@ -146,9 +146,13 @@ namespace KhaozEngine.Gpu.Internal
                 filter = GpuSamplerFilter.MinLinearMagLinearMipLinear;
                 maxAniso = 0;
             }
+            // LOD bias is a D3D11 / Vulkan feature; Metal's sampler has none and Veldrid THROWS rather than ignoring
+            // a non-zero bias. Drop it to 0 when unsupported so the sampler still builds (it just misses the extra
+            // distance-blur on that backend), mirroring the anisotropy fallback above.
+            int lodBias = GraphicsDevice.Features.SamplerLodBias ? d.MipLodBias : 0;
             var desc = new SamplerDescription(
                 VeldridMap.ToVeldrid(d.AddressModeU), VeldridMap.ToVeldrid(d.AddressModeV), VeldridMap.ToVeldrid(d.AddressModeW),
-                VeldridMap.ToVeldrid(filter), null, maxAniso, 0, uint.MaxValue, 0, SamplerBorderColor.TransparentBlack);
+                VeldridMap.ToVeldrid(filter), null, maxAniso, 0, uint.MaxValue, lodBias, SamplerBorderColor.TransparentBlack);
             return new VeldridGpuSampler(GraphicsDevice.ResourceFactory.CreateSampler(desc));
         }
 

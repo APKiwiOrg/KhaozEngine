@@ -148,20 +148,21 @@ public enum CollisionShapeKind { Box, Sphere, Capsule, Cylinder, ConvexHull, Tri
 
 ### 6. `OverlayLegend` (Gui)
 
-A domain-agnostic swatch + label panel, modeled on `DiagnosticsOverlay` (measure content,
-draw panel + border, per-row `Swatch` + `DrawString`, optional fade). Reusable by any
-overlay layer.
+A domain-agnostic swatch + label panel, modeled on `DiagnosticsOverlay` layout (measure
+content, draw panel + border, per-row `Swatch` + `DrawString`). No fade: it snaps on/off
+with the toggle. Reusable by any overlay layer.
 
 ```
 public sealed class OverlayLegend
 {
-    public bool Visible { get; set; }
     public void SetEntries(IReadOnlyList<LegendEntry> entries);
-    public bool Update(float dt); // fade
     public void Draw(SpriteBatch batch, SpriteFont font, Texture2D white, Rect viewport);
 }
 public readonly record struct LegendEntry(Color Swatch, string Label);
 ```
+
+Visibility is the caller's concern: the game draws the legend only while the overlay is on,
+so the widget has no `Visible`/fade state of its own.
 
 Gui stays free of `Render3D`/`Physics` deps: the game builds `LegendEntry` items from the
 overlay's `PresentKinds` + `Palette` and hands them to the legend.

@@ -35,7 +35,7 @@ where needed). Each pins its own version (see the Version column).
 
 | Consumer | Project(s) | References | Version |
 |---|---|---|---|
-| **Hardpoint** (3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic); live auto-updater (`Updates` via Foundation, Gui overlay) against a server-less static-blob feed + OIDC CI publish; `Collision.Segment2D` for swept projectile collision. One root `Directory.Build.props` `<KhaozEngineVersion>` drives every ref (heads, the `HardpointUpdater` shim, the dev `SnapshotTool`); top-level `Hardpoint.slnx`, vendored feed (`Hardpoint/vendor/khaozengine`); `GameAppOptions.WindowIcons` (multi-size runtime window icon) | **8.10.0** |
+| **Hardpoint** (3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic); live auto-updater (`Updates` via Foundation, Gui overlay) against a server-less static-blob feed + OIDC CI publish; `Collision.Segment2D` for swept projectile collision. One root `Directory.Build.props` `<KhaozEngineVersion>` drives every ref (heads, the `HardpointUpdater` shim, the dev `SnapshotTool`); top-level `Hardpoint.slnx`, vendored feed (`Hardpoint/vendor/khaozengine`); `GameAppOptions.WindowIcons` (multi-size runtime window icon) | **9.0.1** |
 | **Nullwake** (2D) | `Nullwake.Core` | `KhaozEngine.Game2D` + `Diagnostics`/`Persistence`/`Windowing` + `Updates` (shim, dormant) + `Snapshot` (dev tool); uses `AttentionBeacon`, clipboard paste + `Pointer.WindowFocused` gating in name entry, and `GameAppOptions.WindowIcons` (multi-size runtime window icon). Vendored feed (`Nullwake/vendor/khaozengine`) | **9.0.1** |
 | **SpaceGame** (2D + Render3D) | `SpaceGame.Core` (head) / `SpaceGame.Sim` (lockstep sim) | `Game2D` + `Render3D` + `Netcode.LiteNetLib` + `Primitives` (head); `Ecs`/`Collision`/`Diagnostics`/`Content`/`Serialization`/`App`/`Netcode`/`Determinism` + `Primitives` (sim); `Netcode.Abstractions` (contracts); `Render3D` + `Determinism` for the 2.5D mesh layer; manifest signing via the `ke-updater` tool; `GameAppOptions.WindowIcons` (multi-size runtime window icon). Vendored feed (`SpaceGame/vendor/khaozengine` via repo-root `nuget.config`) | **9.0.1** |
 | **Ruinborne** (3D MMO) | `Ruinborne.Client` / `Ruinborne.Server` | client: `KhaozEngine.Game3D` + `Foundation` + `NetWorld` + `Netcode.LiteNetLib` + `Netcode.Abstractions` + `Simulation` + `Updates`; server: `KhaozEngine.Server` umbrella + `WorldStore.SqlServer` (Azure SQL via `WorldPersistence`). Single `<KhaozEngineVersion>` pin in `Directory.Build.props`, vendored feed (`vendor/khaozengine`, refreshed via `scripts/refresh-engine.sh`); client uses `GameAppOptions.WindowIcons` (multi-size runtime window icon, client only) | **9.0.1** |
@@ -107,8 +107,8 @@ When a consumer raises its `KhaozEngine.*` pin, two things bite if skipped:
 
 _Last verified: 2026-07-02. **Ruinborne** (3D MMO, the active consumer) now pins **9.0.1** (the current engine
 line; adopted the 9.0.0 package-structure major + 9.0.1 zero-warning patch, no behaviour change and no source
-edits needed). **SpaceGame** also pins **9.0.1** (same 9.0.0 package-structure adoption: usings/package-id
-swaps only, no behaviour change). **Hardpoint** and **Nullwake** pin **8.10.0**. Stack per consumer: **Hardpoint** (3D) via
+edits needed). **SpaceGame**, **Hardpoint**, and **Nullwake** also pin **9.0.1** (same 9.0.0 package-structure adoption:
+usings/package-id swaps only, no behaviour change), so all four consumers are on **9.0.1**. Stack per consumer: **Hardpoint** (3D) via
 `Game3D` + `Foundation`, **Nullwake** (2D) via `Game2D` (+ `Diagnostics`/`Persistence`/`Windowing`/`Snapshot`/`Updates`),
 **SpaceGame** (2D + Render3D) via `Game2D` + `Render3D` head + the split-out `SpaceGame.Sim` foundation pins, and
 **Ruinborne** (3D MMO) via a single `<KhaozEngineVersion>` pin across the `Game3D` client and the `Server` +

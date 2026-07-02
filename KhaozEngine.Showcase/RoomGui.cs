@@ -404,7 +404,7 @@ namespace KhaozEngine.Showcase
         }
     }
 
-    /// <summary>Ported from <c>SceneSample</c>'s PlayScene: a full screen with a marker; the button below pushes
+    /// <summary>Ported from <c>SceneSample</c>'s PlayScene: a full screen with a marker. The button below pushes
     /// the transparent pause overlay on top of it (Esc here backs out to the room's root menu, same as any other
     /// sub-screen, per <see cref="RoomGui"/>'s centralized Esc handling).</summary>
     sealed class OverlayHostScreen : Screen

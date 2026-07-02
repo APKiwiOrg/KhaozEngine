@@ -67,6 +67,7 @@
     <ProjectReference Include="../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
     <ProjectReference Include="../KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
     <ProjectReference Include="../KhaozEngine.Sfx.Tool/KhaozEngine.Sfx.Tool.csproj" />
+    <ProjectReference Include="../KhaozEngine.Showcase/KhaozEngine.Showcase.csproj" />
     <ProjectReference Include="../MmoServerSample/MmoServerSample.csproj" />
     <ProjectReference Include="../KhaozEngine.Benchmarks/KhaozEngine.Benchmarks.csproj" />
   </ItemGroup>

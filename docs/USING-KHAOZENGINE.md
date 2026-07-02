@@ -1217,7 +1217,8 @@ sink). Pass `ownsMaterial: true` to the ctor to hand it to the sink, whose `Disp
 ## Textured terrain (PBR splat)
 
 Terrain chunks can render five tileable PBR layers (grass/dirt/rock/sand/snow) blended per-fragment by the splat
-weights baked into each vertex, with world-space triplanar tiling, normal maps, mips, and anisotropic filtering.
+weights baked into each vertex, with world-space triplanar tiling, normal maps, mips, and 16x anisotropic
+filtering plus a `+1` mip LOD bias (D3D11/Vulkan) that tames distance shimmer from a high-frequency tiling albedo.
 Without a material supplied the chunk falls back to the height/slope vertex-colour ramp (byte-identical).
 
 **1. Load the material.** `TerrainMaterialPresets.Procedural()` returns a ready-made `TerrainLayeredMaterial`

@@ -109,9 +109,12 @@ the `SplatFrag` shader samples two `texture2DArray`s (albedo + normal, 5 layers)
 using the splat weights baked into `ModelVertex.Color` (4 packed channels; the 5th is `1 - sum`). World-space
 triplanar projection (`SplatProjection`) tiles each layer without seams across chunk borders. The two arrays
 are created once per `TerrainLayeredMaterial` and shared by every chunk that uses it; a per-layer-scalar-roughness
-params UBO provides roughness per layer. Anisotropic filtering is applied where the device supports it
-(`GpuSamplerFilter.Anisotropic` + `MaximumAnisotropy`; falls back to trilinear). Mipmaps are generated at
-load time via `IGpuCommandList.GenerateMipmaps`. A mesh with no splat material (`SplatMaterial == -1`) skips
+params UBO provides roughness per layer. Anisotropic filtering (16x) plus a `+1` mip
+LOD bias (`GpuSamplerDescription.MipLodBias`) are applied where the device supports them - anisotropy covers
+grazing angles, the bias biases distant ground to a blurrier mip so a high-frequency tiling albedo stops
+shimmering as the camera moves. Anisotropy falls back to trilinear, and the LOD bias to 0, where the backend
+lacks them (Metal has no sampler LOD bias). Mipmaps are generated at load time via
+`IGpuCommandList.GenerateMipmaps`. A mesh with no splat material (`SplatMaterial == -1`) skips
 the splat pass entirely and renders through the standard model pipeline, unchanged.
 
 `SplatVert`/`SplatFrag` keep their pixel-input interpolants contiguous from location 0 on purpose: a gap (a

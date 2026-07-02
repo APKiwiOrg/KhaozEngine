@@ -23,6 +23,35 @@ What FIT automates (the parts that were previously eyeballed and drifted):
     ridges). Near-flat clusters (< FLAT_DEG) become flat slab boxes instead of wedges.
 Entrances/steps/furniture stay hand-authored: they are capsule-rule geometry, not mesh-fit geometry.
 
+  MERGE - combine a hand-authored capsule spec with a fitted draft (the repeatable per-building step):
+          blender -b --python fit_proxy.py -- merge <building.glb> <heightMeters> <placementScale> \
+              <hand_spec.json> <draft.json> <out_spec.json>
+
+Hard-won rules this tool encodes (learned live on the Ruinborne town set - keep them true):
+  - ROOFS ARE SLABS whose underside follows the fitted plane; a wedge prism's flat bottom hangs below
+    porch/awning roofs and pins capsules (the anvil bug class).
+  - Slab slope-axis extents come from where the FITTED PLANE meets the cluster's eave/ridge heights,
+    never the raw cluster bbox (bbox overshoot crossed opposing slabs into an X over the ridge).
+  - Opposing slabs that OVERLAP on the slope axis are trimmed at the overlap midpoint so they meet
+    (own-cluster ridge clamps still poke past each other where the two fits differ). Overlap-midpoint
+    trimming is BOUNDED; plane-intersection pairing is not (tile-step riser faces land in the opposite
+    facing bin and poison the intersection - it silently deleted a hip roof once).
+  - DORMERS get their own small sloped slabs (an absolute ~0.35 m2 footprint floor drops only trim);
+    never suppress them by relative size, and never let same-height flat caps MERGE across a roof -
+    same-plane merging requires spatial adjacency, or distant dormer tops union into one wide phantom
+    band ("boxy roof").
+  - Same-axis same-dir slabs contained inside a sibling are overdraw (tile strata) - dropped.
+  - Body/story boxes stop at the ROOF FLOOR (merge mode clamps them; chimney* and the hand spec's
+    "_keepTall" name list exempt - anti-pin fills like a forge extended into its hood MUST stay tall):
+    a box past the eaves reads as a boxy shell around the gable, which is unreachable wall anyway.
+  - The roof floor auto-detects from footprint taper (a real taper never re-widens above itself);
+    intersecting-roof buildings take an explicit override (one number, read off the analyze render).
+  - AUDIT every merged spec: every reachable standable top needs capsule headroom below every piece
+    above it, or the capsule pins (found live: forge top, well rim, blacksmith entrance eave, a
+    clamped body top under a porch roof, a "flat roof" cluster that was really an interior shelf).
+    Respond to findings with the spec knobs: "_keepTall" (fills that must stay tall), and
+    "_skipDraftPieces" (fitted pieces to reject, e.g. that interior shelf) - then re-merge + re-audit.
+
 Capsule constants mirror the engine defaults (MoveTuning): capsule height 1.8, radius 0.4, StepHeight 0.4,
 jump apex ~1.92. Keep in sync with KhaozEngine.Locomotion if those change.
 """
@@ -39,8 +68,8 @@ MIN_DROP_DIM = 0.18            # world: pieces thinner than this in 2 dims would
 
 argv = sys.argv[sys.argv.index("--") + 1:]
 mode, src, height_m, place_scale, spec_path = argv[0], argv[1], float(argv[2]), float(argv[3]), argv[4]
-roof_floor_override = float(argv[5]) if len(argv) > 5 else None   # fit mode: explicit wall-top z (raw) for
-# buildings whose intersecting roofs defeat the taper detector (see README)
+roof_floor_override = float(argv[5]) if mode == "fit" and len(argv) > 5 else None   # fit mode: explicit
+# wall-top z (raw) for buildings whose intersecting roofs defeat the taper detector (see README)
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.import_scene.gltf(filepath=src)
@@ -246,6 +275,13 @@ def fit_roofs(roof_floor):
             if abs(m.get("angleDeg", 0) - p_.get("angleDeg", 0)) > 3.0: continue
             if abs(m["min"][2] - p_["min"][2]) > w2r(0.12) or abs(m["max"][2] - p_["max"][2]) > w2r(0.12):
                 continue
+            # FLAT pieces only merge when their footprints touch (gap < 0.3 m world): distant dormer
+            # caps at the same height must NOT union into one wide phantom band across the roof.
+            # Sloped slabs merge freely (tile strata / gable-edge strips of one plane rejoin).
+            if p_["kind"] == "box":
+                gap_x = max(m["min"][0], p_["min"][0]) - min(m["max"][0], p_["max"][0])
+                gap_y = max(m["min"][1], p_["min"][1]) - min(m["max"][1], p_["max"][1])
+                if max(gap_x, gap_y) > w2r(0.3): continue
             hit = m; break
         if hit is None:
             merged.append(dict(p_))
@@ -255,16 +291,34 @@ def fit_roofs(roof_floor):
                 hit["max"][i] = max(hit["max"][i], p_["max"][i])
     # drop dormer/trim slivers: a roof piece whose 2D footprint is tiny next to the main roof reads as
     # decoration (and crossed slivers over the roof look broken in the overlay + snag sliding capsules)
+    # slab keep rule: significant next to the main roof (15% of the biggest) OR big enough in absolute
+    # world terms to be a dormer roof (~0.35 m2 footprint) - dormers stay as their own little slabs,
+    # true trim slivers drop
     slabs = [m for m in merged if m["kind"] == "slab"]
     if slabs:
-        areas = {id(m): (m["max"][0] - m["min"][0]) * (m["max"][1] - m["min"][1]) for m in slabs}
-        biggest = max(areas.values())
-        merged = [m for m in merged if m["kind"] != "slab" or areas[id(m)] > 0.15 * biggest]
+        def area(m): return (m["max"][0] - m["min"][0]) * (m["max"][1] - m["min"][1])
+        biggest = max(area(m) for m in slabs)
+        dormer_floor = w2r(0.6) * w2r(0.6)
+        merged = [m for m in merged if m["kind"] != "slab"
+                  or area(m) > 0.15 * biggest or area(m) > dormer_floor]
     # RIDGE TRIMMING: where two opposing slabs on the same axis OVERLAP on the slope axis (each was
     # clamped to its own cluster's ridge, so where the fits differ they poke past each other - X tips at
     # peaks, a full X where a dormer pair crosses), cut both at the overlap midpoint so they meet there.
     # Bounded by construction: only shrinks within a real overlap, each slab keeps its own plane, and
     # non-overlapping pairs (hip skirts across a flat cap) are untouched.
+    # containment dedupe: a slab whose footprint + z-range sit inside a same-axis same-dir sibling is
+    # pure overdraw (tile strata that escaped the 2dp dedupe) - drop the smaller one
+    slabs = [m for m in merged if m["kind"] == "slab"]
+    contained = set()
+    for i in range(len(slabs)):
+        for j in range(len(slabs)):
+            if i == j or id(slabs[i]) in contained: continue
+            a, b_ = slabs[i], slabs[j]
+            if (a["axis"], a["dir"]) != (b_["axis"], b_["dir"]): continue
+            if all(a["min"][k] >= b_["min"][k] - w2r(0.1) and a["max"][k] <= b_["max"][k] + w2r(0.1)
+                   for k in range(3)):
+                contained.add(id(a))
+    merged = [m for m in merged if id(m) not in contained]
     slabs = [m for m in merged if m["kind"] == "slab"]
     for i in range(len(slabs)):
         for j in range(i + 1, len(slabs)):
@@ -277,16 +331,31 @@ def fit_roofs(roof_floor):
             o0 = max(si["min"][ax], sj["min"][ax]); o1 = min(si["max"][ax], sj["max"][ax])
             if o1 <= o0: continue
             u_m = (o0 + o1) / 2
-            for s in (si, sj):
+            # size-aware: a small dormer slab must never cut down a MAIN slope - only slabs of
+            # comparable size (>= half the other's footprint) trim each other; the smaller one
+            # still gets trimmed against the bigger.
+            def _area(s): return (s["max"][0] - s["min"][0]) * (s["max"][1] - s["min"][1])
+            a_i, a_j = _area(si), _area(sj)
+            trimmable = [s for s, own, other in ((si, a_i, a_j), (sj, a_j, a_i)) if other >= 0.5 * own]
+            for s in trimmable:
                 u0, u1 = s["min"][ax], s["max"][ax]
                 if u1 - u0 < 1e-6: continue
-                # z of this slab's own plane at u_m (dir>0: z rises min->max with u; dir<0: falls)
-                f = (u_m - u0) / (u1 - u0)
-                z_at = (s["min"][2] + (s["max"][2] - s["min"][2]) * f) if s["dir"] > 0                        else (s["max"][2] - (s["max"][2] - s["min"][2]) * f)
-                if s["dir"] > 0 and u1 > u_m:        # ridge end is the high-u side
-                    s["max"][ax] = round(u_m, 3); s["max"][2] = round(z_at, 3)
-                elif s["dir"] < 0 and u0 < u_m:      # ridge end is the low-u side
-                    s["min"][ax] = round(u_m, 3); s["max"][2] = round(z_at, 3)
+                zmin, zmax, sdir = s["min"][2], s["max"][2], s["dir"]
+                def z_of(u):
+                    f = (u - u0) / (u1 - u0)
+                    return zmin + (zmax - zmin) * f if sdir > 0 else zmax - (zmax - zmin) * f
+                # cap the trim: lose at most ~0.25 m world of ridge height (dormer-cheek faces inflate
+                # main clusters' bboxes, so two mains can overlap deeply and would trim each other far
+                # below the visible crest; a small tip overlap at the peak beats a bare crest)
+                u_cut = u_m
+                if zmax - z_of(u_m) > w2r(0.25):
+                    ff = (zmax - w2r(0.25) - zmin) / max(1e-9, zmax - zmin)
+                    u_cut = u0 + (u1 - u0) * ff if sdir > 0 else u1 - (u1 - u0) * ff
+                z_at = z_of(u_cut)
+                if sdir > 0 and u1 > u_cut:          # ridge end is the high-u side
+                    s["max"][ax] = round(u_cut, 3); s["max"][2] = round(z_at, 3)
+                elif sdir < 0 and u0 < u_cut:        # ridge end is the low-u side
+                    s["min"][ax] = round(u_cut, 3); s["max"][2] = round(z_at, 3)
     merged = [m for m in merged if m["kind"] != "slab"
               or (m["max"][0] - m["min"][0] > 1e-3 and m["max"][1] - m["min"][1] > 1e-3)]
     return merged
@@ -397,8 +466,40 @@ if mode == "fit":
     for st in body:
         print(f"BODY story: x {st['x0']:.3f}..{st['x1']:.3f}  y {st['y0']:.3f}..{st['y1']:.3f}  "
               f"z {st['z0']:.3f}..{st['z1']:.3f}")
+    draft["_roofFloor"] = round(roof_floor, 4)
     json.dump(draft, open(spec_path, "w"), indent=2)
     print("WROTE", spec_path)
+elif mode == "merge":
+    # fit_proxy.py merge <building.glb> <heightMeters> <placementScale> <hand_spec.json> <draft.json> <out.json>
+    # Combine the HAND-authored capsule pieces (entrance steps, rails, furniture) with the FITTED roofs:
+    #   - hand roof* pieces are replaced by the draft's slabs + caps
+    #   - every non-roof box except chimney* is CLAMPED to the draft's roof floor (a body/story box that
+    #     pokes past the eaves reads as a boxy shell around the gables in the overlay; the gable wall above
+    #     the eaves is unreachable, and the roof slabs close the top)
+    #   - degenerate pieces are dropped
+    hand_path, draft_path, out_path = argv[4], argv[5], argv[6]
+    hand = json.load(open(hand_path)); draft_spec = json.load(open(draft_path))
+    rf = draft_spec.get("_roofFloor")
+    def degenerate(q):
+        return any(q["max"][i] - q["min"][i] < 0.015 for i in range(2)) or q["max"][2] - q["min"][2] < 0.005
+    hand["wedges"] = [w for w in hand.get("wedges", []) if not w["name"].startswith("roof")]
+    hand["boxes"] = [b for b in hand.get("boxes", []) if not b["name"].startswith("roof")]
+    skip = set(hand.get("_skipDraftPieces", []))  # fitted pieces the audit rejected for this building
+    # (e.g. a "flat roof" cluster that is really an interior shelf under the true slopes - a pin trap)
+    hand["slabs"] = [s for s in draft_spec.get("slabs", []) if not degenerate(s) and s["name"] not in skip]
+    hand["boxes"].extend(b for b in draft_spec.get("boxes", [])
+                         if b["name"].startswith("roof") and not degenerate(b) and b["name"] not in skip)
+    keep_tall = set(hand.get("_keepTall", []))   # deliberate fills that MUST poke into the roof
+    # (anti-pin/anti-pocket pieces like a forge extended into its hood); chimney* always exempt
+    if rf is not None:
+        for b in hand["boxes"]:
+            if b["name"].startswith(("roof", "chimney")) or b["name"] in keep_tall: continue
+            if b["max"][2] > rf + 0.02:
+                print(f"CLAMP {b['name']}: top {b['max'][2]:.3f} -> roof floor {rf:.3f}")
+                b["max"][2] = round(rf, 3)
+    hand["boxes"] = [b for b in hand["boxes"] if not degenerate(b)]
+    json.dump(hand, open(out_path, "w"), indent=2)
+    print("WROTE", out_path)
 elif mode == "audit":
     spec = json.load(open(spec_path))
     warns = audit(spec)

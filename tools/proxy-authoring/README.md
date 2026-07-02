@@ -20,8 +20,11 @@ deterministic and reproducible (a committed box spec re-bakes the same proxy). R
    `blender -b --python fit_proxy.py -- fit <building>.glb <heightMeters> <placementScale> <draft.json> [roofFloorZ]`
    emits plane-fitted roof SLABS (+ flat caps) and z-sliced wall-story boxes. The roof floor auto-detects
    from the footprint taper; buildings with intersecting roofs or porch furniture that defeat it take the
-   explicit `roofFloorZ` override (raw units, read off the analyze render). Merge the draft's roof pieces
-   with the hand-authored capsule pieces (steps, rails, furniture - the capsule rules below), then
+   explicit `roofFloorZ` override (raw units, read off the analyze render). Merge the draft into the
+   hand-authored capsule spec (steps, rails, furniture - the capsule rules below) with MERGE mode:
+   `blender -b --python fit_proxy.py -- merge <building>.glb <heightMeters> <placementScale> <hand.json> <draft.json> <out.json>`
+   (adopts the fitted roofs, clamps body/story boxes to the roof floor - `_keepTall` names exempt
+   deliberate anti-pin fills, `_skipDraftPieces` rejects audited-bad fitted pieces), then
    **AUDIT the merged spec for pin traps** (a standable top under a ceiling with less than capsule headroom -
    the anvil-under-porch-roof class):
    `blender -b --python fit_proxy.py -- audit <building>.glb <heightMeters> <placementScale> <spec.json>`

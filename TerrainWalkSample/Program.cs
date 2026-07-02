@@ -79,7 +79,8 @@ sealed class TerrainWalkApp : GameApp3D
 
     // Collision-shape debug overlay (F2): a hand-placed building-proxy fixture drawn as translucent proxy
     // meshes over the real collision, plus a legend panel while it is on. 2D draw needs its own font/white
-    // texture - the sample has no other 2D HUD, so this is the minimal setup (see GuiSample for the pattern).
+    // texture - the sample has no other 2D HUD, so this is the minimal setup (see KhaozEngine.Showcase/RoomGui.cs
+    // for the pattern).
     List<CollisionStatic> _overlayStatics = null!;
     CollisionShapeOverlay _collisionOverlay = null!;
     OverlayLegend _legend = null!;

@@ -40,9 +40,16 @@ namespace KhaozEngine.Showcase
         public override void OnUpdate(float dt)
         {
             var m = Manager!;
-            // Esc pops the room's own topmost screen first (mirrors both samples' Esc-pops-topmost semantics).
-            // Only once the stack is back down to just the root menu screen does Esc leave the room.
-            if (m.Input.WasPressed(Key.Escape) && _stack.Screens.Count <= 1) { m.Pop(); return; }
+            // Esc backs out exactly one level. With a modal sub-screen open (Settings/Widgets/Immediate/Overlay),
+            // Esc exits the topmost screen (which plays its off-transition) and returns to the root menu. Only
+            // once the stack is back down to just the root menu screen does Esc leave the room via Manager.Pop().
+            // Centralized here so no sub-screen needs its own Esc handler (avoids a double-pop on the same frame).
+            if (m.Input.WasPressed(Key.Escape))
+            {
+                if (_stack.Screens.Count <= 1) { m.Pop(); return; }
+                _stack.Screens[^1].ExitScreen();
+                return;
+            }
             _stack.Update(dt, m.Input, m.Viewport);
         }
 
@@ -397,8 +404,9 @@ namespace KhaozEngine.Showcase
         }
     }
 
-    /// <summary>Ported from <c>SceneSample</c>'s PlayScene: a full screen with a marker, Esc pushes the
-    /// transparent pause overlay on top of it.</summary>
+    /// <summary>Ported from <c>SceneSample</c>'s PlayScene: a full screen with a marker; the button below pushes
+    /// the transparent pause overlay on top of it (Esc here backs out to the room's root menu, same as any other
+    /// sub-screen, per <see cref="RoomGui"/>'s centralized Esc handling).</summary>
     sealed class OverlayHostScreen : Screen
     {
         readonly GuiAssets _a;
@@ -417,7 +425,7 @@ namespace KhaozEngine.Showcase
         {
             Rect db = _vp.DesignBounds;
             _title = new Label(Layout.Resolve(db, Anchor.Top, db.Width, 40, marginY: 28), "Overlay demo", _a.Big) { Align = TextAlign.Center };
-            _hint = new Label(Layout.Resolve(db, Anchor.Center, db.Width, 24), "Esc, or the button below, pushes a transparent overlay over this screen.", _a.Small)
+            _hint = new Label(Layout.Resolve(db, Anchor.Center, db.Width, 24), "Push overlay puts a transparent, dismissable pause screen on top of this one.", _a.Small)
             { Align = TextAlign.Center, Color = new Vector4(0.7f, 0.9f, 0.75f, 1f) };
             _pause = new Button(Layout.Resolve(db, Anchor.Center, 200, 52, marginY: -80), "Push overlay", _a.Small, () => Manager.Add(new OverlayScreen(_a, _vp)));
             _back = new Button(Layout.Resolve(db, Anchor.Bottom, 180, 50, marginY: 24), "Back", _a.Small, ExitScreen);
@@ -471,11 +479,9 @@ namespace KhaozEngine.Showcase
 
         public override bool Update(float dt, bool receivesInput)
         {
-            if (receivesInput)
-            {
-                if (Manager.Input.WasPressed(Key.Escape)) { ExitScreen(); return true; }
-                _resume.Update(Manager.Pointer);
-            }
+            // Esc is handled centrally by RoomGui.OnUpdate (exits whichever screen is topmost), so this screen
+            // only needs to drive its own Resume button.
+            if (receivesInput) _resume.Update(Manager.Pointer);
             return true;
         }
 

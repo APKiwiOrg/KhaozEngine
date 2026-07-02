@@ -5,6 +5,15 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 9.4.0
+
+Per-cell world-state persistence: a `ShardHost` cell's authoritative non-player entities (mobs, resource nodes, dropped items) now survive a server restart, keyed per cell in an `IWorldStore`. Reuses the existing Replication snapshot codec, so any registered component persists. Additive minor, new public API.
+
+- **`KhaozEngine.Sharding`** gains cell snapshot/restore primitives (no storage dependency): `CellSim.SnapshotOwned(IReadOnlySet<int> excludedNetIds)` snapshots a cell's owned (non-ghost, non-migrating) entities whose NetId is not excluded, `CellSim.RestoreOwned(byte[])` adopts a snapshot back as owned entities keeping their NetIds, and `CellSim.MaxOwnedNetId()` reports the highest owned id. `ShardHost.CellCreated` (an event raised once per cell on first instantiation, from any creation path) is the load hook, and `ShardHost.EnsureCell(CellCoord)` instantiates a cell by coordinate.
+- **`KhaozEngine.NetWorld`** gains the persistence wiring: `CellPersistence` + `CellPersistenceConfig` drive an `IWorldStore` through the new `ICellPersistenceHost` seam, with lazy load-on-cell-create applied on the server thread, a periodic dirty save of changed cells, `PreloadAsync`/`LoadMetaAsync`/`FlushAsync`, and a `WorldMetaRecord` NetId high-water mark so a restored entity can never collide with a freshly spawned player. A versioned blob header (`CellPersistenceConfig.SchemaVersion`) skips a save it cannot safely decode rather than mis-reading it. `ShardedWorldServer` implements `ICellPersistenceHost`.
+- Players stay out of scope (already persisted player-keyed by `WorldPersistence`); ghosts and migrating entities are excluded. Cell records are keyed `cell:{x}:{y}`, the NetId high-water under `world:meta`, both distinct from the existing `player:` keys.
+- `MmoServerSample` gains a `ResourceNode` component and `CellPersistence` wiring, with a `--persistence-demo` run that spawns a node, restarts onto the same store, and restores it.
+
 ## 9.3.0
 
 Textured props: props can now carry albedo/normal/roughness surface detail. `PropLoader.LoadPropWithMaterial` reads a prop glTF's baseColor/normal/roughness textures (opt-in via the `textured` manifest flag), degrading to the flat render when a prop has none. `MeshOps.WithTangents` gives a UV-mapped primitive mesh a tangent basis so normal maps take effect, `MeshOps.ScaleUv` tiles a mesh's UVs so a material reads crisp instead of one stretched copy, and `PropMaterialPresets.Procedural` generates an asset-free mossy-stone albedo+normal for samples and tests (mirrors `TerrainMaterialPresets.Procedural`). Additive and backward compatible, no new package. TerrainWalkSample shows a procedural textured stone block.

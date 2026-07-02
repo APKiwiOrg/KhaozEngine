@@ -4,7 +4,7 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **9.3.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **9.4.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan under `docs/superpowers/` when it is scheduled.
 
@@ -62,8 +62,6 @@ good, not just read as shapes.
 ## Overworld / world content
 
 - Procedural dungeon generator.
-- Per-cell world-state snapshot persistence: persist cell/world state, not just player records (pairs with
-  sharding).
 - Animated-creature adoption (game-side, not engine work): the engine animation stack shipped (glTF
   animation-clip playback, `AnimatedCharacter` + locomotion blend, `ReplicatedCharacterAnimators`). SpaceGame's
   2.5D rigged-creature direction can adopt it directly. Only reopen an engine item here if a concrete new gain

@@ -16,6 +16,16 @@ deterministic and reproducible (a committed box spec re-bakes the same proxy). R
 2. **See the interior** (roof occludes top-down) by re-rendering with roof/window materials removed:
    `blender -b --python render_roofless.py -- <building>.glb <outdir> RoofTiles_Red,Windows`
    (`loose_parts.py` dumps per-connected-component bounds when you need precise part extents.)
+2b. **FIT the measurable geometry** (do this FIRST for bodies and roofs - eyeballed roofs drift badly):
+   `blender -b --python fit_proxy.py -- fit <building>.glb <heightMeters> <placementScale> <draft.json> [roofFloorZ]`
+   emits plane-fitted roof SLABS (+ flat caps) and z-sliced wall-story boxes. The roof floor auto-detects
+   from the footprint taper; buildings with intersecting roofs or porch furniture that defeat it take the
+   explicit `roofFloorZ` override (raw units, read off the analyze render). Merge the draft's roof pieces
+   with the hand-authored capsule pieces (steps, rails, furniture - the capsule rules below), then
+   **AUDIT the merged spec for pin traps** (a standable top under a ceiling with less than capsule headroom -
+   the anvil-under-porch-roof class):
+   `blender -b --python fit_proxy.py -- audit <building>.glb <heightMeters> <placementScale> <spec.json>`
+   Fix every warning (fill the gap solid, trim the roof edge, or raise the ceiling) and re-audit to CLEAN.
 3. **Author** a box/wedge/cylinder spec JSON in the building's Blender frame (Z up), enveloping the substantial
    masses and dropping decoration. See `examples/blacksmith_spec.json`. Schema:
    ```json
@@ -66,6 +76,14 @@ as fine in an overlay render but fails live (measured on the Ruinborne town set)
 - **Gaps**: no slot between solids narrower than the capsule diameter (0.8) - extend blocks flush to walls and
   to each other (a pinch slot wedges even with every solid convex).
 - **Round masses**: use a `cylinders` n-gon prism, not a box (a box is ~40% fat at the diagonals).
+- **Roofs are `slabs`, never wedges**: a wedge is a right prism whose flat BOTTOM spans its whole footprint
+  at the low-eave height - over open space (porch, awning, freestanding roof) that invisible underside
+  hangs metres below the visible plane and pins capsules against whatever they stand on beneath it. A slab's
+  underside follows the fitted plane. Wedges remain the primitive for solid ramps only.
+- **Audit every final spec** (`fit_proxy.py audit`): any top a capsule can reach (walk, step, or jump
+  onto) must have capsule-height clearance below every piece above it, or the capsule pins and wedges.
+  Fixes that keep solids convex: extend the standable piece UP into the ceiling piece (forge into its hood,
+  well ring into its roof), trim the ceiling piece's low edge clear of walk envelopes, or raise it.
 
 ## The metric
 

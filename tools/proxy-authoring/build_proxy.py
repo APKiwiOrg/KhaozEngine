@@ -2,11 +2,16 @@
 Usage: blender -b --python build_proxy.py -- <source.glb> <spec.json> <out_collision.glb> <overlay_dir>
 Spec JSON: { "boxes":[{"name","min":[x,y,z],"max":[x,y,z]}...],
              "wedges":[{"name","min":[x,y,z],"max":[x,y,z],"axis":"x|y","dir":1|-1}...],
-             "cylinders":[{"name","center":[x,y],"radius":r,"z":[z0,z1],"segments":8}...] }
+             "cylinders":[{"name","center":[x,y],"radius":r,"z":[z0,z1],"segments":8}...],
+             "slabs":[{"name","min":[x,y,z],"max":[x,y,z],"axis":"x|y","dir":1|-1,"thickness":t}...] }
 A wedge is a right-triangular prism filling min..max, the sloped face rising along `axis` in `dir`
 (a ramp for stairs). A cylinder is an n-gon prism (segments defaults to 8) for round masses like a
 well ring - the bake convex-hulls each object, so the prism collides as a tight n-gon hull instead
-of a fat box. Coordinates are Blender (Z up), same frame as the imported source.
+of a fat box. A slab is a thin plate whose TOP is the wedge-style sloped plane (min z at the low
+`axis` end rising to max z at the high end) and whose underside is that plane shifted down by
+`thickness` - the primitive for ROOFS: unlike a wedge prism, nothing hangs below the visible plane,
+so a roof over open space (a porch/awning) cannot pin a capsule standing beneath it.
+Coordinates are Blender (Z up), same frame as the imported source.
 """
 import bpy, sys, os, json, math
 from mathutils import Vector
@@ -71,6 +76,21 @@ def add_cylinder(name, center, radius, z0, z1, segments):
     o.color = (0.9,0.5,0.1,1.0)
     return o
 
+def add_slab(name, mn, mx, axis, dr, t):
+    me = bpy.data.meshes.new(name); bm = bmesh.new()
+    x0, y0, z0 = mn; x1, y1, z1 = mx
+    zA, zB = (z0, z1) if dr > 0 else (z1, z0)   # plane z at the low-axis end (zA) and high-axis end (zB)
+    if axis == 'x':
+        tops = [(x0, y0, zA), (x0, y1, zA), (x1, y0, zB), (x1, y1, zB)]
+    else:
+        tops = [(x0, y0, zA), (x1, y0, zA), (x0, y1, zB), (x1, y1, zB)]
+    verts = [bm.verts.new(v) for v in tops] + [bm.verts.new((v[0], v[1], v[2] - t)) for v in tops]
+    bmesh.ops.convex_hull(bm, input=list(bm.verts))
+    bm.to_mesh(me); bm.free()
+    o = bpy.data.objects.new(name, me); bpy.context.scene.collection.objects.link(o)
+    o.color = (0.7, 0.2, 0.6, 1.0)
+    return o
+
 proxy = []
 for b in spec.get("boxes", []):
     proxy.append(add_box(b["name"], b["min"], b["max"]))
@@ -78,6 +98,8 @@ for w in spec.get("wedges", []):
     proxy.append(add_wedge(w["name"], w["min"], w["max"], w.get("axis","x"), w.get("dir",1)))
 for c in spec.get("cylinders", []):
     proxy.append(add_cylinder(c["name"], c["center"], c["radius"], c["z"][0], c["z"][1], c.get("segments", 8)))
+for s in spec.get("slabs", []):
+    proxy.append(add_slab(s["name"], s["min"], s["max"], s.get("axis", "x"), s.get("dir", 1), s.get("thickness", 0.1)))
 
 # ---- export proxy only (select proxy objects, export selected) ----
 bpy.ops.object.select_all(action='DESELECT')

@@ -33,6 +33,7 @@ namespace KhaozEngine.Render3D
         readonly TexturedBillboardRenderer _texBillboards;
         readonly BeamRenderer _beams;
         readonly Rendering.GroundDecalRenderer _decalRenderer;
+        readonly Rendering.OverlayMeshRenderer _overlayMeshes;
         readonly RenderResources _res;
         // Slot-indexed GPU mesh storage parallel to _slots; a freed slot's entry is null until reused.
         readonly List<Mesh?> _meshes = new();
@@ -52,6 +53,9 @@ namespace KhaozEngine.Render3D
         readonly List<LineRenderer.LineVertex> _lineVerts = new();
         readonly List<FillRenderer.FillVertex> _fillVerts = new();
         readonly List<GroundDecal> _decals = new();
+        // Translucent unlit overlay-mesh draws (collision proxies etc.): queued in submission order, flushed into the
+        // model FB after the beams and before the post chain (depth-interleaved). Cleared each Begin().
+        readonly List<(MeshHandle Mesh, Matrix4x4 World)> _overlayMeshDraws = new();
         readonly List<BillboardRenderer.BillboardVertex> _billboardAlpha = new();
         readonly List<BillboardRenderer.BillboardVertex> _billboardAdditive = new();
         // Textured depth-interleaved billboards: queued in submission order (NOT split by blend, so additive and
@@ -133,6 +137,7 @@ namespace KhaozEngine.Render3D
             // Ground decals render into the lit color attachment + read-only scene depth (ColorDepthFB) before the
             // post chain, so they pass that framebuffer's output description (color format + depth format).
             _decalRenderer = new Rendering.GroundDecalRenderer(gd, _res.ColorDepthFB.Outputs);
+            _overlayMeshes = new Rendering.OverlayMeshRenderer(gd, _res.ModelFB.Outputs);
         }
 
         /// <summary>An opaque handle to an albedo texture loaded with <see cref="LoadTexture(string)"/> /
@@ -496,6 +501,7 @@ namespace KhaozEngine.Render3D
             _lineVerts.Clear();
             _fillVerts.Clear();
             _decals.Clear();
+            _overlayMeshDraws.Clear();
             _billboardAlpha.Clear();
             _billboardAdditive.Clear();
             _texBillboardItems.Clear();
@@ -678,6 +684,19 @@ namespace KhaozEngine.Render3D
         /// <summary>Count of ground decals queued this frame. Internal: lets tests assert <see cref="Begin"/> clears
         /// the queue and <see cref="DrawGroundDecal"/> enqueues.</summary>
         internal int DecalCount => _decals.Count;
+
+        /// <summary>Queue a translucent, UNLIT, depth-TESTED (not depth-writing) overlay draw of an already-loaded
+        /// <paramref name="mesh"/> at world transform <paramref name="world"/> for this frame. The mesh's own
+        /// per-vertex <see cref="ModelVertex.Color"/> (RGBA) supplies the colour and alpha, alpha-blended over the
+        /// scene. It is occluded by nearer scene geometry (depth test) but never writes depth, so it never hides the
+        /// scene. Drawn after the meshes/beams and before the pixel post, so it flows through the post chain like the
+        /// rest of the model pass. A reusable overlay primitive: the collision-shape overlay is the first consumer;
+        /// nav / AoI / chunk-bounds layers reuse it. Presentation only; cleared in <see cref="Begin"/>.</summary>
+        public void DrawOverlayMesh(MeshHandle mesh, Matrix4x4 world) => _overlayMeshDraws.Add((mesh, world));
+
+        /// <summary>Count of overlay-mesh draws queued this frame. Internal: lets tests assert <see cref="Begin"/>
+        /// clears the queue and <see cref="DrawOverlayMesh"/> enqueues.</summary>
+        internal int OverlayMeshDrawCount => _overlayMeshDraws.Count;
 
         // ---- Camera-facing billboard overlay (immediate-mode; queued this frame, drawn on top after lines). ----
 
@@ -937,6 +956,26 @@ namespace KhaozEngine.Render3D
             // depth-interleave with the meshes and go through the pixel post like everything else in the model pass.
             DrawBeams(cl);
 
+            // Overlay meshes (collision proxies etc.): after the model pass wrote depth (meshes + textured billboards
+            // + beams), draw the queued translucent unlit proxies into the SAME model FB with the depth test on (no
+            // write), so a proxy is occluded by nearer geometry yet blends over farther geometry, then flows through
+            // the post chain with the rest of the model pass. Fully skipped when nothing is queued, so a frame with no
+            // overlay draws renders byte-identical to before this pass existed.
+            if (_overlayMeshDraws.Count > 0)
+            {
+                cl.SetFramebuffer(_res.ModelFB);
+                _overlayMeshes.EnsureCapacity(_overlayMeshDraws.Count);
+                _overlayMeshes.BeginFrame(GpuClip.Correct(ActiveCamera.ViewProjection, _gd.Capabilities));
+                for (int i = 0; i < _overlayMeshDraws.Count; i++)
+                {
+                    var (handle, world) = _overlayMeshDraws[i];
+                    if (!_slots.IsValid(handle.Index, handle.Generation)) continue;   // stale handle: skip
+                    var m = _meshes[handle.Index];
+                    if (m is not { } mesh) continue;
+                    _overlayMeshes.Draw(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, i, world);
+                }
+            }
+
             // Ground decals: after the model pass wrote depth (meshes + textured billboards + beams), paint the
             // queued decals onto the reconstructed surface into ColorTex, BEFORE post - so they conform to the
             // ground, are occluded by geometry (Y-band), and flow through the pixel post like the meshes.
@@ -1044,6 +1083,7 @@ namespace KhaozEngine.Render3D
             _texBillboards.Dispose();
             _beams.Dispose();
             _decalRenderer.Dispose();
+            _overlayMeshes.Dispose();
             _res.Dispose();
             foreach (var m in _meshes)
                 if (m is { } mesh) { mesh.Vb.Dispose(); mesh.Ib.Dispose(); mesh.MaterialSet?.Dispose(); }

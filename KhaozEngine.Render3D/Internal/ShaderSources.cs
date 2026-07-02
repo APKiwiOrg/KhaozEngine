@@ -467,6 +467,42 @@ void main() {
     oDepth  = vec4(0.0);           // discarded (PreserveDestination on attachment 2)
 }";
 
+        // ---- Translucent unlit overlay mesh (collision proxies, nav/AoI/chunk-bounds later). Drawn INTO the model
+        //      MRT (still bound) after the beams and before the post chain, with the depth test on (less-equal, no
+        //      write) so a proxy is occluded by nearer scene geometry but still blends over farther geometry. Colour
+        //      comes straight from the mesh's per-vertex ModelVertex.Color (unlit), alpha via the blend. ONE dynamic
+        //      UBO per draw carries BOTH the frame ViewProj and the per-draw World (a single 128-byte slot selected
+        //      by a dynamic offset). This deliberately does NOT split ViewProj/World into two UBO bindings: Veldrid/
+        //      SPIRV-Cross on Metal mis-binds a SECOND uniform buffer in a set (it reads the first buffer's bytes -
+        //      the same trap the splat/model passes fold around by using one UBO), so both matrices ride in one
+        //      buffer. The vertex layout declares the full ModelVertex (locations 0..4) so the same GPU vertex buffer
+        //      the model pass uses binds unchanged; only Position (0) and Color (2) are read here. Writes all 3 MRT
+        //      targets so the SPIR-V output count matches the framebuffer; only colour matters (attachments 1 and 2
+        //      use a PreserveDestination blend, so the meshes' normal/depth reach the edge pass untouched). ----
+        public const string OverlayUnlitVert = @"#version 450
+layout(set=0, binding=0) uniform Draw { mat4 ViewProj; mat4 World; };
+layout(location=0) in vec3 Position;
+layout(location=1) in vec3 Normal;
+layout(location=2) in vec4 Color;
+layout(location=3) in vec2 TexCoord;
+layout(location=4) in vec4 Tangent;
+layout(location=0) out vec4 vColor;
+void main() {
+    gl_Position = ViewProj * (World * vec4(Position, 1.0));
+    vColor = Color;
+}";
+
+        public const string OverlayUnlitFrag = @"#version 450
+layout(location=0) in vec4 vColor;
+layout(location=0) out vec4 oColor;
+layout(location=1) out vec4 oNormal;
+layout(location=2) out vec4 oDepth;
+void main() {
+    oColor = vColor;       // alpha via the AlphaBlend attachment on target 0
+    oNormal = vec4(0.0);   // discarded (PreserveDestination blend on attachment 1)
+    oDepth  = vec4(0.0);   // discarded (PreserveDestination blend on attachment 2)
+}";
+
         // ---- Shared fullscreen triangle ----
         public const string FullscreenVert = @"#version 450
 layout(location=0) out vec2 vUv;

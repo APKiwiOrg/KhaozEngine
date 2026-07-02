@@ -172,7 +172,7 @@ KhaozEngine.Server.Admin/      Opt-in HTTPS admin endpoint (Kestrel) over Server
 # Umbrella metapackages
 KhaozEngine.Foundation/   KhaozEngine.Game2D/   KhaozEngine.Game3D/   KhaozEngine.Server/
 # Tests, samples, tools
-KhaozEngine.Tests/   GuiSample/   Render2DSample/   Render3DSample/   SceneSample/   WindowingSample/   MiniGame/
+KhaozEngine.Tests/   KhaozEngine.Showcase/ (menu hub: 2D, GUI, input, mini-game rooms)   Render3DSample/
 SnapshotSample/   TerrainWalkSample/   MmoServerSample/ (reference dedicated MMO server)
 NetworkedWalkServer/ + NetworkedWalkSample/ (networked walkable overworld: headless server + windowed client)
 KhaozEngine.Updates.Tool/ (ke-updater)   KhaozEngine.Sfx.Tool/ (ke-sfxbake)   KhaozEngine.PropSurface.Tool/ (ke-propbake)
@@ -191,13 +191,9 @@ The windowed ones open a GPU window (need a display); the server / snapshot head
 
 | Sample | Demonstrates | Run | Controls |
 |---|---|---|---|
-| `WindowingSample` | Windowing + **input**: gestures (drag/tap/long-press), `GameClock` pause + time-scale, clipboard | `dotnet run --project WindowingSample` | Space pause, 1/2/3 slow/normal/fast, drag / tap / long-press, Esc quit |
-| `GuiSample` | **Gui** screen stack: a menu pushes modal Settings / Widgets / Immediate screens | `dotnet run --project GuiSample` | Click buttons, Esc quit |
-| `SceneSample` | `SceneManager` push / switch / overlay / pop | `dotnet run --project SceneSample` | Key or click to start, Esc pushes a pause overlay, Esc again pops |
-| `Render2DSample` | 2D: sprites, text, alpha blend, batched quads | `dotnet run --project Render2DSample` | Esc quit |
+| `KhaozEngine.Showcase` | **Menu hub** of feature rooms: 2D sprites + text, Gui widgets + screen stack, input (gestures / clock / clipboard / audio), and the "Catcher" mini-game | `dotnet run --project KhaozEngine.Showcase` | Up/Down + Enter or click a room, Esc back to the menu |
 | `Render3DSample` | 3D mesh viewer + retro post (cel / outline / palette) | `dotnet run --project Render3DSample` | Space model, O outline, A starfield, R retro, C cel, P palette, W/S zoom, arrows orbit, Esc quit |
 | `TerrainWalkSample` | **Walkable streamed 3D overworld** (follow camera + character controller, endless chunk streaming) | `dotnet run --project TerrainWalkSample` | WASD move, mouse-drag orbit, scroll zoom, Shift run, Esc quit |
-| `MiniGame` | A whole tiny game (Windowing + Render2D + Gui + Audio): "Catcher" | `dotnet run --project MiniGame` | A/D or arrows move, Esc quit |
 
 **Networked** - run the server, then one or two clients (two clients = two players on the same terrain):
 
@@ -221,7 +217,7 @@ exit 0. So any of them doubles as a smoke test on a GPU box without needing some
 KE_MAX_FRAMES=5 dotnet run --project TerrainWalkSample
 ```
 
-`Render2DSample` and `Render3DSample` also take `--smoke` (capture one frame, print a pass/fail line, exit with a
+`Render3DSample` also takes `--smoke` (capture one frame, print a pass/fail line, exit with a
 code), with extra `Render3DSample` flags `--retro --pico --gb --asteroid`, e.g.:
 
 ```bash

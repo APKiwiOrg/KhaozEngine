@@ -3,24 +3,13 @@
   "configurations": [
     // ---- Windowed samples (a window opens; the console shows logs) ----
     {
-      "name": "Run WindowingSample (input + SFX demo)",
+      "name": "Run KhaozEngine.Showcase (menu hub)",
       "type": "coreclr",
       "request": "launch",
       "preLaunchTask": "build",
-      "program": "${workspaceFolder}/WindowingSample/bin/Debug/net10.0/WindowingSample.dll",
+      "program": "${workspaceFolder}/KhaozEngine.Showcase/bin/Debug/net10.0/KhaozEngine.Showcase.dll",
       "args": [],
-      "cwd": "${workspaceFolder}/WindowingSample",
-      "console": "internalConsole",
-      "stopAtEntry": false
-    },
-    {
-      "name": "Run GuiSample",
-      "type": "coreclr",
-      "request": "launch",
-      "preLaunchTask": "build",
-      "program": "${workspaceFolder}/GuiSample/bin/Debug/net10.0/GuiSample.dll",
-      "args": [],
-      "cwd": "${workspaceFolder}/GuiSample",
+      "cwd": "${workspaceFolder}/KhaozEngine.Showcase",
       "console": "internalConsole",
       "stopAtEntry": false
     },
@@ -32,39 +21,6 @@
       "program": "${workspaceFolder}/Render3DSample/bin/Debug/net10.0/Render3DSample.dll",
       "args": [],
       "cwd": "${workspaceFolder}/Render3DSample",
-      "console": "internalConsole",
-      "stopAtEntry": false
-    },
-    {
-      "name": "Run Render2DSample",
-      "type": "coreclr",
-      "request": "launch",
-      "preLaunchTask": "build",
-      "program": "${workspaceFolder}/Render2DSample/bin/Debug/net10.0/Render2DSample.dll",
-      "args": [],
-      "cwd": "${workspaceFolder}/Render2DSample",
-      "console": "internalConsole",
-      "stopAtEntry": false
-    },
-    {
-      "name": "Run MiniGame",
-      "type": "coreclr",
-      "request": "launch",
-      "preLaunchTask": "build",
-      "program": "${workspaceFolder}/MiniGame/bin/Debug/net10.0/MiniGame.dll",
-      "args": [],
-      "cwd": "${workspaceFolder}/MiniGame",
-      "console": "internalConsole",
-      "stopAtEntry": false
-    },
-    {
-      "name": "Run SceneSample (SceneManager demo)",
-      "type": "coreclr",
-      "request": "launch",
-      "preLaunchTask": "build",
-      "program": "${workspaceFolder}/SceneSample/bin/Debug/net10.0/SceneSample.dll",
-      "args": [],
-      "cwd": "${workspaceFolder}/SceneSample",
       "console": "internalConsole",
       "stopAtEntry": false
     },
@@ -87,17 +43,6 @@
       "program": "${workspaceFolder}/TerrainWalkSample/bin/Debug/net10.0/TerrainWalkSample.dll",
       "args": ["bounded"],
       "cwd": "${workspaceFolder}/TerrainWalkSample",
-      "console": "internalConsole",
-      "stopAtEntry": false
-    },
-    {
-      "name": "Run SlathRepro (SpaceGame offscreen-preview repro)",
-      "type": "coreclr",
-      "request": "launch",
-      "preLaunchTask": "build",
-      "program": "${workspaceFolder}/SlathRepro/bin/Debug/net10.0/SlathRepro.dll",
-      "args": [],
-      "cwd": "${workspaceFolder}/SlathRepro",
       "console": "internalConsole",
       "stopAtEntry": false
     },

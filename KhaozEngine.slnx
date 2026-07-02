@@ -53,12 +53,7 @@
   <Project Path="KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
   <Project Path="KhaozEngine.Updates.Tool/KhaozEngine.Updates.Tool.csproj" />
   <Project Path="KhaozEngine.Showcase/KhaozEngine.Showcase.csproj" />
-  <Project Path="Render2DSample/Render2DSample.csproj" />
-  <Project Path="WindowingSample/WindowingSample.csproj" />
-  <Project Path="GuiSample/GuiSample.csproj" />
-  <Project Path="MiniGame/MiniGame.csproj" />
   <Project Path="Render3DSample/Render3DSample.csproj" />
-  <Project Path="SceneSample/SceneSample.csproj" />
   <Project Path="SnapshotSample/SnapshotSample.csproj" />
   <Project Path="MmoServerSample/MmoServerSample.csproj" />
   <Project Path="NetworkedWalkServer/NetworkedWalkServer.csproj" />

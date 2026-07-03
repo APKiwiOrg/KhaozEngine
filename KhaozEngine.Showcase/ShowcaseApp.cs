@@ -2,13 +2,14 @@ using System;
 using System.Collections.Generic;
 using KhaozEngine.Game;
 using KhaozEngine.Render2D;
+using KhaozEngine.Render3D;
 
 namespace KhaozEngine.Showcase
 {
-    /// <summary>The showcase host: a GameApp holding a SceneManager and the room registry. Each room is a
+    /// <summary>The showcase host: a GameApp3D holding a SceneManager and the room registry. Each room is a
     /// (display name, factory) pair. MenuScene lists them and pushes the chosen one. Later rooms self-register
     /// in OnLoad. Honors KE_MAX_FRAMES via the AppWindow loop (headless smoke renders N frames then exits 0).</summary>
-    public sealed class ShowcaseApp : GameApp
+    public sealed class ShowcaseApp : GameApp3D
     {
         readonly SceneManager _scenes = new();
 
@@ -41,6 +42,10 @@ namespace KhaozEngine.Showcase
             // RoomMiniGame reuses the same big/small fonts as its title/HUD text (no new Surface2D calls needed).
             Rooms.Add(("Mini-game (Catcher)", () => new RoomMiniGame().Init(_white, big, small)));
 
+            // Room3D is the walkable streamed 3D overworld ported from TerrainWalkSample; it renders through
+            // the app's shared Scene3D (injected here, since a GameScene cannot reach Surface3D itself).
+            Rooms.Add(("3D World (walk)", () => new Room3D().Init(Scene, _white, small)));
+
             // Rooms are registered here (added by later tasks).
             _scenes.Push(new MenuScene(_white, big, small, Rooms));
         }
@@ -56,6 +61,7 @@ namespace KhaozEngine.Showcase
         }
 
         protected override void OnDraw2D(SpriteBatch batch) => _scenes.Draw2D(batch);
+        protected override void OnDraw3D(Scene3D scene) => _scenes.Draw3D(scene);
         protected override void OnResize(int w, int h) => _scenes.Resize(w, h);
     }
 }

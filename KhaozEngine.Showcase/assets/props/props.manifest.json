@@ -1,5 +1,5 @@
 {
-  "_comment": "Prop-kit asset manifest for KhaozEngine.Showcase (and NetworkedWalkSample). heightMeters is the real-world height the loader normalizes each mesh to (origin dropped to the base). Collision footprints are derived from the actual mesh at load time (PropFootprint), so no hand-authored \u0027collider\u0027 is needed here - a tree yields its trunk slice, a rock its full footprint. An explicit \u0027collider\u0027 { type, ... } per entry would override the derived one. CC0 Quaternius nature props, decompressed \u002B flattened to plain glTF offline (see CREDITS.md). Ids are referenced by ScatterConfig.ForestRing().",
+  "_comment": "Prop-kit asset manifest for KhaozEngine.Showcase. heightMeters is the real-world height the loader normalizes each mesh to (origin dropped to the base). Collision footprints are derived from the actual mesh at load time (PropFootprint), so no hand-authored \u0027collider\u0027 is needed here - a tree yields its trunk slice, a rock its full footprint. An explicit \u0027collider\u0027 { type, ... } per entry would override the derived one. CC0 Quaternius nature props, decompressed \u002B flattened to plain glTF offline (see CREDITS.md). Ids are referenced by ScatterConfig.ForestRing().",
   "props": [
     {
       "id": "pine_a",

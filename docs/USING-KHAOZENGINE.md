@@ -1439,9 +1439,9 @@ foreach (EntityRenderState e in client.Snapshot())
 
 Client and server must build the **same** terrain field (`TerrainPresets.Clearing()`) and use the same
 `MoveTuning` so prediction matches authority. Props are **not** replicated - each client scatters them
-deterministically from the seed, so only players consume bandwidth. Demos (`IsPackable=false`):
-`NetworkedWalkServer` (headless) and `NetworkedWalkSample` (the windowed `--connect` client); run the server,
-then two clients on localhost to see two players. Spec:
+deterministically from the seed, so only players consume bandwidth. Demo: the **Networked walk** room in
+`KhaozEngine.Showcase` runs an authoritative `WorldServer` + a local `WorldClient` + scripted bot clients all
+in-process over loopback UDP, so you see replicated players without launching a separate server. Spec:
 `docs/superpowers/specs/2026-06-27-networked-overworld-design.md`.
 
 ### Player display names / nameplates
@@ -1526,8 +1526,8 @@ Each tick routes every client's `MoveCommand` to the cell that **owns** its play
 authority for boundary crossers exactly-once, refreshes border ghosts, then serves each client its single
 home-cell area-of-interest (owned + ghosts). Walking across a boundary hands off with no hitch; two players in
 adjacent cells see each other via ghosting. `WorldServer` stays the single-`World` option for a modest player
-count; both share `WorldPersistence` via `IWorldPersistenceHost`. The `NetworkedWalkServer` demo is a multi-cell
-`ShardedWorldServer` (cellSize 60) over `TerrainPresets.Clearing()`. Spec:
+count; both share `WorldPersistence` via `IWorldPersistenceHost`. `MmoServerSample` is the reference dedicated
+server built on the multi-cell `ShardedWorldServer` (cellSize 60). Spec:
 `docs/superpowers/specs/2026-06-27-multicell-sharding-design.md`.
 
 ### Server-side anti-cheat / input-hardening

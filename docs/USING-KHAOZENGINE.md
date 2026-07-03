@@ -1224,7 +1224,9 @@ Without a material supplied the chunk falls back to the height/slope vertex-colo
 **1. Load the material.** `TerrainMaterialPresets.Procedural()` returns a ready-made `TerrainLayeredMaterial`
 built from five `TerrainMaterialLayer`s (one per biome layer). Each layer carries an albedo image, a normal map,
 a tiling scale, and a roughness scalar. Call `LoadTerrainMaterial` on the `Scene3D`-backed extension to upload
-all layers to the GPU as texture arrays:
+all layers to the GPU as texture arrays. To trade grazing sharpness for less distance "fuzz" from a high-frequency
+albedo, set `material.Sampler = new TerrainSamplerConfig(GpuSamplerFilter.MinLinearMagLinearMipLinear, maximumAnisotropy: 1, mipLodBias: 3)`
+(or a lower anisotropy) before loading; leave it null for the tuned default (anisotropic 16x + a +1 bias):
 
 ```csharp
 using KhaozEngine.Terrain;

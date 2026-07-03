@@ -5,6 +5,28 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 9.7.0
+
+Terrain/splat materials can now override how the ground samples its detail textures at a distance (anisotropy level, filter, mip LOD bias), so a game can trade grazing sharpness for less distance "fuzz". Additive minor, opt-in; a material that sets no override is byte-identical to before.
+
+- **`TerrainSamplerConfig`** (new, `KhaozEngine.Render3D`) - a `readonly struct` of `Filter`
+  (`GpuSamplerFilter`: anisotropic / trilinear / point), `MaximumAnisotropy`, and `MipLodBias`.
+  `TerrainSamplerConfig.Default` is anisotropic 16x + a +1 mip bias, exactly the shared sampler the splat renderer
+  already builds, so `Default` (and a null override) reproduce prior behaviour. Addressing is always Wrap (the
+  detail textures tile).
+- **`TerrainLayeredMaterial.Sampler`** (new, `KhaozEngine.Terrain`, `TerrainSamplerConfig?`) and a new trailing
+  **`sampler`** parameter on **`Scene3D.LoadSplatMaterial(...)`** (default `null`). When set, the material builds and
+  owns its own sampler (disposed with the material) instead of binding the renderer's shared one; when null it binds
+  the shared default, so existing callers and the committed splat goldens are unchanged (no re-bake).
+- Why: a high-frequency tiling albedo can shimmer/"fuzz" as the camera moves because 16x anisotropy keeps the
+  grazing floor sharp (worst at grazing incidence, e.g. flat ground; better on steeper slopes). Lowering the
+  anisotropy, switching to trilinear, or raising the mip bias blurs the far ground and reduces the aliasing. The
+  right value is content-dependent, so it is a per-material knob rather than a changed default.
+- `ModelRenderer` gains a `CreateSplatMaterialSet(..., IGpuSampler sampler)` overload and
+  `CreateTerrainSampler(in TerrainSamplerConfig)`; the shared default sampler path is unchanged. Tests: headless
+  `TerrainSamplerConfigTests` (defaults + null default) and a gated `TerrainSamplerOverrideGpuTests` (a material with
+  a trilinear/high-bias override renders textured on a real device).
+
 ## 9.6.2
 
 `SpriteBatch` no longer tears its 2D draws for a frame when a widget moves or resizes: the per-flush vertex buffers are now ring-buffered across frames instead of one buffer reused every frame. Render-only bug fix, no public API change. Fixes the F2 collision legend in Ruinborne flickering out for a single frame as the adjacent DIAG panel resized.

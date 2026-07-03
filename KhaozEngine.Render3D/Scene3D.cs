@@ -300,7 +300,8 @@ namespace KhaozEngine.Render3D
         /// material is owned by the scene and freed in <see cref="Dispose"/> (or <see cref="UnloadSplatMaterial"/>);
         /// it is shared across every mesh that references it (e.g. all terrain chunks).</summary>
         public SplatMaterialHandle LoadSplatMaterial(int width, int height, IReadOnlyList<SplatLayerImage> layers,
-            float triplanarSharpness = 8f, SplatProjection projection = SplatProjection.Triplanar, float baseSpecStrength = 0.15f)
+            float triplanarSharpness = 8f, SplatProjection projection = SplatProjection.Triplanar, float baseSpecStrength = 0.15f,
+            TerrainSamplerConfig? sampler = null)
         {
             if (layers.Count != SplatMaterialConfig.LayerCount)
                 throw new ArgumentException($"a splat material needs exactly {SplatMaterialConfig.LayerCount} layers, got {layers.Count}.", nameof(layers));
@@ -328,8 +329,13 @@ namespace KhaozEngine.Render3D
             // uniform buffer for the whole splat pipeline (Metal mis-binds a second UBO; see ModelRenderer).
             var ubo = _model.CreateSplatParamsUbo(in data);
 
-            var set = _model.CreateSplatMaterialSet(ubo, albedo, normal);
-            _splatMaterials.Add(new SplatMaterialEntry(albedo, normal, ubo, set));
+            // A material that overrides the sampler gets its own (owned, disposed with the material); otherwise the
+            // set binds the renderer's shared default sampler and nothing extra is owned here.
+            IGpuSampler? ownedSampler = sampler.HasValue ? _model.CreateTerrainSampler(sampler.Value) : null;
+            var set = ownedSampler is null
+                ? _model.CreateSplatMaterialSet(ubo, albedo, normal)
+                : _model.CreateSplatMaterialSet(ubo, albedo, normal, ownedSampler);
+            _splatMaterials.Add(new SplatMaterialEntry(albedo, normal, ubo, set, ownedSampler));
             return new SplatMaterialHandle(_splatMaterials.Count - 1);
         }
 
@@ -1145,9 +1151,10 @@ namespace KhaozEngine.Render3D
             public readonly IGpuTexture AlbedoArray, NormalArray;
             public readonly IGpuBuffer Ubo;
             public readonly IGpuResourceSet Set;
-            public SplatMaterialEntry(IGpuTexture albedo, IGpuTexture normal, IGpuBuffer ubo, IGpuResourceSet set)
-            { AlbedoArray = albedo; NormalArray = normal; Ubo = ubo; Set = set; }
-            public void Dispose() { Set.Dispose(); AlbedoArray.Dispose(); NormalArray.Dispose(); Ubo.Dispose(); }
+            readonly IGpuSampler? _ownedSampler;   // non-null only when the material overrode the shared sampler
+            public SplatMaterialEntry(IGpuTexture albedo, IGpuTexture normal, IGpuBuffer ubo, IGpuResourceSet set, IGpuSampler? ownedSampler = null)
+            { AlbedoArray = albedo; NormalArray = normal; Ubo = ubo; Set = set; _ownedSampler = ownedSampler; }
+            public void Dispose() { Set.Dispose(); AlbedoArray.Dispose(); NormalArray.Dispose(); Ubo.Dispose(); _ownedSampler?.Dispose(); }
         }
 
         /// <summary>A GPU-resident skinned mesh: its vertex/index buffers, index count, optional material set, and

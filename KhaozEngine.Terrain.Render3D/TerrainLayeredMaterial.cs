@@ -32,6 +32,13 @@ namespace KhaozEngine.Terrain
         public SplatProjection Projection = SplatProjection.Triplanar;
         public float BaseSpecStrength = 0.15f;
 
+        /// <summary>Optional override for how the ground samples its detail textures at a distance (anisotropy level,
+        /// filter, mip LOD bias). Null (the default) uses the engine's tuned default (<see cref="TerrainSamplerConfig.Default"/>,
+        /// anisotropic 16x + a +1 bias) and is byte-identical to prior behaviour. Lower the anisotropy / switch to
+        /// trilinear / raise the bias to reduce the distance "fuzz" a high-frequency tiling albedo throws off as the
+        /// camera moves (at the cost of some grazing sharpness).</summary>
+        public TerrainSamplerConfig? Sampler;
+
         /// <summary>The five layers in channel order (grass, dirt, rock, sand, snow).</summary>
         public IReadOnlyList<TerrainMaterialLayer> Layers => new[] { Grass, Dirt, Rock, Sand, Snow };
 

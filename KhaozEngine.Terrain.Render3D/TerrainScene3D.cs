@@ -32,7 +32,7 @@ namespace KhaozEngine.Terrain
                     Tint = l.Tint, TilesPerMetre = l.TilesPerMetre, Roughness = l.Roughness,
                 });
             return scene.LoadSplatMaterial(material.Width, material.Height, layers,
-                material.TriplanarSharpness, material.Projection, material.BaseSpecStrength);
+                material.TriplanarSharpness, material.Projection, material.BaseSpecStrength, material.Sampler);
         }
 
         /// <summary>Upload a chunk and draw it through the splat-terrain pipeline with <paramref name="material"/>

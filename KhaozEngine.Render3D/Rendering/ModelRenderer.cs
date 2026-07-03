@@ -314,11 +314,24 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         /// <summary>Build a splat-terrain material resource set: the combined frame+params UBO + the two 5-layer
-        /// texture arrays (albedo, tangent-space normal) + the terrain (wrap/anisotropic) sampler. Shared across
-        /// every chunk using this material; owned by Scene3D, NOT per mesh.</summary>
+        /// texture arrays (albedo, tangent-space normal) + the shared terrain (wrap/anisotropic) sampler. Shared
+        /// across every chunk using this material; owned by Scene3D, NOT per mesh.</summary>
         public IGpuResourceSet CreateSplatMaterialSet(IGpuBuffer combinedUbo, IGpuTexture albedoArray, IGpuTexture normalArray) =>
+            CreateSplatMaterialSet(combinedUbo, albedoArray, normalArray, _terrainSampler);
+
+        /// <summary>As above, but binds an explicit <paramref name="sampler"/> instead of the shared default one
+        /// (used by a material that overrides its <see cref="TerrainSamplerConfig"/>). The caller owns that sampler.</summary>
+        public IGpuResourceSet CreateSplatMaterialSet(IGpuBuffer combinedUbo, IGpuTexture albedoArray, IGpuTexture normalArray, IGpuSampler sampler) =>
             _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(
-                _splatLayout, combinedUbo, albedoArray, normalArray, _terrainSampler));
+                _splatLayout, combinedUbo, albedoArray, normalArray, sampler));
+
+        /// <summary>Create a wrap-addressed terrain sampler from <paramref name="cfg"/> (anisotropy/trilinear/point +
+        /// mip LOD bias). The caller owns and disposes it. Mirrors the shared default sampler this renderer builds at
+        /// construction, so <see cref="TerrainSamplerConfig.Default"/> reproduces it exactly.</summary>
+        public IGpuSampler CreateTerrainSampler(in TerrainSamplerConfig cfg) =>
+            _gd.Factory.CreateSampler(new GpuSamplerDescription(
+                cfg.Filter, GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap,
+                maximumAnisotropy: cfg.MaximumAnisotropy, mipLodBias: cfg.MipLodBias));
 
         /// <summary>Bind the splat-terrain pipeline for the splat pass (call once before the splat draw loop). Each
         /// material's combined UBO must already hold this frame's uniforms (<see cref="WriteFrameUniformsTo"/>).</summary>

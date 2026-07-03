@@ -27,6 +27,10 @@ separate from the render-free field so a server/sim never drags in `Render3D`. I
 - **Splat materials** - **`TerrainMaterialLayer`** / **`TerrainLayeredMaterial`** (five tileable
   albedo + normal layers blended by the baked splat weights) and **`TerrainMaterialPresets.Procedural()`**
   (deterministic placeholder textures). Omit the material for the vertex-colour ramp fallback.
+  **`TerrainLayeredMaterial.Sampler`** (`TerrainSamplerConfig?`, opt-in, default null) overrides how the ground
+  filters its detail textures at a distance - anisotropy level, filter, mip LOD bias - to trade grazing sharpness
+  for less distance "fuzz" from a high-frequency tiling albedo. Null keeps the tuned default (anisotropic 16x +
+  a +1 bias).
 
 ## Usage
 

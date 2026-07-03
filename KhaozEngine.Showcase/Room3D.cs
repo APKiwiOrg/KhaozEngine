@@ -15,6 +15,11 @@ using KhaozEngine.Windowing;
 
 namespace KhaozEngine.Showcase
 {
+    /// <summary>One hand-placed town building: which CC0 kit <see cref="Id"/> (must match an entry in
+    /// buildings.manifest.json), its world XZ, facing <see cref="Yaw"/> (radians), and uniform <see cref="Scale"/>.
+    /// Render-only for now (Task 4 adds collision from the matching baked .coll per id).</summary>
+    public readonly record struct TownBuilding(string Id, float X, float Z, float Yaw, float Scale);
+
     /// <summary>The walkable streamed 3D overworld, ported from TerrainWalkSample into a room. Renders through the
     /// showcase's shared Scene3D (injected via Init, since a GameScene cannot reach the app's 3D surface). Builds
     /// its world in OnEnter and tears it down in OnExit (the Scene3D is shared with the other rooms, so it must
@@ -37,6 +42,33 @@ namespace KhaozEngine.Showcase
         static readonly Vector2 TownCenter = new(0f, 14f);
         const float TownRadius = 18f, TownBlend = 0.25f;
 
+        // Draw radius for the 7 hand-placed town buildings: few in count and always meant to be visible from
+        // across the clearing, so this is a much wider cull ring than PropDrawRadius (matches Ruinborne's high
+        // draw radius for its landmark buildings).
+        const float BuildingDrawRadius = 320f;
+
+        // The 7 CC0 Quaternius Medieval Village buildings, hand-placed around TownCenter. Nudged clear of the
+        // three fixtures already standing in the clearing: the platform box at (0,12) (half-extents 3x2.5), the
+        // procedural textured stone block at (3,3), and the blacksmith collision-proxy fixture at (8,4). All
+        // positions sit inside TownRadius * (1 - TownBlend) ~= 13.5 m of TownCenter so they land on the flattened
+        // plateau, not its blended rim. Starting layout - exact spacing is tunable by playtest.
+        const float BuildingScale = 1.5f;
+        static IReadOnlyList<TownBuilding> CreateTownBuildings() => new[]
+        {
+            // Moved off the platform at (0,12): pushed further north and slightly nudged east.
+            new TownBuilding("inn",        TownCenter.X + 1f,  TownCenter.Y + 6f,   0.0f,  BuildingScale),
+            new TownBuilding("well",       TownCenter.X + 6f,  TownCenter.Y - 1f,   0.0f,  BuildingScale),
+            new TownBuilding("house_1",    TownCenter.X + 9f,  TownCenter.Y + 5f,  -2.2f,  BuildingScale),
+            new TownBuilding("house_2",    TownCenter.X - 9f,  TownCenter.Y + 4f,   2.2f,  BuildingScale),
+            // Kept clear of the textured stone block (3,3) and the blacksmith proxy fixture (8,4): house_3 sits
+            // west of both.
+            new TownBuilding("house_3",    TownCenter.X - 5f,  TownCenter.Y - 9f,  -0.7f,  BuildingScale),
+            // The blacksmith BUILDING is a separate placement from the blacksmith collision-proxy fixture at
+            // (8,4) - pushed further southwest so the two do not visually overlap.
+            new TownBuilding("blacksmith", TownCenter.X - 10f, TownCenter.Y - 8f,   0.9f,  BuildingScale),
+            new TownBuilding("bell_tower", TownCenter.X,       TownCenter.Y + 11f,  0.0f,  BuildingScale),
+        };
+
         Scene3D _scene = null!;
         Texture2D _white = null!;
         SpriteFont _hud = null!;
@@ -53,6 +85,12 @@ namespace KhaozEngine.Showcase
 
         // One uploaded mesh per prop-kit id. The streamer scatters per-chunk props from these on demand.
         readonly Dictionary<string, MeshHandle> _propMeshes = new();
+
+        // Hand-placed town buildings (CC0 Quaternius Medieval Village): one uploaded mesh per building id, plus
+        // the fixed placement list built once in OnEnter. Not streamed - drawn directly every frame like the
+        // platform/textured-prop fixtures, since there are only 7 and they anchor the clearing.
+        readonly Dictionary<string, MeshHandle> _buildingMeshes = new();
+        readonly List<PropPlacement> _buildingPlacements = new();
 
         Scene3DChunkSink _sink = null!;
         TerrainStreamer _streamer = null!;
@@ -133,6 +171,17 @@ namespace KhaozEngine.Showcase
                 // Bake the collision shape from the same in-memory normalized mesh before it is uploaded.
                 collisionShapes[entry.Id] = PropCollisionBake.Bake(mesh);
             }
+
+            // Load the CC0 town buildings (Quaternius Medieval Village) through the same asset pipeline as the
+            // forest props, one uploaded mesh per id, and build their fixed world placements. Buildings are not
+            // streamed - they are hand-placed once and drawn every frame like the platform/textured-prop fixtures.
+            // (Collision is Task 4: these are visual-only for now, the character can walk through them.)
+            string bManifestPath = Path.Combine(AppContext.BaseDirectory, "assets", "buildings", "buildings.manifest.json");
+            AssetManifest buildings = AssetManifest.Load(bManifestPath);
+            foreach (AssetEntry e in buildings.Props)
+                _buildingMeshes[e.Id] = _scene.LoadMesh(PropLoader.LoadProp(e));
+            foreach (TownBuilding b in CreateTownBuildings())
+                _buildingPlacements.Add(new PropPlacement(b.Id, b.X, _terrain.GroundHeight(b.X, b.Z), b.Z, b.Scale, b.Yaw, variant: 0));
 
             // Character spawns on the ground at the origin. CapsuleRadius matches the visible greybox capsule so
             // the collision footprint lines up with what's drawn.
@@ -291,6 +340,9 @@ namespace KhaozEngine.Showcase
             // Textured prop demo: procedural mossy-stone block (albedo + normal maps).
             scene.Draw(_texturedProp, _texturedPropXform, Color.White);
 
+            // The hand-placed town buildings (not streamed, always in range at this draw radius).
+            scene.DrawProps(_buildingPlacements, _buildingMeshes, _character.Position, BuildingDrawRadius);
+
             // Draw the character so its feet sit on the ground (Position is the capsule centre, feet = centre - half).
             Vector3 p = _character.Position;
             float footY = p.Y - CapsuleHalfHeight;
@@ -348,6 +400,7 @@ namespace KhaozEngine.Showcase
             _scene.UnloadMesh(_platformMesh);
             _scene.UnloadMesh(_texturedProp);
             foreach (MeshHandle h in _propMeshes.Values) _scene.UnloadMesh(h);
+            foreach (MeshHandle h in _buildingMeshes.Values) _scene.UnloadMesh(h);
             if (_animated) _scene.UnloadSkinnedMesh(_characterMesh);
 
             // Drop the follow camera so the default camera returns for the menu/2D rooms.
@@ -364,6 +417,8 @@ namespace KhaozEngine.Showcase
 
             // Null the per-enter fields so a re-entered room rebuilds fresh rather than reusing stale handles.
             _propMeshes.Clear();
+            _buildingMeshes.Clear();
+            _buildingPlacements.Clear();
             _sink = null!;
             _streamer = null!;
             _physics = null!;

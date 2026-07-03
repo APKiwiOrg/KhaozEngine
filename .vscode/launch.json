@@ -12,30 +12,6 @@
       "cwd": "${workspaceFolder}/KhaozEngine.Showcase",
       "console": "internalConsole",
       "stopAtEntry": false
-    },
-    {
-      "name": "Run MmoServerSample (headless reference MMO server)",
-      "type": "coreclr",
-      "request": "launch",
-      "preLaunchTask": "build",
-      "program": "${workspaceFolder}/MmoServerSample/bin/Debug/net10.0/MmoServerSample.dll",
-      "args": [],
-      "cwd": "${workspaceFolder}/MmoServerSample",
-      "console": "integratedTerminal",
-      "stopAtEntry": false
-    },
-
-    // ---- Headless / tool-like samples ----
-    {
-      "name": "Run SnapshotSample (bakes PNG snapshots, then exits)",
-      "type": "coreclr",
-      "request": "launch",
-      "preLaunchTask": "build",
-      "program": "${workspaceFolder}/SnapshotSample/bin/Debug/net10.0/SnapshotSample.dll",
-      "args": [],
-      "cwd": "${workspaceFolder}/SnapshotSample",
-      "console": "integratedTerminal",
-      "stopAtEntry": false
     }
   ]
 }

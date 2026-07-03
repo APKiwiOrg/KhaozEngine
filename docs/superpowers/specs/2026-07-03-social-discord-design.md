@@ -2,7 +2,9 @@
 
 Date: 2026-07-03
 Status: approved, ready to plan
-Target engine version: 9.9.0 (additive minor; re-check for a concurrent bump at release time)
+Target engine version: 9.10.0 (additive minor. 9.9.0 was claimed by a concurrent GPU terrain-fuzz
+change tagged v9.9.0 during this work, so the Social batch takes the next free minor. Re-check
+`origin/main` + tags again at release time.)
 
 ## Goal
 
@@ -241,11 +243,11 @@ a tiny injectable seam, keeping the codec + discovery + provider logic headless-
   umbrella `<Description>` package inventory to include `Social`. `.Social.Discord` goes in NO
   umbrella.
 - `KhaozEngine.Tests/KhaozEngine.Tests.csproj`: add ProjectReferences to both new packages.
-- Version: `Directory.Build.props` `<KhaozEngineVersion>` 9.8.0 -> 9.9.0 (once, at end of batch).
-  Re-check `origin/main` + tags for a concurrent bump first and take the next FREE version if 9.9.0
+- Version: `Directory.Build.props` `<KhaozEngineVersion>` 9.9.0 -> 9.10.0 (once, at end of batch).
+  Re-check `origin/main` + tags for a concurrent bump first and take the next FREE version if 9.10.0
   is taken.
 - Docs (full sweep, single source each):
-  - `CHANGELOG.md`: newest-first 9.9.0 entry, one-line digest first sentence, then detailed bullets
+  - `CHANGELOG.md`: newest-first 9.10.0 entry, one-line digest first sentence, then detailed bullets
     for the new public API. Same commit as the version bump.
   - `KhaozEngine.Social/README.md` and `KhaozEngine.Social.Discord/README.md`: the per-package
     `PackageReadmeFile` (required by the check-doc-versions package-inventory guard).
@@ -264,11 +266,11 @@ a tiny injectable seam, keeping the codec + discovery + provider logic headless-
   - `README.md` `<PackageReference>` example version (guard-checked, third of the three declarations).
   - `CLAUDE.md`: add `Social.Discord` to the "Opt-in, in NO umbrella, added explicitly" list. Do NOT
     re-enumerate the packages (CLAUDE.md points at the README catalog).
-- `scripts/check-doc-versions.sh` must pass: the three version declarations equal 9.9.0, and both new
+- `scripts/check-doc-versions.sh` must pass: the three version declarations equal 9.10.0, and both new
   packable projects have a bolded README catalog row + ship their own README.md.
 - `dotnet pack -c Release -o ./local-feed` (from the main repo root at release time, not the worktree
   local-feed which is deleted on worktree removal).
-- Commit, `git tag v9.9.0`. HOLD the push + tag; batch and confirm with the user before pushing
+- Commit, `git tag v9.10.0`. HOLD the push + tag; batch and confirm with the user before pushing
   (engine heavy-CI policy: CI publishes to GitHub Packages on every `v*`).
 
 ## Consumer migration (delivered as handoff prompts, not done in this session)
@@ -276,7 +278,7 @@ a tiny injectable seam, keeping the codec + discovery + provider logic headless-
 Engine-first: the package ships first, each consumer adopts in its own repo/chat afterward. Handoff
 prompts to produce at the end:
 
-- SpaceGame (has an impl to migrate): pin engine 9.9.0; add `KhaozEngine.Social` (Core) +
+- SpaceGame (has an impl to migrate): pin engine 9.10.0; add `KhaozEngine.Social` (Core) +
   `KhaozEngine.Social.Discord` (Desktop head); replace `IDiscordRichPresenceBackend` /
   `DiscordRichPresenceService` / `LacheeDiscordRichPresenceBackend` with `SocialPresenceController` +
   `DiscordSocialProvider`; keep the app id, copy strings, and Menu/SpaceForge/Run -> `RichPresence`

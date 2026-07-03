@@ -4,7 +4,7 @@ Which game uses which packages, at which version. Current state only - for the p
 [`../CHANGELOG.md`](../CHANGELOG.md). Update this whenever a consumer bumps a `<PackageReference>` or the
 engine ships a new version.
 
-**Engine current version:** `9.7.0` (the shared `<KhaozEngineVersion>` line, which *is* the engine). The
+**Engine current version:** `9.8.0` (the shared `<KhaozEngineVersion>` line, which *is* the engine). The
 engine is entirely MonoGame-free on a single version line in `Directory.Build.props` (the doc-version guard
 checks it): the custom render/runtime stack + the graduated MonoGame-free foundation + the four umbrella
 metapackages, all sharing one version. `Physics.Bepu` and the `WorldStore.Sqlite`/`.SqlServer` backends are
@@ -54,8 +54,11 @@ runtime icon API:
   exposes a `WindowIcon` struct of already-decoded RGBA8 and `AppWindow.SetIcon`; the **Game layer** does the PNG
   decode via `Render2D.ImageRgba` and hands `WindowIcon`s down. This keeps the package graph clean (no image-decode
   dependency pulled into the low-level windowing leaf).
-- **macOS caveat:** GLFW ignores window icons on Cocoa, so `SetIcon` is a deliberate **no-op on macOS** (never
-  throws). The Dock/Finder icon is owned by the `.app` bundle's icns (each consumer's packaging already handles it).
+- **macOS Dock icon (9.8.0):** GLFW ignores window icons on Cocoa, so `SetIcon` is a **no-op on macOS**. Since 9.8.0,
+  `GameApp` also sets the **Dock / Cmd-Tab** icon at runtime from `WindowIconPath` via
+  `AppWindow.SetMacDockIcon` -> `Platform.ApplicationIcon.TrySetMacDockIcon` (`NSApplication.setApplicationIconImage:`),
+  so an unbundled `dotnet run` no longer shows the generic document icon. A packaged `.app` bundle's icns still owns
+  the Dock icon the normal way; a `WindowIcons`-only config (no PNG path) leaves the Dock icon untouched.
 - **Per-consumer follow-up (not the engine release):** each desktop consumer passes its icon PNG via
   `GameAppOptions`, and (independently) re-adds `<ApplicationIcon>...Icon.ico</ApplicationIcon>` to its desktop-head
   csproj for the Windows `.exe` icon shown when the app is not running (that is per-repo, not an engine API).

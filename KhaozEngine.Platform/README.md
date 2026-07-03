@@ -2,6 +2,26 @@
 
 Game-agnostic native platform interop. Pure BCL P/Invoke, no MonoGame dependency.
 
+## Application icon (macOS Dock)
+
+`ApplicationIcon.TrySetMacDockIcon(byte[] pngBytes)` sets the running app's macOS **Dock / Cmd-Tab** icon at
+runtime from PNG bytes, via `NSApplication.setApplicationIconImage:`. This matters because GLFW cannot set the
+Cocoa Dock icon (so `KhaozEngine.Windowing.AppWindow.SetIcon` is a no-op on macOS) and an app launched via
+`dotnet run` has no `.app` bundle `.icns` to supply one - so without this it shows the generic document icon.
+
+```csharp
+using KhaozEngine.Platform;
+
+bool ok = ApplicationIcon.TrySetMacDockIcon(File.ReadAllBytes("assets/icon.png"));
+```
+
+Returns `false` (never throws) off macOS, on null/empty input, or on any Cocoa failure. Call once at startup,
+after the window (hence the shared `NSApplication`) exists. Most games never call it directly: `GameApp` does it
+automatically from `GameAppOptions.WindowIconPath`, and `AppWindow.SetMacDockIcon` is the windowing-layer wrapper.
+Interop is self-contained (its own libobjc `objc_msgSend` + autorelease pool), so it never destabilises the
+clipboard path. Windows/Linux have no equivalent runtime Dock icon (their taskbar icon is the GLFW window icon and
+the Windows Explorer icon is `<ApplicationIcon>`), so this is a no-op there.
+
 ## Clipboard
 
 `Clipboard` is a cross-platform clipboard facade. Each call tries the platform backends in order and

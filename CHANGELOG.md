@@ -5,6 +5,25 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 9.8.0
+
+The macOS Dock / Cmd-Tab icon can now be set at runtime, so an unbundled `dotnet run` app (which has no `.app` bundle icns) shows a real icon instead of the generic document page. Additive minor; nothing changes on Windows/Linux or for a game that sets no icon.
+
+- **`ApplicationIcon.TrySetMacDockIcon(byte[] pngBytes)`** (new, `KhaozEngine.Platform`) - sets the running app's
+  macOS Dock icon from PNG bytes via `NSApplication.setApplicationIconImage:` (self-contained libobjc interop,
+  mirroring `ClipboardInterop`'s autorelease-pool + `objc_msgSend` pattern). Returns `false` off macOS, on
+  null/empty input, or on any Cocoa failure; never throws. GLFW cannot set the Cocoa Dock icon (so
+  `AppWindow.SetIcon` stays a documented no-op there) and an unbundled run has no `.app` icns, so this is the only
+  way such a run gets a real Dock icon.
+- **`AppWindow.SetMacDockIcon(byte[] pngBytes)`** (new, `KhaozEngine.Windowing`) - the windowing-layer entry point,
+  delegating to `ApplicationIcon`. The Cocoa counterpart to `SetIcon`.
+- **`GameApp`** now drives it automatically: when `GameAppOptions.WindowIconPath` is set, on macOS it feeds that PNG
+  to `SetMacDockIcon` right after the window exists (so the shared `NSApplication` GLFW created is live). A
+  `WindowIcons`-only config (already-decoded RGBA, no PNG path) leaves the Dock icon untouched, since `NSImage`
+  decodes from the PNG.
+- **`KhaozEngine.Showcase`** ships an `assets/icon.png` and sets `WindowIconPath`, so the menu-hub run now carries a
+  Dock icon on macOS (and a title-bar/taskbar icon on Windows/Linux) instead of the blank document icon.
+
 ## 9.7.0
 
 Terrain/splat materials can now override how the ground samples its detail textures at a distance (anisotropy level, filter, mip LOD bias), so a game can trade grazing sharpness for less distance "fuzz". Additive minor, opt-in; a material that sets no override is byte-identical to before.

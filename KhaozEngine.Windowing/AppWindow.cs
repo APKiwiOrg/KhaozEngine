@@ -211,7 +211,7 @@ namespace KhaozEngine.Windowing
         /// handle exists from the ctor on. Passing nothing (or an empty list) is a no-op.
         /// <para><b>Platform:</b> Windows and Linux/X11 apply it to the title bar + taskbar at runtime (this is the
         /// regression fix vs MonoGame's embedded Icon.bmp). On macOS GLFW ignores window icons, so this is a
-        /// deliberate no-op (never throws); the Dock/Finder icon is owned by the .app bundle's icns. The Windows
+        /// deliberate no-op (never throws); use <see cref="SetMacDockIcon"/> for the Cocoa Dock icon. The Windows
         /// .exe icon shown when the app is not running is a per-consumer <c>&lt;ApplicationIcon&gt;</c>, independent
         /// of this API.</para>
         /// </summary>
@@ -223,6 +223,16 @@ namespace KhaozEngine.Windowing
             if (raw.Length == 0) return;
             _window.SetWindowIcon(raw);
         }
+
+        /// <summary>
+        /// macOS only: set the running app's Dock / Cmd-Tab icon from PNG-encoded bytes, via
+        /// <c>NSApplication.setApplicationIconImage:</c> (<see cref="KhaozEngine.Platform.ApplicationIcon"/>). This
+        /// is the Cocoa counterpart to <see cref="SetIcon"/>: GLFW cannot set the Dock icon and an unbundled
+        /// <c>dotnet run</c> app has no <c>.app</c> icns, so without this such a run shows the generic document
+        /// icon. A no-op returning <c>false</c> off macOS or on empty input; never throws. Call once at startup
+        /// (the window ctor has already created the shared NSApplication this drives).
+        /// </summary>
+        public bool SetMacDockIcon(byte[] pngBytes) => KhaozEngine.Platform.ApplicationIcon.TrySetMacDockIcon(pngBytes);
 
         /// <summary>Pure WindowIcon -> Silk <see cref="RawImage"/> mapping (RGBA8, top-left origin) feeding GLFW's
         /// SetWindowIcon. Empty in -> empty out, so <see cref="SetIcon"/> no-ops. Kept seamable for headless tests.</summary>

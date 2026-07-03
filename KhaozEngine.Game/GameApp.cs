@@ -37,9 +37,17 @@ namespace KhaozEngine.Game
                 ?? new AppWindow(options.Title, options.Width, options.Height);
             _window.ClearColor = options.ClearColor;
 
-            // Runtime window/taskbar icon (Windows/Linux; no-op on macOS where the .app icns owns the Dock icon).
+            // Runtime window/taskbar icon (Windows/Linux; no-op on macOS where GLFW ignores window icons).
             var icons = ResolveWindowIcons(options);
             if (icons.Length > 0) _window.SetIcon(icons);
+
+            // macOS Dock / Cmd-Tab icon: GLFW cannot set it and an unbundled dotnet-run app has no .app icns, so
+            // drive NSApplication.setApplicationIconImage from the same icon PNG. Only the single-PNG
+            // WindowIconPath case is covered (NSImage decodes PNG); a WindowIcons-only (already-decoded RGBA)
+            // config leaves the Dock icon untouched. Runs after the window ctor, so the shared NSApplication exists.
+            if (OperatingSystem.IsMacOS() && !string.IsNullOrEmpty(options.WindowIconPath)
+                && System.IO.File.Exists(options.WindowIconPath))
+                _window.SetMacDockIcon(System.IO.File.ReadAllBytes(options.WindowIconPath));
 
             _viewport = options.ViewportFactory?.Invoke(options)
                 ?? new DesignViewport(options.ResolvedDesignWidth, options.ResolvedDesignHeight, options.ScaleMode);

@@ -12,10 +12,15 @@ Windowing + input foundation for the custom MonoGame-free stack.
   press-edge only) so text fields hold-to-repeat.
 - `AppWindow.SetIcon(params WindowIcon[])` sets the runtime window/taskbar icon. `WindowIcon` is one already-decoded,
   tightly-packed RGBA8 image (top-left origin); pass several sizes (16/32/48...) and GLFW picks per DPI. Windows and
-  Linux/X11 apply it to the title bar + taskbar; macOS is a no-op (GLFW ignores window icons there, the `.app` icns
-  owns the Dock icon) and never throws. Decode-free on purpose: this package takes pixels, not a PNG path, so it
-  pulls in no image-decode dependency (the Game layer decodes via `Render2D.ImageRgba`). The Windows `.exe` icon
-  shown when the app is not running is a separate per-game `<ApplicationIcon>`, independent of this API.
+  Linux/X11 apply it to the title bar + taskbar; macOS is a no-op (GLFW ignores window icons there) and never
+  throws. Decode-free on purpose: this package takes pixels, not a PNG path, so it pulls in no image-decode
+  dependency (the Game layer decodes via `Render2D.ImageRgba`). The Windows `.exe` icon shown when the app is not
+  running is a separate per-game `<ApplicationIcon>`, independent of this API.
+- `AppWindow.SetMacDockIcon(byte[] pngBytes)` sets the macOS **Dock / Cmd-Tab** icon from PNG bytes (the Cocoa
+  counterpart to `SetIcon`, delegating to `Platform.ApplicationIcon`). GLFW cannot set the Dock icon and an
+  unbundled `dotnet run` app has no `.app` icns, so without this such a run shows the generic document icon.
+  Returns `false` off macOS / on empty input; never throws. `GameApp` calls it automatically from
+  `GameAppOptions.WindowIconPath`.
 - `InputManager` / `Pointer` - the higher-level read: unified pointer, edges, bounds helpers (`IsTapIn` etc.),
   region blocking, keyboard/gamepad/menu navigation.
 - `GameClock` (pause/timescale), `DesignViewport` / `AdaptiveViewport` (letterbox/fill/stretch + responsive).

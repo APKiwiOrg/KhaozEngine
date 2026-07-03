@@ -18,7 +18,16 @@ namespace KhaozEngine.Showcase
 
         Texture2D _white = null!;
 
-        public ShowcaseApp() : base(GameAppOptions.For("KhaozEngine Showcase", 1024, 640)) { }
+        public ShowcaseApp() : base(BuildOptions()) { }
+
+        // Window/taskbar icon on Windows/Linux and (via GameApp's macOS wiring) the Cocoa Dock icon, from the
+        // committed assets/icon.png. Resolved against the runtime output dir so it works from any launch cwd.
+        static GameAppOptions BuildOptions()
+        {
+            var options = GameAppOptions.For("KhaozEngine Showcase", 1024, 640);
+            options.WindowIconPath = System.IO.Path.Combine(System.AppContext.BaseDirectory, "assets", "icon.png");
+            return options;
+        }
 
         protected override void OnLoad()
         {

@@ -20,8 +20,10 @@ Subclass it and override `OnLoad` / `OnUpdate(dt)` / `OnDraw2D(batch)` / `OnResi
 
 Set `GameAppOptions.WindowIconPath` (a PNG) or `WindowIcons` (explicit decoded `ImageRgba`, multi-res,
 wins over the path) for the runtime window/taskbar icon; `GameApp` decodes via `Render2D.ImageRgba`
-and applies it through `AppWindow.SetIcon`. Windows/Linux get the live icon; macOS is a no-op (the
-`.app` icns owns the Dock icon). The Windows `.exe` icon stays a per-game `<ApplicationIcon>`.
+and applies it through `AppWindow.SetIcon`. Windows/Linux get the live title-bar/taskbar icon. On macOS
+`SetIcon` is a no-op (GLFW can't set the Dock icon), so when `WindowIconPath` is set `GameApp` also feeds that
+PNG to `AppWindow.SetMacDockIcon` to set the Cocoa Dock / Cmd-Tab icon at runtime (fixes the generic document
+icon on an unbundled `dotnet run`). The Windows `.exe` icon stays a per-game `<ApplicationIcon>`.
 
 It sits above `KhaozEngine.Windowing` + `Render2D` + `Gui` - **no 3D renderer dependency**, so a 2D
 game pulls no Render3D. For a 3D world pass, use `KhaozEngine.Game.Render3D` (`GameApp3D`, plus the

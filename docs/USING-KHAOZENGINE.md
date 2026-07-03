@@ -139,12 +139,20 @@ and optional `WindowFactory` / `ViewportFactory` (e.g. `AppWindow.Scaled` for a 
 
 **Runtime window/taskbar icon.** Set `WindowIconPath` to a PNG (the simple case) or `WindowIcons` to an explicit
 list of decoded `ImageRgba` (16/32/48 px so GLFW picks per DPI; `WindowIcons` wins over `WindowIconPath`). `GameApp`
-applies it during construction. On Windows and Linux/X11 this sets the title-bar + taskbar icon at runtime; on
-**macOS it is a deliberate no-op** (GLFW ignores window icons there - the `.app` bundle's icns owns the Dock/Finder
-icon). The Windows `.exe` icon shown when the app is not running is a separate per-game `<ApplicationIcon>` in the
-desktop csproj, independent of this API. Under the hood `GameApp` decodes the PNG via `Render2D.ImageRgba` and hands
+applies it during construction. On Windows and Linux/X11 this sets the title-bar + taskbar icon at runtime. The
+Windows `.exe` icon shown when the app is not running is a separate per-game `<ApplicationIcon>` in the desktop
+csproj, independent of this API. Under the hood `GameApp` decodes the PNG via `Render2D.ImageRgba` and hands
 already-decoded `WindowIcon`s to `AppWindow.SetIcon(...)`, which a non-`GameApp` host can also call directly; the
 `KhaozEngine.Windowing` package itself stays decode-free (no Render2D dependency).
+
+**macOS Dock icon.** GLFW cannot set the Cocoa Dock icon, so `SetIcon` is a no-op on macOS, and an app launched via
+`dotnet run` has no `.app` bundle `.icns` - so without help it shows the generic document icon in the Dock and
+Cmd-Tab. `GameApp` fixes this automatically: when `WindowIconPath` is set, on macOS it also feeds that PNG to
+`AppWindow.SetMacDockIcon(pngBytes)`, which sets the Dock icon at runtime via
+`Platform.ApplicationIcon.TrySetMacDockIcon` (`NSApplication.setApplicationIconImage:`). A `WindowIcons`-only config
+(no PNG path) leaves the Dock icon untouched, since `NSImage` decodes from the PNG. A non-`GameApp` host can call
+`AppWindow.SetMacDockIcon(...)` directly. It returns `false` (never throws) off macOS or on empty input. A packaged
+`.app` bundle with its own `.icns` still owns the Dock icon the normal way; this is for the unbundled dev/run case.
 
 `GameApp` seams: `OnLoad()`, `OnUpdate(float dt)`, `OnRenderWorld(Frame)` (the 3D pass; empty in 2D),
 `OnDraw2D(SpriteBatch)`, `OnResize(int, int)`, `OnDispose()`. Properties you read: `Window`, `Clock`, `Viewport`,

@@ -97,60 +97,16 @@ public sealed class ServerReplicator
         foreach (int netId in current.Keys)
         {
             if (baseline is null || !baseline.ContainsKey(netId)) { changed.Add(netId); continue; }
-            if (EntityChanged(baseline[netId], current[netId])) changed.Add(netId);
+            if (DeltaEncoding.EntityChanged(baseline[netId], current[netId])) changed.Add(netId);
         }
         bw.Write(changed.Count);
         foreach (int netId in changed)
         {
-            Dictionary<ushort, byte[]> curComps = current[netId];
             bool isNew = baseline is null || !baseline.ContainsKey(netId);
-            bw.Write(netId);
-            bw.Write(isNew ? (byte)1 : (byte)0);
-
-            // Removed components (existing entities only).
-            var removedComps = new List<ushort>();
-            if (!isNew)
-                foreach (ushort tid in baseline![netId].Keys)
-                    if (!curComps.ContainsKey(tid)) removedComps.Add(tid);
-            bw.Write(removedComps.Count);
-            foreach (ushort tid in removedComps) bw.Write(tid);
-
-            // Changed/added components, in registration order.
-            Dictionary<ushort, byte[]>? baseComps = isNew ? null : baseline![netId];
-            foreach (ComponentCodec codec in registry.Ordered)
-            {
-                if (!curComps.TryGetValue(codec.TypeId, out byte[]? data)) continue;
-                bool include = baseComps is null
-                    || !baseComps.TryGetValue(codec.TypeId, out byte[]? prev) || !BytesEqual(prev, data);
-                if (include)
-                {
-                    bw.Write(codec.TypeId);
-                    // Extension components carry a 7-bit length so an older client can skip an id it never
-                    // registered; built-ins stay unframed (the reader consumes exactly what write produced).
-                    if (codec.LengthPrefixed) bw.Write7BitEncodedInt(data.Length);
-                    bw.Write(data);
-                }
-            }
-            bw.Write((ushort)0); // end-of-entity terminator
+            DeltaEncoding.WriteChangedEntity(bw, registry, netId, isNew, isNew ? null : baseline![netId], current[netId]);
         }
 
         bw.Flush();
         return ms.ToArray();
-    }
-
-    private static bool EntityChanged(Dictionary<ushort, byte[]> baseComps, Dictionary<ushort, byte[]> curComps)
-    {
-        foreach (KeyValuePair<ushort, byte[]> kv in curComps)
-            if (!baseComps.TryGetValue(kv.Key, out byte[]? prev) || !BytesEqual(prev, kv.Value)) return true;
-        foreach (ushort tid in baseComps.Keys)
-            if (!curComps.ContainsKey(tid)) return true;
-        return false;
-    }
-
-    private static bool BytesEqual(byte[] a, byte[] b)
-    {
-        if (a.Length != b.Length) return false;
-        for (int i = 0; i < a.Length; i++) if (a[i] != b[i]) return false;
-        return true;
     }
 }

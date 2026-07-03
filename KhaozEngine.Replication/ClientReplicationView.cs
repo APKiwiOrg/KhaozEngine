@@ -120,10 +120,15 @@ public sealed class ClientReplicationView
     }
 
     /// <summary>
-    /// Applies a baseline+delta produced by <see cref="ServerReplicator.WriteFor"/>: despawns removed entities,
-    /// spawns/updates changed ones (removing listed components), and maintains interpolation buffers so
-    /// <see cref="Interpolate"/> keeps working. Throws if the delta's baseline does not match
-    /// <see cref="LastAppliedSeq"/> (the caller should then request/await a full snapshot, baseline -1).
+    /// Applies a baseline+delta produced by <see cref="ServerReplicator.WriteFor"/> or
+    /// <see cref="AoiDeltaReplicator.WriteFor"/>: despawns removed entities, spawns/updates changed ones (removing
+    /// listed components), and maintains interpolation buffers so <see cref="Interpolate"/> keeps working. A delta
+    /// whose baseline is at or before <see cref="LastAppliedSeq"/> is a valid rebuild — the server builds from the
+    /// client's last ACKED baseline, which lags what the client has applied whenever an ack is in flight or was lost,
+    /// so re-applying the diff from that older baseline is idempotent and self-heals (a dropped delta / ack needs no
+    /// full resync). Only a baseline AHEAD of <see cref="LastAppliedSeq"/> is a genuine gap and throws (the caller
+    /// should then await a full snapshot, baseline -1). A <c>baseline -1</c> delta is a full snapshot: entities the
+    /// client still tracks but the delta omits are despawned (the same full-state semantics as <see cref="Apply"/>).
     /// </summary>
     public void ApplyDelta(World world, byte[] delta)
     {
@@ -134,9 +139,9 @@ public sealed class ClientReplicationView
         using var br = new BinaryReader(ms);
         int baselineSeq = br.ReadInt32();
         int snapshotSeq = br.ReadInt32();
-        if (baselineSeq != -1 && baselineSeq != LastAppliedSeq)
+        if (baselineSeq > LastAppliedSeq)
             throw new InvalidOperationException(
-                $"Delta baseline {baselineSeq} does not match last applied {LastAppliedSeq}; a full snapshot is needed.");
+                $"Delta baseline {baselineSeq} is ahead of last applied {LastAppliedSeq}; a full snapshot is needed.");
 
         // Interpolation: the pre-delta state becomes 'previous'; changed components below refresh 'current'.
         previousBytes.Clear();
@@ -154,10 +159,13 @@ public sealed class ClientReplicationView
             RemoveEntityBuffers(netId);
         }
 
+        // A baseline -1 delta is a full snapshot; track what it carries so anything else can be despawned below.
+        HashSet<int>? seen = baselineSeq == -1 ? new HashSet<int>() : null;
         int changedCount = br.ReadInt32();
         for (int i = 0; i < changedCount; i++)
         {
             int netId = br.ReadInt32();
+            seen?.Add(netId);
             br.ReadByte(); // isNew flag — GetOrSpawn handles both; read only to stay byte-aligned
             Entity entity = GetOrSpawn(world, netId);
 
@@ -174,6 +182,21 @@ public sealed class ClientReplicationView
             }
 
             ReadEntityComponents(world, entity, netId, ms, br, delta, "Delta");
+        }
+
+        // Full snapshot (baseline -1): anything we still track but the snapshot didn't carry is gone.
+        if (seen is not null)
+        {
+            List<int>? gone = null;
+            foreach (KeyValuePair<int, Entity> kv in entityByNetId)
+                if (!seen.Contains(kv.Key)) (gone ??= new List<int>()).Add(kv.Key);
+            if (gone is not null)
+                foreach (int netId in gone)
+                {
+                    if (world.IsAlive(entityByNetId[netId])) world.Despawn(entityByNetId[netId]);
+                    entityByNetId.Remove(netId);
+                    RemoveEntityBuffers(netId);
+                }
         }
 
         LastAppliedSeq = snapshotSeq;

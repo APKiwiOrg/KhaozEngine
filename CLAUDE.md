@@ -113,10 +113,10 @@ version/release work.
     zero-dependency leaf at the bottom; the render/runtime stack layers `Gpu` -> `Windowing` ->
     `Render2D`/`Render3D` -> `Gui`/`Game`/`Game.Render3D`; the GPU-free `Foundation` packages (Ecs, Serialization,
     Content, Diagnostics, App, Locomotion, Persistence, Platform, Updates, Collision,
-    Physics, Terrain, Determinism) sit beside it (9.0.0 folded Pooling into Primitives, Localization into App,
+    Physics, Social, Terrain, Determinism) sit beside it (9.0.0 folded Pooling into Primitives, Localization into App,
     and Effects into Particles); the server/netcode stack layers `Simulation` (a zero-dependency
     leaf) -> `Netcode`/`Replication`/`Sharding`/`WorldStore` -> `NetWorld`. `Ecs` depends on `Simulation` (acyclic).
-    Opt-in, in NO umbrella, added explicitly: `Physics.Bepu`, `WorldStore.Sqlite`/`.SqlServer`, `Server.Admin`.
+    Opt-in, in NO umbrella, added explicitly: `Physics.Bepu`, `WorldStore.Sqlite`/`.SqlServer`, `Server.Admin`, `Social.Discord`.
     The four umbrellas (`Foundation`, `Game2D`, `Game3D`, `Server`) are code-free dependency groups.
   - **Gotchas / history:** the package id is `KhaozEngine.Sharding`, NOT `KhaozEngine.World` (a `World` leaf would
     shadow the ECS `World` type). The legacy 4.x MonoGame line + its six packages

@@ -4,26 +4,13 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **9.10.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **9.11.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan under `docs/superpowers/` when it is scheduled.
 
 ## Near-term (next up)
 
-### 1. Engine-level Discord social SDK
-
-Discord integration (rich presence, join/invite, lobbies, OAuth identity) is currently done bespoke per game.
-Centralize it: a `KhaozEngine.Social` seam (`ISocialProvider`: presence, invites/friends, identity, optionally
-achievements) with a `KhaozEngine.Social.Discord` implementation over the Discord Social SDK, so every game gets
-Discord from the engine. Retire the game-specific Discord implementations once the package ships.
-
-- Design the seam for extensibility: the provider interface should leave room for Steam / other platforms later
-  behind the same contract.
-- Native dependency: the Discord SDK ships native libraries, so the `.Discord` package pulls them while the
-  `Social` core seam stays dependency-free, mirroring the opt-in-backend pattern (`Netcode.LiteNetLib`,
-  `WorldStore.*`). Per-RID bundling is the same concern as Audio/Windowing.
-
-### 2. Physics engine: dynamic bodies + constraints
+### 1. Physics engine: dynamic bodies + constraints
 
 The static-body physics seam (`IPhysicsWorld` + the opt-in `KhaozEngine.Physics.Bepu` backend) is in place,
 and character movement collide-and-slides capsule-vs-mesh against it. What remains:
@@ -37,7 +24,7 @@ lands here: a static terrain body replaces the `TerrainCollision` delegate in th
 
 **Constraints, joints, and vehicles.** Hinges, sliders, ragdolls, wheeled vehicles.
 
-### 3. Visual fidelity (textures + materials)
+### 2. Visual fidelity (textures + materials)
 
 The terrain now renders PBR splat textures. Props can now carry albedo/normal/roughness surface detail too
 (`PropLoader.LoadPropWithMaterial` reads a prop glTF's textures, opt-in via the `textured` manifest flag, and a

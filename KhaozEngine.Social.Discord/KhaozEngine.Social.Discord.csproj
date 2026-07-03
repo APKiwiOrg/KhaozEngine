@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Social.Discord</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>Discord backend for the KhaozEngine.Social seam. Implements ISocialProvider over Discord Rich Presence with a pure-managed IPC client (Windows named pipe / unix domain socket, JSON framing) - no native libraries, no third-party packages. Rich presence, local identity, and join/invite/ask-to-join. The only Discord-aware assembly; consumers depend on the dependency-free seam and pick this backend explicitly like Netcode.LiteNetLib or WorldStore.Sqlite.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Social/KhaozEngine.Social.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Tests" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

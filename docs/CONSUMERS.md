@@ -4,11 +4,12 @@ Which game uses which packages, at which version. Current state only - for the p
 [`../CHANGELOG.md`](../CHANGELOG.md). Update this whenever a consumer bumps a `<PackageReference>` or the
 engine ships a new version.
 
-**Engine current version:** `9.10.0` (the shared `<KhaozEngineVersion>` line, which *is* the engine). The
+**Engine current version:** `9.11.0` (the shared `<KhaozEngineVersion>` line, which *is* the engine). The
 engine is entirely MonoGame-free on a single version line in `Directory.Build.props` (the doc-version guard
 checks it): the custom render/runtime stack + the graduated MonoGame-free foundation + the four umbrella
-metapackages, all sharing one version. `Physics.Bepu` and the `WorldStore.Sqlite`/`.SqlServer` backends are
-opt-in and referenced explicitly; `Server.Admin` (the Kestrel HTTPS admin endpoint) is likewise opt-in
+metapackages, all sharing one version. `Physics.Bepu`, the `WorldStore.Sqlite`/`.SqlServer` backends, and
+`Social.Discord` (the Discord Rich Presence backend) are opt-in and referenced explicitly; `Server.Admin`
+(the Kestrel HTTPS admin endpoint) is likewise opt-in
 and NOT in the `Server` umbrella - add it explicitly when the server needs an admin endpoint, so a sim server
 without one never pulls the ASP.NET Core web stack; the author/publish tools (`ke-updater`/`ke-sfxbake`/`ke-propbake`) ship as
 dotnet tools in no umbrella, so no consumer references them via `<PackageReference>`. Full package catalog:
@@ -25,8 +26,8 @@ the checked-in `CLAUDE.md`. Per-version history: `CHANGELOG.md`.
 The four code-free umbrella metapackages (`Game2D` / `Game3D` / `Server` / `Foundation`) and exactly what each
 pulls in are the single-source "Umbrella metapackages" table in [`../README.md`](../README.md) - don't duplicate
 that table here. The granular packages still exist for fine-grained use (a wire-contract project references just
-`Netcode.Abstractions`, etc.; the `.Sqlite`/`.SqlServer` backends, `Physics.Bepu`, and `Server.Admin` are opt-in
-and added explicitly). This file tracks only which consumer pins which version (below).
+`Netcode.Abstractions`, etc.; the `.Sqlite`/`.SqlServer` backends, `Physics.Bepu`, `Social.Discord`, and
+`Server.Admin` are opt-in and added explicitly). This file tracks only which consumer pins which version (below).
 
 ## Consumer matrix
 

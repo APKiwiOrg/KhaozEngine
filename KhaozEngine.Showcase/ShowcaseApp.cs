@@ -42,13 +42,21 @@ namespace KhaozEngine.Showcase
             // RoomMiniGame reuses the same big/small fonts as its title/HUD text (no new Surface2D calls needed).
             Rooms.Add(("Mini-game (Catcher)", () => new RoomMiniGame().Init(_white, big, small)));
 
-            // Room3D is the walkable streamed 3D overworld ported from TerrainWalkSample; it renders through
+            // Room3D is the walkable streamed 3D overworld ported from TerrainWalkSample. It renders through
             // the app's shared Scene3D (injected here, since a GameScene cannot reach Surface3D itself).
             Rooms.Add(("3D World (walk)", () => new Room3D().Init(Scene, _white, small)));
 
-            // Rooms are registered here (added by later tasks).
             _scenes.Push(new MenuScene(_white, big, small, Rooms));
+
+            // Smoke aid: KE_SHOWCASE_ROOM=<name> auto-enters that room, so a headless KE_MAX_FRAMES run actually
+            // exercises the room's OnEnter/OnUpdate/OnDraw (the menu alone never builds a room's world). The push
+            // is deferred to the first OnUpdate (below), not done here, because a room's OnEnter reads the scene
+            // manager's Viewport/FrameWidth, which are only set once per frame in OnUpdate. Case-insensitive prefix
+            // match on the display name, so "3D" or "mini" is enough. Unmatched = ignored.
+            _autoRoom = System.Environment.GetEnvironmentVariable("KE_SHOWCASE_ROOM");
         }
+
+        string? _autoRoom;
 
         protected override void OnUpdate(float dt)
         {
@@ -57,6 +65,17 @@ namespace KhaozEngine.Showcase
             _scenes.Viewport = Viewport;
             _scenes.FrameWidth = FrameWidth;
             _scenes.FrameHeight = FrameHeight;
+
+            // Deferred auto-enter (see OnLoad): now that Viewport/FrameWidth are set, it is safe to enter a room.
+            if (!string.IsNullOrWhiteSpace(_autoRoom))
+            {
+                string want = _autoRoom;
+                _autoRoom = null;
+                foreach (var r in Rooms)
+                    if (r.Name.StartsWith(want, System.StringComparison.OrdinalIgnoreCase))
+                    { _scenes.Push(r.Factory()); break; }
+            }
+
             _scenes.Update(dt);
         }
 

@@ -251,18 +251,24 @@ layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
 
-vec3 sampleAlbedo(int layer, vec2 uvx, vec2 uvy, vec2 uvz, vec3 bw) {
-    vec3 ax = texture(sampler2DArray(AlbedoArray, Samp), vec3(uvx, float(layer))).rgb;
-    vec3 ay = texture(sampler2DArray(AlbedoArray, Samp), vec3(uvy, float(layer))).rgb;
-    vec3 az = texture(sampler2DArray(AlbedoArray, Samp), vec3(uvz, float(layer))).rgb;
+// Explicit-gradient triplanar albedo. gN0/gN1 are the ddx/ddy of each plane's UV, computed once in uniform flow by
+// the caller (see main) so textureGrad's mip/aniso LOD is well-defined even though this runs under the per-layer
+// weight branch. An implicit texture() here would take undefined derivatives once a quad diverges at that branch.
+vec3 sampleAlbedo(int layer, vec2 uvx, vec2 uvy, vec2 uvz, vec3 bw,
+                  vec2 gx0, vec2 gx1, vec2 gy0, vec2 gy1, vec2 gz0, vec2 gz1) {
+    vec3 ax = textureGrad(sampler2DArray(AlbedoArray, Samp), vec3(uvx, float(layer)), gx0, gx1).rgb;
+    vec3 ay = textureGrad(sampler2DArray(AlbedoArray, Samp), vec3(uvy, float(layer)), gy0, gy1).rgb;
+    vec3 az = textureGrad(sampler2DArray(AlbedoArray, Samp), vec3(uvz, float(layer)), gz0, gz1).rgb;
     return ax*bw.x + ay*bw.y + az*bw.z;
 }
 
 // Whiteout triplanar normal blend (reorient each plane's tangent-space normal into world space, no vertex tangent).
-vec3 sampleNormal(int layer, vec2 uvx, vec2 uvy, vec2 uvz, vec3 bw, vec3 Ngeo) {
-    vec3 nx = texture(sampler2DArray(NormalArray, Samp), vec3(uvx, float(layer))).xyz * 2.0 - 1.0;
-    vec3 ny = texture(sampler2DArray(NormalArray, Samp), vec3(uvy, float(layer))).xyz * 2.0 - 1.0;
-    vec3 nz = texture(sampler2DArray(NormalArray, Samp), vec3(uvz, float(layer))).xyz * 2.0 - 1.0;
+// Uses the same hoisted per-plane gradients as sampleAlbedo (textureGrad) so the LOD stays defined under the branch.
+vec3 sampleNormal(int layer, vec2 uvx, vec2 uvy, vec2 uvz, vec3 bw, vec3 Ngeo,
+                  vec2 gx0, vec2 gx1, vec2 gy0, vec2 gy1, vec2 gz0, vec2 gz1) {
+    vec3 nx = textureGrad(sampler2DArray(NormalArray, Samp), vec3(uvx, float(layer)), gx0, gx1).xyz * 2.0 - 1.0;
+    vec3 ny = textureGrad(sampler2DArray(NormalArray, Samp), vec3(uvy, float(layer)), gy0, gy1).xyz * 2.0 - 1.0;
+    vec3 nz = textureGrad(sampler2DArray(NormalArray, Samp), vec3(uvz, float(layer)), gz0, gz1).xyz * 2.0 - 1.0;
     nx = vec3(nx.xy + Ngeo.zy, abs(nx.z) * Ngeo.x);
     ny = vec3(ny.xy + Ngeo.xz, abs(ny.z) * Ngeo.y);
     nz = vec3(nz.xy + Ngeo.xy, abs(nz.z) * Ngeo.z);
@@ -289,6 +295,14 @@ void main() {
         bw /= max(bw.x + bw.y + bw.z, 1e-5);
     }
 
+    // Screen-space world derivatives, taken ONCE here in uniform control flow (before the per-layer loop's
+    // data-dependent `continue`). The triplanar UVs are vWorldPos.{yz,xz,xy} * tile, so each plane's texture-space
+    // gradient is the matching world derivative scaled by that layer's tile rate. Feeding these to textureGrad keeps
+    // the mip/aniso LOD well-defined regardless of the branch; an implicit texture() under the branch would take
+    // undefined derivatives on a diverging quad, which minified high-frequency ground reads as distance shimmer.
+    vec3 dWx = dFdx(vWorldPos);
+    vec3 dWy = dFdy(vWorldPos);
+
     vec3 albedo = vec3(0.0);
     vec3 Nsum = vec3(0.0);
     float rough = 0.0;
@@ -299,8 +313,11 @@ void main() {
         vec2 uvx = vWorldPos.yz * tile;
         vec2 uvy = vWorldPos.xz * tile;
         vec2 uvz = vWorldPos.xy * tile;
-        albedo += wl * sampleAlbedo(L, uvx, uvy, uvz, bw) * TintTiling[L].xyz;
-        Nsum   += wl * sampleNormal(L, uvx, uvy, uvz, bw, Ngeo);
+        vec2 gx0 = dWx.yz * tile, gx1 = dWy.yz * tile;
+        vec2 gy0 = dWx.xz * tile, gy1 = dWy.xz * tile;
+        vec2 gz0 = dWx.xy * tile, gz1 = dWy.xy * tile;
+        albedo += wl * sampleAlbedo(L, uvx, uvy, uvz, bw, gx0, gx1, gy0, gy1, gz0, gz1) * TintTiling[L].xyz;
+        Nsum   += wl * sampleNormal(L, uvx, uvy, uvz, bw, Ngeo, gx0, gx1, gy0, gy1, gz0, gz1);
         rough  += wl * rgh[L];
     }
     albedo *= vTint.rgb;

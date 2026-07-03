@@ -1565,6 +1565,53 @@ WorldLabel.Draw(batch, font, camera, e.Position, headOffset, name, Color.White, 
 The cull predicate is also exposed render-free as `WorldLabel.ShouldCull(worldPos, cullFrom, maxDistance)` if you
 want to filter the label set before drawing.
 
+#### The nameplate widget (name + bars plate)
+
+`WorldLabel` draws text only. For the MMO-style plate - a rounded panel holding the name and one or more bars
+(health/resource) - use **`NameplateRenderer`** (also in `KhaozEngine.Render3D`). It is data-driven: a `Nameplate`
+carries the title and a `Bars` list, so a game can ship one bar now and add more later without a rewrite. Build a
+plate per entity and draw it in the same 2D pass, after the 3D scene:
+
+```csharp
+var white = /* a 1x1 white Texture2D, as DiagnosticsOverlay uses */;
+batch.Begin();
+foreach (EntityRenderState e in client.Snapshot())
+    if (e.DisplayName is { } name)
+    {
+        var plate = new Nameplate
+        {
+            Title = name,
+            TitleColor = Color.White,
+            Bars = new[] { new NameplateBar(e.Health / e.MaxHealth, green, darkTrack) },
+        };
+        NameplateRenderer.Draw(batch, font, white, camera, e.Position, new Vector3(0, headHeight, 0),
+            plate, NameplateStyle.Default, fbW, fbH, maxDistance: 90f, cullFrom: localPlayerPos);
+    }
+batch.End();
+```
+
+`NameplateRenderer.Draw` projects `worldPos + offset` via `IIsoCamera3D.WorldToScreen` exactly like `WorldLabel`,
+centres the panel horizontally on the head pixel and bottom-anchors it there (the plate floats above the head). It
+returns `false` on the same cull paths (empty plate, behind camera, off-screen, beyond `maxDistance` - the distance
+predicate is the shared `NameplateRenderer.ShouldCull`, identical to `WorldLabel.ShouldCull`). Like `WorldLabel` it
+is screen-space, not depth-tested. `NameplateBar.Fraction` is clamped to 0..1 at draw; the draw path allocates no
+per-frame heap (bar rects are computed in the loop).
+
+`NameplateStyle` is the look, split from the data. `NameplateStyle.Default` is the unified opaque-plate preset
+(dark rounded panel, subtle border, one-bar geometry). Tweak it with a `with` expression, or reach the panel-less
+"classic pill" look (just a name with a drop shadow, no panel) by dropping the fill alpha and adding a shadow:
+
+```csharp
+var pill = NameplateStyle.Default with
+{
+    PanelFill = NameplateStyle.Default.PanelFill.WithAlpha(0f),   // no panel
+    TitleShadow = Color.Black,                                    // readability without a plate
+};
+```
+
+Set `MaxWidth` (>0) to cap the panel width; the title is ellipsized (ASCII "...") to fit. The panel size math is
+exposed render-free as `NameplateLayout.Measure(font, plate, style)` if you want to place or batch plates yourself.
+
 ### Sharded authoritative server (many players / a large world)
 
 For scale, swap `WorldServer` for **`ShardedWorldServer`**: the *same* movement stack run across a

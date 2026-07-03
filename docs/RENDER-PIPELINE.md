@@ -2,8 +2,7 @@
 
 A high-level (container / "Level 2") map of the path from a C# draw call to pixels on screen. Not line-by-line:
 the boxes name the real types so you can jump into the code, but the detail stops at the layer boundaries. For
-the GPU strategy rationale (Veldrid, author-once GLSL) see [ROADMAP.md](ROADMAP.md) "The post-MonoGame pivot"
-and [CROSS-PLATFORM.md](CROSS-PLATFORM.md).
+the GPU strategy rationale (Veldrid, author-once GLSL) see [CROSS-PLATFORM.md](CROSS-PLATFORM.md).
 
 ## The flow
 
@@ -143,7 +142,7 @@ that pass on all three backends").
 |---|---|
 | Frame loop + window + swapchain | `KhaozEngine.Windowing/AppWindow.cs` (`Run`, `GpuDeviceContext.CreateForWindow`, `Present`) |
 | 3D submission API | `KhaozEngine.Render3D/Scene3D.cs` (`LoadMesh`, `Begin`, `Draw`) + `Render3DSurface.cs` |
-| 3D instanced draws + post | `KhaozEngine.Render3D/Internal/` (`ModelRenderer`), `PixelPostProcessSettings.cs` |
+| 3D instanced draws + post | `KhaozEngine.Render3D/Rendering/` (`ModelRenderer`), `PixelPostProcessSettings.cs` |
 | Terrain splat pipeline | `KhaozEngine.Render3D/Internal/ShaderSources.cs` (`SplatFrag`), `Scene3D.cs` (`LoadSplatMaterial`), `KhaozEngine.Terrain.Render3D/TerrainScene3D.cs` (`LoadTerrainMaterial`) |
 | 2D batching | `KhaozEngine.Render2D/SpriteBatch.cs` + `Render2DSurface.cs` |
 | The backend seam | `KhaozEngine.Gpu/GpuDeviceContext.cs`, `GpuBackendSelector.cs`, `GpuCapabilities.cs`, `GpuClip.cs` |

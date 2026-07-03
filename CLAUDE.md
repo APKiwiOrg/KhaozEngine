@@ -122,7 +122,7 @@ version/release work.
     shadow the ECS `World` type). The legacy 4.x MonoGame line + its six packages
     (`UI`/`Graphics`/`Screens`/`Sprites`/`Input`/`Time`) were DELETED - there is no 4.x line; all consumers are on
     the 7.x/8.x line (pins in `docs/CONSUMERS.md`). The line dropped `-experimental` at `5.31.0`; the foundation
-    graduated onto it at `5.46.0`. See `docs/ROADMAP.md` ("The post-MonoGame pivot").
+    graduated onto it at `5.46.0`. See `CHANGELOG.md` (top) for the MonoGame-free pivot history.
 - **Commit subjects:** conventional-commit style `area(scope): summary`, e.g.
   `audio(4.3.1): MacOsMusicBackend loads built .ogg` or `docs(consumers): ...`.
   On a release/version-bump commit, use the new version as the scope (`audio(4.3.1):`).

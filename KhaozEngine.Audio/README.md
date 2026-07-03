@@ -11,5 +11,5 @@ Game-agnostic audio on the custom MonoGame-free stack: streaming music + SFX + 3
 - `OpenAlSfxBackend` + `SfxVoicePool` - a 16-voice one-shot SFX pool over a shared OpenAL context, with
   optional 3D positioning.
 
-No MonoGame. Part of the 5.x engine (`docs/ROADMAP.md`). OpenAL is bundled (openal-soft, Silk.NET.OpenAL.Soft
+No MonoGame. OpenAL is bundled (openal-soft, Silk.NET.OpenAL.Soft
 .Native) so no system OpenAL is required.

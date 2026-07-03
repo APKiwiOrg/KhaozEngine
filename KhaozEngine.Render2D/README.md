@@ -17,4 +17,4 @@
 The GPU backend stays behind `KhaozEngine.Gpu`; this package has no direct graphics-backend reference (deps:
 `KhaozEngine.Gpu` + `KhaozEngine.Windowing` + StbTrueTypeSharp/StbImageSharp). Windowing/input come from
 `KhaozEngine.Windowing` (`AppWindow`, Silk.NET windowing, GLFW natives bundled per-RID - no SDL2/brew). Part of
-the 5.x engine; see `docs/ROADMAP.md` ("The post-MonoGame pivot").
+the MonoGame-free engine.

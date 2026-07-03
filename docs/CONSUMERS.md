@@ -119,9 +119,3 @@ single `<KhaozEngineVersion>` pin across the `Game3D` client and the `Server` + 
 server. SpaceGame is the only consumer restoring from `local-feed` directly (the other three vendor their own
 in-repo feed); with SpaceGame on 9.0.1, `local-feed` may be pruned to a **9.0.1** floor. Everything older lives in
 GitHub Packages, the durable store._
-
-**Engine on 9.6.2** (SpriteBatch flicker fix: the per-flush vertex buffers are ring-buffered across frames so a
-frame's write never races the GPU still reading an earlier, in-flight frame's copy - fixed the F2 collision legend
-blinking out for a frame as the adjacent DIAG telemetry panel resized. Render-only bug fix, no public API change;
-new `SpriteBatchBufferRingTests`). **Ruinborne pins it** (0.1.65, vendored feed refreshed to 9.6.2).
-SpaceGame/Hardpoint/Nullwake remain on 9.0.1 - their bump is a trivial same-major pin move whenever wanted.

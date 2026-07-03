@@ -369,7 +369,7 @@ exist on `Render2DContext` (the `Render2DSnapshot` headless callback).
   the un-rotated (design) bounds, not the rotated quad (the GPU scissor is axis-aligned).
 - `Camera2D`: `Position`/`Zoom`/`Rotation`, `WorldToScreen`/`ScreenToWorld`, `CenterOn`, `PanByScreenDelta`,
   `Focus(rect, ...)`, `ClampPosition(...)`. The camera-feel layer (follow, look-ahead, blends, room cameras,
-  screen shake, parallax) lives alongside it in Render2D / Effects.
+  parallax) lives alongside it in Render2D; screen shake is in `KhaozEngine.Particles`.
 - Scissor clipping: `SetScissor(Rect)` / `ClearScissor()` (composes with the design viewport).
 - `ImageRgba` (CPU, no GPU): `ImageRgba.Load(path)` / `Decode(bytes)` / `Surface2D.LoadImageRgba(path)` give a
   tightly-packed RGBA8 image with `AlphaAt` / `IsOpaqueAt(threshold)` for opaque-pixel collision masks. Pass

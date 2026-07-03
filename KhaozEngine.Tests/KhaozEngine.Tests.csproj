@@ -60,6 +60,7 @@
     <ProjectReference Include="../KhaozEngine.Replication/KhaozEngine.Replication.csproj" />
     <ProjectReference Include="../KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
     <ProjectReference Include="../KhaozEngine.Social/KhaozEngine.Social.csproj" />
+    <ProjectReference Include="../KhaozEngine.Social.Discord/KhaozEngine.Social.Discord.csproj" />
     <ProjectReference Include="../KhaozEngine.WorldStore/KhaozEngine.WorldStore.csproj" />
     <ProjectReference Include="../KhaozEngine.WorldStore.Sqlite/KhaozEngine.WorldStore.Sqlite.csproj" />
     <ProjectReference Include="../KhaozEngine.WorldStore.SqlServer/KhaozEngine.WorldStore.SqlServer.csproj" />

@@ -31,5 +31,4 @@ renderCamera.Rotation = camera.Rotation + shake.Angle;
 ```
 
 Render-agnostic by design: this package never references a renderer. The game iterates `system.Active` and
-draws each particle (e.g. a Render3D camera-facing billboard). Part of the post-MonoGame 5.x line; see
-`docs/ROADMAP.md` ("The post-MonoGame pivot").
+draws each particle (e.g. a Render3D camera-facing billboard). Part of the MonoGame-free engine.

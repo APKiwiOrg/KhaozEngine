@@ -26,9 +26,10 @@ grid because a software rasterizer (lavapipe, WARP) does not match Apple Metal p
 goldens absorb that while still catching real shader / UBO / blend / winding / orientation regressions (coarse
 32×18 grid, per-channel tolerance).
 
-The Metal goldens (`scene2d.metal.txt`, `scene3d.metal.txt`) and the Direct3D11 goldens
-(`scene2d.direct3d11.txt`, `scene3d.direct3d11.txt`, baked on WARP) are committed and verified on every macOS /
-Windows run respectively. Linux Vulkan goldens are not committed yet (see below).
+The Metal goldens (`scene2d.metal.txt`, `scene3d.metal.txt`), the Direct3D11 goldens
+(`scene2d.direct3d11.txt`, `scene3d.direct3d11.txt`, baked on WARP), and the Vulkan goldens
+(`scene2d.vulkan.txt`, `scene3d.vulkan.txt`, baked on lavapipe) are all committed and verified on every macOS /
+Windows / Linux run respectively.
 
 The 2D golden loads a libre font bundled in the test project (`KhaozEngine.Tests/Assets/Roboto-Regular.ttf`,
 Apache-2.0) rather than an OS system-font path, so its glyph input is identical on every runner.
@@ -118,8 +119,8 @@ This release delivers the **verification mechanism**, not a finished cross-platf
    (clip-Y / 0..1 depth) like Metal, so they need no special handling. OpenGL's runtime clip-Y / depth
    derivation is the troublesome one and is out of scope here; the `gl` override parses but is unverified.
    (Clip-space-Y itself is not a baked Metal assumption: `GpuClip` derives the clip-Y sign
-   from `GpuCapabilities` - identity on Metal / D3D11, flipped on Vulkan. The non-Metal path is still
-   unvalidated on real hardware, since the cross-platform-gpu Vulkan leg is the known-red one.)
+   from `GpuCapabilities` - identity on Metal / D3D11, flipped on Vulkan. The Vulkan path is verified in
+   CI against lavapipe (goldens committed) but not yet on real Vulkan hardware.)
 3. **Deferred port-hardening.** Two items are scoped but not yet built: GPU device-lost / device-removed
    handling (recreate the device + resources on a lost swapchain) and a central `Platform` OS-info seam
    (one place that answers OS / RID / capability questions). See

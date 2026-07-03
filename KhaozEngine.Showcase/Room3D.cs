@@ -36,34 +36,35 @@ namespace KhaozEngine.Showcase
         // bounds how fast the model can spin toward a new heading so a one-frame collision jitter cannot snap it).
         const float MaxTurnRate = 12f;
 
-        // Town clearing: a flat plateau near spawn holding the hand-placed buildings. Tuned to sit inside
-        // BoundedClearing's rim disc (radius 38) and clear of its lake at (-12,-4). Values are a starting point,
-        // adjust by playtest so buildings sit flat and inside the rim.
-        static readonly Vector2 TownCenter = new(0f, 14f);
-        const float TownRadius = 18f, TownBlend = 0.25f;
+        // Town clearing: a flat plateau holding the hand-placed buildings. Sits inside BoundedClearing's rim
+        // (inner radius 38 from origin, with a pass to the north) and clear of its lake at (-12,-4) r8. Pushed
+        // north of spawn and widened so the buildings can spread out without clipping: the disc is centred at
+        // (0,18) with radius 24, so its east/west edge (X=+-24 at Z=18, ~30 m from origin) stays well inside the
+        // rim and only the due-north edge reaches into the pass. Values are a starting point, adjust by playtest.
+        static readonly Vector2 TownCenter = new(0f, 18f);
+        const float TownRadius = 24f, TownBlend = 0.25f;
 
         // Draw radius for the 7 hand-placed town buildings: few in count and always meant to be visible from
         // across the clearing, so this is a much wider cull ring than PropDrawRadius (matches Ruinborne's high
         // draw radius for its landmark buildings).
         const float BuildingDrawRadius = 320f;
 
-        // The 7 CC0 Quaternius Medieval Village buildings, hand-placed around TownCenter. Nudged clear of the two
-        // fixtures already standing in the clearing: the platform box at (0,12) (half-extents 3x2.5) and the
-        // procedural textured stone block at (3,3). All positions sit inside TownRadius * (1 - TownBlend) ~= 13.5 m
-        // of TownCenter so they land on the flattened plateau, not its blended rim. Starting layout - exact
-        // spacing is tunable by playtest.
+        // The 7 CC0 Quaternius Medieval Village buildings, hand-placed around TownCenter as a loose village ring
+        // biased north (the lake is off the SW, spawn is due south). Spread so no two footprints clip: the tightest
+        // pair (house_2 / house_3) is ~10 m centre-to-centre, everything else more. All sit inside
+        // TownRadius * (1 - TownBlend) ~= 18 m of TownCenter so they land on the fully-flattened plateau, not its
+        // blended rim, and clear of the platform box (0,12), the textured stone block (3,3), and the lake (-12,-4).
+        // Offsets are from TownCenter; world positions in the trailing comments. Tunable by playtest.
         const float BuildingScale = 1.5f;
         static IReadOnlyList<TownBuilding> CreateTownBuildings() => new[]
         {
-            // Moved off the platform at (0,12): pushed further north and slightly nudged east.
-            new TownBuilding("inn",        TownCenter.X + 1f,  TownCenter.Y + 6f,   0.0f,  BuildingScale),
-            new TownBuilding("well",       TownCenter.X + 6f,  TownCenter.Y - 1f,   0.0f,  BuildingScale),
-            new TownBuilding("house_1",    TownCenter.X + 9f,  TownCenter.Y + 5f,  -2.2f,  BuildingScale),
-            new TownBuilding("house_2",    TownCenter.X - 9f,  TownCenter.Y + 4f,   2.2f,  BuildingScale),
-            // Kept clear of the textured stone block (3,3): house_3 sits west of it.
-            new TownBuilding("house_3",    TownCenter.X - 5f,  TownCenter.Y - 9f,  -0.7f,  BuildingScale),
-            new TownBuilding("blacksmith", TownCenter.X - 10f, TownCenter.Y - 8f,   0.9f,  BuildingScale),
-            new TownBuilding("bell_tower", TownCenter.X,       TownCenter.Y + 11f,  0.0f,  BuildingScale),
+            new TownBuilding("bell_tower", TownCenter.X,        TownCenter.Y + 15f,  0.0f,  BuildingScale), // (0, 33)  far N landmark
+            new TownBuilding("house_1",    TownCenter.X + 14f,  TownCenter.Y + 10f, -2.2f,  BuildingScale), // (14, 28) NE
+            new TownBuilding("house_2",    TownCenter.X - 14f,  TownCenter.Y + 10f,  2.2f,  BuildingScale), // (-14, 28) NW
+            new TownBuilding("inn",        TownCenter.X + 17f,  TownCenter.Y - 2f,   0.0f,  BuildingScale), // (17, 16) E flank
+            new TownBuilding("house_3",    TownCenter.X - 17f,  TownCenter.Y,       -0.7f,  BuildingScale), // (-17, 18) W flank
+            new TownBuilding("well",       TownCenter.X + 10f,  TownCenter.Y - 11f,  0.0f,  BuildingScale), // (10, 7)  SE, small
+            new TownBuilding("blacksmith", TownCenter.X - 11f,  TownCenter.Y - 11f,  0.9f,  BuildingScale), // (-11, 7) SW, clear of lake
         };
 
         Scene3D _scene = null!;

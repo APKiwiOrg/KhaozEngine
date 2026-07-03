@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Social</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>Game-agnostic social/presence seam for KhaozEngine: ISocialProvider (rich presence, local identity, join/invite) with a NullSocialProvider no-op default and a SocialPresenceController that throttles/dedupes presence and self-disables on error. Provider-neutral and dependency-free (only KhaozEngine.Diagnostics); the Discord backend is the opt-in KhaozEngine.Social.Discord package. Pure BCL, headless-testable.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Tests" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

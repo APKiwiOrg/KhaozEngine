@@ -11,8 +11,14 @@ What it owns today:
   overload.
 - **`GpuCapabilities`** - `ClipSpaceYInverted` / `DepthRangeZeroToOne` (so renderers derive clip-Y / depth
   handling from the active backend instead of a baked Metal assumption), plus diagnostics: `DeviceName` (the GPU
-  adapter/driver), `SamplerAnisotropy`, and `SamplerLodBias` (whether those sampler levers are supported). Read off
-  the live device.
+  adapter/driver), `SamplerAnisotropy`, `SamplerLodBias` (whether those sampler levers are supported), and
+  `MaxMsaaSampleCount` (the largest MSAA sample count the engine's MRT formats support, for building/clamping an AA
+  menu). Read off the live device.
+- **MSAA plumbing** - `GpuTextureDescription.SampleCount` (and `IGpuTexture.SampleCount`) make a multisampled render
+  target; `GpuOutputDescription.SampleCount` / `WithSampleCount` carry the count so a pipeline matches its
+  framebuffer (read a live multisampled framebuffer's count off `IGpuFramebuffer.Outputs`); and
+  `IGpuCommandList.ResolveTexture(src, dst)` resolves a multisampled target into a single-sample texture. Default
+  sample count 1 (single-sample) everywhere, so existing render paths are unchanged.
 - **`GpuWindowHandle`** - a native window handle (kind + handle/display) the windowing layer hands over, so
   this package needs no reference to the windowing library.
 - **`GpuDeviceContext`** - `CreateForWindow(in GpuWindowHandle, width, height)` (device + swapchain for a

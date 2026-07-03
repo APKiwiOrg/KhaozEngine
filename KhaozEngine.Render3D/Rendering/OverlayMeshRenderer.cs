@@ -31,7 +31,7 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuDevice _gd;
         readonly IGpuShaderSet _shaders;
         readonly IGpuResourceLayout _layout;
-        readonly IGpuPipeline _pipeline;
+        IGpuPipeline _pipeline;   // rebuilt by SetOutputs when the MRT sample count (MSAA) changes
         readonly List<IDisposable> _retired = new();
         IGpuBuffer? _ubo;      // grown geometrically to hold _capacity slots; a regrown buffer is retired and freed in Dispose
         int _capacity;
@@ -49,6 +49,19 @@ namespace KhaozEngine.Render3D.Rendering
                 // byte offset. Read in the vertex stage only.
                 new GpuResourceLayoutElement("Draw", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex, dynamic: true)));
 
+            _pipeline = BuildPipeline(f, modelOutputs);
+        }
+
+        /// <summary>Rebuild the pipeline for a new model-MRT output description (e.g. multisampled for MSAA - a
+        /// pipeline's sample count must match its framebuffer). Layout/shaders/buffers are kept.</summary>
+        public void SetOutputs(GpuOutputDescription modelOutputs)
+        {
+            _pipeline.Dispose();
+            _pipeline = BuildPipeline(_gd.Factory, modelOutputs);
+        }
+
+        IGpuPipeline BuildPipeline(IGpuResourceFactory f, GpuOutputDescription modelOutputs)
+        {
             // Full ModelVertex layout so the model pass's GPU vertex buffer binds unchanged; the shader reads only
             // Position (0) and Color (2).
             var vertexLayout = new GpuVertexLayoutDescription(
@@ -58,7 +71,7 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuVertexElement("TexCoord", GpuVertexElementFormat.Float2),
                 new GpuVertexElement("Tangent", GpuVertexElementFormat.Float4));
 
-            _pipeline = f.CreateGraphicsPipeline(new GpuPipelineDescription
+            return f.CreateGraphicsPipeline(new GpuPipelineDescription
             {
                 BlendFactor = Vector4.Zero,
                 // Model FB has 3 colour attachments (lit colour, encoded normal, linear depth). Alpha-blend colour;

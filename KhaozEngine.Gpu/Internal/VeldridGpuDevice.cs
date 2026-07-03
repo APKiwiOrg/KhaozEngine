@@ -30,7 +30,8 @@ namespace KhaozEngine.Gpu.Internal
             GraphicsDevice = gd;
             Backend = backend;
             _ownsDevice = ownsDevice;
-            Capabilities = new GpuCapabilities(gd.IsClipSpaceYInverted, gd.IsDepthRangeZeroToOne);
+            Capabilities = new GpuCapabilities(gd.IsClipSpaceYInverted, gd.IsDepthRangeZeroToOne,
+                maxMsaaSampleCount: VeldridMap.MaxMsaaSampleCount(gd));
             // Wrap the device-owned swapchain framebuffer + shared samplers (no-dispose: the device owns them).
             _swapchainFb = gd.MainSwapchain != null
                 ? new VeldridGpuFramebuffer(gd.MainSwapchain.Framebuffer, ownsFramebuffer: false)
@@ -122,9 +123,10 @@ namespace KhaozEngine.Gpu.Internal
                 new BufferDescription(d.SizeInBytes, VeldridMap.ToVeldrid(d.Usage), d.StructureByteStride)));
 
         public IGpuTexture CreateTexture(in GpuTextureDescription d)
-            => new VeldridGpuTexture(GraphicsDevice.ResourceFactory.CreateTexture(TextureDescription.Texture2D(
-                d.Width, d.Height, d.MipLevels, d.ArrayLayers,
-                VeldridMap.ToVeldrid(d.Format), VeldridMap.ToVeldrid(d.Usage))));
+            => new VeldridGpuTexture(GraphicsDevice.ResourceFactory.CreateTexture(new TextureDescription(
+                d.Width, d.Height, 1, d.MipLevels, d.ArrayLayers,
+                VeldridMap.ToVeldrid(d.Format), VeldridMap.ToVeldrid(d.Usage), TextureType.Texture2D,
+                VeldridMap.ToVeldrid(d.SampleCount))));
 
         public IGpuFramebuffer CreateFramebuffer(IGpuTexture? depth, params IGpuTexture[] colour)
         {

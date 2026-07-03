@@ -34,6 +34,15 @@ namespace KhaozEngine.Render3D
         /// tracks the framebuffer to avoid upscale blur on large windows.</summary>
         public RenderScale RenderScale = RenderScale.FixedInternal;
 
+        /// <summary>Graphics-quality knobs for the scene - today the anti-aliasing selection
+        /// (<see cref="Render3D.RenderQuality.AntiAliasing"/>), the recommended high-level way to pick AA
+        /// (<c>Quality.AntiAliasing = AntiAliasing.Ssaa(3f)</c>, <c>AntiAliasing.Fxaa</c>, <c>AntiAliasing.Msaa(4)</c>).
+        /// Default <see cref="AntiAliasing.Off"/>, so the low-level fields below (<see cref="RenderScale"/> /
+        /// <see cref="Supersample"/> / <see cref="Pixelated"/>) still govern and existing scenes are unchanged. When a
+        /// non-None mode is set it OVERRIDES the matching low-level fields (SSAA forces MatchViewport + drives
+        /// <see cref="Supersample"/>); the raw fields remain the low-level equivalent for back-compat.</summary>
+        public RenderQuality Quality = new();
+
         /// <summary>Internal render width (used only when <see cref="RenderScale"/> is
         /// <see cref="Render3D.RenderScale.FixedInternal"/>). High = smooth; small + Pixelated = chunky retro pixels.</summary>
         public int RenderWidth = 1600;
@@ -55,8 +64,10 @@ namespace KhaozEngine.Render3D
         /// (unlike MSAA, which only covers geometry). 1 = off; 2 = 2x per axis (4x the pixels), the same effective AA
         /// a 2x/Retina display gives for free, which fixes high-frequency-terrain / thin-foliage shimmer on a
         /// standard-DPI display. The result is still clamped to <see cref="MaxRenderWidth"/>/<see cref="MaxRenderHeight"/>.
-        /// A factor of 2 downsamples with a correct 2x2 box via the bilinear blit; larger factors soften more but
-        /// the single-tap blit under-samples above ~2x.</summary>
+        /// The downscale is a correct mip-filtered (trilinear) box at ANY factor - the internal target carries a mip
+        /// chain that the final blit samples at LOD ~= log2(factor) - so 3 and 4 anti-alias properly, not just 2. Cost
+        /// scales ~factor^2 in fragment shading (3x = 9x the pixels), so keep it off by default and measure on the
+        /// target GPU before going above 2.</summary>
         public float Supersample = 1f;
 
         /// <summary>Point-sample the final upscale for crisp pixels (retro). False = smooth/AA downscale.</summary>
@@ -115,6 +126,36 @@ namespace KhaozEngine.Render3D
         public Vector3 FillLightDirection = new(0.6f, -0.3f, 0.5f);
         /// <summary>Fill light colour (dim cool by default).</summary>
         public Color FillLightColor = new(0.20f, 0.24f, 0.34f, 1f);
+
+        // ---- Resolved AA config -----------------------------------------------------------------------------------
+        // The renderer reads these (never the raw Quality/RenderScale/Supersample directly) so the high-level
+        // AntiAliasing selection and the low-level fields resolve in one place. AntiAliasing.None => the raw fields win
+        // (back-compat); a non-None mode overrides the matching field; the Pixelated retro path forces AA off.
+
+        /// <summary>The AA mode actually in effect: <see cref="Render3D.AntiAliasingMode.None"/> whenever
+        /// <see cref="Pixelated"/> is set (the retro path bypasses AA), else <see cref="Quality"/>'s mode.</summary>
+        internal AntiAliasingMode EffectiveAaMode => Pixelated ? AntiAliasingMode.None : Quality.AntiAliasing.Mode;
+
+        /// <summary>Render-target sizing after the AA selection: <see cref="Render3D.AntiAliasingMode.Ssaa"/> forces
+        /// <see cref="Render3D.RenderScale.MatchViewport"/> (SSAA supersamples the viewport); otherwise the raw
+        /// <see cref="RenderScale"/>.</summary>
+        internal RenderScale EffectiveRenderScale =>
+            EffectiveAaMode == AntiAliasingMode.Ssaa ? RenderScale.MatchViewport : RenderScale;
+
+        /// <summary>Supersample factor after the AA selection: <see cref="Render3D.AntiAliasingMode.Ssaa"/> uses its
+        /// factor (>= 1); otherwise the raw <see cref="Supersample"/> field (so a consumer setting
+        /// <see cref="Supersample"/> directly with AA <see cref="AntiAliasing.Off"/> is unchanged).</summary>
+        internal float EffectiveSupersample =>
+            EffectiveAaMode == AntiAliasingMode.Ssaa ? System.MathF.Max(1f, Quality.AntiAliasing.SsaaFactor) : Supersample;
+
+        /// <summary>Whether the FXAA post pass runs this frame (mode <see cref="Render3D.AntiAliasingMode.Fxaa"/> and
+        /// not <see cref="Pixelated"/>).</summary>
+        internal bool EffectiveFxaa => EffectiveAaMode == AntiAliasingMode.Fxaa;
+
+        /// <summary>Requested MSAA sample count after the AA selection (1 = off). Still clamped to the device maximum
+        /// at pipeline-build time via <see cref="AntiAliasing.ResolveFor"/>; this is only the requested value.</summary>
+        internal int EffectiveMsaaSamples =>
+            EffectiveAaMode == AntiAliasingMode.Msaa ? System.Math.Max(1, Quality.AntiAliasing.MsaaSamples) : 1;
 
         /// <summary>Dial the stylized post chain down for a smooth/realistic look: cel bands off, palette
         /// quantize + dither off, edge outline off, starfield off, smooth (non-pixelated) upscale. Lighting,

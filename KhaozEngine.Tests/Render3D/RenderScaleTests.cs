@@ -96,5 +96,62 @@ namespace KhaozEngine.Tests.Render3D
             var fi = new PixelPostProcessSettings { Supersample = 2f };             // FixedInternal ignores Supersample
             Assert.Equal((1600, 900), Scene3D.ComputeTargetSize(fi, 1280, 720));
         }
+
+        // WantsMipDownsample: the pure decision behind mip-filtering the final downscale blit. It must be true ONLY
+        // when the internal target is genuinely LARGER than the viewport under MatchViewport with a non-pixelated
+        // blit; every historical path (FixedInternal, a 1:1 / upscale MatchViewport, Pixelated) stays single-mip and
+        // byte-identical. This is what makes Supersample correct at factors other than 2.
+
+        [Fact]
+        public void WantsMipDownsample_false_for_FixedInternal_even_when_supersample_set()
+        {
+            var s = new PixelPostProcessSettings { Supersample = 3f }; // FixedInternal default ignores Supersample
+            Assert.False(Scene3D.WantsMipDownsample(s, 1280, 720));
+            Assert.False(Scene3D.WantsMipDownsample(new PixelPostProcessSettings(), 1280, 720)); // plain default
+        }
+
+        [Fact]
+        public void WantsMipDownsample_false_for_MatchViewport_at_1to1()
+        {
+            var s = new PixelPostProcessSettings { RenderScale = RenderScale.MatchViewport }; // Supersample 1 => 1:1 blit
+            Assert.False(Scene3D.WantsMipDownsample(s, 1920, 1080));
+            Assert.False(Scene3D.WantsMipDownsample(s, 800, 600));
+        }
+
+        [Theory]
+        [InlineData(2f)]
+        [InlineData(3f)]
+        [InlineData(4f)]
+        public void WantsMipDownsample_true_for_MatchViewport_supersampled_below_cap(float factor)
+        {
+            var s = new PixelPostProcessSettings { RenderScale = RenderScale.MatchViewport, Supersample = factor };
+            // 640x360 x factor stays under the 3840x2160 cap for 2/3/4, so the internal target is strictly larger.
+            Assert.True(Scene3D.WantsMipDownsample(s, 640, 360));
+        }
+
+        [Fact]
+        public void WantsMipDownsample_true_when_clamped_but_still_a_downscale()
+        {
+            // 1440p x2 = 2880p clamps to the 2160 cap (3840x2160), which is still larger than the 2560x1440 viewport.
+            var s = new PixelPostProcessSettings { RenderScale = RenderScale.MatchViewport, Supersample = 2f };
+            Assert.True(Scene3D.WantsMipDownsample(s, 2560, 1440));
+        }
+
+        [Fact]
+        public void WantsMipDownsample_false_when_MatchViewport_upscales_past_the_cap()
+        {
+            // A window bigger than the cap with no supersample: the internal target (clamped to the cap) is SMALLER
+            // than the viewport, so the blit UPSCALES - mips would not help and must not be allocated (LOD < 0 -> 0).
+            var s = new PixelPostProcessSettings { RenderScale = RenderScale.MatchViewport }; // Supersample 1
+            Assert.False(Scene3D.WantsMipDownsample(s, 7680, 4320));
+        }
+
+        [Fact]
+        public void WantsMipDownsample_false_for_the_Pixelated_retro_path()
+        {
+            // Pixelated is the point-upscale retro look; it must bypass AA entirely even under MatchViewport+SSAA.
+            var s = new PixelPostProcessSettings { RenderScale = RenderScale.MatchViewport, Supersample = 3f, Pixelated = true };
+            Assert.False(Scene3D.WantsMipDownsample(s, 640, 360));
+        }
     }
 }

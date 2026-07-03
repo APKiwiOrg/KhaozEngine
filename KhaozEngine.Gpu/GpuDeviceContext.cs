@@ -34,7 +34,8 @@ namespace KhaozEngine.Gpu
             Backend = backend;
             _ownsDevice = ownsDevice;
             Capabilities = new GpuCapabilities(device.IsClipSpaceYInverted, device.IsDepthRangeZeroToOne,
-                device.DeviceName ?? "", device.Features.SamplerAnisotropy, device.Features.SamplerLodBias);
+                device.DeviceName ?? "", device.Features.SamplerAnisotropy, device.Features.SamplerLodBias,
+                Internal.VeldridMap.MaxMsaaSampleCount(device));
             // Non-owning wrapper: this context owns the raw device's disposal (see Dispose), so the wrapper must
             // not dispose it again.
             GpuDevice = new VeldridGpuDevice(device, backend, ownsDevice: false);

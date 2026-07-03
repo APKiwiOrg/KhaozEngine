@@ -24,7 +24,7 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuResourceLayout _layout;   // UBO(vert) + texture(frag) + sampler(frag)
         readonly IGpuSampler _sampler;         // device built-in linear sampler (non-owning)
         readonly IGpuShaderSet _shaders;
-        readonly IGpuPipeline[] _pipelines;    // [0] alpha, [1] additive
+        IGpuPipeline[] _pipelines;             // [0] alpha, [1] additive; rebuilt by SetOutputs on MSAA change
         IGpuBuffer? _vb;
         uint _vbCapacity;                      // capacity in vertices
 
@@ -45,6 +45,19 @@ namespace KhaozEngine.Render3D.Rendering
 
             _shaders = factory.CreateShadersFromSpirv(ShaderSources.BillboardVert, ShaderSources.TexturedBillboardFrag);
 
+            _pipelines = BuildPipelines(factory, modelOutputs);
+        }
+
+        /// <summary>Rebuild the pipelines for a new model-MRT output description (e.g. it became multisampled for
+        /// MSAA - a pipeline's sample count must match its framebuffer). Layout/shaders/buffers are kept.</summary>
+        public void SetOutputs(GpuOutputDescription modelOutputs)
+        {
+            foreach (var p in _pipelines) p.Dispose();
+            _pipelines = BuildPipelines(_gd.Factory, modelOutputs);
+        }
+
+        IGpuPipeline[] BuildPipelines(IGpuResourceFactory factory, GpuOutputDescription modelOutputs)
+        {
             var vertexLayout = new GpuVertexLayoutDescription(
                 new GpuVertexElement("Position", GpuVertexElementFormat.Float3),
                 new GpuVertexElement("Uv", GpuVertexElementFormat.Float2),
@@ -56,7 +69,7 @@ namespace KhaozEngine.Render3D.Rendering
             var alphaBlends = new[] { GpuBlendAttachment.AlphaBlend, GpuBlendAttachment.PreserveDestination, GpuBlendAttachment.PreserveDestination };
             var addBlends = new[] { GpuBlendAttachment.Additive, GpuBlendAttachment.PreserveDestination, GpuBlendAttachment.PreserveDestination };
 
-            _pipelines = new[]
+            return new[]
             {
                 CreatePipeline(factory, modelOutputs, vertexLayout, alphaBlends),
                 CreatePipeline(factory, modelOutputs, vertexLayout, addBlends),

@@ -19,6 +19,7 @@ namespace KhaozEngine.Gpu.Internal
         public uint Width => Texture.Width;
         public uint Height => Texture.Height;
         public uint MipLevels => Texture.MipLevels;
+        public uint SampleCount => VeldridMap.SampleCountToInt(Texture.SampleCount);
         public GpuPixelFormat Format => VeldridMap.FromVeldrid(Texture.Format);
         public VeldridGpuTexture(Texture texture) => Texture = texture;
         public void Dispose() => Texture.Dispose();

@@ -18,15 +18,16 @@ namespace KhaozEngine.Render3D.Rendering
         struct FinalUbo { public Vector4 BgColor; public Vector4 Params; }
 
         readonly IGpuDevice _gd;
-        readonly IGpuShaderSet _palFrag, _edgeFrag, _blitFrag;
-        readonly IGpuResourceLayout _palLayout, _edgeLayout, _blitLayout;
-        readonly IGpuPipeline _palPipe, _edgePipe, _blitPipe;
-        readonly IGpuBuffer _palBuf, _edgeBuf, _finalBuf;
+        readonly IGpuShaderSet _palFrag, _edgeFrag, _blitFrag, _fxaaFrag;
+        readonly IGpuResourceLayout _palLayout, _edgeLayout, _blitLayout, _fxaaLayout;
+        readonly IGpuPipeline _palPipe, _edgePipe, _blitPipe, _fxaaPipe;
+        readonly IGpuBuffer _palBuf, _edgeBuf, _finalBuf, _fxaaBuf;
 
         IGpuResourceSet _paletteSet = null!;
         IGpuResourceSet _edgeFromColor = null!, _edgeFromPingA = null!;
         IGpuResourceSet _blitColorP = null!, _blitPingAP = null!, _blitPingBP = null!; // point sampler
         IGpuResourceSet _blitColorL = null!, _blitPingAL = null!, _blitPingBL = null!; // linear sampler
+        IGpuResourceSet _fxaaFromColor = null!, _fxaaFromPingA = null!, _fxaaFromPingB = null!; // FXAA reads (linear)
         RenderResources? _bound;
         readonly float[] _palScratch = new float[260]; // reused per frame: 64 vec4 palette + count/dither (+ pad)
 
@@ -38,11 +39,13 @@ namespace KhaozEngine.Render3D.Rendering
             _palBuf = f.CreateBuffer(new GpuBufferDescription(1040, GpuBufferUsage.UniformBuffer)); // 64 vec4 + 1 vec4
             _edgeBuf = f.CreateBuffer(new GpuBufferDescription(64, GpuBufferUsage.UniformBuffer)); // 4 vec4
             _finalBuf = f.CreateBuffer(new GpuBufferDescription(32, GpuBufferUsage.UniformBuffer)); // 2 vec4
+            _fxaaBuf = f.CreateBuffer(new GpuBufferDescription(16, GpuBufferUsage.UniformBuffer)); // 1 vec4 (rcpFrame)
 
             // Each pass is its own vert+frag pair (FullscreenVert is the shared vertex source).
             _palFrag = Pair(f, ShaderSources.PaletteFrag);
             _edgeFrag = Pair(f, ShaderSources.EdgeFrag);
             _blitFrag = Pair(f, ShaderSources.BlitFrag);
+            _fxaaFrag = Pair(f, ShaderSources.FxaaFrag);
 
             _palLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 T("Src"), S("Samp"), U("Pal")));
@@ -50,10 +53,13 @@ namespace KhaozEngine.Render3D.Rendering
                 T("ColorTex"), T("NormalTex"), T("DepthTex"), S("Samp"), U("Edge")));
             _blitLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 T("Src"), S("Samp"), U("Final")));
+            _fxaaLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
+                T("Src"), S("Samp"), U("Fxaa")));
 
             _palPipe = FullscreenPipeline(f, _palFrag, _palLayout, pingOutput);
             _edgePipe = FullscreenPipeline(f, _edgeFrag, _edgeLayout, pingOutput);
             _blitPipe = FullscreenPipeline(f, _blitFrag, _blitLayout, swapchainOutput);
+            _fxaaPipe = FullscreenPipeline(f, _fxaaFrag, _fxaaLayout, pingOutput); // FXAA writes a ping (pre-blit)
         }
 
         static GpuResourceLayoutElement T(string n) => new(n, GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment);
@@ -95,12 +101,19 @@ namespace KhaozEngine.Render3D.Rendering
             _blitColorL = f.CreateResourceSet(new GpuResourceSetDescription(_blitLayout, res.ColorTex, lin, _finalBuf));
             _blitPingAL = f.CreateResourceSet(new GpuResourceSetDescription(_blitLayout, res.PingA, lin, _finalBuf));
             _blitPingBL = f.CreateResourceSet(new GpuResourceSetDescription(_blitLayout, res.PingB, lin, _finalBuf));
+            // FXAA samples its input bilinearly (the diagonal blend taps land between texels).
+            _fxaaFromColor = f.CreateResourceSet(new GpuResourceSetDescription(_fxaaLayout, res.ColorTex, lin, _fxaaBuf));
+            _fxaaFromPingA = f.CreateResourceSet(new GpuResourceSetDescription(_fxaaLayout, res.PingA, lin, _fxaaBuf));
+            _fxaaFromPingB = f.CreateResourceSet(new GpuResourceSetDescription(_fxaaLayout, res.PingB, lin, _fxaaBuf));
             _bound = res; _boundW = res.Width; _boundH = res.Height;
         }
         int _boundW, _boundH;
 
-        /// <summary>Upload post UBOs. Call BEFORE any SetFramebuffer this frame (no active render pass).</summary>
-        public void PrepareUniforms(IGpuCommandList cl, RenderResources res, PixelPostProcessSettings s, in CameraDepth cam)
+        /// <summary>Upload post UBOs. Call BEFORE any SetFramebuffer this frame (no active render pass).
+        /// <paramref name="runFxaa"/> is the caps-resolved FXAA decision from the scene (so an MSAA request the device
+        /// can't honour can fall back to FXAA); it must match the value passed to <see cref="Run"/> so the flip parity
+        /// lines up.</summary>
+        public void PrepareUniforms(IGpuCommandList cl, RenderResources res, PixelPostProcessSettings s, in CameraDepth cam, bool runFxaa)
         {
             var pal = _palScratch;
             // Zero the 256-float palette region so stale colors from a larger previous palette don't leak.
@@ -129,12 +142,16 @@ namespace KhaozEngine.Render3D.Rendering
             };
             cl.UpdateBuffer(_edgeBuf, 0, in edge);
 
+            // FXAA reads the internal target's texel size (1/size) to place its neighbourhood taps.
+            var rcp = new Vector4(1f / res.Width, 1f / res.Height, 0f, 0f);
+            cl.UpdateBuffer(_fxaaBuf, 0, in rcp);
+
             // Bug A: each fullscreen post pass flips vertically; the on-screen orientation depends on the parity of
-            // (quantize + outline + blit). The blit cancels it so EVERY config is upright: flip the sampled V iff the
-            // number of preceding post passes (quantize + outline) is EVEN. The default (outline on, quantize off)
-            // has 1 preceding pass (odd) => no flip => byte-identical to the committed outline-on goldens. This rule
-            // depends only on the settings, matching Run's pass sequence exactly.
-            int precedingPasses = (s.Quantize ? 1 : 0) + (s.Outline ? 1 : 0);
+            // (quantize + outline + fxaa + blit). The blit cancels it so EVERY config is upright: flip the sampled V
+            // iff the number of preceding post passes (quantize + outline + fxaa) is EVEN. The default (outline on,
+            // quantize off, fxaa off) has 1 preceding pass (odd) => no flip => byte-identical to the committed
+            // outline-on goldens. This rule depends only on the settings, matching Run's pass sequence exactly.
+            int precedingPasses = (s.Quantize ? 1 : 0) + (s.Outline ? 1 : 0) + (runFxaa ? 1 : 0);
             float flipV = (precedingPasses % 2) == 0 ? 1f : 0f;
 
             var final = new FinalUbo
@@ -145,7 +162,7 @@ namespace KhaozEngine.Render3D.Rendering
             cl.UpdateBuffer(_finalBuf, 0, in final);
         }
 
-        public void Run(IGpuCommandList cl, RenderResources res, IGpuFramebuffer swapchainFB, PixelPostProcessSettings s)
+        public void Run(IGpuCommandList cl, RenderResources res, IGpuFramebuffer swapchainFB, PixelPostProcessSettings s, bool runFxaa)
         {
             IGpuTexture src = res.ColorTex;
 
@@ -168,9 +185,35 @@ namespace KhaozEngine.Render3D.Rendering
                 src = fromColor ? res.PingA : res.PingB;
             }
 
+            // FXAA (fast approximate AA): one cheap fullscreen pass on the near-final colour, before the blit. Writes
+            // to the ping NOT currently holding src (the consumed one is free), so it never reads its own output.
+            // runFxaa is the caps-resolved decision from the scene (AntiAliasingMode.Fxaa, or an MSAA request the
+            // device can't honour falling back to FXAA); never set under the Pixelated retro path.
+            if (runFxaa)
+            {
+                bool fromPingA = ReferenceEquals(src, res.PingA);
+                bool toPingB = fromPingA;                    // PingA->PingB; ColorTex/PingB->PingA
+                IGpuResourceSet set = ReferenceEquals(src, res.ColorTex) ? _fxaaFromColor
+                                    : fromPingA ? _fxaaFromPingA : _fxaaFromPingB;
+                cl.SetFramebuffer(toPingB ? res.PingBFB : res.PingAFB);
+                cl.SetPipeline(_fxaaPipe);
+                cl.SetGraphicsResourceSet(0, set);
+                cl.Draw(3);
+                src = toPingB ? res.PingB : res.PingA;
+            }
+
             IGpuResourceSet blit = s.Pixelated
                 ? (ReferenceEquals(src, res.ColorTex) ? _blitColorP : ReferenceEquals(src, res.PingA) ? _blitPingAP : _blitPingBP)
                 : (ReferenceEquals(src, res.ColorTex) ? _blitColorL : ReferenceEquals(src, res.PingA) ? _blitPingAL : _blitPingBL);
+
+            // Supersample downscale: the blit source carries a mip chain (RenderResources.Mipped) ONLY under a
+            // MatchViewport downscale with a non-pixelated blit. Regenerating it here lets the trilinear LinearSampler
+            // auto-pick LOD ~= log2(downscale ratio) - a correct multi-tap box at ANY factor, where the single
+            // bilinear tap under-samples above 2:1. GenerateMipmaps ends the current render pass; the blit re-binds the
+            // swapchain below. Never fires for FixedInternal / Pixelated / a 1:1-or-upscale blit (all single-mip), so
+            // those stay byte-identical.
+            if (src.MipLevels > 1) cl.GenerateMipmaps(src);
+
             cl.SetFramebuffer(swapchainFB);
             // Transparent clear when compositing offscreen, else opaque black. (The fullscreen blit overwrites
             // every pixel via OverrideBlend, so this mainly documents intent; the alpha is set in the shader.)
@@ -185,17 +228,19 @@ namespace KhaozEngine.Render3D.Rendering
             _paletteSet?.Dispose(); _edgeFromColor?.Dispose(); _edgeFromPingA?.Dispose();
             _blitColorP?.Dispose(); _blitPingAP?.Dispose(); _blitPingBP?.Dispose();
             _blitColorL?.Dispose(); _blitPingAL?.Dispose(); _blitPingBL?.Dispose();
+            _fxaaFromColor?.Dispose(); _fxaaFromPingA?.Dispose(); _fxaaFromPingB?.Dispose();
         }
 
         public void Dispose()
         {
             DisposeSets();
-            _palPipe.Dispose(); _edgePipe.Dispose(); _blitPipe.Dispose();
-            _palLayout.Dispose(); _edgeLayout.Dispose(); _blitLayout.Dispose();
+            _palPipe.Dispose(); _edgePipe.Dispose(); _blitPipe.Dispose(); _fxaaPipe.Dispose();
+            _palLayout.Dispose(); _edgeLayout.Dispose(); _blitLayout.Dispose(); _fxaaLayout.Dispose();
             _palFrag.Dispose();
             _edgeFrag.Dispose();
             _blitFrag.Dispose();
-            _palBuf.Dispose(); _edgeBuf.Dispose(); _finalBuf.Dispose();
+            _fxaaFrag.Dispose();
+            _palBuf.Dispose(); _edgeBuf.Dispose(); _finalBuf.Dispose(); _fxaaBuf.Dispose();
         }
     }
 }

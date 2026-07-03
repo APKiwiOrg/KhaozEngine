@@ -36,12 +36,18 @@ namespace KhaozEngine.Gpu
         public GpuPixelFormat Format { get; }
         /// <summary>How the texture is used.</summary>
         public GpuTextureUsage Usage { get; }
+        /// <summary>MSAA sample count (1 = single-sample, the default). &gt; 1 makes a multisampled render target for
+        /// MSAA; such a texture cannot be sampled directly (resolve it to a single-sample texture with
+        /// <see cref="IGpuCommandList.ResolveTexture"/> first) and must have <see cref="MipLevels"/> == 1. Clamp a
+        /// request to <see cref="GpuCapabilities.MaxMsaaSampleCount"/>. Must be a power of two.</summary>
+        public uint SampleCount { get; }
 
         public GpuTextureDescription(uint width, uint height, GpuPixelFormat format, GpuTextureUsage usage,
-            uint mipLevels = 1, uint arrayLayers = 1)
+            uint mipLevels = 1, uint arrayLayers = 1, uint sampleCount = 1)
         {
             Width = width; Height = height; Format = format; Usage = usage;
             MipLevels = mipLevels; ArrayLayers = arrayLayers;
+            SampleCount = sampleCount < 1 ? 1 : sampleCount;
         }
 
         /// <summary>Convenience for a single-mip, single-layer 2D texture (mirrors <c>TextureDescription.Texture2D</c>).</summary>
@@ -306,11 +312,26 @@ namespace KhaozEngine.Gpu
         public GpuPixelFormat? Depth { get; }
         /// <summary>Colour attachment formats, in order.</summary>
         public GpuPixelFormat[] Colour { get; }
+        /// <summary>MSAA sample count of the target framebuffer (1 = single-sample, the default). A pipeline's
+        /// sample count MUST match the framebuffer it renders into, so a pipeline built for a multisampled target
+        /// carries the same count here. Read off a live multisampled framebuffer via <see cref="IGpuFramebuffer.Outputs"/>.</summary>
+        public int SampleCount { get; }
 
         public GpuOutputDescription(GpuPixelFormat? depth, params GpuPixelFormat[] colour)
         {
             Depth = depth; Colour = colour ?? Array.Empty<GpuPixelFormat>();
+            SampleCount = 1;
         }
+
+        GpuOutputDescription(GpuPixelFormat? depth, GpuPixelFormat[] colour, int sampleCount)
+        {
+            Depth = depth; Colour = colour ?? Array.Empty<GpuPixelFormat>();
+            SampleCount = sampleCount < 1 ? 1 : sampleCount;
+        }
+
+        /// <summary>A copy with the MSAA <paramref name="sampleCount"/> set (for building a pipeline that targets a
+        /// multisampled framebuffer). Formats are unchanged.</summary>
+        public GpuOutputDescription WithSampleCount(int sampleCount) => new(Depth, Colour, sampleCount);
     }
 
     /// <summary>Describes a graphics pipeline. Engine mirror of Veldrid <c>GraphicsPipelineDescription</c>: the

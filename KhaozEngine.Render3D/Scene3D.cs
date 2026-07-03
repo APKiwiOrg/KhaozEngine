@@ -862,13 +862,15 @@ namespace KhaozEngine.Render3D
         /// </summary>
         internal static (int W, int H) ComputeTargetSize(PixelPostProcessSettings s, int viewportW, int viewportH)
         {
-            if (s.RenderScale == RenderScale.FixedInternal)
+            // Read the AA-resolved sizing (AntiAliasing.Ssaa forces MatchViewport + its factor); AntiAliasing.Off
+            // leaves these equal to the raw RenderScale/Supersample fields, so existing callers are unchanged.
+            if (s.EffectiveRenderScale == RenderScale.FixedInternal)
                 return (s.RenderWidth, s.RenderHeight);
 
             // MatchViewport: render at the framebuffer size x the supersample factor (SSAA), capped
             // (aspect-preserving downscale) so a huge window / big factor doesn't allocate an unbounded target.
             // Guard against a zero/negative viewport during startup/minimise.
-            float ss = MathF.Max(1f, s.Supersample);
+            float ss = MathF.Max(1f, s.EffectiveSupersample);
             int vw = Math.Max(1, (int)MathF.Round(Math.Max(1, viewportW) * ss));
             int vh = Math.Max(1, (int)MathF.Round(Math.Max(1, viewportH) * ss));
             int maxW = Math.Max(1, s.MaxRenderWidth);
@@ -880,13 +882,65 @@ namespace KhaozEngine.Render3D
             return (w, h);
         }
 
+        /// <summary>
+        /// Whether the final internal-target -> viewport blit is a genuine DOWNSCALE that should be filtered with a
+        /// mip chain (a correct multi-tap box) rather than the historical single bilinear tap. True only under
+        /// <see cref="RenderScale.MatchViewport"/> supersampling (or a cap-forced downscale) with a non-pixelated
+        /// blit, where the internal target is strictly larger than the viewport in either axis. <see
+        /// cref="RenderScale.FixedInternal"/> and the <see cref="PixelPostProcessSettings.Pixelated"/> retro path are
+        /// always false, so their targets stay single-mip and their blit output is byte-identical to before. Pure +
+        /// headless-testable (no GPU); the mip fix is what makes <see cref="PixelPostProcessSettings.Supersample"/>
+        /// correct at factors other than exactly 2 (a single bilinear tap under-samples above 2:1).
+        /// </summary>
+        internal static bool WantsMipDownsample(PixelPostProcessSettings s, int viewportW, int viewportH)
+        {
+            if (s.EffectiveRenderScale != RenderScale.MatchViewport || s.Pixelated) return false;
+            var (tw, th) = ComputeTargetSize(s, viewportW, viewportH);
+            return tw > Math.Max(1, viewportW) || th > Math.Max(1, viewportH);
+        }
+
+        /// <summary>The anti-aliasing selection resolved against THIS device's capabilities (never throws): an MSAA
+        /// request is clamped to <see cref="GpuCapabilities.MaxMsaaSampleCount"/> or falls back to FXAA if the device
+        /// can't MSAA at all; SSAA/FXAA/None pass through. Read fresh each frame (Post is mutable).</summary>
+        AntiAliasing ResolvedAa() => Post.EffectiveAaMode == AntiAliasingMode.None
+            ? AntiAliasing.Off
+            : Post.Quality.AntiAliasing.ResolveFor(_gd.Capabilities);
+
+        /// <summary>The MSAA sample count actually used this frame (1 = off), after device clamping.</summary>
+        int ResolvedMsaaSamples()
+        {
+            AntiAliasing aa = ResolvedAa();
+            return aa.Mode == AntiAliasingMode.Msaa ? aa.MsaaSamples : 1;
+        }
+
+        // Rebuild the pipelines of every renderer that draws into the model MRT, so their sample count matches the
+        // (possibly now multisampled) framebuffer. Called only when the MSAA sample count changes (rare - a menu
+        // apply), never per frame. Material sets bind to each renderer's layout (not the pipeline), so loaded meshes
+        // survive the rebuild.
+        void RebuildMrtRenderers()
+        {
+            var modelOut = _res.ModelFB.Outputs;
+            _model.SetOutputs(modelOut);
+            _texBillboards.SetOutputs(modelOut);
+            _beams.SetOutputs(modelOut);
+            _overlayMeshes.SetOutputs(modelOut);
+            _decalRenderer.SetOutputs(_res.ColorDepthFB.Outputs);
+        }
+
         void EnsureSize(int viewportW, int viewportH)
         {
             var (tw, th) = ComputeTargetSize(Post, viewportW, viewportH);
-            if (_res.Width != tw || _res.Height != th)
+            bool wantMips = WantsMipDownsample(Post, viewportW, viewportH);
+            int samples = ResolvedMsaaSamples();
+            bool sampleChanged = _res.SampleCount != samples;
+            if (_res.Width != tw || _res.Height != th || _res.Mipped != wantMips || sampleChanged)
             {
-                _res.Resize(tw, th);
+                // A pipeline in flight may reference the old sample count / targets; a MSAA change is rare, so idling
+                // before recreating the MRT + rebuilding pipelines is cheap insurance.
+                if (sampleChanged) _gd.WaitForIdle();
+                _res.Resize(tw, th, wantMips, samples);
                 _post.BindTargets(_res);
+                if (sampleChanged) RebuildMrtRenderers();   // match the renderers' pipelines to the new MRT sample count
             }
             // Aspect uses the true viewport (the post target is blit-stretched to fill it), not the clamped target.
             Camera.AspectRatio = viewportH > 0 ? (float)viewportW / viewportH : Camera.AspectRatio;
@@ -900,10 +954,13 @@ namespace KhaozEngine.Render3D
         internal void RenderInternal(IGpuCommandList cl, int viewportW, int viewportH, IGpuFramebuffer target)
         {
             EnsureSize(viewportW, viewportH);
+            // The caps-resolved FXAA decision (AntiAliasingMode.Fxaa, or an MSAA request the device couldn't honour
+            // falling back to FXAA). Must be the same value for PrepareUniforms (flip parity) and Run.
+            bool runFxaa = ResolvedAa().Mode == AntiAliasingMode.Fxaa;
             // Edge pass needs the camera's depth convention (perspective vs ortho + near/far) to linearize depth
             // under perspective; derived from the projection matrix so no camera-interface change is required.
             var camDepth = Internal.OutlineMath.ExtractCameraDepth(ActiveCamera.Projection);
-            _post.PrepareUniforms(cl, _res, Post, camDepth);
+            _post.PrepareUniforms(cl, _res, Post, camDepth, runFxaa);
 
             _model.BeginModelPass(cl, _res, Post);
             Matrix4x4 vp = ActiveCamera.ViewProjection;
@@ -1024,13 +1081,22 @@ namespace KhaozEngine.Render3D
                 }
             }
 
+            // Under MSAA the geometry passes wrote a MULTISAMPLED MRT; resolve the linear-depth into the single-sample
+            // DepthColorTex now (before the decals, which SAMPLE it to reconstruct the surface, and before the post
+            // edge pass which also samples it). No-op when not multisampled.
+            _res.ResolveDepth(cl);
+
             // Ground decals: after the model pass wrote depth (meshes + textured billboards + beams), paint the
             // queued decals onto the reconstructed surface into ColorTex, BEFORE post - so they conform to the
             // ground, are occluded by geometry (Y-band), and flow through the pixel post like the meshes.
             if (_decals.Count > 0)
                 _decalRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_decals));
 
-            _post.Run(cl, _res, target, Post);
+            // Resolve the multisampled lit colour + encoded normal into the single-sample targets the post chain
+            // samples (after ALL MRT writers: geometry + decals). No-op when not multisampled.
+            _res.ResolveColorNormal(cl);
+
+            _post.Run(cl, _res, target, Post, runFxaa);
 
             // Filled overlay: rebind `target` and draw the accumulated translucent triangles on top of the post
             // image, BEFORE the lines so an outline drawn on top of a fill reads crisp. Depth disabled + alpha

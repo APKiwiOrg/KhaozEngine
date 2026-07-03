@@ -205,8 +205,9 @@ namespace KhaozEngine.Gpu.Internal
             var colour = new OutputAttachmentDescription[o.Colour.Length];
             for (int i = 0; i < colour.Length; i++)
                 colour[i] = new OutputAttachmentDescription(ToVeldrid(o.Colour[i]));
-            // Sample count fixed at Count1 (the 5.x renderers don't MSAA); mirrors Veldrid default.
-            return new OutputDescription(depth, colour);
+            // MSAA sample count from the description (1 = single-sample). A pipeline's count must match the
+            // framebuffer it targets; RenderResources sets it from the live multisampled framebuffer's Outputs.
+            return new OutputDescription(depth, colour, ToVeldrid((uint)o.SampleCount));
         }
 
         public static GpuOutputDescription FromVeldrid(in OutputDescription o)
@@ -217,7 +218,45 @@ namespace KhaozEngine.Gpu.Internal
             var colour = new GpuPixelFormat[o.ColorAttachments.Length];
             for (int i = 0; i < colour.Length; i++)
                 colour[i] = FromVeldrid(o.ColorAttachments[i].Format);
-            return new GpuOutputDescription(depth, colour);
+            return new GpuOutputDescription(depth, colour).WithSampleCount((int)SampleCountToInt(o.SampleCount));
+        }
+
+        /// <summary>Map an integer MSAA sample count to the Veldrid enum (non-power-of-two / unsupported falls to
+        /// Count1; callers clamp to a supported power of two via <c>AntiAliasing.ResolveFor</c>).</summary>
+        public static TextureSampleCount ToVeldrid(uint samples) => samples switch
+        {
+            2 => TextureSampleCount.Count2,
+            4 => TextureSampleCount.Count4,
+            8 => TextureSampleCount.Count8,
+            16 => TextureSampleCount.Count16,
+            32 => TextureSampleCount.Count32,
+            _ => TextureSampleCount.Count1,
+        };
+
+        /// <summary>Map a Veldrid MSAA sample-count enum back to the integer count.</summary>
+        public static uint SampleCountToInt(TextureSampleCount c) => c switch
+        {
+            TextureSampleCount.Count2 => 2,
+            TextureSampleCount.Count4 => 4,
+            TextureSampleCount.Count8 => 8,
+            TextureSampleCount.Count16 => 16,
+            TextureSampleCount.Count32 => 32,
+            _ => 1,
+        };
+
+        /// <summary>The largest MSAA sample count usable for the engine's MRT: the MIN over the colour
+        /// (R8G8B8A8_UNorm), linear-depth (R32_Float), and depth-stencil (D32_Float_S8_UInt) formats the 3D scene
+        /// renders into (every attachment must support the count). Defensive: any device query failure => 1 (no MSAA).</summary>
+        public static int MaxMsaaSampleCount(GraphicsDevice gd)
+        {
+            try
+            {
+                uint color = SampleCountToInt(gd.GetSampleCountLimit(PixelFormat.R8_G8_B8_A8_UNorm, false));
+                uint depthColor = SampleCountToInt(gd.GetSampleCountLimit(PixelFormat.R32_Float, false));
+                uint depth = SampleCountToInt(gd.GetSampleCountLimit(PixelFormat.D32_Float_S8_UInt, true));
+                return (int)Math.Min(color, Math.Min(depthColor, depth));
+            }
+            catch { return 1; }
         }
     }
 }

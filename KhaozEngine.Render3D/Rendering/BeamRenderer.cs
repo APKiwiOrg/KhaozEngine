@@ -41,7 +41,7 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuResourceLayout _layout;   // UBO (vertex + fragment)
         readonly IGpuResourceSet _set;
         readonly IGpuShaderSet _shaders;
-        readonly IGpuPipeline _pipeline;
+        IGpuPipeline _pipeline;                // rebuilt by SetOutputs when the MRT sample count (MSAA) changes
         IGpuBuffer? _vb;
         uint _vbCapacity;                      // capacity in vertices
 
@@ -56,6 +56,19 @@ namespace KhaozEngine.Render3D.Rendering
             _set = factory.CreateResourceSet(new GpuResourceSetDescription(_layout, _ubo));
             _shaders = factory.CreateShadersFromSpirv(ShaderSources.BeamVert, ShaderSources.BeamFrag);
 
+            _pipeline = BuildPipeline(factory, modelOutputs);
+        }
+
+        /// <summary>Rebuild the pipeline for a new model-MRT output description (e.g. multisampled for MSAA - a
+        /// pipeline's sample count must match its framebuffer). Layout/shaders/buffers are kept.</summary>
+        public void SetOutputs(GpuOutputDescription modelOutputs)
+        {
+            _pipeline.Dispose();
+            _pipeline = BuildPipeline(_gd.Factory, modelOutputs);
+        }
+
+        IGpuPipeline BuildPipeline(IGpuResourceFactory factory, GpuOutputDescription modelOutputs)
+        {
             var vertexLayout = new GpuVertexLayoutDescription(
                 new GpuVertexElement("Position", GpuVertexElementFormat.Float3),
                 new GpuVertexElement("Uv", GpuVertexElementFormat.Float2),
@@ -68,7 +81,7 @@ namespace KhaozEngine.Render3D.Rendering
             // meshes' normal/depth, not the beam's (no outline traced around the strip).
             var blends = new[] { GpuBlendAttachment.Additive, GpuBlendAttachment.PreserveDestination, GpuBlendAttachment.PreserveDestination };
 
-            _pipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription
+            return factory.CreateGraphicsPipeline(new GpuPipelineDescription
             {
                 BlendFactor = Vector4.Zero,
                 BlendAttachments = blends,

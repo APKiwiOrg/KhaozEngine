@@ -649,6 +649,49 @@ void main() {
     oColor = vec4(col, outA);
 }";
 
+        // ---- FXAA (fast approximate anti-aliasing) ----
+        // The classic Timothy Lottes FXAA3-console pass: read a 3x3 luma neighbourhood, skip near-flat areas
+        // (contrast gate), otherwise estimate the edge direction from the luma gradient and blend two/four taps along
+        // it. Softens high-contrast edges (geometry silhouettes AND shaded interiors) in one cheap fullscreen pass.
+        // Preserves the CENTRE pixel's alpha so the blit's background marker (a < 0.5 -> starfield / transparent) still
+        // works. Runs on the internal target BEFORE the blit; like the other post passes it flips V, so the blit's
+        // flipV parity counts it. Rcp.xy = 1/targetSize.
+        public const string FxaaFrag = @"#version 450
+layout(set=0, binding=0) uniform texture2D Src;
+layout(set=0, binding=1) uniform sampler Samp;
+layout(set=0, binding=2) uniform Fxaa { vec4 Rcp; }; // .xy = 1/size
+layout(location=0) in vec2 vUv;
+layout(location=0) out vec4 oColor;
+float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+void main() {
+    vec2 inv = Rcp.xy;
+    vec4 M = texture(sampler2D(Src, Samp), vUv);
+    vec3 rgbM = M.rgb;
+    vec3 rgbNW = texture(sampler2D(Src, Samp), vUv + vec2(-1.0, -1.0) * inv).rgb;
+    vec3 rgbNE = texture(sampler2D(Src, Samp), vUv + vec2( 1.0, -1.0) * inv).rgb;
+    vec3 rgbSW = texture(sampler2D(Src, Samp), vUv + vec2(-1.0,  1.0) * inv).rgb;
+    vec3 rgbSE = texture(sampler2D(Src, Samp), vUv + vec2( 1.0,  1.0) * inv).rgb;
+    float lM = luma(rgbM), lNW = luma(rgbNW), lNE = luma(rgbNE), lSW = luma(rgbSW), lSE = luma(rgbSE);
+    float lMin = min(lM, min(min(lNW, lNE), min(lSW, lSE)));
+    float lMax = max(lM, max(max(lNW, lNE), max(lSW, lSE)));
+    float range = lMax - lMin;
+    // Contrast gate: leave near-flat regions untouched (also keeps flat interiors crisp and cheap).
+    if (range < max(0.0312, lMax * 0.125)) { oColor = vec4(rgbM, M.a); return; }
+    vec2 dir;
+    dir.x = -((lNW + lNE) - (lSW + lSE));
+    dir.y =  ((lNW + lSW) - (lNE + lSE));
+    float dirReduce = max((lNW + lNE + lSW + lSE) * (0.25 * 0.125), 1.0 / 128.0);
+    float rcpDirMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + dirReduce);
+    dir = clamp(dir * rcpDirMin, vec2(-8.0), vec2(8.0)) * inv;
+    vec3 rgbA = 0.5 * (texture(sampler2D(Src, Samp), vUv + dir * (1.0 / 3.0 - 0.5)).rgb
+                     + texture(sampler2D(Src, Samp), vUv + dir * (2.0 / 3.0 - 0.5)).rgb);
+    vec3 rgbB = rgbA * 0.5 + 0.25 * (texture(sampler2D(Src, Samp), vUv + dir * -0.5).rgb
+                                   + texture(sampler2D(Src, Samp), vUv + dir *  0.5).rgb);
+    float lB = luma(rgbB);
+    vec3 outRgb = (lB < lMin || lB > lMax) ? rgbA : rgbB;   // reject an over-blurred tap
+    oColor = vec4(outRgb, M.a);
+}";
+
         // ---- Ground decal: paint an analytic danger-zone shape onto the surface under each pixel. Reconstructs the
         //      surface world position from the sampled linear depth (DepthTex) via InvViewProj, evaluates the shape
         //      SDF in shape-local space on the XZ plane, gates by a Y-band around the ground height (so it conforms

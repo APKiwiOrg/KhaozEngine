@@ -33,14 +33,23 @@ namespace KhaozEngine.Gpu
         /// When false, a requested <c>MipLodBias</c> is silently forced to 0 (e.g. Metal has no LOD bias).</summary>
         public bool SamplerLodBias { get; }
 
+        /// <summary>The largest MSAA sample count the device supports for the render targets the engine uses
+        /// (1 = no MSAA). Read from the backend's per-format sample-count support (Veldrid
+        /// <c>GraphicsDevice.GetSampleCountLimit</c>). A menu builds its MSAA options from this and the engine clamps
+        /// a request to it (see <c>AntiAliasing.ResolveFor</c> in KhaozEngine.Render3D); a request above it never
+        /// throws. Always a power of two (1 / 2 / 4 / 8 / ...).</summary>
+        public int MaxMsaaSampleCount { get; }
+
         public GpuCapabilities(bool clipSpaceYInverted, bool depthRangeZeroToOne,
-            string deviceName = "", bool samplerAnisotropy = false, bool samplerLodBias = false)
+            string deviceName = "", bool samplerAnisotropy = false, bool samplerLodBias = false,
+            int maxMsaaSampleCount = 1)
         {
             ClipSpaceYInverted = clipSpaceYInverted;
             DepthRangeZeroToOne = depthRangeZeroToOne;
             DeviceName = deviceName ?? "";
             SamplerAnisotropy = samplerAnisotropy;
             SamplerLodBias = samplerLodBias;
+            MaxMsaaSampleCount = maxMsaaSampleCount < 1 ? 1 : maxMsaaSampleCount;
         }
     }
 }

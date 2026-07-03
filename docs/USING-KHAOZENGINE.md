@@ -563,8 +563,20 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
   framebuffer x this factor per axis and downsamples in the final blit, so it anti-aliases BOTH geometry edges
   and shaded texture interiors (unlike MSAA). `2` = 2x per axis (4x pixels), the same effective AA a 2x/Retina
   display gives for free - use it to remove the motion "shimmer/vibration" high-frequency terrain or thin foliage
-  throws on a standard-DPI display. Still clamped to `MaxRenderWidth`/`MaxRenderHeight`. A factor of 2 resolves with
-  a correct 2x2 box; above ~2x the single-tap blit under-samples.
+  throws on a standard-DPI display. Still clamped to `MaxRenderWidth`/`MaxRenderHeight`. The downscale is a correct
+  mip-filtered (trilinear) box at ANY factor - the internal target carries a mip chain the final blit samples at
+  LOD ~= log2(factor) - so `3` and `4` anti-alias properly, not just `2`. Cost scales ~factor^2 in fragment shading
+  (`3` = 9x the pixels), so keep it off by default and measure on the target GPU before going above `2`.
+- Anti-aliasing options (the AA dropdown): `Post.Quality.AntiAliasing` picks one technique -
+  `AntiAliasing.Off` (default), `.Fxaa` (cheap one-pass edge smoother), `.Msaa(2|4|8)` (hardware multisample,
+  geometry edges only), or `.Ssaa(factor)` (supersample the whole image, the strongest, also kills shaded-interior
+  shimmer). Build a menu from `AppWindow.Capabilities.MaxMsaaSampleCount` and validate a choice with
+  `aa.ResolveFor(caps)` (clamps an unsupported MSAA level down, or falls back to FXAA; never throws). `Ssaa(f)` is
+  the high-level equivalent of `RenderScale.MatchViewport` + `Supersample = f`; the raw fields remain and, with AA
+  `Off`, still govern (so existing scenes are unchanged). The `Pixelated` retro path forces AA off. Costs: SSAA is
+  ~factor^2 fragment shading, MSAA adds a per-frame resolve, FXAA one pass - keep AA off by default and measure.
+  `Post.Quality` (a `RenderQuality`) is where future quality knobs (anisotropy, shadow/texture quality, TAA) will
+  live, so a game's options menu binds to it.
 - Edge outline: `Post.Outline` (on by default) draws a depth/normal toon outline. `OutlineColor`,
   `OutlineDepthThreshold` (depth-discontinuity sensitivity), and `OutlineNormalThreshold` (interior-crease
   sensitivity from the geometric normal) tune it. The outline is perspective-correct: under a

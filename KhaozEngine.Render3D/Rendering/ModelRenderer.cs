@@ -64,7 +64,7 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuTexture _flatNormal;       // 1x1 (128,128,255): tangent-space (0,0,1); no-map normal default
         readonly IGpuTexture _defaultRough;     // 1x1 (0,0,0): roughness 0 (fully smooth); no-map spec default
         readonly IGpuResourceSet _defaultSet;   // UBO + white + flatNormal + defaultRough + sampler; bound for meshes with no material set
-        readonly IGpuPipeline _pipeline;
+        IGpuPipeline _pipeline = null!;         // rebuilt by SetOutputs when the MRT sample count (MSAA) changes (set via BuildPipelines)
         readonly IGpuShaderSet _shaders;
 
         // Splat-terrain pipeline (5-layer texture-array PBR, weights in vertex Color, triplanar). Shares _ubo
@@ -72,7 +72,7 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuResourceLayout _splatLayout;  // U (frame + params, one UBO) + AlbedoArray + NormalArray + Sampler
         readonly IGpuSampler _terrainSampler;   // wrap + anisotropic (trilinear fallback); OWNED here (dispose it)
         readonly IGpuShaderSet _splatShaders;
-        readonly IGpuPipeline _splatPipeline;
+        IGpuPipeline _splatPipeline = null!;    // rebuilt by SetOutputs alongside _pipeline (set via BuildPipelines)
 
         IGpuBuffer? _instanceBuffer;
         uint _instanceCapacity;          // capacity in instances
@@ -127,6 +127,44 @@ namespace KhaozEngine.Render3D.Rendering
 
             _shaders = factory.CreateShadersFromSpirv(ShaderSources.ModelVert, ShaderSources.ModelFrag);
 
+            // ONE descriptor set, ONE uniform buffer: the splat material's combined UBO carries the frame uniforms
+            // (re-synced each frame, see WriteFrameUniformsTo) PLUS the per-material splat params appended at offset
+            // UboBytes (see SplatVert/SplatFrag). Metal (via Veldrid/SPIRV-Cross) mis-binds a SECOND uniform buffer
+            // in a pipeline (the second reads the first buffer's bytes), which zeroed the per-layer tint and blacked
+            // out the terrain; folding the params into the one frame UBO matches the model pass's proven shape
+            // (1 UBO + textures + sampler). Layout/sampler/shaders are sample-count-independent (built once).
+            _splatLayout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
+                new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("AlbedoArray", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("NormalArray", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("Sampler", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
+
+            // Tileable detail textures REPEAT across the world, so wrap addressing; anisotropic for grazing ground
+            // (CreateSampler falls back to trilinear when the backend lacks anisotropy). 16x anisotropy + a +1 mip
+            // LOD bias tame the shimmer/"fuzz" a high-frequency noisy albedo (e.g. grass) throws off at distance and
+            // grazing angles: aniso covers the directional grazing case, the bias nudges distant ground to a blurrier
+            // mip so the noise stops aliasing frame-to-frame. (Bias is a D3D11/Vulkan feature; Metal ignores it.)
+            _terrainSampler = factory.CreateSampler(new GpuSamplerDescription(
+                GpuSamplerFilter.Anisotropic, GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap, maximumAnisotropy: 16, mipLodBias: 1));
+
+            _splatShaders = factory.CreateShadersFromSpirv(ShaderSources.SplatVert, ShaderSources.SplatFrag);
+
+            // Build the model + splat pipelines from the MRT outputs (rebuilt by SetOutputs when MSAA changes).
+            BuildPipelines(factory, modelOutputs);
+        }
+
+        /// <summary>Rebuild the model + splat pipelines for a new MRT output description (e.g. it became multisampled
+        /// for MSAA - a pipeline's sample count must match its framebuffer). Layouts / shaders / sampler / material
+        /// sets are ALL kept (material sets bind to <see cref="_layout"/>, not the pipeline), so loaded meshes'
+        /// materials survive the rebuild.</summary>
+        public void SetOutputs(GpuOutputDescription modelOutputs)
+        {
+            _pipeline.Dispose(); _splatPipeline.Dispose();
+            BuildPipelines(_gd.Factory, modelOutputs);
+        }
+
+        void BuildPipelines(IGpuResourceFactory factory, GpuOutputDescription modelOutputs)
+        {
             // Slot 0: per-vertex geometry (locations 0..4).
             var vertexLayout = new GpuVertexLayoutDescription(
                 new GpuVertexElement("Position", GpuVertexElementFormat.Float3),
@@ -168,28 +206,6 @@ namespace KhaozEngine.Render3D.Rendering
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout },
                 Outputs = modelOutputs,
             });
-
-            // ONE descriptor set, ONE uniform buffer: the splat material's combined UBO carries the frame uniforms
-            // (re-synced each frame, see WriteFrameUniformsTo) PLUS the per-material splat params appended at offset
-            // UboBytes (see SplatVert/SplatFrag). Metal (via Veldrid/SPIRV-Cross) mis-binds a SECOND uniform buffer
-            // in a pipeline (the second reads the first buffer's bytes), which zeroed the per-layer tint and blacked
-            // out the terrain; folding the params into the one frame UBO matches the model pass's proven shape
-            // (1 UBO + textures + sampler).
-            _splatLayout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
-                new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("AlbedoArray", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("NormalArray", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("Sampler", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
-
-            // Tileable detail textures REPEAT across the world, so wrap addressing; anisotropic for grazing ground
-            // (CreateSampler falls back to trilinear when the backend lacks anisotropy). 16x anisotropy + a +1 mip
-            // LOD bias tame the shimmer/"fuzz" a high-frequency noisy albedo (e.g. grass) throws off at distance and
-            // grazing angles: aniso covers the directional grazing case, the bias nudges distant ground to a blurrier
-            // mip so the noise stops aliasing frame-to-frame. (Bias is a D3D11/Vulkan feature; Metal ignores it.)
-            _terrainSampler = factory.CreateSampler(new GpuSamplerDescription(
-                GpuSamplerFilter.Anisotropic, GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap, maximumAnisotropy: 16, mipLodBias: 1));
-
-            _splatShaders = factory.CreateShadersFromSpirv(ShaderSources.SplatVert, ShaderSources.SplatFrag);
 
             _splatPipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription
             {

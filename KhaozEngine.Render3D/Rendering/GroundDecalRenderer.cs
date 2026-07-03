@@ -44,7 +44,7 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuDevice _gd;
         readonly IGpuShaderSet _shaders;
         readonly IGpuResourceLayout _layout;
-        readonly IGpuPipeline _alphaPipe, _additivePipe;
+        IGpuPipeline _alphaPipe, _additivePipe;   // rebuilt by SetOutputs when the MRT sample count (MSAA) changes
         readonly List<IDisposable> _retired = new();
         IGpuBuffer? _ubo;       // grown geometrically to hold _capacity slots; a regrown buffer is retired (a prior
         int _capacity;          // frame's command list may still read it) and freed in Dispose.
@@ -62,6 +62,16 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuResourceLayoutElement("Samp", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
                 // Dynamic-offset UBO: the set binds a 160-byte window; each draw supplies its slot's byte offset.
                 new GpuResourceLayoutElement("Decal", GpuResourceKind.UniformBuffer, GpuShaderStages.Fragment, dynamic: true)));
+            _alphaPipe = Pipe(f, colorOutput, GpuBlendAttachment.AlphaBlend);
+            _additivePipe = Pipe(f, colorOutput, GpuBlendAttachment.Additive);
+        }
+
+        /// <summary>Rebuild the pipelines for a new colour-target output description (e.g. the MRT became multisampled
+        /// for MSAA - a pipeline's sample count must match its framebuffer). Layout/shaders/buffers are kept.</summary>
+        public void SetOutputs(GpuOutputDescription colorOutput)
+        {
+            _alphaPipe.Dispose(); _additivePipe.Dispose();
+            var f = _gd.Factory;
             _alphaPipe = Pipe(f, colorOutput, GpuBlendAttachment.AlphaBlend);
             _additivePipe = Pipe(f, colorOutput, GpuBlendAttachment.Additive);
         }

@@ -5,6 +5,45 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 9.15.0
+
+Anti-aliasing options: a unified `AntiAliasing` selection (None / FXAA / MSAA / SSAA) on `PixelPostProcessSettings.Quality`, plus the machinery behind each mode - the SSAA downscale is now a correct mip-filtered box at ANY factor (not just 2), a new FXAA post pass, and real hardware MSAA threaded through the GPU abstraction. Every game gets the AA dropdown most ship, validated against the device (never throws). Additive minor, new public API, default `None` so existing scenes are byte-identical (verified across the GPU golden net) until a game opts in.
+
+- **`AntiAliasing` / `AntiAliasingMode` / `RenderQuality`** (new, `KhaozEngine.Render3D`) - the settings surface:
+  - **`AntiAliasingMode`** = `None` / `Fxaa` / `Msaa` / `Ssaa`.
+  - **`AntiAliasing`** (immutable value) built with `AntiAliasing.Off` / `.Fxaa` / `.Msaa(samples)` / `.Ssaa(factor)`.
+    **`ResolveFor(in GpuCapabilities)`** clamps a request to the device (MSAA down to the largest supported
+    power-of-two `<= MaxMsaaSampleCount`, or to FXAA if the device can't MSAA at all; SSAA/FXAA/None pass through) so
+    an unsupported menu choice degrades gracefully instead of throwing.
+  - **`RenderQuality`** - the extension point (holds `AntiAliasing` today; room for future anisotropy / shadow /
+    texture / TAA knobs), reachable as **`PixelPostProcessSettings.Quality`**. Default `AntiAliasing.Off`, so the
+    low-level `RenderScale` / `Supersample` / `Pixelated` fields still govern (back-compat). A non-None mode overrides
+    the matching field (SSAA forces `MatchViewport` + drives `Supersample`); the `Pixelated` retro path forces AA off.
+- **SSAA correct at any factor** - `RenderScale.MatchViewport` supersampling now downsamples through a mip-filtered
+  (trilinear) blit instead of a single bilinear tap: the internal target carries a mip chain regenerated per frame
+  and the final blit samples LOD `~= log2(factor)`, so `Supersample = 3` / `4` (or `AntiAliasing.Ssaa(3f)`)
+  anti-alias properly rather than under-sampling above 2:1. Gated strictly to the MatchViewport downscale, so
+  `FixedInternal` and the `Pixelated` path stay single-mip and byte-identical. Fixes the "can only safely go to 2x"
+  footgun from 9.13.0.
+- **FXAA** - a cheap fullscreen post pass (Timothy Lottes FXAA3-console) added to the pixel-post chain, toggled by
+  `AntiAliasing.Fxaa`. Softens high-contrast edges (geometry AND shaded interiors) in one pass; preserves the
+  background alpha marker so the starfield / transparent-preview paths still work; bypassed by `Pixelated`.
+- **MSAA** - hardware multisampling of the 3D geometry pass, selected by `AntiAliasing.Msaa(2|4|8)`. Threaded through
+  the GPU abstraction: **`GpuTextureDescription.SampleCount`** + **`IGpuTexture.SampleCount`**,
+  **`GpuOutputDescription.SampleCount`** / **`WithSampleCount`**, **`IGpuCommandList.ResolveTexture`** (the MSAA
+  resolve), and **`GpuCapabilities.MaxMsaaSampleCount`** (read from the device's per-format sample-count limit). The
+  model MRT renders multisampled and resolves to single-sample targets before the post chain. MSAA anti-aliases
+  geometry EDGES only, not shaded texture interiors, so it does NOT fix high-frequency terrain/foliage shimmer (use
+  SSAA/FXAA for that); it is the cheap tool for foliage / edge crawl.
+- Costs: SSAA is ~factor^2 fragment shading (`3` = 9x), MSAA adds a per-frame resolve, FXAA one fullscreen pass.
+  Keep AA off by default and measure on the target GPU. Changing the MSAA sample count rebuilds the 3D pipelines
+  (a menu-apply cost, not per-frame); loaded meshes' materials survive it.
+- Tests: headless coverage of the settings resolution + device clamping (`AntiAliasingTests`) and the mip-downsample
+  decision (`RenderScaleTests`); GPU tests that SSAA reduces high-frequency energy monotonically at factor 1/2/3
+  (`SupersampleDownsampleGpuTests`), FXAA adds anti-aliased edge pixels (`FxaaGpuTests`), the MSAA GPU plumbing
+  resolves on-device (`MsaaGpuTests`), and MSAA anti-aliases geometry edges end-to-end through Scene3D
+  (`MsaaSceneGpuTests`). The whole GPU golden net is unchanged (default path byte-identical).
+
 ## 9.14.0
 
 String-catalog lookup: `IStringCatalog` + `ResourceStringCatalog` resolve UI strings by key against `CultureInfo.CurrentUICulture` over a standard-library `ResourceManager`, and `LocalizationManager.Catalog` hands one out over the same resources the manager was built with. The reusable other half of the localization domain (the engine already shipped culture discovery + switching), so every game gets it instead of writing its own. Additive minor, new public API in `KhaozEngine.App`, no behaviour change to existing packages and no new dependency (App still depends only on Diagnostics).

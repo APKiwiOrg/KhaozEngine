@@ -1,5 +1,5 @@
 {
-  "_comment": "blacksmith collision proxy (Blender frame, Z up; ws = 2.497 world m per raw unit). Main enclosed body at the measured wall planes (x -1.05..1.053, y +/-1.135, plinth/sill relief tolerated); the open smithy porch on the -X end keeps only its substantial furniture: the forge block (flush to the main body wall) and the freestanding anvil block - the porch posts, gable roof and workbench are dropped (thin/overhang rule). Front (-Y) entrance at the arched door (x +/-0.26): stone stoop + side steps modelled as the proven mount+walk-over pair - step_lo top 0.112 raw = 0.28 m world (the one probe mount, front extended ~8 cm world past the bottom stone), step_hi top 0.144 raw = 0.36 m world (+0.08 walk-over, front 0.45 m world from the wall so the door-stopped capsule stands ON it, ~8 cm under the visible stoop top). The firewood pile left of the door is one solid block extended flush to the wall AND to the forge face (the visible pile stops short of both, but the resulting 0.79 m slot between pile, forge and wall pinch-wedged the capsule - the fill is an unusable dead-end sliver); the loose ankle-height logs right of the door are dropped. Bases extend -0.3 below terrain. Front chimney: its own box (raw x -1.51..-0.77, protruding to y -1.52 = ~0.96 m world proud of the wall), flush to wall and woodpile. Roofs: main gable wedges (ridge along Y at x~0.1) plus the smithy porch gable wedges (ridge along X at y 0) so the long porch roof reads solid and sloped. ROOFS refitted by fit_proxy.py (plane-fitted sloped SLABS + flat caps): the top is the least-squares fitted roof plane and the underside follows it, so porch/awning roofs no longer hang a flat prism bottom over open space (the anvil/rim pin class). The forge stops at its hood's underside (z 0.93 raw = 2.32 m world, above jump reach, so its top is unmountable and the under-hood slot is blocked) and the woodpile hugs the real pile (z 1.0 raw = 2.5 m world, also above jump reach) - the 0.1.48/0.1.49 fills that ran both up INTO the roof slabs are gone. The old pins were against flat wedge-prism roof bottoms; the roofs are now sloped SLABS whose tilted undersides shed a capsule sideways, and a roof-slider landing on either top walks off the open -x/-y edges (verified by the wedge-scan tests). The front roof slab's low edge stays trimmed above the entrance walk envelope.",
+  "_comment": "blacksmith collision proxy (Blender frame, Z up; ws = 2.497 world m per raw unit). Main enclosed body at the measured wall planes (x -1.05..1.053, y +/-1.135, plinth/sill relief tolerated); the open smithy porch on the -X end keeps only its substantial furniture: the forge block (flush to the main body wall) and the freestanding anvil block - the porch posts, gable roof and workbench are dropped (thin/overhang rule). Front (-Y) entrance at the arched door (x +/-0.26): stone stoop + side steps modelled as the proven mount+walk-over pair - step_lo top 0.112 raw = 0.28 m world (the one probe mount, front extended ~8 cm world past the bottom stone), step_hi top 0.144 raw = 0.36 m world (+0.08 walk-over, front 0.45 m world from the wall so the door-stopped capsule stands ON it, ~8 cm under the visible stoop top). The firewood pile left of the door is one solid block extended flush to the wall AND to the forge face (the visible pile stops short of both, but the resulting 0.79 m slot between pile, forge and wall pinch-wedged the capsule - the fill is an unusable dead-end sliver); the loose ankle-height logs right of the door are dropped. Bases extend -0.3 below terrain. Front chimney: its own box hugging the measured stone (x -1.51..-0.80, proud of the wall only to y -1.31 - the old -1.52 box covered ~0.5 m of air beside the stack), flush to the wall. The second stack on the main roof (chimney_roof, measured x -0.50..0.05, y 0.69..1.19, top 3.0) is rooted below the ridge so roof-walkers collide with it. Roofs: main gable wedges (ridge along Y at x~0.1) plus the smithy porch gable wedges (ridge along X at y 0) so the long porch roof reads solid and sloped. ROOFS refitted by fit_proxy.py (plane-fitted sloped SLABS + flat caps): the top is the least-squares fitted roof plane and the underside follows it, so porch/awning roofs no longer hang a flat prism bottom over open space (the anvil/rim pin class). The forge stops at its hood's underside (z 0.93 raw = 2.32 m world, above jump reach, so its top is unmountable and the under-hood slot is blocked) and the woodpile hugs the real pile (z 1.0 raw = 2.5 m world, also above jump reach) - the 0.1.48/0.1.49 fills that ran both up INTO the roof slabs are gone. The old pins were against flat wedge-prism roof bottoms; the roofs are now sloped SLABS whose tilted undersides shed a capsule sideways, and a roof-slider landing on either top walks off the open -x/-y edges (verified by the wedge-scan tests). The front roof slab's low edge stays trimmed above the entrance walk envelope.",
   "boxes": [
     {
       "name": "main_body",
@@ -83,13 +83,26 @@
       "name": "chimney",
       "min": [
         -1.51,
-        -1.52,
+        -1.31,
         -0.3
       ],
       "max": [
-        -0.77,
-        -1.135,
-        1.6
+        -0.8,
+        -1.14,
+        1.5
+      ]
+    },
+    {
+      "name": "chimney_roof",
+      "min": [
+        -0.5,
+        0.69,
+        2.2
+      ],
+      "max": [
+        0.05,
+        1.19,
+        3.0
       ]
     }
   ],

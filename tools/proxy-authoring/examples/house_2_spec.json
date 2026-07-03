@@ -1,5 +1,5 @@
 {
-  "_comment": "house_2 collision proxy (Blender frame, Z up; ws = 2.215 world m per raw unit). L-shaped: main ground body at the measured wall planes (x -0.73..0.79, y -0.855..0.79); the stone chimney column on the -X face as its own flush box (x -1.125..-0.70, y 0.135..0.565); the jettied upper floor + the +Y overhanging wing as one box (x -0.85..1.0, y -1.09..1.79), underside raised to 1.06 raw = 2.35 m world (the visible underside is 0.96 = 2.13, but the door-step probe below lifts the capsule head to 2.2 m, so the collision ceiling must clear that; the passage under the wing stays walkable); the thin wing support posts are dropped. Entrance: the REAL arched door is on the +Y face under the wing (x -0.18..0.27; the 0.1.44 pass wrongly put a step on +X where only a wood base course sits). One probe-mount step box at the measured stone staircase (treads 0.09/0.18/0.37 m world protruding to raw y 0.988): top 0.1445 raw = 0.32 m world (probe-safe and holds the door-wall rest), front extended ~8 cm world past the bottom stone, tucked back under the door inset. Roof: two gable wedges (ridge along Y). Bases extend -0.3 below terrain. ROOFS refitted by fit_proxy.py (plane-fitted sloped SLABS + flat caps): the top is the least-squares fitted roof plane and the underside follows it, so porch/awning roofs no longer hang a flat prism bottom over open space (the anvil/rim pin class).",
+  "_comment": "house_2 collision proxy (Blender frame, Z up; ws = 2.215 world m per raw unit). L-shaped: main ground body at the measured wall planes (x -0.73..0.79, y -0.855..0.79); the stone chimney column on the -X face as its own flush box (x -1.125..-0.70, y 0.135..0.565); the jettied upper floor + the +Y overhanging wing as one box (x -0.85..1.0, y -1.09..1.79), underside raised to 1.06 raw = 2.35 m world (the visible underside is 0.96 = 2.13, but the door-step probe below lifts the capsule head to 2.2 m, so the collision ceiling must clear that; the passage under the wing stays walkable); the thin wing support posts are dropped. Entrance: the REAL arched door is on the +Y face under the wing (x -0.18..0.27; the 0.1.44 pass wrongly put a step on +X where only a wood base course sits). One probe-mount step box at the measured stone staircase (treads 0.09/0.18/0.37 m world protruding to raw y 0.988): top 0.1445 raw = 0.32 m world (probe-safe and holds the door-wall rest), front extended ~8 cm world past the bottom stone, tucked back under the door inset. Roof: two gable wedges (ridge along Y). Bases extend -0.3 below terrain. ROOFS refitted by fit_proxy.py (plane-fitted sloped SLABS + flat caps): the top is the least-squares fitted roof plane and the underside follows it, so porch/awning roofs no longer hang a flat prism bottom over open space (the anvil/rim pin class). Chimney: the side breast (measured stone x -1.12..-0.69, y 0.14..0.57, ground to 2.98) runs full height through the roof edge as its own chimney* box.",
   "boxes": [
     {
       "name": "body",
@@ -12,19 +12,6 @@
         0.79,
         0.79,
         1.45
-      ]
-    },
-    {
-      "name": "chimney",
-      "min": [
-        -1.125,
-        0.135,
-        -0.3
-      ],
-      "max": [
-        -0.7,
-        0.565,
-        2.6
       ]
     },
     {
@@ -64,6 +51,19 @@
         0.82,
         1.972,
         1.995
+      ]
+    },
+    {
+      "name": "chimney",
+      "min": [
+        -1.12,
+        0.14,
+        -0.3
+      ],
+      "max": [
+        -0.69,
+        0.57,
+        2.98
       ]
     }
   ],

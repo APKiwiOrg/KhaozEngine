@@ -79,6 +79,10 @@ as fine in an overlay render but fails live (measured on the Ruinborne town set)
 - **Gaps**: no slot between solids narrower than the capsule diameter (0.8) - extend blocks flush to walls and
   to each other (a pinch slot wedges even with every solid convex).
 - **Round masses**: use a `cylinders` n-gon prism, not a box (a box is ~40% fat at the diagonals).
+- **Chimneys are substantial, not decoration**: every visible stack gets its own `chimney*` box hugging
+  the MEASURED stone (cluster the Stone* faces above the roofline), rooted below the ridge so a
+  roof-walking capsule collides with it. Hug means hug: a box proud of the stone reads as a fat air
+  collider in the F2 overlay. `chimney*` names are exempt from the merge roof-floor clamp.
 - **Roofs are `slabs`, never wedges**: a wedge is a right prism whose flat BOTTOM spans its whole footprint
   at the low-eave height - over open space (porch, awning, freestanding roof) that invisible underside
   hangs metres below the visible plane and pins capsules against whatever they stand on beneath it. A slab's

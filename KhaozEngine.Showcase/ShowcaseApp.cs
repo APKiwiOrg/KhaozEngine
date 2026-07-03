@@ -46,6 +46,10 @@ namespace KhaozEngine.Showcase
             // the app's shared Scene3D (injected here, since a GameScene cannot reach Surface3D itself).
             Rooms.Add(("3D World (walk)", () => new Room3D().Init(Scene, _white, small)));
 
+            // RoomNet is the networked-walk room: authoritative WorldServer + local WorldClient over loopback
+            // UDP, demonstrating predict/replicate/reconcile netcode. Reuses the same shared Scene3D as Room3D.
+            Rooms.Add(("Networked walk", () => new RoomNet().Init(Scene, _white, small)));
+
             _scenes.Push(new MenuScene(_white, big, small, Rooms));
 
             // Smoke aid: KE_SHOWCASE_ROOM=<name> auto-enters that room, so a headless KE_MAX_FRAMES run actually

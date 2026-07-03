@@ -6,7 +6,9 @@ namespace KhaozEngine.Replication;
 
 /// <summary>
 /// Serializes a full-state snapshot of a server <see cref="World"/>: each entity carrying a <see cref="NetId"/>
-/// and its registered components. Format: <c>[entityCount][per entity: [netId][(typeId,data)...][0]]</c>.
+/// and its registered components. Format: <c>[entityCount][per entity: [netId][(typeId,[len],data)...][0]]</c>,
+/// where the 7-bit-encoded <c>len</c> is present only for consumer extension components (see
+/// <see cref="ReplicationRegistry.FirstExtensionTypeId"/>) so an older client can skip an id it never registered.
 /// The snapshot is opaque <c>byte[]</c> the game ships over its session transport. Use
 /// <see cref="WriteFiltered"/> with an interest set for per-client area-of-interest replication: the existing
 /// <see cref="ClientReplicationView.Apply"/> then spawns entities that entered the set and despawns those that left.

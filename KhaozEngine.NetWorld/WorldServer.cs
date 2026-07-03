@@ -67,7 +67,7 @@ public sealed class WorldServerConfig
 public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
 {
     private readonly WorldServerConfig config;
-    private readonly ReplicationRegistry registry = MoveProtocol.CreateRegistry();
+    private readonly ReplicationRegistry registry;
     private readonly World world = new();
     private readonly NetServer net;
     private readonly InterestGrid interest;
@@ -95,11 +95,15 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
     public WorldServer(INetTransport transport, WorldServerConfig config,
         Func<float, float, float> groundHeight, MoveTuning tuning,
         Func<float, float, Vector3>? groundNormal = null, WorldBounds? bounds = null, IPhysicsWorld? physics = null,
-        IConnectionAuthenticator? authenticator = null, IBanStore? banStore = null)
+        IConnectionAuthenticator? authenticator = null, IBanStore? banStore = null,
+        ReplicationRegistry? registry = null)
     {
         ArgumentNullException.ThrowIfNull(transport);
         this.config = config ?? throw new ArgumentNullException(nameof(config));
         if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
+        // Consumer-injectable registry so a game can replicate its own components (NPC kind, HP, …) on top of the
+        // movement built-ins; it MUST be the same registry the client is built with. Default = movement-only.
+        this.registry = registry ?? MoveProtocol.CreateRegistry();
         this.tuning = tuning;
         commands = new RemoteCommandQueue<MoveCommand>(neutralCommand: default,
             catchUpThreshold: Math.Max(0, this.config.MaxInputBacklog));
@@ -149,7 +153,8 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
 
     /// <summary>The authoritative ECS world.</summary>
     public World World => world;
-    /// <summary>The replicated-component registry; clients build the matching one via MoveProtocol.</summary>
+    /// <summary>The replicated-component registry (the injected one, or the movement-only default). Build the
+    /// <see cref="WorldClient"/> with the SAME registry so both ends agree on the component ids.</summary>
     public ReplicationRegistry Registry => registry;
     /// <summary>Number of joined players.</summary>
     public int PlayerCount => netIdBySlot.Count;
@@ -193,6 +198,28 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
     {
         if (!entityBySlot.TryGetValue(slot, out Entity e)) return;
         world.Set(e, new PlayerIdentity { DisplayName = name ?? string.Empty });
+    }
+
+    /// <summary>
+    /// Spawns a server-owned non-player entity (an NPC, enemy, …) at world position (<paramref name="x"/>,
+    /// <paramref name="z"/>) in the single authoritative <see cref="World"/>. It allocates a fresh <see cref="NetId"/>
+    /// from the SAME allocator player joins draw from, so the id never collides with a player. It pre-sets
+    /// <see cref="ReplicatedPosition"/> to (<paramref name="x"/>, 0, <paramref name="z"/>) so the entity is
+    /// immediately area-of-interest-visible; <paramref name="configure"/> then runs against the world to add game
+    /// components — e.g. an NPC-kind / HP / faction component registered on <see cref="Registry"/> at an id >=
+    /// <see cref="MoveProtocol.FirstConsumerTypeId"/>, which clients read via
+    /// <see cref="WorldClient.TryGetComponent{T}"/>. Drive its behaviour each tick from <see cref="OnBeforeTick"/>.
+    /// Returns the new entity's NetId. (The multi-cell equivalent is
+    /// <see cref="ShardedWorldServer.SpawnEntity"/>.)
+    /// </summary>
+    public int SpawnEntity(float x, float z, Action<World, Entity>? configure = null)
+    {
+        int netId = nextNetId++;
+        Entity e = world.Spawn();
+        world.Set(e, new NetId(netId));
+        world.Set(e, new ReplicatedPosition { Value = new Vector3(x, 0f, z) });
+        configure?.Invoke(world, e);
+        return netId;
     }
 
     /// <summary>Ingests session events (join/leave) and client input. Call once before <see cref="Tick"/>.</summary>
@@ -261,9 +288,16 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
             Raise(slot, SuspiciousReason.MovementCorrection, correction);
     }
 
+    /// <summary>Raised at the START of every <see cref="Tick"/> (before movement and the snapshot pass), with the
+    /// tick <c>dt</c> — where a consumer runs its server-authoritative non-player (NPC/enemy) behaviour, writing each
+    /// entity's <see cref="ReplicatedPosition"/> so the change reaches clients in the same tick. No-op until
+    /// subscribed. The multi-cell equivalent is <see cref="ShardedWorldServer.OnBeforeTick"/>.</summary>
+    public event Action<float>? OnBeforeTick;
+
     /// <summary>Steps one authoritative frame: apply each client's queued input, then serve every client its AoI.</summary>
     public void Tick(float dt)
     {
+        OnBeforeTick?.Invoke(dt);   // consumer NPC/enemy brains run before movement + serving
         admin.Drain(ApplyAdminCommand);
         // Authoritative movement: one command per player per tick.
         var slots = new List<int>(netIdBySlot.Keys);

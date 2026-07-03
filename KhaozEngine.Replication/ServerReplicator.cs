@@ -15,7 +15,9 @@ namespace KhaozEngine.Replication;
 /// </summary>
 /// <remarks>
 /// Wire (per delta): <c>[baselineSeq][snapshotSeq][removedCount][removedNetId...][changedCount]</c> then per
-/// changed/new entity <c>[netId][isNew][removedCompCount][removedTypeId...][(typeId,data)...][0]</c>. New
+/// changed/new entity <c>[netId][isNew][removedCompCount][removedTypeId...][(typeId,[len],data)...][0]</c>, the
+/// 7-bit <c>len</c> present only for consumer extension components (see
+/// <see cref="ReplicationRegistry.FirstExtensionTypeId"/>) so an older client can skip an unknown id. New
 /// entities carry all their components; existing ones carry only changed/added components. Snapshots are opaque
 /// <c>byte[]</c> the game ships over its session transport (the matching ack flows back the same way).
 /// </remarks>
@@ -123,7 +125,10 @@ public sealed class ServerReplicator
                 if (include)
                 {
                     bw.Write(codec.TypeId);
-                    bw.Write(data); // raw bytes, no length prefix (read consumes exactly what write produced)
+                    // Extension components carry a 7-bit length so an older client can skip an id it never
+                    // registered; built-ins stay unframed (the reader consumes exactly what write produced).
+                    if (codec.LengthPrefixed) bw.Write7BitEncodedInt(data.Length);
+                    bw.Write(data);
                 }
             }
             bw.Write((ushort)0); // end-of-entity terminator

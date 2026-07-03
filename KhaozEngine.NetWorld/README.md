@@ -72,9 +72,11 @@ on a snapshot it cannot decode. Both are additive: the wire and existing ctors a
   `""`, so the rule can reject it; a compatible version delegates the inner token to `inner` unchanged
   (subject + display-name resolution identical).
 - **Graceful decode (last resort).** `WorldClient.OnSnapshot` decodes via `ClientReplicationView.TryApply`, so an
-  undecodable snapshot (an unregistered component type id from a newer protocol) becomes the same clean
-  `DisconnectReason.IncompatibleVersion` disconnect plus a **`SnapshotDecodeFailed`** event - never an unhandled
-  exception in the consumer's frame loop. Pair with the `KhaozEngine.Updates` startup gate
+  undecodable snapshot (an unregistered BUILT-IN component type id from a newer core protocol) becomes the same
+  clean `DisconnectReason.IncompatibleVersion` disconnect plus a **`SnapshotDecodeFailed`** event - never an
+  unhandled exception in the consumer's frame loop. (An unregistered *consumer extension* id, at/above the floor,
+  is instead skipped - see the server-owned-entities section below - so a newer server's added component never
+  disconnects an older client.) Pair with the `KhaozEngine.Updates` startup gate
   (`UpdateService.EnsureUpToDateAsync`) so a client self-heals before it ever connects.
 
 ## Server administration (since 8.4.2)
@@ -129,3 +131,28 @@ Holding the movement key through a long auto-reconnect outage no longer freezes 
   0 disables) caps how far behind live the server can fall under a deep per-player backlog. When a slot's queued
   moves exceed it, the server skips the stale ones and applies the most recent (latest-wins), instead of crawling
   a flush/burst out one move per tick. Built on `RemoteCommandQueue`'s `catchUpThreshold`.
+
+## Server-owned non-player entities + consumer components (since 9.16.0)
+
+Replicate a server-spawned NPC / enemy the client can tell apart from a player, and read any game component off it
+per entity. All four pieces are additive and default to today's behaviour.
+
+- **Injectable registry.** `WorldServer` / `ShardedWorldServer` / `WorldClient` each take an optional
+  `ReplicationRegistry? registry` ctor param (default = movement-only). Build the shared registry with
+  **`MoveProtocol.CreateRegistry(configure)`** and register your own components inside `configure` at ids >=
+  **`MoveProtocol.FirstConsumerTypeId`** (= `ReplicationRegistry.FirstExtensionTypeId`, 16). Call it identically on
+  the server and every client. Extension components are length-prefixed on the wire, so a client that predates a
+  given component **skips** it instead of disconnecting (an older client keeps running against a newer server, and
+  a new client against an older server just reads the component as absent).
+- **Spawn.** **`ShardedWorldServer.SpawnEntity(x, z, configure)`** (and **`WorldServer.SpawnEntity`** for the
+  single-world server) spawns a server-owned non-player entity, allocating a non-colliding `NetId` from the same
+  authoritative allocator player joins draw from (honouring the `CellPersistence` high-water) and placing it in the
+  owning cell. `configure(world, entity)` adds its components (an NPC kind / HP / faction registered above the
+  floor). Persisted with its cell, replicated through the normal AoI + ghost + handoff pipeline.
+- **Brain.** **`OnBeforeTick`** (`event Action<float>?`, both servers) fires at the start of `Tick(dt)` before the
+  snapshot pass, where a consumer NPC / enemy brain writes each entity's `ReplicatedPosition` so its move reaches
+  clients the same tick.
+- **Read.** **`WorldClient.TryGetComponent<T>(int netId, out T)`** reads a replicated component off the entity with
+  that net id (the `EntityRenderState.Id` value). Use it to read a server-assigned discriminator (NPC kind, HP,
+  faction) and pick a model. Returns `false` against an older server that never sends `T` (no handshake, no
+  disconnect). `MmoServerSample` demonstrates the whole seam with a `Creature` kind component.

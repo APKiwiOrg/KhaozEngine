@@ -2400,6 +2400,47 @@ HashSet<int> interest = grid.Query(viewX, viewY, viewRadius);
 byte[] snap = SnapshotWriter.WriteFiltered(serverWorld, registry, interest);
 ```
 
+### Server-owned NPCs / consumer components (`ShardedWorldServer.SpawnEntity`, `WorldClient.TryGetComponent`)
+
+Replicate a server-spawned NPC / enemy the client can tell apart from a player, and read your own components off
+any entity. Register the component ONCE, above the reserved floor, and build both ends from the same registry:
+
+```csharp
+struct NpcKind : IComponent { public int Kind; }
+
+// The SAME call on server and client. Consumer ids start at MoveProtocol.FirstConsumerTypeId (16); the movement
+// built-ins keep 1..3. Extension components are length-prefixed on the wire, so a client that never registered
+// NpcKind simply skips it (no disconnect) - client and server can deploy independently.
+ReplicationRegistry Registry() => MoveProtocol.CreateRegistry(r => r.Register<NpcKind>(
+    MoveProtocol.FirstConsumerTypeId,
+    write: (n, bw) => bw.Write(n.Kind),
+    read:  br => new NpcKind { Kind = br.ReadInt32() }));
+
+var server = new ShardedWorldServer(transport, cfg, groundHeight, tuning, registry: Registry());
+var client = new WorldClient(clientTransport, groundHeight, tuning, registry: Registry());
+
+// Spawn a server-owned NPC (non-colliding NetId, placed + persisted in its owning cell) and tag it.
+int npcId = server.SpawnEntity(x: 120f, z: 40f, (world, e) => world.Set(e, new NpcKind { Kind = 2 }));
+
+// Drive it each tick BEFORE the snapshot pass, so its move reaches clients the same tick.
+server.OnBeforeTick += dt =>
+{
+    if (server.Host.TryGetOwner(npcId, out CellSim cell, out Entity e))
+        cell.World.Set(e, new ReplicatedPosition { Value = BrainStep(cell.World, e, dt) });
+};
+
+// Client render loop: pick a model per entity.
+foreach (EntityRenderState s in client.Snapshot())
+{
+    if (client.TryGetComponent(s.Id.Value, out NpcKind kind)) DrawNpc(s, kind.Kind);
+    else                                                      DrawPlayer(s);   // a player carries no NpcKind
+}
+```
+
+`WorldServer` exposes the same `SpawnEntity` / `OnBeforeTick` for a single-world (non-sharded) server, and
+`WorldClient.TryGetComponent<T>` returns `false` against an older server that never sends `T` (no handshake, no
+disconnect). `MmoServerSample` wires the whole seam with a `Creature` kind component.
+
 ### Durable state (`KhaozEngine.WorldStore` + backends)
 
 Persist authoritative character/world records through `IWorldStore` (async, keyed `byte[]`, DB-shaped). Use
@@ -2583,7 +2624,7 @@ var server = new WorldServer(transport, config, terrain.SampleHeight, MoveTuning
 
 A mismatch surfaces on the client as `DisconnectReason.IncompatibleVersion` with the server's required version in `DisconnectReasonDetail`; the client never proceeds to receive snapshots. A version-less client (one that did not set `ProtocolVersion`, e.g. an old build) presents version `""`, so the rule can reject it too. On a compatible version the inner token is delegated to the inner authenticator unchanged.
 
-3. *Graceful decode (last resort).* Even if both above are bypassed, an undecodable snapshot (an unregistered component type id from a newer protocol) becomes a clean `DisconnectReason.IncompatibleVersion` disconnect plus a `SnapshotDecodeFailed` event - never an unhandled exception in your frame loop:
+3. *Graceful decode (last resort).* Even if both above are bypassed, an undecodable snapshot (an unregistered BUILT-IN component type id from a newer core protocol) becomes a clean `DisconnectReason.IncompatibleVersion` disconnect plus a `SnapshotDecodeFailed` event - never an unhandled exception in your frame loop. (An unregistered consumer *extension* id, at/above `ReplicationRegistry.FirstExtensionTypeId`, is skipped instead, so a newer server's added component never disconnects an older client - see the server-owned NPCs section above.)
 
 ```csharp
 client.SnapshotDecodeFailed += err => ShowOutOfDateUI(err);   // "client out of date, please update"

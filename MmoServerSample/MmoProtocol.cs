@@ -20,9 +20,26 @@ public struct ResourceNode : IComponent
     public int Amount;
 }
 
+/// <summary>
+/// A server-assigned appearance/behaviour discriminator on a non-player entity — which model a client draws for it
+/// (goblin, merchant, ore vein, …). This is a CONSUMER extension component: it is registered at an id at/above
+/// <see cref="ReplicationRegistry.FirstExtensionTypeId"/>, so it is length-prefixed on the wire and an older client
+/// that never registered <see cref="Creature"/> simply skips it (keeps running, just can't tell the kind apart).
+/// Players carry NO <see cref="Creature"/>, so a client tells an NPC from a player by its presence.
+/// </summary>
+public struct Creature : IComponent
+{
+    /// <summary>The consumer's model/kind id (0 = unspecified). Game-defined.</summary>
+    public int Kind;
+}
+
 /// <summary>Shared wire helpers so the server and its clients agree on encodings.</summary>
 public static class MmoProtocol
 {
+    /// <summary>Type id of the <see cref="Creature"/> discriminator — a consumer extension id (>= the floor), so
+    /// older clients skip it instead of failing (see <see cref="ReplicationRegistry.FirstExtensionTypeId"/>).</summary>
+    public const ushort CreatureTypeId = ReplicationRegistry.FirstExtensionTypeId;
+
     /// <summary>Replicated-component registry shared by server and client (must match on both ends).</summary>
     public static ReplicationRegistry CreateRegistry()
     {
@@ -36,6 +53,12 @@ public static class MmoProtocol
             typeId: 2,
             write: (n, bw) => bw.Write(n.Amount),
             read: br => new ResourceNode { Amount = br.ReadInt32() });
+        // Consumer extension component: an NPC/creature kind, registered above the reserved floor so it replicates
+        // to clients that know it and is transparently skipped by clients that don't.
+        r.Register<Creature>(
+            typeId: CreatureTypeId,
+            write: (c, bw) => bw.Write(c.Kind),
+            read: br => new Creature { Kind = br.ReadInt32() });
         return r;
     }
 

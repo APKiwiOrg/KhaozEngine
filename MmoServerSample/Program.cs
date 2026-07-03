@@ -28,10 +28,12 @@ internal static class Program
         using var transport = new LiteNetLibServerTransport(port);
         var server = new MmoServer(transport, config);
 
-        // Seed a small static world so a connecting client has neighbours to see across cell borders.
-        server.SpawnNpc(config.CellSize * 0.5f, config.CellSize * 0.5f);
-        server.SpawnNpc(config.CellSize * 1.5f, config.CellSize * 0.5f);
-        server.SpawnNpc(config.CellSize * 1.0f, config.CellSize * 1.0f);
+        // Seed a small static world so a connecting client has neighbours to see across cell borders. Each NPC
+        // carries a distinct Creature kind (the consumer discriminator a client reads via TryGetComponent to pick
+        // its model); players carry none, so a client tells NPCs apart from other players.
+        server.SpawnNpc(config.CellSize * 0.5f, config.CellSize * 0.5f, kind: 1);
+        server.SpawnNpc(config.CellSize * 1.5f, config.CellSize * 0.5f, kind: 2);
+        server.SpawnNpc(config.CellSize * 1.0f, config.CellSize * 1.0f, kind: 3);
 
         var clock = new FixedTickHost(config.TickSeconds);
         var sw = Stopwatch.StartNew();

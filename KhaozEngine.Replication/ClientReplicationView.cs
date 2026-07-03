@@ -54,22 +54,7 @@ public sealed class ClientReplicationView
             int netId = br.ReadInt32();
             seen.Add(netId);
             Entity entity = GetOrSpawn(world, netId);
-            while (true)
-            {
-                ushort typeId = br.ReadUInt16();
-                if (typeId == 0) break;
-                if (!registry.TryGet(typeId, out ComponentCodec codec))
-                    throw new InvalidOperationException($"Snapshot references unregistered type id {typeId}.");
-                long posBefore = ms.Position;
-                codec.Deserialize(world, entity, br);
-                long posAfter = ms.Position;
-                if (codec.Interpolatable)
-                {
-                    var slice = new byte[posAfter - posBefore];
-                    Array.Copy(snapshot, (int)posBefore, slice, 0, slice.Length);
-                    currentBytes[(netId, typeId)] = slice;
-                }
-            }
+            ReadEntityComponents(world, entity, netId, ms, br, snapshot, "Snapshot");
         }
 
         // Full-state: anything we still track but didn't see is gone.
@@ -188,25 +173,55 @@ public sealed class ClientReplicationView
                 }
             }
 
-            while (true)
-            {
-                ushort typeId = br.ReadUInt16();
-                if (typeId == 0) break;
-                if (!registry.TryGet(typeId, out ComponentCodec codec))
-                    throw new InvalidOperationException($"Delta references unregistered type id {typeId}.");
-                long posBefore = ms.Position;
-                codec.Deserialize(world, entity, br);
-                long posAfter = ms.Position;
-                if (codec.Interpolatable)
-                {
-                    var slice = new byte[posAfter - posBefore];
-                    Array.Copy(delta, (int)posBefore, slice, 0, slice.Length);
-                    currentBytes[(netId, typeId)] = slice;
-                }
-            }
+            ReadEntityComponents(world, entity, netId, ms, br, delta, "Delta");
         }
 
         LastAppliedSeq = snapshotSeq;
+    }
+
+    /// <summary>
+    /// Reads one entity's component stream up to the <c>[0]</c> terminator, deserializing each registered
+    /// component and, for a consumer <b>extension</b> component (type id >= <see cref="ReplicationRegistry.FirstExtensionTypeId"/>,
+    /// length-prefixed on the wire), SKIPPING it when this client's registry does not know the id — so an older
+    /// client tolerates a newer server that added a component. An unknown BUILT-IN id (below the floor, unframed)
+    /// is a hard protocol mismatch and throws (<paramref name="streamKind"/> names the stream for the message),
+    /// caught by <see cref="TryApply"/>/<see cref="TryApplyDelta"/> and surfaced as "client out of date".
+    /// </summary>
+    private void ReadEntityComponents(World world, Entity entity, int netId, MemoryStream ms, BinaryReader br,
+        byte[] backing, string streamKind)
+    {
+        while (true)
+        {
+            ushort typeId = br.ReadUInt16();
+            if (typeId == 0) break;
+            bool extension = ReplicationRegistry.IsExtension(typeId);
+            int len = extension ? br.Read7BitEncodedInt() : -1;   // extension payloads carry a length
+            long posBefore = ms.Position;
+            // Hostile/corrupt-safe: a bad length must never seek backward (a loop) or past the buffer. Turn it into a
+            // clean caught error (TryApply -> disconnect), not an unbounded read.
+            if (extension && (len < 0 || posBefore + len > ms.Length))
+                throw new InvalidOperationException($"{streamKind} extension component {typeId} has an invalid length {len}.");
+            if (registry.TryGet(typeId, out ComponentCodec codec))
+            {
+                codec.Deserialize(world, entity, br);
+                long end = extension ? posBefore + len : ms.Position;   // codec consumes exactly len for extensions
+                if (extension) ms.Position = end;                       // re-align defensively past the framed payload
+                if (codec.Interpolatable)
+                {
+                    var slice = new byte[end - posBefore];
+                    Array.Copy(backing, (int)posBefore, slice, 0, slice.Length);
+                    currentBytes[(netId, typeId)] = slice;
+                }
+            }
+            else if (extension)
+            {
+                ms.Position = posBefore + len;   // unknown extension: skip its framed payload (forward-compat)
+            }
+            else
+            {
+                throw new InvalidOperationException($"{streamKind} references unregistered type id {typeId}.");
+            }
+        }
     }
 
     private void RemoveEntityBuffers(int netIdToRemove)

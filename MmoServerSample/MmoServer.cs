@@ -79,19 +79,30 @@ public sealed class MmoServer : ICellPersistenceHost
     /// <summary>The NetId of the player entity for a joined <paramref name="slot"/>.</summary>
     public bool TryGetPlayerNetId(int slot, out int netId) => playerNetIdBySlot.TryGetValue(slot, out netId);
 
-    /// <summary>Spawns a static server-owned entity (e.g. an NPC) at a world position. Returns its NetId.</summary>
-    public int SpawnNpc(float x, float y) => SpawnEntity(x, y);
-
-    /// <summary>Spawns a persistable resource node at a world position. Returns its NetId.</summary>
-    public int SpawnResourceNode(float x, float y, int amount)
+    /// <summary>
+    /// Spawns a server-owned entity at a world position, allocating a fresh <see cref="NetId"/> from the same
+    /// allocator player joins draw from (never colliding), placing it in the owning cell, and pre-setting its
+    /// <see cref="Position"/>; <paramref name="configure"/> then adds the game's own components. The reference
+    /// pattern for authoring NPCs/resources — the same shape as <see cref="ShardedWorldServer.SpawnEntity"/>.
+    /// </summary>
+    public int SpawnEntity(float x, float y, Action<World, Entity>? configure = null)
     {
         int netId = nextNetId++;
         Entity e = host.SpawnAt(x, y, out CellSim cell);
         cell.World.Set(e, new NetId(netId));
         cell.World.Set(e, new Position { X = x, Y = y });
-        cell.World.Set(e, new ResourceNode { Amount = amount });
+        configure?.Invoke(cell.World, e);
         return netId;
     }
+
+    /// <summary>Spawns a server-owned NPC tagged with a <see cref="Creature"/> kind (the consumer discriminator a
+    /// client reads to pick its model). Players carry no <see cref="Creature"/>, so the client tells them apart.</summary>
+    public int SpawnNpc(float x, float y, int kind = 0) =>
+        SpawnEntity(x, y, (w, e) => w.Set(e, new Creature { Kind = kind }));
+
+    /// <summary>Spawns a persistable resource node at a world position. Returns its NetId.</summary>
+    public int SpawnResourceNode(float x, float y, int amount) =>
+        SpawnEntity(x, y, (w, e) => w.Set(e, new ResourceNode { Amount = amount }));
 
     /// <inheritdoc />
     public event Action<CellCoord>? CellCreated;

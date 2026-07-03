@@ -8,16 +8,20 @@ using Xunit;
 namespace KhaozEngine.Tests.NetWorld;
 
 /// <summary>
-/// The last-resort backstop: a snapshot the client cannot decode (an unregistered component type id from a newer
-/// server protocol) must become a clean <see cref="DisconnectReason.IncompatibleVersion"/> disconnect, never an
-/// unhandled exception escaping <see cref="WorldClient.Poll"/> into the consumer's frame loop.
+/// The last-resort backstop: a snapshot the client cannot decode because it carries an unregistered <b>built-in</b>
+/// (below-floor) component type id — a genuinely newer/incompatible core protocol — must become a clean
+/// <see cref="DisconnectReason.IncompatibleVersion"/> disconnect, never an unhandled exception escaping
+/// <see cref="WorldClient.Poll"/> into the consumer's frame loop. (An unregistered <em>extension</em> id, at/above
+/// <see cref="KhaozEngine.Replication.ReplicationRegistry.FirstExtensionTypeId"/>, is instead SKIPPED — covered by
+/// <see cref="EntityReplicationSeamTests"/>.)
 /// </summary>
 public class WorldClientDecodeFailureTests
 {
     private static readonly Func<float, float, float> Flat = (x, z) => 0f;
 
-    // A snapshot with one entity carrying a single component of an unregistered type id (256 - the shared registry
-    // only knows 1/2/3), wrapped as a server->client snapshot frame.
+    // A snapshot with one entity carrying a single component of an unregistered built-in type id (4 - reserved
+    // below the extension floor; the shared registry only knows 1/2/3), wrapped as a server->client snapshot frame.
+    // Below the floor it is unframed, so an unknown id there is a hard "client out of date" mismatch, not a skip.
     private static byte[] BadSnapshotFrame()
     {
         using var ms = new MemoryStream();
@@ -25,7 +29,7 @@ public class WorldClientDecodeFailureTests
         {
             bw.Write(1);              // entity count
             bw.Write(1);              // netId
-            bw.Write((ushort)256);    // unregistered type id -> decode fails here
+            bw.Write((ushort)4);      // unregistered built-in (below-floor) type id -> decode fails here
         }
         byte[] snapshot = ms.ToArray();
         return MoveProtocol.EncodeServerFrame(MoveProtocol.ServerFrameKind.Snapshot,
@@ -67,6 +71,6 @@ public class WorldClientDecodeFailureTests
         Assert.Equal(WorldConnectionState.Disconnected, client.ConnectionState);
         Assert.Equal(DisconnectReason.IncompatibleVersion, client.DisconnectReason);
         Assert.NotNull(decodeError);
-        Assert.Contains("unregistered type id 256", client.DisconnectReasonDetail);
+        Assert.Contains("unregistered type id 4", client.DisconnectReasonDetail);
     }
 }

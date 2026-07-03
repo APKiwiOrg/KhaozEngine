@@ -72,7 +72,7 @@ public sealed class ShardedWorldServerConfig
 public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllable, ICellPersistenceHost
 {
     private readonly ShardedWorldServerConfig config;
-    private readonly ReplicationRegistry registry = MoveProtocol.CreateRegistry();
+    private readonly ReplicationRegistry registry;
     private readonly ShardHost host;
     private readonly NetServer net;
     private readonly RemoteCommandQueue<MoveCommand> commands;
@@ -102,7 +102,8 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
     public ShardedWorldServer(INetTransport transport, ShardedWorldServerConfig config,
         Func<float, float, float> groundHeight, MoveTuning tuning, Func<float, float, Vector3>? groundNormal = null,
         WorldBounds? bounds = null, IPhysicsWorld? physics = null,
-        IConnectionAuthenticator? authenticator = null, IBanStore? banStore = null)
+        IConnectionAuthenticator? authenticator = null, IBanStore? banStore = null,
+        ReplicationRegistry? registry = null)
     {
         ArgumentNullException.ThrowIfNull(transport);
         this.config = config ?? throw new ArgumentNullException(nameof(config));
@@ -112,6 +113,9 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
                 $"InterestRadius {config.InterestRadius} must be <= OverlapMargin {config.OverlapMargin} so the home cell can hold the full AoI as ghosts.",
                 nameof(config));
 
+        // Consumer-injectable registry (shared with the client) so NPCs/enemies carry game components across every
+        // cell's replication + handoff + ghosting; default = movement-only. Assigned before the host so cells use it.
+        this.registry = registry ?? MoveProtocol.CreateRegistry();
         this.tuning = tuning;
         commands = new RemoteCommandQueue<MoveCommand>(neutralCommand: default,
             catchUpThreshold: Math.Max(0, this.config.MaxInputBacklog));
@@ -120,7 +124,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
         host = new ShardHost(
             cellSize: config.CellSize,
             tickSeconds: config.TickSeconds,
-            registry: registry,
+            registry: this.registry,
             interestCellSize: config.CellSize,
             overlapMargin: config.OverlapMargin,
             positionAccessor: PositionAccessor);
@@ -131,7 +135,8 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
 
     /// <summary>The shard topology (cells, ownership, ghosts).</summary>
     public ShardHost Host => host;
-    /// <summary>The replicated-component registry; clients build the matching one via MoveProtocol.</summary>
+    /// <summary>The replicated-component registry (the injected one, or the movement-only default), shared by every
+    /// cell. Build the <see cref="WorldClient"/> with the SAME registry so both ends agree on the component ids.</summary>
     public ReplicationRegistry Registry => registry;
 
     // --- ICellPersistenceHost: per-cell world-state persistence (non-player entities). ---
@@ -259,6 +264,30 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
             cell.World.Set(e, new PlayerIdentity { DisplayName = name ?? string.Empty });
     }
 
+    /// <summary>
+    /// Spawns a server-owned non-player entity (an NPC, enemy, resource node, …) at world position
+    /// (<paramref name="x"/>, <paramref name="z"/>). It allocates a fresh <see cref="NetId"/> from the SAME
+    /// authoritative allocator player joins draw from (so it can never collide with a player id or a
+    /// <see cref="CellPersistence"/>-restored id, whose high-water mark this allocator honours) and places the
+    /// entity in the cell that owns that position. <see cref="ReplicatedPosition"/> is pre-set to
+    /// (<paramref name="x"/>, 0, <paramref name="z"/>) so the entity is immediately area-of-interest-visible;
+    /// <paramref name="configure"/> then runs against its owning cell's <see cref="World"/> to add game components —
+    /// e.g. an NPC-kind / HP / faction component registered on <see cref="Registry"/> at an id >=
+    /// <see cref="MoveProtocol.FirstConsumerTypeId"/>, which clients read back via
+    /// <see cref="WorldClient.TryGetComponent{T}"/>. The entity replicates through the normal AoI + ghost + handoff
+    /// pipeline; being non-player it is persisted with its cell. Move it each tick from <see cref="OnBeforeTick"/>.
+    /// Returns the new entity's NetId.
+    /// </summary>
+    public int SpawnEntity(float x, float z, Action<World, Entity>? configure = null)
+    {
+        int netId = nextNetId++;
+        Entity e = host.SpawnAt(x, z, out CellSim cell);
+        cell.World.Set(e, new NetId(netId));
+        cell.World.Set(e, new ReplicatedPosition { Value = new Vector3(x, 0f, z) });
+        configure?.Invoke(cell.World, e);
+        return netId;
+    }
+
     /// <summary>Ingests session events (join/leave) and client input. Call once before <see cref="Tick"/>.</summary>
     public void Poll()
     {
@@ -318,9 +347,17 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
         selfRescueReadyAt[slot] = selfRescueClock + Math.Max(0f, config.SelfRescueCooldownSeconds);
     }
 
+    /// <summary>Raised at the START of every <see cref="Tick"/> (before movement, handoff, ghosting, and the
+    /// snapshot pass), with the tick <c>dt</c>. This is where a consumer runs its server-authoritative
+    /// non-player behaviour — an NPC/enemy brain — writing each entity's <see cref="ReplicatedPosition"/> (and any
+    /// extension components) so the changes flow through the same handoff/ghost/AoI pipeline as players and reach
+    /// clients in the same tick. No-op until subscribed, so existing behaviour is unchanged.</summary>
+    public event Action<float>? OnBeforeTick;
+
     /// <summary>Steps one authoritative server frame across every cell, then serves each client its home-cell AoI.</summary>
     public void Tick(float dt)
     {
+        OnBeforeTick?.Invoke(dt);   // consumer NPC/enemy brains run before movement + serving
         admin.Drain(ApplyAdminCommand);
         var slots = new List<int>(netIdBySlot.Keys);
         bool trackCorrection = config.AntiCheat.CorrectionEnabled;

@@ -18,13 +18,27 @@ public static class MoveProtocol
     /// <summary>Type id of <see cref="PlayerIdentity"/> (display name) in the shared registry.</summary>
     public const ushort IdentityTypeId = 3;
 
+    /// <summary>The lowest type id a consumer may register on top of the movement protocol (an NPC kind, HP,
+    /// faction, …). Ids <c>1..15</c> are reserved for engine movement built-ins (currently
+    /// <see cref="PositionTypeId"/>/<see cref="MovementTypeId"/>/<see cref="IdentityTypeId"/>); consumer components
+    /// registered at or above this floor are length-prefixed on the wire, so a client that never registered the id
+    /// SKIPS it instead of disconnecting (see <see cref="ReplicationRegistry.FirstExtensionTypeId"/>). Register the
+    /// SAME extra components on both the server and its clients via
+    /// <see cref="CreateRegistry(System.Action{ReplicationRegistry})"/>.</summary>
+    public const ushort FirstConsumerTypeId = ReplicationRegistry.FirstExtensionTypeId;
+
     /// <summary>Upper bound on a replicated <see cref="PlayerIdentity.DisplayName"/>'s UTF-8 encoding, in bytes.
     /// The codec truncates a longer name on write (at a UTF-8 char boundary) and clamps on read, so a hostile or
     /// corrupt name can never exceed this on the wire or blow the read buffer.</summary>
     public const int MaxDisplayNameBytes = 64;
 
-    /// <summary>The replicated-component registry (must match on server and client).</summary>
-    public static ReplicationRegistry CreateRegistry()
+    /// <summary>Builds the replicated-component registry (the movement built-ins), optionally letting a consumer
+    /// register its own extra components on top via <paramref name="configure"/>. It must produce the SAME registry
+    /// on the server and every client, so call it identically on both ends (pass it to the
+    /// <c>WorldServer</c>/<c>ShardedWorldServer</c>/<c>WorldClient</c> registry ctor param). Register consumer
+    /// components at ids >= <see cref="FirstConsumerTypeId"/>; those are length-prefixed on the wire so a client that
+    /// predates a given component simply skips it (no disconnect), while an unknown built-in id still hard-fails.</summary>
+    public static ReplicationRegistry CreateRegistry(Action<ReplicationRegistry>? configure = null)
     {
         var r = new ReplicationRegistry();
         r.Register<ReplicatedPosition>(
@@ -58,6 +72,7 @@ public static class MoveProtocol
             IdentityTypeId,
             write: (pi, bw) => WriteDisplayName(bw, pi.DisplayName),
             read: br => new PlayerIdentity { DisplayName = ReadDisplayName(br) });
+        configure?.Invoke(r);   // consumer extension components (ids >= FirstConsumerTypeId)
         return r;
     }
 

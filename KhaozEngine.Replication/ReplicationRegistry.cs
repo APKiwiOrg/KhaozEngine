@@ -12,6 +12,21 @@ namespace KhaozEngine.Replication;
 /// </summary>
 public sealed class ReplicationRegistry
 {
+    /// <summary>
+    /// The lowest type id a consumer ("extension") component may use. Ids below this are reserved for engine
+    /// built-ins and keep their exact, unframed wire encoding. Components registered at or above this floor are
+    /// <b>length-prefixed on the wire</b> so a client whose registry does not know the id can SKIP it (ignore the
+    /// component) instead of failing the snapshot — the seam that lets a server add a replicated component (an NPC
+    /// kind, HP, faction, …) while older clients that never registered it keep running. An unknown id BELOW the
+    /// floor is still a hard "client out of date" mismatch (it throws), preserving the pre-existing contract.
+    /// Register consumer components at <c>FirstExtensionTypeId + n</c>; the engine will never claim those ids.
+    /// </summary>
+    public const ushort FirstExtensionTypeId = 16;
+
+    /// <summary>True when <paramref name="typeId"/> is a consumer extension id (length-prefixed + skippable on the
+    /// wire); false for a reserved built-in id (unframed, throw-on-unknown). See <see cref="FirstExtensionTypeId"/>.</summary>
+    public static bool IsExtension(ushort typeId) => typeId >= FirstExtensionTypeId;
+
     private readonly List<ComponentCodec> ordered = new();
     private readonly Dictionary<ushort, ComponentCodec> byId = new();
 
@@ -28,11 +43,28 @@ public sealed class ReplicationRegistry
         if (read is null) throw new ArgumentNullException(nameof(read));
         if (byId.ContainsKey(typeId)) throw new InvalidOperationException($"Type id {typeId} already registered.");
 
+        // Extension components (id >= floor) are length-prefixed so an older client can skip an id it never
+        // registered. Built-ins stay inline (zero per-component overhead on the movement hot path).
+        bool lengthPrefixed = IsExtension(typeId);
+
         bool TrySerialize(World w, Entity e, BinaryWriter bw)
         {
             if (!w.TryGet<T>(e, out T v)) return false;
             bw.Write(typeId);
-            write(v, bw);
+            if (lengthPrefixed)
+            {
+                using var ms = new MemoryStream();
+                using var inner = new BinaryWriter(ms);
+                write(v, inner);
+                inner.Flush();
+                byte[] data = ms.ToArray();
+                bw.Write7BitEncodedInt(data.Length);   // [typeId][7-bit len][data]
+                bw.Write(data);
+            }
+            else
+            {
+                write(v, bw);                            // [typeId][data]
+            }
             return true;
         }
 
@@ -61,7 +93,7 @@ public sealed class ReplicationRegistry
             };
         }
 
-        var codec = new ComponentCodec(typeId, TrySerialize, Deserialize, lerpFromBytes, CaptureData, RemoveComponent);
+        var codec = new ComponentCodec(typeId, lengthPrefixed, TrySerialize, Deserialize, lerpFromBytes, CaptureData, RemoveComponent);
         ordered.Add(codec);
         byId[typeId] = codec;
     }
@@ -75,11 +107,12 @@ public sealed class ReplicationRegistry
 /// <summary>A single component type's erased serialize/deserialize/lerp closures.</summary>
 internal sealed class ComponentCodec
 {
-    public ComponentCodec(ushort typeId, Func<World, Entity, BinaryWriter, bool> trySerialize,
+    public ComponentCodec(ushort typeId, bool lengthPrefixed, Func<World, Entity, BinaryWriter, bool> trySerialize,
         Action<World, Entity, BinaryReader> deserialize, Action<World, Entity, byte[], byte[], float>? lerpFromBytes,
         Func<World, Entity, byte[]?> captureData, Action<World, Entity> removeComponent)
     {
         TypeId = typeId;
+        LengthPrefixed = lengthPrefixed;
         TrySerialize = trySerialize;
         Deserialize = deserialize;
         LerpFromBytes = lerpFromBytes;
@@ -89,7 +122,13 @@ internal sealed class ComponentCodec
 
     public ushort TypeId { get; }
 
-    /// <summary>Writes <c>[typeId][data]</c> and returns true if the entity has the component; else writes nothing.</summary>
+    /// <summary>True when this is a consumer extension component: it is length-prefixed on the wire
+    /// (<c>[typeId][7-bit len][data]</c>) so an older client can skip it. See
+    /// <see cref="ReplicationRegistry.FirstExtensionTypeId"/>.</summary>
+    public bool LengthPrefixed { get; }
+
+    /// <summary>Writes <c>[typeId](len)[data]</c> (the length only for an extension component) and returns true if
+    /// the entity has the component; else writes nothing.</summary>
     public Func<World, Entity, BinaryWriter, bool> TrySerialize { get; }
 
     /// <summary>Reads the component data and sets it on the entity.</summary>

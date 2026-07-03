@@ -60,7 +60,7 @@ public sealed class WorldClient : IDisposable
 {
     private NetClient net;
     private World world = new();
-    private readonly ReplicationRegistry registry = MoveProtocol.CreateRegistry();
+    private readonly ReplicationRegistry registry;
     private ClientReplicationView view;
     private readonly ClientPrediction<PlayerMoveState, MoveCommand> prediction;
     private int authoritativeTick;
@@ -121,8 +121,8 @@ public sealed class WorldClient : IDisposable
     /// via <see cref="ConnectionState"/> + <see cref="DisconnectReason"/>). The caller owns disposing the transport.</summary>
     public WorldClient(INetTransport transport, Func<float, float, float> groundHeight, MoveTuning tuning,
         WorldClientConfig? config = null, byte[]? token = null, Func<float, float, Vector3>? groundNormal = null,
-        WorldBounds? bounds = null, IPhysicsWorld? physics = null)
-        : this(connectFactory: null, transport, groundHeight, tuning, config, token, groundNormal, bounds, physics)
+        WorldBounds? bounds = null, IPhysicsWorld? physics = null, ReplicationRegistry? registry = null)
+        : this(connectFactory: null, transport, groundHeight, tuning, config, token, groundNormal, bounds, physics, registry)
     {
         ArgumentNullException.ThrowIfNull(transport);
     }
@@ -133,26 +133,30 @@ public sealed class WorldClient : IDisposable
     /// disposes the transports it builds; dispose the client to close the current one.</summary>
     public WorldClient(Func<INetTransport> connect, Func<float, float, float> groundHeight, MoveTuning tuning,
         WorldClientConfig? config = null, byte[]? token = null, Func<float, float, Vector3>? groundNormal = null,
-        WorldBounds? bounds = null, IPhysicsWorld? physics = null)
+        WorldBounds? bounds = null, IPhysicsWorld? physics = null, ReplicationRegistry? registry = null)
         : this(connect ?? throw new ArgumentNullException(nameof(connect)), connect(), groundHeight, tuning, config,
-               token, groundNormal, bounds, physics)
+               token, groundNormal, bounds, physics, registry)
     {
     }
 
     private WorldClient(Func<INetTransport>? connectFactory, INetTransport transport,
         Func<float, float, float> groundHeight, MoveTuning tuning, WorldClientConfig? config, byte[]? token,
-        Func<float, float, Vector3>? groundNormal, WorldBounds? bounds, IPhysicsWorld? physics)
+        Func<float, float, Vector3>? groundNormal, WorldBounds? bounds, IPhysicsWorld? physics,
+        ReplicationRegistry? registry)
     {
         ArgumentNullException.ThrowIfNull(transport);
         if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
         config ??= new WorldClientConfig();
         this.connectFactory = connectFactory;
+        // Consumer-injectable registry: build it with MoveProtocol.CreateRegistry(configure) — the SAME registry the
+        // server uses — so the client decodes the game's extension components. Default = movement-only.
+        this.registry = registry ?? MoveProtocol.CreateRegistry();
         // Opt-in version handshake: wrap the token with the protocol version so a version-checking server can gate
         // the connect. Store the wrapped form so each reconnect attempt resends it. Null = unwrapped (legacy wire).
         this.token = config.ProtocolVersion is null ? token : ProtocolHandshake.WrapToken(config.ProtocolVersion, token);
         ownedTransport = connectFactory is not null ? transport : null;   // we dispose only what we built
         net = new NetClient(transport, this.token);
-        view = new ClientReplicationView(registry);
+        view = new ClientReplicationView(this.registry);
         // Predict against the SAME physics world the server is authoritative over (mirrors WorldServer),
         // so a solid-prop consumer predicts straight rather than rubber-banding. Defaults null = terrain-only.
         var simulator = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds, physics);
@@ -484,6 +488,25 @@ public sealed class WorldClient : IDisposable
             list.Add(new EntityRenderState(new NetId(kv.Key), pos, isLocal, name, grounded, verticalVelocity));
         }
         return list;
+    }
+
+    /// <summary>
+    /// Reads a replicated component off the entity with network id <paramref name="netId"/> (the id carried by
+    /// <see cref="EntityRenderState.Id"/>). Returns <c>true</c> and the component when the entity is currently in
+    /// this client's area of interest AND carries a <typeparamref name="T"/> whose type id both ends registered;
+    /// <c>false</c> otherwise (unknown id, entity not in view, or the component absent). This is how a game reads a
+    /// server-assigned discriminator per entity — an NPC kind, HP, faction — to pick a model or drive behaviour,
+    /// registered on the shared <see cref="ReplicationRegistry"/> (see
+    /// <see cref="MoveProtocol.CreateRegistry(System.Action{ReplicationRegistry})"/>). Version-skew-safe: against an
+    /// OLDER server that never sends <typeparamref name="T"/>, this simply returns <c>false</c> — no handshake, no
+    /// disconnect. Reflects the last applied snapshot; call it after <see cref="Poll"/>.
+    /// </summary>
+    public bool TryGetComponent<T>(int netId, out T component) where T : struct, IComponent
+    {
+        if (view.TryGetEntity(netId, out Entity e) && world.IsAlive(e) && world.TryGet(e, out component))
+            return true;
+        component = default;
+        return false;
     }
 
     private void OnServerFrame(byte[] data)

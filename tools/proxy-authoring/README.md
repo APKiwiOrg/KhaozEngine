@@ -82,10 +82,15 @@ as fine in an overlay render but fails live (measured on the Ruinborne town set)
 - **Chimneys are substantial, not decoration**: every visible stack gets its own `chimney*` box hugging
   the MEASURED stone (cluster the Stone* faces above the roofline), rooted below the ridge so a
   roof-walking capsule collides with it. Hug means hug: a box proud of the stone reads as a fat air
-  collider in the F2 overlay. Chimneys TAPER - measure the stone in z BANDS and author the wide hearth
-  base and the narrow shaft as separate boxes (a single shaft-width box leaves the base walk-through;
-  a single base-width box wraps air around the shaft). Extend the base flush to any adjacent step/solid
-  so no sub-capsule pinch slot opens against the wall. `chimney*` names are exempt from the merge
+  collider in the F2 overlay. Chimneys TAPER - cluster the PROUD faces spatially and slice ONLY the
+  stack cluster in z bands, then author one box per tier (a single shaft-width box leaves the base
+  walk-through; a single base-width box wraps air around the shaft). Material-filtered bands are not
+  enough: door-arch masonry, ground pavers, wall quoins, and the gable bargeboard (whose slope matches
+  the roof pitch and reads as a leaning flue) all leak into the extents. Tier the boxes so the UPPER
+  tier's front runs flush with the lower's (an honest step-back leaves a sub-capsule corner ledge that
+  wedges roof-sliders), fill any capsule-width corridor between the stack and adjacent solids up to the
+  taller top (the pile/forge/wall pinch slot recurred at three different heights as tiers changed), and
+  extend the base flush to any adjacent step/solid. `chimney*` names are exempt from the merge
   roof-floor clamp.
 - **Roofs are `slabs`, never wedges**: a wedge is a right prism whose flat BOTTOM spans its whole footprint
   at the low-eave height - over open space (porch, awning, freestanding roof) that invisible underside

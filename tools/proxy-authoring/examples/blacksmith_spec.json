@@ -1,5 +1,5 @@
 {
-  "_comment": "blacksmith collision proxy (Blender frame, Z up; ws = 2.497 world m per raw unit). Main enclosed body at the measured wall planes (x -1.05..1.053, y +/-1.135, plinth/sill relief tolerated); the open smithy porch on the -X end keeps only its substantial furniture: the forge block (flush to the main body wall) and the freestanding anvil block - the porch posts, gable roof and workbench are dropped (thin/overhang rule). Front (-Y) entrance at the arched door (x +/-0.26): stone stoop + side steps modelled as the proven mount+walk-over pair - step_lo top 0.112 raw = 0.28 m world (the one probe mount, front extended ~8 cm world past the bottom stone), step_hi top 0.144 raw = 0.36 m world (+0.08 walk-over, front 0.45 m world from the wall so the door-stopped capsule stands ON it, ~8 cm under the visible stoop top). 79 m slot between pile, forge and wall pinch-wedged the capsule - the fill is an unusable dead-end sliver); the loose ankle-height logs right of the door are dropped. Bases extend -0.3 below terrain. Front chimney: its own box hugging the measured stone (x -1.51..-0.80, proud of the wall only to y -1.31 - the old -1.52 box covered ~0.5 m of air beside the stack), flush to the wall. .0.35, x -1.59..-0.30 proud to y -1.55) is its own chimney_base box, extended flush to the door steps at x -0.26 so no pinch slot opens against the wall; the shaft box above hugs the narrower stack. The second stack on the main roof (chimney_roof, measured x -0.50..0.05, y 0.69..1.19, top 3.0) is rooted below the ridge so roof-walkers collide with it. Roofs: main gable wedges (ridge along Y at x~0.1) plus the smithy porch gable wedges (ridge along X at y 0) so the long porch roof reads solid and sloped. ROOFS refitted by fit_proxy.py (plane-fitted sloped SLABS + flat caps): the top is the least-squares fitted roof plane and the underside follows it, so porch/awning roofs no longer hang a flat prism bottom over open space (the anvil/rim pin class). The forge stops at its hood's underside (z 0.93 raw = 2.32 m world, above jump reach, so its top is unmountable and the under-hood slot is blocked) and the woodpile hugs the real pile (z 1.0 raw = 2.5 m world, also above jump reach) - the 0.1.48/0.1.49 fills that ran both up INTO the roof slabs are gone. The old pins were against flat wedge-prism roof bottoms; the roofs are now sloped SLABS whose tilted undersides shed a capsule sideways, and a roof-slider landing on either top walks off the open -x/-y edges (verified by the wedge-scan tests). The front roof slab's low edge stays trimmed above the entrance walk envelope. Chimney (0.1.62, measured in fine z bands, all materials): THREE tiers hugging the taper - hearth base z to 0.22 (x -1.59..-0.21 proud to y -1.56), mid breast z 0.22..0.80 running to the door frame at x -0.21 (proud y -1.31; top at 2.0 m world, just above jump reach so the ledge is unmountable), narrow shaft z 0.80..1.5 (x -1.50..-0.80, proud y -1.24). The firewood is a simple LOW box at the visible logs' height (top 0.25 raw = 0.6 m) but its footprint runs flush to the forge front (y -0.82) and the body's west wall (x -1.05): the visible pile stops short of both, and the resulting ~0.8 m slot between pile, forge and wall pinch-wedges a capsule that drops in off the west eave (exactly capsule-width, both walls grab it - relearned live when a log-hugging box reopened it). Low + flush = the slot becomes a knee-high shelf the capsule lands on and walks off. chimney_fill closes the capsule-width strip between the forge front (y -0.82) and the chimney mid tier's north face (y -1.14) west of the body wall - the same pinch slot one level up; it is visually hidden behind the pile beside the forge, tops flush with the mid tier so sliders walk off south.",
+  "_comment": "blacksmith collision proxy (Blender frame, Z up; ws = 2.497 world m per raw unit). Main enclosed body at the measured wall planes (x -1.05..1.053, y +/-1.135, plinth/sill relief tolerated); the open smithy porch on the -X end keeps only its substantial furniture: the forge block (flush to the main body wall) and the freestanding anvil block - the porch posts, gable roof and workbench are dropped (thin/overhang rule). Front (-Y) entrance at the arched door (x +/-0.26): stone stoop + side steps modelled as the proven mount+walk-over pair - step_lo top 0.112 raw = 0.28 m world (the one probe mount, front extended ~8 cm world past the bottom stone), step_hi top 0.144 raw = 0.36 m world (+0.08 walk-over, front 0.45 m world from the wall so the door-stopped capsule stands ON it, ~8 cm under the visible stoop top). 79 m slot between pile, forge and wall pinch-wedged the capsule - the fill is an unusable dead-end sliver); the loose ankle-height logs right of the door are dropped. Bases extend -0.3 below terrain. Front chimney: its own box hugging the measured stone (x -1.51..-0.80, proud of the wall only to y -1.31 - the old -1.52 box covered ~0.5 m of air beside the stack), flush to the wall. .0.35, x -1.59..-0.30 proud to y -1.55) is its own chimney_base box, extended flush to the door steps at x -0.26 so no pinch slot opens against the wall; the shaft box above hugs the narrower stack. The second stack on the main roof (chimney_roof, measured x -0.50..0.05, y 0.69..1.19, top 3.0) is rooted below the ridge so roof-walkers collide with it. Roofs: main gable wedges (ridge along Y at x~0.1) plus the smithy porch gable wedges (ridge along X at y 0) so the long porch roof reads solid and sloped. ROOFS refitted by fit_proxy.py (plane-fitted sloped SLABS + flat caps): the top is the least-squares fitted roof plane and the underside follows it, so porch/awning roofs no longer hang a flat prism bottom over open space (the anvil/rim pin class). The forge stops at its hood's underside (z 0.93 raw = 2.32 m world, above jump reach, so its top is unmountable and the under-hood slot is blocked) and the woodpile hugs the real pile (z 1.0 raw = 2.5 m world, also above jump reach) - the 0.1.48/0.1.49 fills that ran both up INTO the roof slabs are gone. The old pins were against flat wedge-prism roof bottoms; the roofs are now sloped SLABS whose tilted undersides shed a capsule sideways, and a roof-slider landing on either top walks off the open -x/-y edges (verified by the wedge-scan tests). The front roof slab's low edge stays trimmed above the entrance walk envelope. Chimney (0.1.62, measured in fine z bands, all materials): THREE tiers hugging the taper - hearth base z to 0.22 (x -1.59..-0.21 proud to y -1.56), mid breast z 0.22..0.80 running to the door frame at x -0.21 (proud y -1.31; top at 2.0 m world, just above jump reach so the ledge is unmountable), narrow shaft z 0.80..1.5 (x -1.50..-0.80, proud y -1.24). The firewood is a simple LOW box at the visible logs' height (top 0.25 raw = 0.6 m) but its footprint runs flush to the forge front (y -0.82) and the body's west wall (x -1.05): the visible pile stops short of both, and the resulting ~0.8 m slot between pile, forge and wall pinch-wedges a capsule that drops in off the west eave (exactly capsule-width, both walls grab it - relearned live when a log-hugging box reopened it). Low + flush = the slot becomes a knee-high shelf the capsule lands on and walks off. chimney_fill closes the capsule-width strip between the forge front (y -0.82) and the chimney mid tier's north face (y -1.14) west of the body wall - the same pinch slot one level up; it is visually hidden behind the pile beside the forge, tops flush with the mid tier so sliders walk off south. Chimney (0.1.63, spatially clustered proud faces, per-0.15-z slices of the STACK only - the low stones running to the door at x -0.21 are door-arch masonry and pavers, and the 'leaning flue' above z 1.5 is the gable bargeboard (Wood, slope == roof pitch), both NOT chimney): hearth+logs one box x -1.62..-1.01 proud y -1.62 to z 0.40 (the deep masonry rises that high), mid x -1.55..-1.00 proud y -1.31 to z 0.90, shaft x -1.51..-0.80 proud y -1.24 to z 1.45 (nothing above - the visible top grey cap seen from the front is the BACK roof stack). chimney_fill still closes the capsule-width strip between forge front and wall west of the body (pile+forge+wall pinch slot, relearned twice); everything flush so no sub-capsule slot opens. The shaft box runs flush with the mid tier's front face (y -1.31, 0.17 m prouder than the shaft stones): the honest step-back left a 0.4 m ledge at the mid top where sky-dropped capsules cornered against the shaft face and wedged (5 wedge-scan failures) - no ledge beats exact stone. chimney_fill rises to the shaft top (1.45): at 0.90 the plateau between forge face (y -0.82) and shaft face (y -1.05) was a 0.57 m dead-end corridor that pinch-wedged roof-sliders (the third pinch-slot recurrence, one level further up).",
   "boxes": [
     {
       "name": "main_body",
@@ -87,48 +87,35 @@
         -0.3
       ],
       "max": [
-        -1.05,
+        -1.01,
         -0.82,
-        0.25
-      ]
-    },
-    {
-      "name": "chimney_base",
-      "min": [
-        -1.59,
-        -1.56,
-        -0.3
-      ],
-      "max": [
-        -0.21,
-        -1.14,
-        0.22
+        0.4
       ]
     },
     {
       "name": "chimney_mid",
       "min": [
-        -1.51,
+        -1.55,
         -1.31,
-        0.22
+        0.4
       ],
       "max": [
-        -0.21,
-        -1.14,
-        0.8
+        -1.0,
+        -0.82,
+        0.9
       ]
     },
     {
       "name": "chimney",
       "min": [
-        -1.5,
-        -1.24,
-        0.8
+        -1.51,
+        -1.31,
+        0.9
       ],
       "max": [
         -0.8,
-        -1.14,
-        1.5
+        -1.05,
+        1.45
       ]
     },
     {
@@ -141,7 +128,7 @@
       "max": [
         -1.05,
         -0.82,
-        0.8
+        1.45
       ]
     }
   ],
@@ -217,6 +204,8 @@
     "main_body"
   ],
   "_lowHeadroomOk": [
-    "chimney_fill"
+    "chimney_fill",
+    "chimney_mid",
+    "woodpile"
   ]
 }

@@ -5,6 +5,54 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 9.6.2
+
+`SpriteBatch` no longer tears its 2D draws for a frame when a widget moves or resizes: the per-flush vertex buffers are now ring-buffered across frames instead of one buffer reused every frame. Render-only bug fix, no public API change. Fixes the F2 collision legend in Ruinborne flickering out for a single frame as the adjacent DIAG panel resized.
+
+- **`SpriteBatch`** (`KhaozEngine.Render2D`, internal) kept one growable vertex buffer per flush and rewrote it
+  every frame with a device-level `UpdateBuffer`, while the frame loop (`AppWindow.Run`) submits + presents with no
+  `WaitForIdle`. So the CPU runs ahead and a frame's write to a reused buffer can race the GPU still reading it for
+  an earlier, still-in-flight present. The result is a 1-frame tear that only surfaces when the buffer *contents*
+  change frame-to-frame: a moving/resizing widget writes different bytes mid-read, whereas static content writes
+  identical bytes so the race is invisible (why it looked like an intermittent, "every few seconds" flicker of only
+  the thing that was moving). The 3D overlay/decal renderers never had this because they record their buffer writes
+  into the command list (`cl.UpdateBuffer`), which is ordered against the prior frame.
+- The per-flush buffers are now **ring-buffered `RingDepth` (= 3) frames deep**: `NewFrame` rotates to the next of
+  three slots (slot = `_frame % RingDepth`), so a slot is not rewritten until three frames later, by which point
+  its prior GPU reads have retired. Triple-buffering covers the CPU running up to two frames ahead. This also makes
+  the grow-time `Dispose` of a slot's old buffer safe (that buffer was last used three frames ago). No behaviour
+  change to any drawing API; buffers still persist and only grow.
+- **New GPU test `SpriteBatchBufferRingTests`** drives the batch frame-by-frame and asserts the flush-0 buffer
+  rotates through distinct instances and repeats every `RingDepth` frames (it would fail on the old single-buffer
+  code, which returned the same instance every frame).
+
+## 9.6.1
+
+The terrain splat shader now samples with explicit gradients (`textureGrad`), fixing undefined mip/anisotropic LOD selection under the per-layer weight branch, the likely cause of the distant ground "fuzz"/pixelation reported on Direct3D11 (Windows) while Metal looked fine. Render-only bug fix, no public API change.
+
+- **`SplatFrag`** (`KhaozEngine.Render3D`, internal) computed each triplanar texture sample with the implicit-LOD
+  `texture()` inside the `for (int L...) { if (wl <= 0.001) continue; ... }` per-layer loop. Implicit LOD needs
+  screen-space derivatives that are only defined in quad-uniform control flow; taken under that data-dependent
+  `continue` the mip/aniso LOD is undefined, so on a diverging quad a backend may collapse toward mip 0 and the
+  minified, high-frequency tiling ground aliases frame-to-frame as the camera moves. D3D11/FXC and Metal resolve
+  that undefined case differently, which matches the Windows-bad / mac-fine report.
+- The fix hoists `dFdx(vWorldPos)` / `dFdy(vWorldPos)` to uniform flow once before the loop and passes the
+  per-plane gradients (scaled by each layer's tile rate) to `textureGrad`, so the LOD is well-defined regardless
+  of the branch and the existing anisotropy + `mipLodBias` still apply to a real gradient. The blend math, the
+  aniso-16 + `mipLodBias:1` terrain sampler (`ModelRenderer`), and the Metal output are unchanged (the model/prop
+  pass and its goldens are untouched; on Metal the analytic gradients already matched the implicit ones, so the
+  splat goldens pass with no re-bake).
+- **New GPU golden `SplatTerrainDistanceGoldenTests`** renders the splat pass through a perspective camera at a
+  grazing distance over a high-frequency checkerboard, closing a coverage gap: the pre-existing splat golden frames
+  the ground with the orthographic iso camera nearly top-down, so it has no perspective minification and could
+  never exhibit distance shimmer. The class is `*Golden*`-named, so the `cross-platform-gpu` matrix runs it on
+  Metal / D3D11-WARP / Vulkan and it logs the per-backend near/far high-frequency energy for the first time. Its
+  hard assertions are backend-robust (distant ground must render textured + lit) rather than a calibrated aliasing
+  threshold, which only real per-backend numbers can set.
+- Source-texture frequency is still the underlying driver of the shimmer (a 1024px albedo tiled every few metres
+  minifies hard at distance); the sampler + `textureGrad` levers reduce the aliasing, they do not remove a
+  too-noisy source. A consumer with a high tile rate should also lower it.
+
 ## 9.6.0
 
 `OverlayLegend` gains a `Theme` + an explicit-position `Draw` overload + a `Bounds` rect, and `DiagnosticsOverlay` gains a `Bounds` rect, so two debug panels can sit side by side in a shared style instead of overlapping in the same corner. Additive minor, no breaking change.

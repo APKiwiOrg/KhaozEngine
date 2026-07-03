@@ -22,7 +22,7 @@ flowchart TD
         MR["ModelRenderer: instanced DrawIndexed<br/>+ PixelPostProcess chain"]
     end
     subgraph r2["KhaozEngine.Render2D"]
-        SB["SpriteBatch: batch quads into one<br/>persistent growable vertex buffer"]
+        SB["SpriteBatch: batch quads into<br/>per-frame ring-buffered growable vertex buffers"]
     end
 
     subgraph gpu["KhaozEngine.Gpu - the backend seam (nothing above touches Veldrid)"]
@@ -91,7 +91,8 @@ flowchart LR
 1. Your game calls `Scene3D.Draw(...)` (3D) or `SpriteBatch.Draw(...)` (2D) inside the `Frame` callback that
    `AppWindow.Run` invokes once per frame.
 2. `Scene3D` accumulates draws as instances keyed by `MeshHandle` (geometry was uploaded once via `LoadMesh`);
-   `SpriteBatch` packs quads into one persistent vertex buffer. Nothing here references Veldrid.
+   `SpriteBatch` packs quads into per-frame ring-buffered vertex buffers (rotated so a frame's write never races
+   the GPU still reading an earlier, in-flight frame's copy). Nothing here references Veldrid.
 3. At frame end, `Render3DSurface` / `Render2DSurface` flush through `ModelRenderer` / the sprite shader, which
    record commands on `GpuDeviceContext` - the opaque seam (device, buffers, pipelines, command list).
 4. `GpuBackendSelector` picked the backend at startup (OS probe + `KE_GRAPHICS_BACKEND`), and `GpuCapabilities`
@@ -116,6 +117,16 @@ shimmering as the camera moves. Anisotropy falls back to trilinear, and the LOD 
 lacks them (Metal has no sampler LOD bias). Mipmaps are generated at load time via
 `IGpuCommandList.GenerateMipmaps`. A mesh with no splat material (`SplatMaterial == -1`) skips
 the splat pass entirely and renders through the standard model pipeline, unchanged.
+
+The per-layer blend runs in a loop with a `if (weight <= 0.001) continue;` early-out, which is data-dependent
+(non-uniform) control flow across a fragment quad. Implicit-LOD `texture()` derivatives are undefined under such a
+branch, so `SplatFrag` instead hoists `dFdx`/`dFdy` of the world position to uniform flow once before the loop and
+samples with `textureGrad`, passing each triplanar plane's gradient (the world derivative scaled by that layer's
+tile rate). This keeps the mip/anisotropic LOD well-defined regardless of the branch (an undefined LOD can collapse
+toward mip 0 and alias the minified, high-frequency ground into distance "fuzz" on backends that do not gracefully
+define it, e.g. D3D11), and lets the anisotropy + LOD bias act on a real gradient. `SplatTerrainDistanceGoldenTests`
+guards this per backend at a grazing distance (the older `SplatTerrainGoldenTests` frames the ground top-down with
+the orthographic iso camera and cannot exhibit distance minification).
 
 `SplatVert`/`SplatFrag` keep their pixel-input interpolants contiguous from location 0 on purpose: a gap (a
 fragment-unused interpolant declared below a used one) miscompiles on D3D11/WARP and rendered the terrain flat

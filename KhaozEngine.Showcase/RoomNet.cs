@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
 using System.Text;
+using KhaozEngine.Diagnostics;
 using KhaozEngine.Game;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Netcode.LiteNetLib;
@@ -202,9 +203,10 @@ namespace KhaozEngine.Showcase
                 groundNormal: _terrain.GroundNormal);
             _clientClock = new FixedTickHost(TickSeconds);
 
-            // Two scripted remote players, patrolling loops in the flat meadow south of the biome blend (x in
-            // [44,70], z in [15,40] - clear of the lake near x=-13 and of the mountain band starting past z=48),
-            // so replication is visible without the bots wandering into rough terrain.
+            // Two scripted remote players, patrolling loops in the walkable meadow-ish band (x in [44,70], z in
+            // [15,40] - clear of the lake near x=-13). The mountain blend actually starts at z=22 (Start 48 minus
+            // BiomeBlend 26), so this waypoint band overlaps its low end, but the 45-degree slope limit tolerates
+            // the gentle rise there, so replication stays visible without the bots getting stuck.
             _bots.Add(new NetBot(_port, "bot1",
                 new[] { new Vector2(48f, 20f), new Vector2(66f, 18f), new Vector2(68f, 36f), new Vector2(46f, 34f) },
                 _terrain.GroundHeight, _terrain.GroundNormal, TickSeconds));
@@ -265,8 +267,8 @@ namespace KhaozEngine.Showcase
             foreach (NetBot b in _bots) b.Step(dt);
 
             // Map the replicated render states to engine-neutral samples and advance the avatar bridge once per
-            // frame. Every entity carries its EXACT grounded flag + vertical velocity (local: predicted; remote:
-            // replicated MovementState surfaced via EntityRenderState), so jump/fall read true for remotes too.
+            // frame. Every entity carries its EXACT grounded flag + vertical velocity (local is predicted, remote
+            // is replicated MovementState surfaced via EntityRenderState), so jump/fall read true for remotes too.
             // Feet position (centre minus the capsule half-height) so the model's feet sit on the ground.
             _samples.Clear();
             foreach (EntityRenderState e in _client.Snapshot())
@@ -309,7 +311,19 @@ namespace KhaozEngine.Showcase
             }
         }
 
-        public override void OnDraw2D(SpriteBatch batch) { /* Task 5: net HUD */ }
+        // Net status HUD: local client's connection state, RTT + packet loss (ClientNetStats, smoothed over a
+        // rolling ~1s window), and the replicated entity count (local + bots). Guarded so it no-ops before
+        // OnEnter has built _client (and OnExit has nulled it back out on the way to a re-enter).
+        public override void OnDraw2D(SpriteBatch batch)
+        {
+            if (_client is null) return;
+
+            ClientNetStats stats = _client.NetStats;
+            string line1 = $"Net: {_client.ConnectionState}   RTT {stats.RttMs:0}ms   Loss {stats.PacketLoss * 100f:0.0}%";
+            string line2 = $"Entities: {_client.Snapshot().Count}";
+            batch.DrawString(_hud, line1, new Vector2(20, 16), new Color(0.92f, 0.96f, 1f, 1f));
+            batch.DrawString(_hud, line2, new Vector2(20, 16 + _hud.LineHeight), new Color(0.8f, 0.88f, 0.96f, 1f));
+        }
 
         public override void OnExit()
         {

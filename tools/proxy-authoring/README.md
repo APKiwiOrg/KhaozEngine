@@ -85,8 +85,14 @@ as fine in an overlay render but fails live (measured on the Ruinborne town set)
   underside follows the fitted plane. Wedges remain the primitive for solid ramps only.
 - **Audit every final spec** (`fit_proxy.py audit`): any top a capsule can reach (walk, step, or jump
   onto) must have capsule-height clearance below every piece above it, or the capsule pins and wedges.
-  Fixes that keep solids convex: extend the standable piece UP into the ceiling piece (forge into its hood,
-  well ring into its roof), trim the ceiling piece's low edge clear of walk envelopes, or raise it.
+  Fixes that keep solids convex: trim the ceiling piece's low edge clear of walk envelopes, raise it, or
+  (last resort) extend the standable piece UP into the ceiling piece. Prefer REAL TOPS under sloped slab
+  ceilings: a pin needs opposing PARALLEL surfaces (flat wedge-prism bottoms), while a sloped slab
+  underside sheds a squeezed capsule sideways - so a well ring / forge / woodpile can stop at its real
+  top (ideally above jump reach, removing the landable top entirely) instead of filling to the roof,
+  which reads as an ugly solid column in the F2 overlay. Record such audited exemptions in the
+  `_lowHeadroomOk` name list (honoured only under sloped slabs; justify in the spec `_comment` and keep
+  them covered by wedge-scan tests).
 
 ## The metric
 

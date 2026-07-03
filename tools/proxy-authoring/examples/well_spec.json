@@ -1,5 +1,5 @@
 {
-  "_comment": "well collision proxy (Blender frame, Z up; ws = 2.639 world m per raw unit; the mesh base sits at raw z -0.252). The round stone ring as ONE octagonal prism (centre from the measured ring bounds, radius hugging the stones' outer faces, top at the rim z 0.12 raw = ~0.98 m world) - an 8-gon hull is tight at the diagonals where the old axis-aligned box was ~0.37 m world fat. The A-frame roof posts, crank arm and roof are dropped (thin/overhang). Base extends below terrain. Roof: two wedges for the little A-frame so a jump at the well bonks the visible roof instead of passing the head through it (eave underside ~1.73 m world clears a walking capsule hugging the ring). 0.1.48: the octagon now runs up to the roof underside (a capsule could jump onto the open rim and pin against the old roof wedge's flat prism bottom), and the roof is a pair of sloped SLABS following the visible planes.",
+  "_comment": "well collision proxy (Blender frame, Z up; ws = 2.639 world m per raw unit; the mesh base sits at raw z -0.252). The round stone ring as ONE octagonal prism (centre from the measured ring bounds, radius hugging the stones' outer faces, top at the rim z 0.12 raw = ~0.98 m world) - an 8-gon hull is tight at the diagonals where the old axis-aligned box was ~0.37 m world fat. The A-frame roof posts, crank arm and roof are dropped (thin/overhang). Base extends below terrain. Roof: two wedges for the little A-frame so a jump at the well bonks the visible roof instead of passing the head through it (eave underside ~1.73 m world clears a walking capsule hugging the ring). The ring stops at the REAL rim (z 0.12 raw): the 0.1.48 fill to the roof underside is gone - the old rim pin was against the flat prism bottom of a roof WEDGE, and the roof is now sloped SLABS whose tilted undersides shed a jumping capsule sideways (a pin needs opposing parallel surfaces). The open rim-to-eave window (~0.9 m) is far too short for the 1.8 m capsule to ever rest in; '_lowHeadroomOk: ring' records the audited exemption, proven by the wedge-scan tests.",
   "boxes": [],
   "wedges": [],
   "cylinders": [
@@ -12,7 +12,7 @@
       "radius": 0.335,
       "z": [
         -0.4,
-        0.75
+        0.12
       ],
       "segments": 8
     }
@@ -53,5 +53,8 @@
   ],
   "_skipDraftPieces": [
     "roof_flat"
+  ],
+  "_lowHeadroomOk": [
+    "ring"
   ]
 }

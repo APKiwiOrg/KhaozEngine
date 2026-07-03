@@ -62,8 +62,17 @@ Hard-won rules this tool encodes (learned live on the Ruinborne town set - keep 
   - AUDIT every merged spec: every reachable standable top needs capsule headroom below every piece
     above it, or the capsule pins (found live: forge top, well rim, blacksmith entrance eave, a
     clamped body top under a porch roof, a "flat roof" cluster that was really an interior shelf).
-    Respond to findings with the spec knobs: "_keepTall" (fills that must stay tall), and
-    "_skipDraftPieces" (fitted pieces to reject, e.g. that interior shelf) - then re-merge + re-audit.
+    Respond to findings with the spec knobs: "_keepTall" (fills that must stay tall),
+    "_skipDraftPieces" (fitted pieces to reject, e.g. that interior shelf), and "_lowHeadroomOk"
+    (standable pieces whose low-headroom pair is PROVEN safe) - then re-merge + re-audit.
+  - Prefer REAL TOPS over anti-pin fills when the ceiling is a sloped slab. The pin mechanic needs
+    opposing PARALLEL surfaces (the flat wedge-prism bottoms of the anvil bug class); a sloped slab
+    underside sheds a squeezed capsule sideways. Fills that ran a well ring / forge / woodpile up
+    into their roofs read as ugly purple columns in the overlay and turned out unnecessary once the
+    roofs became slabs: stop such pieces at the real furniture top (ideally above jump reach, which
+    also removes the landable top) and record the audited exemption in "_lowHeadroomOk". The knob
+    is honoured ONLY under a sloped slab ceiling and must be justified in the spec _comment and
+    covered by the consumer's wedge-scan tests; never exempt a flat ceiling.
 
 Capsule constants mirror the engine defaults (MoveTuning): capsule height 1.8, radius 0.4, StepHeight 0.4,
 jump apex ~1.92. Keep in sync with KhaozEngine.Locomotion if those change.
@@ -467,6 +476,7 @@ def audit(spec):
     pieces = spec_pieces(spec)
     reach = w2r(JUMP_APEX_FEET + 0.4)     # a top below this is jump-mountable from the ground
     head = w2r(HEADROOM)
+    low_ok = set(spec.get("_lowHeadroomOk", []))
     warns = []
     for a in pieces:
         top = a["max"][2]
@@ -488,6 +498,20 @@ def audit(spec):
             if bot <= top: continue
             gap = (bot - top) * ws
             if gap < HEADROOM:
+                # "_lowHeadroomOk" names standable pieces whose low-headroom pair is PROVEN safe:
+                # only honoured under a sloped SLAB ceiling (its tilted underside sheds a squeezed
+                # capsule sideways - the pin mechanic needs opposing PARALLEL surfaces, the flat
+                # wedge-prism bottoms of the anvil bug class), and only for gaps the capsule cannot
+                # rest in. Each exemption must be justified in the spec _comment and covered by the
+                # consumer's wedge-scan tests. Never exempt a flat ceiling (box underside).
+                if a["name"] in low_ok and b["kind"] == "slab":
+                    bx = 0 if b.get("axis") == "x" else 1
+                    ang = math.degrees(math.atan((b["max"][2] - b["min"][2]) /
+                                                 max(1e-9, b["max"][bx] - b["min"][bx])))
+                    if ang > FLAT_DEG:
+                        print(f"  exempt: '{a['name']}' under sloped '{b['name']}' ({ang:.0f} deg) "
+                              f"gap {gap:.2f} m (_lowHeadroomOk)")
+                        continue
                 warns.append(f"PIN TRAP: standing on '{a['name']}' (top {top:.3f} raw, {top*ws:.2f} m world reachable) "
                              f"under '{b['name']}' (underside {bot:.3f} raw) leaves {gap:.2f} m headroom < {HEADROOM:.2f}")
     return warns

@@ -3,7 +3,7 @@
     <PackageId>KhaozEngine.Foundation</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <Description>Umbrella metapackage for the MonoGame-free, GPU-free foundation: Primitives, App, Content, Determinism, Diagnostics, Ecs, Locomotion, Persistence, Physics, Serialization, Collision, Platform, Terrain, Updates. One reference for a gameplay-logic library or any non-rendering project that wants the engine's shared building blocks without pulling Windowing/Render/Gui/Audio or any GPU. (Networking lives in KhaozEngine.Netcode*; the game-runtime bundles are KhaozEngine.Game2D/Game3D; a headless server is KhaozEngine.Server.) Contains no code; just dependencies.</Description>
+    <Description>Umbrella metapackage for the MonoGame-free, GPU-free foundation: Primitives, App, Content, Determinism, Diagnostics, Ecs, Locomotion, Persistence, Physics, Serialization, Social, Collision, Platform, Terrain, Updates. One reference for a gameplay-logic library or any non-rendering project that wants the engine's shared building blocks without pulling Windowing/Render/Gui/Audio or any GPU. (Networking lives in KhaozEngine.Netcode*; the game-runtime bundles are KhaozEngine.Game2D/Game3D; a headless server is KhaozEngine.Server.) Contains no code; just dependencies.</Description>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <SuppressDependenciesWhenPacking>false</SuppressDependenciesWhenPacking>
@@ -22,6 +22,7 @@
     <ProjectReference Include="../KhaozEngine.Platform/KhaozEngine.Platform.csproj" />
     <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
     <ProjectReference Include="../KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
+    <ProjectReference Include="../KhaozEngine.Social/KhaozEngine.Social.csproj" />
     <ProjectReference Include="../KhaozEngine.Terrain/KhaozEngine.Terrain.csproj" />
     <ProjectReference Include="../KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
   </ItemGroup>

@@ -1,10 +1,10 @@
 namespace KhaozEngine.Gpu
 {
     /// <summary>
-    /// Backend-dependent clip-space conventions the renderers need to build correct projection matrices.
-    /// Read off the live device (Veldrid's <c>IsClipSpaceYInverted</c> / <c>IsDepthRangeZeroToOne</c>) and
-    /// surfaced on <see cref="GpuDeviceContext.Capabilities"/> so the clip-Y / depth handling is derived from
-    /// the active backend instead of a baked Metal assumption.
+    /// Live-device facts the renderers (and diagnostics) need: clip-space conventions used to build correct
+    /// projection matrices, plus the adapter name and the sampler feature flags. Read off the active backend
+    /// (Veldrid's <c>GraphicsDevice</c> / <c>GraphicsDeviceFeatures</c>) and surfaced on
+    /// <see cref="GpuDeviceContext.Capabilities"/> / <c>AppWindow.Capabilities</c>.
     /// </summary>
     public readonly struct GpuCapabilities
     {
@@ -21,10 +21,26 @@ namespace KhaozEngine.Gpu
         /// </summary>
         public bool DepthRangeZeroToOne { get; }
 
-        public GpuCapabilities(bool clipSpaceYInverted, bool depthRangeZeroToOne)
+        /// <summary>The active GPU adapter / driver name (Veldrid <c>GraphicsDevice.DeviceName</c>); empty if the
+        /// backend does not report one. Diagnostic (which physical GPU/driver is actually rendering).</summary>
+        public string DeviceName { get; }
+
+        /// <summary>True if the device supports anisotropic sampling (Veldrid <c>Features.SamplerAnisotropy</c>).
+        /// When false, an anisotropic sampler silently falls back to trilinear.</summary>
+        public bool SamplerAnisotropy { get; }
+
+        /// <summary>True if the device supports a sampler mip LOD bias (Veldrid <c>Features.SamplerLodBias</c>).
+        /// When false, a requested <c>MipLodBias</c> is silently forced to 0 (e.g. Metal has no LOD bias).</summary>
+        public bool SamplerLodBias { get; }
+
+        public GpuCapabilities(bool clipSpaceYInverted, bool depthRangeZeroToOne,
+            string deviceName = "", bool samplerAnisotropy = false, bool samplerLodBias = false)
         {
             ClipSpaceYInverted = clipSpaceYInverted;
             DepthRangeZeroToOne = depthRangeZeroToOne;
+            DeviceName = deviceName ?? "";
+            SamplerAnisotropy = samplerAnisotropy;
+            SamplerLodBias = samplerLodBias;
         }
     }
 }

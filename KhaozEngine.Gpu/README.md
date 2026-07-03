@@ -9,8 +9,10 @@ What it owns today:
   (`metal`/`vulkan`/`d3d11`/`gl`, case-insensitive) and otherwise probes the OS (macOS -> Metal,
   Windows -> Direct3D11, Linux -> Vulkan). `Select(string?, OSPlatformKind)` is the pure, headless-testable
   overload.
-- **`GpuCapabilities`** - `ClipSpaceYInverted` / `DepthRangeZeroToOne`, read off the live device so the
-  renderers can derive clip-Y / depth handling from the active backend instead of a baked Metal assumption.
+- **`GpuCapabilities`** - `ClipSpaceYInverted` / `DepthRangeZeroToOne` (so renderers derive clip-Y / depth
+  handling from the active backend instead of a baked Metal assumption), plus diagnostics: `DeviceName` (the GPU
+  adapter/driver), `SamplerAnisotropy`, and `SamplerLodBias` (whether those sampler levers are supported). Read off
+  the live device.
 - **`GpuWindowHandle`** - a native window handle (kind + handle/display) the windowing layer hands over, so
   this package needs no reference to the windowing library.
 - **`GpuDeviceContext`** - `CreateForWindow(in GpuWindowHandle, width, height)` (device + swapchain for a

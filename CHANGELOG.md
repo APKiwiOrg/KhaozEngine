@@ -5,6 +5,28 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 9.6.0
+
+`OverlayLegend` gains a `Theme` + an explicit-position `Draw` overload + a `Bounds` rect, and `DiagnosticsOverlay` gains a `Bounds` rect, so two debug panels can sit side by side in a shared style instead of overlapping in the same corner. Additive minor, no breaking change.
+
+- **`OverlayLegendTheme`** (new, `KhaozEngine.Gui`) - injected look + layout for `OverlayLegend` (panel fill,
+  border, label colour, border thickness, padding, swatch size/gap, row spacing, text scale, and a
+  `Corner`/`Margin` anchor). `Default` reproduces the neutral grey palette the legend shipped with, so existing
+  callers are byte-identical. `FromDiagnostics(DiagnosticsOverlayTheme)` derives a matching palette (fill, border,
+  near-white label from the diagnostics *value* text, thickness, padding, corner/margin, text scale) so a legend
+  drawn next to a `DiagnosticsOverlay` shares its look; legend-specific layout (swatch size/gap, row spacing)
+  keeps its own defaults. `Anchor(Rect viewport, float w, float h)` is the font-free corner-placement helper
+  (headless-tested).
+- **`OverlayLegend.Theme`** (new) + ctor param, and the widget now draws from the theme instead of hard-coded
+  constants/colours (default look unchanged). **`OverlayLegend.Draw(SpriteBatch, SpriteFont, Texture2D, Vector2 topLeft)`**
+  (new overload) places the panel at an explicit top-left instead of the theme corner - use it to sit the legend
+  beside another panel. The existing `Draw(..., Rect viewport)` now anchors to `Theme.Corner`/`Theme.Margin`
+  (default top-left + 12, matching prior behaviour). **`OverlayLegend.Bounds`** (new) exposes the last-drawn panel
+  rect (empty when the last draw was a no-op).
+- **`DiagnosticsOverlay.Bounds`** (new, `KhaozEngine.Gui`) - the last-drawn panel rect (empty when hidden / faded
+  out / empty). A caller draws the diagnostics overlay top-left, then places an `OverlayLegend` at
+  `Bounds.Right + gap` to put a second panel directly beside it.
+
 ## 9.5.1
 
 `ScreenStack` now orders screens with a stable insert, so screens sharing a `DrawOrder` keep insertion order and `Screens[^1]` is reliably the visually-topmost. Bug fix, no API change. Before this, `Add` re-sorted the list with the non-stable `List.Sort`, which for larger stacks could reorder equal-`DrawOrder` screens and break code relying on last-is-topmost (for example an Esc-pops-topmost handler over a hosted screen stack). Small stacks were unaffected because `List.Sort` falls back to a stable insertion sort below its introsort threshold.

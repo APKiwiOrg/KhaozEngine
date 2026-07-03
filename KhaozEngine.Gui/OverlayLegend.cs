@@ -13,24 +13,32 @@ namespace KhaozEngine.Gui
     /// <summary>
     /// A domain-agnostic color-swatch + label panel for debug overlays. Any caller (collision shapes, navmesh
     /// regions, AI states, ...) feeds a list of <see cref="LegendEntry"/> in via <see cref="SetEntries"/> and
-    /// draws the panel with <see cref="Draw"/>. Unlike <see cref="DiagnosticsOverlay"/> this widget has no
-    /// <c>Visible</c>/fade state of its own: it snaps on/off because the caller only calls <see cref="Draw"/>
-    /// while its own overlay is on. Headless-testable: <see cref="SetEntries"/> and the empty-legend path of
-    /// <see cref="Measure"/> need no GPU.
+    /// draws the panel with <see cref="Draw(SpriteBatch,SpriteFont,Texture2D,Rect)"/> (corner-anchored) or
+    /// <see cref="Draw(SpriteBatch,SpriteFont,Texture2D,Vector2)"/> (placed at an explicit top-left, e.g. beside
+    /// another panel). Look and layout come from <see cref="Theme"/>; <see cref="OverlayLegendTheme.FromDiagnostics"/>
+    /// makes the legend match an adjacent <see cref="DiagnosticsOverlay"/>. Unlike <see cref="DiagnosticsOverlay"/>
+    /// this widget has no <c>Visible</c>/fade state of its own: it snaps on/off because the caller only calls
+    /// <c>Draw</c> while its own overlay is on. After a draw, <see cref="Bounds"/> holds the panel rect so a
+    /// caller can chain another panel off its edge. Headless-testable: <see cref="SetEntries"/>, the empty-legend
+    /// path of <see cref="Measure"/>, and <see cref="OverlayLegendTheme.Anchor"/> need no GPU.
     /// </summary>
     public sealed class OverlayLegend
     {
-        const float Pad = 8f;
-        const float SwatchSize = 14f;
-        const float Gap = 8f;
-        const float RowSpacing = 4f;
-
         IReadOnlyList<LegendEntry> _entries = Array.Empty<LegendEntry>();
+
+        /// <summary>Look and layout for the panel. Never null; defaults to <see cref="OverlayLegendTheme.Default"/>.</summary>
+        public OverlayLegendTheme Theme { get; set; }
+
+        /// <summary>The panel rect of the most recent <c>Draw</c> (empty <see cref="Rect"/> when the last draw was
+        /// a no-op, i.e. no entries). Lets a caller place an adjacent panel off <see cref="Rect.Right"/> etc.</summary>
+        public Rect Bounds { get; private set; }
+
+        public OverlayLegend(OverlayLegendTheme? theme = null) => Theme = theme ?? OverlayLegendTheme.Default;
 
         /// <summary>Number of rows currently set.</summary>
         public int EntryCount => _entries.Count;
 
-        /// <summary>Set the rows drawn next <see cref="Draw"/>. The reference is stored as-is (no copy), so a
+        /// <summary>Set the rows drawn next <c>Draw</c>. The reference is stored as-is (no copy), so a
         /// caller may reuse its own buffer between frames. <c>null</c> resets to empty.</summary>
         public void SetEntries(IReadOnlyList<LegendEntry> entries) => _entries = entries ?? Array.Empty<LegendEntry>();
 
@@ -40,36 +48,54 @@ namespace KhaozEngine.Gui
         {
             if (_entries.Count == 0) return new Rect(0, 0, 0, 0);
 
-            float rowH = MathF.Max(SwatchSize, font.LineHeight);
+            float scale = Theme.TextScale;
+            float rowH = MathF.Max(Theme.SwatchSize, font.LineHeight * scale);
             float w = 0f;
             for (int i = 0; i < _entries.Count; i++)
-                w = MathF.Max(w, SwatchSize + Gap + font.Measure(_entries[i].Label).X);
+                w = MathF.Max(w, Theme.SwatchSize + Theme.SwatchGap + font.Measure(_entries[i].Label).X * scale);
 
-            float h = _entries.Count * rowH + (_entries.Count - 1) * RowSpacing;
-            return new Rect(0, 0, w + Pad * 2f, h + Pad * 2f);
+            float h = _entries.Count * rowH + (_entries.Count - 1) * Theme.RowSpacing;
+            return new Rect(0, 0, w + Theme.Padding * 2f, h + Theme.Padding * 2f);
         }
 
-        /// <summary>Draw the panel anchored near the top-left of <paramref name="viewport"/>. No-op when empty.</summary>
+        /// <summary>Draw the panel anchored to <see cref="OverlayLegendTheme.Corner"/> of <paramref name="viewport"/>.
+        /// No-op when empty.</summary>
         public void Draw(SpriteBatch batch, SpriteFont font, Texture2D white, Rect viewport)
         {
-            if (_entries.Count == 0) return;
-
+            if (_entries.Count == 0) { Bounds = default; return; }
             Rect size = Measure(font);
-            var panel = new Rect(viewport.X + 12f, viewport.Y + 12f, size.Width, size.Height);
-            GuiDraw.Fill(batch, white, panel, new Vector4(0.05f, 0.06f, 0.09f, 0.75f));
-            GuiDraw.Border(batch, white, panel, 1f, new Vector4(0.25f, 0.28f, 0.34f, 0.9f));
+            DrawAt(batch, font, white, Theme.Anchor(viewport, size.Width, size.Height), size);
+        }
 
-            float rowH = MathF.Max(SwatchSize, font.LineHeight);
-            float x = panel.X + Pad;
-            float y = panel.Y + Pad;
+        /// <summary>Draw the panel with its top-left at <paramref name="topLeft"/> (ignores the theme corner/margin).
+        /// Use to place the legend beside another panel, e.g. off a <see cref="DiagnosticsOverlay.Bounds"/> edge.
+        /// No-op when empty.</summary>
+        public void Draw(SpriteBatch batch, SpriteFont font, Texture2D white, Vector2 topLeft)
+        {
+            if (_entries.Count == 0) { Bounds = default; return; }
+            DrawAt(batch, font, white, topLeft, Measure(font));
+        }
+
+        void DrawAt(SpriteBatch batch, SpriteFont font, Texture2D white, Vector2 topLeft, Rect size)
+        {
+            var panel = new Rect(topLeft.X, topLeft.Y, size.Width, size.Height);
+            GuiDraw.Fill(batch, white, panel, Theme.PanelFill);
+            GuiDraw.Border(batch, white, panel, Theme.BorderThickness, Theme.BorderColor);
+
+            float scale = Theme.TextScale;
+            float rowH = MathF.Max(Theme.SwatchSize, font.LineHeight * scale);
+            float x = panel.X + Theme.Padding;
+            float y = panel.Y + Theme.Padding;
             for (int i = 0; i < _entries.Count; i++)
             {
                 LegendEntry e = _entries[i];
-                GuiDraw.Fill(batch, white, new Rect(x, y + (rowH - SwatchSize) * 0.5f, SwatchSize, SwatchSize), e.Swatch.ToVector4());
-                batch.DrawString(font, e.Label, new Vector2(x + SwatchSize + Gap, y + (rowH - font.LineHeight) * 0.5f),
-                    new Color(0.92f, 0.94f, 0.97f, 1f));
-                y += rowH + RowSpacing;
+                GuiDraw.Fill(batch, white, new Rect(x, y + (rowH - Theme.SwatchSize) * 0.5f, Theme.SwatchSize, Theme.SwatchSize), e.Swatch.ToVector4());
+                batch.DrawString(font, e.Label, new Vector2(x + Theme.SwatchSize + Theme.SwatchGap, y + (rowH - font.LineHeight * scale) * 0.5f),
+                    (Color)Theme.LabelText, scale);
+                y += rowH + Theme.RowSpacing;
             }
+
+            Bounds = panel;
         }
     }
 }

@@ -497,6 +497,17 @@ def audit(spec):
                 bot = b["min"][2]
             if bot <= top: continue
             gap = (bot - top) * ws
+            # a third piece that fills the whole gap over the overlap footprint makes the pair solid,
+            # not a pin (a tiered chimney: hearth under shaft is FILLED by the mid tier between them)
+            ox0 = max(a["min"][0], b["min"][0]); ox1 = min(a["max"][0], b["max"][0])
+            oy0 = max(a["min"][1], b["min"][1]); oy1 = min(a["max"][1], b["max"][1])
+            eps = w2r(0.05)
+            filled = any(c is not a and c is not b and c["kind"] == "box"
+                         and c["min"][0] <= ox0 + eps and c["max"][0] >= ox1 - eps
+                         and c["min"][1] <= oy0 + eps and c["max"][1] >= oy1 - eps
+                         and c["min"][2] <= top + eps and c["max"][2] >= bot - eps
+                         for c in pieces)
+            if filled: continue
             if gap < HEADROOM:
                 # "_lowHeadroomOk" names standable pieces whose low-headroom pair is PROVEN safe:
                 # only honoured under a sloped SLAB ceiling (its tilted underside sheds a squeezed

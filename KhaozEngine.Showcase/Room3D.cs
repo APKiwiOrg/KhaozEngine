@@ -313,6 +313,10 @@ namespace KhaozEngine.Showcase
             if (Manager!.Input.WasPressed(Key.H)) { post.OutlineNormalThreshold = MathF.Min(2f, post.OutlineNormalThreshold + 0.05f); Console.WriteLine($"[post] OutlineNormalThreshold = {post.OutlineNormalThreshold:0.00}"); }
             if (Manager!.Input.WasPressed(Key.G)) { post.OutlineNormalThreshold = MathF.Max(0f, post.OutlineNormalThreshold - 0.05f); Console.WriteLine($"[post] OutlineNormalThreshold = {post.OutlineNormalThreshold:0.00}"); }
 
+            // Starfield background (A) and cel-shading bands (C), matching Render3DSample's A and C handlers.
+            if (Manager!.Input.WasPressed(Key.A)) { post.Starfield = !post.Starfield; Console.WriteLine($"[post] Starfield = {post.Starfield}"); }
+            if (Manager!.Input.WasPressed(Key.C)) { post.CelBands = post.CelBands == 0 ? 4 : 0; Console.WriteLine($"[post] CelBands = {post.CelBands}"); }
+
             // Retro combo (R): toggles quantize+dither+pixelated together, cel bands, and the internal render
             // resolution, matching Render3DSample's R handler exactly.
             if (Manager!.Input.WasPressed(Key.R))
@@ -454,6 +458,7 @@ namespace KhaozEngine.Showcase
             post.Outline = true;
             post.OutlineDepthThreshold = 0.2f;
             post.OutlineNormalThreshold = 0.45f;
+            post.Starfield = true;
 
             // Retro combo + palette (R/P in OnUpdate above) back to PixelPostProcessSettings's own defaults, so
             // leaving the room never bleeds a low-res/quantized/palette-swapped look under the menu or 2D rooms.

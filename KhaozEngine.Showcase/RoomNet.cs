@@ -15,11 +15,78 @@ using KhaozEngine.Windowing;
 
 namespace KhaozEngine.Showcase
 {
+    /// <summary>A scripted remote player: its own <see cref="WorldClient"/> connected over loopback, walking a
+    /// fixed patrol loop. No camera of its own, so it steers by treating "heading toward the current waypoint" as
+    /// a synthetic camera yaw and always sending a pure-forward <see cref="MoveCommand"/> (move = (0,1)) - matching
+    /// how <c>CharacterMovement</c> resolves camera-relative move axes into a world direction.</summary>
+    sealed class NetBot : IDisposable
+    {
+        const float WaypointRadius = 1.5f;
+
+        readonly LiteNetLibClientTransport _transport;
+        readonly WorldClient _client;
+        readonly FixedTickHost _clock;
+        readonly Vector2[] _waypoints;
+        int _target;
+
+        public NetBot(int port, string token, Vector2[] waypoints, Func<float, float, float> groundHeight,
+            Func<float, float, Vector3> groundNormal, float tickSeconds)
+        {
+            _waypoints = waypoints;
+            _transport = new LiteNetLibClientTransport("127.0.0.1", port);
+            _client = new WorldClient(_transport, groundHeight, MoveTuning.Default,
+                new WorldClientConfig { TickSeconds = tickSeconds },
+                token: Encoding.UTF8.GetBytes(token),
+                groundNormal: groundNormal);
+            _clock = new FixedTickHost(tickSeconds);
+        }
+
+        public WorldConnectionState ConnectionState => _client.ConnectionState;
+
+        /// <summary>Pumps the transport a single poll with no elapsed time - used only during connection priming
+        /// alongside the server/local-client handshake loop, before the room starts real per-frame stepping.</summary>
+        public void PrimePoll() => _client.Poll(0f);
+
+        public void Step(float dt)
+        {
+            _client.Poll(dt);
+
+            Vector3 pos = _client.LocalRenderState.Position;
+            Vector2 target = _waypoints[_target];
+            Vector2 toTarget = target - new Vector2(pos.X, pos.Z);
+            if (toTarget.LengthSquared() <= WaypointRadius * WaypointRadius)
+            {
+                _target = (_target + 1) % _waypoints.Length;
+                target = _waypoints[_target];
+                toTarget = target - new Vector2(pos.X, pos.Z);
+            }
+
+            // CharacterMovement resolves MoveCommand.Move as camera-relative (Y = forward, rotated by CameraYaw)
+            // into world XZ via forward = (-sin(yaw), 0, -cos(yaw)). A bot with no camera treats "heading to the
+            // waypoint" as that synthetic yaw and always sends pure forward (0,1), so it walks straight at the
+            // target regardless of the axis convention baked into the forward/right basis.
+            Vector2 dir = toTarget.LengthSquared() > 1e-6f ? Vector2.Normalize(toTarget) : Vector2.Zero;
+            float yaw = MathF.Atan2(-dir.X, -dir.Y);
+            var cmd = new MoveCommand(new Vector2(0f, 1f), run: false, cameraYaw: yaw, jump: false);
+            _clock.Advance(dt, _ => _client.SendInput(cmd));
+
+            _client.AdvancePresentation(dt);
+        }
+
+        public void Dispose()
+        {
+            _client.Dispose();
+            _transport.Dispose();
+        }
+    }
+
     /// <summary>Networked walk room: an authoritative WorldServer + a local WorldClient, both stepped on the main
     /// thread over a loopback UDP socket. Demonstrates the predict / replicate / reconcile netcode without
     /// launching a separate server process, ported from NetworkedWalkServer (server construction) and
     /// NetworkedWalkSample (terrain/camera/input/render). Renders through the showcase's shared Scene3D (injected
-    /// via Init). Esc returns to the menu. Animated characters are a later task, this room draws capsules.</summary>
+    /// via Init). Esc returns to the menu. Animated characters are a later task, this room draws capsules. Two
+    /// scripted <see cref="NetBot"/> instances patrol the meadow so the local client's Snapshot() replicates
+    /// visible remote players.</summary>
     public sealed class RoomNet : GameScene, IGameScene3D
     {
         const int GridRadius = 3;
@@ -55,6 +122,8 @@ namespace KhaozEngine.Showcase
         WorldClient _client = null!;
         FixedTickHost _clientClock = null!;
         bool _jumpQueued;   // latches a Space press between fixed ticks so a jump is never dropped on a non-tick frame
+
+        readonly List<NetBot> _bots = new();
 
         FollowCamera3D _camera = null!;
         FollowCameraController _camController = null!;
@@ -119,6 +188,16 @@ namespace KhaozEngine.Showcase
                 groundNormal: _terrain.GroundNormal);
             _clientClock = new FixedTickHost(TickSeconds);
 
+            // Two scripted remote players, patrolling loops in the flat meadow south of the biome blend (x in
+            // [44,70], z in [15,40] - clear of the lake near x=-13 and of the mountain band starting past z=48),
+            // so replication is visible without the bots wandering into rough terrain.
+            _bots.Add(new NetBot(_port, "bot1",
+                new[] { new Vector2(48f, 20f), new Vector2(66f, 18f), new Vector2(68f, 36f), new Vector2(46f, 34f) },
+                _terrain.GroundHeight, _terrain.GroundNormal, TickSeconds));
+            _bots.Add(new NetBot(_port, "bot2",
+                new[] { new Vector2(62f, 34f), new Vector2(44f, 32f), new Vector2(46f, 16f), new Vector2(64f, 18f) },
+                _terrain.GroundHeight, _terrain.GroundNormal, TickSeconds));
+
             _camera = new FollowCamera3D { Target = Vector3.Zero, HeightOffset = 1.2f, GroundHeight = _terrain.GroundHeight };
             _camera.Distance = 9f;
             _camController = new FollowCameraController(_camera);
@@ -128,12 +207,14 @@ namespace KhaozEngine.Showcase
             // first rendered frame (otherwise the first several frames would show the pre-join empty snapshot).
             // LiteNetLib's connect handshake is a real (if loopback-fast) UDP round-trip, so a short real sleep
             // between polls is needed alongside the polling - a tight zero-delay loop can spin without ever
-            // giving the socket time to complete the handshake.
+            // giving the socket time to complete the handshake. Bots are primed in the same loop so all 3 clients
+            // are connected before the first rendered frame.
             for (int i = 0; i < 60 && _client.ConnectionState != WorldConnectionState.Connected; i++)
             {
                 _server.Poll();
                 _server.Tick(TickSeconds);
                 _client.Poll(TickSeconds);
+                foreach (NetBot b in _bots) b.PrimePoll();
                 System.Threading.Thread.Sleep(5);
             }
 
@@ -167,6 +248,8 @@ namespace KhaozEngine.Showcase
 
             _client.AdvancePresentation(dt);
 
+            foreach (NetBot b in _bots) b.Step(dt);
+
             _camera.Target = _client.LocalRenderState.Position;
             _camera.AspectRatio = m.FrameHeight > 0 ? (float)m.FrameWidth / m.FrameHeight : _camera.AspectRatio;
             _camController.Update(m.Input, dt);
@@ -193,6 +276,9 @@ namespace KhaozEngine.Showcase
         {
             if (!_built) return;
             _built = false;
+
+            foreach (NetBot b in _bots) b.Dispose();
+            _bots.Clear();
 
             _client.Dispose();
             _clientTransport.Dispose();

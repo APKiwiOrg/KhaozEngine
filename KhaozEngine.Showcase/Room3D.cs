@@ -126,6 +126,11 @@ namespace KhaozEngine.Showcase
         float _facingYaw;
         Vector3 _prevCharPos;
 
+        // Index into Palettes.All for the P palette-cycle toggle (see OnUpdate). 2 = Ember8, matching
+        // PixelPostProcessSettings.ActivePalette's own default so entering the room and pressing P once
+        // steps to the same place Render3DSample does.
+        int _palIdx = 2;
+
         public Room3D Init(Scene3D scene, Texture2D white, SpriteFont hud)
         {
             _scene = scene; _white = white; _hud = hud;
@@ -308,6 +313,24 @@ namespace KhaozEngine.Showcase
             if (Manager!.Input.WasPressed(Key.H)) { post.OutlineNormalThreshold = MathF.Min(2f, post.OutlineNormalThreshold + 0.05f); Console.WriteLine($"[post] OutlineNormalThreshold = {post.OutlineNormalThreshold:0.00}"); }
             if (Manager!.Input.WasPressed(Key.G)) { post.OutlineNormalThreshold = MathF.Max(0f, post.OutlineNormalThreshold - 0.05f); Console.WriteLine($"[post] OutlineNormalThreshold = {post.OutlineNormalThreshold:0.00}"); }
 
+            // Retro combo (R): toggles quantize+dither+pixelated together, cel bands, and the internal render
+            // resolution, matching Render3DSample's R handler exactly.
+            if (Manager!.Input.WasPressed(Key.R))
+            {
+                bool on = !post.Quantize;
+                post.Quantize = post.Dither = post.Pixelated = on;
+                post.CelBands = on ? 4 : 0;
+                post.RenderWidth = on ? 320 : 1920; post.RenderHeight = on ? 180 : 1080;
+                Console.WriteLine($"[post] Retro = {on}");
+            }
+            // Palette cycle (P): steps ActivePalette through Palettes.All, matching Render3DSample's P handler.
+            if (Manager!.Input.WasPressed(Key.P))
+            {
+                _palIdx = (_palIdx + 1) % Palettes.All.Length;
+                post.ActivePalette = Palettes.All[_palIdx];
+                Console.WriteLine("[post] palette: " + post.ActivePalette.Name);
+            }
+
             if (Manager!.Input.WasPressed(Key.F2))
             {
                 _collisionOverlay.Enabled = !_collisionOverlay.Enabled;
@@ -431,6 +454,17 @@ namespace KhaozEngine.Showcase
             post.Outline = true;
             post.OutlineDepthThreshold = 0.2f;
             post.OutlineNormalThreshold = 0.45f;
+
+            // Retro combo + palette (R/P in OnUpdate above) back to PixelPostProcessSettings's own defaults, so
+            // leaving the room never bleeds a low-res/quantized/palette-swapped look under the menu or 2D rooms.
+            post.Quantize = false;
+            post.Dither = false;
+            post.Pixelated = false;
+            post.CelBands = 0;
+            post.RenderWidth = 1600;
+            post.RenderHeight = 900;
+            post.ActivePalette = Palettes.Ember8;
+            _palIdx = 2;
 
             // Null the per-enter fields so a re-entered room rebuilds fresh rather than reusing stale handles.
             _propMeshes.Clear();

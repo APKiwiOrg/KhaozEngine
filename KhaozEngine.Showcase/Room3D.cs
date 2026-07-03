@@ -35,6 +35,11 @@ namespace KhaozEngine.Showcase
         Texture2D _white = null!;
         SpriteFont _hud = null!;
 
+        // Guards OnExit against running before OnEnter has built the per-enter state (and OnEnter against
+        // leftover state from a previous visit), so the room can be entered and exited repeatedly against the
+        // shared Scene3D without doubling meshes/statics or leaking GPU/physics resources.
+        bool _built;
+
         TerrainField _field = null!;
         TerrainCollision _terrain = null!;
         FollowCamera3D _camera = null!;
@@ -88,7 +93,7 @@ namespace KhaozEngine.Showcase
             _field = new TerrainField(TerrainPresets.BoundedClearing());
             _terrain = new TerrainCollision(_field);
 
-            // 1.8 m greybox capsule (height 1.2 + 2*radius 0.6); mesh bottom sits at y=0 in local space.
+            // 1.8 m greybox capsule (height 1.2 + 2*radius 0.6). Mesh bottom sits at y=0 in local space.
             _capsule = _scene.LoadMesh(MeshPrimitives.Capsule(radius: CapsuleRadius, height: 1.2f, segments: 16, rings: 6));
 
             // --- Physics world setup ----------------------------------------------------------
@@ -189,6 +194,8 @@ namespace KhaozEngine.Showcase
             }
             // Step the physics world once after the initial ring loads so Bepu's broad phase is current.
             _physics.Step(1f / 30f);
+
+            _built = true;
         }
 
         public override void OnUpdate(float dt)
@@ -226,7 +233,7 @@ namespace KhaozEngine.Showcase
 
             // Animate the character off the same movement state: horizontal speed from the XZ position delta over
             // dt (so it reflects collision-clamped motion, not just input), facing turned toward the move direction,
-            // and the vertical state straight from the controller. Client-cosmetic; no effect on movement/collision.
+            // and the vertical state straight from the controller. Client-cosmetic, no effect on movement/collision.
             if (_animated && dt > 1e-5f)
             {
                 Vector3 cur = _character.Position;
@@ -262,7 +269,7 @@ namespace KhaozEngine.Showcase
             // Textured prop demo: procedural mossy-stone block (albedo + normal maps).
             scene.Draw(_texturedProp, _texturedPropXform, Color.White);
 
-            // Draw the character so its feet sit on the ground (Position is the capsule centre; feet = centre - half).
+            // Draw the character so its feet sit on the ground (Position is the capsule centre, feet = centre - half).
             Vector3 p = _character.Position;
             float footY = p.Y - CapsuleHalfHeight;
             if (_animated)
@@ -296,9 +303,45 @@ namespace KhaozEngine.Showcase
             return list;
         }
 
+        // Tears down everything OnEnter built into the shared Scene3D, so the menu/2D rooms render cleanly and a
+        // re-entry rebuilds from scratch. Guarded so an early exit (before OnEnter finished) is a safe no-op, and
+        // idempotent-safe on the disposables themselves (TerrainStreamer.Dispose/CollisionShapeOverlay.Dispose are
+        // written to tolerate repeat calls).
         public override void OnExit()
         {
-            // Task 6: dispose streamer + physics, clear _scene.CameraOverride, reset _scene.Post.
+            if (!_built) return;
+            _built = false;
+
+            // TerrainStreamer.Dispose flushes the loaded ring through the sink (freeing every chunk mesh) and then
+            // disposes the sink itself (it owns Scene3DChunkSink), matching TerrainWalkSample's turn-key teardown.
+            // Do not also dispose _sink separately, that would double-dispose it.
+            _streamer.Dispose();
+            _collisionOverlay.Dispose();
+            _physics.Dispose();
+
+            // Drop the follow camera so the default camera returns for the menu/2D rooms.
+            _scene.CameraOverride = null;
+
+            // Reset every Post field this room's OnUpdate can mutate, back to PixelPostProcessSettings's own
+            // defaults (Post has no setter, it is a shared instance owned by Scene3D, so fields are reset
+            // individually rather than reassigning the property).
+            var post = _scene.Post;
+            post.RenderScale = RenderScale.FixedInternal;
+            post.Outline = true;
+            post.OutlineDepthThreshold = 0.2f;
+            post.OutlineNormalThreshold = 0.45f;
+
+            // Null the per-enter fields so a re-entered room rebuilds fresh rather than reusing stale handles.
+            _propMeshes.Clear();
+            _sink = null!;
+            _streamer = null!;
+            _physics = null!;
+            _collisionOverlay = null!;
+            _overlayStatics = null!;
+            _legend = null!;
+            _characterMesh = default;
+            _animChar = null!;
+            _animated = false;
         }
 
         // Normalize an angle to (-pi, pi] so the facing turn always takes the shortest path.

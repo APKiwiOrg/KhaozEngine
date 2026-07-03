@@ -93,4 +93,31 @@ public static class MmoProtocol
         command = default;
         return false;
     }
+
+    // Replication-ack frame: [marker:0xA0][appliedSeq:int] = 5 bytes, distinct in length from the 12-byte move so the
+    // receive path demuxes them without aliasing. The client sends it after applying each delta; the server feeds the
+    // seq to AoiDeltaReplicator.Acknowledge to advance that client's delta baseline (a dropped ack self-heals).
+    private const byte AckMarker = 0xA0;
+    private const int AckSize = 5;
+
+    /// <summary>Encodes a replication ack carrying the client's <see cref="ClientReplicationView.LastAppliedSeq"/>.</summary>
+    public static byte[] EncodeAck(int appliedSeq)
+    {
+        var bytes = new byte[AckSize];
+        bytes[0] = AckMarker;
+        BitConverter.TryWriteBytes(bytes.AsSpan(1, 4), appliedSeq);
+        return bytes;
+    }
+
+    /// <summary>Decodes a replication ack written by <see cref="EncodeAck"/>. False for a move (different length).</summary>
+    public static bool TryDecodeAck(ReadOnlySpan<byte> data, out int appliedSeq)
+    {
+        if (data.Length == AckSize && data[0] == AckMarker)
+        {
+            appliedSeq = BitConverter.ToInt32(data.Slice(1, 4));
+            return true;
+        }
+        appliedSeq = -1;
+        return false;
+    }
 }

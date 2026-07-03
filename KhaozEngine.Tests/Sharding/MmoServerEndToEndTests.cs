@@ -24,7 +24,11 @@ public class MmoServerEndToEndTests
     private static void ApplyClientSnapshots(NetClient client, World world, ClientReplicationView view)
     {
         while (client.TryDequeueEvent(out ClientSessionEvent ev))
-            if (ev.Kind == ClientSessionEventKind.Data) view.Apply(world, ev.Data);
+            if (ev.Kind == ClientSessionEventKind.Data)
+            {
+                view.ApplyDelta(world, ev.Data);   // the reference server serves per-client AoI deltas
+                client.Send(MmoProtocol.EncodeAck(view.LastAppliedSeq), NetChannelReliability.ReliableOrdered);
+            }
     }
 
     [Fact]
@@ -108,7 +112,7 @@ public class MmoServerEndToEndTests
         // the NPC apart from a player by the component's presence.
         var world = new World();
         var view = new ClientReplicationView(MmoServer.CreateRegistry());
-        view.Apply(world, snapshot);
+        view.ApplyDelta(world, snapshot);   // the first serve is a baseline -1 delta = a full snapshot
         Assert.True(view.TryGetEntity(npc, out Entity npcEntity));
         Assert.True(world.TryGet(npcEntity, out Creature creature));
         Assert.Equal(5, creature.Kind);
@@ -123,7 +127,7 @@ public class MmoServerEndToEndTests
             write: (p, bw) => { bw.Write(p.X); bw.Write(p.Y); },
             read: br => new Position { X = br.ReadSingle(), Y = br.ReadSingle() });
         var oldView = new ClientReplicationView(oldRegistry);
-        bool ok = oldView.TryApply(new World(), snapshot, out string? error);
+        bool ok = oldView.TryApplyDelta(new World(), snapshot, out string? error);
         Assert.True(ok);
         Assert.Null(error);
         Assert.True(oldView.TryGetEntity(npc, out _));
@@ -168,7 +172,11 @@ public class MmoServerEndToEndTests
             server.Tick(config.TickSeconds);
             client.Poll();
             while (client.TryDequeueEvent(out ClientSessionEvent ev))
-                if (ev.Kind == ClientSessionEventKind.Data) view.Apply(clientWorld, ev.Data);
+                if (ev.Kind == ClientSessionEventKind.Data)
+                {
+                    view.ApplyDelta(clientWorld, ev.Data);
+                    client.Send(MmoProtocol.EncodeAck(view.LastAppliedSeq), NetChannelReliability.ReliableOrdered);
+                }
 
             if (client.Slot >= 0 && server.TryGetPlayerNetId(client.Slot, out int pid) && view.TryGetEntity(pid, out _))
                 served = true;

@@ -44,6 +44,7 @@ public sealed class MmoServer : ICellPersistenceHost
     private readonly RemoteCommandQueue<MoveCommand> commands = new(neutralCommand: default);
     private readonly IWorldStore store;
     private readonly CellPersistence cellPersistence;
+    private readonly AoiDeltaReplicator deltaReplicator;
     private readonly Dictionary<int, int> playerNetIdBySlot = new();
     private int nextNetId = 1;
 
@@ -64,6 +65,7 @@ public sealed class MmoServer : ICellPersistenceHost
             positionAccessor: MmoProtocol.PositionAccessor);
         net = new NetServer(transport, config.MaxPlayers, new AllowAllAuthenticator());
         cellPersistence = new CellPersistence(this, store);
+        deltaReplicator = new AoiDeltaReplicator(registry);
         host.CellCreated += cell => CellCreated?.Invoke(cell.Coord);
     }
 
@@ -160,9 +162,10 @@ public sealed class MmoServer : ICellPersistenceHost
                     break;
 
                 case ServerSessionEventKind.Data:
-                    if (playerNetIdBySlot.ContainsKey(ev.Slot)
-                        && MmoProtocol.TryDecodeMove(ev.Data, out int seq, out MoveCommand cmd))
-                        commands.Store(ev.Slot, seq, cmd);
+                    if (!playerNetIdBySlot.ContainsKey(ev.Slot)) break;
+                    // A replication ack advances the client's delta baseline; otherwise it is a move command.
+                    if (MmoProtocol.TryDecodeAck(ev.Data, out int ackSeq)) deltaReplicator.Acknowledge(ev.Slot, ackSeq);
+                    else if (MmoProtocol.TryDecodeMove(ev.Data, out int seq, out MoveCommand cmd)) commands.Store(ev.Slot, seq, cmd);
                     break;
             }
         }
@@ -189,11 +192,15 @@ public sealed class MmoServer : ICellPersistenceHost
         host.ProcessHandoffs();   // authority follows entities across boundaries (exactly-once)
         host.SyncGhosts();        // refresh border ghosts so home cells hold full AoI
 
-        // Serve each client its area-of-interest from its single home cell.
+        // Serve each client a per-client home-cell area-of-interest DELTA (only what changed since its acknowledged
+        // baseline; a full snapshot the first time / until it acks). The baseline is keyed by NetId, so a boundary
+        // crossing reads as a component delta, never a despawn+respawn.
+        deltaReplicator.BeginTick();
         foreach (int slot in playerNetIdBySlot.Keys)
         {
-            byte[] snapshot = host.SnapshotForClient(slot, config.InterestRadius);
-            net.SendTo(slot, snapshot, NetChannelReliability.ReliableOrdered);
+            (World world, HashSet<int> interest) = host.HomeInterest(slot, config.InterestRadius);
+            byte[] delta = deltaReplicator.WriteFor(slot, world, interest);
+            net.SendTo(slot, delta, NetChannelReliability.ReliableOrdered);
         }
     }
 
@@ -219,6 +226,7 @@ public sealed class MmoServer : ICellPersistenceHost
         }
 
         host.UnbindClient(slot);
+        deltaReplicator.Forget(slot);
         playerNetIdBySlot.Remove(slot);
     }
 }

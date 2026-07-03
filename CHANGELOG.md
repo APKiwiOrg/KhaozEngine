@@ -5,6 +5,27 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 9.6.2
+
+`SpriteBatch` no longer tears its 2D draws for a frame when a widget moves or resizes: the per-flush vertex buffers are now ring-buffered across frames instead of one buffer reused every frame. Render-only bug fix, no public API change. Fixes the F2 collision legend in Ruinborne flickering out for a single frame as the adjacent DIAG panel resized.
+
+- **`SpriteBatch`** (`KhaozEngine.Render2D`, internal) kept one growable vertex buffer per flush and rewrote it
+  every frame with a device-level `UpdateBuffer`, while the frame loop (`AppWindow.Run`) submits + presents with no
+  `WaitForIdle`. So the CPU runs ahead and a frame's write to a reused buffer can race the GPU still reading it for
+  an earlier, still-in-flight present. The result is a 1-frame tear that only surfaces when the buffer *contents*
+  change frame-to-frame: a moving/resizing widget writes different bytes mid-read, whereas static content writes
+  identical bytes so the race is invisible (why it looked like an intermittent, "every few seconds" flicker of only
+  the thing that was moving). The 3D overlay/decal renderers never had this because they record their buffer writes
+  into the command list (`cl.UpdateBuffer`), which is ordered against the prior frame.
+- The per-flush buffers are now **ring-buffered `RingDepth` (= 3) frames deep**: `NewFrame` rotates to the next of
+  three slots (slot = `_frame % RingDepth`), so a slot is not rewritten until three frames later, by which point
+  its prior GPU reads have retired. Triple-buffering covers the CPU running up to two frames ahead. This also makes
+  the grow-time `Dispose` of a slot's old buffer safe (that buffer was last used three frames ago). No behaviour
+  change to any drawing API; buffers still persist and only grow.
+- **New GPU test `SpriteBatchBufferRingTests`** drives the batch frame-by-frame and asserts the flush-0 buffer
+  rotates through distinct instances and repeats every `RingDepth` frames (it would fail on the old single-buffer
+  code, which returned the same instance every frame).
+
 ## 9.6.1
 
 The terrain splat shader now samples with explicit gradients (`textureGrad`), fixing undefined mip/anisotropic LOD selection under the per-layer weight branch, the likely cause of the distant ground "fuzz"/pixelation reported on Direct3D11 (Windows) while Metal looked fine. Render-only bug fix, no public API change.

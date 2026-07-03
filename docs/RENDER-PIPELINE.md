@@ -22,7 +22,7 @@ flowchart TD
         MR["ModelRenderer: instanced DrawIndexed<br/>+ PixelPostProcess chain"]
     end
     subgraph r2["KhaozEngine.Render2D"]
-        SB["SpriteBatch: batch quads into one<br/>persistent growable vertex buffer"]
+        SB["SpriteBatch: batch quads into<br/>per-frame ring-buffered growable vertex buffers"]
     end
 
     subgraph gpu["KhaozEngine.Gpu - the backend seam (nothing above touches Veldrid)"]
@@ -91,7 +91,8 @@ flowchart LR
 1. Your game calls `Scene3D.Draw(...)` (3D) or `SpriteBatch.Draw(...)` (2D) inside the `Frame` callback that
    `AppWindow.Run` invokes once per frame.
 2. `Scene3D` accumulates draws as instances keyed by `MeshHandle` (geometry was uploaded once via `LoadMesh`);
-   `SpriteBatch` packs quads into one persistent vertex buffer. Nothing here references Veldrid.
+   `SpriteBatch` packs quads into per-frame ring-buffered vertex buffers (rotated so a frame's write never races
+   the GPU still reading an earlier, in-flight frame's copy). Nothing here references Veldrid.
 3. At frame end, `Render3DSurface` / `Render2DSurface` flush through `ModelRenderer` / the sprite shader, which
    record commands on `GpuDeviceContext` - the opaque seam (device, buffers, pipelines, command list).
 4. `GpuBackendSelector` picked the backend at startup (OS probe + `KE_GRAPHICS_BACKEND`), and `GpuCapabilities`

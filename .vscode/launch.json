@@ -13,42 +13,6 @@
       "console": "internalConsole",
       "stopAtEntry": false
     },
-
-    // ---- Networked overworld demo ----
-    // Start the server first, then one or two clients (or use the "Networked Walk: server + 2 clients" compound).
-    {
-      "name": "Run NetworkedWalkServer (headless walk server)",
-      "type": "coreclr",
-      "request": "launch",
-      "preLaunchTask": "build",
-      "program": "${workspaceFolder}/NetworkedWalkServer/bin/Debug/net10.0/NetworkedWalkServer.dll",
-      "args": [],
-      "cwd": "${workspaceFolder}/NetworkedWalkServer",
-      "console": "integratedTerminal",
-      "stopAtEntry": false
-    },
-    {
-      "name": "Run NetworkedWalkSample (client, player1)",
-      "type": "coreclr",
-      "request": "launch",
-      "preLaunchTask": "build",
-      "program": "${workspaceFolder}/NetworkedWalkSample/bin/Debug/net10.0/NetworkedWalkSample.dll",
-      "args": ["127.0.0.1", "47700", "player1"],
-      "cwd": "${workspaceFolder}/NetworkedWalkSample",
-      "console": "internalConsole",
-      "stopAtEntry": false
-    },
-    {
-      "name": "Run NetworkedWalkSample (client 2, player2)",
-      "type": "coreclr",
-      "request": "launch",
-      "preLaunchTask": "build",
-      "program": "${workspaceFolder}/NetworkedWalkSample/bin/Debug/net10.0/NetworkedWalkSample.dll",
-      "args": ["127.0.0.1", "47700", "player2"],
-      "cwd": "${workspaceFolder}/NetworkedWalkSample",
-      "console": "internalConsole",
-      "stopAtEntry": false
-    },
     {
       "name": "Run MmoServerSample (headless reference MMO server)",
       "type": "coreclr",
@@ -72,17 +36,6 @@
       "cwd": "${workspaceFolder}/SnapshotSample",
       "console": "integratedTerminal",
       "stopAtEntry": false
-    }
-  ],
-  "compounds": [
-    {
-      "name": "Networked Walk: server + 2 clients",
-      "configurations": [
-        "Run NetworkedWalkServer (headless walk server)",
-        "Run NetworkedWalkSample (client, player1)",
-        "Run NetworkedWalkSample (client 2, player2)"
-      ],
-      "stopAll": true
     }
   ]
 }

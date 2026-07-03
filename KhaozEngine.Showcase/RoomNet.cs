@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Numerics;
 using System.Text;
 using KhaozEngine.Game;
@@ -83,10 +84,11 @@ namespace KhaozEngine.Showcase
     /// <summary>Networked walk room: an authoritative WorldServer + a local WorldClient, both stepped on the main
     /// thread over a loopback UDP socket. Demonstrates the predict / replicate / reconcile netcode without
     /// launching a separate server process, ported from NetworkedWalkServer (server construction) and
-    /// NetworkedWalkSample (terrain/camera/input/render). Renders through the showcase's shared Scene3D (injected
-    /// via Init). Esc returns to the menu. Animated characters are a later task, this room draws capsules. Two
-    /// scripted <see cref="NetBot"/> instances patrol the meadow so the local client's Snapshot() replicates
-    /// visible remote players.</summary>
+    /// NetworkedWalkSample (terrain/camera/input/render/animator bridge). Renders through the showcase's shared
+    /// Scene3D (injected via Init). Esc returns to the menu. Two scripted <see cref="NetBot"/> instances patrol the
+    /// meadow so the local client's Snapshot() replicates visible remote players. Every replicated entity (local +
+    /// bots) is drawn as an animated character via <see cref="ReplicatedCharacterAnimators"/>, falling back to a
+    /// capsule per entity if the character asset fails to load.</summary>
     public sealed class RoomNet : GameScene, IGameScene3D
     {
         const int GridRadius = 3;
@@ -112,6 +114,14 @@ namespace KhaozEngine.Showcase
         TerrainCollision _terrain = null!;
         readonly List<MeshHandle> _chunks = new();
         MeshHandle _capsule;
+
+        // Per-player animated avatars driven by the position stream the netcode surfaces (ReplicatedCharacterAnimators):
+        // one AnimatedCharacter brain per replicated entity, lifecycle-managed. Capsule fallback if the asset fails
+        // to load.
+        SkinnedMeshHandle _characterMesh;
+        ReplicatedCharacterAnimators? _animators;
+        bool _animated;
+        readonly List<CharacterSample> _samples = new();
 
         int _port;
         LiteNetLibServerTransport _serverTransport = null!;
@@ -151,6 +161,10 @@ namespace KhaozEngine.Showcase
                 }
 
             _capsule = _scene.LoadMesh(MeshPrimitives.Capsule(radius: CapsuleRadius, height: 1.2f, segments: 16, rings: 6));
+
+            // The animated-avatar bridge: one skinned mesh shared by every player, one AnimatedCharacter brain per
+            // replicated entity. Capsule fallback if the asset is missing/unreadable.
+            TryLoadAnimators(_scene);
 
             // Bind the server on a loopback port, retrying on failure. LiteNetLibServerTransport's ctor throws
             // InvalidOperationException when NetManager.Start(port) fails (e.g. the previous visit's socket has
@@ -250,6 +264,18 @@ namespace KhaozEngine.Showcase
 
             foreach (NetBot b in _bots) b.Step(dt);
 
+            // Map the replicated render states to engine-neutral samples and advance the avatar bridge once per
+            // frame. Every entity carries its EXACT grounded flag + vertical velocity (local: predicted; remote:
+            // replicated MovementState surfaced via EntityRenderState), so jump/fall read true for remotes too.
+            // Feet position (centre minus the capsule half-height) so the model's feet sit on the ground.
+            _samples.Clear();
+            foreach (EntityRenderState e in _client.Snapshot())
+            {
+                var feet = new Vector3(e.Position.X, e.Position.Y - CapsuleHalfHeight, e.Position.Z);
+                _samples.Add(new CharacterSample(e.Id.Value, feet, e.IsLocal, e.Grounded, e.VerticalVelocity));
+            }
+            _animators?.Update(_samples, dt);
+
             _camera.Target = _client.LocalRenderState.Position;
             _camera.AspectRatio = m.FrameHeight > 0 ? (float)m.FrameWidth / m.FrameHeight : _camera.AspectRatio;
             _camController.Update(m.Input, dt);
@@ -262,11 +288,24 @@ namespace KhaozEngine.Showcase
             foreach (var chunk in _chunks)
                 scene.DrawTerrainChunk(chunk);
 
-            foreach (EntityRenderState e in _client.Snapshot())
+            if (_animated && _animators is not null)
             {
-                Vector3 p = e.Position;
-                Color tint = e.IsLocal ? new Color(0.85f, 0.55f, 0.25f, 1f) : new Color(0.30f, 0.55f, 0.85f, 1f);
-                scene.Draw(_capsule, Matrix4x4.CreateTranslation(p.X, p.Y - CapsuleHalfHeight, p.Z), tint);
+                // Draw the bridge's live avatars: World already places + faces + scales each (scale baked via the
+                // tuning).
+                foreach (CharacterPose pose in _animators.Live)
+                {
+                    Color tint = pose.IsLocal ? new Color(0.85f, 0.55f, 0.25f, 1f) : new Color(0.30f, 0.55f, 0.85f, 1f);
+                    scene.DrawSkinned(_characterMesh, pose.Pose, pose.World, tint);
+                }
+            }
+            else
+            {
+                foreach (EntityRenderState e in _client.Snapshot())
+                {
+                    Vector3 p = e.Position;
+                    Color tint = e.IsLocal ? new Color(0.85f, 0.55f, 0.25f, 1f) : new Color(0.30f, 0.55f, 0.85f, 1f);
+                    scene.Draw(_capsule, Matrix4x4.CreateTranslation(p.X, p.Y - CapsuleHalfHeight, p.Z), tint);
+                }
             }
         }
 
@@ -285,6 +324,7 @@ namespace KhaozEngine.Showcase
             _serverTransport.Dispose();
 
             _scene.UnloadMesh(_capsule);
+            if (_animated) _scene.UnloadSkinnedMesh(_characterMesh);
             foreach (MeshHandle h in _chunks) _scene.UnloadMesh(h);
             _chunks.Clear();
 
@@ -298,6 +338,61 @@ namespace KhaozEngine.Showcase
             _clientClock = null!;
             _camera = null!;
             _camController = null!;
+            _characterMesh = default;
+            _animators = null;
+            _animated = false;
+            _samples.Clear();
+        }
+
+        // Skinned-ingest the committed Quaternius Universal CC0 character + its clips, then build a
+        // ReplicatedCharacterAnimators (one AnimatedCharacter brain per replicated entity). On any failure the room
+        // keeps the per-entity capsule.
+        void TryLoadAnimators(Scene3D sc)
+        {
+            try
+            {
+                string charPath = Path.Combine(AppContext.BaseDirectory, "assets", "character", "Player.glb");
+                (SkinnedGltfMesh charMesh, GltfMaterialMaps charMaps) = GltfLoader.LoadSkinnedWithMaterial(charPath);
+                if (charMesh.Skeleton is null) { Console.WriteLine("Character has no skeleton; using capsules."); return; }
+                _characterMesh = sc.LoadSkinnedMesh(charMesh, charMaps);
+
+                var byName = new Dictionary<string, AnimationClip>();
+                foreach (AnimationClip c in GltfLoader.LoadAnimations(charPath)) byName[c.Name] = c;
+                var clips = new Dictionary<LocomotionState, AnimationClip>();
+                void Map(LocomotionState st, string name) { if (byName.TryGetValue(name, out AnimationClip? c)) clips[st] = c; }
+                Map(LocomotionState.Idle, "Idle");
+                Map(LocomotionState.Walk, "Walk");
+                Map(LocomotionState.Run, "Run");
+                Map(LocomotionState.Jump, "Jump");
+                Map(LocomotionState.Fall, "Fall");
+                if (clips.Count == 0) { Console.WriteLine("Character has no expected clips; using capsules."); return; }
+
+                // Auto-fit the model to the 1.8 m capsule height (asset-agnostic) and bake that scale into the
+                // bridge tuning.
+                float modelHeight = ModelHeight(charMesh);
+                float scale = modelHeight > 0.01f ? (CapsuleHalfHeight * 2f) / modelHeight : 1f;
+                CharacterAnimatorTuning tuning = CharacterAnimatorTuning.Default;
+                tuning.Scale = scale;
+                tuning.Locomotion = new LocomotionThresholds(0.1f, 4.5f);   // split walk/run at the server's 3/6 m/s feel
+
+                // The convenience ctor builds one brain per entity off the shared skeleton + clips, applying the tuning.
+                _animators = new ReplicatedCharacterAnimators(charMesh.Skeleton, clips, tuning);
+                _animated = true;
+                Console.WriteLine($"Animated avatars: {charMesh.BoneCount} bones, states [{string.Join(", ", clips.Keys)}], scale {scale:0.00}.");
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"Character load failed ({e.Message}); falling back to capsules.");
+                _animated = false;
+            }
+        }
+
+        // Model-space height (max - min Y) of the rest mesh, for the capsule-match scale.
+        static float ModelHeight(SkinnedGltfMesh mesh)
+        {
+            float min = float.MaxValue, max = float.MinValue;
+            foreach (SkinnedVertex v in mesh.Vertices) { min = MathF.Min(min, v.Position.Y); max = MathF.Max(max, v.Position.Y); }
+            return max - min;
         }
     }
 }

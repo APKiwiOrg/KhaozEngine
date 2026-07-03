@@ -8,11 +8,11 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
-    <!-- Reuse the committed CC0 prop kit + manifest from TerrainWalkSample (same deterministic scatter). -->
-    <None Include="../TerrainWalkSample/assets/props/**" CopyToOutputDirectory="PreserveNewest" LinkBase="assets/props" />
+    <!-- Reuse the committed CC0 prop kit + manifest from KhaozEngine.Showcase (same deterministic scatter). -->
+    <None Include="../KhaozEngine.Showcase/assets/props/**" CopyToOutputDirectory="PreserveNewest" LinkBase="assets/props" />
     <!-- Reuse the committed CC0 Quaternius Universal character so the ReplicatedCharacterAnimators bridge demo
          can draw an animated avatar per replicated player (capsule fallback if it fails to load). -->
-    <None Include="../TerrainWalkSample/assets/character/**" CopyToOutputDirectory="PreserveNewest" LinkBase="assets/character" />
+    <None Include="../KhaozEngine.Showcase/assets/character/**" CopyToOutputDirectory="PreserveNewest" LinkBase="assets/character" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Game/KhaozEngine.Game.csproj" />

@@ -8,16 +8,17 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
-    <!-- Committed CC0 Quaternius prop kit (decompressed to plain glTF offline) + manifest, copied next to the
-         exe so AssetManifest.Load resolves them at runtime. See assets/props/CREDITS.md. -->
-    <None Include="assets/props/**" CopyToOutputDirectory="PreserveNewest" />
-    <!-- Committed CC0 Quaternius Universal rigged + animated character (skinned-ingest, animations preserved). See
-         assets/character/CREDITS.md. -->
-    <None Include="assets/character/**" CopyToOutputDirectory="PreserveNewest" />
-    <!-- Hand-placed building-proxy fixture for the collision-shape debug overlay (F2). Copied from
-         KhaozEngine.Tests/Physics/Fixtures/blacksmith_proxy.coll - a compound-of-convex .coll shape - so the
-         sample needs no ProjectReference on the test project. -->
-    <None Include="assets/blacksmith_proxy.coll" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Committed CC0 Quaternius prop kit (decompressed to plain glTF offline) + manifest, moved to
+         KhaozEngine.Showcase and copied next to the exe so AssetManifest.Load resolves them at runtime.
+         See ../KhaozEngine.Showcase/assets/props/CREDITS.md. -->
+    <None Include="../KhaozEngine.Showcase/assets/props/**" CopyToOutputDirectory="PreserveNewest" LinkBase="assets/props" />
+    <!-- Committed CC0 Quaternius Universal rigged + animated character (skinned-ingest, animations preserved),
+         moved to KhaozEngine.Showcase. See ../KhaozEngine.Showcase/assets/character/CREDITS.md. -->
+    <None Include="../KhaozEngine.Showcase/assets/character/**" CopyToOutputDirectory="PreserveNewest" LinkBase="assets/character" />
+    <!-- Hand-placed building-proxy fixture for the collision-shape debug overlay (F2), moved to
+         KhaozEngine.Showcase. Originally copied from KhaozEngine.Tests/Physics/Fixtures/blacksmith_proxy.coll -
+         a compound-of-convex .coll shape - so the sample needs no ProjectReference on the test project. -->
+    <None Include="../KhaozEngine.Showcase/assets/blacksmith_proxy.coll" CopyToOutputDirectory="PreserveNewest" LinkBase="assets" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Game/KhaozEngine.Game.csproj" />

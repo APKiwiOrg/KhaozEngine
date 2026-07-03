@@ -31,6 +31,12 @@ namespace KhaozEngine.Showcase
         // bounds how fast the model can spin toward a new heading so a one-frame collision jitter cannot snap it).
         const float MaxTurnRate = 12f;
 
+        // Town clearing: a flat plateau near spawn holding the hand-placed buildings. Tuned to sit inside
+        // BoundedClearing's rim disc (radius 38) and clear of its lake at (-12,-4). Values are a starting point,
+        // adjust by playtest so buildings sit flat and inside the rim.
+        static readonly Vector2 TownCenter = new(0f, 14f);
+        const float TownRadius = 18f, TownBlend = 0.25f;
+
         Scene3D _scene = null!;
         Texture2D _white = null!;
         SpriteFont _hud = null!;
@@ -90,7 +96,17 @@ namespace KhaozEngine.Showcase
 
         public override void OnEnter()
         {
-            _field = new TerrainField(TerrainPresets.BoundedClearing());
+            // Sample the natural ground at the town centre BEFORE flattening (a throwaway field over the
+            // un-flattened preset), so the plateau's target height meets the surrounding ground smoothly.
+            float townHeight = new TerrainField(TerrainPresets.BoundedClearing()).SampleHeight(TownCenter.X, TownCenter.Y);
+
+            var terrainConfig = TerrainPresets.BoundedClearing();
+            var features = new List<ITerrainFeature>(terrainConfig.Features!)
+            {
+                new FlattenFeature(TownCenter.X, TownCenter.Y, TownRadius, townHeight, TownBlend),
+            };
+            terrainConfig.Features = features.ToArray();
+            _field = new TerrainField(terrainConfig);
             _terrain = new TerrainCollision(_field);
 
             // 1.8 m greybox capsule (height 1.2 + 2*radius 0.6). Mesh bottom sits at y=0 in local space.
@@ -179,7 +195,13 @@ namespace KhaozEngine.Showcase
             _legend = new OverlayLegend();
             _legend.SetEntries(BuildLegendEntries(_collisionOverlay));
 
-            _sink = new Scene3DChunkSink(_scene, _field, ScatterConfig.ForestRing(), _propMeshes,
+            // Exclude trees from the town: reuse ForestRing's defaults but hole out the flattened plateau so no
+            // tree spawns on the levelled ground the buildings sit on.
+            var scatterConfig = ScatterConfig.ForestRing();
+            scatterConfig.ClearingRadius = TownRadius;
+            scatterConfig.ClearingCenter = TownCenter;
+
+            _sink = new Scene3DChunkSink(_scene, _field, scatterConfig, _propMeshes,
                 chunkSize: TerrainChunkRegion.DefaultSize, propDrawRadius: PropDrawRadius, material: terrainMaterial,
                 ownsMaterial: true, physics: _physics, collisionShapes: collisionShapes);
             _streamer = new TerrainStreamer(StreamerConfig.Default, _sink);

@@ -38,7 +38,7 @@ where needed). Each pins its own version (see the Version column).
 | **Hardpoint** (3D) | `Hardpoint.Game` / `Hardpoint.Core` | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic); live auto-updater (`Updates` via Foundation, Gui overlay) against a server-less static-blob feed + OIDC CI publish; `Collision.Segment2D` for swept projectile collision. One root `Directory.Build.props` `<KhaozEngineVersion>` drives every ref (heads, the `HardpointUpdater` shim, the dev `SnapshotTool`); top-level `Hardpoint.slnx`, vendored feed (`Hardpoint/vendor/khaozengine`); `GameAppOptions.WindowIcons` (multi-size runtime window icon) | **9.0.1** |
 | **Nullwake** (2D) | `Nullwake.Core` | `KhaozEngine.Game2D` + `Diagnostics`/`Persistence`/`Windowing` + `Updates` (shim, dormant) + `Snapshot` (dev tool); uses `AttentionBeacon`, clipboard paste + `Pointer.WindowFocused` gating in name entry, and `GameAppOptions.WindowIcons` (multi-size runtime window icon). Vendored feed (`Nullwake/vendor/khaozengine`) | **9.0.1** |
 | **SpaceGame** (2D + Render3D) | `SpaceGame.Core` (head) / `SpaceGame.Sim` (lockstep sim) | `Game2D` + `Render3D` + `Netcode.LiteNetLib` + `Primitives` (head); `Ecs`/`Collision`/`Diagnostics`/`Content`/`Serialization`/`App`/`Netcode`/`Determinism` + `Primitives` (sim); `Netcode.Abstractions` (contracts); `Render3D` + `Determinism` for the 2.5D mesh layer; manifest signing via the `ke-updater` tool; `GameAppOptions.WindowIcons` (multi-size runtime window icon). Vendored feed (`SpaceGame/vendor/khaozengine` via repo-root `nuget.config`) | **9.0.1** |
-| **Ruinborne** (3D MMO) | `Ruinborne.Client` / `Ruinborne.Server` | client: `KhaozEngine.Game3D` + `Foundation` + `NetWorld` + `Netcode.LiteNetLib` + `Netcode.Abstractions` + `Simulation` + `Updates`; server: `KhaozEngine.Server` umbrella + `WorldStore.SqlServer` (Azure SQL via `WorldPersistence`). Single `<KhaozEngineVersion>` pin in `Directory.Build.props`, vendored feed (`vendor/khaozengine`, refreshed via `scripts/refresh-engine.sh`); client uses `GameAppOptions.WindowIcons` (multi-size runtime window icon, client only) + the 9.1.0 `CollisionShapeOverlay`/`OverlayLegend` (F2 debug proxy view) | **9.6.1** |
+| **Ruinborne** (3D MMO) | `Ruinborne.Client` / `Ruinborne.Server` | client: `KhaozEngine.Game3D` + `Foundation` + `NetWorld` + `Netcode.LiteNetLib` + `Netcode.Abstractions` + `Simulation` + `Updates`; server: `KhaozEngine.Server` umbrella + `WorldStore.SqlServer` (Azure SQL via `WorldPersistence`). Single `<KhaozEngineVersion>` pin in `Directory.Build.props`, vendored feed (`vendor/khaozengine`, refreshed via `scripts/refresh-engine.sh`); client uses `GameAppOptions.WindowIcons` (multi-size runtime window icon, client only) + the 9.1.0 `CollisionShapeOverlay`/`OverlayLegend` (F2 debug proxy view) | **9.6.2** |
 
 ## Runtime window icon
 
@@ -105,9 +105,9 @@ When a consumer raises its `KhaozEngine.*` pin, two things bite if skipped:
   vendored feed must carry those too. Only SpaceGame restores from `local-feed`/GitHub Packages directly (no
   vendored feed), so it alone sets the `local-feed` floor.
 
-_Last verified: 2026-07-03. **Ruinborne** (3D MMO, the active consumer) pins **9.6.1** (the current engine line;
-it had already tracked the 9.x line through 9.6.0 and adopted the 9.6.1 terrain-splat LOD fix to address the
-distant-ground fuzz its testers reported on Windows/D3D11). **SpaceGame**, **Hardpoint**, and **Nullwake** pin
+_Last verified: 2026-07-03. **Ruinborne** (3D MMO, the active consumer) pins **9.6.2** (the current engine line;
+it tracked the 9.x line through 9.6.0/9.6.1 and adopted the 9.6.2 SpriteBatch flicker fix). **SpaceGame**,
+**Hardpoint**, and **Nullwake** pin
 **9.0.1** (the 9.0.0 package-structure adoption: usings/package-id swaps only, no behaviour change). Stack per
 consumer: **Hardpoint** (3D) via `Game3D` + `Foundation`, **Nullwake** (2D) via `Game2D`
 (+ `Diagnostics`/`Persistence`/`Windowing`/`Snapshot`/`Updates`), **SpaceGame** (2D + Render3D) via
@@ -117,9 +117,8 @@ server. SpaceGame is the only consumer restoring from `local-feed` directly (the
 in-repo feed); with SpaceGame on 9.0.1, `local-feed` may be pruned to a **9.0.1** floor. Everything older lives in
 GitHub Packages, the durable store._
 
-**Engine on 9.6.1** (terrain-splat LOD fix: `SplatFrag` samples with `textureGrad` + hoisted `dFdx`/`dFdy`
-gradients so mip/anisotropic LOD is well-defined under the per-layer weight branch, addressing the D3D11 distant
-"fuzz". Render-only bug fix, no public API change; new `SplatTerrainDistanceGoldenTests` per-backend grazing
-coverage). **Ruinborne pins it** (0.1.62, vendored feed refreshed to 9.6.1, terrain tile rates lowered game-side
-to cut the source-texture frequency the sampler can only reduce). SpaceGame/Hardpoint/Nullwake remain on 9.0.1 -
-their bump is a trivial same-major pin move whenever wanted.
+**Engine on 9.6.2** (SpriteBatch flicker fix: the per-flush vertex buffers are ring-buffered across frames so a
+frame's write never races the GPU still reading an earlier, in-flight frame's copy - fixed the F2 collision legend
+blinking out for a frame as the adjacent DIAG telemetry panel resized. Render-only bug fix, no public API change;
+new `SpriteBatchBufferRingTests`). **Ruinborne pins it** (0.1.65, vendored feed refreshed to 9.6.2).
+SpaceGame/Hardpoint/Nullwake remain on 9.0.1 - their bump is a trivial same-major pin move whenever wanted.

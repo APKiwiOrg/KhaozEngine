@@ -333,8 +333,24 @@ public sealed class ShardHost
     /// </summary>
     public byte[] SnapshotForClient(int slot, float interestRadius)
     {
+        (World world, HashSet<int> interest) = HomeInterest(slot, interestRadius);
+        return SnapshotWriter.WriteFiltered(world, registry, interest);
+    }
+
+    /// <summary>
+    /// Resolves a client's <b>home-cell</b> world and its area-of-interest net-id set (owned + border ghosts within
+    /// <paramref name="interestRadius"/> of the client's player) - the shared basis for serving that client, whether
+    /// as a full snapshot (<see cref="SnapshotForClient"/>) or as a per-client delta (fed to
+    /// <see cref="AoiDeltaReplicator.WriteFor"/>). Because the interest is keyed by <see cref="NetId"/> and the home
+    /// cell already holds the surroundings as ghosts, a delta encoder built on it reads a boundary crossing as
+    /// component changes on stable ids, never a despawn+respawn. Same invariants (and throws) as
+    /// <see cref="SnapshotForClient"/>: requires a position accessor, a bound client with an owned, positioned player,
+    /// and <paramref name="interestRadius"/> in <c>[0, OverlapMargin]</c>.
+    /// </summary>
+    public (World world, HashSet<int> interest) HomeInterest(int slot, float interestRadius)
+    {
         if (positionAccessor is null)
-            throw new InvalidOperationException("SnapshotForClient requires a position accessor.");
+            throw new InvalidOperationException("HomeInterest requires a position accessor.");
         if (interestRadius < 0f)
             throw new ArgumentOutOfRangeException(nameof(interestRadius), interestRadius, "Interest radius must be >= 0.");
         if (interestRadius > OverlapMargin)
@@ -348,8 +364,8 @@ public sealed class ShardHost
             throw new InvalidOperationException($"Client {slot}'s player {playerNetId} has no position.");
 
         home.RebuildInterest(positionAccessor);
-        System.Collections.Generic.HashSet<int> interest = home.Interest.Query(px, py, interestRadius);
-        return SnapshotWriter.WriteFiltered(home.World, registry, interest);
+        HashSet<int> interest = home.Interest.Query(px, py, interestRadius);
+        return (home.World, interest);
     }
 
     /// <summary>

@@ -47,6 +47,14 @@ public sealed class WorldClientConfig
     /// cannot decode. Null (default) = no version sent: byte-identical to the pre-handshake wire, and a
     /// version-checking server treats it as a legacy/unknown-version client.</summary>
     public string? ProtocolVersion { get; init; }
+
+    /// <summary>Advertise delta replication on join so a delta-aware server serves this client per-tick area-of-interest
+    /// deltas (only what changed since the client's acknowledged baseline) instead of a full snapshot every tick.
+    /// Default true. The client still decodes full snapshots, so against a server that predates the feature (or one
+    /// with <see cref="WorldServerConfig.DeltaReplication"/> off) it transparently keeps receiving full snapshots and
+    /// sends no acks - client and server upgrade independently, no disconnect. Set false to force full snapshots (the
+    /// pre-9.17.0 wire).</summary>
+    public bool RequestDeltaReplication { get; init; } = true;
 }
 
 /// <summary>
@@ -82,6 +90,7 @@ public sealed class WorldClient : IDisposable
     // alpha 0..1 across one estimated inter-snapshot interval, feeding ClientReplicationView.Interpolate.
     private const float IntervalSmoothing = 0.1f;     // EMA weight on each freshly measured inter-snapshot interval
     private readonly bool interpolateRemotes;
+    private readonly bool requestDeltaReplication;    // advertise DeltaCapable on join + ack applied delta seqs
     private readonly float tickSeconds;
     private float snapshotInterval;                   // estimated seconds between snapshots (seeded to the tick)
     private float secondsSinceSnapshot;               // presentation clock since the last applied snapshot
@@ -163,6 +172,7 @@ public sealed class WorldClient : IDisposable
         PredictionSettings settings = config.Prediction ?? (PredictionSettings.Default with { TickSeconds = config.TickSeconds });
         prediction = new ClientPrediction<PlayerMoveState, MoveCommand>(simulator, settings);
         interpolateRemotes = config.InterpolateRemotes;
+        requestDeltaReplication = config.RequestDeltaReplication;
         tickSeconds = config.TickSeconds;
         snapshotInterval = config.TickSeconds;        // server sends at the sim tick today; refined by measurement
         disconnectTimeout = config.DisconnectTimeoutSeconds;
@@ -295,6 +305,12 @@ public sealed class WorldClient : IDisposable
                     sawShutdownNotice = false;
                     attempt = 0;
                     secondsSinceServerFrame = 0f;
+                    // Advertise delta replication so a delta-aware server upgrades this slot to AoI deltas. Sent on
+                    // every (re)join since a reconnect lands on a fresh server slot. Harmless to an older server (it
+                    // reads an unknown control and ignores it), so the client keeps getting full snapshots there.
+                    if (requestDeltaReplication)
+                        net.Send(MoveProtocol.EncodeClientControl(MoveProtocol.ClientControlKind.DeltaCapable),
+                            NetChannelReliability.ReliableOrdered);
                     SetState(WorldConnectionState.Connected);
                     break;
                 case ClientSessionEventKind.Data:
@@ -517,6 +533,9 @@ public sealed class WorldClient : IDisposable
             case MoveProtocol.ServerFrameKind.Snapshot:
                 OnSnapshot(payload);
                 break;
+            case MoveProtocol.ServerFrameKind.Delta:
+                OnDelta(payload);
+                break;
             case MoveProtocol.ServerFrameKind.Notice:
                 ServerNotice notice = MoveProtocol.DecodeNotice(payload);
                 if (notice.Kind == ServerNoticeKind.Shutdown) sawShutdownNotice = true;
@@ -537,7 +556,30 @@ public sealed class WorldClient : IDisposable
             OnSnapshotDecodeFailed(decodeError);
             return;
         }
-        snapshotsSinceWindow++;                                  // NetStats: AoI snapshot ingest rate
+        IngestServerState(localNetId, ackSeq);
+    }
+
+    private void OnDelta(byte[] data)
+    {
+        if (!MoveProtocol.TryDecodeSnapshotFrame(data, out int localNetId, out int ackSeq, out byte[] delta)) return;
+        // A delta rides the same [localNetId][ackSeq] header as a snapshot; its body is an AoiDeltaReplicator delta.
+        // A decode / baseline failure is terminal, the same clean disconnect as an undecodable snapshot.
+        if (!view.TryApplyDelta(world, delta, out string? decodeError))
+        {
+            OnSnapshotDecodeFailed(decodeError);
+            return;
+        }
+        IngestServerState(localNetId, ackSeq);
+        // Ack the applied replication seq so the server advances this client's delta baseline. Reliable-ordered, so a
+        // dropped ack just self-heals: the server keeps diffing from the last acked baseline until a newer ack lands.
+        net.Send(MoveProtocol.EncodeReplicationAck(view.LastAppliedSeq), NetChannelReliability.ReliableOrdered);
+    }
+
+    // Shared post-apply for a full snapshot or a delta: NetStats ingest count, remote-interpolation interval, and the
+    // local prediction reconcile against the freshly applied authoritative basis. Identical for both frame kinds.
+    private void IngestServerState(int localNetId, int ackSeq)
+    {
+        snapshotsSinceWindow++;                                  // NetStats: AoI snapshot/delta ingest rate
         bool first = LocalNetId < 0;
         LocalNetId = localNetId;
 
@@ -565,11 +607,11 @@ public sealed class WorldClient : IDisposable
             PlayerMoveState basis = PlayerMoveState.From(p.Value, ms);
             if (first)
             {
-                // First snapshot of the genuine initial connect: seed prediction at the authoritative spawn from
-                // seq 0 (client + server both start fresh). First snapshot of a RECONNECT (we have seeded before):
-                // re-seed the predicted state but keep the seq counter monotonic - the fresh server already advanced
-                // its ack from the commands sent in the join gap, so zeroing the seq would get every post-reconnect
-                // command rejected as stale and pin the avatar forever.
+                // First frame of the genuine initial connect: seed prediction at the authoritative spawn from seq 0
+                // (client + server both start fresh). First frame of a RECONNECT (we have seeded before): re-seed the
+                // predicted state but keep the seq counter monotonic - the fresh server already advanced its ack from
+                // the commands sent in the join gap, so zeroing the seq would get every post-reconnect command
+                // rejected as stale and pin the avatar forever.
                 if (seededPredictionOnce) prediction.Reseed(basis);
                 else { prediction.Reset(basis); seededPredictionOnce = true; }
             }

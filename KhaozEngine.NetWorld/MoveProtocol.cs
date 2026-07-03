@@ -160,6 +160,13 @@ public static class MoveProtocol
         /// <summary>Ask the authoritative server to move THIS player to a server-decided safe position
         /// (return-to-spawn / unstuck). The server resolves the destination and rate-limits it.</summary>
         SelfRescue = 1,
+
+        /// <summary>Advertise that this client understands delta replication (<see cref="ServerFrameKind.Delta"/>).
+        /// Sent once on join. A delta-aware server then serves this client per-tick AoI deltas instead of full
+        /// snapshots; a server that predates the feature decodes it as a control with an unknown kind and ignores it
+        /// (its switch only acts on <see cref="SelfRescue"/>), so the hello is harmless across version skew and the
+        /// client keeps receiving full snapshots.</summary>
+        DeltaCapable = 2,
     }
 
     // Control frame: [marker:byte][kind:byte] = 2 bytes. The marker is a fixed sentinel so a random 2-byte packet is
@@ -183,6 +190,39 @@ public static class MoveProtocol
             return true;
         }
         kind = default;
+        return false;
+    }
+
+    // Replication ack frame: [ClientControlMarker:0xC5][ReplicationAckMarker:0xA0][appliedSeq:int] = 6 bytes. Shares
+    // the control marker family but is demuxed by its distinct length (6), so it never aliases a 2-byte control or an
+    // 18-byte move. A client only ever sends this AFTER it has received a Delta frame, so a server that predates the
+    // feature never sees one; the receive path still tries this before the control/move decodes.
+    private const byte ReplicationAckMarker = 0xA0;
+    private const int ReplicationAckSize = 6;
+
+    /// <summary>Encodes the client-to-server replication ack carrying the snapshot seq the client last applied
+    /// (<see cref="ClientReplicationView.LastAppliedSeq"/>). The server feeds it to
+    /// <see cref="AoiDeltaReplicator.Acknowledge"/> to advance that client's delta baseline.</summary>
+    public static byte[] EncodeReplicationAck(int appliedSeq)
+    {
+        var b = new byte[ReplicationAckSize];
+        b[0] = ClientControlMarker;
+        b[1] = ReplicationAckMarker;
+        BitConverter.TryWriteBytes(b.AsSpan(2, 4), appliedSeq);
+        return b;
+    }
+
+    /// <summary>Decodes a replication ack written by <see cref="EncodeReplicationAck"/>. False for anything that is not
+    /// exactly a 6-byte marker-prefixed ack (a move or a control decodes false here), so the server's receive path can
+    /// try this alongside the control/move decodes without them aliasing.</summary>
+    public static bool TryDecodeReplicationAck(ReadOnlySpan<byte> data, out int appliedSeq)
+    {
+        if (data.Length == ReplicationAckSize && data[0] == ClientControlMarker && data[1] == ReplicationAckMarker)
+        {
+            appliedSeq = BitConverter.ToInt32(data.Slice(2, 4));
+            return true;
+        }
+        appliedSeq = -1;
         return false;
     }
 
@@ -284,9 +324,13 @@ public static class MoveProtocol
         return true;
     }
 
-    /// <summary>The kind of server-to-client frame riding the Data channel: a per-client snapshot, or an
-    /// out-of-band notice. The first byte of every server-to-client Data payload.</summary>
-    public enum ServerFrameKind : byte { Snapshot = 0, Notice = 1 }
+    /// <summary>The kind of server-to-client frame riding the Data channel: a per-client full snapshot, an out-of-band
+    /// notice, or a per-client area-of-interest <b>delta</b>. The first byte of every server-to-client Data payload. A
+    /// <see cref="Delta"/> frame carries the same <c>[localNetId][ackSeq]</c> header (via <see cref="EncodeSnapshotFrame"/>)
+    /// as a <see cref="Snapshot"/>, but its body is an <see cref="AoiDeltaReplicator"/> delta the client applies with
+    /// <see cref="ClientReplicationView.ApplyDelta"/>; it is only sent to a client that advertised
+    /// <see cref="ClientControlKind.DeltaCapable"/>, so an older client only ever receives <see cref="Snapshot"/>.</summary>
+    public enum ServerFrameKind : byte { Snapshot = 0, Notice = 1, Delta = 2 }
 
     /// <summary>Wraps a server-to-client payload with its 1-byte kind tag so snapshots and
     /// notices share the Data channel. The receiver demuxes via <see cref="TryDecodeServerFrame"/>.</summary>

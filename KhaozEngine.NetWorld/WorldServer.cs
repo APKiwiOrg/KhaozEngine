@@ -53,6 +53,15 @@ public sealed class WorldServerConfig
     /// Default 8 (~0.27s at 30Hz) - well clear of normal one-per-tick play, which never reaches it. Set 0 to disable
     /// (strict one-move-per-tick drain, the pre-8.8.0 behaviour).</summary>
     public int MaxInputBacklog { get; init; } = 8;
+
+    /// <summary>Serve each client per-tick area-of-interest DELTAS (only components changed since that client's
+    /// acknowledged baseline; entered entities in full, left entities as despawns) instead of a full snapshot every
+    /// tick. Default true. A client opts in on join (<see cref="WorldClientConfig.RequestDeltaReplication"/>) via the
+    /// <see cref="MoveProtocol.ClientControlKind.DeltaCapable"/> hello; a client that does not advertise it (an older
+    /// build) keeps receiving full snapshots, so client and server upgrade independently with no disconnect. Set false
+    /// to force full snapshots for every client (the pre-9.17.0 behaviour). The delta is built from the client's last
+    /// <see cref="MoveProtocol.EncodeReplicationAck"/>, so a dropped delta on the reliable-ordered channel self-heals.</summary>
+    public bool DeltaReplication { get; init; } = true;
 }
 
 /// <summary>
@@ -76,6 +85,10 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
     private readonly DrainController drain = new();
     private readonly AdminCommandBuffer admin = new();
     private readonly IBanStore? banStore;
+    // Per-client AoI delta encoder (null when DeltaReplication is off). A slot is served deltas only once it is in
+    // deltaCapableSlots (it advertised DeltaCapable); until then, and for older clients, it gets full snapshots.
+    private readonly AoiDeltaReplicator? deltaReplicator;
+    private readonly HashSet<int> deltaCapableSlots = new();
 
     private readonly Dictionary<int, int> netIdBySlot = new();
     private readonly Dictionary<int, Entity> entityBySlot = new();
@@ -104,6 +117,7 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
         // Consumer-injectable registry so a game can replicate its own components (NPC kind, HP, …) on top of the
         // movement built-ins; it MUST be the same registry the client is built with. Default = movement-only.
         this.registry = registry ?? MoveProtocol.CreateRegistry();
+        deltaReplicator = this.config.DeltaReplication ? new AoiDeltaReplicator(this.registry) : null;
         this.tuning = tuning;
         commands = new RemoteCommandQueue<MoveCommand>(neutralCommand: default,
             catchUpThreshold: Math.Max(0, this.config.MaxInputBacklog));
@@ -254,10 +268,17 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
             if (config.AntiCheat.DisconnectOnRateLimit) net.Disconnect(slot);
             return;
         }
-        // Control messages (e.g. self-rescue) share the channel with moves; demux them first by their distinct length.
+        // Replication ack: advance this client's delta baseline (a dropped ack just self-heals on the next delta).
+        if (MoveProtocol.TryDecodeReplicationAck(data, out int appliedSeq))
+        {
+            deltaReplicator?.Acknowledge(slot, appliedSeq);
+            return;
+        }
+        // Control messages (e.g. self-rescue, delta-capable hello) share the channel with moves; demux by length.
         if (MoveProtocol.TryDecodeClientControl(data, out MoveProtocol.ClientControlKind control))
         {
             if (control == MoveProtocol.ClientControlKind.SelfRescue) HandleSelfRescue(slot);
+            else if (control == MoveProtocol.ClientControlKind.DeltaCapable && deltaReplicator is not null) deltaCapableSlots.Add(slot);
             return;
         }
         // Malformed / NaN / Inf packets are rejected by the decode and flagged.
@@ -320,21 +341,35 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
             if (world.TryGet(e, out ReplicatedPosition p)) interest.Insert(id.Value, p.Value.X, p.Value.Z);
         });
 
-        // Serve each client its area-of-interest snapshot, headered with its own net id + ack.
+        // Serve each client its area-of-interest, headered with its own net id + move ack. Delta-capable clients get
+        // a per-client AoI delta (only what changed since their acknowledged baseline); everyone else a full snapshot.
+        deltaReplicator?.BeginTick();
         foreach (int slot in slots)
         {
             int netId = netIdBySlot[slot];
             Vector3 p = stateBySlot[slot].Position;
             HashSet<int> set = interest.Query(p.X, p.Z, config.InterestRadius);
-            byte[] snapshot = SnapshotWriter.WriteFiltered(world, registry, set);
-            byte[] frame = MoveProtocol.EncodeSnapshotFrame(netId, lastAckBySlot[slot], snapshot);
-            byte[] envelope = MoveProtocol.EncodeServerFrame(MoveProtocol.ServerFrameKind.Snapshot, frame);
+            MoveProtocol.ServerFrameKind kind;
+            byte[] body;
+            if (deltaReplicator is not null && deltaCapableSlots.Contains(slot))
+            {
+                body = deltaReplicator.WriteFor(slot, world, set);
+                kind = MoveProtocol.ServerFrameKind.Delta;
+            }
+            else
+            {
+                body = SnapshotWriter.WriteFiltered(world, registry, set);
+                kind = MoveProtocol.ServerFrameKind.Snapshot;
+            }
+            byte[] frame = MoveProtocol.EncodeSnapshotFrame(netId, lastAckBySlot[slot], body);
+            byte[] envelope = MoveProtocol.EncodeServerFrame(kind, frame);
             net.SendTo(slot, envelope, NetChannelReliability.ReliableOrdered);
         }
 
         // Clear the per-tick ECS change-tracking + event sets so they don't accumulate on a long-running server.
-        // The authoritative path serves full AoI snapshots (SnapshotWriter.WriteFiltered), never the change sets,
-        // so clearing here is safe; a consumer that reads them opts out via WorldServerConfig.AdvanceWorldTick.
+        // Neither serve path reads them - a full snapshot re-serializes present components and the delta path diffs
+        // its own captured baseline - so clearing here is safe; a consumer that reads them opts out via
+        // WorldServerConfig.AdvanceWorldTick.
         if (config.AdvanceWorldTick) world.AdvanceTick();
         drain.Advance(dt);
         selfRescueClock += dt;   // advance the self-rescue cooldown clock
@@ -431,6 +466,10 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
         // a prior occupant's Left was ever missed. A fresh session's seqs restart at 0; a stale high-water mark
         // would reject every one and freeze the player (see OnLeave).
         commands.Forget(slot);
+        // Drop any stale delta baseline / capability on the recycled slot: the new occupant re-advertises and
+        // re-baselines from scratch (it starts on full snapshots until its own DeltaCapable hello arrives).
+        deltaReplicator?.Forget(slot);
+        deltaCapableSlots.Remove(slot);
 
         Vector3 spawn = config.SpawnPosition?.Invoke(slot) ?? new Vector3(slot * 2f, 0f, 0f);
         // Ground-clamp the spawn (an idle step settles Y onto the terrain + half-height).
@@ -477,6 +516,9 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
         rateBySlot.Remove(slot);
         correctionStreakBySlot.Remove(slot);
         selfRescueReadyAt.Remove(slot);
+        // Drop the slot's delta baseline + capability so the recycled slot starts clean (see OnJoin).
+        deltaReplicator?.Forget(slot);
+        deltaCapableSlots.Remove(slot);
         // Drop the slot's command-queue state too. The SlotAllocator recycles this slot to the next connection,
         // whose seqs legitimately restart at 0; without this the stale high-water mark rejects every command and
         // freezes the recycled player (it self-heals only once their seq crawls past the dead mark, minutes later).

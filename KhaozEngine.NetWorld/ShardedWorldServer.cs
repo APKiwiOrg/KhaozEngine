@@ -54,6 +54,14 @@ public sealed class ShardedWorldServerConfig
     /// server skips stale moves and applies only the most recent, so a reconnect flush / lag burst can't freeze a
     /// player under minutes-old input on rejoin. Default 8 (~0.27s at 30Hz); 0 disables (pre-8.8.0 one-per-tick).</summary>
     public int MaxInputBacklog { get; init; } = 8;
+
+    /// <summary>Serve each client per-tick home-cell area-of-interest DELTAS (only what changed since that client's
+    /// acknowledged baseline) instead of a full snapshot every tick. Default true. Mirrors
+    /// <see cref="WorldServerConfig.DeltaReplication"/>: a client opts in with the
+    /// <see cref="MoveProtocol.ClientControlKind.DeltaCapable"/> hello; older clients keep getting full snapshots, so
+    /// client and server upgrade independently. The delta baseline is keyed by <see cref="NetId"/>, so a boundary
+    /// crossing (home-cell change) stays a component delta, never a despawn+respawn. Set false to force full snapshots.</summary>
+    public bool DeltaReplication { get; init; } = true;
 }
 
 /// <summary>
@@ -78,6 +86,11 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
     private readonly RemoteCommandQueue<MoveCommand> commands;
     private readonly PlayerMovementSystem movement;
     private readonly PlayerMoveSimulator spawnClamp;
+
+    // Per-client AoI delta encoder (null when DeltaReplication is off). NetId-keyed so a home-cell change on a
+    // boundary crossing reads as a component delta. A slot is served deltas only once it advertised DeltaCapable.
+    private readonly AoiDeltaReplicator? deltaReplicator;
+    private readonly HashSet<int> deltaCapableSlots = new();
 
     private readonly Dictionary<int, int> netIdBySlot = new();
     private readonly Dictionary<int, int> lastAckBySlot = new();
@@ -116,6 +129,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
         // Consumer-injectable registry (shared with the client) so NPCs/enemies carry game components across every
         // cell's replication + handoff + ghosting; default = movement-only. Assigned before the host so cells use it.
         this.registry = registry ?? MoveProtocol.CreateRegistry();
+        deltaReplicator = this.config.DeltaReplication ? new AoiDeltaReplicator(this.registry) : null;
         this.tuning = tuning;
         commands = new RemoteCommandQueue<MoveCommand>(neutralCommand: default,
             catchUpThreshold: Math.Max(0, this.config.MaxInputBacklog));
@@ -320,10 +334,17 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
             if (config.AntiCheat.DisconnectOnRateLimit) net.Disconnect(slot);
             return;
         }
-        // Control messages (e.g. self-rescue) share the channel with moves; demux them first by their distinct length.
+        // Replication ack: advance this client's delta baseline (a dropped ack just self-heals on the next delta).
+        if (MoveProtocol.TryDecodeReplicationAck(data, out int appliedSeq))
+        {
+            deltaReplicator?.Acknowledge(slot, appliedSeq);
+            return;
+        }
+        // Control messages (e.g. self-rescue, delta-capable hello) share the channel with moves; demux by length.
         if (MoveProtocol.TryDecodeClientControl(data, out MoveProtocol.ClientControlKind control))
         {
             if (control == MoveProtocol.ClientControlKind.SelfRescue) HandleSelfRescue(slot);
+            else if (control == MoveProtocol.ClientControlKind.DeltaCapable && deltaReplicator is not null) deltaCapableSlots.Add(slot);
             return;
         }
         // Malformed / NaN / Inf packets are rejected by the decode and flagged.
@@ -401,13 +422,27 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
                 Raise(slot, SuspiciousReason.MovementCorrection, correction);
         }
 
-        // 5. Serve each client its home-cell area-of-interest, framed for the unchanged WorldClient.
+        // 5. Serve each client its home-cell area-of-interest, framed for the WorldClient. Delta-capable clients get a
+        //    per-client AoI delta (NetId-keyed, so a boundary crossing is a component delta); others a full snapshot.
+        deltaReplicator?.BeginTick();
         foreach (int slot in slots)
         {
             if (!netIdBySlot.TryGetValue(slot, out int netId)) continue;
-            byte[] snapshot = host.SnapshotForClient(slot, config.InterestRadius);
-            byte[] frame = MoveProtocol.EncodeSnapshotFrame(netId, lastAckBySlot[slot], snapshot);
-            byte[] envelope = MoveProtocol.EncodeServerFrame(MoveProtocol.ServerFrameKind.Snapshot, frame);
+            MoveProtocol.ServerFrameKind kind;
+            byte[] body;
+            if (deltaReplicator is not null && deltaCapableSlots.Contains(slot))
+            {
+                (World world, HashSet<int> interest) = host.HomeInterest(slot, config.InterestRadius);
+                body = deltaReplicator.WriteFor(slot, world, interest);
+                kind = MoveProtocol.ServerFrameKind.Delta;
+            }
+            else
+            {
+                body = host.SnapshotForClient(slot, config.InterestRadius);
+                kind = MoveProtocol.ServerFrameKind.Snapshot;
+            }
+            byte[] frame = MoveProtocol.EncodeSnapshotFrame(netId, lastAckBySlot[slot], body);
+            byte[] envelope = MoveProtocol.EncodeServerFrame(kind, frame);
             net.SendTo(slot, envelope, NetChannelReliability.ReliableOrdered);
         }
 
@@ -511,6 +546,9 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
         // a prior occupant's Left was ever missed. A fresh session's seqs restart at 0; a stale high-water mark
         // would reject every one and freeze the player (see OnLeave).
         commands.Forget(slot);
+        // Drop any stale delta baseline / capability on the recycled slot; the new occupant re-advertises + re-baselines.
+        deltaReplicator?.Forget(slot);
+        deltaCapableSlots.Remove(slot);
 
         Vector3 spawn = config.SpawnPosition?.Invoke(slot) ?? new Vector3(slot * 2f, 0f, 0f);
         // Ground-clamp the spawn (an idle step settles Y onto the terrain + half-height).
@@ -556,6 +594,9 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
         rateBySlot.Remove(slot);
         correctionStreakBySlot.Remove(slot);
         selfRescueReadyAt.Remove(slot);
+        // Drop the slot's delta baseline + capability so the recycled slot starts clean (see OnJoin).
+        deltaReplicator?.Forget(slot);
+        deltaCapableSlots.Remove(slot);
         // Drop the slot's command-queue state too. The SlotAllocator recycles this slot to the next connection,
         // whose seqs legitimately restart at 0; without this the stale high-water mark rejects every command and
         // freezes the recycled player (it self-heals only once their seq crawls past the dead mark, minutes later).

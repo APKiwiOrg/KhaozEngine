@@ -115,4 +115,31 @@ public class SocialPresenceControllerTests
         Assert.True(controller.TryGetLocalUser(out SocialUser user));
         Assert.Equal("kiwi", user.Username);
     }
+
+    [Fact]
+    public void SetPresence_DedupesEqualButtonLists_FromDifferentInstances()
+    {
+        var fake = new FakeSocialProvider();
+        using var controller = Make(fake, out _);
+        var p1 = new RichPresence { Details = "In Game", Buttons = new[] { new PresenceButton("Site", "https://x") } };
+        var p2 = new RichPresence { Details = "In Game", Buttons = new[] { new PresenceButton("Site", "https://x") } };
+
+        Assert.Equal(p1, p2); // structural equality despite distinct list instances
+        controller.SetPresence(p1);
+        controller.SetPresence(p2);
+        Assert.Single(fake.PresenceCalls);
+    }
+
+    [Fact]
+    public void ThrowingJoinHandler_IsContained_AndSessionStaysEnabled()
+    {
+        var fake = new FakeSocialProvider();
+        using var controller = Make(fake, out _);
+        controller.JoinRequested += _ => throw new InvalidOperationException("bad game handler");
+
+        Exception? escaped = Record.Exception(() => fake.RaiseJoinRequested("secret"));
+
+        Assert.Null(escaped);            // the throw never escapes the controller
+        Assert.True(controller.IsEnabled); // a bad game callback does not disable the session
+    }
 }

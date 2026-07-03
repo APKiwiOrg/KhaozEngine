@@ -134,6 +134,29 @@ internal static class DiscordIpcPayloads
         return System.Text.Encoding.UTF8.GetString(stream.ToArray());
     }
 
+    /// <summary>
+    /// Build a SET_ACTIVITY that CLEARS presence by sending a null activity. Discord clears on a null
+    /// (or omitted) activity; an empty activity object does not reliably clear, so this is distinct from
+    /// <see cref="SetActivity"/> with a default presence.
+    /// </summary>
+    public static string ClearActivity(int pid, string nonce)
+    {
+        using var stream = new MemoryStream();
+        using (var w = new Utf8JsonWriter(stream))
+        {
+            w.WriteStartObject();
+            w.WriteString("cmd", "SET_ACTIVITY");
+            w.WriteString("nonce", nonce);
+            w.WriteStartObject("args");
+            w.WriteNumber("pid", pid);
+            w.WriteNull("activity");
+            w.WriteEndObject(); // args
+            w.WriteEndObject(); // root
+        }
+
+        return System.Text.Encoding.UTF8.GetString(stream.ToArray());
+    }
+
     public static bool TryParseDispatch(string json, out string eventName, out string dataJson)
     {
         eventName = string.Empty;
@@ -142,7 +165,8 @@ internal static class DiscordIpcPayloads
         {
             using JsonDocument doc = JsonDocument.Parse(json);
             JsonElement root = doc.RootElement;
-            if (!root.TryGetProperty("evt", out JsonElement evt) || evt.ValueKind != JsonValueKind.String)
+            if (root.ValueKind != JsonValueKind.Object
+                || !root.TryGetProperty("evt", out JsonElement evt) || evt.ValueKind != JsonValueKind.String)
             {
                 return false;
             }
@@ -151,7 +175,7 @@ internal static class DiscordIpcPayloads
             dataJson = root.TryGetProperty("data", out JsonElement data) ? data.GetRawText() : "{}";
             return eventName.Length > 0;
         }
-        catch (JsonException)
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
             return false;
         }
@@ -163,7 +187,9 @@ internal static class DiscordIpcPayloads
         try
         {
             using JsonDocument doc = JsonDocument.Parse(json);
-            if (doc.RootElement.TryGetProperty("data", out JsonElement data)
+            JsonElement root = doc.RootElement;
+            if (root.ValueKind == JsonValueKind.Object
+                && root.TryGetProperty("data", out JsonElement data) && data.ValueKind == JsonValueKind.Object
                 && data.TryGetProperty("user", out JsonElement u))
             {
                 return TryReadUser(u, out user);
@@ -171,7 +197,7 @@ internal static class DiscordIpcPayloads
 
             return false;
         }
-        catch (JsonException)
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
             return false;
         }
@@ -183,14 +209,16 @@ internal static class DiscordIpcPayloads
         try
         {
             using JsonDocument doc = JsonDocument.Parse(dataJson);
-            if (doc.RootElement.TryGetProperty("user", out JsonElement u))
+            JsonElement root = doc.RootElement;
+            if (root.ValueKind == JsonValueKind.Object
+                && root.TryGetProperty("user", out JsonElement u))
             {
                 return TryReadUser(u, out user);
             }
 
             return false;
         }
-        catch (JsonException)
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
             return false;
         }
@@ -202,7 +230,9 @@ internal static class DiscordIpcPayloads
         try
         {
             using JsonDocument doc = JsonDocument.Parse(dataJson);
-            if (doc.RootElement.TryGetProperty("secret", out JsonElement s) && s.ValueKind == JsonValueKind.String)
+            JsonElement root = doc.RootElement;
+            if (root.ValueKind == JsonValueKind.Object
+                && root.TryGetProperty("secret", out JsonElement s) && s.ValueKind == JsonValueKind.String)
             {
                 secret = s.GetString() ?? string.Empty;
                 return secret.Length > 0;
@@ -210,7 +240,7 @@ internal static class DiscordIpcPayloads
 
             return false;
         }
-        catch (JsonException)
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
             return false;
         }
@@ -219,7 +249,9 @@ internal static class DiscordIpcPayloads
     private static bool TryReadUser(JsonElement u, out SocialUser user)
     {
         user = default;
-        if (!u.TryGetProperty("id", out JsonElement id) || !u.TryGetProperty("username", out JsonElement name))
+        if (u.ValueKind != JsonValueKind.Object
+            || !u.TryGetProperty("id", out JsonElement id) || id.ValueKind != JsonValueKind.String
+            || !u.TryGetProperty("username", out JsonElement name) || name.ValueKind != JsonValueKind.String)
         {
             return false;
         }

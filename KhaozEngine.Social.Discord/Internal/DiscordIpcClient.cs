@@ -77,8 +77,8 @@ internal sealed class DiscordIpcClient : IDisposable
 
         try
         {
-            // SET_ACTIVITY with an empty activity clears presence.
-            WriteFrame(DiscordIpcOpcode.Frame, DiscordIpcPayloads.SetActivity(pid, default, NextNonce()));
+            // Clear via a null activity (an empty activity object does not reliably clear).
+            WriteFrame(DiscordIpcOpcode.Frame, DiscordIpcPayloads.ClearActivity(pid, NextNonce()));
         }
         catch (Exception)
         {

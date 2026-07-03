@@ -39,6 +39,67 @@ public readonly record struct RichPresence
 
     /// <summary>Up to two profile buttons (label + URL). Ignored beyond the platform's limit.</summary>
     public IReadOnlyList<PresenceButton>? Buttons { get; init; }
+
+    // The compiler-generated record-struct equality compares Buttons by reference, so a game that
+    // rebuilds its button list each frame would defeat SocialPresenceController's content dedupe.
+    // Compare Buttons structurally so equal-content presence is treated as equal regardless of list identity.
+    public bool Equals(RichPresence other) =>
+        Details == other.Details
+        && State == other.State
+        && Nullable.Equals(StartTimestampUtc, other.StartTimestampUtc)
+        && Nullable.Equals(EndTimestampUtc, other.EndTimestampUtc)
+        && LargeImage.Equals(other.LargeImage)
+        && SmallImage.Equals(other.SmallImage)
+        && Party.Equals(other.Party)
+        && JoinSecret == other.JoinSecret
+        && SpectateSecret == other.SpectateSecret
+        && ButtonsEqual(Buttons, other.Buttons);
+
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(Details);
+        hash.Add(State);
+        hash.Add(StartTimestampUtc);
+        hash.Add(EndTimestampUtc);
+        hash.Add(LargeImage);
+        hash.Add(SmallImage);
+        hash.Add(Party);
+        hash.Add(JoinSecret);
+        hash.Add(SpectateSecret);
+        if (Buttons is not null)
+        {
+            foreach (PresenceButton button in Buttons)
+            {
+                hash.Add(button);
+            }
+        }
+
+        return hash.ToHashCode();
+    }
+
+    private static bool ButtonsEqual(IReadOnlyList<PresenceButton>? a, IReadOnlyList<PresenceButton>? b)
+    {
+        if (ReferenceEquals(a, b))
+        {
+            return true;
+        }
+
+        if (a is null || b is null || a.Count != b.Count)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < a.Count; i++)
+        {
+            if (!a[i].Equals(b[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 }
 
 /// <summary>A presence image: an uploaded asset key plus optional hover text. Default is "no image".</summary>

@@ -87,4 +87,33 @@ public class DiscordIpcClientTests
         Assert.False(client.TryConnect("app-1"));
         Assert.False(client.IsConnected);
     }
+
+    [Fact]
+    public void Pump_MalformedDispatch_StaysConnected()
+    {
+        var transport = new FakeDiscordIpcTransport();
+        using DiscordIpcClient client = Connected(transport);
+        // a wrong-typed READY (numeric id) must not throw or tear down the session
+        transport.EnqueueFrame(DiscordIpcOpcode.Frame,
+            """{"cmd":"DISPATCH","evt":"READY","data":{"user":{"id":12345,"username":"k"}}}""");
+
+        client.Pump();
+
+        Assert.True(client.IsConnected);
+        Assert.Null(client.LocalUser);
+    }
+
+    [Fact]
+    public void ClearActivity_WritesNullActivityFrame()
+    {
+        var transport = new FakeDiscordIpcTransport();
+        using DiscordIpcClient client = Connected(transport);
+        client.ClearActivity();
+
+        Assert.True(transport.TryReadLastWrittenFrame(out _, out string json));
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        Assert.Equal("SET_ACTIVITY", doc.RootElement.GetProperty("cmd").GetString());
+        Assert.Equal(System.Text.Json.JsonValueKind.Null,
+            doc.RootElement.GetProperty("args").GetProperty("activity").ValueKind);
+    }
 }

@@ -104,4 +104,37 @@ public class DiscordActivityPayloadTests
         Assert.False(DiscordIpcPayloads.TryParseReadyUser("not json", out _));
         Assert.False(DiscordIpcPayloads.TryParseReadyUser("{}", out _));
     }
+
+    [Fact]
+    public void ClearActivity_SendsNullActivity_NotEmptyObject()
+    {
+        JsonElement args = Root(DiscordIpcPayloads.ClearActivity(99, "n")).GetProperty("args");
+        Assert.Equal(99, args.GetProperty("pid").GetInt32());
+        Assert.Equal(JsonValueKind.Null, args.GetProperty("activity").ValueKind);
+    }
+
+    [Theory]
+    [InlineData("{\"evt\":\"READY\",\"data\":\"not-an-object\"}")]                       // data is a string
+    [InlineData("{\"evt\":\"READY\",\"data\":{\"user\":{\"id\":12345,\"username\":\"k\"}}}")] // numeric id
+    [InlineData("[1,2,3]")]                                                              // root is an array
+    public void TryParseReadyUser_WrongTypedFields_ReturnFalseWithoutThrowing(string json)
+    {
+        Assert.False(DiscordIpcPayloads.TryParseReadyUser(json, out _));
+    }
+
+    [Fact]
+    public void TryParseDispatch_NonObjectRoot_ReturnsFalseWithoutThrowing()
+    {
+        Assert.False(DiscordIpcPayloads.TryParseDispatch("[1,2,3]", out _, out _));
+        Assert.False(DiscordIpcPayloads.TryParseDispatch("\"x\"", out _, out _));
+    }
+
+    [Fact]
+    public void TryParseJoin_WrongTypedData_ReturnFalseWithoutThrowing()
+    {
+        Assert.False(DiscordIpcPayloads.TryParseJoinSecret("[1,2,3]", out _));
+        Assert.False(DiscordIpcPayloads.TryParseJoinSecret("\"nope\"", out _));
+        Assert.False(DiscordIpcPayloads.TryParseJoinRequestUser("\"nope\"", out _));
+        Assert.False(DiscordIpcPayloads.TryParseJoinRequestUser("42", out _));
+    }
 }

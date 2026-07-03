@@ -17,6 +17,11 @@ namespace KhaozEngine.Social.Discord.Internal;
 /// </summary>
 internal sealed class NamedPipeDiscordTransport : IDiscordIpcTransport
 {
+    // Bounds the read buffer if the consumer stops draining (e.g. the client disconnected but a
+    // misbehaving peer keeps sending). Rich-presence frames are tiny, so 8 MiB is far above normal;
+    // exceeding it means the connection is broken, so the reader stops rather than pin memory.
+    private const int MaxPendingBytes = 8 * 1024 * 1024;
+
     private readonly object gate = new();
     private readonly List<byte> pending = new();
     private Stream? stream;
@@ -107,12 +112,20 @@ internal sealed class NamedPipeDiscordTransport : IDiscordIpcTransport
                 break; // closed
             }
 
+            bool overflow;
             lock (gate)
             {
                 for (int i = 0; i < read; i++)
                 {
                     pending.Add(buffer[i]);
                 }
+
+                overflow = pending.Count > MaxPendingBytes;
+            }
+
+            if (overflow)
+            {
+                break; // consumer is not draining; stop buffering to bound memory
             }
         }
 

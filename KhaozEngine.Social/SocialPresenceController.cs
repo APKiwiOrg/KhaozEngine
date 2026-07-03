@@ -255,6 +255,30 @@ public sealed class SocialPresenceController : IDisposable
         }
     }
 
-    private void OnJoinRequested(string secret) => JoinRequested?.Invoke(secret);
-    private void OnJoinRequestReceived(JoinRequest request) => JoinRequestReceived?.Invoke(request);
+    // Forward provider events to the game. A throwing game handler is logged and swallowed here (not
+    // Disable()d): a bad subscriber callback is not a provider/transport failure, so it must not kill
+    // the social session, and it must never escape the controller into the caller.
+    private void OnJoinRequested(string secret)
+    {
+        try
+        {
+            JoinRequested?.Invoke(secret);
+        }
+        catch (Exception ex)
+        {
+            log.Debug($"social: join-requested handler threw ({ex.GetType().Name}); ignored.");
+        }
+    }
+
+    private void OnJoinRequestReceived(JoinRequest request)
+    {
+        try
+        {
+            JoinRequestReceived?.Invoke(request);
+        }
+        catch (Exception ex)
+        {
+            log.Debug($"social: join-request-received handler threw ({ex.GetType().Name}); ignored.");
+        }
+    }
 }

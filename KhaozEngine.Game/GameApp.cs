@@ -28,9 +28,12 @@ namespace KhaozEngine.Game
         int _frameWidth, _frameHeight;
         int _lastW = -1, _lastH = -1;
         float _dt;
+        readonly double _resumeGapThresholdSeconds;
 
         protected GameApp(in GameAppOptions options)
         {
+            _resumeGapThresholdSeconds = options.ResumeGapThresholdSeconds;
+
             // The window + viewport come from the options' factories when set (e.g. AppWindow.Scaled +
             // AdaptiveViewport for a responsive, display-fitted game); otherwise the plain defaults.
             _window = options.WindowFactory?.Invoke(options)
@@ -115,6 +118,19 @@ namespace KhaozEngine.Game
         protected virtual void OnDraw2D(SpriteBatch batch) { }
         /// <summary>Window resized (also fires once on the first frame). Design space units stay fixed.</summary>
         protected virtual void OnResize(int width, int height) { }
+        /// <summary>
+        /// Called on the first frame after a wall-clock gap larger than
+        /// <see cref="GameAppOptions.ResumeGapThresholdSeconds"/> (OS sleep/suspend/hibernate or a long hang). The
+        /// game can run offline catch-up, re-sync timers, or pause. Fires once per gap, before <see cref="OnUpdate"/>
+        /// on that frame, and never on the first frame. Disabled when the threshold is 0 or negative.
+        /// </summary>
+        protected virtual void OnResume(TimeSpan wallGap) { }
+
+        /// <summary>Pure fire rule for <see cref="OnResume"/>: a supra-threshold wall-clock gap, with a
+        /// non-positive threshold disabling it. The gap's own frame-1 (0) and backward-step (clamped to 0)
+        /// handling lives in <see cref="GameClock"/>, so this only decides the threshold crossing.</summary>
+        internal static bool ShouldRaiseResume(double wallGapSeconds, double thresholdSeconds)
+            => thresholdSeconds > 0.0 && wallGapSeconds > thresholdSeconds;
 
         /// <summary>Request the loop stop (closes the window after the current frame).</summary>
         protected void Quit() => _window.Close();
@@ -140,6 +156,12 @@ namespace KhaozEngine.Game
                 }
 
                 _pointer.Update(_input, _viewport);
+
+                // A supra-threshold wall-clock gap means the OS slept/suspended (or the app hung) between frames.
+                // Raise OnResume before OnUpdate so a game can catch up offline / re-sync timers for this frame.
+                if (ShouldRaiseResume(_clock.RealWallGapSeconds, _resumeGapThresholdSeconds))
+                    OnResume(TimeSpan.FromSeconds(_clock.RealWallGapSeconds));
+
                 OnUpdate(_dt);
 
                 OnRenderWorld(frame);

@@ -30,6 +30,14 @@ namespace KhaozEngine.Game
         public Color ClearColor;
 
         /// <summary>
+        /// A frame whose wall-clock gap (<see cref="GameClock.RealWallGapSeconds"/>) exceeds this raises
+        /// <see cref="GameApp.OnResume"/> - the signal that the OS slept/suspended/hibernated or the app hung for
+        /// that long. Default 30s (via <see cref="For"/>), high enough that a normal frame, GC pause, or brief
+        /// stall never trips it. 0 or negative disables the hook.
+        /// </summary>
+        public double ResumeGapThresholdSeconds;
+
+        /// <summary>
         /// Optional: build the window. Default (null) is <c>new AppWindow(Title, Width, Height)</c>. Set it to use
         /// a different policy, e.g. <c>o =&gt; AppWindow.Scaled(o.Title, o.Width, o.Height, 0.87f)</c> for a
         /// display-fitted window. <see cref="GameApp"/> sets <see cref="ClearColor"/> on the result.
@@ -63,7 +71,7 @@ namespace KhaozEngine.Game
         /// <summary>Resolved design height: <see cref="DesignHeight"/>, or <see cref="Height"/> when it is 0.</summary>
         internal int ResolvedDesignHeight => DesignHeight == 0 ? Height : DesignHeight;
 
-        /// <summary>Sensible defaults: Fit scaling, 1:1 design space, dark clear colour.</summary>
+        /// <summary>Sensible defaults: Fit scaling, 1:1 design space, dark clear colour, 30s resume-gap threshold.</summary>
         public static GameAppOptions For(string title, int width, int height) => new()
         {
             Title = title,
@@ -73,6 +81,7 @@ namespace KhaozEngine.Game
             DesignHeight = 0,
             ScaleMode = ScaleMode.Fit,
             ClearColor = new Color(0.10f, 0.12f, 0.16f, 1f),
+            ResumeGapThresholdSeconds = 30.0,
         };
     }
 }

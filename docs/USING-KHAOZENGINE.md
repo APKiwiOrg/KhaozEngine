@@ -17,7 +17,7 @@ hardware ──► AppWindow (the only Silk.NET/GLFW toucher) ──► InputSta
                                                                   │
                               GameApp.Run() drives, each frame, in order:
                                   Clock.Update(dt) → Viewport.Update(w,h) → OnResize? →
-                                  Pointer.Update(Input, Viewport) → OnUpdate(dt) →
+                                  Pointer.Update(Input, Viewport) → OnResume? → OnUpdate(dt) →
                                   OnRenderWorld(frame)  [3D pass]  →  Batch.Begin(Viewport) → OnDraw2D → End
                                                                   │
                  ┌────────────────────────────────────────────────┼─────────────────────────────┐
@@ -134,8 +134,9 @@ game.Run();
 ```
 
 `GameAppOptions` (a struct): `Title`, `Width`/`Height`, `DesignWidth`/`DesignHeight`, `ScaleMode`, `ClearColor`,
-and optional `WindowFactory` / `ViewportFactory` (e.g. `AppWindow.Scaled` for a display-fitted window, or an
-`AdaptiveViewport` for responsive layout). Use `GameAppOptions.For(title, w, h)` for the common case.
+`ResumeGapThresholdSeconds` (see the resume hook below), and optional `WindowFactory` / `ViewportFactory` (e.g.
+`AppWindow.Scaled` for a display-fitted window, or an `AdaptiveViewport` for responsive layout). Use
+`GameAppOptions.For(title, w, h)` for the common case.
 
 **Runtime window/taskbar icon.** Set `WindowIconPath` to a PNG (the simple case) or `WindowIcons` to an explicit
 list of decoded `ImageRgba` (16/32/48 px so GLFW picks per DPI; `WindowIcons` wins over `WindowIconPath`). `GameApp`
@@ -155,9 +156,19 @@ Cmd-Tab. `GameApp` fixes this automatically: when `WindowIconPath` is set, on ma
 `.app` bundle with its own `.icns` still owns the Dock icon the normal way; this is for the unbundled dev/run case.
 
 `GameApp` seams: `OnLoad()`, `OnUpdate(float dt)`, `OnRenderWorld(Frame)` (the 3D pass; empty in 2D),
-`OnDraw2D(SpriteBatch)`, `OnResize(int, int)`, `OnDispose()`. Properties you read: `Window`, `Clock`, `Viewport`,
-`Pointer`, `Input` (the frame's `InputState`), `Surface2D`, `Batch`, `FrameWidth`/`FrameHeight`/`Dt`,
-`ClearColor`. Call `Quit()` to exit.
+`OnDraw2D(SpriteBatch)`, `OnResize(int, int)`, `OnResume(TimeSpan)` (see below), `OnDispose()`. Properties you
+read: `Window`, `Clock`, `Viewport`, `Pointer`, `Input` (the frame's `InputState`), `Surface2D`, `Batch`,
+`FrameWidth`/`FrameHeight`/`Dt`, `ClearColor`. Call `Quit()` to exit.
+
+**Resume after OS sleep/suspend (`OnResume`).** The frame `dt` is clamped to 0.1s (a spiral-of-death guard) and
+comes from a `Stopwatch`-style timer that does not reliably advance across an OS sleep/S3/hibernate, so a game
+that leaves the process running while the machine suspends gets no signal that hours of real time just passed.
+`GameClock` also samples a UTC wall clock each frame and reports `RealWallGapSeconds` (the wall gap to the
+previous frame, clamped to `>= 0`; `LastRealTimestamp` is the sample). When that gap exceeds
+`GameAppOptions.ResumeGapThresholdSeconds` (default 30s; 0 or negative disables), `GameApp` calls
+`OnResume(TimeSpan wallGap)` once, before `OnUpdate` on that frame and never on the first frame. Override it to run
+offline/AFK catch-up (e.g. a one-shot `TimeSkip.Advance`), re-sync timers, or pause. This is a separate signal
+from the sim delta: the 0.1s clamp and `Dt` are unchanged.
 
 ### Scenes (`SceneManager` / `GameScene`)
 
@@ -282,6 +293,7 @@ filter strips letters out of pasted text too), firing on the V press edge only.
   design space and screen pixels (`DesignToScreen`/`ScreenToDesign`, `GetClipProjection`). `GameApp` owns one
   and passes it into `Pointer.Update`, so design-space coordinates and hit-tests line up.
 - `GameClock`: `TimeScale`, `Pause()`/`Resume()`, `RealDeltaSeconds`/`ScaledDeltaSeconds`,
+  `RealWallGapSeconds`/`LastRealTimestamp` (the suspend-robust wall-clock gap that drives `GameApp.OnResume`),
   `Paused`/`Resumed` events. `GameApp.Clock` is updated for you each frame.
 
 ---

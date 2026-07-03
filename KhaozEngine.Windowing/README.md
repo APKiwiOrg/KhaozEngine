@@ -23,7 +23,9 @@ Windowing + input foundation for the custom MonoGame-free stack.
   `GameAppOptions.WindowIconPath`.
 - `InputManager` / `Pointer` - the higher-level read: unified pointer, edges, bounds helpers (`IsTapIn` etc.),
   region blocking, keyboard/gamepad/menu navigation.
-- `GameClock` (pause/timescale), `DesignViewport` / `AdaptiveViewport` (letterbox/fill/stretch + responsive).
+- `GameClock` (pause/timescale, plus `RealWallGapSeconds`/`LastRealTimestamp` - a UTC wall-clock gap per frame
+  that survives OS sleep/suspend, which the frame `dt` does not, so a game can detect a resume), `DesignViewport`
+  / `AdaptiveViewport` (letterbox/fill/stretch + responsive).
 
 The 5.x renderers (`Render2D`, `Render3D`) build on this. Silk.NET windowing ships GLFW natives bundled per-RID,
 so there is no SDL2/brew step. Touch is mobile-deferred (no 5.x mobile-windowing head yet).

@@ -10,12 +10,27 @@ namespace KhaozEngine.Windowing
     /// Drive it once per frame from the raw frame delta (<c>AppWindow.Frame.Dt</c>). The custom-stack analogue
     /// of the 4.x <c>KhaozEngine.Time.GameClock</c>, taking a <c>float</c> dt instead of a MonoGame
     /// <c>GameTime</c>; <see cref="Paused"/>/<see cref="Resumed"/> fire on transitions.
+    /// <para>Each <see cref="Update"/> also samples a UTC wall clock and reports the gap to the previous
+    /// frame as <see cref="RealWallGapSeconds"/> (with <see cref="LastRealTimestamp"/>). Unlike the frame
+    /// <c>dt</c> (a QueryPerformanceCounter-backed value that does not reliably advance across OS
+    /// sleep/S3/hibernate), the wall gap survives a suspend, so a game can detect that a large real-time gap
+    /// just happened (offline catch-up, timer re-sync). It is a separate signal and never feeds the scaled/real
+    /// deltas.</para>
     /// </summary>
     public sealed class GameClock
     {
+        readonly Func<DateTimeOffset> _now;
+        bool _hasLastTimestamp;
+
         float _timeScale = 1f;
         bool _paused;
         bool _wasPaused;
+
+        /// <summary>Normal clock: the wall gap is measured from <see cref="DateTimeOffset.UtcNow"/>.</summary>
+        public GameClock() : this(static () => DateTimeOffset.UtcNow) { }
+
+        /// <summary>Test seam: inject the wall-clock source so <see cref="RealWallGapSeconds"/> is deterministic.</summary>
+        internal GameClock(Func<DateTimeOffset> nowProvider) => _now = nowProvider;
 
         /// <summary>Simulation speed multiplier; clamped to &gt;= 0. 0 = paused, &lt;1 = slow-mo, &gt;1 = fast-forward.</summary>
         public float TimeScale
@@ -39,6 +54,14 @@ namespace KhaozEngine.Windowing
         /// <summary>Running total of scaled (simulation) seconds; does not advance while paused.</summary>
         public float ElapsedScaledSeconds { get; private set; }
 
+        /// <summary>Wall-clock seconds between the previous frame and this one, clamped to &gt;= 0.
+        /// Normally ~one frame; spikes after an OS suspend/hang. Independent of the sim-delta clamp,
+        /// and 0 on the first frame (no previous timestamp to diff).</summary>
+        public double RealWallGapSeconds { get; private set; }
+
+        /// <summary>UTC timestamp captured at the start of the current frame (monotonic-ish wall clock).</summary>
+        public DateTimeOffset LastRealTimestamp { get; private set; }
+
         /// <summary>Fired when <see cref="IsPaused"/> transitions false -&gt; true.</summary>
         public event Action? Paused;
 
@@ -58,6 +81,21 @@ namespace KhaozEngine.Windowing
             ScaledDeltaSeconds = IsPaused ? 0f : dtSeconds * _timeScale;
             ElapsedRealSeconds += RealDeltaSeconds;
             ElapsedScaledSeconds += ScaledDeltaSeconds;
+
+            // Wall-clock gap: a separate signal from the sim delta, robust to OS suspend. Clamp backward clock
+            // steps (NTP/DST) to 0. The first Update has no previous frame, so it reports a 0 gap.
+            DateTimeOffset now = _now();
+            if (_hasLastTimestamp)
+            {
+                double gap = (now - LastRealTimestamp).TotalSeconds;
+                RealWallGapSeconds = gap < 0.0 ? 0.0 : gap;
+            }
+            else
+            {
+                RealWallGapSeconds = 0.0;
+                _hasLastTimestamp = true;
+            }
+            LastRealTimestamp = now;
         }
 
         void RaiseIfChanged()

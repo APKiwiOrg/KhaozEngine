@@ -25,6 +25,8 @@ namespace KhaozEngine.Tests.Game
             // No factories by default -> GameApp builds a plain AppWindow + DesignViewport.
             Assert.Null(o.WindowFactory);
             Assert.Null(o.ViewportFactory);
+            // Resume hook armed by default at a safe 30s so a normal frame / GC pause never trips it.
+            Assert.Equal(30.0, o.ResumeGapThresholdSeconds);
         }
 
         [Fact]

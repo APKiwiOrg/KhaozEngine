@@ -9,6 +9,7 @@ each frame:
   Clock.Update(dt)
   Viewport.Update(window size)   -> OnResize on change
   Pointer.Update(input, Viewport)
+  OnResume(wallGap)              // only when the wall-clock gap exceeds the threshold (OS sleep/suspend/hang)
   OnUpdate(Dt)
   OnRenderWorld(frame)           // empty by default; a subclass renders a world here (e.g. a 3D scene)
   Surface2D.NewFrame(frame); Batch.Begin(Viewport); OnDraw2D(Batch); Batch.End()
@@ -17,6 +18,12 @@ each frame:
 Subclass it and override `OnLoad` / `OnUpdate(dt)` / `OnDraw2D(batch)` / `OnResize(w, h)`; call
 `Quit()` to close. Construct with `GameAppOptions.For(title, w, h)` (set `DesignWidth/Height`,
 `ScaleMode`, `ClearColor` as needed).
+
+Override `OnResume(TimeSpan wallGap)` to react to an OS sleep/suspend/hibernate (or a long hang): it fires once,
+before `OnUpdate`, on the first frame whose wall-clock gap (`Clock.RealWallGapSeconds`, which survives a suspend
+where the frame `dt` does not) exceeds `GameAppOptions.ResumeGapThresholdSeconds` (default 30s; 0 or negative
+disables). Use it for offline/AFK catch-up, timer re-sync, or an auto-pause. The 0.1s sim-delta clamp and `Dt`
+are unaffected.
 
 Set `GameAppOptions.WindowIconPath` (a PNG) or `WindowIcons` (explicit decoded `ImageRgba`, multi-res,
 wins over the path) for the runtime window/taskbar icon; `GameApp` decodes via `Render2D.ImageRgba`

@@ -13,17 +13,6 @@
       "console": "internalConsole",
       "stopAtEntry": false
     },
-    {
-      "name": "Run Render3DSample",
-      "type": "coreclr",
-      "request": "launch",
-      "preLaunchTask": "build",
-      "program": "${workspaceFolder}/Render3DSample/bin/Debug/net10.0/Render3DSample.dll",
-      "args": [],
-      "cwd": "${workspaceFolder}/Render3DSample",
-      "console": "internalConsole",
-      "stopAtEntry": false
-    },
 
     // ---- Networked overworld demo ----
     // Start the server first, then one or two clients (or use the "Networked Walk: server + 2 clients" compound).

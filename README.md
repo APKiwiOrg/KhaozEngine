@@ -172,7 +172,7 @@ KhaozEngine.Server.Admin/      Opt-in HTTPS admin endpoint (Kestrel) over Server
 # Umbrella metapackages
 KhaozEngine.Foundation/   KhaozEngine.Game2D/   KhaozEngine.Game3D/   KhaozEngine.Server/
 # Tests, samples, tools
-KhaozEngine.Tests/   KhaozEngine.Showcase/ (menu hub: 2D, GUI, input, mini-game, 3D-world rooms)   Render3DSample/
+KhaozEngine.Tests/   KhaozEngine.Showcase/ (menu hub: 2D, GUI, input, mini-game, 3D-world rooms)
 SnapshotSample/   MmoServerSample/ (reference dedicated MMO server)
 NetworkedWalkServer/ + NetworkedWalkSample/ (networked walkable overworld: headless server + windowed client)
 KhaozEngine.Updates.Tool/ (ke-updater)   KhaozEngine.Sfx.Tool/ (ke-sfxbake)   KhaozEngine.PropSurface.Tool/ (ke-propbake)
@@ -191,8 +191,7 @@ The windowed ones open a GPU window (need a display); the server / snapshot head
 
 | Sample | Demonstrates | Run | Controls |
 |---|---|---|---|
-| `KhaozEngine.Showcase` | **Menu hub** of feature rooms: 2D sprites + text, Gui widgets + screen stack, input (gestures / clock / clipboard / audio), the "Catcher" mini-game, and a **walkable streamed 3D overworld** (terrain streaming + follow camera + character controller + physics) | `dotnet run --project KhaozEngine.Showcase` | Menu: Up/Down + Enter or click a room, Esc leaves a room. 3D room: WASD move, mouse-drag orbit, scroll zoom, Shift run |
-| `Render3DSample` | 3D mesh viewer + retro post (cel / outline / palette) | `dotnet run --project Render3DSample` | Space model, O outline, A starfield, R retro, C cel, P palette, W/S zoom, arrows orbit, Esc quit |
+| `KhaozEngine.Showcase` | **Menu hub** of feature rooms: 2D sprites + text, Gui widgets + screen stack, input (gestures / clock / clipboard / audio), the "Catcher" mini-game, and a **walkable streamed 3D overworld** (terrain streaming + follow camera + character controller + physics + a CC0-house village) with retro post-fx (cel / outline / palette) | `dotnet run --project KhaozEngine.Showcase` | Menu: Up/Down + Enter or click a room, Esc leaves a room. 3D room: WASD move, mouse-drag orbit, scroll zoom, Shift run, F2 collision overlay, O/A/C/R/P post-fx |
 
 **Networked** - run the server, then one or two clients (two clients = two players on the same terrain):
 
@@ -215,13 +214,6 @@ exit 0. So any of them doubles as a smoke test on a GPU box without needing some
 ```bash
 KE_MAX_FRAMES=5 dotnet run --project KhaozEngine.Showcase
 # to smoke a specific room's world build, auto-enter it: KE_SHOWCASE_ROOM="3D World" KE_MAX_FRAMES=5 dotnet run --project KhaozEngine.Showcase
-```
-
-`Render3DSample` also takes `--smoke` (capture one frame, print a pass/fail line, exit with a
-code), with extra `Render3DSample` flags `--retro --pico --gb --asteroid`, e.g.:
-
-```bash
-dotnet run --project Render3DSample -- --smoke --retro --gb
 ```
 
 ## Dev tools

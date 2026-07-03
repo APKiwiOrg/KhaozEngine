@@ -42,7 +42,7 @@ namespace KhaozEngine.Showcase
             Rooms.Add(("Mini-game (Catcher)", () => new RoomMiniGame().Init(_white, big, small)));
 
             // Rooms are registered here (added by later tasks).
-            _scenes.Push(new MenuScene(_white, Rooms));
+            _scenes.Push(new MenuScene(_white, big, small, Rooms));
         }
 
         protected override void OnUpdate(float dt)

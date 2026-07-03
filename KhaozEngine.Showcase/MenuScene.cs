@@ -8,20 +8,25 @@ using KhaozEngine.Windowing;
 
 namespace KhaozEngine.Showcase
 {
-    /// <summary>The hub root scene: renders one row per registered room and pushes the chosen room. Up/Down (or
+    /// <summary>The hub root scene: a title, one labelled row per registered room, and a hint line. Up/Down (or
     /// W/S) move the highlight, Enter/Space or a click on a row enters that room. An empty registry shows nothing
     /// to enter (used only before rooms are registered).</summary>
     public sealed class MenuScene : GameScene
     {
         readonly Texture2D _white;
+        readonly SpriteFont _titleFont;
+        readonly SpriteFont _rowFont;
         readonly IReadOnlyList<(string Name, Func<GameScene> Factory)> _rooms;
         readonly ShowcaseMenu _menu;
 
-        const float RowH = 48f, RowW = 360f, Top = 120f;
+        const float RowH = 48f, RowW = 360f, Top = 150f;
 
-        public MenuScene(Texture2D white, IReadOnlyList<(string Name, Func<GameScene> Factory)> rooms)
+        public MenuScene(Texture2D white, SpriteFont titleFont, SpriteFont rowFont,
+                         IReadOnlyList<(string Name, Func<GameScene> Factory)> rooms)
         {
             _white = white;
+            _titleFont = titleFont;
+            _rowFont = rowFont;
             _rooms = rooms;
             var names = new List<string>(rooms.Count);
             foreach (var r in rooms) names.Add(r.Name);
@@ -53,13 +58,32 @@ namespace KhaozEngine.Showcase
         public override void OnDraw2D(SpriteBatch batch)
         {
             var m = Manager!;
-            batch.Draw(_white, new Vector4(0, 0, m.FrameWidth, m.FrameHeight), new Color(0.10f, 0.13f, 0.20f, 1f));
+            float frameW = m.FrameWidth;
+            batch.Draw(_white, new Vector4(0, 0, frameW, m.FrameHeight), new Color(0.10f, 0.13f, 0.20f, 1f));
+
+            const string title = "KhaozEngine Showcase";
+            Vector2 ts = _titleFont.Measure(title);
+            batch.DrawString(_titleFont, title, new Vector2((frameW - ts.X) * 0.5f, 60f), new Color(0.92f, 0.95f, 1f, 1f));
+
             for (int i = 0; i < _rooms.Count; i++)
             {
                 bool sel = i == _menu.Selected;
-                var r = RowRect(i, m.FrameWidth);
+                Rect r = RowRect(i, frameW);
                 batch.Draw(_white, new Vector4(r.X, r.Y, r.Width, r.Height),
                     sel ? new Color(0.30f, 0.55f, 0.85f, 1f) : new Color(0.20f, 0.24f, 0.32f, 1f));
+
+                string name = _rooms[i].Name;
+                Vector2 sz = _rowFont.Measure(name);
+                var pos = new Vector2(r.X + (r.Width - sz.X) * 0.5f, r.Y + (r.Height - sz.Y) * 0.5f);
+                batch.DrawString(_rowFont, name, pos, sel ? new Color(1f, 1f, 1f, 1f) : new Color(0.72f, 0.78f, 0.86f, 1f));
+            }
+
+            if (_rooms.Count > 0)
+            {
+                const string hint = "Up/Down and Enter, or click a room. Esc leaves a room.";
+                Vector2 hs = _rowFont.Measure(hint);
+                float hy = Top + _rooms.Count * (RowH + 8f) + 24f;
+                batch.DrawString(_rowFont, hint, new Vector2((frameW - hs.X) * 0.5f, hy), new Color(0.5f, 0.58f, 0.7f, 1f));
             }
         }
     }

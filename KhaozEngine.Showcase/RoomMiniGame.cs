@@ -65,11 +65,14 @@ namespace KhaozEngine.Showcase
         public override void OnUpdate(float dt)
         {
             var m = Manager!;
-            // Esc pops the room's own topmost screen first (mirrors RoomGui's Esc-pops-topmost semantics). Only
-            // once the stack is back down to just the title screen does Esc leave the room.
+            // Esc at the title/play screen (nothing modal on top) leaves the room straight to the showcase menu.
             if (m.Input.WasPressed(Key.Escape) && _stack.Screens.Count <= 1) { m.Pop(); return; }
             _audio.Update();
             _stack.Update(dt, m.Input, m.Viewport);
+            // A "Back to menu" button (on the title or the game-over screen) exits its screen, which can leave the
+            // room's own stack empty. With nothing left to draw, leave the room so the showcase menu shows again
+            // instead of an empty (cleared) frame. Pop is deferred by the SceneManager, so this is safe mid-update.
+            if (_stack.Screens.Count == 0) m.Pop();
         }
 
         public override void OnDraw2D(SpriteBatch batch) => _stack.Draw(batch);

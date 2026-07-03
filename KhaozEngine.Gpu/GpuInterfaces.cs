@@ -144,6 +144,12 @@ namespace KhaozEngine.Gpu
         /// <summary>Copy a whole texture (e.g. render target -> staging) for readback.</summary>
         void CopyTexture(IGpuTexture src, IGpuTexture dst);
 
+        /// <summary>Copy one mip level + array layer of <paramref name="src"/> (its top-left <paramref name="width"/> x
+        /// <paramref name="height"/> region) into <paramref name="dst"/>'s mip 0 / layer 0 - for reading a specific
+        /// mip of a texture array back to the CPU (e.g. verifying a generated mip chain). <paramref name="dst"/> must
+        /// be at least that size.</summary>
+        void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer, IGpuTexture dst, uint width, uint height);
+
         /// <summary>Generate the full mip chain of <paramref name="texture"/> from its base level. The texture must
         /// be created with <see cref="GpuTextureUsage.GenerateMipmaps"/> and a mip count &gt; 1.</summary>
         void GenerateMipmaps(IGpuTexture texture);

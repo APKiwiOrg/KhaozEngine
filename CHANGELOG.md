@@ -5,6 +5,23 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 9.9.0
+
+Diagnostic mip-chain readback: a game/test can read one mip level of a splat material's albedo array back to the CPU, to verify a generated mip chain on a real device (used to chase the Windows/D3D11 terrain "fuzz"). Additive minor, new public API, no behaviour change.
+
+- **`Scene3D.DebugReadSplatAlbedoMip(SplatMaterialHandle, int mipLevel, int arrayLayer, out int width, out int height)`**
+  (new, `KhaozEngine.Render3D`) returns that mip level of the material's albedo texture array as packed RGBA8 (its
+  own dimensions in the `out` params). A high mip that is a real blurred downsample keeps mip 0's average colour and
+  has much less local detail; a mip that is near-black (empty) or still detailed (a copy of mip 0) reveals broken GPU
+  mip generation on that device.
+- **`GpuReadback.ToRgbaMip(IGpuDevice, IGpuTexture, uint mipLevel, uint arrayLayer, int mipWidth, int mipHeight)`**
+  (new, `KhaozEngine.Gpu`) - the general reusable primitive (copies the subresource into a staging texture, maps,
+  de-strides), and **`IGpuCommandList.CopyTextureSubresource(src, srcMip, srcLayer, dst, width, height)`** underneath
+  it (copy one mip/array-layer subresource into another texture's mip 0). The pre-existing whole-texture
+  `CopyTexture` / `ToRgba` are unchanged.
+- Tests: gated `SplatAlbedoMipReadbackGpuTests` proves a high mip of a procedural splat material is a real blurred
+  downsample on the local device (mean preserved, detail collapses).
+
 ## 9.8.0
 
 The macOS Dock / Cmd-Tab icon can now be set at runtime, so an unbundled `dotnet run` app (which has no `.app` bundle icns) shows a real icon instead of the generic document page. Additive minor; nothing changes on Windows/Linux or for a game that sets no icon.

@@ -393,6 +393,26 @@ namespace KhaozEngine.Render3D
             _splatMaterials[h.ListIndex] = null;
         }
 
+        /// <summary>Diagnostic: read one mip level (and array layer) of a splat material's ALBEDO texture array back
+        /// to the CPU as packed RGBA8; <paramref name="width"/>/<paramref name="height"/> receive that mip's own
+        /// dimensions. Lets a game/test verify the generated mip chain on a real device - e.g. whether a high mip is
+        /// a real blurred downsample (its average colour matches mip 0, low detail) versus a copy of mip 0 (still
+        /// detailed) or empty (near-black), which is how a broken GPU mip generation shows up. Requires a mappable
+        /// device; not on the per-frame path.</summary>
+        public byte[] DebugReadSplatAlbedoMip(SplatMaterialHandle h, int mipLevel, int arrayLayer, out int width, out int height)
+        {
+            if (!h.IsValid) throw new ArgumentException("splat material handle is Invalid.", nameof(h));
+            var m = _splatMaterials[h.ListIndex] ?? throw new ArgumentException("splat material is not loaded (already unloaded).", nameof(h));
+            var tex = m.AlbedoArray;
+            if (mipLevel < 0 || (uint)mipLevel >= tex.MipLevels)
+                throw new ArgumentOutOfRangeException(nameof(mipLevel), $"mip {mipLevel} out of range (texture has {tex.MipLevels} levels).");
+            if (arrayLayer < 0)
+                throw new ArgumentOutOfRangeException(nameof(arrayLayer));
+            width = Math.Max(1, (int)tex.Width >> mipLevel);
+            height = Math.Max(1, (int)tex.Height >> mipLevel);
+            return GpuReadback.ToRgbaMip(_gd, tex, (uint)mipLevel, (uint)arrayLayer, width, height);
+        }
+
         /// <summary>Free the GPU texture backing <paramref name="h"/> (and its lazily-created textured-billboard
         /// resource set) and null its slot. A <c>default</c>/Invalid handle is a no-op; unloading an
         /// already-unloaded slot is also a no-op. The slot is NOT recycled, so handles stay stable. Because a

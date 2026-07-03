@@ -17,7 +17,7 @@ namespace KhaozEngine.Showcase
 {
     /// <summary>One hand-placed town building: which CC0 kit <see cref="Id"/> (must match an entry in
     /// buildings.manifest.json), its world XZ, facing <see cref="Yaw"/> (radians), and uniform <see cref="Scale"/>.
-    /// Render-only for now (Task 4 adds collision from the matching baked .coll per id).</summary>
+    /// Rendered and collidable (its matching baked .coll is added as a scaled static in OnEnter).</summary>
     public readonly record struct TownBuilding(string Id, float X, float Z, float Yaw, float Scale);
 
     /// <summary>The walkable streamed 3D overworld, ported from TerrainWalkSample into a room. Renders through the
@@ -47,11 +47,11 @@ namespace KhaozEngine.Showcase
         // draw radius for its landmark buildings).
         const float BuildingDrawRadius = 320f;
 
-        // The 7 CC0 Quaternius Medieval Village buildings, hand-placed around TownCenter. Nudged clear of the
-        // three fixtures already standing in the clearing: the platform box at (0,12) (half-extents 3x2.5), the
-        // procedural textured stone block at (3,3), and the blacksmith collision-proxy fixture at (8,4). All
-        // positions sit inside TownRadius * (1 - TownBlend) ~= 13.5 m of TownCenter so they land on the flattened
-        // plateau, not its blended rim. Starting layout - exact spacing is tunable by playtest.
+        // The 7 CC0 Quaternius Medieval Village buildings, hand-placed around TownCenter. Nudged clear of the two
+        // fixtures already standing in the clearing: the platform box at (0,12) (half-extents 3x2.5) and the
+        // procedural textured stone block at (3,3). All positions sit inside TownRadius * (1 - TownBlend) ~= 13.5 m
+        // of TownCenter so they land on the flattened plateau, not its blended rim. Starting layout - exact
+        // spacing is tunable by playtest.
         const float BuildingScale = 1.5f;
         static IReadOnlyList<TownBuilding> CreateTownBuildings() => new[]
         {
@@ -60,11 +60,8 @@ namespace KhaozEngine.Showcase
             new TownBuilding("well",       TownCenter.X + 6f,  TownCenter.Y - 1f,   0.0f,  BuildingScale),
             new TownBuilding("house_1",    TownCenter.X + 9f,  TownCenter.Y + 5f,  -2.2f,  BuildingScale),
             new TownBuilding("house_2",    TownCenter.X - 9f,  TownCenter.Y + 4f,   2.2f,  BuildingScale),
-            // Kept clear of the textured stone block (3,3) and the blacksmith proxy fixture (8,4): house_3 sits
-            // west of both.
+            // Kept clear of the textured stone block (3,3): house_3 sits west of it.
             new TownBuilding("house_3",    TownCenter.X - 5f,  TownCenter.Y - 9f,  -0.7f,  BuildingScale),
-            // The blacksmith BUILDING is a separate placement from the blacksmith collision-proxy fixture at
-            // (8,4) - pushed further southwest so the two do not visually overlap.
             new TownBuilding("blacksmith", TownCenter.X - 10f, TownCenter.Y - 8f,   0.9f,  BuildingScale),
             new TownBuilding("bell_tower", TownCenter.X,       TownCenter.Y + 11f,  0.0f,  BuildingScale),
         };
@@ -95,6 +92,12 @@ namespace KhaozEngine.Showcase
         Scene3DChunkSink _sink = null!;
         TerrainStreamer _streamer = null!;
 
+        // Prop collision proxies (authored mesh-baked .coll, imported from Ruinborne) keyed by prop id, and the
+        // scatter rule - both retained so the F2 overlay can recompute the streamed tree/rock proxies for the
+        // currently-loaded ring (see RebuildCollisionOverlay).
+        IReadOnlyDictionary<string, PhysicsShape> _collisionShapes = null!;
+        ScatterConfig _scatterConfig = null!;
+
         // Physics world shared by the chunk sink (adds/removes prop statics on stream load/unload) and
         // CharacterController3D (resolves the capsule against those statics).
         BepuPhysicsWorld _physics = null!;
@@ -110,12 +113,16 @@ namespace KhaozEngine.Showcase
         MeshHandle _texturedProp;
         Matrix4x4 _texturedPropXform;
 
-        // Collision-shape debug overlay (F2): a hand-placed building-proxy fixture drawn as translucent proxy
-        // meshes over the real collision, plus a legend panel while it is on. Reuses the room's injected
-        // _white/_hud rather than owning its own font/texture.
+        // Collision-shape debug overlay (F2): translucent proxy meshes over the real collision (town buildings +
+        // the streamed tree/rock statics of the loaded ring), plus a legend panel while it is on. Reuses the
+        // room's injected _white/_hud rather than owning its own font/texture. _overlayStatics holds only the
+        // fixed (non-streamed) statics; the streamed proxies are added per-rebuild from the loaded chunk ring.
         List<CollisionStatic> _overlayStatics = null!;
         CollisionShapeOverlay _collisionOverlay = null!;
         OverlayLegend _legend = null!;
+        // The loaded-chunk set the overlay proxies were last built for, so RebuildCollisionOverlay only re-uploads
+        // when the ring actually changed (a chunk crossing), not every frame.
+        readonly HashSet<ChunkCoord> _overlayBuiltChunks = new();
 
         // Animated character (replaces the static capsule when the asset loads). Falls back to the greybox capsule
         // if the asset is missing/unreadable, matching TerrainWalkSample's TryLoadAnimatedCharacter.
@@ -156,31 +163,26 @@ namespace KhaozEngine.Showcase
             _capsule = _scene.LoadMesh(MeshPrimitives.Capsule(radius: CapsuleRadius, height: 1.2f, segments: 16, rings: 6));
 
             // --- Physics world setup ----------------------------------------------------------
-            // Build a BepuPhysicsWorld and bake each prop mesh to a PhysicsShape at startup.
-            // PropCollisionBake.Bake works from the already-normalized in-memory GltfMesh so no pre-baked
-            // .coll files are needed. The shapes dictionary is passed to Scene3DChunkSink. On each chunk
-            // load/unload the sink adds/removes the per-placement statics so the character collides against
-            // exactly the props in the currently-loaded ring.
+            // Prop collision uses the authored, mesh-baked .coll proxies imported from Ruinborne (thin trunk
+            // cylinders for trees, hulls for rocks), loaded headless by filename id via
+            // PropCollisionFormat.LoadDirectory - the same shapes Ruinborne collides + predicts against, so the F2
+            // overlay draws the same trunk cylinders rather than an auto-baked hull. The shapes dictionary is
+            // passed to Scene3DChunkSink, which on each chunk load/unload adds/removes the per-placement statics so
+            // the character collides against exactly the props in the currently-loaded ring.
             _physics = new BepuPhysicsWorld();
-            var collisionShapes = new Dictionary<string, PhysicsShape>();
+            string propsDir = Path.Combine(AppContext.BaseDirectory, "assets", "props");
+            _collisionShapes = PropCollisionFormat.LoadDirectory(propsDir);
 
             // Load the committed CC0 prop kit through the asset pipeline (decompressed glTF -> normalized to its
-            // manifest heightMeters with the origin dropped to the base), one uploaded mesh per id. Prop collision
-            // footprints are baked from the actual mesh geometry (PropCollisionBake).
-            string manifestPath = Path.Combine(AppContext.BaseDirectory, "assets", "props", "props.manifest.json");
-            AssetManifest manifest = AssetManifest.Load(manifestPath);
+            // manifest heightMeters with the origin dropped to the base), one uploaded mesh per id.
+            AssetManifest manifest = AssetManifest.Load(Path.Combine(propsDir, "props.manifest.json"));
             foreach (AssetEntry entry in manifest.Props)
-            {
-                GltfMesh mesh = PropLoader.LoadProp(entry);
-                _propMeshes[entry.Id] = _scene.LoadMesh(mesh);
-                // Bake the collision shape from the same in-memory normalized mesh before it is uploaded.
-                collisionShapes[entry.Id] = PropCollisionBake.Bake(mesh);
-            }
+                _propMeshes[entry.Id] = _scene.LoadMesh(PropLoader.LoadProp(entry));
 
             // Load the CC0 town buildings (Quaternius Medieval Village) through the same asset pipeline as the
             // forest props, one uploaded mesh per id, and build their fixed world placements. Buildings are not
             // streamed - they are hand-placed once and drawn every frame like the platform/textured-prop fixtures.
-            // (Collision is Task 4: these are visual-only for now, the character can walk through them.)
+            // (Their collision is added from the baked .coll per id below, so the character cannot walk through them.)
             string bManifestPath = Path.Combine(AppContext.BaseDirectory, "assets", "buildings", "buildings.manifest.json");
             AssetManifest buildings = AssetManifest.Load(bManifestPath);
             foreach (AssetEntry e in buildings.Props)
@@ -206,6 +208,10 @@ namespace KhaozEngine.Showcase
             _camController = new FollowCameraController(_camera);
             _scene.CameraOverride = _camera;
 
+            // Outline post-process starts OFF in this room (press O to toggle it on); OnExit restores the shared
+            // PixelPostProcessSettings default (on) for the menu / other rooms.
+            _scene.Post.Outline = false;
+
             // A hand-placed visible platform box in the clearing so there is something to look at.
             const float platformHeight = 1.0f;
             var platformCenter = new Vector2(0f, 12f);
@@ -223,7 +229,7 @@ namespace KhaozEngine.Showcase
                 Pose.At(new Vector3(platformCenter.X, platformBaseY + platformHeight * 0.5f, platformCenter.Y)));
 
             // Textured prop demo: a procedural mossy-stone block (albedo + normal), no binary asset.
-            // Placed near spawn, clear of the platform (0, 12) and the collision-overlay proxy (8, 4).
+            // Placed near spawn at (3, 3), clear of the platform (0, 12).
             // ScaleUv tiles the material 3x across each face so texels stay dense (crisp, not one stretched copy).
             _texturedProp = _scene.LoadMesh(
                 MeshOps.WithTangents(MeshOps.ScaleUv(MeshPrimitives.Box(1.5f), 3f)),
@@ -232,22 +238,16 @@ namespace KhaozEngine.Showcase
             _texturedPropXform = Matrix4x4.CreateTranslation(propX, _terrain.GroundHeight(propX, propZ) + 0.75f, propZ);
 
             // --- Collision-shape debug overlay (F2) ---------------------------------------------
-            // Hand-placed building-proxy acceptance fixture: a compound-of-convex .coll baked offline from the
-            // Ruinborne blacksmith prop, copied into this sample's assets so no ProjectReference on the test
-            // project is needed. Placed near the walk path, clear of the platform (0, 12), with its base on the
-            // terrain ground height so it reads as standing on the meadow. Registered as real collision AND kept
-            // as a CollisionStatic so the overlay can render translucent proxies over it.
-            string proxyFixturePath = Path.Combine(AppContext.BaseDirectory, "assets", "blacksmith_proxy.coll");
-            PhysicsShape proxyShape = PropCollisionFormat.Read(proxyFixturePath);
-            var proxyPose = new Pose(new Vector3(8f, _terrain.GroundHeight(8f, 4f), 4f), Quaternion.Identity);
-            _physics.AddStatic(proxyShape, proxyPose);
-            _overlayStatics = new List<CollisionStatic> { new(proxyShape, proxyPose) };
+            // Fixed (non-streamed) collision statics the overlay draws translucent proxies over. Town buildings
+            // are appended just below; the streamed tree/rock proxies are added per-rebuild from the loaded chunk
+            // ring (RebuildCollisionOverlay), matching Ruinborne's overlay.
+            _overlayStatics = new List<CollisionStatic>();
 
-            // Building collision: load the baked .coll per building id (offline-baked by the proxy-authoring
-            // tool, same KECL format as the blacksmith proxy above) and add each as a scaled static at its
-            // placement pose, so the 7 town buildings are solid instead of walk-through. Mirrors Ruinborne's
-            // RuinbornePhysics.AddPlacement (LoadDirectory + PhysicsShapeScale.Uniform + AddStatic). Also
-            // registered in _overlayStatics so F2 shows the building collision proxies too.
+            // Building collision: load the baked .coll per building id (offline-baked by the proxy-authoring tool
+            // in the KECL format) and add each as a scaled static at its placement pose, so the 7 town buildings
+            // are solid instead of walk-through. Mirrors Ruinborne's RuinbornePhysics.AddPlacement (LoadDirectory
+            // + PhysicsShapeScale.Uniform + AddStatic). Also registered in _overlayStatics so F2 shows the building
+            // collision proxies too.
             string buildingCollDir = Path.Combine(AppContext.BaseDirectory, "assets", "buildings");
             IReadOnlyDictionary<string, PhysicsShape> buildingShapes = PropCollisionFormat.LoadDirectory(buildingCollDir);
             foreach (TownBuilding b in CreateTownBuildings())
@@ -260,21 +260,22 @@ namespace KhaozEngine.Showcase
                 _overlayStatics.Add(new CollisionStatic(scaled, bPose));
             }
 
+            // The proxy meshes + legend are built lazily on first F2-enable and rebuilt when the loaded ring
+            // changes (see OnUpdate / RebuildCollisionOverlay), so no proxy meshes are uploaded unless the overlay
+            // is actually shown.
             _collisionOverlay = new CollisionShapeOverlay();
-            _collisionOverlay.Build(_scene, _overlayStatics);
-
             _legend = new OverlayLegend();
-            _legend.SetEntries(BuildLegendEntries(_collisionOverlay));
 
             // Exclude trees from the town: reuse ForestRing's defaults but hole out the flattened plateau so no
-            // tree spawns on the levelled ground the buildings sit on.
-            var scatterConfig = ScatterConfig.ForestRing();
-            scatterConfig.ClearingRadius = TownRadius;
-            scatterConfig.ClearingCenter = TownCenter;
+            // tree spawns on the levelled ground the buildings sit on. Retained on the room (_scatterConfig) so the
+            // overlay rebuild can regenerate the same placements the sink scattered.
+            _scatterConfig = ScatterConfig.ForestRing();
+            _scatterConfig.ClearingRadius = TownRadius;
+            _scatterConfig.ClearingCenter = TownCenter;
 
-            _sink = new Scene3DChunkSink(_scene, _field, scatterConfig, _propMeshes,
+            _sink = new Scene3DChunkSink(_scene, _field, _scatterConfig, _propMeshes,
                 chunkSize: TerrainChunkRegion.DefaultSize, propDrawRadius: PropDrawRadius, material: terrainMaterial,
-                ownsMaterial: true, physics: _physics, collisionShapes: collisionShapes);
+                ownsMaterial: true, physics: _physics, collisionShapes: _collisionShapes);
             _streamer = new TerrainStreamer(StreamerConfig.Default, _sink);
 
             // Prime the FULL initial ring at load time (this is the loading moment, not a frame, so the per-frame
@@ -369,6 +370,12 @@ namespace KhaozEngine.Showcase
             // Stream the world around the new player position (loads/unloads/re-LODs within MaxLoadsPerFrame).
             _streamer.Update(_character.Position, dt);
 
+            // Keep the F2 overlay's streamed tree/rock proxies in sync with the loaded ring, but only while it is
+            // shown (each rebuild uploads a proxy mesh per static) and only when the ring actually changed (a chunk
+            // crossing), not every frame. First enable finds an empty _overlayBuiltChunks, so it builds immediately.
+            if (_collisionOverlay.Enabled && !_overlayBuiltChunks.SetEquals(_streamer.Loaded))
+                RebuildCollisionOverlay();
+
             _camera.Target = _character.Position;
             _camera.AspectRatio = Manager!.FrameHeight > 0 ? (float)Manager!.FrameWidth / Manager!.FrameHeight : _camera.AspectRatio;
             _camController.Update(Manager!.Input, dt);
@@ -419,6 +426,33 @@ namespace KhaozEngine.Showcase
             foreach (CollisionShapeKind kind in overlay.PresentKinds)
                 list.Add(new LegendEntry(overlay.Palette.For(kind), overlay.Palette.NameFor(kind)));
             return list;
+        }
+
+        // Rebuilds the F2 overlay's proxy set from the fixed statics (town buildings) plus the tree/rock collision
+        // statics of every currently-loaded chunk, so streamed props show the same translucent trunk-cylinder /
+        // hull proxies Ruinborne draws. Each streamed prop's scaled shape + world pose are computed exactly as the
+        // streamer's ChunkStatics.AddAll builds them (PropScatter.Generate over the chunk area -> per-placement
+        // PhysicsShapeScale.Uniform + a yaw-only pose at the placement's baked ground Y), so the proxies line up
+        // with the real collision. Records the loaded ring it built for so OnUpdate only re-runs on a chunk crossing.
+        void RebuildCollisionOverlay()
+        {
+            var statics = new List<CollisionStatic>(_overlayStatics);
+            foreach (ChunkCoord coord in _streamer.Loaded)
+            {
+                RectArea area = ChunkGrid.AreaOf(coord, TerrainChunkRegion.DefaultSize);
+                foreach (PropPlacement p in PropScatter.Generate(_field, _scatterConfig, area))
+                {
+                    if (!_collisionShapes.TryGetValue(p.Id, out PhysicsShape? shape)) continue;
+                    PhysicsShape scaled = PhysicsShapeScale.Uniform(shape, p.Scale);
+                    var pose = new Pose(new Vector3(p.X, p.Y, p.Z), Quaternion.CreateFromAxisAngle(Vector3.UnitY, p.Yaw));
+                    statics.Add(new CollisionStatic(scaled, pose));
+                }
+            }
+            _collisionOverlay.Build(_scene, statics);
+            _legend.SetEntries(BuildLegendEntries(_collisionOverlay));
+
+            _overlayBuiltChunks.Clear();
+            foreach (ChunkCoord coord in _streamer.Loaded) _overlayBuiltChunks.Add(coord);
         }
 
         // Tears down everything OnEnter built into the shared Scene3D, so the menu/2D rooms render cleanly and a
@@ -481,6 +515,9 @@ namespace KhaozEngine.Showcase
             _collisionOverlay = null!;
             _overlayStatics = null!;
             _legend = null!;
+            _collisionShapes = null!;
+            _scatterConfig = null!;
+            _overlayBuiltChunks.Clear();
             _characterMesh = default;
             _animChar = null!;
             _animated = false;

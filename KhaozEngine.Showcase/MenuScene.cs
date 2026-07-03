@@ -33,7 +33,10 @@ namespace KhaozEngine.Showcase
             _menu = new ShowcaseMenu(names);
         }
 
-        static Rect RowRect(int i, float frameW) => new Rect(frameW * 0.5f - RowW * 0.5f, Top + i * (RowH + 8f), RowW, RowH);
+        // Rows are laid out and hit-tested in DESIGN space (the width the SpriteBatch draws in and the Pointer
+        // maps into), never window/frame pixels - otherwise a resized window pushes the menu off-centre because
+        // the design-space batch and pointer disagree with a frame-pixel layout.
+        static Rect RowRect(int i, float boundsW) => new Rect(boundsW * 0.5f - RowW * 0.5f, Top + i * (RowH + 8f), RowW, RowH);
 
         public override void OnUpdate(float dt)
         {
@@ -41,10 +44,11 @@ namespace KhaozEngine.Showcase
             if (m.Input.WasPressed(Key.Down) || m.Input.WasPressed(Key.S)) _menu.MoveNext();
             if (m.Input.WasPressed(Key.Up) || m.Input.WasPressed(Key.W)) _menu.MovePrev();
 
-            // Click a row: hit-test each row rect with the pointer press-origin helper.
+            // Click a row: hit-test each row rect with the pointer press-origin helper (design-space bounds).
+            float boundsW = m.Viewport!.DesignBounds.Width;
             if (m.Pointer is { } p && p.IsJustReleased)
                 for (int i = 0; i < _rooms.Count; i++)
-                    if (p.IsTapIn(RowRect(i, m.FrameWidth))) { _menu.SelectAt(i); Enter(m); return; }
+                    if (p.IsTapIn(RowRect(i, boundsW))) { _menu.SelectAt(i); Enter(m); return; }
 
             if (m.Input.WasPressed(Key.Enter) || m.Input.WasPressed(Key.Space)) Enter(m);
         }
@@ -58,8 +62,11 @@ namespace KhaozEngine.Showcase
         public override void OnDraw2D(SpriteBatch batch)
         {
             var m = Manager!;
-            float frameW = m.FrameWidth;
-            batch.Draw(_white, new Vector4(0, 0, frameW, m.FrameHeight), new Color(0.10f, 0.13f, 0.20f, 1f));
+            // Everything below is drawn in design space (SpriteBatch.Begin(viewport) is already active), so centre
+            // on the design bounds, not FrameWidth/FrameHeight - those are window pixels and drift on resize.
+            Rect db = m.Viewport!.DesignBounds;
+            float frameW = db.Width;
+            batch.Draw(_white, new Vector4(0, 0, frameW, db.Height), new Color(0.10f, 0.13f, 0.20f, 1f));
 
             const string title = "KhaozEngine Showcase";
             Vector2 ts = _titleFont.Measure(title);

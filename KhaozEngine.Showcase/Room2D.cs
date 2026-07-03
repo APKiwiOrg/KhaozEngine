@@ -52,7 +52,9 @@ namespace KhaozEngine.Showcase
         public override void OnDraw2D(SpriteBatch batch)
         {
             var m = Manager!;
-            batch.Draw(_white, new Vector4(40, 30, m.FrameWidth - 80, 90), new Color(0.18f, 0.22f, 0.30f, 0.92f));
+            // Design-space width (not FrameWidth) so the header bar keeps its 40px side margins on a resized window.
+            float boundsW = m.Viewport!.DesignBounds.Width;
+            batch.Draw(_white, new Vector4(40, 30, boundsW - 80, 90), new Color(0.18f, 0.22f, 0.30f, 0.92f));
             for (int i = 0; i < 6; i++)
             {
                 float s = 60 + i * 14;

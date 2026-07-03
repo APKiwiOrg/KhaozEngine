@@ -1,40 +1,45 @@
 {
-  "_comment": "Prop-kit asset manifest for KhaozEngine.Showcase. heightMeters is the real-world height the loader normalizes each mesh to (origin dropped to the base). Collision footprints are derived from the actual mesh at load time (PropFootprint), so no hand-authored \u0027collider\u0027 is needed here - a tree yields its trunk slice, a rock its full footprint. An explicit \u0027collider\u0027 { type, ... } per entry would override the derived one. CC0 Quaternius nature props, decompressed \u002B flattened to plain glTF offline (see CREDITS.md). Ids are referenced by ScatterConfig.ForestRing().",
+  "_comment": "Prop-kit asset manifest for KhaozEngine.Showcase. heightMeters is the real-world height the loader normalizes each mesh to (origin dropped to the base). Collision uses the authored, mesh-baked collisionShape .coll per entry (imported from Ruinborne, baked by ke-propbake): trees are thin trunk cylinders, rocks are hulls. Room3D loads them headless via PropCollisionFormat.LoadDirectory. CC0 Quaternius nature props, decompressed + flattened to plain glTF offline (see CREDITS.md). Ids are referenced by ScatterConfig.ForestRing().",
   "props": [
     {
       "id": "pine_a",
       "file": "pine_a.glb",
       "heightMeters": 12.0,
       "source": "Quaternius Stylized Nature (via world-of-claudecraft)",
-      "license": "CC0"
+      "license": "CC0",
+      "collisionShape": "pine_a.coll"
     },
     {
       "id": "pine_b",
       "file": "pine_b.glb",
       "heightMeters": 11.0,
       "source": "Quaternius Stylized Nature (via world-of-claudecraft)",
-      "license": "CC0"
+      "license": "CC0",
+      "collisionShape": "pine_b.coll"
     },
     {
       "id": "pine_c",
       "file": "pine_c.glb",
       "heightMeters": 10.0,
       "source": "Quaternius Stylized Nature (via world-of-claudecraft)",
-      "license": "CC0"
+      "license": "CC0",
+      "collisionShape": "pine_c.coll"
     },
     {
       "id": "oak_a",
       "file": "oak_a.glb",
       "heightMeters": 9.0,
       "source": "Quaternius Stylized Nature (via world-of-claudecraft)",
-      "license": "CC0"
+      "license": "CC0",
+      "collisionShape": "oak_a.coll"
     },
     {
       "id": "oak_b",
       "file": "oak_b.glb",
       "heightMeters": 8.0,
       "source": "Quaternius Stylized Nature (via world-of-claudecraft)",
-      "license": "CC0"
+      "license": "CC0",
+      "collisionShape": "oak_b.coll"
     },
     {
       "id": "rock_a",
@@ -43,7 +48,8 @@
       "source": "Quaternius Stylized Nature (via world-of-claudecraft)",
       "license": "CC0",
       "surface": true,
-      "heightmap": "rock_a.surf"
+      "heightmap": "rock_a.surf",
+      "collisionShape": "rock_a.coll"
     },
     {
       "id": "rock_b",
@@ -52,7 +58,8 @@
       "source": "Quaternius Stylized Nature (via world-of-claudecraft)",
       "license": "CC0",
       "surface": true,
-      "heightmap": "rock_b.surf"
+      "heightmap": "rock_b.surf",
+      "collisionShape": "rock_b.coll"
     }
   ]
 }

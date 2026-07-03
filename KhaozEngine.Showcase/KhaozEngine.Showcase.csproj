@@ -9,7 +9,6 @@
   <ItemGroup>
     <None Include="assets/props/**" CopyToOutputDirectory="PreserveNewest" />
     <None Include="assets/character/**" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="assets/blacksmith_proxy.coll" CopyToOutputDirectory="PreserveNewest" />
     <None Include="assets/buildings/**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>

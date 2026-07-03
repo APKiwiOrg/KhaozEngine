@@ -75,6 +75,15 @@ namespace KhaozEngine.Windowing
         public GpuBackendKind Backend => _gpu.Backend;
         /// <summary>Clip-space / depth conventions of the live device (see <see cref="GpuCapabilities"/>).</summary>
         public GpuCapabilities Capabilities => _gpu.Capabilities;
+        /// <summary>Physical framebuffer (drawable) size in pixels - the actual resolution the swapchain renders at
+        /// (e.g. 2x the logical size on a HiDPI/Retina display). This is the 3D scene's real render resolution;
+        /// if it is below the monitor's native pixels, the OS is upscaling the window.</summary>
+        public int FramebufferWidth => _window.FramebufferSize.X;
+        public int FramebufferHeight => _window.FramebufferSize.Y;
+        /// <summary>Logical window size in points (physical size / DPI scale). FramebufferWidth / LogicalWidth is the
+        /// DPI scale factor (1.0 = no HiDPI scaling, 2.0 = Retina).</summary>
+        public int LogicalWidth => _window.Size.X;
+        public int LogicalHeight => _window.Size.Y;
         /// <summary>Background colour cleared each frame.</summary>
         public Color ClearColor = new(0.10f, 0.12f, 0.16f, 1f);
 

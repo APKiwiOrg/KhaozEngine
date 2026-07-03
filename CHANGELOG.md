@@ -5,6 +5,21 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 9.10.0
+
+Diagnostics: the live device now surfaces its adapter name and sampler feature flags, and `AppWindow` exposes the physical framebuffer (render) resolution and logical window size. Additive minor, new public read-only info (used to chase the Windows/D3D11 terrain fuzz from an in-game debug panel).
+
+- **`GpuCapabilities`** (`KhaozEngine.Gpu`) gains **`DeviceName`** (the GPU adapter / driver name, Veldrid
+  `GraphicsDevice.DeviceName`), **`SamplerAnisotropy`**, and **`SamplerLodBias`** (the `GraphicsDeviceFeatures`
+  flags the sampler path already gates on - when false, a requested anisotropy/mip-LOD-bias is silently dropped).
+  Reachable via `GpuDeviceContext.Capabilities` / `AppWindow.Capabilities`. The new ctor params are optional, so
+  existing construction is unchanged.
+- **`AppWindow.FramebufferWidth` / `FramebufferHeight`** (physical drawable pixels - the real render resolution;
+  2x logical on Retina) and **`AppWindow.LogicalWidth` / `LogicalHeight`** (logical points). Their ratio is the
+  DPI scale; a framebuffer below the monitor's native pixels means the OS is upscaling the window.
+- Tests: headless `GpuCapabilitiesDiagTests` (field storage + never-null device name) and a gated live-device check
+  (Metal reports `Apple M2 Max`, `SamplerAnisotropy=true`, `SamplerLodBias=false`).
+
 ## 9.9.0
 
 Diagnostic mip-chain readback: a game/test can read one mip level of a splat material's albedo array back to the CPU, to verify a generated mip chain on a real device (used to chase the Windows/D3D11 terrain "fuzz"). Additive minor, new public API, no behaviour change.

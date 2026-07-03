@@ -75,7 +75,7 @@ next frame (`_frameBuffers`). Replace with ONE persistent growable vertex buffer
 - Modify `KhaozEngine.Render2D/SpriteBatch.cs`.
 - Tests: extend `KhaozEngine.Tests` where headless-checkable (e.g. a `Scene3D` instance-grouping unit if the
   grouping is factored into a pure helper; the rest is GPU-verified). Keep `SceneInstancesTests` green.
-- Release: bump `<KhaozEngine5xVersion>` 5.23.0 -> 5.24.0-experimental, CHANGELOG, pack the 6 5.x packages.
+- Release: bump `<KhaozEngineVersion>` 5.23.0 -> 5.24.0-experimental, CHANGELOG, pack the 6 5.x packages.
 
 ## Testing + verification
 - `dotnet test` ALL green (default; goldens skipped).

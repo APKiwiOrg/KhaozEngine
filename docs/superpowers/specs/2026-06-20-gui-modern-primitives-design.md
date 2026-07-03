@@ -212,7 +212,7 @@ Gated GPU goldens (`KE_GPU_TESTS=1`, baked on Metal/D3D11/Vulkan):
 
 Per `KhaozEngine/CLAUDE.md` ritual, in order:
 
-1. Bump `<KhaozEngine5xVersion>` to `7.4.0` in `Directory.Build.props`.
+1. Bump `<KhaozEngineVersion>` to `7.4.0` in `Directory.Build.props`.
 2. `CHANGELOG.md` newest-first detailed entry (new SDF SpriteBatch path + Gui modern
    primitives + icon system + StatChip/IconButton; byte-identical defaults).
 3. `CHANGENOTES.md` one-line digest.

@@ -103,6 +103,6 @@ gameplay). Those are later (Phase B is the game; tint/animation are their own en
 
 ## Release
 
-Additive minor on the shared 5.x line: bump `<KhaozEngine5xVersion>` 5.12.0 → `5.13.0-experimental`,
+Additive minor on the shared 5.x line: bump `<KhaozEngineVersion>` 5.12.0 → `5.13.0-experimental`,
 CHANGELOG + ROADMAP, pack the 5 packages, tag `v5.13.0-experimental`. Then Phase B (Hardpoint slice) pins
 5.13.0 and consumes `Render3DSurface` + `ScreenToGround` + the instance API.

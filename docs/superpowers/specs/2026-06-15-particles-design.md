@@ -9,7 +9,7 @@ the 3D path that the Hardpoint testbed needs.
 ## Part A — `KhaozEngine.Particles` (NEW pure package: System.Numerics + BCL only, no Veldrid/MonoGame)
 
 New project `KhaozEngine.Particles/KhaozEngine.Particles.csproj` (PackageId `KhaozEngine.Particles`,
-`<Version>$(KhaozEngine5xVersion)</Version>`, `InternalsVisibleTo KhaozEngine.Tests`, a README, no project
+`<Version>$(KhaozEngineVersion)</Version>`, `InternalsVisibleTo KhaozEngine.Tests`, a README, no project
 refs). Add it to `KhaozEngine.slnx` and to `KhaozEngine.Tests.csproj` ProjectReferences.
 
 ### Types
@@ -133,5 +133,5 @@ independent of the sim. (Note this choice in the changelog.)
 - Create `KhaozEngine.Render3D/Rendering/BillboardRenderer.cs` + `BillboardGeometry.cs`; modify
   `Scene3D.cs` (+ `Internal/ShaderSources.cs`).
 - Tests: `KhaozEngine.Tests/Particles/*Tests.cs`, `KhaozEngine.Tests/Render3D/BillboardGeometryTests.cs`.
-- Release: bump `<KhaozEngine5xVersion>` 5.20.0 -> 5.21.0-experimental, CHANGELOG, pack the 5.x packages
+- Release: bump `<KhaozEngineVersion>` 5.20.0 -> 5.21.0-experimental, CHANGELOG, pack the 5.x packages
   (now SIX: Windowing/Render2D/Render3D/Audio/Gui/**Particles**).

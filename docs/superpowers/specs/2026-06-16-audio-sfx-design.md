@@ -145,7 +145,7 @@ All must pass WITHOUT an audio device (no OpenAL):
 
 ## Release
 
-- Bump `<KhaozEngine5xVersion>` 5.33.0 -> 5.34.0; CHANGELOG entry (newest-first); update the Audio package
+- Bump `<KhaozEngineVersion>` 5.33.0 -> 5.34.0; CHANGELOG entry (newest-first); update the Audio package
   `<Description>` to mention SFX + positional. Pack the 8 5.x packages to `local-feed`. Merge --no-ff, run the
   suite on main, pack canonical, tag `v5.34.0`, push main + tag.
 - (Hardpoint adoption — wire `PlaySfx`/`PlaySfx3D` at the existing CombatVfx muzzle/hit/death hooks + generate

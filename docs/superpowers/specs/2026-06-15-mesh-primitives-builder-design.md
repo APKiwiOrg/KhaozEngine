@@ -72,7 +72,7 @@ Rules:
 - Create `KhaozEngine.Render3D/MeshBuilder.cs`.
 - Create `KhaozEngine.Tests/Render3D/MeshPrimitivesTests.cs` and `MeshBuilderTests.cs` (or extend an existing
   Render3D test file if one exists).
-- Release: bump `<KhaozEngine5xVersion>` 5.17.0 -> 5.18.0-experimental, CHANGELOG, pack the 5 5.x packages.
+- Release: bump `<KhaozEngineVersion>` 5.17.0 -> 5.18.0-experimental, CHANGELOG, pack the 5 5.x packages.
 
 ## Testing (headless, no GPU)
 - Each primitive: index count divisible by 3; every index < vertex count; all normals unit length (±1e-3);

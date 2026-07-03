@@ -1288,7 +1288,7 @@ Expected: ALL PASS (gated GPU tests skip without `KE_GPU_TESTS=1`).
 
 - [ ] **Step 2: Bump the version**
 
-Edit `Directory.Build.props`: change `<KhaozEngine5xVersion>7.3.0</KhaozEngine5xVersion>` to `7.4.0`.
+Edit `Directory.Build.props`: change `<KhaozEngineVersion>7.3.0</KhaozEngineVersion>` to `7.4.0`.
 
 - [ ] **Step 3: Add the `CHANGELOG.md` entry (newest-first, detailed)**
 

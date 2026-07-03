@@ -207,7 +207,7 @@ Every new behaviour ships with a headless test, per the engine rule.
   must not touch sim / RNG / netcode.
 - **docs/USING-KHAOZENGINE.md:** add the skinned-mesh usage section; remove or qualify the
   "no skeletal animation" / "no vertex animation" statements that this changes.
-- **Release ritual:** bump `<KhaozEngine5xVersion>` in `Directory.Build.props`; add the
+- **Release ritual:** bump `<KhaozEngineVersion>` in `Directory.Build.props`; add the
   CHANGELOG.md entry + the one-line CHANGENOTES.md digest; update the three version-
   declaration sites the doc guard checks (docs/CONSUMERS.md engine line, docs/ROADMAP.md
   current version, README.md PackageReference example); `dotnet pack -c Release -o

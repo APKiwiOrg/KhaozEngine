@@ -13,7 +13,7 @@
 - TDD: every new behaviour ships with a headless test in `KhaozEngine.Tests` (no GPU, no real device). Construct state directly and assert.
 - No em-dashes anywhere (code comments, commit messages, docs). Plain hyphens only.
 - `ITerrainFeature.Apply` must be pure in `(x, z, h)` (load-order independent). Plain `float` math (authoritative server + visual client agree; replication corrects tiny FP drift).
-- Additive changes only -> **one minor version bump** of `<KhaozEngine5xVersion>` in `Directory.Build.props` (from `7.50.0` to `7.51.0`, unless a concurrent release already took it; re-check `git fetch` + `git tag` before bumping and go past the highest).
+- Additive changes only -> **one minor version bump** of `<KhaozEngineVersion>` in `Directory.Build.props` (from `7.50.0` to `7.51.0`, unless a concurrent release already took it; re-check `git fetch` + `git tag` before bumping and go past the highest).
 - New public ctor params are OPTIONAL with defaults so existing demos/tests compile unchanged (`WorldBounds? bounds = null`).
 - Match surrounding code style: terrain features use `private readonly` fields + a ctor (not public mutable fields); XML doc comments on public types.
 - Release ritual (CLAUDE.md): bump version -> CHANGELOG.md + CHANGENOTES.md -> 3 guard declarations (docs/CONSUMERS.md, docs/ROADMAP.md, README.md PackageReference) -> CLAUDE.md package-map note + docs/USING-KHAOZENGINE.md usage section -> `scripts/check-doc-versions.sh` -> `dotnet test` -> `dotnet pack -c Release -o ./local-feed` -> merge to main -> tag `vX.Y.Z` -> push main + tag.
@@ -913,16 +913,16 @@ git commit -m "sample(terrainwalk): bounded mode (BoundedClearing + slope-gated 
 ### Task 7: Release ritual (version bump, docs, pack, merge, tag, push)
 
 **Files:**
-- Modify: `Directory.Build.props` (`<KhaozEngine5xVersion>`), `CHANGELOG.md`, `CHANGENOTES.md`, `docs/CONSUMERS.md`, `docs/ROADMAP.md`, `README.md`, `CLAUDE.md`, `docs/USING-KHAOZENGINE.md`
+- Modify: `Directory.Build.props` (`<KhaozEngineVersion>`), `CHANGELOG.md`, `CHANGENOTES.md`, `docs/CONSUMERS.md`, `docs/ROADMAP.md`, `README.md`, `CLAUDE.md`, `docs/USING-KHAOZENGINE.md`
 
 - [ ] **Step 1: Re-check the version is free**
 
 ```bash
-git fetch origin && git tag | sort -V | tail -5 && git show origin/main:Directory.Build.props | grep 5xVersion
+git fetch origin && git tag | sort -V | tail -5 && git show origin/main:Directory.Build.props | grep KhaozEngineVersion
 ```
 Pick the next free minor above the highest of {local 7.50.0, origin, tags}. Target `7.51.0`; if `v7.51.0` exists, go to the next free minor.
 
-- [ ] **Step 2: Bump `Directory.Build.props`** - set `<KhaozEngine5xVersion>7.51.0</KhaozEngine5xVersion>`.
+- [ ] **Step 2: Bump `Directory.Build.props`** - set `<KhaozEngineVersion>7.51.0</KhaozEngineVersion>`.
 
 - [ ] **Step 3: CHANGELOG.md** - newest-first detailed entry under a `## 7.51.0` heading: RimFeature + RimPass (Terrain), WorldBounds/CircleBounds/RectBounds (NetWorld) clamped in PlayerMoveSimulator/PlayerMovementSystem/WorldServer/ShardedWorldServer/WorldClient (nullable, off = unchanged), TerrainCollision.GroundNormal + authoritative slope-gate wiring, TerrainPresets.BoundedClearing, TerrainWalkSample bounded mode.
 

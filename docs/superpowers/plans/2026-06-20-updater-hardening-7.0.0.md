@@ -1479,7 +1479,7 @@ One version bump for the whole batch, per the engine release ritual. This is a b
 In `Directory.Build.props`, change line 18:
 
 ```xml
-    <KhaozEngine5xVersion>7.0.0</KhaozEngine5xVersion>
+    <KhaozEngineVersion>7.0.0</KhaozEngineVersion>
 ```
 
 - [ ] **Step 2: Add the CHANGELOG entry (newest first)**

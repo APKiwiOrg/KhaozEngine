@@ -163,7 +163,7 @@ New file `KhaozEngine.Tests/Render2DRoomCameraTests.cs`.
 
 Additive → minor. Next 5.x version is **5.55.0**.
 
-1. Bump `<KhaozEngine5xVersion>` to `5.55.0`.
+1. Bump `<KhaozEngineVersion>` to `5.55.0`.
 2. Newest-first `CHANGELOG.md` entry (same commit).
 3. Update the three guard-checked declarations (CONSUMERS, ROADMAP, README package refs).
 4. In `docs/ROADMAP.md` camera section, move the room/region cameras item from "Still open" to "Shipped".

@@ -532,7 +532,7 @@ Additive change → minor bump. Follows `KhaozEngine/CLAUDE.md` release order.
 
 - [ ] **Step 1: Bump the 5.x version**
 
-In `Directory.Build.props`, change `<KhaozEngine5xVersion>5.53.0</KhaozEngine5xVersion>` to `5.54.0`.
+In `Directory.Build.props`, change `<KhaozEngineVersion>5.53.0</KhaozEngineVersion>` to `5.54.0`.
 
 - [ ] **Step 2: Add the CHANGELOG entry**
 
@@ -579,7 +579,7 @@ In `docs/ROADMAP.md`, in the "Camera: first-class follow / scroller camera" sect
 - [ ] **Step 5: Verify the doc-version guard passes**
 
 Run: `bash scripts/check-doc-versions.sh`
-Expected: exit 0 (declarations match `<KhaozEngine5xVersion>` = 5.54.0).
+Expected: exit 0 (declarations match `<KhaozEngineVersion>` = 5.54.0).
 
 - [ ] **Step 6: Test and pack**
 

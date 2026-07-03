@@ -6,7 +6,7 @@ the standalone `Render3DHost` (and its private `Key`/`FrameInfo`) to be demoted.
 
 ## Part A — new `KhaozEngine.Game` package + `GameApp`
 
-New 5.x package `KhaozEngine.Game` (PackageId `KhaozEngine.Game`, `<Version>$(KhaozEngine5xVersion)</Version>`,
+New 5.x package `KhaozEngine.Game` (PackageId `KhaozEngine.Game`, `<Version>$(KhaozEngineVersion)</Version>`,
 README, `InternalsVisibleTo KhaozEngine.Tests`) referencing `KhaozEngine.Windowing` + `KhaozEngine.Render2D` +
 `KhaozEngine.Render3D` + `KhaozEngine.Gui`. Add to `KhaozEngine.slnx` + `KhaozEngine.Tests.csproj`. (It sits
 ABOVE the renderers — that's why it's a new top package, not in Windowing which is the floor.)

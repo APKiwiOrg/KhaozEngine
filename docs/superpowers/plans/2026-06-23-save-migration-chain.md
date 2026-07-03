@@ -785,7 +785,7 @@ git commit -m "persistence: GameStorage.Load + CreateSettingsManager accept an o
 
 - [ ] **Step 1: Bump the version**
 
-In `Directory.Build.props` change `<KhaozEngine5xVersion>7.31.0</KhaozEngine5xVersion>` to `<KhaozEngine5xVersion>7.32.0</KhaozEngine5xVersion>`.
+In `Directory.Build.props` change `<KhaozEngineVersion>7.31.0</KhaozEngineVersion>` to `<KhaozEngineVersion>7.32.0</KhaozEngineVersion>`.
 
 - [ ] **Step 2: CHANGELOG.md — add the newest-first entry**
 

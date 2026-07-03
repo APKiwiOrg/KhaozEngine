@@ -8,7 +8,7 @@
 
 **Tech Stack:** C# / net10.0, xUnit, BCL-only (no MonoGame in these packages). Spec: `docs/superpowers/specs/2026-06-18-crossplatform-storage-design.md`.
 
-**Release target:** 5.x line `<KhaozEngine5xVersion>` 5.58.0 → **5.59.0** (breaking-as-minor).
+**Release target:** 5.x line `<KhaozEngineVersion>` 5.58.0 → **5.59.0** (breaking-as-minor).
 
 **Worktree:** This is engine work that ships a package (public API + tests + release ritual), so per `CLAUDE.md` it MUST run in a dedicated worktree, not loose on `main`. Create it with the native `EnterWorktree` tool, branch `feature/crossplatform-storage`, before Task 1.
 
@@ -997,7 +997,7 @@ Expected: PASS (all green - was 1272 + new tests).
 
 - [ ] **Step 2: Bump the 5.x version**
 
-In `Directory.Build.props`, change `<KhaozEngine5xVersion>5.58.0</KhaozEngine5xVersion>` to `<KhaozEngine5xVersion>5.59.0</KhaozEngine5xVersion>`. Leave the legacy `<Version>4.12.0</Version>` untouched.
+In `Directory.Build.props`, change `<KhaozEngineVersion>5.58.0</KhaozEngineVersion>` to `<KhaozEngineVersion>5.59.0</KhaozEngineVersion>`. Leave the legacy `<Version>4.12.0</Version>` untouched.
 
 - [ ] **Step 3: Add the CHANGELOG entry (newest-first, top of `CHANGELOG.md`, above the 5.58.0 entry)**
 
@@ -1027,7 +1027,7 @@ Cross-platform storage: `AppDataPaths` is now publisher-rooted and mobile-aware,
 - `README.md`: the four `<PackageReference ... Version="5.58.0" />` examples → `5.59.0`.
 
 Verify: `bash scripts/check-doc-versions.sh`
-Expected: exits 0 (declarations match `<KhaozEngine5xVersion>`).
+Expected: exits 0 (declarations match `<KhaozEngineVersion>`).
 
 - [ ] **Step 5: Pack to the local feed (cumulative; do not delete old versions)**
 

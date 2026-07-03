@@ -70,7 +70,7 @@ New `KhaozEngine.Determinism` package.
 - Added to the `Foundation`, `Game2D`, and `Game3D` umbrella metapackages so all three games get
   it transitively. (Not `Server` unless a server sim needs it — include it too since servers run
   authoritative lockstep sims. Decision: include in all four umbrellas.)
-- `<Version>$(KhaozEngine5xVersion)</Version>`, rides the shared version line.
+- `<Version>$(KhaozEngineVersion)</Version>`, rides the shared version line.
 
 ## Public API
 
@@ -179,7 +179,7 @@ Add a "Deterministic floating point" section to `docs/USING-KHAOZENGINE.md`:
 
 ## Release (per CLAUDE.md ritual)
 
-Minor (additive) bump of `<KhaozEngine5xVersion>`. CHANGELOG + CHANGENOTES in the same commit.
+Minor (additive) bump of `<KhaozEngineVersion>`. CHANGELOG + CHANGENOTES in the same commit.
 Update the three guard-checked declarations (`docs/CONSUMERS.md` engine current version,
 `docs/ROADMAP.md` current released version, `README.md` PackageReference example). New package
 wired into the four umbrellas. `dotnet pack -c Release -o ./local-feed`, commit, tag `vX.Y.Z`,

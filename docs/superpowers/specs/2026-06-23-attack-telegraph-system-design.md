@@ -179,7 +179,7 @@ GPU golden (the accepted cost):
 
 Single bump 7.33.0 -> 7.34.0 (additive = minor). In order, per the engine release ritual:
 
-1. Bump `<KhaozEngine5xVersion>` in `Directory.Build.props`.
+1. Bump `<KhaozEngineVersion>` in `Directory.Build.props`.
 2. CHANGELOG.md newest-first detailed entry + CHANGENOTES.md one-line digest (same commit).
 3. Update the 3 doc version declarations check-doc-versions.sh enforces (docs/CONSUMERS.md
    "Engine current version", docs/ROADMAP.md "Current released version", README.md
@@ -189,7 +189,7 @@ Single bump 7.33.0 -> 7.34.0 (additive = minor). In order, per the engine releas
 6. Commit; `git tag v7.34.0`; push main + tag (CI publishes to GitHub Packages on v*).
 
 Two new packable projects (`KhaozEngine.Telegraphs`, `KhaozEngine.Telegraphs.Render3D`), each with
-`<Version>$(KhaozEngine5xVersion)</Version>`, added to the Game2D / Game3D umbrella metapackages
+`<Version>$(KhaozEngineVersion)</Version>`, added to the Game2D / Game3D umbrella metapackages
 respectively.
 
 ## First consumer (for reference; wired later in the SpaceGame chat)

@@ -162,7 +162,7 @@ Headless tests in `KhaozEngine.Tests/Updates/` (extend existing `FakeUpdateSourc
 
 ## Release (engine ritual, 7.0.0)
 
-1. Bump `<KhaozEngine5xVersion>` to `7.0.0` in `Directory.Build.props`.
+1. Bump `<KhaozEngineVersion>` to `7.0.0` in `Directory.Build.props`.
 2. `CHANGELOG.md` newest-first entry (breaking: mandatory signed manifests; origin lock; path,
    reparse, size guards; downgrade enforcement; macOS codesign re-verify).
 3. `CHANGENOTES.md` one-line digest.

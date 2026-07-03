@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- **Version bump: MINOR** (adds the public `OutlineDistanceFade` knob + fade params to `PixelPostProcessSettings`). `7.50.0` -> `7.51.0` in `Directory.Build.props` `<KhaozEngine5xVersion>`.
+- **Version bump: MINOR** (adds the public `OutlineDistanceFade` knob + fade params to `PixelPostProcessSettings`). `7.50.0` -> `7.51.0` in `Directory.Build.props` `<KhaozEngineVersion>`.
 - **Orthographic output must stay stable for the OUTLINE-ON goldens.** The 6 outline-on ortho goldens (`scene3d`, `scene3d_fill`, `telegraph_ground`, `scene3d_textured`, `scene3d_texbillboard`, `scene3d_beam`) MUST still pass without a re-bake. The perspective branch + fade are gated off for ortho; Bug B's Metal sampler reorder must not move them beyond the 0.06 golden tolerance. Verify, do not re-bake.
 - **The 2 outline-OFF ortho goldens WILL be corrected by Bug A** (`scene3d_normalmap`, `scene3d_skinned_normalmap`, both `UseSmoothPreset()` => `Outline=false`). They currently encode the upside-down (parity-flipped) image; the Bug A fix flips them upright, so they MUST be re-baked on all 3 backends. This is the fix working, not a regression. (Empirically confirmed: outline-off renders vertically flipped.)
 - **GPU golden discipline:** a golden baked only on Metal turns `main` RED on D3D11/Vulkan (`cross-platform-gpu.yml` is blocking on every push). Every new or re-baked golden is baked on all three: Metal locally (`KE_GPU_TESTS=1 KE_UPDATE_GOLDENS=1`), D3D11+Vulkan via `cross-platform-gpu.yml` `workflow_dispatch` `bake=true`, download artifacts, commit.
@@ -666,7 +666,7 @@ Expected: PASS (all three backends agree within the 0.20 cross-backend tolerance
 
 - [ ] **Step 1: Bump the version**
 
-In `Directory.Build.props`, change `<KhaozEngine5xVersion>7.50.0</KhaozEngine5xVersion>` to `7.51.0`.
+In `Directory.Build.props`, change `<KhaozEngineVersion>7.50.0</KhaozEngineVersion>` to `7.51.0`.
 
 - [ ] **Step 2: CHANGELOG.md (newest-first detailed entry)**
 

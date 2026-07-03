@@ -17,7 +17,7 @@
 - **The dep-free `KhaozEngine.WorldStore` core stays unchanged** (no DB dependency leaks into it).
 - **Forward-tolerant player record:** unknown fields in a stored record must be ignored on load (so a later field add never breaks old saves).
 - **Stay in scope.** Do NOT build: per-cell/world-snapshot persistence (that is 6b sharding), record-schema migrations, accounts/auth (the key is an opaque `accountId`), connection pooling beyond provider defaults, EF/ORM.
-- **One shared version line.** `<KhaozEngine5xVersion>` in `Directory.Build.props` governs every package; one minor bump (`7.48.0` → `7.49.0`) releases all. Each packable csproj sets `<Version>$(KhaozEngine5xVersion)</Version>`.
+- **One shared version line.** `<KhaozEngineVersion>` in `Directory.Build.props` governs every package; one minor bump (`7.48.0` → `7.49.0`) releases all. Each packable csproj sets `<Version>$(KhaozEngineVersion)</Version>`.
 - **Two packages are ADDED**, so the FULL added-package doc sweep is required (see Task 9): `Directory.Build.props`, README catalog + repo-layout, `CLAUDE.md` package map + umbrellas, `docs/CONSUMERS.md`, `docs/USING-KHAOZENGINE.md`, the 3 guard declarations, `CHANGELOG.md` + `CHANGENOTES.md`, plus the `KhaozEngine.Server` umbrella csproj and `KhaozEngine.slnx`.
 - **Commit subjects:** conventional `area(scope): summary`; on the version-bump commit the scope is the new version (e.g. `worldstore(7.49.0): ...`).
 - Work happens in the worktree `feature/persistent-worldstore` (already created). `local-feed/` must exist before restore (`mkdir -p local-feed` — already done).
@@ -230,7 +230,7 @@ Create `KhaozEngine.WorldStore.Sqlite/KhaozEngine.WorldStore.Sqlite.csproj`:
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.WorldStore.Sqlite</PackageId>
-    <Version>$(KhaozEngine5xVersion)</Version>
+    <Version>$(KhaozEngineVersion)</Version>
     <Description>SQLite IWorldStore backend over Microsoft.Data.Sqlite: SqliteWorldStore persists the authoritative keyed byte[] world store to an embedded SQLite database (one world_store table, schema bootstrapped on construction, upsert via INSERT ... ON CONFLICT, raw parameterized async ADO.NET, no EF/ORM). The zero-infra dev/test and single-node backend; what keeps server persistence headless-testable. Opt-in: pulls Microsoft.Data.Sqlite without touching the dependency-free KhaozEngine.WorldStore core.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
@@ -484,7 +484,7 @@ Create `KhaozEngine.WorldStore.SqlServer/KhaozEngine.WorldStore.SqlServer.csproj
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.WorldStore.SqlServer</PackageId>
-    <Version>$(KhaozEngine5xVersion)</Version>
+    <Version>$(KhaozEngineVersion)</Version>
     <Description>SQL Server / Azure SQL IWorldStore backend over Microsoft.Data.SqlClient: SqlServerWorldStore persists the authoritative keyed byte[] world store to a SQL Server database (one world_store table, schema bootstrapped on construction, upsert via MERGE WITH (HOLDLOCK), raw parameterized async ADO.NET, no EF/ORM). The production backend (Azure SQL); same IWorldStore contract as the SQLite dev/test backend. Opt-in: pulls Microsoft.Data.SqlClient without touching the dependency-free KhaozEngine.WorldStore core.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
@@ -1537,7 +1537,7 @@ Two packages added → the FULL added-package doc sweep, plus the version bump a
 
 - [ ] **Step 1: Bump the version + update the enumeration comment**
 
-In `Directory.Build.props`, change `<KhaozEngine5xVersion>7.48.0</KhaozEngine5xVersion>` to `7.49.0`. The descriptive comment above it enumerates foundation packages; append `WorldStore.Sqlite/WorldStore.SqlServer` to that list if it names WorldStore-family packages (read it and keep the list accurate).
+In `Directory.Build.props`, change `<KhaozEngineVersion>7.48.0</KhaozEngineVersion>` to `7.49.0`. The descriptive comment above it enumerates foundation packages; append `WorldStore.Sqlite/WorldStore.SqlServer` to that list if it names WorldStore-family packages (read it and keep the list accurate).
 
 - [ ] **Step 2: README package catalog + repo-layout + PackageReference example**
 

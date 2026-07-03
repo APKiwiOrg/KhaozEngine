@@ -158,7 +158,7 @@ New `GameStorageTests` (real temp dirs, like the existing helper pattern):
 
 ### Packaging / release ritual
 
-- Bump `<KhaozEngine5xVersion>` 5.58.0 → **5.59.0** in `Directory.Build.props`.
+- Bump `<KhaozEngineVersion>` 5.58.0 → **5.59.0** in `Directory.Build.props`.
 - `CHANGELOG.md`: newest-first 5.59.0 entry describing the publisher root, mobile branches,
   `AppDataPaths` ctor change (breaking-as-minor), and `GameStorage`/`GameStorageOptions`.
 - Update the three guarded declarations to 5.59.0: `docs/CONSUMERS.md` "Engine current version",

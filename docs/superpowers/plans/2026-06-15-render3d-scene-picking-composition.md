@@ -585,7 +585,7 @@ If either looks wrong (instances overlapping, HUD under the 3D, distortion), sto
 
 ### Task 7: Release ritual — `5.13.0-experimental`
 
-- [ ] **Step 1: Bump the shared 5.x version.** In `Directory.Build.props`, `<KhaozEngine5xVersion>5.12.0-experimental</KhaozEngine5xVersion>` → `5.13.0-experimental`.
+- [ ] **Step 1: Bump the shared 5.x version.** In `Directory.Build.props`, `<KhaozEngineVersion>5.12.0-experimental</KhaozEngineVersion>` → `5.13.0-experimental`.
 
 - [ ] **Step 2: CHANGELOG.** Add a newest-first `## 5.13.0-experimental (custom 5.x line)` entry covering: multi-instance `Scene3D` (`LoadMesh`/`Begin`/`Draw`, removed `LoadModel`/`Spin`), `IsoCamera3D.ScreenToRay`/`ScreenToGround` + `Ray`, `Render3DSurface` composition, and the `ModelRenderer` `BeginModelPass`/`DrawInstance` split (internal). Note it's the Phase A prerequisite for the Hardpoint 3D slice.
 

@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - **Package placement:** all new types go in the EXISTING `KhaozEngine.Terrain.Render3D` package (namespace `KhaozEngine.Terrain`). No new package, no catalog churn.
-- **One minor version bump** (additive API in an existing package): `7.47.0` → `7.48.0`. Update `Directory.Build.props` `<KhaozEngine5xVersion>`, `CHANGELOG.md` (newest-first detailed entry), `CHANGENOTES.md` (newest-first one-line digest), and the 3 guard declarations (`docs/CONSUMERS.md` "Engine current version", `docs/ROADMAP.md` "Current released version", `README.md` `<PackageReference>` example), plus `docs/USING-KHAOZENGINE.md` streaming usage section.
+- **One minor version bump** (additive API in an existing package): `7.47.0` → `7.48.0`. Update `Directory.Build.props` `<KhaozEngineVersion>`, `CHANGELOG.md` (newest-first detailed entry), `CHANGENOTES.md` (newest-first one-line digest), and the 3 guard declarations (`docs/CONSUMERS.md` "Engine current version", `docs/ROADMAP.md` "Current released version", `README.md` `<PackageReference>` example), plus `docs/USING-KHAOZENGINE.md` streaming usage section.
 - **No em-dashes** anywhere (use periods/commas/parentheses).
 - **TDD, no GPU in tests.** Every new behaviour ships with a headless xUnit test in `KhaozEngine.Tests`. The streamer is tested only through a fake `IChunkSink`; no real device.
 - **Stay in scope.** Do NOT build: threaded/background chunk build (main-thread amortized only), multi-cell server sharding (6b), server-side paging/`WorldStore`, distant-chunk impostors, prop-as-entity.
@@ -882,7 +882,7 @@ git commit -m "sample(terrain-walk): stream an endless world via TerrainStreamer
 
 - [ ] **Step 1: Bump the version**
 
-In `Directory.Build.props`, change `<KhaozEngine5xVersion>7.47.0</KhaozEngine5xVersion>` to `7.48.0`.
+In `Directory.Build.props`, change `<KhaozEngineVersion>7.47.0</KhaozEngineVersion>` to `7.48.0`.
 
 - [ ] **Step 2: `CHANGELOG.md` — newest-first detailed entry**
 

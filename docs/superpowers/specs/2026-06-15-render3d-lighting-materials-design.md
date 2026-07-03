@@ -88,7 +88,7 @@ update the `CreateBuffer(288, ...)` and the `// 2 mat4 + N vec4` comment. `DrawI
 - Modify `KhaozEngine.Render3D/Internal/ShaderSources.cs` (vert worldPos out; frag two-light + specular + emissive).
 - Modify the `MeshInstance` component + `Scene3DBinder` (additive material).
 - Tests: extend `KhaozEngine.Tests/Render3D/SceneInstancesTests.cs` + `Scene3DBinderTests.cs`.
-- Release: bump `<KhaozEngine5xVersion>` 5.18.0 -> 5.19.0-experimental, CHANGELOG, pack 5 pkgs.
+- Release: bump `<KhaozEngineVersion>` 5.18.0 -> 5.19.0-experimental, CHANGELOG, pack 5 pkgs.
 
 ## Testing
 - Headless (no GPU): `Material.None`/`Emissive`/`Shiny` defaults; `Scene3D.Draw(mesh,world,tint,material)`

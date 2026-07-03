@@ -11,7 +11,7 @@ Fifth slice of the camera feel layer: **screen shake**. The roadmap homes screen
 `KhaozEngine.Particles`, referenced only by its own tests, consumed by no game). So this slice has two parts:
 
 1. **Graduate `KhaozEngine.Effects` to the 5.x line** — retire the dead particle code, drop MonoGame, move
-   the package onto `<KhaozEngine5xVersion>`.
+   the package onto `<KhaozEngineVersion>`.
 2. **Add `ScreenShake`** — a trauma-based, deterministic screen-shake offset generator.
 
 Out of scope (last remaining feel-layer slice, separate spec): parallax background layers.
@@ -26,7 +26,7 @@ package already supersedes. Nothing consumes it but its own tests.
   `ParticleEmitterConfig.cs`, `ParticlePresets.cs`, `ParticleView.cs`.
 - **Delete its tests:** `KhaozEngine.Tests/ParticleSystemTests.cs`, `KhaozEngine.Tests/ParticlePresetsTests.cs`.
 - **Rewrite `KhaozEngine.Effects/KhaozEngine.Effects.csproj`:** drop the `MonoGame.Framework.DesktopGL`
-  `PackageReference` and the `KhaozEngine.Graphics` `ProjectReference`; add `<Version>$(KhaozEngine5xVersion)</Version>`;
+  `PackageReference` and the `KhaozEngine.Graphics` `ProjectReference`; add `<Version>$(KhaozEngineVersion)</Version>`;
   add `<InternalsVisibleTo Include="KhaozEngine.Tests" />` (consistency with the other 5.x packages, though
   `ScreenShake` is fully public); refresh the `<Description>` to describe the 5.x effects package. Keep the
   `README.md` pack entry (update README copy to match). The `KhaozEngine.Tests` project reference to Effects
@@ -126,7 +126,7 @@ New file `KhaozEngine.Tests/ScreenShakeTests.cs`. (The deleted particle tests ar
 The graduation + new feature ship together as **5.56.0** (5.x line). Because Effects is *moving onto* the
 5.x line, this is the release that first versions it as 5.56.0.
 
-1. Bump `<KhaozEngine5xVersion>` to `5.56.0`.
+1. Bump `<KhaozEngineVersion>` to `5.56.0`.
 2. Newest-first `CHANGELOG.md` entry covering both the graduation and `ScreenShake`.
 3. Update the three guard-checked declarations (CONSUMERS "Engine current version", ROADMAP "Current
    released version", README package refs) to 5.56.0.

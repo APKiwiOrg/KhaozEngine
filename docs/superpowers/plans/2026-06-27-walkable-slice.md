@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- One shared engine version line `<KhaozEngine5xVersion>` in `Directory.Build.props`; this is a **minor** bump `7.43.0` -> `7.44.0` (additive public API in two EXISTING packages: `KhaozEngine.Render3D` + `KhaozEngine.Game.Render3D`; NO new package, so no package-catalog churn).
+- One shared engine version line `<KhaozEngineVersion>` in `Directory.Build.props`; this is a **minor** bump `7.43.0` -> `7.44.0` (additive public API in two EXISTING packages: `KhaozEngine.Render3D` + `KhaozEngine.Game.Render3D`; NO new package, so no package-catalog churn).
 - No em-dashes / en-dashes in any output (code comments, docs, commits).
 - Input rule: only `AppWindow` touches windowing input statics. The controllers read the immutable `InputState` snapshot passed in; they touch no statics.
 - New behaviour ships with a headless test in `KhaozEngine.Tests` (construct `InputState`/state frame-by-frame; `dt` is a plain `float` in seconds). NO GPU device in tests. The windowed sample is not unit-tested.
@@ -895,7 +895,7 @@ git commit -m "sample: TerrainWalkSample windowed walkable terrain slice"
 
 - [ ] **Step 1: Bump the version**
 
-In `Directory.Build.props`, change `<KhaozEngine5xVersion>7.43.0</KhaozEngine5xVersion>` to `<KhaozEngine5xVersion>7.44.0</KhaozEngine5xVersion>`.
+In `Directory.Build.props`, change `<KhaozEngineVersion>7.43.0</KhaozEngineVersion>` to `<KhaozEngineVersion>7.44.0</KhaozEngineVersion>`.
 
 - [ ] **Step 2: Add the CHANGELOG entry (newest first)**
 

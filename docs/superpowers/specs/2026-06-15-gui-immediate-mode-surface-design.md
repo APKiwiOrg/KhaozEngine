@@ -89,7 +89,7 @@ public enum GuiAlign { Left, Center, Right }   // horizontal; text is always ver
 - Create `KhaozEngine.Tests/Gui/GuiSurfaceTests.cs` — headless interaction/capture/visual-state tests.
 - Modify `GuiSample` — add an immediate-mode demo screen exercising Panel/Label/Swatch/Button + a disabled +
   selected button, proving it on screen.
-- Release: bump `<KhaozEngine5xVersion>` 5.16.0 -> 5.17.0-experimental, CHANGELOG entry, pack all 5.x packages.
+- Release: bump `<KhaozEngineVersion>` 5.16.0 -> 5.17.0-experimental, CHANGELOG entry, pack all 5.x packages.
 
 ## Testing
 

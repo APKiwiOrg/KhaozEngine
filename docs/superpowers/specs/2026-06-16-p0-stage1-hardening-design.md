@@ -72,7 +72,7 @@ no Metal GPU (CI/Linux) so the normal suite stays green everywhere.
   `KhaozEngine.Gui/ScreenStack.cs`.
 - Tests: extend `KhaozEngine.Tests/Render3D/MeshPrimitivesTests.cs`; new `KhaozEngine.Tests/Gpu/
   GoldenSnapshotTests.cs` + `GpuFactAttribute.cs` + `goldens/*`.
-- Release: bump `<KhaozEngine5xVersion>` 5.22.0 -> 5.23.0-experimental, CHANGELOG, pack the 6 5.x packages.
+- Release: bump `<KhaozEngineVersion>` 5.22.0 -> 5.23.0-experimental, CHANGELOG, pack the 6 5.x packages.
 
 ## Testing
 - Default `dotnet test` (no env): ALL green, golden tests SKIPPED. The winding tests + the headless fixes are

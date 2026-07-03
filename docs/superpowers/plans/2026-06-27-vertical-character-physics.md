@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Engine version line: bump `<KhaozEngine5xVersion>` to **7.54.0** (highest existing tag is v7.53.1). One bump for the whole batch.
+- Engine version line: bump `<KhaozEngineVersion>` to **7.54.0** (highest existing tag is v7.53.1). One bump for the whole batch.
 - No em-dashes anywhere (code, docs, commits).
 - Every new behaviour ships with a headless test in `KhaozEngine.Tests` (construct state frame-by-frame; `dt` is a plain `float`).
 - `AppWindow` is the only class touching input statics; controllers read the `InputState` snapshot only.
@@ -204,7 +204,7 @@
 - Modify: `Directory.Build.props` (→ 7.54.0), `CHANGELOG.md`, `CHANGENOTES.md`, `CLAUDE.md`, `docs/USING-KHAOZENGINE.md`, `docs/CONSUMERS.md`, `docs/ROADMAP.md`, `README.md`.
 
 - [ ] **Step 1: Run** the full suite `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj` → all green.
-- [ ] **Step 2: Bump** `<KhaozEngine5xVersion>` to `7.54.0`; add CHANGELOG (detailed, newest-first) + CHANGENOTES (one-line) entries; update USING (jump/gravity usage + tuning section); update the 3 guard declarations (CONSUMERS "Engine current version", ROADMAP "Current released version", README `<PackageReference>` example); update the `CLAUDE.md` Locomotion/NetWorld package-map note ("CharacterMovement.Step takes/returns Vector3" → note the MoveState vertical overload + MovementState replicated component).
+- [ ] **Step 2: Bump** `<KhaozEngineVersion>` to `7.54.0`; add CHANGELOG (detailed, newest-first) + CHANGENOTES (one-line) entries; update USING (jump/gravity usage + tuning section); update the 3 guard declarations (CONSUMERS "Engine current version", ROADMAP "Current released version", README `<PackageReference>` example); update the `CLAUDE.md` Locomotion/NetWorld package-map note ("CharacterMovement.Step takes/returns Vector3" → note the MoveState vertical overload + MovementState replicated component).
 - [ ] **Step 3: Run** `bash scripts/check-doc-versions.sh` → OK. Grep `MoveState`/`MovementState`/`Jump`/jump across `*.md` to confirm docs mention them and nothing stale remains.
 - [ ] **Step 4: Pack** `mkdir -p local-feed && dotnet pack -c Release -o ./local-feed`.
 - [ ] **Step 5: Commit** `release(7.54.0): vertical character physics (gravity + jump)`.

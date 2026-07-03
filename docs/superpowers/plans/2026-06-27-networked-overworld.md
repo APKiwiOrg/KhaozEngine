@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Engine version bumps ONE minor: `7.46.0` → `7.47.0` (`<KhaozEngine5xVersion>` in `Directory.Build.props`).
+- Engine version bumps ONE minor: `7.46.0` → `7.47.0` (`<KhaozEngineVersion>` in `Directory.Build.props`).
 - TWO packages added (`Locomotion`, `NetWorld`) → FULL added-package doc sweep (README catalog + repo-layout, `CLAUDE.md` package map + umbrella descriptions, `docs/CONSUMERS.md`, `docs/USING-KHAOZENGINE.md`, the 3 guard declarations, `CHANGELOG.md` + `CHANGENOTES.md`).
 - `Locomotion` is a render-free leaf, deps: `KhaozEngine.Primitives` only (System.Numerics). → Foundation umbrella.
 - `NetWorld` is render-free + reusable, deps: `Locomotion` + `Netcode` + `Replication` + `Ecs`. → Server umbrella. NOT in the sample.
@@ -55,7 +55,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.Locomotion</PackageId>
-    <Version>$(KhaozEngine5xVersion)</Version>
+    <Version>$(KhaozEngineVersion)</Version>
     <Description>Render-free character locomotion core for KhaozEngine. CharacterMovement.Step is a pure XZ-plane move: a MoveCommand (camera-relative WASD axis + run + camera yaw) advances a Vector3 position over a timestep, normalized diagonals, ground-clamped via a height delegate (feet on the ground) with an optional slope gate. One MoveTuning is the single source of truth shared by the local CharacterController3D, the authoritative server sim, and client-side prediction, so local and networked movement run identical code. Depends only on System.Numerics; no input, no render, no netcode.</Description>
   </PropertyGroup>
   <ItemGroup>
@@ -400,7 +400,7 @@ git commit -m "refactor(7.47.0): CharacterController3D wraps CharacterMovement.S
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.NetWorld</PackageId>
-    <Version>$(KhaozEngine5xVersion)</Version>
+    <Version>$(KhaozEngineVersion)</Version>
     <Description>Render-free networked-world layer wiring the movement core to the authoritative netcode stack. PlayerMoveSimulator (ITickSimulator) runs CharacterMovement.Step both server-authoritatively and inside client prediction. WorldServer is a single-World authoritative server: NetServer session layer, a per-player command queue, ground-clamped movement, and per-client area-of-interest snapshots (SnapshotWriter + InterestGrid) with a [localNetId][ack] header. WorldClient wraps NetClient + ClientReplicationView + ClientPrediction and exposes EntityRenderState[] (local predicted, remotes replicated). No render, window, or GPU dependency. Single-World slice of the MMO overworld; multi-cell sharding folds in with world streaming later.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
@@ -1722,7 +1722,7 @@ git commit -m "sample(7.47.0): NetworkedWalkSample networked walk client exe"
   - `KhaozEngine.Foundation.csproj`: add `<ProjectReference Include="../KhaozEngine.Locomotion/KhaozEngine.Locomotion.csproj" />`.
   - `KhaozEngine.Server.csproj`: add `<ProjectReference Include="../KhaozEngine.NetWorld/KhaozEngine.NetWorld.csproj" />`.
 
-- [ ] **Step 2: bump version** — `Directory.Build.props`: `<KhaozEngine5xVersion>7.46.0</KhaozEngine5xVersion>` → `7.47.0`. Update the foundation-package enumeration comment to include `Locomotion`.
+- [ ] **Step 2: bump version** — `Directory.Build.props`: `<KhaozEngineVersion>7.46.0</KhaozEngineVersion>` → `7.47.0`. Update the foundation-package enumeration comment to include `Locomotion`.
 
 - [ ] **Step 3: guard declarations (the 3)**
   - `docs/CONSUMERS.md`: `**Engine current version:** \`7.47.0\``.

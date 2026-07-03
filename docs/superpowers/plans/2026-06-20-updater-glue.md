@@ -512,7 +512,7 @@ No unit test (the tool body is a single delegating line; its logic is covered by
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>ke-updater</ToolCommandName>
     <PackageId>KhaozEngine.Updates.Tool</PackageId>
-    <Version>$(KhaozEngine5xVersion)</Version>
+    <Version>$(KhaozEngineVersion)</Version>
     <Description>The ke-updater CLI: generate, sign, and verify KhaozEngine update manifests (RSA-2048). A dotnet tool wrapper over KhaozEngine.Updates.</Description>
   </PropertyGroup>
   <ItemGroup>
@@ -1417,13 +1417,13 @@ git commit -m "docs(updater-glue): Adopting the updater README section"
 In `Directory.Build.props:18`, change:
 
 ```xml
-<KhaozEngine5xVersion>7.1.0</KhaozEngine5xVersion>
+<KhaozEngineVersion>7.1.0</KhaozEngineVersion>
 ```
 
 to:
 
 ```xml
-<KhaozEngine5xVersion>7.2.0</KhaozEngine5xVersion>
+<KhaozEngineVersion>7.2.0</KhaozEngineVersion>
 ```
 
 - [ ] **Step 2: Add the CHANGELOG entry**

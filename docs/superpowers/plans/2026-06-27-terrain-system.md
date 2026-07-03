@@ -93,7 +93,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.Terrain</PackageId>
-    <Version>$(KhaozEngine5xVersion)</Version>
+    <Version>$(KhaozEngineVersion)</Version>
     <Description>Render-free analytic terrain field for KhaozEngine. A deterministic TerrainField evaluates SampleHeight/SampleNormal/SampleBiome from a single coordinate-hash function (height at (x,z) depends only on (x,z,seed), never on which neighbour cells are loaded), folding biome-band shaping, fractal coordinate-hash noise, and an ordered feature list (LakeFeature/RidgeFeature/FlattenFeature). Plain float (authoritative server samples the same field the visual client renders). TerrainCollision wraps it for ground-follow and walkability. No render dependency - add KhaozEngine.Terrain.Render3D to mesh it.</Description>
   </PropertyGroup>
   <ItemGroup>
@@ -961,7 +961,7 @@ git commit -m "terrain: Clearing preset + greybox parity test"
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.Terrain.Render3D</PackageId>
-    <Version>$(KhaozEngine5xVersion)</Version>
+    <Version>$(KhaozEngineVersion)</Version>
     <Description>The 3D arm of the KhaozEngine terrain system: a chunked-LOD mesh builder over KhaozEngine.Terrain's analytic field. Build(field, region, lod) samples the field on a distance-chosen grid into a Render3D GltfMesh with ~0.3 m edge skirts (so mismatched-LOD neighbours stay crack-free), a per-vertex height/slope splat weight set (grass/dirt/rock/sand/snow) plumbed for the later PBR-texture upgrade, and a height/slope vertex-colour ramp for the current slice. Includes a chunk bounding box for frustum culling, a PickLod distance helper, and Scene3D load/draw extensions. Kept separate from KhaozEngine.Terrain so the server/sim never drags in Render3D.</Description>
   </PropertyGroup>
   <ItemGroup>
@@ -1546,7 +1546,7 @@ git commit -m "terrain.render3d: Scene3D load/draw chunk extensions"
 ### Task 11: Release ritual (version bump + full doc sweep + pack)
 
 **Files:**
-- Modify: `Directory.Build.props` (`<KhaozEngine5xVersion>7.42.0` → `7.43.0`)
+- Modify: `Directory.Build.props` (`<KhaozEngineVersion>7.42.0` → `7.43.0`)
 - Modify: `CHANGELOG.md`, `CHANGENOTES.md`
 - Modify: `docs/CONSUMERS.md` (engine current version + package/umbrella table rows), `docs/ROADMAP.md` (current released version + a render-scale-track note), `README.md` (PackageReference example version + package-catalog table + repo-layout block)
 - Modify: `CLAUDE.md` (package map: add `Terrain` to Foundation list and `Terrain.Render3D` to the Game3D companion set + umbrella descriptions)

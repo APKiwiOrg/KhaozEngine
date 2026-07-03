@@ -861,7 +861,7 @@ you fall.
 Speeds, capsule half-height, max slope, the vertical-feel fields above, the camera distance/pitch limits,
 orbit/zoom sensitivity, per-axis drag inversion (`FollowCameraController.InvertX` / `InvertY`, for an "invert axis"
 setting), and the camera ground-clamp (`FollowCamera3D.GroundHeight` / `GroundClearance`) are public fields
-(feel-tuned later). See `TerrainWalkSample` for the full wiring (Space to jump); it now drives an animated
+(feel-tuned later). See the 3D World room (`Room3D`) in `KhaozEngine.Showcase` for the full wiring (Space to jump). It now drives an animated
 character off this controller's movement state (see "Animated characters" above) rather than a static capsule.
 
 **Optional target damping (off by default).** Set `FollowCamera3D.EnableTargetDamping = true` (rate
@@ -902,7 +902,7 @@ foreach (AssetEntry e in manifest.Props)
 > chokes on required extensions (`EXT_meshopt_compression`, `KHR_mesh_quantization`, `EXT_texture_webp`). Bake
 > kit assets to plain glTF as an ingest step with [`gltf-transform`](https://gltf-transform.dev), e.g.
 > `npx --yes @gltf-transform/cli@latest cp <in>.glb <out>.glb` (drops meshopt), plus `dequantize` and a
-> texture-flatten where the kit uses quantization / webp. The committed `TerrainWalkSample` kit was baked this
+> texture-flatten where the kit uses quantization / webp. The committed `KhaozEngine.Showcase` kit was baked this
 > way (see its `assets/props/CREDITS.md`); multi-material props are flattened to per-material flat base colours
 > so the single-mesh loader colours them correctly.
 
@@ -927,7 +927,7 @@ scene.DrawProps(placements, meshes, focus: character.Position, drawRadius: 90f);
 ```
 
 `PropRenderer.Queue(SceneInstances, ...)` is the same logic against a raw instance queue (headless-testable).
-See `TerrainWalkSample` for the full wiring. Mesh-LOD/impostors, textured prop materials, and animated props are
+See the 3D World room (`Room3D`) in `KhaozEngine.Showcase` for the full wiring. Mesh-LOD/impostors, textured prop materials, and animated props are
 later sub-projects. Terrain PBR splat textures are covered in "Textured terrain" below.
 
 ---
@@ -981,8 +981,8 @@ var client = new WorldClient(transport, terrain.GroundHeight, MoveTuning.Default
 
 `RimFeature` makes the edge *look* enclosed; the slope gate stops you walking up it; `WorldBounds` *guarantees* it.
 A `RimPass` corresponds to an opening in the play area (or the bounds is simply larger than the walled region until
-gate/zone-transition content exists - those are later). `TerrainWalkSample bounded` (pass `bounded` as an arg) is
-the windowed demo: held inside by the mountains, out through the +Z pass. The circular rim is the MVP; a
+gate/zone-transition content exists - those are later). The 3D World room in `KhaozEngine.Showcase` uses this bounded preset:
+held inside by the mountains, out through the +Z pass. The circular rim is the MVP; a
 rect/polygon rim and gravity/jump are named follow-ups (prop/building collision shipped, see below).
 
 ---
@@ -1300,7 +1300,7 @@ MeshHandle prop = scene.LoadMesh(
     PropMaterialPresets.Procedural());
 ```
 
-`TerrainWalkSample` places one of these procedural textured blocks near spawn as a live demo.
+The 3D World room in `KhaozEngine.Showcase` places one of these procedural textured blocks near spawn as a live demo.
 
 ---
 
@@ -1751,8 +1751,8 @@ needs a `SpriteBatch`. Like `UpdateOverlayView`, the widget never reads raw inpu
 A toggleable translucent, color-coded proxy drawn over each collision static in the live scene, plus a legend
 panel naming the colors. Built from two pieces: `CollisionShapeOverlay` (`KhaozEngine.Render3D.Debug`) builds
 and draws the proxy meshes, and `OverlayLegend` (`KhaozEngine.Gui`) draws the swatch/label panel. Both are
-headless-testable except their `Draw` calls. `TerrainWalkSample` wires this behind an F2 toggle - read
-`TerrainWalkSample/Program.cs` for the full example.
+headless-testable except their `Draw` calls. The 3D World room (`Room3D`) in `KhaozEngine.Showcase` wires this behind an F2 toggle - read
+`KhaozEngine.Showcase/Room3D.cs` for the full example.
 
 **The general primitive underneath it: `Scene3D.DrawOverlayMesh(MeshHandle mesh, Matrix4x4 world)`.** Queues a
 translucent, unlit, depth-tested-but-not-depth-writing, alpha-blended draw of an already-loaded mesh, colored

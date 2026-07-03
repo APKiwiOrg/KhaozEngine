@@ -172,8 +172,8 @@ KhaozEngine.Server.Admin/      Opt-in HTTPS admin endpoint (Kestrel) over Server
 # Umbrella metapackages
 KhaozEngine.Foundation/   KhaozEngine.Game2D/   KhaozEngine.Game3D/   KhaozEngine.Server/
 # Tests, samples, tools
-KhaozEngine.Tests/   KhaozEngine.Showcase/ (menu hub: 2D, GUI, input, mini-game rooms)   Render3DSample/
-SnapshotSample/   TerrainWalkSample/   MmoServerSample/ (reference dedicated MMO server)
+KhaozEngine.Tests/   KhaozEngine.Showcase/ (menu hub: 2D, GUI, input, mini-game, 3D-world rooms)   Render3DSample/
+SnapshotSample/   MmoServerSample/ (reference dedicated MMO server)
 NetworkedWalkServer/ + NetworkedWalkSample/ (networked walkable overworld: headless server + windowed client)
 KhaozEngine.Updates.Tool/ (ke-updater)   KhaozEngine.Sfx.Tool/ (ke-sfxbake)   KhaozEngine.PropSurface.Tool/ (ke-propbake)
 tools/   docs/USING-KHAOZENGINE.md
@@ -191,15 +191,14 @@ The windowed ones open a GPU window (need a display); the server / snapshot head
 
 | Sample | Demonstrates | Run | Controls |
 |---|---|---|---|
-| `KhaozEngine.Showcase` | **Menu hub** of feature rooms: 2D sprites + text, Gui widgets + screen stack, input (gestures / clock / clipboard / audio), and the "Catcher" mini-game | `dotnet run --project KhaozEngine.Showcase` | Up/Down + Enter or click a room, Esc back to the menu |
+| `KhaozEngine.Showcase` | **Menu hub** of feature rooms: 2D sprites + text, Gui widgets + screen stack, input (gestures / clock / clipboard / audio), the "Catcher" mini-game, and a **walkable streamed 3D overworld** (terrain streaming + follow camera + character controller + physics) | `dotnet run --project KhaozEngine.Showcase` | Menu: Up/Down + Enter or click a room, Esc leaves a room. 3D room: WASD move, mouse-drag orbit, scroll zoom, Shift run |
 | `Render3DSample` | 3D mesh viewer + retro post (cel / outline / palette) | `dotnet run --project Render3DSample` | Space model, O outline, A starfield, R retro, C cel, P palette, W/S zoom, arrows orbit, Esc quit |
-| `TerrainWalkSample` | **Walkable streamed 3D overworld** (follow camera + character controller, endless chunk streaming) | `dotnet run --project TerrainWalkSample` | WASD move, mouse-drag orbit, scroll zoom, Shift run, Esc quit |
 
 **Networked** - run the server, then one or two clients (two clients = two players on the same terrain):
 
 ```bash
 dotnet run --project NetworkedWalkServer        # headless authoritative server on UDP :47700
-dotnet run --project NetworkedWalkSample        # windowed client; same controls as TerrainWalkSample
+dotnet run --project NetworkedWalkSample        # windowed client (WASD move, mouse-drag orbit, scroll zoom)
 # optional args: NetworkedWalkSample [host] [port]   (defaults 127.0.0.1 47700)
 ```
 
@@ -214,7 +213,8 @@ dotnet run --project NetworkedWalkSample        # windowed client; same controls
 exit 0. So any of them doubles as a smoke test on a GPU box without needing someone to close the window:
 
 ```bash
-KE_MAX_FRAMES=5 dotnet run --project TerrainWalkSample
+KE_MAX_FRAMES=5 dotnet run --project KhaozEngine.Showcase
+# to smoke a specific room's world build, auto-enter it: KE_SHOWCASE_ROOM="3D World" KE_MAX_FRAMES=5 dotnet run --project KhaozEngine.Showcase
 ```
 
 `Render3DSample` also takes `--smoke` (capture one frame, print a pass/fail line, exit with a

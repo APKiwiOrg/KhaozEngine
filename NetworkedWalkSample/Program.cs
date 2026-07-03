@@ -14,7 +14,7 @@ using KhaozEngine.Windowing;
 
 // Networked walkable overworld client: connects to a NetworkedWalkServer, drives the local player through a
 // WorldClient (predicted + reconciled), and renders an animated character per replicated EntityRenderState over
-// the same analytic terrain + deterministic prop scatter as the solo TerrainWalkSample (props are NOT networked).
+// the same analytic terrain + deterministic prop scatter as the solo 3D World room in KhaozEngine.Showcase (props are NOT networked).
 // The per-player avatars are driven by ReplicatedCharacterAnimators: WorldClient.Snapshot() is mapped to one
 // CharacterSample per entity each frame (the LOCAL player carries its exact grounded + vertical velocity from the
 // new WorldClient accessors; remotes are position-only and the bridge derives speed / air state / facing from the

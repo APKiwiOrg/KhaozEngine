@@ -24,28 +24,6 @@
       "console": "internalConsole",
       "stopAtEntry": false
     },
-    {
-      "name": "Run TerrainWalkSample (endless terrain)",
-      "type": "coreclr",
-      "request": "launch",
-      "preLaunchTask": "build",
-      "program": "${workspaceFolder}/TerrainWalkSample/bin/Debug/net10.0/TerrainWalkSample.dll",
-      "args": [],
-      "cwd": "${workspaceFolder}/TerrainWalkSample",
-      "console": "internalConsole",
-      "stopAtEntry": false
-    },
-    {
-      "name": "Run TerrainWalkSample (bounded clearing + rim wall)",
-      "type": "coreclr",
-      "request": "launch",
-      "preLaunchTask": "build",
-      "program": "${workspaceFolder}/TerrainWalkSample/bin/Debug/net10.0/TerrainWalkSample.dll",
-      "args": ["bounded"],
-      "cwd": "${workspaceFolder}/TerrainWalkSample",
-      "console": "internalConsole",
-      "stopAtEntry": false
-    },
 
     // ---- Networked overworld demo ----
     // Start the server first, then one or two clients (or use the "Networked Walk: server + 2 clients" compound).

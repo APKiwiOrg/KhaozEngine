@@ -179,7 +179,7 @@ Add to `SettingsManagerTests.cs` (or a focused companion):
 
 Additive -> minor: `7.31.0 -> 7.32.0`.
 
-1. Bump `<KhaozEngine5xVersion>` in `Directory.Build.props` to `7.32.0`.
+1. Bump `<KhaozEngineVersion>` in `Directory.Build.props` to `7.32.0`.
 2. `CHANGELOG.md` newest-first detailed entry.
 3. `CHANGENOTES.md` one-line digest.
 4. Update the three guard declarations: `docs/CONSUMERS.md` "Engine current version",

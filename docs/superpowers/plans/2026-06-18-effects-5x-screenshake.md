@@ -4,7 +4,7 @@
 
 **Goal:** Graduate `KhaozEngine.Effects` from the dead 4.x MonoGame particle package onto the 5.x line, and add `ScreenShake` — a trauma-based, deterministic screen-shake offset generator.
 
-**Architecture:** Part 1 retires the superseded particle code, drops MonoGame, and moves Effects onto `<KhaozEngine5xVersion>`. Part 2 adds `ScreenShake`, a pure System.Numerics offset generator (no `Camera2D` dependency) the game composes onto its render camera. Shake magnitude is `trauma^2` with seeded smooth (sine-sum) noise; decays over time.
+**Architecture:** Part 1 retires the superseded particle code, drops MonoGame, and moves Effects onto `<KhaozEngineVersion>`. Part 2 adds `ScreenShake`, a pure System.Numerics offset generator (no `Camera2D` dependency) the game composes onto its render camera. Shake magnitude is `trauma^2` with seeded smooth (sine-sum) noise; decays over time.
 
 **Tech Stack:** C# / net10.0, `System.Numerics` (`Vector2`), xUnit. Headless.
 
@@ -59,7 +59,7 @@ Overwrite `KhaozEngine.Effects/KhaozEngine.Effects.csproj` with exactly:
     <PackageId>KhaozEngine.Effects</PackageId>
     <!-- Shared 5.x line (see docs/ROADMAP.md "The post-MonoGame pivot"). Graduated off MonoGame at 5.56.0;
          the old 4.x rect-particle system was retired (superseded by KhaozEngine.Particles). -->
-    <Version>$(KhaozEngine5xVersion)</Version>
+    <Version>$(KhaozEngineVersion)</Version>
     <Description>Game-feel visual effects for the custom MonoGame-free 5.x stack (System.Numerics + BCL only). ScreenShake: a trauma-based, deterministic screen-shake offset generator (trauma^2 falloff, seeded smooth noise, positional + rotational offset) the game composes onto its render camera. Particle simulation now lives in KhaozEngine.Particles.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
@@ -369,7 +369,7 @@ Additive (graduation + new feature) → minor bump. Follows `KhaozEngine/CLAUDE.
 
 - [ ] **Step 1: Bump the 5.x version**
 
-In `Directory.Build.props`, change `<KhaozEngine5xVersion>5.55.0</KhaozEngine5xVersion>` to `5.56.0`.
+In `Directory.Build.props`, change `<KhaozEngineVersion>5.55.0</KhaozEngineVersion>` to `5.56.0`.
 
 - [ ] **Step 2: Move `Effects` from the 4.x list to the 5.x list in `Directory.Build.props`**
 
@@ -389,7 +389,7 @@ last camera feel-layer slice (parallax aside).
 
 - **`KhaozEngine.Effects` graduated to the 5.x line.** The old 4.x rect-particle system (MonoGame + Graphics)
   was retired - it was superseded by the MonoGame-free `KhaozEngine.Particles` and had no game consumer. The
-  package now targets System.Numerics + BCL only and versions with `<KhaozEngine5xVersion>`. The 4.x line is
+  package now targets System.Numerics + BCL only and versions with `<KhaozEngineVersion>`. The 4.x line is
   down to `Graphics`/`Input`/`Screens`/`Sprites`/`Time`/`UI`.
 - **`ScreenShake`** (`KhaozEngine.Effects`) - a trauma-based, deterministic shake offset generator. `Add(amount)`
   bumps trauma on impacts; the magnitude falls off as `trauma^2` and `Update(dt)` drains it. It exposes a
@@ -426,7 +426,7 @@ In `docs/ROADMAP.md`:
 - [ ] **Step 7: Verify the doc-version guard passes**
 
 Run: `bash scripts/check-doc-versions.sh`
-Expected: exit 0 (the three version declarations match `<KhaozEngine5xVersion>` = 5.56.0). The membership-list edits are not guard-checked.
+Expected: exit 0 (the three version declarations match `<KhaozEngineVersion>` = 5.56.0). The membership-list edits are not guard-checked.
 
 - [ ] **Step 8: Test and pack**
 

@@ -1740,7 +1740,7 @@ Follow the engine release ritual in order. Additive feature → minor bump: 7.9.
 
 - [ ] **Step 1: Bump the version**
 
-In `Directory.Build.props`, change `<KhaozEngine5xVersion>7.9.0</KhaozEngine5xVersion>` to `7.10.0`.
+In `Directory.Build.props`, change `<KhaozEngineVersion>7.9.0</KhaozEngineVersion>` to `7.10.0`.
 
 - [ ] **Step 2: Add the CHANGELOG.md entry (newest-first, detailed)**
 
@@ -1777,7 +1777,7 @@ headless-testable). Presentation only: must not touch sim/RNG/netcode.
 - `README.md`: bump the `<PackageReference ... Version="..."/>` example to 7.10.0.
 
 Run the guard: `bash scripts/check-doc-versions.sh`
-Expected: passes (all three match `<KhaozEngine5xVersion>`).
+Expected: passes (all three match `<KhaozEngineVersion>`).
 
 - [ ] **Step 5: Full test suite green, then pack**
 

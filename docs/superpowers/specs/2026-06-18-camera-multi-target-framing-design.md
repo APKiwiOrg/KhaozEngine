@@ -129,7 +129,7 @@ New file `KhaozEngine.Tests/Render2DGroupCameraTests.cs`.
 
 Additive → minor. Next 5.x version is **5.53.0**.
 
-1. Bump `<KhaozEngine5xVersion>` to `5.53.0`.
+1. Bump `<KhaozEngineVersion>` to `5.53.0`.
 2. Newest-first `CHANGELOG.md` entry (same commit).
 3. Update the three guard-checked declarations (`docs/CONSUMERS.md` "Engine current version",
    `docs/ROADMAP.md` "Current released version", `README.md` `<PackageReference>` examples).

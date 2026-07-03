@@ -1015,10 +1015,10 @@ Minor bump (additive API). All on the feature branch; the merge + pack + tag + p
 
 - [ ] **Step 1: Bump the version line**
 
-In `Directory.Build.props` change `<KhaozEngine5xVersion>7.25.0</KhaozEngine5xVersion>` to:
+In `Directory.Build.props` change `<KhaozEngineVersion>7.25.0</KhaozEngineVersion>` to:
 
 ```xml
-    <KhaozEngine5xVersion>7.26.0</KhaozEngine5xVersion>
+    <KhaozEngineVersion>7.26.0</KhaozEngineVersion>
 ```
 
 - [ ] **Step 2: Add the CHANGELOG entry**

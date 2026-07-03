@@ -720,7 +720,7 @@ Decision (recommended): Phase 0 `Simulation` is **zero-dependency** (a pure accu
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.Simulation</PackageId>
-    <Version>$(KhaozEngine5xVersion)</Version>
+    <Version>$(KhaozEngineVersion)</Version>
     <Description>Headless simulation host primitives for an authoritative server: FixedTickHost, a fixed-timestep accumulator that converts variable real-elapsed time into a whole number of fixed-dt ticks, decoupling simulation rate from frame/render rate (with a spiral-of-death backlog guard). Deterministic and dependency-free. The foundation the authoritative server loop is built on.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
@@ -1040,7 +1040,7 @@ Expected: PASS (all existing tests + the new Loopback/FixedTickHost/integration/
 
 - [ ] **Step 2: Bump the shared version** in `Directory.Build.props`:
 
-Change `<KhaozEngine5xVersion>7.34.0</KhaozEngine5xVersion>` to `<KhaozEngine5xVersion>7.35.0</KhaozEngine5xVersion>`.
+Change `<KhaozEngineVersion>7.34.0</KhaozEngineVersion>` to `<KhaozEngineVersion>7.35.0</KhaozEngineVersion>`.
 
 - [ ] **Step 3: Add the newest-first `CHANGELOG.md` entry** (top of file):
 
@@ -1077,7 +1077,7 @@ Change `<KhaozEngine5xVersion>7.34.0</KhaozEngine5xVersion>` to `<KhaozEngine5xV
 - [ ] **Step 6: Full doc sweep for the new package + API** (per CLAUDE.md "full doc sweep on every change"):
   - `README.md` package-catalog table: add a `KhaozEngine.Simulation` row; extend the `KhaozEngine.Netcode` cell to mention `INetTransport`/`LoopbackTransport`; extend `KhaozEngine.Netcode.LiteNetLib` to mention the transport bindings. Add `KhaozEngine.Simulation` to the repo-layout block.
   - `README.md` / `docs/CONSUMERS.md` umbrella tables: note `KhaozEngine.Server` now pulls `KhaozEngine.Simulation`.
-  - `CLAUDE.md` package map (the `<KhaozEngine5xVersion>` enumeration): add `Simulation` to the package list.
+  - `CLAUDE.md` package map (the `<KhaozEngineVersion>` enumeration): add `Simulation` to the package list.
   - `docs/USING-KHAOZENGINE.md`: add a short usage section for `INetTransport` + `LoopbackTransport` + `FixedTickHost`.
   - `docs/ROADMAP.md`: mark "MMO netcode stack — Phase 0 (transport + fixed-tick host)" as shipped/started, linking the spec.
   - Mechanical check: `grep -rn "KhaozEngine.Simulation\|INetTransport\|FixedTickHost" *.md docs/*.md CLAUDE.md` and confirm every place that should mention them does.

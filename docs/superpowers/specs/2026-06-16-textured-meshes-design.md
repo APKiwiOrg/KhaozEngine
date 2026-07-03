@@ -111,7 +111,7 @@ textured vs untextured is a nice-to-have, not required. Honor the existing sampl
   - this part is pure and can be unit-tested if Scene3D construction allows.
 
 ## Release
-- Bump `<KhaozEngine5xVersion>` 5.34.0 -> 5.35.0; CHANGELOG entry; update the Render3D `<Description>` to mention
+- Bump `<KhaozEngineVersion>` 5.34.0 -> 5.35.0; CHANGELOG entry; update the Render3D `<Description>` to mention
   per-mesh albedo texturing. Add `StbImageSharp` PackageReference to KhaozEngine.Render3D.csproj (version-match
   what Render2D pins). Pack the 8 5.x packages to local-feed. Merge --no-ff, run the suite on main, pack
   canonical, tag `v5.35.0`, push main + tag.

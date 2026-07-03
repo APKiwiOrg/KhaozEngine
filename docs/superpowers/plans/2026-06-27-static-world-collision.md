@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - **TDD, headless:** every new behaviour ships with an xUnit test in `KhaozEngine.Tests` (construct inputs, assert outputs; no GPU/window). Run `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj`.
-- **One shared version line:** `<KhaozEngine5xVersion>` in `Directory.Build.props`. This is an additive **minor** bump: `7.51.2` → `7.52.0` (verify no concurrent release took it at release time; bump past it if so).
+- **One shared version line:** `<KhaozEngineVersion>` in `Directory.Build.props`. This is an additive **minor** bump: `7.51.2` → `7.52.0` (verify no concurrent release took it at release time; bump past it if so).
 - **No em-dashes** anywhere (code, comments, docs, commit messages).
 - **Deterministic math:** authoritative server + client prediction must produce identical results. They run the same `CharacterMovement.Step` code, so identity is structural; still prefer plain `float` (this is the authoritative-not-lockstep track, like Terrain) and explicit component arithmetic where it matches the house style in `CircleCollision`/`Segment2D`.
 - **Nullable everywhere:** a `null`/empty collider set must leave movement exactly as it is today.
@@ -1542,7 +1542,7 @@ git commit -m "sample: solid props + a building in TerrainWalkSample (static col
 ```bash
 git fetch --tags origin
 git tag | sort -V | tail -5
-grep KhaozEngine5xVersion Directory.Build.props
+grep KhaozEngineVersion Directory.Build.props
 ```
 If `7.52.0` is taken, use the next free minor and adjust all references.
 

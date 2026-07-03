@@ -771,13 +771,13 @@ Additive change → minor bump. Follows `KhaozEngine/CLAUDE.md` release order.
 In `Directory.Build.props`, change:
 
 ```xml
-   <KhaozEngine5xVersion>5.51.0</KhaozEngine5xVersion>
+   <KhaozEngineVersion>5.51.0</KhaozEngineVersion>
 ```
 
 to:
 
 ```xml
-   <KhaozEngine5xVersion>5.52.0</KhaozEngine5xVersion>
+   <KhaozEngineVersion>5.52.0</KhaozEngineVersion>
 ```
 
 - [ ] **Step 2: Add the CHANGELOG entry**
@@ -833,7 +833,7 @@ bullet, the "Look-ahead" bullet, and the "Pixel-perfect snapping" bullet. Leave 
 - [ ] **Step 5: Verify the doc-version guard passes**
 
 Run: `bash scripts/check-doc-versions.sh`
-Expected: exit 0 (the three declarations now match `<KhaozEngine5xVersion>` = 5.52.0).
+Expected: exit 0 (the three declarations now match `<KhaozEngineVersion>` = 5.52.0).
 
 - [ ] **Step 6: Pack and run the full suite**
 

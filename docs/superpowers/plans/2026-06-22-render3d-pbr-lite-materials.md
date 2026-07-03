@@ -1226,8 +1226,8 @@ Expected: PASS (the three `scene3d_normalmap` goldens agree within the generous 
 
 - [ ] **Step 1: Bump the version**
 
-In `Directory.Build.props`, change `<KhaozEngine5xVersion>7.22.0</KhaozEngine5xVersion>` to
-`<KhaozEngine5xVersion>7.23.0</KhaozEngine5xVersion>`.
+In `Directory.Build.props`, change `<KhaozEngineVersion>7.22.0</KhaozEngineVersion>` to
+`<KhaozEngineVersion>7.23.0</KhaozEngineVersion>`.
 
 - [ ] **Step 2: CHANGELOG.md entry (newest-first, detailed)**
 
@@ -1280,7 +1280,7 @@ outline are FULLSCREEN passes that otherwise stylize any material).
 - [ ] **Step 5: Verify the doc-version guard + full headless suite**
 
 Run: `bash scripts/check-doc-versions.sh`
-Expected: passes (the three declarations match `<KhaozEngine5xVersion>` = 7.23.0).
+Expected: passes (the three declarations match `<KhaozEngineVersion>` = 7.23.0).
 Run: `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj`
 Expected: PASS (whole headless suite).
 

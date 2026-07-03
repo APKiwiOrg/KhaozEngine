@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - **TDD, headless:** every new behaviour ships with an xUnit test in `KhaozEngine.Tests`. Run `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj`.
-- **Additive minor bump:** `<KhaozEngine5xVersion>` in `Directory.Build.props`, `7.54.0` → `7.55.0` (verify no concurrent release took it; bump past if so). New packable project (`KhaozEngine.PropSurface.Tool`) is allowed (a `PackAsTool`, same version line).
+- **Additive minor bump:** `<KhaozEngineVersion>` in `Directory.Build.props`, `7.54.0` → `7.55.0` (verify no concurrent release took it; bump past if so). New packable project (`KhaozEngine.PropSurface.Tool`) is allowed (a `PackAsTool`, same version line).
 - **No em-dashes** anywhere (code, comments, docs, commit messages).
 - **Render-free below the tool:** `PropSurface`/`WorldSurface`/`WorldSurfaces` + the binary reader are pure data (`KhaozEngine.Collision`, a `System.Numerics` leaf - keep it so). Only the bake (`PropSurfaceBake`, Render3D) and the `ke-propbake` tool touch meshes.
 - **Bake local + unscaled; transform at query:** the grid is the unit prop; `WorldSurface.SampleWorld` applies centre/scale/yaw, identical on client and server (like the colliders).
@@ -1384,7 +1384,7 @@ namespace KhaozEngine.Render3D
 }
 ```
 
-- [ ] **Step 3b: Implement the tool** — `KhaozEngine.PropSurface.Tool.csproj` (mirror `KhaozEngine.Sfx.Tool.csproj`: `OutputType=Exe`, `PackAsTool=true`, `ToolCommandName=ke-propbake`, `Version=$(KhaozEngine5xVersion)`, reference `../KhaozEngine.Render3D/KhaozEngine.Render3D.csproj`). `Program.cs`: read the manifest path arg, `AssetManifest.Load`, for each prop classify via `PropSurfaceBake.IsWalkableSolid` (loading the mesh), and for walkable ones `PropSurfaceLoader.BakeAndWrite(entry, "<dir>/<id>.surf")` + ensure the manifest JSON has `surface:true` + `heightmap:"<id>.surf"` (re-serialize the manifest with the stamped fields; idempotent). Print a summary line.
+- [ ] **Step 3b: Implement the tool** — `KhaozEngine.PropSurface.Tool.csproj` (mirror `KhaozEngine.Sfx.Tool.csproj`: `OutputType=Exe`, `PackAsTool=true`, `ToolCommandName=ke-propbake`, `Version=$(KhaozEngineVersion)`, reference `../KhaozEngine.Render3D/KhaozEngine.Render3D.csproj`). `Program.cs`: read the manifest path arg, `AssetManifest.Load`, for each prop classify via `PropSurfaceBake.IsWalkableSolid` (loading the mesh), and for walkable ones `PropSurfaceLoader.BakeAndWrite(entry, "<dir>/<id>.surf")` + ensure the manifest JSON has `surface:true` + `heightmap:"<id>.surf"` (re-serialize the manifest with the stamped fields; idempotent). Print a summary line.
 
 - [ ] **Step 3c:** Add the tool project to the solution build set if the repo enumerates projects (check `Directory.Build.props` / any `*.slnf`; the repo builds by directory, so just placing the csproj is enough). Add `<InternalsVisibleTo>` is not needed.
 

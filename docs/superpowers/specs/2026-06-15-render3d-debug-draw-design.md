@@ -67,7 +67,7 @@ single-colour helper; `DebugShapes.Axes` is still provided + tested for the endp
 - Create `KhaozEngine.Render3D/DebugShapes.cs`, `KhaozEngine.Render3D/Rendering/LineRenderer.cs`.
 - Modify `KhaozEngine.Render3D/Scene3D.cs` (debug API + wiring), `Internal/ShaderSources.cs` (Line shaders).
 - Create `KhaozEngine.Tests/Render3D/DebugShapesTests.cs`.
-- Release: bump `<KhaozEngine5xVersion>` 5.19.0 -> 5.20.0-experimental, CHANGELOG, pack 5 pkgs.
+- Release: bump `<KhaozEngineVersion>` 5.19.0 -> 5.20.0-experimental, CHANGELOG, pack 5 pkgs.
 
 ## Testing
 - Headless (no GPU): `DebugShapes.Box` adds 24 endpoints forming the 12 axis-aligned edges (assert the 8

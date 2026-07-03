@@ -159,7 +159,7 @@ New file `KhaozEngine.Tests/Render2DCameraBlendTests.cs`.
 
 Additive → minor. Next 5.x version is **5.54.0**.
 
-1. Bump `<KhaozEngine5xVersion>` to `5.54.0`.
+1. Bump `<KhaozEngineVersion>` to `5.54.0`.
 2. Newest-first `CHANGELOG.md` entry (same commit).
 3. Update the three guard-checked declarations (CONSUMERS "Engine current version", ROADMAP "Current
    released version", README `<PackageReference>` examples).

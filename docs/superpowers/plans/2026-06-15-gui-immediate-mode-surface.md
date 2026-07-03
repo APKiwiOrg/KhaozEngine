@@ -59,6 +59,6 @@ the existing sample's screen rotation — follow GuiSample's existing structure)
 
 ### Task 4: (controller-run, not a subagent) Release ritual 5.17.0-experimental
 
-Bump `<KhaozEngine5xVersion>` to 5.17.0-experimental, newest-first CHANGELOG entry under a new
+Bump `<KhaozEngineVersion>` to 5.17.0-experimental, newest-first CHANGELOG entry under a new
 `## 5.17.0-experimental` heading (KhaozEngine.Gui additive: GuiSurface immediate-mode), `dotnet pack -c Release
 -o ./local-feed` for the 5.x packages, commit, then merge/tag/push handled at finish.

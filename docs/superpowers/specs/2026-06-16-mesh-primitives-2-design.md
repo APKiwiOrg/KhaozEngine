@@ -84,7 +84,7 @@ New `MeshOps` (KhaozEngine.Render3D/MeshOps.cs), public static:
   unit normals, bounds, UVs within [0,1] where applicable) + `MeshBuilderTests.cs` (UV preserved through Add) +
   a `MeshOpsTests.cs` (WithSmoothNormals welds + averages; a flat box becomes smooth at shared corners). The
   outward-normal-DIRECTION test helper from last round should also cover the new flat-faced parts.
-- Release: bump `<KhaozEngine5xVersion>` 5.21.0 -> 5.22.0-experimental, CHANGELOG, pack the 6 5.x packages.
+- Release: bump `<KhaozEngineVersion>` 5.21.0 -> 5.22.0-experimental, CHANGELOG, pack the 6 5.x packages.
 
 ## Testing + verification
 - Headless: as above. CRITICAL — the existing `Box`/`Tile`/etc. must still render correctly after the vertex-

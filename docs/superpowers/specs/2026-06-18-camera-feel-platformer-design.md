@@ -188,7 +188,7 @@ New behavior:
 
 Additive change → minor bump. Next 5.x version is **5.52.0**.
 
-1. Bump `<KhaozEngine5xVersion>` in `Directory.Build.props` to `5.52.0`.
+1. Bump `<KhaozEngineVersion>` in `Directory.Build.props` to `5.52.0`.
 2. Add a newest-first `CHANGELOG.md` entry (same commit as the bump).
 3. Update the three doc-version declarations the guard checks: `docs/CONSUMERS.md` "Engine current
    version", `docs/ROADMAP.md` "Current released version", and the `README.md` `<PackageReference>`

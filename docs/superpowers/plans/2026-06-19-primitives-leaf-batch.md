@@ -57,7 +57,7 @@ Modified (project refs + migration): `KhaozEngine.Gpu`, `KhaozEngine.Render2D`, 
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <Version>$(KhaozEngine5xVersion)</Version>
+    <Version>$(KhaozEngineVersion)</Version>
     <PackageId>KhaozEngine.Primitives</PackageId>
     <Description>Zero-dependency shared primitives for KhaozEngine: Color, deterministic and fast RNG, and pure math helpers (clamp/lerp, viewport fit/cover, easing). System.Numerics only.</Description>
   </PropertyGroup>
@@ -1407,7 +1407,7 @@ git commit -m "foundation: umbrella includes KhaozEngine.Primitives"
 
 - [ ] **Step 1: Bump the version**
 
-`Directory.Build.props:18`: `<KhaozEngine5xVersion>5.71.0</KhaozEngine5xVersion>` -> `<KhaozEngine5xVersion>6.0.0</KhaozEngine5xVersion>`.
+`Directory.Build.props:18`: `<KhaozEngineVersion>5.71.0</KhaozEngineVersion>` -> `<KhaozEngineVersion>6.0.0</KhaozEngineVersion>`.
 
 - [ ] **Step 2: CHANGELOG entry (newest-first)**
 

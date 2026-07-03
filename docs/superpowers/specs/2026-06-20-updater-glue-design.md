@@ -44,10 +44,10 @@ only the engine feature.
 
 ## Architecture / package impact
 
-- `<KhaozEngine5xVersion>` → `7.2.0`. All packable projects already inherit `<Version>`.
+- `<KhaozEngineVersion>` → `7.2.0`. All packable projects already inherit `<Version>`.
 - New packable project **`KhaozEngine.Updates.Tool`** (`PackAsTool=true`,
   `ToolCommandName=ke-updater`, `PackageId=KhaozEngine.Updates.Tool`,
-  `<Version>$(KhaozEngine5xVersion)</Version>`, references the Updates project). It is a
+  `<Version>$(KhaozEngineVersion)</Version>`, references the Updates project). It is a
   publish-side tool, so it is **not** added to any of the 4 umbrella metapackages. The
   `docs/CONSUMERS.md` package list/count is updated to mention it.
 - `KhaozEngine.Gui.csproj` adds `ProjectReference` to `../KhaozEngine.Updates`.
@@ -201,7 +201,7 @@ IO; `Program.cs` is the entry/dispatch. Subcommands:
 
 ## Release ritual (per CLAUDE.md)
 
-1. `<KhaozEngine5xVersion>` → `7.2.0` in `Directory.Build.props`.
+1. `<KhaozEngineVersion>` → `7.2.0` in `Directory.Build.props`.
 2. `CHANGELOG.md` newest-first entry (new reusable surface; list the public APIs).
 3. `CHANGENOTES.md` one-line digest.
 4. Update the 3 doc-version declarations: `docs/CONSUMERS.md` "Engine current version" (+ note the

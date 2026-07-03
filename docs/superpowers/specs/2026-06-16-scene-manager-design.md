@@ -130,7 +130,7 @@ and a draw-visibility probe:
 - Pop/Clear on an empty stack are safe no-ops.
 
 ## Release
-- Bump `<KhaozEngine5xVersion>` 5.37.0 -> 5.38.0; CHANGELOG; update the `KhaozEngine.Game` `<Description>` to
+- Bump `<KhaozEngineVersion>` 5.37.0 -> 5.38.0; CHANGELOG; update the `KhaozEngine.Game` `<Description>` to
   mention the scene stack. Pack the 8 5.x packages; merge --no-ff, suite green on main, pack canonical, tag
   `v5.38.0`, push. (Hardpoint refactor onto scenes is a SEPARATE follow-up - do NOT bundle it.)
 

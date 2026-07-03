@@ -37,7 +37,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.Telegraphs</PackageId>
-    <Version>$(KhaozEngine5xVersion)</Version>
+    <Version>$(KhaozEngineVersion)</Version>
     <Description>Presentation-only attack-telegraph / danger-zone indicators for KhaozEngine. A data-driven, immediate-mode renderer for animated danger shapes (circle, ring, beam, cone, arc) driven by a 0..1 telegraph progress and a styleable TelegraphStyle (fill/outline, color ramp, fill sweep, outline pulse, impact flash, element presets). This package is the render-free style + resolve core plus the 2D path (TelegraphRenderer2D over Render2D); add KhaozEngine.Telegraphs.Render3D for the ground-plane 3D path. Holds no simulation state - safe to feed from a deterministic/lockstep game without touching its hash, exactly like the skinned-mesh animation layers.</Description>
   </PropertyGroup>
   <ItemGroup>
@@ -1479,7 +1479,7 @@ The `CrossBackendGoldenTests` auto-discovers the new `telegraph_ground.*` grids 
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.Telegraphs.Render3D</PackageId>
-    <Version>$(KhaozEngine5xVersion)</Version>
+    <Version>$(KhaozEngineVersion)</Version>
     <Description>The 3D arm of the KhaozEngine telegraph system: Scene3D ground-plane extensions (GroundCircle/Ring/Beam/Cone/Arc) that map a TelegraphStyle + 0..1 progress onto Render3D's generic depth-sampling DrawGroundDecal primitive, so danger zones lie flat on the ground/terrain under the meshes and animate over the telegraph window. Kept separate from KhaozEngine.Telegraphs so a 2D-only game never drags in Render3D. Presentation only, holds no sim state. MonoGame-free.</Description>
   </PropertyGroup>
   <ItemGroup>
@@ -1824,13 +1824,13 @@ git commit -m "docs(telegraphs): usage section + consumer package notes"
 Single version bump for the whole batch, additive = minor. Follow the order in `KhaozEngine/CLAUDE.md`.
 
 **Files:**
-- Modify: `Directory.Build.props` (`<KhaozEngine5xVersion>`)
+- Modify: `Directory.Build.props` (`<KhaozEngineVersion>`)
 - Modify: `CHANGELOG.md`, `CHANGENOTES.md`
 - Modify: `docs/CONSUMERS.md` (Engine current version), `docs/ROADMAP.md` (Current released version), `README.md` (the four `<PackageReference>` example versions)
 
 - [ ] **Step 1: Bump the version**
 
-In `Directory.Build.props`: `<KhaozEngine5xVersion>7.33.0</KhaozEngine5xVersion>` -> `7.34.0`.
+In `Directory.Build.props`: `<KhaozEngineVersion>7.33.0</KhaozEngineVersion>` -> `7.34.0`.
 
 - [ ] **Step 2: Update the three guarded doc declarations**
 

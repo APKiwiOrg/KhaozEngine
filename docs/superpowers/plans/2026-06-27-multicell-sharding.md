@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- **Engine version:** one shared `<KhaozEngine5xVersion>` in `Directory.Build.props`; this ships a **minor** bump `7.49.1` → `7.50.0` (additive API). Confirm `origin/main` + `git tag` have not taken 7.50.0 before tagging; bump past any race.
+- **Engine version:** one shared `<KhaozEngineVersion>` in `Directory.Build.props`; this ships a **minor** bump `7.49.1` → `7.50.0` (additive API). Confirm `origin/main` + `git tag` have not taken 7.50.0 before tagging; bump past any race.
 - **No new package** (additive API in existing `KhaozEngine.NetWorld`). `KhaozEngine.NetWorld` gains a project reference to `KhaozEngine.Sharding` (acyclic: Sharding does not depend on NetWorld).
 - **Client protocol IDENTICAL.** `WorldClient`, `MoveProtocol`, `ReplicatedPosition`, the `[localNetId][ack]` frame are unchanged. The single-`World` `WorldServer` path stays intact (only gains an interface it already satisfies).
 - **No em-dashes** anywhere (code, comments, docs, commits). Terse commit subjects `area(scope): summary`; on the release commit the scope is the new version, e.g. `networld(7.50.0): ...`.
@@ -1103,7 +1103,7 @@ git commit -m "networld: point single-World doc at ShardedWorldServer; refresh p
 **Files:**
 - Modify: `Directory.Build.props`, `CHANGELOG.md`, `CHANGENOTES.md`, `docs/CONSUMERS.md`, `docs/ROADMAP.md`, `README.md`, `docs/USING-KHAOZENGINE.md`, `KhaozEngine/CLAUDE.md` (i.e. `./CLAUDE.md`).
 
-- [ ] **Step 1: Bump the version.** In `Directory.Build.props`: `<KhaozEngine5xVersion>7.49.1</KhaozEngine5xVersion>` → `7.50.0`. (First re-confirm `git fetch && git tag | sort -V | tail` did not already publish 7.50.0; if so, bump past it.)
+- [ ] **Step 1: Bump the version.** In `Directory.Build.props`: `<KhaozEngineVersion>7.49.1</KhaozEngineVersion>` → `7.50.0`. (First re-confirm `git fetch && git tag | sort -V | tail` did not already publish 7.50.0; if so, bump past it.)
 
 - [ ] **Step 2: `CHANGELOG.md`** - add a newest-first entry under the top:
 

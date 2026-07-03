@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Engine version line: single `<KhaozEngine5xVersion>` in `Directory.Build.props`. Bump **7.53.0 → 7.53.1** (PATCH; conformance fix). Highest existing tag is `v7.53.0`.
+- Engine version line: single `<KhaozEngineVersion>` in `Directory.Build.props`. Bump **7.53.0 → 7.53.1** (PATCH; conformance fix). Highest existing tag is `v7.53.0`.
 - Every behaviour change updates BOTH `CHANGELOG.md` (newest-first detailed) AND `CHANGENOTES.md` (newest-first one-line digest), in the same commit as the version bump.
 - Update the 3 guard-checked declarations: `docs/CONSUMERS.md` "Engine current version", `docs/ROADMAP.md` "Current released version", `README.md` `<PackageReference>` example. Run `scripts/check-doc-versions.sh` (must pass).
 - No em-dashes anywhere. Terse commit subjects `area(scope): summary` with the new version as scope on the bump commit.
@@ -58,7 +58,7 @@
 **Files:**
 - Modify: `Directory.Build.props` (7.53.0 → 7.53.1), `CHANGELOG.md`, `CHANGENOTES.md`, `docs/CONSUMERS.md`, `docs/ROADMAP.md`, `README.md`, `docs/USING-KHAOZENGINE.md`.
 
-- [ ] **Step 1: Bump** `<KhaozEngine5xVersion>` to `7.53.1`.
+- [ ] **Step 1: Bump** `<KhaozEngineVersion>` to `7.53.1`.
 - [ ] **Step 2: CHANGELOG.md** newest-first entry: BuildRigid now bakes node world transforms (position by world matrix, normal+tangent by the normal matrix); identity-node assets byte-identical; instancing emits N copies; note no golden affected.
 - [ ] **Step 3: CHANGENOTES.md** one-line digest.
 - [ ] **Step 4: Guard declarations** — `docs/CONSUMERS.md` "Engine current version", `docs/ROADMAP.md` "Current released version", `README.md` `<PackageReference>` example → `7.53.1`.

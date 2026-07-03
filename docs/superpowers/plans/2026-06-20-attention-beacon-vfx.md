@@ -6,7 +6,7 @@
 
 **Architecture:** A stateless static `AttentionBeacon.Draw(batch, ring?, glow?, center, in params, time)` composites additively, with all geometry/animation in pure `internal static` helpers (unit-tested headlessly, exactly like `EnergyBeam.Axis`/`DashAlpha`). A `readonly record struct AttentionBeaconParams` (+ `GlintStyle` enum) carries the tunables with a `Default` preset. `VfxRenderer.DrawAttentionBeacon` is a thin convenience that supplies the owned `RingTexture`/`GlowTexture`, mirroring `DrawBeam`.
 
-**Tech Stack:** C# / net10.0, `System.Numerics`, `KhaozEngine.Primitives.Color`, xUnit. Render via `SpriteBatch` (MonoGame-free). Ships in the `KhaozEngine.Render2D` package under the shared `<KhaozEngine5xVersion>` line.
+**Tech Stack:** C# / net10.0, `System.Numerics`, `KhaozEngine.Primitives.Color`, xUnit. Render via `SpriteBatch` (MonoGame-free). Ships in the `KhaozEngine.Render2D` package under the shared `<KhaozEngineVersion>` line.
 
 **Working directory:** worktree `feature/attention-beacon` (branch `worktree-feature+attention-beacon`), branched off `origin/main` at 7.4.0. Target release: **7.5.0**.
 
@@ -676,7 +676,7 @@ Follow the canonical order from `CLAUDE.md`. Do NOT bump per item - this is the 
 
 - [ ] **Step 1: Bump the shared version line**
 
-In `Directory.Build.props`, change `<KhaozEngine5xVersion>7.4.0</KhaozEngine5xVersion>` to `7.5.0`.
+In `Directory.Build.props`, change `<KhaozEngineVersion>7.4.0</KhaozEngineVersion>` to `7.5.0`.
 
 - [ ] **Step 2: Add the `CHANGELOG.md` entry (newest-first, detailed)**
 
@@ -694,7 +694,7 @@ Update so `scripts/check-doc-versions.sh` passes:
 - `README.md` - the `<PackageReference>` version in the example.
 
 Run: `bash scripts/check-doc-versions.sh`
-Expected: PASS (the three declarations match `<KhaozEngine5xVersion>` = 7.5.0).
+Expected: PASS (the three declarations match `<KhaozEngineVersion>` = 7.5.0).
 
 - [ ] **Step 5: Full test run on the merged feature**
 

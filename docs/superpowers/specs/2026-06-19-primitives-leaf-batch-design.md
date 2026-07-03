@@ -67,7 +67,7 @@ Explicitly NOT in this batch (noted by the audit, deferred):
 
 Zero engine dependencies. Only `System.Numerics`. Becomes the lowest node in the dependency
 graph; no cycles because nothing it references is an engine package. Packable, versioned
-via `$(KhaozEngine5xVersion)` like every other project.
+via `$(KhaozEngineVersion)` like every other project.
 
 Contents:
 
@@ -210,7 +210,7 @@ Golden render snapshots (`KE_GPU_TESTS=1`) must stay green after the Color migra
 
 ## Release ritual (per CLAUDE.md)
 
-In order: bump `<KhaozEngine5xVersion>` in `Directory.Build.props` (5.71.0 -> 6.0.0) ->
+In order: bump `<KhaozEngineVersion>` in `Directory.Build.props` (5.71.0 -> 6.0.0) ->
 CHANGELOG.md newest-first entry (breaking Color, new Primitives package, RNG consolidation,
 the fixes) -> update the three doc-version declarations the guard checks
 (`docs/CONSUMERS.md` "Engine current version", `docs/ROADMAP.md` "Current released version",

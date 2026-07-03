@@ -164,7 +164,7 @@ alone). Document that a realistic material is otherwise still quantized/outlined
 
 ## Release ritual (per CLAUDE.md)
 
-Bump `<KhaozEngine5xVersion>` 7.22.0 -> 7.23.0; `CHANGELOG.md` (detailed, newest-first) +
+Bump `<KhaozEngineVersion>` 7.22.0 -> 7.23.0; `CHANGELOG.md` (detailed, newest-first) +
 `CHANGENOTES.md` (one-line digest) in the same commit; update the three guarded declarations
 (`docs/CONSUMERS.md` engine current version, `docs/ROADMAP.md` current released version, `README.md`
 `<PackageReference>` example); `dotnet pack -c Release -o ./local-feed`; commit; tag `v7.23.0`; push

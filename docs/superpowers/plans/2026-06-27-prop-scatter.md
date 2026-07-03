@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- One **minor** version bump only: `7.45.0` -> `7.46.0` in `Directory.Build.props` `<KhaozEngine5xVersion>`. Additive public API in three EXISTING packages (Render3D, Terrain, Terrain.Render3D). No new package, so no package-catalog churn.
+- One **minor** version bump only: `7.45.0` -> `7.46.0` in `Directory.Build.props` `<KhaozEngineVersion>`. Additive public API in three EXISTING packages (Render3D, Terrain, Terrain.Render3D). No new package, so no package-catalog churn.
 - TDD: every new behaviour ships with a headless test in `KhaozEngine.Tests`. NO GPU device in tests (assert against `SceneInstances`/CPU mesh data only).
 - Input rule: only `AppWindow` touches windowing input; nothing here touches input statics (scatter + pipeline are pure; the sample reads `Input` via the existing `GameApp3D` snapshot path).
 - Stay in scope. Do NOT build: a meshopt decoder (require decompressed glTF), mesh-LOD/impostors, PBR splat textures, prop/obstacle collision, chunk streaming, animated props.
@@ -184,7 +184,7 @@ Steps (offline ingest, NOT TDD):
 **Files:**
 - Modify: `Directory.Build.props`, `CHANGELOG.md`, `CHANGENOTES.md`, `docs/CONSUMERS.md`, `docs/ROADMAP.md`, `README.md`, `docs/USING-KHAOZENGINE.md`
 
-- [ ] Bump `<KhaozEngine5xVersion>` 7.45.0 -> 7.46.0.
+- [ ] Bump `<KhaozEngineVersion>` 7.45.0 -> 7.46.0.
 - [ ] `CHANGELOG.md`: newest-first detailed entry (the three new surfaces + the offline gltf-transform ingest note).
 - [ ] `CHANGENOTES.md`: one-line digest.
 - [ ] Update the 3 guard declarations to 7.46.0: `docs/CONSUMERS.md` "Engine current version", `docs/ROADMAP.md` "Current released version", `README.md` PackageReference example(s).

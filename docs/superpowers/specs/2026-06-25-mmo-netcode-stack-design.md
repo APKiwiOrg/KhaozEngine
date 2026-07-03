@@ -141,7 +141,7 @@ authoritative state; `IWorldStore` is server-only.
 
 ## Phased decomposition
 
-Each phase ships on the shared `<KhaozEngine5xVersion>` line with headless tests over `LoopbackTransport`.
+Each phase ships on the shared `<KhaozEngineVersion>` line with headless tests over `LoopbackTransport`.
 Sub-projects within a phase that have no dependency between them can run as concurrent worktrees.
 
 ### Phase 0 — Foundations (parallelizable)

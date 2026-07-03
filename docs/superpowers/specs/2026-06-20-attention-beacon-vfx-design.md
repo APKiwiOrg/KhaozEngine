@@ -150,7 +150,7 @@ non-zero counts. Existing golden snapshots are unaffected (new draw, no change t
 
 ## Release ritual (per CLAUDE.md)
 
-1. Bump `<KhaozEngine5xVersion>` 7.4.0 → 7.5.0 in `Directory.Build.props`.
+1. Bump `<KhaozEngineVersion>` 7.4.0 → 7.5.0 in `Directory.Build.props`.
 2. `CHANGELOG.md` newest-first detailed entry; `CHANGENOTES.md` one-line digest (same commit).
 3. Update the three guard-checked declarations to 7.5.0 (`docs/CONSUMERS.md` engine version,
    `docs/ROADMAP.md` current released version, `README.md` `<PackageReference>` example) - run

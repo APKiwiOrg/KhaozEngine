@@ -85,7 +85,7 @@ New file `KhaozEngine.Tests/Render2DParallaxTests.cs`.
 
 Additive → minor. Next 5.x version is **5.57.0**.
 
-1. Bump `<KhaozEngine5xVersion>` to `5.57.0`.
+1. Bump `<KhaozEngineVersion>` to `5.57.0`.
 2. Newest-first `CHANGELOG.md` entry (same commit).
 3. Update the three guard-checked declarations (CONSUMERS, ROADMAP, README package refs) to 5.57.0.
 4. In `docs/ROADMAP.md` camera section, move the parallax item from "Still open" to "Shipped". With parallax

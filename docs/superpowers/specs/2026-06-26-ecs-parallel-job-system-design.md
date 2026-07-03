@@ -147,6 +147,6 @@ remaining bottleneck — **it did not (gate verdict above), so layer 3 was de-sc
 
 ## Cadence
 
-Build layer by layer; each sub-project is one worktree + release on the shared `<KhaozEngine5xVersion>` line, headless
+Build layer by layer; each sub-project is one worktree + release on the shared `<KhaozEngineVersion>` line, headless
 tests over the inline scheduler, full doc sweep. Like the MMO program, no code is written against this map directly —
 each layer gets its own scoping doc (already drafted alongside this spec) → plan → build.

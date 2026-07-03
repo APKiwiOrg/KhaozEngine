@@ -238,6 +238,23 @@ namespace KhaozEngine.Showcase
             _physics.AddStatic(proxyShape, proxyPose);
             _overlayStatics = new List<CollisionStatic> { new(proxyShape, proxyPose) };
 
+            // Building collision: load the baked .coll per building id (offline-baked by the proxy-authoring
+            // tool, same KECL format as the blacksmith proxy above) and add each as a scaled static at its
+            // placement pose, so the 7 town buildings are solid instead of walk-through. Mirrors Ruinborne's
+            // RuinbornePhysics.AddPlacement (LoadDirectory + PhysicsShapeScale.Uniform + AddStatic). Also
+            // registered in _overlayStatics so F2 shows the building collision proxies too.
+            string buildingCollDir = Path.Combine(AppContext.BaseDirectory, "assets", "buildings");
+            IReadOnlyDictionary<string, PhysicsShape> buildingShapes = PropCollisionFormat.LoadDirectory(buildingCollDir);
+            foreach (TownBuilding b in CreateTownBuildings())
+            {
+                if (!buildingShapes.TryGetValue(b.Id, out PhysicsShape? shape)) continue;
+                PhysicsShape scaled = PhysicsShapeScale.Uniform(shape, b.Scale);
+                var bPose = new Pose(new Vector3(b.X, _terrain.GroundHeight(b.X, b.Z), b.Z),
+                                      Quaternion.CreateFromYawPitchRoll(b.Yaw, 0f, 0f));
+                _physics.AddStatic(scaled, bPose);
+                _overlayStatics.Add(new CollisionStatic(scaled, bPose));
+            }
+
             _collisionOverlay = new CollisionShapeOverlay();
             _collisionOverlay.Build(_scene, _overlayStatics);
 

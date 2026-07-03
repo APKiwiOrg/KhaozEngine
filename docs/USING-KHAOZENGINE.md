@@ -559,6 +559,12 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
   frame instead (1:1, no upscale blur on large / Retina windows; capped at `Post.MaxRenderWidth` x
   `MaxRenderHeight`, default 3840x2160, aspect preserved). Leave it `FixedInternal` for the chunky/`Pixelated`
   look.
+- Supersampling (SSAA): `Post.Supersample` (default `1`, MatchViewport only). Renders the internal 3D target at
+  framebuffer x this factor per axis and downsamples in the final blit, so it anti-aliases BOTH geometry edges
+  and shaded texture interiors (unlike MSAA). `2` = 2x per axis (4x pixels), the same effective AA a 2x/Retina
+  display gives for free - use it to remove the motion "shimmer/vibration" high-frequency terrain or thin foliage
+  throws on a standard-DPI display. Still clamped to `MaxRenderWidth`/`MaxRenderHeight`. A factor of 2 resolves with
+  a correct 2x2 box; above ~2x the single-tap blit under-samples.
 - Edge outline: `Post.Outline` (on by default) draws a depth/normal toon outline. `OutlineColor`,
   `OutlineDepthThreshold` (depth-discontinuity sensitivity), and `OutlineNormalThreshold` (interior-crease
   sensitivity from the geometric normal) tune it. The outline is perspective-correct: under a

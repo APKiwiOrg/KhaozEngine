@@ -49,6 +49,16 @@ namespace KhaozEngine.Render3D
         /// <see cref="Render3D.RenderScale.MatchViewport"/> (see <see cref="MaxRenderWidth"/>).</summary>
         public int MaxRenderHeight = 2160;
 
+        /// <summary>Supersampling factor for <see cref="Render3D.RenderScale.MatchViewport"/> (ignored for
+        /// FixedInternal). The internal 3D target is rendered at framebuffer x this factor per axis, then downsampled
+        /// to the framebuffer by the final blit - anti-aliasing BOTH geometry edges AND shaded texture interiors
+        /// (unlike MSAA, which only covers geometry). 1 = off; 2 = 2x per axis (4x the pixels), the same effective AA
+        /// a 2x/Retina display gives for free, which fixes high-frequency-terrain / thin-foliage shimmer on a
+        /// standard-DPI display. The result is still clamped to <see cref="MaxRenderWidth"/>/<see cref="MaxRenderHeight"/>.
+        /// A factor of 2 downsamples with a correct 2x2 box via the bilinear blit; larger factors soften more but
+        /// the single-tap blit under-samples above ~2x.</summary>
+        public float Supersample = 1f;
+
         /// <summary>Point-sample the final upscale for crisp pixels (retro). False = smooth/AA downscale.</summary>
         public bool Pixelated = false;
 

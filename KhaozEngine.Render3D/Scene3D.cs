@@ -865,10 +865,12 @@ namespace KhaozEngine.Render3D
             if (s.RenderScale == RenderScale.FixedInternal)
                 return (s.RenderWidth, s.RenderHeight);
 
-            // MatchViewport: render at the framebuffer size, capped (aspect-preserving downscale) so a huge window
-            // doesn't allocate an unbounded target. Guard against a zero/negative viewport during startup/minimise.
-            int vw = Math.Max(1, viewportW);
-            int vh = Math.Max(1, viewportH);
+            // MatchViewport: render at the framebuffer size x the supersample factor (SSAA), capped
+            // (aspect-preserving downscale) so a huge window / big factor doesn't allocate an unbounded target.
+            // Guard against a zero/negative viewport during startup/minimise.
+            float ss = MathF.Max(1f, s.Supersample);
+            int vw = Math.Max(1, (int)MathF.Round(Math.Max(1, viewportW) * ss));
+            int vh = Math.Max(1, (int)MathF.Round(Math.Max(1, viewportH) * ss));
             int maxW = Math.Max(1, s.MaxRenderWidth);
             int maxH = Math.Max(1, s.MaxRenderHeight);
             if (vw <= maxW && vh <= maxH) return (vw, vh);

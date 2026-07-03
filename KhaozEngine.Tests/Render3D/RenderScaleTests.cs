@@ -70,5 +70,31 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal((1, 1), Scene3D.ComputeTargetSize(s, 0, 0));
             Assert.Equal((1, 1), Scene3D.ComputeTargetSize(s, -10, -10));
         }
+
+        [Fact]
+        public void MatchViewport_supersample_multiplies_the_target_below_cap()
+        {
+            var s = new PixelPostProcessSettings { RenderScale = RenderScale.MatchViewport, Supersample = 2f };
+            // A 720p window x2 = 1440p internal (under the 3840x2160 cap) - the same effective AA a 2x/Retina display gives.
+            Assert.Equal((2560, 1440), Scene3D.ComputeTargetSize(s, 1280, 720));
+            Assert.Equal((1600, 1200), Scene3D.ComputeTargetSize(s, 800, 600));
+        }
+
+        [Fact]
+        public void MatchViewport_supersample_still_clamps_to_the_cap()
+        {
+            var s = new PixelPostProcessSettings { RenderScale = RenderScale.MatchViewport, Supersample = 2f };
+            Assert.Equal((3840, 2160), Scene3D.ComputeTargetSize(s, 1920, 1080));   // 1080p x2 = 4K = exactly the cap
+            Assert.Equal((3840, 2160), Scene3D.ComputeTargetSize(s, 2560, 1440));   // 1440p x2 > cap -> clamps (16:9)
+        }
+
+        [Fact]
+        public void Supersample_below_one_is_clamped_and_FixedInternal_ignores_it()
+        {
+            var mv = new PixelPostProcessSettings { RenderScale = RenderScale.MatchViewport, Supersample = 0.5f };
+            Assert.Equal((1280, 720), Scene3D.ComputeTargetSize(mv, 1280, 720));    // < 1x is treated as 1x
+            var fi = new PixelPostProcessSettings { Supersample = 2f };             // FixedInternal ignores Supersample
+            Assert.Equal((1600, 900), Scene3D.ComputeTargetSize(fi, 1280, 720));
+        }
     }
 }

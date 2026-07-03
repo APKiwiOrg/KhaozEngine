@@ -5,7 +5,21 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
-## 9.12.0
+## 9.13.0
+
+Supersampling (SSAA) for the 3D pass: `PixelPostProcessSettings.Supersample` renders the internal target at a multiple of the framebuffer under `RenderScale.MatchViewport`, then downsamples in the final blit. Anti-aliases BOTH geometry edges and shaded texture interiors (unlike MSAA), which fixes high-frequency-terrain / thin-foliage shimmer that "vibrates" when the camera moves on a standard-DPI display. Additive minor, default off (1x).
+
+- **`PixelPostProcessSettings.Supersample`** (new, `float`, default `1`). Only affects `RenderScale.MatchViewport`
+  (ignored for `FixedInternal`). The 3D internal target is rendered at framebuffer x this factor per axis and the
+  final blit downsamples it, so it super-samples the whole shaded image. `2` = 2x per axis (4x the pixels), the same
+  effective AA a 2x/Retina display gives for free - on a standard-DPI display it removes the motion shimmer that a
+  Retina display never showed. The supersized target is still clamped to `MaxRenderWidth`/`MaxRenderHeight` (aspect
+  preserved), so a big window x a big factor cannot allocate an unbounded target. A factor of 2 resolves with a
+  correct 2x2 box through the existing bilinear blit; above ~2x the single-tap blit under-samples (mip the target
+  for higher factors - future).
+- Why not MSAA: MSAA only covers geometry-edge coverage, not shaded texture interiors, so it would miss the
+  dominant symptom here (a high-frequency terrain albedo aliasing at grazing angles). SSAA covers both.
+- Tests: `RenderScaleTests` gains supersample cases (2x below/at/over the cap, sub-1x clamp, FixedInternal ignores it).
 
 Wall-clock resume detection: `GameClock` now reports the real time elapsed between frames from a UTC wall clock (which survives an OS sleep/suspend/hibernate, where the frame `dt` does not), and `GameApp` raises a new `OnResume` hook when that gap is large, so a game can run offline/AFK catch-up, re-sync timers, or pause. Additive minor, new public API, no behaviour change to existing packages (the 0.1s sim-delta clamp and `Dt` are unchanged).
 

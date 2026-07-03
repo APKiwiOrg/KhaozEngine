@@ -5,6 +5,19 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 9.10.0
+
+Engine-owned Discord: a provider-neutral social/presence seam (`KhaozEngine.Social`) plus a pure-managed Discord Rich Presence backend (`KhaozEngine.Social.Discord`), so games retire their bespoke Discord code. Additive minor, new packages, no behaviour change to existing packages.
+
+- **`KhaozEngine.Social`** (new, `Foundation` umbrella, deps: `Diagnostics`) - the seam:
+  - **`ISocialProvider`** - provider-neutral contract: `TryInitialize`, `IsConnected`, `Update`, `SetPresence(in RichPresence)`, `ClearPresence`, `TryGetLocalUser(out SocialUser)`, and the `JoinRequested` / `JoinRequestReceived` events. Every method is best-effort and never throws.
+  - **Value types** - `RichPresence` (details/state/timestamps/images/party/secrets/buttons), `PresenceImage`, `PresenceParty`, `PresenceButton`, `SocialUser`, `JoinRequest`.
+  - **`NullSocialProvider`** - silent no-op default (headless servers, CI, no backend added).
+  - **`SocialPresenceController`** - game-facing orchestration over any provider: lazy init, dedupe, throttled republish (`SocialPresenceOptions.RepublishInterval`, default 15s), an elapsed-timer helper (`SetElapsedPresence`), and session self-disable so a platform failure never reaches the game loop.
+- **`KhaozEngine.Social.Discord`** (new, opt-in, NOT in any umbrella; add explicitly like `Physics.Bepu`, deps: `KhaozEngine.Social`) - **`DiscordSocialProvider : ISocialProvider`** over a pure-managed Discord IPC client (Windows named pipe / macOS+Linux unix domain socket, opcode+length+JSON framing via System.Text.Json). No native libraries, no third-party NuGet. Rich presence, local Discord identity, and join (`ACTIVITY_JOIN` / `ACTIVITY_JOIN_REQUEST`). `DiscordSocialOptions` carries the game's Discord Application id.
+- The native Discord Social SDK (friends/lobbies/voice) is deliberately out of scope; if ever needed it slots in behind the same `ISocialProvider` as a separate opt-in `.Native` backend.
+- Tests: headless coverage of the Null provider, the controller (dedupe/throttle/elapsed/self-disable), the IPC frame codec, activity payload mapping + dispatch parsing, unix socket path discovery, and the IPC client + provider against an in-memory transport. A live-socket smoke test is tagged `[Trait("Category","LiveSocket")]` and excluded from CI.
+
 ## 9.9.0
 
 Diagnostic mip-chain readback: a game/test can read one mip level of a splat material's albedo array back to the CPU, to verify a generated mip chain on a real device (used to chase the Windows/D3D11 terrain "fuzz"). Additive minor, new public API, no behaviour change.

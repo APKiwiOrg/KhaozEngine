@@ -36,6 +36,8 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 | **KhaozEngine.Collision** | Deterministic 2D collision + broadphase: `CircleCollision`, `SpatialHashGrid`, static-world collision (`BoxCollision` circle-vs-AABB/oriented-box push-out, `WorldCollider`/`WorldColliders` with height-aware blocking), and walkable prop surfaces (`PropSurface`/`WorldSurface`/`WorldSurfaces` top-surface height grids you stand on / jump onto). Bit-identical math for lockstep sims (`System.Numerics`). | Pure .NET |
 | **KhaozEngine.Physics** | Dependency-free 3D physics seam (in `Foundation`): `IPhysicsWorld` (static bodies, `Step(dt)`, raycast/sweep-capsule/penetration queries), value-type shapes (`Sphere`/`Capsule`/`Box`/`Cylinder`/`ConvexHull`/`TriangleMesh`/`Compound`), `Pose`, `PhysicsMaterial`, `QueryFilter`, `StaticHandle`, `RayHit`/`SweepHit`. Also the render-free `PropCollisionFormat` KECL `.coll` reader/writer + headless loaders (`LoadDirectory`/`Load`), so an authoritative server with no GPU/windowing loads the same baked shapes a client predicts against. The backend is opt-in (see `Physics.Bepu`). | Pure .NET |
 | **KhaozEngine.Physics.Bepu** | BepuPhysics v2 backend (opt-in, NOT in any umbrella; add explicitly like `WorldStore.Sqlite`): `BepuPhysicsWorld : IPhysicsWorld` over BepuPhysics 2.4.0 (pure-managed, Apache-2.0). Single-threaded deterministic `Simulation`. `AddStatic`/`RemoveStatic`, `Step(dt)`, raycast, sweep-capsule, penetration. Wire into `CharacterController3D` / `WorldServer` / `WorldClient` via the `IPhysicsWorld?` ctor param. | KhaozEngine.Physics, BepuPhysics |
+| **KhaozEngine.Social** | Game-agnostic social/presence seam (in `Foundation`): `ISocialProvider` (rich presence, local identity, join/invite) with a `NullSocialProvider` no-op default and a `SocialPresenceController` that dedupes/throttles presence and self-disables on error. Provider-neutral (Discord today, Steam/other later). The backend is opt-in (see `Social.Discord`). | Diagnostics |
+| **KhaozEngine.Social.Discord** | Discord Rich Presence backend (opt-in, NOT in any umbrella; add explicitly like `Physics.Bepu`): `DiscordSocialProvider : ISocialProvider` over a pure-managed Discord IPC client (Windows named pipe / unix domain socket, JSON framing) - no native libraries, no third-party NuGet. Rich presence, local Discord identity, `ACTIVITY_JOIN`/join-request. `DiscordSocialOptions` carries the game's Discord Application id. | KhaozEngine.Social |
 | **KhaozEngine.Terrain** | Render-free analytic terrain: `TerrainField` (`SampleHeight`/`SampleNormal`/`SampleBiome`/`WaterLevel`) folds biome-band shaping, stateless coordinate-hash fractal noise (`TerrainNoise`), and ordered features (`LakeFeature`/`RidgeFeature`/`FlattenFeature`); height at a point depends only on `(x, z, seed)`. Plus `TerrainCollision` (ground height + slope walkability) and `TerrainPresets.Clearing()`. Plain `float`; server and client sample the same field. In the `Foundation` umbrella. | Primitives, Collision |
 | **KhaozEngine.Locomotion** | Render-free character locomotion core: `CharacterMovement.Step` from a `MoveCommand` (camera-relative WASD axis + run + camera yaw + jump) over a timestep, normalized diagonals, ground-clamped via a height delegate with an optional slope gate. Two overloads share one horizontal core: `Step(Vector3,...)` (horizontal-only, Y instant-clamped) and the vertical-physics `Step(in MoveState,...)` (gravity + jump with coyote-time/jump-buffer + air control over a carried `MoveState`, plus optional 3D prop collision via `IPhysicsWorld?` (swept collide-and-slide: trap-proof against one-sided building meshes, walkable-surface following, and a `StepHeight` step-up so low stairs/curbs are walkable)). One `MoveTuning` source of truth (speeds + gravity/jump/fall/feel) shared by the local `CharacterController3D`, the authoritative server sim, and client prediction. No input/render/netcode. In the `Foundation` umbrella. | Primitives, Physics |
 | **KhaozEngine.Determinism** | `DeterministicFpScope` / `DeterministicFp`: pins the CPU floating-point environment to a canonical IEEE state (round-to-nearest-even, FTZ/DAZ off, traps masked) for a fixed-tick / lockstep sim, then restores it, so a fixed-seed host sim doesn't drift across threads/machines. Pure-managed P/Invoke over `<fenv.h>`; `IsSupported` no-ops safely where unwired. | Pure .NET |
@@ -62,7 +64,7 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 | **KhaozEngine.Game2D** | 2D runtime (Windowing/Render2D/Gui/Audio/Particles/Telegraphs) + `Game` + `Foundation` | a desktop 2D game |
 | **KhaozEngine.Game3D** | `Game2D` + `Render3D` + `Game.Render3D` (the 3D scene bridge) + `Telegraphs.Render3D` + `Terrain.Render3D` (chunked-LOD terrain mesh + world streaming) | a desktop 3D game |
 | **KhaozEngine.Server** | `Foundation` + netcode (`Netcode`/`.Abstractions`/`.LiteNetLib`) + `Simulation` (fixed-tick host) + `Replication` + `WorldStore` (the `IWorldStore` seam + `InMemoryWorldStore` only; the `.Sqlite` / `.SqlServer` durable backends are opt-in siblings, added explicitly, not bundled) + `Sharding` (cell grid) + `NetWorld` (authoritative movement server + client glue + `WorldPersistence`) | a headless sim server (no GPU) |
-| **KhaozEngine.Foundation** | the GPU-free foundation (Primitives/App/Content/Diagnostics/Ecs/Locomotion/Persistence/Serialization/Collision/Physics/Terrain/Determinism/Platform/Updates) | a gameplay-logic library (no renderer) |
+| **KhaozEngine.Foundation** | the GPU-free foundation (Primitives/App/Content/Diagnostics/Ecs/Locomotion/Persistence/Serialization/Social/Collision/Physics/Terrain/Determinism/Platform/Updates) | a gameplay-logic library (no renderer) |
 
 Target framework `net10.0`. MonoGame-free: Silk.NET windowing/input (GLFW natives bundled per-RID), Veldrid
 behind `KhaozEngine.Gpu` for the GPU, Silk.NET.OpenAL for audio. `System.Numerics` math throughout.
@@ -126,10 +128,10 @@ Published to a private GitHub Packages feed on tagged releases, and packed to a 
 ```
 ```xml
 <!-- One reference per project via an umbrella metapackage. Pick the bundle that fits: -->
-<PackageReference Include="KhaozEngine.Game2D"     Version="9.9.0" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
-<PackageReference Include="KhaozEngine.Game3D"     Version="9.9.0" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
-<PackageReference Include="KhaozEngine.Server"     Version="9.9.0" />  <!-- headless: foundation + netcode, no graphics -->
-<PackageReference Include="KhaozEngine.Foundation" Version="9.9.0" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
+<PackageReference Include="KhaozEngine.Game2D"     Version="9.10.0" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
+<PackageReference Include="KhaozEngine.Game3D"     Version="9.10.0" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
+<PackageReference Include="KhaozEngine.Server"     Version="9.10.0" />  <!-- headless: foundation + netcode, no graphics -->
+<PackageReference Include="KhaozEngine.Foundation" Version="9.10.0" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
 ```
 
 The metapackages have no code; they just pull in the granular packages. You can still reference those
@@ -163,6 +165,7 @@ KhaozEngine.Ecs/   KhaozEngine.Serialization/   KhaozEngine.Content/   KhaozEngi
 KhaozEngine.Diagnostics/   KhaozEngine.App/   KhaozEngine.Persistence/
 KhaozEngine.Platform/   KhaozEngine.Collision/   KhaozEngine.Physics/   KhaozEngine.Physics.Bepu/
 KhaozEngine.Terrain/   KhaozEngine.Updates/
+KhaozEngine.Social/   KhaozEngine.Social.Discord/   Opt-in Discord backend (in no umbrella)
 KhaozEngine.Locomotion/
 KhaozEngine.Netcode/   KhaozEngine.Netcode.Abstractions/   KhaozEngine.Netcode.LiteNetLib/   KhaozEngine.Simulation/
 KhaozEngine.Replication/   KhaozEngine.WorldStore/   KhaozEngine.WorldStore.Sqlite/   KhaozEngine.WorldStore.SqlServer/

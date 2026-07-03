@@ -1166,6 +1166,42 @@ removed once no consumer needs it.
 
 ---
 
+## Social / Discord presence (`KhaozEngine.Social` / `KhaozEngine.Social.Discord`)
+
+`KhaozEngine.Social` is the provider-neutral seam (in `Foundation`): `ISocialProvider` +
+`SocialPresenceController`. `KhaozEngine.Social.Discord` is the opt-in Discord backend (add it
+explicitly on the client head, like `Physics.Bepu`); a headless server or a game without it uses the
+silent `NullSocialProvider`, so the same game code runs everywhere.
+
+```csharp
+using KhaozEngine.Social;
+using KhaozEngine.Social.Discord;
+
+// Desktop head: real Discord presence.
+var provider = new DiscordSocialProvider(new DiscordSocialOptions { ApplicationId = "<discord-app-id>" });
+var social = new SocialPresenceController(provider);
+social.Initialize();
+
+// Menu / gameplay set high-level presence; the controller dedupes + throttles:
+social.SetPresence(new RichPresence { Details = "In Menu", State = "Idle" });
+social.SetElapsedPresence(new RichPresence { Details = "In Game", State = "Boss Rush" }, runElapsed);
+
+// One-click "Join Game" from a friend's profile (needs a JoinSecret on the presence):
+social.JoinRequested += secret => myNetcode.JoinFromSecret(secret);
+
+// Pump once per frame; dispose at shutdown.
+social.Update();
+```
+
+A game keeps only its Discord Application id, its presence copy, and its mode->`RichPresence` mapping.
+Everything else (connection, throttling, error handling, self-disable on failure) is engine-owned. The
+Discord backend talks to the local Discord client over its IPC socket (Windows named pipe, unix domain
+socket) with zero native libraries; if Discord is not running the provider stays disconnected and every
+call is a silent no-op. The native Discord Social SDK (friends/lobbies/voice) is out of scope and would
+be a separate opt-in backend behind the same `ISocialProvider`.
+
+---
+
 ## World streaming (`TerrainStreamer` / `Scene3DChunkSink`)
 
 `TerrainStreamer` (`KhaozEngine.Terrain.Render3D`) makes the world effectively endless: it keeps a ring of

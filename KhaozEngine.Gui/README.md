@@ -31,14 +31,22 @@ Immediate-mode + retained UI on the custom MonoGame-free stack.
   gamepad button) and fades (headless-testable, `InputState.Empty` inert); `Draw` renders a corner panel
   (`Theme.Corner`) of titles + right-aligned values. `PerformanceSection(FrameStats)` /
   `NetworkSection(in ClientNetStats)` populators cover the common cases (from `KhaozEngine.Diagnostics`).
+  `Bounds` is the last-drawn panel rect (empty when hidden/faded-out), so a caller can place an `OverlayLegend`
+  at `Bounds.Right` + a gap to sit a second panel directly beside it.
 - `TextEntry` - headless key→char text-entry helper (US layout + shift), used by `TextInput`. No SDL plumbing.
   Ctrl/Super (Cmd) held suppresses character entry so shortcut chords like Ctrl+V / Cmd+V paste instead of typing.
   Acts on `InputState.WasTyped` (press edge OR OS auto-repeat tick), so a held Backspace or character key repeats at
   the OS rate; the chord suppression still blocks repeated character entry while Ctrl/Cmd is held.
-- `OverlayLegend` (+ `LegendEntry`) - a domain-agnostic color-swatch + label panel for debug overlays:
-  `SetEntries(IReadOnlyList<LegendEntry>)`, `EntryCount`, `Measure(SpriteFont)` -> `Rect` (empty when no
-  entries), `Draw(SpriteBatch, SpriteFont, Texture2D, Rect)`. No `Visible`/fade state of its own - the caller
-  only calls `Draw` while its own overlay is on. `LegendEntry(Color Swatch, string Label)` is one row. The
+- `OverlayLegend` (+ `LegendEntry`, `OverlayLegendTheme`) - a domain-agnostic color-swatch + label panel for
+  debug overlays: `SetEntries(IReadOnlyList<LegendEntry>)`, `EntryCount`, `Measure(SpriteFont)` -> `Rect` (empty
+  when no entries), and two `Draw` overloads - `Draw(SpriteBatch, SpriteFont, Texture2D, Rect viewport)`
+  (anchors to `Theme.Corner`/`Theme.Margin`) and `Draw(..., Vector2 topLeft)` (places the panel at an explicit
+  top-left, e.g. beside another panel). `Bounds` is the last-drawn panel rect. No `Visible`/fade state of its
+  own - the caller only calls `Draw` while its own overlay is on. `Theme` (`OverlayLegendTheme`) injects the
+  look + layout (fill, border, label colour, thickness, padding, swatch size/gap, row spacing, text scale,
+  anchor); `OverlayLegendTheme.Default` is the neutral grey palette it shipped with, and
+  `OverlayLegendTheme.FromDiagnostics(DiagnosticsOverlayTheme)` derives a matching palette so a legend sits
+  beside a `DiagnosticsOverlay` in the same style. `LegendEntry(Color Swatch, string Label)` is one row. The
   collision-shape debug overlay (`KhaozEngine.Render3D.Debug.CollisionShapeOverlay`) is the first consumer,
   and it is reusable by any future overlay layer.
 

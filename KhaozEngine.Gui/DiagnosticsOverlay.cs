@@ -27,6 +27,11 @@ public sealed class DiagnosticsOverlay
     /// <summary>Whether the panel is shown. Flipped by <see cref="Toggle"/> / the toggle key in <see cref="Update"/>.</summary>
     public bool Visible { get; set; }
 
+    /// <summary>The panel rect of the most recent <see cref="Draw"/> (empty <see cref="Rect"/> when the last draw
+    /// was a no-op, i.e. hidden/faded-out/empty). Lets a caller place an adjacent panel off its edge, e.g. an
+    /// <see cref="OverlayLegend"/> at <see cref="Rect.Right"/> + a gap.</summary>
+    public Rect Bounds { get; private set; }
+
     IReadOnlyList<OverlaySection> _sections = Array.Empty<OverlaySection>();
     float _alpha; // current fade, 0..1
 
@@ -112,7 +117,7 @@ public sealed class DiagnosticsOverlay
     public void Draw(SpriteBatch batch, SpriteFont font, Texture2D white, Rect viewport)
     {
         float a = _alpha < 0f ? 0f : _alpha > 1f ? 1f : _alpha;
-        if (a <= 0f || _sections.Count == 0) return;
+        if (a <= 0f || _sections.Count == 0) { Bounds = default; return; }
 
         float pad = Theme.Padding;
         float titleH = font.LineHeight * Theme.TitleScale;
@@ -143,6 +148,7 @@ public sealed class DiagnosticsOverlay
         float panelH = contentH + pad * 2f;
         (float px, float py) = Anchor(viewport, panelW, panelH);
         var panel = new Rect(px, py, panelW, panelH);
+        Bounds = panel;
 
         GuiDraw.Fill(batch, white, panel, Mul(Theme.PanelFill, a));
         GuiDraw.Border(batch, white, panel, Theme.BorderThickness, Mul(Theme.BorderColor, a));

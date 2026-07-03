@@ -1796,7 +1796,27 @@ if (Input.WasPressed(Key.F2)) _overlay.Enabled = !_overlay.Enabled;
 
 ```csharp
 _overlay.Draw(scene);                                              // no-op unless Enabled; in the 3D pass
-_legend.Draw(batch, font, white, Viewport.DesignBounds);            // in the 2D pass; no-op when empty
+_legend.Draw(batch, font, white, Viewport.DesignBounds);            // in the 2D pass; anchors to Theme.Corner; no-op when empty
+```
+
+**Placing the legend beside another panel (side by side, not overlapping).** By default the legend anchors to
+its `Theme.Corner` (top-left), which is the same corner a `DiagnosticsOverlay` uses - so drawn together they
+overlap. To sit the legend *directly right of* the diagnostics panel, style it to match with
+`OverlayLegendTheme.FromDiagnostics(diagTheme)` and draw it at the diagnostics panel's right edge via its
+`Bounds`, using the explicit-position `Draw(..., Vector2 topLeft)` overload:
+
+```csharp
+_legend = new OverlayLegend(OverlayLegendTheme.FromDiagnostics(_diagTheme));  // shares the diag panel's look
+...
+_diagnostics.Draw(batch, font, white, Viewport.DesignBounds);      // top-left panel
+if (_overlay.Enabled)
+{
+    // right of the diag panel while it is up (Bounds is empty when it is hidden), else top-left.
+    Vector2 at = _diagnostics.Bounds.Width > 0f
+        ? new Vector2(_diagnostics.Bounds.Right + 8f, _diagnostics.Bounds.Y)
+        : new Vector2(Viewport.DesignBounds.X + 12f, Viewport.DesignBounds.Y + 12f);
+    _legend.Draw(batch, font, white, at);
+}
 ```
 
 **Palette.** `CollisionOverlayPalette` gives each `CollisionShapeKind` (`Box`/`Sphere`/`Capsule`/`Cylinder`/
@@ -1822,7 +1842,12 @@ static IReadOnlyList<LegendEntry> BuildLegendEntries(CollisionShapeOverlay overl
 ```
 
 `OverlayLegend.Measure(SpriteFont) -> Rect` returns the panel's size at the origin (empty when there are no
-entries, so a caller can skip drawing without touching the font) if you need to lay out other UI around it.
+entries, so a caller can skip drawing without touching the font) if you need to lay out other UI around it, and
+`OverlayLegend.Bounds` is the panel rect of the last `Draw`. The look + layout are injected via
+`OverlayLegendTheme` (fill, border, label colour, thickness, padding, swatch size/gap, row spacing, text scale,
+and a `Corner`/`Margin` anchor): `OverlayLegendTheme.Default` is the neutral grey palette it shipped with, and
+`OverlayLegendTheme.FromDiagnostics(DiagnosticsOverlayTheme)` derives a matching palette (see the side-by-side
+snippet above).
 
 Render-only: the overlay reads existing `PhysicsShape`/`Pose` data and draws it. Nothing here feeds back into
 simulation, determinism, or `.coll` bakes.

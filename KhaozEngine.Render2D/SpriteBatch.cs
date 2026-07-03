@@ -109,12 +109,20 @@ void main() {
         internal int CachedSetCount => _sets.Count;
 
         const uint VertexSizeBytes = 64;       // V = Pos(8)+Uv(8)+Color(16)+Local(8)+Shape(16)+Mode(8)
-        // One growable vertex buffer PER flush-within-a-frame. A frame can flush several times (every
-        // SetScissor/ClearScissor forces one), and a buffer referenced by an already-recorded Draw must not be
-        // overwritten before the GPU runs that Draw — so each flush gets its own buffer instead of reusing one at
-        // offset 0. Buffers persist across frames (only grow); _flushIndex resets each NewFrame.
-        readonly List<IGpuBuffer> _vbs = new();
-        readonly List<uint> _vbCaps = new();
+        // One growable vertex buffer PER (frame-ring-slot, flush-within-frame). Two hazards drive this shape:
+        //  - WITHIN a frame, a buffer referenced by an already-recorded Draw must not be overwritten before the GPU
+        //    runs that Draw, so every flush (each SetScissor/ClearScissor forces one) gets its own buffer, never one
+        //    reused at offset 0.
+        //  - ACROSS frames, the loop submits+presents with NO WaitForIdle, so the CPU runs ahead and a later frame's
+        //    write to a reused buffer can race the GPU still reading it for an earlier, in-flight present — a 1-frame
+        //    tear that only surfaces when the buffer contents change frame-to-frame (a moving/resizing widget; static
+        //    content writes identical bytes so the race is invisible). So the per-flush buffers are RING-BUFFERED:
+        //    NewFrame advances to the next of RingDepth slots and a slot is not rewritten until RingDepth frames
+        //    later, by which point its prior GPU reads have retired (this also makes the grow-time Dispose safe).
+        // Buffers persist across frames (only grow); _flushIndex resets each NewFrame; the ring slot is _frame % RingDepth.
+        const int RingDepth = 3;               // triple-buffered: safe while the CPU runs up to RingDepth-1 frames ahead
+        readonly List<IGpuBuffer>[] _vbRing;
+        readonly List<uint>[] _vbCapRing;
         int _flushIndex;
 
         IGpuCommandList _cl = null!;
@@ -125,6 +133,9 @@ void main() {
         internal SpriteBatch(IGpuDevice gd, GpuOutputDescription output)
         {
             _gd = gd;
+            _vbRing = new List<IGpuBuffer>[RingDepth];
+            _vbCapRing = new List<uint>[RingDepth];
+            for (int i = 0; i < RingDepth; i++) { _vbRing[i] = new List<IGpuBuffer>(); _vbCapRing[i] = new List<uint>(); }
             var f = gd.Factory;
             _linearSampler = gd.LinearSampler;
             _pointSampler = gd.PointSampler;
@@ -527,19 +538,33 @@ void main() {
         }
 
         // The vertex buffer for the current flush index this frame, grown to fit. Each flush in a frame gets its own
-        // buffer (see _vbs); they persist across frames and only grow.
+        // buffer within this frame's ring slot (see _vbRing); slots rotate per frame and only grow. A grow disposes
+        // the slot's old buffer, which is safe because that buffer was last used RingDepth frames ago (reads retired).
         IGpuBuffer AcquireFlushBuffer(uint bytesNeeded)
         {
+            List<IGpuBuffer> vbs = _vbRing[(int)(_frame % RingDepth)];
+            List<uint> caps = _vbCapRing[(int)(_frame % RingDepth)];
             int i = _flushIndex++;
-            while (_vbs.Count <= i) { _vbs.Add(null!); _vbCaps.Add(0); }
-            if (_vbs[i] == null || _vbCaps[i] < bytesNeeded)
+            while (vbs.Count <= i) { vbs.Add(null!); caps.Add(0); }
+            if (vbs[i] == null || caps[i] < bytesNeeded)
             {
-                _vbs[i]?.Dispose();
-                uint cap = Math.Max(bytesNeeded, _vbCaps[i] == 0 ? 4096u : _vbCaps[i] * 2);
-                _vbs[i] = _gd.Factory.CreateBuffer(new GpuBufferDescription(cap, GpuBufferUsage.VertexBuffer));
-                _vbCaps[i] = cap;
+                vbs[i]?.Dispose();
+                uint cap = Math.Max(bytesNeeded, caps[i] == 0 ? 4096u : caps[i] * 2);
+                vbs[i] = _gd.Factory.CreateBuffer(new GpuBufferDescription(cap, GpuBufferUsage.VertexBuffer));
+                caps[i] = cap;
             }
-            return _vbs[i];
+            return vbs[i];
+        }
+
+        /// <summary>The number of frame slots the per-flush vertex buffers rotate through (triple-buffered).</summary>
+        internal int VertexBufferRingDepth => RingDepth;
+
+        /// <summary>The vertex buffer backing flush <paramref name="flushIndex"/> of the CURRENT frame's ring slot
+        /// (null before it has been allocated). Lets a test assert the cross-frame ring rotation.</summary>
+        internal IGpuBuffer? CurrentFlushBuffer(int flushIndex)
+        {
+            List<IGpuBuffer> vbs = _vbRing[(int)(_frame % RingDepth)];
+            return flushIndex >= 0 && flushIndex < vbs.Count ? vbs[flushIndex] : null;
         }
 
         Vector2 Clip(float x, float y)
@@ -552,7 +577,8 @@ void main() {
 
         public void Dispose()
         {
-            foreach (var vb in _vbs) vb?.Dispose();
+            foreach (List<IGpuBuffer> vbs in _vbRing)
+                foreach (var vb in vbs) vb?.Dispose();
             foreach (var s in _sets.Values) s.Dispose();
             _pipeline.Dispose(); _additivePipeline.Dispose(); _layout.Dispose();
             _shaders.Dispose();

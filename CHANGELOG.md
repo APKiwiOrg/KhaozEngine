@@ -5,6 +5,27 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 9.14.0
+
+String-catalog lookup: `IStringCatalog` + `ResourceStringCatalog` resolve UI strings by key against `CultureInfo.CurrentUICulture` over a standard-library `ResourceManager`, and `LocalizationManager.Catalog` hands one out over the same resources the manager was built with. The reusable other half of the localization domain (the engine already shipped culture discovery + switching), so every game gets it instead of writing its own. Additive minor, new public API in `KhaozEngine.App`, no behaviour change to existing packages and no new dependency (App still depends only on Diagnostics).
+
+- **`IStringCatalog`** (new, `KhaozEngine.App`) - `Get(key)` resolves against `CurrentUICulture` and returns the
+  key itself when absent (a visible, non-fatal placeholder; never throws); `Format(key, args)` is a culture-aware
+  `string.Format(CurrentUICulture, Get(key), args)` of the resolved template; `TryGet(key, out value)` is a
+  non-throwing probe (false with `value == key` when absent, true + the value when present). Kept separate from
+  `LocalizationManager` so key lookup and culture switching stay single-responsibility and composable.
+- **`ResourceStringCatalog(ResourceManager)`** (new, `sealed`) - the standard-library-backed implementation.
+  `Get` is `GetString(key, CurrentUICulture) ?? key`; it reads the current UI culture live, so a
+  `LocalizationManager.SetCulture` takes effect immediately without re-creating the catalog. Pure BCL, no bespoke
+  catalog format. Null `ResourceManager` throws `ArgumentNullException` at construction.
+- **`LocalizationManager.Catalog`** (new `IStringCatalog` property) - a `ResourceStringCatalog` over the same
+  `ResourceManager` the manager was constructed with, so a consumer wires culture discovery/switching and key
+  lookup from one object: `var loc = new LocalizationManager(rm); IStringCatalog strings = loc.Catalog;`. A
+  convenience factory only - it does not merge the two types into one facade.
+- Tests: present key resolves to its localized value, an absent key returns the key (no throw), `TryGet` returns
+  false + the key when absent (true + value when present), `Format` substitutes args into the resolved template,
+  and a second `SetCulture` flips `Get` to the new culture's value (proves it reads `CurrentUICulture` live).
+
 ## 9.13.0
 
 Supersampling (SSAA) for the 3D pass: `PixelPostProcessSettings.Supersample` renders the internal target at a multiple of the framebuffer under `RenderScale.MatchViewport`, then downsamples in the final blit. Anti-aliases BOTH geometry edges and shaded texture interiors (unlike MSAA), which fixes high-frequency-terrain / thin-foliage shimmer that "vibrates" when the camera moves on a standard-DPI display. Additive minor, default off (1x).

@@ -63,3 +63,33 @@ LocalizationManager.SetCulture(code ?? LocalizationManager.DefaultCultureCode);
 ```
 
 `SetCulture` throws on null/empty input. `DefaultCultureCode` is `"en-US"`.
+
+### String catalog (`IStringCatalog` / `ResourceStringCatalog`)
+
+`LocalizationManager` sets the culture; a string catalog resolves keys *in* that culture. `IStringCatalog`
+is a thin lookup contract; `ResourceStringCatalog` is the standard-library implementation over the same
+`ResourceManager`, and `LocalizationManager.Catalog` hands one out over the resources it was built with.
+
+```csharp
+using System.Resources;
+using KhaozEngine.App;
+
+var loc = new LocalizationManager(rm);
+IStringCatalog strings = loc.Catalog;          // over the same rm
+
+LocalizationManager.SetCulture("en-US");
+string title = strings.Get("token.enter");     // resolved value, or "token.enter" if the key is absent
+string hi    = strings.Format("greeting", playerName);   // culture-aware string.Format of the template
+if (strings.TryGet("optional.hint", out string hint)) { /* present */ }
+```
+
+- **`Get(key)`** resolves against `CultureInfo.CurrentUICulture` and **never throws**: a missing key returns
+  the key itself (a visible, non-fatal placeholder). Reads the culture live, so a later `SetCulture` is picked
+  up without re-creating the catalog.
+- **`Format(key, args)`** is `string.Format(CurrentUICulture, Get(key), args)` - culture-aware substitution of
+  the resolved template.
+- **`TryGet(key, out value)`** is a non-throwing probe: `false` with `value == key` when absent, `true` with
+  the localized value when present.
+
+`IStringCatalog` and `LocalizationManager` stay separate (single-responsibility): the `Catalog` property is a
+convenience factory, not a merge. You can also `new ResourceStringCatalog(rm)` directly.

@@ -29,7 +29,7 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 | **KhaozEngine.Ecs** | A struct-based archetype `World`/`Entity`/`ISystem` ECS: by-ref component access, `ForEach`, opt-in data-parallel `ParallelForEach` (fans archetype rows across the `IJobScheduler` worker pool, with an `AccessSet` read/write-declaration model + a debug hazard guard + per-worker command buffers), command buffer, system groups, `CachedQuery`, `WorldSerializer`. | Serialization, Simulation, Primitives |
 | **KhaozEngine.Content** | Config/content loading (embedded or disk JSON) with JSON-schema validation + build-time schema enforcement (via the bundled non-packable `Content.Validator` tool that ships inside this package). | Diagnostics, Serialization, Primitives (+ JsonSchema.Net) |
 | **KhaozEngine.Diagnostics** | Logging service: levels, pluggable sinks (rotating file / console / debug / in-memory), category loggers, a static `Log` facade over an injectable `LogManager`, crash hooks. Plus the telemetry trio: `FrameStats` (rolling fps / frame-ms / managed-bytes meter), `TelemetryRecorder` (+`TelemetryChannel`, crash-safe JSON-Lines session recorder), and `ClientNetStats` (the connection-health snapshot `WorldClient.NetStats` fills and the overlay renders). | Pure .NET |
-| **KhaozEngine.App** | App/runtime helpers: `BuildMetadata` (read `AssemblyMetadata` at runtime), `AppDataPaths` (publisher-rooted OS-correct per-app data dir), `ServiceLocator`, `AppInstallStamp`, and `LocalizationManager` (discover satellite-resource cultures + set the thread culture; absorbed from the retired Localization package in 9.0.0). | Diagnostics |
+| **KhaozEngine.App** | App/runtime helpers: `BuildMetadata` (read `AssemblyMetadata` at runtime), `AppDataPaths` (publisher-rooted OS-correct per-app data dir), `ServiceLocator`, `AppInstallStamp`, `LocalizationManager` (discover satellite-resource cultures + set the thread culture; absorbed from the retired Localization package in 9.0.0), and `IStringCatalog`/`ResourceStringCatalog` (resolve UI strings by key against the current UI culture over a `ResourceManager`; `LocalizationManager.Catalog` hands one out). | Diagnostics |
 | **KhaozEngine.Persistence** | `SaveEncoder` (Base64 + HMAC-SHA256 tamper-deterrent), `AtomicJsonWriter` + `PersistenceQueue` (crash-safe atomic writes), `SettingsManager<T>`, and the `GameStorage` facade. | Diagnostics, App, Serialization |
 | **KhaozEngine.Serialization** | Shared `System.Text.Json` defaults (`JsonDefaults`: tolerant-read / indented-write / include-fields) so Content, Persistence, and Ecs serialize consistently. | Pure .NET |
 | **KhaozEngine.Platform** | `Clipboard`: cross-platform system-clipboard facade. Text via a registered window/GLFW provider (wired by Windowing's `AppWindow`) with a macOS `NSPasteboard` fallback; images via Windows CF_DIB / macOS / optional mobile bridge. `ApplicationIcon.TrySetMacDockIcon(pngBytes)`: runtime macOS Dock icon via `NSApplication`. Best-effort and never-throwing. | Pure .NET |
@@ -128,10 +128,10 @@ Published to a private GitHub Packages feed on tagged releases, and packed to a 
 ```
 ```xml
 <!-- One reference per project via an umbrella metapackage. Pick the bundle that fits: -->
-<PackageReference Include="KhaozEngine.Game2D"     Version="9.13.0" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
-<PackageReference Include="KhaozEngine.Game3D"     Version="9.13.0" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
-<PackageReference Include="KhaozEngine.Server"     Version="9.13.0" />  <!-- headless: foundation + netcode, no graphics -->
-<PackageReference Include="KhaozEngine.Foundation" Version="9.13.0" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
+<PackageReference Include="KhaozEngine.Game2D"     Version="9.14.0" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
+<PackageReference Include="KhaozEngine.Game3D"     Version="9.14.0" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
+<PackageReference Include="KhaozEngine.Server"     Version="9.14.0" />  <!-- headless: foundation + netcode, no graphics -->
+<PackageReference Include="KhaozEngine.Foundation" Version="9.14.0" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
 ```
 
 The metapackages have no code; they just pull in the granular packages. You can still reference those

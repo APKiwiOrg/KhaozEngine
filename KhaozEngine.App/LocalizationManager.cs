@@ -21,6 +21,13 @@ public class LocalizationManager
     private readonly ResourceManager _resourceManager;
 
     /// <summary>
+    /// A string-lookup catalog over the same resources this manager was constructed with. A convenience
+    /// factory only: <see cref="IStringCatalog"/> owns key resolution and this manager owns culture
+    /// discovery + switching, so the two stay single-responsibility and composable.
+    /// </summary>
+    public IStringCatalog Catalog { get; }
+
+    /// <summary>
     /// Creates a manager that discovers supported cultures from the given resource manager.
     /// The resource manager must be built against the assembly that owns the satellite
     /// resources (typically the game's own assembly).
@@ -30,6 +37,7 @@ public class LocalizationManager
     public LocalizationManager(ResourceManager resourceManager)
     {
         _resourceManager = resourceManager ?? throw new ArgumentNullException(nameof(resourceManager));
+        Catalog = new ResourceStringCatalog(_resourceManager);
     }
 
     /// <summary>

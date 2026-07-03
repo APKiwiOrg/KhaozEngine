@@ -181,7 +181,7 @@ namespace KhaozEngine.Showcase
 
             _sink = new Scene3DChunkSink(_scene, _field, ScatterConfig.ForestRing(), _propMeshes,
                 chunkSize: TerrainChunkRegion.DefaultSize, propDrawRadius: PropDrawRadius, material: terrainMaterial,
-                physics: _physics, collisionShapes: collisionShapes);
+                ownsMaterial: true, physics: _physics, collisionShapes: collisionShapes);
             _streamer = new TerrainStreamer(StreamerConfig.Default, _sink);
 
             // Prime the FULL initial ring at load time (this is the loading moment, not a frame, so the per-frame
@@ -318,6 +318,15 @@ namespace KhaozEngine.Showcase
             _streamer.Dispose();
             _collisionOverlay.Dispose();
             _physics.Dispose();
+
+            // Free the meshes this room uploaded straight into the shared Scene3D (the streamer freed only the
+            // streamed chunk meshes + its owned splat material). Without this each re-entry would leak a fresh copy
+            // of the capsule, platform, textured block, character, and prop-kit meshes onto the shared scene.
+            _scene.UnloadMesh(_capsule);
+            _scene.UnloadMesh(_platformMesh);
+            _scene.UnloadMesh(_texturedProp);
+            foreach (MeshHandle h in _propMeshes.Values) _scene.UnloadMesh(h);
+            if (_animated) _scene.UnloadSkinnedMesh(_characterMesh);
 
             // Drop the follow camera so the default camera returns for the menu/2D rooms.
             _scene.CameraOverride = null;

@@ -5,6 +5,14 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 9.12.0
+
+Wall-clock resume detection: `GameClock` now reports the real time elapsed between frames from a UTC wall clock (which survives an OS sleep/suspend/hibernate, where the frame `dt` does not), and `GameApp` raises a new `OnResume` hook when that gap is large, so a game can run offline/AFK catch-up, re-sync timers, or pause. Additive minor, new public API, no behaviour change to existing packages (the 0.1s sim-delta clamp and `Dt` are unchanged).
+
+- **`GameClock.RealWallGapSeconds` / `GameClock.LastRealTimestamp`** (new, `KhaozEngine.Windowing`) - each `Update` samples `DateTimeOffset.UtcNow` and reports the wall-clock seconds since the previous frame (clamped to `>= 0`, so an NTP/DST backward step reads 0), plus the timestamp of that sample. Normally ~one frame; it spikes after an OS suspend or a long hang. A separate signal from the QueryPerformanceCounter-backed frame `dt`, which does not reliably advance across S3/hibernate. 0 on the first frame.
+- **`GameApp.OnResume(TimeSpan wallGap)`** (new virtual, `KhaozEngine.Game`) - raised once, before `OnUpdate`, on the first frame whose `RealWallGapSeconds` exceeds **`GameAppOptions.ResumeGapThresholdSeconds`** (new, default 30s via `For()`; 0 or negative disables). Never fires on the first frame. Override it for suspend/resume offline catch-up (e.g. a one-shot `TimeSkip.Advance`), timer re-sync, or an auto-pause. `GameApp3D` inherits it unchanged.
+- Tests: headless coverage of the wall-clock gap (frame-1 zero, per-frame-not-cumulative, backward-step clamp, independence from the sim-delta clamp, measured while paused) and the resume fire decision (fires once above threshold with the right span, not on frame 1 / below threshold / a backward step / when disabled).
+
 ## 9.11.0
 
 Diagnostics: the live device now surfaces its adapter name and sampler feature flags, and `AppWindow` exposes the physical framebuffer (render) resolution and logical window size. Additive minor, new public read-only info (used to chase the Windows/D3D11 terrain fuzz from an in-game debug panel).

@@ -158,8 +158,11 @@ namespace KhaozEngine.Gui
             if (pointer.IsPointerIn(content) && input.ScrollDelta != 0f)
                 ScrollOffset -= input.ScrollDelta * WheelSpeed;
 
-            // Drag-pan only when the drag began in the content region (so a header-resize drag never scrolls).
-            float dragY = pointer.GetDragDelta(content).Y;
+            // Drag-pan only when the drag began in the content region AND we are not mid-resize. The `_resizing`
+            // guard is load-bearing: a header drag that grows the panel moves ContentBounds up past the fixed
+            // press-origin, so GetDragDelta's press-origin test would start returning the drag delta and pan the
+            // list while the user is only resizing. Latching on _resizing keeps resize and scroll mutually exclusive.
+            float dragY = _resizing ? 0f : pointer.GetDragDelta(content).Y;
             if (dragY != 0f)
                 ScrollOffset -= dragY;
 

@@ -192,6 +192,25 @@ namespace KhaozEngine.Tests.Gui
         }
 
         [Fact]
+        public void Header_drag_up_grows_the_panel_without_scrolling_the_content()
+        {
+            var sp = Make();
+            sp.HeaderHeight = 30f;
+            sp.Resizable = true;
+            sp.MinHeight = 100f;
+            sp.MaxHeight = 400f;
+            var p = new Pointer();
+            // Press in the header, then drag UP to grow the panel. Growing docks the top upward, so the content
+            // region rises past the fixed press-origin - the regression: without the _resizing guard the resize
+            // also panned the list (GetDragDelta's press-origin then landed inside the grown ContentBounds).
+            p.Update(Frame(new Vector2(150, 115), false)); sp.Update(p, Frame(new Vector2(150, 115), false));
+            p.Update(Frame(new Vector2(150, 115), true));  sp.Update(p, Frame(new Vector2(150, 115), true));
+            p.Update(Frame(new Vector2(150, 65), true));   sp.Update(p, Frame(new Vector2(150, 65), true));
+            Assert.Equal(350f, sp.CurrentBounds.Height, 3);   // it did resize (top rose above the press point)
+            Assert.Equal(0f, sp.ScrollOffset, 3);             // and the list did not scroll
+        }
+
+        [Fact]
         public void Scrim_tap_outside_the_panel_signals_dismiss_and_reserves_its_footprint()
         {
             var sp = Make();

@@ -51,8 +51,10 @@ public interface IUpdaterUi
 
 /// <summary>
 /// The no-op <see cref="IUpdaterUi"/>: the default when no window is configured, and the implementation
-/// used on every non-Windows platform (in-place self-update is Windows-only today). All methods do
-/// nothing, so the apply core can report phases unconditionally.
+/// used on every non-Windows platform. The native progress window is Windows-only because the scan /
+/// relaunch race it addresses is Windows-only; macOS and Linux apply the update in place (POSIX replaces
+/// the running executable's inode) and need no window. All methods do nothing, so the apply core can
+/// report phases unconditionally.
 /// </summary>
 public sealed class NullUpdaterUi : IUpdaterUi
 {

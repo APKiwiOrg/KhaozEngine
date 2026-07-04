@@ -76,8 +76,9 @@ they saw a raw Windows error dialog. The shim now shows a tiny native window (Wi
 through **Install** (files copied / total) then **Finishing** ("Finishing up, checking with your
 security software...") during the settle wait above. It is a self-contained Win32 GDI window drawn with
 P/Invoke only - no WinForms/WPF, no common-controls dependency, no engine GUI/GPU stack - so it stays
-trim/AOT-safe inside a single-file trimmed shim. Off Windows it is a no-op (in-place self-update is
-Windows-only today).
+trim/AOT-safe inside a single-file trimmed shim. Off Windows it is a no-op: macOS and Linux apply the
+update in place (POSIX replaces the running executable's inode, so there is no self-lock to wait out and
+no scan/relaunch race) and need no window - the apply, quarantine clear, and codesign verify still run.
 
 The window is themeable and localizable by the game through an optional `UpdaterUiOptions` on
 `UpdateServiceOptions` (colors are plain `(R, G, B)` tuples; text is passed already-localized):

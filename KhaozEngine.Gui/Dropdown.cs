@@ -47,6 +47,19 @@ namespace KhaozEngine.Gui
         /// </summary>
         public GuiStyle Style = GuiStyle.Default;
 
+        /// <summary>
+        /// Opt-in: draw a chevron caret on the right of the trigger that points down when closed and up when open.
+        /// Defaults to <c>false</c> so existing callers render byte-identically. Colour is <see cref="ChevronColor"/>.
+        /// </summary>
+        public bool ShowChevron = false;
+        public Vector4 ChevronColor = new(0.47f, 0.49f, 0.55f, 1f);
+
+        /// <summary>
+        /// Uniform fade multiplied into every colour's alpha at draw time (1 = opaque). Lets a caller fade the whole
+        /// dropdown in/out with a host transition (e.g. an <see cref="ScrollablePanel"/> sliding up). Default 1 is a no-op.
+        /// </summary>
+        public float Opacity = 1f;
+
         public Dropdown(IReadOnlyList<DropdownOption> options, Rect triggerBounds)
         {
             if (options == null || options.Count == 0) throw new ArgumentException("At least one option is required.", nameof(options));
@@ -95,14 +108,22 @@ namespace KhaozEngine.Gui
         Rect FullBounds() =>
             new(TriggerBounds.X, TriggerBounds.Y, TriggerBounds.Width, TriggerBounds.Height * (1 + _options.Count));
 
-        /// <summary>Draw the trigger (current label + chevron). Safe to call inside a clip region.</summary>
+        /// <summary>Draw the trigger (current label, and a chevron when <see cref="ShowChevron"/>). Safe to call inside a clip region.</summary>
         public void Draw(SpriteBatch batch, Texture2D white, SpriteFont font)
         {
             if (IsOpen) GuiDraw.HoverGlow(batch, white, TriggerBounds, Style);
             GuiDraw.FillStyled(batch, white, TriggerBounds, Style with { BorderThickness = 1f },
-                Background, IsOpen ? OpenBorder : Border);
+                GuiDraw.WithOpacity(Background, Opacity), GuiDraw.WithOpacity(IsOpen ? OpenBorder : Border, Opacity));
             float ty = TriggerBounds.Y + (TriggerBounds.Height - font.LineHeight) * 0.5f;
-            batch.DrawString(font, SelectedLabel, new Vector2(MathF.Floor(TriggerBounds.X + 6f), MathF.Floor(ty)), (Color)TextColor);
+            batch.DrawString(font, SelectedLabel, new Vector2(MathF.Floor(TriggerBounds.X + 6f), MathF.Floor(ty)),
+                (Color)GuiDraw.WithOpacity(TextColor, Opacity));
+
+            if (ShowChevron)
+            {
+                var center = new Vector2(TriggerBounds.Right - 12f, TriggerBounds.Y + TriggerBounds.Height * 0.5f);
+                GuiDraw.Caret(batch, white, center, halfWidth: 4f, halfHeight: 2f, pointingUp: IsOpen,
+                    thickness: 1.5f, GuiDraw.WithOpacity(ChevronColor, Opacity));
+            }
         }
 
         /// <summary>Draw the open option list. Call last (unclipped) so it overlays other content.</summary>
@@ -110,17 +131,18 @@ namespace KhaozEngine.Gui
         {
             if (!IsOpen) return;
             var list = new Rect(TriggerBounds.X, TriggerBounds.Bottom, TriggerBounds.Width, TriggerBounds.Height * _options.Count);
-            GuiDraw.FillStyled(batch, white, list, Style with { BorderThickness = 1f }, ListBackground, Border);
+            GuiDraw.FillStyled(batch, white, list, Style with { BorderThickness = 1f },
+                GuiDraw.WithOpacity(ListBackground, Opacity), GuiDraw.WithOpacity(Border, Opacity));
 
             for (int i = 0; i < _options.Count; i++)
             {
                 Rect r = OptionBounds(i);
                 bool selected = i == SelectedIndex;
-                if (selected) GuiDraw.Fill(batch, white, r, SelectedColor);
-                else if (pointer.IsPointerIn(r)) GuiDraw.Fill(batch, white, r, HoverColor);
+                if (selected) GuiDraw.Fill(batch, white, r, GuiDraw.WithOpacity(SelectedColor, Opacity));
+                else if (pointer.IsPointerIn(r)) GuiDraw.Fill(batch, white, r, GuiDraw.WithOpacity(HoverColor, Opacity));
                 float ty = r.Y + (r.Height - font.LineHeight) * 0.5f;
                 batch.DrawString(font, _options[i].Label, new Vector2(MathF.Floor(r.X + 6f), MathF.Floor(ty)),
-                    (Color)(selected ? SelectedTextColor : TextColor));
+                    (Color)GuiDraw.WithOpacity(selected ? SelectedTextColor : TextColor, Opacity));
             }
         }
     }

@@ -15,6 +15,47 @@ namespace KhaozEngine.Gui
         public static void Fill(SpriteBatch batch, Texture2D white, Rect r, Vector4 color) =>
             batch.Draw(white, new Vector4(r.X, r.Y, r.Width, r.Height), (Color)color);
 
+        /// <summary>Return <paramref name="color"/> with its alpha scaled by <paramref name="opacity"/> (RGB kept).
+        /// The shared fade knob for the opt-in overlay chrome (sliding panels, fading dropdowns).</summary>
+        public static Vector4 WithOpacity(Vector4 color, float opacity) =>
+            new(color.X, color.Y, color.Z, color.W * opacity);
+
+        /// <summary>
+        /// The three vertices of a chevron caret centred on <paramref name="center"/>: a downward "v" (arms up,
+        /// apex down) by default, an upward "^" when <paramref name="pointingUp"/>. Pure geometry so the
+        /// open/closed direction is headless-testable; <see cref="Caret"/> strokes it.
+        /// </summary>
+        public static (Vector2 left, Vector2 mid, Vector2 right) CaretGeometry(
+            Vector2 center, float halfWidth, float halfHeight, bool pointingUp)
+        {
+            float armY = pointingUp ? center.Y + halfHeight : center.Y - halfHeight;
+            float apexY = pointingUp ? center.Y - halfHeight : center.Y + halfHeight;
+            return (new Vector2(center.X - halfWidth, armY),
+                    new Vector2(center.X, apexY),
+                    new Vector2(center.X + halfWidth, armY));
+        }
+
+        /// <summary>Draw a <paramref name="thickness"/>-wide line from <paramref name="a"/> to <paramref name="b"/>
+        /// as a single rotated quad (the 1x1 white texture; Render2D has no line primitive).</summary>
+        public static void Line(SpriteBatch batch, Texture2D white, Vector2 a, Vector2 b, float thickness, Vector4 color)
+        {
+            Vector2 d = b - a;
+            float len = d.Length();
+            if (len <= 0f) return;
+            float rot = System.MathF.Atan2(d.Y, d.X);
+            batch.Draw(white, a, new Vector2(len, thickness), new Vector2(0f, 0.5f), rot,
+                new Vector4(0f, 0f, 1f, 1f), (Color)color);
+        }
+
+        /// <summary>Stroke a chevron caret (see <see cref="CaretGeometry"/>) as two lines meeting at the apex.</summary>
+        public static void Caret(SpriteBatch batch, Texture2D white, Vector2 center, float halfWidth, float halfHeight,
+            bool pointingUp, float thickness, Vector4 color)
+        {
+            var (left, mid, right) = CaretGeometry(center, halfWidth, halfHeight, pointingUp);
+            Line(batch, white, left, mid, thickness, color);
+            Line(batch, white, mid, right, thickness, color);
+        }
+
         /// <summary>Draw a <paramref name="thickness"/>-px outline just inside <paramref name="r"/>.</summary>
         public static void Border(SpriteBatch batch, Texture2D white, Rect r, float thickness, Vector4 color)
         {

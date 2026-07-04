@@ -58,8 +58,8 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Advance the playhead(s) by <paramref name="dt"/> * <paramref name="speedMultiplier"/> seconds
         /// (looping each clip) while progressing any crossfade at the REAL <paramref name="dt"/>. Scaling the
-        /// multiplier lets a caller sync clip playback to movement speed (see
-        /// <see cref="KhaozEngine.Game.LocomotionSpeedSync"/>) without changing how long a crossfade takes: the clip
+        /// multiplier lets a caller sync clip playback to movement speed (e.g. <c>LocomotionSpeedSync</c> in
+        /// KhaozEngine.Game.Render3D) without changing how long a crossfade takes: the clip
         /// playheads (both the incoming and the outgoing clip during a blend) move at the scaled rate so the feet
         /// track speed even mid-blend, but the crossfade TIMER always runs at wall-clock <paramref name="dt"/> so a
         /// blend still completes in its authored duration regardless of speed. <paramref name="speedMultiplier"/> 1

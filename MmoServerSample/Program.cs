@@ -22,6 +22,12 @@ internal static class Program
             return;
         }
 
+        if (args.Length > 0 && args[0] == "--chat-demo")
+        {
+            RunChatDemo();
+            return;
+        }
+
         int port = args.Length > 0 && int.TryParse(args[0], out int p) ? p : 47600;
         var config = new MmoServerConfig();
 
@@ -49,6 +55,24 @@ internal static class Program
             clock.Advance(elapsed, _ => server.Tick(config.TickSeconds));
             Thread.Sleep(5);
         }
+    }
+
+    // Demonstrates the generic game-message seam over loopback: a client sends a chat line framed with the engine's
+    // game-message codec, and the server surfaces it on ChatReceived, demuxed from the movement stream.
+    private static void RunChatDemo()
+    {
+        var (serverTransport, clientTransport) = KhaozEngine.Netcode.LoopbackTransport.CreatePair();
+        var server = new MmoServer(serverTransport, new MmoServerConfig());
+        var client = new KhaozEngine.Netcode.NetClient(clientTransport);
+        server.ChatReceived += (slot, text) => Console.WriteLine($"[chat-demo] server received from slot {slot}: \"{text}\"");
+
+        for (int i = 0; i < 10; i++) { server.Poll(); client.Poll(); }   // connect + join
+
+        client.Send(MmoProtocol.EncodeChat("hi from the client"),
+            KhaozEngine.Netcode.NetChannelReliability.ReliableOrdered);
+        for (int i = 0; i < 10; i++) { server.Poll(); client.Poll(); }   // deliver + demux
+
+        Console.WriteLine($"[chat-demo] server.LastChat = \"{server.LastChat}\"");
     }
 
     private static async System.Threading.Tasks.Task RunPersistenceDemo()

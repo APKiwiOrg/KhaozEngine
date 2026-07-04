@@ -81,6 +81,20 @@ public sealed class MmoServer : ICellPersistenceHost
     /// <summary>The NetId of the player entity for a joined <paramref name="slot"/>.</summary>
     public bool TryGetPlayerNetId(int slot, out int netId) => playerNetIdBySlot.TryGetValue(slot, out netId);
 
+    /// <summary>The game-message <c>kind</c> this reference server uses for a chat line. A game defines its own kind
+    /// space (attack, interaction, inventory op, …); this sample carries just one.</summary>
+    public const ushort ChatMessageKind = 1;
+
+    /// <summary>Raised when a client sends a chat game message (slot + text). Demonstrates the engine's generic
+    /// game-message seam: the client frames an opaque payload with <see cref="MoveProtocol.EncodeGameMessage"/> and the
+    /// server demuxes it from the movement stream with <see cref="MoveProtocol.TryDecodeGameMessage"/> - the same codec
+    /// a turn-key <see cref="WorldServer"/> / <see cref="ShardedWorldServer"/> consumer gets for free behind
+    /// <see cref="WorldClient.SendGameMessage"/> / <see cref="WorldServer.OnGameMessage"/>.</summary>
+    public event Action<int, string>? ChatReceived;
+
+    /// <summary>The most recent chat line received (or null). Lets a test/console poll instead of subscribing.</summary>
+    public string? LastChat { get; private set; }
+
     /// <summary>
     /// Spawns a server-owned entity at a world position, allocating a fresh <see cref="NetId"/> from the same
     /// allocator player joins draw from (never colliding), placing it in the owning cell, and pre-setting its
@@ -163,8 +177,13 @@ public sealed class MmoServer : ICellPersistenceHost
 
                 case ServerSessionEventKind.Data:
                     if (!playerNetIdBySlot.ContainsKey(ev.Slot)) break;
-                    // A replication ack advances the client's delta baseline; otherwise it is a move command.
-                    if (MmoProtocol.TryDecodeAck(ev.Data, out int ackSeq)) deltaReplicator.Acknowledge(ev.Slot, ackSeq);
+                    // Demux the client->server Data channel. A game message (the engine's generic seam - here a chat
+                    // line) is tried BEFORE the move, exactly as WorldServer.HandleData does: it can never alias the
+                    // move (see MoveProtocol's aliasing contract). Then the replication ack (advances the delta
+                    // baseline), then the move command.
+                    if (MoveProtocol.TryDecodeGameMessage(ev.Data, out ushort kind, out ReadOnlySpan<byte> payload))
+                        OnGameMessage(ev.Slot, kind, payload);
+                    else if (MmoProtocol.TryDecodeAck(ev.Data, out int ackSeq)) deltaReplicator.Acknowledge(ev.Slot, ackSeq);
                     else if (MmoProtocol.TryDecodeMove(ev.Data, out int seq, out MoveCommand cmd)) commands.Store(ev.Slot, seq, cmd);
                     break;
             }
@@ -202,6 +221,18 @@ public sealed class MmoServer : ICellPersistenceHost
             byte[] delta = deltaReplicator.WriteFor(slot, world, interest);
             net.SendTo(slot, delta, NetChannelReliability.ReliableOrdered);
         }
+    }
+
+    // Dispatch a decoded client game message. The payload is opaque to the engine; this reference server interprets a
+    // ChatMessageKind payload as a UTF-8 chat line and surfaces it. A real game would branch on kind for attacks,
+    // interactions, inventory ops, … A production server should also bound the payload size (see
+    // WorldServerConfig.MaxGameMessageBytes) - the turn-key WorldServer does this for you.
+    private void OnGameMessage(int slot, ushort kind, ReadOnlySpan<byte> payload)
+    {
+        if (kind != ChatMessageKind) return;
+        string text = System.Text.Encoding.UTF8.GetString(payload);
+        LastChat = text;
+        ChatReceived?.Invoke(slot, text);
     }
 
     private int SpawnEntity(float x, float y)

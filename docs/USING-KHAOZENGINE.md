@@ -2958,6 +2958,45 @@ identically (the sharded one teleports across cells). Under the hood it rides a 
 client->server channel (`MoveProtocol.ClientControlKind`), distinct by length from a move, so a server that predates
 the feature just ignores it.
 
+### Game messages (attack / interact / chat / inventory)
+
+The movement protocol is not the only thing a game needs on the wire. `WorldClient` + both servers carry a generic,
+game-defined **game message** channel alongside movement, so combat / interaction / chat / inventory work is not
+forced into a side channel. Payloads are **opaque bytes** - the engine frames, demuxes, rate-limits and size-caps
+them but never deserializes them, so the game owns the payload format (since 9.27.0).
+
+```csharp
+// --- Client -> server ---
+// kind is your game's discriminator; payload is whatever you serialized (opaque to the engine).
+client.SendGameMessage(kind: 1 /*Attack*/, payload, NetChannelReliability.ReliableOrdered);
+
+// Both WorldServer and ShardedWorldServer raise this on the host thread during Poll:
+server.OnGameMessage += (slot, kind, payload) =>
+{
+    // payload is a ReadOnlySpan<byte> valid only for this call - copy it to keep the bytes.
+    if (kind == 1) ApplyAttack(slot, payload);
+};
+
+// --- Server -> client ---
+server.SendGameMessageTo(slot, kind: 9 /*DamageDealt*/, payload, NetChannelReliability.ReliableOrdered);
+server.BroadcastGameMessage(kind: 7 /*ChatLine*/, payload, NetChannelReliability.ReliableOrdered);
+
+client.GameMessageReceived += (kind, payload) => { /* opaque bytes; deserialize per kind */ };
+```
+
+- **Reliability.** `ReliableOrdered` gives ordered exactly-once delivery at the transport, so a command needs no
+  seq of its own; `UnreliableSequenced` is a lossy latest-wins state ping.
+- **Hostile-input hardening (client -> server), to the move path's bar.** The per-connection `AntiCheat` rate
+  limiter runs in front of game messages (they share the move flood budget), and a payload over
+  `WorldServerConfig.MaxGameMessageBytes` / `ShardedWorldServerConfig.MaxGameMessageBytes` (default 1024) is dropped
+  and flagged `SuspiciousReason.OversizedMessage` on `OnSuspiciousActivity` - never thrown.
+- **Version skew.** Server -> client is version-skew-safe downstream: an older client ignores the new frame kind.
+  A new client -> old server is flagged malformed there, so gate adoption on the `WorldClientConfig.ProtocolVersion`
+  handshake. The wire rides the existing `0xC5` marker family and can never alias a move (see `MoveProtocol`).
+
+The reference `MmoServerSample` demonstrates it end to end with a chat line (`MmoProtocol.EncodeChat` ->
+`MmoServer.ChatReceived`, run `MmoServerSample --chat-demo`).
+
 #### Reconnect input backlog
 
 A client that holds the movement key through a long auto-reconnect outage used to freeze/vibrate on rejoin: input

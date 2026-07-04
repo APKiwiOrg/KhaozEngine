@@ -133,6 +133,31 @@ public class MmoServerEndToEndTests
         Assert.True(oldView.TryGetEntity(npc, out _));
     }
 
+    [Fact]
+    public void EndToEnd_ClientChatGameMessage_ReachesServer()
+    {
+        // Demonstrates the generic game-message seam end to end: a client frames a chat line with the engine's
+        // game-message codec (MmoProtocol.EncodeChat -> MoveProtocol.EncodeGameMessage) and the reference server
+        // demuxes it from the movement stream, surfacing it on ChatReceived - the same shape WorldServer.OnGameMessage
+        // gives a turn-key consumer for free.
+        (LoopbackTransport serverTransport, LoopbackTransport clientTransport) = LoopbackTransport.CreatePair();
+        var server = new MmoServer(serverTransport, new MmoServerConfig { SpawnX = 50f, SpawnY = 50f });
+        var client = new NetClient(clientTransport);
+        PumpNet(server, client);
+        Assert.True(server.TryGetPlayerNetId(0, out _));
+
+        (int slot, string text)? got = null;
+        server.ChatReceived += (slot, text) => got = (slot, text);
+
+        client.Send(MmoProtocol.EncodeChat("hello world"), NetChannelReliability.ReliableOrdered);
+        PumpNet(server, client);
+
+        Assert.True(got.HasValue, "server never surfaced the chat game message");
+        Assert.Equal(0, got!.Value.slot);
+        Assert.Equal("hello world", got.Value.text);
+        Assert.Equal("hello world", server.LastChat);
+    }
+
     // Serves one authoritative frame and returns the raw replication snapshot the client received.
     private static byte[] ServeOneSnapshot(MmoServer server, NetClient client)
     {

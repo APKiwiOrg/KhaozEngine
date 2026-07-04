@@ -1,5 +1,6 @@
 using System;
 using KhaozEngine.Ecs;
+using KhaozEngine.NetWorld;
 using KhaozEngine.Replication;
 
 namespace MmoServerSample;
@@ -69,6 +70,15 @@ public static class MmoProtocol
         x = y = 0f;
         return false;
     }
+
+    /// <summary>Encodes a chat line as a client-to-server game message, reusing the engine's generic game-message codec
+    /// (<see cref="MoveProtocol.EncodeGameMessage"/>) with <see cref="MmoServer.ChatMessageKind"/> and a UTF-8 payload.
+    /// The server decodes it with <see cref="MoveProtocol.TryDecodeGameMessage"/>, demuxed ahead of the move - it can
+    /// never alias a move (see MoveProtocol's aliasing contract). This is what a turn-key consumer expresses as
+    /// <c>WorldClient.SendGameMessage(MmoServer.ChatMessageKind, utf8, reliability)</c>.</summary>
+    public static byte[] EncodeChat(string text) =>
+        MoveProtocol.EncodeGameMessage(MmoServer.ChatMessageKind,
+            System.Text.Encoding.UTF8.GetBytes(text ?? string.Empty));
 
     /// <summary>Encodes a client move command: <c>[seq:int][dx:float][dy:float]</c>.</summary>
     public static byte[] EncodeMove(int seq, MoveCommand command)

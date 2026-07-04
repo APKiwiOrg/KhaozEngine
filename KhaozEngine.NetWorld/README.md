@@ -70,6 +70,33 @@ No render, window, or GPU dependency: the servers are headless and the client gl
 renders a capsule per `EntityRenderState`). `WorldServer` is the single-`World` slice; `ShardedWorldServer` is
 the multi-cell variant (overworld sub-project 6b).
 
+## Game messages (since 9.27.0)
+
+A generic, game-defined message channel alongside the movement protocol, so a game (attack, interaction, pick-up,
+chat, inventory transaction, …) is not forced into a side channel. Payloads are **opaque bytes**: the engine
+frames, demuxes, rate-limits and size-caps them, but never deserializes them - the game owns the payload format.
+
+- **Client -> server.** `WorldClient.SendGameMessage(ushort kind, ReadOnlySpan<byte> payload, NetChannelReliability
+  reliability)` sends a message; both servers raise **`OnGameMessage(int slot, ushort kind, ReadOnlySpan<byte>
+  payload)`** on the host thread during `Poll`. The `kind` is the game's discriminator; the span is only valid for
+  the duration of the call (copy it with `payload.ToArray()` to keep it).
+- **Server -> client.** `SendGameMessageTo(slot, kind, payload, reliability)` targets one client and
+  `BroadcastGameMessage(kind, payload, reliability)` fans out to all; both surface on the client as
+  **`WorldClient.GameMessageReceived(ushort kind, ReadOnlySpan<byte> payload)`**.
+- **Reliability.** `NetChannelReliability.ReliableOrdered` gives ordered exactly-once delivery at the transport, so
+  a command consumer needs no seq of its own; `UnreliableSequenced` is a lossy latest-wins state ping.
+- **Hostile-input hardening (client -> server), to the same bar as the move path.** The per-connection
+  `AntiCheat` rate limiter runs in front of game messages (they share the move flood budget), and a payload larger
+  than **`WorldServerConfig.MaxGameMessageBytes`** / **`ShardedWorldServerConfig.MaxGameMessageBytes`** (default
+  1024) is dropped and flagged `SuspiciousReason.OversizedMessage` via `OnSuspiciousActivity` - never thrown.
+- **Framing / version skew.** A client message rides the existing `0xC5` control-marker family with its own
+  sub-marker, demuxed ahead of the move; by construction it can never alias the 2 / 6 / 18 byte control / ack /
+  move shapes (see the aliasing contract in `MoveProtocol`). Server frames use a new `ServerFrameKind.GameMessage`
+  an older client silently ignores (unknown frame kind), so **server -> client is version-skew-safe downstream**.
+  A NEW client sending a game message to an OLD server is flagged there as malformed, so gate adoption on the
+  `WorldClientConfig.ProtocolVersion` handshake (below). Quest / inventory / chat systems themselves stay
+  game-side; this is only the transport seam.
+
 ## Version-skew resilience (since 8.5.0)
 
 Two opt-in backstops so a client on an older build than the server is rejected cleanly instead of hard-crashing

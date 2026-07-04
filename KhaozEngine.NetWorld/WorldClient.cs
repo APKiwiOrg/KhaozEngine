@@ -246,6 +246,15 @@ public sealed class WorldClient : IDisposable
     /// <summary>Raised when the server pushes a <see cref="ServerNotice"/> (e.g. a maintenance/restart warning).</summary>
     public event Action<ServerNotice>? NoticeReceived;
 
+    /// <summary>Raised on the client thread during <see cref="Poll"/> when the server pushes a game message
+    /// (<see cref="WorldServer.SendGameMessageTo"/> / <see cref="WorldServer.BroadcastGameMessage"/>, mirrored on
+    /// <see cref="ShardedWorldServer"/>): the game-defined kind and the opaque payload (the engine never interprets it -
+    /// deserialize it in the handler). Rides the Data channel via the frame envelope, out-of-band from the movement
+    /// stream. Version-skew-safe: an older client that predates game messages simply ignores the frame (its demux has
+    /// no case for the kind). The span is only valid for the duration of the call - copy it (<c>payload.ToArray()</c>)
+    /// to keep the bytes.</summary>
+    public event ClientGameMessageHandler? GameMessageReceived;
+
     /// <summary>Raised when an incoming snapshot could not be decoded (e.g. an unregistered component type id from a
     /// newer server protocol). The client disconnects with <see cref="DisconnectReason.IncompatibleVersion"/>; the
     /// argument is the decode error. A consumer can subscribe to log it or show "client out of date, please update"
@@ -468,6 +477,23 @@ public sealed class WorldClient : IDisposable
         return seq;
     }
 
+    /// <summary>Sends a game-defined message to the server, surfaced on <see cref="WorldServer.OnGameMessage"/> /
+    /// <see cref="ShardedWorldServer.OnGameMessage"/> with the same <paramref name="kind"/> and <paramref name="payload"/>.
+    /// The engine never interprets the payload (opaque bytes the game serialized - an attack, an interaction, a chat
+    /// line, an inventory op). <paramref name="reliability"/> chooses the transport channel:
+    /// <see cref="NetChannelReliability.ReliableOrdered"/> gives ordered exactly-once delivery, so a command consumer
+    /// needs no seq of its own; <see cref="NetChannelReliability.UnreliableSequenced"/> is a lossy latest-wins state
+    /// ping. Rides the same Data channel as movement, demuxed by the server ahead of the move (never aliases it - see
+    /// the framing contract in <see cref="MoveProtocol"/>). Returns false (and sends nothing) when not
+    /// <see cref="WorldConnectionState.Connected"/>. A server that predates game messages flags the frame as malformed;
+    /// gate on the <see cref="WorldClientConfig.ProtocolVersion"/> handshake when adopting this.</summary>
+    public bool SendGameMessage(ushort kind, ReadOnlySpan<byte> payload, NetChannelReliability reliability)
+    {
+        if (state != WorldConnectionState.Connected) return false;
+        net.Send(MoveProtocol.EncodeGameMessage(kind, payload), reliability);
+        return true;
+    }
+
     /// <summary>Asks the authoritative server to move THIS player to a server-decided safe position - a
     /// "return to spawn" / "unstuck". Fire-and-forget over the reliable channel; the result reconciles back exactly
     /// like an admin teleport. The client never names the destination (that would be a teleport-anywhere cheat): the
@@ -599,6 +625,12 @@ public sealed class WorldClient : IDisposable
                 LastNotice = notice;
                 NoticeReceived?.Invoke(notice);
                 break;
+            case MoveProtocol.ServerFrameKind.GameMessage:
+                if (MoveProtocol.TryDecodeGameMessageBody(payload, out ushort gameKind, out ReadOnlySpan<byte> gamePayload))
+                    GameMessageReceived?.Invoke(gameKind, gamePayload);
+                break;
+            // An unknown ServerFrameKind (e.g. a newer server frame this build predates) falls through and is ignored -
+            // this is what makes a new server-to-client frame version-skew-safe downstream (see MoveProtocol).
         }
     }
 

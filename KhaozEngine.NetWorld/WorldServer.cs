@@ -62,6 +62,14 @@ public sealed class WorldServerConfig
     /// to force full snapshots for every client (the pre-9.17.0 behaviour). The delta is built from the client's last
     /// <see cref="MoveProtocol.EncodeReplicationAck"/>, so a dropped delta on the reliable-ordered channel self-heals.</summary>
     public bool DeltaReplication { get; init; } = true;
+
+    /// <summary>Maximum payload size (bytes) accepted on a client-to-server game message
+    /// (<see cref="WorldClient.SendGameMessage"/>). A larger payload is DROPPED (never dispatched to
+    /// <see cref="WorldServer.OnGameMessage"/>) and flagged <see cref="SuspiciousReason.OversizedMessage"/> so a
+    /// hostile client can't exhaust the host with an outsized frame. The payload is opaque bytes to the engine; this
+    /// is the only bound it enforces on it. Default 1024. The rate limiter (<see cref="AntiCheat"/>) runs in front of
+    /// this, so game messages share the per-connection flood budget with moves.</summary>
+    public int MaxGameMessageBytes { get; init; } = 1024;
 }
 
 /// <summary>
@@ -137,6 +145,16 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
     /// signals; the game decides the policy (log / kick via <see cref="Disconnect"/> / ban). Allocation-free.</summary>
     public event Action<SuspiciousActivity>? OnSuspiciousActivity;
 
+    /// <summary>Raised on the host thread during <see cref="Poll"/> when a joined client sends a game message
+    /// (<see cref="WorldClient.SendGameMessage"/>): the sender's slot, the game-defined kind, and the opaque payload.
+    /// The engine never interprets the payload - deserialize it in the handler. Rides the same 0xC5 marker family as
+    /// the move/control frames, demuxed ahead of the move so it never disturbs the movement stream (see the aliasing
+    /// contract in <see cref="MoveProtocol"/>). The rate limiter and the <see cref="WorldServerConfig.MaxGameMessageBytes"/>
+    /// cap run in front of it; an oversize payload is dropped and flagged, never dispatched. The span is only valid for
+    /// the duration of the call - copy it (<c>payload.ToArray()</c>) to keep the bytes. The multi-cell equivalent is
+    /// <see cref="ShardedWorldServer.OnGameMessage"/>.</summary>
+    public event ServerGameMessageHandler? OnGameMessage;
+
     private void Raise(int slot, SuspiciousReason reason, float magnitude = 0f) =>
         OnSuspiciousActivity?.Invoke(new SuspiciousActivity(slot, reason, magnitude));
 
@@ -152,6 +170,30 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
     {
         byte[] envelope = MoveProtocol.EncodeServerFrame(MoveProtocol.ServerFrameKind.Notice, MoveProtocol.EncodeNotice(notice));
         net.Broadcast(envelope, NetChannelReliability.ReliableOrdered);
+    }
+
+    /// <summary>Sends a game-defined message to one connected client's slot, surfaced on
+    /// <see cref="WorldClient.GameMessageReceived"/> with the same <paramref name="kind"/> and <paramref name="payload"/>.
+    /// The engine never interprets the payload (opaque bytes). <paramref name="reliability"/> chooses the transport
+    /// channel: <see cref="NetChannelReliability.ReliableOrdered"/> gives ordered exactly-once delivery (a command/event
+    /// consumers can rely on without their own seq), <see cref="NetChannelReliability.UnreliableSequenced"/> a lossy
+    /// latest-wins state ping. Rides the Data channel via the frame envelope, so it never disturbs the movement stream.
+    /// No-op for an unknown slot. The multi-cell equivalent is <see cref="ShardedWorldServer.SendGameMessageTo"/>.</summary>
+    public void SendGameMessageTo(int slot, ushort kind, ReadOnlySpan<byte> payload, NetChannelReliability reliability)
+    {
+        byte[] envelope = MoveProtocol.EncodeServerFrame(
+            MoveProtocol.ServerFrameKind.GameMessage, MoveProtocol.EncodeGameMessageBody(kind, payload));
+        net.SendTo(slot, envelope, reliability);
+    }
+
+    /// <summary>Broadcasts a game-defined message to every connected client, surfaced on
+    /// <see cref="WorldClient.GameMessageReceived"/>. Same opaque-payload + reliability contract as
+    /// <see cref="SendGameMessageTo"/>.</summary>
+    public void BroadcastGameMessage(ushort kind, ReadOnlySpan<byte> payload, NetChannelReliability reliability)
+    {
+        byte[] envelope = MoveProtocol.EncodeServerFrame(
+            MoveProtocol.ServerFrameKind.GameMessage, MoveProtocol.EncodeGameMessageBody(kind, payload));
+        net.Broadcast(envelope, reliability);
     }
 
     /// <summary>True while a graceful drain is in progress (see <see cref="BeginDrain"/>).</summary>
@@ -284,6 +326,14 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
         {
             if (control == MoveProtocol.ClientControlKind.SelfRescue) HandleSelfRescue(slot);
             else if (control == MoveProtocol.ClientControlKind.DeltaCapable && deltaReplicator is not null) deltaCapableSlots.Add(slot);
+            return;
+        }
+        // Game message: an opaque game-defined frame (attack, interaction, chat, …). Demuxed BEFORE the move (it can
+        // never be an 18-byte move - see MoveProtocol's aliasing contract). Over the size cap is dropped + flagged.
+        if (MoveProtocol.TryDecodeGameMessage(data, out ushort gameKind, out ReadOnlySpan<byte> gamePayload))
+        {
+            if (gamePayload.Length > config.MaxGameMessageBytes) { Raise(slot, SuspiciousReason.OversizedMessage, gamePayload.Length); return; }
+            OnGameMessage?.Invoke(slot, gameKind, gamePayload);
             return;
         }
         // Malformed / NaN / Inf packets are rejected by the decode and flagged.

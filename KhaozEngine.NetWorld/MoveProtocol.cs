@@ -226,6 +226,98 @@ public static class MoveProtocol
         return false;
     }
 
+    // Game message (client->server): [ClientControlMarker:0xC5][GameMessageMarker:0xB0][kind:ushort][flags:byte][payload...].
+    // A game-defined message (attack, interaction, chat, inventory op, …) demuxed from the move stream. It rides the
+    // same 0xC5 control-marker family as the control/ack frames but carries its OWN sub-marker (0xB0, distinct from the
+    // 0xA0 replication ack), so a game message is never mistaken for an ack ([1]==0xA0) and vice-versa. The header is 5
+    // bytes; the payload is opaque engine-side.
+    //
+    // Aliasing-with-the-move contract (the demux keys the move on LENGTH 18): a move is ALWAYS exactly 18 bytes, so the
+    // game-message decode REJECTS length 18 outright (a length-18 frame is always a move, never a game message) and the
+    // encoder guarantees it NEVER emits an 18-byte frame - when the natural length would be 18 it appends one pad byte
+    // (→ 19) and sets flags bit0 so the decoder strips it. Demux ORDER on the server receive path is therefore:
+    //   1. replication ack   (length 6, [1]==0xA0)
+    //   2. client control    (length 2)
+    //   3. game message      (length >= 5 and != 18, [0]==0xC5 && [1]==0xB0)   <-- tried BEFORE the move
+    //   4. move              (length >= 18)
+    // Because game-message is tried before move yet never itself lands on 18, a real move (exactly 18) always falls
+    // through to the move decode, and a real game message (never 18) is always claimed here first - the two can never
+    // alias. See WorldServer.HandleData / ShardedWorldServer.HandleData.
+    private const byte GameMessageMarker = 0xB0;
+    private const int GameMessageHeader = 5;   // marker + sub-marker + ushort kind + flags byte
+    private const byte GameMessageFlagPadded = 0x01;
+
+    /// <summary>Encodes a client-to-server game message as <c>[0xC5][0xB0][kind:ushort][flags][payload]</c>. When the
+    /// natural frame length would be exactly 18 (the move length the server demuxes on), one pad byte is appended and
+    /// the padded flag set, so a game message can NEVER alias an 18-byte move. Decode with
+    /// <see cref="TryDecodeGameMessage"/>.</summary>
+    public static byte[] EncodeGameMessage(ushort kind, ReadOnlySpan<byte> payload)
+    {
+        int natural = GameMessageHeader + payload.Length;
+        bool pad = natural == MoveSize;   // never emit an 18-byte frame (it would be read as a move)
+        var b = new byte[natural + (pad ? 1 : 0)];
+        b[0] = ClientControlMarker;
+        b[1] = GameMessageMarker;
+        BitConverter.TryWriteBytes(b.AsSpan(2, 2), kind);
+        b[4] = pad ? GameMessageFlagPadded : (byte)0;
+        payload.CopyTo(b.AsSpan(GameMessageHeader));
+        // (the trailing pad byte, if any, stays 0)
+        return b;
+    }
+
+    /// <summary>Decodes a client-to-server game message written by <see cref="EncodeGameMessage"/>. False for anything
+    /// that is not a game-message frame: too short (&lt; 5), an exactly-18-byte frame (always a move, never a game
+    /// message - see the aliasing contract above), or one lacking the <c>[0xC5][0xB0]</c> marker pair. The returned
+    /// <paramref name="payload"/> is a slice of <paramref name="data"/> (no copy) with any trailing pad byte removed;
+    /// it is opaque to the engine. The server's receive path tries this AFTER the ack/control decodes and BEFORE the
+    /// move decode.</summary>
+    public static bool TryDecodeGameMessage(ReadOnlySpan<byte> data, out ushort kind, out ReadOnlySpan<byte> payload)
+    {
+        // Reject an 18-byte frame first: it is always a move (the encoder never emits an 18-byte game message), so a
+        // legitimate move whose first two bytes happen to be 0xC5/0xB0 is never stolen here.
+        if (data.Length >= GameMessageHeader && data.Length != MoveSize
+            && data[0] == ClientControlMarker && data[1] == GameMessageMarker)
+        {
+            kind = BitConverter.ToUInt16(data.Slice(2, 2));
+            int end = data.Length;
+            if ((data[4] & GameMessageFlagPadded) != 0) end--;   // strip the single disambiguation pad byte
+            payload = data.Slice(GameMessageHeader, end - GameMessageHeader);
+            return true;
+        }
+        kind = 0;
+        payload = default;
+        return false;
+    }
+
+    // Game message (server->client): the [kind:ushort][payload...] body carried inside a ServerFrameKind.GameMessage
+    // envelope. No aliasing concern in this direction - the 1-byte ServerFrameKind tag already discriminates it from a
+    // snapshot/notice/delta, and an older client's frame demux ignores an unknown kind (see TryDecodeServerFrame).
+    /// <summary>Encodes the body of a server-to-client game message: <c>[kind:ushort][payload]</c>. Wrap it with
+    /// <c>EncodeServerFrame(ServerFrameKind.GameMessage, body)</c> to put it on the Data channel.</summary>
+    public static byte[] EncodeGameMessageBody(ushort kind, ReadOnlySpan<byte> payload)
+    {
+        var b = new byte[2 + payload.Length];
+        BitConverter.TryWriteBytes(b.AsSpan(0, 2), kind);
+        payload.CopyTo(b.AsSpan(2));
+        return b;
+    }
+
+    /// <summary>Splits a server-to-client game-message body (the payload of a <see cref="ServerFrameKind.GameMessage"/>
+    /// frame) into its kind and opaque payload. False if too short to hold the 2-byte kind. The
+    /// <paramref name="payload"/> is a slice of <paramref name="data"/> (no copy).</summary>
+    public static bool TryDecodeGameMessageBody(ReadOnlySpan<byte> data, out ushort kind, out ReadOnlySpan<byte> payload)
+    {
+        if (data.Length >= 2)
+        {
+            kind = BitConverter.ToUInt16(data.Slice(0, 2));
+            payload = data.Slice(2);
+            return true;
+        }
+        kind = 0;
+        payload = default;
+        return false;
+    }
+
     // Server->client frame: [localNetId:int][ackSeq:int][snapshot bytes...].
     private const int FrameHeader = 8;
 
@@ -329,8 +421,11 @@ public static class MoveProtocol
     /// <see cref="Delta"/> frame carries the same <c>[localNetId][ackSeq]</c> header (via <see cref="EncodeSnapshotFrame"/>)
     /// as a <see cref="Snapshot"/>, but its body is an <see cref="AoiDeltaReplicator"/> delta the client applies with
     /// <see cref="ClientReplicationView.ApplyDelta"/>; it is only sent to a client that advertised
-    /// <see cref="ClientControlKind.DeltaCapable"/>, so an older client only ever receives <see cref="Snapshot"/>.</summary>
-    public enum ServerFrameKind : byte { Snapshot = 0, Notice = 1, Delta = 2 }
+    /// <see cref="ClientControlKind.DeltaCapable"/>, so an older client only ever receives <see cref="Snapshot"/>. A
+    /// <see cref="GameMessage"/> frame carries a game-defined <c>[kind:ushort][payload]</c> body (see
+    /// <see cref="EncodeGameMessageBody"/>) an older client's demux simply ignores as an unknown kind (its
+    /// <c>OnServerFrame</c> switch has no case for it), so it is version-skew-safe downstream.</summary>
+    public enum ServerFrameKind : byte { Snapshot = 0, Notice = 1, Delta = 2, GameMessage = 3 }
 
     /// <summary>Wraps a server-to-client payload with its 1-byte kind tag so snapshots and
     /// notices share the Data channel. The receiver demuxes via <see cref="TryDecodeServerFrame"/>.</summary>

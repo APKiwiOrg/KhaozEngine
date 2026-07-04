@@ -62,6 +62,13 @@ public sealed class ShardedWorldServerConfig
     /// client and server upgrade independently. The delta baseline is keyed by <see cref="NetId"/>, so a boundary
     /// crossing (home-cell change) stays a component delta, never a despawn+respawn. Set false to force full snapshots.</summary>
     public bool DeltaReplication { get; init; } = true;
+
+    /// <summary>Maximum payload size (bytes) accepted on a client-to-server game message
+    /// (<see cref="WorldClient.SendGameMessage"/>); mirrors <see cref="WorldServerConfig.MaxGameMessageBytes"/>. A
+    /// larger payload is DROPPED (never dispatched to <see cref="ShardedWorldServer.OnGameMessage"/>) and flagged
+    /// <see cref="SuspiciousReason.OversizedMessage"/>. The payload is opaque bytes to the engine. Default 1024. The
+    /// rate limiter runs in front of this.</summary>
+    public int MaxGameMessageBytes { get; init; } = 1024;
 }
 
 /// <summary>
@@ -210,6 +217,15 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
     /// same hook contract as <see cref="WorldServer.OnSuspiciousActivity"/>.</summary>
     public event Action<SuspiciousActivity>? OnSuspiciousActivity;
 
+    /// <summary>Raised on the host thread during <see cref="Poll"/> when a joined client sends a game message
+    /// (<see cref="WorldClient.SendGameMessage"/>): the sender's slot, the game-defined kind, and the opaque payload.
+    /// The engine never interprets the payload. Demuxed ahead of the move (it can never be an 18-byte move - see the
+    /// aliasing contract in <see cref="MoveProtocol"/>). The rate limiter and the
+    /// <see cref="ShardedWorldServerConfig.MaxGameMessageBytes"/> cap run in front of it; an oversize payload is dropped
+    /// and flagged, never dispatched. The span is only valid for the call - copy it to keep the bytes. The same hook
+    /// contract as <see cref="WorldServer.OnGameMessage"/>.</summary>
+    public event ServerGameMessageHandler? OnGameMessage;
+
     private void Raise(int slot, SuspiciousReason reason, float magnitude = 0f) =>
         OnSuspiciousActivity?.Invoke(new SuspiciousActivity(slot, reason, magnitude));
 
@@ -224,6 +240,25 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
     {
         byte[] envelope = MoveProtocol.EncodeServerFrame(MoveProtocol.ServerFrameKind.Notice, MoveProtocol.EncodeNotice(notice));
         net.Broadcast(envelope, NetChannelReliability.ReliableOrdered);
+    }
+
+    /// <summary>Sends a game-defined message to one connected client's slot, surfaced on
+    /// <see cref="WorldClient.GameMessageReceived"/>. Same opaque-payload + reliability contract as
+    /// <see cref="WorldServer.SendGameMessageTo"/>. No-op for an unknown slot.</summary>
+    public void SendGameMessageTo(int slot, ushort kind, ReadOnlySpan<byte> payload, NetChannelReliability reliability)
+    {
+        byte[] envelope = MoveProtocol.EncodeServerFrame(
+            MoveProtocol.ServerFrameKind.GameMessage, MoveProtocol.EncodeGameMessageBody(kind, payload));
+        net.SendTo(slot, envelope, reliability);
+    }
+
+    /// <summary>Broadcasts a game-defined message to every connected client, surfaced on
+    /// <see cref="WorldClient.GameMessageReceived"/>. Same contract as <see cref="WorldServer.BroadcastGameMessage"/>.</summary>
+    public void BroadcastGameMessage(ushort kind, ReadOnlySpan<byte> payload, NetChannelReliability reliability)
+    {
+        byte[] envelope = MoveProtocol.EncodeServerFrame(
+            MoveProtocol.ServerFrameKind.GameMessage, MoveProtocol.EncodeGameMessageBody(kind, payload));
+        net.Broadcast(envelope, reliability);
     }
 
     /// <summary>True while a graceful drain is in progress.</summary>
@@ -350,6 +385,14 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
         {
             if (control == MoveProtocol.ClientControlKind.SelfRescue) HandleSelfRescue(slot);
             else if (control == MoveProtocol.ClientControlKind.DeltaCapable && deltaReplicator is not null) deltaCapableSlots.Add(slot);
+            return;
+        }
+        // Game message: an opaque game-defined frame (attack, interaction, chat, …). Demuxed BEFORE the move (it can
+        // never be an 18-byte move - see MoveProtocol's aliasing contract). Over the size cap is dropped + flagged.
+        if (MoveProtocol.TryDecodeGameMessage(data, out ushort gameKind, out ReadOnlySpan<byte> gamePayload))
+        {
+            if (gamePayload.Length > config.MaxGameMessageBytes) { Raise(slot, SuspiciousReason.OversizedMessage, gamePayload.Length); return; }
+            OnGameMessage?.Invoke(slot, gameKind, gamePayload);
             return;
         }
         // Malformed / NaN / Inf packets are rejected by the decode and flagged.

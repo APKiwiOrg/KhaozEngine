@@ -13,6 +13,12 @@ public enum SuspiciousReason
     /// <summary>The authoritative sim repeatedly had to correct a player's intended move beyond the configured
     /// distance - the client kept driving into the slope gate, static collision, or play-area boundary.</summary>
     MovementCorrection,
+
+    /// <summary>A client sent a game message (<see cref="WorldClient.SendGameMessage"/>) whose payload exceeded the
+    /// server's configured <c>MaxGameMessageBytes</c> cap; the message was dropped (never dispatched to
+    /// <c>OnGameMessage</c>). The <see cref="SuspiciousActivity.Magnitude"/> carries the offending payload size in
+    /// bytes.</summary>
+    OversizedMessage,
 }
 
 /// <summary>One server-side anomaly signal, passed to <see cref="WorldServer.OnSuspiciousActivity"/> /

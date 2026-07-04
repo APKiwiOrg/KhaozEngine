@@ -41,6 +41,11 @@ internal sealed class RawDeltaClient
     public void SendMove(in MoveCommand cmd) =>
         net.Send(MoveProtocol.EncodeMove(moveSeq++, cmd), NetChannelReliability.ReliableOrdered);
 
+    /// <summary>Pushes an arbitrary (possibly hostile / malformed) frame straight onto the Data channel, bypassing the
+    /// well-formed encoders. Used to prove the server's receive path rejects a garbage frame rather than throwing.</summary>
+    public void SendRaw(byte[] frame, NetChannelReliability reliability = NetChannelReliability.ReliableOrdered) =>
+        net.Send(frame, reliability);
+
     public void Poll()
     {
         net.Poll();

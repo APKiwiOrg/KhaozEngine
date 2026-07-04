@@ -3026,8 +3026,12 @@ client.GameMessageReceived += (kind, payload) => { /* opaque bytes; deserialize 
   `WorldServerConfig.MaxGameMessageBytes` / `ShardedWorldServerConfig.MaxGameMessageBytes` (default 1024) is dropped
   and flagged `SuspiciousReason.OversizedMessage` on `OnSuspiciousActivity` - never thrown.
 - **Version skew.** Server -> client is version-skew-safe downstream: an older client ignores the new frame kind.
-  A new client -> old server is flagged malformed there, so gate adoption on the `WorldClientConfig.ProtocolVersion`
-  handshake. The wire rides the existing `0xC5` marker family and can never alias a move (see `MoveProtocol`).
+  Client -> old server is NOT protected by the framing: a server that predates the feature flags a SHORT
+  game-message frame (< 18 bytes) as malformed but MISPARSES one whose total length is >= 18 (a payload of >= 13
+  bytes) as a spurious finite move. The `WorldClientConfig.ProtocolVersion` handshake is the real protection - a
+  game-aware client must not send a game message until the handshake confirms the peer understands it; gate adoption
+  on it. On the CURRENT server the wire rides the existing `0xC5` marker family and can never alias a move (see
+  `MoveProtocol`).
 
 The reference `MmoServerSample` demonstrates it end to end with a chat line (`MmoProtocol.EncodeChat` ->
 `MmoServer.ChatReceived`, run `MmoServerSample --chat-demo`).

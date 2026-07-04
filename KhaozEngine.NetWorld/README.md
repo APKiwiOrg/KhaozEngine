@@ -93,9 +93,12 @@ frames, demuxes, rate-limits and size-caps them, but never deserializes them - t
   sub-marker, demuxed ahead of the move; by construction it can never alias the 2 / 6 / 18 byte control / ack /
   move shapes (see the aliasing contract in `MoveProtocol`). Server frames use a new `ServerFrameKind.GameMessage`
   an older client silently ignores (unknown frame kind), so **server -> client is version-skew-safe downstream**.
-  A NEW client sending a game message to an OLD server is flagged there as malformed, so gate adoption on the
-  `WorldClientConfig.ProtocolVersion` handshake (below). Quest / inventory / chat systems themselves stay
-  game-side; this is only the transport seam.
+  The other direction is NOT protected by the framing: a server that predates the feature has no game-message decode,
+  so it flags a SHORT game-message frame (< 18 bytes) as malformed but MISPARSES one whose total length is >= 18
+  (a payload of >= 13 bytes) as a spurious finite move. The `WorldClientConfig.ProtocolVersion` handshake (below) is
+  the actual protection - a game-aware client must not send a game message until the handshake confirms the peer
+  understands it. Gate adoption on the handshake. Quest / inventory / chat systems themselves stay game-side; this
+  is only the transport seam.
 
 ## Version-skew resilience (since 8.5.0)
 

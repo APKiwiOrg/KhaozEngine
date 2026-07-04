@@ -138,6 +138,41 @@ public class ShardedWorldServerGameMessageTests
         Assert.Contains(flags, f => f.Reason == SuspiciousReason.RateLimited);
     }
 
+    // Regression (9.28.1): the multi-cell mirror of the game-message DoS. A 5-byte pad-flagged frame underflowed the
+    // pad-strip slice and threw ArgumentOutOfRangeException out of ShardedWorldServer.HandleData - inside Poll's
+    // dequeue loop - killing the whole host. Reject + flag, never throw. See WorldServerGameMessageTests for detail.
+    public static IEnumerable<object[]> MalformedGameMessageFrames() => new[]
+    {
+        new object[] { new byte[] { 0xC5, 0xB0, 0x34, 0x12, 0x01 } },   // 5-byte pad-flagged: the crash
+        new object[] { new byte[] { 0xC5, 0xB0, 0x00, 0x00, 0x01 } },   // header-length pad-flagged, kind 0
+        new object[] { new byte[] { 0xC5, 0xB0, 0x34, 0x12 } },         // 4-byte truncated
+        new object[] { new byte[] { 0xC5, 0xB0, 0x34 } },               // 3-byte truncated
+    };
+
+    [Theory]
+    [MemberData(nameof(MalformedGameMessageFrames))]
+    public void Malformed_game_message_frame_is_flagged_not_thrown(byte[] frame)
+    {
+        var (st, ct) = LoopbackTransport.CreatePair();
+        var config = new ShardedWorldServerConfig { TickSeconds = 1f / 30f, MaxPlayers = 4 };
+        var server = new ShardedWorldServer(st, config, Flat, MoveTuning.Default);
+        var client = new RawDeltaClient(ct, MoveProtocol.CreateRegistry(), advertiseDelta: false);
+        for (int i = 0; i < 20 && !client.Joined; i++) { client.Poll(); server.Poll(); server.Tick(config.TickSeconds); }
+        Assert.True(client.Joined);
+
+        var flags = new List<SuspiciousActivity>();
+        server.OnSuspiciousActivity += flags.Add;
+        bool dispatched = false;
+        server.OnGameMessage += (_, _, _) => dispatched = true;
+
+        client.SendRaw(frame);
+        var ex = Record.Exception(() => { for (int i = 0; i < 5; i++) { client.Poll(); server.Poll(); server.Tick(config.TickSeconds); } });
+        Assert.Null(ex);
+
+        Assert.Contains(flags, f => f.Reason == SuspiciousReason.MalformedPacket);
+        Assert.False(dispatched, "a malformed frame must never reach the game-message handler");
+    }
+
     [Fact]
     public void Slot_recycle_does_not_leak_messages_across_occupants()
     {

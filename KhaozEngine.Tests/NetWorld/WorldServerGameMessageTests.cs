@@ -217,6 +217,44 @@ public class WorldServerGameMessageTests
         Assert.True(old.LocalNetId >= 0);
     }
 
+    // Regression (9.28.1): a hostile game-message frame must be REJECTED and flagged, never thrown. The decode used to
+    // strip a pad byte without an underflow guard, so a 5-byte pad-flagged frame sliced data.Slice(5, -1) and threw
+    // ArgumentOutOfRangeException out of HandleData - inside Poll's dequeue loop, taking down every session on the host.
+    // Any joined client could kill the server with 5 bytes. These frames pass the game-message gate (len >= header,
+    // != 18, [0xC5][0xB0] markers) yet have no payload after stripping the pad, plus below-header truncations.
+    public static IEnumerable<object[]> MalformedGameMessageFrames() => new[]
+    {
+        new object[] { new byte[] { 0xC5, 0xB0, 0x34, 0x12, 0x01 } },   // 5-byte pad-flagged: end-- -> slice(5,-1), the crash
+        new object[] { new byte[] { 0xC5, 0xB0, 0x00, 0x00, 0x01 } },   // header-length pad-flagged, kind 0
+        new object[] { new byte[] { 0xC5, 0xB0, 0x34, 0x12 } },         // 4-byte truncated (below the 5-byte header)
+        new object[] { new byte[] { 0xC5, 0xB0, 0x34 } },               // 3-byte truncated
+    };
+
+    [Theory]
+    [MemberData(nameof(MalformedGameMessageFrames))]
+    public void Malformed_game_message_frame_is_flagged_not_thrown(byte[] frame)
+    {
+        var (st, ct) = LoopbackTransport.CreatePair();
+        var config = new WorldServerConfig { TickSeconds = 1f / 30f, MaxPlayers = 4 };
+        var server = new WorldServer(st, config, Flat, MoveTuning.Default);
+        var client = new RawDeltaClient(ct, MoveProtocol.CreateRegistry(), advertiseDelta: false);
+        for (int i = 0; i < 20 && !client.Joined; i++) { client.Poll(); server.Poll(); server.Tick(config.TickSeconds); }
+        Assert.True(client.Joined);
+
+        var flags = new List<SuspiciousActivity>();
+        server.OnSuspiciousActivity += flags.Add;
+        bool dispatched = false;
+        server.OnGameMessage += (_, _, _) => dispatched = true;
+
+        client.SendRaw(frame);
+        // The whole point: Poll drains the hostile frame WITHOUT throwing out of HandleData (which would kill the host).
+        var ex = Record.Exception(() => { for (int i = 0; i < 5; i++) { client.Poll(); server.Poll(); server.Tick(config.TickSeconds); } });
+        Assert.Null(ex);
+
+        Assert.Contains(flags, f => f.Reason == SuspiciousReason.MalformedPacket);
+        Assert.False(dispatched, "a malformed frame must never reach the game-message handler");
+    }
+
     [Fact]
     public void Slot_recycle_does_not_leak_messages_across_occupants()
     {

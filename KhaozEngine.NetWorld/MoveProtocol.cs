@@ -265,9 +265,11 @@ public static class MoveProtocol
         return b;
     }
 
-    /// <summary>Decodes a client-to-server game message written by <see cref="EncodeGameMessage"/>. False for anything
-    /// that is not a game-message frame: too short (&lt; 5), an exactly-18-byte frame (always a move, never a game
-    /// message - see the aliasing contract above), or one lacking the <c>[0xC5][0xB0]</c> marker pair. The returned
+    /// <summary>Decodes a client-to-server game message written by <see cref="EncodeGameMessage"/>. False (never throws)
+    /// for anything that is not a well-formed game-message frame: too short (&lt; 5), an exactly-18-byte frame (always a
+    /// move, never a game message - see the aliasing contract above), one lacking the <c>[0xC5][0xB0]</c> marker pair, or
+    /// a pad-flagged frame too short to hold any payload once the pad byte is stripped (a hostile 5-byte pad-flagged
+    /// frame - rejected here rather than underflowing the payload slice). The returned
     /// <paramref name="payload"/> is a slice of <paramref name="data"/> (no copy) with any trailing pad byte removed;
     /// it is opaque to the engine. The server's receive path tries this AFTER the ack/control decodes and BEFORE the
     /// move decode.</summary>
@@ -278,9 +280,13 @@ public static class MoveProtocol
         if (data.Length >= GameMessageHeader && data.Length != MoveSize
             && data[0] == ClientControlMarker && data[1] == GameMessageMarker)
         {
-            kind = BitConverter.ToUInt16(data.Slice(2, 2));
             int end = data.Length;
             if ((data[4] & GameMessageFlagPadded) != 0) end--;   // strip the single disambiguation pad byte
+            // Hostile-safe: a pad-flagged frame with no room for a payload after the strip (end < header) would slice a
+            // NEGATIVE length and THROW out of the server's Poll loop, killing every session (a 5-byte pad-flagged frame
+            // is the minimal DoS). Reject it as malformed instead - it falls through to the move decode and is flagged.
+            if (end < GameMessageHeader) { kind = 0; payload = default; return false; }
+            kind = BitConverter.ToUInt16(data.Slice(2, 2));
             payload = data.Slice(GameMessageHeader, end - GameMessageHeader);
             return true;
         }

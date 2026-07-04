@@ -20,6 +20,17 @@
             "command": "data=$(cat); f=$(printf '%s' \"$data\" | jq -r '.tool_input.file_path // \"\"'); case \"$f\" in *.md) c=$(printf '%s' \"$data\" | jq -r '.tool_input.content // .tool_input.new_string // \"\"'); printf '%s' \"$c\" | LC_ALL=C grep -qF -e '—' -e '–' && printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Introduces an em-dash or en-dash. Repo bans them in shipped text. Use a period, comma, colon, or parentheses instead.\"}}' ;; esac"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(git tag *)",
+            "statusMessage": "Checking release tag collision",
+            "command": "data=$(cat); cmd=$(printf '%s' \"$data\" | jq -r '.tool_input.command // \"\"'); tag=$(printf '%s' \"$cmd\" | grep -oE 'v[0-9]+\\.[0-9]+\\.[0-9]+' | head -1); [ -z \"$tag\" ] && exit 0; cd \"${CLAUDE_PROJECT_DIR:-.}\" || exit 0; git fetch --tags --quiet 2>/dev/null; if git rev-parse -q --verify \"refs/tags/$tag\" >/dev/null 2>&1 || git ls-remote --tags origin \"$tag\" 2>/dev/null | grep -q \"refs/tags/$tag$\"; then printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Tag %s already exists (local or origin). A concurrent release likely took it. Re-read the current version and tags, bump to the next free version, rebase the CHANGELOG entry, then tag.\"}}' \"$tag\"; fi"
+          }
+        ]
       }
     ],
     "PostToolUse": [

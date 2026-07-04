@@ -58,15 +58,21 @@ public sealed class AoiDeltaReplicator
     /// <summary>
     /// Builds the AoI delta for <paramref name="slot"/> from its acknowledged baseline to the entities of
     /// <paramref name="world"/> whose <see cref="NetId"/> is in <paramref name="interestSet"/>. Full snapshot
-    /// (baseline -1) until the client acks. Must be called after <see cref="BeginTick"/>.
+    /// (baseline -1) until the client acks. Must be called after <see cref="BeginTick"/>. This is the client-serving
+    /// (<see cref="ReplicationChannels.Replicate"/>) path, so only replicated components are captured, and an
+    /// <see cref="ReplicationChannels.OwnerOnly"/> component is captured only for the entity whose net id equals
+    /// <paramref name="ownerNetId"/> (this slot's own player). Because the per-slot baseline stores exactly what was
+    /// captured for THIS slot, owner-only visibility falls out of the delta diff automatically.
     /// </summary>
-    public byte[] WriteFor(int slot, World world, IReadOnlySet<int> interestSet)
+    public byte[] WriteFor(int slot, World world, IReadOnlySet<int> interestSet, int? ownerNetId = null)
     {
         if (world is null) throw new ArgumentNullException(nameof(world));
         if (interestSet is null) throw new ArgumentNullException(nameof(interestSet));
         if (currentSeq == 0) throw new InvalidOperationException("Call BeginTick before WriteFor.");
 
         // Capture the in-AoI entities that exist in this world (netId -> components), reusing the codec capture.
+        // Filter to the Replicate channel (owner-scoped), so this slot's baseline holds only what it was actually
+        // sent - an OwnerOnly component on another player's entity is never captured, so it can never leak here.
         var projected = new AoiBaseline();
         world.ForEach<NetId>((Entity e, ref NetId id) =>
         {
@@ -74,6 +80,7 @@ public sealed class AoiDeltaReplicator
             var comps = new Comps();
             foreach (ComponentCodec codec in registry.Ordered)
             {
+                if (!codec.ShouldWrite(ReplicationChannels.Replicate, id.Value, ownerNetId)) continue;
                 byte[]? data = codec.CaptureData(world, e);
                 if (data is not null) comps[codec.TypeId] = data;
             }

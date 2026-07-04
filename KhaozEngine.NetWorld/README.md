@@ -197,6 +197,27 @@ per entity. All four pieces are additive and default to today's behaviour.
   faction) and pick a model. Returns `false` against an older server that never sends `T` (no handshake, no
   disconnect). `MmoServerSample` demonstrates the whole seam with a `Creature` kind component.
 
+## Per-registration replication channels (since 9.28.0)
+
+A registered component can declare **which** consumers see its bytes, via an optional
+[`ReplicationChannels`](../KhaozEngine.Replication) flag on `Register<T>` (`Replicate` / `Persist` / `Migrate`, plus
+`OwnerOnly` as a `Replicate` modifier). Default is `Replicate | Persist | Migrate`, so nothing changes unless a game
+opts in. Both servers thread the serving channel + the receiving client's own player net id through automatically, so
+these two shapes just work end to end:
+
+- **Server-only state on an NPC** (`Persist | Migrate`, no `Replicate`): a mob's aggro / threat table, loot roll,
+  quest counter, door-lock internals - survives cell handoff and a server restart, but is never on the replication
+  wire and never ghosted, so it can't leak to any client.
+- **Owner-only private state on a player** (`Default | OwnerOnly`): private inventory, quest flags, exact HP -
+  replicated only to that player's own client, never to another player who has it in area-of-interest (closing the
+  map-hack surface). It still persists and migrates like any owned component.
+
+`MmoServerSample` demonstrates both: the `Creature` NPC carries a hidden `AggroCounter` (`Persist | Migrate`) and each
+player carries an `OwnerOnly` `PrivateStats`. Because the flags gate only the server write side, an existing client is
+unaffected. **Cell-blob note:** changing a component's channels changes what future saves write into a cell's persist
+blob; an old blob restored through a registry whose extension set shrank already skips unknown ids (real blob schema
+migration is a separate upcoming item, tracked in the roadmap).
+
 ## Area-of-interest delta replication (since 9.18.0)
 
 The live serving path sends each client only what changed inside its interest set per tick (an

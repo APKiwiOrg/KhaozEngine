@@ -34,12 +34,41 @@ public struct Creature : IComponent
     public int Kind;
 }
 
+/// <summary>
+/// A hidden server-only threat/aggro counter on an NPC. Registered <c>Persist | Migrate</c> (NOT Replicate): the mob
+/// keeps its grudge across a cell handoff and a server restart, but the value never reaches ANY client - it is never
+/// on the replication wire. Demonstrates decoupling persisted+migrated server state from replicated state.
+/// </summary>
+public struct AggroCounter : IComponent
+{
+    /// <summary>Accumulated threat (server-authoritative, never replicated).</summary>
+    public int Value;
+}
+
+/// <summary>
+/// A player's private stat - here exact HP. Registered <c>Default | OwnerOnly</c> (replicate + persist + migrate,
+/// but owner-scoped on the wire): it is replicated ONLY to the client whose player this is, never to another player
+/// who has it in area-of-interest, closing the map-hack surface where a component would leak private state to
+/// observers. It still persists and migrates like any owned state.
+/// </summary>
+public struct PrivateStats : IComponent
+{
+    /// <summary>Exact health, visible only to the owning client.</summary>
+    public int Health;
+}
+
 /// <summary>Shared wire helpers so the server and its clients agree on encodings.</summary>
 public static class MmoProtocol
 {
     /// <summary>Type id of the <see cref="Creature"/> discriminator — a consumer extension id (>= the floor), so
     /// older clients skip it instead of failing (see <see cref="ReplicationRegistry.FirstExtensionTypeId"/>).</summary>
     public const ushort CreatureTypeId = ReplicationRegistry.FirstExtensionTypeId;
+
+    /// <summary>Type id of the hidden <see cref="AggroCounter"/> (Persist|Migrate, never replicated).</summary>
+    public const ushort AggroCounterTypeId = ReplicationRegistry.FirstExtensionTypeId + 1;
+
+    /// <summary>Type id of the owner-only <see cref="PrivateStats"/> (Default|OwnerOnly).</summary>
+    public const ushort PrivateStatsTypeId = ReplicationRegistry.FirstExtensionTypeId + 2;
 
     /// <summary>Replicated-component registry shared by server and client (must match on both ends).</summary>
     public static ReplicationRegistry CreateRegistry()
@@ -60,6 +89,18 @@ public static class MmoProtocol
             typeId: CreatureTypeId,
             write: (c, bw) => bw.Write(c.Kind),
             read: br => new Creature { Kind = br.ReadInt32() });
+        // Hidden server-only aggro: Persist|Migrate but NOT Replicate. Survives handoff + restart, never on the wire.
+        r.Register<AggroCounter>(
+            typeId: AggroCounterTypeId,
+            write: (a, bw) => bw.Write(a.Value),
+            read: br => new AggroCounter { Value = br.ReadInt32() },
+            channels: ReplicationChannels.Persist | ReplicationChannels.Migrate);
+        // Owner-only private stat: Default (replicate+persist+migrate) + OwnerOnly, so it reaches only the owner.
+        r.Register<PrivateStats>(
+            typeId: PrivateStatsTypeId,
+            write: (s, bw) => bw.Write(s.Health),
+            read: br => new PrivateStats { Health = br.ReadInt32() },
+            channels: ReplicationChannels.Default | ReplicationChannels.OwnerOnly);
         return r;
     }
 

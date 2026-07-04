@@ -164,7 +164,9 @@ public sealed class CellSim
     /// A durable Replication snapshot of this cell's <b>persistable</b> entities: those it owns (present, not a
     /// <see cref="Ghost"/>, not <see cref="Migrating"/>) whose <see cref="NetId"/> is not in
     /// <paramref name="excludedNetIds"/> (the caller passes the player NetIds, which persist separately). Reuses the
-    /// same <see cref="SnapshotWriter"/> codec cells use for ghosting/migrate, so any registered component persists.
+    /// same <see cref="SnapshotWriter"/> codec cells use for ghosting/migrate, but captures the
+    /// <see cref="ReplicationChannels.Persist"/> channel, so a component is written to the blob only if it declared
+    /// <see cref="ReplicationChannels.Persist"/> (a Replicate-only or Migrate-only component is not persisted).
     /// </summary>
     public byte[] SnapshotOwned(IReadOnlySet<int> excludedNetIds)
     {
@@ -176,7 +178,7 @@ public sealed class CellSim
             if (excludedNetIds.Contains(id.Value)) return;
             ids.Add(id.Value);
         });
-        return SnapshotWriter.WriteFiltered(World, registry, ids);
+        return SnapshotWriter.WriteFiltered(World, registry, ids, ReplicationChannels.Persist, ownerNetId: null);
     }
 
     /// <summary>

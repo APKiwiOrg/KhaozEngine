@@ -22,6 +22,14 @@ not in the excluded set, so a caller can persist non-player state while player e
 and returns the restored NetId list. `MaxOwnedNetId()` reads the highest owned NetId (0 if none), useful for
 resuming an id allocator. See `KhaozEngine.NetWorld.CellPersistence` for the `IWorldStore` wiring built on these.
 
+**Per-channel components (since 9.28.0).** The three cross-cell/persistence consumers each serve one
+`ReplicationChannels` channel, so a component only reaches the paths it declared (default `Replicate | Persist |
+Migrate` = the pre-9.28.0 all-paths behaviour): `SnapshotOwned` captures the **Persist** channel, `ShardHost.ProcessHandoffs`
+captures the **Migrate** channel, and `ShardHost.SyncGhosts` mirrors the **Replicate** channel with no owner (so a
+mob's `Persist|Migrate`-only server state and a player's `OwnerOnly` private state are never ghosted - a ghost is a
+read-only mirror served to OTHER cells' clients). `ShardHost.SnapshotForClient` serves the **Replicate** channel
+owner-scoped to the client's own player. See `KhaozEngine.Replication.ReplicationChannels`.
+
 Phase 3A of the seamless-shard topology: the in-process container. No cross-cell crossing or ghosting yet
 (that's 3B/3C). Deterministic and headless - no sockets, no window, no GPU. Depends on `KhaozEngine.Ecs`,
 `KhaozEngine.Simulation`, and `KhaozEngine.Replication`.

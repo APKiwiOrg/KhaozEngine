@@ -481,7 +481,9 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
             if (deltaReplicator is not null && deltaCapableSlots.Contains(slot))
             {
                 (World world, HashSet<int> interest) = host.HomeInterest(slot, config.InterestRadius);
-                body = deltaReplicator.WriteFor(slot, world, interest);
+                // Owner-scope the Replicate channel to this client's own player (netId is stable across handoff), so an
+                // OwnerOnly component is served only on the client's own entity, never on another player it observes.
+                body = deltaReplicator.WriteFor(slot, world, interest, netId);
                 kind = MoveProtocol.ServerFrameKind.Delta;
             }
             else

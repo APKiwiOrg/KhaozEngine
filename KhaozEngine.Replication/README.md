@@ -9,6 +9,18 @@ area-of-interest deltas.
   **`ReplicationRegistry.FirstExtensionTypeId`** (= 16, `IsExtension(id)`); ids `1..15` are reserved for engine
   built-ins. Extension components are length-prefixed on the wire, so a client whose registry never registered the
   id **skips** it (forward-compatible), while an unknown built-in id stays a hard mismatch.
+- **`ReplicationChannels`** (since 9.28.0) - an optional `[Flags]` argument to `Register<T>` declaring which of the
+  four downstream consumers see a component's bytes: `Replicate` (client area-of-interest serving + border ghosts),
+  `Persist` (cell persistence blob), `Migrate` (cell handoff), and `OwnerOnly` (a `Replicate` modifier: replicated
+  ONLY to the client that owns the entity, never to another observer in AoI). Default is `Default` = `Replicate |
+  Persist | Migrate` - the pre-9.28.0 behaviour where persisted == replicated == migrated - so existing
+  registrations and every built-in are unchanged and the wire stays byte-identical for them. This decouples what
+  used to be one coupled path: a mob's server-only aggro table (`Persist | Migrate`, no `Replicate`) survives handoff
+  + restart but never reaches a client, and a player's private inventory / exact HP (`Default | OwnerOnly`) reaches
+  only its own client. The flags gate the **server (write) side** only; the client read side decodes whatever is on
+  the wire (so channel flags on a client-built registry are ignored). A built-in id must keep `Default` (its unframed
+  encoding is the core protocol) and `OwnerOnly` requires `Replicate` - either violation throws at registration.
+  `SnapshotWriter` / `AoiDeltaReplicator` take the serving channel + an optional `ownerNetId` to scope `OwnerOnly`.
 - **`SnapshotWriter`** - serialize a server `World`'s `NetId` entities (and their registered components) to an
   opaque `byte[]` snapshot (`Write` full-state, `WriteFiltered` per-client interest). **`ServerReplicator`** is the
   per-slot acked whole-world baseline/delta variant. Both length-prefix extension components.

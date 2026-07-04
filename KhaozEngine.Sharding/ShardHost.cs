@@ -177,6 +177,15 @@ public sealed class ShardHost
     /// creates a neighbor). Runs single-threaded (unlike <see cref="Tick"/>): each cell writes ghosts into its
     /// <em>neighbours'</em> worlds via the <see cref="ICellLink"/>, so the passes are not cell-independent.
     /// </summary>
+    /// <remarks>
+    /// Channel rule: ghosts carry the <see cref="ReplicationChannels.Replicate"/> set with no owner, so a mob's
+    /// server-only state (a <see cref="ReplicationChannels.Persist"/>/<see cref="ReplicationChannels.Migrate"/>-only
+    /// aggro table) and a player's <see cref="ReplicationChannels.OwnerOnly"/> private state are NOT mirrored. This
+    /// is correct: a ghost is a read-only mirror the neighbour cell serves to OTHER clients for cross-border
+    /// collision / visibility / targeting - it never simulates the ghost (the owner does, with the full state) and
+    /// no client should read another entity's private/server state from it. Nothing in the ghost path reads a
+    /// non-Replicate component, so the Replicate set is complete for ghosting.
+    /// </remarks>
     public void SyncGhosts()
     {
         if (OverlapMargin <= 0f) return;
@@ -192,7 +201,10 @@ public sealed class ShardHost
             foreach (KeyValuePair<CellCoord, HashSet<int>> kv in byTarget)
             {
                 if (!cells.ContainsKey(kv.Key)) continue; // only mirror to neighbors that exist
-                byte[] snapshot = SnapshotWriter.WriteFiltered(owner.World, registry, kv.Value);
+                // Ghosts serve OTHER cells' clients: the Replicate channel with no owner (so OwnerOnly private state
+                // and Persist/Migrate-only server state are never mirrored - see the channel rule above).
+                byte[] snapshot = SnapshotWriter.WriteFiltered(
+                    owner.World, registry, kv.Value, ReplicationChannels.Replicate, ownerNetId: null);
                 link.Send(new CellMessage(owner.Coord, kv.Key, CellMessageKind.GhostSync, snapshot));
             }
         }
@@ -219,7 +231,7 @@ public sealed class ShardHost
     /// <summary>
     /// Transfers authority for entities that crossed a cell boundary since the last call, with exactly-once
     /// semantics (never two owners, never zero). For each owned entity whose position now falls in another cell,
-    /// the owner captures its full registered component set (Replication codecs), sends a
+    /// the owner captures its <see cref="ReplicationChannels.Migrate"/> component set (Replication codecs), sends a
     /// <see cref="CellMessageKind.Migrate"/> over the link and freezes it (<see cref="Migrating"/>); the
     /// destination adopts it as owned (despawning any prior ghost of it) and acks; the owner then releases
     /// (despawns) it. The in-process link completes the whole Migrate -&gt; ack -&gt; release handshake within this
@@ -255,7 +267,10 @@ public sealed class ShardHost
         foreach ((CellSim source, Entity entity, int netId, CellCoord dest) in crossings)
         {
             GetOrCreateCell(dest); // ensure the destination exists to receive the migrate
-            byte[] capture = SnapshotWriter.WriteFiltered(source.World, registry, new HashSet<int> { netId });
+            // Capture the Migrate channel: the entity carries only its migratable components to the destination cell
+            // (a Replicate-only or Persist-only component that isn't also Migrate does not follow the crossing).
+            byte[] capture = SnapshotWriter.WriteFiltered(
+                source.World, registry, new HashSet<int> { netId }, ReplicationChannels.Migrate, ownerNetId: null);
             link.Send(new CellMessage(source.Coord, dest, CellMessageKind.Migrate, capture));
             source.World.Set(entity, new Migrating { Destination = dest });
         }
@@ -330,11 +345,16 @@ public sealed class ShardHost
     /// (so the home cell already holds, as ghosts, everything in the player's interest) and throws if it is
     /// violated. On a player crossing, the home cell re-binds automatically, so the next snapshot comes from the new
     /// cell - which already held the surroundings as ghosts, so the client's view is continuous.
+    /// Serves the <see cref="ReplicationChannels.Replicate"/> channel scoped to this client's own player, so an
+    /// <see cref="ReplicationChannels.OwnerOnly"/> component reaches this client only on its own player entity, never
+    /// on another player it observes.
     /// </summary>
     public byte[] SnapshotForClient(int slot, float interestRadius)
     {
         (World world, HashSet<int> interest) = HomeInterest(slot, interestRadius);
-        return SnapshotWriter.WriteFiltered(world, registry, interest);
+        // HomeInterest validated the binding, so the slot's player net id is present: it is this client's owner id.
+        int ownerNetId = clientPlayerNetId[slot];
+        return SnapshotWriter.WriteFiltered(world, registry, interest, ReplicationChannels.Replicate, ownerNetId);
     }
 
     /// <summary>

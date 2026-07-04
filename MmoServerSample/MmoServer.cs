@@ -112,9 +112,15 @@ public sealed class MmoServer : ICellPersistenceHost
     }
 
     /// <summary>Spawns a server-owned NPC tagged with a <see cref="Creature"/> kind (the consumer discriminator a
-    /// client reads to pick its model). Players carry no <see cref="Creature"/>, so the client tells them apart.</summary>
+    /// client reads to pick its model) plus a hidden <see cref="AggroCounter"/> (Persist|Migrate, never replicated):
+    /// the mob keeps its threat across handoff + restart but no client ever sees it. Players carry no
+    /// <see cref="Creature"/>, so the client tells them apart.</summary>
     public int SpawnNpc(float x, float y, int kind = 0) =>
-        SpawnEntity(x, y, (w, e) => w.Set(e, new Creature { Kind = kind }));
+        SpawnEntity(x, y, (w, e) =>
+        {
+            w.Set(e, new Creature { Kind = kind });
+            w.Set(e, new AggroCounter { Value = 0 });   // hidden server-only state, demonstrates Persist|Migrate-only
+        });
 
     /// <summary>Spawns a persistable resource node at a world position. Returns its NetId.</summary>
     public int SpawnResourceNode(float x, float y, int amount) =>
@@ -166,7 +172,10 @@ public sealed class MmoServer : ICellPersistenceHost
             switch (ev.Kind)
             {
                 case ServerSessionEventKind.Joined:
-                    int playerNetId = SpawnEntity(config.SpawnX, config.SpawnY);
+                    // The player carries an OwnerOnly PrivateStats (exact HP) - replicated only back to its own
+                    // client, never to another player observing it - alongside its replicated Position.
+                    int playerNetId = SpawnEntity(config.SpawnX, config.SpawnY,
+                        (w, e) => w.Set(e, new PrivateStats { Health = 100 }));
                     playerNetIdBySlot[ev.Slot] = playerNetId;
                     host.BindClient(ev.Slot, playerNetId);
                     break;
@@ -215,10 +224,12 @@ public sealed class MmoServer : ICellPersistenceHost
         // baseline; a full snapshot the first time / until it acks). The baseline is keyed by NetId, so a boundary
         // crossing reads as a component delta, never a despawn+respawn.
         deltaReplicator.BeginTick();
-        foreach (int slot in playerNetIdBySlot.Keys)
+        foreach (KeyValuePair<int, int> kv in playerNetIdBySlot)
         {
+            int slot = kv.Key, ownerNetId = kv.Value;
             (World world, HashSet<int> interest) = host.HomeInterest(slot, config.InterestRadius);
-            byte[] delta = deltaReplicator.WriteFor(slot, world, interest);
+            // Owner-scope the Replicate channel to this client's own player so its OwnerOnly PrivateStats reach only it.
+            byte[] delta = deltaReplicator.WriteFor(slot, world, interest, ownerNetId);
             net.SendTo(slot, delta, NetChannelReliability.ReliableOrdered);
         }
     }
@@ -233,15 +244,6 @@ public sealed class MmoServer : ICellPersistenceHost
         string text = System.Text.Encoding.UTF8.GetString(payload);
         LastChat = text;
         ChatReceived?.Invoke(slot, text);
-    }
-
-    private int SpawnEntity(float x, float y)
-    {
-        int netId = nextNetId++;
-        Entity e = host.SpawnAt(x, y, out CellSim cell);
-        cell.World.Set(e, new NetId(netId));
-        cell.World.Set(e, new Position { X = x, Y = y });
-        return netId;
     }
 
     private void OnClientLeft(int slot)

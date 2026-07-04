@@ -34,14 +34,34 @@ public sealed class ReplicationRegistry
     /// Registers a replicated component. <paramref name="write"/>/<paramref name="read"/> must be symmetric
     /// (read consumes exactly what write produced). Supplying <paramref name="lerp"/> makes the component
     /// interpolatable (smoothed between snapshots by <see cref="ClientReplicationView.Interpolate"/>).
+    /// <paramref name="channels"/> declares which downstream consumers see the component's bytes (client AoI
+    /// replication, cell persistence, cell handoff, owner-only visibility); it defaults to
+    /// <see cref="ReplicationChannels.Default"/> (replicate + persist + migrate), the pre-9.28.0 behaviour, so
+    /// omitting it leaves the wire byte-identical. A built-in id (below <see cref="FirstExtensionTypeId"/>) must
+    /// keep <see cref="ReplicationChannels.Default"/> - its unframed encoding is the core protocol - and
+    /// <see cref="ReplicationChannels.OwnerOnly"/> requires <see cref="ReplicationChannels.Replicate"/>; either
+    /// violation throws.
     /// </summary>
     public void Register<T>(ushort typeId, Action<T, BinaryWriter> write, Func<BinaryReader, T> read,
-        Func<T, T, float, T>? lerp = null) where T : struct, IComponent
+        Func<T, T, float, T>? lerp = null, ReplicationChannels channels = ReplicationChannels.Default)
+        where T : struct, IComponent
     {
         if (typeId == 0) throw new ArgumentOutOfRangeException(nameof(typeId), "Type id 0 is reserved.");
         if (write is null) throw new ArgumentNullException(nameof(write));
         if (read is null) throw new ArgumentNullException(nameof(read));
         if (byId.ContainsKey(typeId)) throw new InvalidOperationException($"Type id {typeId} already registered.");
+        // Built-in ids (< the floor) are the core protocol: their exact unframed encoding on every channel is fixed,
+        // so per-channel flags must never alter what they write. Reject any non-default channel set below the floor.
+        if (!IsExtension(typeId) && channels != ReplicationChannels.Default)
+            throw new ArgumentException(
+                $"Built-in type id {typeId} (< FirstExtensionTypeId {FirstExtensionTypeId}) must keep ReplicationChannels.Default; " +
+                "per-channel flags are only honored for consumer extension components.", nameof(channels));
+        // OwnerOnly is a modifier on the Replicate channel (it scopes a replicated component to its owning client);
+        // it is meaningless without Replicate, so reject it rather than silently making the component invisible.
+        if ((channels & ReplicationChannels.OwnerOnly) != 0 && (channels & ReplicationChannels.Replicate) == 0)
+            throw new ArgumentException(
+                "ReplicationChannels.OwnerOnly requires ReplicationChannels.Replicate (it scopes a replicated component to its owning client).",
+                nameof(channels));
 
         // Extension components (id >= floor) are length-prefixed so an older client can skip an id it never
         // registered. Built-ins stay inline (zero per-component overhead on the movement hot path).
@@ -93,7 +113,7 @@ public sealed class ReplicationRegistry
             };
         }
 
-        var codec = new ComponentCodec(typeId, lengthPrefixed, TrySerialize, Deserialize, lerpFromBytes, CaptureData, RemoveComponent);
+        var codec = new ComponentCodec(typeId, lengthPrefixed, channels, TrySerialize, Deserialize, lerpFromBytes, CaptureData, RemoveComponent);
         ordered.Add(codec);
         byId[typeId] = codec;
     }
@@ -107,12 +127,14 @@ public sealed class ReplicationRegistry
 /// <summary>A single component type's erased serialize/deserialize/lerp closures.</summary>
 internal sealed class ComponentCodec
 {
-    public ComponentCodec(ushort typeId, bool lengthPrefixed, Func<World, Entity, BinaryWriter, bool> trySerialize,
+    public ComponentCodec(ushort typeId, bool lengthPrefixed, ReplicationChannels channels,
+        Func<World, Entity, BinaryWriter, bool> trySerialize,
         Action<World, Entity, BinaryReader> deserialize, Action<World, Entity, byte[], byte[], float>? lerpFromBytes,
         Func<World, Entity, byte[]?> captureData, Action<World, Entity> removeComponent)
     {
         TypeId = typeId;
         LengthPrefixed = lengthPrefixed;
+        Channels = channels;
         TrySerialize = trySerialize;
         Deserialize = deserialize;
         LerpFromBytes = lerpFromBytes;
@@ -126,6 +148,27 @@ internal sealed class ComponentCodec
     /// (<c>[typeId][7-bit len][data]</c>) so an older client can skip it. See
     /// <see cref="ReplicationRegistry.FirstExtensionTypeId"/>.</summary>
     public bool LengthPrefixed { get; }
+
+    /// <summary>Which downstream consumers see this component's bytes (client AoI replication, cell persistence,
+    /// cell handoff, owner-only visibility). See <see cref="ReplicationChannels"/>.</summary>
+    public ReplicationChannels Channels { get; }
+
+    /// <summary>
+    /// Whether a consumer serving <paramref name="channel"/> (one of <see cref="ReplicationChannels.Replicate"/>,
+    /// <see cref="ReplicationChannels.Persist"/>, <see cref="ReplicationChannels.Migrate"/>) should write this
+    /// component for the entity whose net id is <paramref name="netId"/>. False if the channel bit is unset; on the
+    /// Replicate channel an <see cref="ReplicationChannels.OwnerOnly"/> component is written only to its owner
+    /// (<paramref name="ownerNetId"/> equals <paramref name="netId"/>), and to nobody when
+    /// <paramref name="ownerNetId"/> is null (e.g. ghost mirroring, a full unowned snapshot).
+    /// </summary>
+    public bool ShouldWrite(ReplicationChannels channel, int netId, int? ownerNetId)
+    {
+        if ((Channels & channel) == 0) return false;
+        if (channel == ReplicationChannels.Replicate
+            && (Channels & ReplicationChannels.OwnerOnly) != 0
+            && (ownerNetId is null || netId != ownerNetId.Value)) return false;
+        return true;
+    }
 
     /// <summary>Writes <c>[typeId](len)[data]</c> (the length only for an extension component) and returns true if
     /// the entity has the component; else writes nothing.</summary>

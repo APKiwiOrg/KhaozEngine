@@ -408,12 +408,14 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
             byte[] body;
             if (deltaReplicator is not null && deltaCapableSlots.Contains(slot))
             {
-                body = deltaReplicator.WriteFor(slot, world, set);
+                // Owner-scope the Replicate channel to this client's own player, so an OwnerOnly component is served
+                // only on the client's own entity, never on another player it observes.
+                body = deltaReplicator.WriteFor(slot, world, set, netId);
                 kind = MoveProtocol.ServerFrameKind.Delta;
             }
             else
             {
-                body = SnapshotWriter.WriteFiltered(world, registry, set);
+                body = SnapshotWriter.WriteFiltered(world, registry, set, ReplicationChannels.Replicate, netId);
                 kind = MoveProtocol.ServerFrameKind.Snapshot;
             }
             byte[] frame = MoveProtocol.EncodeSnapshotFrame(netId, lastAckBySlot[slot], body);

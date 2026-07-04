@@ -2657,6 +2657,41 @@ foreach (EntityRenderState s in client.Snapshot())
 `WorldClient.TryGetComponent<T>` returns `false` against an older server that never sends `T` (no handshake, no
 disconnect). `MmoServerSample` wires the whole seam with a `Creature` kind component.
 
+#### Per-registration channels: server-only and owner-only components (`ReplicationChannels`, since 9.28.0)
+
+One registered component's bytes feed four consumers - client area-of-interest serving, border ghosting, cell handoff,
+and cell persistence. By default all four see every registered component (`Replicate | Persist | Migrate`), which
+means persisted == replicated == migrated and there is no owner-only visibility. Pass a `ReplicationChannels` flag to
+`Register<T>` to split them:
+
+```csharp
+// A mob's server-only aggro table: kept across a cell handoff and a restart, but NEVER sent to a client.
+r.Register<Aggro>(MoveProtocol.FirstConsumerTypeId + 1,
+    write: (a, bw) => bw.Write(a.Threat), read: br => new Aggro { Threat = br.ReadInt32() },
+    channels: ReplicationChannels.Persist | ReplicationChannels.Migrate);   // no Replicate
+
+// A player's private HP: replicated ONLY to that player's own client (never to another observer in AoI),
+// and still persisted + migrated like any owned state.
+r.Register<PrivateStats>(MoveProtocol.FirstConsumerTypeId + 2,
+    write: (s, bw) => bw.Write(s.Health), read: br => new PrivateStats { Health = br.ReadInt32() },
+    channels: ReplicationChannels.Default | ReplicationChannels.OwnerOnly);
+```
+
+`WorldServer` / `ShardedWorldServer` / `MmoServer` thread the serving channel and the receiving client's own player
+net id automatically, so `OwnerOnly` "just works" (an observer's snapshot and delta both lack another player's
+owner-only component, including across a cell handoff). The flags gate the **server (write) side** only - build the
+client with the same registry to decode the bytes, but its channel flags are ignored (the read side decodes whatever
+is on the wire). Rules enforced at registration: a built-in id (`< FirstConsumerTypeId`) must keep `Default` (its
+unframed encoding is the core protocol), and `OwnerOnly` requires `Replicate` - either throws. A registry using only
+`Default` writes byte-identically to before channels existed. `MmoServerSample` demonstrates both shapes (`AggroCounter`
++ `PrivateStats`).
+
+> **Cell-blob compatibility.** Changing a component's channels changes what future saves write into a cell's persist
+> blob. An old blob restored through a registry whose extension set shrank already skips unknown ids (the versioned
+> `CellPersistence` header + the length-prefixed extension framing), so shrinking is safe. Real cell-blob **schema
+> migration** (rewriting old blobs to a new layout) is a separate upcoming item; today the guidance is to bump
+> `CellPersistenceConfig.SchemaVersion` on a breaking layout change so old saves are skipped, not misread.
+
 ### Durable state (`KhaozEngine.WorldStore` + backends)
 
 Persist authoritative character/world records through `IWorldStore` (async, keyed `byte[]`, DB-shaped). Use

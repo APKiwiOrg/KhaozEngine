@@ -19,17 +19,43 @@ Returns `false` (never throws) off macOS, on null/empty input, or on any Cocoa f
 after the window (hence the shared `NSApplication`) exists. Most games never call it directly: `GameApp` does it
 automatically from `GameAppOptions.WindowIconPath`, and `AppWindow.SetMacDockIcon` is the windowing-layer wrapper.
 Interop is self-contained (its own libobjc `objc_msgSend` + autorelease pool), so it never destabilises the
-clipboard path. Windows/Linux have no equivalent runtime Dock icon (their taskbar icon is the GLFW window icon and
-the Windows Explorer icon is `<ApplicationIcon>`), so this is a no-op there.
+clipboard path. Windows/Linux have no equivalent runtime Dock icon (their taskbar icon is the window class icon -
+see below - and the Windows Explorer icon is `<ApplicationIcon>`), so this is a no-op there.
+
+## Windows taskbar button icon (window class icon)
+
+`WindowsWindowIcon.TrySyncTaskbarIconFromWindow(nint hwnd)` makes the running app's **taskbar button** show the app
+icon instead of the generic default. On Windows a top-level window has two independent icon slots and the taskbar
+reads the one GLFW never sets: `WM_SETICON` (ICON_BIG/ICON_SMALL), which is all `glfwSetWindowIcon` (behind
+`AppWindow.SetIcon`) touches, drives the **title bar and Alt-Tab**, while the **taskbar button** is resolved from
+the window **class** icon (`GCLP_HICON`/`GCLP_HICONSM`). GLFW registers its window class with the generic
+`IDI_APPLICATION` unless the exe carries a resource literally named `GLFW_ICON` - and a .NET `<ApplicationIcon>` is
+embedded under a different name, so GLFW never picks it up. That is the split every consumer saw: correct title-bar
+icon, generic taskbar icon (the 9.19.0 AppUserModelID + born-hidden attempt targeted the `WM_SETICON` slot and did
+nothing for the taskbar). This copies the window's live `WM_SETICON` handle (via `WM_GETICON`) onto its class icon
+(`SetClassLongPtrW`), so the taskbar button matches - reusing the HICON GLFW already built, no rebuild from pixels.
+
+```csharp
+using KhaozEngine.Platform;
+
+// Call right AFTER the window icon is set, while the window is still hidden, so the taskbar button (created on
+// first show) is born with the icon:
+bool ok = WindowsWindowIcon.TrySyncTaskbarIconFromWindow(hwnd);
+```
+
+Returns `false` (never throws) off Windows, on a zero handle, or when the window has no icon to copy. Most games
+never call it directly: `AppWindow.SetIcon` calls it automatically on Windows right after setting the window icon,
+and `GameApp` sets the icon while the window is hidden then reveals it with `Show()`. macOS/Linux have no
+window-class icon, so it is a no-op there.
 
 ## Windows taskbar identity (AppUserModelID)
 
 `WindowsAppId.TrySetProcessAppUserModelId(string? appId)` sets the running process's explicit Windows
-**AppUserModelID** via shell32's `SetCurrentProcessExplicitAppUserModelID`. This is the Windows counterpart to
-the macOS Dock icon above: on Windows 10/11 the taskbar groups, pins, and resolves a running window's icon by
-the process's explicit AUMID, and a .NET apphost that never sets one gets a process-derived identity that fails
-to resolve the window/exe icon - so the running app's taskbar button shows the generic `.exe` placeholder even
-though the title-bar icon and the Explorer `<ApplicationIcon>` are correct.
+**AppUserModelID** via shell32's `SetCurrentProcessExplicitAppUserModelID`. This is the Windows counterpart to the
+macOS Dock icon above: on Windows 10/11 the taskbar **groups and pins** a running window by the process's explicit
+AUMID, and a .NET apphost that never sets one gets an unstable process-derived identity. It is about taskbar
+*identity* (grouping/pinning), not the button's icon - the icon is fixed by the class-icon sync above; set both for
+a correct, well-grouped taskbar button.
 
 ```csharp
 using KhaozEngine.Platform;
@@ -39,10 +65,9 @@ bool ok = WindowsAppId.TrySetProcessAppUserModelId("APKiwi.Nullwake"); // dotted
 ```
 
 Returns `false` (never throws) off Windows, on a null/empty id, or on a failed shell call. Must run before the
-process creates its first window (that is when the taskbar button is keyed). Most games never call it directly:
-set `GameAppOptions.AppUserModelId` and `GameApp` calls `AppWindow.TrySetProcessAppUserModelId` (a windowing-layer
-forwarder) before creating the window. macOS/Linux have no equivalent taskbar-identity call, so it is a no-op
-there.
+process creates its first window. Most games never call it directly: set `GameAppOptions.AppUserModelId` and
+`GameApp` calls `AppWindow.TrySetProcessAppUserModelId` (a windowing-layer forwarder) before creating the window.
+macOS/Linux have no equivalent taskbar-identity call, so it is a no-op there.
 
 ## Clipboard
 

@@ -264,7 +264,15 @@ namespace KhaozEngine.Windowing
             if (OperatingSystem.IsMacOS()) return;
             var raw = ToRawImages(icons);
             if (raw.Length == 0) return;
-            _window.SetWindowIcon(raw);
+            _window.SetWindowIcon(raw); // WM_SETICON: title bar + Alt-Tab. Does NOT touch the taskbar button.
+
+            // Windows taskbar button: it reads the window CLASS icon (GCLP_HICON), which glfwSetWindowIcon leaves as
+            // GLFW's generic default (a .NET <ApplicationIcon> is not named "GLFW_ICON", so GLFW never picks it up).
+            // Copy the icon we just set onto the class icon so the taskbar shows it too. GameApp calls SetIcon while
+            // the window is still hidden (born hidden, revealed by Show()), so the taskbar button - created on first
+            // show - is born with the right icon. No-op off Windows / with no native HWND; never throws.
+            if (OperatingSystem.IsWindows())
+                KhaozEngine.Platform.WindowsWindowIcon.TrySyncTaskbarIconFromWindow(_window.Native?.Win32?.Hwnd ?? 0);
         }
 
         /// <summary>

@@ -348,6 +348,69 @@ namespace KhaozEngine.Tests.Game
             Assert.Equal(LocomotionState.Run, a.Live[0].State);   // 2 m/s >= the tuned 1 m/s run threshold
         }
 
+        // A ramp clip (X(t) = t) so the composed pose's X reads back the clip playhead - how far it has advanced.
+        static AnimationClip Ramp(string name, float duration = 100f)
+        {
+            var jt = new JointTrack(0)
+            {
+                Translation = new Vector3Track(new[] { 0f, duration }, new[] { new Vector3(0, 0, 0), new Vector3(duration, 0, 0) }, InterpolationMode.Linear),
+            };
+            return new AnimationClip(name, duration, new List<JointTrack> { jt });
+        }
+
+        static Dictionary<LocomotionState, AnimationClip> RampClips() => new()
+        {
+            [LocomotionState.Idle] = Ramp("idle"),
+            [LocomotionState.Walk] = Ramp("walk"),
+            [LocomotionState.Run] = Ramp("run"),
+            [LocomotionState.Jump] = Ramp("jump"),
+            [LocomotionState.Fall] = Ramp("fall"),
+        };
+
+        [Fact]
+        public void ConvenienceCtor_SyncLocomotionToSpeed_AdvancesRunClipFaster()
+        {
+            // The convenience ctor must thread the speed-sync tuning fields into the brains it builds: a set with
+            // SyncLocomotionToSpeed on (Run clip authored for 5 m/s) driven at 10 m/s advances the Run clip ~2x the
+            // playback of an otherwise identical sync-off set. Proves CharacterAnimatorTuning -> LocomotionSpeedSync
+            // wiring end-to-end through the position-derived bridge.
+            Skeleton skeleton = OneBone();
+            Dictionary<LocomotionState, AnimationClip> clips = RampClips();
+
+            CharacterAnimatorTuning tuningOn = CharacterAnimatorTuning.Default;
+            tuningOn.Crossfade = 0f;
+            tuningOn.StateDebounceSeconds = 0f;
+            tuningOn.VelocityWindowSeconds = 0f;   // per-frame derivation: exact 10 m/s from a steady position ramp
+            tuningOn.SyncLocomotionToSpeed = true;
+            tuningOn.WalkClipSpeed = 2f;
+            tuningOn.RunClipSpeed = 5f;
+
+            CharacterAnimatorTuning tuningOff = tuningOn;
+            tuningOff.SyncLocomotionToSpeed = false;
+
+            var setOn = new ReplicatedCharacterAnimators(skeleton, clips, tuningOn);
+            var setOff = new ReplicatedCharacterAnimators(skeleton, clips, tuningOff);
+
+            const float dt = 1f / 60f;
+            const float v = 10f;   // Run band, 2x the 5 m/s run clip speed
+            float x = 0f;
+            for (int i = 0; i < 120; i++)
+            {
+                x += v * dt;
+                var s = new[] { Pos(1, new Vector3(x, 0, 0)) };
+                setOn.Update(s, dt);
+                setOff.Update(s, dt);
+            }
+
+            Assert.Equal(LocomotionState.Run, setOn.Live[0].State);
+            Assert.Equal(LocomotionState.Run, setOff.Live[0].State);
+
+            float on = setOn.Live[0].Pose[0].Translation.X;
+            float off = setOff.Live[0].Pose[0].Translation.X;
+            Assert.True(off > 0.1f, $"sync-off playhead should have advanced, got {off}");
+            Assert.InRange(on / off, 1.8f, 2.2f);   // sync-on ran the Run clip ~2x faster
+        }
+
         static bool HasNaN(Matrix4x4 m) =>
             float.IsNaN(m.M11 + m.M12 + m.M13 + m.M14 + m.M21 + m.M22 + m.M23 + m.M24 +
                         m.M31 + m.M32 + m.M33 + m.M34 + m.M41 + m.M42 + m.M43 + m.M44);

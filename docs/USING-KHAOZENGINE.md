@@ -784,9 +784,38 @@ for `stateDebounceSeconds` (ctor param / `CharacterAnimatorTuning.StateDebounceS
 `AnimatedCharacter.DefaultStateDebounceSeconds` = 0.08 s), so a one-tick excursion is ignored; air states
 (jump/fall) are exempt and switch instantly so a real jump never lags. Pass 0 to switch immediately.
 
+**Speed-synced playback (stop foot sliding)** (`LocomotionSpeedSync`). A locomotion clip plays at its authored
+rate regardless of how fast the character actually moves, so any character whose world speed differs from the
+speed the clip was authored to move at slides its feet ("gliding"). Opt in: tell the brain the m/s each ground
+MOVE clip (Walk, Run) was authored to move at, and it advances that clip in proportion to the actual
+`horizontalSpeed` instead. Idle and the air states (Jump/Fall) always play at 1x. **Default OFF** - every
+existing consumer is byte-identical until it opts in.
+
+```csharp
+// Per AnimatedCharacter: pass the authored ground speeds of the Walk/Run clips + enable.
+var character = new AnimatedCharacter(skeleton, clips, new LocomotionThresholds(0.1f, 4.5f), crossfade: 0.15f,
+    speedSync: LocomotionSpeedSync.Enable(walkClipSpeed: 1.4f, runClipSpeed: 4.0f));
+
+// Or set it ONCE per model on the tuning that ReplicatedCharacterAnimators builds brains from:
+var tuning = CharacterAnimatorTuning.Default;
+tuning.SyncLocomotionToSpeed = true;   // opt-in flag
+tuning.WalkClipSpeed = 1.4f;           // m/s the Walk clip moves at
+tuning.RunClipSpeed  = 4.0f;           // m/s the Run clip moves at
+var animators = new ReplicatedCharacterAnimators(skeleton, clips, tuning);
+```
+
+The clip advances at `clamp(horizontalSpeed / referenceSpeedForState, MinMultiplier, MaxMultiplier)` (default
+clamp `[0.25, 3.0]`, tunable via `LocomotionSpeedSync.Enable`'s `minMultiplier`/`maxMultiplier` or the tuning's
+`MinLocomotionRate`/`MaxLocomotionRate`), so a near-stationary or teleporting entity never freezes or
+fast-forwards the cycle. A reference speed left at 0 plays that state at 1x. **Crossfades are unaffected**: a
+blend still takes its authored `crossfade` seconds (the crossfade timer runs at wall-clock `dt`); only the clip
+playheads scale, so the feet track speed even mid-blend.
+
 **Lower-level pieces** (if you are not using `AnimatedCharacter`): `AnimationSampler.SampleToBonePalette(clip,
 skeleton, time)` is a one-shot pose; `AnimationPlayer` holds a playhead, loops, and crossfades
-(`Play(clip, crossfade)` then `Update(dt)` then `GetBonePalette(buffer)`). `JointPose` is the TRS unit clips
+(`Play(clip, crossfade)` then `Update(dt)` then `GetBonePalette(buffer)`). `AnimationPlayer.Update(dt,
+speedMultiplier)` scales the playhead advance (for the speed-sync above) while keeping the crossfade timer on
+wall-clock `dt`; the 1-arg `Update(dt)` is exactly `Update(dt, 1f)`. `JointPose` is the TRS unit clips
 interpolate; `InterpolationMode` is LINEAR or STEP (CUBICSPLINE is read as its value keys).
 
 **Out of scope.** Animation events (attack hitframes, footstep sounds), root motion, IK, additive/facial

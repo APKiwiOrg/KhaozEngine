@@ -54,7 +54,56 @@ configured base host), and caps both the manifest and each downloaded file at a 
   update..." screen. See "Startup gate" below.
 - **`UpdateApplier`** + **`IUpdaterEnvironment`** - the cross-platform staged-apply core: back up each
   file before overwriting, copy with retries for locked files, roll everything back on any failure,
-  install the new manifest, relaunch. A game's updater shim is just `UpdateApplier.Run(args, env)`.
+  install the new manifest, wait for the new exe to become launchable (see "Relaunch settle wait"
+  below), relaunch. A game's updater shim is just `UpdateApplier.Run(args, env)`.
+- **`IUpdaterUi`** + **`UpdaterUiOptions`** - the optional progress window the shim shows during the
+  apply (Install then Finishing). Windows-only native GDI; a no-op elsewhere. See "Progress window".
+
+## Relaunch settle wait
+
+After the new binaries are copied in, the applier does **not** relaunch the game the instant the copy
+returns. On Windows a `PublishSingleFile` self-contained bundle's freshly-written exe is scanned by
+Windows Defender, which briefly holds an exclusive lock; relaunching into that mid-scan image crashes
+the game at startup (`0xc0000142` STATUS_DLL_INIT_FAILED / `0xc0000409` STATUS_STACK_BUFFER_OVERRUN).
+So the applier polls `IUpdaterEnvironment.CanOpenExclusively(gameExePath)` (the real impl opens with
+`FileShare.None`) until the exe is launchable, up to a 30s ceiling, then relaunches. On non-Windows
+`CanOpenExclusively` returns true, so the wait is a no-op. This is the window's "Finishing" phase.
+
+## Progress window
+
+The shim phase used to be invisible: the user saw nothing during install, and on the relaunch crash
+they saw a raw Windows error dialog. The shim now shows a tiny native window (Windows only) that walks
+through **Install** (files copied / total) then **Finishing** ("Finishing up, checking with your
+security software...") during the settle wait above. It is a self-contained Win32 GDI window drawn with
+P/Invoke only - no WinForms/WPF, no common-controls dependency, no engine GUI/GPU stack - so it stays
+trim/AOT-safe inside a single-file trimmed shim. Off Windows it is a no-op: macOS and Linux apply the
+update in place (POSIX replaces the running executable's inode, so there is no self-lock to wait out and
+no scan/relaunch race) and need no window - the apply, quarantine clear, and codesign verify still run.
+
+The window is themeable and localizable by the game through an optional `UpdaterUiOptions` on
+`UpdateServiceOptions` (colors are plain `(R, G, B)` tuples; text is passed already-localized):
+
+```csharp
+new UpdateServiceOptions
+{
+    // ...the usual Source / CurrentVersion / AppDataDir / UpdaterExecutableName / TrustedPublicKeys...
+    UpdaterUi = new UpdaterUiOptions
+    {
+        WindowTitle    = "My Game",
+        AccentColor    = (120, 200, 255),
+        BackgroundColor= (10, 14, 20),
+        TextColor      = (235, 238, 245),
+        LogoPath       = "assets/logo.png",                 // relative to the install dir, optional
+        InstallingText = Loc("Installing update"),
+        FinishingText  = Loc("Finishing up, checking with your security software..."),
+    },
+};
+```
+
+`UpdateService.ApplyUpdate` serializes this into the `apply-update.json` handoff (as the optional `Ui`
+block, `ApplyUpdateUiConfig`), which the shim reads to build the window. Omit `UpdaterUi` entirely and
+the shim shows a minimal default window (or nothing off Windows) - everything still works. The
+consumer's shim stays a one-liner; all of the window is engine code driven by the config.
 
 ## In-game wiring
 
@@ -120,20 +169,21 @@ A tiny standalone executable (publish it self-contained / AOT, one per runtime) 
 launches and then exits. It must not depend on the game runtime - only on this package:
 
 ```csharp
-// Program.cs of MyGameUpdater
+// Program.cs of MyGameUpdater - the whole file
 using KhaozEngine.Updates;
 
-string logPath = Path.Combine(Path.GetDirectoryName(args.Length > 1 ? args[1] : ".")!, "updater.log");
-using var log = new StreamWriter(logPath, append: false) { AutoFlush = true };
-return UpdateApplier.Run(args, new SystemUpdaterEnvironment(msg =>
-{
-    Console.WriteLine(msg);
-    log.WriteLine(msg);
-}));
+return UpdaterShim.Main(args);
 ```
 
-`ApplyUpdateConfig` (the `apply-update.json` handoff contract) serializes through a source-generated
-`UpdatesJsonContext`, so the shim needs no reflection and stays trim/AOT safe.
+`UpdaterShim.Main` opens the log next to the apply config, wires the per-OS progress window
+(`SystemUpdaterUi.CreateForCurrentOs`), and runs the staged apply. If you want to run the applier
+yourself instead of the one-liner, pass the window factory through explicitly so the shim still shows
+the window - `UpdateApplier.Run(args, env, SystemUpdaterUi.CreateForCurrentOs)`; the two-arg
+`UpdateApplier.Run(args, env)` applies with no window.
+
+`ApplyUpdateConfig` (the `apply-update.json` handoff contract, including the optional `Ui` block)
+serializes through a source-generated `UpdatesJsonContext`, so the shim needs no reflection and stays
+trim/AOT safe.
 
 ## Manifest generation (publish side)
 
@@ -182,6 +232,8 @@ return KhaozEngine.Updates.UpdaterShim.Main(args);
 ```
 
 Publish it per-RID with a game-specific name and set `UpdateServiceOptions.UpdaterExecutableName` to match.
+This one line also gives you the native progress window on Windows (see "Progress window"); theme it via
+`UpdateServiceOptions.UpdaterUi`.
 
 ### 4. Publish + feed layout
 

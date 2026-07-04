@@ -46,6 +46,31 @@ public sealed class SystemUpdaterEnvironment : IUpdaterEnvironment
 
     public void Sleep(int milliseconds) => Thread.Sleep(milliseconds);
 
+    public bool CanOpenExclusively(string path)
+    {
+        // Non-Windows has no self-scan lock to wait out; treat the file as always launchable so the
+        // settle wait is a no-op there.
+        if (!OperatingSystem.IsWindows())
+        {
+            return true;
+        }
+        try
+        {
+            using FileStream _ = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.None);
+            return true;
+        }
+        catch (IOException)
+        {
+            // Sharing violation (the AV scan still holds the file) or transient IO: not yet launchable.
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // A denial can be a transient scan-time lock too; keep waiting rather than relaunch into it.
+            return false;
+        }
+    }
+
     public void WaitForParentExit(int pid, int timeoutMilliseconds)
     {
         try

@@ -44,7 +44,8 @@ public sealed class UpdateServiceTests : IDisposable
         OperatingSystem.IsWindows() ? "TestUpdater.exe" : "TestUpdater";
 
     private UpdateService Build(string currentVersion = "1.0.0", int maxRetries = 2,
-        IReadOnlyList<string>? trustedKeys = null, long? maxFileBytes = null)
+        IReadOnlyList<string>? trustedKeys = null, long? maxFileBytes = null,
+        UpdaterUiOptions? updaterUi = null)
         => new(new UpdateServiceOptions
         {
             Source = source,
@@ -58,7 +59,8 @@ public sealed class UpdateServiceTests : IDisposable
             MaxFileBytes = maxFileBytes ?? 4L * 1024 * 1024 * 1024,
             DisposeSource = false,
             LaunchUpdater = (u, c) => { launches.Add((u, c)); return true; },
-            ExitProcess = () => exited = true
+            ExitProcess = () => exited = true,
+            UpdaterUi = updaterUi
         });
 
     private string StagingDir(string version) => Path.Combine(appDataDir, "update-staging", version);
@@ -227,6 +229,51 @@ public sealed class UpdateServiceTests : IDisposable
         Assert.Contains("game.dll", cfg.FilesToCopy);
         Assert.Contains("new.dll", cfg.FilesToCopy);
         Assert.DoesNotContain("manifest.json", cfg.FilesToCopy);
+    }
+
+    [Fact]
+    public async Task Apply_SerializesUiOptionsIntoConfig()
+    {
+        SetupV2Available();
+        File.WriteAllText(Path.Combine(installDir, UpdaterFileName), "shim");
+        using UpdateService svc = Build(updaterUi: new UpdaterUiOptions
+        {
+            WindowTitle = "Nullwake",
+            AccentColor = (120, 200, 255),
+            BackgroundColor = (10, 14, 20),
+            InstallingText = "Installing Nullwake",
+            FinishingText = "Finishing up...",
+        });
+
+        await svc.CheckForUpdateAsync();
+        await svc.StartDownloadAsync();
+        Assert.True(svc.ApplyUpdate());
+
+        string applyJson = File.ReadAllText(Path.Combine(appDataDir, "apply-update.json"));
+        ApplyUpdateConfig cfg = System.Text.Json.JsonSerializer.Deserialize<ApplyUpdateConfig>(applyJson)!;
+        Assert.NotNull(cfg.Ui);
+        Assert.Equal("Nullwake", cfg.Ui!.WindowTitle);
+        Assert.Equal(120, cfg.Ui.Accent!.R);
+        Assert.Equal(255, cfg.Ui.Accent.B);
+        Assert.Equal(10, cfg.Ui.Background!.R);
+        Assert.Equal("Installing Nullwake", cfg.Ui.InstallingText);
+        Assert.Equal("Finishing up...", cfg.Ui.FinishingText);
+    }
+
+    [Fact]
+    public async Task Apply_NoUiOptions_LeavesConfigUiNull()
+    {
+        SetupV2Available();
+        File.WriteAllText(Path.Combine(installDir, UpdaterFileName), "shim");
+        using UpdateService svc = Build();
+
+        await svc.CheckForUpdateAsync();
+        await svc.StartDownloadAsync();
+        Assert.True(svc.ApplyUpdate());
+
+        string applyJson = File.ReadAllText(Path.Combine(appDataDir, "apply-update.json"));
+        ApplyUpdateConfig cfg = System.Text.Json.JsonSerializer.Deserialize<ApplyUpdateConfig>(applyJson)!;
+        Assert.Null(cfg.Ui);
     }
 
     [Fact]

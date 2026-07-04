@@ -275,6 +275,45 @@ public sealed class UpdateApplierTests
     }
 
     [Fact]
+    public void Apply_SettleWait_RelaunchesOnlyAfterExeBecomesOpenable()
+    {
+        var env = new FakeUpdaterEnvironment();
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.Files[InstallPath("Game")] = "exe";
+        // Model an AV scan holding the freshly-written exe: the first 3 settle polls report it locked,
+        // then it becomes openable on the 4th.
+        env.OpenExclusiveFailCount = 3;
+
+        ApplyResult result = UpdateApplier.Apply(Config(new() { "game.dll" }), env);
+
+        Assert.Equal(ApplyOutcome.Succeeded, result.Outcome);
+        Assert.Equal(InstallPath("Game"), env.RelaunchedExe);
+        // Polled 4 times total (3 locked + 1 openable), slept once per locked poll, and only relaunched
+        // once the exe was openable (relaunch fired at the 4th CanOpenExclusively call, not before).
+        Assert.Equal(4, env.CanOpenExclusivelyCalls);
+        Assert.Equal(3, env.SleepCalls);
+        Assert.Equal(4, env.OpenCallsAtRelaunch);
+    }
+
+    [Fact]
+    public void Apply_SettleWait_TimesOutButStillRelaunches()
+    {
+        var env = new FakeUpdaterEnvironment();
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.Files[InstallPath("Game")] = "exe";
+        // Never becomes openable within the poll budget.
+        env.OpenExclusiveFailCount = int.MaxValue;
+
+        ApplyResult result = UpdateApplier.Apply(Config(new() { "game.dll" }), env);
+
+        Assert.Equal(ApplyOutcome.Succeeded, result.Outcome);
+        // Exhausted the whole poll budget, then relaunched anyway as a last resort.
+        Assert.Equal(UpdateApplier.SettleMaxPolls, env.CanOpenExclusivelyCalls);
+        Assert.Equal(InstallPath("Game"), env.RelaunchedExe);
+        Assert.Contains(env.Log_, m => m.Contains("Timed out"));
+    }
+
+    [Fact]
     public void Run_BadArgs_ReturnsError()
     {
         Assert.Equal(1, UpdateApplier.Run(Array.Empty<string>(), new FakeUpdaterEnvironment()));

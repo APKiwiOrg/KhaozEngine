@@ -23,6 +23,17 @@ public interface IUpdaterEnvironment
     void WaitForParentExit(int pid, int timeoutMilliseconds);
 
     /// <summary>
+    /// True when <paramref name="path"/> can be opened for exclusive read (no other process holds a
+    /// handle on it). This is the post-apply settle check on Windows: after a freshly-written executable
+    /// lands, the OS antivirus scans it and briefly locks the file, and relaunching mid-scan trips over
+    /// the in-flight image (STATUS_DLL_INIT_FAILED / STATUS_STACK_BUFFER_OVERRUN). The applier polls this
+    /// until the scanner releases the exe, then relaunches. The real implementation opens with
+    /// <c>FileShare.None</c> and disposes on success; it returns true on non-Windows (POSIX has no
+    /// equivalent lock, so the settle wait is a no-op there).
+    /// </summary>
+    bool CanOpenExclusively(string path);
+
+    /// <summary>
     /// The full path of the running updater executable, or null when relocation is neither needed nor
     /// possible. The real environment returns <see cref="System.Environment.ProcessPath"/> on Windows
     /// (where a process locks its own loaded binary, so the updater must relocate out of the install dir

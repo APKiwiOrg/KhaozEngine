@@ -31,8 +31,10 @@ namespace KhaozEngine.Windowing
         /// <paramref name="windowedWidth"/> x <paramref name="windowedHeight"/> when returning to
         /// <see cref="WindowMode.Windowed"/>.
         /// <list type="bullet">
-        /// <item><see cref="WindowMode.Windowed"/>: normal state + resizable border, sized to the windowed size,
-        /// position left untouched (the OS keeps it where it is).</item>
+        /// <item><see cref="WindowMode.Windowed"/>: normal state + resizable border, sized to the windowed size.
+        /// Moved to (<paramref name="windowedX"/>, <paramref name="windowedY"/>) when
+        /// <paramref name="restoreWindowedPos"/> is set (a remembered position to restore), otherwise position is
+        /// left untouched and the OS keeps it where it is.</item>
         /// <item><see cref="WindowMode.BorderlessFullscreen"/>: normal state + hidden border, moved to the monitor
         /// origin and sized to the monitor. If the monitor size is unknown (&lt;= 0, e.g. headless), it falls back to
         /// the windowed size and skips the reposition so it never yields a zero-size window.</item>
@@ -41,7 +43,8 @@ namespace KhaozEngine.Windowing
         /// </summary>
         public static WindowModePlan Compute(WindowMode mode,
             int monitorX, int monitorY, int monitorWidth, int monitorHeight,
-            int windowedWidth, int windowedHeight)
+            int windowedWidth, int windowedHeight,
+            bool restoreWindowedPos = false, int windowedX = 0, int windowedY = 0)
         {
             bool haveMonitor = monitorWidth > 0 && monitorHeight > 0;
             return mode switch
@@ -60,7 +63,7 @@ namespace KhaozEngine.Windowing
 
                 _ => new WindowModePlan(
                     WindowStateTarget.Normal, WindowBorderTarget.Resizable,
-                    SetPosition: false, 0, 0, SetSize: true, windowedWidth, windowedHeight),
+                    SetPosition: restoreWindowedPos, windowedX, windowedY, SetSize: true, windowedWidth, windowedHeight),
             };
         }
     }

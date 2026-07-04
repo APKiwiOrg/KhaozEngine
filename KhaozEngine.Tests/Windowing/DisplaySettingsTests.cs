@@ -62,6 +62,21 @@ public class DisplaySettingsTests
     }
 
     [Fact]
+    public void Windowed_restores_the_known_windowed_position_when_asked()
+    {
+        var plan = WindowModePlanner.Compute(WindowMode.Windowed,
+            monitorX: 0, monitorY: 0, monitorWidth: 2560, monitorHeight: 1440,
+            windowedWidth: 1280, windowedHeight: 720,
+            restoreWindowedPos: true, windowedX: 200, windowedY: 150);
+
+        Assert.True(plan.SetPosition);
+        Assert.Equal(200, plan.X);
+        Assert.Equal(150, plan.Y);
+        Assert.True(plan.SetSize);
+        Assert.Equal(1280, plan.Width);
+    }
+
+    [Fact]
     public void ExclusiveFullscreen_uses_the_fullscreen_state_and_leaves_geometry_to_the_os()
     {
         var plan = WindowModePlanner.Compute(WindowMode.ExclusiveFullscreen,

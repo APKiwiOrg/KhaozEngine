@@ -86,4 +86,4 @@ good, not just read as shapes.
   the emit/integrate/lerp-over-life model; a pass could factor the common sim core. No single target today.
 - Nullwake camera convergence: Nullwake's `OreField.RefToScreen` is a non-uniform scale into a screen sub-rect,
   not `Camera2D`. Converging would need sub-viewport + non-uniform-scale support in the engine camera, else it
-  stays game-specific (see [CONSUMERS.md](CONSUMERS.md)).
+  stays game-specific.

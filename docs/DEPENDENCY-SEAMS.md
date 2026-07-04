@@ -96,8 +96,8 @@ To swap or add a backend for a seam that already has the separate-package split:
    non-optional, so it stays opt-in like `Physics.Bepu` / `Netcode.LiteNetLib` / `WorldStore.Sqlite`.
 4. Headless test against the contract; for backends with a real device, gate device tests as the existing
    ones are.
-5. Run the full doc sweep (this table, the package catalog in `../README.md` and `../CLAUDE.md`, and
-   `CONSUMERS.md`) so the new package is listed everywhere it should be.
+5. Run the full doc sweep (this table, the package catalog in `../README.md` and `../CLAUDE.md`) so the
+   new package is listed everywhere it should be.
 
 ## Where to look in the code
 

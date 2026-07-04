@@ -40,10 +40,6 @@ expect() {
   fi
 }
 
-# docs/CONSUMERS.md  ->  **Engine current version:** `X.Y.Z`
-c=$(grep -oE 'Engine current version:\*\* `[^`]+`' docs/CONSUMERS.md | grep -oE '`[^`]+`' | tr -d '`' | head -1 || true)
-expect docs/CONSUMERS.md "engine current version" "$c"
-
 # docs/ROADMAP.md  ->  Current released version: **X.Y.Z**
 r=$(grep -oE 'Current released version: \*\*[^*]+\*\*' docs/ROADMAP.md | grep -oE '\*\*[^*]+\*\*' | tr -d '*' | head -1 || true)
 expect docs/ROADMAP.md "current released version" "$r"

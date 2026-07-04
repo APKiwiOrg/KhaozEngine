@@ -248,4 +248,4 @@ Author-time dotnet tools that ship as packages on the shared version line (not r
 | **SpaceGame** (2D) | `KhaozEngine.Game2D` (head) + foundation pins on `SpaceGame.Sim` | Fully off MonoGame. Deterministic lockstep sim split into `SpaceGame.Sim`. |
 | **Ruinborne** (3D MMO) | `KhaozEngine.Game3D` + `NetWorld` (client) + `KhaozEngine.Server` + `WorldStore.SqlServer` (server) | Authoritative networked overworld, Azure SQL persistence. |
 
-Full per-package version + adoption matrix: [`docs/CONSUMERS.md`](docs/CONSUMERS.md).
+Each consumer pins its own engine version (its `Directory.Build.props` `<KhaozEngineVersion>`) and adopts new releases on its own schedule.

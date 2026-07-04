@@ -3009,8 +3009,8 @@ an infra implementation to drop in.
 
 - **One shared version** across the whole engine: `<KhaozEngineVersion>` in `Directory.Build.props`. Every
   packable project sets `<Version>$(KhaozEngineVersion)</Version>`; bumping it releases all packages together.
-  `scripts/check-doc-versions.sh` (run in CI) enforces that the engine-version declarations in `CONSUMERS.md`,
-  `ROADMAP.md`, and the `README.md` `<PackageReference>` example match.
+  `scripts/check-doc-versions.sh` (run in CI) enforces that the engine-version declarations in `ROADMAP.md`
+  and the `README.md` `<PackageReference>` example match.
 - SemVer: additive = minor, fixes = patch, breaking = major. Local file-feed for inner-loop dev; GitHub Packages
   on `v*` tags.
 - To change the library: edit, add a headless test, `dotnet pack -c Release -o ./local-feed`, consume locally;

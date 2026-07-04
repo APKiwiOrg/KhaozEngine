@@ -27,6 +27,17 @@ namespace KhaozEngine.Tests.Game
             Assert.Null(o.ViewportFactory);
             // Resume hook armed by default at a safe 30s so a normal frame / GC pause never trips it.
             Assert.Equal(30.0, o.ResumeGapThresholdSeconds);
+            // No Windows taskbar identity by default -> keeps the current process-derived AppUserModelID.
+            Assert.Null(o.AppUserModelId);
+        }
+
+        [Fact]
+        public void AppUserModelId_RoundTrips_WhenSet()
+        {
+            var o = GameAppOptions.For("Demo", 960, 540);
+            o.AppUserModelId = "APKiwi.Nullwake";
+
+            Assert.Equal("APKiwi.Nullwake", o.AppUserModelId);
         }
 
         [Fact]

@@ -68,6 +68,7 @@ namespace KhaozEngine.Windowing
 
         readonly int _maxFrames;
         int _frameCount;
+        bool _shown;   // the window is born hidden (see the ctor); Show() reveals it exactly once.
 
         /// <summary>The engine-owned GPU device (renderers consume this; backend GPU types stay hidden).</summary>
         public IGpuDevice GpuDevice => _device;
@@ -99,6 +100,13 @@ namespace KhaozEngine.Windowing
                 Title = title,
                 // We drive the GPU ourselves via Veldrid; Silk must not create a GL/Vulkan context.
                 API = GraphicsAPI.None,
+                // Born HIDDEN. On Windows the taskbar button is created when the window is first shown and is
+                // keyed to whatever icon the window has at that instant; if we show it before SetIcon runs, the
+                // button is stuck with GLFW's generic default (WM_SETICON later refreshes the title bar but not
+                // an already-created taskbar button). So the host applies the runtime icon while hidden, then
+                // calls Show() - GameApp does this automatically. Run() also shows, so a bare AppWindow host that
+                // never calls Show() still gets a visible window.
+                IsVisible = false,
             };
             _window = Window.Create(opts);
             _window.Initialize(); // creates the native window WITHOUT starting the loop; the handle is valid after this.
@@ -215,6 +223,32 @@ namespace KhaozEngine.Windowing
         public void Close() => _window.Close();
 
         /// <summary>
+        /// Reveal the window (it is born hidden - see the ctor). Call once the runtime icon has been applied so
+        /// that on Windows the taskbar button is created with the correct icon rather than GLFW's generic default.
+        /// Idempotent: the first call shows the window, later calls no-op. <see cref="Run"/> also calls this, so a
+        /// host that drives <see cref="Run"/> without ever calling <see cref="Show"/> still gets a visible window
+        /// (just without the pre-show icon guarantee unless it set the icon first). The GameApp facade calls
+        /// <see cref="SetIcon"/> then <see cref="Show"/> in its constructor.
+        /// </summary>
+        public void Show()
+        {
+            if (_shown) return;
+            _shown = true;
+            _window.IsVisible = true;
+        }
+
+        /// <summary>
+        /// Set the process's Windows taskbar identity (AppUserModelID) so Windows 10/11 keys the running app's
+        /// taskbar button to it - fixing the taskbar icon (otherwise the generic <c>.exe</c> placeholder) and
+        /// stabilising grouping/pinning. Forwards to <see cref="KhaozEngine.Platform.WindowsAppId.TrySetProcessAppUserModelId"/>:
+        /// a no-op returning <c>false</c> off Windows or on a null/empty id, and it never throws. MUST be called
+        /// BEFORE constructing any <see cref="AppWindow"/> (the ctor creates the native window, and the identity
+        /// must be set first). GameApp calls this automatically from <c>GameAppOptions.AppUserModelId</c>.
+        /// </summary>
+        public static bool TrySetProcessAppUserModelId(string? appUserModelId)
+            => KhaozEngine.Platform.WindowsAppId.TrySetProcessAppUserModelId(appUserModelId);
+
+        /// <summary>
         /// Set the runtime window/taskbar icon from one or more already-decoded RGBA8 images (supply 16/32/48...
         /// and GLFW picks per DPI; a single image is fine). Safe to call any time after construction - the native
         /// handle exists from the ctor on. Passing nothing (or an empty list) is a no-op.
@@ -257,6 +291,7 @@ namespace KhaozEngine.Windowing
         /// <summary>Run the frame loop until the window closes, calling <paramref name="onFrame"/> each frame.</summary>
         public void Run(Action<Frame> onFrame)
         {
+            Show(); // ensure visible even if the host never called Show() (GameApp calls it after SetIcon). Idempotent.
             _window.Render += dt =>
             {
                 float fdt = (float)Math.Min(dt, 0.1);

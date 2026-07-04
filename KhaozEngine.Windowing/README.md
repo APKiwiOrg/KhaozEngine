@@ -21,6 +21,17 @@ Windowing + input foundation for the custom MonoGame-free stack.
   unbundled `dotnet run` app has no `.app` icns, so without this such a run shows the generic document icon.
   Returns `false` off macOS / on empty input; never throws. `GameApp` calls it automatically from
   `GameAppOptions.WindowIconPath`.
+- `AppWindow` is **born hidden** and `AppWindow.Show()` reveals it (idempotent). This is the Windows taskbar-icon
+  fix: the taskbar button is created when the window is first shown and keyed to whatever icon it has at that
+  instant, so a host applies the runtime icon while hidden then calls `Show()`, and the button is born with the
+  right icon rather than GLFW's generic default (`WM_SETICON` refreshes the title bar live but not an
+  already-created taskbar button). `Run(...)` also calls `Show()`, so a bare `AppWindow` host that never calls it
+  still gets a visible window. `GameApp` calls `SetIcon` then `Show` in its constructor.
+- `AppWindow.TrySetProcessAppUserModelId(string? appId)` (static) sets the process's Windows **AppUserModelID**
+  before the first window is created, so Windows 10/11 keys the running app's taskbar button to it (fixing the
+  taskbar icon, plus grouping/pinning). Forwards to `Platform.WindowsAppId`; a no-op returning `false` off Windows
+  or on a null/empty id, never throwing. Must run before constructing any `AppWindow`. `GameApp` calls it
+  automatically from `GameAppOptions.AppUserModelId`.
 - `InputManager` / `Pointer` - the higher-level read: unified pointer, edges, bounds helpers (`IsTapIn` etc.),
   region blocking, keyboard/gamepad/menu navigation.
 - `GameClock` (pause/timescale, plus `RealWallGapSeconds`/`LastRealTimestamp` - a UTC wall-clock gap per frame

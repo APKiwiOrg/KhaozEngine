@@ -34,13 +34,21 @@ namespace KhaozEngine.Game
         {
             _resumeGapThresholdSeconds = options.ResumeGapThresholdSeconds;
 
+            // Windows taskbar identity: set the process's explicit AppUserModelID BEFORE the native window is
+            // created, so Windows 10/11 keys the taskbar button to the app (grouping/pinning + resolving the
+            // running-app icon). No-op off Windows or when AppUserModelId is null. Must precede window creation.
+            AppWindow.TrySetProcessAppUserModelId(options.AppUserModelId);
+
             // The window + viewport come from the options' factories when set (e.g. AppWindow.Scaled +
-            // AdaptiveViewport for a responsive, display-fitted game); otherwise the plain defaults.
+            // AdaptiveViewport for a responsive, display-fitted game); otherwise the plain defaults. The window is
+            // born hidden (AppWindow's ctor); it is revealed by Show() below, after the icon is applied.
             _window = options.WindowFactory?.Invoke(options)
                 ?? new AppWindow(options.Title, options.Width, options.Height);
             _window.ClearColor = options.ClearColor;
 
-            // Runtime window/taskbar icon (Windows/Linux; no-op on macOS where GLFW ignores window icons).
+            // Runtime window/taskbar icon (Windows/Linux; no-op on macOS where GLFW ignores window icons). Applied
+            // while the window is still hidden so the Windows taskbar button - created when we Show() below - is
+            // born with this icon rather than GLFW's generic default.
             var icons = ResolveWindowIcons(options);
             if (icons.Length > 0) _window.SetIcon(icons);
 
@@ -51,6 +59,9 @@ namespace KhaozEngine.Game
             if (OperatingSystem.IsMacOS() && !string.IsNullOrEmpty(options.WindowIconPath)
                 && System.IO.File.Exists(options.WindowIconPath))
                 _window.SetMacDockIcon(System.IO.File.ReadAllBytes(options.WindowIconPath));
+
+            // Reveal the window now that the runtime icon is set (born hidden - see AppWindow.Show).
+            _window.Show();
 
             _viewport = options.ViewportFactory?.Invoke(options)
                 ?? new DesignViewport(options.ResolvedDesignWidth, options.ResolvedDesignHeight, options.ScaleMode);

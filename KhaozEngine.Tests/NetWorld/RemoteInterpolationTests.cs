@@ -10,10 +10,11 @@ namespace KhaozEngine.Tests.NetWorld;
 
 /// <summary>
 /// Covers the <see cref="WorldClient"/> remote-smoothing drive: between the discrete (~tick-rate) replicated
-/// snapshots, <see cref="WorldClient.AdvancePresentation"/> must interpolate remotes through
-/// <c>ClientReplicationView.Interpolate</c> so a remote glides (render slightly in the past, one snapshot of
-/// interpolation delay) instead of teleporting one snapshot-step per ingest. Default-on, opt-out via
-/// <see cref="WorldClientConfig.InterpolateRemotes"/>; the local (predicted) avatar is untouched.
+/// snapshots, <see cref="WorldClient.AdvancePresentation"/> renders remotes on a FIXED delay
+/// (<see cref="WorldClientConfig.InterpolationDelayTicks"/>) via <c>ClientReplicationView.InterpolateAt</c>, so a
+/// remote glides in the past (behind the newest snapshot) instead of teleporting one snapshot-step per ingest.
+/// Default-on, opt-out via <see cref="WorldClientConfig.InterpolateRemotes"/>; the local (predicted) avatar is
+/// untouched. Per-frame smoothness across a non-integer render:tick ratio is asserted in <see cref="PresentationJitterTests"/>.
 /// </summary>
 public class RemoteInterpolationTests
 {
@@ -46,7 +47,8 @@ public class RemoteInterpolationTests
     }
 
     /// <summary>Connects A (observer) + B (remote), then runs a clean warm-up (one snapshot + one presentation step
-    /// per tick) so the inter-snapshot interval estimate converges to the tick and B is moving steadily in +X.</summary>
+    /// per tick) so the fixed-delay interpolation buffer fills with distinctly-stamped samples and B is moving
+    /// steadily in +X.</summary>
     static Rig NewRig(bool interpolateRemotesOnA = true)
     {
         var hub = new InMemoryHub();
@@ -74,61 +76,46 @@ public class RemoteInterpolationTests
     }
 
     [Fact]
-    public void Mid_interval_renders_between_the_two_snapshots_not_the_latest()
+    public void Remote_renders_behind_the_latest_snapshot_not_snapped_to_it()
     {
         Rig rig = NewRig();
 
-        // Tick once and read the remote BEFORE advancing: world holds the freshly applied 'current' = p0.
-        // This exact value becomes the interpolation 'previous' after the NEXT snapshot.
+        // One more snapshot without presenting: the world holds B's raw latest position (Apply wrote it; InterpolateAt
+        // has not run this frame yet).
         rig.Tick(rig.Dt, advanceA: false);
-        Vector3 p0 = rig.Remote();
+        float rawLatest = rig.Remote().X;
 
-        // Next snapshot: previous = p0, current = p1, clock reset to 0 (read before advancing = raw current).
-        rig.Tick(rig.Dt, advanceA: false);
-        Vector3 p1Raw = rig.Remote();
-        Assert.True(p1Raw.X > p0.X + 1e-3f, $"B should have advanced +X between snapshots ({p0.X} -> {p1Raw.X})");
-
-        // Advance HALF an interval: the remote must render ~midway between p0 and p1, NOT snapped to the latest p1.
-        rig.A.AdvancePresentation(0.5f * rig.Dt);
-        Vector3 mid = rig.Remote();
-
-        // Push well past one interval (alpha clamps to 1) to read the exact 'current' p1.
-        rig.A.AdvancePresentation(4f * rig.Dt);
-        Vector3 p1 = rig.Remote();
-        Assert.Equal(p1Raw.X, p1.X, 3);   // clamped ramp lands exactly on current
-
-        Assert.True(mid.X > p0.X + 1e-4f, $"mid should be past previous p0 ({p0.X}), got {mid.X}");
-        Assert.True(mid.X < p1.X - 1e-4f, $"mid must NOT be the latest p1 ({p1.X}), got {mid.X} (pre-fix bug)");
-        float frac = (mid.X - p0.X) / (p1.X - p0.X);
-        Assert.InRange(frac, 0.40f, 0.60f);   // ~halfway, tolerating the interval estimate
+        // Present the frame: on the fixed delay the remote renders STRICTLY BEHIND the raw latest (in the past),
+        // never snapped onto the newest snapshot.
+        rig.A.AdvancePresentation(rig.Dt);
+        float rendered = rig.Remote().X;
+        Assert.True(rendered < rawLatest - 1e-4f,
+            $"remote should render on a delay, behind the latest snapshot; rendered {rendered} vs raw {rawLatest}");
     }
 
     [Fact]
-    public void Ramp_is_monotonic_and_never_overshoots_current()
+    public void Remote_glides_forward_between_snapshots_no_hold_no_overshoot()
     {
         Rig rig = NewRig();
 
+        // One fresh snapshot + present, so the render sits on the fixed delay with a full buffer behind it.
         rig.Tick(rig.Dt, advanceA: false);
-        Vector3 p0 = rig.Remote();                 // becomes 'previous'
-        rig.Tick(rig.Dt, advanceA: false);
-        Vector3 p1 = rig.Remote();                 // raw 'current' (ramp target)
-        Assert.True(p1.X > p0.X + 1e-3f);
+        float rawLatest = rig.Remote().X;
+        rig.A.AdvancePresentation(rig.Dt);
 
-        float prevX = p0.X;                         // the ramp starts from 'previous'
-        float firstX = float.NaN;
-        for (int i = 0; i < 12; i++)
+        // Sub-tick presentation steps with NO new snapshot: the remote must glide forward monotonically (each step
+        // advances it, none is a hold ~0), and it must never overshoot the latest snapshot it is interpolating toward.
+        // Four 0.2-tick steps keep the render time inside the buffered bracket (~1 tick behind the newest sample after
+        // the present above), so every step lands on a genuine interpolation, not the past-the-buffer hold.
+        float prevX = rig.Remote().X;
+        for (int i = 0; i < 4; i++)
         {
-            rig.A.AdvancePresentation(0.15f * rig.Dt);   // 12 * 0.15 = 1.8 intervals -> reaches and holds at current
+            rig.A.AdvancePresentation(0.2f * rig.Dt);
             float x = rig.Remote().X;
-            if (i == 0) firstX = x;
-            Assert.True(x >= prevX - 1e-4f, $"ramp went backwards: {prevX} -> {x}");
-            Assert.True(x <= p1.X + 1e-4f, $"ramp overshot current p1 ({p1.X}): {x}");
+            Assert.True(x > prevX + 1e-5f, $"remote must glide forward (no hold): {prevX} -> {x}");
+            Assert.True(x <= rawLatest + 1e-4f, $"remote must not overshoot the latest snapshot ({rawLatest}): {x}");
             prevX = x;
         }
-        // A genuine ramp starts near 'previous': the first sub-interval step must be well below current (snapping
-        // straight to the latest snapshot - the pre-fix behaviour - would put it at p1 on the first step).
-        Assert.True(firstX < p0.X + 0.6f * (p1.X - p0.X), $"ramp must start near previous, first sample {firstX} (p0 {p0.X}, p1 {p1.X})");
-        Assert.Equal(p1.X, prevX, 3);   // ramp completes at current
     }
 
     [Fact]

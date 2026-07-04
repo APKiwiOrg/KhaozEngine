@@ -21,8 +21,9 @@ What it owns today:
   sample count 1 (single-sample) everywhere, so existing render paths are unchanged.
 - **`GpuWindowHandle`** - a native window handle (kind + handle/display) the windowing layer hands over, so
   this package needs no reference to the windowing library.
-- **`GpuDeviceContext`** - `CreateForWindow(in GpuWindowHandle, width, height)` (device + swapchain for a
-  Silk.NET/GLFW window) and `CreateHeadless()` (offscreen device) on the selected backend. Exposes `Backend`,
+- **`GpuDeviceContext`** - `CreateForWindow(in GpuWindowHandle, width, height, syncToVerticalBlank = true)` (device
+  + swapchain for a Silk.NET/GLFW window; the vsync flag feeds both the device options and the swapchain, since
+  9.23.0) and `CreateHeadless()` (offscreen device) on the selected backend. Exposes `Backend`,
   `Capabilities`, and (**transitionally**) the raw Veldrid `GraphicsDevice` so the existing renderers keep
   working unchanged.
 

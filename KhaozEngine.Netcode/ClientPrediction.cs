@@ -13,9 +13,13 @@ namespace KhaozEngine.Netcode;
 ///
 /// The render smoothing is 3D: both the inter-tick interpolation and the reconciliation offset carry the
 /// vertical axis (<see cref="IPredictedState{TSelf}.Vertical"/>), so a jump/fall eases instead of stair-stepping
-/// or popping. Reconcile preserves the ACTUAL on-screen position (the inter-tick interpolated one, not the
-/// full-tick one): a snapshot that lands mid inter-tick therefore does not jump the avatar forward by the
-/// un-played remainder of the interpolation - the source of the moving/jumping jitter on a remote server.
+/// or popping. Reconcile is C1-continuous: it does NOT collapse the in-flight inter-tick interpolation onto the
+/// new basis. It keeps the inter-tick phase (previous position + elapsed) flowing at the steady velocity and only
+/// rebases the target plus folds any genuine misprediction into the decaying render offset, so a matching (loopback)
+/// rebase - which fires every tick - perturbs neither the rendered position nor its velocity. Collapsing frac to 1
+/// each tick (the old behaviour) pinned the inter-tick contribution at zero and left only the offset decay to carry
+/// motion for the rest of the tick, a per-tick velocity dip that read as a 30 Hz camera sawtooth. A hard snap still
+/// collapses (an intentional teleport).
 /// </summary>
 public sealed class ClientPrediction<TState, TCommand>
     where TState : struct, IPredictedState<TState>
@@ -171,12 +175,6 @@ public sealed class ClientPrediction<TState, TCommand>
         }
 
         predictedState = replayed;
-        // The rebase collapses the inter-tick interpolation onto the new basis (previous == current, frac = 1); the
-        // visible glide is carried entirely by the render offset below, so the inter-tick remainder is never double
-        // counted and the next Predict starts a fresh ease.
-        previousPredictedPosition = predictedState.Position;
-        previousPredictedVertical = predictedState.Vertical;
-        secondsSinceLastPredict = settings.TickSeconds;
 
         // Gate on the pure prediction-divergence magnitude (3D): how far the pre-rebase predicted state sat from the
         // rebased authoritative state. This is independent of the in-flight render smoothing offset and of where in
@@ -188,15 +186,26 @@ public sealed class ClientPrediction<TState, TCommand>
 
         if (hardSnapApplied)
         {
+            // A hard snap teleports on screen: collapse the inter-tick lerp onto the new basis (previous == current,
+            // frac = 1) and drop the offset so rendered == predicted immediately.
+            previousPredictedPosition = predictedState.Position;
+            previousPredictedVertical = predictedState.Vertical;
+            secondsSinceLastPredict = settings.TickSeconds;
             renderOffset = Vector2.Zero;
             verticalRenderOffset = 0f;
         }
         else
         {
-            // Continuity: keep the avatar exactly where it was being drawn, then let the offset decay toward the
-            // corrected basis. rendered_after = predicted_new + offset == renderedBefore, so no pop on screen.
-            renderOffset = renderedPlanar - predictedState.Position;
-            verticalRenderOffset = renderedVertical - predictedState.Vertical;
+            // C1-continuous reconcile: do NOT collapse the inter-tick interpolation. Keep previousPredictedPosition
+            // and secondsSinceLastPredict (the in-flight ease) exactly as they were, and only rebase the target
+            // (predictedState) plus fold any genuine misprediction into the decaying render offset. Because the
+            // inter-tick lerp keeps flowing at the steady velocity across the reconcile, a matching (loopback) rebase
+            // - which fires every tick - perturbs neither the rendered POSITION nor its VELOCITY. Collapsing frac to
+            // 1 each tick (the old behaviour) pinned the inter-tick contribution at zero and left only the offset
+            // decay to carry motion for the rest of the tick, a per-tick velocity dip = the 30 Hz camera sawtooth.
+            // Continuity holds against the SAME previous/frac and the NEW target: rendered_after == renderedBefore.
+            renderOffset = renderedPlanar - (Vector2.Lerp(previousPredictedPosition, predictedState.Position, frac));
+            verticalRenderOffset = renderedVertical - Lerp(previousPredictedVertical, predictedState.Vertical, frac);
         }
 
         return new ReconciliationResult(authoritativeTick, positionError, hardSnapApplied);

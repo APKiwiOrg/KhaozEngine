@@ -43,8 +43,12 @@ namespace KhaozEngine.Game
             // AdaptiveViewport for a responsive, display-fitted game); otherwise the plain defaults. The window is
             // born hidden (AppWindow's ctor); it is revealed by Show() below, after the icon is applied.
             _window = options.WindowFactory?.Invoke(options)
-                ?? new AppWindow(options.Title, options.Width, options.Height);
+                ?? new AppWindow(options.Title, options.Width, options.Height, options.PresentMode, options.FrameCapHz);
             _window.ClearColor = options.ClearColor;
+            // FrameCapHz is a post-construction property, so it applies on BOTH the default window (above) and a
+            // custom WindowFactory window (which cannot know these options otherwise). PresentMode selects the
+            // swapchain vsync at creation, so it is honoured only on the default window; a factory must forward it.
+            _window.FrameCapHz = options.FrameCapHz;
 
             // Runtime window/taskbar icon (Windows/Linux; no-op on macOS where GLFW ignores window icons). Applied
             // while the window is still hidden so the Windows taskbar button - created when we Show() below - is

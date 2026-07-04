@@ -258,6 +258,31 @@ public class ClientPredictionTests
     }
 
     [Fact]
+    public void Matching_reconcile_does_not_alter_the_rendered_trajectory()
+    {
+        // C1 continuity (the local 30 Hz camera-sawtooth fix): a matching mid-tick reconcile - the loopback case,
+        // fired every tick - must not perturb the rendered path at all. Two identical predictions: reconcile ONE
+        // mid-tick against the exact predicted basis; its rendered position must then track the un-reconciled control
+        // frame-for-frame. Before the fix, Reconcile collapsed the inter-tick lerp and the reconciled copy crawled
+        // forward on the smoothing-offset decay (a per-tick velocity dip) instead of the steady inter-tick velocity.
+        var reconciled = NewPrediction();
+        var control = NewPrediction();
+        reconciled.Predict(new Vector2(60f, 0f));   // both step to X = 1 over the tick
+        control.Predict(new Vector2(60f, 0f));
+        reconciled.AdvancePresentation(Tick * 0.5f); // both mid-tick at rendered X = 0.5
+        control.AdvancePresentation(Tick * 0.5f);
+
+        reconciled.Reconcile(1, new FakeState(new Vector2(1f, 0f)), lastAcknowledgedSeq: 0); // matching, seq acked
+
+        for (int i = 0; i < 10; i++)
+        {
+            reconciled.AdvancePresentation(Tick * 0.1f);
+            control.AdvancePresentation(Tick * 0.1f);
+            Assert.Equal(control.RenderedState.Position.X, reconciled.RenderedState.Position.X, 5);
+        }
+    }
+
+    [Fact]
     public void Mid_tick_reconcile_does_not_jump_the_rendered_vertical_axis()
     {
         var p = NewV3();

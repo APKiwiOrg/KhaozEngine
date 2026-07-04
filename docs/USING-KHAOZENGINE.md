@@ -134,9 +134,24 @@ game.Run();
 ```
 
 `GameAppOptions` (a struct): `Title`, `Width`/`Height`, `DesignWidth`/`DesignHeight`, `ScaleMode`, `ClearColor`,
-`ResumeGapThresholdSeconds` (see the resume hook below), and optional `WindowFactory` / `ViewportFactory` (e.g.
-`AppWindow.Scaled` for a display-fitted window, or an `AdaptiveViewport` for responsive layout). Use
-`GameAppOptions.For(title, w, h)` for the common case.
+`ResumeGapThresholdSeconds` (see the resume hook below), `PresentMode` + `FrameCapHz` (see below), and optional
+`WindowFactory` / `ViewportFactory` (e.g. `AppWindow.Scaled` for a display-fitted window, or an `AdaptiveViewport`
+for responsive layout). Use `GameAppOptions.For(title, w, h)` for the common case.
+
+**Present mode + frame cap.** `GameAppOptions.PresentMode` (`Vsync` default / `Immediate`) selects the swapchain's
+vertical-blank sync; `GameAppOptions.FrameCapHz` (0 = uncapped) paces the loop to a target Hz with a monotonic-clock
+`FrameLimiter`, independent of vsync. Pin `FrameCapHz` to an integer multiple of a fixed simulation/network tick
+(e.g. 60 or 120 for a 30 Hz tick) so presentation stays phase-aligned with the tick - the cheapest way to remove any
+residual render:tick beat, and the deterministic cap where vsync does not throttle (the Veldrid Metal path can
+free-run well above the display refresh). `FrameCapHz` also applies to a custom `WindowFactory` window; `PresentMode`
+is set at swapchain creation, so a custom factory must forward it (or pass it to `new AppWindow(...)` / `AppWindow.Scaled(...)`).
+
+**Networked-movement presentation (NetWorld).** `WorldClient` renders remotes on a fixed interpolation delay
+(`WorldClientConfig.InterpolationDelayTicks`, default 2) - a timestamped snapshot buffer lerped by true timestamps,
+so remotes glide with no holds or catch-up snaps at any render:tick ratio - and the local predicted avatar is
+C1-continuous across reconciliation. For debugging movement smoothness set `WorldClientConfig.PresentationTraceEnabled`
+and dump `WorldClient.PresentationTrace.WriteCsv(path)` (render time, delay, seconds-since-snapshot, per-remote hold
+flag, snapshot arrivals, local reconcile-error, rendered positions).
 
 **Runtime window/taskbar icon.** Set `WindowIconPath` to a PNG (the simple case) or `WindowIcons` to an explicit
 list of decoded `ImageRgba` (16/32/48 px so GLFW picks per DPI; `WindowIcons` wins over `WindowIconPath`). `GameApp`

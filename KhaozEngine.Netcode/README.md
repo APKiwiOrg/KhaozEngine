@@ -44,6 +44,13 @@ Draw(prediction.RenderedState);
 
 Tune via `PredictionSettings` (tick rate, buffer cap, hard-snap distance, correction rate, dead-zone).
 
+`Reconcile` is **C1-continuous** (since 9.23.0): a non-hard-snap rebase does NOT collapse the in-flight inter-tick
+interpolation onto the new basis. It keeps the inter-tick phase flowing at the steady velocity and folds only the
+genuine misprediction into the decaying render offset, so a matching (loopback) rebase - fired every tick - perturbs
+neither the rendered position nor its velocity. The pre-9.23.0 collapse pinned the inter-tick contribution at zero
+each tick, leaving only the offset decay to carry motion for the rest of the tick: a per-tick velocity dip that read
+as a 30 Hz camera sawtooth. A hard snap still collapses (an intentional teleport).
+
 `PredictedHorizontalSpeed` is the local player's planar (ground-plane) speed in units/sec, recomputed each
 `Predict` from the per-tick position delta over `TickSeconds` (`IPredictedState.Position` is planar, so it is
 horizontal for free). It is computed **only** on the commanded `Predict` path, never in `Reconcile`, so a

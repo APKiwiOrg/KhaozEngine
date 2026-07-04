@@ -6,6 +6,14 @@ Windowing + input foundation for the custom MonoGame-free stack.
   frame loop. `Run(onFrame)` clears + presents around your callback; each `Frame` gives `Dt`, an engine-native
   `InputState`, framebuffer size, and the GPU command list to draw into. `AppWindow.Scaled(...)` fits a
   design-sized window to the display.
+- **Present mode + frame cap** (since 9.23.0). The `AppWindow` ctor / `Scaled(...)` take a `PresentMode`
+  (`Vsync` default, or `Immediate` = no vertical-blank sync) which selects the swapchain's `SyncToVerticalBlank`
+  at creation. `AppWindow.FrameCapHz` (settable any time; 0 = uncapped) paces `Run` to a target Hz with a
+  monotonic-clock `FrameLimiter`, independent of the swapchain's vsync - so a game can pin its render rate to an
+  integer multiple of its fixed tick (e.g. 60/120 for a 30 Hz network tick) to keep presentation phase-aligned.
+  This is the deterministic cap: the Veldrid Metal path does not reliably throttle from vsync alone, so a Mac
+  client can free-run well above the refresh unless a `FrameCapHz` is set. `FrameLimiter` is a pure,
+  headless-testable scheduler (`WaitBeforeNext(now)`).
 - `InputState` - per-frame keyboard + mouse + gamepad + touch snapshot (`IsDown`/`WasPressed` for
   `Key`/`MouseButton`, mouse position/delta/scroll, `Gamepad(i)`). Immutable; no MonoGame. `WasRepeated(Key)` /
   `WasTyped(Key)` surface OS key auto-repeat (`AppWindow` fills it from GLFW's `REPEAT` action; `WasPressed` stays

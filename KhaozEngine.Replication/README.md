@@ -25,7 +25,13 @@ area-of-interest deltas.
 - **`InterestGrid`** - a spatial-hash area-of-interest query (`Insert` / `Query(center, radius)`) used to compute a
   client's interest set for `WriteFiltered` / `AoiDeltaReplicator.WriteFor`.
 - **`ClientReplicationView`** - apply a snapshot to a client `World`: spawn new entities, despawn gone ones,
-  update the rest; `Interpolate` smooths registered components between the last two snapshots. An unregistered
+  update the rest. Two render-smoothing paths: `Interpolate(world, alpha)` lerps registered components between the
+  last two snapshots (the legacy estimate-and-ramp path), and the preferred **fixed-delay buffer** (since 9.23.0):
+  `RecordInterpolationSample(t)` stamps each applied snapshot's interpolatable bytes into a per-component timestamped
+  history, and `InterpolateAt(world, renderTime)` renders every component at `renderTime` by lerping the two buffered
+  samples bracketing it by their true timestamps (clamp to the oldest before the buffer; HOLD at the newest past it,
+  flagged via `WasHeldAtLastInterpolation(netId)`; single-sample renders that sample). This decouples presentation
+  from the tick cadence and the render fps. An unregistered
   **extension** id (>= the floor) is skipped, so an older client tolerates a newer server's added component.
   `Apply` is full-state. **`ApplyDelta`** applies a `ServerReplicator`/`AoiDeltaReplicator` delta and is
   **self-healing**: a delta whose baseline is at or before `LastAppliedSeq` is a valid idempotent rebuild (the

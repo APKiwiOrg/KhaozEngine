@@ -18,11 +18,24 @@ public sealed class WorldClientConfig
     /// <summary>Override prediction settings; defaults to <see cref="PredictionSettings.Default"/> at <see cref="TickSeconds"/>.</summary>
     public PredictionSettings? Prediction { get; init; }
 
-    /// <summary>Smooth remote players between the discrete (~tick-rate) replicated snapshots by interpolating their
-    /// positions at render time (one snapshot of interpolation delay), instead of teleporting one snapshot-step per
-    /// ingest. Default <c>true</c>: every remote glides, at the cost of ~one tick of remote render latency. Set
-    /// <c>false</c> to restore the raw-latest-position behaviour (no delay, but steppy remotes).</summary>
+    /// <summary>Smooth remote players between the discrete (~tick-rate) replicated snapshots by rendering them on a
+    /// fixed interpolation delay (see <see cref="InterpolationDelayTicks"/>) and lerping the two buffered snapshots
+    /// bracketing that render time by their true timestamps, instead of teleporting one snapshot-step per ingest.
+    /// Default <c>true</c>: every remote glides, decoupled from both the tick cadence and the render fps (no hold
+    /// frames, no catch-up snaps at a non-integer render:tick ratio), at the cost of <see cref="InterpolationDelayTicks"/>
+    /// ticks of remote render latency. Set <c>false</c> to restore the raw-latest-position behaviour (no delay, but
+    /// steppy remotes).</summary>
     public bool InterpolateRemotes { get; init; } = true;
+
+    /// <summary>Fixed remote-interpolation delay, in ticks: remotes are rendered this far behind the newest received
+    /// snapshot so the two snapshots bracketing the render time are (almost) always already in hand, absorbing tick
+    /// and render jitter. Default 2 ticks (~66 ms at a 30 Hz tick). Lower it toward ~1.5 for less latency at the cost
+    /// of less jitter headroom (a late snapshot then holds the remote sooner); raise it for a rougher network. Keep it
+    /// at least ~1 tick: because a snapshot is stamped at the render clock as of its arrival frame and the render time
+    /// advances one more frame before it is used, the EFFECTIVE delay is about one render frame less, so a value below
+    /// ~1 tick increasingly degrades toward holding the newest snapshot (0 leaves no bracket = remotes frozen at their
+    /// last snapshot). Only used when <see cref="InterpolateRemotes"/> is set. Clamped to at least 0.</summary>
+    public float InterpolationDelayTicks { get; init; } = 2f;
 
     /// <summary>Mid-session disconnect detector: declare the session lost after this many seconds with no server
     /// snapshot (only advances when <see cref="WorldClient.Poll(float)"/> is called with dt &gt; 0). Default 3s.</summary>
@@ -55,6 +68,13 @@ public sealed class WorldClientConfig
     /// sends no acks - client and server upgrade independently, no disconnect. Set false to force full snapshots (the
     /// pre-9.17.0 wire).</summary>
     public bool RequestDeltaReplication { get; init; } = true;
+
+    /// <summary>Enable the debug-only per-frame <see cref="PresentationTrace"/> (default false = off, zero overhead).
+    /// When set, <see cref="WorldClient.PresentationTrace"/> is non-null and records the presentation-layer internal
+    /// signals (render time, interpolation delay, seconds-since-snapshot, per-remote hold flag, snapshot arrivals,
+    /// local reconcile-error) plus rendered positions every <see cref="WorldClient.AdvancePresentation"/>, dumpable to
+    /// CSV. Gate a game's diagnostic key on it; leave off in shipping.</summary>
+    public bool PresentationTraceEnabled { get; init; }
 }
 
 /// <summary>
@@ -84,17 +104,23 @@ public sealed class WorldClient : IDisposable
     private float secondsSinceServerFrame;
     private bool sawShutdownNotice;
 
-    // Remote interpolation: render replicated remotes ~one snapshot in the past, lerping between the last two
-    // snapshots so they glide instead of teleporting one snapshot-step per ingest. The drive is a presentation
-    // clock (mirrors ClientPrediction.AdvancePresentation, but for remotes) that resets on each snapshot and ramps
-    // alpha 0..1 across one estimated inter-snapshot interval, feeding ClientReplicationView.Interpolate.
-    private const float IntervalSmoothing = 0.1f;     // EMA weight on each freshly measured inter-snapshot interval
+    // Remote interpolation: render replicated remotes on a FIXED delay (interpolationDelaySeconds behind the newest
+    // received snapshot), lerping the two buffered snapshots bracketing that render time by their true timestamps
+    // (ClientReplicationView.RecordInterpolationSample / InterpolateAt). A monotonic presentation clock advances by
+    // the render dt in AdvancePresentation; snapshots are stamped with it at ingest. This decouples presentation from
+    // both the tick cadence and the render fps - no phase drift, no per-tick holds/catch-up snaps - replacing the old
+    // estimate-the-interval-and-ramp-alpha scheme (which pinned alpha at 1 and held/snapped at a non-integer ratio).
     private readonly bool interpolateRemotes;
     private readonly bool requestDeltaReplication;    // advertise DeltaCapable on join + ack applied delta seqs
     private readonly float tickSeconds;
-    private float snapshotInterval;                   // estimated seconds between snapshots (seeded to the tick)
-    private float secondsSinceSnapshot;               // presentation clock since the last applied snapshot
-    private bool sawFirstSnapshot;                    // gate the interval EMA until there is a real interval to measure
+    private readonly float interpolationDelaySeconds; // fixed remote render delay (InterpolationDelayTicks * tick)
+    private double presentationClock;                 // monotonic render-time seconds (drives snapshot stamps + renderTime)
+
+    // Presentation trace (debug diagnostic; null unless PresentationTraceEnabled). Records per-frame internal signals.
+    private readonly PresentationTrace? presentationTrace;
+    private double lastSnapshotArrivalClock;          // presentationClock at the most recent ingest (for sinceSnapshot)
+    private float lastReconcileError;                 // magnitude of the most recent local reconcile correction (m)
+    private bool snapshotArrivedSinceFrame;           // a snapshot/delta ingested since the last traced frame
 
     // Reconnect fields
     private readonly Func<INetTransport>? connectFactory;   // null = single-shot instance path
@@ -174,7 +200,8 @@ public sealed class WorldClient : IDisposable
         interpolateRemotes = config.InterpolateRemotes;
         requestDeltaReplication = config.RequestDeltaReplication;
         tickSeconds = config.TickSeconds;
-        snapshotInterval = config.TickSeconds;        // server sends at the sim tick today; refined by measurement
+        interpolationDelaySeconds = MathF.Max(0f, config.InterpolationDelayTicks) * config.TickSeconds;
+        presentationTrace = config.PresentationTraceEnabled ? new PresentationTrace() : null;
         disconnectTimeout = config.DisconnectTimeoutSeconds;
         autoReconnect = config.AutoReconnect;
         retryOnReject = config.RetryOnReject;
@@ -249,6 +276,13 @@ public sealed class WorldClient : IDisposable
     /// <see cref="LocalRenderState"/>.Position, which carries the decaying reconciliation render offset and so wobbles
     /// during a steady run. Zero until the first snapshot seeds prediction.</summary>
     public float LocalHorizontalSpeed => prediction.PredictedHorizontalSpeed;
+
+    /// <summary>The debug per-frame presentation trace, or null unless <see cref="WorldClientConfig.PresentationTraceEnabled"/>
+    /// was set. When enabled it accrues one row per rendered entity per <see cref="AdvancePresentation"/> (the render
+    /// clock, interpolation delay, render time, seconds-since-snapshot, arrival marks, local reconcile-error, and the
+    /// per-remote starvation-hold flag); dump it with <see cref="PresentationTrace.WriteCsv"/>. Diagnostics only -
+    /// reading it never affects simulation or presentation.</summary>
+    public PresentationTrace? PresentationTrace => presentationTrace;
 
     /// <summary>
     /// A read-only snapshot of this client's connection health for a diagnostics/telemetry overlay: RTT, packet
@@ -398,10 +432,9 @@ public sealed class WorldClient : IDisposable
         LocalNetId = -1;
         secondsSinceServerFrame = 0f;
         attemptDeadlineRemaining = disconnectTimeout;
-        // Reset remote-interpolation bookkeeping so the new stream starts clean.
-        snapshotInterval = tickSeconds;
-        secondsSinceSnapshot = 0f;
-        sawFirstSnapshot = false;
+        // Reset remote-interpolation bookkeeping so the new stream starts clean. The fresh ClientReplicationView above
+        // drops the old sample history; the presentation clock keeps advancing monotonically (new samples are stamped
+        // against it), so it need not reset.
         // state stays Reconnecting until this attempt's Joined.
     }
 
@@ -451,19 +484,43 @@ public sealed class WorldClient : IDisposable
 
     /// <summary>Advances render-time smoothing (call once per render frame): the local avatar's inter-tick
     /// prediction smoothing, plus - when <see cref="WorldClientConfig.InterpolateRemotes"/> is set - remote
-    /// interpolation. Remotes ramp from the previous snapshot to the current one across one estimated inter-snapshot
-    /// interval (alpha 0..1, clamped), so between the discrete ~tick-rate snapshots they glide rather than teleport.
-    /// A late snapshot holds the remote at the current value (alpha pinned at 1, no extrapolation) until the next
-    /// arrives. Idempotent within a frame: it rewrites the same lerped state, so multiple <see cref="Snapshot"/>
-    /// reads per frame are consistent.</summary>
+    /// interpolation. Remotes render on a fixed delay (<see cref="WorldClientConfig.InterpolationDelayTicks"/> ticks
+    /// behind the newest snapshot): the monotonic render clock advances by <paramref name="dt"/>, and the two buffered
+    /// snapshots bracketing (clock - delay) are lerped by their true timestamps, so between the discrete ~tick-rate
+    /// snapshots they glide rather than teleport. A snapshot stall past the buffer holds the remote at the newest value
+    /// (no extrapolation) until the next arrives. Idempotent within a frame: it rewrites the same interpolated state,
+    /// so multiple <see cref="Snapshot"/> reads per frame are consistent.</summary>
     public void AdvancePresentation(float dt)
     {
         prediction.AdvancePresentation(dt);                   // local avatar (unaffected by remote interpolation)
         UpdateNetStatsWindow(dt);
-        if (!interpolateRemotes) return;
-        secondsSinceSnapshot += dt;
-        float alpha = snapshotInterval > 0f ? Math.Clamp(secondsSinceSnapshot / snapshotInterval, 0f, 1f) : 1f;
-        view.Interpolate(world, alpha);                       // remotes only; the local entry renders from prediction
+        if (dt > 0f) presentationClock += dt;                 // monotonic render clock (snapshots are stamped against it)
+        if (interpolateRemotes)
+            // Render remotes on a fixed delay: pick the render time interpolationDelaySeconds behind the newest snapshot
+            // (which arrived at ~presentationClock), then lerp the two buffered snapshots bracketing it. Because
+            // renderTime advances smoothly with the render dt - not by ramping alpha off an estimated interval - there
+            // is no phase drift, so no hold frames and no catch-up snaps at a non-integer render:tick ratio.
+            view.InterpolateAt(world, presentationClock - interpolationDelaySeconds);
+        if (presentationTrace is not null) RecordTraceFrame(dt);
+    }
+
+    // Append this frame's presentation-trace rows (one per rendered entity): the render-clock/delay/render-time, the
+    // seconds since the last snapshot + whether one arrived this frame, the local reconcile-error, and each remote's
+    // rendered position + starvation-hold flag. Debug-gated (only called when a PresentationTrace is attached).
+    private void RecordTraceFrame(float dt)
+    {
+        double renderTime = presentationClock - interpolationDelaySeconds;
+        double sinceSnapshot = presentationClock - lastSnapshotArrivalClock;
+        bool arrived = snapshotArrivedSinceFrame;
+        snapshotArrivedSinceFrame = false;
+        foreach (EntityRenderState e in Snapshot())
+        {
+            bool held = !e.IsLocal && view.WasHeldAtLastInterpolation(e.Id.Value);
+            presentationTrace!.Add(new PresentationTrace.Row(
+                presentationClock, dt, renderTime, interpolationDelaySeconds, sinceSnapshot, arrived,
+                e.IsLocal ? lastReconcileError : float.NaN, e.IsLocal, e.Id.Value, e.Position,
+                e.VerticalVelocity, held));
+        }
     }
 
     /// <summary>The current renderable set: local player predicted, remotes from the replicated position (smoothly
@@ -583,18 +640,17 @@ public sealed class WorldClient : IDisposable
         bool first = LocalNetId < 0;
         LocalNetId = localNetId;
 
+        if (presentationTrace is not null)
+        {
+            lastSnapshotArrivalClock = presentationClock;        // for the trace's sinceSnapshot signal
+            snapshotArrivedSinceFrame = true;                   // mark the arrival on the next traced frame
+        }
+
         if (interpolateRemotes)
         {
-            // Refine the inter-snapshot interval from the render time actually elapsed since the previous snapshot
-            // (clamped to a sane band so jitter, a queued double-apply, or a dropped snapshot can't desync the ramp),
-            // then restart the interpolation clock. Skip the very first snapshot: there is no prior interval yet.
-            if (sawFirstSnapshot)
-            {
-                float measured = Math.Clamp(secondsSinceSnapshot, 0.5f * tickSeconds, 4f * tickSeconds);
-                snapshotInterval += IntervalSmoothing * (measured - snapshotInterval);
-            }
-            sawFirstSnapshot = true;
-            secondsSinceSnapshot = 0f;
+            // Buffer this snapshot's interpolatable state stamped at the current render-clock time. InterpolateAt then
+            // renders the two samples bracketing (presentationClock - interpolationDelaySeconds) by their true stamps.
+            view.RecordInterpolationSample(presentationClock);
         }
 
         // Reconcile reads the freshly applied 'current' here, BEFORE any AdvancePresentation interpolates the world,
@@ -617,6 +673,7 @@ public sealed class WorldClient : IDisposable
             }
             ReconciliationResult rr = prediction.Reconcile(authoritativeTick++, basis, ackSeq);
             RecordCorrection(rr.PositionError);                  // NetStats: predicted-vs-authoritative delta (m)
+            lastReconcileError = rr.PositionError;               // for the trace's local reconcile-error signal
         }
     }
 

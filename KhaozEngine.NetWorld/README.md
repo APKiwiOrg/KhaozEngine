@@ -25,6 +25,15 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   `EntityRenderState[]` (local player predicted + reconciled, remotes from replicated positions - smoothly
   interpolated between snapshots by default, so a remote glides instead of teleporting one ~tick-rate snapshot-step
   per ingest; `AdvancePresentation(dt)` drives it, opt out with `WorldClientConfig.InterpolateRemotes = false`).
+  Remote interpolation is a **fixed-delay snapshot buffer** (since 9.23.0): each render frame renders remotes at
+  `latest - interpolationDelay` and lerps the two buffered snapshots bracketing that time by their true timestamps,
+  so presentation is decoupled from both the tick cadence and the render fps - no hold frames, no catch-up snaps at
+  a non-integer render:tick ratio (the pre-9.23.0 estimate-the-interval-and-ramp-alpha scheme drifted and stuttered).
+  Tune the delay with **`WorldClientConfig.InterpolationDelayTicks`** (default 2 ticks); lower it for less latency,
+  raise it for a rougher network. A debug **`WorldClientConfig.PresentationTraceEnabled`** exposes
+  `WorldClient.PresentationTrace` - a per-frame CSV-dumpable trace of the presentation internals (render time,
+  interpolation delay, seconds-since-snapshot, per-remote starvation-hold flag, snapshot arrivals, local
+  reconcile-error) for characterising a movement-smoothness bug; off by default, zero overhead.
   Optional `WorldBounds`/`IPhysicsWorld?` ctor params (mirroring `WorldServer`, since 8.0.0) make the client predict
   against the same play-area bound + static physics bodies the server is authoritative over, so a
   solid-prop world predicts straight instead of rubber-banding (null = terrain only).

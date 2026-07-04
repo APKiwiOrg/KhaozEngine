@@ -8,7 +8,9 @@ namespace KhaozEngine.Replication;
 /// <summary>
 /// Applies full-state snapshots into a client <see cref="World"/>: spawns entities new this snapshot, despawns
 /// entities absent from it, and updates the rest (keyed by <see cref="NetId"/>). For components registered with
-/// a lerp, it double-buffers the last two snapshots so <see cref="Interpolate"/> can smooth them at render time.
+/// a lerp, it double-buffers the last two snapshots so <see cref="Interpolate"/> can smooth them at render time,
+/// and (the preferred path) keeps a timestamped sample history so <see cref="InterpolateAt"/> can render on a
+/// fixed delay by lerping the two bracketing snapshots by their true timestamps.
 /// </summary>
 public sealed class ClientReplicationView
 {
@@ -16,6 +18,15 @@ public sealed class ClientReplicationView
     private readonly Dictionary<int, Entity> entityByNetId = new();
     private readonly Dictionary<(int netId, ushort typeId), byte[]> currentBytes = new();
     private readonly Dictionary<(int netId, ushort typeId), byte[]> previousBytes = new();
+
+    // Fixed-delay interpolation buffer: a per-component timestamped history of the interpolatable bytes, so
+    // InterpolateAt can render at an arbitrary render time by lerping the two bracketing samples by their true
+    // timestamps (see RecordInterpolationSample / InterpolateAt). Independent of the previous/current double-buffer
+    // that drives the legacy alpha-ramp Interpolate.
+    private readonly Dictionary<(int netId, ushort typeId), List<(double t, byte[] bytes)>> sampleHistory = new();
+    // A remote whose most recent InterpolateAt clamped at the newest sample (renderTime ran past the buffer): a
+    // genuine snapshot starvation "hold". Diagnostics read it via WasHeldAtLastInterpolation; recomputed per InterpolateAt.
+    private readonly HashSet<int> heldNetIds = new();
 
     public ClientReplicationView(ReplicationRegistry registry)
     {
@@ -67,6 +78,7 @@ public sealed class ClientReplicationView
             {
                 if (world.IsAlive(entityByNetId[netId])) world.Despawn(entityByNetId[netId]);
                 entityByNetId.Remove(netId);
+                RemoveEntityBuffers(netId);   // also drop the fixed-delay sample history for the departed entity
             }
         }
     }
@@ -178,6 +190,9 @@ public sealed class ClientReplicationView
                     if (world.IsAlive(entity)) rcodec.RemoveComponent(world, entity);
                     currentBytes.Remove((netId, rtid));
                     previousBytes.Remove((netId, rtid));
+                    // Also drop the fixed-delay sample history, else InterpolateAt keeps lerping the stale samples and
+                    // world.Set re-adds the component the server just removed, every frame (resurrection).
+                    sampleHistory.Remove((netId, rtid));
                 }
             }
 
@@ -255,11 +270,15 @@ public sealed class ClientReplicationView
         keys.Clear();
         foreach ((int netId, ushort typeId) key in previousBytes.Keys) if (key.netId == netIdToRemove) keys.Add(key);
         foreach ((int netId, ushort typeId) key in keys) previousBytes.Remove(key);
+        keys.Clear();
+        foreach ((int netId, ushort typeId) key in sampleHistory.Keys) if (key.netId == netIdToRemove) keys.Add(key);
+        foreach ((int netId, ushort typeId) key in keys) sampleHistory.Remove(key);
     }
 
     /// <summary>
     /// Writes interpolated values (<c>lerp(previous, current, alpha)</c>) for every interpolatable component
     /// that has both a previous and current snapshot. <paramref name="alpha"/> is the render fraction in [0,1].
+    /// The legacy estimate-and-ramp path; prefer the fixed-delay <see cref="InterpolateAt"/>.
     /// </summary>
     public void Interpolate(World world, float alpha)
     {
@@ -271,4 +290,86 @@ public sealed class ClientReplicationView
             codec.LerpFromBytes(world, e, prev, kv.Value, alpha);
         }
     }
+
+    /// <summary>
+    /// Records a fixed-delay interpolation sample: snapshots the current interpolatable component bytes (the values
+    /// just written by <see cref="Apply"/>/<see cref="ApplyDelta"/>) into the per-component history, stamped at the
+    /// arrival time <paramref name="timeSeconds"/> (a monotonic client-side render clock). <see cref="InterpolateAt"/>
+    /// later lerps the two samples bracketing a render time by their true timestamps. Call once per applied
+    /// snapshot/delta, right after the apply. Stamps must be non-decreasing; a stamp at or before the last recorded
+    /// one overwrites it (so a burst of snapshots ingested without an intervening clock advance collapses to a single
+    /// sample rather than a zero-width bracket).
+    /// </summary>
+    public void RecordInterpolationSample(double timeSeconds)
+    {
+        foreach (KeyValuePair<(int netId, ushort typeId), byte[]> kv in currentBytes)
+        {
+            if (!registry.TryGet(kv.Key.typeId, out ComponentCodec codec) || codec.LerpFromBytes is null) continue;
+            if (!sampleHistory.TryGetValue(kv.Key, out List<(double t, byte[] bytes)>? hist))
+                sampleHistory[kv.Key] = hist = new List<(double t, byte[] bytes)>();
+            if (hist.Count > 0 && timeSeconds <= hist[^1].t) hist[^1] = (timeSeconds, kv.Value);
+            else hist.Add((timeSeconds, kv.Value));
+            // InterpolateAt prunes below the render time each frame, so history normally stays at ~2-3 samples. This
+            // is only a backstop for a consumer that ingests but never presents (never calls InterpolateAt): cap the
+            // history so it cannot grow without bound.
+            if (hist.Count > MaxHistorySamples) hist.RemoveRange(0, hist.Count - MaxHistorySamples);
+        }
+    }
+
+    // ~20 s of 30 Hz history: far beyond any real interpolation delay, so it only trips on a never-presenting consumer.
+    private const int MaxHistorySamples = 600;
+
+    /// <summary>
+    /// Fixed-delay snapshot interpolation: for every interpolatable component writes the value at
+    /// <paramref name="renderTime"/> by lerping the two buffered samples bracketing it (by their true timestamps).
+    /// A render time before the oldest sample clamps to it (warm-up); a render time at/past the newest HOLDS at the
+    /// newest (snapshot starvation - never extrapolates) and flags the entity (see
+    /// <see cref="WasHeldAtLastInterpolation"/>). A single-sample component renders that sample. Idempotent for a
+    /// given <paramref name="renderTime"/>. Feed a monotonically increasing render time: samples strictly below the
+    /// lower bracket are pruned each call, so the history stays bounded to what is still reachable.
+    /// </summary>
+    public void InterpolateAt(World world, double renderTime)
+    {
+        heldNetIds.Clear();
+        foreach (KeyValuePair<(int netId, ushort typeId), List<(double t, byte[] bytes)>> kv in sampleHistory)
+        {
+            List<(double t, byte[] bytes)> hist = kv.Value;
+            if (hist.Count == 0) continue;
+            if (!entityByNetId.TryGetValue(kv.Key.netId, out Entity e) || !world.IsAlive(e)) continue;
+            if (!registry.TryGet(kv.Key.typeId, out ComponentCodec codec) || codec.LerpFromBytes is null) continue;
+
+            // The last sample at or before renderTime is the lower bracket (history is time-ascending).
+            int lo = -1;
+            for (int i = 0; i < hist.Count; i++) { if (hist[i].t <= renderTime) lo = i; else break; }
+
+            if (lo < 0)
+            {
+                // renderTime precedes the whole buffer: clamp to the oldest sample (no backward extrapolation).
+                codec.LerpFromBytes(world, e, hist[0].bytes, hist[0].bytes, 0f);
+                continue;
+            }
+            if (lo >= hist.Count - 1)
+            {
+                // renderTime is at/past the newest sample: HOLD there, never extrapolate. Flag a genuine starvation
+                // hold (renderTime strictly past the newest), then keep only the newest sample.
+                (double t, byte[] bytes) newest = hist[lo];
+                codec.LerpFromBytes(world, e, newest.bytes, newest.bytes, 0f);
+                if (renderTime > newest.t + 1e-9) heldNetIds.Add(kv.Key.netId);
+                if (lo > 0) hist.RemoveRange(0, lo);
+                continue;
+            }
+            (double t, byte[] bytes) a = hist[lo];
+            (double t, byte[] bytes) b = hist[lo + 1];
+            double span = b.t - a.t;
+            float frac = span > 0 ? (float)Math.Clamp((renderTime - a.t) / span, 0.0, 1.0) : 1f;
+            codec.LerpFromBytes(world, e, a.bytes, b.bytes, frac);
+            if (lo > 0) hist.RemoveRange(0, lo);   // renderTime only increases: earlier samples are unreachable.
+        }
+    }
+
+    /// <summary>True if the entity with network id <paramref name="netId"/> was HELD at the newest buffered sample
+    /// during the most recent <see cref="InterpolateAt"/> - i.e. ANY of its interpolatable components ran past the
+    /// buffer (a snapshot starvation hold). Aggregated across the entity's components (held iff at least one held).
+    /// Diagnostics-only; recomputed each <see cref="InterpolateAt"/>.</summary>
+    public bool WasHeldAtLastInterpolation(int netId) => heldNetIds.Contains(netId);
 }

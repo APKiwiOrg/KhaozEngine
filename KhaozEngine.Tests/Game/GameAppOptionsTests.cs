@@ -29,6 +29,20 @@ namespace KhaozEngine.Tests.Game
             Assert.Equal(30.0, o.ResumeGapThresholdSeconds);
             // No Windows taskbar identity by default -> keeps the current process-derived AppUserModelID.
             Assert.Null(o.AppUserModelId);
+            // Present defaults preserve current behaviour: vsync on, no software frame cap (uncapped).
+            Assert.Equal(PresentMode.Vsync, o.PresentMode);
+            Assert.Equal(0, o.FrameCapHz);
+        }
+
+        [Fact]
+        public void PresentMode_and_FrameCapHz_RoundTrip_WhenSet()
+        {
+            var o = GameAppOptions.For("Demo", 960, 540);
+            o.PresentMode = PresentMode.Immediate;
+            o.FrameCapHz = 120;
+
+            Assert.Equal(PresentMode.Immediate, o.PresentMode);
+            Assert.Equal(120, o.FrameCapHz);
         }
 
         [Fact]

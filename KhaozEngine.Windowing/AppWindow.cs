@@ -88,8 +88,36 @@ namespace KhaozEngine.Windowing
         /// <summary>Background colour cleared each frame.</summary>
         public Color ClearColor = new(0.10f, 0.12f, 0.16f, 1f);
 
-        public AppWindow(string title, int width, int height)
+        // Optional software frame-rate cap for Run(): 0 = uncapped. Rebuilt when FrameCapHz is set.
+        FrameLimiter _frameLimiter;
+        int _frameCapHz;
+
+        /// <summary>
+        /// Software frame-rate cap in Hz for <see cref="Run"/> (0 = uncapped, the default). Paces the loop with a
+        /// monotonic-clock <see cref="FrameLimiter"/> independent of the swapchain's vsync, so a game can pin the
+        /// render rate to an integer multiple of its fixed tick (e.g. 60/120 for a 30 Hz tick) - the deterministic cap
+        /// where vsync does not throttle (notably the Veldrid Metal path). Settable any time; takes effect next frame.
+        /// </summary>
+        public int FrameCapHz
         {
+            get => _frameCapHz;
+            set { _frameCapHz = value; _frameLimiter = new FrameLimiter(value); }
+        }
+
+        /// <summary>Create a window with vsync present and no frame cap (the historical defaults).</summary>
+        public AppWindow(string title, int width, int height)
+            : this(title, width, height, PresentMode.Vsync, frameCapHz: 0) { }
+
+        /// <summary>
+        /// Create a window selecting how it presents (<paramref name="presentMode"/>) and an optional software frame
+        /// cap (<paramref name="frameCapHz"/>, 0 = uncapped). <paramref name="presentMode"/> feeds the swapchain's
+        /// vsync at creation time; <paramref name="frameCapHz"/> paces <see cref="Run"/> and can also be changed later
+        /// via <see cref="FrameCapHz"/>.
+        /// </summary>
+        public AppWindow(string title, int width, int height, PresentMode presentMode, int frameCapHz = 0)
+        {
+            _frameCapHz = frameCapHz;
+            _frameLimiter = new FrameLimiter(frameCapHz);
             // KE_MAX_FRAMES: render N frames then close (lets a windowed smoke test run a few frames + exit cleanly).
             _maxFrames = int.TryParse(Environment.GetEnvironmentVariable("KE_MAX_FRAMES"), out int mf) && mf > 0 ? mf : 0;
 
@@ -112,7 +140,8 @@ namespace KhaozEngine.Windowing
             _window.Initialize(); // creates the native window WITHOUT starting the loop; the handle is valid after this.
 
             GpuWindowHandle handle = BuildHandle(_window);
-            _gpu = GpuDeviceContext.CreateForWindow(handle, (uint)width, (uint)height);
+            _gpu = GpuDeviceContext.CreateForWindow(handle, (uint)width, (uint)height,
+                syncToVerticalBlank: presentMode == PresentMode.Vsync);
             _device = _gpu.GpuDevice;
             _cl = _device.Factory.CreateCommandList();
 
@@ -147,12 +176,13 @@ namespace KhaozEngine.Windowing
         /// is unavailable.
         /// </summary>
         public static AppWindow Scaled(string title, int designWidth, int designHeight,
-            float screenFraction = 0.9f, float maxScale = 2f)
+            float screenFraction = 0.9f, float maxScale = 2f,
+            PresentMode presentMode = PresentMode.Vsync, int frameCapHz = 0)
         {
             GlfwWindowing.RegisterPlatform();
             var (sw, sh) = PrimaryScreenSize();
             var (w, h) = FitToScreen(designWidth, designHeight, sw, sh, screenFraction, maxScale);
-            return new AppWindow(title, w, h);
+            return new AppWindow(title, w, h, presentMode, frameCapHz);
         }
 
         /// <summary>
@@ -296,10 +326,13 @@ namespace KhaozEngine.Windowing
             return raw;
         }
 
-        /// <summary>Run the frame loop until the window closes, calling <paramref name="onFrame"/> each frame.</summary>
+        /// <summary>Run the frame loop until the window closes, calling <paramref name="onFrame"/> each frame. When
+        /// <see cref="FrameCapHz"/> is set, the loop is paced to that rate with a monotonic-clock limiter after
+        /// present (independent of the swapchain's vsync).</summary>
         public void Run(Action<Frame> onFrame)
         {
             Show(); // ensure visible even if the host never called Show() (GameApp calls it after SetIcon). Idempotent.
+            var clock = System.Diagnostics.Stopwatch.StartNew();
             _window.Render += dt =>
             {
                 float fdt = (float)Math.Min(dt, 0.1);
@@ -317,9 +350,28 @@ namespace KhaozEngine.Windowing
                 _device.Submit(_cl);
                 _device.Present();
 
+                // Software frame cap: pace the loop to FrameCapHz. Silk's own loop runs the callback as fast as the
+                // GPU allows (the Veldrid Metal present does not throttle the CPU), so idle here to hold the target
+                // cadence. Hybrid sleep + short spin keeps it accurate without a Windows-timer-granularity overshoot.
+                if (_frameLimiter.Enabled)
+                {
+                    double wait = _frameLimiter.WaitBeforeNext(clock.Elapsed.TotalSeconds);
+                    if (wait > 0) PreciseIdle(clock, wait);
+                }
+
                 if (_maxFrames > 0 && ++_frameCount >= _maxFrames) _window.Close();
             };
             _window.Run();
+        }
+
+        /// <summary>Idle for <paramref name="seconds"/> using the monotonic <paramref name="clock"/>: sleep the bulk
+        /// (leaving a ~1 ms margin so the OS timer granularity can't overshoot the cap), then spin the remainder.</summary>
+        static void PreciseIdle(System.Diagnostics.Stopwatch clock, double seconds)
+        {
+            double deadline = clock.Elapsed.TotalSeconds + seconds;
+            int bulkMs = (int)(seconds * 1000.0) - 1;
+            if (bulkMs > 0) System.Threading.Thread.Sleep(bulkMs);
+            while (clock.Elapsed.TotalSeconds < deadline) System.Threading.Thread.SpinWait(64);
         }
 
         void WireInput()

@@ -30,6 +30,24 @@ namespace KhaozEngine.Game
         public Color ClearColor;
 
         /// <summary>
+        /// How the window presents frames (default <see cref="PresentMode.Vsync"/>). <see cref="PresentMode.Immediate"/>
+        /// disables vertical-blank sync for the lowest latency / uncapped fps. Applied at window creation, so it is
+        /// honoured on the default window; a custom <see cref="WindowFactory"/> must forward it itself. See
+        /// <see cref="FrameCapHz"/> to also pin the rate (vsync alone does not reliably cap on Mac/Metal).
+        /// </summary>
+        public PresentMode PresentMode;
+
+        /// <summary>
+        /// Optional software frame-rate cap in Hz (0 = uncapped, the default). When set, <see cref="AppWindow.Run"/>
+        /// paces the loop to this rate with a monotonic-clock limiter (<see cref="FrameLimiter"/>), independent of the
+        /// swapchain's vsync - so a game can pin the render rate to an integer multiple of its fixed tick (e.g. 60 or
+        /// 120 for a 30 Hz tick) to keep presentation phase-aligned with the tick. This is the deterministic cap; use
+        /// it when vsync does not throttle (notably the Veldrid Metal path). Applied on both the default and a custom
+        /// <see cref="WindowFactory"/> window (set post-construction), so a factory need not forward it.
+        /// </summary>
+        public int FrameCapHz;
+
+        /// <summary>
         /// A frame whose wall-clock gap (<see cref="GameClock.RealWallGapSeconds"/>) exceeds this raises
         /// <see cref="GameApp.OnResume"/> - the signal that the OS slept/suspended/hibernated or the app hung for
         /// that long. Default 30s (via <see cref="For"/>), high enough that a normal frame, GC pause, or brief
@@ -81,7 +99,8 @@ namespace KhaozEngine.Game
         /// <summary>Resolved design height: <see cref="DesignHeight"/>, or <see cref="Height"/> when it is 0.</summary>
         internal int ResolvedDesignHeight => DesignHeight == 0 ? Height : DesignHeight;
 
-        /// <summary>Sensible defaults: Fit scaling, 1:1 design space, dark clear colour, 30s resume-gap threshold.</summary>
+        /// <summary>Sensible defaults: Fit scaling, 1:1 design space, dark clear colour, 30s resume-gap threshold,
+        /// vsync present, no software frame cap.</summary>
         public static GameAppOptions For(string title, int width, int height) => new()
         {
             Title = title,
@@ -92,6 +111,8 @@ namespace KhaozEngine.Game
             ScaleMode = ScaleMode.Fit,
             ClearColor = new Color(0.10f, 0.12f, 0.16f, 1f),
             ResumeGapThresholdSeconds = 30.0,
+            PresentMode = PresentMode.Vsync,
+            FrameCapHz = 0,
         };
     }
 }

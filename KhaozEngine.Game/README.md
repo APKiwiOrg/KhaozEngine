@@ -19,6 +19,13 @@ Subclass it and override `OnLoad` / `OnUpdate(dt)` / `OnDraw2D(batch)` / `OnResi
 `Quit()` to close. Construct with `GameAppOptions.For(title, w, h)` (set `DesignWidth/Height`,
 `ScaleMode`, `ClearColor` as needed).
 
+Set `GameAppOptions.PresentMode` (`Vsync` default / `Immediate`) and/or `GameAppOptions.FrameCapHz` (0 = uncapped)
+to control presentation (since 9.23.0). `FrameCapHz` paces the loop to a target Hz with a monotonic-clock limiter
+independent of the swapchain's vsync - pin it to an integer multiple of a fixed network tick (e.g. 60/120 for 30 Hz)
+to keep presentation phase-aligned. It is the deterministic cap where vsync does not throttle (notably Mac/Metal),
+and is applied on both the default and a custom `WindowFactory` window; `PresentMode` is honoured on the default
+window (a custom factory must forward it).
+
 Override `OnResume(TimeSpan wallGap)` to react to an OS sleep/suspend/hibernate (or a long hang): it fires once,
 before `OnUpdate`, on the first frame whose wall-clock gap (`Clock.RealWallGapSeconds`, which survives a suspend
 where the frame `dt` does not) exceeds `GameAppOptions.ResumeGapThresholdSeconds` (default 30s; 0 or negative

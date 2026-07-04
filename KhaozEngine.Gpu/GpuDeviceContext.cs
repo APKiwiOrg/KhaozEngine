@@ -47,10 +47,13 @@ namespace KhaozEngine.Gpu
         /// native window and passes its handle here as a <see cref="GpuWindowHandle"/>, so this package needs no
         /// windowing dependency of its own. Builds the Veldrid <c>SwapchainSource</c> for the handle's
         /// <see cref="GpuWindowKind"/>, then creates the backend device with a main swapchain (so
-        /// <see cref="IGpuDevice.SwapchainFramebuffer"/> is non-null). The returned context owns the device's
-        /// disposal: dispose this context, not the underlying device.
+        /// <see cref="IGpuDevice.SwapchainFramebuffer"/> is non-null). <paramref name="syncToVerticalBlank"/> selects
+        /// vsync (default true, unchanged) vs immediate presentation; it feeds both the device options and the
+        /// swapchain description. The returned context owns the device's disposal: dispose this context, not the
+        /// underlying device.
         /// </summary>
-        public static GpuDeviceContext CreateForWindow(in GpuWindowHandle window, uint width, uint height)
+        public static GpuDeviceContext CreateForWindow(in GpuWindowHandle window, uint width, uint height,
+            bool syncToVerticalBlank = true)
         {
             SwapchainSource source = window.Kind switch
             {
@@ -61,11 +64,11 @@ namespace KhaozEngine.Gpu
                 _ => throw new NotSupportedException($"Unknown GpuWindowKind '{window.Kind}'."),
             };
 
-            // Engine-owned default windowed device options (depth swapchain, Improved binding, sRGB, vsync) -
-            // the same options the previous windowed CreateWindow path passed. Veldrid's GraphicsDeviceOptions stays
-            // internal to this package so consumers never reference a Veldrid type.
-            var opts = new GraphicsDeviceOptions(false, null, true, ResourceBindingModel.Improved, true, true);
-            var scDesc = new SwapchainDescription(source, width, height, null, true, false);
+            // Engine-owned default windowed device options (depth swapchain, Improved binding, sRGB) - the same
+            // options the previous windowed CreateWindow path passed, with the vsync flag now caller-selected.
+            // Veldrid's GraphicsDeviceOptions stays internal to this package so consumers never reference a Veldrid type.
+            var opts = new GraphicsDeviceOptions(false, null, syncToVerticalBlank, ResourceBindingModel.Improved, true, true);
+            var scDesc = new SwapchainDescription(source, width, height, null, syncToVerticalBlank, false);
 
             GpuBackendKind kind = GpuBackendSelector.Select();
             GraphicsDevice gd = kind switch

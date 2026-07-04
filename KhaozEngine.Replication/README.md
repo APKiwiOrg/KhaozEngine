@@ -20,10 +20,21 @@ area-of-interest deltas.
   only its own client. The flags gate the **server (write) side** only; the client read side decodes whatever is on
   the wire (so channel flags on a client-built registry are ignored). A built-in id must keep `Default` (its unframed
   encoding is the core protocol) and `OwnerOnly` requires `Replicate` - either violation throws at registration.
-  `SnapshotWriter` / `AoiDeltaReplicator` take the serving channel + an optional `ownerNetId` to scope `OwnerOnly`.
+  Every client-serving path honours the channels: `SnapshotWriter` / `AoiDeltaReplicator` take the serving channel +
+  an optional `ownerNetId` to scope `OwnerOnly`, and `ServerReplicator.Capture` captures only the `Replicate` channel
+  while `ServerReplicator.WriteFor(slot, ownerNetId)` scopes `OwnerOnly` per client (a Persist-/Migrate-only server
+  component never reaches any of them).
+  - **Footgun - `Persist` without `Migrate`:** a component registered `Persist` but not `Migrate` survives a server
+    restart (it is in the cell's persist blob) yet is dropped the instant its entity crosses a cell boundary (handoff
+    captures only the `Migrate` channel), so on a seamless sharded world it silently vanishes when the entity walks
+    into the next cell. Durable state a player/entity carries around wants BOTH (`Persist | Migrate`, i.e. `Default`).
+    Use `Persist` alone only for state that is genuinely bound to the cell rather than the entity.
 - **`SnapshotWriter`** - serialize a server `World`'s `NetId` entities (and their registered components) to an
   opaque `byte[]` snapshot (`Write` full-state, `WriteFiltered` per-client interest). **`ServerReplicator`** is the
-  per-slot acked whole-world baseline/delta variant. Both length-prefix extension components.
+  per-slot acked whole-world baseline/delta variant (no AoI scoping): `Capture(world)` once per tick, then
+  `WriteFor(slot, ownerNetId)` per client. It is channel-aware like the others - only `Replicate` components are
+  captured, and an `OwnerOnly` component reaches only the client whose player net id is `ownerNetId`. Both
+  length-prefix extension components.
 - **`AoiDeltaReplicator`** (since 9.18.0) - the per-client, `NetId`-keyed, **area-of-interest-scoped** baseline+delta
   encoder: it fuses `ServerReplicator`'s acked-baseline delta compression with per-client interest filtering. Call
   `BeginTick()` once per server tick, then `WriteFor(slot, world, interestSet)` per client; against that client's

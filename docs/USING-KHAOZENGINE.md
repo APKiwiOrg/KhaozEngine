@@ -2577,15 +2577,20 @@ For bandwidth, use the delta path: `ServerReplicator` keeps per-client acked who
 what changed; the client applies deltas and acks the seq it received. `ClientReplicationView.ApplyDelta` is
 self-healing - a delta whose baseline is at or before `LastAppliedSeq` is a valid idempotent rebuild (the server
 builds from the last ACKED baseline, which lags under ack latency/loss), so a dropped delta/ack needs no full
-resync:
+resync. Like every client-serving path it honours `ReplicationChannels` (see below): `Capture` snapshots only
+`Replicate` components, and `WriteFor(slot, ownerNetId)` scopes an `OwnerOnly` component to the client whose player
+net id is `ownerNetId` (pass the receiving client's own player net id, or omit it for an unowned serve):
 
 ```csharp
 var replicator = new ServerReplicator(registry);
-int seq = replicator.Capture(serverWorld);            // once per tick
-byte[] delta = replicator.WriteFor(slot);             // only changes since this client's baseline
+int seq = replicator.Capture(serverWorld);            // once per tick (captures the Replicate channel)
+byte[] delta = replicator.WriteFor(slot, ownerNetId); // only changes since this client's baseline; OwnerOnly scoped to it
 // ...client: view.ApplyDelta(clientWorld, delta); then send view.LastAppliedSeq back ->
 replicator.Acknowledge(slot, ackedSeq);
 ```
+
+`ServerReplicator` is the whole-world variant (every client sees every entity). Add per-client area-of-interest
+scoping with `AoiDeltaReplicator` below when the world is too big to send whole.
 
 ### Area of interest (`InterestGrid`, `AoiDeltaReplicator`)
 
@@ -2684,7 +2689,16 @@ client with the same registry to decode the bytes, but its channel flags are ign
 is on the wire). Rules enforced at registration: a built-in id (`< FirstConsumerTypeId`) must keep `Default` (its
 unframed encoding is the core protocol), and `OwnerOnly` requires `Replicate` - either throws. A registry using only
 `Default` writes byte-identically to before channels existed. `MmoServerSample` demonstrates both shapes (`AggroCounter`
-+ `PrivateStats`).
++ `PrivateStats`). Every client-serving encoder honours these channels, including the whole-world
+`ServerReplicator` (`Capture` takes the `Replicate` channel, `WriteFor(slot, ownerNetId)` scopes `OwnerOnly`).
+
+> **Footgun - `Persist` without `Migrate`.** The four channels are independent, so `Persist` alone (no `Migrate`) is a
+> valid but usually-wrong combination: the component is written to the cell's persist blob (survives a **server
+> restart**) but is NOT captured on cell handoff, so the moment its entity crosses a cell boundary on a seamless
+> sharded world the component silently vanishes - it neither follows the entity nor is re-loaded. Durable state an
+> entity carries around (a player's inventory, a mob's aggro table) wants BOTH `Persist | Migrate` (the `Default`
+> already has both). Reach for `Persist` without `Migrate` only for state that is genuinely bound to the cell rather
+> than to the entity.
 
 > **Cell-blob compatibility.** Changing a component's channels changes what future saves write into a cell's persist
 > blob. An old blob restored through a registry whose extension set shrank already skips unknown ids (the versioned

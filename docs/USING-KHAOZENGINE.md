@@ -1463,10 +1463,12 @@ in with streaming later):
 
 - **`WorldServer`** (headless): a `NetServer` session spawns one player entity per connection, drains that
   client's queued `MoveCommand` each tick via `RemoteCommandQueue`, runs `PlayerMoveSimulator`
-  (`ITickSimulator` over `CharacterMovement.Step`, ground-clamped), and serves each client a per-area-of-
-  interest snapshot (`SnapshotWriter.WriteFiltered` over an `InterestGrid`) framed with the receiver's net id
-  + last-acked move seq. Drive it on a `FixedTickHost` like `MmoServerSample`. The terrain is injected as a
-  plain ground delegate, so NetWorld has no terrain dependency.
+  (`ITickSimulator` over `CharacterMovement.Step`, ground-clamped), and serves each client its area of interest
+  (over an `InterestGrid`) framed with the receiver's net id + last-acked move seq. By default (since 9.18.0) it
+  serves per-client AoI **deltas** - only what changed inside that client's interest since its acknowledged
+  baseline (see "Area-of-interest deltas" below) - and a full `SnapshotWriter.WriteFiltered` snapshot for a client
+  that hasn't opted in. Drive it on a `FixedTickHost` like `MmoServerSample`. The terrain is injected as a plain
+  ground delegate, so NetWorld has no terrain dependency.
 
 ```csharp
 using KhaozEngine.NetWorld;
@@ -2423,8 +2425,11 @@ view.Apply(clientWorld, full);                        // spawn new, despawn gone
 view.Interpolate(clientWorld, renderAlpha);           // smooth interpolatable components between snapshots
 ```
 
-For bandwidth, use the delta path: `ServerReplicator` keeps per-client acked baselines and sends only what
-changed; the client applies deltas and acks the seq it received:
+For bandwidth, use the delta path: `ServerReplicator` keeps per-client acked whole-world baselines and sends only
+what changed; the client applies deltas and acks the seq it received. `ClientReplicationView.ApplyDelta` is
+self-healing - a delta whose baseline is at or before `LastAppliedSeq` is a valid idempotent rebuild (the server
+builds from the last ACKED baseline, which lags under ack latency/loss), so a dropped delta/ack needs no full
+resync:
 
 ```csharp
 var replicator = new ServerReplicator(registry);
@@ -2434,11 +2439,11 @@ byte[] delta = replicator.WriteFor(slot);             // only changes since this
 replicator.Acknowledge(slot, ackedSeq);
 ```
 
-### Area of interest (`InterestGrid`)
+### Area of interest (`InterestGrid`, `AoiDeltaReplicator`)
 
-Send each client only nearby entities. Rebuild the grid each tick from positions, query per client viewpoint,
-and write an interest-filtered snapshot; the existing `Apply` spawns entities that entered the client's view
-and despawns those that left:
+Send each client only nearby entities. Rebuild the grid each tick from positions and query per client viewpoint.
+For the full-snapshot path, write an interest-filtered snapshot; the existing `Apply` spawns entities that entered
+the client's view and despawns those that left:
 
 ```csharp
 grid.Clear();
@@ -2446,6 +2451,22 @@ serverWorld.ForEach<NetId, Position>((e, ref NetId id, ref Position p) => grid.I
 HashSet<int> interest = grid.Query(viewX, viewY, viewRadius);
 byte[] snap = SnapshotWriter.WriteFiltered(serverWorld, registry, interest);
 ```
+
+For the bandwidth win, fuse the two with **`AoiDeltaReplicator`** - a per-client, `NetId`-keyed, AoI-scoped
+baseline+delta encoder (entered->full, stayed+changed->component delta, left->despawn, unchanged->nothing). It is
+what `WorldServer` / `ShardedWorldServer` / `MmoServer` serve on the live path by default (via the `DeltaCapable`
+handshake); to drive it directly:
+
+```csharp
+var aoi = new AoiDeltaReplicator(registry);
+aoi.BeginTick();                                      // once per tick, before the per-client pass
+byte[] delta = aoi.WriteFor(slot, serverWorld, interest);   // only in-AoI changes since this client's baseline
+// ...client: view.ApplyDelta(clientWorld, delta); then send view.LastAppliedSeq back ->
+aoi.Acknowledge(slot, ackedSeq);                      // aoi.Forget(slot) on disconnect
+```
+
+The wire is byte-identical to `ServerReplicator.WriteFor` (a full snapshot is the `baseline -1` delta), and the
+baseline is keyed by `NetId`, so a seamless cell handoff reads as a component delta, never a despawn+respawn.
 
 ### Server-owned NPCs / consumer components (`ShardedWorldServer.SpawnEntity`, `WorldClient.TryGetComponent`)
 

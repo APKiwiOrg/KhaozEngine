@@ -4,7 +4,7 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **9.17.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **9.18.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan under `docs/superpowers/` when it is scheduled.
 
@@ -42,8 +42,9 @@ good, not just read as shapes.
 
 ## Netcode / MMO refinements
 
-- Delta + AoI unification: fold the interest-grid filtering into the delta encoder (one pass instead of two).
-- Delta bit-packing / quantization: shrink per-snapshot bandwidth.
+- Delta bit-packing / quantization: shrink per-delta bandwidth further (on top of the AoI delta path).
+- Phase 2 reliability: unreliable-sequenced delta channel with acked-baseline rebuild (opt-in, replacing the
+  current reliable-ordered phase 1).
 - SpaceGame as the first netcode adopter / testbed: validate the authoritative stack on a real game.
 
 ## Overworld / world content

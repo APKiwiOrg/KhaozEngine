@@ -8,15 +8,19 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   and inside client prediction, so the two stay in lockstep.
 - **`WorldServer`** is a single-`World` authoritative movement server: a `NetServer` session layer spawns
   one player entity per connection, drains that client's queued `MoveCommand` each tick, runs the ground-
-  clamped sim, and serves each client a per-area-of-interest snapshot (`SnapshotWriter.WriteFiltered` over
-  an `InterestGrid`) prefixed with that client's net id + last-acked move seq.
+  clamped sim, and serves each client its area of interest prefixed with that client's net id + last-acked move
+  seq. By default (since 9.18.0) it serves per-client AoI **deltas** (only what changed since each client's
+  acknowledged baseline; see the delta section below) and falls back to a full `SnapshotWriter.WriteFiltered`
+  snapshot for a client that hasn't opted in.
 - **`ShardedWorldServer`** (+ `ShardedWorldServerConfig`) runs that same movement stack across a
   [`KhaozEngine.Sharding`](../KhaozEngine.Sharding) `ShardHost` grid of cells, so the world scales past a single
   `World`: each tick routes every client's `MoveCommand` to the cell that owns its player, steps each cell's
   `PlayerMovementSystem` via `ShardHost.Tick` (scheduler-fanned, deterministic), transfers authority for boundary
   crossers exactly-once (`ProcessHandoffs`, `NetId` stable), refreshes border ghosts (`SyncGhosts`), then serves
-  each client its single home-cell area-of-interest snapshot (owned + ghosts) framed identically. The
-  `WorldClient` and `MoveProtocol` are unchanged - a client cannot tell it is talking to a sharded server.
+  each client its single home-cell area of interest (owned + ghosts) framed identically - as an AoI delta by
+  default (keyed by `NetId`, so a boundary crossing stays a component delta, never a despawn+respawn), or a full
+  snapshot for a non-opted-in client. The `WorldClient` and `MoveProtocol` are unchanged - a client cannot tell it
+  is talking to a sharded server.
 - **`WorldClient`** wraps `NetClient` + `ClientReplicationView` + `ClientPrediction` and exposes
   `EntityRenderState[]` (local player predicted + reconciled, remotes from replicated positions - smoothly
   interpolated between snapshots by default, so a remote glides instead of teleporting one ~tick-rate snapshot-step
@@ -156,3 +160,25 @@ per entity. All four pieces are additive and default to today's behaviour.
   that net id (the `EntityRenderState.Id` value). Use it to read a server-assigned discriminator (NPC kind, HP,
   faction) and pick a model. Returns `false` against an older server that never sends `T` (no handshake, no
   disconnect). `MmoServerSample` demonstrates the whole seam with a `Creature` kind component.
+
+## Area-of-interest delta replication (since 9.18.0)
+
+The live serving path sends each client only what changed inside its interest set per tick (an
+[`AoiDeltaReplicator`](../KhaozEngine.Replication)) instead of a full snapshot of every in-AoI entity every tick.
+On a 16-player dense hotspot at 30 Hz idle that is ~25 vs ~573 bytes/client/tick - a 95%+ cut, and static entities
+(NPCs, names) stop paying full freight. It is **on by default** and upgrades independently of the client, at the
+same version-skew bar as 9.16.0.
+
+- **Config.** **`WorldServerConfig.DeltaReplication`** / **`ShardedWorldServerConfig.DeltaReplication`** (default
+  **true**; set false to force full snapshots for every client) and **`WorldClientConfig.RequestDeltaReplication`**
+  (default **true**). Reliability is phase 1: reliable-ordered, deltas built from each client's last acknowledged
+  baseline, so a dropped delta/ack self-heals on the next tick.
+- **Handshake.** On join a delta-capable `WorldClient` sends a **`MoveProtocol.ClientControlKind.DeltaCapable`**
+  hello (a 2-byte control an older server decodes as an unknown control and harmlessly ignores). The server upgrades
+  that slot to **`ServerFrameKind.Delta`** frames; the client applies them with `ClientReplicationView.ApplyDelta`,
+  reconciles exactly as for a snapshot, and acks each applied seq (**`MoveProtocol.EncodeReplicationAck`**, a 6-byte
+  frame distinct in length from a move or a control) so the server advances its baseline.
+- **Compatibility (both directions, no disconnect).** A full snapshot is the `baseline -1` delta, so the wire is a
+  strict superset. An older client never advertises `DeltaCapable`, so a new server keeps serving it full snapshots;
+  a new client against an older server never receives a `Delta` frame, so it keeps applying full snapshots and sends
+  no acks. The 9.16.0 skip-unknown-extension + malformed-length guards are unchanged on the delta wire.

@@ -104,8 +104,7 @@ public sealed class MmoServer : ICellPersistenceHost
     public int SpawnEntity(float x, float y, Action<World, Entity>? configure = null)
     {
         int netId = nextNetId++;
-        Entity e = host.SpawnAt(x, y, out CellSim cell);
-        cell.World.Set(e, new NetId(netId));
+        Entity e = host.SpawnOwned(x, y, netId, out CellSim cell); // eager: registers netId in the O(1) ownership index
         cell.World.Set(e, new Position { X = x, Y = y });
         configure?.Invoke(cell.World, e);
         return netId;
@@ -255,6 +254,7 @@ public sealed class MmoServer : ICellPersistenceHost
             if (cell.World.TryGet(e, out Position p))
                 store.SaveAsync($"player/{slot}", MmoProtocol.EncodeMove(0, new MoveCommand(p.X, p.Y)))
                     .GetAwaiter().GetResult(); // leave is rare; off the hot path
+            cell.UnregisterOwned(playerNetId); // eager: drop it from the ownership index before despawning
             cell.World.Despawn(e);
         }
 

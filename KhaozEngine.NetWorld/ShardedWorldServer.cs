@@ -335,8 +335,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
     public int SpawnEntity(float x, float z, Action<World, Entity>? configure = null)
     {
         int netId = nextNetId++;
-        Entity e = host.SpawnAt(x, z, out CellSim cell);
-        cell.World.Set(e, new NetId(netId));
+        Entity e = host.SpawnOwned(x, z, netId, out CellSim cell); // eager: registers netId in the O(1) ownership index
         cell.World.Set(e, new ReplicatedPosition { Value = new Vector3(x, 0f, z) });
         configure?.Invoke(cell.World, e);
         return netId;
@@ -605,8 +604,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
         PlayerMoveState state = spawnClamp.Step(new PlayerMoveState { Position = spawn }, MoveCommand.Idle, config.TickSeconds);
 
         int netId = nextNetId++;
-        Entity e = host.SpawnAt(state.Position.X, state.Position.Z, out CellSim cell);
-        cell.World.Set(e, new NetId(netId));
+        Entity e = host.SpawnOwned(state.Position.X, state.Position.Z, netId, out CellSim cell); // eager index register
         cell.World.Set(e, new ReplicatedPosition { Value = state.Position });
         cell.World.Set(e, MovementState.From(state));   // vertical axis: present at spawn, carried across handoff
         // A display name on the connect token rides along the same way (a registered component, migrated on handoff).
@@ -635,7 +633,10 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
             if (accountIdBySlot.TryGetValue(slot, out string? acct) && TryGetPlayerState(slot, out PlayerMoveState final))
                 PlayerLeaving?.Invoke(slot, acct, final);
             if (host.TryGetOwner(netId, out CellSim cell, out Entity e) && cell.World.IsAlive(e))
+            {
+                cell.UnregisterOwned(netId); // eager: drop it from the ownership index before despawning
                 cell.World.Despawn(e);
+            }
         }
         host.UnbindClient(slot);
         netIdBySlot.Remove(slot);

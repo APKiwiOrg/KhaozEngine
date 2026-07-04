@@ -15,6 +15,17 @@ process.
   `CellCreated` event fires once per cell the first time its coordinate is instantiated (from `CellFor`,
   `SpawnAt`, a handoff destination, or `EnsureCell`) - the load hook a per-cell persistence layer subscribes to.
 
+**Ownership lookup is O(1) (since 9.31.0).** `ShardHost.TryGetOwner(netId, out cell, out entity)` and
+`CellSim.TryGetOwned(netId, out entity)` resolve the cell/entity that authoritatively owns a NetId in O(1) off a
+maintained netId -> (cell, entity) index, not a linear scan across every cell - so calling them per player and per
+NPC per tick stays flat as the world grows. Spawn owned entities through `ShardHost.SpawnOwned(x, y, netId, out cell)`
+(spawn + assign `NetId` + register in one step) so they are eagerly indexed. `CellSim.RegisterOwned(netId, entity)`
+and `UnregisterOwned(netId)` register/drop an owned entity managed through the raw `World` directly. The index is
+self-healing: a lookup miss falls back to a scan behind the index (so the raw `SpawnAt` + `World.Set(new NetId(..))`
+idiom without a register still resolves) and a stale entry (out-of-band despawn, or the entity became a ghost /
+started migrating) is reaped on lookup. `OwnerCount(netId)` is deliberately an independent from-scratch scan, the
+exactly-once handoff oracle that can observe a duplicate (2) or loss (0) the single-valued index never could.
+
 Per-cell persistence primitives on `CellSim`, storage-agnostic (no new dependency): `SnapshotOwned(excludedNetIds)`
 returns a durable Replication snapshot of the cell's owned (not `Ghost`, not `Migrating`) entities whose NetId is
 not in the excluded set, so a caller can persist non-player state while player entities persist separately.

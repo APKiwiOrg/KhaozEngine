@@ -39,6 +39,11 @@ public sealed class ShardHost
     private readonly ICellLink link;
     private readonly Dictionary<CellCoord, CellSim> cells = new();
     private readonly List<CellSim> ordered = new();
+    // netId -> the coord of the cell that authoritatively owns it: the O(1) half of the ownership index (gap 6 of the
+    // MMO arch review) that replaces TryGetOwner's linear cell scan. Maintained purely as a projection of each cell's
+    // owned index via the CellSim register/unregister hooks wired in GetOrCreateCell, so restore / adopt / spawn /
+    // migrate-freeze all propagate here with no extra bookkeeping. OwnerCount stays an independent scan (the oracle).
+    private readonly Dictionary<int, CellCoord> ownerCell = new();
     private readonly Dictionary<int, int> clientPlayerNetId = new(); // session slot -> the client's player NetId
     private IJobScheduler scheduler;
     private CellSim[] tickBuffer = Array.Empty<CellSim>(); // reused per-tick fan-out snapshot of `ordered`
@@ -129,6 +134,14 @@ public sealed class ShardHost
         if (!cells.TryGetValue(coord, out CellSim? cell))
         {
             cell = new CellSim(coord, tickSeconds, registry, interestCellSize);
+            // Project this cell's owned index into the host netId -> cell map. The register hook always wins (a cell
+            // adopting an entity overwrites the prior owner); the unregister hook only clears the entry if it still
+            // points here, so a stale release after a handoff can't wipe the new owner's entry.
+            cell.OwnedRegisteredHook = (netId, _) => ownerCell[netId] = coord;
+            cell.OwnedUnregisteredHook = netId =>
+            {
+                if (ownerCell.TryGetValue(netId, out CellCoord owner) && owner == coord) ownerCell.Remove(netId);
+            };
             cells[coord] = cell;
             ordered.Add(cell);
             CellCreated?.Invoke(cell);
@@ -148,6 +161,23 @@ public sealed class ShardHost
     {
         cell = CellFor(worldX, worldY);
         return cell.World.Spawn();
+    }
+
+    /// <summary>
+    /// Spawns a freshly-owned entity for <paramref name="netId"/> in the cell containing (<paramref name="worldX"/>,
+    /// <paramref name="worldY"/>), assigns its <see cref="NetId"/>, and registers it in the O(1) ownership index in
+    /// one step - the eager spawn choke point. Equivalent to <see cref="SpawnAt"/> then <c>World.Set(new NetId(..))</c>
+    /// then <see cref="CellSim.RegisterOwned"/>, so <see cref="TryGetOwner"/> resolves it without ever falling back to
+    /// a scan. Returns the new entity; <paramref name="cell"/> is the cell it landed in, so the caller can set its
+    /// position and other components.
+    /// </summary>
+    public Entity SpawnOwned(float worldX, float worldY, int netId, out CellSim cell)
+    {
+        cell = CellFor(worldX, worldY);
+        Entity e = cell.World.Spawn();
+        cell.World.Set(e, new NetId(netId));
+        cell.RegisterOwned(netId, e);
+        return e;
     }
 
     /// <summary>
@@ -273,6 +303,7 @@ public sealed class ShardHost
                 source.World, registry, new HashSet<int> { netId }, ReplicationChannels.Migrate, ownerNetId: null);
             link.Send(new CellMessage(source.Coord, dest, CellMessageKind.Migrate, capture));
             source.World.Set(entity, new Migrating { Destination = dest });
+            source.UnregisterOwned(netId); // frozen: relinquished here, so drop it from the owned index at once
         }
 
         // Phase 2: destinations adopt the migrated entities and ack their source.
@@ -299,21 +330,39 @@ public sealed class ShardHost
     /// </summary>
     public int OwnerCount(int netId)
     {
+        // Deliberately an independent from-scratch scan (CellSim.ScanOwned), NOT an index read: it is the oracle that
+        // cross-checks the exactly-once handoff invariant, so it must be able to observe a duplicate (2) or loss (0)
+        // that a structurally-single-valued index never could.
         int n = 0;
         for (int i = 0; i < ordered.Count; i++)
-            if (ordered[i].TryGetOwned(netId, out _)) n++;
+            if (ordered[i].ScanOwned(netId, out _)) n++;
         return n;
     }
 
-    /// <summary>Finds the cell that owns <paramref name="netId"/> and the owned entity. False if no cell owns it.</summary>
+    /// <summary>
+    /// Finds the cell that owns <paramref name="netId"/> and the owned entity, in O(1) off the netId -&gt; cell index.
+    /// False if no cell owns it. On an index miss or a stale entry it falls back to a scan across cells behind the
+    /// index (rare: an unregistered raw spawn, or the indexed owner just lost the entity); the fallback re-caches the
+    /// hit via <see cref="CellSim.TryGetOwned"/>, so the next lookup is O(1) again.
+    /// </summary>
     public bool TryGetOwner(int netId, out CellSim cell, out Entity entity)
     {
+        if (ownerCell.TryGetValue(netId, out CellCoord coord)
+            && cells.TryGetValue(coord, out CellSim? c)
+            && c.TryGetOwned(netId, out entity))
+        {
+            cell = c;
+            return true;
+        }
         for (int i = 0; i < ordered.Count; i++)
             if (ordered[i].TryGetOwned(netId, out entity)) { cell = ordered[i]; return true; }
         cell = null!;
         entity = default;
         return false;
     }
+
+    /// <summary>The maintained host ownership index (netId -&gt; owning cell coord), exposed for tests to check against a scan.</summary>
+    internal IReadOnlyDictionary<int, CellCoord> OwnerCellEntries => ownerCell;
 
     /// <summary>
     /// Binds a client (session <paramref name="slot"/>, e.g. from <c>NetServer</c>) to its player entity

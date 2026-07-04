@@ -2668,6 +2668,13 @@ foreach (EntityRenderState s in client.Snapshot())
 `WorldClient.TryGetComponent<T>` returns `false` against an older server that never sends `T` (no handshake, no
 disconnect). `MmoServerSample` wires the whole seam with a `Creature` kind component.
 
+The `TryGetOwner(npcId)`-per-NPC-per-tick pattern above is O(1) (since 9.31.0): `ShardHost.TryGetOwner` /
+`CellSim.TryGetOwned` resolve the owning cell/entity off a maintained netId -> (cell, entity) index, not a linear
+scan, so the per-tick cost stays flat as the NPC population and world grow. If you spawn owned entities directly on
+the host rather than through `SpawnEntity`, use `ShardHost.SpawnOwned(x, y, netId, out cell)` (or call
+`CellSim.RegisterOwned(netId, entity)` after assigning the `NetId`) so they are eagerly indexed - an unregistered
+raw spawn still resolves through a one-time scan fallback, just not for free.
+
 #### Per-registration channels: server-only and owner-only components (`ReplicationChannels`, since 9.28.0)
 
 One registered component's bytes feed four consumers - client area-of-interest serving, border ghosting, cell handoff,
@@ -3080,13 +3087,16 @@ var registry = new ReplicationRegistry();
 // register replicated components ...
 var host = new ShardHost(cellSize: 256f, tickSeconds: 1f / 30f, registry);
 
-// Spawn into the cell that owns a position (the cell is created on first touch):
-Entity e = host.SpawnAt(worldX, worldY, out CellSim cell);
-cell.World.Set(e, new NetId(nextId++));
+// Spawn an owned entity into the cell that owns a position (the cell is created on first touch). SpawnOwned
+// assigns the NetId and registers it in the O(1) ownership index in one step:
+Entity e = host.SpawnOwned(worldX, worldY, nextId++, out CellSim cell);
 cell.World.Set(e, new Position { X = worldX, Y = worldY });
 
 // One host tick advances every cell's fixed-tick sim (cells step their ECS systems per tick):
 host.Tick(elapsedSeconds);
+
+// Resolve the owner of a NetId in O(1) (cell + owned entity), e.g. to route input or drive an NPC each tick:
+if (host.TryGetOwner(netId, out CellSim owner, out Entity owned)) { /* owner.World.Set(owned, ...) */ }
 
 // Per cell, capture/query when you choose (snapshot rate is decoupled from tick rate):
 foreach (CellSim c in host.Cells)
@@ -3094,6 +3104,9 @@ foreach (CellSim c in host.Cells)
 ```
 
 `CellCoord.FromWorld(x, y, cellSize)` floors a position into its cell (same math as `InterestGrid`).
+`TryGetOwner` / `CellSim.TryGetOwned` resolve ownership off a maintained netId -> (cell, entity) index (O(1),
+since 9.31.0). Spawn through `SpawnOwned` (or call `cell.RegisterOwned(netId, e)` after assigning a `NetId` on a
+raw `SpawnAt`) so the entity is eagerly indexed.
 
 **Border ghosting (Phase 3B).** Give the host an `overlapMargin` and a `CellPositionAccessor`, then call
 `SyncGhosts()`: owned entities within the margin of a cell edge are mirrored into the neighbor across that edge

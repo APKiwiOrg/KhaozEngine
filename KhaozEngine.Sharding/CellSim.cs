@@ -30,6 +30,17 @@ public sealed class CellSim
     private readonly ReplicationRegistry registry;
     private readonly Dictionary<CellCoord, ClientReplicationView> ghostViews = new();
 
+    // netId -> the entity this cell authoritatively owns (present, alive, not a Ghost, not Migrating). The O(1)
+    // ownership index (gap 6 of the MMO arch review) that replaces the linear World.ForEach in TryGetOwned. Kept in
+    // sync at the ownership choke points - RegisterOwned/UnregisterOwned, called from the spawn path, AdoptFromMigrate,
+    // RestoreOwned, ReleaseMigrating and the ShardHost migrate-freeze. ScanOwned behind it is the miss-fallback + oracle.
+    private readonly Dictionary<int, Entity> owned = new();
+
+    // Wired by the owning ShardHost when it creates this cell, so the host's netId -> cell index tracks every
+    // register/unregister without CellSim knowing about the host. Null for a standalone cell (direct construction).
+    internal Action<int, Entity>? OwnedRegisteredHook;
+    internal Action<int>? OwnedUnregisteredHook;
+
     /// <param name="coord">This cell's coordinate in the world grid.</param>
     /// <param name="tickSeconds">Fixed timestep, seconds per tick (e.g. <c>1f / 30f</c>). Must be &gt; 0.</param>
     /// <param name="registry">Shared replication registry (the same component codecs across all cells).</param>
@@ -145,10 +156,60 @@ public sealed class CellSim
     }
 
     /// <summary>
+    /// Records that this cell authoritatively owns <paramref name="entity"/> under <paramref name="netId"/>, so
+    /// <see cref="TryGetOwned"/> (and <see cref="ShardHost.TryGetOwner"/>) resolve it in O(1) instead of scanning.
+    /// Call right after assigning a freshly-owned entity its <see cref="NetId"/> (the spawn choke point);
+    /// <see cref="AdoptFromMigrate"/> and <see cref="RestoreOwned"/> call it for you, and <see cref="ShardHost.SpawnOwned"/>
+    /// wraps the whole spawn+assign+register. Overwrites any prior entry for <paramref name="netId"/>.
+    /// </summary>
+    public void RegisterOwned(int netId, Entity entity)
+    {
+        owned[netId] = entity;
+        OwnedRegisteredHook?.Invoke(netId, entity);
+    }
+
+    /// <summary>
+    /// Drops <paramref name="netId"/> from this cell's owned index (the entity was despawned or is no longer owned
+    /// here). Call at the despawn / migrate-freeze choke points. Returns false if the netId was not indexed. A stale
+    /// entry is also reaped lazily by <see cref="TryGetOwned"/>, so an unreported despawn is still correct - just not
+    /// reflected in the index until the next lookup.
+    /// </summary>
+    public bool UnregisterOwned(int netId)
+    {
+        if (!owned.Remove(netId)) return false;
+        OwnedUnregisteredHook?.Invoke(netId);
+        return true;
+    }
+
+    /// <summary>The maintained owned index (netId -&gt; owned entity), exposed for tests to check against a scan.</summary>
+    internal IReadOnlyDictionary<int, Entity> OwnedIndexEntries => owned;
+
+    /// <summary>
     /// Finds an entity this cell <b>owns</b> by its <see cref="NetId"/> value: present, alive, and neither a
-    /// <see cref="Ghost"/> nor <see cref="Migrating"/> (i.e. authoritatively simulated here).
+    /// <see cref="Ghost"/> nor <see cref="Migrating"/> (i.e. authoritatively simulated here). O(1) off the owned
+    /// index (<see cref="RegisterOwned"/>); a stale index entry (an out-of-band despawn, or the entity became a
+    /// ghost / started migrating) is reaped and treated as absent. On an index miss it falls back once to a
+    /// <see cref="ScanOwned"/> scan behind the index and caches the hit, so the pre-index raw spawn idiom
+    /// (<c>SpawnAt</c> + <c>World.Set(new NetId(..))</c> without <see cref="RegisterOwned"/>) still resolves.
     /// </summary>
     public bool TryGetOwned(int netId, out Entity entity)
+    {
+        if (owned.TryGetValue(netId, out entity))
+        {
+            if (World.IsAlive(entity) && !World.Has<Ghost>(entity) && !World.Has<Migrating>(entity)) return true;
+            UnregisterOwned(netId); // stale index entry: reap it, then fall through (a re-owned copy may still exist)
+        }
+        if (ScanOwned(netId, out entity)) { RegisterOwned(netId, entity); return true; }
+        entity = default;
+        return false;
+    }
+
+    /// <summary>
+    /// The linear ground-truth scan for an owned entity (the pre-index <c>World.ForEach</c>), kept behind the index
+    /// as <see cref="TryGetOwned"/>'s miss-fallback and as the independent oracle for <see cref="ShardHost.OwnerCount"/>
+    /// and tests - never the per-lookup fast path. Returns the last matching non-ghost, non-migrating entity.
+    /// </summary>
+    internal bool ScanOwned(int netId, out Entity entity)
     {
         Entity found = default;
         bool ok = false;
@@ -192,7 +253,11 @@ public sealed class CellSim
         var view = new ClientReplicationView(registry);
         view.Apply(World, snapshot);
         var netIds = new List<int>(view.Entities.Count);
-        foreach (KeyValuePair<int, Entity> kv in view.Entities) netIds.Add(kv.Key);
+        foreach (KeyValuePair<int, Entity> kv in view.Entities)
+        {
+            netIds.Add(kv.Key);
+            RegisterOwned(kv.Key, kv.Value); // restored entities are owned here -> index them
+        }
         return netIds;
     }
 
@@ -221,7 +286,11 @@ public sealed class CellSim
         var adopter = new ClientReplicationView(registry);
         adopter.Apply(World, snapshot);
         var netIds = new List<int>(adopter.Entities.Count);
-        foreach (KeyValuePair<int, Entity> kv in adopter.Entities) netIds.Add(kv.Key);
+        foreach (KeyValuePair<int, Entity> kv in adopter.Entities)
+        {
+            netIds.Add(kv.Key);
+            RegisterOwned(kv.Key, kv.Value); // the adopted entity is now owned here -> index it
+        }
         foreach (int netId in netIds) DespawnGhost(netId); // drop any pre-existing ghost of the now-owned entity
         return netIds;
     }
@@ -236,6 +305,7 @@ public sealed class CellSim
             if (id.Value == netId) { found = e; ok = true; }
         });
         if (ok && World.IsAlive(found)) World.Despawn(found);
+        if (ok) UnregisterOwned(netId); // defensive: the migrate-freeze already unregistered it, so normally a no-op
         return ok;
     }
 

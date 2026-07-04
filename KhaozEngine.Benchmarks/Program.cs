@@ -96,6 +96,36 @@ Console.WriteLine();
 Console.WriteLine("Entities are the parallel axis for a single hot cell: ParallelForEach splits the archetype's rows across");
 Console.WriteLine($"up to {Environment.ProcessorCount} cores. Trivial work is fork/join-bound (parallel < 1x); a realistic hot system scales toward ~P×.");
 
+// ---- Ownership-lookup axis (gap 6): ShardHost.TryGetOwner - the per-player / per-NPC-per-tick call - is now O(1)
+// off the netId -> (cell, entity) index instead of a linear World.ForEach across every cell. Sweeping the total
+// entity count shows the index cost stays FLAT while the pre-index naive scan grows linearly (the quadratic wall the
+// NPC population used to hit). Fixed grid, growing entities/cell, so the sweep varies N with the cell count held. ----
+int ownerWarmup = quick ? 3 : 8;
+int ownerTimed = quick ? 10 : 40;
+(int gw, int gh, int perCell)[] ownerLevels = quick
+    ? new[] { (4, 4, 64), (4, 4, 256), (4, 4, 1024) }
+    : new[] { (8, 8, 64), (8, 8, 256), (8, 8, 1024), (8, 8, 4096) };
+
+_ = OwnerLookupBenchmark.Measure(4, 4, 64, ownerWarmup, ownerTimed); // prime both paths before timing
+
+Console.WriteLine();
+Console.WriteLine("ownership-lookup axis - ShardHost.TryGetOwner: O(1) index vs pre-index linear scan, sweeping total entities (gap 6)");
+const string ohdr = "{0,12} {1,15} {2,15} {3,12}";
+Console.WriteLine(string.Format(ci, ohdr, "N (entities)", "index ns/lookup", "scan ns/lookup", "scan/index"));
+Console.WriteLine(new string('-', 12 + 15 + 15 + 12 + 4));
+foreach ((int gw, int gh, int perCell) in ownerLevels)
+{
+    OwnerLookupBenchmark.Point pt = OwnerLookupBenchmark.Measure(gw, gh, perCell, ownerWarmup, ownerTimed);
+    Console.WriteLine(string.Format(ci, ohdr,
+        pt.TotalEntities,
+        pt.IndexNs.ToString("F1", ci),
+        pt.ScanNs.ToString("F1", ci),
+        pt.Ratio.ToString("F0", ci) + "x"));
+}
+Console.WriteLine();
+Console.WriteLine("index ns/lookup stays ~constant as N grows (O(1) dictionary hit); scan ns/lookup grows ~linearly with N.");
+Console.WriteLine("The per-tick cost is that x (players + NPCs), so the index turns an O(pop x entities) quadratic into O(pop).");
+
 // A lighter matrix for a quick smoke: same three shapes, smaller N and fewer ticks so a run is sub-second.
 static IReadOnlyList<BenchmarkConfig> QuickMatrix()
 {

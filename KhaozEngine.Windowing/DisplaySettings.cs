@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using KhaozEngine.Gpu;
 
 namespace KhaozEngine.Windowing
@@ -44,11 +45,13 @@ namespace KhaozEngine.Windowing
     }
 
     /// <summary>
-    /// The cohesive runtime display-control surface: present mode, frame cap, window mode, and resolution, all
-    /// settable mid-session with no crash and no leaked swapchain. Implemented by <see cref="AppWindow"/> and
-    /// surfaced on the <c>GameApp</c> facade (<c>GameApp.Display</c>). Each member is safe to call at any time after
-    /// the window exists; <see cref="ApplyDisplay"/> applies a whole <see cref="DisplaySettings"/> at once (window
-    /// mode and resolution first, then frame cap, then present mode) for a settings-screen "Apply" button.
+    /// The cohesive runtime display-control surface: present mode, frame cap, window mode, resolution, and window
+    /// placement (position + monitor), all settable mid-session with no crash and no leaked swapchain. Implemented
+    /// by <see cref="AppWindow"/> and surfaced on the <c>GameApp</c> facade (<c>GameApp.Display</c>). Each member is
+    /// safe to call at any time after the window exists; <see cref="ApplyDisplay"/> applies a whole
+    /// <see cref="DisplaySettings"/> at once (window mode and resolution first, then placement, then frame cap, then
+    /// present mode) for a settings-screen "Apply" button. Position + monitor let a consumer persist and restore the
+    /// full window placement across launches; <see cref="EnsureVisible"/> clamps a restored window back on-screen.
     /// </summary>
     public interface IDisplaySettings
     {
@@ -75,12 +78,40 @@ namespace KhaozEngine.Windowing
         /// windowed. Non-positive sizes are ignored.</summary>
         void Resize(int width, int height);
 
-        /// <summary>A snapshot of the current display state (safe to read any time).</summary>
+        /// <summary>Current window top-left X in virtual-desktop (screen) coordinates.</summary>
+        int WindowX { get; }
+
+        /// <summary>Current window top-left Y in virtual-desktop (screen) coordinates.</summary>
+        int WindowY { get; }
+
+        /// <summary>Move the window top-left to (<paramref name="x"/>, <paramref name="y"/>) in virtual-desktop
+        /// coordinates. Applied immediately in <see cref="WindowMode.Windowed"/>; in a fullscreen mode it is
+        /// remembered as the windowed position to restore. Symmetric with <see cref="Resize"/>.</summary>
+        void MoveTo(int x, int y);
+
+        /// <summary>The connected monitors (index, name, bounds in window coordinates). Empty when no display is
+        /// available (headless).</summary>
+        IReadOnlyList<MonitorInfo> Monitors { get; }
+
+        /// <summary>Index into <see cref="Monitors"/> of the monitor currently holding the window (the one containing
+        /// its centre, else greatest overlap / nearest), or -1 when unknown (headless).</summary>
+        int CurrentMonitorIndex { get; }
+
+        /// <summary>Place the window on the monitor at <paramref name="index"/> into <see cref="Monitors"/>: centred
+        /// when windowed, covering the monitor when borderless fullscreen. Out-of-range indices are ignored.</summary>
+        void MoveToMonitor(int index);
+
+        /// <summary>Clamp the window back on-screen, e.g. after restoring a saved position whose monitor is gone
+        /// (unplugged / different layout). A no-op when the window is already adequately visible.</summary>
+        void EnsureVisible();
+
+        /// <summary>A snapshot of the current display state, including position (safe to read any time).</summary>
         DisplaySettings CurrentDisplay { get; }
 
-        /// <summary>Apply a whole settings snapshot mid-session. Order: window mode, then resolution, then frame cap,
-        /// then present mode (so the Metal vsync/cap warning reflects the final frame cap). Safe to call at any time;
-        /// no swapchain is recreated for a present-mode change and none is leaked for a resolution change.</summary>
+        /// <summary>Apply a whole settings snapshot mid-session. Order: window mode, then resolution, then placement
+        /// (clamp on-screen + move, when the snapshot carries a position), then frame cap, then present mode (so the
+        /// Metal vsync/cap warning reflects the final frame cap). Safe to call at any time; no swapchain is recreated
+        /// for a present-mode change and none is leaked for a resolution change.</summary>
         void ApplyDisplay(in DisplaySettings settings);
     }
 }

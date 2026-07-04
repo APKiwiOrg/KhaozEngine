@@ -92,10 +92,12 @@ namespace KhaozEngine.Windowing
         FrameLimiter _frameLimiter;
         int _frameCapHz;
         // Runtime display state. PresentMode/WindowMode start from the ctor; _windowedSize is the size to restore
-        // when leaving a fullscreen mode; _warnedMetalVsync dedups the one-time Metal-vsync-needs-a-cap warning.
+        // when leaving a fullscreen mode; _windowedPos is the windowed position to restore (null = leave it where
+        // the OS put it, until the first MoveTo); _warnedMetalVsync dedups the one-time Metal-vsync-needs-a-cap warning.
         PresentMode _presentMode;
         WindowMode _windowMode = WindowMode.Windowed;
         Vector2D<int> _windowedSize;
+        Vector2D<int>? _windowedPos;
         bool _warnedMetalVsync;
 
         /// <summary>
@@ -161,19 +163,98 @@ namespace KhaozEngine.Windowing
                 _window.Size = _windowedSize; // FramebufferResize -> ResizeSwapchain keeps the swapchain in step.
         }
 
-        /// <summary>A snapshot of the current runtime display state.</summary>
-        public DisplaySettings CurrentDisplay => new(_presentMode, _frameCapHz, _windowMode, WindowWidth, WindowHeight);
+        /// <summary>Current window top-left X in virtual-desktop (screen) coordinates.</summary>
+        public int WindowX => _window.Position.X;
+        /// <summary>Current window top-left Y in virtual-desktop (screen) coordinates.</summary>
+        public int WindowY => _window.Position.Y;
+
+        /// <summary>Move the window top-left to (<paramref name="x"/>, <paramref name="y"/>) in virtual-desktop
+        /// coordinates. Applied immediately when windowed; in a fullscreen mode it is remembered as the windowed
+        /// position to restore when returning to windowed (symmetric with <see cref="Resize"/>).</summary>
+        public void MoveTo(int x, int y)
+        {
+            _windowedPos = new Vector2D<int>(x, y);
+            if (_windowMode == WindowMode.Windowed) _window.Position = _windowedPos.Value;
+        }
+
+        /// <summary>The connected monitors (index, name, bounds in window coordinates); empty on headless / no display.</summary>
+        public IReadOnlyList<MonitorInfo> Monitors => EnumerateMonitors();
+
+        /// <summary>Index into <see cref="Monitors"/> of the monitor currently holding the window, or -1 when unknown.</summary>
+        public int CurrentMonitorIndex
+            => WindowPlacement.MonitorIndexFor(WindowX, WindowY, WindowWidth, WindowHeight, Monitors);
+
+        /// <summary>Place the window on the monitor at <paramref name="index"/> into <see cref="Monitors"/>: centred
+        /// when windowed, re-covering the monitor when borderless fullscreen. Out-of-range indices are ignored.</summary>
+        public void MoveToMonitor(int index)
+        {
+            IReadOnlyList<MonitorInfo> monitors = Monitors;
+            if (index < 0 || index >= monitors.Count) return;
+            MonitorInfo m = monitors[index];
+            var (x, y) = WindowPlacement.CenterOn(m, WindowWidth, WindowHeight);
+            if (_windowMode == WindowMode.BorderlessFullscreen)
+            {
+                // Cover the chosen monitor directly from its bounds (no _window.Monitor pinning needed).
+                RealizePlan(WindowModePlanner.Compute(WindowMode.BorderlessFullscreen,
+                    m.X, m.Y, m.Width, m.Height, _windowedSize.X, _windowedSize.Y));
+                _windowedPos = new Vector2D<int>(x, y); // remembered for a later return to windowed
+            }
+            else MoveTo(x, y);
+        }
+
+        /// <summary>Clamp the window back on-screen (e.g. after restoring a saved position whose monitor is gone).
+        /// A no-op when the window is already adequately visible.</summary>
+        public void EnsureVisible()
+        {
+            var (x, y) = WindowPlacement.ClampVisible(WindowX, WindowY, WindowWidth, WindowHeight, Monitors);
+            MoveTo(x, y);
+        }
+
+        /// <summary>Build the <see cref="MonitorInfo"/> list from Silk's monitor enumeration (index, name, bounds in
+        /// window coordinates). Empty on headless / no display (same try-guard style as <see cref="CurrentMonitorBounds"/>).
+        /// AppWindow is the only class that touches the Silk monitor statics; the placement math is pure in
+        /// <see cref="WindowPlacement"/>.</summary>
+        IReadOnlyList<MonitorInfo> EnumerateMonitors()
+        {
+            var list = new List<MonitorInfo>();
+            try
+            {
+                int i = 0;
+                foreach (IMonitor m in Monitor.GetMonitors(_window))
+                {
+                    var b = m.Bounds;
+                    list.Add(new MonitorInfo(i, m.Name ?? $"Monitor {i}", b.Origin.X, b.Origin.Y, b.Size.X, b.Size.Y));
+                    i++;
+                }
+            }
+            catch
+            {
+                list.Clear();
+            }
+            return list;
+        }
+
+        /// <summary>A snapshot of the current runtime display state, including window position.</summary>
+        public DisplaySettings CurrentDisplay =>
+            new(_presentMode, _frameCapHz, _windowMode, WindowWidth, WindowHeight, WindowX, WindowY);
 
         /// <summary>
         /// Apply a whole <see cref="DisplaySettings"/> snapshot mid-session (a settings-screen "Apply"): window mode
-        /// first, then resolution, then frame cap, then present mode (so the Metal vsync/cap warning reflects the final
-        /// cap). Every step is individually safe at any time; no swapchain is recreated for the present-mode change and
-        /// none is leaked for the resolution change.
+        /// first, then resolution, then placement (clamp on-screen + move, when the snapshot carries a position), then
+        /// frame cap, then present mode (so the Metal vsync/cap warning reflects the final cap). Every step is
+        /// individually safe at any time; no swapchain is recreated for the present-mode change and none is leaked for
+        /// the resolution change.
         /// </summary>
         public void ApplyDisplay(in DisplaySettings settings)
         {
             if (settings.WindowMode != _windowMode) ApplyWindowMode(settings.WindowMode);
             if (settings.Width > 0 && settings.Height > 0) Resize(settings.Width, settings.Height);
+            if (settings.HasPosition)
+            {
+                // Clamp against the final size so a stale saved position on a now-gone monitor self-corrects.
+                var (x, y) = WindowPlacement.ClampVisible(settings.X, settings.Y, WindowWidth, WindowHeight, Monitors);
+                MoveTo(x, y);
+            }
             FrameCapHz = settings.FrameCapHz;
             PresentMode = settings.PresentMode;
         }
@@ -184,16 +265,26 @@ namespace KhaozEngine.Windowing
         void ApplyWindowMode(WindowMode mode)
         {
             var (mx, my, mw, mh) = CurrentMonitorBounds();
-            WindowModePlan plan = WindowModePlanner.Compute(mode, mx, my, mw, mh, _windowedSize.X, _windowedSize.Y);
+            WindowModePlan plan = WindowModePlanner.Compute(mode, mx, my, mw, mh,
+                _windowedSize.X, _windowedSize.Y,
+                _windowedPos.HasValue, _windowedPos?.X ?? 0, _windowedPos?.Y ?? 0);
 
             if (mode == WindowMode.ExclusiveFullscreen)
                 _window.Monitor ??= Monitor.GetMainMonitor(_window);
 
+            RealizePlan(plan);
+            _windowMode = mode;
+        }
+
+        /// <summary>Write a <see cref="WindowModePlan"/> onto the Silk window: border, then state (enter/leave
+        /// fullscreen), then the size / position the plan gates. Shared by <see cref="ApplyWindowMode"/> and
+        /// <see cref="MoveToMonitor"/> (which computes a borderless plan for a specific monitor's bounds).</summary>
+        void RealizePlan(WindowModePlan plan)
+        {
             _window.WindowBorder = plan.Border == WindowBorderTarget.Hidden ? WindowBorder.Hidden : WindowBorder.Resizable;
             _window.WindowState = plan.State == WindowStateTarget.Fullscreen ? WindowState.Fullscreen : WindowState.Normal;
             if (plan.SetSize) _window.Size = new Vector2D<int>(plan.Width, plan.Height);
             if (plan.SetPosition) _window.Position = new Vector2D<int>(plan.X, plan.Y);
-            _windowMode = mode;
         }
 
         /// <summary>The bounds of the window's current monitor (or the primary monitor when the window has none, i.e.

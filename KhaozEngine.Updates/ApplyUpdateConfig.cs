@@ -44,6 +44,57 @@ public sealed class ApplyUpdateConfig
     /// the shim falls back to the manifest dest directory.
     /// </summary>
     public string AppDataDir { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Optional look and localized text for the shim's progress window. Null (the default) means the
+    /// shim shows a minimal default window (or nothing, on non-Windows); the apply still works either
+    /// way. Populated by <c>UpdateService.ApplyUpdate</c> from <c>UpdateServiceOptions.UpdaterUi</c>.
+    /// </summary>
+    public ApplyUpdateUiConfig? Ui { get; set; }
+}
+
+/// <summary>
+/// The serialized look and localized text for the shim's progress window (the <c>Ui</c> block of
+/// <see cref="ApplyUpdateConfig"/>). Every field is optional; the shim fills any gap with a default.
+/// Colors are nested <see cref="UpdaterUiColor"/> objects; text is passed already-localized by the
+/// consumer. PascalCase to match the source-generated <see cref="UpdatesJsonContext"/>.
+/// </summary>
+public sealed class ApplyUpdateUiConfig
+{
+    /// <summary>Native window caption / title-bar text (e.g. the game name).</summary>
+    public string? WindowTitle { get; set; }
+
+    /// <summary>Large heading drawn inside the window (defaults to the window title when absent).</summary>
+    public string? Heading { get; set; }
+
+    /// <summary>Progress-bar / heading accent color.</summary>
+    public UpdaterUiColor? Accent { get; set; }
+
+    /// <summary>Window background (panel) color.</summary>
+    public UpdaterUiColor? Background { get; set; }
+
+    /// <summary>Text color for the heading and status line.</summary>
+    public UpdaterUiColor? Text { get; set; }
+
+    /// <summary>Forward-slash path of a logo image to draw, relative to the install directory. Optional.</summary>
+    public string? LogoPath { get; set; }
+
+    /// <summary>Status text for the Install phase (e.g. "Installing update").</summary>
+    public string? InstallingText { get; set; }
+
+    /// <summary>Status text for the Finishing (settle) phase (e.g. "Finishing up, checking with your security software...").</summary>
+    public string? FinishingText { get; set; }
+
+    /// <summary>Status text for the Download phase. Unused by the shim today (see <see cref="UpdaterPhase.Download"/>).</summary>
+    public string? DownloadingText { get; set; }
+}
+
+/// <summary>An 8-bit-per-channel RGB color on the apply-config wire (0-255 components).</summary>
+public sealed class UpdaterUiColor
+{
+    public int R { get; set; }
+    public int G { get; set; }
+    public int B { get; set; }
 }
 
 /// <summary>
@@ -52,4 +103,6 @@ public sealed class ApplyUpdateConfig
 /// </summary>
 [JsonSourceGenerationOptions(WriteIndented = true)]
 [JsonSerializable(typeof(ApplyUpdateConfig))]
+[JsonSerializable(typeof(ApplyUpdateUiConfig))]
+[JsonSerializable(typeof(UpdaterUiColor))]
 public partial class UpdatesJsonContext : JsonSerializerContext;

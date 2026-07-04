@@ -5,6 +5,10 @@
     <Version>$(KhaozEngineVersion)</Version>
     <Description>Game-agnostic delta auto-update pipeline: SHA256 file manifests + diffing, a host-agnostic update source (default HTTP/Azure Blob transport, configurable endpoint), an UpdateService state machine with resumable staged downloads, and a cross-platform staged-apply core (back-up + rollback + relaunch) for an external updater shim. Pure .NET (+ KhaozEngine.Diagnostics), no MonoGame dependency.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- The Windows updater window uses a function-pointer WndProc (delegate* unmanaged) so it stays
+         trim/AOT-safe (no delegate marshalling); that needs unsafe blocks. All Win32 P/Invoke is
+         [SupportedOSPlatform("windows")] and never called off Windows. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />

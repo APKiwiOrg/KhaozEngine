@@ -21,6 +21,15 @@ internal sealed class FakeUpdaterEnvironment : IUpdaterEnvironment
     public int SleepCalls;
     public int ParentWaits;
 
+    // Settle-check (CanOpenExclusively) modelling: the first OpenExclusiveFailCount calls report the exe
+    // as still locked (a running AV scan), then it becomes openable. Default 0 = always openable, so the
+    // settle wait completes on the first poll and existing tests see no extra delay.
+    public int OpenExclusiveFailCount;
+    public int CanOpenExclusivelyCalls;
+    // Snapshot of CanOpenExclusivelyCalls captured when Relaunch fires, so a test can prove the relaunch
+    // happened only after the exe became openable (i.e. after the fail window, not during it).
+    public int OpenCallsAtRelaunch = -1;
+
     public bool FileExists(string path) => Files.ContainsKey(path);
 
     public string ReadAllText(string path)
@@ -71,6 +80,12 @@ internal sealed class FakeUpdaterEnvironment : IUpdaterEnvironment
 
     public void Sleep(int milliseconds) => SleepCalls++;
 
+    public bool CanOpenExclusively(string path)
+    {
+        CanOpenExclusivelyCalls++;
+        return CanOpenExclusivelyCalls > OpenExclusiveFailCount;
+    }
+
     public void WaitForParentExit(int pid, int timeoutMilliseconds) => ParentWaits++;
 
     // Relocation: by default SelfExePath is null (the "POSIX / no relocation" signal), so Run applies in
@@ -95,7 +110,11 @@ internal sealed class FakeUpdaterEnvironment : IUpdaterEnvironment
 
     public void ScheduleDirectoryDeletion(string directory) => ScheduledDeletions.Add(directory);
 
-    public void Relaunch(string executablePath, string workingDirectory) => RelaunchedExe = executablePath;
+    public void Relaunch(string executablePath, string workingDirectory)
+    {
+        RelaunchedExe = executablePath;
+        OpenCallsAtRelaunch = CanOpenExclusivelyCalls;
+    }
 
     public void ClearQuarantine(string installDir) { }
 

@@ -6,9 +6,11 @@ namespace KhaozEngine.Updates;
 /// <summary>
 /// The reusable updater-shim entry. A game's external updater exe becomes a one-liner:
 /// <c>return KhaozEngine.Updates.UpdaterShim.Main(args);</c>. It opens an autoflush log next to the
-/// apply-config file and forwards to <see cref="UpdateApplier.Run"/> with a real
-/// <see cref="SystemUpdaterEnvironment"/>. The apply-config contract stays engine-owned, so the writer
-/// (UpdateService) and reader (this shim) never drift.
+/// apply-config file and forwards to <see cref="UpdateApplier.Run(string[], IUpdaterEnvironment, System.Func{IUpdaterUi})"/>
+/// with a real <see cref="SystemUpdaterEnvironment"/> and the per-OS progress-window factory
+/// (<see cref="SystemUpdaterUi.CreateForCurrentOs"/>). The apply-config contract stays engine-owned, so
+/// the writer (UpdateService) and reader (this shim) never drift, and the consumer's shim gains no
+/// surface: the whole window is engine code driven by the config's optional <c>Ui</c> block.
 /// </summary>
 public static class UpdaterShim
 {
@@ -24,15 +26,18 @@ public static class UpdaterShim
         return Path.Combine(dir, "updater.log");
     }
 
-    /// <summary>Opens the log, runs the staged apply, returns the process exit code.</summary>
+    /// <summary>Opens the log, runs the staged apply (with the per-OS progress window), returns the exit code.</summary>
     public static int Main(string[] args)
     {
         string logPath = ResolveLogPath(args);
         using var log = new StreamWriter(logPath, append: false) { AutoFlush = true };
-        return UpdateApplier.Run(args, new SystemUpdaterEnvironment(msg =>
-        {
-            try { Console.WriteLine(msg); } catch { /* no console attached (GUI subsystem) */ }
-            log.WriteLine(msg);
-        }));
+        return UpdateApplier.Run(
+            args,
+            new SystemUpdaterEnvironment(msg =>
+            {
+                try { Console.WriteLine(msg); } catch { /* no console attached (GUI subsystem) */ }
+                log.WriteLine(msg);
+            }),
+            SystemUpdaterUi.CreateForCurrentOs);
     }
 }

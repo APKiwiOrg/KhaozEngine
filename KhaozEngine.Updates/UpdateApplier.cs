@@ -29,7 +29,7 @@ public enum ApplyOutcome
     RolledBack
 }
 
-/// <summary>Result of <see cref="UpdateApplier.Apply"/>.</summary>
+/// <summary>Result of <see cref="UpdateApplier.Apply(ApplyUpdateConfig, IUpdaterEnvironment)"/>.</summary>
 public sealed class ApplyResult
 {
     public required ApplyOutcome Outcome { get; init; }
@@ -55,6 +55,15 @@ public static class UpdateApplier
     public const int MaxCopyRetries = 40;
     public const int RetryDelayMilliseconds = 500;
     public const int MaxParentWaitSeconds = 30;
+
+    // Post-apply settle wait (the "Finishing" phase). After the new exe lands, Windows Defender scans it
+    // and briefly holds an exclusive lock; relaunching mid-scan trips over the in-flight image
+    // (STATUS_DLL_INIT_FAILED / STATUS_STACK_BUFFER_OVERRUN). We poll CanOpenExclusively until the scanner
+    // releases the file, then relaunch. 60 x 500ms = 30s ceiling, then relaunch anyway as a last resort.
+    // On non-Windows CanOpenExclusively returns true, so the first poll passes and the wait is a no-op.
+    public const int SettleMaxPolls = 60;
+    public const int SettlePollDelayMilliseconds = 500;
+
     private const string RollbackDirName = ".ke-update-rollback";
     private const string ProgressMarkerName = "apply-in-progress.json";
     private const string RelocateDirName = "updater-relocate";
@@ -63,10 +72,19 @@ public static class UpdateApplier
     /// <summary>
     /// CLI entry point for an updater shim. Expects <c>--apply &lt;apply-update.json&gt;</c> (with an
     /// optional <c>--relocated</c> flag), reads and parses the config, optionally relocates the updater
-    /// out of the install dir (see <see cref="TryRelocate"/>), runs <see cref="Apply"/>, then deletes the
+    /// out of the install dir (see <see cref="TryRelocate"/>), runs <see cref="Apply(ApplyUpdateConfig, IUpdaterEnvironment, IUpdaterUi)"/>, then deletes the
     /// config file. Returns a process exit code (0 on success).
     /// </summary>
     public static int Run(string[] args, IUpdaterEnvironment environment)
+        => Run(args, environment, uiFactory: null);
+
+    /// <summary>
+    /// As <see cref="Run(string[], IUpdaterEnvironment)"/>, but with an optional factory for the progress
+    /// window shown during the apply. The window is created only on the apply path (Stage 2 / in-place),
+    /// never during the brief Stage 1 relocation hop, and is always closed before this returns. The shim
+    /// passes a real per-OS factory; tests pass null (no window).
+    /// </summary>
+    public static int Run(string[] args, IUpdaterEnvironment environment, Func<IUpdaterUi>? uiFactory)
     {
         (string? configPath, bool relocated) = ParseArgs(args);
         if (configPath is null)
@@ -100,27 +118,39 @@ public static class UpdateApplier
             return 0;
         }
 
-        ApplyResult result = Apply(config, environment);
-
-        try { environment.DeleteFile(configPath); }
-        catch (Exception ex) { environment.Log($"Cleanup: could not delete apply config {configPath}: {ex.Message}"); }
-
-        // Stage 2 ran from the scratch dir; schedule its removal now that the apply is done. The detached
-        // one-shot fires after this process exits and unlocks the relocated binaries, so nothing is left
-        // behind. (A boot-time sweep in UpdateService is the backstop if this machine dies first.) Guard:
-        // never schedule deletion of anything inside the install dir, in case --relocated is ever misused
-        // while running in place.
-        if (relocated)
+        // The progress window lives only for the apply itself: created here (never during the Stage 1
+        // relocation hop above, which returns before this) and closed in the finally, so it can never
+        // outlive the updater process. Apply also closes it right before it relaunches; the finally is
+        // the backstop for an unexpected throw.
+        IUpdaterUi ui = uiFactory?.Invoke() ?? NullUpdaterUi.Instance;
+        try
         {
-            string selfBase = environment.GetSelfBaseDirectory();
-            if (!string.IsNullOrEmpty(selfBase) && !IsDirInside(selfBase, config.InstallDir))
-            {
-                try { environment.ScheduleDirectoryDeletion(selfBase); }
-                catch (Exception ex) { environment.Log($"Could not schedule relocate-dir cleanup: {ex.Message}"); }
-            }
-        }
+            ApplyResult result = Apply(config, environment, ui);
 
-        return result.ExitCode;
+            try { environment.DeleteFile(configPath); }
+            catch (Exception ex) { environment.Log($"Cleanup: could not delete apply config {configPath}: {ex.Message}"); }
+
+            // Stage 2 ran from the scratch dir; schedule its removal now that the apply is done. The detached
+            // one-shot fires after this process exits and unlocks the relocated binaries, so nothing is left
+            // behind. (A boot-time sweep in UpdateService is the backstop if this machine dies first.) Guard:
+            // never schedule deletion of anything inside the install dir, in case --relocated is ever misused
+            // while running in place.
+            if (relocated)
+            {
+                string selfBase = environment.GetSelfBaseDirectory();
+                if (!string.IsNullOrEmpty(selfBase) && !IsDirInside(selfBase, config.InstallDir))
+                {
+                    try { environment.ScheduleDirectoryDeletion(selfBase); }
+                    catch (Exception ex) { environment.Log($"Could not schedule relocate-dir cleanup: {ex.Message}"); }
+                }
+            }
+
+            return result.ExitCode;
+        }
+        finally
+        {
+            ui.Close();
+        }
     }
 
     private static (string? ConfigPath, bool Relocated) ParseArgs(string[] args)
@@ -302,7 +332,23 @@ public static class UpdateApplier
 
     /// <summary>Applies a staged update described by <paramref name="config"/> using <paramref name="environment"/>.</summary>
     public static ApplyResult Apply(ApplyUpdateConfig config, IUpdaterEnvironment environment)
+        => Apply(config, environment, NullUpdaterUi.Instance);
+
+    /// <summary>
+    /// As <see cref="Apply(ApplyUpdateConfig, IUpdaterEnvironment)"/>, but reporting progress to
+    /// <paramref name="ui"/>: it shows the window, reports the Install phase with (files copied / total)
+    /// as it copies, reports the Finishing phase during the settle wait, and closes the window right
+    /// before it relaunches. All UI calls are best-effort (a broken window is a no-op) and never affect
+    /// the apply outcome. Every return path relaunches through <see cref="Relaunch"/>, which closes the
+    /// window first, so the window is always torn down before the game restarts.
+    /// </summary>
+    public static ApplyResult Apply(ApplyUpdateConfig config, IUpdaterEnvironment environment, IUpdaterUi ui)
     {
+        UpdaterUiTheme theme = UpdaterUiTheme.FromConfig(config.Ui, config.InstallDir);
+        ui.Show(theme);
+        ui.SetPhase(UpdaterPhase.Install);
+        ui.SetStatus(theme.InstallingText);
+
         environment.Log($"Applying v{config.TargetVersion}: {config.FilesToCopy.Count} to copy, {config.FilesToDelete.Count} to delete");
 
         foreach (string relativePath in config.FilesToCopy)
@@ -310,7 +356,7 @@ public static class UpdateApplier
             if (!IsSafeRelativePath(config.InstallDir, relativePath))
             {
                 environment.Log($"Unsafe copy path, aborting untouched: {relativePath}");
-                environment.Relaunch(config.GameExePath, config.InstallDir);
+                Relaunch(environment, ui, config);
                 return new ApplyResult { Outcome = ApplyOutcome.AbortedUnsafePath, ExitCode = 1 };
             }
         }
@@ -319,7 +365,7 @@ public static class UpdateApplier
             if (!IsSafeRelativePath(config.InstallDir, relativePath))
             {
                 environment.Log($"Unsafe delete path, aborting untouched: {relativePath}");
-                environment.Relaunch(config.GameExePath, config.InstallDir);
+                Relaunch(environment, ui, config);
                 return new ApplyResult { Outcome = ApplyOutcome.AbortedUnsafePath, ExitCode = 1 };
             }
         }
@@ -352,14 +398,14 @@ public static class UpdateApplier
             {
                 environment.Log($"Staged file missing, aborting before any changes: {relativePath}");
                 ClearMarker(environment, markerPath);
-                environment.Relaunch(config.GameExePath, config.InstallDir);
+                Relaunch(environment, ui, config);
                 return new ApplyResult { Outcome = ApplyOutcome.AbortedStagingIncomplete, ExitCode = 1 };
             }
             if (environment.IsReparsePoint(source))
             {
                 environment.Log($"Staged file is a reparse point, aborting: {relativePath}");
                 ClearMarker(environment, markerPath);
-                environment.Relaunch(config.GameExePath, config.InstallDir);
+                Relaunch(environment, ui, config);
                 return new ApplyResult { Outcome = ApplyOutcome.AbortedUnsafePath, ExitCode = 1 };
             }
         }
@@ -390,7 +436,7 @@ public static class UpdateApplier
                     try { environment.DeleteDirectory(rollbackDir); }
                     catch (Exception ex) { environment.Log($"Cleanup: could not remove rollback dir {rollbackDir} after restore: {ex.Message}"); }
                     ClearMarker(environment, markerPath);
-                    environment.Relaunch(config.GameExePath, config.InstallDir);
+                    Relaunch(environment, ui, config);
                     return new ApplyResult { Outcome = ApplyOutcome.AbortedUnsafePath, ExitCode = 1 };
                 }
             }
@@ -429,6 +475,7 @@ public static class UpdateApplier
                 break;
             }
             copied.Add(relativePath);
+            ui.SetProgress(copied.Count, config.FilesToCopy.Count);
         }
 
         if (copyFailed)
@@ -438,7 +485,7 @@ public static class UpdateApplier
             catch (Exception ex) { environment.Log($"Cleanup: could not remove rollback dir {rollbackDir} after restore: {ex.Message}"); }
             ClearMarker(environment, markerPath);
             environment.Log("Update aborted and rolled back. Existing version left intact.");
-            environment.Relaunch(config.GameExePath, config.InstallDir);
+            Relaunch(environment, ui, config);
             return new ApplyResult { Outcome = ApplyOutcome.RolledBack, ExitCode = 1 };
         }
 
@@ -474,7 +521,7 @@ public static class UpdateApplier
             try { environment.DeleteDirectory(rollbackDir); }
             catch (Exception ex) { environment.Log($"Cleanup: could not remove rollback dir {rollbackDir} after restore: {ex.Message}"); }
             ClearMarker(environment, markerPath);
-            environment.Relaunch(config.GameExePath, config.InstallDir);
+            Relaunch(environment, ui, config);
             return new ApplyResult { Outcome = ApplyOutcome.RolledBack, ExitCode = 1 };
         }
 
@@ -510,7 +557,14 @@ public static class UpdateApplier
         catch (Exception ex) { environment.Log($"Cleanup: could not remove rollback dir {rollbackDir}: {ex.Message}"); }
         ClearMarker(environment, markerPath);
 
-        environment.Relaunch(config.GameExePath, config.InstallDir);
+        // Finishing phase: the new exe is in place, but on Windows the OS security scan may still hold it.
+        // Wait for it to become launchable before relaunch, so we never start the game into a mid-scan
+        // image (the STATUS_DLL_INIT_FAILED / STATUS_STACK_BUFFER_OVERRUN crash). No-op on non-Windows.
+        ui.SetPhase(UpdaterPhase.Finishing);
+        ui.SetStatus(theme.FinishingText);
+        WaitForExeToSettle(environment, config.GameExePath);
+
+        Relaunch(environment, ui, config);
 
         environment.Log(errors > 0 ? $"Update completed with {errors} error(s)." : "Update applied successfully!");
         return new ApplyResult
@@ -520,6 +574,45 @@ public static class UpdateApplier
             CopiedFiles = copied,
             DeletedFiles = deleted
         };
+    }
+
+    /// <summary>
+    /// Closes the progress window, then relaunches the game. Closing first means the window never lingers
+    /// behind the restarting game. Every relaunch site in <see cref="Apply(ApplyUpdateConfig, IUpdaterEnvironment, IUpdaterUi)"/> routes through here.
+    /// </summary>
+    private static void Relaunch(IUpdaterEnvironment environment, IUpdaterUi ui, ApplyUpdateConfig config)
+    {
+        ui.Close();
+        environment.Relaunch(config.GameExePath, config.InstallDir);
+    }
+
+    /// <summary>
+    /// Polls <see cref="IUpdaterEnvironment.CanOpenExclusively"/> until the just-written game exe is
+    /// launchable (the OS security scan has released it) or the poll budget is exhausted, sleeping
+    /// between polls. Returns as soon as it is openable, or after the timeout as a last resort (logged).
+    /// On non-Windows the first poll passes (the real env returns true), so this is a no-op.
+    /// </summary>
+    private static void WaitForExeToSettle(IUpdaterEnvironment environment, string gameExePath)
+    {
+        if (string.IsNullOrEmpty(gameExePath))
+        {
+            return;
+        }
+
+        for (int attempt = 0; attempt < SettleMaxPolls; attempt++)
+        {
+            if (environment.CanOpenExclusively(gameExePath))
+            {
+                if (attempt > 0)
+                {
+                    environment.Log($"Game exe became launchable after {attempt} poll(s); relaunching.");
+                }
+                return;
+            }
+            environment.Log($"Waiting for security software to release the game exe ({attempt + 1}/{SettleMaxPolls})...");
+            environment.Sleep(SettlePollDelayMilliseconds);
+        }
+        environment.Log("Timed out waiting for the game exe to become launchable; relaunching anyway.");
     }
 
     private static bool TryCopyWithRetries(IUpdaterEnvironment environment, string source, string dest, string relativePath)

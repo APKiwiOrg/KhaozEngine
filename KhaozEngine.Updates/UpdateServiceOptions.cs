@@ -66,4 +66,50 @@ public sealed class UpdateServiceOptions
 
     /// <summary>Terminates the process after the shim is launched. Defaults to <c>Environment.Exit(0)</c>.</summary>
     public Action? ExitProcess { get; init; }
+
+    /// <summary>
+    /// Optional look and localized text for the shim's progress window. Null (the default) means the shim
+    /// shows a minimal default window on Windows and nothing elsewhere; the apply works either way.
+    /// <see cref="UpdateService.ApplyUpdate"/> serializes this into the <c>apply-update.json</c> handoff.
+    /// </summary>
+    public UpdaterUiOptions? UpdaterUi { get; init; }
+}
+
+/// <summary>
+/// The consumer-facing look and localized text for the shim's progress window, mirrored onto the
+/// <c>apply-update.json</c> wire as <see cref="ApplyUpdateUiConfig"/>. Every field is optional; unset
+/// fields fall back to the shim's defaults. Colors are simple <c>(R, G, B)</c> byte tuples (0-255) so a
+/// game passes them without any rendering-stack dependency; text is passed already-localized.
+/// </summary>
+public sealed class UpdaterUiOptions
+{
+    /// <summary>Native window caption / title-bar text (e.g. the game name).</summary>
+    public string? WindowTitle { get; init; }
+
+    /// <summary>Large heading drawn inside the window. Defaults to the window title when unset.</summary>
+    public string? Heading { get; init; }
+
+    /// <summary>Progress-bar / heading accent color.</summary>
+    public (byte R, byte G, byte B)? AccentColor { get; init; }
+
+    /// <summary>Window background (panel) color.</summary>
+    public (byte R, byte G, byte B)? BackgroundColor { get; init; }
+
+    /// <summary>Heading + status text color.</summary>
+    public (byte R, byte G, byte B)? TextColor { get; init; }
+
+    /// <summary>Forward-slash path of a logo image (PNG/JPG/BMP) relative to the install directory. Optional.</summary>
+    public string? LogoPath { get; init; }
+
+    /// <summary>Status line for the Install phase (e.g. "Installing update").</summary>
+    public string? InstallingText { get; init; }
+
+    /// <summary>
+    /// Status line for the Finishing (settle) phase (e.g. "Finishing up, checking with your security
+    /// software..."). Shown while the applier waits for the OS scan to release the new exe.
+    /// </summary>
+    public string? FinishingText { get; init; }
+
+    /// <summary>Status line for the Download phase. Unused by the shim today (the in-game overlay downloads).</summary>
+    public string? DownloadingText { get; init; }
 }

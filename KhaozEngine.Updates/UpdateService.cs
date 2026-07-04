@@ -388,7 +388,8 @@ public sealed partial class UpdateService : IDisposable, IUpdateStatus
                 GameExePath = Environment.ProcessPath ?? Path.Combine(installDir, options.UpdaterExecutableName.Replace("Updater", "")),
                 ParentPid = Environment.ProcessId,
                 ManifestDestPath = localManifestPath,
-                AppDataDir = appDataDir
+                AppDataDir = appDataDir,
+                Ui = BuildUiConfig(options.UpdaterUi)
             };
 
             string applyConfigPath = Path.Combine(appDataDir, "apply-update.json");
@@ -444,6 +445,30 @@ public sealed partial class UpdateService : IDisposable, IUpdateStatus
         });
         return process is not null;
     }
+
+    /// <summary>Maps the consumer's progress-window options onto the apply-config wire block, or null when unset.</summary>
+    private static ApplyUpdateUiConfig? BuildUiConfig(UpdaterUiOptions? ui)
+    {
+        if (ui is null)
+        {
+            return null;
+        }
+        return new ApplyUpdateUiConfig
+        {
+            WindowTitle = ui.WindowTitle,
+            Heading = ui.Heading,
+            Accent = ToColor(ui.AccentColor),
+            Background = ToColor(ui.BackgroundColor),
+            Text = ToColor(ui.TextColor),
+            LogoPath = ui.LogoPath,
+            InstallingText = ui.InstallingText,
+            FinishingText = ui.FinishingText,
+            DownloadingText = ui.DownloadingText,
+        };
+    }
+
+    private static UpdaterUiColor? ToColor((byte R, byte G, byte B)? c)
+        => c is null ? null : new UpdaterUiColor { R = c.Value.R, G = c.Value.G, B = c.Value.B };
 
     private static void DefaultExitProcess() => Environment.Exit(0);
 

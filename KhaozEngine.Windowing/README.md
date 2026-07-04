@@ -25,9 +25,24 @@ Windowing + input foundation for the custom MonoGame-free stack.
     window occupies the display; `AppWindow.Resize(w, h)` sets the windowed size in logical points. The swapchain
     follows the new framebuffer via the existing `FramebufferResize` hook, so HiDPI is unchanged (the backbuffer
     tracks the physical drawable). Window-state policy is the pure, headless-tested `WindowModePlanner.Compute`.
-  - `DisplaySettings` is an immutable `with`-friendly snapshot (present mode, frame cap, window mode, size);
-    `CurrentDisplay` reads it, `ApplyDisplay(in DisplaySettings)` applies a whole snapshot at once (window mode,
-    then resolution, then frame cap, then present mode). Every member is safe to call any time after the window exists.
+  - `DisplaySettings` is an immutable `with`-friendly snapshot (present mode, frame cap, window mode, size, and
+    window position `X`/`Y`); `CurrentDisplay` reads it, `ApplyDisplay(in DisplaySettings)` applies a whole snapshot
+    at once (window mode, then resolution, then placement, then frame cap, then present mode). Every member is safe
+    to call any time after the window exists.
+- **Runtime window placement** (since 9.26.0). Window position + monitor are gettable / settable live, so a consumer
+  can persist and restore the full placement (which monitor + position + size) across launches. On `IDisplaySettings`
+  (implemented by `AppWindow`, surfaced on `GameApp.Display`):
+  - `WindowX` / `WindowY` (get) + `MoveTo(x, y)` set the window top-left in virtual-desktop coordinates - symmetric
+    with `WindowWidth` / `WindowHeight` + `Resize`. `MoveTo` applies immediately when windowed and is remembered as
+    the windowed position to restore from a fullscreen mode.
+  - `Monitors` (an `IReadOnlyList<MonitorInfo>` of index / name / bounds, empty on headless), `CurrentMonitorIndex`
+    (the monitor holding the window, or -1), and `MoveToMonitor(index)` (centre on that monitor when windowed, cover
+    it when borderless) drive a monitor picker.
+  - `EnsureVisible()` clamps the window back on-screen when a restored position's monitor is gone. The `DisplaySettings`
+    `X`/`Y` default to `PositionUnspecified` (leave the window where it is); when a snapshot carries a position,
+    `ApplyDisplay` clamps it on-screen before moving, so a stale saved position self-corrects.
+  - All placement math is pure and headless-tested in `WindowPlacement` (`MonitorIndexFor` / `CenterOn` /
+    `ClampVisible`) plus the `MonitorInfo` record; only `AppWindow` touches the Silk monitor statics.
 - `InputState` - per-frame keyboard + mouse + gamepad + touch snapshot (`IsDown`/`WasPressed` for
   `Key`/`MouseButton`, mouse position/delta/scroll, `Gamepad(i)`). Immutable; no MonoGame. `WasRepeated(Key)` /
   `WasTyped(Key)` surface OS key auto-repeat (`AppWindow` fills it from GLFW's `REPEAT` action; `WasPressed` stays

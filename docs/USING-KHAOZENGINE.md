@@ -158,7 +158,7 @@ app.FrameCapHz  = 120;                                // change the software cap
 app.WindowMode  = WindowMode.BorderlessFullscreen;    // Windowed / BorderlessFullscreen / ExclusiveFullscreen
 app.Display.Resize(1600, 900);                        // windowed size in logical points; the swapchain follows
 
-// Or apply a whole snapshot at once (window mode -> resolution -> frame cap -> present mode):
+// Or apply a whole snapshot at once (window mode -> resolution -> placement -> frame cap -> present mode):
 DisplaySettings s = app.Display.CurrentDisplay with { PresentMode = PresentMode.Vsync, FrameCapHz = 60 };
 app.Display.ApplyDisplay(s);
 ```
@@ -171,6 +171,31 @@ CPU from vsync alone, so `FrameCapHz` remains the required deterministic cap on 
 one-time warning (`Console.Error`) if you select `PresentMode.Vsync` with `FrameCapHz == 0` on Metal. Branch on
 `GameApp.Backend` to set a default cap per platform. The window-mode policy is the pure `WindowModePlanner.Compute`
 and the Metal-warning rule is the pure `DisplaySettings.RequiresFrameCapWarning` - both headless-unit-tested.
+
+**Runtime window placement (since 9.26.0).** `IDisplaySettings` also exposes the window position + monitor, so a
+consumer can persist and restore the full placement (which monitor + position + size) across launches. Position
+accessors mirror the size convention (`WindowX` / `WindowY` getters + `MoveTo`, matching `WindowWidth` /
+`WindowHeight` + `Resize`):
+
+```csharp
+app.Display.MoveTo(200, 150);                     // window top-left in virtual-desktop coordinates
+int mi = app.Display.CurrentMonitorIndex;         // monitor holding the window (-1 if unknown)
+foreach (MonitorInfo m in app.Display.Monitors)   // drive a monitor dropdown (index / name / bounds)
+    Console.WriteLine($"{m.Index}: {m.Name} {m.Width}x{m.Height}");
+app.Display.MoveToMonitor(1);                      // centre on / cover monitor 1
+
+// Persist on exit: CurrentDisplay carries position (X/Y) alongside size + mode + present.
+DisplaySettings saved = app.Display.CurrentDisplay;   // serialize saved to settings.json
+
+// Restore on boot: ApplyDisplay clamps a stale position on-screen before moving, so a saved
+// position whose monitor is now gone (unplugged / different layout) self-corrects.
+app.Display.ApplyDisplay(saved);
+// (or call app.Display.EnsureVisible() after any restore to re-clamp explicitly.)
+```
+
+A hand-built `DisplaySettings` without a position (`X`/`Y` default to `DisplaySettings.PositionUnspecified`) leaves
+the window where it is. All placement math is pure and headless-tested in `WindowPlacement` (`MonitorIndexFor` /
+`CenterOn` / `ClampVisible`) with the `MonitorInfo` record; only `AppWindow` touches the Silk monitor statics.
 
 **Networked-movement presentation (NetWorld).** `WorldClient` renders remotes on a fixed interpolation delay
 (`WorldClientConfig.InterpolationDelayTicks`, default 2) - a timestamped snapshot buffer lerped by true timestamps,

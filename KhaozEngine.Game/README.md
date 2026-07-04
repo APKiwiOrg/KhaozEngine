@@ -31,6 +31,9 @@ swapchain vsync at creation on the default window (a custom factory must forward
 mid-session (no crash, no leaked swapchain) via `GameApp.Display` (the cohesive `IDisplaySettings` surface) or the
 `GameApp.PresentMode` / `FrameCapHz` / `WindowMode` pass-throughs. Read a `DisplaySettings` snapshot from
 `Display.CurrentDisplay`, tweak it (`with`), and `Display.ApplyDisplay(...)` it back from a settings screen.
+Since 9.26.0 `Display` also carries window placement - position + monitor (`WindowX` / `WindowY` / `MoveTo`,
+`Monitors` / `CurrentMonitorIndex` / `MoveToMonitor`, `EnsureVisible`) and `X`/`Y` on the `DisplaySettings` snapshot -
+so a game can persist + restore its full window placement across launches (the restore self-clamps on-screen).
 `GameApp.Backend` exposes the active graphics backend so display defaults can branch per platform (e.g. force a
 `FrameCapHz` on Metal, where vsync alone does not cap - the engine warns once if you select vsync with no cap there).
 

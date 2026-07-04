@@ -339,6 +339,44 @@ modal.
 **`FocusNavigator`** - keyboard/gamepad menu focus: `SetCount`, `Focus`, `MoveNext`/`MovePrevious`, `Wrap`, and
 `Update(InputManager, PlayerIndex?)` which advances focus from menu-nav edges.
 
+**Overlay chrome on the core widgets (opt-in, 9.21.0)** - `ScrollablePanel`, `Dropdown`, and `Tooltip` carry
+opt-in "panel overlay" behaviours for bottom-sheet-style UI. Every knob defaults to a no-op, so a widget you
+already use is unchanged until you set one.
+
+```csharp
+// A bottom-docked, slide-up list panel with a draggable header and a tap-to-close scrim.
+panel.Bounds        = new Rect(0, topBarBottom, viewW, navTop - topBarBottom);  // the full-open, docked rect
+panel.HeaderHeight  = 38f;                     // reserve a title band; content scrolls below it
+panel.SlideFromBottom = true;
+panel.TransitionAlpha = screen.TransitionAlpha; // 0 hidden below the dock edge .. 1 fully shown
+panel.Resizable = true; panel.MinHeight = 140f; panel.MaxHeight = navTop - topBarBottom;
+panel.Scrim = new Rect(0, topBarBottom, viewW, navTop - topBarBottom);
+
+panel.Update(pointer, input);
+if (panel.ScrimDismissed) Close();             // tap outside the panel
+
+panel.DrawScrim(batch, white);
+panel.DrawBackground(batch, white);
+panel.DrawHeader(batch, white, titleFont, "Inventory");
+panel.BeginClip(batch);
+for (int i = 0; i < panel.ItemCount; i++) DrawRow(panel.ItemBounds(i), i);  // clipped to ContentBounds
+panel.EndClip(batch);
+
+// A dropdown that lives inside the clipped panel: trigger in-clip, list in a later overlay pass.
+dropdown.ShowChevron = true;                   // caret reflects open/closed
+dropdown.Opacity = panel.TransitionAlpha;      // fade with the slide
+dropdown.Draw(batch, white, font);             // inside BeginClip/EndClip
+// ... after EndClip, in an overlay pass:
+dropdown.DrawOverlay(batch, white, font, pointer);
+
+// A tooltip that works on both desktop and touch without a compile-time platform branch.
+tip.Dismiss = isTouch ? TooltipDismiss.TapOutside : TooltipDismiss.CallerDriven;
+tip.ShowTitleSeparator = true;
+tip.Show("Copper Ore", "x128", bodyLines, anchor); // two-column title (left name, right count)
+tip.Update(pointer);                               // auto-dismisses on tap-outside in TapOutside mode
+tip.Draw(batch, white);
+```
+
 ---
 
 ## Render2D (`KhaozEngine.Render2D`)

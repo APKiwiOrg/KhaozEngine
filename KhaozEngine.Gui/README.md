@@ -19,12 +19,21 @@ Immediate-mode + retained UI on the custom MonoGame-free stack.
   - `Slider` - horizontal track; a drag started from inside jumps + tracks the value 0..1.
   - `Toggle` - two-state switch flipped by a valid tap; fires `OnChanged`.
   - `Dropdown` - trigger + option list (opens below); two-phase draw (`Draw` trigger / `DrawOverlay` list last).
+    Opt-in (default off): `ShowChevron` draws an up/down caret reflecting the open state; `Opacity` fades the whole
+    dropdown for a host transition.
   - `TextInput` - single-line field; tap-to-focus, typed keys edit the text (via `TextEntry`), blinking caret.
     A held key auto-repeats (Backspace deletes / a character keeps typing) at the OS repeat rate.
   - `Tooltip` - auto-sized floating bubble; `ComputeBounds` (flip/clamp) is a pure, testable layout function.
+    Opt-in (default off): a two-column title (`Show(title, titleRight, ...)`), a `ShowTitleSeparator` rule under the
+    title, and platform-aware dismissal via `Dismiss` (`CallerDriven` desktop-hover vs `TapOutside` touch, driven by
+    `Update(Pointer)`) - the dismissal policy is a runtime value, not a compile-time platform branch.
   - `PopupPanel` - modal dialog: scrim + title + `PopupRow` content + dismiss/primary footer; blocks the pointer.
   - `ScrollablePanel` - wheel/drag scrolling fixed-height list; rows drawn between `BeginClip`/`EndClip` (scissor),
-    hit-test with `TappedItemIndex`.
+    hit-test with `TappedItemIndex`. Opt-in overlay chrome (all default to no-ops, so existing callers are
+    byte-identical): a header band (`HeaderHeight` + `DrawHeader`) above the scroll region; a slide-up animation
+    driven by an external `TransitionAlpha` from a docked bottom edge (`SlideFromBottom`); drag-to-resize the header
+    within `MinHeight`/`MaxHeight` (`Resizable`); and a dimmed `Scrim` with tap-outside-to-close (`ScrimDismissed`).
+    Geometry is exposed via `CurrentBounds`/`ContentBounds` (== `Bounds` with no knob set).
 - `DiagnosticsOverlay` (+ `DiagnosticsOverlayTheme`, `OverlayRow`/`OverlaySection`) - a reusable in-game
   telemetry HUD, a pure presenter modeled on `UpdateOverlayView`. The game assembles sections each frame and
   feeds them via `SetSections`; `Update(InputState, dt)` toggles on `Theme.ToggleKey` (default F1; optional

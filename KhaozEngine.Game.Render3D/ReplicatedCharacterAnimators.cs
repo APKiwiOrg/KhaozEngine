@@ -154,6 +154,39 @@ namespace KhaozEngine.Game
         /// <see cref="AnimatedCharacter.DefaultStateDebounceSeconds"/>; 0 = switch immediately.</summary>
         public float StateDebounceSeconds;
 
+        /// <summary>Opt-in: sync each ground MOVE clip's playback to the character's actual speed so its feet stop
+        /// sliding ("gliding"). Applied to brains the set CONSTRUCTS (the skeleton+clips ctor) via
+        /// <see cref="LocomotionSpeedSync"/>; a <c>Func&lt;AnimatedCharacter&gt;</c> factory owns its own sync config.
+        /// Requires <see cref="WalkClipSpeed"/> / <see cref="RunClipSpeed"/> to be set. Default false (playback
+        /// unchanged - every existing consumer is byte-identical until it opts in).</summary>
+        public bool SyncLocomotionToSpeed;
+
+        /// <summary>World speed (m/s) the Walk clip was authored to move at. Only used when
+        /// <see cref="SyncLocomotionToSpeed"/> is set; 0 plays Walk at 1x. Default 0.</summary>
+        public float WalkClipSpeed;
+
+        /// <summary>World speed (m/s) the Run clip was authored to move at. Only used when
+        /// <see cref="SyncLocomotionToSpeed"/> is set; 0 plays Run at 1x. Default 0.</summary>
+        public float RunClipSpeed;
+
+        /// <summary>Lower clamp on the speed-sync playback multiplier (keeps a near-stationary entity from freezing
+        /// the clip). Only used when <see cref="SyncLocomotionToSpeed"/> is set; 0 uses
+        /// <see cref="LocomotionSpeedSync.DefaultMinMultiplier"/>. Default 0.25.</summary>
+        public float MinLocomotionRate;
+
+        /// <summary>Upper clamp on the speed-sync playback multiplier (keeps a teleporting entity from fast-forwarding
+        /// the clip). Only used when <see cref="SyncLocomotionToSpeed"/> is set; 0 uses
+        /// <see cref="LocomotionSpeedSync.DefaultMaxMultiplier"/>. Default 3.0.</summary>
+        public float MaxLocomotionRate;
+
+        /// <summary>The <see cref="LocomotionSpeedSync"/> these fields describe, applied to brains this set
+        /// constructs. Disabled unless <see cref="SyncLocomotionToSpeed"/> is set.</summary>
+        public readonly LocomotionSpeedSync SpeedSync() => SyncLocomotionToSpeed
+            ? LocomotionSpeedSync.Enable(WalkClipSpeed, RunClipSpeed,
+                MinLocomotionRate > 0f ? MinLocomotionRate : LocomotionSpeedSync.DefaultMinMultiplier,
+                MaxLocomotionRate > 0f ? MaxLocomotionRate : LocomotionSpeedSync.DefaultMaxMultiplier)
+            : LocomotionSpeedSync.Disabled;
+
         public static CharacterAnimatorTuning Default => new CharacterAnimatorTuning
         {
             Locomotion = LocomotionThresholds.Default,
@@ -165,6 +198,11 @@ namespace KhaozEngine.Game
             FacingYawOffset = 0f,
             VelocityWindowSeconds = 1f / 30f,
             StateDebounceSeconds = AnimatedCharacter.DefaultStateDebounceSeconds,
+            SyncLocomotionToSpeed = false,
+            WalkClipSpeed = 0f,
+            RunClipSpeed = 0f,
+            MinLocomotionRate = LocomotionSpeedSync.DefaultMinMultiplier,
+            MaxLocomotionRate = LocomotionSpeedSync.DefaultMaxMultiplier,
         };
     }
 
@@ -223,7 +261,8 @@ namespace KhaozEngine.Game
         {
             if (skeleton is null) throw new ArgumentNullException(nameof(skeleton));
             if (clips is null) throw new ArgumentNullException(nameof(clips));
-            return () => new AnimatedCharacter(skeleton, clips, tuning.Locomotion, tuning.Crossfade, tuning.StateDebounceSeconds);
+            LocomotionSpeedSync speedSync = tuning.SpeedSync();
+            return () => new AnimatedCharacter(skeleton, clips, tuning.Locomotion, tuning.Crossfade, tuning.StateDebounceSeconds, speedSync);
         }
 
         /// <summary>The live characters this frame, in sample order. Iterate and draw each with

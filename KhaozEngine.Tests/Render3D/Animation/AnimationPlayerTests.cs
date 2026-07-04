@@ -85,5 +85,43 @@ namespace KhaozEngine.Tests.Render3D.Animation
             float x = Bone0Translation(p).X;
             Assert.True(x > 1.5f && x < 2.5f, x.ToString());   // ~2 (halfway between 0 and 4)
         }
+
+        [Fact]
+        public void Update_SpeedMultiplier_ScalesPlayheadAdvance()
+        {
+            var p = new AnimationPlayer(OneBone());
+            p.Play(ConstantTranslationClip("a", Vector3.Zero, duration: 100f));   // long clip: no wrap
+            p.Update(0.1f, 2f);                   // 2x -> playhead advances 0.2
+            Assert.Equal(0.2f, p.Time, 4);
+        }
+
+        [Fact]
+        public void Update_DefaultMultiplier_IsByteIdenticalToSingleArg()
+        {
+            var a = new AnimationPlayer(OneBone());
+            var b = new AnimationPlayer(OneBone());
+            a.Play(ConstantTranslationClip("a", new Vector3(1, 0, 0), duration: 100f));
+            b.Play(ConstantTranslationClip("a", new Vector3(1, 0, 0), duration: 100f));
+            a.Update(0.123f);                     // single-arg (pre-change path)
+            b.Update(0.123f, 1f);                 // explicit 1x multiplier
+            Assert.Equal(a.Time, b.Time);         // exact, not approximate
+            Assert.Equal(a.BonePalette()[0], b.BonePalette()[0]);
+        }
+
+        [Fact]
+        public void Update_SpeedMultiplier_ScalesPlayhead_ButNotCrossfadeTimer()
+        {
+            // During a blend the playheads advance at the scaled rate (feet track speed mid-blend), but the
+            // crossfade TIMER runs at wall-clock dt so a blend still completes in its authored duration.
+            var p = new AnimationPlayer(OneBone());
+            p.Play(ConstantTranslationClip("a", Vector3.Zero, duration: 100f));
+            p.Update(0.05f);
+            p.Play(ConstantTranslationClip("b", new Vector3(4, 0, 0), duration: 100f), crossfade: 0.2f);
+            p.Update(0.1f, 5f);                   // dt 0.1 of a 0.2s blend; multiplier 5
+            // Crossfade timer used wall-clock dt (0.1/0.2 = 0.5), NOT scaled (which would be 2.5 -> done).
+            Assert.True(p.IsBlending);
+            // The incoming clip's playhead advanced at the SCALED rate: 0.1 * 5 = 0.5.
+            Assert.Equal(0.5f, p.Time, 4);
+        }
     }
 }

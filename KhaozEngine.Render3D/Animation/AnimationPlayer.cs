@@ -54,16 +54,27 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Advance the playhead(s) by <paramref name="dt"/> seconds (looping each clip) and progress any
         /// crossfade.</summary>
-        public void Update(float dt)
+        public void Update(float dt) => Update(dt, 1f);
+
+        /// <summary>Advance the playhead(s) by <paramref name="dt"/> * <paramref name="speedMultiplier"/> seconds
+        /// (looping each clip) while progressing any crossfade at the REAL <paramref name="dt"/>. Scaling the
+        /// multiplier lets a caller sync clip playback to movement speed (e.g. <c>LocomotionSpeedSync</c> in
+        /// KhaozEngine.Game.Render3D) without changing how long a crossfade takes: the clip
+        /// playheads (both the incoming and the outgoing clip during a blend) move at the scaled rate so the feet
+        /// track speed even mid-blend, but the crossfade TIMER always runs at wall-clock <paramref name="dt"/> so a
+        /// blend still completes in its authored duration regardless of speed. <paramref name="speedMultiplier"/> 1
+        /// (the default path via <see cref="Update(float)"/>) is byte-identical to the pre-speed-sync behaviour.</summary>
+        public void Update(float dt, float speedMultiplier)
         {
             if (_to is null) return;
-            _toTime = AnimationSampler.Wrap(_toTime + dt, _to.Duration);
+            float clipDt = dt * speedMultiplier;   // clip playheads advance at the scaled rate...
+            _toTime = AnimationSampler.Wrap(_toTime + clipDt, _to.Duration);
             if (_from != null)
             {
-                _fromTime = AnimationSampler.Wrap(_fromTime + dt, _from.Duration);
+                _fromTime = AnimationSampler.Wrap(_fromTime + clipDt, _from.Duration);
                 if (_blendDur > 0f)
                 {
-                    _blend += dt / _blendDur;
+                    _blend += dt / _blendDur;   // ...but the crossfade TIMER runs at wall-clock dt (blend duration is speed-independent)
                     if (_blend >= 1f) { _blend = 1f; _from = null; }
                 }
                 else { _blend = 1f; _from = null; }

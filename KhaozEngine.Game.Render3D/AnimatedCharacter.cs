@@ -26,6 +26,7 @@ namespace KhaozEngine.Game
         readonly LocomotionThresholds _thresholds;
         readonly float _crossfade;
         readonly float _stateDebounce;
+        readonly LocomotionSpeedSync _speedSync;
         readonly AnimationClip _fallback;
         Matrix4x4[] _pose;
         LocomotionState _candidate;   // last evaluated state awaiting commit
@@ -43,9 +44,14 @@ namespace KhaozEngine.Game
         /// stream) would otherwise flip the state and restart the clip every time it happens. Air states (jump/fall)
         /// are exempt and commit immediately, so a real jump never lags. Default
         /// <see cref="DefaultStateDebounceSeconds"/>; pass 0 to commit immediately (the pre-7.68.0 behaviour).</param>
+        /// <param name="speedSync">Opt-in speed-synced playback (see <see cref="LocomotionSpeedSync"/>). Default
+        /// (<c>default</c> / <see cref="LocomotionSpeedSync.Disabled"/>) is OFF: every ground/air clip plays at its
+        /// authored rate, byte-identical to the pre-speed-sync behaviour. Enabled, a Walk/Run clip advances in
+        /// proportion to <c>horizontalSpeed</c> so its feet stop sliding; Idle and air states still play at 1x.</param>
         public AnimatedCharacter(Skeleton skeleton, IReadOnlyDictionary<LocomotionState, AnimationClip> clips,
             LocomotionThresholds? thresholds = null, float crossfade = 0.15f,
-            float stateDebounceSeconds = DefaultStateDebounceSeconds)
+            float stateDebounceSeconds = DefaultStateDebounceSeconds,
+            LocomotionSpeedSync speedSync = default)
         {
             if (skeleton is null) throw new ArgumentNullException(nameof(skeleton));
             _clips = clips ?? throw new ArgumentNullException(nameof(clips));
@@ -53,6 +59,7 @@ namespace KhaozEngine.Game
             _thresholds = thresholds ?? LocomotionThresholds.Default;
             _crossfade = crossfade;
             _stateDebounce = MathF.Max(0f, stateDebounceSeconds);
+            _speedSync = speedSync;
             _fallback = ResolveFallback(clips);
             _player = new AnimationPlayer(skeleton);
             _pose = new Matrix4x4[skeleton.BoneCount];
@@ -66,13 +73,14 @@ namespace KhaozEngine.Game
 
         /// <summary>Advance the animation for one frame from the movement state. A ground state (idle/walk/run) takes
         /// effect only after it has persisted for the debounce window, so a brief excursion in a derived movement
-        /// signal does not restart the clip; air states (jump/fall) commit immediately.</summary>
+        /// signal does not restart the clip; air states (jump/fall) commit immediately. When <c>speedSync</c> is
+        /// enabled a Walk/Run clip advances in proportion to <paramref name="horizontalSpeed"/> (Idle/air stay 1x).</summary>
         public void Update(float horizontalSpeed, bool grounded, float verticalVelocity, float dt)
         {
             LocomotionState evaluated = LocomotionStateMachine.Evaluate(horizontalSpeed, grounded, verticalVelocity, _thresholds);
             CommitState(evaluated, grounded, dt);
             _player.Play(ClipFor(State), _crossfade);
-            _player.Update(dt);
+            _player.Update(dt, _speedSync.RateFor(State, horizontalSpeed));
             _player.GetBonePalette(_pose);
         }
 

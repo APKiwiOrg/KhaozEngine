@@ -1,0 +1,45 @@
+#!/bin/sh
+# pre-commit: ban em/en-dashes in staged .md/.cs additions, and enforce the
+# version<->changelog coupling. Shared via core.hooksPath=.githooks. Bypass with --no-verify.
+fail=0
+
+# 1) Em/en-dash in staged ADDED lines of shipped text (.md, .cs). Pre-existing dashes elsewhere
+#    in a touched file are ignored; only what you are adding is checked.
+added=$(git diff --cached --unified=0 -- '*.md' '*.cs' 2>/dev/null | grep -E '^\+' | grep -vE '^\+\+\+')
+if printf '%s' "$added" | LC_ALL=C grep -qF -e '—' -e '–'; then
+  echo "pre-commit: staged .md/.cs additions contain an em-dash or en-dash (banned in shipped text)." >&2
+  echo "            Fix them, or 'git commit --no-verify' to override." >&2
+  fail=1
+fi
+
+# 2) version<->changelog coupling. Engine (has check-doc-versions.sh) couples any version tag;
+#    adopters couple the game version only (exclude the engine pin KhaozEngineVersion).
+props=$(git diff --cached --name-only -- '*Directory.Build.props' 2>/dev/null)
+if [ -n "$props" ]; then
+  if [ -f scripts/check-doc-versions.sh ]; then
+    excl='AssemblyVersion'
+  else
+    excl='KhaozEngineVersion|AssemblyVersion'
+  fi
+  changed_ver=$(git diff --cached -- '*Directory.Build.props' \
+    | grep -E '^[+-]' | grep -vE '^[+-][+-]' \
+    | grep -E '<[A-Za-z]*Version[A-Za-z]*>' | grep -vE "$excl")
+  if [ -n "$changed_ver" ]; then
+    if ! git diff --cached --name-only | grep -qiE 'CHANGELOG'; then
+      echo "pre-commit: a version line changed in Directory.Build.props but no changelog file is staged." >&2
+      echo "            Add the changelog entry in the same commit (or --no-verify)." >&2
+      fail=1
+    fi
+  fi
+fi
+
+# 3) Engine only: catch version-doc drift when a props file is part of the commit.
+if [ -f scripts/check-doc-versions.sh ] && [ -n "$props" ]; then
+  if ! bash scripts/check-doc-versions.sh >/dev/null 2>&1; then
+    echo "pre-commit: check-doc-versions.sh failed (engine version doc drift)." >&2
+    echo "            Run ./scripts/check-doc-versions.sh to see the stale declaration." >&2
+    fail=1
+  fi
+fi
+
+exit $fail

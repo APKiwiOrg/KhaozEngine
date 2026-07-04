@@ -1,0 +1,34 @@
+#!/bin/sh
+# pre-push: enforce branch-name convention; engine also runs the doc-version check before
+# the push triggers CI. Shared via core.hooksPath=.githooks. Bypass with `git push --no-verify`.
+fail=0
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ -z "$local_ref" ] && continue
+  [ "$local_ref" = "(delete)" ] && continue
+  # all-zero local sha => branch deletion; allow it
+  case "$local_sha" in *[!0]*) ;; *) continue ;; esac
+  case "$local_ref" in
+    refs/heads/*)
+      br=${local_ref#refs/heads/}
+      case "$br" in
+        main|master) : ;;
+        feature/*|fix/*|hotfix/*|worktree-*) : ;;
+        *-promote) : ;;
+        *)
+          echo "pre-push: branch '$br' does not match the naming convention." >&2
+          echo "          Allowed: main, feature/*, fix/*, hotfix/*, worktree-*, <batchN>-promote." >&2
+          echo "          Rename before pushing, or 'git push --no-verify' to override." >&2
+          fail=1 ;;
+      esac ;;
+  esac
+done
+
+if [ -f scripts/check-doc-versions.sh ]; then
+  if ! bash scripts/check-doc-versions.sh >/dev/null 2>&1; then
+    echo "pre-push: check-doc-versions.sh failed. Fix the version doc drift before pushing (or --no-verify)." >&2
+    fail=1
+  fi
+fi
+
+exit $fail

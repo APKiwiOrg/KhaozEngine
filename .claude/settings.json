@@ -6,7 +6,7 @@
           {
             "type": "command",
             "statusMessage": "Prepping local-feed + checking concurrent work",
-            "command": "cd \"${CLAUDE_PROJECT_DIR:-.}\" 2>/dev/null; mkdir -p local-feed; git fetch --quiet 2>/dev/null; ctx=$(printf 'git worktrees:\\n%s\\n\\nbranch:\\n%s' \"$(git worktree list 2>/dev/null)\" \"$(git status -sb 2>/dev/null | head -1)\"); printf '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":%s}}' \"$(printf '%s' \"$ctx\" | jq -Rs .)\""
+            "command": "cd \"${CLAUDE_PROJECT_DIR:-.}\" 2>/dev/null; git config core.hooksPath .githooks 2>/dev/null; mkdir -p local-feed; git fetch --quiet 2>/dev/null; ctx=$(printf 'git worktrees:\\n%s\\n\\nbranch:\\n%s' \"$(git worktree list 2>/dev/null)\" \"$(git status -sb 2>/dev/null | head -1)\"); printf '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":%s}}' \"$(printf '%s' \"$ctx\" | jq -Rs .)\""
           }
         ]
       }

@@ -131,7 +131,12 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
         this.registry = registry ?? MoveProtocol.CreateRegistry();
         deltaReplicator = this.config.DeltaReplication ? new AoiDeltaReplicator(this.registry) : null;
         this.tuning = tuning;
+        // Size the queue's distinct-slot cap to MaxPlayers (the SlotAllocator hands out slots in [0, MaxPlayers)).
+        // Without this it used the RemoteCommandQueue default of 64, so on a server with MaxPlayers > 64 every move
+        // for the 65th+ slot was silently dropped by the distinct-slot bound, freezing that avatar. Floor at 64 so a
+        // smaller MaxPlayers never shrinks the queue below the library default (pure widening, no behaviour change).
         commands = new RemoteCommandQueue<MoveCommand>(neutralCommand: default,
+            maxSlots: Math.Max(64, this.config.MaxPlayers),
             catchUpThreshold: Math.Max(0, this.config.MaxInputBacklog));
         movement = new PlayerMovementSystem(groundHeight, tuning, groundNormal, bounds, physics);
         spawnClamp = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds, physics);

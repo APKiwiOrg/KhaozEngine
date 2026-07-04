@@ -5,18 +5,33 @@ namespace KhaozEngine.Windowing
     /// <summary>
     /// An immutable snapshot of the runtime-mutable display state: how the window presents
     /// (<see cref="PresentMode"/>), the optional software frame cap (<see cref="FrameCapHz"/>), how the window
-    /// occupies the display (<see cref="WindowMode"/>), and the windowed size in logical points
-    /// (<see cref="Width"/> x <see cref="Height"/>). Read one from <see cref="IDisplaySettings.CurrentDisplay"/>,
-    /// tweak fields, and hand it back to <see cref="IDisplaySettings.ApplyDisplay"/> - a `with`-friendly value type
-    /// so a settings menu can round-trip the whole surface in one call.
+    /// occupies the display (<see cref="WindowMode"/>), the windowed size in logical points
+    /// (<see cref="Width"/> x <see cref="Height"/>), and the window top-left position in virtual-desktop
+    /// coordinates (<see cref="X"/>, <see cref="Y"/>, which monitor is implied by the absolute position). Read one
+    /// from <see cref="IDisplaySettings.CurrentDisplay"/>, tweak fields, and hand it back to
+    /// <see cref="IDisplaySettings.ApplyDisplay"/> - a `with`-friendly value type so a settings menu can round-trip
+    /// the whole placement (mode + present + cap + size + position) in one call. <see cref="X"/> / <see cref="Y"/>
+    /// default to <see cref="PositionUnspecified"/> so a hand-built snapshot without a position leaves the window
+    /// where it is.
     /// </summary>
     public readonly record struct DisplaySettings(
         PresentMode PresentMode,
         int FrameCapHz,
         WindowMode WindowMode,
         int Width,
-        int Height)
+        int Height,
+        int X = int.MinValue,
+        int Y = int.MinValue)
     {
+        /// <summary>Sentinel for <see cref="X"/> / <see cref="Y"/> meaning "position unspecified" (leave the window
+        /// where it is). <see cref="IDisplaySettings.CurrentDisplay"/> always fills real coordinates.</summary>
+        public const int PositionUnspecified = int.MinValue;
+
+        /// <summary>True when both <see cref="X"/> and <see cref="Y"/> carry a real position (not the
+        /// <see cref="PositionUnspecified"/> sentinel), so <see cref="IDisplaySettings.ApplyDisplay"/> should place
+        /// the window (after clamping it on-screen).</summary>
+        public bool HasPosition => X != PositionUnspecified && Y != PositionUnspecified;
+
         /// <summary>
         /// True when <paramref name="presentMode"/> cannot deterministically cap the frame rate on
         /// <paramref name="backend"/> without a software <see cref="FrameCapHz"/>: vsync selected, no frame cap, on

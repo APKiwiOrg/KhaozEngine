@@ -121,4 +121,19 @@ public class DisplaySettingsTests
         Assert.Equal(1280, b.Width);
         Assert.NotEqual(a, b);
     }
+
+    [Fact]
+    public void DisplaySettings_carries_position_and_defaults_to_unspecified()
+    {
+        var full = new DisplaySettings(PresentMode.Vsync, 60, WindowMode.Windowed, 1280, 720, 200, 150);
+        Assert.True(full.HasPosition);
+        Assert.Equal(200, full.X);
+        Assert.Equal(150, (full with { Y = 150 }).Y);
+
+        var noPos = new DisplaySettings(PresentMode.Vsync, 60, WindowMode.Windowed, 1280, 720);
+        Assert.False(noPos.HasPosition);
+        Assert.Equal(DisplaySettings.PositionUnspecified, noPos.X);
+        // Existing 5-arg construction still equals (non-breaking).
+        Assert.Equal(new DisplaySettings(PresentMode.Vsync, 60, WindowMode.Windowed, 1280, 720), noPos);
+    }
 }

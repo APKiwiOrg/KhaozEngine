@@ -66,6 +66,16 @@ namespace KhaozEngine.Game
         /// </summary>
         public IReadOnlyList<ImageRgba>? WindowIcons;
 
+        /// <summary>
+        /// Optional Windows taskbar identity (AppUserModelID) for the process, e.g. <c>"APKiwi.Nullwake"</c>
+        /// (a dotted <c>CompanyName.ProductName</c> by convention). When set, <see cref="GameApp"/> calls
+        /// <see cref="AppWindow.TrySetProcessAppUserModelId"/> BEFORE creating the window so Windows 10/11 keys the
+        /// taskbar button to the app - fixing the running app's taskbar icon (which otherwise shows the generic
+        /// <c>.exe</c> placeholder even though the title bar and Explorer icons are correct) and stabilising
+        /// grouping/pinning. Null (the default) keeps the current process-derived identity. No-op off Windows.
+        /// </summary>
+        public string? AppUserModelId;
+
         /// <summary>Resolved design width: <see cref="DesignWidth"/>, or <see cref="Width"/> when it is 0.</summary>
         internal int ResolvedDesignWidth => DesignWidth == 0 ? Width : DesignWidth;
         /// <summary>Resolved design height: <see cref="DesignHeight"/>, or <see cref="Height"/> when it is 0.</summary>

@@ -27,10 +27,17 @@ are unaffected.
 
 Set `GameAppOptions.WindowIconPath` (a PNG) or `WindowIcons` (explicit decoded `ImageRgba`, multi-res,
 wins over the path) for the runtime window/taskbar icon; `GameApp` decodes via `Render2D.ImageRgba`
-and applies it through `AppWindow.SetIcon`. Windows/Linux get the live title-bar/taskbar icon. On macOS
+and applies it through `AppWindow.SetIcon` while the window is still hidden, then shows it, so the Windows
+taskbar button is born with the icon. Windows/Linux get the live title-bar/taskbar icon. On macOS
 `SetIcon` is a no-op (GLFW can't set the Dock icon), so when `WindowIconPath` is set `GameApp` also feeds that
 PNG to `AppWindow.SetMacDockIcon` to set the Cocoa Dock / Cmd-Tab icon at runtime (fixes the generic document
 icon on an unbundled `dotnet run`). The Windows `.exe` icon stays a per-game `<ApplicationIcon>`.
+
+Set `GameAppOptions.AppUserModelId` (e.g. `"APKiwi.Nullwake"`, a dotted `CompanyName.ProductName`) so the
+running app's **Windows taskbar button shows the app icon** instead of the generic `.exe` placeholder. `GameApp`
+sets the process's explicit Windows AppUserModelID (via `AppWindow.TrySetProcessAppUserModelId`) before creating
+the window, which also stabilises taskbar grouping/pinning. Null (the default) keeps the current behaviour;
+no-op off Windows.
 
 It sits above `KhaozEngine.Windowing` + `Render2D` + `Gui` - **no 3D renderer dependency**, so a 2D
 game pulls no Render3D. For a 3D world pass, use `KhaozEngine.Game.Render3D` (`GameApp3D`, plus the

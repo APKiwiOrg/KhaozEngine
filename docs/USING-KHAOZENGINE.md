@@ -140,11 +140,22 @@ game.Run();
 
 **Runtime window/taskbar icon.** Set `WindowIconPath` to a PNG (the simple case) or `WindowIcons` to an explicit
 list of decoded `ImageRgba` (16/32/48 px so GLFW picks per DPI; `WindowIcons` wins over `WindowIconPath`). `GameApp`
-applies it during construction. On Windows and Linux/X11 this sets the title-bar + taskbar icon at runtime. The
-Windows `.exe` icon shown when the app is not running is a separate per-game `<ApplicationIcon>` in the desktop
-csproj, independent of this API. Under the hood `GameApp` decodes the PNG via `Render2D.ImageRgba` and hands
-already-decoded `WindowIcon`s to `AppWindow.SetIcon(...)`, which a non-`GameApp` host can also call directly; the
-`KhaozEngine.Windowing` package itself stays decode-free (no Render2D dependency).
+applies it during construction while the window is still hidden, then shows the window, so on Windows the taskbar
+button is created with the icon already set. On Windows and Linux/X11 this sets the title-bar + taskbar icon at
+runtime. The Windows `.exe` icon shown when the app is not running is a separate per-game `<ApplicationIcon>` in
+the desktop csproj, independent of this API. Under the hood `GameApp` decodes the PNG via `Render2D.ImageRgba` and
+hands already-decoded `WindowIcon`s to `AppWindow.SetIcon(...)`, which a non-`GameApp` host can also call directly
+(then call `AppWindow.Show()` once the icon is set); the `KhaozEngine.Windowing` package itself stays decode-free
+(no Render2D dependency).
+
+**Windows taskbar identity (AppUserModelID).** On Windows 10/11 the running app's taskbar button is keyed by the
+process's explicit AppUserModelID. Without one, a .NET apphost gets a process-derived identity that fails to
+resolve the window/exe icon, so the taskbar button shows the generic `.exe` placeholder even though the title bar
+and Explorer icons are right. Set `GameAppOptions.AppUserModelId` (e.g. `"APKiwi.Nullwake"`, a dotted
+`CompanyName.ProductName`) and `GameApp` sets it (via `AppWindow.TrySetProcessAppUserModelId`, which forwards to
+`Platform.WindowsAppId`) before creating the window, fixing the taskbar icon and stabilising grouping/pinning. A
+non-`GameApp` host calls `AppWindow.TrySetProcessAppUserModelId("...")` itself before constructing the window. Null
+(the default) keeps the current behaviour; a no-op that never throws off Windows.
 
 **macOS Dock icon.** GLFW cannot set the Cocoa Dock icon, so `SetIcon` is a no-op on macOS, and an app launched via
 `dotnet run` has no `.app` bundle `.icns` - so without help it shows the generic document icon in the Dock and

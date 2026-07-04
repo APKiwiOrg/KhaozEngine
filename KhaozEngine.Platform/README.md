@@ -22,6 +22,28 @@ Interop is self-contained (its own libobjc `objc_msgSend` + autorelease pool), s
 clipboard path. Windows/Linux have no equivalent runtime Dock icon (their taskbar icon is the GLFW window icon and
 the Windows Explorer icon is `<ApplicationIcon>`), so this is a no-op there.
 
+## Windows taskbar identity (AppUserModelID)
+
+`WindowsAppId.TrySetProcessAppUserModelId(string? appId)` sets the running process's explicit Windows
+**AppUserModelID** via shell32's `SetCurrentProcessExplicitAppUserModelID`. This is the Windows counterpart to
+the macOS Dock icon above: on Windows 10/11 the taskbar groups, pins, and resolves a running window's icon by
+the process's explicit AUMID, and a .NET apphost that never sets one gets a process-derived identity that fails
+to resolve the window/exe icon - so the running app's taskbar button shows the generic `.exe` placeholder even
+though the title-bar icon and the Explorer `<ApplicationIcon>` are correct.
+
+```csharp
+using KhaozEngine.Platform;
+
+// Call ONCE at startup, BEFORE the first window is created:
+bool ok = WindowsAppId.TrySetProcessAppUserModelId("APKiwi.Nullwake"); // dotted CompanyName.ProductName
+```
+
+Returns `false` (never throws) off Windows, on a null/empty id, or on a failed shell call. Must run before the
+process creates its first window (that is when the taskbar button is keyed). Most games never call it directly:
+set `GameAppOptions.AppUserModelId` and `GameApp` calls `AppWindow.TrySetProcessAppUserModelId` (a windowing-layer
+forwarder) before creating the window. macOS/Linux have no equivalent taskbar-identity call, so it is a no-op
+there.
+
 ## Clipboard
 
 `Clipboard` is a cross-platform clipboard facade. Each call tries the platform backends in order and

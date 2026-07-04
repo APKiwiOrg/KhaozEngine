@@ -11,6 +11,9 @@
 - `Texture2D` - GPU texture; PNG load via StbImageSharp.
 - `ImageRgba` - CPU-side RGBA8 image (no GPU): `Load`/`Decode`, `AlphaAt`/`IsOpaqueAt` for opaque-pixel masks.
 - `SpriteFont` - runtime TrueType text (stb_truetype glyph atlas), `DrawString` / `Measure`.
+- `PrimitiveRenderer` - filled/outlined 2D primitives through a `SpriteBatch` (owns a 1x1 white pixel):
+  rects, lines, circles/rings, filled circles, vertical gradients, progress bars, filled sectors/arc-bands, and
+  partial-ring strokes `DrawArc` (a general arc outline) / `DrawRadialProgress` (a 0..1 countdown/cooldown ring).
 - `Render2DSurface(AppWindow)` - draw into a `KhaozEngine.Windowing` window; texture/font/`ImageRgba` loaders;
   `CaptureToTexture` / `CaptureToRgba` offscreen capture; `Render2DSnapshot` captures headless.
 

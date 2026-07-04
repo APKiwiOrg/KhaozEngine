@@ -509,6 +509,12 @@ exist on `Render2DContext` (the `Render2DSnapshot` headless callback).
 - Blend mode: `batch.BlendMode = BlendMode.Additive` switches subsequent draws to additive compositing (glows,
   sparks, beams); it can change mid-batch (per quad) and painter's order is preserved across modes. Each `Begin`
   resets it to `BlendMode.Alpha` (the default, source-over).
+- `PrimitiveRenderer` (owns a 1x1 white pixel): filled/outlined rects, lines, circles/rings, filled circles,
+  vertical gradients, progress bars, and filled sectors/arc-bands. For a partial ring, `DrawArc(center, radius,
+  thickness, startAngleRadians, sweepAngleRadians, color)` strokes a general arc outline, and
+  `DrawRadialProgress(center, radius, thickness, fraction, color)` strokes `clamp(fraction,0,1)` of a ring from
+  12 o'clock clockwise (0 nothing, 1 a full ring) - a countdown/cooldown dial. Angles are radians, +Y down so a
+  positive sweep goes clockwise; segment count scales with the swept fraction so small arcs stay smooth.
 
 ### 2D VFX (`KhaozEngine.Render2D.Vfx`)
 

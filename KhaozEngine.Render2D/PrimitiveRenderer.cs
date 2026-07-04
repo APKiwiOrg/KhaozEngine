@@ -127,6 +127,76 @@ namespace KhaozEngine.Render2D
             }
         }
 
+        /// <summary>
+        /// Segment count for an arc spanning <paramref name="sweep"/> radians when the caller asked for
+        /// <paramref name="segments"/> across a full turn: <c>ceil(segments * |sweep| / 2PI)</c>, floored at 1
+        /// so a thin sweep still strokes at least one segment (and a small progress fraction stays smooth
+        /// instead of collapsing to the whole <paramref name="segments"/> budget). Returns 0 when
+        /// <paramref name="segments"/> is non-positive, so the arc draws nothing. Pure; extracted for headless tests.
+        /// </summary>
+        public static int ArcSegments(int segments, float sweep)
+        {
+            if (segments <= 0) return 0;
+            int n = (int)MathF.Ceiling(segments * MathF.Abs(sweep) / MathF.Tau);
+            return Math.Max(1, n);
+        }
+
+        /// <summary>
+        /// The signed sweep, in radians, for a radial-progress ring: <c>clamp(fraction, 0, 1) * 2PI</c>, negated
+        /// when <paramref name="clockwise"/> is false (screen space, +Y down: a positive sweep goes clockwise).
+        /// A <paramref name="fraction"/> of 0 yields 0 (nothing) and 1 yields a full turn. Pure; extracted for
+        /// headless tests.
+        /// </summary>
+        public static float RadialProgressSweep(float fraction, bool clockwise)
+        {
+            float sweep = Math.Clamp(fraction, 0f, 1f) * MathF.Tau;
+            return clockwise ? sweep : -sweep;
+        }
+
+        /// <summary>
+        /// Strokes a partial ring: an arc outline of <see cref="ArcSegments"/>-scaled line segments from
+        /// <paramref name="startAngleRadians"/> spanning <paramref name="sweepAngleRadians"/> radians at
+        /// <paramref name="radius"/> from <paramref name="center"/>, each a line of float
+        /// <paramref name="thickness"/> (same stroke meaning as <see cref="DrawCircle"/>). Angles are in radians
+        /// in screen space (+Y down, so a positive sweep goes clockwise); <paramref name="startAngleRadians"/> of
+        /// <c>-PI/2</c> is 12 o'clock. The sweep is arbitrary: it may exceed 2PI (over a full turn) or be negative
+        /// (the other direction), and the segment count scales with it so the stroke stays smooth at small
+        /// fractions. No-op when <paramref name="radius"/>, <paramref name="thickness"/>, or
+        /// <paramref name="segments"/> is non-positive.
+        /// </summary>
+        public void DrawArc(SpriteBatch batch, Vector2 center, float radius, float thickness,
+                            float startAngleRadians, float sweepAngleRadians, Color color, int segments = 64)
+        {
+            if (radius <= 0f || thickness <= 0f) return;
+            int n = ArcSegments(segments, sweepAngleRadians);
+            if (n <= 0) return;
+            float step = sweepAngleRadians / n;
+            Vector2 prev = center + new Vector2(MathF.Cos(startAngleRadians) * radius, MathF.Sin(startAngleRadians) * radius);
+            for (int i = 1; i <= n; i++)
+            {
+                float angle = startAngleRadians + step * i;
+                Vector2 cur = center + new Vector2(MathF.Cos(angle) * radius, MathF.Sin(angle) * radius);
+                DrawLine(batch, prev, cur, color, thickness);
+                prev = cur;
+            }
+        }
+
+        /// <summary>
+        /// Strokes a radial-progress ring: <paramref name="fraction"/> (clamped to [0,1]) of a full circle from
+        /// <paramref name="startAngleRadians"/> (default <c>-PI/2</c>, 12 o'clock), sweeping
+        /// <paramref name="clockwise"/> by default. 0 draws nothing, 1 draws a full ring. Delegates to
+        /// <see cref="DrawArc"/> with sweep = <see cref="RadialProgressSweep"/>. Handy for countdown/cooldown
+        /// rings. No-op when <paramref name="radius"/>, <paramref name="thickness"/>, or
+        /// <paramref name="segments"/> is non-positive.
+        /// </summary>
+        public void DrawRadialProgress(SpriteBatch batch, Vector2 center, float radius, float thickness,
+                                       float fraction, Color color, int segments = 64,
+                                       float startAngleRadians = -MathF.PI / 2f, bool clockwise = true)
+        {
+            DrawArc(batch, center, radius, thickness, startAngleRadians,
+                    RadialProgressSweep(fraction, clockwise), color, segments);
+        }
+
         /// <summary>Draws a filled circle as stacked 1px horizontal rects.</summary>
         public void DrawFilledCircle(SpriteBatch batch, Vector2 center, float radius, Color color)
         {

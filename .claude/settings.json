@@ -1,0 +1,48 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "statusMessage": "Prepping local-feed + checking concurrent work",
+            "command": "cd \"${CLAUDE_PROJECT_DIR:-.}\" 2>/dev/null; mkdir -p local-feed; git fetch --quiet 2>/dev/null; ctx=$(printf 'git worktrees:\\n%s\\n\\nbranch:\\n%s' \"$(git worktree list 2>/dev/null)\" \"$(git status -sb 2>/dev/null | head -1)\"); printf '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":%s}}' \"$(printf '%s' \"$ctx\" | jq -Rs .)\""
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "data=$(cat); f=$(printf '%s' \"$data\" | jq -r '.tool_input.file_path // \"\"'); case \"$f\" in *.md) c=$(printf '%s' \"$data\" | jq -r '.tool_input.content // .tool_input.new_string // \"\"'); printf '%s' \"$c\" | LC_ALL=C grep -qF -e '—' -e '–' && printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Introduces an em-dash or en-dash. Repo bans them in shipped text. Use a period, comma, colon, or parentheses instead.\"}}' ;; esac"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "data=$(cat); f=$(printf '%s' \"$data\" | jq -r '.tool_input.file_path // \"\"'); case \"$f\" in *Directory.Build.props) cd \"${CLAUDE_PROJECT_DIR:-.}\" || exit 0; if git diff HEAD -- Directory.Build.props 2>/dev/null | grep -q 'KhaozEngineVersion' && git diff HEAD --quiet -- CHANGELOG.md 2>/dev/null; then printf '{\"systemMessage\":\"<KhaozEngineVersion> changed but CHANGELOG.md is unmodified. Repo rule: the version bump and CHANGELOG entry go in the same commit.\"}'; fi ;; esac"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "statusMessage": "Checking engine-version doc drift",
+            "command": "out=$(bash \"${CLAUDE_PROJECT_DIR:-.}/scripts/check-doc-versions.sh\" 2>&1) || printf '{\"systemMessage\":%s}' \"$(printf 'Doc-version drift:\\n%s' \"$out\" | jq -Rs .)\""
+          }
+        ]
+      }
+    ]
+  }
+}

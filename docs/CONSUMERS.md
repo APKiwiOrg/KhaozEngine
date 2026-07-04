@@ -113,12 +113,12 @@ _Last verified: 2026-07-04. **Ruinborne** (3D MMO, the active consumer) pins **9
 AntiAliasing API, 0.1.81: terrain AA switched from raw `Supersample=2` to `Post.Quality.AntiAliasing` defaulting
 to FXAA, F9 cycles FXAA/SSAA2/SSAA3/Off). **Nullwake** (2D) pins **9.19.1**
 (adopted the 9.19.0 Windows running-app taskbar-icon fix: `GameAppOptions.AppUserModelId` + born-hidden `Show`
-ordering). **SpaceGame** and **Hardpoint** pin
-**9.0.1** (the 9.0.0 package-structure adoption: usings/package-id swaps only, no behaviour change). Stack per
+ordering). **Hardpoint** (3D) also pins **9.19.1** (same 9.19.0 taskbar-icon fix, `AppUserModelId="APKiwi.Hardpoint"`).
+**SpaceGame** pins **9.8.0**. Stack per
 consumer: **Hardpoint** (3D) via `Game3D` + `Foundation`, **Nullwake** (2D) via `Game2D`
 (+ `Diagnostics`/`Persistence`/`Windowing`/`Snapshot`/`Updates`), **SpaceGame** (2D + Render3D) via
 `Game2D` + `Render3D` head + the split-out `SpaceGame.Sim` foundation pins, and **Ruinborne** (3D MMO) via a
 single `<KhaozEngineVersion>` pin across the `Game3D` client and the `Server` + `WorldStore.SqlServer` headless
 server. SpaceGame is the only consumer restoring from `local-feed` directly (the other three vendor their own
-in-repo feed); with SpaceGame on 9.0.1, `local-feed` may be pruned to a **9.0.1** floor. Everything older lives in
+in-repo feed); with SpaceGame on 9.8.0, `local-feed` may be pruned to a **9.8.0** floor. Everything older lives in
 GitHub Packages, the durable store._

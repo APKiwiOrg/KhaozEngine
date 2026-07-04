@@ -134,7 +134,7 @@ game.Run();
 ```
 
 `GameAppOptions` (a struct): `Title`, `Width`/`Height`, `DesignWidth`/`DesignHeight`, `ScaleMode`, `ClearColor`,
-`ResumeGapThresholdSeconds` (see the resume hook below), `PresentMode` + `FrameCapHz` (see below), and optional
+`ResumeGapThresholdSeconds` (see the resume hook below), `PresentMode` + `FrameCapHz` + `WindowMode` (see below), and optional
 `WindowFactory` / `ViewportFactory` (e.g. `AppWindow.Scaled` for a display-fitted window, or an `AdaptiveViewport`
 for responsive layout). Use `GameAppOptions.For(title, w, h)` for the common case.
 
@@ -145,6 +145,32 @@ vertical-blank sync; `GameAppOptions.FrameCapHz` (0 = uncapped) paces the loop t
 residual render:tick beat, and the deterministic cap where vsync does not throttle (the Veldrid Metal path can
 free-run well above the display refresh). `FrameCapHz` also applies to a custom `WindowFactory` window; `PresentMode`
 is set at swapchain creation, so a custom factory must forward it (or pass it to `new AppWindow(...)` / `AppWindow.Scaled(...)`).
+`GameAppOptions.WindowMode` (default `Windowed`) sets the initial window mode (also applied on a custom factory window).
+
+**Runtime display settings (since 9.24.0).** Present mode, frame cap, window mode, and resolution are all changeable
+live mid-session - safe to call from a settings screen at any time, with no crash and no leaked swapchain. The whole
+surface is `GameApp.Display` (an `IDisplaySettings`), or use the individual `GameApp.PresentMode` / `FrameCapHz` /
+`WindowMode` pass-throughs:
+
+```csharp
+app.PresentMode = PresentMode.Immediate;             // flip vsync live (reconfigures the swapchain in place)
+app.FrameCapHz  = 120;                                // change the software cap; takes effect next frame
+app.WindowMode  = WindowMode.BorderlessFullscreen;    // Windowed / BorderlessFullscreen / ExclusiveFullscreen
+app.Display.Resize(1600, 900);                        // windowed size in logical points; the swapchain follows
+
+// Or apply a whole snapshot at once (window mode -> resolution -> frame cap -> present mode):
+DisplaySettings s = app.Display.CurrentDisplay with { PresentMode = PresentMode.Vsync, FrameCapHz = 60 };
+app.Display.ApplyDisplay(s);
+```
+
+`PresentMode` reconfigures the live swapchain's `SyncToVerticalBlank` in place (no recreate). `WindowMode` /
+`Resize` drive the window and the swapchain follows the new framebuffer via the resize hook, so the HiDPI
+framebuffer semantics are unchanged (the backbuffer always tracks the physical drawable). **Mac/Metal caveat:**
+setting vsync engages `CAMetalLayer.displaySyncEnabled`, but the Veldrid Metal present still does not throttle the
+CPU from vsync alone, so `FrameCapHz` remains the required deterministic cap on macOS - `GameApp`/`AppWindow` emit a
+one-time warning (`Console.Error`) if you select `PresentMode.Vsync` with `FrameCapHz == 0` on Metal. Branch on
+`GameApp.Backend` to set a default cap per platform. The window-mode policy is the pure `WindowModePlanner.Compute`
+and the Metal-warning rule is the pure `DisplaySettings.RequiresFrameCapWarning` - both headless-unit-tested.
 
 **Networked-movement presentation (NetWorld).** `WorldClient` renders remotes on a fixed interpolation delay
 (`WorldClientConfig.InterpolationDelayTicks`, default 2) - a timestamped snapshot buffer lerped by true timestamps,

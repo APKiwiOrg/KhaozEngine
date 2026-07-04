@@ -14,6 +14,20 @@ Windowing + input foundation for the custom MonoGame-free stack.
   This is the deterministic cap: the Veldrid Metal path does not reliably throttle from vsync alone, so a Mac
   client can free-run well above the refresh unless a `FrameCapHz` is set. `FrameLimiter` is a pure,
   headless-testable scheduler (`WaitBeforeNext(now)`).
+- **Runtime display settings** (since 9.24.0). Present mode, frame cap, window mode, and resolution are all
+  changeable live mid-session (no crash, no leaked swapchain), via the cohesive `IDisplaySettings` surface that
+  `AppWindow` implements (also surfaced on `GameApp.Display`):
+  - `AppWindow.PresentMode` is now a get/set property (was construction-only). Setting it reconfigures the live
+    swapchain's vsync in place via `IGpuDevice.SyncToVerticalBlank` - no recreate. On Metal it engages
+    `CAMetalLayer.displaySyncEnabled` but does not cap the CPU; pair vsync with a `FrameCapHz` (the setter warns
+    once, `Console.Error`, if you select vsync with no cap on Metal - see `DisplaySettings.RequiresFrameCapWarning`).
+  - `AppWindow.WindowMode` (`WindowMode { Windowed, BorderlessFullscreen, ExclusiveFullscreen }`) switches how the
+    window occupies the display; `AppWindow.Resize(w, h)` sets the windowed size in logical points. The swapchain
+    follows the new framebuffer via the existing `FramebufferResize` hook, so HiDPI is unchanged (the backbuffer
+    tracks the physical drawable). Window-state policy is the pure, headless-tested `WindowModePlanner.Compute`.
+  - `DisplaySettings` is an immutable `with`-friendly snapshot (present mode, frame cap, window mode, size);
+    `CurrentDisplay` reads it, `ApplyDisplay(in DisplaySettings)` applies a whole snapshot at once (window mode,
+    then resolution, then frame cap, then present mode). Every member is safe to call any time after the window exists.
 - `InputState` - per-frame keyboard + mouse + gamepad + touch snapshot (`IsDown`/`WasPressed` for
   `Key`/`MouseButton`, mouse position/delta/scroll, `Gamepad(i)`). Immutable; no MonoGame. `WasRepeated(Key)` /
   `WasTyped(Key)` surface OS key auto-repeat (`AppWindow` fills it from GLFW's `REPEAT` action; `WasPressed` stays

@@ -19,12 +19,20 @@ Subclass it and override `OnLoad` / `OnUpdate(dt)` / `OnDraw2D(batch)` / `OnResi
 `Quit()` to close. Construct with `GameAppOptions.For(title, w, h)` (set `DesignWidth/Height`,
 `ScaleMode`, `ClearColor` as needed).
 
-Set `GameAppOptions.PresentMode` (`Vsync` default / `Immediate`) and/or `GameAppOptions.FrameCapHz` (0 = uncapped)
-to control presentation (since 9.23.0). `FrameCapHz` paces the loop to a target Hz with a monotonic-clock limiter
-independent of the swapchain's vsync - pin it to an integer multiple of a fixed network tick (e.g. 60/120 for 30 Hz)
-to keep presentation phase-aligned. It is the deterministic cap where vsync does not throttle (notably Mac/Metal),
-and is applied on both the default and a custom `WindowFactory` window; `PresentMode` is honoured on the default
-window (a custom factory must forward it).
+Set `GameAppOptions.PresentMode` (`Vsync` default / `Immediate`), `GameAppOptions.FrameCapHz` (0 = uncapped), and
+`GameAppOptions.WindowMode` (`Windowed` default) for the initial presentation (present mode since 9.23.0, window
+mode since 9.24.0). `FrameCapHz` paces the loop to a target Hz with a monotonic-clock limiter independent of the
+swapchain's vsync - pin it to an integer multiple of a fixed network tick (e.g. 60/120 for 30 Hz) to keep
+presentation phase-aligned. It is the deterministic cap where vsync does not throttle (notably Mac/Metal). Frame
+cap and window mode are applied on both the default and a custom `WindowFactory` window; `PresentMode` selects the
+swapchain vsync at creation on the default window (a custom factory must forward it, though it can be flipped live).
+
+**Runtime display settings** (since 9.24.0): change present mode, frame cap, window mode, and resolution live
+mid-session (no crash, no leaked swapchain) via `GameApp.Display` (the cohesive `IDisplaySettings` surface) or the
+`GameApp.PresentMode` / `FrameCapHz` / `WindowMode` pass-throughs. Read a `DisplaySettings` snapshot from
+`Display.CurrentDisplay`, tweak it (`with`), and `Display.ApplyDisplay(...)` it back from a settings screen.
+`GameApp.Backend` exposes the active graphics backend so display defaults can branch per platform (e.g. force a
+`FrameCapHz` on Metal, where vsync alone does not cap - the engine warns once if you select vsync with no cap there).
 
 Override `OnResume(TimeSpan wallGap)` to react to an OS sleep/suspend/hibernate (or a long hang): it fires once,
 before `OnUpdate`, on the first frame whose wall-clock gap (`Clock.RealWallGapSeconds`, which survives a suspend

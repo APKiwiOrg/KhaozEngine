@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
@@ -49,6 +50,10 @@ namespace KhaozEngine.Game
             // custom WindowFactory window (which cannot know these options otherwise). PresentMode selects the
             // swapchain vsync at creation, so it is honoured only on the default window; a factory must forward it.
             _window.FrameCapHz = options.FrameCapHz;
+            // WindowMode is a post-construction switch (the window is born windowed), so it applies on BOTH the
+            // default and a custom WindowFactory window. Only drive it when a fullscreen mode is requested so a
+            // plain windowed app never touches the state.
+            if (options.WindowMode != WindowMode.Windowed) _window.WindowMode = options.WindowMode;
 
             // Runtime window/taskbar icon (Windows/Linux; no-op on macOS where GLFW ignores window icons). Applied
             // while the window is still hidden so the Windows taskbar button - created when we Show() below - is
@@ -119,6 +124,41 @@ namespace KhaozEngine.Game
             get => _window.ClearColor;
             set => _window.ClearColor = value;
         }
+
+        /// <summary>
+        /// The cohesive runtime display-control surface (present mode, frame cap, window mode, resolution). Read
+        /// <see cref="IDisplaySettings.CurrentDisplay"/>, tweak, and <see cref="IDisplaySettings.ApplyDisplay"/> it
+        /// back from a settings screen - all safe to call mid-session with no crash and no leaked swapchain. The
+        /// individual <see cref="PresentMode"/> / <see cref="FrameCapHz"/> / <see cref="WindowMode"/> pass-throughs
+        /// below are conveniences over the same surface.
+        /// </summary>
+        public IDisplaySettings Display => _window;
+
+        /// <summary>How the window presents frames; forwards to <see cref="AppWindow.PresentMode"/> (reconfigures the
+        /// live swapchain's vsync in place). On Metal, pair vsync with <see cref="FrameCapHz"/> for a real cap.</summary>
+        public PresentMode PresentMode
+        {
+            get => _window.PresentMode;
+            set => _window.PresentMode = value;
+        }
+
+        /// <summary>Software frame-rate cap in Hz (0 = uncapped); forwards to <see cref="AppWindow.FrameCapHz"/>.</summary>
+        public int FrameCapHz
+        {
+            get => _window.FrameCapHz;
+            set => _window.FrameCapHz = value;
+        }
+
+        /// <summary>How the window occupies the display; forwards to <see cref="AppWindow.WindowMode"/>.</summary>
+        public WindowMode WindowMode
+        {
+            get => _window.WindowMode;
+            set => _window.WindowMode = value;
+        }
+
+        /// <summary>The active graphics backend (Metal / D3D11 / Vulkan); forwards to <see cref="AppWindow.Backend"/>.
+        /// Useful to branch display defaults per platform (e.g. force a <see cref="FrameCapHz"/> on Metal).</summary>
+        public GpuBackendKind Backend => _window.Backend;
 
         /// <summary>Load assets / build initial state. Called once before the loop starts.</summary>
         protected virtual void OnLoad() { }

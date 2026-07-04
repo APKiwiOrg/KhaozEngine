@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using KhaozEngine.Game;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Render3D;
+using KhaozEngine.Windowing;
 
 namespace KhaozEngine.Showcase
 {
@@ -17,6 +20,13 @@ namespace KhaozEngine.Showcase
         public readonly List<(string Name, Func<GameScene> Factory)> Rooms = new();
 
         Texture2D _white = null!;
+        SpriteFont _hud = null!;
+
+        // Runtime display-settings smoke controls (F7-F10), driven through the GameApp.Display surface. The cap /
+        // resolution cycles walk fixed tables; window mode + present mode toggle. Overlaid state is drawn each frame.
+        static readonly int[] CapCycle = { 0, 30, 60, 120 };
+        static readonly (int W, int H)[] ResCycle = { (1024, 640), (1280, 720), (1600, 900) };
+        int _resIndex;
 
         public ShowcaseApp() : base(BuildOptions()) { }
 
@@ -39,6 +49,7 @@ namespace KhaozEngine.Showcase
             var checker = Surface2D.CreateTexture(Room2D.Checker(64), 64, 64);
             var big = Surface2D.LoadDefaultFont(40f);
             var small = Surface2D.LoadDefaultFont(22f);
+            _hud = small; // reused for the display-settings readout overlay
             Rooms.Add(("2D sprites + text", () => new Room2D().Init(_white, checker, big, small)));
 
             // RoomGui reuses the same big/small fonts (its own GuiAssets just wraps them alongside the white
@@ -73,6 +84,8 @@ namespace KhaozEngine.Showcase
 
         protected override void OnUpdate(float dt)
         {
+            HandleDisplayKeys();
+
             _scenes.Input = Input;
             _scenes.Pointer = Pointer;
             _scenes.Viewport = Viewport;
@@ -92,8 +105,58 @@ namespace KhaozEngine.Showcase
             _scenes.Update(dt);
         }
 
-        protected override void OnDraw2D(SpriteBatch batch) => _scenes.Draw2D(batch);
+        protected override void OnDraw2D(SpriteBatch batch)
+        {
+            _scenes.Draw2D(batch);
+            DrawDisplayReadout(batch);
+        }
+
         protected override void OnDraw3D(Scene3D scene) => _scenes.Draw3D(scene);
         protected override void OnResize(int w, int h) => _scenes.Resize(w, h);
+
+        /// <summary>Runtime display-settings smoke: F7 toggles vsync, F8 cycles the frame cap, F9 cycles the window
+        /// mode, F10 cycles the windowed resolution - all through <see cref="GameApp.Display"/>, live and mid-frame.
+        /// Handled at the app level so it works from the menu and any room.</summary>
+        void HandleDisplayKeys()
+        {
+            if (Input.WasPressed(Key.F7))
+                PresentMode = PresentMode == PresentMode.Vsync ? PresentMode.Immediate : PresentMode.Vsync;
+
+            if (Input.WasPressed(Key.F8))
+            {
+                int i = Array.IndexOf(CapCycle, FrameCapHz);
+                FrameCapHz = CapCycle[(i + 1 + CapCycle.Length) % CapCycle.Length];
+            }
+
+            if (Input.WasPressed(Key.F9))
+                WindowMode = WindowMode switch
+                {
+                    WindowMode.Windowed => WindowMode.BorderlessFullscreen,
+                    WindowMode.BorderlessFullscreen => WindowMode.ExclusiveFullscreen,
+                    _ => WindowMode.Windowed,
+                };
+
+            if (Input.WasPressed(Key.F10))
+            {
+                _resIndex = (_resIndex + 1) % ResCycle.Length;
+                var (w, h) = ResCycle[_resIndex];
+                Display.Resize(w, h); // applies now in windowed mode; stored as the restore size in fullscreen
+            }
+        }
+
+        /// <summary>Draw the current <see cref="DisplaySettings"/> plus the framebuffer size and backend as a bar at
+        /// the bottom, so a windowed run visibly confirms each live change (and any tearing when vsync is off).</summary>
+        void DrawDisplayReadout(SpriteBatch batch)
+        {
+            DisplaySettings d = Display.CurrentDisplay;
+            string cap = d.FrameCapHz > 0 ? $"{d.FrameCapHz}Hz" : "uncapped";
+            string line = $"F7 vsync:{d.PresentMode}  F8 cap:{cap}  F9 mode:{d.WindowMode}  F10 res:{d.Width}x{d.Height}" +
+                          $"   [fb {Window.FramebufferWidth}x{Window.FramebufferHeight}  {Backend}]";
+            // Position on the design bounds, not FrameWidth/FrameHeight (those are window pixels and drift on resize).
+            Rect db = Viewport.DesignBounds;
+            float y = db.Height - 30f;
+            batch.Draw(_white, new Vector4(0, y - 6f, db.Width, 32f), new Color(0f, 0f, 0f, 0.55f));
+            batch.DrawString(_hud, line, new Vector2(16f, y), new Color(0.85f, 0.95f, 1f, 1f));
+        }
     }
 }

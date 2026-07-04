@@ -70,6 +70,24 @@ namespace KhaozEngine.Gpu.Internal
 
         public void Unmap(IGpuTexture staging) => GraphicsDevice.Unmap(((VeldridGpuTexture)staging).Texture);
 
+        // Mirrors the requested vsync so the getter/setter round-trip on a headless (no-swapchain) device, where
+        // Veldrid THROWS from GraphicsDevice.SyncToVerticalBlank. Seeded to Veldrid's default (true).
+        bool _syncToVerticalBlank = true;
+
+        public bool SyncToVerticalBlank
+        {
+            // On a windowed device Veldrid's GraphicsDevice.SyncToVerticalBlank propagates to the main swapchain in
+            // place (each backend's SyncToVerticalBlankCore updates MainSwapchain.SyncToVerticalBlank), so vsync flips
+            // without recreating the swapchain; on Metal this reaches CAMetalLayer.displaySyncEnabled. Veldrid throws
+            // when there is no main swapchain (headless), so guard on it and fall back to the mirrored value.
+            get => GraphicsDevice.MainSwapchain != null ? GraphicsDevice.SyncToVerticalBlank : _syncToVerticalBlank;
+            set
+            {
+                _syncToVerticalBlank = value;
+                if (GraphicsDevice.MainSwapchain != null) GraphicsDevice.SyncToVerticalBlank = value;
+            }
+        }
+
         public void ResizeSwapchain(uint w, uint h)
         {
             var sc = GraphicsDevice.MainSwapchain;

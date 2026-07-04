@@ -1,5 +1,10 @@
 # DisplayManager Implementation Plan
 
+> **SUPERSEDED (shipped differently in 9.24.0).** This plan targeted the now-deleted MonoGame line
+> (`KhaozEngine.Graphics` / `GraphicsDeviceManager`) and was never executed as written. Runtime display/window
+> configuration shipped in 9.24.0 on the MonoGame-free stack as `IDisplaySettings` on `AppWindow` / `GameApp.Display`
+> (present mode, frame cap, window mode, resolution). Kept as a historical record; do not implement this plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a centralized display/window configuration component (`DisplayManager`) to KhaozEngine.Graphics so games stop configuring MonoGame's `GraphicsDeviceManager`/`GameWindow` bespoke, shipping as 3.5.0.

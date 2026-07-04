@@ -210,5 +210,14 @@ namespace KhaozEngine.Gpu
         void ResizeSwapchain(uint w, uint h);
         /// <summary>Present the main swapchain.</summary>
         void Present();
+
+        /// <summary>
+        /// Whether presentation syncs to the display's vertical blank. Settable at runtime: on a windowed device this
+        /// reconfigures the live swapchain in place (no recreate, no leaked swapchain, size + depth preserved), so a
+        /// game can flip vsync mid-session. A no-op backing value on a headless (no-swapchain) device. On Metal it
+        /// sets the layer's <c>displaySyncEnabled</c>, but the Veldrid Metal present still does not throttle the CPU
+        /// from this alone - pair with a software frame cap for a deterministic rate (see <c>PresentMode</c>).
+        /// </summary>
+        bool SyncToVerticalBlank { get; set; }
     }
 }

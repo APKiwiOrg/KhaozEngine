@@ -1,5 +1,13 @@
 # DisplayManager - display/window configuration for KhaozEngine.Graphics
 
+> **SUPERSEDED (shipped differently in 9.24.0).** This 2026-06-12 spec targeted the now-deleted MonoGame line
+> (`KhaozEngine.Graphics` / `GraphicsDeviceManager` / `GameWindow`) and was never built as written. Its intent -
+> runtime window/display configuration as a centralized engine feature - shipped in 9.24.0 on the MonoGame-free
+> stack: the `WindowMode { Windowed, BorderlessFullscreen, ExclusiveFullscreen }` enum and `DisplaySettings` record
+> carried over (see this spec's naming), but the surface is the `IDisplaySettings` interface on `AppWindow` /
+> `GameApp.Display` (present mode, frame cap, window mode, resolution) rather than a `DisplayManager` over MonoGame.
+> Kept as a historical design record. See CHANGELOG 9.24.0 and `docs/USING-KHAOZENGINE.md`.
+
 **Date:** 2026-06-12
 **Target version:** KhaozEngine 3.5.0 (additive, no breaking changes)
 **Package:** KhaozEngine.Graphics

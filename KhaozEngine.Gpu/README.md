@@ -26,6 +26,10 @@ What it owns today:
   9.23.0) and `CreateHeadless()` (offscreen device) on the selected backend. Exposes `Backend`,
   `Capabilities`, and (**transitionally**) the raw Veldrid `GraphicsDevice` so the existing renderers keep
   working unchanged.
+- **`IGpuDevice.SyncToVerticalBlank`** (settable, since 9.24.0) - flip vsync on a live windowed device: it
+  reconfigures the main swapchain in place (no recreate, no leaked swapchain, size + depth preserved; on Metal it
+  reaches `CAMetalLayer.displaySyncEnabled`). A no-op mirrored value on a headless device (Veldrid throws setting
+  it with no main swapchain). `AppWindow.PresentMode` routes through it for runtime present-mode switching.
 
 This is the ONLY package meant to reference Veldrid. The renderers still use Veldrid internally via the
 transitional `GpuDeviceContext.Device` accessor; wrapping the resource/command interface behind a full

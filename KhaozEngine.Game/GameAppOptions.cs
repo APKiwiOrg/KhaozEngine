@@ -48,6 +48,14 @@ namespace KhaozEngine.Game
         public int FrameCapHz;
 
         /// <summary>
+        /// How the window initially occupies the display (default <see cref="WindowMode.Windowed"/>). Applied
+        /// post-construction on both the default and a custom <see cref="WindowFactory"/> window (the window is born
+        /// windowed, then switched), so a factory need not forward it. Change it live via
+        /// <see cref="GameApp.WindowMode"/> / <see cref="GameApp.Display"/>.
+        /// </summary>
+        public WindowMode WindowMode;
+
+        /// <summary>
         /// A frame whose wall-clock gap (<see cref="GameClock.RealWallGapSeconds"/>) exceeds this raises
         /// <see cref="GameApp.OnResume"/> - the signal that the OS slept/suspended/hibernated or the app hung for
         /// that long. Default 30s (via <see cref="For"/>), high enough that a normal frame, GC pause, or brief
@@ -100,7 +108,7 @@ namespace KhaozEngine.Game
         internal int ResolvedDesignHeight => DesignHeight == 0 ? Height : DesignHeight;
 
         /// <summary>Sensible defaults: Fit scaling, 1:1 design space, dark clear colour, 30s resume-gap threshold,
-        /// vsync present, no software frame cap.</summary>
+        /// vsync present, no software frame cap, windowed.</summary>
         public static GameAppOptions For(string title, int width, int height) => new()
         {
             Title = title,
@@ -113,6 +121,7 @@ namespace KhaozEngine.Game
             ResumeGapThresholdSeconds = 30.0,
             PresentMode = PresentMode.Vsync,
             FrameCapHz = 0,
+            WindowMode = WindowMode.Windowed,
         };
     }
 }

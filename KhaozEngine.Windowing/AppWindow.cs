@@ -38,7 +38,7 @@ namespace KhaozEngine.Windowing
     /// <see cref="InputState"/>, clears the swapchain, runs the callback, and presents. The 5.x renderers build on
     /// this. The GPU backend is selected by <see cref="GpuBackendSelector"/> (Metal on this dev box).
     /// </summary>
-    public sealed class AppWindow : IDisposable
+    public sealed class AppWindow : IDisposable, IDisplaySettings
     {
         readonly IWindow _window;
         readonly IInputContext _input;
@@ -91,6 +91,12 @@ namespace KhaozEngine.Windowing
         // Optional software frame-rate cap for Run(): 0 = uncapped. Rebuilt when FrameCapHz is set.
         FrameLimiter _frameLimiter;
         int _frameCapHz;
+        // Runtime display state. PresentMode/WindowMode start from the ctor; _windowedSize is the size to restore
+        // when leaving a fullscreen mode; _warnedMetalVsync dedups the one-time Metal-vsync-needs-a-cap warning.
+        PresentMode _presentMode;
+        WindowMode _windowMode = WindowMode.Windowed;
+        Vector2D<int> _windowedSize;
+        bool _warnedMetalVsync;
 
         /// <summary>
         /// Software frame-rate cap in Hz for <see cref="Run"/> (0 = uncapped, the default). Paces the loop with a
@@ -101,7 +107,125 @@ namespace KhaozEngine.Windowing
         public int FrameCapHz
         {
             get => _frameCapHz;
-            set { _frameCapHz = value; _frameLimiter = new FrameLimiter(value); }
+            set { _frameCapHz = value; _frameLimiter = new FrameLimiter(value); WarnIfMetalVsyncUncapped(); }
+        }
+
+        /// <summary>
+        /// How the window presents finished frames (<see cref="Windowing.PresentMode.Vsync"/> /
+        /// <see cref="Windowing.PresentMode.Immediate"/>). Settable at runtime: the setter reconfigures the live
+        /// swapchain's <c>SyncToVerticalBlank</c> in place (no recreate, no leaked swapchain, size + depth preserved),
+        /// so a game can flip vsync mid-session. On Metal it engages the layer's vsync but does not by itself cap the
+        /// CPU frame rate - pair vsync with a <see cref="FrameCapHz"/> (the setter warns once if you do not).
+        /// </summary>
+        public PresentMode PresentMode
+        {
+            get => _presentMode;
+            set
+            {
+                _presentMode = value;
+                _device.SyncToVerticalBlank = value == PresentMode.Vsync;
+                WarnIfMetalVsyncUncapped();
+            }
+        }
+
+        /// <summary>
+        /// How the window occupies the display (<see cref="Windowing.WindowMode.Windowed"/> /
+        /// <see cref="Windowing.WindowMode.BorderlessFullscreen"/> /
+        /// <see cref="Windowing.WindowMode.ExclusiveFullscreen"/>). Settable at runtime: the setter drives the Silk
+        /// window's state / border / geometry (policy computed by <see cref="WindowModePlanner"/>) and the swapchain
+        /// follows the new framebuffer size via the existing <c>FramebufferResize</c> hook. The HiDPI framebuffer
+        /// semantics are unchanged (the swapchain is always sized to the physical drawable, not the logical size).
+        /// </summary>
+        public WindowMode WindowMode
+        {
+            get => _windowMode;
+            set => ApplyWindowMode(value);
+        }
+
+        /// <summary>Current logical window width in points (see <see cref="LogicalWidth"/>).</summary>
+        public int WindowWidth => _window.Size.X;
+        /// <summary>Current logical window height in points (see <see cref="LogicalHeight"/>).</summary>
+        public int WindowHeight => _window.Size.Y;
+
+        /// <summary>
+        /// Set the windowed size in logical points. In <see cref="Windowing.WindowMode.Windowed"/> it applies
+        /// immediately (Silk resizes the window and the <c>FramebufferResize</c> hook resizes the swapchain to the new
+        /// drawable); in a fullscreen mode it is stored as the size to restore when returning to windowed. Non-positive
+        /// sizes are ignored. HiDPI is preserved: the backbuffer tracks the physical framebuffer, not this logical size.
+        /// </summary>
+        public void Resize(int width, int height)
+        {
+            if (width <= 0 || height <= 0) return;
+            _windowedSize = new Vector2D<int>(width, height);
+            if (_windowMode == WindowMode.Windowed)
+                _window.Size = _windowedSize; // FramebufferResize -> ResizeSwapchain keeps the swapchain in step.
+        }
+
+        /// <summary>A snapshot of the current runtime display state.</summary>
+        public DisplaySettings CurrentDisplay => new(_presentMode, _frameCapHz, _windowMode, WindowWidth, WindowHeight);
+
+        /// <summary>
+        /// Apply a whole <see cref="DisplaySettings"/> snapshot mid-session (a settings-screen "Apply"): window mode
+        /// first, then resolution, then frame cap, then present mode (so the Metal vsync/cap warning reflects the final
+        /// cap). Every step is individually safe at any time; no swapchain is recreated for the present-mode change and
+        /// none is leaked for the resolution change.
+        /// </summary>
+        public void ApplyDisplay(in DisplaySettings settings)
+        {
+            if (settings.WindowMode != _windowMode) ApplyWindowMode(settings.WindowMode);
+            if (settings.Width > 0 && settings.Height > 0) Resize(settings.Width, settings.Height);
+            FrameCapHz = settings.FrameCapHz;
+            PresentMode = settings.PresentMode;
+        }
+
+        /// <summary>Drive the Silk window into <paramref name="mode"/> using the pure <see cref="WindowModePlanner"/>
+        /// policy: set the border, then the state (enter/leave fullscreen), then the geometry the plan asks for. For
+        /// exclusive fullscreen the monitor is pinned first so the OS gives this window a display.</summary>
+        void ApplyWindowMode(WindowMode mode)
+        {
+            var (mx, my, mw, mh) = CurrentMonitorBounds();
+            WindowModePlan plan = WindowModePlanner.Compute(mode, mx, my, mw, mh, _windowedSize.X, _windowedSize.Y);
+
+            if (mode == WindowMode.ExclusiveFullscreen)
+                _window.Monitor ??= Monitor.GetMainMonitor(_window);
+
+            _window.WindowBorder = plan.Border == WindowBorderTarget.Hidden ? WindowBorder.Hidden : WindowBorder.Resizable;
+            _window.WindowState = plan.State == WindowStateTarget.Fullscreen ? WindowState.Fullscreen : WindowState.Normal;
+            if (plan.SetSize) _window.Size = new Vector2D<int>(plan.Width, plan.Height);
+            if (plan.SetPosition) _window.Position = new Vector2D<int>(plan.X, plan.Y);
+            _windowMode = mode;
+        }
+
+        /// <summary>The bounds of the window's current monitor (or the primary monitor when the window has none, i.e.
+        /// windowed), in window coordinates; (0,0,0,0) when it cannot be determined (headless / no display).</summary>
+        (int X, int Y, int W, int H) CurrentMonitorBounds()
+        {
+            try
+            {
+                IMonitor? m = _window.Monitor ?? Monitor.GetMainMonitor(_window);
+                if (m == null) return (0, 0, 0, 0);
+                var b = m.Bounds;
+                return (b.Origin.X, b.Origin.Y, b.Size.X, b.Size.Y);
+            }
+            catch
+            {
+                return (0, 0, 0, 0);
+            }
+        }
+
+        /// <summary>Emit a one-time warning when vsync is selected with no frame cap on Metal, where the Veldrid Metal
+        /// present does not throttle the CPU from vsync alone. Pure decision via
+        /// <see cref="DisplaySettings.RequiresFrameCapWarning"/>; written to <c>Console.Error</c> so a bare AppWindow
+        /// host (no logger) still surfaces it. Deduped so it never spams a settings screen.</summary>
+        void WarnIfMetalVsyncUncapped()
+        {
+            if (_warnedMetalVsync) return;
+            if (!DisplaySettings.RequiresFrameCapWarning(Backend, _presentMode, _frameCapHz)) return;
+            _warnedMetalVsync = true;
+            Console.Error.WriteLine(
+                "[KhaozEngine] PresentMode.Vsync does not reliably cap the frame rate on Metal (the Veldrid Metal " +
+                "present does not throttle the CPU). Set FrameCapHz (e.g. your tick rate x2, like 60 or 120) for a " +
+                "deterministic cap on macOS.");
         }
 
         /// <summary>Create a window with vsync present and no frame cap (the historical defaults).</summary>
@@ -118,6 +242,8 @@ namespace KhaozEngine.Windowing
         {
             _frameCapHz = frameCapHz;
             _frameLimiter = new FrameLimiter(frameCapHz);
+            _presentMode = presentMode;
+            _windowedSize = new Vector2D<int>(width, height);
             // KE_MAX_FRAMES: render N frames then close (lets a windowed smoke test run a few frames + exit cleanly).
             _maxFrames = int.TryParse(Environment.GetEnvironmentVariable("KE_MAX_FRAMES"), out int mf) && mf > 0 ? mf : 0;
 

@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Progression</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>Wall-clock progression primitives for KhaozEngine: WallClockRewardSchedule, a pure readonly struct over DateTimeOffset that answers "is a periodic reward available now?" against real wall-clock time. Immune to game TimeScale and to offline catch-up caps, non-stacking (one availability at a time), and clock-step safe. Persistence-agnostic - the consumer stores the plain NextAvailableUtc timestamp in its own save. Zero dependencies (pure .NET).</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>

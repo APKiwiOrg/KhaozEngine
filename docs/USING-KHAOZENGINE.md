@@ -2335,6 +2335,9 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
 - **`KhaozEngine.Collision`**: deterministic `CircleCollision` + `SpatialHashGrid` (bit-identical for lockstep).
 - **`KhaozEngine.Determinism`**: `DeterministicFpScope` - forces a canonical CPU floating-point environment
   for fixed-tick / lockstep sims (see "Deterministic floating point" below).
+- **`KhaozEngine.Progression`**: `WallClockRewardSchedule` - a pure `readonly struct` for "every N of
+  real-world time a reward becomes available and stays available until claimed" (daily-login style), immune
+  to game `TimeScale` and offline caps (see "Wall-clock periodic rewards" below).
 - **`KhaozEngine.Updates`**: delta auto-update pipeline (SHA256 manifests + diffing, resumable staged downloads,
   cross-platform staged-apply). Feeds either a dynamic API or a server-less static blob (no backend - the
   client reads the full `LatestVersionInfo` straight from `latest-{platform}.json`); both have a ready-to-fill
@@ -2346,6 +2349,51 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   the `NetServer` session inbox and the LiteNetLib transport inboxes use so a stalled or flooded host can't grow
   undrained events without bound; tune it with the optional `maxQueuedEvents` ctor arg (default 10,000) and watch
   `DroppedEventCount`, which stays 0 for a host that drains each poll as contracted.
+
+---
+
+## Wall-clock periodic rewards (`KhaozEngine.Progression`)
+
+`WallClockRewardSchedule` (a pure `readonly struct`) answers "is a periodic reward available now?" against
+**real wall-clock** time - the model for a daily-login reward, an every-6-hours bonus, and the like. It
+tracks `DateTimeOffset.UtcNow`, never a sim clock, so it is completely immune to game `TimeScale` and to
+offline / time-skip catch-up caps (a "1 per 24h" reward advances by real elapsed time whether the app was
+running or closed). It is **non-stacking** (at most one available at a time, no matter how long the player
+was away), **clock-step safe** (a backward wall-clock step or a far-future timestamp can't brick or spam
+it), and **persistence-agnostic** - the game stores the plain `NextAvailableUtc` instant in its own save
+and reconstructs the struct on load.
+
+The engine owns the *scheduling* only; the presentation (a tappable node, its position, rendering) and the
+payload (which reward to grant) stay in the game.
+
+```csharp
+using KhaozEngine.Progression;
+
+// First run: seed a "1 per 24h real-world" reward. The initialDelay overload is the first-run knob -
+// TimeSpan.Zero for an immediate welcome, `interval` for a full period, or a random 0..interval offset so
+// the first reward does not always land on the interval boundary (RNG stays in your hands).
+var interval = TimeSpan.FromHours(24);
+var offset   = TimeSpan.FromSeconds(rng.NextDouble() * interval.TotalSeconds);
+var schedule = WallClockRewardSchedule.Start(interval, DateTimeOffset.UtcNow, initialDelay: offset);
+gameState.NextRewardUtc = schedule.NextAvailableUtc;   // persist the instant in your own save
+
+// Later (each frame, or when the reward screen opens) - reconstruct from the saved instant + config:
+var schedule = new WallClockRewardSchedule { Interval = interval, NextAvailableUtc = gameState.NextRewardUtc };
+var now = DateTimeOffset.UtcNow;
+if (schedule.IsAvailable(now))
+    ShowTappableReward();                              // presentation is the game's job
+else
+    ShowCountdown(schedule.TimeUntilAvailable(now));   // zero once available, never negative
+
+// When the player collects:
+schedule = schedule.Claim(now);                        // non-stacking: next is due one interval after `now`
+gameState.NextRewardUtc = schedule.NextAvailableUtc;
+GrantReward();                                         // the payload is the game's job
+```
+
+For several independent rewards, keep one `WallClockRewardSchedule` per reward id, each with its own
+interval. Because the current instant is a plain parameter (no ambient clock), it is trivially unit-testable
+with fixed `DateTimeOffset` values.
 
 ---
 

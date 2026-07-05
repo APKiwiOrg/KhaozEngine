@@ -120,7 +120,7 @@ version/release work.
     zero-dependency leaf at the bottom; the render/runtime stack layers `Gpu` -> `Windowing` ->
     `Render2D`/`Render3D` -> `Gui`/`Game`/`Game.Render3D`; the GPU-free `Foundation` packages (Ecs, Serialization,
     Content, Diagnostics, App, Locomotion, Persistence, Platform, Updates, Collision,
-    Physics, Social, Terrain, Determinism) sit beside it (9.0.0 folded Pooling into Primitives, Localization into App,
+    Physics, Social, Terrain, Determinism, Progression) sit beside it (9.0.0 folded Pooling into Primitives, Localization into App,
     and Effects into Particles); `Gui` also references `App` (for the `LocalizedText` localization sink type,
     acyclic - `App` never references `Gui`); the server/netcode stack layers `Simulation` (a zero-dependency
     leaf) -> `Netcode`/`Replication`/`Sharding`/`WorldStore` -> `NetWorld`. `Ecs` depends on `Simulation` (acyclic).

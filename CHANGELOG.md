@@ -5,6 +5,21 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.5.0
+
+New package `KhaozEngine.Progression` (in the `Foundation` umbrella): `WallClockRewardSchedule`, a pure primitive for "every N of real-world time a reward becomes available and stays available until claimed", immune to game `TimeScale` and to offline catch-up caps. Additive (a brand-new zero-dependency package), so a minor bump.
+
+- **New package `KhaozEngine.Progression`** - GPU-free, zero third-party dependencies, added to the `KhaozEngine.Foundation` umbrella. A home for wall-clock progression primitives.
+- **`WallClockRewardSchedule` (readonly struct).** Two serializable values - `Interval` (`TimeSpan`) and `NextAvailableUtc` (`DateTimeOffset`) - and pure time math over an explicitly-passed `nowUtc`, so availability is measured against real wall-clock time and is completely immune to game `TimeScale` and to offline / time-skip catch-up caps. No ambient clock: the caller passes `DateTimeOffset.UtcNow` in production and a fixed instant in tests.
+  - `IsAvailable(nowUtc)` - `nowUtc >= NextAvailableUtc`.
+  - `TimeUntilAvailable(nowUtc)` - remaining wall-clock time, clamped to `TimeSpan.Zero` once available (never negative), for a HUD countdown.
+  - `Claim(nowUtc)` - **non-stacking**: consumes the single available reward and schedules the next one exactly one `Interval` after the claim instant, so being away for many intervals still yields one reward, not a stacked backlog.
+  - `Start(interval, nowUtc, TimeSpan initialDelay)` + a `Start(interval, nowUtc, bool availableImmediately = false)` convenience overload. The `initialDelay` overload is the **first-run knob** (called out rather than hard-coded): `TimeSpan.Zero` for an immediate welcome reward, `interval` for a full period, or a random `0..interval` offset so the first reward does not always land on the full-interval boundary (RNG stays in the caller).
+- **Persistence-agnostic.** The consumer stores the plain `NextAvailableUtc` timestamp (interval usually from config) in its own save and reconstructs the struct on load. All timestamps are normalised to UTC - a local-offset instant is *converted* via `ToUniversalTime()`, never relabelled - so a schedule round-trips through serialization without drifting.
+- **Clock-step safe.** A backward wall-clock step or an implausibly far-future timestamp can neither brick the schedule (arithmetic saturates at `DateTimeOffset.MinValue`/`MaxValue` instead of overflowing) nor spam rewards (it's a persistent boolean threshold, not an event). `Start` rejects a non-positive interval or a negative initial delay.
+- **Tests.** New headless `WallClockRewardScheduleTests` (13 cases): available at/after the interval and not before, immediate-mode and initial-delay-offset seeding, first-run full-interval seeding, claim advances by exactly one interval, non-stacking after a long absence, backward-clock no-op, overflow clamp near `DateTimeOffset.MaxValue`, local-offset-to-UTC conversion (never relabelled), the zero-when-available countdown, and the `Start` argument validation.
+- Docs: new `KhaozEngine.Progression/README.md`; `README.md` gains the package-table row and lists Progression in the `Foundation` umbrella row + repo layout; `docs/USING-KHAOZENGINE.md` gains a "Wall-clock periodic rewards" section; the `CLAUDE.md` layering note lists the new leaf.
+
 ## 10.4.1
 
 Ports the 9.32.1 pending-task hygiene fix from `WorldPersistence` to its sibling `CellPersistence` (`KhaozEngine.NetWorld`): a faulted or canceled background store task no longer accumulates unpruned, so a store outage can't grow the pending list unbounded or make the documented boot sequence (`LoadMeta -> Preload -> Flush`) / the shutdown flush throw. Bug-fix + behaviour hardening; no API change beyond the additive `OnStoreError` event.

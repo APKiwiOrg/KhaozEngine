@@ -13,5 +13,4 @@ var host = new FixedTickHost(tickSeconds: 1f / 30f);
 host.Advance(elapsedSeconds, tick => world.Step(tick));
 ```
 
-Part of the MMO netcode stack (sub-project 0B). See
-`docs/superpowers/specs/2026-06-25-mmo-netcode-stack-design.md`.
+Part of the MMO netcode stack (sub-project 0B).

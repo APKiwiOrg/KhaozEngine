@@ -9,8 +9,8 @@ to check each claim here against the code. Where a claim names a package or file
 to audit it.
 
 This doc states the posture and the tradeoffs. It does not restate the update-channel internals
-(see [the updater-hardening spec](superpowers/specs/2026-06-20-updater-hardening-7.0.0-design.md))
-or the engine layering (see [README.md](../README.md) and [INDEX.md](INDEX.md)).
+(see [UPDATER.md](UPDATER.md)) or the engine layering (see [README.md](../README.md) and
+[INDEX.md](INDEX.md)).
 
 ## Posture summary
 
@@ -98,9 +98,9 @@ code execution across every game that adopts the updater.
 Because of that impact, the update channel was hardened to close a full audit (10 findings, P0-P2). The deep
 dive is the canonical reference:
 
-**[Updater hardening (7.0.0) design](superpowers/specs/2026-06-20-updater-hardening-7.0.0-design.md).**
+**[UPDATER.md](UPDATER.md).**
 
-The short version of what that spec mandates (do not rely on this summary for detail; read the spec):
+The short version of what the updater mandates (read UPDATER.md for detail):
 mandatory RSA-2048 / PKCS#1 v1.5 / SHA-256 signed manifests with no unsigned path, file-URL origin
 locking, path-traversal and symlink/reparse guards on apply, per-file/total/free-disk size caps, strict
 downgrade rejection on the signed version, and macOS `codesign` re-verify before relaunch.
@@ -130,7 +130,7 @@ The posture is defense in depth: no single control is the whole story.
 
 4. **Signed, integrity-checked updates.** The update channel's mandatory signing + the apply-time guards
    (origin lock, path/symlink guards, size caps, downgrade rejection) are what keep category 3 from being
-   an open RCE. See [the updater spec](superpowers/specs/2026-06-20-updater-hardening-7.0.0-design.md). A
+   an open RCE. See [UPDATER.md](UPDATER.md). A
    game must wire this correctly (next section) for the guarantee to hold.
 
 5. **CET / CETCompat decision.** The x64 apphost defaults `CETCompat=false`, inherited
@@ -197,7 +197,7 @@ The engine provides primitives and one hardened channel; a game still has to use
 - **Wire the signed updater correctly.** Generate a keypair, embed the trusted public key in
   `UpdateServiceOptions.TrustedPublicKeys`, sign the manifest at publish, and hardcode `ServerBaseUrl` in
   release builds (do not read a feed-URL env override in release). An unsigned or misconfigured feed is
-  the whole RCE surface. Follow the [updater spec](superpowers/specs/2026-06-20-updater-hardening-7.0.0-design.md).
+  the whole RCE surface. Follow [UPDATER.md](UPDATER.md).
 - **Keep dependencies patched.** Re-publish self-contained to pick up .NET runtime and native-lib
   security fixes, and ship the new build through the updater. The engine pins versions; the game owns the
   publish.

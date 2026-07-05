@@ -54,5 +54,3 @@ owner-scoped to the client's own player. See `KhaozEngine.Replication.Replicatio
 Phase 3A of the seamless-shard topology: the in-process container. No cross-cell crossing or ghosting yet
 (that's 3B/3C). Deterministic and headless - no sockets, no window, no GPU. Depends on `KhaozEngine.Ecs`,
 `KhaozEngine.Simulation`, and `KhaozEngine.Replication`.
-
-See `docs/superpowers/specs/2026-06-25-mmo-phase3-seamless-shard-design.md`.

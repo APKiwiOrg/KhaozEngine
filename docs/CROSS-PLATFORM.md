@@ -123,7 +123,6 @@ This release delivers the **verification mechanism**, not a finished cross-platf
    CI against lavapipe (goldens committed) but not yet on real Vulkan hardware.)
 3. **Deferred port-hardening.** Two items are scoped but not yet built: GPU device-lost / device-removed
    handling (recreate the device + resources on a lost swapchain) and a central `Platform` OS-info seam
-   (one place that answers OS / RID / capability questions). See
-   `docs/superpowers/specs/2026-06-20-post-6.0.0-deferred-scope.md`.
+   (one place that answers OS / RID / capability questions).
 4. **Mobile (Android / iOS) is a separate project.** It needs native windowing/lifecycle, Native AOT, and
    build-time shader pre-compilation - not covered by this desktop matrix.

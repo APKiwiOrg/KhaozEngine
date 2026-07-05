@@ -72,4 +72,4 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
     clamped 0..1 at draw; `NameplateRenderer.ShouldCull` shares `WorldLabel`'s cull. No per-frame heap allocation.
 
 Renderer deps (Veldrid/Veldrid.SPIRV/SharpGLTF) are confined to this package via `KhaozEngine.Gpu`. See
-`docs/USING-KHAOZENGINE.md` and `docs/superpowers/specs/2026-06-15-render3d-custom-engine-design.md`.
+`docs/USING-KHAOZENGINE.md`.

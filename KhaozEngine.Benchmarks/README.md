@@ -1,7 +1,7 @@
 # KhaozEngine.Benchmarks - server-tick benchmark (jobs-0/1/2 + the jobs-3 gate)
 
 A headless, repeatable benchmark of **one server tick** across a matrix of (cells `C`, entities/cell `E`,
-systems `S`), of the parallel-job-system program (`docs/superpowers/specs/2026-06-26-ecs-parallel-job-system-design.md`).
+systems `S`), of the parallel-job-system program.
 jobs-0 established the **single-threaded baseline** every later layer must move; jobs-1 added parallel cell ticks (the
 **cell axis**), so each regime is run **inline and with cells fanned across cores**; jobs-2 added the **entities axis**,
 shown in a dedicated section where one hot cell's system fans its entity rows across cores via `World.ParallelForEach`.
@@ -119,8 +119,7 @@ does not grow with `E`; layer 2 parallelizes *within* a system and scales to **~
 matter (≥16k) layer 2 already beats the best-possible layer 3 by 2.4-3×. They share the same cores, layer 2 ~reaches
 the total-work/P floor, and the only "L3 WINS" rows are a 0.2 ms cell (E=256, the cell axis's job) and fork/join noise
 (E=4096). A hot cell's bottleneck is *entities*, which layer 2 already splits across every core. Re-run `--gate` if a
-game ever has the opposite shape (many tiny independent systems over few entities). Full reasoning:
-`docs/superpowers/specs/2026-06-26-ecs-parallel-job-system-design.md` ("System scheduler" gate verdict).
+game ever has the opposite shape (many tiny independent systems over few entities).
 
 ## Parameterising
 

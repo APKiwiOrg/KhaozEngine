@@ -125,4 +125,3 @@ snapping the player back.
 | Local controller / server sim / client prediction | `KhaozEngine.Game.Render3D/CharacterController3D.cs`, `KhaozEngine.NetWorld/PlayerMoveSimulator.cs`, `WorldClient.cs` |
 | Shape bake (offline) | [`KhaozEngine.PropSurface.Tool/Program.cs`](../KhaozEngine.PropSurface.Tool/Program.cs) (`ke-propbake`), `KhaozEngine.Render3D/Models/PropCollisionBake.cs` |
 | Shape load + chunk statics | `KhaozEngine.Render3D/Models/PropCollisionLoader.cs` (client/manifest), [`KhaozEngine.Physics/PropCollisionFormat.cs`](../KhaozEngine.Physics/PropCollisionFormat.cs) (render-free format + headless loaders), [`KhaozEngine.Terrain.Render3D/ChunkStatics.cs`](../KhaozEngine.Terrain.Render3D/ChunkStatics.cs) |
-| Design archive | `docs/superpowers/specs/` + `plans/` (the physics-foundation feature) |

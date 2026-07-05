@@ -90,4 +90,4 @@ Transport-free: snapshots/deltas are plain `byte[]`, shipped via your `KhaozEngi
 (`NetServer.Broadcast` / `NetClient` data events). Depends on `KhaozEngine.Ecs` only.
 
 Full-state (`SnapshotWriter`), whole-world delta (`ServerReplicator`), and per-client AoI delta
-(`AoiDeltaReplicator`) all ship. See `docs/superpowers/specs/2026-06-25-mmo-netcode-stack-design.md`.
+(`AoiDeltaReplicator`) all ship.

@@ -21,4 +21,4 @@ streams `WorldStoreEntry { Key, UpdatedAt, Size? }` records. `InMemoryWorldStore
 `SqlServerWorldStore` all implement it. Feature-detect with `store is IEnumerableWorldStore`. The `ServerAdmin`
 facade in `KhaozEngine.NetWorld` uses it for account listing and bans.
 
-Part of the MMO netcode stack (Phase 2). See `docs/superpowers/specs/2026-06-25-mmo-netcode-stack-design.md`.
+Part of the MMO netcode stack (Phase 2).

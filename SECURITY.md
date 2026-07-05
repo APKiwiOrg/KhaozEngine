@@ -12,5 +12,4 @@ Report privately. Do not open a public issue for a suspected vulnerability.
 - Include enough to reproduce: affected package/version, the input or feed that triggers it, and impact.
 
 The highest-impact surface is the update channel (`KhaozEngine.Updates`): a spoofed feed is RCE across
-games. Its hardening is covered in the baseline doc and the
-[updater-hardening spec](docs/superpowers/specs/2026-06-20-updater-hardening-7.0.0-design.md).
+games. Its hardening is covered in the baseline doc and [UPDATER.md](docs/UPDATER.md).

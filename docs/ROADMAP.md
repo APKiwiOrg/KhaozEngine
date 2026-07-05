@@ -6,7 +6,7 @@ delete it from here (the detail moves to the changelog) rather than marking it "
 
 Current released version: **10.5.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
-Each near-term item gets its own design spec + plan under `docs/superpowers/` when it is scheduled.
+Each near-term item gets its own design spec + plan when it is scheduled.
 
 ## Near-term (next up)
 
@@ -54,7 +54,7 @@ good, not just read as shapes.
   animation-clip playback, `AnimatedCharacter` + locomotion blend, `ReplicatedCharacterAnimators`). SpaceGame's
   2.5D rigged-creature direction can adopt it directly. Only reopen an engine item here if a concrete new gain
   surfaces from that adoption (e.g. blend trees, additive layers, or IK the current player can't express).
-- Visual fidelity (textured props, water): see Near-term item #3 above.
+- Visual fidelity (textured props, water): see Near-term item #2 above.
 
 ## Rendering
 

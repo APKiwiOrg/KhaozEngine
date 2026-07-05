@@ -2037,8 +2037,6 @@ authoritative server stack meet, so two clients see each other walking the same 
   `ClientPrediction` reconciling an injected misprediction (local converges to the server basis; unacked
   commands replay).
 
-Spec: `docs/superpowers/specs/2026-06-27-networked-overworld-design.md`.
-
 ## 7.46.0
 
 Prop scatter + asset pipeline, the fourth overworld render-scale sub-project: the walkable terrain is now
@@ -2172,9 +2170,8 @@ Parallel `ForEach`: an ECS `World` can now fan a hot query's per-entity work acr
 which breaks the single-hot-cell ceiling the cell axis (7.41.0) leaves. Archetype rows are independent memory, so a
 per-row-pure action over disjoint row ranges is race-free and order-independent: the parallel result is bit-identical
 to the sequential `ForEach` regardless of how rows partition. Opt-in and default-inline, so the existing `ForEach`
-path is byte-unchanged and lockstep / single-player sims are untouched. Layer 2 of the parallel-job-system program
-(`docs/superpowers/specs/2026-06-26-ecs-parallel-job-system-design.md`), built on the jobs-0 benchmark and the 7.41.0
-`IJobScheduler` seam. Additive, minor.
+path is byte-unchanged and lockstep / single-player sims are untouched. Layer 2 of the parallel-job-system program,
+built on the jobs-0 benchmark and the 7.41.0 `IJobScheduler` seam. Additive, minor.
 
 - **Ecs: `World.ParallelForEach<...>` overloads (arity 1-8).** Mirror `ForEach<...>`, partitioning each matched
   archetype's row range `[0,Count)` into a few contiguous chunks per core and fanning them across an `IJobScheduler`
@@ -2208,8 +2205,7 @@ path is byte-unchanged and lockstep / single-player sims are untouched. Layer 2 
 Parallel cell ticks: a `ShardHost` can now tick its independent cells across CPU cores - the biggest MMO-shape
 server-scale win for the least risk, since cells are disjoint `World`s and the fan-out is hazard-free. Opt-in and
 default-off, so the single-threaded path is byte-unchanged and lockstep / single-player sims are untouched. Layer 1
-of the parallel-job-system program (`docs/superpowers/specs/2026-06-26-ecs-parallel-job-system-design.md`), built on
-the jobs-0 benchmark. Additive, minor.
+of the parallel-job-system program, built on the jobs-0 benchmark. Additive, minor.
 
 - **Simulation: a worker-pool seam (`IJobScheduler`).** New `IJobScheduler.For(int count, Action<int> body)` runs
   N independent jobs and blocks until all complete. `SingleThreadedJobScheduler` (the default everywhere) runs them
@@ -2291,8 +2287,7 @@ the phased MMO build. No consumer-visible behaviour change; additive surface onl
 
 MMO netcode stack, Phase 3: seamless sharded world topology. A new package `KhaozEngine.Sharding` (in the
 `Server` umbrella) partitions the world into a uniform grid of authoritative cells run in one process, with
-seamless cross-boundary movement, plus a reference dedicated-server sample. Design:
-`docs/superpowers/specs/2026-06-25-mmo-phase3-seamless-shard-design.md`.
+seamless cross-boundary movement, plus a reference dedicated-server sample.
 
 - **Cell grid** (3A): `CellCoord` (world position -> integer cell coord; `FromWorld` floor math mirroring
   `InterestGrid`), `CellSim` (one cell = an ECS `World` + a `FixedTickHost` + a `ServerReplicator` + an
@@ -2348,8 +2343,7 @@ Additive (new public API; the default-focused path preserves all existing behavi
 ## 7.36.0
 
 MMO netcode stack, Phases 1 + 2 (session lifecycle, entity replication, interest management, world store).
-Builds on the Phase 0 transport seam + fixed-tick host. Two new packages; design + decomposition in
-`docs/superpowers/specs/2026-06-25-mmo-netcode-stack-design.md`.
+Builds on the Phase 0 transport seam + fixed-tick host. Two new packages.
 
 - **Session lifecycle** (`KhaozEngine.Netcode`, 1D): `NetServer` / `NetClient` over `INetTransport` — a
   Hello/Welcome/Reject handshake (`SessionFrame`/`SessionOpcode`), `IConnectionAuthenticator` seam (+ the dev
@@ -2372,7 +2366,7 @@ Builds on the Phase 0 transport seam + fixed-tick host. Two new packages; design
 ## 7.35.0
 
 MMO netcode stack, Phase 0 (transport seam + fixed-tick host). First foundation of the authoritative
-multiplayer program (`docs/superpowers/specs/2026-06-25-mmo-netcode-stack-design.md`).
+multiplayer program.
 
 - `KhaozEngine.Netcode`: new `INetTransport` byte-transport seam (`Poll` / `TryDequeueEvent` / `Send` /
   `Disconnect`) with the `NetConnectionId`, `NetEvent`, `NetEventType` value types, plus `LoopbackTransport` -
@@ -3867,8 +3861,7 @@ goldens pixel-identical).
 
 ## 5.25.0-experimental (custom 5.x line)
 
-P0 hardening, stage 3 of 3 — the graphics-backend seam, **phase 3a of 4** (foundation). See
-`docs/superpowers/specs/2026-06-16-gpu-backend-seam-design.md`. Behaviour
+P0 hardening, stage 3 of 3: the graphics-backend seam, **phase 3a of 4** (foundation). Behaviour
 on Metal is unchanged (both goldens pass pixel-identical).
 
 ### KhaozEngine.Gpu (NEW package)

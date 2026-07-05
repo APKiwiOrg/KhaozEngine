@@ -1793,8 +1793,7 @@ Client and server must build the **same** terrain field (`TerrainPresets.Clearin
 `MoveTuning` so prediction matches authority. Props are **not** replicated - each client scatters them
 deterministically from the seed, so only players consume bandwidth. Demo: the **Networked walk** room in
 `KhaozEngine.Showcase` runs an authoritative `WorldServer` + a local `WorldClient` + scripted bot clients all
-in-process over loopback UDP, so you see replicated players without launching a separate server. Spec:
-`docs/superpowers/specs/2026-06-27-networked-overworld-design.md`.
+in-process over loopback UDP, so you see replicated players without launching a separate server.
 
 ### Player display names / nameplates
 
@@ -1926,8 +1925,7 @@ authority for boundary crossers exactly-once, refreshes border ghosts, then serv
 home-cell area-of-interest (owned + ghosts). Walking across a boundary hands off with no hitch; two players in
 adjacent cells see each other via ghosting. `WorldServer` stays the single-`World` option for a modest player
 count; both share `WorldPersistence` via `IWorldPersistenceHost`. `MmoServerSample` is the reference dedicated
-server built on the multi-cell `ShardedWorldServer` (cellSize 60). Spec:
-`docs/superpowers/specs/2026-06-27-multicell-sharding-design.md`.
+server built on the multi-cell `ShardedWorldServer` (cellSize 60).
 
 ### Server-side anti-cheat / input-hardening
 
@@ -2553,8 +2551,7 @@ lives in `SnapshotSample` (`dotnet run --project SnapshotSample -- /tmp/ke-snaps
 
 ## Multiplayer: transport seam + fixed-tick host (`KhaozEngine.Netcode` / `KhaozEngine.Simulation`)
 
-Phase 0 of the authoritative-multiplayer stack (full design:
-`docs/superpowers/specs/2026-06-25-mmo-netcode-stack-design.md`). Two pieces a game wires together; both are
+Phase 0 of the authoritative-multiplayer stack. Two pieces a game wires together; both are
 headless and deterministic.
 
 **`INetTransport`** is the byte-transport seam - the only thing above it that knows about the wire. You drive

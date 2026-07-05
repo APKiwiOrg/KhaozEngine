@@ -30,7 +30,7 @@ internal sealed class RawDeltaClient
 
     public World World { get; } = new();
     public ClientReplicationView View { get; }
-    public int LocalNetId { get; private set; } = -1;
+    public long LocalNetId { get; private set; } = -1;
     public bool Joined { get; private set; }
     public int DeltaFramesApplied { get; private set; }
     public int SnapshotFramesApplied { get; private set; }
@@ -74,7 +74,7 @@ internal sealed class RawDeltaClient
         if (!MoveProtocol.TryDecodeServerFrame(data, out MoveProtocol.ServerFrameKind kind, out byte[] payload)) return;
         if (kind == MoveProtocol.ServerFrameKind.Snapshot)
         {
-            if (!MoveProtocol.TryDecodeSnapshotFrame(payload, out int ln, out _, out byte[] snap)) return;
+            if (!MoveProtocol.TryDecodeSnapshotFrame(payload, out long ln, out _, out byte[] snap)) return;
             View.TryApply(World, snap, out _);
             LocalNetId = ln;
             SnapshotFramesApplied++;
@@ -82,7 +82,7 @@ internal sealed class RawDeltaClient
         }
         else if (kind == MoveProtocol.ServerFrameKind.Delta)
         {
-            if (!MoveProtocol.TryDecodeSnapshotFrame(payload, out int ln, out _, out byte[] delta)) return;
+            if (!MoveProtocol.TryDecodeSnapshotFrame(payload, out long ln, out _, out byte[] delta)) return;
             View.ApplyDelta(World, delta);
             LocalNetId = ln;
             DeltaFramesApplied++;
@@ -92,7 +92,7 @@ internal sealed class RawDeltaClient
         }
     }
 
-    public bool TryPos(int netId, out Vector3 pos)
+    public bool TryPos(long netId, out Vector3 pos)
     {
         if (View.TryGetEntity(netId, out Entity e) && World.IsAlive(e) && World.TryGet(e, out ReplicatedPosition rp))
         {

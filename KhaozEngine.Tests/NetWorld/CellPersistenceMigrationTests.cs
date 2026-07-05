@@ -18,31 +18,31 @@ public class CellPersistenceMigrationTests
     {
         public readonly Dictionary<CellCoord, byte[]> Snapshots = new();
         public readonly Dictionary<CellCoord, byte[]> Restored = new();
-        public readonly Dictionary<CellCoord, List<int>> RestoreIds = new();
+        public readonly Dictionary<CellCoord, List<long>> RestoreIds = new();
         public bool FailRestore;
         public int RetainedCount;
-        public int NextNetId { get; private set; } = 1;
+        public long NextNetId { get; private set; } = 1;
         public event Action<CellCoord>? CellCreated;
 
         public IReadOnlyCollection<CellCoord> LiveCellCoords => new List<CellCoord>(Snapshots.Keys);
         public byte[]? SnapshotCell(CellCoord coord) => Snapshots.TryGetValue(coord, out byte[]? b) ? b : null;
 
-        public IReadOnlyList<int> RestoreCell(CellCoord coord, byte[] snapshot)
+        public IReadOnlyList<long> RestoreCell(CellCoord coord, byte[] snapshot)
         {
             Restored[coord] = snapshot;
-            return RestoreIds.TryGetValue(coord, out List<int>? ids) ? ids : new List<int>();
+            return RestoreIds.TryGetValue(coord, out List<long>? ids) ? ids : new List<long>();
         }
 
         public CellRestoreResult TryRestoreCell(CellCoord coord, byte[] snapshot)
         {
             if (FailRestore) return CellRestoreResult.Failed("decode failed");
             Restored[coord] = snapshot;
-            List<int> ids = RestoreIds.TryGetValue(coord, out List<int>? l) ? l : new List<int>();
+            List<long> ids = RestoreIds.TryGetValue(coord, out List<long>? l) ? l : new List<long>();
             return new CellRestoreResult(true, ids, RetainedCount, null);
         }
 
         public void EnsureCell(CellCoord coord) => CellCreated?.Invoke(coord);
-        public void EnsureNextNetIdAtLeast(int atLeast) { if (atLeast > NextNetId) NextNetId = atLeast; }
+        public void EnsureNextNetIdAtLeast(long atLeast) { if (atLeast > NextNetId) NextNetId = atLeast; }
         public void RaiseCellCreated(CellCoord coord) => CellCreated?.Invoke(coord);
     }
 
@@ -51,7 +51,10 @@ public class CellPersistenceMigrationTests
     {
         var seedHost = new FakeHost();
         seedHost.Snapshots[coord] = body;
-        var seeder = new CellPersistence(seedHost, store, new CellPersistenceConfig { SchemaVersion = schemaVersion });
+        // Opt out of engine migrations here: this only WRITES a blob stamped at schemaVersion, and folding in the
+        // engine widening would (e.g. at v5) leave a gap in the chain and throw at construction.
+        var seeder = new CellPersistence(seedHost, store,
+            new CellPersistenceConfig { SchemaVersion = schemaVersion, IncludeEngineMigrations = false });
         seeder.SaveDirtyPass();
         await seeder.FlushAsync();
     }
@@ -171,7 +174,9 @@ public class CellPersistenceMigrationTests
         await SeedBlob(store, C00, 1, new byte[] { 0, 0, 0, 0 });
         byte[]? orig = await store.LoadAsync("cell:0:0");
 
-        var cfg = new CellPersistenceConfig { SchemaVersion = 3 };
+        // Opt out of engine migrations so v2 is genuinely the earliest step (else the engine widening from v1 would
+        // make a v1 blob upgradable, not "too old").
+        var cfg = new CellPersistenceConfig { SchemaVersion = 3, IncludeEngineMigrations = false };
         cfg.RegisterMigration(2, b => b);   // earliest migration from v2; a v1 blob predates it
         var host = new FakeHost();
         var cp = new CellPersistence(host, store, cfg);
@@ -211,9 +216,9 @@ public class CellPersistenceMigrationTests
     {
         var store = new InMemoryWorldStore();
         byte[] body = { 0, 0, 0, 0 };
-        await SeedBlob(store, C00, 1, body);
+        await SeedBlob(store, C00, NetIdBlobMigration.NetId64SchemaVersion, body);   // stored at the current version (2)
         var host = new FakeHost();
-        var cp = new CellPersistence(host, store);   // SchemaVersion default 1 == stored
+        var cp = new CellPersistence(host, store);   // default SchemaVersion == the current version (2) == stored
         var issues = new List<CellPersistenceIssue>();
         cp.Issue += issues.Add;
 

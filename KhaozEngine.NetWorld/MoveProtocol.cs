@@ -9,6 +9,19 @@ namespace KhaozEngine.NetWorld;
 /// <summary>Shared wire encodings so a <see cref="WorldServer"/> and its <see cref="WorldClient"/> agree.</summary>
 public static class MoveProtocol
 {
+    /// <summary>
+    /// The engine wire-format generation. Bumped only on a breaking change to the on-the-wire snapshot / delta /
+    /// frame-header layout, so it labels the incompatible generations for the ProtocolVersion handshake. It is
+    /// <c>2</c> as of 10.0.0, which widened <see cref="NetId"/> from 32-bit to 64-bit on the wire (the snapshot/delta
+    /// netId field and the <see cref="EncodeSnapshotFrame"/> header); <c>1</c> was the pre-10.0.0 32-bit line. A
+    /// consumer that uses the opt-in handshake should fold this into its
+    /// <see cref="WorldClientConfig.ProtocolVersion"/> string (e.g. <c>$"myGame-1.4;wire{MoveProtocol.WireProtocolVersion}"</c>)
+    /// and reject a mismatch in its <see cref="VersionCheckingAuthenticator"/> rule, so a 10.0.0 peer and a pre-10.0.0
+    /// peer disconnect cleanly at connect (<see cref="DisconnectReason.IncompatibleVersion"/>) instead of misparsing a
+    /// 64-bit frame as 32-bit. Engine built-ins and the codec ids are otherwise unchanged.
+    /// </summary>
+    public const int WireProtocolVersion = 2;
+
     /// <summary>Type id of <see cref="ReplicatedPosition"/> in the shared registry.</summary>
     public const ushort PositionTypeId = 1;
 
@@ -324,27 +337,28 @@ public static class MoveProtocol
         return false;
     }
 
-    // Server->client frame: [localNetId:int][ackSeq:int][snapshot bytes...].
-    private const int FrameHeader = 8;
+    // Server->client frame: [localNetId:long(8)][ackSeq:int(4)][snapshot bytes...]. localNetId widened to 64-bit in
+    // 10.0.0 (was int), so the header grew 8 -> 12 bytes. This is a wire break gated on the ProtocolVersion handshake.
+    private const int FrameHeader = 12;
 
     /// <summary>Prepends the per-client header (the receiver's own net id + last-acked move seq) to a snapshot.</summary>
-    public static byte[] EncodeSnapshotFrame(int localNetId, int ackSeq, byte[] snapshot)
+    public static byte[] EncodeSnapshotFrame(long localNetId, int ackSeq, byte[] snapshot)
     {
         if (snapshot is null) throw new ArgumentNullException(nameof(snapshot));
         var b = new byte[FrameHeader + snapshot.Length];
-        BitConverter.TryWriteBytes(b.AsSpan(0, 4), localNetId);
-        BitConverter.TryWriteBytes(b.AsSpan(4, 4), ackSeq);
+        BitConverter.TryWriteBytes(b.AsSpan(0, 8), localNetId);
+        BitConverter.TryWriteBytes(b.AsSpan(8, 4), ackSeq);
         snapshot.CopyTo(b.AsSpan(FrameHeader));
         return b;
     }
 
     /// <summary>Splits a server frame into its header and the replication snapshot. False if too short.</summary>
-    public static bool TryDecodeSnapshotFrame(ReadOnlySpan<byte> data, out int localNetId, out int ackSeq, out byte[] snapshot)
+    public static bool TryDecodeSnapshotFrame(ReadOnlySpan<byte> data, out long localNetId, out int ackSeq, out byte[] snapshot)
     {
         if (data.Length >= FrameHeader)
         {
-            localNetId = BitConverter.ToInt32(data.Slice(0, 4));
-            ackSeq = BitConverter.ToInt32(data.Slice(4, 4));
+            localNetId = BitConverter.ToInt64(data.Slice(0, 8));
+            ackSeq = BitConverter.ToInt32(data.Slice(8, 4));
             snapshot = data.Slice(FrameHeader).ToArray();
             return true;
         }

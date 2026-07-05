@@ -58,9 +58,9 @@ public class ShardHostOwnerIndexTests
 
     /// <summary>Independent from-scratch scan of every cell's world: netId -&gt; the cell that authoritatively
     /// owns it (present, alive, not a ghost, not migrating). The oracle the maintained index must agree with.</summary>
-    private static Dictionary<int, CellCoord> GroundTruth(ShardHost host)
+    private static Dictionary<long, CellCoord> GroundTruth(ShardHost host)
     {
-        var gt = new Dictionary<int, CellCoord>();
+        var gt = new Dictionary<long, CellCoord>();
         foreach (CellSim c in host.Cells)
         {
             CellSim cell = c;
@@ -75,11 +75,11 @@ public class ShardHostOwnerIndexTests
     // Assert the maintained index (per-cell owned map + host netId->cell map) equals the ground-truth scan exactly.
     private static void AssertIndexMatchesGroundTruth(ShardHost host)
     {
-        Dictionary<int, CellCoord> gt = GroundTruth(host);
+        Dictionary<long, CellCoord> gt = GroundTruth(host);
 
         // Host index: same key set, same owning cell.
         Assert.Equal(gt.Count, host.OwnerCellEntries.Count);
-        foreach ((int netId, CellCoord coord) in gt)
+        foreach ((long netId, CellCoord coord) in gt)
         {
             Assert.True(host.OwnerCellEntries.TryGetValue(netId, out CellCoord got),
                 $"host index missing owned netId {netId}");
@@ -89,8 +89,8 @@ public class ShardHostOwnerIndexTests
         // Per-cell owned map: each cell's index holds exactly the netIds ground truth says it owns.
         foreach (CellSim cell in host.Cells)
         {
-            var expected = new HashSet<int>();
-            foreach ((int netId, CellCoord coord) in gt)
+            var expected = new HashSet<long>();
+            foreach ((long netId, CellCoord coord) in gt)
                 if (coord == cell.Coord) expected.Add(netId);
 
             Assert.Equal(expected.Count, cell.OwnedIndexEntries.Count);

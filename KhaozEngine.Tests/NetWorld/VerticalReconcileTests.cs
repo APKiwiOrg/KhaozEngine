@@ -152,7 +152,7 @@ public class VerticalReconcileTests
         throw new XunitException("no local entity in client snapshot");
     }
 
-    static (float y, bool grounded) ServerState(WorldServer server, int netId)
+    static (float y, bool grounded) ServerState(WorldServer server, long netId)
     {
         float y = float.NaN;
         bool grounded = false;

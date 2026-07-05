@@ -15,6 +15,11 @@ process.
   `CellCreated` event fires once per cell the first time its coordinate is instantiated (from `CellFor`,
   `SpawnAt`, a handoff destination, or `EnsureCell`) - the load hook a per-cell persistence layer subscribes to.
 
+**NetId is 64-bit (since 10.0.0).** Every `netId` here is a `long` (was a 32-bit `int`): the owned index, the
+`ShardHost` netId -> cell map, the AoI interest sets, and the handoff/ghost path all carry it, and the inter-cell
+`MigrateAck` payload grew from a 4-byte to an 8-byte netId. See `KhaozEngine.Replication.NetIdAllocator` for the
+node-prefix allocation scheme.
+
 **Ownership lookup is O(1) (since 9.31.0).** `ShardHost.TryGetOwner(netId, out cell, out entity)` and
 `CellSim.TryGetOwned(netId, out entity)` resolve the cell/entity that authoritatively owns a NetId in O(1) off a
 maintained netId -> (cell, entity) index, not a linear scan across every cell - so calling them per player and per

@@ -12,10 +12,10 @@ namespace KhaozEngine.Sharding;
 /// </summary>
 public readonly struct CellRestoreResult
 {
-    public CellRestoreResult(bool ok, IReadOnlyList<int> netIds, int retainedFrameCount, string? error)
+    public CellRestoreResult(bool ok, IReadOnlyList<long> netIds, int retainedFrameCount, string? error)
     {
         Ok = ok;
-        NetIds = netIds ?? Array.Empty<int>();
+        NetIds = netIds ?? Array.Empty<long>();
         RetainedFrameCount = retainedFrameCount;
         Error = error;
     }
@@ -24,7 +24,7 @@ public readonly struct CellRestoreResult
     public bool Ok { get; }
 
     /// <summary>The restored (now owned) net ids. Empty on failure.</summary>
-    public IReadOnlyList<int> NetIds { get; }
+    public IReadOnlyList<long> NetIds { get; }
 
     /// <summary>How many unknown extension frames were retained for verbatim re-persist. 0 unless the registry is a downgrade.</summary>
     public int RetainedFrameCount { get; }
@@ -33,5 +33,5 @@ public readonly struct CellRestoreResult
     public string? Error { get; }
 
     /// <summary>A rolled-back failure result carrying <paramref name="error"/>.</summary>
-    public static CellRestoreResult Failed(string error) => new(false, Array.Empty<int>(), 0, error);
+    public static CellRestoreResult Failed(string error) => new(false, Array.Empty<long>(), 0, error);
 }

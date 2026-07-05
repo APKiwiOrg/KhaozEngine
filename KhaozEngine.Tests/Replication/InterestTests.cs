@@ -27,7 +27,7 @@ public class InterestTests
         grid.Insert(2, 5, 0);    // distance 5
         grid.Insert(3, 100, 0);  // far
 
-        HashSet<int> set = grid.Query(0, 0, radius: 8f);
+        HashSet<long> set = grid.Query(0, 0, radius: 8f);
 
         Assert.Contains(1, set);
         Assert.Contains(2, set);
@@ -51,14 +51,14 @@ public class InterestTests
         var view = new ClientReplicationView(registry);
 
         // Viewpoint at origin: entities 1 and 2 are in range; 3 is not.
-        HashSet<int> nearOrigin = grid.Query(0, 0, 8f);
+        HashSet<long> nearOrigin = grid.Query(0, 0, 8f);
         view.Apply(client, SnapshotWriter.WriteFiltered(server, registry, nearOrigin));
         Assert.True(view.TryGetEntity(1, out _));
         Assert.True(view.TryGetEntity(2, out _));
         Assert.False(view.TryGetEntity(3, out _));   // out of interest -> never spawned
 
         // Viewpoint jumps to entity 3: 1 and 2 leave interest, 3 enters.
-        HashSet<int> nearThree = grid.Query(100, 0, 8f);
+        HashSet<long> nearThree = grid.Query(100, 0, 8f);
         view.Apply(client, SnapshotWriter.WriteFiltered(server, registry, nearThree));
         Assert.False(view.TryGetEntity(1, out _));   // left interest -> despawned
         Assert.False(view.TryGetEntity(2, out _));

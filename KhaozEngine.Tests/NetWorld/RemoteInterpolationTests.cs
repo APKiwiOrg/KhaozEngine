@@ -28,7 +28,7 @@ public class RemoteInterpolationTests
         public required WorldServerConfig Config { get; init; }
         public required WorldClient A { get; init; }   // the observer under test
         public required WorldClient B { get; init; }   // the moving remote A watches
-        public int BId => B.LocalNetId;
+        public long BId => B.LocalNetId;
         public float Dt => Config.TickSeconds;
 
         /// <summary>One server tick. Polls A/B; optionally advances A's presentation by <paramref name="presentDt"/>.</summary>
@@ -68,7 +68,7 @@ public class RemoteInterpolationTests
         return rig;
     }
 
-    static Vector3 RemotePos(WorldClient observer, int remoteNetId)
+    static Vector3 RemotePos(WorldClient observer, long remoteNetId)
     {
         foreach (EntityRenderState e in observer.Snapshot())
             if (!e.IsLocal && e.Id.Value == remoteNetId) return e.Position;

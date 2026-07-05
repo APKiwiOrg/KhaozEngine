@@ -39,12 +39,12 @@ public class ShardedWorldServerDeltaTests
         var server = new ShardedWorldServer(st, cfg, Flat, MoveTuning.Default);
         // A static NPC sitting ON the boundary (x=10): ghosted into cell 0 and owned by cell 1, so it stays inside the
         // crossing player's AoI while the player's owning cell flips from 0 to 1.
-        int npcNetId = server.SpawnEntity(10f, 5f);
+        long npcNetId = server.SpawnEntity(10f, 5f);
 
         var client = new RawDeltaClient(ct, server.Registry);
         for (int i = 0; i < 6; i++) { server.Poll(); server.Tick(cfg.TickSeconds); client.Poll(); }
         Assert.True(client.Joined && client.LocalNetId > 0);
-        int playerNetId = client.LocalNetId;
+        long playerNetId = client.LocalNetId;
 
         Entity? npcEntity = null;
         bool crossedWhileNpcVisible = false;
@@ -76,7 +76,7 @@ public class ShardedWorldServerDeltaTests
     [Fact]
     public void Delta_serving_is_deterministic_single_threaded_vs_threadpool()
     {
-        List<(int netId, Vector3 pos)> Run(IJobScheduler sched)
+        List<(long netId, Vector3 pos)> Run(IJobScheduler sched)
         {
             var hub = new InMemoryHub();
             var cfg = SmallCells(slot => new Vector3(7f + slot * 2f, 0f, 5f));
@@ -95,8 +95,8 @@ public class ShardedWorldServerDeltaTests
             }
 
             // Read A's replicated view (the delta-applied client state) as the deterministic fingerprint.
-            var outp = new List<(int, Vector3)>();
-            foreach (KeyValuePair<int, Entity> kv in a.View.Entities)
+            var outp = new List<(long, Vector3)>();
+            foreach (KeyValuePair<long, Entity> kv in a.View.Entities)
                 if (a.World.TryGet(kv.Value, out ReplicatedPosition rp)) outp.Add((kv.Key, rp.Value));
             outp.Sort((x, y) => x.Item1.CompareTo(y.Item1));
             return outp;

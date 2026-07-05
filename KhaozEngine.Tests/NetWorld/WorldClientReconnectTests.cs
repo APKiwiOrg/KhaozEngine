@@ -31,7 +31,7 @@ public class WorldClientReconnectTests
         // Initial connect.
         for (int i = 0; i < 8; i++) { server.Poll(); server.Tick(config.TickSeconds); client.Poll(0.016f); }
         Assert.Equal(WorldConnectionState.Connected, client.ConnectionState);
-        int firstNetId = client.LocalNetId;
+        long firstNetId = client.LocalNetId;
         Assert.True(firstNetId > 0);
 
         // Restart: new server process. Stop ticking the old one; the client starves into Reconnecting.

@@ -62,7 +62,7 @@ public class ExtensionComponentTests
         server.Set(e, new Mystery { A = 7, B = 8, C = 9 });
         server.Set(e, new Tag { Value = 55 });
 
-        byte[] snap = SnapshotWriter.WriteFiltered(server, registry, new HashSet<int> { 42 });
+        byte[] snap = SnapshotWriter.WriteFiltered(server, registry, new HashSet<long> { 42 });
 
         var client = new World();
         var view = new ClientReplicationView(registry);
@@ -85,7 +85,7 @@ public class ExtensionComponentTests
         server.Set(e, new Pos { X = 3, Y = 4 });
         server.Set(e, new Mystery { A = 1, B = 2, C = 3 });
         server.Set(e, new Tag { Value = 99 });
-        byte[] snap = SnapshotWriter.WriteFiltered(server, FullRegistry(), new HashSet<int> { 42 });
+        byte[] snap = SnapshotWriter.WriteFiltered(server, FullRegistry(), new HashSet<long> { 42 });
 
         var client = new World();
         var view = new ClientReplicationView(OldClientRegistry());
@@ -108,7 +108,7 @@ public class ExtensionComponentTests
         Entity e = server.Spawn();
         server.Set(e, new NetId(1));
         server.Set(e, new Tag { Value = 5 });          // id 2, below the floor
-        byte[] snap = SnapshotWriter.WriteFiltered(server, FullRegistry(), new HashSet<int> { 1 });
+        byte[] snap = SnapshotWriter.WriteFiltered(server, FullRegistry(), new HashSet<long> { 1 });
 
         var clientView = new ClientReplicationView(new ReplicationRegistry());   // knows nothing (id 2 unknown)
         bool ok = clientView.TryApply(new World(), snap, out string? error);

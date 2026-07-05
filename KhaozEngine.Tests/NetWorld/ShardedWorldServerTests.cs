@@ -41,13 +41,13 @@ public class ShardedWorldServerTests
         throw new Xunit.Sdk.XunitException("client never joined");
     }
 
-    private static float OwnedX(ShardedWorldServer server, int netId)
+    private static float OwnedX(ShardedWorldServer server, long netId)
     {
         Assert.True(server.Host.TryGetOwner(netId, out CellSim cell, out Entity e));
         return cell.World.Get<ReplicatedPosition>(e).Value.X;
     }
 
-    private static bool Sees(ShardedWorldServer server, int slot, int netId, float interestRadius)
+    private static bool Sees(ShardedWorldServer server, int slot, long netId, float interestRadius)
     {
         byte[] snap = server.Host.SnapshotForClient(slot, interestRadius);
         var view = new ClientReplicationView(server.Registry);
@@ -64,7 +64,7 @@ public class ShardedWorldServerTests
         var client = new NetClient(ct);
 
         int slot = JoinClient(server, client, cfg);
-        Assert.True(server.TryGetPlayerNetId(slot, out int netId));
+        Assert.True(server.TryGetPlayerNetId(slot, out long netId));
         Assert.Equal(1, server.PlayerCount);
         Assert.True(server.Host.TryGetOwner(netId, out CellSim cell, out _));
         Assert.Equal(new CellCoord(0, 0), cell.Coord);
@@ -78,7 +78,7 @@ public class ShardedWorldServerTests
         var server = new ShardedWorldServer(st, cfg, Flat, MoveTuning.Default);
         var client = new NetClient(ct);
         int slot = JoinClient(server, client, cfg);
-        Assert.True(server.TryGetPlayerNetId(slot, out int netId));
+        Assert.True(server.TryGetPlayerNetId(slot, out long netId));
 
         float maxStep = MoveTuning.Default.RunSpeed * cfg.TickSeconds * 1.5f;
         bool crossed = false;
@@ -91,7 +91,7 @@ public class ShardedWorldServerTests
             client.Poll();
 
             Assert.Equal(1, server.Host.OwnerCount(netId));        // never 0 (loss) or 2 (dup)
-            Assert.True(server.TryGetPlayerNetId(slot, out int stillNetId));
+            Assert.True(server.TryGetPlayerNetId(slot, out long stillNetId));
             Assert.Equal(netId, stillNetId);                        // NetId stable across handoff
 
             float x = OwnedX(server, netId);
@@ -120,9 +120,9 @@ public class ShardedWorldServerTests
 
         for (int i = 0; i < 50; i++) { c0.Poll(); c1.Poll(); c2.Poll(); server.Poll(); server.Tick(cfg.TickSeconds); }
         Assert.Equal(3, server.PlayerCount);
-        Assert.True(server.TryGetPlayerNetId(0, out int n0));
-        Assert.True(server.TryGetPlayerNetId(1, out int n1));
-        Assert.True(server.TryGetPlayerNetId(2, out int n2));
+        Assert.True(server.TryGetPlayerNetId(0, out long n0));
+        Assert.True(server.TryGetPlayerNetId(1, out long n1));
+        Assert.True(server.TryGetPlayerNetId(2, out long n2));
 
         Assert.True(Sees(server, slot: 0, n1, cfg.InterestRadius));   // adjacent across border -> ghost in home AoI
         Assert.True(Sees(server, slot: 1, n0, cfg.InterestRadius));
@@ -154,7 +154,7 @@ public class ShardedWorldServerTests
             var outp = new List<(Vector3, CellCoord)>();
             foreach (int slot in new[] { 0, 1 })
             {
-                Assert.True(server.TryGetPlayerNetId(slot, out int id));
+                Assert.True(server.TryGetPlayerNetId(slot, out long id));
                 Assert.True(server.Host.TryGetOwner(id, out CellSim cell, out Entity e));
                 outp.Add((cell.World.Get<ReplicatedPosition>(e).Value, cell.Coord));
             }
@@ -176,7 +176,7 @@ public class ShardedWorldServerTests
         for (int i = 0; i < 6; i++) { server.Poll(); server.Tick(cfg.TickSeconds); client.Poll(); }
         Assert.True(client.Joined);
         Assert.True(client.LocalNetId > 0);
-        int localNetId = client.LocalNetId;
+        long localNetId = client.LocalNetId;
 
         float maxStep = MoveTuning.Default.RunSpeed * cfg.TickSeconds * 2f;
         float prevX = LocalX(client);
@@ -227,7 +227,7 @@ public class ShardedWorldServerTests
         var b = new NetClient(hub.CreateClient());
         int slotB = JoinClient(server, b, cfg);
         Assert.Equal(slotA, slotB);   // same slot, recycled
-        Assert.True(server.TryGetPlayerNetId(slotB, out int bNet));
+        Assert.True(server.TryGetPlayerNetId(slotB, out long bNet));
 
         float xSpawn = OwnedX(server, bNet);
         for (int seq = 0; seq < 20; seq++)

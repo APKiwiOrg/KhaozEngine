@@ -70,7 +70,7 @@ public class ServerWorldTickTests
             if (client.Slot >= 0 && server.TryGetPlayerNetId(client.Slot, out _)) slot = client.Slot;
         }
         Assert.True(slot >= 0, "client never joined");
-        Assert.True(server.TryGetPlayerNetId(slot, out int netId));
+        Assert.True(server.TryGetPlayerNetId(slot, out long netId));
         Assert.True(server.Host.TryGetOwner(netId, out CellSim cell, out _));
         Assert.True(cell.World.Tick > 0, "owning cell's world tick never advanced");
     }

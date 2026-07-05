@@ -27,7 +27,7 @@ public class PlayerIdentityTests
         server.Set(e, new NetId(7));
         server.Set(e, new PlayerIdentity { DisplayName = "Daniel" });
 
-        byte[] snapshot = SnapshotWriter.WriteFiltered(server, registry, new System.Collections.Generic.HashSet<int> { 7 });
+        byte[] snapshot = SnapshotWriter.WriteFiltered(server, registry, new System.Collections.Generic.HashSet<long> { 7 });
 
         var client = new World();
         var view = new ClientReplicationView(registry);
@@ -48,7 +48,7 @@ public class PlayerIdentityTests
         string huge = new string('x', 500);   // 500 ASCII bytes, well over the cap
         server.Set(e, new PlayerIdentity { DisplayName = huge });
 
-        byte[] snapshot = SnapshotWriter.WriteFiltered(server, registry, new System.Collections.Generic.HashSet<int> { 1 });
+        byte[] snapshot = SnapshotWriter.WriteFiltered(server, registry, new System.Collections.Generic.HashSet<long> { 1 });
         // The cap bounds the encoded name: nothing close to the 500-byte string reaches the wire.
         Assert.True(snapshot.Length < 128, $"snapshot {snapshot.Length} bytes - name was not clamped on write");
 
@@ -73,7 +73,7 @@ public class PlayerIdentityTests
         string euros = new string('€', 30);
         server.Set(e, new PlayerIdentity { DisplayName = euros });
 
-        byte[] snapshot = SnapshotWriter.WriteFiltered(server, registry, new System.Collections.Generic.HashSet<int> { 2 });
+        byte[] snapshot = SnapshotWriter.WriteFiltered(server, registry, new System.Collections.Generic.HashSet<long> { 2 });
         var client = new World();
         var view = new ClientReplicationView(registry);
         view.Apply(client, snapshot);

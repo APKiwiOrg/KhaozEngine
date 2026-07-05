@@ -24,7 +24,7 @@ public sealed class PresentationTrace
     /// per-entity. <see cref="ReconcileError"/> and <see cref="Held"/> only apply to remotes/local respectively.</summary>
     public readonly record struct Row(
         double T, float Dt, double RenderTime, float InterpolationDelay, double SinceSnapshot,
-        bool SnapshotArrived, float ReconcileError, bool IsLocal, int EntityId, Vector3 Position,
+        bool SnapshotArrived, float ReconcileError, bool IsLocal, long EntityId, Vector3 Position,
         float VerticalVelocity, bool Held);
 
     private readonly List<Row> rows = new();

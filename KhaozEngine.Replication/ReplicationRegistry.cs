@@ -161,7 +161,7 @@ internal sealed class ComponentCodec
     /// (<paramref name="ownerNetId"/> equals <paramref name="netId"/>), and to nobody when
     /// <paramref name="ownerNetId"/> is null (e.g. ghost mirroring, a full unowned snapshot).
     /// </summary>
-    public bool ShouldWrite(ReplicationChannels channel, int netId, int? ownerNetId)
+    public bool ShouldWrite(ReplicationChannels channel, long netId, long? ownerNetId)
     {
         if ((Channels & channel) == 0) return false;
         if (channel == ReplicationChannels.Replicate

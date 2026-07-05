@@ -37,7 +37,7 @@ internal static class DeltaEncoding
     /// extension components (see <see cref="ReplicationRegistry.FirstExtensionTypeId"/>) so an older client can skip
     /// an id it never registered. <paramref name="baseComps"/> is null for a new entity.
     /// </summary>
-    public static void WriteChangedEntity(BinaryWriter bw, ReplicationRegistry registry, int netId, bool isNew,
+    public static void WriteChangedEntity(BinaryWriter bw, ReplicationRegistry registry, long netId, bool isNew,
         IReadOnlyDictionary<ushort, byte[]>? baseComps, IReadOnlyDictionary<ushort, byte[]> curComps)
     {
         bw.Write(netId);

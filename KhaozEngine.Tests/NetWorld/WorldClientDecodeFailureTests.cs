@@ -28,7 +28,7 @@ public class WorldClientDecodeFailureTests
         using (var bw = new BinaryWriter(ms))
         {
             bw.Write(1);              // entity count
-            bw.Write(1);              // netId
+            bw.Write(1L);             // netId (64-bit)
             bw.Write((ushort)4);      // unregistered built-in (below-floor) type id -> decode fails here
         }
         byte[] snapshot = ms.ToArray();

@@ -13,10 +13,10 @@ namespace KhaozEngine.Replication;
 /// </summary>
 public sealed class SnapshotBlobWriter
 {
-    private readonly List<(int netId, List<SnapshotBlobComponent> comps)> entities = new();
+    private readonly List<(long netId, List<SnapshotBlobComponent> comps)> entities = new();
 
     /// <summary>Appends an entity with its ordered component frames. Component order is preserved verbatim.</summary>
-    public SnapshotBlobWriter AddEntity(int netId, IEnumerable<SnapshotBlobComponent> components)
+    public SnapshotBlobWriter AddEntity(long netId, IEnumerable<SnapshotBlobComponent> components)
     {
         ArgumentNullException.ThrowIfNull(components);
         entities.Add((netId, new List<SnapshotBlobComponent>(components)));
@@ -29,7 +29,7 @@ public sealed class SnapshotBlobWriter
         using var ms = new MemoryStream();
         using var bw = new BinaryWriter(ms);
         bw.Write(entities.Count);
-        foreach ((int netId, List<SnapshotBlobComponent> comps) in entities)
+        foreach ((long netId, List<SnapshotBlobComponent> comps) in entities)
         {
             bw.Write(netId);
             foreach (SnapshotBlobComponent c in comps)

@@ -44,7 +44,7 @@ public class AoiDeltaReplicatorTests
         return e;
     }
 
-    private static HashSet<int> Aoi(params int[] ids) => new(ids);
+    private static HashSet<long> Aoi(params long[] ids) => new(ids);
 
     [Fact]
     public void Enter_sends_full_for_each_in_aoi_entity()
@@ -158,7 +158,7 @@ public class AoiDeltaReplicatorTests
     {
         var registry = NewRegistry();
         var world = new World();
-        var all = new HashSet<int>();
+        var all = new HashSet<long>();
         for (int i = 1; i <= 50; i++) { Spawn(world, i, i, i); all.Add(i); }
 
         var repl = new AoiDeltaReplicator(registry);

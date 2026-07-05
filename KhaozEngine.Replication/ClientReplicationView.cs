@@ -15,18 +15,18 @@ namespace KhaozEngine.Replication;
 public sealed class ClientReplicationView
 {
     private readonly ReplicationRegistry registry;
-    private readonly Dictionary<int, Entity> entityByNetId = new();
-    private readonly Dictionary<(int netId, ushort typeId), byte[]> currentBytes = new();
-    private readonly Dictionary<(int netId, ushort typeId), byte[]> previousBytes = new();
+    private readonly Dictionary<long, Entity> entityByNetId = new();
+    private readonly Dictionary<(long netId, ushort typeId), byte[]> currentBytes = new();
+    private readonly Dictionary<(long netId, ushort typeId), byte[]> previousBytes = new();
 
     // Fixed-delay interpolation buffer: a per-component timestamped history of the interpolatable bytes, so
     // InterpolateAt can render at an arbitrary render time by lerping the two bracketing samples by their true
     // timestamps (see RecordInterpolationSample / InterpolateAt). Independent of the previous/current double-buffer
     // that drives the legacy alpha-ramp Interpolate.
-    private readonly Dictionary<(int netId, ushort typeId), List<(double t, byte[] bytes)>> sampleHistory = new();
+    private readonly Dictionary<(long netId, ushort typeId), List<(double t, byte[] bytes)>> sampleHistory = new();
     // A remote whose most recent InterpolateAt clamped at the newest sample (renderTime ran past the buffer): a
     // genuine snapshot starvation "hold". Diagnostics read it via WasHeldAtLastInterpolation; recomputed per InterpolateAt.
-    private readonly HashSet<int> heldNetIds = new();
+    private readonly HashSet<long> heldNetIds = new();
 
     public ClientReplicationView(ReplicationRegistry registry)
     {
@@ -34,10 +34,10 @@ public sealed class ClientReplicationView
     }
 
     /// <summary>The live NetId→Entity map.</summary>
-    public IReadOnlyDictionary<int, Entity> Entities => entityByNetId;
+    public IReadOnlyDictionary<long, Entity> Entities => entityByNetId;
 
     /// <summary>Looks up the local entity for a network id.</summary>
-    public bool TryGetEntity(int netId, out Entity entity) => entityByNetId.TryGetValue(netId, out entity);
+    public bool TryGetEntity(long netId, out Entity entity) => entityByNetId.TryGetValue(netId, out entity);
 
     /// <summary>The snapshot seq of the last applied delta (-1 before any). Acknowledge this back to the server.</summary>
     public int LastAppliedSeq { get; private set; } = -1;
@@ -48,32 +48,32 @@ public sealed class ClientReplicationView
     /// </summary>
     public void Apply(World world, byte[] snapshot) => ApplyInternal(world, snapshot, unknownExtensionSink: null);
 
-    private void ApplyInternal(World world, byte[] snapshot, Action<int, ushort, byte[]>? unknownExtensionSink)
+    private void ApplyInternal(World world, byte[] snapshot, Action<long, ushort, byte[]>? unknownExtensionSink)
     {
         if (world is null) throw new ArgumentNullException(nameof(world));
         if (snapshot is null) throw new ArgumentNullException(nameof(snapshot));
 
         // Shift current -> previous for interpolation.
         previousBytes.Clear();
-        foreach (KeyValuePair<(int, ushort), byte[]> kv in currentBytes) previousBytes[kv.Key] = kv.Value;
+        foreach (KeyValuePair<(long, ushort), byte[]> kv in currentBytes) previousBytes[kv.Key] = kv.Value;
         currentBytes.Clear();
 
         using var ms = new MemoryStream(snapshot);
         using var br = new BinaryReader(ms);
         int count = br.ReadInt32();
-        var seen = new HashSet<int>();
+        var seen = new HashSet<long>();
         for (int i = 0; i < count; i++)
         {
-            int netId = br.ReadInt32();
+            long netId = br.ReadInt64();
             seen.Add(netId);
             Entity entity = GetOrSpawn(world, netId);
             ReadEntityComponents(world, entity, netId, ms, br, snapshot, "Snapshot", unknownExtensionSink);
         }
 
         // Full-state: anything we still track but didn't see is gone.
-        List<int>? gone = null;
-        foreach (KeyValuePair<int, Entity> kv in entityByNetId)
-            if (!seen.Contains(kv.Key)) (gone ??= new List<int>()).Add(kv.Key);
+        List<long>? gone = null;
+        foreach (KeyValuePair<long, Entity> kv in entityByNetId)
+            if (!seen.Contains(kv.Key)) (gone ??= new List<long>()).Add(kv.Key);
         if (gone is not null)
         {
             foreach (int netId in gone)
@@ -153,7 +153,7 @@ public sealed class ClientReplicationView
         }
     }
 
-    private Entity GetOrSpawn(World world, int netId)
+    private Entity GetOrSpawn(World world, long netId)
     {
         if (entityByNetId.TryGetValue(netId, out Entity e) && world.IsAlive(e)) return e;
         e = world.Spawn();
@@ -188,12 +188,12 @@ public sealed class ClientReplicationView
 
         // Interpolation: the pre-delta state becomes 'previous'; changed components below refresh 'current'.
         previousBytes.Clear();
-        foreach (KeyValuePair<(int netId, ushort typeId), byte[]> kv in currentBytes) previousBytes[kv.Key] = kv.Value;
+        foreach (KeyValuePair<(long netId, ushort typeId), byte[]> kv in currentBytes) previousBytes[kv.Key] = kv.Value;
 
         int removedCount = br.ReadInt32();
         for (int i = 0; i < removedCount; i++)
         {
-            int netId = br.ReadInt32();
+            long netId = br.ReadInt64();
             if (entityByNetId.TryGetValue(netId, out Entity e))
             {
                 if (world.IsAlive(e)) world.Despawn(e);
@@ -203,11 +203,11 @@ public sealed class ClientReplicationView
         }
 
         // A baseline -1 delta is a full snapshot; track what it carries so anything else can be despawned below.
-        HashSet<int>? seen = baselineSeq == -1 ? new HashSet<int>() : null;
+        HashSet<long>? seen = baselineSeq == -1 ? new HashSet<long>() : null;
         int changedCount = br.ReadInt32();
         for (int i = 0; i < changedCount; i++)
         {
-            int netId = br.ReadInt32();
+            long netId = br.ReadInt64();
             seen?.Add(netId);
             br.ReadByte(); // isNew flag — GetOrSpawn handles both; read only to stay byte-aligned
             Entity entity = GetOrSpawn(world, netId);
@@ -233,11 +233,11 @@ public sealed class ClientReplicationView
         // Full snapshot (baseline -1): anything we still track but the snapshot didn't carry is gone.
         if (seen is not null)
         {
-            List<int>? gone = null;
-            foreach (KeyValuePair<int, Entity> kv in entityByNetId)
-                if (!seen.Contains(kv.Key)) (gone ??= new List<int>()).Add(kv.Key);
+            List<long>? gone = null;
+            foreach (KeyValuePair<long, Entity> kv in entityByNetId)
+                if (!seen.Contains(kv.Key)) (gone ??= new List<long>()).Add(kv.Key);
             if (gone is not null)
-                foreach (int netId in gone)
+                foreach (long netId in gone)
                 {
                     if (world.IsAlive(entityByNetId[netId])) world.Despawn(entityByNetId[netId]);
                     entityByNetId.Remove(netId);
@@ -256,8 +256,8 @@ public sealed class ClientReplicationView
     /// is a hard protocol mismatch and throws (<paramref name="streamKind"/> names the stream for the message),
     /// caught by <see cref="TryApply"/>/<see cref="TryApplyDelta"/> and surfaced as "client out of date".
     /// </summary>
-    private void ReadEntityComponents(World world, Entity entity, int netId, MemoryStream ms, BinaryReader br,
-        byte[] backing, string streamKind, Action<int, ushort, byte[]>? unknownExtensionSink)
+    private void ReadEntityComponents(World world, Entity entity, long netId, MemoryStream ms, BinaryReader br,
+        byte[] backing, string streamKind, Action<long, ushort, byte[]>? unknownExtensionSink)
     {
         while (true)
         {
@@ -301,17 +301,17 @@ public sealed class ClientReplicationView
         }
     }
 
-    private void RemoveEntityBuffers(int netIdToRemove)
+    private void RemoveEntityBuffers(long netIdToRemove)
     {
-        var keys = new List<(int netId, ushort typeId)>();
-        foreach ((int netId, ushort typeId) key in currentBytes.Keys) if (key.netId == netIdToRemove) keys.Add(key);
-        foreach ((int netId, ushort typeId) key in keys) currentBytes.Remove(key);
+        var keys = new List<(long netId, ushort typeId)>();
+        foreach ((long netId, ushort typeId) key in currentBytes.Keys) if (key.netId == netIdToRemove) keys.Add(key);
+        foreach ((long netId, ushort typeId) key in keys) currentBytes.Remove(key);
         keys.Clear();
-        foreach ((int netId, ushort typeId) key in previousBytes.Keys) if (key.netId == netIdToRemove) keys.Add(key);
-        foreach ((int netId, ushort typeId) key in keys) previousBytes.Remove(key);
+        foreach ((long netId, ushort typeId) key in previousBytes.Keys) if (key.netId == netIdToRemove) keys.Add(key);
+        foreach ((long netId, ushort typeId) key in keys) previousBytes.Remove(key);
         keys.Clear();
-        foreach ((int netId, ushort typeId) key in sampleHistory.Keys) if (key.netId == netIdToRemove) keys.Add(key);
-        foreach ((int netId, ushort typeId) key in keys) sampleHistory.Remove(key);
+        foreach ((long netId, ushort typeId) key in sampleHistory.Keys) if (key.netId == netIdToRemove) keys.Add(key);
+        foreach ((long netId, ushort typeId) key in keys) sampleHistory.Remove(key);
     }
 
     /// <summary>
@@ -321,7 +321,7 @@ public sealed class ClientReplicationView
     /// </summary>
     public void Interpolate(World world, float alpha)
     {
-        foreach (KeyValuePair<(int netId, ushort typeId), byte[]> kv in currentBytes)
+        foreach (KeyValuePair<(long netId, ushort typeId), byte[]> kv in currentBytes)
         {
             if (!previousBytes.TryGetValue(kv.Key, out byte[]? prev)) continue;
             if (!entityByNetId.TryGetValue(kv.Key.netId, out Entity e) || !world.IsAlive(e)) continue;
@@ -341,7 +341,7 @@ public sealed class ClientReplicationView
     /// </summary>
     public void RecordInterpolationSample(double timeSeconds)
     {
-        foreach (KeyValuePair<(int netId, ushort typeId), byte[]> kv in currentBytes)
+        foreach (KeyValuePair<(long netId, ushort typeId), byte[]> kv in currentBytes)
         {
             if (!registry.TryGet(kv.Key.typeId, out ComponentCodec codec) || codec.LerpFromBytes is null) continue;
             if (!sampleHistory.TryGetValue(kv.Key, out List<(double t, byte[] bytes)>? hist))
@@ -370,7 +370,7 @@ public sealed class ClientReplicationView
     public void InterpolateAt(World world, double renderTime)
     {
         heldNetIds.Clear();
-        foreach (KeyValuePair<(int netId, ushort typeId), List<(double t, byte[] bytes)>> kv in sampleHistory)
+        foreach (KeyValuePair<(long netId, ushort typeId), List<(double t, byte[] bytes)>> kv in sampleHistory)
         {
             List<(double t, byte[] bytes)> hist = kv.Value;
             if (hist.Count == 0) continue;
@@ -410,5 +410,5 @@ public sealed class ClientReplicationView
     /// during the most recent <see cref="InterpolateAt"/> - i.e. ANY of its interpolatable components ran past the
     /// buffer (a snapshot starvation hold). Aggregated across the entity's components (held iff at least one held).
     /// Diagnostics-only; recomputed each <see cref="InterpolateAt"/>.</summary>
-    public bool WasHeldAtLastInterpolation(int netId) => heldNetIds.Contains(netId);
+    public bool WasHeldAtLastInterpolation(long netId) => heldNetIds.Contains(netId);
 }

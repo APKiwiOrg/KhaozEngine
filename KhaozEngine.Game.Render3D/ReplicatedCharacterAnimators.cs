@@ -20,7 +20,7 @@ namespace KhaozEngine.Game
     {
         /// <summary>Position-only sample: speed, vertical velocity, and grounded are all derived from the position
         /// delta vs the previous frame.</summary>
-        public CharacterSample(int id, Vector3 position, bool isLocal = false)
+        public CharacterSample(long id, Vector3 position, bool isLocal = false)
         {
             Id = id;
             Position = position;
@@ -32,7 +32,7 @@ namespace KhaozEngine.Game
 
         /// <summary>Sample with exact movement (the local player): <see cref="Grounded"/> and
         /// <see cref="VerticalVelocity"/> are used as given instead of being derived.</summary>
-        public CharacterSample(int id, Vector3 position, bool isLocal, bool grounded, float verticalVelocity)
+        public CharacterSample(long id, Vector3 position, bool isLocal, bool grounded, float verticalVelocity)
         {
             Id = id;
             Position = position;
@@ -42,8 +42,8 @@ namespace KhaozEngine.Game
             VerticalVelocity = verticalVelocity;
         }
 
-        /// <summary>Stable per-entity key (e.g. <c>NetId.Value</c>). Identifies the brain across frames.</summary>
-        public int Id { get; }
+        /// <summary>Stable per-entity key (e.g. <c>NetId.Value</c>, 64-bit since 10.0.0). Identifies the brain across frames.</summary>
+        public long Id { get; }
 
         /// <summary>World position this frame (the only signal every netcode surfaces for every entity).</summary>
         public Vector3 Position { get; }
@@ -70,7 +70,7 @@ namespace KhaozEngine.Game
     /// retain it.</summary>
     public readonly struct CharacterPose
     {
-        public CharacterPose(int id, Matrix4x4 world, Matrix4x4[] pose, LocomotionState state, bool isLocal)
+        public CharacterPose(long id, Matrix4x4 world, Matrix4x4[] pose, LocomotionState state, bool isLocal)
         {
             Id = id;
             World = world;
@@ -80,7 +80,7 @@ namespace KhaozEngine.Game
         }
 
         /// <summary>The entity key this pose belongs to (matches <see cref="CharacterSample.Id"/>).</summary>
-        public int Id { get; }
+        public long Id { get; }
 
         /// <summary>The world transform: <c>scale * RotationY(facingYaw) * Translation(position)</c>. The uniform
         /// scale is <see cref="CharacterAnimatorTuning.Scale"/> (default 1), so the consumer can draw with this
@@ -233,10 +233,10 @@ namespace KhaozEngine.Game
 
         readonly Func<AnimatedCharacter> _factory;
         readonly CharacterAnimatorTuning _tuning;
-        readonly Dictionary<int, Entry> _entries = new();
+        readonly Dictionary<long, Entry> _entries = new();
         readonly List<CharacterPose> _live = new();
-        readonly HashSet<int> _seen = new();
-        readonly List<int> _toRemove = new();
+        readonly HashSet<long> _seen = new();
+        readonly List<long> _toRemove = new();
 
         /// <summary>Build the set from a factory that fully constructs a brain (skeleton + clips + its own
         /// thresholds/crossfade). <see cref="CharacterAnimatorTuning.Locomotion"/> / <see cref="CharacterAnimatorTuning.Crossfade"/>
@@ -346,7 +346,7 @@ namespace KhaozEngine.Game
             if (_entries.Count != _seen.Count)
             {
                 _toRemove.Clear();
-                foreach (int id in _entries.Keys)
+                foreach (long id in _entries.Keys)
                     if (!_seen.Contains(id)) _toRemove.Add(id);
                 for (int i = 0; i < _toRemove.Count; i++) _entries.Remove(_toRemove[i]);
             }

@@ -101,7 +101,7 @@ public class ReplicationChannelsTests
             world.Set(e, new ServerOnly { V = 3 });   // Persist|Migrate -> NOT replicated
         });
 
-        byte[] snap = SnapshotWriter.WriteFiltered(w, r, new HashSet<int> { 100 });   // default channel = Replicate
+        byte[] snap = SnapshotWriter.WriteFiltered(w, r, new HashSet<long> { 100 });   // default channel = Replicate
         (World client, ClientReplicationView view) = Apply(r, snap);
 
         Assert.True(view.TryGetEntity(100, out Entity c));
@@ -117,7 +117,7 @@ public class ReplicationChannelsTests
         var w = new World();
         Spawn(w, 100, (world, e) => { world.Set(e, new Pub { V = 1 }); world.Set(e, new OwnerPriv { V = 10 }); });
         Spawn(w, 200, (world, e) => { world.Set(e, new Pub { V = 2 }); world.Set(e, new OwnerPriv { V = 20 }); });
-        var aoi = new HashSet<int> { 100, 200 };
+        var aoi = new HashSet<long> { 100, 200 };
 
         // Served to client whose player is netId 100.
         (World cA, ClientReplicationView vA) = Apply(r, SnapshotWriter.WriteFiltered(w, r, aoi, ReplicationChannels.Replicate, 100));
@@ -149,7 +149,7 @@ public class ReplicationChannelsTests
         var w = new World();
         Spawn(w, 100, (world, e) => { world.Set(e, new Pub { V = 1 }); world.Set(e, new OwnerPriv { V = 10 }); });
         Spawn(w, 200, (world, e) => { world.Set(e, new Pub { V = 2 }); world.Set(e, new OwnerPriv { V = 20 }); });
-        var aoi = new HashSet<int> { 100, 200 };
+        var aoi = new HashSet<long> { 100, 200 };
 
         var repl = new AoiDeltaReplicator(r);
         repl.BeginTick();
@@ -173,7 +173,7 @@ public class ReplicationChannelsTests
         ReplicationRegistry r = Full();
         var worldA = new World();
         Spawn(worldA, 200, (world, e) => { world.Set(e, new Pub { V = 2 }); world.Set(e, new OwnerPriv { V = 20 }); });
-        var aoi = new HashSet<int> { 200 };
+        var aoi = new HashSet<long> { 200 };
 
         var repl = new AoiDeltaReplicator(r);
         var observer = new World();
@@ -210,7 +210,7 @@ public class ReplicationChannelsTests
             world.Set(e, new RepOnly { V = 3 });      // Replicate only -> NOT persisted
         });
 
-        byte[] snap = SnapshotWriter.WriteFiltered(w, r, new HashSet<int> { 100 }, ReplicationChannels.Persist, null);
+        byte[] snap = SnapshotWriter.WriteFiltered(w, r, new HashSet<long> { 100 }, ReplicationChannels.Persist, null);
         (World client, ClientReplicationView view) = Apply(r, snap);
 
         Assert.True(view.TryGetEntity(100, out Entity c));
@@ -232,7 +232,7 @@ public class ReplicationChannelsTests
             world.Set(e, new RepOnly { V = 4 });      // Replicate only -> NOT migrated
         });
 
-        byte[] snap = SnapshotWriter.WriteFiltered(w, r, new HashSet<int> { 100 }, ReplicationChannels.Migrate, null);
+        byte[] snap = SnapshotWriter.WriteFiltered(w, r, new HashSet<long> { 100 }, ReplicationChannels.Migrate, null);
         (World client, ClientReplicationView view) = Apply(r, snap);
 
         Assert.True(view.TryGetEntity(100, out Entity c));
@@ -251,7 +251,7 @@ public class ReplicationChannelsTests
             channels: ReplicationChannels.None);       // in no channel: ECS-only, never serialized
         var w = new World();
         Spawn(w, 100, (world, e) => { world.Set(e, new Pub { V = 1 }); world.Set(e, new RepOnly { V = 2 }); });
-        var ids = new HashSet<int> { 100 };
+        var ids = new HashSet<long> { 100 };
 
         foreach (ReplicationChannels ch in new[] { ReplicationChannels.Replicate, ReplicationChannels.Persist, ReplicationChannels.Migrate })
         {
@@ -280,7 +280,7 @@ public class ReplicationChannelsTests
         var w = new World();
         Spawn(w, 100, (world, e) => { world.Set(e, new Pub { V = 7 }); world.Set(e, new Def { V = 8 }); });
         Spawn(w, 200, (world, e) => { world.Set(e, new Pub { V = 9 }); world.Set(e, new Def { V = 10 }); });
-        var ids = new HashSet<int> { 100, 200 };
+        var ids = new HashSet<long> { 100, 200 };
 
         byte[] rep = SnapshotWriter.WriteFiltered(w, r, ids, ReplicationChannels.Replicate, null);
         byte[] per = SnapshotWriter.WriteFiltered(w, r, ids, ReplicationChannels.Persist, null);
@@ -299,7 +299,7 @@ public class ReplicationChannelsTests
         ReplicationRegistry r = Defaults();
         var w = new World();
         Spawn(w, 100, (world, e) => { world.Set(e, new Pub { V = 7 }); world.Set(e, new Def { V = 8 }); });
-        var ids = new HashSet<int> { 100 };
+        var ids = new HashSet<long> { 100 };
 
         var a = new AoiDeltaReplicator(r); a.BeginTick();
         var b = new AoiDeltaReplicator(r); b.BeginTick();
@@ -316,7 +316,7 @@ public class ReplicationChannelsTests
         ReplicationRegistry r = Full();
         var w = new World();
         Spawn(w, 100, (world, e) => world.Set(e, new Pub { V = 42 }));
-        var ids = new HashSet<int> { 100 };
+        var ids = new HashSet<long> { 100 };
 
         foreach (ReplicationChannels ch in new[] { ReplicationChannels.Replicate, ReplicationChannels.Persist, ReplicationChannels.Migrate })
         {

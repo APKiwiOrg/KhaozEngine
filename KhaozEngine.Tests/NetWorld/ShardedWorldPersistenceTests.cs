@@ -45,7 +45,7 @@ public class ShardedWorldPersistenceTests
         // Join, then drive enough frames for the async load to apply AND the handoff to relocate the entity.
         for (int i = 0; i < 200; i++) { client.Poll(); server.Poll(); server.Tick(cfg.TickSeconds); persistence.Update(cfg.TickSeconds); }
 
-        Assert.True(server.TryGetPlayerNetId(client.Slot, out int netId));
+        Assert.True(server.TryGetPlayerNetId(client.Slot, out long netId));
         Assert.True(server.Host.TryGetOwner(netId, out CellSim cell, out Entity e));
         Assert.Equal(new CellCoord(3, 0), cell.Coord);        // ended owned by the saved position's cell
         Vector3 pos = cell.World.Get<ReplicatedPosition>(e).Value;
@@ -97,7 +97,7 @@ public class ShardedWorldPersistenceTests
             Assert.True(server.TryGetPlayerState(client.Slot, out PlayerMoveState restored));
             Assert.Equal(leftAt.X, restored.Position.X, 1);
             Assert.Equal(leftAt.Z, restored.Position.Z, 1);
-            Assert.True(server.TryGetPlayerNetId(client.Slot, out int netId));
+            Assert.True(server.TryGetPlayerNetId(client.Slot, out long netId));
             Assert.True(server.Host.TryGetOwner(netId, out CellSim cell, out _));
             Assert.True(cell.Coord.X >= 1, "restored into the cell containing the saved position");
         }

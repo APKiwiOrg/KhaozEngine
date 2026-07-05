@@ -26,7 +26,7 @@ public interface ICellPersistenceHost
     byte[]? SnapshotCell(CellCoord coord);
 
     /// <summary>Restores entities into a cell (call on the server thread). Returns the restored NetId values.</summary>
-    IReadOnlyList<int> RestoreCell(CellCoord coord, byte[] snapshot);
+    IReadOnlyList<long> RestoreCell(CellCoord coord, byte[] snapshot);
 
     /// <summary>
     /// Restores entities into a cell reporting decode success (so the driver can quarantine a corrupt blob instead of
@@ -41,9 +41,9 @@ public interface ICellPersistenceHost
     /// <summary>Instantiates a cell by coordinate (firing <see cref="CellCreated"/> if new); used by preload.</summary>
     void EnsureCell(CellCoord coord);
 
-    /// <summary>The next NetId the allocator will hand out.</summary>
-    int NextNetId { get; }
+    /// <summary>The next NetId the allocator will hand out (the packed 64-bit high-water for the local node).</summary>
+    long NextNetId { get; }
 
     /// <summary>Raises the allocator so its next id is at least <paramref name="atLeast"/> (never lowers it).</summary>
-    void EnsureNextNetIdAtLeast(int atLeast);
+    void EnsureNextNetIdAtLeast(long atLeast);
 }

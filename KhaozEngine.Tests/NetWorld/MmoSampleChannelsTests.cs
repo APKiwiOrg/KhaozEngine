@@ -37,7 +37,7 @@ public class MmoSampleChannelsTests
         ReplicationRegistry r = MmoProtocol.CreateRegistry();
         var w = new World();
         SpawnNpc(w, 50, aggro: 7);
-        var ids = new HashSet<int> { 50 };
+        var ids = new HashSet<long> { 50 };
 
         // Replicate: the client sees the Creature kind (public) but NEVER the aggro counter.
         (World rc, ClientReplicationView rv) = Apply(r, SnapshotWriter.WriteFiltered(w, r, ids, ReplicationChannels.Replicate, null));
@@ -67,7 +67,7 @@ public class MmoSampleChannelsTests
             w.Set(e, new Position { X = id, Y = id });
             w.Set(e, new PrivateStats { Health = id });
         }
-        var aoi = new HashSet<int> { 10, 20 };
+        var aoi = new HashSet<long> { 10, 20 };
 
         (World c, ClientReplicationView v) = Apply(r, SnapshotWriter.WriteFiltered(w, r, aoi, ReplicationChannels.Replicate, 10));
         Assert.True(v.TryGetEntity(10, out Entity own));

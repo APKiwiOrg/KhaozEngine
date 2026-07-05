@@ -69,7 +69,7 @@ public class PresentationJitterTests
         return loop;
     }
 
-    static float RemoteX(WorldClient obs, int id)
+    static float RemoteX(WorldClient obs, long id)
     {
         foreach (EntityRenderState e in obs.Snapshot())
             if (!e.IsLocal && e.Id.Value == id) return e.Position.X;

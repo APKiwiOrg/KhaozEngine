@@ -83,7 +83,7 @@ internal static class Program
         var (a, _) = KhaozEngine.Netcode.LoopbackTransport.CreatePair();
         var run1 = new MmoServer(a, new MmoServerConfig(), store);
         await run1.PreloadAsync();
-        int id = run1.SpawnResourceNode(150f, 150f, 42);
+        long id = run1.SpawnResourceNode(150f, 150f, 42);
         await run1.FlushAsync();
         Console.WriteLine($"[persistence-demo] run1: spawned ResourceNode netId={id} amount=42 at (150,150), persisted.");
 

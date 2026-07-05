@@ -16,21 +16,21 @@ public class CellPersistenceTests
     {
         public readonly Dictionary<CellCoord, byte[]> Snapshots = new();   // what SnapshotCell returns
         public readonly Dictionary<CellCoord, byte[]> Restored = new();    // what RestoreCell received
-        public int NextNetId { get; private set; } = 1;
+        public long NextNetId { get; private set; } = 1;
         public event Action<CellCoord>? CellCreated;
 
         public IReadOnlyCollection<CellCoord> LiveCellCoords => new List<CellCoord>(Snapshots.Keys);
         public byte[]? SnapshotCell(CellCoord coord) => Snapshots.TryGetValue(coord, out byte[]? b) ? b : null;
-        public IReadOnlyList<int> RestoreCell(CellCoord coord, byte[] snapshot)
+        public IReadOnlyList<long> RestoreCell(CellCoord coord, byte[] snapshot)
         {
             Restored[coord] = snapshot;
-            return RestoreIds.TryGetValue(coord, out List<int>? ids) ? ids : new List<int>();
+            return RestoreIds.TryGetValue(coord, out List<long>? ids) ? ids : new List<long>();
         }
-        public readonly Dictionary<CellCoord, List<int>> RestoreIds = new();
+        public readonly Dictionary<CellCoord, List<long>> RestoreIds = new();
         public void EnsureCell(CellCoord coord) => CellCreated?.Invoke(coord);
-        public void EnsureNextNetIdAtLeast(int atLeast) { if (atLeast > NextNetId) NextNetId = atLeast; }
+        public void EnsureNextNetIdAtLeast(long atLeast) { if (atLeast > NextNetId) NextNetId = atLeast; }
         public void RaiseCellCreated(CellCoord coord) => CellCreated?.Invoke(coord);
-        public void SetNextNetId(int v) => NextNetId = v;
+        public void SetNextNetId(long v) => NextNetId = v;
     }
 
     [Fact]
@@ -51,14 +51,14 @@ public class CellPersistenceTests
         // Seed a saved cell blob: header (magic + schemaVersion 1) + a 1-byte-count-0 body stand-in.
         // Use the persistence's own wrapping by saving through a throwaway instance's SaveDirtyPass instead:
         host.Snapshots[C00] = new byte[] { 0, 0, 0, 0 };   // empty replication snapshot (count 0)
-        host.RestoreIds[C00] = new List<int> { 7 };
+        host.RestoreIds[C00] = new List<long> { 7 };
         var seeder = new CellPersistence(host, store);
         seeder.SaveDirtyPass();                            // writes cell:0:0 (wrapped) to the store
         await seeder.FlushAsync();
 
         // Fresh persistence over the same store: creating the cell enqueues a load, applied only on Update.
         var host2 = new FakeHost();
-        host2.RestoreIds[C00] = new List<int> { 7 };
+        host2.RestoreIds[C00] = new List<long> { 7 };
         var cp = new CellPersistence(host2, store);
         host2.RaiseCellCreated(C00);                      // fires CellCreated -> async load
         await cp.FlushAsync();                             // await the load; FlushAsync drains + applies restores
@@ -103,7 +103,7 @@ public class CellPersistenceTests
         // Fresh persistence: the cell is created (load enqueued + restore pending, not drained).
         var host = new FakeHost();
         host.Snapshots[C00] = new byte[] { 0, 0, 0, 0 };   // the cell's pre-restore/default (empty) state
-        host.RestoreIds[C00] = new List<int> { 3 };
+        host.RestoreIds[C00] = new List<long> { 3 };
         var cp = new CellPersistence(host, store);
         host.RaiseCellCreated(C00);                        // load runs; restore enqueued; coord marked in-flight
 
@@ -126,9 +126,10 @@ public class CellPersistenceTests
         v1.SaveDirtyPass();
         await v1.FlushAsync();
 
-        // A reader on schema 2 must treat the v1 blob as unusable: no restore enqueued.
+        // A reader on schema 2 with no bridging migration must treat the v1 blob as unusable: no restore enqueued.
+        // (Opt out of engine migrations, else the built-in v1->v2 widening would bring it forward instead of skipping.)
         var hostV2 = new FakeHost();
-        var v2 = new CellPersistence(hostV2, store, new CellPersistenceConfig { SchemaVersion = 2 });
+        var v2 = new CellPersistence(hostV2, store, new CellPersistenceConfig { SchemaVersion = 2, IncludeEngineMigrations = false });
         hostV2.RaiseCellCreated(C00);
         await v2.FlushAsync();
         Assert.False(hostV2.Restored.ContainsKey(C00));   // skipped, not mis-decoded

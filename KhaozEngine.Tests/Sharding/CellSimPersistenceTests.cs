@@ -40,12 +40,12 @@ public class CellSimPersistenceTests
         Entity ghost = Owned(c, 7, 70); c.World.Set(ghost, new Ghost { Source = new CellCoord(1, 0) });
         Entity mig = Owned(c, 8, 80); c.World.Set(mig, new Migrating { Destination = new CellCoord(1, 0) });
 
-        byte[] snap = c.SnapshotOwned(new HashSet<int> { 6 });
+        byte[] snap = c.SnapshotOwned(new HashSet<long> { 6 });
 
         // Restore into a fresh cell and confirm only NetId 5 survived.
         CellSim restored = Cell(r);
-        IReadOnlyList<int> ids = restored.RestoreOwned(snap);
-        Assert.Equal(new[] { 5 }, ids);
+        IReadOnlyList<long> ids = restored.RestoreOwned(snap);
+        Assert.Equal(new long[] { 5 }, ids);
         Assert.True(restored.TryGetOwned(5, out Entity e));
         Assert.True(restored.World.TryGet(e, out Blob b));
         Assert.Equal(50, b.V);

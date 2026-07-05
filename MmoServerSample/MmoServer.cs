@@ -45,8 +45,9 @@ public sealed class MmoServer : ICellPersistenceHost
     private readonly IWorldStore store;
     private readonly CellPersistence cellPersistence;
     private readonly AoiDeltaReplicator deltaReplicator;
-    private readonly Dictionary<int, int> playerNetIdBySlot = new();
-    private int nextNetId = 1;
+    private readonly Dictionary<int, long> playerNetIdBySlot = new();
+    // The single NetId allocator (node 0) player joins + SpawnEntity draw from, so ids never collide (see NetIdAllocator).
+    private readonly NetIdAllocator allocator = new();
 
     public MmoServer(INetTransport transport, MmoServerConfig config) : this(transport, config, new InMemoryWorldStore()) { }
 
@@ -79,7 +80,7 @@ public sealed class MmoServer : ICellPersistenceHost
     public static ReplicationRegistry CreateRegistry() => MmoProtocol.CreateRegistry();
 
     /// <summary>The NetId of the player entity for a joined <paramref name="slot"/>.</summary>
-    public bool TryGetPlayerNetId(int slot, out int netId) => playerNetIdBySlot.TryGetValue(slot, out netId);
+    public bool TryGetPlayerNetId(int slot, out long netId) => playerNetIdBySlot.TryGetValue(slot, out netId);
 
     /// <summary>The game-message <c>kind</c> this reference server uses for a chat line. A game defines its own kind
     /// space (attack, interaction, inventory op, …); this sample carries just one.</summary>
@@ -101,9 +102,9 @@ public sealed class MmoServer : ICellPersistenceHost
     /// <see cref="Position"/>; <paramref name="configure"/> then adds the game's own components. The reference
     /// pattern for authoring NPCs/resources — the same shape as <see cref="ShardedWorldServer.SpawnEntity"/>.
     /// </summary>
-    public int SpawnEntity(float x, float y, Action<World, Entity>? configure = null)
+    public long SpawnEntity(float x, float y, Action<World, Entity>? configure = null)
     {
-        int netId = nextNetId++;
+        long netId = allocator.Next().Value;
         Entity e = host.SpawnOwned(x, y, netId, out CellSim cell); // eager: registers netId in the O(1) ownership index
         cell.World.Set(e, new Position { X = x, Y = y });
         configure?.Invoke(cell.World, e);
@@ -114,7 +115,7 @@ public sealed class MmoServer : ICellPersistenceHost
     /// client reads to pick its model) plus a hidden <see cref="AggroCounter"/> (Persist|Migrate, never replicated):
     /// the mob keeps its threat across handoff + restart but no client ever sees it. Players carry no
     /// <see cref="Creature"/>, so the client tells them apart.</summary>
-    public int SpawnNpc(float x, float y, int kind = 0) =>
+    public long SpawnNpc(float x, float y, int kind = 0) =>
         SpawnEntity(x, y, (w, e) =>
         {
             w.Set(e, new Creature { Kind = kind });
@@ -122,7 +123,7 @@ public sealed class MmoServer : ICellPersistenceHost
         });
 
     /// <summary>Spawns a persistable resource node at a world position. Returns its NetId.</summary>
-    public int SpawnResourceNode(float x, float y, int amount) =>
+    public long SpawnResourceNode(float x, float y, int amount) =>
         SpawnEntity(x, y, (w, e) => w.Set(e, new ResourceNode { Amount = amount }));
 
     /// <inheritdoc />
@@ -136,20 +137,20 @@ public sealed class MmoServer : ICellPersistenceHost
 
     /// <inheritdoc />
     public byte[]? SnapshotCell(CellCoord coord) =>
-        host.TryGetCell(coord, out CellSim cell) ? cell.SnapshotOwned(new HashSet<int>(playerNetIdBySlot.Values)) : null;
+        host.TryGetCell(coord, out CellSim cell) ? cell.SnapshotOwned(new HashSet<long>(playerNetIdBySlot.Values)) : null;
 
     /// <inheritdoc />
-    public IReadOnlyList<int> RestoreCell(CellCoord coord, byte[] snapshot) =>
-        host.TryGetCell(coord, out CellSim cell) ? cell.RestoreOwned(snapshot) : Array.Empty<int>();
+    public IReadOnlyList<long> RestoreCell(CellCoord coord, byte[] snapshot) =>
+        host.TryGetCell(coord, out CellSim cell) ? cell.RestoreOwned(snapshot) : Array.Empty<long>();
 
     /// <inheritdoc />
     public void EnsureCell(CellCoord coord) => host.EnsureCell(coord);
 
     /// <inheritdoc />
-    public int NextNetId => nextNetId;
+    public long NextNetId => allocator.NextValue;
 
     /// <inheritdoc />
-    public void EnsureNextNetIdAtLeast(int atLeast) { if (atLeast > nextNetId) nextNetId = atLeast; }
+    public void EnsureNextNetIdAtLeast(long atLeast) => allocator.EnsureNextAtLeast(atLeast);
 
     /// <summary>Boot: resume the NetId allocator + instantiate saved cells, then apply restores. Call once before ticking.</summary>
     public async Task PreloadAsync()
@@ -173,7 +174,7 @@ public sealed class MmoServer : ICellPersistenceHost
                 case ServerSessionEventKind.Joined:
                     // The player carries an OwnerOnly PrivateStats (exact HP) - replicated only back to its own
                     // client, never to another player observing it - alongside its replicated Position.
-                    int playerNetId = SpawnEntity(config.SpawnX, config.SpawnY,
+                    long playerNetId = SpawnEntity(config.SpawnX, config.SpawnY,
                         (w, e) => w.Set(e, new PrivateStats { Health = 100 }));
                     playerNetIdBySlot[ev.Slot] = playerNetId;
                     host.BindClient(ev.Slot, playerNetId);
@@ -207,7 +208,7 @@ public sealed class MmoServer : ICellPersistenceHost
         cellPersistence.Update(dt);
 
         // Apply one input per client to its (wherever-owned) player.
-        foreach (KeyValuePair<int, int> kv in playerNetIdBySlot)
+        foreach (KeyValuePair<int, long> kv in playerNetIdBySlot)
         {
             MoveCommand cmd = commands.Dequeue(kv.Key, out _);
             if ((cmd.Dx != 0f || cmd.Dy != 0f)
@@ -223,10 +224,11 @@ public sealed class MmoServer : ICellPersistenceHost
         // baseline; a full snapshot the first time / until it acks). The baseline is keyed by NetId, so a boundary
         // crossing reads as a component delta, never a despawn+respawn.
         deltaReplicator.BeginTick();
-        foreach (KeyValuePair<int, int> kv in playerNetIdBySlot)
+        foreach (KeyValuePair<int, long> kv in playerNetIdBySlot)
         {
-            int slot = kv.Key, ownerNetId = kv.Value;
-            (World world, HashSet<int> interest) = host.HomeInterest(slot, config.InterestRadius);
+            int slot = kv.Key;
+            long ownerNetId = kv.Value;
+            (World world, HashSet<long> interest) = host.HomeInterest(slot, config.InterestRadius);
             // Owner-scope the Replicate channel to this client's own player so its OwnerOnly PrivateStats reach only it.
             byte[] delta = deltaReplicator.WriteFor(slot, world, interest, ownerNetId);
             net.SendTo(slot, delta, NetChannelReliability.ReliableOrdered);
@@ -247,7 +249,7 @@ public sealed class MmoServer : ICellPersistenceHost
 
     private void OnClientLeft(int slot)
     {
-        if (!playerNetIdBySlot.TryGetValue(slot, out int playerNetId)) return;
+        if (!playerNetIdBySlot.TryGetValue(slot, out long playerNetId)) return;
 
         if (host.TryGetOwner(playerNetId, out CellSim cell, out Entity e))
         {

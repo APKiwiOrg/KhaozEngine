@@ -3,7 +3,14 @@
 ECS entity replication for the authoritative-multiplayer stack: full-state snapshots and per-client
 area-of-interest deltas.
 
-- **`NetId`** - an `IComponent` identifying an entity across the wire.
+- **`NetId`** - an `IComponent` identifying an entity across the wire. 64-bit since 10.0.0 (was a 32-bit `int`), under
+  a node-prefix scheme: the high 16 bits are a node/allocator id (0 for a single-process server), the low 48 bits a
+  per-node counter (`NetId.Node` / `NetId.Counter`). Node 0 ids are numerically the old counter (1, 2, 3, …).
+- **`NetIdAllocator`** (since 10.0.0) - the single place ids are allocated, replacing the raw `++int` the servers used.
+  `Next()` hands out the next id for its node; `NextValue` is the packed high-water to persist; `EnsureNextAtLeast(long)`
+  resumes above a restored id (never lowers, ignores a different node's value). `Pack(node, counter)` / `NodeOf` /
+  `CounterOf` expose the packing. A future multi-process layer gives each node a distinct prefix, so two nodes allocate
+  collision-free without recycling (2^48 per node).
 - **`ReplicationRegistry`** - register each replicated component type with serialize/deserialize (and optional
   lerp) closures, keyed by a stable `ushort` type id. **Consumer extension components** register at ids at/above
   **`ReplicationRegistry.FirstExtensionTypeId`** (= 16, `IsExtension(id)`); ids `1..15` are reserved for engine

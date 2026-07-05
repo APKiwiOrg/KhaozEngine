@@ -24,6 +24,10 @@
          <id>_collision.glb. The goal-metric fixture for the collision-proxy pipeline: a convex proxy must be
          wedge-free (the capsule can always walk or jump out) while keeping the body + furniture standable. -->
     <None Include="Physics/Fixtures/blacksmith_proxy.coll" CopyToOutputDirectory="PreserveNewest" />
+    <!-- A pre-10.0.0 (9.x) cell-persistence blob: one non-player entity (a ReplicatedPosition at (10,0,20)) under a
+         32-bit NetId 5, wrapped [magic][schemaVersion=1]. The real-save fixture the 10.0.0 NetId-widening migration
+         (NetIdBlobMigration.WidenV1ToV2) is tested against, so the forward-migration path can never silently rot. -->
+    <None Include="NetWorld/Fixtures/cell-v1-32bit.blob" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.App/KhaozEngine.App.csproj" />

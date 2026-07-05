@@ -159,4 +159,61 @@ public class VersionHandshakeTests
         Assert.True(ProtocolHandshake.TryParseIncompatibleReason(reason, out string required));
         Assert.Equal("2", required);
     }
+
+    // --- 10.0.0 NetId widening: the wire-format generation gate. A consumer folds MoveProtocol.WireProtocolVersion
+    // into its handshake version, so a 10.0.0 (wire 2) peer and a pre-10.0.0 (wire 1) peer reject each other cleanly at
+    // connect instead of misparsing a 64-bit frame as 32-bit. Both skew directions must produce the clean disconnect.
+
+    private static string WireTag(int wire) => $"ruinborne-1.0;wire{wire}";
+
+    [Fact]
+    public void Wire_version_match_joins()
+    {
+        var hub = new InMemoryHub();
+        string ver = WireTag(MoveProtocol.WireProtocolVersion);
+        WorldServer server = Server(hub, new VersionCheckingAuthenticator(ver, v => v == ver));
+        var client = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default,
+            new WorldClientConfig { ProtocolVersion = ver });
+
+        Pump(server, client);
+
+        Assert.True(client.Joined);
+        Assert.Equal(DisconnectReason.None, client.DisconnectReason);
+    }
+
+    [Fact]
+    public void Wire_version_skew_new_server_rejects_old_client_cleanly()
+    {
+        // A 10.0.0 server (wire 2) and a 9.x client (wire 1): the 64-bit wire would misparse a 32-bit frame, so the
+        // handshake rejects at connect - a clean IncompatibleVersion, never an admitted-then-crashing client.
+        var hub = new InMemoryHub();
+        string serverVer = WireTag(MoveProtocol.WireProtocolVersion);   // wire 2
+        WorldServer server = Server(hub, new VersionCheckingAuthenticator(serverVer, v => v == serverVer));
+        var client = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default,
+            new WorldClientConfig { ProtocolVersion = WireTag(1) });     // an old (wire 1) client
+
+        Pump(server, client);
+
+        Assert.Equal(DisconnectReason.IncompatibleVersion, client.DisconnectReason);
+        Assert.Equal(serverVer, client.DisconnectReasonDetail);
+        Assert.False(client.Joined);
+        Assert.Equal(0, server.PlayerCount);   // never admitted -> never receives a frame to misparse
+    }
+
+    [Fact]
+    public void Wire_version_skew_old_server_rejects_new_client_cleanly()
+    {
+        // The reverse skew: a 9.x server (wire 1) and a 10.0.0 client (wire 2). Same clean disconnect, not a misparse.
+        var hub = new InMemoryHub();
+        string serverVer = WireTag(1);                                   // an old (wire 1) server
+        WorldServer server = Server(hub, new VersionCheckingAuthenticator(serverVer, v => v == serverVer));
+        var client = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default,
+            new WorldClientConfig { ProtocolVersion = WireTag(MoveProtocol.WireProtocolVersion) });   // wire 2
+
+        Pump(server, client);
+
+        Assert.Equal(DisconnectReason.IncompatibleVersion, client.DisconnectReason);
+        Assert.False(client.Joined);
+        Assert.Equal(0, server.PlayerCount);
+    }
 }

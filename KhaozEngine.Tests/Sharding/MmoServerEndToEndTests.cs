@@ -45,14 +45,14 @@ public class MmoServerEndToEndTests
             SpawnY = 50f,
         };
         var server = new MmoServer(serverTransport, config);
-        int npc = server.SpawnNpc(110f, 50f);                 // across the A/B boundary, owned by B=(1,0)
+        long npc = server.SpawnNpc(110f, 50f);                 // across the A/B boundary, owned by B=(1,0)
 
         var client = new NetClient(clientTransport);
 
         // Connect + join: the server spawns the player and binds the client.
         PumpNet(server, client);
         Assert.Equal(0, client.Slot);
-        Assert.True(server.TryGetPlayerNetId(0, out int player));
+        Assert.True(server.TryGetPlayerNetId(0, out long player));
 
         var clientWorld = new World();
         var view = new ClientReplicationView(MmoServer.CreateRegistry());
@@ -100,11 +100,11 @@ public class MmoServerEndToEndTests
             CellSize = 100f, TickSeconds = 0.1f, OverlapMargin = 30f, InterestRadius = 30f, SpawnX = 50f, SpawnY = 50f,
         };
         var server = new MmoServer(serverTransport, config);
-        int npc = server.SpawnNpc(60f, 50f, kind: 5);          // an NPC in the player's area of interest
+        long npc = server.SpawnNpc(60f, 50f, kind: 5);          // an NPC in the player's area of interest
 
         var client = new NetClient(clientTransport);
         PumpNet(server, client);
-        Assert.True(server.TryGetPlayerNetId(0, out int player));
+        Assert.True(server.TryGetPlayerNetId(0, out long player));
 
         byte[] snapshot = ServeOneSnapshot(server, client);
 
@@ -203,7 +203,7 @@ public class MmoServerEndToEndTests
                     client.Send(MmoProtocol.EncodeAck(view.LastAppliedSeq), NetChannelReliability.ReliableOrdered);
                 }
 
-            if (client.Slot >= 0 && server.TryGetPlayerNetId(client.Slot, out int pid) && view.TryGetEntity(pid, out _))
+            if (client.Slot >= 0 && server.TryGetPlayerNetId(client.Slot, out long pid) && view.TryGetEntity(pid, out _))
                 served = true;
             Thread.Sleep(10);
         }

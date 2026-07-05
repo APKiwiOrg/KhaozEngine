@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using KhaozEngine.Ecs;
 using Comps = System.Collections.Generic.Dictionary<ushort, byte[]>;
-using AoiBaseline = System.Collections.Generic.Dictionary<int, System.Collections.Generic.Dictionary<ushort, byte[]>>;
+using AoiBaseline = System.Collections.Generic.Dictionary<long, System.Collections.Generic.Dictionary<ushort, byte[]>>;
 
 namespace KhaozEngine.Replication;
 
@@ -64,7 +64,7 @@ public sealed class AoiDeltaReplicator
     /// <paramref name="ownerNetId"/> (this slot's own player). Because the per-slot baseline stores exactly what was
     /// captured for THIS slot, owner-only visibility falls out of the delta diff automatically.
     /// </summary>
-    public byte[] WriteFor(int slot, World world, IReadOnlySet<int> interestSet, int? ownerNetId = null)
+    public byte[] WriteFor(int slot, World world, IReadOnlySet<long> interestSet, long? ownerNetId = null)
     {
         if (world is null) throw new ArgumentNullException(nameof(world));
         if (interestSet is null) throw new ArgumentNullException(nameof(interestSet));
@@ -96,22 +96,22 @@ public sealed class AoiDeltaReplicator
         bw.Write(currentSeq);
 
         // Removed: the client knew it (baseline) but it is gone from the interest set (left AoI or despawned).
-        var removed = new List<int>();
+        var removed = new List<long>();
         if (baseline is not null)
-            foreach (int netId in baseline.Keys)
+            foreach (long netId in baseline.Keys)
                 if (!projected.ContainsKey(netId)) removed.Add(netId);
         bw.Write(removed.Count);
-        foreach (int netId in removed) bw.Write(netId);
+        foreach (long netId in removed) bw.Write(netId);
 
         // New (entered) or changed (stayed + component delta).
-        var changed = new List<int>();
-        foreach (int netId in projected.Keys)
+        var changed = new List<long>();
+        foreach (long netId in projected.Keys)
         {
             if (baseline is null || !baseline.ContainsKey(netId)) { changed.Add(netId); continue; }
             if (DeltaEncoding.EntityChanged(baseline[netId], projected[netId])) changed.Add(netId);
         }
         bw.Write(changed.Count);
-        foreach (int netId in changed)
+        foreach (long netId in changed)
         {
             bool isNew = baseline is null || !baseline.ContainsKey(netId);
             DeltaEncoding.WriteChangedEntity(bw, registry, netId, isNew, isNew ? null : baseline![netId], projected[netId]);

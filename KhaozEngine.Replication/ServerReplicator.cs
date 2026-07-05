@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using KhaozEngine.Ecs;
-using CapturedState = System.Collections.Generic.Dictionary<int, System.Collections.Generic.Dictionary<ushort, byte[]>>;
+using CapturedState = System.Collections.Generic.Dictionary<long, System.Collections.Generic.Dictionary<ushort, byte[]>>;
 
 namespace KhaozEngine.Replication;
 
@@ -107,7 +107,7 @@ public sealed class ServerReplicator
     /// actually holds. A registry with no owner-only component ignores <paramref name="ownerNetId"/> (the wire is then
     /// byte-identical to before channels existed).
     /// </summary>
-    public byte[] WriteFor(int slot, int? ownerNetId = null)
+    public byte[] WriteFor(int slot, long? ownerNetId = null)
     {
         if (currentSeq == 0) throw new InvalidOperationException("Capture at least once before WriteFor.");
 
@@ -125,22 +125,22 @@ public sealed class ServerReplicator
         bw.Write(currentSeq);
 
         // Removed entities: present in the baseline, gone from current.
-        var removed = new List<int>();
+        var removed = new List<long>();
         if (baseline is not null)
-            foreach (int netId in baseline.Keys)
+            foreach (long netId in baseline.Keys)
                 if (!current.ContainsKey(netId)) removed.Add(netId);
         bw.Write(removed.Count);
-        foreach (int netId in removed) bw.Write(netId);
+        foreach (long netId in removed) bw.Write(netId);
 
         // New or changed entities.
-        var changed = new List<int>();
-        foreach (int netId in current.Keys)
+        var changed = new List<long>();
+        foreach (long netId in current.Keys)
         {
             if (baseline is null || !baseline.ContainsKey(netId)) { changed.Add(netId); continue; }
             if (DeltaEncoding.EntityChanged(baseline[netId], current[netId])) changed.Add(netId);
         }
         bw.Write(changed.Count);
-        foreach (int netId in changed)
+        foreach (long netId in changed)
         {
             bool isNew = baseline is null || !baseline.ContainsKey(netId);
             DeltaEncoding.WriteChangedEntity(bw, registry, netId, isNew, isNew ? null : baseline![netId], current[netId]);
@@ -158,14 +158,14 @@ public sealed class ServerReplicator
     /// player's owner-only bytes on this client's wire. Returns the input unchanged (no allocation) when the registry
     /// has no owner-only component, keeping the common case byte-identical to before channels existed.
     /// </summary>
-    private CapturedState Project(CapturedState raw, int? ownerNetId)
+    private CapturedState Project(CapturedState raw, long? ownerNetId)
     {
         if (!hasOwnerScopedCodec) return raw; // nothing owner-scoped: the shared capture is already per-client-correct
 
         var projected = new CapturedState(raw.Count);
-        foreach (KeyValuePair<int, Dictionary<ushort, byte[]>> entity in raw)
+        foreach (KeyValuePair<long, Dictionary<ushort, byte[]>> entity in raw)
         {
-            int netId = entity.Key;
+            long netId = entity.Key;
             var comps = new Dictionary<ushort, byte[]>(entity.Value.Count);
             foreach (KeyValuePair<ushort, byte[]> comp in entity.Value)
                 if (registry.TryGet(comp.Key, out ComponentCodec codec)

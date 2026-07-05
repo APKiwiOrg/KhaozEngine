@@ -34,7 +34,7 @@ public class ClientReplicationViewHealTests
         return e;
     }
 
-    private static HashSet<int> Aoi(params int[] ids) => new(ids);
+    private static HashSet<long> Aoi(params long[] ids) => new(ids);
 
     // A header-only delta [baselineSeq][snapshotSeq][removedCount=0][changedCount=0].
     private static byte[] EmptyDelta(int baselineSeq, int snapshotSeq)

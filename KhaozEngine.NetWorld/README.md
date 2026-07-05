@@ -89,6 +89,14 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
     `CellPersistence.Issue` (`event Action<CellPersistenceIssue>`): `Migrated` (from -> to), `SkippedTooOld` /
     `SkippedTooNew`, `QuarantinedCorrupt` (with the decode error), and `RetainedUnknownExtensions` (with the count).
     A current-`SchemaVersion` blob still restores byte-identically, so a save with no migrations behaves as before.
+  - **Engine-provided migrations (since 10.0.0).** The engine now ships its own built-in cell-blob migrations, folded
+    into any config's chain unless it opts out (`CellPersistenceConfig.IncludeEngineMigrations`, default true; a
+    consumer step OVERRIDES an engine step of the same from-version). The first is **`NetIdBlobMigration.WidenV1ToV2`**,
+    the 10.0.0 `NetId` widening: it rewrites a stored 32-bit-id body (schema v1) to 64-bit (schema v2), leaving every
+    component byte identical (only the per-entity id field grows 4 -> 8 bytes, node 0). The default `SchemaVersion`
+    advanced to 2, so a server on the default config brings a 9.x cell blob forward with no wiring. A 10.0.0 blob (v2)
+    is `SkippedTooNew` on a pre-10.0.0 build, so an accidental downgrade quarantines rather than corrupts (but will not
+    load): once a server has written 64-bit blobs it cannot be downgraded.
 
 No render, window, or GPU dependency: the servers are headless and the client glue is render-free (a sample
 renders a capsule per `EntityRenderState`). `WorldServer` is the single-`World` slice; `ShardedWorldServer` is
@@ -138,6 +146,12 @@ on a snapshot it cannot decode. Both are additive: the wire and existing ctors a
   `DisconnectReasonDetail`, and never proceeds to snapshots. A legacy/version-less client decodes as version
   `""`, so the rule can reject it; a compatible version delegates the inner token to `inner` unchanged
   (subject + display-name resolution identical).
+  - **Wire-format generation (since 10.0.0).** `MoveProtocol.WireProtocolVersion` (= 2; the pre-10.0.0 32-bit `NetId`
+    line was 1) labels the incompatible on-the-wire generations. 10.0.0 widened `NetId` to 64-bit (the snapshot/delta
+    id field and the frame header, `[localNetId:long][ackSeq:int]`, grown 8 -> 12 bytes) with NO dual-format wire, so a
+    10.0.0 peer and a pre-10.0.0 peer MUST reject each other at connect rather than misparse a 64-bit frame as 32-bit.
+    Fold it into your version string (e.g. `$"myGame-1.4;wire{MoveProtocol.WireProtocolVersion}"`) and reject a
+    mismatch in your `isCompatible` rule; both skew directions then produce the clean `IncompatibleVersion` disconnect.
 - **Graceful decode (last resort).** `WorldClient.OnSnapshot` decodes via `ClientReplicationView.TryApply`, so an
   undecodable snapshot (an unregistered BUILT-IN component type id from a newer core protocol) becomes the same
   clean `DisconnectReason.IncompatibleVersion` disconnect plus a **`SnapshotDecodeFailed`** event - never an

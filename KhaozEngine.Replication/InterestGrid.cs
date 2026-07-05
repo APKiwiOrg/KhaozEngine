@@ -12,7 +12,7 @@ namespace KhaozEngine.Replication;
 public sealed class InterestGrid
 {
     private readonly float cellSize;
-    private readonly Dictionary<long, List<(int netId, float x, float y)>> cells = new();
+    private readonly Dictionary<long, List<(long netId, float x, float y)>> cells = new();
 
     /// <param name="cellSize">Cell edge length in world units (tune ~ to the typical query radius). Must be &gt; 0.</param>
     public InterestGrid(float cellSize)
@@ -25,12 +25,12 @@ public sealed class InterestGrid
     public void Clear() => cells.Clear();
 
     /// <summary>Adds an entity's position.</summary>
-    public void Insert(int netId, float x, float y)
+    public void Insert(long netId, float x, float y)
     {
         long key = PackKey(CellCoord(x), CellCoord(y));
-        if (!cells.TryGetValue(key, out List<(int, float, float)>? list))
+        if (!cells.TryGetValue(key, out List<(long, float, float)>? list))
         {
-            list = new List<(int, float, float)>();
+            list = new List<(long, float, float)>();
             cells[key] = list;
         }
         list.Add((netId, x, y));
@@ -41,7 +41,7 @@ public sealed class InterestGrid
     /// <paramref name="results"/> (exact distance, not just cell overlap). Sweeps only the cells the query AABB
     /// covers.
     /// </summary>
-    public void Query(float cx, float cy, float radius, ICollection<int> results)
+    public void Query(float cx, float cy, float radius, ICollection<long> results)
     {
         if (results is null) throw new ArgumentNullException(nameof(results));
         int minX = CellCoord(cx - radius), maxX = CellCoord(cx + radius);
@@ -51,8 +51,8 @@ public sealed class InterestGrid
         {
             for (int gx = minX; gx <= maxX; gx++)
             {
-                if (!cells.TryGetValue(PackKey(gx, gy), out List<(int netId, float x, float y)>? list)) continue;
-                foreach ((int netId, float x, float y) in list)
+                if (!cells.TryGetValue(PackKey(gx, gy), out List<(long netId, float x, float y)>? list)) continue;
+                foreach ((long netId, float x, float y) in list)
                 {
                     float dx = x - cx, dy = y - cy;
                     if (dx * dx + dy * dy <= r2) results.Add(netId);
@@ -62,9 +62,9 @@ public sealed class InterestGrid
     }
 
     /// <summary>Convenience: the set of NetIds within <paramref name="radius"/> of the point.</summary>
-    public HashSet<int> Query(float cx, float cy, float radius)
+    public HashSet<long> Query(float cx, float cy, float radius)
     {
-        var set = new HashSet<int>();
+        var set = new HashSet<long>();
         Query(cx, cy, radius, set);
         return set;
     }

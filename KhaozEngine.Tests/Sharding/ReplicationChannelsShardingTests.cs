@@ -59,7 +59,7 @@ public class ReplicationChannelsShardingTests
 
     private static bool ReplicatedHas<T>(ReplicationRegistry r, World world, int netId) where T : struct, IComponent
     {
-        byte[] snap = SnapshotWriter.WriteFiltered(world, r, new HashSet<int> { netId });   // Replicate channel
+        byte[] snap = SnapshotWriter.WriteFiltered(world, r, new HashSet<long> { netId });   // Replicate channel
         var client = new World();
         var view = new ClientReplicationView(r);
         view.Apply(client, snap);
@@ -81,7 +81,7 @@ public class ReplicationChannelsShardingTests
         Assert.Equal(42, b.World.Get<MigrateOnly>(moved).V);                     // migrated
 
         // Persist channel (what the blob captures) drops it: restoring the cell's persist snapshot has no MigrateOnly.
-        byte[] persist = b.SnapshotOwned(new HashSet<int>());
+        byte[] persist = b.SnapshotOwned(new HashSet<long>());
         CellSim restored = new(new CellCoord(9, 9), 0.1f, r, 100f);
         restored.RestoreOwned(persist);
         Assert.True(restored.TryGetOwned(7, out Entity rp));
@@ -100,7 +100,7 @@ public class ReplicationChannelsShardingTests
         cell.World.Set(e, new PersistOnly { V = 99 });
 
         // Round-trip through the persist blob (a server restart): the component comes back.
-        byte[] blob = cell.SnapshotOwned(new HashSet<int>());
+        byte[] blob = cell.SnapshotOwned(new HashSet<long>());
         var restored = new CellSim(new CellCoord(0, 0), 0.1f, r, 100f);
         restored.RestoreOwned(blob);
         Assert.True(restored.TryGetOwned(7, out Entity rp));
@@ -123,7 +123,7 @@ public class ReplicationChannelsShardingTests
         Assert.True(host.TryGetOwner(7, out CellSim b, out Entity moved));
         Assert.Equal(5, b.World.Get<Aggro>(moved).V);                            // aggro migrated
 
-        byte[] persist = b.SnapshotOwned(new HashSet<int>());
+        byte[] persist = b.SnapshotOwned(new HashSet<long>());
         var restored = new CellSim(new CellCoord(9, 9), 0.1f, r, 100f);
         restored.RestoreOwned(persist);
         Assert.True(restored.TryGetOwned(7, out Entity rp));

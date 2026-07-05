@@ -34,7 +34,7 @@ public sealed class CellSim
     // ownership index (gap 6 of the MMO arch review) that replaces the linear World.ForEach in TryGetOwned. Kept in
     // sync at the ownership choke points - RegisterOwned/UnregisterOwned, called from the spawn path, AdoptFromMigrate,
     // RestoreOwned, ReleaseMigrating and the ShardHost migrate-freeze. ScanOwned behind it is the miss-fallback + oracle.
-    private readonly Dictionary<int, Entity> owned = new();
+    private readonly Dictionary<long, Entity> owned = new();
 
     // Extension component frames whose id THIS cell's registry does not know, captured at restore keyed by netId, so
     // SnapshotOwned re-emits them verbatim (retain-and-rewrite): a registry downgrade (a build missing a registration,
@@ -42,12 +42,12 @@ public sealed class CellSim
     // downgrade. Pruned when an entity leaves this cell's ownership (UnregisterOwned). NOTE: a retained frame does not
     // follow a cell handoff - there is no live component to migrate - so retention protects the restart load/save
     // cycle (the stated goal), not migration during a regression.
-    private readonly Dictionary<int, List<RetainedComponent>> retainedUnknown = new();
+    private readonly Dictionary<long, List<RetainedComponent>> retainedUnknown = new();
 
     // Wired by the owning ShardHost when it creates this cell, so the host's netId -> cell index tracks every
     // register/unregister without CellSim knowing about the host. Null for a standalone cell (direct construction).
-    internal Action<int, Entity>? OwnedRegisteredHook;
-    internal Action<int>? OwnedUnregisteredHook;
+    internal Action<long, Entity>? OwnedRegisteredHook;
+    internal Action<long>? OwnedUnregisteredHook;
 
     /// <param name="coord">This cell's coordinate in the world grid.</param>
     /// <param name="tickSeconds">Fixed timestep, seconds per tick (e.g. <c>1f / 30f</c>). Must be &gt; 0.</param>
@@ -115,14 +115,14 @@ public sealed class CellSim
         {
             int n = 0;
             foreach (ClientReplicationView view in ghostViews.Values)
-                foreach (KeyValuePair<int, Entity> kv in view.Entities)
+                foreach (KeyValuePair<long, Entity> kv in view.Entities)
                     if (World.IsAlive(kv.Value)) n++;
             return n;
         }
     }
 
     /// <summary>Finds a ghost entity in this cell by its (owner-assigned) <see cref="NetId"/> value.</summary>
-    public bool TryGetGhost(int netId, out Entity entity)
+    public bool TryGetGhost(long netId, out Entity entity)
     {
         foreach (ClientReplicationView view in ghostViews.Values)
             if (view.TryGetEntity(netId, out entity) && World.IsAlive(entity)) return true;
@@ -142,7 +142,7 @@ public sealed class CellSim
         ArgumentNullException.ThrowIfNull(snapshot);
         ClientReplicationView view = GhostViewFor(source);
         view.Apply(World, snapshot);
-        foreach (KeyValuePair<int, Entity> kv in view.Entities)
+        foreach (KeyValuePair<long, Entity> kv in view.Entities)
             if (World.IsAlive(kv.Value)) World.Set(kv.Value, new Ghost { Source = source });
     }
 
@@ -170,7 +170,7 @@ public sealed class CellSim
     /// <see cref="AdoptFromMigrate"/> and <see cref="RestoreOwned"/> call it for you, and <see cref="ShardHost.SpawnOwned"/>
     /// wraps the whole spawn+assign+register. Overwrites any prior entry for <paramref name="netId"/>.
     /// </summary>
-    public void RegisterOwned(int netId, Entity entity)
+    public void RegisterOwned(long netId, Entity entity)
     {
         owned[netId] = entity;
         OwnedRegisteredHook?.Invoke(netId, entity);
@@ -182,7 +182,7 @@ public sealed class CellSim
     /// entry is also reaped lazily by <see cref="TryGetOwned"/>, so an unreported despawn is still correct - just not
     /// reflected in the index until the next lookup.
     /// </summary>
-    public bool UnregisterOwned(int netId)
+    public bool UnregisterOwned(long netId)
     {
         retainedUnknown.Remove(netId);   // the entity is leaving this cell: drop its retained unknown frames too
         if (!owned.Remove(netId)) return false;
@@ -191,7 +191,7 @@ public sealed class CellSim
     }
 
     /// <summary>The maintained owned index (netId -&gt; owned entity), exposed for tests to check against a scan.</summary>
-    internal IReadOnlyDictionary<int, Entity> OwnedIndexEntries => owned;
+    internal IReadOnlyDictionary<long, Entity> OwnedIndexEntries => owned;
 
     /// <summary>
     /// Finds an entity this cell <b>owns</b> by its <see cref="NetId"/> value: present, alive, and neither a
@@ -201,7 +201,7 @@ public sealed class CellSim
     /// <see cref="ScanOwned"/> scan behind the index and caches the hit, so the pre-index raw spawn idiom
     /// (<c>SpawnAt</c> + <c>World.Set(new NetId(..))</c> without <see cref="RegisterOwned"/>) still resolves.
     /// </summary>
-    public bool TryGetOwned(int netId, out Entity entity)
+    public bool TryGetOwned(long netId, out Entity entity)
     {
         if (owned.TryGetValue(netId, out entity))
         {
@@ -218,7 +218,7 @@ public sealed class CellSim
     /// as <see cref="TryGetOwned"/>'s miss-fallback and as the independent oracle for <see cref="ShardHost.OwnerCount"/>
     /// and tests - never the per-lookup fast path. Returns the last matching non-ghost, non-migrating entity.
     /// </summary>
-    internal bool ScanOwned(int netId, out Entity entity)
+    internal bool ScanOwned(long netId, out Entity entity)
     {
         Entity found = default;
         bool ok = false;
@@ -238,10 +238,10 @@ public sealed class CellSim
     /// <see cref="ReplicationChannels.Persist"/> channel, so a component is written to the blob only if it declared
     /// <see cref="ReplicationChannels.Persist"/> (a Replicate-only or Migrate-only component is not persisted).
     /// </summary>
-    public byte[] SnapshotOwned(IReadOnlySet<int> excludedNetIds)
+    public byte[] SnapshotOwned(IReadOnlySet<long> excludedNetIds)
     {
         ArgumentNullException.ThrowIfNull(excludedNetIds);
-        var ids = new HashSet<int>();
+        var ids = new HashSet<long>();
         World.ForEach<NetId>((Entity e, ref NetId id) =>
         {
             if (World.Has<Ghost>(e) || World.Has<Migrating>(e)) return;
@@ -250,12 +250,12 @@ public sealed class CellSim
         });
         // Re-emit any retained unknown-extension frames (retain-and-rewrite) so a registry downgrade cannot strip
         // them off the blob. The provider is only wired when something is actually retained (normally nothing).
-        Func<int, IReadOnlyList<RetainedComponent>?>? retainedFrames =
+        Func<long, IReadOnlyList<RetainedComponent>?>? retainedFrames =
             retainedUnknown.Count == 0 ? null : RetainedFramesFor;
         return SnapshotWriter.WriteFiltered(World, registry, ids, ReplicationChannels.Persist, ownerNetId: null, retainedFrames);
     }
 
-    private IReadOnlyList<RetainedComponent>? RetainedFramesFor(int netId) =>
+    private IReadOnlyList<RetainedComponent>? RetainedFramesFor(long netId) =>
         retainedUnknown.TryGetValue(netId, out List<RetainedComponent>? list) ? list : null;
 
     /// <summary>
@@ -265,7 +265,7 @@ public sealed class CellSim
     /// delegates to <see cref="TryRestoreOwned"/>, so a corrupt blob rolls back and returns empty rather than
     /// throwing. Intended to run once on cell creation.
     /// </summary>
-    public IReadOnlyList<int> RestoreOwned(byte[] snapshot) => TryRestoreOwned(snapshot).NetIds;
+    public IReadOnlyList<long> RestoreOwned(byte[] snapshot) => TryRestoreOwned(snapshot).NetIds;
 
     /// <summary>
     /// Restores <paramref name="snapshot"/> into this cell as freshly owned entities (a throwaway
@@ -285,12 +285,12 @@ public sealed class CellSim
         if (!view.TryApplyRetainingUnknown(World, snapshot, out IReadOnlyList<RetainedComponent> retained, out string? error))
         {
             // Roll back the partial apply so the cell starts genuinely fresh (the caller quarantines the bytes).
-            foreach (KeyValuePair<int, Entity> kv in view.Entities)
+            foreach (KeyValuePair<long, Entity> kv in view.Entities)
                 if (World.IsAlive(kv.Value)) World.Despawn(kv.Value);
             return CellRestoreResult.Failed(error ?? "cell snapshot failed to decode");
         }
-        var netIds = new List<int>(view.Entities.Count);
-        foreach (KeyValuePair<int, Entity> kv in view.Entities)
+        var netIds = new List<long>(view.Entities.Count);
+        foreach (KeyValuePair<long, Entity> kv in view.Entities)
         {
             netIds.Add(kv.Key);
             RegisterOwned(kv.Key, kv.Value); // restored entities are owned here -> index them
@@ -305,9 +305,9 @@ public sealed class CellSim
     }
 
     /// <summary>The largest owned (non-ghost, non-migrating) <see cref="NetId"/> in this cell, or 0 if none.</summary>
-    public int MaxOwnedNetId()
+    public long MaxOwnedNetId()
     {
-        int max = 0;
+        long max = 0;
         World.ForEach<NetId>((Entity e, ref NetId id) =>
         {
             if (World.Has<Ghost>(e) || World.Has<Migrating>(e)) return;
@@ -321,25 +321,25 @@ public sealed class CellSim
     /// single-entity <see cref="KhaozEngine.Replication"/> capture). Any existing ghost of the same NetId here is
     /// despawned so the owned copy is the only one. Returns the adopted NetId values.
     /// </summary>
-    public IReadOnlyList<int> AdoptFromMigrate(byte[] snapshot)
+    public IReadOnlyList<long> AdoptFromMigrate(byte[] snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         // Throwaway view: spawns the entity (and sets NetId + components), then is discarded so the entity is
         // untracked = a normal owned entity.
         var adopter = new ClientReplicationView(registry);
         adopter.Apply(World, snapshot);
-        var netIds = new List<int>(adopter.Entities.Count);
-        foreach (KeyValuePair<int, Entity> kv in adopter.Entities)
+        var netIds = new List<long>(adopter.Entities.Count);
+        foreach (KeyValuePair<long, Entity> kv in adopter.Entities)
         {
             netIds.Add(kv.Key);
             RegisterOwned(kv.Key, kv.Value); // the adopted entity is now owned here -> index it
         }
-        foreach (int netId in netIds) DespawnGhost(netId); // drop any pre-existing ghost of the now-owned entity
+        foreach (long netId in netIds) DespawnGhost(netId); // drop any pre-existing ghost of the now-owned entity
         return netIds;
     }
 
     /// <summary>Releases (despawns) the <see cref="Migrating"/> entity with <paramref name="netId"/> after its destination acked.</summary>
-    public bool ReleaseMigrating(int netId)
+    public bool ReleaseMigrating(long netId)
     {
         Entity found = default;
         bool ok = false;
@@ -352,7 +352,7 @@ public sealed class CellSim
         return ok;
     }
 
-    private void DespawnGhost(int netId)
+    private void DespawnGhost(long netId)
     {
         foreach (ClientReplicationView view in ghostViews.Values)
             if (view.TryGetEntity(netId, out Entity g))

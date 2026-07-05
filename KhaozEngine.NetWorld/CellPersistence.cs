@@ -39,8 +39,20 @@ public sealed class CellPersistenceConfig
     public string QuarantineKeyPrefix { get; init; } = "quarantine:";
 
     /// <summary>Blob schema version. Bump on a component-layout change and register a <see cref="RegisterMigration"/>
-    /// from the previous version so old saves are brought forward, not skipped or misread.</summary>
-    public int SchemaVersion { get; init; } = 1;
+    /// from the previous version so old saves are brought forward, not skipped or misread. Defaults to the engine's
+    /// current built-in layout version (<see cref="NetIdBlobMigration.NetId64SchemaVersion"/> = 2 as of 10.0.0, which
+    /// widened <see cref="KhaozEngine.Replication.NetId"/> to 64-bit); the pre-10.0.0 32-bit layout was version 1.</summary>
+    public int SchemaVersion { get; init; } = NetIdBlobMigration.NetId64SchemaVersion;
+
+    /// <summary>
+    /// Whether to fold the engine's own built-in cell-blob migrations into this config's chain (default true). The
+    /// only engine built-in today is the 10.0.0 <see cref="NetIdBlobMigration.WidenV1ToV2"/> netId widening (v1 -&gt;
+    /// v2); it is included automatically for any <see cref="SchemaVersion"/> &gt;= 2, so a server on the default config
+    /// migrates a pre-10.0.0 save forward without the consumer wiring anything. A consumer migration registered from
+    /// the same from-version OVERRIDES the engine step. Set false to test / drive the raw migration machinery in
+    /// isolation (only the explicitly <see cref="RegisterMigration"/>-ed steps run), e.g. to pin an old schema version.
+    /// </summary>
+    public bool IncludeEngineMigrations { get; init; } = true;
 
     /// <summary>
     /// Registers the migration that takes a stored blob from <paramref name="fromVersion"/> to
@@ -88,7 +100,7 @@ public sealed class CellPersistence
     private readonly ConcurrentDictionary<CellCoord, byte> loadsInFlight = new(); // coords with an outstanding load; SaveDirtyPass skips them so a periodic save can't clobber the stored blob with pre-restore state
     private readonly object pendingLock = new();
     private readonly List<Task> pending = new();
-    private int lastSavedNextNetId;
+    private long lastSavedNextNetId;
     private float sinceSave;
 
     /// <summary>
@@ -104,9 +116,32 @@ public sealed class CellPersistence
         this.host = host ?? throw new ArgumentNullException(nameof(host));
         this.store = store ?? throw new ArgumentNullException(nameof(store));
         this.config = config ?? new CellPersistenceConfig();
-        migrations = this.config.Migrations;
+        migrations = BuildEffectiveMigrations(this.config);
         migrationStart = ValidateMigrationChain(migrations, this.config.SchemaVersion);
         host.CellCreated += OnCellCreated;
+    }
+
+    // The engine's own built-in cell-blob migrations, keyed by from-version. Folded into a config's chain unless it
+    // opts out (CellPersistenceConfig.IncludeEngineMigrations). Currently just the 10.0.0 netId widening (v1 -> v2).
+    private static readonly IReadOnlyDictionary<int, CellSnapshotMigration> EngineMigrations =
+        new Dictionary<int, CellSnapshotMigration>
+        {
+            [NetIdBlobMigration.NetId32SchemaVersion] = NetIdBlobMigration.WidenV1ToV2,
+        };
+
+    // Builds the effective migration chain: the engine built-ins (those strictly below the target schema version) with
+    // the consumer's registrations layered on top - a consumer step OVERRIDES an engine step of the same from-version.
+    // A config that opts out (IncludeEngineMigrations = false) uses only its own registrations, so the raw driver can
+    // be exercised in isolation.
+    private static IReadOnlyDictionary<int, CellSnapshotMigration> BuildEffectiveMigrations(CellPersistenceConfig cfg)
+    {
+        if (!cfg.IncludeEngineMigrations) return cfg.Migrations;
+        var merged = new SortedDictionary<int, CellSnapshotMigration>();
+        foreach (KeyValuePair<int, CellSnapshotMigration> kv in EngineMigrations)
+            if (kv.Key < cfg.SchemaVersion) merged[kv.Key] = kv.Value;   // only engine steps below the target version
+        foreach (KeyValuePair<int, CellSnapshotMigration> kv in cfg.Migrations)
+            merged[kv.Key] = kv.Value;                                    // consumer overrides an engine step
+        return merged;
     }
 
     // Validates the migration chain (contiguous, no gaps, no step at/beyond the schema version), mirroring
@@ -221,8 +256,8 @@ public sealed class CellPersistence
             return;
         }
 
-        int max = 0;
-        foreach (int id in r.NetIds) if (id > max) max = id;
+        long max = 0;
+        foreach (long id in r.NetIds) if (id > max) max = id;
         if (max > 0) host.EnsureNextNetIdAtLeast(max + 1);
 
         if (migrated) Issue?.Invoke(CellPersistenceIssue.Migrated(coord, fromVersion, config.SchemaVersion));
@@ -258,7 +293,7 @@ public sealed class CellPersistence
 
     private void SaveMetaIfAdvanced()
     {
-        int next = host.NextNetId;
+        long next = host.NextNetId;
         if (next <= lastSavedNextNetId) return;
         lastSavedNextNetId = next;
         Track(store.SaveAsync(config.MetaKey, new WorldMetaRecord { NextNetId = next }.Encode()));

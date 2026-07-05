@@ -98,7 +98,7 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
     private readonly AoiDeltaReplicator? deltaReplicator;
     private readonly HashSet<int> deltaCapableSlots = new();
 
-    private readonly Dictionary<int, int> netIdBySlot = new();
+    private readonly Dictionary<int, long> netIdBySlot = new();
     private readonly Dictionary<int, Entity> entityBySlot = new();
     private readonly Dictionary<int, PlayerMoveState> stateBySlot = new();
     private readonly Dictionary<int, int> lastAckBySlot = new();
@@ -111,7 +111,9 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
     private double selfRescueClock;
     private readonly Dictionary<int, double> selfRescueReadyAt = new();
     private readonly MoveTuning tuning;
-    private int nextNetId = 1;
+    // The single NetId allocator (node 0 for this single-process server) that both player joins and SpawnEntity draw
+    // from, so ids never collide. Replaces the pre-10.0.0 raw ++int counter; see NetIdAllocator for the node-prefix scheme.
+    private readonly NetIdAllocator allocator = new();
 
     public WorldServer(INetTransport transport, WorldServerConfig config,
         Func<float, float, float> groundHeight, MoveTuning tuning,
@@ -220,7 +222,7 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
     /// <summary>Number of joined players.</summary>
     public int PlayerCount => netIdBySlot.Count;
     /// <summary>The net id of the player entity for a joined slot.</summary>
-    public bool TryGetPlayerNetId(int slot, out int netId) => netIdBySlot.TryGetValue(slot, out netId);
+    public bool TryGetPlayerNetId(int slot, out long netId) => netIdBySlot.TryGetValue(slot, out netId);
 
     /// <summary>Raised after a player entity has spawned: (slot, accountId). The accountId is the verified subject
     /// the <see cref="IConnectionAuthenticator"/> bound the connection to, or <c>guest:{slot}</c> when that subject
@@ -273,9 +275,9 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
     /// Returns the new entity's NetId. (The multi-cell equivalent is
     /// <see cref="ShardedWorldServer.SpawnEntity"/>.)
     /// </summary>
-    public int SpawnEntity(float x, float z, Action<World, Entity>? configure = null)
+    public long SpawnEntity(float x, float z, Action<World, Entity>? configure = null)
     {
-        int netId = nextNetId++;
+        long netId = allocator.Next().Value;
         Entity e = world.Spawn();
         world.Set(e, new NetId(netId));
         world.Set(e, new ReplicatedPosition { Value = new Vector3(x, 0f, z) });
@@ -401,9 +403,9 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
         deltaReplicator?.BeginTick();
         foreach (int slot in slots)
         {
-            int netId = netIdBySlot[slot];
+            long netId = netIdBySlot[slot];
             Vector3 p = stateBySlot[slot].Position;
-            HashSet<int> set = interest.Query(p.X, p.Z, config.InterestRadius);
+            HashSet<long> set = interest.Query(p.X, p.Z, config.InterestRadius);
             MoveProtocol.ServerFrameKind kind;
             byte[] body;
             if (deltaReplicator is not null && deltaCapableSlots.Contains(slot))
@@ -500,7 +502,7 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
         {
             string acct = accountIdBySlot.TryGetValue(slot, out string? a) ? a : string.Empty;
             PlayerMoveState st = stateBySlot.TryGetValue(slot, out PlayerMoveState s) ? s : default;
-            int netId = netIdBySlot[slot];
+            long netId = netIdBySlot[slot];
             string name = string.Empty;
             if (entityBySlot.TryGetValue(slot, out Entity e) && world.TryGet(e, out PlayerIdentity pi))
                 name = pi.DisplayName ?? string.Empty;
@@ -532,7 +534,7 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
         // Ground-clamp the spawn (an idle step settles Y onto the terrain + half-height).
         PlayerMoveState state = simulator.Step(new PlayerMoveState { Position = spawn }, MoveCommand.Idle, config.TickSeconds);
 
-        int netId = nextNetId++;
+        long netId = allocator.Next().Value;
         Entity e = world.Spawn();
         world.Set(e, new NetId(netId));
         world.Set(e, new ReplicatedPosition { Value = state.Position });

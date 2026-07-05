@@ -57,7 +57,7 @@ public class MoveProtocolTests
     {
         byte[] snap = { 9, 8, 7, 6, 5 };
         byte[] frame = MoveProtocol.EncodeSnapshotFrame(localNetId: 3, ackSeq: 11, snap);
-        Assert.True(MoveProtocol.TryDecodeSnapshotFrame(frame, out int id, out int ack, out byte[] back));
+        Assert.True(MoveProtocol.TryDecodeSnapshotFrame(frame, out long id, out int ack, out byte[] back));
         Assert.Equal(3, id);
         Assert.Equal(11, ack);
         Assert.Equal(snap, back);

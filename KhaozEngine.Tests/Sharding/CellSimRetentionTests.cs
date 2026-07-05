@@ -43,20 +43,20 @@ public class CellSimRetentionTests
         src.World.Set(e, new NetId(5));
         src.World.Set(e, new ExtA { V = 10 });
         src.World.Set(e, new ExtB { V = 20 });
-        byte[] blob = src.SnapshotOwned(new HashSet<int>());
+        byte[] blob = src.SnapshotOwned(new HashSet<long>());
 
         // Reduced registry restores: ExtA applies, ExtB is unknown and retained.
         CellSim mid = Cell(Reduced());
         CellRestoreResult r = mid.TryRestoreOwned(blob);
         Assert.True(r.Ok);
-        Assert.Equal(new[] { 5 }, r.NetIds);
+        Assert.Equal(new long[] { 5 }, r.NetIds);
         Assert.Equal(1, r.RetainedFrameCount);
         Assert.True(mid.TryGetOwned(5, out Entity me));
         Assert.True(mid.World.TryGet(me, out ExtA a));
         Assert.Equal(10, a.V);
 
         // Reduced cell re-emits: the retained ExtB frame rides along verbatim.
-        byte[] reemit = mid.SnapshotOwned(new HashSet<int>());
+        byte[] reemit = mid.SnapshotOwned(new HashSet<long>());
 
         // Full registry restores the re-emitted blob: ExtB is back, intact.
         CellSim dst = Cell(full);
@@ -87,7 +87,7 @@ public class CellSimRetentionTests
     public void RestoreOwned_LegacyOverload_IsNonThrowing_ReturnsEmptyOnCorrupt()
     {
         CellSim cell = Cell(Reduced());
-        IReadOnlyList<int> ids = cell.RestoreOwned(BuildCorruptTwoEntity());
+        IReadOnlyList<long> ids = cell.RestoreOwned(BuildCorruptTwoEntity());
         Assert.Empty(ids);
         Assert.Equal(0, cell.MaxOwnedNetId());
     }
@@ -98,13 +98,13 @@ public class CellSimRetentionTests
     {
         using var ms = new MemoryStream();
         using var bw = new BinaryWriter(ms);
-        bw.Write(2);
-        bw.Write(5);
+        bw.Write(2);             // entity count
+        bw.Write(5L);            // netId (64-bit)
         bw.Write((ushort)ExtAId);
         bw.Write7BitEncodedInt(4);
         bw.Write(10);
         bw.Write((ushort)0);
-        bw.Write(6);
+        bw.Write(6L);            // netId (64-bit)
         bw.Write((ushort)2);     // built-in id 2: unregistered -> hard mismatch, throws
         bw.Write(123);
         bw.Write((ushort)0);

@@ -45,7 +45,7 @@ public class EntityReplicationSeamTests
         for (int i = 0; i < frames; i++) { server.Poll(); server.Tick(cfg.TickSeconds); client.Poll(); }
     }
 
-    private static bool ClientSees(WorldClient client, int netId)
+    private static bool ClientSees(WorldClient client, long netId)
     {
         foreach (EntityRenderState e in client.Snapshot())
             if (e.Id.Value == netId) return true;
@@ -60,7 +60,7 @@ public class EntityReplicationSeamTests
         var server = new ShardedWorldServer(st, cfg, Flat, MoveTuning.Default, registry: ExtendedRegistry());
 
         // Spawn a server-owned NPC one metre from the player's spawn, tagged with a consumer kind.
-        int npcNetId = server.SpawnEntity(6f, 5f, (w, e) => w.Set(e, new NpcKind { Kind = 7 }));
+        long npcNetId = server.SpawnEntity(6f, 5f, (w, e) => w.Set(e, new NpcKind { Kind = 7 }));
 
         var client = new WorldClient(ct, Flat, MoveTuning.Default,
             new WorldClientConfig { TickSeconds = cfg.TickSeconds, InterpolateRemotes = false }, registry: ExtendedRegistry());
@@ -84,7 +84,7 @@ public class EntityReplicationSeamTests
         var (st, ct) = LoopbackTransport.CreatePair();
         var cfg = SmallCells();
         var server = new ShardedWorldServer(st, cfg, Flat, MoveTuning.Default, registry: ExtendedRegistry());
-        int npcNetId = server.SpawnEntity(6f, 5f, (w, e) => w.Set(e, new NpcKind { Kind = 1 }));
+        long npcNetId = server.SpawnEntity(6f, 5f, (w, e) => w.Set(e, new NpcKind { Kind = 1 }));
 
         int calls = 0;
         bool jump = false;
@@ -123,7 +123,7 @@ public class EntityReplicationSeamTests
         var (st, ct) = LoopbackTransport.CreatePair();
         var cfg = SmallCells();
         var server = new ShardedWorldServer(st, cfg, Flat, MoveTuning.Default, registry: ExtendedRegistry());
-        int npcNetId = server.SpawnEntity(6f, 5f, (w, e) => w.Set(e, new NpcKind { Kind = 3 }));
+        long npcNetId = server.SpawnEntity(6f, 5f, (w, e) => w.Set(e, new NpcKind { Kind = 3 }));
 
         var oldClient = new WorldClient(ct, Flat, MoveTuning.Default,
             new WorldClientConfig { TickSeconds = cfg.TickSeconds, InterpolateRemotes = false });   // default (movement-only) registry
@@ -145,7 +145,7 @@ public class EntityReplicationSeamTests
         var cfg = new WorldServerConfig { TickSeconds = 1f / 30f, MaxPlayers = 4, InterestRadius = 50f,
             SpawnPosition = _ => new Vector3(0f, 0f, 0f) };
         var server = new WorldServer(st, cfg, Flat, MoveTuning.Default, registry: ExtendedRegistry());
-        int npcNetId = server.SpawnEntity(3f, 0f, (w, e) => w.Set(e, new NpcKind { Kind = 42 }));
+        long npcNetId = server.SpawnEntity(3f, 0f, (w, e) => w.Set(e, new NpcKind { Kind = 42 }));
 
         int calls = 0;
         server.OnBeforeTick += _ => calls++;

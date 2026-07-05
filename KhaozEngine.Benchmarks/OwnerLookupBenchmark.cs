@@ -47,8 +47,9 @@ public static class OwnerLookupBenchmark
 
         var host = new ShardHost(cellSize, 1f / 30f, registry, interestCellSize: cellSize);
         var rng = new DeterministicRng(seed);
-        int[] netIds = new int[gridWidth * gridHeight * entitiesPerCell];
-        int total = 0, nextNetId = 1;
+        long[] netIds = new long[gridWidth * gridHeight * entitiesPerCell];
+        int total = 0;
+        long nextNetId = 1;
         for (int cy = 0; cy < gridHeight; cy++)
         for (int cx = 0; cx < gridWidth; cx++)
         {
@@ -57,7 +58,7 @@ public static class OwnerLookupBenchmark
             {
                 float x = baseX + (0.05f + 0.9f * rng.NextFloat()) * cellSize;
                 float y = baseY + (0.05f + 0.9f * rng.NextFloat()) * cellSize;
-                int netId = nextNetId++;
+                long netId = nextNetId++;
                 Entity e = host.SpawnOwned(x, y, netId, out CellSim cell);
                 cell.World.Set(e, new BenchNetPos { X = x, Y = y });
                 netIds[total++] = netId;
@@ -82,7 +83,7 @@ public static class OwnerLookupBenchmark
     }
 
     // The pre-index behaviour: scan cells and, in each, World.ForEach for the owned netId - O(total entities) per lookup.
-    private static void NaiveFindOwner(ShardHost host, int netId)
+    private static void NaiveFindOwner(ShardHost host, long netId)
     {
         foreach (CellSim cell in host.Cells)
         {

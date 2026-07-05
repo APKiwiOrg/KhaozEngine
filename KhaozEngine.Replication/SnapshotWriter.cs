@@ -8,11 +8,12 @@ namespace KhaozEngine.Replication;
 /// <summary>
 /// Serializes a full-state snapshot of a server <see cref="World"/>: each entity carrying a <see cref="NetId"/>
 /// and its registered components. Format: <c>[entityCount][per entity: [netId][(typeId,[len],data)...][0]]</c>,
-/// where the 7-bit-encoded <c>len</c> is present only for consumer extension components (see
-/// <see cref="ReplicationRegistry.FirstExtensionTypeId"/>) so an older client can skip an id it never registered.
-/// The snapshot is opaque <c>byte[]</c> the game ships over its session transport. Use
-/// <see cref="WriteFiltered"/> with an interest set for per-client area-of-interest replication: the existing
-/// <see cref="ClientReplicationView.Apply"/> then spawns entities that entered the set and despawns those that left.
+/// where <c>netId</c> is a 64-bit value (widened from 32-bit in 10.0.0) and the 7-bit-encoded <c>len</c> is present
+/// only for consumer extension components (see <see cref="ReplicationRegistry.FirstExtensionTypeId"/>) so an older
+/// client can skip an id it never registered. The snapshot is opaque <c>byte[]</c> the game ships over its session
+/// transport. Use <see cref="WriteFiltered"/> with an interest set for per-client area-of-interest replication: the
+/// existing <see cref="ClientReplicationView.Apply"/> then spawns entities that entered the set and despawns those
+/// that left.
 /// </summary>
 public static class SnapshotWriter
 {
@@ -23,9 +24,9 @@ public static class SnapshotWriter
     /// <see cref="ReplicationChannels.Default"/> everywhere writes byte-identically to before channels existed.
     /// </summary>
     public static byte[] Write(World world, ReplicationRegistry registry,
-        ReplicationChannels channel = ReplicationChannels.Replicate, int? ownerNetId = null)
+        ReplicationChannels channel = ReplicationChannels.Replicate, long? ownerNetId = null)
     {
-        var entities = new List<(int netId, Entity entity)>();
+        var entities = new List<(long netId, Entity entity)>();
         world.ForEach<NetId>((Entity e, ref NetId id) => entities.Add((id.Value, e)));
         return Encode(world, registry, entities, channel, ownerNetId, retainedExtensionFrames: null);
     }
@@ -39,16 +40,16 @@ public static class SnapshotWriter
     /// is written only for the entity whose net id equals <paramref name="ownerNetId"/> (the receiving client's own
     /// player), and never when it is null (a ghost/handoff/persistence capture supplies its own channel + no owner).
     /// </summary>
-    public static byte[] WriteFiltered(World world, ReplicationRegistry registry, IReadOnlySet<int> netIds,
-        ReplicationChannels channel = ReplicationChannels.Replicate, int? ownerNetId = null)
+    public static byte[] WriteFiltered(World world, ReplicationRegistry registry, IReadOnlySet<long> netIds,
+        ReplicationChannels channel = ReplicationChannels.Replicate, long? ownerNetId = null)
     {
-        var entities = new List<(int netId, Entity entity)>();
+        var entities = new List<(long netId, Entity entity)>();
         world.ForEach<NetId>((Entity e, ref NetId id) => { if (netIds.Contains(id.Value)) entities.Add((id.Value, e)); });
         return Encode(world, registry, entities, channel, ownerNetId, retainedExtensionFrames: null);
     }
 
     /// <summary>
-    /// As <see cref="WriteFiltered(World, ReplicationRegistry, IReadOnlySet{int}, ReplicationChannels, int?)"/>, but
+    /// As <see cref="WriteFiltered(World, ReplicationRegistry, IReadOnlySet{long}, ReplicationChannels, long?)"/>, but
     /// after each entity's registered components it re-emits any opaque extension frames
     /// <paramref name="retainedExtensionFrames"/> returns for that net id (length-prefixed, exactly as captured), then
     /// the terminator. This is the write side of retain-and-rewrite: a cell that restored under a registry missing an
@@ -56,23 +57,23 @@ public static class SnapshotWriter
     /// at rest. The frames MUST be extension ids (&gt;= <see cref="ReplicationRegistry.FirstExtensionTypeId"/>); pass
     /// null (or a provider returning null) for the plain path.
     /// </summary>
-    public static byte[] WriteFiltered(World world, ReplicationRegistry registry, IReadOnlySet<int> netIds,
-        ReplicationChannels channel, int? ownerNetId,
-        Func<int, IReadOnlyList<RetainedComponent>?>? retainedExtensionFrames)
+    public static byte[] WriteFiltered(World world, ReplicationRegistry registry, IReadOnlySet<long> netIds,
+        ReplicationChannels channel, long? ownerNetId,
+        Func<long, IReadOnlyList<RetainedComponent>?>? retainedExtensionFrames)
     {
-        var entities = new List<(int netId, Entity entity)>();
+        var entities = new List<(long netId, Entity entity)>();
         world.ForEach<NetId>((Entity e, ref NetId id) => { if (netIds.Contains(id.Value)) entities.Add((id.Value, e)); });
         return Encode(world, registry, entities, channel, ownerNetId, retainedExtensionFrames);
     }
 
-    private static byte[] Encode(World world, ReplicationRegistry registry, List<(int netId, Entity entity)> entities,
-        ReplicationChannels channel, int? ownerNetId,
-        Func<int, IReadOnlyList<RetainedComponent>?>? retainedExtensionFrames)
+    private static byte[] Encode(World world, ReplicationRegistry registry, List<(long netId, Entity entity)> entities,
+        ReplicationChannels channel, long? ownerNetId,
+        Func<long, IReadOnlyList<RetainedComponent>?>? retainedExtensionFrames)
     {
         using var ms = new MemoryStream();
         using var bw = new BinaryWriter(ms);
         bw.Write(entities.Count);
-        foreach ((int netId, Entity entity) in entities)
+        foreach ((long netId, Entity entity) in entities)
         {
             bw.Write(netId);
             foreach (ComponentCodec codec in registry.Ordered)

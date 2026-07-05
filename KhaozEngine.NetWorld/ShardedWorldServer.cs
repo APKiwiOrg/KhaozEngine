@@ -99,7 +99,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
     private readonly AoiDeltaReplicator? deltaReplicator;
     private readonly HashSet<int> deltaCapableSlots = new();
 
-    private readonly Dictionary<int, int> netIdBySlot = new();
+    private readonly Dictionary<int, long> netIdBySlot = new();
     private readonly Dictionary<int, int> lastAckBySlot = new();
     private readonly Dictionary<int, string> accountIdBySlot = new();
     private readonly Dictionary<int, RateLimiter> rateBySlot = new();
@@ -117,7 +117,9 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
     private readonly AdminCommandBuffer admin = new();
     private readonly IBanStore? banStore;
     private readonly MoveTuning tuning;
-    private int nextNetId = 1;
+    // The single NetId allocator (node 0 for this single-process server) player joins, SpawnEntity, and restored cells
+    // all draw from / bound, so ids never collide. Replaces the pre-10.0.0 raw ++int; see NetIdAllocator for the scheme.
+    private readonly NetIdAllocator allocator = new();
 
     public ShardedWorldServer(INetTransport transport, ShardedWorldServerConfig config,
         Func<float, float, float> groundHeight, MoveTuning tuning, Func<float, float, Vector3>? groundNormal = null,
@@ -183,31 +185,31 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
 
     /// <inheritdoc />
     public byte[]? SnapshotCell(CellCoord coord) =>
-        host.TryGetCell(coord, out CellSim cell) ? cell.SnapshotOwned(new HashSet<int>(netIdBySlot.Values)) : null;
+        host.TryGetCell(coord, out CellSim cell) ? cell.SnapshotOwned(new HashSet<long>(netIdBySlot.Values)) : null;
 
     /// <inheritdoc />
-    public IReadOnlyList<int> RestoreCell(CellCoord coord, byte[] snapshot) =>
-        host.TryGetCell(coord, out CellSim cell) ? cell.RestoreOwned(snapshot) : Array.Empty<int>();
+    public IReadOnlyList<long> RestoreCell(CellCoord coord, byte[] snapshot) =>
+        host.TryGetCell(coord, out CellSim cell) ? cell.RestoreOwned(snapshot) : Array.Empty<long>();
 
     /// <inheritdoc />
     public CellRestoreResult TryRestoreCell(CellCoord coord, byte[] snapshot) =>
         host.TryGetCell(coord, out CellSim cell)
             ? cell.TryRestoreOwned(snapshot)
-            : new CellRestoreResult(true, Array.Empty<int>(), 0, null);
+            : new CellRestoreResult(true, Array.Empty<long>(), 0, null);
 
     /// <inheritdoc />
     public void EnsureCell(CellCoord coord) => host.EnsureCell(coord);
 
     /// <inheritdoc />
-    public int NextNetId => nextNetId;
+    public long NextNetId => allocator.NextValue;
 
     /// <inheritdoc />
-    public void EnsureNextNetIdAtLeast(int atLeast) { if (atLeast > nextNetId) nextNetId = atLeast; }
+    public void EnsureNextNetIdAtLeast(long atLeast) => allocator.EnsureNextAtLeast(atLeast);
 
     /// <summary>Number of joined players.</summary>
     public int PlayerCount => netIdBySlot.Count;
     /// <summary>The net id of the player entity for a joined slot.</summary>
-    public bool TryGetPlayerNetId(int slot, out int netId) => netIdBySlot.TryGetValue(slot, out netId);
+    public bool TryGetPlayerNetId(int slot, out long netId) => netIdBySlot.TryGetValue(slot, out netId);
 
     /// <summary>The worker pool the per-cell movement tick fans across (defaults to single-threaded).</summary>
     public IJobScheduler Scheduler { get => host.Scheduler; set => host.Scheduler = value; }
@@ -290,7 +292,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
     /// <summary>The current authoritative state for a joined slot, read from its owning cell (cell-agnostic).</summary>
     public bool TryGetPlayerState(int slot, out PlayerMoveState state)
     {
-        if (netIdBySlot.TryGetValue(slot, out int netId)
+        if (netIdBySlot.TryGetValue(slot, out long netId)
             && host.TryGetOwner(netId, out CellSim cell, out Entity e)
             && cell.World.TryGet(e, out ReplicatedPosition rp))
         {
@@ -307,7 +309,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
     /// handoff relocates the entity there (NetId stable). No-op for an unknown slot.</summary>
     public void SetPlayerState(int slot, in PlayerMoveState state)
     {
-        if (netIdBySlot.TryGetValue(slot, out int netId) && host.TryGetOwner(netId, out CellSim cell, out Entity e))
+        if (netIdBySlot.TryGetValue(slot, out long netId) && host.TryGetOwner(netId, out CellSim cell, out Entity e))
         {
             cell.World.Set(e, new ReplicatedPosition { Value = state.Position });
             cell.World.Set(e, MovementState.From(state));
@@ -320,7 +322,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
     /// <see cref="WorldServer.SetPlayerDisplayName"/>. No-op for an unknown slot.</summary>
     public void SetPlayerDisplayName(int slot, string name)
     {
-        if (netIdBySlot.TryGetValue(slot, out int netId) && host.TryGetOwner(netId, out CellSim cell, out Entity e))
+        if (netIdBySlot.TryGetValue(slot, out long netId) && host.TryGetOwner(netId, out CellSim cell, out Entity e))
             cell.World.Set(e, new PlayerIdentity { DisplayName = name ?? string.Empty });
     }
 
@@ -338,9 +340,9 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
     /// pipeline; being non-player it is persisted with its cell. Move it each tick from <see cref="OnBeforeTick"/>.
     /// Returns the new entity's NetId.
     /// </summary>
-    public int SpawnEntity(float x, float z, Action<World, Entity>? configure = null)
+    public long SpawnEntity(float x, float z, Action<World, Entity>? configure = null)
     {
-        int netId = nextNetId++;
+        long netId = allocator.Next().Value;
         Entity e = host.SpawnOwned(x, z, netId, out CellSim cell); // eager: registers netId in the O(1) ownership index
         cell.World.Set(e, new ReplicatedPosition { Value = new Vector3(x, 0f, z) });
         configure?.Invoke(cell.World, e);
@@ -480,12 +482,12 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
         deltaReplicator?.BeginTick();
         foreach (int slot in slots)
         {
-            if (!netIdBySlot.TryGetValue(slot, out int netId)) continue;
+            if (!netIdBySlot.TryGetValue(slot, out long netId)) continue;
             MoveProtocol.ServerFrameKind kind;
             byte[] body;
             if (deltaReplicator is not null && deltaCapableSlots.Contains(slot))
             {
-                (World world, HashSet<int> interest) = host.HomeInterest(slot, config.InterestRadius);
+                (World world, HashSet<long> interest) = host.HomeInterest(slot, config.InterestRadius);
                 // Owner-scope the Replicate channel to this client's own player (netId is stable across handoff), so an
                 // OwnerOnly component is served only on the client's own entity, never on another player it observes.
                 body = deltaReplicator.WriteFor(slot, world, interest, netId);
@@ -576,7 +578,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
         var list = new List<OnlinePlayer>(netIdBySlot.Count);
         foreach (int slot in netIdBySlot.Keys)
         {
-            if (!netIdBySlot.TryGetValue(slot, out int netId)) continue;
+            if (!netIdBySlot.TryGetValue(slot, out long netId)) continue;
             string acct = accountIdBySlot.TryGetValue(slot, out string? a) ? a : string.Empty;
             TryGetPlayerState(slot, out PlayerMoveState st);
             string name = string.Empty;
@@ -609,7 +611,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
         // Ground-clamp the spawn (an idle step settles Y onto the terrain + half-height).
         PlayerMoveState state = spawnClamp.Step(new PlayerMoveState { Position = spawn }, MoveCommand.Idle, config.TickSeconds);
 
-        int netId = nextNetId++;
+        long netId = allocator.Next().Value;
         Entity e = host.SpawnOwned(state.Position.X, state.Position.Z, netId, out CellSim cell); // eager index register
         cell.World.Set(e, new ReplicatedPosition { Value = state.Position });
         cell.World.Set(e, MovementState.From(state));   // vertical axis: present at spawn, carried across handoff
@@ -634,7 +636,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
     // may later surface a Left event for the same slot through Poll, calling OnLeave a second time.
     private void OnLeave(int slot)
     {
-        if (netIdBySlot.TryGetValue(slot, out int netId))
+        if (netIdBySlot.TryGetValue(slot, out long netId))
         {
             if (accountIdBySlot.TryGetValue(slot, out string? acct) && TryGetPlayerState(slot, out PlayerMoveState final))
                 PlayerLeaving?.Invoke(slot, acct, final);

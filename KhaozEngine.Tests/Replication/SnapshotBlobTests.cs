@@ -8,14 +8,14 @@ namespace KhaozEngine.Tests.Replication;
 
 public class SnapshotBlobTests
 {
-    // Builds a persist snapshot blob by hand: [count][per entity: netId + (typeId,[len],payload).. + 0].
+    // Builds a persist snapshot blob by hand: [count][per entity: netId(64-bit) + (typeId,[len],payload).. + 0].
     // Extension ids (>= FirstExtensionTypeId) are length-prefixed; built-ins are unframed.
-    private static byte[] Build(params (int netId, (ushort typeId, byte[] payload)[] comps)[] entities)
+    private static byte[] Build(params (long netId, (ushort typeId, byte[] payload)[] comps)[] entities)
     {
         using var ms = new MemoryStream();
         using var bw = new BinaryWriter(ms);
         bw.Write(entities.Length);
-        foreach ((int netId, (ushort typeId, byte[] payload)[] comps) in entities)
+        foreach ((long netId, (ushort typeId, byte[] payload)[] comps) in entities)
         {
             bw.Write(netId);
             foreach ((ushort typeId, byte[] payload) in comps)
@@ -86,7 +86,7 @@ public class SnapshotBlobTests
         using var ms = new MemoryStream();
         using var bw = new BinaryWriter(ms);
         bw.Write(1);            // count
-        bw.Write(3);            // netId
+        bw.Write(3L);           // netId (64-bit)
         bw.Write((ushort)16);   // extension type id
         bw.Write7BitEncodedInt(9999); // bogus length, far past the buffer
         bw.Write(new byte[] { 1, 2 });

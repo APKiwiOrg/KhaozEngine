@@ -209,8 +209,8 @@ public sealed class WorldClient : IDisposable
         attemptDeadlineRemaining = disconnectTimeout;   // also bound the initial connect
     }
 
-    /// <summary>Net id of the local player, or -1 until the first snapshot identifies it.</summary>
-    public int LocalNetId { get; private set; } = -1;
+    /// <summary>Net id of the local player, or -1 until the first snapshot identifies it (64-bit since 10.0.0).</summary>
+    public long LocalNetId { get; private set; } = -1;
 
     /// <summary>True once the session handshake has joined (equivalent to
     /// <see cref="ConnectionState"/> == <see cref="WorldConnectionState.Connected"/>).</summary>
@@ -557,7 +557,7 @@ public sealed class WorldClient : IDisposable
     public IReadOnlyList<EntityRenderState> Snapshot()
     {
         var list = new List<EntityRenderState>();
-        foreach (KeyValuePair<int, Entity> kv in view.Entities)
+        foreach (KeyValuePair<long, Entity> kv in view.Entities)
         {
             if (!world.IsAlive(kv.Value)) continue;
             bool isLocal = kv.Key == LocalNetId;
@@ -600,7 +600,7 @@ public sealed class WorldClient : IDisposable
     /// OLDER server that never sends <typeparamref name="T"/>, this simply returns <c>false</c> — no handshake, no
     /// disconnect. Reflects the last applied snapshot; call it after <see cref="Poll"/>.
     /// </summary>
-    public bool TryGetComponent<T>(int netId, out T component) where T : struct, IComponent
+    public bool TryGetComponent<T>(long netId, out T component) where T : struct, IComponent
     {
         if (view.TryGetEntity(netId, out Entity e) && world.IsAlive(e) && world.TryGet(e, out component))
             return true;
@@ -636,7 +636,7 @@ public sealed class WorldClient : IDisposable
 
     private void OnSnapshot(byte[] data)
     {
-        if (!MoveProtocol.TryDecodeSnapshotFrame(data, out int localNetId, out int ackSeq, out byte[] snapshot)) return;
+        if (!MoveProtocol.TryDecodeSnapshotFrame(data, out long localNetId, out int ackSeq, out byte[] snapshot)) return;
         // Last-resort backstop: a snapshot we can't decode (e.g. an unregistered component type id from a newer
         // server protocol) must become a clean disconnect, never an unhandled exception in the consumer's frame
         // loop. Surfaced as IncompatibleVersion so the consumer shows "client out of date, please update".
@@ -650,7 +650,7 @@ public sealed class WorldClient : IDisposable
 
     private void OnDelta(byte[] data)
     {
-        if (!MoveProtocol.TryDecodeSnapshotFrame(data, out int localNetId, out int ackSeq, out byte[] delta)) return;
+        if (!MoveProtocol.TryDecodeSnapshotFrame(data, out long localNetId, out int ackSeq, out byte[] delta)) return;
         // A delta rides the same [localNetId][ackSeq] header as a snapshot; its body is an AoiDeltaReplicator delta.
         // A decode / baseline failure is terminal, the same clean disconnect as an undecodable snapshot.
         if (!view.TryApplyDelta(world, delta, out string? decodeError))
@@ -666,7 +666,7 @@ public sealed class WorldClient : IDisposable
 
     // Shared post-apply for a full snapshot or a delta: NetStats ingest count, remote-interpolation interval, and the
     // local prediction reconcile against the freshly applied authoritative basis. Identical for both frame kinds.
-    private void IngestServerState(int localNetId, int ackSeq)
+    private void IngestServerState(long localNetId, int ackSeq)
     {
         snapshotsSinceWindow++;                                  // NetStats: AoI snapshot/delta ingest rate
         bool first = LocalNetId < 0;

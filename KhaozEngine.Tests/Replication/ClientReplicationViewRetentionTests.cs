@@ -86,7 +86,7 @@ public class ClientReplicationViewRetentionTests
         world.Set(e, new ExtA { V = 10 });
         var retained = new RetainedComponent(5, ExtBId, BitConverter.GetBytes(20));
 
-        byte[] snap = SnapshotWriter.WriteFiltered(world, Reduced(), new HashSet<int> { 5 },
+        byte[] snap = SnapshotWriter.WriteFiltered(world, Reduced(), new HashSet<long> { 5 },
             ReplicationChannels.Persist, ownerNetId: null,
             retainedExtensionFrames: id => id == 5 ? new[] { retained } : null);
 

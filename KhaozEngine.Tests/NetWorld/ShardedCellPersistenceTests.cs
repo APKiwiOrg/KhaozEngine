@@ -41,7 +41,7 @@ public class ShardedCellPersistenceTests
         for (int i = 0; i < 60; i++) { client.Poll(); server.Poll(); server.Tick(cfg.TickSeconds); }
 
         // The player spawns at world (5,_,5), which with CellSize 10 lands in cell (0,0).
-        Assert.True(server.TryGetPlayerNetId(client.Slot, out int netId));
+        Assert.True(server.TryGetPlayerNetId(client.Slot, out long netId));
         Assert.True(server.Host.TryGetOwner(netId, out CellSim cell, out _));
         Assert.Equal(new CellCoord(0, 0), cell.Coord);
 
@@ -56,7 +56,7 @@ public class ShardedCellPersistenceTests
     {
         var (st, _) = LoopbackTransport.CreatePair();
         ICellPersistenceHost host = new ShardedWorldServer(st, Cfg(), Flat, MoveTuning.Default);
-        int start = host.NextNetId;
+        long start = host.NextNetId;
         host.EnsureNextNetIdAtLeast(start + 10);
         Assert.Equal(start + 10, host.NextNetId);
         host.EnsureNextNetIdAtLeast(start);               // lower -> ignored
@@ -67,7 +67,7 @@ public class ShardedCellPersistenceTests
     private sealed class GridHost : ICellPersistenceHost
     {
         public readonly ShardHost Host;
-        private int nextNetId = 1;
+        private long nextNetId = 1;
         public GridHost(ReplicationRegistry r) { Host = new ShardHost(10f, 1f / 30f, r); Host.CellCreated += c => CellCreated?.Invoke(c.Coord); }
         public event Action<CellCoord>? CellCreated;
 
@@ -76,14 +76,14 @@ public class ShardedCellPersistenceTests
             get { var l = new List<CellCoord>(); foreach (CellSim c in Host.Cells) l.Add(c.Coord); return l; }
         }
 
-        public byte[]? SnapshotCell(CellCoord coord) => Host.TryGetCell(coord, out CellSim cell) ? cell.SnapshotOwned(new HashSet<int>()) : null;
-        public IReadOnlyList<int> RestoreCell(CellCoord coord, byte[] snapshot) => Host.TryGetCell(coord, out CellSim cell) ? cell.RestoreOwned(snapshot) : System.Array.Empty<int>();
+        public byte[]? SnapshotCell(CellCoord coord) => Host.TryGetCell(coord, out CellSim cell) ? cell.SnapshotOwned(new HashSet<long>()) : null;
+        public IReadOnlyList<long> RestoreCell(CellCoord coord, byte[] snapshot) => Host.TryGetCell(coord, out CellSim cell) ? cell.RestoreOwned(snapshot) : System.Array.Empty<long>();
         public void EnsureCell(CellCoord coord) => Host.EnsureCell(coord);
-        public int NextNetId => nextNetId;
-        public void EnsureNextNetIdAtLeast(int atLeast) { if (atLeast > nextNetId) nextNetId = atLeast; }
-        public int SpawnNode(float x, float y, int amount)
+        public long NextNetId => nextNetId;
+        public void EnsureNextNetIdAtLeast(long atLeast) { if (atLeast > nextNetId) nextNetId = atLeast; }
+        public long SpawnNode(float x, float y, int amount)
         {
-            int id = nextNetId++;
+            long id = nextNetId++;
             Entity e = Host.SpawnAt(x, y, out CellSim cell);
             cell.World.Set(e, new NetId(id));
             cell.World.Set(e, new ResourceNodeC { Amount = amount });
@@ -108,7 +108,7 @@ public class ShardedCellPersistenceTests
 
         // First run: spawn a node at (25,25) -> cell (2,2), persist, shut down.
         var g1 = new GridHost(r);
-        int nodeId = g1.SpawnNode(25f, 25f, 77);
+        long nodeId = g1.SpawnNode(25f, 25f, 77);
         var cp1 = new CellPersistence(g1, store);
         cp1.SaveDirtyPass();
         await cp1.FlushAsync();

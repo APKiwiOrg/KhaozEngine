@@ -28,14 +28,14 @@ public readonly struct SnapshotBlobComponent
 /// <summary>One entity parsed from a persist snapshot blob: its net id and ordered component frames.</summary>
 public sealed class SnapshotBlobEntity
 {
-    public SnapshotBlobEntity(int netId, IReadOnlyList<SnapshotBlobComponent> components)
+    public SnapshotBlobEntity(long netId, IReadOnlyList<SnapshotBlobComponent> components)
     {
         NetId = netId;
         Components = components ?? throw new ArgumentNullException(nameof(components));
     }
 
-    /// <summary>The entity's network id.</summary>
-    public int NetId { get; }
+    /// <summary>The entity's network id (64-bit since 10.0.0).</summary>
+    public long NetId { get; }
 
     /// <summary>The entity's component frames, in blob order.</summary>
     public IReadOnlyList<SnapshotBlobComponent> Components { get; }
@@ -69,7 +69,7 @@ public sealed class SnapshotBlobReader
         if (count < 0) throw new InvalidOperationException($"Snapshot entity count {count} is negative.");
         for (int i = 0; i < count; i++)
         {
-            int netId = ReadInt32(br, ms, "entity net id");
+            long netId = ReadInt64(br, ms, "entity net id");
             var comps = new List<SnapshotBlobComponent>();
             while (true)
             {
@@ -108,6 +108,12 @@ public sealed class SnapshotBlobReader
     {
         if (ms.Position + 4 > ms.Length) throw new InvalidOperationException($"Snapshot truncated reading {what}.");
         return br.ReadInt32();
+    }
+
+    private static long ReadInt64(BinaryReader br, MemoryStream ms, string what)
+    {
+        if (ms.Position + 8 > ms.Length) throw new InvalidOperationException($"Snapshot truncated reading {what}.");
+        return br.ReadInt64();
     }
 
     private static ushort ReadUInt16(BinaryReader br, MemoryStream ms, string what)

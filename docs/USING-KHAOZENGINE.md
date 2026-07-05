@@ -2917,7 +2917,7 @@ var cellPersistence = new CellPersistence(server, store,
 
 // at boot, before the first tick:
 await cellPersistence.LoadMetaAsync();   // resumes the NetId allocator above the saved high-water mark
-await cellPersistence.PreloadAsync();    // instantiates every saved cell so its load path runs
+await cellPersistence.PreloadAsync();    // instantiates every saved cell so its load path runs; a 9.x (32-bit) cell blob is migrated forward to 64-bit here
 
 // per fixed tick:
 server.Poll();
@@ -3006,6 +3006,14 @@ var server = new WorldServer(transport, config, terrain.SampleHeight, MoveTuning
 A mismatch surfaces on the client as `DisconnectReason.IncompatibleVersion` with the server's required version in `DisconnectReasonDetail`; the client never proceeds to receive snapshots. A version-less client (one that did not set `ProtocolVersion`, e.g. an old build) presents version `""`, so the rule can reject it too. On a compatible version the inner token is delegated to the inner authenticator unchanged.
 
 3. *Graceful decode (last resort).* Even if both above are bypassed, an undecodable snapshot (an unregistered BUILT-IN component type id from a newer core protocol) becomes a clean `DisconnectReason.IncompatibleVersion` disconnect plus a `SnapshotDecodeFailed` event - never an unhandled exception in your frame loop. (An unregistered consumer *extension* id, at/above `ReplicationRegistry.FirstExtensionTypeId`, is skipped instead, so a newer server's added component never disconnects an older client - see the server-owned NPCs section above.)
+
+**Fold the engine wire generation into your version (since 10.0.0).** 10.0.0 widened `NetId` to 64-bit on the wire (the snapshot/delta id field and the frame header, `[localNetId:long][ackSeq:int]`, grown 8 -> 12 bytes) with NO dual-format wire, so a 10.0.0 peer and a pre-10.0.0 peer MUST reject each other at connect rather than misparse a 64-bit frame as 32-bit. `MoveProtocol.WireProtocolVersion` (= 2; the pre-10.0.0 line was 1) labels the incompatible generations - fold it into your `ProtocolVersion` string so a version bump you forget can never leave the wire mismatch to become a misparse:
+
+```csharp
+public static string ProtocolVersion => $"myGame-1.4;wire{MoveProtocol.WireProtocolVersion}";
+```
+
+Both skew directions then produce the clean `IncompatibleVersion` disconnect. Ruinborne must adopt client and server together (the break is not one-sided), and a 10.0.0 server that has written 64-bit cell blobs cannot be downgraded (an old build treats a v2 blob as `SkippedTooNew` and quarantines it rather than loading it).
 
 ```csharp
 client.SnapshotDecodeFailed += err => ShowOutOfDateUI(err);   // "client out of date, please update"

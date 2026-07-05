@@ -43,8 +43,8 @@ public sealed class ShardHost
     // MMO arch review) that replaces TryGetOwner's linear cell scan. Maintained purely as a projection of each cell's
     // owned index via the CellSim register/unregister hooks wired in GetOrCreateCell, so restore / adopt / spawn /
     // migrate-freeze all propagate here with no extra bookkeeping. OwnerCount stays an independent scan (the oracle).
-    private readonly Dictionary<int, CellCoord> ownerCell = new();
-    private readonly Dictionary<int, int> clientPlayerNetId = new(); // session slot -> the client's player NetId
+    private readonly Dictionary<long, CellCoord> ownerCell = new();
+    private readonly Dictionary<int, long> clientPlayerNetId = new(); // session slot -> the client's player NetId
     private IJobScheduler scheduler;
     private CellSim[] tickBuffer = Array.Empty<CellSim>(); // reused per-tick fan-out snapshot of `ordered`
 
@@ -171,7 +171,7 @@ public sealed class ShardHost
     /// a scan. Returns the new entity; <paramref name="cell"/> is the cell it landed in, so the caller can set its
     /// position and other components.
     /// </summary>
-    public Entity SpawnOwned(float worldX, float worldY, int netId, out CellSim cell)
+    public Entity SpawnOwned(float worldX, float worldY, long netId, out CellSim cell)
     {
         cell = CellFor(worldX, worldY);
         Entity e = cell.World.Spawn();
@@ -226,9 +226,9 @@ public sealed class ShardHost
         for (int i = 0; i < ordered.Count; i++)
         {
             CellSim owner = ordered[i];
-            Dictionary<CellCoord, HashSet<int>>? byTarget = CollectBorders(owner);
+            Dictionary<CellCoord, HashSet<long>>? byTarget = CollectBorders(owner);
             if (byTarget is null) continue;
-            foreach (KeyValuePair<CellCoord, HashSet<int>> kv in byTarget)
+            foreach (KeyValuePair<CellCoord, HashSet<long>> kv in byTarget)
             {
                 if (!cells.ContainsKey(kv.Key)) continue; // only mirror to neighbors that exist
                 // Ghosts serve OTHER cells' clients: the Replicate channel with no owner (so OwnerOnly private state
@@ -281,7 +281,7 @@ public sealed class ShardHost
             throw new InvalidOperationException("ProcessHandoffs requires a position accessor.");
 
         // Phase 1: detect crossings with a read-only scan, then send Migrate + freeze (mutations after the scan).
-        var crossings = new List<(CellSim source, Entity entity, int netId, CellCoord dest)>();
+        var crossings = new List<(CellSim source, Entity entity, long netId, CellCoord dest)>();
         foreach (CellSim owner in ordered.ToArray())
         {
             World w = owner.World;
@@ -294,13 +294,13 @@ public sealed class ShardHost
                 if (dest != oc) crossings.Add((owner, e, id.Value, dest));
             });
         }
-        foreach ((CellSim source, Entity entity, int netId, CellCoord dest) in crossings)
+        foreach ((CellSim source, Entity entity, long netId, CellCoord dest) in crossings)
         {
             GetOrCreateCell(dest); // ensure the destination exists to receive the migrate
             // Capture the Migrate channel: the entity carries only its migratable components to the destination cell
             // (a Replicate-only or Persist-only component that isn't also Migrate does not follow the crossing).
             byte[] capture = SnapshotWriter.WriteFiltered(
-                source.World, registry, new HashSet<int> { netId }, ReplicationChannels.Migrate, ownerNetId: null);
+                source.World, registry, new HashSet<long> { netId }, ReplicationChannels.Migrate, ownerNetId: null);
             link.Send(new CellMessage(source.Coord, dest, CellMessageKind.Migrate, capture));
             source.World.Set(entity, new Migrating { Destination = dest });
             source.UnregisterOwned(netId); // frozen: relinquished here, so drop it from the owned index at once
@@ -311,7 +311,7 @@ public sealed class ShardHost
         {
             foreach (CellMessage msg in link.Drain(cell.Coord, CellMessageKind.Migrate))
             {
-                foreach (int netId in cell.AdoptFromMigrate(msg.Payload))
+                foreach (long netId in cell.AdoptFromMigrate(msg.Payload))
                     link.Send(new CellMessage(cell.Coord, msg.Source, CellMessageKind.MigrateAck, BitConverter.GetBytes(netId)));
             }
         }
@@ -320,7 +320,7 @@ public sealed class ShardHost
         foreach (CellSim cell in ordered.ToArray())
         {
             foreach (CellMessage msg in link.Drain(cell.Coord, CellMessageKind.MigrateAck))
-                cell.ReleaseMigrating(BitConverter.ToInt32(msg.Payload, 0));
+                cell.ReleaseMigrating(BitConverter.ToInt64(msg.Payload, 0));
         }
     }
 
@@ -328,7 +328,7 @@ public sealed class ShardHost
     /// How many cells currently own (authoritatively hold) the entity with <paramref name="netId"/>. For a live
     /// entity this is exactly 1 at every <see cref="ProcessHandoffs"/> call boundary (0 = lost, 2 = duplicated).
     /// </summary>
-    public int OwnerCount(int netId)
+    public int OwnerCount(long netId)
     {
         // Deliberately an independent from-scratch scan (CellSim.ScanOwned), NOT an index read: it is the oracle that
         // cross-checks the exactly-once handoff invariant, so it must be able to observe a duplicate (2) or loss (0)
@@ -345,7 +345,7 @@ public sealed class ShardHost
     /// index (rare: an unregistered raw spawn, or the indexed owner just lost the entity); the fallback re-caches the
     /// hit via <see cref="CellSim.TryGetOwned"/>, so the next lookup is O(1) again.
     /// </summary>
-    public bool TryGetOwner(int netId, out CellSim cell, out Entity entity)
+    public bool TryGetOwner(long netId, out CellSim cell, out Entity entity)
     {
         if (ownerCell.TryGetValue(netId, out CellCoord coord)
             && cells.TryGetValue(coord, out CellSim? c)
@@ -362,14 +362,14 @@ public sealed class ShardHost
     }
 
     /// <summary>The maintained host ownership index (netId -&gt; owning cell coord), exposed for tests to check against a scan.</summary>
-    internal IReadOnlyDictionary<int, CellCoord> OwnerCellEntries => ownerCell;
+    internal IReadOnlyDictionary<long, CellCoord> OwnerCellEntries => ownerCell;
 
     /// <summary>
     /// Binds a client (session <paramref name="slot"/>, e.g. from <c>NetServer</c>) to its player entity
     /// (<paramref name="playerNetId"/>). The client's <b>home cell</b> is then derived as the cell that currently
     /// owns that player, so it follows the player across handoffs automatically (seamless re-bind).
     /// </summary>
-    public void BindClient(int slot, int playerNetId) => clientPlayerNetId[slot] = playerNetId;
+    public void BindClient(int slot, long playerNetId) => clientPlayerNetId[slot] = playerNetId;
 
     /// <summary>Removes a client binding. Returns false if the slot was not bound.</summary>
     public bool UnbindClient(int slot) => clientPlayerNetId.Remove(slot);
@@ -384,7 +384,7 @@ public sealed class ShardHost
     public bool TryGetHomeCell(int slot, out CellSim cell)
     {
         cell = null!;
-        return clientPlayerNetId.TryGetValue(slot, out int playerNetId) && TryGetOwner(playerNetId, out cell, out _);
+        return clientPlayerNetId.TryGetValue(slot, out long playerNetId) && TryGetOwner(playerNetId, out cell, out _);
     }
 
     /// <summary>
@@ -400,9 +400,9 @@ public sealed class ShardHost
     /// </summary>
     public byte[] SnapshotForClient(int slot, float interestRadius)
     {
-        (World world, HashSet<int> interest) = HomeInterest(slot, interestRadius);
+        (World world, HashSet<long> interest) = HomeInterest(slot, interestRadius);
         // HomeInterest validated the binding, so the slot's player net id is present: it is this client's owner id.
-        int ownerNetId = clientPlayerNetId[slot];
+        long ownerNetId = clientPlayerNetId[slot];
         return SnapshotWriter.WriteFiltered(world, registry, interest, ReplicationChannels.Replicate, ownerNetId);
     }
 
@@ -416,7 +416,7 @@ public sealed class ShardHost
     /// <see cref="SnapshotForClient"/>: requires a position accessor, a bound client with an owned, positioned player,
     /// and <paramref name="interestRadius"/> in <c>[0, OverlapMargin]</c>.
     /// </summary>
-    public (World world, HashSet<int> interest) HomeInterest(int slot, float interestRadius)
+    public (World world, HashSet<long> interest) HomeInterest(int slot, float interestRadius)
     {
         if (positionAccessor is null)
             throw new InvalidOperationException("HomeInterest requires a position accessor.");
@@ -425,7 +425,7 @@ public sealed class ShardHost
         if (interestRadius > OverlapMargin)
             throw new InvalidOperationException(
                 $"Interest radius {interestRadius} exceeds overlap margin {OverlapMargin}: the home cell can't hold the full AoI as ghosts. Increase OverlapMargin so it is >= the interest radius.");
-        if (!clientPlayerNetId.TryGetValue(slot, out int playerNetId))
+        if (!clientPlayerNetId.TryGetValue(slot, out long playerNetId))
             throw new InvalidOperationException($"No client bound to slot {slot}.");
         if (!TryGetOwner(playerNetId, out CellSim home, out Entity player))
             throw new InvalidOperationException($"Client {slot}'s player {playerNetId} is not owned by any cell.");
@@ -433,7 +433,7 @@ public sealed class ShardHost
             throw new InvalidOperationException($"Client {slot}'s player {playerNetId} has no position.");
 
         home.RebuildInterest(positionAccessor);
-        HashSet<int> interest = home.Interest.Query(px, py, interestRadius);
+        HashSet<long> interest = home.Interest.Query(px, py, interestRadius);
         return (home.World, interest);
     }
 
@@ -442,9 +442,9 @@ public sealed class ShardHost
     /// An entity within <see cref="OverlapMargin"/> of an edge mirrors into the neighbor across that edge; near a
     /// corner it mirrors into the two edge neighbors and the diagonal neighbor. Returns null if no border entities.
     /// </summary>
-    private Dictionary<CellCoord, HashSet<int>>? CollectBorders(CellSim owner)
+    private Dictionary<CellCoord, HashSet<long>>? CollectBorders(CellSim owner)
     {
-        Dictionary<CellCoord, HashSet<int>>? byTarget = null;
+        Dictionary<CellCoord, HashSet<long>>? byTarget = null;
         float s = CellSize, m = OverlapMargin;
         CellCoord c = owner.Coord;
         float minX = c.X * s, maxX = minX + s, minY = c.Y * s, maxY = minY + s;
@@ -458,7 +458,7 @@ public sealed class ShardHost
             bool nearW = x - minX < m, nearE = maxX - x < m, nearS = y - minY < m, nearN = maxY - y < m;
             if (!(nearW || nearE || nearS || nearN)) return;
 
-            int netId = id.Value;
+            long netId = id.Value;
             for (int dx = -1; dx <= 1; dx++)
             for (int dy = -1; dy <= 1; dy++)
             {
@@ -469,10 +469,10 @@ public sealed class ShardHost
                 if (dy == 1 && !nearN) continue;
 
                 var target = new CellCoord(c.X + dx, c.Y + dy);
-                byTarget ??= new Dictionary<CellCoord, HashSet<int>>();
-                if (!byTarget.TryGetValue(target, out HashSet<int>? set))
+                byTarget ??= new Dictionary<CellCoord, HashSet<long>>();
+                if (!byTarget.TryGetValue(target, out HashSet<long>? set))
                 {
-                    set = new HashSet<int>();
+                    set = new HashSet<long>();
                     byTarget[target] = set;
                 }
                 set.Add(netId);

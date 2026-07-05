@@ -22,7 +22,7 @@ public class WorldClientDeltaTests
     private static WorldClientConfig ClientConfig(bool delta) =>
         new() { TickSeconds = Dt, RequestDeltaReplication = delta };
 
-    private static Vector3 RemotePos(WorldClient observer, int remoteNetId)
+    private static Vector3 RemotePos(WorldClient observer, long remoteNetId)
     {
         foreach (EntityRenderState e in observer.Snapshot())
             if (!e.IsLocal && e.Id.Value == remoteNetId) return e.Position;

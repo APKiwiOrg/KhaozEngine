@@ -85,7 +85,7 @@ public class VerticalPhysicsTests
             VerticalVelocity = 5.5f, Grounded = true, TimeSinceGrounded = 0.2f, JumpBufferRemaining = 0.05f,
         });
 
-        byte[] snapshot = SnapshotWriter.WriteFiltered(server, registry, new HashSet<int> { 7 });
+        byte[] snapshot = SnapshotWriter.WriteFiltered(server, registry, new HashSet<long> { 7 });
 
         var view = new ClientReplicationView(registry);
         var client = new World();
@@ -175,7 +175,7 @@ public class VerticalPhysicsTests
         var server = new ShardedWorldServer(st, cfg, Flat, MoveTuning.Default);
         var client = new NetClient(ct);
         for (int i = 0; i < 10; i++) { client.Poll(); server.Poll(); server.Tick(cfg.TickSeconds); }
-        Assert.True(server.TryGetPlayerNetId(client.Slot, out int netId));
+        Assert.True(server.TryGetPlayerNetId(client.Slot, out long netId));
 
         // Hold jump + run east: the player auto-bhops across cell boundaries, so most boundary crossings happen
         // while airborne. The vertical state must survive the handoff (registered component), not reset to grounded.

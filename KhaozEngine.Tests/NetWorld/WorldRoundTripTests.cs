@@ -94,7 +94,7 @@ public class WorldRoundTripTests
         Assert.True(bSeenByA_after.X > bSeenByA_before.X + 0.1f, "A should see B move +X");
     }
 
-    static Vector3 RemotePos(WorldClient observer, int remoteNetId)
+    static Vector3 RemotePos(WorldClient observer, long remoteNetId)
     {
         foreach (EntityRenderState e in observer.Snapshot())
             if (!e.IsLocal && e.Id.Value == remoteNetId) return e.Position;
@@ -138,7 +138,7 @@ public class WorldRoundTripTests
         Assert.True(jumping.VerticalVelocity > 0f, $"B should see A rising, got {jumping.VerticalVelocity}");
     }
 
-    static EntityRenderState RemoteState(WorldClient observer, int remoteNetId)
+    static EntityRenderState RemoteState(WorldClient observer, long remoteNetId)
     {
         foreach (EntityRenderState e in observer.Snapshot())
             if (!e.IsLocal && e.Id.Value == remoteNetId) return e;

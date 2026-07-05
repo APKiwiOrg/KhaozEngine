@@ -2,6 +2,14 @@
 
 Immediate-mode + retained UI on the custom MonoGame-free stack.
 
+**Localized text:** the player-facing text sinks (the `Label` / `Button` widgets, `GuiSurface.Label` /
+`Button` / `StatChip`, and `Tooltip.Show`) take a `LocalizedText` (from `KhaozEngine.App`) instead of a raw
+`string`. Pass a `StringId` (implicitly converts) for localizable copy, or `LocalizedText.Raw("...")` for
+non-localizable text (names, numbers, debug). The old `string` overloads remain but are `[Obsolete]`; the
+`KhaozEngine.Localization.Analyzers` analyzer (in the `Game2D`/`Game3D` umbrellas) flags them. `IconButton`'s
+string argument is an icon-atlas key, not player text, so it is unchanged. See the App package for
+`StringId` / `LocalizedText` / `LocalizationContext`.
+
 - `GuiSurface` - immediate-mode UI for a `Run`-loop game: `Begin(batch?, pointer)` then `Panel`/`Label`/`Swatch`/
   `Button`->bool/`Slider`/hover, with a `PointerCaptured` click-through gate. `FocusNavigator` drives
   keyboard/gamepad menu focus.

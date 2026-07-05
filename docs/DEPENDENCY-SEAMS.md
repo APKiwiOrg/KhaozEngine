@@ -68,6 +68,23 @@ KhaozEngine.Server.Admin -> Microsoft.AspNetCore.App [shared framework, Framewor
 A server that does not want an admin HTTP endpoint never references `Server.Admin`, so the web stack stays
 out of its dependency closure.
 
+## Localization package edges
+
+Compile-time localization enforcement adds two edges, both acyclic:
+
+```
+KhaozEngine.Gui -> KhaozEngine.App           (the LocalizedText sink type + StringId + LocalizationContext)
+KhaozEngine.Game2D/Game3D -> KhaozEngine.Localization.Analyzers   (packed dependency, include="All", so the
+                                                                   analyzer is applied in the consumer's build)
+```
+
+`App` is a pure-BCL foundation package (it only references `Diagnostics`) and never references `Gui`, so the
+new `Gui -> App` edge introduces no cycle. `KhaozEngine.Localization.Analyzers` is a `netstandard2.0` Roslyn
+analyzer with no runtime dependency; it ships its assembly under `analyzers/dotnet/cs` and flows to a game only
+through the `Game2D`/`Game3D` umbrellas (a project that references neither never sees it). The marker attributes
+it reads (`LocalizationExemptAttribute`, `LocalizationStringSinkAttribute`) live in `App`, so the analyzer keys
+off fully-qualified names, not a hard reference.
+
 ## Three flavours of the same idea
 
 The pattern is applied at the granularity the dependency warrants:

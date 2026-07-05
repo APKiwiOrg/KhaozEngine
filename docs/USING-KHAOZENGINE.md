@@ -381,7 +381,9 @@ filter strips letters out of pasted text too), firing on the V press edge only.
 
 ## Gui (`KhaozEngine.Gui`)
 
-Two styles, both built on Windowing + Render2D.
+Two styles, both built on Windowing + Render2D. Player-facing text sinks take a `LocalizedText`, not a raw
+`string` (see "Compile-time localization enforcement" below); `Strings.*` in the snippets are `StringId`
+constants.
 
 **Immediate-mode `GuiSurface`** - the common case for HUDs and simple menus. `Begin(batch?, pointer)` then call
 widgets each frame; `Button(...)` returns `bool` (true the frame it's clicked). Widgets are click-through-safe by
@@ -391,8 +393,8 @@ construction (they hit-test via the `Pointer`).
 var gui = new GuiSurface(whitePixel);            // a 1x1 white Texture2D
 gui.Begin(batch, pointer);
 gui.Panel(new Rect(40, 40, 240, 120), bgColor);
-gui.Label(font, new Rect(40, 40, 240, 24), "Pause", textColor, GuiAlign.Center);
-if (gui.Button(font, new Rect(60, 90, 200, 36), "Resume")) Resume();
+gui.Label(font, new Rect(40, 40, 240, 24), Strings.Pause, textColor, GuiAlign.Center);
+if (gui.Button(font, new Rect(60, 90, 200, 36), Strings.Resume)) Resume();
 ```
 
 `GuiSurface` also exposes hover state (`IsHovering`/`HoverEntered`/`HoveredRect`) and a `Slider`. The
@@ -442,10 +444,64 @@ dropdown.DrawOverlay(batch, white, font, pointer);
 // A tooltip that works on both desktop and touch without a compile-time platform branch.
 tip.Dismiss = isTouch ? TooltipDismiss.TapOutside : TooltipDismiss.CallerDriven;
 tip.ShowTitleSeparator = true;
-tip.Show("Copper Ore", "x128", bodyLines, anchor); // two-column title (left name, right count)
+tip.Show(Strings.CopperOre, LocalizedText.Raw("x128"), bodyLines, anchor); // left name (localized), right count (raw)
 tip.Update(pointer);                               // auto-dismisses on tap-outside in TapOutside mode
 tip.Draw(batch, white);
 ```
+
+---
+
+## Compile-time localization enforcement (`StringId` / `LocalizedText`)
+
+The Gui text sinks accept a `LocalizedText` (from `KhaozEngine.App`), not a raw `string`. The only implicit
+conversion into `LocalizedText` is from `StringId`, so **a bare string literal at a sink is a compile error** -
+you either localize it (a `StringId`) or opt out explicitly (`LocalizedText.Raw`). The `KhaozEngine.Localization.Analyzers`
+analyzer (already in the `Game2D`/`Game3D` umbrellas) enforces the rest. Adopting it on a bump:
+
+1. **Author a `.resx` + `StringId` constants.** One satellite `.resx` per culture (the base file is the default
+   language), and a constants class of keys (a `.resx` -> `StringId` source generator is on the roadmap):
+
+   ```csharp
+   internal static class Strings
+   {
+       public static readonly StringId Pause  = new("Menu.Pause");
+       public static readonly StringId Resume = new("Menu.Resume");
+       public static readonly StringId Score  = new("Hud.Score");   // "Score: {0}"
+   }
+   ```
+
+2. **Register the catalog once at startup** so every `LocalizedText` resolves against it:
+
+   ```csharp
+   var rm = new System.Resources.ResourceManager("MyGame.Strings", typeof(MyGameMarker).Assembly);
+   LocalizationContext.Catalog = new ResourceStringCatalog(rm);
+   ```
+
+3. **Pass a `StringId` (or `LocalizedText.Of` with format args) at the sinks:**
+
+   ```csharp
+   gui.Button(font, rect, Strings.Resume);                 // StringId -> LocalizedText implicitly
+   label.Content = LocalizedText.Of(Strings.Score, score); // format args -> catalog.Format
+   ```
+
+   `LocalizedText` re-resolves on every draw, so `LocalizationManager.SetCulture(...)` at runtime updates the UI
+   on the next frame with nothing to invalidate.
+
+4. **Use `LocalizedText.Raw("...")` for genuinely non-localizable text** (proper names, numbers, debug), and mark
+   the enclosing scope `[LocalizationExempt]` (or put it in `[Conditional("DEBUG")]` / `#if DEBUG` code) so the
+   analyzer stays silent. The `Raw` token is greppable, so every escape is auditable.
+
+5. **Raise the analyzer to error when ready.** It ships as warnings; a repo enforces the contract in
+   `.editorconfig`:
+
+   ```ini
+   dotnet_diagnostic.KELOC001.severity = error   # raw string at a player-facing sink
+   dotnet_diagnostic.KELOC002.severity = error   # LocalizedText.Raw outside exempt/debug code
+   ```
+
+The migration is warning-not-break: the old `string` Gui overloads remain `[Obsolete]`, so a game builds (with
+warnings) before any text is migrated. `KhaozEngine.Showcase` is the worked example (`ShowcaseStrings.resx` +
+`ShowcaseStrings` constants + `LocalizationContext` wiring).
 
 ---
 

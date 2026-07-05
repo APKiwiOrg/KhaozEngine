@@ -75,6 +75,10 @@ good, not just read as shapes.
 
 ## Tooling & developer experience
 
+- `.resx` -> `StringId` source generator: compile-time localization enforcement shipped (`StringId` /
+  `LocalizedText` + the `Localization.Analyzers` analyzer), but consumers still hand-author the `StringId`
+  constants that mirror their `.resx` keys. A Roslyn source generator could emit those constants from the
+  `.resx` at build time, removing the hand-maintained constants class and the key-drift risk.
 - On-screen profiling / diagnostics overlay: a live frame-time / draw-call / memory overlay (logging only
   today). The Gui makes it cheap to build.
 - Asset hot-reload: reload meshes, textures, and shaders at runtime during development. The prop asset pipeline

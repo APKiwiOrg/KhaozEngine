@@ -147,6 +147,54 @@ namespace KhaozEngine.Tests.Game
             Assert.True(held.X > 0.95f, $"yaw should hold while at rest, got {held}");
         }
 
+        // Fullest local-player sample: exact grounded + vertical + planar speed.
+        static CharacterSample LocalSpeed(int id, Vector3 p, float planarSpeed) =>
+            new CharacterSample(id, p, isLocal: true, grounded: true, verticalVelocity: 0f, planarSpeed: planarSpeed);
+
+        [Fact]
+        public void ExplicitPlanarSpeed_DrivesLocomotionState_OverThePositionDelta()
+        {
+            // The animation half of the decel-to-stop fix. The locomotion state must follow the EXACT planar speed
+            // (the clean commanded speed) instead of the finite-differenced render position, in BOTH directions:
+            var a = NewAnimators();
+
+            // (1) Speed up from a STATIONARY position: exact speed in the Walk band -> Walk, even though the position
+            //     never moves (the derived path would read 0 -> Idle).
+            var pos = Vector3.Zero;
+            for (int i = 0; i < 8; i++) a.Update(new[] { LocalSpeed(1, pos, 3f) }, Dt);
+            Assert.Equal(LocomotionState.Walk, a.Live[0].State);
+
+            // (2) Stop while the position JITTERS: exact speed 0 -> Idle, even though the position wobbles +/- a few cm
+            //     each frame (the residual settle). The derived path would read ~1 m/s off that jitter and stay "walking
+            //     in place"; the exact speed pins it to Idle with no walk<->idle flicker.
+            var states = new List<LocomotionState>();
+            for (int i = 0; i < 30; i++)
+            {
+                pos += new Vector3(i % 2 == 0 ? 0.04f : -0.04f, 0, 0);
+                a.Update(new[] { LocalSpeed(1, pos, 0f) }, Dt);
+                states.Add(a.Live[0].State);
+            }
+            for (int i = 10; i < states.Count; i++)   // after the debounce commits
+                Assert.Equal(LocomotionState.Idle, states[i]);
+        }
+
+        [Fact]
+        public void ExplicitPlanarSpeed_DerivedPathWouldFlicker_ProvingTheOverrideMatters()
+        {
+            // Same jittering-position stop, but position-ONLY samples: the derived speed reads the jitter and the state
+            // is NOT the steady Idle it should be. This is the flicker the exact-speed override removes.
+            var a = NewAnimators();
+            var pos = Vector3.Zero;
+            var states = new List<LocomotionState>();
+            for (int i = 0; i < 30; i++)
+            {
+                pos += new Vector3(i % 2 == 0 ? 0.04f : -0.04f, 0, 0);
+                a.Update(new[] { Pos(1, pos) }, Dt);
+                states.Add(a.Live[0].State);
+            }
+            Assert.Contains(LocomotionState.Walk, states);   // the derived path surfaces the jitter as movement
+        }
+
         [Fact]
         public void FirstFrame_IsIdle_NoNaN()
         {

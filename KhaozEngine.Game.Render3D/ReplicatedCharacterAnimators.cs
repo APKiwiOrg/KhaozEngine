@@ -15,7 +15,9 @@ namespace KhaozEngine.Game
     /// <see cref="CharacterAnimatorTuning.VelocityWindowSeconds"/> - so a plateauing position stream does not strobe
     /// the state). For the local player (whose exact movement the client already knows) pass the exact-movement
     /// constructor so <see cref="HasMovement"/> is set and the grounded flag + vertical velocity are taken verbatim
-    /// instead of derived.</summary>
+    /// instead of derived; the fullest constructor additionally takes the exact planar speed
+    /// (<see cref="CharacterSample.PlanarSpeed"/>) so the locomotion state is driven by the clean commanded speed, not
+    /// finite-differenced from the render position (no walk&lt;-&gt;idle flicker on a decel-to-stop).</summary>
     public readonly struct CharacterSample
     {
         /// <summary>Position-only sample: speed, vertical velocity, and grounded are all derived from the position
@@ -28,6 +30,8 @@ namespace KhaozEngine.Game
             HasMovement = false;
             Grounded = false;
             VerticalVelocity = 0f;
+            HasPlanarSpeed = false;
+            PlanarSpeed = 0f;
         }
 
         /// <summary>Sample with exact movement (the local player): <see cref="Grounded"/> and
@@ -40,6 +44,28 @@ namespace KhaozEngine.Game
             HasMovement = true;
             Grounded = grounded;
             VerticalVelocity = verticalVelocity;
+            HasPlanarSpeed = false;
+            PlanarSpeed = 0f;
+        }
+
+        /// <summary>Fullest sample (the local player): exact <see cref="Grounded"/>, <see cref="VerticalVelocity"/>,
+        /// AND exact planar <paramref name="planarSpeed"/> (m/s). The planar speed drives the locomotion state and the
+        /// clip-speed sync DIRECTLY instead of being finite-differenced from the rendered position. Pass the clean
+        /// commanded speed (<c>WorldClient.LocalHorizontalSpeed</c> / <c>ClientPrediction.PredictedHorizontalSpeed</c>):
+        /// it is computed only on the prediction's commanded path, so it does not carry the reconciliation render offset
+        /// and does not strobe walk&lt;-&gt;idle when the player decelerates to a stop (where the rendered position, even
+        /// after the C1 smoothing fix, settles with a tiny residual sag). Facing still follows the derived heading
+        /// (planar speed is magnitude-only). A negative value is treated as zero.</summary>
+        public CharacterSample(long id, Vector3 position, bool isLocal, bool grounded, float verticalVelocity, float planarSpeed)
+        {
+            Id = id;
+            Position = position;
+            IsLocal = isLocal;
+            HasMovement = true;
+            Grounded = grounded;
+            VerticalVelocity = verticalVelocity;
+            HasPlanarSpeed = true;
+            PlanarSpeed = planarSpeed;
         }
 
         /// <summary>Stable per-entity key (e.g. <c>NetId.Value</c>, 64-bit since 10.0.0). Identifies the brain across frames.</summary>
@@ -61,6 +87,14 @@ namespace KhaozEngine.Game
 
         /// <summary>Exact vertical velocity, m/s positive up (only meaningful when <see cref="HasMovement"/>).</summary>
         public float VerticalVelocity { get; }
+
+        /// <summary>True when this sample carries an exact planar <see cref="PlanarSpeed"/> to use for the locomotion
+        /// state instead of deriving it from the position delta.</summary>
+        public bool HasPlanarSpeed { get; }
+
+        /// <summary>Exact planar (ground-plane) speed, m/s (only meaningful when <see cref="HasPlanarSpeed"/>). Drives
+        /// the idle/walk/run state and the clip-speed sync; facing still uses the derived heading.</summary>
+        public float PlanarSpeed { get; }
     }
 
     /// <summary>A draw-ready character produced by <see cref="ReplicatedCharacterAnimators.Update"/>: the world
@@ -316,22 +350,26 @@ namespace KhaozEngine.Game
 
                 Vector3 planarVel = new Vector3(e.Velocity.X, 0f, e.Velocity.Z);
                 float derivedVertical = e.Velocity.Y;
-                float horizontalSpeed = planarVel.Length();
+                float derivedPlanarSpeed = planarVel.Length();
 
                 // Exact movement (local player) wins over the derived signals when present.
                 float verticalVelocity = s.HasMovement ? s.VerticalVelocity : derivedVertical;
                 bool grounded = s.HasMovement
                     ? s.Grounded
                     : MathF.Abs(verticalVelocity) < _tuning.GroundedVerticalEpsilon;
+                // Locomotion state + clip-speed sync run off the exact planar speed when supplied (the clean commanded
+                // speed), so a decel-to-stop does not strobe walk<->idle off the finite-differenced render position.
+                // Facing keeps the derived heading below (exact speed is magnitude-only), so it is not overridden here.
+                float locomotionSpeed = s.HasPlanarSpeed ? MathF.Max(0f, s.PlanarSpeed) : derivedPlanarSpeed;
 
-                // Facing: aim along the planar heading; hold the last yaw below the threshold (no spin at rest).
-                if (horizontalSpeed > _tuning.MinPlanarSpeedForFacing)
+                // Facing: aim along the derived planar heading; hold the last yaw below the threshold (no spin at rest).
+                if (derivedPlanarSpeed > _tuning.MinPlanarSpeedForFacing)
                 {
                     float target = MathF.Atan2(planarVel.X, planarVel.Z) + _tuning.FacingYawOffset;
                     e.Yaw = LerpAngle(e.Yaw, target, _tuning.YawSmoothing);
                 }
 
-                e.Character.Update(horizontalSpeed, grounded, verticalVelocity, dt);
+                e.Character.Update(locomotionSpeed, grounded, verticalVelocity, dt);
 
                 Matrix4x4 world = Matrix4x4.CreateScale(_tuning.Scale)
                                   * Matrix4x4.CreateRotationY(e.Yaw)

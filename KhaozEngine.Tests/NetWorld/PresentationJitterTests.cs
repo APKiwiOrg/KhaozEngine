@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.Locomotion;
+using KhaozEngine.Netcode;
 using KhaozEngine.NetWorld;
 using Xunit;
 using Xunit.Abstractions;
@@ -139,5 +140,44 @@ public class PresentationJitterTests
         // near-zero holds, and no big catch-up snaps.
         Assert.True(t.Holds == 0, $"local 30 Hz short-frame sawtooth at ratio {ratio}: {t}");
         Assert.True(t.Snaps == 0, $"local catch-up snaps at ratio {ratio}: {t}");
+    }
+
+    // Decel-to-stop shake: warm up moving (walk or sprint), zero the command, and trace the local rendered X across the
+    // stop at both an integer (60 fps vs 30 Hz) and a non-integer (~178 fps) render:tick ratio. When the local player
+    // stops, it stops INSTANTLY in its own prediction, but the authority is an input-RTT behind - so for a tick or two
+    // the basis the client reconciles against dips BACKWARD (the server is still applying the pre-stop moves) and then
+    // catches up. Pre-fix, the inter-tick lerp chased that dip and the avatar sharply reversed ~55% of a tick (the
+    // reported back-and-forth shake); the fix (C1 inter-tick across the rebase + critically-damped offset) turns it into
+    // a smooth sub-dead-zone sag. A client running ahead over a genuine authority dip cannot be bit-perfectly monotone
+    // without stranding a real backward misprediction, so the guarantee is a bounded, imperceptible residual, not zero.
+    [Theory]
+    [InlineData(2.0f, false)]
+    [InlineData(5.9f, false)]
+    [InlineData(2.0f, true)]
+    [InlineData(5.9f, true)]
+    public void Local_render_decel_to_stop_does_not_shake(float ratio, bool run)
+    {
+        Loop loop = NewLoop();
+        float dt = loop.Tick / ratio;
+        MoveCommand move = new(new Vector2(1f, 0f), run, cameraYaw: 0f);
+        int moveFrames = (int)(2f / dt);   // 2 s of steady motion to reach a clean streaming state
+        int stopFrames = (int)(1.5f / dt); // 1.5 s to let the stop fully settle
+
+        for (int i = 0; i < moveFrames; i++) loop.Frame(dt, move);
+        var xs = new List<float>();
+        for (int i = 0; i < stopFrames; i++) { loop.Frame(dt, MoveCommand.Idle); xs.Add(loop.A.LocalRenderState.Position.X); }
+
+        // The visible "shake" is the peak BACKWARD EXCURSION: how far the avatar ever dips below its furthest-forward
+        // point while it settles, as a fraction of one pre-stop tick of travel (frame-rate and speed independent).
+        float runMax = float.NegativeInfinity, excursion = 0f;
+        foreach (float x in xs) { if (x > runMax) runMax = x; excursion = MathF.Max(excursion, runMax - x); }
+        float tickStep = (run ? MoveTuning.Default.RunSpeed : MoveTuning.Default.WalkSpeed) * loop.Tick;
+        _out.WriteLine($"decel ratio {ratio} run {run}: backExcursion={excursion:F5} m ({excursion / tickStep:P0} of a tick) finalX={xs[^1]:F4}");
+
+        // Pre-fix the reversal was ~55% of a tick; the fix keeps the residual sag under 20% (in practice ~10-13%, all
+        // within the 0.03 m CorrectionDeadZone). And the stop lands exactly on the authoritative position.
+        Assert.True(excursion < 0.20f * tickStep,
+            $"local avatar shakes on stop: backward excursion {excursion:F5} m is {excursion / tickStep:P0} of one tick at ratio {ratio} run {run}");
+        Assert.Equal(run ? 12f : 6f, xs[^1], 3);
     }
 }

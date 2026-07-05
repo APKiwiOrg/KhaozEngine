@@ -283,6 +283,38 @@ public class ClientPredictionTests
     }
 
     [Fact]
+    public void Backward_rebase_keeps_the_inter_tick_velocity_and_does_not_drag_the_render_back()
+    {
+        // The decel-to-stop shake fix. When the local player stops, its prediction halts instantly, but the authority
+        // is an input-RTT behind, so the basis the client reconciles against dips BACKWARD for a tick or two before it
+        // catches up. Here: predict a stop at X = 1, then reconcile mid-tick against a basis a full tick behind (X = 0,
+        // all commands acked -> predicted rebases back to 0). The reconcile must stay continuous (no pop), and - the
+        // fix - completing the tick must NOT drag the render back toward the rebased target: the inter-tick segment is
+        // translated by the rebase delta so its (zero, for a stopped player) velocity is preserved, and the whole jump
+        // is absorbed into the critically-damped offset. Pre-fix, previousPredictedPosition stayed at 1 while the
+        // target moved to 0, so the inter-tick lerp hauled the render down to ~0.5 across the rest of the tick.
+        var p = NewPrediction();
+        p.Predict(new Vector2(60f, 0f)); // predicted X = 1
+        p.AdvancePresentation(Tick);     // render catches up to 1
+        p.Predict(Vector2.Zero);         // stop: predicted holds at 1
+        p.AdvancePresentation(Tick * 0.5f); // mid-tick; a stopped player does not move, so render is still 1
+        float before = p.RenderedState.Position.X;
+        Assert.Equal(1f, before, 3);
+
+        // Authority a full tick behind, everything acked -> predicted rebases backward to 0.
+        var r = p.Reconcile(1, new FakeState(Vector2.Zero), lastAcknowledgedSeq: 0);
+        Assert.False(r.HardSnapApplied);
+        Assert.Equal(0f, p.PredictedState.Position.X, 3);       // predicted followed authority back
+        Assert.Equal(before, p.RenderedState.Position.X, 3);    // but the RENDER did not pop
+
+        // Finish the tick with no further snapshot. The render must hold near 1 (only the offset eases it), not get
+        // dragged toward the rebased-back target by the inter-tick lerp.
+        p.AdvancePresentation(Tick * 0.5f);
+        Assert.True(p.RenderedState.Position.X > 0.9f,
+            $"backward rebase dragged the render back to {p.RenderedState.Position.X:F3} (C1 rebase should hold it near 1)");
+    }
+
+    [Fact]
     public void Mid_tick_reconcile_does_not_jump_the_rendered_vertical_axis()
     {
         var p = NewV3();

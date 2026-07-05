@@ -32,6 +32,14 @@ public sealed class ClientPrediction<TState, TCommand>
     // misprediction (a mispredicted jump/fall) eases too. Decays toward zero in AdvancePresentation.
     private Vector2 renderOffset;
     private float verticalRenderOffset;
+    // Velocity state for the planar offset's critically-damped decay. A first-order (exponential) decay faithfully
+    // tracks the target, so when the authoritative basis dips backward for a tick or two at a velocity transition
+    // (the client stops instantly in its prediction while the server, an input-RTT behind, is still applying the
+    // pre-stop moves - then catches up), the planar offset chases that transient dip and the rendered avatar visibly
+    // shakes back-and-forth as it settles. A critically-damped second-order decay carries inertia: a brief
+    // dip-and-recover barely moves it (so the shake is gone), while a SUSTAINED correction still fully resolves
+    // (unlike a hard "never move backward" clamp, which would strand the avatar on a genuine backward misprediction).
+    private Vector2 renderOffsetVelocity;
     private int nextSeq;
     // Inter-tick render interpolation: the predicted position only steps once per tick (60Hz). At higher frame
     // rates the render would snap each tick, so the rendered position eases from the previous tick's position to
@@ -93,6 +101,7 @@ public sealed class ClientPrediction<TState, TCommand>
         secondsSinceLastPredict = settings.TickSeconds; // start fully on the current state (frac = 1)
         pendingCommands.Clear();
         renderOffset = Vector2.Zero;
+        renderOffsetVelocity = Vector2.Zero;
         verticalRenderOffset = 0f;
         predictedHorizontalSpeed = 0f;
         nextSeq = 0;
@@ -117,6 +126,7 @@ public sealed class ClientPrediction<TState, TCommand>
         previousPredictedVertical = basis.Vertical;
         secondsSinceLastPredict = settings.TickSeconds; // start fully on the current state (frac = 1)
         renderOffset = Vector2.Zero;
+        renderOffsetVelocity = Vector2.Zero;
         verticalRenderOffset = 0f;
         predictedHorizontalSpeed = 0f;
         // nextSeq intentionally preserved (monotonic across the reconnect); pendingCommands intentionally kept
@@ -192,20 +202,40 @@ public sealed class ClientPrediction<TState, TCommand>
             previousPredictedVertical = predictedState.Vertical;
             secondsSinceLastPredict = settings.TickSeconds;
             renderOffset = Vector2.Zero;
+            renderOffsetVelocity = Vector2.Zero;
             verticalRenderOffset = 0f;
         }
         else
         {
-            // C1-continuous reconcile: do NOT collapse the inter-tick interpolation. Keep previousPredictedPosition
-            // and secondsSinceLastPredict (the in-flight ease) exactly as they were, and only rebase the target
-            // (predictedState) plus fold any genuine misprediction into the decaying render offset. Because the
-            // inter-tick lerp keeps flowing at the steady velocity across the reconcile, a matching (loopback) rebase
-            // - which fires every tick - perturbs neither the rendered POSITION nor its VELOCITY. Collapsing frac to
-            // 1 each tick (the old behaviour) pinned the inter-tick contribution at zero and left only the offset
-            // decay to carry motion for the rest of the tick, a per-tick velocity dip = the 30 Hz camera sawtooth.
-            // Continuity holds against the SAME previous/frac and the NEW target: rendered_after == renderedBefore.
+            // C1-continuous reconcile: do NOT collapse the inter-tick interpolation. Instead of leaving
+            // previousPredictedPosition pinned while the target jumps to the new basis, TRANSLATE the whole inter-tick
+            // segment (previous -> predicted) by the rebase delta, so the remaining (1 - frac) of the interpolation
+            // keeps flowing in the SAME direction and at the SAME velocity it had, and the entire target jump is
+            // absorbed into the decaying render offset. This makes the inter-tick lerp C1 across ANY rebase, not only a
+            // steady (matching) one:
+            //  - Matching rebase (loopback steady run): the delta is zero, so previous is unchanged and the offset is
+            //    unchanged - identical to before, so the fixed 30 Hz camera-sawtooth stays fixed.
+            //  - Backward rebase at a velocity transition (decel-to-stop): the client stops instantly in its
+            //    prediction while the authority, an input-RTT behind, is momentarily still at the pre-stop position and
+            //    then catches up, so the basis dips backward for a tick or two. WITHOUT the translation, previous
+            //    stayed ahead of the rebased-back target and the inter-tick lerp dragged the render BACKWARD to the
+            //    dipped target within half a tick (fast, and the visible shake). WITH it, the inter-tick segment has
+            //    zero velocity for a stopped player (previous == predicted), so it no longer drags; the transient dip
+            //    lives entirely in the render offset, which critically-damps it away without a reversal.
+            // Continuity holds either way: rendered_after == rendered_before (the offset re-anchors to whatever the
+            // translation left).
+            Vector2 planarRebase = predictedState.Position - oldPlanar;
+            float verticalRebase = predictedState.Vertical - oldVertical;
+            previousPredictedPosition += planarRebase;
+            previousPredictedVertical += verticalRebase;
             renderOffset = renderedPlanar - (Vector2.Lerp(previousPredictedPosition, predictedState.Position, frac));
             verticalRenderOffset = renderedVertical - Lerp(previousPredictedVertical, predictedState.Vertical, frac);
+            // The offset just jumped discontinuously (re-anchored to preserve rendered continuity against the new
+            // target), so its carried smoothing velocity is stale. Zero it: keeping it lets the decay's momentum
+            // overshoot when the target recovers and the offset flips sign (a small secondary backward creep after the
+            // stop). Starting each re-anchor from rest keeps the critical damping's early-inertia (which holds the
+            // render steady through the transient authority dip) without that overshoot.
+            renderOffsetVelocity = Vector2.Zero;
         }
 
         return new ReconciliationResult(authoritativeTick, positionError, hardSnapApplied);
@@ -224,8 +254,14 @@ public sealed class ClientPrediction<TState, TCommand>
             return;
         }
 
+        // Planar offset: critically-damped (velocity-carrying) decay toward zero. The inertia is what suppresses the
+        // decel-to-stop shake - it will not chase a one-to-two-tick backward dip of the authoritative basis - while a
+        // sustained correction still converges. smoothTime is the ~time-to-settle, mapped from the first-order
+        // CorrectionRate so the tuning knob keeps its meaning. The vertical axis stays first-order: a jump/fall
+        // correction has no comparable transient-dip failure mode, and keeping it unchanged bounds the blast radius.
+        float smoothTime = settings.CorrectionRate > 0f ? 1f / settings.CorrectionRate : 0f;
+        renderOffset = SmoothDampToZero(renderOffset, ref renderOffsetVelocity, smoothTime, dt);
         float blend = MathF.Min(1f, settings.CorrectionRate * dt);
-        renderOffset = Vector2.Lerp(renderOffset, Vector2.Zero, blend);
         verticalRenderOffset = Lerp(verticalRenderOffset, 0f, blend);
 
         float dz = settings.CorrectionDeadZone;
@@ -233,9 +269,34 @@ public sealed class ClientPrediction<TState, TCommand>
         {
             // Settled within the dead-zone: snap exactly onto the predicted state instead of chasing float jitter.
             renderOffset = Vector2.Zero;
+            renderOffsetVelocity = Vector2.Zero;
             verticalRenderOffset = 0f;
         }
     }
 
     private static float Lerp(float a, float b, float t) => a + (b - a) * t;
+
+    /// <summary>
+    /// Critically-damped (no-overshoot) decay of <paramref name="current"/> toward zero, carrying
+    /// <paramref name="velocity"/> across calls. Closed-form and stable at any frame dt (60/120/uncapped fps), so the
+    /// settle is frame-rate independent. <paramref name="smoothTime"/> is the approximate time to reach zero; a value
+    /// at or below zero decays instantly. Standard critically-damped smoothing (damping ratio 1): a transient impulse
+    /// produces little displacement (inertia), a sustained offset fully resolves.
+    /// </summary>
+    private static Vector2 SmoothDampToZero(Vector2 current, ref Vector2 velocity, float smoothTime, float dt)
+    {
+        if (smoothTime <= 0f || dt <= 0f)
+        {
+            velocity = Vector2.Zero;
+            return smoothTime <= 0f ? Vector2.Zero : current;
+        }
+
+        float omega = 2f / smoothTime;
+        float x = omega * dt;
+        float exp = 1f / (1f + x + 0.48f * x * x + 0.235f * x * x * x);
+        // change = current - target, target = 0.
+        Vector2 temp = (velocity + omega * current) * dt;
+        velocity = (velocity - omega * temp) * exp;
+        return (current + temp) * exp;
+    }
 }

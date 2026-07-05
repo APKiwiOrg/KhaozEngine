@@ -3,9 +3,11 @@
 Immediate-mode + retained UI on the custom MonoGame-free stack.
 
 **Localized text:** the player-facing text sinks (the `Label` / `Button` widgets, `GuiSurface.Label` /
-`Button` / `StatChip`, and `Tooltip.Show`) take a `LocalizedText` (from `KhaozEngine.App`) instead of a raw
-`string`. Pass a `StringId` (implicitly converts) for localizable copy, or `LocalizedText.Raw("...")` for
-non-localizable text (names, numbers, debug). The old `string` overloads remain but are `[Obsolete]`; the
+`Button` / `StatChip`, `Tooltip.Show`, and `PopupPanel` - its `TitleContent` / `DismissContent` /
+`PrimaryActionContent` plus the `PopupRow.Header` / `Stat` factories) take a `LocalizedText` (from
+`KhaozEngine.App`) instead of a raw `string`. Pass a `StringId` (implicitly converts) for localizable copy, or
+`LocalizedText.Raw("...")` for non-localizable text (names, numbers, debug). The old `string` overloads remain
+but are `[Obsolete]`; the
 `KhaozEngine.Localization.Analyzers` analyzer (in the `Game2D`/`Game3D` umbrellas) flags them. `IconButton`'s
 string argument is an icon-atlas key, not player text, so it is unchanged. See the App package for
 `StringId` / `LocalizedText` / `LocalizationContext`.
@@ -36,6 +38,10 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     title, and platform-aware dismissal via `Dismiss` (`CallerDriven` desktop-hover vs `TapOutside` touch, driven by
     `Update(Pointer)`) - the dismissal policy is a runtime value, not a compile-time platform branch.
   - `PopupPanel` - modal dialog: scrim + title + `PopupRow` content + dismiss/primary footer; blocks the pointer.
+    Text is `LocalizedText`: `TitleContent` / `DismissContent` / `PrimaryActionContent` and the resolve-at-build
+    `PopupRow.Header(LocalizedText)` / `Stat(LocalizedText, LocalizedText, ...)` factories (rebuild the rows to pick
+    up a runtime locale switch). The former `Title` / `DismissText` / `PrimaryActionText` string members and the
+    `PopupRow.Header(string)` / `Stat(string, ...)` factories remain as `[Obsolete]` shims.
   - `ScrollablePanel` - wheel/drag scrolling fixed-height list; rows drawn between `BeginClip`/`EndClip` (scissor),
     hit-test with `TappedItemIndex`. Opt-in overlay chrome (all default to no-ops, so existing callers are
     byte-identical): a header band (`HeaderHeight` + `DrawHeader`) above the scroll region; a slide-up animation

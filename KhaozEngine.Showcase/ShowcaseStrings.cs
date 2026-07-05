@@ -47,6 +47,17 @@ namespace KhaozEngine.Showcase
         public static readonly StringId MiniGameBackToMenu = new("MiniGame.BackToMenu");
         public static readonly StringId MiniGameRetry = new("MiniGame.Retry");
 
+        // Popup (PopupPanel demo)
+        public static readonly StringId PopupTitle = new("Popup.Title");
+        public static readonly StringId PopupCancel = new("Popup.Cancel");
+        public static readonly StringId PopupStart = new("Popup.Start");
+        public static readonly StringId PopupSummary = new("Popup.Summary");
+        public static readonly StringId PopupName = new("Popup.Name");
+        public static readonly StringId PopupDifficulty = new("Popup.Difficulty");
+        public static readonly StringId PopupUnnamed = new("Popup.Unnamed");
+        public static readonly StringId PopupNote = new("Popup.Note");
+        public static readonly StringId PopupNoteBody = new("Popup.NoteBody");
+
         // Shared
         public static readonly StringId CommonBack = new("Common.Back");
     }

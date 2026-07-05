@@ -503,6 +503,31 @@ The migration is warning-not-break: the old `string` Gui overloads remain `[Obso
 warnings) before any text is migrated. `KhaozEngine.Showcase` is the worked example (`ShowcaseStrings.resx` +
 `ShowcaseStrings` constants + `LocalizationContext` wiring).
 
+`PopupPanel` follows the same contract. Its title / footer-button text are `LocalizedText` (`TitleContent` /
+`DismissContent` / `PrimaryActionContent`), and its `PopupRow` content rows are built with resolve-at-build
+factories that snapshot the resolved string now (like `TooltipLine.Of`), so rebuild the rows to reflect a
+runtime locale switch:
+
+```csharp
+var popup = new PopupPanel
+{
+    Viewport = viewport,
+    TitleContent = Strings.ConfirmTitle,   // StringId -> LocalizedText
+    DismissContent = Strings.Cancel,
+    PrimaryActionContent = Strings.Start,
+    ShowPrimaryAction = true,
+};
+popup.SetRows(new[]
+{
+    PopupRow.Header(Strings.Summary),                                   // localized header
+    PopupRow.Stat(Strings.PlayerName, LocalizedText.Raw(name), color),  // label localized, typed name raw
+});
+```
+
+The former `Title` / `DismissText` / `PrimaryActionText` string members and the `PopupRow.Header(string)` /
+`Stat(string, ...)` factories remain as `[Obsolete]` shims (the string factories are `[LocalizationStringSink]`,
+so the analyzer flags a raw literal passed to them).
+
 ---
 
 ## Render2D (`KhaozEngine.Render2D`)

@@ -11,12 +11,32 @@ namespace KhaozEngine.Gui
     /// <summary>Row kind in a <see cref="PopupPanel"/>.</summary>
     public enum PopupRowType { Header, Stat, Spacer }
 
-    /// <summary>One content row in a <see cref="PopupPanel"/>: a section header, a label/value stat, or a spacer.</summary>
+    /// <summary>
+    /// One content row in a <see cref="PopupPanel"/>: a section header, a label/value stat, or a spacer. The
+    /// record stores the RESOLVED display strings; the <see cref="LocalizedText"/> factories resolve against the
+    /// ambient catalog at construction (like <see cref="TooltipLine.Of"/>), so rebuild the rows to pick up a
+    /// runtime locale switch.
+    /// </summary>
     public readonly record struct PopupRow(PopupRowType Type, string Label, string Value, Vector4 ValueColor)
     {
-        public static PopupRow Header(string text) => new(PopupRowType.Header, text, "", Vector4.One);
-        public static PopupRow Stat(string label, string value, Vector4 valueColor) => new(PopupRowType.Stat, label, value, valueColor);
+        /// <summary>A section header from localized text (resolved now against the ambient catalog).</summary>
+        public static PopupRow Header(LocalizedText text) => new(PopupRowType.Header, text.Resolve(), "", Vector4.One);
+
+        /// <summary>A label/value stat from localized text (both resolved now against the ambient catalog).</summary>
+        public static PopupRow Stat(LocalizedText label, LocalizedText value, Vector4 valueColor)
+            => new(PopupRowType.Stat, label.Resolve(), value.Resolve(), valueColor);
+
         public static PopupRow Spacer() => new(PopupRowType.Spacer, "", "", Vector4.Zero);
+
+        /// <summary>Obsolete: pass a <see cref="LocalizedText"/>. A raw string bypasses localization.</summary>
+        [Obsolete("Pass a LocalizedText; a raw string bypasses localization. Use a StringId or LocalizedText.Raw(...) for non-localizable text.")]
+        [LocalizationStringSink]
+        public static PopupRow Header(string text) => new(PopupRowType.Header, text, "", Vector4.One);
+
+        /// <summary>Obsolete: pass <see cref="LocalizedText"/>. A raw string bypasses localization.</summary>
+        [Obsolete("Pass a LocalizedText; a raw string bypasses localization. Use a StringId or LocalizedText.Raw(...) for non-localizable text.")]
+        [LocalizationStringSink]
+        public static PopupRow Stat(string label, string value, Vector4 valueColor) => new(PopupRowType.Stat, label, value, valueColor);
     }
 
     /// <summary>
@@ -35,7 +55,19 @@ namespace KhaozEngine.Gui
         /// <see cref="PanelRect"/>) so a forgotten assignment fails loudly instead of silently mis-positioning.
         /// </summary>
         public Vector2 Viewport = Vector2.Zero;
-        public string Title = "";
+
+        /// <summary>The (lazily resolved) title text, drawn in the title bar. Defaults to empty.</summary>
+        public LocalizedText TitleContent;
+
+        /// <summary>Obsolete shim for the former string field. Setting <c>Title</c> stores a raw, non-localized value.</summary>
+        [Obsolete("Use TitleContent (LocalizedText). Setting Title stores a raw, non-localized value.")]
+        [LocalizationExempt]
+        public string Title
+        {
+            get => TitleContent.Resolve();
+            set => TitleContent = LocalizedText.Raw(value);
+        }
+
         public float WidthFraction = 0.85f;
         public float MaxHeightFraction = 0.85f;
         public float MinHeight = 150f;
@@ -49,8 +81,31 @@ namespace KhaozEngine.Gui
 
         public bool ShowPrimaryAction;
         public bool PrimaryActionEnabled = true;
-        public string DismissText = "Close";
-        public string PrimaryActionText = "OK";
+
+        /// <summary>The (lazily resolved) dismiss-button text. Defaults to a raw "Close".</summary>
+        public LocalizedText DismissContent = LocalizedText.Raw("Close");
+
+        /// <summary>The (lazily resolved) primary-action-button text. Defaults to a raw "OK".</summary>
+        public LocalizedText PrimaryActionContent = LocalizedText.Raw("OK");
+
+        /// <summary>Obsolete shim for the former string field. Setting <c>DismissText</c> stores a raw, non-localized value.</summary>
+        [Obsolete("Use DismissContent (LocalizedText). Setting DismissText stores a raw, non-localized value.")]
+        [LocalizationExempt]
+        public string DismissText
+        {
+            get => DismissContent.Resolve();
+            set => DismissContent = LocalizedText.Raw(value);
+        }
+
+        /// <summary>Obsolete shim for the former string field. Setting <c>PrimaryActionText</c> stores a raw, non-localized value.</summary>
+        [Obsolete("Use PrimaryActionContent (LocalizedText). Setting PrimaryActionText stores a raw, non-localized value.")]
+        [LocalizationExempt]
+        public string PrimaryActionText
+        {
+            get => PrimaryActionContent.Resolve();
+            set => PrimaryActionContent = LocalizedText.Raw(value);
+        }
+
         public bool WasPrimaryActionClicked { get; private set; }
 
         public Vector4 ScrimColor = new(0f, 0f, 0f, 1f);
@@ -154,14 +209,14 @@ namespace KhaozEngine.Gui
             GuiDraw.Fill(batch, white, new Rect(p.X, p.Y, p.Width, TitleBarHeight), TitleBarColor);
 
             if (TitleFont != null)
-                TextLayout.DrawAligned(batch, TitleFont, Title, p.X, p.Width,
+                TextLayout.DrawAligned(batch, TitleFont, TitleContent.Resolve(), p.X, p.Width,
                     p.Y + (TitleBarHeight - TitleFont.LineHeight) * 0.5f, TextAlign.Center, (Color)TitleColor);
 
             if (BodyFont != null) DrawRows(batch);
 
-            DrawButton(batch, white, DismissBounds(), DismissText, DismissColor, true, pointer);
+            DrawButton(batch, white, DismissBounds(), DismissContent.Resolve(), DismissColor, true, pointer);
             if (ShowPrimaryAction)
-                DrawButton(batch, white, PrimaryBounds(), PrimaryActionText, PrimaryColor, PrimaryActionEnabled, pointer);
+                DrawButton(batch, white, PrimaryBounds(), PrimaryActionContent.Resolve(), PrimaryColor, PrimaryActionEnabled, pointer);
         }
 
         void DrawRows(SpriteBatch batch)

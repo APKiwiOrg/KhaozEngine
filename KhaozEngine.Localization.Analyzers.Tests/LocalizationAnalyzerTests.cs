@@ -32,6 +32,20 @@ class C { void M(){ var w = new Widget(""hi""); } }
         }
 
         [Fact]
+        public async Task KELOC001_FiresOnMultiArgStringSink()
+        {
+            // Mirrors PopupRow.Stat(string label, string value, ...): a multi-arg raw-string sink is flagged.
+            var src = @"
+using KhaozEngine.App;
+using System.Numerics;
+class PopupRow { [LocalizationStringSink] public static PopupRow Stat(string label, string value, Vector4 color) => default; }
+class C { void M(){ PopupRow.Stat(""Name"", ""value"", default); } }
+";
+            var diags = await AnalyzerHarness.Run(src);
+            Assert.Contains(diags, d => d.Id == "KELOC001");
+        }
+
+        [Fact]
         public async Task KELOC001_SilentOnLocalizedOverload()
         {
             var src = @"

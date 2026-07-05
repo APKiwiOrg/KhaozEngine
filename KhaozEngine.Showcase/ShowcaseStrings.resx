@@ -85,5 +85,14 @@
   <data name="MiniGame.Play" xml:space="preserve"><value>Play</value></data>
   <data name="MiniGame.BackToMenu" xml:space="preserve"><value>Back to menu</value></data>
   <data name="MiniGame.Retry" xml:space="preserve"><value>Retry</value></data>
+  <data name="Popup.Title" xml:space="preserve"><value>Start game?</value></data>
+  <data name="Popup.Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="Popup.Start" xml:space="preserve"><value>Start</value></data>
+  <data name="Popup.Summary" xml:space="preserve"><value>Summary</value></data>
+  <data name="Popup.Name" xml:space="preserve"><value>Name</value></data>
+  <data name="Popup.Difficulty" xml:space="preserve"><value>Difficulty</value></data>
+  <data name="Popup.Unnamed" xml:space="preserve"><value>(unnamed)</value></data>
+  <data name="Popup.Note" xml:space="preserve"><value>Note</value></data>
+  <data name="Popup.NoteBody" xml:space="preserve"><value>Cancel or Start below.</value></data>
   <data name="Common.Back" xml:space="preserve"><value>Back</value></data>
 </root>

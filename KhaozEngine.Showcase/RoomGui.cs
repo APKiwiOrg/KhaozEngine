@@ -304,25 +304,31 @@ namespace KhaozEngine.Showcase
             TransitionOnDuration = 0.15f; TransitionOffDuration = 0.15f;
         }
 
+        // The popup's chrome (title, buttons, headers, static note) is real copy resolved through StringId; only
+        // the user-entered name/difficulty VALUES are raw (a typed name is not a localizable key), so the method is
+        // exempt from KELOC002 for those LocalizedText.Raw calls.
+        [LocalizationExempt]
         public override void LoadContent()
         {
             _popup = new PopupPanel
             {
                 Viewport = new Vector2(_vp.Width, _vp.Height),
-                Title = "Start game?",
-                DismissText = "Cancel",
-                PrimaryActionText = "Start",
+                TitleContent = ShowcaseStrings.PopupTitle,
+                DismissContent = ShowcaseStrings.PopupCancel,
+                PrimaryActionContent = ShowcaseStrings.PopupStart,
                 ShowPrimaryAction = true,
                 TitleFont = _a.Small,
                 BodyFont = _a.Small,
             };
+            var valueColor = new Vector4(0.7f, 0.85f, 1f, 1f);
             _popup.SetRows(new[]
             {
-                PopupRow.Header("Summary"),
-                PopupRow.Stat("Name", string.IsNullOrEmpty(_name) ? "(unnamed)" : _name, new Vector4(0.7f, 0.85f, 1f, 1f)),
-                PopupRow.Stat("Difficulty", _difficulty, new Vector4(0.7f, 0.85f, 1f, 1f)),
+                PopupRow.Header(ShowcaseStrings.PopupSummary),
+                PopupRow.Stat(ShowcaseStrings.PopupName,
+                    string.IsNullOrEmpty(_name) ? ShowcaseStrings.PopupUnnamed : LocalizedText.Raw(_name), valueColor),
+                PopupRow.Stat(ShowcaseStrings.PopupDifficulty, LocalizedText.Raw(_difficulty), valueColor),
                 PopupRow.Spacer(),
-                PopupRow.Stat("Note", "Cancel or Start below.", new Vector4(0.6f, 0.65f, 0.75f, 1f)),
+                PopupRow.Stat(ShowcaseStrings.PopupNote, ShowcaseStrings.PopupNoteBody, new Vector4(0.6f, 0.65f, 0.75f, 1f)),
             });
         }
 

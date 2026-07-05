@@ -11,7 +11,7 @@ namespace KhaozEngine.Replication;
 /// where <c>netId</c> is a 64-bit value (widened from 32-bit in 10.0.0) and the 7-bit-encoded <c>len</c> is present
 /// only for consumer extension components (see <see cref="ReplicationRegistry.FirstExtensionTypeId"/>) so an older
 /// client can skip an id it never registered. The snapshot is opaque <c>byte[]</c> the game ships over its session
-/// transport. Use <see cref="WriteFiltered"/> with an interest set for per-client area-of-interest replication: the
+/// transport. Use <see cref="WriteFiltered(World, ReplicationRegistry, IReadOnlySet{long}, ReplicationChannels, long?)"/> with an interest set for per-client area-of-interest replication: the
 /// existing <see cref="ClientReplicationView.Apply"/> then spawns entities that entered the set and despawns those
 /// that left.
 /// </summary>

@@ -34,7 +34,7 @@ public enum ReplicationChannels
     /// <summary>In no channel: the component lives only in the ECS and is never serialized by any consumer.</summary>
     None = 0,
 
-    /// <summary>Replicated to clients through area-of-interest serving (<see cref="SnapshotWriter.WriteFiltered"/> /
+    /// <summary>Replicated to clients through area-of-interest serving (<see cref="SnapshotWriter.WriteFiltered(KhaozEngine.Ecs.World, ReplicationRegistry, System.Collections.Generic.IReadOnlySet{long}, ReplicationChannels, long?)"/> /
     /// <see cref="AoiDeltaReplicator.WriteFor"/>) and mirrored into neighbouring cells as border ghosts.</summary>
     Replicate = 1 << 0,
 

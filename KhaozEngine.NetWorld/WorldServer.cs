@@ -76,7 +76,7 @@ public sealed class WorldServerConfig
 /// Reference single-<see cref="World"/> authoritative movement server. A <see cref="NetServer"/> session layer
 /// spawns one player entity per connection; each tick it drains that client's queued <see cref="MoveCommand"/>,
 /// runs the shared <see cref="PlayerMoveSimulator"/> (ground-clamped), and serves every client a per-area-of-
-/// interest snapshot (<see cref="SnapshotWriter.WriteFiltered"/> over an <see cref="InterestGrid"/>) prefixed
+/// interest snapshot (<see cref="SnapshotWriter.WriteFiltered(World, ReplicationRegistry, IReadOnlySet{long}, ReplicationChannels, long?)"/> over an <see cref="InterestGrid"/>) prefixed
 /// with that client's net id + last-acked move seq so the client can reconcile. Headless, transport-injected.
 /// The multi-cell variant is <see cref="ShardedWorldServer"/> (the same movement stack run across a cell grid);
 /// this is the single-world slice. Both share <see cref="WorldPersistence"/> via <see cref="IWorldPersistenceHost"/>.

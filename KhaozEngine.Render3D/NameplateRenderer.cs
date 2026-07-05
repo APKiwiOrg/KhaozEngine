@@ -9,7 +9,7 @@ namespace KhaozEngine.Render3D
     /// anchored above a world point - the MMO-style successor to <see cref="WorldLabel"/>. It projects
     /// <c>worldPos + offset</c> through the camera's <see cref="IIsoCamera3D.WorldToScreen"/>, centres the panel
     /// horizontally on that pixel and bottom-anchors it there (so the plate floats above the head), then draws the
-    /// panel, title and bars screen-space via <see cref="SpriteBatch.DrawRounded"/> and
+    /// panel, title and bars screen-space via <see cref="SpriteBatch.DrawRounded(Texture2D, Vector4, Color, float, float, float, float)"/> and
     /// <see cref="SpriteBatch.DrawString(SpriteFont,string,Vector2,Color,float)"/> on the shared white texture.
     /// </summary>
     /// <remarks>
@@ -96,19 +96,21 @@ namespace KhaozEngine.Render3D
             }
 
             // Bars stacked full inner width below the title; compute each rect in the loop (no per-frame list alloc).
-            int barCount = plate.Bars?.Count ?? 0;
             float y = innerTop + titleH;
             bool contentAbove = titleH > 0f;
-            for (int i = 0; i < barCount; i++)
+            if (plate.Bars is { } bars)
             {
-                if (contentAbove) y += style.BarSpacing;
-                NameplateBar bar = plate.Bars[i];
-                batch.DrawRounded(white, new Vector4(innerLeft, y, innerW, style.BarHeight), bar.Track, style.BarCornerRadius);
-                float f = bar.ClampedFraction;
-                if (f > 0f)
-                    batch.DrawRounded(white, new Vector4(innerLeft, y, innerW * f, style.BarHeight), bar.Fill, style.BarCornerRadius);
-                y += style.BarHeight;
-                contentAbove = true;
+                for (int i = 0; i < bars.Count; i++)
+                {
+                    if (contentAbove) y += style.BarSpacing;
+                    NameplateBar bar = bars[i];
+                    batch.DrawRounded(white, new Vector4(innerLeft, y, innerW, style.BarHeight), bar.Track, style.BarCornerRadius);
+                    float f = bar.ClampedFraction;
+                    if (f > 0f)
+                        batch.DrawRounded(white, new Vector4(innerLeft, y, innerW * f, style.BarHeight), bar.Fill, style.BarCornerRadius);
+                    y += style.BarHeight;
+                    contentAbove = true;
+                }
             }
             return true;
         }

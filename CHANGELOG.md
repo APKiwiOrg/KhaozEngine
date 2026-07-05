@@ -5,6 +5,13 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.1.1
+
+Release build is warning-clean again: cleaned up the 5 pre-existing warnings the 10.0.0 NetId merge left behind (4 ambiguous-cref doc comments + 1 nullable dereference). Doc-comment / null-guard only, no public API or behaviour change.
+
+- **Ambiguous `<see cref>` doc comments disambiguated (CS0419).** The three `SnapshotWriter.WriteFiltered` references (`ReplicationChannels`, `SnapshotWriter`, `WorldServer`) and the `SpriteBatch.DrawRounded` reference in `NameplateRenderer` now qualify their parameter lists so each resolves to a single overload (the AoI `WriteFiltered(World, ReplicationRegistry, IReadOnlySet{long}, ReplicationChannels, long?)` and the single-colour `DrawRounded(Texture2D, Vector4, Color, float, float, float, float)`). `ReplicationChannels` imports only `System`, so its cref fully-qualifies `World` / `IReadOnlySet`.
+- **`NameplateRenderer.Draw` nullable dereference guarded (CS8602).** The bar loop guards `plate.Bars` with an `is { } bars` pattern instead of indexing a possibly-null list. Identical output: a null or empty bar list already drew nothing.
+
 ## 10.1.0
 
 `PopupPanel` (`KhaozEngine.Gui`) - the one player-facing Gui widget 9.34.0 left on raw strings - now takes `LocalizedText`, closing the last localization gap: its title / footer-button text and `PopupRow` content rows were drawn straight through `TextLayout` / routed via `LocalizedText.Raw` internally, so a consumer could write `popup.Title = "Start game?"` or `PopupRow.Stat("Name", value)` with zero warnings. Additive (minor): the new `LocalizedText` members and factories sit alongside `[Obsolete]` string shims that delegate via `LocalizedText.Raw`, so a game builds - with warnings - before migrating.

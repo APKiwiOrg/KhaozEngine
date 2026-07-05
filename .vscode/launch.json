@@ -7,7 +7,14 @@
       "type": "coreclr",
       "request": "launch",
       "preLaunchTask": "build",
-      "program": "${workspaceFolder}/KhaozEngine.Showcase/bin/Debug/net10.0/KhaozEngine.Showcase.dll",
+      // Launch the apphost executable (KhaozEngine.Showcase / .exe), NOT the .dll. Running the dll makes
+      // vsdbg start it via the shared 'dotnet' host, so the OS process (and taskbar/dock label) is 'dotnet'.
+      // The apphost is a native shim whose process identity is 'KhaozEngine.Showcase' and carries the window
+      // identity, matching `dotnet run`. Breakpoint debugging works the same either way.
+      "program": "${workspaceFolder}/KhaozEngine.Showcase/bin/Debug/net10.0/KhaozEngine.Showcase",
+      "windows": {
+        "program": "${workspaceFolder}/KhaozEngine.Showcase/bin/Debug/net10.0/KhaozEngine.Showcase.exe"
+      },
       "args": [],
       "cwd": "${workspaceFolder}/KhaozEngine.Showcase",
       "console": "internalConsole",

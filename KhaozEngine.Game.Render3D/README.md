@@ -29,4 +29,6 @@ already knows: `(id, position, isLocal, grounded, verticalVelocity)` for the exa
 velocity, and `(id, position, isLocal, grounded, verticalVelocity, planarSpeed)` to ALSO drive the idle/walk/run
 state and clip-speed sync off the exact planar speed (`WorldClient.LocalHorizontalSpeed`) instead of the
 finite-differenced render position - so the local avatar's animation does not flicker walk&lt;-&gt;idle when it
-decelerates to a stop. Facing still follows the derived heading. See `docs/USING-KHAOZENGINE.md`.
+decelerates to a stop. Facing still takes its DIRECTION from the derived heading but gates on the exact speed too
+(when supplied), so the model holds its yaw through the post-stop render settle instead of spinning to chase it. See
+`docs/USING-KHAOZENGINE.md`.

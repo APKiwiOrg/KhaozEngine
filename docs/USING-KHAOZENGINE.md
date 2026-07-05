@@ -1016,8 +1016,10 @@ HUD / footstep audio / locomotion blend. Feed it to the bridge via the exact-spe
 (the sixth `planarSpeed` argument, as above): the local avatar's idle/walk/run state and clip-speed sync then run
 off that clean speed instead of the finite-differenced render position, so the animation does not strobe
 walk&lt;-&gt;idle when the player decelerates to a stop (where the render, even after the 10.7.0 smoothing fix,
-settles with a tiny residual sag). Facing still uses the derived heading (the exact speed is magnitude-only).
-Remotes still derive from the (windowed) position stream above.
+settles with a tiny residual sag). Facing takes its DIRECTION from the derived heading (the exact speed is
+magnitude-only) but gates on the exact speed too (since 10.7.1), so at a real stop the model holds its yaw through
+that residual sag instead of spinning to chase the settling delta. Remotes still derive from the (windowed) position
+stream above.
 
 Even windowed, the derived speed ripples a little - the prediction/reconcile render stream is not perfectly
 smooth, and a remote's replicated position arrives as a ~30 Hz staircase - enough to occasionally cross a band

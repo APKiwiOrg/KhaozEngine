@@ -5,6 +5,10 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.7.1
+
+Fixes the decel-to-stop FACING glitch that the 10.7.0 position fix left behind: the local avatar's model briefly spun to face backward/sideways for a few frames before correcting when it came to a stop. `ReplicatedCharacterAnimators` derives facing from the render-position delta, and after a stop the rendered position still settles with a tiny residual sag (backward for a few frames, then forward); that delta reads as motion reversing direction, so the facing chased it. Facing now gates on the exact planar speed too (`CharacterSample.PlanarSpeed`, when supplied) as well as the derived heading magnitude, so at a real stop (exact speed 0) the yaw holds through the settle instead of spinning. The heading DIRECTION is still taken from the derived velocity (exact speed is magnitude-only); remotes (no exact speed) are unchanged - they gate on the derived speed alone and do not have the local avatar's client-ahead settle. Behaviour-only, no API change. Consumers that already pass the 10.7.0 exact-speed `CharacterSample` get the facing fix for free; re-pin to adopt.
+
 ## 10.7.0
 
 Fixes the decel-to-stop reconcile shake: when the local player stopped (walk or sprint) the avatar and follow camera visibly jittered back-and-forth for a moment as the position settled, and the locomotion animation flickered walk<->idle. Reproducible on loopback, so it was local-prediction render-continuity on the stop transition, not latency. `KhaozEngine.Netcode`'s render smoothing is the source fix (behaviour-only, no API change); `KhaozEngine.Game.Render3D` adds an optional exact-speed input so the animation state can be driven off the clean commanded speed (additive API, so a minor bump; consumers re-pin to adopt - Ruinborne bundles it into its held player update).

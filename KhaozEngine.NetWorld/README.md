@@ -52,7 +52,15 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   (spawn at the saved position, default if absent), save-on-leave, and a periodic snapshot of players dirty since
   their last save. Keyed `player:{accountId}`; backend-agnostic and cell-agnostic (a loaded player spawns at its
   saved position in whatever cell contains it). Pick a backend: `KhaozEngine.WorldStore.Sqlite` (dev/test) or
-  `KhaozEngine.WorldStore.SqlServer` (prod / Azure SQL).
+  `KhaozEngine.WorldStore.SqlServer` (prod / Azure SQL). A game attaches its own **durable per-player state**
+  (XP, skills, inventory, quest log) by setting `WorldPersistenceConfig.CaptureGameState` /
+  `ApplyGameState` (`PlayerGameStateCapture` / `PlayerGameStateApply`, handed a `PlayerPersistenceContext` of
+  `Slot` + `AccountId`): an opaque blob that rides the SAME record (`PlayerRecord.Game`, base64 in the JSON),
+  dirty comparison, interval save, flush-on-drain and load-on-join thread-marshalling as position. Capture runs
+  on the server thread at each save; apply runs on the server thread as the load-on-join position is applied. The
+  engine never interprets the bytes - the game owns the format and its migration (run a
+  [`MigrationChain`](../KhaozEngine.Persistence) in the apply hook) - and, being account-keyed, the blob is
+  unaffected by cell handoff (unlike registered components, which migrate with the entity).
 - **`CellPersistence`** (+ `CellPersistenceConfig`, `WorldMetaRecord`) wires an
   [`IWorldStore`](../KhaozEngine.WorldStore) into a [`Sharding`](../KhaozEngine.Sharding) `ShardHost`-based server
   through **`ICellPersistenceHost`** (the surface `ShardedWorldServer` implements) so a cell's authoritative

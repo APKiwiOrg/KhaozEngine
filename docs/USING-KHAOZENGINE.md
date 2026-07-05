@@ -2790,7 +2790,53 @@ using var store = new SqlServerWorldStore(
     "Server=tcp:<srv>.database.windows.net,1433;Database=<db>;Authentication=Active Directory Default;Encrypt=True;");
 ```
 
-Out of scope here (later sub-projects): record-schema migrations and accounts/auth.
+#### Durable per-player game state (XP / inventory / quests)
+
+`WorldPersistence` persists position out of the box. To attach the game's own durable per-player state, set two
+hooks on `WorldPersistenceConfig` - the engine folds an **opaque blob** into the same `PlayerRecord` and rides it
+on the SAME dirty-tracking, interval save, flush-on-drain and load-on-join thread-marshalling as position. The
+engine never deserializes the blob; the game owns its format.
+
+- **`CaptureGameState`** runs on the server thread at every save point (save-on-leave and the periodic dirty
+  pass). It is handed a `PlayerPersistenceContext` (`Slot` + `AccountId`), so it can read the live per-player
+  object by `Slot`, and returns the serialized bytes (or null / empty for "no game state" - position only).
+- **`ApplyGameState`** runs on the server thread as the load-on-join position is applied (inside `Update` /
+  `FlushAsync`, never a background continuation). It gets the same context plus a `ReadOnlySpan<byte>` of exactly
+  what capture returned; copy it (`blob.ToArray()`) to keep it. It is never called for a player with no saved blob.
+
+Both live in the one `player:{accountId}` record, so position and the game blob save atomically and a change to
+*either* re-saves. Because the record is account-keyed, the blob is **unaffected by cell handoff** (unlike
+registered components, which migrate cell-to-cell with the entity).
+
+```csharp
+var persistence = new WorldPersistence(server, store, new WorldPersistenceConfig
+{
+    // save: hand the engine the game's opaque bytes for this player (server thread)
+    CaptureGameState = (in PlayerPersistenceContext ctx) => game.SerializePlayer(ctx.Slot),
+
+    // load-on-join: re-attach them (server thread), migrating if the schema evolved
+    ApplyGameState = (in PlayerPersistenceContext ctx, ReadOnlySpan<byte> blob) =>
+    {
+        PlayerSave save = JsonSerializer.Deserialize<PlayerSave>(blob) ?? new PlayerSave();
+        save = playerSaveMigrations.Migrate(save);   // game-side, see below
+        game.AttachPlayer(ctx.Slot, ctx.AccountId, save);
+    },
+});
+```
+
+**Schema migration is game-side.** Since the engine keeps the blob opaque, evolve the game's player schema inside
+the apply hook with a `KhaozEngine.Persistence.MigrationChain` (the same one used for local saves/settings). Build
+it once and reuse it across loads; a bumped schema then never corrupts an old save:
+
+```csharp
+MigrationChain<PlayerSave> playerSaveMigrations = MigrationChain
+    .For<PlayerSave>(s => s.Version, (s, v) => s.Version = v)
+    .Step(1, s => { s.Level = 1 + s.Xp / 100; return s; })   // v1 -> v2: derive Level from Xp
+    .Build(2);
+```
+
+Out of scope here (later sub-projects): accounts/auth, and migration of the engine's own `PlayerRecord` position
+schema (which stays forward-tolerant rather than chained - the game blob is where a chained migration lives).
 
 ### Per-cell world persistence (`CellPersistence`)
 

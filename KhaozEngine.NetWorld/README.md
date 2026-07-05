@@ -146,12 +146,17 @@ on a snapshot it cannot decode. Both are additive: the wire and existing ctors a
   `DisconnectReasonDetail`, and never proceeds to snapshots. A legacy/version-less client decodes as version
   `""`, so the rule can reject it; a compatible version delegates the inner token to `inner` unchanged
   (subject + display-name resolution identical).
-  - **Wire-format generation (since 10.0.0).** `MoveProtocol.WireProtocolVersion` (= 2; the pre-10.0.0 32-bit `NetId`
-    line was 1) labels the incompatible on-the-wire generations. 10.0.0 widened `NetId` to 64-bit (the snapshot/delta
-    id field and the frame header, `[localNetId:long][ackSeq:int]`, grown 8 -> 12 bytes) with NO dual-format wire, so a
-    10.0.0 peer and a pre-10.0.0 peer MUST reject each other at connect rather than misparse a 64-bit frame as 32-bit.
-    Fold it into your version string (e.g. `$"myGame-1.4;wire{MoveProtocol.WireProtocolVersion}"`) and reject a
-    mismatch in your `isCompatible` rule; both skew directions then produce the clean `IncompatibleVersion` disconnect.
+  - **Wire-format generation (enforced automatically since 10.2.0).** `MoveProtocol.WireProtocolVersion` (= 2, the
+    pre-10.0.0 32-bit `NetId` line was 1) labels the incompatible on-the-wire generations. 10.0.0 widened `NetId` to
+    64-bit (the snapshot/delta id field and the frame header, `[localNetId:long][ackSeq:int]`, grown 8 -> 12 bytes)
+    with NO dual-format wire, so a 10.0.0 peer and a pre-10.0.0 peer MUST reject each other at connect rather than
+    misparse a 64-bit frame as 32-bit. As of 10.2.0 the engine enforces this for you: `WorldClient` always folds the
+    generation into its Hello (even with no `ProtocolVersion`) and `WorldServer` / `ShardedWorldServer` always install
+    a **`WireGenerationAuthenticator`** that rejects a mismatch, or a peer presenting none (a pre-10.2.0 / 9.x client),
+    cleanly as `DisconnectReason.IncompatibleVersion`. Folding `;wire{N}` into your version string is no longer needed
+    (the pre-10.2.0 advice); the `ProtocolVersion` gate above is now purely your game version, layered on top. A bare
+    `NetClient` used against a `WorldServer` / `ShardedWorldServer` must present the wire layer itself via
+    `ProtocolHandshake.BuildClientToken`.
 - **Graceful decode (last resort).** `WorldClient.OnSnapshot` decodes via `ClientReplicationView.TryApply`, so an
   undecodable snapshot (an unregistered BUILT-IN component type id from a newer core protocol) becomes the same
   clean `DisconnectReason.IncompatibleVersion` disconnect plus a **`SnapshotDecodeFailed`** event - never an

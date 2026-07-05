@@ -11,14 +11,20 @@ public static class MoveProtocol
 {
     /// <summary>
     /// The engine wire-format generation. Bumped only on a breaking change to the on-the-wire snapshot / delta /
-    /// frame-header layout, so it labels the incompatible generations for the ProtocolVersion handshake. It is
-    /// <c>2</c> as of 10.0.0, which widened <see cref="NetId"/> from 32-bit to 64-bit on the wire (the snapshot/delta
-    /// netId field and the <see cref="EncodeSnapshotFrame"/> header); <c>1</c> was the pre-10.0.0 32-bit line. A
-    /// consumer that uses the opt-in handshake should fold this into its
-    /// <see cref="WorldClientConfig.ProtocolVersion"/> string (e.g. <c>$"myGame-1.4;wire{MoveProtocol.WireProtocolVersion}"</c>)
-    /// and reject a mismatch in its <see cref="VersionCheckingAuthenticator"/> rule, so a 10.0.0 peer and a pre-10.0.0
-    /// peer disconnect cleanly at connect (<see cref="DisconnectReason.IncompatibleVersion"/>) instead of misparsing a
-    /// 64-bit frame as 32-bit. Engine built-ins and the codec ids are otherwise unchanged.
+    /// frame-header layout, so it labels the incompatible generations. It is <c>2</c> as of 10.0.0, which widened
+    /// <see cref="NetId"/> from 32-bit to 64-bit on the wire (the snapshot/delta netId field and the
+    /// <see cref="EncodeSnapshotFrame"/> header). <c>1</c> was the pre-10.0.0 32-bit line. Engine built-ins and the
+    /// codec ids are otherwise unchanged.
+    ///
+    /// Since 10.2.0 the engine enforces this generation AUTOMATICALLY at connect: every <see cref="WorldClient"/>
+    /// folds it into its Hello (see <see cref="ProtocolHandshake.BuildClientToken"/>) even with no consumer
+    /// <see cref="WorldClientConfig.ProtocolVersion"/>, and <see cref="WorldServer"/> / <see cref="ShardedWorldServer"/>
+    /// always install a <see cref="WireGenerationAuthenticator"/> that rejects a mismatch (or a peer presenting none)
+    /// cleanly as <see cref="DisconnectReason.IncompatibleVersion"/>, so a 10.0.0 peer and a pre-10.0.0 peer reject
+    /// each other at connect instead of misparsing a 64-bit frame as 32-bit, with no consumer action required (the old
+    /// advice to fold <c>;wire{N}</c> into the consumer version string is obsolete). The consumer
+    /// <see cref="WorldClientConfig.ProtocolVersion"/> game-version gate still layers on top via
+    /// <see cref="VersionCheckingAuthenticator"/>.
     /// </summary>
     public const int WireProtocolVersion = 2;
 

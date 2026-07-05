@@ -76,7 +76,7 @@ public sealed class ClientReplicationView
             if (!seen.Contains(kv.Key)) (gone ??= new List<long>()).Add(kv.Key);
         if (gone is not null)
         {
-            foreach (int netId in gone)
+            foreach (long netId in gone)   // long, not int: a full-snapshot despawn must not truncate a 64-bit id
             {
                 if (world.IsAlive(entityByNetId[netId])) world.Despawn(entityByNetId[netId]);
                 entityByNetId.Remove(netId);

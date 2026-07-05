@@ -97,4 +97,78 @@ public class NetIdWireBoundaryTests
         Assert.Equal(7, ackSeq);
         Assert.Equal(new byte[] { 9, 9 }, body);
     }
+
+    // Applies a second full snapshot with the entity ABSENT: the full-state despawn loop must remove it. The 10.0.0
+    // widening missed this loop (it iterated the gone List<long> as `int`), so an id past 2^31 truncated on the way
+    // out - throwing KeyNotFoundException (killing the session) or despawning the wrong entity. These cover the
+    // despawn path the original NetIdWireBoundaryTests never exercised (they only ever applied one snapshot).
+    [Theory]
+    [MemberData(nameof(Boundaries))]
+    public void FullSnapshot_despawns_an_absent_id_without_truncation(long value)
+    {
+        ReplicationRegistry reg = MoveProtocol.CreateRegistry();
+        var client = new World();
+        var view = new ClientReplicationView(reg);
+
+        // Snapshot 1: the entity is present.
+        var s1 = new World();
+        Entity e = s1.Spawn();
+        s1.Set(e, new NetId(value));
+        s1.Set(e, new ReplicatedPosition { Value = Pos });
+        byte[] snap1 = SnapshotWriter.WriteFiltered(s1, reg, new HashSet<long> { value },
+            ReplicationChannels.Replicate, ownerNetId: value);
+        view.Apply(client, snap1);
+        Assert.True(view.TryGetEntity(value, out Entity ce));
+        Assert.True(client.IsAlive(ce));
+
+        // Snapshot 2: empty (the entity left). Full-state semantics: it must be despawned, not truncated.
+        byte[] snap2 = SnapshotWriter.WriteFiltered(new World(), reg, new HashSet<long>(),
+            ReplicationChannels.Replicate, ownerNetId: value);
+        view.Apply(client, snap2);   // pre-fix: an id > 2^31 truncates here -> throw or wrong despawn
+
+        Assert.False(view.TryGetEntity(value, out _));   // dropped from the live map
+        Assert.False(client.IsAlive(ce));                // and actually despawned
+    }
+
+    // The collision the truncation could silently cause: a high-node id and a low id whose low 32 bits match. When the
+    // high-node id leaves, the buggy (int) cast maps it onto the low id, despawning the WRONG (surviving) entity while
+    // the departed one ghosts forever. ids 5 and Pack(1,5) both have low-32 == 5.
+    [Fact]
+    public void FullSnapshot_despawn_of_a_high_node_id_does_not_evict_the_low_id_it_truncates_onto()
+    {
+        ReplicationRegistry reg = MoveProtocol.CreateRegistry();
+        var client = new World();
+        var view = new ClientReplicationView(reg);
+
+        long low = 5L;
+        long high = NetIdAllocator.Pack(nodeId: 1, counter: 5);   // (1 << 48) | 5; (int)high == 5
+
+        // Snapshot 1: both present.
+        var s1 = new World();
+        foreach (long id in new[] { low, high })
+        {
+            Entity en = s1.Spawn();
+            s1.Set(en, new NetId(id));
+            s1.Set(en, new ReplicatedPosition { Value = Pos });
+        }
+        byte[] snap1 = SnapshotWriter.WriteFiltered(s1, reg, new HashSet<long> { low, high },
+            ReplicationChannels.Replicate, ownerNetId: low);
+        view.Apply(client, snap1);
+        Assert.True(view.TryGetEntity(low, out Entity lowE));
+        Assert.True(view.TryGetEntity(high, out _));
+
+        // Snapshot 2: only `low` remains; the high-node id left.
+        var s2 = new World();
+        Entity keep = s2.Spawn();
+        s2.Set(keep, new NetId(low));
+        s2.Set(keep, new ReplicatedPosition { Value = Pos });
+        byte[] snap2 = SnapshotWriter.WriteFiltered(s2, reg, new HashSet<long> { low },
+            ReplicationChannels.Replicate, ownerNetId: low);
+        view.Apply(client, snap2);
+
+        Assert.False(view.TryGetEntity(high, out _));            // the departed high-node id is gone
+        Assert.True(view.TryGetEntity(low, out Entity lowStill)); // the low id it truncates onto SURVIVES
+        Assert.True(client.IsAlive(lowStill));
+        Assert.Equal(lowE, lowStill);                            // same entity, not resurrected
+    }
 }

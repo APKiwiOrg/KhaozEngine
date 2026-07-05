@@ -2713,11 +2713,54 @@ unframed encoding is the core protocol), and `OwnerOnly` requires `Replicate` - 
 > already has both). Reach for `Persist` without `Migrate` only for state that is genuinely bound to the cell rather
 > than to the entity.
 
-> **Cell-blob compatibility.** Changing a component's channels changes what future saves write into a cell's persist
-> blob. An old blob restored through a registry whose extension set shrank already skips unknown ids (the versioned
-> `CellPersistence` header + the length-prefixed extension framing), so shrinking is safe. Real cell-blob **schema
-> migration** (rewriting old blobs to a new layout) is a separate upcoming item; today the guidance is to bump
-> `CellPersistenceConfig.SchemaVersion` on a breaking layout change so old saves are skipped, not misread.
+#### Cell-blob schema evolution + restore hardening (since 9.33.0)
+
+Changing a component's byte layout or channels changes what future saves write into a cell's persist blob. Since
+9.33.0 the cell blob has a real migration path plus a hardened restore, so a layout change no longer forces a choice
+between wiping the world (bump `SchemaVersion` so old blobs are skipped) and corrupting it (do not bump), a corrupt
+key no longer crash-loops the server, and a registry regression no longer silently strips data at rest.
+
+```csharp
+var cfg = new CellPersistenceConfig { SchemaVersion = 2 };
+// Bring a v1 blob to v2. Migrations operate on the raw snapshot BODY (post header); walk it with the
+// SnapshotBlobReader/Writer helpers rather than hand-parsing. Extension frames (id >= FirstExtensionTypeId) are
+// length-prefixed and self-describing; a built-in (unframed) frame needs the old-layout length you supply.
+cfg.RegisterMigration(1, body =>
+{
+    var reader = new SnapshotBlobReader(body);        // extension-only blob: no built-in resolver needed
+    var writer = new SnapshotBlobWriter();
+    foreach (SnapshotBlobEntity e in reader.Entities)
+    {
+        var comps = new List<SnapshotBlobComponent>();
+        foreach (SnapshotBlobComponent c in e.Components)
+            comps.Add(c.TypeId == MyOldComponentId ? Upgrade(c) : c);   // rewrite one, pass the rest through
+        writer.AddEntity(e.NetId, comps);
+    }
+    return writer.ToArray();
+});
+
+var persistence = new CellPersistence(shardedServer, store, cfg);
+persistence.Issue += issue => log.Info(issue.ToString());   // migrated / skipped / quarantined / retained
+```
+
+- **Migrations** run in order on load when the stored version is older than `SchemaVersion`, before restore. The
+  chain is validated when the `CellPersistence` is constructed (contiguous, no gaps, no step at/beyond
+  `SchemaVersion`), the same rules `KhaozEngine.Persistence.MigrationChain` enforces. Engine-owned built-in layout
+  changes ship engine-provided migrations; consumer extension changes ship consumer migrations. A migrated cell is
+  rewritten once with the current header so a later boot does not re-migrate.
+- **Quarantine, not crash.** A blob that fails to decode (bad header, corrupt frame, a migration threw, or a blob
+  older than the earliest migration / newer than this build) is copied to `quarantine:cell:{x}:{y}` and the cell
+  starts fresh. Nothing is destroyed and the server keeps ticking, so a poisoned key can be recovered out of band
+  instead of blocking every boot.
+- **Retain-and-rewrite.** An extension frame whose id the current registry does not know is retained and
+  re-persisted verbatim, so a temporary registry regression (a rollback, a build missing a registration) no longer
+  permanently strips those components. Under the full registry the component reappears intact. (A retained frame does
+  not follow a cell handoff during a regression, since there is no live component to migrate; retention protects the
+  restart load/save cycle.)
+- **`CellPersistence.Issue`** surfaces every case (`Migrated`, `SkippedTooOld`, `SkippedTooNew`, `QuarantinedCorrupt`,
+  `RetainedUnknownExtensions`) on the server thread, so ops can see schema evolution and corruption that used to be
+  silent. A current-`SchemaVersion` blob still restores byte-identically (no migration, no round trip through the
+  reader/writer), so a save with no migrations registered behaves exactly as before.
 
 ### Durable state (`KhaozEngine.WorldStore` + backends)
 

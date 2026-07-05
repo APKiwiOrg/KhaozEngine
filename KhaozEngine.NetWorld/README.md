@@ -71,12 +71,24 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   non-player entities survive a restart: lazy load-on-cell-create (subscribes to `ShardHost.CellCreated`, applies
   on the server thread inside `Update`), a periodic snapshot of cells dirty since their last save
   (`SaveIntervalSeconds`, default 30s), and a `WorldMetaRecord` NetId high-water mark so restored entities never
-  collide with a fresh spawn after restart. Cell records are keyed `cell:{x}:{y}`, and a versioned blob header
-  (`SchemaVersion`) skips a save it cannot safely decode instead of misreading it. `PreloadAsync` instantiates
+  collide with a fresh spawn after restart. Cell records are keyed `cell:{x}:{y}` under a versioned blob header.
+  `PreloadAsync` instantiates
   every saved cell at boot (enumerating over an `IEnumerableWorldStore`), `LoadMetaAsync` resumes the NetId
   allocator, and `FlushAsync` quiesces in-flight loads and saves at shutdown. Players are excluded (already
   persisted player-keyed by `WorldPersistence`), and ghosts and migrating entities are excluded too - this is
   cell-owned, non-player state only. Mirrors `WorldPersistence` but keyed by cell coordinate instead of account.
+  - **Schema evolution + restore hardening (since 9.33.0).** `CellPersistenceConfig.RegisterMigration(fromVersion,
+    migrate)` registers ordered `CellSnapshotMigration` (`byte[] body -> byte[]`) steps that bring an older blob
+    forward on load, before restore. The chain is validated at construction (contiguous, no gaps, none at/beyond
+    `SchemaVersion`), mirroring `KhaozEngine.Persistence.MigrationChain`. Author a step with
+    `KhaozEngine.Replication.SnapshotBlobReader`/`SnapshotBlobWriter`. Restore is non-throwing: a blob that fails to
+    decode (bad header, corrupt frame, a migration threw, or restore rejected it) is QUARANTINED (its original bytes
+    copied to `quarantine:cell:{x}:{y}`, the cell starts fresh) rather than thrown, so a poisoned key never crash-loops
+    the server. An extension frame whose id the current registry does not know is RETAINED and re-persisted verbatim
+    (retain-and-rewrite), so a registry regression no longer strips data at rest. All of this is surfaced through
+    `CellPersistence.Issue` (`event Action<CellPersistenceIssue>`): `Migrated` (from -> to), `SkippedTooOld` /
+    `SkippedTooNew`, `QuarantinedCorrupt` (with the decode error), and `RetainedUnknownExtensions` (with the count).
+    A current-`SchemaVersion` blob still restores byte-identically, so a save with no migrations behaves as before.
 
 No render, window, or GPU dependency: the servers are headless and the client glue is render-free (a sample
 renders a capsule per `EntityRenderState`). `WorldServer` is the single-`World` slice; `ShardedWorldServer` is
@@ -229,9 +241,10 @@ these two shapes just work end to end:
 
 `MmoServerSample` demonstrates both: the `Creature` NPC carries a hidden `AggroCounter` (`Persist | Migrate`) and each
 player carries an `OwnerOnly` `PrivateStats`. Because the flags gate only the server write side, an existing client is
-unaffected. **Cell-blob note:** changing a component's channels changes what future saves write into a cell's persist
-blob; an old blob restored through a registry whose extension set shrank already skips unknown ids (real blob schema
-migration is a separate upcoming item, tracked in the roadmap).
+unaffected. **Cell-blob note:** changing a component's channels or byte layout changes what future saves write into a
+cell's persist blob; since 9.33.0 the cell blob has a real migration path plus a quarantining restore and
+unknown-extension retention (see the `CellPersistence` schema-evolution note above), so a layout change brings old
+blobs forward instead of skipping or corrupting them.
 
 ## Area-of-interest delta replication (since 9.18.0)
 

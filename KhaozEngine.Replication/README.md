@@ -30,7 +30,9 @@ area-of-interest deltas.
     into the next cell. Durable state a player/entity carries around wants BOTH (`Persist | Migrate`, i.e. `Default`).
     Use `Persist` alone only for state that is genuinely bound to the cell rather than the entity.
 - **`SnapshotWriter`** - serialize a server `World`'s `NetId` entities (and their registered components) to an
-  opaque `byte[]` snapshot (`Write` full-state, `WriteFiltered` per-client interest). **`ServerReplicator`** is the
+  opaque `byte[]` snapshot (`Write` full-state, `WriteFiltered` per-client interest). A `WriteFiltered` overload
+  (since 9.33.0) also re-emits per-entity opaque `RetainedComponent` extension frames after the registered ones (the
+  write side of cell-blob retain-and-rewrite). **`ServerReplicator`** is the
   per-slot acked whole-world baseline/delta variant (no AoI scoping): `Capture(world)` once per tick, then
   `WriteFor(slot, ownerNetId)` per client. It is channel-aware like the others - only `Replicate` components are
   captured, and an `OwnerOnly` component reaches only the client whose player net id is `ownerNetId`. Both
@@ -64,7 +66,18 @@ area-of-interest deltas.
   otherwise-malformed or version-incompatible snapshot (an unregistered BUILT-IN type id from a newer core protocol,
   or a corrupt extension length); `TryApply`/`TryApplyDelta` (since 8.5.0) are the non-throwing variants - they
   return `false` + an error instead, so a skewed snapshot becomes a clean disconnect rather than an unhandled
-  exception in the frame loop (`WorldClient` uses them).
+  exception in the frame loop (`WorldClient` uses them). **`TryApplyRetainingUnknown`** (since 9.33.0) is the
+  persistence-restore variant: it applies non-throwing AND collects every unknown **extension** frame it would
+  otherwise skip as a raw `RetainedComponent` (net id + type id + payload), so the caller (cell persistence) can
+  retain and re-persist it verbatim instead of silently dropping data at rest under a registry downgrade.
+- **`SnapshotBlobReader` / `SnapshotBlobWriter`** (since 9.33.0) - walk and rebuild the snapshot wire format
+  (`[count][per entity: netId + (typeId,[len],payload).. + 0]`) into structured entities/components, so a cell-blob
+  migration can map / drop / transform per-component payloads without hand-parsing the stream. Extension frames
+  (id >= the floor) are length-prefixed and self-describing; a built-in (unframed) frame is walkable only when the
+  reader is given a `builtinPayloadLength` resolver for the OLD layout it targets (else it throws rather than
+  mis-parsing). A well-formed blob round-trips byte-identically, so a migration that touches one component leaves
+  every other byte identical. **`RetainedComponent`** is the opaque frame type shared by `TryApplyRetainingUnknown`
+  (capture) and the `SnapshotWriter.WriteFiltered` retained-frames overload (re-emit).
 
 Transport-free: snapshots/deltas are plain `byte[]`, shipped via your `KhaozEngine.Netcode` session layer
 (`NetServer.Broadcast` / `NetClient` data events). Depends on `KhaozEngine.Ecs` only.

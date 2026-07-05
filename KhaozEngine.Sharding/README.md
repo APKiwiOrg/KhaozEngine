@@ -30,8 +30,13 @@ Per-cell persistence primitives on `CellSim`, storage-agnostic (no new dependenc
 returns a durable Replication snapshot of the cell's owned (not `Ghost`, not `Migrating`) entities whose NetId is
 not in the excluded set, so a caller can persist non-player state while player entities persist separately.
 `RestoreOwned(snapshot)` adopts a snapshot's entities back into the cell as freshly owned, keeping their NetIds,
-and returns the restored NetId list. `MaxOwnedNetId()` reads the highest owned NetId (0 if none), useful for
-resuming an id allocator. See `KhaozEngine.NetWorld.CellPersistence` for the `IWorldStore` wiring built on these.
+and returns the restored NetId list. `TryRestoreOwned(snapshot)` (since 9.33.0) is the non-throwing form returning
+a `CellRestoreResult`: a blob that fails to decode is rolled back (the partial apply is despawned, so the cell is
+left empty and the caller can quarantine the bytes) rather than throwing, and an extension frame whose id this
+cell's registry does not know is retained per-netId and re-emitted verbatim by `SnapshotOwned` (retain-and-rewrite),
+so a registry downgrade cannot strip data at rest. `MaxOwnedNetId()` reads the highest owned NetId (0 if none),
+useful for resuming an id allocator. See `KhaozEngine.NetWorld.CellPersistence` for the `IWorldStore` wiring
+(migration chain, quarantine, diagnostics) built on these.
 
 **Per-channel components (since 9.28.0).** The three cross-cell/persistence consumers each serve one
 `ReplicationChannels` channel, so a component only reaches the paths it declared (default `Replicate | Persist |

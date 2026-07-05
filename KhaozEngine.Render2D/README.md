@@ -23,3 +23,45 @@ The GPU backend stays behind `KhaozEngine.Gpu`; this package has no direct graph
 `KhaozEngine.Gpu` + `KhaozEngine.Windowing` + StbTrueTypeSharp/StbImageSharp). Windowing/input come from
 `KhaozEngine.Windowing` (`AppWindow`, Silk.NET windowing, GLFW natives bundled per-RID - no SDL2/brew). Part of
 the MonoGame-free engine.
+
+## `TextHelper` - pixel-snapped UI text
+
+**Never call `SpriteBatch.DrawString` directly for UI text.** Use `TextHelper`: it floors every draw position
+to integer pixels, so bitmap-font glyphs land on texel boundaries and stay crisp instead of blurring at
+sub-pixel offsets. Static class, no instance. Colors are `KhaozEngine.Primitives.Color`, and the `alpha`
+overloads modulate the color's alpha by an extra factor (fades).
+
+| Method | Use for |
+|--------|---------|
+| `Draw(sb, font, text, x, y, color)` | Top-left at (x, y). `x`/`y` may be float, and are floored. |
+| `Draw(sb, font, text, x, y, color, alpha)` | Same, alpha-modulated. |
+| `DrawCentered(sb, font, text, centerX, y, color)` | Horizontally centered on `centerX`. |
+| `DrawCentered(sb, font, text, centerX, y, color, alpha)` | Centered, alpha-modulated. |
+| `DrawRight(sb, font, text, rightX, y, color)` | Right edge lands on `rightX`. |
+| `DrawRight(sb, font, text, rightX, y, color, alpha)` | Right-aligned, alpha-modulated. |
+| `DrawCenteredInRect(sb, font, text, rect, color)` | Centered horizontally AND vertically in a `Rect`. |
+| `DrawCenteredInRect(sb, font, text, rect, color, alpha)` | Same, alpha-modulated. |
+| `DrawWrappedCentered(sb, font, text, centerX, y, maxWidth, color, alpha)` | Word-wraps to `maxWidth`, each line centered on `centerX`, returns total height drawn. |
+
+Pure positioning helpers (`CenteredX`, `RightX`, `CenteredInRect`, `MeasureWrappedHeight`) over
+`ITextMeasurer` are exposed for headless layout math. Complements `TextLayout` (align/wrap within a width
+region). This is the point-anchored API.
+
+```csharp
+TextHelper.Draw(spriteBatch, uiFont, "UPGRADES", x + 5, y + 8, Color.White);
+TextHelper.DrawCentered(spriteBatch, uiFont, "HC: 1,234", vr.Width / 2, topBarY, Color.White);
+TextHelper.DrawCenteredInRect(spriteBatch, uiFont, "Continue", buttonRect, Color.White, alpha);
+```
+
+## `PrimitiveRenderer.DrawVerticalGradient`
+
+Draws a vertical gradient across a `Rect` by rendering `bands` horizontal strips with linearly interpolated
+color from `top` to `bottom`. Useful for atmosphere gradients, panel scrims, and background layers.
+
+```csharp
+void DrawVerticalGradient(SpriteBatch batch, Rect r, Color top, Color bottom, int bands = 12)
+```
+
+```csharp
+renderer.DrawVerticalGradient(spriteBatch, new Rect(0, 0, viewWidth, viewHeight), fogTop, fogBottom, 12);
+```

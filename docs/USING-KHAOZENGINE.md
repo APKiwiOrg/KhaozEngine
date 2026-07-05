@@ -1254,6 +1254,46 @@ scene.DrawProps(placements, meshes, focus: character.Position, drawRadius: 90f);
 See the 3D World room (`Room3D`) in `KhaozEngine.Showcase` for the full wiring. Mesh-LOD/impostors, textured prop materials, and animated props are
 later sub-projects. Terrain PBR splat textures are covered in "Textured terrain" below.
 
+### GLB requirements for the flat kit path
+
+`PropLoader` renders kit props as **flat-coloured single meshes**, so a `.glb` has to match what that path
+accepts or the loader rejects it. The rules:
+
+- **Plain glTF 2.0 only.** No draco, no meshopt (`EXT_meshopt_compression`), no quantization
+  (`KHR_mesh_quantization`), no `EXT_texture_webp`. Decompress/re-export as an ingest step (see "Decompress
+  kit glTF offline" above) before continuing.
+- **Indexed triangles carrying `POSITION` + `NORMAL`.**
+- **A single flat material** - one `pbrMetallicRoughness.baseColorFactor`, no textures.
+
+**The metallic gotcha that always bites.** A Blender-default glTF export sets the material
+`metallicFactor = 1.0` (fully metallic). A mesh exported with no PBR setup then renders **dark / near-black**
+in the flat-lit prop path. Fix: set `metallicFactor: 0` and match the kit greys (e.g. the showcase rock kit is
+`baseColorFactor [0.331, 0.331, 0.331, 1]`, `metallicFactor 0`, `doubleSided true`).
+
+Inspect a `.glb` header + JSON (extensions, material, vertex count) with no dependency:
+
+```bash
+python3 - "my_prop.glb" <<'PY'
+import sys, struct, json
+d = open(sys.argv[1], 'rb').read(); off = 12
+clen, _ = struct.unpack('<I4s', d[off:off+8]); off += 8
+j = json.loads(d[off:off+clen])
+print("ext:", j.get('extensionsRequired'), j.get('extensionsUsed'))
+for m in j.get('materials', []):
+    p = m.get('pbrMetallicRoughness', {})
+    print("mat:", m.get('name'), "base:", p.get('baseColorFactor'), "metallic:", p.get('metallicFactor'))
+for me in j.get('meshes', []):
+    for pr in me['primitives']:
+        a = j['accessors'][pr['attributes']['POSITION']]
+        print("verts:", a['count'], "attrs:", list(pr['attributes']), "min/max:", a.get('min'), a.get('max'))
+PY
+```
+
+To **recolour in place** without touching the geometry: parse the GLB into its header + chunks, set
+`materials[*].pbrMetallicRoughness.baseColorFactor` / `metallicFactor` in the JSON chunk, re-pad the JSON chunk
+to a 4-byte boundary with spaces, then rewrite the chunk length + total length. The `POSITION` accessor
+`min`/`max` printed above give the raw model size in metres, handy for picking `heightMeters`.
+
 ---
 
 ## Bounded zones (`RimFeature` + `WorldBounds` + the slope gate)

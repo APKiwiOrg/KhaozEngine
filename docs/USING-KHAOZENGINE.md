@@ -403,6 +403,17 @@ unfocused, hover (`IsHovering`/`HoverEntered`) and both capture gates (`PointerC
 false automatically (via `Pointer.WindowFocused`), so a background window fires no UI hover SFX or highlights
 without any game code.
 
+**Scaling Gui text.** The text sinks (`GuiSurface.Label`/`Button`/`StatChip`, and the retained `Label.Scale`)
+take an optional trailing `float scale = 1f` that forwards to the scale-capable `SpriteBatch.DrawString`, so a
+game can draw one shared font at many sizes (pixel-parity HUDs) without baking a font per size. The measured text
+scales with it, so alignment and vertical centring stay correct; the widget rect and the button's press-origin
+hit-test are unchanged (only the label scales). Every parameter defaults to `1f`, so unscaled callers are byte-identical.
+
+```csharp
+gui.Label(font, hudRect, Strings.Score, textColor, GuiAlign.Left, scale: 2f);   // one font, drawn 2x
+if (gui.Button(font, btnRect, Strings.Resume, style, scale: 1.5f)) Resume();     // label 1.5x, rect unchanged
+```
+
 **Retained `ScreenStack`** - a routed stack of `Screen`s (top-to-bottom input, bottom-to-top draw, transitions),
 for menu-heavy games. `Add`/`Remove`, `Update(dt, input[, viewport])`, `Draw(batch)`. A `Screen` reads input via
 `Manager.Pointer` and returns whether it consumed (to block screens below); set a screen non-pass-through for a

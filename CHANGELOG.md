@@ -5,6 +5,17 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.4.0
+
+The Gui text sinks take an optional `scale`, so a game that draws one shared font at many sizes (SpaceGame does this for pixel-parity) can render scaled Gui text without a per-size font. Additive with every parameter defaulting to `1f`, so a minor bump and every existing caller stays byte-identical.
+
+- **`GuiSurface` text sinks gain a trailing `float scale = 1f`.** `Label(SpriteFont, LocalizedText, Vector2, Vector4, float scale = 1f)` forwards straight to the scale-capable `SpriteBatch.DrawString`. `Label(SpriteFont, Rect, LocalizedText, Vector4, GuiAlign = Center, float scale = 1f)` scales the measured text so the horizontal alignment and vertical centring stay correct. `Button(SpriteFont, Rect, LocalizedText, GuiStyle, bool enabled = true, bool selected = false, float scale = 1f)` scales the label only - the rect and the press-origin hit-test are unchanged. `StatChip(..., float scale = 1f)` scales its label/value line. The obsolete raw-`string` and `[LocalizationStringSink]` overloads are untouched (they forward at the default scale), and the KELOC analyzer is unchanged.
+- **Retained `Label` gains a `public float Scale = 1f;`** applied in `Draw` for both the single-line and the word-wrapped paths (glyphs, advances, line height, and the wrap width all scale together).
+- **`Render2D.TextLayout` grows an optional `scale`** on `AlignedX`, `DrawAligned`, and `DrawWrapped` (the retained-label draw path). The measured width, wrap width, and line advance all multiply by the scale; `scale = 1` reproduces the previous layout exactly.
+- **New shared helper `GuiDraw.AlignedTextPos(Rect, Vector2 measured, float lineHeight, GuiAlign, float scale = 1f, float pad = 0f)`** - the single source of truth for placing a scaled, aligned, vertically-centred line inside a rect, used by both `GuiSurface.Label(Rect, ...)` and `GuiDraw.DrawButton` (which itself takes the new trailing `scale`).
+- **Tests.** New headless `GuiTextScaleTests` cover the pure positioning math: `AlignedTextPos` reproduces the old centred layout exactly at `scale = 1`, scales the measured width and line height at `scale = 2`, and honours pad on left/right; `TextLayout.AlignedX` matches between the defaulted and explicit `scale = 1` and scales the width at `scale = 2`. The scaled draw itself is already covered on-device by `DrawStringScaleGpuTests`.
+- Docs: `docs/USING-KHAOZENGINE.md` gains a "scaling Gui text" note; the `KhaozEngine.Gui` and `KhaozEngine.Render2D` package READMEs mention the new `scale` parameters.
+
 ## 10.3.0
 
 KELOC now guards the low-level `SpriteBatch.DrawString` text sink, not just the Gui widgets, so games that render their UI straight through the 2D primitive (SpaceGame does this for its whole UI) are no longer invisible to localization enforcement. Additive (a new opt-in analyzer diagnostic, no API change), so a minor bump.

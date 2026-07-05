@@ -18,10 +18,12 @@ namespace KhaozEngine.Render2D
         // --- pure layout (headless-testable) ---
 
         /// <summary>The X (pixels) at which a line of <paramref name="text"/> starts so it aligns within
-        /// [<paramref name="left"/>, <paramref name="left"/> + <paramref name="width"/>].</summary>
-        public static float AlignedX(ITextMeasurer font, string text, float left, float width, TextAlign align)
+        /// [<paramref name="left"/>, <paramref name="left"/> + <paramref name="width"/>]. The measured width is
+        /// multiplied by <paramref name="scale"/> so alignment stays correct for text drawn at that scale
+        /// (<c>scale = 1</c> is the unscaled path).</summary>
+        public static float AlignedX(ITextMeasurer font, string text, float left, float width, TextAlign align, float scale = 1f)
         {
-            float textW = font.Measure(text).X;
+            float textW = font.Measure(text).X * scale;
             return align switch
             {
                 TextAlign.Center => left + (width - textW) * 0.5f,
@@ -63,25 +65,28 @@ namespace KhaozEngine.Render2D
         // --- drawing (needs the GPU-backed SpriteFont) ---
 
         /// <summary>Draws one line of <paramref name="text"/> horizontally aligned within
-        /// [<paramref name="left"/>, <paramref name="left"/> + <paramref name="width"/>] at <paramref name="y"/>.
+        /// [<paramref name="left"/>, <paramref name="left"/> + <paramref name="width"/>] at <paramref name="y"/>,
+        /// uniformly scaled by <paramref name="scale"/> (<c>scale = 1</c> is the unscaled path).
         /// Positions are pixel-snapped to avoid sub-pixel blur.</summary>
         public static void DrawAligned(SpriteBatch batch, SpriteFont font, string text,
-            float left, float width, float y, TextAlign align, Color color)
+            float left, float width, float y, TextAlign align, Color color, float scale = 1f)
         {
-            float x = MathF.Floor(AlignedX(font, text, left, width, align));
-            batch.DrawString(font, text, new Vector2(x, MathF.Floor(y)), color);
+            float x = MathF.Floor(AlignedX(font, text, left, width, align, scale));
+            batch.DrawString(font, text, new Vector2(x, MathF.Floor(y)), color, scale);
         }
 
         /// <summary>Draws <paramref name="text"/> word-wrapped to <paramref name="maxWidth"/>, each line aligned
-        /// within that width, starting at <paramref name="topLeft"/>. Returns the total height drawn.</summary>
+        /// within that width, starting at <paramref name="topLeft"/> and scaled by <paramref name="scale"/>
+        /// (<c>scale = 1</c> is the unscaled path). Wrapping and line advance both account for the scale so the
+        /// scaled lines fill <paramref name="maxWidth"/>. Returns the total height drawn.</summary>
         public static float DrawWrapped(SpriteBatch batch, SpriteFont font, string text,
-            Vector2 topLeft, float maxWidth, TextAlign align, Color color)
+            Vector2 topLeft, float maxWidth, TextAlign align, Color color, float scale = 1f)
         {
             float y = topLeft.Y;
-            foreach (string line in Wrap(font, text, maxWidth))
+            foreach (string line in Wrap(font, text, maxWidth / scale))
             {
-                DrawAligned(batch, font, line, topLeft.X, maxWidth, y, align, color);
-                y += font.LineHeight;
+                DrawAligned(batch, font, line, topLeft.X, maxWidth, y, align, color, scale);
+                y += font.LineHeight * scale;
             }
             return y - topLeft.Y;
         }

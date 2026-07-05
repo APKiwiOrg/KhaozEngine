@@ -24,6 +24,9 @@ namespace KhaozEngine.Gui
         public bool Wrap;
         /// <summary>When true, a single (unwrapped) line is centered vertically within <see cref="Bounds"/>.</summary>
         public bool VerticalCenter = true;
+        /// <summary>Uniform text scale applied about each line's top-left (glyphs, advances, line height, and the
+        /// wrap width all scale together). Defaults to 1 (the unscaled path).</summary>
+        public float Scale = 1f;
 
         /// <summary>Create a label from localized text.</summary>
         public Label(Rect bounds, LocalizedText text, SpriteFont font)
@@ -56,11 +59,11 @@ namespace KhaozEngine.Gui
             string text = Content.Resolve();
             if (Wrap)
             {
-                TextLayout.DrawWrapped(batch, Font, text, new Vector2(Bounds.X, Bounds.Y), Bounds.Width, Align, (KhaozEngine.Primitives.Color)Color);
+                TextLayout.DrawWrapped(batch, Font, text, new Vector2(Bounds.X, Bounds.Y), Bounds.Width, Align, (KhaozEngine.Primitives.Color)Color, Scale);
                 return;
             }
-            float y = VerticalCenter ? Bounds.Y + (Bounds.Height - Font.LineHeight) * 0.5f : Bounds.Y;
-            TextLayout.DrawAligned(batch, Font, text, Bounds.X, Bounds.Width, y, Align, (KhaozEngine.Primitives.Color)Color);
+            float y = VerticalCenter ? Bounds.Y + (Bounds.Height - Font.LineHeight * Scale) * 0.5f : Bounds.Y;
+            TextLayout.DrawAligned(batch, Font, text, Bounds.X, Bounds.Width, y, Align, (KhaozEngine.Primitives.Color)Color, Scale);
         }
     }
 }

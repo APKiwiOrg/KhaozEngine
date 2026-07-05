@@ -215,7 +215,7 @@ namespace KhaozEngine.Gui
         /// centred <paramref name="label"/> (enabled→Text else DisabledText).
         /// </summary>
         public static void DrawButton(SpriteBatch batch, Texture2D white, SpriteFont font, Rect rect, LocalizedText label,
-            in GuiStyle style, bool enabled, bool selected, bool hover, bool press)
+            in GuiStyle style, bool enabled, bool selected, bool hover, bool press, float scale = 1f)
         {
             Vector4 fill = !enabled ? style.DisabledFill
                 : selected ? style.SelectedFill
@@ -229,11 +229,29 @@ namespace KhaozEngine.Gui
             FillStyled(batch, white, rect, style, fill, border);
 
             string s = label.Resolve();
-            Vector2 size = font.Measure(s);
-            var pos = new Vector2(
-                rect.X + (rect.Width - size.X) * 0.5f,
-                rect.Y + (rect.Height - font.LineHeight) * 0.5f);
-            batch.DrawString(font, s, pos, (Color)text);
+            var pos = AlignedTextPos(rect, font.Measure(s), font.LineHeight, GuiAlign.Center, scale, pad: 0f);
+            batch.DrawString(font, s, pos, (Color)text, scale);
+        }
+
+        /// <summary>
+        /// The shared top-left draw position for a single line of pre-measured text placed inside
+        /// <paramref name="rect"/>: horizontally aligned per <paramref name="align"/> within
+        /// [<c>rect.X + pad</c>, <c>rect.Right - pad</c>] and vertically centred. <paramref name="measured"/> is the
+        /// UNSCALED <c>font.Measure(text)</c>; the width and the vertical centring both multiply by
+        /// <paramref name="scale"/> so a caller that draws the text at <paramref name="scale"/> stays aligned
+        /// (<c>scale = 1</c> reproduces the unscaled layout exactly). Pure math: no GPU, headless-testable.
+        /// </summary>
+        public static Vector2 AlignedTextPos(Rect rect, Vector2 measured, float lineHeight, GuiAlign align, float scale = 1f, float pad = 0f)
+        {
+            float w = measured.X * scale;
+            float x = align switch
+            {
+                GuiAlign.Left => rect.X + pad,
+                GuiAlign.Right => rect.Right - w - pad,
+                _ => rect.X + (rect.Width - w) * 0.5f,
+            };
+            float y = rect.Y + (rect.Height - lineHeight * scale) * 0.5f;
+            return new Vector2(x, y);
         }
     }
 }

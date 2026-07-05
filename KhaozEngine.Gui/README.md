@@ -14,7 +14,9 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
 
 - `GuiSurface` - immediate-mode UI for a `Run`-loop game: `Begin(batch?, pointer)` then `Panel`/`Label`/`Swatch`/
   `Button`->bool/`Slider`/hover, with a `PointerCaptured` click-through gate. `FocusNavigator` drives
-  keyboard/gamepad menu focus.
+  keyboard/gamepad menu focus. The text sinks (`Label`/`Button`/`StatChip`) take an optional trailing
+  `float scale = 1f` that scales the label only (rect + hit-test unchanged), so one shared font renders at many
+  sizes for pixel-parity; defaults to `1f`, so unscaled callers are byte-identical.
 - `ScreenStack` - owns a stack of `Screen`s. Routes input top-to-bottom (input-consumption + modal layering,
   the click-through model), draws bottom-to-top, drives transitions. Exposes a shared `Pointer` + `InputState`.
   Screens are ordered by `DrawOrder` ascending with a stable insert, so equal-`DrawOrder` screens keep insertion
@@ -24,7 +26,8 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
 - Core widgets, all bounds-aware over `Pointer` (press-origin click-through invariant), drawn with a 1x1 white
   texture + `SpriteBatch`:
   - `Button` - click via `IsTapIn`, hover/press visuals.
-  - `Label` - non-interactive text, aligned (left/center/right) and optionally word-wrapped, via `TextLayout`.
+  - `Label` - non-interactive text, aligned (left/center/right) and optionally word-wrapped, via `TextLayout`; a
+    `Scale` field (default 1) uniformly scales the drawn text.
   - `Panel` - filled/bordered container; `BlocksPointer` reserves its region so lower layers skip hit-testing under it.
   - `Slider` - horizontal track; a drag started from inside jumps + tracks the value 0..1.
   - `Toggle` - two-state switch flipped by a valid tap; fires `OnChanged`.

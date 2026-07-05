@@ -8,9 +8,22 @@ using KhaozEngine.WorldStore;
 
 namespace KhaozEngine.NetWorld;
 
+/// <summary>
+/// A cell-blob schema migration: takes the raw snapshot BODY (the bytes after the 8-byte header) at one schema
+/// version and returns the body rewritten to the next version. Author it with
+/// <see cref="KhaozEngine.Replication.SnapshotBlobReader"/> / <see cref="KhaozEngine.Replication.SnapshotBlobWriter"/>
+/// to map / drop / transform per-component payloads without hand-parsing. It must do ONLY the data change; the driver
+/// stamps the schema version. Engine-owned built-in layout changes ship engine-provided migrations; consumer
+/// extension changes ship consumer migrations. May throw on a genuinely undecodable body: the driver quarantines that
+/// blob rather than crashing.
+/// </summary>
+public delegate byte[] CellSnapshotMigration(byte[] snapshotBody);
+
 /// <summary>Tunables for <see cref="CellPersistence"/>.</summary>
 public sealed class CellPersistenceConfig
 {
+    private readonly SortedDictionary<int, CellSnapshotMigration> migrations = new();
+
     /// <summary>How often the periodic snapshot saves dirty cells, seconds. A crash loses at most this much.</summary>
     public float SaveIntervalSeconds { get; init; } = 30f;
 
@@ -20,8 +33,33 @@ public sealed class CellPersistenceConfig
     /// <summary>Key of the world-scope meta record (the NetId high-water mark).</summary>
     public string MetaKey { get; init; } = "world:meta";
 
-    /// <summary>Blob schema version; bump on a breaking component-layout change so old saves are skipped, not mis-read.</summary>
+    /// <summary>Key namespace for quarantined (undecodable) cell blobs. A poisoned blob's original bytes are copied
+    /// here (<c>{QuarantineKeyPrefix}{CellKeyPrefix}{x}:{y}</c>) before the cell starts fresh, so nothing is destroyed
+    /// and an operator can recover them out of band.</summary>
+    public string QuarantineKeyPrefix { get; init; } = "quarantine:";
+
+    /// <summary>Blob schema version. Bump on a component-layout change and register a <see cref="RegisterMigration"/>
+    /// from the previous version so old saves are brought forward, not skipped or misread.</summary>
     public int SchemaVersion { get; init; } = 1;
+
+    /// <summary>
+    /// Registers the migration that takes a stored blob from <paramref name="fromVersion"/> to
+    /// <paramref name="fromVersion"/> + 1. Registrations across a chain must be contiguous with no gaps and none may
+    /// target at or beyond <see cref="SchemaVersion"/>; the chain is validated when the <see cref="CellPersistence"/>
+    /// is constructed (mirroring <c>MigrationChain</c>). Returns this config for chaining. A duplicate
+    /// <paramref name="fromVersion"/> throws immediately.
+    /// </summary>
+    public CellPersistenceConfig RegisterMigration(int fromVersion, CellSnapshotMigration migrate)
+    {
+        ArgumentNullException.ThrowIfNull(migrate);
+        if (migrations.ContainsKey(fromVersion))
+            throw new ArgumentException($"A cell-blob migration from version {fromVersion} is already registered.", nameof(fromVersion));
+        migrations.Add(fromVersion, migrate);
+        return this;
+    }
+
+    /// <summary>The registered migrations keyed by from-version, ascending. Consumed by <see cref="CellPersistence"/>.</summary>
+    internal IReadOnlyDictionary<int, CellSnapshotMigration> Migrations => migrations;
 }
 
 /// <summary>

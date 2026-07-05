@@ -190,6 +190,12 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
         host.TryGetCell(coord, out CellSim cell) ? cell.RestoreOwned(snapshot) : Array.Empty<int>();
 
     /// <inheritdoc />
+    public CellRestoreResult TryRestoreCell(CellCoord coord, byte[] snapshot) =>
+        host.TryGetCell(coord, out CellSim cell)
+            ? cell.TryRestoreOwned(snapshot)
+            : new CellRestoreResult(true, Array.Empty<int>(), 0, null);
+
+    /// <inheritdoc />
     public void EnsureCell(CellCoord coord) => host.EnsureCell(coord);
 
     /// <inheritdoc />

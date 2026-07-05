@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Linq;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
@@ -11,7 +12,8 @@ namespace KhaozEngine.Localization.Analyzers;
 /// Enforces the KhaozEngine LocalizedText contract. KELOC001: a call to a method/constructor marked
 /// <c>[LocalizationStringSink]</c> (the obsolete raw-string Gui overloads, or a consumer-marked sink).
 /// KELOC002: <c>LocalizedText.Raw(...)</c> used outside a <c>[LocalizationExempt]</c> scope and outside
-/// DEBUG-conditional code.
+/// DEBUG-conditional code. KELOC003: a bare string literal drawn straight to the engine's 2D text primitive
+/// <c>Render2D.SpriteBatch.DrawString</c> (the sink games hit when they render UI without Gui widgets).
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class LocalizationAnalyzer : DiagnosticAnalyzer
@@ -20,11 +22,14 @@ public sealed class LocalizationAnalyzer : DiagnosticAnalyzer
     private const string ExemptAttr = "KhaozEngine.App.LocalizationExemptAttribute";
     private const string ConditionalAttr = "System.Diagnostics.ConditionalAttribute";
     private const string LocalizedTextType = "KhaozEngine.App.LocalizedText";
+    private const string SpriteBatchType = "KhaozEngine.Render2D.SpriteBatch";
+    private const string DrawStringMethod = "DrawString";
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
         ImmutableArray.Create(
             LocalizationDiagnostics.RawStringSink,
-            LocalizationDiagnostics.RawOutsideExempt);
+            LocalizationDiagnostics.RawOutsideExempt,
+            LocalizationDiagnostics.RawDrawString);
 
     public override void Initialize(AnalysisContext context)
     {
@@ -46,6 +51,13 @@ public sealed class LocalizationAnalyzer : DiagnosticAnalyzer
             return;
         }
 
+        if (target.Name == DrawStringMethod &&
+            target.ContainingType?.ToDisplayString() == SpriteBatchType)
+        {
+            AnalyzeDrawStringText(ctx, invocation);
+            return;
+        }
+
         if (target.Name == "Raw" &&
             target.ContainingType?.ToDisplayString() == LocalizedTextType &&
             !IsExempt(ctx.ContainingSymbol) &&
@@ -64,6 +76,45 @@ public sealed class LocalizationAnalyzer : DiagnosticAnalyzer
             ctx.ReportDiagnostic(Diagnostic.Create(
                 LocalizationDiagnostics.RawStringSink, creation.Syntax.GetLocation(), ctor.ContainingType.Name));
         }
+    }
+
+    // KELOC003: a bare string literal drawn straight to the engine's 2D text primitive SpriteBatch.DrawString.
+    // v1 catches only non-interpolated, non-verbatim string LITERALS - variables, interpolation, and concatenation
+    // are dynamic and localized at their source, so they stay out of scope. Single-character tokens (a close 'X'),
+    // letter-free tokens (numbers / format like "{0}"), and [LocalizationExempt] / DEBUG scopes are all allowed, so
+    // DrawString's constant use for numbers, glyphs, names, and debug output does not become a false positive.
+    private static void AnalyzeDrawStringText(OperationAnalysisContext ctx, IInvocationOperation invocation)
+    {
+        // The display text is the single string-typed parameter ('text' on both overloads).
+        IArgumentOperation? textArg = null;
+        foreach (IArgumentOperation arg in invocation.Arguments)
+        {
+            if (arg.Parameter?.Type.SpecialType == SpecialType.System_String) { textArg = arg; break; }
+        }
+        if (textArg is null) return;
+
+        IOperation value = textArg.Value;
+        if (value is IConversionOperation conv) value = conv.Operand;
+        if (value is not ILiteralOperation lit) return;          // variable / interpolation / concat -> out of scope
+        if (lit.ConstantValue.Value is not string s) return;
+        if (!IsPlainStringLiteral(lit)) return;                  // verbatim @"..." / raw """...""" -> out of scope
+        if (s.Length <= 1) return;                               // single-glyph tokens allowed
+        if (!s.Any(char.IsLetter)) return;                       // numbers / format tokens allowed
+
+        if (IsExempt(ctx.ContainingSymbol)) return;
+        if (IsInsideActiveDebugRegion(invocation.Syntax)) return;
+
+        ctx.ReportDiagnostic(Diagnostic.Create(
+            LocalizationDiagnostics.RawDrawString, lit.Syntax.GetLocation()));
+    }
+
+    // A plain double-quoted string literal, i.e. NOT verbatim (@"...") and NOT a raw/utf8 string literal. Verbatim
+    // and raw literals carry a distinct token text/kind and are deliberately out of the v1 scope.
+    private static bool IsPlainStringLiteral(ILiteralOperation lit)
+    {
+        if (lit.Syntax is not LiteralExpressionSyntax les) return false;
+        if (!les.Token.IsKind(SyntaxKind.StringLiteralToken)) return false;
+        return !les.Token.Text.StartsWith("@", System.StringComparison.Ordinal);
     }
 
     private static bool HasAttribute(ISymbol symbol, string fullName)

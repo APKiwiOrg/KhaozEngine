@@ -1,4 +1,5 @@
 using System.Numerics;
+using KhaozEngine.App;
 using KhaozEngine.Game;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
@@ -49,6 +50,10 @@ namespace KhaozEngine.Showcase
             if (Manager!.Input.WasPressed(Key.Escape)) { Manager!.Pop(); return; }
         }
 
+        // Demo captions naming the engine features on show - developer-facing chrome, not localizable player
+        // copy, so the raw DrawString literals here are intentional (the KELOC003 escape hatch, same idea as the
+        // [LocalizationExempt] Gui screens in RoomGui).
+        [LocalizationExempt]
         public override void OnDraw2D(SpriteBatch batch)
         {
             var m = Manager!;

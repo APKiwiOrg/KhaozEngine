@@ -495,13 +495,41 @@ analyzer (already in the `Game2D`/`Game3D` umbrellas) enforces the rest. Adoptin
    `.editorconfig`:
 
    ```ini
-   dotnet_diagnostic.KELOC001.severity = error   # raw string at a player-facing sink
+   dotnet_diagnostic.KELOC001.severity = error   # raw string at a player-facing Gui sink
    dotnet_diagnostic.KELOC002.severity = error   # LocalizedText.Raw outside exempt/debug code
+   dotnet_diagnostic.KELOC003.severity = error   # raw string literal drawn via SpriteBatch.DrawString
    ```
 
 The migration is warning-not-break: the old `string` Gui overloads remain `[Obsolete]`, so a game builds (with
 warnings) before any text is migrated. `KhaozEngine.Showcase` is the worked example (`ShowcaseStrings.resx` +
 `ShowcaseStrings` constants + `LocalizationContext` wiring).
+
+### The low-level `SpriteBatch.DrawString` sink (`KELOC003`)
+
+A game that draws its UI straight through the low-level 2D text primitive
+`SpriteBatch.DrawString(font, "text", ...)` instead of Gui widgets is caught the same way. `DrawString` keeps its
+`string` parameter (it is far too hot a primitive to retype to `LocalizedText`, and resolving a catalog at draw
+time is not its job), so `KELOC003` is a Roslyn diagnostic rather than a compile error. **v1 flags only a bare,
+non-interpolated, non-verbatim string literal** passed as the text argument. Interpolated text
+(`$"Score {n}"`), variables, numbers, format tokens (`"{0}"`), and single-character glyphs are all left alone, so
+`DrawString`'s constant use for numbers, names, and debug output never becomes a false positive. Fix a flagged
+literal one of three ways:
+
+```csharp
+// 1. Localize it - resolve the key through the ambient catalog.
+batch.DrawString(font, ((LocalizedText)Strings.Title).Resolve(), pos, color);   // or catalog.Get(Strings.Title.Key)
+
+// 2. Raw escape hatch - genuinely non-localizable text (names, numbers, versions). Greppable, then governed by KELOC002.
+batch.DrawString(font, LocalizedText.Raw("v1.2.3").Resolve(), pos, color);
+
+// 3. Exempt the scope - a debug overlay or demo caption. Mark the method/type, same as the Gui escape hatch.
+[LocalizationExempt] void DrawDebugHud(SpriteBatch batch) { batch.DrawString(font, "frame time", pos, color); }
+```
+
+`KELOC003` ships as a **warning** (default severity), so it never breaks a build on day one; raise it to error in
+`.editorconfig` (`dotnet_diagnostic.KELOC003.severity = error`) once a game has cleaned its `DrawString` literals.
+The analyzer covers only the engine primitive `KhaozEngine.Render2D.SpriteBatch.DrawString`; a game's own
+`SpriteBatch`-based text helpers (a `DrawHintText(...)` wrapper, say) are its own to guard.
 
 `PopupPanel` follows the same contract. Its title / footer-button text are `LocalizedText` (`TitleContent` /
 `DismissContent` / `PrimaryActionContent`), and its `PopupRow` content rows are built with resolve-at-build
@@ -541,7 +569,7 @@ SpriteFont font = Surface2D.LoadDefaultFont(32f);                    // engine's
 
 batch.Begin(Viewport, SamplerMode.Point);        // design-viewport space, crisp pixels; or Begin(camera) / Begin()
 batch.Draw(logo, new Vector2(100, 100), Color.White);
-batch.DrawString(font, "Hello", new Vector2(100, 60), Color.White);
+batch.DrawString(font, "Hello", new Vector2(100, 60), Color.White);  // a bare player-facing literal is flagged by KELOC003 - localize it
 batch.End();
 ```
 

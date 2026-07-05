@@ -119,7 +119,7 @@ version/release work.
     acyclic - `App` never references `Gui`); the server/netcode stack layers `Simulation` (a zero-dependency
     leaf) -> `Netcode`/`Replication`/`Sharding`/`WorldStore` -> `NetWorld`. `Ecs` depends on `Simulation` (acyclic).
     Opt-in, in NO umbrella, added explicitly: `Physics.Bepu`, `WorldStore.Sqlite`/`.SqlServer`, `Server.Admin`, `Social.Discord`.
-    A `netstandard2.0` Roslyn analyzer `KhaozEngine.Localization.Analyzers` (KELOC001/002) flows to consumers via the `Game2D`/`Game3D` umbrellas.
+    A `netstandard2.0` Roslyn analyzer `KhaozEngine.Localization.Analyzers` (KELOC001/002/003) flows to consumers via the `Game2D`/`Game3D` umbrellas.
     The four umbrellas (`Foundation`, `Game2D`, `Game3D`, `Server`) are code-free dependency groups.
   - **Gotchas / history:** the package id is `KhaozEngine.Sharding`, NOT `KhaozEngine.World` (a `World` leaf would
     shadow the ECS `World` type). The legacy 4.x MonoGame line + its six packages

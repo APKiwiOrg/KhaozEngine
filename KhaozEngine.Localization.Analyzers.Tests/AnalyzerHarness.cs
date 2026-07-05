@@ -30,6 +30,16 @@ namespace KhaozEngine.App {
         public static LocalizedText Raw(string s) => default;
     }
 }
+namespace KhaozEngine.Render2D {
+    using System.Numerics;
+    public sealed class SpriteFont {}
+    // Stand-in for the engine's 2D text primitive; the analyzer (KELOC003) keys off the fully-qualified
+    // KhaozEngine.Render2D.SpriteBatch.DrawString name and its string 'text' parameter, which match these.
+    public sealed class SpriteBatch {
+        public void DrawString(SpriteFont font, string text, Vector2 position, int color) {}
+        public void DrawString(SpriteFont font, string text, Vector2 position, int color, float scale) {}
+    }
+}
 ";
 
         private static readonly MetadataReference[] References =

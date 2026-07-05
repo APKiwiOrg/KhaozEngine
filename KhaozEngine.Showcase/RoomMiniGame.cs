@@ -132,6 +132,9 @@ namespace KhaozEngine.Showcase
             _start.Update(Manager.Pointer); _quit.Update(Manager.Pointer);
             return true;
         }
+        // Mini-game title/instructions are demo chrome, not localizable player copy - the raw DrawString literals
+        // are intentional (KELOC003 escape hatch).
+        [LocalizationExempt]
         public override void Draw(SpriteBatch b)
         {
             DrawBackground(b, _c.White, _vp);
@@ -219,6 +222,9 @@ namespace KhaozEngine.Showcase
             if (receivesInput) { _retry.Update(Manager.Pointer); _quit.Update(Manager.Pointer); }
             return true;
         }
+        // "GAME OVER" is demo chrome, not localizable player copy - the raw DrawString literal is intentional
+        // (KELOC003 escape hatch).
+        [LocalizationExempt]
         public override void Draw(SpriteBatch b)
         {
             float a = TransitionAlpha;

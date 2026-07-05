@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
+using KhaozEngine.App;
 using KhaozEngine.Audio;
 using KhaozEngine.Game;
 using KhaozEngine.Platform;
@@ -133,6 +134,9 @@ namespace KhaozEngine.Showcase
             }
         }
 
+        // The "drag me" label and the controls hint are developer-facing demo chrome, not localizable player copy,
+        // so the raw DrawString literals here are intentional (the KELOC003 escape hatch).
+        [LocalizationExempt]
         public override void OnDraw2D(SpriteBatch batch)
         {
             batch.Draw(_white, new Vector4(0, 0, 960, 540), new Color(0.07f, 0.09f, 0.13f, 1f));   // design bg

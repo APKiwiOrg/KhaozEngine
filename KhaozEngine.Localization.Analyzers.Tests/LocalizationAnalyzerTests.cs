@@ -150,5 +150,126 @@ class C { void M(){
             var diags = await AnalyzerHarness.RunWithDebug(src);
             Assert.Single(diags, d => d.Id == "KELOC002");
         }
+
+        // ---- KELOC003: raw string literal drawn straight to SpriteBatch.DrawString ----
+
+        [Fact]
+        public async Task KELOC003_FiresOnDrawStringLiteral()
+        {
+            var src = @"
+using KhaozEngine.Render2D;
+using System.Numerics;
+class C { void M(SpriteBatch b, SpriteFont f){ b.DrawString(f, ""Play"", default(Vector2), 0); } }
+";
+            var diags = await AnalyzerHarness.Run(src);
+            Assert.Contains(diags, d => d.Id == "KELOC003");
+        }
+
+        [Fact]
+        public async Task KELOC003_FiresOnScaledOverload()
+        {
+            // The 5-arg overload (with scale) carries the same string 'text' argument.
+            var src = @"
+using KhaozEngine.Render2D;
+using System.Numerics;
+class C { void M(SpriteBatch b, SpriteFont f){ b.DrawString(f, ""Continue"", default(Vector2), 0, 1.5f); } }
+";
+            var diags = await AnalyzerHarness.Run(src);
+            Assert.Contains(diags, d => d.Id == "KELOC003");
+        }
+
+        [Fact]
+        public async Task KELOC003_SilentOnInterpolatedString()
+        {
+            // Interpolated text is dynamic and out of scope for v1.
+            var src = @"
+using KhaozEngine.Render2D;
+using System.Numerics;
+class C { void M(SpriteBatch b, SpriteFont f, int n){ b.DrawString(f, $""Score {n}"", default(Vector2), 0); } }
+";
+            var diags = await AnalyzerHarness.Run(src);
+            Assert.DoesNotContain(diags, d => d.Id == "KELOC003");
+        }
+
+        [Fact]
+        public async Task KELOC003_SilentOnVariable()
+        {
+            // A variable (even a const) is out of scope for v1 - localize at its source.
+            var src = @"
+using KhaozEngine.Render2D;
+using System.Numerics;
+class C { void M(SpriteBatch b, SpriteFont f, string label){ b.DrawString(f, label, default(Vector2), 0); } }
+";
+            var diags = await AnalyzerHarness.Run(src);
+            Assert.DoesNotContain(diags, d => d.Id == "KELOC003");
+        }
+
+        [Fact]
+        public async Task KELOC003_SilentOnVerbatimLiteral()
+        {
+            // Verbatim (@"...") literals are out of scope for v1.
+            var src = @"
+using KhaozEngine.Render2D;
+using System.Numerics;
+class C { void M(SpriteBatch b, SpriteFont f){ b.DrawString(f, @""Logs"", default(Vector2), 0); } }
+";
+            var diags = await AnalyzerHarness.Run(src);
+            Assert.DoesNotContain(diags, d => d.Id == "KELOC003");
+        }
+
+        [Fact]
+        public async Task KELOC003_SilentOnNumericLiteral()
+        {
+            // No letter -> a number/format token, not player-facing copy.
+            var src = @"
+using KhaozEngine.Render2D;
+using System.Numerics;
+class C { void M(SpriteBatch b, SpriteFont f){ b.DrawString(f, ""3.14"", default(Vector2), 0); } }
+";
+            var diags = await AnalyzerHarness.Run(src);
+            Assert.DoesNotContain(diags, d => d.Id == "KELOC003");
+        }
+
+        [Fact]
+        public async Task KELOC003_SilentOnSingleGlyph()
+        {
+            // Single-character tokens (a close 'X', a glyph) are allowed.
+            var src = @"
+using KhaozEngine.Render2D;
+using System.Numerics;
+class C { void M(SpriteBatch b, SpriteFont f){ b.DrawString(f, ""X"", default(Vector2), 0); } }
+";
+            var diags = await AnalyzerHarness.Run(src);
+            Assert.DoesNotContain(diags, d => d.Id == "KELOC003");
+        }
+
+        [Fact]
+        public async Task KELOC003_SilentUnderExemptMethod()
+        {
+            var src = @"
+using KhaozEngine.App;
+using KhaozEngine.Render2D;
+using System.Numerics;
+class C { [LocalizationExempt] void M(SpriteBatch b, SpriteFont f){ b.DrawString(f, ""Debug Overlay"", default(Vector2), 0); } }
+";
+            var diags = await AnalyzerHarness.Run(src);
+            Assert.DoesNotContain(diags, d => d.Id == "KELOC003");
+        }
+
+        [Fact]
+        public async Task KELOC003_SilentInsideActiveIfDebugRegion()
+        {
+            var src = @"
+using KhaozEngine.Render2D;
+using System.Numerics;
+class C { void M(SpriteBatch b, SpriteFont f){
+#if DEBUG
+    b.DrawString(f, ""Frame time"", default(Vector2), 0);
+#endif
+} }
+";
+            var diags = await AnalyzerHarness.RunWithDebug(src);
+            Assert.DoesNotContain(diags, d => d.Id == "KELOC003");
+        }
     }
 }

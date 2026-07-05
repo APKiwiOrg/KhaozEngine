@@ -134,3 +134,13 @@ version/release work.
 - `local-feed/` is gitignored but MUST exist before `dotnet restore` (`mkdir -p local-feed`).
 - net10.0, MonoGame-free: Silk.NET (windowing + input, GLFW natives bundled per-RID), Veldrid behind
   `KhaozEngine.Gpu` (GPU), Silk.NET.OpenAL (audio), xUnit (tests).
+
+## Localization
+
+**Localization is a founding principle.** All player-facing text (UI, menus, settings, dialogue,
+tooltips, notifications, player-visible errors and status) must resolve through the localization
+catalog via a `StringId` (`LocalizationManager` / `IStringCatalog`), never a hardcoded display literal.
+Add the string to the catalog first, then reference it. The engine is moving player-facing Gui sinks to
+a `LocalizedText` value type so bare strings become a compile error. Prefer that API as it lands.
+Exemptions: developer/debug-only UI and non-localizable tokens (proper names, numbers) via the explicit
+raw escape hatch, kept greppable.

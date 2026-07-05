@@ -417,8 +417,9 @@ if (gui.Button(font, btnRect, Strings.Resume, style, scale: 1.5f)) Resume();    
 
 **Retained `ScreenStack`** - a routed stack of `Screen`s (top-to-bottom input, bottom-to-top draw, transitions),
 for menu-heavy games. `Add`/`Remove`, `Update(dt, input[, viewport])`, `Draw(batch)`. A `Screen` reads input via
-`Manager.Pointer` and returns whether it consumed (to block screens below); set a screen non-pass-through for a
-modal.
+`Manager.Pointer` (pointer/hit-test) and `Manager.InputManager` (menu nav + keyboard/gamepad; its pointer IS
+`Manager.Pointer`, so both share one click-through gate), and returns whether it consumed (to block screens
+below); set a screen non-pass-through for a modal.
 
 **`FocusNavigator`** - keyboard/gamepad menu focus: `SetCount`, `Focus`, `MoveNext`/`MovePrevious`, `Wrap`, and
 `Update(InputManager, PlayerIndex?)` which advances focus from menu-nav edges.
@@ -435,14 +436,18 @@ primitives (headless-testable, matching `Slider.Nudge`) sit under each overload 
 - `Dropdown`: closed -> menu-select opens, select-next/previous cycle the selection in place; open -> menu-up/down move `HighlightedIndex`, menu-select commits it, menu-cancel (Escape/B/Back) closes without changing. `Wrap` (default true) wraps at the ends; `FocusColor` fills the highlighted row (the pointer path leaves `HighlightedIndex` at -1, so its overlay is byte-identical). Primitives `Open`/`Close`/`HighlightNext`/`HighlightPrevious`/`CommitHighlight`/`StepSelection`.
 
 ```csharp
-// A keyboard/gamepad-navigable settings column: FocusNavigator picks the row, the focused widget reads input.
+// A keyboard/gamepad-navigable settings column inside a Screen. In the retained path the InputManager comes
+// from the stack (Manager.InputManager); the immediate-mode / Run-loop path holds its own InputManager.
+var im = Manager.InputManager;                   // ScreenStack owns + updates it each frame (10.10.0)
 nav.SetCount(3);
-nav.Update(input);                                  // Up/Down moves focus between rows
-volume.Update(input, focused: nav.Focused == 0);    // Left/Right nudges the slider when its row is focused
-fullscreen.Update(input, focused: nav.Focused == 1); // Enter flips the toggle; Left/Right force off/on
-quality.Update(input, focused: nav.Focused == 2);   // Enter opens the dropdown; Up/Down + Enter pick an option
+nav.Update(im);                                  // Up/Down moves focus between rows
+volume.Update(im, focused: nav.Focused == 0);    // Left/Right nudges the slider when its row is focused
+fullscreen.Update(im, focused: nav.Focused == 1); // Enter flips the toggle; Left/Right force off/on
+quality.Update(im, focused: nav.Focused == 2);   // Enter opens the dropdown; Up/Down + Enter pick an option
 // Pointer still works on every row regardless of focus (each overload runs the pointer path first).
 ```
+
+`KhaozEngine.Showcase`'s Settings screen (`RoomGui.cs`) is the runnable reference: pick the "Gui" room, open Settings, and drive the volume slider + fullscreen toggle with the keyboard/gamepad (Up/Down between rows, Left/Right to adjust, Enter to flip, Esc to back out) or the pointer.
 
 **Overlay chrome on the core widgets (opt-in, 9.21.0)** - `ScrollablePanel`, `Dropdown`, and `Tooltip` carry
 opt-in "panel overlay" behaviours for bottom-sheet-style UI. Every knob defaults to a no-op, so a widget you

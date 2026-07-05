@@ -5,6 +5,15 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.10.0
+
+`ScreenStack` now owns and exposes a shared `InputManager`, so the retained UI path can actually drive `FocusNavigator` and the 10.9.0 keyboard/gamepad widget overloads. Until now the retained path (`ScreenStack`/`Screen`) only carried an `InputState` + `Pointer` and never an `InputManager`, so `FocusNavigator.Update(InputManager)` and `Toggle`/`Slider`/`Dropdown` `Update(InputManager, focused)` had no manager to feed from inside a `Screen` (an `InputManager` was constructed only in tests). Additive API, so a minor bump.
+
+- **`ScreenStack.InputManager`** (new): the shared high-level input manager driving the stack (menu nav + action mapping + the composed pointer), updated every frame from the routed `InputState` (and viewport). Screens read it as `Manager.InputManager` to drive a `FocusNavigator` and the keyboard/gamepad widget overloads.
+- **`ScreenStack.Pointer` is now the manager's pointer.** `Pointer` changed from a standalone instance to `=> InputManager.Pointer` (same lifetime, same per-frame `Update(input, viewport)`), so a screen can freely mix pointer-only widget updates (`Update(Manager.Pointer)`) and manager-driven ones (`Update(Manager.InputManager, focused)`) and the click-through `BlockRegion` gate still composes across all of them (one pointer, not two). Behaviour of the pointer itself is unchanged; `ScreenStack.Input` (the raw `InputState`) is unchanged and also reachable as `InputManager.State`.
+- **Showcase settings screen wired as the reference.** `KhaozEngine.Showcase`'s `SettingsScreen` now drives its volume `Slider` + fullscreen `Toggle` with a `FocusNavigator` over `Manager.InputManager` (Up/Down moves the focused row, Left/Right adjusts, Enter flips, Esc backs out), with a focus ring on the active row. Pointer still works on every row. This is the pattern a game uses instead of wrapping each control in a `MenuEntry` shell.
+- No breaking changes. Consumers re-pin to adopt; existing screens that only use `Manager.Pointer` are unaffected.
+
 ## 10.9.0
 
 Keyboard/gamepad navigation for the retained `Toggle`, `Slider`, and `Dropdown` widgets, so a settings row can be driven without a pointer and no longer needs the `MenuEntry` shell to be focusable. Additive and opt-in: every existing `Update(Pointer)` overload is byte-for-byte unchanged, and the new input reads only through `InputManager` menu actions (no raw window input, headless-testable). Additive API, so a minor bump.

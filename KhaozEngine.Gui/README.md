@@ -18,9 +18,11 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   `float scale = 1f` that scales the label only (rect + hit-test unchanged), so one shared font renders at many
   sizes for pixel-parity; defaults to `1f`, so unscaled callers are byte-identical.
 - `ScreenStack` - owns a stack of `Screen`s. Routes input top-to-bottom (input-consumption + modal layering,
-  the click-through model), draws bottom-to-top, drives transitions. Exposes a shared `Pointer` + `InputState`.
-  Screens are ordered by `DrawOrder` ascending with a stable insert, so equal-`DrawOrder` screens keep insertion
-  order and `Screens[^1]` is the visually-topmost.
+  the click-through model), draws bottom-to-top, drives transitions. Exposes a shared `InputManager` (menu nav +
+  action mapping; screens read `Manager.InputManager` to drive `FocusNavigator` and the keyboard/gamepad widget
+  overloads), its `Pointer` (== `InputManager.Pointer`, so pointer-only and manager-driven widget updates share
+  one click-through gate), and the raw `InputState`. Screens are ordered by `DrawOrder` ascending with a stable
+  insert, so equal-`DrawOrder` screens keep insertion order and `Screens[^1]` is the visually-topmost.
 - `Screen` - base UI surface: `Update(dt, receivesInput)` (returns whether it consumed input) + `Draw(SpriteBatch)`,
   with `DrawOrder` / `PassUpdateThrough` / `AlwaysReceivesInput` / transitions.
 - Core widgets, all bounds-aware over `Pointer` (press-origin click-through invariant), drawn with a 1x1 white

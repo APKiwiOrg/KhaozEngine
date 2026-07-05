@@ -133,6 +133,12 @@ namespace KhaozEngine.Showcase
         Toggle _fullscreen = null!;
         Button _back = null!;
 
+        // Keyboard/gamepad: FocusNavigator picks the focused row (0 = volume, 1 = fullscreen), then the focused
+        // widget reads input through the stack's shared InputManager. Up/Down moves focus, Left/Right adjusts,
+        // Enter flips the toggle, Esc backs out (handled by RoomGui). Pointer still works on every row.
+        readonly FocusNavigator _nav = new(count: 2);
+        Rect _volumeRow, _fullscreenRow;
+
         public SettingsScreen(GuiAssets a, IDesignViewport vp)
         {
             _a = a; _vp = vp;
@@ -156,6 +162,10 @@ namespace KhaozEngine.Showcase
             _fullscreenLabel = new Label(new Rect(d.X + 30, d.Y + 136, 200, 26), ShowcaseStrings.SettingsFullscreen, _a.Small);
             _fullscreen = new Toggle(new Rect(d.Right - 76, d.Y + 134, 56, 28));
 
+            // Row bands the focus ring highlights (span the dialog inside its margin).
+            _volumeRow = new Rect(d.X + 16, d.Y + 80, d.Width - 32, 36);
+            _fullscreenRow = new Rect(d.X + 16, d.Y + 128, d.Width - 32, 40);
+
             _help = new Label(new Rect(d.X + 30, d.Y + 178, d.Width - 60, 70),
                 ShowcaseStrings.SettingsHelp,
                 _a.Small)
@@ -169,9 +179,11 @@ namespace KhaozEngine.Showcase
         {
             if (receivesInput)
             {
-                _volume.Update(Manager.Pointer);
-                _fullscreen.Update(Manager.Pointer);
-                _back.Update(Manager.Pointer);
+                var im = Manager.InputManager;
+                _nav.Update(im);                                    // Up/Down (or D-pad / stick) moves focus
+                _volume.Update(im, focused: _nav.Focused == 0);     // focused row also takes Left/Right
+                _fullscreen.Update(im, focused: _nav.Focused == 1); // and Enter to flip
+                _back.Update(Manager.Pointer);                      // Back stays pointer; Esc backs out (RoomGui)
                 _readout.Content = LocalizedText.Raw($"{(int)(_volume.Value * 100)}%");
             }
             return true;
@@ -183,6 +195,11 @@ namespace KhaozEngine.Showcase
             batch.Draw(_a.White, new Vector4(db.X, db.Y, db.Width, db.Height), new Color(0, 0, 0, 0.55f * TransitionAlpha));   // scrim
             _dialog.Draw(batch, _a.White);
             _title.Draw(batch);
+
+            // Focus ring around the keyboard/gamepad-focused row (accent hairline, matching the crisp look).
+            Rect ring = _nav.Focused == 1 ? _fullscreenRow : _volumeRow;
+            DrawBorder(batch, _a.White, ring, 1.5f, new Vector4(0.35f, 0.62f, 1f, 0.9f * TransitionAlpha));
+
             _volumeLabel.Draw(batch);
             _volume.Draw(batch, _a.White);
             _readout.Draw(batch);
@@ -190,6 +207,16 @@ namespace KhaozEngine.Showcase
             _fullscreen.Draw(batch, _a.White);
             _help.Draw(batch);
             _back.Draw(batch, _a.White);
+        }
+
+        // Hairline rectangle outline (4 edges) via the shared white texture - the focus ring.
+        static void DrawBorder(SpriteBatch batch, Texture2D white, Rect r, float t, Vector4 c)
+        {
+            var col = (Color)c;
+            batch.Draw(white, new Vector4(r.X, r.Y, r.Width, t), col);              // top
+            batch.Draw(white, new Vector4(r.X, r.Bottom - t, r.Width, t), col);     // bottom
+            batch.Draw(white, new Vector4(r.X, r.Y, t, r.Height), col);             // left
+            batch.Draw(white, new Vector4(r.Right - t, r.Y, t, r.Height), col);     // right
         }
     }
 

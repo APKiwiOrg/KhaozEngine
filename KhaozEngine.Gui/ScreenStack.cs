@@ -16,10 +16,23 @@ namespace KhaozEngine.Gui
     {
         readonly List<Screen> _screens = new();
         readonly List<Screen> _updateScratch = new(); // reused per-frame copy so screens can add/remove during Update
+        readonly InputManager _input = new();
 
-        /// <summary>The shared bounds-aware pointer; screens hit-test via <c>Manager.Pointer</c>.</summary>
-        public Pointer Pointer { get; } = new();
-        /// <summary>This frame's raw input snapshot (keyboard etc.).</summary>
+        /// <summary>
+        /// The shared high-level input manager driving this stack: menu navigation (<see cref="InputManager.IsMenuUp"/>/
+        /// <c>Down</c>/<c>Select</c>/<c>Cancel</c>, <c>IsSelectNext</c>/<c>Previous</c>), action mapping, and the
+        /// composed <see cref="Windowing.Pointer"/>. Screens read it as <c>Manager.InputManager</c> to drive a
+        /// <see cref="FocusNavigator"/> and the keyboard/gamepad widget overloads
+        /// (<c>Toggle</c>/<c>Slider</c>/<c>Dropdown</c> <c>Update(InputManager, focused)</c>). Updated every frame
+        /// from the routed <see cref="Input"/> snapshot (and viewport). Its <see cref="Windowing.InputManager.Pointer"/>
+        /// IS this stack's <see cref="Pointer"/>, so a screen can freely mix pointer-only and manager-driven widget
+        /// updates and the click-through blocking still composes across them.
+        /// </summary>
+        public InputManager InputManager => _input;
+        /// <summary>The shared bounds-aware pointer; screens hit-test via <c>Manager.Pointer</c>. The same instance
+        /// as <see cref="InputManager"/>'s pointer.</summary>
+        public Pointer Pointer => _input.Pointer;
+        /// <summary>This frame's raw input snapshot (keyboard etc.). Also reachable as <c>InputManager.State</c>.</summary>
         public InputState Input { get; private set; } = InputState.Empty;
         /// <summary>The current screens, ordered by <see cref="Screen.DrawOrder"/> ascending, with insertion order
         /// breaking ties. So the last element is the visually-topmost screen (highest draw order, and last added
@@ -69,7 +82,7 @@ namespace KhaozEngine.Gui
         public void Update(float dt, InputState input, IDesignViewport? viewport)
         {
             Input = input;
-            Pointer.Update(input, viewport);
+            _input.Update(input, viewport);   // drives the composed pointer (== Pointer) and menu-nav edges
 
             _updateScratch.Clear();                  // screens may add/remove during Update; iterate a copy
             _updateScratch.AddRange(_screens);

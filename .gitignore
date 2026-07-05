@@ -26,6 +26,8 @@ Thumbs.db
 .claude/settings.local.json
 .claude/worktrees/
 .superpowers/
+# Superpowers plan/spec output, local-only (never committed):
+docs/superpowers/
 
 # Build / publish artifacts
 artifacts/

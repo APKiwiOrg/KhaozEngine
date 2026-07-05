@@ -1,0 +1,13 @@
+# KhaozEngine localization enforcement (KELOC analyzer, engine 10.3.0+). Player-facing text must
+# resolve through the localization catalog, so these are promoted from Warning to build errors here:
+#   KELOC001 - a raw string passed to a player-facing engine Gui sink.
+#   KELOC002 - a LocalizedText.Raw outside a debug or [LocalizationExempt] scope.
+#   KELOC003 - a raw string literal drawn straight to Render2D SpriteBatch.DrawString.
+# Numbers, format tokens, single glyphs, interpolation, and [LocalizationExempt] / #if DEBUG scopes are
+# left alone. See CLAUDE.md "## Localization" and KhaozEngine/docs/USING-KHAOZENGINE.md.
+root = true
+
+[*.cs]
+dotnet_diagnostic.KELOC001.severity = error
+dotnet_diagnostic.KELOC002.severity = error
+dotnet_diagnostic.KELOC003.severity = error

@@ -154,7 +154,7 @@ public class WorldRoundTripTests
 
         // Client A joins on slot 0 and plays enough ticks to push that slot's processed high-water mark up.
         INetTransport aTransport = hub.CreateClient();
-        var a = new NetClient(aTransport);
+        var a = new NetClient(aTransport, TestHandshake.Wire());
         int slotA = JoinNetClient(server, a, config);
 
         var forward = new MoveCommand(new Vector2(0f, 1f), run: false, cameraYaw: 0f);   // -Z
@@ -173,7 +173,7 @@ public class WorldRoundTripTests
         Assert.Equal(0, server.PlayerCount);
 
         // Client B joins on the recycled slot 0, sending forward commands that legitimately restart at seq 0.
-        var b = new NetClient(hub.CreateClient());
+        var b = new NetClient(hub.CreateClient(), TestHandshake.Wire());
         int slotB = JoinNetClient(server, b, config);
         Assert.Equal(slotA, slotB);   // same slot, recycled
 

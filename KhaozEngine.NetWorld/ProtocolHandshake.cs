@@ -27,6 +27,32 @@ public static class ProtocolHandshake
     // DisconnectReason.IncompatibleVersion, carrying the server's required version as the detail.
     private const string IncompatiblePrefix = "ke:incompatible-version:";
 
+    // Label prefix for the always-present ENGINE wire-generation layer (the OUTER handshake layer). Distinct from any
+    // consumer version: BuildClientToken stamps WireGenerationLabel(MoveProtocol.WireProtocolVersion) on EVERY connect
+    // token (even with no consumer version), and the server's always-on WireGenerationAuthenticator requires it. A peer
+    // that predates this (a pre-10.2.0 / 9.x client presenting a raw or consumer-only token) unwraps to a non-matching
+    // label and is rejected as IncompatibleVersion instead of admitted and left to misparse the wire.
+    private const string WirePrefix = "ke-wire:";
+
+    /// <summary>The connect-token label carrying the engine wire generation (the OUTER handshake layer that
+    /// <see cref="BuildClientToken"/> always applies). The client stamps its build's generation
+    /// (<see cref="MoveProtocol.WireProtocolVersion"/>); the server's <see cref="WireGenerationAuthenticator"/> requires
+    /// its own generation's label. Independent of the opt-in consumer <see cref="WorldClientConfig.ProtocolVersion"/>.</summary>
+    public static string WireGenerationLabel(int wireGeneration) =>
+        WirePrefix + wireGeneration.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>Builds the full connect token an engine client sends: the always-present engine wire-generation layer
+    /// (<paramref name="wireGeneration"/>) wrapping the OPTIONAL consumer-version layer (<paramref name="consumerVersion"/>,
+    /// null = none) wrapping the inner auth <paramref name="innerToken"/>. The wire layer is unconditional so a server can
+    /// reject a wire-generation mismatch even when the consumer opts out of a game version; the consumer layer, when
+    /// present, is checked on top by a <see cref="VersionCheckingAuthenticator"/>. Mirrors the server-side composition
+    /// <c>WireGenerationAuthenticator(gen, VersionCheckingAuthenticator(consumerVersion, rule, inner))</c>.</summary>
+    public static byte[] BuildClientToken(int wireGeneration, string? consumerVersion, byte[]? innerToken)
+    {
+        byte[]? consumerLayer = consumerVersion is null ? innerToken : WrapToken(consumerVersion, innerToken);
+        return WrapToken(WireGenerationLabel(wireGeneration), consumerLayer);
+    }
+
     /// <summary>Builds a version-wrapped connect token: <c>[magic][verLen:byte][version utf8][inner token]</c>.
     /// <paramref name="innerToken"/> is the auth token the inner <see cref="Netcode.IConnectionAuthenticator"/>
     /// expects (may be null/empty for an anonymous connection).</summary>

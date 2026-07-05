@@ -20,7 +20,7 @@ public class WorldServerBanTests
         var (st, ct) = LoopbackTransport.CreatePair();
         var config = new WorldServerConfig { TickSeconds = 1f / 30f, MaxPlayers = 4 };
         var server = new WorldServer(st, config, Flat, MoveTuning.Default, banStore: bans);
-        var client = new NetClient(ct, Encoding.UTF8.GetBytes("evil"));   // AllowAllAuthenticator: subject = token
+        var client = new NetClient(ct, TestHandshake.Wire("evil"));   // AllowAllAuthenticator: subject = token
 
         for (int i = 0; i < 200; i++) { client.Poll(); server.Poll(); server.Tick(config.TickSeconds); }
 

@@ -186,9 +186,11 @@ public sealed class WorldClient : IDisposable
         // Consumer-injectable registry: build it with MoveProtocol.CreateRegistry(configure) — the SAME registry the
         // server uses — so the client decodes the game's extension components. Default = movement-only.
         this.registry = registry ?? MoveProtocol.CreateRegistry();
-        // Opt-in version handshake: wrap the token with the protocol version so a version-checking server can gate
-        // the connect. Store the wrapped form so each reconnect attempt resends it. Null = unwrapped (legacy wire).
-        this.token = config.ProtocolVersion is null ? token : ProtocolHandshake.WrapToken(config.ProtocolVersion, token);
+        // Always fold this build's engine wire generation into the Hello (even with no consumer ProtocolVersion), so a
+        // wire-skewed server rejects us cleanly at connect rather than admitting a client that would then misparse its
+        // snapshots. The opt-in consumer ProtocolVersion, when set, rides as an inner layer checked on top by a
+        // VersionCheckingAuthenticator. Store the wrapped form so each reconnect attempt resends it.
+        this.token = ProtocolHandshake.BuildClientToken(MoveProtocol.WireProtocolVersion, config.ProtocolVersion, token);
         ownedTransport = connectFactory is not null ? transport : null;   // we dispose only what we built
         net = new NetClient(transport, this.token);
         view = new ClientReplicationView(this.registry);

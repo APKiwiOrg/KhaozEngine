@@ -59,7 +59,7 @@ public class ServerWorldTickTests
             SpawnPosition = _ => new Vector3(5f, 0f, 5f),
         };
         var server = new ShardedWorldServer(st, cfg, Flat, MoveTuning.Default);
-        var client = new NetClient(ct);
+        var client = new NetClient(ct, TestHandshake.Wire());
 
         int slot = -1;
         for (int i = 0; i < 200 && slot < 0; i++)

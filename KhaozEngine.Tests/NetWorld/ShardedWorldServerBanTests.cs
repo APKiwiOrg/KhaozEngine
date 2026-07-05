@@ -20,7 +20,7 @@ public class ShardedWorldServerBanTests
         var (st, ct) = LoopbackTransport.CreatePair();
         var config = new ShardedWorldServerConfig { TickSeconds = 1f / 30f, MaxPlayers = 8 };
         var server = new ShardedWorldServer(st, config, Flat, MoveTuning.Default, banStore: bans);
-        var client = new NetClient(ct, Encoding.UTF8.GetBytes("evil"));
+        var client = new NetClient(ct, TestHandshake.Wire("evil"));
 
         for (int i = 0; i < 200; i++) { client.Poll(); server.Poll(); server.Tick(config.TickSeconds); }
 

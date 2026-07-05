@@ -18,7 +18,7 @@ public class ShardedWorldServerAdminTests
         var (st, ct) = LoopbackTransport.CreatePair();
         config = new ShardedWorldServerConfig { TickSeconds = 1f / 30f, MaxPlayers = 8 };
         var server = new ShardedWorldServer(st, config, Flat, MoveTuning.Default);
-        client = new NetClient(ct, Encoding.UTF8.GetBytes(account));
+        client = new NetClient(ct, TestHandshake.Wire(account));
         for (int i = 0; i < 200 && server.PlayerCount == 0; i++) { client.Poll(); server.Poll(); server.Tick(config.TickSeconds); }
         server.Tick(config.TickSeconds);   // publish snapshot
         slot = server.JoinedSlots.First();

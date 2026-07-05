@@ -37,7 +37,7 @@ public class ShardedCellPersistenceTests
         ICellPersistenceHost host = server;
 
         byte[] token = Encoding.UTF8.GetBytes("acct-1");
-        var client = new NetClient(ct, token);
+        var client = new NetClient(ct, TestHandshake.Wire(token));
         for (int i = 0; i < 60; i++) { client.Poll(); server.Poll(); server.Tick(cfg.TickSeconds); }
 
         // The player spawns at world (5,_,5), which with CellSize 10 lands in cell (0,0).

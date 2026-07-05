@@ -216,4 +216,118 @@ public class VersionHandshakeTests
         Assert.False(client.Joined);
         Assert.Equal(0, server.PlayerCount);
     }
+
+    // --- 10.2.0: the engine wire generation is now enforced UNCONDITIONALLY (pre-10.2.0 it was opt-in, so an
+    // unconfigured 9.x/10.0 pairing silently misparsed instead of rejecting). Every client folds
+    // MoveProtocol.WireProtocolVersion into its Hello even with NO consumer ProtocolVersion, and WorldServer /
+    // ShardedWorldServer always install a WireGenerationAuthenticator. The tests above still pass because they now get
+    // BOTH gates (the automatic engine wire gate AND the consumer's string check); folding ;wire{N} into the consumer
+    // version is no longer required. These cover the UNCONFIGURED pairing - neither side sets a consumer version -
+    // relying purely on the engine gate. A different EXPECTED generation on the server's gate stands in for a
+    // different-build peer, since a live build's own WireProtocolVersion is a const (both live ends always match).
+
+    [Fact]
+    public void Unconfigured_same_generation_pairing_joins()
+    {
+        // No consumer version on either side: they rely purely on the engine wire gate, and matching generations join.
+        var hub = new InMemoryHub();
+        WorldServer server = Server(hub, new AllowAllAuthenticator());   // WorldServer wraps this in the always-on wire gate
+        var client = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default, new WorldClientConfig());
+
+        Pump(server, client);
+
+        Assert.True(client.Joined);
+        Assert.Equal(DisconnectReason.None, client.DisconnectReason);
+    }
+
+    [Fact]
+    public void Unconfigured_wire_skew_newer_server_rejects_this_client_cleanly()
+    {
+        // A server one wire generation AHEAD (a newer build) - the "old client -> new server" direction the fix targets.
+        // Our version-less client sends the current generation; the server's gate wants the next -> clean
+        // IncompatibleVersion at connect, never an admitted-then-misparsing client.
+        var hub = new InMemoryHub();
+        int serverGen = MoveProtocol.WireProtocolVersion + 1;
+        WorldServer server = Server(hub, new WireGenerationAuthenticator(serverGen, new AllowAllAuthenticator()));
+        var client = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default, new WorldClientConfig());
+
+        Pump(server, client);
+
+        Assert.Equal(DisconnectReason.IncompatibleVersion, client.DisconnectReason);
+        Assert.Equal(ProtocolHandshake.WireGenerationLabel(serverGen), client.DisconnectReasonDetail);
+        Assert.False(client.Joined);
+        Assert.Equal(0, server.PlayerCount);   // never admitted -> never a frame to misparse
+    }
+
+    [Fact]
+    public void Unconfigured_wire_skew_older_server_rejects_this_client_cleanly()
+    {
+        // The reverse skew: a server one generation BEHIND (an older build that still has the gate). Our client is
+        // ahead; the server's gate rejects it. The engine gate is symmetric - a mismatch either way is a clean disconnect.
+        var hub = new InMemoryHub();
+        int serverGen = MoveProtocol.WireProtocolVersion - 1;
+        WorldServer server = Server(hub, new WireGenerationAuthenticator(serverGen, new AllowAllAuthenticator()));
+        var client = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default, new WorldClientConfig());
+
+        Pump(server, client);
+
+        Assert.Equal(DisconnectReason.IncompatibleVersion, client.DisconnectReason);
+        Assert.False(client.Joined);
+        Assert.Equal(0, server.PlayerCount);
+    }
+
+    [Fact]
+    public void Wire_gate_accepts_the_matching_generation_and_rejects_a_mismatch_or_a_legacy_token()
+    {
+        var gate = new WireGenerationAuthenticator(MoveProtocol.WireProtocolVersion, new AllowAllAuthenticator());
+
+        // Matching generation: admitted, and the inner (stripped) token becomes the subject.
+        byte[] ok = ProtocolHandshake.BuildClientToken(MoveProtocol.WireProtocolVersion, consumerVersion: null,
+            Encoding.UTF8.GetBytes("player-7"));
+        Assert.True(gate.TryAuthenticate(ok, out string subject, out _));
+        Assert.Equal("player-7", subject);
+
+        // A pre-10.2.0 / 9.x client sends a RAW token (no wire layer): rejected as IncompatibleVersion, carrying this
+        // build's required wire label.
+        byte[] legacy = Encoding.UTF8.GetBytes("player-7");
+        Assert.False(gate.TryAuthenticate(legacy, out _, out string legacyReason));
+        Assert.True(ProtocolHandshake.TryParseIncompatibleReason(legacyReason, out string required));
+        Assert.Equal(ProtocolHandshake.WireGenerationLabel(MoveProtocol.WireProtocolVersion), required);
+
+        // A different generation is likewise rejected.
+        byte[] skew = ProtocolHandshake.BuildClientToken(MoveProtocol.WireProtocolVersion + 1, consumerVersion: null, null);
+        Assert.False(gate.TryAuthenticate(skew, out _, out _));
+    }
+
+    [Fact]
+    public void Wire_gate_delegates_the_inner_display_name_after_peeling_its_layer()
+    {
+        // The gate peels its wire layer and delegates to the inner authenticator's display-name resolution, so a v2
+        // signed token's name still surfaces through the always-on gate (WorldServer wraps every authenticator).
+        string token = SignedToken.Mint("acct-7", "Daniel", Now.AddHours(1), Secret);
+        var gate = new WireGenerationAuthenticator(MoveProtocol.WireProtocolVersion,
+            new HmacTokenAuthenticator(Secret, () => Now));
+        byte[] wrapped = ProtocolHandshake.BuildClientToken(MoveProtocol.WireProtocolVersion, consumerVersion: null,
+            Encoding.UTF8.GetBytes(token));
+
+        Assert.True(gate.TryAuthenticate(wrapped, out string subject, out _));
+        Assert.Equal("acct-7", subject);
+        Assert.Equal("Daniel", gate.ReadDisplayName(wrapped));
+    }
+
+    [Fact]
+    public void Consumer_version_gate_still_layers_on_top_of_the_wire_gate()
+    {
+        // The opt-in consumer ProtocolVersion is unchanged: it rides as an inner layer the WorldServer's
+        // VersionCheckingAuthenticator (composed INSIDE the always-on wire gate) checks after the generation matches.
+        var hub = new InMemoryHub();
+        WorldServer server = Server(hub, new VersionCheckingAuthenticator("game-3", v => v == "game-3"));
+        var client = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default,
+            new WorldClientConfig { ProtocolVersion = "game-3" });
+
+        Pump(server, client);
+
+        Assert.True(client.Joined);
+        Assert.Equal(DisconnectReason.None, client.DisconnectReason);
+    }
 }

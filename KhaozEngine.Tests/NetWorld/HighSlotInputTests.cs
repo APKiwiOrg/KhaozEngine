@@ -31,7 +31,7 @@ public class HighSlotInputTests
         var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default);
 
         var clients = new List<NetClient>();
-        for (int i = 0; i < Players; i++) clients.Add(new NetClient(hub.CreateClient()));
+        for (int i = 0; i < Players; i++) clients.Add(new NetClient(hub.CreateClient(), TestHandshake.Wire()));
 
         // Join everyone.
         // Pump until every client has completed the join handshake (received its Welcome + slot). Waiting on
@@ -82,7 +82,7 @@ public class HighSlotInputTests
         var server = new ShardedWorldServer(hub.Server, config, Flat, MoveTuning.Default);
 
         var clients = new List<NetClient>();
-        for (int i = 0; i < Players; i++) clients.Add(new NetClient(hub.CreateClient()));
+        for (int i = 0; i < Players; i++) clients.Add(new NetClient(hub.CreateClient(), TestHandshake.Wire()));
 
         // Pump until every client has completed the join handshake (received its Welcome + slot). Waiting on
         // server-side PlayerCount alone races: the server counts a player as joined a round before that client polls

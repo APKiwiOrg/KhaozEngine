@@ -18,7 +18,7 @@ public class WorldServerAdminTests
         var (st, ct) = LoopbackTransport.CreatePair();
         config = new WorldServerConfig { TickSeconds = 1f / 30f, MaxPlayers = 4 };
         var server = new WorldServer(st, config, Flat, MoveTuning.Default);
-        client = new NetClient(ct, Encoding.UTF8.GetBytes(account));
+        client = new NetClient(ct, TestHandshake.Wire(account));
         for (int i = 0; i < 200 && server.PlayerCount == 0; i++) { client.Poll(); server.Poll(); server.Tick(config.TickSeconds); }
         server.Tick(config.TickSeconds);   // publish the online snapshot
         slot = server.JoinedSlots.First();

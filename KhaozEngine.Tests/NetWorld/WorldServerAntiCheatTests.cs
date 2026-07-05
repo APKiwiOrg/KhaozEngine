@@ -24,7 +24,7 @@ public class WorldServerAntiCheatTests
         var (st, ct) = LoopbackTransport.CreatePair();
         var server = new WorldServer(st, config, Flat, MoveTuning.Default, bounds: bounds);
         server.OnSuspiciousActivity += flags.Add;
-        var client = new NetClient(ct);
+        var client = new NetClient(ct, TestHandshake.Wire());
         for (int i = 0; i < 100 && server.PlayerCount == 0; i++)
         {
             client.Poll();

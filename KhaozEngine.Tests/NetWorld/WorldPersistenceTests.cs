@@ -31,7 +31,7 @@ public class WorldPersistenceTests
             config = new WorldServerConfig { TickSeconds = 1f / 30f, MaxPlayers = 4 };
             Server = new WorldServer(serverTransport, config, FlatGround, MoveTuning.Default);
             Persistence = new WorldPersistence(Server, store, pcfg);
-            client = new NetClient(clientTransport, token);
+            client = new NetClient(clientTransport, TestHandshake.Wire(token));
         }
 
         // Pump until the predicate is true (or the frame budget runs out), running persistence.Update each frame.

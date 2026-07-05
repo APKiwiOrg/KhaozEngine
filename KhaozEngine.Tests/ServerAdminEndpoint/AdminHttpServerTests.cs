@@ -13,6 +13,7 @@ using KhaozEngine.Netcode;
 using KhaozEngine.NetWorld;
 using KhaozEngine.Server.Admin;
 using KhaozEngine.WorldStore;
+using KhaozEngine.Tests.NetWorld;   // TestHandshake
 using Xunit;
 
 namespace KhaozEngine.Tests.ServerAdminEndpoint;
@@ -36,7 +37,7 @@ public class AdminHttpServerTests
         var (st, ct) = LoopbackTransport.CreatePair();
         var config = new WorldServerConfig { TickSeconds = 1f / 30f, MaxPlayers = 4 };
         var server = new WorldServer(st, config, Flat, MoveTuning.Default);
-        var client = new NetClient(ct, Encoding.UTF8.GetBytes("alice"));
+        var client = new NetClient(ct, TestHandshake.Wire("alice"));
         for (int i = 0; i < 200 && server.PlayerCount == 0; i++) { client.Poll(); server.Poll(); server.Tick(config.TickSeconds); }
         server.Tick(config.TickSeconds);
 
@@ -79,7 +80,7 @@ public class AdminHttpServerTests
         var (st, ct) = LoopbackTransport.CreatePair();
         var config = new WorldServerConfig { TickSeconds = 1f / 30f, MaxPlayers = 4 };
         var server = new WorldServer(st, config, Flat, MoveTuning.Default);
-        var client = new NetClient(ct, Encoding.UTF8.GetBytes("bob"));
+        var client = new NetClient(ct, TestHandshake.Wire("bob"));
         for (int i = 0; i < 200 && server.PlayerCount == 0; i++) { client.Poll(); server.Poll(); server.Tick(config.TickSeconds); }
         Assert.Equal(1, server.PlayerCount);
 

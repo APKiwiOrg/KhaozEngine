@@ -40,7 +40,7 @@ public class ShardedWorldPersistenceTests
         var cfg = Cfg(_ => new Vector3(5f, 0f, 5f));          // default spawn cell (0,0)
         var server = new ShardedWorldServer(st, cfg, Flat, MoveTuning.Default);
         var persistence = new WorldPersistence(server, store, new WorldPersistenceConfig { SaveIntervalSeconds = 999f });
-        var client = new NetClient(ct, token);
+        var client = new NetClient(ct, TestHandshake.Wire(token));
 
         // Join, then drive enough frames for the async load to apply AND the handoff to relocate the entity.
         for (int i = 0; i < 200; i++) { client.Poll(); server.Poll(); server.Tick(cfg.TickSeconds); persistence.Update(cfg.TickSeconds); }
@@ -67,7 +67,7 @@ public class ShardedWorldPersistenceTests
             var cfg = Cfg(_ => new Vector3(8f, 0f, 5f));
             var server = new ShardedWorldServer(st, cfg, Flat, MoveTuning.Default);
             var persistence = new WorldPersistence(server, store, new WorldPersistenceConfig { SaveIntervalSeconds = 999f });
-            var client = new NetClient(ct, token);
+            var client = new NetClient(ct, TestHandshake.Wire(token));
             for (int i = 0; i < 60; i++) { client.Poll(); server.Poll(); server.Tick(cfg.TickSeconds); persistence.Update(cfg.TickSeconds); }
 
             for (int i = 0; i < 120; i++)
@@ -91,7 +91,7 @@ public class ShardedWorldPersistenceTests
             var cfg = Cfg(_ => new Vector3(5f, 0f, 5f));        // default spawn is cell 0
             var server = new ShardedWorldServer(st, cfg, Flat, MoveTuning.Default);
             var persistence = new WorldPersistence(server, store, new WorldPersistenceConfig { SaveIntervalSeconds = 999f });
-            var client = new NetClient(ct, token);
+            var client = new NetClient(ct, TestHandshake.Wire(token));
             for (int i = 0; i < 200; i++) { client.Poll(); server.Poll(); server.Tick(cfg.TickSeconds); persistence.Update(cfg.TickSeconds); }
 
             Assert.True(server.TryGetPlayerState(client.Slot, out PlayerMoveState restored));

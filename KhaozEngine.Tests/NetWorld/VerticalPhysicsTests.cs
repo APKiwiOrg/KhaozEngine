@@ -113,7 +113,7 @@ public class VerticalPhysicsTests
         var (st, ct) = LoopbackTransport.CreatePair();
         var cfg = new WorldServerConfig { TickSeconds = 1f / 30f, SpawnPosition = _ => Vector3.Zero };
         var server = new WorldServer(st, cfg, Flat, MoveTuning.Default);
-        var client = new NetClient(ct);
+        var client = new NetClient(ct, TestHandshake.Wire());
         for (int i = 0; i < 10; i++) { client.Poll(); server.Poll(); server.Tick(cfg.TickSeconds); }
         Assert.True(server.TryGetPlayerNetId(client.Slot, out _));
 
@@ -148,7 +148,7 @@ public class VerticalPhysicsTests
             SpawnPosition = _ => Vector3.Zero,
         };
         var server = new ShardedWorldServer(st, cfg, Flat, MoveTuning.Default);
-        var client = new NetClient(ct);
+        var client = new NetClient(ct, TestHandshake.Wire());
         for (int i = 0; i < 10; i++) { client.Poll(); server.Poll(); server.Tick(cfg.TickSeconds); }
         Assert.True(server.TryGetPlayerNetId(client.Slot, out _));
 
@@ -173,7 +173,7 @@ public class VerticalPhysicsTests
             SpawnPosition = _ => Vector3.Zero,
         };
         var server = new ShardedWorldServer(st, cfg, Flat, MoveTuning.Default);
-        var client = new NetClient(ct);
+        var client = new NetClient(ct, TestHandshake.Wire());
         for (int i = 0; i < 10; i++) { client.Poll(); server.Poll(); server.Tick(cfg.TickSeconds); }
         Assert.True(server.TryGetPlayerNetId(client.Slot, out long netId));
 

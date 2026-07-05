@@ -36,7 +36,7 @@ public class ShardedWorldServerAntiCheatTests
         var (st, ct) = LoopbackTransport.CreatePair();
         var server = new ShardedWorldServer(st, cfg, Flat, MoveTuning.Default, bounds: bounds);
         server.OnSuspiciousActivity += flags.Add;
-        var client = new NetClient(ct);
+        var client = new NetClient(ct, TestHandshake.Wire());
         for (int i = 0; i < 200 && server.PlayerCount == 0; i++)
         {
             client.Poll();

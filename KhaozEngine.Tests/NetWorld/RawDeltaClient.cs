@@ -23,7 +23,7 @@ internal sealed class RawDeltaClient
 
     public RawDeltaClient(INetTransport transport, ReplicationRegistry registry, bool advertiseDelta = true)
     {
-        net = new NetClient(transport);
+        net = new NetClient(transport, TestHandshake.Wire());   // fold in the engine wire generation, like WorldClient
         this.advertiseDelta = advertiseDelta;
         View = new ClientReplicationView(registry);
     }

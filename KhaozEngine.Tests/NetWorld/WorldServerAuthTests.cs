@@ -23,7 +23,7 @@ public class WorldServerAuthTests
         var captured = new List<(int slot, string acct)>();
         server.PlayerJoined += (slot, acct) => captured.Add((slot, acct));
 
-        var client = new NetClient(clientTransport, connectToken);
+        var client = new NetClient(clientTransport, TestHandshake.Wire(connectToken));
         for (int i = 0; i < 200 && captured.Count == 0; i++)
         {
             client.Poll();

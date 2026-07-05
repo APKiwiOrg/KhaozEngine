@@ -22,7 +22,7 @@ public class ServerAdminTests
         var config = new WorldServerConfig { TickSeconds = 1f / 30f, MaxPlayers = 4 };
         var bans = new InMemoryBanStore();
         var server = new WorldServer(st, config, Flat, MoveTuning.Default, banStore: bans);
-        var client = new NetClient(ct, Encoding.UTF8.GetBytes("evil"));
+        var client = new NetClient(ct, TestHandshake.Wire("evil"));
         for (int i = 0; i < 200 && server.PlayerCount == 0; i++) { client.Poll(); server.Poll(); server.Tick(config.TickSeconds); }
 
         var admin = new ServerAdmin(server, bans);

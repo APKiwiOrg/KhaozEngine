@@ -98,7 +98,7 @@ public class MovementBoundsTests
         var bounds = new CircleBounds(new Vector2(0f, 0f), 6f);
         var cfg = new WorldServerConfig { TickSeconds = 1f / 30f, SpawnPosition = _ => Vector3.Zero };
         var server = new WorldServer(st, cfg, Flat, MoveTuning.Default, groundNormal: null, bounds: bounds);
-        var client = new NetClient(ct);
+        var client = new NetClient(ct, TestHandshake.Wire());
         for (int i = 0; i < 10; i++) { client.Poll(); server.Poll(); server.Tick(cfg.TickSeconds); }
         Assert.True(server.TryGetPlayerNetId(client.Slot, out _));
         for (int i = 0; i < 300; i++)
@@ -121,7 +121,7 @@ public class MovementBoundsTests
             SpawnPosition = _ => Vector3.Zero,
         };
         var server = new ShardedWorldServer(st, cfg, Flat, MoveTuning.Default, groundNormal: null, bounds: bounds);
-        var client = new NetClient(ct);
+        var client = new NetClient(ct, TestHandshake.Wire());
         for (int i = 0; i < 10; i++) { client.Poll(); server.Poll(); server.Tick(cfg.TickSeconds); }
         Assert.True(server.TryGetPlayerNetId(client.Slot, out _));
         for (int i = 0; i < 300; i++)

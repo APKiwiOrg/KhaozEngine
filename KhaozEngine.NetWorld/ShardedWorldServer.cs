@@ -157,7 +157,9 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
             overlapMargin: config.OverlapMargin,
             positionAccessor: PositionAccessor);
         host.CellCreated += cell => CellCreated?.Invoke(cell.Coord);
-        net = new NetServer(transport, config.MaxPlayers, authenticator ?? new AllowAllAuthenticator());
+        // Always enforce the engine wire generation at connect (see WorldServer): a wire-skewed / version-less client
+        // is rejected cleanly rather than admitted and left to misparse the wire.
+        net = new NetServer(transport, config.MaxPlayers, WireGenerationAuthenticator.Install(authenticator));
         this.banStore = banStore;
     }
 

@@ -61,7 +61,7 @@ public class ShardedWorldServerTests
         var (st, ct) = LoopbackTransport.CreatePair();
         var cfg = SmallCells(_ => new Vector3(5f, 0f, 5f));   // cell (0,0)
         var server = new ShardedWorldServer(st, cfg, Flat, MoveTuning.Default);
-        var client = new NetClient(ct);
+        var client = new NetClient(ct, TestHandshake.Wire());
 
         int slot = JoinClient(server, client, cfg);
         Assert.True(server.TryGetPlayerNetId(slot, out long netId));
@@ -76,7 +76,7 @@ public class ShardedWorldServerTests
         var (st, ct) = LoopbackTransport.CreatePair();
         var cfg = SmallCells(_ => new Vector3(8f, 0f, 5f));   // cell (0,0), near east edge x=10
         var server = new ShardedWorldServer(st, cfg, Flat, MoveTuning.Default);
-        var client = new NetClient(ct);
+        var client = new NetClient(ct, TestHandshake.Wire());
         int slot = JoinClient(server, client, cfg);
         Assert.True(server.TryGetPlayerNetId(slot, out long netId));
 
@@ -114,9 +114,9 @@ public class ShardedWorldServerTests
             _ => new Vector3(55f, 0f, 5f),
         });
         var server = new ShardedWorldServer(hub.Server, cfg, Flat, MoveTuning.Default);
-        var c0 = new NetClient(hub.CreateClient());
-        var c1 = new NetClient(hub.CreateClient());
-        var c2 = new NetClient(hub.CreateClient());
+        var c0 = new NetClient(hub.CreateClient(), TestHandshake.Wire());
+        var c1 = new NetClient(hub.CreateClient(), TestHandshake.Wire());
+        var c2 = new NetClient(hub.CreateClient(), TestHandshake.Wire());
 
         for (int i = 0; i < 50; i++) { c0.Poll(); c1.Poll(); c2.Poll(); server.Poll(); server.Tick(cfg.TickSeconds); }
         Assert.Equal(3, server.PlayerCount);
@@ -139,8 +139,8 @@ public class ShardedWorldServerTests
             var hub = new InMemoryHub();
             var cfg = SmallCells(slot => new Vector3(7f + slot * 2f, 0f, 5f));
             var server = new ShardedWorldServer(hub.Server, cfg, Flat, MoveTuning.Default) { Scheduler = sched };
-            var a = new NetClient(hub.CreateClient());
-            var b = new NetClient(hub.CreateClient());
+            var a = new NetClient(hub.CreateClient(), TestHandshake.Wire());
+            var b = new NetClient(hub.CreateClient(), TestHandshake.Wire());
             for (int i = 0; i < 60; i++) { a.Poll(); b.Poll(); server.Poll(); server.Tick(cfg.TickSeconds); }
 
             var ar = new MoveCommand(new Vector2(1f, 0f), true, 0f);
@@ -208,7 +208,7 @@ public class ShardedWorldServerTests
 
         // Client A joins on slot 0 and plays enough ticks to push that slot's processed high-water mark up.
         INetTransport aTransport = hub.CreateClient();
-        var a = new NetClient(aTransport);
+        var a = new NetClient(aTransport, TestHandshake.Wire());
         int slotA = JoinClient(server, a, cfg);
 
         const int played = 40;
@@ -224,7 +224,7 @@ public class ShardedWorldServerTests
         Assert.Equal(0, server.PlayerCount);
 
         // Client B joins on the recycled slot 0, sending east commands that legitimately restart at seq 0.
-        var b = new NetClient(hub.CreateClient());
+        var b = new NetClient(hub.CreateClient(), TestHandshake.Wire());
         int slotB = JoinClient(server, b, cfg);
         Assert.Equal(slotA, slotB);   // same slot, recycled
         Assert.True(server.TryGetPlayerNetId(slotB, out long bNet));

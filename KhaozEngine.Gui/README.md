@@ -34,6 +34,16 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   - `Dropdown` - trigger + option list (opens below); two-phase draw (`Draw` trigger / `DrawOverlay` list last).
     Opt-in (default off): `ShowChevron` draws an up/down caret reflecting the open state; `Opacity` fades the whole
     dropdown for a host transition.
+  - **Keyboard/gamepad control (opt-in, additive)** on `Toggle`/`Slider`/`Dropdown`: each has an
+    `Update(InputManager, bool focused, PlayerIndex? = null)` overload that layers `InputManager` menu actions on
+    top of the pointer path (only when `focused`), mirroring `FocusNavigator`. So a settings row is fully
+    keyboard/gamepad-navigable without a `MenuEntry` shell. The pointer-only `Update(Pointer)` overloads are
+    unchanged. Toggle: select flips, next/previous force on/off (`Flip()`/`Set(bool)` primitives). Slider:
+    next/previous nudge `Value` by `NudgeStep` (default 0.1; `Nudge(float)` primitive). Dropdown: closed, select
+    opens and next/previous cycle in place; open, up/down move `HighlightedIndex`, select commits, cancel closes
+    (`Open`/`Close`/`HighlightNext`/`HighlightPrevious`/`CommitHighlight`/`StepSelection` primitives, `Wrap` flag,
+    `FocusColor` for the highlighted row). The pointer path never activates the highlight, so its overlay draw is
+    byte-identical.
   - `TextInput` - single-line field; tap-to-focus, typed keys edit the text (via `TextEntry`), blinking caret.
     A held key auto-repeats (Backspace deletes / a character keeps typing) at the OS repeat rate.
   - `Tooltip` - auto-sized floating bubble; `ComputeBounds` (flip/clamp) is a pure, testable layout function.

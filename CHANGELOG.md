@@ -5,6 +5,19 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.9.0
+
+Keyboard/gamepad navigation for the retained `Toggle`, `Slider`, and `Dropdown` widgets, so a settings row can be driven without a pointer and no longer needs the `MenuEntry` shell to be focusable. Additive and opt-in: every existing `Update(Pointer)` overload is byte-for-byte unchanged, and the new input reads only through `InputManager` menu actions (no raw window input, headless-testable). Additive API, so a minor bump.
+
+- **Wired convenience overload on each widget:** `Update(InputManager input, bool focused, PlayerIndex? player = null)` layers keyboard/gamepad on top of the pointer path, mirroring `FocusNavigator.Update(InputManager)`. Only when `focused` does it read menu actions; `player` scopes gamepad input (null = any). Returns true if the widget changed this frame by either path.
+  - `Toggle`: menu-select (Enter/Space/A/Start) flips; "select next" (Right/D-pad right) forces on; "select previous" (Left/D-pad left) forces off.
+  - `Slider`: "select next/previous" nudges `Value` by the new `NudgeStep` field (default 0.1); the pointer drag is unchanged.
+  - `Dropdown`: closed, menu-select opens and "select next/previous" cycles the selection in place; open, menu-up/down move the highlight, menu-select commits it, menu-cancel (Escape/B/Back) closes without changing.
+- **Pure primitives (headless, pointer-independent), matching `Slider.Nudge`:** `Toggle.Flip()` / `Toggle.Set(bool)`; `Dropdown.Open()` / `Close()` / `HighlightNext()` / `HighlightPrevious()` / `CommitHighlight()` / `StepSelection(int)`. Each fires the existing change callback / sets `WasChanged` and returns whether it changed. Consumers wanting custom key bindings can drive these directly.
+- **New `Dropdown` state for keyboard use:** `HighlightedIndex` (the open-list cursor; -1 when no keyboard highlight is active), a `Wrap` flag (default true - movement wraps at the ends, matching `FocusNavigator`), and a `FocusColor` for the highlighted row. `DrawOverlay` fills the highlighted row with `FocusColor`. The pointer-only path never activates the highlight (`HighlightedIndex` stays -1), so its overlay draw stays byte-identical to pre-10.9.0.
+- **`Slider` gains `NudgeStep`** (default 0.1) as the per-step delta for the wired overload; the existing `Nudge(float)` primitive is unchanged.
+- Consumers re-pin to adopt. A settings screen can now feed each row's widget the frame's `InputManager` with a `focused` flag from a `FocusNavigator` instead of routing through `MenuEntry`. No breaking changes.
+
 ## 10.8.0
 
 Fixes macOS in-place self-update, which could never complete: the applier now re-seals the `.app` bundle after the file swap and before the code-signature verify. On macOS the game ships as a signed `.app` whose `_CodeSignature/CodeResources` seal covers every file, so the in-place swap of the staged payload inside `Contents/MacOS/` invalidated the seal and the fail-closed `codesign --verify --deep --strict` the applier runs afterward ALWAYS failed, rolling every macOS update back (only `win-x64`/`linux-x64` self-updated). Additive API, so a minor bump.

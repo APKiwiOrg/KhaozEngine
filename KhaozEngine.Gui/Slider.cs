@@ -10,7 +10,8 @@ namespace KhaozEngine.Gui
     /// A horizontal slider over <see cref="Pointer"/>: <see cref="Bounds"/> is the interactive track. A press
     /// that begins inside the track starts a drag and jumps the value to the pointer; dragging keeps tracking
     /// (clamped 0..1) until release. A press that began elsewhere is ignored, like the click-through invariant.
-    /// Call <see cref="Update"/> then <see cref="Draw"/> each frame.
+    /// Call <see cref="Update(Pointer)"/> then <see cref="Draw"/> each frame. Keyboard/gamepad control is opt-in via
+    /// the <see cref="Update(InputManager, bool, PlayerIndex?)"/> overload (and the <see cref="Nudge"/> primitive).
     /// </summary>
     public sealed class Slider
     {
@@ -26,6 +27,13 @@ namespace KhaozEngine.Gui
         public Vector4 ThumbColor = Vector4.One;
         public Vector4 ThumbDragColor = new(0.39f, 0.70f, 1f, 1f);
         public float ThumbWidth = 10f;
+
+        /// <summary>
+        /// Amount <see cref="Value"/> moves per "select next/previous" step in the wired
+        /// <see cref="Update(InputManager, bool, PlayerIndex?)"/> overload (keyboard/gamepad). Default 0.1 (ten
+        /// steps across the track). Ignored by the pointer path.
+        /// </summary>
+        public float NudgeStep = 0.1f;
 
         /// <summary>
         /// Modern-look knobs (rounded/shadow/gradient/glow) for the thumb; defaults to the flat
@@ -60,6 +68,22 @@ namespace KhaozEngine.Gui
             if (newValue == Value) return false;
             Value = newValue;
             return true;
+        }
+
+        /// <summary>
+        /// Pointer drag (as <see cref="Update(Pointer)"/>) plus keyboard/gamepad control when
+        /// <paramref name="focused"/>: "select next" (Right/D-pad right) nudges up by <see cref="NudgeStep"/>,
+        /// "select previous" (Left/D-pad left) nudges down. Opt-in and additive - the pointer-only overload is
+        /// unchanged. Returns true if <see cref="Value"/> changed this frame by either path.
+        /// <paramref name="player"/> scopes gamepad input (null = any player).
+        /// </summary>
+        public bool Update(InputManager input, bool focused, PlayerIndex? player = null)
+        {
+            bool changed = Update(input.Pointer);
+            if (!focused) return changed;
+            if (input.IsSelectNext(player)) { if (Nudge(NudgeStep)) changed = true; }
+            else if (input.IsSelectPrevious(player)) { if (Nudge(-NudgeStep)) changed = true; }
+            return changed;
         }
 
         /// <summary>

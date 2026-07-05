@@ -20,12 +20,23 @@ namespace KhaozEngine.Gui
     {
         readonly List<DropdownOption> _options;
 
-        /// <summary>Trigger button bounds; option rows render below it. Update before <see cref="Update"/> if it moves.</summary>
+        /// <summary>Trigger button bounds; option rows render below it. Update before <see cref="Update(Pointer)"/> if it moves.</summary>
         public Rect TriggerBounds;
         public bool IsOpen { get; private set; }
         /// <summary>True on the frame the selection changed.</summary>
         public bool WasChanged { get; private set; }
         public int SelectedIndex { get; private set; }
+
+        /// <summary>
+        /// The keyboard/gamepad cursor row within the open list, or -1 when no keyboard highlight is active
+        /// (the pointer-only path never activates it, so its overlay draw is byte-identical). Seeded to
+        /// <see cref="SelectedIndex"/> by <see cref="Open"/>; moved by <see cref="HighlightNext"/>/
+        /// <see cref="HighlightPrevious"/>; committed by <see cref="CommitHighlight"/>.
+        /// </summary>
+        public int HighlightedIndex { get; private set; } = -1;
+
+        /// <summary>When true (default) keyboard highlight movement and inline stepping wrap at the ends; when false they clamp.</summary>
+        public bool Wrap = true;
         public int SelectedValue => _options[SelectedIndex].Value;
         public string SelectedLabel => _options[SelectedIndex].Label;
         public IReadOnlyList<DropdownOption> Options => _options;
@@ -36,6 +47,8 @@ namespace KhaozEngine.Gui
         public Vector4 ListBackground = new(0.07f, 0.07f, 0.11f, 1f);
         public Vector4 HoverColor = new(0.11f, 0.13f, 0.18f, 1f);
         public Vector4 SelectedColor = new(0.14f, 0.20f, 0.29f, 1f);
+        /// <summary>Row fill under the keyboard/gamepad highlight (<see cref="HighlightedIndex"/>). Only drawn when a keyboard highlight is active.</summary>
+        public Vector4 FocusColor = new(0.16f, 0.24f, 0.36f, 1f);
         public Vector4 TextColor = new(0.78f, 0.80f, 0.84f, 1f);
         public Vector4 SelectedTextColor = new(0.55f, 0.78f, 1f, 1f);
 
@@ -83,7 +96,8 @@ namespace KhaozEngine.Gui
             pointer.BlockRegion(IsOpen ? FullBounds() : TriggerBounds);
             if (!IsOpen)
             {
-                if (pointer.IsTapIn(TriggerBounds)) IsOpen = true;
+                // Pointer-driven open: no keyboard cursor, so the overlay draws byte-identically to pre-key-nav.
+                if (pointer.IsTapIn(TriggerBounds)) { IsOpen = true; HighlightedIndex = -1; }
                 return false;
             }
 
@@ -99,6 +113,92 @@ namespace KhaozEngine.Gui
 
             if (pointer.IsReleasedOutside(FullBounds())) IsOpen = false;
             return false;
+        }
+
+        /// <summary>
+        /// Pointer hit-test (as <see cref="Update(Pointer)"/>) plus keyboard/gamepad control when
+        /// <paramref name="focused"/>. Closed: menu-select (Enter/Space/A/Start) opens the list, "select next/previous"
+        /// (Left/Right/D-pad) cycles the selection in place. Open: menu-up/down move the highlight, menu-select commits
+        /// it, menu-cancel (Escape/B/Back) closes without changing. Opt-in and additive - the pointer-only overload is
+        /// unchanged. Returns true if the selection changed this frame. <paramref name="player"/> scopes gamepad input
+        /// (null = any player).
+        /// </summary>
+        public bool Update(InputManager input, bool focused, PlayerIndex? player = null)
+        {
+            bool changed = Update(input.Pointer);
+            if (!focused) return changed;
+            if (IsOpen)
+            {
+                if (input.IsMenuDown(player)) HighlightNext();
+                else if (input.IsMenuUp(player)) HighlightPrevious();
+                else if (input.IsMenuSelect(player, out _)) { if (CommitHighlight()) changed = true; }
+                else if (input.IsMenuCancel(player, out _)) Close();
+            }
+            else
+            {
+                if (input.IsMenuSelect(player, out _)) Open();
+                else if (input.IsSelectNext(player)) { if (StepSelection(1)) changed = true; }
+                else if (input.IsSelectPrevious(player)) { if (StepSelection(-1)) changed = true; }
+            }
+            return changed;
+        }
+
+        /// <summary>Open the list and seed the keyboard highlight to the current selection.</summary>
+        public void Open() { IsOpen = true; HighlightedIndex = SelectedIndex; }
+
+        /// <summary>Close the list. Leaves the selection untouched.</summary>
+        public void Close() => IsOpen = false;
+
+        /// <summary>Move the keyboard highlight down one row (wraps or clamps per <see cref="Wrap"/>). Returns true if it moved.</summary>
+        public bool HighlightNext() => MoveHighlight(1);
+
+        /// <summary>Move the keyboard highlight up one row (wraps or clamps per <see cref="Wrap"/>). Returns true if it moved.</summary>
+        public bool HighlightPrevious() => MoveHighlight(-1);
+
+        bool MoveHighlight(int dir)
+        {
+            int from = HighlightedIndex >= 0 ? HighlightedIndex : SelectedIndex;
+            int to = Step(from, dir);
+            if (to == HighlightedIndex) return false;
+            HighlightedIndex = to;
+            return true;
+        }
+
+        /// <summary>
+        /// Commit the keyboard highlight as the selection and close. Sets <see cref="WasChanged"/> and returns true
+        /// only when the selection actually changed. No-op when no highlight is active.
+        /// </summary>
+        public bool CommitHighlight()
+        {
+            if (HighlightedIndex < 0) { IsOpen = false; return false; }
+            bool changed = HighlightedIndex != SelectedIndex;
+            SelectedIndex = HighlightedIndex;
+            IsOpen = false;
+            if (changed) WasChanged = true;
+            return changed;
+        }
+
+        /// <summary>
+        /// Step the selection by <paramref name="dir"/> (wraps or clamps per <see cref="Wrap"/>) without opening the
+        /// list - the inline "cycle in place" for a focused, closed selector. Sets <see cref="WasChanged"/> and returns
+        /// true only when the selection actually changed.
+        /// </summary>
+        public bool StepSelection(int dir)
+        {
+            int to = Step(SelectedIndex, dir);
+            if (to == SelectedIndex) return false;
+            SelectedIndex = to;
+            WasChanged = true;
+            return true;
+        }
+
+        int Step(int index, int dir)
+        {
+            int n = _options.Count;
+            if (n == 0) return index;
+            if (Wrap) return ((index + dir) % n + n) % n;
+            int next = index + dir;
+            return next < 0 ? 0 : (next >= n ? n - 1 : next);
         }
 
         /// <summary>The bounds of option row <paramref name="i"/> in the open list.</summary>
@@ -138,7 +238,10 @@ namespace KhaozEngine.Gui
             {
                 Rect r = OptionBounds(i);
                 bool selected = i == SelectedIndex;
+                // Precedence: current selection, then the keyboard/gamepad highlight (inactive at -1 for the
+                // pointer-only path, so this stays byte-identical there), then pointer hover.
                 if (selected) GuiDraw.Fill(batch, white, r, GuiDraw.WithOpacity(SelectedColor, Opacity));
+                else if (i == HighlightedIndex) GuiDraw.Fill(batch, white, r, GuiDraw.WithOpacity(FocusColor, Opacity));
                 else if (pointer.IsPointerIn(r)) GuiDraw.Fill(batch, white, r, GuiDraw.WithOpacity(HoverColor, Opacity));
                 float ty = r.Y + (r.Height - font.LineHeight) * 0.5f;
                 batch.DrawString(font, _options[i].Label, new Vector2(MathF.Floor(r.X + 6f), MathF.Floor(ty)),

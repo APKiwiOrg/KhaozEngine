@@ -423,6 +423,27 @@ modal.
 **`FocusNavigator`** - keyboard/gamepad menu focus: `SetCount`, `Focus`, `MoveNext`/`MovePrevious`, `Wrap`, and
 `Update(InputManager, PlayerIndex?)` which advances focus from menu-nav edges.
 
+**Keyboard/gamepad on `Toggle`/`Slider`/`Dropdown` (opt-in, additive, 10.9.0)** - each widget has an
+`Update(InputManager, bool focused, PlayerIndex? = null)` overload that adds keyboard/gamepad control on top of the
+pointer path, but only while `focused` (drive that flag from a `FocusNavigator`). This is what lets a settings row
+be fully navigable without wrapping each control in a `MenuEntry`. The pointer-only `Update(Pointer)` overloads are
+unchanged, so existing screens keep working; adopt by switching the row's `Update` call. Pure pointer-independent
+primitives (headless-testable, matching `Slider.Nudge`) sit under each overload for custom bindings:
+
+- `Toggle`: menu-select (Enter/Space/A/Start) flips; select-next/previous (Left/Right/D-pad) force off/on. Primitives `Flip()` / `Set(bool)`.
+- `Slider`: select-next/previous nudge `Value` by `NudgeStep` (default 0.1). Primitive `Nudge(float)`.
+- `Dropdown`: closed -> menu-select opens, select-next/previous cycle the selection in place; open -> menu-up/down move `HighlightedIndex`, menu-select commits it, menu-cancel (Escape/B/Back) closes without changing. `Wrap` (default true) wraps at the ends; `FocusColor` fills the highlighted row (the pointer path leaves `HighlightedIndex` at -1, so its overlay is byte-identical). Primitives `Open`/`Close`/`HighlightNext`/`HighlightPrevious`/`CommitHighlight`/`StepSelection`.
+
+```csharp
+// A keyboard/gamepad-navigable settings column: FocusNavigator picks the row, the focused widget reads input.
+nav.SetCount(3);
+nav.Update(input);                                  // Up/Down moves focus between rows
+volume.Update(input, focused: nav.Focused == 0);    // Left/Right nudges the slider when its row is focused
+fullscreen.Update(input, focused: nav.Focused == 1); // Enter flips the toggle; Left/Right force off/on
+quality.Update(input, focused: nav.Focused == 2);   // Enter opens the dropdown; Up/Down + Enter pick an option
+// Pointer still works on every row regardless of focus (each overload runs the pointer path first).
+```
+
 **Overlay chrome on the core widgets (opt-in, 9.21.0)** - `ScrollablePanel`, `Dropdown`, and `Tooltip` carry
 opt-in "panel overlay" behaviours for bottom-sheet-style UI. Every knob defaults to a no-op, so a widget you
 already use is unchanged until you set one.

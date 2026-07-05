@@ -36,6 +36,14 @@ public sealed class CellSim
     // RestoreOwned, ReleaseMigrating and the ShardHost migrate-freeze. ScanOwned behind it is the miss-fallback + oracle.
     private readonly Dictionary<int, Entity> owned = new();
 
+    // Extension component frames whose id THIS cell's registry does not know, captured at restore keyed by netId, so
+    // SnapshotOwned re-emits them verbatim (retain-and-rewrite): a registry downgrade (a build missing a registration,
+    // a rollback) no longer strips those components off the persisted blob. Normally empty; populated only under a
+    // downgrade. Pruned when an entity leaves this cell's ownership (UnregisterOwned). NOTE: a retained frame does not
+    // follow a cell handoff - there is no live component to migrate - so retention protects the restart load/save
+    // cycle (the stated goal), not migration during a regression.
+    private readonly Dictionary<int, List<RetainedComponent>> retainedUnknown = new();
+
     // Wired by the owning ShardHost when it creates this cell, so the host's netId -> cell index tracks every
     // register/unregister without CellSim knowing about the host. Null for a standalone cell (direct construction).
     internal Action<int, Entity>? OwnedRegisteredHook;
@@ -176,6 +184,7 @@ public sealed class CellSim
     /// </summary>
     public bool UnregisterOwned(int netId)
     {
+        retainedUnknown.Remove(netId);   // the entity is leaving this cell: drop its retained unknown frames too
         if (!owned.Remove(netId)) return false;
         OwnedUnregisteredHook?.Invoke(netId);
         return true;
@@ -239,26 +248,60 @@ public sealed class CellSim
             if (excludedNetIds.Contains(id.Value)) return;
             ids.Add(id.Value);
         });
-        return SnapshotWriter.WriteFiltered(World, registry, ids, ReplicationChannels.Persist, ownerNetId: null);
+        // Re-emit any retained unknown-extension frames (retain-and-rewrite) so a registry downgrade cannot strip
+        // them off the blob. The provider is only wired when something is actually retained (normally nothing).
+        Func<int, IReadOnlyList<RetainedComponent>?>? retainedFrames =
+            retainedUnknown.Count == 0 ? null : RetainedFramesFor;
+        return SnapshotWriter.WriteFiltered(World, registry, ids, ReplicationChannels.Persist, ownerNetId: null, retainedFrames);
     }
+
+    private IReadOnlyList<RetainedComponent>? RetainedFramesFor(int netId) =>
+        retainedUnknown.TryGetValue(netId, out List<RetainedComponent>? list) ? list : null;
 
     /// <summary>
     /// Restores the entities in <paramref name="snapshot"/> into this cell's world as freshly owned entities
     /// (a throwaway <see cref="ClientReplicationView"/>, exactly like <see cref="AdoptFromMigrate"/>), keeping their
-    /// <see cref="NetId"/>s. Returns the restored NetId values. Intended to run once on cell creation.
+    /// <see cref="NetId"/>s. Returns the restored NetId values (empty if the blob failed to decode). Non-throwing:
+    /// delegates to <see cref="TryRestoreOwned"/>, so a corrupt blob rolls back and returns empty rather than
+    /// throwing. Intended to run once on cell creation.
     /// </summary>
-    public IReadOnlyList<int> RestoreOwned(byte[] snapshot)
+    public IReadOnlyList<int> RestoreOwned(byte[] snapshot) => TryRestoreOwned(snapshot).NetIds;
+
+    /// <summary>
+    /// Restores <paramref name="snapshot"/> into this cell as freshly owned entities (a throwaway
+    /// <see cref="ClientReplicationView"/>), keeping their <see cref="NetId"/>s, and returns a
+    /// <see cref="CellRestoreResult"/> reporting decode success. NON-THROWING and transactional: a blob that fails to
+    /// decode (a corrupt frame, an unknown built-in id) is rolled back (every entity the partial apply spawned is
+    /// despawned, so the cell is left empty) and reported as <see cref="CellRestoreResult.Ok"/> = false, so the
+    /// persistence driver can quarantine the poisoned bytes instead of crash-looping. Extension frames whose id this
+    /// cell's registry does not know are RETAINED per-netId and re-emitted verbatim by <see cref="SnapshotOwned"/>
+    /// (retain-and-rewrite), so a registry downgrade cannot strip data at rest;
+    /// <see cref="CellRestoreResult.RetainedFrameCount"/> reports how many. Intended to run once on cell creation.
+    /// </summary>
+    public CellRestoreResult TryRestoreOwned(byte[] snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         var view = new ClientReplicationView(registry);
-        view.Apply(World, snapshot);
+        if (!view.TryApplyRetainingUnknown(World, snapshot, out IReadOnlyList<RetainedComponent> retained, out string? error))
+        {
+            // Roll back the partial apply so the cell starts genuinely fresh (the caller quarantines the bytes).
+            foreach (KeyValuePair<int, Entity> kv in view.Entities)
+                if (World.IsAlive(kv.Value)) World.Despawn(kv.Value);
+            return CellRestoreResult.Failed(error ?? "cell snapshot failed to decode");
+        }
         var netIds = new List<int>(view.Entities.Count);
         foreach (KeyValuePair<int, Entity> kv in view.Entities)
         {
             netIds.Add(kv.Key);
             RegisterOwned(kv.Key, kv.Value); // restored entities are owned here -> index them
         }
-        return netIds;
+        foreach (RetainedComponent rc in retained)
+        {
+            if (!retainedUnknown.TryGetValue(rc.NetId, out List<RetainedComponent>? list))
+                retainedUnknown[rc.NetId] = list = new List<RetainedComponent>();
+            list.Add(rc);
+        }
+        return new CellRestoreResult(true, netIds, retained.Count, null);
     }
 
     /// <summary>The largest owned (non-ghost, non-migrating) <see cref="NetId"/> in this cell, or 0 if none.</summary>

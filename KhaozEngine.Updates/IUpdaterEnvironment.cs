@@ -3,6 +3,34 @@
 namespace KhaozEngine.Updates;
 
 /// <summary>
+/// How a relaunch attempt started, reported by <see cref="IUpdaterEnvironment.TryRelaunch"/> so the
+/// applier can retry a launch that hit the Windows AV/image race instead of leaving the player on a
+/// bare "The application was unable to start correctly (0xc0000142)" dialog.
+/// </summary>
+public enum RelaunchStartupOutcome
+{
+    /// <summary>The process is still alive after the watch window (the image loaded and the game is booting).</summary>
+    Running,
+
+    /// <summary>
+    /// The process exited within the watch window with a Windows startup-failure NTSTATUS
+    /// (0xC0000142 DLL-init-failed, 0xC0000409 stack-buffer-overrun, 0xC0000005 access-violation,
+    /// 0xC0000135 DLL-not-found, 0xC0000139 entry-point-not-found). This is the AV/torn-image race:
+    /// retrying after a short back-off lets the security scan release the new image.
+    /// </summary>
+    StartupFailed,
+
+    /// <summary>
+    /// The process exited within the watch window with any other code (including 0). The game actually
+    /// ran (it just closed quickly), so the relaunch is done and must not be retried.
+    /// </summary>
+    ExitedEarly,
+
+    /// <summary>The launch could not be started at all (the file was missing or the OS refused to start it); retry.</summary>
+    LaunchError
+}
+
+/// <summary>
 /// The side-effecting operations the staged-apply core needs: file IO, process waiting/relaunch, and
 /// the macOS quarantine clear. Abstracted so <see cref="UpdateApplier"/> is pure orchestration and
 /// fully headless-testable; <see cref="SystemUpdaterEnvironment"/> is the real implementation the
@@ -15,6 +43,19 @@ public interface IUpdaterEnvironment
     void WriteAllText(string path, string content);
     void CreateDirectory(string path);
     void CopyFile(string source, string destination, bool overwrite);
+
+    /// <summary>
+    /// Atomically replaces <paramref name="destination"/> with the contents of <paramref name="source"/>.
+    /// The real environment copies to a temp file in the destination's directory then renames it into
+    /// place (a same-volume rename is atomic on Windows and POSIX), so a concurrent reader or the
+    /// post-apply relaunch can never observe a half-written image, and the on-disk file is always either
+    /// the complete old or complete new content. This is how the freshly-installed binaries (including the
+    /// game exe) are written, closing the "WER reports the old version" torn-image race. The default
+    /// delegates to a plain overwriting <see cref="CopyFile"/> so external implementers predating this
+    /// member keep compiling (they simply do not get the atomic guarantee).
+    /// </summary>
+    void ReplaceFile(string source, string destination) => CopyFile(source, destination, overwrite: true);
+
     void DeleteFile(string path);
     void DeleteDirectory(string path);
     void Sleep(int milliseconds);
@@ -58,8 +99,29 @@ public interface IUpdaterEnvironment
     /// </summary>
     void ScheduleDirectoryDeletion(string directory);
 
-    /// <summary>Starts the game executable again after the apply completes.</summary>
+    /// <summary>
+    /// Starts the game executable again after the apply completes (fire-and-forget). This is the low-level
+    /// primitive; the applier drives launches through <see cref="TryRelaunch"/> so it can detect and retry
+    /// a failed start.
+    /// </summary>
     void Relaunch(string executablePath, string workingDirectory);
+
+    /// <summary>
+    /// Relaunches the game and watches it for up to <paramref name="watchMilliseconds"/> to catch a fast
+    /// startup failure. On Windows a freshly-written single-file exe can still be blocked from *executing*
+    /// by an in-flight antivirus scan even after it is openable, so the launch fails at image load with a
+    /// startup NTSTATUS. The applier retries a <see cref="RelaunchStartupOutcome.StartupFailed"/> or
+    /// <see cref="RelaunchStartupOutcome.LaunchError"/> result with back-off until the scan settles; a
+    /// process still alive after the watch window (<see cref="RelaunchStartupOutcome.Running"/>) or one
+    /// that ran and exited on its own (<see cref="RelaunchStartupOutcome.ExitedEarly"/>) is done. The
+    /// default (for external implementers predating this member) delegates to <see cref="Relaunch"/> and
+    /// reports <see cref="RelaunchStartupOutcome.Running"/>, preserving the old fire-and-forget behaviour.
+    /// </summary>
+    RelaunchStartupOutcome TryRelaunch(string executablePath, string workingDirectory, int watchMilliseconds)
+    {
+        Relaunch(executablePath, workingDirectory);
+        return RelaunchStartupOutcome.Running;
+    }
 
     /// <summary>Clears the macOS <c>com.apple.quarantine</c> attribute on the install (no-op elsewhere).</summary>
     void ClearQuarantine(string installDir);

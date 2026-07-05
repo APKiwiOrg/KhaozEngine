@@ -16,6 +16,10 @@ internal sealed class RecordingUpdaterUi : IUpdaterUi
     public int ShowCalls;
     public int CloseCalls;
 
+    // Fired on the first Close so a test can snapshot other state (e.g. how many relaunch attempts had
+    // run) at the moment the window closed, proving the window stayed up across the relaunch-retry wait.
+    public System.Action? OnClose;
+
     public void Show(UpdaterUiTheme theme)
     {
         ShowCalls++;
@@ -28,5 +32,12 @@ internal sealed class RecordingUpdaterUi : IUpdaterUi
 
     public void SetStatus(string status) => Statuses.Add(status);
 
-    public void Close() => CloseCalls++;
+    public void Close()
+    {
+        if (CloseCalls == 0)
+        {
+            OnClose?.Invoke();
+        }
+        CloseCalls++;
+    }
 }

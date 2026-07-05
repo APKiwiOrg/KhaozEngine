@@ -30,6 +30,16 @@ internal sealed class FakeUpdaterEnvironment : IUpdaterEnvironment
     // happened only after the exe became openable (i.e. after the fail window, not during it).
     public int OpenCallsAtRelaunch = -1;
 
+    // Destinations written through the atomic ReplaceFile path, in order. A test asserts the freshly
+    // installed binaries (the exe/dlls) went through the atomic swap rather than a plain CopyFile.
+    public readonly List<string> ReplacedDests = new();
+
+    // Relaunch modelling: TryRelaunch returns outcomes from this queue in order; when it drains it
+    // reports Running (the healthy-boot default), so existing tests that never enqueue see a normal launch.
+    // Every call is counted so a test can assert the retry loop tried the expected number of times.
+    public readonly Queue<RelaunchStartupOutcome> RelaunchOutcomes = new();
+    public int RelaunchAttempts;
+
     public bool FileExists(string path) => Files.ContainsKey(path);
 
     public string ReadAllText(string path)
@@ -49,6 +59,23 @@ internal sealed class FakeUpdaterEnvironment : IUpdaterEnvironment
         {
             throw new FileNotFoundException(source);
         }
+        Files[destination] = content;
+    }
+
+    // Atomic replace: in-memory it is a single dictionary assignment (already atomic), but it honours the
+    // same simulated-lock switch as CopyFile so the rollback-on-copy-failure tests still trigger, and it
+    // records the destination so a test can prove the applier routes install copies through the atomic path.
+    public void ReplaceFile(string source, string destination)
+    {
+        if (ThrowOnCopyFrom.Contains(source))
+        {
+            throw new IOException($"simulated lock: {source}");
+        }
+        if (!Files.TryGetValue(source, out string? content))
+        {
+            throw new FileNotFoundException(source);
+        }
+        ReplacedDests.Add(destination);
         Files[destination] = content;
     }
 
@@ -114,6 +141,24 @@ internal sealed class FakeUpdaterEnvironment : IUpdaterEnvironment
     {
         RelaunchedExe = executablePath;
         OpenCallsAtRelaunch = CanOpenExclusivelyCalls;
+    }
+
+    public RelaunchStartupOutcome TryRelaunch(string executablePath, string workingDirectory, int watchMilliseconds)
+    {
+        RelaunchAttempts++;
+        RelaunchStartupOutcome outcome = RelaunchOutcomes.Count > 0 ? RelaunchOutcomes.Dequeue() : RelaunchStartupOutcome.Running;
+        // Record the launched exe only when the process actually got to run (Running / ExitedEarly), the
+        // same states the applier treats as "done", so RelaunchedExe reflects the launch that stuck. Snapshot
+        // the settle-poll count on the first such launch (mirrors the old Relaunch bookkeeping).
+        if (outcome is RelaunchStartupOutcome.Running or RelaunchStartupOutcome.ExitedEarly)
+        {
+            RelaunchedExe = executablePath;
+            if (OpenCallsAtRelaunch < 0)
+            {
+                OpenCallsAtRelaunch = CanOpenExclusivelyCalls;
+            }
+        }
+        return outcome;
     }
 
     public void ClearQuarantine(string installDir) { }

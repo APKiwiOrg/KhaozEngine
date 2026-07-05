@@ -61,8 +61,22 @@ public static class UpdateApplier
     // (STATUS_DLL_INIT_FAILED / STATUS_STACK_BUFFER_OVERRUN). We poll CanOpenExclusively until the scanner
     // releases the file, then relaunch. 60 x 500ms = 30s ceiling, then relaunch anyway as a last resort.
     // On non-Windows CanOpenExclusively returns true, so the first poll passes and the wait is a no-op.
+    // This is the first-line pre-filter; the relaunch retry below is the definitive gate (see Relaunch).
     public const int SettleMaxPolls = 60;
     public const int SettlePollDelayMilliseconds = 500;
+
+    // Relaunch retry (the definitive load-ready gate). The settle poll above proves the new exe is no
+    // longer locked, but "openable for a handle" is necessary-but-insufficient: an antivirus minifilter
+    // can still block the image from *executing* while a scan finishes, so the launch fails at image load
+    // with a startup NTSTATUS (0xC0000142 / 0xC0000409 / ...). So we do not trust a single fire-and-forget
+    // launch: TryRelaunch starts the game, watches it for a beat, and reports whether it survived; on a
+    // fast startup failure or a launch error we back off and try again, up to the budget below. A failing
+    // attempt returns as soon as the child dies, so only the settling case spends real time here. On
+    // non-Windows TryRelaunch reports Running on the first try, so this is a single launch with no waiting.
+    public const int RelaunchMaxAttempts = 8;
+    public const int RelaunchWatchMilliseconds = 2500;
+    public const int RelaunchRetryBaseDelayMilliseconds = 500;
+    public const int RelaunchRetryMaxDelayMilliseconds = 2000;
 
     private const string RollbackDirName = ".ke-update-rollback";
     private const string ProgressMarkerName = "apply-in-progress.json";
@@ -469,7 +483,7 @@ public static class UpdateApplier
                 }
             }
 
-            if (!TryCopyWithRetries(environment, source, dest, relativePath))
+            if (!TryReplaceWithRetries(environment, source, dest, relativePath))
             {
                 copyFailed = true;
                 break;
@@ -577,13 +591,57 @@ public static class UpdateApplier
     }
 
     /// <summary>
-    /// Closes the progress window, then relaunches the game. Closing first means the window never lingers
-    /// behind the restarting game. Every relaunch site in <see cref="Apply(ApplyUpdateConfig, IUpdaterEnvironment, IUpdaterUi)"/> routes through here.
+    /// Relaunches the game (with the AV/image-race retry), keeping the progress window up across the whole
+    /// retry wait so the user sees the "Finishing" marquee instead of a bare OS error dialog, then closes
+    /// the window. Every relaunch site in <see cref="Apply(ApplyUpdateConfig, IUpdaterEnvironment, IUpdaterUi)"/>
+    /// routes through here, so a rolled-back old-version relaunch gets the same resilience and logging.
     /// </summary>
     private static void Relaunch(IUpdaterEnvironment environment, IUpdaterUi ui, ApplyUpdateConfig config)
     {
+        ResilientRelaunch(environment, config.GameExePath, config.InstallDir);
         ui.Close();
-        environment.Relaunch(config.GameExePath, config.InstallDir);
+    }
+
+    /// <summary>
+    /// Launches the game and retries a Windows AV/image startup failure. Each attempt starts the process
+    /// and watches it briefly (<see cref="IUpdaterEnvironment.TryRelaunch"/>); a process that survives the
+    /// watch, or one that ran and exited on its own, is done. A fast startup failure (0xC0000142 etc.) or a
+    /// launch error is retried after a capped, growing back-off, up to <see cref="RelaunchMaxAttempts"/>
+    /// tries. If every attempt fails the update still stands - the new binaries are installed, only the
+    /// auto-relaunch is abandoned (logged), so the next manual or on-launch start picks up the new version.
+    /// On non-Windows the first attempt reports <see cref="RelaunchStartupOutcome.Running"/>, so this is a
+    /// single launch with no retry or waiting.
+    /// </summary>
+    private static void ResilientRelaunch(IUpdaterEnvironment environment, string exePath, string workingDirectory)
+    {
+        for (int attempt = 1; attempt <= RelaunchMaxAttempts; attempt++)
+        {
+            environment.Log($"Relaunch attempt {attempt}/{RelaunchMaxAttempts}: {exePath}");
+            RelaunchStartupOutcome outcome = environment.TryRelaunch(exePath, workingDirectory, RelaunchWatchMilliseconds);
+            switch (outcome)
+            {
+                case RelaunchStartupOutcome.Running:
+                    environment.Log($"Relaunch succeeded on attempt {attempt} (game is running).");
+                    return;
+                case RelaunchStartupOutcome.ExitedEarly:
+                    environment.Log($"Relaunch on attempt {attempt}: the game ran and exited on its own (not a startup failure); done.");
+                    return;
+                case RelaunchStartupOutcome.StartupFailed:
+                    environment.Log($"Relaunch attempt {attempt} hit a startup failure (antivirus/image race); will retry.");
+                    break;
+                case RelaunchStartupOutcome.LaunchError:
+                    environment.Log($"Relaunch attempt {attempt} could not start the process; will retry.");
+                    break;
+            }
+
+            if (attempt < RelaunchMaxAttempts)
+            {
+                int delay = Math.Min(RelaunchRetryBaseDelayMilliseconds * attempt, RelaunchRetryMaxDelayMilliseconds);
+                environment.Log($"Waiting {delay}ms before relaunch retry {attempt + 1}...");
+                environment.Sleep(delay);
+            }
+        }
+        environment.Log($"Relaunch failed after {RelaunchMaxAttempts} attempts; giving up (the update is installed - the game will start on the next launch).");
     }
 
     /// <summary>
@@ -615,13 +673,16 @@ public static class UpdateApplier
         environment.Log("Timed out waiting for the game exe to become launchable; relaunching anyway.");
     }
 
-    private static bool TryCopyWithRetries(IUpdaterEnvironment environment, string source, string dest, string relativePath)
+    private static bool TryReplaceWithRetries(IUpdaterEnvironment environment, string source, string dest, string relativePath)
     {
         for (int attempt = 0; attempt < MaxCopyRetries; attempt++)
         {
             try
             {
-                environment.CopyFile(source, dest, overwrite: true);
+                // Atomic swap (copy-to-temp + same-volume rename): the install file is only ever the
+                // complete old or complete new content, so a concurrent scan or the relaunch never sees a
+                // half-written image. Retried on a sharing violation like the old in-place copy was.
+                environment.ReplaceFile(source, dest);
                 environment.Log($"OK: {relativePath}");
                 return true;
             }

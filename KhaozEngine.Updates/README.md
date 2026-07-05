@@ -53,21 +53,36 @@ configured base host), and caps both the manifest and each downloaded file at a 
   than blocking startup. Reports `UpdateGateProgress` (phase + byte/file counts) for a "Downloading
   update..." screen. See "Startup gate" below.
 - **`UpdateApplier`** + **`IUpdaterEnvironment`** - the cross-platform staged-apply core: back up each
-  file before overwriting, copy with retries for locked files, roll everything back on any failure,
-  install the new manifest, wait for the new exe to become launchable (see "Relaunch settle wait"
-  below), relaunch. A game's updater shim is just `UpdateApplier.Run(args, env)`.
+  file before overwriting, atomically swap in each staged file (`ReplaceFile`: copy-to-temp + rename,
+  retried for locked files), roll everything back on any failure, install the new manifest, wait for the
+  new exe to become launchable, then relaunch with retry (see "Relaunch settle wait + retry" below). A
+  game's updater shim is just `UpdateApplier.Run(args, env)`.
 - **`IUpdaterUi`** + **`UpdaterUiOptions`** - the optional progress window the shim shows during the
   apply (Install then Finishing). Windows-only native GDI; a no-op elsewhere. See "Progress window".
 
-## Relaunch settle wait
+## Relaunch settle wait + retry
 
-After the new binaries are copied in, the applier does **not** relaunch the game the instant the copy
-returns. On Windows a `PublishSingleFile` self-contained bundle's freshly-written exe is scanned by
-Windows Defender, which briefly holds an exclusive lock; relaunching into that mid-scan image crashes
-the game at startup (`0xc0000142` STATUS_DLL_INIT_FAILED / `0xc0000409` STATUS_STACK_BUFFER_OVERRUN).
-So the applier polls `IUpdaterEnvironment.CanOpenExclusively(gameExePath)` (the real impl opens with
-`FileShare.None`) until the exe is launchable, up to a 30s ceiling, then relaunches. On non-Windows
-`CanOpenExclusively` returns true, so the wait is a no-op. This is the window's "Finishing" phase.
+Two things guard the Windows post-apply relaunch against the antivirus / file-lock race. On Windows a
+`PublishSingleFile` self-contained bundle's freshly-written exe is scanned by Windows Defender, which
+briefly holds an exclusive lock and can keep the image from *executing* even after the file is openable;
+relaunching mid-scan crashes the game at startup (`0xc0000142` STATUS_DLL_INIT_FAILED / `0xc0000409`
+STATUS_STACK_BUFFER_OVERRUN).
+
+1. **Atomic swap.** Each staged file is written via `IUpdaterEnvironment.ReplaceFile` - the real impl
+   copies to a temp file next to the destination then does a same-volume rename (atomic), so the on-disk
+   exe is only ever the complete old or complete new image, never a half-written one.
+2. **Settle poll (first-line pre-filter).** The applier polls
+   `IUpdaterEnvironment.CanOpenExclusively(gameExePath)` (the real impl opens with `FileShare.None`)
+   until the exe is no longer locked, up to a 30s ceiling. This is necessary but *not* sufficient:
+   openable-for-a-handle does not mean loadable-as-an-image.
+3. **Relaunch with retry (the definitive gate).** Instead of a fire-and-forget launch, the applier drives
+   `IUpdaterEnvironment.TryRelaunch(exe, dir, watchMs)`, which starts the game and watches it briefly; a
+   fast startup failure (a startup NTSTATUS) or a launch error is retried after a capped back-off, up to
+   `RelaunchMaxAttempts` (8) tries. Every attempt and its outcome is logged to `updater.log`. If every
+   attempt fails the update still stands - only the auto-relaunch is abandoned, so the next start gets the
+   new version. On non-Windows `CanOpenExclusively` returns true and `TryRelaunch` reports `Running` on the
+   first try, so the wait/retry is a no-op. This is the window's "Finishing" phase, which stays visible
+   across the retry wait.
 
 ## Progress window
 

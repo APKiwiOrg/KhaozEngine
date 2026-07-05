@@ -17,6 +17,9 @@ public sealed class SystemUpdaterEnvironment : IUpdaterEnvironment
 {
     private const int CodesignTimeoutMs = 15000;
 
+    // Suffix for the temp file ReplaceFile writes next to its destination before the atomic rename.
+    private const string ReplaceTempSuffix = ".ke-stage";
+
     private readonly Action<string>? logSink;
 
     public SystemUpdaterEnvironment(Action<string>? logSink = null)
@@ -33,6 +36,27 @@ public sealed class SystemUpdaterEnvironment : IUpdaterEnvironment
     public void CreateDirectory(string path) => Directory.CreateDirectory(path);
 
     public void CopyFile(string source, string destination, bool overwrite) => File.Copy(source, destination, overwrite);
+
+    public void ReplaceFile(string source, string destination)
+    {
+        // Copy to a temp file in the destination's own directory (same volume), then rename it into place.
+        // File.Move(overwrite) on the same volume is MoveFileEx with MOVEFILE_REPLACE_EXISTING, an atomic
+        // metadata swap - so the destination is only ever the complete old or complete new file, never a
+        // half-written image the post-apply relaunch could load. A sharing violation on the rename (a scan
+        // still holding the old image) surfaces as IOException, which the applier's retry loop handles.
+        string temp = destination + ReplaceTempSuffix;
+        File.Copy(source, temp, overwrite: true);
+        try
+        {
+            File.Move(temp, destination, overwrite: true);
+        }
+        catch
+        {
+            // Leave the destination untouched and drop the temp so a retry starts clean.
+            try { if (File.Exists(temp)) File.Delete(temp); } catch { /* best-effort */ }
+            throw;
+        }
+    }
 
     public void DeleteFile(string path) => File.Delete(path);
 
@@ -98,6 +122,93 @@ public sealed class SystemUpdaterEnvironment : IUpdaterEnvironment
             UseShellExecute = true,
             WorkingDirectory = workingDirectory
         });
+    }
+
+    public RelaunchStartupOutcome TryRelaunch(string executablePath, string workingDirectory, int watchMilliseconds)
+    {
+        if (string.IsNullOrEmpty(executablePath) || !File.Exists(executablePath))
+        {
+            Log($"Game exe not found, cannot relaunch: {executablePath}");
+            return RelaunchStartupOutcome.LaunchError;
+        }
+
+        Process? proc;
+        try
+        {
+            proc = Process.Start(new ProcessStartInfo
+            {
+                FileName = executablePath,
+                UseShellExecute = true,
+                WorkingDirectory = workingDirectory
+            });
+        }
+        catch (Exception ex)
+        {
+            // Includes Win32Exception when the OS refuses to start the image (e.g. an antivirus filter
+            // still blocking execution): a retryable launch error.
+            Log($"Relaunch could not start the process: {ex.Message}");
+            return RelaunchStartupOutcome.LaunchError;
+        }
+
+        if (proc is null)
+        {
+            Log("Relaunch did not yield a process handle to watch; assuming it started.");
+            return RelaunchStartupOutcome.Running;
+        }
+
+        using (proc)
+        {
+            // Watch briefly for a fast startup failure. The AV/image race manifests as an almost-immediate
+            // exit with a Windows startup NTSTATUS (see IsStartupFailureCode); a healthy game is still busy
+            // booting well past this window. WaitForExit returns as soon as the child dies, so a failing
+            // attempt costs only the child's fast-fail time, not the whole window.
+            bool exited;
+            try { exited = proc.WaitForExit(watchMilliseconds); }
+            catch (Exception ex)
+            {
+                Log($"Could not observe the relaunched process ({ex.Message}); assuming it started.");
+                return RelaunchStartupOutcome.Running;
+            }
+
+            if (!exited)
+            {
+                return RelaunchStartupOutcome.Running;
+            }
+
+            int code;
+            try { code = proc.ExitCode; }
+            catch (Exception ex)
+            {
+                Log($"Could not read the relaunched process exit code ({ex.Message}); assuming it started.");
+                return RelaunchStartupOutcome.Running;
+            }
+
+            if (IsStartupFailureCode(code))
+            {
+                Log($"Relaunched process exited fast with startup-failure status 0x{unchecked((uint)code):X8}.");
+                return RelaunchStartupOutcome.StartupFailed;
+            }
+
+            Log($"Relaunched process exited fast with code 0x{unchecked((uint)code):X8} (not a startup failure).");
+            return RelaunchStartupOutcome.ExitedEarly;
+        }
+    }
+
+    /// <summary>
+    /// True when a process exit code is a Windows image-load / startup NTSTATUS that the antivirus/image
+    /// race produces (DLL init failed, stack-buffer-overrun fast-fail, access violation, DLL-not-found,
+    /// entry-point-not-found). These are worth retrying once the security scan releases the new image. A
+    /// clean exit, an ordinary non-zero code, or a managed CLR crash (0xE0434352) is NOT one of these -
+    /// retrying would not help - so it reads as a genuine early run instead.
+    /// </summary>
+    internal static bool IsStartupFailureCode(int exitCode)
+    {
+        uint code = unchecked((uint)exitCode);
+        return code == 0xC0000142  // STATUS_DLL_INIT_FAILED  ("unable to start correctly (0xc0000142)")
+            || code == 0xC0000409  // STATUS_STACK_BUFFER_OVERRUN (ucrtbase fast-fail)
+            || code == 0xC0000005  // STATUS_ACCESS_VIOLATION
+            || code == 0xC0000135  // STATUS_DLL_NOT_FOUND
+            || code == 0xC0000139; // STATUS_ENTRYPOINT_NOT_FOUND
     }
 
     // Windows is the only OS where a running process locks its own loaded .exe/.dll, so it is the only

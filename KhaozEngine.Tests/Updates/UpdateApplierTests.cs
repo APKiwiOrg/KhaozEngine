@@ -313,6 +313,120 @@ public sealed class UpdateApplierTests
         Assert.Contains(env.Log_, m => m.Contains("Timed out"));
     }
 
+    // ---- Relaunch resilience: retry the Windows AV/image startup race (IUpdaterEnvironment.TryRelaunch) ----
+
+    [Fact]
+    public void Apply_RelaunchStartupFails_RetriesUntilItRuns()
+    {
+        var env = new FakeUpdaterEnvironment();
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.Files[InstallPath("Game")] = "exe";
+        // First two launches hit the AV/image race (fast startup failure), the third boots cleanly.
+        env.RelaunchOutcomes.Enqueue(RelaunchStartupOutcome.StartupFailed);
+        env.RelaunchOutcomes.Enqueue(RelaunchStartupOutcome.StartupFailed);
+        env.RelaunchOutcomes.Enqueue(RelaunchStartupOutcome.Running);
+
+        ApplyResult result = UpdateApplier.Apply(Config(new() { "game.dll" }), env);
+
+        Assert.Equal(ApplyOutcome.Succeeded, result.Outcome);
+        Assert.Equal(3, env.RelaunchAttempts);                // retried past the two failures
+        Assert.Equal(InstallPath("Game"), env.RelaunchedExe); // the launch that stuck
+        Assert.Equal(2, env.SleepCalls);                      // one back-off wait per failed attempt
+        Assert.Contains(env.Log_, m => m.Contains("Relaunch attempt 1"));
+        Assert.Contains(env.Log_, m => m.Contains("succeeded on attempt 3"));
+    }
+
+    [Fact]
+    public void Apply_RelaunchNeverRuns_GivesUpAfterBudget_WithoutClaimingSuccess()
+    {
+        var env = new FakeUpdaterEnvironment();
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.Files[InstallPath("Game")] = "exe";
+        // Every attempt hits the startup race; the queue outlasts the attempt budget so it never runs.
+        for (int i = 0; i < UpdateApplier.RelaunchMaxAttempts + 2; i++)
+        {
+            env.RelaunchOutcomes.Enqueue(RelaunchStartupOutcome.StartupFailed);
+        }
+
+        ApplyResult result = UpdateApplier.Apply(Config(new() { "game.dll" }), env);
+
+        // The update itself applied (files are in place); only the auto-relaunch failed, so it is logged,
+        // not turned into a rollback - the next manual/auto launch picks up the new version.
+        Assert.Equal(ApplyOutcome.Succeeded, result.Outcome);
+        Assert.Equal(UpdateApplier.RelaunchMaxAttempts, env.RelaunchAttempts); // bounded; no infinite loop
+        Assert.Null(env.RelaunchedExe);                                        // never falsely reported a launch
+        Assert.Contains(env.Log_, m => m.Contains("giving up"));
+    }
+
+    [Fact]
+    public void Apply_RelaunchedGameExitsEarly_DoesNotRetry()
+    {
+        var env = new FakeUpdaterEnvironment();
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.Files[InstallPath("Game")] = "exe";
+        // The relaunched game ran and closed on its own (not a startup failure); the relaunch is done.
+        env.RelaunchOutcomes.Enqueue(RelaunchStartupOutcome.ExitedEarly);
+
+        UpdateApplier.Apply(Config(new() { "game.dll" }), env);
+
+        Assert.Equal(1, env.RelaunchAttempts);                // no retry after a genuine run
+        Assert.Equal(InstallPath("Game"), env.RelaunchedExe);
+    }
+
+    [Fact]
+    public void Apply_RelaunchLaunchError_IsRetried()
+    {
+        var env = new FakeUpdaterEnvironment();
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.Files[InstallPath("Game")] = "exe";
+        env.RelaunchOutcomes.Enqueue(RelaunchStartupOutcome.LaunchError);
+        env.RelaunchOutcomes.Enqueue(RelaunchStartupOutcome.Running);
+
+        UpdateApplier.Apply(Config(new() { "game.dll" }), env);
+
+        Assert.Equal(2, env.RelaunchAttempts);
+        Assert.Equal(InstallPath("Game"), env.RelaunchedExe);
+    }
+
+    [Fact]
+    public void Apply_InstallFiles_AreWrittenThroughTheAtomicReplacePath()
+    {
+        var env = new FakeUpdaterEnvironment();
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.Files[StagingPath("Game")] = "exe-v2";
+        env.Files[InstallPath("game.dll")] = "v1";
+        env.Files[InstallPath("Game")] = "exe-v1";
+
+        ApplyResult result = UpdateApplier.Apply(Config(new() { "game.dll", "Game" }), env);
+
+        Assert.Equal(ApplyOutcome.Succeeded, result.Outcome);
+        // Every install file - the exe included - is swapped in atomically (copy-to-temp + rename), never
+        // a plain in-place overwrite that could leave a half-written image for the relaunch to hit.
+        Assert.Contains(InstallPath("game.dll"), env.ReplacedDests);
+        Assert.Contains(InstallPath("Game"), env.ReplacedDests);
+        Assert.Equal("exe-v2", env.Files[InstallPath("Game")]);
+    }
+
+    [Fact]
+    public void Apply_KeepsProgressWindowOpenAcrossRelaunchRetries_ThenClosesOnce()
+    {
+        var env = new FakeUpdaterEnvironment();
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.Files[InstallPath("Game")] = "exe";
+        env.RelaunchOutcomes.Enqueue(RelaunchStartupOutcome.StartupFailed);
+        env.RelaunchOutcomes.Enqueue(RelaunchStartupOutcome.StartupFailed);
+        env.RelaunchOutcomes.Enqueue(RelaunchStartupOutcome.Running);
+        var ui = new RecordingUpdaterUi();
+        int attemptsAtClose = -1;
+        ui.OnClose = () => attemptsAtClose = env.RelaunchAttempts;
+
+        UpdateApplier.Apply(Config(new() { "game.dll" }), env, ui);
+
+        Assert.Equal(1, ui.CloseCalls);                       // closed exactly once
+        Assert.Equal(3, attemptsAtClose);                     // ...and only after all three relaunch attempts ran
+        Assert.Equal(UpdaterPhase.Finishing, ui.Phases[^1]);  // stayed in the Finishing (marquee) phase
+    }
+
     [Fact]
     public void Run_BadArgs_ReturnsError()
     {

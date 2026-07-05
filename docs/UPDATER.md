@@ -185,13 +185,18 @@ On a check the engine:
 the swap while the game is stopped. The game's shim project is one line forwarding to
 `KhaozEngine.Updates.UpdaterShim.Main(args)`; the staged-apply core (`UpdateApplier`) lives in the engine.
 On apply the shim waits for the game to exit, writes an `apply-in-progress` marker, pre-flights that every
-staged file exists (aborting before touching the install if staging is incomplete), then copies each file
-over the install **after backing up the existing file into a rollback area**. Any copy or backup failure
-restores every backed-up file, leaves the old version intact, and relaunches it: the install is never left
-half-new. On success it applies deletions, installs the new manifest, cleans up staging and the rollback
-area, and relaunches. For the uncatchable case (power loss mid-copy) the marker survives and the next
-launch detects the interrupted apply, so the player can re-download. This is the fail-closed, crash-safe
-contract the game inherits for free.
+staged file exists (aborting before touching the install if staging is incomplete), then **atomically
+swaps** each staged file over the install (copy-to-temp + same-volume rename, so the on-disk image is
+never half-written) **after backing up the existing file into a rollback area**. Any copy or backup
+failure restores every backed-up file, leaves the old version intact, and relaunches it: the install is
+never left half-new. On success it applies deletions, installs the new manifest, cleans up staging and the
+rollback area, and relaunches. The relaunch is **resilient on Windows**: the freshly-written exe can still
+be blocked from executing by an in-flight antivirus scan even after it is openable, so instead of a
+fire-and-forget launch the shim starts the game, watches for a fast startup failure (`0xc0000142` and
+friends), and retries with back-off until it boots (logging each attempt to `updater.log`); if it never
+boots the update still stands and the next launch picks it up. For the uncatchable case (power loss
+mid-copy) the marker survives and the next launch detects the interrupted apply, so the player can
+re-download. This is the fail-closed, crash-safe contract the game inherits for free.
 
 ---
 

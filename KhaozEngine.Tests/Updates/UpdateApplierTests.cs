@@ -275,6 +275,44 @@ public sealed class UpdateApplierTests
     }
 
     [Fact]
+    public void Apply_ResealRunsBeforeVerify()
+    {
+        var env = new FakeUpdaterEnvironment();
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.Files[InstallPath("game.dll")] = "v1";
+        env.Files[InstallPath("Game")] = "exe";
+
+        ApplyResult result = UpdateApplier.Apply(Config(new() { "game.dll" }), env);
+
+        Assert.Equal(ApplyOutcome.Succeeded, result.Outcome);
+        // The bundle must be re-sealed once, and the verify must observe that re-seal (an in-place swap
+        // invalidates the seal, so verifying before re-sealing would always fail on macOS).
+        Assert.Equal(1, env.ResealCalls);
+        Assert.Equal(1, env.VerifyCalls);
+        Assert.Equal(1, env.VerifyCalledAfterReseals); // verify saw the re-seal already done
+    }
+
+    [Fact]
+    public void Apply_ResealFails_RollsBackAndRelaunchesOld()
+    {
+        var env = new FakeUpdaterEnvironment();
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.Files[StagingPath("manifest.json")] = "{\"version\":\"2.0.0\"}";
+        env.Files[InstallPath("game.dll")] = "v1";
+        env.Files[InstallPath("Game")] = "exe";
+        env.ResealSucceeds = false;
+
+        ApplyResult result = UpdateApplier.Apply(Config(new() { "game.dll" }), env);
+
+        Assert.Equal(ApplyOutcome.RolledBack, result.Outcome);
+        Assert.Equal(1, result.ExitCode);
+        Assert.Equal("v1", env.Files[InstallPath("game.dll")]);      // restored from backup
+        Assert.Equal(InstallPath("Game"), env.RelaunchedExe);        // old version relaunched
+        Assert.Equal(0, env.VerifyCalls);                            // failed re-seal short-circuits the verify
+        Assert.False(env.Files.ContainsKey(Path.Combine(AppData, "update-manifest.json"))); // manifest not committed
+    }
+
+    [Fact]
     public void Apply_SettleWait_RelaunchesOnlyAfterExeBecomesOpenable()
     {
         var env = new FakeUpdaterEnvironment();

@@ -29,4 +29,18 @@ public sealed class SystemUpdaterEnvironmentTests
     {
         Assert.False(SystemUpdaterEnvironment.IsStartupFailureCode(exitCode));
     }
+
+    [Fact]
+    public void EnclosingAppBundle_ReturnsBundlePath_ForExeInsideBundle()
+    {
+        Assert.Equal(
+            "/Applications/Game.app",
+            SystemUpdaterEnvironment.EnclosingAppBundle("/Applications/Game.app/Contents/MacOS/Game"));
+    }
+
+    [Fact]
+    public void EnclosingAppBundle_ReturnsNull_ForBareExecutable()
+    {
+        Assert.Null(SystemUpdaterEnvironment.EnclosingAppBundle("/opt/game/Game"));
+    }
 }

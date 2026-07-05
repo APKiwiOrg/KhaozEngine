@@ -167,9 +167,32 @@ internal sealed class FakeUpdaterEnvironment : IUpdaterEnvironment
 
     public bool IsReparsePoint(string path) => Files.ContainsKey(path) && ReparsePoints.Contains(path);
 
+    // Re-seal modelling: ResealSucceeds toggles the macOS bundle re-seal result (default true, so existing
+    // tests see a healthy re-seal). ResealCalls counts invocations; VerifyCalledAfterReseals snapshots the
+    // re-seal count when VerifyCodeSignature fires, so a test can prove the applier re-seals BEFORE it
+    // verifies (mirrors the OpenCallsAtRelaunch ordering-proof pattern).
+    public bool ResealSucceeds = true;
+    public int ResealCalls;
+    public int VerifyCalls;
+    public int VerifyCalledAfterReseals = -1;
+
+    public bool ResealCodeSignature(string executablePath)
+    {
+        ResealCalls++;
+        return ResealSucceeds;
+    }
+
     public bool CodeSignatureValid = true;
 
-    public bool VerifyCodeSignature(string executablePath) => CodeSignatureValid;
+    public bool VerifyCodeSignature(string executablePath)
+    {
+        VerifyCalls++;
+        if (VerifyCalledAfterReseals < 0)
+        {
+            VerifyCalledAfterReseals = ResealCalls;
+        }
+        return CodeSignatureValid;
+    }
 
     public void Log(string message) => Log_.Add(message);
 }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
@@ -303,6 +304,53 @@ public sealed class SystemUpdaterEnvironment : IUpdaterEnvironment
         }
     }
 
+    public bool ResealCodeSignature(string executablePath)
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            return true; // no bundle seal to rebuild off macOS
+        }
+
+        // Only a .app has a CodeResources seal to invalidate; a bare-executable install has nothing to
+        // re-seal, so leave it to VerifyCodeSignature.
+        string? appBundle = EnclosingAppBundle(executablePath);
+        if (appBundle is null)
+        {
+            return true;
+        }
+
+        try
+        {
+            // Re-sign ad-hoc, inner-to-outer. Apple requires nested code be signed before the container
+            // that seals it, and deprecates `codesign --deep` for signing, so we walk the bundle by hand
+            // instead of using --deep. The end-user Mac has no Developer ID private key, so ad-hoc
+            // (--sign -) is the only key available; it rebuilds the internal seal so VerifyCodeSignature
+            // passes again, at the cost of Developer ID / notarization (acceptable post-first-launch - see
+            // IUpdaterEnvironment.ResealCodeSignature). Any codesign failure returns false so the applier
+            // rolls the update back (fail-closed).
+
+            // 1) Nested code (Mach-O libraries + framework/helper bundles), deepest path first so inner
+            //    items are signed before any container that references them.
+            foreach (string nested in NestedSignables(appBundle))
+            {
+                if (!SignAdHoc(nested, preserveMetadata: false))
+                {
+                    return false;
+                }
+            }
+
+            // 2) The top-level .app last: this signs the main executable and rebuilds CodeResources.
+            //    Preserve the app's entitlements and signing flags (e.g. hardened runtime) so behaviour
+            //    that depends on them survives the re-seal.
+            return SignAdHoc(appBundle, preserveMetadata: true);
+        }
+        catch (Exception ex)
+        {
+            Log($"codesign re-seal error: {ex.Message}");
+            return false;
+        }
+    }
+
     public bool VerifyCodeSignature(string executablePath)
     {
         if (!OperatingSystem.IsMacOS())
@@ -313,12 +361,7 @@ public sealed class SystemUpdaterEnvironment : IUpdaterEnvironment
         try
         {
             // Verify the .app bundle that contains the executable, not the inner Mach-O.
-            string target = executablePath;
-            int appIndex = executablePath.IndexOf(".app/", StringComparison.Ordinal);
-            if (appIndex >= 0)
-            {
-                target = executablePath[..(appIndex + 4)];
-            }
+            string target = EnclosingAppBundle(executablePath) ?? executablePath;
 
             // We don't redirect codesign's output: we never read it, and draining a redirected pipe
             // (needed to avoid a full-buffer stall) would complicate the timed WaitForExit below.
@@ -341,6 +384,89 @@ public sealed class SystemUpdaterEnvironment : IUpdaterEnvironment
             Log($"codesign verification error: {ex.Message}");
             return false;
         }
+    }
+
+    /// <summary>
+    /// The enclosing <c>.app</c> bundle path for <paramref name="executablePath"/> (an exe at
+    /// <c>Foo.app/Contents/MacOS/Foo</c> yields <c>Foo.app</c>), or null when the path is not inside a
+    /// bundle. Shared by the re-seal and verify steps so both target the same bundle.
+    /// </summary>
+    internal static string? EnclosingAppBundle(string executablePath)
+    {
+        int appIndex = executablePath.IndexOf(".app/", StringComparison.Ordinal);
+        return appIndex >= 0 ? executablePath[..(appIndex + 4)] : null;
+    }
+
+    // Signable items nested inside the bundle: Mach-O libraries (*.dylib / *.so) and nested code bundles
+    // (*.framework / *.app / *.bundle / *.xpc directories), the .app itself excluded. Ordered deepest
+    // path first so a container is always signed after everything it contains (inner-to-outer). Bare
+    // Mach-O helper executables with no extension are not detected here - KE game bundles are a main
+    // executable plus dylibs, and the top-level codesign signs that main executable.
+    private static List<string> NestedSignables(string appBundle)
+    {
+        var items = new List<string>();
+        foreach (string file in Directory.EnumerateFiles(appBundle, "*", SearchOption.AllDirectories))
+        {
+            if (file.EndsWith(".dylib", StringComparison.Ordinal) || file.EndsWith(".so", StringComparison.Ordinal))
+            {
+                items.Add(file);
+            }
+        }
+        foreach (string dir in Directory.EnumerateDirectories(appBundle, "*", SearchOption.AllDirectories))
+        {
+            if (IsCodeBundleDir(dir))
+            {
+                items.Add(dir);
+            }
+        }
+        items.Sort(static (a, b) => PathDepth(b).CompareTo(PathDepth(a)));
+        return items;
+    }
+
+    private static bool IsCodeBundleDir(string dir)
+        => dir.EndsWith(".framework", StringComparison.Ordinal)
+        || dir.EndsWith(".app", StringComparison.Ordinal)
+        || dir.EndsWith(".bundle", StringComparison.Ordinal)
+        || dir.EndsWith(".xpc", StringComparison.Ordinal);
+
+    private static int PathDepth(string path)
+    {
+        int depth = 0;
+        foreach (char c in path)
+        {
+            if (c == '/')
+            {
+                depth++;
+            }
+        }
+        return depth;
+    }
+
+    private bool SignAdHoc(string target, bool preserveMetadata)
+    {
+        var psi = new ProcessStartInfo { FileName = "codesign", UseShellExecute = false };
+        psi.ArgumentList.Add("--force");
+        psi.ArgumentList.Add("--sign");
+        psi.ArgumentList.Add("-"); // ad-hoc: the only identity available on an end-user Mac
+        if (preserveMetadata)
+        {
+            psi.ArgumentList.Add("--preserve-metadata=entitlements,flags");
+        }
+        psi.ArgumentList.Add(target);
+
+        using Process? proc = Process.Start(psi);
+        if (proc is null)
+        {
+            Log($"codesign could not be started to re-seal {target}.");
+            return false;
+        }
+        proc.WaitForExit(CodesignTimeoutMs);
+        if (proc.ExitCode != 0)
+        {
+            Log($"codesign re-seal failed for {target} (exit {proc.ExitCode}).");
+            return false;
+        }
+        return true;
     }
 
     public void Log(string message) => logSink?.Invoke(message);

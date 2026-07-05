@@ -130,6 +130,23 @@ public interface IUpdaterEnvironment
     bool IsReparsePoint(string path);
 
     /// <summary>
+    /// Re-seals the installed application bundle so its signature matches the files just swapped in,
+    /// then reports whether the re-seal succeeded. On macOS an in-place file swap inside a <c>.app</c>
+    /// invalidates the sealed <c>_CodeSignature/CodeResources</c> hashes, so a post-apply
+    /// <see cref="VerifyCodeSignature"/> ALWAYS fails and the update rolls back - a macOS in-place
+    /// self-update can never complete without this step. The real environment re-signs the enclosing
+    /// <c>.app</c> ad-hoc (<c>codesign --force --sign -</c>, inner-to-outer, no <c>--deep</c>), which
+    /// makes the bundle internally consistent again so <see cref="VerifyCodeSignature"/> passes; the
+    /// ad-hoc seal drops Developer ID / notarization, which is acceptable because quarantine is already
+    /// cleared and the app has already launched, so Gatekeeper's quarantined-first-launch gate is past.
+    /// Called AFTER the file swap and BEFORE <see cref="VerifyCodeSignature"/>; a false result rolls the
+    /// apply back exactly like a verify failure (fail-closed). The default returns true - a no-op success
+    /// for platforms without bundle sealing and for external implementers predating this member (they
+    /// simply rely on <see cref="VerifyCodeSignature"/> as before).
+    /// </summary>
+    bool ResealCodeSignature(string executablePath) => true;
+
+    /// <summary>
     /// Verifies the OS-level code signature of the installed executable/bundle at
     /// <paramref name="executablePath"/>. Returns true on platforms without signature enforcement.
     /// </summary>

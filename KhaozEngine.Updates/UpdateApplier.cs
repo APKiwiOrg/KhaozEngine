@@ -526,6 +526,22 @@ public static class UpdateApplier
         // Clear quarantine first so the signature check sees the file as the OS will at launch.
         environment.ClearQuarantine(config.InstallDir);
 
+        // Re-seal the bundle before verifying: on macOS the in-place swap above invalidated the .app's
+        // sealed CodeResources hashes, so VerifyCodeSignature would ALWAYS fail without this and the
+        // update could never complete. Fail closed - if the re-seal fails, roll back and relaunch the
+        // old version, before the manifest is committed, so the old binaries + old manifest stay
+        // consistent (same invariant as the verify gate below). No-op success off macOS.
+        if (!environment.ResealCodeSignature(config.GameExePath))
+        {
+            environment.Log("Code signature re-seal FAILED after apply; rolling back.");
+            RestoreBackups(environment, config.InstallDir, rollbackDir, backedUp);
+            try { environment.DeleteDirectory(rollbackDir); }
+            catch (Exception ex) { environment.Log($"Cleanup: could not remove rollback dir {rollbackDir} after restore: {ex.Message}"); }
+            ClearMarker(environment, markerPath);
+            Relaunch(environment, ui, config);
+            return new ApplyResult { Outcome = ApplyOutcome.RolledBack, ExitCode = 1 };
+        }
+
         // Fail closed: if the installed executable is not validly signed, roll back to the backups
         // (still present - we have not cleaned the rollback dir yet) and relaunch the old version.
         if (!environment.VerifyCodeSignature(config.GameExePath))

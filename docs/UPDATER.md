@@ -208,16 +208,21 @@ the game). The updater still patches the **flat payload inside `Contents/MacOS/`
 hand-distributed zip is a bundle.
 
 The engine is **fail-closed** and re-runs `codesign --verify --deep --strict` after applying. A
-`--deep --strict` verify checks the whole bundle seal, and an in-place file swap **breaks that seal**, so
-the verify fails and the update rolls back. A freshly downloaded bundle verifies clean (first launch is
-fine); it is only the **in-place self-update** that cannot complete on macOS until both:
+`--deep --strict` verify checks the whole bundle seal, and an in-place file swap **breaks that seal**. So
+before verifying, the applier **re-seals the bundle** (`IUpdaterEnvironment.ResealCodeSignature`, run after
+the swap and before the verify): the real environment re-signs the enclosing `.app` **ad-hoc**
+(`codesign --force --sign -`, inner-to-outer, no `--deep`), which rebuilds `CodeResources` so the verify
+passes again. The re-seal is ad-hoc because an end-user Mac has no Developer ID private key (only CI does),
+so it **drops Developer ID / notarization** from the updated bundle. That is acceptable: the updater has
+already cleared quarantine and the app has already launched once, so Gatekeeper's quarantined-first-launch
+gate is past. If the re-seal (or the verify) fails, the update rolls back exactly as before.
 
-1. the build is Developer ID signed, and
-2. the updater re-signs the bundle after apply (engine work).
-
-Until both land, macOS self-update is effectively a manual re-download, while `win-x64` and `linux-x64`
-self-update normally. A consuming game should document this as a known limitation for its macOS head rather
-than treat a macOS rollback as a bug.
+That closes the engine half. The remaining requirement is **consumer-side**: the game's publish CI must
+**Developer ID sign + notarize the original `.app`** so its very first launch passes Gatekeeper (a
+freshly downloaded, unsigned bundle would be quarantined-blocked on first launch, before the updater ever
+runs). Once the original is signed + notarized, in-place self-update completes on macOS the same as
+`win-x64` and `linux-x64`. A consuming game whose macOS head is not yet Developer ID signed should document
+that first-launch limitation rather than treat a macOS rollback as a bug.
 
 ---
 

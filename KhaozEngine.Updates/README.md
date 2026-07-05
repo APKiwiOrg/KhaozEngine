@@ -93,7 +93,25 @@ security software...") during the settle wait above. It is a self-contained Win3
 P/Invoke only - no WinForms/WPF, no common-controls dependency, no engine GUI/GPU stack - so it stays
 trim/AOT-safe inside a single-file trimmed shim. Off Windows it is a no-op: macOS and Linux apply the
 update in place (POSIX replaces the running executable's inode, so there is no self-lock to wait out and
-no scan/relaunch race) and need no window - the apply, quarantine clear, and codesign verify still run.
+no scan/relaunch race) and need no window - the apply, quarantine clear, macOS bundle re-seal, and
+codesign verify still run.
+
+## macOS bundle re-seal
+
+On macOS the game ships as a `.app` bundle whose `_CodeSignature/CodeResources` seal covers every file.
+An in-place swap of the staged payload inside `Contents/MacOS/` invalidates that seal, so the fail-closed
+`codesign --verify --deep --strict` the applier runs after apply would **always** fail and roll the update
+back - macOS in-place self-update could never complete. So after the swap and **before** the verify the
+applier calls `IUpdaterEnvironment.ResealCodeSignature(gameExePath)`. The real environment re-signs the
+enclosing `.app` **ad-hoc** (`codesign --force --sign -`), signing nested code inner-to-outer (Mach-O
+libraries and framework/helper bundles deepest-first, then the top bundle with
+`--preserve-metadata=entitlements,flags`; no `--deep`, which Apple deprecates for signing). Ad-hoc is the
+only key an end-user Mac has, so the re-seal **drops Developer ID / notarization** - acceptable because
+quarantine is already cleared and the app has already launched, so Gatekeeper's first-launch gate is past.
+A re-seal failure rolls the update back exactly like a verify failure. The default interface member and the
+non-macOS real path are a no-op returning `true` (nothing to re-seal). The companion requirement is
+consumer-side: the game's publish CI must Developer ID sign + notarize the **original** bundle so first
+launch passes Gatekeeper. See [../docs/UPDATER.md](../docs/UPDATER.md).
 
 The window is themeable and localizable by the game through an optional `UpdaterUiOptions` on
 `UpdateServiceOptions` (colors are plain `(R, G, B)` tuples; text is passed already-localized):

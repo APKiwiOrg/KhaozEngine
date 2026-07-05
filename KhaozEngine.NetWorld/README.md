@@ -97,6 +97,11 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
     advanced to 2, so a server on the default config brings a 9.x cell blob forward with no wiring. A 10.0.0 blob (v2)
     is `SkippedTooNew` on a pre-10.0.0 build, so an accidental downgrade quarantines rather than corrupts (but will not
     load): once a server has written 64-bit blobs it cannot be downgraded.
+  - **Store-outage hygiene (since 10.4.1).** `CellPersistence.OnStoreError` (`event Action<Exception>`, mirrors
+    `WorldPersistence.OnStoreError`) surfaces a faulted background cell save, meta write, or quarantine write. The
+    driver prunes the faulted task every `Update` so a store outage can't grow the pending list unbounded or make the
+    boot sequence (`LoadMeta -> Preload -> Flush`) or the shutdown `FlushAsync` throw. A faulted cell save stays dirty
+    and retries on the next pass; a faulted quarantine write is dropped (the cell already started fresh).
 
 No render, window, or GPU dependency: the servers are headless and the client glue is render-free (a sample
 renders a capsule per `EntityRenderState`). `WorldServer` is the single-`World` slice; `ShardedWorldServer` is

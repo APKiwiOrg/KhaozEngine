@@ -3055,6 +3055,12 @@ over `CellSim.SnapshotOwned`/`RestoreOwned` and `ShardHost.CellCreated`/`EnsureC
 `player:{accountId}` keyspace `WorldPersistence` uses, so the two coexist on the same `IWorldStore` without
 collision.
 
+Subscribe to **`CellPersistence.OnStoreError`** (`event Action<Exception>`, mirrors `WorldPersistence.OnStoreError`)
+to log/alert on a faulted background cell save, meta write, or quarantine write. The driver prunes the faulted task
+each `Update` (so a store outage can't grow the pending list unbounded or make the boot sequence
+`LoadMeta -> Preload -> Flush` / the shutdown `FlushAsync` throw), leaves a faulted cell save dirty so the next pass
+retries it, and drops a faulted quarantine write (the cell already started fresh).
+
 ### Reconnect + server notices (`KhaozEngine.NetWorld`)
 
 **Auto-reconnect client.** Use the factory ctor so `WorldClient` owns the transport lifecycle and reconnects automatically on drop:

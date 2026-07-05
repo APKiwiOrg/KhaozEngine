@@ -5,6 +5,15 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.4.1
+
+Ports the 9.32.1 pending-task hygiene fix from `WorldPersistence` to its sibling `CellPersistence` (`KhaozEngine.NetWorld`): a faulted or canceled background store task no longer accumulates unpruned, so a store outage can't grow the pending list unbounded or make the documented boot sequence (`LoadMeta -> Preload -> Flush`) / the shutdown flush throw. Bug-fix + behaviour hardening; no API change beyond the additive `OnStoreError` event.
+
+- **`CellPersistence.Update` now prunes every finished task, not just `RanToCompletion`.** A new `PrunePending` (mirroring `WorldPersistence.PrunePending`) removes completed tasks, observes each faulted/canceled one (`Task.Exception.GetBaseException()`), and surfaces it through the new **`public event Action<Exception>? OnStoreError`** raised OUTSIDE `pendingLock`. Previously a faulted cell save, meta write, or 9.33.0 quarantine write stayed in `pending` forever and `FlushAsync`'s `Task.WhenAll` rethrew it.
+- **`FlushAsync` (via `AwaitPendingAsync`) no longer throws on a store fault.** It awaits every tracked task to completion, then surfaces each faulted/canceled task through `OnStoreError` instead of rethrowing the first via `Task.WhenAll`, so the boot sequence and the shutdown flush complete cleanly through a store outage.
+- **A faulted cell save now stays dirty and retries.** `SaveDirtyPass` advances the per-cell `lastSaved` baseline only AFTER the write lands (moved into a new `SaveCellAsync`); the old code set it before the save, so a faulted save was silently treated as persisted and never retried. The meta write got the same treatment (`SaveMetaAsync`, interlocked because the continuation runs off the server thread), so a faulted meta write is also retried on a later pass.
+- **A faulted quarantine write is surfaced and dropped, not retried.** The one-shot forensic copy is fire-and-forget (tracked only so a flush can observe it); the cell has already started fresh, so a fault leaves the load path unaffected and there is nothing worth the retry bookkeeping.
+
 ## 10.4.0
 
 The Gui text sinks take an optional `scale`, so a game that draws one shared font at many sizes (SpaceGame does this for pixel-parity) can render scaled Gui text without a per-size font. Additive with every parameter defaulting to `1f`, so a minor bump and every existing caller stays byte-identical.

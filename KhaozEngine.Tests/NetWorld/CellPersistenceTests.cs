@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.NetWorld;
 using KhaozEngine.Sharding;
@@ -31,6 +32,30 @@ public class CellPersistenceTests
         public void EnsureNextNetIdAtLeast(long atLeast) { if (atLeast > NextNetId) NextNetId = atLeast; }
         public void RaiseCellCreated(CellCoord coord) => CellCreated?.Invoke(coord);
         public void SetNextNetId(long v) => NextNetId = v;
+    }
+
+    // A store whose saves always fault (a store outage); loads pass through to an inner store (default: empty).
+    private sealed class FaultingCellStore : IWorldStore
+    {
+        private readonly IWorldStore inner;
+        public FaultingCellStore(IWorldStore? inner = null) => this.inner = inner ?? new InMemoryWorldStore();
+        public Task<byte[]?> LoadAsync(string key, CancellationToken ct = default) => inner.LoadAsync(key, ct);
+        public Task SaveAsync(string key, byte[] data, CancellationToken ct = default) => Task.FromException(new System.IO.IOException("store offline"));
+        public Task<bool> DeleteAsync(string key, CancellationToken ct = default) => inner.DeleteAsync(key, ct);
+        public Task<bool> ExistsAsync(string key, CancellationToken ct = default) => inner.ExistsAsync(key, ct);
+    }
+
+    // A store that faults every SaveAsync while FailSaves is set, and otherwise passes through to a real inner store.
+    private sealed class ToggleFaultStore : IWorldStore
+    {
+        private readonly IWorldStore inner;
+        public bool FailSaves;
+        public ToggleFaultStore(IWorldStore inner) => this.inner = inner;
+        public Task<byte[]?> LoadAsync(string key, CancellationToken ct = default) => inner.LoadAsync(key, ct);
+        public Task SaveAsync(string key, byte[] data, CancellationToken ct = default) =>
+            FailSaves ? Task.FromException(new System.IO.IOException("store offline")) : inner.SaveAsync(key, data, ct);
+        public Task<bool> DeleteAsync(string key, CancellationToken ct = default) => inner.DeleteAsync(key, ct);
+        public Task<bool> ExistsAsync(string key, CancellationToken ct = default) => inner.ExistsAsync(key, ct);
     }
 
     [Fact]
@@ -164,5 +189,87 @@ public class CellPersistenceTests
         await cp.PreloadAsync();
         Assert.Contains(new CellCoord(1, 2), created);
         Assert.Contains(new CellCoord(-3, 4), created);
+    }
+
+    // --- Pending-task hygiene on a store outage (ported from WorldPersistence 9.32.1) ---
+
+    [Fact]
+    public async Task StoreSaveFault_IsSurfacedViaEvent_AndFlushDoesNotThrow()
+    {
+        var store = new FaultingCellStore();
+        var host = new FakeHost();
+        host.Snapshots[C00] = new byte[] { 1, 0, 0, 0, 5, 5, 5, 5 };
+        var cp = new CellPersistence(host, store);
+        var errors = new List<Exception>();
+        cp.OnStoreError += errors.Add;
+
+        cp.SaveDirtyPass();                                  // queues a faulting cell save (+ meta save)
+        await cp.FlushAsync();                               // must NOT rethrow: the boot sequence's Task.WhenAll used to surface the fault here
+
+        Assert.NotEmpty(errors);
+        Assert.Contains(errors, e => e is System.IO.IOException);
+    }
+
+    [Fact]
+    public void StoreSaveFault_UpdatePrunesAndSurfaces_OncePerPass_PendingDoesNotPileUp()
+    {
+        var store = new FaultingCellStore();
+        var host = new FakeHost();
+        host.SetNextNetId(0);                                // isolate: no meta save, so only the cell save faults per pass
+        host.Snapshots[C00] = new byte[] { 1, 0, 0, 0, 5, 5, 5, 5 };
+        var cp = new CellPersistence(host, store);
+        int errorCount = 0;
+        cp.OnStoreError += _ => errorCount++;
+
+        for (int i = 0; i < 5; i++) { cp.SaveDirtyPass(); cp.Update(0f); }
+
+        // Each pass's faulted save is pruned + surfaced exactly once (5 total). The old Update pruned only
+        // RanToCompletion, so faulted tasks piled up in pending forever and were never observed.
+        Assert.Equal(5, errorCount);
+    }
+
+    [Fact]
+    public async Task FaultedCellSave_StaysDirty_AndReSavesOnceStoreRecovers()
+    {
+        var inner = new InMemoryWorldStore();
+        var store = new ToggleFaultStore(inner) { FailSaves = true };
+        var host = new FakeHost();
+        host.SetNextNetId(0);
+        host.Snapshots[C00] = new byte[] { 1, 0, 0, 0, 7, 7, 7, 7 };
+        var cp = new CellPersistence(host, store);
+        var errors = new List<Exception>();
+        cp.OnStoreError += errors.Add;
+
+        cp.SaveDirtyPass();
+        await cp.FlushAsync();                               // save faults, surfaced, nothing persisted, no throw
+        Assert.NotEmpty(errors);
+        Assert.Null(await inner.LoadAsync("cell:0:0"));      // the faulted save did not land
+
+        store.FailSaves = false;                             // store recovers
+        cp.SaveDirtyPass();                                  // cell is still dirty -> re-queued (baseline wasn't advanced on the fault)
+        await cp.FlushAsync();
+        Assert.NotNull(await inner.LoadAsync("cell:0:0"));   // now persisted
+    }
+
+    [Fact]
+    public async Task QuarantineWriteFault_DoesNotBreakLoad_AndIsSurfaced()
+    {
+        var inner = new InMemoryWorldStore();
+        await inner.SaveAsync("cell:0:0", new byte[] { 9, 9, 9, 9, 1, 2, 3, 4 });   // corrupt: bad magic -> quarantined on load
+        var store = new ToggleFaultStore(inner) { FailSaves = true };               // the quarantine write itself will fault
+        var host = new FakeHost();
+        host.SetNextNetId(0);                                                        // isolate: no meta save
+        var cp = new CellPersistence(host, store);
+        var errors = new List<Exception>();
+        var issues = new List<CellPersistenceIssue>();
+        cp.OnStoreError += errors.Add;
+        cp.Issue += issues.Add;
+
+        host.RaiseCellCreated(C00);
+        await cp.FlushAsync();                                                       // load -> corrupt -> quarantine write faults; must not throw
+
+        Assert.False(host.Restored.ContainsKey(C00));                               // cell left fresh, not mis-restored
+        Assert.NotEmpty(issues);                                                     // quarantine issue surfaced
+        Assert.Contains(errors, e => e is System.IO.IOException);                    // faulted quarantine write surfaced, not swallowed
     }
 }

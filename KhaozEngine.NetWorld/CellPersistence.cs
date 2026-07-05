@@ -2,6 +2,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Sharding;
 using KhaozEngine.WorldStore;
@@ -80,6 +81,13 @@ public sealed class CellPersistenceConfig
 /// <see cref="WorldPersistence"/> but keyed by cell coordinate: lazy load-on-cell-create, periodic dirty snapshot
 /// of changed cells, and a NetId high-water record so restored entities never collide with fresh spawns. Async
 /// loads are applied on the server thread inside <see cref="Update"/> (never from a background continuation).
+///
+/// <para>Tracked store tasks (cell saves, the meta write, quarantine writes) are pruned every <see cref="Update"/>:
+/// a faulted or canceled task is observed and its exception surfaced through <see cref="OnStoreError"/>, so a store
+/// outage can't grow the pending list unbounded or make the boot sequence / shutdown <see cref="FlushAsync"/> throw
+/// when its <c>Task.WhenAll</c> hits the fault. A faulted cell save leaves that cell dirty so the next pass retries
+/// it; the meta write is monotonic and re-attempted whenever the high-water advances; a faulted quarantine write is
+/// surfaced and dropped (the cell already started fresh, so the load path is unaffected).</para>
 /// </summary>
 public sealed class CellPersistence
 {
@@ -100,8 +108,15 @@ public sealed class CellPersistence
     private readonly ConcurrentDictionary<CellCoord, byte> loadsInFlight = new(); // coords with an outstanding load; SaveDirtyPass skips them so a periodic save can't clobber the stored blob with pre-restore state
     private readonly object pendingLock = new();
     private readonly List<Task> pending = new();
-    private long lastSavedNextNetId;
+    private long lastSavedNextNetId;   // interlocked: advanced from a save continuation (threadpool) after the meta write lands, read on the server thread
     private float sinceSave;
+
+    /// <summary>Raised on the server thread (from <see cref="Update"/> or <see cref="FlushAsync"/>) when a tracked
+    /// store task (a cell save, the meta write, or a quarantine write) faulted or was canceled - typically a store
+    /// outage. The driver drops the finished task so the pending list can't grow unbounded, and this hook lets the
+    /// game log or alert. A faulted cell save's state stays dirty and is retried on the next pass; a faulted
+    /// quarantine write is dropped (the cell already started fresh).</summary>
+    public event Action<Exception>? OnStoreError;
 
     /// <summary>
     /// Raised on the server thread (inside the load-apply drain) when a cell's saved blob was migrated, skipped
@@ -187,9 +202,30 @@ public sealed class CellPersistence
     public void Update(float dt)
     {
         DrainRestores();
-        lock (pendingLock) pending.RemoveAll(t => t.Status == TaskStatus.RanToCompletion);
+        PrunePending();
         sinceSave += dt;
         if (sinceSave >= config.SaveIntervalSeconds) { sinceSave = 0f; SaveDirtyPass(); }
+    }
+
+    // Drops every finished task from the pending list. Previously only RanToCompletion was pruned, so on a store
+    // outage the faulted/canceled tasks (a save, the meta write, or a quarantine write) accumulated until FlushAsync's
+    // Task.WhenAll surfaced them - the list grew unbounded and the boot/shutdown flush threw. Faults are observed
+    // (reading Task.Exception) and surfaced via OnStoreError; a faulted cell save's state stays dirty and retries on
+    // the next pass. Collect the exceptions inside the lock but raise the event outside it (never run a game callback
+    // while holding pendingLock). Mirrors WorldPersistence.PrunePending.
+    private void PrunePending()
+    {
+        List<Exception>? failures = null;
+        lock (pendingLock)
+            pending.RemoveAll(t =>
+            {
+                if (!t.IsCompleted) return false;
+                if (t.IsFaulted || t.IsCanceled)
+                    (failures ??= new List<Exception>()).Add(t.Exception?.GetBaseException() ?? new TaskCanceledException());
+                return true;
+            });
+        if (failures is not null)
+            foreach (Exception ex in failures) OnStoreError?.Invoke(ex);
     }
 
     private void DrainRestores()
@@ -272,7 +308,10 @@ public sealed class CellPersistence
     }
 
     // Copies the original bytes to the quarantine key (so nothing is destroyed), then surfaces the issue. The cell is
-    // left fresh; a later save may reuse the main key (the original is safe under quarantine).
+    // left fresh; a later save may reuse the main key (the original is safe under quarantine). The quarantine write is
+    // fire-and-forget (tracked only so a flush can await/observe it, not dirty-tracked): if it faults on a store
+    // outage it is surfaced via OnStoreError and DROPPED, not retried - the cell has already started fresh, so the
+    // load path is unaffected and retrying a one-shot forensic copy isn't worth the bookkeeping.
     private void Quarantine(CellCoord coord, byte[] rawBlob, CellPersistenceIssue issue)
     {
         Track(store.SaveAsync(QuarantineKey(coord), rawBlob));
@@ -290,18 +329,40 @@ public sealed class CellPersistence
             byte[]? snap = host.SnapshotCell(coord);
             if (snap is null) continue;
             if (lastSaved.TryGetValue(coord, out byte[]? prev) && prev.AsSpan().SequenceEqual(snap)) continue;
-            lastSaved[coord] = snap;
-            Track(store.SaveAsync(CellKey(coord), Wrap(snap)));
+            Track(SaveCellAsync(coord, snap));
         }
         SaveMetaIfAdvanced();
+    }
+
+    // Writes the wrapped snapshot, advancing the dirty baseline only AFTER the write lands. A faulted save leaves the
+    // cell's baseline unadvanced so the next SaveDirtyPass sees it still dirty and retries it (the previous code set
+    // lastSaved before the save, so a faulted save was silently treated as persisted and never retried).
+    private async Task SaveCellAsync(CellCoord coord, byte[] snap)
+    {
+        await store.SaveAsync(CellKey(coord), Wrap(snap)).ConfigureAwait(false);
+        lastSaved[coord] = snap;
     }
 
     private void SaveMetaIfAdvanced()
     {
         long next = host.NextNetId;
-        if (next <= lastSavedNextNetId) return;
-        lastSavedNextNetId = next;
-        Track(store.SaveAsync(config.MetaKey, new WorldMetaRecord { NextNetId = next }.Encode()));
+        if (next <= Interlocked.Read(ref lastSavedNextNetId)) return;
+        Track(SaveMetaAsync(next));
+    }
+
+    // Writes the meta high-water, advancing the persisted baseline only AFTER the write lands (interlocked - the
+    // continuation runs off the server thread). A faulted meta write leaves the baseline low, so a later pass retries
+    // it; the high-water is monotonic, so the advance is a max, never a lower-write.
+    private async Task SaveMetaAsync(long next)
+    {
+        await store.SaveAsync(config.MetaKey, new WorldMetaRecord { NextNetId = next }.Encode()).ConfigureAwait(false);
+        long cur = Interlocked.Read(ref lastSavedNextNetId);
+        while (next > cur)
+        {
+            long prev = Interlocked.CompareExchange(ref lastSavedNextNetId, next, cur);
+            if (prev == cur) break;
+            cur = prev;
+        }
     }
 
     /// <summary>Loads the NetId high-water record and resumes the allocator above it. Call at boot (server thread).</summary>
@@ -310,7 +371,7 @@ public sealed class CellPersistence
         byte[]? data = await store.LoadAsync(config.MetaKey).ConfigureAwait(false);
         if (data is null) return;
         WorldMetaRecord meta = WorldMetaRecord.Decode(data);
-        lastSavedNextNetId = meta.NextNetId;
+        Interlocked.Exchange(ref lastSavedNextNetId, meta.NextNetId);   // boot is quiescent; interlocked to pair with SaveMetaAsync's off-thread advance
         host.EnsureNextNetIdAtLeast(meta.NextNetId);
     }
 
@@ -338,11 +399,22 @@ public sealed class CellPersistence
         await AwaitPendingAsync().ConfigureAwait(false);
     }
 
+    // Awaits every tracked task to completion, then observes it. Unlike a bare Task.WhenAll (which rethrows the first
+    // fault and, having cleared pending, would leave the rest unobserved) this surfaces EVERY faulted/canceled task
+    // through OnStoreError and never throws - so the boot sequence (LoadMeta -> Preload -> Flush) and the shutdown
+    // flush complete cleanly through a store outage, leaving faulted cell saves dirty to retry on the next pass.
     private async Task AwaitPendingAsync()
     {
         Task[] tasks;
         lock (pendingLock) { tasks = pending.ToArray(); pending.Clear(); }
-        await Task.WhenAll(tasks).ConfigureAwait(false);
+        try { await Task.WhenAll(tasks).ConfigureAwait(false); }
+        catch { /* individual faults are observed + surfaced per-task below, not rethrown */ }
+        List<Exception>? failures = null;
+        foreach (Task t in tasks)
+            if (t.IsFaulted || t.IsCanceled)
+                (failures ??= new List<Exception>()).Add(t.Exception?.GetBaseException() ?? new TaskCanceledException());
+        if (failures is not null)
+            foreach (Exception ex in failures) OnStoreError?.Invoke(ex);
     }
 
     private byte[] Wrap(byte[] snapshot)

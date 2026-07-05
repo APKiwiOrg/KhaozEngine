@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.App;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
 using KhaozEngine.Primitives;
@@ -16,7 +17,8 @@ namespace KhaozEngine.Gui
     public sealed class Button
     {
         public Rect Bounds;
-        public string Label;
+        /// <summary>The (lazily resolved) button caption.</summary>
+        public LocalizedText Content;
         public SpriteFont Font;
         public Action? OnClick;
 
@@ -29,10 +31,30 @@ namespace KhaozEngine.Gui
 
         bool _hover, _press;
 
-        public Button(Rect bounds, string label, SpriteFont font, Action? onClick = null)
+        /// <summary>Create a button from localized text.</summary>
+        public Button(Rect bounds, LocalizedText label, SpriteFont font, Action? onClick = null)
         {
-            Bounds = bounds; Label = label; Font = font; OnClick = onClick;
+            Bounds = bounds; Content = label; Font = font; OnClick = onClick;
         }
+
+        /// <summary>Obsolete: pass a <see cref="LocalizedText"/>. A raw string bypasses localization.</summary>
+        [Obsolete("Pass a LocalizedText; a raw string bypasses localization. Use a StringId or LocalizedText.Raw(...) for non-localizable text.")]
+        [LocalizationStringSink]
+        [LocalizationExempt]
+        public Button(Rect bounds, string label, SpriteFont font, Action? onClick = null)
+            : this(bounds, LocalizedText.Raw(label), font, onClick) { }
+
+        /// <summary>Obsolete shim for the former string field.</summary>
+        [Obsolete("Use Content (LocalizedText). Setting Label stores a raw, non-localized value.")]
+        [LocalizationExempt]
+        public string Label
+        {
+            get => Content.Resolve();
+            set => Content = LocalizedText.Raw(value);
+        }
+
+        /// <summary>The current resolved caption (for tests / measurement).</summary>
+        public string Resolved => Content.Resolve();
 
         /// <summary>
         /// Reserve the rect for click-through (<see cref="Pointer.BlockRegion"/>) and hit-test against the pointer.
@@ -51,6 +73,6 @@ namespace KhaozEngine.Gui
         /// <summary>Draw the button via the shared <see cref="GuiDraw.DrawButton"/>. <paramref name="white"/> is a
         /// 1x1 white texture for the fill.</summary>
         public void Draw(SpriteBatch batch, Texture2D white) =>
-            GuiDraw.DrawButton(batch, white, Font, Bounds, Label, Style, Enabled, Selected, _hover, _press);
+            GuiDraw.DrawButton(batch, white, Font, Bounds, Content, Style, Enabled, Selected, _hover, _press);
     }
 }

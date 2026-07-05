@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.App;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
@@ -217,7 +218,7 @@ namespace KhaozEngine.Gui
                 GuiDraw.Fill(batch, white, r, enabled ? color : DisabledColor);
                 return;
             }
-            GuiDraw.DrawButton(batch, white, BodyFont, r, text, ButtonStyle(color), enabled,
+            GuiDraw.DrawButton(batch, white, BodyFont, r, LocalizedText.Raw(text), ButtonStyle(color), enabled,
                 selected: false, pointer.IsHoveringIn(r), pointer.IsPressingIn(r));
         }
     }

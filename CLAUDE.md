@@ -72,8 +72,10 @@ version/release work.
   `CHANGELOG.md` entry → update the engine-version declarations the
   guard checks (`docs/ROADMAP.md` "Current released version" and
   the `README.md` `<PackageReference>` example) → `dotnet pack -c Release -o ./local-feed` (cumulative within a
-  release) → commit → `git tag vX.Y.Z` → push `main` + the tag right away, don't hold or batch (CI publishes to
-  GitHub Packages on `v*`).
+  release) → commit → `scripts/tag-release.sh` (creates the annotated tag `vX.Y.Z` with the canonical
+  `area(<version>): summary`, reading `<KhaozEngineVersion>`, and do NOT hand-type `git tag vX.Y.Z`, a
+  lightweight tag is rejected by `pre-push` and is how merge-commit subjects leaked into old tags) →
+  push `main` + the tag right away, don't hold or batch (CI publishes to GitHub Packages on `v*`).
   `local-feed/` is a gitignored dev convenience; GitHub Packages (every published `v*`) is the durable store, so
   `local-feed` may be pruned up to the lowest version any consumer still pins (each consumer's `Directory.Build.props`
   `<KhaozEngineVersion>`; do not prune below it) without losing anything recoverable.

@@ -1,12 +1,16 @@
 #!/bin/sh
-# pre-push: enforce branch-name convention; engine also runs the doc-version check before
-# the push triggers CI. Shared via core.hooksPath=.githooks. Bypass with `git push --no-verify`.
+# pre-push: enforce branch-name convention and the release-tag standard; the engine also runs the
+# doc-version check before the push triggers CI. Shared via core.hooksPath=.githooks.
+# Bypass with `git push --no-verify`.
 fail=0
+
+# Shared release-tag standard (sourced so pre-push and scripts/tag-release.sh agree on one rule).
+if [ -f scripts/tag-standard.sh ]; then . scripts/tag-standard.sh; have_tagstd=1; else have_tagstd=0; fi
 
 while read -r local_ref local_sha remote_ref remote_sha; do
   [ -z "$local_ref" ] && continue
   [ "$local_ref" = "(delete)" ] && continue
-  # all-zero local sha => branch deletion; allow it
+  # all-zero local sha => ref deletion; allow it
   case "$local_sha" in *[!0]*) ;; *) continue ;; esac
   case "$local_ref" in
     refs/heads/*)
@@ -20,6 +24,40 @@ while read -r local_ref local_sha remote_ref remote_sha; do
           echo "          Allowed: main, feature/*, fix/*, hotfix/*, worktree-*, <batchN>-promote." >&2
           echo "          Rename before pushing, or 'git push --no-verify' to override." >&2
           fail=1 ;;
+      esac ;;
+    refs/tags/*)
+      tag=${local_ref#refs/tags/}
+      # Only govern version tags (vX.Y.Z); leave any other tag alone. Skip if the repo ships no standard.
+      case "$tag" in
+        v[0-9]*)
+          if [ "$have_tagstd" != 1 ]; then
+            : ;
+          elif ! tag_name_ok "$tag"; then
+            echo "pre-push: tag '$tag' is not vMAJOR.MINOR.PATCH." >&2
+            echo "          Fix the tag name, or 'git push --no-verify' to override." >&2
+            fail=1
+          elif [ "$(git cat-file -t "$local_sha" 2>/dev/null)" != tag ]; then
+            echo "pre-push: tag '$tag' is lightweight; release tags must be annotated." >&2
+            echo "          Recreate it with scripts/tag-release.sh (or git tag -a $tag -m 'area(${tag#v}): summary')." >&2
+            fail=1
+          else
+            subj=$(git for-each-ref --format='%(contents:subject)' "refs/tags/$tag" 2>/dev/null)
+            ver=${tag#v}
+            if ! tag_msg_ok "$subj" "$ver"; then
+              echo "pre-push: tag '$tag' message must be 'area($ver): summary' (lowercase area, version scope, no dashes)." >&2
+              echo "          got: $subj" >&2
+              echo "          Use scripts/tag-release.sh, or 'git push --no-verify' to override." >&2
+              fail=1
+            else
+              commit=$(git rev-list -n 1 "$local_sha" 2>/dev/null)
+              pver=$(git show "$commit:Directory.Build.props" 2>/dev/null | tag_props_version)
+              if [ -n "$pver" ] && [ "$pver" != "$ver" ]; then
+                echo "pre-push: tag '$tag' does not match the version knob ($pver) in Directory.Build.props at the tagged commit." >&2
+                echo "          Tag the commit whose version is $ver, or align the version, then re-tag." >&2
+                fail=1
+              fi
+            fi
+          fi ;;
       esac ;;
   esac
 done

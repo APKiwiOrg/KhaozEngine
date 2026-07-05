@@ -2800,6 +2800,9 @@ engine never deserializes the blob; the game owns its format.
 - **`CaptureGameState`** runs on the server thread at every save point (save-on-leave and the periodic dirty
   pass). It is handed a `PlayerPersistenceContext` (`Slot` + `AccountId`), so it can read the live per-player
   object by `Slot`, and returns the serialized bytes (or null / empty for "no game state" - position only).
+  **Returning null / empty is destructive: it means "no game state", not "keep the existing blob".** After a save
+  has written bytes, returning null / empty marks the record dirty and **erases** the stored blob. Never return it
+  just because the live object isn't loaded yet - return the last-known bytes, or the player's progression is wiped.
 - **`ApplyGameState`** runs on the server thread as the load-on-join position is applied (inside `Update` /
   `FlushAsync`, never a background continuation). It gets the same context plus a `ReadOnlySpan<byte>` of exactly
   what capture returned; copy it (`blob.ToArray()`) to keep it. It is never called for a player with no saved blob.
@@ -2807,6 +2810,17 @@ engine never deserializes the blob; the game owns its format.
 Both live in the one `player:{accountId}` record, so position and the game blob save atomically and a change to
 *either* re-saves. Because the record is account-keyed, the blob is **unaffected by cell handoff** (unlike
 registered components, which migrate cell-to-cell with the entity).
+
+**Load-on-join guards the account against a clobbering save.** On a genuinely-async store (Azure SQL / Ruinborne),
+a load-on-join runs in the background while the tick loop keeps going. Until the loaded record is applied on the
+server thread, `WorldPersistence` guards that account: the periodic dirty pass and save-on-leave both skip it, so a
+save firing mid-load can't overwrite the stored record (position **and** the game blob) with the default-spawn state
+the player is still holding and erase progression. The guard clears when the record applies, or immediately if there
+was no saved record (a new player). One edge remains: on an async store, store operations for the same account are
+not ordered across a rapid leave/rejoin that overlaps an in-flight load-on-join, so a rejoin can briefly apply
+pre-leave state, which the next periodic save reconciles. Use a stable account id; serialize your own per-account
+store operations if a session needs strict ordering. Subscribe to **`WorldPersistence.OnStoreError`** to log/alert
+when a background load or save faults (a store outage); the failed save's state stays dirty and retries on the next pass.
 
 ```csharp
 var persistence = new WorldPersistence(server, store, new WorldPersistenceConfig

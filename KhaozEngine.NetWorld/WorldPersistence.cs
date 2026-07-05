@@ -40,6 +40,16 @@ public sealed class WorldPersistenceConfig
 /// last save. Async loads are applied to the server on the server thread inside <see cref="Update"/> (never from
 /// a background continuation), so a genuinely-async backend can't race the tick loop.
 ///
+/// <para>While a load-on-join is still in flight, the account is guarded: the periodic dirty pass and save-on-leave
+/// both skip it, so a save firing mid-load can't overwrite the stored record (position AND the durable game blob)
+/// with the pre-restore default-spawn state and permanently erase progression. The guard clears once the loaded
+/// record has been applied on the server thread, or immediately if the load found no saved record. Skipping the
+/// leave-save is intentional: the state was never applied, so the stored record - not the pre-restore live state -
+/// is the truth worth keeping. One edge is not covered: on an async store, store operations for the same account
+/// are not ordered across a rapid leave/rejoin that overlaps an in-flight load-on-join, so a rejoin can briefly apply
+/// pre-leave state (the next periodic save reconciles it). Use a stable account id; if a session needs strict
+/// ordering, serialize your own per-account store operations on top.</para>
+///
 /// <para>A game attaches durable per-player state (XP, inventory, quests) through
 /// <see cref="WorldPersistenceConfig.CaptureGameState"/> / <see cref="WorldPersistenceConfig.ApplyGameState"/>: an
 /// opaque blob that rides the SAME record, dirty comparison, interval save, flush-on-drain and load-on-join
@@ -58,10 +68,24 @@ public sealed class WorldPersistence
     // accountId -> last persisted bytes, for dirty comparison (covers position AND the game blob, since both are
     // in the same encoded record - a change to either marks the record dirty and re-saves).
     private readonly ConcurrentDictionary<string, byte[]> lastSaved = new();
+    // accountId -> outstanding load-on-join guard. Set in OnPlayerJoined before the async load starts; cleared only
+    // AFTER the loaded record is applied on the server thread (DrainApplyQueue), or immediately when the load returns
+    // null (a brand-new player: no stored record to protect). SaveDirtyPass and OnPlayerLeaving skip an account still
+    // in this set, so a periodic save or a quick leave can't overwrite the stored record (position AND the durable
+    // game blob) with pre-restore state - the default spawn and a null blob - and permanently erase progression. A
+    // faulted load deliberately leaves the guard set so the intact stored record stays protected (a later rejoin
+    // retries the load); mirrors CellPersistence's loadsInFlight.
+    private readonly ConcurrentDictionary<string, byte> loadsInFlight = new();
     // In-flight loads/saves, so FlushAsync can await them (tests + shutdown).
     private readonly object pendingLock = new();
     private readonly List<Task> pending = new();
     private float sinceSave;
+
+    /// <summary>Raised on the server thread from <see cref="Update"/> when a tracked load/save task faulted or was
+    /// canceled (typically a store outage). The engine drops the finished task so the pending list can't grow
+    /// unbounded, and this hook lets the game log or alert. The failed save's state stays dirty and is retried on the
+    /// next pass.</summary>
+    public event Action<Exception>? OnStoreError;
 
     public WorldPersistence(IWorldPersistenceHost server, IWorldStore store, WorldPersistenceConfig? config = null)
     {
@@ -79,15 +103,23 @@ public sealed class WorldPersistence
         lock (pendingLock) pending.Add(task);
     }
 
-    private void OnPlayerJoined(int slot, string accountId) => Track(LoadOnJoinAsync(slot, accountId));
+    private void OnPlayerJoined(int slot, string accountId)
+    {
+        loadsInFlight[accountId] = 0;                       // guard the account until the loaded record applies (or the load returns null)
+        Track(LoadOnJoinAsync(slot, accountId));
+    }
 
     private async Task LoadOnJoinAsync(int slot, string accountId)
     {
         byte[]? data = await store.LoadAsync(Key(accountId)).ConfigureAwait(false);
-        if (data is null) return;                          // no save -> keep the default spawn
+        if (data is null)                                  // no save -> keep the default spawn
+        {
+            loadsInFlight.TryRemove(accountId, out _);     // brand-new player: nothing stored to clobber, drop the guard now
+            return;
+        }
         lastSaved[accountId] = data;                       // loaded == clean baseline
         PlayerRecord record = PlayerRecord.Decode(data);
-        applyQueue.Enqueue((slot, accountId, record.ToState(), record.Game));
+        applyQueue.Enqueue((slot, accountId, record.ToState(), record.Game));   // guard cleared in DrainApplyQueue, AFTER this applies
     }
 
     // Captures the game blob (on the server thread - the caller is on the server thread) and encodes the full record.
@@ -98,7 +130,10 @@ public sealed class WorldPersistence
     }
 
     private void OnPlayerLeaving(int slot, string accountId, PlayerMoveState finalState)
-        => Track(SaveIfDirtyAsync(accountId, BuildRecordBytes(slot, accountId, finalState)));
+    {
+        if (loadsInFlight.ContainsKey(accountId)) return;   // load still outstanding: the stored record was never applied, so IT - not this pre-restore live state - is the truth worth keeping
+        Track(SaveIfDirtyAsync(accountId, BuildRecordBytes(slot, accountId, finalState)));
+    }
 
     private async Task SaveIfDirtyAsync(string accountId, byte[] data)
     {
@@ -114,7 +149,7 @@ public sealed class WorldPersistence
     {
         DrainApplyQueue();
 
-        lock (pendingLock) pending.RemoveAll(t => t.Status == TaskStatus.RanToCompletion);
+        PrunePending();
 
         sinceSave += dt;
         if (sinceSave >= config.SaveIntervalSeconds)
@@ -122,6 +157,26 @@ public sealed class WorldPersistence
             sinceSave = 0f;
             SaveDirtyPass();
         }
+    }
+
+    // Drops every finished task from the pending list. Previously only RanToCompletion was pruned, so on a store
+    // outage the faulted/canceled tasks accumulated until FlushAsync surfaced them - the list grew unbounded. Faults
+    // are observed (reading Task.Exception) and surfaced via OnStoreError; the failed save's state stays dirty and is
+    // retried on the next pass. Collect the exceptions inside the lock but raise the event outside it (never run a
+    // game callback while holding pendingLock).
+    private void PrunePending()
+    {
+        List<Exception>? failures = null;
+        lock (pendingLock)
+            pending.RemoveAll(t =>
+            {
+                if (!t.IsCompleted) return false;
+                if (t.IsFaulted || t.IsCanceled)
+                    (failures ??= new List<Exception>()).Add(t.Exception?.GetBaseException() ?? new TaskCanceledException());
+                return true;
+            });
+        if (failures is not null)
+            foreach (Exception ex in failures) OnStoreError?.Invoke(ex);
     }
 
     // Applies loaded records on the server thread: position first, then the opaque game blob (only when present and a
@@ -133,6 +188,7 @@ public sealed class WorldPersistence
             server.SetPlayerState(a.slot, a.state);
             if (a.game is { Length: > 0 } && config.ApplyGameState is { } apply)
                 apply(new PlayerPersistenceContext(a.slot, a.accountId), a.game);
+            loadsInFlight.TryRemove(a.accountId, out _);   // restore applied; the account is now safe to dirty-save
         }
     }
 
@@ -141,6 +197,7 @@ public sealed class WorldPersistence
     {
         foreach (int slot in new List<int>(server.JoinedSlots))
             if (server.TryGetAccountId(slot, out string accountId) &&
+                !loadsInFlight.ContainsKey(accountId) &&        // load outstanding: skip so this pass can't overwrite the stored record with pre-restore state
                 server.TryGetPlayerState(slot, out PlayerMoveState state))
                 Track(SaveIfDirtyAsync(accountId, BuildRecordBytes(slot, accountId, state)));
     }

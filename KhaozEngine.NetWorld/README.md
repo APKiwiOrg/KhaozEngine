@@ -60,7 +60,11 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   on the server thread at each save; apply runs on the server thread as the load-on-join position is applied. The
   engine never interprets the bytes - the game owns the format and its migration (run a
   [`MigrationChain`](../KhaozEngine.Persistence) in the apply hook) - and, being account-keyed, the blob is
-  unaffected by cell handoff (unlike registered components, which migrate with the entity).
+  unaffected by cell handoff (unlike registered components, which migrate with the entity). While a load-on-join is
+  in flight the account is guarded (the periodic pass and save-on-leave skip it) so a save landing mid-load can't
+  overwrite the stored record with default-spawn state and erase the blob; `capture` returning null/empty is
+  destructive (it *erases* the stored blob - "no game state", not "keep existing"), never a "not loaded yet" signal.
+  `OnStoreError` surfaces a faulted background load/save (store outage).
 - **`CellPersistence`** (+ `CellPersistenceConfig`, `WorldMetaRecord`) wires an
   [`IWorldStore`](../KhaozEngine.WorldStore) into a [`Sharding`](../KhaozEngine.Sharding) `ShardHost`-based server
   through **`ICellPersistenceHost`** (the surface `ShardedWorldServer` implements) so a cell's authoritative

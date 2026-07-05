@@ -33,6 +33,10 @@ public readonly struct PlayerPersistenceContext
 /// serialized bytes, or null / empty for "no game state" (only position is persisted). The engine never interprets
 /// the bytes - it stores them verbatim in the player record - so the game owns the format and its versioning. Keep
 /// the serialization deterministic for unchanged state, otherwise every dirty pass re-saves.
+/// <para><b>Destructive:</b> null / empty means "no game state", NOT "keep the existing blob". Returning it after a
+/// previous save wrote bytes marks the record dirty and ERASES the stored blob on the next save. Never return
+/// null / empty just because the live object isn't loaded yet - return the last-known bytes, or the player's durable
+/// progression is wiped.</para>
 /// </summary>
 public delegate byte[]? PlayerGameStateCapture(in PlayerPersistenceContext context);
 

@@ -17,6 +17,10 @@
   <ItemGroup>
     <!-- Let the engine test project verify the localization catalog (ShowcaseStrings + resx) resolves. -->
     <InternalsVisibleTo Include="KhaozEngine.Tests" />
+    <!-- Run the localization analyzer on the showcase (the worked example) so KELOC001/002 are enforced here
+         in-repo, proving the diagnostics fire on real consumer-style code. -->
+    <ProjectReference Include="../KhaozEngine.Localization.Analyzers/KhaozEngine.Localization.Analyzers.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />

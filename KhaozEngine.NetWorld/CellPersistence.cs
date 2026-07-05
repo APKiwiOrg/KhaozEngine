@@ -77,8 +77,12 @@ public sealed class CellPersistence
     private readonly ICellPersistenceHost host;
     private readonly IWorldStore store;
     private readonly CellPersistenceConfig config;
+    private readonly IReadOnlyDictionary<int, CellSnapshotMigration> migrations;
+    private readonly int migrationStart;   // lowest from-version in the chain, or SchemaVersion when empty
 
-    private readonly ConcurrentQueue<(CellCoord coord, byte[] snapshot)> restoreQueue = new();
+    // The RAW stored blob per pending cell load (header + body). Unwrap, migrate, quarantine and restore all run on
+    // the server thread in DrainRestores, so every Issue event is raised there (never a background continuation).
+    private readonly ConcurrentQueue<(CellCoord coord, byte[] rawBlob)> restoreQueue = new();
     private readonly ConcurrentDictionary<CellCoord, byte[]> lastSaved = new();   // raw (unwrapped) snapshot per cell
     private readonly HashSet<CellCoord> loadRequested = new();                    // server-thread-only idempotency
     private readonly ConcurrentDictionary<CellCoord, byte> loadsInFlight = new(); // coords with an outstanding load; SaveDirtyPass skips them so a periodic save can't clobber the stored blob with pre-restore state
@@ -87,12 +91,43 @@ public sealed class CellPersistence
     private int lastSavedNextNetId;
     private float sinceSave;
 
+    /// <summary>
+    /// Raised on the server thread (inside the load-apply drain) when a cell's saved blob was migrated, skipped
+    /// (too old / too new), quarantined (corrupt / undecodable), or carried unknown extension frames. Observational:
+    /// the driver has already handled the situation. Consumers (ops tooling) subscribe to SEE what would otherwise be
+    /// silent. See <see cref="CellPersistenceIssue"/>.
+    /// </summary>
+    public event Action<CellPersistenceIssue>? Issue;
+
     public CellPersistence(ICellPersistenceHost host, IWorldStore store, CellPersistenceConfig? config = null)
     {
         this.host = host ?? throw new ArgumentNullException(nameof(host));
         this.store = store ?? throw new ArgumentNullException(nameof(store));
         this.config = config ?? new CellPersistenceConfig();
+        migrations = this.config.Migrations;
+        migrationStart = ValidateMigrationChain(migrations, this.config.SchemaVersion);
         host.CellCreated += OnCellCreated;
+    }
+
+    // Validates the migration chain (contiguous, no gaps, no step at/beyond the schema version), mirroring
+    // MigrationChainBuilder.Build, and returns the lowest from-version (or the schema version when there are no
+    // migrations, so any older blob is "too old" to bring forward). Throws on a bad chain at construction time.
+    private static int ValidateMigrationChain(IReadOnlyDictionary<int, CellSnapshotMigration> steps, int schemaVersion)
+    {
+        if (steps.Count == 0) return schemaVersion;
+        int start = int.MaxValue;
+        foreach (int from in steps.Keys)
+        {
+            if (from >= schemaVersion)
+                throw new ArgumentException(
+                    $"Cell-blob migration from version {from} targets version {from + 1}, at or beyond the schema version {schemaVersion}.");
+            if (from < start) start = from;
+        }
+        for (int v = start; v < schemaVersion; v++)
+            if (!steps.ContainsKey(v))
+                throw new ArgumentException(
+                    $"Cell-blob migration chain has a gap: no step registered from version {v} (steps must be contiguous from {start} to {schemaVersion - 1}).");
+        return start;
     }
 
     private string CellKey(CellCoord c) => $"{config.CellKeyPrefix}{c.X}:{c.Y}";
@@ -110,9 +145,7 @@ public sealed class CellPersistence
     {
         byte[]? blob = await store.LoadAsync(CellKey(coord)).ConfigureAwait(false);
         if (blob is null) { loadsInFlight.TryRemove(coord, out _); return; }   // no save -> cell stays as spawned
-        if (!TryUnwrap(blob, out byte[] snapshot)) { loadsInFlight.TryRemove(coord, out _); return; } // header/schema mismatch -> skip
-        lastSaved[coord] = snapshot;                    // loaded == clean baseline
-        restoreQueue.Enqueue((coord, snapshot));
+        restoreQueue.Enqueue((coord, blob));   // raw blob; header/migrate/quarantine/restore happen on the server thread
     }
 
     /// <summary>Call once per server frame. Applies completed loads (this thread) + runs the periodic dirty pass.</summary>
@@ -126,15 +159,87 @@ public sealed class CellPersistence
 
     private void DrainRestores()
     {
-        while (restoreQueue.TryDequeue(out (CellCoord coord, byte[] snapshot) r))
+        while (restoreQueue.TryDequeue(out (CellCoord coord, byte[] rawBlob) r))
         {
-            IReadOnlyList<int> ids = host.RestoreCell(r.coord, r.snapshot);
-            int max = 0;
-            foreach (int id in ids) if (id > max) max = id;
-            if (max > 0) host.EnsureNextNetIdAtLeast(max + 1);
-            loadsInFlight.TryRemove(r.coord, out _);     // restore applied; cell is now safe to dirty-save
+            ProcessLoadedBlob(r.coord, r.rawBlob);
+            loadsInFlight.TryRemove(r.coord, out _);     // load handled (restored/migrated/skipped/quarantined): safe to dirty-save
         }
     }
+
+    // Server-thread handling of one loaded blob: read the header, bring it forward through the migration chain if it
+    // is older than the current schema, and restore it - quarantining (preserving the bytes, cell starts fresh) any
+    // undecodable case instead of throwing, so a poisoned key can never crash-loop the server. Every outcome that ops
+    // should see is surfaced through the Issue event.
+    private void ProcessLoadedBlob(CellCoord coord, byte[] rawBlob)
+    {
+        if (!TryReadHeader(rawBlob, out int storedVersion, out byte[] body))
+        {
+            Quarantine(coord, rawBlob, CellPersistenceIssue.QuarantinedCorrupt(coord, "missing or invalid blob header"));
+            return;
+        }
+        if (storedVersion == config.SchemaVersion)
+        {
+            TryRestoreAndBaseline(coord, body, rawBlob, migrated: false, fromVersion: storedVersion);
+            return;
+        }
+        if (storedVersion > config.SchemaVersion)
+        {
+            Quarantine(coord, rawBlob, CellPersistenceIssue.SkippedTooNew(coord, storedVersion, config.SchemaVersion));
+            return;
+        }
+        if (storedVersion < migrationStart)
+        {
+            Quarantine(coord, rawBlob, CellPersistenceIssue.SkippedTooOld(coord, storedVersion, config.SchemaVersion));
+            return;
+        }
+
+        byte[] migratedBody = body;
+        try
+        {
+            for (int v = storedVersion; v < config.SchemaVersion; v++)
+                migratedBody = migrations[v](migratedBody)
+                    ?? throw new InvalidOperationException($"cell-blob migration from version {v} returned null");
+        }
+        catch (Exception ex)
+        {
+            Quarantine(coord, rawBlob, CellPersistenceIssue.QuarantinedCorrupt(coord, $"migration from v{storedVersion} failed: {ex.Message}"));
+            return;
+        }
+        TryRestoreAndBaseline(coord, migratedBody, rawBlob, migrated: true, fromVersion: storedVersion);
+    }
+
+    // Restores a decoded body via the non-throwing host path. On decode failure the blob is quarantined (its bytes
+    // preserved, cell left fresh). On success: raises the NetId high-water, surfaces Migrated / RetainedUnknownExtensions
+    // events, and seeds the dirty-baseline - except for a migrated blob, which is left unset so the upgraded form
+    // (current header + migrated body) is rewritten once, advancing the on-disk schema version.
+    private void TryRestoreAndBaseline(CellCoord coord, byte[] body, byte[] rawBlob, bool migrated, int fromVersion)
+    {
+        CellRestoreResult r = host.TryRestoreCell(coord, body);
+        if (!r.Ok)
+        {
+            Quarantine(coord, rawBlob, CellPersistenceIssue.QuarantinedCorrupt(coord, r.Error ?? "cell snapshot failed to decode"));
+            return;
+        }
+
+        int max = 0;
+        foreach (int id in r.NetIds) if (id > max) max = id;
+        if (max > 0) host.EnsureNextNetIdAtLeast(max + 1);
+
+        if (migrated) Issue?.Invoke(CellPersistenceIssue.Migrated(coord, fromVersion, config.SchemaVersion));
+        if (r.RetainedFrameCount > 0) Issue?.Invoke(CellPersistenceIssue.RetainedUnknownExtensions(coord, r.RetainedFrameCount));
+
+        if (!migrated) lastSaved[coord] = host.SnapshotCell(coord) ?? body;
+    }
+
+    // Copies the original bytes to the quarantine key (so nothing is destroyed), then surfaces the issue. The cell is
+    // left fresh; a later save may reuse the main key (the original is safe under quarantine).
+    private void Quarantine(CellCoord coord, byte[] rawBlob, CellPersistenceIssue issue)
+    {
+        Track(store.SaveAsync(QuarantineKey(coord), rawBlob));
+        Issue?.Invoke(issue);
+    }
+
+    private string QuarantineKey(CellCoord c) => $"{config.QuarantineKeyPrefix}{CellKey(c)}";
 
     /// <summary>Saves every live cell whose persistable snapshot changed since its last save, plus the meta record.</summary>
     public void SaveDirtyPass()
@@ -209,13 +314,16 @@ public sealed class CellPersistence
         return buf;
     }
 
-    private bool TryUnwrap(byte[] blob, out byte[] snapshot)
+    // Reads the [magic][version] header and returns the body. Version-agnostic (the caller decides migrate / skip /
+    // restore): only a bad magic or a too-short blob fails here, which the caller treats as corrupt.
+    private static bool TryReadHeader(byte[] blob, out int version, out byte[] body)
     {
-        snapshot = Array.Empty<byte>();
+        version = 0;
+        body = Array.Empty<byte>();
         if (blob.Length < 8) return false;
         if (BinaryPrimitives.ReadInt32LittleEndian(blob.AsSpan(0, 4)) != Magic) return false;
-        if (BinaryPrimitives.ReadInt32LittleEndian(blob.AsSpan(4, 4)) != config.SchemaVersion) return false;
-        snapshot = blob[8..];
+        version = BinaryPrimitives.ReadInt32LittleEndian(blob.AsSpan(4, 4));
+        body = blob[8..];
         return true;
     }
 

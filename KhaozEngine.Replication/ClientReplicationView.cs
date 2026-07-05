@@ -46,7 +46,9 @@ public sealed class ClientReplicationView
     /// Applies a snapshot: spawn-if-new + update every netId present, despawn every netId absent. Captures
     /// interpolatable components' raw bytes (shifting the prior snapshot's into the interpolation "previous").
     /// </summary>
-    public void Apply(World world, byte[] snapshot)
+    public void Apply(World world, byte[] snapshot) => ApplyInternal(world, snapshot, unknownExtensionSink: null);
+
+    private void ApplyInternal(World world, byte[] snapshot, Action<int, ushort, byte[]>? unknownExtensionSink)
     {
         if (world is null) throw new ArgumentNullException(nameof(world));
         if (snapshot is null) throw new ArgumentNullException(nameof(snapshot));
@@ -65,7 +67,7 @@ public sealed class ClientReplicationView
             int netId = br.ReadInt32();
             seen.Add(netId);
             Entity entity = GetOrSpawn(world, netId);
-            ReadEntityComponents(world, entity, netId, ms, br, snapshot, "Snapshot");
+            ReadEntityComponents(world, entity, netId, ms, br, snapshot, "Snapshot", unknownExtensionSink);
         }
 
         // Full-state: anything we still track but didn't see is gone.
@@ -100,6 +102,35 @@ public sealed class ClientReplicationView
         }
         catch (Exception ex)
         {
+            error = ex.Message;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Applies a persist snapshot like <see cref="TryApply"/>, but additionally COLLECTS every extension frame whose
+    /// type id this registry does not know (id &gt;= <see cref="ReplicationRegistry.FirstExtensionTypeId"/>,
+    /// unregistered) as a raw <see cref="RetainedComponent"/> so the caller can retain it and re-persist it verbatim
+    /// (retain-and-rewrite), instead of the silent skip <see cref="Apply"/> does. Built-in frames stay
+    /// throw-on-unknown (a hard protocol mismatch), so an unknown built-in id yields <c>false</c> with the reason in
+    /// <paramref name="error"/> and an empty <paramref name="retained"/>. Never throws. Intended for the cell
+    /// persistence restore path (a throwaway view), where a registry downgrade must not destroy data at rest.
+    /// </summary>
+    public bool TryApplyRetainingUnknown(World world, byte[] snapshot,
+        out IReadOnlyList<RetainedComponent> retained, out string? error)
+    {
+        var collected = new List<RetainedComponent>();
+        try
+        {
+            ApplyInternal(world, snapshot,
+                (netId, typeId, payload) => collected.Add(new RetainedComponent(netId, typeId, payload)));
+            retained = collected;
+            error = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            retained = Array.Empty<RetainedComponent>();
             error = ex.Message;
             return false;
         }
@@ -196,7 +227,7 @@ public sealed class ClientReplicationView
                 }
             }
 
-            ReadEntityComponents(world, entity, netId, ms, br, delta, "Delta");
+            ReadEntityComponents(world, entity, netId, ms, br, delta, "Delta", unknownExtensionSink: null);
         }
 
         // Full snapshot (baseline -1): anything we still track but the snapshot didn't carry is gone.
@@ -226,7 +257,7 @@ public sealed class ClientReplicationView
     /// caught by <see cref="TryApply"/>/<see cref="TryApplyDelta"/> and surfaced as "client out of date".
     /// </summary>
     private void ReadEntityComponents(World world, Entity entity, int netId, MemoryStream ms, BinaryReader br,
-        byte[] backing, string streamKind)
+        byte[] backing, string streamKind, Action<int, ushort, byte[]>? unknownExtensionSink)
     {
         while (true)
         {
@@ -253,6 +284,14 @@ public sealed class ClientReplicationView
             }
             else if (extension)
             {
+                if (unknownExtensionSink is not null)
+                {
+                    // Retain the raw frame (retain-and-rewrite) instead of dropping it, so a registry downgrade does
+                    // not destroy data at rest. The caller re-emits it verbatim on the next save.
+                    var payload = new byte[len];
+                    Array.Copy(backing, (int)posBefore, payload, 0, len);
+                    unknownExtensionSink(netId, typeId, payload);
+                }
                 ms.Position = posBefore + len;   // unknown extension: skip its framed payload (forward-compat)
             }
             else

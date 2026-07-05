@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using KhaozEngine.Ecs;
@@ -26,7 +27,7 @@ public static class SnapshotWriter
     {
         var entities = new List<(int netId, Entity entity)>();
         world.ForEach<NetId>((Entity e, ref NetId id) => entities.Add((id.Value, e)));
-        return Encode(world, registry, entities, channel, ownerNetId);
+        return Encode(world, registry, entities, channel, ownerNetId, retainedExtensionFrames: null);
     }
 
     /// <summary>
@@ -43,11 +44,30 @@ public static class SnapshotWriter
     {
         var entities = new List<(int netId, Entity entity)>();
         world.ForEach<NetId>((Entity e, ref NetId id) => { if (netIds.Contains(id.Value)) entities.Add((id.Value, e)); });
-        return Encode(world, registry, entities, channel, ownerNetId);
+        return Encode(world, registry, entities, channel, ownerNetId, retainedExtensionFrames: null);
+    }
+
+    /// <summary>
+    /// As <see cref="WriteFiltered(World, ReplicationRegistry, IReadOnlySet{int}, ReplicationChannels, int?)"/>, but
+    /// after each entity's registered components it re-emits any opaque extension frames
+    /// <paramref name="retainedExtensionFrames"/> returns for that net id (length-prefixed, exactly as captured), then
+    /// the terminator. This is the write side of retain-and-rewrite: a cell that restored under a registry missing an
+    /// extension registration carries the unknown frames forward verbatim, so a registry regression cannot strip data
+    /// at rest. The frames MUST be extension ids (&gt;= <see cref="ReplicationRegistry.FirstExtensionTypeId"/>); pass
+    /// null (or a provider returning null) for the plain path.
+    /// </summary>
+    public static byte[] WriteFiltered(World world, ReplicationRegistry registry, IReadOnlySet<int> netIds,
+        ReplicationChannels channel, int? ownerNetId,
+        Func<int, IReadOnlyList<RetainedComponent>?>? retainedExtensionFrames)
+    {
+        var entities = new List<(int netId, Entity entity)>();
+        world.ForEach<NetId>((Entity e, ref NetId id) => { if (netIds.Contains(id.Value)) entities.Add((id.Value, e)); });
+        return Encode(world, registry, entities, channel, ownerNetId, retainedExtensionFrames);
     }
 
     private static byte[] Encode(World world, ReplicationRegistry registry, List<(int netId, Entity entity)> entities,
-        ReplicationChannels channel, int? ownerNetId)
+        ReplicationChannels channel, int? ownerNetId,
+        Func<int, IReadOnlyList<RetainedComponent>?>? retainedExtensionFrames)
     {
         using var ms = new MemoryStream();
         using var bw = new BinaryWriter(ms);
@@ -58,6 +78,14 @@ public static class SnapshotWriter
             foreach (ComponentCodec codec in registry.Ordered)
                 if (codec.ShouldWrite(channel, netId, ownerNetId))
                     codec.TrySerialize(world, entity, bw); // writes [typeId][data] when present
+            IReadOnlyList<RetainedComponent>? extra = retainedExtensionFrames?.Invoke(netId);
+            if (extra is not null)
+                foreach (RetainedComponent rc in extra)
+                {
+                    bw.Write(rc.TypeId);                       // retained extension frame: [typeId][7-bit len][data]
+                    bw.Write7BitEncodedInt(rc.Payload.Length);
+                    bw.Write(rc.Payload);
+                }
             bw.Write((ushort)0); // end-of-entity terminator
         }
         bw.Flush();

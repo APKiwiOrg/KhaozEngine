@@ -256,6 +256,11 @@ public sealed class CellPersistence
             return;
         }
 
+        // Single high-water over ALL restored ids. Correct while everything is node 0 (ids are then numerically
+        // ordered by counter). When multi-node lands this needs a PER-NODE max: NetId packs the node in the high 16
+        // bits, so a foreign-node id sorts numerically ABOVE a local one yet EnsureNextAtLeast ignores it (its node
+        // bits are not ours), leaving this node's counter unadvanced - so restore the per-node high-water for each
+        // node present, not one max across all of them.
         long max = 0;
         foreach (long id in r.NetIds) if (id > max) max = id;
         if (max > 0) host.EnsureNextNetIdAtLeast(max + 1);

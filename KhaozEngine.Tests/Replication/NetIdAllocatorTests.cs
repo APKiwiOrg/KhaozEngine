@@ -99,4 +99,15 @@ public class NetIdAllocatorTests
     [InlineData(NetIdAllocator.MaxCounter + 1)]
     public void Ctor_rejects_an_out_of_range_start_counter(long start) =>
         Assert.Throws<ArgumentOutOfRangeException>(() => new NetIdAllocator(nodeId: 0, startCounter: start));
+
+    [Fact]
+    public void Next_throws_when_the_node_counter_is_exhausted_rather_than_wrapping()
+    {
+        // Start at the last counter value: the first Next hands out the final id, the next exhausts the 2^48 space
+        // and must throw (never wrap into another node's id space).
+        var a = new NetIdAllocator(nodeId: 3, startCounter: NetIdAllocator.MaxCounter);
+        NetId last = a.Next();
+        Assert.Equal(NetIdAllocator.Pack(3, NetIdAllocator.MaxCounter), last.Value);
+        Assert.Throws<InvalidOperationException>(() => a.Next());
+    }
 }

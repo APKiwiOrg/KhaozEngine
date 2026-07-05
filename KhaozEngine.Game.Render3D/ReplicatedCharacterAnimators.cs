@@ -359,11 +359,21 @@ namespace KhaozEngine.Game
                     : MathF.Abs(verticalVelocity) < _tuning.GroundedVerticalEpsilon;
                 // Locomotion state + clip-speed sync run off the exact planar speed when supplied (the clean commanded
                 // speed), so a decel-to-stop does not strobe walk<->idle off the finite-differenced render position.
-                // Facing keeps the derived heading below (exact speed is magnitude-only), so it is not overridden here.
+                // Facing still takes its DIRECTION from the derived heading (exact speed is magnitude-only), but gates
+                // on the exact speed too (see below) so it holds through the post-stop settle instead of spinning.
                 float locomotionSpeed = s.HasPlanarSpeed ? MathF.Max(0f, s.PlanarSpeed) : derivedPlanarSpeed;
 
-                // Facing: aim along the derived planar heading; hold the last yaw below the threshold (no spin at rest).
-                if (derivedPlanarSpeed > _tuning.MinPlanarSpeedForFacing)
+                // Facing: aim along the derived planar heading, but only while the entity is genuinely moving. The
+                // derived heading (from the render-position delta) swings around during the post-stop render settle -
+                // the local avatar's rendered position sags backward then recovers, so the delta briefly points
+                // backward/sideways - and chasing it spins the model for a few frames before it corrects. So gate on the
+                // EXACT planar speed too when it is supplied (the local player): at a real stop it is 0, holding the yaw
+                // through the settle. Remotes (no exact speed) gate on the derived speed alone as before. The derived
+                // magnitude is still required so there is a valid heading direction for the Atan2. Below the threshold
+                // the yaw holds (no spin at rest).
+                bool movingForFacing = derivedPlanarSpeed > _tuning.MinPlanarSpeedForFacing
+                    && (!s.HasPlanarSpeed || locomotionSpeed > _tuning.MinPlanarSpeedForFacing);
+                if (movingForFacing)
                 {
                     float target = MathF.Atan2(planarVel.X, planarVel.Z) + _tuning.FacingYawOffset;
                     e.Yaw = LerpAngle(e.Yaw, target, _tuning.YawSmoothing);

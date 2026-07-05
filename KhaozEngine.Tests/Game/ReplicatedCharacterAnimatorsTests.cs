@@ -179,6 +179,31 @@ namespace KhaozEngine.Tests.Game
         }
 
         [Fact]
+        public void ExplicitPlanarSpeed_Zero_HoldsFacing_ThroughTheStopSettleWobble()
+        {
+            // The decel-to-stop FACING glitch (distinct from the walk<->idle state flicker). After the stop the
+            // rendered position still settles with a tiny residual sag - backward for a few frames, then forward. If
+            // facing follows the finite-differenced heading, that sag reads as motion reversing direction and the model
+            // spins to chase it (a rapid glitch to face backward / around) before correcting. With an exact planar
+            // speed of 0 the facing gate must stay CLOSED for the whole settle, so the yaw holds its last heading.
+            var a = NewAnimators();
+            var pos = Vector3.Zero;
+            for (int i = 0; i < 120; i++) { pos += new Vector3(6f * Dt, 0, 0); a.Update(new[] { LocalSpeed(1, pos, 6f) }, Dt); }
+            Vector3 fwd0 = Vector3.TransformNormal(new Vector3(0, 0, 1), a.Live[0].World);
+            Assert.True(fwd0.X > 0.95f, $"expected facing +X after moving, got {fwd0}");
+
+            // Stop (exact speed 0) while the position sags backward then recovers - the residual settle.
+            float[] sag = { -0.03f, -0.03f, -0.02f, -0.01f, 0.01f, 0.02f, 0.03f, 0.02f, 0f, 0f, 0f, 0f };
+            foreach (float step in sag)
+            {
+                pos += new Vector3(step, 0, 0);
+                a.Update(new[] { LocalSpeed(1, pos, 0f) }, Dt);
+                Vector3 fwd = Vector3.TransformNormal(new Vector3(0, 0, 1), a.Live[0].World);
+                Assert.True(fwd.X > 0.9f, $"facing spun during the stop settle (should hold +X): {fwd}");
+            }
+        }
+
+        [Fact]
         public void ExplicitPlanarSpeed_DerivedPathWouldFlicker_ProvingTheOverrideMatters()
         {
             // Same jittering-position stop, but position-ONLY samples: the derived speed reads the jitter and the state

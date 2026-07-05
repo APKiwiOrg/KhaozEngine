@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.App;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
@@ -8,11 +9,15 @@ using KhaozEngine.Windowing;
 namespace KhaozEngine.Gui
 {
     /// <summary>A single line of text in a <see cref="Tooltip"/>.</summary>
-    public readonly record struct TooltipLine(string Text, Vector4 Color);
+    public readonly record struct TooltipLine(string Text, Vector4 Color)
+    {
+        /// <summary>Build a line from localized text (resolved now against the ambient catalog).</summary>
+        public static TooltipLine Of(LocalizedText text, Vector4 color) => new(text.Resolve(), color);
+    }
 
     /// <summary>
     /// How a <see cref="Tooltip"/> decides to hide itself. <see cref="CallerDriven"/> (default) leaves visibility
-    /// entirely to <see cref="Tooltip.Show"/>/<see cref="Tooltip.Hide"/> (desktop hover). <see cref="TapOutside"/>
+    /// entirely to <see cref="Tooltip.Show(LocalizedText, IReadOnlyList{TooltipLine}, Vector2)"/>/<see cref="Tooltip.Hide"/> (desktop hover). <see cref="TapOutside"/>
     /// makes <see cref="Tooltip.Update"/> auto-dismiss on the next tap released outside the bubble (touch/mobile),
     /// so the dismissal policy is a runtime value, not a compile-time platform branch.
     /// </summary>
@@ -29,9 +34,9 @@ namespace KhaozEngine.Gui
     }
 
     /// <summary>
-    /// A floating, auto-sized text bubble anchored near a point. <see cref="ComputeBounds"/> is a pure layout
+    /// A floating, auto-sized text bubble anchored near a point. <see cref="ComputeBounds(ITextMeasurer, string, ITextMeasurer, IReadOnlyList{TooltipLine}, Vector2, Vector2, TooltipMetrics)"/> is a pure layout
     /// function (sizes to content, prefers above the anchor, flips below when there's no room, clamps into the
-    /// viewport) testable with a fake <see cref="ITextMeasurer"/>. The instance API is <see cref="Show"/> /
+    /// viewport) testable with a fake <see cref="ITextMeasurer"/>. The instance API is <see cref="Show(LocalizedText, IReadOnlyList{TooltipLine}, Vector2)"/> /
     /// <see cref="Hide"/> + <see cref="Draw"/>. The top margin is configurable via <see cref="TooltipMetrics"/>.
     /// <para>
     /// Opt-in extras (all default to the pre-existing look): a two-column title (<see cref="Show(string,string,IReadOnlyList{TooltipLine},Vector2)"/>
@@ -80,24 +85,39 @@ namespace KhaozEngine.Gui
 
         public Tooltip(SpriteFont titleFont, SpriteFont bodyFont) { _titleFont = titleFont; _bodyFont = bodyFont; }
 
-        /// <summary>Show with a title + body lines, anchored near <paramref name="anchor"/> (in pixels).</summary>
-        public void Show(string title, IReadOnlyList<TooltipLine> lines, Vector2 anchor) =>
-            Show(title, "", lines, anchor);
+        /// <summary>Show with a localized title + body lines, anchored near <paramref name="anchor"/> (in pixels).</summary>
+        public void Show(LocalizedText title, IReadOnlyList<TooltipLine> lines, Vector2 anchor) =>
+            Show(title, LocalizedText.Raw(""), lines, anchor);
 
         /// <summary>
-        /// Show with a two-column title (<paramref name="title"/> left, <paramref name="titleRight"/> right-aligned on
-        /// the same row) + body lines, anchored near <paramref name="anchor"/>. Pass <c>""</c> for a single-column title.
+        /// Show with a two-column localized title (<paramref name="title"/> left, <paramref name="titleRight"/>
+        /// right-aligned on the same row) + body lines, anchored near <paramref name="anchor"/>. Pass an empty
+        /// <see cref="LocalizedText"/> for a single-column title.
         /// </summary>
-        public void Show(string title, string titleRight, IReadOnlyList<TooltipLine> lines, Vector2 anchor)
+        public void Show(LocalizedText title, LocalizedText titleRight, IReadOnlyList<TooltipLine> lines, Vector2 anchor)
         {
-            _title = title ?? "";
-            _titleRight = titleRight ?? "";
+            _title = title.Resolve() ?? "";
+            _titleRight = titleRight.Resolve() ?? "";
             _lines.Clear();
             for (int i = 0; i < lines.Count; i++) _lines.Add(lines[i]);
             _anchor = anchor;
             IsVisible = true;
             _showedThisFrame = true;
         }
+
+        /// <summary>Obsolete: pass a <see cref="LocalizedText"/> title. A raw string bypasses localization.</summary>
+        [Obsolete("Pass a LocalizedText title; a raw string bypasses localization. Use a StringId or LocalizedText.Raw(...).")]
+        [LocalizationStringSink]
+        [LocalizationExempt]
+        public void Show(string title, IReadOnlyList<TooltipLine> lines, Vector2 anchor) =>
+            Show(LocalizedText.Raw(title), LocalizedText.Raw(""), lines, anchor);
+
+        /// <summary>Obsolete: pass <see cref="LocalizedText"/> titles. A raw string bypasses localization.</summary>
+        [Obsolete("Pass a LocalizedText title; a raw string bypasses localization. Use a StringId or LocalizedText.Raw(...).")]
+        [LocalizationStringSink]
+        [LocalizationExempt]
+        public void Show(string title, string titleRight, IReadOnlyList<TooltipLine> lines, Vector2 anchor) =>
+            Show(LocalizedText.Raw(title), LocalizedText.Raw(titleRight), lines, anchor);
 
         public void Hide() => IsVisible = false;
 

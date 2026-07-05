@@ -1,4 +1,5 @@
 using System.Numerics;
+using KhaozEngine.App;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
@@ -213,7 +214,7 @@ namespace KhaozEngine.Gui
         /// else Fill), the border (selected→SelectedBorder else Border, <c>style.BorderThickness</c>), and the
         /// centred <paramref name="label"/> (enabled→Text else DisabledText).
         /// </summary>
-        public static void DrawButton(SpriteBatch batch, Texture2D white, SpriteFont font, Rect rect, string label,
+        public static void DrawButton(SpriteBatch batch, Texture2D white, SpriteFont font, Rect rect, LocalizedText label,
             in GuiStyle style, bool enabled, bool selected, bool hover, bool press)
         {
             Vector4 fill = !enabled ? style.DisabledFill
@@ -227,11 +228,12 @@ namespace KhaozEngine.Gui
             if (hover && enabled) HoverGlow(batch, white, rect, style);
             FillStyled(batch, white, rect, style, fill, border);
 
-            Vector2 size = font.Measure(label);
+            string s = label.Resolve();
+            Vector2 size = font.Measure(s);
             var pos = new Vector2(
                 rect.X + (rect.Width - size.X) * 0.5f,
                 rect.Y + (rect.Height - font.LineHeight) * 0.5f);
-            batch.DrawString(font, label, pos, (Color)text);
+            batch.DrawString(font, s, pos, (Color)text);
         }
     }
 }

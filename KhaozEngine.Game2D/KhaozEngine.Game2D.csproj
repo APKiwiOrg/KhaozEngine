@@ -20,6 +20,12 @@
     <ProjectReference Include="../KhaozEngine.Game/KhaozEngine.Game.csproj" />
     <!-- shared MonoGame-free foundation -->
     <ProjectReference Include="../KhaozEngine.Foundation/KhaozEngine.Foundation.csproj" />
+    <!-- Localization analyzer: packs as a dependency so it flows to any consumer of this umbrella (and,
+         transitively, of Game3D, which references Game2D). PrivateAssets="none" keeps the Analyzers+Build
+         assets in the packed dependency (the ProjectReference default excludes them), so the analyzer is
+         actually applied in the consumer's build. -->
+    <ProjectReference Include="../KhaozEngine.Localization.Analyzers/KhaozEngine.Localization.Analyzers.csproj"
+                      PrivateAssets="none" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 </Project>

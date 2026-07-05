@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.App;
 using KhaozEngine.Game;
 using KhaozEngine.Gui;
 using KhaozEngine.Primitives;
@@ -83,17 +84,17 @@ namespace KhaozEngine.Showcase
         public override void LoadContent()
         {
             Rect db = _vp.DesignBounds;
-            _title = new Label(Layout.Resolve(db, Anchor.Top, db.Width, 56, marginY: 56), "GUI + Widgets", _a.Big) { Align = TextAlign.Center };
+            _title = new Label(Layout.Resolve(db, Anchor.Top, db.Width, 56, marginY: 56), ShowcaseStrings.GuiTitle, _a.Big) { Align = TextAlign.Center };
 
             // Centered vertical button column, anchored to the design center so it stays put at any window size.
             Rect mid = Layout.Resolve(db, Anchor.Center, 220, 52);
-            _settings = new Button(mid with { Y = mid.Y - 96 }, "Settings", _a.Small, () => Manager.Add(new SettingsScreen(_a, _vp)));
-            _widgets = new Button(mid with { Y = mid.Y - 32 }, "Widgets", _a.Small, () => Manager.Add(new WidgetsScreen(_a, _vp)));
-            _immediate = new Button(mid with { Y = mid.Y + 32 }, "Immediate", _a.Small, () => Manager.Add(new ImmediateScreen(_a, _vp)));
-            _overlay = new Button(mid with { Y = mid.Y + 96 }, "Overlay demo", _a.Small, () => Manager.Add(new OverlayHostScreen(_a, _vp)));
+            _settings = new Button(mid with { Y = mid.Y - 96 }, ShowcaseStrings.MenuSettings, _a.Small, () => Manager.Add(new SettingsScreen(_a, _vp)));
+            _widgets = new Button(mid with { Y = mid.Y - 32 }, ShowcaseStrings.MenuWidgets, _a.Small, () => Manager.Add(new WidgetsScreen(_a, _vp)));
+            _immediate = new Button(mid with { Y = mid.Y + 32 }, ShowcaseStrings.MenuImmediate, _a.Small, () => Manager.Add(new ImmediateScreen(_a, _vp)));
+            _overlay = new Button(mid with { Y = mid.Y + 96 }, ShowcaseStrings.MenuOverlayDemo, _a.Small, () => Manager.Add(new OverlayHostScreen(_a, _vp)));
 
             _footer = new Label(Layout.Resolve(db, Anchor.Bottom, db.Width, 24, marginY: 36),
-                "Settings = core widgets    Widgets = heavy widgets    Immediate = GuiSurface    Overlay demo = push/pop    Esc for menu", _a.Small)
+                ShowcaseStrings.MenuFooter, _a.Small)
             { Align = TextAlign.Center, Color = new Vector4(0.6f, 0.7f, 0.85f, 1f) };
         }
 
@@ -119,6 +120,9 @@ namespace KhaozEngine.Showcase
         }
     }
 
+    // The volume readout is a dynamic "%" value (a number), legitimately non-localizable, so it uses
+    // LocalizedText.Raw. Marking the screen [LocalizationExempt] tells the analyzer that Raw here is intentional.
+    [LocalizationExempt]
     sealed class SettingsScreen : Screen
     {
         readonly GuiAssets _a;
@@ -143,22 +147,22 @@ namespace KhaozEngine.Showcase
             // Center the dialog in the design space. Inner widgets are placed relative to the dialog rect.
             Rect d = Layout.Resolve(_vp.DesignBounds, Anchor.Center, 440, 330);
             _dialog = new Panel(d) { BorderThickness = 1f };
-            _title = new Label(Layout.Resolve(d, Anchor.Top, d.Width, 44, marginY: 20), "Settings", _a.Big) { Align = TextAlign.Center };
+            _title = new Label(Layout.Resolve(d, Anchor.Top, d.Width, 44, marginY: 20), ShowcaseStrings.SettingsTitle, _a.Big) { Align = TextAlign.Center };
 
-            _volumeLabel = new Label(new Rect(d.X + 30, d.Y + 86, 120, 24), "Volume", _a.Small);
+            _volumeLabel = new Label(new Rect(d.X + 30, d.Y + 86, 120, 24), ShowcaseStrings.SettingsVolume, _a.Small);
             _volume = new Slider(new Rect(d.X + 160, d.Y + 90, 200, 14), 0.7f);
-            _readout = new Label(new Rect(d.X + 370, d.Y + 86, 50, 24), "70%", _a.Small) { Align = TextAlign.Right };
+            _readout = new Label(new Rect(d.X + 370, d.Y + 86, 50, 24), LocalizedText.Raw("70%"), _a.Small) { Align = TextAlign.Right };
 
-            _fullscreenLabel = new Label(new Rect(d.X + 30, d.Y + 136, 200, 26), "Fullscreen", _a.Small);
+            _fullscreenLabel = new Label(new Rect(d.X + 30, d.Y + 136, 200, 26), ShowcaseStrings.SettingsFullscreen, _a.Small);
             _fullscreen = new Toggle(new Rect(d.Right - 76, d.Y + 134, 56, 28));
 
             _help = new Label(new Rect(d.X + 30, d.Y + 178, d.Width - 60, 70),
-                "Drag the slider or toggle the switch. This help text wraps to the panel width via TextLayout.",
+                ShowcaseStrings.SettingsHelp,
                 _a.Small)
             { Wrap = true, Color = new Vector4(0.6f, 0.7f, 0.85f, 1f) };
 
             Rect backRect = Layout.Resolve(d, Anchor.Bottom, 180, 50, marginY: 18);
-            _back = new Button(backRect, "Back", _a.Small, ExitScreen);
+            _back = new Button(backRect, ShowcaseStrings.CommonBack, _a.Small, ExitScreen);
         }
 
         public override bool Update(float dt, bool receivesInput)
@@ -168,7 +172,7 @@ namespace KhaozEngine.Showcase
                 _volume.Update(Manager.Pointer);
                 _fullscreen.Update(Manager.Pointer);
                 _back.Update(Manager.Pointer);
-                _readout.Text = $"{(int)(_volume.Value * 100)}%";
+                _readout.Content = LocalizedText.Raw($"{(int)(_volume.Value * 100)}%");
             }
             return true;
         }
@@ -212,24 +216,24 @@ namespace KhaozEngine.Showcase
         public override void LoadContent()
         {
             Rect db = _vp.DesignBounds;
-            _title = new Label(Layout.Resolve(db, Anchor.Top, db.Width, 40, marginY: 28), "Widgets", _a.Big) { Align = TextAlign.Center };
+            _title = new Label(Layout.Resolve(db, Anchor.Top, db.Width, 40, marginY: 28), ShowcaseStrings.WidgetsTitle, _a.Big) { Align = TextAlign.Center };
 
-            _nameLabel = new Label(new Rect(120, 92, 260, 18), "Name", _a.Small);
+            _nameLabel = new Label(new Rect(120, 92, 260, 18), ShowcaseStrings.WidgetsName, _a.Small);
             _name = new TextInput(new Rect(120, 112, 260, 32), _a.Small) { Placeholder = "type a name", MaxLength = 16 };
 
-            _diffLabel = new Label(new Rect(120, 158, 260, 18), "Difficulty", _a.Small);
+            _diffLabel = new Label(new Rect(120, 158, 260, 18), ShowcaseStrings.WidgetsDifficulty, _a.Small);
             _difficulty = new Dropdown(
                 new[] { new DropdownOption("Easy", 0), new DropdownOption("Normal", 1), new DropdownOption("Hard", 2) },
                 new Rect(120, 178, 180, 30));
             _difficulty.SelectByValue(1);
 
-            _listLabel = new Label(new Rect(120, 222, 260, 18), "Scrollable list (wheel / drag)", _a.Small);
+            _listLabel = new Label(new Rect(120, 222, 260, 18), ShowcaseStrings.WidgetsList, _a.Small);
             _list = new ScrollablePanel(new Rect(120, 244, 280, 200)) { ItemCount = 24, ItemHeight = 30, ItemSpacing = 4 };
 
             _tip = new Tooltip(_a.Small, _a.Small) { Viewport = new Vector2(db.Width, db.Height) };
-            _info = new Button(new Rect(620, 112, 160, 32), "hover for tip", _a.Small);
-            _confirm = new Button(new Rect(620, 380, 160, 48), "Confirm...", _a.Small, () => Manager.Add(new PopupScreen(_a, _vp, _name.Text, _difficulty.SelectedLabel)));
-            _back = new Button(new Rect(620, 440, 160, 40), "Back", _a.Small, ExitScreen);
+            _info = new Button(new Rect(620, 112, 160, 32), ShowcaseStrings.WidgetsHoverForTip, _a.Small);
+            _confirm = new Button(new Rect(620, 380, 160, 48), ShowcaseStrings.WidgetsConfirm, _a.Small, () => Manager.Add(new PopupScreen(_a, _vp, _name.Text, _difficulty.SelectedLabel)));
+            _back = new Button(new Rect(620, 440, 160, 40), ShowcaseStrings.CommonBack, _a.Small, ExitScreen);
         }
 
         public override bool Update(float dt, bool receivesInput)
@@ -244,11 +248,11 @@ namespace KhaozEngine.Showcase
             _back.Update(p);
 
             if (p.IsHoveringIn(_info.Bounds))
-                _tip.Show("Tooltip",
+                _tip.Show(ShowcaseStrings.WidgetsTipTitle,
                     new[]
                     {
-                        new TooltipLine("Auto-sized, flips when", new Vector4(0.78f, 0.82f, 0.92f, 1f)),
-                        new TooltipLine("it would clip the top.", new Vector4(0.78f, 0.82f, 0.92f, 1f)),
+                        TooltipLine.Of(ShowcaseStrings.WidgetsTipLine1, new Vector4(0.78f, 0.82f, 0.92f, 1f)),
+                        TooltipLine.Of(ShowcaseStrings.WidgetsTipLine2, new Vector4(0.78f, 0.82f, 0.92f, 1f)),
                     },
                     new Vector2(_info.Bounds.X + _info.Bounds.Width * 0.5f, _info.Bounds.Y));
             else _tip.Hide();
@@ -337,6 +341,9 @@ namespace KhaozEngine.Showcase
 
     /// <summary>Immediate-mode demo: every widget is issued inside Draw via GuiSurface (no retained widget fields).
     /// Hit-testing and rendering both happen in the GuiSurface calls, so Update is a no-op input gate.</summary>
+    // A low-level GuiSurface demonstration whose labels are dynamic/diagnostic (alignment names, toggle state,
+    // a PointerCaptured readout), so it uses LocalizedText.Raw throughout and is marked exempt from the analyzer.
+    [LocalizationExempt]
     sealed class ImmediateScreen : Screen
     {
         readonly GuiAssets _a;
@@ -363,8 +370,8 @@ namespace KhaozEngine.Showcase
             // Titled card near the top.
             var card = new Rect(120, 40, 720, 110);
             _ui.Panel(card, new Vector4(0.11f, 0.14f, 0.20f, 1f), new Vector4(0.30f, 0.38f, 0.52f, 1f));
-            _ui.Label(_a.Big, "Immediate-mode GuiSurface", new Vector2(card.X + 18, card.Y + 14), Vector4.One);
-            _ui.Label(_a.Small, "One call per widget inside Draw - no retained instances.",
+            _ui.Label(_a.Big, LocalizedText.Raw("Immediate-mode GuiSurface"), new Vector2(card.X + 18, card.Y + 14), Vector4.One);
+            _ui.Label(_a.Small, LocalizedText.Raw("One call per widget inside Draw - no retained instances."),
                 new Vector2(card.X + 18, card.Y + 64), new Vector4(0.6f, 0.7f, 0.85f, 1f));
 
             // Three same-width rects showing Left / Center / Right alignment.
@@ -375,11 +382,11 @@ namespace KhaozEngine.Showcase
                 var cell = new Rect(120 + i * 250, 170, 230, 36);
                 _ui.Panel(cell, cellFill);
                 var align = (GuiAlign)i;
-                _ui.Label(_a.Small, cell, align.ToString(), labelColor, align);
+                _ui.Label(_a.Small, cell, LocalizedText.Raw(align.ToString()), labelColor, align);
             }
 
             // A row of 4 swatches in different colours.
-            _ui.Label(_a.Small, "Swatches", new Vector2(120, 222), labelColor);
+            _ui.Label(_a.Small, LocalizedText.Raw("Swatches"), new Vector2(120, 222), labelColor);
             Vector4[] cols =
             {
                 new(0.85f, 0.30f, 0.32f, 1f),
@@ -391,15 +398,15 @@ namespace KhaozEngine.Showcase
                 _ui.Swatch(new Rect(120 + i * 56, 248, 48, 48), cols[i]);
 
             // Buttons: enabled toggle, disabled, selected.
-            if (_ui.Button(_a.Small, new Rect(120, 320, 200, 48), _toggled ? "ON" : "OFF"))
+            if (_ui.Button(_a.Small, new Rect(120, 320, 200, 48), LocalizedText.Raw(_toggled ? "ON" : "OFF")))
                 _toggled = !_toggled;
-            _ui.Button(_a.Small, new Rect(340, 320, 200, 48), "Disabled", GuiStyle.Default, enabled: false);
-            _ui.Button(_a.Small, new Rect(560, 320, 200, 48), "Selected", GuiStyle.Default, enabled: true, selected: true);
+            _ui.Button(_a.Small, new Rect(340, 320, 200, 48), LocalizedText.Raw("Disabled"), GuiStyle.Default, enabled: false);
+            _ui.Button(_a.Small, new Rect(560, 320, 200, 48), LocalizedText.Raw("Selected"), GuiStyle.Default, enabled: true, selected: true);
 
             // Capture-flag readout + Back.
-            _ui.Label(_a.Small, $"PointerCaptured: {_ui.PointerCaptured}",
+            _ui.Label(_a.Small, LocalizedText.Raw($"PointerCaptured: {_ui.PointerCaptured}"),
                 new Vector2(120, 400), new Vector4(0.6f, 0.7f, 0.85f, 1f));
-            if (_ui.Button(_a.Small, new Rect(120, 440, 200, 48), "Back"))
+            if (_ui.Button(_a.Small, new Rect(120, 440, 200, 48), LocalizedText.Raw("Back")))
                 Manager.Remove(this);
         }
     }
@@ -424,11 +431,11 @@ namespace KhaozEngine.Showcase
         public override void LoadContent()
         {
             Rect db = _vp.DesignBounds;
-            _title = new Label(Layout.Resolve(db, Anchor.Top, db.Width, 40, marginY: 28), "Overlay demo", _a.Big) { Align = TextAlign.Center };
-            _hint = new Label(Layout.Resolve(db, Anchor.Center, db.Width, 24), "Push overlay puts a transparent, dismissable pause screen on top of this one.", _a.Small)
+            _title = new Label(Layout.Resolve(db, Anchor.Top, db.Width, 40, marginY: 28), ShowcaseStrings.OverlayTitle, _a.Big) { Align = TextAlign.Center };
+            _hint = new Label(Layout.Resolve(db, Anchor.Center, db.Width, 24), ShowcaseStrings.OverlayHint, _a.Small)
             { Align = TextAlign.Center, Color = new Vector4(0.7f, 0.9f, 0.75f, 1f) };
-            _pause = new Button(Layout.Resolve(db, Anchor.Center, 200, 52, marginY: -80), "Push overlay", _a.Small, () => Manager.Add(new OverlayScreen(_a, _vp)));
-            _back = new Button(Layout.Resolve(db, Anchor.Bottom, 180, 50, marginY: 24), "Back", _a.Small, ExitScreen);
+            _pause = new Button(Layout.Resolve(db, Anchor.Center, 200, 52, marginY: -80), ShowcaseStrings.OverlayPush, _a.Small, () => Manager.Add(new OverlayScreen(_a, _vp)));
+            _back = new Button(Layout.Resolve(db, Anchor.Bottom, 180, 50, marginY: 24), ShowcaseStrings.CommonBack, _a.Small, ExitScreen);
         }
 
         public override bool Update(float dt, bool receivesInput)
@@ -473,8 +480,8 @@ namespace KhaozEngine.Showcase
         public override void LoadContent()
         {
             Rect db = _vp.DesignBounds;
-            _label = new Label(Layout.Resolve(db, Anchor.Center, db.Width, 32), "PAUSED - Esc to resume", _a.Big) { Align = TextAlign.Center };
-            _resume = new Button(Layout.Resolve(db, Anchor.Center, 200, 52, marginY: -80), "Resume", _a.Small, ExitScreen);
+            _label = new Label(Layout.Resolve(db, Anchor.Center, db.Width, 32), ShowcaseStrings.OverlayPaused, _a.Big) { Align = TextAlign.Center };
+            _resume = new Button(Layout.Resolve(db, Anchor.Center, 200, 52, marginY: -80), ShowcaseStrings.OverlayResume, _a.Small, ExitScreen);
         }
 
         public override bool Update(float dt, bool receivesInput)

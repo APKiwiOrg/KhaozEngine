@@ -93,3 +93,48 @@ if (strings.TryGet("optional.hint", out string hint)) { /* present */ }
 
 `IStringCatalog` and `LocalizationManager` stay separate (single-responsibility): the `Catalog` property is a
 convenience factory, not a merge. You can also `new ResourceStringCatalog(rm)` directly.
+
+## Compile-time localization enforcement (`StringId` / `LocalizedText`)
+
+`IStringCatalog` resolves *by string key*, which does nothing to stop a hardcoded literal reaching the UI. The
+`StringId` + `LocalizedText` value types close that gap: the Gui text sinks accept a `LocalizedText`, and the
+only implicit conversion into it is from `StringId` (never from `string`), so a bare string literal at a sink is
+a compile error. `KhaozEngine.Localization.Analyzers` (in the `Game2D`/`Game3D` umbrellas) enforces the rest.
+
+- **`StringId`** - a typed localization key (`new StringId("Menu.Play")` or `StringId.Of(...)`). No implicit
+  conversion from `string`, so authoring one is a deliberate act. Author them as constants (a source generator
+  from `.resx` is on the roadmap):
+
+  ```csharp
+  internal static class Strings
+  {
+      public static readonly StringId Play = new("Menu.Play");
+      public static readonly StringId Score = new("Hud.Score");   // "Score: {0}"
+  }
+  ```
+
+- **`LocalizedText`** - what a sink takes. Either a localizable `StringId` (+ optional format args) or a raw
+  literal. It stores the id/args and **re-resolves on every access**, so a runtime locale switch takes effect on
+  the next draw with nothing to invalidate.
+
+  ```csharp
+  LocalizedText a = Strings.Play;                       // implicit from StringId
+  LocalizedText b = LocalizedText.Of(Strings.Score, 42); // format args -> catalog.Format
+  LocalizedText c = LocalizedText.Raw("v1.2.0");        // non-localizable escape hatch (greppable)
+  string shown = a.Resolve();                            // resolves against the ambient catalog
+  ```
+
+- **`LocalizationContext.Catalog`** - the ambient `IStringCatalog` a `LocalizedText` resolves against when no
+  catalog is passed. Set it once at startup:
+
+  ```csharp
+  LocalizationContext.Catalog = new ResourceStringCatalog(rm);
+  ```
+
+  Null is legal (headless tests, non-localized apps): a localizable value then renders its key as a visible
+  placeholder rather than throwing.
+
+- **`[LocalizationExempt]`** (assembly/type/member) marks a scope where `LocalizedText.Raw` is intentional, so
+  the analyzer stays silent there (debug overlays, tools, sample chrome). **`[LocalizationStringSink]`**
+  (method/constructor) marks a discouraged raw-`string` sink so the analyzer flags its callers - the engine's
+  obsolete `string` Gui overloads carry it, and a game can mark its own sinks.

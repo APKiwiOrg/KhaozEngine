@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
+using KhaozEngine.App;
 using KhaozEngine.Audio;
 using KhaozEngine.Game;
 using KhaozEngine.Gui;
@@ -122,8 +123,8 @@ namespace KhaozEngine.Showcase
 
         public override void LoadContent()
         {
-            _start = new Button(new Rect(380, 280, 200, 56), "Play", _c.Small, () => { Manager.Remove(this); Manager.Add(new MiniGamePlayScreen(_c, _vp)); });
-            _quit = new Button(new Rect(380, 350, 200, 56), "Back to menu", _c.Small, ExitScreen);
+            _start = new Button(new Rect(380, 280, 200, 56), ShowcaseStrings.MiniGamePlay, _c.Small, () => { Manager.Remove(this); Manager.Add(new MiniGamePlayScreen(_c, _vp)); });
+            _quit = new Button(new Rect(380, 350, 200, 56), ShowcaseStrings.MiniGameBackToMenu, _c.Small, ExitScreen);
         }
         public override bool Update(float dt, bool receivesInput)
         {
@@ -210,8 +211,8 @@ namespace KhaozEngine.Showcase
         }
         public override void LoadContent()
         {
-            _retry = new Button(new Rect(300, 320, 160, 54), "Retry", _c.Small, () => { Manager.Remove(_play); Manager.Remove(this); Manager.Add(new MiniGamePlayScreen(_c, _vp)); });
-            _quit = new Button(new Rect(500, 320, 160, 54), "Back to menu", _c.Small, () => { Manager.Remove(_play); ExitScreen(); });
+            _retry = new Button(new Rect(300, 320, 160, 54), ShowcaseStrings.MiniGameRetry, _c.Small, () => { Manager.Remove(_play); Manager.Remove(this); Manager.Add(new MiniGamePlayScreen(_c, _vp)); });
+            _quit = new Button(new Rect(500, 320, 160, 54), ShowcaseStrings.MiniGameBackToMenu, _c.Small, () => { Manager.Remove(_play); ExitScreen(); });
         }
         public override bool Update(float dt, bool receivesInput)
         {

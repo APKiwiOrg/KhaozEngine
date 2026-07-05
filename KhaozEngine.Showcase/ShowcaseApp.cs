@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Resources;
+using KhaozEngine.App;
 using KhaozEngine.Game;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
@@ -41,6 +43,11 @@ namespace KhaozEngine.Showcase
 
         protected override void OnLoad()
         {
+            // Compile-time localization: register the showcase string catalog so every LocalizedText resolves
+            // against ShowcaseStrings.resx. See ShowcaseStrings.cs for the StringId constants the Gui sinks take.
+            LocalizationContext.Catalog = new ResourceStringCatalog(
+                new ResourceManager("KhaozEngine.Showcase.ShowcaseStrings", typeof(ShowcaseApp).Assembly));
+
             _white = Surface2D.CreateTexture(new byte[] { 255, 255, 255, 255 }, 1, 1);
 
             // Room2D's texture/fonts are created here (Surface2D is only reachable from the app, not a

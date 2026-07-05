@@ -115,9 +115,11 @@ version/release work.
     `Render2D`/`Render3D` -> `Gui`/`Game`/`Game.Render3D`; the GPU-free `Foundation` packages (Ecs, Serialization,
     Content, Diagnostics, App, Locomotion, Persistence, Platform, Updates, Collision,
     Physics, Social, Terrain, Determinism) sit beside it (9.0.0 folded Pooling into Primitives, Localization into App,
-    and Effects into Particles); the server/netcode stack layers `Simulation` (a zero-dependency
+    and Effects into Particles); `Gui` also references `App` (for the `LocalizedText` localization sink type,
+    acyclic - `App` never references `Gui`); the server/netcode stack layers `Simulation` (a zero-dependency
     leaf) -> `Netcode`/`Replication`/`Sharding`/`WorldStore` -> `NetWorld`. `Ecs` depends on `Simulation` (acyclic).
     Opt-in, in NO umbrella, added explicitly: `Physics.Bepu`, `WorldStore.Sqlite`/`.SqlServer`, `Server.Admin`, `Social.Discord`.
+    A `netstandard2.0` Roslyn analyzer `KhaozEngine.Localization.Analyzers` (KELOC001/002) flows to consumers via the `Game2D`/`Game3D` umbrellas.
     The four umbrellas (`Foundation`, `Game2D`, `Game3D`, `Server`) are code-free dependency groups.
   - **Gotchas / history:** the package id is `KhaozEngine.Sharding`, NOT `KhaozEngine.World` (a `World` leaf would
     shadow the ECS `World` type). The legacy 4.x MonoGame line + its six packages

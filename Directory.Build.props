@@ -5,6 +5,12 @@
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>disable</ImplicitUsings>
 
+    <!-- Build quality: warnings are errors in every config (the build rule shared across every
+         KhaozEngine repo). Any compiler/analyzer warning fails the build, the tests, and CI, so the
+         engine stays at zero warnings. Fix warnings at the source, not with a blanket suppression; the
+         only standing suppression is 1591 (missing XML doc on public members), set below. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
     <!-- The legacy 4.x MonoGame line is GONE: its six packages (Graphics/Input/Screens/Sprites/Time/UI) were
          deleted once SpaceGame, the last consumer, migrated off MonoGame. The engine is now
          entirely MonoGame-free, so there is a single shared version line below. (History: docs/ROADMAP.md

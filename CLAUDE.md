@@ -56,6 +56,12 @@ version/release work.
 
 ## Build / test / release
 - `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj` - every new behaviour ships with a headless test.
+- **Warnings are errors.** `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>` in `Directory.Build.props`
+  (every config), so any compiler/analyzer warning fails the build, the tests, and CI. Keep the engine at zero
+  warnings and fix them at the source, not with `<NoWarn>` / `#pragma warning disable` / `TreatWarningsAsErrors=false`
+  (the only standing suppression is `1591`, missing XML doc on public members). This is the fleet-wide build rule;
+  the engine still keeps its own SemVer and developer-facing `CHANGELOG.md`, and is exempt from the games'
+  player-changelog style and version-segment scheme.
 - **Always add a `CHANGELOG.md` entry on every version bump.** Newest-first, detailed (public API / behaviour
   change), with a tight one-line summary as the entry's first sentence so the file doubles as the high-level
   "history over time" view. It goes in the SAME commit as the `Directory.Build.props` version bump. Never bump

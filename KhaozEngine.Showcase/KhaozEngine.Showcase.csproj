@@ -7,7 +7,9 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
-    <None Include="assets/icon.png" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Window/Dock icon: the KhaozEngine brand mark, linked from the committed generated pack (one
+         master drives it via scripts/generate-icons.py). See art-assets/icon/README.md. -->
+    <None Include="..\art-assets\icon\generated\windowicon\icon_256.png" Link="assets\icon.png" CopyToOutputDirectory="PreserveNewest" />
     <None Include="assets/props/**" CopyToOutputDirectory="PreserveNewest" />
     <None Include="assets/character/**" CopyToOutputDirectory="PreserveNewest" />
     <None Include="assets/buildings/**" CopyToOutputDirectory="PreserveNewest" />

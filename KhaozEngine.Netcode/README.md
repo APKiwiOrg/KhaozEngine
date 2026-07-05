@@ -45,11 +45,21 @@ Draw(prediction.RenderedState);
 Tune via `PredictionSettings` (tick rate, buffer cap, hard-snap distance, correction rate, dead-zone).
 
 `Reconcile` is **C1-continuous** (since 9.23.0): a non-hard-snap rebase does NOT collapse the in-flight inter-tick
-interpolation onto the new basis. It keeps the inter-tick phase flowing at the steady velocity and folds only the
-genuine misprediction into the decaying render offset, so a matching (loopback) rebase - fired every tick - perturbs
-neither the rendered position nor its velocity. The pre-9.23.0 collapse pinned the inter-tick contribution at zero
-each tick, leaving only the offset decay to carry motion for the rest of the tick: a per-tick velocity dip that read
-as a 30 Hz camera sawtooth. A hard snap still collapses (an intentional teleport).
+interpolation onto the new basis. It folds only the genuine misprediction into the decaying render offset, so a
+matching (loopback) rebase - fired every tick - perturbs neither the rendered position nor its velocity. The
+pre-9.23.0 collapse pinned the inter-tick contribution at zero each tick, leaving only the offset decay to carry
+motion for the rest of the tick: a per-tick velocity dip that read as a 30 Hz camera sawtooth. A hard snap still
+collapses (an intentional teleport).
+
+Since 10.7.0 the C1 rebase **translates the whole inter-tick segment** (`previous -> predicted`) by the rebase
+delta, so its VELOCITY is preserved rather than just leaving `previous` pinned. This makes it C1 across ANY rebase,
+not only a steady/matching one (whose delta is zero, so behaviour there is unchanged). It fixes the decel-to-stop
+shake: when the local player stops, the authority is an input-RTT behind and its basis dips backward for a tick or
+two before catching up; pinning `previous` let the inter-tick lerp drag the render backward toward the dipped target.
+Translating the segment gives it zero velocity for a stopped player, so the transient dip lives entirely in the
+render offset. That offset now decays with a **critically-damped** (velocity-carrying) filter (planar axis; vertical
+stays first-order), whose inertia holds the render steady through the transient instead of chasing it, turning a
+sharp reversal into a sub-dead-zone sag.
 
 `PredictedHorizontalSpeed` is the local player's planar (ground-plane) speed in units/sec, recomputed each
 `Predict` from the per-tick position delta over `TickSeconds` (`IPredictedState.Position` is planar, so it is

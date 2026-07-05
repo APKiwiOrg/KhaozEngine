@@ -200,7 +200,8 @@ the window where it is. All placement math is pure and headless-tested in `Windo
 **Networked-movement presentation (NetWorld).** `WorldClient` renders remotes on a fixed interpolation delay
 (`WorldClientConfig.InterpolationDelayTicks`, default 2) - a timestamped snapshot buffer lerped by true timestamps,
 so remotes glide with no holds or catch-up snaps at any render:tick ratio - and the local predicted avatar is
-C1-continuous across reconciliation. For debugging movement smoothness set `WorldClientConfig.PresentationTraceEnabled`
+C1-continuous across reconciliation, including across velocity transitions (10.7.0 removed the decel-to-stop shake
+where a backward-dipping authority basis dragged the render back). For debugging movement smoothness set `WorldClientConfig.PresentationTraceEnabled`
 and dump `WorldClient.PresentationTrace.WriteCsv(path)` (render time, delay, seconds-since-snapshot, per-remote hold
 flag, snapshot arrivals, local reconcile-error, rendered positions).
 
@@ -983,7 +984,11 @@ var animators = new ReplicatedCharacterAnimators(skeleton, clips, CharacterAnima
 // motion is mostly terrain-following, so the faster it moves over a slope the more a position delta reads "falling".
 var samples = new List<CharacterSample>();
 foreach (EntityRenderState e in client.Snapshot())
-    samples.Add(new CharacterSample(e.Id.Value, e.Position, e.IsLocal, e.Grounded, e.VerticalVelocity));
+    samples.Add(e.IsLocal
+        // Local player: also pass the EXACT planar speed so idle/walk/run is driven off the clean commanded
+        // speed, not finite-differenced from the render position (no walk<->idle flicker on a decel-to-stop).
+        ? new CharacterSample(e.Id.Value, e.Position, isLocal: true, e.Grounded, e.VerticalVelocity, client.LocalHorizontalSpeed)
+        : new CharacterSample(e.Id.Value, e.Position, e.IsLocal, e.Grounded, e.VerticalVelocity));
 animators.Update(samples, dt);
 
 // Draw: World already places + faces + scales the avatar (Scale + FacingYawOffset live on the tuning).
@@ -1007,7 +1012,12 @@ genuine stop still resolves to Idle within one window; `&lt;= 0` reverts to per-
 For the LOCAL player you do not have to derive horizontal speed from the position stream at all: read
 `WorldClient.LocalHorizontalSpeed`, the predicted planar speed straight off the prediction tick.
 It is immune to reconciliation snaps and does not wobble under lag, so it is the clean drive for a local speed
-HUD / footstep audio / locomotion blend. Remotes still derive from the (windowed) position stream above.
+HUD / footstep audio / locomotion blend. Feed it to the bridge via the exact-speed `CharacterSample` constructor
+(the sixth `planarSpeed` argument, as above): the local avatar's idle/walk/run state and clip-speed sync then run
+off that clean speed instead of the finite-differenced render position, so the animation does not strobe
+walk&lt;-&gt;idle when the player decelerates to a stop (where the render, even after the 10.7.0 smoothing fix,
+settles with a tiny residual sag). Facing still uses the derived heading (the exact speed is magnitude-only).
+Remotes still derive from the (windowed) position stream above.
 
 Even windowed, the derived speed ripples a little - the prediction/reconcile render stream is not perfectly
 smooth, and a remote's replicated position arrives as a ~30 Hz staircase - enough to occasionally cross a band

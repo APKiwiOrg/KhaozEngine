@@ -19,3 +19,14 @@ sealed class MatchScene : GameScene, IGameScene3D
 // in the frame loop, between scene.Begin() and the 2D pass:
 scenes.Draw3D(scene);
 ```
+
+## ReplicatedCharacterAnimators
+
+A render-free bridge that drives one skinned-character brain per networked entity from a per-frame list of
+`CharacterSample`. By default it derives planar speed / facing / air state from the position stream (windowed, so a
+plateauing position does not strobe the state). Richer constructors let the local player pass exact signals it
+already knows: `(id, position, isLocal, grounded, verticalVelocity)` for the exact grounded flag + vertical
+velocity, and `(id, position, isLocal, grounded, verticalVelocity, planarSpeed)` to ALSO drive the idle/walk/run
+state and clip-speed sync off the exact planar speed (`WorldClient.LocalHorizontalSpeed`) instead of the
+finite-differenced render position - so the local avatar's animation does not flicker walk&lt;-&gt;idle when it
+decelerates to a stop. Facing still follows the derived heading. See `docs/USING-KHAOZENGINE.md`.

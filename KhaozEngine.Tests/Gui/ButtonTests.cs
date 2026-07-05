@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Gui;
+using KhaozEngine.App;
 using KhaozEngine.Windowing;
 using Xunit;
 using KhaozEngine.Primitives;
@@ -30,7 +31,7 @@ namespace KhaozEngine.Tests.Gui
         {
             var p = new Pointer();
             p.Update(Frame(Center, false));
-            var btn = new Button(Btn, "Go", null!);
+            var btn = new Button(Btn, LocalizedText.Raw("Go"), null!);
 
             btn.Update(p);
 
@@ -43,7 +44,7 @@ namespace KhaozEngine.Tests.Gui
         {
             var p = new Pointer();
             int clicks = 0;
-            var btn = new Button(Btn, "Go", null!, () => clicks++);
+            var btn = new Button(Btn, LocalizedText.Raw("Go"), null!, () => clicks++);
 
             p.Update(Frame(Center, false));     // idle
             Assert.False(btn.Update(p));
@@ -60,7 +61,7 @@ namespace KhaozEngine.Tests.Gui
         {
             var p = new Pointer();
             int clicks = 0;
-            var btn = new Button(Btn, "Go", null!, () => clicks++) { Enabled = false };
+            var btn = new Button(Btn, LocalizedText.Raw("Go"), null!, () => clicks++) { Enabled = false };
 
             p.Update(Frame(Center, false));     // idle
             btn.Update(p);
@@ -78,7 +79,7 @@ namespace KhaozEngine.Tests.Gui
         {
             var p = new Pointer();
             int clicks = 0;
-            var btn = new Button(Btn, "Go", null!, () => clicks++);
+            var btn = new Button(Btn, LocalizedText.Raw("Go"), null!, () => clicks++);
 
             p.Update(Frame(new Vector2(10, 10), false));   // idle outside
             btn.Update(p);

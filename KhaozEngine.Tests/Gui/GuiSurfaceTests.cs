@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Gui;
+using KhaozEngine.App;
 using KhaozEngine.Windowing;
 using Xunit;
 using KhaozEngine.Primitives;
@@ -34,7 +35,7 @@ namespace KhaozEngine.Tests.Gui
             // Cursor over the button, but the window is NOT focused: no hover, no hover-enter (kills hover SFX).
             p.Update(Frame(inside, false, focused: false));
             ui.Begin(null, p);
-            ui.Button(null!, Btn, "Go");
+            ui.Button(null!, Btn, LocalizedText.Raw("Go"));
             Assert.False(ui.IsHovering);
             Assert.False(ui.HoverEntered);
             Assert.Null(ui.HoveredRect);
@@ -42,7 +43,7 @@ namespace KhaozEngine.Tests.Gui
             // Focus returns: hover + hover-enter resume normally.
             p.Update(Frame(inside, false, focused: true));
             ui.Begin(null, p);
-            ui.Button(null!, Btn, "Go");
+            ui.Button(null!, Btn, LocalizedText.Raw("Go"));
             Assert.True(ui.IsHovering);
             Assert.True(ui.HoverEntered);
             Assert.Equal(Btn, ui.HoveredRect);
@@ -81,15 +82,15 @@ namespace KhaozEngine.Tests.Gui
 
             p.Update(Frame(at, false));               // idle
             ui.Begin(null, p);
-            Assert.False(ui.Button(null!, Btn, "Go"));
+            Assert.False(ui.Button(null!, Btn, LocalizedText.Raw("Go")));
 
             p.Update(Frame(at, true));                // press inside
             ui.Begin(null, p);
-            Assert.False(ui.Button(null!, Btn, "Go")); // held -> no click yet
+            Assert.False(ui.Button(null!, Btn, LocalizedText.Raw("Go"))); // held -> no click yet
 
             p.Update(Frame(at, false));               // release inside
             ui.Begin(null, p);
-            Assert.True(ui.Button(null!, Btn, "Go"));  // click fires once on release
+            Assert.True(ui.Button(null!, Btn, LocalizedText.Raw("Go")));  // click fires once on release
         }
 
         [Fact]
@@ -103,7 +104,7 @@ namespace KhaozEngine.Tests.Gui
             p.Update(Frame(new Vector2(150, 120), false)); // release inside the button
 
             ui.Begin(null, p);
-            Assert.False(ui.Button(null!, Btn, "Go"));     // press-origin invariant: no click
+            Assert.False(ui.Button(null!, Btn, LocalizedText.Raw("Go")));     // press-origin invariant: no click
         }
 
         [Fact]
@@ -118,7 +119,7 @@ namespace KhaozEngine.Tests.Gui
             p.Update(Frame(at, false));                     // release inside
 
             ui.Begin(null, p);
-            bool clicked = ui.Button(null!, Btn, "Go", GuiStyle.Default, enabled: false);
+            bool clicked = ui.Button(null!, Btn, LocalizedText.Raw("Go"), GuiStyle.Default, enabled: false);
             Assert.False(clicked);                          // disabled never clicks
             Assert.True(ui.PointerCaptured);                // but still reserves its rect
         }
@@ -151,7 +152,7 @@ namespace KhaozEngine.Tests.Gui
 
             ui.Begin(null, p);
             ui.Panel(new Rect(0, 0, 100, 100), GuiStyle.Default.Fill);
-            ui.Button(null!, Btn, "Go");
+            ui.Button(null!, Btn, LocalizedText.Raw("Go"));
             Assert.False(ui.PointerCaptured);
         }
 
@@ -188,7 +189,7 @@ namespace KhaozEngine.Tests.Gui
             p.Update(Frame(new Vector2(500, 400), false));  // current position far from any widget
             ui.Begin(null, p);
             ui.Panel(new Rect(0, 0, 100, 100), GuiStyle.Default.Fill);
-            ui.Button(null!, Btn, "Go");
+            ui.Button(null!, Btn, LocalizedText.Raw("Go"));
             Assert.False(ui.HoverCaptured);
         }
 
@@ -254,14 +255,14 @@ namespace KhaozEngine.Tests.Gui
             // Outside: not hovering, no enter.
             p.Update(Frame(outside, false));
             ui.Begin(null, p);
-            ui.Button(null!, Btn, "Go");
+            ui.Button(null!, Btn, LocalizedText.Raw("Go"));
             Assert.False(ui.IsHovering);
             Assert.False(ui.HoverEntered);
 
             // Move onto the button: hovering + hover-enter this frame.
             p.Update(Frame(inside, false));
             ui.Begin(null, p);
-            ui.Button(null!, Btn, "Go");
+            ui.Button(null!, Btn, LocalizedText.Raw("Go"));
             Assert.True(ui.IsHovering);
             Assert.True(ui.HoverEntered);
             Assert.Equal(Btn, ui.HoveredRect);
@@ -269,14 +270,14 @@ namespace KhaozEngine.Tests.Gui
             // Stay on the button: still hovering, but no re-enter.
             p.Update(Frame(new Vector2(160, 130), false));
             ui.Begin(null, p);
-            ui.Button(null!, Btn, "Go");
+            ui.Button(null!, Btn, LocalizedText.Raw("Go"));
             Assert.True(ui.IsHovering);
             Assert.False(ui.HoverEntered);
 
             // Move off onto nothing: not hovering, and exit is NOT an enter.
             p.Update(Frame(outside, false));
             ui.Begin(null, p);
-            ui.Button(null!, Btn, "Go");
+            ui.Button(null!, Btn, LocalizedText.Raw("Go"));
             Assert.False(ui.IsHovering);
             Assert.False(ui.HoverEntered);
         }
@@ -293,8 +294,8 @@ namespace KhaozEngine.Tests.Gui
             {
                 p.Update(Frame(at, false));
                 ui.Begin(null, p);
-                ui.Button(null!, a, "A");
-                ui.Button(null!, b, "B");
+                ui.Button(null!, a, LocalizedText.Raw("A"));
+                ui.Button(null!, b, LocalizedText.Raw("B"));
             }
 
             FrameAt(new Vector2(150, 120));      // on A -> enter
@@ -314,7 +315,7 @@ namespace KhaozEngine.Tests.Gui
 
             p.Update(Frame(new Vector2(150, 120), false)); // over the button
             ui.Begin(null, p);
-            ui.Button(null!, Btn, "Go", GuiStyle.Default, enabled: false);
+            ui.Button(null!, Btn, LocalizedText.Raw("Go"), GuiStyle.Default, enabled: false);
             Assert.False(ui.IsHovering);     // disabled => no hover affordance
             Assert.False(ui.HoverEntered);
         }
@@ -329,16 +330,16 @@ namespace KhaozEngine.Tests.Gui
             // Hover only (no press): no click regardless of selected flag.
             p.Update(Frame(at, false));
             ui.Begin(null, p);
-            Assert.False(ui.Button(null!, Btn, "Go", GuiStyle.Default, enabled: true, selected: true));
+            Assert.False(ui.Button(null!, Btn, LocalizedText.Raw("Go"), GuiStyle.Default, enabled: true, selected: true));
 
             // Full tap with selected: still clicks once on release.
             p.Update(Frame(at, true));
             ui.Begin(null, p);
-            Assert.False(ui.Button(null!, Btn, "Go", GuiStyle.Default, enabled: true, selected: true));
+            Assert.False(ui.Button(null!, Btn, LocalizedText.Raw("Go"), GuiStyle.Default, enabled: true, selected: true));
 
             p.Update(Frame(at, false));
             ui.Begin(null, p);
-            Assert.True(ui.Button(null!, Btn, "Go", GuiStyle.Default, enabled: true, selected: true));
+            Assert.True(ui.Button(null!, Btn, LocalizedText.Raw("Go"), GuiStyle.Default, enabled: true, selected: true));
         }
     }
 }

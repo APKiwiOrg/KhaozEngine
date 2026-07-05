@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Gui.Title" xml:space="preserve"><value>GUI + Widgets</value></data>
+  <data name="Menu.Settings" xml:space="preserve"><value>Settings</value></data>
+  <data name="Menu.Widgets" xml:space="preserve"><value>Widgets</value></data>
+  <data name="Menu.Immediate" xml:space="preserve"><value>Immediate</value></data>
+  <data name="Menu.OverlayDemo" xml:space="preserve"><value>Overlay demo</value></data>
+  <data name="Menu.Footer" xml:space="preserve"><value>Settings = core widgets    Widgets = heavy widgets    Immediate = GuiSurface    Overlay demo = push/pop    Esc for menu</value></data>
+  <data name="Settings.Title" xml:space="preserve"><value>Settings</value></data>
+  <data name="Settings.Volume" xml:space="preserve"><value>Volume</value></data>
+  <data name="Settings.Fullscreen" xml:space="preserve"><value>Fullscreen</value></data>
+  <data name="Settings.Help" xml:space="preserve"><value>Drag the slider or toggle the switch. This help text wraps to the panel width via TextLayout.</value></data>
+  <data name="Widgets.Title" xml:space="preserve"><value>Widgets</value></data>
+  <data name="Widgets.Name" xml:space="preserve"><value>Name</value></data>
+  <data name="Widgets.Difficulty" xml:space="preserve"><value>Difficulty</value></data>
+  <data name="Widgets.List" xml:space="preserve"><value>Scrollable list (wheel / drag)</value></data>
+  <data name="Widgets.HoverForTip" xml:space="preserve"><value>hover for tip</value></data>
+  <data name="Widgets.Confirm" xml:space="preserve"><value>Confirm...</value></data>
+  <data name="Widgets.TipTitle" xml:space="preserve"><value>Tooltip</value></data>
+  <data name="Widgets.TipLine1" xml:space="preserve"><value>Auto-sized, flips when</value></data>
+  <data name="Widgets.TipLine2" xml:space="preserve"><value>it would clip the top.</value></data>
+  <data name="Overlay.Title" xml:space="preserve"><value>Overlay demo</value></data>
+  <data name="Overlay.Hint" xml:space="preserve"><value>Push overlay puts a transparent, dismissable pause screen on top of this one.</value></data>
+  <data name="Overlay.Push" xml:space="preserve"><value>Push overlay</value></data>
+  <data name="Overlay.Paused" xml:space="preserve"><value>PAUSED - Esc to resume</value></data>
+  <data name="Overlay.Resume" xml:space="preserve"><value>Resume</value></data>
+  <data name="MiniGame.Play" xml:space="preserve"><value>Play</value></data>
+  <data name="MiniGame.BackToMenu" xml:space="preserve"><value>Back to menu</value></data>
+  <data name="MiniGame.Retry" xml:space="preserve"><value>Retry</value></data>
+  <data name="Common.Back" xml:space="preserve"><value>Back</value></data>
+</root>

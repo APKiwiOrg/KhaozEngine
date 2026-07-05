@@ -15,6 +15,10 @@
     <None Include="assets/buildings/**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Let the engine test project verify the localization catalog (ShowcaseStrings + resx) resolves. -->
+    <InternalsVisibleTo Include="KhaozEngine.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
     <ProjectReference Include="../KhaozEngine.Render2D/KhaozEngine.Render2D.csproj" />
     <ProjectReference Include="../KhaozEngine.Gui/KhaozEngine.Gui.csproj" />

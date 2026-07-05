@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Gui;
+using KhaozEngine.App;
 using KhaozEngine.Windowing;
 using Xunit;
 using KhaozEngine.Primitives;
@@ -77,7 +78,7 @@ namespace KhaozEngine.Tests.Gui
             p.Update(Frame(at, true));      // pressed, press-origin inside rect
 
             ui.Begin(null, p);
-            ui.StatChip(rect, Icons.Coin, "Gold", "120", font: null!, GuiStyle.Default);
+            ui.StatChip(rect, Icons.Coin, LocalizedText.Raw("Gold"), LocalizedText.Raw("120"), font: null!, GuiStyle.Default);
             Assert.True(ui.PointerCaptured);
         }
     }

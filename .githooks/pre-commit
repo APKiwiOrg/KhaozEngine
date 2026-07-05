@@ -13,13 +13,14 @@ if printf '%s' "$added" | LC_ALL=C grep -qF -e '—' -e '–'; then
 fi
 
 # 2) version<->changelog coupling. Engine (has check-doc-versions.sh) couples any version tag;
-#    adopters couple the game version only (exclude the engine pin KhaozEngineVersion).
+#    adopters couple the game version only (exclude the engine pin KhaozEngineVersion). LangVersion
+#    is a compiler setting, not an app version, so it is excluded in both cases.
 props=$(git diff --cached --name-only -- '*Directory.Build.props' 2>/dev/null)
 if [ -n "$props" ]; then
   if [ -f scripts/check-doc-versions.sh ]; then
-    excl='AssemblyVersion'
+    excl='AssemblyVersion|LangVersion'
   else
-    excl='KhaozEngineVersion|AssemblyVersion'
+    excl='KhaozEngineVersion|AssemblyVersion|LangVersion'
   fi
   changed_ver=$(git diff --cached -- '*Directory.Build.props' \
     | grep -E '^[+-]' | grep -vE '^[+-][+-]' \

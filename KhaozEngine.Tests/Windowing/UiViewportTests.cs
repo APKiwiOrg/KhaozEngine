@@ -101,5 +101,17 @@ namespace KhaozEngine.Tests.Windowing
             var frame = new Frame { Width = 800, Height = 600 };   // LogicalWidth still 0
             Assert.Equal(1f, frame.DpiScale, 3);
         }
+
+        [Fact]
+        public void Only_the_point_space_viewport_opts_into_device_pixel_snapping()
+        {
+            // The seam capability the batch reads to confine snapping to the DPI-aware path: point-space snaps,
+            // a fractional design canvas does not (so design/world rendering stays byte-identical).
+            IDesignViewport ui = new UiViewport(2048, 1280, 1024, 640);
+            IDesignViewport design = new DesignViewport(960, 540, ScaleMode.Fit);
+
+            Assert.True(ui.SnapsToDevicePixels);
+            Assert.False(design.SnapsToDevicePixels);
+        }
     }
 }

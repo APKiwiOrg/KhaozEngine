@@ -37,6 +37,9 @@ namespace KhaozEngine.Windowing
         /// <summary>Always 0: point-space UI is not letterboxed (it reflows to fill the window).</summary>
         public float OffsetY => 0f;
 
+        /// <summary>True: point-space UI snaps to whole device pixels for crisp chrome (see <see cref="IDesignViewport.SnapsToDevicePixels"/>).</summary>
+        public bool SnapsToDevicePixels => true;
+
         public UiViewport() { }
 
         /// <summary>Construct and size in one step; see <see cref="Update(int, int, int, int)"/>.</summary>

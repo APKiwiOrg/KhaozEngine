@@ -130,6 +130,15 @@ void main() {
         Matrix4x4 _vp;
         IDesignViewport? _viewport;   // active design viewport (set by Begin(IDesignViewport)), else null
 
+        // Device-pixel snapping frame for the active pass: device px per authoring unit (per axis) + the device
+        // offset of the authoring origin. Vector2.Zero means the current space is NOT device-pixel-snappable
+        // (world/camera, screen space, a transformed pass, or a fractional design viewport), so SnapRect/SnapLength
+        // and text-origin snapping are all no-ops there. It is non-zero only inside a point-space UiViewport pass
+        // (IDesignViewport.SnapsToDevicePixels), which confines snapping to the DPI-aware UI path and leaves
+        // design-space / world rendering byte-identical.
+        Vector2 _deviceScale;
+        Vector2 _deviceOffset;
+
         internal SpriteBatch(IGpuDevice gd, GpuOutputDescription output)
         {
             _gd = gd;
@@ -173,6 +182,32 @@ void main() {
         /// for glowy VFX) without a new <c>Begin</c>. Painter's order is preserved across blend modes.
         /// </summary>
         public BlendMode BlendMode { get => _blend; set => _blend = value; }
+
+        /// <summary>
+        /// Device pixels per authoring unit for the active pass, per axis (X, Y), or <see cref="Vector2.Zero"/> when
+        /// the current space is not device-pixel-snappable (world/camera, screen, a transformed pass, or a fractional
+        /// design viewport). Non-zero only inside a point-space <c>UiViewport</c> <see cref="Begin(IDesignViewport, SamplerMode)"/>.
+        /// Drives <see cref="SnapRect"/> / <see cref="SnapLength"/> and the DPI-aware text-origin snapping in
+        /// <see cref="DrawString(KhaozEngine.Render2D.SpriteFont, string, System.Numerics.Vector2, KhaozEngine.Primitives.Color)"/>.
+        /// </summary>
+        public Vector2 DeviceScale => _deviceScale;
+
+        /// <summary>The device-pixel offset of the authoring origin for the active pass (0 for point-space UI). Pairs with <see cref="DeviceScale"/>.</summary>
+        public Vector2 DeviceOffset => _deviceOffset;
+
+        /// <summary>
+        /// Snap a rect's edges to whole device pixels for the active pass, keeping it in authoring units. A no-op
+        /// when <see cref="DeviceScale"/> is zero (a non-snappable pass), so it is always safe to call.
+        /// </summary>
+        public Rect SnapRect(Rect rect) => ViewportMath.SnapRectToDevice(rect, _deviceScale, _deviceOffset);
+
+        /// <summary>
+        /// Snap a length (e.g. a border thickness) to a whole number of device pixels, in authoring units, floored
+        /// at <paramref name="minDevicePixels"/> (pass 1 so a hairline never rounds away). A no-op when
+        /// <see cref="DeviceScale"/> is zero.
+        /// </summary>
+        public float SnapLength(float length, float minDevicePixels = 0f) =>
+            ViewportMath.SnapLengthToDevice(length, _deviceScale.X, minDevicePixels);
 
         /// <summary>
         /// Convert a clip rect (in viewport points, top-left origin) to framebuffer pixels, scaling for DPI
@@ -275,7 +310,7 @@ void main() {
         /// A scissor set while this is active (<see cref="SetScissor"/>) is mapped through the viewport too.
         /// Sampled per <paramref name="sampler"/> (default <see cref="SamplerMode.Linear"/>).
         /// </summary>
-        public void Begin(IDesignViewport viewport, SamplerMode sampler = SamplerMode.Linear) { _sampler = Resolve(sampler); _vp = Clip(viewport.GetClipProjection(_vw, _vh)); _viewport = viewport; ResetBatches(); }
+        public void Begin(IDesignViewport viewport, SamplerMode sampler = SamplerMode.Linear) { _sampler = Resolve(sampler); _vp = Clip(viewport.GetClipProjection(_vw, _vh)); _viewport = viewport; ResetBatches(); SetDeviceSpace(viewport); }
 
         /// <summary>
         /// Begin a batch in screen space (pixels, top-left origin) with a <paramref name="transform"/> applied to
@@ -470,15 +505,25 @@ void main() {
         /// </summary>
         public void DrawString(SpriteFont font, string text, Vector2 position, Color color, float scale)
         {
-            // atlas texels -> logical pixels (glyphs are baked at oversample density), then the caller's scale.
+            // atlas texels -> logical pixels (glyphs are baked at the bake density), then the caller's scale.
             float k = font.RenderScale * scale;
             float penX = position.X, baseline = position.Y + font.Ascent * scale;
+            // In a point-space UI pass, snap each glyph's top-left to a whole device pixel: with a DpiFont atlas baked
+            // 1:1 for the device (integer texel offsets), a device-aligned origin lands the whole glyph on the pixel
+            // grid, so text is crisp instead of bilinear-blurred across a fractional phase. No-op elsewhere.
+            bool snap = _deviceScale.X > 0f;
             foreach (char c in text)
             {
                 if (!font.Glyphs.TryGetValue(c, out var g)) continue;
                 if (g.W > 0 && g.H > 0)
                 {
-                    var dest = new Vector4(penX + g.XOff * k, baseline + g.YOff * k, g.W * k, g.H * k);
+                    float gx = penX + g.XOff * k, gy = baseline + g.YOff * k;
+                    if (snap)
+                    {
+                        gx = ViewportMath.SnapToDevicePixel(gx, _deviceScale.X, _deviceOffset.X);
+                        gy = ViewportMath.SnapToDevicePixel(gy, _deviceScale.Y, _deviceOffset.Y);
+                    }
+                    var dest = new Vector4(gx, gy, g.W * k, g.H * k);
                     var uv = new Vector4((float)g.Ax / font.AtlasW, (float)g.Ay / font.AtlasH,
                                          (float)(g.Ax + g.W) / font.AtlasW, (float)(g.Ay + g.H) / font.AtlasH);
                     Draw(font.Atlas, dest, uv, color);
@@ -573,7 +618,18 @@ void main() {
             return new Vector2(v.X, v.Y);
         }
 
-        void ResetBatches() { _runs.Reset(); _blend = BlendMode.Alpha; }
+        void ResetBatches() { _runs.Reset(); _blend = BlendMode.Alpha; _deviceScale = Vector2.Zero; _deviceOffset = Vector2.Zero; }
+
+        // Arm device-pixel snapping for this pass iff the viewport is a point-space one (UiViewport). A fractional
+        // design viewport, or any other Begin, leaves the frame cleared (Vector2.Zero) so snapping is a no-op.
+        void SetDeviceSpace(IDesignViewport viewport)
+        {
+            if (viewport.SnapsToDevicePixels)
+            {
+                _deviceScale = new Vector2(viewport.ScaleX, viewport.ScaleY);
+                _deviceOffset = new Vector2(viewport.OffsetX, viewport.OffsetY);
+            }
+        }
 
         public void Dispose()
         {

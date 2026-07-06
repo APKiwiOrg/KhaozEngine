@@ -26,6 +26,14 @@ namespace KhaozEngine.Primitives
         /// <summary>Vertical letterbox offset in window pixels.</summary>
         float OffsetY { get; }
 
+        /// <summary>
+        /// Whether drawing through this viewport should snap geometry to whole device pixels. True for a point-space
+        /// UI viewport, where 1 unit maps to an integer-friendly DPI scale and snapping yields crisp 1px chrome;
+        /// false (the default) for a fractional design canvas, where snapping would fight the intended smooth
+        /// scaling of the game field. Lets <c>SpriteBatch</c> confine device-pixel snapping to the point-space path.
+        /// </summary>
+        bool SnapsToDevicePixels => false;
+
         /// <summary>Design rect covering the whole design space.</summary>
         Rect DesignBounds { get; }
         /// <summary>Window-pixel rect the design space is drawn into (excludes letterbox bars).</summary>

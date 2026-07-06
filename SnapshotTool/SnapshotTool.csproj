@@ -6,6 +6,8 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>SnapshotTool</AssemblyName>
+    <RootNamespace>SnapshotTool</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
     <!-- A 2D+3D snapshot tool references the 2D harness plus its 3D arm; Render2D/Render3D flow transitively. -->

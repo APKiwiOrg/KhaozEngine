@@ -43,12 +43,33 @@ public class PeriodicGrantTests
     }
 
     [Fact]
-    public async Task Double_claim_at_same_instant_credits_once()
+    public async Task Claim_after_schedule_advanced_does_not_grant_again()
     {
         (PeriodicGrant grant, Wallet wallet) = Build();
         await grant.TryClaimAsync(A, T0);
         await grant.TryClaimAsync(A, T0.AddDays(1)); // available again
-        await grant.TryClaimAsync(A, T0.AddDays(1)); // same scheduled instant, replayed
+        await grant.TryClaimAsync(A, T0.AddDays(1)); // schedule already advanced past this instant
         Assert.Equal(2, await wallet.BalanceAsync(A, Shard));
+    }
+
+    [Fact]
+    public async Task Reclaim_of_same_scheduled_instant_credits_once_and_reports_not_granted()
+    {
+        InMemoryWalletStore store = new();
+        Wallet wallet = new(store, new InMemoryProductCatalog(Array.Empty<ProductDefinition>()));
+        PeriodicGrant grant = new(wallet, store, TimeSpan.FromHours(24), "dailyShard", Shard, 1);
+
+        PeriodicGrantResult first = await grant.TryClaimAsync(A, T0);
+        Assert.True(first.Granted);
+        Assert.Equal(1, await wallet.BalanceAsync(A, Shard));
+
+        // Simulate a second claim that read the SAME pre-advance schedule instant:
+        // rewind the schedule store to T0 so the next claim recomputes the identical
+        // idempotency key ({rewardId}:{account}:{T0.UtcTicks}).
+        await store.SetNextAvailableAsync(A, "dailyShard", T0);
+
+        PeriodicGrantResult replay = await grant.TryClaimAsync(A, T0);
+        Assert.False(replay.Granted);                       // wallet detected the duplicate key
+        Assert.Equal(1, await wallet.BalanceAsync(A, Shard)); // credited once, not twice
     }
 }

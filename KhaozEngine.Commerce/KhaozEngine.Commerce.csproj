@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Commerce</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>Server-authoritative currency wallet: atomic idempotent ledger + materialized balance, a source-agnostic entitlement pipeline, and a server-clock periodic grant. Identity-agnostic (keyed by a verified AccountId the consumer supplies). Ships the IWalletStore seam + InMemory backend; SQL backends are opt-in sibling packages. No graphics, no SQL, no netcode deps.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Progression/KhaozEngine.Progression.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Tests" />
+  </ItemGroup>
+</Project>

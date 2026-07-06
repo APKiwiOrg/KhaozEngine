@@ -736,6 +736,52 @@ batch.End();
 
 ---
 
+## DPI-aware / crisp UI (the point-space path)
+
+2D UI authored in a fixed design canvas is `Fit`-scaled to the device framebuffer. On a HiDPI display or a
+non-integer window scale that scale is a fractional magnification, so an oversample-1 glyph atlas gets
+bilinear-magnified (soft text) and a 1-design-px border straddles a fractional device-pixel phase (uneven,
+half-lit edges). The fix is to draw the UI in **logical points at native DPI** instead of stretching a design
+canvas, then snap to whole device pixels. The game world stays letterboxed in its `DesignViewport`; only the UI
+layer is decoupled.
+
+**`UiViewport` (`KhaozEngine.Windowing`)** is a point-space `IDesignViewport` where 1 logical point = `DpiScale`
+device pixels, with no letterbox. Its `Width`/`Height` track the logical window, so the UI reflows on resize
+rather than scaling. Drive it once per frame with `uiViewport.Update(frame)`.
+
+**`DpiFont` (`KhaozEngine.Render2D`)** authors at a logical `pixelHeight`, and each frame you call
+`font.For(frame.DpiScale)` to get a `SpriteFont` baked for the current DPI, drawn 1:1 in the point-space pass. It
+re-bakes the atlas only when the DPI scale changes. Create one via `surface.LoadDpiFont(...)` /
+`surface.LoadDefaultDpiFont(...)`.
+
+**Device-pixel snapping.** Inside a point-space `Begin`, `SpriteBatch.SnapRect` / `SnapLength` and the
+`DeviceScale` / `DeviceOffset` accessors snap coordinates to whole device pixels (they are inert outside a
+point-space pass). The pure math is `ViewportMath.SnapToDevicePixel` / `SnapRectToDevice` / `SnapLengthToDevice`.
+Gui widgets and `GuiDraw` snap their rect + border thickness automatically in a point-space pass, and text glyph
+origins snap too, so the crisp result needs no per-widget code.
+
+**With `KhaozEngine.Game`.** Override `GameApp.OnDrawUi(SpriteBatch)`, a second pass that runs after `OnDraw2D`
+with the batch already in `Begin(Ui)`. Draw crisp UI there with `DpiFont.For(Ui.DpiScale)` and hit-test with
+`UiPointer`. `OnDraw2D` stays the design-space game field, so the world layer is unchanged. Scenes get the same
+split: `GameScene.OnDrawUi` plus `Manager.UiViewport` / `Manager.UiPointer`.
+
+```csharp
+// in a GameApp subclass
+DpiFont _title = null!;   // Surface2D.LoadDefaultDpiFont(40f) in OnLoad
+
+protected override void OnDrawUi(SpriteBatch batch)
+{
+    SpriteFont f = _title.For(Ui.DpiScale);
+    batch.DrawString(f, "Menu", new Vector2(40, 40), color);   // crisp at any DPI
+}
+```
+
+Keep the `DesignViewport` for the letterboxed game world; only the UI layer opts into point space. Design-space
+rendering is byte-identical: snapping is active only inside the point-space viewport, so existing 2D passes are
+unaffected.
+
+---
+
 ## Render3D (`KhaozEngine.Render3D`)
 
 Stylized 3D. `Render3DSurface(window)` owns a `Scene3D`; `GameApp3D.Surface3D`/`Scene` give you one. The GPU

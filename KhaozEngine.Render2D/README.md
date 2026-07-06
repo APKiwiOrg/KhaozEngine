@@ -65,3 +65,51 @@ void DrawVerticalGradient(SpriteBatch batch, Rect r, Color top, Color bottom, in
 ```csharp
 renderer.DrawVerticalGradient(spriteBatch, new Rect(0, 0, viewWidth, viewHeight), fogTop, fogBottom, 12);
 ```
+
+## `DpiFont` - crisp point-space text on HiDPI (since 10.12.0)
+
+`DpiFont` is a logical-size font that stays crisp on HiDPI. It bakes its glyph atlas at the live DPI scale and
+re-bakes only when that scale changes (stable per display, so not per window resize). Author at a logical
+`pixelHeight` (points). Each frame call `font.For(dpiScale)` (pass `frame.DpiScale`) and draw the returned
+`SpriteFont` 1:1 in a point-space pass (a `UiViewport` `Begin`). `DpiFont` is `IDisposable` (it owns the
+current `SpriteFont`).
+
+Create one via `Render2DSurface`:
+
+| Factory | Loads from |
+|---------|-----------|
+| `Render2DSurface.LoadDpiFont(path)` | TrueType file path |
+| `Render2DSurface.LoadDpiFont(byte[])` | in-memory font bytes |
+| `Render2DSurface.LoadDpiFont(FontManager, key)` | a font already registered in a `FontManager` |
+| `Render2DSurface.LoadDefaultDpiFont(pixelHeight)` | the built-in default font at `pixelHeight` |
+| `Render2DContext.LoadDpiFont(byte[], pixelHeight)` | the offscreen snapshot path |
+
+```csharp
+var uiFont = surface.LoadDpiFont("fonts/Inter.ttf");  // logical points
+// per frame, inside a UiViewport Begin:
+var font = uiFont.For(frame.DpiScale);
+TextHelper.Draw(spriteBatch, font, "UPGRADES", x, y, Color.White);
+```
+
+## `SpriteFont` fractional bake density (since 10.12.0)
+
+`SpriteFont` now bakes at a fractional bake `density`: the atlas is rasterized at `pixelHeight * density`,
+`RenderScale` is set to `1/density`, and all layout metrics are still reported at the logical `pixelHeight`.
+The integer `oversample` form delegates to this and is byte-identical at density 1. This is what lets a
+`DpiFont` bake at an arbitrary DPI scale (e.g. 1.5) rather than a whole-integer oversample.
+
+## `SpriteBatch` device-pixel snapping (since 10.12.0)
+
+For DPI-aware UI, `SpriteBatch` exposes device-pixel snapping:
+
+| Member | Meaning |
+|--------|---------|
+| `DeviceScale` (`Vector2`) | device pixels per authoring unit |
+| `DeviceOffset` (`Vector2`) | device-pixel origin offset |
+| `SnapRect(Rect)` | snaps a rect to whole device pixels |
+| `SnapLength(float length, float minDevicePixels = 0)` | snaps a length to whole device pixels |
+
+These are non-zero / active ONLY inside a point-space `UiViewport` `Begin`. A fractional design viewport,
+world/camera space, screen space, or a transformed pass leaves `DeviceScale` at `Vector2.Zero`, so snapping is
+a no-op there. Inside a point-space pass `SpriteBatch` also snaps glyph origins to device pixels, so text drawn
+with a `DpiFont` is crisp.

@@ -96,6 +96,14 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   collision-shape debug overlay (`KhaozEngine.Render3D.Debug.CollisionShapeOverlay`) is the first consumer,
   and it is reusable by any future overlay layer.
 
+**DPI-aware pixel snapping** (since 10.12.0): when a widget is drawn inside a point-space UI pass (a
+`UiViewport` `SpriteBatch.Begin`), the retained widgets and `GuiDraw` snap their rect and border thickness
+to whole device pixels, so rounded/box borders render as a uniform 1px on HiDPI and at non-integer window
+scales instead of straddling a fractional device-pixel phase (the old "thicker on one side" artifact). The
+snapping is a no-op outside a point-space pass, so screen/design/world rendering is byte-identical and a
+borderless style stays borderless. Text drawn through the batch in that pass also snaps its glyph origins
+(pair with a `DpiFont` from `KhaozEngine.Render2D` for a crisp atlas).
+
 Text wrap/alignment lives in `KhaozEngine.Render2D.TextLayout` (over the `ITextMeasurer` seam, so the layout
 math is headless-testable); clipping uses `SpriteBatch` scissor (`SetScissor`/`ClearScissor`, DPI-aware). Ported
 from `KhaozEngine.Screens`/`UI` (game-specific layout coupling dropped). Built on `KhaozEngine.Windowing`

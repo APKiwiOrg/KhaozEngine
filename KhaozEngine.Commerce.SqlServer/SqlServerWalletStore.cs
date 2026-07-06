@@ -128,7 +128,11 @@ CREATE TABLE dbo.grant_schedule (
                     long replayedBal = await ScalarLongAsync(conn, tx,
                         "SELECT post_balance FROM dbo.wallet_ledger WHERE account_id=@a AND currency_id=@c AND idempotency_key=@k",
                         ct, ("@a", a.Value), ("@c", c.Value), ("@k", key)).ConfigureAwait(false) ?? 0;
-                    await tx.CommitAsync(ct).ConfigureAwait(false);
+                    // Duplicate-key replay: the balance UPDATE above is relative (amount - @amt), so this
+                    // transaction already applied its own debit before losing the ledger insert race. The
+                    // winning transaction holds the single authoritative mutation and ledger row, so this
+                    // transaction's debit must be rolled back, not committed, or the balance double-debits.
+                    await tx.RollbackAsync(ct).ConfigureAwait(false);
                     return (false, true, false, replayedBal);
                 }
 
@@ -174,7 +178,11 @@ CREATE TABLE dbo.grant_schedule (
                     long replayedBal = await ScalarLongAsync(conn, tx,
                         "SELECT post_balance FROM dbo.wallet_ledger WHERE account_id=@a AND currency_id=@c AND idempotency_key=@k",
                         ct, ("@a", a.Value), ("@c", c.Value), ("@k", key)).ConfigureAwait(false) ?? 0;
-                    await tx.CommitAsync(ct).ConfigureAwait(false);
+                    // Duplicate-key replay: the balance UPDATE above is relative (amount + @amt), so this
+                    // transaction already applied its own credit before losing the ledger insert race. The
+                    // winning transaction holds the single authoritative mutation and ledger row, so this
+                    // transaction's credit must be rolled back, not committed, or the balance double-credits.
+                    await tx.RollbackAsync(ct).ConfigureAwait(false);
                     return (false, true, false, replayedBal);
                 }
 

@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Commerce.Sqlite</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>SQLite backend for KhaozEngine.Commerce (IWalletStore + IGrantScheduleStore). Opt-in; not bundled in the Server umbrella.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Commerce/KhaozEngine.Commerce.csproj" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <!-- Override the bundled native SQLite binary to the patched build (SQLite 3.50.3, fixes
+         CVE-2025-6965 / NU1903). Microsoft.Data.Sqlite 10.0.9 still pulls the vulnerable
+         SQLitePCLRaw.lib.e_sqlite3 2.1.11 transitively; this direct ref upgrades ONLY the native
+         lib (managed SQLitePCLRaw.core/provider stay at 2.1.11, the versions MDS is built against).
+         Drop this pin once Microsoft.Data.Sqlite references a patched SQLitePCLRaw itself. -->
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Tests" />
+  </ItemGroup>
+</Project>

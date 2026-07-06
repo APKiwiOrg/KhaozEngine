@@ -271,7 +271,7 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
     /// from the SAME allocator player joins draw from, so the id never collides with a player. It pre-sets
     /// <see cref="ReplicatedPosition"/> to (<paramref name="x"/>, 0, <paramref name="z"/>) so the entity is
     /// immediately area-of-interest-visible; <paramref name="configure"/> then runs against the world to add game
-    /// components — e.g. an NPC-kind / HP / faction component registered on <see cref="Registry"/> at an id >=
+    /// components, e.g. an NPC-kind / HP / faction component registered on <see cref="Registry"/> at an id >=
     /// <see cref="MoveProtocol.FirstConsumerTypeId"/>, which clients read via
     /// <see cref="WorldClient.TryGetComponent{T}"/>. Drive its behaviour each tick from <see cref="OnBeforeTick"/>.
     /// Returns the new entity's NetId. (The multi-cell equivalent is
@@ -369,7 +369,7 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
     }
 
     /// <summary>Raised at the START of every <see cref="Tick"/> (before movement and the snapshot pass), with the
-    /// tick <c>dt</c> — where a consumer runs its server-authoritative non-player (NPC/enemy) behaviour, writing each
+    /// tick <c>dt</c>, where a consumer runs its server-authoritative non-player (NPC/enemy) behaviour, writing each
     /// entity's <see cref="ReplicatedPosition"/> so the change reaches clients in the same tick. No-op until
     /// subscribed. The multi-cell equivalent is <see cref="ShardedWorldServer.OnBeforeTick"/>.</summary>
     public event Action<float>? OnBeforeTick;

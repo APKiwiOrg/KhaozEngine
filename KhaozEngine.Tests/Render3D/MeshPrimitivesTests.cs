@@ -438,7 +438,7 @@ namespace KhaozEngine.Tests.Render3D
         // --- winding-vs-normal correctness net. The model pipeline uses FaceCullMode.None, so a reversed
         //     triangle winding renders identically and is INVISIBLE to tests/snapshots (it only shows as
         //     mis-lit faces). This asserts the geometric face normal (from the winding) agrees with the
-        //     stored vertex normals — catching a winding flip independently of whether the stored normal is
+        //     stored vertex normals, catching a winding flip independently of whether the stored normal is
         //     outward. Complementary to the AssertAllFaceNormalsOutward direction tests. ---
 
         /// <summary>
@@ -550,7 +550,7 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void Degenerate_Segments_And_Rings_Are_Clamped()
         {
-            // segments < 3 clamps to 3, rings < 2 clamps to 2 — no throw, still valid.
+            // segments < 3 clamps to 3, rings < 2 clamps to 2: no throw, still valid.
             var cyl = MeshPrimitives.Cylinder(segments: 1);
             var cone = MeshPrimitives.Cone(segments: 0);
             var sphere = MeshPrimitives.Sphere(rings: 1, segments: 2);

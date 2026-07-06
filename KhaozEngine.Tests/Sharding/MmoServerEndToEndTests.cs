@@ -120,7 +120,7 @@ public class MmoServerEndToEndTests
         Assert.False(world.TryGet(playerEntity, out Creature _));
 
         // An OLDER client whose registry never registered Creature (only Position) must SKIP the unknown extension
-        // component and still apply the snapshot — no throw, still sees the NPC.
+        // component and still apply the snapshot: no throw, still sees the NPC.
         var oldRegistry = new ReplicationRegistry();
         oldRegistry.Register<Position>(
             typeId: 1,

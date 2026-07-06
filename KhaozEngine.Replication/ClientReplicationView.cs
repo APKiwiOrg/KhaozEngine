@@ -166,7 +166,7 @@ public sealed class ClientReplicationView
     /// Applies a baseline+delta produced by <see cref="ServerReplicator.WriteFor"/> or
     /// <see cref="AoiDeltaReplicator.WriteFor"/>: despawns removed entities, spawns/updates changed ones (removing
     /// listed components), and maintains interpolation buffers so <see cref="Interpolate"/> keeps working. A delta
-    /// whose baseline is at or before <see cref="LastAppliedSeq"/> is a valid rebuild — the server builds from the
+    /// whose baseline is at or before <see cref="LastAppliedSeq"/> is a valid rebuild: the server builds from the
     /// client's last ACKED baseline, which lags what the client has applied whenever an ack is in flight or was lost,
     /// so re-applying the diff from that older baseline is idempotent and self-heals (a dropped delta / ack needs no
     /// full resync). Only a baseline AHEAD of <see cref="LastAppliedSeq"/> is a genuine gap and throws (the caller
@@ -209,7 +209,7 @@ public sealed class ClientReplicationView
         {
             long netId = br.ReadInt64();
             seen?.Add(netId);
-            br.ReadByte(); // isNew flag — GetOrSpawn handles both; read only to stay byte-aligned
+            br.ReadByte(); // isNew flag: GetOrSpawn handles both; read only to stay byte-aligned
             Entity entity = GetOrSpawn(world, netId);
 
             int removedCompCount = br.ReadInt32();
@@ -251,7 +251,7 @@ public sealed class ClientReplicationView
     /// <summary>
     /// Reads one entity's component stream up to the <c>[0]</c> terminator, deserializing each registered
     /// component and, for a consumer <b>extension</b> component (type id >= <see cref="ReplicationRegistry.FirstExtensionTypeId"/>,
-    /// length-prefixed on the wire), SKIPPING it when this client's registry does not know the id — so an older
+    /// length-prefixed on the wire), SKIPPING it when this client's registry does not know the id, so an older
     /// client tolerates a newer server that added a component. An unknown BUILT-IN id (below the floor, unframed)
     /// is a hard protocol mismatch and throws (<paramref name="streamKind"/> names the stream for the message),
     /// caught by <see cref="TryApply"/>/<see cref="TryApplyDelta"/> and surfaced as "client out of date".

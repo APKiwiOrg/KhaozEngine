@@ -6,7 +6,7 @@ namespace KhaozEngine.Render2D
     /// Look-ahead configuration: lead the camera ahead of the target along its velocity. Per frame the lead
     /// target is <c>clamp(velocity * LeadTime, -MaxDistance .. +MaxDistance)</c> per axis; the applied offset
     /// eases toward that target at <see cref="Stiffness"/> so a direction reversal does not snap. The
-    /// <c>default</c> value (all zero) is disabled — <see cref="LeadTime"/> of 0 on an axis means no lead.
+    /// <c>default</c> value (all zero) is disabled: <see cref="LeadTime"/> of 0 on an axis means no lead.
     /// </summary>
     public readonly struct LookAheadSettings
     {

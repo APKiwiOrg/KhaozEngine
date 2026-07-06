@@ -11,7 +11,7 @@ namespace KhaozEngine.Gui;
 /// Reusable in-game update-notification overlay: a pure presenter over <see cref="IUpdateStatus"/>. It
 /// renders the current update state (available / downloading / ready / applying / failed) as a centred panel
 /// with a progress bar, and raises <see cref="OnTrigger"/> when the bound key/button is pressed while a panel
-/// is shown. It never calls the service itself — wire <see cref="OnTrigger"/> to
+/// is shown. It never calls the service itself: wire <see cref="OnTrigger"/> to
 /// <c>KhaozEngine.Updates.UpdateOverlayActions.Trigger</c>. Headless-testable: <see cref="Update"/> needs no
 /// GPU. Drop it into any Gui layer, or use <see cref="UpdateOverlayScreen"/> for stack-based games.
 /// </summary>

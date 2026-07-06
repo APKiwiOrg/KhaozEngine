@@ -87,7 +87,7 @@ void main() { o = vec4(0.0, 1.0, 0.0, 1.0); }";
             device.Submit(cl);
             device.WaitForIdle();
 
-            // Read back the centre pixel — the passthrough frag writes green.
+            // Read back the centre pixel: the passthrough frag writes green.
             MappedData map = device.Map(staging, GpuMapMode.Read);
             int idx = 8 * (int)map.RowPitch + 8 * 4;
             byte g = System.Runtime.InteropServices.Marshal.ReadByte(map.Data, idx + 1);

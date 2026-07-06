@@ -206,7 +206,7 @@ public class AoiDeltaReplicatorTests
 
         view.ApplyDelta(client, d2);
         Assert.True(view.TryGetEntity(7, out Entity after));
-        Assert.Equal(before, after);                     // same client entity — no respawn
+        Assert.Equal(before, after);                     // same client entity, no respawn
         Assert.Equal(5f, client.Get<Pos>(after).X);      // moved
     }
 
@@ -249,7 +249,7 @@ public class AoiDeltaReplicatorTests
 
         world.Set(e1, new Pos { X = 5, Y = 5 });
         repl.BeginTick();
-        repl.WriteFor(0, world, Aoi(1, 2));   // seq2 delta — its ack is dropped (never Acknowledged)
+        repl.WriteFor(0, world, Aoi(1, 2));   // seq2 delta: its ack is dropped (never Acknowledged)
 
         world.Set(e1, new Pos { X = 9, Y = 9 });
         int seq3 = repl.BeginTick();

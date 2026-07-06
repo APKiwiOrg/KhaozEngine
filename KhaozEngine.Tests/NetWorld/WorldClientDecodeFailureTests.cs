@@ -9,10 +9,10 @@ namespace KhaozEngine.Tests.NetWorld;
 
 /// <summary>
 /// The last-resort backstop: a snapshot the client cannot decode because it carries an unregistered <b>built-in</b>
-/// (below-floor) component type id — a genuinely newer/incompatible core protocol — must become a clean
+/// (below-floor) component type id (a genuinely newer/incompatible core protocol) must become a clean
 /// <see cref="DisconnectReason.IncompatibleVersion"/> disconnect, never an unhandled exception escaping
 /// <see cref="WorldClient.Poll"/> into the consumer's frame loop. (An unregistered <em>extension</em> id, at/above
-/// <see cref="KhaozEngine.Replication.ReplicationRegistry.FirstExtensionTypeId"/>, is instead SKIPPED — covered by
+/// <see cref="KhaozEngine.Replication.ReplicationRegistry.FirstExtensionTypeId"/>, is instead SKIPPED, covered by
 /// <see cref="EntityReplicationSeamTests"/>.)
 /// </summary>
 public class WorldClientDecodeFailureTests

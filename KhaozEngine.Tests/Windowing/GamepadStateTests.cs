@@ -84,7 +84,7 @@ namespace KhaozEngine.Tests.Windowing
         public void Deadzone_RadialHelper_UsesMagnitudeNotPerAxis()
         {
             // a diagonal whose magnitude (~0.283) is below the 0.3 deadzone is zeroed, even though no single
-            // axis is tiny — a per-axis deadzone would wrongly keep it.
+            // axis is tiny: a per-axis deadzone would wrongly keep it.
             var v = Deadzone.Radial(new Vector2(0.2f, 0.2f), 0.3f);
             Assert.Equal(Vector2.Zero, v);
         }

@@ -100,7 +100,7 @@ public sealed class MmoServer : ICellPersistenceHost
     /// Spawns a server-owned entity at a world position, allocating a fresh <see cref="NetId"/> from the same
     /// allocator player joins draw from (never colliding), placing it in the owning cell, and pre-setting its
     /// <see cref="Position"/>; <paramref name="configure"/> then adds the game's own components. The reference
-    /// pattern for authoring NPCs/resources — the same shape as <see cref="ShardedWorldServer.SpawnEntity"/>.
+    /// pattern for authoring NPCs/resources, the same shape as <see cref="ShardedWorldServer.SpawnEntity"/>.
     /// </summary>
     public long SpawnEntity(float x, float y, Action<World, Entity>? configure = null)
     {

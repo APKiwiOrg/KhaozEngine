@@ -31,7 +31,7 @@ namespace KhaozEngine.Render2D
     {
         public static byte[] Capture(int width, int height, Color clear, Action<Render2DContext> draw)
         {
-            // NOTE: the context is intentionally NOT disposed here — as in the original inline CreateMetal path,
+            // NOTE: the context is intentionally NOT disposed here, as in the original inline CreateMetal path,
             // tearing down the Metal device after this 2D font/texture pass crashes in the backend. The device
             // is left to process teardown (this is a tooling/test-only snapshot helper). Matches baseline behaviour.
             GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();

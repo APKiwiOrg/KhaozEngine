@@ -27,7 +27,7 @@ namespace KhaozEngine.Render3D
             Shininess = shininess;
         }
 
-        /// <summary>Emissive 0, specular 0, shininess 32 — the current matte look.</summary>
+        /// <summary>Emissive 0, specular 0, shininess 32: the current matte look.</summary>
         public static Material None => new(Color.Transparent, 0f, 32f);
 
         /// <summary>Glow with the given emissive colour, no specular. (Named <c>Glowing</c> rather than

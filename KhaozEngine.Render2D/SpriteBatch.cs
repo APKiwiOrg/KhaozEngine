@@ -114,7 +114,7 @@ void main() {
         //    runs that Draw, so every flush (each SetScissor/ClearScissor forces one) gets its own buffer, never one
         //    reused at offset 0.
         //  - ACROSS frames, the loop submits+presents with NO WaitForIdle, so the CPU runs ahead and a later frame's
-        //    write to a reused buffer can race the GPU still reading it for an earlier, in-flight present — a 1-frame
+        //    write to a reused buffer can race the GPU still reading it for an earlier, in-flight present: a 1-frame
         //    tear that only surfaces when the buffer contents change frame-to-frame (a moving/resizing widget; static
         //    content writes identical bytes so the race is invisible). So the per-flush buffers are RING-BUFFERED:
         //    NewFrame advances to the next of RingDepth slots and a slot is not rewritten until RingDepth frames
@@ -176,7 +176,7 @@ void main() {
 
         /// <summary>
         /// Convert a clip rect (in viewport points, top-left origin) to framebuffer pixels, scaling for DPI
-        /// (e.g. 2x Retina) and clamping to the framebuffer. Pure function — unit-tested headlessly.
+        /// (e.g. 2x Retina) and clamping to the framebuffer. Pure function, unit-tested headlessly.
         /// </summary>
         public static (uint X, uint Y, uint Width, uint Height) ComputeScissor(
             Rect rect, int viewportW, int viewportH, int framebufferW, int framebufferH)
@@ -519,7 +519,7 @@ void main() {
                 else { tex = (IGpuTexture)key; pipeline = _pipeline; }
                 _texLastUsedFrame[tex] = _frame;   // stamp for the unused-set eviction sweep in NewFrame
                 _cl.SetPipeline(pipeline);
-                // Upload directly from the run's backing List<V> — no ToArray() copy.
+                // Upload directly from the run's backing List<V>, no ToArray() copy.
                 _gd.UpdateBuffer(vb, byteOffset, (ReadOnlySpan<V>)CollectionsMarshal.AsSpan(verts));
                 var setKey = (tex, _sampler);
                 if (!_sets.TryGetValue(setKey, out var set))

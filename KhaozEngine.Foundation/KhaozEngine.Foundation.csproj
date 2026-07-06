@@ -7,6 +7,9 @@
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <SuppressDependenciesWhenPacking>false</SuppressDependenciesWhenPacking>
+    <!-- NU5128: this is a dependency-only umbrella metapackage (IncludeBuildOutput=false, no lib/
+         content of its own) whose only content is the ProjectReference set above; NuGet warns that
+         the package has dependencies but no lib assets for any TFM, which is expected here. -->
     <NoWarn>$(NoWarn);NU5128</NoWarn>
   </PropertyGroup>
   <ItemGroup>

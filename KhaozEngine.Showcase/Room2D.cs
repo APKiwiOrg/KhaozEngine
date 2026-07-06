@@ -9,21 +9,23 @@ using KhaozEngine.Windowing;
 namespace KhaozEngine.Showcase
 {
     /// <summary>Ported from <c>Render2DSample/Program.cs</c>: sprites (a solid panel + a checker pattern) and
-    /// runtime-baked TTF text, batched through <see cref="SpriteBatch"/>. The room owns no GPU device itself (a
+    /// runtime-baked TTF text, batched through <see cref="SpriteBatch"/>. The whole composition is drawn in the
+    /// design-space pass so the header bar, sprites, and captions scale and centre together as one unit on resize
+    /// (rather than the captions reflowing independently of the sprites); its fonts are oversample-3, which the
+    /// design-to-framebuffer scale minifies into crisp text. The room owns no GPU device itself (a
     /// <see cref="GameScene"/> cannot reach one) - <see cref="ShowcaseApp"/> creates the texture/fonts on its
-    /// <c>Surface2D</c> and hands them in via <see cref="Init"/> right after construction, keeping the
-    /// constructor itself parameterless for the room registry's <c>Func&lt;GameScene&gt;</c> factory.</summary>
+    /// <c>Surface2D</c> and hands them in via <see cref="Init"/> right after construction, keeping the constructor
+    /// itself parameterless for the room registry's <c>Func&lt;GameScene&gt;</c> factory.</summary>
     public sealed class Room2D : GameScene
     {
         Texture2D _white = null!;
         Texture2D _checker = null!;
-        DpiFont _big = null!;
-        DpiFont _small = null!;
+        SpriteFont _big = null!;
+        SpriteFont _small = null!;
 
         /// <summary>Wire in the textures/fonts created on the app's Surface2D. Call once, right after
-        /// construction and before the room is pushed. The captions are drawn through the point-space UI pass, so
-        /// they take <see cref="DpiFont"/>s and stay crisp on HiDPI.</summary>
-        public Room2D Init(Texture2D white, Texture2D checker, DpiFont big, DpiFont small)
+        /// construction and before the room is pushed.</summary>
+        public Room2D Init(Texture2D white, Texture2D checker, SpriteFont big, SpriteFont small)
         {
             _white = white;
             _checker = checker;
@@ -52,37 +54,29 @@ namespace KhaozEngine.Showcase
             if (Manager!.Input.WasPressed(Key.Escape)) { Manager!.Pop(); return; }
         }
 
-        // The textured checker sprites are the design-space "sprite demo" (they letterbox with the game field).
+        // Header bar + checker sprites + captions, all in design space so they stay aligned and centre together as
+        // the window resizes. The captions are developer-facing chrome, not localizable player copy, so the raw
+        // DrawString literals are intentional (the KELOC003 escape hatch).
+        [LocalizationExempt]
         public override void OnDraw2D(SpriteBatch batch)
         {
+            var m = Manager!;
+            // Design-space width (not FrameWidth) so the header bar keeps its 40px side margins on a resized window.
+            float boundsW = m.Viewport!.DesignBounds.Width;
+
+            Vector4 surf = GuiTheme.Default.Surface;
+            batch.Draw(_white, new Vector4(40, 30, boundsW - 80, 90), new Color(surf.X, surf.Y, surf.Z, 0.92f));
+
             for (int i = 0; i < 6; i++)
             {
                 float s = 60 + i * 14;
                 batch.Draw(_checker, new Vector4(60 + i * 130, 170, s, s), new Color(1f, 1f, 1f, 1f));
             }
-        }
 
-        // The header bar + captions draw through the point-space UI pass so the runtime TTF text is crisp on HiDPI
-        // (at the showcase's default window the point space and the design canvas coincide, so the captions still sit
-        // over the sprites above), wearing the crisp GuiTheme surface/text colours. The captions are developer-facing
-        // chrome, not localizable player copy, so the raw DrawString literals are intentional (the KELOC003 escape hatch).
-        [LocalizationExempt]
-        public override void OnDrawUi(SpriteBatch batch)
-        {
-            var m = Manager!;
-            UiViewport? ui = m.UiViewport;
-            if (ui is null) return;
-            float dpi = ui.DpiScale;
-            SpriteFont big = _big.For(dpi);
-            SpriteFont small = _small.For(dpi);
-            float boundsW = ui.Width;
-
-            Vector4 surf = GuiTheme.Default.Surface;
-            batch.Draw(_white, new Vector4(40, 30, boundsW - 80, 90), new Color(surf.X, surf.Y, surf.Z, 0.92f));
-            batch.DrawString(big, "KhaozEngine.Render2D", new Vector2(60, 40), (Color)GuiTheme.Default.Text);
-            batch.DrawString(small, "SpriteBatch + Camera2D + Texture2D + runtime TTF text, all on Veldrid.", new Vector2(60, 300), new Color(0.8f, 0.85f, 0.95f, 1f));
-            batch.DrawString(small, "The quick brown fox jumps over the lazy dog. 0123456789 !?@#", new Vector2(60, 340), new Color(0.9f, 0.8f, 0.6f, 1f));
-            batch.DrawString(small, "Alpha blending, tinting, batched quads. Esc for menu.", new Vector2(60, 380), new Color(0.7f, 0.95f, 0.8f, 1f));
+            batch.DrawString(_big, "KhaozEngine.Render2D", new Vector2(60, 40), (Color)GuiTheme.Default.Text);
+            batch.DrawString(_small, "SpriteBatch + Camera2D + Texture2D + runtime TTF text, all on Veldrid.", new Vector2(60, 300), new Color(0.8f, 0.85f, 0.95f, 1f));
+            batch.DrawString(_small, "The quick brown fox jumps over the lazy dog. 0123456789 !?@#", new Vector2(60, 340), new Color(0.9f, 0.8f, 0.6f, 1f));
+            batch.DrawString(_small, "Alpha blending, tinting, batched quads. Esc for menu.", new Vector2(60, 380), new Color(0.7f, 0.95f, 0.8f, 1f));
         }
     }
 }

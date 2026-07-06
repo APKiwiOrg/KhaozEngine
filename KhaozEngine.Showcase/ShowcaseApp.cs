@@ -67,13 +67,14 @@ namespace KhaozEngine.Showcase
             var small3 = Surface2D.LoadDefaultFont(22f, oversample: 3);
             _readoutFont = dpi22; // crisp point-space overlay text
 
-            Rooms.Add(("2D sprites + text", () => new Room2D().Init(_white, checker, dpi40, dpi22)));
+            // Room2D / RoomInput are fixed-layout design-space demos (they scale + centre as a unit on resize):
+            // crisp via the supersampled fonts, same as the ScreenStack rooms below.
+            Rooms.Add(("2D sprites + text", () => new Room2D().Init(_white, checker, big3, small3)));
 
             // RoomGui / RoomMiniGame are ScreenStack widget rooms: crisp via the supersampled design-space fonts.
             Rooms.Add(("GUI + widgets", () => new RoomGui().Init(_white, big3, small3)));
 
-            // RoomInput draws its whole demo through the point-space UI pass (crisp HUD text).
-            Rooms.Add(("Input + audio", () => new RoomInput().Init(_white, dpi22)));
+            Rooms.Add(("Input + audio", () => new RoomInput().Init(_white, small3)));
 
             Rooms.Add(("Mini-game (Catcher)", () => new RoomMiniGame().Init(_white, big3, small3)));
 
@@ -124,7 +125,19 @@ namespace KhaozEngine.Showcase
             _scenes.Update(dt);
         }
 
-        protected override void OnDraw2D(SpriteBatch batch) => _scenes.Draw2D(batch);
+        protected override void OnDraw2D(SpriteBatch batch)
+        {
+            // The shared 3D scene is composed behind the 2D every frame; for a non-3D room it is empty and would show
+            // through wherever the room's 2D (and the letterbox bars) do not paint. Lay an opaque backdrop over the
+            // whole framebuffer first - an oversized design-space quad, so it covers the letterbox bars too - so 2D
+            // rooms read on a clean background. A 3D room fills the window itself, so the backdrop is skipped there.
+            if (_scenes.Active is not IGameScene3D)
+            {
+                Rect db = Viewport.DesignBounds;
+                batch.Draw(_white, new Vector4(-db.Width, -db.Height, db.Width * 3f, db.Height * 3f), ClearColor);
+            }
+            _scenes.Draw2D(batch);
+        }
 
         // The point-space UI pass (crisp on HiDPI): the scenes' own OnDrawUi (the menu), then the app-level display
         // readout overlay on top.

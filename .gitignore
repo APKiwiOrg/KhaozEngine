@@ -1,4 +1,4 @@
-# ===== Standard base - keep in sync across Nullwake / SpaceGame / Hardpoint =====
+# ===== Standard base (keep in sync across game repos; ASCII hyphens only, no em-dashes) =====
 
 # Build outputs
 **/bin/
@@ -22,19 +22,20 @@ Thumbs.db
 .env.*.local
 .env.production
 
-# Local AI / tooling settings
+# Local AI / tooling settings (the shared .claude/settings.json IS tracked, so do not ignore it)
 .claude/settings.local.json
 .claude/worktrees/
 .superpowers/
 # Superpowers plan/spec output, local-only (never committed):
 docs/superpowers/
 
-# Build / publish artifacts
+# Build / publish artifacts (this is `artifacts/`, NOT the tracked `art-assets/icon/` source pack:
+# the committed generated icon pack under art-assets/ is intentionally NOT ignored)
 artifacts/
 
 # ===== End standard base =====
 
-# ----- KhaozEngine-specific -----
+# ----- KhaozEngine-specific (add repo-specific rules below) -----
 # Dev-only local NuGet feed (packed packages live here; the durable store is GitHub Packages - see CLAUDE.md)
 local-feed/
 

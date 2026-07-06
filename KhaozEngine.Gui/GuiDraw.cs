@@ -57,11 +57,14 @@ namespace KhaozEngine.Gui
             Line(batch, white, mid, right, thickness, color);
         }
 
-        /// <summary>Draw a <paramref name="thickness"/>-px outline just inside <paramref name="r"/>.</summary>
+        /// <summary>Draw a <paramref name="thickness"/>-px outline just inside <paramref name="r"/>. In a point-space
+        /// UI pass the rect and thickness snap to whole device pixels so the outline is uniform (no fractional-phase
+        /// asymmetry); the snap is a no-op in any other pass, so screen/design/world output is unchanged.</summary>
         public static void Border(SpriteBatch batch, Texture2D white, Rect r, float thickness, Vector4 color)
         {
             if (thickness <= 0f) return;
-            float t = thickness;
+            r = batch.SnapRect(r);
+            float t = batch.SnapLength(thickness, minDevicePixels: 1f);
             Fill(batch, white, new Rect(r.X, r.Y, r.Width, t), color);                       // top
             Fill(batch, white, new Rect(r.X, r.Bottom - t, r.Width, t), color);              // bottom
             Fill(batch, white, new Rect(r.X, r.Y, t, r.Height), color);                      // left
@@ -74,15 +77,20 @@ namespace KhaozEngine.Gui
         /// otherwise it draws the soft shadow (when <see cref="GuiStyle.ShadowColor"/> is non-transparent), the rounded
         /// (optionally gradient) body, and the rounded border ring.
         /// <paramref name="bodyColor"/> is the resolved state colour (hover/press/etc.); <paramref name="borderColor"/>
-        /// is the outline.
+        /// is the outline. In a point-space UI pass the rect + border thickness snap to whole device pixels (body and
+        /// border share one snapped rect, so their edges stay aligned) for crisp uniform chrome; a no-op snap
+        /// elsewhere leaves screen/design output unchanged.
         /// </summary>
         public static void FillStyled(SpriteBatch batch, Texture2D white, Rect r, in GuiStyle style,
             Vector4 bodyColor, Vector4 borderColor)
         {
+            r = batch.SnapRect(r);
+            float borderThickness = style.BorderThickness > 0f ? batch.SnapLength(style.BorderThickness, minDevicePixels: 1f) : 0f;
+
             if (style.IsFlat)
             {
                 Fill(batch, white, r, bodyColor);
-                Border(batch, white, r, style.BorderThickness, borderColor);
+                Border(batch, white, r, borderThickness, borderColor);
                 return;
             }
 
@@ -103,8 +111,8 @@ namespace KhaozEngine.Gui
             batch.DrawRounded(white, dest, new Vector4(0, 0, 1, 1), (Color)top, (Color)bottom, style.CornerRadius);
 
             // Rounded border ring.
-            if (style.BorderThickness > 0f)
-                batch.DrawRounded(white, dest, (Color)borderColor, style.CornerRadius, softness: 0f, strokeWidth: style.BorderThickness);
+            if (borderThickness > 0f)
+                batch.DrawRounded(white, dest, (Color)borderColor, style.CornerRadius, softness: 0f, strokeWidth: borderThickness);
         }
 
         /// <summary>
@@ -224,6 +232,10 @@ namespace KhaozEngine.Gui
                 : style.Fill;
             Vector4 border = selected ? style.SelectedBorder : style.Border;
             Vector4 text = enabled ? style.Text : style.DisabledText;
+
+            // Snap the body rect once (a no-op outside a point-space pass) so the fill, border, and the centred
+            // label all lay out against the same device-aligned rect; FillStyled re-snaps idempotently.
+            rect = batch.SnapRect(rect);
 
             if (hover && enabled) HoverGlow(batch, white, rect, style);
             FillStyled(batch, white, rect, style, fill, border);

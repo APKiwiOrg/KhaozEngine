@@ -23,8 +23,19 @@ namespace KhaozEngine.Windowing
     {
         public float Dt { get; internal set; }
         public InputState Input { get; internal set; } = InputState.Empty;
+        /// <summary>Render (framebuffer) size in device pixels - the swapchain resolution the 2D/3D renderers draw
+        /// at (2x the logical size on Retina, etc.). This is what <c>SpriteBatch</c> and <c>DesignViewport</c> map into.</summary>
         public int Width { get; internal set; }
         public int Height { get; internal set; }
+        /// <summary>Logical window size in points (device framebuffer / DPI scale). UI authored in points scales to
+        /// device pixels by <see cref="DpiScale"/>; drive a <c>UiViewport</c> from this so text/chrome stay crisp.</summary>
+        public int LogicalWidth { get; internal set; }
+        public int LogicalHeight { get; internal set; }
+        /// <summary>Device pixels per logical point (<see cref="Width"/> / <see cref="LogicalWidth"/>): 1 on a
+        /// standard display, 2 on Retina, 1.5 on a 150%-scaled display. Bake point-space UI fonts at this scale
+        /// (<c>DpiFont.For(frame.DpiScale)</c>) and snap UI geometry to whole multiples of it. Falls back to 1
+        /// before the logical size is known.</summary>
+        public float DpiScale => LogicalWidth > 0 ? (float)Width / LogicalWidth : 1f;
         /// <summary>The engine GPU command list for this frame (the swapchain is already bound and cleared;
         /// renderers draw into it). Backend GPU types stay hidden behind <see cref="IGpuCommandList"/>.</summary>
         public IGpuCommandList Commands { get; internal set; } = null!;
@@ -560,7 +571,9 @@ namespace KhaozEngine.Windowing
                 _cl.SetFramebuffer(_device.SwapchainFramebuffer!);
                 _cl.ClearColorTarget(0, ClearColor);
 
-                _frame.Dt = fdt; _frame.Input = input; _frame.Width = w; _frame.Height = h; _frame.Commands = _cl;
+                _frame.Dt = fdt; _frame.Input = input; _frame.Width = w; _frame.Height = h;
+                _frame.LogicalWidth = _window.Size.X; _frame.LogicalHeight = _window.Size.Y;
+                _frame.Commands = _cl;
                 onFrame(_frame);
 
                 _cl.End();

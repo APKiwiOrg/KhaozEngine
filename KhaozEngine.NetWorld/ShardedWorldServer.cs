@@ -335,7 +335,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
     /// <see cref="CellPersistence"/>-restored id, whose high-water mark this allocator honours) and places the
     /// entity in the cell that owns that position. <see cref="ReplicatedPosition"/> is pre-set to
     /// (<paramref name="x"/>, 0, <paramref name="z"/>) so the entity is immediately area-of-interest-visible;
-    /// <paramref name="configure"/> then runs against its owning cell's <see cref="World"/> to add game components —
+    /// <paramref name="configure"/> then runs against its owning cell's <see cref="World"/> to add game components,
     /// e.g. an NPC-kind / HP / faction component registered on <see cref="Registry"/> at an id >=
     /// <see cref="MoveProtocol.FirstConsumerTypeId"/>, which clients read back via
     /// <see cref="WorldClient.TryGetComponent{T}"/>. The entity replicates through the normal AoI + ghost + handoff
@@ -427,7 +427,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
 
     /// <summary>Raised at the START of every <see cref="Tick"/> (before movement, handoff, ghosting, and the
     /// snapshot pass), with the tick <c>dt</c>. This is where a consumer runs its server-authoritative
-    /// non-player behaviour — an NPC/enemy brain — writing each entity's <see cref="ReplicatedPosition"/> (and any
+    /// non-player behaviour (an NPC/enemy brain), writing each entity's <see cref="ReplicatedPosition"/> (and any
     /// extension components) so the changes flow through the same handoff/ghost/AoI pipeline as players and reach
     /// clients in the same tick. No-op until subscribed, so existing behaviour is unchanged.</summary>
     public event Action<float>? OnBeforeTick;

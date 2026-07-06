@@ -13,10 +13,10 @@ namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
     /// Lockdown for the graphics-backend seam (P0 stage 3, phase 3d): the consumer-facing 5.x renderer/windowing/
-    /// Gui packages must expose NO Veldrid type on their public API surface — Veldrid is contained to
+    /// Gui packages must expose NO Veldrid type on their public API surface: Veldrid is contained to
     /// KhaozEngine.Gpu (the backend boundary). Windowing/input is Silk.NET/GLFW. Swapping the GPU backend is then
     /// a new IGpuDevice impl, not a consumer-visible change. This reflection test fails the build if any
-    /// public member leaks a `Veldrid.*` type. (KhaozEngine.Gpu is deliberately excluded — it is the boundary.)
+    /// public member leaks a `Veldrid.*` type. (KhaozEngine.Gpu is deliberately excluded: it is the boundary.)
     /// </summary>
     public class VeldridLockdownTests
     {

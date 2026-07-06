@@ -23,6 +23,8 @@ namespace KhaozEngine.Game
         readonly GameClock _clock = new();
         readonly IDesignViewport _viewport;
         readonly Pointer _pointer = new();
+        readonly UiViewport _ui = new();
+        readonly Pointer _uiPointer = new();
         readonly Render2DSurface _surface2D;
 
         InputState _input = InputState.Empty;
@@ -103,8 +105,14 @@ namespace KhaozEngine.Game
         protected GameClock Clock => _clock;
         /// <summary>The design-space viewport. Updated each frame from the window size before <see cref="OnUpdate"/>.</summary>
         protected IDesignViewport Viewport => _viewport;
+        /// <summary>The point-space UI viewport (1 logical point = the DPI scale in device pixels). Updated each frame
+        /// from the frame's logical + framebuffer size before <see cref="OnUpdate"/>; draw DPI-aware UI through it in
+        /// <see cref="OnDrawUi"/>.</summary>
+        protected UiViewport Ui => _ui;
         /// <summary>The design-space pointer. Updated each frame from this frame's input before <see cref="OnUpdate"/>.</summary>
         protected Pointer Pointer => _pointer;
+        /// <summary>The point-space UI pointer (mapped through <see cref="Ui"/>). Hit-test <see cref="OnDrawUi"/> widgets with this, not <see cref="Pointer"/>.</summary>
+        protected Pointer UiPointer => _uiPointer;
         /// <summary>This frame's raw input snapshot (for custom needs / 3D picking).</summary>
         protected InputState Input => _input;
         /// <summary>The 2D drawing surface bound to the window.</summary>
@@ -171,6 +179,13 @@ namespace KhaozEngine.Game
         protected virtual void OnRenderWorld(Frame frame) { }
         /// <summary>Draw the 2D scene / HUD. <paramref name="batch"/>.Begin(Viewport) is already called.</summary>
         protected virtual void OnDraw2D(SpriteBatch batch) { }
+        /// <summary>
+        /// Draw the point-space UI layer (empty by default), in a separate pass AFTER <see cref="OnDraw2D"/> each
+        /// frame with <paramref name="batch"/>.Begin(<see cref="Ui"/>) already called. Author DPI-aware, reflowing UI
+        /// here (text via <c>DpiFont.For(Ui.DpiScale)</c>, chrome auto-snapped to device pixels) so it stays crisp on
+        /// HiDPI; hit-test with <see cref="UiPointer"/>. The design-space game field stays in <see cref="OnDraw2D"/>.
+        /// </summary>
+        protected virtual void OnDrawUi(SpriteBatch batch) { }
         /// <summary>Window resized (also fires once on the first frame). Design space units stay fixed.</summary>
         protected virtual void OnResize(int width, int height) { }
         /// <summary>
@@ -212,6 +227,11 @@ namespace KhaozEngine.Game
 
                 _pointer.Update(_input, _viewport);
 
+                // Point-space UI viewport + pointer: 1 logical point = the DPI scale in device pixels, reflowing to
+                // the logical window size (stable per display, so DpiFont atlases re-bake only on a DPI change).
+                _ui.Update(frame);
+                _uiPointer.Update(_input, _ui);
+
                 // A supra-threshold wall-clock gap means the OS slept/suspended (or the app hung) between frames.
                 // Raise OnResume before OnUpdate so a game can catch up offline / re-sync timers for this frame.
                 if (ShouldRaiseResume(_clock.RealWallGapSeconds, _resumeGapThresholdSeconds))
@@ -224,6 +244,12 @@ namespace KhaozEngine.Game
                 _surface2D.NewFrame(frame);
                 _surface2D.Batch.Begin(_viewport);
                 OnDraw2D(_surface2D.Batch);
+                _surface2D.Batch.End();
+
+                // Point-space UI pass: a second begin in the DPI-aware UiViewport, so DPI UI draws crisp on top of
+                // the (letterboxed) design-space field. Empty by default, so a game that only uses OnDraw2D is unaffected.
+                _surface2D.Batch.Begin(_ui);
+                OnDrawUi(_surface2D.Batch);
                 _surface2D.Batch.End();
             });
         }

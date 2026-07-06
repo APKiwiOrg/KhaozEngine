@@ -77,6 +77,27 @@ Windowing + input foundation for the custom MonoGame-free stack.
 - `GameClock` (pause/timescale, plus `RealWallGapSeconds`/`LastRealTimestamp` - a UTC wall-clock gap per frame
   that survives OS sleep/suspend, which the frame `dt` does not, so a game can detect a resume), `DesignViewport`
   / `AdaptiveViewport` (letterbox/fill/stretch + responsive).
+- `UiViewport` (since 10.12.0) - a point-space viewport for DPI-aware UI, implementing `IDesignViewport`.
+  Authoring units are logical points and 1 point maps to `DpiScale` device pixels (no letterbox). `Width`/`Height`
+  track the logical window size, so the UI reflows as the window resizes rather than magnifying, and `ScaleX`/`ScaleY`
+  equal the DPI scale (stable per display, changing only on a monitor / OS-scale change, not on resize). It returns
+  `SnapsToDevicePixels = true`. Drive it with `UiViewport.Update(Frame frame)` (or
+  `Update(int framebufferW, int framebufferH, int logicalW, int logicalH)`). Because it implements `IDesignViewport`
+  it drops straight into `SpriteBatch.Begin`, `Pointer.Update`, `ComputeScissor`, and the Gui screens/layout
+  unchanged. Contrast with `DesignViewport` (a fixed design canvas Fit-scaled onto the framebuffer, which magnifies
+  fractionally on HiDPI): use `DesignViewport` for the letterboxed game field, `UiViewport` for the crisp UI layer.
+
+## `Frame` DPI members (since 10.12.0)
+
+`Frame` (on `AppWindow`) exposes the logical window size and DPI scale for point-space UI:
+
+| Member | Meaning |
+|--------|---------|
+| `LogicalWidth` / `LogicalHeight` | logical window size in points |
+| `DpiScale` | device pixels per logical point (`Width / LogicalWidth`), e.g. 1 standard, 2 Retina, 1.5 on a 150%-scaled display |
+
+`Frame.Width`/`Height` remain the device-pixel framebuffer size. Bake point-space UI fonts at `frame.DpiScale`
+and snap UI geometry to whole multiples of it.
 
 The 5.x renderers (`Render2D`, `Render3D`) build on this. Silk.NET windowing ships GLFW natives bundled per-RID,
 so there is no SDL2/brew step. Touch is mobile-deferred (no 5.x mobile-windowing head yet).

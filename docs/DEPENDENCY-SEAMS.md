@@ -85,6 +85,15 @@ through the `Game2D`/`Game3D` umbrellas (a project that references neither never
 it reads (`LocalizationExemptAttribute`, `LocalizationStringSinkAttribute`) live in `App`, so the analyzer keys
 off fully-qualified names, not a hard reference.
 
+## Design-viewport seam: device-pixel snapping
+
+`IDesignViewport` (`KhaozEngine.Primitives`) is the design-viewport seam. Its implementers all live in
+`KhaozEngine.Windowing`: `DesignViewport`, `AdaptiveViewport`, and `UiViewport` (the point-space viewport for
+DPI-aware UI). The seam gained a `SnapsToDevicePixels` member, a default-interface-member defaulting
+to `false`: `DesignViewport` / `AdaptiveViewport` inherit `false`, and `UiViewport` returns `true`. `SpriteBatch`
+reads the flag through the seam to confine device-pixel snapping to the point-space path, so no new dependency
+edge is introduced (`Render2D` already depends on `Primitives`).
+
 ## Three flavours of the same idea
 
 The pattern is applied at the granularity the dependency warrants:

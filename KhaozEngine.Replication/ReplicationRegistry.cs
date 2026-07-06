@@ -16,7 +16,7 @@ public sealed class ReplicationRegistry
     /// The lowest type id a consumer ("extension") component may use. Ids below this are reserved for engine
     /// built-ins and keep their exact, unframed wire encoding. Components registered at or above this floor are
     /// <b>length-prefixed on the wire</b> so a client whose registry does not know the id can SKIP it (ignore the
-    /// component) instead of failing the snapshot — the seam that lets a server add a replicated component (an NPC
+    /// component) instead of failing the snapshot: the seam that lets a server add a replicated component (an NPC
     /// kind, HP, faction, …) while older clients that never registered it keep running. An unknown id BELOW the
     /// floor is still a hard "client out of date" mismatch (it throws), preserving the pre-existing contract.
     /// Register consumer components at <c>FirstExtensionTypeId + n</c>; the engine will never claim those ids.

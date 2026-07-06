@@ -47,6 +47,23 @@ namespace KhaozEngine.Render2D
         /// <summary>Bake a <see cref="SpriteFont"/> from the engine's embedded default face (<see cref="DefaultFont"/>); no system font, no path.</summary>
         public SpriteFont LoadDefaultFont(float pixelHeight, int oversample = 1) => _core.LoadDefaultFont(pixelHeight, oversample);
 
+        /// <summary>
+        /// A <see cref="DpiFont"/> for point-space UI: authored at logical <paramref name="pixelHeight"/>, it bakes
+        /// its atlas at the live DPI scale (call <c>font.For(frame.DpiScale)</c> each frame) so text stays crisp on
+        /// HiDPI, re-baking only when the scale changes. Draw the returned font 1:1 through a
+        /// <c>UiViewport</c> batch pass. Dispose it when done.
+        /// </summary>
+        public DpiFont LoadDpiFont(string ttfPath, float pixelHeight) => _core.CreateDpiFont(ttfPath, pixelHeight);
+
+        /// <summary>As <see cref="LoadDpiFont(string, float)"/>, from raw TTF bytes (no filesystem path).</summary>
+        public DpiFont LoadDpiFont(byte[] ttf, float pixelHeight) => _core.CreateDpiFont(ttf, pixelHeight);
+
+        /// <summary>As <see cref="LoadDpiFont(string, float)"/>, from a <see cref="FontManager"/> key.</summary>
+        public DpiFont LoadDpiFont(FontManager fonts, string key, float pixelHeight) => _core.CreateDpiFont(fonts.GetFontBytes(key), pixelHeight);
+
+        /// <summary>As <see cref="LoadDpiFont(string, float)"/>, from the engine's embedded default face.</summary>
+        public DpiFont LoadDefaultDpiFont(float pixelHeight) => _core.CreateDefaultDpiFont(pixelHeight);
+
         /// <summary>Bind this frame's command list/viewport to the batch. Call once per frame before drawing.</summary>
         public void NewFrame(Frame frame) => _core.Batch.NewFrame(frame.Commands, frame.Width, frame.Height);
 

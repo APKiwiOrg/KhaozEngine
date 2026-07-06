@@ -318,7 +318,7 @@ namespace KhaozEngine.Render3D
         /// Axis-aligned box of side <paramref name="size"/> centered at the origin with rounded edges and
         /// corners of <paramref name="radius"/> (clamped to &lt; size/2). Built by spherifying a subdivided cube:
         /// each cube-shell vertex is pushed onto the surface of a rounded box (clamp-to-inner-box + radius), and
-        /// its normal points from the nearest inner-box point — so flats stay flat and edges/corners round
+        /// its normal points from the nearest inner-box point, so flats stay flat and edges/corners round
         /// smoothly. <paramref name="segments"/> (per cube face edge) clamps to a minimum of 1; higher = rounder
         /// edges. UV is the cube-shell grid position per face.
         /// </summary>

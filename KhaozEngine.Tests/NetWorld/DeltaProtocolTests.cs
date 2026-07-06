@@ -27,7 +27,7 @@ public class DeltaProtocolTests
     public void DeltaCapable_hello_decodes_as_a_control_and_is_harmless_to_an_older_server()
     {
         // The hello is a 2-byte ClientControl: an older server decodes it as a control with an unknown kind and
-        // (its switch only acts on SelfRescue) harmlessly ignores it — no malformed-packet flag, no protocol break.
+        // (its switch only acts on SelfRescue) harmlessly ignores it: no malformed-packet flag, no protocol break.
         byte[] hello = MoveProtocol.EncodeClientControl(MoveProtocol.ClientControlKind.DeltaCapable);
 
         Assert.True(MoveProtocol.TryDecodeClientControl(hello, out MoveProtocol.ClientControlKind kind));

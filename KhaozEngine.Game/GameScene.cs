@@ -43,6 +43,15 @@ namespace KhaozEngine.Game
         /// <summary>Draw the HUD / 2D UI. Only called when the scene is visible.</summary>
         public virtual void OnDraw2D(SpriteBatch batch) { }
 
+        /// <summary>
+        /// Draw the point-space UI layer (empty by default), in a separate pass AFTER <see cref="OnDraw2D"/> each
+        /// frame, with the batch already in a point-space <c>UiViewport</c> begin (1 logical point = the DPI scale
+        /// in device pixels). Author DPI-aware, reflowing UI here - text baked via <c>DpiFont</c> and widget chrome
+        /// snapped to device pixels stay crisp on HiDPI. Hit-test with <c>Manager.UiPointer</c> (point-space), not
+        /// <c>Manager.Pointer</c> (design-space). Use <see cref="OnDraw2D"/> for the fixed design-space game field.
+        /// </summary>
+        public virtual void OnDrawUi(SpriteBatch batch) { }
+
         /// <summary>The frame size changed. Forwarded to every scene on the stack.</summary>
         public virtual void OnResize(int width, int height) { }
     }

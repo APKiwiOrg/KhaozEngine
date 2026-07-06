@@ -8,7 +8,7 @@ using AoiBaseline = System.Collections.Generic.Dictionary<long, System.Collectio
 namespace KhaozEngine.Replication;
 
 /// <summary>
-/// Per-client, area-of-interest-scoped, <see cref="NetId"/>-keyed baseline+delta encoder — the fusion of
+/// Per-client, area-of-interest-scoped, <see cref="NetId"/>-keyed baseline+delta encoder: the fusion of
 /// <see cref="ServerReplicator"/>'s acked-baseline delta compression with per-client AoI filtering. Each server tick
 /// the game calls <see cref="BeginTick"/> once, then <see cref="WriteFor"/> per client with that client's current
 /// interest set (the net ids within its AoI). Against the client's last acknowledged baseline it emits: an entity
@@ -33,7 +33,7 @@ public sealed class AoiDeltaReplicator
     private int currentSeq;
 
     // Per slot: the AoI-scoped state the client has acknowledged (netId -> components) and its seq. This is "what
-    // THIS client knows inside its interest set, and at which seq" — the per-client, AoI-aware baseline.
+    // THIS client knows inside its interest set, and at which seq": the per-client, AoI-aware baseline.
     private readonly Dictionary<int, AoiBaseline> ackedBaselineBySlot = new();
     private readonly Dictionary<int, int> ackedSeqBySlot = new();
     // Per slot: projections not yet acked, keyed by the snapshot seq that would promote them to the baseline. Bounded

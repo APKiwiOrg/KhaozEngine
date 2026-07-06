@@ -183,8 +183,8 @@ public sealed class WorldClient : IDisposable
         if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
         config ??= new WorldClientConfig();
         this.connectFactory = connectFactory;
-        // Consumer-injectable registry: build it with MoveProtocol.CreateRegistry(configure) — the SAME registry the
-        // server uses — so the client decodes the game's extension components. Default = movement-only.
+        // Consumer-injectable registry: build it with MoveProtocol.CreateRegistry(configure), the SAME registry the
+        // server uses, so the client decodes the game's extension components. Default = movement-only.
         this.registry = registry ?? MoveProtocol.CreateRegistry();
         // Always fold this build's engine wire generation into the Hello (even with no consumer ProtocolVersion), so a
         // wire-skewed server rejects us cleanly at connect rather than admitting a client that would then misparse its
@@ -596,10 +596,10 @@ public sealed class WorldClient : IDisposable
     /// <see cref="EntityRenderState.Id"/>). Returns <c>true</c> and the component when the entity is currently in
     /// this client's area of interest AND carries a <typeparamref name="T"/> whose type id both ends registered;
     /// <c>false</c> otherwise (unknown id, entity not in view, or the component absent). This is how a game reads a
-    /// server-assigned discriminator per entity — an NPC kind, HP, faction — to pick a model or drive behaviour,
+    /// server-assigned discriminator per entity (an NPC kind, HP, faction) to pick a model or drive behaviour,
     /// registered on the shared <see cref="ReplicationRegistry"/> (see
     /// <see cref="MoveProtocol.CreateRegistry(System.Action{ReplicationRegistry})"/>). Version-skew-safe: against an
-    /// OLDER server that never sends <typeparamref name="T"/>, this simply returns <c>false</c> — no handshake, no
+    /// OLDER server that never sends <typeparamref name="T"/>, this simply returns <c>false</c>: no handshake, no
     /// disconnect. Reflects the last applied snapshot; call it after <see cref="Poll"/>.
     /// </summary>
     public bool TryGetComponent<T>(long netId, out T component) where T : struct, IComponent

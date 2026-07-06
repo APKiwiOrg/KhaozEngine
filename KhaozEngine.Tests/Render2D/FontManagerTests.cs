@@ -8,7 +8,8 @@ namespace KhaozEngine.Tests.Render2D
     /// <summary>
     /// Headless tests for the system-font-free font story: the embedded engine default (<see cref="DefaultFont"/>)
     /// and the key-based <see cref="FontManager"/>. None of these touch a GPU device - resolution yields raw TTF
-    /// bytes, and the embedded default is validated through the device-free <see cref="SpriteFont.BakeCpu"/> path.
+    /// bytes, and the embedded default is validated through the device-free
+    /// <see cref="SpriteFont.BakeCpu(byte[], float, float)"/> path.
     /// </summary>
     public class FontManagerTests
     {

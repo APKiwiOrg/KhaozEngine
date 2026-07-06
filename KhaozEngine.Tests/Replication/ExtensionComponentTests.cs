@@ -35,7 +35,7 @@ public class ExtensionComponentTests
         read: br => new Mystery { A = br.ReadInt32(), B = br.ReadInt32(), C = br.ReadInt32() });
 
     // Server knows Pos + Mystery + Tag (Mystery registered BETWEEN the two built-ins so the wire carries a known
-    // component AFTER the extension one — proving the reader realigns past a skipped extension).
+    // component AFTER the extension one, proving the reader realigns past a skipped extension).
     private static ReplicationRegistry FullRegistry()
     {
         var r = new ReplicationRegistry();
@@ -78,7 +78,7 @@ public class ExtensionComponentTests
     public void UnknownExtensionTypeId_IsIgnored_AndFollowingKnownComponentStillDecodes()
     {
         // Server sends Pos + Mystery(ext) + Tag; the old client lacks Mystery. It must skip Mystery via its length
-        // prefix and still decode Tag (which follows it on the wire) — no throw, no disconnect.
+        // prefix and still decode Tag (which follows it on the wire): no throw, no disconnect.
         var server = new World();
         Entity e = server.Spawn();
         server.Set(e, new NetId(42));
@@ -95,7 +95,7 @@ public class ExtensionComponentTests
         Assert.Null(error);
         Assert.True(view.TryGetEntity(42, out Entity c));
         Assert.Equal(3f, client.Get<Pos>(c).X);       // built-in before the skipped extension
-        Assert.Equal(99, client.Get<Tag>(c).Value);   // built-in AFTER it — realignment proven
+        Assert.Equal(99, client.Get<Tag>(c).Value);   // built-in AFTER it: realignment proven
         Assert.False(client.Has<Mystery>(c));          // the unknown extension was dropped, not decoded
     }
 

@@ -5,6 +5,17 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.12.0
+
+DPI-aware, native-resolution UI rendering: a point-space UI layer that stays crisp on HiDPI / non-integer window scales, so text and vector chrome rasterize at device-pixel density instead of being fractionally magnified. The design canvas still letterboxes the game field; the UI is now decoupled to render in logical points (1 point = the DPI scale in device pixels) and reflows to the window rather than scaling. Additive API (no removals), so a minor bump; existing design-space rendering is byte-identical (device-pixel snapping is opt-in via the point-space viewport), so no GPU golden rebake was needed (verified on Metal).
+
+- **`DpiFont` (new, `KhaozEngine.Render2D`):** a logical-size font that bakes its atlas at the live DPI scale and re-bakes only when that scale changes (stable per display, so not per window resize). Call `font.For(frame.DpiScale)` each frame and draw the returned `SpriteFont` 1:1 in a point-space pass. Create via `Render2DSurface.LoadDpiFont(...)` / `LoadDefaultDpiFont(...)` (and the snapshot context). Backed by `SpriteFont`'s new fractional bake **density** (atlas at `pixelHeight*density`, `RenderScale = 1/density`, layout metrics unchanged; the integer `oversample` form delegates and is byte-identical at density 1).
+- **`UiViewport` (new, `KhaozEngine.Windowing`):** a point-space `IDesignViewport` where authoring units are logical points and the scale is the DPI factor (no letterbox); Width/Height track the logical window, so it reflows on resize. Drops into `SpriteBatch.Begin`, `Pointer.Update`, `ComputeScissor`, and the Gui screens/layout unchanged. Drive it with `UiViewport.Update(Frame)`.
+- **`Frame.DpiScale` + `Frame.LogicalWidth`/`LogicalHeight` (new):** the logical window size (points) and device-pixels-per-point (`Width/LogicalWidth`), exposed so a game can bake/snap the UI to the live DPI.
+- **Device-pixel snapping (`KhaozEngine.Render2D` / `KhaozEngine.Primitives`):** `ViewportMath.SnapToDevicePixel`/`SnapRectToDevice`/`SnapLengthToDevice` (pure), and `SpriteBatch.DeviceScale`/`DeviceOffset`/`SnapRect`/`SnapLength`. `SpriteBatch` snaps glyph origins and `GuiDraw` snaps widget rects + border thickness, but **only inside a point-space pass** - gated by a new `IDesignViewport.SnapsToDevicePixels` (default false; `UiViewport` true), so design-space / world / screen rendering is byte-identical (a borderless style stays borderless).
+- **`GameApp` point-space UI pass (`KhaozEngine.Game`):** a per-frame `UiViewport Ui` + `Pointer UiPointer`, plus a new `OnDrawUi(SpriteBatch)` pass (a second `Begin(Ui)/End` after `OnDraw2D`) routed through `SceneManager.DrawUi` / `GameScene.OnDrawUi`. Empty by default, so games that only use `OnDraw2D` are unaffected; author DPI-aware, reflowing UI here and hit-test with `UiPointer`.
+- **Showcase** adopts it: the landing menu (title, row buttons, hint) and the display-settings readout now draw through the point-space pass with `DpiFont`s, so their text is crisp on HiDPI and the row buttons wear uniform device-pixel-snapped borders.
+
 ## 10.11.0
 
 New crisp default GUI look and a central `GuiTheme`, plus semantic button presets. **The out-of-box widget appearance changed**: the flat blue-grey default is replaced by a modern neutral-dark palette with a blue accent, subtle 3px corners, and 1px hairline borders (no shadow/gradient/glow). To keep the old look, set `GuiTheme.Default = GuiTheme.Legacy;` at startup (before building widgets), or set `button.Style = GuiStyle.Legacy` per button. Additive API (no removals), so a minor bump, but re-pinning shifts the look of any game that uses the engine widget defaults.
@@ -2411,7 +2422,7 @@ Additive (new public API; the default-focused path preserves all existing behavi
 MMO netcode stack, Phases 1 + 2 (session lifecycle, entity replication, interest management, world store).
 Builds on the Phase 0 transport seam + fixed-tick host. Two new packages.
 
-- **Session lifecycle** (`KhaozEngine.Netcode`, 1D): `NetServer` / `NetClient` over `INetTransport` — a
+- **Session lifecycle** (`KhaozEngine.Netcode`, 1D): `NetServer` / `NetClient` over `INetTransport` - a
   Hello/Welcome/Reject handshake (`SessionFrame`/`SessionOpcode`), `IConnectionAuthenticator` seam (+ the dev
   `AllowAllAuthenticator`), `SlotAllocator` (lowest-free player slot, recycled, capped), and Joined/Left/Data
   session events (`ServerSessionEvent` / `ClientSessionEvent`).
@@ -2419,12 +2430,12 @@ Builds on the Phase 0 transport seam + fixed-tick host. Two new packages.
   a closure-based `ReplicationRegistry` (per-type serialize/deserialize/lerp/capture/remove over the public
   `World` API), `SnapshotWriter` (full-state, `byte[]`), `ClientReplicationView` (`Apply` + `ApplyDelta`:
   spawn/despawn/update + interpolation), and `ServerReplicator` (per-slot acked baselines + baseline+delta
-  encode — only changed entities/components per client).
+  encode - only changed entities/components per client).
 - **Interest management / AoI** (`KhaozEngine.Replication`, 2E): `InterestGrid` (uniform spatial hash,
   exact-radius query) + `SnapshotWriter.WriteFiltered` (per-client interest-filtered snapshot; the existing
   `ClientReplicationView.Apply` then spawns entities that entered the set and despawns those that left).
-- **World store** (new package `KhaozEngine.WorldStore`, zero deps, 2F): `IWorldStore` — an async keyed `byte[]`
-  durable-state seam shaped for a database backend — plus a thread-safe `InMemoryWorldStore` reference impl
+- **World store** (new package `KhaozEngine.WorldStore`, zero deps, 2F): `IWorldStore` - an async keyed `byte[]`
+  durable-state seam shaped for a database backend - plus a thread-safe `InMemoryWorldStore` reference impl
   (SQLite/Postgres/cloud implement the seam as infrastructure).
 - Both new packages added to the `KhaozEngine.Server` umbrella. All headless-tested over `LoopbackTransport` /
   in-process. Additive (two new packages + new public API), minor.
@@ -3497,7 +3508,7 @@ from Nullwake, where it replaced the pillarboxed fixed-aspect viewport on deskto
 `Updates`, `Collision`, `Netcode`, `Netcode.Abstractions`, `Netcode.LiteNetLib`. The 5.x line is now the 8
 custom-stack packages + these 14 = 22 packages, all at `5.46.0`.
 
-- **Non-breaking re-version.** Same assemblies, namespaces, and public API — only the package version changes. A
+- **Non-breaking re-version.** Same assemblies, namespaces, and public API - only the package version changes. A
   consumer adopts by swapping `Version="4.12.0"` to `Version="5.46.0"` on those `<PackageReference>`s; no code
   change. The old `4.12.0` foundation nupkgs remain in the feed (cumulative pack), so a consumer that hasn't
   bumped (Hardpoint, SpaceGame) keeps resolving its pin unchanged.
@@ -3790,7 +3801,7 @@ clean checkout (and shipped game) runs without a system SDL2. `AppWindow`'s publ
 
 ## 5.32.0 (custom 5.x line)
 
-Cross-platform desktop bring-up — verification infrastructure (audit milestone 4, desktop scope). No renderer
+Cross-platform desktop bring-up - verification infrastructure (audit milestone 4, desktop scope). No renderer
 change; the `KhaozEngine.Gpu` seam already abstracts the backend.
 
 - **Backend-aware golden net**: the golden-snapshot references are now per-backend (`goldens/<name>.<backend>.txt`,
@@ -3808,9 +3819,9 @@ change; the `KhaozEngine.Gpu` seam already abstracts the backend.
   remaining productization gaps (per-RID SDL2/libveldrid-spirv bundling for shipped windowed apps; OpenGL +
   runtime clip-Y derivation; mobile as a separate project).
 
-## 5.31.0 (custom 5.x line — drops the `-experimental` tag)
+## 5.31.0 (custom 5.x line - drops the `-experimental` tag)
 
-- **The 5.x custom stack graduates from experimental.** No code change — the `KhaozEngine.Gpu`/`Windowing`/
+- **The 5.x custom stack graduates from experimental.** No code change - the `KhaozEngine.Gpu`/`Windowing`/
   `Render2D`/`Render3D`/`Gui`/`Audio`/`Particles`/`Game` packages drop the `-experimental` version suffix
   (`5.30.0-experimental` → `5.31.0`) and their descriptions drop the `EXPERIMENTAL` prefix. After the audit-
   driven P0 (correctness net, instancing, the full graphics-backend seam) and P1 work (GameApp facade, Gui +
@@ -3828,7 +3839,7 @@ P1 batch 2 (5.x engine audit): the game-loop framework + POC cleanup.
 ### KhaozEngine.Game (NEW package, 5.x engine audit)
 
 - **`GameApp` loop facade.** A subclass base that owns the window, clock, design viewport, pointer, and the 2D/
-  (optional) 3D surfaces, and drives the per-frame composition in the correct order — so a game overrides
+  (optional) 3D surfaces, and drives the per-frame composition in the correct order - so a game overrides
   `OnLoad`/`OnUpdate(dt)`/`OnDraw3D(scene)`/`OnDraw2D(batch)`/`OnResize` and **cannot get the frame ordering
   wrong** (clock → viewport → pointer → update → 3D submit+render → 2D begin/draw/end). `GameAppOptions` carries
   title/size/design-size/clear-colour/`Enable3D`. The raw `AppWindow.Run` path stays for special needs. Both
@@ -3838,7 +3849,7 @@ P1 batch 2 (5.x engine audit): the game-loop framework + POC cleanup.
 
 - **Deleted `Render3DHost`** and its private `Key`/`FrameInfo` (a second window/loop + a second `Key` enum that
   duplicated Windowing). The standalone 3D demo path is now `GameApp`; the only public key enum is
-  `KhaozEngine.Windowing.Key`. (`Render3DSnapshot` — the headless capture path — is unchanged.)
+  `KhaozEngine.Windowing.Key`. (`Render3DSnapshot` - the headless capture path - is unchanged.)
 
 ## 5.29.0-experimental (custom 5.x line)
 
@@ -3848,7 +3859,7 @@ P1 batch 1 (5.x engine audit): two contained fixes.
 
 - The retained `Button` now uses `GuiStyle` (its hardcoded `Color`/`HoverColor`/`PressColor`/`TextColor` fields
   are replaced by a single `Style` + `Enabled`/`Selected`), and both the retained `Button` and the immediate
-  `GuiSurface.Button` draw through one shared `GuiDraw.DrawButton` — so there's a single source of truth for
+  `GuiSurface.Button` draw through one shared `GuiDraw.DrawButton` - so there's a single source of truth for
   button visuals (no more hand-duplicated colours that drift). The retained `Button.Update` now reserves its
   rect (`Pointer.BlockRegion`), closing the click-through gap in the retained path, and a disabled button never
   fires.
@@ -3858,19 +3869,19 @@ P1 batch 1 (5.x engine audit): two contained fixes.
 - `Scene3D.UnloadMesh(MeshHandle)` frees a mesh's GPU buffers and recycles its slot, so a game that streams or
   swaps content no longer leaks. `MeshHandle` gains a generation; handles are validated on draw, so a stale
   handle (its mesh unloaded, or its slot since reused) is skipped rather than drawing freed/wrong geometry.
-  Backed by a pure, headless-tested slot map. (Was: append-only index, no unload — a GPU-memory leak for any
+  Backed by a pure, headless-tested slot map. (Was: append-only index, no unload - a GPU-memory leak for any
   dynamic content lifecycle.)
 
 ## 5.28.0-experimental (custom 5.x line)
 
-P0 hardening, stage 3 — graphics-backend seam, **phase 3d of 4 (final)**. Lockdown: the consumer-facing
+P0 hardening, stage 3 - graphics-backend seam, **phase 3d of 4 (final)**. Lockdown: the consumer-facing
 renderer/windowing/Gui packages are confirmed Veldrid-free. The **graphics-backend seam is complete** -
 Veldrid is contained to `KhaozEngine.Gpu` (all GPU) + Windowing's internal SDL2 window/input, and a future
 Silk.NET backend is a new `IGpuDevice` impl, not a consumer-visible change.
 
 ### KhaozEngine.Gpu / KhaozEngine.Tests
 
-- `GpuDeviceContext.Device` (the raw Veldrid `GraphicsDevice`) is now **internal** — no renderer consumes it;
+- `GpuDeviceContext.Device` (the raw Veldrid `GraphicsDevice`) is now **internal** - no renderer consumes it;
   consumers use the engine-owned `GpuDevice`.
 - **Veldrid lockdown test**: a reflection test asserts the public API of Render2D / Render3D / Windowing / Gui
   exposes no `Veldrid.*` type (it would fail the build on any future leak). The samples build unchanged against
@@ -3878,8 +3889,8 @@ Silk.NET backend is a new `IGpuDevice` impl, not a consumer-visible change.
 
 ## 5.27.0-experimental (custom 5.x line)
 
-P0 hardening, stage 3 — graphics-backend seam, **phase 3c of 4**. **Render3D is now fully off Veldrid**, and
-`Frame.Commands` is the engine command list — so both renderer packages run entirely on `KhaozEngine.Gpu`.
+P0 hardening, stage 3 - graphics-backend seam, **phase 3c of 4**. **Render3D is now fully off Veldrid**, and
+`Frame.Commands` is the engine command list - so both renderer packages run entirely on `KhaozEngine.Gpu`.
 Behaviour unchanged (both goldens pixel-identical, 3D scene visually confirmed).
 
 ### KhaozEngine.Render3D (migrated; Veldrid dropped)
@@ -3894,15 +3905,15 @@ Behaviour unchanged (both goldens pixel-identical, 3D scene visually confirmed).
 ### KhaozEngine.Windowing / KhaozEngine.Gpu
 
 - `Frame.Commands` is now an `IGpuCommandList` (the transitional `Frame.GpuCommands` + the `GpuCommandLists.Wrap`
-  bridge are removed). `AppWindow` no longer exposes the Veldrid `GraphicsDevice`/`Swapchain` — its public GPU
+  bridge are removed). `AppWindow` no longer exposes the Veldrid `GraphicsDevice`/`Swapchain` - its public GPU
   surface is `GpuDevice`/`Backend`/`Capabilities`, and it drives the loop through the engine command list. The
-  SDL2 window + input pump remain on `Veldrid.Sdl2` (the windowing/input platform layer — abstracting SDL2 is a
+  SDL2 window + input pump remain on `Veldrid.Sdl2` (the windowing/input platform layer - abstracting SDL2 is a
   separate future item). `KhaozEngine.Gpu`'s public device factories no longer expose Veldrid's
   `GraphicsDeviceOptions` (kept internal), so creating a device touches no Veldrid type.
 
 ## 5.26.0-experimental (custom 5.x line)
 
-P0 hardening, stage 3 — graphics-backend seam, **phase 3b of 4**. The full engine-owned GPU abstraction lands
+P0 hardening, stage 3 - graphics-backend seam, **phase 3b of 4**. The full engine-owned GPU abstraction lands
 and **Render2D is migrated onto it (Veldrid dropped from Render2D entirely)**. Behaviour unchanged (both
 goldens pixel-identical).
 
@@ -3913,7 +3924,7 @@ goldens pixel-identical).
   `ShaderSet`), engine-owned descriptions + 16 `Gpu*` enums, all mapped 1:1 to Veldrid inside `Internal/`. Veldrid
   is now hidden behind this interface (a future Silk.NET backend becomes a new `IGpuDevice` impl). Covers the
   full surface both renderers use, so phase 3c migrates Render3D against the same interface. A gated `[GpuFact]`
-  smoke test exercises buffer+texture+pipeline+draw+readback on the device. Plus `GpuCommandLists.Wrap(...)` — a
+  smoke test exercises buffer+texture+pipeline+draw+readback on the device. Plus `GpuCommandLists.Wrap(...)` - a
   transitional bridge presenting a window's frame command list as an `IGpuCommandList` until phase 3c retypes
   `Frame.Commands`.
 
@@ -3938,7 +3949,7 @@ on Metal is unchanged (both goldens pass pixel-identical).
   headless-tested), and `GpuDeviceContext` factories (`CreateWindow`/`CreateHeadless`) that own device creation
   behind the selector. This is the first of four phases: it centralizes the previously hard-coded
   `GraphicsBackend.Metal` (removed from `AppWindow`, `Render3DHost`, and both snapshot helpers), and plumbs the
-  device capabilities — without yet wrapping the GPU resource types (phases 3b/3c rewrite the renderers against
+  device capabilities - without yet wrapping the GPU resource types (phases 3b/3c rewrite the renderers against
   engine-owned GPU interfaces so Veldrid stops appearing on any public API; 3d migrates consumers).
 
 ### Windowing / Render2D / Render3D
@@ -3979,7 +3990,7 @@ public API change.
 - **Perf**: hoisted the invariant `SetPipeline`/`SetGraphicsResourceSet` binds out of the per-instance model
   loop (one bind per pass, not per instance); cached the post-process palette scratch array (was a 260-float
   allocation every frame); `ScreenStack.Update` reuses a scratch list instead of allocating a `Screen[]` every
-  frame. (The per-instance UBO upload — the real 3D scaling ceiling — is stage 2.)
+  frame. (The per-instance UBO upload - the real 3D scaling ceiling - is stage 2.)
 - **Mesh winding made consistent**: a new winding-vs-normal test net (applied to every `MeshPrimitives` shape)
   found that Cylinder/Cone/Pyramid-base/Sphere wound their triangles opposite their own outward normals (two
   conflicting conventions). Flipped those generators so winding is uniformly CCW-outward. Render-neutral today
@@ -3988,7 +3999,7 @@ public API change.
 ### KhaozEngine.Tests
 
 - **Golden-snapshot GPU regression net**: gated `[GpuFact]` tests render fixed 3D + 2D scenes through the
-  offscreen snapshot path and compare a downsampled colour grid to committed references with tolerance —
+  offscreen snapshot path and compare a downsampled colour grid to committed references with tolerance,
   catching shader/blend/UBO/winding/orientation regressions that headless tests and `FaceCullMode.None`
   cannot see. Skipped by default (and on GPU-less CI); run with `KE_GPU_TESTS=1`, re-bake with
   `KE_UPDATE_GOLDENS=1`.
@@ -3998,12 +4009,12 @@ public API change.
 ### KhaozEngine.Render3D (additive; one internal format change)
 
 - **More mesh primitives**: `MeshPrimitives.Torus`, `Capsule`, `RoundedBox`, `Plane` (subdividable flat grid)
-  join Box/Tile/Cylinder/Cone/Pyramid/Wedge/Sphere — smooth normals on curved surfaces, degenerate-arg
+  join Box/Tile/Cylinder/Cone/Pyramid/Wedge/Sphere - smooth normals on curved surfaces, degenerate-arg
   clamping, CCW-outward winding.
 - **UV texture coordinates**: `ModelVertex` gains a `Vector2 Uv` (vertex now 48 bytes) and every primitive
   generates sensible UVs (per-face for flats, cylindrical for cylinder/cone, lat/long for sphere, etc.);
   `MeshBuilder` carries UVs through, `GltfLoader` reads `TEXCOORD_0`. The model shader passes the UV through
-  (it is not yet sampled — textured-mesh *rendering* is a later step; this makes the geometry data ready so
+  (it is not yet sampled - textured-mesh *rendering* is a later step; this makes the geometry data ready so
   primitives don't need re-touching then). Existing meshes are unaffected (the 3-arg `ModelVertex` ctor
   defaults UV to zero). Render verified unchanged after the vertex-format change.
 - **`MeshOps`**: `WithSmoothNormals(mesh, epsilon)` welds vertices by position and averages normals (smooth a
@@ -4013,11 +4024,11 @@ public API change.
 
 ### KhaozEngine.Particles (NEW package)
 
-- **Particle simulation** (pure, MonoGame/Veldrid-free — System.Numerics + BCL only): `ParticleSystem`
+- **Particle simulation** (pure, MonoGame/Veldrid-free - System.Numerics + BCL only): `ParticleSystem`
   (capacity-bounded pool, swap-remove compaction, contiguous `Active` span), `EmitterConfig` (lifetime/speed
   ranges, cone `Direction`+`SpreadDegrees`, gravity, drag, start/end size + colour, `Spark`/`Puff` presets),
-  `Particle`, and a `RateAccumulator` for continuous emission. Fully **deterministic** — an internal xorshift32
-  RNG seeded per system, no `System.Random`/`DateTime`/wall-clock — so two systems with the same seed + calls
+  `Particle`, and a `RateAccumulator` for continuous emission. Fully **deterministic** - an internal xorshift32
+  RNG seeded per system, no `System.Random`/`DateTime`/wall-clock - so two systems with the same seed + calls
   produce identical particles (headless-testable). Render-agnostic: a game splats `system.Active` to any
   renderer.
 
@@ -4027,7 +4038,7 @@ public API change.
   size, color, BillboardBlend.Alpha|Additive)` draws a soft round disc (smoothstep falloff in the shader, no
   texture) facing the camera, composited over the post image like the debug lines. Alpha for smoke/puffs,
   additive for glowing sparks/flashes (pairs with the 5.19 emissive look). The camera basis is computed once
-  per frame. Render3D deliberately does NOT depend on KhaozEngine.Particles — the game loops `Active` and calls
+  per frame. Render3D deliberately does NOT depend on KhaozEngine.Particles - the game loops `Active` and calls
   `DrawBillboard` per particle. Snapshot-verified (additive spark burst + alpha puff over a lit scene). From
   the Hardpoint testbed.
 
@@ -4037,7 +4048,7 @@ public API change.
 
 - **Debug line/wireframe overlay**: immediate-mode `Scene3D.DebugLine/DebugRay/DebugBox/DebugGrid/DebugAxes/
   DebugCircle` draw coloured lines on top of the post-processed image with the camera's view-projection (depth
-  disabled, alpha-blended overlay). For dev viz and in-game cues — tower range rings (`DebugCircle` on the
+  disabled, alpha-blended overlay). For dev viz and in-game cues - tower range rings (`DebugCircle` on the
   ground), flow-field arrows, board grids, bounds, RGB axis gizmos. Segments accumulate per frame and clear in
   `Begin()` (same lifecycle as instances). The geometry builders live in a pure, headless-tested
   `DebugShapes` (Box/Grid/Circle/Axes). Backed by an internal `LineRenderer` (LineList pipeline). Snapshot-
@@ -4049,7 +4060,7 @@ public API change.
 
 - **Lighting + materials**: the model pass gains a second **fill light** (`PixelPostProcessSettings.
   FillLightDirection`/`FillLightColor`, a dim cool default that softens shadowed sides) on top of the existing
-  key light, **Blinn-Phong specular** highlights, and **emissive** self-illumination — driven by a new
+  key light, **Blinn-Phong specular** highlights, and **emissive** self-illumination - driven by a new
   per-instance `Material` (`Emissive`, `Specular` strength, `Shininess`) with `Material.None` (matte,
   the prior look), `Material.Glowing(color)`, and `Material.Shiny(strength, shininess)`. (The glow factory is
   `Glowing` rather than `Emissive` because that name is taken by the property.) `Scene3D.Draw(mesh, world,
@@ -4304,8 +4315,8 @@ sitting at hard pixel coordinates. Additive across Windowing/Render2D/Gui.
   per texture and flushed those groups in first-seen order, so a draw issued later could paint *under* or
   *over* the wrong layer whenever textures interleaved (text vs. solid-fill rectangles). Visible symptom: a
   menu's text bled through a modal panel drawn on top of it, and in-screen overlays (dropdown popup, tooltip)
-  could land beneath later fills. Quads are now coalesced into submission-ordered *runs* — only consecutive
-  same-texture draws merge — so painter's order is correct. Pure run-coalescing logic is headless-tested
+  could land beneath later fills. Quads are now coalesced into submission-ordered *runs* - only consecutive
+  same-texture draws merge - so painter's order is correct. Pure run-coalescing logic is headless-tested
   (`QuadRunBuilder`); no API change.
 
 ## 5.8.0-experimental (custom 5.x line)
@@ -4313,7 +4324,7 @@ sitting at hard pixel coordinates. Additive across Windowing/Render2D/Gui.
 The heavy `KhaozEngine.UI` widgets ported onto the custom stack: `Dropdown`, `TextInput`, `Tooltip`,
 `PopupPanel`, `ScrollablePanel` in `KhaozEngine.Gui`, plus a scissor-clip capability in `KhaozEngine.Render2D`
 and a headless `TextEntry` helper. Game-specific coupling from the 4.x versions (VirtualResolution,
-LayoutConstants, nav/top-bar assumptions) was dropped — these are clean generic widgets.
+LayoutConstants, nav/top-bar assumptions) was dropped - these are clean generic widgets.
 
 ### KhaozEngine.Render2D (additive)
 
@@ -4324,28 +4335,28 @@ LayoutConstants, nav/top-bar assumptions) was dropped — these are clean generi
 
 ### KhaozEngine.Gui (additive)
 
-- `TextEntry` — headless text-entry helper: maps a frame's `InputState` key presses (+ shift, US layout) to
+- `TextEntry` - headless text-entry helper: maps a frame's `InputState` key presses (+ shift, US layout) to
   typed characters and applies them to a string (append printable, Backspace deletes), with max-length and a
   char filter. No SDL text-input plumbing, so it is fully unit-testable. (No IME/locale/dead-keys.)
-- `TextInput` — single-line field: tap to focus / tap-out to blur; while focused, typed keys edit the text
+- `TextInput` - single-line field: tap to focus / tap-out to blur; while focused, typed keys edit the text
   (via `TextEntry`); bordered field with placeholder + blinking caret. Ported from the 4.x `UI.TextInput`
   (which hooked SDL's TextInput event).
-- `Dropdown` — selector with a trigger + an option list that opens below; tap to open/select, release-outside
+- `Dropdown` - selector with a trigger + an option list that opens below; tap to open/select, release-outside
   dismisses. Two-phase draw (`Draw` trigger inside any clip, `DrawOverlay` the open list last/unclipped).
-- `Tooltip` — auto-sized floating bubble; `ComputeBounds(...)` is a pure layout function (sizes to content,
+- `Tooltip` - auto-sized floating bubble; `ComputeBounds(...)` is a pure layout function (sizes to content,
   sits above the anchor, flips below when it would cross the top margin, clamps into the viewport) testable
   with a fake `ITextMeasurer`. `Show`/`Hide`/`Draw` instance API.
-- `PopupPanel` — modal dialog: scrim, centered auto-sized panel (clamped between a min height and a viewport
+- `PopupPanel` - modal dialog: scrim, centered auto-sized panel (clamped between a min height and a viewport
   fraction), title bar, label/value content rows (`PopupRow` Header/Stat/Spacer), and a footer dismiss button
-  (+ optional primary action). `Update` blocks the pointer over the panel. (No internal scroll — that is
+  (+ optional primary action). `Update` blocks the pointer over the panel. (No internal scroll - that is
   `ScrollablePanel`.)
-- `ScrollablePanel` — vertically-scrolling fixed-height list: wheel (while hovering) + drag scroll, clamped to
+- `ScrollablePanel` - vertically-scrolling fixed-height list: wheel (while hovering) + drag scroll, clamped to
   range; the owner draws rows positioned via `ItemBounds` between `BeginClip`/`EndClip` (which set/clear the
   SpriteBatch scissor); `TappedItemIndex` hit-tests a row (gaps return -1). Ported from the 4.x
   `UI.ScrollablePanel` (clipping now via the engine scissor instead of MonoGame's).
 - Headless tests cover all of the above logic (`TextEntryTests`, `TextInputTests`, `DropdownTests`,
   `TooltipTests`, `PopupPanelTests`, `ScrollablePanelTests`, plus `SpriteBatchScissorTests` for the DPI scissor
-  math) — 40 new, 752 green. `GuiSample` gains a "Widgets" screen driving the dropdown, text field, scrollable
+  math) - 40 new, 752 green. `GuiSample` gains a "Widgets" screen driving the dropdown, text field, scrollable
   list, hover tooltip, and a modal popup. NOTE: this stack is Metal-only and was built without a display, so the
   GPU scissor clip itself is not yet visually verified (the scroll logic + pixel math are).
 
@@ -4356,22 +4367,22 @@ Core `KhaozEngine.UI` widgets ported onto the custom stack: `Label`, `Panel`, `S
 
 ### KhaozEngine.Render2D (additive)
 
-- `ITextMeasurer` — a text-measurement seam (`LineHeight` + `Measure(string)`) implemented by `SpriteFont`.
+- `ITextMeasurer` - a text-measurement seam (`LineHeight` + `Measure(string)`) implemented by `SpriteFont`.
   Lets the layout math be unit-tested headlessly with a fake measurer (no GPU device / real font).
-- `TextLayout` — pure word-wrap + alignment helpers over `ITextMeasurer` (`AlignedX`, `Wrap`,
+- `TextLayout` - pure word-wrap + alignment helpers over `ITextMeasurer` (`AlignedX`, `Wrap`,
   `MeasureWrappedHeight`), plus pixel-snapped draw overloads taking a `SpriteBatch` + `SpriteFont`
   (`DrawAligned`, `DrawWrapped`) and a `TextAlign` enum. Ported from the 4.x MonoGame-bound `UI.TextHelper`.
 
 ### KhaozEngine.Gui (additive)
 
-- `Label` — non-interactive text widget: aligned (left/center/right) and optionally word-wrapped within its
+- `Label` - non-interactive text widget: aligned (left/center/right) and optionally word-wrapped within its
   bounds, vertical-centered for single lines. Pure presentation over the (tested) `TextLayout`.
-- `Panel` — filled, optionally-bordered container/backdrop; `BlocksPointer` reserves its region on the
+- `Panel` - filled, optionally-bordered container/backdrop; `BlocksPointer` reserves its region on the
   `Pointer` (via `BlockRegion`) so a layer beneath can skip hit-testing under it (modal scrims/popups).
-- `Slider` — horizontal slider over `Pointer`; the bounds are the track. A press that begins inside starts a
+- `Slider` - horizontal slider over `Pointer`; the bounds are the track. A press that begins inside starts a
   drag and jumps the value to the pointer (clamped 0..1), tracking until release; a press that began elsewhere
   is ignored (press-origin invariant). `Update` returns whether the value changed.
-- `Toggle` — two-state switch; a valid tap (press + release both inside, the click-through invariant) flips
+- `Toggle` - two-state switch; a valid tap (press + release both inside, the click-through invariant) flips
   `IsOn` and fires `OnChanged`. Drawn as a track with a thumb that slides to the on/off side.
 - Internal `GuiDraw` fill/border helpers (1x1-white-texture rects) shared by the widgets.
 - Headless tests cover the layout math (`TextLayoutTests`), the slider drag/clamp/press-origin behaviour
@@ -4381,18 +4392,18 @@ Core `KhaozEngine.UI` widgets ported onto the custom stack: `Label`, `Panel`, `S
 
 ## 5.6.0-experimental (custom 5.x line)
 
-New `KhaozEngine.Gui` package — the screen-stack + first widget on the custom stack.
+New `KhaozEngine.Gui` package - the screen-stack + first widget on the custom stack.
 
 ### KhaozEngine.Gui (new)
 
-- `ScreenStack` — owns a stack of `Screen`s and routes input top-to-bottom: the first visible,
+- `ScreenStack` - owns a stack of `Screen`s and routes input top-to-bottom: the first visible,
   non-passthrough screen that reports consuming input blocks the screens below it; a modal
   (`PassUpdateThrough == false`) screen also stops them updating; `AlwaysReceivesInput` opts back in. Draws
   bottom-to-top and drives transitions. Exposes a shared `Pointer` + `InputState`. Ported faithfully from the
   MonoGame `ScreenManager` (uses `dt` instead of `GameTime`; the click-through layering model is intact).
-- `Screen` — base UI surface: `Update(dt, receivesInput)` (return whether it consumed input) + `Draw(SpriteBatch)`,
+- `Screen` - base UI surface: `Update(dt, receivesInput)` (return whether it consumed input) + `Draw(SpriteBatch)`,
   with `DrawOrder`/`PassUpdateThrough`/`AlwaysReceivesInput`/transitions/`ExitScreen`.
-- `Button` — bounds-aware widget over `Pointer.IsTapIn` (press-origin click-through invariant), hover/press
+- `Button` - bounds-aware widget over `Pointer.IsTapIn` (press-origin click-through invariant), hover/press
   visuals. Built on `KhaozEngine.Windowing` + `KhaozEngine.Render2D`.
 - Headless `ScreenStackTests` cover the routing core (consume-blocks-lower, modal-stops-lower,
   AlwaysReceivesInput, transition-on, animated exit). `GuiSample` shows a menu that pushes a modal settings
@@ -4406,7 +4417,7 @@ consolidates onto `AppWindow`.
 
 ### KhaozEngine.Windowing
 
-- `Pointer` — a bounds-aware pointer over the mouse with the **press-origin click-through invariant**, ported
+- `Pointer` - a bounds-aware pointer over the mouse with the **press-origin click-through invariant**, ported
   from the MonoGame `InputManager` core. `Update(InputState)` per frame, then hit-test with `IsTapIn`,
   `IsPressingIn`, `IsHoveringIn`, `IsPointerIn`, `IsReleasedOutside`, `IsDraggingIn`/`GetDragDelta`,
   `IsTapFromTo`, plus region blocking (`BlockRegion`/`IsBlocked`) for overlay click-through. New `Rect`
@@ -4423,15 +4434,15 @@ consolidates onto `AppWindow`.
 
 ## 5.4.0-experimental (custom 5.x line)
 
-New `KhaozEngine.Windowing` package — the shared windowing + input foundation — and Render2D integrates with it.
+New `KhaozEngine.Windowing` package - the shared windowing + input foundation - and Render2D integrates with it.
 
 ### KhaozEngine.Windowing (new)
 
-- `AppWindow` — owns the SDL2/Metal window, Veldrid device + swapchain, and the frame loop. `Run(onFrame)`
+- `AppWindow` - owns the SDL2/Metal window, Veldrid device + swapchain, and the frame loop. `Run(onFrame)`
   clears + presents around the callback; each `Frame` exposes `Dt`, an engine-native `InputState`, and the
   GPU command list to draw into. `Device`/`MainSwapchain` are the advanced GPU boundary (the only Veldrid in
   the API).
-- `InputState` — per-frame keyboard + mouse snapshot: keys down/pressed/released, mouse position/delta,
+- `InputState` - per-frame keyboard + mouse snapshot: keys down/pressed/released, mouse position/delta,
   mouse buttons, scroll, window size; `IsDown`/`WasPressed` helpers over engine-native `Key`/`MouseButton`
   enums. No MonoGame. (Headless `InputStateTests`.) Gamepad/touch and the rich gesture/`InputManager` layer
   are follow-ups.

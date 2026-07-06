@@ -24,6 +24,10 @@ namespace KhaozEngine.Render2D
         public SpriteFont LoadFont(FontManager fonts, string key, float pixelHeight, int oversample = 1) => _core.LoadFont(fonts.GetFontBytes(key), pixelHeight, oversample);
         /// <summary>Bake a <see cref="SpriteFont"/> from the engine's embedded default face (<see cref="DefaultFont"/>); no system font, no path.</summary>
         public SpriteFont LoadDefaultFont(float pixelHeight, int oversample = 1) => _core.LoadDefaultFont(pixelHeight, oversample);
+
+        /// <summary>A <see cref="DpiFont"/> baking at the live DPI scale (call <c>For(dpiScale)</c>); the offscreen
+        /// analogue used to verify point-space UI crispness headlessly.</summary>
+        public DpiFont LoadDpiFont(byte[] ttf, float pixelHeight) => _core.CreateDpiFont(ttf, pixelHeight);
     }
 
     /// <summary>Headless offscreen 2D render to a CPU RGBA buffer (no window). For tooling/tests; needs a Metal GPU.</summary>
@@ -31,7 +35,7 @@ namespace KhaozEngine.Render2D
     {
         public static byte[] Capture(int width, int height, Color clear, Action<Render2DContext> draw)
         {
-            // NOTE: the context is intentionally NOT disposed here — as in the original inline CreateMetal path,
+            // NOTE: the context is intentionally NOT disposed here, as in the original inline CreateMetal path,
             // tearing down the Metal device after this 2D font/texture pass crashes in the backend. The device
             // is left to process teardown (this is a tooling/test-only snapshot helper). Matches baseline behaviour.
             GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();

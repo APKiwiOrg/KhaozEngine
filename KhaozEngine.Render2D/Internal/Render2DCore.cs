@@ -43,6 +43,17 @@ namespace KhaozEngine.Render2D.Internal
         public SpriteFont LoadDefaultFont(float pixelHeight, int oversample = 1) =>
             SpriteFont.Build(Gd, DefaultFont.Bytes, pixelHeight, oversample);
 
+        // A DpiFont bakes at the live device-pixel scale and re-bakes only when it changes; the baker closes over
+        // this core's device so each (re)bake lands on the same GPU as the batch it will draw through.
+        public DpiFont CreateDpiFont(byte[] ttf, float pixelHeight) =>
+            new DpiFont(pixelHeight, density => SpriteFont.Build(Gd, ttf, pixelHeight, density));
+
+        public DpiFont CreateDpiFont(string ttfPath, float pixelHeight) =>
+            CreateDpiFont(File.ReadAllBytes(ttfPath), pixelHeight);
+
+        public DpiFont CreateDefaultDpiFont(float pixelHeight) =>
+            CreateDpiFont(DefaultFont.Bytes, pixelHeight);
+
         public void Dispose() { Batch.Dispose(); if (_ownsDevice) Gd.Dispose(); }
 
         /// <summary>

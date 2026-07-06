@@ -1,4 +1,5 @@
 {
+  // Extensions that power the Run and Debug configs (the coreclr debug type needs the C# tooling).
   "recommendations": [
     "ms-dotnettools.csharp",
     "ms-dotnettools.csdevkit"

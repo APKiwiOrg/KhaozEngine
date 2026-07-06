@@ -10,7 +10,7 @@ namespace KhaozEngine.Tests.Render3D
     /// <summary>
     /// The ECS->Scene3D binder: draws every entity with both <see cref="Transform3D"/> and
     /// <see cref="MeshInstance"/>. Tested headlessly with a real <see cref="World"/> + a recording delegate
-    /// (no GPU) — the binder's selection + transform/tint resolution is pure.
+    /// (no GPU): the binder's selection + transform/tint resolution is pure.
     /// </summary>
     public class Scene3DBinderTests
     {

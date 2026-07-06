@@ -13,7 +13,7 @@ namespace KhaozEngine.Tests.NetWorld;
 /// <summary>
 /// End-to-end coverage of the server-owned non-player entity seam: a consumer-injected <see cref="ReplicationRegistry"/>
 /// carrying an extension component, <see cref="ShardedWorldServer.SpawnEntity"/>, <see cref="ShardedWorldServer.OnBeforeTick"/>,
-/// and <see cref="WorldClient.TryGetComponent{T}"/> — plus the hard version-skew guarantee that a client which never
+/// and <see cref="WorldClient.TryGetComponent{T}"/>, plus the hard version-skew guarantee that a client which never
 /// registered the extension still sees the entity and does not disconnect.
 /// </summary>
 public class EntityReplicationSeamTests
@@ -117,7 +117,7 @@ public class EntityReplicationSeamTests
     [Fact]
     public void OldClient_WithoutExtension_StillSeesEntity_AndDoesNotDisconnect()
     {
-        // Server replicates NpcKind (id 16); the client's registry is the plain movement protocol — it never
+        // Server replicates NpcKind (id 16); the client's registry is the plain movement protocol: it never
         // registered id 16. The old client must SKIP the unknown extension component: keep the session, still see
         // the entity, and simply report the component as absent.
         var (st, ct) = LoopbackTransport.CreatePair();

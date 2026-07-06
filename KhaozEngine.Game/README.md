@@ -57,6 +57,16 @@ sets the process's explicit Windows AppUserModelID (via `AppWindow.TrySetProcess
 the window, which also stabilises taskbar grouping/pinning. Null (the default) keeps the current behaviour;
 no-op off Windows.
 
+**Point-space UI pass** (since 10.12.0, for DPI-aware crisp UI): `GameApp` exposes a per-frame
+point-space `Ui` (a `UiViewport`) and `UiPointer` (a `Pointer` mapped through it), plus a new virtual
+`OnDrawUi(SpriteBatch batch)` that runs in a SECOND draw pass after `OnDraw2D` each frame, with the batch
+already in `Begin(Ui)`. `OnDraw2D` stays the design-space (letterboxed) game field, `OnDrawUi` is the
+DPI-aware UI layer: author text via `DpiFont.For(Ui.DpiScale)` and hit-test with `UiPointer`. `OnDrawUi`
+is empty by default, so a game that only overrides `OnDraw2D` is completely unaffected.
+
+`SceneManager` gains `UiViewport`, `UiPointer`, and `DrawUi(SpriteBatch)`, and `GameScene` gains a virtual
+`OnDrawUi(SpriteBatch)`. A scene draws its DPI-aware UI in `OnDrawUi` and hit-tests via `Manager.UiPointer`.
+
 It sits above `KhaozEngine.Windowing` + `Render2D` + `Gui` - **no 3D renderer dependency**, so a 2D
 game pulls no Render3D. For a 3D world pass, use `KhaozEngine.Game.Render3D` (`GameApp3D`, plus the
 `IGameScene3D` scene hook and the `SceneManager.Draw3D` extension). It is the optional convenience

@@ -34,7 +34,7 @@ public static class SnapshotWriter
     /// <summary>
     /// Writes a snapshot of only the entities whose <see cref="NetId"/> is in <paramref name="netIds"/> (the
     /// client's area of interest). Applied with <see cref="ClientReplicationView.Apply"/>, entities that left
-    /// the set are despawned and ones that entered are spawned — full-state-per-interest AoI replication.
+    /// the set are despawned and ones that entered are spawned: full-state-per-interest AoI replication.
     /// Only components in <paramref name="channel"/> are written; on the default
     /// <see cref="ReplicationChannels.Replicate"/> channel an <see cref="ReplicationChannels.OwnerOnly"/> component
     /// is written only for the entity whose net id equals <paramref name="ownerNetId"/> (the receiving client's own

@@ -72,7 +72,7 @@ public sealed class TelemetryRecorderTests
         rec.Start(path);
         rec.Sample(1.0, new[] { new TelemetryChannel("x", 1) });
         rec.Sample(2.0, new[] { new TelemetryChannel("x", 2) });
-        // No Stop() — simulate a crash; the flushed lines must already parse.
+        // No Stop(): simulate a crash; the flushed lines must already parse.
 
         string[] lines = ReadLinesShared(path);
         Assert.Equal(2, lines.Length);

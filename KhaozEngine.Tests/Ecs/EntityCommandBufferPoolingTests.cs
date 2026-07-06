@@ -53,7 +53,7 @@ public class EntityCommandBufferPoolingTests
         Assert.Equal(1, count1);
         Assert.Equal(3f, sum1);
 
-        // Second playback on the same ECB — pool item must be correctly cleared and reused.
+        // Second playback on the same ECB: pool item must be correctly cleared and reused.
         var ph2 = ecb.Create();
         ecb.Set(ph2, new Speed { V = 10f });
         ecb.Playback(w);

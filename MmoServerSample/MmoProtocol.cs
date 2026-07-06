@@ -22,7 +22,7 @@ public struct ResourceNode : IComponent
 }
 
 /// <summary>
-/// A server-assigned appearance/behaviour discriminator on a non-player entity — which model a client draws for it
+/// A server-assigned appearance/behaviour discriminator on a non-player entity: which model a client draws for it
 /// (goblin, merchant, ore vein, …). This is a CONSUMER extension component: it is registered at an id at/above
 /// <see cref="ReplicationRegistry.FirstExtensionTypeId"/>, so it is length-prefixed on the wire and an older client
 /// that never registered <see cref="Creature"/> simply skips it (keeps running, just can't tell the kind apart).
@@ -60,7 +60,7 @@ public struct PrivateStats : IComponent
 /// <summary>Shared wire helpers so the server and its clients agree on encodings.</summary>
 public static class MmoProtocol
 {
-    /// <summary>Type id of the <see cref="Creature"/> discriminator — a consumer extension id (>= the floor), so
+    /// <summary>Type id of the <see cref="Creature"/> discriminator: a consumer extension id (>= the floor), so
     /// older clients skip it instead of failing (see <see cref="ReplicationRegistry.FirstExtensionTypeId"/>).</summary>
     public const ushort CreatureTypeId = ReplicationRegistry.FirstExtensionTypeId;
 

@@ -10,8 +10,8 @@ namespace KhaozEngine.Render2D
     internal sealed class GlyphInfo
     {
         // Ax/Ay/W/H/XOff/YOff are in ATLAS texels (the supersampled raster); the dest quad is scaled down by
-        // SpriteFont.RenderScale at draw time. Advance is in LOGICAL pixels (already divided by the oversample
-        // factor), so layout/measurement is identical regardless of oversample.
+        // SpriteFont.RenderScale at draw time. Advance is in LOGICAL pixels (already divided by the bake
+        // density), so layout/measurement is identical regardless of density.
         public int Ax, Ay, W, H, XOff, YOff;
         public float Advance;
     }
@@ -23,7 +23,7 @@ namespace KhaozEngine.Render2D
         public int AtlasW, AtlasH;
         public float Ascent;       // logical pixels
         public float LineHeight;   // logical pixels
-        public float RenderScale;  // 1 / oversample (atlas texels -> logical pixels)
+        public float RenderScale;  // 1 / density (atlas texels -> logical pixels)
         public Dictionary<char, GlyphInfo> Glyphs = new();
     }
 
@@ -31,11 +31,13 @@ namespace KhaozEngine.Render2D
     /// A bitmap font rasterized at load time from a TrueType file (stb_truetype) into a single atlas.
     /// Draw with <see cref="SpriteBatch.DrawString(KhaozEngine.Render2D.SpriteFont, string, System.Numerics.Vector2, KhaozEngine.Primitives.Color)"/>.
     /// <para>
-    /// An <c>oversample</c> factor rasterizes the atlas at <c>pixelHeight * oversample</c> while reporting all
-    /// layout metrics (<see cref="Measure"/>, <see cref="LineHeight"/>, glyph advances) at the logical
-    /// <c>pixelHeight</c>. The extra texel density stays crisp when a design-space viewport upscales the text to a
-    /// higher-resolution framebuffer; pass <c>oversample &gt; 1</c> (2-3 covers typical HiDPI / design-viewport
-    /// upscales). <c>oversample == 1</c> is the original pixel-for-pixel bake.
+    /// A bake <c>density</c> rasterizes the atlas at <c>pixelHeight * density</c> while reporting all layout
+    /// metrics (<see cref="Measure"/>, <see cref="LineHeight"/>, glyph advances) at the logical <c>pixelHeight</c>.
+    /// The extra texel density stays crisp when a viewport upscales the text to a higher-resolution framebuffer;
+    /// the integer <c>oversample</c> factor (2-3 covers typical HiDPI / design-viewport upscales) is the coarse
+    /// form, and a fractional density set to the exact device-pixel scale draws 1:1 (see <see cref="DpiFont"/>,
+    /// which bakes at the live DPI scale and re-bakes only when that scale changes).
+    /// <c>oversample == 1</c> / <c>density == 1</c> is the original pixel-for-pixel bake.
     /// </para>
     /// </summary>
     public sealed class SpriteFont : IDisposable, ITextMeasurer
@@ -43,11 +45,11 @@ namespace KhaozEngine.Render2D
         internal readonly Texture2D Atlas;
         internal readonly int AtlasW, AtlasH;
         internal readonly float Ascent;
-        /// <summary>Atlas-texel -> logical-pixel scale (1 / oversample); applied to the glyph dest quad.</summary>
+        /// <summary>Atlas-texel -> logical-pixel scale (1 / density); applied to the glyph dest quad.</summary>
         internal readonly float RenderScale;
         internal readonly Dictionary<char, GlyphInfo> Glyphs = new();
 
-        /// <summary>Recommended line advance, in logical pixels (independent of the oversample factor).</summary>
+        /// <summary>Recommended line advance, in logical pixels (independent of the bake density).</summary>
         public float LineHeight { get; }
 
         SpriteFont(Texture2D atlas, int aw, int ah, float ascent, float lineHeight, float renderScale)
@@ -66,9 +68,12 @@ namespace KhaozEngine.Render2D
 
         public void Dispose() => Atlas.Dispose();
 
-        internal static SpriteFont Build(IGpuDevice gd, byte[] ttf, float pixelHeight, int oversample = 1)
+        internal static SpriteFont Build(IGpuDevice gd, byte[] ttf, float pixelHeight, int oversample = 1) =>
+            Build(gd, ttf, pixelHeight, (float)Math.Max(1, oversample));
+
+        internal static SpriteFont Build(IGpuDevice gd, byte[] ttf, float pixelHeight, float density)
         {
-            BakedFont baked = BakeCpu(ttf, pixelHeight, oversample);
+            BakedFont baked = BakeCpu(ttf, pixelHeight, density);
             var tex = gd.Factory.CreateTexture(GpuTextureDescription.Texture2D(
                 (uint)baked.AtlasW, (uint)baked.AtlasH, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
             gd.UpdateTexture(tex, baked.Atlas, 0, 0, (uint)baked.AtlasW, (uint)baked.AtlasH);
@@ -79,25 +84,30 @@ namespace KhaozEngine.Render2D
             return font;
         }
 
+        /// <summary>The coarse integer-oversample form of <see cref="BakeCpu(byte[], float, float)"/>.</summary>
+        internal static BakedFont BakeCpu(byte[] ttf, float pixelHeight, int oversample) =>
+            BakeCpu(ttf, pixelHeight, (float)Math.Max(1, oversample));
+
         /// <summary>
         /// Rasterizes the printable ASCII range (32-126) into a single device-free RGBA atlas (white with the
         /// coverage in alpha) and reports logical-pixel metrics. The atlas is baked at <paramref name="pixelHeight"/>
-        /// * <paramref name="oversample"/>; advances/line height/ascent are divided back down so layout is identical
-        /// at any oversample. The atlas width is fixed at 512; its height grows past the 256 floor only when a larger
-        /// raster needs the room (so <c>oversample == 1</c> stays byte-identical to the original 512x256 bake).
-        /// No GPU device required, so it is unit-testable headless.
+        /// * <paramref name="density"/>; advances/line height/ascent are divided back down so layout is identical at
+        /// any density. A fractional density (e.g. the exact device-pixel scale) is supported; it is clamped to a
+        /// floor of 1 so the atlas is never baked below the logical density. The atlas width is fixed at 512; its
+        /// height grows past the 256 floor only when a larger raster needs the room (so <c>density == 1</c> stays
+        /// byte-identical to the original 512x256 bake). No GPU device required, so it is unit-testable headless.
         /// </summary>
-        internal static unsafe BakedFont BakeCpu(byte[] ttf, float pixelHeight, int oversample)
+        internal static unsafe BakedFont BakeCpu(byte[] ttf, float pixelHeight, float density)
         {
-            if (oversample < 1) oversample = 1;
+            if (density < 1f) density = 1f;
             var handle = GCHandle.Alloc(ttf, GCHandleType.Pinned);
             try
             {
                 byte* p = (byte*)handle.AddrOfPinnedObject();
                 var info = new StbTrueType.stbtt_fontinfo();
                 StbTrueType.stbtt_InitFont(info, p, StbTrueType.stbtt_GetFontOffsetForIndex(p, 0));
-                float scale = StbTrueType.stbtt_ScaleForPixelHeight(info, pixelHeight * oversample);
-                float k = 1f / oversample; // atlas (supersampled) -> logical pixels
+                float scale = StbTrueType.stbtt_ScaleForPixelHeight(info, pixelHeight * density);
+                float k = 1f / density; // atlas (supersampled) -> logical pixels
                 int ascent, descent, lineGap;
                 StbTrueType.stbtt_GetFontVMetrics(info, &ascent, &descent, &lineGap);
                 float lineHeight = (ascent - descent + lineGap) * scale * k;

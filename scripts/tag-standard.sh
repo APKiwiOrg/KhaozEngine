@@ -16,11 +16,19 @@ tag_version_knob() {
   if [ -f scripts/check-doc-versions.sh ]; then printf '%s' KhaozEngineVersion; else printf '%s' Version; fi
 }
 
-# Read the repo's release version from a Directory.Build.props stream on stdin (empty if absent).
-tag_props_version() {
-  _knob=$(tag_version_knob)
-  grep -oE "<$_knob>[0-9][^<]*</$_knob>" | head -1 | sed -E "s#</?$_knob>##g"
+# Read a versioned knob's value from a Directory.Build.props stream on stdin (empty if absent).
+# THE single version reader for the whole repo standard: publish/deploy workflows and refresh-engine.sh
+# source this file and call it instead of hand-rolling a grep (that is how the readers drifted and how
+# an un-anchored capture once matched a <Version> in a COMMENT and broke a GITHUB_OUTPUT write). Anchored
+# on a leading digit AND the closing tag, first match only, so a knob mentioned in a comment cannot match.
+# Knob defaults to Version (the game version); pass KhaozEngineVersion for the engine pin.
+props_version() {
+  _pv_knob=${1:-Version}
+  grep -oE "<$_pv_knob>[0-9][^<]*</$_pv_knob>" | head -1 | sed -E "s#</?$_pv_knob>##g"
 }
+
+# Read the repo's release version from a Directory.Build.props stream on stdin (empty if absent).
+tag_props_version() { props_version "$(tag_version_knob)"; }
 
 # tag_name_ok <name>  -> 0 when it is vX.Y.Z
 tag_name_ok() { printf '%s' "$1" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; }

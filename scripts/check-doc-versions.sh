@@ -18,7 +18,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-ver=$(grep -oE '<KhaozEngineVersion>[^<]+</KhaozEngineVersion>' Directory.Build.props | head -1 | sed -E 's#</?KhaozEngineVersion>##g')
+# The single version reader lives in tag-standard.sh (props_version); never hand-roll the grep here.
+. scripts/tag-standard.sh
+
+ver=$(props_version KhaozEngineVersion < Directory.Build.props)
 if [ -z "$ver" ]; then
   echo "could not read <KhaozEngineVersion> from Directory.Build.props" >&2
   exit 1

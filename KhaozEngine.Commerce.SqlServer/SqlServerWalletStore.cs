@@ -37,7 +37,7 @@ CREATE TABLE dbo.wallet_ledger (
   account_id NVARCHAR(200) NOT NULL, currency_id NVARCHAR(100) NOT NULL, delta BIGINT NOT NULL,
   idempotency_key NVARCHAR(200) NOT NULL, reason INT NOT NULL, source_ref NVARCHAR(200) NULL,
   post_balance BIGINT NOT NULL, created_at DATETIME2 NOT NULL);
-IF OBJECT_ID(N'dbo.ux_ledger_idem', N'U') IS NULL AND NOT EXISTS (
+IF NOT EXISTS (
   SELECT 1 FROM sys.indexes WHERE name = N'ux_ledger_idem' AND object_id = OBJECT_ID(N'dbo.wallet_ledger'))
 CREATE UNIQUE INDEX ux_ledger_idem ON dbo.wallet_ledger(account_id, currency_id, idempotency_key);
 IF NOT EXISTS (

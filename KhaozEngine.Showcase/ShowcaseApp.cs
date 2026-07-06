@@ -54,34 +54,40 @@ namespace KhaozEngine.Showcase
             // GameScene) and wired into the room right after construction, so Room2D itself keeps a public
             // parameterless constructor for the Func<GameScene> factory below.
             var checker = Surface2D.CreateTexture(Room2D.Checker(64), 64, 64);
-            var big = Surface2D.LoadDefaultFont(40f);
-            var small = Surface2D.LoadDefaultFont(22f);
-            _readoutFont = Surface2D.LoadDefaultDpiFont(22f); // crisp point-space overlay text
-            Rooms.Add(("2D sprites + text", () => new Room2D().Init(_white, checker, big, small)));
 
-            // RoomGui reuses the same big/small fonts (its own GuiAssets just wraps them alongside the white
-            // texture) - no new Surface2D calls needed beyond what Room2D already created above.
-            Rooms.Add(("GUI + widgets", () => new RoomGui().Init(_white, big, small)));
+            // Two font families, both crisp on HiDPI:
+            //  - DpiFonts (baked at the live DPI scale, drawn 1:1) for everything that draws through the point-space
+            //    UI pass: the menu, the display readout, and the rooms whose text/HUD is a point-space overlay.
+            //  - Oversample-3 SpriteFonts for the two ScreenStack rooms (RoomGui / RoomMiniGame): those stay in the
+            //    design-space pass (their widget layout is a fixed centered canvas that must not reflow on resize),
+            //    and a 3x supersampled atlas is minified by the design->framebuffer scale, so their text is crisp too.
+            var dpi40 = Surface2D.LoadDefaultDpiFont(40f);
+            var dpi22 = Surface2D.LoadDefaultDpiFont(22f);
+            var big3 = Surface2D.LoadDefaultFont(40f, oversample: 3);
+            var small3 = Surface2D.LoadDefaultFont(22f, oversample: 3);
+            _readoutFont = dpi22; // crisp point-space overlay text
 
-            // RoomInput reuses the shared white texture and the small font for its HUD text.
-            Rooms.Add(("Input + audio", () => new RoomInput().Init(_white, small)));
+            Rooms.Add(("2D sprites + text", () => new Room2D().Init(_white, checker, dpi40, dpi22)));
 
-            // RoomMiniGame reuses the same big/small fonts as its title/HUD text (no new Surface2D calls needed).
-            Rooms.Add(("Mini-game (Catcher)", () => new RoomMiniGame().Init(_white, big, small)));
+            // RoomGui / RoomMiniGame are ScreenStack widget rooms: crisp via the supersampled design-space fonts.
+            Rooms.Add(("GUI + widgets", () => new RoomGui().Init(_white, big3, small3)));
+
+            // RoomInput draws its whole demo through the point-space UI pass (crisp HUD text).
+            Rooms.Add(("Input + audio", () => new RoomInput().Init(_white, dpi22)));
+
+            Rooms.Add(("Mini-game (Catcher)", () => new RoomMiniGame().Init(_white, big3, small3)));
 
             // Room3D is the walkable streamed 3D overworld ported from TerrainWalkSample. It renders through
-            // the app's shared Scene3D (injected here, since a GameScene cannot reach Surface3D itself).
-            Rooms.Add(("3D World (walk)", () => new Room3D().Init(Scene, _white, small)));
+            // the app's shared Scene3D (injected here, since a GameScene cannot reach Surface3D itself); its
+            // collision legend overlay draws crisp through the point-space UI pass.
+            Rooms.Add(("3D World (walk)", () => new Room3D().Init(Scene, _white, dpi22)));
 
             // RoomNet is the networked-walk room: authoritative WorldServer + local WorldClient over loopback
             // UDP, demonstrating predict/replicate/reconcile netcode. Reuses the same shared Scene3D as Room3D.
-            Rooms.Add(("Networked walk", () => new RoomNet().Init(Scene, _white, small)));
+            Rooms.Add(("Networked walk", () => new RoomNet().Init(Scene, _white, dpi22)));
 
-            // The landing menu draws through the point-space UI pass, so its fonts are DpiFonts (baked at the live
-            // DPI scale, re-baked only on a DPI change) - crisp title + row text on HiDPI.
-            var menuTitle = Surface2D.LoadDefaultDpiFont(40f);
-            var menuRow = Surface2D.LoadDefaultDpiFont(22f);
-            _scenes.Push(new MenuScene(_white, menuTitle, menuRow, Rooms));
+            // The landing menu draws through the point-space UI pass with the shared DpiFonts.
+            _scenes.Push(new MenuScene(_white, dpi40, dpi22, Rooms));
 
             // Smoke aid: KE_SHOWCASE_ROOM=<name> auto-enters that room, so a headless KE_MAX_FRAMES run actually
             // exercises the room's OnEnter/OnUpdate/OnDraw (the menu alone never builds a room's world). The push

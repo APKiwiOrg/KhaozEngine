@@ -69,7 +69,7 @@ namespace KhaozEngine.Showcase
 
         Scene3D _scene = null!;
         Texture2D _white = null!;
-        SpriteFont _hud = null!;
+        DpiFont _hud = null!;
 
         // Guards OnExit against running before OnEnter has built the per-enter state (and OnEnter against
         // leftover state from a previous visit), so the room can be entered and exited repeatedly against the
@@ -139,7 +139,7 @@ namespace KhaozEngine.Showcase
         // steps to the same place Render3DSample does.
         int _palIdx = 2;
 
-        public Room3D Init(Scene3D scene, Texture2D white, SpriteFont hud)
+        public Room3D Init(Scene3D scene, Texture2D white, DpiFont hud)
         {
             _scene = scene; _white = white; _hud = hud;
             return this;
@@ -414,10 +414,13 @@ namespace KhaozEngine.Showcase
             _collisionOverlay.Draw(scene);
         }
 
-        public override void OnDraw2D(SpriteBatch batch)
+        // The collision-legend overlay draws through the point-space UI pass, so its text is crisp on HiDPI.
+        public override void OnDrawUi(SpriteBatch batch)
         {
+            var ui = Manager!.UiViewport;
+            if (ui is null) return;
             if (_collisionOverlay.Enabled)
-                _legend.Draw(batch, _hud, _white, Manager!.Viewport!.DesignBounds);
+                _legend.Draw(batch, _hud.For(ui.DpiScale), _white, ui.DesignBounds);
         }
 
         // Maps the overlay's present shape kinds through its palette into legend rows (swatch + name).

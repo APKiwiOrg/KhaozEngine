@@ -27,9 +27,8 @@ namespace KhaozEngine.Showcase
     public sealed class RoomInput : GameScene
     {
         Texture2D _white = null!;
-        SpriteFont _font = null!;
+        DpiFont _font = null!;
 
-        readonly DesignViewport _viewport = new(960, 540, ScaleMode.Fit);
         readonly GestureRecognizer _gestures = new();
         readonly GameClock _clock = new();
         readonly List<(Vector2 pos, float life)> _marks = new();
@@ -45,7 +44,7 @@ namespace KhaozEngine.Showcase
 
         /// <summary>Wire in the texture/font created on the app's Surface2D. Call once, right after
         /// construction and before the room is pushed.</summary>
-        public RoomInput Init(Texture2D white, SpriteFont font)
+        public RoomInput Init(Texture2D white, DpiFont font)
         {
             _white = white;
             _font = font;
@@ -74,10 +73,9 @@ namespace KhaozEngine.Showcase
             var m = Manager!;
             if (m.Input.WasPressed(Key.Escape)) { m.Pop(); return; }
 
-            _viewport.Update(m.FrameWidth, m.FrameHeight);
-            // m.Pointer is already updated by ShowcaseApp against the same design viewport it hands the scene
-            // manager, so gestures line up with this room's own DesignViewport (both are 960x540 Fit).
-            var pointer = m.Pointer!;
+            // The whole input demo runs in point space: gestures + drag + marks hit-test through the DPI-aware
+            // UiPointer, so the interaction lines up with the crisp UI pass this room draws in (OnDrawUi).
+            var pointer = m.UiPointer!;
             _gestures.Update(pointer, dt);   // gestures use REAL dt
 
             // Clock controls: Space pauses, 1/2/3 set slow/normal/fast.
@@ -134,12 +132,18 @@ namespace KhaozEngine.Showcase
             }
         }
 
-        // The "drag me" label and the controls hint are developer-facing demo chrome, not localizable player copy,
-        // so the raw DrawString literals here are intentional (the KELOC003 escape hatch).
+        // Drawn through the point-space UI pass so the whole demo (and its runtime TTF text) is crisp on HiDPI and
+        // reflows to the window. The "drag me" label and controls hint are developer-facing demo chrome, not
+        // localizable player copy, so the raw DrawString literals here are intentional (the KELOC003 escape hatch).
         [LocalizationExempt]
-        public override void OnDraw2D(SpriteBatch batch)
+        public override void OnDrawUi(SpriteBatch batch)
         {
-            batch.Draw(_white, new Vector4(0, 0, 960, 540), new Color(0.07f, 0.09f, 0.13f, 1f));   // design bg
+            var m = Manager!;
+            UiViewport? ui = m.UiViewport;
+            if (ui is null) return;
+            SpriteFont font = _font.For(ui.DpiScale);
+
+            batch.Draw(_white, new Vector4(0, 0, ui.Width, ui.Height), new Color(0.07f, 0.09f, 0.13f, 1f));   // full-window bg
 
             // Orbiting dot (pause/time-scale made visible).
             var c = new Vector2(700, 180);
@@ -154,19 +158,19 @@ namespace KhaozEngine.Showcase
             // Draggable box.
             var boxColor = _grabbed ? new Vector4(0.30f, 0.55f, 0.75f, 1f) : new Vector4(0.18f, 0.34f, 0.5f, 1f);
             batch.Draw(_white, new Vector4(_box.X - 45, _box.Y - 45, 90, 90), (Color)boxColor);
-            batch.DrawString(_font, "drag me", new Vector2(_box.X - 40, _box.Y - 13), new Color(0.95f, 0.97f, 1f, 1f));
+            batch.DrawString(font, "drag me", new Vector2(_box.X - 40, _box.Y - 13), new Color(0.95f, 0.97f, 1f, 1f));
 
-            // Pointer marker.
-            var pointer = Manager!.Pointer;
+            // Pointer marker (point-space UiPointer).
+            var pointer = m.UiPointer;
             if (pointer is not null)
                 batch.Draw(_white, new Vector4(pointer.Position.X - 3, pointer.Position.Y - 3, 6, 6), new Color(0.4f, 0.95f, 0.7f, 1f));
 
             string gstate = _gestures.IsDragging ? "dragging" : "idle";
-            batch.DrawString(_font, "Drag box  -  tap  -  long-press reset  -  Space pause  -  1/2/3 speed  -  Z blip  -  X 3D thud  -  C/V clipboard  -  Esc for menu", new Vector2(20, 18), new Color(0.92f, 0.96f, 1f, 1f));
-            batch.DrawString(_font, _clipboardStatus, new Vector2(20, 470), new Color(0.85f, 0.8f, 1f, 1f));
-            batch.DrawString(_font,
+            batch.DrawString(font, "Drag box  -  tap  -  long-press reset  -  Space pause  -  1/2/3 speed  -  Z blip  -  X 3D thud  -  C/V clipboard  -  Esc for menu", new Vector2(20, 18), new Color(0.92f, 0.96f, 1f, 1f));
+            batch.DrawString(font, _clipboardStatus, new Vector2(20, ui.Height - 70), new Color(0.85f, 0.8f, 1f, 1f));
+            batch.DrawString(font,
                 $"gesture: {gstate}    clock: {(_clock.IsPaused ? "PAUSED" : $"x{_clock.TimeScale:0.0}")}    sim t={_clock.ElapsedScaledSeconds:0.0}s    sfx: {_lastSfx}    {_padInfo}",
-                new Vector2(20, 500), new Color(0.7f, 0.85f, 1f, 1f));
+                new Vector2(20, ui.Height - 40), new Color(0.7f, 0.85f, 1f, 1f));
         }
     }
 }

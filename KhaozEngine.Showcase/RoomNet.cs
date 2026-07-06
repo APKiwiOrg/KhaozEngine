@@ -105,7 +105,7 @@ namespace KhaozEngine.Showcase
 
         Scene3D _scene = null!;
         Texture2D _white = null!;
-        SpriteFont _hud = null!;
+        DpiFont _hud = null!;
 
         // Guards OnExit/OnUpdate/OnDraw3D against running before OnEnter has built the per-enter state (and
         // OnEnter against leftover state from a previous visit).
@@ -139,7 +139,7 @@ namespace KhaozEngine.Showcase
         FollowCamera3D _camera = null!;
         FollowCameraController _camController = null!;
 
-        public RoomNet Init(Scene3D scene, Texture2D white, SpriteFont hud)
+        public RoomNet Init(Scene3D scene, Texture2D white, DpiFont hud)
         {
             _scene = scene; _white = white; _hud = hud;
             return this;
@@ -319,15 +319,19 @@ namespace KhaozEngine.Showcase
         // Net status HUD: local client's connection state, RTT + packet loss (ClientNetStats, smoothed over a
         // rolling ~1s window), and the replicated entity count (local + bots). Guarded so it no-ops before
         // OnEnter has built _client (and OnExit has nulled it back out on the way to a re-enter).
-        public override void OnDraw2D(SpriteBatch batch)
+        // Net status HUD draws through the point-space UI pass, so its text is crisp on HiDPI.
+        public override void OnDrawUi(SpriteBatch batch)
         {
             if (_client is null) return;
+            var ui = Manager!.UiViewport;
+            if (ui is null) return;
+            SpriteFont hud = _hud.For(ui.DpiScale);
 
             ClientNetStats stats = _client.NetStats;
             string line1 = $"Net: {_client.ConnectionState}   RTT {stats.RttMs:0}ms   Loss {stats.PacketLoss * 100f:0.0}%";
             string line2 = $"Entities: {_client.Snapshot().Count}";
-            batch.DrawString(_hud, line1, new Vector2(20, 16), new Color(0.92f, 0.96f, 1f, 1f));
-            batch.DrawString(_hud, line2, new Vector2(20, 16 + _hud.LineHeight), new Color(0.8f, 0.88f, 0.96f, 1f));
+            batch.DrawString(hud, line1, new Vector2(20, 16), new Color(0.92f, 0.96f, 1f, 1f));
+            batch.DrawString(hud, line2, new Vector2(20, 16 + hud.LineHeight), new Color(0.8f, 0.88f, 0.96f, 1f));
         }
 
         public override void OnExit()

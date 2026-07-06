@@ -8,7 +8,7 @@ namespace KhaozEngine.Commerce;
 
 /// <summary>In-process transactional wallet store: dependency-free reference + test backend. A single
 /// lock makes credit/debit atomic so semantics match the SQL backends.</summary>
-public sealed class InMemoryWalletStore : IWalletStore
+public sealed class InMemoryWalletStore : IWalletStore, IGrantScheduleStore
 {
     private readonly object gate = new();
     private readonly Func<DateTimeOffset> clock;
@@ -16,6 +16,7 @@ public sealed class InMemoryWalletStore : IWalletStore
     private readonly Dictionary<(string account, string currency, string key), LedgerEntry> byKey = new();
     private readonly List<LedgerEntry> ledger = new();
     private readonly Dictionary<long, long> balanceAfter = new();
+    private readonly Dictionary<(string, string), DateTimeOffset> schedules = new();
     private long nextId = 1;
 
     public InMemoryWalletStore(Func<DateTimeOffset>? clock = null)
@@ -69,6 +70,17 @@ public sealed class InMemoryWalletStore : IWalletStore
                 .OrderByDescending(e => e.Id).Take(limit).ToList();
             return Task.FromResult(rows);
         }
+    }
+
+    public Task<DateTimeOffset?> GetNextAvailableAsync(AccountId account, string rewardId, CancellationToken ct = default)
+    {
+        lock (gate)
+            return Task.FromResult(schedules.TryGetValue((account.Value, rewardId), out DateTimeOffset v) ? v : (DateTimeOffset?)null);
+    }
+
+    public Task SetNextAvailableAsync(AccountId account, string rewardId, DateTimeOffset nextUtc, CancellationToken ct = default)
+    {
+        lock (gate) { schedules[(account.Value, rewardId)] = nextUtc; return Task.CompletedTask; }
     }
 
     private static void Require(long amount, string key)

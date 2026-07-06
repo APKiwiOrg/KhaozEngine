@@ -11,6 +11,10 @@ namespace KhaozEngine.Commerce;
 /// for a different account, or a different currency on the same account, is a distinct operation,
 /// not a replay. Not a reuse of IWorldStore, which is opaque-bytes last-write-wins and cannot express
 /// atomic increments or idempotency.
+/// A replayed key returns the balance as of the original operation (the historical post-balance),
+/// not necessarily the current balance. An idempotency key is assumed to bind a fixed
+/// <c>(amount, reason)</c>: re-using the same key with a different amount or reason silently returns
+/// the original result, no error (a future conflict-detecting result is a deferred follow-up).
 /// </summary>
 public interface IWalletStore
 {

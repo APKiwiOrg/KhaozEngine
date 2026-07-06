@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using KhaozEngine.Commerce;
 using KhaozEngine.Commerce.SqlServer;
@@ -72,5 +73,42 @@ public sealed class SqlServerWalletStoreTests
         Assert.False(r2.Replayed);
         Assert.Equal(5, await store.GetBalanceAsync(a1, Currency));
         Assert.Equal(7, await store.GetBalanceAsync(a2, Currency));
+    }
+
+    /// <summary>Stress the atomic credit/debit update paths against a live server: many concurrent credits and
+    /// debits, distinct idempotency keys, racing on the same account row under <c>IsolationLevel.Serializable</c>.
+    /// The final balance must equal the net of applied ops and must never go negative. Only runs when
+    /// <c>KE_COMMERCE_SQLSERVER</c> is set; compiles and skips cleanly otherwise.</summary>
+    [SqlServerFact]
+    public async Task Parallel_credits_and_debits_settle_to_the_net_balance()
+    {
+        SqlServerWalletStore store = NewStore();
+        AccountId account = FreshAccount();
+
+        // Seed enough headroom that debits racing ahead of credits still cannot legitimately go negative;
+        // any 'Insufficient' result here would mean debits are outrunning applied credits, not a real deficit.
+        await store.CreditAsync(account, Currency, 1_000, "seed", LedgerReason.Grant, null);
+
+        const int creditCount = 20;
+        const int debitCount = 10;
+        const long creditAmount = 3;
+        const long debitAmount = 5;
+
+        Task<CreditResult>[] credits = Enumerable.Range(0, creditCount)
+            .Select(i => store.CreditAsync(account, Currency, creditAmount, $"stress-credit-{i}", LedgerReason.Grant, null))
+            .ToArray();
+        Task<DebitResult>[] debits = Enumerable.Range(0, debitCount)
+            .Select(i => store.DebitAsync(account, Currency, debitAmount, $"stress-debit-{i}", LedgerReason.Spend, null))
+            .ToArray();
+
+        await Task.WhenAll(credits.Cast<Task>().Concat(debits.Cast<Task>()));
+
+        Assert.All(credits, t => Assert.True(t.Result.Applied));
+        Assert.All(debits, t => Assert.True(t.Result.Applied));
+
+        long expected = 1_000 + creditCount * creditAmount - debitCount * debitAmount;
+        long balance = await store.GetBalanceAsync(account, Currency);
+        Assert.Equal(expected, balance);
+        Assert.True(balance >= 0);
     }
 }

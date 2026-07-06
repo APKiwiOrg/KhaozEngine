@@ -75,6 +75,14 @@ public abstract class WalletStoreContract
     }
 
     [Fact]
+    public async Task GetLedger_rejects_negative_limit()
+    {
+        IWalletStore s = NewStore();
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => s.GetLedgerAsync(A, C, -1));
+    }
+
+    [Fact]
     public async Task Same_key_different_accounts_do_not_collide()
     {
         IWalletStore s = NewStore();

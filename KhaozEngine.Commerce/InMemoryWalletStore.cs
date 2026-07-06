@@ -63,6 +63,7 @@ public sealed class InMemoryWalletStore : IWalletStore, IGrantScheduleStore
     public Task<IReadOnlyList<LedgerEntry>> GetLedgerAsync(AccountId account, CurrencyId currency,
         int limit, CancellationToken ct = default)
     {
+        if (limit < 0) throw new ArgumentOutOfRangeException(nameof(limit));
         lock (gate)
         {
             IReadOnlyList<LedgerEntry> rows = ledger

@@ -26,3 +26,10 @@ ledger row. A duplicate-key race on the ledger insert (`SqlException` 2601/2627)
 
 Opt-in: pulls `Microsoft.Data.SqlClient` without touching the dependency-free `KhaozEngine.Commerce` core. Not
 bundled in the `Server` umbrella.
+
+## Before first real-money use
+
+Run the gated tests (`KE_COMMERCE_SQLSERVER=<conn> dotnet test ...`) against a real (Azure) SQL instance before
+trusting this store with real money. They are skipped, not run, in a normal local/CI pass. This exercises the
+composite unique index, the atomic-update paths for both credit and debit, and the 2601/2627 duplicate-key replay
+recovery under an actual server, and is the point to watch for 1205 deadlocks under parallel load.

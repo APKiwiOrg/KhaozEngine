@@ -137,22 +137,33 @@ CREATE TABLE dbo.grant_schedule (
             }
             else
             {
-                long bal = await ScalarLongAsync(conn, tx,
-                    "SELECT amount FROM dbo.wallet_balance WHERE account_id=@a AND currency_id=@c",
-                    ct, ("@a", a.Value), ("@c", c.Value)).ConfigureAwait(false) ?? 0;
-                long newBal = bal + amount;
-
-                await using SqlCommand merge = conn.CreateCommand();
-                merge.Transaction = tx;
-                merge.CommandText = @"
-MERGE dbo.wallet_balance WITH (HOLDLOCK) AS t
-USING (SELECT @a AS account_id, @c AS currency_id) AS s
-  ON t.account_id = s.account_id AND t.currency_id = s.currency_id
-WHEN MATCHED THEN UPDATE SET amount = @amt, updated_at = SYSUTCDATETIME()
-WHEN NOT MATCHED THEN INSERT (account_id, currency_id, amount, updated_at)
-  VALUES (@a, @c, @amt, SYSUTCDATETIME());";
-                Bind(merge, ("@a", a.Value), ("@c", c.Value), ("@amt", newBal));
-                await merge.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+                // Correctness of concurrent credits rests on this atomic `amount = amount + @amt` update plus the
+                // ledger's composite unique index (duplicate-key insert below -> 2601/2627 -> treated as a replay).
+                // This path must be exercised by the gated SQL Server tests against a live server before real-money use.
+                await using SqlCommand upd = conn.CreateCommand();
+                upd.Transaction = tx;
+                upd.CommandText = @"UPDATE dbo.wallet_balance SET amount = amount + @amt, updated_at = SYSUTCDATETIME()
+                                     OUTPUT inserted.amount
+                                     WHERE account_id=@a AND currency_id=@c;";
+                Bind(upd, ("@a", a.Value), ("@c", c.Value), ("@amt", amount));
+                await using SqlDataReader updReader = await upd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+                long newBal;
+                if (await updReader.ReadAsync(ct).ConfigureAwait(false))
+                {
+                    newBal = updReader.GetInt64(0);
+                    await updReader.DisposeAsync().ConfigureAwait(false);
+                }
+                else
+                {
+                    await updReader.DisposeAsync().ConfigureAwait(false);
+                    await using SqlCommand ins = conn.CreateCommand();
+                    ins.Transaction = tx;
+                    ins.CommandText = @"INSERT INTO dbo.wallet_balance(account_id, currency_id, amount, updated_at)
+                                         VALUES (@a, @c, @amt, SYSUTCDATETIME());";
+                    Bind(ins, ("@a", a.Value), ("@c", c.Value), ("@amt", amount));
+                    await ins.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+                    newBal = amount;
+                }
 
                 try
                 {
@@ -203,6 +214,7 @@ WHEN NOT MATCHED THEN INSERT (account_id, currency_id, amount, updated_at)
     /// <inheritdoc/>
     public async Task<IReadOnlyList<LedgerEntry>> GetLedgerAsync(AccountId account, CurrencyId currency, int limit, CancellationToken ct = default)
     {
+        if (limit < 0) throw new ArgumentOutOfRangeException(nameof(limit));
         await using var conn = new SqlConnection(connectionString);
         await conn.OpenAsync(ct).ConfigureAwait(false);
         List<LedgerEntry> rows = new();

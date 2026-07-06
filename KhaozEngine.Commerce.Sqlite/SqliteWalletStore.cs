@@ -105,6 +105,7 @@ public sealed class SqliteWalletStore : IWalletStore, IGrantScheduleStore, IDisp
     /// <inheritdoc/>
     public async Task<IReadOnlyList<LedgerEntry>> GetLedgerAsync(AccountId account, CurrencyId currency, int limit, CancellationToken ct = default)
     {
+        if (limit < 0) throw new ArgumentOutOfRangeException(nameof(limit));
         await gate.WaitAsync(ct);
         try
         {

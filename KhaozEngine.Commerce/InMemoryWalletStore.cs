@@ -13,7 +13,7 @@ public sealed class InMemoryWalletStore : IWalletStore
     private readonly object gate = new();
     private readonly Func<DateTimeOffset> clock;
     private readonly Dictionary<(string, string), long> balances = new();
-    private readonly Dictionary<string, LedgerEntry> byKey = new(StringComparer.Ordinal);
+    private readonly Dictionary<(string account, string currency, string key), LedgerEntry> byKey = new();
     private readonly List<LedgerEntry> ledger = new();
     private readonly Dictionary<long, long> balanceAfter = new();
     private long nextId = 1;
@@ -27,7 +27,7 @@ public sealed class InMemoryWalletStore : IWalletStore
         Require(amount, idempotencyKey);
         lock (gate)
         {
-            if (byKey.TryGetValue(idempotencyKey, out LedgerEntry prior))
+            if (byKey.TryGetValue((account.Value, currency.Value, idempotencyKey), out LedgerEntry prior))
                 return Task.FromResult(new CreditResult(false, true, BalanceAfter(prior)));
             long bal = Bal(account, currency) + amount;
             Set(account, currency, bal);
@@ -42,7 +42,7 @@ public sealed class InMemoryWalletStore : IWalletStore
         Require(amount, idempotencyKey);
         lock (gate)
         {
-            if (byKey.TryGetValue(idempotencyKey, out LedgerEntry prior))
+            if (byKey.TryGetValue((account.Value, currency.Value, idempotencyKey), out LedgerEntry prior))
                 return Task.FromResult(new DebitResult(false, true, false, BalanceAfter(prior)));
             long bal = Bal(account, currency);
             if (bal < amount)
@@ -88,7 +88,7 @@ public sealed class InMemoryWalletStore : IWalletStore
     {
         LedgerEntry e = new(nextId++, a, c, delta, key, reason, src, clock());
         ledger.Add(e);
-        byKey[key] = e;
+        byKey[(a.Value, c.Value, key)] = e;
         balanceAfter[e.Id] = postBalance;
     }
 }

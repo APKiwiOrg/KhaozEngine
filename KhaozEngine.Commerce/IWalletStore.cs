@@ -6,9 +6,11 @@ namespace KhaozEngine.Commerce;
 
 /// <summary>
 /// Durable, transactional wallet backing store. Credit/Debit are atomic and idempotent by
-/// <c>idempotencyKey</c>: re-applying an already-seen key is a no-op that reports the prior
-/// balance. Not a reuse of IWorldStore, which is opaque-bytes last-write-wins and cannot express atomic
-/// increments or idempotency.
+/// <c>idempotencyKey</c>, scoped per <c>(account, currency)</c>: re-applying an already-seen key
+/// for the same account and currency is a no-op that reports the prior balance. The same key used
+/// for a different account, or a different currency on the same account, is a distinct operation,
+/// not a replay. Not a reuse of IWorldStore, which is opaque-bytes last-write-wins and cannot express
+/// atomic increments or idempotency.
 /// </summary>
 public interface IWalletStore
 {

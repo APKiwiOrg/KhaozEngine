@@ -73,4 +73,18 @@ public abstract class WalletStoreContract
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
             () => s.CreditAsync(A, C, 0, "z", LedgerReason.Grant, null));
     }
+
+    [Fact]
+    public async Task Same_key_different_accounts_do_not_collide()
+    {
+        IWalletStore s = NewStore();
+        AccountId a2 = new("acct:2");
+        CreditResult r1 = await s.CreditAsync(A, C, 5, "shared", LedgerReason.Grant, null);
+        CreditResult r2 = await s.CreditAsync(a2, C, 7, "shared", LedgerReason.Grant, null);
+        Assert.True(r1.Applied);
+        Assert.True(r2.Applied);         // NOT a replay: different account
+        Assert.False(r2.Replayed);
+        Assert.Equal(5, await s.GetBalanceAsync(A, C));
+        Assert.Equal(7, await s.GetBalanceAsync(a2, C));
+    }
 }

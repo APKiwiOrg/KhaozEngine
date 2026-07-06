@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using KhaozEngine.Commerce;
 using Xunit;
@@ -29,6 +30,19 @@ public class WalletTests
         Assert.Equal(200, r1.NewBalance);
         Assert.True(r2.Replayed);
         Assert.Equal(200, await w.BalanceAsync(A, Shard));
+    }
+
+    [Fact]
+    public async Task Redeem_writes_purchase_provenance_to_the_ledger()
+    {
+        Wallet w = NewWallet(out IWalletStore store);
+        VerifiedEntitlement ent = new(A, "shardpack.small", "txn:provenance", 1);
+        await w.RedeemAsync(ent);
+
+        IReadOnlyList<LedgerEntry> ledger = await store.GetLedgerAsync(A, Shard, limit: 1);
+        LedgerEntry newest = ledger[0];
+        Assert.Equal(LedgerReason.Purchase, newest.Reason);
+        Assert.Equal(ent.SourceTxnId, newest.SourceRef);
     }
 
     [Fact]

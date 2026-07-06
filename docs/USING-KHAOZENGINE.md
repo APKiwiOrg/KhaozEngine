@@ -2485,6 +2485,9 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
 - **`KhaozEngine.Progression`**: `WallClockRewardSchedule` - a pure `readonly struct` for "every N of
   real-world time a reward becomes available and stays available until claimed" (daily-login style), immune
   to game `TimeScale` and offline caps (see "Wall-clock periodic rewards" below).
+- **`KhaozEngine.Commerce`**: server-authoritative currency wallet (`IWalletStore`, `Wallet`, entitlement
+  redemption, `PeriodicGrant` built on `Progression`). Not in any umbrella; add explicitly. SQL backends are
+  the opt-in `Commerce.Sqlite`/`Commerce.SqlServer` siblings (see "Commerce / wallet" below).
 - **`KhaozEngine.Updates`**: delta auto-update pipeline (SHA256 manifests + diffing, resumable staged downloads,
   cross-platform staged-apply). Feeds either a dynamic API or a server-less static blob (no backend - the
   client reads the full `LatestVersionInfo` straight from `latest-{platform}.json`); both have a ready-to-fill
@@ -2541,6 +2544,51 @@ GrantReward();                                         // the payload is the gam
 For several independent rewards, keep one `WallClockRewardSchedule` per reward id, each with its own
 interval. Because the current instant is a plain parameter (no ambient clock), it is trivially unit-testable
 with fixed `DateTimeOffset` values.
+
+---
+
+## Commerce / wallet (`KhaozEngine.Commerce`)
+
+Server-authoritative currency: a durable `IWalletStore` (atomic idempotent credit/debit + an immutable
+ledger) behind `Wallet`, a source-agnostic entitlement pipeline for redeeming purchases, and `PeriodicGrant`
+for a server-clock daily reward built on `Progression`'s `WallClockRewardSchedule`. Everything is keyed by a
+verified `AccountId` the consumer supplies (the wallet does not authenticate); run it on the server, never
+trust a client-reported balance.
+
+```csharp
+using KhaozEngine.Commerce;
+
+// A store: InMemoryWalletStore for tests/dev, or a durable backend
+// (KhaozEngine.Commerce.Sqlite's SqliteWalletStore / KhaozEngine.Commerce.SqlServer's SqlServerWalletStore).
+InMemoryWalletStore store = new();
+
+var catalog = new InMemoryProductCatalog(new[]
+{
+    new ProductDefinition(ProductId: "shards_100", Currency: new CurrencyId("shard"), AmountPerUnit: 100),
+});
+var wallet = new Wallet(store, catalog);
+var account = new AccountId("player:1234");
+
+// Redeem a purchase already verified by your IEntitlementValidator (webhook signature, store receipt, ...).
+var entitlement = new VerifiedEntitlement(account, ProductId: "shards_100", SourceTxnId: "txn_abc123", Quantity: 1);
+CreditResult redeemed = await wallet.RedeemAsync(entitlement);
+// redeemed.Replayed is true if this SourceTxnId was already credited - safe to call again on a retry.
+
+// A daily grant, routed through the same wallet and store (InMemoryWalletStore also implements IGrantScheduleStore).
+var daily = new PeriodicGrant(wallet, store, TimeSpan.FromHours(24),
+    rewardId: "daily_login", currency: new CurrencyId("shard"), amount: 50);
+PeriodicGrantResult claim = await daily.TryClaimAsync(account, DateTimeOffset.UtcNow);
+if (claim.Granted)
+    ShowReward(claim.NewBalance);
+else
+    ShowCountdown(claim.TimeUntilNext);
+
+long balance = await wallet.BalanceAsync(account, new CurrencyId("shard"));
+```
+
+`Wallet.SpendAsync` debits (fails with `Insufficient`, no throw, if the balance is too low); `GrantAsync` is
+a raw server-authorized credit for anything outside the periodic/purchase paths. See
+[SECURITY-BASELINE.md](SECURITY-BASELINE.md) for why the server, not the client, must own the balance.
 
 ---
 

@@ -89,7 +89,20 @@ that is the transport's and the game's responsibility.
   untrusted source is still parsing untrusted bytes in managed code (bounded by managed memory-safety,
   but it can throw or produce degenerate geometry); the game owns that decision.
 
-### 3. The update channel (highest impact)
+### 3. Monetized or leaderboard-scored currency
+
+Package: `KhaozEngine.Commerce`. Any currency that can be bought with real money, or that feeds a
+leaderboard score, must be **server-authoritative through `KhaozEngine.Commerce`**: the server owns the
+balance (an atomic, idempotent `IWalletStore` ledger, not a client-reported number), grants a periodic
+reward (`PeriodicGrant`) off the **server clock**, never a client timestamp, and a client-held balance is
+treated as a cache/display value the server can always overrule. A client that can set or spoof its own
+balance can buy anything for free or top a leaderboard by lying. Identity/auth is the consumer's seam: the
+wallet is keyed by a verified `AccountId` the consumer supplies (a session/token the game already
+authenticated), not something `KhaozEngine.Commerce` verifies itself. Purchases are redeemed through an
+`IEntitlementValidator` that turns an untrusted external proof (a store receipt, a signed webhook) into a
+`VerifiedEntitlement`; the wallet never trusts a client-asserted purchase.
+
+### 4. The update channel (highest impact)
 
 Package: `KhaozEngine.Updates`. This is the highest-impact surface in the engine: it downloads files and
 replaces the running game's executables. A spoofed or compromised feed that the client accepts is remote
@@ -205,6 +218,9 @@ The engine provides primitives and one hardened channel; a game still has to use
   and want the hardware mitigation back).
 - **Don't treat the save HMAC as security.** If you need real integrity/confidentiality of player data,
   put it server-side; the client-side key is not a secret.
+- **Run `KhaozEngine.Commerce` server-side for real or scored currency.** The wallet balance and ledger
+  live on the server; a client copy is a cache. Supply your own `IEntitlementValidator` for your purchase
+  provider and your own verified `AccountId`; the engine does not authenticate players for you.
 
 ## Reporting a vulnerability
 

@@ -3,6 +3,9 @@
   <Project Path="KhaozEngine.Audio/KhaozEngine.Audio.csproj" />
   <Project Path="KhaozEngine.Collision/KhaozEngine.Collision.csproj" />
   <Project Path="KhaozEngine.Content/KhaozEngine.Content.csproj" />
+  <Project Path="KhaozEngine.Commerce.Sqlite/KhaozEngine.Commerce.Sqlite.csproj" />
+  <Project Path="KhaozEngine.Commerce.SqlServer/KhaozEngine.Commerce.SqlServer.csproj" />
+  <Project Path="KhaozEngine.Commerce/KhaozEngine.Commerce.csproj" />
   <Project Path="KhaozEngine.Content.Validator/KhaozEngine.Content.Validator.csproj" />
   <Project Path="KhaozEngine.Determinism/KhaozEngine.Determinism.csproj" />
   <Project Path="KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />

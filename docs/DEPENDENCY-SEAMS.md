@@ -36,6 +36,7 @@ Three properties fall out of it:
 | 3D physics | `KhaozEngine.Physics` (`IPhysicsWorld`, value-type shapes/poses/queries) | `KhaozEngine.Physics.Bepu` (`BepuPhysicsWorld`) | BepuPhysics v2 |
 | Netcode transport | `KhaozEngine.Netcode` (`INetTransport` incl. the default-method `Stats` -> `NetTransportStats`, `LoopbackTransport`) + `Netcode.Abstractions` | `KhaozEngine.Netcode.LiteNetLib` (fills `Stats` via `EnableStatistics`) | LiteNetLib |
 | Persistence | `KhaozEngine.WorldStore` (`IWorldStore`, `InMemoryWorldStore`) | `WorldStore.Sqlite`, `WorldStore.SqlServer` | Microsoft.Data.Sqlite / SqlClient |
+| Commerce wallet | `KhaozEngine.Commerce` (`IWalletStore`, `IGrantScheduleStore`, `IEntitlementValidator`, `InMemoryWalletStore`) | `Commerce.Sqlite` (`SqliteWalletStore`), `Commerce.SqlServer` (`SqlServerWalletStore`) | Microsoft.Data.Sqlite / SqlClient |
 | Persistence enumeration | `KhaozEngine.WorldStore` (`IEnumerableWorldStore`, `WorldStoreEntry`) | `InMemoryWorldStore`, `SqliteWorldStore`, `SqlServerWorldStore` (all three implement it) | (no extra dep; streaming `EnumerateAsync(keyPrefix?)`) |
 | Server ban list | `KhaozEngine.NetWorld` (`IBanStore`, `InMemoryBanStore`) | `WorldStoreBanStore` (persists over any `IWorldStore` keyspace `ban:{accountId}`) | (no extra dep; sync `IsBanned` via in-memory cache, `LoadAsync()` at startup) |
 | Per-cell world persistence | `KhaozEngine.NetWorld` (`ICellPersistenceHost`, the surface `CellPersistence` drives, `ShardedWorldServer` implements it; since 9.33.0 the host also carries `TryRestoreCell` for a non-throwing quarantining restore, a default interface method so existing implementers are unaffected; since 10.0.0 the NetId high-water it carries - `NextNetId` / `EnsureNextNetIdAtLeast` - and the restored-id list are 64-bit `long`) | `CellPersistence` (+ `CellPersistenceConfig` with `RegisterMigration` + engine-provided migrations via `IncludeEngineMigrations`, `WorldMetaRecord`) wires it to any `IWorldStore`, migrating / quarantining / retaining on load and surfacing `CellPersistence.Issue` | Microsoft.Data.Sqlite / SqlClient (via the `IWorldStore` backend already chosen) |
@@ -68,6 +69,36 @@ KhaozEngine.Server.Admin -> Microsoft.AspNetCore.App [shared framework, Framewor
 A server that does not want an admin HTTP endpoint never references `Server.Admin`, so the web stack stays
 out of its dependency closure.
 
+## Commerce wallet seams
+
+`KhaozEngine.Commerce` splits into three seams, not one, because the wallet has three independent axes a
+game can swap:
+
+- **`IWalletStore`** - the durable, transactional wallet backing store. Credit/Debit are atomic and
+  idempotent by an `idempotencyKey`, scoped per `(account, currency)`; `GetBalanceAsync`/`GetLedgerAsync`
+  read it back. `InMemoryWalletStore` (in the core package) is the reference/test backend; `Commerce.Sqlite`
+  and `Commerce.SqlServer` are the durable opt-in backends, same contract, same idempotency semantics.
+- **`IGrantScheduleStore`** - persists the next-available instant per `(account, rewardId)` for
+  `PeriodicGrant`. Last-write-wins is safe here because the wallet's credit idempotency key is the real
+  double-grant guard, not this store. `InMemoryWalletStore` implements both `IWalletStore` and
+  `IGrantScheduleStore`; so do the two SQL backends.
+- **`IEntitlementValidator`** - turns an untrusted external proof (`EntitlementProof`: a webhook body, a
+  store receipt) into a `VerifiedEntitlement`, or null if invalid. No default implementation ships: the
+  proof format and the trust decision are consumer-specific (a webhook signature, a platform receipt
+  verification API), so this seam has no `InMemory*` reference impl, unlike the two store seams above.
+
+Dependency edges:
+
+```
+KhaozEngine.Commerce -> KhaozEngine.Progression (PeriodicGrant is built on WallClockRewardSchedule)
+KhaozEngine.Commerce.Sqlite -> KhaozEngine.Commerce, Microsoft.Data.Sqlite
+KhaozEngine.Commerce.SqlServer -> KhaozEngine.Commerce, Microsoft.Data.SqlClient
+```
+
+Same shape as the `WorldStore` persistence seam above (dependency-free contract + opt-in SQL backends,
+neither backend bundled in the `Server` umbrella), but a distinct seam: `IWorldStore` is opaque-bytes
+last-write-wins and cannot express atomic increments or idempotency, which a currency ledger needs.
+
 ## Localization package edges
 
 Compile-time localization enforcement adds two edges, both acyclic:
@@ -98,10 +129,10 @@ edge is introduced (`Render2D` already depends on `Primitives`).
 
 The pattern is applied at the granularity the dependency warrants:
 
-1. **Separate opt-in backend package** (the strongest split): GPU, physics, netcode transport, persistence.
-   The third-party reference lives in its own package so consumers pick it explicitly. Physics and netcode
-   and worldstore backends are genuinely opt-in (excluded from umbrellas); the Veldrid binding ships inside
-   `KhaozEngine.Gpu` because rendering is not optional for a windowed game.
+1. **Separate opt-in backend package** (the strongest split): GPU, physics, netcode transport, persistence,
+   the commerce wallet. The third-party reference lives in its own package so consumers pick it explicitly.
+   Physics, netcode, worldstore, and commerce SQL backends are genuinely opt-in (excluded from umbrellas);
+   the Veldrid binding ships inside `KhaozEngine.Gpu` because rendering is not optional for a windowed game.
 2. **Seam + default + null, one package** (audio): the contract, the real OpenAL backend, and a no-op
    `Null*` backend live together. The null backend keeps audio headless-testable and lets a server run with
    no device, while still being one `add` for a game that wants sound.
@@ -133,6 +164,7 @@ To swap or add a backend for a seam that already has the separate-package split:
 | Physics | `../KhaozEngine.Physics/IPhysicsWorld.cs` | `../KhaozEngine.Physics.Bepu/BepuPhysicsWorld.cs` |
 | Netcode | `../KhaozEngine.Netcode/` (`INetTransport`, `LoopbackTransport`) | `../KhaozEngine.Netcode.LiteNetLib/` |
 | Persistence | `../KhaozEngine.WorldStore/IWorldStore.cs`, `InMemoryWorldStore.cs` | `../KhaozEngine.WorldStore.Sqlite/`, `../KhaozEngine.WorldStore.SqlServer/` |
+| Commerce wallet | `../KhaozEngine.Commerce/IWalletStore.cs`, `IGrantScheduleStore.cs`, `Entitlements.cs` (`IEntitlementValidator`), `InMemoryWalletStore.cs` | `../KhaozEngine.Commerce.Sqlite/SqliteWalletStore.cs`, `../KhaozEngine.Commerce.SqlServer/SqlServerWalletStore.cs` |
 | Persistence enumeration | `../KhaozEngine.WorldStore/IEnumerableWorldStore.cs` | `InMemoryWorldStore.cs`, `SqliteWorldStore.cs`, `SqlServerWorldStore.cs` |
 | Server ban list | `../KhaozEngine.NetWorld/IBanStore.cs`, `InMemoryBanStore.cs` | `WorldStoreBanStore.cs` |
 | Admin HTTP endpoint | `../KhaozEngine.NetWorld/IAdminControllable.cs` (seam) | `../KhaozEngine.Server.Admin/` (Kestrel, ASP.NET Core) |

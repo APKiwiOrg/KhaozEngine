@@ -1,6 +1,7 @@
 using System.Numerics;
 using KhaozEngine.App;
 using KhaozEngine.Game;
+using KhaozEngine.Gui;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
@@ -59,13 +60,14 @@ namespace KhaozEngine.Showcase
             var m = Manager!;
             // Design-space width (not FrameWidth) so the header bar keeps its 40px side margins on a resized window.
             float boundsW = m.Viewport!.DesignBounds.Width;
-            batch.Draw(_white, new Vector4(40, 30, boundsW - 80, 90), new Color(0.18f, 0.22f, 0.30f, 0.92f));
+            Vector4 surf = GuiTheme.Default.Surface;
+            batch.Draw(_white, new Vector4(40, 30, boundsW - 80, 90), new Color(surf.X, surf.Y, surf.Z, 0.92f));
             for (int i = 0; i < 6; i++)
             {
                 float s = 60 + i * 14;
                 batch.Draw(_checker, new Vector4(60 + i * 130, 170, s, s), new Color(1f, 1f, 1f, 1f));
             }
-            batch.DrawString(_big, "KhaozEngine.Render2D", new Vector2(60, 40), new Color(0.95f, 0.97f, 1f, 1f));
+            batch.DrawString(_big, "KhaozEngine.Render2D", new Vector2(60, 40), (Color)GuiTheme.Default.Text);
             batch.DrawString(_small, "SpriteBatch + Camera2D + Texture2D + runtime TTF text, all on Veldrid.", new Vector2(60, 300), new Color(0.8f, 0.85f, 0.95f, 1f));
             batch.DrawString(_small, "The quick brown fox jumps over the lazy dog. 0123456789 !?@#", new Vector2(60, 340), new Color(0.9f, 0.8f, 0.6f, 1f));
             batch.DrawString(_small, "Alpha blending, tinting, batched quads. Esc for menu.", new Vector2(60, 380), new Color(0.7f, 0.95f, 0.8f, 1f));

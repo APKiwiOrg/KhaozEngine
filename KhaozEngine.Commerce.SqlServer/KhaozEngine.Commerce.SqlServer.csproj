@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Commerce.SqlServer</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>SQL Server / Azure SQL backend for KhaozEngine.Commerce (IWalletStore + IGrantScheduleStore) over Microsoft.Data.SqlClient: raw parameterized ADO.NET, schema bootstrapped on construction, MERGE WITH (HOLDLOCK) upsert, no EF/ORM. The production backend; same contract as the SQLite dev/test backend. Opt-in; not bundled in the Server umbrella.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Commerce/KhaozEngine.Commerce.csproj" />
+    <PackageReference Include="Microsoft.Data.SqlClient" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Tests" />
+  </ItemGroup>
+</Project>

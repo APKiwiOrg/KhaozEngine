@@ -5,6 +5,14 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.14.0
+
+Server-authoritative currency wallet: a new `KhaozEngine.Commerce` package family for money-safe, idempotent currency balances keyed by a verified account identity the consumer supplies. Additive (three new packages, no removals), so a minor bump; no GPU work.
+
+- **`KhaozEngine.Commerce` (new):** the identity-agnostic wallet core. `IWalletStore` is a transactional seam over an append-only ledger plus a materialized balance, with atomic `CreditAsync` / `DebitAsync` that are idempotent per `(account, currency, idempotencyKey)` (a replayed key credits once and returns the balance as of the original operation) and reject overspend as a result flag, never a throw. Ships `InMemoryWalletStore` (dependency-free reference and test backend). `Wallet` maps a product catalog (`IProductCatalog` / `ProductDefinition`) to credits and redeems a `VerifiedEntitlement` idempotently by source transaction id; `IEntitlementValidator` is the money-in seam (concrete store/processor validators are deferred). `AccountId` / `CurrencyId` are opaque validated value types, and auth is the consumer's seam (no `Netcode` dependency). Depends only on `KhaozEngine.Progression`.
+- **`PeriodicGrant` (in `KhaozEngine.Commerce`):** a server-clock daily/periodic reward built on `WallClockRewardSchedule` and an `IGrantScheduleStore`, routed through the wallet so it is non-stacking and credited exactly once. The server instant is the only clock, so it is immune to client clock tampering.
+- **`KhaozEngine.Commerce.Sqlite` / `KhaozEngine.Commerce.SqlServer` (new, opt-in):** SQL backends for `IWalletStore` + `IGrantScheduleStore`, raw parameterized ADO.NET mirroring the `WorldStore` backend split (schema created on construction, idempotency via a composite unique index on `(account_id, currency_id, idempotency_key)`, atomic balance updates in a serializable transaction). Not bundled in the `Server` umbrella. The SQL Server backend's tests are gated on `KE_COMMERCE_SQLSERVER`; run them against a live server before first real-money use.
+
 ## 10.13.0
 
 Gui widget parity for retained settings/dialog UI: the retained `Toggle`, `Slider`, `TextInput`, and `PopupPanel` gain the fade, programmatic, and scrolling affordances a consumer previously had to reimplement locally, all additive and default-off/no-op so every existing consumer renders byte-identically. Minor bump (no removals); no GPU golden rebake (the new paths only bite when their opt-in knobs are set, verified by the headless widget tests + full suite on Metal).

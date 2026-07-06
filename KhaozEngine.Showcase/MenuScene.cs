@@ -10,11 +10,13 @@ using KhaozEngine.Windowing;
 
 namespace KhaozEngine.Showcase
 {
-    /// <summary>The hub root scene: a title, one row button per registered room, and a hint line. Up/Down (or W/S)
-    /// move the highlight; Enter/Space or a click enters that room. Drawn through the point-space
-    /// <see cref="UiViewport"/> (<see cref="GameScene.OnDrawUi"/>), so its text is baked at the live DPI scale
-    /// (crisp on HiDPI) and the row buttons wear uniform device-pixel-snapped borders; the layout reflows around
-    /// the centre as the window resizes rather than magnifying. An empty registry shows nothing to enter.</summary>
+    /// <summary>The hub root scene: a title, one <see cref="Button"/> per registered room, and a hint line, drawn
+    /// through the point-space <see cref="UiViewport"/> (<see cref="GameScene.OnDrawUi"/>) so its text is baked at the
+    /// live DPI scale (crisp on HiDPI) and the row buttons wear uniform device-pixel-snapped borders, wearing the
+    /// crisp <see cref="GuiTheme"/>: the highlighted row draws in the accent <see cref="GuiStyle.Active"/> preset and
+    /// the rest in the muted <see cref="GuiStyle.Secondary"/>, over the theme background. Up/Down (or W/S) move the
+    /// highlight; Enter/Space or a click on a row enters it. The layout reflows around the centre as the window
+    /// resizes rather than magnifying. An empty registry shows nothing to enter.</summary>
     // The title, hint, and room-name captions are developer-facing hub chrome (room names are raw literals in
     // ShowcaseApp's registry), not localizable player copy, so the raw captions here are the intentional escape hatch.
     [LocalizationExempt]
@@ -40,9 +42,9 @@ namespace KhaozEngine.Showcase
             foreach (var r in rooms) names.Add(r.Name);
             _menu = new ShowcaseMenu(names);
 
-            // One retained button per room: a click selects that row and enters it (the same path as Enter on the
-            // keyboard). The font is (re)assigned from the DpiFont each frame in OnDrawUi (the atlas re-bakes only on
-            // a DPI change); bounds are laid out from the point-space width each frame.
+            // One retained Button per room, wearing the crisp theme. A click selects that row and enters it (the same
+            // path as Enter on the keyboard). The font is (re)assigned from the DpiFont each frame in OnDrawUi (the
+            // atlas re-bakes only on a DPI change); bounds are laid out from the point-space width each frame.
             SpriteFont seed = rowFont.For(1f);
             for (int i = 0; i < _rooms.Count; i++)
             {
@@ -100,19 +102,22 @@ namespace KhaozEngine.Showcase
             SpriteFont titleFont = _titleFont.For(dpi);   // baked at the device density, re-baked only on a DPI change
             SpriteFont rowFont = _rowFont.For(dpi);
             float boundsW = ui.Width, boundsH = ui.Height;
+            GuiTheme theme = GuiTheme.Default;
 
             Layout(boundsW);
-            batch.Draw(_white, new Vector4(0, 0, boundsW, boundsH), new Color(0.10f, 0.13f, 0.20f, 1f));
+            batch.Draw(_white, new Vector4(0, 0, boundsW, boundsH), (Color)theme.Background);
 
             const string title = "KhaozEngine Showcase";
             Vector2 ts = titleFont.Measure(title);
-            batch.DrawString(titleFont, title, new Vector2((boundsW - ts.X) * 0.5f, 60f), new Color(0.92f, 0.95f, 1f, 1f));
+            batch.DrawString(titleFont, title, new Vector2((boundsW - ts.X) * 0.5f, 60f), (Color)theme.Text);
 
             for (int i = 0; i < _rows.Count; i++)
             {
                 Button row = _rows[i];
                 row.Font = rowFont;                     // point this frame's DPI-baked atlas
-                row.Selected = i == _menu.Selected;     // the highlighted row draws in the selected palette
+                // The highlighted row wears the accent Active preset; the rest the muted Secondary. Selection is
+                // expressed through the resting style (not Button.Selected) so the whole Active palette reads.
+                row.Style = i == _menu.Selected ? GuiStyle.Active : GuiStyle.Secondary;
                 row.Draw(batch, _white);                // rounded body + device-pixel-snapped border via GuiDraw
             }
 
@@ -121,7 +126,7 @@ namespace KhaozEngine.Showcase
                 const string hint = "Up/Down and Enter, or click a room. Esc leaves a room.";
                 Vector2 hs = rowFont.Measure(hint);
                 float hy = Top + _rooms.Count * (RowH + 8f) + 24f;
-                batch.DrawString(rowFont, hint, new Vector2((boundsW - hs.X) * 0.5f, hy), new Color(0.5f, 0.58f, 0.7f, 1f));
+                batch.DrawString(rowFont, hint, new Vector2((boundsW - hs.X) * 0.5f, hy), (Color)theme.TextMuted);
             }
         }
     }

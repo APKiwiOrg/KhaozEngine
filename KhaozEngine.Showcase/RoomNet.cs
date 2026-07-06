@@ -5,6 +5,7 @@ using System.Numerics;
 using System.Text;
 using KhaozEngine.Diagnostics;
 using KhaozEngine.Game;
+using KhaozEngine.Gui;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Netcode.LiteNetLib;
 using KhaozEngine.NetWorld;
@@ -330,8 +331,8 @@ namespace KhaozEngine.Showcase
             ClientNetStats stats = _client.NetStats;
             string line1 = $"Net: {_client.ConnectionState}   RTT {stats.RttMs:0}ms   Loss {stats.PacketLoss * 100f:0.0}%";
             string line2 = $"Entities: {_client.Snapshot().Count}";
-            batch.DrawString(hud, line1, new Vector2(20, 16), new Color(0.92f, 0.96f, 1f, 1f));
-            batch.DrawString(hud, line2, new Vector2(20, 16 + hud.LineHeight), new Color(0.8f, 0.88f, 0.96f, 1f));
+            batch.DrawString(hud, line1, new Vector2(20, 16), (Color)GuiTheme.Default.Text);
+            batch.DrawString(hud, line2, new Vector2(20, 16 + hud.LineHeight), (Color)GuiTheme.Default.TextMuted);
         }
 
         public override void OnExit()

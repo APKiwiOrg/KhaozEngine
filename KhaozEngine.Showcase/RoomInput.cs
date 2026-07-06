@@ -5,6 +5,7 @@ using System.Numerics;
 using KhaozEngine.App;
 using KhaozEngine.Audio;
 using KhaozEngine.Game;
+using KhaozEngine.Gui;
 using KhaozEngine.Platform;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
@@ -143,12 +144,12 @@ namespace KhaozEngine.Showcase
             if (ui is null) return;
             SpriteFont font = _font.For(ui.DpiScale);
 
-            batch.Draw(_white, new Vector4(0, 0, ui.Width, ui.Height), new Color(0.07f, 0.09f, 0.13f, 1f));   // full-window bg
+            batch.Draw(_white, new Vector4(0, 0, ui.Width, ui.Height), (Color)GuiTheme.Default.Background);   // full-window bg
 
             // Orbiting dot (pause/time-scale made visible).
             var c = new Vector2(700, 180);
             var dot = c + new Vector2(MathF.Cos(_orbit), MathF.Sin(_orbit)) * 90f;
-            batch.Draw(_white, new Vector4(c.X - 92, c.Y - 92, 184, 184), new Color(0.10f, 0.12f, 0.17f, 1f));
+            batch.Draw(_white, new Vector4(c.X - 92, c.Y - 92, 184, 184), (Color)GuiTheme.Default.Surface);
             batch.Draw(_white, new Vector4(dot.X - 10, dot.Y - 10, 20, 20), new Color(0.95f, 0.75f, 0.35f, 1f));
 
             // Tap marks (fade out).
@@ -166,11 +167,11 @@ namespace KhaozEngine.Showcase
                 batch.Draw(_white, new Vector4(pointer.Position.X - 3, pointer.Position.Y - 3, 6, 6), new Color(0.4f, 0.95f, 0.7f, 1f));
 
             string gstate = _gestures.IsDragging ? "dragging" : "idle";
-            batch.DrawString(font, "Drag box  -  tap  -  long-press reset  -  Space pause  -  1/2/3 speed  -  Z blip  -  X 3D thud  -  C/V clipboard  -  Esc for menu", new Vector2(20, 18), new Color(0.92f, 0.96f, 1f, 1f));
-            batch.DrawString(font, _clipboardStatus, new Vector2(20, ui.Height - 70), new Color(0.85f, 0.8f, 1f, 1f));
+            batch.DrawString(font, "Drag box  -  tap  -  long-press reset  -  Space pause  -  1/2/3 speed  -  Z blip  -  X 3D thud  -  C/V clipboard  -  Esc for menu", new Vector2(20, 18), (Color)GuiTheme.Default.Text);
+            batch.DrawString(font, _clipboardStatus, new Vector2(20, ui.Height - 70), (Color)GuiTheme.Default.TextMuted);
             batch.DrawString(font,
                 $"gesture: {gstate}    clock: {(_clock.IsPaused ? "PAUSED" : $"x{_clock.TimeScale:0.0}")}    sim t={_clock.ElapsedScaledSeconds:0.0}s    sfx: {_lastSfx}    {_padInfo}",
-                new Vector2(20, ui.Height - 40), new Color(0.7f, 0.85f, 1f, 1f));
+                new Vector2(20, ui.Height - 40), (Color)GuiTheme.Default.TextMuted);
         }
     }
 }

@@ -95,7 +95,7 @@ namespace KhaozEngine.Showcase
 
             _footer = new Label(Layout.Resolve(db, Anchor.Bottom, db.Width, 24, marginY: 36),
                 ShowcaseStrings.MenuFooter, _a.Small)
-            { Align = TextAlign.Center, Color = new Vector4(0.6f, 0.7f, 0.85f, 1f) };
+            { Align = TextAlign.Center, Color = GuiTheme.Default.TextMuted };
         }
 
         public override bool Update(float dt, bool receivesInput)
@@ -169,7 +169,7 @@ namespace KhaozEngine.Showcase
             _help = new Label(new Rect(d.X + 30, d.Y + 178, d.Width - 60, 70),
                 ShowcaseStrings.SettingsHelp,
                 _a.Small)
-            { Wrap = true, Color = new Vector4(0.6f, 0.7f, 0.85f, 1f) };
+            { Wrap = true, Color = GuiTheme.Default.TextMuted };
 
             Rect backRect = Layout.Resolve(d, Anchor.Bottom, 180, 50, marginY: 18);
             _back = new Button(backRect, ShowcaseStrings.CommonBack, _a.Small, ExitScreen);

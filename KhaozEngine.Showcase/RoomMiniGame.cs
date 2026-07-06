@@ -119,7 +119,7 @@ namespace KhaozEngine.Showcase
         readonly MiniGameCtx _c;
         readonly IDesignViewport _vp;
         Button _start = null!, _quit = null!;
-        public MiniGameTitleScreen(MiniGameCtx c, IDesignViewport vp) { _c = c; _vp = vp; PassUpdateThrough = false; BackgroundColor = new Vector4(0.06f, 0.08f, 0.12f, 1f); }
+        public MiniGameTitleScreen(MiniGameCtx c, IDesignViewport vp) { _c = c; _vp = vp; PassUpdateThrough = false; BackgroundColor = GuiTheme.Default.Background; }
 
         public override void LoadContent()
         {
@@ -138,8 +138,8 @@ namespace KhaozEngine.Showcase
         public override void Draw(SpriteBatch b)
         {
             DrawBackground(b, _c.White, _vp);
-            b.DrawString(_c.Big, "CATCHER", new Vector2(330, 140), new Color(0.95f, 0.97f, 1f, 1f));
-            b.DrawString(_c.Small, "catch the falling blocks - A/D or arrows", new Vector2(290, 220), new Color(0.6f, 0.72f, 0.9f, 1f));
+            b.DrawString(_c.Big, "CATCHER", new Vector2(330, 140), (Color)GuiTheme.Default.Text);
+            b.DrawString(_c.Small, "catch the falling blocks - A/D or arrows", new Vector2(290, 220), (Color)GuiTheme.Default.TextMuted);
             _start.Draw(b, _c.White); _quit.Draw(b, _c.White);
         }
     }
@@ -155,7 +155,7 @@ namespace KhaozEngine.Showcase
         int _score, _lives = 3;
         const float PaddleY = 492, PaddleW = 120, PaddleH = 18, ItemSize = 22;
 
-        public MiniGamePlayScreen(MiniGameCtx c, IDesignViewport vp) { _c = c; _vp = vp; PassUpdateThrough = false; BackgroundColor = new Vector4(0.06f, 0.08f, 0.12f, 1f); }
+        public MiniGamePlayScreen(MiniGameCtx c, IDesignViewport vp) { _c = c; _vp = vp; PassUpdateThrough = false; BackgroundColor = GuiTheme.Default.Background; }
 
         public override bool Update(float dt, bool receivesInput)
         {
@@ -228,10 +228,12 @@ namespace KhaozEngine.Showcase
         public override void Draw(SpriteBatch b)
         {
             float a = TransitionAlpha;
+            // Crisp-theme dialog chrome, all faded by the screen's transition alpha.
+            Vector4 surf = GuiTheme.Default.Surface, text = GuiTheme.Default.Text, muted = GuiTheme.Default.TextMuted;
             _c.Rect(b, 0, 0, 960, 540, new Vector4(0, 0, 0, 0.6f * a));
-            _c.Rect(b, 260, 150, 440, 250, new Vector4(0.14f, 0.16f, 0.24f, a));
-            b.DrawString(_c.Big, "GAME OVER", new Vector2(300, 185), new Color(1f, 0.95f, 0.95f, a));
-            b.DrawString(_c.Small, $"Final score: {_score}", new Vector2(380, 265), new Color(0.85f, 0.9f, 1f, a));
+            _c.Rect(b, 260, 150, 440, 250, new Vector4(surf.X, surf.Y, surf.Z, a));
+            b.DrawString(_c.Big, "GAME OVER", new Vector2(300, 185), new Color(text.X, text.Y, text.Z, a));
+            b.DrawString(_c.Small, $"Final score: {_score}", new Vector2(380, 265), new Color(muted.X, muted.Y, muted.Z, a));
             _retry.Draw(b, _c.White); _quit.Draw(b, _c.White);
         }
     }

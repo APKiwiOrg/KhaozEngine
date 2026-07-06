@@ -1,6 +1,7 @@
 using System.Numerics;
 using KhaozEngine.App;
 using KhaozEngine.Game;
+using KhaozEngine.Gui;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
@@ -51,9 +52,6 @@ namespace KhaozEngine.Showcase
             if (Manager!.Input.WasPressed(Key.Escape)) { Manager!.Pop(); return; }
         }
 
-        // Demo captions naming the engine features on show - developer-facing chrome, not localizable player
-        // copy, so the raw DrawString literals here are intentional (the KELOC003 escape hatch, same idea as the
-        // [LocalizationExempt] Gui screens in RoomGui).
         // The textured checker sprites are the design-space "sprite demo" (they letterbox with the game field).
         public override void OnDraw2D(SpriteBatch batch)
         {
@@ -64,9 +62,10 @@ namespace KhaozEngine.Showcase
             }
         }
 
-        // The header bar + captions draw through the point-space UI pass so the runtime TTF text is crisp on HiDPI.
-        // (At the showcase's default window the point space and the design canvas coincide, so the captions still
-        // sit over the sprites above.)
+        // The header bar + captions draw through the point-space UI pass so the runtime TTF text is crisp on HiDPI
+        // (at the showcase's default window the point space and the design canvas coincide, so the captions still sit
+        // over the sprites above), wearing the crisp GuiTheme surface/text colours. The captions are developer-facing
+        // chrome, not localizable player copy, so the raw DrawString literals are intentional (the KELOC003 escape hatch).
         [LocalizationExempt]
         public override void OnDrawUi(SpriteBatch batch)
         {
@@ -78,8 +77,9 @@ namespace KhaozEngine.Showcase
             SpriteFont small = _small.For(dpi);
             float boundsW = ui.Width;
 
-            batch.Draw(_white, new Vector4(40, 30, boundsW - 80, 90), new Color(0.18f, 0.22f, 0.30f, 0.92f));
-            batch.DrawString(big, "KhaozEngine.Render2D", new Vector2(60, 40), new Color(0.95f, 0.97f, 1f, 1f));
+            Vector4 surf = GuiTheme.Default.Surface;
+            batch.Draw(_white, new Vector4(40, 30, boundsW - 80, 90), new Color(surf.X, surf.Y, surf.Z, 0.92f));
+            batch.DrawString(big, "KhaozEngine.Render2D", new Vector2(60, 40), (Color)GuiTheme.Default.Text);
             batch.DrawString(small, "SpriteBatch + Camera2D + Texture2D + runtime TTF text, all on Veldrid.", new Vector2(60, 300), new Color(0.8f, 0.85f, 0.95f, 1f));
             batch.DrawString(small, "The quick brown fox jumps over the lazy dog. 0123456789 !?@#", new Vector2(60, 340), new Color(0.9f, 0.8f, 0.6f, 1f));
             batch.DrawString(small, "Alpha blending, tinting, batched quads. Esc for menu.", new Vector2(60, 380), new Color(0.7f, 0.95f, 0.8f, 1f));

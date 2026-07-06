@@ -16,8 +16,8 @@ namespace KhaozEngine.Gui
         /// <summary>If true, <see cref="Update"/> reserves <see cref="Bounds"/> via <see cref="Pointer.BlockRegion"/>.</summary>
         public bool BlocksPointer;
 
-        public Vector4 Color = new(0.10f, 0.13f, 0.18f, 1f);
-        public Vector4 BorderColor = new(0.20f, 0.24f, 0.32f, 1f);
+        public Vector4 Color = GuiTheme.Default.Surface;
+        public Vector4 BorderColor = GuiTheme.Default.Border;
         public float BorderThickness;
 
         /// <summary>

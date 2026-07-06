@@ -41,16 +41,16 @@ namespace KhaozEngine.Gui
         public string SelectedLabel => _options[SelectedIndex].Label;
         public IReadOnlyList<DropdownOption> Options => _options;
 
-        public Vector4 Background = new(0.10f, 0.10f, 0.14f, 1f);
-        public Vector4 Border = new(0.18f, 0.18f, 0.22f, 1f);
-        public Vector4 OpenBorder = new(0.31f, 0.55f, 0.86f, 1f);
-        public Vector4 ListBackground = new(0.07f, 0.07f, 0.11f, 1f);
-        public Vector4 HoverColor = new(0.11f, 0.13f, 0.18f, 1f);
-        public Vector4 SelectedColor = new(0.14f, 0.20f, 0.29f, 1f);
+        public Vector4 Background = GuiTheme.Default.Surface;
+        public Vector4 Border = GuiTheme.Default.Border;
+        public Vector4 OpenBorder = GuiTheme.Default.AccentBright;
+        public Vector4 ListBackground = GuiTheme.Default.Background;
+        public Vector4 HoverColor = GuiTheme.Default.SurfaceHover;
+        public Vector4 SelectedColor = new(0.157f, 0.235f, 0.353f, 1f);   // accent-muted (Active fill)
         /// <summary>Row fill under the keyboard/gamepad highlight (<see cref="HighlightedIndex"/>). Only drawn when a keyboard highlight is active.</summary>
-        public Vector4 FocusColor = new(0.16f, 0.24f, 0.36f, 1f);
-        public Vector4 TextColor = new(0.78f, 0.80f, 0.84f, 1f);
-        public Vector4 SelectedTextColor = new(0.55f, 0.78f, 1f, 1f);
+        public Vector4 FocusColor = new(0.137f, 0.216f, 0.353f, 1f);      // accent-muted (Primary fill)
+        public Vector4 TextColor = GuiTheme.Default.TextMuted;
+        public Vector4 SelectedTextColor = GuiTheme.Default.AccentBright;
 
         /// <summary>
         /// Modern-look knobs (rounded/shadow/gradient/glow) for the trigger and the open list container; defaults
@@ -65,7 +65,7 @@ namespace KhaozEngine.Gui
         /// Defaults to <c>false</c> so existing callers render byte-identically. Colour is <see cref="ChevronColor"/>.
         /// </summary>
         public bool ShowChevron = false;
-        public Vector4 ChevronColor = new(0.47f, 0.49f, 0.55f, 1f);
+        public Vector4 ChevronColor = GuiTheme.Default.TextMuted;
 
         /// <summary>
         /// Uniform fade multiplied into every colour's alpha at draw time (1 = opaque). Lets a caller fade the whole

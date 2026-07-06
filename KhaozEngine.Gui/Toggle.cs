@@ -21,12 +21,12 @@ namespace KhaozEngine.Gui
         public bool Enabled = true;
         public Action<bool>? OnChanged;
 
-        public Vector4 OnColor = new(0.16f, 0.39f, 0.70f, 1f);
-        public Vector4 OffColor = new(0.16f, 0.16f, 0.20f, 1f);
-        public Vector4 BorderColor = new(0.24f, 0.51f, 0.86f, 1f);
-        public Vector4 OffBorderColor = new(0.22f, 0.22f, 0.26f, 1f);
+        public Vector4 OnColor = GuiTheme.Default.Accent;
+        public Vector4 OffColor = GuiTheme.Default.Surface;
+        public Vector4 BorderColor = GuiTheme.Default.AccentBright;
+        public Vector4 OffBorderColor = GuiTheme.Default.Border;
         public Vector4 ThumbColor = Vector4.One;
-        public Vector4 DisabledColor = new(0.10f, 0.10f, 0.12f, 1f);
+        public Vector4 DisabledColor = GuiTheme.Default.SurfaceDisabled;
 
         /// <summary>
         /// Modern-look knobs (rounded/shadow/gradient/glow) for the track and thumb; defaults to the flat

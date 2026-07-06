@@ -421,6 +421,24 @@ for menu-heavy games. `Add`/`Remove`, `Update(dt, input[, viewport])`, `Draw(bat
 `Manager.Pointer`, so both share one click-through gate), and returns whether it consumed (to block screens
 below); set a screen non-pass-through for a modal.
 
+**Theming: `GuiTheme` + `GuiStyle` (crisp default, 10.11.0)** - the default widget look is crisp: a neutral-dark
+palette with a blue accent, subtle 3px corners, 1px hairline borders, no bloom. `GuiTheme` is the central semantic
+palette every retained widget reads at construction. Rebrand the whole UI in one line at startup (before building
+widgets):
+
+```csharp
+// Global reskin: keep the crisp shape, change the accent to teal.
+GuiTheme.Default = GuiTheme.Default with { Accent = new Vector4(0.14f, 0.60f, 0.55f, 1f) };
+// ...or keep the pre-10.11.0 flat blue-grey look wholesale:
+GuiTheme.Default = GuiTheme.Legacy;
+```
+
+`GuiStyle` carries the button palette + modern-affordance knobs, with presets you pass per widget:
+`GuiStyle.Default` (crisp, == `Primary`), `Secondary` (muted), `Danger` (red), `Active` (bright-accent selected),
+`Modern` (rounded + glow + shadow), and `Legacy` (the exact old flat button). Per-widget colour fields still
+override the theme (`toggle.OnColor = ...`). The Showcase "Gui" room shows the crisp look and the semantic button
+variants.
+
 **`FocusNavigator`** - keyboard/gamepad menu focus: `SetCount`, `Focus`, `MoveNext`/`MovePrevious`, `Wrap`, and
 `Update(InputManager, PlayerIndex?)` which advances focus from menu-nav edges.
 

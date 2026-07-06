@@ -78,7 +78,7 @@ namespace KhaozEngine.Showcase
         {
             _a = a; _vp = vp;
             PassUpdateThrough = false;
-            BackgroundColor = new Vector4(0.07f, 0.09f, 0.13f, 1f);   // opaque full screen
+            BackgroundColor = GuiTheme.Default.Background;   // opaque full screen
         }
 
         public override void LoadContent()
@@ -237,7 +237,7 @@ namespace KhaozEngine.Showcase
         {
             _a = a; _vp = vp;
             PassUpdateThrough = false;
-            BackgroundColor = new Vector4(0.07f, 0.09f, 0.13f, 1f);   // opaque full screen (no bleed-through)
+            BackgroundColor = GuiTheme.Default.Background;   // opaque full screen (no bleed-through)
         }
 
         public override void LoadContent()
@@ -388,7 +388,7 @@ namespace KhaozEngine.Showcase
         {
             _a = a; _vp = vp;
             PassUpdateThrough = false;
-            BackgroundColor = new Vector4(0.07f, 0.09f, 0.13f, 1f);   // opaque full screen
+            BackgroundColor = GuiTheme.Default.Background;   // opaque full screen
         }
 
         public override void LoadContent() => _ui = new GuiSurface(_a.White);
@@ -430,11 +430,12 @@ namespace KhaozEngine.Showcase
             for (int i = 0; i < cols.Length; i++)
                 _ui.Swatch(new Rect(120 + i * 56, 248, 48, 48), cols[i]);
 
-            // Buttons: enabled toggle, disabled, selected.
-            if (_ui.Button(_a.Small, new Rect(120, 320, 200, 48), LocalizedText.Raw(_toggled ? "ON" : "OFF")))
+            // Semantic button presets (10.11.0 crisp theme): Primary/Secondary/Danger/Active + a disabled one.
+            if (_ui.Button(_a.Small, new Rect(120, 320, 150, 44), LocalizedText.Raw(_toggled ? "PRIMARY ON" : "PRIMARY"), GuiStyle.Primary))
                 _toggled = !_toggled;
-            _ui.Button(_a.Small, new Rect(340, 320, 200, 48), LocalizedText.Raw("Disabled"), GuiStyle.Default, enabled: false);
-            _ui.Button(_a.Small, new Rect(560, 320, 200, 48), LocalizedText.Raw("Selected"), GuiStyle.Default, enabled: true, selected: true);
+            _ui.Button(_a.Small, new Rect(285, 320, 150, 44), LocalizedText.Raw("Secondary"), GuiStyle.Secondary);
+            _ui.Button(_a.Small, new Rect(450, 320, 150, 44), LocalizedText.Raw("Danger"), GuiStyle.Danger);
+            _ui.Button(_a.Small, new Rect(615, 320, 150, 44), LocalizedText.Raw("Active"), GuiStyle.Active, enabled: true, selected: true);
 
             // Capture-flag readout + Back.
             _ui.Label(_a.Small, LocalizedText.Raw($"PointerCaptured: {_ui.PointerCaptured}"),

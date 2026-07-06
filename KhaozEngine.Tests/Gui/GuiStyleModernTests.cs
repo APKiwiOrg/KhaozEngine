@@ -7,16 +7,21 @@ namespace KhaozEngine.Tests.Gui
     public class GuiStyleModernTests
     {
         [Fact]
-        public void Default_KeepsTodaysFlatLook()
+        public void Default_IsCrispNoBloom()
         {
+            // Since 10.11.0 the default is crisp: a subtle 3px radius + hairline border, but still no
+            // shadow/gradient/glow. The old flat blue-grey look moved to GuiStyle.Legacy.
             var s = GuiStyle.Default;
-            Assert.Equal(0f, s.CornerRadius);
+            Assert.Equal(3f, s.CornerRadius);
             Assert.Equal(0f, s.ShadowSize);
             Assert.Equal(GuiFill.Solid, s.FillMode);
             Assert.Equal(1f, s.GradientTopScale);
             Assert.Equal(1f, s.GradientBottomScale);
             Assert.Equal(0f, s.GlowSize);
-            Assert.True(s.IsFlat);   // the plain-path predicate
+            Assert.False(s.IsFlat);  // radius > 0 leaves the old plain path
+
+            // The legacy preset still IS the old flat look.
+            Assert.True(GuiStyle.Legacy.IsFlat);
         }
 
         [Fact]

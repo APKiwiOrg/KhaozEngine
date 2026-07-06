@@ -5,6 +5,18 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.11.0
+
+New crisp default GUI look and a central `GuiTheme`, plus semantic button presets. **The out-of-box widget appearance changed**: the flat blue-grey default is replaced by a modern neutral-dark palette with a blue accent, subtle 3px corners, and 1px hairline borders (no shadow/gradient/glow). To keep the old look, set `GuiTheme.Default = GuiTheme.Legacy;` at startup (before building widgets), or set `button.Style = GuiStyle.Legacy` per button. Additive API (no removals), so a minor bump, but re-pinning shifts the look of any game that uses the engine widget defaults.
+
+- **`GuiTheme` (new struct):** the single semantic palette every retained widget reads (`Background`, `Surface`/`SurfaceHover`/`SurfacePress`/`SurfaceDisabled`, `Border`/`BorderHover`/`BorderDisabled`, `Accent`/`AccentBright`, `Text`/`TextMuted`/`TextDisabled`, `Danger`/`DangerBright`, `CornerRadius`, `BorderThickness`). Ambient `GuiTheme.Default` (the crisp `GuiTheme.Crisp`) is settable once at startup to rebrand the whole UI; widgets capture it at construction. `GuiTheme.Legacy` reproduces the old aesthetic.
+- **`GuiStyle.Default` is now crisp** (subtle 3px radius, hairline border, accent-tinted, no bloom) and equals the new `GuiStyle.Primary`. `GuiStyle.Modern` (rounded + glow + shadow) is unchanged and now builds from `GuiStyle.Legacy`, so its GPU goldens (`scene2d_modern`, `gui_button_glow`) are byte-frozen.
+- **Semantic presets (new `GuiStyle` statics):** `Primary` (accent, == Default), `Secondary` (muted surface), `Danger` (red), `Active` (bright-accent selected). Pass to `Button`/`GuiSurface.Button` etc.
+- **`GuiStyle.Legacy` (new):** the exact pre-10.11.0 flat blue-grey button style, for a byte-exact old Button.
+- **Retained widgets restyled:** `Button`/`Toggle`/`Slider`/`Dropdown`/`Panel` (and `TextInput`/`PopupPanel`/`ScrollablePanel` via `Style`) default their colours from `GuiTheme.Default` and pick up the 3px/hairline treatment, so the whole set is crisp with no per-widget config.
+- **Showcase** restyled to the new look and demos the four semantic button variants (the "Gui" room, immediate-mode screen).
+- No GPU golden rebake was needed (goldens render `Modern` + raw primitives, never a default-styled widget; verified on Metal). Consumers re-pin to adopt; use `GuiTheme.Legacy` to keep the old look.
+
 ## 10.10.0
 
 `ScreenStack` now owns and exposes a shared `InputManager`, so the retained UI path can actually drive `FocusNavigator` and the 10.9.0 keyboard/gamepad widget overloads. Until now the retained path (`ScreenStack`/`Screen`) only carried an `InputState` + `Pointer` and never an `InputManager`, so `FocusNavigator.Update(InputManager)` and `Toggle`/`Slider`/`Dropdown` `Update(InputManager, focused)` had no manager to feed from inside a `Screen` (an `InputManager` was constructed only in tests). Additive API, so a minor bump.

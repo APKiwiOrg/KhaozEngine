@@ -25,6 +25,14 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   insert, so equal-`DrawOrder` screens keep insertion order and `Screens[^1]` is the visually-topmost.
 - `Screen` - base UI surface: `Update(dt, receivesInput)` (returns whether it consumed input) + `Draw(SpriteBatch)`,
   with `DrawOrder` / `PassUpdateThrough` / `AlwaysReceivesInput` / transitions.
+- **Theming (`GuiTheme` + `GuiStyle`).** Since 10.11.0 the default widget look is crisp: a neutral-dark palette
+  with a blue accent, subtle 3px corners, and 1px hairline borders (no shadow/gradient/glow). `GuiTheme` is the
+  central semantic palette every retained widget reads at construction (`Surface`/`Accent`/`Border`/`Text`/... plus
+  `CornerRadius`/`BorderThickness`). Set the ambient `GuiTheme.Default` ONCE at startup (before building widgets) to
+  rebrand the whole UI; set it to `GuiTheme.Legacy` to keep the pre-10.11.0 flat blue-grey look. `GuiStyle` carries
+  the button palette + the modern-affordance knobs, with presets: `Default` (crisp, == `Primary`), `Secondary`
+  (muted), `Danger` (red), `Active` (bright-accent selected), `Modern` (rounded + glow + shadow), and `Legacy` (the
+  exact old flat button). Per-widget colour fields still override the theme.
 - Core widgets, all bounds-aware over `Pointer` (press-origin click-through invariant), drawn with a 1x1 white
   texture + `SpriteBatch`:
   - `Button` - click via `IsTapIn`, hover/press visuals.

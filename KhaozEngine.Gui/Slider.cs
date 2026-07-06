@@ -21,11 +21,11 @@ namespace KhaozEngine.Gui
         /// <summary>When false, the slider neither drags nor reports changes.</summary>
         public bool Enabled = true;
 
-        public Vector4 TrackColor = new(0.12f, 0.12f, 0.16f, 1f);
-        public Vector4 BorderColor = new(0.22f, 0.22f, 0.26f, 1f);
-        public Vector4 FillColor = new(0.16f, 0.39f, 0.70f, 1f);
+        public Vector4 TrackColor = GuiTheme.Default.Surface;
+        public Vector4 BorderColor = GuiTheme.Default.Border;
+        public Vector4 FillColor = GuiTheme.Default.Accent;
         public Vector4 ThumbColor = Vector4.One;
-        public Vector4 ThumbDragColor = new(0.39f, 0.70f, 1f, 1f);
+        public Vector4 ThumbDragColor = GuiTheme.Default.AccentBright;
         public float ThumbWidth = 10f;
 
         /// <summary>

@@ -1,4 +1,4 @@
-# cross-platform-gpu — desktop GPU golden-snapshot matrix (Win D3D11 / Linux Vulkan / macOS Metal).
+# cross-platform-gpu: desktop GPU golden-snapshot matrix (Win D3D11 / Linux Vulkan / macOS Metal).
 #
 # What this does:
 #   * On push / pull_request to main it VERIFIES the committed per-backend goldens
@@ -19,10 +19,10 @@
 #   * Windows D3D11 falls back to WARP (software) automatically when no hardware adapter is present.
 #
 # The headless golden tests use Render2D/3D Snapshot -> CreateHeadless (offscreen, NO window), so SDL2 is
-# NOT required here — only the Vulkan/D3D11 runtime plus a (software) rasterizer. A shipped windowed game
+# NOT required here (only the Vulkan/D3D11 runtime plus a (software) rasterizer). A shipped windowed game
 # still needs SDL2 + libveldrid-spirv bundled per-RID; see docs/CROSS-PLATFORM.md.
 #
-# The fast inner-loop CI (build/test/pack/publish, GPU tests skipped) stays in ci.yml — untouched.
+# The fast inner-loop CI (build/test/pack/publish, GPU tests skipped) stays in ci.yml, untouched.
 
 name: cross-platform-gpu
 

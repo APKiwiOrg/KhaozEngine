@@ -177,7 +177,7 @@ KhaozEngine.Server.Admin/      Opt-in HTTPS admin endpoint (Kestrel) over Server
 KhaozEngine.Foundation/   KhaozEngine.Game2D/   KhaozEngine.Game3D/   KhaozEngine.Server/
 # Tests, samples, tools
 KhaozEngine.Tests/   KhaozEngine.Showcase/ (menu hub: 2D, GUI, input, mini-game, 3D-world, networked-walk rooms)
-SnapshotSample/   MmoServerSample/ (reference dedicated MMO server)
+SnapshotTool/   MmoServerSample/ (reference dedicated MMO server)
 KhaozEngine.Updates.Tool/ (ke-updater)   KhaozEngine.Sfx.Tool/ (ke-sfxbake)   KhaozEngine.PropSurface.Tool/ (ke-propbake)
 tools/   docs/USING-KHAOZENGINE.md
 Directory.Build.props (shared version)   nuget.config   .github/workflows/ci.yml
@@ -200,7 +200,7 @@ The windowed ones open a GPU window (need a display); the server / snapshot head
 
 | Sample | What it does | Run |
 |---|---|---|
-| `SnapshotSample` | Writes a 2D + a 3D PNG via the snapshot harness (needs a GPU device, not a display) | `dotnet run --project SnapshotSample -- /tmp/ke-snapshot-demo` |
+| `SnapshotTool` | Writes a 2D + a 3D PNG via the snapshot harness; the canonical shape each game's `tools/SnapshotTool` mirrors (needs a GPU device, not a display) | `dotnet run --project SnapshotTool -- /tmp/ke-snapshot-demo` |
 | `MmoServerSample` | Reference dedicated MMO server (cell grid + seamless handoff) on a UDP socket | `dotnet run --project MmoServerSample` |
 
 **Windowed smoke (CI / quick check).** Every windowed sample honors `KE_MAX_FRAMES=N`: render N frames, then

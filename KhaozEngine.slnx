@@ -58,7 +58,7 @@
   <Project Path="KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
   <Project Path="KhaozEngine.Updates.Tool/KhaozEngine.Updates.Tool.csproj" />
   <Project Path="KhaozEngine.Showcase/KhaozEngine.Showcase.csproj" />
-  <Project Path="SnapshotSample/SnapshotSample.csproj" />
+  <Project Path="SnapshotTool/SnapshotTool.csproj" />
   <Project Path="MmoServerSample/MmoServerSample.csproj" />
   <Project Path="KhaozEngine.Benchmarks/KhaozEngine.Benchmarks.csproj" />
   <Project Path="tools/PixelLabSheetAssembler/PixelLabSheetAssembler.csproj" />

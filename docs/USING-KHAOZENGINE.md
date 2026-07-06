@@ -2641,7 +2641,8 @@ on Render3D, so a Game2D-only game (SpaceGame, Nullwake) can use `Shot2D` withou
 `Shot3D` method is an extension in **`KhaozEngine.Snapshot.Render3D`** (which adds the Render3D dependency). These
 are tooling packages and are **not** in the `Game2D`/`Game3D` umbrellas, so a snapshot tool project adds the ref(s)
 it needs directly: `KhaozEngine.Snapshot` for 2D, plus `KhaozEngine.Snapshot.Render3D` for 3D. A runnable example
-lives in `SnapshotSample` (`dotnet run --project SnapshotSample -- /tmp/ke-snapshot-demo`).
+lives in `SnapshotTool` (`dotnet run --project SnapshotTool -- /tmp/ke-snapshot-demo`), the canonical shape every
+game's `tools/SnapshotTool` mirrors (same `SnapshotHost.Main(args, Register)` entry point and `SnapshotTool` name).
 
 ---
 

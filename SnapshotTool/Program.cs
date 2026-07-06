@@ -4,14 +4,15 @@ using KhaozEngine.Render2D;
 using KhaozEngine.Render3D;
 using KhaozEngine.Snapshot;
 
-namespace SnapshotSample
+namespace SnapshotTool
 {
     /// <summary>
-    /// Acceptance sample for the KhaozEngine snapshot harness. The whole Program is register-the-shots:
+    /// Canonical reference for the KhaozEngine snapshot harness (the shape every game's tools/SnapshotTool
+    /// mirrors). The whole Program is register-the-shots:
     /// <see cref="SnapshotHost"/> resolves the output dir from <c>args[0]</c> (a temp default otherwise), runs
     /// each shot headless (no window), writes a PNG per shot, logs each path, and prints the final summary.
     /// Needs a GPU device (the underlying captures use Veldrid/Metal).
-    /// Run: <c>dotnet run --project SnapshotSample -- /tmp/ke-snapshot-demo</c>
+    /// Run: <c>dotnet run --project SnapshotTool -- /tmp/ke-snapshot-demo</c>
     /// </summary>
     static class Program
     {

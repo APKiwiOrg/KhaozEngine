@@ -27,6 +27,7 @@ namespace KhaozEngine.Showcase
         // Widgets
         public static readonly StringId WidgetsTitle = new("Widgets.Title");
         public static readonly StringId WidgetsName = new("Widgets.Name");
+        public static readonly StringId WidgetsNamePlaceholder = new("Widgets.NamePlaceholder");
         public static readonly StringId WidgetsDifficulty = new("Widgets.Difficulty");
         public static readonly StringId WidgetsList = new("Widgets.List");
         public static readonly StringId WidgetsHoverForTip = new("Widgets.HoverForTip");

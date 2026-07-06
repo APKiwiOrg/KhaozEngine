@@ -39,8 +39,10 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   - `Label` - non-interactive text, aligned (left/center/right) and optionally word-wrapped, via `TextLayout`; a
     `Scale` field (default 1) uniformly scales the drawn text.
   - `Panel` - filled/bordered container; `BlocksPointer` reserves its region so lower layers skip hit-testing under it.
-  - `Slider` - horizontal track; a drag started from inside jumps + tracks the value 0..1.
-  - `Toggle` - two-state switch flipped by a valid tap; fires `OnChanged`.
+  - `Slider` - horizontal track; a drag started from inside jumps + tracks the value 0..1. `WasChanged` mirrors the
+    `Update` return for callers that inspect it later in the frame; `Opacity` fades the whole slider for a host transition.
+  - `Toggle` - two-state switch flipped by a valid tap; fires `OnChanged`. `WasToggled` mirrors the `Update` return;
+    `Opacity` fades the whole toggle for a host transition.
   - `Dropdown` - trigger + option list (opens below); two-phase draw (`Draw` trigger / `DrawOverlay` list last).
     Opt-in (default off): `ShowChevron` draws an up/down caret reflecting the open state; `Opacity` fades the whole
     dropdown for a host transition.
@@ -55,7 +57,10 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     `FocusColor` for the highlighted row). The pointer path never activates the highlight, so its overlay draw is
     byte-identical.
   - `TextInput` - single-line field; tap-to-focus, typed keys edit the text (via `TextEntry`), blinking caret.
-    A held key auto-repeats (Backspace deletes / a character keeps typing) at the OS repeat rate.
+    A held key auto-repeats (Backspace deletes / a character keeps typing) at the OS repeat rate. `SetText(value)`
+    replaces the buffer programmatically (clamped to `MaxLength`, seen as a change by the next `Update`); `Focus()` /
+    `Unfocus()` drive focus directly. The placeholder is `LocalizedText` via `PlaceholderContent` (the former
+    `Placeholder` string is an `[Obsolete]` shim); `Opacity` fades the whole field for a host transition.
   - `Tooltip` - auto-sized floating bubble; `ComputeBounds` (flip/clamp) is a pure, testable layout function.
     Opt-in (default off): a two-column title (`Show(title, titleRight, ...)`), a `ShowTitleSeparator` rule under the
     title, and platform-aware dismissal via `Dismiss` (`CallerDriven` desktop-hover vs `TapOutside` touch, driven by
@@ -64,7 +69,12 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     Text is `LocalizedText`: `TitleContent` / `DismissContent` / `PrimaryActionContent` and the resolve-at-build
     `PopupRow.Header(LocalizedText)` / `Stat(LocalizedText, LocalizedText, ...)` factories (rebuild the rows to pick
     up a runtime locale switch). The former `Title` / `DismissText` / `PrimaryActionText` string members and the
-    `PopupRow.Header(string)` / `Stat(string, ...)` factories remain as `[Obsolete]` shims.
+    `PopupRow.Header(string)` / `Stat(string, ...)` factories remain as `[Obsolete]` shims. Overflowing content
+    scrolls (wheel via the `Update(Pointer, float wheelDelta)` overload + drag-to-scroll, scissor-clipped, `ScrollOffset`
+    read-only, `ScrollWheelSpeed` tunable); the two footer buttons shrink to fit a narrow panel (wide panels stay at the
+    fixed width). Opt-in additive: `WrapLongLabels` wraps a stat row with an empty value across the content width (row
+    grows to fit); `PopupRow.Stat(..., iconColor)` draws a small colour swatch before the label; `Opacity` fades the
+    whole popup for a host transition. Defaults keep every existing consumer byte-identical.
   - `ScrollablePanel` - wheel/drag scrolling fixed-height list; rows drawn between `BeginClip`/`EndClip` (scissor),
     hit-test with `TappedItemIndex`. Opt-in overlay chrome (all default to no-ops, so existing callers are
     byte-identical): a header band (`HeaderHeight` + `DrawHeader`) above the scroll region; a slide-up animation

@@ -5,6 +5,17 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.13.0
+
+Gui widget parity for retained settings/dialog UI: the retained `Toggle`, `Slider`, `TextInput`, and `PopupPanel` gain the fade, programmatic, and scrolling affordances a consumer previously had to reimplement locally, all additive and default-off/no-op so every existing consumer renders byte-identically. Minor bump (no removals); no GPU golden rebake (the new paths only bite when their opt-in knobs are set, verified by the headless widget tests + full suite on Metal).
+
+- **Uniform `Opacity` fade (`KhaozEngine.Gui`):** `Toggle`, `Slider`, `TextInput`, and `PopupPanel` each expose a `float Opacity = 1f` that scales every drawn colour's alpha at draw time (via the existing `GuiDraw.WithOpacity`), so a host transition can fade the whole widget in/out. Mirrors the existing `Dropdown.Opacity`; default 1 is a no-op.
+- **`PopupPanel` scrolling + layout (`KhaozEngine.Gui`):** a new `Update(Pointer, float wheelDelta)` overload adds wheel + drag-to-scroll over content that overflows the (auto-sized, max-height-clamped) panel, scissor-clipped, with a read-only `ScrollOffset` and a tunable `ScrollWheelSpeed`. The two footer buttons now shrink to share the row on a narrow panel (wide panels keep the fixed 130-unit width, so their geometry is unchanged). `SetRows` is now a no-op when the rows are value-equal, so calling it every frame no longer resets an in-progress scroll.
+- **`PopupPanel` opt-in content extras (`KhaozEngine.Gui`):** `WrapLongLabels` (default false) word-wraps a stat row whose value is empty across the content width (the row grows to fit, via `TextLayout.Wrap`); `PopupRow.Stat(label, value, valueColor, iconColor)` takes an optional colour swatch drawn before the label (`IconSize` sizes it). Both are additive; a row without them draws exactly as before.
+- **`TextInput` programmatic + localized API (`KhaozEngine.Gui`):** `SetText(value)` replaces the buffer (clamped to `MaxLength`, surfaced as a `TextChanged` on the next `Update`); `Focus()` / `Unfocus()` are now public. The placeholder is `LocalizedText` via a new `PlaceholderContent` (the `Placeholder` string is now an `[Obsolete]` shim, matching `PopupPanel.Title`).
+- **`Toggle.WasToggled` / `Slider.WasChanged` (`KhaozEngine.Gui`):** frame-flag mirrors of the respective `Update` return value, for callers that drive the widget and inspect the result later in the frame rather than at the call site.
+- **Showcase** migrates its `TextInput` placeholder to a localized `Widgets.NamePlaceholder` catalog string (the old raw literal moved off the now-obsolete `Placeholder` setter).
+
 ## 10.12.0
 
 DPI-aware, native-resolution UI rendering: a point-space UI layer that stays crisp on HiDPI / non-integer window scales, so text and vector chrome rasterize at device-pixel density instead of being fractionally magnified. The design canvas still letterboxes the game field; the UI is now decoupled to render in logical points (1 point = the DPI scale in device pixels) and reflows to the window rather than scaling. Additive API (no removals), so a minor bump; existing design-space rendering is byte-identical (device-pixel snapping is opt-in via the point-space viewport), so no GPU golden rebake was needed (verified on Metal).

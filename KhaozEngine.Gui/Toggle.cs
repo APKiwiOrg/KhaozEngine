@@ -21,6 +21,17 @@ namespace KhaozEngine.Gui
         public bool Enabled = true;
         public Action<bool>? OnChanged;
 
+        /// <summary>True on the frame a valid tap (or, via the wired overload, a keyboard/gamepad step) flipped the
+        /// switch. A convenience mirror of <see cref="Update(Pointer)"/>'s return value for callers that drive the
+        /// widget and inspect it later in the frame rather than at the call site.</summary>
+        public bool WasToggled { get; private set; }
+
+        /// <summary>
+        /// Uniform fade multiplied into every colour's alpha at draw time (1 = opaque). Lets a caller fade the whole
+        /// toggle in/out with a host transition. Default 1 is a no-op. Mirrors <see cref="Dropdown.Opacity"/>.
+        /// </summary>
+        public float Opacity = 1f;
+
         public Vector4 OnColor = GuiTheme.Default.Accent;
         public Vector4 OffColor = GuiTheme.Default.Surface;
         public Vector4 BorderColor = GuiTheme.Default.AccentBright;
@@ -46,10 +57,12 @@ namespace KhaozEngine.Gui
         /// beneath can check <see cref="Pointer.IsBlocked"/>, matching the retained <see cref="Button"/>.</summary>
         public bool Update(Pointer pointer)
         {
+            WasToggled = false;
             pointer.BlockRegion(Bounds);
             if (!Enabled) return false;
             if (!pointer.IsTapIn(Bounds)) return false;
             IsOn = !IsOn;
+            WasToggled = true;
             OnChanged?.Invoke(IsOn);
             return true;
         }
@@ -69,6 +82,7 @@ namespace KhaozEngine.Gui
             if (input.IsMenuSelect(player, out _)) { if (Flip()) changed = true; }
             else if (input.IsSelectNext(player)) { if (Set(true)) changed = true; }
             else if (input.IsSelectPrevious(player)) { if (Set(false)) changed = true; }
+            WasToggled = changed;
             return changed;
         }
 
@@ -104,15 +118,16 @@ namespace KhaozEngine.Gui
             Vector4 track = !Enabled ? DisabledColor : IsOn ? OnColor : OffColor;
             Vector4 border = !Enabled ? OffBorderColor : IsOn ? BorderColor : OffBorderColor;
             // Track keeps its 1px border; the thumb has none (BorderThickness 0). Both flat by default
-            // (byte-identical), rounded into a pill when a modern style is set.
+            // (byte-identical), rounded into a pill when a modern style is set. Opacity fades every colour's alpha.
             if (IsOn && Enabled) GuiDraw.HoverGlow(batch, white, Bounds, Style);
-            GuiDraw.FillStyled(batch, white, Bounds, Style with { BorderThickness = 1f }, track, border);
+            GuiDraw.FillStyled(batch, white, Bounds, Style with { BorderThickness = 1f },
+                GuiDraw.WithOpacity(track, Opacity), GuiDraw.WithOpacity(border, Opacity));
 
             float pad = 2f;
             float thumbSize = Bounds.Height - pad * 2f;
             float thumbX = IsOn ? Bounds.Right - thumbSize - pad : Bounds.X + pad;
             GuiDraw.FillStyled(batch, white, new Rect(thumbX, Bounds.Y + pad, thumbSize, thumbSize),
-                Style with { BorderThickness = 0f }, ThumbColor, default);
+                Style with { BorderThickness = 0f }, GuiDraw.WithOpacity(ThumbColor, Opacity), default);
         }
     }
 }

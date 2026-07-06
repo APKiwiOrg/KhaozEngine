@@ -21,6 +21,17 @@ namespace KhaozEngine.Gui
         /// <summary>When false, the slider neither drags nor reports changes.</summary>
         public bool Enabled = true;
 
+        /// <summary>True on the frame a drag (or, via the wired overload, a keyboard/gamepad nudge) changed
+        /// <see cref="Value"/>. A convenience mirror of the <see cref="Update(Pointer)"/> return value for callers
+        /// that drive the widget and inspect it later in the frame rather than at the call site.</summary>
+        public bool WasChanged { get; private set; }
+
+        /// <summary>
+        /// Uniform fade multiplied into every colour's alpha at draw time (1 = opaque). Lets a caller fade the whole
+        /// slider in/out with a host transition. Default 1 is a no-op. Mirrors <see cref="Dropdown.Opacity"/>.
+        /// </summary>
+        public float Opacity = 1f;
+
         public Vector4 TrackColor = GuiTheme.Default.Surface;
         public Vector4 BorderColor = GuiTheme.Default.Border;
         public Vector4 FillColor = GuiTheme.Default.Accent;
@@ -51,6 +62,7 @@ namespace KhaozEngine.Gui
         /// <summary>Hit-test against the pointer and update <see cref="Value"/>. Returns true if the value changed.</summary>
         public bool Update(Pointer pointer)
         {
+            WasChanged = false;
             pointer.BlockRegion(Bounds); // reserve the track for click-through, even when disabled
             if (!Enabled) { _dragging = false; return false; }
 
@@ -67,6 +79,7 @@ namespace KhaozEngine.Gui
             float newValue = Math.Clamp(t, 0f, 1f);
             if (newValue == Value) return false;
             Value = newValue;
+            WasChanged = true;
             return true;
         }
 
@@ -83,6 +96,7 @@ namespace KhaozEngine.Gui
             if (!focused) return changed;
             if (input.IsSelectNext(player)) { if (Nudge(NudgeStep)) changed = true; }
             else if (input.IsSelectPrevious(player)) { if (Nudge(-NudgeStep)) changed = true; }
+            WasChanged = changed;
             return changed;
         }
 
@@ -102,20 +116,21 @@ namespace KhaozEngine.Gui
         /// <summary>Draw the track, fill, and thumb. <paramref name="white"/> is a 1x1 white texture.</summary>
         public void Draw(SpriteBatch batch, Texture2D white)
         {
-            GuiDraw.Fill(batch, white, Bounds, TrackColor);
-            GuiDraw.Border(batch, white, Bounds, 1f, BorderColor);
+            GuiDraw.Fill(batch, white, Bounds, GuiDraw.WithOpacity(TrackColor, Opacity));
+            GuiDraw.Border(batch, white, Bounds, 1f, GuiDraw.WithOpacity(BorderColor, Opacity));
 
             float fillW = Bounds.Width * Value;
             if (fillW > 0f)
-                GuiDraw.Fill(batch, white, new Rect(Bounds.X, Bounds.Y, fillW, Bounds.Height), FillColor);
+                GuiDraw.Fill(batch, white, new Rect(Bounds.X, Bounds.Y, fillW, Bounds.Height), GuiDraw.WithOpacity(FillColor, Opacity));
 
             float thumbX = Bounds.X + fillW - ThumbWidth * 0.5f;
             var thumb = new Rect(thumbX, Bounds.Y - 3f, ThumbWidth, Bounds.Height + 6f);
             // Thumb is the one styled element; the thumb has no border today, so force BorderThickness 0 (the flat
             // default then collapses to the same single Fill - byte-identical). A modern style rounds/shadows it.
+            // Opacity fades every colour's alpha.
             if (_dragging) GuiDraw.HoverGlow(batch, white, thumb, Style);
             GuiDraw.FillStyled(batch, white, thumb, Style with { BorderThickness = 0f },
-                _dragging ? ThumbDragColor : ThumbColor, default);
+                GuiDraw.WithOpacity(_dragging ? ThumbDragColor : ThumbColor, Opacity), default);
         }
     }
 }

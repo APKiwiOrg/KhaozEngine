@@ -612,6 +612,13 @@ The former `Title` / `DismissText` / `PrimaryActionText` string members and the 
 `Stat(string, ...)` factories remain as `[Obsolete]` shims (the string factories are `[LocalizationStringSink]`,
 so the analyzer flags a raw literal passed to them).
 
+Content that overflows the auto-sized panel scrolls: call `popup.Update(pointer, frame.Input.ScrollDelta)` (the
+wheel overload) to enable wheel + drag-to-scroll (scissor-clipped; `ScrollOffset` reads back, `ScrollWheelSpeed`
+tunes wheel speed). Set `WrapLongLabels = true` to wrap a stat row whose value is empty across the content width,
+`PopupRow.Stat(label, value, valueColor, iconColor)` for a colour swatch before the label, and `Opacity` (0..1) to
+fade the whole popup with a host screen transition. `Toggle` / `Slider` / `TextInput` carry the same `Opacity` knob;
+`TextInput` adds `SetText(value)`, public `Focus()` / `Unfocus()`, and a `LocalizedText` `PlaceholderContent`.
+
 ---
 
 ## Render2D (`KhaozEngine.Render2D`)

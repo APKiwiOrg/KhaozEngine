@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.App;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
@@ -9,8 +10,9 @@ namespace KhaozEngine.Gui
     /// <summary>
     /// A single-line text field over <see cref="Pointer"/> + <see cref="TextEntry"/>: a tap inside focuses it,
     /// a tap outside unfocuses; while focused, this frame's typed keys edit <see cref="Text"/> (and Ctrl+V / Cmd+V
-    /// pastes the clipboard). Draws a bordered field with the text (or <see cref="Placeholder"/>) and a blinking
-    /// caret. Typed input comes from the headless key-mapping in TextEntry.
+    /// pastes the clipboard). Draws a bordered field with the text (or the <see cref="PlaceholderContent"/>) and a
+    /// blinking caret. Typed input comes from the headless key-mapping in TextEntry. <see cref="SetText"/> replaces
+    /// the buffer programmatically and is picked up (with <see cref="TextChanged"/>) on the next <see cref="Update"/>.
     /// </summary>
     public sealed class TextInput
     {
@@ -18,11 +20,22 @@ namespace KhaozEngine.Gui
         public string Text = "";
         public bool IsFocused;
         public int MaxLength = 32;
-        public string Placeholder = "";
         public Func<char, bool>? CharFilter;
         public SpriteFont? Font;
 
-        /// <summary>True on the frame <see cref="Text"/> changed.</summary>
+        /// <summary>The (lazily resolved) placeholder text drawn when the field is empty. Defaults to empty.</summary>
+        public LocalizedText PlaceholderContent;
+
+        /// <summary>Obsolete shim for the former string field. Setting <c>Placeholder</c> stores a raw, non-localized value.</summary>
+        [Obsolete("Use PlaceholderContent (LocalizedText). Setting Placeholder stores a raw, non-localized value.")]
+        [LocalizationExempt]
+        public string Placeholder
+        {
+            get => PlaceholderContent.Resolve();
+            set => PlaceholderContent = LocalizedText.Raw(value);
+        }
+
+        /// <summary>True on the frame <see cref="Text"/> changed (by typing or a <see cref="SetText"/> call).</summary>
         public bool TextChanged { get; private set; }
         /// <summary>Whether the caret is currently in its visible blink phase.</summary>
         public bool CursorVisible { get; private set; } = true;
@@ -43,34 +56,59 @@ namespace KhaozEngine.Gui
         /// </summary>
         public GuiStyle Style = GuiStyle.Default;
 
+        /// <summary>
+        /// Uniform fade multiplied into every colour's alpha at draw time (1 = opaque). Lets a caller fade the whole
+        /// field in/out with a host transition. Default 1 is a no-op. Mirrors <see cref="Dropdown.Opacity"/>.
+        /// </summary>
+        public float Opacity = 1f;
+
         const float BlinkRate = 0.5f;
         const float PadX = 8f;
         float _blink;
+        string _previousText = "";
 
         public TextInput(Rect bounds, SpriteFont? font = null) { Bounds = bounds; Font = font; }
+
+        /// <summary>
+        /// Replace the buffer programmatically (e.g. a suggested value), clamped to <see cref="MaxLength"/>. The next
+        /// <see cref="Update"/> sees the change and raises <see cref="TextChanged"/>, so consumers re-validate exactly
+        /// as they do for typed input.
+        /// </summary>
+        public void SetText(string value)
+        {
+            string next = value ?? "";
+            if (next.Length > MaxLength) next = next.Substring(0, MaxLength);
+            Text = next;
+        }
 
         /// <summary>Update focus, typing, and caret blink. Returns whether the field is focused (consumes keyboard).</summary>
         public bool Update(Pointer pointer, InputState input, float dt)
         {
-            TextChanged = false;
-
             pointer.BlockRegion(Bounds); // reserve the field for click-through (the click-through gate)
             if (pointer.IsTapIn(Bounds)) Focus();
-            else if (pointer.IsReleasedOutside(Bounds)) IsFocused = false;
+            else if (pointer.IsReleasedOutside(Bounds)) Unfocus();
 
             if (IsFocused)
             {
-                string before = Text;
                 Text = TextEntry.Apply(Text, input, MaxLength, CharFilter);
-                if (Text != before) { TextChanged = true; ResetBlink(); }
 
                 _blink += dt;
                 while (_blink >= BlinkRate) { _blink -= BlinkRate; CursorVisible = !CursorVisible; }
             }
+
+            // Detect change from either typing or a SetText call (compared against last frame's buffer).
+            TextChanged = Text != _previousText;
+            if (TextChanged) ResetBlink();
+            _previousText = Text;
             return IsFocused;
         }
 
-        void Focus() { if (!IsFocused) { IsFocused = true; ResetBlink(); } }
+        /// <summary>Give the field keyboard focus (resets the caret blink). No-op if already focused.</summary>
+        public void Focus() { if (!IsFocused) { IsFocused = true; ResetBlink(); } }
+
+        /// <summary>Remove keyboard focus. No-op if not focused.</summary>
+        public void Unfocus() { IsFocused = false; }
+
         void ResetBlink() { CursorVisible = true; _blink = 0f; }
 
         /// <summary>Draw the field, text/placeholder, and caret. <paramref name="white"/> is a 1x1 white texture.</summary>
@@ -79,19 +117,19 @@ namespace KhaozEngine.Gui
             if (Font == null) return;
             if (IsFocused) GuiDraw.HoverGlow(batch, white, Bounds, Style);
             GuiDraw.FillStyled(batch, white, Bounds, Style with { BorderThickness = 1f },
-                Background, IsFocused ? BorderFocused : Border);
+                GuiDraw.WithOpacity(Background, Opacity), GuiDraw.WithOpacity(IsFocused ? BorderFocused : Border, Opacity));
 
             float textX = Bounds.X + PadX;
             float textY = Bounds.Y + (Bounds.Height - Font.LineHeight) * 0.5f;
             bool empty = Text.Length == 0;
-            string shown = empty ? Placeholder : Text;
+            string shown = empty ? PlaceholderContent.Resolve() : Text;
             batch.DrawString(Font, shown, new Vector2(MathF.Floor(textX), MathF.Floor(textY)),
-                (Color)(empty ? PlaceholderColor : TextColor));
+                (Color)GuiDraw.WithOpacity(empty ? PlaceholderColor : TextColor, Opacity));
 
             if (IsFocused && CursorVisible)
             {
                 float caretX = textX + (empty ? 0f : Font.Measure(Text).X) + 1f;
-                GuiDraw.Fill(batch, white, new Rect(caretX, Bounds.Y + 4f, 2f, Bounds.Height - 8f), CursorColor);
+                GuiDraw.Fill(batch, white, new Rect(caretX, Bounds.Y + 4f, 2f, Bounds.Height - 8f), GuiDraw.WithOpacity(CursorColor, Opacity));
             }
         }
     }

@@ -246,7 +246,7 @@ namespace KhaozEngine.Showcase
             _title = new Label(Layout.Resolve(db, Anchor.Top, db.Width, 40, marginY: 28), ShowcaseStrings.WidgetsTitle, _a.Big) { Align = TextAlign.Center };
 
             _nameLabel = new Label(new Rect(120, 92, 260, 18), ShowcaseStrings.WidgetsName, _a.Small);
-            _name = new TextInput(new Rect(120, 112, 260, 32), _a.Small) { Placeholder = "type a name", MaxLength = 16 };
+            _name = new TextInput(new Rect(120, 112, 260, 32), _a.Small) { PlaceholderContent = ShowcaseStrings.WidgetsNamePlaceholder, MaxLength = 16 };
 
             _diffLabel = new Label(new Rect(120, 158, 260, 18), ShowcaseStrings.WidgetsDifficulty, _a.Small);
             _difficulty = new Dropdown(

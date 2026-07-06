@@ -19,12 +19,16 @@ namespace KhaozEngine.Gui
     /// </summary>
     public readonly record struct PopupRow(PopupRowType Type, string Label, string Value, Vector4 ValueColor)
     {
+        /// <summary>Optional icon colour, drawn as a small filled square before the label (null = no icon).</summary>
+        public Vector4? IconColor { get; init; }
+
         /// <summary>A section header from localized text (resolved now against the ambient catalog).</summary>
         public static PopupRow Header(LocalizedText text) => new(PopupRowType.Header, text.Resolve(), "", Vector4.One);
 
-        /// <summary>A label/value stat from localized text (both resolved now against the ambient catalog).</summary>
-        public static PopupRow Stat(LocalizedText label, LocalizedText value, Vector4 valueColor)
-            => new(PopupRowType.Stat, label.Resolve(), value.Resolve(), valueColor);
+        /// <summary>A label/value stat from localized text (both resolved now against the ambient catalog), with an
+        /// optional <paramref name="iconColor"/> swatch drawn before the label.</summary>
+        public static PopupRow Stat(LocalizedText label, LocalizedText value, Vector4 valueColor, Vector4? iconColor = null)
+            => new(PopupRowType.Stat, label.Resolve(), value.Resolve(), valueColor) { IconColor = iconColor };
 
         public static PopupRow Spacer() => new(PopupRowType.Spacer, "", "", Vector4.Zero);
 
@@ -42,7 +46,7 @@ namespace KhaozEngine.Gui
     /// <summary>
     /// A modal dialog: dimmed scrim, centered panel auto-sized to its rows (clamped between <see cref="MinHeight"/>
     /// and <see cref="MaxHeightFraction"/> of the viewport), a title bar, label/value content rows, and a footer
-    /// with a dismiss button (plus an optional primary action). <see cref="Update"/> blocks the pointer over the
+    /// with a dismiss button (plus an optional primary action). <see cref="Update(Pointer)"/> blocks the pointer over the
     /// panel so the screen beneath ignores clicks. Internal scroll lives in <see cref="ScrollablePanel"/>.
     /// </summary>
     public sealed class PopupPanel
@@ -128,18 +132,75 @@ namespace KhaozEngine.Gui
         /// </summary>
         public GuiStyle Style = GuiStyle.Default;
 
+        /// <summary>
+        /// Uniform fade multiplied into every colour's alpha at draw time (1 = opaque). Lets a caller fade the whole
+        /// popup in/out with a host transition. Default 1 is a no-op. Mirrors <see cref="Dropdown.Opacity"/>.
+        /// </summary>
+        public float Opacity = 1f;
+
+        /// <summary>
+        /// When true, a stat row with an empty <see cref="PopupRow.Value"/> wraps its label across the content width
+        /// (growing the row's height to fit) instead of drawing a single clipped line. Needs <see cref="BodyFont"/>.
+        /// Default false keeps every existing consumer byte-identical.
+        /// </summary>
+        public bool WrapLongLabels = false;
+
+        /// <summary>Side length, in design units, of a <see cref="PopupRow.IconColor"/> swatch (and the 5-unit gap after it).</summary>
+        public float IconSize = 10f;
+
+        /// <summary>Design units the content scrolls per unit of wheel-scroll delta. Only bites when content overflows.</summary>
+        public float ScrollWheelSpeed = 30f;
+
+        float _scrollOffset;
+
+        /// <summary>The current vertical scroll offset in design units (0 at the top). Clamped to the content overflow;
+        /// always 0 when the content fits. Read-only: driven by wheel / drag-to-scroll in <see cref="Update(Pointer, float)"/>.</summary>
+        public float ScrollOffset => _scrollOffset;
+
         public SpriteFont? TitleFont, BodyFont;
 
         public PopupPanel() { }
 
-        /// <summary>Replace the content rows. Call before <see cref="Update"/>/<see cref="Draw"/>.</summary>
-        public void SetRows(IReadOnlyList<PopupRow> rows) { _rows.Clear(); _rows.AddRange(rows); }
+        /// <summary>Replace the content rows (resetting the scroll offset when the content actually changes). Call
+        /// before <see cref="Update(Pointer)"/>/<see cref="Draw"/>. A no-op when the rows are value-equal to the current set,
+        /// so calling it every frame does not reset an in-progress scroll.</summary>
+        public void SetRows(IReadOnlyList<PopupRow> rows)
+        {
+            bool changed = _rows.Count != rows.Count;
+            if (!changed)
+                for (int i = 0; i < rows.Count; i++)
+                    if (_rows[i] != rows[i]) { changed = true; break; }
+            if (!changed) return;
 
-        float ContentHeight()
+            _rows.Clear();
+            _rows.AddRange(rows);
+            _scrollOffset = 0f;
+        }
+
+        const float IconGap = 5f;
+
+        // The horizontal indent (icon swatch + gap) a row's label starts at, so wrap width and draw agree.
+        float LabelIndent(in PopupRow row) => row.IconColor.HasValue ? IconSize + IconGap : 0f;
+
+        float RowHeightOf(in PopupRow row, float contentWidth)
+        {
+            switch (row.Type)
+            {
+                case PopupRowType.Header: return HeaderRowHeight;
+                case PopupRowType.Spacer: return SpacerHeight;
+                default:
+                    if (!WrapLongLabels || BodyFont == null || !string.IsNullOrEmpty(row.Value))
+                        return RowHeight;
+                    float labelWidth = MathF.Max(1f, contentWidth - LabelIndent(row));
+                    return MathF.Max(RowHeight, TextLayout.MeasureWrappedHeight(BodyFont, row.Label, labelWidth));
+            }
+        }
+
+        float ContentHeight(float contentWidth)
         {
             float h = 0f;
             foreach (var r in _rows)
-                h += r.Type switch { PopupRowType.Header => HeaderRowHeight, PopupRowType.Spacer => SpacerHeight, _ => RowHeight };
+                h += RowHeightOf(r, contentWidth);
             return h;
         }
 
@@ -151,7 +212,8 @@ namespace KhaozEngine.Gui
                     "PopupPanel.Viewport is unset (Vector2.Zero); assign the design viewport size before layout/draw.");
             float panelW = Viewport.X * WidthFraction;
             float maxH = Viewport.Y * MaxHeightFraction;
-            float totalH = Math.Clamp(TitleBarHeight + ContentHeight() + FooterHeight + ContentPadding * 2f, MinHeight, maxH);
+            float contentW = MathF.Max(1f, panelW - ContentPadding * 2f);
+            float totalH = Math.Clamp(TitleBarHeight + ContentHeight(contentW) + FooterHeight + ContentPadding * 2f, MinHeight, maxH);
             float x = (Viewport.X - panelW) * 0.5f;
             float y = (Viewport.Y - totalH) * 0.4f;   // slightly above center
             return new Rect(x, y, panelW, totalH);
@@ -168,6 +230,10 @@ namespace KhaozEngine.Gui
 
         const float BtnW = 130f, BtnH = 30f, BtnGap = 10f;
 
+        // When both footer buttons share the row they shrink to fit a narrow panel: half the inner width less the gap,
+        // capped at the fixed BtnW. A wide panel keeps the full 130 so single-and-wide layouts stay byte-identical.
+        float TwoButtonWidth(Rect p) => MathF.Min(BtnW, (p.Width - ContentPadding * 2f - BtnGap) * 0.5f);
+
         /// <summary>The dismiss button rectangle (left button when a primary action is shown, else centered).</summary>
         public Rect DismissBounds()
         {
@@ -175,9 +241,10 @@ namespace KhaozEngine.Gui
             float by = p.Bottom - FooterHeight + (FooterHeight - BtnH) * 0.5f;
             if (!ShowPrimaryAction)
                 return new Rect(p.X + (p.Width - BtnW) * 0.5f, by, BtnW, BtnH);
-            float total = BtnW * 2f + BtnGap;
+            float w = TwoButtonWidth(p);
+            float total = w * 2f + BtnGap;
             float bx = p.X + (p.Width - total) * 0.5f;
-            return new Rect(bx, by, BtnW, BtnH);
+            return new Rect(bx, by, w, BtnH);
         }
 
         /// <summary>The primary-action button rectangle (right of dismiss); empty when not shown.</summary>
@@ -185,14 +252,35 @@ namespace KhaozEngine.Gui
         {
             if (!ShowPrimaryAction) return new Rect(0, 0, 0, 0);
             Rect d = DismissBounds();
-            return new Rect(d.Right + BtnGap, d.Y, BtnW, BtnH);
+            return new Rect(d.Right + BtnGap, d.Y, d.Width, BtnH);
         }
 
         /// <summary>Reserve the panel region, hit-test the footer buttons. Returns true if dismiss was tapped.</summary>
-        public bool Update(Pointer pointer)
+        public bool Update(Pointer pointer) => Update(pointer, 0f);
+
+        /// <summary>
+        /// Reserve the panel region, scroll the content on wheel (<paramref name="wheelDelta"/>, e.g.
+        /// <c>InputState.ScrollDelta</c>) and drag-to-scroll, and hit-test the footer buttons. Returns true if dismiss
+        /// was tapped. Scrolling only bites when the content overflows the content area; otherwise this is the same as
+        /// the wheel-less overload.
+        /// </summary>
+        public bool Update(Pointer pointer, float wheelDelta)
         {
             WasPrimaryActionClicked = false;
             pointer.BlockRegion(PanelRect());
+
+            Rect content = ContentRect();
+            if (wheelDelta != 0f && pointer.IsPointerIn(content))
+            {
+                _scrollOffset -= wheelDelta * ScrollWheelSpeed;
+                ClampScroll(content);
+            }
+            Vector2 drag = pointer.GetDragDelta(content);
+            if (drag.Y != 0f)
+            {
+                _scrollOffset -= drag.Y;
+                ClampScroll(content);
+            }
 
             if (ShowPrimaryAction && PrimaryActionEnabled && pointer.IsTapIn(PrimaryBounds()))
                 WasPrimaryActionClicked = true;
@@ -200,47 +288,82 @@ namespace KhaozEngine.Gui
             return pointer.IsTapIn(DismissBounds());
         }
 
+        void ClampScroll(Rect content)
+        {
+            float maxScroll = MathF.Max(0f, ContentHeight(content.Width) - content.Height);
+            _scrollOffset = Math.Clamp(_scrollOffset, 0f, maxScroll);
+        }
+
         /// <summary>Draw the full popup. <paramref name="white"/> is a 1x1 white texture.</summary>
         public void Draw(SpriteBatch batch, Texture2D white, Pointer pointer)
         {
             Rect p = PanelRect();
-            GuiDraw.Fill(batch, white, new Rect(0, 0, Viewport.X, Viewport.Y), new Vector4(ScrimColor.X, ScrimColor.Y, ScrimColor.Z, ScrimOpacity));
-            GuiDraw.FillStyled(batch, white, p, Style with { BorderThickness = 1f }, PanelColor, PanelBorder);
-            GuiDraw.Fill(batch, white, new Rect(p.X, p.Y, p.Width, TitleBarHeight), TitleBarColor);
+            GuiDraw.Fill(batch, white, new Rect(0, 0, Viewport.X, Viewport.Y),
+                new Vector4(ScrimColor.X, ScrimColor.Y, ScrimColor.Z, ScrimOpacity * Opacity));
+            GuiDraw.FillStyled(batch, white, p, Style with { BorderThickness = 1f },
+                GuiDraw.WithOpacity(PanelColor, Opacity), GuiDraw.WithOpacity(PanelBorder, Opacity));
+            GuiDraw.Fill(batch, white, new Rect(p.X, p.Y, p.Width, TitleBarHeight), GuiDraw.WithOpacity(TitleBarColor, Opacity));
 
             if (TitleFont != null)
                 TextLayout.DrawAligned(batch, TitleFont, TitleContent.Resolve(), p.X, p.Width,
-                    p.Y + (TitleBarHeight - TitleFont.LineHeight) * 0.5f, TextAlign.Center, (Color)TitleColor);
+                    p.Y + (TitleBarHeight - TitleFont.LineHeight) * 0.5f, TextAlign.Center, (Color)GuiDraw.WithOpacity(TitleColor, Opacity));
 
-            if (BodyFont != null) DrawRows(batch);
+            if (BodyFont != null)
+            {
+                Rect content = ContentRect();
+                batch.SetScissor(content);
+                DrawRows(batch, white, content);
+                batch.ClearScissor();
+            }
 
             DrawButton(batch, white, DismissBounds(), DismissContent.Resolve(), DismissColor, true, pointer);
             if (ShowPrimaryAction)
                 DrawButton(batch, white, PrimaryBounds(), PrimaryActionContent.Resolve(), PrimaryColor, PrimaryActionEnabled, pointer);
         }
 
-        void DrawRows(SpriteBatch batch)
+        void DrawRows(SpriteBatch batch, Texture2D white, Rect c)
         {
-            Rect c = ContentRect();
-            float y = c.Y;
+            float y = c.Y - _scrollOffset;
             foreach (var r in _rows)
             {
+                float rowH = RowHeightOf(r, c.Width);
                 switch (r.Type)
                 {
                     case PopupRowType.Header:
-                        TextLayout.DrawAligned(batch, BodyFont!, r.Label, c.X, c.Width, y + 6f, TextAlign.Left, (Color)HeaderColor);
-                        y += HeaderRowHeight;
+                        TextLayout.DrawAligned(batch, BodyFont!, r.Label, c.X, c.Width, y + 6f, TextAlign.Left,
+                            (Color)GuiDraw.WithOpacity(HeaderColor, Opacity));
                         break;
                     case PopupRowType.Stat:
-                        float ty = y + (RowHeight - BodyFont!.LineHeight) * 0.5f;
-                        TextLayout.DrawAligned(batch, BodyFont!, r.Label, c.X, c.Width, ty, TextAlign.Left, (Color)LabelColor);
-                        TextLayout.DrawAligned(batch, BodyFont!, r.Value, c.X, c.Width, ty, TextAlign.Right, (Color)r.ValueColor);
-                        y += RowHeight;
+                        float labelX = c.X;
+                        if (r.IconColor.HasValue)
+                        {
+                            var swatch = new Rect(c.X, y + (rowH - IconSize) * 0.5f, IconSize, IconSize);
+                            GuiDraw.Fill(batch, white, swatch, GuiDraw.WithOpacity(r.IconColor.Value, Opacity));
+                            GuiDraw.Border(batch, white, swatch, 1f, GuiDraw.WithOpacity(PanelBorder, Opacity));
+                            labelX = c.X + IconSize + IconGap;
+                        }
+                        float labelW = c.Right - labelX;
+
+                        if (WrapLongLabels && string.IsNullOrEmpty(r.Value))
+                        {
+                            float textH = TextLayout.MeasureWrappedHeight(BodyFont!, r.Label, labelW);
+                            float ly = y + MathF.Max(0f, (rowH - textH) * 0.5f);
+                            TextLayout.DrawWrapped(batch, BodyFont!, r.Label, new Vector2(labelX, ly), labelW,
+                                TextAlign.Left, (Color)GuiDraw.WithOpacity(LabelColor, Opacity));
+                        }
+                        else
+                        {
+                            float ty = y + (RowHeight - BodyFont!.LineHeight) * 0.5f;
+                            TextLayout.DrawAligned(batch, BodyFont!, r.Label, labelX, labelW, ty, TextAlign.Left,
+                                (Color)GuiDraw.WithOpacity(LabelColor, Opacity));
+                            TextLayout.DrawAligned(batch, BodyFont!, r.Value, c.X, c.Width, ty, TextAlign.Right,
+                                (Color)GuiDraw.WithOpacity(r.ValueColor, Opacity));
+                        }
                         break;
                     case PopupRowType.Spacer:
-                        y += SpacerHeight;
                         break;
                 }
+                y += rowH;
             }
         }
 
@@ -251,15 +374,15 @@ namespace KhaozEngine.Gui
         GuiStyle ButtonStyle(Vector4 fill)
         {
             var s = Style;
-            s.Fill = fill;
-            s.Hover = fill * 1.3f;
-            s.Press = fill * 1.15f;
-            s.Border = PanelBorder;
-            s.Text = Vector4.One;
-            s.DisabledFill = DisabledColor;
-            s.DisabledText = Vector4.One;
-            s.SelectedFill = fill;
-            s.SelectedBorder = PanelBorder;
+            s.Fill = GuiDraw.WithOpacity(fill, Opacity);
+            s.Hover = GuiDraw.WithOpacity(fill * 1.3f, Opacity);
+            s.Press = GuiDraw.WithOpacity(fill * 1.15f, Opacity);
+            s.Border = GuiDraw.WithOpacity(PanelBorder, Opacity);
+            s.Text = GuiDraw.WithOpacity(Vector4.One, Opacity);
+            s.DisabledFill = GuiDraw.WithOpacity(DisabledColor, Opacity);
+            s.DisabledText = GuiDraw.WithOpacity(Vector4.One, Opacity);
+            s.SelectedFill = GuiDraw.WithOpacity(fill, Opacity);
+            s.SelectedBorder = GuiDraw.WithOpacity(PanelBorder, Opacity);
             s.BorderThickness = 1f;
             return s;
         }
@@ -270,7 +393,7 @@ namespace KhaozEngine.Gui
             // press-origin affordance (IsPressingIn) instead of hand-rolling fill+hover+label here.
             if (BodyFont == null)
             {
-                GuiDraw.Fill(batch, white, r, enabled ? color : DisabledColor);
+                GuiDraw.Fill(batch, white, r, GuiDraw.WithOpacity(enabled ? color : DisabledColor, Opacity));
                 return;
             }
             GuiDraw.DrawButton(batch, white, BodyFont, r, LocalizedText.Raw(text), ButtonStyle(color), enabled,

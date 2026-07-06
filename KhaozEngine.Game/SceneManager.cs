@@ -28,6 +28,14 @@ namespace KhaozEngine.Game
         /// <summary>The design-space viewport (or null for raw window-pixel coordinates). The game sets this before <see cref="Update"/>.</summary>
         public IDesignViewport? Viewport { get; set; }
 
+        /// <summary>The point-space UI viewport for <see cref="GameScene.OnDrawUi"/> (or null when the game does not
+        /// use a DPI-aware UI pass). The game sets this before <see cref="Update"/>; scenes read it via <c>Manager.UiViewport</c>.</summary>
+        public UiViewport? UiViewport { get; set; }
+
+        /// <summary>The point-space pointer for hit-testing in <see cref="GameScene.OnDrawUi"/> (mapped through
+        /// <see cref="UiViewport"/>). The game sets this before <see cref="Update"/>; scenes hit-test via <c>Manager.UiPointer</c>.</summary>
+        public Pointer? UiPointer { get; set; }
+
         /// <summary>This frame's window width in points. Set by the game (or by <see cref="Resize"/>).</summary>
         public int FrameWidth { get; set; }
 
@@ -107,6 +115,15 @@ namespace KhaozEngine.Game
             int from = FirstVisibleIndex();
             for (int i = from; i < _scenes.Count; i++)
                 _scenes[i].OnDraw2D(batch);
+        }
+
+        /// <summary>Draw the visible scenes' point-space UI layer bottom-to-top (<see cref="GameScene.OnDrawUi"/>),
+        /// in a separate pass after <see cref="Draw2D"/>. No-op if empty.</summary>
+        public void DrawUi(SpriteBatch batch)
+        {
+            int from = FirstVisibleIndex();
+            for (int i = from; i < _scenes.Count; i++)
+                _scenes[i].OnDrawUi(batch);
         }
 
         /// <summary>Set <see cref="FrameWidth"/>/<see cref="FrameHeight"/> and forward <see cref="GameScene.OnResize"/> to every scene.</summary>

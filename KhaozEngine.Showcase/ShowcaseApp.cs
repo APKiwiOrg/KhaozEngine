@@ -22,7 +22,7 @@ namespace KhaozEngine.Showcase
         public readonly List<(string Name, Func<GameScene> Factory)> Rooms = new();
 
         Texture2D _white = null!;
-        SpriteFont _hud = null!;
+        DpiFont _readoutFont = null!;   // point-space readout: baked at the live DPI scale so the overlay stays crisp
 
         // Runtime display-settings smoke controls (F7-F10), driven through the GameApp.Display surface. The cap /
         // resolution cycles walk fixed tables; window mode + present mode toggle. Overlaid state is drawn each frame.
@@ -56,7 +56,7 @@ namespace KhaozEngine.Showcase
             var checker = Surface2D.CreateTexture(Room2D.Checker(64), 64, 64);
             var big = Surface2D.LoadDefaultFont(40f);
             var small = Surface2D.LoadDefaultFont(22f);
-            _hud = small; // reused for the display-settings readout overlay
+            _readoutFont = Surface2D.LoadDefaultDpiFont(22f); // crisp point-space overlay text
             Rooms.Add(("2D sprites + text", () => new Room2D().Init(_white, checker, big, small)));
 
             // RoomGui reuses the same big/small fonts (its own GuiAssets just wraps them alongside the white
@@ -77,7 +77,11 @@ namespace KhaozEngine.Showcase
             // UDP, demonstrating predict/replicate/reconcile netcode. Reuses the same shared Scene3D as Room3D.
             Rooms.Add(("Networked walk", () => new RoomNet().Init(Scene, _white, small)));
 
-            _scenes.Push(new MenuScene(_white, big, small, Rooms));
+            // The landing menu draws through the point-space UI pass, so its fonts are DpiFonts (baked at the live
+            // DPI scale, re-baked only on a DPI change) - crisp title + row text on HiDPI.
+            var menuTitle = Surface2D.LoadDefaultDpiFont(40f);
+            var menuRow = Surface2D.LoadDefaultDpiFont(22f);
+            _scenes.Push(new MenuScene(_white, menuTitle, menuRow, Rooms));
 
             // Smoke aid: KE_SHOWCASE_ROOM=<name> auto-enters that room, so a headless KE_MAX_FRAMES run actually
             // exercises the room's OnEnter/OnUpdate/OnDraw (the menu alone never builds a room's world). The push
@@ -96,6 +100,8 @@ namespace KhaozEngine.Showcase
             _scenes.Input = Input;
             _scenes.Pointer = Pointer;
             _scenes.Viewport = Viewport;
+            _scenes.UiViewport = Ui;
+            _scenes.UiPointer = UiPointer;
             _scenes.FrameWidth = FrameWidth;
             _scenes.FrameHeight = FrameHeight;
 
@@ -112,9 +118,13 @@ namespace KhaozEngine.Showcase
             _scenes.Update(dt);
         }
 
-        protected override void OnDraw2D(SpriteBatch batch)
+        protected override void OnDraw2D(SpriteBatch batch) => _scenes.Draw2D(batch);
+
+        // The point-space UI pass (crisp on HiDPI): the scenes' own OnDrawUi (the menu), then the app-level display
+        // readout overlay on top.
+        protected override void OnDrawUi(SpriteBatch batch)
         {
-            _scenes.Draw2D(batch);
+            _scenes.DrawUi(batch);
             DrawDisplayReadout(batch);
         }
 
@@ -152,18 +162,19 @@ namespace KhaozEngine.Showcase
         }
 
         /// <summary>Draw the current <see cref="DisplaySettings"/> plus the framebuffer size and backend as a bar at
-        /// the bottom, so a windowed run visibly confirms each live change (and any tearing when vsync is off).</summary>
+        /// the bottom, so a windowed run visibly confirms each live change (and any tearing when vsync is off). Drawn
+        /// in the point-space UI pass: positioned on the point-space bounds and baked at the DPI scale, so it stays
+        /// put on resize and reads crisp on HiDPI.</summary>
         void DrawDisplayReadout(SpriteBatch batch)
         {
             DisplaySettings d = Display.CurrentDisplay;
             string cap = d.FrameCapHz > 0 ? $"{d.FrameCapHz}Hz" : "uncapped";
             string line = $"F7 vsync:{d.PresentMode}  F8 cap:{cap}  F9 mode:{d.WindowMode}  F10 res:{d.Width}x{d.Height}" +
                           $"   [fb {Window.FramebufferWidth}x{Window.FramebufferHeight}  {Backend}]";
-            // Position on the design bounds, not FrameWidth/FrameHeight (those are window pixels and drift on resize).
-            Rect db = Viewport.DesignBounds;
-            float y = db.Height - 30f;
-            batch.Draw(_white, new Vector4(0, y - 6f, db.Width, 32f), new Color(0f, 0f, 0f, 0.55f));
-            batch.DrawString(_hud, line, new Vector2(16f, y), new Color(0.85f, 0.95f, 1f, 1f));
+            SpriteFont font = _readoutFont.For(Ui.DpiScale);
+            float y = Ui.Height - 30f;
+            batch.Draw(_white, new Vector4(0, y - 6f, Ui.Width, 32f), new Color(0f, 0f, 0f, 0.55f));
+            batch.DrawString(font, line, new Vector2(16f, y), new Color(0.85f, 0.95f, 1f, 1f));
         }
     }
 }

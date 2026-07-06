@@ -20,7 +20,7 @@ namespace KhaozEngine.Tests.Game
             readonly List<string> _log;
             readonly string _name;
 
-            public int Enters, Exits, Updates, Resizes;
+            public int Enters, Exits, Updates, Resizes, UiDraws;
             public int LastResizeW, LastResizeH;
             public System.Action<float>? OnUpdateHook;
 
@@ -34,6 +34,9 @@ namespace KhaozEngine.Tests.Game
             public override void OnExit() { Exits++; _log.Add($"{_name}.Exit"); }
             public override void OnUpdate(float dt) { Updates++; _log.Add($"{_name}.Update"); OnUpdateHook?.Invoke(dt); }
             public override void OnResize(int w, int h) { Resizes++; LastResizeW = w; LastResizeH = h; }
+            // The routing passes the batch straight through without touching it, so tests can drive it with a null
+            // batch and just count the calls per visible scene.
+            public override void OnDrawUi(KhaozEngine.Render2D.SpriteBatch batch) { UiDraws++; _log.Add($"{_name}.DrawUi"); }
         }
 
         static (SceneManager m, List<string> log) NewManager()
@@ -222,6 +225,21 @@ namespace KhaozEngine.Tests.Game
             m.Push(c);
 
             Assert.Equal(0, m.FirstVisibleIndex());
+        }
+
+        [Fact]
+        public void DrawUi_routes_the_point_space_pass_to_the_visible_scenes_only()
+        {
+            var (m, log) = NewManager();
+            var a = new FakeScene("A", log);
+            var b = new FakeScene("B", log) { DrawBelow = false };   // hides A
+            m.Push(a);
+            m.Push(b);
+
+            m.DrawUi(null!);   // batch is passed through untouched by the routing
+
+            Assert.Equal(0, a.UiDraws);   // hidden -> not drawn
+            Assert.Equal(1, b.UiDraws);   // top -> drawn
         }
 
         [Fact]

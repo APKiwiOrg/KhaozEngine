@@ -24,6 +24,10 @@ namespace KhaozEngine.Render2D
         public SpriteFont LoadFont(FontManager fonts, string key, float pixelHeight, int oversample = 1) => _core.LoadFont(fonts.GetFontBytes(key), pixelHeight, oversample);
         /// <summary>Bake a <see cref="SpriteFont"/> from the engine's embedded default face (<see cref="DefaultFont"/>); no system font, no path.</summary>
         public SpriteFont LoadDefaultFont(float pixelHeight, int oversample = 1) => _core.LoadDefaultFont(pixelHeight, oversample);
+
+        /// <summary>A <see cref="DpiFont"/> baking at the live DPI scale (call <c>For(dpiScale)</c>); the offscreen
+        /// analogue used to verify point-space UI crispness headlessly.</summary>
+        public DpiFont LoadDpiFont(byte[] ttf, float pixelHeight) => _core.CreateDpiFont(ttf, pixelHeight);
     }
 
     /// <summary>Headless offscreen 2D render to a CPU RGBA buffer (no window). For tooling/tests; needs a Metal GPU.</summary>

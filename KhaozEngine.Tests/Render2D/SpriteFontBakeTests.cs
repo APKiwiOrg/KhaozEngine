@@ -6,7 +6,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Render2D
 {
     /// <summary>
-    /// Headless coverage for <see cref="SpriteFont.BakeCpu"/> (the device-free rasterization path): oversampling
+    /// Headless coverage for <see cref="SpriteFont.BakeCpu(byte[], float, float)"/> (the device-free path): oversampling
     /// must raise atlas texel density without changing the logical layout metrics, and the default (oversample 1)
     /// must keep the original 512x256 bake so existing GPU goldens stay byte-identical.
     /// </summary>
@@ -80,6 +80,52 @@ namespace KhaozEngine.Tests.Render2D
             for (int i = 3; i < three.Atlas.Length; i += 4)
                 if (three.Atlas[i] != 0) nonZero++;
             Assert.True(nonZero > 0);
+        }
+
+        [Fact]
+        public void Fractional_density_reports_its_reciprocal_render_scale()
+        {
+            // A DpiFont bakes at the exact device-pixel scale (e.g. 1.5x on a 150%-scaled display), not an integer
+            // oversample; RenderScale must be 1/density so DrawString lands the glyph at the logical size.
+            BakedFont d15 = SpriteFont.BakeCpu(Ttf(), 20f, 1.5f);
+            Assert.Equal(1f / 1.5f, d15.RenderScale, 5);
+        }
+
+        [Fact]
+        public void Fractional_density_atlas_falls_between_the_integer_steps()
+        {
+            BakedFont one = SpriteFont.BakeCpu(Ttf(), 20f, 1f);
+            BakedFont d15 = SpriteFont.BakeCpu(Ttf(), 20f, 1.5f);
+            BakedFont two = SpriteFont.BakeCpu(Ttf(), 20f, 2f);
+
+            Assert.Equal(512, d15.AtlasW);                       // width stays fixed
+            Assert.True(d15.AtlasH >= one.AtlasH);               // denser than logical
+            Assert.True(d15.AtlasH <= two.AtlasH);               // but not as tall as 2x
+        }
+
+        [Fact]
+        public void Fractional_density_keeps_logical_layout_metrics_invariant()
+        {
+            BakedFont one = SpriteFont.BakeCpu(Ttf(), 20f, 1f);
+            BakedFont d175 = SpriteFont.BakeCpu(Ttf(), 20f, 1.75f);
+
+            Assert.True(Math.Abs(one.LineHeight - d175.LineHeight) < 0.01f);
+            Assert.True(Math.Abs(one.Ascent - d175.Ascent) < 0.01f);
+            for (char c = (char)32; c < (char)127; c++)
+                Assert.True(Math.Abs(one.Glyphs[c].Advance - d175.Glyphs[c].Advance) < 0.01f);
+        }
+
+        [Fact]
+        public void Density_below_one_is_clamped_to_the_logical_bake()
+        {
+            // A DPI scale under 1 (a downscaled window) must never bake below logical density, so it collapses to
+            // the byte-identical density-1 atlas.
+            BakedFont half = SpriteFont.BakeCpu(Ttf(), 20f, 0.5f);
+            BakedFont one = SpriteFont.BakeCpu(Ttf(), 20f, 1f);
+
+            Assert.Equal(one.RenderScale, half.RenderScale, 5);
+            Assert.Equal(one.AtlasW, half.AtlasW);
+            Assert.Equal(one.AtlasH, half.AtlasH);
         }
     }
 }

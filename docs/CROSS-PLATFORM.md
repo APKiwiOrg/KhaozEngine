@@ -39,6 +39,11 @@ Apache-2.0) rather than an OS system-font path, so its glyph input is identical 
 Runs the golden tests (`--filter FullyQualifiedName~Golden`, `KE_GPU_TESTS=1`) per OS with its backend,
 `fail-fast: false`.
 
+`KE_GPU_TESTS` accepts two values. `1` is strict (CI and the dev Mac): tests run, and a device-creation
+failure is a test error, never a skip, so CI cannot go green with zero GPU coverage. `probe` is for
+arbitrary machines: a one-per-process headless device probe runs the tests when a device exists and
+skips them with the probe's failure reason when it does not.
+
 ### Golden naming contract
 
 The matrix selects tests by substring: a GPU test is run cross-platform **iff its fully-qualified name contains

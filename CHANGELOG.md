@@ -5,6 +5,14 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.18.2
+
+Depth-sorted transparency: alpha-blended 3D draws (colour and textured billboards, translucent overlay meshes) now sort back-to-front by view-space depth within each batch, so overlapping transparency composites correctly regardless of submission order. Rendering correctness fix, no public API change, patch bump. Existing goldens are unchanged on all three backends (no existing scene had order-dependent overlap), and a new golden pins the fix.
+
+- **`TransparencySort` (internal):** pure sort-key math (projection onto camera forward, not radial distance, so ordering is strafe-stable) with a stable equal-key fix-up so ties keep submission order (no frame-to-frame flicker), reused key/order buffers with geometric growth (no per-frame allocations), 11 headless tests.
+- **Scope:** applied to the alpha-blend paths in `BillboardRenderer`, `TexturedBillboardRenderer` (where additive and alpha quads interleave in one queue, additive being commutative), and `OverlayMeshRenderer`. Additive-only paths (beams, additive colour billboards) bypass the sort entirely (order-independent, zero cost). Cross-pass ordering between renderers is unchanged (documented follow-up on the roadmap). Per-instance granularity, not per-fragment.
+- **New golden `scene3d_alpha_overlap`** (all three backends): three overlapping alpha discs at different depths submitted front-to-back, the worst case for the old code, pinning correct back-to-front compositing.
+
 ## 10.18.1
 
 CI fix: pin the committed golden grid files to LF line endings via `.gitattributes`. The 10.18.0 byte-identity test (`GoldenGrid.Serialize` must reproduce the committed golden text exactly) failed on the Windows CI leg because git autocrlf checked the goldens out with CRLF while `Serialize` emits LF. Metal and Vulkan legs and all actual golden compares were green, so this was an endings-only failure. Test-infra fix, no engine code or behavior change, patch bump.

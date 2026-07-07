@@ -284,6 +284,34 @@ public sealed class UpdaterRelocationTests
         finally { Directory.Delete(dir, recursive: true); }
     }
 
+    [Fact]
+    public void Run_PosixNullSelfExe_SkipsWritabilityProbeAndApplies()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "ke-elev4-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        string configPath = Path.Combine(dir, "apply-update.json");
+        try
+        {
+            var env = new FakeUpdaterEnvironment
+            {
+                SelfExePath = null, // POSIX: no self-lock, no relocation, no elevation
+            };
+            env.NonWritableDirs.Add(Install); // would trigger elevation IF the probe ran
+            env.Files[StagingPath("game.dll")] = "v2";
+            env.Files[InstallPath("Game")] = "exe";
+
+            WriteConfig(configPath);
+
+            int exit = UpdateApplier.Run(new[] { "--apply", configPath }, env);
+
+            Assert.Equal(0, exit);
+            Assert.Equal(0, env.CanWriteToDirectoryCalls); // probe never ran on the POSIX path
+            Assert.False(env.ElevateCalled);
+            Assert.Equal("v2", env.Files[InstallPath("game.dll")]); // applied in place
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
     private static void WriteConfig(string configPath)
     {
         var config = new ApplyUpdateConfig

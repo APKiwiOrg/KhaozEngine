@@ -148,18 +148,18 @@ public static class UpdateApplier
 
         // Stage 1b: if this (possibly relocated) process cannot write the install dir, relaunch elevated
         // once so the atomic swap can replace files under a protected location (e.g. Program Files).
-        // --elevated guards the loop. A declined or unavailable elevation falls through to a clean in-place
-        // attempt (Apply rolls back if the write stays denied) instead of a crash.
-        if (!elevated && !environment.CanWriteToDirectory(config.InstallDir))
+        // GetSelfExecutablePath is null off Windows, so this whole block (including the writability probe)
+        // is skipped on macOS/Linux and their apply path stays untouched. --elevated guards the loop, and a
+        // declined or unavailable elevation falls through to a clean in-place attempt.
+        string? elevateSelfExe = environment.GetSelfExecutablePath();
+        if (!elevated && !string.IsNullOrEmpty(elevateSelfExe) && !environment.CanWriteToDirectory(config.InstallDir))
         {
-            string? selfExe = environment.GetSelfExecutablePath();
-            if (!string.IsNullOrEmpty(selfExe)
-                && environment.TryElevate(selfExe, configPath, environment.GetSelfBaseDirectory()))
+            if (environment.TryElevate(elevateSelfExe, configPath, environment.GetSelfBaseDirectory()))
             {
-                environment.Log("Install dir not writable; relaunched updater elevated.");
+                environment.Log("Install dir not writable. Relaunched updater elevated.");
                 return 0;
             }
-            environment.Log("Install dir not writable and elevation unavailable; attempting apply (will roll back if denied).");
+            environment.Log("Install dir not writable and elevation unavailable. Attempting apply, will roll back if denied.");
         }
 
         // The progress window lives only for the apply itself: created here (never during the Stage 1

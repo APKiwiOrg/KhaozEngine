@@ -176,7 +176,13 @@ internal sealed class FakeUpdaterEnvironment : IUpdaterEnvironment
     public string? ElevatedConfig;
     public string? ElevatedWorkdir;
 
-    public bool CanWriteToDirectory(string path) => !NonWritableDirs.Contains(path);
+    public int CanWriteToDirectoryCalls;
+
+    public bool CanWriteToDirectory(string path)
+    {
+        CanWriteToDirectoryCalls++;
+        return !NonWritableDirs.Contains(path);
+    }
 
     public bool TryElevate(string updaterExePath, string applyConfigPath, string workingDirectory)
     {

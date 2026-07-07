@@ -16,12 +16,13 @@ public class FileTokenCacheTests : IDisposable
         FileTokenCache cache = new(path);
         Assert.Null(await cache.LoadAsync());
         ProviderCredential cred = new("oidc", "tok", "refresh", DateTimeOffset.UtcNow.AddHours(1));
-        CachedSession s = new(cred, "session-tok", DateTimeOffset.UtcNow.AddHours(1), DateTimeOffset.UtcNow);
+        CachedSession s = new(cred, "session-tok", DateTimeOffset.UtcNow.AddHours(1), DateTimeOffset.UtcNow, "user-42");
         await cache.SaveAsync(s);
         CachedSession? loaded = await cache.LoadAsync();
         Assert.NotNull(loaded);
         Assert.Equal("tok", loaded!.Value.Credential.CredentialToken);
         Assert.Equal("session-tok", loaded.Value.SessionToken);
+        Assert.Equal("user-42", loaded.Value.Subject);
         await cache.ClearAsync();
         Assert.Null(await cache.LoadAsync());
     }
@@ -31,7 +32,7 @@ public class FileTokenCacheTests : IDisposable
     {
         FileTokenCache cache = new(path);
         ProviderCredential cred = new("oidc", "secret-token-value", null, DateTimeOffset.UtcNow.AddHours(1));
-        CachedSession s = new(cred, null, null, DateTimeOffset.UtcNow);
+        CachedSession s = new(cred, null, null, DateTimeOffset.UtcNow, null);
         await cache.SaveAsync(s);
         string raw = await File.ReadAllTextAsync(path);
         Assert.DoesNotContain("secret-token-value", raw, StringComparison.Ordinal);
@@ -43,7 +44,7 @@ public class FileTokenCacheTests : IDisposable
     {
         FileTokenCache cache = new(path);
         ProviderCredential cred = new("oidc", "tok", null, DateTimeOffset.UtcNow.AddHours(1));
-        CachedSession s = new(cred, null, null, DateTimeOffset.UtcNow);
+        CachedSession s = new(cred, null, null, DateTimeOffset.UtcNow, null);
         await cache.SaveAsync(s);
         string raw = await File.ReadAllTextAsync(path);
         string[] parts = raw.Split(':', 3);

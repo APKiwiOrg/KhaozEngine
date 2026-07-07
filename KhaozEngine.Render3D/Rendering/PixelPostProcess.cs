@@ -14,8 +14,19 @@ namespace KhaozEngine.Render3D.Rendering
     /// </summary>
     internal sealed class PixelPostProcess : IDisposable
     {
-        struct EdgeUbo { public Vector4 OutlineColor; public Vector4 Texel; public Vector4 Thresh; public Vector4 Fade; }
-        struct FinalUbo { public Vector4 BgColor; public Vector4 Params; }
+        // The two typed post UBOs (internal so UboLayoutTests can size-check them against the GPU allocations).
+        internal struct EdgeUbo { public Vector4 OutlineColor; public Vector4 Texel; public Vector4 Thresh; public Vector4 Fade; }
+        internal struct FinalUbo { public Vector4 BgColor; public Vector4 Params; }
+
+        // Palette-quantize UBO sizing. The GLSL block is `vec4 Colors[MaxPaletteColors]; vec4 Info;` and the CPU
+        // scratch mirrors it flat as floats. Named so UboLayoutTests can assert the scratch, the buffer, and the
+        // GLSL array length all agree. (internal for the same reason.)
+        internal const int MaxPaletteColors = 64;                         // GLSL: Colors[64]
+        internal const int PaletteScratchFloats = (MaxPaletteColors + 1) * 4; // 64 colour vec4 + 1 info vec4 = 260 floats
+        internal const uint PaletteBufferBytes = (uint)PaletteScratchFloats * sizeof(float); // 1040 bytes
+        internal const uint EdgeBufferBytes = 64;                         // 4 vec4 (EdgeUbo)
+        internal const uint FinalBufferBytes = 32;                        // 2 vec4 (FinalUbo)
+        internal const uint FxaaBufferBytes = 16;                         // 1 vec4 (rcpFrame)
 
         readonly IGpuDevice _gd;
         readonly IGpuShaderSet _palFrag, _edgeFrag, _blitFrag, _fxaaFrag;
@@ -29,17 +40,17 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuResourceSet _blitColorL = null!, _blitPingAL = null!, _blitPingBL = null!; // linear sampler
         IGpuResourceSet _fxaaFromColor = null!, _fxaaFromPingA = null!, _fxaaFromPingB = null!; // FXAA reads (linear)
         RenderResources? _bound;
-        readonly float[] _palScratch = new float[260]; // reused per frame: 64 vec4 palette + count/dither (+ pad)
+        readonly float[] _palScratch = new float[PaletteScratchFloats]; // reused per frame: 64 vec4 palette + count/dither
 
         public PixelPostProcess(IGpuDevice gd, GpuOutputDescription pingOutput, GpuOutputDescription swapchainOutput)
         {
             _gd = gd;
             var f = gd.Factory;
 
-            _palBuf = f.CreateBuffer(new GpuBufferDescription(1040, GpuBufferUsage.UniformBuffer)); // 64 vec4 + 1 vec4
-            _edgeBuf = f.CreateBuffer(new GpuBufferDescription(64, GpuBufferUsage.UniformBuffer)); // 4 vec4
-            _finalBuf = f.CreateBuffer(new GpuBufferDescription(32, GpuBufferUsage.UniformBuffer)); // 2 vec4
-            _fxaaBuf = f.CreateBuffer(new GpuBufferDescription(16, GpuBufferUsage.UniformBuffer)); // 1 vec4 (rcpFrame)
+            _palBuf = f.CreateBuffer(new GpuBufferDescription(PaletteBufferBytes, GpuBufferUsage.UniformBuffer)); // 64 vec4 + 1 vec4
+            _edgeBuf = f.CreateBuffer(new GpuBufferDescription(EdgeBufferBytes, GpuBufferUsage.UniformBuffer)); // 4 vec4
+            _finalBuf = f.CreateBuffer(new GpuBufferDescription(FinalBufferBytes, GpuBufferUsage.UniformBuffer)); // 2 vec4
+            _fxaaBuf = f.CreateBuffer(new GpuBufferDescription(FxaaBufferBytes, GpuBufferUsage.UniformBuffer)); // 1 vec4 (rcpFrame)
 
             // Each pass is its own vert+frag pair (FullscreenVert is the shared vertex source).
             _palFrag = Pair(f, ShaderSources.PaletteFrag);
@@ -116,16 +127,17 @@ namespace KhaozEngine.Render3D.Rendering
         public void PrepareUniforms(IGpuCommandList cl, RenderResources res, PixelPostProcessSettings s, in CameraDepth cam, bool runFxaa)
         {
             var pal = _palScratch;
-            // Zero the 256-float palette region so stale colors from a larger previous palette don't leak.
-            // (Indices 258..259 are pad and stay 0; they're never written.)
-            Array.Clear(pal, 0, 256);
-            int count = Math.Min(s.ActivePalette.Colors.Length, 64);
+            // Zero the colour region (MaxPaletteColors vec4 = 256 floats) so stale colors from a larger previous
+            // palette don't leak. The two Info floats that follow (count, dither) are always rewritten below.
+            const int colourFloats = MaxPaletteColors * 4; // 256
+            Array.Clear(pal, 0, colourFloats);
+            int count = Math.Min(s.ActivePalette.Colors.Length, MaxPaletteColors);
             for (int i = 0; i < count; i++)
             {
                 var c = s.ActivePalette.Colors[i];
                 pal[i * 4 + 0] = c.R; pal[i * 4 + 1] = c.G; pal[i * 4 + 2] = c.B; pal[i * 4 + 3] = c.A;
             }
-            pal[256] = count; pal[257] = s.Dither ? 1f : 0f;
+            pal[colourFloats] = count; pal[colourFloats + 1] = s.Dither ? 1f : 0f; // Info.x = count, Info.y = ditherOn
             cl.UpdateBuffer<float>(_palBuf, 0, pal);
 
             var edge = new EdgeUbo

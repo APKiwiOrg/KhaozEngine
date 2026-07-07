@@ -19,14 +19,15 @@ namespace KhaozEngine.Render3D.Rendering
 
         // std140 UBO layout: a 176-byte header (the FrameUbo struct) followed by two vec4[MaxPointLights]
         // arrays (point light pos/radius, then colour/intensity). 176 + 2*256 = 688 bytes.
-        const uint HeaderBytes = 176;
-        const uint LightArrayBytes = MaxPointLights * 16;             // vec4 stride is 16 in std140
-        const uint UboBytes = HeaderBytes + 2 * LightArrayBytes;      // 688
+        // (internal so UboLayoutTests can assert these against Marshal.SizeOf/OffsetOf and the GLSL block.)
+        internal const uint HeaderBytes = 176;
+        internal const uint LightArrayBytes = MaxPointLights * 16;    // vec4 stride is 16 in std140
+        internal const uint UboBytes = HeaderBytes + 2 * LightArrayBytes;      // 688
 
         /// <summary>Per-frame uniforms (binding 0) header. 1 mat4 + 7 vec4 = 64 + 112 = 176 bytes, uploaded at
         /// offset 0. Field order MUST exactly mirror the std140 UBO block in BOTH ModelVert and ModelFrag; the
         /// point-light arrays follow this header in the same buffer (see <see cref="MaxPointLights"/>).</summary>
-        struct FrameUbo
+        internal struct FrameUbo
         {
             public Matrix4x4 ViewProj;
             public Vector4 Dir; public Vector4 Color; public Vector4 Ambient; public Vector4 Params;

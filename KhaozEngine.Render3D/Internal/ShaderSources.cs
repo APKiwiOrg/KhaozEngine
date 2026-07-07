@@ -433,7 +433,16 @@ void main() {
         //      comparison-sampler seam). The vertex reuses the model instance stream (locations 5..11 = the per-instance
         //      model matrix), so the shadow pass draws the SAME instance buffer the main pass uploaded, no second
         //      upload. Per-vertex needs only Position (location 0); the other per-vertex attributes are declared so the
-        //      shared model vertex buffer binds unchanged. ----
+        //      shared model vertex buffer binds unchanged.
+        //
+        //      D3D11/FXC/WARP HAZARD (load-bearing sink below): this shader only READS Position + IModel0..3, so
+        //      SPIRV-Cross drops the unread inputs (Normal/Color/TexCoord/Tangent @1..4 and ITint/IEmissive/ISpecParams
+        //      @9..11) from the HLSL vertex-input signature, leaving a HOLE (TEXCOORD0, then TEXCOORD5..8). FXC/WARP
+        //      miscompiles a holed input signature (the same landmine the SplatVert interpolant note documents), and
+        //      building THIS pipeline at scene-construction corrupted WARP so the MAIN model+splat passes rendered no
+        //      colour (silhouette/normal/depth survived, only oColor was blank). The `sink` reads every declared input
+        //      with a zero weight, so SPIRV-Cross keeps a CONTIGUOUS TEXCOORD0..11 signature (matching ModelVert) with
+        //      no hole; gl_Position is unchanged (sink == 0). Do NOT drop the sink or reads of any input. ----
         public const string ShadowDepthVert = @"#version 450
 layout(set=0, binding=0) uniform U { mat4 LightViewProj; };
 layout(location=0) in vec3 Position;
@@ -452,6 +461,12 @@ layout(location=0) out float vLightDepth;
 void main() {
     mat4 Model = mat4(IModel0, IModel1, IModel2, IModel3);
     vec4 world = Model * vec4(Position, 1.0);
+    // Negligible-but-live sink over the otherwise-unread per-vertex + per-instance inputs, so SPIRV-Cross keeps the
+    // HLSL vertex-input signature gap-free (TEXCOORD0..11, no hole) and FXC/WARP does not miscompile - see the note
+    // above. The sink is the input SUM (NOT statically zero, so the optimizer cannot fold it away and drop the inputs)
+    // scaled by 1e-30, so it is numerically negligible in world space; the projected position is unchanged to the bit.
+    float sink = Normal.x + Color.x + TexCoord.x + Tangent.x + ITint.x + IEmissive.x + ISpecParams.x;
+    world.x += sink * 1e-30;
     gl_Position = LightViewProj * world;
     vLightDepth = gl_Position.z / gl_Position.w;   // [0,1] light-clip depth, stored linearly in the R32F target
 }";

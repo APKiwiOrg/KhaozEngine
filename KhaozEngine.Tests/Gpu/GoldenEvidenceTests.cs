@@ -90,7 +90,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             const int w = 64, h = 36;
             const string name = "missing";
-            var ex = Assert.ThrowsAny<Exception>(() =>
+            var ex = Assert.Throws<Xunit.Sdk.FailException>(() =>
                 GoldenCompare.AssertOrUpdate(name, Solid(w, h, 10, 20, 30), w, h,
                     _goldenDir, _evidenceDir, Backend, updateGoldens: false));
 

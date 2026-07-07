@@ -975,6 +975,22 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
   Read the per-frame win from `Scene3D.DrawnInstances` / `Scene3D.CulledInstances` (last rendered frame; `CulledInstances`
   is always `0` when culling is off). The plane math is public and pure: `FrustumPlanes.Extract(camera.ViewProjection)`
   then `IntersectsAabb`/`IntersectsSphere` (use the CPU-authored `ViewProjection`, not a GPU-clip-corrected matrix).
+- **Sky** (`Post.Sky`, a `SkySettings`, **default off**): an opt-in procedural sky drawn as a background pass behind
+  all geometry - a vertical horizon-to-zenith gradient plus an optional sun disc + halo. Default `Sky.Enabled = false`,
+  so the background stays the clear colour + starfield and existing scenes are byte-stable; set `Post.Sky.Enabled = true`
+  to turn it on. It renders only where no mesh drew (a far-plane pass with a read-only depth test), never touches the
+  MRT normal/depth the outline pass reads, and costs nothing when off (the pass is skipped). The cohesive-look pairing
+  for the semi-realistic outdoor preset: turn it on with `Post.UseSmoothPreset()` and `Shadows.Mode = ShadowMode.ShadowMap`.
+  - Gradient: `Sky.HorizonColor` (bottom of the sky) and `Sky.ZenithColor` (top); the gradient is vertical in screen
+    space, so it reads correctly under BOTH the orthographic `IsoCamera3D` (where all view rays are parallel) and the
+    perspective `FollowCamera3D`.
+  - Sun: `Sky.SunEnabled` (default `true`; `false` = plain overcast gradient), `Sky.SunColor`, `Sky.SunRadius`
+    (screen-space, NDC-y units - the vertical half-screen is `1.0`), `Sky.HaloStrength` (0 = disc only) and
+    `Sky.HaloFalloff` (halo width). **The sun direction defaults to the key light** (`Post.LightDirection`): the disc
+    sits where the light comes from, so the sky and the scene lighting agree and the sun lands on the opposite screen
+    axis from the shadows automatically. Override with `Sky.SunDirectionOverride` (a world direction TO the sun) to
+    point it elsewhere. The sun is drawn only when it is above the view horizon (behind/under the camera it is
+    suppressed), so a downward-looking iso view shows it near the top of the sky.
 - `IsoCamera3D`: `Azimuth`/`Elevation`/`Target`/`OrthoSize`/`Zoom`, `Frame(target, azimuth, size)`,
   `ScreenToRay`, `ScreenToGround`, and the `View`/`Projection`/`ViewProjection` matrices.
 - `IsoCameraController`: input-agnostic gestures driving an `IsoCamera3D` (pure `System.Numerics`, headless-testable;

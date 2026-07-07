@@ -249,6 +249,29 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Contains("sampleKeyShadow(ShadowMap, ShadowSamp", ShaderSources.SplatFrag);
         }
 
+        // ---- Sky background pass UBO (SkyRenderer) ----
+
+        [Fact]
+        public void SkyUbo_MarshalSize_EqualsUboBytesConstant_And_GlslBlock()
+        {
+            // GLSL Sky block: 6 vec4 (Horizon, Zenith, SunColor, SunNdc, Params, Res) = 96 bytes. If the struct or
+            // the shader block drift apart, the per-frame sky UBO upload smears the colours / sun params. The other
+            // half lives in ShaderSources.SkyFrag.
+            Assert.Equal((int)SkyRenderer.UboBytes, Marshal.SizeOf<SkyRenderer.SkyUbo>());
+            Assert.Equal(6 * 16, (int)SkyRenderer.UboBytes);
+        }
+
+        [Fact]
+        public void SkyFrag_DeclaresTheSixVec4Members()
+        {
+            // Assert every member of the Sky block is present (in the fragment that reads it), so a rename/reorder on
+            // the shader side that silently changes the layout trips here. Other half: ShaderSources.SkyFrag.
+            foreach (var member in new[] { "vec4 Horizon;", "vec4 Zenith;", "vec4 SunColor;",
+                "vec4 SunNdc;", "vec4 Params;", "vec4 Res;" })
+                Assert.True(ShaderSources.SkyFrag.Contains(member),
+                    $"SkyFrag lost '{member}': the Sky UBO block drifted from SkyRenderer.SkyUbo. Fix ShaderSources.SkyFrag or the struct.");
+        }
+
         [Fact]
         public void PaletteFrag_ColorsArray_SizedByMaxPaletteColors()
         {

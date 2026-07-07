@@ -239,6 +239,59 @@ namespace KhaozEngine.Tests.Gpu
             GoldenCompare.AssertOrUpdate("scene3d_shadow_map", rgba, W, H);
         }
 
+        // Rendering gap #4: the opt-in procedural sky (gradient + sun disc/halo) behind meshes WITH shadows on - the
+        // cohesive-look pairing the roadmap wants. The sun direction defaults to the key light, so the disc sits where
+        // the light comes from (up + toward +x/+z here) and the casters' shadows fall AWAY from it (toward +x/+z),
+        // agreeing by construction. Locks the background pass: gradient fills the sky, the disc reads in the upper
+        // background, geometry rejects the sky (depth test), and the normal/depth MRT the outline pass reads is
+        // untouched. Off (the default) stays byte-stable via the untouched scene3d golden.
+        [GpuFact]
+        public void Golden3D_Sky()
+        {
+            MeshHandle floor = default, box = default, tallBox = default, sphere = default;
+
+            byte[] rgba = Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    floor = scene.LoadMesh(MeshPrimitives.Tile(10f, 0.1f));
+                    box = scene.LoadMesh(MeshPrimitives.Box(0.9f));
+                    tallBox = scene.LoadMesh(MeshPrimitives.Box(1.4f));
+                    sphere = scene.LoadMesh(MeshPrimitives.Sphere(0.6f));
+                    scene.Post.Starfield = false;
+                    // Sky ON: gradient + sun disc. The sun direction defaults to the key light below.
+                    scene.Post.Sky.Enabled = true;
+                    scene.Post.Sky.HorizonColor = new Color(0.66f, 0.72f, 0.80f, 1f);
+                    scene.Post.Sky.ZenithColor = new Color(0.20f, 0.40f, 0.72f, 1f);
+                    scene.Post.Sky.SunColor = new Color(1f, 0.95f, 0.82f, 1f);
+                    scene.Post.Sky.SunRadius = 0.09f;   // screen-space NDC-y; a touch large so the disc reads at 480x320
+                    scene.Post.Sky.HaloStrength = 0.6f;
+                    scene.Post.Sky.HaloFalloff = 0.22f;
+                    // Shadows ON (the cohesive pairing).
+                    scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;
+                    scene.Post.Quality.Shadows.ShadowFocusRadius = 5f;
+                    // Key light travelling down-and-to-the-right (-x, -y, -z): shadows fall toward +x/+z, and the sun
+                    // (its opposite) sits up + toward +x/+z, so it lands in the upper background of this framing.
+                    scene.Post.LightDirection = new Vector3(-0.55f, -0.8f, -0.25f);
+                    scene.Camera.Frame(new Vector3(0.2f, 0.4f, 0f), new Vector3(6f, 4.5f, 6f));
+                },
+                drawFrame: scene =>
+                {
+                    scene.Draw(floor, Matrix4x4.CreateTranslation(0f, 0f, 0f));
+                    // A tall box casting a long shadow across the floor toward +x.
+                    scene.Draw(tallBox, Matrix4x4.CreateTranslation(-1.6f, 0.7f, -0.6f),
+                        new Color(0.15f, 0.75f, 0.2f, 1f));
+                    // A shorter red box.
+                    scene.Draw(box, Matrix4x4.CreateTranslation(0.9f, 0.45f, 0.4f),
+                        new Color(0.85f, 0.2f, 0.15f, 1f));
+                    // A raised sphere dropping a detached round shadow onto the floor.
+                    scene.Draw(sphere, Matrix4x4.CreateTranslation(1.6f, 1.1f, -1.4f),
+                        new Color(0.25f, 0.5f, 0.9f, 1f), Material.Shiny(0.6f));
+                },
+                frames: 2);
+
+            GoldenCompare.AssertOrUpdate("scene3d_sky", rgba, W, H);
+        }
+
         // Shadows gap #1: a SPLAT-TERRAIN ground quad RECEIVING a model's PCF shadow (the shadow term flows through
         // the shared lighting block into the splat fragment identically to the model fragment). A box casts; the
         // terrain receives (model-only casting - terrain does not self-shadow). Locks terrain-receives.

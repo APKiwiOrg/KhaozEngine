@@ -33,6 +33,7 @@ namespace KhaozEngine.Render3D
         readonly TexturedBillboardRenderer _texBillboards;
         readonly BeamRenderer _beams;
         readonly Rendering.GroundDecalRenderer _decalRenderer;
+        readonly Rendering.SkyRenderer _sky;
         readonly Rendering.OverlayMeshRenderer _overlayMeshes;
         readonly RenderResources _res;
         // Slot-indexed GPU mesh storage parallel to _slots; a freed slot's entry is null until reused.
@@ -183,6 +184,9 @@ namespace KhaozEngine.Render3D
             // Ground decals render into the lit color attachment + read-only scene depth (ColorDepthFB) before the
             // post chain, so they pass that framebuffer's output description (color format + depth format).
             _decalRenderer = new Rendering.GroundDecalRenderer(gd, _res.ColorDepthFB.Outputs);
+            // The procedural sky renders into the same ColorDepthFB (lit colour + read-only scene depth) as the
+            // decals, as a far-plane background pass behind the geometry. Default off (Post.Sky.Enabled == false).
+            _sky = new Rendering.SkyRenderer(gd, _res.ColorDepthFB.Outputs);
             _overlayMeshes = new Rendering.OverlayMeshRenderer(gd, _res.ModelFB.Outputs);
         }
 
@@ -1035,6 +1039,7 @@ namespace KhaozEngine.Render3D
             _beams.SetOutputs(modelOut);
             _overlayMeshes.SetOutputs(modelOut);
             _decalRenderer.SetOutputs(_res.ColorDepthFB.Outputs);
+            _sky.SetOutputs(_res.ColorDepthFB.Outputs);
         }
 
         void EnsureSize(int viewportW, int viewportH)
@@ -1298,6 +1303,15 @@ namespace KhaozEngine.Render3D
             // edge pass which also samples it). No-op when not multisampled.
             _res.ResolveDepth(cl);
 
+            // Procedural sky: a fullscreen background pass into ColorDepthFB (lit colour + read-only scene depth),
+            // behind all geometry. The far-plane triangle passes the GreaterEqual read-only depth test ONLY where the
+            // stored depth is still the cleared far plane (background where no mesh drew), so it fills the gradient +
+            // sun there and geometry pixels reject it. It writes only the colour attachment (never the MRT
+            // normal/linear-depth the outline pass reads) with alpha 1 (so the blit's starfield marker skips sky
+            // pixels). Fully skipped when off, so a sky-off frame renders byte-identical to before this pass existed.
+            if (Post.Sky.Enabled)
+                _sky.Draw(cl, _res, ActiveCamera.View, Post.LightDirection, Post.Sky);
+
             // Blob shadows: when the resolved tier is Blob, turn each queued ShadowBlob into a dark Circle
             // GroundDecal and draw it FIRST (under the gameplay decals), so a caster is grounded by the same
             // depth-reconstructed projection the decals use. Off => the queue is ignored and nothing changes
@@ -1493,6 +1507,7 @@ namespace KhaozEngine.Render3D
             _texBillboards.Dispose();
             _beams.Dispose();
             _decalRenderer.Dispose();
+            _sky.Dispose();
             _overlayMeshes.Dispose();
             _res.Dispose();
             foreach (var m in _meshes)

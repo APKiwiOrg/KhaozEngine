@@ -41,8 +41,12 @@ namespace KhaozEngine.Windowing.Actions
     /// <summary>Which analog stick a <see cref="InputSourceKind.GamepadStickAxis"/> reads.</summary>
     public enum GamepadStick { Left = 0, Right = 1 }
 
-    /// <summary>Which component of a stick a <see cref="InputSourceKind.GamepadStickAxis"/> reads.</summary>
-    public enum StickComponent { X = 0, Y = 1 }
+    /// <summary>
+    /// Which component of a stick a <see cref="InputSourceKind.GamepadStickAxis"/> reads. <see cref="X"/> and
+    /// <see cref="Y"/> are single-axis (1D) reads; <see cref="Both"/> is the whole-stick 2D read used by an Axis2D
+    /// "move"/"look" action (its <see cref="InputSource.Invert"/> flips Y only, the look-invert convention).
+    /// </summary>
+    public enum StickComponent { X = 0, Y = 1, Both = 2 }
 
     /// <summary>Which gamepad trigger a <see cref="InputSourceKind.GamepadTrigger"/> reads.</summary>
     public enum GamepadTriggerSide { Left = 0, Right = 1 }
@@ -51,7 +55,8 @@ namespace KhaozEngine.Windowing.Actions
     /// One raw input source a binding reads from an <see cref="InputState"/> snapshot. This is a discriminated
     /// value: <see cref="Kind"/> selects which of the payload fields are meaningful. Construct via the static
     /// factories (<see cref="FromKey"/>, <see cref="FromGamepadButton"/>, <see cref="StickAxis"/>,
-    /// <see cref="Trigger"/>, <see cref="Axis1D"/>, <see cref="Wasd"/>, ...) rather than the ctor so intent is clear.
+    /// <see cref="WholeStick"/>, <see cref="Trigger"/>, <see cref="Axis1D"/>, <see cref="Wasd"/>, ...) rather than the
+    /// ctor so intent is clear.
     ///
     /// <para><b>Button vs axis.</b> A source evaluates BOTH as a button (down/pressed/released, via a threshold on
     /// its analog value) AND as an axis (a float, or a 2D vector for the WASD composite). Which one an action uses
@@ -91,7 +96,8 @@ namespace KhaozEngine.Windowing.Actions
         public GamepadTriggerSide TriggerSide { get; }
         /// <summary>Analog scale applied to the reading (default 1).</summary>
         public float Scale { get; }
-        /// <summary>If true, negate the analog reading.</summary>
+        /// <summary>If true, negate the analog reading. For a whole-stick (<see cref="StickComponent.Both"/>) 2D read it
+        /// flips ONLY Y (the look-invert convention); for a 1D or component-specific read it negates that reading.</summary>
         public bool Invert { get; }
         /// <summary>Analog magnitude threshold for button evaluation (default <see cref="DefaultButtonThreshold"/>).</summary>
         public float ButtonThreshold { get; }
@@ -121,9 +127,26 @@ namespace KhaozEngine.Windowing.Actions
         /// <summary>A single gamepad button (on the map's player pad).</summary>
         public static InputSource FromGamepadButton(GamepadButton button) => new(InputSourceKind.GamepadButton, gamepadButton: button);
 
-        /// <summary>One component of a gamepad stick, with optional invert/scale (e.g. invert Y for camera).</summary>
+        /// <summary>
+        /// One SINGLE component (X or Y) of a gamepad stick, with optional invert/scale. Read as a 1D axis it yields
+        /// that component; read in a 2D context it is PROJECTED onto its component (an X source -&gt; (v, 0), a Y source
+        /// -&gt; (0, v)) and <paramref name="invert"/> flips that one component. For a whole-stick 2D source (move/look)
+        /// use <see cref="WholeStick"/> instead. Passing <see cref="StickComponent.Both"/> here is normalized to
+        /// <see cref="WholeStick"/>.
+        /// </summary>
         public static InputSource StickAxis(GamepadStick stick, StickComponent component, bool invert = false, float scale = 1f) =>
-            new(InputSourceKind.GamepadStickAxis, stick: stick, component: component, invert: invert, scale: scale);
+            component == StickComponent.Both
+                ? WholeStick(stick, invertY: invert, scale: scale)
+                : new(InputSourceKind.GamepadStickAxis, stick: stick, component: component, invert: invert, scale: scale);
+
+        /// <summary>
+        /// The WHOLE gamepad stick as a 2D source (for an Axis2D "move"/"look" action). Read as 2D it returns both
+        /// deadzoned components; <paramref name="invertY"/> flips ONLY Y (the look-invert convention), never X. Read as
+        /// a 1D axis it returns the X component. This is the honest 2D form: a component-specific
+        /// <see cref="StickAxis"/> instead reads as that single projected axis even in a 2D context.
+        /// </summary>
+        public static InputSource WholeStick(GamepadStick stick, bool invertY = false, float scale = 1f) =>
+            new(InputSourceKind.GamepadStickAxis, stick: stick, component: StickComponent.Both, invert: invertY, scale: scale);
 
         /// <summary>A gamepad trigger (0..1), usable as an axis or, past <paramref name="buttonThreshold"/>, a button.</summary>
         public static InputSource Trigger(GamepadTriggerSide trigger, float scale = 1f, float buttonThreshold = DefaultButtonThreshold) =>
@@ -146,10 +169,12 @@ namespace KhaozEngine.Windowing.Actions
         static float Mod(float v, float scale, bool invert) => invert ? -v * scale : v * scale;
 
         /// <summary>
-        /// Read this source as a 2D axis from a snapshot. Only <see cref="InputSourceKind.KeyAxis2D"/> and a stick
-        /// (both components) produce a real 2D value; every other kind yields (value, 0) from its 1D reading.
-        /// A KeyAxis2D returns a raw per-axis vector in [-1,1] on each axis; diagonal normalization is applied by the
-        /// action layer, not here (so summing multiple bindings composes before clamping).
+        /// Read this source as a 2D axis from a snapshot. A <see cref="InputSourceKind.KeyAxis2D"/> and a whole-stick
+        /// source (<see cref="StickComponent.Both"/>) produce a real 2D value; a component-specific stick source is
+        /// PROJECTED onto its own axis (X -&gt; (v, 0), Y -&gt; (0, v)); every other kind yields (value, 0) from its 1D
+        /// reading. For the whole stick, <see cref="Invert"/> flips Y ONLY (the look-invert convention); for a
+        /// component source, invert flips that one projected component. A KeyAxis2D returns a raw per-axis vector in
+        /// [-1,1]; diagonal normalization is applied by the action layer, not here (so summing composes before clamping).
         /// </summary>
         public Vector2 EvaluateAxis2D(InputState input, int playerIndex)
         {
@@ -166,10 +191,18 @@ namespace KhaozEngine.Windowing.Actions
                     Vector2 s = Stick == GamepadStick.Left
                         ? input.Gamepad(playerIndex).LeftStickDeadzoned()
                         : input.Gamepad(playerIndex).RightStickDeadzoned();
-                    // A single stick-axis source is one component; both-component 2D comes from binding X and Y
-                    // sources, or the action layer reading the whole stick. Here we return the whole deadzoned stick
-                    // so an Axis2D action bound to one StickAxis source (component ignored) gets a real vector.
-                    return new Vector2(Mod(s.X, Scale, Invert), Mod(s.Y, Scale, Invert));
+                    switch (StickComponent)
+                    {
+                        // Whole stick: real 2D. Invert is the look-invert convention - it flips Y only, never X.
+                        case StickComponent.Both:
+                            return new Vector2(s.X * Scale, Mod(s.Y, Scale, Invert));
+                        // Component-specific: project onto its own axis so the read is honest (an X source never
+                        // leaks a Y value, and vice versa). Invert flips that one component.
+                        case StickComponent.Y:
+                            return new Vector2(0f, Mod(s.Y, Scale, Invert));
+                        default:
+                            return new Vector2(Mod(s.X, Scale, Invert), 0f);
+                    }
                 }
                 default:
                     return new Vector2(EvaluateAxis1D(input, playerIndex), 0f);
@@ -197,7 +230,8 @@ namespace KhaozEngine.Windowing.Actions
                     Vector2 s = Stick == GamepadStick.Left
                         ? input.Gamepad(playerIndex).LeftStickDeadzoned()
                         : input.Gamepad(playerIndex).RightStickDeadzoned();
-                    float v = StickComponent == StickComponent.X ? s.X : s.Y;
+                    // Both (whole stick) read as 1D yields X; Y yields Y; X (or anything else) yields X.
+                    float v = StickComponent == StickComponent.Y ? s.Y : s.X;
                     return Mod(v, Scale, Invert);
                 }
                 case InputSourceKind.GamepadTrigger:

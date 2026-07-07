@@ -177,11 +177,11 @@ namespace KhaozEngine.Tests.Windowing
         }
 
         [Fact]
-        public void Axis2D_Stick_KeepsAnalogMagnitude()
+        public void Axis2D_WholeStick_KeepsAnalogMagnitude()
         {
             var map = new ActionMap();
-            map.AddAction(InputAction.Axis2D("move"), InputSource.StickAxis(GamepadStick.Left, StickComponent.X));
-            // half-tilt right stick; a partial deflection must NOT be normalized up to 1.
+            map.AddAction(InputAction.Axis2D("move"), InputSource.WholeStick(GamepadStick.Left));
+            // half-tilt left stick; a partial deflection must NOT be normalized up to 1.
             map.Update(Frame(pads: Pad(left: new Vector2(0.5f, 0f))));
             var v = map.GetAxis2D("move");
             Assert.True(v.X > 0.2f && v.X < 0.6f, $"expected partial magnitude, got {v.X}");
@@ -189,23 +189,79 @@ namespace KhaozEngine.Tests.Windowing
         }
 
         [Fact]
-        public void Axis2D_FullStick_IsClampedToUnitLength()
+        public void Axis2D_WholeStick_FullCorner_IsClampedToUnitLength()
         {
             var map = new ActionMap();
-            map.AddAction(InputAction.Axis2D("move"), InputSource.StickAxis(GamepadStick.Left, StickComponent.X));
+            map.AddAction(InputAction.Axis2D("move"), InputSource.WholeStick(GamepadStick.Left));
             map.Update(Frame(pads: Pad(left: new Vector2(1f, 1f)))); // corner (over-unit raw)
-            Assert.True(map.GetAxis2D("move").Length() <= 1.0001f);
+            var v = map.GetAxis2D("move");
+            Assert.True(v.Length() <= 1.0001f);
+            Assert.True(v.X > 0f && v.Y > 0f); // whole stick keeps both components
         }
 
         [Fact]
-        public void Axis2D_StickInvertY_FlipsSign()
+        public void Axis2D_WholeStick_InvertY_FlipsOnlyY()
         {
             var map = new ActionMap();
-            // A single stick-axis source reads the whole stick; invert flips both components in this reading.
+            // The whole-stick look source: invert is the look-invert convention - it flips Y ONLY, X is untouched.
             map.AddAction(InputAction.Axis2D("look"),
-                InputSource.StickAxis(GamepadStick.Right, StickComponent.Y, invert: true));
-            map.Update(Frame(pads: Pad(right: new Vector2(0f, 0.8f))));
-            Assert.True(map.GetAxis2D("look").Y < 0f);
+                InputSource.WholeStick(GamepadStick.Right, invertY: true));
+            map.Update(Frame(pads: Pad(right: new Vector2(0.6f, 0.8f))));
+            var v = map.GetAxis2D("look");
+            Assert.True(v.Y < 0f, $"Y should flip, got {v.Y}");
+            Assert.True(v.X > 0f, $"X must NOT flip, got {v.X}");
+        }
+
+        [Fact]
+        public void Axis2D_ComponentStick_ProjectsOntoItsOwnAxis()
+        {
+            // A component-specific stick source is projected: an X source contributes only X, a Y source only Y -
+            // it never leaks the other component into a 2D read.
+            var mapX = new ActionMap();
+            mapX.AddAction(InputAction.Axis2D("move"), InputSource.StickAxis(GamepadStick.Left, StickComponent.X));
+            mapX.Update(Frame(pads: Pad(left: new Vector2(0.5f, 0.9f))));
+            var vx = mapX.GetAxis2D("move");
+            Assert.True(vx.X > 0.2f, $"X projected, got {vx.X}");
+            Assert.Equal(0f, vx.Y, 3); // Y source not present -> no Y
+
+            var mapY = new ActionMap();
+            mapY.AddAction(InputAction.Axis2D("move"), InputSource.StickAxis(GamepadStick.Left, StickComponent.Y, invert: true));
+            mapY.Update(Frame(pads: Pad(left: new Vector2(0.5f, 0.9f))));
+            var vy = mapY.GetAxis2D("move");
+            Assert.Equal(0f, vy.X, 3); // X not present
+            Assert.True(vy.Y < 0f, $"Y projected + inverted, got {vy.Y}");
+        }
+
+        [Fact]
+        public void Axis2D_ComposeTwoComponentSticks_FormsWholeStick()
+        {
+            // Binding an X source and a Y source composes to the whole stick (the projected halves sum).
+            var map = new ActionMap();
+            map.AddAction(InputAction.Axis2D("move"),
+                InputSource.StickAxis(GamepadStick.Left, StickComponent.X),
+                InputSource.StickAxis(GamepadStick.Left, StickComponent.Y));
+            map.Update(Frame(pads: Pad(left: new Vector2(0.4f, 0.3f))));
+            var v = map.GetAxis2D("move");
+            Assert.True(v.X > 0.2f && v.Y > 0.1f, $"both components present, got {v}");
+        }
+
+        [Fact]
+        public void Axis1D_WholeStick_ReadsXComponent()
+        {
+            var map = new ActionMap();
+            map.AddAction(InputAction.Axis1D("turn"), InputSource.WholeStick(GamepadStick.Left));
+            map.Update(Frame(pads: Pad(left: new Vector2(0.7f, 0.2f))));
+            Assert.True(map.GetAxis("turn") > 0.5f); // whole stick read as 1D -> X
+        }
+
+        [Fact]
+        public void StickAxis_BothComponent_NormalizesToWholeStick()
+        {
+            // Passing StickComponent.Both to StickAxis is normalized to a whole-stick source (invert => invertY).
+            var a = InputSource.StickAxis(GamepadStick.Left, StickComponent.Both, invert: true);
+            var b = InputSource.WholeStick(GamepadStick.Left, invertY: true);
+            Assert.Equal(b, a);
+            Assert.Equal(StickComponent.Both, a.StickComponent);
         }
 
         // ---- per-player gamepad isolation ----------------------------------
@@ -351,7 +407,8 @@ namespace KhaozEngine.Tests.Windowing
             map.AddAction(InputAction.Button("jump"), InputSource.FromKey(Key.Space), InputSource.FromGamepadButton(GamepadButton.A));
             map.AddAction(InputAction.Button("click"), InputSource.FromMouseButton(MouseButton.Right));
             map.AddAction(InputAction.Axis1D("turn"), InputSource.Axis1D(Key.A, Key.D));
-            map.AddAction(InputAction.Axis2D("move"), InputSource.WasdDefault, InputSource.StickAxis(GamepadStick.Left, StickComponent.X));
+            map.AddAction(InputAction.Axis2D("move"), InputSource.WasdDefault, InputSource.WholeStick(GamepadStick.Left));
+            map.AddAction(InputAction.Axis2D("look"), InputSource.WholeStick(GamepadStick.Right, invertY: true));
             map.AddAction(InputAction.Axis1D("gas"), InputSource.Trigger(GamepadTriggerSide.Right, scale: 1f));
 
             string json = ActionMapSerializer.Serialize(map);
@@ -362,9 +419,10 @@ namespace KhaozEngine.Tests.Windowing
             reloaded.AddAction(InputAction.Button("click"), InputSource.FromMouseButton(MouseButton.Left));
             reloaded.AddAction(InputAction.Axis1D("turn"), InputSource.Axis1D(Key.Left, Key.Right));
             reloaded.AddAction(InputAction.Axis2D("move"), InputSource.ArrowsDefault);
+            reloaded.AddAction(InputAction.Axis2D("look"), InputSource.WholeStick(GamepadStick.Left)); // different default
             reloaded.AddAction(InputAction.Axis1D("gas"), InputSource.Trigger(GamepadTriggerSide.Left));
             int applied = ActionMapSerializer.Load(reloaded, json);
-            Assert.Equal(5, applied);
+            Assert.Equal(6, applied);
 
             // The reloaded bindings now match the originals.
             for (int i = 0; i < map.ActionIds.Count; i++)
@@ -407,6 +465,94 @@ namespace KhaozEngine.Tests.Windowing
             Assert.Equal(0, applied); // the entry had no valid bindings -> skipped
             map.Update(Frame(pressed: new[] { Key.Enter }));
             Assert.True(map.IsDown("jump")); // default Enter still bound
+        }
+
+        [Fact]
+        public void Deserialize_GoodAndFutureKind_OnSameAction_KeepsTheGoodBinding()
+        {
+            // One good binding + one future-kind binding on the SAME action. The future one drops individually; the
+            // good one must survive. This is what a per-FILE degrade (the old bug) could not do.
+            string json = """
+            {
+              "version": 1,
+              "actions": [
+                { "action": "jump", "bindings": [
+                  { "kind": "Key", "key": "J" },
+                  { "kind": "SomeFutureKind99", "key": "K" }
+                ] }
+              ]
+            }
+            """;
+            var map = new ActionMap();
+            map.AddAction(InputAction.Button("jump"), InputSource.FromKey(Key.Enter));
+            var result = ActionMapSerializer.Load(map, json);
+            Assert.Equal(1, result.AppliedCount);       // action overridden
+            Assert.Equal(1, result.DroppedBindings);    // exactly the future binding dropped
+            map.Update(Frame(pressed: new[] { Key.J }));
+            Assert.True(map.IsDown("jump"));            // the good J binding survived
+            map.Update(Frame(pressed: new[] { Key.Enter }));
+            Assert.False(map.IsDown("jump"));           // Enter default was replaced, not kept alongside
+        }
+
+        [Fact]
+        public void Deserialize_GoodActionBesideBadKindAction_KeepsTheGoodAction()
+        {
+            // A good action alongside an action whose only binding is a future kind. The bad one is skipped (keeps its
+            // default), the good one is applied - the whole file is NOT discarded.
+            string json = """
+            {
+              "version": 1,
+              "actions": [
+                { "action": "jump",   "bindings": [ { "kind": "Key", "key": "J" } ] },
+                { "action": "crouch", "bindings": [ { "kind": "SomeFutureKind99", "key": "C" } ] }
+              ]
+            }
+            """;
+            var map = new ActionMap();
+            map.AddAction(InputAction.Button("jump"), InputSource.FromKey(Key.Space));
+            map.AddAction(InputAction.Button("crouch"), InputSource.FromKey(Key.LeftControl));
+            var result = ActionMapSerializer.Load(map, json);
+            Assert.Equal(1, result.AppliedCount);      // only jump overridden
+            Assert.Equal(1, result.DroppedBindings);   // crouch's future binding dropped
+            map.Update(Frame(pressed: new[] { Key.J, Key.LeftControl }));
+            Assert.True(map.IsDown("jump"));           // good action applied
+            Assert.True(map.IsDown("crouch"));         // bad action kept its default binding
+        }
+
+        [Fact]
+        public void Apply_FutureVersionDocument_AppliesTolerantly_AndFlagsFromFuture()
+        {
+            // A document from a NEWER build: version is checked. Known bindings still load, unknown kinds drop, and the
+            // result flags that the file came from ahead of this build so the game can warn the player.
+            string json = $$"""
+            {
+              "version": {{ActionMapSerializer.CurrentVersion + 5}},
+              "actions": [
+                { "action": "jump", "bindings": [
+                  { "kind": "Key", "key": "J" },
+                  { "kind": "SomeFutureKind99", "key": "K" }
+                ] }
+              ]
+            }
+            """;
+            var map = new ActionMap();
+            map.AddAction(InputAction.Button("jump"), InputSource.FromKey(Key.Space));
+            var result = ActionMapSerializer.Load(map, json);
+            Assert.True(result.FromFutureVersion);
+            Assert.Equal(1, result.AppliedCount);
+            Assert.Equal(1, result.DroppedBindings);
+            map.Update(Frame(pressed: new[] { Key.J }));
+            Assert.True(map.IsDown("jump")); // known binding from the future file still loaded
+        }
+
+        [Fact]
+        public void Apply_CurrentVersionDocument_IsNotFlaggedFromFuture()
+        {
+            var map = new ActionMap();
+            map.AddAction(InputAction.Button("jump"), InputSource.FromKey(Key.Space));
+            string json = ActionMapSerializer.Serialize(map);
+            var result = ActionMapSerializer.Load(map, json);
+            Assert.False(result.FromFutureVersion);
         }
 
         [Fact]

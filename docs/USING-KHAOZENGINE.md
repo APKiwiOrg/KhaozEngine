@@ -380,8 +380,10 @@ into a localized label on the GAME side via your `StringId` catalog. The engine 
 
 Three action kinds: `Button` (down/pressed/released), `Axis1D` (a float, e.g. throttle), `Axis2D` (a vector, e.g.
 move/look). Sources (`InputSource`) are extensible-by-design: a key, a mouse button, a gamepad button, a gamepad
-stick component or trigger, a two-key 1D axis, or a four-key WASD 2D composite. Sticks/triggers take `invert`/`scale`
-modifiers.
+trigger, a WHOLE gamepad stick (`WholeStick`, the 2D form for move/look), a single stick component (`StickAxis`
+with `X`/`Y`, a 1D axis), a two-key 1D axis, or a four-key WASD 2D composite. Sticks/triggers take `invert`/`scale`
+modifiers. For a whole stick, `invertY` flips ONLY the Y axis (the look-invert convention); a component `StickAxis`
+read in a 2D action is projected onto its own axis (an X source contributes only X, a Y source only Y).
 
 ```csharp
 using KhaozEngine.Windowing.Actions;
@@ -389,7 +391,8 @@ using KhaozEngine.Windowing.Actions;
 // 1. declare actions + default bindings (multiple bindings per action = "any of these")
 var map = new ActionMap(PlayerIndex.One);
 map.AddAction(InputAction.Button("jump"), InputSource.FromKey(Key.Space), InputSource.FromGamepadButton(GamepadButton.A));
-map.AddAction(InputAction.Axis2D("move"),  InputSource.WasdDefault, InputSource.StickAxis(GamepadStick.Left, StickComponent.X));
+map.AddAction(InputAction.Axis2D("move"),  InputSource.WasdDefault, InputSource.WholeStick(GamepadStick.Left));
+map.AddAction(InputAction.Axis2D("look"),  InputSource.WholeStick(GamepadStick.Right, invertY: true)); // Y-only look invert
 
 // 2. load persisted overrides (string the game read from its settings store; null on first run)
 //    then wrap in the turn-key controller with a save sink that writes back to the game's store.
@@ -412,8 +415,10 @@ var op = input.BeginRebind("jump", slot: 0);                    // Escape cancel
   way `InputManager` does it.
 - **Axis1D** bindings SUM then clamp to `[-1, 1]` (a stick at 0.3 plus a key at 1 saturates to 1).
 - **Axis2D** per-component SUM, then normalize: a WASD **diagonal is normalized to unit length** (so diagonal
-  movement is not `~1.414` faster than cardinal); a partial stick deflection KEEPS its analog magnitude (only
-  clamped down if over-unit); the combined vector is clamped to length 1.
+  movement is not `~1.414` faster than cardinal); a whole-stick (`WholeStick`) source keeps its analog magnitude
+  (only clamped down if over-unit); a component `StickAxis` source is PROJECTED onto its own axis (X-only or Y-only),
+  so an X source and a Y source can be bound together to compose a whole stick; the combined vector is clamped to
+  length 1. `invertY` on a whole stick flips Y only.
 
 **Rebind capture** (`RebindOperation`, or via `controller.BeginRebind`): fed successive snapshots, it captures the
 first eligible source on its PRESS edge (a key held from before the rebind is ignored until re-pressed), captures a
@@ -422,9 +427,15 @@ headless.
 
 **Serialization** (`ActionMapSerializer`): `Serialize(map)` -> a versioned JSON string; `Load(map, json)` applies
 persisted overrides onto a map that already declares its actions with defaults. Only per-action binding OVERRIDES
-are stored (keyed by action id), so renaming/removing an action in code just ignores the stale entry. Unknown
-source kinds or malformed JSON DEGRADE to code defaults (never throw, never leave an action unbound). The envelope
-carries a `version` field for forward compatibility.
+are stored (keyed by action id), so renaming/removing an action in code just ignores the stale entry. Degradation is
+**per binding**, not per file: a source whose `kind` is a name this build does not recognize (a future kind) drops
+individually while every other binding in the file survives; if that leaves an action with zero valid bindings the
+action keeps its code default (never unbound). Only a top-level JSON *syntax* error discards the whole file (defaults
+stand). `Load`/`Apply` return an `ApplyResult` (implicitly an `int` overridden-action count) exposing
+`AppliedCount`, `DroppedBindings`, and `FromFutureVersion` - the last is set when the file's `version` is newer than
+`CurrentVersion`, which is still applied through the same tolerant path so a game can warn the player that some newer
+bindings may have been dropped. Call `map.Update` exactly once per frame (edge detection is frame-vs-frame; a double
+Update can swallow a press/release edge).
 
 **Dependency note:** this lives in `KhaozEngine.Windowing` and deals in plain strings only. The engine deliberately
 has NO `Windowing -> Persistence` dependency, so YOU hand the serialized string to your `ISettingsStorage` (the

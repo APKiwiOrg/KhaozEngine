@@ -18,10 +18,19 @@ namespace KhaozEngine.Windowing.Actions
     /// ignores its stale persisted entry.</para>
     ///
     /// <para><b>Forward compatibility + degradation.</b> The envelope carries a <see cref="BindingsDocument.Version"/>
-    /// int. A source whose <c>kind</c> is unknown to this build, or whose payload fails to parse (bad enum name, etc.),
-    /// is DROPPED (not thrown): if that leaves an action with zero valid bindings its persisted override is skipped
-    /// entirely so the action keeps its code defaults, rather than ending up unbound. A malformed top-level document
-    /// returns an empty result from <see cref="Deserialize"/> so <see cref="Apply"/> is a no-op (defaults stand).</para>
+    /// int. Degradation is PER BINDING, not per file: a source whose <c>kind</c> is a string this build does not know
+    /// (a future kind) reads as <see cref="InputSourceKind.None"/> and is DROPPED, while every OTHER binding in the same
+    /// document survives. If dropping leaves an action with zero valid bindings, that action's persisted override is
+    /// skipped so it keeps its code defaults rather than ending up unbound; sibling actions are unaffected. A malformed
+    /// TOP-LEVEL document (bad JSON syntax) is the only whole-file failure: <see cref="Deserialize"/> returns an empty
+    /// document so <see cref="Apply"/> is a no-op (all defaults stand).</para>
+    ///
+    /// <para><b>Version guard.</b> A document whose <see cref="BindingsDocument.Version"/> is GREATER than
+    /// <see cref="CurrentVersion"/> (written by a newer build) is still applied, but only through the tolerant
+    /// per-field / per-binding path above: unknown kinds and unparseable fields drop individually, known ones load.
+    /// <see cref="Apply"/> reports this via <see cref="ApplyResult.FromFutureVersion"/> so a caller can warn the player
+    /// that some newer bindings may have been dropped. An equal-or-older version applies identically (the tolerant path
+    /// is always on); the flag simply records that the file came from ahead of this build.</para>
     /// </summary>
     public static class ActionMapSerializer
     {
@@ -71,14 +80,19 @@ namespace KhaozEngine.Windowing.Actions
 
         /// <summary>
         /// Apply a persisted document's overrides onto a map that already has its actions declared with defaults. For
-        /// each entry whose action is declared, valid bindings replace the action's bindings; an entry with no valid
-        /// bindings, or for an unknown action, is skipped (defaults stand). Returns the count of actions overridden.
+        /// each entry whose action is declared, valid bindings replace the action's bindings; a binding whose kind is
+        /// unknown to this build drops individually, and an entry left with no valid bindings (or for an unknown action)
+        /// is skipped so defaults stand. When the document's <see cref="BindingsDocument.Version"/> is newer than this
+        /// build it is still applied through this tolerant path and <see cref="ApplyResult.FromFutureVersion"/> is set.
+        /// The returned <see cref="ApplyResult"/> converts implicitly to the overridden-action count.
         /// </summary>
-        public static int Apply(ActionMap map, BindingsDocument document)
+        public static ApplyResult Apply(ActionMap map, BindingsDocument document)
         {
             if (map is null) throw new ArgumentNullException(nameof(map));
-            if (document?.Actions is null) return 0;
+            if (document?.Actions is null) return default;
+            bool fromFuture = document.Version > CurrentVersion;
             int applied = 0;
+            int droppedBindings = 0;
             foreach (var entry in document.Actions)
             {
                 if (entry?.Action is null || !map.HasAction(entry.Action)) continue;
@@ -88,17 +102,42 @@ namespace KhaozEngine.Windowing.Actions
                     {
                         var src = dto.ToSource();
                         if (src.Kind != InputSourceKind.None) valid.Add(src);
+                        else droppedBindings++; // unknown/unparseable kind: drop this one, keep the rest
                     }
                 if (valid.Count == 0) continue; // keep code defaults rather than unbinding
                 map.ClearBindings(entry.Action);
                 foreach (var s in valid) map.Bind(entry.Action, s);
                 applied++;
             }
-            return applied;
+            return new ApplyResult(applied, droppedBindings, fromFuture);
         }
 
-        /// <summary>Convenience: parse and apply in one call. Returns the count of actions overridden.</summary>
-        public static int Load(ActionMap map, string? json) => Apply(map, Deserialize(json));
+        /// <summary>Convenience: parse and apply in one call. The result converts implicitly to the overridden count.</summary>
+        public static ApplyResult Load(ActionMap map, string? json) => Apply(map, Deserialize(json));
+
+        /// <summary>
+        /// Outcome of an <see cref="Apply"/> / <see cref="Load"/>. Converts implicitly to <see cref="AppliedCount"/> so
+        /// existing <c>int applied = Load(...)</c> callers keep working, while exposing the forward-compat facts.
+        /// </summary>
+        public readonly struct ApplyResult
+        {
+            internal ApplyResult(int appliedCount, int droppedBindings, bool fromFutureVersion)
+            {
+                AppliedCount = appliedCount;
+                DroppedBindings = droppedBindings;
+                FromFutureVersion = fromFutureVersion;
+            }
+
+            /// <summary>How many declared actions had their bindings overridden by the document.</summary>
+            public int AppliedCount { get; }
+            /// <summary>How many individual bindings were dropped because their kind was unknown/unparseable to this build.</summary>
+            public int DroppedBindings { get; }
+            /// <summary>True if the document's <c>version</c> was newer than <see cref="CurrentVersion"/> (some newer bindings may have dropped).</summary>
+            public bool FromFutureVersion { get; }
+
+            /// <summary>Implicit conversion to the overridden-action count, for callers that only want the number.</summary>
+            public static implicit operator int(ApplyResult r) => r.AppliedCount;
+        }
 
         // ---- DTOs (the on-disk shape; separate from the runtime structs) ----
 
@@ -122,12 +161,15 @@ namespace KhaozEngine.Windowing.Actions
 
         /// <summary>
         /// The serialized shape of one <see cref="InputSource"/>. Every field is optional so an older/newer file, or
-        /// one from a build that knew fewer fields, still parses; unset fields fall back to the source defaults. An
-        /// unknown <see cref="Kind"/> string deserializes to <see cref="InputSourceKind.None"/> and is dropped.
+        /// one from a build that knew fewer fields, still parses; unset fields fall back to the source defaults. The
+        /// discriminator <see cref="Kind"/> is stored as a RAW STRING (not the enum) so an unrecognized future kind
+        /// does NOT throw during deserialize (which would discard the whole file) - it fails to map in
+        /// <see cref="ToSource"/> and only THAT binding is dropped. It still serializes as the enum name.
         /// </summary>
         public sealed class SourceDto
         {
-            public InputSourceKind Kind { get; set; }
+            /// <summary>The source kind, as its enum NAME. An unknown name maps to <see cref="InputSourceKind.None"/> in <see cref="ToSource"/> and drops just this binding.</summary>
+            public string? Kind { get; set; }
             public Key Key { get; set; }
             public Key Key2 { get; set; }
             public Key Key3 { get; set; }
@@ -143,16 +185,23 @@ namespace KhaozEngine.Windowing.Actions
 
             public static SourceDto From(InputSource s) => new()
             {
-                Kind = s.Kind, Key = s.Key, Key2 = s.Key2, Key3 = s.Key3, Key4 = s.Key4,
+                Kind = s.Kind.ToString(), Key = s.Key, Key2 = s.Key2, Key3 = s.Key3, Key4 = s.Key4,
                 MouseButton = s.MouseButton, GamepadButton = s.GamepadButton,
                 Stick = s.Stick, Component = s.StickComponent, Trigger = s.TriggerSide,
                 Scale = s.Scale, Invert = s.Invert, ButtonThreshold = s.ButtonThreshold,
             };
 
-            /// <summary>Rebuild the runtime source. Unknown kinds map to <see cref="InputSource.None"/> (dropped by callers).</summary>
+            /// <summary>
+            /// Rebuild the runtime source. The raw <see cref="Kind"/> string is parsed tolerantly: an unrecognized name
+            /// (a future kind) maps to <see cref="InputSource.None"/>, which callers drop - the rest of the document is
+            /// unaffected.
+            /// </summary>
             public InputSource ToSource()
             {
-                switch (Kind)
+                // Tolerant parse: unknown name OR an out-of-range numeric string (a future kind) both drop to None.
+                if (!Enum.TryParse<InputSourceKind>(Kind, ignoreCase: true, out var kind) || !Enum.IsDefined(kind))
+                    return InputSource.None; // unknown/future kind: drop just this binding
+                switch (kind)
                 {
                     case InputSourceKind.Key: return InputSource.FromKey(Key);
                     case InputSourceKind.MouseButton: return InputSource.FromMouseButton(MouseButton);

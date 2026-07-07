@@ -132,8 +132,14 @@ namespace KhaozEngine.Windowing.Actions
         // ---- per-frame runtime ---------------------------------------------
 
         /// <summary>
-        /// Evaluate all actions from this frame's snapshot. Call once per frame before reading. The previous frame's
-        /// "down" set is retained for composite/axis-as-button press/release edges.
+        /// Evaluate all actions from this frame's snapshot. Call EXACTLY once per frame before reading. The previous
+        /// frame's "down" set is retained for composite/axis-as-button press/release edges.
+        ///
+        /// <para><b>Call once per frame.</b> Edge detection (<see cref="WasPressed"/> / <see cref="WasReleased"/>) is a
+        /// this-frame-vs-last-frame comparison, so calling Update TWICE in the same frame collapses the previous-frame
+        /// memory and can swallow a press/release edge (the second call sees the first call's "down now" as "down last
+        /// frame"). Drive it from a single per-frame update point (the <see cref="ActionMapController"/> does this), not
+        /// from multiple systems. Reading state (IsDown/GetAxis/...) any number of times per frame is fine.</para>
         /// </summary>
         public void Update(InputState input)
         {

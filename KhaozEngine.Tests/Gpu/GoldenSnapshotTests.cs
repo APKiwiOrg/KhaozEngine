@@ -148,6 +148,53 @@ namespace KhaozEngine.Tests.Gpu
             GoldenCompare.AssertOrUpdate("telegraph_ground", rgba, W, H);
         }
 
+        // Shadows gap #1, blob tier: three meshes at different heights over a tile floor with ShadowMode.Blob on.
+        // Each mesh submits a ShadowBlob at its footprint; the two grounded meshes drop a full soft dark blob, the
+        // raised sphere drops a shrunk, lighter one (the height fade). Locks the blob grounding + the height-fade
+        // derivation through the real ground-decal projection path. Off-scene (the default) stays byte-stable via the
+        // untouched scene3d golden.
+        [GpuFact]
+        public void Golden3D_ShadowBlob()
+        {
+            MeshHandle floor = default, box = default, sphere = default, boxHi = default;
+
+            byte[] rgba = Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    floor = scene.LoadMesh(MeshPrimitives.Tile(8f, 0.1f));
+                    box = scene.LoadMesh(MeshPrimitives.Box(0.9f));
+                    boxHi = scene.LoadMesh(MeshPrimitives.Box(0.7f));
+                    sphere = scene.LoadMesh(MeshPrimitives.Sphere(0.6f));
+                    scene.Post.Starfield = false;                 // flat ground so the blobs read cleanly
+                    scene.Post.BackgroundColor = new Color(0.10f, 0.12f, 0.16f, 1f);
+                    scene.Post.Quality.Shadows.Mode = ShadowMode.Blob;
+                    scene.Camera.Frame(new Vector3(0.2f, 0.3f, 0f), new Vector3(6f, 4.5f, 6f));
+                },
+                drawFrame: scene =>
+                {
+                    scene.Draw(floor, Matrix4x4.CreateTranslation(0f, 0f, 0f));
+
+                    // Grounded green box (left): full, dark blob right under it.
+                    scene.Draw(box, Matrix4x4.CreateTranslation(-1.6f, 0.45f, 0.8f),
+                        new Color(0.15f, 0.75f, 0.2f, 1f));
+                    scene.AddShadowBlob(new ShadowBlob(new Vector3(-1.6f, 0f, 0.8f), groundY: 0f, radius: 0.9f));
+
+                    // Grounded red box (right): a second full blob at a distinct spot.
+                    scene.Draw(boxHi, Matrix4x4.CreateTranslation(1.5f, 0.35f, -1.2f),
+                        new Color(0.85f, 0.2f, 0.15f, 1f));
+                    scene.AddShadowBlob(new ShadowBlob(new Vector3(1.5f, 0f, -1.2f), groundY: 0f, radius: 0.75f));
+
+                    // Raised sphere (a "jumping" caster): drawn 2 units up, so its blob is shrunk + lighter (fade).
+                    scene.Draw(sphere, Matrix4x4.CreateTranslation(0.2f, 2.0f, 1.6f),
+                        new Color(0.25f, 0.5f, 0.9f, 1f), Material.Shiny(0.6f));
+                    scene.AddShadowBlob(new ShadowBlob(new Vector3(0.2f, 0f, 1.6f), groundY: 0f, radius: 0.8f,
+                        strength: 1f, heightAboveGround: 2.0f));
+                },
+                frames: 2);
+
+            GoldenCompare.AssertOrUpdate("scene3d_shadow_blob", rgba, W, H);
+        }
+
         [GpuFact]
         public void Golden3D_TexturedMesh()
         {

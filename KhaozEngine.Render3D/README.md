@@ -21,7 +21,17 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   to FXAA, never throws). Default `Off`, so the low-level `RenderScale` / `Supersample` fields still govern.
   SSAA supersamples the whole image (geometry AND shaded interiors, the only one that kills high-frequency terrain
   shimmer) and now downsamples correctly at ANY factor via a mip-filtered blit; FXAA is a cheap one-pass edge
-  smoother; MSAA multisamples geometry edges only. `RenderQuality` is the extension point for future quality knobs.
+  smoother; MSAA multisamples geometry edges only. `RenderQuality` is the extension point for further quality knobs.
+- Shadows: `PixelPostProcessSettings.Quality.Shadows` (a `ShadowSettings`) picks the shadow tier via `Shadows.Mode`
+  - `ShadowMode.Off` (default, byte-stable), `ShadowMode.Blob` (soft dark ground blob under each caster), or
+  `ShadowMode.ShadowMap` (key-light PCF map; present in the enum, wired by a later feature, degrades to `Blob` until
+  then). For the blob tier the scene submits one request per caster per frame with
+  `Scene3D.AddShadowBlob(new ShadowBlob(position, groundY, radius, strength, heightAboveGround))` (cleared each
+  `Begin`, like the ground-decal queue); the blob is drawn as a dark `Circle` `GroundDecal` through the existing
+  depth-reconstructed ground-decal projection. Radius follows the caster footprint; strength fades with height above
+  ground (`ShadowSettings.BlobFadeHeight`) so a jumping caster's blob shrinks + lightens. Validate a menu choice with
+  `Shadows.ResolveFor(caps)` and read `.Effective`/`.Degraded`/`.Reason` (same `ResolveFor`-clamps-a-request pattern
+  as AA, never throws). With `Off` the blob queue is ignored, so submitting blobs unconditionally is safe.
 - `Scene3D.DrawOverlayMesh(MeshHandle mesh, Matrix4x4 world)` - queues a translucent, unlit,
   depth-tested-but-not-depth-writing, alpha-blended draw of an already-loaded mesh, colored by the mesh's
   per-vertex color. A general overlay primitive, not collision-specific: drawn after the meshes/beams and

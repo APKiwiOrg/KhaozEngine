@@ -133,5 +133,10 @@ namespace KhaozEngine.Render3D
         /// a menu, e.g. <c>Post.Quality.AntiAliasing = AntiAliasing.Ssaa(3f)</c>. Validate a menu choice against the
         /// device with <see cref="AntiAliasing.ResolveFor"/>.</summary>
         public AntiAliasing AntiAliasing = AntiAliasing.Off;
+
+        /// <summary>Shadow tier + blob-tier tuning. Default <see cref="ShadowMode.Off"/> (no shadows, no cost,
+        /// existing scenes byte-stable). Set it from a menu, e.g. <c>Post.Quality.Shadows.Mode = ShadowMode.Blob</c>.
+        /// Validate a menu choice against the device with <see cref="ShadowSettings.ResolveFor"/>.</summary>
+        public ShadowSettings Shadows = new();
     }
 }

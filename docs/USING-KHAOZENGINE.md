@@ -918,8 +918,25 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
   the high-level equivalent of `RenderScale.MatchViewport` + `Supersample = f`; the raw fields remain and, with AA
   `Off`, still govern (so existing scenes are unchanged). The `Pixelated` retro path forces AA off. Costs: SSAA is
   ~factor^2 fragment shading, MSAA adds a per-frame resolve, FXAA one pass - keep AA off by default and measure.
-  `Post.Quality` (a `RenderQuality`) is where future quality knobs (anisotropy, shadow/texture quality, TAA) will
-  live, so a game's options menu binds to it.
+  `Post.Quality` (a `RenderQuality`) is where the quality knobs live (AA, shadows, and future anisotropy/TAA), so a
+  game's options menu binds to it.
+- Shadows (the shadow dropdown): `Post.Quality.Shadows` (a `ShadowSettings`) picks the shadow tier via
+  `Shadows.Mode`:
+  - `ShadowMode.Off` (**default**): no shadows, no cost, existing scenes byte-stable.
+  - `ShadowMode.Blob`: a soft dark elliptical ground blob under each caster - cheap grounding for low-end hardware
+    (one extra depth-reconstructed ground-decal draw per caster, no shadow map, no second geometry pass). The scene
+    layer submits one `ShadowBlob` per caster it wants grounded with `scene.AddShadowBlob(new ShadowBlob(position,
+    groundY, radius, strength, heightAboveGround))` (per frame, cleared each `Begin`, like the ground-decal queue).
+    Radius follows the caster's footprint; strength fades with `heightAboveGround` so a jumping caster's blob shrinks
+    and lightens, vanishing at `Shadows.BlobFadeHeight` (default `4`; set `<= 0` for a constant-strength blob). Tune
+    `BlobOpacity`, `BlobColor`, `BlobEdgeSoftness`, and the ground Y-band (`BlobGroundYTolerance`/`BlobGroundMaxStep`).
+    Which entities cast is the game's call - typically each character casts (submit its footprint each frame) and
+    props opt in by size. With `Off` the queue is ignored, so submitting blobs unconditionally is safe.
+  - `ShadowMode.ShadowMap`: the semi-realistic key-light directional shadow map with PCF. Present in the enum now;
+    the map is wired by a later engine feature. Until then `Shadows.ResolveFor(caps)` **degrades `ShadowMap` down to
+    `Blob`** (best available tier, never a crash on a menu choice), reporting `ShadowResolution.Degraded`/`Reason`
+    for a diagnostics overlay to surface. Validate a menu choice with `Shadows.ResolveFor(AppWindow.Capabilities)` and
+    read `.Effective` for the tier that will actually run - the same `ResolveFor`-clamps-a-request pattern as AA.
 - Edge outline: `Post.Outline` (on by default) draws a depth/normal toon outline. `OutlineColor`,
   `OutlineDepthThreshold` (depth-discontinuity sensitivity), and `OutlineNormalThreshold` (interior-crease
   sensitivity from the geometric normal) tune it. The outline is perspective-correct: under a

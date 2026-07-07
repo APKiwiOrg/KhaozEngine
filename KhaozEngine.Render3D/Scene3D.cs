@@ -53,6 +53,12 @@ namespace KhaozEngine.Render3D
         readonly List<LineRenderer.LineVertex> _lineVerts = new();
         readonly List<FillRenderer.FillVertex> _fillVerts = new();
         readonly List<GroundDecal> _decals = new();
+        // Per-frame blob-shadow requests (ShadowMode.Blob). Cleared each Begin() like the decal queue. When the
+        // resolved shadow tier is Blob, each request is turned into a dark Circle GroundDecal at render time and
+        // drawn through the ground-decal projection path, so a blob reuses the same depth-reconstructed grounding.
+        readonly List<ShadowBlob> _shadowBlobs = new();
+        // Reused scratch for the blobs-as-decals so the per-frame conversion allocates nothing.
+        readonly List<GroundDecal> _shadowDecals = new();
         // Translucent unlit overlay-mesh draws (collision proxies etc.): queued in submission order, flushed into the
         // model FB after the beams and before the post chain (depth-interleaved). Cleared each Begin().
         readonly List<(MeshHandle Mesh, Matrix4x4 World)> _overlayMeshDraws = new();
@@ -557,6 +563,7 @@ namespace KhaozEngine.Render3D
             _lineVerts.Clear();
             _fillVerts.Clear();
             _decals.Clear();
+            _shadowBlobs.Clear();
             _overlayMeshDraws.Clear();
             _billboardAlphaItems.Clear();
             _billboardAlpha.Clear();
@@ -741,6 +748,27 @@ namespace KhaozEngine.Render3D
         /// <summary>Count of ground decals queued this frame. Internal: lets tests assert <see cref="Begin"/> clears
         /// the queue and <see cref="DrawGroundDecal"/> enqueues.</summary>
         internal int DecalCount => _decals.Count;
+
+        /// <summary>
+        /// Queue one blob-shadow request for this frame: a soft dark ground blob under a shadow caster at
+        /// <paramref name="blob"/>'s position. Only rendered when the resolved shadow tier is
+        /// <see cref="ShadowMode.Blob"/> (set <c>Post.Quality.Shadows.Mode = ShadowMode.Blob</c>); with
+        /// <see cref="ShadowMode.Off"/> the queue is ignored, so existing scenes are byte-stable. Presentation only;
+        /// cleared in <see cref="Begin"/>. The scene layer submits one per caster it wants grounded (typically each
+        /// character; props opt in by calling this with their footprint). Radius follows the caster's footprint and
+        /// strength fades with <see cref="ShadowBlob.HeightAboveGround"/> per
+        /// <see cref="ShadowSettings.BlobFadeHeight"/>.
+        /// </summary>
+        public void AddShadowBlob(in ShadowBlob blob) => _shadowBlobs.Add(blob);
+
+        /// <summary>Count of blob-shadow requests queued this frame. Internal: lets tests assert <see cref="Begin"/>
+        /// clears the queue and <see cref="AddShadowBlob"/> enqueues.</summary>
+        internal int ShadowBlobCount => _shadowBlobs.Count;
+
+        /// <summary>The shadow tier that will actually render this frame, resolved against the device (see
+        /// <see cref="ShadowSettings.ResolveFor"/>). Internal: lets tests assert the degradation decision without a
+        /// full render.</summary>
+        internal ShadowResolution ResolvedShadows() => Post.Quality.Shadows.ResolveFor(_gd.Capabilities);
 
         /// <summary>Queue a translucent, UNLIT, depth-TESTED (not depth-writing) overlay draw of an already-loaded
         /// <paramref name="mesh"/> at world transform <paramref name="world"/> for this frame. The mesh's own
@@ -1119,11 +1147,26 @@ namespace KhaozEngine.Render3D
             // edge pass which also samples it). No-op when not multisampled.
             _res.ResolveDepth(cl);
 
+            // Blob shadows: when the resolved tier is Blob, turn each queued ShadowBlob into a dark Circle
+            // GroundDecal and draw it FIRST (under the gameplay decals), so a caster is grounded by the same
+            // depth-reconstructed projection the decals use. Off => the queue is ignored and nothing changes
+            // (existing goldens byte-stable). ShadowMap degrades to Blob here (ResolveFor) until it is wired.
+            _shadowDecals.Clear();
+            if (_shadowBlobs.Count > 0 && Post.Quality.Shadows.ResolveFor(_gd.Capabilities).Effective == ShadowMode.Blob)
+            {
+                var shadows = Post.Quality.Shadows;
+                for (int i = 0; i < _shadowBlobs.Count; i++)
+                    if (shadows.TryBuildDecal(_shadowBlobs[i], out GroundDecal blobDecal))
+                        _shadowDecals.Add(blobDecal);
+                if (_shadowDecals.Count > 0)
+                    _decalRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, CollectionsMarshal.AsSpan(_shadowDecals));
+            }
+
             // Ground decals: after the model pass wrote depth (meshes + textured billboards + beams), paint the
             // queued decals onto the reconstructed surface into ColorTex, BEFORE post - so they conform to the
             // ground, are occluded by geometry (Y-band), and flow through the pixel post like the meshes.
             if (_decals.Count > 0)
-                _decalRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_decals));
+                _decalRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, CollectionsMarshal.AsSpan(_decals));
 
             // Resolve the multisampled lit colour + encoded normal into the single-sample targets the post chain
             // samples (after ALL MRT writers: geometry + decals). No-op when not multisampled.

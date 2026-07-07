@@ -5,7 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
-## 10.22.0
+## 10.23.0
 
 Windows self-update no longer patches a running game or crashes on a permission denial, so Program Files installs that could not self-update since around 10.15 self-heal again without a lossy fallback. The apply waits behind a hard barrier until the game process has exited, rides out an `UnauthorizedAccessException` (a locked image or a denied delete-child) in the copy retry instead of crashing, rolls back and clears the apply-in-progress marker on any unexpected failure, and relaunches the updater elevated once (a single UAC prompt) when the install dir is not writable. Additive `IUpdaterEnvironment` members, minor bump. Windows apply path only, macOS and Linux behaviour is unchanged.
 
@@ -15,6 +15,13 @@ Windows self-update no longer patches a running game or crashes on a permission 
 - **Marker discipline:** the `apply-in-progress` marker is written only during the actual mutation phase, so any earlier abort (barrier, staging incomplete, unsafe path, elevation handoff) leaves nothing dangling.
 - **Elevate once:** `UpdateApplier.Run` relaunches the updater elevated (Windows `runas`, guarded by a new `--elevated` flag) when the new `IUpdaterEnvironment.CanWriteToDirectory` reports the install dir non-writable. A declined UAC prompt falls through to a clean in-place attempt. The writability probe is skipped off Windows, so the POSIX apply runs no extra filesystem op.
 - New default-implemented `IUpdaterEnvironment` members: `IsProcessAlive`, `CanWriteToDirectory`, `TryElevate` (additive, so external implementers keep compiling).
+
+## 10.22.0
+
+Audio feel: music crossfade on track change and per-bus SFX volume grouping. Additive public API in KhaozEngine.Audio, minor bump, and every existing call keeps today's exact audible behavior when the new knobs are unused.
+
+- **Music crossfade:** `MusicCrossfadeDuration` (default 0 = the old hard cut, literally the old synchronous path with no tick dependency) fades track changes: linear fade-out on the current track, switch, fade-in on the new one, driven by `AudioSystem.Update(float dt)` (pure, no wall clock). The fade factor multiplies the user's master x music volume through one gain funnel, so volume changes mid-fade apply correctly and the fade never overwrites settings. Mid-fade retargets converge on the newest track without double-switching. Single-stream by necessity: `IMusicBackend` models one active track, and the two-stream true crossfade is recorded as a seam follow-up on the roadmap.
+- **SFX buses:** `DefineBus(id)` / `SetBusVolume(id, v)` / `GetBusVolume(id)` plus an optional `bus` argument on the `PlaySfx`/`PlaySfx3D` family. Effective voice gain is master x sfx x bus x per-play volume, each factor clamped. Bus ids are opaque identifiers (display names stay game-side localized strings). An unknown bus plays at full volume on the default path with a warn-once diagnostics note, never a throw, and bus-less calls take a zero-cost fast path that is floating-point-identical to the old math. Documented limitation: `ISfxBackend` exposes no per-voice handle, so a bus volume change applies to subsequent plays, not already-sounding voices (the seam upgrade is on the roadmap).
 
 ## 10.21.0
 

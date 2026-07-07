@@ -4,7 +4,7 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **10.22.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **10.23.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan when it is scheduled.
 
@@ -123,10 +123,10 @@ Also here, unchanged:
 - Rumble follow-up (the `IRumble` seam + pulse envelopes shipped in 10.21.0, compile-verified): the GLFW input
   backend enumerates zero vibration motors, so rumble is a graceful no-op today. Revisit when a motor-capable
   input backend (SDL) lands, plus an on-device feel pass and a dirty-flag skip for per-frame motor writes.
-- Music crossfade: music playback is single-track with a hard cut on track change. A short crossfade between
-  tracks (and into/out of combat layers later) is cheap and immediately audible.
-- Audio buses: the volume model is Master x Music/Sfx only. A small bus/category graph (UI, ambience, combat)
-  gives games mix control without per-voice bookkeeping.
+- Audio follow-ups (music crossfade + SFX buses shipped in 10.22.0): a true two-stream crossfade needs an
+  `IMusicBackend` seam upgrade (today it is fade-out/switch/fade-in on the single stream), live re-gain of
+  already-playing bus voices needs a per-voice handle on `ISfxBackend` (today bus volume applies on next play),
+  and combat music layers ride on the crossfade once games pull for them.
 - Rich text markup: `TextLayout` does wrap + alignment only. Inline color/style markup (localized strings
   need it for emphasis and key names) for chat, tooltips, and dialogue.
 

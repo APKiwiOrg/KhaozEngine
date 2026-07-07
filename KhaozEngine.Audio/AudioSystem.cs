@@ -39,6 +39,14 @@ public sealed class AudioSystem : IDisposable
     private bool _musicEnabled = true;
     private string? _currentTrack;
     private string? _contentDirectory;
+    private float _musicCrossfadeDuration;   // seconds; 0 = hard cut (today's behavior)
+    private MusicFade _fade;                  // pure dt-driven single-stream crossfade state
+
+    // Per-bus SFX volume multipliers. The default bus is implicit (id "" / not in the map) and always sits at
+    // 1.0, so a Play with no bus (or an unknown bus) composes exactly master*sfx*volume as before. A defined
+    // bus scales that by its current volume. Unknown-bus plays fall back to the default bus with a warn-once.
+    private readonly Dictionary<string, float> _busVolumes = new();
+    private readonly HashSet<string> _warnedUnknownBus = new();  // warn-once per unknown bus id seen on Play
 
     /// <summary>
     /// Creates an audio system using the OpenAL streaming backend.
@@ -175,7 +183,9 @@ public sealed class AudioSystem : IDisposable
         }
     }
 
-    /// <summary>Whether background music is enabled. Toggling stops/starts playback without changing volume.</summary>
+    /// <summary>Whether background music is enabled. Toggling stops/starts playback without changing the user
+    /// volume settings. When <see cref="MusicCrossfadeDuration"/> is greater than zero, re-enabling fades the
+    /// resumed track in from silence rather than snapping to full volume.</summary>
     public bool MusicEnabled
     {
         get => _musicEnabled;
@@ -195,6 +205,7 @@ public sealed class AudioSystem : IDisposable
                 }
                 else
                 {
+                    _fade.Reset();   // cancel any in-flight crossfade so a stale factor can't scale a later apply
                     _backend.Stop();
                     ClearCurrentTrack();
                 }
@@ -219,7 +230,7 @@ public sealed class AudioSystem : IDisposable
     }
 
     /// <summary>
-    /// SFX volume (0.0 - 1.0). Scaled by master volume. Applied per <see cref="PlaySfx(string, float, float)"/> (no eager apply,
+    /// SFX volume (0.0 - 1.0). Scaled by master volume. Applied per <see cref="PlaySfx(string, float, float, string)"/> (no eager apply,
     /// since SFX are fire-and-forget one-shots).
     /// </summary>
     public float SfxVolume
@@ -227,6 +238,43 @@ public sealed class AudioSystem : IDisposable
         get => _sfxVolume;
         set => _sfxVolume = Math.Clamp(value, 0f, 1f);
     }
+
+    /// <summary>
+    /// Registers an SFX bus so a game can group sounds (UI, ambience, combat, ...) under one volume without
+    /// tracking individual voices. <paramref name="id"/> is an opaque identifier, not player-facing text (same
+    /// localization boundary as everywhere else: bus ids are identifiers). A newly defined bus starts at volume
+    /// <c>1.0</c> (audibly identical to the default bus until <see cref="SetBusVolume"/> lowers it). Re-defining
+    /// an existing bus is a no-op that preserves its current volume. A <c>null</c> or empty id is ignored (that
+    /// space is the implicit default bus, which is always 1.0 and cannot be redefined). Bus volumes are game
+    /// settings: the game persists them like <see cref="MasterVolume"/> / <see cref="SfxVolume"/> (no built-in
+    /// serialization).
+    /// </summary>
+    public void DefineBus(string id)
+    {
+        if (string.IsNullOrEmpty(id)) return;
+        if (!_busVolumes.ContainsKey(id)) _busVolumes[id] = 1f;
+    }
+
+    /// <summary>
+    /// Sets the volume multiplier (0.0 - 1.0, clamped) for the bus <paramref name="id"/>, defining it if it was
+    /// not already defined. Applies to sounds played on that bus AFTER this call. Sounds already playing on the
+    /// bus keep the gain they were started with: the SFX backend seam is fire-and-forget (<see cref="ISfxBackend.Play"/>
+    /// returns no voice handle and exposes no per-voice gain setter), so a live per-voice re-gain is not possible
+    /// without a breaking seam change. SFX one-shots are short, so this is a mild limitation; see the Audio docs.
+    /// A <c>null</c> or empty id (the implicit default bus) is ignored: the default bus is always 1.0.
+    /// </summary>
+    public void SetBusVolume(string id, float volume)
+    {
+        if (string.IsNullOrEmpty(id)) return;
+        _busVolumes[id] = Math.Clamp(volume, 0f, 1f);
+    }
+
+    /// <summary>
+    /// Returns the current volume multiplier for the bus <paramref name="id"/>, or <c>1.0</c> for an unknown /
+    /// default bus (a <c>null</c> or empty id, or an id never defined). Never throws.
+    /// </summary>
+    public float GetBusVolume(string id)
+        => !string.IsNullOrEmpty(id) && _busVolumes.TryGetValue(id, out float v) ? v : 1f;
 
     /// <summary>Name of the track currently playing, or null when nothing is playing.</summary>
     public string? CurrentTrack => _currentTrack;
@@ -236,6 +284,47 @@ public sealed class AudioSystem : IDisposable
 
     /// <summary>How the next track is chosen when the current one ends. Default <see cref="PlayMode.RandomRotation"/>.</summary>
     public PlayMode PlayMode { get; set; } = PlayMode.RandomRotation;
+
+    /// <summary>
+    /// Default crossfade duration in seconds applied when a track change happens (via <see cref="PlayTrack(string)"/>,
+    /// <see cref="PlayTrack(int)"/>, <see cref="PlayRandomTrack"/>, or end-of-track auto-advance). Default <c>0</c>
+    /// preserves the historical hard-cut behavior byte-for-byte. When &gt; 0 the old track fades out and the new one
+    /// fades in over this duration (half fade-out, half fade-in) through the single music stream. The fade is driven
+    /// by <see cref="Update(float)"/> and only progresses when the game passes a real <c>dt</c>; a game that never
+    /// calls <see cref="Update(float)"/> (or leaves this at 0) sees no behavioral change. Negative values clamp to 0.
+    /// </summary>
+    public float MusicCrossfadeDuration
+    {
+        get => _musicCrossfadeDuration;
+        set => _musicCrossfadeDuration = value < 0f ? 0f : value;
+    }
+
+    /// <summary>
+    /// Crossfades to the registered track named <paramref name="name"/> over <paramref name="duration"/> seconds,
+    /// independent of <see cref="MusicCrossfadeDuration"/>. Duration <c>0</c> is an immediate hard cut identical to
+    /// <see cref="PlayTrack(string)"/>. An unknown name logs a warning and is a no-op (no throw). Retargeting while a
+    /// fade is already running restarts the fade toward this newest track (see <see cref="Update(float)"/>).
+    /// </summary>
+    public void CrossfadeTo(string name, float duration)
+    {
+        int index = _trackNames.IndexOf(name);
+        if (index < 0)
+        {
+            _logger.Warn($"CrossfadeTo unknown track '{name}'; ignoring.");
+            return;
+        }
+
+        CrossfadeTo(index, duration);
+    }
+
+    /// <summary>
+    /// Crossfades to the registered track at <paramref name="index"/> over <paramref name="duration"/> seconds,
+    /// independent of <see cref="MusicCrossfadeDuration"/>. Duration <c>0</c> is an immediate hard cut identical to
+    /// <see cref="PlayTrack(int)"/>. Out-of-range index logs a warning and is a no-op. Honours
+    /// <see cref="MusicEnabled"/> and the availability latch.
+    /// </summary>
+    public void CrossfadeTo(int index, float duration)
+        => RequestTrack(index, duration < 0f ? 0f : duration);
 
     /// <summary>
     /// Loads all registered music tracks from <paramref name="contentDirectory"/> (the folder holding the
@@ -316,35 +405,25 @@ public sealed class AudioSystem : IDisposable
         int trackCount = _backend.TrackCount;
         if (trackCount == 0 || !_available || !_musicEnabled) return;
 
-        try
-        {
-            List<int> pool = ResolveRotationIndices(trackCount);
-            int index;
-            if (pool.Count == 1)
-            {
-                index = pool[0];
-            }
-            else
-            {
-                do
-                {
-                    index = pool[_rng.Next(pool.Count)];
-                } while (index == _lastTrackIndex);
-            }
+        int index = PickRandomIndex(trackCount);
+        if (index < 0) return;
+        RequestTrack(index, _musicCrossfadeDuration);
+    }
 
-            if (!_backend.TryPlayTrack(index, _masterVolume * _musicVolume))
-            {
-                _available = false;
-                return;
-            }
+    // Picks the next random rotation index (never the same one twice in a row within the pool), or -1 if the
+    // pool is empty / cannot pick. Pure selection: no playback side effects.
+    private int PickRandomIndex(int trackCount)
+    {
+        List<int> pool = ResolveRotationIndices(trackCount);
+        if (pool.Count == 0) return -1;
+        if (pool.Count == 1) return pool[0];
 
-            CommitPlayed(index);   // record + now-playing state, only after a successful play
-        }
-        catch (Exception ex)
+        int index;
+        do
         {
-            _logger.Debug("music backend failed in PlayRandomTrack; disabling audio.", ex);
-            _available = false;
-        }
+            index = pool[_rng.Next(pool.Count)];
+        } while (index == _lastTrackIndex);
+        return index;
     }
 
     // Resolves the rotation pool to a list of distinct, in-range backend track indices that PlayRandomTrack
@@ -445,9 +524,41 @@ public sealed class AudioSystem : IDisposable
             return;
         }
 
+        RequestTrack(index, _musicCrossfadeDuration);
+    }
+
+    // Central track-change entry: either an immediate hard cut (duration 0, byte-for-byte today's behavior) or
+    // a dt-driven single-stream crossfade (duration > 0). Guards (track count / availability / enabled) match the
+    // old play paths. Out-of-range indices are treated as no-ops here (callers validate their own ranges first).
+    private void RequestTrack(int index, float duration)
+    {
+        int trackCount = _backend.TrackCount;
+        if (trackCount == 0 || !_available || !_musicEnabled) return;
+        if (index < 0 || index >= trackCount) return;
+
+        if (duration <= 0f)
+        {
+            // Hard cut: identical to the pre-crossfade path. Cancel any in-flight fade so a stray fade factor
+            // can't linger and scale the next volume apply.
+            _fade.Reset();
+            PlayTrackImmediate(index);
+            return;
+        }
+
+        // Crossfade: start (or retarget) the fade toward this track. The actual backend switch fires from
+        // Update(dt) when the fade-out half reaches 0. Nothing plays here if a track is already sounding.
+        // Mark playback started so Update()'s deferred first-play can't fire a random track over the fade.
+        _started = true;
+        _fade.Start(index, duration, hasCurrentTrack: HasSoundingTrack());
+    }
+
+    // Plays a track through the backend right now at the current fade-composed volume, committing now-playing
+    // state on success and latching audio off on failure. Shared by the hard-cut path and the fade's switch point.
+    private void PlayTrackImmediate(int index)
+    {
         try
         {
-            if (!_backend.TryPlayTrack(index, _masterVolume * _musicVolume))
+            if (!_backend.TryPlayTrack(index, CurrentMusicGain()))
             {
                 _available = false;
                 return;
@@ -457,8 +568,26 @@ public sealed class AudioSystem : IDisposable
         }
         catch (Exception ex)
         {
-            _logger.Debug("music backend failed in PlayTrack; disabling audio.", ex);
+            _logger.Debug("music backend failed playing track; disabling audio.", ex);
             _available = false;
+        }
+    }
+
+    // The volume handed to the backend: settings-derived master*music scaled by the crossfade factor (1 when no
+    // fade is active). The fade MULTIPLIES the user volume, never replaces it, so changing MusicVolume mid-fade
+    // still takes effect on the next ApplyVolume / play.
+    private float CurrentMusicGain() => _masterVolume * _musicVolume * _fade.Factor;
+
+    // Whether a track is currently audible (so a crossfade should fade it OUT before switching). A transient
+    // IsPlaying throw is treated as "not sounding" (fade-in only): safe, never propagates out of a play call.
+    private bool HasSoundingTrack()
+    {
+        if (_currentTrack is null) return false;
+        try { return _backend.IsPlaying; }
+        catch (Exception ex)
+        {
+            _logger.Debug("failed to read IsPlaying while starting a crossfade; treating as no current track.", ex);
+            return false;
         }
     }
 
@@ -484,7 +613,17 @@ public sealed class AudioSystem : IDisposable
     /// A transient failure reading <see cref="IMusicBackend.IsPlaying"/> skips the frame (logged) and
     /// recovers next frame; only real play/load failures permanently disable audio.
     /// </summary>
-    public void Update()
+    public void Update() => Update(0f);
+
+    /// <summary>
+    /// Call each frame with the elapsed seconds <paramref name="dt"/>. Same as the no-arg <see cref="Update()"/>
+    /// (which passes <c>dt = 0</c>) plus it drives the music crossfade: a game using <see cref="MusicCrossfadeDuration"/>
+    /// or <see cref="CrossfadeTo(string,float)"/> must call THIS overload with a real <paramref name="dt"/> so the fade
+    /// progresses. With no active fade (or <c>dt = 0</c>) behavior is identical to the historical no-arg update.
+    /// Detects end-of-track and queues the next; a transient <see cref="IMusicBackend.IsPlaying"/> read failure skips
+    /// the frame (logged) and recovers next frame.
+    /// </summary>
+    public void Update(float dt)
     {
         if (_backend.TrackCount == 0 || !_available || !_musicEnabled) return;
 
@@ -494,6 +633,19 @@ public sealed class AudioSystem : IDisposable
         {
             _started = true;
             PlayRandomTrack();
+            return;
+        }
+
+        // Advance any in-progress crossfade first. This may fire the mid-fade stream switch (fade-out reached 0)
+        // and, either way, re-applies the live fade-scaled volume so the ramp is heard. While a fade is active the
+        // end-of-track auto-advance below is suppressed (the source is mid-transition, not naturally finished).
+        if (_fade.Active)
+        {
+            if (_fade.Advance(dt, out int switchTo))
+            {
+                PlayTrackImmediate(switchTo);   // fade-out hit 0: switch the single stream to the new track
+            }
+            ApplyVolume();                      // push the current fade factor into the backend gain
             return;
         }
 
@@ -516,22 +668,25 @@ public sealed class AudioSystem : IDisposable
 
     /// <summary>
     /// Plays a registered SFX as a non-positional one-shot (heard at full gain). Gain =
-    /// <see cref="MasterVolume"/> * <see cref="SfxVolume"/> * clamp01(<paramref name="volume"/>). An unknown
-    /// name warns once and is a no-op. An SFX hiccup is logged and swallowed (never disables music).
+    /// <see cref="MasterVolume"/> * <see cref="SfxVolume"/> * bus * clamp01(<paramref name="volume"/>), where the
+    /// bus factor is <see cref="GetBusVolume"/> for <paramref name="bus"/> (1.0 for the default / unknown bus).
+    /// An unknown name warns once and is a no-op. An unknown <paramref name="bus"/> falls back to the default bus
+    /// (volume 1.0) with a warn-once note, never a throw. An SFX hiccup is logged and swallowed (never disables music).
     /// </summary>
-    public void PlaySfx(string name, float volume = 1f, float pitch = 1f)
-        => PlaySfxInternal(name, volume, pitch, positional: false, default);
+    public void PlaySfx(string name, float volume = 1f, float pitch = 1f, string? bus = null)
+        => PlaySfxInternal(name, volume, pitch, positional: false, default, bus);
 
     /// <summary>
     /// Plays a registered SFX as a positional one-shot at <paramref name="position"/> in world space
-    /// (attenuates / pans relative to the listener; see <see cref="SetListener"/>). Same gain / unknown-name /
-    /// guard behavior as <see cref="PlaySfx(string, float, float)"/>.
+    /// (attenuates / pans relative to the listener; see <see cref="SetListener"/>). Same gain (including the
+    /// <paramref name="bus"/> factor) / unknown-name / unknown-bus / guard behavior as
+    /// <see cref="PlaySfx(string, float, float, string)"/>.
     /// </summary>
-    public void PlaySfx3D(string name, Vector3 position, float volume = 1f, float pitch = 1f)
-        => PlaySfxInternal(name, volume, pitch, positional: true, position);
+    public void PlaySfx3D(string name, Vector3 position, float volume = 1f, float pitch = 1f, string? bus = null)
+        => PlaySfxInternal(name, volume, pitch, positional: true, position, bus);
 
     /// <summary>
-    /// Whether <paramref name="name"/> resolves to a loaded SFX buffer (so a subsequent <see cref="PlaySfx(string,float,float)"/>
+    /// Whether <paramref name="name"/> resolves to a loaded SFX buffer (so a subsequent <see cref="PlaySfx(string,float,float,string)"/>
     /// will be heard). A name that was registered but whose file was missing / failed to load returns <c>false</c>.
     /// Lets a game pick among variant keys without triggering the unknown-name warn-once.
     /// </summary>
@@ -542,19 +697,20 @@ public sealed class AudioSystem : IDisposable
     /// returning <c>true</c> when one was played. The engine is convention-agnostic: the game builds the candidate
     /// list (e.g. a per-entity variant followed by a shared fallback). A <c>null</c> / empty list is a no-op
     /// returning <c>false</c>. If none of the candidates is loaded it warns once (deduped on the joined list) and
-    /// returns <c>false</c>. Same gain / guard behavior as <see cref="PlaySfx(string,float,float)"/>.
+    /// returns <c>false</c>. Same gain (including the <paramref name="bus"/> factor) / guard behavior as
+    /// <see cref="PlaySfx(string,float,float,string)"/>.
     /// </summary>
-    public bool PlaySfx(IReadOnlyList<string> candidateKeys, float volume = 1f, float pitch = 1f)
-        => PlayFirstAvailable(candidateKeys, volume, pitch, positional: false, default);
+    public bool PlaySfx(IReadOnlyList<string> candidateKeys, float volume = 1f, float pitch = 1f, string? bus = null)
+        => PlayFirstAvailable(candidateKeys, volume, pitch, positional: false, default, bus);
 
     /// <summary>
     /// Plays the first loaded SFX in <paramref name="candidateKeys"/> (priority order) as a positional one-shot at
     /// <paramref name="position"/>, returning <c>true</c> when one was played. Same first-available / null-empty /
-    /// warn-once semantics as <see cref="PlaySfx(IReadOnlyList{string},float,float)"/>; same positional behavior as
-    /// <see cref="PlaySfx3D(string,Vector3,float,float)"/>.
+    /// warn-once semantics as <see cref="PlaySfx(IReadOnlyList{string},float,float,string)"/>; same positional
+    /// behavior (and <paramref name="bus"/> factor) as <see cref="PlaySfx3D(string,Vector3,float,float,string)"/>.
     /// </summary>
-    public bool PlaySfx3D(IReadOnlyList<string> candidateKeys, Vector3 position, float volume = 1f, float pitch = 1f)
-        => PlayFirstAvailable(candidateKeys, volume, pitch, positional: true, position);
+    public bool PlaySfx3D(IReadOnlyList<string> candidateKeys, Vector3 position, float volume = 1f, float pitch = 1f, string? bus = null)
+        => PlayFirstAvailable(candidateKeys, volume, pitch, positional: true, position, bus);
 
     /// <summary>
     /// Stops every currently-playing SFX voice immediately (music is unaffected). Useful on a scene / screen
@@ -564,7 +720,7 @@ public sealed class AudioSystem : IDisposable
 
     // Plays the first candidate that resolves to a loaded buffer (reusing PlaySfxInternal's gain math + guard), or
     // warns once on the joined list and returns false if none load. Null / empty list is a silent no-op (false).
-    private bool PlayFirstAvailable(IReadOnlyList<string> candidateKeys, float volume, float pitch, bool positional, Vector3 position)
+    private bool PlayFirstAvailable(IReadOnlyList<string> candidateKeys, float volume, float pitch, bool positional, Vector3 position, string? bus)
     {
         if (candidateKeys is null || candidateKeys.Count == 0) return false;
 
@@ -573,7 +729,7 @@ public sealed class AudioSystem : IDisposable
             string name = candidateKeys[i];
             if (IsSfxLoaded(name))
             {
-                PlaySfxInternal(name, volume, pitch, positional, position);
+                PlaySfxInternal(name, volume, pitch, positional, position, bus);
                 return true;
             }
         }
@@ -583,7 +739,7 @@ public sealed class AudioSystem : IDisposable
         return false;
     }
 
-    private void PlaySfxInternal(string name, float volume, float pitch, bool positional, Vector3 position)
+    private void PlaySfxInternal(string name, float volume, float pitch, bool positional, Vector3 position, string? bus)
     {
         if (!_sfx.TryGetValue(name, out int handle))
         {
@@ -591,7 +747,9 @@ public sealed class AudioSystem : IDisposable
             return;
         }
 
-        float gain = _masterVolume * _sfxVolume * Math.Clamp(volume, 0f, 1f);
+        // Effective voice gain = master * sfx * bus * clamp01(volume). The default bus (null/empty id) and any
+        // bus never defined resolve to 1.0, so a bus-less Play is byte-for-byte the pre-bus master*sfx*volume.
+        float gain = _masterVolume * _sfxVolume * ResolveBusVolume(bus) * Math.Clamp(volume, 0f, 1f);
         try
         {
             _sfxBackend.Play(handle, gain, pitch, positional, position);
@@ -603,8 +761,19 @@ public sealed class AudioSystem : IDisposable
         }
     }
 
+    // The bus multiplier for a play. Null/empty = the implicit default bus (1.0). A defined bus returns its
+    // current volume. An unknown (never-defined) bus falls back to the default bus at 1.0 with a warn-once note,
+    // never a throw, so a typo or missing DefineBus degrades to audible-at-full rather than silence or a crash.
+    private float ResolveBusVolume(string? bus)
+    {
+        if (string.IsNullOrEmpty(bus)) return 1f;
+        if (_busVolumes.TryGetValue(bus, out float v)) return v;
+        if (_warnedUnknownBus.Add(bus)) _logger.Debug($"PlaySfx unknown bus '{bus}'; using default bus (1.0). Call DefineBus first.");
+        return 1f;
+    }
+
     /// <summary>
-    /// Sets the 3D listener pose used by <see cref="PlaySfx3D(string, System.Numerics.Vector3, float, float)"/> for attenuation / panning. No-op for
+    /// Sets the 3D listener pose used by <see cref="PlaySfx3D(string, System.Numerics.Vector3, float, float, string)"/> for attenuation / panning. No-op for
     /// non-positional SFX.
     /// </summary>
     public void SetListener(Vector3 position, Vector3 forward, Vector3 up)
@@ -633,7 +802,7 @@ public sealed class AudioSystem : IDisposable
         if (!_available || !_loaded) return;
         try
         {
-            _backend.SetVolume(_masterVolume * _musicVolume);
+            _backend.SetVolume(CurrentMusicGain());
         }
         catch (Exception ex)
         {

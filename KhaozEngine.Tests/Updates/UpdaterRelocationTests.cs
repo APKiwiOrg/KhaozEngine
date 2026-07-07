@@ -192,6 +192,98 @@ public sealed class UpdaterRelocationTests
         }
     }
 
+    [Fact]
+    public void Run_InstallDirNotWritable_RelaunchesElevatedWithoutApplying()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "ke-elev-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        string configPath = Path.Combine(dir, "apply-update.json");
+        try
+        {
+            string scratch = Path.Combine(AppData, "updater-relocate", "2.0.0");
+            var env = new FakeUpdaterEnvironment
+            {
+                SelfExePath = Path.Combine(scratch, "HardpointUpdater.exe"),
+                SelfBaseDir = scratch,
+            };
+            env.NonWritableDirs.Add(Install);             // Program-Files-like protected install
+            env.Files[StagingPath("game.dll")] = "v2";
+            env.Files[InstallPath("game.dll")] = "v1";
+            env.Files[InstallPath("Game")] = "exe";
+
+            WriteConfig(configPath);
+
+            int exit = UpdateApplier.Run(new[] { "--apply", configPath, "--relocated" }, env);
+
+            Assert.Equal(0, exit);
+            Assert.True(env.ElevateCalled);
+            Assert.Equal(Path.Combine(scratch, "HardpointUpdater.exe"), env.ElevatedExe);
+            Assert.Equal(configPath, env.ElevatedConfig);
+            Assert.Equal("v1", env.Files[InstallPath("game.dll")]); // NOT applied by this process
+            Assert.Null(env.RelaunchedExe);
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public void Run_ElevatedFlag_SkipsWritabilityCheckAndApplies()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "ke-elev2-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        string configPath = Path.Combine(dir, "apply-update.json");
+        try
+        {
+            string scratch = Path.Combine(AppData, "updater-relocate", "2.0.0");
+            var env = new FakeUpdaterEnvironment
+            {
+                SelfExePath = Path.Combine(scratch, "HardpointUpdater.exe"),
+                SelfBaseDir = scratch,
+            };
+            env.NonWritableDirs.Add(Install);             // still "not writable", but we are already elevated
+            env.Files[StagingPath("game.dll")] = "v2";
+            env.Files[InstallPath("Game")] = "exe";
+
+            WriteConfig(configPath);
+
+            int exit = UpdateApplier.Run(new[] { "--apply", configPath, "--relocated", "--elevated" }, env);
+
+            Assert.Equal(0, exit);
+            Assert.False(env.ElevateCalled);                        // no re-elevation loop
+            Assert.Equal("v2", env.Files[InstallPath("game.dll")]); // applied
+            Assert.Equal(InstallPath("Game"), env.RelaunchedExe);
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public void Run_ElevationDeclined_FallsThroughToInPlaceApply()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "ke-elev3-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        string configPath = Path.Combine(dir, "apply-update.json");
+        try
+        {
+            string scratch = Path.Combine(AppData, "updater-relocate", "2.0.0");
+            var env = new FakeUpdaterEnvironment
+            {
+                SelfExePath = Path.Combine(scratch, "HardpointUpdater.exe"),
+                SelfBaseDir = scratch,
+                ElevateSucceeds = false,                  // user declined UAC
+            };
+            env.NonWritableDirs.Add(Install);
+            env.Files[StagingPath("game.dll")] = "v2";
+            env.Files[InstallPath("Game")] = "exe";
+
+            WriteConfig(configPath);
+
+            int exit = UpdateApplier.Run(new[] { "--apply", configPath, "--relocated" }, env);
+
+            Assert.True(env.ElevateCalled);
+            Assert.Equal("v2", env.Files[InstallPath("game.dll")]); // fell through and applied
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
     private static void WriteConfig(string configPath)
     {
         var config = new ApplyUpdateConfig

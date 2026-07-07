@@ -166,6 +166,27 @@ internal sealed class FakeUpdaterEnvironment : IUpdaterEnvironment
 
     public string GetSelfBaseDirectory() => SelfBaseDir;
 
+    // Elevation modelling. CanWriteToDirectory reports every dir writable unless added to NonWritableDirs
+    // (a Program-Files-like protected install). TryElevate records the handoff and returns ElevateSucceeds
+    // (default true). Set false to model a declined UAC prompt.
+    public readonly HashSet<string> NonWritableDirs = new(StringComparer.Ordinal);
+    public bool ElevateSucceeds = true;
+    public bool ElevateCalled;
+    public string? ElevatedExe;
+    public string? ElevatedConfig;
+    public string? ElevatedWorkdir;
+
+    public bool CanWriteToDirectory(string path) => !NonWritableDirs.Contains(path);
+
+    public bool TryElevate(string updaterExePath, string applyConfigPath, string workingDirectory)
+    {
+        ElevateCalled = true;
+        ElevatedExe = updaterExePath;
+        ElevatedConfig = applyConfigPath;
+        ElevatedWorkdir = workingDirectory;
+        return ElevateSucceeds;
+    }
+
     public void LaunchRelocatedUpdater(string updaterExePath, string applyConfigPath, string workingDirectory)
     {
         RelocatedExe = updaterExePath;

@@ -96,6 +96,25 @@ public interface IUpdaterEnvironment
     string GetSelfBaseDirectory();
 
     /// <summary>
+    /// True when the running updater can create files in <paramref name="path"/>. The applier probes the
+    /// install dir before applying. A false result (on Windows, a protected location like Program Files)
+    /// means the swap needs elevation to write. The default returns true (assume writable) for implementers
+    /// predating this member. The real environment probes by creating and deleting a temp file.
+    /// </summary>
+    bool CanWriteToDirectory(string path) => true;
+
+    /// <summary>
+    /// Relaunches the updater elevated (Windows UAC "runas") against the same apply config, passing
+    /// <c>--relocated --elevated</c> so the elevated copy skips relocation and the writability check and
+    /// applies with permission to overwrite a protected install. Returns true when the elevated copy was
+    /// launched (the caller then exits), false when elevation is unavailable or refused (non-Windows, the
+    /// user declined UAC, or no self-exe path), in which case the caller applies in place and rolls back
+    /// cleanly if the write stays denied. The default returns false (no elevation) for implementers
+    /// predating this member.
+    /// </summary>
+    bool TryElevate(string updaterExePath, string applyConfigPath, string workingDirectory) => false;
+
+    /// <summary>
     /// Launches the relocated updater copy at <paramref name="updaterExePath"/> against the same apply
     /// config, passing <c>--relocated</c> so the copy skips relocation and applies in place from its
     /// scratch dir (where its own binaries are no longer locked by the install-dir process).

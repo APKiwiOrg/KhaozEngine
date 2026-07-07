@@ -255,6 +255,53 @@ public sealed class SystemUpdaterEnvironment : IUpdaterEnvironment
         });
     }
 
+    public bool CanWriteToDirectory(string path)
+    {
+        try
+        {
+            Directory.CreateDirectory(path);
+            string probe = Path.Combine(path, ".ke-write-probe-" + Guid.NewGuid().ToString("N"));
+            using (File.Create(probe)) { }
+            File.Delete(probe);
+            return true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false; // protected location (e.g. Program Files): needs elevation
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+    }
+
+    public bool TryElevate(string updaterExePath, string applyConfigPath, string workingDirectory)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return false; // UAC elevation is Windows-only
+        }
+        try
+        {
+            using Process? proc = Process.Start(new ProcessStartInfo
+            {
+                FileName = updaterExePath,
+                UseShellExecute = true, // required for the runas verb
+                Verb = "runas",         // triggers the UAC elevation prompt
+                WorkingDirectory = workingDirectory,
+                ArgumentList = { "--apply", applyConfigPath, "--relocated", "--elevated" }
+            });
+            return proc is not null;
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            // ERROR_CANCELLED (1223): the user declined the UAC prompt. Fall through to a clean in-place
+            // attempt (which rolls back if the write stays denied) rather than crashing.
+            Log($"Elevation declined or failed ({ex.Message}).");
+            return false;
+        }
+    }
+
     public void ScheduleDirectoryDeletion(string directory)
     {
         // Detached OS one-shot: wait a few seconds for THIS process to exit (releasing the locks on the

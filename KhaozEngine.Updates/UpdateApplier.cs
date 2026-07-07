@@ -95,6 +95,7 @@ public static class UpdateApplier
     private const string ProgressMarkerName = "apply-in-progress.json";
     private const string RelocateDirName = "updater-relocate";
     private const string RelocatedFlag = "--relocated";
+    private const string ElevatedFlag = "--elevated";
 
     /// <summary>
     /// CLI entry point for an updater shim. Expects <c>--apply &lt;apply-update.json&gt;</c> (with an
@@ -113,7 +114,7 @@ public static class UpdateApplier
     /// </summary>
     public static int Run(string[] args, IUpdaterEnvironment environment, Func<IUpdaterUi>? uiFactory)
     {
-        (string? configPath, bool relocated) = ParseArgs(args);
+        (string? configPath, bool relocated, bool elevated) = ParseArgs(args);
         if (configPath is null)
         {
             environment.Log("Usage: <updater> --apply <apply-update.json> [--relocated]");
@@ -143,6 +144,22 @@ public static class UpdateApplier
         if (!relocated && TryRelocate(config, configPath, environment))
         {
             return 0;
+        }
+
+        // Stage 1b: if this (possibly relocated) process cannot write the install dir, relaunch elevated
+        // once so the atomic swap can replace files under a protected location (e.g. Program Files).
+        // --elevated guards the loop. A declined or unavailable elevation falls through to a clean in-place
+        // attempt (Apply rolls back if the write stays denied) instead of a crash.
+        if (!elevated && !environment.CanWriteToDirectory(config.InstallDir))
+        {
+            string? selfExe = environment.GetSelfExecutablePath();
+            if (!string.IsNullOrEmpty(selfExe)
+                && environment.TryElevate(selfExe, configPath, environment.GetSelfBaseDirectory()))
+            {
+                environment.Log("Install dir not writable; relaunched updater elevated.");
+                return 0;
+            }
+            environment.Log("Install dir not writable and elevation unavailable; attempting apply (will roll back if denied).");
         }
 
         // The progress window lives only for the apply itself: created here (never during the Stage 1
@@ -180,10 +197,11 @@ public static class UpdateApplier
         }
     }
 
-    private static (string? ConfigPath, bool Relocated) ParseArgs(string[] args)
+    private static (string? ConfigPath, bool Relocated, bool Elevated) ParseArgs(string[] args)
     {
         string? configPath = null;
         bool relocated = false;
+        bool elevated = false;
         for (int i = 0; i < args.Length; i++)
         {
             if (args[i] == "--apply" && i + 1 < args.Length)
@@ -195,8 +213,12 @@ public static class UpdateApplier
             {
                 relocated = true;
             }
+            else if (args[i] == ElevatedFlag)
+            {
+                elevated = true;
+            }
         }
-        return (configPath, relocated);
+        return (configPath, relocated, elevated);
     }
 
     /// <summary>

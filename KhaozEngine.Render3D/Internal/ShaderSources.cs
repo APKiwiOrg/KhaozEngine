@@ -25,15 +25,56 @@ namespace KhaozEngine.Render3D.Internal
         //      copied byte-for-byte from the old duplicated blocks (only vWorldPos was renamed to the `worldPos`
         //      parameter), so behaviour is bit-identical on every backend.
         public const string LightingCommonGlsl = @"
-void computeLighting(vec3 N, vec3 worldPos, float specStrength, float specExp, out vec3 diffuse, out vec3 specColor) {
+// 3x3 PCF shadow lookup. keyShadow returns 1 = fully lit, 0 = fully in shadow, sampled from the key light's
+// depth map. worldPos is projected into light-clip via ShadowMat; a manual depth compare (the R32F map holds the
+// caster's light-space depth) with a constant + slope-scaled bias defeats acne. ShadowParams.x = 1/mapResolution
+// (the PCF texel step), .y = constant bias, .z = slope bias, .w = strength (0 => the caller skips this entirely).
+// ndl is the receiver's N.L to the key light, used to scale the slope bias (grazing surfaces need more). This lives
+// in the shared block so ModelFrag and SplatFrag shadow identically; the shadow map + sampler are passed in because
+// GLSL cannot reference a fragment's own bindings from a shared function.
+// Texture + sampler are passed SEPARATELY (Vulkan-style) and combined at the point of use inside; GLSL forbids a
+// sampler2D(...) constructor as a call ARGUMENT ('sampler constructor must appear at point of use').
+float sampleKeyShadow(texture2D shadowTex, sampler shadowSamp, mat4 shadowMat, vec4 shadowParams, vec3 worldPos, float ndl) {
+    if (shadowParams.w <= 0.0) return 1.0;                 // shadow map inactive this frame => fully lit
+    vec4 lc = shadowMat * vec4(worldPos, 1.0);
+    if (lc.w <= 0.0) return 1.0;
+    vec3 proj = lc.xyz / lc.w;                             // light-clip; xy in [-1,1], z in [0,1]
+    vec2 uv = proj.xy * 0.5 + 0.5;                         // to [0,1] texture space
+    uv.y = 1.0 - uv.y;                                     // render-target SAMPLING has a flipped V origin vs the
+                                                           // clip-Y the depth pass rasterized with (Veldrid does not
+                                                           // normalize render-target texture sampling); flip so the
+                                                           // receiver reads the texel the caster wrote (the same
+                                                           // Y-origin trap the GroundDecal pass documents).
+    // Outside the map footprint => unshadowed (receivers beyond the focus region are simply lit).
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || proj.z > 1.0) return 1.0;
+    float slope = clamp(1.0 - ndl, 0.0, 1.0);
+    float bias = shadowParams.y + shadowParams.z * slope; // constant + slope-scaled
+    float cur = proj.z - bias;
+    float texel = shadowParams.x;
+    float lit = 0.0;
+    // 3x3 taps around the receiver's texel; average the pass/fail for a soft edge.
+    for (int oy = -1; oy <= 1; oy++) {
+        for (int ox = -1; ox <= 1; ox++) {
+            float d = texture(sampler2D(shadowTex, shadowSamp), uv + vec2(float(ox), float(oy)) * texel).r;
+            lit += (cur <= d) ? 1.0 : 0.0;                 // receiver in front of the stored caster depth => lit
+        }
+    }
+    lit /= 9.0;
+    // Scale by strength: strength 1 removes the key light fully in shadow, <1 leaves a partial key term.
+    return mix(1.0, lit, shadowParams.w);
+}
+
+void computeLighting(vec3 N, vec3 worldPos, float specStrength, float specExp, float keyShadow, out vec3 diffuse, out vec3 specColor) {
     float ndlKey  = max(dot(N, -normalize(LightDir.xyz)), 0.0);
     float ndlFill = max(dot(N, -normalize(FillDir.xyz)), 0.0);
     float bands = Params.x;
     if (bands >= 1.0) { ndlKey = floor(ndlKey*bands+0.5)/bands; ndlFill = floor(ndlFill*bands+0.5)/bands; }
-    diffuse = LightColor.rgb*ndlKey + FillColor.rgb*ndlFill;
+    // Shadow multiplies ONLY the key light's diffuse (fill + ambient + point lights are untouched), so a shadow
+    // reads as shade rather than blackness. keyShadow == 1 (no shadow map) is bit-identical to the pre-shadow term.
+    diffuse = LightColor.rgb*(ndlKey*keyShadow) + FillColor.rgb*ndlFill;
     vec3 V = normalize(CameraPos.xyz - worldPos);
     vec3 H = normalize(-normalize(LightDir.xyz) + V);
-    float spec = pow(max(dot(N,H),0.0), specExp) * specStrength * step(0.0001, ndlKey);
+    float spec = pow(max(dot(N,H),0.0), specExp) * specStrength * step(0.0001, ndlKey) * keyShadow;
     specColor = LightColor.rgb*spec;
     // Dynamic point/effect lights (muzzle flashes, explosions, thrusters): accumulate diffuse (+ cheap
     // specular) with a windowed distance attenuation, on top of the key+fill term and back-face gated by
@@ -75,6 +116,8 @@ layout(set=0, binding=0) uniform U {
     vec4 FillDir; vec4 FillColor; vec4 CameraPos;
     vec4 PointPosRadius[16];
     vec4 PointColorIntensity[16];
+    mat4 ShadowMat;        // shadow tail (offset 688): world->light-clip for the shadow map (unused by the vertex stage)
+    vec4 ShadowParams;     // x=1/mapRes, y=constBias, z=slopeBias, w=strength (0 => shadows off)
 };
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
@@ -124,11 +167,15 @@ layout(set=0, binding=0) uniform U {
     vec4 CameraPos;  // xyz = eye position
     vec4 PointPosRadius[16];
     vec4 PointColorIntensity[16];
+    mat4 ShadowMat;        // world->light-clip for the key-light shadow map (offset 688)
+    vec4 ShadowParams;     // x=1/mapRes, y=constBias, z=slopeBias, w=strength (0 => shadows off)
 };
 layout(set=0, binding=1) uniform texture2D Albedo;       // 1x1 white default keeps untextured meshes unchanged
 layout(set=0, binding=2) uniform texture2D NormalMap;    // 1x1 flat default: texel (0.5,0.5,1.0) decodes to tangent-space (0,0,1); sampled up front, applied only when a tangent exists
 layout(set=0, binding=3) uniform texture2D RoughnessMap; // 1x1 zero default => spec uses per-instance params
 layout(set=0, binding=4) uniform sampler Samp;           // shared sampler for all three textures (EdgeFrag-style)
+layout(set=0, binding=5) uniform texture2D ShadowMap;    // key-light depth map (R32F); sampled LAST, after the material maps (Metal first-sample-order rule); 1x1 default when shadows off
+layout(set=0, binding=6) uniform sampler ShadowSamp;     // clamp/linear sampler for the shadow-map PCF taps
 layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;
 layout(location=2) in float vDepth;
@@ -170,9 +217,13 @@ void main() {
     // collapses to today's per-instance spec exactly: strength*(1-0)=strength, mix(exp,8,0)=exp.
     float specStrength = vSpecParams.x * (1.0 - rough);
     float specExp = max(mix(vSpecParams.y, 8.0, rough), 1.0);
+    // Key-light shadow: sampled AFTER the material maps (Metal first-sample-order: ShadowMap is binding 5, sampled
+    // last). N.L to the key light scales the slope bias. keyShadow == 1 when the map is off (byte-stable with Off).
+    float ndlKeyForShadow = max(dot(N, -normalize(LightDir.xyz)), 0.0);
+    float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, ShadowMat, ShadowParams, vWorldPos, ndlKeyForShadow);
     // Key+fill+cel+point-light accumulation is the shared block (ShaderSources.LightingCommonGlsl), spliced in above.
     vec3 diffuse; vec3 specColor;
-    computeLighting(N, vWorldPos, specStrength, specExp, diffuse, specColor);
+    computeLighting(N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
     vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor + vEmissive.rgb;
     oColor = vec4(lit, 1.0);
     oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0); // GEOMETRIC normal for the edge pass (not the perturbed one)
@@ -192,7 +243,9 @@ layout(set=0, binding=0) uniform U {
     vec4 FillDir; vec4 FillColor; vec4 CameraPos;
     vec4 PointPosRadius[16];
     vec4 PointColorIntensity[16];
-    vec4 TintTiling[5];   // per-material params appended (offset 688): xyz = tint, w = tiles/metre
+    mat4 ShadowMat;        // shadow tail (offset 688): world->light-clip for the shadow map
+    vec4 ShadowParams;     // x=1/mapRes, y=constBias, z=slopeBias, w=strength (0 => shadows off)
+    vec4 TintTiling[5];   // per-material params appended (offset 768): xyz = tint, w = tiles/metre
     vec4 Roughness;       // x..w = roughness for layers 0..3
     vec4 Misc;            // x = layer4 roughness, y = triplanarSharpness, z = projectionMode, w = baseSpecStrength
 };
@@ -255,13 +308,17 @@ layout(set=0, binding=0) uniform U {
     vec4 FillDir; vec4 FillColor; vec4 CameraPos;
     vec4 PointPosRadius[16];
     vec4 PointColorIntensity[16];
-    vec4 TintTiling[5];   // xyz = tint, w = tiles/metre
+    mat4 ShadowMat;        // world->light-clip for the key-light shadow map (offset 688)
+    vec4 ShadowParams;     // x=1/mapRes, y=constBias, z=slopeBias, w=strength (0 => shadows off)
+    vec4 TintTiling[5];   // xyz = tint, w = tiles/metre (offset 768)
     vec4 Roughness;       // x..w = roughness for layers 0..3
     vec4 Misc;            // x = layer4 roughness, y = triplanarSharpness, z = projectionMode, w = baseSpecStrength
 };
 layout(set=0, binding=1) uniform texture2DArray AlbedoArray;
 layout(set=0, binding=2) uniform texture2DArray NormalArray;
 layout(set=0, binding=3) uniform sampler Samp;
+layout(set=0, binding=4) uniform texture2D ShadowMap;    // key-light depth map (R32F); sampled LAST, after the terrain arrays (Metal first-sample-order rule)
+layout(set=0, binding=5) uniform sampler ShadowSamp;     // clamp/linear sampler for the shadow-map PCF taps
 // Declare ONLY the interpolants this fragment reads, as a CONTIGUOUS 0..5 block (no gap). SplatVert emits these
 // same six at 0..5 and the fragment-unused vUv/vSpecParams/vTangent at 6..8 (which this shader does not declare).
 // A hole in the pixel-input semantics (e.g. declaring vUv@4 but never using it) makes FXC/WARP miscompile and the
@@ -357,12 +414,53 @@ void main() {
     const float SPLAT_SPEC_EXP_ROUGH  = 8.0;  // exponent at roughness 1 (broad highlight)
     float specStrength = Misc.w * (1.0 - rough);
     float specExp = max(mix(SPLAT_SPEC_EXP_SMOOTH, SPLAT_SPEC_EXP_ROUGH, rough), 1.0);
+    // Key-light shadow: sampled AFTER the terrain arrays (Metal first-sample-order: ShadowMap is binding 4, last).
+    // Terrain RECEIVES shadows identically to models via the same shared helper. keyShadow == 1 when the map is off.
+    float ndlKeyForShadow = max(dot(N, -normalize(LightDir.xyz)), 0.0);
+    float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, ShadowMat, ShadowParams, vWorldPos, ndlKeyForShadow);
     vec3 diffuse; vec3 specColor;
-    computeLighting(N, vWorldPos, specStrength, specExp, diffuse, specColor);
+    computeLighting(N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
     vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor + vEmissive.rgb;
     oColor = vec4(lit, 1.0);
     oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0); // GEOMETRIC normal for the edge pass
     oDepth = vec4(vDepth, vDepth, vDepth, 1.0);
+}";
+
+        // ---- Depth-only shadow pass. Renders the instanced casters into the key-light's ortho depth map: transform
+        //      to light-clip with the light ViewProj (its own 64-byte UBO), and write the [0,1] light-clip depth into
+        //      a single R32F colour target (NOT the hardware depth buffer, so the receivers sample it as a plain
+        //      texture2D and do a MANUAL depth compare - portable across Metal/D3D11/Vulkan without a depth-sampling /
+        //      comparison-sampler seam). The vertex reuses the model instance stream (locations 5..11 = the per-instance
+        //      model matrix), so the shadow pass draws the SAME instance buffer the main pass uploaded, no second
+        //      upload. Per-vertex needs only Position (location 0); the other per-vertex attributes are declared so the
+        //      shared model vertex buffer binds unchanged. ----
+        public const string ShadowDepthVert = @"#version 450
+layout(set=0, binding=0) uniform U { mat4 LightViewProj; };
+layout(location=0) in vec3 Position;
+layout(location=1) in vec3 Normal;
+layout(location=2) in vec4 Color;
+layout(location=3) in vec2 TexCoord;
+layout(location=4) in vec4 Tangent;
+layout(location=5) in vec4 IModel0;
+layout(location=6) in vec4 IModel1;
+layout(location=7) in vec4 IModel2;
+layout(location=8) in vec4 IModel3;
+layout(location=9) in vec4 ITint;
+layout(location=10) in vec4 IEmissive;
+layout(location=11) in vec4 ISpecParams;
+layout(location=0) out float vLightDepth;
+void main() {
+    mat4 Model = mat4(IModel0, IModel1, IModel2, IModel3);
+    vec4 world = Model * vec4(Position, 1.0);
+    gl_Position = LightViewProj * world;
+    vLightDepth = gl_Position.z / gl_Position.w;   // [0,1] light-clip depth, stored linearly in the R32F target
+}";
+
+        public const string ShadowDepthFrag = @"#version 450
+layout(location=0) in float vLightDepth;
+layout(location=0) out vec4 oDepth;               // single R32F target: .r carries the caster's light-space depth
+void main() {
+    oDepth = vec4(vLightDepth, 0.0, 0.0, 1.0);
 }";
 
         // ---- Debug line overlay. Standalone mat4 ViewProj UBO (64 bytes), its own layout/buffer,

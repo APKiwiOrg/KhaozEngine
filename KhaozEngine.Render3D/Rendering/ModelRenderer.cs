@@ -18,11 +18,19 @@ namespace KhaozEngine.Render3D.Rendering
         internal const int MaxPointLights = 16;
 
         // std140 UBO layout: a 176-byte header (the FrameUbo struct) followed by two vec4[MaxPointLights]
-        // arrays (point light pos/radius, then colour/intensity). 176 + 2*256 = 688 bytes.
+        // arrays (point light pos/radius, then colour/intensity) = 176 + 2*256 = 688, then the shadow tail (the
+        // key-light shadow-map matrix + params) = mat4 (64) + vec4 (16) = 80, so 688 + 80 = 768 bytes total.
         // (internal so UboLayoutTests can assert these against Marshal.SizeOf/OffsetOf and the GLSL block.)
         internal const uint HeaderBytes = 176;
         internal const uint LightArrayBytes = MaxPointLights * 16;    // vec4 stride is 16 in std140
-        internal const uint UboBytes = HeaderBytes + 2 * LightArrayBytes;      // 688
+        internal const uint LightArraysBytes = 2 * LightArrayBytes;   // both point-light arrays = 512
+        // The shadow tail (mat4 LightViewProj + vec4 ShadowParams) rides in the SAME frame UBO after the light
+        // arrays (a SECOND UBO in the set mis-binds on Metal; see the splat-params note below), so both the model and
+        // splat passes read the shadow map from their one bound UBO. ShadowParams.x = 1/mapResolution (PCF texel
+        // step), .y = constant bias, .z = slope bias, .w = shadow strength (0 = shadow map inactive this frame).
+        internal const uint ShadowTailBytes = 64 + 16;               // mat4 + vec4 = 80
+        internal const uint ShadowTailOffset = HeaderBytes + LightArraysBytes;  // 688
+        internal const uint UboBytes = HeaderBytes + LightArraysBytes + ShadowTailBytes;  // 768
 
         /// <summary>Per-frame uniforms (binding 0) header. 1 mat4 + 7 vec4 = 64 + 112 = 176 bytes, uploaded at
         /// offset 0. Field order MUST exactly mirror the std140 UBO block in BOTH ModelVert and ModelFrag; the
@@ -32,6 +40,17 @@ namespace KhaozEngine.Render3D.Rendering
             public Matrix4x4 ViewProj;
             public Vector4 Dir; public Vector4 Color; public Vector4 Ambient; public Vector4 Params;
             public Vector4 FillDir; public Vector4 FillColor; public Vector4 CameraPos;
+        }
+
+        /// <summary>The shadow tail of the frame UBO (appended after the point-light arrays at
+        /// <see cref="ShadowTailOffset"/>): the world-&gt;light-clip matrix the receivers sample the shadow map with,
+        /// plus the PCF/bias/strength params. <see cref="Params"/> is (1/mapResolution, constantBias, slopeBias,
+        /// strength); strength 0 means the shadow map is inactive this frame, so the shader leaves the key light
+        /// unshadowed (byte-stable with ShadowMode.Off). 80 bytes = mat4 + vec4.</summary>
+        internal struct ShadowUbo
+        {
+            public Matrix4x4 LightViewProj;   // 64
+            public Vector4 Params;            // 16: x = 1/res (PCF texel step), y = const bias, z = slope bias, w = strength
         }
 
         /// <summary>One dynamic point light, packed for the std140 UBO arrays: <see cref="PosRadius"/> is
@@ -75,6 +94,14 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuShaderSet _splatShaders;
         IGpuPipeline _splatPipeline = null!;    // rebuilt by SetOutputs alongside _pipeline (set via BuildPipelines)
 
+        // The key-light shadow map. Owned here so its stable texture handle can be bound into every material set
+        // (the model + splat fragments sample it at set=0, binding 5/6). Allocated at a fixed resolution for the
+        // scene's lifetime (see the ctor), so material sets never need rebuilding on a resolution change.
+        readonly ShadowMapRenderer _shadowMap;
+        /// <summary>The key-light shadow map (depth-only pass over instanced casters + the R32F depth target the
+        /// receivers sample). Scene3D drives its per-frame depth pass and hands the light matrix / params in.</summary>
+        public ShadowMapRenderer ShadowMap => _shadowMap;
+
         IGpuBuffer? _instanceBuffer;
         uint _instanceCapacity;          // capacity in instances
         // CPU-skinned path: skinned meshes are deformed on the CPU each frame and drawn through THIS no-bone model
@@ -88,19 +115,26 @@ namespace KhaozEngine.Render3D.Rendering
         // disposed only in Dispose. Bounded by geometric growth.
         readonly List<IDisposable> _retired = new();
 
-        public ModelRenderer(IGpuDevice gd, GpuOutputDescription modelOutputs)
+        public ModelRenderer(IGpuDevice gd, GpuOutputDescription modelOutputs, int shadowMapResolution)
         {
             _gd = gd;
             var factory = gd.Factory;
 
-            _ubo = factory.CreateBuffer(new GpuBufferDescription(UboBytes, GpuBufferUsage.UniformBuffer)); // 176 header + 2 vec4[16] point-light arrays
+            // The shadow map is allocated up front at a fixed resolution so its texture handle stays stable and can be
+            // bound into every material set below; the shader gates on ShadowParams.w, so an inactive frame never taps
+            // it (byte-stable with ShadowMode.Off).
+            _shadowMap = new ShadowMapRenderer(gd, shadowMapResolution);
+
+            _ubo = factory.CreateBuffer(new GpuBufferDescription(UboBytes, GpuBufferUsage.UniformBuffer)); // header + 2 vec4[16] point-light arrays + shadow tail
 
             _layout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
                 new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("Albedo", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("NormalMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("RoughnessMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("Sampler", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
+                new GpuResourceLayoutElement("Sampler", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("ShadowMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("ShadowSamp", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
 
             // Use the device's built-in linear sampler (wrap-addressed) - the SAME one Render2D samples its
             // textures (incl. a 1x1 white) through, which verifies correctly on D3D11/WARP. A custom
@@ -124,7 +158,8 @@ namespace KhaozEngine.Render3D.Rendering
                 1, 1, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
             gd.UpdateTexture(_defaultRough, DefaultMaps.ZeroRoughnessTexel(), 0, 0, 1, 1);
 
-            _defaultSet = factory.CreateResourceSet(new GpuResourceSetDescription(_layout, _ubo, _white, _flatNormal, _defaultRough, _sampler));
+            _defaultSet = factory.CreateResourceSet(new GpuResourceSetDescription(_layout, _ubo, _white, _flatNormal, _defaultRough, _sampler,
+                _shadowMap.ShadowTexture, _shadowMap.ShadowSampler));
 
             _shaders = factory.CreateShadersFromSpirv(ShaderSources.ModelVert, ShaderSources.ModelFrag);
 
@@ -138,7 +173,9 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("AlbedoArray", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("NormalArray", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("Sampler", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
+                new GpuResourceLayoutElement("Sampler", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("ShadowMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("ShadowSamp", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
 
             // Tileable detail textures REPEAT across the world, so wrap addressing; anisotropic for grazing ground
             // (CreateSampler falls back to trilinear when the backend lacks anisotropy). 16x anisotropy + a +1 mip
@@ -265,6 +302,27 @@ namespace KhaozEngine.Render3D.Rendering
         // Cached this-frame uniforms (set in SetFrameUniforms), re-uploaded into each splat material's combined UBO
         // by WriteFrameUniformsTo so the splat pipeline reads the current frame from its own single UBO.
         FrameUbo _frame;
+        // Cached this-frame shadow tail (set in SetShadowUniforms, default = strength 0 = inactive). Written into
+        // the frame UBO + every splat material UBO by WriteFrameUniformsTo, so both passes receive shadows.
+        ShadowUbo _shadow;
+
+        /// <summary>Set this frame's shadow tail (light-space matrix + PCF/bias/strength). Call after
+        /// <see cref="SetFrameUniforms"/> when the shadow-map tier is active; leave unset (or pass a zero-strength
+        /// tail) for no shadows. The value is uploaded by <see cref="WriteFrameUniformsTo"/> into the model UBO and
+        /// each splat material UBO. <paramref name="lightViewProj"/> is already GPU-clip-corrected by the caller.</summary>
+        public void SetShadowUniforms(Matrix4x4 lightViewProj, float invResolution, float constantBias, float slopeBias, float strength)
+        {
+            _shadow = new ShadowUbo
+            {
+                LightViewProj = lightViewProj,
+                Params = new Vector4(invResolution, constantBias, slopeBias, strength),
+            };
+        }
+
+        /// <summary>Clear the shadow tail to inactive (strength 0), so the frame renders with no shadow map (the key
+        /// light is unshadowed). Call each frame before the model pass unless the shadow tier is active; keeps the
+        /// ShadowMode.Off render byte-stable.</summary>
+        public void ClearShadowUniforms() => _shadow = default;
 
         /// <summary>Upload the cached frame uniforms (header + the two point-light arrays) into <paramref name="dst"/>
         /// at offset 0. <paramref name="dst"/> must be at least <see cref="UboBytes"/> bytes; a splat material's
@@ -276,6 +334,9 @@ namespace KhaozEngine.Render3D.Rendering
             // tail) so a previous frame's lights never leak past the active count.
             cl.UpdateBuffer(dst, HeaderBytes, (ReadOnlySpan<Vector4>)_lightPosRadius);
             cl.UpdateBuffer(dst, HeaderBytes + LightArrayBytes, (ReadOnlySpan<Vector4>)_lightColorIntensity);
+            // Shadow tail follows the light arrays. Always uploaded (default = strength 0 = inactive), so the model
+            // and splat passes read a consistent shadow tail and the Off render stays byte-stable.
+            cl.UpdateBuffer(dst, ShadowTailOffset, in _shadow);
         }
 
         /// <summary>Pure, headless-testable packing of the host light list into the two fixed-size UBO arrays:
@@ -317,7 +378,8 @@ namespace KhaozEngine.Render3D.Rendering
         /// reproduces the pre-PBR single-texture material exactly.</summary>
         public IGpuResourceSet CreateMaterialSet(IGpuTexture? albedo = null, IGpuTexture? normal = null, IGpuTexture? roughness = null) =>
             _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(
-                _layout, _ubo, albedo ?? _white, normal ?? _flatNormal, roughness ?? _defaultRough, _sampler));
+                _layout, _ubo, albedo ?? _white, normal ?? _flatNormal, roughness ?? _defaultRough, _sampler,
+                _shadowMap.ShadowTexture, _shadowMap.ShadowSampler));
 
         /// <summary>Create a splat material's combined UBO: <see cref="UboBytes"/> of frame uniforms (re-synced each
         /// frame via <see cref="WriteFrameUniformsTo"/>) followed by the per-material <paramref name="data"/> at
@@ -340,7 +402,8 @@ namespace KhaozEngine.Render3D.Rendering
         /// (used by a material that overrides its <see cref="TerrainSamplerConfig"/>). The caller owns that sampler.</summary>
         public IGpuResourceSet CreateSplatMaterialSet(IGpuBuffer combinedUbo, IGpuTexture albedoArray, IGpuTexture normalArray, IGpuSampler sampler) =>
             _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(
-                _splatLayout, combinedUbo, albedoArray, normalArray, sampler));
+                _splatLayout, combinedUbo, albedoArray, normalArray, sampler,
+                _shadowMap.ShadowTexture, _shadowMap.ShadowSampler));
 
         /// <summary>Create a wrap-addressed terrain sampler from <paramref name="cfg"/> (anisotropy/trilinear/point +
         /// mip LOD bias). The caller owns and disposes it. Mirrors the shared default sampler this renderer builds at
@@ -402,6 +465,24 @@ namespace KhaozEngine.Render3D.Rendering
             cl.DrawIndexed((uint)indexCount, instanceCount, 0, 0, instanceStart);
         }
 
+        /// <summary>Begin the shadow depth pass (bind + clear the shadow map, upload the light matrix, bind the
+        /// depth pipeline). <paramref name="lightViewProj"/> is the GPU-clip-corrected world-&gt;light-clip matrix.
+        /// Call after <see cref="UploadInstances"/> (the depth pass reuses that instance buffer).</summary>
+        public void BeginShadowPass(IGpuCommandList cl, Matrix4x4 lightViewProj) =>
+            _shadowMap.BeginDepthPass(cl, lightViewProj);
+
+        /// <summary>Draw one rigid caster run into the shadow map, reusing the shared instance buffer the model pass
+        /// uploaded (no second upload). <see cref="BeginShadowPass"/> must be bound.</summary>
+        public void DrawShadowCasterRun(IGpuCommandList cl, IGpuBuffer vb, IGpuBuffer ib, int indexCount,
+            GpuIndexFormat indexFormat, uint instanceStart, uint instanceCount) =>
+            _shadowMap.DrawCasterRun(cl, vb, ib, indexCount, indexFormat, _instanceBuffer!, instanceStart, instanceCount);
+
+        /// <summary>Draw one CPU-skinned caster into the shadow map, reusing the shared skinned vertex + instance
+        /// buffers (<see cref="UploadCpuSkinned"/> must have run this frame). <see cref="BeginShadowPass"/> bound.</summary>
+        public void DrawShadowSkinnedCaster(IGpuCommandList cl, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat,
+            int baseVertex, uint drawIndex) =>
+            _shadowMap.DrawSkinnedCaster(cl, _skinnedVertexBuffer!, _skinnedInstanceBuffer!, ib, indexCount, indexFormat, baseVertex, drawIndex);
+
         /// <summary>Upload this frame's CPU-skinned geometry: <paramref name="verts"/> is every skinned draw's
         /// deformed vertices concatenated; <paramref name="instances"/> is one <see cref="InstanceData"/> per draw
         /// (its world transform / tint / material), parallel to the draw order. Both buffers grow geometrically and
@@ -443,6 +524,7 @@ namespace KhaozEngine.Render3D.Rendering
 
         public void Dispose()
         {
+            _shadowMap.Dispose();
             _pipeline.Dispose(); _defaultSet.Dispose(); _layout.Dispose();
             _white.Dispose(); _flatNormal.Dispose(); _defaultRough.Dispose(); // _sampler is the device built-in (non-owning); do not dispose it.
             _shaders.Dispose();

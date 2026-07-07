@@ -140,7 +140,10 @@ namespace KhaozEngine.Render3D
             _gd = gd;
             _targetOutput = targetOutput;
             _res = new RenderResources(gd, Post.RenderWidth, Post.RenderHeight);
-            _model = new ModelRenderer(gd, _res.ModelFB.Outputs);
+            // Shadow-map resolution is a construction-time knob (the map is bound into every material set, so its
+            // handle must stay stable). Read the initial ShadowMapResolution from settings; a game sets it before
+            // creating the scene. Clamped inside the shadow renderer.
+            _model = new ModelRenderer(gd, _res.ModelFB.Outputs, Post.Quality.Shadows.ShadowMapResolution);
             _post = new PixelPostProcess(gd, _res.PingAFB.Outputs, targetOutput);
             _post.BindTargets(_res);
             _lines = new LineRenderer(gd, targetOutput);
@@ -429,6 +432,35 @@ namespace KhaozEngine.Render3D
             width = Math.Max(1, (int)tex.Width >> mipLevel);
             height = Math.Max(1, (int)tex.Height >> mipLevel);
             return GpuReadback.ToRgbaMip(_gd, tex, (uint)mipLevel, (uint)arrayLayer, width, height);
+        }
+
+        /// <summary>Diagnostic: read the key-light shadow depth map (R32F light-space depth) back to the CPU as a
+        /// float array, row-major, top-left. Lets a test/tool verify the depth pass on a real device (e.g. that
+        /// casters wrote near depths and the cleared background stayed 1.0). Requires a mappable device; not on the
+        /// per-frame path. Mirrors <see cref="DebugReadSplatAlbedoMip"/>.</summary>
+        internal float[] DebugReadShadowMap(out int width, out int height)
+        {
+            var tex = _model.ShadowMap.ShadowTexture;
+            width = (int)tex.Width; height = (int)tex.Height;
+            var f = _gd.Factory;
+            using IGpuTexture staging = f.CreateTexture(GpuTextureDescription.Texture2D(
+                tex.Width, tex.Height, GpuPixelFormat.R32Float, GpuTextureUsage.Staging));
+            using (IGpuCommandList cl = f.CreateCommandList())
+            {
+                cl.Begin(); cl.CopyTexture(tex, staging); cl.End();
+                _gd.Submit(cl); _gd.WaitForIdle();
+            }
+            var outF = new float[width * height];
+            var map = _gd.Map(staging, GpuMapMode.Read);
+            unsafe
+            {
+                byte* data = (byte*)map.Data;
+                for (int y = 0; y < height; y++)
+                    for (int x = 0; x < width; x++)
+                        outF[y * width + x] = *(float*)(data + y * (int)map.RowPitch + x * 4);
+            }
+            _gd.Unmap(staging);
+            return outF;
         }
 
         /// <summary>Free the GPU texture backing <paramref name="h"/> (and its lazily-created textured-billboard
@@ -999,6 +1031,65 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>
+        /// Render the key-light shadow depth pass for this frame: fit the ortho light-space map around the camera
+        /// focus (texel-snapped), set the shadow tail on the frame UBO, then draw every rigid + skinned caster into
+        /// the shadow map (reusing the already-uploaded instance/skinned buffers). Terrain (splat meshes) do NOT cast
+        /// (model-only casting - terrain self-shadowing is visually negligible in the test scenes and the flat MMO
+        /// ground has no overhangs); terrain always RECEIVES via the shared lighting block. Runs only when the tier
+        /// resolves to ShadowMap.
+        /// </summary>
+        void RenderShadowDepthPass(IGpuCommandList cl, Vector3 eye)
+        {
+            var shadows = Post.Quality.Shadows;
+            // Focus the map on the ground the camera looks at: intersect the view-forward ray with the ground plane
+            // (y = ShadowGroundHeight). This centres the limited-radius map on the scene under the camera, not on the
+            // eye. If the ray is near-parallel to the ground (looking along the horizon), fall back to a point a fixed
+            // distance ahead. A limited radius packs texels onto the near action; receivers outside it are lit.
+            Vector3 fwd = ActiveCamera.Forward;
+            Vector3 focus;
+            if (fwd.Y < -1e-3f)
+            {
+                float t = (shadows.ShadowGroundHeight - eye.Y) / fwd.Y;   // eye.Y + t*fwd.Y = groundHeight
+                t = Math.Clamp(t, 0f, shadows.ShadowFocusDistance * 4f + 1f);
+                focus = eye + fwd * t;
+            }
+            else
+            {
+                focus = eye + fwd * shadows.ShadowFocusDistance;
+            }
+            Vector3 lightDir = Vector3.Normalize(Post.LightDirection);
+            int res = _model.ShadowMap.Resolution;   // the actual allocated resolution (clamped)
+            Matrix4x4 lightVp = Internal.ShadowMapMath.BuildLightViewProj(lightDir, focus, shadows.ShadowFocusRadius, res);
+
+            // The shadow map is a render-to-texture, so the light matrix uploaded for the DEPTH pass is GPU-clip
+            // corrected (same convention as the model pass's ViewProj). The receivers sample with the SAME corrected
+            // matrix, so the shadow lookup stays consistent across backends.
+            Matrix4x4 lightVpGpu = GpuClip.Correct(lightVp, _gd.Capabilities);
+            float invRes = 1f / Math.Max(1, res);
+            _model.SetShadowUniforms(lightVpGpu, invRes, shadows.ShadowConstantBias, shadows.ShadowSlopeBias, shadows.ShadowStrength);
+
+            // Depth pass: bind + clear the shadow map, then draw every rigid caster run + skinned caster. Reuses the
+            // instance buffer the model pass uploaded (no second upload). Splat (terrain) runs are skipped (receive-only).
+            _model.BeginShadowPass(cl, lightVpGpu);
+            if (_instanceData.Count > 0)
+            {
+                foreach (var run in _runs)
+                {
+                    if (!_slots.IsValid(run.Mesh.Index, run.Mesh.Generation)) continue;
+                    var m = _meshes[run.Mesh.Index];
+                    if (m is not { } mesh) continue;
+                    if (mesh.SplatMaterial >= 0) continue;   // terrain does not cast (receive-only)
+                    _model.DrawShadowCasterRun(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, run.Start, run.Count);
+                }
+            }
+            for (int d = 0; d < _cpuSkinnedDraws.Count; d++)
+            {
+                var dr = _cpuSkinnedDraws[d];
+                _model.DrawShadowSkinnedCaster(cl, dr.Ib, dr.IndexCount, dr.IndexFormat, dr.BaseVertex, (uint)d);
+            }
+        }
+
+        /// <summary>
         /// Record the scene (model pass over all queued instances -> post chain -> blit) into
         /// <paramref name="cl"/>, ending on <paramref name="target"/>. The caller owns Begin/End/Submit of
         /// <paramref name="cl"/>. <paramref name="viewportW"/>/<paramref name="viewportH"/> are the target size.
@@ -1014,18 +1105,70 @@ namespace KhaozEngine.Render3D
             var camDepth = Internal.OutlineMath.ExtractCameraDepth(ActiveCamera.Projection);
             _post.PrepareUniforms(cl, _res, Post, camDepth, runFxaa);
 
-            _model.BeginModelPass(cl, _res, Post);
             Matrix4x4 vp = ActiveCamera.ViewProjection;
             Vector3 eye = ActiveCamera.Eye;
+
+            // GPU instancing: group queued instances by mesh into a flat instance array (ordered by mesh) + a
+            // run per unique mesh. Reuses member buffers (cleared, not realloc) to stay per-frame alloc-free. Done
+            // BEFORE the model pass so the (optional) shadow depth pass can reuse the same uploaded instance buffer.
+            GroupInstances(_instances.Items, _instanceData, _runs);
+            if (_instanceData.Count > 0)
+                _model.UploadInstances(cl, CollectionsMarshal.AsSpan(_instanceData));
+
+            // CPU-skin each queued skinned draw into one concatenated stream + per-draw instance data (deformed on the
+            // CPU because the GPU bone-buffer read corrupts past element 0 in the windowed Veldrid/Metal swapchain
+            // context - only bones[0] survives; extensively bisected). Built here (before both passes) so the shadow
+            // depth pass and the model pass share the uploaded skinned buffers. SkinningMath.SkinVertex mirrors the
+            // shader blend exactly.
+            var skinnedItems = _skinnedInstances.Items;
+            _cpuSkinnedVerts.Clear();
+            _cpuSkinnedInstances.Clear();
+            _cpuSkinnedDraws.Clear();
+            if (skinnedItems.Count > 0)
+            {
+                var boneSpan = CollectionsMarshal.AsSpan(_boneMatrices);
+                const int cap = SkinningMath.MaxBonesPerDraw;
+                for (int i = 0; i < skinnedItems.Count; i++)
+                {
+                    var it = skinnedItems[i];
+                    if (!_skinnedSlots.IsValid(it.Mesh.Index, it.Mesh.Generation)) continue;
+                    var entry = _skinnedMeshes[it.Mesh.Index];
+                    if (entry is null) continue;
+                    var src = _skinnedCpuVerts[it.Mesh.Index];
+                    if (src is null) continue;
+                    int baseVertex = _cpuSkinnedVerts.Count;
+                    var palette = boneSpan.Slice(i * cap, cap);   // this draw's composed bone window (slot i)
+                    for (int v = 0; v < src.Length; v++)
+                        _cpuSkinnedVerts.Add(SkinningMath.SkinVertex(src[v], palette));
+                    _cpuSkinnedInstances.Add(new ModelRenderer.InstanceData
+                    {
+                        Model = it.World,
+                        Tint = it.Tint,
+                        Emissive = it.Material.Emissive,
+                        SpecParams = new Vector4(it.Material.Specular, it.Material.Shininess, 0f, 0f),
+                    });
+                    _cpuSkinnedDraws.Add(new CpuSkinnedDraw(entry.Ib, entry.IndexCount, entry.IndexFormat, baseVertex, entry.MaterialSet));
+                }
+                if (_cpuSkinnedDraws.Count > 0)
+                    _model.UploadCpuSkinned(cl, CollectionsMarshal.AsSpan(_cpuSkinnedVerts), CollectionsMarshal.AsSpan(_cpuSkinnedInstances));
+            }
+
+            // Key-light shadow map (ShadowMode.ShadowMap): a depth-only pass over the SAME instanced casters into the
+            // ortho light-space map, BEFORE the model pass, so the model + splat fragments sample it. Off/Blob leave
+            // the shadow tail at strength 0, so the frame is byte-stable (no depth pass, the shader never taps the
+            // map). Set the shadow tail BEFORE SetFrameUniforms (which uploads the whole frame UBO incl. that tail).
+            bool shadowMapActive = Post.Quality.Shadows.ResolveFor(_gd.Capabilities).Effective == ShadowMode.ShadowMap;
+            if (shadowMapActive)
+                RenderShadowDepthPass(cl, eye);
+            else
+                _model.ClearShadowUniforms();
+
+            _model.BeginModelPass(cl, _res, Post);
             _model.SetFrameUniforms(cl, vp, eye, Post, CollectionsMarshal.AsSpan(_lights));
             _model.BindPass(cl);
 
-            // GPU instancing: group queued instances by mesh into a flat instance array (ordered by mesh) + a
-            // run per unique mesh. Reuses member buffers (cleared, not realloc) to stay per-frame alloc-free.
-            GroupInstances(_instances.Items, _instanceData, _runs);
             if (_instanceData.Count > 0)
             {
-                _model.UploadInstances(cl, CollectionsMarshal.AsSpan(_instanceData));
                 foreach (var run in _runs)
                 {
                     // Skip a run whose mesh was unloaded (stale handle): a destroyed entity may linger a frame.
@@ -1055,52 +1198,14 @@ namespace KhaozEngine.Render3D
                 }
             }
 
-            // Skinned pass: CPU-skin each draw and route it through the no-bone model pipeline. The GPU bone-buffer
-            // read corrupts past element 0 in the windowed Veldrid/Metal swapchain context (only bones[0] survives;
-            // a constant bones[1] or any data-dependent index reads garbage - extensively bisected via the offscreen
-            // repro), independent of buffer type / binding / dynamic offset / submit structure. The rigid model
-            // pipeline (no bone read) renders cleanly in the same context, so skinned meshes are deformed on the CPU
-            // here (SkinningMath.SkinVertex mirrors the shader's blend exactly) and drawn through it. _boneMatrices
-            // holds each draw's slot-packed composed palette (built in DrawSkinned); deform the cached source verts
-            // into one concatenated stream, upload it + the per-draw instance data, then draw each.
-            var skinnedItems = _skinnedInstances.Items;
-            if (skinnedItems.Count > 0)
+            // Skinned draws: the CPU-skinned geometry uploaded above, drawn through the rigid (no-bone) model pipeline.
+            if (_cpuSkinnedDraws.Count > 0)
             {
-                _cpuSkinnedVerts.Clear();
-                _cpuSkinnedInstances.Clear();
-                _cpuSkinnedDraws.Clear();
-                var boneSpan = CollectionsMarshal.AsSpan(_boneMatrices);
-                const int cap = SkinningMath.MaxBonesPerDraw;
-                for (int i = 0; i < skinnedItems.Count; i++)
+                _model.BindPass(cl);   // re-bind the model pipeline (the skinned draws follow the rigid run)
+                for (int d = 0; d < _cpuSkinnedDraws.Count; d++)
                 {
-                    var it = skinnedItems[i];
-                    if (!_skinnedSlots.IsValid(it.Mesh.Index, it.Mesh.Generation)) continue;
-                    var entry = _skinnedMeshes[it.Mesh.Index];
-                    if (entry is null) continue;
-                    var src = _skinnedCpuVerts[it.Mesh.Index];
-                    if (src is null) continue;
-                    int baseVertex = _cpuSkinnedVerts.Count;
-                    var palette = boneSpan.Slice(i * cap, cap);   // this draw's composed bone window (slot i)
-                    for (int v = 0; v < src.Length; v++)
-                        _cpuSkinnedVerts.Add(SkinningMath.SkinVertex(src[v], palette));
-                    _cpuSkinnedInstances.Add(new ModelRenderer.InstanceData
-                    {
-                        Model = it.World,
-                        Tint = it.Tint,
-                        Emissive = it.Material.Emissive,
-                        SpecParams = new Vector4(it.Material.Specular, it.Material.Shininess, 0f, 0f),
-                    });
-                    _cpuSkinnedDraws.Add(new CpuSkinnedDraw(entry.Ib, entry.IndexCount, entry.IndexFormat, baseVertex, entry.MaterialSet));
-                }
-                if (_cpuSkinnedDraws.Count > 0)
-                {
-                    _model.UploadCpuSkinned(cl, CollectionsMarshal.AsSpan(_cpuSkinnedVerts), CollectionsMarshal.AsSpan(_cpuSkinnedInstances));
-                    _model.BindPass(cl);   // re-bind the model pipeline (the skinned draws follow the rigid run)
-                    for (int d = 0; d < _cpuSkinnedDraws.Count; d++)
-                    {
-                        var dr = _cpuSkinnedDraws[d];
-                        _model.DrawCpuSkinned(cl, dr.Ib, dr.IndexCount, dr.IndexFormat, dr.BaseVertex, (uint)d, dr.MaterialSet);
-                    }
+                    var dr = _cpuSkinnedDraws[d];
+                    _model.DrawCpuSkinned(cl, dr.Ib, dr.IndexCount, dr.IndexFormat, dr.BaseVertex, (uint)d, dr.MaterialSet);
                 }
             }
 

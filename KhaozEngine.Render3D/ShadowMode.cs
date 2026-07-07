@@ -14,9 +14,10 @@ namespace KhaozEngine.Render3D
     ///   hardware: one extra depth-reconstructed ground-decal draw per caster, no shadow map, no second geometry pass.
     ///   Grounds a character without a real shadow map.</item>
     /// <item><see cref="ShadowMap"/> - a key-light directional shadow map with PCF (casters shadow the ground AND each
-    ///   other, the semi-realistic tier). Introduced in the enum here; wired functionally in a later engine feature.
-    ///   Until then <see cref="ShadowSettings.ResolveFor"/> degrades it to <see cref="Blob"/> (see that method), so a
-    ///   game may already select it and get the best available tier without a crash.</item>
+    ///   other, the semi-realistic tier). Depth-only pass over instanced casters into an ortho light-space map fitted
+    ///   around the camera focus (texel-snapped to kill shimmer), sampled with 3x3 PCF + slope-scaled bias in the
+    ///   shared lighting so models and terrain receive identically. Falls back to <see cref="Blob"/> only on a device
+    ///   that cannot render+sample the depth target (see <see cref="ShadowSettings.ResolveFor"/>).</item>
     /// </list>
     /// Extend by adding tiers - unknown/not-yet-wired modes resolve to a safe fallback rather than throwing
     /// (see <see cref="ShadowSettings.ResolveFor"/>).
@@ -27,8 +28,8 @@ namespace KhaozEngine.Render3D
         Off,
         /// <summary>Soft dark ground blob under each caster (cheap grounding, low-end fallback).</summary>
         Blob,
-        /// <summary>Key-light directional shadow map with PCF (semi-realistic; wired in a later feature, degrades to
-        /// <see cref="Blob"/> until then).</summary>
+        /// <summary>Key-light directional shadow map with PCF (semi-realistic; casters shadow the ground and each
+        /// other). Degrades to <see cref="Blob"/> only on a device that cannot render+sample the depth target.</summary>
         ShadowMap,
     }
 
@@ -103,14 +104,55 @@ namespace KhaozEngine.Render3D
         /// stepped terrain). Feeds the decal Y-band gate. Default <c>0.4</c>.</summary>
         public float BlobGroundMaxStep = 0.4f;
 
+        // ---- ShadowMap tier (the semi-realistic key-light directional shadow map with PCF) ---------------------
+
+        /// <summary>Shadow-map resolution per axis (a square depth texture). Default <c>2048</c>. Bigger = crisper
+        /// contact shadows at more VRAM/fill cost; a low-end profile can drop to 1024 or 512. Clamped to a sane
+        /// minimum. Only used when <see cref="Mode"/> resolves to <see cref="ShadowMode.ShadowMap"/>.</summary>
+        public int ShadowMapResolution = 2048;
+
+        /// <summary>Radius (world units) of the focus sphere the shadow map frames around the camera focus point.
+        /// The map covers <c>2 * ShadowFocusRadius</c> world units per axis, so a smaller radius packs more texels
+        /// onto the near action (sharper shadows) at the cost of coverage. Default <c>16</c>.</summary>
+        public float ShadowFocusRadius = 16f;
+
+        /// <summary>Ground-plane height (world Y) the shadow map's focus is fitted onto: the view-forward ray is
+        /// intersected with <c>y = ShadowGroundHeight</c> to centre the limited-radius map on the ground the camera
+        /// looks at (not on the eye). Set it to the scene's average ground height. Default <c>0</c>.</summary>
+        public float ShadowGroundHeight = 0f;
+
+        /// <summary>Fallback distance (world units) in front of the camera eye the focus is placed at when the view
+        /// ray does NOT hit the ground plane (the camera looks along/above the horizon). Normally the ground-plane
+        /// intersection is used (see <see cref="ShadowGroundHeight"/>); this only kicks in for a flat/upward view.
+        /// Default <c>18</c>.</summary>
+        public float ShadowFocusDistance = 18f;
+
+        /// <summary>Constant depth bias (in light-clip depth units) added when comparing a receiver's depth to the
+        /// shadow map, to defeat self-shadow acne on lit surfaces. Too small = acne (surface shadows itself), too
+        /// large = peter-panning (the shadow detaches from the caster's contact). Default <c>0.0015</c>. See the
+        /// bias-tuning note in docs/USING-KHAOZENGINE.md.</summary>
+        public float ShadowConstantBias = 0.004f;
+
+        /// <summary>Slope-scaled depth bias: extra bias proportional to the surface's grazing angle to the light
+        /// (added on top of <see cref="ShadowConstantBias"/>), so steeply-lit polygons - which span many depth units
+        /// per texel - do not acne while flat-lit ones keep tight contact. Default <c>0.0035</c>.</summary>
+        public float ShadowSlopeBias = 0.006f;
+
+        /// <summary>Shadow darkness (0 = shadows invisible, 1 = the key light's diffuse+spec fully removed in
+        /// shadow). Multiplies ONLY the key light's contribution (fill + ambient are untouched), so a shadow reads
+        /// as shade, not black. Default <c>0.85</c>.</summary>
+        public float ShadowStrength = 0.85f;
+
         /// <summary>
-        /// Resolve <see cref="Mode"/> against what <paramref name="caps"/> supports, so an unsupported/not-yet-wired
-        /// request degrades gracefully instead of throwing or rendering nothing:
+        /// Resolve <see cref="Mode"/> against what <paramref name="caps"/> supports, so an unsupported request
+        /// degrades gracefully instead of throwing or rendering nothing:
         /// <list type="bullet">
-        /// <item><see cref="ShadowMode.ShadowMap"/> is NOT wired in this feature, so it degrades DOWN to
-        ///   <see cref="ShadowMode.Blob"/> with a reason (a later engine feature lands the real shadow map and this
-        ///   degradation is removed). This is the <see cref="AntiAliasing.ResolveFor"/> stance: return the best tier
-        ///   that actually runs, never crash on a menu choice.</item>
+        /// <item><see cref="ShadowMode.ShadowMap"/> runs when the device reports
+        ///   <see cref="GpuCapabilities.SupportsShadowMaps"/> (can render + sample the R32_Float depth target the
+        ///   manual-PCF path needs); otherwise it degrades DOWN to <see cref="ShadowMode.Blob"/> with a reason. This
+        ///   is the <see cref="AntiAliasing.ResolveFor"/> stance: return the best tier that actually runs, never
+        ///   crash on a menu choice. (Every currently-supported backend reports the capability, so the degradation is
+        ///   a safety net for a hypothetical constrained device.)</item>
         /// <item><see cref="ShadowMode.Off"/> / <see cref="ShadowMode.Blob"/> are unchanged (always available; the
         ///   blob tier needs only the existing ground-decal path).</item>
         /// </list>
@@ -119,14 +161,13 @@ namespace KhaozEngine.Render3D
         /// </summary>
         public ShadowResolution ResolveFor(in GpuCapabilities caps)
         {
-            // caps is unused today (the blob tier needs no special device feature), but the parameter is kept so the
-            // later shadow-map feature can gate ShadowMap on a depth-sample capability without changing this API.
-            _ = caps;
             switch (Mode)
             {
                 case ShadowMode.ShadowMap:
-                    return new ShadowResolution(ShadowMode.ShadowMap, ShadowMode.Blob,
-                        "ShadowMap not yet wired; using Blob");
+                    return caps.SupportsShadowMaps
+                        ? new ShadowResolution(ShadowMode.ShadowMap, ShadowMode.ShadowMap, "")
+                        : new ShadowResolution(ShadowMode.ShadowMap, ShadowMode.Blob,
+                            "device lacks depth-sample support for ShadowMap; using Blob");
                 default:
                     return new ShadowResolution(Mode, Mode, "");
             }
@@ -157,10 +198,12 @@ namespace KhaozEngine.Render3D
 
         /// <summary>
         /// Pure: build the dark <see cref="GroundDecal"/> that renders one blob, from a request and this settings'
-        /// tuning. The blob is a filled <see cref="DecalShape.Circle"/> with alpha blend and a near-black fill (no
-        /// outline), so the existing ground-decal projection darkens the reconstructed ground multiplicatively where
-        /// the SDF is inside the disc, feathering across <see cref="BlobEdgeSoftness"/>. Returns <c>false</c> (no
-        /// decal) when the faded alpha or radius rounds to nothing (a caster above the fade height casts no blob).
+        /// tuning. The blob is a filled <see cref="DecalShape.Circle"/> with a near-black fill and no outline, drawn
+        /// through the ground-decal path's alpha blend: the fill's alpha (from <see cref="BlobFor"/>) blends the lit
+        /// ground toward the near-black <see cref="BlobColor"/> where the SDF is inside the disc, feathering across
+        /// <see cref="BlobEdgeSoftness"/> - so it reads as a darkened contact patch, not a flat paint splat. Returns
+        /// <c>false</c> (no decal) when the faded alpha or radius rounds to nothing (a caster above the fade height
+        /// casts no blob).
         /// </summary>
         public bool TryBuildDecal(in ShadowBlob blob, out GroundDecal decal)
         {

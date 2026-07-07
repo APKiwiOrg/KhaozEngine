@@ -932,11 +932,27 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
     `BlobOpacity`, `BlobColor`, `BlobEdgeSoftness`, and the ground Y-band (`BlobGroundYTolerance`/`BlobGroundMaxStep`).
     Which entities cast is the game's call - typically each character casts (submit its footprint each frame) and
     props opt in by size. With `Off` the queue is ignored, so submitting blobs unconditionally is safe.
-  - `ShadowMode.ShadowMap`: the semi-realistic key-light directional shadow map with PCF. Present in the enum now;
-    the map is wired by a later engine feature. Until then `Shadows.ResolveFor(caps)` **degrades `ShadowMap` down to
-    `Blob`** (best available tier, never a crash on a menu choice), reporting `ShadowResolution.Degraded`/`Reason`
-    for a diagnostics overlay to surface. Validate a menu choice with `Shadows.ResolveFor(AppWindow.Capabilities)` and
+  - `ShadowMode.ShadowMap`: the semi-realistic key-light directional shadow map with PCF (the "A"-tier target).
+    A depth-only pass renders the instanced casters into an orthographic light-space depth map fitted around the
+    camera focus (texel-snapped each frame to kill shimmer under camera pan), which the model AND terrain fragments
+    sample with 3x3 PCF + slope-scaled bias to shadow the KEY light's diffuse+spec only (fill + ambient untouched, so
+    a shadow reads as shade, not blackness). Casters shadow the ground and each other. **Terrain receives but does
+    not cast** (model-only casting - terrain self-shadowing is negligible on the flat MMO ground). No per-frame API
+    to opt in: every drawn mesh casts automatically; the tier is on when `Shadows.Mode == ShadowMap` and the device
+    reports `GpuCapabilities.SupportsShadowMaps` (every current backend does). On a device that cannot render+sample
+    the depth target, `Shadows.ResolveFor(caps)` **degrades `ShadowMap` down to `Blob`** (never a crash), reporting
+    `ShadowResolution.Degraded`/`Reason`. Validate a menu choice with `Shadows.ResolveFor(AppWindow.Capabilities)` and
     read `.Effective` for the tier that will actually run - the same `ResolveFor`-clamps-a-request pattern as AA.
+    - Knobs (all on `ShadowSettings`): `ShadowMapResolution` (default `2048`; a **construction-time** knob - set it
+      before creating the `Scene3D`, since the map is bound into every material set - drop to 1024/512 on low-end);
+      `ShadowFocusRadius` (default `16`, world units the map covers per axis - smaller packs texels onto the near
+      action for crisper shadows at less coverage); `ShadowGroundHeight` (world Y the focus is fitted onto, default
+      `0`); `ShadowStrength` (0..1 shadow darkness, default `0.85`).
+    - **Bias tuning** (`ShadowConstantBias` default `0.004`, `ShadowSlopeBias` default `0.006`): the two biases
+      defeat self-shadow acne. Too small => **acne** (a lit surface stipples itself with shadow); too large =>
+      **peter-panning** (the shadow detaches from the caster's feet). The slope bias adds extra offset on
+      steeply-lit surfaces. If you see acne, raise the constant bias first, then the slope bias; if shadows float off
+      their casters, lower them. A tighter `ShadowFocusRadius` (bigger texels per world unit) tolerates less bias.
 - Edge outline: `Post.Outline` (on by default) draws a depth/normal toon outline. `OutlineColor`,
   `OutlineDepthThreshold` (depth-discontinuity sensitivity), and `OutlineNormalThreshold` (interior-crease
   sensitivity from the geometric normal) tune it. The outline is perspective-correct: under a

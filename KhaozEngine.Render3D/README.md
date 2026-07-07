@@ -24,14 +24,22 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   smoother; MSAA multisamples geometry edges only. `RenderQuality` is the extension point for further quality knobs.
 - Shadows: `PixelPostProcessSettings.Quality.Shadows` (a `ShadowSettings`) picks the shadow tier via `Shadows.Mode`
   - `ShadowMode.Off` (default, byte-stable), `ShadowMode.Blob` (soft dark ground blob under each caster), or
-  `ShadowMode.ShadowMap` (key-light PCF map; present in the enum, wired by a later feature, degrades to `Blob` until
-  then). For the blob tier the scene submits one request per caster per frame with
+  `ShadowMode.ShadowMap` (key-light directional PCF shadow map). For the blob tier the scene submits one request per
+  caster per frame with
   `Scene3D.AddShadowBlob(new ShadowBlob(position, groundY, radius, strength, heightAboveGround))` (cleared each
   `Begin`, like the ground-decal queue); the blob is drawn as a dark `Circle` `GroundDecal` through the existing
   depth-reconstructed ground-decal projection. Radius follows the caster footprint; strength fades with height above
-  ground (`ShadowSettings.BlobFadeHeight`) so a jumping caster's blob shrinks + lightens. Validate a menu choice with
-  `Shadows.ResolveFor(caps)` and read `.Effective`/`.Degraded`/`.Reason` (same `ResolveFor`-clamps-a-request pattern
-  as AA, never throws). With `Off` the blob queue is ignored, so submitting blobs unconditionally is safe.
+  ground (`ShadowSettings.BlobFadeHeight`) so a jumping caster's blob shrinks + lightens.
+  - `ShadowMode.ShadowMap`: a depth-only pass renders the instanced casters (models cast; terrain receives only) into
+  an ortho light-space depth map fitted around the camera focus (texel-snapped to kill shimmer), which the shared
+  lighting block PCF-samples (3x3 + slope-scaled bias) to shadow the KEY light's diffuse+spec only for BOTH models
+  and terrain. Every drawn mesh casts automatically (no per-frame opt-in). Knobs on `ShadowSettings`:
+  `ShadowMapResolution` (default `2048`, a construction-time knob), `ShadowFocusRadius`/`ShadowGroundHeight`,
+  `ShadowStrength`, and the acne biases `ShadowConstantBias`/`ShadowSlopeBias`. On a device without depth-sample
+  support (`GpuCapabilities.SupportsShadowMaps` false) it degrades to `Blob`.
+  - Validate a menu choice with `Shadows.ResolveFor(caps)` and read `.Effective`/`.Degraded`/`.Reason` (same
+  `ResolveFor`-clamps-a-request pattern as AA, never throws). With `Off` the blob queue is ignored and the shadow tail
+  sits at strength 0 (never tapped), so existing scenes are byte-stable.
 - `Scene3D.DrawOverlayMesh(MeshHandle mesh, Matrix4x4 world)` - queues a translucent, unlit,
   depth-tested-but-not-depth-writing, alpha-blended draw of an already-loaded mesh, colored by the mesh's
   per-vertex color. A general overlay primitive, not collision-specific: drawn after the meshes/beams and

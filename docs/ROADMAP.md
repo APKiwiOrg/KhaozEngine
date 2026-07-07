@@ -4,7 +4,7 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **10.23.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **10.24.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan when it is scheduled.
 
@@ -136,9 +136,9 @@ Also here, unchanged:
   `LocalizedText` + the `Localization.Analyzers` analyzer), but consumers still hand-author the `StringId`
   constants that mirror their `.resx` keys. A Roslyn source generator could emit those constants from the
   `.resx` at build time, removing the hand-maintained constants class and the key-drift risk.
-- GPU timers: the diagnostics overlay shipped (F1 panel, `FrameStats`, telemetry JSONL) but all timings are CPU
-  frame deltas. Backend timestamp queries would attribute frame cost to passes (shadow, main, post) and make
-  perf work on the "A"-graphics items measurable.
+- True GPU timestamps (follow-up to the per-pass CPU encode timings shipped in 10.24.0): Veldrid 4.9.0 exposes
+  no timestamp-query API (only fences), so per-pass numbers today measure CPU command-encoding time, not GPU
+  execution. Revisit when a Veldrid upgrade (or replacement) surfaces timestamp queries.
 - Asset hot-reload: reload meshes, textures, and shaders at runtime during development. The prop asset pipeline
   shipped, but hot-reload did not.
 

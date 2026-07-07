@@ -29,8 +29,9 @@ namespace KhaozEngine.Render3D
         /// <summary>CPU time recording the model/terrain (splat) instanced draws.</summary>
         public float ModelMs { get; }
 
-        /// <summary>CPU time recording transparents/decals: textured billboards, beams, overlay meshes, shadow
-        /// blob decals, ground decals, and the post-blit overlay draws (fills, lines, billboards).</summary>
+        /// <summary>CPU time recording transparents/decals: textured billboards, beams, overlay meshes, the MRT
+        /// depth resolve, the sky background pass, shadow blob decals, ground decals, the colour/normal resolve,
+        /// and the post-blit overlay draws (fills, lines, billboards).</summary>
         public float TransparentsMs { get; }
 
         /// <summary>CPU time recording the pixel post-process chain.</summary>

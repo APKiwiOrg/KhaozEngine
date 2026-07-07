@@ -5,6 +5,14 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.24.0
+
+Per-pass frame timing: frame cost now attributes to the render passes (shadow depth, model/terrain, transparents/decals, post chain), making perf work on the remaining "A"-graphics items measurable. Additive public API, minor bump, rendering output untouched (all goldens byte-stable).
+
+- **`Scene3D.EnableTiming` + `Scene3D.PassTimingsMs` (Render3D):** an off-by-default developer toggle. When on, Scene3D brackets its passes with `Stopwatch` timestamps and exposes last-frame per-pass milliseconds as a plain struct (`Scene3DPassTimingsMs`). When off, the cost is a bool check per bracket (no timestamp calls, no allocation) and rendering is byte-identical either way.
+- **Honest scope:** the numbers are CPU command-ENCODING time on the render thread, not GPU execution time. Veldrid 4.9.0 exposes no timestamp-query API (verified by reflecting its exported surface, only fences exist), and a fence/WaitForIdle-based whole-frame GPU number was deliberately rejected as a Heisenberg timer that perturbs frame pacing. True GPU timestamps are a recorded roadmap follow-up pending a Veldrid upgrade. The docs state all of this plainly.
+- **`PassTimings` (Diagnostics) + `DiagnosticsOverlay.PassTimingsSection` (Gui):** a rolling per-pass aggregator mirroring the `FrameStats` shape (windowed avg/min/max, same input validation) and an overlay section populator, consumer-fed exactly like `FrameStats` so no new dependency edges enter the graph (Render3D still does not reference Diagnostics).
+
 ## 10.23.0
 
 Windows self-update no longer patches a running game or crashes on a permission denial, so Program Files installs that could not self-update since around 10.15 self-heal again without a lossy fallback. The apply waits behind a hard barrier until the game process has exited, rides out an `UnauthorizedAccessException` (a locked image or a denied delete-child) in the copy retry instead of crashing, rolls back and clears the apply-in-progress marker on any unexpected failure, and relaunches the updater elevated once (a single UAC prompt) when the install dir is not writable. Additive `IUpdaterEnvironment` members, minor bump. Windows apply path only, macOS and Linux behaviour is unchanged.

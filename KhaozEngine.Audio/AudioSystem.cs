@@ -183,7 +183,9 @@ public sealed class AudioSystem : IDisposable
         }
     }
 
-    /// <summary>Whether background music is enabled. Toggling stops/starts playback without changing volume.</summary>
+    /// <summary>Whether background music is enabled. Toggling stops/starts playback without changing the user
+    /// volume settings. When <see cref="MusicCrossfadeDuration"/> is greater than zero, re-enabling fades the
+    /// resumed track in from silence rather than snapping to full volume.</summary>
     public bool MusicEnabled
     {
         get => _musicEnabled;

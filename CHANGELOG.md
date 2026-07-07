@@ -5,6 +5,13 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.22.0
+
+Audio feel: music crossfade on track change and per-bus SFX volume grouping. Additive public API in KhaozEngine.Audio, minor bump, and every existing call keeps today's exact audible behavior when the new knobs are unused.
+
+- **Music crossfade:** `MusicCrossfadeDuration` (default 0 = the old hard cut, literally the old synchronous path with no tick dependency) fades track changes: linear fade-out on the current track, switch, fade-in on the new one, driven by `AudioSystem.Update(float dt)` (pure, no wall clock). The fade factor multiplies the user's master x music volume through one gain funnel, so volume changes mid-fade apply correctly and the fade never overwrites settings. Mid-fade retargets converge on the newest track without double-switching. Single-stream by necessity: `IMusicBackend` models one active track, and the two-stream true crossfade is recorded as a seam follow-up on the roadmap.
+- **SFX buses:** `DefineBus(id)` / `SetBusVolume(id, v)` / `GetBusVolume(id)` plus an optional `bus` argument on the `PlaySfx`/`PlaySfx3D` family. Effective voice gain is master x sfx x bus x per-play volume, each factor clamped. Bus ids are opaque identifiers (display names stay game-side localized strings). An unknown bus plays at full volume on the default path with a warn-once diagnostics note, never a throw, and bus-less calls take a zero-cost fast path that is floating-point-identical to the old math. Documented limitation: `ISfxBackend` exposes no per-voice handle, so a bus volume change applies to subsequent plays, not already-sounding voices (the seam upgrade is on the roadmap).
+
 ## 10.21.0
 
 Input action maps with runtime rebinding, plus a gamepad rumble seam: games stop hardcoding key checks and get player-rebindable, persistable controls, and a vibration API that is ready the day a motor-capable input backend lands. Additive public API in KhaozEngine.Windowing, minor bump. No GPU or rendering work.

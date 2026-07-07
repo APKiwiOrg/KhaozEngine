@@ -5,6 +5,12 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.18.4
+
+Fix: a `PopupPanel` with a title bar now keeps its 1px border all the way around, including the top edge behind the title bar. `FillStyled` strokes the border on the full panel first, then the title-bar `Fill` spans the panel's full width from its top-left, painting over the top and upper-side border pixels, so the border survived only below the title bar. Every titled popup (exit, skill-tree detail, confirm dialogs) showed a bordered body under an unbordered title bar. The fix re-strokes `GuiDraw.Border` after the title-bar fill. Rendering correctness fix, no public API change.
+
+- **`PopupPanel`** (`KhaozEngine.Gui`) - `Draw` re-strokes the 1px panel border after the title-bar fill instead of leaving the fill to overpaint it, so a titled popup renders one consistent border around the whole panel. New GPU regression test (`PopupPanelBorderGpuTests`): with a red border and green title bar, the first non-background pixel scanning down the panel's centre column is the red border and the row below it the green title bar (proving the border sits on top of the title-bar row). Verified failing on the pre-fix draw order (top edge came back green).
+
 ## 10.18.3
 
 Fix: a `ScrollablePanel` with a full-surface `Scrim` no longer dismisses when a scroll-drag that began on the panel releases over the dimmed area above it. The scrim-dismiss check combined `IsTapIn(Scrim)` with a release-position guard, but a consumer's scrim can legitimately span the whole surface (including behind the panel, as Nullwake's does), so a press that started on the list satisfied `IsTapIn(Scrim)` too, and only the release position was tested against the panel. Dragging the list to scroll and releasing in the scrim above the panel wrongly closed it. A gesture whose press originated on the panel now never dismisses. Behaviour-only patch, no public API change.

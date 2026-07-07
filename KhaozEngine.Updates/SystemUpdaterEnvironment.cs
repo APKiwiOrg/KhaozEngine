@@ -111,6 +111,13 @@ public sealed class SystemUpdaterEnvironment : IUpdaterEnvironment
 
     public bool IsProcessAlive(int pid)
     {
+        // Non-Windows has no self-lock: a running process does not lock its own binaries (POSIX replaces the
+        // inode), so the applier applies in place there and never needs this barrier. Report "gone" so
+        // WaitForParentGone returns immediately and the macOS/Linux apply path stays exactly as before.
+        if (!OperatingSystem.IsWindows())
+        {
+            return false;
+        }
         try
         {
             using Process process = Process.GetProcessById(pid);

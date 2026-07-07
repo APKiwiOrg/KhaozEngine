@@ -66,8 +66,10 @@ public interface IUpdaterEnvironment
     /// <summary>
     /// True when a process with <paramref name="pid"/> is currently running. The applier calls this after
     /// <see cref="WaitForParentExit"/> to confirm the game is really gone before it mutates any install
-    /// file (and to ride out a late-dying process). The default returns false (assume gone), preserving the
-    /// prior "proceed once the wait returns" behaviour for implementers predating this member.
+    /// file (and to ride out a late-dying process). The real environment returns false on non-Windows
+    /// (POSIX has no self-lock, so the barrier is a no-op there and the apply path is unchanged). The
+    /// default returns false (assume gone), preserving the prior "proceed once the wait returns" behaviour
+    /// for implementers predating this member.
     /// </summary>
     bool IsProcessAlive(int pid) => false;
 

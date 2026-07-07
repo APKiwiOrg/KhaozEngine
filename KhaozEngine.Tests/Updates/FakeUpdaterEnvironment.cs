@@ -115,6 +115,18 @@ internal sealed class FakeUpdaterEnvironment : IUpdaterEnvironment
 
     public void WaitForParentExit(int pid, int timeoutMilliseconds) => ParentWaits++;
 
+    // Barrier modelling: IsProcessAlive reports the parent alive for the first ParentAlivePolls calls, then
+    // gone. Default 0 = gone on the first check, so existing tests cross the barrier with no extra sleeps.
+    // Set above the barrier poll budget to model a game that never exits.
+    public int ParentAlivePolls;
+    public int IsProcessAliveCalls;
+
+    public bool IsProcessAlive(int pid)
+    {
+        IsProcessAliveCalls++;
+        return IsProcessAliveCalls <= ParentAlivePolls;
+    }
+
     // Relocation: by default SelfExePath is null (the "POSIX / no relocation" signal), so Run applies in
     // place. Tests that exercise relocation set SelfExePath + SelfBaseDir to a dir inside the install.
     public string? SelfExePath;

@@ -26,7 +26,13 @@ public enum ApplyOutcome
     /// intentionally-removed destination symlink (suspect at a managed install path) is not recreated, since
     /// its target is unknown.
     /// </summary>
-    RolledBack
+    RolledBack,
+
+    /// <summary>
+    /// The game was still running when the exit barrier expired, so nothing was touched: the install is
+    /// fully intact and no marker was written. The old version keeps running and the update is deferred.
+    /// </summary>
+    AbortedGameStillRunning
 }
 
 /// <summary>Result of <see cref="UpdateApplier.Apply(ApplyUpdateConfig, IUpdaterEnvironment)"/>.</summary>
@@ -55,6 +61,13 @@ public static class UpdateApplier
     public const int MaxCopyRetries = 40;
     public const int RetryDelayMilliseconds = 500;
     public const int MaxParentWaitSeconds = 30;
+
+    // After the parent-exit wait, confirm the game is truly gone before mutating anything: poll
+    // IsProcessAlive up to this budget (60 x 500ms = 30s on top of the 30s wait). A process still alive
+    // at the end means we must NOT swap files into it (the "patched while the window was up" crash), so
+    // the apply aborts untouched. The common path (process already gone) returns on the first poll.
+    public const int ParentGoneBarrierPolls = 60;
+    public const int ParentGonePollDelayMilliseconds = 500;
 
     // Post-apply settle wait (the "Finishing" phase). After the new exe lands, Windows Defender scans it
     // and briefly holds an exclusive lock; relaunching mid-scan trips over the in-flight image
@@ -387,6 +400,18 @@ public static class UpdateApplier
         if (config.ParentPid > 0)
         {
             environment.WaitForParentExit(config.ParentPid, MaxParentWaitSeconds * 1000);
+
+            // Barrier: never mutate a single install file while the game is still alive. WaitForParentExit
+            // blocks efficiently for the bulk of the shutdown. This poll confirms the process is actually
+            // gone and rides out a late-dying one. Still alive at the end means abort UNTOUCHED - no marker,
+            // no file changes, and no relaunch (the game is already running). Swapping a running process's
+            // locked .exe/.dll is exactly the order-of-operations failure this fixes.
+            if (!WaitForParentGone(environment, config.ParentPid))
+            {
+                environment.Log("Game still running after the exit barrier, deferring update (install untouched).");
+                ui.Close();
+                return new ApplyResult { Outcome = ApplyOutcome.AbortedGameStillRunning, ExitCode = 1 };
+            }
         }
 
         // Marker survives an uncatchable interruption (power loss mid-copy); the next game launch
@@ -687,6 +712,27 @@ public static class UpdateApplier
             environment.Sleep(SettlePollDelayMilliseconds);
         }
         environment.Log("Timed out waiting for the game exe to become launchable; relaunching anyway.");
+    }
+
+    /// <summary>
+    /// Polls <see cref="IUpdaterEnvironment.IsProcessAlive"/> until the parent process is gone or the
+    /// barrier budget (<see cref="ParentGoneBarrierPolls"/>) is exhausted, sleeping between polls. Returns
+    /// true once the process is gone, false if it is still alive at the end (the caller aborts untouched).
+    /// Returns immediately when the process is already gone - the common path, since WaitForParentExit has
+    /// already blocked for the shutdown.
+    /// </summary>
+    private static bool WaitForParentGone(IUpdaterEnvironment environment, int pid)
+    {
+        for (int attempt = 0; attempt < ParentGoneBarrierPolls; attempt++)
+        {
+            if (!environment.IsProcessAlive(pid))
+            {
+                return true;
+            }
+            environment.Log($"Waiting for the game to exit before applying ({attempt + 1}/{ParentGoneBarrierPolls})...");
+            environment.Sleep(ParentGonePollDelayMilliseconds);
+        }
+        return !environment.IsProcessAlive(pid);
     }
 
     private static bool TryReplaceWithRetries(IUpdaterEnvironment environment, string source, string dest, string relativePath)

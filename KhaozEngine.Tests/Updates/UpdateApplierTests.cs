@@ -498,4 +498,37 @@ public sealed class UpdateApplierTests
             Directory.Delete(dir, recursive: true);
         }
     }
+
+    [Fact]
+    public void Apply_GameStillRunningPastBarrier_AbortsUntouchedWithoutMarkerOrRelaunch()
+    {
+        var env = new FakeUpdaterEnvironment { ParentAlivePolls = 1000 }; // never exits within the budget
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.Files[InstallPath("game.dll")] = "v1";
+        env.Files[InstallPath("Game")] = "exe";
+        string marker = Path.Combine(AppData, "apply-in-progress.json");
+
+        ApplyResult result = UpdateApplier.Apply(Config(new() { "game.dll" }), env);
+
+        Assert.Equal(ApplyOutcome.AbortedGameStillRunning, result.Outcome);
+        Assert.Equal(1, result.ExitCode);
+        Assert.Equal("v1", env.Files[InstallPath("game.dll")]); // untouched
+        Assert.False(env.Files.ContainsKey(marker));            // no dangling marker
+        Assert.Null(env.RelaunchedExe);                         // game alive: not relaunched
+    }
+
+    [Fact]
+    public void Apply_ParentExitsAfterSomePolls_ProceedsAndApplies()
+    {
+        var env = new FakeUpdaterEnvironment { ParentAlivePolls = 3 }; // alive for 3 polls, then gone
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.Files[InstallPath("game.dll")] = "v1";
+        env.Files[InstallPath("Game")] = "exe";
+
+        ApplyResult result = UpdateApplier.Apply(Config(new() { "game.dll" }), env);
+
+        Assert.Equal(ApplyOutcome.Succeeded, result.Outcome);
+        Assert.Equal("v2", env.Files[InstallPath("game.dll")]);
+        Assert.Equal(InstallPath("Game"), env.RelaunchedExe);
+    }
 }

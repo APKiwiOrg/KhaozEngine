@@ -109,6 +109,23 @@ public sealed class SystemUpdaterEnvironment : IUpdaterEnvironment
         }
     }
 
+    public bool IsProcessAlive(int pid)
+    {
+        try
+        {
+            using Process process = Process.GetProcessById(pid);
+            return !process.HasExited;
+        }
+        catch (ArgumentException)
+        {
+            return false; // no such process: already gone
+        }
+        catch (InvalidOperationException)
+        {
+            return false; // the process exited and its association is gone
+        }
+    }
+
     public void Relaunch(string executablePath, string workingDirectory)
     {
         if (string.IsNullOrEmpty(executablePath) || !File.Exists(executablePath))

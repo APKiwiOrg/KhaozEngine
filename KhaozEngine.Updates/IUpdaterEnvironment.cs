@@ -64,6 +64,14 @@ public interface IUpdaterEnvironment
     void WaitForParentExit(int pid, int timeoutMilliseconds);
 
     /// <summary>
+    /// True when a process with <paramref name="pid"/> is currently running. The applier calls this after
+    /// <see cref="WaitForParentExit"/> to confirm the game is really gone before it mutates any install
+    /// file (and to ride out a late-dying process). The default returns false (assume gone), preserving the
+    /// prior "proceed once the wait returns" behaviour for implementers predating this member.
+    /// </summary>
+    bool IsProcessAlive(int pid) => false;
+
+    /// <summary>
     /// True when <paramref name="path"/> can be opened for exclusive read (no other process holds a
     /// handle on it). This is the post-apply settle check on Windows: after a freshly-written executable
     /// lands, the OS antivirus scans it and briefly locks the file, and relaunching mid-scan trips over

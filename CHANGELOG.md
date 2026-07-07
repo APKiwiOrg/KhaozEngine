@@ -5,6 +5,13 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.26.0
+
+Windows updater now reliably elevates for a Program Files install, so an update actually lands instead of rolling back on Access Denied. The 10.22.0 elevate-once path was gated on a writability probe that returned a false positive under Program Files (a new file at the install root can be created even when overwriting the existing binaries fails), so elevation never fired. Additive public API (`IsUnderProtectedRoot`), minor bump, POSIX apply path untouched.
+
+- **`SystemUpdaterEnvironment.CanWriteToDirectory` (Updates):** on Windows a per-machine install under a protected root (`%ProgramFiles%`, `%ProgramFiles(x86)%`, `%ProgramW6432%`, `%SystemRoot%`) now reports not-writable whenever the process is not already elevated, so `UpdateApplier`'s Stage 1b relaunches the updater elevated (UAC) before applying. Off a protected root, or when already elevated, it falls back to the previous create/delete probe unchanged. This replaces the old naive create-a-temp-file probe, which passed on Program Files (a fresh file at the root can be created) while the real apply operations - overwriting the installed binaries, clearing an admin-owned `.ke-update-rollback` - failed with Access Denied, leaving the update to roll back and relaunch the old version.
+- **`SystemUpdaterEnvironment.IsUnderProtectedRoot(installDir, protectedRoots)` (Updates, new public static):** the pure, OS-independent (separator- and case-insensitive) protected-root decision behind the gate, so the elevation logic is unit-testable off Windows. A prefix that is not a real path boundary (`C:\Program FilesX` against `C:\Program Files`) does not match.
+
 ## 10.25.0
 
 New retained Gui widget `TabBar`: a horizontal tab bar / segmented control for switching a panel between sub-views (Goals/Tree, settings sub-pages, inventory categories). Additive public API, minor bump, no behaviour change to existing widgets.

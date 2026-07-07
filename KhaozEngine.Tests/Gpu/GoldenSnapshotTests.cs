@@ -195,6 +195,123 @@ namespace KhaozEngine.Tests.Gpu
             GoldenCompare.AssertOrUpdate("scene3d_shadow_blob", rgba, W, H);
         }
 
+        // Shadows gap #1, ShadowMap tier: three meshes on a tile floor with ShadowMode.ShadowMap on and the key light
+        // angled, so each caster drops a real PCF shadow ONTO the floor AND onto its neighbours (mesh-to-mesh). Locks
+        // the depth pass + light-space fit + PCF sampling through the model fragment. Off (the default) stays
+        // byte-stable via the untouched scene3d golden (the shadow tail sits at strength 0 and is never tapped).
+        [GpuFact]
+        public void Golden3D_ShadowMap()
+        {
+            MeshHandle floor = default, box = default, tallBox = default, sphere = default;
+
+            byte[] rgba = Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    floor = scene.LoadMesh(MeshPrimitives.Tile(10f, 0.1f));
+                    box = scene.LoadMesh(MeshPrimitives.Box(0.9f));
+                    tallBox = scene.LoadMesh(MeshPrimitives.Box(1.4f));
+                    sphere = scene.LoadMesh(MeshPrimitives.Sphere(0.6f));
+                    scene.Post.Starfield = false;
+                    scene.Post.BackgroundColor = new Color(0.10f, 0.12f, 0.16f, 1f);
+                    scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;
+                    // A tight focus so the map packs texels onto this small scene (crisp shadows at 480x320).
+                    scene.Post.Quality.Shadows.ShadowFocusRadius = 5f;
+                    // Key light travelling down-and-to-the-right (-x, -y, -z) so shadows fall toward +x/+z, clearly
+                    // on one side of each caster.
+                    scene.Post.LightDirection = new Vector3(-0.55f, -0.8f, -0.25f);
+                    scene.Camera.Frame(new Vector3(0.2f, 0.4f, 0f), new Vector3(6f, 4.5f, 6f));
+                },
+                drawFrame: scene =>
+                {
+                    scene.Draw(floor, Matrix4x4.CreateTranslation(0f, 0f, 0f));
+                    // A tall box casting a long shadow across the floor toward +x.
+                    scene.Draw(tallBox, Matrix4x4.CreateTranslation(-1.6f, 0.7f, -0.6f),
+                        new Color(0.15f, 0.75f, 0.2f, 1f));
+                    // A shorter red box positioned so the tall box's shadow can fall across it (mesh-to-mesh).
+                    scene.Draw(box, Matrix4x4.CreateTranslation(0.9f, 0.45f, 0.4f),
+                        new Color(0.85f, 0.2f, 0.15f, 1f));
+                    // A raised sphere dropping a detached round shadow onto the floor beneath+beyond it.
+                    scene.Draw(sphere, Matrix4x4.CreateTranslation(1.6f, 1.1f, -1.4f),
+                        new Color(0.25f, 0.5f, 0.9f, 1f), Material.Shiny(0.6f));
+                },
+                frames: 2);
+
+            GoldenCompare.AssertOrUpdate("scene3d_shadow_map", rgba, W, H);
+        }
+
+        // Shadows gap #1: a SPLAT-TERRAIN ground quad RECEIVING a model's PCF shadow (the shadow term flows through
+        // the shared lighting block into the splat fragment identically to the model fragment). A box casts; the
+        // terrain receives (model-only casting - terrain does not self-shadow). Locks terrain-receives.
+        [GpuFact]
+        public void Golden3D_SplatShadow()
+        {
+            MeshHandle terrain = default, box = default, sphere = default;
+
+            byte[] rgba = Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    // A large flat splat-terrain quad on the ground plane; vertex Color carries all-grass weights.
+                    var mat = scene.LoadSplatMaterial(8, 8, FiveSolidLayers(8));
+                    var wgt = new Vector4(1f, 0f, 0f, 0f);
+                    const float e = 8f;
+                    var verts = new[]
+                    {
+                        new ModelVertex(new Vector3(-e, 0, -e), Vector3.UnitY, wgt, new Vector2(0, 0)),
+                        new ModelVertex(new Vector3( e, 0, -e), Vector3.UnitY, wgt, new Vector2(1, 0)),
+                        new ModelVertex(new Vector3( e, 0,  e), Vector3.UnitY, wgt, new Vector2(1, 1)),
+                        new ModelVertex(new Vector3(-e, 0,  e), Vector3.UnitY, wgt, new Vector2(0, 1)),
+                    };
+                    terrain = scene.LoadMesh(new GltfMesh(verts, new ushort[] { 0, 1, 2, 0, 2, 3 }), mat);
+                    box = scene.LoadMesh(MeshPrimitives.Box(1.1f));
+                    sphere = scene.LoadMesh(MeshPrimitives.Sphere(0.55f));
+                    scene.Post.Starfield = false;
+                    scene.Post.BackgroundColor = new Color(0.10f, 0.12f, 0.16f, 1f);
+                    scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;
+                    scene.Post.Quality.Shadows.ShadowFocusRadius = 5f;
+                    scene.Post.LightDirection = new Vector3(-0.55f, -0.8f, -0.25f);
+                    scene.Camera.Frame(new Vector3(0.2f, 0.4f, 0f), new Vector3(6f, 4.5f, 6f));
+                },
+                drawFrame: scene =>
+                {
+                    scene.Draw(terrain, Matrix4x4.Identity, Color.White);
+                    // A green box casting a shadow onto the terrain toward +x/+z.
+                    scene.Draw(box, Matrix4x4.CreateTranslation(-1.2f, 0.55f, -0.4f),
+                        new Color(0.2f, 0.7f, 0.25f, 1f));
+                    // A raised sphere dropping a round shadow onto the terrain.
+                    scene.Draw(sphere, Matrix4x4.CreateTranslation(1.4f, 1.0f, 1.0f),
+                        new Color(0.85f, 0.35f, 0.2f, 1f), Material.Shiny(0.5f));
+                },
+                frames: 2);
+
+            GoldenCompare.AssertOrUpdate("scene3d_splat_shadow", rgba, W, H);
+        }
+
+        // Five solid-colour splat layers (grass/dirt/rock/sand/snow) for the splat-shadow golden's ground material.
+        static System.Collections.Generic.List<SplatLayerImage> FiveSolidLayers(int size)
+        {
+            var layers = new System.Collections.Generic.List<SplatLayerImage>();
+            byte[][] colors =
+            {
+                new byte[] { 60, 110, 40, 255 },   // grass
+                new byte[] { 90, 75, 55, 255 },    // dirt
+                new byte[] { 110, 105, 100, 255 }, // rock
+                new byte[] { 190, 175, 125, 255 }, // sand
+                new byte[] { 235, 238, 245, 255 }, // snow
+            };
+            foreach (var c in colors)
+            {
+                var albedo = new byte[size * size * 4];
+                var normal = new byte[size * size * 4];
+                for (int p = 0; p < albedo.Length; p += 4)
+                {
+                    albedo[p] = c[0]; albedo[p + 1] = c[1]; albedo[p + 2] = c[2]; albedo[p + 3] = 255;
+                    normal[p] = 128; normal[p + 1] = 128; normal[p + 2] = 255; normal[p + 3] = 255; // flat
+                }
+                layers.Add(new SplatLayerImage { AlbedoRgba = albedo, NormalRgba = normal, TilesPerMetre = 0.25f, Roughness = 0.8f });
+            }
+            return layers;
+        }
+
         [GpuFact]
         public void Golden3D_TexturedMesh()
         {

@@ -12,6 +12,7 @@ namespace KhaozEngine.Tests.Gpu
     /// device of that backend. The pairs mirror how the renderers actually create pipelines from ShaderSources:
     /// <list type="bullet">
     /// <item>ModelVert+ModelFrag, SplatVert+SplatFrag (ModelRenderer)</item>
+    /// <item>ShadowDepthVert+ShadowDepthFrag (ShadowMapRenderer depth-only pass)</item>
     /// <item>LineVert+LineFrag (LineRenderer via OverlayRenderer)</item>
     /// <item>BillboardVert+BillboardFrag (BillboardRenderer via OverlayRenderer)</item>
     /// <item>BillboardVert+TexturedBillboardFrag (TexturedBillboardRenderer - reuses BillboardVert)</item>
@@ -31,6 +32,10 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void Splat()
             => ShaderValidation.ValidatePair(ShaderSources.SplatVert, ShaderSources.SplatFrag, "Splat");
+
+        [Fact]
+        public void ShadowDepth()
+            => ShaderValidation.ValidatePair(ShaderSources.ShadowDepthVert, ShaderSources.ShadowDepthFrag, "ShadowDepth");
 
         [Fact]
         public void Line()

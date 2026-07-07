@@ -14,8 +14,8 @@ namespace KhaozEngine.Tests.Render3D
     public sealed class LightingCompositionTests
     {
         const string SharedFunctionSignature =
-            "void computeLighting(vec3 N, vec3 worldPos, float specStrength, float specExp, out vec3 diffuse, out vec3 specColor)";
-        const string SharedFunctionCall = "computeLighting(N, vWorldPos, specStrength, specExp, diffuse, specColor);";
+            "void computeLighting(vec3 N, vec3 worldPos, float specStrength, float specExp, float keyShadow, out vec3 diffuse, out vec3 specColor)";
+        const string SharedFunctionCall = "computeLighting(N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);";
 
         static int CountOccurrences(string haystack, string needle)
         {

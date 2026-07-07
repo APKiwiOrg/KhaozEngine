@@ -44,8 +44,9 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(ShadowMode.Blob, scene.ResolvedShadows().Effective);
             scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;
             var r = scene.ResolvedShadows();
-            Assert.Equal(ShadowMode.Blob, r.Effective);
-            Assert.True(r.Degraded);
+            // The headless Metal device supports the shadow-map path, so ShadowMap now resolves to itself.
+            Assert.Equal(ShadowMode.ShadowMap, r.Effective);
+            Assert.False(r.Degraded);
         });
     }
 }

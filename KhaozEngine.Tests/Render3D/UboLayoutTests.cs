@@ -35,15 +35,27 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void UboBytes_EqualsHeaderPlusTwoLightArrays()
+        public void UboBytes_EqualsHeaderPlusLightArraysPlusShadowTail()
         {
-            // The renderer derives UboBytes = HeaderBytes + 2 * LightArrayBytes and uploads the two point-light
-            // arrays at HeaderBytes and HeaderBytes + LightArrayBytes (see ModelRenderer.WriteFrameUniformsTo).
-            // Assert that composition as an equation of the named constants; if it drifts, the splat params tail
-            // and the light-array uploads land at the wrong offsets.
+            // The renderer derives UboBytes = HeaderBytes + 2 * LightArrayBytes + ShadowTailBytes and uploads the two
+            // point-light arrays then the shadow tail (see ModelRenderer.WriteFrameUniformsTo). Assert that
+            // composition as an equation of the named constants; if it drifts, the splat params tail, the light-array
+            // uploads, or the shadow-tail upload land at the wrong offsets.
             Assert.Equal(
-                ModelRenderer.HeaderBytes + 2 * ModelRenderer.LightArrayBytes,
+                ModelRenderer.HeaderBytes + 2 * ModelRenderer.LightArrayBytes + ModelRenderer.ShadowTailBytes,
                 ModelRenderer.UboBytes);
+        }
+
+        [Fact]
+        public void ShadowTail_MarshalSize_And_Offset_MatchConstants()
+        {
+            // The shadow tail (mat4 LightViewProj + vec4 Params) is 80 bytes, appended right after the two light
+            // arrays at offset 688. If the ShadowUbo struct or the constants drift apart the shadow-tail upload
+            // (WriteFrameUniformsTo -> UpdateBuffer at ShadowTailOffset) smears the splat params that follow.
+            Assert.Equal((int)ModelRenderer.ShadowTailBytes, Marshal.SizeOf<ModelRenderer.ShadowUbo>());
+            Assert.Equal(64 + 16, (int)ModelRenderer.ShadowTailBytes);
+            Assert.Equal(ModelRenderer.HeaderBytes + 2 * ModelRenderer.LightArrayBytes, ModelRenderer.ShadowTailOffset);
+            Assert.Equal(688u, ModelRenderer.ShadowTailOffset);
         }
 
         [Fact]
@@ -56,10 +68,11 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void UboBytes_Is688_TheDocumentedCombinedSize()
+        public void UboBytes_Is768_TheDocumentedCombinedSize()
         {
-            // 176 + 2*256 = 688. The value the comments/docs quote; a sanity anchor on the derived arithmetic.
-            Assert.Equal(688u, ModelRenderer.UboBytes);
+            // 176 + 2*256 + 80 = 768. The value the comments/docs quote; a sanity anchor on the derived arithmetic
+            // (header + both point-light arrays + the shadow tail).
+            Assert.Equal(768u, ModelRenderer.UboBytes);
         }
 
         // ---- Splat material params tail ----
@@ -82,7 +95,7 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void SplatTail_AppendsAtOffset688_PerGlslComment()
+        public void SplatTail_AppendsAtUboBytesOffset_PerGlslComment()
         {
             // SplatVert/SplatFrag document "per-material params appended (offset 688)" and the renderer writes the
             // params tail at UboBytes (ModelRenderer.CreateSplatParamsUbo -> UpdateBuffer at UboBytes). Assert the
@@ -205,6 +218,35 @@ namespace KhaozEngine.Tests.Render3D
                 $"SplatFrag lost '{wArray}': the weight array size drifted from SplatMaterialConfig.LayerCount ({n}). Fix ShaderSources.SplatFrag or the constant.");
             Assert.True(ShaderSources.SplatFrag.Contains(rghArray),
                 $"SplatFrag lost '{rghArray}': the roughness array size drifted from SplatMaterialConfig.LayerCount ({n}). Fix ShaderSources.SplatFrag or the constant.");
+        }
+
+        [Fact]
+        public void AllFrameUboShaders_DeclareShadowTail_MatAndParams()
+        {
+            // The shadow tail (mat4 ShadowMat + vec4 ShadowParams) rides in the frame UBO after the light arrays, in
+            // ALL FOUR shaders that declare the `U` block (both stages of model + splat). If any one drops it, the
+            // block layout diverges and the shadow tail / splat params tail land at the wrong offset on that stage.
+            foreach (var (name, src) in new[]
+            {
+                ("ModelVert", ShaderSources.ModelVert), ("ModelFrag", ShaderSources.ModelFrag),
+                ("SplatVert", ShaderSources.SplatVert), ("SplatFrag", ShaderSources.SplatFrag),
+            })
+            {
+                Assert.True(src.Contains("mat4 ShadowMat;"),
+                    $"{name} lost 'mat4 ShadowMat;': the shadow tail dropped from the frame UBO block; the splat params tail now lands at the wrong offset. Fix ShaderSources.{name}.");
+                Assert.True(src.Contains("vec4 ShadowParams;"),
+                    $"{name} lost 'vec4 ShadowParams;': the shadow tail dropped from the frame UBO block. Fix ShaderSources.{name}.");
+            }
+        }
+
+        [Fact]
+        public void ModelAndSplatFrag_SampleTheShadowMap_ViaSharedHelper()
+        {
+            // Both fragments must call the single-sourced PCF helper so model + terrain shadow IDENTICALLY. If either
+            // stops calling it, that surface silently stops receiving shadows (the lockstep invariant breaks).
+            Assert.Contains("sampleKeyShadow(", ShaderSources.LightingCommonGlsl);
+            Assert.Contains("sampleKeyShadow(ShadowMap, ShadowSamp", ShaderSources.ModelFrag);
+            Assert.Contains("sampleKeyShadow(ShadowMap, ShadowSamp", ShaderSources.SplatFrag);
         }
 
         [Fact]

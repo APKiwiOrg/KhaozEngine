@@ -13,6 +13,9 @@ namespace KhaozEngine.Tests.Render3D
     public sealed class ShadowSettingsTests
     {
         static GpuCapabilities Caps() => new(clipSpaceYInverted: false, depthRangeZeroToOne: true);
+        // A device that cannot render+sample the depth target (forces the ShadowMap->Blob degradation path).
+        static GpuCapabilities CapsNoShadowMap() =>
+            new(clipSpaceYInverted: false, depthRangeZeroToOne: true, supportsShadowMaps: false);
 
         [Fact]
         public void Default_is_off()
@@ -42,10 +45,21 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void ShadowMap_degrades_to_blob_until_wired()
+        public void ShadowMap_resolves_to_itself_when_device_supports_it()
         {
             var s = new ShadowSettings { Mode = ShadowMode.ShadowMap };
             var r = s.ResolveFor(Caps());
+            Assert.Equal(ShadowMode.ShadowMap, r.Requested);
+            Assert.Equal(ShadowMode.ShadowMap, r.Effective);
+            Assert.False(r.Degraded);
+            Assert.Equal("", r.Reason);
+        }
+
+        [Fact]
+        public void ShadowMap_degrades_to_blob_when_device_lacks_depth_sampling()
+        {
+            var s = new ShadowSettings { Mode = ShadowMode.ShadowMap };
+            var r = s.ResolveFor(CapsNoShadowMap());
             Assert.Equal(ShadowMode.ShadowMap, r.Requested);
             Assert.Equal(ShadowMode.Blob, r.Effective);
             Assert.True(r.Degraded);

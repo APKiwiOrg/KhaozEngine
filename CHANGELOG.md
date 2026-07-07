@@ -5,6 +5,14 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.18.0
+
+Golden testing goes public and splat terrain gets pinned: a new public `KhaozEngine.Imaging.GoldenGrid` API (the engine's golden-grid regression core, promoted out of test infra), committed per-backend grid goldens for the two splat terrain scenes, and GPU-free `diff`/`score` commands on SnapshotTool. Additive public API, so a minor bump.
+
+- **New public API `KhaozEngine.Imaging.GoldenGrid`:** the golden-grid regression core as a BCL-only public type: `Downsample` (image to an averaged RGB cell grid, default 32x18), `Compare` (per-channel tolerance, returns a `GoldenGridComparison` with the offender list and worst diff), `Serialize`/`Deserialize` (the committed golden text format, byte-identical), plus the `GridToImage`/`DiffHeatMap` painters. Games can now golden-test their own scenes with the exact machinery the engine uses. The test project's `GoldenCompare` delegates to it, and a headless test locks the serialized format byte-for-byte against a committed golden.
+- **Splat terrain grid goldens:** `scene3d_splat` (near iso view) and `scene3d_splat_distance` (grazing distance view) now have committed reference grids on all three backends (metal, direct3d11, vulkan). Splat terrain was the one heavily-diverged shader with no committed grid (the flat-white FXC regression shipped through that gap). The threshold-invariant splat tests remain alongside. Worst cross-backend divergence of the new grids is under 0.05, well inside the 0.20 guard.
+- **SnapshotTool `diff` and `score`:** `SnapshotTool diff a.png b.png [--tolerance t] [--grid WxH] [--out heatmap.png]` compares two renders, `SnapshotTool score image.png golden.txt [--tolerance t]` scores a render against a committed golden grid file. Exit 0 within tolerance, 1 over, 2 on usage or IO errors, so agents and scripts can validate visual changes without xUnit or a GPU device. The tool stays `IsPackable=false` (repo tool, not a shipped package).
+
 ## 10.17.1
 
 Single-sourced GLSL lighting: the key/fill/cel/point-light block hand-duplicated between the model and splat terrain fragment shaders is now one shared `computeLighting` GLSL function spliced into both at compile time, so lighting edits are single-place by construction instead of comment-enforced. Pure text-move refactor with no public API change and no behavior change, so a patch bump. Pixel-neutral: Metal goldens 24/24 unchanged, D3D11/Vulkan verified by the cross-platform matrix on push.

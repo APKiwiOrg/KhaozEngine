@@ -33,6 +33,7 @@ namespace KhaozEngine.Render3D
         readonly TexturedBillboardRenderer _texBillboards;
         readonly BeamRenderer _beams;
         readonly Rendering.GroundDecalRenderer _decalRenderer;
+        readonly Rendering.SkyRenderer _sky;
         readonly Rendering.OverlayMeshRenderer _overlayMeshes;
         readonly RenderResources _res;
         // Slot-indexed GPU mesh storage parallel to _slots; a freed slot's entry is null until reused.
@@ -123,6 +124,31 @@ namespace KhaozEngine.Render3D
 
         public PixelPostProcessSettings Post { get; } = new();
 
+        /// <summary>
+        /// Camera-frustum culling of the main (visible) mesh pass: on by default. Each queued instance whose
+        /// world-space bounding sphere lies entirely outside the camera frustum is skipped in the model + splat
+        /// draws, so nothing the camera cannot see is rasterized. Culling is pixel-neutral by construction (it only
+        /// removes provably-offscreen geometry); force it off to prove that (the off/on parity test) or to profile.
+        /// The shadow depth pass is NEVER camera-culled: an off-screen caster still throws a visible shadow, so this
+        /// flag does not touch the shadow pass (see <see cref="CulledInstances"/>).
+        /// </summary>
+        public bool FrustumCulling { get; set; } = true;
+
+        // Per-instance visibility for the current frame's main pass, index-aligned to the grouped instance buffer
+        // (_instanceData). Reused across frames (grown, never per-frame allocated). true = draw in the visible pass.
+        bool[] _instanceVisible = Array.Empty<bool>();
+        int _drawnInstances, _culledInstances;
+
+        /// <summary>Number of mesh instances DRAWN in the main visible pass last frame (after frustum culling).
+        /// Splat-terrain and model instances both count; skinned/overlay draws are separate. Cheap per-frame stat so
+        /// a game can show the culling win. Zero until the first rendered frame.</summary>
+        public int DrawnInstances => _drawnInstances;
+
+        /// <summary>Number of mesh instances CULLED (skipped) in the main visible pass last frame by camera-frustum
+        /// culling. Always 0 when <see cref="FrustumCulling"/> is off. Pairs with <see cref="DrawnInstances"/>
+        /// (drawn + culled = the instances queued for a mesh with computable bounds this frame).</summary>
+        public int CulledInstances => _culledInstances;
+
         /// <summary>Host-set per-frame clock (seconds) driving beam pulse/scroll (see <see cref="DrawBeam"/> /
         /// <see cref="BeamStyle"/>). Set it once per frame in your draw callback (it runs after <see cref="Begin"/>),
         /// e.g. <c>scene.EffectTimeSeconds = totalSeconds</c>. NOT cleared by <see cref="Begin"/> - the host owns it.
@@ -158,6 +184,9 @@ namespace KhaozEngine.Render3D
             // Ground decals render into the lit color attachment + read-only scene depth (ColorDepthFB) before the
             // post chain, so they pass that framebuffer's output description (color format + depth format).
             _decalRenderer = new Rendering.GroundDecalRenderer(gd, _res.ColorDepthFB.Outputs);
+            // The procedural sky renders into the same ColorDepthFB (lit colour + read-only scene depth) as the
+            // decals, as a far-plane background pass behind the geometry. Default off (Post.Sky.Enabled == false).
+            _sky = new Rendering.SkyRenderer(gd, _res.ColorDepthFB.Outputs);
             _overlayMeshes = new Rendering.OverlayMeshRenderer(gd, _res.ModelFB.Outputs);
         }
 
@@ -253,8 +282,9 @@ namespace KhaozEngine.Render3D
             _gd.UpdateBuffer(vb, 0, mesh.Vertices);
             var ib = CreateIndexBuffer(mesh.Indices32, mesh.IndexFormat);
 
+            MeshBounds bounds = MeshBounds.FromVertices(mesh.Vertices);
             int index = _slots.Alloc(out int generation);
-            var slot = new Mesh(vb, ib, mesh.Indices32.Length, mesh.IndexFormat, material, splatMaterial);
+            var slot = new Mesh(vb, ib, mesh.Indices32.Length, mesh.IndexFormat, in bounds, material, splatMaterial);
             if (index < _meshes.Count) _meshes[index] = slot;   // reused freed slot
             else _meshes.Add(slot);                              // fresh appended slot
             return new MeshHandle(index, generation);
@@ -1009,6 +1039,7 @@ namespace KhaozEngine.Render3D
             _beams.SetOutputs(modelOut);
             _overlayMeshes.SetOutputs(modelOut);
             _decalRenderer.SetOutputs(_res.ColorDepthFB.Outputs);
+            _sky.SetOutputs(_res.ColorDepthFB.Outputs);
         }
 
         void EnsureSize(int viewportW, int viewportH)
@@ -1115,6 +1146,13 @@ namespace KhaozEngine.Render3D
             if (_instanceData.Count > 0)
                 _model.UploadInstances(cl, CollectionsMarshal.AsSpan(_instanceData));
 
+            // Camera-frustum visibility for the MAIN pass only. Computed after grouping (so it is index-aligned to
+            // the uploaded _instanceData / runs) and BEFORE the shadow pass runs, but the shadow pass ignores it -
+            // an off-screen caster must still write depth into the light-space map so its shadow lands on-screen.
+            // Reuses _instanceVisible (grown, not per-frame allocated); the main + splat draws then rasterize only
+            // the visible contiguous sub-spans of each run against the same GPU buffer (no re-upload, no reorder).
+            ComputeMainPassVisibility(vp);
+
             // CPU-skin each queued skinned draw into one concatenated stream + per-draw instance data (deformed on the
             // CPU because the GPU bone-buffer read corrupts past element 0 in the windowed Veldrid/Metal swapchain
             // context - only bones[0] survives; extensively bisected). Built here (before both passes) so the shadow
@@ -1177,7 +1215,14 @@ namespace KhaozEngine.Render3D
                     var m = _meshes[run.Mesh.Index];
                     if (m is not { } mesh) continue;
                     if (mesh.SplatMaterial >= 0) continue;   // drawn in the splat pass below
-                    _model.DrawMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, run.Start, run.Count, mesh.MaterialSet);
+                    // Draw only the visible contiguous sub-spans of this run (against the already-uploaded buffer).
+                    uint spanStart = run.Start; uint spanLen = 0;
+                    for (uint s = 0; s < run.Count; s++)
+                    {
+                        if (_instanceVisible[run.Start + s]) { if (spanLen == 0) spanStart = run.Start + s; spanLen++; }
+                        else if (spanLen > 0) { _model.DrawMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, spanStart, spanLen, mesh.MaterialSet); spanLen = 0; }
+                    }
+                    if (spanLen > 0) _model.DrawMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, spanStart, spanLen, mesh.MaterialSet);
                 }
                 // Splat-terrain pass: same uploaded instance buffer, the dedicated 5-layer texture-array pipeline.
                 // Each material's combined UBO holds frame + params in one buffer, so re-sync this frame's uniforms
@@ -1194,7 +1239,13 @@ namespace KhaozEngine.Render3D
                     var sm = _splatMaterials[mesh.SplatMaterial];
                     if (sm is null) continue;
                     if (!splatBound) { _model.BindSplatPass(cl); splatBound = true; }
-                    _model.DrawSplatMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, run.Start, run.Count, sm.Set);
+                    uint spanStart = run.Start; uint spanLen = 0;
+                    for (uint s = 0; s < run.Count; s++)
+                    {
+                        if (_instanceVisible[run.Start + s]) { if (spanLen == 0) spanStart = run.Start + s; spanLen++; }
+                        else if (spanLen > 0) { _model.DrawSplatMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, spanStart, spanLen, sm.Set); spanLen = 0; }
+                    }
+                    if (spanLen > 0) _model.DrawSplatMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, spanStart, spanLen, sm.Set);
                 }
             }
 
@@ -1251,6 +1302,15 @@ namespace KhaozEngine.Render3D
             // DepthColorTex now (before the decals, which SAMPLE it to reconstruct the surface, and before the post
             // edge pass which also samples it). No-op when not multisampled.
             _res.ResolveDepth(cl);
+
+            // Procedural sky: a fullscreen background pass into ColorDepthFB (lit colour + read-only scene depth),
+            // behind all geometry. The far-plane triangle passes the Equal read-only depth test ONLY where the stored
+            // depth still EQUALS the cleared far plane (background where no mesh drew), so it fills the gradient + sun
+            // there and geometry pixels (depth < 1) reject it. It writes only the colour attachment (never the MRT
+            // normal/linear-depth the outline pass reads) with alpha 1 (so the blit's starfield marker skips sky
+            // pixels). Fully skipped when off, so a sky-off frame renders byte-identical to before this pass existed.
+            if (Post.Sky.Enabled)
+                _sky.Draw(cl, _res, ActiveCamera.View, Post.LightDirection, Post.Sky);
 
             // Blob shadows: when the resolved tier is Blob, turn each queued ShadowBlob into a dark Circle
             // GroundDecal and draw it FIRST (under the gameplay decals), so a caster is grounded by the same
@@ -1447,6 +1507,7 @@ namespace KhaozEngine.Render3D
             _texBillboards.Dispose();
             _beams.Dispose();
             _decalRenderer.Dispose();
+            _sky.Dispose();
             _overlayMeshes.Dispose();
             _res.Dispose();
             foreach (var m in _meshes)
@@ -1475,9 +1536,13 @@ namespace KhaozEngine.Render3D
             /// -1 (the normal model pipeline). Splat meshes carry no per-mesh <see cref="MaterialSet"/> (the splat set
             /// is shared and owned by the scene), so unload frees only Vb/Ib.</summary>
             public readonly int SplatMaterial;
-            public Mesh(IGpuBuffer vb, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, IGpuResourceSet? materialSet = null, int splatMaterial = -1)
+            /// <summary>Mesh-local bounds (AABB + bounding sphere) computed once at load from the vertex positions,
+            /// for frustum culling. The renderer transforms these by the per-instance world matrix (no per-frame
+            /// vertex scan).</summary>
+            public readonly MeshBounds Bounds;
+            public Mesh(IGpuBuffer vb, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, in MeshBounds bounds, IGpuResourceSet? materialSet = null, int splatMaterial = -1)
             {
-                Vb = vb; Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat; MaterialSet = materialSet; SplatMaterial = splatMaterial;
+                Vb = vb; Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat; Bounds = bounds; MaterialSet = materialSet; SplatMaterial = splatMaterial;
             }
         }
 
@@ -1635,6 +1700,78 @@ namespace KhaozEngine.Render3D
                 dst[baseIdx + b] = SkinningMath.Compose(boneMatrices[b], inverseBind[b]);
             for (int b = boneMatrices.Length; b < cap; b++)
                 dst[baseIdx + b] = Matrix4x4.Identity;             // clear the rest of the slot (reused list)
+        }
+
+        /// <summary>
+        /// Fill <see cref="_instanceVisible"/> for this frame's grouped instance buffer: true where the instance's
+        /// world-space bounding sphere is (conservatively) inside the camera frustum. When <see cref="FrustumCulling"/>
+        /// is off every slot is visible (parity path). Also updates <see cref="_drawnInstances"/> /
+        /// <see cref="_culledInstances"/>. Allocation-free on the hot path (the mask grows, never per-frame allocated;
+        /// the frustum lives in a stack struct). The shadow depth pass does not consult this mask.
+        /// </summary>
+        void ComputeMainPassVisibility(Matrix4x4 vp)
+        {
+            int total = _instanceData.Count;
+            if (_instanceVisible.Length < total)
+                _instanceVisible = new bool[Math.Max(total, _instanceVisible.Length * 2)];
+
+            _drawnInstances = 0;
+            _culledInstances = 0;
+            if (total == 0) return;
+
+            if (!FrustumCulling)
+            {
+                for (int i = 0; i < total; i++) _instanceVisible[i] = true;
+                _drawnInstances = total;
+                return;
+            }
+
+            FrustumPlanes frustum = FrustumPlanes.Extract(vp);
+            // Walk runs so each slot's mesh bounds come from its run's mesh; the world matrix is the uploaded
+            // instance model matrix. A stale-handle run (mesh unloaded this frame) is conservatively kept visible
+            // (the draw loop skips it anyway by the same stale check), so culling never diverges from the draw.
+            foreach (var run in _runs)
+            {
+                bool valid = _slots.IsValid(run.Mesh.Index, run.Mesh.Generation);
+                Mesh mesh = default; bool haveMesh = false;
+                if (valid && _meshes[run.Mesh.Index] is { } m) { mesh = m; haveMesh = true; }
+                // Terrain (splat) chunks draw at identity with world-space vertices, so their local AABB IS the
+                // world AABB: cull them with the tighter positive-vertex AABB test (a flat chunk's bounding sphere
+                // is far too conservative). Props/models use the world-sphere test (cheap under arbitrary
+                // scale/rotation). An instance with a non-identity splat transform (not produced by the terrain
+                // path) falls back to the sphere test.
+                bool splatIdentity = haveMesh && mesh.SplatMaterial >= 0;
+                for (uint s = 0; s < run.Count; s++)
+                {
+                    int slot = (int)(run.Start + s);
+                    bool visible = true;
+                    if (haveMesh)
+                    {
+                        Matrix4x4 world = _instanceData[slot].Model;
+                        if (splatIdentity && IsIdentityTransform(world))
+                            visible = frustum.IntersectsAabb(mesh.Bounds.Min, mesh.Bounds.Max);
+                        else
+                        {
+                            mesh.Bounds.WorldSphere(world, out Vector3 c, out float r);
+                            visible = frustum.IntersectsSphere(c, r);
+                        }
+                    }
+                    _instanceVisible[slot] = visible;
+                    if (visible) _drawnInstances++; else _culledInstances++;
+                }
+            }
+        }
+
+        /// <summary>True when <paramref name="m"/> is (within a small epsilon) the identity transform, so a mesh's
+        /// local-space AABB doubles as its world AABB (terrain chunks draw at identity with world-space verts).</summary>
+        static bool IsIdentityTransform(in Matrix4x4 m)
+        {
+            const float e = 1e-5f;
+            return MathF.Abs(m.M11 - 1f) < e && MathF.Abs(m.M22 - 1f) < e && MathF.Abs(m.M33 - 1f) < e && MathF.Abs(m.M44 - 1f) < e
+                && MathF.Abs(m.M12) < e && MathF.Abs(m.M13) < e && MathF.Abs(m.M14) < e
+                && MathF.Abs(m.M21) < e && MathF.Abs(m.M23) < e && MathF.Abs(m.M24) < e
+                && MathF.Abs(m.M31) < e && MathF.Abs(m.M32) < e && MathF.Abs(m.M34) < e
+                && MathF.Abs(m.M41) < e && MathF.Abs(m.M42) < e && MathF.Abs(m.M43) < e;
         }
 
         /// <summary>

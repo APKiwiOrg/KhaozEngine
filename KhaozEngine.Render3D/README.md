@@ -40,6 +40,21 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   - Validate a menu choice with `Shadows.ResolveFor(caps)` and read `.Effective`/`.Degraded`/`.Reason` (same
   `ResolveFor`-clamps-a-request pattern as AA, never throws). With `Off` the blob queue is ignored and the shadow tail
   sits at strength 0 (never tapped), so existing scenes are byte-stable.
+- Frustum culling: `Scene3D.FrustumCulling` (on by default) skips any queued mesh instance whose world-space
+  bounding sphere is entirely outside the camera frustum, so off-screen terrain chunks and props cost nothing to
+  draw. Pixel-neutral by construction (only provably-offscreen geometry is dropped), so existing renders stay
+  byte-stable; set it `false` to force everything drawn. The shadow depth pass is never camera-culled (an off-screen
+  caster still writes the shadow map, so its shadow lands on-screen). Read the win from `Scene3D.DrawnInstances` /
+  `Scene3D.CulledInstances`. Mesh-local bounds (`MeshBounds`, computed once at `LoadMesh`) feed the pure plane math
+  `FrustumPlanes.Extract(camera.ViewProjection)` + `IntersectsAabb`/`IntersectsSphere` (headless, allocation-free).
+- Sky: `PixelPostProcessSettings.Sky` (a `SkySettings`, **default off**) draws an opt-in procedural sky behind all
+  geometry - a vertical `HorizonColor`->`ZenithColor` gradient plus an optional sun disc + halo (`SunColor`,
+  `SunRadius`, `HaloStrength`, `HaloFalloff`). Rendered as a far-plane background pass into the lit colour + read-only
+  scene depth, so it fills only where no mesh drew, never touches the MRT normal/depth the outline pass reads, and
+  costs nothing when off (`Sky.Enabled == false`, existing scenes byte-stable). Screen-space, so it reads under both
+  the orthographic `IsoCamera3D` and the perspective `FollowCamera3D`. The sun direction **defaults to the key light**
+  (`Post.LightDirection`) so the sky and lighting agree (sun opposite the shadows); override with
+  `Sky.SunDirectionOverride`. The pure math is `SkyMath` (gradient + sun falloff + `ProjectSunToNdc`).
 - `Scene3D.DrawOverlayMesh(MeshHandle mesh, Matrix4x4 world)` - queues a translucent, unlit,
   depth-tested-but-not-depth-writing, alpha-blended draw of an already-loaded mesh, colored by the mesh's
   per-vertex color. A general overlay primitive, not collision-specific: drawn after the meshes/beams and

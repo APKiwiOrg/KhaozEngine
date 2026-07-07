@@ -43,6 +43,13 @@ namespace KhaozEngine.Render3D
         /// <see cref="Supersample"/>); the raw fields remain the low-level equivalent for back-compat.</summary>
         public RenderQuality Quality = new();
 
+        /// <summary>Procedural sky settings (gradient + optional sun disc). Default disabled, so the background stays
+        /// the clear colour + starfield and existing scenes are byte-stable; set <c>Sky.Enabled = true</c> to render a
+        /// horizon-&gt;zenith gradient sky behind the geometry, with the sun aligned to <see cref="LightDirection"/>
+        /// by default. The cohesive-look pairing for the semi-realistic outdoor preset (pair with
+        /// <see cref="UseSmoothPreset"/> and shadows).</summary>
+        public SkySettings Sky = new();
+
         /// <summary>Internal render width (used only when <see cref="RenderScale"/> is
         /// <see cref="Render3D.RenderScale.FixedInternal"/>). High = smooth; small + Pixelated = chunky retro pixels.</summary>
         public int RenderWidth = 1600;

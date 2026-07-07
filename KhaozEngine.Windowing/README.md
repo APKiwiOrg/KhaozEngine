@@ -74,6 +74,33 @@ Windowing + input foundation for the custom MonoGame-free stack.
   `GameAppOptions.AppUserModelId`.
 - `InputManager` / `Pointer` - the higher-level read: unified pointer, edges, bounds helpers (`IsTapIn` etc.),
   region blocking, keyboard/gamepad/menu navigation.
+- **Action maps + rebinding** (`KhaozEngine.Windowing.Actions`) - named actions instead of hardcoded key checks.
+  A game declares `InputAction`s (`Button` / `Axis1D` / `Axis2D`) with default `InputBinding`s over `InputSource`s
+  (key, mouse button, gamepad button, trigger, a whole stick via `WholeStick` for a 2D move/look, a single stick
+  component via `StickAxis`, a two-key 1D axis, or a four-key WASD 2D composite; sticks/triggers take `invert`/`scale`,
+  and `WholeStick` invert flips Y only). Multiple bindings per action combine: Button = OR, Axis1D = sum+clamp,
+  Axis2D = per-component sum with WASD diagonal normalized to unit length; a whole stick keeps its magnitude and a
+  component `StickAxis` is projected onto its own axis. `ActionMap` is BOTH the declaration and
+  the pure per-frame runtime (`Update(InputState)` once per frame, then `IsDown`/`WasPressed`/`WasReleased`/`GetAxis`/`GetAxis2D`
+  by id); edges are computed against the previous snapshot the same way `InputManager` does. Per-player maps read
+  that player's gamepad; keyboard/mouse are global. `RebindOperation` is a pure snapshot-fed capture flow (captures
+  the first eligible source on its press edge, sticks/triggers at full tilt, with an exclusion list; Escape cancels
+  by default). `ActionMapSerializer` round-trips bindings as a VERSIONED JSON string (plain string in/out; a single
+  future/unknown source kind degrades per-binding while the rest of the file survives, only bad JSON syntax discards
+  the file, and `Load` returns an `ApplyResult` flagging a `FromFutureVersion` file); the game hands that string to its
+  own settings store (no `Windowing -> Persistence` edge). `ActionMapController` is the turn-key wrapper: declare ->
+  load persisted -> evaluate per frame -> auto-save on rebind. Action ids are opaque IDENTIFIERS, never localized;
+  games localize labels game-side. Fully headless-testable.
+- **Gamepad rumble** (`KhaozEngine.Windowing.Rumble`) - the OUTPUT seam mirroring the input rule: only `AppWindow`
+  touches the Silk vibration motors, games reach it off `AppWindow.Rumble` / `GameApp.Rumble` (an `IRumble`), and a
+  headless `NoopRumble` backs servers/tests. `SetRumble(player, low, high)` is a sustained per-motor level (heavy/low
+  + light/high, each `[0,1]`); `Pulse(player, intensity, duration, highScale, shape)` is a fire-and-forget envelope
+  (`RumbleDecay` = `Constant`/`Linear`/`EaseOut`) that the frame loop ticks to decay + auto-stop. Stacking policy:
+  effective level per motor = MAX of the sustained level and every live pulse (not sum, so it never clips past 1 and
+  a weak effect ending never drops a stronger one). The pure `RumbleMixer` (envelope + stacking) drives an
+  `IRumbleOutput` sink and is headless-tested against a recording fake. **Reality: the current GLFW input backend
+  exposes zero vibration motors (GLFW has no haptics API), so rumble is a graceful no-op today; the wiring is correct
+  and a future SDL-backed window lights up through the same seam. On-device feel needs a physical smoke test.**
 - `GameClock` (pause/timescale, plus `RealWallGapSeconds`/`LastRealTimestamp` - a UTC wall-clock gap per frame
   that survives OS sleep/suspend, which the frame `dt` does not, so a game can detect a resume), `DesignViewport`
   / `AdaptiveViewport` (letterbox/fill/stretch + responsive).

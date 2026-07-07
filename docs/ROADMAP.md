@@ -4,7 +4,7 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **10.19.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **10.21.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan when it is scheduled.
 
@@ -75,13 +75,12 @@ Ordered gap list (2026-07-07 feature audit):
    now sort back-to-front within each batch, but the inter-pass order of the transparent renderers is still
    fixed by Scene3D. A unified cross-renderer transparent queue is the eventual answer if a game hits a
    cross-pass ordering artifact. Also unpinned: a golden for mixed additive+alpha textured overlap.
-3. Frustum culling: only distance culling exists today (prop radius, chunk ring, LOD tiers, N-nearest lights).
-   `TerrainChunkBounds` already builds AABBs labeled for frustum culling but nothing extracts frustum planes or
-   tests them. Plane extraction + AABB tests for chunks, props, and instanced meshes is a cheap, large perf win
-   for the MMO overworld.
-4. Sky: no skybox, cubemap, or environment support. The only sky is the procedural screen-space starfield in the
-   blit pass (right for the space games, wrong for the Ruinborne overworld). A sky gradient/skybox with a sun
-   direction that agrees with the key light pairs with shadows for the cohesive-look pass.
+3. Culling follow-ups (frustum culling shipped in 10.20.0: chunks AABB-tested, instanced props sphere-tested,
+   skinned meshes and the shadow pass deliberately exempt): light-volume culling for the shadow depth pass,
+   and culling for skinned characters if crowd profiling ever shows a win (needs animated-pose-safe bounds).
+4. Sky follow-ups (the gradient + key-light-aligned sun disc background shipped in 10.20.0, a screen-space
+   formulation that works under both ortho and perspective cameras): a physical point-at-infinity sun
+   projection for perspective cameras, and a full cubemap/skybox when water or a specific scene pulls for it.
 5. Water: a real water surface shader for the lake / sea (currently a flat plane at water level, and the splat
    weights already know the waterline). After shadows + sky so it has something to reflect the look of.
 6. Bloom (LDR): beams, glow, and emissive read flat without it. The internal target is RGBA8 (no HDR pipeline),
@@ -121,10 +120,9 @@ Also here, unchanged:
 
 ## Input, audio, and game feel (2026-07-07 feature audit)
 
-- Input action maps + rebinding: bindings are hardcoded in `InputManager` today. An action-map layer (named
-  actions, per-player bindings, runtime rebinding UI support, serialization via the existing settings storage)
-  is a baseline modern-player expectation for every game on the engine.
-- Gamepad rumble / haptics: analog sticks and triggers are in, vibration is not exposed at all.
+- Rumble follow-up (the `IRumble` seam + pulse envelopes shipped in 10.21.0, compile-verified): the GLFW input
+  backend enumerates zero vibration motors, so rumble is a graceful no-op today. Revisit when a motor-capable
+  input backend (SDL) lands, plus an on-device feel pass and a dirty-flag skip for per-frame motor writes.
 - Music crossfade: music playback is single-track with a hard cut on track change. A short crossfade between
   tracks (and into/out of combat layers later) is cheap and immediately audible.
 - Audio buses: the volume model is Master x Music/Sfx only. A small bus/category graph (UI, ambience, combat)

@@ -368,6 +368,125 @@ and Ctrl/Cmd+V clipboard paste - without reaching for the raw window input. Ther
 appends `Clipboard.TryGetClipboardText()` through the same `filter` + `maxLength` path as typed chars (so a digits
 filter strips letters out of pasted text too), firing on the V press edge only.
 
+### Action maps + rebinding (`KhaozEngine.Windowing.Actions`)
+
+Stop hardcoding key/button checks. A game declares NAMED actions, binds defaults, reads action state, lets players
+rebind at runtime, and persists bindings through its own settings store. It is snapshot-driven and pure (state in,
+values out), so it is fully headless-testable and never touches Silk.NET.
+
+**Localization boundary:** an action id (`"gameplay.jump"`) is an opaque engine IDENTIFIER (the persistence key,
+greppable, stable across releases), never a player-facing display string. Turn an id or a captured `InputSource`
+into a localized label on the GAME side via your `StringId` catalog. The engine layer never localizes.
+
+Three action kinds: `Button` (down/pressed/released), `Axis1D` (a float, e.g. throttle), `Axis2D` (a vector, e.g.
+move/look). Sources (`InputSource`) are extensible-by-design: a key, a mouse button, a gamepad button, a gamepad
+trigger, a WHOLE gamepad stick (`WholeStick`, the 2D form for move/look), a single stick component (`StickAxis`
+with `X`/`Y`, a 1D axis), a two-key 1D axis, or a four-key WASD 2D composite. Sticks/triggers take `invert`/`scale`
+modifiers. For a whole stick, `invertY` flips ONLY the Y axis (the look-invert convention); a component `StickAxis`
+read in a 2D action is projected onto its own axis (an X source contributes only X, a Y source only Y).
+
+```csharp
+using KhaozEngine.Windowing.Actions;
+
+// 1. declare actions + default bindings (multiple bindings per action = "any of these")
+var map = new ActionMap(PlayerIndex.One);
+map.AddAction(InputAction.Button("jump"), InputSource.FromKey(Key.Space), InputSource.FromGamepadButton(GamepadButton.A));
+map.AddAction(InputAction.Axis2D("move"),  InputSource.WasdDefault, InputSource.WholeStick(GamepadStick.Left));
+map.AddAction(InputAction.Axis2D("look"),  InputSource.WholeStick(GamepadStick.Right, invertY: true)); // Y-only look invert
+
+// 2. load persisted overrides (string the game read from its settings store; null on first run)
+//    then wrap in the turn-key controller with a save sink that writes back to the game's store.
+string? persisted = settings.LoadInputBindings();               // your ISettingsStorage, game-side
+var input = new ActionMapController(map, persisted, save: json => settings.SaveInputBindings(json));
+
+// 3. evaluate per frame, read by id
+input.Update(frame.Input);                                      // once per frame, before OnUpdate
+if (input.WasPressed("jump")) Jump();
+Vector2 move = input.GetAxis2D("move");                         // WASD diagonal is unit length (see below)
+
+// 4. rebind at runtime; the controller auto-saves through the sink on capture
+var op = input.BeginRebind("jump", slot: 0);                    // Escape cancels by default
+// ...keep calling input.Update(frame.Input) each frame; when op.Status == Captured the new source is applied + saved
+```
+
+**Combining semantics (documented + tested):**
+- **Button** bindings OR together: down if any is down; pressed = down-now/up-last-frame (never double-fires when
+  two bindings overlap); released is the symmetric edge. Edge detection is against the previous snapshot, the same
+  way `InputManager` does it.
+- **Axis1D** bindings SUM then clamp to `[-1, 1]` (a stick at 0.3 plus a key at 1 saturates to 1).
+- **Axis2D** per-component SUM, then normalize: a WASD **diagonal is normalized to unit length** (so diagonal
+  movement is not `~1.414` faster than cardinal); a whole-stick (`WholeStick`) source keeps its analog magnitude
+  (only clamped down if over-unit); a component `StickAxis` source is PROJECTED onto its own axis (X-only or Y-only),
+  so an X source and a Y source can be bound together to compose a whole stick; the combined vector is clamped to
+  length 1. `invertY` on a whole stick flips Y only.
+
+**Rebind capture** (`RebindOperation`, or via `controller.BeginRebind`): fed successive snapshots, it captures the
+first eligible source on its PRESS edge (a key held from before the rebind is ignored until re-pressed), captures a
+gamepad stick/trigger only at full tilt, and honours an exclusion list (default: `Key.Escape` cancels). Pure and
+headless.
+
+**Serialization** (`ActionMapSerializer`): `Serialize(map)` -> a versioned JSON string; `Load(map, json)` applies
+persisted overrides onto a map that already declares its actions with defaults. Only per-action binding OVERRIDES
+are stored (keyed by action id), so renaming/removing an action in code just ignores the stale entry. Degradation is
+**per binding**, not per file: a source whose `kind` is a name this build does not recognize (a future kind) drops
+individually while every other binding in the file survives; if that leaves an action with zero valid bindings the
+action keeps its code default (never unbound). Only a top-level JSON *syntax* error discards the whole file (defaults
+stand). `Load`/`Apply` return an `ApplyResult` (implicitly an `int` overridden-action count) exposing
+`AppliedCount`, `DroppedBindings`, and `FromFutureVersion` - the last is set when the file's `version` is newer than
+`CurrentVersion`, which is still applied through the same tolerant path so a game can warn the player that some newer
+bindings may have been dropped. Call `map.Update` exactly once per frame (edge detection is frame-vs-frame; a double
+Update can swallow a press/release edge).
+
+**Dependency note:** this lives in `KhaozEngine.Windowing` and deals in plain strings only. The engine deliberately
+has NO `Windowing -> Persistence` dependency, so YOU hand the serialized string to your `ISettingsStorage` (the
+`ActionMapController` save sink is where that wiring goes). Per-player maps read that player's gamepad
+(`input.Gamepad((int)PlayerIndex)`); keyboard/mouse are global (one keyboard).
+
+### Gamepad rumble (`KhaozEngine.Windowing.Rumble`)
+
+Rumble is the engine's one gamepad OUTPUT seam and it mirrors the input rule: input flows IN through the immutable
+`InputState` snapshot, rumble flows OUT through `IRumble`. ONLY `AppWindow` touches the Silk.NET vibration motors;
+games reach rumble the same way they reach input, off `GameApp.Rumble` (or `AppWindow.Rumble` on the raw loop). A
+headless `NoopRumble` backs servers and tests.
+
+Two layers, both per `PlayerIndex` and per motor (low-frequency = heavy/left motor, high-frequency = light/right,
+each in `[0,1]`):
+
+- `SetRumble(player, low, high)` - a SUSTAINED level you own; it holds until you change it (set both to 0 to stop).
+- `Pulse(player, intensity, duration, highFrequencyScale = 1, shape = Linear)` - a fire-and-forget envelope that
+  decays to zero over `duration` and auto-stops. `RumbleDecay` is `Constant` (square), `Linear` (default), or
+  `EaseOut` (a sharp hit that falls off fast early).
+
+The frame loop calls `Tick(dt)` for you (only if the game touched `Rumble` at all), so pulses decay and auto-stop
+without any per-frame code. **Stacking policy (documented + tested): the effective level per motor is the MAX of the
+sustained level and every live pulse** - MAX not sum, so overlapping effects never clip past 1 and a weaker effect
+ending never drops a stronger one still going. `StopAll()` / `Stop(player)` cut everything immediately; the window
+also stops all motors on dispose.
+
+```csharp
+protected override void OnUpdate(float dt)
+{
+    if (WasHit)                                  // one-shot hit feedback
+        Rumble.Pulse(PlayerIndex.One, 0.8f, TimeSpan.FromMilliseconds(250), shape: RumbleDecay.EaseOut);
+
+    Rumble.SetRumble(PlayerIndex.One, engineLoad, 0f); // sustained low-motor engine rumble
+    // no Tick() call needed: GameApp ticks rumble each frame.
+}
+```
+
+The pure envelope + stacking logic is `RumbleMixer` (device-free, headless-tested against a recording `IRumbleOutput`
+sink). `RumbleDriver` is the concrete `IRumble` = mixer + an `IRumbleOutput`; `AppWindow` supplies the Silk sink,
+tests/servers supply `NoopRumbleOutput`.
+
+**On-device caveat (be honest):** the seam is compile-verified and headless-tested, but whether a pulse is FELT is
+not verifiable in CI or on the dev machine. It needs a physical-controller smoke test. **The current GLFW input
+backend enumerates ZERO vibration motors (GLFW has no haptics API), so all rumble is a graceful no-op there today.**
+The wiring is correct: a future SDL-backed window would light up through this exact seam with no game-code change.
+Because a motor-less pad no-ops silently, a game can call rumble unconditionally.
+
+**Localization note:** rumble deals in `PlayerIndex` + numeric intensities only, no player-facing text, so nothing
+here localizes.
+
 ### Rect, viewport, clock
 
 - `Rect(X, Y, Width, Height)` is the engine's rectangle (`Right`/`Bottom`/`Contains(Vector2)`).
@@ -962,6 +1081,35 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
   ground planes (a grazing plane has genuinely high per-pixel depth change, so a low depth threshold lights it up).
   `Post.OutlineDistanceFade` (default off, perspective only) fades the outline out between `OutlineFadeStart` and
   `OutlineFadeEnd` view-space units so far terrain/foliage stops aliasing into mush.
+- **Frustum culling** (`Scene3D.FrustumCulling`, **on by default**): the visible mesh pass skips any queued instance
+  whose world-space bounding sphere lies entirely outside the camera frustum, so nothing off-screen is rasterized
+  (a win for the streamed overworld: distant terrain chunks and scattered props behind/beside the camera cost
+  nothing). It is **pixel-neutral by construction** - only geometry the camera cannot see is dropped - so existing
+  renders are byte-identical. Set `scene.FrustumCulling = false` to force everything drawn (for profiling or to
+  prove the parity). Mesh-local bounds (`MeshBounds`) are computed once at `LoadMesh` from the vertex positions, so
+  the cull never rescans vertices and allocates nothing per frame. Terrain chunks (which draw at identity with
+  world-space vertices) are culled with the tighter positive-vertex AABB test; props/models use the world-sphere
+  test (correct under arbitrary scale/rotation). **The shadow depth pass is never camera-culled**: an off-screen
+  caster still writes the light-space shadow map, so its shadow lands on-screen wherever the key light throws it.
+  Read the per-frame win from `Scene3D.DrawnInstances` / `Scene3D.CulledInstances` (last rendered frame; `CulledInstances`
+  is always `0` when culling is off). The plane math is public and pure: `FrustumPlanes.Extract(camera.ViewProjection)`
+  then `IntersectsAabb`/`IntersectsSphere` (use the CPU-authored `ViewProjection`, not a GPU-clip-corrected matrix).
+- **Sky** (`Post.Sky`, a `SkySettings`, **default off**): an opt-in procedural sky drawn as a background pass behind
+  all geometry - a vertical horizon-to-zenith gradient plus an optional sun disc + halo. Default `Sky.Enabled = false`,
+  so the background stays the clear colour + starfield and existing scenes are byte-stable; set `Post.Sky.Enabled = true`
+  to turn it on. It renders only where no mesh drew (a far-plane pass with a read-only depth test), never touches the
+  MRT normal/depth the outline pass reads, and costs nothing when off (the pass is skipped). The cohesive-look pairing
+  for the semi-realistic outdoor preset: turn it on with `Post.UseSmoothPreset()` and `Shadows.Mode = ShadowMode.ShadowMap`.
+  - Gradient: `Sky.HorizonColor` (bottom of the sky) and `Sky.ZenithColor` (top); the gradient is vertical in screen
+    space, so it reads correctly under BOTH the orthographic `IsoCamera3D` (where all view rays are parallel) and the
+    perspective `FollowCamera3D`.
+  - Sun: `Sky.SunEnabled` (default `true`; `false` = plain overcast gradient), `Sky.SunColor`, `Sky.SunRadius`
+    (screen-space, NDC-y units - the vertical half-screen is `1.0`), `Sky.HaloStrength` (0 = disc only) and
+    `Sky.HaloFalloff` (halo width). **The sun direction defaults to the key light** (`Post.LightDirection`): the disc
+    sits where the light comes from, so the sky and the scene lighting agree and the sun lands on the opposite screen
+    axis from the shadows automatically. Override with `Sky.SunDirectionOverride` (a world direction TO the sun) to
+    point it elsewhere. The sun is drawn only when it is above the view horizon (behind/under the camera it is
+    suppressed), so a downward-looking iso view shows it near the top of the sky.
 - `IsoCamera3D`: `Azimuth`/`Elevation`/`Target`/`OrthoSize`/`Zoom`, `Frame(target, azimuth, size)`,
   `ScreenToRay`, `ScreenToGround`, and the `View`/`Projection`/`ViewProjection` matrices.
 - `IsoCameraController`: input-agnostic gestures driving an `IsoCamera3D` (pure `System.Numerics`, headless-testable;

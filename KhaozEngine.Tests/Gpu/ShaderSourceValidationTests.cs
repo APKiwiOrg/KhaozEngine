@@ -19,6 +19,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <item>BeamVert+BeamFrag (BeamRenderer)</item>
     /// <item>OverlayUnlitVert+OverlayUnlitFrag (OverlayMeshRenderer)</item>
     /// <item>DecalVert+DecalFrag (GroundDecalRenderer)</item>
+    /// <item>SkyVert+SkyFrag (SkyRenderer background pass)</item>
     /// <item>FullscreenVert paired with each post fragment PaletteFrag/EdgeFrag/BlitFrag/FxaaFrag (PixelPostProcess)</item>
     /// <item>SpriteBatch VertSrc+FragSrc (Render2D)</item>
     /// </list>
@@ -60,6 +61,10 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void Decal()
             => ShaderValidation.ValidatePair(ShaderSources.DecalVert, ShaderSources.DecalFrag, "Decal");
+
+        [Fact]
+        public void Sky()
+            => ShaderValidation.ValidatePair(ShaderSources.SkyVert, ShaderSources.SkyFrag, "Sky");
 
         [Fact]
         public void PostPalette()

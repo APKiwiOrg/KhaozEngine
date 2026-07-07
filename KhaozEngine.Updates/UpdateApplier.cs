@@ -117,7 +117,7 @@ public static class UpdateApplier
         (string? configPath, bool relocated, bool elevated) = ParseArgs(args);
         if (configPath is null)
         {
-            environment.Log("Usage: <updater> --apply <apply-update.json> [--relocated]");
+            environment.Log("Usage: <updater> --apply <apply-update.json> [--relocated] [--elevated]");
             return 1;
         }
 

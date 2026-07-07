@@ -52,11 +52,13 @@ configured base host), and caps both the manifest and each downloaded file at a 
   down/slow feed falls through to `FeedUnreachable` and lets the game continue on the current build rather
   than blocking startup. Reports `UpdateGateProgress` (phase + byte/file counts) for a "Downloading
   update..." screen. See "Startup gate" below.
-- **`UpdateApplier`** + **`IUpdaterEnvironment`** - the cross-platform staged-apply core: back up each
-  file before overwriting, atomically swap in each staged file (`ReplaceFile`: copy-to-temp + rename,
-  retried for locked files), roll everything back on any failure, install the new manifest, wait for the
-  new exe to become launchable, then relaunch with retry (see "Relaunch settle wait + retry" below). A
-  game's updater shim is just `UpdateApplier.Run(args, env)`.
+- **`UpdateApplier`** + **`IUpdaterEnvironment`** - the cross-platform staged-apply core: wait behind an
+  exit barrier until the game process is gone (see "Windows self-update safety" below), back up each file
+  before overwriting, atomically swap in each staged file (`ReplaceFile`: copy-to-temp + rename, retried
+  for locked files and permission denials), roll everything back on any failure, install the new manifest,
+  wait for the new exe to become launchable, then relaunch with retry (see "Relaunch settle wait + retry"
+  below). On a protected install (e.g. Program Files) it relaunches elevated once. A game's updater shim is
+  just `UpdateApplier.Run(args, env)`.
 - **`IUpdaterUi`** + **`UpdaterUiOptions`** - the optional progress window the shim shows during the
   apply (Install then Finishing). Windows-only native GDI; a no-op elsewhere. See "Progress window".
 
@@ -83,6 +85,36 @@ STATUS_STACK_BUFFER_OVERRUN).
    new version. On non-Windows `CanOpenExclusively` returns true and `TryRelaunch` reports `Running` on the
    first try, so the wait/retry is a no-op. This is the window's "Finishing" phase, which stays visible
    across the retry wait.
+
+## Windows self-update safety (exit barrier + permissions)
+
+Three guards close the two ways a Windows self-update used to fail: swapping files while the game was
+still running, and a Program Files install that denies writes. Both surfaced as an unhandled
+`UnauthorizedAccessException` on the file swap.
+
+1. **Exit barrier.** Before it mutates a single install file, `Apply` waits behind a hard barrier: after
+   the parent-exit wait it polls `IUpdaterEnvironment.IsProcessAlive(parentPid)` until the game process is
+   really gone. A running process locks its own loaded `.exe`/`.dll`, so swapping into a live game is the
+   "patched while the window was still up" crash. If the game is still alive after the barrier budget the
+   apply aborts UNTOUCHED (`ApplyOutcome.AbortedGameStillRunning`): no files changed, no marker written, no
+   relaunch, so the update just defers to the next launch. `IsProcessAlive` returns false off Windows, so
+   the barrier is a first-poll no-op and the macOS/Linux in-place apply is unchanged.
+2. **Permission-safe retry + commit-aware rollback.** The copy retry catches `UnauthorizedAccessException`
+   (a locked image or a denied delete-child) as well as `IOException`, so a transient lock rides out the
+   retry budget and a permanent denial rolls back cleanly instead of crashing. The whole mutation phase is
+   wrapped in a backstop: a pre-commit failure restores the backups, clears the marker, and relaunches the
+   old version (`RolledBack`); a post-commit failure (a hiccup after the new binaries are installed and
+   verified) reports `Succeeded` rather than a false rollback and never relaunches twice. The
+   `apply-in-progress` marker is written only during the mutation phase, so any earlier abort leaves
+   nothing dangling.
+3. **Elevate once for a protected install.** Before applying, `Run` probes the install dir with
+   `IUpdaterEnvironment.CanWriteToDirectory`. When it is not writable (e.g. a `C:\Program Files\<app>\`
+   install that denies delete-child) `Run` relaunches the updater elevated once via `TryElevate` (Windows
+   `runas`, one UAC prompt), passing `--relocated --elevated`. The `--elevated` flag guards against an
+   elevation loop, and a declined UAC prompt falls through to a clean in-place attempt (which rolls back if
+   the write stays denied) rather than crashing. The probe and elevation are skipped off Windows, so the
+   POSIX apply runs no extra filesystem op. The durable fix for the whole permission class is a per-user
+   install location, which never needs elevation.
 
 ## Progress window
 

@@ -5,6 +5,17 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.22.0
+
+Windows self-update no longer patches a running game or crashes on a permission denial, so Program Files installs that could not self-update since around 10.15 self-heal again without a lossy fallback. The apply waits behind a hard barrier until the game process has exited, rides out an `UnauthorizedAccessException` (a locked image or a denied delete-child) in the copy retry instead of crashing, rolls back and clears the apply-in-progress marker on any unexpected failure, and relaunches the updater elevated once (a single UAC prompt) when the install dir is not writable. Additive `IUpdaterEnvironment` members, minor bump. Windows apply path only, macOS and Linux behaviour is unchanged.
+
+- **Exit barrier:** `UpdateApplier.Apply` waits (new `IUpdaterEnvironment.IsProcessAlive`) until the game process is gone before it mutates any install file. If the game is still running after the barrier budget it aborts untouched with the new `ApplyOutcome.AbortedGameStillRunning` (no files touched, no marker written, no relaunch), so the update defers to the next launch. Windows-gated: `IsProcessAlive` returns false off Windows, so the macOS and Linux in-place apply is unchanged.
+- **Permission-denial retry:** `TryReplaceWithRetries` now catches `UnauthorizedAccessException` as well as `IOException`. A transient lock rides out the retry budget. A permanent denial exhausts the loop and rolls back cleanly instead of crashing the shim unhandled.
+- **Commit-aware rollback backstop:** the mutation phase is wrapped so no unexpected exception escapes. A pre-commit failure restores backups, clears the marker, and relaunches the old version (`RolledBack`). A post-commit failure (a hiccup in the finish steps, after the binaries are installed and verified) reports `Succeeded` rather than a false rollback, and never relaunches twice.
+- **Marker discipline:** the `apply-in-progress` marker is written only during the actual mutation phase, so any earlier abort (barrier, staging incomplete, unsafe path, elevation handoff) leaves nothing dangling.
+- **Elevate once:** `UpdateApplier.Run` relaunches the updater elevated (Windows `runas`, guarded by a new `--elevated` flag) when the new `IUpdaterEnvironment.CanWriteToDirectory` reports the install dir non-writable. A declined UAC prompt falls through to a clean in-place attempt. The writability probe is skipped off Windows, so the POSIX apply runs no extra filesystem op.
+- New default-implemented `IUpdaterEnvironment` members: `IsProcessAlive`, `CanWriteToDirectory`, `TryElevate` (additive, so external implementers keep compiling).
+
 ## 10.21.0
 
 Input action maps with runtime rebinding, plus a gamepad rumble seam: games stop hardcoding key checks and get player-rebindable, persistable controls, and a vibration API that is ready the day a motor-capable input backend lands. Additive public API in KhaozEngine.Windowing, minor bump. No GPU or rendering work.

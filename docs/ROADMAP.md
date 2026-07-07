@@ -4,7 +4,7 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **10.26.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **10.27.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan when it is scheduled.
 
@@ -83,8 +83,9 @@ Ordered gap list (2026-07-07 feature audit):
    projection for perspective cameras, and a full cubemap/skybox when water or a specific scene pulls for it.
 5. Water: a real water surface shader for the lake / sea (currently a flat plane at water level, and the splat
    weights already know the waterline). After shadows + sky so it has something to reflect the look of.
-6. Bloom (LDR): beams, glow, and emissive read flat without it. The internal target is RGBA8 (no HDR pipeline),
-   and a threshold+blur LDR bloom is enough for the target fidelity. A full HDR/tonemap pipeline is not planned.
+6. Bloom follow-ups (the LDR threshold + separable-blur bloom shipped in 10.27.0, opt-in via
+   `PixelPostProcessSettings.Bloom`): per-game tuning of threshold/intensity defaults once Ruinborne adopts it,
+   and a second blur octave only if a game pulls for wider halos. A full HDR/tonemap pipeline is still not planned.
 7. Layered / masked animation blending: the animation stack does clip playback + single crossfade + a locomotion
    state machine. Upper-body actions over locomotion (attack while running) will be needed by Ruinborne combat,
    and additive layers / bone masks are the next step. Skeletal IK (foot placement) sits behind it.

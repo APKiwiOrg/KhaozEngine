@@ -5,6 +5,15 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.27.0
+
+LDR bloom: an opt-in threshold + separable-blur glow pass in the pixel post chain, so beams, emissive materials, and bright billboards finally read as light sources. Additive public API, minor bump, off by default with every existing golden byte-stable on all three backends.
+
+- **`BloomSettings` (`PixelPostProcessSettings.Bloom`, default off):** `Enabled`, `Threshold` (smoothstep-knee luma cut, default 0.7), `Intensity` (additive strength, default 0.6), and `Radius` (blur taps). Off costs nothing: no passes, no UBO uploads, and the half-resolution ping-pong targets are not even allocated until bloom first enables.
+- **Mechanism:** bright-pass thresholds the lit colour into a half-resolution target, a separable gaussian blurs it (horizontal then vertical), and an additive composite folds it back at full resolution. All three passes reuse the proven `FullscreenVert`. Bloom runs after palette quantize and the outline (glow sits on top of the stylized chain, never posterized) and before FXAA (which then smooths the composite). The MRT normal/depth targets are untouched and `TransparentBackground` alpha passes straight through.
+- **Cross-backend flip-parity handled structurally:** the bloom branch is always an odd number of fullscreen passes from its source on every configuration, so the composite carries one fixed unflip whose correctness is configuration-independent. Verified by review re-derivation and empirically by the three-backend bake (halos centered on their sources on Metal, D3D11, and Vulkan alike).
+- **New golden `scene3d_bloom`** (all three backends): a dark scene with an emissive sphere, a magenta beam, and a bright billboard under default knobs, with an in-test anti-wash guard (a healthy count of near-black cells must survive, checked before any bake can commit) so a blown-out bloom can never silently become the reference.
+
 ## 10.26.0
 
 Windows updater now reliably elevates for a Program Files install, so an update actually lands instead of rolling back on Access Denied. The 10.22.0 elevate-once path was gated on a writability probe that returned a false positive under Program Files (a new file at the install root can be created even when overwriting the existing binaries fails), so elevation never fired. Additive public API (`IsUnderProtectedRoot`), minor bump, POSIX apply path untouched.

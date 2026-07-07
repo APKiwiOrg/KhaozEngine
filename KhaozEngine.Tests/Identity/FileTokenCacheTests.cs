@@ -40,7 +40,7 @@ public class FileTokenCacheTests : IDisposable
     }
 
     [Fact]
-    public async Task Tampered_file_still_loads_leniently()
+    public async Task Tampered_file_returns_null()
     {
         FileTokenCache cache = new(path);
         ProviderCredential cred = new("oidc", "tok", null, DateTimeOffset.UtcNow.AddHours(1));
@@ -51,8 +51,7 @@ public class FileTokenCacheTests : IDisposable
         string tampered = $"{parts[0]}:{new string('0', parts[1].Length)}:{parts[2]}";
         await File.WriteAllTextAsync(path, tampered);
         CachedSession? loaded = await cache.LoadAsync();
-        Assert.NotNull(loaded);
-        Assert.Equal("tok", loaded!.Value.Credential.CredentialToken);
+        Assert.Null(loaded);
     }
 
     [Fact]

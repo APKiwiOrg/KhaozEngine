@@ -18,9 +18,10 @@ public static class SessionToken
         long exp = expiry.ToUnixTimeSeconds();
         string sub = B64(Encoding.UTF8.GetBytes(subject));
         string name = B64(Encoding.UTF8.GetBytes(displayName ?? string.Empty));
-        string payload = $"{subject}.{displayName ?? string.Empty}.{exp.ToString(CultureInfo.InvariantCulture)}";
-        string mac = B64(Hmac(payload, secret));
-        return $"{Version}.{sub}.{name}.{exp.ToString(CultureInfo.InvariantCulture)}.{mac}";
+        string expStr = exp.ToString(CultureInfo.InvariantCulture);
+        string signingInput = $"{Version}.{sub}.{name}.{expStr}";
+        string mac = B64(Hmac(signingInput, secret));
+        return $"{signingInput}.{mac}";
     }
 
     public static bool TryVerify(string token, byte[] secret, DateTimeOffset now,
@@ -32,15 +33,15 @@ public static class SessionToken
         if (parts.Length != 5 || parts[0] != Version) { reason = "malformed token"; return false; }
         if (!long.TryParse(parts[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out long exp))
         { reason = "malformed expiry"; return false; }
-        string sub, name;
-        try { sub = Encoding.UTF8.GetString(UnB64(parts[1])); name = Encoding.UTF8.GetString(UnB64(parts[2])); }
-        catch (FormatException) { reason = "malformed payload"; return false; }
-        string payload = $"{sub}.{name}.{parts[3]}";
-        byte[] expected = Hmac(payload, secret);
+        string signingInput = $"{parts[0]}.{parts[1]}.{parts[2]}.{parts[3]}";
+        byte[] expected = Hmac(signingInput, secret);
         byte[] got;
         try { got = UnB64(parts[4]); } catch (FormatException) { reason = "malformed mac"; return false; }
         if (got.Length != expected.Length || !CryptographicOperations.FixedTimeEquals(got, expected))
         { reason = "signature mismatch"; return false; }
+        string sub, name;
+        try { sub = Encoding.UTF8.GetString(UnB64(parts[1])); name = Encoding.UTF8.GetString(UnB64(parts[2])); }
+        catch (FormatException) { reason = "malformed payload"; return false; }
         if (now.ToUnixTimeSeconds() >= exp) { reason = "token expired"; return false; }
         subject = sub; displayName = name.Length == 0 ? null : name;
         return true;

@@ -13,8 +13,10 @@ namespace KhaozEngine.Identity;
 /// <summary>File-backed token cache: obfuscated at rest (casual-read/tamper deterrence, not real security) with
 /// owner-only permissions on unix. Swap for a keychain-backed <see cref="ITokenCache"/> for stronger at-rest
 /// protection. The on-disk format is <c>KEID1:&lt;hex HMACSHA256&gt;:&lt;base64 JSON&gt;</c>; the HMAC key is fixed
-/// in-assembly (this is deterrence, not a secret) and a mismatched HMAC is tolerated on load (lenient decode) so a
-/// tampered or foreign-writer file still round-trips its payload; only a malformed envelope returns null.</summary>
+/// in-assembly (this is deterrence, not a secret, since anyone with the assembly can recompute it), but the HMAC is
+/// still checked as a real integrity/corruption check on load: a mismatched HMAC, a malformed envelope, or invalid
+/// base64 all return null from <see cref="LoadAsync"/>, so the caller falls back to a clean re-sign-in rather than
+/// trusting a tampered or corrupted payload.</summary>
 public sealed class FileTokenCache : ITokenCache
 {
     private const string FormatTag = "KEID1";
@@ -63,9 +65,15 @@ public sealed class FileTokenCache : ITokenCache
     {
         string[] parts = raw.Split(':', 3);
         if (parts.Length != 3 || parts[0] != FormatTag) return null;
+        string payload = parts[2];
+        byte[] expected = ComputeHmac(payload);
+        byte[] got;
+        try { got = Convert.FromHexString(parts[1]); }
+        catch (FormatException) { return null; }
+        if (got.Length != expected.Length || !CryptographicOperations.FixedTimeEquals(got, expected)) return null;
         try
         {
-            byte[] jsonBytes = Convert.FromBase64String(parts[2]);
+            byte[] jsonBytes = Convert.FromBase64String(payload);
             return Encoding.UTF8.GetString(jsonBytes);
         }
         catch (FormatException) { return null; }

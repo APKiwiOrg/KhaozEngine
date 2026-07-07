@@ -39,6 +39,23 @@ Apache-2.0) rather than an OS system-font path, so its glyph input is identical 
 Runs the golden tests (`--filter FullyQualifiedName~Golden`, `KE_GPU_TESTS=1`) per OS with its backend,
 `fail-fast: false`.
 
+### Golden naming contract
+
+The matrix selects tests by substring: a GPU test is run cross-platform **iff its fully-qualified name contains
+`Golden`**. That string is the contract. Do NOT rename a golden test to drop `Golden` from its name (class or
+method) - it would silently vanish from the CI filter and stop being verified on the other backends, with no red.
+This has bitten us before (the original splat tests lacked `Golden` in their names, so the D3D11 leg never ran
+them and a white-terrain bug shipped).
+
+Two flavors both satisfy the contract by carrying `Golden` in the name:
+
+- **committed-grid goldens** - render a scene, downsample, and diff against a committed per-backend reference grid
+  via `GoldenCompare.AssertOrUpdate` (e.g. `GoldenSnapshotTests`, `CollisionOverlayGoldenTests`). A backend needs
+  its own baked `.txt`.
+- **property / invariant "goldens"** - assert thresholds or invariants on the rendered pixels instead of a
+  committed grid (e.g. `SplatTerrainGoldenTests`, `SplatTerrainDistanceGoldenTests`). No committed grid, but they
+  still MUST keep `Golden` in the name so the matrix runs them on every backend.
+
 | trigger                          | behaviour                                                                     |
 | -------------------------------- | ----------------------------------------------------------------------------- |
 | `push` / `pull_request` on main  | **verify** committed goldens for each backend                                 |

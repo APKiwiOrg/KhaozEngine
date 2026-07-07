@@ -12,6 +12,17 @@ namespace KhaozEngine.Tests.Gpu
     /// and either WRITES a committed reference grid (when <c>KE_UPDATE_GOLDENS=1</c>) or COMPARES against it with
     /// a per-channel tolerance. Robust to minor driver noise; a real shader/UBO/blend/winding regression moves a
     /// cell well past the tolerance.
+    /// <para>
+    /// GOLDEN NAMING CONTRACT: the cross-platform GPU matrix
+    /// (<c>.github/workflows/cross-platform-gpu.yml</c>) selects tests with
+    /// <c>--filter FullyQualifiedName~Golden</c>, so a GPU test is run on every backend IFF its fully-qualified
+    /// name contains "Golden". Never rename a golden test to drop "Golden" from its class or method name: it would
+    /// silently vanish from the CI filter and stop being verified cross-backend, with no red. Two flavors both
+    /// carry "Golden" and both are run by the matrix: (a) committed-grid goldens that diff against a per-backend
+    /// reference grid via <see cref="AssertOrUpdate(string,byte[],int,int)"/>, and (b) property/invariant "goldens"
+    /// (e.g. <c>SplatTerrainGoldenTests</c>) that assert thresholds/invariants on the rendered pixels instead of a
+    /// committed grid. See <c>docs/CROSS-PLATFORM.md</c> for the full contract.
+    /// </para>
     /// </summary>
     internal static class GoldenCompare
     {

@@ -11,9 +11,10 @@ What it owns today:
   overload.
 - **`GpuCapabilities`** - `ClipSpaceYInverted` / `DepthRangeZeroToOne` (so renderers derive clip-Y / depth
   handling from the active backend instead of a baked Metal assumption), plus diagnostics: `DeviceName` (the GPU
-  adapter/driver), `SamplerAnisotropy`, `SamplerLodBias` (whether those sampler levers are supported), and
+  adapter/driver), `SamplerAnisotropy`, `SamplerLodBias` (whether those sampler levers are supported),
   `MaxMsaaSampleCount` (the largest MSAA sample count the engine's MRT formats support, for building/clamping an AA
-  menu). Read off the live device.
+  menu), and `SupportsShadowMaps` (whether the device can render + sample an R32_Float depth target, gating the
+  `ShadowMode.ShadowMap` tier in Render3D). Read off the live device.
 - **MSAA plumbing** - `GpuTextureDescription.SampleCount` (and `IGpuTexture.SampleCount`) make a multisampled render
   target; `GpuOutputDescription.SampleCount` / `WithSampleCount` carry the count so a pipeline matches its
   framebuffer (read a live multisampled framebuffer's count off `IGpuFramebuffer.Outputs`); and

@@ -40,9 +40,17 @@ namespace KhaozEngine.Gpu
         /// throws. Always a power of two (1 / 2 / 4 / 8 / ...).</summary>
         public int MaxMsaaSampleCount { get; }
 
+        /// <summary>True if the device can drive the directional shadow-map path: it can render depth into an
+        /// R32_Float target and SAMPLE that target in a shader (the manual-PCF depth-compare the shadow map uses).
+        /// Every currently-supported backend (Metal / D3D11 / Vulkan) reports true; the flag exists so
+        /// <c>ShadowSettings.ResolveFor</c> in KhaozEngine.Render3D can degrade <c>ShadowMode.ShadowMap</c> to
+        /// <c>Blob</c> (never crash) on a hypothetical device that lacks it, mirroring the MSAA clamp. Derived from
+        /// Veldrid's per-format usage support (see <c>VeldridMap.SupportsShadowMaps</c>).</summary>
+        public bool SupportsShadowMaps { get; }
+
         public GpuCapabilities(bool clipSpaceYInverted, bool depthRangeZeroToOne,
             string deviceName = "", bool samplerAnisotropy = false, bool samplerLodBias = false,
-            int maxMsaaSampleCount = 1)
+            int maxMsaaSampleCount = 1, bool supportsShadowMaps = true)
         {
             ClipSpaceYInverted = clipSpaceYInverted;
             DepthRangeZeroToOne = depthRangeZeroToOne;
@@ -50,6 +58,7 @@ namespace KhaozEngine.Gpu
             SamplerAnisotropy = samplerAnisotropy;
             SamplerLodBias = samplerLodBias;
             MaxMsaaSampleCount = maxMsaaSampleCount < 1 ? 1 : maxMsaaSampleCount;
+            SupportsShadowMaps = supportsShadowMaps;
         }
     }
 }

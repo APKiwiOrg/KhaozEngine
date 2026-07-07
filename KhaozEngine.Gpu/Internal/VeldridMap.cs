@@ -244,6 +244,19 @@ namespace KhaozEngine.Gpu.Internal
             _ => 1,
         };
 
+        /// <summary>Whether the device can drive the shadow-map path: R32_Float usable as BOTH a render target and a
+        /// sampled texture (the manual-PCF depth-compare samples the depth target). Defensive: a query failure =>
+        /// false (degrade to blob), never throw.</summary>
+        public static bool SupportsShadowMaps(GraphicsDevice gd)
+        {
+            try
+            {
+                return gd.GetPixelFormatSupport(PixelFormat.R32_Float, TextureType.Texture2D,
+                    TextureUsage.RenderTarget | TextureUsage.Sampled);
+            }
+            catch { return false; }
+        }
+
         /// <summary>The largest MSAA sample count usable for the engine's MRT: the MIN over the colour
         /// (R8G8B8A8_UNorm), linear-depth (R32_Float), and depth-stencil (D32_Float_S8_UInt) formats the 3D scene
         /// renders into (every attachment must support the count). Defensive: any device query failure => 1 (no MSAA).</summary>

@@ -31,7 +31,8 @@ namespace KhaozEngine.Gpu.Internal
             Backend = backend;
             _ownsDevice = ownsDevice;
             Capabilities = new GpuCapabilities(gd.IsClipSpaceYInverted, gd.IsDepthRangeZeroToOne,
-                maxMsaaSampleCount: VeldridMap.MaxMsaaSampleCount(gd));
+                maxMsaaSampleCount: VeldridMap.MaxMsaaSampleCount(gd),
+                supportsShadowMaps: VeldridMap.SupportsShadowMaps(gd));
             // Wrap the device-owned swapchain framebuffer + shared samplers (no-dispose: the device owns them).
             _swapchainFb = gd.MainSwapchain != null
                 ? new VeldridGpuFramebuffer(gd.MainSwapchain.Framebuffer, ownsFramebuffer: false)

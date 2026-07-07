@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Identity.Oidc</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>Generic OIDC provider + JWKS JWT validator for KhaozEngine.Identity (auth-code + PKCE via the system browser + loopback). Opt-in; not in any umbrella.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Identity/KhaozEngine.Identity.csproj" />
+    <ProjectReference Include="../KhaozEngine.Platform/KhaozEngine.Platform.csproj" />
+    <PackageReference Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" />
+    <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <InternalsVisibleTo Include="KhaozEngine.Tests" />
+  </ItemGroup>
+</Project>

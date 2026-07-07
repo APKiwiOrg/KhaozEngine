@@ -74,6 +74,20 @@ Windowing + input foundation for the custom MonoGame-free stack.
   `GameAppOptions.AppUserModelId`.
 - `InputManager` / `Pointer` - the higher-level read: unified pointer, edges, bounds helpers (`IsTapIn` etc.),
   region blocking, keyboard/gamepad/menu navigation.
+- **Action maps + rebinding** (`KhaozEngine.Windowing.Actions`) - named actions instead of hardcoded key checks.
+  A game declares `InputAction`s (`Button` / `Axis1D` / `Axis2D`) with default `InputBinding`s over `InputSource`s
+  (key, mouse button, gamepad button, stick component, trigger, two-key 1D axis, or a four-key WASD 2D composite;
+  sticks/triggers take `invert`/`scale`). Multiple bindings per action combine: Button = OR, Axis1D = sum+clamp,
+  Axis2D = per-component sum with WASD diagonal normalized to unit length. `ActionMap` is BOTH the declaration and
+  the pure per-frame runtime (`Update(InputState)` then `IsDown`/`WasPressed`/`WasReleased`/`GetAxis`/`GetAxis2D`
+  by id); edges are computed against the previous snapshot the same way `InputManager` does. Per-player maps read
+  that player's gamepad; keyboard/mouse are global. `RebindOperation` is a pure snapshot-fed capture flow (captures
+  the first eligible source on its press edge, sticks/triggers at full tilt, with an exclusion list; Escape cancels
+  by default). `ActionMapSerializer` round-trips bindings as a VERSIONED JSON string (plain string in/out; unknown
+  source kinds or malformed JSON degrade to code defaults, never throw); the game hands that string to its own
+  settings store (no `Windowing -> Persistence` edge). `ActionMapController` is the turn-key wrapper: declare ->
+  load persisted -> evaluate per frame -> auto-save on rebind. Action ids are opaque IDENTIFIERS, never localized;
+  games localize labels game-side. Fully headless-testable.
 - `GameClock` (pause/timescale, plus `RealWallGapSeconds`/`LastRealTimestamp` - a UTC wall-clock gap per frame
   that survives OS sleep/suspend, which the frame `dt` does not, so a game can detect a resume), `DesignViewport`
   / `AdaptiveViewport` (letterbox/fill/stretch + responsive).

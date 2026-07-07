@@ -368,6 +368,69 @@ and Ctrl/Cmd+V clipboard paste - without reaching for the raw window input. Ther
 appends `Clipboard.TryGetClipboardText()` through the same `filter` + `maxLength` path as typed chars (so a digits
 filter strips letters out of pasted text too), firing on the V press edge only.
 
+### Action maps + rebinding (`KhaozEngine.Windowing.Actions`)
+
+Stop hardcoding key/button checks. A game declares NAMED actions, binds defaults, reads action state, lets players
+rebind at runtime, and persists bindings through its own settings store. It is snapshot-driven and pure (state in,
+values out), so it is fully headless-testable and never touches Silk.NET.
+
+**Localization boundary:** an action id (`"gameplay.jump"`) is an opaque engine IDENTIFIER (the persistence key,
+greppable, stable across releases), never a player-facing display string. Turn an id or a captured `InputSource`
+into a localized label on the GAME side via your `StringId` catalog. The engine layer never localizes.
+
+Three action kinds: `Button` (down/pressed/released), `Axis1D` (a float, e.g. throttle), `Axis2D` (a vector, e.g.
+move/look). Sources (`InputSource`) are extensible-by-design: a key, a mouse button, a gamepad button, a gamepad
+stick component or trigger, a two-key 1D axis, or a four-key WASD 2D composite. Sticks/triggers take `invert`/`scale`
+modifiers.
+
+```csharp
+using KhaozEngine.Windowing.Actions;
+
+// 1. declare actions + default bindings (multiple bindings per action = "any of these")
+var map = new ActionMap(PlayerIndex.One);
+map.AddAction(InputAction.Button("jump"), InputSource.FromKey(Key.Space), InputSource.FromGamepadButton(GamepadButton.A));
+map.AddAction(InputAction.Axis2D("move"),  InputSource.WasdDefault, InputSource.StickAxis(GamepadStick.Left, StickComponent.X));
+
+// 2. load persisted overrides (string the game read from its settings store; null on first run)
+//    then wrap in the turn-key controller with a save sink that writes back to the game's store.
+string? persisted = settings.LoadInputBindings();               // your ISettingsStorage, game-side
+var input = new ActionMapController(map, persisted, save: json => settings.SaveInputBindings(json));
+
+// 3. evaluate per frame, read by id
+input.Update(frame.Input);                                      // once per frame, before OnUpdate
+if (input.WasPressed("jump")) Jump();
+Vector2 move = input.GetAxis2D("move");                         // WASD diagonal is unit length (see below)
+
+// 4. rebind at runtime; the controller auto-saves through the sink on capture
+var op = input.BeginRebind("jump", slot: 0);                    // Escape cancels by default
+// ...keep calling input.Update(frame.Input) each frame; when op.Status == Captured the new source is applied + saved
+```
+
+**Combining semantics (documented + tested):**
+- **Button** bindings OR together: down if any is down; pressed = down-now/up-last-frame (never double-fires when
+  two bindings overlap); released is the symmetric edge. Edge detection is against the previous snapshot, the same
+  way `InputManager` does it.
+- **Axis1D** bindings SUM then clamp to `[-1, 1]` (a stick at 0.3 plus a key at 1 saturates to 1).
+- **Axis2D** per-component SUM, then normalize: a WASD **diagonal is normalized to unit length** (so diagonal
+  movement is not `~1.414` faster than cardinal); a partial stick deflection KEEPS its analog magnitude (only
+  clamped down if over-unit); the combined vector is clamped to length 1.
+
+**Rebind capture** (`RebindOperation`, or via `controller.BeginRebind`): fed successive snapshots, it captures the
+first eligible source on its PRESS edge (a key held from before the rebind is ignored until re-pressed), captures a
+gamepad stick/trigger only at full tilt, and honours an exclusion list (default: `Key.Escape` cancels). Pure and
+headless.
+
+**Serialization** (`ActionMapSerializer`): `Serialize(map)` -> a versioned JSON string; `Load(map, json)` applies
+persisted overrides onto a map that already declares its actions with defaults. Only per-action binding OVERRIDES
+are stored (keyed by action id), so renaming/removing an action in code just ignores the stale entry. Unknown
+source kinds or malformed JSON DEGRADE to code defaults (never throw, never leave an action unbound). The envelope
+carries a `version` field for forward compatibility.
+
+**Dependency note:** this lives in `KhaozEngine.Windowing` and deals in plain strings only. The engine deliberately
+has NO `Windowing -> Persistence` dependency, so YOU hand the serialized string to your `ISettingsStorage` (the
+`ActionMapController` save sink is where that wiring goes). Per-player maps read that player's gamepad
+(`input.Gamepad((int)PlayerIndex)`); keyboard/mouse are global (one keyboard).
+
 ### Rect, viewport, clock
 
 - `Rect(X, Y, Width, Height)` is the engine's rectangle (`Right`/`Bottom`/`Contains(Vector2)`).

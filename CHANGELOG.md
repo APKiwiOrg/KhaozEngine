@@ -5,6 +5,15 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.21.0
+
+Input action maps with runtime rebinding, plus a gamepad rumble seam: games stop hardcoding key checks and get player-rebindable, persistable controls, and a vibration API that is ready the day a motor-capable input backend lands. Additive public API in KhaozEngine.Windowing, minor bump. No GPU or rendering work.
+
+- **Action maps (`KhaozEngine.Windowing.Actions`):** declare named actions (`Button` / `Axis1D` / `Axis2D`, ids are opaque identifiers, display names stay game-side localized strings), bind multiple sources per action (keyboard keys, mouse buttons, gamepad buttons/triggers/sticks, per-player via `PlayerIndex`), and evaluate purely from the immutable `InputState` snapshot each frame (`IsDown` / `WasPressed` / `WasReleased` / `GetAxis` / `GetAxis2D`). Composite bindings cover two-key Axis1D and WASD-style Axis2D (diagonals clamped to unit length). Buttons OR across bindings, axes sum then clamp, sticks keep analog magnitude and reuse the existing deadzone. A `WholeStick` source form covers 2D look input (invert flips Y only), while component stick sources project onto their own axis.
+- **Rebinding:** a snapshot-driven capture flow (`RebindOperation`): captures the first fresh press (a held key must be re-pressed), honors an exclusion list (Escape cancels by default, overridable), works for keys, gamepad buttons, and full-tilt stick/trigger captures.
+- **Persistence:** bindings serialize to a versioned JSON string (enums as names) the game hands to its own settings storage (no new dependency edges). Loading is tolerant per binding: an unknown future source kind drops just that binding, a document from a newer engine loads what it can and flags `ApplyResult.FromFutureVersion`, malformed input degrades to code defaults. `ActionMapController` is the turn-key declare/load/evaluate/save-on-change wrapper.
+- **Gamepad rumble (`IRumble` via `AppWindow.Rumble` / `GameApp.Rumble`):** `SetRumble(player, low, high)` plus tick-driven pulses (intensity, duration, decay curve, auto-stop that writes true zero) mixed per motor by MAX. The envelope core is pure and headless-tested, and `AppWindow` drives the real motors on the frame thread with clamped values and disconnect safety. Honest limitation: Silk.NET's GLFW input backend enumerates zero vibration motors, so rumble is a graceful no-op today and lights up unchanged on a future motor-capable backend. Headless servers get an inert `NoopRumble`.
+
 ## 10.20.0
 
 Frustum culling and a sky: the renderer stops drawing what the camera cannot see (a perf win for the MMO overworld, pixel-neutral by construction) and gains an opt-in gradient sky with a key-light-aligned sun disc (the cohesive-look pairing for 10.19.0's shadows). Additive public API, minor bump.

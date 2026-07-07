@@ -4,7 +4,7 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **10.20.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **10.21.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan when it is scheduled.
 
@@ -120,10 +120,9 @@ Also here, unchanged:
 
 ## Input, audio, and game feel (2026-07-07 feature audit)
 
-- Input action maps + rebinding: bindings are hardcoded in `InputManager` today. An action-map layer (named
-  actions, per-player bindings, runtime rebinding UI support, serialization via the existing settings storage)
-  is a baseline modern-player expectation for every game on the engine.
-- Gamepad rumble / haptics: analog sticks and triggers are in, vibration is not exposed at all.
+- Rumble follow-up (the `IRumble` seam + pulse envelopes shipped in 10.21.0, compile-verified): the GLFW input
+  backend enumerates zero vibration motors, so rumble is a graceful no-op today. Revisit when a motor-capable
+  input backend (SDL) lands, plus an on-device feel pass and a dirty-flag skip for per-frame motor writes.
 - Music crossfade: music playback is single-track with a hard cut on track change. A short crossfade between
   tracks (and into/out of combat layers later) is cheap and immediately audible.
 - Audio buses: the volume model is Master x Music/Sfx only. A small bus/category graph (UI, ambience, combat)

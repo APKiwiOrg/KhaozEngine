@@ -5,6 +5,13 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.25.0
+
+New retained Gui widget `TabBar`: a horizontal tab bar / segmented control for switching a panel between sub-views (Goals/Tree, settings sub-pages, inventory categories). Additive public API, minor bump, no behaviour change to existing widgets.
+
+- **`TabBar` (Gui):** N evenly-split tabs within a caller-assigned `Bounds`, exactly one active. `Update(Pointer)` reserves `Bounds` on the pointer (the click-through gate) and hit-tests each tab via the press-origin `IsTapIn` invariant; a valid tap on a non-active tab makes it active, raises `ChangedThisFrame` for that one frame, and returns true (a tap on the already-active tab or outside the bar changes nothing). `ActiveIndex` is settable to restore/persist the selection without raising the change signal. `TabRect(i)` is the pure per-tab layout (fractional edges, so tabs abut with no cumulative rounding gap and the last tab's right edge equals `Bounds.Right`), headless-testable.
+- **Theming + input contract:** tabs draw through the shared `GuiDraw.DrawButton`, so hover/press feedback and theming match `Button` - the active tab uses `ActiveStyle` (`GuiStyle.Active`), inactive tabs `InactiveStyle` (`GuiStyle.Secondary`); hover/press are cached in `Update` and drawn from the cache (so `Draw(SpriteBatch, Texture2D)` needs no pointer). Labels are `LocalizedText`; `Opacity` (0..1) fades the whole bar for a host transition.
+
 ## 10.24.0
 
 Per-pass frame timing: frame cost now attributes to the render passes (shadow depth, model/terrain, transparents/decals, post chain), making perf work on the remaining "A"-graphics items measurable. Additive public API, minor bump, rendering output untouched (all goldens byte-stable).

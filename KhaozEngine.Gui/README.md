@@ -46,6 +46,12 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   - `Dropdown` - trigger + option list (opens below); two-phase draw (`Draw` trigger / `DrawOverlay` list last).
     Opt-in (default off): `ShowChevron` draws an up/down caret reflecting the open state; `Opacity` fades the whole
     dropdown for a host transition.
+  - `TabBar` - horizontal tab bar / segmented control: N evenly-split tabs, exactly one active. A valid tap
+    activates a tab and raises `ChangedThisFrame` for one frame (and `Update` returns true), so the caller swaps
+    the panel body only on a real change; `ActiveIndex` is settable to restore/persist the selection without
+    raising the change signal. Active tab uses `ActiveStyle` (`GuiStyle.Active`), inactive tabs `InactiveStyle`
+    (`GuiStyle.Secondary`); labels are `LocalizedText`; `TabRect(i)` is the pure per-tab layout; `Opacity` fades
+    the whole bar for a host transition.
   - **Keyboard/gamepad control (opt-in, additive)** on `Toggle`/`Slider`/`Dropdown`: each has an
     `Update(InputManager, bool focused, PlayerIndex? = null)` overload that layers `InputManager` menu actions on
     top of the pointer path (only when `focused`), mirroring `FocusNavigator`. So a settings row is fully

@@ -2376,6 +2376,35 @@ overloads taking an `IReadOnlyList<string>` of candidate keys play the first loa
 the engine just plays the first that loaded. An all-unloaded list warns once and is a no-op; null/empty is a
 silent no-op.
 
+**SFX buses.** Group sounds (UI, ambience, combat, and any game-defined others) under one volume without the
+game tracking individual voices. `DefineBus(id)` registers a bus (opaque identifier, not player-facing text),
+`SetBusVolume(id, v)` and `GetBusVolume(id)` read/write its 0-1 multiplier, and every `PlaySfx` / `PlaySfx3D`
+overload takes an optional `bus`. Effective voice gain = `master * sfx * bus * clamp01(volume)`. A play with no
+bus (or an unknown bus id) uses the implicit default bus at 1.0, so bus-less plays stay byte-for-byte the
+pre-bus `master * sfx * volume`. An unknown bus on a play never throws: it falls back to the default bus with a
+one-time debug note (call `DefineBus` first). A newly defined bus starts at 1.0, and re-defining a bus preserves
+its current volume. Music is unaffected: it stays on its own `master * music` (+ crossfade factor) path, so
+there is no "music bus" here.
+
+Note (a documented limitation): a bus volume change applies to sounds played AFTER the change, not to voices
+already playing on that bus. The `ISfxBackend` seam is fire-and-forget (`Play` returns no voice handle and
+exposes no per-voice gain setter), so a live per-voice re-gain would need a breaking seam change and is out of
+scope. SFX one-shots are short, so lowering a bus is heard on the next sound rather than mid-tail. (A future
+seam that returns a voice handle + per-voice gain setter is the upgrade path for live re-gain.)
+
+Bus volumes are game settings, like `MasterVolume` / `SfxVolume`: the game persists them however it persists
+its other audio settings (no built-in bus serialization).
+
+```csharp
+audio.DefineBus("ui");
+audio.DefineBus("ambience");
+audio.SetBusVolume("ambience", 0.4f);        // duck ambience to 40%
+
+audio.PlaySfx("click", bus: "ui");            // master * sfx * 1.0  * volume
+audio.PlaySfx3D("wind", pos, bus: "ambience"); // master * sfx * 0.4 * volume
+audio.PlaySfx("beep");                         // no bus => default bus (1.0), unchanged from before
+```
+
 **Authoring SFX assets (`ke-sfxbake`).** The `KhaozEngine.Sfx.Tool` dotnet tool bulk-generates and bakes a
 game's sound effects from a `sfx.manifest.jsonc` (prompt -> ElevenLabs sound-effects API -> ffmpeg/oggenc ->
 your asset tree). It defaults to the formats this `AudioSystem` wants: mono OGG Vorbis (mono because OpenAL only

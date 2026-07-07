@@ -42,6 +42,12 @@ public sealed class AudioSystem : IDisposable
     private float _musicCrossfadeDuration;   // seconds; 0 = hard cut (today's behavior)
     private MusicFade _fade;                  // pure dt-driven single-stream crossfade state
 
+    // Per-bus SFX volume multipliers. The default bus is implicit (id "" / not in the map) and always sits at
+    // 1.0, so a Play with no bus (or an unknown bus) composes exactly master*sfx*volume as before. A defined
+    // bus scales that by its current volume. Unknown-bus plays fall back to the default bus with a warn-once.
+    private readonly Dictionary<string, float> _busVolumes = new();
+    private readonly HashSet<string> _warnedUnknownBus = new();  // warn-once per unknown bus id seen on Play
+
     /// <summary>
     /// Creates an audio system using the OpenAL streaming backend.
     /// </summary>
@@ -222,7 +228,7 @@ public sealed class AudioSystem : IDisposable
     }
 
     /// <summary>
-    /// SFX volume (0.0 - 1.0). Scaled by master volume. Applied per <see cref="PlaySfx(string, float, float)"/> (no eager apply,
+    /// SFX volume (0.0 - 1.0). Scaled by master volume. Applied per <see cref="PlaySfx(string, float, float, string)"/> (no eager apply,
     /// since SFX are fire-and-forget one-shots).
     /// </summary>
     public float SfxVolume
@@ -230,6 +236,43 @@ public sealed class AudioSystem : IDisposable
         get => _sfxVolume;
         set => _sfxVolume = Math.Clamp(value, 0f, 1f);
     }
+
+    /// <summary>
+    /// Registers an SFX bus so a game can group sounds (UI, ambience, combat, ...) under one volume without
+    /// tracking individual voices. <paramref name="id"/> is an opaque identifier, not player-facing text (same
+    /// localization boundary as everywhere else: bus ids are identifiers). A newly defined bus starts at volume
+    /// <c>1.0</c> (audibly identical to the default bus until <see cref="SetBusVolume"/> lowers it). Re-defining
+    /// an existing bus is a no-op that preserves its current volume. A <c>null</c> or empty id is ignored (that
+    /// space is the implicit default bus, which is always 1.0 and cannot be redefined). Bus volumes are game
+    /// settings: the game persists them like <see cref="MasterVolume"/> / <see cref="SfxVolume"/> (no built-in
+    /// serialization).
+    /// </summary>
+    public void DefineBus(string id)
+    {
+        if (string.IsNullOrEmpty(id)) return;
+        if (!_busVolumes.ContainsKey(id)) _busVolumes[id] = 1f;
+    }
+
+    /// <summary>
+    /// Sets the volume multiplier (0.0 - 1.0, clamped) for the bus <paramref name="id"/>, defining it if it was
+    /// not already defined. Applies to sounds played on that bus AFTER this call. Sounds already playing on the
+    /// bus keep the gain they were started with: the SFX backend seam is fire-and-forget (<see cref="ISfxBackend.Play"/>
+    /// returns no voice handle and exposes no per-voice gain setter), so a live per-voice re-gain is not possible
+    /// without a breaking seam change. SFX one-shots are short, so this is a mild limitation; see the Audio docs.
+    /// A <c>null</c> or empty id (the implicit default bus) is ignored: the default bus is always 1.0.
+    /// </summary>
+    public void SetBusVolume(string id, float volume)
+    {
+        if (string.IsNullOrEmpty(id)) return;
+        _busVolumes[id] = Math.Clamp(volume, 0f, 1f);
+    }
+
+    /// <summary>
+    /// Returns the current volume multiplier for the bus <paramref name="id"/>, or <c>1.0</c> for an unknown /
+    /// default bus (a <c>null</c> or empty id, or an id never defined). Never throws.
+    /// </summary>
+    public float GetBusVolume(string id)
+        => !string.IsNullOrEmpty(id) && _busVolumes.TryGetValue(id, out float v) ? v : 1f;
 
     /// <summary>Name of the track currently playing, or null when nothing is playing.</summary>
     public string? CurrentTrack => _currentTrack;
@@ -623,22 +666,25 @@ public sealed class AudioSystem : IDisposable
 
     /// <summary>
     /// Plays a registered SFX as a non-positional one-shot (heard at full gain). Gain =
-    /// <see cref="MasterVolume"/> * <see cref="SfxVolume"/> * clamp01(<paramref name="volume"/>). An unknown
-    /// name warns once and is a no-op. An SFX hiccup is logged and swallowed (never disables music).
+    /// <see cref="MasterVolume"/> * <see cref="SfxVolume"/> * bus * clamp01(<paramref name="volume"/>), where the
+    /// bus factor is <see cref="GetBusVolume"/> for <paramref name="bus"/> (1.0 for the default / unknown bus).
+    /// An unknown name warns once and is a no-op. An unknown <paramref name="bus"/> falls back to the default bus
+    /// (volume 1.0) with a warn-once note, never a throw. An SFX hiccup is logged and swallowed (never disables music).
     /// </summary>
-    public void PlaySfx(string name, float volume = 1f, float pitch = 1f)
-        => PlaySfxInternal(name, volume, pitch, positional: false, default);
+    public void PlaySfx(string name, float volume = 1f, float pitch = 1f, string? bus = null)
+        => PlaySfxInternal(name, volume, pitch, positional: false, default, bus);
 
     /// <summary>
     /// Plays a registered SFX as a positional one-shot at <paramref name="position"/> in world space
-    /// (attenuates / pans relative to the listener; see <see cref="SetListener"/>). Same gain / unknown-name /
-    /// guard behavior as <see cref="PlaySfx(string, float, float)"/>.
+    /// (attenuates / pans relative to the listener; see <see cref="SetListener"/>). Same gain (including the
+    /// <paramref name="bus"/> factor) / unknown-name / unknown-bus / guard behavior as
+    /// <see cref="PlaySfx(string, float, float, string)"/>.
     /// </summary>
-    public void PlaySfx3D(string name, Vector3 position, float volume = 1f, float pitch = 1f)
-        => PlaySfxInternal(name, volume, pitch, positional: true, position);
+    public void PlaySfx3D(string name, Vector3 position, float volume = 1f, float pitch = 1f, string? bus = null)
+        => PlaySfxInternal(name, volume, pitch, positional: true, position, bus);
 
     /// <summary>
-    /// Whether <paramref name="name"/> resolves to a loaded SFX buffer (so a subsequent <see cref="PlaySfx(string,float,float)"/>
+    /// Whether <paramref name="name"/> resolves to a loaded SFX buffer (so a subsequent <see cref="PlaySfx(string,float,float,string)"/>
     /// will be heard). A name that was registered but whose file was missing / failed to load returns <c>false</c>.
     /// Lets a game pick among variant keys without triggering the unknown-name warn-once.
     /// </summary>
@@ -649,19 +695,20 @@ public sealed class AudioSystem : IDisposable
     /// returning <c>true</c> when one was played. The engine is convention-agnostic: the game builds the candidate
     /// list (e.g. a per-entity variant followed by a shared fallback). A <c>null</c> / empty list is a no-op
     /// returning <c>false</c>. If none of the candidates is loaded it warns once (deduped on the joined list) and
-    /// returns <c>false</c>. Same gain / guard behavior as <see cref="PlaySfx(string,float,float)"/>.
+    /// returns <c>false</c>. Same gain (including the <paramref name="bus"/> factor) / guard behavior as
+    /// <see cref="PlaySfx(string,float,float,string)"/>.
     /// </summary>
-    public bool PlaySfx(IReadOnlyList<string> candidateKeys, float volume = 1f, float pitch = 1f)
-        => PlayFirstAvailable(candidateKeys, volume, pitch, positional: false, default);
+    public bool PlaySfx(IReadOnlyList<string> candidateKeys, float volume = 1f, float pitch = 1f, string? bus = null)
+        => PlayFirstAvailable(candidateKeys, volume, pitch, positional: false, default, bus);
 
     /// <summary>
     /// Plays the first loaded SFX in <paramref name="candidateKeys"/> (priority order) as a positional one-shot at
     /// <paramref name="position"/>, returning <c>true</c> when one was played. Same first-available / null-empty /
-    /// warn-once semantics as <see cref="PlaySfx(IReadOnlyList{string},float,float)"/>; same positional behavior as
-    /// <see cref="PlaySfx3D(string,Vector3,float,float)"/>.
+    /// warn-once semantics as <see cref="PlaySfx(IReadOnlyList{string},float,float,string)"/>; same positional
+    /// behavior (and <paramref name="bus"/> factor) as <see cref="PlaySfx3D(string,Vector3,float,float,string)"/>.
     /// </summary>
-    public bool PlaySfx3D(IReadOnlyList<string> candidateKeys, Vector3 position, float volume = 1f, float pitch = 1f)
-        => PlayFirstAvailable(candidateKeys, volume, pitch, positional: true, position);
+    public bool PlaySfx3D(IReadOnlyList<string> candidateKeys, Vector3 position, float volume = 1f, float pitch = 1f, string? bus = null)
+        => PlayFirstAvailable(candidateKeys, volume, pitch, positional: true, position, bus);
 
     /// <summary>
     /// Stops every currently-playing SFX voice immediately (music is unaffected). Useful on a scene / screen
@@ -671,7 +718,7 @@ public sealed class AudioSystem : IDisposable
 
     // Plays the first candidate that resolves to a loaded buffer (reusing PlaySfxInternal's gain math + guard), or
     // warns once on the joined list and returns false if none load. Null / empty list is a silent no-op (false).
-    private bool PlayFirstAvailable(IReadOnlyList<string> candidateKeys, float volume, float pitch, bool positional, Vector3 position)
+    private bool PlayFirstAvailable(IReadOnlyList<string> candidateKeys, float volume, float pitch, bool positional, Vector3 position, string? bus)
     {
         if (candidateKeys is null || candidateKeys.Count == 0) return false;
 
@@ -680,7 +727,7 @@ public sealed class AudioSystem : IDisposable
             string name = candidateKeys[i];
             if (IsSfxLoaded(name))
             {
-                PlaySfxInternal(name, volume, pitch, positional, position);
+                PlaySfxInternal(name, volume, pitch, positional, position, bus);
                 return true;
             }
         }
@@ -690,7 +737,7 @@ public sealed class AudioSystem : IDisposable
         return false;
     }
 
-    private void PlaySfxInternal(string name, float volume, float pitch, bool positional, Vector3 position)
+    private void PlaySfxInternal(string name, float volume, float pitch, bool positional, Vector3 position, string? bus)
     {
         if (!_sfx.TryGetValue(name, out int handle))
         {
@@ -698,7 +745,9 @@ public sealed class AudioSystem : IDisposable
             return;
         }
 
-        float gain = _masterVolume * _sfxVolume * Math.Clamp(volume, 0f, 1f);
+        // Effective voice gain = master * sfx * bus * clamp01(volume). The default bus (null/empty id) and any
+        // bus never defined resolve to 1.0, so a bus-less Play is byte-for-byte the pre-bus master*sfx*volume.
+        float gain = _masterVolume * _sfxVolume * ResolveBusVolume(bus) * Math.Clamp(volume, 0f, 1f);
         try
         {
             _sfxBackend.Play(handle, gain, pitch, positional, position);
@@ -710,8 +759,19 @@ public sealed class AudioSystem : IDisposable
         }
     }
 
+    // The bus multiplier for a play. Null/empty = the implicit default bus (1.0). A defined bus returns its
+    // current volume. An unknown (never-defined) bus falls back to the default bus at 1.0 with a warn-once note,
+    // never a throw, so a typo or missing DefineBus degrades to audible-at-full rather than silence or a crash.
+    private float ResolveBusVolume(string? bus)
+    {
+        if (string.IsNullOrEmpty(bus)) return 1f;
+        if (_busVolumes.TryGetValue(bus, out float v)) return v;
+        if (_warnedUnknownBus.Add(bus)) _logger.Debug($"PlaySfx unknown bus '{bus}'; using default bus (1.0). Call DefineBus first.");
+        return 1f;
+    }
+
     /// <summary>
-    /// Sets the 3D listener pose used by <see cref="PlaySfx3D(string, System.Numerics.Vector3, float, float)"/> for attenuation / panning. No-op for
+    /// Sets the 3D listener pose used by <see cref="PlaySfx3D(string, System.Numerics.Vector3, float, float, string)"/> for attenuation / panning. No-op for
     /// non-positional SFX.
     /// </summary>
     public void SetListener(Vector3 position, Vector3 forward, Vector3 up)

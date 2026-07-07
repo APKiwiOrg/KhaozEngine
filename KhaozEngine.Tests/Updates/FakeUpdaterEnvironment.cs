@@ -70,8 +70,16 @@ internal sealed class FakeUpdaterEnvironment : IUpdaterEnvironment
     // permanent one (count > MaxCopyRetries).
     public int UnauthorizedReplaceThrows;
 
+    // Forces ReplaceFile to throw a non-IO / non-UAE exception, to prove the applier's top-level backstop
+    // rolls back and clears the marker rather than letting an unexpected throw crash the shim.
+    public bool ThrowUnexpectedOnReplace;
+
     public void ReplaceFile(string source, string destination)
     {
+        if (ThrowUnexpectedOnReplace)
+        {
+            throw new InvalidOperationException("simulated unexpected updater failure");
+        }
         if (UnauthorizedReplaceThrows > 0)
         {
             UnauthorizedReplaceThrows--;

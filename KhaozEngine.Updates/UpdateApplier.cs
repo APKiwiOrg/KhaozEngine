@@ -452,182 +452,198 @@ public static class UpdateApplier
         var copied = new List<string>();
         bool copyFailed = false;
 
-        foreach (string relativePath in config.FilesToCopy)
+        try
         {
-            string source = Path.Combine(config.StagingDir, ToNative(relativePath));
-            string dest = Path.Combine(config.InstallDir, ToNative(relativePath));
-
-            if (environment.FileExists(dest) && environment.IsReparsePoint(dest))
+            foreach (string relativePath in config.FilesToCopy)
             {
-                // A removed reparse-point link is intentionally discarded: it is NOT recreated on a later
-                // rollback (we do not have its target, and a symlink at a managed install path is suspect).
-                environment.Log($"Destination is a reparse point, removing link before copy: {relativePath}");
-                bool linkRemoved;
-                try { environment.DeleteFile(dest); linkRemoved = true; }
-                catch (Exception ex) { environment.Log($"Could not remove link {relativePath}: {ex.Message}"); linkRemoved = false; }
+                string source = Path.Combine(config.StagingDir, ToNative(relativePath));
+                string dest = Path.Combine(config.InstallDir, ToNative(relativePath));
 
-                if (!linkRemoved)
+                if (environment.FileExists(dest) && environment.IsReparsePoint(dest))
                 {
-                    // Fail closed: never copy through a symlink (it would write outside the install dir).
-                    // Roll back anything already applied so the install stays consistent, then relaunch old.
-                    RestoreBackups(environment, config.InstallDir, rollbackDir, backedUp);
-                    try { environment.DeleteDirectory(rollbackDir); }
-                    catch (Exception ex) { environment.Log($"Cleanup: could not remove rollback dir {rollbackDir} after restore: {ex.Message}"); }
-                    ClearMarker(environment, markerPath);
-                    Relaunch(environment, ui, config);
-                    return new ApplyResult { Outcome = ApplyOutcome.AbortedUnsafePath, ExitCode = 1 };
-                }
-            }
+                    // A removed reparse-point link is intentionally discarded: it is NOT recreated on a later
+                    // rollback (we do not have its target, and a symlink at a managed install path is suspect).
+                    environment.Log($"Destination is a reparse point, removing link before copy: {relativePath}");
+                    bool linkRemoved;
+                    try { environment.DeleteFile(dest); linkRemoved = true; }
+                    catch (Exception ex) { environment.Log($"Could not remove link {relativePath}: {ex.Message}"); linkRemoved = false; }
 
-            string? destDir = Path.GetDirectoryName(dest);
-            if (!string.IsNullOrEmpty(destDir))
-            {
-                environment.CreateDirectory(destDir);
-            }
-
-            if (environment.FileExists(dest))
-            {
-                string backup = Path.Combine(rollbackDir, ToNative(relativePath));
-                string? backupDir = Path.GetDirectoryName(backup);
-                if (!string.IsNullOrEmpty(backupDir))
-                {
-                    environment.CreateDirectory(backupDir);
+                    if (!linkRemoved)
+                    {
+                        // Fail closed: never copy through a symlink (it would write outside the install dir).
+                        // Roll back anything already applied so the install stays consistent, then relaunch old.
+                        RestoreBackups(environment, config.InstallDir, rollbackDir, backedUp);
+                        try { environment.DeleteDirectory(rollbackDir); }
+                        catch (Exception ex) { environment.Log($"Cleanup: could not remove rollback dir {rollbackDir} after restore: {ex.Message}"); }
+                        ClearMarker(environment, markerPath);
+                        Relaunch(environment, ui, config);
+                        return new ApplyResult { Outcome = ApplyOutcome.AbortedUnsafePath, ExitCode = 1 };
+                    }
                 }
 
-                try
+                string? destDir = Path.GetDirectoryName(dest);
+                if (!string.IsNullOrEmpty(destDir))
                 {
-                    environment.CopyFile(dest, backup, overwrite: true);
-                    backedUp.Add(relativePath);
+                    environment.CreateDirectory(destDir);
                 }
-                catch (Exception ex)
+
+                if (environment.FileExists(dest))
                 {
-                    environment.Log($"BACKUP FAILED: {relativePath} - {ex.Message}");
+                    string backup = Path.Combine(rollbackDir, ToNative(relativePath));
+                    string? backupDir = Path.GetDirectoryName(backup);
+                    if (!string.IsNullOrEmpty(backupDir))
+                    {
+                        environment.CreateDirectory(backupDir);
+                    }
+
+                    try
+                    {
+                        environment.CopyFile(dest, backup, overwrite: true);
+                        backedUp.Add(relativePath);
+                    }
+                    catch (Exception ex)
+                    {
+                        environment.Log($"BACKUP FAILED: {relativePath} - {ex.Message}");
+                        copyFailed = true;
+                        break;
+                    }
+                }
+
+                if (!TryReplaceWithRetries(environment, source, dest, relativePath))
+                {
                     copyFailed = true;
                     break;
                 }
+                copied.Add(relativePath);
+                ui.SetProgress(copied.Count, config.FilesToCopy.Count);
             }
 
-            if (!TryReplaceWithRetries(environment, source, dest, relativePath))
+            if (copyFailed)
             {
-                copyFailed = true;
-                break;
+                RestoreBackups(environment, config.InstallDir, rollbackDir, backedUp);
+                try { environment.DeleteDirectory(rollbackDir); }
+                catch (Exception ex) { environment.Log($"Cleanup: could not remove rollback dir {rollbackDir} after restore: {ex.Message}"); }
+                ClearMarker(environment, markerPath);
+                environment.Log("Update aborted and rolled back. Existing version left intact.");
+                Relaunch(environment, ui, config);
+                return new ApplyResult { Outcome = ApplyOutcome.RolledBack, ExitCode = 1 };
             }
-            copied.Add(relativePath);
-            ui.SetProgress(copied.Count, config.FilesToCopy.Count);
-        }
 
-        if (copyFailed)
-        {
-            RestoreBackups(environment, config.InstallDir, rollbackDir, backedUp);
-            try { environment.DeleteDirectory(rollbackDir); }
-            catch (Exception ex) { environment.Log($"Cleanup: could not remove rollback dir {rollbackDir} after restore: {ex.Message}"); }
-            ClearMarker(environment, markerPath);
-            environment.Log("Update aborted and rolled back. Existing version left intact.");
-            Relaunch(environment, ui, config);
-            return new ApplyResult { Outcome = ApplyOutcome.RolledBack, ExitCode = 1 };
-        }
-
-        var deleted = new List<string>();
-        foreach (string relativePath in config.FilesToDelete)
-        {
-            string dest = Path.Combine(config.InstallDir, ToNative(relativePath));
-            try
+            var deleted = new List<string>();
+            foreach (string relativePath in config.FilesToDelete)
             {
-                if (environment.FileExists(dest))
-                {
-                    environment.DeleteFile(dest);
-                    deleted.Add(relativePath);
-                }
-            }
-            catch (Exception ex)
-            {
-                environment.Log($"DEL FAILED: {relativePath} - {ex.Message}");
-            }
-        }
-
-        int errors = 0;
-
-        // Clear quarantine first so the signature check sees the file as the OS will at launch.
-        environment.ClearQuarantine(config.InstallDir);
-
-        // Re-seal the bundle before verifying: on macOS the in-place swap above invalidated the .app's
-        // sealed CodeResources hashes, so VerifyCodeSignature would ALWAYS fail without this and the
-        // update could never complete. Fail closed - if the re-seal fails, roll back and relaunch the
-        // old version, before the manifest is committed, so the old binaries + old manifest stay
-        // consistent (same invariant as the verify gate below). No-op success off macOS.
-        if (!environment.ResealCodeSignature(config.GameExePath))
-        {
-            environment.Log("Code signature re-seal FAILED after apply; rolling back.");
-            RestoreBackups(environment, config.InstallDir, rollbackDir, backedUp);
-            try { environment.DeleteDirectory(rollbackDir); }
-            catch (Exception ex) { environment.Log($"Cleanup: could not remove rollback dir {rollbackDir} after restore: {ex.Message}"); }
-            ClearMarker(environment, markerPath);
-            Relaunch(environment, ui, config);
-            return new ApplyResult { Outcome = ApplyOutcome.RolledBack, ExitCode = 1 };
-        }
-
-        // Fail closed: if the installed executable is not validly signed, roll back to the backups
-        // (still present - we have not cleaned the rollback dir yet) and relaunch the old version.
-        if (!environment.VerifyCodeSignature(config.GameExePath))
-        {
-            environment.Log("Code signature verification FAILED after apply; rolling back.");
-            RestoreBackups(environment, config.InstallDir, rollbackDir, backedUp);
-            try { environment.DeleteDirectory(rollbackDir); }
-            catch (Exception ex) { environment.Log($"Cleanup: could not remove rollback dir {rollbackDir} after restore: {ex.Message}"); }
-            ClearMarker(environment, markerPath);
-            Relaunch(environment, ui, config);
-            return new ApplyResult { Outcome = ApplyOutcome.RolledBack, ExitCode = 1 };
-        }
-
-        // The manifest is the "commit record" of the update: install it only now, once the new binaries
-        // are verified. On a codesign-fail rollback above we never reach here, so the old binaries are
-        // relaunched against the old manifest (consistent state). The staged source must still exist,
-        // so this runs before the staging-dir cleanup below.
-        if (!string.IsNullOrEmpty(config.ManifestDestPath))
-        {
-            string stagedManifest = Path.Combine(config.StagingDir, "manifest.json");
-            if (environment.FileExists(stagedManifest))
-            {
+                string dest = Path.Combine(config.InstallDir, ToNative(relativePath));
                 try
                 {
-                    string? manifestDir = Path.GetDirectoryName(config.ManifestDestPath);
-                    if (!string.IsNullOrEmpty(manifestDir))
+                    if (environment.FileExists(dest))
                     {
-                        environment.CreateDirectory(manifestDir);
+                        environment.DeleteFile(dest);
+                        deleted.Add(relativePath);
                     }
-                    environment.CopyFile(stagedManifest, config.ManifestDestPath, overwrite: true);
                 }
                 catch (Exception ex)
                 {
-                    environment.Log($"Manifest copy failed: {ex.Message}");
-                    errors++;
+                    environment.Log($"DEL FAILED: {relativePath} - {ex.Message}");
                 }
             }
+
+            int errors = 0;
+
+            // Clear quarantine first so the signature check sees the file as the OS will at launch.
+            environment.ClearQuarantine(config.InstallDir);
+
+            // Re-seal the bundle before verifying: on macOS the in-place swap above invalidated the .app's
+            // sealed CodeResources hashes, so VerifyCodeSignature would ALWAYS fail without this and the
+            // update could never complete. Fail closed - if the re-seal fails, roll back and relaunch the
+            // old version, before the manifest is committed, so the old binaries + old manifest stay
+            // consistent (same invariant as the verify gate below). No-op success off macOS.
+            if (!environment.ResealCodeSignature(config.GameExePath))
+            {
+                environment.Log("Code signature re-seal FAILED after apply; rolling back.");
+                RestoreBackups(environment, config.InstallDir, rollbackDir, backedUp);
+                try { environment.DeleteDirectory(rollbackDir); }
+                catch (Exception ex) { environment.Log($"Cleanup: could not remove rollback dir {rollbackDir} after restore: {ex.Message}"); }
+                ClearMarker(environment, markerPath);
+                Relaunch(environment, ui, config);
+                return new ApplyResult { Outcome = ApplyOutcome.RolledBack, ExitCode = 1 };
+            }
+
+            // Fail closed: if the installed executable is not validly signed, roll back to the backups
+            // (still present - we have not cleaned the rollback dir yet) and relaunch the old version.
+            if (!environment.VerifyCodeSignature(config.GameExePath))
+            {
+                environment.Log("Code signature verification FAILED after apply; rolling back.");
+                RestoreBackups(environment, config.InstallDir, rollbackDir, backedUp);
+                try { environment.DeleteDirectory(rollbackDir); }
+                catch (Exception ex) { environment.Log($"Cleanup: could not remove rollback dir {rollbackDir} after restore: {ex.Message}"); }
+                ClearMarker(environment, markerPath);
+                Relaunch(environment, ui, config);
+                return new ApplyResult { Outcome = ApplyOutcome.RolledBack, ExitCode = 1 };
+            }
+
+            // The manifest is the "commit record" of the update: install it only now, once the new binaries
+            // are verified. On a codesign-fail rollback above we never reach here, so the old binaries are
+            // relaunched against the old manifest (consistent state). The staged source must still exist,
+            // so this runs before the staging-dir cleanup below.
+            if (!string.IsNullOrEmpty(config.ManifestDestPath))
+            {
+                string stagedManifest = Path.Combine(config.StagingDir, "manifest.json");
+                if (environment.FileExists(stagedManifest))
+                {
+                    try
+                    {
+                        string? manifestDir = Path.GetDirectoryName(config.ManifestDestPath);
+                        if (!string.IsNullOrEmpty(manifestDir))
+                        {
+                            environment.CreateDirectory(manifestDir);
+                        }
+                        environment.CopyFile(stagedManifest, config.ManifestDestPath, overwrite: true);
+                    }
+                    catch (Exception ex)
+                    {
+                        environment.Log($"Manifest copy failed: {ex.Message}");
+                        errors++;
+                    }
+                }
+            }
+
+            try { environment.DeleteDirectory(config.StagingDir); }
+            catch (Exception ex) { environment.Log($"Cleanup: could not remove staging dir {config.StagingDir}: {ex.Message}"); }
+            try { environment.DeleteDirectory(rollbackDir); }
+            catch (Exception ex) { environment.Log($"Cleanup: could not remove rollback dir {rollbackDir}: {ex.Message}"); }
+            ClearMarker(environment, markerPath);
+
+            // Finishing phase: the new exe is in place, but on Windows the OS security scan may still hold it.
+            // Wait for it to become launchable before relaunch, so we never start the game into a mid-scan
+            // image (the STATUS_DLL_INIT_FAILED / STATUS_STACK_BUFFER_OVERRUN crash). No-op on non-Windows.
+            ui.SetPhase(UpdaterPhase.Finishing);
+            ui.SetStatus(theme.FinishingText);
+            WaitForExeToSettle(environment, config.GameExePath);
+
+            Relaunch(environment, ui, config);
+
+            environment.Log(errors > 0 ? $"Update completed with {errors} error(s)." : "Update applied successfully!");
+            return new ApplyResult
+            {
+                Outcome = ApplyOutcome.Succeeded,
+                ExitCode = errors > 0 ? 1 : 0,
+                CopiedFiles = copied,
+                DeletedFiles = deleted
+            };
         }
-
-        try { environment.DeleteDirectory(config.StagingDir); }
-        catch (Exception ex) { environment.Log($"Cleanup: could not remove staging dir {config.StagingDir}: {ex.Message}"); }
-        try { environment.DeleteDirectory(rollbackDir); }
-        catch (Exception ex) { environment.Log($"Cleanup: could not remove rollback dir {rollbackDir}: {ex.Message}"); }
-        ClearMarker(environment, markerPath);
-
-        // Finishing phase: the new exe is in place, but on Windows the OS security scan may still hold it.
-        // Wait for it to become launchable before relaunch, so we never start the game into a mid-scan
-        // image (the STATUS_DLL_INIT_FAILED / STATUS_STACK_BUFFER_OVERRUN crash). No-op on non-Windows.
-        ui.SetPhase(UpdaterPhase.Finishing);
-        ui.SetStatus(theme.FinishingText);
-        WaitForExeToSettle(environment, config.GameExePath);
-
-        Relaunch(environment, ui, config);
-
-        environment.Log(errors > 0 ? $"Update completed with {errors} error(s)." : "Update applied successfully!");
-        return new ApplyResult
+        catch (Exception ex)
         {
-            Outcome = ApplyOutcome.Succeeded,
-            ExitCode = errors > 0 ? 1 : 0,
-            CopiedFiles = copied,
-            DeletedFiles = deleted
-        };
+            // Backstop: any unexpected throw from the mutation phase must not crash the shim and orphan the
+            // marker. Restore every file already overwritten, clear the marker, relaunch the old version,
+            // and report a rollback (fail-closed, like the code-signature path).
+            environment.Log($"Unexpected apply failure ({ex.Message}); rolling back.");
+            RestoreBackups(environment, config.InstallDir, rollbackDir, backedUp);
+            try { environment.DeleteDirectory(rollbackDir); }
+            catch (Exception cleanup) { environment.Log($"Cleanup: could not remove rollback dir after restore: {cleanup.Message}"); }
+            ClearMarker(environment, markerPath);
+            Relaunch(environment, ui, config);
+            return new ApplyResult { Outcome = ApplyOutcome.RolledBack, ExitCode = 1 };
+        }
     }
 
     /// <summary>

@@ -147,6 +147,23 @@ public sealed class UpdateApplierTests
     }
 
     [Fact]
+    public void Apply_UnexpectedException_RollsBackAndClearsMarkerWithoutCrashing()
+    {
+        var env = new FakeUpdaterEnvironment { ThrowUnexpectedOnReplace = true };
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.Files[InstallPath("game.dll")] = "v1";
+        env.Files[InstallPath("Game")] = "exe";
+        string marker = Path.Combine(AppData, "apply-in-progress.json");
+
+        ApplyResult result = UpdateApplier.Apply(Config(new() { "game.dll" }), env); // must not throw
+
+        Assert.Equal(ApplyOutcome.RolledBack, result.Outcome);
+        Assert.Equal("v1", env.Files[InstallPath("game.dll")]); // restored
+        Assert.False(env.Files.ContainsKey(marker));            // marker cleared
+        Assert.Equal(InstallPath("Game"), env.RelaunchedExe);   // old version relaunched
+    }
+
+    [Fact]
     public void Apply_InstallsManifestToDestPath()
     {
         var env = new FakeUpdaterEnvironment();

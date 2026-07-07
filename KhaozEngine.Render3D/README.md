@@ -55,6 +55,10 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   the orthographic `IsoCamera3D` and the perspective `FollowCamera3D`. The sun direction **defaults to the key light**
   (`Post.LightDirection`) so the sky and lighting agree (sun opposite the shadows); override with
   `Sky.SunDirectionOverride`. The pure math is `SkyMath` (gradient + sun falloff + `ProjectSunToNdc`).
+- Transparency ordering (since 10.18.2): alpha-blended draws (colour and textured billboards, translucent
+  overlay meshes) sort back-to-front by view-space depth within each batch, so overlapping alpha composites
+  correctly no matter the submission order. Additive paths (beams, additive billboards) are order-independent
+  and skip the sort. Cross-pass order between renderers is fixed. No public API involved.
 - `Scene3D.DrawOverlayMesh(MeshHandle mesh, Matrix4x4 world)` - queues a translucent, unlit,
   depth-tested-but-not-depth-writing, alpha-blended draw of an already-loaded mesh, colored by the mesh's
   per-vertex color. A general overlay primitive, not collision-specific: drawn after the meshes/beams and

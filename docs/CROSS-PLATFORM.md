@@ -34,6 +34,11 @@ Windows / Linux run respectively.
 The 2D golden loads a libre font bundled in the test project (`KhaozEngine.Tests/Assets/Roboto-Regular.ttf`,
 Apache-2.0) rather than an OS system-font path, so its glyph input is identical on every runner.
 
+`KhaozEngine.Tests/Gpu/goldens/*.txt` is pinned `text eol=lf` in `.gitattributes`. The goldens are machine-generated
+LF text, and a Windows checkout with `autocrlf` on would otherwise convert them to CRLF, breaking the byte-identity
+contract between the committed file and `GoldenGrid.Serialize`'s LF output. This exact failure shipped and was
+fixed in 10.18.1 (Metal and Vulkan legs and every actual golden compare were green, only the endings differed).
+
 ## CI matrix (`.github/workflows/cross-platform-gpu.yml`)
 
 Runs the golden tests (`--filter FullyQualifiedName~Golden`, `KE_GPU_TESTS=1`) per OS with its backend,
@@ -124,6 +129,16 @@ in the `ShaderSources.cs` source comments; this is the consolidated checklist.)
   shared interpolant layout), number those ABOVE the fragment's live block. (`ModelFrag` is unaffected because it
   reads all of its interpolants.) Note: this is NOT an FXC optimizer miscompile - disabling FXC optimization does
   not fix it; the gapped signature is the cause.
+- **The same hole-in-signature landmine also hits VERTEX input signatures, not just fragment interpolants.** If a
+  vertex shader only reads some of its declared `in` attributes, SPIRV-Cross drops the unread ones and leaves a
+  HOLE in the HLSL vertex-input signature, and FXC/WARP miscompiles it exactly like the fragment case above. In
+  10.19.0 the depth-only shadow pass (`ShadowDepthVert`) only read `Position` + the per-instance model matrix, so
+  SPIRV-Cross dropped `Normal`/`Color`/`TexCoord`/`Tangent`/`ITint`/`IEmissive`/`ISpecParams` from the signature -
+  and building that one pipeline at scene construction corrupted WARP so badly that the MAIN model and splat passes
+  rendered no colour afterward (silhouette/normal/depth survived, only `oColor` went blank). Fix pattern: a
+  numerically negligible LIVE sink that reads every declared input (summed with a `1e-30` scale, so the optimizer
+  cannot fold it away) keeps the signature contiguous without changing the output to the bit. See the in-source
+  hazard note next to `ShadowDepthVert` in `KhaozEngine.Render3D/Internal/ShaderSources.cs`.
 - **Sample all textures up front, in binding order.** SPIRV-Cross assigns MSL texture indices in the order
   textures are first SAMPLED, not by `binding=`, so sampling a higher-binding texture first makes a lower one read
   the wrong texture on Metal (untextured meshes came out flat-normal coloured). See the `ModelFrag` / `EdgeFrag` /

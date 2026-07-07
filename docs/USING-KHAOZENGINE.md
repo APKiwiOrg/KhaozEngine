@@ -1011,6 +1011,13 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
   // sparks at the impact: loop your particle system's Active span and DrawBillboard each (Additive)
   ```
 
+### Transparency ordering
+
+Overlapping alpha-blended billboards and overlay meshes composite correctly regardless of submission order:
+since 10.18.2 the renderer sorts each batch back-to-front by view-space depth before upload, so a near sprite
+queued before a far one behind it no longer blends wrong. Additive effects (beams, additive billboards) are
+unaffected and order-independent, so they skip the sort. There is nothing to configure.
+
 - Transparent compositing: set `Post.TransparentBackground = true` (default on for `Render3DPreview`) to emit the
   background as alpha 0 so a captured `Texture2D` overlays a 2D scene; the stylized post chain preserves the
   per-pixel alpha (geometry opaque, cleared background clear). Leave `Starfield` off when transparent.

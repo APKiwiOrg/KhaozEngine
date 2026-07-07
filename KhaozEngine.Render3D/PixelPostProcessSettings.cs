@@ -50,6 +50,12 @@ namespace KhaozEngine.Render3D
         /// <see cref="UseSmoothPreset"/> and shadows).</summary>
         public SkySettings Sky = new();
 
+        /// <summary>LDR threshold + separable-blur bloom (beams, emissive materials, bright billboards read as a
+        /// glow instead of flat). Default disabled, so the post chain runs no extra passes and existing scenes are
+        /// byte-stable; set <c>Bloom.Enabled = true</c> to turn it on. See <see cref="BloomSettings"/> for the knobs
+        /// and the LDR-not-HDR caveat.</summary>
+        public BloomSettings Bloom = new();
+
         /// <summary>Internal render width (used only when <see cref="RenderScale"/> is
         /// <see cref="Render3D.RenderScale.FixedInternal"/>). High = smooth; small + Pixelated = chunky retro pixels.</summary>
         public int RenderWidth = 1600;

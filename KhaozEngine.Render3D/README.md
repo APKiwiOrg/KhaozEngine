@@ -66,6 +66,23 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   the orthographic `IsoCamera3D` and the perspective `FollowCamera3D`. The sun direction **defaults to the key light**
   (`Post.LightDirection`) so the sky and lighting agree (sun opposite the shadows); override with
   `Sky.SunDirectionOverride`. The pure math is `SkyMath` (gradient + sun falloff + `ProjectSunToNdc`).
+- Bloom: `PixelPostProcessSettings.Bloom` (a `BloomSettings`, **default off**) is an opt-in LDR threshold +
+  separable-blur bloom - beams, emissive materials, and bright billboards read as a glow instead of flat. A
+  bright-pass thresholds the lit colour (soft smoothstep knee, `Threshold`/`Knee`) into a HALF-resolution target,
+  blurs it separably (horizontal then vertical, `Radius` taps per side, gaussian weights via `BloomMath`), and adds
+  it back onto the full-resolution image at `Intensity` strength. Runs AFTER palette quantize + the edge outline
+  (so the glow composites on top of - and is never itself posterized/outlined by - the stylized chain) and BEFORE
+  FXAA (so FXAA also smooths the bloom composite's edges). Costs nothing when off (`Bloom.Enabled == false`, no
+  extra passes, no half-res targets allocated, existing scenes byte-stable); the half-res pair is lazily allocated
+  the first frame it is enabled and freed the frame it is disabled, re-derived from the CURRENT internal target size
+  on every resize (works under both `RenderScale.FixedInternal` and `.MatchViewport`). Respects
+  `TransparentBackground` (the composite pass preserves the source alpha unchanged, so bloom never resurrects an
+  alpha-0 background pixel into an opaque one). **LDR, not HDR**: the internal target is `R8G8B8A8UNorm` (no
+  over-1.0 headroom), so the bright-pass thresholds the already-tonemapped-to-[0,1] colour rather than a linear HDR
+  value - still a convincing glow on beams/emissive materials/bright billboards, but it will not bloom a surface
+  that is merely well-lit white; lower `Threshold` for a softer cutoff. The pure math (`BloomMath`: the knee curve,
+  gaussian weight generation, half-res sizing) is headless-tested and mirrors the GLSL bright-pass/blur shaders
+  exactly.
 - Transparency ordering (since 10.18.2): alpha-blended draws (colour and textured billboards, translucent
   overlay meshes) sort back-to-front by view-space depth within each batch, so overlapping alpha composites
   correctly no matter the submission order. Additive paths (beams, additive billboards) are order-independent

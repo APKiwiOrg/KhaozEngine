@@ -813,6 +813,92 @@ void main() {
     oColor = vec4(outRgb, M.a);
 }";
 
+        // ---- Bloom: bright-pass -> separable gaussian blur (H then V) -> additive composite. LDR (R8G8B8A8UNorm
+        // internal target, no HDR headroom), so the bright-pass thresholds the already-tonemapped-to-[0,1] lit
+        // colour rather than an over-1.0 linear value - see BloomSettings' LDR-not-HDR doc note. kneeWeight mirrors
+        // BloomMath.KneeWeight EXACTLY (keep in sync); the gaussian blur's weights are uploaded from
+        // BloomMath.GaussianWeights so the shader never re-derives sigma. All three passes reuse FullscreenVert (a
+        // fullscreen vUv in [0,1] independent of the target's resolution), so the bright-pass and blur passes -
+        // which render into the HALF-RES bloom targets - need no extra scaling: the vertex shader, the framebuffer
+        // viewport, and Src's sampling all resolve in the destination's own resolution.
+
+        // ---- Bloom bright-pass: threshold the full-res lit colour into the half-res bright target ----
+        public const string BloomBrightFrag = @"#version 450
+layout(set=0, binding=0) uniform texture2D Src;
+layout(set=0, binding=1) uniform sampler Samp;
+layout(set=0, binding=2) uniform Bright { vec4 Params; }; // Params.x=threshold, .y=knee
+layout(location=0) in vec2 vUv;
+layout(location=0) out vec4 oColor;
+float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+// Mirrors BloomMath.KneeWeight exactly: knee<=0 is a hard threshold; else a smoothstep ramp of half-width `knee`
+// centred on `threshold`.
+float kneeWeight(float l, float threshold, float knee) {
+    if (knee <= 0.0) return l >= threshold ? 1.0 : 0.0;
+    float lo = threshold - knee;
+    float hi = threshold + knee;
+    float t = clamp((l - lo) / max(hi - lo, 1e-5), 0.0, 1.0);
+    return t * t * (3.0 - 2.0 * t);
+}
+void main() {
+    vec3 c = texture(sampler2D(Src, Samp), vUv).rgb;
+    float w = kneeWeight(luma(c), Params.x, Params.y);
+    oColor = vec4(c * w, 1.0);
+}";
+
+        // ---- Bloom separable gaussian blur: one axis per draw (horizontal pass writes to BloomB, vertical pass
+        // reads BloomB and writes back to BloomA), radius taps per side (MaxRadius clamps the array). Weights[i].x
+        // holds the 1D weight for offset i (0 = the centre tap); the shader mirrors the tap loop against a runtime
+        // tap count (2*radius+1) so a radius smaller than MaxRadius just leaves the tail weights unused (0-init from
+        // the C# array is never assumed - the loop bound (Params.x) is authoritative). ----
+        public const string BloomBlurFrag = @"#version 450
+layout(set=0, binding=0) uniform texture2D Src;
+layout(set=0, binding=1) uniform sampler Samp;
+layout(set=0, binding=2) uniform Blur {
+    vec4 Texel;              // .xy = 1/halfResSize
+    vec4 Params;             // .x = radius (taps per side), .y = dirX (texel units), .z = dirY (texel units)
+    vec4 Weights[9];         // Weights[i].x = 1D gaussian weight for tap i (i=0..radius); MaxRadius=8 => 9 slots
+};
+layout(location=0) in vec2 vUv;
+layout(location=0) out vec4 oColor;
+void main() {
+    int radius = int(Params.x);
+    vec2 dir = vec2(Params.y, Params.z) * Texel.xy;
+    vec3 sum = texture(sampler2D(Src, Samp), vUv).rgb * Weights[0].x;
+    for (int i = 1; i <= radius; i++) {
+        float w = Weights[i].x;
+        vec2 o = dir * float(i);
+        sum += texture(sampler2D(Src, Samp), vUv + o).rgb * w;
+        sum += texture(sampler2D(Src, Samp), vUv - o).rgb * w;
+    }
+    oColor = vec4(sum, 1.0);
+}";
+
+        // ---- Bloom composite: additively blend the blurred (half-res, bilinear-upsampled by the sampler) bright
+        // target onto the full-res colour chain. Sampled UP FRONT in binding order (Src, Bloom - see the Metal
+        // first-sample-order rule in EdgeFrag/ModelFrag). Preserves Src's alpha UNCHANGED so the blit's background
+        // marker (alpha<0.5 -> starfield / TransparentBackground) is untouched - bloom must never resurrect an
+        // alpha-0 background pixel into an opaque one; adding a near-zero (thresholded-out) bloom colour to the
+        // background also does not visibly brighten it in practice, since nothing exceeds the bright-pass threshold
+        // there.
+        // Bug A (the same vertical-flip parity Run/BlitFrag already correct for): every fullscreen pass flips the
+        // image vertically relative to its input. The bloom branch is ALWAYS exactly 3 fullscreen passes removed
+        // from Src at this point (bright-pass + blur-H + blur-V, independent of how many main-chain passes ran
+        // before it) - an ODD number - so Bloom is always flipped by exactly one flip relative to Src, regardless of
+        // which optional main-chain passes (quantize/outline) ran. Un-flip Bloom's V unconditionally (a fixed,
+        // settings-independent correction) rather than threading a parity flag through like BlitFrag's Params.z. ----
+        public const string BloomCompositeFrag = @"#version 450
+layout(set=0, binding=0) uniform texture2D Src;
+layout(set=0, binding=1) uniform texture2D Bloom;
+layout(set=0, binding=2) uniform sampler Samp;
+layout(set=0, binding=3) uniform Composite { vec4 Params; }; // Params.x = intensity
+layout(location=0) in vec2 vUv;
+layout(location=0) out vec4 oColor;
+void main() {
+    vec4 src = texture(sampler2D(Src, Samp), vUv);
+    vec3 bloom = texture(sampler2D(Bloom, Samp), vec2(vUv.x, 1.0 - vUv.y)).rgb;
+    oColor = vec4(src.rgb + bloom * Params.x, src.a);
+}";
+
         // ---- Ground decal: paint an analytic danger-zone shape onto the surface under each pixel. Reconstructs the
         //      surface world position from the sampled linear depth (DepthTex) via InvViewProj, evaluates the shape
         //      SDF in shape-local space on the XZ plane, gates by a Y-band around the ground height (so it conforms

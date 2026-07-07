@@ -982,6 +982,13 @@ namespace KhaozEngine.Render3D
         internal int RenderTargetWidth => _res.Width;
         internal int RenderTargetHeight => _res.Height;
 
+        // Bloom half-res target state. Exposed for tests to assert bloom off allocates nothing, bloom on allocates
+        // exactly BloomMath.HalfResSize(RenderTargetWidth, RenderTargetHeight), and a resize/RenderScale change
+        // re-derives it; not part of the public surface.
+        internal bool BloomAllocated => _res.BloomAllocated;
+        internal int BloomTargetWidth => _res.BloomWidth;
+        internal int BloomTargetHeight => _res.BloomHeight;
+
         /// <summary>
         /// The internal render-target size for a given post config + viewport. <see cref="RenderScale.FixedInternal"/>
         /// returns <see cref="PixelPostProcessSettings.RenderWidth"/>/<c>RenderHeight</c> unchanged (the historical
@@ -1064,12 +1071,13 @@ namespace KhaozEngine.Render3D
             bool wantMips = WantsMipDownsample(Post, viewportW, viewportH);
             int samples = ResolvedMsaaSamples();
             bool sampleChanged = _res.SampleCount != samples;
-            if (_res.Width != tw || _res.Height != th || _res.Mipped != wantMips || sampleChanged)
+            bool bloomChanged = _res.BloomAllocated != Post.Bloom.Enabled;
+            if (_res.Width != tw || _res.Height != th || _res.Mipped != wantMips || sampleChanged || bloomChanged)
             {
                 // A pipeline in flight may reference the old sample count / targets; a MSAA change is rare, so idling
                 // before recreating the MRT + rebuilding pipelines is cheap insurance.
                 if (sampleChanged) _gd.WaitForIdle();
-                _res.Resize(tw, th, wantMips, samples);
+                _res.Resize(tw, th, wantMips, samples, Post.Bloom.Enabled);
                 _post.BindTargets(_res);
                 if (sampleChanged) RebuildMrtRenderers();   // match the renderers' pipelines to the new MRT sample count
             }

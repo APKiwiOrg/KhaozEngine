@@ -148,6 +148,53 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(16u, PixelPostProcess.FxaaBufferBytes);
         }
 
+        // ---- Bloom UBOs (PixelPostProcess) ----
+
+        [Fact]
+        public void BrightUbo_MarshalSize_EqualsBrightBufferAllocation()
+        {
+            // GLSL: Bright { vec4 Params; } = 1 vec4 = 16 bytes (BloomBrightFrag).
+            Assert.Equal(
+                (int)PixelPostProcess.BrightBufferBytes,
+                Marshal.SizeOf<PixelPostProcess.BrightUbo>());
+        }
+
+        [Fact]
+        public void CompositeUbo_MarshalSize_EqualsCompositeBufferAllocation()
+        {
+            // GLSL: Composite { vec4 Params; } = 1 vec4 = 16 bytes (BloomCompositeFrag).
+            Assert.Equal(
+                (int)PixelPostProcess.CompositeBufferBytes,
+                Marshal.SizeOf<PixelPostProcess.CompositeUbo>());
+        }
+
+        [Fact]
+        public void BlurScratch_MatchesBlurBuffer_And_GlslWeightsArray()
+        {
+            // The Blur block is `vec4 Texel; vec4 Params; vec4 Weights[BlurWeightSlots];`. The CPU scratch mirrors
+            // it flat as floats, so BlurScratchFloats * 4 must equal the GPU buffer byte size (BlurBufferBytes). If
+            // they drift, the per-axis blur upload over/under-fills the GPU buffer (PixelPostProcess.PrepareUniforms).
+            Assert.Equal(
+                PixelPostProcess.BlurBufferBytes,
+                (uint)PixelPostProcess.BlurScratchFloats * sizeof(float));
+            // Texel (1 vec4) + Params (1 vec4) + Weights (BlurWeightSlots vec4) = BlurScratchFloats/4.
+            Assert.Equal(
+                4 + 4 + PixelPostProcess.BlurWeightSlots * 4,
+                PixelPostProcess.BlurScratchFloats);
+            // BlurWeightSlots must cover BloomMath.MaxRadius + 1 taps (index 0..MaxRadius).
+            Assert.Equal(BloomMath.MaxRadius + 1, PixelPostProcess.BlurWeightSlots);
+        }
+
+        [Fact]
+        public void BloomBlurFrag_WeightsArray_SizedByBlurWeightSlots()
+        {
+            // BloomBlurFrag declares Weights[9] (BlurWeightSlots). Build the GLSL spelling from the C# constant so
+            // the array size and PixelPostProcess.BlurWeightSlots stay coupled.
+            string weightsArray = "vec4 Weights[" + PixelPostProcess.BlurWeightSlots + "];";
+            Assert.True(ShaderSources.BloomBlurFrag.Contains(weightsArray),
+                $"BloomBlurFrag lost '{weightsArray}': the blur weight slot count drifted from PixelPostProcess.BlurWeightSlots ({PixelPostProcess.BlurWeightSlots}). Fix ShaderSources.BloomBlurFrag or the constant.");
+        }
+
         // ---- GLSL <-> C# constant agreement (string assertions against the embedded shader sources) ----
 
         [Fact]

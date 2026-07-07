@@ -1117,6 +1117,33 @@ unaffected and order-independent, so they skip the sort. There is nothing to con
     axis from the shadows automatically. Override with `Sky.SunDirectionOverride` (a world direction TO the sun) to
     point it elsewhere. The sun is drawn only when it is above the view horizon (behind/under the camera it is
     suppressed), so a downward-looking iso view shows it near the top of the sky.
+- **Bloom** (`Post.Bloom`, a `BloomSettings`, **default off**): an opt-in threshold + separable-blur LDR bloom pass
+  so beams, emissive materials, and bright billboards read as a glow instead of flat. Default `Bloom.Enabled = false`,
+  so the post chain runs no extra passes and existing scenes are byte-stable; set `Post.Bloom.Enabled = true` to
+  turn it on.
+  - Mechanism: a bright-pass thresholds the lit colour (a soft smoothstep knee, not a hard cutoff) into a
+    HALF-resolution target, blurs it separably (horizontal pass then vertical pass, gaussian-weighted), then adds
+    the blurred result back onto the full-resolution image. The half-res pair is allocated lazily - only while
+    `Bloom.Enabled` - so bloom off costs zero extra GPU memory, and it is re-derived from the CURRENT internal
+    target size on every resize, so it works under both `RenderScale.FixedInternal` and `.MatchViewport`.
+  - Knobs: `Bloom.Threshold` (0..1 luma, default `0.7` - the cutoff above which a pixel starts contributing),
+    `Bloom.Knee` (default `0.15` - the smoothstep ramp half-width around `Threshold`; `0` = a hard threshold),
+    `Bloom.Intensity` (default `0.6` - the additive strength of the blurred glow), and `Bloom.Radius` (default `4`
+    taps per side - the gaussian blur's reach; `0` = a sharp unblurred glow matching the thresholded shape exactly).
+    Lower `Threshold` for a softer/more-pervasive glow, raise it so only the brightest highlights bloom; raise
+    `Radius` for a wider, softer halo at a roughly linear extra cost.
+  - Pass order: bloom runs AFTER palette quantize and the edge outline (so the glow composites on top of - and is
+    never itself posterized or drawn with a dark outline - the stylized colour), and BEFORE FXAA (so FXAA's
+    edge-smoothing also polishes the bloom composite, not just the pre-bloom image). It never touches the MRT
+    normal/depth the outline pass reads (bloom only ever reads/writes colour targets), and it respects
+    `TransparentBackground` (the composite preserves the source alpha unchanged, so bloom never resurrects an
+    alpha-0 background pixel into an opaque one).
+  - **LDR, not HDR**: the internal render target is `R8G8B8A8UNorm` (there is no HDR pipeline, and none planned),
+    so the bright-pass thresholds the already-tonemapped-to-[0,1] lit colour rather than an over-1.0 linear value.
+    This still reads as a convincing glow on beams/emissive materials (`Material.Glowing`)/bright billboards - the
+    motivating cases - but it will not bloom a surface that is merely well-lit white; tune `Threshold` down if a
+    scene needs a softer cutoff. The pure math (`BloomMath`: the knee curve, gaussian weight generation, half-res
+    sizing) is headless-tested and mirrors the GLSL bright-pass/blur shaders exactly.
 - `IsoCamera3D`: `Azimuth`/`Elevation`/`Target`/`OrthoSize`/`Zoom`, `Frame(target, azimuth, size)`,
   `ScreenToRay`, `ScreenToGround`, and the `View`/`Projection`/`ViewProjection` matrices.
 - `IsoCameraController`: input-agnostic gestures driving an `IsoCamera3D` (pure `System.Numerics`, headless-testable;

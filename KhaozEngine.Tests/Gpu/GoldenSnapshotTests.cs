@@ -539,6 +539,64 @@ namespace KhaozEngine.Tests.Gpu
             GoldenCompare.AssertOrUpdate("scene3d_beam", rgba, W, H);
         }
 
+        // Rendering gap #6: opt-in LDR threshold + separable-blur bloom. A dark scene (starfield off, near-black
+        // background + a dim floor) with three motivating bright sources - an emissive sphere (Material.Glowing), a
+        // bright magenta beam, and an additive white billboard - so the halo reads clearly against a mostly-dark
+        // frame. Off (the default) stays byte-stable via the untouched scene3d/scene3d_beam goldens; this locks
+        // bloom ON at its default knobs (Threshold 0.7, Knee 0.15, Intensity 0.6, Radius 4).
+        [GpuFact]
+        public void Golden3D_Bloom()
+        {
+            MeshHandle floor = default, sphere = default;
+
+            byte[] rgba = Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    floor = scene.LoadMesh(MeshPrimitives.Tile(10f, 0.1f));
+                    sphere = scene.LoadMesh(MeshPrimitives.Sphere(0.55f));
+                    scene.Post.Starfield = false;                    // flat dark background - bloom must not wash it
+                    scene.Post.BackgroundColor = new Color(0.03f, 0.03f, 0.05f, 1f);
+                    scene.Post.Bloom.Enabled = true;                 // default knobs otherwise (Threshold/Knee/Intensity/Radius)
+                    scene.Camera.Frame(Vector3.Zero, new Vector3(4.5f, 4.5f, 4.5f));
+                    scene.EffectTimeSeconds = 0f;                    // static frame => deterministic golden (no beam pulse/scroll)
+                },
+                drawFrame: scene =>
+                {
+                    // Dark, non-bright floor: must stay dark under bloom (nothing here crosses the bright-pass
+                    // threshold), the anti-wash guard's near-black-cell count leans on this.
+                    scene.Draw(floor, Matrix4x4.CreateTranslation(0f, 0f, 0f), new Color(0.10f, 0.10f, 0.13f, 1f));
+                    // Bright emissive sphere: the motivating "glow instead of flat" case.
+                    scene.Draw(sphere, Matrix4x4.CreateTranslation(-1.4f, 0.7f, 0.6f),
+                        new Color(1f, 0.85f, 0.3f, 1f), Material.Glowing(new Color(1f, 0.85f, 0.3f, 1f)));
+                    // Bright magenta beam off to the other side.
+                    scene.DrawBeam(new Vector3(1.6f, 0.2f, -2.2f), new Vector3(1.6f, 0.2f, 2.2f), 0.35f,
+                        new Color(1f, 0.2f, 0.9f, 1f), BeamStyle.Default with { Taper = 0.2f });
+                    // Bright additive white billboard: a third, distinct bloom source (screen-space, not a mesh).
+                    scene.DrawBillboard(new Vector3(0.6f, 1.6f, -0.8f), 0.9f, new Color(1f, 1f, 0.95f, 0.9f));
+                },
+                frames: 2);
+
+            // Anti-wash guard: bloom must brighten the halo AROUND the bright sources without flooding the whole
+            // frame. Downsample to the same 32x18 grid the golden compares against and require a healthy count of
+            // still-near-black cells (the dark floor/background far from any bright source) - a broken bake that
+            // additively blew out the entire image would collapse this count toward zero, so this trips BEFORE the
+            // golden compare silently commits a washed-out bake.
+            float[] guardGrid = GoldenCompare.Downsample(rgba, W, H);
+            int nearBlackCells = 0;
+            for (int cell = 0; cell < guardGrid.Length / 3; cell++)
+            {
+                float r = guardGrid[cell * 3], g = guardGrid[cell * 3 + 1], b = guardGrid[cell * 3 + 2];
+                if (MathF.Max(r, MathF.Max(g, b)) < 0.25f) nearBlackCells++;
+            }
+            Assert.True(nearBlackCells >= 150,
+                $"scene3d_bloom has only {nearBlackCells} near-black cells (of {guardGrid.Length / 3}); bloom is " +
+                "washing out the whole frame instead of haloing the bright sources. Expected the dark floor/" +
+                "background to dominate the grid (~200+ cells) with only a local halo around the sphere/beam/" +
+                "billboard. Check the bright-pass threshold/knee and the additive composite intensity.");
+
+            GoldenCompare.AssertOrUpdate("scene3d_bloom", rgba, W, H);
+        }
+
         [GpuFact]
         public void Golden2D_FixedScene()
         {

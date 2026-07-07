@@ -7,7 +7,9 @@ namespace KhaozEngine.Render3D.Internal
     /// <summary>
     /// Owns the low-res GPU targets for one resolution: a 3-attachment MRT (lit color, encoded normal,
     /// linear depth) plus a depth-stencil for the model pass, and two single-target ping-pong buffers for
-    /// the post chain. Recreated on resolution / mip-mode / MSAA-sample-count change.
+    /// the post chain. Recreated on resolution / mip-mode / MSAA-sample-count / bloom-enabled change.
+    /// Also owns an optional half-resolution ping-pong pair (<see cref="BloomA"/>/<see cref="BloomB"/>) for the
+    /// bloom bright-pass + separable blur, allocated only while bloom is enabled (see <see cref="BloomAllocated"/>).
     /// </summary>
     /// <remarks>
     /// Under MSAA (<see cref="SampleCount"/> &gt; 1) the model pass renders into a MULTISAMPLED MRT
@@ -56,23 +58,40 @@ namespace KhaozEngine.Render3D.Internal
         public IGpuTexture PingA = null!, PingB = null!;
         public IGpuFramebuffer PingAFB = null!, PingBFB = null!;
 
+        /// <summary>Half-resolution ping-pong pair for the bloom bright-pass + separable blur (see
+        /// <see cref="Internal.BloomMath.HalfResSize"/>). Allocated ONLY when <see cref="BloomAllocated"/> is
+        /// requested (<see cref="BloomSettings.Enabled"/> at the time of the last <see cref="Resize"/>), so bloom
+        /// off costs zero extra GPU memory - the historical, pre-bloom footprint. Recreated alongside the main
+        /// targets on any resize while bloom is enabled; freed the next resize after it is disabled.</summary>
+        public IGpuTexture? BloomA;
+        public IGpuTexture? BloomB;
+        public IGpuFramebuffer? BloomAFB;
+        public IGpuFramebuffer? BloomBFB;
+        public int BloomWidth { get; private set; }
+        public int BloomHeight { get; private set; }
+
+        /// <summary>Whether the bloom half-res targets are currently allocated (mirrors the <c>bloomEnabled</c>
+        /// argument passed to the last <see cref="Create"/>/<see cref="Resize"/> call).</summary>
+        public bool BloomAllocated { get; private set; }
+
         public RenderResources(IGpuDevice gd, int w, int h)
         {
             _gd = gd;
-            Create(w, h, mipped: false, sampleCount: 1);
+            Create(w, h, mipped: false, sampleCount: 1, bloomEnabled: false);
         }
 
-        public void Resize(int w, int h, bool mipped, int sampleCount)
+        public void Resize(int w, int h, bool mipped, int sampleCount, bool bloomEnabled)
         {
-            if (w == Width && h == Height && mipped == Mipped && sampleCount == SampleCount) return;
+            if (w == Width && h == Height && mipped == Mipped && sampleCount == SampleCount
+                && bloomEnabled == BloomAllocated) return;
             DisposeTargets();
-            Create(w, h, mipped, sampleCount);
+            Create(w, h, mipped, sampleCount, bloomEnabled);
         }
 
         IGpuTexture Tex(uint w, uint h, GpuPixelFormat fmt, GpuTextureUsage usage, uint mipLevels = 1, uint samples = 1) =>
             _gd.Factory.CreateTexture(new GpuTextureDescription(w, h, fmt, usage, mipLevels, 1, samples));
 
-        void Create(int w, int h, bool mipped, int sampleCount)
+        void Create(int w, int h, bool mipped, int sampleCount, bool bloomEnabled)
         {
             Width = w; Height = h; Mipped = mipped; SampleCount = sampleCount < 1 ? 1 : sampleCount;
             uint uw = (uint)w, uh = (uint)h, s = (uint)SampleCount;
@@ -117,6 +136,22 @@ namespace KhaozEngine.Render3D.Internal
             PingB = Tex(uw, uh, GpuPixelFormat.R8G8B8A8UNorm, blitRt, blitMips);
             PingAFB = _gd.Factory.CreateFramebuffer(null, PingA);
             PingBFB = _gd.Factory.CreateFramebuffer(null, PingB);
+
+            BloomAllocated = bloomEnabled;
+            if (bloomEnabled)
+            {
+                var (bw, bh) = BloomMath.HalfResSize(w, h);
+                BloomWidth = bw; BloomHeight = bh;
+                uint ubw = (uint)bw, ubh = (uint)bh;
+                BloomA = Tex(ubw, ubh, GpuPixelFormat.R8G8B8A8UNorm, rt);
+                BloomB = Tex(ubw, ubh, GpuPixelFormat.R8G8B8A8UNorm, rt);
+                BloomAFB = _gd.Factory.CreateFramebuffer(null, BloomA);
+                BloomBFB = _gd.Factory.CreateFramebuffer(null, BloomB);
+            }
+            else
+            {
+                BloomWidth = 0; BloomHeight = 0;
+            }
         }
 
         /// <summary>Resolve the multisampled MRT's linear-depth into the single-sample <see cref="DepthColorTex"/> the
@@ -144,6 +179,8 @@ namespace KhaozEngine.Render3D.Internal
             MsColor?.Dispose(); MsNormal?.Dispose(); MsDepthColor?.Dispose();
             MsColor = MsNormal = MsDepthColor = null;
             PingA?.Dispose(); PingB?.Dispose();
+            BloomAFB?.Dispose(); BloomBFB?.Dispose(); BloomA?.Dispose(); BloomB?.Dispose();
+            BloomAFB = BloomBFB = null; BloomA = BloomB = null;
         }
 
         public void Dispose() => DisposeTargets();

@@ -107,14 +107,19 @@ still running, and a Program Files install that denies writes. Both surfaced as 
    verified) reports `Succeeded` rather than a false rollback and never relaunches twice. The
    `apply-in-progress` marker is written only during the mutation phase, so any earlier abort leaves
    nothing dangling.
-3. **Elevate once for a protected install.** Before applying, `Run` probes the install dir with
-   `IUpdaterEnvironment.CanWriteToDirectory`. When it is not writable (e.g. a `C:\Program Files\<app>\`
-   install that denies delete-child) `Run` relaunches the updater elevated once via `TryElevate` (Windows
-   `runas`, one UAC prompt), passing `--relocated --elevated`. The `--elevated` flag guards against an
-   elevation loop, and a declined UAC prompt falls through to a clean in-place attempt (which rolls back if
-   the write stays denied) rather than crashing. The probe and elevation are skipped off Windows, so the
-   POSIX apply runs no extra filesystem op. The durable fix for the whole permission class is a per-user
-   install location, which never needs elevation.
+3. **Elevate once for a protected install.** Before applying, `Run` checks the install dir with
+   `IUpdaterEnvironment.CanWriteToDirectory`. On Windows a per-machine install under a protected root
+   (`%ProgramFiles%`, `%ProgramFiles(x86)%`, `%ProgramW6432%`, `%SystemRoot%`) reports not-writable whenever
+   the process is not already elevated - a plain create-a-temp-file probe is a false positive there, because a
+   new file at the install root can be created even when overwriting the existing binaries or clearing an
+   admin-owned `.ke-update-rollback` fails with Access Denied (that false positive is what let a Program Files
+   apply skip elevation and roll back). When it is not writable, `Run` relaunches the updater elevated once via
+   `TryElevate` (Windows `runas`, one UAC prompt), passing `--relocated --elevated`. The `--elevated` flag
+   guards against an elevation loop, and a declined UAC prompt falls through to a clean in-place attempt (which
+   rolls back if the write stays denied) rather than crashing. Off a protected root the check falls back to the
+   create/delete probe, and the whole check plus elevation are skipped off Windows, so the POSIX apply runs no
+   extra filesystem op. The durable fix for the whole permission class is a per-user install location, which
+   never needs elevation.
 
 ## Progress window
 

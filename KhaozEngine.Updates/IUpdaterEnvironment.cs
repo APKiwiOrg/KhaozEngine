@@ -96,10 +96,13 @@ public interface IUpdaterEnvironment
     string GetSelfBaseDirectory();
 
     /// <summary>
-    /// True when the running updater can create files in <paramref name="path"/>. The applier probes the
-    /// install dir before applying. A false result (on Windows, a protected location like Program Files)
-    /// means the swap needs elevation to write. The default returns true (assume writable) for implementers
-    /// predating this member. The real environment probes by creating and deleting a temp file.
+    /// True when the running updater can apply the swap in <paramref name="path"/> without elevation. The
+    /// applier checks the install dir before applying; a false result (on Windows, a protected location like
+    /// Program Files) means the swap needs elevation to overwrite the installed binaries. The default returns
+    /// true (assume writable) for implementers predating this member. The real environment reports a protected
+    /// root (Program Files / Windows) as not-writable whenever the process is not already elevated - a plain
+    /// create-a-temp-file probe is a false positive there, since a new file at the install root can be created
+    /// even when overwriting the existing binaries fails - and otherwise falls back to a create/delete probe.
     /// </summary>
     bool CanWriteToDirectory(string path) => true;
 

@@ -738,6 +738,27 @@ tunes wheel speed). Set `WrapLongLabels = true` to wrap a stat row whose value i
 fade the whole popup with a host screen transition. `Toggle` / `Slider` / `TextInput` carry the same `Opacity` knob;
 `TextInput` adds `SetText(value)`, public `Focus()` / `Unfocus()`, and a `LocalizedText` `PlaceholderContent`.
 
+**Tab bar / segmented control (`TabBar`, 10.25.0)** - a horizontal switcher for a panel with sub-views (a
+Goals/Tree split, settings sub-pages, inventory categories). Construct it with the localized labels, assign
+`Bounds` (the tab strip rect) each frame from your layout, then `Update(pointer)` / `Draw(batch, white)`:
+
+```csharp
+var tabs = new TabBar(new[] { (LocalizedText)Str.TabGoals, Str.TabTree }, font);
+// per frame, after laying out the panel:
+tabs.Bounds = new Rect(panel.X, panel.Y, panel.Width, 32f);
+tabs.Update(pointer);                    // reserves Bounds on the pointer (click-through gate)
+if (tabs.ChangedThisFrame) SwapBody(tabs.ActiveIndex);   // react only on a real change
+tabs.Draw(batch, white);                 // active tab: GuiStyle.Active; others: GuiStyle.Secondary
+```
+
+The tabs are evenly split across `Bounds` (`TabRect(i)` is the pure per-tab layout, headless-testable); exactly
+one is active. A valid press-origin tap on a non-active tab makes it active, sets `ChangedThisFrame` for that one
+frame, and makes `Update` return true; a tap on the already-active tab or outside the bar changes nothing.
+`ActiveIndex` is settable to restore or persist the selection without raising the change signal. Hover/press
+visuals match `Button` (cached in `Update`, drawn from the cache). Override `ActiveStyle` / `InactiveStyle` to
+re-theme, and `Opacity` (0..1) fades the whole bar with a host transition. Labels are `LocalizedText`, so use a
+`StringId` for player-facing copy (`LocalizedText.Raw(...)` only for debug/non-localizable tokens).
+
 ---
 
 ## Render2D (`KhaozEngine.Render2D`)

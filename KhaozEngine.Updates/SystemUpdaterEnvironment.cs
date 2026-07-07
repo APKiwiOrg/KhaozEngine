@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Security.Principal;
 using System.Threading;
 
 #nullable enable
@@ -257,6 +258,20 @@ public sealed class SystemUpdaterEnvironment : IUpdaterEnvironment
 
     public bool CanWriteToDirectory(string path)
     {
+        // On Windows a create-a-new-file probe is a false positive for a per-machine install under a
+        // protected root: a fresh file at the install root can be created even when the operations the
+        // apply actually performs - overwriting the existing installed binaries, clearing an admin-owned
+        // .ke-update-rollback dir - fail with ERROR_ACCESS_DENIED. That false positive is exactly what
+        // let a Program Files apply skip elevation and then die on the first real write. So report a
+        // protected root as not-writable whenever we are not already elevated: the applier then relaunches
+        // elevated (which can overwrite the install) instead of applying non-elevated and rolling back.
+        if (OperatingSystem.IsWindows() && IsUnderProtectedRoot(path, WindowsProtectedRoots()) && !IsProcessElevated())
+        {
+            return false;
+        }
+
+        // Off a protected root (a per-user install), or already elevated, the create/delete probe is the
+        // real signal: a genuinely read-only location still reports not-writable and forces the same path.
         try
         {
             Directory.CreateDirectory(path);
@@ -271,6 +286,86 @@ public sealed class SystemUpdaterEnvironment : IUpdaterEnvironment
         }
         catch (IOException)
         {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// True when <paramref name="installDir"/> is one of, or nested under, any of <paramref name="protectedRoots"/>.
+    /// Pure and OS-independent (separator- and case-insensitive, so Windows Program Files / Windows paths match
+    /// regardless of slash direction or casing), so the elevation decision is unit-testable off Windows. Empty
+    /// roots are skipped, and a prefix that is not a real path boundary (e.g. <c>C:\Program FilesX</c> against
+    /// <c>C:\Program Files</c>) does not match.
+    /// </summary>
+    public static bool IsUnderProtectedRoot(string installDir, IEnumerable<string> protectedRoots)
+    {
+        if (string.IsNullOrWhiteSpace(installDir))
+        {
+            return false;
+        }
+        string full = NormalizePath(installDir);
+        foreach (string root in protectedRoots)
+        {
+            if (string.IsNullOrWhiteSpace(root))
+            {
+                continue;
+            }
+            string r = NormalizePath(root);
+            if (r.Length == 0)
+            {
+                continue;
+            }
+            if (full.Equals(r, StringComparison.OrdinalIgnoreCase)
+                || full.StartsWith(r + "/", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Canonicalize for the protected-root compare: unify separators to '/' and drop any trailing separator so
+    // "C:\Program Files\" and "C:/Program Files" compare equal. No GetFullPath (it is OS-relative and would
+    // mangle Windows-style paths when the tests run on macOS/Linux); the inputs are already absolute.
+    private static string NormalizePath(string path) => path.Replace('\\', '/').TrimEnd('/');
+
+    // The protected install roots on this machine: both Program Files hives, the native-64 hive (for a 32-bit
+    // updater), and the Windows dir. Read from the environment so a relocated %ProgramFiles% is honored. Empty
+    // entries are dropped by IsUnderProtectedRoot.
+    private static IReadOnlyList<string> WindowsProtectedRoots()
+    {
+        var roots = new List<string>(4);
+        void Add(string? value)
+        {
+            if (!string.IsNullOrEmpty(value))
+            {
+                roots.Add(value);
+            }
+        }
+        Add(Environment.GetEnvironmentVariable("ProgramFiles"));
+        Add(Environment.GetEnvironmentVariable("ProgramFiles(x86)"));
+        Add(Environment.GetEnvironmentVariable("ProgramW6432"));
+        Add(Environment.GetEnvironmentVariable("SystemRoot"));
+        return roots;
+    }
+
+    // True when the current Windows process is running with an Administrator token (already elevated), so a
+    // protected-root install can be written in place without a second UAC hop. Guarded by the IsWindows check
+    // at the only call site; the WindowsIdentity/WindowsPrincipal APIs are Windows-only.
+    private static bool IsProcessElevated()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return false;
+        }
+        try
+        {
+            using WindowsIdentity identity = WindowsIdentity.GetCurrent();
+            return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
+        }
+        catch (Exception)
+        {
+            // If the token cannot be read, assume not elevated so the applier prefers the elevation path.
             return false;
         }
     }

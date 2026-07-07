@@ -5,6 +5,12 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.18.3
+
+Fix: a `ScrollablePanel` with a full-surface `Scrim` no longer dismisses when a scroll-drag that began on the panel releases over the dimmed area above it. The scrim-dismiss check combined `IsTapIn(Scrim)` with a release-position guard, but a consumer's scrim can legitimately span the whole surface (including behind the panel, as Nullwake's does), so a press that started on the list satisfied `IsTapIn(Scrim)` too, and only the release position was tested against the panel. Dragging the list to scroll and releasing in the scrim above the panel wrongly closed it. A gesture whose press originated on the panel now never dismisses. Behaviour-only patch, no public API change.
+
+- **`ScrollablePanel`** (`KhaozEngine.Gui`) - the scrim-dismiss test now also requires the press origin to be outside `CurrentBounds`, not just the release position, so a scroll-drag on the list that strays up past the panel edge before release is not treated as a tap-outside. Genuine taps and drags that both begin and end in the scrim outside the panel still dismiss, unchanged. Two headless regression tests (`ScrollablePanelTests`): a panel-originated drag releasing in the scrim does not dismiss, and an off-panel drag still does.
+
 ## 10.18.2
 
 Depth-sorted transparency: alpha-blended 3D draws (colour and textured billboards, translucent overlay meshes) now sort back-to-front by view-space depth within each batch, so overlapping transparency composites correctly regardless of submission order. Rendering correctness fix, no public API change, patch bump. Existing goldens are unchanged on all three backends (no existing scene had order-dependent overlap), and a new golden pins the fix.

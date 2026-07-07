@@ -5,6 +5,14 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.16.0
+
+Pluggable OIDC / OAuth2 player identity: a new `KhaozEngine.Identity` package family so a game can sign a player in against a configurable provider and get a verified subject, via the exchange model (client obtains a provider credential, the server validates it and mints an engine session token, every downstream endpoint verifies that one token type). Additive (three new packages, no removals), so a minor bump; no GPU work. Reference consumer: Nullwake, which needs a verified account id to key its server-authoritative wallet.
+
+- **`KhaozEngine.Identity` (new, Foundation):** the transport-agnostic core. Seams `IIdentityProvider` (client sign-in to a `ProviderCredential`), `IIdentityValidator` (server: credential to a `VerifiedIdentity` with the verified subject), plus `ITokenCache` / `IBrowserLauncher` / `ILoopbackListener`. `SessionToken` is a stateless HMAC-SHA256 token (subject + optional display name + expiry, fixed-time verify, signed payload bound to its base64url wire fields). `IdentitySession` drives launch / sign-in state with an offline-grace window so a mandatory-sign-in game still plays offline on a cached session. `FileTokenCache` persists the session obfuscated at rest (integrity-checked; not OS-keychain, see SECURITY-BASELINE). Depends only on `Diagnostics` + `Serialization`.
+- **`KhaozEngine.Identity.Oidc` (new, opt-in):** a generic OIDC provider (authorization-code + PKCE via the system browser + a loopback redirect listener) and `OidcTokenValidator` (issuer / audience / lifetime / signature validated against the issuer's discovery doc + JWKS via `Microsoft.IdentityModel`). Works against any compliant issuer (Entra External ID, Google, and the like) by config. `KhaozEngine.Platform` gained a best-effort `Browser.LaunchBrowserAsync`.
+- **`KhaozEngine.Identity.Discord` (new, opt-in):** a Discord OAuth2 provider + `DiscordTokenValidator` (userinfo `/users/@me`), for the OAuth2-not-OIDC provider shape. The two backends are opt-in siblings, not bundled in any umbrella; `KhaozEngine.Identity` core is in the Foundation umbrella. Google / Apple / Microsoft presets and OS-keychain token storage are deferred.
+
 ## 10.15.0
 
 Game-agnostic objective / goal tracking: a new `KhaozEngine.Objectives` Foundation package so every game hooks one reusable framework for achievements / challenges / quests / dailies instead of building bespoke goal plumbing. Additive (one new package, no removals), so a minor bump; no GPU work. Reference consumer: Nullwake's Challenges system, which pins this to build its point tree on top.

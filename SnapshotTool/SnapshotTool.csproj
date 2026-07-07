@@ -13,5 +13,8 @@
     <!-- A 2D+3D snapshot tool references the 2D harness plus its 3D arm; Render2D/Render3D flow transitively. -->
     <ProjectReference Include="../KhaozEngine.Snapshot/KhaozEngine.Snapshot.csproj" />
     <ProjectReference Include="../KhaozEngine.Snapshot.Render3D/KhaozEngine.Snapshot.Render3D.csproj" />
+    <!-- diff/score subcommands decode PNGs (Render2D.ImageRgba) and grid-compare (Imaging.GoldenGrid) directly. -->
+    <ProjectReference Include="../KhaozEngine.Render2D/KhaozEngine.Render2D.csproj" />
+    <ProjectReference Include="../KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />
   </ItemGroup>
 </Project>

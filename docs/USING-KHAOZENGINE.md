@@ -2970,6 +2970,24 @@ it needs directly: `KhaozEngine.Snapshot` for 2D, plus `KhaozEngine.Snapshot.Ren
 lives in `SnapshotTool` (`dotnet run --project SnapshotTool -- /tmp/ke-snapshot-demo`), the canonical shape every
 game's `tools/SnapshotTool` mirrors (same `SnapshotHost.Main(args, Register)` entry point and `SnapshotTool` name).
 
+**Comparing renders from the command line: `SnapshotTool diff` / `score`.** Two GPU-free subcommands built on
+`GoldenGrid`, so an agent or dev can compare renders without touching xUnit. Both exit `0` within tolerance, `1`
+over tolerance, `2` on a usage or IO error (bad args, missing file, dimension mismatch), and print the worst diff,
+the offender count, and the top 8 cells in the same style as a golden-test failure. Any other first argument is the
+original render form, unchanged.
+
+```bash
+# Compare two rendered PNGs (default grid 32x18, tolerance 0.06); --out writes a per-cell heat map PNG.
+dotnet run --project SnapshotTool -- diff a.png b.png --tolerance 0.06 --grid 32x18 --out heat.png
+
+# Score a rendered PNG against a committed golden grid txt (dimensions read from its header).
+dotnet run --project SnapshotTool -- score render.png KhaozEngine.Tests/Gpu/goldens/scene3d.metal.txt
+```
+
+`diff` requires equal dimensions and downsamples both to the grid; `score` deserializes the golden, reads its
+`WxH` header, and downsamples the image to match. The command layer (`SnapshotTool.DiffCommands.Diff`/`Score`,
+argument-array to exit-code with an injectable log sink) is headless-testable without spawning the process.
+
 ---
 
 ## Multiplayer: transport seam + fixed-tick host (`KhaozEngine.Netcode` / `KhaozEngine.Simulation`)

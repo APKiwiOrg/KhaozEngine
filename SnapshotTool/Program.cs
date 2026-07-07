@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
@@ -8,15 +9,34 @@ namespace SnapshotTool;
 
 /// <summary>
 /// Canonical reference for the KhaozEngine snapshot harness (the shape every game's tools/SnapshotTool
-/// mirrors). The whole Program is register-the-shots:
+/// mirrors). The default form is register-the-shots:
 /// <see cref="SnapshotHost"/> resolves the output dir from <c>args[0]</c> (a temp default otherwise), runs
 /// each shot headless (no window), writes a PNG per shot, logs each path, and prints the final summary.
 /// Needs a GPU device (the underlying captures use Veldrid/Metal).
 /// Run: <c>dotnet run --project SnapshotTool -- /tmp/ke-snapshot-demo</c>
+/// <para>
+/// Two GPU-free subcommands sit in front of the default render form (see <see cref="DiffCommands"/>):
+/// <c>diff &lt;a.png&gt; &lt;b.png&gt;</c> compares two rendered PNGs and <c>score &lt;image.png&gt;
+/// &lt;golden.txt&gt;</c> compares a PNG against a committed golden grid. Both exit 0 within tolerance, 1 over,
+/// 2 on usage/IO error. Anything else is the original render form, unchanged.
+/// </para>
 /// </summary>
 static class Program
 {
-    static int Main(string[] args) => SnapshotHost.Main(args, Register);
+    static int Main(string[] args)
+    {
+        if (args.Length > 0)
+        {
+            switch (args[0])
+            {
+                case "diff":
+                    return DiffCommands.Diff(args[1..], Console.WriteLine);
+                case "score":
+                    return DiffCommands.Score(args[1..], Console.WriteLine);
+            }
+        }
+        return SnapshotHost.Main(args, Register);
+    }
 
     static void Register(SnapshotRunner runner)
     {

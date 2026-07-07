@@ -414,15 +414,6 @@ public static class UpdateApplier
             }
         }
 
-        // Marker survives an uncatchable interruption (power loss mid-copy); the next game launch
-        // detects it and warns. Derived from the manifest dest dir (the app data directory).
-        string? markerPath = MarkerPath(config);
-        if (markerPath is not null)
-        {
-            try { environment.WriteAllText(markerPath, "{}"); }
-            catch (Exception ex) { environment.Log($"Could not write progress marker {markerPath}: {ex.Message}"); }
-        }
-
         string rollbackDir = Path.Combine(config.InstallDir, RollbackDirName);
         try { environment.DeleteDirectory(rollbackDir); }
         catch (Exception ex) { environment.Log($"Cleanup: could not clear stale rollback dir {rollbackDir}: {ex.Message}"); }
@@ -436,17 +427,25 @@ public static class UpdateApplier
             if (!environment.FileExists(source))
             {
                 environment.Log($"Staged file missing, aborting before any changes: {relativePath}");
-                ClearMarker(environment, markerPath);
                 Relaunch(environment, ui, config);
                 return new ApplyResult { Outcome = ApplyOutcome.AbortedStagingIncomplete, ExitCode = 1 };
             }
             if (environment.IsReparsePoint(source))
             {
                 environment.Log($"Staged file is a reparse point, aborting: {relativePath}");
-                ClearMarker(environment, markerPath);
                 Relaunch(environment, ui, config);
                 return new ApplyResult { Outcome = ApplyOutcome.AbortedUnsafePath, ExitCode = 1 };
             }
+        }
+
+        // Marker survives an uncatchable interruption (power loss mid-swap). The next launch detects it and
+        // warns. Written only now, once every precondition is met (game gone, staging complete), so any
+        // earlier abort leaves nothing dangling. Derived from the manifest dest dir (the app data directory).
+        string? markerPath = MarkerPath(config);
+        if (markerPath is not null)
+        {
+            try { environment.WriteAllText(markerPath, "{}"); }
+            catch (Exception ex) { environment.Log($"Could not write progress marker {markerPath}: {ex.Message}"); }
         }
 
         var backedUp = new List<string>();

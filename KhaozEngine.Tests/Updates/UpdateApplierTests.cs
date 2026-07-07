@@ -81,6 +81,20 @@ public sealed class UpdateApplierTests
     }
 
     [Fact]
+    public void Apply_StagingIncomplete_LeavesNoMarker()
+    {
+        var env = new FakeUpdaterEnvironment();
+        env.Files[StagingPath("game.dll")] = "v2";
+        // missing.dll deliberately absent from staging
+        env.Files[InstallPath("Game")] = "exe";
+        string marker = Path.Combine(AppData, "apply-in-progress.json");
+
+        UpdateApplier.Apply(Config(new() { "game.dll", "missing.dll" }), env);
+
+        Assert.False(env.Files.ContainsKey(marker)); // never written: aborted before the mutation phase
+    }
+
+    [Fact]
     public void Apply_CopyFails_RollsBackOverwrittenFiles()
     {
         var env = new FakeUpdaterEnvironment();

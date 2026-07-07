@@ -14,7 +14,9 @@ namespace KhaozEngine.Render2D
     /// </summary>
     public sealed class SpriteBatch : IDisposable
     {
-        const string VertSrc = @"#version 450
+        // internal (not private) so the engine's device-free ShaderValidation tests can validate this 2D pair
+        // without a GraphicsDevice, via the existing InternalsVisibleTo into KhaozEngine.Tests. Not public.
+        internal const string VertSrc = @"#version 450
 layout(location=0) in vec2 ClipPos;
 layout(location=1) in vec2 Uv;
 layout(location=2) in vec4 Color;
@@ -31,7 +33,7 @@ void main() {
     vUv = Uv; vColor = Color; vLocal = Local; vShape = Shape; vMode = Mode;
 }";
 
-        const string FragSrc = @"#version 450
+        internal const string FragSrc = @"#version 450
 layout(set=0, binding=0) uniform texture2D Tex;
 layout(set=0, binding=1) uniform sampler Samp;
 layout(location=0) in vec2 vUv;

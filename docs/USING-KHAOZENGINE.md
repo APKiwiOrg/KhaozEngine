@@ -2757,6 +2757,26 @@ the `InputState` builder patterns.
 
 ---
 
+## Device-free shader validation (`KhaozEngine.Gpu.ShaderValidation`)
+
+A custom GLSL shader that has a syntax error or miscompiles on one backend normally only blows up at first run on
+a real device of that backend. `ShaderValidation.ValidatePair` catches it on the CPU, with no `GraphicsDevice`, so
+it runs in the fast GPU-free test lane on every push: it compiles a GLSL 450 vertex/fragment pair to SPIR-V and
+cross-compiles the pair to every backend target (HLSL, MSL, GLSL, ESSL). A compile failure throws
+`ShaderValidationException` naming the label and the failing stage/target.
+
+```csharp
+[Fact]
+public void MyShaderCompilesEverywhere()
+    => ShaderValidation.ValidatePair(MyShaders.WaterVert, MyShaders.WaterFrag, "Water");
+```
+
+This is exactly what the engine's own `ShaderSourceValidationTests` do for every embedded production shader.
+Validate your game's custom shaders the same way in a plain `[Fact]` (no `[GpuFact]`, no device) and a broken
+shader fails CI instead of surfacing only when a player on that backend loads the scene.
+
+---
+
 ## Headless snapshots / screenshots (`KhaozEngine.Snapshot`)
 
 For an art/UI screenshot tool, you only want to write the *scenes* - not the capture/encode/write/log boilerplate

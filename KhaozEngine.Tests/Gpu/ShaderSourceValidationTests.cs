@@ -1,0 +1,94 @@
+using KhaozEngine.Gpu;
+using KhaozEngine.Render2D;
+using KhaozEngine.Render3D.Internal;
+using Xunit;
+
+namespace KhaozEngine.Tests.Gpu
+{
+    /// <summary>
+    /// Device-free validation of every embedded production shader pair via <see cref="ShaderValidation"/>. These are
+    /// plain [Fact]s (NOT [GpuFact]), so they run in the fast GPU-free ci.yml loop on every push: a GLSL syntax error
+    /// or a backend cross-compile miscompile now fails the build instead of only surfacing at first run on a real
+    /// device of that backend. The pairs mirror how the renderers actually create pipelines from ShaderSources:
+    /// <list type="bullet">
+    /// <item>ModelVert+ModelFrag, SplatVert+SplatFrag (ModelRenderer)</item>
+    /// <item>LineVert+LineFrag (LineRenderer via OverlayRenderer)</item>
+    /// <item>BillboardVert+BillboardFrag (BillboardRenderer via OverlayRenderer)</item>
+    /// <item>BillboardVert+TexturedBillboardFrag (TexturedBillboardRenderer - reuses BillboardVert)</item>
+    /// <item>BeamVert+BeamFrag (BeamRenderer)</item>
+    /// <item>OverlayUnlitVert+OverlayUnlitFrag (OverlayMeshRenderer)</item>
+    /// <item>DecalVert+DecalFrag (GroundDecalRenderer)</item>
+    /// <item>FullscreenVert paired with each post fragment PaletteFrag/EdgeFrag/BlitFrag/FxaaFrag (PixelPostProcess)</item>
+    /// <item>SpriteBatch VertSrc+FragSrc (Render2D)</item>
+    /// </list>
+    /// </summary>
+    public sealed class ShaderSourceValidationTests
+    {
+        [Fact]
+        public void Model()
+            => ShaderValidation.ValidatePair(ShaderSources.ModelVert, ShaderSources.ModelFrag, "Model");
+
+        [Fact]
+        public void Splat()
+            => ShaderValidation.ValidatePair(ShaderSources.SplatVert, ShaderSources.SplatFrag, "Splat");
+
+        [Fact]
+        public void Line()
+            => ShaderValidation.ValidatePair(ShaderSources.LineVert, ShaderSources.LineFrag, "Line");
+
+        [Fact]
+        public void Billboard()
+            => ShaderValidation.ValidatePair(ShaderSources.BillboardVert, ShaderSources.BillboardFrag, "Billboard");
+
+        [Fact]
+        public void TexturedBillboard()
+            => ShaderValidation.ValidatePair(ShaderSources.BillboardVert, ShaderSources.TexturedBillboardFrag, "TexturedBillboard");
+
+        [Fact]
+        public void Beam()
+            => ShaderValidation.ValidatePair(ShaderSources.BeamVert, ShaderSources.BeamFrag, "Beam");
+
+        [Fact]
+        public void OverlayUnlit()
+            => ShaderValidation.ValidatePair(ShaderSources.OverlayUnlitVert, ShaderSources.OverlayUnlitFrag, "OverlayUnlit");
+
+        [Fact]
+        public void Decal()
+            => ShaderValidation.ValidatePair(ShaderSources.DecalVert, ShaderSources.DecalFrag, "Decal");
+
+        [Fact]
+        public void PostPalette()
+            => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.PaletteFrag, "PostPalette");
+
+        [Fact]
+        public void PostEdge()
+            => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.EdgeFrag, "PostEdge");
+
+        [Fact]
+        public void PostBlit()
+            => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.BlitFrag, "PostBlit");
+
+        [Fact]
+        public void PostFxaa()
+            => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.FxaaFrag, "PostFxaa");
+
+        [Fact]
+        public void Sprite2D()
+            => ShaderValidation.ValidatePair(SpriteBatch.VertSrc, SpriteBatch.FragSrc, "Sprite2D");
+
+        [Fact]
+        public void BrokenSourceThrows()
+        {
+            // A deliberate GLSL syntax error (undeclared identifier, missing type) must fail validation, proving the
+            // validator actually compiles the sources rather than waving them through.
+            const string brokenVert = @"#version 450
+void main() { gl_Position = notAThing * 2.0; }";
+            const string brokenFrag = @"#version 450
+layout(location=0) out vec4 oColor;
+void main() { oColor = vec4(1.0); }";
+
+            Assert.Throws<ShaderValidationException>(
+                () => ShaderValidation.ValidatePair(brokenVert, brokenFrag, "Broken"));
+        }
+    }
+}

@@ -30,6 +30,12 @@ What it owns today:
   reconfigures the main swapchain in place (no recreate, no leaked swapchain, size + depth preserved; on Metal it
   reaches `CAMetalLayer.displaySyncEnabled`). A no-op mirrored value on a headless device (Veldrid throws setting
   it with no main swapchain). `AppWindow.PresentMode` routes through it for runtime present-mode switching.
+- **`ShaderValidation`** - `ValidatePair(vertexGlsl, fragmentGlsl, label?)` compiles a GLSL 450 vertex/fragment
+  pair to SPIR-V and cross-compiles it to every backend target (HLSL, MSL, GLSL, ESSL) with NO `GraphicsDevice`,
+  so a shader syntax error or a backend miscompile is caught in a fast GPU-free test loop instead of at first run
+  on a real device of that backend. A compile failure throws `ShaderValidationException` naming the label and the
+  failing stage/target. The engine's own shader-source tests use this to validate every embedded production
+  shader; games can validate their custom shaders the same way in their own fast test suites.
 
 This is the ONLY package meant to reference Veldrid. The renderers still use Veldrid internally via the
 transitional `GpuDeviceContext.Device` accessor; wrapping the resource/command interface behind a full

@@ -4,7 +4,7 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **10.18.4** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **10.19.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan when it is scheduled.
 
@@ -67,10 +67,10 @@ global illumination, a deferred renderer, full PBR+IBL, occlusion culling, GPU-d
 
 Ordered gap list (2026-07-07 feature audit):
 
-1. Shadows: the single biggest visual gap for the semi-realistic bar (characters and props float with no
-   grounding). Plan: a `ShadowMode` quality tier - blob shadows (cheap grounding, low-end fallback) and a
-   key-light shadow map with PCF filtering. The MRT / depth infrastructure already exists, and the single-sourced
-   `LightingCommonGlsl` block (10.17.1) means the shadow term lands in one place for model + terrain.
+1. Shadow polish (the ShadowMode tier shipped in 10.19.0: blob + key-light PCF map, model and terrain both
+   receive, model-only casting): remaining follow-ups when a game pulls for them - terrain self-shadowing /
+   terrain-as-caster, cascaded shadow maps for larger view distances, per-game bias tuning beyond the
+   small-scene defaults, and a runtime-resizable shadow map (resolution is a construction-time knob today).
 2. Cross-pass transparent ordering (follow-up to the shipped within-batch sort, 10.18.2): alpha-blended draws
    now sort back-to-front within each batch, but the inter-pass order of the transparent renderers is still
    fixed by Scene3D. A unified cross-renderer transparent queue is the eventual answer if a game hits a

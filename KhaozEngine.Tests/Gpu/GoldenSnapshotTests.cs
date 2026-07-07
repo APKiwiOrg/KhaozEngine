@@ -233,6 +233,44 @@ namespace KhaozEngine.Tests.Gpu
             GoldenCompare.AssertOrUpdate("scene3d_texbillboard", rgba, W, H);
         }
 
+        // Rendering gap #2: overlapping alpha-blended billboards must composite back-to-front regardless of the
+        // order the host queued them. Three big translucent colour billboards straddle the screen centre at
+        // different view depths and are submitted FRONT-TO-BACK (near first) - the worst case for the old
+        // submission-order code, which would blend the near one under the far ones where they overlap. With the
+        // back-to-front sort the far billboard composites behind the mid, and the mid behind the near, so the
+        // central overlap reads as the near billboard's colour tinted by the ones behind it, not scrambled.
+        [GpuFact]
+        public void Golden3D_AlphaOverlap()
+        {
+            Vector3 fwd = default;
+            byte[] rgba = Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    scene.Post.Starfield = false;   // flat background so the composite reads cleanly
+                    scene.Post.BackgroundColor = new Color(0.06f, 0.07f, 0.10f, 1f);
+                    scene.Camera.Frame(Vector3.Zero, new Vector3(4.5f, 4.5f, 4.5f));
+                    fwd = scene.Camera.Forward;
+                },
+                drawFrame: scene =>
+                {
+                    // All three overlap around the screen centre (small lateral offsets) but sit at distinct depths
+                    // along the view axis. Queue NEAR first, FAR last: submission order is the reverse of the correct
+                    // back-to-front draw order, so a broken (unsorted) path composites them wrong.
+                    // NEAR: red, toward the eye (-fwd).
+                    scene.DrawBillboard(-fwd * 2.4f + new Vector3(0.3f, 0.2f, 0f), 1.7f,
+                        new Color(0.95f, 0.15f, 0.15f, 0.6f));
+                    // MID: green, at the centre.
+                    scene.DrawBillboard(new Vector3(-0.2f, -0.1f, 0f), 1.7f,
+                        new Color(0.15f, 0.9f, 0.2f, 0.6f));
+                    // FAR: blue, away from the eye (+fwd).
+                    scene.DrawBillboard(fwd * 2.4f + new Vector3(0.1f, 0.25f, 0f), 1.7f,
+                        new Color(0.2f, 0.35f, 0.95f, 0.6f));
+                },
+                frames: 2);
+
+            GoldenCompare.AssertOrUpdate("scene3d_alpha_overlap", rgba, W, H);
+        }
+
         [GpuFact]
         public void Golden3D_Beam_DepthInterleaved()
         {

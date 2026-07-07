@@ -56,11 +56,23 @@ namespace KhaozEngine.Render3D
         // Translucent unlit overlay-mesh draws (collision proxies etc.): queued in submission order, flushed into the
         // model FB after the beams and before the post chain (depth-interleaved). Cleared each Begin().
         readonly List<(MeshHandle Mesh, Matrix4x4 World)> _overlayMeshDraws = new();
+        // Alpha billboards are queued as per-billboard items (centre/size/colour), sorted back-to-front by view
+        // depth each frame (overlapping alpha must composite far-to-near), then expanded to the vertex stream.
+        // Additive billboards stay a flat vertex list: additive blend is order-independent, so they skip the sort.
+        readonly List<BillboardItem> _billboardAlphaItems = new();
         readonly List<BillboardRenderer.BillboardVertex> _billboardAlpha = new();
         readonly List<BillboardRenderer.BillboardVertex> _billboardAdditive = new();
+        // Reused per-frame sort buffers (centres + keys + resulting order) shared across the sorted alpha batches.
+        // Grown geometrically by TransparencySort; never LINQ/comparer-allocated in the hot path.
+        readonly List<Vector3> _sortCenters = new();
+        float[] _sortKeys = Array.Empty<float>();
+        int[] _sortOrder = Array.Empty<int>();
         // Textured depth-interleaved billboards: queued in submission order (NOT split by blend, so additive and
         // alpha quads stay correctly ordered against each other), coalesced into same-texture+blend runs at render.
         readonly List<TexturedBillboardItem> _texBillboardItems = new();
+        // The textured billboards reordered back-to-front by view depth (built each frame from _texBillboardItems),
+        // then coalesced into runs. Sorting here composites overlapping depth-interleaved quads far-to-near.
+        readonly List<TexturedBillboardItem> _texBillboardSorted = new();
         readonly List<TexturedBillboardRun> _texBillboardRuns = new();
         readonly List<BillboardRenderer.BillboardVertex> _texBillboardVerts = new();
         // Glowing beams (lasers/thrusters/tethers): queued in submission order, flushed as one additive draw
@@ -546,6 +558,7 @@ namespace KhaozEngine.Render3D
             _fillVerts.Clear();
             _decals.Clear();
             _overlayMeshDraws.Clear();
+            _billboardAlphaItems.Clear();
             _billboardAlpha.Clear();
             _billboardAdditive.Clear();
             _texBillboardItems.Clear();
@@ -736,8 +749,10 @@ namespace KhaozEngine.Render3D
         /// scene. Drawn after the meshes/beams and before the pixel post, so it flows through the post chain like the
         /// rest of the model pass. A reusable overlay primitive: the collision-shape overlay is the first consumer;
         /// nav / AoI / chunk-bounds layers reuse it. Presentation only; cleared in <see cref="Begin"/>.
-        /// Because depth-write is off, overlapping overlay meshes blend in submission order: there is no
-        /// per-fragment depth sorting between overlay draws.</summary>
+        /// Because depth-write is off, overlapping overlay meshes have no per-fragment depth ordering; the renderer
+        /// sorts the queued proxies back-to-front by their world-origin view depth before drawing, so overlapping
+        /// translucent proxies composite far-to-near regardless of submission order (a coarse per-draw sort, not
+        /// per-fragment: two proxies that interpenetrate at a shared depth can still blend by their origin order).</summary>
         public void DrawOverlayMesh(MeshHandle mesh, Matrix4x4 world) => _overlayMeshDraws.Add((mesh, world));
 
         /// <summary>Count of overlay-mesh draws queued this frame. Internal: lets tests assert <see cref="Begin"/>
@@ -752,7 +767,17 @@ namespace KhaozEngine.Render3D
         /// debug lines. The game loops its particle system's <c>Active</c> span and calls this per particle.</summary>
         public void DrawBillboard(Vector3 worldPos, float size, Color color, BillboardBlend blend = BillboardBlend.Alpha)
         {
-            // Camera basis is constant across a frame's billboards; compute it once (on the first call) and reuse.
+            // Alpha billboards defer to a back-to-front sort at render time (overlapping alpha must composite
+            // far-to-near), so only the centre/size/colour is queued now; the vertex stream is built after sorting.
+            if (blend == BillboardBlend.Alpha)
+            {
+                _billboardAlphaItems.Add(new BillboardItem { Center = worldPos, Size = size, Color = color });
+                return;
+            }
+
+            // Additive billboards (sparks, muzzle flashes) are order-independent, so they expand straight to the
+            // vertex stream in submission order and skip the sort. Camera basis is constant across a frame's
+            // billboards; compute it once (on the first call) and reuse.
             if (!_billboardBasisValid)
             {
                 BillboardGeometry.CameraBasis(ActiveCamera.Forward, out _billboardRight, out _billboardUp);
@@ -761,10 +786,8 @@ namespace KhaozEngine.Render3D
             Span<Vector3> pos = stackalloc Vector3[6];
             Span<Vector2> uv = stackalloc Vector2[6];
             BillboardGeometry.Triangles(worldPos, size, _billboardRight, _billboardUp, pos, uv);
-
-            var list = blend == BillboardBlend.Additive ? _billboardAdditive : _billboardAlpha;
             for (int i = 0; i < 6; i++)
-                list.Add(new BillboardRenderer.BillboardVertex(pos[i], uv[i], color));
+                _billboardAdditive.Add(new BillboardRenderer.BillboardVertex(pos[i], uv[i], color));
         }
 
         /// <summary>
@@ -778,9 +801,10 @@ namespace KhaozEngine.Render3D
         /// Unlike the colour-only <see cref="DrawBillboard(Vector3,float,Color,BillboardBlend)"/> (an overlay drawn
         /// after the post chain), textured billboards draw INTO the model pass with the depth test on (no depth
         /// write): a nearer mesh occludes the quad and the quad draws over a farther mesh, so meshes and sprites
-        /// interleave correctly. Depth write is off, so overlapping quads blend in SUBMISSION order - submit
-        /// back-to-front for correct transparency. An invalid/<c>default</c> <paramref name="texture"/> draws
-        /// nothing (no throw). Presentation only.
+        /// interleave correctly. Depth write is off, so overlapping quads have no per-fragment ordering; the renderer
+        /// sorts the queued quads back-to-front by view depth before drawing, so overlapping alpha quads composite
+        /// far-to-near regardless of the order you queue them. An invalid/<c>default</c> <paramref name="texture"/>
+        /// draws nothing (no throw). Presentation only.
         /// </remarks>
         public void DrawBillboard(TextureHandle texture, Vector3 worldPos, float size, Vector4 sourceUv, Color tint,
             BillboardBlend blend = BillboardBlend.Alpha)
@@ -1069,15 +1093,24 @@ namespace KhaozEngine.Render3D
             if (_overlayMeshDraws.Count > 0)
             {
                 cl.SetFramebuffer(_res.ModelFB);
-                _overlayMeshes.EnsureCapacity(_overlayMeshDraws.Count);
+                int on = _overlayMeshDraws.Count;
+                _overlayMeshes.EnsureCapacity(on);
                 _overlayMeshes.BeginFrame(GpuClip.Correct(ActiveCamera.ViewProjection, _gd.Capabilities));
-                for (int i = 0; i < _overlayMeshDraws.Count; i++)
+                // Sort the overlay proxies back-to-front by their world-origin view depth: they alpha-blend with
+                // depth-write off, so overlapping proxies must composite far-to-near (the pre-sort submission order
+                // blended wrong when a near proxy was queued before a far one behind it). Uses each draw's own UBO
+                // slot indexed by the sorted position k, so the slot assignment stays unique.
+                _sortCenters.Clear();
+                for (int i = 0; i < on; i++) _sortCenters.Add(_overlayMeshDraws[i].World.Translation);
+                TransparencySort.ComputeOrder(CollectionsMarshal.AsSpan(_sortCenters), on,
+                    ActiveCamera.Eye, ActiveCamera.Forward, ref _sortKeys, ref _sortOrder);
+                for (int k = 0; k < on; k++)
                 {
-                    var (handle, world) = _overlayMeshDraws[i];
+                    var (handle, world) = _overlayMeshDraws[_sortOrder[k]];
                     if (!_slots.IsValid(handle.Index, handle.Generation)) continue;   // stale handle: skip
                     var m = _meshes[handle.Index];
                     if (m is not { } mesh) continue;
-                    _overlayMeshes.Draw(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, i, world);
+                    _overlayMeshes.Draw(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, k, world);
                 }
             }
 
@@ -1111,21 +1144,60 @@ namespace KhaozEngine.Render3D
                 _lines.Draw(cl, ActiveCamera.ViewProjection, CollectionsMarshal.AsSpan(_lineVerts), target);
 
             // Billboards: after the line pass, additive first (glow) then alpha, same overlay framebuffer +
-            // ViewProjection. Each rebinds `target` (no clear) and uploads its own vertex span.
+            // ViewProjection. Each rebinds `target` (no clear) and uploads its own vertex span. Additive is
+            // order-independent (kept in submission order); the alpha stream is built back-to-front so overlapping
+            // translucent billboards composite far-to-near regardless of the order the host queued them.
             if (_billboardAdditive.Count > 0)
                 _billboards.Draw(cl, ActiveCamera.ViewProjection, CollectionsMarshal.AsSpan(_billboardAdditive), target, additive: true);
+            BuildSortedAlphaBillboards();
             if (_billboardAlpha.Count > 0)
                 _billboards.Draw(cl, ActiveCamera.ViewProjection, CollectionsMarshal.AsSpan(_billboardAlpha), target, additive: false);
         }
 
-        /// <summary>Coalesce the queued textured billboards into same-(texture,blend) runs (submission order
-        /// preserved), then draw each run into the model framebuffer. The model FB is still bound from the mesh
-        /// pass; the depth buffer holds the meshes' depth so the quads interleave. No-op when nothing is queued.</summary>
+        /// <summary>Expand the queued alpha billboards into <see cref="_billboardAlpha"/> in BACK-TO-FRONT order:
+        /// compute each item's view depth along the camera forward axis, sort the indices far-to-near, then build
+        /// the 6-vertex quad for each in that order. Reuses the frame's billboard camera basis and the shared sort
+        /// buffers, so no per-frame LINQ/comparer allocation. No-op when nothing is queued.</summary>
+        void BuildSortedAlphaBillboards()
+        {
+            _billboardAlpha.Clear();
+            int n = _billboardAlphaItems.Count;
+            if (n == 0) return;
+
+            if (!_billboardBasisValid)
+            {
+                BillboardGeometry.CameraBasis(ActiveCamera.Forward, out _billboardRight, out _billboardUp);
+                _billboardBasisValid = true;
+            }
+
+            _sortCenters.Clear();
+            for (int i = 0; i < n; i++) _sortCenters.Add(_billboardAlphaItems[i].Center);
+            TransparencySort.ComputeOrder(CollectionsMarshal.AsSpan(_sortCenters), n,
+                ActiveCamera.Eye, ActiveCamera.Forward, ref _sortKeys, ref _sortOrder);
+
+            Span<Vector3> pos = stackalloc Vector3[6];
+            Span<Vector2> uv = stackalloc Vector2[6];
+            for (int k = 0; k < n; k++)
+            {
+                var it = _billboardAlphaItems[_sortOrder[k]];
+                BillboardGeometry.Triangles(it.Center, it.Size, _billboardRight, _billboardUp, pos, uv);
+                for (int v = 0; v < 6; v++)
+                    _billboardAlpha.Add(new BillboardRenderer.BillboardVertex(pos[v], uv[v], it.Color));
+            }
+        }
+
+        /// <summary>Sort the queued textured billboards back-to-front by view depth, coalesce the sorted stream into
+        /// same-(texture,blend) runs, then draw each run into the model framebuffer. The model FB is still bound from
+        /// the mesh pass; the depth buffer holds the meshes' depth so the quads interleave. Sorting composites
+        /// overlapping alpha quads far-to-near; additive quads are order-independent, so mixing them into the same
+        /// depth order is harmless and keeps an additive quad behind an alpha one correctly under it. No-op when
+        /// nothing is queued.</summary>
         void DrawTexturedBillboards(IGpuCommandList cl)
         {
             if (_texBillboardItems.Count == 0) return;
 
-            CoalesceTexturedBillboards(_texBillboardItems, _texBillboardRuns);
+            SortTexturedBillboardsBackToFront();
+            CoalesceTexturedBillboards(_texBillboardSorted, _texBillboardRuns);
 
             // Camera basis is constant across the frame; compute once and reuse for every quad.
             BillboardGeometry.CameraBasis(ActiveCamera.Forward, out Vector3 right, out Vector3 up);
@@ -1138,7 +1210,7 @@ namespace KhaozEngine.Render3D
                 _texBillboardVerts.Clear();
                 for (int i = run.Start; i < run.Start + run.Count; i++)
                 {
-                    var it = _texBillboardItems[i];
+                    var it = _texBillboardSorted[i];
                     BillboardGeometry.Triangles(it.Center, it.Size, right, up, it.SourceUv, pos, uv);
                     for (int v = 0; v < 6; v++)
                         _texBillboardVerts.Add(new BillboardRenderer.BillboardVertex(pos[v], uv[v], it.Color));
@@ -1147,6 +1219,34 @@ namespace KhaozEngine.Render3D
                 _texBillboards.Draw(cl, CollectionsMarshal.AsSpan(_texBillboardVerts), _res.ModelFB, set,
                     run.Blend == BillboardBlend.Additive);
             }
+        }
+
+        /// <summary>Reorder <see cref="_texBillboardItems"/> into <see cref="_texBillboardSorted"/> back-to-front by
+        /// view depth (a stable sort, so equal-depth quads keep submission order). Reuses the shared sort buffers, so
+        /// no per-frame allocation. Called before coalescing so a run boundary falls on the sorted order.</summary>
+        void SortTexturedBillboardsBackToFront() =>
+            SortTexturedBillboardsBackToFront(_texBillboardItems, ActiveCamera.Eye, ActiveCamera.Forward,
+                _sortCenters, ref _sortKeys, ref _sortOrder, _texBillboardSorted);
+
+        /// <summary>
+        /// Pure (GPU-free) back-to-front reorder used by the textured-billboard pass: fill <paramref name="sorted"/>
+        /// with <paramref name="items"/> reordered farthest-first by the view depth of each item's <c>Center</c>
+        /// along the camera (<paramref name="eye"/>, <paramref name="forward"/>), stable for equal depths. The three
+        /// scratch/output buffers are caller-owned and reused (Cleared + refilled, geometric growth), so a
+        /// steady-state frame does not allocate. Headless-testable so the reorder-before-upload decision is proven
+        /// without a device.
+        /// </summary>
+        internal static void SortTexturedBillboardsBackToFront(IReadOnlyList<TexturedBillboardItem> items,
+            Vector3 eye, Vector3 forward, List<Vector3> centersScratch, ref float[] keyScratch, ref int[] order,
+            List<TexturedBillboardItem> sorted)
+        {
+            int n = items.Count;
+            centersScratch.Clear();
+            for (int i = 0; i < n; i++) centersScratch.Add(items[i].Center);
+            TransparencySort.ComputeOrder(CollectionsMarshal.AsSpan(centersScratch), n, eye, forward,
+                ref keyScratch, ref order);
+            sorted.Clear();
+            for (int k = 0; k < n; k++) sorted.Add(items[order[k]]);
         }
 
         /// <summary>Build each queued beam's camera-facing strip (via <see cref="BeamGeometry"/>) into one vertex
@@ -1289,6 +1389,16 @@ namespace KhaozEngine.Render3D
         internal static bool SameHandle(MeshHandle a, MeshHandle b) =>
             a.Index == b.Index && a.Generation == b.Generation;
 
+        /// <summary>One queued colour-only alpha billboard (world centre + half-size + RGBA tint). Stored in
+        /// submission order, then sorted back-to-front by view depth before the vertex stream is built. Additive
+        /// billboards are not stored here (they bypass the sort - see <see cref="_billboardAdditive"/>).</summary>
+        internal struct BillboardItem
+        {
+            public Vector3 Center;
+            public float Size;
+            public Vector4 Color;
+        }
+
         /// <summary>One queued textured billboard (resolved texture list index + blend + transform + source rect +
         /// tint). Stored in submission order; coalesced into runs at render time.</summary>
         internal struct TexturedBillboardItem
@@ -1328,11 +1438,11 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>
-        /// Coalesce <paramref name="items"/> (in submission order) into <paramref name="runs"/>: each run is a
-        /// maximal span of consecutive items sharing the same texture index AND blend. Submission order is
-        /// preserved (a texture/blend change starts a new run rather than merging non-adjacent items), so
-        /// alpha-blended quads keep the host's back-to-front ordering across textures. Pure + headless-testable;
-        /// <paramref name="runs"/> is Cleared and refilled.
+        /// Coalesce <paramref name="items"/> (already in draw order - the caller sorts them back-to-front first)
+        /// into <paramref name="runs"/>: each run is a maximal span of consecutive items sharing the same texture
+        /// index AND blend. Item order is preserved (a texture/blend change starts a new run rather than merging
+        /// non-adjacent items), so the back-to-front order the caller established survives coalescing. Pure +
+        /// headless-testable; <paramref name="runs"/> is Cleared and refilled.
         /// </summary>
         internal static void CoalesceTexturedBillboards(IReadOnlyList<TexturedBillboardItem> items, List<TexturedBillboardRun> runs)
         {

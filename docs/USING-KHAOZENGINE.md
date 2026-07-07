@@ -2939,6 +2939,29 @@ Console.WriteLine(path);
 - **PNG encoder**: `KhaozEngine.Imaging.PngWriter.Save(path, rgba, w, h)` / `.Encode(...)` is a dependency-free,
   BCL-only RGBA8 PNG writer (no ImageSharp). `KhaozEngine.Render2D.Png` is a back-compat shim that forwards to it.
 
+**Golden-grid regression: `KhaozEngine.Imaging.GoldenGrid`.** The reusable core behind the engine's golden-image
+tests (`GoldenCompare` in the test project delegates to it) and the `SnapshotTool diff`/`score` commands: BCL-only,
+no files/backends/xUnit, so a game can golden-test its own scenes the same way. A "grid" is a `float[]`, row-major,
+3 floats/cell (R,G,B in 0..1). Defaults `DefaultGridW` 32, `DefaultGridH` 18, `DefaultTolerance` 0.06 match the
+committed engine goldens, and `Serialize` is byte-identical to those committed `.txt` files.
+
+```csharp
+float[] got  = GoldenGrid.Downsample(capture, 480, 320);            // average RGB per cell (alpha ignored)
+float[] want = GoldenGrid.Deserialize(File.ReadAllText(goldenTxt)); // parse a committed golden grid
+GoldenGridComparison cmp = GoldenGrid.Compare(got, want);          // tolerance defaults to 0.06
+if (!cmp.Passed)                                                    // Offenders sorted worst-first
+    foreach (var o in cmp.Offenders) { /* o.Cell, o.Channel, o.Got, o.Want, o.Diff */ }
+File.WriteAllText(goldenTxt, GoldenGrid.Serialize(got));            // re-bake in the committed format
+byte[] heat = GoldenGrid.DiffHeatMap(got, want, 480, 320);         // per-cell heat map for evidence PNGs
+```
+
+- `Downsample(rgba, w, h, gridW=32, gridH=18)` -> `float[]`; `Compare(got, want, tolerance=0.06)` ->
+  `GoldenGridComparison` (`Passed`, `WorstDiff`, `Offenders` of `GoldenGridOffender`).
+- `Serialize(grid, gridW=32, gridH=18)` / `Deserialize(text)` - the `# KhaozEngine golden grid WxH ...` header plus
+  one `r g b` line per cell at four decimals.
+- `GridToImage(grid, w, h, ...)` paints a grid as flat blocks; `DiffHeatMap(got, want, w, h, ...)` paints black to
+  red at 2x tolerance with over-tolerance cells bordered (the evidence painters the test harness and diff tool use).
+
 **Packaging / which package to reference.** The 2D core (`KhaozEngine.Snapshot`) deliberately does **not** depend
 on Render3D, so a Game2D-only game (SpaceGame, Nullwake) can use `Shot2D` without dragging in the 3D renderer. The
 `Shot3D` method is an extension in **`KhaozEngine.Snapshot.Render3D`** (which adds the Render3D dependency). These

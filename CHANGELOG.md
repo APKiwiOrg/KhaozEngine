@@ -5,6 +5,13 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.17.1
+
+Single-sourced GLSL lighting: the key/fill/cel/point-light block hand-duplicated between the model and splat terrain fragment shaders is now one shared `computeLighting` GLSL function spliced into both at compile time, so lighting edits are single-place by construction instead of comment-enforced. Pure text-move refactor with no public API change and no behavior change, so a patch bump. Pixel-neutral: Metal goldens 24/24 unchanged, D3D11/Vulkan verified by the cross-platform matrix on push.
+
+- **`ShaderSources.LightingCommonGlsl` (internal):** the extracted lighting function, parameterized on the one intentional divergence between the two shaders. The model shader derives its specular exponent and strength from per-instance material params. The splat terrain shader derives them from blended layer roughness (`mix` between named `SPLAT_SPEC_EXP_SMOOTH`/`SPLAT_SPEC_EXP_ROUGH` consts, values unchanged at 48/8) because blended terrain layers have no per-instance material. That divergence is now documented in-source as intentional, and the stale "KEEP THE LIGHTING IN SYNC" comments are gone.
+- **Composition tripwires (test infra):** headless tests assert the shared function is defined exactly once and invoked in each composed fragment, the splat exponent consts exist, and the model side still derives its exponent from per-instance params, guarding against a future re-inlined copy or silent unification.
+
 ## 10.17.0
 
 Shader and golden-test validation infrastructure: a device-free public shader validator (`KhaozEngine.Gpu.ShaderValidation`) plus golden-failure PNG evidence, UBO layout tripwire tests, and a `KE_GPU_TESTS=probe` mode, so shader breakage and C#/GLSL layout drift are caught on every push and a failed golden can be inspected as an image without re-running anything. Additive (one new public API), so a minor bump.

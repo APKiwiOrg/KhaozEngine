@@ -91,6 +91,16 @@ Windowing + input foundation for the custom MonoGame-free stack.
   own settings store (no `Windowing -> Persistence` edge). `ActionMapController` is the turn-key wrapper: declare ->
   load persisted -> evaluate per frame -> auto-save on rebind. Action ids are opaque IDENTIFIERS, never localized;
   games localize labels game-side. Fully headless-testable.
+- **Gamepad rumble** (`KhaozEngine.Windowing.Rumble`) - the OUTPUT seam mirroring the input rule: only `AppWindow`
+  touches the Silk vibration motors, games reach it off `AppWindow.Rumble` / `GameApp.Rumble` (an `IRumble`), and a
+  headless `NoopRumble` backs servers/tests. `SetRumble(player, low, high)` is a sustained per-motor level (heavy/low
+  + light/high, each `[0,1]`); `Pulse(player, intensity, duration, highScale, shape)` is a fire-and-forget envelope
+  (`RumbleDecay` = `Constant`/`Linear`/`EaseOut`) that the frame loop ticks to decay + auto-stop. Stacking policy:
+  effective level per motor = MAX of the sustained level and every live pulse (not sum, so it never clips past 1 and
+  a weak effect ending never drops a stronger one). The pure `RumbleMixer` (envelope + stacking) drives an
+  `IRumbleOutput` sink and is headless-tested against a recording fake. **Reality: the current GLFW input backend
+  exposes zero vibration motors (GLFW has no haptics API), so rumble is a graceful no-op today; the wiring is correct
+  and a future SDL-backed window lights up through the same seam. On-device feel needs a physical smoke test.**
 - `GameClock` (pause/timescale, plus `RealWallGapSeconds`/`LastRealTimestamp` - a UTC wall-clock gap per frame
   that survives OS sleep/suspend, which the frame `dt` does not, so a game can detect a resume), `DesignViewport`
   / `AdaptiveViewport` (letterbox/fill/stretch + responsive).

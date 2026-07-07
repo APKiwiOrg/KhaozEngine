@@ -73,6 +73,10 @@ namespace KhaozEngine.Windowing
         readonly HashSet<MouseButton> _mouseDown = new();
         readonly HashSet<MouseButton> _mousePressed = new();
         readonly SilkGamepadReader _gamepads = new();
+        // Rumble OUTPUT seam. The Silk sink is the ONLY place touching the vibration motors (mirror of the
+        // AppWindow-only input-static rule); the driver wraps it with the pure envelope mixer. Built lazily on first
+        // access so a window that never rumbles pays nothing. Ticked each frame in Run so pulses decay + auto-stop.
+        Rumble.IRumble? _rumble;
         Vector2 _lastMouse;
         float _wheelAccum;
         bool _focused = true;   // windows open focused; Silk's FocusChanged keeps this in sync.
@@ -98,6 +102,23 @@ namespace KhaozEngine.Windowing
         public int LogicalHeight => _window.Size.Y;
         /// <summary>Background colour cleared each frame.</summary>
         public Color ClearColor = new(0.10f, 0.12f, 0.16f, 1f);
+
+        /// <summary>
+        /// Gamepad rumble (vibration) OUTPUT seam. Call <see cref="Rumble.IRumble.SetRumble"/> for a sustained level
+        /// or <see cref="Rumble.IRumble.Pulse"/> for a fire-and-forget envelope; the frame loop ticks decay/auto-stop.
+        /// Only this window touches the Silk vibration motors - games reach them exclusively through this seam.
+        /// A backend/pad with no motors (the current GLFW backend has none - GLFW has no haptics API) returns a
+        /// graceful no-op, so a game can call rumble unconditionally. On-device feel needs a physical smoke test;
+        /// the seam itself is compile-verified and headless-tested.
+        /// </summary>
+        public Rumble.IRumble Rumble
+        {
+            get
+            {
+                _rumble ??= new Rumble.RumbleDriver(new SilkRumbleOutput(_input));
+                return _rumble;
+            }
+        }
 
         // Optional software frame-rate cap for Run(): 0 = uncapped. Rebuilt when FrameCapHz is set.
         FrameLimiter _frameLimiter;
@@ -576,6 +597,10 @@ namespace KhaozEngine.Windowing
                 _frame.Commands = _cl;
                 onFrame(_frame);
 
+                // Advance rumble pulse envelopes (decay + auto-stop) and push effective motor levels to the device.
+                // Only if a game actually touched Rumble this session, so a rumble-free window pays nothing.
+                _rumble?.Tick(fdt);
+
                 _cl.End();
                 _device.Submit(_cl);
                 _device.Present();
@@ -751,6 +776,7 @@ namespace KhaozEngine.Windowing
             // Unregister the GLFW clipboard provider before GLFW is torn down so a later Clipboard call can
             // never dereference this window's freed GLFW handle.
             try { Clipboard.ClearTextProvider(); } catch { }
+            try { _rumble?.StopAll(); } catch { } // leave no motor buzzing after teardown
             try { _input?.Dispose(); } catch { }
             try { _cl?.Dispose(); } catch { }
             try { _gpu?.Dispose(); } catch { }

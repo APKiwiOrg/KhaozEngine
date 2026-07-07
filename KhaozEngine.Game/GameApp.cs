@@ -115,6 +115,11 @@ namespace KhaozEngine.Game
         protected Pointer UiPointer => _uiPointer;
         /// <summary>This frame's raw input snapshot (for custom needs / 3D picking).</summary>
         protected InputState Input => _input;
+        /// <summary>Gamepad rumble OUTPUT seam (see <see cref="KhaozEngine.Windowing.Rumble.IRumble"/>): sustained
+        /// <see cref="KhaozEngine.Windowing.Rumble.IRumble.SetRumble"/> or fire-and-forget
+        /// <see cref="KhaozEngine.Windowing.Rumble.IRumble.Pulse"/>; the loop ticks decay/auto-stop. A backend/pad with
+        /// no motors (the current GLFW backend) is a graceful no-op, so call it unconditionally.</summary>
+        protected KhaozEngine.Windowing.Rumble.IRumble Rumble => _window.Rumble;
         /// <summary>The 2D drawing surface bound to the window.</summary>
         protected Render2DSurface Surface2D => _surface2D;
         /// <summary>The 2D sprite batch (<see cref="Surface2D"/>.Batch).</summary>

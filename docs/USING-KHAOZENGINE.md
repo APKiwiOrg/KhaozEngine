@@ -442,6 +442,51 @@ has NO `Windowing -> Persistence` dependency, so YOU hand the serialized string 
 `ActionMapController` save sink is where that wiring goes). Per-player maps read that player's gamepad
 (`input.Gamepad((int)PlayerIndex)`); keyboard/mouse are global (one keyboard).
 
+### Gamepad rumble (`KhaozEngine.Windowing.Rumble`)
+
+Rumble is the engine's one gamepad OUTPUT seam and it mirrors the input rule: input flows IN through the immutable
+`InputState` snapshot, rumble flows OUT through `IRumble`. ONLY `AppWindow` touches the Silk.NET vibration motors;
+games reach rumble the same way they reach input, off `GameApp.Rumble` (or `AppWindow.Rumble` on the raw loop). A
+headless `NoopRumble` backs servers and tests.
+
+Two layers, both per `PlayerIndex` and per motor (low-frequency = heavy/left motor, high-frequency = light/right,
+each in `[0,1]`):
+
+- `SetRumble(player, low, high)` - a SUSTAINED level you own; it holds until you change it (set both to 0 to stop).
+- `Pulse(player, intensity, duration, highFrequencyScale = 1, shape = Linear)` - a fire-and-forget envelope that
+  decays to zero over `duration` and auto-stops. `RumbleDecay` is `Constant` (square), `Linear` (default), or
+  `EaseOut` (a sharp hit that falls off fast early).
+
+The frame loop calls `Tick(dt)` for you (only if the game touched `Rumble` at all), so pulses decay and auto-stop
+without any per-frame code. **Stacking policy (documented + tested): the effective level per motor is the MAX of the
+sustained level and every live pulse** - MAX not sum, so overlapping effects never clip past 1 and a weaker effect
+ending never drops a stronger one still going. `StopAll()` / `Stop(player)` cut everything immediately; the window
+also stops all motors on dispose.
+
+```csharp
+protected override void OnUpdate(float dt)
+{
+    if (WasHit)                                  // one-shot hit feedback
+        Rumble.Pulse(PlayerIndex.One, 0.8f, TimeSpan.FromMilliseconds(250), shape: RumbleDecay.EaseOut);
+
+    Rumble.SetRumble(PlayerIndex.One, engineLoad, 0f); // sustained low-motor engine rumble
+    // no Tick() call needed: GameApp ticks rumble each frame.
+}
+```
+
+The pure envelope + stacking logic is `RumbleMixer` (device-free, headless-tested against a recording `IRumbleOutput`
+sink). `RumbleDriver` is the concrete `IRumble` = mixer + an `IRumbleOutput`; `AppWindow` supplies the Silk sink,
+tests/servers supply `NoopRumbleOutput`.
+
+**On-device caveat (be honest):** the seam is compile-verified and headless-tested, but whether a pulse is FELT is
+not verifiable in CI or on the dev machine. It needs a physical-controller smoke test. **The current GLFW input
+backend enumerates ZERO vibration motors (GLFW has no haptics API), so all rumble is a graceful no-op there today.**
+The wiring is correct: a future SDL-backed window would light up through this exact seam with no game-code change.
+Because a motor-less pad no-ops silently, a game can call rumble unconditionally.
+
+**Localization note:** rumble deals in `PlayerIndex` + numeric intensities only, no player-facing text, so nothing
+here localizes.
+
 ### Rect, viewport, clock
 
 - `Rect(X, Y, Width, Height)` is the engine's rectangle (`Right`/`Bottom`/`Contains(Vector2)`).

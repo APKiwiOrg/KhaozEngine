@@ -5,6 +5,14 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.20.0
+
+Frustum culling and a sky: the renderer stops drawing what the camera cannot see (a perf win for the MMO overworld, pixel-neutral by construction) and gains an opt-in gradient sky with a key-light-aligned sun disc (the cohesive-look pairing for 10.19.0's shadows). Additive public API, minor bump.
+
+- **Frustum culling (always on, pixel-neutral):** 6 frustum planes extracted from the engine's row-vector [0,1]-depth view-projection, p-vertex AABB tests for streamed terrain chunks, world-scale-aware bounding-sphere tests for instanced props/meshes (mesh bounds computed once at load). Conservative by construction: straddling volumes draw, CPU-skinned characters are exempt (animated poses can exceed bind-pose bounds), and the shadow depth pass is never camera-culled (an off-screen caster still throws a visible shadow, proven by a shadow-map readback test). Culled/drawn counters ride the existing frame diagnostics. A culling-on/off byte-parity GPU test plus all existing goldens byte-stable prove neutrality.
+- **Sky (`PixelPostProcessSettings.Sky`, default off):** a far-plane background pass (read-only `Equal` depth test, so it fills exactly the pixels no geometry touched and never disturbs the MRT normal/depth the outline pass reads). Vertical zenith-to-horizon gradient plus an optional sun disc + halo whose direction defaults to the key light, so sky and shadows agree out of the box. The sun tracks the world light direction through the view matrix as the camera moves. Screen-space formulation on purpose: it reads correctly under both orthographic and perspective cameras (a world-ray sky collapses under ortho). Zero cost when off, and existing scenes are byte-stable.
+- **New golden `scene3d_sky`** (all three backends): meshes with shadows on in front of the gradient + sun, with an in-test foreground-presence guard so a background-only regression can never silently re-bake the reference (that exact failure was caught in review: an inverted depth test painted sky over the whole scene and self-baked a pure-sky golden).
+
 ## 10.19.0
 
 Shadows: a `ShadowMode` quality tier (Off / Blob / ShadowMap) closing the biggest visual gap toward the "A"-tier semi-realistic target. Blob shadows ground characters cheaply on any device, and the key-light shadow map gives real PCF-filtered shadows on models and terrain. Off is the default and existing rendering is byte-stable (all pre-existing goldens unchanged on all three backends). Additive public API, minor bump.

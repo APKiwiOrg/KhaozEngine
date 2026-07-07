@@ -451,6 +451,7 @@ public static class UpdateApplier
         var backedUp = new List<string>();
         var copied = new List<string>();
         bool copyFailed = false;
+        bool committed = false;
 
         try
         {
@@ -581,6 +582,10 @@ public static class UpdateApplier
                 return new ApplyResult { Outcome = ApplyOutcome.RolledBack, ExitCode = 1 };
             }
 
+            // The new binaries are installed and verified now. Past this point the update stands: a later
+            // failure in the finish steps must never roll back or relaunch a second time.
+            committed = true;
+
             // The manifest is the "commit record" of the update: install it only now, once the new binaries
             // are verified. On a codesign-fail rollback above we never reach here, so the old binaries are
             // relaunched against the old manifest (consistent state). The staged source must still exist,
@@ -633,13 +638,21 @@ public static class UpdateApplier
         }
         catch (Exception ex)
         {
-            // Backstop: any unexpected throw from the mutation phase must not crash the shim and orphan the
-            // marker. Restore every file already overwritten, clear the marker, relaunch the old version,
-            // and report a rollback (fail-closed, like the code-signature path).
-            environment.Log($"Unexpected apply failure ({ex.Message}); rolling back.");
+            if (committed)
+            {
+                // Installed and verified already, so the update stands. A failure in the finish steps
+                // (cleanup, settle, relaunch) must not be reported as a rollback or trigger a second
+                // relaunch. Ensure the marker is cleared and report success.
+                environment.Log($"Post-commit finish step failed ({ex.Message}). Update installed, will start on next launch.");
+                ClearMarker(environment, markerPath);
+                return new ApplyResult { Outcome = ApplyOutcome.Succeeded, ExitCode = 1 };
+            }
+
+            // Pre-commit failure: restore everything overwritten, clear the marker, relaunch the old version.
+            environment.Log($"Unexpected apply failure ({ex.Message}). Rolling back.");
             RestoreBackups(environment, config.InstallDir, rollbackDir, backedUp);
             try { environment.DeleteDirectory(rollbackDir); }
-            catch (Exception cleanup) { environment.Log($"Cleanup: could not remove rollback dir after restore: {cleanup.Message}"); }
+            catch (Exception cleanup) { environment.Log($"Cleanup: could not remove rollback dir after restore ({cleanup.Message})."); }
             ClearMarker(environment, markerPath);
             Relaunch(environment, ui, config);
             return new ApplyResult { Outcome = ApplyOutcome.RolledBack, ExitCode = 1 };

@@ -164,6 +164,22 @@ public sealed class UpdateApplierTests
     }
 
     [Fact]
+    public void Apply_PostCommitFinishFailure_ReportsSuccessNotRollback()
+    {
+        var env = new FakeUpdaterEnvironment { ThrowOnSettleCheck = true };
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.Files[InstallPath("game.dll")] = "v1";
+        env.Files[InstallPath("Game")] = "exe";
+        string marker = Path.Combine(AppData, "apply-in-progress.json");
+
+        ApplyResult result = UpdateApplier.Apply(Config(new() { "game.dll" }), env); // must not throw
+
+        Assert.Equal(ApplyOutcome.Succeeded, result.Outcome); // committed: not a rollback
+        Assert.Equal("v2", env.Files[InstallPath("game.dll")]); // new file stays installed
+        Assert.False(env.Files.ContainsKey(marker)); // marker cleared
+    }
+
+    [Fact]
     public void Apply_InstallsManifestToDestPath()
     {
         var env = new FakeUpdaterEnvironment();

@@ -30,6 +30,10 @@ internal sealed class FakeUpdaterEnvironment : IUpdaterEnvironment
     // happened only after the exe became openable (i.e. after the fail window, not during it).
     public int OpenCallsAtRelaunch = -1;
 
+    // Forces the post-commit settle check (WaitForExeToSettle -> CanOpenExclusively) to throw, to prove
+    // the backstop treats a post-commit failure as success (not a false rollback).
+    public bool ThrowOnSettleCheck;
+
     // Destinations written through the atomic ReplaceFile path, in order. A test asserts the freshly
     // installed binaries (the exe/dlls) went through the atomic swap rather than a plain CopyFile.
     public readonly List<string> ReplacedDests = new();
@@ -127,6 +131,10 @@ internal sealed class FakeUpdaterEnvironment : IUpdaterEnvironment
 
     public bool CanOpenExclusively(string path)
     {
+        if (ThrowOnSettleCheck)
+        {
+            throw new InvalidOperationException("simulated post-commit settle failure");
+        }
         CanOpenExclusivelyCalls++;
         return CanOpenExclusivelyCalls > OpenExclusiveFailCount;
     }

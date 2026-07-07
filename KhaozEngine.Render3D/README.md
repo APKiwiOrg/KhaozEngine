@@ -40,6 +40,13 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   - Validate a menu choice with `Shadows.ResolveFor(caps)` and read `.Effective`/`.Degraded`/`.Reason` (same
   `ResolveFor`-clamps-a-request pattern as AA, never throws). With `Off` the blob queue is ignored and the shadow tail
   sits at strength 0 (never tapped), so existing scenes are byte-stable.
+- Frustum culling: `Scene3D.FrustumCulling` (on by default) skips any queued mesh instance whose world-space
+  bounding sphere is entirely outside the camera frustum, so off-screen terrain chunks and props cost nothing to
+  draw. Pixel-neutral by construction (only provably-offscreen geometry is dropped), so existing renders stay
+  byte-stable; set it `false` to force everything drawn. The shadow depth pass is never camera-culled (an off-screen
+  caster still writes the shadow map, so its shadow lands on-screen). Read the win from `Scene3D.DrawnInstances` /
+  `Scene3D.CulledInstances`. Mesh-local bounds (`MeshBounds`, computed once at `LoadMesh`) feed the pure plane math
+  `FrustumPlanes.Extract(camera.ViewProjection)` + `IntersectsAabb`/`IntersectsSphere` (headless, allocation-free).
 - `Scene3D.DrawOverlayMesh(MeshHandle mesh, Matrix4x4 world)` - queues a translucent, unlit,
   depth-tested-but-not-depth-writing, alpha-blended draw of an already-loaded mesh, colored by the mesh's
   per-vertex color. A general overlay primitive, not collision-specific: drawn after the meshes/beams and

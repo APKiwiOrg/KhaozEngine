@@ -962,6 +962,19 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
   ground planes (a grazing plane has genuinely high per-pixel depth change, so a low depth threshold lights it up).
   `Post.OutlineDistanceFade` (default off, perspective only) fades the outline out between `OutlineFadeStart` and
   `OutlineFadeEnd` view-space units so far terrain/foliage stops aliasing into mush.
+- **Frustum culling** (`Scene3D.FrustumCulling`, **on by default**): the visible mesh pass skips any queued instance
+  whose world-space bounding sphere lies entirely outside the camera frustum, so nothing off-screen is rasterized
+  (a win for the streamed overworld: distant terrain chunks and scattered props behind/beside the camera cost
+  nothing). It is **pixel-neutral by construction** - only geometry the camera cannot see is dropped - so existing
+  renders are byte-identical. Set `scene.FrustumCulling = false` to force everything drawn (for profiling or to
+  prove the parity). Mesh-local bounds (`MeshBounds`) are computed once at `LoadMesh` from the vertex positions, so
+  the cull never rescans vertices and allocates nothing per frame. Terrain chunks (which draw at identity with
+  world-space vertices) are culled with the tighter positive-vertex AABB test; props/models use the world-sphere
+  test (correct under arbitrary scale/rotation). **The shadow depth pass is never camera-culled**: an off-screen
+  caster still writes the light-space shadow map, so its shadow lands on-screen wherever the key light throws it.
+  Read the per-frame win from `Scene3D.DrawnInstances` / `Scene3D.CulledInstances` (last rendered frame; `CulledInstances`
+  is always `0` when culling is off). The plane math is public and pure: `FrustumPlanes.Extract(camera.ViewProjection)`
+  then `IntersectsAabb`/`IntersectsSphere` (use the CPU-authored `ViewProjection`, not a GPU-clip-corrected matrix).
 - `IsoCamera3D`: `Azimuth`/`Elevation`/`Target`/`OrthoSize`/`Zoom`, `Frame(target, azimuth, size)`,
   `ScreenToRay`, `ScreenToGround`, and the `View`/`Projection`/`ViewProjection` matrices.
 - `IsoCameraController`: input-agnostic gestures driving an `IsoCamera3D` (pure `System.Numerics`, headless-testable;

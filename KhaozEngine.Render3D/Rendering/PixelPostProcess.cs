@@ -29,6 +29,12 @@ namespace KhaozEngine.Render3D.Rendering
         internal const uint FxaaBufferBytes = 16;                         // 1 vec4 (rcpFrame)
 
         readonly IGpuDevice _gd;
+        // Each fullscreen pass is a (FullscreenVert, <pass frag>) shader pair. They are compiled through a
+        // (vert,frag)-keyed cache so an identical pair is cross-compiled and disposed exactly once. The 4 post
+        // passes have distinct frags, but the cache keeps the shared vertex source from being recompiled if any
+        // pair ever recurs, and gives a single owner list for correct one-time disposal. The public Gpu API
+        // (CreateShadersFromSpirv compiles a PAIR and returns an opaque IGpuShaderSet) is unchanged.
+        readonly Dictionary<(string vert, string frag), IGpuShaderSet> _shaderCache = new();
         readonly IGpuShaderSet _palFrag, _edgeFrag, _blitFrag, _fxaaFrag;
         readonly IGpuResourceLayout _palLayout, _edgeLayout, _blitLayout, _fxaaLayout;
         readonly IGpuPipeline _palPipe, _edgePipe, _blitPipe, _fxaaPipe;
@@ -52,7 +58,8 @@ namespace KhaozEngine.Render3D.Rendering
             _finalBuf = f.CreateBuffer(new GpuBufferDescription(FinalBufferBytes, GpuBufferUsage.UniformBuffer)); // 2 vec4
             _fxaaBuf = f.CreateBuffer(new GpuBufferDescription(FxaaBufferBytes, GpuBufferUsage.UniformBuffer)); // 1 vec4 (rcpFrame)
 
-            // Each pass is its own vert+frag pair (FullscreenVert is the shared vertex source).
+            // Each pass is its own vert+frag pair (FullscreenVert is the shared vertex source), compiled through
+            // the (vert,frag) cache so each unique pair compiles + disposes once.
             _palFrag = Pair(f, ShaderSources.PaletteFrag);
             _edgeFrag = Pair(f, ShaderSources.EdgeFrag);
             _blitFrag = Pair(f, ShaderSources.BlitFrag);
@@ -77,8 +84,18 @@ namespace KhaozEngine.Render3D.Rendering
         static GpuResourceLayoutElement S(string n) => new(n, GpuResourceKind.Sampler, GpuShaderStages.Fragment);
         static GpuResourceLayoutElement U(string n) => new(n, GpuResourceKind.UniformBuffer, GpuShaderStages.Fragment);
 
-        static IGpuShaderSet Pair(IGpuResourceFactory f, string frag) =>
-            f.CreateShadersFromSpirv(ShaderSources.FullscreenVert, frag);
+        // Compile (or reuse) the (FullscreenVert, frag) pair. Memoized on the source strings so a repeated pair is
+        // cross-compiled once and, via _shaderCache, disposed once. The shared FullscreenVert source is the vert of
+        // every pass, so this is where "compile the shared fullscreen VS once per unique pair" lives without
+        // reaching into the opaque IGpuShaderSet or changing the public Gpu API.
+        IGpuShaderSet Pair(IGpuResourceFactory f, string frag)
+        {
+            var key = (ShaderSources.FullscreenVert, frag);
+            if (_shaderCache.TryGetValue(key, out var cached)) return cached;
+            var set = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert, frag);
+            _shaderCache[key] = set;
+            return set;
+        }
 
         IGpuPipeline FullscreenPipeline(IGpuResourceFactory f, IGpuShaderSet shaders, IGpuResourceLayout layout, GpuOutputDescription outputs) =>
             f.CreateGraphicsPipeline(new GpuPipelineDescription
@@ -248,10 +265,10 @@ namespace KhaozEngine.Render3D.Rendering
             DisposeSets();
             _palPipe.Dispose(); _edgePipe.Dispose(); _blitPipe.Dispose(); _fxaaPipe.Dispose();
             _palLayout.Dispose(); _edgeLayout.Dispose(); _blitLayout.Dispose(); _fxaaLayout.Dispose();
-            _palFrag.Dispose();
-            _edgeFrag.Dispose();
-            _blitFrag.Dispose();
-            _fxaaFrag.Dispose();
+            // Dispose each UNIQUE compiled shader set once (the cache is the single owner; _palFrag/_edgeFrag/... are
+            // aliases into it, so disposing them again would double-dispose a shared set).
+            foreach (var set in _shaderCache.Values) set.Dispose();
+            _shaderCache.Clear();
             _palBuf.Dispose(); _edgeBuf.Dispose(); _finalBuf.Dispose(); _fxaaBuf.Dispose();
         }
     }

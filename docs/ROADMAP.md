@@ -62,6 +62,13 @@ good, not just read as shapes.
   infrastructure already exists.
 - Depth-sorted transparency (3D): transparent meshes and billboards currently render unsorted, so overlapping
   alpha is draw-order dependent. Sort back-to-front (or add order-independent transparency) for correct blending.
+- Material / custom-shader seam (deliberately deferred, decision 2026-07-07): the Render3D shader set stays
+  closed (`ShaderSources` internal, renderers internal sealed) until a game concretely needs a custom surface
+  shader. Trigger: the first game requirement that cannot be met by material params on the existing shaders.
+  Design space to weigh then: fragment-snippet injection vs whole-pipeline registration vs a material graph.
+  Groundwork already shipped: the composed `LightingCommonGlsl` block (10.17.1) and the public
+  `KhaozEngine.Gpu.ShaderValidation` (10.17.0) mean a future seam gets single-sourced lighting and device-free
+  validation for consumer-authored shaders for free.
 
 ## Cross-platform reach
 

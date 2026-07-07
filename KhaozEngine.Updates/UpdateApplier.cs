@@ -756,9 +756,9 @@ public static class UpdateApplier
             catch (UnauthorizedAccessException ex)
             {
                 // A locked running .exe/.dll and a denied delete-child both surface here as
-                // ERROR_ACCESS_DENIED. Treat it like a sharing violation - a transient lock releases across
-                // the retry budget; a permanent denial exhausts the loop and returns false to the caller's
-                // rollback path, instead of crashing the shim unhandled.
+                // ERROR_ACCESS_DENIED. Treat it like a sharing violation. A transient lock releases across
+                // the retry budget. A permanent denial exhausts the loop and returns false to the caller's
+                // rollback path instead of crashing the shim unhandled.
                 LogRetry(environment, attempt, relativePath, ex);
             }
         }

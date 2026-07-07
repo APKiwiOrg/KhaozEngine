@@ -5,13 +5,21 @@ authorization-code + PKCE flow, using the system browser and a local loopback re
 
 ## Overview
 
-This package supplies the platform-specific pieces `KhaozEngine.Identity` leaves as seams:
-
+- **OidcClientProvider** - `IIdentityProvider` implementation that drives the authorization-code + PKCE
+  (RFC 7636) flow against any standards-compliant OIDC authority: discovers the authorize/token endpoints
+  from the authority's well-known document, launches the system browser, and exchanges the returned code
+  (with the PKCE verifier and a checked `state`) for an id_token. `CredentialToken` is the OIDC `id_token`.
+- **OidcTokenValidator** - `IIdentityValidator` implementation that validates an id_token against the
+  issuer's discovery document + JWKS (via `Microsoft.IdentityModel.Protocols.OpenIdConnect` /
+  `JsonWebTokens`), checks issuer/audience/lifetime/signature, and maps the `sub` claim (+ `name` or
+  `preferred_username`) to a `VerifiedIdentity`.
 - **SystemBrowserLauncher** - `IBrowserLauncher` implementation that opens the sign-in URL in the OS
   default browser via `KhaozEngine.Platform.Browser`.
 - **HttpLoopbackListener** - `ILoopbackListener` implementation that binds a short-lived
   `HttpListener` on `http://127.0.0.1:<port>/`, captures the provider's redirect, and returns the
   parsed query string.
+- **OidcProviderOptions** - authority, client id, scopes (default `openid profile email`), loopback port,
+  and HTTP timeout.
 
 It is opt-in and not part of any umbrella package: reference it directly when a game wants generic
 OIDC sign-in (Auth0, Okta, Azure AD, or any standards-compliant OIDC provider). Discord and other
@@ -23,16 +31,21 @@ provider-specific integrations are separate sibling packages.
 using KhaozEngine.Identity;
 using KhaozEngine.Identity.Oidc;
 
+OidcProviderOptions options = new() { Authority = "https://your-tenant.example.com", ClientId = "your-client-id" };
 IBrowserLauncher launcher = new SystemBrowserLauncher();
-using ILoopbackListener loopback = new HttpLoopbackListener(port: 0); // 0 = ephemeral port
+OidcClientProvider provider = new(options, launcher, port => new HttpLoopbackListener(port));
 
-bool opened = await launcher.LaunchAsync(authorizationUri);
-LoopbackResult redirect = await loopback.WaitForRedirectAsync(cancellationToken);
-// redirect.Query["code"], redirect.Query["state"], etc.
+ProviderCredential credential = await provider.SignInAsync();
+// credential.CredentialToken is the OIDC id_token; send it to the server for verification.
+
+OidcTokenValidator validator = new(options);
+VerifiedIdentity? identity = await validator.ValidateAsync(credential.CredentialToken);
 ```
 
-The OIDC provider and JWKS-backed JWT validator that drive the authorization-code + PKCE exchange
-land alongside these seams as this package matures.
+See [KhaozEngine.Identity](../KhaozEngine.Identity/README.md) for the full client `IdentitySession` +
+server exchange walkthrough (this provider/validator pair slots into `GetProvider("oidc")` /
+`GetValidator("oidc")` there), and
+[USING-KHAOZENGINE.md "Identity / sign-in"](../docs/USING-KHAOZENGINE.md) for the end-to-end sequence.
 
 ## Dependencies
 

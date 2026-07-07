@@ -36,6 +36,11 @@ DiscordTokenValidator validator = new();
 VerifiedIdentity? identity = await validator.ValidateAsync(credential.CredentialToken);
 ```
 
+See [KhaozEngine.Identity](../KhaozEngine.Identity/README.md) for the full client `IdentitySession` +
+server exchange walkthrough (this provider/validator pair slots into `GetProvider("discord")` /
+`GetValidator("discord")` there), and
+[USING-KHAOZENGINE.md "Identity / sign-in"](../docs/USING-KHAOZENGINE.md) for the end-to-end sequence.
+
 ## Dependencies
 
 References `KhaozEngine.Identity` (core seam) and `KhaozEngine.Platform`. Deliberately does not

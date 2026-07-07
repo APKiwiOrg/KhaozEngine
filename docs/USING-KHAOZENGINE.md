@@ -2592,6 +2592,121 @@ a raw server-authorized credit for anything outside the periodic/purchase paths.
 
 ---
 
+## Identity / sign-in (`KhaozEngine.Identity`)
+
+`KhaozEngine.Identity` is the pluggable player-identity seam (in `Foundation`): client-side provider
+sign-in (`IIdentityProvider`), server-side credential verification (`IIdentityValidator`), a persisted
+sign-in session (`ITokenCache` + `FileTokenCache`), and a stateless HMAC session token (`SessionToken`).
+It is transport-agnostic - no HTTP, no ASP.NET - so the core package stays headless-testable. The provider
+backends (`KhaozEngine.Identity.Oidc` for generic OIDC, `KhaozEngine.Identity.Discord` for Discord OAuth2)
+and the HTTP exchange with a server are opt-in, wired by the consumer.
+
+### The exchange model
+
+A provider credential (an id_token, a Discord access_token, ...) is not itself a verified identity: only
+the server can call the provider's validator and mint a session token. The shape every consumer wires:
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Provider as OIDC/Discord provider
+    participant Server as Consumer's server
+
+    Client->>Provider: interactive sign-in (system browser + loopback)
+    Provider-->>Client: ProviderCredential (credential token)
+    Client->>Server: POST /auth/exchange { credentialToken }
+    Server->>Provider: IIdentityValidator.ValidateAsync(credentialToken)
+    Provider-->>Server: VerifiedIdentity (subject, display name, claims)
+    Server->>Server: SessionToken.Mint(subject, displayName, expiry, secret)
+    Server-->>Client: { sessionToken, expiresAtUtc, subject, displayName }
+    Client->>Client: IdentitySession.AttachSessionTokenAsync(...)
+```
+
+### Client: `IdentitySession`
+
+`IdentitySession` drives launch-state restore, interactive sign-in, and the exchange handshake:
+
+```csharp
+using KhaozEngine.Identity;
+using KhaozEngine.Identity.Oidc; // or KhaozEngine.Identity.Discord
+
+IIdentityProvider provider = new OidcClientProvider(oidcOptions, new SystemBrowserLauncher(),
+    port => new HttpLoopbackListener(port));
+AppDataPaths paths = new(publisher: "MyStudio", appName: "MyGame");
+ITokenCache cache = new FileTokenCache(paths.GetFilePath("session.dat"));
+IdentitySession session = new(provider, cache, new IdentitySessionOptions());
+
+// On launch: restore whatever is cached and compute the state machine's verdict.
+IdentityState state = await session.RestoreAsync(ct);
+// RequiresSignIn -> show the sign-in screen. OfflineGrace -> play offline, session token has expired
+// but the last successful sign-in is still within IdentitySessionOptions.OfflineGraceWindow.
+// SignedIn -> a valid session token is held; go straight to gameplay.
+
+if (state.Status == IdentityStatus.RequiresSignIn)
+{
+    state = await session.SignInAsync(ct); // opens the browser, captures the loopback redirect
+    // state.Credential is set but state.Subject is still null: the exchange below establishes it.
+    ProviderCredential credential = state.Credential!.Value;
+
+    // POST credential.CredentialToken to the consumer's own /auth/exchange endpoint (below),
+    // then complete sign-in with the server's verified subject + minted session token.
+    ExchangeResponse exchange = await PostToAuthExchangeAsync(credential.CredentialToken, ct);
+    state = await session.AttachSessionTokenAsync(
+        exchange.Subject, exchange.DisplayName, exchange.SessionToken, exchange.ExpiresAtUtc, ct);
+}
+```
+
+### Server: validate + mint
+
+The consumer owns the `/auth/exchange` HTTP endpoint (no ASP.NET dependency ships in `KhaozEngine.Identity`
+itself); it calls the matching `IIdentityValidator` and mints the session token:
+
+```csharp
+using KhaozEngine.Identity;
+using KhaozEngine.Identity.Oidc; // or KhaozEngine.Identity.Discord
+
+IIdentityValidator validator = new OidcTokenValidator(oidcOptions);
+VerifiedIdentity? verified = await validator.ValidateAsync(credentialTokenFromClient, ct);
+if (verified is not VerifiedIdentity identity)
+    return Results.Unauthorized();
+
+DateTimeOffset expiry = DateTimeOffset.UtcNow.AddHours(12);
+string sessionToken = SessionToken.Mint(identity.Subject, identity.DisplayName, expiry, sessionSecret);
+return Results.Ok(new { sessionToken, expiresAtUtc = expiry, identity.Subject, identity.DisplayName });
+```
+
+`sessionSecret` is the consumer's own signing key (see [SECURITY-BASELINE.md](SECURITY-BASELINE.md) for
+where it should live); every subsequent authenticated request calls `SessionToken.TryVerify` with the same
+secret. `SessionToken` is a fixed-time-compared HMAC-SHA256, so it never round-trips to the provider once
+minted.
+
+### Offline grace
+
+`IdentitySession.RestoreAsync` implements a small state machine off the cached session's
+`LastAuthenticatedUtc` and the session token's expiry: no cached session -> `RequiresSignIn`; an
+unexpired session token -> `SignedIn`; an expired token still within `IdentitySessionOptions
+.OfflineGraceWindow` (default 14 days) of the last successful authentication -> `OfflineGrace` (play
+continues offline); beyond the window -> `RequiresSignIn`. A game reads `IdentityState.Status` once at
+launch and again after any sign-in/exchange step; it never needs to poll the network to decide what to show.
+
+### Choosing a provider backend
+
+- **`KhaozEngine.Identity.Oidc`** - any standards-compliant OIDC provider (Auth0, Okta, Azure AD, ...).
+  `OidcClientProvider` drives the authorization-code + PKCE flow via the system browser and a local
+  loopback listener; `OidcTokenValidator` verifies the id_token against the issuer's discovery document +
+  JWKS. Add `Microsoft.IdentityModel.Protocols.OpenIdConnect` / `Microsoft.IdentityModel.JsonWebTokens`
+  weight only if you use this backend.
+- **`KhaozEngine.Identity.Discord`** - Discord's OAuth2 flow against its fixed authorize/token endpoints
+  (no discovery document). `DiscordClientProvider` is the `IIdentityProvider`; `DiscordTokenValidator`
+  verifies the access token by calling Discord's `/users/@me` userinfo endpoint. Opaque-token OAuth2, not
+  OIDC, so this backend has no `Microsoft.IdentityModel` dependency.
+
+Both backends are opt-in siblings (not in any umbrella); add the one your game's sign-in provider needs.
+See each package's README for the full API and [DEPENDENCY-SEAMS.md](DEPENDENCY-SEAMS.md) for the seam
+edges.
+
+---
+
 ## Versioned save migrations (`MigrationChain<T>`)
 
 `SettingsManager<T>` and `GameStorage` take an optional `MigrationChain<T>` that upgrades an old on-disk

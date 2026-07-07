@@ -14,6 +14,8 @@ Pulls in:
 - `KhaozEngine.Persistence` - tamper-deterrent saves, atomic writes, `SettingsManager<T>`, `GameStorage`.
 - `KhaozEngine.Diagnostics` - logging (sinks, categories, crash hooks) + `FrameStats` telemetry.
 - `KhaozEngine.Ecs` - struct-based archetype `World`/`Entity`/`ISystem` ECS with `ParallelForEach`.
+- `KhaozEngine.Identity` - pluggable player-identity seam: provider sign-in + server-side verified-subject
+  validation + HMAC session tokens, via the exchange model. OIDC and Discord providers are opt-in siblings.
 - `KhaozEngine.Collision` - deterministic 2D collision + broadphase + walkable surfaces.
 - `KhaozEngine.Physics` - the dependency-free 3D physics seam (`IPhysicsWorld`, shapes, queries).
 - `KhaozEngine.Locomotion` - render-free character movement (`CharacterMovement.Step`, `MoveTuning`).

@@ -9,6 +9,56 @@ namespace KhaozEngine.Render3D.Internal
     /// </summary>
     internal static class ShaderSources
     {
+        // ---- Shared lighting block, single-sourced into ModelFrag and SplatFrag (const-string concatenation is
+        //      compile-time, so both remain `public const string`). This is the ONE copy of the key+fill directional
+        //      lighting, cel banding, Blinn-Phong specular, and the up-to-16 dynamic point-light accumulation. Both
+        //      fragments splice this in verbatim and call computeLighting(), so a lighting edit is single-place by
+        //      construction (no more hand-kept "KEEP IN SYNC" comments). The two things that legitimately differ per
+        //      caller - the specular strength source and the specular exponent - are function PARAMETERS: ModelFrag
+        //      passes its per-instance vSpecParams-derived values, SplatFrag passes the terrain-roughness-derived
+        //      values (blended terrain layers carry no per-instance material). The function reads the frame UBO
+        //      globals (LightDir/LightColor/FillDir/FillColor/Params/CameraPos/PointPosRadius/PointColorIntensity),
+        //      which are declared identically in both fragments' `U` block, and takes the lit normal N, the world
+        //      position, and the two spec params; it returns the diffuse and specular accumulation via out params.
+        //      The caller keeps the final `lit = albedo*(Ambient+diffuse)+specColor+emissive` line because albedo /
+        //      ambient / emissive are derived differently per pass. The statement text and float op order here are
+        //      copied byte-for-byte from the old duplicated blocks (only vWorldPos was renamed to the `worldPos`
+        //      parameter), so behaviour is bit-identical on every backend.
+        public const string LightingCommonGlsl = @"
+void computeLighting(vec3 N, vec3 worldPos, float specStrength, float specExp, out vec3 diffuse, out vec3 specColor) {
+    float ndlKey  = max(dot(N, -normalize(LightDir.xyz)), 0.0);
+    float ndlFill = max(dot(N, -normalize(FillDir.xyz)), 0.0);
+    float bands = Params.x;
+    if (bands >= 1.0) { ndlKey = floor(ndlKey*bands+0.5)/bands; ndlFill = floor(ndlFill*bands+0.5)/bands; }
+    diffuse = LightColor.rgb*ndlKey + FillColor.rgb*ndlFill;
+    vec3 V = normalize(CameraPos.xyz - worldPos);
+    vec3 H = normalize(-normalize(LightDir.xyz) + V);
+    float spec = pow(max(dot(N,H),0.0), specExp) * specStrength * step(0.0001, ndlKey);
+    specColor = LightColor.rgb*spec;
+    // Dynamic point/effect lights (muzzle flashes, explosions, thrusters): accumulate diffuse (+ cheap
+    // specular) with a windowed distance attenuation, on top of the key+fill term and back-face gated by
+    // max(dot(N,L),0). Params.y is the host-capped active count; zero leaves diffuse/specColor untouched,
+    // so the lit term stays bit-identical to the key+fill+ambient path.
+    int npl = int(Params.y);
+    for (int i = 0; i < npl; i++) {
+        vec3 toL = PointPosRadius[i].xyz - worldPos;
+        float radius = PointPosRadius[i].w;
+        float dist = length(toL);
+        vec3 L = (dist > 1e-4) ? toL / dist : vec3(0.0);
+        float ndl = max(dot(N, L), 0.0);
+        if (bands >= 1.0) ndl = floor(ndl*bands+0.5)/bands;
+        // Smooth falloff: 1 at the light, easing to exactly 0 at its radius; scaled by intensity.
+        float f = clamp(1.0 - (dist*dist)/max(radius*radius, 1e-6), 0.0, 1.0);
+        float att = f * f * PointColorIntensity[i].w;
+        vec3 lc = PointColorIntensity[i].rgb;
+        diffuse += lc * (ndl * att);
+        vec3 Hp = normalize(L + V);
+        float sp = pow(max(dot(N,Hp),0.0), specExp) * specStrength * step(0.0001, ndl);
+        specColor += lc * (sp * att);
+    }
+}
+";
+
         // ---- Model pass. Per-frame UBO (binding 0, both stages) holds only frame uniforms; per-instance data
         //      (Model matrix, Tint, Emissive, SpecParams) arrives via an instanced vertex stream (buffer slot 1,
         //      instanceStepRate 1). The Model matrix is reconstructed from 4 instance vec4 rows: InstanceData.Model
@@ -91,6 +141,7 @@ layout(location=8) in vec4 vTangent;    // world-space tangent (xyz) + handednes
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
+" + LightingCommonGlsl + @"
 void main() {
     vec3 Ngeo = normalize(vNormalW);
     // Sample ALL material maps up front, unconditionally, in binding order (Albedo, NormalMap, RoughnessMap).
@@ -119,36 +170,9 @@ void main() {
     // collapses to today's per-instance spec exactly: strength*(1-0)=strength, mix(exp,8,0)=exp.
     float specStrength = vSpecParams.x * (1.0 - rough);
     float specExp = max(mix(vSpecParams.y, 8.0, rough), 1.0);
-    float ndlKey  = max(dot(N, -normalize(LightDir.xyz)), 0.0);
-    float ndlFill = max(dot(N, -normalize(FillDir.xyz)), 0.0);
-    float bands = Params.x;
-    if (bands >= 1.0) { ndlKey = floor(ndlKey*bands+0.5)/bands; ndlFill = floor(ndlFill*bands+0.5)/bands; }
-    vec3 diffuse = LightColor.rgb*ndlKey + FillColor.rgb*ndlFill;
-    vec3 V = normalize(CameraPos.xyz - vWorldPos);
-    vec3 H = normalize(-normalize(LightDir.xyz) + V);
-    float spec = pow(max(dot(N,H),0.0), specExp) * specStrength * step(0.0001, ndlKey);
-    vec3 specColor = LightColor.rgb*spec;
-    // Dynamic point/effect lights (muzzle flashes, explosions, thrusters): accumulate diffuse (+ cheap
-    // specular) with a windowed distance attenuation, on top of the key+fill term and back-face gated by
-    // max(dot(N,L),0). Params.y is the host-capped active count; zero leaves diffuse/specColor untouched,
-    // so the lit term stays bit-identical to the key+fill+ambient path.
-    int npl = int(Params.y);
-    for (int i = 0; i < npl; i++) {
-        vec3 toL = PointPosRadius[i].xyz - vWorldPos;
-        float radius = PointPosRadius[i].w;
-        float dist = length(toL);
-        vec3 L = (dist > 1e-4) ? toL / dist : vec3(0.0);
-        float ndl = max(dot(N, L), 0.0);
-        if (bands >= 1.0) ndl = floor(ndl*bands+0.5)/bands;
-        // Smooth falloff: 1 at the light, easing to exactly 0 at its radius; scaled by intensity.
-        float f = clamp(1.0 - (dist*dist)/max(radius*radius, 1e-6), 0.0, 1.0);
-        float att = f * f * PointColorIntensity[i].w;
-        vec3 lc = PointColorIntensity[i].rgb;
-        diffuse += lc * (ndl * att);
-        vec3 Hp = normalize(L + V);
-        float sp = pow(max(dot(N,Hp),0.0), specExp) * specStrength * step(0.0001, ndl);
-        specColor += lc * (sp * att);
-    }
+    // Key+fill+cel+point-light accumulation is the shared block (ShaderSources.LightingCommonGlsl), spliced in above.
+    vec3 diffuse; vec3 specColor;
+    computeLighting(N, vWorldPos, specStrength, specExp, diffuse, specColor);
     vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor + vEmissive.rgb;
     oColor = vec4(lit, 1.0);
     oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0); // GEOMETRIC normal for the edge pass (not the perturbed one)
@@ -220,9 +244,10 @@ void main() {
         //      globals) ride in the SAME UBO as the frame uniforms (binding 0, appended after the light arrays), so
         //      the pipeline binds ONE uniform buffer (see SplatVert). Blends the five layers by the per-vertex
         //      weights, tiles each in WORLD space with triplanar projection (no per-vertex tangent), and lights with
-        //      the SAME key+fill+ambient+point-light+cel model as ModelFrag. Writes the same 3 MRT targets (geometric
-        //      normal to attachment 1 for the edge pass). KEEP THE LIGHTING IN SYNC WITH ModelFrag. Sample the two
-        //      arrays in binding order (Albedo then Normal) - the Metal SPIRV-Cross first-sample-order constraint. ----
+        //      the SAME key+fill+ambient+point-light+cel model as ModelFrag - via the shared LightingCommonGlsl block
+        //      (single-sourced, not hand-duplicated), which both fragments splice in and call. Writes the same 3 MRT
+        //      targets (geometric normal to attachment 1 for the edge pass). Sample the two arrays in binding order
+        //      (Albedo then Normal) - the Metal SPIRV-Cross first-sample-order constraint. ----
         public const string SplatFrag = @"#version 450
 layout(set=0, binding=0) uniform U {
     mat4 ViewProj;
@@ -274,7 +299,7 @@ vec3 sampleNormal(int layer, vec2 uvx, vec2 uvy, vec2 uvz, vec3 bw, vec3 Ngeo,
     nz = vec3(nz.xy + Ngeo.xy, abs(nz.z) * Ngeo.z);
     return normalize(nx.zyx * bw.x + ny.xzy * bw.y + nz.xyz * bw.z);
 }
-
+" + LightingCommonGlsl + @"
 void main() {
     vec3 Ngeo = normalize(vNormalW);
 
@@ -323,34 +348,17 @@ void main() {
     albedo *= vTint.rgb;
     vec3 N = (dot(Nsum, Nsum) > 1e-8) ? normalize(Nsum) : Ngeo;
 
-    // Lighting: mirror ModelFrag. Base specular from Misc.w, modulated by the blended roughness.
+    // Lighting via the shared block (ShaderSources.LightingCommonGlsl, spliced in above). Base specular strength
+    // from Misc.w; the specular exponent is derived from the blended terrain roughness, NOT from per-instance
+    // material params. This is an INTENTIONAL divergence from ModelFrag: blended terrain layers have no
+    // per-instance material (vSpecParams), so the exponent eases from SPLAT_SPEC_EXP_SMOOTH (glossy) down to
+    // SPLAT_SPEC_EXP_ROUGH (broad) across roughness instead of reading a per-instance shininess.
+    const float SPLAT_SPEC_EXP_SMOOTH = 48.0; // exponent at roughness 0 (glossy)
+    const float SPLAT_SPEC_EXP_ROUGH  = 8.0;  // exponent at roughness 1 (broad highlight)
     float specStrength = Misc.w * (1.0 - rough);
-    float specExp = max(mix(48.0, 8.0, rough), 1.0);
-    float ndlKey  = max(dot(N, -normalize(LightDir.xyz)), 0.0);
-    float ndlFill = max(dot(N, -normalize(FillDir.xyz)), 0.0);
-    float bands = Params.x;
-    if (bands >= 1.0) { ndlKey = floor(ndlKey*bands+0.5)/bands; ndlFill = floor(ndlFill*bands+0.5)/bands; }
-    vec3 diffuse = LightColor.rgb*ndlKey + FillColor.rgb*ndlFill;
-    vec3 V = normalize(CameraPos.xyz - vWorldPos);
-    vec3 H = normalize(-normalize(LightDir.xyz) + V);
-    float spec = pow(max(dot(N,H),0.0), specExp) * specStrength * step(0.0001, ndlKey);
-    vec3 specColor = LightColor.rgb*spec;
-    int npl = int(Params.y);
-    for (int i = 0; i < npl; i++) {
-        vec3 toL = PointPosRadius[i].xyz - vWorldPos;
-        float radius = PointPosRadius[i].w;
-        float dist = length(toL);
-        vec3 L = (dist > 1e-4) ? toL / dist : vec3(0.0);
-        float ndl = max(dot(N, L), 0.0);
-        if (bands >= 1.0) ndl = floor(ndl*bands+0.5)/bands;
-        float f = clamp(1.0 - (dist*dist)/max(radius*radius, 1e-6), 0.0, 1.0);
-        float att = f * f * PointColorIntensity[i].w;
-        vec3 lc = PointColorIntensity[i].rgb;
-        diffuse += lc * (ndl * att);
-        vec3 Hp = normalize(L + V);
-        float sp = pow(max(dot(N,Hp),0.0), specExp) * specStrength * step(0.0001, ndl);
-        specColor += lc * (sp * att);
-    }
+    float specExp = max(mix(SPLAT_SPEC_EXP_SMOOTH, SPLAT_SPEC_EXP_ROUGH, rough), 1.0);
+    vec3 diffuse; vec3 specColor;
+    computeLighting(N, vWorldPos, specStrength, specExp, diffuse, specColor);
     vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor + vEmissive.rgb;
     oColor = vec4(lit, 1.0);
     oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0); // GEOMETRIC normal for the edge pass

@@ -49,6 +49,7 @@
     <ProjectReference Include="../KhaozEngine.Server.Admin/KhaozEngine.Server.Admin.csproj" />
     <ProjectReference Include="../KhaozEngine.Netcode/KhaozEngine.Netcode.csproj" />
     <ProjectReference Include="../KhaozEngine.Netcode.LiteNetLib/KhaozEngine.Netcode.LiteNetLib.csproj" />
+    <ProjectReference Include="../KhaozEngine.Objectives/KhaozEngine.Objectives.csproj" />
     <ProjectReference Include="../KhaozEngine.Particles/KhaozEngine.Particles.csproj" />
     <ProjectReference Include="../KhaozEngine.Physics/KhaozEngine.Physics.csproj" />
     <ProjectReference Include="../KhaozEngine.Physics.Bepu/KhaozEngine.Physics.Bepu.csproj" />

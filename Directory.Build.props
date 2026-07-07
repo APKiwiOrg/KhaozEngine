@@ -18,11 +18,11 @@
     <!-- Shared version for the engine (the WHOLE engine). Every packable package sets
          <Version>$(KhaozEngineVersion)</Version> in its csproj: the custom render/runtime stack (Gpu,
          Windowing, Render2D, Render3D, Gui, Audio, Particles, Game) plus the graduated MonoGame-free
-         foundation (Ecs/Serialization/Content/Diagnostics/App/Locomotion/Persistence/Platform/
+         foundation (Ecs/Serialization/Content/Diagnostics/App/Locomotion/Objectives/Persistence/Platform/
          Updates/Collision/Physics/Physics.Bepu/Netcode/Netcode.Abstractions/Netcode.LiteNetLib/WorldStore/WorldStore.Sqlite/
          WorldStore.SqlServer/NetWorld). Bump here to release them together; this is the version the
          doc-version guard checks. -->
-    <KhaozEngineVersion>10.14.0</KhaozEngineVersion>
+    <KhaozEngineVersion>10.15.0</KhaozEngineVersion>
     <Authors>APKiwi</Authors>
     <Company>Khaoz</Company>
     <PackageProjectUrl>https://github.com/APKiwi/KhaozEngine</PackageProjectUrl>

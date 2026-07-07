@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Objectives</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>Game-agnostic objective / goal tracking (in Foundation): signals -&gt; counters -&gt; declarative conditions -&gt; completion event. A game Reports/Observes named metric keys of its own choosing; the framework holds Persistent + Session counters per key, evaluates declarative AtLeast/Reached/AtMost conditions (AND-composed) indexed by key (no full scan), and fires an idempotent ObjectiveCompleted once per objective. Deterministic (pure counters + predicates, no RNG/wall-clock), presentation-free (localization by StringId), and persistence-agnostic (Capture/Restore a plain snapshot the game folds into its own save). Rewards/points/trees stay game-side via an opaque metadata payload echoed back on completion. No JSON, no external deps.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- App carries StringId/LocalizedText: an objective may reference a localized name/description
+         by key (presentation-free core), per the engine's localization founding principle. -->
+    <ProjectReference Include="../KhaozEngine.App/KhaozEngine.App.csproj" />
+  </ItemGroup>
+
+</Project>

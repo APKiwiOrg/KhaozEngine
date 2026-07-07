@@ -229,5 +229,35 @@ namespace KhaozEngine.Tests.Gui
             Tap(new Vector2(150, 200));          // inside the panel
             Assert.False(sp.ScrimDismissed);
         }
+
+        [Fact]
+        public void Scrim_dismiss_ignores_a_drag_that_began_on_the_panel()
+        {
+            var sp = Make();
+            sp.Scrim = new Rect(0, 0, 960, 540);   // full-surface scrim spanning behind the panel (Nullwake's setup)
+            var p = new Pointer();
+            // Press ON the list, scroll-drag up past the panel's top edge, release in the dimmed scrim above it.
+            // Press-origin is inside the panel, release is not: the gesture began on the panel so it must not dismiss.
+            p.Update(Frame(new Vector2(150, 200), false)); sp.Update(p, Frame(new Vector2(150, 200), false));
+            p.Update(Frame(new Vector2(150, 200), true));  sp.Update(p, Frame(new Vector2(150, 200), true));   // press inside the panel
+            p.Update(Frame(new Vector2(150, 50), true));   sp.Update(p, Frame(new Vector2(150, 50), true));    // drag up above the panel (still in the scrim)
+            p.Update(Frame(new Vector2(150, 50), false));  sp.Update(p, Frame(new Vector2(150, 50), false));   // release in the scrim above
+            Assert.False(sp.ScrimDismissed);
+        }
+
+        [Fact]
+        public void Scrim_dismiss_still_fires_for_a_drag_that_began_off_the_panel()
+        {
+            var sp = Make();
+            sp.Scrim = new Rect(0, 0, 960, 540);
+            var p = new Pointer();
+            // Same drag shape, but press-origin AND release are both in the scrim above the panel (never on it):
+            // the guard is about the press origin, not about movement, so a genuine off-panel gesture still dismisses.
+            p.Update(Frame(new Vector2(150, 40), false)); sp.Update(p, Frame(new Vector2(150, 40), false));
+            p.Update(Frame(new Vector2(150, 40), true));  sp.Update(p, Frame(new Vector2(150, 40), true));    // press above the panel
+            p.Update(Frame(new Vector2(150, 50), true));  sp.Update(p, Frame(new Vector2(150, 50), true));    // small drag, still off-panel
+            p.Update(Frame(new Vector2(150, 50), false)); sp.Update(p, Frame(new Vector2(150, 50), false));   // release in the scrim
+            Assert.True(sp.ScrimDismissed);
+        }
     }
 }

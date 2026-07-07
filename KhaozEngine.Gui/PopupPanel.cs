@@ -303,6 +303,9 @@ namespace KhaozEngine.Gui
             GuiDraw.FillStyled(batch, white, p, Style with { BorderThickness = 1f },
                 GuiDraw.WithOpacity(PanelColor, Opacity), GuiDraw.WithOpacity(PanelBorder, Opacity));
             GuiDraw.Fill(batch, white, new Rect(p.X, p.Y, p.Width, TitleBarHeight), GuiDraw.WithOpacity(TitleBarColor, Opacity));
+            // Re-stroke the panel border: the title-bar fill above spans the panel's full width from
+            // its top-left, painting over the top and upper-side border pixels laid down by FillStyled.
+            GuiDraw.Border(batch, white, p, 1f, GuiDraw.WithOpacity(PanelBorder, Opacity));
 
             if (TitleFont != null)
                 TextLayout.DrawAligned(batch, TitleFont, TitleContent.Resolve(), p.X, p.Width,

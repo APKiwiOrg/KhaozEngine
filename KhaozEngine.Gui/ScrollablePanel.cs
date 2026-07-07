@@ -74,7 +74,9 @@ namespace KhaozEngine.Gui
         public Vector4 ScrimColor = new(0f, 0f, 0f, 1f);
         /// <summary>Scrim opacity at full <see cref="TransitionAlpha"/>; the drawn alpha is <c>ScrimAlpha * TransitionAlpha</c>.</summary>
         public float ScrimAlpha = 0.4f;
-        /// <summary>True on the frame the scrim was tapped outside the panel (the caller should close the panel).</summary>
+        /// <summary>True on the frame a scrim gesture that both began and ended outside the panel dismissed it (the
+        /// caller should close the panel). A gesture whose press originated on the panel never dismisses, so a
+        /// scroll-drag on the list that releases over the scrim above the panel is not a dismiss.</summary>
         public bool ScrimDismissed { get; private set; }
 
         float? _resizeHeight;
@@ -130,7 +132,14 @@ namespace KhaozEngine.Gui
             if (Scrim.HasValue)
             {
                 pointer.BlockRegion(Scrim.Value);
-                if (pointer.IsTapIn(Scrim.Value) && !CurrentBounds.Contains(pointer.Position))
+                // A consumer's scrim can legitimately span the whole surface, including behind the panel, so
+                // IsTapIn(Scrim) alone is satisfied by a gesture that began ON the panel (a scroll-drag on the
+                // list that strays up past the panel edge before release). Guard on the press origin too: a
+                // gesture that started on the panel must never dismiss, only one that both began and ended
+                // outside it.
+                if (pointer.IsTapIn(Scrim.Value)
+                    && !CurrentBounds.Contains(pointer.PressOrigin)
+                    && !CurrentBounds.Contains(pointer.Position))
                     ScrimDismissed = true;
             }
 

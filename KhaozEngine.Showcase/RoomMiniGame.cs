@@ -21,7 +21,7 @@ namespace KhaozEngine.Showcase
     /// <para>Music: the sample generates a two-second looping arpeggio WAV at runtime (no shipped asset file) and
     /// plays it through <see cref="AudioSystem"/> as looped music. This room does the same, generating and
     /// loading the track in <see cref="OnEnter"/> (playback then auto-starts and loops the first time
-    /// <see cref="AudioSystem.Update"/> runs, same as the sample) and disposing the <see cref="AudioSystem"/> in
+    /// <see cref="AudioSystem.Update()"/> runs, same as the sample) and disposing the <see cref="AudioSystem"/> in
     /// <see cref="OnExit"/> so leaving the room silences it, exactly like <see cref="RoomInput"/> manages its own
     /// audio lifecycle.</para>
     /// <para>Key remap vs the sample: the sample used Escape to close the whole window. Here Escape returns to

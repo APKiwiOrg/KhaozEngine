@@ -2347,6 +2347,28 @@ one track via `PlayMode`, `CurrentTrack`/`TrackChanged`), SFX one-shots, and 3D 
 (`PlaySfx`/`PlaySfx3D`/`SetListener`, a 16-voice pool, per-channel volume). `LoadContent(directory)` +
 `Update()` per frame.
 
+**Music crossfade.** Switching tracks can fade the old one out and the new one in instead of a hard cut. Set
+`MusicCrossfadeDuration` (seconds, default `0` = hard cut, today's behavior) to make every track change
+(`PlayTrack`, `PlayRandomTrack`, end-of-track auto-advance) crossfade, or call `CrossfadeTo(name, duration)` /
+`CrossfadeTo(index, duration)` for a one-off fade of a specific length. To drive the fade you must pump the
+new `Update(float dt)` overload each frame (the old no-arg `Update()` still works and is exactly `Update(0f)`;
+with no fade in flight the two are identical). The crossfade is single-stream: the `IMusicBackend` seam models
+one active track (one source, one decoder), so the old track fades out over the first half of the duration, the
+stream switches, then the new track fades in over the second half. The fade factor **multiplies** the
+settings-derived `master * music` volume rather than replacing it, so changing `MusicVolume` mid-fade still
+takes effect. Retargeting mid-fade (a second `CrossfadeTo`/track change before the first completed) restarts
+the fade toward the newest track, which always wins. Duration `0` stays a synchronous hard cut identical to the
+pre-crossfade behavior.
+
+```csharp
+audio.MusicCrossfadeDuration = 1.5f;   // every track change now crossfades over 1.5s
+audio.PlayTrack("boss_theme");          // fades combat music out, boss theme in
+// or, one-off:
+audio.CrossfadeTo("victory", 0.8f);
+// each frame:
+audio.Update(dt);                       // dt in seconds; drives the fade (no-arg Update() = Update(0f))
+```
+
 `IsSfxLoaded(name)` reports whether a name resolved to a loaded buffer, and the `PlaySfx`/`PlaySfx3D`
 overloads taking an `IReadOnlyList<string>` of candidate keys play the first loaded one in priority order
 (returning whether any played). The engine stays convention-agnostic: the game builds the candidate list

@@ -129,13 +129,13 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Constant depth bias (in light-clip depth units) added when comparing a receiver's depth to the
         /// shadow map, to defeat self-shadow acne on lit surfaces. Too small = acne (surface shadows itself), too
-        /// large = peter-panning (the shadow detaches from the caster's contact). Default <c>0.0015</c>. See the
+        /// large = peter-panning (the shadow detaches from the caster's contact). Default <c>0.004</c>. See the
         /// bias-tuning note in docs/USING-KHAOZENGINE.md.</summary>
         public float ShadowConstantBias = 0.004f;
 
         /// <summary>Slope-scaled depth bias: extra bias proportional to the surface's grazing angle to the light
         /// (added on top of <see cref="ShadowConstantBias"/>), so steeply-lit polygons - which span many depth units
-        /// per texel - do not acne while flat-lit ones keep tight contact. Default <c>0.0035</c>.</summary>
+        /// per texel - do not acne while flat-lit ones keep tight contact. Default <c>0.006</c>.</summary>
         public float ShadowSlopeBias = 0.006f;
 
         /// <summary>Shadow darkness (0 = shadows invisible, 1 = the key light's diffuse+spec fully removed in

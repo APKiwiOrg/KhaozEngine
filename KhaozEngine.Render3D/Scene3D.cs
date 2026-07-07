@@ -1255,7 +1255,9 @@ namespace KhaozEngine.Render3D
             // Blob shadows: when the resolved tier is Blob, turn each queued ShadowBlob into a dark Circle
             // GroundDecal and draw it FIRST (under the gameplay decals), so a caster is grounded by the same
             // depth-reconstructed projection the decals use. Off => the queue is ignored and nothing changes
-            // (existing goldens byte-stable). ShadowMap degrades to Blob here (ResolveFor) until it is wired.
+            // (existing goldens byte-stable). ShadowMap resolves to itself on capable devices (the map pass runs
+            // instead and this branch stays idle); ResolveFor only lands here when the device lacks shadow-map
+            // support and ShadowMap degrades to Blob.
             _shadowDecals.Clear();
             if (_shadowBlobs.Count > 0 && Post.Quality.Shadows.ResolveFor(_gd.Capabilities).Effective == ShadowMode.Blob)
             {

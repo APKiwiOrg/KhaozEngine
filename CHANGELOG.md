@@ -5,7 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
-## 10.16.0
+## 10.17.0
 
 Shader and golden-test validation infrastructure: a device-free public shader validator (`KhaozEngine.Gpu.ShaderValidation`) plus golden-failure PNG evidence, UBO layout tripwire tests, and a `KE_GPU_TESTS=probe` mode, so shader breakage and C#/GLSL layout drift are caught on every push and a failed golden can be inspected as an image without re-running anything. Additive (one new public API), so a minor bump.
 
@@ -14,6 +14,14 @@ Shader and golden-test validation infrastructure: a device-free public shader va
 - **UBO layout tripwire tests (test infra):** headless tests now pin every hand-mirrored C# std140 struct and offset constant (`FrameUbo`/`HeaderBytes`/`UboBytes`, `SplatParamsData`, `EdgeUbo`/`FinalUbo`, palette sizing) via `Marshal.SizeOf`/`OffsetOf`, and pin the GLSL array declarations (`[16]` point lights, `[5]` splat layers, `[64]` palette) to the C# constants by asserting tokens built from those constants appear in the shader sources. Comment-enforced layout agreement is now red/green. `PixelPostProcess` gained named palette/UBO-size constants replacing bare literals (values unchanged, pixel-neutral, Metal goldens 24/24 unchanged).
 - **`KE_GPU_TESTS=probe` (test infra):** GPU tests now also accept `probe`, which runs them only if a headless device can actually be created (one cached probe per process) and skips with the failure reason otherwise. `KE_GPU_TESTS=1` keeps the strict semantics (device failure = test error) so CI can never go green by silently skipping.
 - **Render3D internal cleanup:** `PixelPostProcess` caches its post shader sets by (vertex, fragment) source with single-owner disposal (pixel-neutral, and the four post passes still compile independently because each pairs the shared fullscreen VS with a distinct fragment). Golden naming contract documented: a GPU test whose name contains "Golden" is what the CI matrix runs, in two flavors (committed-grid vs threshold-invariant).
+
+## 10.16.0
+
+Pluggable OIDC / OAuth2 player identity: a new `KhaozEngine.Identity` package family so a game can sign a player in against a configurable provider and get a verified subject, via the exchange model (client obtains a provider credential, the server validates it and mints an engine session token, every downstream endpoint verifies that one token type). Additive (three new packages, no removals), so a minor bump; no GPU work. Reference consumer: Nullwake, which needs a verified account id to key its server-authoritative wallet.
+
+- **`KhaozEngine.Identity` (new, Foundation):** the transport-agnostic core. Seams `IIdentityProvider` (client sign-in to a `ProviderCredential`), `IIdentityValidator` (server: credential to a `VerifiedIdentity` with the verified subject), plus `ITokenCache` / `IBrowserLauncher` / `ILoopbackListener`. `SessionToken` is a stateless HMAC-SHA256 token (subject + optional display name + expiry, fixed-time verify, signed payload bound to its base64url wire fields). `IdentitySession` drives launch / sign-in state with an offline-grace window so a mandatory-sign-in game still plays offline on a cached session. `FileTokenCache` persists the session obfuscated at rest (integrity-checked; not OS-keychain, see SECURITY-BASELINE). Depends only on `Diagnostics` + `Serialization`.
+- **`KhaozEngine.Identity.Oidc` (new, opt-in):** a generic OIDC provider (authorization-code + PKCE via the system browser + a loopback redirect listener) and `OidcTokenValidator` (issuer / audience / lifetime / signature validated against the issuer's discovery doc + JWKS via `Microsoft.IdentityModel`). Works against any compliant issuer (Entra External ID, Google, and the like) by config. `KhaozEngine.Platform` gained a best-effort `Browser.LaunchBrowserAsync`.
+- **`KhaozEngine.Identity.Discord` (new, opt-in):** a Discord OAuth2 provider + `DiscordTokenValidator` (userinfo `/users/@me`), for the OAuth2-not-OIDC provider shape. The two backends are opt-in siblings, not bundled in any umbrella; `KhaozEngine.Identity` core is in the Foundation umbrella. Google / Apple / Microsoft presets and OS-keychain token storage are deferred.
 
 ## 10.15.0
 

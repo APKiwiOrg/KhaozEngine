@@ -35,7 +35,7 @@ surface is "ship a patchable, pinned copy and update it", not "audit their inter
 
 ## Threat model: where untrusted bytes enter a game
 
-Three categories of untrusted input cross into a game. Everything else (the game's own embedded assets,
+Five categories of untrusted input cross into a game. Everything else (the game's own embedded assets,
 its own code) is trusted by construction.
 
 ### 1. Hostile network input (multiplayer)
@@ -102,7 +102,34 @@ authenticated), not something `KhaozEngine.Commerce` verifies itself. Purchases 
 `IEntitlementValidator` that turns an untrusted external proof (a store receipt, a signed webhook) into a
 `VerifiedEntitlement`; the wallet never trusts a client-asserted purchase.
 
-### 4. The update channel (highest impact)
+### 4. Player identity (sign-in)
+
+Packages: `KhaozEngine.Identity`, `KhaozEngine.Identity.Oidc`, `KhaozEngine.Identity.Discord`. A provider
+credential (an OIDC id_token, a Discord access_token) is untrusted client input until the server verifies
+it: `IIdentityValidator.ValidateAsync` (`OidcTokenValidator` against the issuer's discovery document + JWKS,
+`DiscordTokenValidator` against Discord's userinfo endpoint) is the only place a subject is established. The
+client-side `IIdentityProvider`/`IdentitySession` never asserts a verified identity on its own; it only
+produces the credential the server exchanges. Two hardening details baked into the client flow:
+
+- **PKCE + `state`** (`KhaozEngine.Identity.Oidc.Pkce`, mirrored in `KhaozEngine.Identity.Discord`): the
+  authorization-code flow is generated with a PKCE code verifier/challenge (RFC 7636), so a stolen
+  authorization code cannot be redeemed without the verifier that only the originating client holds; the
+  `state` parameter is checked against the loopback redirect before the code is accepted, closing the
+  cross-site request forgery gap in a bare auth-code exchange.
+- **Token-at-rest posture** (`FileTokenCache`): the on-disk cached session is obfuscated (base64 + a fixed
+  in-assembly HMAC tag) and, on unix, written with owner-only file permissions (`0600`). Read this
+  precisely, the same as the `SaveEncoder` claim above: it is a **casual-read/tamper deterrent, not a
+  security boundary** - the HMAC key ships in the assembly, and a mismatched HMAC is tolerated on load so a
+  tampered or foreign-written file still round-trips its payload. An OS keychain-backed `ITokenCache` is
+  future hardening for a consumer that needs real at-rest confidentiality; swap it in behind the same seam.
+
+The `SessionToken` HMAC secret (the key `SessionToken.Mint`/`TryVerify` sign and check against) is not part
+of this package at all: it lives in the **consumer's own secret store** (environment variable, Key Vault,
+whatever the consumer's server already uses), the same way `KhaozEngine.Commerce`'s `AccountId` is
+consumer-supplied. `KhaozEngine.Identity` mints and verifies the token; it never generates or stores the
+secret itself.
+
+### 5. The update channel (highest impact)
 
 Package: `KhaozEngine.Updates`. This is the highest-impact surface in the engine: it downloads files and
 replaces the running game's executables. A spoofed or compromised feed that the client accepts is remote
@@ -142,7 +169,7 @@ The posture is defense in depth: no single control is the whole story.
    (overridable per head). See [USING-KHAOZENGINE.md "Game head build settings"](USING-KHAOZENGINE.md#game-head-build-settings-cetcompat).
 
 4. **Signed, integrity-checked updates.** The update channel's mandatory signing + the apply-time guards
-   (origin lock, path/symlink guards, size caps, downgrade rejection) are what keep category 3 from being
+   (origin lock, path/symlink guards, size caps, downgrade rejection) are what keep category 5 from being
    an open RCE. See [UPDATER.md](UPDATER.md). A
    game must wire this correctly (next section) for the guarantee to hold.
 
@@ -199,6 +226,9 @@ The engine provides primitives and one hardened channel; a game still has to use
 - A JSON-schema validation primitive (runtime + build-time) for content.
 - An HMAC tamper-deterrent on saves (deterrent, not a boundary).
 - The CETCompat default + DEP/ASLR on every head.
+- A server-side identity verification seam (`IIdentityValidator`) + PKCE-protected client sign-in flows
+  (`KhaozEngine.Identity.Oidc` / `.Discord`), and a stateless, fixed-time-compared HMAC session token
+  (`SessionToken`).
 
 **Per-game responsibilities (the game author must still do these):**
 
@@ -221,6 +251,10 @@ The engine provides primitives and one hardened channel; a game still has to use
 - **Run `KhaozEngine.Commerce` server-side for real or scored currency.** The wallet balance and ledger
   live on the server; a client copy is a cache. Supply your own `IEntitlementValidator` for your purchase
   provider and your own verified `AccountId`; the engine does not authenticate players for you.
+- **Never trust a provider credential without server-side validation.** A client-held `ProviderCredential`
+  is not a verified identity; call `IIdentityValidator.ValidateAsync` on the server before treating a
+  subject as real. Own the `SessionToken` secret in your own secret store (the engine never generates or
+  stores it) and rotate it like any other server secret.
 
 ## Reporting a vulnerability
 

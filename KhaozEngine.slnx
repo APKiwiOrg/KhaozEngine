@@ -19,6 +19,9 @@
   <Project Path="KhaozEngine.Server.Admin/KhaozEngine.Server.Admin.csproj" />
   <Project Path="KhaozEngine.Gpu/KhaozEngine.Gpu.csproj" />
   <Project Path="KhaozEngine.Gui/KhaozEngine.Gui.csproj" />
+  <Project Path="KhaozEngine.Identity.Discord/KhaozEngine.Identity.Discord.csproj" />
+  <Project Path="KhaozEngine.Identity.Oidc/KhaozEngine.Identity.Oidc.csproj" />
+  <Project Path="KhaozEngine.Identity/KhaozEngine.Identity.csproj" />
   <Project Path="KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />
   <Project Path="KhaozEngine.Localization.Analyzers/KhaozEngine.Localization.Analyzers.csproj" />
   <Project Path="KhaozEngine.Localization.Analyzers.Tests/KhaozEngine.Localization.Analyzers.Tests.csproj" />

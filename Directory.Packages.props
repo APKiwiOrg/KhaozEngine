@@ -38,6 +38,10 @@
     <PackageVersion Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.50.3" />
     <PackageVersion Include="Microsoft.Data.SqlClient" Version="6.1.6" />
 
+    <!-- Identity (opt-in OIDC provider) -->
+    <PackageVersion Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" Version="8.19.1" />
+    <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.19.1" />
+
     <!-- Packaging / tests / tools -->
     <!-- Roslyn for the localization analyzer. Pinned to the .NET 10 SDK's compiler line so the analyzer is
          never built against a newer Roslyn than the host compiler. -->

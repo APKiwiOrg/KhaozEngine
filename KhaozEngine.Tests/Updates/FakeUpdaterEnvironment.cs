@@ -65,8 +65,18 @@ internal sealed class FakeUpdaterEnvironment : IUpdaterEnvironment
     // Atomic replace: in-memory it is a single dictionary assignment (already atomic), but it honours the
     // same simulated-lock switch as CopyFile so the rollback-on-copy-failure tests still trigger, and it
     // records the destination so a test can prove the applier routes install copies through the atomic path.
+    // ReplaceFile throws UnauthorizedAccessException this many times first (a locked running image or a
+    // denied delete-child), then behaves normally. Models both a transient denial (small count) and a
+    // permanent one (count > MaxCopyRetries).
+    public int UnauthorizedReplaceThrows;
+
     public void ReplaceFile(string source, string destination)
     {
+        if (UnauthorizedReplaceThrows > 0)
+        {
+            UnauthorizedReplaceThrows--;
+            throw new UnauthorizedAccessException($"simulated permission denial: {destination}");
+        }
         if (ThrowOnCopyFrom.Contains(source))
         {
             throw new IOException($"simulated lock: {source}");

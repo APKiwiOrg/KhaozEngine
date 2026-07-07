@@ -102,6 +102,37 @@ public sealed class UpdateApplierTests
     }
 
     [Fact]
+    public void Apply_TransientPermissionDenial_RetriesThenSucceeds()
+    {
+        var env = new FakeUpdaterEnvironment { UnauthorizedReplaceThrows = 3 }; // denied 3x, then succeeds
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.Files[InstallPath("game.dll")] = "v1";
+        env.Files[InstallPath("Game")] = "exe";
+
+        ApplyResult result = UpdateApplier.Apply(Config(new() { "game.dll" }), env);
+
+        Assert.Equal(ApplyOutcome.Succeeded, result.Outcome);
+        Assert.Equal("v2", env.Files[InstallPath("game.dll")]);
+    }
+
+    [Fact]
+    public void Apply_PermanentPermissionDenial_RollsBackWithoutUnhandledThrow()
+    {
+        var env = new FakeUpdaterEnvironment { UnauthorizedReplaceThrows = UpdateApplier.MaxCopyRetries + 1 };
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.Files[InstallPath("game.dll")] = "v1";
+        env.Files[InstallPath("Game")] = "exe";
+        string marker = Path.Combine(AppData, "apply-in-progress.json");
+
+        ApplyResult result = UpdateApplier.Apply(Config(new() { "game.dll" }), env);
+
+        Assert.Equal(ApplyOutcome.RolledBack, result.Outcome);
+        Assert.Equal("v1", env.Files[InstallPath("game.dll")]); // restored
+        Assert.False(env.Files.ContainsKey(marker));            // marker cleared
+        Assert.Equal(InstallPath("Game"), env.RelaunchedExe);   // old version relaunched
+    }
+
+    [Fact]
     public void Apply_InstallsManifestToDestPath()
     {
         var env = new FakeUpdaterEnvironment();

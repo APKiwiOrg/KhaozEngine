@@ -743,25 +743,39 @@ public static class UpdateApplier
             {
                 // Atomic swap (copy-to-temp + same-volume rename): the install file is only ever the
                 // complete old or complete new content, so a concurrent scan or the relaunch never sees a
-                // half-written image. Retried on a sharing violation like the old in-place copy was.
+                // half-written image.
                 environment.ReplaceFile(source, dest);
                 environment.Log($"OK: {relativePath}");
                 return true;
             }
             catch (IOException ex)
             {
-                if (attempt < MaxCopyRetries - 1)
-                {
-                    environment.Log($"RETRY ({attempt + 1}/{MaxCopyRetries}): {relativePath} - {ex.Message}");
-                    environment.Sleep(RetryDelayMilliseconds);
-                }
-                else
-                {
-                    environment.Log($"FAILED: {relativePath} - {ex.Message}");
-                }
+                // A sharing violation (an AV scan still holds the old image): ride it out.
+                LogRetry(environment, attempt, relativePath, ex);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                // A locked running .exe/.dll and a denied delete-child both surface here as
+                // ERROR_ACCESS_DENIED. Treat it like a sharing violation - a transient lock releases across
+                // the retry budget; a permanent denial exhausts the loop and returns false to the caller's
+                // rollback path, instead of crashing the shim unhandled.
+                LogRetry(environment, attempt, relativePath, ex);
             }
         }
         return false;
+    }
+
+    private static void LogRetry(IUpdaterEnvironment environment, int attempt, string relativePath, Exception ex)
+    {
+        if (attempt < MaxCopyRetries - 1)
+        {
+            environment.Log($"RETRY ({attempt + 1}/{MaxCopyRetries}): {relativePath} - {ex.Message}");
+            environment.Sleep(RetryDelayMilliseconds);
+        }
+        else
+        {
+            environment.Log($"FAILED: {relativePath} - {ex.Message}");
+        }
     }
 
     private static void RestoreBackups(IUpdaterEnvironment environment, string installDir, string rollbackDir, List<string> backedUp)

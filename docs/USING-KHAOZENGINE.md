@@ -2531,6 +2531,60 @@ needs a `SpriteBatch`. Like `UpdateOverlayView`, the widget never reads raw inpu
 
 ---
 
+## Per-pass frame timing (`Scene3D.EnableTiming` / `PassTimings`)
+
+Attributes a rendered frame's CPU cost to `Scene3D`'s passes (shadow depth, model/terrain, transparents/decals,
+post chain), so perf work on a graphics feature is measurable instead of only showing up as a whole-frame FPS
+dip. Off by default (`Scene3D.EnableTiming = false`): the brackets around each pass are then a single `bool`
+check with no `Stopwatch` call and no allocation, so an untimed scene costs nothing extra and every existing
+golden stays byte-stable.
+
+**What this measures, and what it does NOT measure (read this before trusting the numbers).** Each bracket times
+CPU wall-clock spent *recording* (encoding) that pass's graphics-API calls into the command list - it is NOT
+true GPU execution time. The GPU pipeline runs asynchronously behind the command list Veldrid records into, so
+a cheap-to-encode pass can still be GPU-expensive (or vice versa); this meter cannot see that. The engine's
+pinned GPU abstraction, **Veldrid 4.9.0, exposes no timestamp-query API at all** (no `QueryPool`, no per-command-list
+timestamp write/resolve - confirmed by inspecting its full public surface), so true per-pass GPU timestamps are
+out of scope until a future Veldrid upgrade adds one. A whole-frame GPU-time number (Tier 2) was considered and
+rejected: the only device-level synchronization Veldrid exposes is `IGpuDevice.WaitForIdle()` (a full CPU/GPU
+stall) and a non-blocking `Fence.Signaled` poll that is unwired in `KhaozEngine.Gpu` today - inserting a
+`WaitForIdle()` every frame to time it would destroy the CPU/GPU pipelining that gives good frame pacing (a
+"Heisenberg timer" that changes the very thing it measures), and the fence-poll alternative only yields a noisy
+lower bound, not an honest whole-frame GPU duration, so it was not shipped either. Present/blit (swapping the
+finished frame to the screen) is not covered by these brackets: that happens in `KhaozEngine.Windowing.AppWindow.Run`,
+outside anything `Scene3D` records into.
+
+`Scene3D` (`KhaozEngine.Render3D`) has no dependency on `KhaozEngine.Diagnostics`, so it exposes the raw
+per-pass milliseconds itself (`Scene3D.PassTimingsMs`, a `Scene3DPassTimingsMs` with `ShadowDepthMs` /
+`ModelMs` / `TransparentsMs` / `PostMs`) rather than owning a `PassTimings` meter directly - the same shape as
+the existing `DrawnInstances`/`CulledInstances` per-frame stats. Feed those numbers into a
+`KhaozEngine.Diagnostics.PassTimings` (a rolling avg/min/max ring buffer per pass name, same shape as
+`FrameStats` but keyed by pass) each frame to get the same avg/min/max presentation `FrameStats` gives you:
+
+```csharp
+scene.EnableTiming = true;                                   // KhaozEngine.Render3D; off costs nothing
+_passTimings = new PassTimings();                             // KhaozEngine.Diagnostics
+
+// once per frame, after Render3DSurface.Render(frame):
+var t = scene.PassTimingsMs;
+_passTimings.Sample("shadow", t.ShadowDepthMs);
+_passTimings.Sample("model", t.ModelMs);
+_passTimings.Sample("transparents", t.TransparentsMs);
+_passTimings.Sample("post", t.PostMs);
+
+_sections.Add(DiagnosticsOverlay.PassTimingsSection(_passTimings));   // KhaozEngine.Gui, same panel as Performance/Network
+```
+
+`PassTimingsSection` lists one row per pass name in first-sampled order, each showing that pass's rolling
+avg/min/max milliseconds. `ShadowDepthMs` legitimately stays 0 whenever the shadow tier isn't
+`ShadowMode.ShadowMap` (see `docs/RENDER-PIPELINE.md`) - the pass does not run, so `PassTimings.Sample` (which
+ignores non-positive values) never records it and the row is simply absent. `PassTimings` and
+`DiagnosticsOverlay.PassTimingsSection` are headless-testable (pure, fed synthetic milliseconds); proving
+`Scene3D.PassTimingsMs` actually gets populated needs a live device (`KE_GPU_TESTS=1`), like the other
+Scene3D render-path GPU tests.
+
+---
+
 ## Collision-shape debug overlay (`CollisionShapeOverlay` / `OverlayLegend`)
 
 A toggleable translucent, color-coded proxy drawn over each collision static in the live scene, plus a legend

@@ -86,7 +86,10 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   feeds them via `SetSections`; `Update(InputState, dt)` toggles on `Theme.ToggleKey` (default F1; optional
   gamepad button) and fades (headless-testable, `InputState.Empty` inert); `Draw` renders a corner panel
   (`Theme.Corner`) of titles + right-aligned values. `PerformanceSection(FrameStats)` /
-  `NetworkSection(in ClientNetStats)` populators cover the common cases (from `KhaozEngine.Diagnostics`).
+  `PassTimingsSection(PassTimings)` / `NetworkSection(in ClientNetStats)` populators cover the common cases
+  (from `KhaozEngine.Diagnostics`). `PassTimingsSection` lists one row per pass name (in first-sampled order)
+  with that pass's rolling avg/min/max milliseconds - CPU encode time, not true GPU time (see the
+  `KhaozEngine.Render3D` README / `docs/USING-KHAOZENGINE.md`).
   `Bounds` is the last-drawn panel rect (empty when hidden/faded-out), so a caller can place an `OverlayLegend`
   at `Bounds.Right` + a gap to sit a second panel directly beside it.
 - `TextEntry` - headless key→char text-entry helper (US layout + shift), used by `TextInput`. No SDL plumbing.

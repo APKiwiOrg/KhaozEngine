@@ -96,6 +96,27 @@ public sealed class DiagnosticsOverlay
         return new OverlaySection("Performance", rows);
     }
 
+    /// <summary>
+    /// Build a standard "Pass timings" section from a <see cref="PassTimings"/> meter: one row per pass name
+    /// (in first-sampled order), showing that pass's rolling avg/min/max milliseconds. Empty (no rows) when no
+    /// pass has been sampled yet, e.g. the producing renderer has per-pass timing disabled (the default) or has
+    /// not rendered a frame. This is CPU encode time, not true GPU execution time - see <see cref="PassTimings"/>
+    /// remarks and the USING doc for what is and is not measured.
+    /// </summary>
+    public static OverlaySection PassTimingsSection(PassTimings t)
+    {
+        if (t is null) throw new ArgumentNullException(nameof(t));
+        var names = t.PassNames;
+        var rows = new OverlayRow[names.Count];
+        for (int i = 0; i < names.Count; i++)
+        {
+            string pass = names[i];
+            rows[i] = new OverlayRow(pass,
+                string.Format(Inv, "{0:0.00}/{1:0.00}/{2:0.00}", t.AvgMs(pass), t.MinMs(pass), t.MaxMs(pass)));
+        }
+        return new OverlaySection("Pass timings", rows);
+    }
+
     /// <summary>Build a standard "Network" section from a <see cref="ClientNetStats"/> snapshot.</summary>
     public static OverlaySection NetworkSection(in ClientNetStats n)
     {

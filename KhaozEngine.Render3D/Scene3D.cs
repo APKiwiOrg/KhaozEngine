@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
@@ -148,6 +149,21 @@ namespace KhaozEngine.Render3D
         /// culling. Always 0 when <see cref="FrustumCulling"/> is off. Pairs with <see cref="DrawnInstances"/>
         /// (drawn + culled = the instances queued for a mesh with computable bounds this frame).</summary>
         public int CulledInstances => _culledInstances;
+
+        /// <summary>
+        /// Per-pass CPU encode timing: off by default (no cost, existing scenes byte-stable and no
+        /// <c>Stopwatch</c> calls). Set <c>true</c> to populate <see cref="PassTimingsMs"/> each frame - a
+        /// developer/profiling toggle, not a visual quality setting (compare <see cref="FrustumCulling"/>, which is
+        /// pixel-neutral either way; this one changes nothing about rendered output in either state). See
+        /// <see cref="Scene3DPassTimingsMs"/> remarks for exactly what is and is not measured.
+        /// </summary>
+        public bool EnableTiming { get; set; }
+
+        Scene3DPassTimingsMs _passTimingsMs;
+
+        /// <summary>Last-frame per-pass CPU encode milliseconds. All fields are 0 unless <see cref="EnableTiming"/>
+        /// is (or was) true; stays at the last-recorded value once turned off (it is not reset to 0 by disabling).</summary>
+        public Scene3DPassTimingsMs PassTimingsMs => _passTimingsMs;
 
         /// <summary>Host-set per-frame clock (seconds) driving beam pulse/scroll (see <see cref="DrawBeam"/> /
         /// <see cref="BeamStyle"/>). Set it once per frame in your draw callback (it runs after <see cref="Begin"/>),
@@ -1196,11 +1212,18 @@ namespace KhaozEngine.Render3D
             // the shadow tail at strength 0, so the frame is byte-stable (no depth pass, the shader never taps the
             // map). Set the shadow tail BEFORE SetFrameUniforms (which uploads the whole frame UBO incl. that tail).
             bool shadowMapActive = Post.Quality.Shadows.ResolveFor(_gd.Capabilities).Effective == ShadowMode.ShadowMap;
+            float shadowDepthMs = 0f, modelMs = 0f, transparentsMs = 0f, postMs = 0f;
+            long timingStart = 0;
             if (shadowMapActive)
+            {
+                timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
                 RenderShadowDepthPass(cl, eye);
+                if (EnableTiming) shadowDepthMs = ElapsedMs(timingStart);
+            }
             else
                 _model.ClearShadowUniforms();
 
+            timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
             _model.BeginModelPass(cl, _res, Post);
             _model.SetFrameUniforms(cl, vp, eye, Post, CollectionsMarshal.AsSpan(_lights));
             _model.BindPass(cl);
@@ -1259,6 +1282,9 @@ namespace KhaozEngine.Render3D
                     _model.DrawCpuSkinned(cl, dr.Ib, dr.IndexCount, dr.IndexFormat, dr.BaseVertex, (uint)d, dr.MaterialSet);
                 }
             }
+
+            if (EnableTiming) modelMs = ElapsedMs(timingStart);
+            timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
 
             // Textured billboards: drawn into the SAME model framebuffer (still bound), after the meshes, with the
             // depth test on (no write). This is what gives mesh/sprite depth interleaving; then the whole MRT
@@ -1339,7 +1365,11 @@ namespace KhaozEngine.Render3D
             // samples (after ALL MRT writers: geometry + decals). No-op when not multisampled.
             _res.ResolveColorNormal(cl);
 
+            if (EnableTiming) transparentsMs += ElapsedMs(timingStart);
+            timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
             _post.Run(cl, _res, target, Post, runFxaa);
+            if (EnableTiming) postMs = ElapsedMs(timingStart);
+            timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
 
             // Filled overlay: rebind `target` and draw the accumulated translucent triangles on top of the post
             // image, BEFORE the lines so an outline drawn on top of a fill reads crisp. Depth disabled + alpha
@@ -1362,7 +1392,18 @@ namespace KhaozEngine.Render3D
             BuildSortedAlphaBillboards();
             if (_billboardAlpha.Count > 0)
                 _billboards.Draw(cl, ActiveCamera.ViewProjection, CollectionsMarshal.AsSpan(_billboardAlpha), target, additive: false);
+
+            if (EnableTiming)
+            {
+                transparentsMs += ElapsedMs(timingStart);
+                _passTimingsMs = new Scene3DPassTimingsMs(shadowDepthMs, modelMs, transparentsMs, postMs);
+            }
         }
+
+        /// <summary>Elapsed milliseconds since <paramref name="startTimestamp"/> (a <see cref="Stopwatch.GetTimestamp"/>
+        /// snapshot). Pulled out so every timing bracket in <see cref="RenderInternal"/> shares one conversion.</summary>
+        static float ElapsedMs(long startTimestamp) =>
+            (float)(Stopwatch.GetTimestamp() - startTimestamp) * 1000f / Stopwatch.Frequency;
 
         /// <summary>Expand the queued alpha billboards into <see cref="_billboardAlpha"/> in BACK-TO-FRONT order:
         /// compute each item's view depth along the camera forward axis, sort the indices far-to-near, then build

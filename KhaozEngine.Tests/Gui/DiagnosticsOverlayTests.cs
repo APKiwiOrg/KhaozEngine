@@ -104,6 +104,29 @@ public sealed class DiagnosticsOverlayTests
     }
 
     [Fact]
+    public void PassTimingsSection_empty_when_nothing_sampled()
+    {
+        var t = new PassTimings();
+        OverlaySection s = DiagnosticsOverlay.PassTimingsSection(t);
+        Assert.Equal("Pass timings", s.Title);
+        Assert.Empty(s.Rows);
+    }
+
+    [Fact]
+    public void PassTimingsSection_lists_rows_in_first_sampled_order()
+    {
+        var t = new PassTimings(windowSeconds: 10f);
+        t.Sample("model", 4f);
+        t.Sample("shadow", 1f);
+
+        OverlaySection s = DiagnosticsOverlay.PassTimingsSection(t);
+        Assert.Equal(2, s.Rows.Count);
+        Assert.Equal("model", s.Rows[0].Label);
+        Assert.Equal("shadow", s.Rows[1].Label);
+        Assert.Contains("4.00", ValueOf(s, "model"));
+    }
+
+    [Fact]
     public void NetworkSection_shows_not_connected_when_disconnected()
     {
         OverlaySection s = DiagnosticsOverlay.NetworkSection(new ClientNetStats { Connected = false });

@@ -35,6 +35,16 @@ public class OidcTokenValidatorTests
 
         public string MintIdToken(string sub, string aud, DateTime expUtc, string? issuerOverride = null)
         {
+            return MintIdTokenCore(new Dictionary<string, object> { ["sub"] = sub }, aud, expUtc, issuerOverride);
+        }
+
+        public string MintIdTokenWithoutSub(string aud, DateTime expUtc, string? issuerOverride = null)
+        {
+            return MintIdTokenCore(new Dictionary<string, object>(), aud, expUtc, issuerOverride);
+        }
+
+        private string MintIdTokenCore(Dictionary<string, object> claims, string aud, DateTime expUtc, string? issuerOverride)
+        {
             RsaSecurityKey key = new(Rsa) { KeyId = Kid };
             SigningCredentials creds = new(key, SecurityAlgorithms.RsaSha256);
             JsonWebTokenHandler handler = new();
@@ -45,7 +55,7 @@ public class OidcTokenValidatorTests
                 NotBefore = DateTime.UtcNow.AddMinutes(-1),
                 Expires = expUtc,
                 SigningCredentials = creds,
-                Claims = new Dictionary<string, object> { ["sub"] = sub },
+                Claims = claims,
             };
             return handler.CreateToken(descriptor);
         }
@@ -103,6 +113,14 @@ public class OidcTokenValidatorTests
     {
         (OidcTokenValidator v, FakeOidc f) = Build();
         string tok = f.MintIdToken("sub-abc", "client-1", DateTime.UtcNow.AddHours(1), issuerOverride: "https://evil.test");
+        Assert.Null(await v.ValidateAsync(tok));
+    }
+
+    [Fact]
+    public async Task Token_with_no_sub_claim_is_rejected()
+    {
+        (OidcTokenValidator v, FakeOidc f) = Build();
+        string tok = f.MintIdTokenWithoutSub("client-1", DateTime.UtcNow.AddHours(1));
         Assert.Null(await v.ValidateAsync(tok));
     }
 }

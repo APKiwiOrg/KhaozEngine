@@ -47,7 +47,12 @@ public sealed class OidcTokenValidator : IIdentityValidator
         }
 
         JsonWebToken jwt = (JsonWebToken)result.SecurityToken;
-        string subject = jwt.GetClaim("sub").Value;
+        if (!jwt.TryGetClaim("sub", out System.Security.Claims.Claim? subClaim) || string.IsNullOrEmpty(subClaim.Value))
+        {
+            return null;
+        }
+
+        string subject = subClaim.Value;
         Dictionary<string, string> claims = new(StringComparer.Ordinal);
         foreach (System.Security.Claims.Claim claim in jwt.Claims)
         {

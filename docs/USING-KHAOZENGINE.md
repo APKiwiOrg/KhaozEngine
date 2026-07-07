@@ -2485,6 +2485,11 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
 - **`KhaozEngine.Progression`**: `WallClockRewardSchedule` - a pure `readonly struct` for "every N of
   real-world time a reward becomes available and stays available until claimed" (daily-login style), immune
   to game `TimeScale` and offline caps (see "Wall-clock periodic rewards" below).
+- **`KhaozEngine.Objectives`**: game-agnostic objective / goal tracking (`ObjectiveTracker`) for achievements /
+  challenges / quests / dailies - signals -> counters -> declarative conditions -> completion event. `Report` /
+  `Observe` opaque metric keys, `Persistent` + `Session` scopes, `AtLeast` / `Reached` / `AtMost` conditions,
+  idempotent `ObjectiveCompleted`, key-indexed re-eval, `Capture` / `Restore` snapshot. Deterministic and
+  presentation-free (see "Objective / goal tracking" below).
 - **`KhaozEngine.Commerce`**: server-authoritative currency wallet (`IWalletStore`, `Wallet`, entitlement
   redemption, `PeriodicGrant` built on `Progression`). Not in any umbrella; add explicitly. SQL backends are
   the opt-in `Commerce.Sqlite`/`Commerce.SqlServer` siblings (see "Commerce / wallet" below).
@@ -2544,6 +2549,66 @@ GrantReward();                                         // the payload is the gam
 For several independent rewards, keep one `WallClockRewardSchedule` per reward id, each with its own
 interval. Because the current instant is a plain parameter (no ambient clock), it is trivially unit-testable
 with fixed `DateTimeOffset` values.
+
+---
+
+## Objective / goal tracking (`KhaozEngine.Objectives`)
+
+One reusable framework for achievements, challenges, quests, and dailies. The plumbing (tracking, evaluation,
+completion, persistence) is identical across games; only the goal content and rewards differ. Do NOT raise a
+bespoke event per goal and pattern-match on it - idle / action games emit progress thousands of times a minute
+and that does not generalize. Instead: **signals -> counters -> declarative conditions -> completion event.**
+
+The framework never names a domain concept. It knows opaque metric-key strings, numeric targets, and
+`MetricScope`s. "depth" / "ore" / "enemies" are your game's words, passed as strings.
+
+```csharp
+using KhaozEngine.Objectives;
+
+var objectives = new ObjectiveTracker();
+objectives.ObjectiveCompleted += c => Award(c.ObjectiveId, c.Metadata);   // subscribe FIRST
+
+// 1. Register declarative definitions from your own data pipeline (the framework owns no JSON).
+objectives.Register(ObjectiveDefinition.Create("copper.master",
+    ObjectiveCondition.AtLeast("bars.copper", 500, MetricScope.Persistent)));       // lifetime accumulator
+
+objectives.Register(new ObjectiveDefinition("deep.no.upgrades",
+    conditions: new[]
+    {
+        ObjectiveCondition.Reached("depth.max", 100, MetricScope.Session),          // peak this run
+        ObjectiveCondition.AtMost("upgrades.bought", 0, MetricScope.Session),       // ...with no upgrades
+    },
+    metadata: "tier:hard"));                                                         // echoed back on completion
+
+// 2. Restore the save (after Register). 3. Report / Observe at event sites.
+objectives.Restore(savedSnapshot);
+objectives.Report("bars.copper", 3);      // accumulator (Sum): feeds AtLeast / AtMost
+objectives.Observe("depth.max", 120);     // peak (Max): feeds Reached
+
+// 4. Clear the Session scope at YOUR run boundary (Nullwake calls this in Wake()).
+objectives.ResetScope(MetricScope.Session);
+
+// 5. Introspect for a progress log - no bookkeeping of your own.
+foreach (var p in objectives.GetAllProgress())
+    foreach (var cond in p.Conditions)
+        DrawBar(cond.Current, cond.Target, cond.IsSatisfied);
+
+// Save: Capture a plain snapshot and fold it into your own save (you own transport).
+var snapshot = objectives.Capture();   // deterministic order; serialize with System.Text.Json etc.
+```
+
+Each metric key holds a `Sum` (fed by `Report`) and a `Max` (fed by `Observe`) per scope, so one key can back
+both an accumulator goal and a peak goal. Objectives are indexed by the keys their conditions watch, so a
+report re-evaluates only the objectives touching the changed key - never a full scan (the perf contract for
+thousands of reports/sec against hundreds of objectives). Completion is idempotent: an objective completes
+once, stays completed, never re-fires, and survives Capture / Restore. It is deterministic (pure counters +
+predicates, no RNG / wall-clock) and single-threaded - route all calls from the sim thread; completion handlers
+run synchronously inside the triggering call.
+
+**What stays game-side (the seam):** rewards / points / trees (read the opaque `ObjectiveCompletion.Metadata`
+you attached), save transport (serialize the `ObjectivesSnapshot`), and display text (reference a localized
+`Name` / `Description` by `StringId`, never a raw literal). Out of scope in v1: temporal / sequential
+conditions ("X then Y within 10s") and any reward / currency / tree logic.
 
 ---
 

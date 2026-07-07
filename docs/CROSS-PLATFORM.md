@@ -67,6 +67,22 @@ and Vulkan (Linux/lavapipe). The overall workflow is green only when all three v
    (Metal and D3D11 goldens are already committed this way; the D3D11 set was baked on the WARP runner.)
 4. After that, the push/PR legs verify those backends instead of failing.
 
+### Failure-evidence PNGs
+
+A float-delta list tells you a cell moved but not what rendered. So on any non-trivial outcome the golden compare
+also writes viewable PNGs (via the BCL-only `KhaozEngine.Imaging.PngWriter`) to `KhaozEngine.Tests/Gpu/goldens-evidence/`
+(gitignored; override the dir with `KE_GOLDEN_EVIDENCE_DIR`). Filenames are `<name>.<backend>.<kind>.png`:
+
+- **compare failure** writes three, all at the captured `w`x`h`: `.got.png` (the frame as rendered), `.want.png`
+  (the committed golden grid reconstructed as flat nearest-neighbour blocks, same dimensions), and `.diff.png` (a
+  per-cell heat map: black = no diff, scaling to red toward 2x tolerance, with over-tolerance cells painted
+  full-red with a black inner border so they are unmistakable). The three paths are appended to the failure text.
+- **missing golden** writes `.got.png` so a brand-new scene can be eyeballed before its first bake.
+- **bake** (`KE_UPDATE_GOLDENS=1`) writes `.bake.png` (the full-res capture) alongside each baked grid.
+
+CI uploads these as artifacts on the `cross-platform-gpu` matrix: `golden-evidence-<backend>` on any failed leg
+(`if: failure()`), and the bake evidence rides along in the `goldens-<backend>` bake artifact.
+
 The fast inner-loop CI (`.github/workflows/ci.yml`: build/test/pack/publish, GPU tests skipped) is separate and
 untouched.
 

@@ -141,13 +141,27 @@ jobs:
           KE_UPDATE_GOLDENS: ${{ (github.event_name == 'workflow_dispatch' && inputs.bake) && '1' || '' }}
         run: dotnet test -c Release --no-build --filter "FullyQualifiedName~Golden"
 
-      # When baking: upload the freshly written per-backend goldens so they can be downloaded and committed.
-      # always() so a leg that wrote some goldens before erroring still surfaces them; ignore = no spurious
-      # failure on a leg that wrote none.
+      # On a verify FAILURE: upload the got/want/diff evidence PNGs the golden compare wrote, so the visual
+      # regression can be eyeballed from the run without re-running. ignore = no spurious failure when a leg
+      # failed for a non-golden reason and wrote no evidence.
+      - name: Upload golden failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-evidence-${{ matrix.backend }}
+          path: KhaozEngine.Tests/Gpu/goldens-evidence/
+          if-no-files-found: ignore
+
+      # When baking: upload the freshly written per-backend goldens so they can be downloaded and committed,
+      # plus the bake evidence PNGs (full-res captures) so the baked scenes are viewable. always() so a leg that
+      # wrote some goldens before erroring still surfaces them; ignore = no spurious failure on a leg that wrote
+      # none.
       - name: Upload baked goldens
         if: always() && github.event_name == 'workflow_dispatch' && inputs.bake
         uses: actions/upload-artifact@v4
         with:
           name: goldens-${{ matrix.backend }}
-          path: KhaozEngine.Tests/Gpu/goldens/*.${{ matrix.backend }}.txt
+          path: |
+            KhaozEngine.Tests/Gpu/goldens/*.${{ matrix.backend }}.txt
+            KhaozEngine.Tests/Gpu/goldens-evidence/*.${{ matrix.backend }}.bake.png
           if-no-files-found: ignore

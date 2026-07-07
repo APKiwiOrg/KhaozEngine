@@ -9,11 +9,12 @@ namespace KhaozEngine.Render3D.Rendering
 {
     /// <summary>
     /// Draws the procedural sky (gradient + optional sun disc/halo) as a single fullscreen BACKGROUND pass into the
-    /// lit colour attachment + read-only scene depth (ColorDepthFB), like the ground-decal pass but INVERTED: the
-    /// fullscreen triangle sits at the far plane and a GreaterEqual read-only depth test passes ONLY where the stored
-    /// depth is still the cleared far plane, i.e. background pixels where no geometry was drawn. Geometry rejects the
-    /// sky, so it never overwrites the scene and never touches the MRT normal / linear-depth attachments the outline
-    /// pass reads (ColorDepthFB binds only colour + depth). Runs after the model pass wrote depth and before the
+    /// lit colour attachment + read-only scene depth (ColorDepthFB): the fullscreen triangle sits at the far plane
+    /// (SkyVert, z=1) and a read-only Equal depth test passes ONLY where the stored depth still EQUALS the cleared
+    /// far plane, i.e. background pixels where no geometry was drawn. Geometry (depth &lt; 1) rejects the sky, so it
+    /// never overwrites the scene and never touches the MRT normal / linear-depth attachments the outline pass reads
+    /// (ColorDepthFB binds only colour + depth). This is the inverse selection to the decal pass's Greater test,
+    /// which under the [0,1]/LessEqual convention passes on GEOMETRY only. Runs after the model pass wrote depth and before the
     /// decals + post chain, so the sky flows through the pixel post like the rest of the scene. Zero cost when the
     /// sky is off (the scene skips this pass entirely). One UBO, one draw.
     /// </summary>
@@ -66,10 +67,12 @@ namespace KhaozEngine.Render3D.Rendering
             {
                 BlendFactor = Vector4.Zero,
                 BlendAttachments = new[] { GpuBlendAttachment.OverrideBlend },
-                // Read-only, GreaterEqual depth test: the far-plane triangle (SkyVert, z=1) passes only where the
-                // stored depth is still the cleared far plane, i.e. on background (no geometry). No depth write, so
-                // the scene depth is untouched for any later pass (decals, resolve).
-                DepthStencil = new GpuDepthStencilState(depthTestEnabled: true, depthWriteEnabled: false, GpuComparison.GreaterEqual),
+                // Read-only, Equal depth test: the far-plane triangle (SkyVert, z=1) passes only where the stored
+                // depth still EQUALS the cleared far plane (fragZ==1==storedZ), i.e. true background where no geometry
+                // was drawn. Geometry sits at depth < 1 (LessEqual model pass) so it fails Equal and occludes the sky.
+                // GreaterEqual would be wrong here: 1 >= any storedZ, so the sky would paint over ALL geometry. No
+                // depth write, so the scene depth is untouched for any later pass (decals, resolve).
+                DepthStencil = new GpuDepthStencilState(depthTestEnabled: true, depthWriteEnabled: false, GpuComparison.Equal),
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: false, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },

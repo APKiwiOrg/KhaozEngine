@@ -1304,9 +1304,9 @@ namespace KhaozEngine.Render3D
             _res.ResolveDepth(cl);
 
             // Procedural sky: a fullscreen background pass into ColorDepthFB (lit colour + read-only scene depth),
-            // behind all geometry. The far-plane triangle passes the GreaterEqual read-only depth test ONLY where the
-            // stored depth is still the cleared far plane (background where no mesh drew), so it fills the gradient +
-            // sun there and geometry pixels reject it. It writes only the colour attachment (never the MRT
+            // behind all geometry. The far-plane triangle passes the Equal read-only depth test ONLY where the stored
+            // depth still EQUALS the cleared far plane (background where no mesh drew), so it fills the gradient + sun
+            // there and geometry pixels (depth < 1) reject it. It writes only the colour attachment (never the MRT
             // normal/linear-depth the outline pass reads) with alpha 1 (so the blit's starfield marker skips sky
             // pixels). Fully skipped when off, so a sky-off frame renders byte-identical to before this pass existed.
             if (Post.Sky.Enabled)

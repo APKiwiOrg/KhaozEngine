@@ -289,6 +289,29 @@ namespace KhaozEngine.Tests.Gpu
                 },
                 frames: 2);
 
+            // Regression guard: a background-only image (the pre-fix GreaterEqual sky painted over ALL geometry) must
+            // never silently re-bake again. The procedural sky is a purely blue-dominant gradient - EVERY sky cell has
+            // blue as the strictly largest channel. Foreground here is not blue-dominant: the white floor is R==G==B
+            // and the coloured/lit meshes are red/green-led. So counting cells where blue is NOT the dominant channel
+            // separates the two cleanly: a correct render (floor + three meshes occluding the sky) shows ~200 such
+            // cells, while a flat background-only image shows only ~6 (a few antialiased horizon fringes). Require a
+            // healthy floor of 120 - well above the background-only handful, well below the ~200 the correct image
+            // shows - so any future flat-sky regression trips this before the golden compare. (A blue<0.68 count is
+            // NOT usable here: the white floor's blue is ~1.0, so the correct image has only ~31 such cells.)
+            // Downsampled on the same 32x18 grid the golden uses; tolerant of backend noise.
+            float[] guardGrid = GoldenCompare.Downsample(rgba, W, H);
+            int foregroundCells = 0;
+            for (int cell = 0; cell < guardGrid.Length / 3; cell++)
+            {
+                float r = guardGrid[cell * 3], g = guardGrid[cell * 3 + 1], b = guardGrid[cell * 3 + 2];
+                if (b <= MathF.Max(r, g) + 0.02f) foregroundCells++;   // not blue-dominant => foreground, not sky
+            }
+            Assert.True(foregroundCells >= 120,
+                $"scene3d_sky has only {foregroundCells} foreground cells (blue not the dominant channel) of " +
+                $"{guardGrid.Length / 3}; the sky pass is painting over the scene (background-only image). Expected " +
+                "the floor + meshes to occlude the sky (~200 cells). Check the SkyRenderer depth test is Equal, not " +
+                "GreaterEqual (GreaterEqual passes on every pixel under the [0,1]/LessEqual depth convention).");
+
             GoldenCompare.AssertOrUpdate("scene3d_sky", rgba, W, H);
         }
 

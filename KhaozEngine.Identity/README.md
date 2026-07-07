@@ -22,7 +22,9 @@ Provider implementations (OIDC, Discord) are opt-in sibling packages. This core 
 
 ```csharp
 // Client: restore the cached session, then sign in if needed.
-IIdentityProvider provider = GetProvider("oidc"); // e.g. KhaozEngine.Identity.Oidc's OidcClientProvider
+// (using KhaozEngine.Identity.Oidc's OidcClientProvider here; swap in Discord's DiscordClientProvider
+// for Discord sign-in, both implement IIdentityProvider)
+IIdentityProvider provider = new OidcClientProvider(oidcOptions, browser, port => new HttpLoopbackListener(port));
 ITokenCache cache = new FileTokenCache(sessionFilePath);
 IdentitySession session = new(provider, cache, new IdentitySessionOptions());
 
@@ -36,7 +38,8 @@ if (state.Status == IdentityStatus.RequiresSignIn)
 }
 
 // Server: validate the credential, then mint a session token.
-IIdentityValidator validator = GetValidator("oidc"); // e.g. KhaozEngine.Identity.Oidc's OidcTokenValidator
+// (matching validator for the provider used above, e.g. OidcTokenValidator or DiscordTokenValidator)
+IIdentityValidator validator = new OidcTokenValidator(oidcOptions);
 VerifiedIdentity? verified = await validator.ValidateAsync(credentialTokenFromClient);
 if (verified is VerifiedIdentity identity)
 {
@@ -44,6 +47,11 @@ if (verified is VerifiedIdentity identity)
     // return { token, expiry, identity.Subject, identity.DisplayName } to the client
 }
 ```
+
+A consumer that supports multiple providers at once builds its own lookup, e.g. a
+`IReadOnlyDictionary<string, IIdentityValidator>` keyed by provider id, and dispatches to
+`validator.ValidateAsync` for whichever provider the client used. `KhaozEngine.Identity` itself has no
+such registry: it is a pair of interfaces plus the orchestration types above, not a service locator.
 
 See [USING-KHAOZENGINE.md "Identity / sign-in"](../docs/USING-KHAOZENGINE.md) for the full exchange-model
 walkthrough and [SECURITY-BASELINE.md](../docs/SECURITY-BASELINE.md) for the security posture (PKCE, the

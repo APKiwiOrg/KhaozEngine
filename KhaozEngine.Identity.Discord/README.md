@@ -37,8 +37,8 @@ VerifiedIdentity? identity = await validator.ValidateAsync(credential.Credential
 ```
 
 See [KhaozEngine.Identity](../KhaozEngine.Identity/README.md) for the full client `IdentitySession` +
-server exchange walkthrough (this provider/validator pair slots into `GetProvider("discord")` /
-`GetValidator("discord")` there), and
+server exchange walkthrough (this provider/validator pair is constructed directly there, the same way
+as above), and
 [USING-KHAOZENGINE.md "Identity / sign-in"](../docs/USING-KHAOZENGINE.md) for the end-to-end sequence.
 
 ## Dependencies

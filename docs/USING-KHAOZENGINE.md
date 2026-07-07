@@ -2646,6 +2646,8 @@ if (state.Status == IdentityStatus.RequiresSignIn)
 {
     state = await session.SignInAsync(ct); // opens the browser, captures the loopback redirect
     // state.Credential is set but state.Subject is still null: the exchange below establishes it.
+    // state.Status is IdentityStatus.OfflineGrace right here, not a bug: it flips to SignedIn only
+    // once AttachSessionTokenAsync below completes the server exchange.
     ProviderCredential credential = state.Credential!.Value;
 
     // POST credential.CredentialToken to the consumer's own /auth/exchange endpoint (below),

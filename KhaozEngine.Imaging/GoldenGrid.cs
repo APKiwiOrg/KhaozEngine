@@ -30,8 +30,8 @@ namespace KhaozEngine.Imaging
         /// Downsample <paramref name="rgba"/> (raw RGBA8, <paramref name="w"/>x<paramref name="h"/>, row-major
         /// top-to-bottom) to a <paramref name="gridW"/>x<paramref name="gridH"/> grid of average RGB per cell as
         /// floats 0..1, row-major, 3 floats per cell (alpha is ignored). Each cell averages the source pixels
-        /// falling in its rectangle; an empty cell (grid coarser than the source in that axis is not empty, but a
-        /// zero-area cell edge case) averages at least one pixel.
+        /// falling in its rectangle. When the grid is finer than the source in an axis a cell's rectangle can
+        /// round to zero size, in which case the cell still averages at least one pixel.
         /// </summary>
         public static float[] Downsample(byte[] rgba, int w, int h, int gridW = DefaultGridW, int gridH = DefaultGridH)
         {

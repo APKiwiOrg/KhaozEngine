@@ -43,6 +43,9 @@ on:
       - 'KhaozEngine.Gui/**'
       - 'KhaozEngine.Primitives/**'
       - 'KhaozEngine.Tests/Gpu/**'
+      # GoldenGridTests live here and match the ~Golden matrix filter, so this dir must trigger too
+      # (the 10.18.1 LF fix shipped without a matrix run because only Tests/Gpu was watched).
+      - 'KhaozEngine.Tests/Imaging/**'
       - '.github/workflows/cross-platform-gpu.yml'
   pull_request:
     branches: [ main ]

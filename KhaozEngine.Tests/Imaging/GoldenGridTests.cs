@@ -81,6 +81,8 @@ namespace KhaozEngine.Tests.Imaging
         /// Cardinal constraint: the committed golden text must stay byte-identical through the promoted code.
         /// Deserialize the real committed scene3d.metal.txt then Serialize it back and assert the text reproduces
         /// the file exactly (header included). Guards both the format and the 4-decimal rounding.
+        /// The strict compare relies on the goldens checking out with LF endings on every OS, which
+        /// .gitattributes pins (a CRLF autocrlf checkout on Windows broke this test in CI once).
         /// </summary>
         [Fact]
         public void Serialize_reproduces_committed_golden_byte_for_byte()

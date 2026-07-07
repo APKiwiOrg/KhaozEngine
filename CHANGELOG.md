@@ -5,6 +5,10 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.18.1
+
+CI fix: pin the committed golden grid files to LF line endings via `.gitattributes`. The 10.18.0 byte-identity test (`GoldenGrid.Serialize` must reproduce the committed golden text exactly) failed on the Windows CI leg because git autocrlf checked the goldens out with CRLF while `Serialize` emits LF. Metal and Vulkan legs and all actual golden compares were green, so this was an endings-only failure. Test-infra fix, no engine code or behavior change, patch bump.
+
 ## 10.18.0
 
 Golden testing goes public and splat terrain gets pinned: a new public `KhaozEngine.Imaging.GoldenGrid` API (the engine's golden-grid regression core, promoted out of test infra), committed per-backend grid goldens for the two splat terrain scenes, and GPU-free `diff`/`score` commands on SnapshotTool. Additive public API, so a minor bump.

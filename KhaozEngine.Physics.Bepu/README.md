@@ -8,7 +8,11 @@ the dependency-free seam and add this backend explicitly, the same pattern as `N
 `WorldStore.Sqlite`. The only assembly in the engine that references BepuPhysics.
 
 The default constructor uses Earth gravity `(0, -9.81, 0)`; `new BepuPhysicsWorld(Vector3.Zero)` gives the
-static-only, non-falling behaviour.
+static-only, non-falling behaviour. The solver `substepCount` (default 4) and `velocityIterationCount`
+(default 8) are optional constructor parameters. Both are part of the determinism fingerprint for any world
+containing dynamic bodies: a consumer with a determinism tripwire fingerprinted on the pre-dynamics backend
+(one substep) can pin the old integrator with `new BepuPhysicsWorld(gravity, substepCount: 1)`. Changing
+either value shifts the bit-exact result legitimately.
 
 ## What it does
 
@@ -24,10 +28,13 @@ static-only, non-falling behaviour.
   (setting velocity wakes the body); `IsAwake` reflects Bepu's natural island sleeping (a settled body
   sleeps and reports false until disturbed).
 - **Restitution** - Bepu 2.4 has no restitution coefficient (its contact recovery velocity only recovers
-  penetration, which yields a constant-height limit cycle, not a real bounce). So `BepuPhysicsWorld.Step`
-  applies restitution as an explicit, deterministic post-solve reflection: a restitutive dynamic body whose
-  approach speed a contact arrested this step is returned `restitution x` that speed in the opposite
-  direction, so bounces decay geometrically. Non-restitutive bodies are untouched.
+  penetration, which yields a constant-height limit cycle, not a decaying bounce). So `BepuPhysicsWorld.Step`
+  applies restitution as an explicit, deterministic, APPROXIMATE game-feel bounce (not a true coefficient of
+  restitution): a restitutive dynamic body whose approach speed a contact arrested this step is returned
+  `restitution x` that speed in the opposite direction, so the bounce decays geometrically with restitution.
+  It is a bounded post-solve reflection (it can over-restitute by up to the contact recovery velocity, and the
+  apex is not analytically pinned - a hard impact spreads its arrest over 2-3 substeps). Non-restitutive bodies
+  are untouched.
 - **`Step(dt)`**, **`Raycast`**, **`SweepCapsule`**, **`ComputePenetration`** - the last is one
   CollisionBatcher manifold query over every shape type, deepest contact wins.
 

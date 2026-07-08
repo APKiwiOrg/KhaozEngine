@@ -21,7 +21,9 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
   infinite-mass (kinematic) body: unmoved by gravity/impacts, moved only by its velocity.
 - **`Pose`** - world position + orientation record struct. `Pose.At(position)` for identity orientation.
 - **`PhysicsMaterial`** - friction + restitution, `PhysicsMaterial.Default` is full friction, no bounce.
-  A dynamic body's `Restitution` (0..1) is a coefficient of restitution (rebound = that fraction of impact).
+  A dynamic body's `Restitution` (0..1) drives an approximate, deterministic game-feel bounce that decays
+  geometrically with restitution (NOT a true coefficient of restitution: a bounded post-solve reflection, exact
+  apex not analytically pinned).
 - **`QueryFilter`** - layer mask for queries, default (`QueryFilter.All`) matches every body.
 - **`StaticHandle`**, **`DynamicBodyHandle`**, **`RayHit`**, **`SweepHit`** - opaque body handles and the query result structs.
 - **`PhysicsShapeScale.Uniform(shape, scale)`** - a new shape with all geometry scaled uniformly

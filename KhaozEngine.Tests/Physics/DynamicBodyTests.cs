@@ -149,10 +149,43 @@ public class DynamicBodyTests
         }
 
         Assert.True(apexes.Count >= 2, $"the sphere must bounce at least twice (apexes found: {apexes.Count})");
-        // Each successive bounce apex must be strictly lower (energy lost per bounce - a real coefficient of restitution).
+        // Each successive bounce apex must be strictly lower (energy lost per bounce - the approximate game-feel bounce decays geometrically).
         for (int i = 1; i < apexes.Count; i++)
             Assert.True(apexes[i] < apexes[i - 1] - 0.02f,
                 $"bounce {i} apex {apexes[i]:F3} must be lower than the previous {apexes[i - 1]:F3}");
+    }
+
+    [Fact]
+    public void RestitutiveBody_WithDefaultSleep_EventuallyComesToRestAndSleeps()
+    {
+        // A modestly bouncy body (restitution ~0.3) dropped with DEFAULT sleep settings must eventually stop
+        // bouncing and sleep. This pins that the post-solve reflection pass cannot keep a decayed bouncer awake
+        // forever (each bounce loses energy geometrically, so the body settles and Bepu deactivates its island).
+        var bouncy = new PhysicsMaterial(1f, 0.3f);
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        world.AddStatic(new BoxShape(new Vector3(50f, 0.5f, 50f)), Pose.At(new Vector3(0f, -0.5f, 0f)), bouncy);
+        var sphere = new SphereShape(0.3f);
+        // Default sleep settings (no SleepThreshold override): the body is allowed to sleep once settled.
+        DynamicBodyHandle h = world.AddDynamic(sphere, Pose.At(new Vector3(0f, 3f, 0f)),
+            DynamicBodyDescription.WithMass(1f), bouncy);
+
+        Assert.True(world.IsAwake(h), "a freshly dropped body should start awake");
+
+        // Fixed dt, banded step count, no wall clock: 20 s is ample for a restitution-0.3 bouncer to decay and sleep.
+        bool slept = false;
+        for (int i = 0; i < 1200; i++)
+        {
+            world.Step(Dt);
+            if (!world.IsAwake(h)) { slept = true; break; }
+        }
+
+        Assert.True(slept, "a decayed restitutive body must eventually come to rest and sleep (the reflection pass must not keep it awake forever)");
+        // And it stays asleep for a further stretch (a spurious reflection would re-wake it).
+        StepMany(world, 120);
+        Assert.False(world.IsAwake(h), "the settled restitutive body must remain asleep");
+        // It rests at ~sphere radius on the ground, not buried or launched.
+        Assert.True(MathF.Abs(world.GetDynamicPose(h).Position.Y - 0.3f) < 0.1f,
+            $"settled sphere centre must rest at ~0.3 (radius on ground), was {world.GetDynamicPose(h).Position.Y:F3}");
     }
 
     // ---------------------------------------------------------------------
@@ -260,5 +293,46 @@ public class DynamicBodyTests
         Pose p = world.GetDynamicPose(h);
         Assert.True(MathF.Abs(p.Position.Y - 5f) < 0.01f, $"kinematic body must not fall, Y was {p.Position.Y:F3}");
         Assert.True(p.Position.X > 0.8f, $"kinematic body must move along its velocity, X was {p.Position.X:F3}");
+    }
+
+    [Fact]
+    public void KinematicBody_CoastingThroughEmptySpace_DoesNotSleepAndKeepsMoving()
+    {
+        // Pins the MINOR-3 fix: a kinematic body coasting on a constant velocity with no contacts must NOT fall
+        // asleep mid-flight and silently stop. No gravity, no ground: nothing to keep an island awake, so a
+        // sleepable kinematic would deactivate and stall.
+        using IPhysicsWorld world = new BepuPhysicsWorld(Vector3.Zero);
+        var box = new BoxShape(new Vector3(0.5f, 0.5f, 0.5f));
+        DynamicBodyHandle h = world.AddDynamic(box, Pose.At(new Vector3(0f, 0f, 0f)),
+            new DynamicBodyDescription(0f) { LinearVelocity = new Vector3(1f, 0f, 0f) });
+
+        StepMany(world, 600); // 10 s: long past any default sleep timer
+        Assert.True(world.IsAwake(h), "a coasting kinematic body must never sleep");
+        Assert.True(world.GetDynamicPose(h).Position.X > 9f,
+            $"kinematic body must keep moving the whole time (~10 m at 1 m/s), X was {world.GetDynamicPose(h).Position.X:F3}");
+    }
+
+    [Fact]
+    public void SubstepCount_IsPinnable_AndChangesTheFingerprint()
+    {
+        // Pins the IMPORTANT-1 fix: substepCount is a real constructor knob and it is part of the determinism
+        // fingerprint. Two worlds with DIFFERENT substep counts diverge; two with the SAME pinned count agree.
+        static Vector3 RunWith(int substeps)
+        {
+            using IPhysicsWorld world = new BepuPhysicsWorld(BepuPhysicsWorld.DefaultGravity, substepCount: substeps);
+            AddGround(world);
+            var box = new BoxShape(new Vector3(0.4f, 0.6f, 0.5f));
+            DynamicBodyHandle h = world.AddDynamic(box, new Pose(new Vector3(0.2f, 4f, -0.1f),
+                Quaternion.CreateFromAxisAngle(Vector3.Normalize(new Vector3(1f, 0.3f, 0.2f)), 0.5f)),
+                new DynamicBodyDescription(1f) { LinearVelocity = new Vector3(0.3f, 0f, 0.1f), AngularVelocity = new Vector3(1f, 0.5f, 0f) });
+            StepMany(world, 120);
+            return world.GetDynamicPose(h).Position;
+        }
+
+        // Same pinned substep count -> bit-identical (the old integrator can be pinned with substepCount: 1).
+        Assert.Equal(RunWith(1), RunWith(1));
+        Assert.Equal(RunWith(4), RunWith(4));
+        // Different substep count -> a legitimately different fingerprint (proves the knob is live, not inert).
+        Assert.NotEqual(RunWith(1), RunWith(4));
     }
 }

@@ -13,7 +13,10 @@ public readonly record struct DynamicBodyDescription
 {
     /// <summary>Body mass in kilograms. The backend computes the inertia tensor from the shape and this
     /// mass. Values &lt;= 0 mean an infinite-mass (kinematic) body: gravity and collisions do not move it,
-    /// but it still travels along <see cref="LinearVelocity"/>/<see cref="AngularVelocity"/>.</summary>
+    /// but it still travels along <see cref="LinearVelocity"/>/<see cref="AngularVelocity"/>. A kinematic body
+    /// never sleeps (the backend forces this, ignoring <see cref="SleepThreshold"/> for kinematics), so a body
+    /// coasting on a constant velocity through empty space keeps moving instead of falling asleep mid-flight and
+    /// silently stopping.</summary>
     public float Mass { get; init; }
 
     /// <summary>Initial linear velocity in metres/second (world space). Default: zero.</summary>
@@ -23,7 +26,9 @@ public readonly record struct DynamicBodyDescription
     public Vector3 AngularVelocity { get; init; }
 
     /// <summary>The velocity-squared magnitude below which the backend may put the body to sleep once it
-    /// has settled. Negative keeps the backend default; zero disables sleeping (the body never sleeps).</summary>
+    /// has settled. Negative keeps the backend default; zero disables sleeping (the body never sleeps).
+    /// Ignored for kinematic (<see cref="Mass"/> &lt;= 0) bodies, which the backend forces to never sleep so
+    /// they cannot stop coasting mid-flight.</summary>
     public float SleepThreshold { get; init; }
 
     /// <summary>A dynamic body of the given <paramref name="mass"/> at rest, backend-default sleeping.</summary>

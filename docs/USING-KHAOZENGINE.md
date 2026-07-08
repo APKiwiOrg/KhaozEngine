@@ -1746,8 +1746,10 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
   is an infinite-mass (kinematic) body: gravity and impacts do not move it, but its velocity does.
 - `Pose(Vector3 position, Quaternion orientation)` / `Pose.At(Vector3 position)` (identity orientation).
 - `PhysicsMaterial(float Friction, float Restitution)`. `PhysicsMaterial.Default` = full friction, no bounce.
-  A dynamic body's `Restitution` (0..1) is its coefficient of restitution: it rebounds at that fraction of its
-  impact speed, so bounces decay geometrically.
+  A dynamic body's `Restitution` (0..1) drives an approximate, deterministic game-feel bounce that decays
+  geometrically with restitution. It is NOT a true coefficient of restitution (a bounded post-solve reflection
+  that can over-restitute by up to the contact recovery velocity, with no analytically pinned apex) - dial it
+  for feel, not to predict an exact rebound height.
 - `QueryFilter(uint Layers)` (layer mask; `QueryFilter.All` / default matches every body).
 - `StaticHandle`, `DynamicBodyHandle`, `RayHit(Distance, Point, Normal, Body)`, `SweepHit(Distance, Point, Normal, Body)`.
 

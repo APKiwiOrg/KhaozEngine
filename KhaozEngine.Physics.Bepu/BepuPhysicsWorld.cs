@@ -27,6 +27,15 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
     /// <summary>Standard Earth gravity (m/s^2, -Y) used when no gravity is supplied to the constructor.</summary>
     public static readonly Vector3 DefaultGravity = new(0f, -9.81f, 0f);
 
+    /// <summary>Default solver substep count. Four gives dynamic-body contacts stable resolution and lets the
+    /// stiff restitution reflection rebound within a step. This value is part of the deterministic fingerprint
+    /// (see the constructor's <c>substepCount</c> parameter).</summary>
+    public const int DefaultSubstepCount = 4;
+
+    /// <summary>Default solver velocity-iteration count. Part of the deterministic fingerprint (see the
+    /// constructor's <c>velocityIterationCount</c> parameter).</summary>
+    public const int DefaultVelocityIterationCount = 8;
+
     private readonly BufferPool _pool;
     private readonly BepuSim _sim;
 
@@ -50,19 +59,31 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
     /// <summary>A world with standard Earth gravity (<see cref="DefaultGravity"/>).</summary>
     public BepuPhysicsWorld() : this(DefaultGravity) { }
 
-    /// <summary>A world with the given <paramref name="gravity"/> (m/s^2). Pass <c>Vector3.Zero</c> for the
-    /// static-only, non-falling behaviour of the pre-dynamics backend.</summary>
-    public BepuPhysicsWorld(Vector3 gravity)
+    /// <summary>A world with the given <paramref name="gravity"/> (m/s^2) and, optionally, an explicit solver
+    /// configuration. Pass <c>Vector3.Zero</c> for gravity to get the static-only, non-falling behaviour of the
+    /// pre-dynamics backend.</summary>
+    /// <param name="gravity">Uniform gravity applied to every dynamic body each substep (m/s^2).</param>
+    /// <param name="substepCount">Solver substep count (default <see cref="DefaultSubstepCount"/> = 4). This is
+    /// PART OF THE DETERMINISM FINGERPRINT: changing it shifts the bit-exact result of any world containing
+    /// dynamic bodies. A consumer with a determinism tripwire that was fingerprinted on the pre-dynamics backend
+    /// (which used a single substep) can pin the old integrator by passing <c>substepCount: 1</c>. Changing this
+    /// value is a legitimate fingerprint change, not a bug. Static-only queries (raycast/sweep/penetration) are
+    /// unaffected by the substep count.</param>
+    /// <param name="velocityIterationCount">Solver velocity-iteration count (default
+    /// <see cref="DefaultVelocityIterationCount"/> = 8). Also part of the determinism fingerprint for dynamic
+    /// worlds; pin it alongside <paramref name="substepCount"/> if you need a stable fingerprint.</param>
+    public BepuPhysicsWorld(Vector3 gravity, int substepCount = DefaultSubstepCount, int velocityIterationCount = DefaultVelocityIterationCount)
     {
         _pool = new BufferPool();
         _sim = BepuSim.Create(
             _pool,
             new PhysicsNarrowPhaseCallbacks(new SpringSettings(30, 1)),
             new PhysicsPoseIntegratorCallbacks(gravity),
-            // Substepping (4) gives dynamic-body contacts stable, deterministic resolution and lets the stiff
-            // restitution spring rebound within a step. Static-only queries (raycast/sweep/penetration) are
-            // unaffected by the substep count.
-            new SolveDescription(velocityIterationCount: 8, substepCount: 4));
+            // Substepping (default 4) gives dynamic-body contacts stable, deterministic resolution and lets the
+            // stiff restitution reflection rebound within a step. Static-only queries (raycast/sweep/penetration)
+            // are unaffected by the substep count. Both counts are exposed so a consumer with a determinism
+            // tripwire can pin the integrator (they set the fingerprint for any dynamic-body world).
+            new SolveDescription(velocityIterationCount: velocityIterationCount, substepCount: substepCount));
     }
 
     public SeamHandle AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null)
@@ -105,8 +126,14 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
         {
             // Infinite-mass (kinematic) body: no inertia, unaffected by gravity/impacts but still moved by its
             // velocity. Reuse the static/kinematic shape path (base-alignment wrappers, no inertia needed).
+            // Force kinematics to NEVER sleep (negative sleep threshold): a kinematic body's velocity is applied
+            // by the pose integrator only while it is awake, so a body coasting on a constant velocity through
+            // empty space (no contacts to keep its island awake) would otherwise fall asleep mid-flight and
+            // silently stop moving. This is a one-line activity override with no other behaviour change - a
+            // kinematic body has no dynamics to settle, so there is nothing legitimate for it to sleep for.
             shapeIndex = ShapeFactory.Add(_sim, _pool, shape);
-            var desc = BodyDescription.CreateKinematic(rigidPose, velocity, new CollidableDescription(shapeIndex), activity);
+            var kinematicActivity = new BodyActivityDescription(-1f);
+            var desc = BodyDescription.CreateKinematic(rigidPose, velocity, new CollidableDescription(shapeIndex), kinematicActivity);
             bepuHandle = _sim.Bodies.Add(desc);
         }
         else
@@ -172,13 +199,16 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
 
     public void Step(float dt)
     {
-        // Explicit, deterministic restitution. Bepu 2.4 has no restitution coefficient and its contact
-        // MaximumRecoveryVelocity only acts on penetration depth (which gives a constant-height limit cycle, not a
-        // real coefficient of restitution). So for every awake restitutive dynamic body we snapshot the velocity,
-        // let the solver arrest the impact this step, and if the body's speed along the pre-step motion direction
-        // was reduced by a contact (the solver removed approach velocity), we return restitution x the removed
-        // speed along that direction. This reproduces a true coefficient of restitution (each bounce apex decays
-        // geometrically) and stays fully deterministic under fixed dt. Non-restitutive bodies are untouched.
+        // Explicit, deterministic, approximate restitution (a game-feel bounce, NOT a true coefficient of
+        // restitution). Bepu 2.4 has no restitution coefficient and its contact MaximumRecoveryVelocity only acts
+        // on penetration depth (which gives a constant-height limit cycle, not a decaying bounce). So for every
+        // awake restitutive dynamic body we snapshot the velocity, let the solver arrest the impact this step, and
+        // if the body's speed along the pre-step motion direction was reduced by a contact (the solver removed
+        // approach velocity), we return restitution x the removed speed along that direction. The bounce decays
+        // geometrically with restitution and stays fully deterministic under fixed dt, but it is a BOUNDED
+        // post-solve reflection: it can over-restitute by up to the contact recovery velocity, and the apex is not
+        // analytically pinned (a hard impact spreads its arrest over 2-3 substeps). Non-restitutive bodies are
+        // untouched.
         if (_restitutiveDynamics.Count > 0)
         {
             _preStepVel.Clear();

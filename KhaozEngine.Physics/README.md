@@ -8,10 +8,19 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
 ## Types
 
 - **`IPhysicsWorld`** - static bodies (`AddStatic`/`RemoveStatic`), dynamic bodies
-  (`AddDynamic`/`RemoveDynamic`/`GetDynamicPose`/`GetDynamicVelocity`/`SetDynamicVelocity`/`IsAwake`),
-  `Step(dt)`, and the queries: `Raycast` (nearest hit), `SweepCapsule` (nearest time of impact, what the
-  swept collide-and-slide in `Locomotion` uses), `ComputePenetration` (minimum translation to separate an
-  overlapping capsule). Dynamic-body stepping is deterministic under a fixed dt.
+  (`AddDynamic`/`RemoveDynamic`/`GetDynamicPose`/`GetDynamicVelocity`/`SetDynamicVelocity`/`IsAwake`), joint
+  constraints (`AddConstraint`/`RemoveConstraint`), `Step(dt)`, and the queries: `Raycast` (nearest hit),
+  `SweepCapsule` (nearest time of impact, what the swept collide-and-slide in `Locomotion` uses),
+  `ComputePenetration` (minimum translation to separate an overlapping capsule). Dynamic-body stepping is
+  deterministic under a fixed dt.
+- **`ConstraintDescription`** - a discriminated joint description for `AddConstraint`: a `ConstraintKind`
+  (`BallSocket`, `Hinge`, `Slider`, `Distance`, `Weld`) plus body-local anchors/axes and the fields that kind
+  uses. Prefer the factories `BallSocketJoint`/`HingeJoint`/`SliderJoint`/`DistanceJoint`/`WeldJoint`, then
+  `WithAngularLimit(min, max)` for a hinge stop and `WithSpring(stiffnessHz, dampingRatio)` for a custom spring
+  (defaults `DefaultStiffnessHz` = 30 Hz, `DefaultDampingRatio` = 1.0 critically damped). Each end is a
+  **`ConstraintAttachment`**: `OnBody(handle)` for a dynamic body, or `AtWorld(pose)`/`AtWorld(position)` for a
+  fixed world-space anchor. At least one end must be a dynamic body. Removing either connected body cleans up the
+  constraint automatically. **`ConstraintHandle`** is the opaque handle.
 - **Shapes** - `SphereShape`, `CapsuleShape` (upright, local Y), `BoxShape` (half-extents),
   `CylinderShape`, `ConvexHullShape` (solid props), `TriangleMeshShape` (non-convex buildings/interiors,
   static only), and `CompoundShape` (`CompoundChild[]`, disjoint children each at a local `Pose`). A dynamic
@@ -66,6 +75,18 @@ DynamicBodyHandle crate = world.AddDynamic(
     DynamicBodyDescription.WithMass(10f));
 world.Step(1f / 60f);
 Pose cratePose = world.GetDynamicPose(crate);
+
+// Joints: hang a door on a hinge anchored to the world, swinging about Y, limited to a quarter turn.
+DynamicBodyHandle door = world.AddDynamic(
+    new BoxShape(new Vector3(0.5f, 1f, 0.05f)),
+    Pose.At(new Vector3(0.5f, 2f, 0f)),
+    DynamicBodyDescription.WithMass(20f));
+world.AddConstraint(ConstraintDescription.HingeJoint(
+    ConstraintAttachment.OnBody(door),
+    ConstraintAttachment.AtWorld(new Vector3(0f, 2f, 0f)),
+    anchorA: new Vector3(-0.5f, 0f, 0f), anchorB: Vector3.Zero,
+    axisA: Vector3.UnitY, axisB: Vector3.UnitY)
+    .WithAngularLimit(0f, MathF.PI / 2f));
 
 if (world.Raycast(origin, direction, 50f, out RayHit hit))
     Console.WriteLine($"hit {hit.Body} at {hit.Point}");

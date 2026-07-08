@@ -35,8 +35,51 @@ either value shifts the bit-exact result legitimately.
   It is a bounded post-solve reflection (it can over-restitute by up to the contact recovery velocity, and the
   apex is not analytically pinned - a hard impact spreads its arrest over 2-3 substeps). Non-restitutive bodies
   are untouched.
+- **`AddConstraint`/`RemoveConstraint`** - joint constraints mapped to the verified BepuPhysics 2.4 constraint
+  types (see the joints section below). `RemoveConstraint` is a safe no-op on a double-remove or a handle whose
+  body was already removed. Removing a constrained body tears down its constraints first (Bepu corrupts if a body
+  is removed with a live constraint), so a body's joints never dangle.
 - **`Step(dt)`**, **`Raycast`**, **`SweepCapsule`**, **`ComputePenetration`** - the last is one
   CollisionBatcher manifold query over every shape type, deepest contact wins.
+
+## Joints
+
+Each seam `ConstraintKind` maps to Bepu 2.4 constraint types (verified against the assembly, never from memory):
+
+| Seam kind | Bepu constraint(s) |
+|-----------|--------------------|
+| `BallSocket` | `BallSocket` (point-to-point) |
+| `Hinge` | `Hinge` (point pin + parallel hinge axes), plus a `TwistLimit` when angular limits are set |
+| `Slider` | `PointOnLineServo` (keep on the axis line) + `AngularServo` (lock relative rotation to the add-time pose) + `LinearAxisLimit` (clamp travel) |
+| `Distance` | `DistanceLimit` (min/max anchor separation; min == max is a rigid rod) |
+| `Weld` | `Weld` (fixed relative offset + orientation captured at add time) |
+
+A single seam slider expands to three Bepu constraints; the backend tracks them together and removes them as a
+unit. The hinge angular limit uses a `TwistLimit` whose basis Z is aligned with the hinge axis (Bepu measures the
+twist about the basis Z axis, confirmed empirically), and it runs a stiffer end-stop spring (>= 60 Hz) than the
+joint pin so a fast swing does not overshoot the clamp much.
+
+**Static-anchor side.** Bepu 2.4 has no one-body position joints (only `OneBodyAngularMotor`/`OneBodyAngularServo`),
+so a world-space anchor (`ConstraintAttachment.AtWorld`) is NOT a one-body constraint: it is realised as an
+infinite-mass kinematic body (a tiny non-colliding sphere) pinned at the anchor pose, and every joint is a two-body
+Bepu constraint whether the far end is dynamic or that kinematic anchor. This is the idiomatic BepuPhysics way to
+tie a joint to the world and reuses the seam's existing kinematic-body path. The anchor body is owned by the
+constraint and removed with it. At least one end must be a real dynamic body (both-anchor throws).
+
+**Spring defaults.** A joint's spring is a `SpringSettings(frequency Hz, dampingRatio)`. When
+`ConstraintDescription.Stiffness`/`DampingRatio` are left at 0 the backend applies **30 Hz, critically damped
+(ratio 1.0)** - a firm joint that removes constraint error within a couple of steps at a 60 Hz step without the
+ringing a much higher frequency invites (it matches the contact spring the dynamics backend already uses). Raise
+the stiffness (via `WithSpring`) toward, but not far past, your step frequency for a tighter joint; drop the
+damping ratio below 1 for a springy/bouncy joint. A frictionless hinge or slider conserves energy: it swings or
+slides indefinitely rather than settling. Damped settling and powered targets are motors/servos (a follow-up),
+not part of this joint set.
+
+**Recommended solver settings.** The 10.29.0 defaults (`substepCount` 4, `velocityIterationCount` 8) resolve every
+joint here stably at a 60 Hz step and are NOT changed by this feature (they are part of the determinism
+fingerprint). If you stack many stiff joints or push very high spring frequencies and see jitter, prefer raising
+`substepCount` on the `BepuPhysicsWorld` constructor over changing the joint springs, and pin whatever you choose
+for a stable fingerprint.
 
 ## Base alignment and compound gotchas
 

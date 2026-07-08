@@ -14,7 +14,9 @@ using KhaozEngine.Physics;
 using BepuSim = BepuPhysics.Simulation;
 using BepuStaticHandle = BepuPhysics.StaticHandle;
 using BepuBodyHandle = BepuPhysics.BodyHandle;
+using BepuConstraintHandle = BepuPhysics.ConstraintHandle;
 using SeamHandle = KhaozEngine.Physics.StaticHandle;
+using SeamConstraintHandle = KhaozEngine.Physics.ConstraintHandle;
 
 namespace KhaozEngine.Physics.Bepu;
 
@@ -55,6 +57,31 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
     private readonly Dictionary<int, float> _restitutionOf = new();
     private readonly Dictionary<int, Vector3> _preStepVel = new();
     private int _nextId;
+
+    // Constraint bookkeeping. A seam constraint id -> the Bepu constraint handle(s) it created (a slider expands
+    // to three), the dynamic-body ids it connects (for reverse cleanup), and any kinematic anchor bodies this
+    // constraint owns (created for a world-space static anchor end and removed with the constraint). The reverse
+    // index maps a dynamic-body id to the constraint ids that touch it, so RemoveDynamic cleans a body's
+    // constraints before removing the body (Bepu would corrupt / assert if a removed body still had constraints).
+    private readonly Dictionary<int, ConstraintEntry> _constraints = new();
+    private readonly Dictionary<int, List<int>> _bodyConstraints = new();
+    private int _nextConstraintId;
+
+    private readonly struct ConstraintEntry
+    {
+        public readonly BepuConstraintHandle[] BepuHandles;   // 1..3 solver handles making up this joint
+        public readonly int BodyIdA;                          // -1 if end A is a world anchor (never true today, A is always dynamic)
+        public readonly int BodyIdB;                          // -1 if end B is a world anchor
+        public readonly BepuBodyHandle[] AnchorBodies;        // kinematic anchor bodies this constraint owns (0..1)
+
+        public ConstraintEntry(BepuConstraintHandle[] bepuHandles, int bodyIdA, int bodyIdB, BepuBodyHandle[] anchorBodies)
+        {
+            BepuHandles = bepuHandles;
+            BodyIdA = bodyIdA;
+            BodyIdB = bodyIdB;
+            AnchorBodies = anchorBodies;
+        }
+    }
 
     /// <summary>A world with standard Earth gravity (<see cref="DefaultGravity"/>).</summary>
     public BepuPhysicsWorld() : this(DefaultGravity) { }
@@ -157,11 +184,123 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
     {
         if (_dynamics.TryGetValue(handle.Value, out var entry))
         {
+            // Remove every constraint touching this body FIRST. Bepu corrupts / asserts if a body is removed while
+            // it still has solver constraints, so a constrained body's joints must be torn down before the body.
+            // Copy the id list before iterating: RemoveConstraintInternal mutates _bodyConstraints.
+            if (_bodyConstraints.TryGetValue(handle.Value, out var constraintIds))
+            {
+                foreach (int cid in constraintIds.ToArray())
+                    RemoveConstraintInternal(cid);
+                _bodyConstraints.Remove(handle.Value);
+            }
+
             _sim.Bodies.Remove(entry.Handle);
             _sim.Shapes.RecursivelyRemoveAndDispose(entry.Shape, _pool);
             _dynamics.Remove(handle.Value);
             _restitutiveDynamics.Remove(handle.Value);
             _restitutionOf.Remove(handle.Value);
+        }
+    }
+
+    public SeamConstraintHandle AddConstraint(in ConstraintDescription description)
+    {
+        // Resolve each end to a Bepu body handle + current pose. A dynamic end resolves to its live body (stale
+        // -> ArgumentException, matching the seam pattern); a world-space anchor end pins a fresh infinite-mass
+        // kinematic body at the anchor pose (Bepu has no one-body position joint, so the static side must be a
+        // body). At least one end must be dynamic - a joint between two world anchors could never move.
+        if (description.A.IsWorldAnchor && description.B.IsWorldAnchor)
+            throw new ArgumentException("A constraint needs at least one dynamic body end; both ends are world anchors.", nameof(description));
+
+        var anchorBodies = new List<BepuBodyHandle>(1);
+        (BepuBodyHandle handleA, RigidPose poseA, int bodyIdA) = ResolveEnd(description.A, anchorBodies);
+        (BepuBodyHandle handleB, RigidPose poseB, int bodyIdB) = ResolveEnd(description.B, anchorBodies);
+
+        var resolved = new ConstraintFactory.Resolved(handleA, handleB, poseA, poseB);
+        Span<BepuConstraintHandle> buffer = stackalloc BepuConstraintHandle[3];
+        int count = ConstraintFactory.Build(_sim, description, resolved, buffer);
+        var bepuHandles = new BepuConstraintHandle[count];
+        for (int i = 0; i < count; i++) bepuHandles[i] = buffer[i];
+
+        int id = _nextConstraintId++;
+        _constraints[id] = new ConstraintEntry(bepuHandles, bodyIdA, bodyIdB, anchorBodies.ToArray());
+        if (bodyIdA >= 0) AddBodyConstraintLink(bodyIdA, id);
+        if (bodyIdB >= 0) AddBodyConstraintLink(bodyIdB, id);
+        return new SeamConstraintHandle(id);
+    }
+
+    public void RemoveConstraint(SeamConstraintHandle handle) => RemoveConstraintInternal(handle.Value);
+
+    // Resolves a seam attachment to a Bepu body: a dynamic end to its live body (throws if stale), a world anchor
+    // to a NEW kinematic body created here and recorded in `anchorBodies` (owned by this constraint, removed with
+    // it). Returns the Bepu handle, the body's current pose, and the seam dynamic-body id (-1 for an anchor).
+    private (BepuBodyHandle Handle, RigidPose Pose, int BodyId) ResolveEnd(ConstraintAttachment end, List<BepuBodyHandle> anchorBodies)
+    {
+        if (end.Body is DynamicBodyHandle dyn)
+        {
+            BepuBodyHandle h = RequireDynamic(dyn);
+            RigidPose pose = _sim.Bodies.GetBodyReference(h).Pose;
+            return (h, pose, dyn.Value);
+        }
+
+        // World anchor: an infinite-mass kinematic body at the anchor pose. A tiny sphere collidable that never
+        // generates contacts (statics/other kinematics do not collide with it; only its transform matters to the
+        // solver). It never sleeps (kinematic) but with zero velocity it stays put, giving a fixed solve target.
+        var rigidPose = new RigidPose(end.WorldAnchor.Position, end.WorldAnchor.Orientation);
+        var shapeIndex = _sim.Shapes.Add(new BepuPhysics.Collidables.Sphere(0.05f));
+        var desc = BodyDescription.CreateKinematic(rigidPose, new CollidableDescription(shapeIndex), new BodyActivityDescription(-1f));
+        BepuBodyHandle anchor = _sim.Bodies.Add(desc);
+        anchorBodies.Add(anchor);
+        return (anchor, rigidPose, -1);
+    }
+
+    private void AddBodyConstraintLink(int bodyId, int constraintId)
+    {
+        if (!_bodyConstraints.TryGetValue(bodyId, out var list))
+        {
+            list = new List<int>(1);
+            _bodyConstraints[bodyId] = list;
+        }
+        list.Add(constraintId);
+    }
+
+    private void RemoveConstraintInternal(int constraintId)
+    {
+        if (!_constraints.TryGetValue(constraintId, out var entry))
+            return; // double-remove, or a constraint already torn down by body removal: safe no-op.
+
+        // Remove the solver constraint(s). ConstraintExists guards against a handle Bepu already reclaimed (it
+        // cannot happen through the seam, but the check keeps removal crash-proof under any ordering).
+        foreach (var bepuHandle in entry.BepuHandles)
+        {
+            if (_sim.Solver.ConstraintExists(bepuHandle))
+                _sim.Solver.Remove(bepuHandle);
+        }
+
+        // Drop the reverse links from each connected dynamic body.
+        UnlinkBodyConstraint(entry.BodyIdA, constraintId);
+        UnlinkBodyConstraint(entry.BodyIdB, constraintId);
+
+        // Remove and dispose any kinematic anchor bodies this constraint owned.
+        foreach (var anchor in entry.AnchorBodies)
+        {
+            if (_sim.Bodies.BodyExists(anchor))
+            {
+                var collidable = _sim.Bodies.GetBodyReference(anchor).Collidable.Shape;
+                _sim.Bodies.Remove(anchor);
+                _sim.Shapes.RecursivelyRemoveAndDispose(collidable, _pool);
+            }
+        }
+
+        _constraints.Remove(constraintId);
+    }
+
+    private void UnlinkBodyConstraint(int bodyId, int constraintId)
+    {
+        if (bodyId < 0) return;
+        if (_bodyConstraints.TryGetValue(bodyId, out var list))
+        {
+            list.Remove(constraintId);
+            if (list.Count == 0) _bodyConstraints.Remove(bodyId);
         }
     }
 

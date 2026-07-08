@@ -1775,7 +1775,28 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
   `QueryFilter.StaticsOnly` / `QueryFilter.DynamicsOnly` restrict by mobility (the Bepu backend applies the gate,
   so e.g. a downward ground probe passing `StaticsOnly` ignores a dynamic crate under the character). The layer
   mask (`0` = all layers) is reserved.
-- `StaticHandle`, `DynamicBodyHandle`, `RayHit(Distance, Point, Normal, Body)`, `SweepHit(Distance, Point, Normal, Body)`.
+- `IPhysicsWorld` joint constraints (connect two dynamic bodies, or one dynamic body to a fixed world anchor):
+  `AddConstraint(in ConstraintDescription description) -> ConstraintHandle`, `RemoveConstraint(ConstraintHandle handle)`
+  (safe mid-step; a double-remove or a handle whose body was already removed is a no-op). Removing a constrained
+  BODY tears its constraints down automatically, so a joint handle can go stale without an explicit remove.
+- `ConstraintDescription` is a discriminated struct (`ConstraintKind` = `BallSocket` / `Hinge` / `Slider` /
+  `Distance` / `Weld` + body-local anchors/axes). Build it with the factories and refine with `WithAngularLimit` /
+  `WithSpring`:
+  - `ConstraintDescription.BallSocketJoint(a, b, anchorA, anchorB)` - point-to-point pin, free rotation.
+  - `ConstraintDescription.HingeJoint(a, b, anchorA, anchorB, axisA, axisB)` - revolute about the shared axis;
+    `.WithAngularLimit(minRad, maxRad)` clamps the swing (measured from the add-time relative orientation).
+  - `ConstraintDescription.SliderJoint(a, b, anchorA, anchorB, axis, minOffset, maxOffset)` - prismatic along one
+    axis, all rotation locked, travel clamped.
+  - `ConstraintDescription.DistanceJoint(a, b, anchorA, anchorB, minDistance, maxDistance)` - rope (min 0, max =
+    length) or rigid rod (min == max).
+  - `ConstraintDescription.WeldJoint(a, b, anchorA)` - glue two bodies at their current relative pose.
+  - `.WithSpring(stiffnessHz, dampingRatio)` overrides the default spring (30 Hz, critically damped); a
+    frictionless hinge/slider conserves energy and keeps moving (damped settling and powered targets are
+    motors/servos, a follow-up).
+- `ConstraintAttachment.OnBody(DynamicBodyHandle)` (a dynamic end) or `ConstraintAttachment.AtWorld(Pose)` /
+  `AtWorld(Vector3)` (a fixed world anchor; the backend pins an infinite-mass kinematic body there). At least one
+  end must be a dynamic body - both-anchor throws `ArgumentException`, as does a stale body handle.
+- `StaticHandle`, `DynamicBodyHandle`, `ConstraintHandle`, `RayHit(Distance, Point, Normal, Body)`, `SweepHit(Distance, Point, Normal, Body)`.
 
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
@@ -1822,6 +1843,46 @@ if (physics.Raycast(eye, forward, maxDistance: 50f, out RayHit hit))
 physics.RemoveDynamic(crate);
 physics.RemoveStatic(rockHandle);
 ```
+
+**Joints (`AddConstraint`)** - connect bodies with the core joint set. Anchors and axes are body-local; a fixed
+world anchor is `ConstraintAttachment.AtWorld`.
+
+```csharp
+using KhaozEngine.Physics;
+
+// A DOOR: a slab hinged to the world frame at its left edge, swinging about Y, limited to a quarter turn.
+DynamicBodyHandle door = physics.AddDynamic(
+    new BoxShape(new Vector3(0.5f, 1f, 0.05f)),   // half-width 0.5, half-height 1, thin
+    Pose.At(new Vector3(0.5f, 2f, 0f)),           // hinge edge at x=0, slab centre at x=0.5
+    DynamicBodyDescription.WithMass(20f));
+physics.AddConstraint(ConstraintDescription.HingeJoint(
+        ConstraintAttachment.OnBody(door),
+        ConstraintAttachment.AtWorld(new Vector3(0f, 2f, 0f)),  // world pivot at the hinge edge
+        anchorA: new Vector3(-0.5f, 0f, 0f),                    // the slab's left edge, body-local
+        anchorB: Vector3.Zero,
+        axisA: Vector3.UnitY, axisB: Vector3.UnitY)             // swing about vertical
+    .WithAngularLimit(0f, MathF.PI / 2f));                      // closed .. 90 deg open
+
+// A ROPE: a weight hung from a fixed point, free to fall until the rope goes taut at 3 m.
+DynamicBodyHandle weight = physics.AddDynamic(
+    new SphereShape(0.2f),
+    Pose.At(new Vector3(0f, 9.5f, 0f)),
+    DynamicBodyDescription.WithMass(5f));
+physics.AddConstraint(ConstraintDescription.DistanceJoint(
+    ConstraintAttachment.AtWorld(new Vector3(0f, 10f, 0f)),
+    ConstraintAttachment.OnBody(weight),
+    anchorA: Vector3.Zero, anchorB: Vector3.Zero,
+    minDistance: 0f, maxDistance: 3f));
+
+physics.Step(dt);  // the door swings and settles against its limit under gravity; the weight hangs at rope length
+
+// Removing the door body also removes its hinge; removing a joint alone is by its handle.
+physics.RemoveDynamic(door);
+```
+
+Note (this batch): joint springs are compliant but frictionless, so a hinge/slider with no motor swings or slides
+freely and does not settle by itself. Motors and servos (a powered door, a patrolling platform, a winch) are a
+follow-up.
 
 **Wiring into character movement** - pass the physics world as `IPhysicsWorld?` wherever the movement step runs.
 The step moves the capsule freely to its desired position, then depenetrates it against all static bodies in

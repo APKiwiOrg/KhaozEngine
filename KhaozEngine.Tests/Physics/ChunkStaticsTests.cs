@@ -38,6 +38,8 @@ public class ChunkStaticsTests
         public void SetDynamicVelocity(DynamicBodyHandle handle, Vector3 linear, Vector3 angular)
             => throw new NotSupportedException();
         public bool IsAwake(DynamicBodyHandle handle) => throw new NotSupportedException();
+        public ConstraintHandle AddConstraint(in ConstraintDescription description) => throw new NotSupportedException();
+        public void RemoveConstraint(ConstraintHandle handle) => throw new NotSupportedException();
 
         // unused query/step members
         public void Step(float dt) { }

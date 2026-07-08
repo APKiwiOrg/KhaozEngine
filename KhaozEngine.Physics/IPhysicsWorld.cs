@@ -40,8 +40,24 @@ public interface IPhysicsWorld : IDisposable
     /// rest sleeps and reports false until disturbed. Cheap; used to gate replication and rest assertions.</summary>
     bool IsAwake(DynamicBodyHandle handle);
 
+    /// <summary>Add a joint constraint connecting two dynamic bodies, or one dynamic body to a fixed world-space
+    /// anchor. The <see cref="ConstraintDescription"/> is a discriminated struct: its <see cref="ConstraintKind"/>
+    /// selects the joint (ball-socket, hinge, slider, distance, weld) and only that kind's fields are read.
+    /// Anchors and axes are body-local. A world-space anchor end (<see cref="ConstraintAttachment.AtWorld(Pose)"/>)
+    /// is pinned by the backend as an infinite-mass kinematic body. Returns a handle for removal. The constraint
+    /// is stepped by <see cref="Step"/> from the next step on. Throws <see cref="System.ArgumentException"/> if a
+    /// referenced dynamic body is not live, or if both ends are world anchors (a constraint needs at least one
+    /// dynamic body to move).</summary>
+    ConstraintHandle AddConstraint(in ConstraintDescription description);
+
+    /// <summary>Remove a joint constraint previously added. Safe to call at any time, including mid-step. A
+    /// double-remove, or removing a constraint whose body was already removed (which cleans up its constraints),
+    /// is a safe no-op.</summary>
+    void RemoveConstraint(ConstraintHandle handle);
+
     /// <summary>Advance the simulation by <paramref name="dt"/> seconds. Integrates dynamic bodies under
-    /// gravity and resolves contacts. Deterministic under a fixed <paramref name="dt"/>.</summary>
+    /// gravity, resolves contacts, and solves active constraints. Deterministic under a fixed
+    /// <paramref name="dt"/>.</summary>
     void Step(float dt);
 
     /// <summary>Cast a ray; returns the nearest hit. Used for ledge detection, jump targeting,

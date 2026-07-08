@@ -238,9 +238,14 @@ namespace KhaozEngine.Render3D
         /// auto-retire and free the layer slot for reuse. <paramref name="mask"/> gates it spatially (e.g. an upper-body
         /// subtree so an attack drives the arms while the legs stay on locomotion); null == the whole skeleton.
         /// <paramref name="mode"/> selects Override (default, replace the masked bones) or Additive (add the clip's
-        /// delta). <paramref name="speed"/> scales the clip playhead (the real play duration is
-        /// <c>clip.Duration / speed</c>). Returns an <see cref="ActionHandle"/> for <see cref="Cancel"/>. Reuses a
-        /// pooled slot when one is free, so repeated actions allocate nothing in steady state.</summary>
+        /// delta). <paramref name="speed"/> scales the clip playhead: the real play duration is
+        /// <c>clip.Duration / speed</c>, while <paramref name="fadeIn"/> / <paramref name="fadeOut"/> are wall-clock
+        /// seconds independent of <paramref name="speed"/> (the fades ride real time, not the sped-up playhead).
+        /// Returns an <see cref="ActionHandle"/> for <see cref="Cancel"/>. Reuses a pooled slot when one is free (and
+        /// grows the slot pool when none is idle - it never rejects an action or returns a sentinel), so repeated
+        /// actions allocate nothing in steady state. When two live actions mask the SAME bone, they composite by layer
+        /// stack order (higher slot index wins), which after slot reuse is slot-acquisition order, not play order - do
+        /// not rely on play-order precedence for overlapping masks.</summary>
         public ActionHandle PlayAction(AnimationClip clip, BoneMask? mask = null, float fadeIn = 0.1f, float fadeOut = 0.1f,
             float speed = 1f, LayerMode mode = LayerMode.Override)
         {

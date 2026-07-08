@@ -90,6 +90,46 @@ namespace KhaozEngine.Tests.Render3D.Animation
         }
 
         [Fact]
+        public void PlayAction_Speed2_HalvesPlayDuration_FadesAndRetiresOnRealTime()
+        {
+            // speed 2 halves the play duration (clip.Duration / speed), but the fades stay wall-clock: a 1s clip at
+            // speed 2 plays for 0.5s real, sustains at full weight mid-clip, starts its fade-out at (0.5 - fadeOut)
+            // real seconds, and retires at 0.5s real. Mirrors the speed-1 lifecycle test above, on the halved timeline.
+            Skeleton skel = OneBone();
+            var anim = new LayeredAnimator(skel);
+            var action = TranslationClip("swing", 0, new Vector3(10, 0, 0), duration: 1f);
+
+            const float dt = 1f / 120f;
+            const float fadeIn = 0.05f, fadeOut = 0.1f;
+            const float playDuration = 0.5f;                 // 1s clip / speed 2
+            const float fadeOutStart = playDuration - fadeOut;   // 0.4s real
+            anim.PlayAction(action, mask: null, fadeIn: fadeIn, fadeOut: fadeOut, speed: 2f);
+            Assert.True(anim.HasActiveActions);
+
+            // Mid-clip, after fade-in and before fade-out starts (~0.25s real): sustained at full weight -> X == 10.
+            float t = 0f;
+            for (; t < 0.25f - 1e-4f; t += dt) { anim.Update(dt); SetBase(anim, skel, 0f); }
+            Assert.Equal(10f, Locals(anim)[0].Translation.X, 3);
+            Assert.True(anim.HasActiveActions);
+
+            // Just before the fade-out start (~0.39s real): still full weight.
+            for (; t < fadeOutStart - 0.01f; t += dt) { anim.Update(dt); SetBase(anim, skel, 0f); }
+            Assert.Equal(10f, Locals(anim)[0].Translation.X, 3);
+
+            // Inside the fade-out band (~0.45s real, between fadeOutStart and playDuration): weight already below 1.
+            for (; t < 0.45f; t += dt) { anim.Update(dt); SetBase(anim, skel, 0f); }
+            float xFading = Locals(anim)[0].Translation.X;
+            Assert.True(xFading < 9.5f, $"expected fade-out underway by 0.45s real, got X={xFading}");
+            Assert.True(xFading > 0.5f, "but not yet fully faded");
+            Assert.True(anim.HasActiveActions);
+
+            // Past the halved play duration (0.5s real, +margin): retired -> pose back to base.
+            for (; t < 0.6f; t += dt) { anim.Update(dt); SetBase(anim, skel, 0f); }
+            Assert.False(anim.HasActiveActions);
+            Assert.Equal(0f, Locals(anim)[0].Translation.X, 4);
+        }
+
+        [Fact]
         public void PlayAction_FadeOut_OverlapsTheClipTail_WeightBelowOneBeforeEnd()
         {
             // The fade-out must OVERLAP the clip tail (start before the clip ends), not begin after it. With a 1s clip

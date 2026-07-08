@@ -1481,8 +1481,12 @@ of the way" - use the one-shot action API instead of managing layer weights by h
 
 `PlayAction` fades the clip in over `fadeIn`, plays it once, fades it out over `fadeOut` **overlapping the clip
 tail** (the fade-out ends exactly as the clip finishes), then retires the action and frees its layer slot. Slots
-are pooled and reused, so firing action after action allocates nothing in steady state. `Cancel` fades an
-in-flight action out early from its current weight (continuity, no pop). While no action is in flight the
+are pooled and reused, so firing action after action allocates nothing in steady state (the pool grows when no
+idle slot exists, so an action is never rejected). `fadeIn` / `fadeOut` are wall-clock seconds independent of
+`speed`: `speed` sets the play duration (`clip.Duration / speed`) but the fades still ride real time. If two live
+actions mask the SAME bone, they composite by layer stack order (higher slot index wins), which after slot reuse
+is slot-acquisition order, not play order, so do not rely on play-order precedence for overlapping masks. `Cancel`
+fades an in-flight action out early from its current weight (continuity, no pop). While no action is in flight the
 character produces a pose **byte-identical** to plain `AnimatedCharacter` (the locomotion crossfade goes straight
 to `DrawSkinned`, the action compositor is bypassed), so adopting actions never changes existing locomotion
 rendering. `HasActiveActions` tells you whether any action is live.

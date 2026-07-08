@@ -62,7 +62,7 @@ namespace KhaozEngine.Tests.Game
         }
 
         // Node 0 (legs) upper-body mask that is 0 on legs, 1 on arms.
-        static BoneMask UpperBody(Skeleton skel) => new BoneMask(new[] { 0f, 1f });
+        static BoneMask UpperBody() => new BoneMask(new[] { 0f, 1f });
 
         // Settle onto a locomotion state (past crossfade + debounce).
         static void Settle(AnimatedCharacter c, float speed) { for (int i = 0; i < 90; i++) c.Update(speed, true, 0f, 1f / 60f); }
@@ -78,7 +78,7 @@ namespace KhaozEngine.Tests.Game
             Assert.Equal(3f, Locals(c)[0].Translation.X, 2);
             Assert.Equal(3f, Locals(c)[1].Translation.X, 2);
 
-            c.PlayAction(Attack(0.6f), UpperBody(skel), fadeIn: 0.1f, fadeOut: 0.1f);
+            c.PlayAction(Attack(0.6f), UpperBody(), fadeIn: 0.1f, fadeOut: 0.1f);
             Assert.True(c.HasActiveActions);
 
             // Drive into the sustain, keeping the run input. Legs must still read the run clip (X=3), arms the attack.
@@ -107,7 +107,7 @@ namespace KhaozEngine.Tests.Game
             Settle(withAction, 2f);
 
             // withAction plays + fully retires an action; reference does nothing.
-            withAction.PlayAction(Attack(0.3f), UpperBody(skel), fadeIn: 0.05f, fadeOut: 0.05f);
+            withAction.PlayAction(Attack(0.3f), UpperBody(), fadeIn: 0.05f, fadeOut: 0.05f);
             const float dt = 1f / 60f;
             for (float t = 0f; t < 0.5f; t += dt) withAction.Update(2f, true, 0f, dt);
             for (float t = 0f; t < 0.5f; t += dt) reference.Update(2f, true, 0f, dt);
@@ -127,7 +127,7 @@ namespace KhaozEngine.Tests.Game
             Skeleton skel = LegsArms();
             var c = new AnimatedCharacter(skel, Clips(), crossfade: 0.05f, stateDebounceSeconds: 0f);
             Settle(c, 5f);
-            ActionHandle h = c.PlayAction(Attack(5f), UpperBody(skel), fadeIn: 0.1f, fadeOut: 0.2f);
+            ActionHandle h = c.PlayAction(Attack(5f), UpperBody(), fadeIn: 0.1f, fadeOut: 0.2f);
 
             const float dt = 1f / 60f;
             for (float t = 0f; t < 0.5f; t += dt) c.Update(5f, true, 0f, dt);   // into sustain: arms at X=20
@@ -171,7 +171,7 @@ namespace KhaozEngine.Tests.Game
             Assert.NotNull(remote);
 
             // The remote's local animator API is fully callable (no ownership/authority gate): play an upper-body action.
-            ActionHandle h = remote!.PlayAction(Attack(0.5f), UpperBody(skel), fadeIn: 0.05f, fadeOut: 0.05f);
+            ActionHandle h = remote!.PlayAction(Attack(0.5f), UpperBody(), fadeIn: 0.05f, fadeOut: 0.05f);
             Assert.True(h.IsValid);
             Assert.True(remote.HasActiveActions);
 

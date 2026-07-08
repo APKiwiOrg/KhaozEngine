@@ -59,9 +59,9 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
     private int _nextId;
 
     // Constraint bookkeeping. A seam constraint id -> the Bepu constraint handle(s) it created (a slider expands
-    // to three), the dynamic-body ids it connects (for reverse cleanup), and any kinematic anchor bodies this
-    // constraint owns (created for a world-space static anchor end and removed with the constraint). The reverse
-    // index maps a dynamic-body id to the constraint ids that touch it, so RemoveDynamic cleans a body's
+    // to three), the dynamic-body ids it connects (for reverse cleanup), and any shapeless kinematic anchor bodies
+    // this constraint owns (created for a world-space static anchor end and removed with the constraint). The
+    // reverse index maps a dynamic-body id to the constraint ids that touch it, so RemoveDynamic cleans a body's
     // constraints before removing the body (Bepu would corrupt / assert if a removed body still had constraints).
     private readonly Dictionary<int, ConstraintEntry> _constraints = new();
     private readonly Dictionary<int, List<int>> _bodyConstraints = new();
@@ -72,7 +72,7 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
         public readonly BepuConstraintHandle[] BepuHandles;   // 1..3 solver handles making up this joint
         public readonly int BodyIdA;                          // -1 if end A is a world anchor (never true today, A is always dynamic)
         public readonly int BodyIdB;                          // -1 if end B is a world anchor
-        public readonly BepuBodyHandle[] AnchorBodies;        // kinematic anchor bodies this constraint owns (0..1)
+        public readonly BepuBodyHandle[] AnchorBodies;        // shapeless kinematic anchor bodies this constraint owns (0..1)
 
         public ConstraintEntry(BepuConstraintHandle[] bepuHandles, int bodyIdA, int bodyIdB, BepuBodyHandle[] anchorBodies)
         {
@@ -206,8 +206,9 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
     {
         // Resolve each end to a Bepu body handle + current pose. A dynamic end resolves to its live body (stale
         // -> ArgumentException, matching the seam pattern); a world-space anchor end pins a fresh infinite-mass
-        // kinematic body at the anchor pose (Bepu has no one-body position joint, so the static side must be a
-        // body). At least one end must be dynamic - a joint between two world anchors could never move.
+        // SHAPELESS kinematic body at the anchor pose (Bepu has no one-body position joint, so the static side
+        // must be a body; shapeless keeps it out of the broadphase so it is invisible to queries). At least one
+        // end must be dynamic - a joint between two world anchors could never move.
         if (description.A.IsWorldAnchor && description.B.IsWorldAnchor)
             throw new ArgumentException("A constraint needs at least one dynamic body end; both ends are world anchors.", nameof(description));
 
@@ -242,12 +243,17 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
             return (h, pose, dyn.Value);
         }
 
-        // World anchor: an infinite-mass kinematic body at the anchor pose. A tiny sphere collidable that never
-        // generates contacts (statics/other kinematics do not collide with it; only its transform matters to the
-        // solver). It never sleeps (kinematic) but with zero velocity it stays put, giving a fixed solve target.
+        // World anchor: an infinite-mass, SHAPELESS kinematic body at the anchor pose. Passing a default
+        // CollidableDescription (a default TypedIndex, .Exists == false) means the body carries no collidable,
+        // so it never enters the broadphase: it is a pure solver mass point, invisible to every raycast and
+        // sweep by construction, regardless of the query's QueryMobility. A shape-bearing kinematic anchor
+        // would be hit by QueryMobility.All/Dynamics queries (kinematic counts as non-static), which snags a
+        // character's collide-and-slide sweep on the invisible pivot of a world-anchored hinge/rope. It never
+        // sleeps (kinematic) but with zero velocity it stays put, giving a fixed solve target. Empirically
+        // verified against Bepu 2.4: a shapeless kinematic body is missed by ray/sweep yet still anchors a
+        // BallSocket that holds a dynamic body. No shape is created, so there is no shape to dispose on removal.
         var rigidPose = new RigidPose(end.WorldAnchor.Position, end.WorldAnchor.Orientation);
-        var shapeIndex = _sim.Shapes.Add(new BepuPhysics.Collidables.Sphere(0.05f));
-        var desc = BodyDescription.CreateKinematic(rigidPose, new CollidableDescription(shapeIndex), new BodyActivityDescription(-1f));
+        var desc = BodyDescription.CreateKinematic(rigidPose, default(CollidableDescription), new BodyActivityDescription(-1f));
         BepuBodyHandle anchor = _sim.Bodies.Add(desc);
         anchorBodies.Add(anchor);
         return (anchor, rigidPose, -1);
@@ -280,15 +286,12 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
         UnlinkBodyConstraint(entry.BodyIdA, constraintId);
         UnlinkBodyConstraint(entry.BodyIdB, constraintId);
 
-        // Remove and dispose any kinematic anchor bodies this constraint owned.
+        // Remove any kinematic anchor bodies this constraint owned. The anchors are shapeless (created with a
+        // default collidable in ResolveEnd), so there is no shape to dispose - just remove the body.
         foreach (var anchor in entry.AnchorBodies)
         {
             if (_sim.Bodies.BodyExists(anchor))
-            {
-                var collidable = _sim.Bodies.GetBodyReference(anchor).Collidable.Shape;
                 _sim.Bodies.Remove(anchor);
-                _sim.Shapes.RecursivelyRemoveAndDispose(collidable, _pool);
-            }
         }
 
         _constraints.Remove(constraintId);

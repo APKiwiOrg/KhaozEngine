@@ -44,7 +44,8 @@ public interface IPhysicsWorld : IDisposable
     /// anchor. The <see cref="ConstraintDescription"/> is a discriminated struct: its <see cref="ConstraintKind"/>
     /// selects the joint (ball-socket, hinge, slider, distance, weld) and only that kind's fields are read.
     /// Anchors and axes are body-local. A world-space anchor end (<see cref="ConstraintAttachment.AtWorld(Pose)"/>)
-    /// is pinned by the backend as an infinite-mass kinematic body. Returns a handle for removal. The constraint
+    /// is pinned by the backend as an infinite-mass anchor point that is NOT a collidable, so it is never hit by a
+    /// raycast or sweep (a character walks through a world-anchored pivot cleanly). Returns a handle for removal. The constraint
     /// is stepped by <see cref="Step"/> from the next step on. Throws <see cref="System.ArgumentException"/> if a
     /// referenced dynamic body is not live, or if both ends are world anchors (a constraint needs at least one
     /// dynamic body to move).</summary>

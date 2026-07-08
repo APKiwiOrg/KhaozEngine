@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Locomotion;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using Xunit;
@@ -51,6 +52,7 @@ public class ConstraintTests
 
         float startY = world.GetDynamicPose(bob).Position.Y;
         float lowestY = startY;
+        float highestY = startY;
         float maxArmError = 0f, maxZ = 0f, maxPinError = 0f;
         for (int i = 0; i < 600; i++) // 10 s of free swinging
         {
@@ -58,6 +60,7 @@ public class ConstraintTests
             Pose p = world.GetDynamicPose(bob);
             Vector3 arm = p.Position - pivot;
             lowestY = MathF.Min(lowestY, p.Position.Y);
+            highestY = MathF.Max(highestY, p.Position.Y);
             maxArmError = MathF.Max(maxArmError, MathF.Abs(arm.Length() - 1.5f)); // arm length held (rigid link)
             maxZ = MathF.Max(maxZ, MathF.Abs(p.Position.Z));                      // confined to the X-Y hinge plane
             // The body-local (-1.5,0,0) anchor point must stay pinned to the pivot the whole time.
@@ -67,6 +70,10 @@ public class ConstraintTests
 
         // It swings: the bob passes well below the pivot (a stuck / rigid joint would stay near the start height).
         Assert.True(lowestY < pivot.Y - 1.3f, $"pendulum must swing down past the pivot (lowest y {lowestY:F3}, pivot {pivot.Y})");
+        // Energy is conserved, NOT gained: the bob starts level with the pivot at rest, so it must never rise above
+        // its start height across the whole 10 s run (a small band for solver compliance). A slow solver energy gain
+        // would let the swing climb past the horizontal launch on later cycles - this catches it.
+        Assert.True(highestY < startY + 0.05f, $"pendulum must not gain energy and rise above its start height (highest y {highestY:F3}, start {startY:F3})");
         // The pivot pin holds and the arm stays rigid (a hinge is a point pin + axis, not a stretchy spring).
         Assert.True(maxArmError < 0.05f, $"hinge arm length must stay ~1.5 m (rigid link), worst error {maxArmError:F4}");
         Assert.True(maxPinError < 0.1f, $"hinge anchor must stay pinned to the pivot, worst off by {maxPinError:F4}");
@@ -169,25 +176,34 @@ public class ConstraintTests
         var anchor = new Vector3(0f, 0f, 0f);
         // Slider along X, travel clamped to [-1, 1] m. The body starts at the anchor and is shoved along +Y and +Z
         // (off-axis) and +X (past the limit). It must stay on the X line (Y,Z ~ 0) and stop at the +X limit.
-        DynamicBodyHandle slider = world.AddDynamic(SmallBox, Pose.At(anchor),
+        // Start the body at a NON-identity orientation (0.6 rad about an oblique axis): the angular servo must lock
+        // the relative rotation captured at add time, i.e. THIS starting rotation, not identity. If the servo
+        // wrongly captured identity (or reset the target), the body would rotate toward identity and the hold-
+        // orientation assertion below would fail - a plain identity start could not tell the two apart.
+        Quaternion startOrient = Quaternion.Normalize(Quaternion.CreateFromAxisAngle(
+            Vector3.Normalize(new Vector3(0.3f, 1f, 0.5f)), 0.6f));
+        DynamicBodyHandle slider = world.AddDynamic(SmallBox, new Pose(anchor, startOrient),
             new DynamicBodyDescription(1f) { SleepThreshold = 0f });
         world.AddConstraint(ConstraintDescription.SliderJoint(
             ConstraintAttachment.AtWorld(anchor), ConstraintAttachment.OnBody(slider),
             anchorA: Vector3.Zero, anchorB: Vector3.Zero, axis: Vector3.UnitX,
             minOffset: -1f, maxOffset: 1f));
 
-        // Shove hard off-axis and along the axis past the limit. Track the extremes over the run: the axis has no
-        // damping so a body driven into the +1 stop rebounds and oscillates, but it must never leave the axis and
-        // never travel past the limit.
-        world.SetDynamicVelocity(slider, new Vector3(5f, 4f, 3f), Vector3.Zero);
-        float maxX = 0f, maxOffAxis = 0f, worstW = 1f;
+        // Shove hard off-axis and along the axis past the limit, AND apply a spin so the angular lock has real work
+        // to do. Track the extremes over the run: the axis has no damping so a body driven into the +1 stop rebounds
+        // and oscillates, but it must never leave the axis, never travel past the limit, and never rotate away from
+        // its captured start orientation.
+        world.SetDynamicVelocity(slider, new Vector3(5f, 4f, 3f), new Vector3(3f, 2f, 4f));
+        float maxX = 0f, maxOffAxis = 0f, worstOrientDot = 1f;
         for (int i = 0; i < 300; i++) // 5 s
         {
             world.Step(Dt);
             Pose sp = world.GetDynamicPose(slider);
             maxX = MathF.Max(maxX, sp.Position.X);
             maxOffAxis = MathF.Max(maxOffAxis, MathF.Sqrt(sp.Position.Y * sp.Position.Y + sp.Position.Z * sp.Position.Z));
-            worstW = MathF.Min(worstW, MathF.Abs(sp.Orientation.W));
+            // Closeness of the current orientation to the captured start orientation: |dot| = 1 when identical,
+            // falls off as it rotates away. (|dot| handles the q/-q double cover.)
+            worstOrientDot = MathF.Min(worstOrientDot, MathF.Abs(Quaternion.Dot(sp.Orientation, startOrient)));
         }
 
         // Stayed on the X axis: the off-axis push (Y,Z) never moved it off the line.
@@ -196,8 +212,9 @@ public class ConstraintTests
         // 5 s unclamped would be +25 m).
         Assert.True(maxX > 0.9f, $"slider must slide to its +1 m limit, max X reached was {maxX:F3}");
         Assert.True(maxX < 1.15f, $"slider travel must clamp at the +1 m limit, max X was {maxX:F3}");
-        // Rotation locked the whole time: the angular servo holds the add-time relative rotation (W stays ~1).
-        Assert.True(worstW > 0.98f, $"slider must lock rotation, worst orientation W was {worstW:F3}");
+        // Rotation locked the whole time to the NON-identity captured start pose (a wrong captured target would let
+        // it drift toward identity and drop this dot). |dot| stays ~1 = held at the start orientation.
+        Assert.True(worstOrientDot > 0.99f, $"slider must lock rotation to its captured start pose, worst orientation dot was {worstOrientDot:F4}");
     }
 
     // ---------------------------------------------------------------------
@@ -372,5 +389,114 @@ public class ConstraintTests
         Vector3 anchorBWorld = pb.Position + Vector3.Transform(new Vector3(-0.5f, 0f, 0f), pb.Orientation);
         Assert.True(Vector3.Distance(anchorAWorld, anchorBWorld) < 0.1f,
             $"ball-socket anchors must stay coincident, off by {Vector3.Distance(anchorAWorld, anchorBWorld):F3}");
+    }
+
+    // ---------------------------------------------------------------------
+    // World-anchor visibility: the shapeless kinematic body a world anchor is realised as must be invisible to
+    // every query (ray, sweep, dynamics-only ray), regardless of QueryMobility, so a character walking through a
+    // world-anchored hinge/rope pivot never collides with an invisible sphere at the pivot. A shape-bearing
+    // anchor would be a QueryMobility.All / Dynamics hit (kinematic counts as non-static) and stall the character.
+    // ---------------------------------------------------------------------
+
+    // Builds a world with a single world-anchored hinge whose pivot is at `pivot`, plus the dynamic bob it holds.
+    // The anchor is the shapeless kinematic body created for the AtWorld end; the queries below must not see it.
+    static (IPhysicsWorld world, DynamicBodyHandle bob) HingeAnchoredAt(Vector3 pivot)
+    {
+        IPhysicsWorld world = new BepuPhysicsWorld();
+        DynamicBodyHandle bob = world.AddDynamic(SmallBox, Pose.At(pivot + new Vector3(1.5f, 0f, 0f)),
+            new DynamicBodyDescription(1f) { SleepThreshold = 0f });
+        world.AddConstraint(ConstraintDescription.HingeJoint(
+            ConstraintAttachment.OnBody(bob), ConstraintAttachment.AtWorld(pivot),
+            anchorA: new Vector3(-1.5f, 0f, 0f), anchorB: Vector3.Zero,
+            axisA: Vector3.UnitZ, axisB: Vector3.UnitZ));
+        return (world, bob);
+    }
+
+    [Fact]
+    public void Raycast_ThroughAWorldAnchorPivot_Misses()
+    {
+        var pivot = new Vector3(0f, 5f, 0f);
+        (IPhysicsWorld world, _) = HingeAnchoredAt(pivot);
+        using (world)
+        {
+            // Ray straight through the pivot point along +X (default filter = QueryMobility.All). The bob sits at
+            // x=+1.5 (a SmallBox 0.25 half-extent, so its near face is ~1.25); aim the ray to arrive AT the pivot
+            // and stop before the bob, so any hit within 1.0 m can only be the anchor.
+            bool hit = world.Raycast(new Vector3(-5f, 5f, 0f), Vector3.UnitX, 6f, out RayHit rh);
+            // A hit at the pivot (distance ~5) would be the invisible anchor; the bob is farther (~6.25).
+            Assert.False(hit && rh.Distance < 5.5f,
+                $"default raycast must not hit the shapeless world-anchor pivot (hit={hit}, dist={(hit ? rh.Distance : -1f):F3})");
+        }
+    }
+
+    [Fact]
+    public void CapsuleSweep_ThroughAWorldAnchorPivot_Misses()
+    {
+        var pivot = new Vector3(0f, 5f, 0f);
+        (IPhysicsWorld world, _) = HingeAnchoredAt(pivot);
+        using (world)
+        {
+            // Sweep a small capsule straight through the pivot along +X (default filter). It must reach the pivot
+            // region (distance ~5) with no hit; the bob is farther out at x~+1.5.
+            var capsule = new CapsuleShape(0.2f, 0.4f);
+            bool hit = world.SweepCapsule(capsule, Pose.At(new Vector3(-5f, 5f, 0f)), Vector3.UnitX, 5.4f, out SweepHit sh);
+            Assert.False(hit && sh.Distance < 5.5f,
+                $"default capsule sweep must not hit the shapeless world-anchor pivot (hit={hit}, dist={(hit ? sh.Distance : -1f):F3})");
+        }
+    }
+
+    [Fact]
+    public void DynamicsOnlyRaycast_ThroughAWorldAnchorPivot_Misses()
+    {
+        var pivot = new Vector3(0f, 5f, 0f);
+        (IPhysicsWorld world, _) = HingeAnchoredAt(pivot);
+        using (world)
+        {
+            // The anchor is a KINEMATIC body, so a QueryMobility.Dynamics ray (which accepts non-statics) is the
+            // exact filter that a shape-bearing anchor would be caught by. Shapeless keeps it out of the broadphase,
+            // so even this filter misses it at the pivot.
+            var dynamicsOnly = new QueryFilter(QueryMobility.Dynamics);
+            bool hit = world.Raycast(new Vector3(-5f, 5f, 0f), Vector3.UnitX, 5.4f, out RayHit rh, dynamicsOnly);
+            Assert.False(hit && rh.Distance < 5.5f,
+                $"dynamics-only raycast must not hit the shapeless world-anchor pivot (hit={hit}, dist={(hit ? rh.Distance : -1f):F3})");
+        }
+    }
+
+    [Fact]
+    public void CharacterMovement_WalksThroughAWorldAnchoredHingePivot_WithoutStalling()
+    {
+        // A world-anchored hinge pivot at ground level, directly in the character's path. With a shape-bearing
+        // anchor the character's collide-and-slide sweep (default filter) would snag on the invisible sphere at the
+        // pivot and stall; with a shapeless anchor the character walks straight through it. Flat ground at y=0.
+        // The pivot sits at x=3, well ahead of where the swinging bob (a real dynamic body, ~x=4.5) can reach, so
+        // reaching past the pivot proves the invisible anchor did not stop the character (the bob legitimately
+        // blocks farther on and is not part of this assertion).
+        const float halfH = 0.9f;
+        var pivot = new Vector3(3f, halfH, 0f); // on the character's line of travel, at capsule-centre height
+        (IPhysicsWorld world, _) = HingeAnchoredAt(pivot);
+        using (world)
+        {
+            var tuning = MoveTuning.Default;
+            float GroundHeight(float x, float z) => 0f;
+
+            // Start behind the pivot, walk in +X straight through it. CameraYaw 0 => forward is -Z, right is +X, so
+            // Move.X = 1 drives +X.
+            var state = new MoveState { Position = new Vector3(0f, halfH, 0f), Grounded = true };
+            var cmd = new MoveCommand(new Vector2(1f, 0f), run: false, cameraYaw: 0f);
+
+            float lastX = state.Position.X;
+            bool crossedPivot = false;
+            for (int i = 0; i < 300; i++) // 5 s at walk speed 3 m/s
+            {
+                MoveState next = CharacterMovement.Step(state, cmd, Dt, GroundHeight, tuning, world: world);
+                // Position must advance monotonically in X (never stall or reverse at the pivot).
+                Assert.True(next.Position.X >= lastX - 1e-4f,
+                    $"character must not stall/reverse at the world-anchor pivot (x {next.Position.X:F3} < prev {lastX:F3} at step {i})");
+                lastX = next.Position.X;
+                if (next.Position.X > pivot.X + 0.5f) crossedPivot = true;
+                state = next;
+            }
+            Assert.True(crossedPivot, $"character must walk past the pivot at x={pivot.X}, reached x={lastX:F3}");
+        }
     }
 }

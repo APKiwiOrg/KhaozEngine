@@ -1794,8 +1794,10 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
     frictionless hinge/slider conserves energy and keeps moving (damped settling and powered targets are
     motors/servos, a follow-up).
 - `ConstraintAttachment.OnBody(DynamicBodyHandle)` (a dynamic end) or `ConstraintAttachment.AtWorld(Pose)` /
-  `AtWorld(Vector3)` (a fixed world anchor; the backend pins an infinite-mass kinematic body there). At least one
-  end must be a dynamic body - both-anchor throws `ArgumentException`, as does a stale body handle.
+  `AtWorld(Vector3)` (a fixed world anchor; the backend pins an infinite-mass, shapeless kinematic body there, so
+  the anchor point is not a collidable and is never hit by a raycast or sweep - a character walks through a
+  world-anchored hinge/rope pivot cleanly). At least one end must be a dynamic body - both-anchor throws
+  `ArgumentException`, as does a stale body handle.
 - `StaticHandle`, `DynamicBodyHandle`, `ConstraintHandle`, `RayHit(Distance, Point, Normal, Body)`, `SweepHit(Distance, Point, Normal, Body)`.
 
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:

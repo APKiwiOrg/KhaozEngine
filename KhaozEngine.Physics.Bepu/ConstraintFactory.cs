@@ -16,10 +16,10 @@ namespace KhaozEngine.Physics.Bepu;
 /// unit.
 ///
 /// <para>Bepu 2.4 has no one-body position joints (only <c>OneBodyAngularMotor</c>/<c>OneBodyAngularServo</c>),
-/// so a world-space static anchor end is NOT a one-body constraint: it is modelled as an infinite-mass kinematic
-/// body pinned at the anchor pose (created by the world before calling this factory). Every joint here is
-/// therefore a two-body Bepu constraint, whether the second end is dynamic or a kinematic anchor. This is the
-/// idiomatic BepuPhysics way to anchor a joint to the world and reuses the seam's existing kinematic-body path.</para>
+/// so a world-space static anchor end is NOT a one-body constraint: it is modelled as an infinite-mass, shapeless
+/// kinematic body pinned at the anchor pose (created by the world before calling this factory; shapeless so it
+/// stays out of the broadphase and is invisible to queries). Every joint here is therefore a two-body Bepu
+/// constraint, whether the second end is dynamic or a kinematic anchor.</para>
 ///
 /// <para>Default spring: when the description leaves <see cref="ConstraintDescription.Stiffness"/> /
 /// <see cref="ConstraintDescription.DampingRatio"/> at 0, this applies

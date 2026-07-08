@@ -61,10 +61,13 @@ joint pin so a fast swing does not overshoot the clamp much.
 
 **Static-anchor side.** Bepu 2.4 has no one-body position joints (only `OneBodyAngularMotor`/`OneBodyAngularServo`),
 so a world-space anchor (`ConstraintAttachment.AtWorld`) is NOT a one-body constraint: it is realised as an
-infinite-mass kinematic body (a tiny non-colliding sphere) pinned at the anchor pose, and every joint is a two-body
-Bepu constraint whether the far end is dynamic or that kinematic anchor. This is the idiomatic BepuPhysics way to
-tie a joint to the world and reuses the seam's existing kinematic-body path. The anchor body is owned by the
-constraint and removed with it. At least one end must be a real dynamic body (both-anchor throws).
+infinite-mass, SHAPELESS kinematic body pinned at the anchor pose, and every joint is a two-body Bepu constraint
+whether the far end is dynamic or that kinematic anchor. The anchor carries no collidable (a default `TypedIndex`),
+so it never enters the broadphase and is invisible to every raycast and sweep, at any `QueryMobility`. That matters:
+a shape-bearing kinematic anchor would be hit by `QueryMobility.All`/`Dynamics` queries (kinematic counts as
+non-static), which would snag a character's collide-and-slide sweep on the invisible pivot of a world-anchored
+hinge or rope. Shapeless keeps it a pure solver mass point. The anchor body is owned by the constraint and removed
+with it. At least one end must be a real dynamic body (both-anchor throws).
 
 **Spring defaults.** A joint's spring is a `SpringSettings(frequency Hz, dampingRatio)`. When
 `ConstraintDescription.Stiffness`/`DampingRatio` are left at 0 the backend applies **30 Hz, critically damped

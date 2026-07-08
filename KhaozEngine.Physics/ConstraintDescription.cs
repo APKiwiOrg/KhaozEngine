@@ -36,9 +36,9 @@ public enum ConstraintKind
 }
 
 /// <summary>One end of a constraint: either a dynamic body (by handle) or a fixed world-space anchor. A
-/// world-space anchor is realised by the backend as an infinite-mass kinematic body at that pose, which is the
-/// clean way BepuPhysics 2.4 models a static constraint side (its constraint types are all two-body, and it has
-/// no one-body position joints). Build one with <see cref="OnBody"/> or <see cref="AtWorld(Pose)"/>.</summary>
+/// world-space anchor is a fixed point in the world the constraint pins the other end against; the backend
+/// realises it however it best models a static constraint side, and the anchor is not itself a collidable (it
+/// is never hit by a raycast or sweep). Build one with <see cref="OnBody"/> or <see cref="AtWorld(Pose)"/>.</summary>
 public readonly record struct ConstraintAttachment
 {
     /// <summary>The dynamic body this end attaches to, or null for a fixed world-space anchor.</summary>

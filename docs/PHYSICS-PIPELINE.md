@@ -25,9 +25,9 @@ flowchart TD
     end
 
     subgraph seam["KhaozEngine.Physics - the backend seam (nothing above touches BepuPhysics)"]
-        IPW["IPhysicsWorld<br/>AddStatic / RemoveStatic / Step<br/>Raycast / SweepCapsule / ComputePenetration"]
+        IPW["IPhysicsWorld<br/>AddStatic / RemoveStatic / Step<br/>Raycast / SweepCapsule / ComputePenetration<br/>AddDynamic / RemoveDynamic / GetDynamicPose /<br/>GetDynamicVelocity / IsAwake<br/>AddConstraint / RemoveConstraint / SetConstraintTarget"]
         SHAPE["PhysicsShape (value types)<br/>Sphere / Capsule / Box / Cylinder /<br/>ConvexHull / TriangleMesh / Compound"]
-        AUX["Pose / PhysicsMaterial / QueryFilter<br/>StaticHandle / RayHit / SweepHit"]
+        AUX["Pose / PhysicsMaterial / QueryFilter<br/>StaticHandle / RayHit / SweepHit<br/>DynamicBodyHandle / DynamicBodyDescription<br/>ConstraintHandle / ConstraintDescription"]
     end
 
     BEPU["KhaozEngine.Physics.Bepu - BepuPhysicsWorld : IPhysicsWorld<br/>(the only assembly referencing BepuPhysics)"]
@@ -49,6 +49,21 @@ jump targeting, line-of-sight, ground probes, and move-and-slide are all express
 different backend (a native Jolt/PhysX wrapper, say) is a new `KhaozEngine.Physics.<X>` package with **zero**
 changes upstream. Unlike the GPU seam there is no auto-selector yet: a consumer constructs the backend
 directly (`new BepuPhysicsWorld()`) and hands the `IPhysicsWorld` down.
+
+Beyond static bodies, the seam also carries dynamic rigid bodies and joints. `AddDynamic` takes a
+`PhysicsShape` (the same box/sphere/capsule/cylinder/hull/compound descriptors as statics) plus a
+`DynamicBodyDescription` (mass, initial linear/angular velocity, a sleep threshold, where mass <= 0 is an
+infinite-mass kinematic body), and returns a `DynamicBodyHandle` for `GetDynamicPose`/`GetDynamicVelocity`/
+`SetDynamicVelocity`/`IsAwake` queries and `RemoveDynamic`. Joints connect two dynamic bodies, or one dynamic
+body to a fixed world-space anchor (`ConstraintAttachment.OnBody`/`AtWorld`), via `AddConstraint(in
+ConstraintDescription)`: the discriminated `ConstraintKind` selects ball-socket, hinge, slider, distance, or
+weld, and a factory method (`BallSocketJoint`/`HingeJoint`/`SliderJoint`/`DistanceJoint`/`WeldJoint`) fills
+only the fields that kind reads. A world-space anchor end is pinned by the backend as an infinite-mass point
+that is not itself a collidable, so a character walks through a world-anchored pivot cleanly. Motors and
+servos layer onto a joint (`WithHingeMotor`/`WithHingeServo`/`WithSliderMotor`/`WithSliderServo`/`WithWinch`):
+a motor chases a target velocity, a servo chases a target angle/offset/length and holds it there, and
+`SetConstraintTarget` retargets a live drive every frame, allocation-free. `Step` advances dynamics,
+contacts, and constraints together under gravity, deterministic under a fixed `dt`.
 
 ## Two side-flows that feed it
 
@@ -101,6 +116,23 @@ Because client prediction resolves against the same `IPhysicsWorld` (and same op
 server, it predicts around solid props and clamps at the wall, so reconciliation stays a no-op instead of
 snapping the player back.
 
+**A dynamic body replicated to clients (server-authoritative, no client-side prediction of the body):**
+
+```mermaid
+flowchart LR
+    STEP2["server: IPhysicsWorld.Step(dt)<br/>(dynamics + contacts + constraints)"] --> SAMPLE["DynamicBodyReplication.Sample<br/>(NetWorld)<br/>GetDynamicPose / GetDynamicVelocity,<br/>gated on IsAwake"]
+    SAMPLE --> COMP["ReplicatedPosition (position)<br/>+ DynamicBodyState (orientation + velocity)"]
+    COMP --> WIRE2["AoI snapshot / delta"]
+    WIRE2 --> CLI2["client: fixed-delay interpolation buffer<br/>(same path as a remote player)"]
+```
+
+`DynamicBodyReplication.Sample` runs once per server tick AFTER `Step`, so the fresh pose lands in that
+tick's snapshot: it writes each tracked body's position into `ReplicatedPosition` (driving area-of-interest,
+same as a player) and its orientation + linear/angular velocity into `DynamicBodyState`. A body Bepu has put
+to sleep (`IsAwake` false) is not re-sampled, so a resting crate stops generating snapshot churn. The client
+never simulates a dynamic body: it interpolates the replicated pose on the same fixed-delay buffer a remote
+player uses, orientation slerped between snapshots.
+
 ## The same path in words
 
 1. A `MoveCommand` (move axes, yaw, jump bit) reaches `CharacterMovement.Step` from the local
@@ -128,9 +160,12 @@ snapping the player back.
 | Box | Type / file |
 |---|---|
 | The backend seam | [`KhaozEngine.Physics/IPhysicsWorld.cs`](../KhaozEngine.Physics/IPhysicsWorld.cs), `PhysicsShape.cs`, `Pose.cs`, `Queries.cs`, `Handles.cs` |
+| Dynamic bodies | [`KhaozEngine.Physics/DynamicBodyDescription.cs`](../KhaozEngine.Physics/DynamicBodyDescription.cs) |
+| Joints / motors / servos | [`KhaozEngine.Physics/ConstraintDescription.cs`](../KhaozEngine.Physics/ConstraintDescription.cs) (`ConstraintKind`, `ConstraintMotor`, `ConstraintAttachment`, the joint factory methods), `ConstraintHandle.cs` |
 | BepuPhysics binding | [`KhaozEngine.Physics.Bepu/BepuPhysicsWorld.cs`](../KhaozEngine.Physics.Bepu/BepuPhysicsWorld.cs), `ShapeFactory.cs`, `HitHandlers.cs` |
 | Movement that resolves vs the seam | [`KhaozEngine.Locomotion/CharacterMovement.cs`](../KhaozEngine.Locomotion/CharacterMovement.cs) (`Step`) |
 | Local controller / server sim / client prediction | `KhaozEngine.Game.Render3D/CharacterController3D.cs`, `KhaozEngine.NetWorld/PlayerMoveSimulator.cs`, `WorldClient.cs` |
 | Shape bake (offline) | [`KhaozEngine.PropSurface.Tool/Program.cs`](../KhaozEngine.PropSurface.Tool/Program.cs) (`ke-propbake`), `KhaozEngine.Render3D/Models/PropCollisionBake.cs` |
 | Shape load + chunk statics | `KhaozEngine.Render3D/Models/PropCollisionLoader.cs` (client/manifest), [`KhaozEngine.Physics/PropCollisionFormat.cs`](../KhaozEngine.Physics/PropCollisionFormat.cs) (render-free format + headless loaders), [`KhaozEngine.Terrain.Render3D/ChunkStatics.cs`](../KhaozEngine.Terrain.Render3D/ChunkStatics.cs) |
 | Terrain-as-physics (opt-in) | [`KhaozEngine.Terrain.Render3D/TerrainChunkCollision.cs`](../KhaozEngine.Terrain.Render3D/TerrainChunkCollision.cs) (surface extraction), `ChunkTerrainCollision.cs` (chunk lifecycle), [`KhaozEngine.Physics/PhysicsGroundProbe.cs`](../KhaozEngine.Physics/PhysicsGroundProbe.cs) (raycast ground delegates) |
+| Dynamic-body replication | [`KhaozEngine.NetWorld/DynamicBodyReplication.cs`](../KhaozEngine.NetWorld/DynamicBodyReplication.cs) (server-side sampler), `DynamicBodyState.cs` (the replicated component) |

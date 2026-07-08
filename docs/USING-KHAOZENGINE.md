@@ -1600,8 +1600,8 @@ neighbour, a `TerrainChunkBounds` AABB for frustum culling, and per-vertex splat
 in `ModelVertex.Color`). With a `SplatMaterialHandle` supplied the weights drive the PBR splat pipeline (five
 tileable PBR layers, triplanar); without one the weights are blended into a height/slope vertex-colour ramp
 (the fallback). *Which* chunks exist and *when* they rebuild is the **World streaming** sub-project below
-(`TerrainStreamer`). See "Textured terrain (PBR splat)" below for the material API. A real water shader is a
-later sub-project.
+(`TerrainStreamer`). See "Textured terrain (PBR splat)" below for the material API. For water, see
+`Scene3D.DrawWater` and `PixelPostProcessSettings.Water` in the Render3D section above.
 
 ---
 
@@ -1898,7 +1898,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="8.10.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="10.31.0" />
 ```
 
 ```csharp
@@ -2102,9 +2102,6 @@ only loading goes headless.
 
 **NativeAOT note:** `BepuPhysicsWorld` requires an `rd.xml` shim for `Dynamic=Required All` on `BepuPhysics`
 when publishing under NativeAOT (iOS/AOT reach). Desktop and headless server targets are fine without it.
-
-**What's next (sub-project 2):** dynamic rigid bodies + replication, terrain-as-physics-geometry (replace the
-`TerrainCollision` delegate with a static terrain `TriangleMesh` body). See `docs/ROADMAP.md` item #2.
 
 ---
 

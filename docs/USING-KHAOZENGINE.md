@@ -1808,6 +1808,41 @@ gate/zone-transition content exists - those are later). The 3D World room in `Kh
 held inside by the mountains, out through the +Z pass. The circular rim is the MVP; a
 rect/polygon rim and gravity/jump are named follow-ups (prop/building collision shipped, see below).
 
+### Movement medium + wading (`MovementMedium`, `KhaozEngine.Locomotion`)
+
+The movement step takes an **optional fluid-medium provider** `(x, z, feetY) -> MovementMedium` alongside the
+ground delegate. It reports whether a world sample is in water and the water surface height, so wading slows the
+character by submersion depth.
+
+**The provider is a PURE, DETERMINISTIC function the GAME supplies on BOTH heads - the authoritative server AND
+the client's prediction replay - exactly like the `groundHeight` delegate. The engine never computes water
+itself, it only asks.** If the two heads disagree (a non-pure provider, or a provider wired on only one head)
+prediction desyncs and the avatar rubber-bands, the same failure mode a mismatched ground delegate causes. A
+**null provider means dry land everywhere and is bit-identical to the pre-medium behaviour.**
+
+`MovementMedium` is `{ float WaterSurfaceY; bool InWater; float WadeSpeedScale }`. When a sample is `InWater`,
+horizontal speed is scaled by a **depth wade ramp**: full speed at ankle depth (`MoveTuning.WadeStartDepthFraction`,
+default 0.15) lerping down to a floor (`MoveTuning.WadeMinSpeedScale`, default 0.45) at chest depth
+(`MoveTuning.WadeEndDepthFraction`, default 0.65), where submersion depth is `WaterSurfaceY - feetY` expressed as a
+fraction of body height (`2 * CapsuleHalfHeight`). The medium's own `WadeSpeedScale` composes as a further per-sample
+multiplier (a swamp zone dial, default 1). Supply the SAME provider on both heads:
+
+```csharp
+// The game's pure world read: a flat lake at Y=0 inside a radius (both heads build the identical delegate).
+Func<float, float, float, MovementMedium> water = (x, z, feetY) =>
+{
+    bool inLake = (x - lakeX) * (x - lakeX) + (z - lakeZ) * (z - lakeZ) <= lakeR * lakeR && feetY < lakeSurfaceY;
+    return inLake ? new MovementMedium(lakeSurfaceY, inWater: true) : MovementMedium.Dry;
+};
+
+var server = new WorldServer(transport, cfg, terrain.GroundHeight, MoveTuning.Default, medium: water);   // authoritative
+var client = new WorldClient(transport, terrain.GroundHeight, MoveTuning.Default, medium: water);         // predicts identically
+// ShardedWorldServer takes the same medium param; CharacterController3D.Update takes it for local (non-networked) wading.
+```
+
+`CharacterMovement.WadeSpeedScale(x, z, feetY, tuning, medium)` exposes the same scale directly for callers that
+predict or echo the wade factor. (Surface swim past chest depth is a later sub-project built on this seam.)
+
 ---
 
 ## 3D physics (`KhaozEngine.Physics` / `KhaozEngine.Physics.Bepu`)

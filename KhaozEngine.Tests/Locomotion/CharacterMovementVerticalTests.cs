@@ -8,7 +8,7 @@ namespace KhaozEngine.Tests.Locomotion;
 /// <summary>
 /// Vertical character physics: the <see cref="CharacterMovement.Step(in MoveState, in MoveCommand, float,
 /// Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, KhaozEngine.Physics.IPhysicsWorld?,
-/// Func{float, float, Vector2}?)"/> overload (gravity, jump, coyote, jump-buffer, air control). Headless: state is
+/// Func{float, float, Vector2}?, Func{float, float, float, MovementMedium}?)"/> overload (gravity, jump, coyote, jump-buffer, air control). Headless: state is
 /// constructed frame-by-frame and the same step runs on server and client.
 /// </summary>
 public class CharacterMovementVerticalTests

@@ -10,7 +10,7 @@ namespace KhaozEngine.Game
     /// Terrain-agnostic third-person locomotion for the walkable slice. WASD moves the character on the XZ
     /// plane relative to a camera yaw (forward = the camera's look direction projected onto the ground);
     /// diagonals are normalized; left/right shift runs; Space jumps. A thin input adapter over the shared
-    /// vertical <see cref="CharacterMovement.Step(in MoveState, in MoveCommand, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, IPhysicsWorld?, Func{float, float, Vector2}?)"/>
+    /// vertical <see cref="CharacterMovement.Step(in MoveState, in MoveCommand, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, IPhysicsWorld?, Func{float, float, Vector2}?, Func{float, float, float, MovementMedium}?)"/>
     /// core (KhaozEngine.Locomotion): the same code runs the local feel and the networked authoritative/predicted
     /// movement, with one <see cref="MoveTuning"/> source of truth. Reads only the immutable input snapshot; no
     /// terrain dependency, no physics beyond gravity + ground contact. Speeds, half-height, and the vertical-feel
@@ -67,12 +67,15 @@ namespace KhaozEngine.Game
         /// optional and, when given, gates moves by slope; <paramref name="physics"/> is optional and, when given,
         /// resolves the capsule against static props/buildings via the <see cref="IPhysicsWorld"/> seam (the same
         /// world the authoritative server and client prediction run, so feel and collision match). Space (just
-        /// pressed) requests a jump. Touches no input statics.
+        /// pressed) requests a jump. <paramref name="medium"/> is optional and, when given, scales horizontal speed by
+        /// the submersion-depth wade ramp (a lake/river/swamp the game reads), matching the networked wade; null =
+        /// dry land everywhere. Touches no input statics.
         /// </summary>
         public void Update(in InputState input, float dt, float cameraYaw,
                            Func<float, float, float> groundHeight,
                            Func<float, float, Vector3>? groundNormal = null,
-                           IPhysicsWorld? physics = null)
+                           IPhysicsWorld? physics = null,
+                           Func<float, float, float, MovementMedium>? medium = null)
         {
             if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
 
@@ -92,7 +95,7 @@ namespace KhaozEngine.Game
                 CoyoteTime = CoyoteTime, JumpBuffer = JumpBuffer, AirControl = AirControl,
                 GroundedEpsilon = GroundedEpsilon, StepHeight = StepHeight,
             };
-            _state = CharacterMovement.Step(_state, cmd, dt, groundHeight, tuning, groundNormal, world: physics);
+            _state = CharacterMovement.Step(_state, cmd, dt, groundHeight, tuning, groundNormal, world: physics, medium: medium);
         }
 
         /// <summary>Teleport the character; Y/vertical state re-settle from the ground delegate on the next <see cref="Update"/>.</summary>

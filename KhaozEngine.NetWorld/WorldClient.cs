@@ -156,8 +156,9 @@ public sealed class WorldClient : IDisposable
     /// via <see cref="ConnectionState"/> + <see cref="DisconnectReason"/>). The caller owns disposing the transport.</summary>
     public WorldClient(INetTransport transport, Func<float, float, float> groundHeight, MoveTuning tuning,
         WorldClientConfig? config = null, byte[]? token = null, Func<float, float, Vector3>? groundNormal = null,
-        WorldBounds? bounds = null, IPhysicsWorld? physics = null, ReplicationRegistry? registry = null)
-        : this(connectFactory: null, transport, groundHeight, tuning, config, token, groundNormal, bounds, physics, registry)
+        WorldBounds? bounds = null, IPhysicsWorld? physics = null, ReplicationRegistry? registry = null,
+        Func<float, float, float, MovementMedium>? medium = null)
+        : this(connectFactory: null, transport, groundHeight, tuning, config, token, groundNormal, bounds, physics, registry, medium)
     {
         ArgumentNullException.ThrowIfNull(transport);
     }
@@ -168,16 +169,17 @@ public sealed class WorldClient : IDisposable
     /// disposes the transports it builds; dispose the client to close the current one.</summary>
     public WorldClient(Func<INetTransport> connect, Func<float, float, float> groundHeight, MoveTuning tuning,
         WorldClientConfig? config = null, byte[]? token = null, Func<float, float, Vector3>? groundNormal = null,
-        WorldBounds? bounds = null, IPhysicsWorld? physics = null, ReplicationRegistry? registry = null)
+        WorldBounds? bounds = null, IPhysicsWorld? physics = null, ReplicationRegistry? registry = null,
+        Func<float, float, float, MovementMedium>? medium = null)
         : this(connect ?? throw new ArgumentNullException(nameof(connect)), connect(), groundHeight, tuning, config,
-               token, groundNormal, bounds, physics, registry)
+               token, groundNormal, bounds, physics, registry, medium)
     {
     }
 
     private WorldClient(Func<INetTransport>? connectFactory, INetTransport transport,
         Func<float, float, float> groundHeight, MoveTuning tuning, WorldClientConfig? config, byte[]? token,
         Func<float, float, Vector3>? groundNormal, WorldBounds? bounds, IPhysicsWorld? physics,
-        ReplicationRegistry? registry)
+        ReplicationRegistry? registry, Func<float, float, float, MovementMedium>? medium)
     {
         ArgumentNullException.ThrowIfNull(transport);
         if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
@@ -196,7 +198,7 @@ public sealed class WorldClient : IDisposable
         view = new ClientReplicationView(this.registry);
         // Predict against the SAME physics world the server is authoritative over (mirrors WorldServer),
         // so a solid-prop consumer predicts straight rather than rubber-banding. Defaults null = terrain-only.
-        var simulator = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds, physics);
+        var simulator = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds, physics, medium);
         PredictionSettings settings = config.Prediction ?? (PredictionSettings.Default with { TickSeconds = config.TickSeconds });
         prediction = new ClientPrediction<PlayerMoveState, MoveCommand>(simulator, settings);
         interpolateRemotes = config.InterpolateRemotes;

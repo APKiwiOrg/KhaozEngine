@@ -14,7 +14,7 @@ namespace KhaozEngine.NetWorld;
 /// runs it for every cell (fanned across the opt-in scheduler - cells are disjoint worlds, so the result is
 /// scheduler-independent). For each owned entity carrying a <see cref="PendingMove"/> it advances the
 /// <see cref="ReplicatedPosition"/> + <see cref="MovementState"/> (the vertical axis) via the shared
-/// <see cref="CharacterMovement.Step(in MoveState, in MoveCommand, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, IPhysicsWorld?, Func{float, float, Vector2}?)"/>
+/// <see cref="CharacterMovement.Step(in MoveState, in MoveCommand, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, IPhysicsWorld?, Func{float, float, Vector2}?, Func{float, float, float, MovementMedium}?)"/>
 /// (the same step the single-<see cref="World"/> <see cref="WorldServer"/> and the client's prediction run, so
 /// they stay in lockstep). <see cref="MovementState"/> is required on every movable entity (added at spawn,
 /// carried across handoff because it is replicated). Read-only <see cref="Ghost"/>s and in-flight
@@ -28,15 +28,20 @@ public sealed class PlayerMovementSystem : ISystem
     private readonly MoveTuning tuning;
     private readonly IPhysicsWorld? physics;
     private readonly Func<float, float, Vector2>? clampXz;
+    private readonly Func<float, float, float, MovementMedium>? medium;
 
     public PlayerMovementSystem(Func<float, float, float> groundHeight, MoveTuning tuning,
-        Func<float, float, Vector3>? groundNormal = null, WorldBounds? bounds = null, IPhysicsWorld? physics = null)
+        Func<float, float, Vector3>? groundNormal = null, WorldBounds? bounds = null, IPhysicsWorld? physics = null,
+        Func<float, float, float, MovementMedium>? medium = null)
     {
         this.groundHeight = groundHeight ?? throw new ArgumentNullException(nameof(groundHeight));
         this.tuning = tuning;
         this.groundNormal = groundNormal;
         this.physics = physics;
         this.clampXz = bounds is null ? null : bounds.Clamp;   // play-area bound folded into the step (XZ only)
+        // Optional fluid-medium provider, mirrored from the authoritative server so every cell wades identically to
+        // the client's prediction. Null = dry land everywhere = bit-identical to the pre-medium system.
+        this.medium = medium;
     }
 
     public void Update(World world, float dt)
@@ -54,7 +59,7 @@ public sealed class PlayerMovementSystem : ISystem
                 TimeSinceGrounded = ms.TimeSinceGrounded,
                 JumpBufferRemaining = ms.JumpBufferRemaining,
             };
-            state = CharacterMovement.Step(state, move.Command, dt, groundHeight, tuning, groundNormal, physics, clampXz);
+            state = CharacterMovement.Step(state, move.Command, dt, groundHeight, tuning, groundNormal, physics, clampXz, medium);
 
             pos.Value = state.Position;
             ms.VerticalVelocity = state.VerticalVelocity;

@@ -119,7 +119,7 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
         Func<float, float, float> groundHeight, MoveTuning tuning,
         Func<float, float, Vector3>? groundNormal = null, WorldBounds? bounds = null, IPhysicsWorld? physics = null,
         IConnectionAuthenticator? authenticator = null, IBanStore? banStore = null,
-        ReplicationRegistry? registry = null)
+        ReplicationRegistry? registry = null, Func<float, float, float, MovementMedium>? medium = null)
     {
         ArgumentNullException.ThrowIfNull(transport);
         this.config = config ?? throw new ArgumentNullException(nameof(config));
@@ -136,7 +136,7 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
         commands = new RemoteCommandQueue<MoveCommand>(neutralCommand: default,
             maxSlots: Math.Max(64, this.config.MaxPlayers),
             catchUpThreshold: Math.Max(0, this.config.MaxInputBacklog));
-        simulator = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds, physics);
+        simulator = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds, physics, medium);
         // Always enforce the engine wire generation at connect (independent of any consumer version gate), so a
         // wire-skewed or version-less client is rejected cleanly instead of admitted and left to misparse the wire.
         net = new NetServer(transport, config.MaxPlayers, WireGenerationAuthenticator.Install(authenticator));

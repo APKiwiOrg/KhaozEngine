@@ -9,9 +9,9 @@ namespace KhaozEngine.Locomotion;
 /// and client-side prediction alike. Two overloads share one horizontal core (camera-relative move, normalized
 /// diagonals, walk/run speed, optional slope gate):
 /// <list type="bullet">
-/// <item><see cref="Step(Vector3, in MoveCommand, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?)"/>
+/// <item><see cref="Step(Vector3, in MoveCommand, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, Func{float, float, float, MovementMedium}?)"/>
 /// is the horizontal-only step: Y is a pure function of XZ (ground + half-height), no air.</item>
-/// <item><see cref="Step(in MoveState, in MoveCommand, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, IPhysicsWorld?, Func{float, float, Vector2}?)"/>
+/// <item><see cref="Step(in MoveState, in MoveCommand, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, IPhysicsWorld?, Func{float, float, Vector2}?, Func{float, float, float, MovementMedium}?)"/>
 /// is the vertical-physics step: gravity, jump (coyote + jump-buffer), land/clamp, air control, plus 3D
 /// swept collide-and-slide prop resolution via an <see cref="IPhysicsWorld"/> (substepped
 /// <see cref="IPhysicsWorld.SweepCapsule"/> + step-up probe), over the carried <see cref="MoveState"/>.</item>
@@ -27,14 +27,19 @@ public static class CharacterMovement
     /// <param name="groundHeight">Terrain height at (x, z).</param>
     /// <param name="tuning">Speed/half-height/slope constants.</param>
     /// <param name="groundNormal">Optional ground normal at (x, z); when given, gates a step by slope.</param>
+    /// <param name="medium">Optional fluid-medium provider <c>(x, z, feetY) -> MovementMedium</c>: when a sample is in
+    /// water, horizontal speed is scaled by the submersion-depth wade ramp times the sample's own WadeSpeedScale. Null
+    /// = dry land everywhere = bit-identical to the pre-medium behaviour. Must be pure and identical on both heads.</param>
     /// <returns>The advanced position (Y on the ground + half-height).</returns>
     public static Vector3 Step(Vector3 position, in MoveCommand cmd, float dt,
         Func<float, float, float> groundHeight, in MoveTuning tuning,
-        Func<float, float, Vector3>? groundNormal = null)
+        Func<float, float, Vector3>? groundNormal = null,
+        Func<float, float, float, MovementMedium>? medium = null)
     {
         if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
 
-        (float x, float z) = DesiredHorizontal(position.X, position.Z, cmd, dt, tuning, groundNormal, speedScale: 1f);
+        float wade = WadeSpeedScale(position.X, position.Z, position.Y - tuning.CapsuleHalfHeight, tuning, medium);
+        (float x, float z) = DesiredHorizontal(position.X, position.Z, cmd, dt, tuning, groundNormal, speedScale: wade);
         var result = new Vector3(x, groundHeight(x, z) + tuning.CapsuleHalfHeight, z);
         // Defense-in-depth: never return a non-finite position from a finite input. A pathological command is
         // already neutralized by the move gate, but a misbehaving groundHeight/bound could still inject a NaN/Inf
@@ -64,11 +69,16 @@ public static class CharacterMovement
     /// behaviour).</param>
     /// <param name="clampXz">Optional XZ clamp (e.g. a play-area bound); applied after move and re-applied after
     /// depenetration so a prop cannot shove the capsule out of the play area.</param>
+    /// <param name="medium">Optional fluid-medium provider <c>(x, z, feetY) -> MovementMedium</c>: in water, horizontal
+    /// speed is scaled by the submersion-depth wade ramp times the sample's WadeSpeedScale (composed on top of the
+    /// grounded/air-control scale). Null = dry land everywhere = bit-identical to the pre-medium behaviour. Must be
+    /// pure and identical on the server and in client prediction.</param>
     /// <returns>The advanced <see cref="MoveState"/>.</returns>
     public static MoveState Step(in MoveState state, in MoveCommand cmd, float dt,
         Func<float, float, float> groundHeight, in MoveTuning tuning,
         Func<float, float, Vector3>? groundNormal = null, IPhysicsWorld? world = null,
-        Func<float, float, Vector2>? clampXz = null)
+        Func<float, float, Vector2>? clampXz = null,
+        Func<float, float, float, MovementMedium>? medium = null)
     {
         if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
 
@@ -78,8 +88,10 @@ public static class CharacterMovement
         CapsuleShape capsule = CapsuleFor(t);
         float halfH = t.CapsuleHalfHeight;
 
-        // 1. Horizontal desired (UNCHANGED): camera-relative move + terrain slope gate.
-        float speedScale = s.Grounded ? 1f : t.AirControl;
+        // 1. Horizontal desired (UNCHANGED when dry): camera-relative move + terrain slope gate. The grounded/air
+        //    scale composes with the wade scale (1 when no provider or out of water, so the dry path is untouched).
+        float wade = WadeSpeedScale(s.Position.X, s.Position.Z, s.Position.Y - halfH, t, medium);
+        float speedScale = (s.Grounded ? 1f : t.AirControl) * wade;
         (float dx, float dz) = DesiredHorizontal(s.Position.X, s.Position.Z, cmd, dt, t, groundNormal, speedScale);
         if (clampXz is not null) { Vector2 c = clampXz(dx, dz); dx = c.X; dz = c.Y; }
 
@@ -237,9 +249,58 @@ public static class CharacterMovement
         return dx * dx + dz * dz <= lim * lim;
     }
 
+    /// <summary>The horizontal-speed multiplier the fluid medium imposes at a sample: 1 (no penalty) on dry land or
+    /// with a null provider, otherwise a linear wade ramp from full speed at ankle depth
+    /// (<see cref="MoveTuning.WadeStartDepthFraction"/> of body height) down to <see cref="MoveTuning.WadeMinSpeedScale"/>
+    /// at chest depth (<see cref="MoveTuning.WadeEndDepthFraction"/>), the whole ramp then multiplied by the sample's
+    /// own <see cref="MovementMedium.WadeSpeedScale"/>. Submersion depth is <c>WaterSurfaceY - feetY</c>. Pure and
+    /// deterministic given a pure provider (a bare arithmetic ramp over the provider's read), so the server and client
+    /// prediction produce the identical scale. Exposed for callers that predict/echo the wade factor (Task 2's swim
+    /// mode reads the same submersion the ramp is built from).</summary>
+    /// <param name="x">Sample X (world).</param>
+    /// <param name="z">Sample Z (world).</param>
+    /// <param name="feetY">Capsule-bottom world Y (capsule centre minus half-height).</param>
+    /// <param name="tuning">Carries the wade ramp depths + floor.</param>
+    /// <param name="medium">The medium provider, or null for dry land everywhere (returns 1).</param>
+    /// <returns>A multiplier in [<see cref="MoveTuning.WadeMinSpeedScale"/> * scale, 1], never negative.</returns>
+    public static float WadeSpeedScale(float x, float z, float feetY, in MoveTuning tuning,
+        Func<float, float, float, MovementMedium>? medium)
+    {
+        if (medium is null) return 1f;                 // dry land everywhere: bit-identical to the pre-medium path
+        MovementMedium m = medium(x, z, feetY);
+        if (!m.InWater) return 1f;                     // out of water: the ramp contributes nothing
+
+        float bodyHeight = 2f * tuning.CapsuleHalfHeight;
+        float ramp;
+        if (bodyHeight <= 1e-6f)
+        {
+            // A degenerate zero-height body has no depth axis to ramp over: in water it is simply at/past the floor.
+            ramp = tuning.WadeMinSpeedScale;
+        }
+        else
+        {
+            float depthFraction = (m.WaterSurfaceY - feetY) / bodyHeight;
+            float start = tuning.WadeStartDepthFraction;
+            float end = tuning.WadeEndDepthFraction;
+            if (depthFraction <= start) ramp = 1f;                       // ankle-deep or shallower: full speed
+            else if (depthFraction >= end) ramp = tuning.WadeMinSpeedScale;  // chest-deep or deeper: the floor
+            else
+            {
+                // Linear lerp from full speed (at start) down to the floor (at end). end > start by the tuning
+                // contract; guard the denominator anyway so a mis-set tuning cannot divide by zero.
+                float span = end - start;
+                float tNorm = span > 1e-6f ? (depthFraction - start) / span : 1f;
+                ramp = 1f + (tuning.WadeMinSpeedScale - 1f) * tNorm;
+            }
+        }
+
+        float scale = ramp * m.WadeSpeedScale;
+        return scale < 0f ? 0f : scale;               // a hostile/mis-set negative zone scale can never reverse travel
+    }
+
     /// <summary>The unconstrained horizontal target the camera-relative move would reach in one step, before the
     /// slope gate, static collision, or play-area clamp deny any of it. The XZ distance from this to the position a
-    /// constrained <see cref="Step(in MoveState, in MoveCommand, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, IPhysicsWorld?, Func{float, float, Vector2}?)"/>
+    /// constrained <see cref="Step(in MoveState, in MoveCommand, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, IPhysicsWorld?, Func{float, float, Vector2}?, Func{float, float, float, MovementMedium}?)"/>
     /// actually produced is the authoritative "correction" the server applied this tick - a server-side anti-cheat
     /// signal: a client repeatedly driving into a wall, slope, or boundary keeps this large. Pass
     /// <paramref name="speedScale"/> = the value the step used (1 grounded, <see cref="MoveTuning.AirControl"/>

@@ -22,7 +22,10 @@ public readonly record struct MoveTuning(
     float JumpBuffer = 0.1f,
     float AirControl = 1f,
     float GroundedEpsilon = 0.3f,
-    float StepHeight = 0.4f)
+    float StepHeight = 0.4f,
+    float WadeStartDepthFraction = 0.15f,
+    float WadeEndDepthFraction = 0.65f,
+    float WadeMinSpeedScale = 0.45f)
 {
     /// <summary>Walkable-slice defaults: walk 3 m/s, run 6 m/s, capsule half-height 0.9 m, max slope 45 deg
     /// (steep enough for normal hills, low enough that a RimFeature mountain wall is rejected, so the slope gate
@@ -63,4 +66,20 @@ public readonly record struct MoveTuning(
     /// <summary>Max upward support rise (metres) auto-mounted while grounded without a jump (a low rock/curb/log);
     /// a larger rise behaves as a wall (the move is blocked). Used by the surface-aware vertical step.</summary>
     public float StepHeight { get; init; } = StepHeight;
+
+    /// <summary>Wade ramp start: submersion depth (as a fraction of the character's full body height, 2 *
+    /// <see cref="CapsuleHalfHeight"/>) at or below which wading has NO speed penalty. Default 0.15 (~ankle depth on a
+    /// 1.8 m body). Only consulted when the medium provider reports the sample in water; a null provider or dry
+    /// sample never touches the ramp.</summary>
+    public float WadeStartDepthFraction { get; init; } = WadeStartDepthFraction;
+
+    /// <summary>Wade ramp end: submersion depth (fraction of full body height) at or above which the wade speed sits
+    /// at its <see cref="WadeMinSpeedScale"/> floor. Default 0.65 (~chest depth). Between start and end the scale
+    /// lerps linearly from full speed down to the floor. Must be &gt; <see cref="WadeStartDepthFraction"/>.</summary>
+    public float WadeEndDepthFraction { get; init; } = WadeEndDepthFraction;
+
+    /// <summary>Wade speed floor: the horizontal-speed multiplier at (and past) chest depth,
+    /// <see cref="WadeEndDepthFraction"/>. Default 0.45 (chest-deep wading is a bit under half speed). The medium's
+    /// own <c>WadeSpeedScale</c> composes as a further multiplier on top of the depth ramp.</summary>
+    public float WadeMinSpeedScale { get; init; } = WadeMinSpeedScale;
 }

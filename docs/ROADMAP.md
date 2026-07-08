@@ -4,7 +4,7 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **10.27.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **10.28.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan when it is scheduled.
 
@@ -36,7 +36,7 @@ good, not just read as shapes.
   primitive mesh a tangent basis so normal maps take effect, and `PropMaterialPresets.Procedural` generates an
   asset-free mossy-stone albedo+normal for samples and tests. Remaining: real Quaternius kit re-ingest with
   textures on (today's samples use the procedural preset or opt in per-asset), and multi-texture-per-primitive.
-- Water: a real water shader for the lake / sea (currently a flat plane at the water level).
+- Water shipped in 10.28.0 (`Scene3D.DrawWater`): remaining polish tracked under Rendering follow-ups below.
 - Lighting polish: pairs with shadows (see Rendering) + an HDRI/sky direction for a cohesive look.
 - CC0-asset-friendly throughout (ambientCG terrain textures, the kit textures), no new heavy dependencies.
 
@@ -81,8 +81,9 @@ Ordered gap list (2026-07-07 feature audit):
 4. Sky follow-ups (the gradient + key-light-aligned sun disc background shipped in 10.20.0, a screen-space
    formulation that works under both ortho and perspective cameras): a physical point-at-infinity sun
    projection for perspective cameras, and a full cubemap/skybox when water or a specific scene pulls for it.
-5. Water: a real water surface shader for the lake / sea (currently a flat plane at water level, and the splat
-   weights already know the waterline). After shadows + sky so it has something to reflect the look of.
+5. Water follow-ups (the animated water surface shipped in 10.28.0: `Scene3D.DrawWater` + `WaterSettings`,
+   shore fade, sky-derived fresnel tint, sun glint, no reflections): shore foam, per-game wave tuning once
+   Ruinborne adopts it, dropping the unused `Res` UBO field, and a water-footprint-scoped golden guard.
 6. Bloom follow-ups (the LDR threshold + separable-blur bloom shipped in 10.27.0, opt-in via
    `PixelPostProcessSettings.Bloom`): per-game tuning of threshold/intensity defaults once Ruinborne adopts it,
    and a second blur octave only if a game pulls for wider halos. A full HDR/tonemap pipeline is still not planned.

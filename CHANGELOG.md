@@ -5,6 +5,15 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.28.0
+
+Water: an animated water surface for the lake and sea, closing the last big rendering gap of the "A"-tier semi-realistic push. Additive public API, minor bump, opt-in with every existing golden byte-stable on all three backends.
+
+- **`Scene3D.DrawWater(in WaterPlane)` + `WaterSettings` (`PixelPostProcessSettings.Water`):** a per-frame request (center XZ, surface height, XZ half-extents, one request per body of water). No request means no pass and no cost. Knobs: deep and shallow tints (defaulting in harmony with the sky colors), wave scale and speed, shore-fade distance, sun-glint strength.
+- **Look:** procedural scrolling-normal perturbation, a Schlick-fresnel blend from deep tint toward a sky-derived horizon color by view angle, a Blinn-Phong sun glint from the key light, and a depth-sampled shore fade (the ground-decal `gl_FragCoord` reconstruction precedent) that softens the waterline where ground nears the surface. No reflections by design (roadmap: revisit only on a concrete pull).
+- **Compositing:** water draws after the sky and ground decals into the lit color with depth test on and depth write off, so terrain and props above the surface occlude it, the outline pass's normal/depth targets are untouched, submerged decals tint under the water, and the pass always sits under the post chain and the post-pass overlay stream (documented as a fixed order, not a sorted batch). Animation rides `Scene3D.EffectTimeSeconds` (the beam mechanism), so freezing time gives deterministic frames.
+- **New golden `scene3d_water`** (all three backends): a submerged lakebed with a beach shelf, visible ripple shading, shore transition, and sun glint, with an in-test anti-degeneracy guard (blue-dominant water cells plus a minimum brightness spread) so a flat or invisible water bake cannot silently become the reference. `WaterMath` mirrors the GLSL and carries 27 headless tests.
+
 ## 10.27.0
 
 LDR bloom: an opt-in threshold + separable-blur glow pass in the pixel post chain, so beams, emissive materials, and bright billboards finally read as light sources. Additive public API, minor bump, off by default with every existing golden byte-stable on all three backends.

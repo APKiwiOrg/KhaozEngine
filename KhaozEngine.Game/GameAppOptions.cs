@@ -102,6 +102,19 @@ namespace KhaozEngine.Game
         /// </summary>
         public string? AppUserModelId;
 
+        /// <summary>
+        /// Opt OUT of the automatic parent-console attach (default <c>false</c>, i.e. the attach is ON). A game head
+        /// built as a Windows <c>WinExe</c> (Windows-subsystem, so no stray console window opens behind it) has no
+        /// console, so <see cref="GameApp"/> attaches the process to the parent terminal's console when launched
+        /// from one (<c>dotnet run</c> / cmd / PowerShell), keeping developer-visible <c>Console.Write*</c> output.
+        /// The attach is already a no-op off Windows, for a console-subsystem exe, on a normal Explorer/Start launch
+        /// (no parent console), and when output is redirected (CI/pipes are respected) - so leave this
+        /// <c>false</c> unless a head must never touch the parent console. The field is inverted (a suppress flag)
+        /// so the default-zero struct value keeps the attach on, whether options are built with <see cref="For"/> or
+        /// a raw <c>new GameAppOptions { ... }</c>. See <see cref="AppWindow.TryAttachParentConsole"/>.
+        /// </summary>
+        public bool SuppressParentConsoleAttach;
+
         /// <summary>Resolved design width: <see cref="DesignWidth"/>, or <see cref="Width"/> when it is 0.</summary>
         internal int ResolvedDesignWidth => DesignWidth == 0 ? Width : DesignWidth;
         /// <summary>Resolved design height: <see cref="DesignHeight"/>, or <see cref="Height"/> when it is 0.</summary>

@@ -81,6 +81,38 @@ auto-updater remain, so disabling it buys broad old-Windows compatibility for a 
 opt back in for a specific head, set `<CETCompat>true</CETCompat>` in that head's `Directory.Build.props` or
 `.csproj` (your value wins, and the inherited default plus its build message step aside).
 
+### Windows: ship the head as `WinExe` (no console window)
+
+Build every desktop **game head** as a Windows-subsystem exe:
+
+```xml
+<OutputType>WinExe</OutputType>   <!-- in the Desktop head's .csproj -->
+```
+
+A console-subsystem exe (`<OutputType>Exe</OutputType>`) opens a console window behind the game on Windows.
+`WinExe` suppresses it. Unlike `CETCompat` this is **not** inherited from `Foundation` and must be set per head,
+because `OutputType` is project-specific: a **headless server** head and the CLI tools (`SnapshotTool`,
+`ke-updater`, ...) stay `Exe`. `WinExe` is a no-op off Windows (it builds a normal executable), so the same head
+still builds and runs on macOS/Linux and in CI.
+
+The catch a WinExe normally brings is that a Windows-subsystem process has **no console**, so `Console.Write*`
+vanishes when a developer launches the game from a terminal (`dotnet run`, cmd, PowerShell). The engine removes
+that catch: `GameApp` calls `AppWindow.TryAttachParentConsole()` as the very first thing it does, attaching the
+process to the launching terminal's console (if there is one) and rewiring `Console.Out`/`Console.Error` to it, so
+terminal launches keep full engine + game stdout/stderr. It is a no-op - silently - for a normal Explorer/Start
+launch (no parent console), off Windows, for a console-subsystem exe, and when output is redirected (a pipe, a
+`> out.txt`, or a CI/test-runner capture is respected and left untouched); it never throws. A bare `AppWindow`
+host (no `GameApp`) gets the same attach from the `AppWindow` constructor. **Opt out** by setting
+`GameAppOptions.SuppressParentConsoleAttach = true` (default is off, i.e. the attach is on).
+
+**Crash visibility with no console.** A fatal *startup* crash on a WinExe launched from Explorer (no window yet,
+no console) would otherwise be silent. `GameApp` installs a last-chance net in exactly that case (a Windows GUI
+launch that ended up with no console) that writes the unhandled exception to a file under
+`%LOCALAPPDATA%\KhaozEngine\crash\`. This is the floor; the recommended richer path is still to wire
+`KhaozEngine.Diagnostics.CrashHandler.Install()` with a `FileSink` (see the Diagnostics / logging section below),
+which routes every fatal to your game's `game.log` regardless of console. `KhaozEngine.Showcase` is the reference
+desktop head and ships as `WinExe`.
+
 ### Publishing (self-contained, single-file)
 
 Publish each game **self-contained** for its RID (`dotnet publish -c Release -r <rid> --self-contained`): the
@@ -96,9 +128,11 @@ suitable window platform (GlfwPlatform - not applicable)"*. Foundation therefore
 `IncludeNativeLibrariesForSelfExtract=false` (inherited, overridable the same way as `CETCompat`); leave it
 inherited. The default is a no-op unless you set `PublishSingleFile=true`.
 
-**New game head checklist:** `CETCompat` and `IncludeNativeLibrariesForSelfExtract` are the engine-imposed
-build-property defaults. Pin your umbrella package version, publish self-contained for your RID, and leave both
-defaults inherited unless you have a specific reason to re-enable either.
+**New game head checklist:** set `<OutputType>WinExe</OutputType>` on the Desktop head (no stray console window;
+the engine attaches the parent console for terminal launches). `CETCompat` and
+`IncludeNativeLibrariesForSelfExtract` are the engine-imposed build-property defaults. Pin your umbrella package
+version, publish self-contained for your RID, and leave both defaults inherited unless you have a specific reason
+to re-enable either.
 
 ---
 
@@ -136,7 +170,9 @@ game.Run();
 `GameAppOptions` (a struct): `Title`, `Width`/`Height`, `DesignWidth`/`DesignHeight`, `ScaleMode`, `ClearColor`,
 `ResumeGapThresholdSeconds` (see the resume hook below), `PresentMode` + `FrameCapHz` + `WindowMode` (see below), and optional
 `WindowFactory` / `ViewportFactory` (e.g. `AppWindow.Scaled` for a display-fitted window, or an `AdaptiveViewport`
-for responsive layout). Use `GameAppOptions.For(title, w, h)` for the common case.
+for responsive layout), `AppUserModelId` (Windows taskbar identity), and `SuppressParentConsoleAttach` (opt out of
+the WinExe parent-console attach - see [Game head build settings](#game-head-build-settings-cetcompat)). Use
+`GameAppOptions.For(title, w, h)` for the common case.
 
 **Present mode + frame cap.** `GameAppOptions.PresentMode` (`Vsync` default / `Immediate`) selects the swapchain's
 vertical-blank sync; `GameAppOptions.FrameCapHz` (0 = uncapped) paces the loop to a target Hz with a monotonic-clock

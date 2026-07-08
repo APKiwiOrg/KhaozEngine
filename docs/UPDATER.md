@@ -30,7 +30,9 @@ The game owns, per head:
 - The **embedded trusted public key** (committed `.pem`, read at runtime, wired as
   `UpdateServiceOptions.TrustedPublicKeys`).
 - A one-line shim executable that forwards `args` to `KhaozEngine.Updates.UpdaterShim.Main(args)`,
-  published next to the game.
+  published next to the game. Build it as `<OutputType>WinExe</OutputType>` so applying an update never
+  flashes a console window over the game; `UpdaterShim.Main` attaches the parent console on launch, so its
+  diagnostics still reach a terminal, and the `updater.log` file is written regardless.
 - The check-on-launch wiring (constructing `UpdateService`, firing the startup check).
 - The publish channel: an Azure Blob container and a CI job that builds, signs, and uploads a release.
 
@@ -190,7 +192,8 @@ On a check the engine:
 
 **The shim and rollback.** A running process cannot overwrite its own binaries, so a standalone shim does
 the swap while the game is stopped. The game's shim project is one line forwarding to
-`KhaozEngine.Updates.UpdaterShim.Main(args)`; the staged-apply core (`UpdateApplier`) lives in the engine.
+`KhaozEngine.Updates.UpdaterShim.Main(args)`, built as a `WinExe` (no console flash; the shim attaches the parent
+console itself so terminal diagnostics still work); the staged-apply core (`UpdateApplier`) lives in the engine.
 On apply the shim waits for the game to exit, writes an `apply-in-progress` marker, pre-flights that every
 staged file exists (aborting before touching the install if staging is incomplete), then **atomically
 swaps** each staged file over the install (copy-to-temp + same-volume rename, so the on-disk image is
@@ -353,7 +356,7 @@ that first-launch limitation rather than treat a macOS rollback as a bug.
    and a Key Vault for the signing key.
 2. `ke-updater genkey`; upload `private.pem` to Key Vault; commit + embed `public.pem`; wire it into
    `UpdateServiceOptions.TrustedPublicKeys`.
-3. Add the one-line shim project forwarding to `UpdaterShim.Main`, published next to the game.
+3. Add the one-line shim project (`<OutputType>WinExe</OutputType>`) forwarding to `UpdaterShim.Main`, published next to the game.
 4. Construct `UpdateService` and fire the on-launch check (non-fatal on failure).
 5. Add the OIDC federated credential + role assignments and the `publish-clients.yml` CI job (or
    `scripts/publish-update.sh`) that builds, manifests, signs from Key Vault, uploads, and flips the

@@ -72,6 +72,14 @@ Windowing + input foundation for the custom MonoGame-free stack.
   above. Forwards to `Platform.WindowsAppId`; a no-op returning `false` off Windows or on a null/empty id, never
   throwing. Must run before constructing any `AppWindow`. `GameApp` calls it automatically from
   `GameAppOptions.AppUserModelId`.
+- `AppWindow.TryAttachParentConsole(bool enable = true)` (static) makes a Windows `WinExe` head keep its console
+  output: a Windows-subsystem exe (`OutputType=WinExe`, so no stray console window opens behind the game) has no
+  console, so it attaches the process to the launching terminal's console and rewires stdout/stderr, keeping
+  `Console.Write*` visible under `dotnet run` / cmd / PowerShell. `AppWindow.ProcessHasConsole` (static) reports
+  whether a console is now owned. Both forward to `Platform.WindowsConsole`; no-ops off Windows / for a console exe
+  / with no parent console / with redirected output, never throwing. The constructor calls the attach itself (so a
+  bare `AppWindow` host is covered - it also un-loses the Metal-vsync `Console.Error` warning above on a WinExe),
+  and `GameApp` calls it first (opt out with `GameAppOptions.SuppressParentConsoleAttach`).
 - `InputManager` / `Pointer` - the higher-level read: unified pointer, edges, bounds helpers (`IsTapIn` etc.),
   region blocking, keyboard/gamepad/menu navigation.
 - **Action maps + rebinding** (`KhaozEngine.Windowing.Actions`) - named actions instead of hardcoded key checks.

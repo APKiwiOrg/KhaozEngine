@@ -363,6 +363,14 @@ namespace KhaozEngine.Windowing
         /// </summary>
         public AppWindow(string title, int width, int height, PresentMode presentMode, int frameCapHz = 0)
         {
+            // WinExe support, belt-and-suspenders for a bare AppWindow host (one with no GameApp facade): a
+            // Windows-subsystem exe has no console, so surface diagnostics like the Metal-vsync warning below
+            // (written to Console.Error) would be lost. Attach the parent console before anything writes. The
+            // one-shot guard means that when GameApp already made this call (with the opt-out applied), this is a
+            // no-op; a game that opted out is honoured. No-op off Windows / for a console exe / with no parent
+            // console; never throws.
+            KhaozEngine.Platform.WindowsConsole.EnsureParentConsoleAttached();
+
             _frameCapHz = frameCapHz;
             _frameLimiter = new FrameLimiter(frameCapHz);
             _presentMode = presentMode;
@@ -526,6 +534,30 @@ namespace KhaozEngine.Windowing
         /// </summary>
         public static bool TrySetProcessAppUserModelId(string? appUserModelId)
             => KhaozEngine.Platform.WindowsAppId.TrySetProcessAppUserModelId(appUserModelId);
+
+        /// <summary>
+        /// Make a Windows <c>WinExe</c> (Windows-subsystem) game head keep its developer-visible console output.
+        /// A WinExe opens no console - which is what stops a stray console window appearing behind the game - so
+        /// <c>Console.Write*</c> vanishes when the head is launched from a terminal (<c>dotnet run</c> / cmd /
+        /// PowerShell). This attaches the process to the parent's console (if any) once and rewires stdout/stderr
+        /// to it. No-op returning <c>false</c> off Windows, for a console-subsystem exe, when there is no parent
+        /// console (a normal Explorer/Start launch), or when output is redirected (CI/pipes are left untouched);
+        /// never throws. Forwards to <see cref="KhaozEngine.Platform.WindowsConsole.EnsureParentConsoleAttached"/>.
+        /// Call BEFORE the first write so no startup logging is lost. GameApp calls this automatically (opt out via
+        /// <c>GameAppOptions.SuppressParentConsoleAttach</c>); the ctor also calls it as a fallback for a bare
+        /// AppWindow host, and the one-shot guard means the two calls collapse to a single attach.
+        /// </summary>
+        public static bool TryAttachParentConsole(bool enable = true)
+            => KhaozEngine.Platform.WindowsConsole.EnsureParentConsoleAttached(enable);
+
+        /// <summary>
+        /// Whether the process currently owns a console (true after a successful <see cref="TryAttachParentConsole"/>,
+        /// and for a console-subsystem exe). Off Windows always <c>true</c>. A host uses this to decide a
+        /// no-console fallback (e.g. GameApp installs a last-chance crash-log net when a Windows GUI launch left the
+        /// process with no console). Forwards to <see cref="KhaozEngine.Platform.WindowsConsole.HasConsole"/>.
+        /// </summary>
+        public static bool ProcessHasConsole
+            => KhaozEngine.Platform.WindowsConsole.HasConsole;
 
         /// <summary>
         /// Set the runtime window/taskbar icon from one or more already-decoded RGBA8 images (supply 16/32/48...

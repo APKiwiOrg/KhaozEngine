@@ -236,7 +236,8 @@ backstop for the skew it could not prevent.
 ## The updater shim
 
 A tiny standalone executable (publish it self-contained / AOT, one per runtime) that the game
-launches and then exits. It must not depend on the game runtime - only on this package:
+launches and then exits. Build it as `<OutputType>WinExe</OutputType>` so applying an update never
+flashes a console window over the game. It must not depend on the game runtime - only on this package:
 
 ```csharp
 // Program.cs of MyGameUpdater - the whole file
@@ -245,7 +246,9 @@ using KhaozEngine.Updates;
 return UpdaterShim.Main(args);
 ```
 
-`UpdaterShim.Main` opens the log next to the apply config, wires the per-OS progress window
+`UpdaterShim.Main` attaches the parent console (via `KhaozEngine.Platform.WindowsConsole`) so its diagnostics
+still reach a terminal despite the `WinExe` subsystem, then opens the `updater.log` file next to the apply config
+(always written regardless of console), wires the per-OS progress window
 (`SystemUpdaterUi.CreateForCurrentOs`), and runs the staged apply. If you want to run the applier
 yourself instead of the one-liner, pass the window factory through explicitly so the shim still shows
 the window - `UpdateApplier.Run(args, env, SystemUpdaterUi.CreateForCurrentOs)`; the two-arg

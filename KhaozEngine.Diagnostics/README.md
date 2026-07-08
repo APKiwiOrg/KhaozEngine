@@ -27,6 +27,40 @@ Log.For<Game>().Info("started");
 Log.Shutdown();
 ```
 
+## One-call session bootstrap (`SessionLog`)
+
+The block above (file sink + console sink + `Log.Configure` + `CrashHandler.Install`) is the same at every game's
+process entry point. `SessionLog.Configure` collapses it into one call and standardises the richer **per-launch
+session log** shape: it prunes old session files, opens one fresh timestamped `session-{yyyyMMdd-HHmmss}.log`,
+adds a console sink, adopts the pair as the ambient `Log`, installs `CrashHandler`, and writes one self-identifying
+startup line (optional game build version + the engine version read off the engine assembly). It returns the path
+of the file it opened.
+
+```csharp
+using KhaozEngine.App;          // AppDataPaths
+using KhaozEngine.Diagnostics;
+
+var paths = new AppDataPaths("APKiwi", "MyGame");
+SessionLog.Configure(paths.GetFilePath("logs"), "MyGame", buildVersion: BuildConfig.DisplayVersion);
+// or the full form:
+SessionLog.Configure(new SessionLogOptions
+{
+    Directory = paths.GetFilePath("logs"),
+    ProcessLabel = "MyGame.Server",
+    MaxRetainedSessions = 10,     // session-*.log files beyond this are pruned on startup
+    Console = true,
+    BuildVersion = BuildConfig.DisplayVersion,
+});
+```
+
+The game owns the directory (typically a `logs` subdir of `AppDataPaths`). This is the rich, category-tagged
+record and is orthogonal to the last-chance `KhaozEngine.Game.StartupCrashLog` net `GameApp` installs
+automatically on a no-console Windows GUI launch: that net only catches a startup crash before any logging is
+configured and writes a bare file under `%LocalAppData%\KhaozEngine\crash`, so the two write to different
+destinations and never double-handle a crash into the same file. The older single-file rotating shape
+(`game.log` -> `game.prev.log`) is still just `new FileSink(new FileSinkOptions { Path, PreviousPath })` built
+directly - `SessionLog` deliberately standardises on the per-session shape that keeps a tester's crash history.
+
 ## Categories
 
 Every entry carries a **category**, rendered by the formatter as `[Category] message`. Choose it once and never repeat it in the message text:

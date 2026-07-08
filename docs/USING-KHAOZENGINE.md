@@ -688,12 +688,18 @@ analyzer (already in the `Game2D`/`Game3D` umbrellas) enforces the rest. Adoptin
    }
    ```
 
-2. **Register the catalog once at startup** so every `LocalizedText` resolves against it:
+2. **Wire the catalog once at startup** so every `LocalizedText` resolves against it. `LocalizationContext.WireResx`
+   is the one-liner (no per-game bridge class needed - it builds the `ResourceStringCatalog`, installs it as the
+   ambient catalog, and returns it):
 
    ```csharp
-   var rm = new System.Resources.ResourceManager("MyGame.Strings", typeof(MyGameMarker).Assembly);
-   LocalizationContext.Catalog = new ResourceStringCatalog(rm);
+   LocalizationContext.WireResx("MyGame.Strings", typeof(MyGameMarker).Assembly);
+   // or over a ResourceManager you already have: LocalizationContext.WireResx(rm);
    ```
+
+   Culture is read live at resolve time, so a runtime `LocalizationManager.SetCulture(...)` takes effect on the
+   next draw. (Own the culture separately - a settings/language controller drives `SetCulture`; this only wires
+   the catalog.)
 
 3. **Pass a `StringId` (or `LocalizedText.Of` with format args) at the sinks:**
 
@@ -2909,16 +2915,37 @@ above. Each game owns its manifest and its play-key wiring.
 
 ## Diagnostics / logging (`KhaozEngine.Diagnostics`)
 
-One logging service for every game. Configure it once at startup and log through the static `Log`:
+One logging service for every game. **`SessionLog.Configure` is the one-call bootstrap** - run it once per process
+entry point and you get the whole standard shape (per-launch log file, console sink, ambient `Log`, crash capture,
+a self-identifying startup line):
 
 ```csharp
 var paths = new KhaozEngine.App.AppDataPaths("APKiwi", "MyGame");   // publisher-rooted, in KhaozEngine.App
+SessionLog.Configure(paths.GetFilePath("logs"), "MyGame", buildVersion: BuildConfig.DisplayVersion);
+// server head: SessionLog.Configure(Path.Combine(AppContext.BaseDirectory, "logs"), "MyGame.Server");
+```
+
+That prunes old `session-*.log` files down to `MaxRetainedSessions` (default 10), opens one fresh timestamped
+`session-{yyyyMMdd-HHmmss}.log` under the directory you own, adds a `ConsoleSink`, adopts the pair as the ambient
+`Log`, installs `CrashHandler`, logs one identity line (your build version + the engine version), and returns the
+path. Use the `SessionLogOptions` overload to tune the label, retained count, category, or whether to add the
+console sink. It is the richer per-launch-file shape (it keeps a tester's crash history, not just the previous
+run). Under the hood it is exactly the manual wiring below - reach for that only when you need a non-standard sink
+set (e.g. the older single-file `game.log` -> `game.prev.log` rotation, which is just `FileSink` with a
+`PreviousPath`):
+
+```csharp
 var options = new LoggerOptions { MinimumLevel = LogLevel.Info, DefaultCategory = "Boot" };
 options.Sinks.Add(new FileSink(new FileSinkOptions { Path = paths.LogFilePath, PreviousPath = paths.PreviousLogFilePath }));
 options.Sinks.Add(new ConsoleSink());
 Log.Configure(options);
 CrashHandler.Install();
 ```
+
+`SessionLog` composes cleanly with the no-console `StartupCrashLog` net `GameApp` installs automatically on a
+Windows GUI launch (see the `WinExe` subsection): that net only catches a startup crash *before* any logging is
+configured and writes a bare file under `%LocalAppData%\KhaozEngine\crash`, so the two write to different
+destinations and never double-handle a crash. `SessionLog`'s `CrashHandler` is the richer, category-tagged record.
 
 Rules for consumers:
 
@@ -3648,6 +3675,31 @@ Assert.True(im.IsTapIn(new Rect(0, 0, 40, 40)));
 New behaviour added to the library ships with a headless test in `KhaozEngine.Tests`. This is the standard, not
 a nicety - it's the reason the raw read sits behind the `AppWindow`/`InputState` seam. See the test project for
 the `InputState` builder patterns.
+
+### Localization coverage (`KhaozEngine.Localization.TestKit`)
+
+If your game ships satellite `.resx` translations, guard them with one assert instead of a hand-rolled reflection
+test. Add the test-only `KhaozEngine.Localization.TestKit` package to your **test project** (it is in no umbrella)
+and point `LocalizationCoverage.AssertComplete` at your keys class, your `ResourceManager`, and the cultures you
+ship:
+
+```csharp
+using KhaozEngine.Localization.TestKit;
+
+[Fact]
+public void EveryKey_IsTranslatedInEveryShippedCulture()
+    => LocalizationCoverage.AssertComplete(
+        typeof(MyGameStrings),                             // public const string OR StringId key fields
+        new ResourceManager("MyGame.Strings", typeof(MyGameMarker).Assembly),
+        "es-ES", "fr-FR");                                 // the satellite cultures you ship
+```
+
+It reflects the keys (every `public const string` value plus every `public static readonly StringId`'s `.Key`),
+then asserts each key resolves in the neutral resx **and** in each satellite with parent fallback OFF (a missing
+translation fails rather than silently reading the neutral language), plus placeholder-index integrity between each
+neutral template and its translation. A gap throws `LocalizationCoverageException` listing every miss. Pass no
+cultures to check only the neutral resx. `LocalizationCoverage.Keys(typeof(MyGameStrings))` is exposed if you would
+rather drive a `[Theory]` off the same key source.
 
 ---
 

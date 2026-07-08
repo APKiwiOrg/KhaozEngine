@@ -125,14 +125,19 @@ a compile error. `KhaozEngine.Localization.Analyzers` (in the `Game2D`/`Game3D` 
   ```
 
 - **`LocalizationContext.Catalog`** - the ambient `IStringCatalog` a `LocalizedText` resolves against when no
-  catalog is passed. Set it once at startup:
+  catalog is passed. Wire it once at startup. `LocalizationContext.WireResx` is the one-liner (it builds the
+  `ResourceStringCatalog`, installs it, and returns it) that replaces the bridge class every game used to write
+  by hand:
 
   ```csharp
-  LocalizationContext.Catalog = new ResourceStringCatalog(rm);
+  LocalizationContext.WireResx(rm);                              // over a ResourceManager
+  LocalizationContext.WireResx("MyGame.Resources", asm);         // or from a base name + assembly
+  // equivalent to: LocalizationContext.Catalog = new ResourceStringCatalog(rm);
   ```
 
-  Null is legal (headless tests, non-localized apps): a localizable value then renders its key as a visible
-  placeholder rather than throwing.
+  Culture stays live (the catalog reads `CurrentUICulture` at resolve time), so a runtime `SetCulture` shows up on
+  the next draw with nothing to invalidate. Null is legal (headless tests, non-localized apps): a localizable
+  value then renders its key as a visible placeholder rather than throwing.
 
 - **`[LocalizationExempt]`** (assembly/type/member) marks a scope where `LocalizedText.Raw` is intentional, so
   the analyzer stays silent there (debug overlays, tools, sample chrome). **`[LocalizationStringSink]`**

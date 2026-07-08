@@ -117,6 +117,16 @@ through the `Game2D`/`Game3D` umbrellas (a project that references neither never
 it reads (`LocalizationExemptAttribute`, `LocalizationStringSinkAttribute`) live in `App`, so the analyzer keys
 off fully-qualified names, not a hard reference.
 
+A third edge is test-only:
+
+```
+KhaozEngine.Localization.TestKit -> KhaozEngine.App   (reads StringId.Key to extract keys from a game's key class)
+```
+
+`KhaozEngine.Localization.TestKit` is a coverage-test helper a game references from its **test project**. It is in
+no umbrella (a runtime build never pulls it) and references `App` only to read `StringId`, so the edge is acyclic
+and carries no weight into shipped game code.
+
 ## Design-viewport seam: device-pixel snapping
 
 `IDesignViewport` (`KhaozEngine.Primitives`) is the design-viewport seam. Its implementers all live in

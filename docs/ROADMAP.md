@@ -4,20 +4,21 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **10.29.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **10.30.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan when it is scheduled.
 
 ## Near-term (next up)
 
-### 1. Physics: constraints, joints, and vehicles
+### 1. Physics: ragdolls and vehicles (pull-gated)
 
-Dynamic rigid bodies, terrain-as-physics-geometry, and dynamic-body replication shipped in 10.29.0
-(`AddDynamic` on the `IPhysicsWorld` seam, terrain chunk meshes as static bodies with the statics-only
-`PhysicsGroundProbe`, and `DynamicBodyState` riding the fixed-delay interpolation). What remains of the
-original item: hinges, sliders, ragdolls, wheeled vehicles, plus the recorded follow-ups (velocity-based
-extrapolation and quaternion bit-packing for replicated bodies, and a BufferPool-health churn assertion if
-Bepu ever exposes cheap introspection).
+The joint foundation shipped in 10.30.0 (ball socket, hinge and slider with limits, distance, weld, plus
+hinge/slider motors and servos and the distance winch on the `IPhysicsWorld` seam), on top of 10.29.0's
+dynamic bodies, terrain geometry, and replication. What remains is deliberately pull-gated: ragdolls and
+wheeled vehicles wait for a concrete game need, as do character-carrying moving platforms (a character does
+not inherit platform velocity today). Recorded smaller follow-ups: velocity-based extrapolation and
+quaternion bit-packing for replicated bodies, a per-frame re-clamp option for slider servo targets, and a
+BufferPool-health churn assertion if Bepu ever exposes cheap introspection.
 
 ### 2. Visual fidelity (textures + materials)
 

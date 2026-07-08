@@ -294,8 +294,9 @@ public readonly record struct ConstraintDescription
     /// (metres along the slider axis, from the add-time separation) and holds it against gravity/load. A lift that
     /// parks at a floor, a platform that patrols between offsets. <paramref name="maxSpeed"/> caps the approach
     /// (m/s, 0 = <see cref="DefaultServoMaxSpeed"/>), <paramref name="maxForce"/> caps the drive
-    /// (0 = <see cref="DefaultMotorMaxForce"/>). The target is clamped to the travel limits. Retarget per frame with
-    /// <see cref="IPhysicsWorld.SetConstraintTarget"/>. Use only on a slider.</summary>
+    /// (0 = <see cref="DefaultMotorMaxForce"/>). The add-time target is clamped to the travel limits. A per-frame
+    /// retarget via <see cref="IPhysicsWorld.SetConstraintTarget"/> is not re-clamped: an out-of-range target simply
+    /// drives against the physical travel limit, which holds. Use only on a slider.</summary>
     public ConstraintDescription WithSliderServo(float targetOffset, float maxSpeed = 0f, float maxForce = 0f)
         => this with { Motor = ConstraintMotor.SliderPosition, MotorTarget = targetOffset, MotorMaxSpeed = maxSpeed, MotorMaxForce = maxForce };
 

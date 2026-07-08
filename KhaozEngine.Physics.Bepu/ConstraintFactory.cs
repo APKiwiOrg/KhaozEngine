@@ -46,7 +46,7 @@ internal static class ConstraintFactory
         Vector3 AxisOrOffsetA,   // hinge axis (velocity motor), or LocalOffsetA (slider/distance)
         Vector3 OffsetB,         // LocalOffsetB (slider/distance)
         Vector3 Axis,            // slider axis (LocalAxis / LocalPlaneNormal)
-        Quaternion BasisA,       // hinge servo TwistServo basis (local X = hinge axis)
+        Quaternion BasisA,       // hinge servo TwistServo basis (local Z = hinge axis, see BasisFromAxis)
         Quaternion BasisB,
         SpringSettings Spring,
         ServoSettings Servo,     // servo caps (max speed / force); for a motor, only MaximumForce is used

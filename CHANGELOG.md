@@ -5,6 +5,14 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.30.0
+
+Physics constraints: the joint foundation plus motors and servos, so doors swing, platforms patrol, winches reel, and props dangle. Builds directly on 10.29.0's dynamic bodies. Additive public API, minor bump, solver defaults untouched.
+
+- **Joints (`IPhysicsWorld.AddConstraint`/`RemoveConstraint`, `ConstraintDescription`):** BallSocket, Hinge with optional angular limits, Slider with linear limits, Distance (rope-style min/max), and Weld, with body-local anchors, connecting two dynamics or a dynamic to a world-space anchor. World anchors are SHAPELESS kinematic bodies: they never enter the broadphase, so raycasts, sweeps, the ground probe, and the character controller pass straight through a hinge or rope pivot (regression-pinned, including a character walking through a world-anchored pivot without stalling). Spring defaults are 30 Hz critically damped and documented. Lifecycle is fully safe: removing a constrained body cleans its constraints and anchors first, double-remove is a no-op, stale handles throw. The Bepu slider is a three-constraint composition torn down as a unit.
+- **Motors and servos:** hinge target-velocity motor and target-angle servo, slider target-position servo and target-velocity motor, and a distance servo (the winch). `SetConstraintTarget(handle, target)` retargets a powered joint every frame, allocation-free at steady state (pinned at 0 bytes over 1000 retargets), re-describing only the drive constraint. Drives are force- and speed-capped by default (documented knobs), motors ease into limits without energy pumping, and the motor-target sign convention (right-handed about the hinge axis, end A as reference) is documented with a powered-door example. Honest boundaries: a frictionless joint conserves energy and does not settle on its own, an uncapped motor can overshoot a compliant end-stop by ~0.3 rad, and characters do not inherit moving-platform velocity (no character-carrying yet, recorded on the roadmap).
+- **Determinism:** two-identical-worlds pins cover both passive joints (hinge + rope + anchors, bit-identical over 200 steps) and an active servo tracking a moving target every frame.
+
 ## 10.29.0
 
 Physics dynamics: dynamic rigid bodies through the `IPhysicsWorld` seam, terrain as real physics geometry, and server-authoritative dynamic-body replication. This completes the roadmap's dynamic-bodies near-term item (constraints, joints, and vehicles remain as the follow-on). Additive public API, minor bump.

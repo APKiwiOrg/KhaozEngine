@@ -1806,8 +1806,9 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
     longest length you command (the passive band still applies).
   A `0` cap means the backend default (`DefaultMotorMaxForce` = 2000 N or N-m, `DefaultServoMaxSpeed` = 2 rad/s or
   m/s). Units: motor targets are velocities (rad/s or m/s); servo targets are angles (rad), offsets (m) or lengths
-  (m). The motor-target sign is right-handed about the hinge axis with end A as the reference. A servo target
-  outside the joint's limits is clamped to them; a motor drives into a limit and the limit clamps it (a capped
+  (m). The motor-target sign is right-handed about the hinge axis with end A as the reference. An add-time servo
+  target outside the joint's limits is clamped to them, while a per-frame retarget is not re-clamped and simply
+  drives against the physical limit, which holds. A motor drives into a limit and the limit clamps it (a capped
   motor eases into the end-stop, an uncapped one can overshoot the compliant stop by ~0.3 rad).
 - `SetConstraintTarget(ConstraintHandle handle, float target)` - update a powered joint's live target every frame,
   allocation-free (it re-describes only the servo/motor via the solver, leaving springs, limits and anchors

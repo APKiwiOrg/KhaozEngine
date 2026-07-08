@@ -1304,6 +1304,34 @@ namespace KhaozEngine.Render3D
                 }
             }
 
+            // Blob shadows (receiver-only): with the resolved tier at Blob, turn each queued ShadowBlob into a dark
+            // Circle GroundDecal and draw it HERE - after the opaque RECEIVER geometry (terrain/props/splat) wrote
+            // depth, but BEFORE the skinned character pass below. Drawing before the characters makes each caster
+            // opaquely occlude its OWN blob, so the ground-Y band (groundY-YTolerance .. groundY+MaxStep) is never
+            // repainted onto the caster's own lower body (legs/shins) the way the old after-model placement was -
+            // while the blob still conforms to terrain slopes across that band (no BlobGroundMaxStep clamp needed).
+            // The decal frag reconstructs the surface from the resolved linear depth, so resolve it now (no-op single-
+            // sample); the decal pass binds ColorDepthFB, so re-bind ModelFB + the model pipeline afterwards to continue
+            // the pass with the skinned draws. Off / empty queue => skipped entirely, so a no-blob frame renders
+            // byte-identical (same ModelFB binding, no extra resolve). ShadowMap resolves to itself on capable devices
+            // (that branch stays idle); ResolveFor only lands here when the device lacks shadow-map support and
+            // ShadowMap degrades to Blob.
+            _shadowDecals.Clear();
+            if (_shadowBlobs.Count > 0 && Post.Quality.Shadows.ResolveFor(_gd.Capabilities).Effective == ShadowMode.Blob)
+            {
+                var shadows = Post.Quality.Shadows;
+                for (int i = 0; i < _shadowBlobs.Count; i++)
+                    if (shadows.TryBuildDecal(_shadowBlobs[i], out GroundDecal blobDecal))
+                        _shadowDecals.Add(blobDecal);
+                if (_shadowDecals.Count > 0)
+                {
+                    _res.ResolveDepth(cl);
+                    _decalRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, CollectionsMarshal.AsSpan(_shadowDecals));
+                    cl.SetFramebuffer(_res.ModelFB);
+                    _model.BindPass(cl);
+                }
+            }
+
             // Skinned draws: the CPU-skinned geometry uploaded above, drawn through the rigid (no-bone) model pipeline.
             if (_cpuSkinnedDraws.Count > 0)
             {
@@ -1369,23 +1397,6 @@ namespace KhaozEngine.Render3D
             // pixels). Fully skipped when off, so a sky-off frame renders byte-identical to before this pass existed.
             if (Post.Sky.Enabled)
                 _sky.Draw(cl, _res, ActiveCamera.View, Post.LightDirection, Post.Sky);
-
-            // Blob shadows: when the resolved tier is Blob, turn each queued ShadowBlob into a dark Circle
-            // GroundDecal and draw it FIRST (under the gameplay decals), so a caster is grounded by the same
-            // depth-reconstructed projection the decals use. Off => the queue is ignored and nothing changes
-            // (existing goldens byte-stable). ShadowMap resolves to itself on capable devices (the map pass runs
-            // instead and this branch stays idle); ResolveFor only lands here when the device lacks shadow-map
-            // support and ShadowMap degrades to Blob.
-            _shadowDecals.Clear();
-            if (_shadowBlobs.Count > 0 && Post.Quality.Shadows.ResolveFor(_gd.Capabilities).Effective == ShadowMode.Blob)
-            {
-                var shadows = Post.Quality.Shadows;
-                for (int i = 0; i < _shadowBlobs.Count; i++)
-                    if (shadows.TryBuildDecal(_shadowBlobs[i], out GroundDecal blobDecal))
-                        _shadowDecals.Add(blobDecal);
-                if (_shadowDecals.Count > 0)
-                    _decalRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, CollectionsMarshal.AsSpan(_shadowDecals));
-            }
 
             // Ground decals: after the model pass wrote depth (meshes + textured billboards + beams), paint the
             // queued decals onto the reconstructed surface into ColorTex, BEFORE post - so they conform to the

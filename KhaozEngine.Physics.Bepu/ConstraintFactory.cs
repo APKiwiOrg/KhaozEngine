@@ -35,12 +35,31 @@ internal static class ConstraintFactory
     internal readonly record struct Resolved(
         BodyHandle HandleA, BodyHandle HandleB, RigidPose PoseA, RigidPose PoseB);
 
+    // Everything needed to re-describe a motor/servo Bepu constraint for a NEW target WITHOUT rebuilding the
+    // joint or allocating. The world stores one of these per powered constraint (the LIVE Bepu handle of the
+    // motor/servo element plus its fixed geometry + settings); SetConstraintTarget stack-builds the matching Bepu
+    // description with the new target and calls Solver.ApplyDescription (verified allocation-free). Kind selects
+    // which Bepu description to rebuild; the geometry fields are those the chosen kind reads (the rest are unused).
+    internal readonly record struct MotorState(
+        ConstraintMotor Kind,
+        BepuConstraintHandle Handle,
+        Vector3 AxisOrOffsetA,   // hinge axis (velocity motor), or LocalOffsetA (slider/distance)
+        Vector3 OffsetB,         // LocalOffsetB (slider/distance)
+        Vector3 Axis,            // slider axis (LocalAxis / LocalPlaneNormal)
+        Quaternion BasisA,       // hinge servo TwistServo basis (local X = hinge axis)
+        Quaternion BasisB,
+        SpringSettings Spring,
+        ServoSettings Servo,     // servo caps (max speed / force); for a motor, only MaximumForce is used
+        MotorSettings Motor);    // motor caps (max force + softness); for a servo, unused
+
     // Builds the Bepu constraint(s) for one seam description. Writes the created Bepu handles into `handles`
-    // (a caller-owned buffer of length >= 3) and returns how many were written.
-    internal static int Build(BepuSim sim, in ConstraintDescription d, in Resolved r, Span<BepuConstraintHandle> handles)
+    // (a caller-owned buffer of length >= 4: a slider is 3 and a motor/servo adds a 4th) and returns how many were
+    // written. If the description carries a powered drive (d.Motor != None), the drive's Bepu constraint is the
+    // LAST handle written and `motor` captures its re-description state; otherwise `motor` is default (Kind None).
+    internal static int Build(BepuSim sim, in ConstraintDescription d, in Resolved r, Span<BepuConstraintHandle> handles, out MotorState motor)
     {
         SpringSettings spring = ToSpring(d.Stiffness, d.DampingRatio);
-        return d.Kind switch
+        int count = d.Kind switch
         {
             ConstraintKind.BallSocket => BuildBallSocket(sim, d, r, spring, handles),
             ConstraintKind.Hinge      => BuildHinge(sim, d, r, spring, handles),
@@ -49,6 +68,11 @@ internal static class ConstraintFactory
             ConstraintKind.Weld       => BuildWeld(sim, d, r, spring, handles),
             _ => throw new NotSupportedException($"ConstraintKind '{d.Kind}' is not supported by the Bepu backend."),
         };
+
+        motor = default;
+        if (d.Motor != ConstraintMotor.None)
+            count += BuildMotor(sim, d, r, spring, handles[count..], out motor);
+        return count;
     }
 
     private static int BuildBallSocket(BepuSim sim, in ConstraintDescription d, in Resolved r, SpringSettings spring, Span<BepuConstraintHandle> handles)
@@ -176,6 +200,129 @@ internal static class ConstraintFactory
         return 1;
     }
 
+    // Adds the powered-drive Bepu constraint for a joint that carries one (d.Motor != None) and captures the state
+    // needed to retarget it allocation-free. Validates the drive matches the joint kind (a hinge drive on a slider
+    // throws). Returns 1 (one drive handle written to handles[0]).
+    private static int BuildMotor(BepuSim sim, in ConstraintDescription d, in Resolved r, SpringSettings spring, Span<BepuConstraintHandle> handles, out MotorState motor)
+    {
+        ServoSettings servo = ToServo(d.MotorMaxSpeed, d.MotorMaxForce);
+        MotorSettings motorSettings = ToMotor(d.MotorMaxForce);
+
+        switch (d.Motor)
+        {
+            case ConstraintMotor.HingeVelocity:
+            {
+                RequireKind(d, ConstraintKind.Hinge);
+                Vector3 axisA = SafeNormalize(d.AxisA, Vector3.UnitY);
+                // AngularAxisMotor drives the relative angular velocity of the two bodies about a body-A-local axis
+                // toward TargetVelocity. LocalAxisA is the hinge axis in A's frame.
+                var m = new AngularAxisMotor { LocalAxisA = axisA, TargetVelocity = d.MotorTarget, Settings = motorSettings };
+                handles[0] = sim.Solver.Add(r.HandleA, r.HandleB, in m);
+                motor = new MotorState(d.Motor, handles[0], axisA, default, default, default, default, spring, servo, motorSettings);
+                return 1;
+            }
+            case ConstraintMotor.HingeAngle:
+            {
+                RequireKind(d, ConstraintKind.Hinge);
+                Vector3 axisA = SafeNormalize(d.AxisA, Vector3.UnitY);
+                Vector3 axisB = SafeNormalize(d.AxisB, Vector3.UnitY);
+                // TwistServo drives the twist of the relative rotation about the basis's LOCAL Z axis to TargetAngle,
+                // the SAME basis convention TwistLimit uses (BasisFromAxis builds local-Z = hinge axis). Verified
+                // empirically against a live Z-axis hinge sim: with this basis the servo reaches the target angle
+                // exactly across every speed cap (2..inf rad/s); an early local-X draft only worked for a Y-axis
+                // hinge by coincidence and spun a Z-axis hinge wildly. Both bodies use the same construction so the
+                // rest twist is 0 when their hinge axes align.
+                Quaternion basisA = BasisFromAxis(axisA);
+                Quaternion basisB = BasisFromAxis(axisB);
+                var m = new TwistServo { LocalBasisA = basisA, LocalBasisB = basisB, TargetAngle = d.MotorTarget, SpringSettings = spring, ServoSettings = servo };
+                handles[0] = sim.Solver.Add(r.HandleA, r.HandleB, in m);
+                motor = new MotorState(d.Motor, handles[0], default, default, default, basisA, basisB, spring, servo, motorSettings);
+                return 1;
+            }
+            case ConstraintMotor.SliderVelocity:
+            {
+                RequireKind(d, ConstraintKind.Slider);
+                Vector3 axis = SafeNormalize(d.AxisA, Vector3.UnitY);
+                var m = new LinearAxisMotor { LocalOffsetA = d.AnchorA, LocalOffsetB = d.AnchorB, LocalAxis = axis, TargetVelocity = d.MotorTarget, Settings = motorSettings };
+                handles[0] = sim.Solver.Add(r.HandleA, r.HandleB, in m);
+                motor = new MotorState(d.Motor, handles[0], d.AnchorA, d.AnchorB, axis, default, default, spring, servo, motorSettings);
+                return 1;
+            }
+            case ConstraintMotor.SliderPosition:
+            {
+                RequireKind(d, ConstraintKind.Slider);
+                Vector3 axis = SafeNormalize(d.AxisA, Vector3.UnitY);
+                float target = Math.Clamp(d.MotorTarget, d.MinOffset, d.MaxOffset);
+                // LinearAxisServo drives B's offset from A along LocalPlaneNormal to TargetOffset (its field is named
+                // "PlaneNormal" but empirically it IS the drive axis: a target of 2 along +Y parks the body at +2).
+                var m = new LinearAxisServo { LocalOffsetA = d.AnchorA, LocalOffsetB = d.AnchorB, LocalPlaneNormal = axis, TargetOffset = target, ServoSettings = servo, SpringSettings = spring };
+                handles[0] = sim.Solver.Add(r.HandleA, r.HandleB, in m);
+                motor = new MotorState(d.Motor, handles[0], d.AnchorA, d.AnchorB, axis, default, default, spring, servo, motorSettings);
+                return 1;
+            }
+            case ConstraintMotor.DistanceLength:
+            {
+                RequireKind(d, ConstraintKind.Distance);
+                var m = new DistanceServo { LocalOffsetA = d.AnchorA, LocalOffsetB = d.AnchorB, TargetDistance = MathF.Max(0f, d.MotorTarget), ServoSettings = servo, SpringSettings = spring };
+                handles[0] = sim.Solver.Add(r.HandleA, r.HandleB, in m);
+                motor = new MotorState(d.Motor, handles[0], d.AnchorA, d.AnchorB, default, default, default, spring, servo, motorSettings);
+                return 1;
+            }
+            default:
+                throw new NotSupportedException($"ConstraintMotor '{d.Motor}' is not supported by the Bepu backend.");
+        }
+    }
+
+    // Re-applies a NEW target to a live motor/servo constraint, allocation-free (stack-built description +
+    // Solver.ApplyDescription, verified to allocate zero bytes). Called by the world's SetConstraintTarget. The
+    // stored MotorState carries the fixed geometry + settings; only the target value changes. ApplyDescription
+    // wakes the involved bodies so a retargeted drive on a sleeping joint takes effect.
+    internal static void ApplyTarget(BepuSim sim, in MotorState s, float target)
+    {
+        switch (s.Kind)
+        {
+            case ConstraintMotor.HingeVelocity:
+            {
+                var m = new AngularAxisMotor { LocalAxisA = s.AxisOrOffsetA, TargetVelocity = target, Settings = s.Motor };
+                sim.Solver.ApplyDescription(s.Handle, in m);
+                break;
+            }
+            case ConstraintMotor.HingeAngle:
+            {
+                var m = new TwistServo { LocalBasisA = s.BasisA, LocalBasisB = s.BasisB, TargetAngle = target, SpringSettings = s.Spring, ServoSettings = s.Servo };
+                sim.Solver.ApplyDescription(s.Handle, in m);
+                break;
+            }
+            case ConstraintMotor.SliderVelocity:
+            {
+                var m = new LinearAxisMotor { LocalOffsetA = s.AxisOrOffsetA, LocalOffsetB = s.OffsetB, LocalAxis = s.Axis, TargetVelocity = target, Settings = s.Motor };
+                sim.Solver.ApplyDescription(s.Handle, in m);
+                break;
+            }
+            case ConstraintMotor.SliderPosition:
+            {
+                var m = new LinearAxisServo { LocalOffsetA = s.AxisOrOffsetA, LocalOffsetB = s.OffsetB, LocalPlaneNormal = s.Axis, TargetOffset = target, ServoSettings = s.Servo, SpringSettings = s.Spring };
+                sim.Solver.ApplyDescription(s.Handle, in m);
+                break;
+            }
+            case ConstraintMotor.DistanceLength:
+            {
+                var m = new DistanceServo { LocalOffsetA = s.AxisOrOffsetA, LocalOffsetB = s.OffsetB, TargetDistance = MathF.Max(0f, target), ServoSettings = s.Servo, SpringSettings = s.Spring };
+                sim.Solver.ApplyDescription(s.Handle, in m);
+                break;
+            }
+            default:
+                throw new NotSupportedException($"ConstraintMotor '{s.Kind}' cannot be retargeted.");
+        }
+    }
+
+    private static void RequireKind(in ConstraintDescription d, ConstraintKind required)
+    {
+        if (d.Kind != required)
+            throw new ArgumentException(
+                $"Motor '{d.Motor}' requires a {required} joint but the constraint is a {d.Kind}.", nameof(d));
+    }
+
     // --- helpers ------------------------------------------------------------
 
     // Bepu's SpringSettings(frequency, dampingRatio) ctor takes the natural frequency in Hz (it stores
@@ -203,6 +350,25 @@ internal static class ConstraintFactory
     {
         float len = v.Length();
         return len > 1e-6f ? v / len : fallback;
+    }
+
+    // Servo caps from the seam. A zero max-speed means "backend default" (DefaultServoMaxSpeed = 2), so a servo
+    // eases toward its target rather than snapping; a zero max-force means DefaultMotorMaxForce. BaseSpeed 0: the
+    // servo has no minimum crawl speed, it slows smoothly as it nears the target.
+    private static ServoSettings ToServo(float maxSpeed, float maxForce)
+    {
+        float speed = maxSpeed > 0f ? maxSpeed : ConstraintDescription.DefaultServoMaxSpeed;
+        float force = maxForce > 0f ? maxForce : ConstraintDescription.DefaultMotorMaxForce;
+        return new ServoSettings(speed, 0f, force);
+    }
+
+    // Motor caps from the seam. A pure velocity motor has no speed cap (its target IS the speed), only a force cap
+    // (0 = DefaultMotorMaxForce). Softness 0 keeps the motor maximally stiff (it applies full force up to the cap
+    // to chase the target velocity); a positive softness would let it slip.
+    private static MotorSettings ToMotor(float maxForce)
+    {
+        float force = maxForce > 0f ? maxForce : ConstraintDescription.DefaultMotorMaxForce;
+        return new MotorSettings(force, 0f);
     }
 
     // Relative orientation of B in A's local frame: conjugate(A) * B.

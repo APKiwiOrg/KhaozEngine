@@ -35,6 +35,43 @@ public enum ConstraintKind
     Weld,
 }
 
+/// <summary>An optional powered drive layered onto a joint: a MOTOR chases a target velocity (an unbounded
+/// door-opener, a patrolling belt), a SERVO chases a target position/angle/length and holds there (a door that
+/// stops at 90 degrees, a lift that parks at a floor, a winch that reels to a length). Selected on
+/// <see cref="ConstraintDescription.Motor"/>; the live target is set at add time by the drive factory and updated
+/// per frame, allocation-free, via <see cref="IPhysicsWorld.SetConstraintTarget"/>. A drive only applies to the
+/// joint kind it names; mixing (e.g. a hinge drive on a slider) throws at add time.</summary>
+public enum ConstraintMotor
+{
+    /// <summary>No powered drive: a passive joint (the default).</summary>
+    None,
+
+    /// <summary>Hinge velocity motor: spins the hinge toward a target angular velocity (rad/s) about the hinge
+    /// axis, force-capped by <see cref="ConstraintDescription.MotorMaxForce"/>. Unbounded rotation unless the hinge
+    /// also has an angular limit, which clamps it. Only on <see cref="ConstraintKind.Hinge"/>.</summary>
+    HingeVelocity,
+
+    /// <summary>Hinge angle servo: drives the hinge to a target angle (radians, measured from the add-time relative
+    /// orientation about the hinge axis) and holds it, speed-capped by <see cref="ConstraintDescription.MotorMaxSpeed"/>
+    /// and force-capped by <see cref="ConstraintDescription.MotorMaxForce"/>. Only on <see cref="ConstraintKind.Hinge"/>.</summary>
+    HingeAngle,
+
+    /// <summary>Slider velocity motor: drives the slider toward a target linear velocity (m/s) along the slider
+    /// axis, force-capped by <see cref="ConstraintDescription.MotorMaxForce"/>. The travel limits still clamp it.
+    /// Only on <see cref="ConstraintKind.Slider"/>.</summary>
+    SliderVelocity,
+
+    /// <summary>Slider position servo: drives the slider to a target offset (metres along the slider axis, measured
+    /// from the add-time anchor separation) and holds it against gravity/load, speed- and force-capped. The target
+    /// is clamped to the travel limits. Only on <see cref="ConstraintKind.Slider"/>.</summary>
+    SliderPosition,
+
+    /// <summary>Distance servo (winch): drives the anchor separation to a target length (metres) and holds it,
+    /// speed-capped by <see cref="ConstraintDescription.MotorMaxSpeed"/> (the reel rate) and force-capped. Shrinking
+    /// the target over time reels a hanging body up. Only on <see cref="ConstraintKind.Distance"/>.</summary>
+    DistanceLength,
+}
+
 /// <summary>One end of a constraint: either a dynamic body (by handle) or a fixed world-space anchor. A
 /// world-space anchor is a fixed point in the world the constraint pins the other end against; the backend
 /// realises it however it best models a static constraint side, and the anchor is not itself a collidable (it
@@ -150,6 +187,42 @@ public readonly record struct ConstraintDescription
     /// <see cref="DampingRatio"/> is 0. No overshoot: the joint settles to its target without bouncing.</summary>
     public const float DefaultDampingRatio = 1f;
 
+    /// <summary>The optional powered drive layered onto this joint (a motor chasing a velocity, or a servo chasing
+    /// a position and holding). <see cref="ConstraintMotor.None"/> (the default) is a passive joint. Set it with a
+    /// drive factory (<see cref="WithHingeMotor"/>, <see cref="WithHingeServo"/>, <see cref="WithSliderMotor"/>,
+    /// <see cref="WithSliderServo"/>, <see cref="WithWinch"/>); the drive must match <see cref="Kind"/> or the add
+    /// throws.</summary>
+    public ConstraintMotor Motor { get; init; }
+
+    /// <summary>The initial drive target: an angular/linear velocity for a motor, or an angle/offset/length for a
+    /// servo (units per <see cref="Motor"/>). Read only when <see cref="Motor"/> is not
+    /// <see cref="ConstraintMotor.None"/>. Update it per frame with
+    /// <see cref="IPhysicsWorld.SetConstraintTarget"/> (allocation-free).</summary>
+    public float MotorTarget { get; init; }
+
+    /// <summary>The drive's maximum force / torque (newtons or newton-metres). Caps how hard the motor/servo pushes
+    /// so a light drive cannot fling a heavy load or fight gravity infinitely. Zero (the default) means "use the
+    /// backend default" (<see cref="DefaultMotorMaxForce"/>). Set <see cref="float.MaxValue"/> for an uncapped
+    /// (physically stiff, potentially explosive) drive.</summary>
+    public float MotorMaxForce { get; init; }
+
+    /// <summary>The servo's maximum speed (rad/s for a hinge angle servo, m/s for a slider position servo or a
+    /// winch). Caps how fast the servo travels toward its target, so it eases in instead of snapping. Ignored by
+    /// the pure velocity motors (their target IS the speed). Zero (the default) means "use the backend default"
+    /// (<see cref="DefaultServoMaxSpeed"/>).</summary>
+    public float MotorMaxSpeed { get; init; }
+
+    /// <summary>The default drive max force / torque (2000) the backend applies when <see cref="MotorMaxForce"/>
+    /// is 0. Enough to move typical game props and hold them against gravity without the numeric explosiveness of
+    /// an uncapped drive fighting a stiff constraint. Raise it for heavy loads, lower it for a weak/slippable
+    /// motor.</summary>
+    public const float DefaultMotorMaxForce = 2000f;
+
+    /// <summary>The default servo max speed (2) the backend applies when <see cref="MotorMaxSpeed"/> is 0: a servo
+    /// eases toward its target at up to 2 rad/s or 2 m/s rather than snapping instantly, which keeps it stable and
+    /// game-readable. Raise it for a snappier servo, lower it for a slow, deliberate one.</summary>
+    public const float DefaultServoMaxSpeed = 2f;
+
     /// <summary>A ball-socket (point-to-point) joint pinning <paramref name="anchorA"/> on A to
     /// <paramref name="anchorB"/> on B, both body-local. Rotation about the shared point is free.</summary>
     public static ConstraintDescription BallSocketJoint(ConstraintAttachment a, ConstraintAttachment b, Vector3 anchorA, Vector3 anchorB)
@@ -192,4 +265,48 @@ public readonly record struct ConstraintDescription
     /// in Hz, <paramref name="dampingRatio"/> dimensionless). See <see cref="Stiffness"/>/<see cref="DampingRatio"/>.</summary>
     public ConstraintDescription WithSpring(float stiffnessHz, float dampingRatio)
         => this with { Stiffness = stiffnessHz, DampingRatio = dampingRatio };
+
+    /// <summary>Layer a HINGE VELOCITY MOTOR onto this hinge: it spins the joint toward
+    /// <paramref name="targetAngularVelocity"/> (rad/s, about the hinge axis) and keeps spinning. A door-opener, a
+    /// turning wheel, a patrol arm. <paramref name="maxTorque"/> caps the drive (0 = <see cref="DefaultMotorMaxForce"/>);
+    /// an angular limit on the hinge clamps the rotation, otherwise it spins without end. Change the target speed
+    /// per frame with <see cref="IPhysicsWorld.SetConstraintTarget"/>. Use only on a hinge.</summary>
+    public ConstraintDescription WithHingeMotor(float targetAngularVelocity, float maxTorque = 0f)
+        => this with { Motor = ConstraintMotor.HingeVelocity, MotorTarget = targetAngularVelocity, MotorMaxForce = maxTorque };
+
+    /// <summary>Layer a HINGE ANGLE SERVO onto this hinge: it drives the joint to <paramref name="targetAngle"/>
+    /// (radians, measured from the add-time relative orientation about the hinge axis) and holds it there. A door
+    /// that opens to exactly 90 degrees, a lever that parks. <paramref name="maxSpeed"/> caps the approach speed
+    /// (rad/s, 0 = <see cref="DefaultServoMaxSpeed"/>) and <paramref name="maxTorque"/> caps the drive
+    /// (0 = <see cref="DefaultMotorMaxForce"/>). Retarget per frame with
+    /// <see cref="IPhysicsWorld.SetConstraintTarget"/>. Use only on a hinge.</summary>
+    public ConstraintDescription WithHingeServo(float targetAngle, float maxSpeed = 0f, float maxTorque = 0f)
+        => this with { Motor = ConstraintMotor.HingeAngle, MotorTarget = targetAngle, MotorMaxSpeed = maxSpeed, MotorMaxForce = maxTorque };
+
+    /// <summary>Layer a SLIDER VELOCITY MOTOR onto this slider: it drives the joint toward
+    /// <paramref name="targetVelocity"/> (m/s along the slider axis). A conveyor, a piston pushing at a rate. The
+    /// travel limits still clamp it. <paramref name="maxForce"/> caps the drive (0 = <see cref="DefaultMotorMaxForce"/>).
+    /// Retarget per frame with <see cref="IPhysicsWorld.SetConstraintTarget"/>. Use only on a slider.</summary>
+    public ConstraintDescription WithSliderMotor(float targetVelocity, float maxForce = 0f)
+        => this with { Motor = ConstraintMotor.SliderVelocity, MotorTarget = targetVelocity, MotorMaxForce = maxForce };
+
+    /// <summary>Layer a SLIDER POSITION SERVO onto this slider: it drives the joint to <paramref name="targetOffset"/>
+    /// (metres along the slider axis, from the add-time separation) and holds it against gravity/load. A lift that
+    /// parks at a floor, a platform that patrols between offsets. <paramref name="maxSpeed"/> caps the approach
+    /// (m/s, 0 = <see cref="DefaultServoMaxSpeed"/>), <paramref name="maxForce"/> caps the drive
+    /// (0 = <see cref="DefaultMotorMaxForce"/>). The target is clamped to the travel limits. Retarget per frame with
+    /// <see cref="IPhysicsWorld.SetConstraintTarget"/>. Use only on a slider.</summary>
+    public ConstraintDescription WithSliderServo(float targetOffset, float maxSpeed = 0f, float maxForce = 0f)
+        => this with { Motor = ConstraintMotor.SliderPosition, MotorTarget = targetOffset, MotorMaxSpeed = maxSpeed, MotorMaxForce = maxForce };
+
+    /// <summary>Layer a WINCH (distance servo) onto this distance joint: it drives the anchor separation to
+    /// <paramref name="targetLength"/> (metres) and holds it. Shrinking the target over frames reels a hanging body
+    /// up; growing it lowers the body. <paramref name="maxSpeed"/> is the reel rate (m/s, 0 =
+    /// <see cref="DefaultServoMaxSpeed"/>), <paramref name="maxForce"/> caps the pull (0 =
+    /// <see cref="DefaultMotorMaxForce"/>). Retarget per frame with <see cref="IPhysicsWorld.SetConstraintTarget"/>.
+    /// Use only on a distance joint. The passive min/max band still applies alongside the winch, so keep
+    /// <see cref="MaxDistance"/> at or above the longest length you command (and <see cref="MinDistance"/> at or
+    /// below the shortest) or the band fights the servo.</summary>
+    public ConstraintDescription WithWinch(float targetLength, float maxSpeed = 0f, float maxForce = 0f)
+        => this with { Motor = ConstraintMotor.DistanceLength, MotorTarget = targetLength, MotorMaxSpeed = maxSpeed, MotorMaxForce = maxForce };
 }

@@ -56,6 +56,16 @@ public interface IPhysicsWorld : IDisposable
     /// is a safe no-op.</summary>
     void RemoveConstraint(ConstraintHandle handle);
 
+    /// <summary>Update the live target of a powered joint's motor or servo, allocation-free and cheap enough to
+    /// call every frame. The meaning of <paramref name="target"/> follows the constraint's
+    /// <see cref="ConstraintDescription.Motor"/>: a target angular/linear velocity for a motor, or a target
+    /// angle/offset/length for a servo (a shrinking winch length reels a body up, a growing hinge servo angle
+    /// swings a door). Only the servo/motor target changes; the joint's spring, limits and anchors are untouched.
+    /// Throws <see cref="System.ArgumentException"/> if the handle is stale (its body was removed, or it was
+    /// removed) or if the constraint has no motor (<see cref="ConstraintMotor.None"/>), matching the mutation
+    /// throw-on-stale pattern.</summary>
+    void SetConstraintTarget(ConstraintHandle handle, float target);
+
     /// <summary>Advance the simulation by <paramref name="dt"/> seconds. Integrates dynamic bodies under
     /// gravity, resolves contacts, and solves active constraints. Deterministic under a fixed
     /// <paramref name="dt"/>.</summary>

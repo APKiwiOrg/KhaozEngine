@@ -69,17 +69,19 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
 
     private readonly struct ConstraintEntry
     {
-        public readonly BepuConstraintHandle[] BepuHandles;   // 1..3 solver handles making up this joint
+        public readonly BepuConstraintHandle[] BepuHandles;   // 1..4 solver handles making up this joint (a slider is 3; a motor/servo adds a 4th)
         public readonly int BodyIdA;                          // -1 if end A is a world anchor (never true today, A is always dynamic)
         public readonly int BodyIdB;                          // -1 if end B is a world anchor
         public readonly BepuBodyHandle[] AnchorBodies;        // shapeless kinematic anchor bodies this constraint owns (0..1)
+        public readonly ConstraintFactory.MotorState Motor;   // re-description state for a powered drive (Kind None if the joint is passive)
 
-        public ConstraintEntry(BepuConstraintHandle[] bepuHandles, int bodyIdA, int bodyIdB, BepuBodyHandle[] anchorBodies)
+        public ConstraintEntry(BepuConstraintHandle[] bepuHandles, int bodyIdA, int bodyIdB, BepuBodyHandle[] anchorBodies, ConstraintFactory.MotorState motor)
         {
             BepuHandles = bepuHandles;
             BodyIdA = bodyIdA;
             BodyIdB = bodyIdB;
             AnchorBodies = anchorBodies;
+            Motor = motor;
         }
     }
 
@@ -217,19 +219,32 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
         (BepuBodyHandle handleB, RigidPose poseB, int bodyIdB) = ResolveEnd(description.B, anchorBodies);
 
         var resolved = new ConstraintFactory.Resolved(handleA, handleB, poseA, poseB);
-        Span<BepuConstraintHandle> buffer = stackalloc BepuConstraintHandle[3];
-        int count = ConstraintFactory.Build(_sim, description, resolved, buffer);
+        // Up to 4 Bepu handles: a slider expands to 3 and a powered drive (motor/servo) adds a 4th.
+        Span<BepuConstraintHandle> buffer = stackalloc BepuConstraintHandle[4];
+        int count = ConstraintFactory.Build(_sim, description, resolved, buffer, out ConstraintFactory.MotorState motor);
         var bepuHandles = new BepuConstraintHandle[count];
         for (int i = 0; i < count; i++) bepuHandles[i] = buffer[i];
 
         int id = _nextConstraintId++;
-        _constraints[id] = new ConstraintEntry(bepuHandles, bodyIdA, bodyIdB, anchorBodies.ToArray());
+        _constraints[id] = new ConstraintEntry(bepuHandles, bodyIdA, bodyIdB, anchorBodies.ToArray(), motor);
         if (bodyIdA >= 0) AddBodyConstraintLink(bodyIdA, id);
         if (bodyIdB >= 0) AddBodyConstraintLink(bodyIdB, id);
         return new SeamConstraintHandle(id);
     }
 
     public void RemoveConstraint(SeamConstraintHandle handle) => RemoveConstraintInternal(handle.Value);
+
+    public void SetConstraintTarget(SeamConstraintHandle handle, float target)
+    {
+        // Stale handle (body removed, or constraint removed) throws, matching the mutation throw-on-stale pattern
+        // (GetDynamicPose / SetDynamicVelocity do the same on a dead body).
+        if (!_constraints.TryGetValue(handle.Value, out var entry))
+            throw new ArgumentException($"ConstraintHandle {handle.Value} is not a live constraint.", nameof(handle));
+        if (entry.Motor.Kind == ConstraintMotor.None)
+            throw new ArgumentException($"Constraint {handle.Value} has no motor or servo to retarget.", nameof(handle));
+        // Re-describe the live motor/servo Bepu constraint with the new target: allocation-free, wakes the bodies.
+        ConstraintFactory.ApplyTarget(_sim, entry.Motor, target);
+    }
 
     // Resolves a seam attachment to a Bepu body: a dynamic end to its live body (throws if stale), a world anchor
     // to a NEW kinematic body created here and recorded in `anchorBodies` (owned by this constraint, removed with

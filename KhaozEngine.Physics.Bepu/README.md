@@ -39,6 +39,10 @@ either value shifts the bit-exact result legitimately.
   types (see the joints section below). `RemoveConstraint` is a safe no-op on a double-remove or a handle whose
   body was already removed. Removing a constrained body tears down its constraints first (Bepu corrupts if a body
   is removed with a live constraint), so a body's joints never dangle.
+- **`SetConstraintTarget`** - retarget a powered joint's motor/servo. Re-describes ONLY the drive's Bepu
+  constraint via `Solver.ApplyDescription` (a stack-built description, verified allocation-free: 1000 calls = 0
+  bytes), leaving the joint's other constraints untouched, so a game can drive a servo goal every frame without GC
+  pressure. Throws on a stale handle or a motorless joint.
 - **`Step(dt)`**, **`Raycast`**, **`SweepCapsule`**, **`ComputePenetration`** - the last is one
   CollisionBatcher manifold query over every shape type, deepest contact wins.
 
@@ -59,6 +63,44 @@ unit. The hinge angular limit uses a `TwistLimit` whose basis Z is aligned with 
 twist about the basis Z axis, confirmed empirically), and it runs a stiffer end-stop spring (>= 60 Hz) than the
 joint pin so a fast swing does not overshoot the clamp much.
 
+## Motors and servos
+
+A powered drive (`ConstraintDescription.Motor` != `None`) adds ONE more Bepu constraint on top of the joint (so a
+powered slider is four Bepu constraints), tracked and removed as part of the same seam constraint. Each seam drive
+maps to a verified Bepu 2.4 motor/servo type:
+
+| Seam drive | Bepu constraint | Target units |
+|------------|-----------------|--------------|
+| `HingeVelocity` (`WithHingeMotor`) | `AngularAxisMotor` (`LocalAxisA` = hinge axis) | rad/s |
+| `HingeAngle` (`WithHingeServo`) | `TwistServo` (basis Z = hinge axis, same as `TwistLimit`) | rad |
+| `SliderVelocity` (`WithSliderMotor`) | `LinearAxisMotor` | m/s |
+| `SliderPosition` (`WithSliderServo`) | `LinearAxisServo` (`LocalPlaneNormal` IS the drive axis, despite the name) | m |
+| `DistanceLength` (`WithWinch`) | `DistanceServo` | m |
+
+Verified empirically against live sims (never from memory): `TwistServo` measures/drives the twist about the
+basis's LOCAL Z axis, the SAME convention as `TwistLimit` (an early local-X draft only worked for a Y-axis hinge by
+coincidence and spun a Z-axis hinge wildly). `LinearAxisServo.LocalPlaneNormal` is the drive axis (a target of +2
+along +Y parks the body at +2). `AngularAxisMotor`/`TwistServo` drive the RELATIVE motion of the two bodies, so the
+target's sign is right-handed about the axis with end A as the reference; when A is a world anchor and B the moving
+body, a positive hinge-motor target spins B negatively. `Solver.ApplyDescription` retargets a live drive
+allocation-free (verified: 1000 calls = 0 bytes), which is what `SetConstraintTarget` uses.
+
+**Motor/servo caps.** A servo takes `ServoSettings(maxSpeed, baseSpeed=0, maxForce)`; a motor takes
+`MotorSettings(maxForce, softness=0)`. The seam exposes `MotorMaxSpeed` (servos) and `MotorMaxForce` (both); a `0`
+means the backend defaults `DefaultServoMaxSpeed` = 2 (rad/s or m/s) and `DefaultMotorMaxForce` = 2000 (N or N-m).
+The defaults are deliberately CAPPED, not `ServoSettings.Default`'s unlimited: a servo eases toward its target at
+up to 2 units/s instead of snapping (stable, game-readable), and a 2000 cap moves typical props and holds them
+against gravity without the numeric explosiveness of an uncapped drive fighting a stiff constraint. Raise the caps
+for heavy loads or snappier motion. `softness`/`baseSpeed` are 0 (a maximally stiff motor, a servo that eases to a
+smooth stop). A servo target is clamped to the joint's travel/angle limits; a motor drives into a limit and the
+limit clamps it (a capped motor eases into the end-stop, an uncapped one can overshoot the compliant limit spring
+by ~0.3 rad, same compliance as the passive limit).
+
+**Character-carrying boundary.** A servo-driven platform MOVES, but a character standing on it does NOT inherit its
+velocity - character-carrying is not solved in this batch. The platform's motion is correct; a game that needs a
+rider to move with it must add the platform's per-frame delta to the rider itself (while grounded on it), or wait
+for the follow-up. Stated honestly so nobody assumes free platform-riding.
+
 **Static-anchor side.** Bepu 2.4 has no one-body position joints (only `OneBodyAngularMotor`/`OneBodyAngularServo`),
 so a world-space anchor (`ConstraintAttachment.AtWorld`) is NOT a one-body constraint: it is realised as an
 infinite-mass, SHAPELESS kinematic body pinned at the anchor pose, and every joint is a two-body Bepu constraint
@@ -74,9 +116,9 @@ with it. At least one end must be a real dynamic body (both-anchor throws).
 (ratio 1.0)** - a firm joint that removes constraint error within a couple of steps at a 60 Hz step without the
 ringing a much higher frequency invites (it matches the contact spring the dynamics backend already uses). Raise
 the stiffness (via `WithSpring`) toward, but not far past, your step frequency for a tighter joint; drop the
-damping ratio below 1 for a springy/bouncy joint. A frictionless hinge or slider conserves energy: it swings or
-slides indefinitely rather than settling. Damped settling and powered targets are motors/servos (a follow-up),
-not part of this joint set.
+damping ratio below 1 for a springy/bouncy joint. A frictionless hinge or slider with NO motor conserves energy: it
+swings or slides indefinitely rather than settling. Damped settling to a target comes from a powered drive (see
+Motors and servos above): a servo holds a position/angle/length, a motor drives a velocity.
 
 **Recommended solver settings.** The 10.29.0 defaults (`substepCount` 4, `velocityIterationCount` 8) resolve every
 joint here stably at a 60 Hz step and are NOT changed by this feature (they are part of the determinism

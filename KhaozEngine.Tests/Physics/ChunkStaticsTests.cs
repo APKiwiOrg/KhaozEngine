@@ -40,6 +40,7 @@ public class ChunkStaticsTests
         public bool IsAwake(DynamicBodyHandle handle) => throw new NotSupportedException();
         public ConstraintHandle AddConstraint(in ConstraintDescription description) => throw new NotSupportedException();
         public void RemoveConstraint(ConstraintHandle handle) => throw new NotSupportedException();
+        public void SetConstraintTarget(ConstraintHandle handle, float target) => throw new NotSupportedException();
 
         // unused query/step members
         public void Step(float dt) { }

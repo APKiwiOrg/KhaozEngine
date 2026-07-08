@@ -21,6 +21,14 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
   **`ConstraintAttachment`**: `OnBody(handle)` for a dynamic body, or `AtWorld(pose)`/`AtWorld(position)` for a
   fixed world-space anchor. At least one end must be a dynamic body. Removing either connected body cleans up the
   constraint automatically. **`ConstraintHandle`** is the opaque handle.
+- **Motors and servos** (powered joints) - layer a drive onto the description with `WithHingeMotor(velocity)` /
+  `WithHingeServo(angle)` / `WithSliderMotor(velocity)` / `WithSliderServo(offset)` / `WithWinch(length)`. A MOTOR
+  chases a target velocity (rad/s or m/s), a SERVO chases and holds a target position/angle/length. Each takes
+  optional `maxForce`/`maxTorque` and (servos) `maxSpeed` caps; `0` = the backend defaults
+  (`DefaultMotorMaxForce` = 2000, `DefaultServoMaxSpeed` = 2). Update the live target every frame, allocation-free,
+  with **`SetConstraintTarget(handle, target)`** (throws on a stale handle or a joint with no motor). A servo
+  target outside the joint's limits is clamped; a motor drives into a limit and the limit clamps it. Boundary this
+  batch: a servo-driven platform moves but a rider does NOT inherit its velocity (no character-carrying yet).
 - **Shapes** - `SphereShape`, `CapsuleShape` (upright, local Y), `BoxShape` (half-extents),
   `CylinderShape`, `ConvexHullShape` (solid props), `TriangleMeshShape` (non-convex buildings/interiors,
   static only), and `CompoundShape` (`CompoundChild[]`, disjoint children each at a local `Pose`). A dynamic

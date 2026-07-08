@@ -1791,8 +1791,31 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
     length) or rigid rod (min == max).
   - `ConstraintDescription.WeldJoint(a, b, anchorA)` - glue two bodies at their current relative pose.
   - `.WithSpring(stiffnessHz, dampingRatio)` overrides the default spring (30 Hz, critically damped); a
-    frictionless hinge/slider conserves energy and keeps moving (damped settling and powered targets are
-    motors/servos, a follow-up).
+    frictionless hinge/slider with no motor conserves energy and keeps moving (damped settling comes from a
+    powered drive below).
+- **Motors and servos** (powered joints): layer a drive onto a joint description. A MOTOR chases a target
+  velocity (an ever-spinning door-opener, a conveyor); a SERVO chases a target position/angle/length and holds
+  there (a door that stops at 90 degrees, a lift that parks, a winch that reels to a length):
+  - `.WithHingeMotor(targetAngularVelocity, maxTorque = 0)` - spin a hinge at rad/s (an angular limit clamps it).
+  - `.WithHingeServo(targetAngle, maxSpeed = 0, maxTorque = 0)` - drive a hinge to a radian angle and hold.
+  - `.WithSliderMotor(targetVelocity, maxForce = 0)` - drive a slider at m/s (travel limits clamp it).
+  - `.WithSliderServo(targetOffset, maxSpeed = 0, maxForce = 0)` - drive a slider to a metre offset and hold
+    (against gravity); the target clamps to the travel limits.
+  - `.WithWinch(targetLength, maxSpeed = 0, maxForce = 0)` - drive a distance joint to a length and hold;
+    shrinking the target over frames reels a hanging body up. Keep the joint's `maxDistance` at or above the
+    longest length you command (the passive band still applies).
+  A `0` cap means the backend default (`DefaultMotorMaxForce` = 2000 N or N-m, `DefaultServoMaxSpeed` = 2 rad/s or
+  m/s). Units: motor targets are velocities (rad/s or m/s); servo targets are angles (rad), offsets (m) or lengths
+  (m). The motor-target sign is right-handed about the hinge axis with end A as the reference. A servo target
+  outside the joint's limits is clamped to them; a motor drives into a limit and the limit clamps it (a capped
+  motor eases into the end-stop, an uncapped one can overshoot the compliant stop by ~0.3 rad).
+- `SetConstraintTarget(ConstraintHandle handle, float target)` - update a powered joint's live target every frame,
+  allocation-free (it re-describes only the servo/motor via the solver, leaving springs, limits and anchors
+  untouched). Throws `ArgumentException` on a stale handle or a joint with no motor. A drive whose kind does not
+  match the joint (a hinge servo on a slider) throws at `AddConstraint`.
+- **Kinematic-interaction boundary (this batch):** a servo-driven platform MOVES, but a character standing on it
+  does NOT inherit its velocity - character-carrying is not solved here. A game can fake it (add the platform's
+  per-frame delta to the rider's position while grounded on it) or wait for the follow-up.
 - `ConstraintAttachment.OnBody(DynamicBodyHandle)` (a dynamic end) or `ConstraintAttachment.AtWorld(Pose)` /
   `AtWorld(Vector3)` (a fixed world anchor; the backend pins an infinite-mass, shapeless kinematic body there, so
   the anchor point is not a collidable and is never hit by a raycast or sweep - a character walks through a
@@ -1882,9 +1905,51 @@ physics.Step(dt);  // the door swings and settles against its limit under gravit
 physics.RemoveDynamic(door);
 ```
 
-Note (this batch): joint springs are compliant but frictionless, so a hinge/slider with no motor swings or slides
-freely and does not settle by itself. Motors and servos (a powered door, a patrolling platform, a winch) are a
-follow-up.
+**Motors and servos (`WithHingeServo` etc. + `SetConstraintTarget`)** - power a joint to drive and hold. A servo
+chases a target and holds it (a door that stops open, a lift that parks, a winch at a length); a motor chases a
+target velocity (a spinner). Update the live target per frame with `SetConstraintTarget` (allocation-free).
+
+```csharp
+using KhaozEngine.Physics;
+
+// A POWERED DOOR: the door hinge from above, now with an angle servo that swings it to 90 degrees and holds.
+ConstraintHandle doorHinge = physics.AddConstraint(ConstraintDescription.HingeJoint(
+        ConstraintAttachment.OnBody(door),
+        ConstraintAttachment.AtWorld(new Vector3(0f, 2f, 0f)),
+        anchorA: new Vector3(-0.5f, 0f, 0f), anchorB: Vector3.Zero,
+        axisA: Vector3.UnitY, axisB: Vector3.UnitY)
+    .WithAngularLimit(0f, MathF.PI / 2f)
+    .WithHingeServo(MathF.PI / 2f, maxSpeed: 2f));   // open to 90 deg and hold
+// Later, close it by retargeting (no re-add, allocation-free):
+physics.SetConstraintTarget(doorHinge, 0f);          // swing shut and hold
+
+// A PATROL PLATFORM: a lift on a vertical slider, driven to a floor offset and held against gravity. Flip the
+// target between two offsets to patrol. NOTE: a character standing on it does NOT ride along this batch (no
+// character-carrying); the platform moves, the rider must be fixed up by the game or wait for the follow-up.
+DynamicBodyHandle platform = physics.AddDynamic(
+    new BoxShape(new Vector3(1f, 0.1f, 1f)), Pose.At(new Vector3(5f, 0f, 0f)),
+    DynamicBodyDescription.WithMass(50f));
+ConstraintHandle lift = physics.AddConstraint(ConstraintDescription.SliderJoint(
+        ConstraintAttachment.AtWorld(new Vector3(5f, 0f, 0f)),
+        ConstraintAttachment.OnBody(platform),
+        anchorA: Vector3.Zero, anchorB: Vector3.Zero, axis: Vector3.UnitY,
+        minOffset: 0f, maxOffset: 4f)
+    .WithSliderServo(4f, maxSpeed: 1.5f, maxForce: 1000f));   // rise to the top floor and hold
+physics.SetConstraintTarget(lift, 0f);               // send it back down
+
+// A WINCH: a load hung on a distance servo, reeled up by shrinking the target length each frame.
+DynamicBodyHandle load = physics.AddDynamic(
+    new SphereShape(0.3f), Pose.At(new Vector3(0f, 6f, 0f)),
+    DynamicBodyDescription.WithMass(8f));
+ConstraintHandle winch = physics.AddConstraint(ConstraintDescription.DistanceJoint(
+        ConstraintAttachment.AtWorld(new Vector3(0f, 10f, 0f)),
+        ConstraintAttachment.OnBody(load),
+        anchorA: Vector3.Zero, anchorB: Vector3.Zero, minDistance: 0f, maxDistance: 4f)
+    .WithWinch(4f, maxSpeed: 2f, maxForce: 400f));
+// Each frame while reeling: shrink the target; the load rises at up to maxSpeed.
+float length = 4f;
+// in your tick: length = MathF.Max(1f, length - 2f * dt); physics.SetConstraintTarget(winch, length);
+```
 
 **Wiring into character movement** - pass the physics world as `IPhysicsWorld?` wherever the movement step runs.
 The step moves the capsule freely to its desired position, then depenetrates it against all static bodies in

@@ -499,4 +499,308 @@ public class ConstraintTests
             Assert.True(crossedPivot, $"character must walk past the pivot at x={pivot.X}, reached x={lastX:F3}");
         }
     }
+
+    // =====================================================================
+    // Task 2: motors and servos. A hinge servo reaches and holds a target angle without oscillation blowup; a hinge
+    // velocity motor spins until an angular limit clamps it; a slider position servo lifts a platform and holds it
+    // against gravity; a distance winch reels a hanging body up as its target length shrinks; and two identical
+    // worlds with an active servo step bit-identically. (The allocation-free retarget test lives in its own
+    // non-parallel collection below.)
+    // =====================================================================
+
+    // ---------------------------------------------------------------------
+    // Hinge angle servo: drives the hinge to a target angle and holds it, no oscillation blowup.
+    // ---------------------------------------------------------------------
+
+    [Fact]
+    public void HingeServo_ReachesAndHoldsTheTargetAngle_WithoutOscillationBlowup()
+    {
+        using IPhysicsWorld world = new BepuPhysicsWorld(Vector3.Zero); // no gravity: isolate the servo hold
+        var pivot = new Vector3(0f, 5f, 0f);
+        // A 1 kg arm hinged at the pivot, extending +X, hinge axis Z (swings in the X-Y plane). The servo drives
+        // the hinge to +0.8 rad and must reach and hold it (measured as the arm angle from +X), no wild spin.
+        var bodyStart = pivot + new Vector3(1.5f, 0f, 0f);
+        DynamicBodyHandle arm = world.AddDynamic(SmallBox, Pose.At(bodyStart),
+            new DynamicBodyDescription(1f) { SleepThreshold = 0f });
+
+        const float targetAngle = 0.8f;
+        var hinge = ConstraintDescription.HingeJoint(
+                ConstraintAttachment.AtWorld(pivot), ConstraintAttachment.OnBody(arm),
+                anchorA: Vector3.Zero, anchorB: new Vector3(-1.5f, 0f, 0f),
+                axisA: Vector3.UnitZ, axisB: Vector3.UnitZ)
+            .WithHingeServo(targetAngle, maxSpeed: 3f);
+        world.AddConstraint(hinge);
+
+        float ArmAngle()
+        {
+            Vector3 armVec = world.GetDynamicPose(arm).Position - pivot;
+            return MathF.Atan2(armVec.Y, armVec.X); // 0 = +X, positive = swung up
+        }
+
+        StepMany(world, 300); // 5 s to converge
+        float settled = ArmAngle();
+        // Reached the target angle (a small band for spring compliance). The sign of the reached angle tracks the
+        // hinge/servo A-B convention; assert the magnitude landed on the commanded 0.8 rad.
+        Assert.True(MathF.Abs(MathF.Abs(settled) - targetAngle) < 0.1f,
+            $"hinge servo must reach the {targetAngle} rad target, settled at {settled:F3}");
+
+        // Hold without oscillation blowup: over the next 5 s the angle must stay within a tight band of where it
+        // settled (a diverging/ringing servo would widen this).
+        float minA = settled, maxA = settled;
+        for (int i = 0; i < 300; i++)
+        {
+            world.Step(Dt);
+            float a = ArmAngle();
+            minA = MathF.Min(minA, a);
+            maxA = MathF.Max(maxA, a);
+        }
+        Assert.True(maxA - minA < 0.05f,
+            $"hinge servo must hold steady (no oscillation blowup), angle band was {maxA - minA:F4} rad");
+    }
+
+    // ---------------------------------------------------------------------
+    // Hinge velocity motor: spins the hinge at a target angular velocity until an angular limit clamps it.
+    // ---------------------------------------------------------------------
+
+    [Fact]
+    public void HingeMotor_SpinsAtTargetVelocity_UntilLimitsClampIt()
+    {
+        using IPhysicsWorld world = new BepuPhysicsWorld(Vector3.Zero); // no gravity: isolate the motor
+        var pivot = new Vector3(0f, 5f, 0f);
+        var bodyStart = pivot + new Vector3(1.5f, 0f, 0f); // 0-angle rest pose (horizontal +X)
+        DynamicBodyHandle arm = world.AddDynamic(SmallBox, Pose.At(bodyStart),
+            new DynamicBodyDescription(1f) { SleepThreshold = 0f });
+
+        // Motor drives the hinge at 2 rad/s about Z; an angular limit of [-1, 0] rad clamps it at one end. The motor
+        // target's sign is right-handed about the hinge axis with end A as the reference (here A is the world anchor,
+        // axis +Z), so a positive target swings the arm DOWN toward -Z-handed angles; the -1 rad limit stops it. The
+        // test cares that the motor spins the joint and the limit clamps it, not which sign is "up".
+        var hinge = ConstraintDescription.HingeJoint(
+                ConstraintAttachment.AtWorld(pivot), ConstraintAttachment.OnBody(arm),
+                anchorA: Vector3.Zero, anchorB: new Vector3(-1.5f, 0f, 0f),
+                axisA: Vector3.UnitZ, axisB: Vector3.UnitZ)
+            .WithAngularLimit(-1f, 0f)
+            .WithHingeMotor(2f, maxTorque: 200f); // a capped motor eases into the end-stop instead of slamming through it
+        world.AddConstraint(hinge);
+
+        float ArmAngle()
+        {
+            Vector3 armVec = world.GetDynamicPose(arm).Position - pivot;
+            return MathF.Atan2(armVec.Y, armVec.X);
+        }
+
+        // Early on the motor is spinning it (the arm has moved off 0 within the first second).
+        StepMany(world, 30);
+        Assert.True(MathF.Abs(ArmAngle()) > 0.1f, "hinge motor must start spinning the arm off its rest angle");
+
+        // After long enough the limit clamps it: the angle never exceeds |1| rad by much and it holds near the stop.
+        float worstMag = 0f;
+        for (int i = 0; i < 400; i++)
+        {
+            world.Step(Dt);
+            worstMag = MathF.Max(worstMag, MathF.Abs(ArmAngle()));
+        }
+        Assert.True(worstMag > 0.85f, $"motor must drive the hinge to its 1 rad limit, worst reached {worstMag:F3}");
+        Assert.True(worstMag < 1.2f, $"the angular limit must clamp the motor at ~1 rad, worst was {worstMag:F3}");
+    }
+
+    // ---------------------------------------------------------------------
+    // Slider position servo: lifts a platform to a target offset and holds it against gravity.
+    // ---------------------------------------------------------------------
+
+    [Fact]
+    public void SliderServo_MovesAPlatformToTarget_AndHoldsAgainstGravity()
+    {
+        using IPhysicsWorld world = new BepuPhysicsWorld(); // gravity ON: the servo must hold the platform up
+        var anchor = new Vector3(0f, 0f, 0f);
+        // A 2 kg platform on a vertical (Y) slider from a world anchor at the origin. The servo commands offset +2 m
+        // (up) and must lift it there against gravity and hold, force cap high enough to carry the weight.
+        DynamicBodyHandle platform = world.AddDynamic(SmallBox, Pose.At(anchor),
+            new DynamicBodyDescription(2f) { SleepThreshold = 0f });
+
+        const float targetOffset = 2f;
+        var slider = ConstraintDescription.SliderJoint(
+                ConstraintAttachment.AtWorld(anchor), ConstraintAttachment.OnBody(platform),
+                anchorA: Vector3.Zero, anchorB: Vector3.Zero, axis: Vector3.UnitY,
+                minOffset: 0f, maxOffset: 3f)
+            .WithSliderServo(targetOffset, maxSpeed: 2f, maxForce: 200f);
+        world.AddConstraint(slider);
+
+        StepMany(world, 400); // ~6.7 s: rise and settle
+        float settledY = world.GetDynamicPose(platform).Position.Y;
+        Assert.True(MathF.Abs(settledY - targetOffset) < 0.1f,
+            $"slider servo must lift the platform to the {targetOffset} m target, settled at Y={settledY:F3}");
+
+        // Hold against gravity: over the next few seconds it must not sag away from the target.
+        float minY = settledY, maxY = settledY;
+        for (int i = 0; i < 300; i++)
+        {
+            world.Step(Dt);
+            float y = world.GetDynamicPose(platform).Position.Y;
+            minY = MathF.Min(minY, y);
+            maxY = MathF.Max(maxY, y);
+        }
+        Assert.True(maxY - minY < 0.05f, $"slider servo must hold the platform steady against gravity, band {maxY - minY:F4} m");
+        Assert.True(minY > targetOffset - 0.1f, $"slider servo must not sag under gravity, lowest Y {minY:F3}");
+    }
+
+    // ---------------------------------------------------------------------
+    // Distance winch: a hanging body reels UP as the servo's target length shrinks over time.
+    // ---------------------------------------------------------------------
+
+    [Fact]
+    public void Winch_ReelsAHangingBodyUpward_OverTime()
+    {
+        using IPhysicsWorld world = new BepuPhysicsWorld(); // gravity ON: the body hangs, the winch pulls it up
+        var anchor = new Vector3(0f, 10f, 0f);
+        // A 1 kg body hanging 4 m below the anchor on a distance servo (winch). Shrinking the target length reels it
+        // up toward the anchor. Start the servo at the current 4 m so it holds, then reel in to 1 m over the run.
+        DynamicBodyHandle load = world.AddDynamic(SmallBox, Pose.At(anchor + new Vector3(0f, -4f, 0f)),
+            new DynamicBodyDescription(1f) { SleepThreshold = 0f });
+
+        ConstraintHandle winch = world.AddConstraint(ConstraintDescription.DistanceJoint(
+                ConstraintAttachment.AtWorld(anchor), ConstraintAttachment.OnBody(load),
+                anchorA: Vector3.Zero, anchorB: Vector3.Zero, minDistance: 0f, maxDistance: 4f)
+            .WithWinch(4f, maxSpeed: 2f, maxForce: 200f));
+
+        float startY = world.GetDynamicPose(load).Position.Y;
+        // Reel the target length from 4 m down to 1 m over 300 steps (5 s), one cheap allocation-free retarget/frame.
+        float length = 4f;
+        for (int i = 0; i < 300; i++)
+        {
+            length = MathF.Max(1f, length - 0.02f);
+            world.SetConstraintTarget(winch, length);
+            world.Step(Dt);
+        }
+        float endY = world.GetDynamicPose(load).Position.Y;
+        float endDist = Vector3.Distance(world.GetDynamicPose(load).Position, anchor);
+
+        Assert.True(endY > startY + 2f, $"winch must reel the body upward (startY {startY:F3} -> endY {endY:F3})");
+        Assert.True(MathF.Abs(endDist - 1f) < 0.3f, $"winch must reel to ~1 m from the anchor, ended at {endDist:F3} m");
+    }
+
+    [Fact]
+    public void SetConstraintTarget_OnAStaleOrMotorlessConstraint_Throws()
+    {
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        // A passive distance joint (no winch): retargeting it has no motor to drive, so it throws.
+        DynamicBodyHandle bob = world.AddDynamic(SmallBox, Pose.At(new Vector3(0f, 8f, 0f)),
+            new DynamicBodyDescription(1f) { SleepThreshold = 0f });
+        ConstraintHandle passive = world.AddConstraint(ConstraintDescription.DistanceJoint(
+            ConstraintAttachment.AtWorld(new Vector3(0f, 10f, 0f)), ConstraintAttachment.OnBody(bob),
+            Vector3.Zero, Vector3.Zero, 0f, 2f));
+        Assert.Throws<ArgumentException>(() => world.SetConstraintTarget(passive, 1f));
+
+        // A powered winch whose body is then removed: the handle is stale, so retargeting throws.
+        ConstraintHandle winch = world.AddConstraint(ConstraintDescription.DistanceJoint(
+                ConstraintAttachment.AtWorld(new Vector3(5f, 10f, 0f)), ConstraintAttachment.OnBody(
+                    world.AddDynamic(SmallBox, Pose.At(new Vector3(5f, 8f, 0f)), DynamicBodyDescription.WithMass(1f))),
+                Vector3.Zero, Vector3.Zero, 0f, 2f)
+            .WithWinch(2f));
+        // Recreate a body handle to remove: pull it back via a fresh add/remove is awkward; instead remove by
+        // stepping then removing the constraint, which makes the handle stale for a mutation.
+        world.RemoveConstraint(winch);
+        Assert.Throws<ArgumentException>(() => world.SetConstraintTarget(winch, 1f));
+    }
+
+    // ---------------------------------------------------------------------
+    // A hinge drive on the wrong joint kind is rejected at add time.
+    // ---------------------------------------------------------------------
+
+    [Fact]
+    public void AddConstraint_WithAMotorForTheWrongJointKind_Throws()
+    {
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        DynamicBodyHandle body = world.AddDynamic(SmallBox, Pose.At(new Vector3(0f, 5f, 0f)),
+            DynamicBodyDescription.WithMass(1f));
+        // A distance joint carrying a HINGE servo: the drive does not match the kind, so the add throws.
+        var bad = ConstraintDescription.DistanceJoint(
+                ConstraintAttachment.AtWorld(new Vector3(0f, 7f, 0f)), ConstraintAttachment.OnBody(body),
+                Vector3.Zero, Vector3.Zero, 0f, 2f)
+            with
+        { Motor = ConstraintMotor.HingeAngle, MotorTarget = 0.5f };
+        Assert.Throws<ArgumentException>(() => world.AddConstraint(bad));
+    }
+
+    // ---------------------------------------------------------------------
+    // Determinism with an active servo: two identical worlds each driving a hinge servo step bit-identically.
+    // ---------------------------------------------------------------------
+
+    [Fact]
+    public void TwoIdenticalWorlds_WithAnActiveServo_ProduceIdenticalPoses()
+    {
+        static (Vector3 pos, Quaternion orient) Run()
+        {
+            using IPhysicsWorld world = new BepuPhysicsWorld();
+            var pivot = new Vector3(0f, 5f, 0f);
+            var arm = world.AddDynamic(SmallBox, Pose.At(pivot + new Vector3(1.5f, 0f, 0f)),
+                new DynamicBodyDescription(1f) { SleepThreshold = 0f });
+            ConstraintHandle hinge = world.AddConstraint(ConstraintDescription.HingeJoint(
+                    ConstraintAttachment.AtWorld(pivot), ConstraintAttachment.OnBody(arm),
+                    Vector3.Zero, new Vector3(-1.5f, 0f, 0f), Vector3.UnitZ, Vector3.UnitZ)
+                .WithHingeServo(1.0f, maxSpeed: 2f));
+
+            // Retarget every frame (a moving servo goal) to exercise the ApplyDescription path in the fingerprint.
+            for (int i = 0; i < 200; i++)
+            {
+                world.SetConstraintTarget(hinge, 0.5f + 0.5f * MathF.Sin(i * 0.05f));
+                world.Step(Dt);
+            }
+            return (world.GetDynamicPose(arm).Position, world.GetDynamicPose(arm).Orientation);
+        }
+
+        var a = Run();
+        var b = Run();
+        Assert.Equal(a.pos.X, b.pos.X);
+        Assert.Equal(a.pos.Y, b.pos.Y);
+        Assert.Equal(a.pos.Z, b.pos.Z);
+        Assert.Equal(a.orient.X, b.orient.X);
+        Assert.Equal(a.orient.Y, b.orient.Y);
+        Assert.Equal(a.orient.Z, b.orient.Z);
+        Assert.Equal(a.orient.W, b.orient.W);
+    }
+}
+
+/// <summary>The allocation-sensitive constraint test lives in the non-parallel <c>AllocSensitive</c> collection so
+/// the per-thread <c>GC.GetAllocatedBytesForCurrentThread()</c> measurement is not perturbed by other tests churning
+/// the GC on parallel threads.</summary>
+[Collection("AllocSensitive")]
+public class ConstraintMotorAllocTests
+{
+    const float Dt = 1f / 60f;
+    static BoxShape SmallBox => new(new Vector3(0.25f, 0.25f, 0.25f));
+
+    // ---------------------------------------------------------------------
+    // Steady-state per-frame retargeting is allocation-free: SetConstraintTarget re-describes the live Bepu
+    // servo via a stack-built description + Solver.ApplyDescription, which allocates nothing (verified in a
+    // Bepu reflection probe: 1000 ApplyDescription calls = 0 bytes). This locks that the seam adds no per-frame
+    // garbage, so a game can drive a servo goal every tick without GC pressure.
+    // ---------------------------------------------------------------------
+
+    [Fact]
+    public void SetConstraintTarget_SteadyState_AllocatesNothing()
+    {
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        var anchor = new Vector3(0f, 10f, 0f);
+        DynamicBodyHandle load = world.AddDynamic(SmallBox, Pose.At(anchor + new Vector3(0f, -3f, 0f)),
+            new DynamicBodyDescription(1f) { SleepThreshold = 0f });
+        ConstraintHandle winch = world.AddConstraint(ConstraintDescription.DistanceJoint(
+                ConstraintAttachment.AtWorld(anchor), ConstraintAttachment.OnBody(load),
+                Vector3.Zero, Vector3.Zero, 0f, 3f)
+            .WithWinch(3f, maxSpeed: 2f));
+
+        // Warm: run the retarget path (and step once) to trigger first-call JIT before measuring.
+        for (int warm = 0; warm < 8; warm++)
+        {
+            world.SetConstraintTarget(winch, 2.5f);
+            world.Step(Dt);
+        }
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1000; i++)
+            world.SetConstraintTarget(winch, 2.0f + 0.5f * (i % 2));
+        long after = GC.GetAllocatedBytesForCurrentThread();
+
+        Assert.Equal(0, after - before); // per-frame target updates allocate nothing at steady state
+    }
 }

@@ -23,7 +23,11 @@ separate from the render-free field so a server/sim never drags in `Render3D`. I
 - **`Scene3DChunkSink`** - the production sink: builds each chunk's mesh + scatters **`PropLayer`**s
   (each layer with its own config, mesh set, and draw radius), re-LODs meshes in place, draws every
   loaded chunk + in-range props per frame, and optionally adds baked prop collision statics to an
-  `IPhysicsWorld` (the `physics` + `collisionShapes` ctor params), removed again on unload.
+  `IPhysicsWorld` (the `physics` + `collisionShapes` ctor params), removed again on unload. A game may also
+  pass an **`IChunkDynamicsSource`** (`dynamicsSource` ctor param, requires `physics`) to spawn dynamic
+  bodies per chunk: the source yields **`DynamicSpawn`**s (shape + pose + `DynamicBodyDescription`) for a
+  chunk, the sink registers them on load and removes them on unload. Mechanism only - the game decides what
+  spawns where; the engine just registers what the source returns.
 - **Splat materials** - **`TerrainMaterialLayer`** / **`TerrainLayeredMaterial`** (five tileable
   albedo + normal layers blended by the baked splat weights) and **`TerrainMaterialPresets.Procedural()`**
   (deterministic placeholder textures). Omit the material for the vertex-colour ramp fallback.

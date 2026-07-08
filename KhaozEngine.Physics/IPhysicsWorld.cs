@@ -3,10 +3,11 @@ using System.Numerics;
 
 namespace KhaozEngine.Physics;
 
-/// <summary>The physics world the character controller and netcode resolve against: a set of static
-/// bodies plus stepping and raycast/sweep/overlap queries. Headless and backend-agnostic. Authoritative
-/// on the server and re-run identically in client prediction. Sub-project 1 has static bodies only;
-/// dynamic bodies arrive in sub-project 2 behind the same interface.</summary>
+/// <summary>The physics world the character controller and netcode resolve against: static bodies, dynamic
+/// rigid bodies, stepping, and raycast/sweep/overlap queries. Headless and backend-agnostic. Authoritative
+/// on the server and re-run identically in client prediction. Dynamic-body stepping is deterministic under a
+/// fixed timestep on a given platform (no wall clock, no unseeded randomness), so two worlds built and stepped
+/// identically stay bit-identical.</summary>
 public interface IPhysicsWorld : IDisposable
 {
     /// <summary>Add a static body. Returns a handle for later removal.</summary>
@@ -15,8 +16,32 @@ public interface IPhysicsWorld : IDisposable
     /// <summary>Remove a static body previously added.</summary>
     void RemoveStatic(StaticHandle handle);
 
-    /// <summary>Advance the simulation by <paramref name="dt"/> seconds. Near-trivial while there are no
-    /// dynamic bodies, but present so sub-project 2 drops in without an interface change.</summary>
+    /// <summary>Add a dynamic rigid body: it falls under the world's gravity, collides with statics and
+    /// other dynamic bodies, and is advanced by <see cref="Step"/>. The <paramref name="shape"/> reuses the
+    /// same <see cref="PhysicsShape"/> descriptors as the static path (box/sphere/capsule/cylinder/hull and
+    /// their compounds); base-aligned shapes (cylinder/hull) stay base-aligned to <paramref name="pose"/>
+    /// exactly as statics do. Returns a handle for pose/velocity queries and removal.</summary>
+    DynamicBodyHandle AddDynamic(PhysicsShape shape, Pose pose, DynamicBodyDescription body, PhysicsMaterial? material = null);
+
+    /// <summary>Remove a dynamic body previously added. Safe to call at any time, including mid-flight.</summary>
+    void RemoveDynamic(DynamicBodyHandle handle);
+
+    /// <summary>The current world pose (position + orientation) of a dynamic body.</summary>
+    Pose GetDynamicPose(DynamicBodyHandle handle);
+
+    /// <summary>The current linear (m/s) and angular (rad/s) velocity of a dynamic body, world space.</summary>
+    void GetDynamicVelocity(DynamicBodyHandle handle, out Vector3 linear, out Vector3 angular);
+
+    /// <summary>Set the linear (m/s) and angular (rad/s) velocity of a dynamic body, world space. Wakes the
+    /// body if it was asleep.</summary>
+    void SetDynamicVelocity(DynamicBodyHandle handle, Vector3 linear, Vector3 angular);
+
+    /// <summary>Whether a dynamic body is currently awake (being actively simulated). A body that has come to
+    /// rest sleeps and reports false until disturbed. Cheap; used to gate replication and rest assertions.</summary>
+    bool IsAwake(DynamicBodyHandle handle);
+
+    /// <summary>Advance the simulation by <paramref name="dt"/> seconds. Integrates dynamic bodies under
+    /// gravity and resolves contacts. Deterministic under a fixed <paramref name="dt"/>.</summary>
     void Step(float dt);
 
     /// <summary>Cast a ray; returns the nearest hit. Used for ledge detection, jump targeting,

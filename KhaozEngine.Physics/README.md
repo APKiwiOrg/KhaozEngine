@@ -7,16 +7,23 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
 
 ## Types
 
-- **`IPhysicsWorld`** - static bodies (`AddStatic`/`RemoveStatic`), `Step(dt)`, and the queries:
-  `Raycast` (nearest hit), `SweepCapsule` (nearest time of impact, what the swept collide-and-slide in
-  `Locomotion` uses), `ComputePenetration` (minimum translation to separate an overlapping capsule).
+- **`IPhysicsWorld`** - static bodies (`AddStatic`/`RemoveStatic`), dynamic bodies
+  (`AddDynamic`/`RemoveDynamic`/`GetDynamicPose`/`GetDynamicVelocity`/`SetDynamicVelocity`/`IsAwake`),
+  `Step(dt)`, and the queries: `Raycast` (nearest hit), `SweepCapsule` (nearest time of impact, what the
+  swept collide-and-slide in `Locomotion` uses), `ComputePenetration` (minimum translation to separate an
+  overlapping capsule). Dynamic-body stepping is deterministic under a fixed dt.
 - **Shapes** - `SphereShape`, `CapsuleShape` (upright, local Y), `BoxShape` (half-extents),
-  `CylinderShape`, `ConvexHullShape` (solid props), `TriangleMeshShape` (non-convex buildings/interiors),
-  and `CompoundShape` (`CompoundChild[]`, disjoint children each at a local `Pose`).
+  `CylinderShape`, `ConvexHullShape` (solid props), `TriangleMeshShape` (non-convex buildings/interiors,
+  static only), and `CompoundShape` (`CompoundChild[]`, disjoint children each at a local `Pose`). A dynamic
+  body takes any of these except a triangle mesh. Base-aligned cylinder/hull shapes rest base-on-ground.
+- **`DynamicBodyDescription`** - the mass/inertia + initial-motion knobs for `AddDynamic`:
+  `WithMass(mass)`, plus optional `LinearVelocity`/`AngularVelocity`/`SleepThreshold`. Mass &lt;= 0 = an
+  infinite-mass (kinematic) body: unmoved by gravity/impacts, moved only by its velocity.
 - **`Pose`** - world position + orientation record struct. `Pose.At(position)` for identity orientation.
 - **`PhysicsMaterial`** - friction + restitution, `PhysicsMaterial.Default` is full friction, no bounce.
+  A dynamic body's `Restitution` (0..1) is a coefficient of restitution (rebound = that fraction of impact).
 - **`QueryFilter`** - layer mask for queries, default (`QueryFilter.All`) matches every body.
-- **`StaticHandle`**, **`RayHit`**, **`SweepHit`** - opaque body handle and the query result structs.
+- **`StaticHandle`**, **`DynamicBodyHandle`**, **`RayHit`**, **`SweepHit`** - opaque body handles and the query result structs.
 - **`PhysicsShapeScale.Uniform(shape, scale)`** - a new shape with all geometry scaled uniformly
   (compound child poses included). For per-placement scatter scale before `AddStatic`.
 - **`PropCollisionFormat`** - the KECL `.coll` binary format: `Write`/`Read` a single `PhysicsShape`,
@@ -38,14 +45,20 @@ StaticHandle rock = world.AddStatic(
     PhysicsShapeScale.Uniform(shapes["rock_big"], 1.3f),
     Pose.At(new Vector3(10f, groundY, -4f)));
 
+// Dynamic bodies fall under gravity and are stepped by Step(dt):
+DynamicBodyHandle crate = world.AddDynamic(
+    new BoxShape(new Vector3(0.5f, 0.5f, 0.5f)),
+    Pose.At(new Vector3(10f, 8f, -4f)),
+    DynamicBodyDescription.WithMass(10f));
+world.Step(1f / 60f);
+Pose cratePose = world.GetDynamicPose(crate);
+
 if (world.Raycast(origin, direction, 50f, out RayHit hit))
     Console.WriteLine($"hit {hit.Body} at {hit.Point}");
 
+world.RemoveDynamic(crate);
 world.RemoveStatic(rock);
 ```
-
-Static bodies only for now. Dynamic bodies arrive later behind the same interface, so `Step(dt)` is
-already part of the contract.
 
 No render, window, or GPU dependency. In the `Foundation` umbrella metapackage.
 

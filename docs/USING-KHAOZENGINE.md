@@ -1726,18 +1726,30 @@ backend (`KhaozEngine.Physics.Bepu`, NOT in any umbrella, added explicitly like 
 same opt-in-backend pattern the `WorldStore.*` durable backends use.
 
 **Seam (`KhaozEngine.Physics`)** - what every caller sees:
-- `IPhysicsWorld`: `AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null) -> StaticHandle`,
+- `IPhysicsWorld` static bodies + queries: `AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null) -> StaticHandle`,
   `RemoveStatic(StaticHandle handle)`, `Step(float dt)`,
   `Raycast(Vector3 origin, Vector3 direction, float maxDistance, out RayHit hit, QueryFilter filter = default) -> bool`,
   `SweepCapsule(CapsuleShape capsule, Pose pose, Vector3 direction, float maxDistance, out SweepHit hit, QueryFilter filter = default) -> bool`,
   `ComputePenetration(CapsuleShape capsule, Pose pose, out Vector3 mtv) -> bool` (mtv = minimum translation vector, push-out direction * depth).
+- `IPhysicsWorld` dynamic bodies (fall under gravity, collide, stepped by `Step`):
+  `AddDynamic(PhysicsShape shape, Pose pose, DynamicBodyDescription body, PhysicsMaterial? material = null) -> DynamicBodyHandle`,
+  `RemoveDynamic(DynamicBodyHandle handle)` (safe mid-flight), `GetDynamicPose(handle) -> Pose`,
+  `GetDynamicVelocity(handle, out linear, out angular)`, `SetDynamicVelocity(handle, linear, angular)` (wakes the body),
+  `IsAwake(handle) -> bool` (a body that has come to rest sleeps and reports false until disturbed).
 - Concrete shape classes (all extend `PhysicsShape`): `SphereShape(radius)`, `CapsuleShape(radius, length)`,
   `BoxShape(halfExtents)`, `CylinderShape(radius, length)`, `ConvexHullShape(points)`,
-  `TriangleMeshShape(vertices, indices)`, `CompoundShape(children)`.
+  `TriangleMeshShape(vertices, indices)`, `CompoundShape(children)`. A dynamic body accepts any of these EXCEPT a
+  triangle mesh (a mesh has no closed volume, so no mass/inertia); use a convex primitive, hull, or compound of
+  convex leaves. Base-aligned shapes (cylinder/hull) rest base-on-ground exactly as statics do (centroid-safe).
+- `DynamicBodyDescription(float mass)` / `DynamicBodyDescription.WithMass(mass)`, with optional
+  `LinearVelocity`, `AngularVelocity`, `SleepThreshold` (negative = backend default, 0 = never sleep). Mass &lt;= 0
+  is an infinite-mass (kinematic) body: gravity and impacts do not move it, but its velocity does.
 - `Pose(Vector3 position, Quaternion orientation)` / `Pose.At(Vector3 position)` (identity orientation).
 - `PhysicsMaterial(float Friction, float Restitution)`. `PhysicsMaterial.Default` = full friction, no bounce.
+  A dynamic body's `Restitution` (0..1) is its coefficient of restitution: it rebounds at that fraction of its
+  impact speed, so bounces decay geometrically.
 - `QueryFilter(uint Layers)` (layer mask; `QueryFilter.All` / default matches every body).
-- `StaticHandle`, `RayHit(Distance, Point, Normal, Body)`, `SweepHit(Distance, Point, Normal, Body)`.
+- `StaticHandle`, `DynamicBodyHandle`, `RayHit(Distance, Point, Normal, Body)`, `SweepHit(Distance, Point, Normal, Body)`.
 
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
@@ -1749,8 +1761,10 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 
-// Create a single-threaded deterministic Simulation (SP1 = static bodies only; no gravity parameter):
-IPhysicsWorld physics = new BepuPhysicsWorld();
+// Create a single-threaded deterministic Simulation. Default ctor uses Earth gravity (0, -9.81, 0);
+// pass Vector3.Zero for the static-only, non-falling behaviour:
+IPhysicsWorld physics = new BepuPhysicsWorld();               // Earth gravity
+// IPhysicsWorld physics = new BepuPhysicsWorld(Vector3.Zero); // static-only, no fall
 
 // Add a static mesh (triangle mesh for a building, convex hull for a rock).
 // Shapes come from PropCollisionLoader (baked by ke-propbake) or built inline:
@@ -1759,14 +1773,27 @@ StaticHandle rockHandle = physics.AddStatic(
     Pose.At(new Vector3(10f, 0f, 5f)),
     PhysicsMaterial.Default);
 
-// Step the simulation each tick (usually driven by FixedTickHost in the server loop):
+// Add a dynamic body: a 10 kg crate dropped in, bouncy (restitution 0.4):
+DynamicBodyHandle crate = physics.AddDynamic(
+    new BoxShape(new Vector3(0.5f, 0.5f, 0.5f)),
+    Pose.At(new Vector3(10f, 8f, 5f)),
+    DynamicBodyDescription.WithMass(10f),
+    new PhysicsMaterial(1f, 0.4f));
+
+// Step the simulation each tick (usually driven by FixedTickHost in the server loop). Deterministic
+// under a fixed dt: two identical worlds stepped identically stay bit-identical.
 physics.Step(dt);
+
+// Read the settled pose (server samples this after Step to replicate the body to clients):
+Pose cratePose = physics.GetDynamicPose(crate);
+if (!physics.IsAwake(crate)) { /* body has come to rest; can stop replicating */ }
 
 // Raycast for line-of-sight / AI queries:
 if (physics.Raycast(eye, forward, maxDistance: 50f, out RayHit hit))
     Console.WriteLine($"hit at {hit.Point}, normal {hit.Normal}");
 
-// Remove a static when a chunk unloads:
+// Remove bodies when a chunk unloads (safe at any time, including mid-flight):
+physics.RemoveDynamic(crate);
 physics.RemoveStatic(rockHandle);
 ```
 

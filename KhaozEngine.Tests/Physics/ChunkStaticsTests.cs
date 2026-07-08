@@ -28,6 +28,17 @@ public class ChunkStaticsTests
 
         public void RemoveStatic(StaticHandle handle) => Removed.Add(handle);
 
+        // unused dynamic-body members (this fake only exercises the static chunk path)
+        public DynamicBodyHandle AddDynamic(PhysicsShape shape, Pose pose, DynamicBodyDescription body, PhysicsMaterial? material = null)
+            => throw new NotSupportedException();
+        public void RemoveDynamic(DynamicBodyHandle handle) => throw new NotSupportedException();
+        public Pose GetDynamicPose(DynamicBodyHandle handle) => throw new NotSupportedException();
+        public void GetDynamicVelocity(DynamicBodyHandle handle, out Vector3 linear, out Vector3 angular)
+            => throw new NotSupportedException();
+        public void SetDynamicVelocity(DynamicBodyHandle handle, Vector3 linear, Vector3 angular)
+            => throw new NotSupportedException();
+        public bool IsAwake(DynamicBodyHandle handle) => throw new NotSupportedException();
+
         // unused query/step members
         public void Step(float dt) { }
         public bool Raycast(Vector3 o, Vector3 d, float max, out RayHit hit, QueryFilter f = default)

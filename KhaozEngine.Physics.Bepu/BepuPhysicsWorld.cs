@@ -13,16 +13,20 @@ using KhaozEngine.Physics;
 
 using BepuSim = BepuPhysics.Simulation;
 using BepuStaticHandle = BepuPhysics.StaticHandle;
+using BepuBodyHandle = BepuPhysics.BodyHandle;
 using SeamHandle = KhaozEngine.Physics.StaticHandle;
 
 namespace KhaozEngine.Physics.Bepu;
 
 /// <summary>BepuPhysics v2 backend for <see cref="IPhysicsWorld"/>. Single-threaded, deterministic
-/// (null dispatcher, fixed SolveDescription). The only assembly in the engine that references BepuPhysics;
-/// consumers depend on the dependency-free <c>KhaozEngine.Physics</c> seam and add this backend
-/// explicitly, matching the Netcode.LiteNetLib / WorldStore.Sqlite pattern.</summary>
+/// (null dispatcher, fixed SolveDescription, per-step gravity applied uniformly). The only assembly in the
+/// engine that references BepuPhysics; consumers depend on the dependency-free <c>KhaozEngine.Physics</c> seam
+/// and add this backend explicitly, matching the Netcode.LiteNetLib / WorldStore.Sqlite pattern.</summary>
 public sealed class BepuPhysicsWorld : IPhysicsWorld
 {
+    /// <summary>Standard Earth gravity (m/s^2, -Y) used when no gravity is supplied to the constructor.</summary>
+    public static readonly Vector3 DefaultGravity = new(0f, -9.81f, 0f);
+
     private readonly BufferPool _pool;
     private readonly BepuSim _sim;
 
@@ -31,16 +35,34 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
     // Statics.Remove only removes the body entry, not the shape, so without this the shape
     // pool grows unbounded across streaming load/unload cycles.
     private readonly Dictionary<int, (BepuStaticHandle Handle, TypedIndex Shape)> _handles = new();
+    // Seam int id -> (Bepu BodyHandle, shape TypedIndex) for dynamic bodies. Same shape-pool discipline:
+    // Bodies.Remove frees the body entry but NOT the shape, so RecursivelyRemoveAndDispose on RemoveDynamic
+    // keeps the shape pool from growing across body add/remove cycles.
+    private readonly Dictionary<int, (BepuBodyHandle Handle, TypedIndex Shape)> _dynamics = new();
+    // Restitution bookkeeping for the explicit bounce pass in Step (see Step): the set of dynamic-body ids with a
+    // non-zero restitution, each id's coefficient, and a scratch snapshot of pre-step velocities (reused to avoid
+    // per-step allocation). A body with zero restitution is never in these, so the common case adds no overhead.
+    private readonly HashSet<int> _restitutiveDynamics = new();
+    private readonly Dictionary<int, float> _restitutionOf = new();
+    private readonly Dictionary<int, Vector3> _preStepVel = new();
     private int _nextId;
 
-    public BepuPhysicsWorld()
+    /// <summary>A world with standard Earth gravity (<see cref="DefaultGravity"/>).</summary>
+    public BepuPhysicsWorld() : this(DefaultGravity) { }
+
+    /// <summary>A world with the given <paramref name="gravity"/> (m/s^2). Pass <c>Vector3.Zero</c> for the
+    /// static-only, non-falling behaviour of the pre-dynamics backend.</summary>
+    public BepuPhysicsWorld(Vector3 gravity)
     {
         _pool = new BufferPool();
         _sim = BepuSim.Create(
             _pool,
             new PhysicsNarrowPhaseCallbacks(new SpringSettings(30, 1)),
-            new PhysicsPoseIntegratorCallbacks(),
-            new SolveDescription(velocityIterationCount: 8, substepCount: 1));
+            new PhysicsPoseIntegratorCallbacks(gravity),
+            // Substepping (4) gives dynamic-body contacts stable, deterministic resolution and lets the stiff
+            // restitution spring rebound within a step. Static-only queries (raycast/sweep/penetration) are
+            // unaffected by the substep count.
+            new SolveDescription(velocityIterationCount: 8, substepCount: 4));
     }
 
     public SeamHandle AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null)
@@ -67,7 +89,132 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
         }
     }
 
-    public void Step(float dt) => _sim.Timestep(dt, null);
+    public DynamicBodyHandle AddDynamic(PhysicsShape shape, Pose pose, DynamicBodyDescription body, PhysicsMaterial? material = null)
+    {
+        var rigidPose = new RigidPose(pose.Position, pose.Orientation);
+        var velocity = new BodyVelocity(body.LinearVelocity, body.AngularVelocity);
+        // Sleep threshold: negative keeps the Bepu default; otherwise honour the caller (0 disables sleep).
+        float sleep = body.SleepThreshold < 0f ? 0.01f : body.SleepThreshold;
+        var activity = new BodyActivityDescription(sleep);
+
+        int id = _nextId++;
+        BepuBodyHandle bepuHandle;
+        TypedIndex shapeIndex;
+
+        if (body.Mass <= 0f)
+        {
+            // Infinite-mass (kinematic) body: no inertia, unaffected by gravity/impacts but still moved by its
+            // velocity. Reuse the static/kinematic shape path (base-alignment wrappers, no inertia needed).
+            shapeIndex = ShapeFactory.Add(_sim, _pool, shape);
+            var desc = BodyDescription.CreateKinematic(rigidPose, velocity, new CollidableDescription(shapeIndex), activity);
+            bepuHandle = _sim.Bodies.Add(desc);
+        }
+        else
+        {
+            shapeIndex = ShapeFactory.AddDynamic(_sim, _pool, shape, body.Mass, out BodyInertia inertia);
+            var desc = BodyDescription.CreateDynamic(rigidPose, velocity, inertia, new CollidableDescription(shapeIndex), activity);
+            bepuHandle = _sim.Bodies.Add(desc);
+        }
+
+        _dynamics[id] = (bepuHandle, shapeIndex);
+        float restitution = material?.Restitution ?? 0f;
+        if (restitution > 0f)
+        {
+            _restitutiveDynamics.Add(id);
+            _restitutionOf[id] = restitution;
+        }
+        return new DynamicBodyHandle(id);
+    }
+
+    public void RemoveDynamic(DynamicBodyHandle handle)
+    {
+        if (_dynamics.TryGetValue(handle.Value, out var entry))
+        {
+            _sim.Bodies.Remove(entry.Handle);
+            _sim.Shapes.RecursivelyRemoveAndDispose(entry.Shape, _pool);
+            _dynamics.Remove(handle.Value);
+            _restitutiveDynamics.Remove(handle.Value);
+            _restitutionOf.Remove(handle.Value);
+        }
+    }
+
+    public Pose GetDynamicPose(DynamicBodyHandle handle)
+    {
+        var body = _sim.Bodies.GetBodyReference(RequireDynamic(handle));
+        RigidPose p = body.Pose;
+        return new Pose(p.Position, p.Orientation);
+    }
+
+    public void GetDynamicVelocity(DynamicBodyHandle handle, out Vector3 linear, out Vector3 angular)
+    {
+        var body = _sim.Bodies.GetBodyReference(RequireDynamic(handle));
+        BodyVelocity v = body.Velocity;
+        linear = v.Linear;
+        angular = v.Angular;
+    }
+
+    public void SetDynamicVelocity(DynamicBodyHandle handle, Vector3 linear, Vector3 angular)
+    {
+        var body = _sim.Bodies.GetBodyReference(RequireDynamic(handle));
+        body.Velocity = new BodyVelocity(linear, angular);
+        body.Awake = true; // a velocity change must wake a sleeping body or it will not move
+    }
+
+    public bool IsAwake(DynamicBodyHandle handle)
+        => _sim.Bodies.GetBodyReference(RequireDynamic(handle)).Awake;
+
+    private BepuBodyHandle RequireDynamic(DynamicBodyHandle handle)
+    {
+        if (!_dynamics.TryGetValue(handle.Value, out var entry))
+            throw new ArgumentException($"DynamicBodyHandle {handle.Value} is not a live dynamic body.", nameof(handle));
+        return entry.Handle;
+    }
+
+    public void Step(float dt)
+    {
+        // Explicit, deterministic restitution. Bepu 2.4 has no restitution coefficient and its contact
+        // MaximumRecoveryVelocity only acts on penetration depth (which gives a constant-height limit cycle, not a
+        // real coefficient of restitution). So for every awake restitutive dynamic body we snapshot the velocity,
+        // let the solver arrest the impact this step, and if the body's speed along the pre-step motion direction
+        // was reduced by a contact (the solver removed approach velocity), we return restitution x the removed
+        // speed along that direction. This reproduces a true coefficient of restitution (each bounce apex decays
+        // geometrically) and stays fully deterministic under fixed dt. Non-restitutive bodies are untouched.
+        if (_restitutiveDynamics.Count > 0)
+        {
+            _preStepVel.Clear();
+            foreach (int id in _restitutiveDynamics)
+            {
+                var body = _sim.Bodies.GetBodyReference(_dynamics[id].Handle);
+                if (body.Awake)
+                    _preStepVel[id] = body.Velocity.Linear;
+            }
+
+            _sim.Timestep(dt, null);
+
+            foreach (var kv in _preStepVel)
+            {
+                Vector3 pre = kv.Value;
+                float preSpeed = pre.Length();
+                if (preSpeed < 1e-4f) continue;
+                var body = _sim.Bodies.GetBodyReference(_dynamics[kv.Key].Handle);
+                if (!body.Exists) continue;
+                Vector3 dir = pre / preSpeed;                       // pre-step motion direction (unit)
+                Vector3 post = body.Velocity.Linear;
+                // Speed along the pre-step direction that a contact removed this step (>0 means arrested).
+                float removed = preSpeed - Vector3.Dot(post, dir);
+                if (removed <= 0.05f) continue;                     // ignore ordinary damping/friction, only real impacts
+                float restitution = _restitutionOf[kv.Key];
+                // Reflect: add restitution x the removed approach speed back, but in the OPPOSITE direction, so the
+                // body rebounds at restitution x its arrested approach speed.
+                body.Velocity.Linear = post - dir * (restitution * removed);
+                body.Awake = true;
+            }
+        }
+        else
+        {
+            _sim.Timestep(dt, null);
+        }
+    }
 
     public bool Raycast(Vector3 origin, Vector3 direction, float maxDistance, out RayHit hit, QueryFilter filter = default)
     {
@@ -232,23 +379,47 @@ internal struct PenetrationCallbacks : ICollisionCallbacks
     }
 }
 
-// Minimal no-gravity pose integrator (no dynamic bodies in SP1).
+// Pose integrator that applies a uniform gravity to every dynamic body each substep. Deterministic: the
+// gravity vector is fixed at construction and the per-step gravity*dt delta is computed once in
+// PrepareForIntegration (no per-body branching, no wall clock, no randomness). Kinematic bodies are not
+// velocity-integrated (IntegrateVelocityForKinematics = false), so infinite-mass bodies ignore gravity.
 internal struct PhysicsPoseIntegratorCallbacks : IPoseIntegratorCallbacks
 {
+    private readonly Vector3 _gravity;
+    private Vector3Wide _gravityDt;
+
+    public PhysicsPoseIntegratorCallbacks(Vector3 gravity)
+    {
+        _gravity = gravity;
+        _gravityDt = default;
+    }
+
     public readonly AngularIntegrationMode AngularIntegrationMode => AngularIntegrationMode.Nonconserving;
     public readonly bool AllowSubstepsForUnconstrainedBodies => false;
     public readonly bool IntegrateVelocityForKinematics => false;
 
     public void Initialize(BepuSim simulation) { }
-    public void PrepareForIntegration(float dt) { }
+
+    public void PrepareForIntegration(float dt)
+    {
+        // Precompute gravity * dt once per (sub)step and broadcast to the SIMD-wide form used per bundle.
+        Vector3Wide.Broadcast(_gravity * dt, out _gravityDt);
+    }
 
     public void IntegrateVelocity(
         Vector<int> bodyIndices, Vector3Wide position, QuaternionWide orientation,
         BodyInertiaWide localInertia, Vector<int> integrationMask, int workerIndex,
-        Vector<float> dt, ref BodyVelocityWide velocity) { }
+        Vector<float> dt, ref BodyVelocityWide velocity)
+    {
+        Vector3Wide.Add(velocity.Linear, _gravityDt, out velocity.Linear);
+    }
 }
 
-// Minimal narrow-phase callbacks.
+// Narrow-phase callbacks. Contacts are inelastic here (no restitution in the solver): restitution is applied
+// deterministically by BepuPhysicsWorld.Step as an explicit post-solve velocity reflection (Bepu 2.4 has no
+// restitution coefficient and its contact recovery velocity only acts on penetration, giving a constant-height
+// limit cycle rather than a real coefficient of restitution). Contacts are only generated when at least one
+// body is dynamic (a purely static pair never collides).
 internal struct PhysicsNarrowPhaseCallbacks : INarrowPhaseCallbacks
 {
     public SpringSettings ContactSpringiness;

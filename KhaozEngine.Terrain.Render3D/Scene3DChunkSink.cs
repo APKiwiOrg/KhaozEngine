@@ -33,6 +33,7 @@ namespace KhaozEngine.Terrain
         readonly Scene3D.SplatMaterialHandle _material;
         readonly IPhysicsWorld? _physics;
         readonly IReadOnlyDictionary<string, PhysicsShape>? _collisionShapes;
+        readonly IChunkDynamicsSource? _dynamicsSource;
         readonly bool _ownsMaterial;
         readonly Dictionary<ChunkCoord, ChunkLoad> _loaded = new();
         bool _disposed;
@@ -42,11 +43,15 @@ namespace KhaozEngine.Terrain
         /// <paramref name="layers"/>. The splat <paramref name="material"/> is caller-owned unless
         /// <paramref name="ownsMaterial"/> is set (see the class remarks). When <paramref name="physics"/> is
         /// given, each scatter layer's props are added as static bodies on chunk load (using the per-prop-id
-        /// shapes in <paramref name="collisionShapes"/>) and removed on unload; null physics = no collision.</summary>
+        /// shapes in <paramref name="collisionShapes"/>) and removed on unload; null physics = no collision.
+        /// When <paramref name="dynamicsSource"/> is given (physics must also be set), the game-supplied source
+        /// yields dynamic bodies per chunk that are registered on load and removed on unload (mechanism only:
+        /// the engine registers exactly what the source emits, the source decides what spawns where).</summary>
         public Scene3DChunkSink(Scene3D scene, TerrainField field, IReadOnlyList<PropLayer> layers,
                                 float chunkSize, Scene3D.SplatMaterialHandle material = default, bool ownsMaterial = false,
                                 IPhysicsWorld? physics = null,
-                                IReadOnlyDictionary<string, PhysicsShape>? collisionShapes = null)
+                                IReadOnlyDictionary<string, PhysicsShape>? collisionShapes = null,
+                                IChunkDynamicsSource? dynamicsSource = null)
         {
             _scene = scene;
             _field = field ?? throw new ArgumentNullException(nameof(field));
@@ -75,6 +80,9 @@ namespace KhaozEngine.Terrain
             _ownsMaterial = ownsMaterial;
             _physics = physics;
             _collisionShapes = collisionShapes;
+            if (dynamicsSource is not null && physics is null)
+                throw new ArgumentException("A chunk dynamics source requires a physics world.", nameof(dynamicsSource));
+            _dynamicsSource = dynamicsSource;
         }
 
         /// <summary>Single-layer sink (back-compat): one scatter config, one mesh set, one draw radius. The splat
@@ -85,7 +93,8 @@ namespace KhaozEngine.Terrain
                                 IReadOnlyDictionary<string, MeshHandle> propMeshes, float chunkSize, float propDrawRadius,
                                 Scene3D.SplatMaterialHandle material = default, bool ownsMaterial = false,
                                 IPhysicsWorld? physics = null,
-                                IReadOnlyDictionary<string, PhysicsShape>? collisionShapes = null)
+                                IReadOnlyDictionary<string, PhysicsShape>? collisionShapes = null,
+                                IChunkDynamicsSource? dynamicsSource = null)
             : this(scene, field,
                    new[]
                    {
@@ -94,7 +103,7 @@ namespace KhaozEngine.Terrain
                            propMeshes ?? throw new ArgumentNullException(nameof(propMeshes)),
                            propDrawRadius),
                    },
-                   chunkSize, material, ownsMaterial, physics, collisionShapes)
+                   chunkSize, material, ownsMaterial, physics, collisionShapes, dynamicsSource)
         {
         }
 
@@ -107,6 +116,8 @@ namespace KhaozEngine.Terrain
             public int Lod;
             /// <summary>Static body handles added for this chunk's props; empty when no physics world is wired.</summary>
             public List<StaticHandle> Statics = new();
+            /// <summary>Dynamic body handles spawned for this chunk; empty when no dynamics source is wired.</summary>
+            public List<DynamicBodyHandle> Dynamics = new();
 
             /// <summary>Back-compat alias: the first layer's placements.</summary>
             public IReadOnlyList<PropPlacement> Props =>
@@ -143,6 +154,8 @@ namespace KhaozEngine.Terrain
             _loaded[coord] = load;
             if (_physics is not null && _collisionShapes is not null)
                 ChunkStatics.AddAll(_physics, _collisionShapes, load.Props, load.Statics);
+            if (_physics is not null && _dynamicsSource is not null)
+                ChunkDynamics.AddAll(_physics, _dynamicsSource.SpawnsFor(coord), load.Dynamics);
             return load;
         }
 
@@ -160,7 +173,10 @@ namespace KhaozEngine.Terrain
         {
             var load = (ChunkLoad)handle;
             if (_physics is not null)
+            {
                 ChunkStatics.RemoveAll(_physics, load.Statics);
+                ChunkDynamics.RemoveAll(_physics, load.Dynamics);
+            }
             _scene.UnloadMesh(load.Mesh);
             _loaded.Remove(coord);
         }
@@ -189,7 +205,10 @@ namespace KhaozEngine.Terrain
                 // Remove this chunk's prop static bodies too, so a teardown while the physics world survives
                 // (rebuild streaming reusing the same world) frees the ring's colliders instead of leaking them.
                 if (_physics is not null)
+                {
                     ChunkStatics.RemoveAll(_physics, load.Statics);
+                    ChunkDynamics.RemoveAll(_physics, load.Dynamics);
+                }
                 _scene.UnloadMesh(load.Mesh);
             }
             _loaded.Clear();

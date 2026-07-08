@@ -2,16 +2,32 @@
 
 BepuPhysics v2 backend for the [KhaozEngine.Physics](../KhaozEngine.Physics) seam.
 **`BepuPhysicsWorld : IPhysicsWorld`** over BepuPhysics 2.4.0 (pure managed, Apache-2.0, no native
-libraries) with a single-threaded, deterministic `Simulation` (null dispatcher, fixed solve description).
-Opt-in and in NO umbrella: consumers depend on the dependency-free seam and add this backend explicitly,
-the same pattern as `Netcode.LiteNetLib` or `WorldStore.Sqlite`. The only assembly in the engine that
-references BepuPhysics.
+libraries) with a single-threaded, deterministic `Simulation` (null dispatcher, fixed solve description,
+4 substeps, uniform gravity applied in the pose integrator). Opt-in and in NO umbrella: consumers depend on
+the dependency-free seam and add this backend explicitly, the same pattern as `Netcode.LiteNetLib` or
+`WorldStore.Sqlite`. The only assembly in the engine that references BepuPhysics.
+
+The default constructor uses Earth gravity `(0, -9.81, 0)`; `new BepuPhysicsWorld(Vector3.Zero)` gives the
+static-only, non-falling behaviour.
 
 ## What it does
 
 - **`AddStatic`/`RemoveStatic`** - converts every seam shape (sphere/capsule/box/cylinder/convex
   hull/triangle mesh/compound) to Bepu shapes. Removal frees the shape from the shape pool too, so a
   streaming load/unload cycle does not grow it unbounded.
+- **`AddDynamic`/`RemoveDynamic`** - adds a dynamic rigid body: a convex primitive, hull, or compound of
+  convex leaves (NOT a triangle mesh: no closed volume, so no inertia). Inertia is derived from the shape
+  and the `DynamicBodyDescription.Mass`; base-aligned cylinder/hull shapes use `BuildDynamicCompound` so
+  they stay base-aligned exactly like statics. Mass &lt;= 0 makes a kinematic (infinite-mass) body. Removal
+  frees the shape from the pool too (`RecursivelyRemoveAndDispose`), like statics.
+- **`GetDynamicPose`/`GetDynamicVelocity`/`SetDynamicVelocity`/`IsAwake`** - pose/velocity query and set
+  (setting velocity wakes the body); `IsAwake` reflects Bepu's natural island sleeping (a settled body
+  sleeps and reports false until disturbed).
+- **Restitution** - Bepu 2.4 has no restitution coefficient (its contact recovery velocity only recovers
+  penetration, which yields a constant-height limit cycle, not a real bounce). So `BepuPhysicsWorld.Step`
+  applies restitution as an explicit, deterministic post-solve reflection: a restitutive dynamic body whose
+  approach speed a contact arrested this step is returned `restitution x` that speed in the opposite
+  direction, so bounces decay geometrically. Non-restitutive bodies are untouched.
 - **`Step(dt)`**, **`Raycast`**, **`SweepCapsule`**, **`ComputePenetration`** - the last is one
   CollisionBatcher manifold query over every shape type, deepest contact wins.
 

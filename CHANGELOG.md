@@ -5,6 +5,14 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.31.0
+
+Layered animation: bone-masked animation layers with override and additive blending, plus one-shot action playback, so a character attacks with the upper body while locomotion keeps driving the legs. Additive public API, minor bump, and the existing animation path is byte-stable (poses bit-identical, all skinned goldens unchanged).
+
+- **`LayeredAnimator` + `BoneMask` (Render3D):** an ordered layer stack composes final local poses over a base. `BoneMask` carries per-bone weights with a subtree builder ("this bone and its descendants"). Override layers lerp toward the layer pose by weight times mask (shortest-arc rotations, the existing crossfade method). Additive layers apply the clip's delta from its first-frame reference in the joint's LOCAL frame (base times delta, the Unity/Unreal/glTF convention), weight-scaled by slerp from identity. The composition order is pinned by non-commuting-rotation tests that provably fail under the swapped order (verified by temporarily reverting the implementation). Zero-layer and single-full-layer paths are bit-identical to `AnimationPlayer`, cross-implementation tested. Steady state is allocation-free.
+- **One-shot actions:** `PlayAction(clip, mask, fadeIn, fadeOut, speed)` on `LayeredAnimator`, wrapped by `AnimatedCharacter.PlayAction`/`CancelAction`. Actions fade in, play once, fade out overlapping the clip tail, auto-retire, and reuse pooled layer slots without allocation (the pool grows rather than rejecting). Cancel fades from the current weight with no pose pop. Fades are wall-clock seconds independent of `speed` (a x2-speed lifecycle is test-pinned). Overlapping masks compose by layer stack order, documented as not-play-order after slot reuse. Locomotion keeps driving the base layer through the untouched state machine, and a character with no live action takes the exact pre-existing code path. Remote characters play actions through the same API (the game relays its own trigger message, the replication pattern is documented, not imposed).
+- **`AnimationPlayer.GetLocalPoses`:** the crossfade-aware local-pose sampling was extracted so `AnimatedCharacter` can feed the compositor. `GetBonePalette` routes through it with line-verified bit-identical arithmetic on every branch and strictly fewer allocations.
+
 ## 10.30.0
 
 Physics constraints: the joint foundation plus motors and servos, so doors swing, platforms patrol, winches reel, and props dangle. Builds directly on 10.29.0's dynamic bodies. Additive public API, minor bump, solver defaults untouched.

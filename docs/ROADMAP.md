@@ -4,7 +4,7 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **10.30.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **10.31.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan when it is scheduled.
 
@@ -83,9 +83,10 @@ Ordered gap list (2026-07-07 feature audit):
 6. Bloom follow-ups (the LDR threshold + separable-blur bloom shipped in 10.27.0, opt-in via
    `PixelPostProcessSettings.Bloom`): per-game tuning of threshold/intensity defaults once Ruinborne adopts it,
    and a second blur octave only if a game pulls for wider halos. A full HDR/tonemap pipeline is still not planned.
-7. Layered / masked animation blending: the animation stack does clip playback + single crossfade + a locomotion
-   state machine. Upper-body actions over locomotion (attack while running) will be needed by Ruinborne combat,
-   and additive layers / bone masks are the next step. Skeletal IK (foot placement) sits behind it.
+7. Animation follow-ups (layered blending shipped in 10.31.0: `LayeredAnimator` with bone masks, override and
+   local-frame additive layers, and one-shot actions via `PlayAction` on `AnimatedCharacter`): skeletal IK (foot
+   placement) waits for adoption feedback, action-trigger replication stays a game-message pattern, and a
+   per-layer sync-group mechanism (matching walk/run phase across layers) only if combat blending pulls for it.
 8. GPU skinning: skinning is CPU-side (deliberate: a Metal per-instance-attribute bug killed the old GPU path,
    and the dynamic-offset UBO workaround is known). Only worth reopening at MMO crowd scale - measure CPU skinning
    cost with real crowds first, do not build speculatively.

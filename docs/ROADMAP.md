@@ -42,7 +42,8 @@ landed. Goal: make props, trees, and buildings actually look good, not just read
 - Animated-creature adoption (game-side, not engine work): the engine animation stack shipped (glTF
   animation-clip playback, `AnimatedCharacter` + locomotion blend, `ReplicatedCharacterAnimators`). SpaceGame's
   2.5D rigged-creature direction can adopt it directly. Only reopen an engine item here if a concrete new gain
-  surfaces from that adoption (e.g. blend trees, additive layers, or IK the current player can't express).
+  surfaces from that adoption (e.g. blend trees or IK the current player can't express: additive layers and
+  bone masks shipped in 10.31.0's `LayeredAnimator`).
 - Visual fidelity (real Quaternius kit re-ingest with textures on): see Near-term item #2 above.
 
 ## Rendering

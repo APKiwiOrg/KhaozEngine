@@ -11,9 +11,10 @@ namespace KhaozEngine.Render3D
         Override,
 
         /// <summary>Add: the layer contributes its DELTA from a reference frame (its first frame), scaled by
-        /// weight x mask, on top of the base. Rotations compose multiplicatively (delta = sample * inverse(reference),
-        /// applied left of the base); translation/scale-offset add. The mode a stackable modifier uses (an additive
-        /// lean or recoil layered over whatever plays beneath).</summary>
+        /// weight x mask, on top of the base. Rotations compose multiplicatively in the joint's LOCAL frame
+        /// (delta = sample * inverse(reference), applied as base * delta - the Unity/Unreal/glTF-additive convention);
+        /// translation/scale-offset add. The mode a stackable modifier uses (an additive lean or recoil layered over
+        /// whatever plays beneath).</summary>
         Additive,
     }
 
@@ -62,11 +63,13 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>Swap the clip this layer plays. Resets the playhead to 0 (a fresh action starts at its first
-        /// frame) and invalidates the cached additive reference so it re-samples the new clip.</summary>
+        /// frame) and actively clears the cached additive reference so it re-samples the new clip.</summary>
         public void SetClip(AnimationClip clip)
         {
             Clip = clip ?? throw new ArgumentNullException(nameof(clip));
             Time = 0f;
+            _referencePose = null;   // clear the additive reference so ReferencePose re-samples the new clip
+            _referenceClip = null;
         }
 
         /// <summary>Advance this layer's playhead by <c>dt * <see cref="Speed"/></c>, looping within the clip

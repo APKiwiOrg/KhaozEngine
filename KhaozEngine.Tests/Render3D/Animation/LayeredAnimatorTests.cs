@@ -224,6 +224,35 @@ namespace KhaozEngine.Tests.Render3D.Animation
             Assert.Equal(1f, SampleLocals(anim, skel)[0].Translation.X, 4);
         }
 
+        [Fact]
+        public void Override_Mask0Bone_ByteIdenticalToBasePose_WGuardHolds()
+        {
+            // The w <= 0 continue guard must leave a mask-0 node BYTE-identical to the base pose (not a lerp toward it
+            // at weight 0, which could re-normalize and drift a bit). Lock it with exact Matrix4x4 equality.
+            Skeleton skel = Flat3();
+            var baseClip = new AnimationClip("base", 1f, new List<JointTrack>
+            {
+                Track(0, new Vector3(1, 0, 0)), Track(1, new Vector3(1, 0, 0)), Track(2, new Vector3(1, 0, 0)),
+            });
+            // Action poses node 0 (a rotation, so a naive weight-0 lerp/slerp would touch the quaternion), but the mask
+            // is 0 on node 0 -> the guard must skip it entirely and keep node 0's base bytes.
+            var action = PoseClip("action", node: 0, Vector3.Zero,
+                Quaternion.CreateFromAxisAngle(Vector3.UnitZ, 0.9f), Vector3.One);
+            var mask = new BoneMask(new[] { 0f, 1f, 1f });   // node 0 masked OUT
+
+            // Base-only palette (the exact bytes node 0 must retain).
+            var baseOnly = new LayeredAnimator(skel);
+            baseOnly.AddLayer(baseClip, LayerMode.Override);
+            Matrix4x4[] baseBytes = baseOnly.BonePalette();
+
+            var anim = new LayeredAnimator(skel);
+            anim.AddLayer(baseClip, LayerMode.Override);
+            anim.AddLayer(action, LayerMode.Override, mask: mask);
+            Matrix4x4[] withAction = anim.BonePalette();
+
+            Assert.Equal(baseBytes[0], withAction[0]);   // exact bytes: mask-0 node untouched by the upper layer
+        }
+
         // ---- Additive composition (delta from reference, verified against hand-computed pose) ----
 
         [Fact]
@@ -275,11 +304,11 @@ namespace KhaozEngine.Tests.Render3D.Animation
         }
 
         [Fact]
-        public void Additive_RotationDelta_ComposesMultiplicatively_CorrectOrder()
+        public void Additive_RotationDelta_SameAxis_Accumulates()
         {
+            // Same-axis (COMMUTING) case: base 90Y, delta 90Y -> 180Y. This proves the delta accumulates but says
+            // NOTHING about operand order (Y*Y commutes); the local-frame order is pinned by the X/Y test below.
             Skeleton skel = OneBone();
-            // Base rotation: 90deg about Y. Additive clip: reference identity, sample 90deg about Y.
-            // delta = sample * inverse(reference) = 90Y. result = delta * base = 180Y.
             Quaternion baseRot = Quaternion.CreateFromAxisAngle(Vector3.UnitY, MathF.PI / 2f);
             Quaternion sampleRot = Quaternion.CreateFromAxisAngle(Vector3.UnitY, MathF.PI / 2f);
             var baseClip = PoseClip("base", 0, Vector3.Zero, baseRot, Vector3.One);
@@ -305,8 +334,77 @@ namespace KhaozEngine.Tests.Render3D.Animation
             anim2.AddLayer(baseClip, LayerMode.Override);
             AnimationLayer al = anim2.AddLayer(addMoving, LayerMode.Additive);
             al.Time = 1f;
-            Quaternion expected = Quaternion.Normalize(sampleRot * baseRot);   // 180Y
+            Quaternion expected = Quaternion.Normalize(sampleRot * baseRot);   // 180Y (Y*Y commutes, so order is moot)
             Assert.True(QuatClose(SampleLocals(anim2, skel)[0].Rotation, expected, 1e-4f));
+        }
+
+        [Fact]
+        public void Additive_RotationDelta_AppliesInLocalFrame_BaseTimesDelta_NotDeltaTimesBase()
+        {
+            // ORDER PIN with NON-COMMUTING axes: base 90 about X, additive delta 90 about Y, full weight. The
+            // local-frame convention is result = base * delta; delta * base is 120deg away for these rotations, so
+            // this case distinguishes the two unambiguously. (The same-axis test above cannot - Y*Y commutes.)
+            Skeleton skel = OneBone();
+            Quaternion baseRot = Quaternion.CreateFromAxisAngle(Vector3.UnitX, MathF.PI / 2f);   // 90 about X
+            Quaternion deltaRot = Quaternion.CreateFromAxisAngle(Vector3.UnitY, MathF.PI / 2f);   // 90 about Y
+
+            // Additive clip: reference (t=0) identity, sample 90Y at t=1 -> delta = 90Y.
+            var baseClip = PoseClip("base", 0, Vector3.Zero, baseRot, Vector3.One);
+            var add = new AnimationClip("add", 1f, new List<JointTrack>
+            {
+                new JointTrack(0)
+                {
+                    Rotation = new QuaternionTrack(new[] { 0f, 1f },
+                        new[] { Quaternion.Identity, deltaRot }, InterpolationMode.Linear),
+                },
+            });
+
+            var anim = new LayeredAnimator(skel);
+            anim.AddLayer(baseClip, LayerMode.Override);
+            AnimationLayer al = anim.AddLayer(add, LayerMode.Additive);
+            al.Time = 1f;   // full delta
+
+            Quaternion got = SampleLocals(anim, skel)[0].Rotation;
+
+            Quaternion localFrame = Quaternion.Normalize(baseRot * deltaRot);   // the convention we ship
+            Quaternion parentFrame = Quaternion.Normalize(deltaRot * baseRot);  // the rejected order
+
+            Assert.True(QuatClose(got, localFrame, 1e-4f), "additive rotation must compose as base * delta (local frame)");
+            Assert.False(QuatClose(got, parentFrame, 1e-4f), "must NOT compose as delta * base (parent frame)");
+        }
+
+        [Fact]
+        public void Additive_RotationDelta_HalfWeight_AppliesInLocalFrame()
+        {
+            // Half-weight order pin: at w=0.5 the applied delta is Slerp(Identity, delta, 0.5), and it must still
+            // compose on the RIGHT of the base: result = base * Slerp(Identity, delta, 0.5).
+            Skeleton skel = OneBone();
+            Quaternion baseRot = Quaternion.CreateFromAxisAngle(Vector3.UnitX, MathF.PI / 2f);   // 90 about X
+            Quaternion deltaRot = Quaternion.CreateFromAxisAngle(Vector3.UnitY, MathF.PI / 2f);   // 90 about Y
+
+            var baseClip = PoseClip("base", 0, Vector3.Zero, baseRot, Vector3.One);
+            var add = new AnimationClip("add", 1f, new List<JointTrack>
+            {
+                new JointTrack(0)
+                {
+                    Rotation = new QuaternionTrack(new[] { 0f, 1f },
+                        new[] { Quaternion.Identity, deltaRot }, InterpolationMode.Linear),
+                },
+            });
+
+            var anim = new LayeredAnimator(skel);
+            anim.AddLayer(baseClip, LayerMode.Override);
+            AnimationLayer al = anim.AddLayer(add, LayerMode.Additive, weight: 0.5f);
+            al.Time = 1f;   // full delta from the clip, scaled to half by the layer weight
+
+            Quaternion got = SampleLocals(anim, skel)[0].Rotation;
+
+            Quaternion partial = Quaternion.Normalize(Quaternion.Slerp(Quaternion.Identity, deltaRot, 0.5f));
+            Quaternion expected = Quaternion.Normalize(baseRot * partial);
+            Quaternion rejected = Quaternion.Normalize(partial * baseRot);
+
+            Assert.True(QuatClose(got, expected, 1e-4f), "half-weight additive must be base * Slerp(Identity, delta, 0.5)");
+            Assert.False(QuatClose(got, rejected, 1e-4f), "half-weight must NOT be Slerp(...) * base");
         }
 
         // ---- Shortest-arc double-cover pin ----

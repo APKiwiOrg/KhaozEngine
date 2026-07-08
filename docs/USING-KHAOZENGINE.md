@@ -1460,8 +1460,10 @@ its descendants (the torso + arms + head) at `weight`, everything else 0 - the u
 `Override` lerps a masked node from the base toward the layer pose by `weight x mask(node)`; `Additive` applies
 the clip's delta from its **first frame** (the reference), scaled by `weight x mask`, so a recoil/lean clip stacks
 on top of whatever plays beneath. Rotation blending matches the crossfade (shortest-arc `Quaternion.Slerp` then
-re-normalize); additive rotation deltas compose multiplicatively (`delta = sample * inverse(reference)`, applied
-left of the base). **Byte-stable:** zero layers is the rest pose and a single full-weight, unmasked `Override`
+re-normalize); additive rotation deltas compose multiplicatively in the joint's LOCAL frame
+(`delta = sample * inverse(reference)`, applied as `base * delta`, the Unity/Unreal/glTF-additive convention: an
+additive clip is authored as a per-joint delta in the joint's own local space, so an aim offset or attack bends
+the joint relative to its current local pose rather than swinging it around the parent axis). **Byte-stable:** zero layers is the rest pose and a single full-weight, unmasked `Override`
 layer is bit-identical to the single-clip path, so a character that never adds a layer renders exactly as before.
 Steady-state `Update`/`GetBonePalette` allocate nothing.
 

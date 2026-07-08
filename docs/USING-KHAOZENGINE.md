@@ -1184,7 +1184,12 @@ unaffected and order-independent, so they skip the sort. There is nothing to con
     `SkyRenderer`/`GroundDecalRenderer`) into the lit colour + read-only scene depth. Depth test ON (`Less`, so
     terrain/props above the surface occlude it - the "rock poking out of the lake" case) but depth WRITE OFF (so it
     never touches the resolved normal/linear-depth the outline pass reads - a shore-line water edge is desirable, a
-    corrupted outline pass for everything drawn near the water is not). Time is driven by the same
+    corrupted outline pass for everything drawn near the water is not). Compositing order is FIXED, not sorted:
+    water draws over the sky and over ground decals (a decal on a submerged surface is tinted by the water above
+    it, which is the intended look), depth-interleaves with meshes, textured billboards, and beams via the shared
+    depth test, and always sits UNDER the post chain and the post-pass overlay stream (coloured alpha billboards,
+    debug lines, fills), which draw onto the final image after post with depth disabled. Water is not part of the
+    sorted transparent batches. Time is driven by the same
     `Scene3D.EffectTimeSeconds` clock the beam pulse/scroll uses, so freezing it (`EffectTimeSeconds = 0`) gives a
     fully deterministic frame for tests/goldens despite the animated per-pixel wave math.
   - **Shore fade**: samples the resolved scene linear depth (the same `gl_FragCoord` + raw-inverse-view-projection

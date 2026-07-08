@@ -87,6 +87,9 @@ namespace KhaozEngine.Windowing
         /// <summary>The device-pixel rect the UI covers: the full framebuffer (no letterbox), (0, 0, Width*scale, Height*scale).</summary>
         public Rect ContentBounds => new(0, 0, Width * ScaleX, Height * ScaleY);
 
+        /// <summary>Equals <see cref="DesignBounds"/>: point-space UI reflows to fill the window, so there is no bar to cover.</summary>
+        public Rect WindowBounds => DesignBounds;
+
         /// <summary>Map a logical point to device pixels (scale by DPI; no offset).</summary>
         public Vector2 DesignToScreen(Vector2 design) => new(design.X * ScaleX, design.Y * ScaleY);
 

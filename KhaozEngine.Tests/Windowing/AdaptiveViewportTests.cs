@@ -63,6 +63,16 @@ namespace KhaozEngine.Tests.Windowing
         }
 
         [Fact]
+        public void WindowBounds_equals_DesignBounds_because_there_is_no_letterbox()
+        {
+            var vp = new AdaptiveViewport(RW, RH);
+            vp.Update(1000, 820);   // grows the design width, still fills edge-to-edge (offset 0)
+
+            // No bars -> the whole window IS the design space, so WindowBounds reduces to DesignBounds.
+            Assert.Equal(vp.DesignBounds, vp.WindowBounds);
+        }
+
+        [Fact]
         public void Ignores_nonpositive_window_sizes()
         {
             var vp = new AdaptiveViewport(RW, RH);

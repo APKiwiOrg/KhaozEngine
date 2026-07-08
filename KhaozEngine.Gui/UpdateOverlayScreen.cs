@@ -49,5 +49,8 @@ public sealed class UpdateOverlayScreen : Screen
     }
 
     public override void Draw(SpriteBatch batch) =>
-        _view.Draw(batch, _font, _white, new Rect(0, 0, _viewport.Width, _viewport.Height), _status);
+        // WindowBounds, not (0,0,Width,Height): under a letterbox scale the dim scrim must cover the whole
+        // window (bars included), otherwise the game shows through at the edges. The panel stays centred (the
+        // letterbox is symmetric, so WindowBounds shares the design centre).
+        _view.Draw(batch, _font, _white, _viewport.WindowBounds, _status);
 }

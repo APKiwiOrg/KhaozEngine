@@ -62,8 +62,11 @@ namespace KhaozEngine.Gui
         /// </summary>
         public void DrawBackground(SpriteBatch batch, Texture2D white, IDesignViewport viewport)
         {
+            // WindowBounds, not (0,0,Width,Height): under a letterbox scale the design rect stops short of the
+            // window edges, so an opaque full-screen fill sized from the design would leave the bars showing the
+            // screen below. WindowBounds covers the whole window and reduces to the design rect when unletterboxed.
             if (BackgroundColor is { } c)
-                batch.Draw(white, new Vector4(0, 0, viewport.Width, viewport.Height), (Color)c);
+                batch.Draw(white, viewport.WindowBounds, (Color)c);
         }
 
         /// <summary>Request removal; animates out first if <see cref="TransitionOffDuration"/> &gt; 0.</summary>

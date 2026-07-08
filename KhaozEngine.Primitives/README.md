@@ -16,8 +16,11 @@ color anywhere in the engine's public API is the `Color` from here.
 - `ViewportMath` - `Fit` (letterbox) and `Cover` (crop) uniform-scale factors for aspect-preserving fits.
 - `Rect` - axis-aligned pixel rect (top-left origin) with `Contains`, the input hit-testing rect.
 - `IDesignViewport` - the fakeable design-viewport seam (design size, scale + letterbox offset,
-  screen to design mapping) that rendering, layout, and headless tests target. Moved here from
-  Windowing in 9.0.0, which carries the concrete `DesignViewport`.
+  screen to design mapping, and the `DesignBounds`/`ContentBounds`/`WindowBounds` rects) that rendering,
+  layout, and headless tests target. Moved here from Windowing in 9.0.0, which carries the concrete
+  `DesignViewport`. `WindowBounds` (10.38.0) is the whole window mapped into design space - `DesignBounds`
+  plus the letterbox bars - so a full-window fill covers the bars; it is a default-interface-member derived
+  from the scale + offset and reduces to `DesignBounds` when unletterboxed.
 - `ObjectPool<T>` / `IPoolable` - fixed-capacity free-list pool (absorbed from the retired
   `KhaozEngine.Pooling` package in 9.0.0). Items are prewarmed via a factory, `Rent` returns null on
   exhaustion, `Return`/`Clear` call `Reset`, and the active set stays compacted so

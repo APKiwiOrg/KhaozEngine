@@ -5,6 +5,15 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.38.0
+
+Full-window fills (the update overlay's dim scrim, and any `Screen.BackgroundColor`) now cover the letterbox/pillarbox bars instead of stopping at the design edge, via a new `IDesignViewport.WindowBounds`. Additive, no API break, minor bump.
+
+- **`IDesignViewport.WindowBounds` (`KhaozEngine.Primitives`).** New property: the whole window mapped back into design space, i.e. `DesignBounds` plus the letterbox/pillarbox bars around it (its origin goes negative and its size exceeds the design when there is a bar). It reduces exactly to `DesignBounds` when there is no letterbox (zero offset). Added as a **default interface member** derived from the existing scale + offset (`(-OffsetX/ScaleX, -OffsetY/ScaleY, Width + 2·OffsetX/ScaleX, Height + 2·OffsetY/ScaleY)`), so every existing implementer - including consumer test stubs - gets a correct value for free with no source change (a viewport with an *asymmetric* letterbox would override it). The three engine viewports also declare it concretely so it is reachable through a concrete-typed reference, not only through the interface: `DesignViewport` carries the letterbox formula, while `AdaptiveViewport` and `UiViewport` (which always fill edge-to-edge, offset 0) return `DesignBounds`.
+- **`UpdateOverlayScreen.Draw` + `Screen.DrawBackground` (`KhaozEngine.Gui`).** Both sized their fullscreen fill from `IDesignViewport.Width`/`Height` (the design rect), so under `ScaleMode.Fit` at a non-design aspect the letterbox bars stayed unfilled and the screen below showed through at the window edges (visible live on the update overlay's dim scrim). They now fill `WindowBounds`, covering the whole window. The overlay panel stays centred (the centred letterbox is symmetric, so `WindowBounds` shares the design centre) and an unletterboxed viewport is byte-identical to before (`WindowBounds == DesignBounds`).
+- **Tests.** New `DesignViewportTests` cases assert `WindowBounds`' corners map back to the whole window under Fit/Fill/Stretch, that it equals `DesignBounds` with no bars, and that it extends past the design by exactly the bar size under a letterbox; `AdaptiveViewportTests`/`UiViewportTests` pin `WindowBounds == DesignBounds` for the no-letterbox viewports.
+- **Consumer note (games).** Re-pin to adopt. A game that hand-rolled a full-window rect to fill the bars (e.g. Ruinborne's `MenuScrim.FullWindowRect`, which derived `(-OffsetX/ScaleX, -OffsetY/ScaleY, Width + 2·barX, Height + 2·barY)` from the viewport) can delete it and use `viewport.WindowBounds`. No forced change: existing code compiles and, when unletterboxed, renders identically.
+
 ## 10.37.1
 
 Fixed: the sharded authoritative server dropped the surface-swim flag, so `MovementState.Swimming` was stuck at its dry-land spawn value for every player on a `ShardedWorldServer`.

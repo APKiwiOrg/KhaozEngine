@@ -64,6 +64,9 @@ namespace KhaozEngine.Windowing
         /// <summary>The window-pixel rect the design space is drawn into (the whole window; no letterbox bars).</summary>
         public Rect ContentBounds => new(0, 0, Width * ScaleX, Height * ScaleY);
 
+        /// <summary>Equals <see cref="DesignBounds"/>: the design fills the window edge-to-edge, so there is no bar to cover.</summary>
+        public Rect WindowBounds => DesignBounds;
+
         public Vector2 DesignToScreen(Vector2 design) => new(design.X * ScaleX, design.Y * ScaleY);
         public Vector2 ScreenToDesign(Vector2 screen) => new(screen.X / ScaleX, screen.Y / ScaleY);
 

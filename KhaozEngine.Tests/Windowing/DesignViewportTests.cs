@@ -103,6 +103,51 @@ namespace KhaozEngine.Tests.Windowing
             Assert.Equal(600f, screen.Y, 2);   // window center
         }
 
+        [Theory]
+        [InlineData(ScaleMode.Fit, 1920, 1200)]    // letterbox: bars top/bottom
+        [InlineData(ScaleMode.Fit, 2400, 1080)]    // pillarbox: bars left/right
+        [InlineData(ScaleMode.Fill, 2400, 1080)]   // crop (offset negative)
+        [InlineData(ScaleMode.Stretch, 1000, 1000)]
+        public void WindowBounds_CornersMapToTheWholeWindow(ScaleMode mode, int windowW, int windowH)
+        {
+            var vp = new DesignViewport(DW, DH, mode);
+            vp.Update(windowW, windowH);
+            Rect wb = vp.WindowBounds;
+
+            // WindowBounds is exactly the window expressed in design space: its corners map back to (0,0) and
+            // (windowW, windowH). This is what makes a fill of it cover the whole window under any scale mode.
+            var tl = vp.DesignToScreen(new Vector2(wb.X, wb.Y));
+            var br = vp.DesignToScreen(new Vector2(wb.Right, wb.Bottom));
+
+            Assert.Equal(0f, tl.X, 2);
+            Assert.Equal(0f, tl.Y, 2);
+            Assert.Equal(windowW, br.X, 2);
+            Assert.Equal(windowH, br.Y, 2);
+        }
+
+        [Fact]
+        public void WindowBounds_NoLetterbox_EqualsDesignBounds()
+        {
+            var vp = new DesignViewport(DW, DH, ScaleMode.Fit);
+            vp.Update(1920, 1080);   // same aspect -> no bars
+
+            Assert.Equal(vp.DesignBounds, vp.WindowBounds);
+        }
+
+        [Fact]
+        public void WindowBounds_Letterbox_ExtendsPastDesignBoundsByTheBars()
+        {
+            var vp = new DesignViewport(DW, DH, ScaleMode.Fit);
+            vp.Update(1920, 1200);   // 16:10 window, scale 2 -> 60px bar top & bottom = 30 design units each
+
+            Rect wb = vp.WindowBounds;
+
+            Assert.Equal(0f, wb.X, 3);            // no horizontal bar
+            Assert.Equal(-30f, wb.Y, 3);          // design origin sits 30 units below the window top
+            Assert.Equal(DW, wb.Width, 3);
+            Assert.Equal(DH + 60f, wb.Height, 3); // design height plus a 30-unit bar each side
+        }
+
         [Fact]
         public void GetClipProjection_MapsDesignCornersToClipSpace()
         {

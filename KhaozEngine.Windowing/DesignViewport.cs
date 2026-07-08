@@ -68,6 +68,16 @@ namespace KhaozEngine.Windowing
         /// <summary>The window-pixel rect the design space is drawn into (excludes letterbox bars).</summary>
         public Rect ContentBounds => new(OffsetX, OffsetY, Width * ScaleX, Height * ScaleY);
 
+        /// <summary>
+        /// The whole window mapped back into design space: <see cref="DesignBounds"/> plus the letterbox/pillarbox
+        /// bars. Fill this (not <see cref="Width"/>/<see cref="Height"/>) for a full-window scrim/background under
+        /// <see cref="ScaleMode.Fit"/>, so the bars do not show the screen below. Reduces to <see cref="DesignBounds"/>
+        /// when there is no bar. Matches <see cref="IDesignViewport.WindowBounds"/> (the centred letterbox is symmetric).
+        /// </summary>
+        public Rect WindowBounds =>
+            new(-OffsetX / ScaleX, -OffsetY / ScaleY,
+                Width + 2f * OffsetX / ScaleX, Height + 2f * OffsetY / ScaleY);
+
         public Vector2 DesignToScreen(Vector2 design) =>
             new(design.X * ScaleX + OffsetX, design.Y * ScaleY + OffsetY);
 

@@ -39,6 +39,19 @@ namespace KhaozEngine.Primitives
         /// <summary>Window-pixel rect the design space is drawn into (excludes letterbox bars).</summary>
         Rect ContentBounds { get; }
 
+        /// <summary>
+        /// The whole window mapped back into design space: <see cref="DesignBounds"/> plus the letterbox/pillarbox
+        /// bars around it. Under a fit-style scale the design rect sits inset with bars, so a fullscreen fill sized
+        /// from <see cref="Width"/>/<see cref="Height"/> stops at the design edge and the window bars show the screen
+        /// below; fill this rect instead to cover the whole window (its origin is negative and its size exceeds the
+        /// design when there is a bar). Reduces exactly to <see cref="DesignBounds"/> when there is no letterbox
+        /// (zero offset). Derived from the scale + offset, so every implementer gets it for free; a viewport with an
+        /// asymmetric letterbox must override it.
+        /// </summary>
+        Rect WindowBounds =>
+            new(-OffsetX / ScaleX, -OffsetY / ScaleY,
+                Width + 2f * OffsetX / ScaleX, Height + 2f * OffsetY / ScaleY);
+
         /// <summary>Map a design-space point to window pixels.</summary>
         Vector2 DesignToScreen(Vector2 design);
         /// <summary>Map a window-pixel point to design space (for hit-testing).</summary>

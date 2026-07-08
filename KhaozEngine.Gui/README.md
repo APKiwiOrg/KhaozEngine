@@ -90,6 +90,9 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
 - `UpdateOverlayView` / `UpdateOverlayScreen` (+ `UpdateOverlayTheme`) - the in-game auto-updater popup, a pure
   presenter over `KhaozEngine.Updates`' `IUpdateStatus`: it announces an available update, shows download
   progress, and prompts the restart-and-apply, driven by the theme's trigger key/button (default U / gamepad Y).
+  Its dim scrim (like any opaque `Screen.BackgroundColor` via `Screen.DrawBackground`) fills the viewport's
+  `WindowBounds`, so under a letterbox scale it covers the whole window instead of leaving the bars showing the
+  screen below (10.38.0).
   `UpdateOverlayTheme` injects the palette, layout, trigger binding, and the per-state title/body text. The
   default `TitleFor`/`BodyFor` are **localization-aware**: each line resolves through the ambient
   `LocalizationContext.Catalog` (`KhaozEngine.App`) against the engine-owned `UpdateOverlayStrings` keys

@@ -83,6 +83,15 @@ namespace KhaozEngine.Tests.Windowing
         }
 
         [Fact]
+        public void WindowBounds_equals_DesignBounds_because_point_space_is_not_letterboxed()
+        {
+            var vp = new UiViewport(2048, 1280, 1024, 640);
+
+            // Point-space UI reflows to fill the window (offset 0), so WindowBounds is just the logical area.
+            Assert.Equal(vp.DesignBounds, vp.WindowBounds);
+        }
+
+        [Fact]
         public void NonPositive_size_is_ignored()
         {
             var vp = new UiViewport(2048, 1280, 1024, 640);

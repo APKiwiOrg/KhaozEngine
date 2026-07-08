@@ -531,7 +531,11 @@ here localizes.
 - `Rect(X, Y, Width, Height)` is the engine's rectangle (`Right`/`Bottom`/`Contains(Vector2)`).
 - `IDesignViewport` (impls: `DesignViewport` letterbox/fill/stretch, `AdaptiveViewport` responsive) maps between
   design space and screen pixels (`DesignToScreen`/`ScreenToDesign`, `GetClipProjection`). `GameApp` owns one
-  and passes it into `Pointer.Update`, so design-space coordinates and hit-tests line up.
+  and passes it into `Pointer.Update`, so design-space coordinates and hit-tests line up. Rects: `DesignBounds`
+  (the design rect), `ContentBounds` (the on-screen content rect, excludes bars), and `WindowBounds` (10.38.0:
+  the whole window in design space = design rect + letterbox bars). Fill `WindowBounds`, not `Width`/`Height`,
+  for a full-window scrim or opaque `Screen` background so the letterbox bars are covered instead of showing the
+  screen below (it reduces to `DesignBounds` when unletterboxed).
 - `GameClock`: `TimeScale`, `Pause()`/`Resume()`, `RealDeltaSeconds`/`ScaledDeltaSeconds`,
   `RealWallGapSeconds`/`LastRealTimestamp` (the suspend-robust wall-clock gap that drives `GameApp.OnResume`),
   `Paused`/`Resumed` events. `GameApp.Clock` is updated for you each frame.

@@ -126,6 +126,13 @@ to `false`: `DesignViewport` / `AdaptiveViewport` inherit `false`, and `UiViewpo
 reads the flag through the seam to confine device-pixel snapping to the point-space path, so no new dependency
 edge is introduced (`Render2D` already depends on `Primitives`).
 
+The seam also carries `WindowBounds` (10.38.0), a default-interface-member giving the whole window mapped into
+design space (`DesignBounds` plus the letterbox bars). It is derived from the existing scale + offset, so it needs
+no new seam data and every implementer - including consumer test stubs - gets it for free; the three engine
+viewports override it concretely (`DesignViewport` with the letterbox formula, `AdaptiveViewport` / `UiViewport`
+returning `DesignBounds` since they never letterbox). `KhaozEngine.Gui` reads it to fill full-window scrims /
+backgrounds through the same seam, no new edge.
+
 ## Three flavours of the same idea
 
 The pattern is applied at the granularity the dependency warrants:

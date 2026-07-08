@@ -11,8 +11,8 @@ namespace KhaozEngine.Game
 
     /// <summary>Speed thresholds (m/s) that split idle/walk/run and, while swimming, tread/forward-swim.
     /// <see cref="WalkSpeed"/> is the dead-zone above which the character is considered moving; at or above
-    /// <see cref="RunSpeed"/> it runs. <see cref="SwimSpeed"/> is the dead-zone above which a swimming character
-    /// swims forward (<see cref="LocomotionState.Swim"/>) instead of treading water (<see cref="LocomotionState.SwimIdle"/>).
+    /// <see cref="RunSpeed"/> it runs. <see cref="SwimForwardThreshold"/> is the dead-zone above which a swimming
+    /// character swims forward (<see cref="LocomotionState.Swim"/>) instead of treading water (<see cref="LocomotionState.SwimIdle"/>).
     /// Defaults match the CharacterController3D walk/run feel (walk ~3, run ~6) and a gentle swim dead-zone.</summary>
     public struct LocomotionThresholds
     {
@@ -21,33 +21,35 @@ namespace KhaozEngine.Game
 
         /// <summary>Planar speed (m/s) above which a swimming character plays the forward <see cref="LocomotionState.Swim"/>
         /// clip instead of the tread <see cref="LocomotionState.SwimIdle"/> clip. A single dead-zone (no fast/slow split:
-        /// swim has one forward clip, speed-synced) mirroring how <see cref="WalkSpeed"/> gates Idle vs Walk.</summary>
-        public float SwimSpeed;
+        /// swim has one forward clip, speed-synced) mirroring how <see cref="WalkSpeed"/> gates Idle vs Walk. This is the
+        /// ANIMATION tread-vs-forward dead-zone (default 0.1), NOT the swim travel speed - that is the separate
+        /// <c>MoveTuning.SwimSpeed</c> (2.5 m/s) in KhaozEngine.Locomotion.</summary>
+        public float SwimForwardThreshold;
 
         public LocomotionThresholds(float walkSpeed, float runSpeed)
-            : this(walkSpeed, runSpeed, DefaultSwimSpeed)
+            : this(walkSpeed, runSpeed, DefaultSwimForwardThreshold)
         {
         }
 
-        public LocomotionThresholds(float walkSpeed, float runSpeed, float swimSpeed)
+        public LocomotionThresholds(float walkSpeed, float runSpeed, float swimForwardThreshold)
         {
             WalkSpeed = walkSpeed;
             RunSpeed = runSpeed;
-            SwimSpeed = swimSpeed;
+            SwimForwardThreshold = swimForwardThreshold;
         }
 
-        /// <summary>Default swim dead-zone (m/s): tread below, swim forward at/above. 0.1 matches the walk dead-zone
-        /// so a near-zero residual planar speed treads water rather than flickering into the forward stroke.</summary>
-        public const float DefaultSwimSpeed = 0.1f;
+        /// <summary>Default swim-forward dead-zone (m/s): tread below, swim forward at/above. 0.1 matches the walk
+        /// dead-zone so a near-zero residual planar speed treads water rather than flickering into the forward stroke.</summary>
+        public const float DefaultSwimForwardThreshold = 0.1f;
 
         /// <summary>Walk above 0.1 m/s (a small dead-zone so a near-zero residual speed stays Idle), run at/above
         /// 4.5 m/s (between the default 3 m/s walk and 6 m/s run speeds); swim forward above 0.1 m/s.</summary>
-        public static LocomotionThresholds Default => new LocomotionThresholds(0.1f, 4.5f, DefaultSwimSpeed);
+        public static LocomotionThresholds Default => new LocomotionThresholds(0.1f, 4.5f, DefaultSwimForwardThreshold);
     }
 
     /// <summary>Maps a character's movement state to its locomotion clip. Swim wins over both ground and air (a
     /// swimming character is neither walking nor falling): while the swim flag is set the character swims forward
-    /// (<see cref="LocomotionState.Swim"/>) above <see cref="LocomotionThresholds.SwimSpeed"/> or treads water
+    /// (<see cref="LocomotionState.Swim"/>) above <see cref="LocomotionThresholds.SwimForwardThreshold"/> or treads water
     /// (<see cref="LocomotionState.SwimIdle"/>) below it, regardless of grounded/vertical. Otherwise air state wins
     /// over ground speed: while airborne the character jumps (rising) or falls (descending), regardless of horizontal
     /// speed. Pure + headless; the crossfade between successive states is the
@@ -62,7 +64,7 @@ namespace KhaozEngine.Game
 
         public static LocomotionState Evaluate(float horizontalSpeed, bool grounded, float verticalVelocity, bool swimming, LocomotionThresholds thresholds)
         {
-            if (swimming) return horizontalSpeed >= thresholds.SwimSpeed ? LocomotionState.Swim : LocomotionState.SwimIdle;
+            if (swimming) return horizontalSpeed >= thresholds.SwimForwardThreshold ? LocomotionState.Swim : LocomotionState.SwimIdle;
             if (!grounded) return verticalVelocity > 0f ? LocomotionState.Jump : LocomotionState.Fall;
             if (horizontalSpeed >= thresholds.RunSpeed) return LocomotionState.Run;
             if (horizontalSpeed >= thresholds.WalkSpeed) return LocomotionState.Walk;

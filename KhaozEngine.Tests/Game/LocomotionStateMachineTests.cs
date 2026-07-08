@@ -62,7 +62,7 @@ namespace KhaozEngine.Tests.Game
         [Fact]
         public void Swimming_Still_IsSwimIdle()
         {
-            // Swimming with near-zero planar speed (below the SwimSpeed dead-zone) -> tread water.
+            // Swimming with near-zero planar speed (below the SwimForwardThreshold dead-zone) -> tread water.
             Assert.Equal(LocomotionState.SwimIdle,
                 LocomotionStateMachine.Evaluate(0f, grounded: false, verticalVelocity: 0f, swimming: true, T));
         }
@@ -70,20 +70,20 @@ namespace KhaozEngine.Tests.Game
         [Fact]
         public void Swimming_Moving_IsSwim()
         {
-            // Swimming above the SwimSpeed dead-zone -> forward stroke.
+            // Swimming above the SwimForwardThreshold dead-zone -> forward stroke.
             Assert.Equal(LocomotionState.Swim,
                 LocomotionStateMachine.Evaluate(2f, grounded: false, verticalVelocity: 0f, swimming: true, T));
         }
 
         [Fact]
-        public void Swimming_AtSwimSpeedBoundary_IsSwim()
+        public void Swimming_AtSwimForwardThresholdBoundary_IsSwim()
         {
-            // The boundary is inclusive (>=), mirroring the Walk/Run thresholds: exactly at SwimSpeed -> Swim.
+            // The boundary is inclusive (>=), mirroring the Walk/Run thresholds: exactly at SwimForwardThreshold -> Swim.
             Assert.Equal(LocomotionState.Swim,
-                LocomotionStateMachine.Evaluate(T.SwimSpeed, grounded: false, verticalVelocity: 0f, swimming: true, T));
+                LocomotionStateMachine.Evaluate(T.SwimForwardThreshold, grounded: false, verticalVelocity: 0f, swimming: true, T));
             // Just below -> tread.
             Assert.Equal(LocomotionState.SwimIdle,
-                LocomotionStateMachine.Evaluate(T.SwimSpeed - 1e-4f, grounded: false, verticalVelocity: 0f, swimming: true, T));
+                LocomotionStateMachine.Evaluate(T.SwimForwardThreshold - 1e-4f, grounded: false, verticalVelocity: 0f, swimming: true, T));
         }
 
         [Fact]

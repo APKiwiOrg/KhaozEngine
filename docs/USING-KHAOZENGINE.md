@@ -1326,7 +1326,7 @@ scene.DrawSkinned(handle, character.Pose, model, Color.White);   // model places
 
 `AnimatedCharacter` picks the clip via `LocomotionStateMachine.Evaluate` (speed picks idle/walk/run;
 while airborne the air state wins - rising = `Jump`, otherwise `Fall`; while the **swim flag** is set the
-water state wins over both - forward `Swim` above `LocomotionThresholds.SwimSpeed`, else the tread `SwimIdle`)
+water state wins over both - forward `Swim` above `LocomotionThresholds.SwimForwardThreshold`, else the tread `SwimIdle`)
 and crossfades between clips (per-joint TRS blend, composed once). A movement state with no clip in the map
 falls back to `Idle` (then to the first clip), so a partial clip set never throws - a consumer that has not
 yet baked the water clips degrades to `Idle` while swimming rather than crashing.
@@ -1878,8 +1878,9 @@ While swimming:
 
 - **gravity and ground-snap are suspended**; instead the capsule **settles to a buoyancy waterline** so
   `MoveTuning.SwimSurfaceSubmersionFraction` of the body (default 0.6) sits submerged, via an exact analytic
-  **critically-damped** approach at `MoveTuning.SwimBuoyancyStiffness` (default 8) - unconditionally stable, never
-  oscillates or overshoots for any dt. The terrain floor still holds (no sinking through a shallow lakebed).
+  **critically-damped** approach at `MoveTuning.SwimBuoyancyStiffness` (default 8) - unconditionally stable for any dt
+  (no oscillation, at most a single bounded settle dip under adverse entry velocity). The terrain floor still holds
+  (no sinking through a shallow lakebed).
 - horizontal travel is `MoveTuning.SwimSpeed` (default 2.5 m/s, run has no effect), the medium's `WadeSpeedScale`
   still composing on top (a swamp/current zone drags a swim).
 - **jump is a hop-out, near-shore only**: a jump pressed while swimming fires the ordinary jump launch and drops
@@ -1895,7 +1896,7 @@ enter/exit decision for callers that predict or echo it. A **null provider never
 to a land character.
 
 **Animation.** The swim flag drives the locomotion state machine (see the skinned-character section): while set,
-`AnimatedCharacter` plays the forward `Swim` clip (speed-blended above `LocomotionThresholds.SwimSpeed`) or the
+`AnimatedCharacter` plays the forward `Swim` clip (speed-blended above `LocomotionThresholds.SwimForwardThreshold`) or the
 tread `SwimIdle` clip below it, threaded from `MoveState.Swimming` / the replicated `MovementState.Swimming` -
 never a water query of the animator's own. Remotes ride the same replicated bit via `EntityRenderState.Swimming`
 -> `CharacterSample.Swimming`. Consumers bake two clips named `Swim` and `SwimIdle`; a rig without them degrades

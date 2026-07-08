@@ -39,7 +39,7 @@ of spinning to chase it. See `docs/USING-KHAOZENGINE.md`.
 ### Locomotion states + clips
 
 `LocomotionState` = `Idle`/`Walk`/`Run` (ground, by speed), `Jump`/`Fall` (air, by vertical sign), and
-`SwimIdle`/`Swim` (water: tread below `LocomotionThresholds.SwimSpeed`, forward stroke above). Swim wins over both
+`SwimIdle`/`Swim` (water: tread below `LocomotionThresholds.SwimForwardThreshold`, forward stroke above). Swim wins over both
 ground and air when the swim flag is set. The enum names match the clip names a consumer bakes (name-based mapping),
 so the two water clips are named `Swim` and `SwimIdle`; a rig without them degrades to `Idle` while swimming rather
 than crashing. The forward `Swim` clip speed-syncs (pass its authored move speed as `LocomotionSpeedSync` `swimClipSpeed`

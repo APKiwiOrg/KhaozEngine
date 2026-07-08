@@ -328,8 +328,9 @@ public static class CharacterMovement
         float targetFeetY = medium.WaterSurfaceY - t.SwimSurfaceSubmersionFraction * bodyHeight;
         float targetY = targetFeetY + halfH;
 
-        // Critically-damped settle to targetY. EXACT analytic solution over dt (never overshoots, never blows up for
-        // any dt/stiffness): y(dt) = target + (A + B*dt) e^{-w dt}, with A = y0 - target, B = v0 + w*A. VerticalVelocity
+        // Critically-damped settle to targetY. EXACT analytic solution over dt (no oscillation, never blows up for
+        // any dt/stiffness; from rest it is monotone, and an adverse entry velocity yields at most a single bounded
+        // settle dip past the target): y(dt) = target + (A + B*dt) e^{-w dt}, with A = y0 - target, B = v0 + w*A. VerticalVelocity
         // is repurposed as the settle velocity (gravity is off while swimming), so an entry fall/jump velocity bleeds
         // out through the same damping instead of a snap.
         float w = t.SwimBuoyancyStiffness;
@@ -356,6 +357,8 @@ public static class CharacterMovement
         float vVel = v;
         if (cmd.Jump)
         {
+            // Deliberately reads the POST-settle feet (y - halfH from the settled y above), not the step-start feetY the
+            // enter/exit hysteresis uses: near-shore reflects where the body ended up resting this tick, not where it began.
             float depthFraction = bodyHeight > 1e-6f ? (medium.WaterSurfaceY - (y - halfH)) / bodyHeight : t.SwimEnterDepthFraction;
             if (depthFraction <= t.SwimExitDepthFraction)
             {

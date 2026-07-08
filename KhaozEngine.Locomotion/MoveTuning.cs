@@ -120,6 +120,7 @@ public readonly record struct MoveTuning(
     /// <summary>Buoyancy settle stiffness (rad/s): the angular frequency of the critically-damped approach that
     /// eases the swimming capsule to its <see cref="SwimSurfaceSubmersionFraction"/> waterline. Default 8. The step
     /// uses the EXACT analytic critically-damped solution over the tick, so any stiffness is unconditionally stable
-    /// and never oscillates or blows up regardless of dt; larger = a snappier settle, smaller = a lazier bob.</summary>
+    /// regardless of dt (no oscillation, at most a single bounded settle dip under adverse entry velocity); larger =
+    /// a snappier settle, smaller = a lazier bob.</summary>
     public float SwimBuoyancyStiffness { get; init; } = SwimBuoyancyStiffness;
 }

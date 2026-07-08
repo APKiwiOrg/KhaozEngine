@@ -22,18 +22,11 @@ BufferPool-health churn assertion if Bepu ever exposes cheap introspection.
 
 ### 2. Visual fidelity (textures + materials)
 
-The terrain now renders PBR splat textures. Props can now carry albedo/normal/roughness surface detail too
-(`PropLoader.LoadPropWithMaterial` reads a prop glTF's textures, opt-in via the `textured` manifest flag, and a
-prop with no textures still degrades to the flat render). Goal: make props, trees, and buildings actually look
-good, not just read as shapes.
+Terrain PBR splat and per-prop albedo/normal/roughness materials (`PropLoader.LoadPropWithMaterial`) have
+landed. Goal: make props, trees, and buildings actually look good, not just read as shapes.
 
-- ~~Textured props~~ landed: `PropLoader.LoadPropWithMaterial` reads a prop's baseColor/normal/roughness
-  textures instead of flattening them to a base-colour factor. `MeshOps.WithTangents` gives a UV-mapped
-  primitive mesh a tangent basis so normal maps take effect, and `PropMaterialPresets.Procedural` generates an
-  asset-free mossy-stone albedo+normal for samples and tests. Remaining: real Quaternius kit re-ingest with
-  textures on (today's samples use the procedural preset or opt in per-asset), and multi-texture-per-primitive.
-- Water shipped in 10.28.0 (`Scene3D.DrawWater`): remaining polish tracked under Rendering follow-ups below.
-- Lighting polish: pairs with shadows (see Rendering) + an HDRI/sky direction for a cohesive look.
+- Real Quaternius kit re-ingest with textures on (today's samples use the `PropMaterialPresets.Procedural`
+  preset or opt in per-asset via the `textured` manifest flag), plus multi-texture-per-primitive support.
 - CC0-asset-friendly throughout (ambientCG terrain textures, the kit textures), no new heavy dependencies.
 
 ## Netcode / MMO refinements
@@ -49,8 +42,9 @@ good, not just read as shapes.
 - Animated-creature adoption (game-side, not engine work): the engine animation stack shipped (glTF
   animation-clip playback, `AnimatedCharacter` + locomotion blend, `ReplicatedCharacterAnimators`). SpaceGame's
   2.5D rigged-creature direction can adopt it directly. Only reopen an engine item here if a concrete new gain
-  surfaces from that adoption (e.g. blend trees, additive layers, or IK the current player can't express).
-- Visual fidelity (textured props, water): see Near-term item #2 above.
+  surfaces from that adoption (e.g. blend trees or IK the current player can't express: additive layers and
+  bone masks shipped in 10.31.0's `LayeredAnimator`).
+- Visual fidelity (real Quaternius kit re-ingest with textures on): see Near-term item #2 above.
 
 ## Rendering
 

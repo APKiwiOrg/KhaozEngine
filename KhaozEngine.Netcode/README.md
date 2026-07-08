@@ -57,9 +57,11 @@ not only a steady/matching one (whose delta is zero, so behaviour there is uncha
 shake: when the local player stops, the authority is an input-RTT behind and its basis dips backward for a tick or
 two before catching up; pinning `previous` let the inter-tick lerp drag the render backward toward the dipped target.
 Translating the segment gives it zero velocity for a stopped player, so the transient dip lives entirely in the
-render offset. That offset now decays with a **critically-damped** (velocity-carrying) filter (planar axis; vertical
-stays first-order), whose inertia holds the render steady through the transient instead of chasing it, turning a
-sharp reversal into a sub-dead-zone sag.
+render offset. That offset now decays with a **critically-damped** (velocity-carrying) filter on **both axes**
+(planar since 10.7.0, vertical since 10.33.0), whose inertia holds the render steady through the transient instead of
+chasing it, turning a sharp reversal into a sub-dead-zone sag. The vertical axis took the same filter because the
+surface-swim buoyancy spring emits a continuous stream of small vertical corrections that a first-order decay chased
+into a fast, jerky camera bob.
 
 `PredictedHorizontalSpeed` is the local player's planar (ground-plane) speed in units/sec, recomputed each
 `Predict` from the per-tick position delta over `TickSeconds` (`IPredictedState.Position` is planar, so it is

@@ -201,7 +201,10 @@ the window where it is. All placement math is pure and headless-tested in `Windo
 (`WorldClientConfig.InterpolationDelayTicks`, default 2) - a timestamped snapshot buffer lerped by true timestamps,
 so remotes glide with no holds or catch-up snaps at any render:tick ratio - and the local predicted avatar is
 C1-continuous across reconciliation, including across velocity transitions (10.7.0 removed the decel-to-stop shake
-where a backward-dipping authority basis dragged the render back). For debugging movement smoothness set `WorldClientConfig.PresentationTraceEnabled`
+where a backward-dipping authority basis dragged the render back). The reconciliation render offset is
+critically-damped on BOTH the planar and the vertical axes (vertical since 10.33.0), so the surface-swim buoyancy
+spring's continuous stream of small vertical corrections eases with inertia instead of jerking the camera bob.
+For debugging movement smoothness set `WorldClientConfig.PresentationTraceEnabled`
 and dump `WorldClient.PresentationTrace.WriteCsv(path)` (render time, delay, seconds-since-snapshot, per-remote hold
 flag, snapshot arrivals, local reconcile-error, rendered positions).
 
@@ -1375,11 +1378,16 @@ var animators = new ReplicatedCharacterAnimators(skeleton, clips, CharacterAnima
 // "falling". Swim is exact-only: a swimmer glides horizontally like a walker, so position cannot tell them apart.
 var samples = new List<CharacterSample>();
 foreach (EntityRenderState e in client.Snapshot())
+{
+    // Anchor the sample at the FEET (capsule centre minus its half-height on Y) so the model's feet sit on the
+    // ground rather than its waist - EntityRenderState.Position is the capsule centre. Use your own capsule half-height.
+    var feet = new Vector3(e.Position.X, e.Position.Y - capsuleHalfHeight, e.Position.Z);
     samples.Add(e.IsLocal
         // Local player: also pass the EXACT planar speed so idle/walk/run is driven off the clean commanded
         // speed, not finite-differenced from the render position (no walk<->idle flicker on a decel-to-stop).
-        ? new CharacterSample(e.Id.Value, e.Position, isLocal: true, e.Grounded, e.VerticalVelocity, client.LocalHorizontalSpeed, e.Swimming)
-        : new CharacterSample(e.Id.Value, e.Position, e.IsLocal, e.Grounded, e.VerticalVelocity, e.Swimming));
+        ? new CharacterSample(e.Id.Value, feet, isLocal: true, e.Grounded, e.VerticalVelocity, client.LocalHorizontalSpeed, e.Swimming)
+        : new CharacterSample(e.Id.Value, feet, e.IsLocal, e.Grounded, e.VerticalVelocity, e.Swimming));
+}
 animators.Update(samples, dt);
 
 // Draw: World already places + faces + scales the avatar (Scale + FacingYawOffset live on the tuning).

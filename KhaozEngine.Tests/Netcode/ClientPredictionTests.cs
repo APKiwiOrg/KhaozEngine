@@ -1,4 +1,5 @@
 using KhaozEngine.Netcode;
+using System;
 using System.Numerics;
 using Xunit;
 
@@ -239,6 +240,48 @@ public class ClientPredictionTests
 
         for (int i = 0; i < 300; i++) p.AdvancePresentation(Tick);
         Assert.Equal(1f, p.RenderedState.Height, 2);                 // converged to the predicted height
+    }
+
+    [Fact]
+    public void Sustained_stream_of_small_vertical_corrections_eases_with_inertia_not_a_first_order_chase()
+    {
+        // The surface-swim / buoyancy profile. The buoyancy spring emits a CONTINUOUS stream of small vertical
+        // reconciliation corrections (unlike the one-off jump/fall the other vertical tests cover). A plain
+        // first-order (exponential) vertical decay chases each correction immediately - a fast, jerky camera bob for
+        // any consumer that follows RenderedState's vertical. Mirroring the planar axis (10.7.0), the vertical offset
+        // now decays with the critically-damped, velocity-carrying filter, and its smoothing velocity resets on each
+        // re-anchor, so the first presentation frame after EVERY correction is the from-rest (inertial) response:
+        // it barely moves, well under the first-order per-frame fraction. A first-order decay would move the full
+        // CorrectionRate*dt fraction on that first frame, so this asserts the inertia is present throughout the stream.
+        var settings = PredictionSettings.Default;
+        var p = NewV3(settings);
+        float firstOrderFrac = settings.CorrectionRate * Tick; // fraction a first-order decay moves toward target in one frame
+        const float swing = 0.1f;                              // 10 cm buoyancy jitter, comfortably above the 0.03 dead-zone
+        float target = 0f;
+
+        for (int i = 0; i < 30; i++)
+        {
+            target = (i % 2 == 0) ? swing : -swing; // predicted rebases to the alternating basis (spring overshoot each way)
+            float renderBefore = p.RenderedState.Height;
+            p.Reconcile(i, new V3State(Vector2.Zero, target), lastAcknowledgedSeq: -1); // no pending -> predicted := basis
+            Assert.Equal(target, p.PredictedState.Height, 5);       // predicted followed the authoritative basis
+            Assert.Equal(renderBefore, p.RenderedState.Height, 5);  // continuity: no pop at the correction
+
+            float gap = MathF.Abs(target - renderBefore);
+            p.AdvancePresentation(Tick);                            // one presentation frame after the correction
+            float firstStep = MathF.Abs(p.RenderedState.Height - renderBefore);
+            Assert.True(firstStep < 0.5f * firstOrderFrac * gap,
+                $"correction {i}: render lurched {firstStep} in one frame (first-order would move ~{firstOrderFrac * gap}); " +
+                "the critically-damped vertical offset should ease with inertia, not chase");
+
+            for (int f = 0; f < 3; f++) p.AdvancePresentation(Tick); // let the decay progress before the next correction
+        }
+
+        // Sustained resolution: hold the basis steady - the offset must still fully converge to the predicted height
+        // (inertia slows the start but a sustained correction resolves, unlike a hard "never move back" clamp).
+        p.Reconcile(999, new V3State(Vector2.Zero, target), lastAcknowledgedSeq: -1);
+        for (int i = 0; i < 600; i++) p.AdvancePresentation(Tick);
+        Assert.Equal(target, p.RenderedState.Height, 3);
     }
 
     [Fact]

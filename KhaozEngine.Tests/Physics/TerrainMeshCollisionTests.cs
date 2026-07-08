@@ -170,6 +170,10 @@ public class TerrainMeshCollisionTests
         // Register a terrain chunk mesh, verify a ray hits it, remove it, verify the ray misses - many times.
         // This exercises the Bepu Mesh BufferPool ownership: RemoveStatic -> RecursivelyRemoveAndDispose returns
         // the triangle buffer each cycle, so thousands of streaming cycles do not grow the pool.
+        // (A direct pool-size assertion would be better, but BepuUtilities 2.4.0's BufferPool exposes no cheap
+        // block/allocated-byte count - only AssertEmpty/Clear/Take/Return - and the live Simulation holds its own
+        // permanent buffers in the same pool, so AssertEmpty cannot be used to bound just the shape churn. The
+        // ray hit-then-miss per cycle is the available signal that each registration's shape is fully released.)
         for (int cycle = 0; cycle < 200; cycle++)
         {
             float y = 1f + (cycle % 7);
@@ -185,10 +189,6 @@ public class TerrainMeshCollisionTests
                 $"cycle {cycle}: ray must miss after the terrain surface is unregistered");
         }
     }
-
-    // ---------------------------------------------------------------------
-    // Determinism: identical worlds with the terrain mesh + dropped body stay bit-identical.
-    // ---------------------------------------------------------------------
 
     // ---------------------------------------------------------------------
     // The chunk-lifecycle helper (ChunkTerrainCollision) that Scene3DChunkSink drives on load/unload.
@@ -240,6 +240,10 @@ public class TerrainMeshCollisionTests
         Assert.False(world.Raycast(new Vector3(4f, 100f, 4f), -Vector3.UnitY, 200f, out _),
             "no terrain body should remain after all cycles");
     }
+
+    // ---------------------------------------------------------------------
+    // Determinism: identical worlds with the terrain mesh + dropped body stay bit-identical.
+    // ---------------------------------------------------------------------
 
     [Fact]
     public void TwoIdenticalWorlds_DroppedOnTerrain_StepBitIdentically()

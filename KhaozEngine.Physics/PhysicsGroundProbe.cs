@@ -10,6 +10,10 @@ namespace KhaozEngine.Physics;
 /// a static triangle mesh), it passes <see cref="HeightDelegate"/> / <see cref="NormalDelegate"/> here INSTEAD OF
 /// the analytic <c>TerrainCollision.GroundHeight</c> / <c>GroundNormal</c> delegates, so terrain, props, and
 /// buildings all resolve through the one physics world.
+/// <para>The downward probe is STATICS-ONLY by default (<see cref="GroundMobility"/>): only the static terrain /
+/// props / buildings count as ground, so a dynamic body (a crate, a barrel) under the character is not read as
+/// ground and the probe returns the terrain height beneath it. Set <see cref="GroundMobility"/> to
+/// <see cref="QueryMobility.All"/> to let dynamic bodies act as standable ground.</para>
 /// <para>Additive, not breaking: a game that has not adopted the unified path keeps handing the analytic
 /// <c>TerrainCollision</c> delegates to the controller and nothing here runs. Both paths coexist.</para>
 /// <para>The probe casts from <see cref="ProbeHeight"/> down over <see cref="ProbeRange"/>. When the ray misses
@@ -30,14 +34,23 @@ public sealed class PhysicsGroundProbe
     /// <summary>Ground height returned when the downward ray hits nothing (a hole, or unloaded terrain).</summary>
     public float FallbackHeight { get; init; }
 
+    /// <summary>Which body mobilities the downward ground ray may hit. Defaults to <see cref="QueryMobility.Statics"/>
+    /// so ONLY the terrain / props / buildings (the static geometry) count as ground: a dynamic body such as a crate
+    /// sitting under the character is NOT read as ground, so the probe returns the terrain height beneath it rather
+    /// than the crate's top. Set this to <see cref="QueryMobility.All"/> if a game deliberately wants to stand on
+    /// dynamic bodies through the probe.</summary>
+    public QueryMobility GroundMobility { get; init; } = QueryMobility.Statics;
+
     /// <summary>Cast against the terrain/props in <paramref name="world"/>.</summary>
     public PhysicsGroundProbe(IPhysicsWorld world) => _world = world ?? throw new ArgumentNullException(nameof(world));
+
+    QueryFilter Filter => new(GroundMobility);
 
     /// <summary>Terrain height at (x, z): the Y of the nearest surface a downward ray hits, or
     /// <see cref="FallbackHeight"/> when nothing is under that point.</summary>
     public float Height(float x, float z)
     {
-        if (_world.Raycast(new Vector3(x, ProbeHeight, z), -Vector3.UnitY, ProbeRange, out RayHit hit))
+        if (_world.Raycast(new Vector3(x, ProbeHeight, z), -Vector3.UnitY, ProbeRange, out RayHit hit, Filter))
             return hit.Point.Y;
         return FallbackHeight;
     }
@@ -47,7 +60,7 @@ public sealed class PhysicsGroundProbe
     /// up, exactly as the analytic <c>TerrainCollision.GroundNormal</c> delegate did.</summary>
     public Vector3 Normal(float x, float z)
     {
-        if (_world.Raycast(new Vector3(x, ProbeHeight, z), -Vector3.UnitY, ProbeRange, out RayHit hit) &&
+        if (_world.Raycast(new Vector3(x, ProbeHeight, z), -Vector3.UnitY, ProbeRange, out RayHit hit, Filter) &&
             hit.Normal.LengthSquared() > 1e-12f)
             return Vector3.Normalize(hit.Normal);
         return Vector3.UnitY;

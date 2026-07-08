@@ -68,12 +68,18 @@ namespace KhaozEngine.Terrain
                 uint a = indices[t], b = indices[t + 1], c = indices[t + 2];
                 if (a < surfaceCount && b < surfaceCount && c < surfaceCount)
                 {
-                    // Reverse the winding (swap b and c). A Bepu Mesh is ONE-SIDED: it generates contacts (and
-                    // registers ray/sweep hits) only from the FRONT of each triangle, the side its winding-derived
-                    // normal points to. The render mesh (TerrainChunkBuilder) winds the surface so its normal, as
-                    // Bepu reads it, points DOWN, so a falling body and a downward ground probe would pass straight
-                    // through the top. Flipping the winding here makes the collidable face point UP: a body rests
-                    // ON the terrain and a downward raycast (the PhysicsGroundProbe path) hits the surface. The
+                    // Reverse the winding (swap b and c). A Bepu Mesh is ONE-SIDED: it generates contacts and
+                    // registers ray/sweep hits only from the FRONT of each triangle. Bepu's front face is the
+                    // CLOCKWISE-wound side (its per-triangle front normal is cross(C-A, B-A) = -cross(B-A, C-A),
+                    // the opposite of the usual right-handed CCW convention). TerrainChunkBuilder winds the surface
+                    // CCW-from-above (its header is correct: cross(B-A, C-A) points UP, +Y), so Bepu treats the
+                    // opposite side as the front and the terrain's front face points DOWN. A falling body and a
+                    // downward ground probe would then pass straight through the top. Swapping b and c makes the
+                    // Bepu front face point UP: a body rests ON the terrain and a downward raycast (the
+                    // PhysicsGroundProbe path) hits the surface. Empirically verified: unflipped, a down-ray misses
+                    // and an up-ray hits; flipped, the reverse. Buildings do NOT flip (PropCollisionBake.BakeTriangleMesh
+                    // preserves winding) because a glTF building mesh is already wound CCW-outward, so Bepu's
+                    // clockwise-front lands on the OUTWARD faces and it collides correctly with no reversal. The
                     // render mesh is untouched (it lights off its own per-vertex normals, not the face winding).
                     surfaceIndices[w++] = (int)a;
                     surfaceIndices[w++] = (int)c;

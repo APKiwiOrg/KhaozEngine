@@ -87,6 +87,99 @@ public class PhysicsGroundProbeTests
         Assert.True(state.Grounded, "capsule must be grounded on the terrain mesh");
     }
 
+    // A dynamic body (a crate) between the probe height and the terrain must NOT be read as ground: the probe is
+    // statics-only by default, so it returns the TERRAIN height under the crate, not the crate's top.
+    [Fact]
+    public void Probe_IgnoresDynamicBodyBetweenProbeAndTerrain_ReturnsTerrainHeight()
+    {
+        using IPhysicsWorld world = new BepuPhysicsWorld(Vector3.Zero); // no gravity: park the crate in place
+        world.AddStatic(FlatTerrain(height: 2f), Pose.Identity);
+        // A 1x1x1 crate centred at y=8 over (10,10): a dynamic body sitting well above the terrain.
+        world.AddDynamic(new BoxShape(new Vector3(0.5f, 0.5f, 0.5f)), Pose.At(new Vector3(10f, 8f, 10f)),
+            DynamicBodyDescription.WithMass(1f));
+
+        var probe = new PhysicsGroundProbe(world) { ProbeHeight = 100f, ProbeRange = 200f };
+        // Statics-only default: the crate (dynamic) is ignored, so the probe sees the terrain at y=2, NOT the
+        // crate top at ~8.5.
+        Assert.Equal(2f, probe.Height(10f, 10f), 2);
+        Assert.True(probe.Normal(10f, 10f).Y > 0.99f, "statics-only ground normal is the flat terrain's +Y");
+    }
+
+    // Opting in to QueryMobility.All makes the same probe stand on the dynamic crate (crate top ~8.5).
+    [Fact]
+    public void Probe_WithAllMobility_StandsOnDynamicBody()
+    {
+        using IPhysicsWorld world = new BepuPhysicsWorld(Vector3.Zero);
+        world.AddStatic(FlatTerrain(height: 2f), Pose.Identity);
+        world.AddDynamic(new BoxShape(new Vector3(0.5f, 0.5f, 0.5f)), Pose.At(new Vector3(10f, 8f, 10f)),
+            DynamicBodyDescription.WithMass(1f));
+
+        var probe = new PhysicsGroundProbe(world)
+        {
+            ProbeHeight = 100f, ProbeRange = 200f, GroundMobility = QueryMobility.All,
+        };
+        // Now the crate is ground: the probe stops at the crate top (~8.5), not the terrain at 2.
+        Assert.Equal(8.5f, probe.Height(10f, 10f), 2);
+    }
+
+    // The raw seam contract: QueryMobility.All hits the dynamic (nearest), Statics skips it for the terrain,
+    // Dynamics hits only the dynamic. This is the filter the ground probe rides on.
+    [Fact]
+    public void Raycast_QueryMobility_SelectsStaticsVsDynamics()
+    {
+        using IPhysicsWorld world = new BepuPhysicsWorld(Vector3.Zero);
+        // Add the crate FIRST so the terrain's seam handle is not the zero-valued default (which would make the
+        // "static hit resolves a seam handle" assertion indistinguishable from the dynamic default).
+        world.AddDynamic(new BoxShape(new Vector3(0.5f, 0.5f, 0.5f)), Pose.At(new Vector3(10f, 8f, 10f)),
+            DynamicBodyDescription.WithMass(1f));
+        StaticHandle terrain = world.AddStatic(FlatTerrain(height: 2f), Pose.Identity);
+
+        var origin = new Vector3(10f, 100f, 10f);
+        var down = -Vector3.UnitY;
+
+        // All: nearest hit is the crate top (~8.5).
+        Assert.True(world.Raycast(origin, down, 200f, out RayHit all, QueryFilter.All));
+        Assert.Equal(8.5f, all.Point.Y, 2);
+
+        // Statics: crate skipped, terrain at y=2, and the hit resolves the terrain's seam handle.
+        Assert.True(world.Raycast(origin, down, 200f, out RayHit statics, QueryFilter.StaticsOnly));
+        Assert.Equal(2f, statics.Point.Y, 2);
+        Assert.Equal(terrain, statics.Body);
+
+        // Dynamics: only the crate is eligible, terrain skipped -> hits the crate top. A dynamic hit carries no
+        // static seam handle, so Body is the default (there is no dynamic handle in RayHit).
+        Assert.True(world.Raycast(origin, down, 200f, out RayHit dyn, QueryFilter.DynamicsOnly));
+        Assert.Equal(8.5f, dyn.Point.Y, 2);
+        Assert.Equal(default, dyn.Body);
+    }
+
+    // The sweep path shares the same handler seam and must honour the same mobility filter.
+    [Fact]
+    public void SweepCapsule_QueryMobility_SelectsStaticsVsDynamics()
+    {
+        using IPhysicsWorld world = new BepuPhysicsWorld(Vector3.Zero);
+        world.AddDynamic(new BoxShape(new Vector3(0.5f, 0.5f, 0.5f)), Pose.At(new Vector3(10f, 8f, 10f)),
+            DynamicBodyDescription.WithMass(1f));
+        StaticHandle terrain = world.AddStatic(FlatTerrain(height: 2f), Pose.Identity);
+
+        var capsule = new CapsuleShape(0.2f, 0.4f);
+        var start = Pose.At(new Vector3(10f, 100f, 10f));
+        var down = -Vector3.UnitY;
+
+        // All: the sweep stops first at the crate (higher up than the terrain).
+        Assert.True(world.SweepCapsule(capsule, start, down, 200f, out SweepHit all, QueryFilter.All));
+        // Statics: the crate is skipped, so the sweep travels further before hitting the terrain.
+        Assert.True(world.SweepCapsule(capsule, start, down, 200f, out SweepHit statics, QueryFilter.StaticsOnly));
+        Assert.True(statics.Distance > all.Distance,
+            $"statics-only sweep must pass the crate and travel further ({statics.Distance:F2}) than the all sweep ({all.Distance:F2})");
+        Assert.Equal(terrain, statics.Body);
+
+        // Dynamics: only the crate is eligible, so the impact distance matches the all sweep (crate is nearest).
+        Assert.True(world.SweepCapsule(capsule, start, down, 200f, out SweepHit dyn, QueryFilter.DynamicsOnly));
+        Assert.Equal(all.Distance, dyn.Distance, 3);
+        Assert.Equal(default, dyn.Body);
+    }
+
     // The horizontal-only overload also drives off the probe delegate (ground-follow via the physics world).
     [Fact]
     public void Controller_HorizontalStep_FollowsTerrainMeshHeight()

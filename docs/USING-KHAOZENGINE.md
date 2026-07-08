@@ -1770,7 +1770,11 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
   geometrically with restitution. It is NOT a true coefficient of restitution (a bounded post-solve reflection
   that can over-restitute by up to the contact recovery velocity, with no analytically pinned apex) - dial it
   for feel, not to predict an exact rebound height.
-- `QueryFilter(uint Layers)` (layer mask; `QueryFilter.All` / default matches every body).
+- `QueryFilter(QueryMobility Mobility = All, uint Layers = 0)` - which bodies a raycast/sweep may hit.
+  `QueryMobility` is `All` (default), `Statics`, or `Dynamics`. `QueryFilter.All` / default matches every body;
+  `QueryFilter.StaticsOnly` / `QueryFilter.DynamicsOnly` restrict by mobility (the Bepu backend applies the gate,
+  so e.g. a downward ground probe passing `StaticsOnly` ignores a dynamic crate under the character). The layer
+  mask (`0` = all layers) is reserved.
 - `StaticHandle`, `DynamicBodyHandle`, `RayHit(Distance, Point, Normal, Body)`, `SweepHit(Distance, Point, Normal, Body)`.
 
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:

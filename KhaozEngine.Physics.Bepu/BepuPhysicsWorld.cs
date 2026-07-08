@@ -248,7 +248,7 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
 
     public bool Raycast(Vector3 origin, Vector3 direction, float maxDistance, out RayHit hit, QueryFilter filter = default)
     {
-        var handler = new RayHitHandler();
+        var handler = new RayHitHandler(filter.Mobility);
         _sim.RayCast(origin, direction, maxDistance, ref handler);
 
         if (!handler.DidHit)
@@ -258,7 +258,9 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
         }
 
         var point = origin + direction * handler.HitT;
-        var seamHandle = ResolveSeamHandle(handler.HitStatic);
+        // RayHit.Body is a static handle; a dynamic hit (only possible with QueryMobility.All/Dynamics) has no
+        // static seam handle, so leave Body default rather than reverse-looking-up a non-static hit.
+        var seamHandle = handler.HitWasStatic ? ResolveSeamHandle(handler.HitStatic) : default;
         hit = new RayHit(handler.HitT, point, handler.HitNormal, seamHandle);
         return true;
     }
@@ -268,7 +270,7 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
         var bepuCapsule = new Capsule(capsule.Radius, capsule.Length);
         var rigidPose = new RigidPose(pose.Position, pose.Orientation);
         var velocity = new BodyVelocity(direction);
-        var handler = new SweepHitHandler();
+        var handler = new SweepHitHandler(filter.Mobility);
 
         _sim.Sweep(bepuCapsule, rigidPose, velocity, maxDistance, _pool, ref handler);
 
@@ -278,7 +280,9 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
             return false;
         }
 
-        var seamHandle = ResolveSeamHandle(handler.HitStatic);
+        // SweepHit.Body is a static handle; a dynamic hit (only possible with QueryMobility.All/Dynamics) has no
+        // static seam handle, so leave Body default rather than reverse-looking-up a non-static hit.
+        var seamHandle = handler.HitWasStatic ? ResolveSeamHandle(handler.HitStatic) : default;
         hit = new SweepHit(handler.HitT, handler.HitLocation, handler.HitNormal, seamHandle);
         return true;
     }

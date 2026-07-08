@@ -25,13 +25,18 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
 - **`PhysicsGroundProbe`** - the OPT-IN unified-terrain adapter: wraps an `IPhysicsWorld` and exposes
   `HeightDelegate`/`NormalDelegate` (a downward raycast) to hand `CharacterMovement.Step` in place of the
   analytic `TerrainCollision` ground delegates, once the terrain surface is registered as physics geometry.
-  So terrain, props, and buildings all resolve through one world. Additive: a game that has not adopted keeps
+  So terrain, props, and buildings all resolve through one world. The probe is STATICS-ONLY by default
+  (`GroundMobility`), so a dynamic body under the character (a crate) is not read as ground; set
+  `GroundMobility = QueryMobility.All` to stand on dynamic bodies. Additive: a game that has not adopted keeps
   passing the analytic delegates and this never runs.
 - **`PhysicsMaterial`** - friction + restitution, `PhysicsMaterial.Default` is full friction, no bounce.
   A dynamic body's `Restitution` (0..1) drives an approximate, deterministic game-feel bounce that decays
   geometrically with restitution (NOT a true coefficient of restitution: a bounded post-solve reflection, exact
   apex not analytically pinned).
-- **`QueryFilter`** - layer mask for queries, default (`QueryFilter.All`) matches every body.
+- **`QueryFilter`** - which bodies a raycast/sweep may hit: a `QueryMobility` (statics / dynamics / both) plus a
+  layer mask. Default (`QueryFilter.All`) matches every body; `QueryFilter.StaticsOnly` /
+  `QueryFilter.DynamicsOnly` restrict by mobility (the Bepu backend honours the mobility gate, so a statics-only
+  ground probe ignores dynamic bodies).
 - **`StaticHandle`**, **`DynamicBodyHandle`**, **`RayHit`**, **`SweepHit`** - opaque body handles and the query result structs.
 - **`PhysicsShapeScale.Uniform(shape, scale)`** - a new shape with all geometry scaled uniformly
   (compound child poses included). For per-placement scatter scale before `AddStatic`.

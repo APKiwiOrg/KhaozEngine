@@ -19,8 +19,8 @@ public class WorldClientDecodeFailureTests
 {
     private static readonly Func<float, float, float> Flat = (x, z) => 0f;
 
-    // A snapshot with one entity carrying a single component of an unregistered built-in type id (4 - reserved
-    // below the extension floor; the shared registry only knows 1/2/3), wrapped as a server->client snapshot frame.
+    // A snapshot with one entity carrying a single component of an unregistered built-in type id (5 - reserved
+    // below the extension floor; the shared registry only knows 1/2/3/4), wrapped as a server->client snapshot frame.
     // Below the floor it is unframed, so an unknown id there is a hard "client out of date" mismatch, not a skip.
     private static byte[] BadSnapshotFrame()
     {
@@ -29,7 +29,7 @@ public class WorldClientDecodeFailureTests
         {
             bw.Write(1);              // entity count
             bw.Write(1L);             // netId (64-bit)
-            bw.Write((ushort)4);      // unregistered built-in (below-floor) type id -> decode fails here
+            bw.Write((ushort)5);      // unregistered built-in (below-floor) type id -> decode fails here
         }
         byte[] snapshot = ms.ToArray();
         return MoveProtocol.EncodeServerFrame(MoveProtocol.ServerFrameKind.Snapshot,
@@ -71,6 +71,6 @@ public class WorldClientDecodeFailureTests
         Assert.Equal(WorldConnectionState.Disconnected, client.ConnectionState);
         Assert.Equal(DisconnectReason.IncompatibleVersion, client.DisconnectReason);
         Assert.NotNull(decodeError);
-        Assert.Contains("unregistered type id 4", client.DisconnectReasonDetail);
+        Assert.Contains("unregistered type id 5", client.DisconnectReasonDetail);
     }
 }

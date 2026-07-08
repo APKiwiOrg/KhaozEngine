@@ -270,6 +270,32 @@ cell's persist blob; since 9.33.0 the cell blob has a real migration path plus a
 unknown-extension retention (see the `CellPersistence` schema-evolution note above), so a layout change brings old
 blobs forward instead of skipping or corrupting them.
 
+## Replicated dynamic rigid bodies (physics props)
+
+A server-authoritative dynamic body (a crate, a barrel, a physics prop stepped by `KhaozEngine.Physics`) replicates to
+clients that **interpolate** it exactly like a remote player, via two built-in components:
+
+- **`DynamicBodyState`** (built-in type id `MoveProtocol.DynamicBodyTypeId` = 4) carries the body's **orientation
+  quaternion** plus its linear/angular **velocity**. It rides **alongside** the body's `ReplicatedPosition` (the position
+  drives area-of-interest, exactly as a player's `ReplicatedPosition` + `MovementState` pair). The orientation is
+  **interpolatable**: it **slerps** between snapshots on the client's fixed-delay buffer (the same machinery that glides
+  a remote player's position), so a tumbling crate rotates smoothly between the ~tick-rate snapshots. Velocity is a rate,
+  carried for extrapolation / effects (impact dust, spin blur) and not itself blended.
+- **`DynamicBodyReplication`** is the server-side sampler. Spawn a server-owned entity with `SpawnEntity`, add the body
+  to your `IPhysicsWorld`, then `Track(netId, handle, entity)` to pair them. Each tick, from `OnBeforeTick` and **after
+  you step the physics world**, call `Sample()`: it writes each awake body's `GetDynamicPose` / `GetDynamicVelocity`
+  into that entity's `ReplicatedPosition` + `DynamicBodyState`, so the fresh pose lands in the same tick's snapshot.
+
+The server owns the sim; the **client never simulates a replicated body** (no client-side prediction for bodies) - it
+renders the interpolated authoritative pose read via `WorldClient.TryGetComponent<DynamicBodyState>` (orientation +
+velocity) and the body's interpolated `ReplicatedPosition` (surfaced on each `EntityRenderState`).
+
+**Sleep gating.** A body Bepu has put to sleep (`IsAwake` false) is not re-sampled, so a resting prop stops generating
+snapshot churn (like a still remote player that need not stream). The pose written on the last awake tick IS the rest
+pose, so the client's interpolation converges to it and then holds (the fixed-delay buffer clamps at the newest sample);
+a body woken later (a collision, `SetDynamicVelocity`) resumes sampling. Removing the entity server-side propagates to
+clients as a normal AoI despawn.
+
 ## Area-of-interest delta replication (since 9.18.0)
 
 The live serving path sends each client only what changed inside its interest set per tick (an

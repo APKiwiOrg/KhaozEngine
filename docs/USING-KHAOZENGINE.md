@@ -3710,6 +3710,43 @@ the host rather than through `SpawnEntity`, use `ShardHost.SpawnOwned(x, y, netI
 `CellSim.RegisterOwned(netId, entity)` after assigning the `NetId`) so they are eagerly indexed - an unregistered
 raw spawn still resolves through a one-time scan fallback, just not for free.
 
+#### Replicated dynamic physics props (`DynamicBodyState` + `DynamicBodyReplication`)
+
+A server-authoritative dynamic rigid body (a crate, a barrel, a physics prop stepped by `KhaozEngine.Physics`)
+replicates to clients that **interpolate** it exactly like a remote player - the server owns the sim, the client never
+predicts it. Two built-in components carry it: `ReplicatedPosition` (position, drives area-of-interest) and
+`DynamicBodyState` (the interpolated **orientation quaternion** + linear/angular velocity, built-in type id
+`MoveProtocol.DynamicBodyTypeId`). The orientation **slerps** on the client's fixed-delay buffer - the same machinery
+that glides a remote player - so a tumbling crate rotates smoothly between the ~tick-rate snapshots. Sample it with
+`DynamicBodyReplication`:
+
+```csharp
+var physics = new BepuPhysicsWorld();                          // the server's authoritative physics world
+// ... add static ground / terrain, then a dynamic body:
+DynamicBodyHandle crate = physics.AddDynamic(
+    new BoxShape(new Vector3(0.5f, 0.5f, 0.5f)), Pose.At(new Vector3(0, 8, 0)),
+    DynamicBodyDescription.WithMass(10f));
+
+long netId = server.SpawnEntity(0f, 0f);                       // a server-owned entity to replicate the body under
+var bodies = new DynamicBodyReplication(server.World, physics);
+bodies.Track(netId, crate, /* the entity SpawnEntity created */ ResolveEntity(server, netId));
+
+// Step the physics world, then sample - from OnBeforeTick, so the fresh pose lands in the same tick's snapshot.
+server.OnBeforeTick += dt => { physics.Step(dt); bodies.Sample(); };
+
+// Client render: read the interpolated pose. Position is on EntityRenderState; orientation via TryGetComponent.
+foreach (EntityRenderState s in client.Snapshot())
+    if (client.TryGetComponent(s.Id.Value, out DynamicBodyState body))
+        DrawProp(s.Position, body.Orientation);                // interpolated: position glides, orientation slerps
+```
+
+`Sample()` writes only **awake** bodies (`IsAwake`): a body Bepu has put to sleep stops generating snapshot churn (like
+a still remote player), and its last-written pose IS the rest pose, so the client's interpolation converges to it and
+holds. A body woken later (a collision, `SetDynamicVelocity`) resumes sampling. To remove a prop, `Untrack(netId, out
+handle)` + `physics.RemoveDynamic(handle)` + despawn the entity server-side; the despawn reaches clients as a normal AoI
+removal. The client does **not** need a physics world of its own for replicated bodies (it only interpolates the sampled
+pose), so terrain collision on the client is unnecessary for a replicated prop to look correct.
+
 #### Per-registration channels: server-only and owner-only components (`ReplicationChannels`, since 9.28.0)
 
 One registered component's bytes feed four consumers - client area-of-interest serving, border ghosting, cell handoff,

@@ -37,9 +37,16 @@ public static class MoveProtocol
     /// <summary>Type id of <see cref="PlayerIdentity"/> (display name) in the shared registry.</summary>
     public const ushort IdentityTypeId = 3;
 
+    /// <summary>Type id of <see cref="DynamicBodyState"/> (a replicated dynamic rigid body's orientation + velocity)
+    /// in the shared registry. The body's position rides on <see cref="ReplicatedPosition"/> (id
+    /// <see cref="PositionTypeId"/>) alongside it, so it drives area-of-interest and interpolates like any other
+    /// entity; this component adds the interpolated orientation.</summary>
+    public const ushort DynamicBodyTypeId = 4;
+
     /// <summary>The lowest type id a consumer may register on top of the movement protocol (an NPC kind, HP,
     /// faction, …). Ids <c>1..15</c> are reserved for engine movement built-ins (currently
-    /// <see cref="PositionTypeId"/>/<see cref="MovementTypeId"/>/<see cref="IdentityTypeId"/>); consumer components
+    /// <see cref="PositionTypeId"/>/<see cref="MovementTypeId"/>/<see cref="IdentityTypeId"/>/<see cref="DynamicBodyTypeId"/>);
+    /// consumer components
     /// registered at or above this floor are length-prefixed on the wire, so a client that never registered the id
     /// SKIPS it instead of disconnecting (see <see cref="ReplicationRegistry.FirstExtensionTypeId"/>). Register the
     /// SAME extra components on both the server and its clients via
@@ -91,6 +98,34 @@ public static class MoveProtocol
             IdentityTypeId,
             write: (pi, bw) => WriteDisplayName(bw, pi.DisplayName),
             read: br => new PlayerIdentity { DisplayName = ReadDisplayName(br) });
+        // Dynamic rigid body: the orientation quaternion (4 floats) + linear/angular velocity (3 floats each) that
+        // ride alongside the body's ReplicatedPosition. Interpolatable: the orientation SLERPs between snapshots on
+        // the client's fixed-delay buffer (the same machinery that glides a remote player's position), so a spinning
+        // crate rotates smoothly between the ~tick-rate snapshots. Velocity is NOT blended (it is a rate, carried for
+        // extrapolation/effects), so the lerp snaps it to the target sample - it is only ever read off the newest
+        // applied snapshot in practice.
+        r.Register<DynamicBodyState>(
+            DynamicBodyTypeId,
+            write: (d, bw) =>
+            {
+                bw.Write(d.Orientation.X); bw.Write(d.Orientation.Y); bw.Write(d.Orientation.Z); bw.Write(d.Orientation.W);
+                bw.Write(d.LinearVelocity.X); bw.Write(d.LinearVelocity.Y); bw.Write(d.LinearVelocity.Z);
+                bw.Write(d.AngularVelocity.X); bw.Write(d.AngularVelocity.Y); bw.Write(d.AngularVelocity.Z);
+            },
+            read: br => new DynamicBodyState
+            {
+                Orientation = new Quaternion(br.ReadSingle(), br.ReadSingle(), br.ReadSingle(), br.ReadSingle()),
+                LinearVelocity = new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle()),
+                AngularVelocity = new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle()),
+            },
+            // Slerp the orientation (normalized: guards against a denormalized blend of two near-equal quaternions);
+            // velocity is a rate, so hold the target sample's value rather than blending it.
+            lerp: (a, b, t) => new DynamicBodyState
+            {
+                Orientation = Quaternion.Normalize(Quaternion.Slerp(a.Orientation, b.Orientation, t)),
+                LinearVelocity = b.LinearVelocity,
+                AngularVelocity = b.AngularVelocity,
+            });
         configure?.Invoke(r);   // consumer extension components (ids >= FirstConsumerTypeId)
         return r;
     }

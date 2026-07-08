@@ -14,14 +14,17 @@ dotnet tool install --global KhaozEngine.Updates.Tool
 ## Usage
 
 ```bash
-ke-updater manifest --dir <path> --platform <id> --version <v> [--output <path>]
+ke-updater manifest --dir <path> --platform <id> --version <v> [--required] [--output <path>]
 ke-updater genkey --out <dir>
 ke-updater sign --manifest <manifest.json> --key <private.pem>
 ke-updater verify --manifest <manifest.json> --sig <manifest.json.sig> --key <public.pem>
 ```
 
 - `manifest` - walk `--dir` and generate a manifest JSON for the given platform + version. Writes
-  to `--output` if given, otherwise stdout.
+  to `--output` if given, otherwise stdout. Pass `--required` to mark the build a mandatory update
+  (`"required": true` in the manifest): the client then auto-downloads and auto-restarts to apply it
+  with no keypress. Sign the manifest as usual; the client trusts `required` only from the SIGNED
+  manifest, never the unsigned `latest-<rid>.json` pointer.
 - `genkey` - generate an RSA-2048 key pair, writing `private.pem` and `public.pem` into `--out`.
   Keep `private.pem` secret (a CI secret). Embed `public.pem` in the game's `TrustedPublicKeys`.
 - `sign` - sign the exact manifest bytes with the private key. Writes `<manifest>.sig` next to it.

@@ -46,7 +46,10 @@ public sealed partial class UpdateService : IDisposable, IUpdateStatus
     private long bytesDownloaded;
     private long totalDownloadBytes;
     private string? errorMessage;
-    private bool required;
+    // volatile: set on the background check thread (CheckForUpdateAsync) and read on the game-loop thread
+    // (the overlay each frame, and AutoAdvanceRequired). Paired with the volatile `state` write/read this
+    // gives the reader a consistent view of the offered update's required-ness.
+    private volatile bool required;
     // True once the most recent CheckForUpdateAsync reached the feed and got version info (vs. a down/slow/
     // unreachable feed, which leaves it false). Read by EnsureUpToDateAsync to tell "up to date" from "couldn't
     // check" - both otherwise rest at Idle. Only meaningful immediately after a check.

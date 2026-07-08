@@ -99,7 +99,7 @@ public sealed class UpdateOverlayView
 
         float titleY = panel.Y + pad;
         float bodyY = titleY + titleH + gap;
-        DrawCentered(batch, font, Theme.TitleFor(state, status.RemoteVersion), titleY, Theme.TitleScale, Mul(Theme.AccentFor(state), a), panel);
+        DrawCentered(batch, font, Theme.TitleFor(state, status), titleY, Theme.TitleScale, Mul(Theme.AccentFor(state), a), panel);
         DrawCentered(batch, font, Theme.BodyFor(state, status), bodyY, Theme.BodyScale, Mul(Theme.BodyText, a), panel);
 
         if (downloading)

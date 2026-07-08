@@ -12,7 +12,7 @@ public static class ManifestToolCommands
 {
     const string Usage =
         "Usage: ke-updater <command>\n" +
-        "  manifest --dir <path> --platform <id> --version <v> [--output <path>]\n" +
+        "  manifest --dir <path> --platform <id> --version <v> [--required] [--output <path>]\n" +
         "  genkey --out <dir>\n" +
         "  sign --manifest <manifest.json> --key <private.pem>\n" +
         "  verify --manifest <manifest.json> --sig <manifest.json.sig> --key <public.pem>";
@@ -40,6 +40,9 @@ public static class ManifestToolCommands
         if (!Directory.Exists(dir)) return Fail(errw, $"Directory not found: {dir}");
 
         UpdateManifest manifest = UpdateManifest.GenerateFromDirectory(Path.GetFullPath(dir), version, platform);
+        // Required is set here, not in GenerateFromDirectory: that method also builds the client's local and
+        // staging manifests, where "required" is meaningless. Only a published build's manifest carries it.
+        if (Flag(args, "--required")) manifest.Required = true;
         string json = manifest.Serialize();
         if (!string.IsNullOrWhiteSpace(output))
         {
@@ -98,6 +101,12 @@ public static class ManifestToolCommands
     {
         for (int i = 0; i < args.Length - 1; i++) if (args[i] == name) return args[i + 1];
         return null;
+    }
+
+    static bool Flag(string[] args, string name)
+    {
+        for (int i = 0; i < args.Length; i++) if (args[i] == name) return true;
+        return false;
     }
 
     static int Fail(TextWriter errw, string message) { errw.WriteLine(message); return 1; }

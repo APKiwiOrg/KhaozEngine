@@ -96,7 +96,11 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   (`update.overlay.*`, one title + body per `UpdateState`), falling back to built-in English
   (`UpdateOverlayStrings.EnglishDefaults`) when no catalog is wired or a key is absent, so a game localizes the
   overlay just by adding those keys to its catalog with no subclass, and an unlocalized build renders exactly as
-  before. Overriding `TitleFor`/`BodyFor` still fully replaces the text. `theme.ToUpdaterUiOptions(...)`
+  before. A **required** update (`IUpdateStatus.IsRequired`, from the signed manifest) draws its titles through
+  the `TitleFor(UpdateState, IUpdateStatus)` overload and swaps in the `update.overlay.*.required` keys, which
+  convey mandatoriness and drop the keypress prompt (the client auto-advances via
+  `UpdateOverlayActions.AutoAdvanceRequired`); a theme overriding `TitleFor`/`BodyFor` adds its own `IsRequired`
+  branch. Overriding `TitleFor`/`BodyFor` still fully replaces the text. `theme.ToUpdaterUiOptions(...)`
   (`UpdaterUiThemeExtensions`) derives the shim's native progress-window palette (`UpdaterUiOptions`, in
   `KhaozEngine.Updates`) from the same theme (accent from `ProgressFill`, background from `PanelFill`, text from
   `BodyText`), so the in-game overlay and the apply window share one palette. See `docs/UPDATER.md` for the key

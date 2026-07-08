@@ -285,13 +285,23 @@ Add `UpdateOverlayScreen` (from `KhaozEngine.Gui`) to your screen stack, pointin
 
 ```csharp
 var overlay = new UpdateOverlayScreen(updateService, font, whiteTexture, viewport);
-overlay.OnTrigger += _ => UpdateOverlayActions.Trigger(updateService);
+overlay.OnTrigger += _ => UpdateOverlayActions.Trigger(updateService);   // optional: player-driven
 screenStack.Add(overlay);
+// ...and once per frame, so a REQUIRED update installs itself with no keypress:
+UpdateOverlayActions.AutoAdvanceRequired(updateService);
 ```
 
+`Trigger` maps the current state to the player action (download / apply / retry).
+`AutoAdvanceRequired` is a no-op unless the offered update is required (`IUpdateStatus.IsRequired`, set
+from the signed manifest's `required` bit); for a required update it auto-downloads then auto-applies with
+no keypress. Call it once per frame from the game loop so `ApplyUpdate` and its forced process exit run on
+the caller's thread. See the `KhaozEngine.Gui` README and `docs/UPDATER.md` for the required-update flow.
+
 Retheme via `new UpdateOverlayTheme { ... }` (colours, labels, `TriggerKey`/`TriggerButton`) or
-subclass it to override `TitleFor`/`BodyFor` for localized text. For non-stack UI, use the lower-level
-`UpdateOverlayView` directly (`Update(status, input, dt)` + `Draw(batch, font, white, viewport, status)`).
+subclass it to override `TitleFor`/`BodyFor` for localized text (a required update draws its titles through
+the `TitleFor(UpdateState, IUpdateStatus)` overload, which adds the `*.required` variants). For non-stack
+UI, use the lower-level `UpdateOverlayView` directly (`Update(status, input, dt)` +
+`Draw(batch, font, white, viewport, status)`).
 
 ### 3. The updater shim
 
@@ -347,7 +357,10 @@ it straight from the blob (the minimal `{"version"}` form is insufficient here: 
 - **`manifestUrl`** is the absolute blob URL of *that build's* `manifest.json`; the client resolves every
   other file as a sibling of it. The template derives it as
   `PUBLIC_BASE_URL/CONTAINER/<version>/<platform>/manifest.json`.
-- **`required`** marks a mandatory update the user cannot skip (`UPDATE_REQUIRED=true` to set it).
+- **`required`** in this pointer is informational only. The client decides mandatoriness from the
+  `required` bit in the SIGNED manifest (set with `ke-updater manifest --required`), never from this
+  unsigned pointer. A required update auto-downloads and auto-applies via
+  `UpdateOverlayActions.AutoAdvanceRequired`. The templates set both from `UPDATE_REQUIRED=true`.
 - **`buildVersion`** is an opaque display label the engine does NOT compare against. The template
   defaults it to `version`; pass a 3rd arg for a separate informational/display string.
 

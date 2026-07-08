@@ -36,7 +36,7 @@ namespace KhaozEngine.Tests.Gui
 
                 Assert.Equal("MAJ dispo v2.0", t.TitleFor(UpdateState.UpdateAvailable, "2.0"));
                 Assert.Equal("Appuyez sur [U]", t.BodyFor(UpdateState.UpdateAvailable, new FakeUpdateStatus()));
-                Assert.Equal("Application", t.TitleFor(UpdateState.Applying, null));
+                Assert.Equal("Application", t.TitleFor(UpdateState.Applying, (string?)null));
                 Assert.Equal("Reessayez [U]", t.BodyFor(UpdateState.Failed, new FakeUpdateStatus()));
 
                 var dl = new FakeUpdateStatus
@@ -65,7 +65,7 @@ namespace KhaozEngine.Tests.Gui
 
                 Assert.Equal("Update Available - v1.2.3", t.TitleFor(UpdateState.UpdateAvailable, "1.2.3"));
                 Assert.Equal("Press [X] to download", t.BodyFor(UpdateState.UpdateAvailable, new FakeUpdateStatus()));
-                Assert.Equal("Update Failed", t.TitleFor(UpdateState.Failed, null));
+                Assert.Equal("Update Failed", t.TitleFor(UpdateState.Failed, (string?)null));
 
                 var dl = new FakeUpdateStatus
                 {
@@ -77,6 +77,44 @@ namespace KhaozEngine.Tests.Gui
                 };
                 // Fallback formats invariantly, exactly like the pre-localization overlay (culture-stable "3.0").
                 Assert.Equal("Downloading 2/5 files (3.0/10.0 MB)", t.BodyFor(UpdateState.Downloading, dl));
+            }
+            finally { LocalizationContext.Catalog = prev; }
+        }
+
+        [Fact]
+        public void Wired_catalog_resolves_required_variants()
+        {
+            var prev = LocalizationContext.Catalog;
+            try
+            {
+                LocalizationContext.Catalog = new DictionaryCatalog()
+                    .Add("update.overlay.available.title.required", "MAJ obligatoire v{0}")
+                    .Add("update.overlay.available.body.required", "Telechargement obligatoire")
+                    .Add("update.overlay.downloading.title.required", "Telechargement obligatoire...");
+                var t = UpdateOverlayTheme.Default;
+                var s = new FakeUpdateStatus { IsRequired = true, RemoteVersion = "2.0" };
+
+                Assert.Equal("MAJ obligatoire v2.0", t.TitleFor(UpdateState.UpdateAvailable, s));
+                Assert.Equal("Telechargement obligatoire", t.BodyFor(UpdateState.UpdateAvailable, s));
+                Assert.Equal("Telechargement obligatoire...", t.TitleFor(UpdateState.Downloading, s));
+            }
+            finally { LocalizationContext.Catalog = prev; }
+        }
+
+        [Fact]
+        public void Required_variants_missing_keys_fall_back_to_english()
+        {
+            var prev = LocalizationContext.Catalog;
+            try
+            {
+                // A catalog without the *.required keys must show the built-in English, not raw keys.
+                LocalizationContext.Catalog = new DictionaryCatalog().Add("menu.play", "Play");
+                var t = UpdateOverlayTheme.Default;
+                var s = new FakeUpdateStatus { IsRequired = true, RemoteVersion = "1.2.3" };
+
+                Assert.Equal("Required Update - v1.2.3", t.TitleFor(UpdateState.UpdateAvailable, s));
+                Assert.Equal("A required update is downloading", t.BodyFor(UpdateState.UpdateAvailable, s));
+                Assert.Equal("Applying Required Update...", t.TitleFor(UpdateState.Applying, s));
             }
             finally { LocalizationContext.Catalog = prev; }
         }

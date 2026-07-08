@@ -13,7 +13,7 @@ public sealed class UpdateOverlayThemeTests
         var t = UpdateOverlayTheme.Default;
         Assert.Equal("Update Available - v1.2.3", t.TitleFor(UpdateState.UpdateAvailable, "1.2.3"));
         Assert.Equal("Update v1.2.3 Ready", t.TitleFor(UpdateState.ReadyToApply, "1.2.3"));
-        Assert.Equal("Update Failed", t.TitleFor(UpdateState.Failed, null));
+        Assert.Equal("Update Failed", t.TitleFor(UpdateState.Failed, (string?)null));
     }
 
     [Fact]
@@ -44,5 +44,38 @@ public sealed class UpdateOverlayThemeTests
     {
         var t = UpdateOverlayTheme.Default;
         Assert.NotEqual(t.AccentFor(UpdateState.ReadyToApply), t.AccentFor(UpdateState.Failed));
+    }
+
+    [Fact]
+    public void Required_status_titles_use_required_variant()
+    {
+        var t = UpdateOverlayTheme.Default;
+        var s = new FakeUpdateStatus { IsRequired = true, RemoteVersion = "1.2.3" };
+        Assert.Equal("Required Update - v1.2.3", t.TitleFor(UpdateState.UpdateAvailable, s));
+        Assert.Equal("Downloading Required Update...", t.TitleFor(UpdateState.Downloading, s));
+        Assert.Equal("Required Update v1.2.3 Ready", t.TitleFor(UpdateState.ReadyToApply, s));
+        Assert.Equal("Applying Required Update...", t.TitleFor(UpdateState.Applying, s));
+        Assert.Equal("Required Update Failed", t.TitleFor(UpdateState.Failed, s));
+    }
+
+    [Fact]
+    public void Required_status_bodies_drop_the_keypress_prompt()
+    {
+        var t = UpdateOverlayTheme.Default;
+        t.TriggerKeyLabel = "X";
+        var s = new FakeUpdateStatus { IsRequired = true };
+        Assert.Equal("A required update is downloading", t.BodyFor(UpdateState.UpdateAvailable, s));
+        Assert.Equal("Restarting to apply", t.BodyFor(UpdateState.ReadyToApply, s));
+        // Failed keeps the keypress retry even when required.
+        Assert.Equal("Press [X] to retry", t.BodyFor(UpdateState.Failed, s));
+    }
+
+    [Fact]
+    public void Optional_status_overload_delegates_to_the_version_titles()
+    {
+        var t = UpdateOverlayTheme.Default;
+        var s = new FakeUpdateStatus { IsRequired = false, RemoteVersion = "1.2.3" };
+        Assert.Equal("Update Available - v1.2.3", t.TitleFor(UpdateState.UpdateAvailable, s));
+        Assert.Equal("Press [U] to download", t.BodyFor(UpdateState.UpdateAvailable, s));
     }
 }

@@ -100,8 +100,11 @@ releases/
   <version>/<rid>/<game files...>           (game + shim + content)
 ```
 
-`latest-<rid>.json` is a tiny JSON pointer per RID (at minimum `{"version": "...", "required": false}`).
-Desktop RIDs are `win-x64`, `osx-arm64`, `osx-x64`, and `linux-x64` (a game ships the subset it targets).
+`latest-<rid>.json` is a tiny JSON pointer per RID (at minimum `{"version": "..."}`). Its `required`
+field is informational only: the client decides mandatoriness from the `required` bit in the SIGNED
+manifest (see [Required (mandatory) updates](#required-mandatory-updates) below), never from this
+unsigned pointer. Desktop RIDs are `win-x64`, `osx-arm64`, `osx-x64`, and `linux-x64` (a game ships the
+subset it targets).
 
 The manifest lists every file in the build with its install-relative path, SHA-256, and byte size, sorted
 by path, plus a publish timestamp:
@@ -111,11 +114,15 @@ by path, plus a publish timestamp:
   "version": "1.2.3",
   "platform": "win-x64",
   "publishedAtUtc": "2026-03-27T12:00:00Z",
+  "required": false,
   "files": [
     { "path": "Game.dll", "sha256": "a1b2c3d4...", "size": 524288 }
   ]
 }
 ```
+
+`required` (default `false`) is the mandatory bit; because it rides inside the signed manifest it is the
+value the client trusts. Set it with `ke-updater manifest --required`.
 
 `ke-updater manifest` (publish side) and `UpdateManifest.GenerateFromDirectory` (client side) produce the
 identical structure from the same hashing logic, so the client can diff the remote manifest against its own
@@ -148,7 +155,7 @@ Per platform, the job:
 4. **Build, manifest, sign, upload:**
    ```sh
    dotnet publish -c Release -r <rid> --self-contained     # the game + shim
-   ke-updater manifest --dir <build-dir> --platform <rid> --version <version> --output manifest.json
+   ke-updater manifest --dir <build-dir> --platform <rid> --version <version> [--required] --output manifest.json
    ke-updater sign --manifest manifest.json --key <private-key-pem>
    az storage blob upload-batch ... -d releases/<version>/<rid>/     # files + manifest + .sig
    ```
@@ -260,6 +267,57 @@ The helper lives on the Gui side because `KhaozEngine.Updates` (which owns `Upda
 dependency: Gui references Updates, so the edge points the right way and `Updates` stays renderer-free.
 `UpdaterUiThemeExtensions.ToRgb(Vector4)` exposes the RGBA-float to `(R, G, B)`-byte conversion on its own for
 any other hand-mapping a game still needs.
+
+---
+
+## Required (mandatory) updates
+
+A build can be published as a **required** update: the client then installs it with no player interaction
+instead of waiting for a keypress. This is the remote-rescue path, a mandatory update reaches a client whose
+update UI is otherwise idle, so a stranded build can be pulled onto a fixed version.
+
+**Trust boundary.** Mandatoriness is decided from the `required` bit in the **signed** manifest, never from
+the unsigned `latest-<rid>.json` pointer (which the client ignores for every security decision). `UpdateService`
+reads `Required` off the verified manifest and exposes it as `IUpdateStatus.IsRequired`.
+
+**Publishing.** Add `--required` to the manifest step so the bit lands in the signed manifest:
+
+```sh
+ke-updater manifest --dir <build-dir> --platform <rid> --version <version> --required --output manifest.json
+```
+
+A game's `scripts/publish-update.sh` typically gates this behind a `UPDATE_REQUIRED=true` env / workflow input
+so normal releases stay optional and only a deliberate re-publish is marked required.
+
+**Client behaviour (auto-download + auto-apply).** Wire the engine's auto-advance policy once, alongside the
+player-driven `Trigger`:
+
+```csharp
+overlay.OnTrigger += _ => UpdateOverlayActions.Trigger(service);   // optional updates: player-driven
+// ...once per frame in the game loop (keeps ApplyUpdate + forced exit on the caller's thread):
+UpdateOverlayActions.AutoAdvanceRequired(service);
+```
+
+`AutoAdvanceRequired` is a no-op unless `IsRequired`, so optional updates are unchanged. For a required update
+it downloads with no keypress and then applies (restart) as soon as files are staged. It does NOT auto-retry a
+failed download (that would hot-loop); the overlay still offers the player a keypress retry on `Failed`.
+
+**Overlay text.** The default theme swaps in `update.overlay.*.required` variants for a required update (drawn
+via `UpdateOverlayTheme.TitleFor(UpdateState, IUpdateStatus)`), which convey mandatoriness and drop the now
+inapplicable keypress prompt:
+
+| State | Required key | English default |
+|---|---|---|
+| UpdateAvailable (title) | `update.overlay.available.title.required` | `Required Update - v{0}` |
+| UpdateAvailable (body) | `update.overlay.available.body.required` | `A required update is downloading` |
+| Downloading (title) | `update.overlay.downloading.title.required` | `Downloading Required Update...` |
+| ReadyToApply (title) | `update.overlay.ready.title.required` | `Required Update v{0} Ready` |
+| ReadyToApply (body) | `update.overlay.ready.body.required` | `Restarting to apply` |
+| Applying (title) | `update.overlay.applying.title.required` | `Applying Required Update...` |
+| Failed (title) | `update.overlay.failed.title.required` | `Required Update Failed` |
+
+A theme that overrides `TitleFor` / `BodyFor` adds its own `IsRequired` branch to localize these; a game using
+the default theme just adds the keys above to its catalog.
 
 ---
 

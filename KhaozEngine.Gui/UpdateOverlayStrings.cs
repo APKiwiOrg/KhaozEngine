@@ -20,6 +20,13 @@ namespace KhaozEngine.Gui;
 /// <c>{0}</c> = the remote version; the action bodies take <c>{0}</c> = the trigger-key label; the downloading
 /// body takes <c>{0}</c> = files downloaded, <c>{1}</c> = total files, <c>{2}</c> = MB downloaded,
 /// <c>{3}</c> = total MB. The other lines take no arguments.
+///
+/// The <c>*.required</c> variants are used for a REQUIRED update (the client auto-downloads then auto-restarts,
+/// so no keypress prompt applies): the required titles that show a version take <c>{0}</c> = the remote version,
+/// and every required body takes no arguments (there is no trigger key to name). The downloading/applying/failed
+/// BODIES have no required variant (their shared text carries no key prompt). A game overriding
+/// <see cref="UpdateOverlayTheme.TitleFor(UpdateState, IUpdateStatus)"/> / <see cref="UpdateOverlayTheme.BodyFor"/>
+/// selects these itself off <see cref="IUpdateStatus.IsRequired"/>.
 /// </remarks>
 public static class UpdateOverlayStrings
 {
@@ -54,6 +61,29 @@ public static class UpdateOverlayStrings
     /// <summary>Body for <see cref="UpdateState.Failed"/>. Takes <c>{0}</c> = trigger-key label.</summary>
     public static readonly StringId FailedBody = new("update.overlay.failed.body");
 
+    // --- Required-update variants (auto-download + auto-apply; no keypress prompt) ---
+
+    /// <summary>Required-update title for <see cref="UpdateState.UpdateAvailable"/>. Takes <c>{0}</c> = remote version.</summary>
+    public static readonly StringId AvailableTitleRequired = new("update.overlay.available.title.required");
+
+    /// <summary>Required-update body for <see cref="UpdateState.UpdateAvailable"/>. No arguments.</summary>
+    public static readonly StringId AvailableBodyRequired = new("update.overlay.available.body.required");
+
+    /// <summary>Required-update title for <see cref="UpdateState.Downloading"/>. No arguments.</summary>
+    public static readonly StringId DownloadingTitleRequired = new("update.overlay.downloading.title.required");
+
+    /// <summary>Required-update title for <see cref="UpdateState.ReadyToApply"/>. Takes <c>{0}</c> = remote version.</summary>
+    public static readonly StringId ReadyTitleRequired = new("update.overlay.ready.title.required");
+
+    /// <summary>Required-update body for <see cref="UpdateState.ReadyToApply"/>. No arguments.</summary>
+    public static readonly StringId ReadyBodyRequired = new("update.overlay.ready.body.required");
+
+    /// <summary>Required-update title for <see cref="UpdateState.Applying"/>. No arguments.</summary>
+    public static readonly StringId ApplyingTitleRequired = new("update.overlay.applying.title.required");
+
+    /// <summary>Required-update title for <see cref="UpdateState.Failed"/>. No arguments.</summary>
+    public static readonly StringId FailedTitleRequired = new("update.overlay.failed.title.required");
+
     /// <summary>
     /// The built-in English default templates, keyed by the ids above. This is the exact text the default
     /// <see cref="UpdateOverlayTheme"/> renders when no wired catalog resolves a key, byte-identical to the
@@ -80,6 +110,13 @@ public static class UpdateOverlayStrings
             ["update.overlay.applying.body"] = "Game will restart shortly",
             ["update.overlay.failed.title"] = "Update Failed",
             ["update.overlay.failed.body"] = "Press [{0}] to retry",
+            ["update.overlay.available.title.required"] = "Required Update - v{0}",
+            ["update.overlay.available.body.required"] = "A required update is downloading",
+            ["update.overlay.downloading.title.required"] = "Downloading Required Update...",
+            ["update.overlay.ready.title.required"] = "Required Update v{0} Ready",
+            ["update.overlay.ready.body.required"] = "Restarting to apply",
+            ["update.overlay.applying.title.required"] = "Applying Required Update...",
+            ["update.overlay.failed.title.required"] = "Required Update Failed",
         };
 
         public string Get(string key) => Map.TryGetValue(key, out string? v) ? v : key;

@@ -82,6 +82,117 @@ public sealed class UpdateServiceTests : IDisposable
         source.PublishSigned(remote, ManifestUrl, PrivPem);
     }
 
+    /// <summary>Like <see cref="SetupV2Available"/> but the SIGNED manifest is marked required.</summary>
+    private void SetupRequiredV2Available()
+    {
+        File.WriteAllText(Path.Combine(installDir, "game.dll"), "v1");
+
+        string gameSha = source.Add("game.dll", "v2");
+        string newSha = source.Add("new.dll", "n1");
+
+        var remote = new UpdateManifest { Version = "2.0.0", Platform = "win-x64", Required = true };
+        remote.Files.Add(new ManifestFileEntry { Path = "game.dll", Sha256 = gameSha, Size = 2 });
+        remote.Files.Add(new ManifestFileEntry { Path = "new.dll", Sha256 = newSha, Size = 2 });
+        source.PublishSigned(remote, ManifestUrl, PrivPem, required: true);
+    }
+
+    [Fact]
+    public async Task AutoAdvanceRequired_RequiredUpdate_DownloadsAndApplies_WithNoKeypress()
+    {
+        SetupRequiredV2Available();
+        File.WriteAllText(Path.Combine(installDir, UpdaterFileName), "shim");
+        using UpdateService svc = Build();
+
+        await svc.CheckForUpdateAsync();
+        Assert.Equal(UpdateState.UpdateAvailable, svc.State);
+        Assert.True(svc.IsRequired);
+
+        // Simulate the game loop driving the policy each frame: NO player keypress at all.
+        for (int frame = 0; frame < 8 && !exited; frame++)
+        {
+            UpdateOverlayActions.AutoAdvanceRequired(svc);
+        }
+
+        Assert.True(exited);
+        Assert.Single(launches);
+        Assert.Equal(UpdateState.Applying, svc.State);
+    }
+
+    [Fact]
+    public async Task AutoAdvanceRequired_PreStagedRequiredUpdate_AppliesImmediately()
+    {
+        // Install: game.dll@v1 + the shim. Remote (required): game.dll@v2, new.dll, and the shim UNCHANGED,
+        // so there is no phantom delete; with both changed files pre-staged the check lands directly on
+        // ReadyToApply and a single frame of the policy applies it.
+        File.WriteAllText(Path.Combine(installDir, "game.dll"), "v1");
+        File.WriteAllText(Path.Combine(installDir, UpdaterFileName), "shim");
+        string gameSha = source.Add("game.dll", "v2");
+        string newSha = source.Add("new.dll", "n1");
+        var remote = new UpdateManifest { Version = "2.0.0", Platform = "win-x64", Required = true };
+        remote.Files.Add(new ManifestFileEntry { Path = "game.dll", Sha256 = gameSha, Size = 2 });
+        remote.Files.Add(new ManifestFileEntry { Path = "new.dll", Sha256 = newSha, Size = 2 });
+        remote.Files.Add(new ManifestFileEntry { Path = UpdaterFileName, Sha256 = FakeUpdateSource.Sha("shim"), Size = 4 });
+        source.PublishSigned(remote, ManifestUrl, PrivPem, required: true);
+
+        using UpdateService svc = Build();
+        Directory.CreateDirectory(StagingDir("2.0.0"));
+        File.WriteAllText(Path.Combine(StagingDir("2.0.0"), "game.dll"), "v2");
+        File.WriteAllText(Path.Combine(StagingDir("2.0.0"), "new.dll"), "n1");
+
+        await svc.CheckForUpdateAsync();
+        Assert.Equal(UpdateState.ReadyToApply, svc.State);
+
+        UpdateOverlayActions.AutoAdvanceRequired(svc);
+
+        Assert.True(exited);
+        Assert.Single(launches);
+    }
+
+    [Fact]
+    public async Task AutoAdvanceRequired_OptionalUpdate_DoesNothing()
+    {
+        SetupV2Available();
+        File.WriteAllText(Path.Combine(installDir, UpdaterFileName), "shim");
+        using UpdateService svc = Build();
+
+        await svc.CheckForUpdateAsync();
+        Assert.Equal(UpdateState.UpdateAvailable, svc.State);
+        Assert.False(svc.IsRequired);
+
+        UpdateOverlayActions.AutoAdvanceRequired(svc);
+
+        // Optional updates stay player-driven: no auto-download, no apply.
+        Assert.Equal(UpdateState.UpdateAvailable, svc.State);
+        Assert.False(exited);
+    }
+
+    [Fact]
+    public async Task AutoAdvanceRequired_FailedRequiredUpdate_DoesNotAutoRetry()
+    {
+        SetupRequiredV2Available();
+        source.AlwaysCorrupt.Add("game.dll");
+        File.WriteAllText(Path.Combine(installDir, UpdaterFileName), "shim");
+        using UpdateService svc = Build();
+
+        await svc.CheckForUpdateAsync();
+        // Drive to a failed download.
+        for (int frame = 0; frame < 8 && svc.State != UpdateState.Failed && !exited; frame++)
+        {
+            UpdateOverlayActions.AutoAdvanceRequired(svc);
+        }
+        Assert.Equal(UpdateState.Failed, svc.State);
+
+        int downloadsBefore = source.DownloadCalls;
+        // Further frames must NOT hot-loop retrying (the player keeps the keypress-retry path).
+        for (int frame = 0; frame < 5; frame++)
+        {
+            UpdateOverlayActions.AutoAdvanceRequired(svc);
+        }
+
+        Assert.Equal(UpdateState.Failed, svc.State);
+        Assert.Equal(downloadsBefore, source.DownloadCalls);
+    }
+
     [Fact]
     public async Task Check_UpdateAvailable_ListsChangedFiles()
     {

@@ -9,18 +9,19 @@ namespace KhaozEngine.Gui;
 /// <summary>
 /// Look, labels, and trigger binding for <see cref="UpdateOverlayView"/>. Every visual is injected (no
 /// hard-coded colours in the view); <see cref="Default"/> reproduces a neutral SpaceGame-style palette.
-/// Set properties to retheme, or override <see cref="TitleFor"/>/<see cref="BodyFor"/>/<see cref="AccentFor"/>
-/// for fully custom text. Colours are <see cref="Vector4"/> (RGBA 0..1); the <see cref="Color"/> literals
-/// convert implicitly.
+/// Set properties to retheme, or override <see cref="TitleFor(UpdateState, string?)"/>/<see cref="BodyFor"/>/
+/// <see cref="AccentFor"/> for fully custom text. Colours are <see cref="Vector4"/> (RGBA 0..1); the
+/// <see cref="Color"/> literals convert implicitly.
 /// </summary>
 /// <remarks>
-/// The default <see cref="TitleFor"/>/<see cref="BodyFor"/> are localization-aware: each line resolves through
-/// the ambient <see cref="LocalizationContext.Catalog"/> against the engine-owned
+/// The default <see cref="TitleFor(UpdateState, string?)"/>/<see cref="BodyFor"/> are localization-aware: each
+/// line resolves through the ambient <see cref="LocalizationContext.Catalog"/> against the engine-owned
 /// <see cref="UpdateOverlayStrings"/> keys, and falls back to the built-in English
 /// (<see cref="UpdateOverlayStrings.EnglishDefaults"/>) whenever no catalog is wired or the key is absent. A
 /// game gets localized overlay text just by adding the <c>update.overlay.*</c> keys to its catalog, with no
-/// theme subclass. Overriding <see cref="TitleFor"/>/<see cref="BodyFor"/> still fully replaces this (the
-/// override never calls back into the catalog resolution).
+/// theme subclass. Overriding <see cref="TitleFor(UpdateState, string?)"/>/<see cref="BodyFor"/> still fully
+/// replaces this (the override never calls back into the catalog resolution). Required updates render via
+/// <see cref="TitleFor(UpdateState, IUpdateStatus)"/>, which adds the <c>*.required</c> variants.
 /// </remarks>
 public class UpdateOverlayTheme
 {
@@ -79,17 +80,48 @@ public class UpdateOverlayTheme
     };
 
     /// <summary>
+    /// Required-aware title line: for a required update (<see cref="IUpdateStatus.IsRequired"/>) it resolves the
+    /// <c>*.required</c> keys (which convey mandatoriness and carry no keypress prompt); otherwise it delegates
+    /// to <see cref="TitleFor(UpdateState, string?)"/>, so a theme that only overrides that keeps working for the
+    /// ordinary optional case. This is the overload <see cref="UpdateOverlayView"/> renders with; override it to
+    /// fully customize required-update titles.
+    /// </summary>
+    public virtual string TitleFor(UpdateState state, IUpdateStatus status)
+    {
+        if (!status.IsRequired)
+        {
+            return TitleFor(state, status.RemoteVersion);
+        }
+        string version = status.RemoteVersion ?? string.Empty;
+        return state switch
+        {
+            UpdateState.UpdateAvailable => Localize(UpdateOverlayStrings.AvailableTitleRequired, version),
+            UpdateState.Downloading => Localize(UpdateOverlayStrings.DownloadingTitleRequired),
+            UpdateState.ReadyToApply => Localize(UpdateOverlayStrings.ReadyTitleRequired, version),
+            UpdateState.Applying => Localize(UpdateOverlayStrings.ApplyingTitleRequired),
+            UpdateState.Failed => Localize(UpdateOverlayStrings.FailedTitleRequired),
+            _ => string.Empty,
+        };
+    }
+
+    /// <summary>
     /// Body line for <paramref name="state"/>. Resolves through the ambient
     /// <see cref="LocalizationContext.Catalog"/> against the <see cref="UpdateOverlayStrings"/> keys, falling
-    /// back to the built-in English when no catalog is wired or the key is absent.
+    /// back to the built-in English when no catalog is wired or the key is absent. For a required update
+    /// (<see cref="IUpdateStatus.IsRequired"/>) the available/ready bodies drop the now-inapplicable keypress
+    /// prompt (the client auto-advances); the other bodies are shared with the optional case.
     /// </summary>
     public virtual string BodyFor(UpdateState state, IUpdateStatus status) => state switch
     {
-        UpdateState.UpdateAvailable => Localize(UpdateOverlayStrings.AvailableBody, TriggerKeyLabel),
+        UpdateState.UpdateAvailable => status.IsRequired
+            ? Localize(UpdateOverlayStrings.AvailableBodyRequired)
+            : Localize(UpdateOverlayStrings.AvailableBody, TriggerKeyLabel),
         UpdateState.Downloading => Localize(UpdateOverlayStrings.DownloadingBody,
             status.FilesDownloaded, status.TotalFilesToDownload,
             status.BytesDownloaded / (1024d * 1024d), status.TotalDownloadBytes / (1024d * 1024d)),
-        UpdateState.ReadyToApply => Localize(UpdateOverlayStrings.ReadyBody, TriggerKeyLabel),
+        UpdateState.ReadyToApply => status.IsRequired
+            ? Localize(UpdateOverlayStrings.ReadyBodyRequired)
+            : Localize(UpdateOverlayStrings.ReadyBody, TriggerKeyLabel),
         UpdateState.Applying => Localize(UpdateOverlayStrings.ApplyingBody),
         UpdateState.Failed => Localize(UpdateOverlayStrings.FailedBody, TriggerKeyLabel),
         _ => string.Empty,

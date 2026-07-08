@@ -70,6 +70,40 @@ public sealed class ManifestToolCommandsTests
     }
 
     [Fact]
+    public void Manifest_WithRequiredFlag_SetsRequiredTrue()
+    {
+        string dir = Directory.CreateTempSubdirectory("ke-updater-req").FullName;
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "a.txt"), "hello");
+            var (o, e) = Writers();
+            Assert.Equal(0, ManifestToolCommands.Run(
+                new[] { "manifest", "--dir", dir, "--platform", "win-x64", "--version", "1.2.3", "--required" }, o, e));
+            UpdateManifest? parsed = UpdateManifest.Deserialize(o.ToString());
+            Assert.NotNull(parsed);
+            Assert.True(parsed!.Required);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void Manifest_WithoutRequiredFlag_RequiredFalse()
+    {
+        string dir = Directory.CreateTempSubdirectory("ke-updater-noreq").FullName;
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "a.txt"), "hello");
+            var (o, e) = Writers();
+            Assert.Equal(0, ManifestToolCommands.Run(
+                new[] { "manifest", "--dir", dir, "--platform", "win-x64", "--version", "1.2.3" }, o, e));
+            UpdateManifest? parsed = UpdateManifest.Deserialize(o.ToString());
+            Assert.NotNull(parsed);
+            Assert.False(parsed!.Required);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
     public void Unknown_command_returns_nonzero()
     {
         var (o, e) = Writers();

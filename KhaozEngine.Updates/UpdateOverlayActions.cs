@@ -29,4 +29,29 @@ public static class UpdateOverlayActions
             case OverlayAction.Retry: _ = service.CheckForUpdateAsync(); break;
         }
     }
+
+    /// <summary>
+    /// Auto-advance policy for a REQUIRED update: with no player keypress, download and then apply so a
+    /// mandatory build installs itself. A no-op unless <see cref="UpdateService.IsRequired"/> is set, so
+    /// optional updates stay player-driven via <see cref="Trigger"/>. Idempotent and cheap: each call
+    /// acts only at an actionable transition (<see cref="UpdateState.UpdateAvailable"/> -&gt; download,
+    /// <see cref="UpdateState.ReadyToApply"/> -&gt; apply) and no-ops otherwise, so it is designed to be
+    /// called once per frame from the game loop (which also keeps <see cref="UpdateService.ApplyUpdate"/>
+    /// and its forced exit on the caller's thread). It deliberately does NOT auto-retry a
+    /// <see cref="UpdateState.Failed"/> update (that would hot-loop); the overlay still offers the player
+    /// a keypress retry.
+    /// </summary>
+    public static void AutoAdvanceRequired(UpdateService service)
+    {
+        if (!service.IsRequired)
+        {
+            return;
+        }
+        switch (ResolveAction(service.State))
+        {
+            case OverlayAction.Download: _ = service.StartDownloadAsync(); break;
+            case OverlayAction.Apply: service.ApplyUpdate(); break;
+            // Failed (Retry) is intentionally not auto-driven: see the summary.
+        }
+    }
 }

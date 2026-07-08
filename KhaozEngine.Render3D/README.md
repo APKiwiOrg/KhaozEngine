@@ -28,8 +28,10 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   caster per frame with
   `Scene3D.AddShadowBlob(new ShadowBlob(position, groundY, radius, strength, heightAboveGround))` (cleared each
   `Begin`, like the ground-decal queue); the blob is drawn as a dark `Circle` `GroundDecal` through the existing
-  depth-reconstructed ground-decal projection. Radius follows the caster footprint; strength fades with height above
-  ground (`ShadowSettings.BlobFadeHeight`) so a jumping caster's blob shrinks + lightens.
+  depth-reconstructed ground-decal projection, BEFORE the skinned character pass so a caster's own body occludes its
+  own blob (ground-receiver-only: terrain and rigid props receive the blob, characters do not - the Y-band never
+  repaints a character's legs). Radius follows the caster footprint; strength fades with height above ground
+  (`ShadowSettings.BlobFadeHeight`) so a jumping caster's blob shrinks + lightens.
   - `ShadowMode.ShadowMap`: a depth-only pass renders the instanced casters (models cast; terrain receives only) into
   an ortho light-space depth map fitted around the camera focus (texel-snapped to kill shimmer), which the shared
   lighting block PCF-samples (3x3 + slope-scaled bias) to shadow the KEY light's diffuse+spec only for BOTH models

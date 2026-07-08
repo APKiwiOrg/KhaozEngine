@@ -5,6 +5,14 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.35.0
+
+Blob shadows are now ground-receiver-only: a caster's own body is never repainted by its own blob. Behaviour change, no public API change, minor bump (swim-era presentation, alongside 10.33.0).
+
+- **Blob decals draw before the skinned character pass (`Scene3D`).** The `ShadowMode.Blob` ground decals were drawn after the whole model pass, so their world-Y band (`groundY - BlobGroundYTolerance .. groundY + BlobGroundMaxStep`) repainted the lower ~0.4 m of a caster's own mesh: a dark, world-anchored line up a character's legs and shins, most visible while swimming where the caster is continuously grounded. They now draw between the opaque RECEIVER geometry (terrain, splat, rigid props) and the skinned character pass, so each character opaquely occludes its own blob and the band never lands on a body. Slope conformity is unchanged (the blob still rides terrain across the full `BlobGroundMaxStep`), so a consumer that clamped `BlobGroundMaxStep` to hide the leg-repaint can restore the default. Receivers are unchanged: terrain and rigid props still take the blob (they are drawn before the blob pass). Under MSAA the receiver depth is resolved once more before the blob pass and the model framebuffer is re-bound to continue with the characters; a no-blob frame is byte-identical (the pass is skipped entirely - same framebuffer binding, no extra resolve), so existing goldens stay byte-stable.
+- **Tests.** New backend-independent `BlobShadowReceiverGoldenTests` renders a tall skinned box over a floor with a blob under it and asserts, through the camera projection, that the box's lower face (inside the band) is not darker than its upper face - it fails on the pre-fix draw order (ratio ~0.52) and passes after. The committed `scene3d_shadow_blob` golden is unchanged: its casters are rigid props, which legitimately still receive the blob.
+- **Consumer note (games).** Ruinborne adopts by pinning `10.35.0`, removing its `BlobGroundMaxStep` clamp workaround (restore the default), and re-testing swim camera feel. No other code change is required.
+
 ## 10.34.0
 
 The default update overlay localizes its own text, and the shim window palette can be derived from the overlay theme. Two additive Gui features, no breaking change: existing game code compiles and renders identically until it opts in. Minor bump.

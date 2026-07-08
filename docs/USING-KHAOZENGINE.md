@@ -1083,8 +1083,12 @@ unaffected and order-independent, so they skip the sort. There is nothing to con
     Radius follows the caster's footprint; strength fades with `heightAboveGround` so a jumping caster's blob shrinks
     and lightens, vanishing at `Shadows.BlobFadeHeight` (default `4`; set `<= 0` for a constant-strength blob). Tune
     `BlobOpacity`, `BlobColor`, `BlobEdgeSoftness`, and the ground Y-band (`BlobGroundYTolerance`/`BlobGroundMaxStep`).
-    Which entities cast is the game's call - typically each character casts (submit its footprint each frame) and
-    props opt in by size. With `Off` the queue is ignored, so submitting blobs unconditionally is safe.
+    Blobs are ground-receiver-only: they draw after the terrain/prop RECEIVER geometry but before the skinned
+    character pass, so a caster's own body opaquely occludes its own blob (the Y-band never repaints a character's
+    legs/shins), while terrain and rigid props still receive it. So `BlobGroundMaxStep` is free to follow terrain
+    slopes without also painting up a caster - no need to clamp it to hide leg-repaint. Which entities cast is the
+    game's call - typically each character casts (submit its footprint each frame) and props opt in by size. With
+    `Off` the queue is ignored, so submitting blobs unconditionally is safe.
   - `ShadowMode.ShadowMap`: the semi-realistic key-light directional shadow map with PCF (the "A"-tier target).
     A depth-only pass renders the instanced casters into an orthographic light-space depth map fitted around the
     camera focus (texel-snapped each frame to kill shimmer under camera pan), which the model AND terrain fragments

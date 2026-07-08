@@ -315,6 +315,99 @@ namespace KhaozEngine.Tests.Gpu
             GoldenCompare.AssertOrUpdate("scene3d_sky", rgba, W, H);
         }
 
+        // Rendering gap #5: the animated water surface (normal perturbation, sky-derived fresnel tint, key-light sun
+        // glint, depth-sampled shore fade). A deep lakebed tile sits well below the water surface (so the open-water
+        // region is fully opaque - depth-below-surface far past ShoreFadeDistance) while a shallow shelf ramps up
+        // near one side to a dry "beach" box that pokes ABOVE the surface (the water pass's own depth test occludes
+        // it), so the shelf's slope crosses the fade band and the frame shows both open water (glint + fresnel tint)
+        // and a genuine soft shoreline. Time is FROZEN (EffectTimeSeconds = 0, the same mechanism scene3d_beam locks)
+        // so the golden is deterministic despite the animated per-pixel wave math. Off (the default, no DrawWater
+        // call) stays byte-stable via the untouched scene3d golden - this is a pure ADDITIVE opt-in pass.
+        [GpuFact]
+        public void Golden3D_Water()
+        {
+            MeshHandle lakebed = default, shelf = default, beach = default;
+
+            byte[] rgba = Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    lakebed = scene.LoadMesh(MeshPrimitives.Tile(10f, 0.1f));
+                    shelf = scene.LoadMesh(MeshPrimitives.Tile(4f, 0.1f));
+                    beach = scene.LoadMesh(MeshPrimitives.Box(1.2f));
+                    scene.Post.Starfield = false;
+                    scene.Post.BackgroundColor = new Color(0.10f, 0.12f, 0.16f, 1f);
+                    // Sky ON so the water's fresnel horizon tint has the same cohesive sky-derived look the brief
+                    // asks for (water borrows the sky's palette by default; harmonized in WaterSettings' own
+                    // defaults too, so this also exercises an explicit override agreeing with a custom sky).
+                    scene.Post.Sky.Enabled = true;
+                    scene.Post.Sky.HorizonColor = new Color(0.66f, 0.72f, 0.80f, 1f);
+                    scene.Post.Sky.ZenithColor = new Color(0.20f, 0.40f, 0.72f, 1f);
+                    scene.Post.Sky.SunRadius = 0.09f;
+                    scene.Post.Sky.HaloStrength = 0.6f;
+                    // Key light angled so the sun sits up-and-toward-camera - lands a specular glint on the water
+                    // AND agrees with the sky's sun disc (both derive from the same LightDirection).
+                    scene.Post.LightDirection = new Vector3(-0.45f, -0.75f, -0.4f);
+                    scene.Post.Water.DeepColor = new Color(0.04f, 0.16f, 0.26f, 0.92f);
+                    scene.Post.Water.HorizonColor = new Color(0.60f, 0.70f, 0.80f, 0.75f);
+                    scene.Post.Water.WaveScale = 0.9f;         // tight enough that several ripple crests fit across the plane
+                    scene.Post.Water.WaveSpeed = 0.4f;
+                    scene.Post.Water.NormalStrength = 0.8f;    // strong enough that the ripple shading reads clearly at 480x320
+                    scene.Post.Water.ShoreFadeDistance = 0.7f;
+                    scene.Post.Water.GlintStrength = 0.8f;
+                    scene.Post.Water.GlintExponent = 100f;
+                    scene.Camera.Frame(new Vector3(0.1f, 0.3f, 0.2f), new Vector3(6f, 5f, 6f));
+                    scene.EffectTimeSeconds = 0f;   // static frame => deterministic golden (no wave scroll)
+                },
+                drawFrame: scene =>
+                {
+                    // Deep lakebed at y in [0, 0.1]: with the surface at y=1.0, depth-below-surface is ~0.9 in open
+                    // water - well past ShoreFadeDistance (0.7), so the open-water region is fully opaque.
+                    scene.Draw(lakebed, Matrix4x4.CreateTranslation(0f, 0f, 0f), new Color(0.20f, 0.24f, 0.20f, 1f));
+                    // Shallow shelf at y in [0.55, 0.65], offset toward +X/-Z: depth-below-surface ~0.35-0.45, inside
+                    // the fade band, so its footprint reads as a soft shoreline gradient rather than a hard clip.
+                    scene.Draw(shelf, Matrix4x4.CreateTranslation(2.4f, 0.55f, -2.4f), new Color(0.55f, 0.48f, 0.32f, 1f));
+                    // A dry beach box whose top (y=1.4) pokes ABOVE the water surface (y=1.0): the water pass's own
+                    // depth test occludes it, locking the "geometry above the surface occludes water" invariant.
+                    scene.Draw(beach, Matrix4x4.CreateTranslation(3.6f, 0.6f, -3.6f), new Color(0.62f, 0.56f, 0.38f, 1f));
+                    scene.DrawWater(new WaterPlane(centerX: 0f, surfaceY: 1.0f, centerZ: 0f, halfExtentX: 4.5f));
+                },
+                frames: 2);
+
+            // Anti-degeneracy guard: the water region must show real per-cell colour variation (animated-normal
+            // shading + fresnel gradient + glint), not a flat single-colour sheet (the failure mode a broken bake -
+            // e.g. the fragment falling through to a constant tint with no lighting - would produce). Sample the
+            // grid cells that fall within the water plane's world footprint by re-deriving their approximate screen
+            // position is overkill for a coarse guard; instead require a healthy SPREAD of distinct blue-ish
+            // (water-dominant) cell brightnesses across the whole downsampled grid, which only happens when the
+            // fresnel/glint/normal terms actually vary per pixel.
+            float[] guardGrid = GoldenCompare.Downsample(rgba, W, H);
+            int waterCells = 0;
+            float minBrightness = float.MaxValue, maxBrightness = float.MinValue;
+            for (int cell = 0; cell < guardGrid.Length / 3; cell++)
+            {
+                float r = guardGrid[cell * 3], g = guardGrid[cell * 3 + 1], b = guardGrid[cell * 3 + 2];
+                // Water-ish: blue at least as strong as red (deep tint + horizon tint are both blue-led; the dirt-
+                // brown ground/rock are red-led), and not near-black background.
+                if (b >= r - 0.02f && MathF.Max(r, MathF.Max(g, b)) > 0.05f)
+                {
+                    waterCells++;
+                    float brightness = (r + g + b) / 3f;
+                    minBrightness = MathF.Min(minBrightness, brightness);
+                    maxBrightness = MathF.Max(maxBrightness, brightness);
+                }
+            }
+            Assert.True(waterCells >= 40,
+                $"scene3d_water has only {waterCells} blue-dominant (water-ish) cells (of {guardGrid.Length / 3}); " +
+                "expected a sizeable visible water region. Check the DrawWater plane/camera framing.");
+            Assert.True(maxBrightness - minBrightness >= 0.08f,
+                $"scene3d_water's blue-dominant cells only span brightness {minBrightness:F3}..{maxBrightness:F3} " +
+                "(range < 0.08); a real animated water surface should show meaningful cell-to-cell variation from " +
+                "the fresnel gradient + sun glint + shore fade, not a flat single-colour sheet. Check the fragment " +
+                "is actually computing the normal/fresnel/glint terms instead of falling back to a constant tint.");
+
+            GoldenCompare.AssertOrUpdate("scene3d_water", rgba, W, H);
+        }
+
         // Shadows gap #1: a SPLAT-TERRAIN ground quad RECEIVING a model's PCF shadow (the shadow term flows through
         // the shared lighting block into the splat fragment identically to the model fragment). A box casts; the
         // terrain receives (model-only casting - terrain does not self-shadow). Locks terrain-receives.

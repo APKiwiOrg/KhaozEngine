@@ -35,6 +35,7 @@ namespace KhaozEngine.Render3D
         readonly BeamRenderer _beams;
         readonly Rendering.GroundDecalRenderer _decalRenderer;
         readonly Rendering.SkyRenderer _sky;
+        readonly Rendering.WaterRenderer _water;
         readonly Rendering.OverlayMeshRenderer _overlayMeshes;
         readonly RenderResources _res;
         // Slot-indexed GPU mesh storage parallel to _slots; a freed slot's entry is null until reused.
@@ -61,6 +62,9 @@ namespace KhaozEngine.Render3D
         readonly List<ShadowBlob> _shadowBlobs = new();
         // Reused scratch for the blobs-as-decals so the per-frame conversion allocates nothing.
         readonly List<GroundDecal> _shadowDecals = new();
+        // Per-frame animated-water-surface requests (Rendering gap #5). Cleared each Begin() like the decal queue;
+        // opt-in - an empty queue means the water pass (Rendering.WaterRenderer) never runs this frame.
+        readonly List<WaterPlane> _waterPlanes = new();
         // Translucent unlit overlay-mesh draws (collision proxies etc.): queued in submission order, flushed into the
         // model FB after the beams and before the post chain (depth-interleaved). Cleared each Begin().
         readonly List<(MeshHandle Mesh, Matrix4x4 World)> _overlayMeshDraws = new();
@@ -203,6 +207,9 @@ namespace KhaozEngine.Render3D
             // The procedural sky renders into the same ColorDepthFB (lit colour + read-only scene depth) as the
             // decals, as a far-plane background pass behind the geometry. Default off (Post.Sky.Enabled == false).
             _sky = new Rendering.SkyRenderer(gd, _res.ColorDepthFB.Outputs);
+            // Animated water draws into the same ColorDepthFB, AFTER the sky + decals (see RenderInternal). Default
+            // off (no DrawWater request queued == the pass never runs, existing scenes byte-stable).
+            _water = new Rendering.WaterRenderer(gd, _res.ColorDepthFB.Outputs);
             _overlayMeshes = new Rendering.OverlayMeshRenderer(gd, _res.ModelFB.Outputs);
         }
 
@@ -642,6 +649,7 @@ namespace KhaozEngine.Render3D
             _fillVerts.Clear();
             _decals.Clear();
             _shadowBlobs.Clear();
+            _waterPlanes.Clear();
             _overlayMeshDraws.Clear();
             _billboardAlphaItems.Clear();
             _billboardAlpha.Clear();
@@ -847,6 +855,21 @@ namespace KhaozEngine.Render3D
         /// <see cref="ShadowSettings.ResolveFor"/>). Internal: lets tests assert the degradation decision without a
         /// full render.</summary>
         internal ShadowResolution ResolvedShadows() => Post.Quality.Shadows.ResolveFor(_gd.Capabilities);
+
+        /// <summary>
+        /// Queue one animated water surface for this frame: a flat plane at <paramref name="plane"/>'s world height
+        /// and XZ footprint, drawn after the sky + ground decals with a fresnel-style deep/horizon tint, a key-light
+        /// sun glint, and depth-sampled shore fade (see <see cref="WaterSettings"/> on <see cref="Post"/> for the
+        /// look knobs). Opt-in: no <see cref="DrawWater(in WaterPlane)"/> call this frame means the water pass
+        /// (<see cref="Rendering.WaterRenderer"/>) never runs, so existing scenes stay byte-stable. Presentation
+        /// only; cleared in <see cref="Begin"/>. Call once per frame per distinct body of water (a game with several
+        /// separate lakes/ponds queues one <see cref="WaterPlane"/> each).
+        /// </summary>
+        public void DrawWater(in WaterPlane plane) => _waterPlanes.Add(plane);
+
+        /// <summary>Count of water planes queued this frame. Internal: lets tests assert <see cref="Begin"/> clears
+        /// the queue and <see cref="DrawWater(in WaterPlane)"/> enqueues.</summary>
+        internal int WaterPlaneCount => _waterPlanes.Count;
 
         /// <summary>Queue a translucent, UNLIT, depth-TESTED (not depth-writing) overlay draw of an already-loaded
         /// <paramref name="mesh"/> at world transform <paramref name="world"/> for this frame. The mesh's own
@@ -1063,6 +1086,7 @@ namespace KhaozEngine.Render3D
             _overlayMeshes.SetOutputs(modelOut);
             _decalRenderer.SetOutputs(_res.ColorDepthFB.Outputs);
             _sky.SetOutputs(_res.ColorDepthFB.Outputs);
+            _water.SetOutputs(_res.ColorDepthFB.Outputs);
         }
 
         void EnsureSize(int viewportW, int viewportH)
@@ -1369,8 +1393,18 @@ namespace KhaozEngine.Render3D
             if (_decals.Count > 0)
                 _decalRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, CollectionsMarshal.AsSpan(_decals));
 
+            // Animated water (Rendering gap #5): after the sky + ground decals, sampling the resolved scene depth
+            // (already valid via the ResolveDepth call above the sky pass) for the shore fade. Depth test ON (so
+            // terrain/props above the surface occlude it) but depth WRITE off (so it never touches the normal/
+            // linear-depth MRT the outline pass reads below) - see Rendering.WaterRenderer / ShaderSources.WaterVert
+            // for the full reasoning. Fully skipped when nothing is queued, so a frame with no DrawWater call
+            // renders byte-identical to before this pass existed.
+            if (_waterPlanes.Count > 0)
+                _water.Draw(cl, _res, CollectionsMarshal.AsSpan(_waterPlanes), ActiveCamera.ViewProjection,
+                    Post.LightDirection, Post.LightColor, eye, Post.Water, EffectTimeSeconds);
+
             // Resolve the multisampled lit colour + encoded normal into the single-sample targets the post chain
-            // samples (after ALL MRT writers: geometry + decals). No-op when not multisampled.
+            // samples (after ALL MRT writers: geometry + decals + water). No-op when not multisampled.
             _res.ResolveColorNormal(cl);
 
             if (EnableTiming) transparentsMs += ElapsedMs(timingStart);
@@ -1557,6 +1591,7 @@ namespace KhaozEngine.Render3D
             _beams.Dispose();
             _decalRenderer.Dispose();
             _sky.Dispose();
+            _water.Dispose();
             _overlayMeshes.Dispose();
             _res.Dispose();
             foreach (var m in _meshes)

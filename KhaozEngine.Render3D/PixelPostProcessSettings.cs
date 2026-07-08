@@ -56,6 +56,14 @@ namespace KhaozEngine.Render3D
         /// and the LDR-not-HDR caveat.</summary>
         public BloomSettings Bloom = new();
 
+        /// <summary>Animated water surface look-and-feel (tint colours, wave scale/speed, shore-fade distance, sun
+        /// glint strength). Lives here alongside <see cref="Sky"/> (both are scene-wide appearance bags reached off
+        /// <c>Post</c>); WHERE to draw water each frame is the separate per-frame
+        /// <see cref="Scene3D.DrawWater(in WaterPlane)"/> request. No request queued this frame means no water pass
+        /// runs at all, regardless of these settings - existing scenes stay byte-stable. See
+        /// <see cref="WaterSettings"/> for the knobs and the no-reflections caveat.</summary>
+        public WaterSettings Water = new();
+
         /// <summary>Internal render width (used only when <see cref="RenderScale"/> is
         /// <see cref="Render3D.RenderScale.FixedInternal"/>). High = smooth; small + Pixelated = chunky retro pixels.</summary>
         public int RenderWidth = 1600;

@@ -1076,5 +1076,122 @@ void main() {
     }
     oColor = vec4(col, 1.0);   // alpha 1: NOT the starfield/transparent background marker
 }";
+
+        // ---- Animated water surface (Rendering gap #5). Drawn AFTER the sky and the ground decals into
+        //      ColorDepthFB (lit colour + read-only scene depth), a CPU-tessellated flat grid (WaterMath.GridResolution)
+        //      at the plane's world height. Depth test ON (Less, standard, so terrain/props above the surface occlude
+        //      it, matching the textured-billboard/beam depth-interleave convention) but depth WRITE OFF: the outline
+        //      pass reads the resolved normal/linear-depth MRT (ColorTex's siblings), and those are captured by the
+        //      OPAQUE model pass alone (see RenderResources.ResolveDepth/ResolveColorNormal, which run BEFORE this
+        //      pass in Scene3D.RenderInternal) - a water depth WRITE would need its own MRT write to keep that
+        //      buffer meaningful, which reflections/probes (out of scope, roadmap #9) would want but this LDR pass
+        //      does not attempt. No-write keeps the edge outline tracing the solid geometry's silhouette (a
+        //      shore-line water edge is desirable per the brief; a corrupted normal/depth buffer that broke the
+        //      outline pass for EVERYTHING behind the water is not). Two textures bound: the resolved scene depth
+        //      (shore fade, decal-style gl_FragCoord reconstruction) and nothing else - no second material texture,
+        //      so the Metal up-front-sample-order landmine does not apply here (only one texture total). Vertex
+        //      inputs are Position only (no gap-free-signature hazard: everything declared is read). One UBO
+        //      (fragment-only; the vertex only needs ViewProj, folded into the SAME buffer per the one-UBO-per-set
+        //      rule, read by both stages). ----
+        public const string WaterVert = @"#version 450
+layout(set=0, binding=2) uniform Water {
+    mat4 ViewProj;
+    mat4 InvViewProj;   // RAW (not clip-corrected) inverse, for the fragment's depth reconstruction
+    vec4 LightDir;      // xyz = key light travel direction
+    vec4 LightColor;
+    vec4 CameraPos;     // xyz = eye position
+    vec4 DeepColor;     // rgb + alpha
+    vec4 HorizonColor;  // rgb + alpha
+    vec4 WaveParams;    // x=waveScale, y=waveSpeed, z=normalStrength, w=time
+    vec4 ShoreGlint;    // x=shoreFadeDistance, y=glintStrength, z=glintExponent, w=opacity
+    vec4 Res;           // xy = 1/renderWidth, 1/renderHeight
+};
+layout(location=0) in vec3 Position;
+layout(location=0) out vec3 vWorldPos;
+void main() {
+    gl_Position = ViewProj * vec4(Position, 1.0);
+    vWorldPos = Position;
+}";
+
+        public const string WaterFrag = @"#version 450
+layout(set=0, binding=0) uniform texture2D DepthTex;   // .r = resolved scene linear depth (single-channel R32F)
+layout(set=0, binding=1) uniform sampler Samp;
+layout(set=0, binding=2) uniform Water {
+    mat4 ViewProj;
+    mat4 InvViewProj;
+    vec4 LightDir;
+    vec4 LightColor;
+    vec4 CameraPos;
+    vec4 DeepColor;
+    vec4 HorizonColor;
+    vec4 WaveParams;    // x=waveScale, y=waveSpeed, z=normalStrength, w=time
+    vec4 ShoreGlint;    // x=shoreFadeDistance, y=glintStrength, z=glintExponent, w=opacity
+    vec4 Res;
+};
+layout(location=0) in vec3 vWorldPos;
+layout(location=0) out vec4 oColor;
+
+// Mirrors WaterMath.WaveNormal exactly: two scrolling sine octaves, analytic slope -> tilted flat-up normal.
+vec3 waterNormal(vec2 xz, float time, float waveScale, float waveSpeed, float normalStrength) {
+    float invScale = 1.0 / max(waveScale, 1e-4);
+    float t = time * waveSpeed;
+    float p1x = xz.x * invScale + t;
+    float p1z = xz.y * invScale + t * 0.7;
+    float p2x = (xz.x - xz.y) * invScale * 2.0 - t * 1.3;
+    float p2z = (xz.x + xz.y) * invScale * 2.0 + t * 0.9;
+    float dHdx = cos(p1x) * invScale + cos(p2x) * invScale * 2.0 * 0.5;
+    float dHdz = cos(p1z) * invScale + cos(p2z) * invScale * 2.0 * 0.5;
+    vec3 n = vec3(-dHdx * normalStrength, 1.0, -dHdz * normalStrength);
+    float len = length(n);
+    return len > 1e-8 ? n / len : vec3(0.0, 1.0, 0.0);
+}
+
+void main() {
+    float waveScale = WaveParams.x, waveSpeed = WaveParams.y, normalStrength = WaveParams.z, time = WaveParams.w;
+    vec3 N = waterNormal(vWorldPos.xz, time, waveScale, waveSpeed, normalStrength);
+
+    vec3 V = normalize(CameraPos.xyz - vWorldPos);
+    float ndotv = clamp(dot(N, V), 0.0, 1.0);
+    // Schlick-style fresnel: (1-ndotv)^5, mirrors WaterMath.Fresnel.
+    float fx = clamp(1.0 - ndotv, 0.0, 1.0);
+    float fresnel = fx * fx * fx * fx * fx;
+    vec3 tint = mix(DeepColor.rgb, HorizonColor.rgb, fresnel);
+    float tintAlpha = mix(DeepColor.a, HorizonColor.a, fresnel);
+
+    // Key-light specular sun glint: small water-specific Blinn-Phong term (mirrors WaterMath.SunGlint), NOT routed
+    // through the shared computeLighting block (water needs its own tight strength/exponent, distinct from any
+    // mesh material).
+    float glintStrength = ShoreGlint.y, glintExponent = ShoreGlint.z;
+    vec3 Lsun = -normalize(LightDir.xyz);
+    vec3 H = V + Lsun;
+    float hLen = length(H);
+    float glint = 0.0;
+    if (glintStrength > 0.0 && hLen > 1e-8) {
+        H /= hLen;
+        float ndoth = max(dot(N, H), 0.0);
+        glint = pow(ndoth, max(glintExponent, 1.0)) * glintStrength;
+    }
+
+    // Shore fade: reconstruct the ground surface under this pixel from the resolved scene depth (the ground-decal
+    // pass's gl_FragCoord + raw-inverse-view-projection convention - backend-independent, unlike an interpolated
+    // UV, because render-target texture SAMPLING has a backend-dependent Y origin while gl_FragCoord is upper-left
+    // on every backend). depthBelowSurface = this water fragment's own world Y minus the ground's world Y (positive
+    // when the ground sits below the surface, as it must for this fragment to have passed the water pass's OWN
+    // depth test in the first place).
+    ivec2 sz = textureSize(sampler2D(DepthTex, Samp), 0);
+    float groundDepth = texelFetch(sampler2D(DepthTex, Samp), ivec2(gl_FragCoord.xy), 0).r;
+    vec4 ndc = vec4(gl_FragCoord.x / float(sz.x) * 2.0 - 1.0, 1.0 - gl_FragCoord.y / float(sz.y) * 2.0, groundDepth, 1.0);
+    vec4 wp = InvViewProj * ndc;
+    vec3 groundWorld = wp.xyz / wp.w;
+    float depthBelowSurface = vWorldPos.y - groundWorld.y;
+    float shoreFadeDist = ShoreGlint.x;
+    float shoreFade = shoreFadeDist <= 0.0 ? 1.0 : smoothstep(0.0, 1.0, clamp(depthBelowSurface / shoreFadeDist, 0.0, 1.0));
+
+    float opacity = ShoreGlint.w;
+    vec3 rgb = tint + LightColor.rgb * glint;
+    float alpha = tintAlpha * opacity * shoreFade;
+    if (alpha <= 0.001) discard;
+    oColor = vec4(rgb, alpha);
+}";
     }
 }

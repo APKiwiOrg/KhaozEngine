@@ -1165,6 +1165,36 @@ unaffected and order-independent, so they skip the sort. There is nothing to con
     motivating cases - but it will not bloom a surface that is merely well-lit white; tune `Threshold` down if a
     scene needs a softer cutoff. The pure math (`BloomMath`: the knee curve, gaussian weight generation, half-res
     sizing) is headless-tested and mirrors the GLSL bright-pass/blur shaders exactly.
+- **Water** (`Scene3D.DrawWater(in WaterPlane)` + `Post.Water`, a `WaterSettings`, **default off/no-op**): an opt-in
+  animated water surface - a flat, alpha-blended plane with procedural normal perturbation, a fresnel-style blend
+  between a deep tint and a sky-derived horizon tint, a key-light specular sun glint, and depth-sampled shore fade.
+  **No reflections/probes** (roadmap gap #9 is separate and not attempted here) - this is an LDR stylized surface,
+  not a physically accurate one.
+  - **Request** (per-frame, WHERE to draw): call `scene.DrawWater(new WaterPlane(centerX, surfaceY, centerZ,
+    halfExtentX, halfExtentZ))` once per body of water each frame (several lakes/ponds queue one `WaterPlane` each).
+    No call this frame means the water pass never runs - existing scenes stay byte-stable, matching the `Sky`/`Bloom`
+    opt-in convention. Cleared every `Begin()` like the decal/shadow-blob queues.
+  - **Settings** (`Post.Water`, scene-wide look, lives alongside `Post.Sky` for the same reason - both are
+    scene-appearance bags reached off `Post`): `DeepColor`/`HorizonColor` (the fresnel-blended tint; `HorizonColor`
+    defaults close to `Sky.HorizonColor` so an enabled sky + enabled water read as one cohesive scene without
+    hand-matching colours), `WaveScale`/`WaveSpeed` (the two scrolling normal-perturbation octaves), `NormalStrength`
+    (0 = flat mirror), `ShoreFadeDistance` (world units the alpha softens over near the shore), `GlintStrength`/
+    `GlintExponent` (the sun highlight), and `Opacity`.
+  - **Mechanism**: drawn AFTER the sky and the ground decals, BEFORE the MRT resolve, as its own small pass (like
+    `SkyRenderer`/`GroundDecalRenderer`) into the lit colour + read-only scene depth. Depth test ON (`Less`, so
+    terrain/props above the surface occlude it - the "rock poking out of the lake" case) but depth WRITE OFF (so it
+    never touches the resolved normal/linear-depth the outline pass reads - a shore-line water edge is desirable, a
+    corrupted outline pass for everything drawn near the water is not). Time is driven by the same
+    `Scene3D.EffectTimeSeconds` clock the beam pulse/scroll uses, so freezing it (`EffectTimeSeconds = 0`) gives a
+    fully deterministic frame for tests/goldens despite the animated per-pixel wave math.
+  - **Shore fade**: samples the resolved scene linear depth (the same `gl_FragCoord` + raw-inverse-view-projection
+    reconstruction the ground-decal pass uses) to recover the ground height under each water pixel, then softens
+    alpha to 0 as the ground approaches the surface height over `ShoreFadeDistance` world units - so the waterline
+    reads as a soft transition instead of a hard clip. A flat, deep lakebed reads fully opaque in open water; a
+    shallow shelf near the shore fades progressively.
+  - The pure math (`WaterMath`, internal: scrolling-normal perturbation, Schlick fresnel, Blinn-Phong glint,
+    shore-fade curve, grid tessellation sizing) is headless-tested and mirrors the GLSL `WaterFrag`/`WaterVert`
+    exactly.
 - `IsoCamera3D`: `Azimuth`/`Elevation`/`Target`/`OrthoSize`/`Zoom`, `Frame(target, azimuth, size)`,
   `ScreenToRay`, `ScreenToGround`, and the `View`/`Projection`/`ViewProjection` matrices.
 - `IsoCameraController`: input-agnostic gestures driving an `IsoCamera3D` (pure `System.Numerics`, headless-testable;

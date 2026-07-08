@@ -20,6 +20,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <item>OverlayUnlitVert+OverlayUnlitFrag (OverlayMeshRenderer)</item>
     /// <item>DecalVert+DecalFrag (GroundDecalRenderer)</item>
     /// <item>SkyVert+SkyFrag (SkyRenderer background pass)</item>
+    /// <item>WaterVert+WaterFrag (WaterRenderer animated water surface)</item>
     /// <item>FullscreenVert paired with each post fragment PaletteFrag/EdgeFrag/BlitFrag/FxaaFrag/BloomBrightFrag/
     /// BloomBlurFrag/BloomCompositeFrag (PixelPostProcess)</item>
     /// <item>SpriteBatch VertSrc+FragSrc (Render2D)</item>
@@ -66,6 +67,10 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void Sky()
             => ShaderValidation.ValidatePair(ShaderSources.SkyVert, ShaderSources.SkyFrag, "Sky");
+
+        [Fact]
+        public void Water()
+            => ShaderValidation.ValidatePair(ShaderSources.WaterVert, ShaderSources.WaterFrag, "Water");
 
         [Fact]
         public void PostPalette()

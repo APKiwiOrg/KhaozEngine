@@ -319,6 +319,42 @@ namespace KhaozEngine.Tests.Render3D
                     $"SkyFrag lost '{member}': the Sky UBO block drifted from SkyRenderer.SkyUbo. Fix ShaderSources.SkyFrag or the struct.");
         }
 
+        // ---- Water surface pass UBO (WaterRenderer) ----
+
+        [Fact]
+        public void WaterUbo_MarshalSize_EqualsPayloadBytesConstant_And_GlslBlock()
+        {
+            // GLSL Water block: 2 mat4 (ViewProj, InvViewProj) + 8 vec4 (LightDir, LightColor, CameraPos, DeepColor,
+            // HorizonColor, WaveParams, ShoreGlint, Res) = 128 + 128 = 256 bytes. If the struct or the shader block
+            // drift apart, the per-plane water UBO upload smears the colours/wave/glint params. Other half:
+            // ShaderSources.WaterFrag.
+            Assert.Equal((int)WaterRenderer.PayloadBytes, Marshal.SizeOf<WaterRenderer.WaterUbo>());
+            Assert.Equal(2 * 64 + 8 * 16, (int)WaterRenderer.PayloadBytes);
+        }
+
+        [Fact]
+        public void WaterFrag_DeclaresAllMembers()
+        {
+            // Assert every member of the Water block is present (in the fragment that reads it), so a
+            // rename/reorder on the shader side that silently changes the layout trips here. Other half:
+            // ShaderSources.WaterFrag.
+            foreach (var member in new[] { "mat4 ViewProj;", "mat4 InvViewProj;", "vec4 LightDir;", "vec4 LightColor;",
+                "vec4 CameraPos;", "vec4 DeepColor;", "vec4 HorizonColor;", "vec4 WaveParams;", "vec4 ShoreGlint;", "vec4 Res;" })
+                Assert.True(ShaderSources.WaterFrag.Contains(member),
+                    $"WaterFrag lost '{member}': the Water UBO block drifted from WaterRenderer.WaterUbo. Fix ShaderSources.WaterFrag or the struct.");
+        }
+
+        [Fact]
+        public void WaterVert_DeclaresSameBlockAsWaterFrag()
+        {
+            // The vertex stage only READS ViewProj, but the block must be declared identically in both stages
+            // (same one-UBO-per-set buffer) or the two stages disagree on the layout the driver builds.
+            foreach (var member in new[] { "mat4 ViewProj;", "mat4 InvViewProj;", "vec4 LightDir;", "vec4 LightColor;",
+                "vec4 CameraPos;", "vec4 DeepColor;", "vec4 HorizonColor;", "vec4 WaveParams;", "vec4 ShoreGlint;", "vec4 Res;" })
+                Assert.True(ShaderSources.WaterVert.Contains(member),
+                    $"WaterVert lost '{member}': the Water UBO block declaration drifted from WaterFrag's. Fix ShaderSources.WaterVert.");
+        }
+
         [Fact]
         public void PaletteFrag_ColorsArray_SizedByMaxPaletteColors()
         {

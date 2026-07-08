@@ -35,6 +35,24 @@ namespace KhaozEngine.Game
 
         protected GameApp(in GameAppOptions options)
         {
+            // WinExe support: a Windows-subsystem game head (OutputType=WinExe, which stops a stray console window
+            // opening behind the game) has no console, so Console.Write* output vanishes when the game is launched
+            // from a terminal (dotnet run / cmd / PowerShell). Attach the parent process's console (if any) FIRST,
+            // before anything - even the AppUserModelId call below - can write, so no startup logging is lost.
+            // No-op off Windows, for a console-subsystem exe, when a console already exists, on a normal
+            // Explorer/Start launch (no parent console), or when output is redirected (CI/pipes are left
+            // untouched); never throws. Opt out with GameAppOptions.SuppressParentConsoleAttach.
+            AppWindow.TryAttachParentConsole(enable: !options.SuppressParentConsoleAttach);
+
+            // Last-chance crash net for the invisible case: a Windows GUI launch (no parent console, so the attach
+            // above was a no-op) has no window yet and no console, so an uncaught STARTUP crash would vanish
+            // silently. When the process still owns no console, install a floor that writes the fatal exception to
+            // a file under the per-user local app-data dir. A terminal launch (console now attached) shows the
+            // exception on stderr and skips this; a game that wires KhaozEngine.Diagnostics.CrashHandler still gets
+            // its richer game.log too. Never throws.
+            if (!AppWindow.ProcessHasConsole)
+                StartupCrashLog.InstallForNoConsole(options.Title);
+
             _resumeGapThresholdSeconds = options.ResumeGapThresholdSeconds;
 
             // Windows taskbar identity: set the process's explicit AppUserModelID BEFORE the native window is

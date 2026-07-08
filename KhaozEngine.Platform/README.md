@@ -69,6 +69,31 @@ process creates its first window. Most games never call it directly: set `GameAp
 `GameApp` calls `AppWindow.TrySetProcessAppUserModelId` (a windowing-layer forwarder) before creating the window.
 macOS/Linux have no equivalent taskbar-identity call, so it is a no-op there.
 
+## Windows console attach (`WinExe` support)
+
+`WindowsConsole.EnsureParentConsoleAttached(bool enable = true)` makes a Windows `WinExe` (Windows-subsystem) game
+head keep its developer-visible console output. A game head built as `<OutputType>WinExe</OutputType>` - the way to
+stop a stray console window opening behind the game on Windows - has no console, so `Console.Write*` normally
+vanishes when a developer launches it from a terminal (`dotnet run`, cmd, PowerShell). This attaches the process to
+the **parent** process's console (kernel32 `AttachConsole(ATTACH_PARENT_PROCESS)`) and rewires `Console.Out` /
+`Console.Error` to it, so stdout/stderr flow back to the launching terminal.
+
+```csharp
+using KhaozEngine.Platform;
+
+// Call ONCE, as the very first thing, before anything writes:
+WindowsConsole.EnsureParentConsoleAttached();
+bool haveConsole = WindowsConsole.HasConsole; // true after a successful attach, or for a console-subsystem exe
+```
+
+It is idempotent (attempts once per process) and never throws. A no-op returning `false`: off Windows, for a
+console-subsystem exe (which already owns a console), on a normal Explorer/Start launch (no parent console), when
+disabled via `enable`, and when both stdout and stderr are already redirected (a pipe, a `> out.txt`, or a
+CI/test-runner capture is respected - only the non-redirected streams are rewired). Most games never call it
+directly: `GameApp` calls `AppWindow.TryAttachParentConsole` (a windowing-layer forwarder) as its first action,
+and a bare `AppWindow` host gets it from the constructor; opt out with `GameAppOptions.SuppressParentConsoleAttach`.
+`HasConsole` returns `true` off Windows (there is no Windows-subsystem/no-console case to guard there).
+
 ## Clipboard
 
 `Clipboard` is a cross-platform clipboard facade. Each call tries the platform backends in order and

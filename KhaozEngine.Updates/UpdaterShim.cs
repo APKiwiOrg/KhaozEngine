@@ -29,6 +29,12 @@ public static class UpdaterShim
     /// <summary>Opens the log, runs the staged apply (with the per-OS progress window), returns the exit code.</summary>
     public static int Main(string[] args)
     {
+        // The shim ships as a Windows WinExe (Windows-subsystem) so applying an update never flashes a console
+        // window over the game. That leaves the best-effort Console.WriteLine below with nowhere to go when a
+        // developer runs the updater from a terminal, so attach the parent console first (no-op off Windows / for
+        // a console exe / with no parent console; never throws). The file log is always written regardless.
+        KhaozEngine.Platform.WindowsConsole.EnsureParentConsoleAttached();
+
         string logPath = ResolveLogPath(args);
         using var log = new StreamWriter(logPath, append: false) { AutoFlush = true };
         return UpdateApplier.Run(

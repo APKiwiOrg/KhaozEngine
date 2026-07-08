@@ -57,6 +57,16 @@ sets the process's explicit Windows AppUserModelID (via `AppWindow.TrySetProcess
 the window, which also stabilises taskbar grouping/pinning. Null (the default) keeps the current behaviour;
 no-op off Windows.
 
+**WinExe console attach.** Ship the Desktop head as `<OutputType>WinExe</OutputType>` (no stray console window on
+Windows). Because a Windows-subsystem exe has no console, `GameApp` calls `AppWindow.TryAttachParentConsole()` as
+its very first action, attaching the launching terminal's console so `Console.Write*` still shows under
+`dotnet run` / cmd / PowerShell; it is a silent no-op off Windows, on an Explorer/Start launch, and when output is
+redirected. Opt out with `GameAppOptions.SuppressParentConsoleAttach = true` (default off). When a Windows GUI
+launch leaves the process with no console, `GameApp` also installs a last-chance crash-log net (fatal startup
+exceptions are written to a file under `%LOCALAPPDATA%\KhaozEngine\crash\`) so a no-console startup crash is never
+silent - wire `KhaozEngine.Diagnostics.CrashHandler` for the richer `game.log` path. See
+[docs/USING-KHAOZENGINE.md](../docs/USING-KHAOZENGINE.md) "Game head build settings".
+
 **Point-space UI pass** (since 10.12.0, for DPI-aware crisp UI): `GameApp` exposes a per-frame
 point-space `Ui` (a `UiViewport`) and `UiPointer` (a `Pointer` mapped through it), plus a new virtual
 `OnDrawUi(SpriteBatch batch)` that runs in a SECOND draw pass after `OnDraw2D` each frame, with the batch

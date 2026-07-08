@@ -1432,9 +1432,46 @@ speedMultiplier)` scales the playhead advance (for the speed-sync above) while k
 wall-clock `dt`; the 1-arg `Update(dt)` is exactly `Update(dt, 1f)`. `JointPose` is the TRS unit clips
 interpolate; `InterpolationMode` is LINEAR or STEP (CUBICSPLINE is read as its value keys).
 
-**Out of scope.** Animation events (attack hitframes, footstep sounds), root motion, IK, additive/facial
-layers, and full blend trees beyond the locomotion state machine are not provided - drive those from your
-own gameplay layer.
+### Layered / masked animation (attack while running)
+
+`LayeredAnimator` composites N `AnimationLayer`s into one final skeleton pose: a base locomotion layer below,
+masked `Override` / `Additive` action layers above. Each layer is a clip with its own looping playhead, a blend
+weight, an optional `BoneMask`, and a `LayerMode`. It produces the same joint-WORLD bone palette
+`AnimationPlayer` does, so it drops into the same `Scene3D.DrawSkinned` path.
+
+A `BoneMask` gates a layer per node: `BoneMask.Subtree(skeleton, spineRootNode, weight)` marks that bone and all
+its descendants (the torso + arms + head) at `weight`, everything else 0 - the upper-body-action shape.
+`BoneMask.Full` / `.Empty` are the constants; a name overload
+`BoneMask.Subtree(skeleton, "spine", boneNames, weight)` resolves the root by bone name.
+
+    var anim = new LayeredAnimator(skeleton);
+    // Base: full-body locomotion (drive its clip/playhead however you like - e.g. from your own state machine).
+    AnimationLayer baseLayer = anim.AddLayer(runClip, LayerMode.Override);   // full weight, no mask
+    // Action: an attack on the upper body only, over whatever the base is doing.
+    var upperBody = BoneMask.Subtree(skeleton, spineRootNode, 1f);
+    AnimationLayer attack = anim.AddLayer(attackClip, LayerMode.Override, mask: upperBody);
+
+    // Each frame:
+    anim.Update(dt);                    // advances every layer's playhead (each at its own Speed)
+    attack.Weight = fadeInOut;          // ramp 0..1 to fade the action in and out (no pose pop at 0)
+    anim.GetBonePalette(pose);          // composite -> reused Matrix4x4[] buffer, allocation-free
+    scene.DrawSkinned(mesh, pose, world, tint);
+
+`Override` lerps a masked node from the base toward the layer pose by `weight x mask(node)`; `Additive` applies
+the clip's delta from its **first frame** (the reference), scaled by `weight x mask`, so a recoil/lean clip stacks
+on top of whatever plays beneath. Rotation blending matches the crossfade (shortest-arc `Quaternion.Slerp` then
+re-normalize); additive rotation deltas compose multiplicatively (`delta = sample * inverse(reference)`, applied
+left of the base). **Byte-stable:** zero layers is the rest pose and a single full-weight, unmasked `Override`
+layer is bit-identical to the single-clip path, so a character that never adds a layer renders exactly as before.
+Steady-state `Update`/`GetBonePalette` allocate nothing.
+
+The turn-key one-shot action API (`PlayAction(clip, mask, fadeIn, fadeOut, speed)` on the character, auto-fade +
+auto-retire) sits above this; see the combat one-shot section once it lands. For now a game holds its own
+`LayeredAnimator`, adds the base + an action layer, and ramps the action's `Weight`.
+
+**Out of scope.** Animation events (attack hitframes, footstep sounds), root motion, IK (foot placement), and
+full blend trees beyond the locomotion state machine are not provided - drive those from your own gameplay layer.
+(Layered / masked override + additive blending IS now provided - see above.)
 
 **Determinism: presentation only.** As with raw skinning, the sampled pose / bone palette is render-time
 visual - never feed it back into simulation, RNG, or netcode.

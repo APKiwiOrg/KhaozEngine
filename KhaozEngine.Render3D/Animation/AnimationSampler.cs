@@ -18,16 +18,29 @@ namespace KhaozEngine.Render3D
             if (clip is null) throw new ArgumentNullException(nameof(clip));
             if (skel is null) throw new ArgumentNullException(nameof(skel));
             var poses = new JointPose[skel.NodeCount];
-            for (int n = 0; n < skel.NodeCount; n++) poses[n] = skel.RestLocal[n];
+            SampleInto(clip, skel, time, poses);
+            return poses;
+        }
+
+        /// <summary>Allocation-free variant of <see cref="SamplePose"/>: writes the per-node local poses into
+        /// <paramref name="into"/> (length must equal <see cref="Skeleton.NodeCount"/>). Reuse one buffer across
+        /// frames in the per-frame sample path (the layered animator does this per layer).</summary>
+        public static void SampleInto(AnimationClip clip, Skeleton skel, float time, JointPose[] into)
+        {
+            if (clip is null) throw new ArgumentNullException(nameof(clip));
+            if (skel is null) throw new ArgumentNullException(nameof(skel));
+            if (into is null) throw new ArgumentNullException(nameof(into));
+            if (into.Length != skel.NodeCount)
+                throw new ArgumentException($"into length {into.Length} must equal node count {skel.NodeCount}.", nameof(into));
+            for (int n = 0; n < skel.NodeCount; n++) into[n] = skel.RestLocal[n];
             int count = clip.Tracks.Count;
             for (int k = 0; k < count; k++)
             {
                 JointTrack track = clip.Tracks[k];
                 int node = skel.NodeForLogicalIndex(track.TargetNode);
                 if (node < 0) continue;   // a channel targeting a node outside the skeleton does not pose anything
-                poses[node] = track.SampleLocal(skel.RestLocal[node], time);
+                into[node] = track.SampleLocal(skel.RestLocal[node], time);
             }
-            return poses;
         }
 
         /// <summary>Compose per-node local poses up the skeleton hierarchy into the per-bone joint-WORLD palette.</summary>

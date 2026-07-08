@@ -149,5 +149,20 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
     `NameplateLayout.Measure` is the pure, GPU-free panel-size math (headless-testable); `NameplateBar.Fraction` is
     clamped 0..1 at draw; `NameplateRenderer.ShouldCull` shares `WorldLabel`'s cull. No per-frame heap allocation.
 
+- Animation (`Animation/`, pure + GPU-free, driven off a `Skeleton` + glTF `AnimationClip`s):
+  - `AnimationSampler` / `AnimationPlayer` - one-shot pose sampling and a stateful single-clip player with a
+    crossfade (`Play(clip, crossfade)` -> `Update(dt)` -> `GetBonePalette(buffer)`). `AnimationSampler.SampleInto`
+    is the allocation-free sample into a reused per-node pose buffer.
+  - `LayeredAnimator` / `AnimationLayer` / `BoneMask` / `LayerMode` - N animation layers composited into one final
+    skeleton pose: a base locomotion layer below, masked `Override` / `Additive` action layers above (attack while
+    running). Each `AnimationLayer` is a clip + its own looping playhead + a blend weight + an optional `BoneMask` +
+    a `LayerMode`. `BoneMask` is per-node weights 0..1 (`BoneMask.Full`/`.Empty`, `BoneMask.Subtree(skel, root, w)`
+    for "this bone and all descendants at weight w" - the upper-body-action shape). Override lerps toward the layer
+    pose by `weight x mask`; Additive applies the clip's delta from its first frame (the reference), rotations
+    composed multiplicatively, scaled by `weight x mask`. Zero layers is the rest pose and a single full-weight
+    unmasked Override layer is byte-identical to the single-clip path, so existing skinned rendering is unchanged
+    until a game adds a layer. Rotation blending matches the crossfade (shortest-arc `Quaternion.Slerp` +
+    re-normalize). Steady-state `Update`/`GetBonePalette` allocate nothing.
+
 Renderer deps (Veldrid/Veldrid.SPIRV/SharpGLTF) are confined to this package via `KhaozEngine.Gpu`. See
 `docs/USING-KHAOZENGINE.md`.

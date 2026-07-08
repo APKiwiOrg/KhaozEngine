@@ -200,6 +200,69 @@ re-download. This is the fail-closed, crash-safe contract the game inherits for 
 
 ---
 
+## The in-game overlay and the shim window
+
+Two separate surfaces report update status, and the engine keeps them in one palette with localized text.
+
+- The **in-game overlay** (`KhaozEngine.Gui.UpdateOverlayView` / `UpdateOverlayScreen`, themed by
+  `UpdateOverlayTheme`) is the popup drawn inside the running game: it announces an available update, shows
+  download progress, and prompts the restart-and-apply. It is a pure presenter over the service's
+  `IUpdateStatus`.
+- The **shim progress window** (`UpdaterUiOptions`, in `KhaozEngine.Updates`) is the small native window the
+  standalone shim shows during the file swap, after the game has exited. Windows-only, a no-op elsewhere.
+
+### Localized overlay text (no subclass needed)
+
+The default `UpdateOverlayTheme` resolves every line through the ambient `LocalizationContext.Catalog`
+(`KhaozEngine.App`) against engine-owned `StringId` keys, and falls back to built-in English
+(`UpdateOverlayStrings.EnglishDefaults`) when no catalog is wired or a key is absent. A game therefore localizes
+the overlay just by adding these keys to its catalog and wiring `LocalizationContext.Catalog` at startup, with no
+`UpdateOverlayTheme` subclass. A game that wires a catalog WITHOUT these keys, or wires none at all, still sees
+the historical English, never a raw key. Overriding `TitleFor` / `BodyFor` on a theme subclass still fully
+replaces this resolution (the override never routes through the catalog).
+
+The standard keys (`UpdateOverlayStrings`), one title and one body per `UpdateState`, with their format
+arguments and the English default:
+
+| State | Key | Format args | English default |
+|---|---|---|---|
+| UpdateAvailable (title) | `update.overlay.available.title` | `{0}` = remote version | `Update Available - v{0}` |
+| UpdateAvailable (body) | `update.overlay.available.body` | `{0}` = trigger-key label | `Press [{0}] to download` |
+| Downloading (title) | `update.overlay.downloading.title` | none | `Downloading Update...` |
+| Downloading (body) | `update.overlay.downloading.body` | `{0}` files, `{1}` total files, `{2}` MB, `{3}` total MB | `Downloading {0}/{1} files ({2:0.0}/{3:0.0} MB)` |
+| ReadyToApply (title) | `update.overlay.ready.title` | `{0}` = remote version | `Update v{0} Ready` |
+| ReadyToApply (body) | `update.overlay.ready.body` | `{0}` = trigger-key label | `Press [{0}] to restart and apply` |
+| Applying (title) | `update.overlay.applying.title` | none | `Applying Update...` |
+| Applying (body) | `update.overlay.applying.body` | none | `Game will restart shortly` |
+| Failed (title) | `update.overlay.failed.title` | none | `Update Failed` |
+| Failed (body) | `update.overlay.failed.body` | `{0}` = trigger-key label | `Press [{0}] to retry` |
+
+The overlay resolves through the wired catalog with culture-aware formatting. The English fallback formats with
+the invariant culture, so an unlocalized build renders exactly as it did before this feature. The shim window's
+own status lines (`InstallingText` / `FinishingText` on `UpdaterUiOptions`) are NOT in this set: they are
+separate, game-supplied, already-localized strings.
+
+### One palette for both surfaces
+
+`UpdateOverlayTheme.ToUpdaterUiOptions(...)` (a `KhaozEngine.Gui` extension) derives the shim window palette
+from the overlay theme, so a game configures colours once instead of hand-syncing two colour sets. It maps
+accent from `ProgressFill`, background from `PanelFill`, and text from `BodyText` (alpha dropped, the native
+window is opaque), and takes the window title, heading, logo, and localized status lines as optional arguments:
+
+```csharp
+UpdaterUi = theme.ToUpdaterUiOptions(
+    windowTitle: BuildConfig.DisplayName,
+    installingText: strings.Get("update.installing"),
+    finishingText: strings.Get("update.finishing"));
+```
+
+The helper lives on the Gui side because `KhaozEngine.Updates` (which owns `UpdaterUiOptions`) has no Gui
+dependency: Gui references Updates, so the edge points the right way and `Updates` stays renderer-free.
+`UpdaterUiThemeExtensions.ToRgb(Vector4)` exposes the RGBA-float to `(R, G, B)`-byte conversion on its own for
+any other hand-mapping a game still needs.
+
+---
+
 ## macOS: the `.app` re-sign caveat
 
 On macOS the game ships as an `<Game>.app` bundle (for the Finder / Dock icon; see [ICONS.md](ICONS.md) in

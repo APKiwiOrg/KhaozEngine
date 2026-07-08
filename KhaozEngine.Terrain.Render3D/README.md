@@ -27,7 +27,17 @@ separate from the render-free field so a server/sim never drags in `Render3D`. I
   pass an **`IChunkDynamicsSource`** (`dynamicsSource` ctor param, requires `physics`) to spawn dynamic
   bodies per chunk: the source yields **`DynamicSpawn`**s (shape + pose + `DynamicBodyDescription`) for a
   chunk, the sink registers them on load and removes them on unload. Mechanism only - the game decides what
-  spawns where; the engine just registers what the source returns.
+  spawns where; the engine just registers what the source returns. The **`collideTerrain`** ctor flag
+  (opt-in, requires `physics`) additionally registers each chunk's SURFACE as a static triangle-mesh body on
+  load (rebuilt on re-LOD, removed on unload), so the terrain surface is part of the unified physics query
+  path (raycasts, capsule sweeps, dynamic-body rest all see it) instead of only the analytic
+  `TerrainCollision` ground-follow delegate. Off by default: a game keeps the analytic delegate path exactly
+  as before.
+- **`TerrainChunkCollision`** - extracts a chunk's SURFACE triangles (skirts excluded, winding flipped so
+  the collidable face points up) into a static `TriangleMeshShape`. `Build(TerrainChunkMesh)` or
+  `Build(GltfMesh, surfaceVertexCount)`; returns null for an empty chunk. Render-free (no GPU), so terrain
+  collision is headless-testable. A Bepu mesh is not recentered, so the shape uses `Pose.Identity` (the
+  vertices carry world position). This is what `collideTerrain` uses per chunk.
 - **Splat materials** - **`TerrainMaterialLayer`** / **`TerrainLayeredMaterial`** (five tileable
   albedo + normal layers blended by the baked splat weights) and **`TerrainMaterialPresets.Procedural()`**
   (deterministic placeholder textures). Omit the material for the vertex-colour ramp fallback.

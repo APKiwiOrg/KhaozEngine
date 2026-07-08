@@ -64,10 +64,18 @@ flowchart LR
 ```
 
 Per-prop scale is applied to the shape geometry at add time (the public `PhysicsShapeScale.Uniform` helper, which
-covers every shape kind incl. Box and Compound); each static's Y is the placement's baked terrain height. Terrain
-height itself stays **analytic** (the `TerrainField`, not a physics body): the seam resolves props/buildings, the
-field resolves ground. (Bepu recenters `ConvexHull` and `Cylinder` on their centroid, so a base-placed prop is
-wrapped in a centroid-offset compound to avoid sinking; `TriangleMesh` is not recentered.)
+covers every shape kind incl. Box and Compound); each static's Y is the placement's baked terrain height. By
+default terrain height stays **analytic** (the `TerrainField`, not a physics body): the seam resolves
+props/buildings, the field resolves ground. (Bepu recenters `ConvexHull` and `Cylinder` on their centroid, so a
+base-placed prop is wrapped in a centroid-offset compound to avoid sinking; `TriangleMesh` is not recentered.)
+
+A game may instead **opt in** to terrain-as-physics-geometry (`Scene3DChunkSink(collideTerrain: true)`):
+`TerrainChunkCollision` extracts each streamed chunk's SURFACE (skirts dropped, winding flipped so the top face
+is collidable, `TriangleMesh` not recentered so it registers at `Pose.Identity`) and `ChunkTerrainCollision`
+adds/removes it as a static body alongside the props, so terrain, props, and buildings share one query path. The
+character then drives off `PhysicsGroundProbe` (a downward raycast) instead of the analytic delegates. This is
+additive - the analytic-delegate path is unchanged for games that leave it off. The Bepu mesh owns its
+`BufferPool` triangle buffer and `RemoveStatic` disposes it, so streaming churn keeps the pool flat.
 
 A building may instead bake a simplified **collision proxy** (`PropCollisionBake.BakeProxy`, opt-in via a
 `collisionProxy` manifest field): an authored `<id>_collision.glb` of separate convex blocks (solid body, stairs,
@@ -125,3 +133,4 @@ snapping the player back.
 | Local controller / server sim / client prediction | `KhaozEngine.Game.Render3D/CharacterController3D.cs`, `KhaozEngine.NetWorld/PlayerMoveSimulator.cs`, `WorldClient.cs` |
 | Shape bake (offline) | [`KhaozEngine.PropSurface.Tool/Program.cs`](../KhaozEngine.PropSurface.Tool/Program.cs) (`ke-propbake`), `KhaozEngine.Render3D/Models/PropCollisionBake.cs` |
 | Shape load + chunk statics | `KhaozEngine.Render3D/Models/PropCollisionLoader.cs` (client/manifest), [`KhaozEngine.Physics/PropCollisionFormat.cs`](../KhaozEngine.Physics/PropCollisionFormat.cs) (render-free format + headless loaders), [`KhaozEngine.Terrain.Render3D/ChunkStatics.cs`](../KhaozEngine.Terrain.Render3D/ChunkStatics.cs) |
+| Terrain-as-physics (opt-in) | [`KhaozEngine.Terrain.Render3D/TerrainChunkCollision.cs`](../KhaozEngine.Terrain.Render3D/TerrainChunkCollision.cs) (surface extraction), `ChunkTerrainCollision.cs` (chunk lifecycle), [`KhaozEngine.Physics/PhysicsGroundProbe.cs`](../KhaozEngine.Physics/PhysicsGroundProbe.cs) (raycast ground delegates) |

@@ -19,7 +19,14 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
 - **`DynamicBodyDescription`** - the mass/inertia + initial-motion knobs for `AddDynamic`:
   `WithMass(mass)`, plus optional `LinearVelocity`/`AngularVelocity`/`SleepThreshold`. Mass &lt;= 0 = an
   infinite-mass (kinematic) body: unmoved by gravity/impacts, moved only by its velocity.
-- **`Pose`** - world position + orientation record struct. `Pose.At(position)` for identity orientation.
+- **`Pose`** - world position + orientation record struct. `Pose.At(position)` for identity orientation,
+  `Pose.Identity` for the origin (register a body whose geometry already carries its world position, e.g. a
+  terrain chunk collision mesh, at this pose).
+- **`PhysicsGroundProbe`** - the OPT-IN unified-terrain adapter: wraps an `IPhysicsWorld` and exposes
+  `HeightDelegate`/`NormalDelegate` (a downward raycast) to hand `CharacterMovement.Step` in place of the
+  analytic `TerrainCollision` ground delegates, once the terrain surface is registered as physics geometry.
+  So terrain, props, and buildings all resolve through one world. Additive: a game that has not adopted keeps
+  passing the analytic delegates and this never runs.
 - **`PhysicsMaterial`** - friction + restitution, `PhysicsMaterial.Default` is full friction, no bounce.
   A dynamic body's `Restitution` (0..1) drives an approximate, deterministic game-feel bounce that decays
   geometrically with restitution (NOT a true coefficient of restitution: a bounded post-solve reflection, exact

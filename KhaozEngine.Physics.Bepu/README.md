@@ -51,8 +51,15 @@ The shape factory papers over three Bepu behaviours so seam shapes act like thei
   sweep. Note the struct `CompoundBuilder` is passed by `ref` (a by-value copy builds an empty compound).
 - A `TriangleMeshShape` inside a `CompoundShape` is rejected (`NotSupportedException`): mesh children
   break the sweep bounds. Bake building proxies as compounds of convex hulls instead.
-- Mesh statics are one-sided (front faces only). Fine in practice: the swept collide-and-slide in
-  `Locomotion` always approaches from a known-outside position.
+- Mesh statics are one-sided (front faces only), and NOT recentered (unlike a hull/cylinder), so a mesh's
+  vertices are used at their world positions with an identity pose. Fine in practice: the swept
+  collide-and-slide in `Locomotion` always approaches from a known-outside position. A terrain SURFACE mesh
+  must have its winding flipped so its collidable face points UP (a falling body / downward ground probe hits
+  the top); `TerrainChunkCollision` in `KhaozEngine.Terrain.Render3D` does this when it extracts the chunk
+  surface.
+- The Bepu `Mesh` takes ownership of a `BufferPool` triangle buffer. `RemoveStatic` disposes it
+  (`RecursivelyRemoveAndDispose`), so streaming terrain/building meshes register on load and remove on
+  unload with a flat pool across thousands of cycles (no leak).
 
 ## Usage
 

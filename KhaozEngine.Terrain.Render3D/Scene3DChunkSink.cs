@@ -34,6 +34,7 @@ namespace KhaozEngine.Terrain
         readonly IPhysicsWorld? _physics;
         readonly IReadOnlyDictionary<string, PhysicsShape>? _collisionShapes;
         readonly IChunkDynamicsSource? _dynamicsSource;
+        readonly bool _collideTerrain;
         readonly bool _ownsMaterial;
         readonly Dictionary<ChunkCoord, ChunkLoad> _loaded = new();
         bool _disposed;
@@ -46,12 +47,19 @@ namespace KhaozEngine.Terrain
         /// shapes in <paramref name="collisionShapes"/>) and removed on unload; null physics = no collision.
         /// When <paramref name="dynamicsSource"/> is given (physics must also be set), the game-supplied source
         /// yields dynamic bodies per chunk that are registered on load and removed on unload (mechanism only:
-        /// the engine registers exactly what the source emits, the source decides what spawns where).</summary>
+        /// the engine registers exactly what the source emits, the source decides what spawns where).
+        /// <para>Terrain collision (opt-in): when <paramref name="collideTerrain"/> is set (physics must also be
+        /// set), each chunk's SURFACE mesh is registered as a static triangle-mesh body on load and removed on
+        /// unload, so the terrain surface is part of the unified physics query path (raycasts, capsule sweeps, and
+        /// dynamic-body rest all see it) instead of only the analytic <c>TerrainCollision</c> ground-follow
+        /// delegate. This is additive: a game that leaves it off keeps the analytic delegate path exactly as
+        /// before. See <see cref="TerrainChunkCollision"/> for the surface-only extraction.</para></summary>
         public Scene3DChunkSink(Scene3D scene, TerrainField field, IReadOnlyList<PropLayer> layers,
                                 float chunkSize, Scene3D.SplatMaterialHandle material = default, bool ownsMaterial = false,
                                 IPhysicsWorld? physics = null,
                                 IReadOnlyDictionary<string, PhysicsShape>? collisionShapes = null,
-                                IChunkDynamicsSource? dynamicsSource = null)
+                                IChunkDynamicsSource? dynamicsSource = null,
+                                bool collideTerrain = false)
         {
             _scene = scene;
             _field = field ?? throw new ArgumentNullException(nameof(field));
@@ -83,6 +91,9 @@ namespace KhaozEngine.Terrain
             if (dynamicsSource is not null && physics is null)
                 throw new ArgumentException("A chunk dynamics source requires a physics world.", nameof(dynamicsSource));
             _dynamicsSource = dynamicsSource;
+            if (collideTerrain && physics is null)
+                throw new ArgumentException("Terrain collision requires a physics world.", nameof(collideTerrain));
+            _collideTerrain = collideTerrain;
         }
 
         /// <summary>Single-layer sink (back-compat): one scatter config, one mesh set, one draw radius. The splat
@@ -94,7 +105,8 @@ namespace KhaozEngine.Terrain
                                 Scene3D.SplatMaterialHandle material = default, bool ownsMaterial = false,
                                 IPhysicsWorld? physics = null,
                                 IReadOnlyDictionary<string, PhysicsShape>? collisionShapes = null,
-                                IChunkDynamicsSource? dynamicsSource = null)
+                                IChunkDynamicsSource? dynamicsSource = null,
+                                bool collideTerrain = false)
             : this(scene, field,
                    new[]
                    {
@@ -103,7 +115,7 @@ namespace KhaozEngine.Terrain
                            propMeshes ?? throw new ArgumentNullException(nameof(propMeshes)),
                            propDrawRadius),
                    },
-                   chunkSize, material, ownsMaterial, physics, collisionShapes, dynamicsSource)
+                   chunkSize, material, ownsMaterial, physics, collisionShapes, dynamicsSource, collideTerrain)
         {
         }
 
@@ -118,6 +130,11 @@ namespace KhaozEngine.Terrain
             public List<StaticHandle> Statics = new();
             /// <summary>Dynamic body handles spawned for this chunk; empty when no dynamics source is wired.</summary>
             public List<DynamicBodyHandle> Dynamics = new();
+            /// <summary>The chunk's terrain surface collision body, when terrain collision is opted in and the
+            /// chunk had surface triangles (<see cref="HasTerrainCollider"/>). Not the props (those are Statics).</summary>
+            public StaticHandle TerrainCollider;
+            /// <summary>Whether <see cref="TerrainCollider"/> holds a live terrain surface body for this chunk.</summary>
+            public bool HasTerrainCollider;
 
             /// <summary>Back-compat alias: the first layer's placements.</summary>
             public IReadOnlyList<PropPlacement> Props =>
@@ -156,6 +173,10 @@ namespace KhaozEngine.Terrain
                 ChunkStatics.AddAll(_physics, _collisionShapes, load.Props, load.Statics);
             if (_physics is not null && _dynamicsSource is not null)
                 ChunkDynamics.AddAll(_physics, _dynamicsSource.SpawnsFor(coord), load.Dynamics);
+            // Terrain surface collider (opt-in): register the chunk's surface mesh (built above) as a static body so
+            // terrain is in the unified physics query path. LOD-dependent geometry, so ReLod rebuilds it.
+            if (_collideTerrain && _physics is not null)
+                load.HasTerrainCollider = ChunkTerrainCollision.Add(_physics, mesh, out load.TerrainCollider);
             return load;
         }
 
@@ -166,7 +187,13 @@ namespace KhaozEngine.Terrain
             var mesh = TerrainChunkBuilder.Build(_field, ChunkGrid.RegionOf(coord, _chunkSize), lod);
             load.Mesh = _material.IsValid ? _scene.LoadTerrainChunk(mesh, _material) : _scene.LoadTerrainChunk(mesh);
             load.Lod = lod;
-            // Props are LOD-independent; keep load.LayerProps.
+            // Props are LOD-independent; keep load.LayerProps. The terrain surface collider IS LOD-dependent
+            // (the mesh resolution changed), so rebuild it: remove the old body, register the new-LOD surface.
+            if (_collideTerrain && _physics is not null)
+            {
+                ChunkTerrainCollision.Remove(_physics, load.HasTerrainCollider, load.TerrainCollider);
+                load.HasTerrainCollider = ChunkTerrainCollision.Add(_physics, mesh, out load.TerrainCollider);
+            }
         }
 
         public void Unload(ChunkCoord coord, object handle)
@@ -176,6 +203,8 @@ namespace KhaozEngine.Terrain
             {
                 ChunkStatics.RemoveAll(_physics, load.Statics);
                 ChunkDynamics.RemoveAll(_physics, load.Dynamics);
+                ChunkTerrainCollision.Remove(_physics, load.HasTerrainCollider, load.TerrainCollider);
+                load.HasTerrainCollider = false;
             }
             _scene.UnloadMesh(load.Mesh);
             _loaded.Remove(coord);
@@ -208,6 +237,8 @@ namespace KhaozEngine.Terrain
                 {
                     ChunkStatics.RemoveAll(_physics, load.Statics);
                     ChunkDynamics.RemoveAll(_physics, load.Dynamics);
+                    ChunkTerrainCollision.Remove(_physics, load.HasTerrainCollider, load.TerrainCollider);
+                    load.HasTerrainCollider = false;
                 }
                 _scene.UnloadMesh(load.Mesh);
             }

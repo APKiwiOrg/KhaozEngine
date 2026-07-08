@@ -1495,6 +1495,26 @@ The sim keeps entities on the ground with `TerrainCollision` (render-free, in th
     float ground = col.GroundHeight(x, z);                 // = field.SampleHeight
     bool ok = col.IsWalkable(x, z, maxSlopeRadians);       // false on terrain steeper than the budget
 
+**Terrain as physics geometry (opt-in unified path).** The analytic `TerrainCollision` delegate above stays
+the default and is untouched. A game that wants terrain, props, and buildings to resolve through ONE physics
+world can instead register each streamed chunk's surface as a static triangle mesh and drive the controller
+off a `PhysicsGroundProbe` (a downward raycast against that world). Turn it on with the `collideTerrain`
+flag on `Scene3DChunkSink` (requires a `physics` world), then swap the ground delegates:
+
+    // Register each chunk's surface as a static Bepu mesh on load, remove on unload (churn-safe: the mesh
+    // BufferPool buffer is disposed on RemoveStatic, so thousands of streaming cycles keep the pool flat).
+    var sink = new Scene3DChunkSink(scene, field, layers, chunkSize,
+                                    physics: world, collideTerrain: true);
+
+    // Drive CharacterMovement.Step off the physics world instead of the analytic TerrainCollision delegates:
+    var probe = new PhysicsGroundProbe(world) { ProbeHeight = 1000f, ProbeRange = 2000f };
+    state = CharacterMovement.Step(state, cmd, dt, probe.HeightDelegate, tuning,
+                                   groundNormal: probe.NormalDelegate, world: world);
+
+`TerrainChunkCollision.Build(chunk)` does the surface extraction (skirts dropped, winding flipped so the top
+face is collidable) if you want the shape directly. A Bepu mesh is one-sided and not recentered, so terrain
+must present its top face up (the helper handles this) and is registered at `Pose.Identity`.
+
 On the client, `KhaozEngine.Terrain.Render3D` (in the `Game3D` umbrella) meshes finite chunks off the field,
 `using KhaozEngine.Terrain;`:
 

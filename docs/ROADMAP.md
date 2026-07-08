@@ -4,25 +4,20 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **10.28.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **10.29.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan when it is scheduled.
 
 ## Near-term (next up)
 
-### 1. Physics engine: dynamic bodies + constraints
+### 1. Physics: constraints, joints, and vehicles
 
-The static-body physics seam (`IPhysicsWorld` + the opt-in `KhaozEngine.Physics.Bepu` backend) is in place,
-and character movement collide-and-slides capsule-vs-mesh against it. What remains:
-
-**Dynamic rigid bodies + their replication.** A body that falls / bounces / rests needs a replication component
-(like `MovementState` for players); `Scene3DChunkSink` would drive `AddDynamic`/step per loaded chunk, and
-`WorldClient` would interpolate dynamic-body positions from replicated snapshots. Enables physics-driven crates,
-barrels, falling debris. Terrain-as-physics-geometry (the whole terrain mesh fed into a `TriangleMesh` body) also
-lands here: a static terrain body replaces the `TerrainCollision` delegate in the `Step` call so all surfaces
-(terrain + props + buildings) share one query path.
-
-**Constraints, joints, and vehicles.** Hinges, sliders, ragdolls, wheeled vehicles.
+Dynamic rigid bodies, terrain-as-physics-geometry, and dynamic-body replication shipped in 10.29.0
+(`AddDynamic` on the `IPhysicsWorld` seam, terrain chunk meshes as static bodies with the statics-only
+`PhysicsGroundProbe`, and `DynamicBodyState` riding the fixed-delay interpolation). What remains of the
+original item: hinges, sliders, ragdolls, wheeled vehicles, plus the recorded follow-ups (velocity-based
+extrapolation and quaternion bit-packing for replicated bodies, and a BufferPool-health churn assertion if
+Bepu ever exposes cheap introspection).
 
 ### 2. Visual fidelity (textures + materials)
 

@@ -58,6 +58,7 @@ public sealed class PlayerMovementSystem : ISystem
                 Grounded = ms.Grounded,
                 TimeSinceGrounded = ms.TimeSinceGrounded,
                 JumpBufferRemaining = ms.JumpBufferRemaining,
+                Swimming = ms.Swimming,   // carry the swim flag IN so the enter/exit hysteresis band works across ticks
             };
             state = CharacterMovement.Step(state, move.Command, dt, groundHeight, tuning, groundNormal, physics, clampXz, medium);
 
@@ -66,6 +67,7 @@ public sealed class PlayerMovementSystem : ISystem
             ms.Grounded = state.Grounded;
             ms.TimeSinceGrounded = state.TimeSinceGrounded;
             ms.JumpBufferRemaining = state.JumpBufferRemaining;
+            ms.Swimming = state.Swimming;   // write the swim flag back OUT so it replicates (TryGetPlayerState + remotes)
         });
     }
 }

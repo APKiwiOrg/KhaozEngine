@@ -141,6 +141,49 @@ public class PlayerMoveSwimTests
         Assert.True(client.LocalRenderState.Move.Swimming);
     }
 
+    [Fact]
+    public void EntityRenderState_carries_the_swim_flag_for_the_local_player()
+    {
+        // Task 3's animation source: the swim bit must surface on EntityRenderState (via WorldClient.Snapshot()) so a
+        // replicated-animator bridge feeds it into CharacterSample.Swimming. Local player swims deep water -> its
+        // render-state entry reads Swimming; a dry-land run reads not-Swimming.
+        Func<float, float, float, MovementMedium> deep = Water(3.0f);
+        (WorldServer server, WorldClient client, WorldServerConfig config) = Connect(deep, Unit);
+        for (int i = 0; i < 40; i++)
+        {
+            client.SendInput(Forward);
+            server.Poll(); server.Tick(config.TickSeconds); client.Poll();
+        }
+
+        EntityRenderState local = default;
+        bool found = false;
+        foreach (EntityRenderState e in client.Snapshot())
+            if (e.IsLocal) { local = e; found = true; }
+        Assert.True(found, "the local player must be in the snapshot");
+        Assert.True(local.Swimming, "the local render state should carry the swim flag while swimming");
+
+        // A dry-land client (no medium) never surfaces Swimming.
+        (WorldServer s2, WorldClient c2, WorldServerConfig cfg2) = Connect(medium: null, tuning: Unit);
+        for (int i = 0; i < 20; i++)
+        {
+            c2.SendInput(Forward);
+            s2.Poll(); s2.Tick(cfg2.TickSeconds); c2.Poll();
+        }
+        foreach (EntityRenderState e in c2.Snapshot())
+            Assert.False(e.Swimming, "a dry-land entity never reads Swimming");
+    }
+
+    [Fact]
+    public void EntityRenderState_swim_flag_defaults_false_via_the_legacy_ctors()
+    {
+        // The added Swimming field defaults false on the pre-swim constructors, so pre-swim callers are unchanged.
+        Assert.False(new EntityRenderState(new NetId(1), Vector3.Zero, isLocal: true).Swimming);
+        Assert.False(new EntityRenderState(new NetId(1), Vector3.Zero, isLocal: true, "name").Swimming);
+        Assert.False(new EntityRenderState(new NetId(1), Vector3.Zero, isLocal: true, "name", grounded: true, verticalVelocity: 0f).Swimming);
+        // The new ctor carries it through.
+        Assert.True(new EntityRenderState(new NetId(1), Vector3.Zero, isLocal: true, "name", grounded: false, verticalVelocity: 0f, swimming: true).Swimming);
+    }
+
     // ---- Null provider bit-identity at the simulator level ----
 
     [Fact]

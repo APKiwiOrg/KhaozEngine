@@ -3,10 +3,11 @@ using System;
 namespace KhaozEngine.Game
 {
     /// <summary>Opt-in speed-synced locomotion playback for an <see cref="AnimatedCharacter"/>. When
-    /// <see cref="Enabled"/>, a GROUND MOVE clip (Walk/Run) advances in proportion to how fast the character is
-    /// actually moving instead of at the clip's authored rate, so its feet stop sliding ("gliding") whenever the
-    /// world speed differs from the speed the clip was authored to move at. Idle and the air states (Jump/Fall)
-    /// always play at 1x.
+    /// <see cref="Enabled"/>, a MOVE clip (Walk/Run on the ground, or the forward <see cref="LocomotionState.Swim"/>
+    /// stroke in water) advances in proportion to how fast the character is actually moving instead of at the clip's
+    /// authored rate, so its feet (or its stroke) stop sliding ("gliding") whenever the world speed differs from the
+    /// speed the clip was authored to move at. Idle, the tread <see cref="LocomotionState.SwimIdle"/>, and the air
+    /// states (Jump/Fall) always play at 1x.
     ///
     /// <para>The multiplier for a move state is <c>clamp(horizontalSpeed / referenceSpeedForState,
     /// <see cref="MinMultiplier"/>, <see cref="MaxMultiplier"/>)</c>, where the reference speed is the m/s the clip
@@ -38,6 +39,11 @@ namespace KhaozEngine.Game
         /// <c>horizontalSpeed / RunClipSpeed</c> (clamped). 0 (unset) plays Run at 1x even when enabled.</summary>
         public float RunClipSpeed;
 
+        /// <summary>World speed (m/s) the forward <see cref="LocomotionState.Swim"/> clip was authored to move the
+        /// character at. The Swim clip advances at <c>horizontalSpeed / SwimClipSpeed</c> (clamped). 0 (unset) plays
+        /// Swim at 1x even when enabled. The tread <see cref="LocomotionState.SwimIdle"/> always plays at 1x.</summary>
+        public float SwimClipSpeed;
+
         /// <summary>Lower clamp on the multiplier. 0 (unset) uses <see cref="DefaultMinMultiplier"/>.</summary>
         public float MinMultiplier;
 
@@ -47,22 +53,25 @@ namespace KhaozEngine.Game
         /// <summary>The disabled config (playback unchanged). Same as <c>default</c>.</summary>
         public static LocomotionSpeedSync Disabled => default;
 
-        /// <summary>Build an enabled config from the Walk/Run clips' authored ground speeds (m/s). The clamp bounds
-        /// default to <see cref="DefaultMinMultiplier"/>..<see cref="DefaultMaxMultiplier"/>.</summary>
+        /// <summary>Build an enabled config from the Walk/Run (and optional forward-Swim) clips' authored move speeds
+        /// (m/s). <paramref name="swimClipSpeed"/> defaults to 0 (Swim plays at 1x) so a pre-swim caller is unchanged.
+        /// The clamp bounds default to <see cref="DefaultMinMultiplier"/>..<see cref="DefaultMaxMultiplier"/>.</summary>
         public static LocomotionSpeedSync Enable(float walkClipSpeed, float runClipSpeed,
-            float minMultiplier = DefaultMinMultiplier, float maxMultiplier = DefaultMaxMultiplier) =>
+            float minMultiplier = DefaultMinMultiplier, float maxMultiplier = DefaultMaxMultiplier,
+            float swimClipSpeed = 0f) =>
             new LocomotionSpeedSync
             {
                 Enabled = true,
                 WalkClipSpeed = walkClipSpeed,
                 RunClipSpeed = runClipSpeed,
+                SwimClipSpeed = swimClipSpeed,
                 MinMultiplier = minMultiplier,
                 MaxMultiplier = maxMultiplier,
             };
 
         /// <summary>The playback rate multiplier for <paramref name="state"/> at <paramref name="horizontalSpeed"/>
-        /// m/s. Returns 1 when disabled, for Idle/Jump/Fall, or when the state's reference speed is unset (&lt;= 0);
-        /// otherwise <c>clamp(horizontalSpeed / referenceSpeed, min, max)</c>.</summary>
+        /// m/s. Returns 1 when disabled, for Idle/SwimIdle/Jump/Fall, or when the state's reference speed is unset
+        /// (&lt;= 0); otherwise <c>clamp(horizontalSpeed / referenceSpeed, min, max)</c>.</summary>
         public readonly float RateFor(LocomotionState state, float horizontalSpeed)
         {
             if (!Enabled) return 1f;
@@ -70,7 +79,8 @@ namespace KhaozEngine.Game
             {
                 LocomotionState.Walk => WalkClipSpeed,
                 LocomotionState.Run => RunClipSpeed,
-                _ => 0f,   // Idle + air states (Jump/Fall) always play at 1x
+                LocomotionState.Swim => SwimClipSpeed,
+                _ => 0f,   // Idle + tread (SwimIdle) + air states (Jump/Fall) always play at 1x
             };
             if (reference <= 0f) return 1f;   // unset reference -> avoid divide-by-zero, play at 1x
             float min = MinMultiplier > 0f ? MinMultiplier : DefaultMinMultiplier;

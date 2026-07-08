@@ -29,6 +29,8 @@ namespace KhaozEngine.Tests.Game
             [LocomotionState.Run] = Park("run", 3f),
             [LocomotionState.Jump] = Park("jump", 4f),
             [LocomotionState.Fall] = Park("fall", 5f),
+            [LocomotionState.SwimIdle] = Park("swimIdle", 6f),
+            [LocomotionState.Swim] = Park("swim", 7f),
         };
 
         // Drive the same input long enough for any crossfade to settle.
@@ -124,6 +126,86 @@ namespace KhaozEngine.Tests.Game
             Assert.True(System.MathF.Abs(c.Pose[0].Translation.X - 1f) < 1e-2f);   // posed by the idle clip
         }
 
+        // Drive with the swimming flag long enough for any crossfade to settle.
+        static void SettleSwim(AnimatedCharacter c, float speed)
+        {
+            for (int i = 0; i < 60; i++) c.Update(speed, grounded: false, verticalVelocity: 0f, swimming: true, 1f / 60f);
+        }
+
+        [Fact]
+        public void SwimIdle_WhenSwimmingAndStill()
+        {
+            var c = new AnimatedCharacter(OneBone(), Clips());
+            SettleSwim(c, 0f);
+            Assert.Equal(LocomotionState.SwimIdle, c.State);
+            Assert.True(System.MathF.Abs(c.Pose[0].Translation.X - 6f) < 1e-2f);   // posed by the swimIdle clip
+        }
+
+        [Fact]
+        public void Swim_WhenSwimmingAndMoving()
+        {
+            var c = new AnimatedCharacter(OneBone(), Clips());
+            SettleSwim(c, 2f);
+            Assert.Equal(LocomotionState.Swim, c.State);
+            Assert.True(System.MathF.Abs(c.Pose[0].Translation.X - 7f) < 1e-2f);   // posed by the swim clip
+        }
+
+        [Fact]
+        public void SwimState_CommitsImmediately_EvenWithDebounce()
+        {
+            // Entering the water must read instantly - swim states are exempt from the ground-state debounce (the
+            // enter/exit is already hysteresis-debounced in the movement sim). One swimming frame flips the state,
+            // and switching tread<->forward while swimming is also immediate.
+            var c = new AnimatedCharacter(OneBone(), Clips());   // default debounce
+            Settle(c, 3f, true, 0f);
+            Assert.Equal(LocomotionState.Walk, c.State);
+            c.Update(2f, grounded: false, verticalVelocity: 0f, swimming: true, 1f / 60f);   // one swimming frame
+            Assert.Equal(LocomotionState.Swim, c.State);
+            c.Update(0f, grounded: false, verticalVelocity: 0f, swimming: true, 1f / 60f);   // slow to a tread
+            Assert.Equal(LocomotionState.SwimIdle, c.State);                                 // immediate, no debounce
+            // Exiting swim TO air is also immediate (air states are exempt too): one airborne non-swim frame -> Fall.
+            c.Update(0f, grounded: false, verticalVelocity: -3f, swimming: false, 1f / 60f);
+            Assert.Equal(LocomotionState.Fall, c.State);
+        }
+
+        [Fact]
+        public void MissingSwimClips_DegradeToIdle_NoThrow()
+        {
+            // A consumer that has not baked the water clips yet: swimming must fall back to Idle, not throw.
+            var clips = new Dictionary<LocomotionState, AnimationClip>
+            {
+                [LocomotionState.Idle] = Park("idle", 1f),
+                [LocomotionState.Walk] = Park("walk", 2f),
+                [LocomotionState.Run] = Park("run", 3f),
+            };
+            var c = new AnimatedCharacter(OneBone(), clips);
+            SettleSwim(c, 2f);   // wants Swim, no Swim/SwimIdle clip exists
+            Assert.Equal(LocomotionState.Swim, c.State);                          // the STATE is Swim
+            Assert.True(System.MathF.Abs(c.Pose[0].Translation.X - 1f) < 1e-2f);  // but posed by the idle fallback clip
+        }
+
+        [Fact]
+        public void NonSwimming_ByteIdentical_ToPreSwimOverload()
+        {
+            // Byte-stability pin: the swimming:false path must be bit-identical to the pre-swim overload that takes no
+            // swimming argument. Drive the exact same walk/run/jump/idle sequence through both and compare poses.
+            var flagged = new AnimatedCharacter(OneBone(), Clips());
+            var legacy = new AnimatedCharacter(OneBone(), Clips());
+            const float dt = 1f / 60f;
+            (float sp, bool gr, float vv)[] seq =
+            {
+                (0f, true, 0f), (3f, true, 0f), (6f, true, 0f), (0f, false, 5f), (0f, false, -5f), (0f, true, 0f),
+            };
+            for (int rep = 0; rep < 20; rep++)
+                foreach ((float sp, bool gr, float vv) in seq)
+                {
+                    flagged.Update(sp, gr, vv, swimming: false, dt);   // explicit false
+                    legacy.Update(sp, gr, vv, dt);                     // pre-swim overload
+                }
+            Assert.Equal(legacy.State, flagged.State);
+            Assert.Equal(legacy.Pose[0], flagged.Pose[0]);   // byte-identical matrix
+        }
+
         // A clip where bone0's X translation ramps as X(t) = t (slope 1, long duration so it never wraps in a test),
         // so the composed pose's X reads back the clip PLAYHEAD directly - how far the clip has advanced.
         static AnimationClip Ramp(string name, float duration = 100f)
@@ -142,7 +224,33 @@ namespace KhaozEngine.Tests.Game
             [LocomotionState.Run] = Ramp("run"),
             [LocomotionState.Jump] = Ramp("jump"),
             [LocomotionState.Fall] = Ramp("fall"),
+            [LocomotionState.SwimIdle] = Ramp("swimIdle"),
+            [LocomotionState.Swim] = Ramp("swim"),
         };
+
+        [Fact]
+        public void SpeedSync_Enabled_AdvancesSwimClipProportionalToSpeed_TreadStays1x()
+        {
+            var clips = RampClips();
+            // Swim clip authored for 2.5 m/s; drive at 5 m/s -> the forward Swim clip should advance at ~2x.
+            var synced = new AnimatedCharacter(OneBone(), clips, crossfade: 0f, stateDebounceSeconds: 0f,
+                speedSync: LocomotionSpeedSync.Enable(walkClipSpeed: 2f, runClipSpeed: 5f, swimClipSpeed: 2.5f));
+            var tread = new AnimatedCharacter(OneBone(), clips, crossfade: 0f, stateDebounceSeconds: 0f,
+                speedSync: LocomotionSpeedSync.Enable(walkClipSpeed: 2f, runClipSpeed: 5f, swimClipSpeed: 2.5f));
+
+            const float dt = 1f / 60f;
+            for (int i = 0; i < 60; i++)
+            {
+                synced.Update(5f, grounded: false, verticalVelocity: 0f, swimming: true, dt);   // forward stroke, 2x
+                tread.Update(0f, grounded: false, verticalVelocity: 0f, swimming: true, dt);    // tread, always 1x
+            }
+
+            Assert.Equal(LocomotionState.Swim, synced.State);
+            Assert.Equal(LocomotionState.SwimIdle, tread.State);
+            // Over 1 s: forward Swim playhead ~2.0 (2x), tread SwimIdle ~1.0 (1x, unaffected by speed-sync).
+            Assert.True(System.MathF.Abs(synced.Pose[0].Translation.X - 2.0f) < 2e-2f, synced.Pose[0].Translation.X.ToString());
+            Assert.True(System.MathF.Abs(tread.Pose[0].Translation.X - 1.0f) < 2e-2f, tread.Pose[0].Translation.X.ToString());
+        }
 
         [Fact]
         public void SpeedSync_Enabled_AdvancesGroundClipProportionalToSpeed()

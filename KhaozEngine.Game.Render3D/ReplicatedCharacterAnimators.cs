@@ -20,8 +20,9 @@ namespace KhaozEngine.Game
     /// finite-differenced from the render position (no walk&lt;-&gt;idle flicker on a decel-to-stop).</summary>
     public readonly struct CharacterSample
     {
-        /// <summary>Position-only sample: speed, vertical velocity, and grounded are all derived from the position
-        /// delta vs the previous frame.</summary>
+        /// <summary>Position-only sample: speed, vertical velocity, grounded, and swimming are all derived from the
+        /// position delta vs the previous frame (swimming cannot actually be derived from position, so it reads false -
+        /// pass an exact-movement constructor to animate swimming).</summary>
         public CharacterSample(long id, Vector3 position, bool isLocal = false)
         {
             Id = id;
@@ -30,13 +31,16 @@ namespace KhaozEngine.Game
             HasMovement = false;
             Grounded = false;
             VerticalVelocity = 0f;
+            Swimming = false;
             HasPlanarSpeed = false;
             PlanarSpeed = 0f;
         }
 
-        /// <summary>Sample with exact movement (the local player): <see cref="Grounded"/> and
-        /// <see cref="VerticalVelocity"/> are used as given instead of being derived.</summary>
-        public CharacterSample(long id, Vector3 position, bool isLocal, bool grounded, float verticalVelocity)
+        /// <summary>Sample with exact movement (the local player, or any entity whose replicated <c>MovementState</c>
+        /// is available): <see cref="Grounded"/>, <see cref="VerticalVelocity"/>, and <see cref="Swimming"/> are used
+        /// as given instead of being derived. <paramref name="swimming"/> defaults false so a pre-swim caller is
+        /// unchanged.</summary>
+        public CharacterSample(long id, Vector3 position, bool isLocal, bool grounded, float verticalVelocity, bool swimming = false)
         {
             Id = id;
             Position = position;
@@ -44,6 +48,7 @@ namespace KhaozEngine.Game
             HasMovement = true;
             Grounded = grounded;
             VerticalVelocity = verticalVelocity;
+            Swimming = swimming;
             HasPlanarSpeed = false;
             PlanarSpeed = 0f;
         }
@@ -56,7 +61,7 @@ namespace KhaozEngine.Game
         /// and does not strobe walk&lt;-&gt;idle when the player decelerates to a stop (where the rendered position, even
         /// after the C1 smoothing fix, settles with a tiny residual sag). Facing still follows the derived heading
         /// (planar speed is magnitude-only). A negative value is treated as zero.</summary>
-        public CharacterSample(long id, Vector3 position, bool isLocal, bool grounded, float verticalVelocity, float planarSpeed)
+        public CharacterSample(long id, Vector3 position, bool isLocal, bool grounded, float verticalVelocity, float planarSpeed, bool swimming = false)
         {
             Id = id;
             Position = position;
@@ -64,6 +69,7 @@ namespace KhaozEngine.Game
             HasMovement = true;
             Grounded = grounded;
             VerticalVelocity = verticalVelocity;
+            Swimming = swimming;
             HasPlanarSpeed = true;
             PlanarSpeed = planarSpeed;
         }
@@ -87,6 +93,13 @@ namespace KhaozEngine.Game
 
         /// <summary>Exact vertical velocity, m/s positive up (only meaningful when <see cref="HasMovement"/>).</summary>
         public float VerticalVelocity { get; }
+
+        /// <summary>Exact surface-swimming flag (only meaningful when <see cref="HasMovement"/>). When set, the brain
+        /// plays the tread <see cref="LocomotionState.SwimIdle"/> or forward <see cref="LocomotionState.Swim"/> clip
+        /// (from the planar speed) instead of a ground/air state - swim wins over grounded/vertical. Sourced from the
+        /// replicated <c>MovementState.Swimming</c> bit (via <c>EntityRenderState.Swimming</c>), never derived from
+        /// position (a swimmer glides horizontally like a walker, so position cannot distinguish the two).</summary>
+        public bool Swimming { get; }
 
         /// <summary>True when this sample carries an exact planar <see cref="PlanarSpeed"/> to use for the locomotion
         /// state instead of deriving it from the position delta.</summary>
@@ -203,6 +216,10 @@ namespace KhaozEngine.Game
         /// <see cref="SyncLocomotionToSpeed"/> is set; 0 plays Run at 1x. Default 0.</summary>
         public float RunClipSpeed;
 
+        /// <summary>World speed (m/s) the forward <see cref="LocomotionState.Swim"/> clip was authored to move at.
+        /// Only used when <see cref="SyncLocomotionToSpeed"/> is set; 0 plays Swim at 1x. Default 0.</summary>
+        public float SwimClipSpeed;
+
         /// <summary>Lower clamp on the speed-sync playback multiplier (keeps a near-stationary entity from freezing
         /// the clip). Only used when <see cref="SyncLocomotionToSpeed"/> is set; 0 uses
         /// <see cref="LocomotionSpeedSync.DefaultMinMultiplier"/>. Default 0.25.</summary>
@@ -218,7 +235,8 @@ namespace KhaozEngine.Game
         public readonly LocomotionSpeedSync SpeedSync() => SyncLocomotionToSpeed
             ? LocomotionSpeedSync.Enable(WalkClipSpeed, RunClipSpeed,
                 MinLocomotionRate > 0f ? MinLocomotionRate : LocomotionSpeedSync.DefaultMinMultiplier,
-                MaxLocomotionRate > 0f ? MaxLocomotionRate : LocomotionSpeedSync.DefaultMaxMultiplier)
+                MaxLocomotionRate > 0f ? MaxLocomotionRate : LocomotionSpeedSync.DefaultMaxMultiplier,
+                SwimClipSpeed)
             : LocomotionSpeedSync.Disabled;
 
         public static CharacterAnimatorTuning Default => new CharacterAnimatorTuning
@@ -235,6 +253,7 @@ namespace KhaozEngine.Game
             SyncLocomotionToSpeed = false,
             WalkClipSpeed = 0f,
             RunClipSpeed = 0f,
+            SwimClipSpeed = 0f,
             MinLocomotionRate = LocomotionSpeedSync.DefaultMinMultiplier,
             MaxLocomotionRate = LocomotionSpeedSync.DefaultMaxMultiplier,
         };
@@ -249,6 +268,8 @@ namespace KhaozEngine.Game
     /// (no leak on disconnect); planar speed / vertical velocity / facing are derived from the position displacement
     /// averaged over a short window (so a plateauing / zero-delta position stream does not strobe the state; the
     /// exact grounded flag + vertical velocity are used instead when the sample <see cref="CharacterSample.HasMovement"/>);
+    /// the swim flag is exact-only (<see cref="CharacterSample.Swimming"/>, the replicated <c>MovementState.Swimming</c>
+    /// bit) since a swimmer glides horizontally like a walker and cannot be told from one by position;
     /// the locomotion state machine inside <see cref="AnimatedCharacter"/> picks the clip. The set owns no GPU handle
     /// and never calls <c>Scene3D</c> - iterate <see cref="Live"/> and draw - so it is fully headless-testable.
     /// Client-cosmetic: never feed a pose back into simulation or netcode.</summary>
@@ -372,6 +393,10 @@ namespace KhaozEngine.Game
                 // on the exact speed too (see below) so it holds through the post-stop settle instead of spinning.
                 float locomotionSpeed = s.HasPlanarSpeed ? MathF.Max(0f, s.PlanarSpeed) : derivedPlanarSpeed;
 
+                // Swim is an EXACT flag only (the replicated MovementState.Swimming bit): it cannot be derived from
+                // position because a swimmer glides horizontally like a walker. A position-only sample never swims.
+                bool swimming = s.HasMovement && s.Swimming;
+
                 // Facing: aim along the derived planar heading, but only while the entity is genuinely moving. The
                 // derived heading (from the render-position delta) swings around during the post-stop render settle -
                 // the local avatar's rendered position sags backward then recovers, so the delta briefly points
@@ -388,7 +413,7 @@ namespace KhaozEngine.Game
                     e.Yaw = LerpAngle(e.Yaw, target, _tuning.YawSmoothing);
                 }
 
-                e.Character.Update(locomotionSpeed, grounded, verticalVelocity, dt);
+                e.Character.Update(locomotionSpeed, grounded, verticalVelocity, swimming, dt);
 
                 Matrix4x4 world = Matrix4x4.CreateScale(_tuning.Scale)
                                   * Matrix4x4.CreateRotationY(e.Yaw)

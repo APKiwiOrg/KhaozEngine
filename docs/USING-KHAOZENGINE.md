@@ -1288,8 +1288,8 @@ state, not the reverse.
 ## Animated characters (glTF clip playback + locomotion blend)
 
 The skinned path above poses a mesh from bone matrices you supply. To play *authored glTF animation
-clips* (idle/walk/run/jump) and crossfade them off a character's movement, ingest the rig through the
-skinned loader (which now also reads the joint hierarchy) and read its clips:
+clips* (idle/walk/run/jump, plus swim/tread in water) and crossfade them off a character's movement, ingest the rig
+through the skinned loader (which now also reads the joint hierarchy) and read its clips:
 
 ```csharp
 // Skinned-ingest a rigged + animated glb (rig + animation channels preserved; NOT the flatten-prop path).
@@ -1307,6 +1307,8 @@ var clips = new Dictionary<LocomotionState, AnimationClip>
     [LocomotionState.Run]  = byName["Run"],
     [LocomotionState.Jump] = byName["Jump"],
     [LocomotionState.Fall] = byName["Fall"],
+    [LocomotionState.SwimIdle] = byName["SwimIdle"],   // tread water (optional - degrades to Idle if unbaked)
+    [LocomotionState.Swim]     = byName["Swim"],        // forward stroke (optional - degrades to Idle if unbaked)
 };
 
 // AnimatedCharacter (KhaozEngine.Game / Game.Render3D) wraps the skeleton + clips + player + state machine.
@@ -1323,9 +1325,26 @@ scene.DrawSkinned(handle, character.Pose, model, Color.White);   // model places
 ```
 
 `AnimatedCharacter` picks the clip via `LocomotionStateMachine.Evaluate` (speed picks idle/walk/run;
-while airborne the air state wins - rising = `Jump`, otherwise `Fall`) and crossfades between clips
-(per-joint TRS blend, composed once). A movement state with no clip in the map falls back to `Idle`
-(then to the first clip), so a partial clip set never throws.
+while airborne the air state wins - rising = `Jump`, otherwise `Fall`; while the **swim flag** is set the
+water state wins over both - forward `Swim` above `LocomotionThresholds.SwimSpeed`, else the tread `SwimIdle`)
+and crossfades between clips (per-joint TRS blend, composed once). A movement state with no clip in the map
+falls back to `Idle` (then to the first clip), so a partial clip set never throws - a consumer that has not
+yet baked the water clips degrades to `Idle` while swimming rather than crashing.
+
+**The swim flag comes from movement, never a water query here.** Pass it into
+`character.Update(horizontalSpeed, grounded, verticalVelocity, swimming, dt)`. It is the movement-medium swim
+decision (`MoveState.Swimming`, replicated via `MovementState.Swimming` - see the surface-swim section), so the
+animation state stays perfectly in step with the simulation and never re-derives water depth of its own. The
+pre-swim `Update(horizontalSpeed, grounded, verticalVelocity, dt)` overload still exists (swimming defaults
+false) and is byte-identical to the old behaviour, so a land-only game is unchanged. Swim/tread transitions
+commit immediately (like air states, exempt from the ground-state debounce) because the enter/exit is already
+hysteresis-debounced in the movement sim.
+
+**Clip-name contract.** The two water clips a consumer bakes are named `Swim` (forward stroke) and `SwimIdle`
+(tread), matching the `LocomotionState.Swim` / `LocomotionState.SwimIdle` enum names - the same name-based
+mapping the ground/air clips use. To speed-sync the forward stroke (feet/hands stop gliding) pass the Swim
+clip's authored move speed as `swimClipSpeed` to `LocomotionSpeedSync.Enable` (or `CharacterAnimatorTuning.SwimClipSpeed`);
+the tread always plays at 1x.
 
 **Local AND remote players.** Drive one `AnimatedCharacter` per visible character: the local player from
 its own movement, each remote player from its *replicated* position / `VerticalVelocity` / `Grounded`
@@ -1346,17 +1365,18 @@ var animators = new ReplicatedCharacterAnimators(skeleton, clips, CharacterAnima
 // ...or full control per brain: new ReplicatedCharacterAnimators(() => new AnimatedCharacter(skeleton, clips), tuning);
 
 // Each frame: map the netcode's render states to engine-neutral samples (keeps Game.Render3D off NetWorld).
-// Feed the EXACT grounded + vertical velocity for EVERY entity (EntityRenderState carries them for
-// remotes too - local from prediction, remote from the replicated MovementState). Horizontal speed + facing are
-// still derived from the position stream. Do NOT derive air state for remotes from position: a remote's vertical
-// motion is mostly terrain-following, so the faster it moves over a slope the more a position delta reads "falling".
+// Feed the EXACT grounded + vertical velocity + swimming flag for EVERY entity (EntityRenderState carries them
+// for remotes too - local from prediction, remote from the replicated MovementState). Horizontal speed + facing
+// are still derived from the position stream. Do NOT derive air state for remotes from position: a remote's
+// vertical motion is mostly terrain-following, so the faster it moves over a slope the more a position delta reads
+// "falling". Swim is exact-only: a swimmer glides horizontally like a walker, so position cannot tell them apart.
 var samples = new List<CharacterSample>();
 foreach (EntityRenderState e in client.Snapshot())
     samples.Add(e.IsLocal
         // Local player: also pass the EXACT planar speed so idle/walk/run is driven off the clean commanded
         // speed, not finite-differenced from the render position (no walk<->idle flicker on a decel-to-stop).
-        ? new CharacterSample(e.Id.Value, e.Position, isLocal: true, e.Grounded, e.VerticalVelocity, client.LocalHorizontalSpeed)
-        : new CharacterSample(e.Id.Value, e.Position, e.IsLocal, e.Grounded, e.VerticalVelocity));
+        ? new CharacterSample(e.Id.Value, e.Position, isLocal: true, e.Grounded, e.VerticalVelocity, client.LocalHorizontalSpeed, e.Swimming)
+        : new CharacterSample(e.Id.Value, e.Position, e.IsLocal, e.Grounded, e.VerticalVelocity, e.Swimming));
 animators.Update(samples, dt);
 
 // Draw: World already places + faces + scales the avatar (Scale + FacingYawOffset live on the tuning).
@@ -1396,14 +1416,15 @@ frame 0 every few seconds (worst while sprinting, where the ripple straddles the
 `AnimatedCharacter` DEBOUNCES ground-state transitions: a new idle/walk/run takes effect only after it has held
 for `stateDebounceSeconds` (ctor param / `CharacterAnimatorTuning.StateDebounceSeconds`, default
 `AnimatedCharacter.DefaultStateDebounceSeconds` = 0.08 s), so a one-tick excursion is ignored; air states
-(jump/fall) are exempt and switch instantly so a real jump never lags. Pass 0 to switch immediately.
+(jump/fall) and water states (swim/tread) are exempt and switch instantly so a real jump or a water entry never
+lags. Pass 0 to switch immediately.
 
 **Speed-synced playback (stop foot sliding)** (`LocomotionSpeedSync`). A locomotion clip plays at its authored
 rate regardless of how fast the character actually moves, so any character whose world speed differs from the
-speed the clip was authored to move at slides its feet ("gliding"). Opt in: tell the brain the m/s each ground
-MOVE clip (Walk, Run) was authored to move at, and it advances that clip in proportion to the actual
-`horizontalSpeed` instead. Idle and the air states (Jump/Fall) always play at 1x. **Default OFF** - every
-existing consumer is byte-identical until it opts in.
+speed the clip was authored to move at slides its feet ("gliding"). Opt in: tell the brain the m/s each MOVE
+clip (Walk, Run, and the forward `Swim` stroke) was authored to move at, and it advances that clip in proportion
+to the actual `horizontalSpeed` instead. Idle, the tread `SwimIdle`, and the air states (Jump/Fall) always play
+at 1x. **Default OFF** - every existing consumer is byte-identical until it opts in.
 
 ```csharp
 // Per AnimatedCharacter: pass the authored ground speeds of the Walk/Run clips + enable.
@@ -1872,6 +1893,14 @@ peer is rejected at connect by the always-on `WireGenerationAuthenticator`, exac
 consumer action. `CharacterMovement.ResolveSwimming(wasSwimming, medium, feetY, tuning)` exposes the pure
 enter/exit decision for callers that predict or echo it. A **null provider never engages swim** and is bit-identical
 to a land character.
+
+**Animation.** The swim flag drives the locomotion state machine (see the skinned-character section): while set,
+`AnimatedCharacter` plays the forward `Swim` clip (speed-blended above `LocomotionThresholds.SwimSpeed`) or the
+tread `SwimIdle` clip below it, threaded from `MoveState.Swimming` / the replicated `MovementState.Swimming` -
+never a water query of the animator's own. Remotes ride the same replicated bit via `EntityRenderState.Swimming`
+-> `CharacterSample.Swimming`. Consumers bake two clips named `Swim` and `SwimIdle`; a rig without them degrades
+to `Idle` while swimming. Ruinborne's avatar is being rebaked with these two clips from the CC0 Quaternius
+Universal Animation Library and maps them on adoption.
 
 ---
 
@@ -2496,11 +2525,12 @@ var server = new WorldServer(transport, new WorldServerConfig { TickSeconds = 1f
   outage); `RequestSelfRescue()` asks the
   server to teleport the local player to a server-decided safe spot (an "unstuck" - see below); `Snapshot()` returns
   `IReadOnlyList<EntityRenderState>` (`{ NetId Id; Vector3 Position; bool IsLocal; string? DisplayName; bool
-  Grounded; float VerticalVelocity; }`) for the renderer - the local player is the predicted position, remotes the
-  replicated one (smoothly interpolated between snapshots by default - see `InterpolateRemotes` below).
-  `Grounded` + `VerticalVelocity` are the EXACT air state (local: predicted; remote: replicated
-  `MovementState`), surfaced for every entity so an animator bridge reads jump/fall for remotes instead of
-  finite-differencing their terrain-following position. Optional trailing ctor params
+  Grounded; float VerticalVelocity; bool Swimming; }`) for the renderer - the local player is the predicted
+  position, remotes the replicated one (smoothly interpolated between snapshots by default - see `InterpolateRemotes`
+  below). `Grounded` + `VerticalVelocity` + `Swimming` are the EXACT movement state (local: predicted; remote:
+  replicated `MovementState`), surfaced for every entity so an animator bridge reads jump/fall/swim for remotes
+  instead of finite-differencing their terrain-following position (swim in particular is impossible to derive from
+  position - a swimmer glides horizontally like a walker). Optional trailing ctor params
   `WorldBounds? bounds`, `IPhysicsWorld? physics` (mirroring `WorldServer`) feed the
   internal prediction simulator, so the client predicts around the **same** static
   props/buildings and play-area bound the server is authoritative over (null = terrain only). The local avatar's

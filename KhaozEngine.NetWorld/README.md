@@ -37,7 +37,12 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   Optional `WorldBounds`/`IPhysicsWorld?` ctor params (mirroring `WorldServer`, since 8.0.0) make the client predict
   against the same play-area bound + static physics bodies the server is authoritative over, so a
   solid-prop world predicts straight instead of rubber-banding (null = terrain only).
-  Read-only local-avatar shorthands: `LocalRenderState` / `LocalGrounded` / `LocalVerticalVelocity`, plus
+  Each `EntityRenderState` carries the EXACT movement flags for every entity (local: predicted; remote: replicated
+  `MovementState`): `Grounded` + `VerticalVelocity` (jump/fall) and `Swimming` (the swim feature), so an animator
+  bridge reads them straight instead of finite-differencing the terrain-following position - swim in particular is
+  impossible to derive from position (a swimmer glides horizontally like a walker), so the replicated bit is the only
+  source. Read-only local-avatar shorthands: `LocalRenderState` (whose `.Swimming` mirrors the flag) / `LocalGrounded`
+  / `LocalVerticalVelocity`, plus
   `LocalHorizontalSpeed` (since 8.7.0) - the predicted planar speed in m/s straight off
   `ClientPrediction.PredictedHorizontalSpeed`, computed per prediction tick and immune to reconciliation snaps,
   so it stays steady under lag (the clean source for a speed HUD / footstep audio / locomotion blend, vs

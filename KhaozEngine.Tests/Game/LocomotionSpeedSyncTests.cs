@@ -62,6 +62,23 @@ namespace KhaozEngine.Tests.Game
         }
 
         [Fact]
+        public void Swim_AdvancesProportionalToSpeed_TreadAlwaysOne()
+        {
+            var s = LocomotionSpeedSync.Enable(walkClipSpeed: 2f, runClipSpeed: 5f, swimClipSpeed: 2.5f);
+            Assert.Equal(2f, s.RateFor(LocomotionState.Swim, 5f), 4);       // 5 / 2.5
+            Assert.Equal(1f, s.RateFor(LocomotionState.Swim, 2.5f), 4);     // authored speed -> 1x
+            Assert.Equal(1f, s.RateFor(LocomotionState.SwimIdle, 10f));     // tread always 1x
+        }
+
+        [Fact]
+        public void Swim_UnsetReference_PlaysAtOne()
+        {
+            // The default Enable (no swimClipSpeed) leaves Swim at 0 -> 1x, so a pre-swim consumer is unchanged.
+            var s = LocomotionSpeedSync.Enable(walkClipSpeed: 2f, runClipSpeed: 5f);
+            Assert.Equal(1f, s.RateFor(LocomotionState.Swim, 10f));
+        }
+
+        [Fact]
         public void UnsetReferenceSpeed_PlaysAtOne()
         {
             // Enabled but the state's reference speed is 0 -> avoid divide-by-zero, play at 1x.

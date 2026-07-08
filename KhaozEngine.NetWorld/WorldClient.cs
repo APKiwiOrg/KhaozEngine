@@ -568,27 +568,32 @@ public sealed class WorldClient : IDisposable
             Vector3 pos;
             bool grounded;
             float verticalVelocity;
+            bool swimming;
             if (isLocal)
             {
-                // The local avatar's exact air state is the predicted/reconciled state.
+                // The local avatar's exact movement state is the predicted/reconciled state.
                 PlayerMoveState rs = prediction.RenderedState;
                 pos = rs.Position;
                 grounded = rs.Grounded;
                 verticalVelocity = rs.VerticalVelocity;
+                swimming = rs.Swimming;
             }
             else
             {
                 // Remotes: surface the replicated vertical state (MovementState rides alongside the position) so a
-                // consumer animates jump/fall from the authoritative flag instead of finite-differencing the
-                // terrain-following position (which reads "airborne" the faster a remote moves over a slope). Default
-                // grounded when a remote has no MovementState yet, so it never spuriously starts airborne.
+                // consumer animates jump/fall/swim from the authoritative flags instead of finite-differencing the
+                // terrain-following position (which reads "airborne" the faster a remote moves over a slope, and
+                // cannot tell a swimmer from a walker at all). Default grounded / not-swimming when a remote has no
+                // MovementState yet, so it never spuriously starts airborne or swimming.
                 world.TryGet(kv.Value, out ReplicatedPosition rp);
                 pos = rp.Value;
-                grounded = world.TryGet(kv.Value, out MovementState ms) ? ms.Grounded : true;
+                bool hasMs = world.TryGet(kv.Value, out MovementState ms);
+                grounded = hasMs ? ms.Grounded : true;
                 verticalVelocity = ms.VerticalVelocity;
+                swimming = hasMs && ms.Swimming;
             }
             string? name = world.TryGet(kv.Value, out PlayerIdentity identity) ? identity.DisplayName : null;
-            list.Add(new EntityRenderState(new NetId(kv.Key), pos, isLocal, name, grounded, verticalVelocity));
+            list.Add(new EntityRenderState(new NetId(kv.Key), pos, isLocal, name, grounded, verticalVelocity, swimming));
         }
         return list;
     }

@@ -556,6 +556,8 @@ namespace KhaozEngine.Showcase
                 Map(LocomotionState.Run, "Run");           // a forward jog
                 Map(LocomotionState.Jump, "Jump");         // airborne loop (rising)
                 Map(LocomotionState.Fall, "Fall");         // airborne loop (descending)
+                Map(LocomotionState.SwimIdle, "SwimIdle"); // tread water (absent in this rig -> degrades to Idle)
+                Map(LocomotionState.Swim, "Swim");         // forward stroke (absent -> degrades to Idle)
                 if (clips.Count == 0) { Console.WriteLine("Character has no expected clips; using the capsule."); return; }
 
                 // Scale the model to ~the 1.8 m capsule height so it lines up with the camera + collision footprint.

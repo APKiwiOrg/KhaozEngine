@@ -24,14 +24,28 @@ scenes.Draw3D(scene);
 
 A render-free bridge that drives one skinned-character brain per networked entity from a per-frame list of
 `CharacterSample`. By default it derives planar speed / facing / air state from the position stream (windowed, so a
-plateauing position does not strobe the state). Richer constructors let the local player pass exact signals it
-already knows: `(id, position, isLocal, grounded, verticalVelocity)` for the exact grounded flag + vertical
-velocity, and `(id, position, isLocal, grounded, verticalVelocity, planarSpeed)` to ALSO drive the idle/walk/run
-state and clip-speed sync off the exact planar speed (`WorldClient.LocalHorizontalSpeed`) instead of the
-finite-differenced render position - so the local avatar's animation does not flicker walk&lt;-&gt;idle when it
-decelerates to a stop. Facing still takes its DIRECTION from the derived heading but gates on the exact speed too
-(when supplied), so the model holds its yaw through the post-stop render settle instead of spinning to chase it. See
-`docs/USING-KHAOZENGINE.md`.
+plateauing position does not strobe the state). Richer constructors let the local player (or any entity whose
+replicated `MovementState` is available) pass exact signals it already knows: `(id, position, isLocal, grounded,
+verticalVelocity)` for the exact grounded flag + vertical velocity, and `(id, position, isLocal, grounded,
+verticalVelocity, planarSpeed)` to ALSO drive the idle/walk/run state and clip-speed sync off the exact planar speed
+(`WorldClient.LocalHorizontalSpeed`) instead of the finite-differenced render position - so the local avatar's
+animation does not flicker walk&lt;-&gt;idle when it decelerates to a stop. A trailing `swimming` argument on the
+exact-movement constructors (from the replicated `MovementState.Swimming` bit, surfaced on `EntityRenderState.Swimming`)
+plays the forward `Swim` / tread `SwimIdle` clips; swim is exact-only, never derived (a swimmer glides horizontally
+like a walker, so position cannot tell them apart). Facing still takes its DIRECTION from the derived heading but
+gates on the exact speed too (when supplied), so the model holds its yaw through the post-stop render settle instead
+of spinning to chase it. See `docs/USING-KHAOZENGINE.md`.
+
+### Locomotion states + clips
+
+`LocomotionState` = `Idle`/`Walk`/`Run` (ground, by speed), `Jump`/`Fall` (air, by vertical sign), and
+`SwimIdle`/`Swim` (water: tread below `LocomotionThresholds.SwimSpeed`, forward stroke above). Swim wins over both
+ground and air when the swim flag is set. The enum names match the clip names a consumer bakes (name-based mapping),
+so the two water clips are named `Swim` and `SwimIdle`; a rig without them degrades to `Idle` while swimming rather
+than crashing. The forward `Swim` clip speed-syncs (pass its authored move speed as `LocomotionSpeedSync` `swimClipSpeed`
+/ `CharacterAnimatorTuning.SwimClipSpeed`); the tread always plays at 1x. Swim/tread transitions commit immediately
+(exempt from the ground-state debounce, like air states) because the enter/exit is hysteresis-debounced in the
+movement sim.
 
 ## One-shot actions over locomotion
 

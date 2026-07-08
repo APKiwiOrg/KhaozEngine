@@ -47,6 +47,8 @@ namespace KhaozEngine.Tests.Game
             [LocomotionState.Run] = Park("run", 3f),
             [LocomotionState.Jump] = Park("jump", 4f),
             [LocomotionState.Fall] = Park("fall", 5f),
+            [LocomotionState.SwimIdle] = Park("swimIdle", 6f),
+            [LocomotionState.Swim] = Park("swim", 7f),
         };
 
         // Each new entity gets a fresh brain off a shared (immutable) skeleton + clip map.
@@ -218,6 +220,55 @@ namespace KhaozEngine.Tests.Game
                 states.Add(a.Live[0].State);
             }
             Assert.Contains(LocomotionState.Walk, states);   // the derived path surfaces the jitter as movement
+        }
+
+        [Fact]
+        public void ExactSwimmingFlag_DrivesSwimState_OverGroundAndAir()
+        {
+            // A remote's swim animation rides the replicated MovementState.Swimming bit carried on the sample. A
+            // moving swimmer glides horizontally exactly like a walker, so ONLY the exact flag can select the swim
+            // clip. Feed a swimming sample with a walk-band planar speed -> Swim, not Walk.
+            var a = NewAnimators();
+            var pos = Vector3.Zero;
+            for (int i = 0; i < 8; i++)
+            {
+                pos += new Vector3(3f * Dt, 0, 0);   // 3 m/s planar (Walk band on a land character)
+                a.Update(new[] { new CharacterSample(1, pos, isLocal: false, grounded: false, verticalVelocity: 0f, planarSpeed: 3f, swimming: true) }, Dt);
+            }
+            Assert.Equal(LocomotionState.Swim, a.Live[0].State);
+
+            // Stop swimming forward (planar speed 0, still swimming) -> tread water.
+            for (int i = 0; i < 8; i++)
+                a.Update(new[] { new CharacterSample(1, pos, isLocal: false, grounded: false, verticalVelocity: 0f, planarSpeed: 0f, swimming: true) }, Dt);
+            Assert.Equal(LocomotionState.SwimIdle, a.Live[0].State);
+        }
+
+        [Fact]
+        public void PositionOnlySample_NeverSwims()
+        {
+            // A position-only sample (no exact movement) cannot swim: the flag defaults false and the bridge never
+            // derives it. Even a fast horizontal glide reads Walk/Run, never Swim.
+            var a = NewAnimators();
+            var pos = Vector3.Zero;
+            for (int i = 0; i < 8; i++) { pos += new Vector3(3f * Dt, 0, 0); a.Update(new[] { Pos(1, pos) }, Dt); }
+            Assert.Equal(LocomotionState.Walk, a.Live[0].State);
+            Assert.NotEqual(LocomotionState.Swim, a.Live[0].State);
+            Assert.NotEqual(LocomotionState.SwimIdle, a.Live[0].State);
+        }
+
+        [Fact]
+        public void ExactMovement_NotSwimming_StillPicksGroundOrAir()
+        {
+            // An exact-movement sample with swimming:false must behave exactly as before (ground/air selection). Pin
+            // that the default swimming argument on the exact-movement ctors does not perturb the non-swim path.
+            var a = NewAnimators();
+            var pos = Vector3.Zero;
+            for (int i = 0; i < 6; i++)
+            {
+                pos += new Vector3(0, 0.1f, 0);
+                a.Update(new[] { new CharacterSample(1, pos, isLocal: true, grounded: false, verticalVelocity: 3f) }, Dt);
+            }
+            Assert.Equal(LocomotionState.Jump, a.Live[0].State);   // airborne rising, not swimming
         }
 
         [Fact]

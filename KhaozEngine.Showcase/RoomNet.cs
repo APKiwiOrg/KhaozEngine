@@ -268,19 +268,19 @@ namespace KhaozEngine.Showcase
             foreach (NetBot b in _bots) b.Step(dt);
 
             // Map the replicated render states to engine-neutral samples and advance the avatar bridge once per
-            // frame. Every entity carries its EXACT grounded flag + vertical velocity (local is predicted, remote
-            // is replicated MovementState surfaced via EntityRenderState), so jump/fall read true for remotes too.
-            // The local player ALSO carries its exact planar speed (the clean commanded speed) so its walk/run/idle
-            // state does not strobe off the finite-differenced render position when it decelerates to a stop; remotes
-            // have only a replicated position, so they keep the position-derived speed.
+            // frame. Every entity carries its EXACT grounded flag + vertical velocity + swimming flag (local is
+            // predicted, remote is replicated MovementState surfaced via EntityRenderState), so jump/fall/swim read
+            // true for remotes too. The local player ALSO carries its exact planar speed (the clean commanded speed)
+            // so its walk/run/idle state does not strobe off the finite-differenced render position when it
+            // decelerates to a stop; remotes have only a replicated position, so they keep the position-derived speed.
             // Feet position (centre minus the capsule half-height) so the model's feet sit on the ground.
             _samples.Clear();
             foreach (EntityRenderState e in _client.Snapshot())
             {
                 var feet = new Vector3(e.Position.X, e.Position.Y - CapsuleHalfHeight, e.Position.Z);
                 _samples.Add(e.IsLocal
-                    ? new CharacterSample(e.Id.Value, feet, isLocal: true, e.Grounded, e.VerticalVelocity, _client.LocalHorizontalSpeed)
-                    : new CharacterSample(e.Id.Value, feet, e.IsLocal, e.Grounded, e.VerticalVelocity));
+                    ? new CharacterSample(e.Id.Value, feet, isLocal: true, e.Grounded, e.VerticalVelocity, _client.LocalHorizontalSpeed, e.Swimming)
+                    : new CharacterSample(e.Id.Value, feet, e.IsLocal, e.Grounded, e.VerticalVelocity, e.Swimming));
             }
             _animators?.Update(_samples, dt);
 
@@ -389,6 +389,8 @@ namespace KhaozEngine.Showcase
                 Map(LocomotionState.Run, "Run");
                 Map(LocomotionState.Jump, "Jump");
                 Map(LocomotionState.Fall, "Fall");
+                Map(LocomotionState.SwimIdle, "SwimIdle");   // tread water (absent in this rig -> degrades to Idle)
+                Map(LocomotionState.Swim, "Swim");           // forward stroke (absent -> degrades to Idle)
                 if (clips.Count == 0) { Console.WriteLine("Character has no expected clips; using capsules."); return; }
 
                 // Auto-fit the model to the 1.8 m capsule height (asset-agnostic) and bake that scale into the

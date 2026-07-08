@@ -25,6 +25,10 @@ public struct PlayerMoveState : IPredictedState<PlayerMoveState>
     /// <summary>True while resting on the ground this tick.</summary>
     public bool Grounded { readonly get => Move.Grounded; set => Move.Grounded = value; }
 
+    /// <summary>True while surface-swimming this tick (mirrors <see cref="MoveState.Swimming"/>). Replicated via
+    /// <see cref="MovementState.Swimming"/> so the local owner reconciles it and remotes animate the swim clips.</summary>
+    public bool Swimming { readonly get => Move.Swimming; set => Move.Swimming = value; }
+
     readonly Vector2 IPredictedState<PlayerMoveState>.Position => new(Move.Position.X, Move.Position.Z);
 
     /// <summary>The vertical axis (height) carried through render smoothing, so a jump/fall eases on screen.</summary>

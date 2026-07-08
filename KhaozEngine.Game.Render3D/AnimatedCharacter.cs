@@ -11,9 +11,10 @@ namespace KhaozEngine.Game
     /// crossfades into it, advances the playhead, and produces the joint-WORLD bone palette for
     /// <see cref="Scene3D.DrawSkinned(SkinnedMeshHandle, ReadOnlySpan{Matrix4x4}, Matrix4x4, Primitives.Color)"/>.
     /// Drive one per character - the LOCAL player from its own movement, each REMOTE player from its replicated
-    /// position / vertical velocity / grounded flag. Client-cosmetic: never feed the pose back into
+    /// position / vertical velocity / grounded / swimming flags. Client-cosmetic: never feed the pose back into
     /// simulation/netcode. A state with no clip in the map falls back to <see cref="LocomotionState.Idle"/> (and if
-    /// Idle is also absent, the first supplied clip), so a partial clip set never throws.</summary>
+    /// Idle is also absent, the first supplied clip), so a partial clip set never throws - a consumer that has not
+    /// yet baked the water clips (<c>Swim</c> / <c>SwimIdle</c>) degrades to Idle while swimming rather than crashing.</summary>
     public sealed class AnimatedCharacter
     {
         /// <summary>Default seconds a newly-evaluated GROUND state must persist before it is committed (the
@@ -42,7 +43,8 @@ namespace KhaozEngine.Game
         public LocomotionState State { get; private set; }
 
         /// <param name="skeleton">The rig the pose is evaluated on.</param>
-        /// <param name="clips">One animation clip per locomotion state (idle/walk/run/jump/fall).</param>
+        /// <param name="clips">One animation clip per locomotion state (idle/walk/run/jump/fall, plus the water clips
+        /// swim/swimIdle). A missing state falls back to Idle (then the first clip), so a partial set never throws.</param>
         /// <param name="thresholds">Speed cutoffs mapping a planar speed to a ground state. Null uses defaults.</param>
         /// <param name="crossfade">Seconds to blend from the previous clip on a state switch.</param>
         /// <param name="stateDebounceSeconds">Seconds a newly-evaluated GROUND state must persist before it is
@@ -79,14 +81,24 @@ namespace KhaozEngine.Game
             _player.GetBonePalette(_pose);
         }
 
+        /// <summary>Advance the animation for one frame from the movement state, never swimming (the pre-swim
+        /// overload). Kept so existing callers compile bit-identically.</summary>
+        public void Update(float horizontalSpeed, bool grounded, float verticalVelocity, float dt) =>
+            Update(horizontalSpeed, grounded, verticalVelocity, swimming: false, dt);
+
         /// <summary>Advance the animation for one frame from the movement state. A ground state (idle/walk/run) takes
         /// effect only after it has persisted for the debounce window, so a brief excursion in a derived movement
-        /// signal does not restart the clip; air states (jump/fall) commit immediately. When <c>speedSync</c> is
-        /// enabled a Walk/Run clip advances in proportion to <paramref name="horizontalSpeed"/> (Idle/air stay 1x).</summary>
-        public void Update(float horizontalSpeed, bool grounded, float verticalVelocity, float dt)
+        /// signal does not restart the clip; air states (jump/fall) AND the water states (swim/tread) commit
+        /// immediately - a real jump/fall or a swim enter/exit must read instantly (the swim enter/exit is already
+        /// hysteresis-debounced in the movement sim, so a second debounce here would only add lag). When
+        /// <paramref name="swimming"/> is set the state machine selects the tread <see cref="LocomotionState.SwimIdle"/>
+        /// or the forward <see cref="LocomotionState.Swim"/> from the planar speed (the swim flag is threaded from the
+        /// movement medium, never re-queried). When <c>speedSync</c> is enabled a Walk/Run/Swim clip advances in
+        /// proportion to <paramref name="horizontalSpeed"/> (Idle/tread/air stay 1x).</summary>
+        public void Update(float horizontalSpeed, bool grounded, float verticalVelocity, bool swimming, float dt)
         {
-            LocomotionState evaluated = LocomotionStateMachine.Evaluate(horizontalSpeed, grounded, verticalVelocity, _thresholds);
-            CommitState(evaluated, grounded, dt);
+            LocomotionState evaluated = LocomotionStateMachine.Evaluate(horizontalSpeed, grounded, verticalVelocity, swimming, _thresholds);
+            CommitState(evaluated, grounded && !swimming, dt);
             _player.Play(ClipFor(State), _crossfade);
             _player.Update(dt, _speedSync.RateFor(State, horizontalSpeed));
 
@@ -143,7 +155,9 @@ namespace KhaozEngine.Game
 
         // Debounce ground-state transitions: a new ground state commits only after it has held continuously for the
         // debounce window, so a one-frame/one-tick flicker in the movement signal cannot restart the clip. Becoming
-        // airborne (or switching air state) commits immediately - a real jump/fall must read instantly.
+        // airborne (or switching air state) commits immediately - a real jump/fall must read instantly. The caller
+        // passes false for the "grounded" gate while swimming too, so swim/tread transitions also commit immediately
+        // (the swim flag is already hysteresis-debounced in the movement sim; a second debounce here would only lag it).
         void CommitState(LocomotionState evaluated, bool grounded, float dt)
         {
             if (evaluated == State) { _candidate = State; _candidateAge = 0f; return; }

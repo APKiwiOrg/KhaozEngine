@@ -60,6 +60,47 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal(Bar.Height, t0.Height);
         }
 
+        // --- TabStripDrawGeometry: the whole-unit DRAW rounding that keeps the shared frame + dividers crisp in a
+        // non-snapping design pass. Distinct from TabRect (fractional, for exact hit-testing) which is unchanged. ---
+
+        [Fact]
+        public void TabStripDrawGeometry_rounds_every_split_edge_to_a_whole_unit()
+        {
+            // 100 / 3 splits at 33.33.. which would render soft in a design pass; the draw geometry rounds each edge.
+            var (frame, edges) = GuiDraw.TabStripDrawGeometry(new Rect(100f, 100f, 100f, 40f), 3);
+
+            Assert.Equal(4, edges.Length);                        // count + 1 edges
+            foreach (float e in edges) Assert.Equal(e, MathF.Round(e), 4);   // every edge is integral
+            Assert.Equal(new[] { 100f, 133f, 167f, 200f }, edges);
+            Assert.Equal(new Rect(100f, 100f, 100f, 40f), frame);
+        }
+
+        [Fact]
+        public void TabStripDrawGeometry_frame_spans_the_rounded_bounds_exactly()
+        {
+            var b = new Rect(10.4f, 20.6f, 99.7f, 30.2f);
+            var (frame, edges) = GuiDraw.TabStripDrawGeometry(b, 2);
+
+            Assert.Equal(3, edges.Length);
+            Assert.Equal(edges[0], frame.X, 4);                  // frame left == first edge
+            Assert.Equal(edges[2], frame.Right, 4);              // frame right == last edge
+            Assert.Equal(MathF.Round(b.X), edges[0], 4);
+            Assert.Equal(MathF.Round(b.Right), edges[2], 4);
+            Assert.Equal(MathF.Round(b.Y), frame.Y, 4);
+            Assert.Equal(MathF.Round(b.Bottom), frame.Bottom, 4);
+        }
+
+        [Fact]
+        public void TabStripDrawGeometry_edges_are_monotonic_with_interior_dividers_between()
+        {
+            var (_, edges) = GuiDraw.TabStripDrawGeometry(new Rect(0f, 0f, 250f, 20f), 3);
+
+            Assert.Equal(4, edges.Length);
+            for (int i = 1; i < edges.Length; i++)
+                Assert.True(edges[i] >= edges[i - 1]);           // non-decreasing: tabs never invert
+            Assert.Equal(new[] { 83f, 167f }, new[] { edges[1], edges[2] });   // interior dividers
+        }
+
         [Fact]
         public void Tap_in_a_tab_activates_it_and_raises_ChangedThisFrame()
         {

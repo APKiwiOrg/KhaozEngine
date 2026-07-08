@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using KhaozEngine.App;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
@@ -11,8 +12,11 @@ namespace KhaozEngine.Gui
     /// A horizontal tab bar (segmented control) over <see cref="Pointer"/>: N evenly-split tabs within
     /// <see cref="Bounds"/>, exactly one active at a time. Clicking a tab makes it active and raises
     /// <see cref="ChangedThisFrame"/> for that one frame, so the caller swaps the panel body only on an actual
-    /// change. Tabs are drawn through the shared <see cref="GuiDraw.DrawButton"/>, so hover/press feedback and
-    /// theming match <see cref="Button"/>: the active tab uses <see cref="ActiveStyle"/> (the bright-accent
+    /// change. The strip draws as a crisp flat segmented control (<see cref="GuiDraw.TabStripDrawGeometry"/>): flat
+    /// per-tab fills carry the hover / press / active state, and a SINGLE shared border grid (one outer frame plus
+    /// one divider per interior seam, with the active tab's accent outline on top) replaces the old per-tab box, so
+    /// no inter-tab seam is doubled and the edges stay uniform and sharp even in a design pass that does no
+    /// device-pixel snapping. The active tab uses <see cref="ActiveStyle"/> (the bright-accent
     /// <see cref="GuiStyle.Active"/> look), inactive tabs use the muted <see cref="InactiveStyle"/>
     /// (<see cref="GuiStyle.Secondary"/>). Labels are <see cref="LocalizedText"/> (localized copy or a raw escape
     /// hatch). Call <see cref="Update"/> then <see cref="Draw"/> each frame; <see cref="Update"/> reserves
@@ -117,21 +121,61 @@ namespace KhaozEngine.Gui
             return changed;
         }
 
-        /// <summary>Draw every tab via the shared <see cref="GuiDraw.DrawButton"/>. <paramref name="white"/> is a
-        /// 1x1 white texture for the fill. Hover/press visuals are the ones cached by the last <see cref="Update"/>
-        /// (matching <see cref="Button"/>). Requires <see cref="Font"/> (a no-op when unset).</summary>
+        /// <summary>Draw the tab strip as a flat segmented control: per-tab fills plus a single shared border grid.
+        /// <paramref name="white"/> is a 1x1 white texture for the fills. Hover/press visuals are the ones cached by
+        /// the last <see cref="Update"/>. Requires <see cref="Font"/> (a no-op when unset).</summary>
         public void Draw(SpriteBatch batch, Texture2D white)
         {
             if (Font == null) return;
+
+            GuiStyle active = FadedStyle(ActiveStyle, Opacity);
+            GuiStyle inactive = FadedStyle(InactiveStyle, Opacity);
+
+            // Whole-unit draw geometry: a shared frame + integer seam edges (see GuiDraw.TabStripDrawGeometry). This
+            // removes the sub-pixel blur of fractional TabRect edges in a non-snapping design pass; BodyRect's
+            // batch.SnapRect and the SnapLength below add device-pixel snapping on top in a point-space UI pass (both
+            // no-ops otherwise). TabRect itself is untouched, so hit-testing keeps its exact contract.
+            var (frame, edges) = GuiDraw.TabStripDrawGeometry(Bounds, _labels.Length);
+            float t = batch.SnapLength(1f, minDevicePixels: 1f);
+
+            // 1) Tab bodies: flat fills in the resolved state colour (selected wins over press/hover, as DrawButton).
             for (int i = 0; i < _labels.Length; i++)
             {
-                Rect r = TabRect(i);
-                bool active = i == _activeIndex;
-                GuiStyle style = FadedStyle(active ? ActiveStyle : InactiveStyle, Opacity);
-                GuiDraw.DrawButton(batch, white, Font, r, _labels[i], style,
-                    enabled: true, selected: active, hover: _hoverIndex == i, press: _pressIndex == i);
+                GuiStyle s = i == _activeIndex ? active : inactive;
+                Vector4 fill = i == _activeIndex ? s.SelectedFill
+                    : _pressIndex == i ? s.Press
+                    : _hoverIndex == i ? s.Hover
+                    : s.Fill;
+                GuiDraw.Fill(batch, white, BodyRect(batch, frame, edges, i), fill);
+            }
+
+            // 2) One shared frame + one 1-unit divider per interior seam, drawn once so no seam is doubled. The two
+            // seams bounding the active tab are left to its accent border below (drawing both would re-double them).
+            GuiDraw.Border(batch, white, frame, 1f, inactive.Border);
+            for (int i = 1; i < _labels.Length; i++)
+            {
+                if (i == _activeIndex || i == _activeIndex + 1) continue;   // owned by the active accent border
+                GuiDraw.Fill(batch, white, batch.SnapRect(new Rect(edges[i], frame.Y, t, frame.Height)), inactive.Border);
+            }
+
+            // 3) Active tab accent border on top, so it reads cleanly over the shared frame.
+            GuiDraw.Border(batch, white, BodyRect(batch, frame, edges, _activeIndex), 1f, active.SelectedBorder);
+
+            // 4) Centred labels per snapped body.
+            for (int i = 0; i < _labels.Length; i++)
+            {
+                Rect body = BodyRect(batch, frame, edges, i);
+                Vector4 text = (i == _activeIndex ? active : inactive).Text;
+                string str = _labels[i].Resolve();
+                Vector2 pos = GuiDraw.AlignedTextPos(body, Font.Measure(str), Font.LineHeight, GuiAlign.Center);
+                batch.DrawString(Font, str, pos, (Color)text);
             }
         }
+
+        // The device-snapped draw rect for tab `index`: its two whole-unit seam edges across the frame's vertical
+        // extent. A no-op snap outside a point-space UI pass, so the design-space rect is the whole-unit geometry.
+        static Rect BodyRect(SpriteBatch batch, Rect frame, float[] edges, int index) =>
+            batch.SnapRect(new Rect(edges[index], frame.Y, edges[index + 1] - edges[index], frame.Height));
 
         // A copy of the style with every colour's alpha scaled by opacity, so the whole bar fades uniformly.
         static GuiStyle FadedStyle(GuiStyle s, float opacity)

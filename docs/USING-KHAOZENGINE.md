@@ -754,8 +754,11 @@ tabs.Draw(batch, white);                 // active tab: GuiStyle.Active; others:
 The tabs are evenly split across `Bounds` (`TabRect(i)` is the pure per-tab layout, headless-testable); exactly
 one is active. A valid press-origin tap on a non-active tab makes it active, sets `ChangedThisFrame` for that one
 frame, and makes `Update` return true; a tap on the already-active tab or outside the bar changes nothing.
-`ActiveIndex` is settable to restore or persist the selection without raising the change signal. Hover/press
-visuals match `Button` (cached in `Update`, drawn from the cache). Override `ActiveStyle` / `InactiveStyle` to
+`ActiveIndex` is settable to restore or persist the selection without raising the change signal. The strip draws
+as a flat segmented control: per-tab fills carry the hover/press/active state (cached in `Update`, drawn from the
+cache) and a single shared border grid (one outer frame + one divider per interior seam, the active tab
+accent-outlined on top) keeps every seam a crisp single 1px line, uniform even in a design pass that does no
+device-pixel snapping (10.32.1). Override `ActiveStyle` / `InactiveStyle` to
 re-theme, and `Opacity` (0..1) fades the whole bar with a host transition. Labels are `LocalizedText`, so use a
 `StringId` for player-facing copy (`LocalizedText.Raw(...)` only for debug/non-localizable tokens).
 

@@ -57,6 +57,25 @@ namespace KhaozEngine.Gui
             Line(batch, white, mid, right, thickness, color);
         }
 
+        /// <summary>
+        /// Whole-unit DRAW geometry for an N-tab segmented strip over <paramref name="bounds"/>: the outer frame rect
+        /// and the <c>count + 1</c> vertical edge positions (left..right), each rounded to a whole authoring unit so
+        /// the tab bodies abut on a shared integer seam and the frame + interior dividers render as crisp single
+        /// 1-unit lines even in a design pass that does no device-pixel snapping. This ROUNDS FOR DRAWING only and is
+        /// independent of <see cref="TabBar.TabRect"/> (which stays fractional so hit-testing keeps its exact
+        /// no-gap / last-edge-on-Right contract). The interior edges (<c>edges[1..count-1]</c>) are the divider
+        /// positions. Pure geometry: no GPU, headless-testable.
+        /// </summary>
+        public static (Rect frame, float[] edges) TabStripDrawGeometry(Rect bounds, int count)
+        {
+            float[] edges = new float[count + 1];
+            for (int i = 0; i <= count; i++)
+                edges[i] = System.MathF.Round(bounds.X + bounds.Width * i / count);   // same split as TabRect, rounded
+            float top = System.MathF.Round(bounds.Y);
+            float bottom = System.MathF.Round(bounds.Bottom);
+            return (new Rect(edges[0], top, edges[count] - edges[0], bottom - top), edges);
+        }
+
         /// <summary>Draw a <paramref name="thickness"/>-px outline just inside <paramref name="r"/>. In a point-space
         /// UI pass the rect and thickness snap to whole device pixels so the outline is uniform (no fractional-phase
         /// asymmetry); the snap is a no-op in any other pass, so screen/design/world output is unchanged.</summary>

@@ -5,6 +5,15 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.32.1
+
+`TabBar` borders render crisp and uniform in a non-snapping design pass: the per-tab box is replaced by a single shared border grid and the draw rects snap to whole units, fixing the doubled inter-tab divider and the sub-pixel blur. Rendering-only bug fix, patch bump, no public API change.
+
+- **Root cause:** `TabBar.Draw` drew each tab through `GuiDraw.DrawButton`, so every tab painted its own full 4-sided border and adjacent tabs stacked two strokes on the shared seam (a doubled divider against the 1px outer frame). Its rects also came from the fractional `TabRect` split (`X + Width*i/N`), which `GuiDraw` snaps to whole device pixels ONLY inside a point-space UI pass. A design-space host (`IDesignViewport.SnapsToDevicePixels == false`, e.g. an `AdaptiveViewport`) gets no snapping, so the fractional edges rendered soft and shifted sub-pixel as the strip geometry changed.
+- **Fix:** the strip now draws as a flat segmented control. A new pure `GuiDraw.TabStripDrawGeometry(bounds, count)` rounds every split edge and the frame's vertical extent to whole authoring units (crisp even where the host does no snapping), and `TabBar.Draw` fills each tab body flat then strokes a SINGLE shared grid (one outer frame plus one 1px divider per interior seam), leaving the two seams that bound the active tab to its accent border so no seam is doubled. Every draw rect still passes through `batch.SnapRect` / `SnapLength`, so a real point-space UI pass device-snaps on top (a no-op elsewhere).
+- **`TabRect` unchanged:** the fractional per-tab layout / hit-test math keeps its exact contract (tabs abut with no gap, the last edge lands on `Bounds.Right`); the whole-unit rounding is applied for DRAWING only. `ActiveStyle` / `InactiveStyle` / `Opacity` / `ActiveIndex` are all as before, so this is a pure rendering fix with no public API change.
+- **Visual delta:** abutting tabs no longer carry the theme's corner radius (a shared straight frame is inherently flat), and the active tab reads as a bright-accent outline over the muted frame. Verified through a non-snapping `DesignViewport`: single 1px dividers on whole-unit seams, a uniform 1px frame, the accent border a distinct bright column, stable under width changes (`TabBarBorderGpuTests`); the whole-unit rounding is headless-covered by `TabStripDrawGeometry` tests.
+
 ## 10.32.0
 
 Water movement and swim locomotion: the character stack gains a water concept. A game-supplied movement-medium seam drives depth-ramped wading, a surface-swim mode with hysteresis and buoyancy, and Swim animation states, all server-authoritative and prediction-aligned. Additive public API plus one gated wire-protocol bump, minor version.

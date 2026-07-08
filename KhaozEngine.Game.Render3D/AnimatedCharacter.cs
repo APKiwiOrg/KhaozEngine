@@ -22,6 +22,7 @@ namespace KhaozEngine.Game
         public const float DefaultStateDebounceSeconds = 0.08f;
 
         readonly AnimationPlayer _player;
+        readonly Skeleton _skeleton;
         readonly IReadOnlyDictionary<LocomotionState, AnimationClip> _clips;
         readonly LocomotionThresholds _thresholds;
         readonly float _crossfade;
@@ -31,6 +32,12 @@ namespace KhaozEngine.Game
         Matrix4x4[] _pose;
         LocomotionState _candidate;   // last evaluated state awaiting commit
         float _candidateAge;          // seconds the candidate has differed from the committed State
+
+        // Lazily built the first time PlayAction is called: the action compositor that stacks masked one-shot actions
+        // (attacks, casts) over the locomotion base. Null until then, so a character that never plays an action carries
+        // no extra state and takes the byte-stable single-player path.
+        LayeredAnimator? _actions;
+        JointPose[]? _baseLocals;   // scratch for the locomotion crossfade fed to _actions as the base each frame
 
         public LocomotionState State { get; private set; }
 
@@ -61,6 +68,7 @@ namespace KhaozEngine.Game
             _stateDebounce = MathF.Max(0f, stateDebounceSeconds);
             _speedSync = speedSync;
             _fallback = ResolveFallback(clips);
+            _skeleton = skeleton;
             _player = new AnimationPlayer(skeleton);
             _pose = new Matrix4x4[skeleton.BoneCount];
 
@@ -81,8 +89,51 @@ namespace KhaozEngine.Game
             CommitState(evaluated, grounded, dt);
             _player.Play(ClipFor(State), _crossfade);
             _player.Update(dt, _speedSync.RateFor(State, horizontalSpeed));
-            _player.GetBonePalette(_pose);
+
+            // No action in flight: the byte-stable single-player path (bit-identical to pre-action behaviour). One
+            // action or more: feed the locomotion crossfade to the compositor as the base layer and stack the actions.
+            if (_actions is null || !_actions.HasActiveActions)
+            {
+                _player.GetBonePalette(_pose);
+            }
+            else
+            {
+                _player.GetLocalPoses(_baseLocals!);   // the locomotion crossfade result, as LOCAL poses
+                _actions.SetBaseLocals(_baseLocals);
+                _actions.Update(dt);                    // step the action fades / retires
+                _actions.GetBonePalette(_pose);         // composite actions over the locomotion base
+            }
         }
+
+        /// <summary>Play <paramref name="clip"/> once as a one-shot action stacked over locomotion (an attack, a cast):
+        /// fade in, play through, fade out overlapping the clip tail, then auto-retire. <paramref name="mask"/> gates it
+        /// to a body region (e.g. <c>BoneMask.Subtree(Skeleton, spineNode, 1f)</c> for an upper-body attack while the
+        /// legs keep running); null == the whole skeleton. Returns an <see cref="ActionHandle"/> for
+        /// <see cref="CancelAction"/>. Callable on a LOCAL or a REMOTE character's brain alike - drive a remote's action
+        /// by calling this when the game receives the replicated action trigger (replicating the trigger is a
+        /// game-message concern, out of scope here). Client-cosmetic: never feed the pose back into simulation/netcode.</summary>
+        public ActionHandle PlayAction(AnimationClip clip, BoneMask? mask = null, float fadeIn = 0.1f, float fadeOut = 0.1f,
+            float speed = 1f, LayerMode mode = LayerMode.Override)
+        {
+            if (clip is null) throw new ArgumentNullException(nameof(clip));
+            if (_actions is null)
+            {
+                _actions = new LayeredAnimator(_skeleton);
+                _baseLocals = new JointPose[_skeleton.NodeCount];
+            }
+            return _actions.PlayAction(clip, mask, fadeIn, fadeOut, speed, mode);
+        }
+
+        /// <summary>Cancel an in-flight action early: fade it out cleanly from its current weight (no pose pop). A no-op
+        /// for a stale/defaulted handle. Returns true if it referred to a live action.</summary>
+        public bool CancelAction(ActionHandle handle) => _actions?.Cancel(handle) ?? false;
+
+        /// <summary>True while at least one one-shot action is fading in, playing, or fading out.</summary>
+        public bool HasActiveActions => _actions is not null && _actions.HasActiveActions;
+
+        /// <summary>The rig this character poses (for building a <see cref="BoneMask"/> to pass to
+        /// <see cref="PlayAction"/>).</summary>
+        public Skeleton Skeleton => _skeleton;
 
         // Debounce ground-state transitions: a new ground state commits only after it has held continuously for the
         // debounce window, so a one-frame/one-tick flicker in the movement signal cannot restart the clip. Becoming

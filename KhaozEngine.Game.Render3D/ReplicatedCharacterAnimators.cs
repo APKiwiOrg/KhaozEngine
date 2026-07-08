@@ -303,6 +303,15 @@ namespace KhaozEngine.Game
         /// <c>Scene3D.DrawSkinned(meshHandle, pose.Pose, pose.World, tint)</c>. Rebuilt every <see cref="Update"/>.</summary>
         public IReadOnlyList<CharacterPose> Live => _live;
 
+        /// <summary>The <see cref="AnimatedCharacter"/> brain the set owns for entity <paramref name="id"/>, or null if
+        /// no entity with that id is tracked (it has not been sampled yet, or was dropped on disconnect). This is how a
+        /// game plays a one-shot ACTION on a REPLICATED remote: when it receives the action trigger as a game message,
+        /// it looks up the remote's brain here and calls <see cref="AnimatedCharacter.PlayAction"/> on it (the local
+        /// animator API is callable for remotes too - it holds no ownership/authority state). Replicating the trigger
+        /// itself is a game-message concern, out of scope for this bridge. Client-cosmetic: never feed a pose back into
+        /// simulation or netcode.</summary>
+        public AnimatedCharacter? BrainFor(long id) => _entries.TryGetValue(id, out Entry? e) ? e.Character : null;
+
         /// <summary>Advance every tracked character one frame from this frame's samples. Call once per render frame.</summary>
         public void Update(IReadOnlyList<CharacterSample> samples, float dt)
         {

@@ -1467,9 +1467,37 @@ the joint relative to its current local pose rather than swinging it around the 
 layer is bit-identical to the single-clip path, so a character that never adds a layer renders exactly as before.
 Steady-state `Update`/`GetBonePalette` allocate nothing.
 
-The turn-key one-shot action API (`PlayAction(clip, mask, fadeIn, fadeOut, speed)` on the character, auto-fade +
-auto-retire) sits above this; see the combat one-shot section once it lands. For now a game holds its own
-`LayeredAnimator`, adds the base + an action layer, and ramps the action's `Weight`.
+### Combat one-shot actions (turn-key attack while running)
+
+For the common case - "play an attack on the upper body once, over whatever locomotion is doing, then get out
+of the way" - use the one-shot action API instead of managing layer weights by hand. It sits on both
+`LayeredAnimator` and `AnimatedCharacter` (which drives the locomotion base for you):
+
+    // AnimatedCharacter already runs the locomotion state machine as the BASE layer. Just fire an action:
+    var upperBody = BoneMask.Subtree(character.Skeleton, spineRootNode, 1f);
+    ActionHandle atk = character.PlayAction(attackClip, upperBody, fadeIn: 0.1f, fadeOut: 0.15f, speed: 1f);
+    // ...character.Update(speed, grounded, vVel, dt) each frame drives loco AND steps the action...
+    if (interrupted) character.CancelAction(atk);   // clean early fade-out (no pose pop), then auto-retire
+
+`PlayAction` fades the clip in over `fadeIn`, plays it once, fades it out over `fadeOut` **overlapping the clip
+tail** (the fade-out ends exactly as the clip finishes), then retires the action and frees its layer slot. Slots
+are pooled and reused, so firing action after action allocates nothing in steady state. `Cancel` fades an
+in-flight action out early from its current weight (continuity, no pop). While no action is in flight the
+character produces a pose **byte-identical** to plain `AnimatedCharacter` (the locomotion crossfade goes straight
+to `DrawSkinned`, the action compositor is bypassed), so adopting actions never changes existing locomotion
+rendering. `HasActiveActions` tells you whether any action is live.
+
+The same API is on `LayeredAnimator` directly if you drive your own base: call `SetBaseLocals(...)` each frame
+with your base local poses (e.g. `AnimationPlayer.GetLocalPoses` for a locomotion crossfade), then
+`PlayAction` / `Cancel` / `Update(dt)` and `GetBonePalette`.
+
+**Replicating actions across the network.** `AnimatedCharacter` (and the compositor under it) holds no
+ownership/authority state, so `PlayAction` is callable on a LOCAL or a REMOTE character's brain alike. To show a
+remote's attack: the game receives the action TRIGGER as a game message (an id + which action + when), looks up
+that remote's brain via `ReplicatedCharacterAnimators.BrainFor(id)`, and calls `PlayAction` on it - exactly as it
+would for the local player. Replicating the trigger itself is a game-message concern (a small `ActionId` + a
+tick, sent through your own reliable channel); the engine does not replicate it. Client-cosmetic: the action pose
+never feeds back into simulation, RNG, or netcode.
 
 **Out of scope.** Animation events (attack hitframes, footstep sounds), root motion, IK (foot placement), and
 full blend trees beyond the locomotion state machine are not provided - drive those from your own gameplay layer.

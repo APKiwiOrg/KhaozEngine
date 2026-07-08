@@ -32,3 +32,15 @@ finite-differenced render position - so the local avatar's animation does not fl
 decelerates to a stop. Facing still takes its DIRECTION from the derived heading but gates on the exact speed too
 (when supplied), so the model holds its yaw through the post-stop render settle instead of spinning to chase it. See
 `docs/USING-KHAOZENGINE.md`.
+
+## One-shot actions over locomotion
+
+`AnimatedCharacter.PlayAction(clip, mask, fadeIn, fadeOut, speed)` -> `ActionHandle` plays a masked action (an
+attack, a cast) once over the locomotion base: fade in, play through, fade out overlapping the clip tail, then
+auto-retire. `CancelAction(handle)` fades it out early with no pose pop. The locomotion state machine keeps driving
+the base layer exactly as before; while no action is live the pose is byte-identical to plain `AnimatedCharacter`,
+so this is opt-in with zero effect on existing rendering. Slots are pooled, so firing action after action allocates
+nothing in steady state. To play an action on a REPLICATED remote: reach its brain via
+`ReplicatedCharacterAnimators.BrainFor(id)` and call `PlayAction` on it (the animator holds no ownership state).
+Replicating the action TRIGGER is a game-message concern, out of scope here. Client-cosmetic: never feed the pose
+back into simulation or netcode. See `docs/USING-KHAOZENGINE.md`.

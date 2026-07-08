@@ -86,18 +86,44 @@ namespace KhaozEngine.Render3D
         public void GetBonePalette(Matrix4x4[] outPalette)
         {
             if (outPalette is null) throw new ArgumentNullException(nameof(outPalette));
-            if (_to is null) { _skeleton.ComposeInto(_skeleton.RestLocal, outPalette); return; }
+            GetLocalPoses(_localScratch());
+            _skeleton.ComposeInto(_localsBuf!, outPalette);
+        }
 
-            JointPose[] toPose = AnimationSampler.SamplePose(_to, _skeleton, _toTime);
+        // Reused scratch for the composited LOCAL poses (crossfade result), so GetBonePalette / GetLocalPoses do not
+        // allocate a per-frame pose array. Grown once to the skeleton node count.
+        JointPose[]? _localsBuf;
+        JointPose[]? _fromBuf;
+        JointPose[] _localScratch()
+        {
+            if (_localsBuf is null || _localsBuf.Length != _skeleton.NodeCount) _localsBuf = new JointPose[_skeleton.NodeCount];
+            return _localsBuf;
+        }
+
+        /// <summary>Write the current composited LOCAL poses (the crossfade result, one per skeleton node, BEFORE
+        /// hierarchy composition) into <paramref name="outLocals"/> (length <see cref="Skeleton.NodeCount"/>). This is
+        /// the exact intermediate <see cref="GetBonePalette"/> composes, exposed so a <see cref="LayeredAnimator"/> can
+        /// take the locomotion crossfade as its BASE layer and stack masked action layers on top (attack-while-running)
+        /// while the base stays byte-identical to the single-clip path. Before the first <see cref="Play"/> this is the
+        /// rest pose. Steady-state allocation-free.</summary>
+        public void GetLocalPoses(JointPose[] outLocals)
+        {
+            if (outLocals is null) throw new ArgumentNullException(nameof(outLocals));
+            if (outLocals.Length != _skeleton.NodeCount)
+                throw new ArgumentException($"outLocals length {outLocals.Length} must equal node count {_skeleton.NodeCount}.", nameof(outLocals));
+
+            if (_to is null)
+            {
+                for (int n = 0; n < outLocals.Length; n++) outLocals[n] = _skeleton.RestLocal[n];
+                return;
+            }
+
+            AnimationSampler.SampleInto(_to, _skeleton, _toTime, outLocals);
             if (_from != null && _blend < 1f)
             {
-                JointPose[] fromPose = AnimationSampler.SamplePose(_from, _skeleton, _fromTime);
-                JointPose[] blended = AnimationSampler.BlendPoses(fromPose, toPose, _blend);
-                _skeleton.ComposeInto(blended, outPalette);
-            }
-            else
-            {
-                _skeleton.ComposeInto(toPose, outPalette);
+                if (_fromBuf is null || _fromBuf.Length != _skeleton.NodeCount) _fromBuf = new JointPose[_skeleton.NodeCount];
+                AnimationSampler.SampleInto(_from, _skeleton, _fromTime, _fromBuf);
+                for (int n = 0; n < outLocals.Length; n++) outLocals[n] = JointPose.Lerp(_fromBuf[n], outLocals[n], _blend);
             }
         }
 

@@ -5,6 +5,12 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.37.1
+
+Fixed: the sharded authoritative server dropped the surface-swim flag, so `MovementState.Swimming` was stuck at its dry-land spawn value for every player on a `ShardedWorldServer`.
+
+`PlayerMovementSystem.Update` (the per-cell ECS movement step `ShardedWorldServer` runs for every `CellSim`) rebuilds a `MoveState` from the `MovementState` component each tick and writes five fields back after `CharacterMovement.Step`, but it omitted `Swimming` from both the input reconstruction and the output write-back. The swim state therefore never entered or left on the sharded path: `ShardedWorldServer.TryGetPlayerState(...).Swimming` was always false (breaking consumer water rules that read it, e.g. Ruinborne's force-sheathe), and the wire-replicated swim bit every remote observer decodes was always false (remote swimmers rendered as jumping/falling). The non-sharded `WorldServer` / `PlayerMoveSimulator` path was unaffected because it carries the whole `MoveState` opaquely, which is why the original swim feature and its (non-sharded) tests stayed green. Fix: carry `ms.Swimming` into the reconstructed `MoveState` (restoring the enter/exit hysteresis carry across ticks) and write `state.Swimming` back to the component. Behaviour-only, no wire change (generation 3 already carries the byte). Guarded by a new sharded-server-with-medium round-trip test that drives a player from dry land into water and, on a raised-lakebed shelf whose submersion sits inside the swim hysteresis band, pins the flag at both `TryGetPlayerState` and a second observer's decoded `EntityRenderState` - failing if either the input carry or the write-back is dropped.
+
 ## 10.37.0
 
 Windows game heads can now ship as `WinExe` (no stray console window behind the game) without losing developer-visible console output. Additive across `KhaozEngine.Platform` / `KhaozEngine.Windowing` / `KhaozEngine.Game` / `KhaozEngine.Updates`, no breaking change, minor bump.

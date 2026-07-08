@@ -87,6 +87,20 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     driven by an external `TransitionAlpha` from a docked bottom edge (`SlideFromBottom`); drag-to-resize the header
     within `MinHeight`/`MaxHeight` (`Resizable`); and a dimmed `Scrim` with tap-outside-to-close (`ScrimDismissed`).
     Geometry is exposed via `CurrentBounds`/`ContentBounds` (== `Bounds` with no knob set).
+- `UpdateOverlayView` / `UpdateOverlayScreen` (+ `UpdateOverlayTheme`) - the in-game auto-updater popup, a pure
+  presenter over `KhaozEngine.Updates`' `IUpdateStatus`: it announces an available update, shows download
+  progress, and prompts the restart-and-apply, driven by the theme's trigger key/button (default U / gamepad Y).
+  `UpdateOverlayTheme` injects the palette, layout, trigger binding, and the per-state title/body text. The
+  default `TitleFor`/`BodyFor` are **localization-aware**: each line resolves through the ambient
+  `LocalizationContext.Catalog` (`KhaozEngine.App`) against the engine-owned `UpdateOverlayStrings` keys
+  (`update.overlay.*`, one title + body per `UpdateState`), falling back to built-in English
+  (`UpdateOverlayStrings.EnglishDefaults`) when no catalog is wired or a key is absent, so a game localizes the
+  overlay just by adding those keys to its catalog with no subclass, and an unlocalized build renders exactly as
+  before. Overriding `TitleFor`/`BodyFor` still fully replaces the text. `theme.ToUpdaterUiOptions(...)`
+  (`UpdaterUiThemeExtensions`) derives the shim's native progress-window palette (`UpdaterUiOptions`, in
+  `KhaozEngine.Updates`) from the same theme (accent from `ProgressFill`, background from `PanelFill`, text from
+  `BodyText`), so the in-game overlay and the apply window share one palette. See `docs/UPDATER.md` for the key
+  table.
 - `DiagnosticsOverlay` (+ `DiagnosticsOverlayTheme`, `OverlayRow`/`OverlaySection`) - a reusable in-game
   telemetry HUD, a pure presenter modeled on `UpdateOverlayView`. The game assembles sections each frame and
   feeds them via `SetSections`; `Update(InputState, dt)` toggles on `Theme.ToggleKey` (default F1; optional

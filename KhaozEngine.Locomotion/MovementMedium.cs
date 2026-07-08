@@ -14,7 +14,13 @@ namespace KhaozEngine.Locomotion;
 /// </summary>
 public readonly record struct MovementMedium
 {
-    /// <summary>Dry land: not in water, no wade scaling. The value a null provider stands in for at every sample.</summary>
+    /// <summary>Dry land: not in water, no wade scaling. The value a null provider stands in for at every sample.
+    /// TRAP: this is <c>default</c>, so its <see cref="WadeSpeedScale"/> is <c>0</c>, NOT the ctor's <c>1</c> default
+    /// (a struct field initializer does not apply to <c>default</c>). That is harmless because
+    /// <see cref="WadeSpeedScale"/> is only ever read while <see cref="InWater"/> is true, and a Dry/default sample is
+    /// out of water - both the wade ramp and the swim step gate every read of it behind <see cref="InWater"/>. Never
+    /// construct an IN-WATER medium via <c>default</c>: always use the ctor (which defaults the scale to 1) so an
+    /// in-water sample carries a live 1, not a 0 that would zero its own speed.</summary>
     public static MovementMedium Dry => default;
 
     /// <summary>Water surface height (world Y). Only meaningful when <see cref="InWater"/> is true; the submersion

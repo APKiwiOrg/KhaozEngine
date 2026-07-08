@@ -1841,7 +1841,37 @@ var client = new WorldClient(transport, terrain.GroundHeight, MoveTuning.Default
 ```
 
 `CharacterMovement.WadeSpeedScale(x, z, feetY, tuning, medium)` exposes the same scale directly for callers that
-predict or echo the wade factor. (Surface swim past chest depth is a later sub-project built on this seam.)
+predict or echo the wade factor (the depth ramp times the sample's own `WadeSpeedScale`, floored at 0 and **uncapped
+above** so a current/aid zone scale > 1 lifts the result past 1).
+
+#### Surface swim
+
+Past the wade band the same medium seam drives **surface swim v1**. When submersion (still `WaterSurfaceY - feetY`
+as a fraction of body height) reaches `MoveTuning.SwimEnterDepthFraction` (default 0.65, chest - exactly where the
+wade ramp bottoms out, so swim begins where wading ends) the vertical `CharacterMovement.Step` flips the character
+into swimming. It stays swimming until submersion falls below the LOWER `MoveTuning.SwimExitDepthFraction`
+(default 0.55) or it leaves the water: the enter/exit gap is a **hysteresis band** so a character standing at the
+chest line does not flicker between wade and swim (the swim flag is carried tick-to-tick on `MoveState.Swimming`).
+
+While swimming:
+
+- **gravity and ground-snap are suspended**; instead the capsule **settles to a buoyancy waterline** so
+  `MoveTuning.SwimSurfaceSubmersionFraction` of the body (default 0.6) sits submerged, via an exact analytic
+  **critically-damped** approach at `MoveTuning.SwimBuoyancyStiffness` (default 8) - unconditionally stable, never
+  oscillates or overshoots for any dt. The terrain floor still holds (no sinking through a shallow lakebed).
+- horizontal travel is `MoveTuning.SwimSpeed` (default 2.5 m/s, run has no effect), the medium's `WadeSpeedScale`
+  still composing on top (a swamp/current zone drags a swim).
+- **jump is a hop-out, near-shore only**: a jump pressed while swimming fires the ordinary jump launch and drops
+  swim ONLY when the feet are shallow enough that submersion is within `SwimExitDepthFraction` (the "near-shore
+  shallows"); in deeper water the jump bit is ignored (you cannot leap out of open water).
+
+The swim flag replicates through `MovementState.Swimming` (the vertical-axis built-in), so the local owner
+reconciles it and remotes read it (the animation source). This added a byte to a built-in codec, a breaking wire
+change: `MoveProtocol.WireProtocolVersion` advanced to **3** (was 2 for the 10.0.0 NetId widening). A wire-skewed
+peer is rejected at connect by the always-on `WireGenerationAuthenticator`, exactly as the NetId widening was - no
+consumer action. `CharacterMovement.ResolveSwimming(wasSwimming, medium, feetY, tuning)` exposes the pure
+enter/exit decision for callers that predict or echo it. A **null provider never engages swim** and is bit-identical
+to a land character.
 
 ---
 

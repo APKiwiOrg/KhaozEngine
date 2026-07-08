@@ -151,11 +151,13 @@ on a snapshot it cannot decode. Both are additive: the wire and existing ctors a
   `DisconnectReasonDetail`, and never proceeds to snapshots. A legacy/version-less client decodes as version
   `""`, so the rule can reject it; a compatible version delegates the inner token to `inner` unchanged
   (subject + display-name resolution identical).
-  - **Wire-format generation (enforced automatically since 10.2.0).** `MoveProtocol.WireProtocolVersion` (= 2, the
-    pre-10.0.0 32-bit `NetId` line was 1) labels the incompatible on-the-wire generations. 10.0.0 widened `NetId` to
-    64-bit (the snapshot/delta id field and the frame header, `[localNetId:long][ackSeq:int]`, grown 8 -> 12 bytes)
-    with NO dual-format wire, so a 10.0.0 peer and a pre-10.0.0 peer MUST reject each other at connect rather than
-    misparse a 64-bit frame as 32-bit. As of 10.2.0 the engine enforces this for you: `WorldClient` always folds the
+  - **Wire-format generation (enforced automatically since 10.2.0).** `MoveProtocol.WireProtocolVersion` (= 3; 2 was
+    the 10.0.0 `NetId`-widening line, 1 the pre-10.0.0 32-bit line) labels the incompatible on-the-wire generations.
+    10.0.0 widened `NetId` to 64-bit (the snapshot/delta id field and the frame header, `[localNetId:long][ackSeq:int]`,
+    grown 8 -> 12 bytes); generation 3 (the swim feature) added the `MovementState.Swimming` byte to the movement
+    built-in codec (not length-prefixed, so an old client cannot skip it). Neither has a dual-format wire, so peers on
+    different generations MUST reject each other at connect rather than misparse a frame. As of 10.2.0 the engine
+    enforces this for you: `WorldClient` always folds the
     generation into its Hello (even with no `ProtocolVersion`) and `WorldServer` / `ShardedWorldServer` always install
     a **`WireGenerationAuthenticator`** that rejects a mismatch, or a peer presenting none (a pre-10.2.0 / 9.x client),
     cleanly as `DisconnectReason.IncompatibleVersion`. Folding `;wire{N}` into your version string is no longer needed

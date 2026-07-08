@@ -29,7 +29,9 @@ public static class CharacterMovement
     /// <param name="groundNormal">Optional ground normal at (x, z); when given, gates a step by slope.</param>
     /// <param name="medium">Optional fluid-medium provider <c>(x, z, feetY) -> MovementMedium</c>: when a sample is in
     /// water, horizontal speed is scaled by the submersion-depth wade ramp times the sample's own WadeSpeedScale. Null
-    /// = dry land everywhere = bit-identical to the pre-medium behaviour. Must be pure and identical on both heads.</param>
+    /// = dry land everywhere = bit-identical to the pre-medium behaviour. Must be pure and identical on both heads.
+    /// This horizontal-only overload only WADES; surface swim (buoyancy + suspended gravity) is a vertical-physics
+    /// concept and lives on the <see cref="MoveState"/> overload, since this one clamps Y to the ground every tick.</param>
     /// <returns>The advanced position (Y on the ground + half-height).</returns>
     public static Vector3 Step(Vector3 position, in MoveCommand cmd, float dt,
         Func<float, float, float> groundHeight, in MoveTuning tuning,
@@ -87,6 +89,20 @@ public static class CharacterMovement
 
         CapsuleShape capsule = CapsuleFor(t);
         float halfH = t.CapsuleHalfHeight;
+
+        // 0. Fluid medium: sampled ONCE per step at the step-start feet position (identical to how the wade ramp
+        //    reads it below), so the swim decision, the wade scale, and the buoyancy target all see one consistent
+        //    medium this tick. Null provider => Dry everywhere => no swim can ever engage and the dry/wade path is
+        //    byte-identical to the pre-swim behaviour (the swim block is gated on medium being non-null).
+        MovementMedium medNow = medium is null ? MovementMedium.Dry : medium(s.Position.X, s.Position.Z, s.Position.Y - halfH);
+
+        // Swim enter/exit with hysteresis (carried in s.Swimming so the band works across ticks): once submersion
+        // crosses the higher enter fraction the character swims; it only drops back out below the lower exit fraction
+        // (or on leaving the water). A gentle slope walked into the lake therefore flips exactly once at each
+        // threshold, never flickering at the boundary. Only meaningful with a provider; dry land never swims.
+        bool swimming = ResolveSwimming(s.Swimming, medNow, s.Position.Y - halfH, t);
+        if (swimming)
+            return SwimStep(s, cmd, dt, t, medNow, groundHeight, clampXz, halfH);
 
         // 1. Horizontal desired (UNCHANGED when dry): camera-relative move + terrain slope gate. The grounded/air
         //    scale composes with the wade scale (1 when no provider or out of water, so the dry path is untouched).
@@ -249,6 +265,119 @@ public static class CharacterMovement
         return dx * dx + dz * dz <= lim * lim;
     }
 
+    /// <summary>The surface-swim enter/exit decision with hysteresis, a pure function of the current medium sample and
+    /// the carried swim flag. A land/wading character (<paramref name="wasSwimming"/> false) begins swimming only when
+    /// it is <see cref="MovementMedium.InWater"/> and its submersion depth (<c>WaterSurfaceY - feetY</c>, as a fraction
+    /// of body height) reaches <see cref="MoveTuning.SwimEnterDepthFraction"/> (chest). A swimming character
+    /// (<paramref name="wasSwimming"/> true) keeps swimming until it either leaves the water or its submersion falls
+    /// below the LOWER <see cref="MoveTuning.SwimExitDepthFraction"/>. The gap between the two thresholds is the
+    /// hysteresis band that stops the state flickering when the feet sit right at the chest line (pin: walking a gentle
+    /// slope into a lake flips exactly once). Dry land / a null-provider Dry sample never swims.</summary>
+    /// <param name="wasSwimming">The swim flag carried from the previous tick's <see cref="MoveState"/>.</param>
+    /// <param name="medium">The medium sampled at the feet this tick.</param>
+    /// <param name="feetY">Capsule-bottom world Y (centre minus half-height).</param>
+    /// <param name="tuning">Carries the enter/exit depth fractions and the capsule half-height.</param>
+    /// <returns>True to surface-swim this tick.</returns>
+    public static bool ResolveSwimming(bool wasSwimming, in MovementMedium medium, float feetY, in MoveTuning tuning)
+    {
+        if (!medium.InWater) return false;                      // out of the water: never swimming (also the null-Dry path)
+        float bodyHeight = 2f * tuning.CapsuleHalfHeight;
+        if (bodyHeight <= 1e-6f) return wasSwimming;            // degenerate body has no depth axis: hold the state (no flip)
+        float depthFraction = (medium.WaterSurfaceY - feetY) / bodyHeight;
+        // Hysteresis: the exit threshold applies while already swimming, the (higher) enter threshold while not. A
+        // character between the two lines keeps whatever it was, so the boundary cannot chatter.
+        return wasSwimming
+            ? depthFraction >= tuning.SwimExitDepthFraction
+            : depthFraction >= tuning.SwimEnterDepthFraction;
+    }
+
+    /// <summary>One surface-swim tick: gravity and ground-snap are suspended, the capsule settles toward its buoyancy
+    /// waterline via the EXACT analytic critically-damped spring (unconditionally stable, no oscillation), horizontal
+    /// travel is <see cref="MoveTuning.SwimSpeed"/> scaled by the medium's own <c>WadeSpeedScale</c> (a swamp can drag
+    /// a swim), and a jump is honoured ONLY as a hop-out in near-shore shallows (submersion within the exit band of
+    /// leaving the water); in deep water the jump bit is ignored. <see cref="MoveState.VerticalVelocity"/> is reused as
+    /// the buoyancy settle velocity while swimming (gravity does not run), so a leftover fall/jump velocity eases out
+    /// through the same damped settle rather than snapping. The terrain floor is still respected (the capsule never
+    /// sinks below ground + half-height, e.g. in shallow water at the edge). Deterministic: pure float math over the
+    /// pure provider sample.</summary>
+    private static MoveState SwimStep(in MoveState state, in MoveCommand cmd, float dt, in MoveTuning t,
+        in MovementMedium medium, Func<float, float, float> groundHeight, Func<float, float, Vector2>? clampXz, float halfH)
+    {
+        // Horizontal: swim speed (run has no effect while swimming), scaled by the medium's zone multiplier so a
+        // swamp/current still composes, clamped >= 0 so a hostile negative zone scale cannot reverse travel. Reuses
+        // the same camera-relative basis + normalized-diagonal as the walk step, at SwimSpeed.
+        float zoneScale = medium.WadeSpeedScale < 0f ? 0f : medium.WadeSpeedScale;
+        float sY = MathF.Sin(cmd.CameraYaw), cY = MathF.Cos(cmd.CameraYaw);
+        Vector3 forward = new(-sY, 0f, -cY);
+        Vector3 right = new(cY, 0f, -sY);
+        Vector3 move = right * cmd.Move.X + forward * cmd.Move.Y;
+        float x = state.Position.X, z = state.Position.Z;
+        if (move.LengthSquared() > 1e-6f)
+        {
+            move = Vector3.Normalize(move);
+            float speed = t.SwimSpeed * zoneScale;
+            x += move.X * speed * dt;
+            z += move.Z * speed * dt;
+        }
+        if (clampXz is not null) { Vector2 c = clampXz(x, z); x = c.X; z = c.Y; }
+
+        // Buoyancy target: the capsule Y at which the body sits at its resting waterline, i.e. feet submerged by
+        // SwimSurfaceSubmersionFraction of body height below the surface. targetFeetY = surface - fraction*bodyHeight,
+        // targetY (capsule centre) = targetFeetY + halfH.
+        float bodyHeight = 2f * halfH;
+        float targetFeetY = medium.WaterSurfaceY - t.SwimSurfaceSubmersionFraction * bodyHeight;
+        float targetY = targetFeetY + halfH;
+
+        // Critically-damped settle to targetY. EXACT analytic solution over dt (never overshoots, never blows up for
+        // any dt/stiffness): y(dt) = target + (A + B*dt) e^{-w dt}, with A = y0 - target, B = v0 + w*A. VerticalVelocity
+        // is repurposed as the settle velocity (gravity is off while swimming), so an entry fall/jump velocity bleeds
+        // out through the same damping instead of a snap.
+        float w = t.SwimBuoyancyStiffness;
+        float y = state.Position.Y;
+        float v = state.VerticalVelocity;
+        float dy = y - targetY;
+        float e = MathF.Exp(-w * dt);
+        float a = dy;
+        float b = v + w * dy;
+        y = targetY + (a + b * dt) * e;
+        v = (b - w * (a + b * dt)) * e;
+
+        // Terrain floor still holds while swimming (never sink through the lakebed in shallow water at the edge): the
+        // capsule centre never rests below ground + half-height. If the floor clamps, kill any residual downward
+        // settle velocity so it does not fight the clamp next tick.
+        float floorY = groundHeight(x, z) + halfH;
+        if (y < floorY) { y = floorY; if (v < 0f) v = 0f; }
+
+        // Jump = hop-out, near-shore only. "Near-shore shallows" is defined by the exit band: the hop-out fires when
+        // the feet are shallow enough that submersion is within the exit threshold (i.e. one hop clears the water). In
+        // deeper water the jump bit is ignored (you cannot leap out of open water). The hop-out launches the ordinary
+        // jump velocity and DROPS swim: the next land tick reads a jumping, airborne, non-swimming state.
+        bool swimmingNext = true;
+        float vVel = v;
+        if (cmd.Jump)
+        {
+            float depthFraction = bodyHeight > 1e-6f ? (medium.WaterSurfaceY - (y - halfH)) / bodyHeight : t.SwimEnterDepthFraction;
+            if (depthFraction <= t.SwimExitDepthFraction)
+            {
+                vVel = t.JumpSpeed;      // hop out with the ordinary jump launch
+                swimmingNext = false;    // leave swim: the land path takes over next tick (airborne)
+            }
+        }
+
+        var result = new MoveState
+        {
+            Position = new Vector3(x, y, z),
+            VerticalVelocity = vVel,
+            Grounded = false,               // swimming is never grounded (gravity/ground-snap suspended)
+            TimeSinceGrounded = state.TimeSinceGrounded + dt,
+            JumpBufferRemaining = 0f,       // no jump-buffer while swimming (a hop-out is instant or ignored)
+            Swimming = swimmingNext,
+        };
+        // Defense-in-depth (as the land path): a finite input must never yield a non-finite result; hold the last
+        // good state if a misbehaving provider/ground/tuning injected a NaN/Inf.
+        return IsFinite(result.Position) && float.IsFinite(result.VerticalVelocity) ? result : state;
+    }
+
     /// <summary>The horizontal-speed multiplier the fluid medium imposes at a sample: 1 (no penalty) on dry land or
     /// with a null provider, otherwise a linear wade ramp from full speed at ankle depth
     /// (<see cref="MoveTuning.WadeStartDepthFraction"/> of body height) down to <see cref="MoveTuning.WadeMinSpeedScale"/>
@@ -262,7 +391,10 @@ public static class CharacterMovement
     /// <param name="feetY">Capsule-bottom world Y (capsule centre minus half-height).</param>
     /// <param name="tuning">Carries the wade ramp depths + floor.</param>
     /// <param name="medium">The medium provider, or null for dry land everywhere (returns 1).</param>
-    /// <returns>A multiplier in [<see cref="MoveTuning.WadeMinSpeedScale"/> * scale, 1], never negative.</returns>
+    /// <returns>The depth ramp (in <c>[<see cref="MoveTuning.WadeMinSpeedScale"/>, 1]</c>) times the sample's own
+    /// <see cref="MovementMedium.WadeSpeedScale"/> zone scale, clamped to <c>&gt;= 0</c> and UNCAPPED above: a zone
+    /// scale greater than 1 (a current/aid zone, which is allowed) lifts the result past 1. Never negative. A null
+    /// provider or a dry sample returns exactly 1.</returns>
     public static float WadeSpeedScale(float x, float z, float feetY, in MoveTuning tuning,
         Func<float, float, float, MovementMedium>? medium)
     {

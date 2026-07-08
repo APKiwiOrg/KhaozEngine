@@ -25,7 +25,12 @@ public readonly record struct MoveTuning(
     float StepHeight = 0.4f,
     float WadeStartDepthFraction = 0.15f,
     float WadeEndDepthFraction = 0.65f,
-    float WadeMinSpeedScale = 0.45f)
+    float WadeMinSpeedScale = 0.45f,
+    float SwimEnterDepthFraction = 0.65f,
+    float SwimExitDepthFraction = 0.55f,
+    float SwimSpeed = 2.5f,
+    float SwimSurfaceSubmersionFraction = 0.6f,
+    float SwimBuoyancyStiffness = 8f)
 {
     /// <summary>Walkable-slice defaults: walk 3 m/s, run 6 m/s, capsule half-height 0.9 m, max slope 45 deg
     /// (steep enough for normal hills, low enough that a RimFeature mountain wall is rejected, so the slope gate
@@ -82,4 +87,39 @@ public readonly record struct MoveTuning(
     /// <see cref="WadeEndDepthFraction"/>. Default 0.45 (chest-deep wading is a bit under half speed). The medium's
     /// own <c>WadeSpeedScale</c> composes as a further multiplier on top of the depth ramp.</summary>
     public float WadeMinSpeedScale { get; init; } = WadeMinSpeedScale;
+
+    /// <summary>Swim ENTER threshold: the submersion depth (fraction of full body height, <c>2 *
+    /// <see cref="CapsuleHalfHeight"/></c>) a walking/wading character must reach for the movement step to flip it
+    /// into <see cref="MoveState.Swimming"/>. Default 0.65 (chest), exactly where the wade ramp bottoms out - swim
+    /// begins where wading ends. Paired with the LOWER <see cref="SwimExitDepthFraction"/> so the enter/exit
+    /// boundary has hysteresis and does not flicker on a gentle slope. Only consulted while the medium reports the
+    /// sample <c>InWater</c>.</summary>
+    public float SwimEnterDepthFraction { get; init; } = SwimEnterDepthFraction;
+
+    /// <summary>Swim EXIT threshold: the submersion depth (fraction of full body height) below which a SWIMMING
+    /// character drops back to walking/wading (or if the sample leaves the water entirely). Default 0.55, strictly
+    /// below <see cref="SwimEnterDepthFraction"/> so there is a hysteresis band: a character standing right at chest
+    /// depth cannot flicker between swim and wade across a tick. Also defines "near-shore shallows" for the swim
+    /// hop-out jump: a jump pressed while swimming is honoured only once the feet are shallow enough to be within
+    /// this exit band of leaving the water (see <see cref="CharacterMovement"/>). Must be &lt;
+    /// <see cref="SwimEnterDepthFraction"/>.</summary>
+    public float SwimExitDepthFraction { get; init; } = SwimExitDepthFraction;
+
+    /// <summary>Horizontal swim speed (m/s) while <see cref="MoveState.Swimming"/>, replacing the walk/run speed.
+    /// Default 2.5 (a touch under walk pace). The medium's <c>WadeSpeedScale</c> still composes on top (a zone can
+    /// drag a swamp swim), and run has no effect while swimming.</summary>
+    public float SwimSpeed { get; init; } = SwimSpeed;
+
+    /// <summary>Buoyancy target: the fraction of the body that stays SUBMERGED once floating at rest, i.e. the
+    /// submersion depth (fraction of body height) the settle converges the character to. Default 0.6 (~60% under,
+    /// head and shoulders clear). The step drives the capsule Y so <c>WaterSurfaceY - feetY</c> approaches this
+    /// fraction of body height via a critically-damped settle. Surface swim only (v1 does not dive), so this is the
+    /// single resting waterline.</summary>
+    public float SwimSurfaceSubmersionFraction { get; init; } = SwimSurfaceSubmersionFraction;
+
+    /// <summary>Buoyancy settle stiffness (rad/s): the angular frequency of the critically-damped approach that
+    /// eases the swimming capsule to its <see cref="SwimSurfaceSubmersionFraction"/> waterline. Default 8. The step
+    /// uses the EXACT analytic critically-damped solution over the tick, so any stiffness is unconditionally stable
+    /// and never oscillates or blows up regardless of dt; larger = a snappier settle, smaller = a lazier bob.</summary>
+    public float SwimBuoyancyStiffness { get; init; } = SwimBuoyancyStiffness;
 }

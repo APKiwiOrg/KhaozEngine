@@ -11,7 +11,10 @@ public static class MoveProtocol
 {
     /// <summary>
     /// The engine wire-format generation. Bumped only on a breaking change to the on-the-wire snapshot / delta /
-    /// frame-header layout, so it labels the incompatible generations. It is <c>2</c> as of 10.0.0, which widened
+    /// frame-header layout, so it labels the incompatible generations. It is <c>3</c> as of the swim feature, which
+    /// added the surface-swim flag (<see cref="MovementState.Swimming"/>) to the movement built-in's codec (id
+    /// <see cref="MovementTypeId"/>). That is a built-in component (NOT length-prefixed, so an older client cannot
+    /// skip the extra byte), hence a breaking wire change. <c>2</c> was the 10.0.0 line, which widened
     /// <see cref="NetId"/> from 32-bit to 64-bit on the wire (the snapshot/delta netId field and the
     /// <see cref="EncodeSnapshotFrame"/> header). <c>1</c> was the pre-10.0.0 32-bit line. Engine built-ins and the
     /// codec ids are otherwise unchanged.
@@ -26,7 +29,7 @@ public static class MoveProtocol
     /// <see cref="WorldClientConfig.ProtocolVersion"/> game-version gate still layers on top via
     /// <see cref="VersionCheckingAuthenticator"/>.
     /// </summary>
-    public const int WireProtocolVersion = 2;
+    public const int WireProtocolVersion = 3;
 
     /// <summary>Type id of <see cref="ReplicatedPosition"/> in the shared registry.</summary>
     public const ushort PositionTypeId = 1;
@@ -82,6 +85,7 @@ public static class MoveProtocol
                 bw.Write(m.Grounded);
                 bw.Write(m.TimeSinceGrounded);
                 bw.Write(m.JumpBufferRemaining);
+                bw.Write(m.Swimming);   // wire generation 3: the surface-swim flag rides alongside the vertical axis
             },
             read: br => new MovementState
             {
@@ -89,6 +93,7 @@ public static class MoveProtocol
                 Grounded = br.ReadBoolean(),
                 TimeSinceGrounded = br.ReadSingle(),
                 JumpBufferRemaining = br.ReadSingle(),
+                Swimming = br.ReadBoolean(),
             });
         // Display name. Length-prefixed UTF-8, capped at MaxDisplayNameBytes. Not interpolated (strings do not blend);
         // re-sent in every AoI snapshot (names are static, so this is wasteful but simple and consistent at the

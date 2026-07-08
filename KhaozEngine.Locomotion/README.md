@@ -34,18 +34,37 @@ ramp** - full speed at ankle depth (`MoveTuning.WadeStartDepthFraction`) down to
 `WaterSurfaceY - feetY` as a fraction of body height (`2 * CapsuleHalfHeight`). The medium's own `WadeSpeedScale`
 composes as a further per-sample multiplier (a swamp zone dial). **A null provider (or a dry sample) is
 bit-identical to the pre-medium behaviour.** `CharacterMovement.WadeSpeedScale(x, z, feetY, tuning, medium)`
-exposes the same scale for callers that predict or echo the wade factor.
+exposes the same scale for callers that predict or echo the wade factor (floored at 0, **uncapped above** so a
+zone scale > 1 lifts the result past 1).
+
+### Surface swim v1
+
+Past the wade band the same seam drives **surface swim** (vertical-physics `Step` only). Submersion reaching
+`MoveTuning.SwimEnterDepthFraction` (default 0.65, chest, where the wade ramp bottoms out) flips the character into
+swimming; it exits below the LOWER `MoveTuning.SwimExitDepthFraction` (default 0.55) or on leaving the water - the
+enter/exit gap is a **hysteresis band** (no flicker at the boundary), carried on `MoveState.Swimming`. While
+swimming, gravity and ground-snap are suspended, the capsule **settles to a buoyancy waterline**
+(`MoveTuning.SwimSurfaceSubmersionFraction`, default 0.6) via an exact analytic **critically-damped** approach
+(`MoveTuning.SwimBuoyancyStiffness`, default 8 - unconditionally stable, no oscillation), horizontal travel is
+`MoveTuning.SwimSpeed` (default 2.5, the zone `WadeSpeedScale` still composing), and jump is a **hop-out in
+near-shore shallows only** (fires the ordinary jump + drops swim when submersion is within the exit band; ignored
+in deep water). `CharacterMovement.ResolveSwimming(wasSwimming, medium, feetY, tuning)` exposes the pure enter/exit
+decision. **A null provider never engages swim.** The swim flag replicates via NetWorld's `MovementState.Swimming`
+(a breaking wire change: `MoveProtocol.WireProtocolVersion` -> 3).
 
 ## Types
 
 - **`MoveCommand`** - movement intent: camera-relative XZ axis, run flag, camera yaw, jump bit.
-- **`MoveState`** - carried kinematic state: position, `VerticalVelocity`, `Grounded`, coyote/buffer timers.
+- **`MoveState`** - carried kinematic state: position, `VerticalVelocity`, `Grounded`, coyote/buffer timers,
+  `Swimming` (surface-swim flag, carried tick-to-tick for the enter/exit hysteresis).
 - **`MovementMedium`** - the fluid medium at one world sample the medium provider returns: `WaterSurfaceY`,
   `InWater`, `WadeSpeedScale` (a per-sample zone multiplier, default 1). `default` / `MovementMedium.Dry` is dry land.
 - **`MoveTuning`** - all speed and feel constants:
   `WalkSpeed` / `RunSpeed` / `CapsuleHalfHeight` / `CapsuleRadius` (default 0.4) / `StepHeight` (default 0.4) /
   `Gravity` / `JumpSpeed` / `MaxFallSpeed` / `CoyoteTime` / `JumpBuffer` / `AirControl` / `GroundedEpsilon` /
-  `WadeStartDepthFraction` (default 0.15) / `WadeEndDepthFraction` (default 0.65) / `WadeMinSpeedScale` (default 0.45).
+  `WadeStartDepthFraction` (default 0.15) / `WadeEndDepthFraction` (default 0.65) / `WadeMinSpeedScale` (default 0.45) /
+  `SwimEnterDepthFraction` (default 0.65) / `SwimExitDepthFraction` (default 0.55) / `SwimSpeed` (default 2.5) /
+  `SwimSurfaceSubmersionFraction` (default 0.6) / `SwimBuoyancyStiffness` (default 8).
 
 ## Usage
 

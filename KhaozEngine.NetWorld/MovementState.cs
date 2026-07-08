@@ -24,6 +24,13 @@ public struct MovementState : IComponent
     /// <summary>Seconds of jump-buffer remaining (jump-buffer accounting).</summary>
     public float JumpBufferRemaining;
 
+    /// <summary>True while the player is surface-swimming (mirrors <see cref="KhaozEngine.Locomotion.MoveState.Swimming"/>).
+    /// Replicated alongside the vertical axis so the local owner reconciles it AND remote clients read it to drive the
+    /// swim animation state (Task 3 derives the remote swim pose from this bit rather than re-querying water). Added on
+    /// the wire in generation 3 (<see cref="MoveProtocol.WireProtocolVersion"/>); a mismatched peer is rejected at
+    /// connect by the always-on <see cref="WireGenerationAuthenticator"/>.</summary>
+    public bool Swimming;
+
     /// <summary>The vertical part of a full <see cref="PlayerMoveState"/> (the position is in
     /// <see cref="ReplicatedPosition"/>).</summary>
     public static MovementState From(in PlayerMoveState state) => new()
@@ -32,5 +39,6 @@ public struct MovementState : IComponent
         Grounded = state.Move.Grounded,
         TimeSinceGrounded = state.Move.TimeSinceGrounded,
         JumpBufferRemaining = state.Move.JumpBufferRemaining,
+        Swimming = state.Move.Swimming,
     };
 }

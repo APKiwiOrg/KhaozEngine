@@ -30,4 +30,13 @@ public struct MoveState
     /// counted down otherwise, consumed to zero when a jump fires. Zero (default) means no buffered jump, so a
     /// default state never spuriously jumps.</summary>
     public float JumpBufferRemaining;
+
+    /// <summary>True while the capsule is SURFACE-SWIMMING: submersion crossed the <see cref="MoveTuning.SwimEnterDepthFraction"/>
+    /// enter threshold (and has not yet fallen back below the lower <see cref="MoveTuning.SwimExitDepthFraction"/>
+    /// exit threshold - the state carries tick-to-tick so the hysteresis band works). While set, gravity and
+    /// ground-snap are suspended, the capsule settles to its buoyancy waterline, horizontal moves at
+    /// <see cref="MoveTuning.SwimSpeed"/>, and a jump is a hop-out only in near-shore shallows. <c>default</c> (false)
+    /// is a land character, so a pre-swim state is byte-identical. Replicated as <c>MovementState.Swimming</c> in
+    /// NetWorld so the local owner reconciles it and remotes animate it.</summary>
+    public bool Swimming;
 }

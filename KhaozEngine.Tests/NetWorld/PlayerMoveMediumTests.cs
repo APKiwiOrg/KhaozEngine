@@ -16,7 +16,14 @@ namespace KhaozEngine.Tests.NetWorld;
 public class PlayerMoveMediumTests
 {
     static readonly Func<float, float, float> Flat = (x, z) => 0f;
-    static readonly MoveTuning Unit = MoveTuning.Default with { CapsuleHalfHeight = 0.5f };
+    // Wade-only tuning: swim enter/exit pushed above any depth these tests reach, so the simulator exercises the WADE
+    // ramp in isolation. Surface swim (added in Task 2) takes over past chest depth, so a deep-water step would
+    // otherwise swim at SwimSpeed rather than wade at the floor scale; the swim prediction path is covered by
+    // PlayerMoveSwimTests. A null provider is unaffected by swim regardless.
+    static readonly MoveTuning Unit = MoveTuning.Default with
+    {
+        CapsuleHalfHeight = 0.5f, SwimEnterDepthFraction = 10f, SwimExitDepthFraction = 9f,
+    };
 
     static Func<float, float, float, MovementMedium> Water(float surfaceY, float zoneScale = 1f)
         => (x, z, feetY) => new MovementMedium(surfaceY, inWater: true, zoneScale);

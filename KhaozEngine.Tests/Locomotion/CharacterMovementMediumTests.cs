@@ -18,6 +18,11 @@ public class CharacterMovementMediumTests
     // Half-height 0.5 -> body height 1.0, so the submersion FRACTION equals the raw depth in metres and the ramp
     // reads cleanly against hand-computed numbers.
     static readonly MoveTuning Unit = MoveTuning.Default with { CapsuleHalfHeight = 0.5f };
+    // Wade-only tuning: swim enter/exit pushed above any depth these tests reach, so the vertical Step exercises the
+    // WADE ramp in isolation. Surface swim now takes over past chest depth (SwimEnterDepthFraction 0.65, exactly where
+    // the wade ramp bottoms out), so a deep-water vertical step would otherwise swim, not wade; that swim path is
+    // covered by CharacterMovementSwimTests. The pure WadeSpeedScale helper below is unaffected by swim regardless.
+    static readonly MoveTuning WadeOnly = Unit with { SwimEnterDepthFraction = 10f, SwimExitDepthFraction = 9f };
 
     static MoveCommand Forward => new(new Vector2(0f, 1f), run: false, cameraYaw: 0f);
 
@@ -83,6 +88,16 @@ public class CharacterMovementMediumTests
     {
         // A hostile / mis-set negative zone scale is clamped to a full stop, not a backwards drift.
         Assert.Equal(0f, CharacterMovement.WadeSpeedScale(0f, 0f, 0f, Unit, Water(0.10f, zoneScale: -2f)), 6);
+    }
+
+    [Fact]
+    public void Zone_scale_above_one_is_uncapped()
+    {
+        // A zone scale > 1 (an aiding current, allowed) lifts the result PAST 1 - the ramp is only floored at >= 0,
+        // never ceiling-capped. At ankle depth (ramp 1) a zone scale of 1.5 yields 1.5, not a clamped 1.
+        Assert.Equal(1.5f, CharacterMovement.WadeSpeedScale(0f, 0f, 0f, Unit, Water(0.10f, zoneScale: 1.5f)), 5);
+        // And composed with a mid-ramp depth (0.725 at depth 0.40) times 2.0 = 1.45, still uncapped.
+        Assert.Equal(0.725f * 2.0f, CharacterMovement.WadeSpeedScale(0f, 0f, 0f, Unit, Water(0.40f, zoneScale: 2.0f)), 5);
     }
 
     // ---- Null provider = bit-identical existing behaviour (both Step overloads) ----
@@ -163,8 +178,9 @@ public class CharacterMovementMediumTests
         var s = new MoveState { Position = Standing, Grounded = true };
         Func<float, float, float, MovementMedium> deep = Water(1.0f);   // >= chest depth -> floor 0.45
         const float dt = 1f / 30f;
-        for (int i = 0; i < 10; i++) s = CharacterMovement.Step(s, Forward, dt, Flat, Unit, null, null, null, deep);
-        float expected = -Unit.WalkSpeed * Unit.WadeMinSpeedScale * 10f * dt;  // forward = -Z
+        // WadeOnly: keep this a pure wade test (past chest the vertical step would surface-swim, covered elsewhere).
+        for (int i = 0; i < 10; i++) s = CharacterMovement.Step(s, Forward, dt, Flat, WadeOnly, null, null, null, deep);
+        float expected = -WadeOnly.WalkSpeed * WadeOnly.WadeMinSpeedScale * 10f * dt;  // forward = -Z
         Assert.Equal(expected, s.Position.Z, 4);
     }
 }

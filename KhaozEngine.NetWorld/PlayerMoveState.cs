@@ -59,6 +59,7 @@ public struct PlayerMoveState : IPredictedState<PlayerMoveState>
             Grounded = movement.Grounded,
             TimeSinceGrounded = movement.TimeSinceGrounded,
             JumpBufferRemaining = movement.JumpBufferRemaining,
+            Swimming = movement.Swimming,
         },
     };
 }

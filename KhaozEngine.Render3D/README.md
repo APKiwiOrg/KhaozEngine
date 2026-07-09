@@ -98,6 +98,19 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   the same `gl_FragCoord` + raw-inverse-view-projection convention the ground-decal pass uses. The pure math is
   `WaterMath` (internal: scrolling-normal perturbation, Schlick fresnel, Blinn-Phong glint, shore-fade curve, grid
   tessellation), headless-tested and mirroring the GLSL `WaterVert`/`WaterFrag` exactly.
+- Motion trails: `Scene3D.DrawTrail(ReadOnlySpan<TrailSample>, TrailStyle)` (since 10.41.0) queues an immediate-mode
+  tapered ribbon traced through an ordered list of recent world-space samples (oldest-first) - weapon swings,
+  thruster streaks, projectile tracers. Each `TrailSample` carries a world position, per-sample ribbon half-width,
+  and alpha (a fading tail is decreasing alpha toward the oldest sample), plus an optional `Facing`: zero =
+  camera-facing (`cross(viewDir, tangent)`, like a beam), non-zero = twist-following (`cross(Facing, tangent)`, so
+  the ribbon holds a fixed plane, e.g. a blade's sweep). `TrailStyle` (`TrailStyle.Default with { ... }`) carries the
+  tint (its alpha multiplies each sample's alpha), `Blend` (`TrailBlend.Additive` default, or `Alpha`), and
+  `SoftEdge` (across-width feather). Each sample's across-direction is the bisector (miter) of its two adjacent
+  segment tangents, computed once, so the two segments meeting at a sample share the same corner pair and joints
+  stay continuous (no gap/overlap). Drawn INTO the model pass with depth test ON (no write) right after the beams,
+  so a nearer mesh occludes it. The strip math is the pure, headless-tested `TrailGeometry` (taper/fade/miter);
+  timed-sample bookkeeping is the pure `TrailSampler`/`TrailPoint` in `KhaozEngine.Primitives`. Fewer than 2 samples
+  is a no-op, samples are copied at call time, and no `DrawTrail` call = no pass (existing scenes stay byte-stable).
 - Transparency ordering (since 10.18.2): alpha-blended draws (colour and textured billboards, translucent
   overlay meshes) sort back-to-front by view-space depth within each batch, so overlapping alpha composites
   correctly no matter the submission order. Additive paths (beams, additive billboards) are order-independent

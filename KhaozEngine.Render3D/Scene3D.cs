@@ -33,6 +33,7 @@ namespace KhaozEngine.Render3D
         readonly BillboardRenderer _billboards;
         readonly TexturedBillboardRenderer _texBillboards;
         readonly BeamRenderer _beams;
+        readonly TrailRenderer _trails;
         readonly Rendering.GroundDecalRenderer _decalRenderer;
         readonly Rendering.SkyRenderer _sky;
         readonly Rendering.WaterRenderer _water;
@@ -91,6 +92,15 @@ namespace KhaozEngine.Render3D
         // into the model FB alongside the textured billboards (depth-interleaved, so geometry occludes them).
         readonly List<BeamItem> _beamItems = new();
         readonly List<BeamRenderer.BeamVertex> _beamVerts = new();
+        // Motion trails (weapon swings, thruster streaks, tracers): queued samples flushed as one draw per blend
+        // into the model FB alongside the beams (depth-interleaved). _trailSamples is a flat pool the items index.
+        readonly List<TrailItem> _trailItems = new();
+        readonly List<TrailSample> _trailSamples = new();
+        readonly List<TrailRenderer.TrailVertex> _trailVertsAdditive = new();
+        readonly List<TrailRenderer.TrailVertex> _trailVertsAlpha = new();
+        readonly List<Vector3> _trailScratchPos = new();
+        readonly List<Vector2> _trailScratchUv = new();
+        readonly List<float> _trailScratchAlpha = new();
         // Reused per-frame grouping buffers (cleared, not realloc) for GPU instancing.
         readonly List<ModelRenderer.InstanceData> _instanceData = new();
         readonly List<MeshRun> _runs = new();
@@ -201,6 +211,9 @@ namespace KhaozEngine.Render3D
             // Beams draw into the same model MRT as the textured billboards (depth-interleaved), so they target the
             // model framebuffer's output description.
             _beams = new BeamRenderer(gd, _res.ModelFB.Outputs);
+            // Trails draw into the same model MRT as the beams (depth-interleaved), so they target the model
+            // framebuffer's output description too.
+            _trails = new TrailRenderer(gd, _res.ModelFB.Outputs);
             // Ground decals render into the lit color attachment + read-only scene depth (ColorDepthFB) before the
             // post chain, so they pass that framebuffer's output description (color format + depth format).
             _decalRenderer = new Rendering.GroundDecalRenderer(gd, _res.ColorDepthFB.Outputs);
@@ -656,6 +669,8 @@ namespace KhaozEngine.Render3D
             _billboardAdditive.Clear();
             _texBillboardItems.Clear();
             _beamItems.Clear();
+            _trailItems.Clear();
+            _trailSamples.Clear();
             _billboardBasisValid = false;
         }
 
@@ -1000,6 +1015,35 @@ namespace KhaozEngine.Render3D
         /// resolution.</summary>
         internal IReadOnlyList<BeamItem> BeamItems => _beamItems;
 
+        // ---- Motion trails (weapon swings, thruster streaks, tracers): a tapered ribbon traced through an ordered
+        //      list of recent world-space samples, camera-facing (or per-sample twist), depth-interleaved into the
+        //      model pass like the beams. Immediate-mode: rebuilt each frame from the sample list (TrailGeometry). ----
+
+        /// <summary>
+        /// Queue one motion-trail ribbon for this frame from <paramref name="samples"/> (ordered oldest-first, i.e.
+        /// tail to head - e.g. the last ~0.3s of a sword tip's world positions from a <see cref="Primitives.TrailSampler"/>).
+        /// The engine builds a tapered, mitered strip whose across-direction faces the camera (or follows each
+        /// sample's <see cref="TrailSample.Facing"/> when set), with alpha fading down the tail, and draws it INTO the
+        /// model pass with the depth test on (no write) like <see cref="DrawBeam"/>, using <paramref name="style"/>'s
+        /// tint/blend/soft-edge. Fewer than 2 samples is a silent no-op. Cleared in <see cref="Begin"/>. The samples
+        /// are copied at call time (the span need not outlive the call). Presentation only.
+        /// </summary>
+        public void DrawTrail(ReadOnlySpan<TrailSample> samples, TrailStyle style)
+        {
+            if (samples.Length < 2) return;   // need at least one segment
+            int start = _trailSamples.Count;
+            for (int i = 0; i < samples.Length; i++)
+                _trailSamples.Add(samples[i]);
+            _trailItems.Add(new TrailItem { Start = start, Count = samples.Length, Style = style });
+        }
+
+        /// <summary>Count of trails queued this frame. Internal: lets tests assert <see cref="Begin"/> clears the
+        /// queue and <see cref="DrawTrail"/> enqueues.</summary>
+        internal int TrailCount => _trailItems.Count;
+
+        /// <summary>The trails queued this frame (sample span + style). Internal: lets tests assert capture.</summary>
+        internal IReadOnlyList<TrailItem> TrailItems => _trailItems;
+
         // Current internal render-target size (physical pixels). Exposed for tests to assert MatchViewport resizes
         // and FixedInternal stays put; not part of the public surface.
         internal int RenderTargetWidth => _res.Width;
@@ -1083,6 +1127,7 @@ namespace KhaozEngine.Render3D
             _model.SetOutputs(modelOut);
             _texBillboards.SetOutputs(modelOut);
             _beams.SetOutputs(modelOut);
+            _trails.SetOutputs(modelOut);
             _overlayMeshes.SetOutputs(modelOut);
             _decalRenderer.SetOutputs(_res.ColorDepthFB.Outputs);
             _sky.SetOutputs(_res.ColorDepthFB.Outputs);
@@ -1355,6 +1400,10 @@ namespace KhaozEngine.Render3D
             // depth-interleave with the meshes and go through the pixel post like everything else in the model pass.
             DrawBeams(cl);
 
+            // Trails: same model FB (still bound), right after the beams - depth-interleaved with the meshes and
+            // through the pixel post like the rest of the model pass.
+            DrawTrails(cl);
+
             // Overlay meshes (collision proxies etc.): after the model pass wrote depth (meshes + textured billboards
             // + beams), draw the queued translucent unlit proxies into the SAME model FB with the depth test on (no
             // write), so a proxy is occluded by nearer geometry yet blends over farther geometry, then flows through
@@ -1577,6 +1626,50 @@ namespace KhaozEngine.Render3D
             _beams.Draw(cl, CollectionsMarshal.AsSpan(_beamVerts), _res.ModelFB);
         }
 
+        /// <summary>Build each queued trail's mitered strip (via <see cref="TrailGeometry"/>) into per-blend vertex
+        /// streams and draw them into the model FB. Style (tint * per-vertex alpha, soft-edge) is folded into each
+        /// vertex here so <see cref="TrailGeometry"/> stays pure. Additive first, then alpha. No-op when nothing is
+        /// queued.</summary>
+        void DrawTrails(IGpuCommandList cl)
+        {
+            if (_trailItems.Count == 0) return;
+
+            Vector3 viewDir = ActiveCamera.Forward;   // constant across the frame, matching the beam/billboard basis
+            _trailVertsAdditive.Clear();
+            _trailVertsAlpha.Clear();
+
+            var allSamples = CollectionsMarshal.AsSpan(_trailSamples);
+            foreach (var it in _trailItems)
+            {
+                _trailScratchPos.Clear();
+                _trailScratchUv.Clear();
+                _trailScratchAlpha.Clear();
+                var span = allSamples.Slice(it.Start, it.Count);
+                int nv = TrailGeometry.Build(span, viewDir, _trailScratchPos, _trailScratchUv, _trailScratchAlpha);
+                if (nv == 0) continue;
+
+                var dst = it.Style.Blend == TrailBlend.Alpha ? _trailVertsAlpha : _trailVertsAdditive;
+                Vector4 col = it.Style.Color;
+                float soft = it.Style.SoftEdge;
+                for (int v = 0; v < nv; v++)
+                {
+                    Vector3 p = _trailScratchPos[v];
+                    Vector2 uv = _trailScratchUv[v];
+                    float a = _trailScratchAlpha[v];
+                    dst.Add(new TrailRenderer.TrailVertex(
+                        p, new Vector3(uv.X, uv.Y, soft), new Vector4(col.X, col.Y, col.Z, col.W * a)));
+                }
+            }
+
+            if (_trailVertsAdditive.Count == 0 && _trailVertsAlpha.Count == 0) return;
+
+            _trails.SetFrameUniforms(cl, ActiveCamera.ViewProjection);
+            if (_trailVertsAdditive.Count > 0)
+                _trails.Draw(cl, CollectionsMarshal.AsSpan(_trailVertsAdditive), _res.ModelFB, TrailBlend.Additive);
+            if (_trailVertsAlpha.Count > 0)
+                _trails.Draw(cl, CollectionsMarshal.AsSpan(_trailVertsAlpha), _res.ModelFB, TrailBlend.Alpha);
+        }
+
         /// <summary>Get (creating on first use) the textured-billboard resource set for the texture at
         /// <paramref name="texListIndex"/>. Cached parallel to <c>_textures</c>; disposed in <see cref="Dispose"/>.</summary>
         IGpuResourceSet GetTexBillboardSet(int texListIndex)
@@ -1600,6 +1693,7 @@ namespace KhaozEngine.Render3D
             _billboards.Dispose();
             _texBillboards.Dispose();
             _beams.Dispose();
+            _trails.Dispose();
             _decalRenderer.Dispose();
             _sky.Dispose();
             _water.Dispose();
@@ -1745,6 +1839,16 @@ namespace KhaozEngine.Render3D
             public Vector4 GlowColor;
             public Vector4 Shape;
             public Vector4 Anim;
+        }
+
+        /// <summary>One queued trail: a span (<see cref="Start"/>/<see cref="Count"/>) into the frame's flat
+        /// <c>_trailSamples</c> pool plus its <see cref="Style"/>. Built in <see cref="DrawTrail"/>; consumed in
+        /// <see cref="DrawTrails"/>.</summary>
+        internal struct TrailItem
+        {
+            public int Start;
+            public int Count;
+            public TrailStyle Style;
         }
 
         /// <summary>

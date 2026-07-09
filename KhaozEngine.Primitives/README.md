@@ -25,6 +25,11 @@ color anywhere in the engine's public API is the `Color` from here.
   `KhaozEngine.Pooling` package in 9.0.0). Items are prewarmed via a factory, `Rent` returns null on
   exhaustion, `Return`/`Clear` call `Reset`, and the active set stays compacted so
   `GetActive(0..ActiveCount-1)` visits every live item with no gaps.
+- `TrailSampler` / `TrailPoint` - a pure, render-free ring of timed motion-trail samples bounded by a max
+  age and a max count. `Add(position, nowSeconds)` appends and evicts aged/overflow from the oldest end,
+  `Prune(nowSeconds)` decays the tail while the emitter idles, and `Samples` returns the live tail
+  oldest-first to hand straight to `Scene3D.DrawTrail` (Render3D). No GPU dependency; headless-testable.
+  Feed it the moving emitter's world position each frame (a sword tip, a thruster nozzle, a projectile).
 
 ```csharp
 var rng = new DeterministicRng(seed: 12345);

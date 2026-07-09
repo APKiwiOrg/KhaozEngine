@@ -605,6 +605,40 @@ void main() {
     oDepth  = vec4(0.0);           // discarded (PreserveDestination on attachment 2)
 }";
 
+        // ---- Motion-trail ribbon (weapon swings, thruster streaks, tracers): a tapered strip traced along a moving
+        //      point, built by TrailGeometry. The tail fade + taper are baked into the vertex (Color.a, geometry);
+        //      the fragment only feathers the across-width edge (like the beam does its core/glow). One vertex shader
+        //      feeds both blend pipelines: the output vec4(rgb, a) is what Additive (src.a/1) and AlphaBlend
+        //      (src.a/1-src.a) both consume. Writes all 3 MRT targets; attachments 1 & 2 preserve destination. ----
+        public const string TrailVert = @"#version 450
+layout(set=0, binding=0) uniform U { mat4 ViewProj; };
+layout(location=0) in vec3 Position;
+layout(location=1) in vec3 Uv;      // x=across, y=along, z=softEdge
+layout(location=2) in vec4 Color;   // rgb tint, a = style.alpha * sample.alpha
+layout(location=0) out vec3 vUv;
+layout(location=1) out vec4 vColor;
+void main() {
+    gl_Position = ViewProj * vec4(Position, 1.0);
+    vUv = Uv;
+    vColor = Color;
+}";
+
+        public const string TrailFrag = @"#version 450
+layout(location=0) in vec3 vUv;     // x=across, y=along, z=softEdge
+layout(location=1) in vec4 vColor;
+layout(location=0) out vec4 oColor;
+layout(location=1) out vec4 oNormal;
+layout(location=2) out vec4 oDepth;
+void main() {
+    float d = abs(vUv.x * 2.0 - 1.0);                  // 0 at the axis, 1 at the edge
+    float soft = clamp(vUv.z, 0.0, 1.0);
+    float edge = 1.0 - smoothstep(1.0 - soft, 1.0, d); // feather the across-width edge
+    float a = vColor.a * edge;
+    oColor  = vec4(vColor.rgb, a);   // Additive: rgb*a + dst; AlphaBlend: rgb*a + dst*(1-a)
+    oNormal = vec4(0.0);             // discarded (PreserveDestination on attachment 1)
+    oDepth  = vec4(0.0);             // discarded (PreserveDestination on attachment 2)
+}";
+
         // ---- Translucent unlit overlay mesh (collision proxies, nav/AoI/chunk-bounds later). Drawn INTO the model
         //      MRT (still bound) after the beams and before the post chain, with the depth test on (less-equal, no
         //      write) so a proxy is occluded by nearer scene geometry but still blends over farther geometry. Colour

@@ -1084,12 +1084,49 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
   // sparks at the impact: loop your particle system's Active span and DrawBillboard each (Additive)
   ```
 
+### Motion trails (weapon swings, thruster streaks, tracers)
+
+`scene.DrawTrail(samples, TrailStyle)` queues an immediate-mode tapered ribbon traced through an ordered list of
+recent world-space samples (oldest-first, tail -> head). Unlike a beam (a straight two-point strip), a trail follows
+a moving point over many samples with per-sample width and alpha, so it fades and narrows down the tail. It draws
+INTO the model pass with the depth test on (no write), right after the beams, so geometry occludes it. Each
+`TrailSample` is `(Vector3 Position, float HalfWidth, float Alpha)` with an optional `Facing`: leave it zero for a
+camera-facing ribbon (always presents its width, like a beam); set it (e.g. the blade's flat normal) to twist the
+ribbon onto a fixed plane so it reads as the sweep even edge-on. `TrailStyle` (`TrailStyle.Default with { ... }`)
+carries the tint (its alpha multiplies each sample's alpha), `Blend` (`TrailBlend.Additive` for glow/energy - the
+default - or `Alpha` for a physical smear), and `SoftEdge` (across-width feather). Fewer than 2 samples is a no-op.
+
+Do the timed-sample bookkeeping with the pure `TrailSampler` (`KhaozEngine.Primitives`): feed it the emitter's world
+position each frame, read back the live tail. It bounds the tail by a max age and a max count and evicts the oldest
+automatically; `Prune(now)` decays the tail on frames you are not emitting (after the swing ends).
+
+```csharp
+// once, per swinging character:
+var trail = new TrailSampler(maxAgeSeconds: 0.3f, maxCount: 24);
+
+// during the swing, each frame:
+trail.Add(swordTipWorldPos, totalSeconds);           // sword tip from your socket matrix chain
+// when not swinging: trail.Prune(totalSeconds);      // let the tail fade out
+
+// build the draw samples from the live tail (taper + fade toward the oldest):
+var live = trail.Samples;                             // oldest-first
+Span<TrailSample> strip = stackalloc TrailSample[live.Length];
+for (int i = 0; i < live.Length; i++)
+{
+    float head = (float)i / System.Math.Max(1, live.Length - 1);   // 0 tail -> 1 head
+    strip[i] = new TrailSample(live[i].Position, halfWidth: 0.02f + 0.06f * head, alpha: head);
+}
+scene.DrawTrail(strip, TrailStyle.Default with { Color = new Color(0.8f, 0.9f, 1f, 1f) });
+```
+
 ### Transparency ordering
 
 Overlapping alpha-blended billboards and overlay meshes composite correctly regardless of submission order:
 since 10.18.2 the renderer sorts each batch back-to-front by view-space depth before upload, so a near sprite
-queued before a far one behind it no longer blends wrong. Additive effects (beams, additive billboards) are
-unaffected and order-independent, so they skip the sort. There is nothing to configure.
+queued before a far one behind it no longer blends wrong. Additive effects (beams, additive billboards, additive
+trails) are unaffected and order-independent, so they skip the sort. There is nothing to configure. Alpha trails
+self-composite correctly within one strip (its samples are tail -> head ordered), but separate overlapping alpha
+trails are not depth-sorted against each other - keep alpha trails for cases where that rarely matters.
 
 - Transparent compositing: set `Post.TransparentBackground = true` (default on for `Render3DPreview`) to emit the
   background as alpha 0 so a captured `Texture2D` overlays a 2D scene; the stylized post chain preserves the

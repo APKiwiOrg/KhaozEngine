@@ -22,11 +22,11 @@ Thumbs.db
 .env.*.local
 .env.production
 
-# Local AI / tooling settings (the shared .claude/settings.json and .Codex/settings.json are tracked)
+# Local AI / tooling settings (the shared .claude/settings.json and .codex/settings.json are tracked)
 .claude/settings.local.json
-.Codex/settings.local.json
+.codex/settings.local.json
 .claude/worktrees/
-.Codex/worktrees/
+.codex/worktrees/
 .superpowers/
 # Superpowers plan/spec output, local-only (never committed):
 docs/superpowers/

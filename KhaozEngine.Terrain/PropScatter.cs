@@ -76,6 +76,11 @@ namespace KhaozEngine.Terrain
         public float ScaleMax = 1.35f;
         public BiomeScatterRule[] Biomes = Array.Empty<BiomeScatterRule>();
 
+        /// <summary>Regions kept free of props, tested against each candidate's jittered (x, z). Generalizes the
+        /// single ClearingRadius disc (which keeps working); map documents author these as exclusion shapes.
+        /// Default empty. Must be the same set on every query for tiling invariance to hold.</summary>
+        public IArea2D[] Exclusions = Array.Empty<IArea2D>();
+
         /// <summary>Defaults reproducing the greybox forest ring: a single Meadow rule (density 0.55) over the
         /// committed CC0 kit (pines dominant, oaks fewer, rocks sparse), clearing radius 26 m, off-mountain at
         /// height &gt; 6 m, scale 0.8..1.35.</summary>
@@ -199,6 +204,8 @@ namespace KhaozEngine.Terrain
                     float dx = x - config.ClearingCenter.X, dz = z - config.ClearingCenter.Y;
                     if (dx * dx + dz * dz < config.ClearingRadius * config.ClearingRadius) continue;
 
+                    if (InExclusion(config.Exclusions, x, z)) continue;
+
                     int variant = PickKind(rule.Kinds, Hash01(gx, gz, config.Seed, SaltKind));
                     float scale = config.ScaleMin + Hash01(gx, gz, config.Seed, SaltScale) * (config.ScaleMax - config.ScaleMin);
                     float yaw = Hash01(gx, gz, config.Seed, SaltYaw) * MathF.Tau;
@@ -289,6 +296,13 @@ namespace KhaozEngine.Terrain
             for (int i = 0; i < rules.Length; i++)
                 if (rules[i].Biome == biome) return rules[i];
             return null;
+        }
+
+        static bool InExclusion(IArea2D[] exclusions, float x, float z)
+        {
+            for (int i = 0; i < exclusions.Length; i++)
+                if (exclusions[i].Contains(x, z)) return true;
+            return false;
         }
 
         // Weighted pick over the kind mix using u in [0,1); returns the chosen kind index.

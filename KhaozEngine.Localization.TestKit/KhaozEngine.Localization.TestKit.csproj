@@ -2,7 +2,7 @@
   <PropertyGroup>
     <PackageId>KhaozEngine.Localization.TestKit</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
-    <Description>Test-only helper for asserting localization coverage. LocalizationCoverage.AssertComplete reflects a game's key constants (public const string or StringId fields), then checks every key resolves in the neutral resx AND in each shipped satellite culture with parent fallback disabled (a missing translation fails instead of silently reading the neutral language), plus placeholder-index integrity per culture. Framework-agnostic (throws LocalizationCoverageException on a gap, which fails any xUnit/NUnit/MSTest test). Referenced from a game's test project only; in NO umbrella metapackage.</Description>
+    <Description>Test-only helper for asserting localization coverage. LocalizationCoverage.AssertComplete takes a key universe (a keys class of public const string or StringId fields, the neutral resx's own entries via a ResourceManager, or an explicit key sequence), then checks every key resolves in the neutral resx AND in each shipped satellite culture with parent fallback disabled (a missing translation fails instead of silently reading the neutral language), plus placeholder-index integrity per culture. Framework-agnostic (throws LocalizationCoverageException on a gap, which fails any xUnit/NUnit/MSTest test). Referenced from a game's test project only; in NO umbrella metapackage.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>

@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Reflection;
@@ -11,15 +12,25 @@ namespace KhaozEngine.Localization.TestKit;
 
 /// <summary>
 /// A reusable localization coverage guard for a game's test project. Collapses the reflection-based coverage test
-/// several games hand-rolled: reflect over a keys class, assert every key resolves in the neutral resx AND in each
-/// shipped satellite (with parent fallback OFF, so a missing translation fails instead of silently reading the
-/// neutral language), and check placeholder-index integrity between the neutral template and each translation.
+/// several games hand-rolled: take a key universe (a keys class, the neutral resx's own entries, or an explicit
+/// key sequence), assert every key resolves in the neutral resx AND in each shipped satellite (with parent
+/// fallback OFF, so a missing translation fails instead of silently reading the neutral language), and check
+/// placeholder-index integrity between the neutral template and each translation.
 /// </summary>
 /// <remarks>
-/// Keys are read off a plain constants class: every <c>public const string</c> field's value, plus every
-/// <c>public static readonly</c> <see cref="StringId"/> field's <see cref="StringId.Key"/>. Add a key on either
-/// side and the guard covers it the moment it exists. Static and framework-agnostic - call it from an xUnit
-/// <c>[Fact]</c>; a gap throws <see cref="LocalizationCoverageException"/>, which fails the test.
+/// Three ways to supply the key universe, all with identical checking semantics:
+/// <list type="bullet">
+/// <item><description>A plain constants class (<see cref="AssertComplete(Type, ResourceManager, string[])"/>):
+/// every <c>public const string</c> field's value, plus every <c>public static readonly</c> <see cref="StringId"/>
+/// field's <see cref="StringId.Key"/>.</description></item>
+/// <item><description>The neutral resx itself (<see cref="AssertComplete(ResourceManager, string[])"/>): for games
+/// that keep keys directly in the neutral resx with no keys class, every string entry of the neutral resource set
+/// is the universe.</description></item>
+/// <item><description>An explicit key sequence (<see cref="AssertComplete(IEnumerable{string}, ResourceManager, string[])"/>):
+/// for a filtered subset, e.g. <see cref="NeutralKeys"/> minus intentionally untranslated keys.</description></item>
+/// </list>
+/// Static and framework-agnostic - call it from an xUnit <c>[Fact]</c>; a gap throws
+/// <see cref="LocalizationCoverageException"/>, which fails the test.
 /// </remarks>
 public static class LocalizationCoverage
 {
@@ -61,6 +72,38 @@ public static class LocalizationCoverage
     }
 
     /// <summary>
+    /// Enumerates the keys of every string entry in the neutral (invariant) resource set of
+    /// <paramref name="resources"/>, sorted ordinally. This is the key universe
+    /// <see cref="AssertComplete(ResourceManager, string[])"/> checks, exposed so a game can drive an xUnit
+    /// <c>[Theory]</c> off the same source or filter it before handing it to
+    /// <see cref="AssertComplete(IEnumerable{string}, ResourceManager, string[])"/>.
+    /// </summary>
+    /// <param name="resources">The game's <see cref="ResourceManager"/> (the same one its catalog resolves against).</param>
+    /// <returns>The neutral resx's string-entry keys in ordinal order.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="resources"/> is null.</exception>
+    /// <exception cref="LocalizationCoverageException">The neutral resource set cannot be loaded.</exception>
+    public static IReadOnlyList<string> NeutralKeys(ResourceManager resources)
+    {
+        if (resources is null) throw new ArgumentNullException(nameof(resources));
+
+        ResourceSet? neutral = SetFor(resources, CultureInfo.InvariantCulture);
+        if (neutral is null)
+        {
+            throw new LocalizationCoverageException(
+                $"neutral resx for {resources.BaseName} could not be loaded (no invariant resource set).");
+        }
+
+        var keys = new List<string>();
+        foreach (DictionaryEntry entry in neutral)
+        {
+            if (entry.Key is string key && entry.Value is string) keys.Add(key);
+        }
+
+        keys.Sort(StringComparer.Ordinal);
+        return keys;
+    }
+
+    /// <summary>
     /// Asserts full localization coverage of <paramref name="keysType"/> against <paramref name="resources"/>:
     /// every key present in the neutral resx, every key present in each of <paramref name="satelliteCultures"/>
     /// (parent fallback OFF), and each translation carrying the same set of placeholder indices as its neutral
@@ -83,9 +126,75 @@ public static class LocalizationCoverage
                 + "or public static readonly StringId fields.");
         }
 
+        AssertCore(keys, keysType.Name, resources, satelliteCultures);
+    }
+
+    /// <summary>
+    /// Asserts full localization coverage of <paramref name="resources"/> using the neutral resx's own string
+    /// entries as the key universe (see <see cref="NeutralKeys"/>). For games that keep localization keys directly
+    /// in the neutral resx with no keys class. Every neutral key must resolve in each of
+    /// <paramref name="satelliteCultures"/> with parent fallback OFF, and each translation must carry the same set
+    /// of placeholder indices as its neutral template. Throws <see cref="LocalizationCoverageException"/> listing
+    /// every gap when any check fails.
+    /// </summary>
+    /// <param name="resources">The game's <see cref="ResourceManager"/> (the same one its catalog resolves against).</param>
+    /// <param name="satelliteCultures">The shipped satellite culture names, e.g. <c>"es-ES"</c>, <c>"fr-FR"</c>.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="resources"/> is null.</exception>
+    /// <exception cref="LocalizationCoverageException">The neutral resx cannot be loaded or has no string entries,
+    /// any key is missing from a satellite, or a placeholder set does not match.</exception>
+    public static void AssertComplete(ResourceManager resources, params string[] satelliteCultures)
+    {
+        IReadOnlyList<string> keys = NeutralKeys(resources);
+        if (keys.Count == 0)
+        {
+            throw new LocalizationCoverageException(
+                $"neutral resx for {resources.BaseName} contains no string entries.");
+        }
+
+        AssertCore(keys, resources.BaseName, resources, satelliteCultures);
+    }
+
+    /// <summary>
+    /// Asserts full localization coverage of an explicit <paramref name="keys"/> sequence against
+    /// <paramref name="resources"/>: every key present in the neutral resx, every key present in each of
+    /// <paramref name="satelliteCultures"/> (parent fallback OFF), and each translation carrying the same set of
+    /// placeholder indices as its neutral template. Use this to check a filtered universe, e.g.
+    /// <see cref="NeutralKeys"/> minus keys that are intentionally untranslated. Throws
+    /// <see cref="LocalizationCoverageException"/> listing every gap when any check fails.
+    /// </summary>
+    /// <param name="keys">The localization keys to check. Duplicates and empty entries are checked once/skipped.</param>
+    /// <param name="resources">The game's <see cref="ResourceManager"/> (the same one its catalog resolves against).</param>
+    /// <param name="satelliteCultures">The shipped satellite culture names, e.g. <c>"es-ES"</c>, <c>"fr-FR"</c>.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="keys"/> or <paramref name="resources"/> is null.</exception>
+    /// <exception cref="LocalizationCoverageException">No keys are supplied, any key is missing, or a placeholder
+    /// set does not match.</exception>
+    public static void AssertComplete(IEnumerable<string> keys, ResourceManager resources, params string[] satelliteCultures)
+    {
+        if (keys is null) throw new ArgumentNullException(nameof(keys));
+        if (resources is null) throw new ArgumentNullException(nameof(resources));
+
+        var distinct = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (string key in keys)
+        {
+            if (!string.IsNullOrEmpty(key) && seen.Add(key)) distinct.Add(key);
+        }
+
+        if (distinct.Count == 0)
+        {
+            throw new LocalizationCoverageException("No localization keys supplied to check.");
+        }
+
+        AssertCore(distinct, "the supplied keys", resources, satelliteCultures);
+    }
+
+    private static void AssertCore(
+        IReadOnlyList<string> keys, string sourceName, ResourceManager resources, string[]? satelliteCultures)
+    {
         var problems = new List<string>();
 
-        // Neutral (invariant) resx: every key must resolve.
+        // Neutral (invariant) resx: every key must resolve. (Vacuous when the universe came from the neutral
+        // resx itself, but kept uniform across all entry points.)
         ResourceSet? neutral = SetFor(resources, CultureInfo.InvariantCulture);
         if (neutral is null)
         {
@@ -143,7 +252,7 @@ public static class LocalizationCoverage
         if (problems.Count > 0)
         {
             var sb = new StringBuilder();
-            sb.Append("Localization coverage failed for ").Append(keysType.Name)
+            sb.Append("Localization coverage failed for ").Append(sourceName)
               .Append(" (").Append(keys.Count).Append(" keys):").Append('\n');
             foreach (string problem in problems) sb.Append(" - ").Append(problem).Append('\n');
             throw new LocalizationCoverageException(sb.ToString().TrimEnd());

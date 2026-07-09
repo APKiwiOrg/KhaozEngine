@@ -3701,6 +3701,21 @@ neutral template and its translation. A gap throws `LocalizationCoverageExceptio
 cultures to check only the neutral resx. `LocalizationCoverage.Keys(typeof(MyGameStrings))` is exposed if you would
 rather drive a `[Theory]` off the same key source.
 
+No keys class? If your keys live directly in the neutral resx (referenced through the MSBuild-generated designer
+properties, e.g. `Resources.KeyName`), pass just the `ResourceManager`: the neutral resx's own string entries
+become the key universe, with identical checking semantics.
+
+```csharp
+[Fact]
+public void EveryResxKey_IsTranslatedInEveryShippedCulture()
+    => LocalizationCoverage.AssertComplete(Resources.ResourceManager, "es-ES", "fr-FR");
+```
+
+An unloadable neutral set or one with no string entries throws too, so this can never pass vacuously.
+`LocalizationCoverage.NeutralKeys(rm)` exposes that enumeration (ordinally sorted) for a `[Theory]`, and a third
+overload `AssertComplete(IEnumerable<string> keys, rm, cultures...)` takes an explicit universe, e.g.
+`NeutralKeys(rm)` filtered to exclude intentionally untranslated keys.
+
 ---
 
 ## Device-free shader validation (`KhaozEngine.Gpu.ShaderValidation`)

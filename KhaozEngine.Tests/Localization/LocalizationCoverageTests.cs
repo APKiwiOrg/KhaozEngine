@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Resources;
 using KhaozEngine.App;
 using KhaozEngine.Localization.TestKit;
@@ -92,5 +94,93 @@ namespace KhaozEngine.Tests.Localization
         [Fact]
         public void AssertComplete_NullResources_Throws()
             => Assert.Throws<ArgumentNullException>(() => LocalizationCoverage.AssertComplete(typeof(ConstKeys), null!));
+
+        // --- ResourceManager-driven key universe (no keys class; keys live in the neutral resx) ---
+
+        [Fact]
+        public void NeutralKeys_EnumeratesNeutralResxStringEntries_Sorted()
+            => Assert.Equal(new[] { "hud.score", "hud.wave", "menu.play", "menu.quit" }, LocalizationCoverage.NeutralKeys(Rm()));
+
+        [Fact]
+        public void NeutralKeys_NullResources_Throws()
+            => Assert.Throws<ArgumentNullException>(() => LocalizationCoverage.NeutralKeys(null!));
+
+        [Fact]
+        public void NeutralKeys_UnloadableNeutral_Throws()
+        {
+            var ex = Assert.Throws<LocalizationCoverageException>(
+                () => LocalizationCoverage.NeutralKeys(new ResourceManager("No.Such.BaseName", typeof(LocalizationCoverageTests).Assembly)));
+
+            Assert.Contains("no invariant resource set", ex.Message);
+        }
+
+        [Fact]
+        public void AssertComplete_ResourceManager_NeutralOnly_Passes()
+            => LocalizationCoverage.AssertComplete(Rm()); // no satellites: nothing beyond the neutral universe itself
+
+        [Fact]
+        public void AssertComplete_ResourceManager_CompleteSatellite_Passes()
+            => LocalizationCoverage.AssertComplete(Rm(), "fr");
+
+        [Fact]
+        public void AssertComplete_ResourceManager_BrokenSatellite_ReportsMissingAndPlaceholderGaps()
+        {
+            var ex = Assert.Throws<LocalizationCoverageException>(
+                () => LocalizationCoverage.AssertComplete(Rm(), "de"));
+
+            Assert.Contains(BaseName, ex.Message); // header names the ResourceManager's base name
+            Assert.Contains("de is missing translations", ex.Message);
+            Assert.Contains("menu.quit", ex.Message);
+            Assert.Contains("hud.wave", ex.Message);
+            Assert.Contains("placeholder mismatch", ex.Message);
+            Assert.Contains("hud.score", ex.Message);
+        }
+
+        [Fact]
+        public void AssertComplete_ResourceManager_AbsentSatellite_ReportsNoResourceSet()
+        {
+            var ex = Assert.Throws<LocalizationCoverageException>(
+                () => LocalizationCoverage.AssertComplete(Rm(), "es"));
+
+            Assert.Contains("no resource set", ex.Message);
+        }
+
+        [Fact]
+        public void AssertComplete_ResourceManager_NullResources_Throws()
+            => Assert.Throws<ArgumentNullException>(() => LocalizationCoverage.AssertComplete((ResourceManager)null!, "fr"));
+
+        // --- Explicit key-sequence universe (e.g. a filtered subset of NeutralKeys) ---
+
+        [Fact]
+        public void AssertComplete_KeySequence_FilteredSubset_PassesAgainstBrokenSatellite()
+        {
+            // de is broken overall, but the "menu.play" slice of the universe is fully translated there.
+            IEnumerable<string> subset = LocalizationCoverage.NeutralKeys(Rm()).Where(k => k == "menu.play");
+            LocalizationCoverage.AssertComplete(subset, Rm(), "de");
+        }
+
+        [Fact]
+        public void AssertComplete_KeySequence_ReportsKeysMissingFromNeutral()
+        {
+            var ex = Assert.Throws<LocalizationCoverageException>(
+                () => LocalizationCoverage.AssertComplete(new[] { "menu.play", "not.a.key" }, Rm(), "fr"));
+
+            Assert.Contains("neutral resx is missing keys", ex.Message);
+            Assert.Contains("not.a.key", ex.Message);
+        }
+
+        [Fact]
+        public void AssertComplete_KeySequence_Empty_Throws()
+        {
+            var ex = Assert.Throws<LocalizationCoverageException>(
+                () => LocalizationCoverage.AssertComplete(Array.Empty<string>(), Rm(), "fr"));
+
+            Assert.Contains("No localization keys", ex.Message);
+        }
+
+        [Fact]
+        public void AssertComplete_KeySequence_NullKeys_Throws()
+            => Assert.Throws<ArgumentNullException>(
+                () => LocalizationCoverage.AssertComplete((IEnumerable<string>)null!, Rm(), "fr"));
     }
 }

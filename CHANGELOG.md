@@ -5,6 +5,16 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.40.0
+
+`LocalizationCoverage` (the 10.39.0 `KhaozEngine.Localization.TestKit`) no longer requires a keys class: new entry points take the key universe straight off the neutral resx (or an explicit key sequence), for games that keep localization keys directly in the resx. Additive to the test-only package, no breaking change, minor bump.
+
+- **`LocalizationCoverage.AssertComplete(ResourceManager, satelliteCultures...)` (`KhaozEngine.Localization.TestKit`).** New overload for games with NO keys class (keys live directly in the neutral resx, referenced via the MSBuild-generated designer properties, e.g. Nullwake). It enumerates the neutral (invariant) resource set's own string entries as the key universe, then applies the exact semantics of the existing keys-class overload: every neutral key must resolve in each shipped satellite with parent fallback disabled (a missing translation fails instead of silently reading the neutral language), plus per-culture placeholder-index integrity against the neutral template. All gaps aggregate into one `LocalizationCoverageException` whose header names the `ResourceManager`'s base name. An unloadable neutral set or a neutral set with no string entries throws too, so the guard can never pass vacuously.
+- **`LocalizationCoverage.NeutralKeys(ResourceManager)`.** The neutral-resx key enumeration exposed on its own (string entries only, ordinally sorted), mirroring `Keys(Type)`: drive an xUnit `[Theory]` off it, or filter it before asserting.
+- **`LocalizationCoverage.AssertComplete(IEnumerable<string> keys, ResourceManager, satelliteCultures...)`.** The shared checking core exposed as a third entry point for an explicit key universe, e.g. `NeutralKeys(rm)` minus intentionally untranslated keys. Blank keys are skipped, duplicates checked once, an empty universe throws.
+- **Tests.** `LocalizationCoverageTests` grew 12 cases against the same embedded resx fixtures: `NeutralKeys` extraction/sorting + null/unloadable guards, the `ResourceManager` overload passing on a complete satellite and neutral-only, reporting the broken satellite's missing keys + placeholder mismatch (header carrying the base name) and the absent satellite, plus key-sequence filtering, missing-from-neutral reporting, and empty/null guards.
+- **Consumer note (games).** Re-pin to adopt. Nullwake replaces its hand-rolled `LocalizationResxCoverageTests` enumeration (built precisely because 10.39.0 had no resx-driven entry point) with one `LocalizationCoverage.AssertComplete(Resources.ResourceManager, "de-DE", "es-ES", "fr-FR", "pt-BR")` call. Keys-class games (Hardpoint, SpaceGame) are untouched: the existing overload is unchanged.
+
 ## 10.39.0
 
 Three consumer-facing helpers that collapse per-game boilerplate the four games each hand-wired: a one-call session-log + crash bootstrap, a one-line resx-catalog wiring, and a reusable localization coverage-test helper. Additive across `KhaozEngine.Diagnostics` / `KhaozEngine.App` plus one new test-only package, no breaking change, minor bump.

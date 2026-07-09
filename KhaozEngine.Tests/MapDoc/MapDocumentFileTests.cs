@@ -100,6 +100,14 @@ namespace KhaozEngine.Tests.MapDoc
         }
 
         [Fact]
+        public void LoadText_NonObjectRoot_ThrowsWithSource()
+        {
+            var ex = Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText("[1, 2, 3]", sourcePath: "arr.map.json"));
+            Assert.Contains("arr.map.json", ex.Message);
+            Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText("42"));
+        }
+
+        [Fact]
         public void LoadText_MissingFormatVersion_Throws()
         {
             Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText("{\"id\":\"x\"}"));

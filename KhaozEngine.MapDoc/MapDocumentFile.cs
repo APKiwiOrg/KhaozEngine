@@ -57,8 +57,9 @@ public static class MapDocumentFile
         JsonObject root;
         try
         {
-            root = Jsonc.ParseNode(json)?.AsObject()
-                ?? throw new MapDocumentException($"{where}: document is empty.");
+            JsonNode? node = Jsonc.ParseNode(json);
+            root = node as JsonObject
+                ?? throw new MapDocumentException($"{where}: document root must be a JSON object.");
         }
         catch (JsonException ex)
         {

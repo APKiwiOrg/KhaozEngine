@@ -54,6 +54,9 @@ state = CharacterMovement.Step(state, cmd, dt, ground.GroundHeight, MoveTuning.D
   contains the candidate wins: its `DensityMultiplier` scales the biome rule's density up or down (a
   multiplier above 1 boosts spawns, 0 suppresses them, and the product is clamped to the 0..1 keep
   probability range), and a non-empty `Kinds` replaces the rule's weighted kind mix inside the area.
+  An override can only adjust a biome that already has a scatter rule with at least one kind, since
+  candidates in a biome with no rule are skipped before overrides are consulted, so overrides cannot
+  inject props into an otherwise empty biome.
 
 Both arrays default empty (no behaviour change) and must be the same set on every `Generate` call over the
 same world for tiling invariance to hold, exactly like every other input `PropScatter` reads.

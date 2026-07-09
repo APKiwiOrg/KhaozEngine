@@ -17,13 +17,13 @@ namespace KhaozEngine.Gui;
 /// wrap it in a <see cref="Screen"/> for stack-based games. Newest build (index 0) starts expanded, the rest
 /// collapsed.
 /// <para>
-/// The class is <see cref="LocalizationExemptAttribute"/> on purpose: the changelog BODY (version, build name,
-/// date, and note text) is authored per game in <c>docs/PLAY_CHANGELOG.md</c> and is intentionally NOT
-/// localized, so it is drawn straight from the document. The CHROME (title, close, category labels, empty
-/// state) still resolves through <see cref="PatchNotesStrings"/>.
+/// The changelog BODY (version, build name, date, and note text) is authored per game in
+/// <c>docs/PLAY_CHANGELOG.md</c> and is intentionally NOT localized, so it is drawn straight from the
+/// document; only the specific members that draw it (<see cref="DrawBuildHeader"/>, <see cref="DrawNote"/>)
+/// carry <see cref="LocalizationExemptAttribute"/>. The CHROME (title, close, category labels, empty state)
+/// still resolves through <see cref="PatchNotesStrings"/> and stays under analyzer coverage.
 /// </para>
 /// </summary>
-[LocalizationExempt]
 public sealed class PatchNotesView
 {
     // Panel sizing: roughly 70% wide, 80% tall, clamped to sane minimums and never past the viewport.
@@ -271,6 +271,9 @@ public sealed class PatchNotesView
     static bool RowVisible(float y, float rowHeight, Rect content) =>
         y + rowHeight >= content.Y && y <= content.Bottom;
 
+    // Draws the changelog build's version, build name, and date straight from the document: intentionally
+    // unlocalized per-game changelog body content, not chrome.
+    [LocalizationExempt]
     void DrawBuildHeader(SpriteBatch batch, SpriteFont font, Texture2D white, PatchNotesBuild build, bool expanded, Rect header)
     {
         // Chevron: up when expanded (tap to collapse), down when collapsed (tap to expand).
@@ -299,6 +302,9 @@ public sealed class PatchNotesView
         batch.DrawString(font, label, new Vector2(MathF.Floor(lx), MathF.Floor(ly)), color);
     }
 
+    // Draws a changelog note's wrapped word spans straight from the document: intentionally unlocalized
+    // per-game changelog body content, not chrome.
+    [LocalizationExempt]
     void DrawNote(SpriteBatch batch, SpriteFont font, Texture2D white, Rect content, List<WordPlacement> placements, float y, float lineH)
     {
         var dot = new Rect(content.X + 4f, y + (lineH - 3f) * 0.5f, 3f, 3f);
@@ -326,11 +332,11 @@ public sealed class PatchNotesView
         if (contentHeight <= content.Height) return;   // no overflow, no bar
 
         float trackX = content.Right + ScrollbarGap;
-        GuiDraw.Fill(batch, white, new Rect(trackX, content.Y, ScrollbarWidth, content.Height), Theme.MutedText * 0.25f);
+        GuiDraw.Fill(batch, white, new Rect(trackX, content.Y, ScrollbarWidth, content.Height), GuiDraw.WithOpacity(Theme.MutedText, 0.25f));
 
         float max = contentHeight - content.Height;
         float thumbH = MathF.Max(24f, content.Height * (content.Height / contentHeight));
-        float travel = content.Height - thumbH;
+        float travel = MathF.Max(0f, content.Height - thumbH);
         float t = max > 0f ? Math.Clamp(_scrollOffset / max, 0f, 1f) : 0f;
         GuiDraw.Fill(batch, white, new Rect(trackX, content.Y + t * travel, ScrollbarWidth, thumbH), Theme.MutedText);
     }

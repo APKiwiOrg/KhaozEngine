@@ -7,16 +7,14 @@ namespace KhaozEngine.MapDoc;
 
 /// <summary>The root of a zone/map document: everything that describes a zone's static world content. One JSON
 /// file per zone, human-diffable, git-committed in the game repo. Both game heads load the same document through
-/// <c>MapDocumentFile</c> and build runtime objects with <c>MapRuntime</c>, so client and server
+/// <see cref="MapDocumentFile"/> and build runtime objects with <c>MapRuntime</c>, so client and server
 /// agree by construction.</summary>
 public sealed class MapDocument
 {
     [JsonPropertyName("$schema")]
     public string? Schema { get; set; }
 
-    // Task 5 stands this default in as the literal current format version (1). Task 6 introduces
-    // MapDocumentFile.CurrentFormatVersion and this reverts to that constant.
-    public int FormatVersion { get; set; } = 1;
+    public int FormatVersion { get; set; } = MapDocumentFile.CurrentFormatVersion;
     public string Id { get; set; } = "";
     public string DisplayName { get; set; } = "";
     public MapBounds Bounds { get; set; } = new();

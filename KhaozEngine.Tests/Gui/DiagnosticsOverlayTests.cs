@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.Diagnostics;
 using KhaozEngine.Gui;
@@ -142,5 +144,53 @@ public sealed class DiagnosticsOverlayTests
         OverlaySection s = DiagnosticsOverlay.NetworkSection(in n);
         Assert.True(HasRow(s, "ping"));
         Assert.Contains("48", ValueOf(s, "ping"));
+    }
+
+    static Func<IReadOnlyList<OverlaySection>> Counting(Action tick) =>
+        () => { tick(); return Array.Empty<OverlaySection>(); };
+
+    [Fact]
+    public void SectionsProvider_polls_immediately_then_on_interval()
+    {
+        int calls = 0;
+        var o = new DiagnosticsOverlay();
+        o.SetSectionsProvider(Counting(() => calls++), refreshInterval: 0.5f);
+
+        o.Update(InputState.Empty, 0.25f);
+        Assert.Equal(1, calls);   // first Update after registration polls immediately (timer starts at 0)
+
+        o.Update(InputState.Empty, 0.2f);
+        o.Update(InputState.Empty, 0.2f);
+        Assert.Equal(1, calls);   // 0.4s since the poll: still throttled
+
+        o.Update(InputState.Empty, 0.2f);
+        Assert.Equal(2, calls);   // crossed the 0.5s interval: polled again
+    }
+
+    [Fact]
+    public void SectionsProvider_zero_interval_polls_every_update()
+    {
+        int calls = 0;
+        var o = new DiagnosticsOverlay();
+        o.SetSectionsProvider(Counting(() => calls++), refreshInterval: 0f);
+
+        o.Update(InputState.Empty, 0.016f);
+        o.Update(InputState.Empty, 0.016f);
+        o.Update(InputState.Empty, 0.016f);
+        Assert.Equal(3, calls);
+    }
+
+    [Fact]
+    public void SectionsProvider_null_detaches_polling()
+    {
+        int calls = 0;
+        var o = new DiagnosticsOverlay();
+        o.SetSectionsProvider(Counting(() => calls++), refreshInterval: 0f);
+        o.Update(InputState.Empty, 0.016f);
+        Assert.Equal(1, calls);
+
+        o.SetSectionsProvider(null, 0f);
+        o.Update(InputState.Empty, 0.016f);
+        Assert.Equal(1, calls);   // detached: manual SetSections control resumes, no more polls
     }
 }

@@ -35,6 +35,12 @@ public sealed class DiagnosticsOverlay
     IReadOnlyList<OverlaySection> _sections = Array.Empty<OverlaySection>();
     float _alpha; // current fade, 0..1
 
+    // Optional built-in throttle: when a provider is set, Update polls it on _refreshInterval instead of the game
+    // rebuilding + calling SetSections every frame. Null provider = today's behaviour (game drives SetSections).
+    Func<IReadOnlyList<OverlaySection>>? _sectionsProvider;
+    float _refreshInterval;
+    float _refreshTimer;
+
     public DiagnosticsOverlay(DiagnosticsOverlayTheme? theme = null) => Theme = theme ?? DiagnosticsOverlayTheme.Default;
 
     /// <summary>Current fade alpha (0 hidden .. 1 shown); exposed for tests/diagnostics.</summary>
@@ -62,6 +68,19 @@ public sealed class DiagnosticsOverlay
             float step = Theme.FadeSpeed * dt;
             _alpha = target > _alpha ? MathF.Min(target, _alpha + step) : MathF.Max(target, _alpha - step);
         }
+
+        // Built-in throttled rebuild: poll the registered provider on its interval (immediately on the first
+        // Update after it is set, since the timer starts at 0). No provider => no-op, game drives SetSections.
+        if (_sectionsProvider is { } provider)
+        {
+            _refreshTimer -= dt;
+            if (_refreshTimer <= 0f)
+            {
+                _refreshTimer = _refreshInterval;
+                _sections = provider() ?? Array.Empty<OverlaySection>();
+            }
+        }
+
         return Visible;
     }
 
@@ -82,6 +101,26 @@ public sealed class DiagnosticsOverlay
     /// </summary>
     public void SetSections(IReadOnlyList<OverlaySection> sections) =>
         _sections = sections ?? Array.Empty<OverlaySection>();
+
+    /// <summary>
+    /// Registers a sections provider that <see cref="Update"/> polls on an interval, so the game does not rebuild
+    /// its sections every frame (rebuilding is wasteful, and per-frame values strobe unreadably). The provider is
+    /// polled immediately on the first <see cref="Update"/> after registration, then once every
+    /// <paramref name="refreshInterval"/> seconds; its result is stored as the sections drawn next
+    /// <see cref="Draw"/>. Pass <paramref name="refreshInterval"/> 0 to poll every <see cref="Update"/>. Use this
+    /// instead of a hand-rolled timer around <see cref="SetSections"/>; the two paths write the same field, so use
+    /// one or the other (a manual <see cref="SetSections"/> call is overwritten on the provider's next poll). Pass
+    /// a null <paramref name="provider"/> to detach and return to manual <see cref="SetSections"/> control.
+    /// </summary>
+    /// <param name="provider">Builds the sections when polled (may reuse a buffer to stay allocation-light), or null to detach.</param>
+    /// <param name="refreshInterval">Seconds between polls; 0 polls every <see cref="Update"/>. Must be &gt;= 0.</param>
+    public void SetSectionsProvider(Func<IReadOnlyList<OverlaySection>>? provider, float refreshInterval)
+    {
+        if (refreshInterval < 0f) throw new ArgumentOutOfRangeException(nameof(refreshInterval));
+        _sectionsProvider = provider;
+        _refreshInterval = refreshInterval;
+        _refreshTimer = 0f;   // poll on the next Update
+    }
 
     /// <summary>Build a standard "Performance" section from a <see cref="FrameStats"/> meter.</summary>
     public static OverlaySection PerformanceSection(FrameStats f)

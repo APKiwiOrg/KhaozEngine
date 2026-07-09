@@ -113,3 +113,24 @@ These are non-zero / active ONLY inside a point-space `UiViewport` `Begin`. A fr
 world/camera space, screen space, or a transformed pass leaves `DeviceScale` at `Vector2.Zero`, so snapping is
 a no-op there. Inside a point-space pass `SpriteBatch` also snaps glyph origins to device pixels, so text drawn
 with a `DpiFont` is crisp.
+
+## 2D particles + ambient fields (`Vfx`)
+
+`Particle2DSystem` is a fixed-size, zero-allocation, deterministic (seeded `XorRng`) screen-space particle pool.
+Per particle: velocity, acceleration (gravity), drag, sway, rotation + angular velocity, size/colour lerp over
+life, a per-particle `BlendMode`, and an optional trapezoid alpha envelope (see below). Two lifecycles:
+
+- **Burst pool** - `Emit(in Particle2DEmitterConfig, origin, count)` (+ tint overload) spawns emit-and-die
+  particles (a ring buffer; a full pool overwrites the oldest). `Update(dt)`, `Draw(batch, texture)` (per-
+  particle blend) or `Draw(batch, texture, BlendMode)` (forced), `Clear()`, `ActiveParticles()` snapshots.
+- **Ambient field** - `EmitField(in cfg, Rect region, count)` (+ `tint` / `exitMargin` overload) fills a bounds
+  region with particles that RESPAWN at a fresh random in-region position when they die or leave the region
+  (past `exitMargin` pixels), so a persistent field (dust, embers, snow) holds a stable population with no
+  emission pop. The initial fill randomizes each particle's life so the field starts mid-envelope.
+  `SetFieldTint(fieldId, tint)` recolours a live field instantly (e.g. following a depth/biome palette);
+  `FieldCount` reports registered fields. Size `Capacity` to the field's `count` so it owns its pool.
+
+`Particle2DEmitterConfig` (immutable `record struct`; derive with `with`) adds `FadeInDuration` /
+`FadeOutDuration` (the fade-in / hold / fade-out alpha envelope, both default 0 = no envelope) and `SizeJitter`
+(per-particle +/- size variation, default 0). All three default to today's behaviour, so existing bursts are
+unchanged. `VfxRenderer` (glow / ring / beam / white-pixel textures) is the convenience entry point.

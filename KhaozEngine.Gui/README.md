@@ -110,7 +110,10 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   table.
 - `DiagnosticsOverlay` (+ `DiagnosticsOverlayTheme`, `OverlayRow`/`OverlaySection`) - a reusable in-game
   telemetry HUD, a pure presenter modeled on `UpdateOverlayView`. The game assembles sections each frame and
-  feeds them via `SetSections`; `Update(InputState, dt)` toggles on `Theme.ToggleKey` (default F1; optional
+  feeds them via `SetSections`, or registers a provider once with `SetSectionsProvider(provider, refreshInterval)`
+  and lets `Update` rebuild them on that interval (a built-in throttle: polls immediately, then every interval
+  seconds; interval 0 = every frame; null provider detaches) instead of a hand-rolled per-frame timer around
+  `SetSections`; `Update(InputState, dt)` toggles on `Theme.ToggleKey` (default F1; optional
   gamepad button) and fades (headless-testable, `InputState.Empty` inert); `Draw` renders a corner panel
   (`Theme.Corner`) of titles + right-aligned values. `PerformanceSection(FrameStats)` /
   `PassTimingsSection(PassTimings)` / `NetworkSection(in ClientNetStats)` populators cover the common cases

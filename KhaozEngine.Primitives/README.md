@@ -30,6 +30,14 @@ color anywhere in the engine's public API is the `Color` from here.
   `Prune(nowSeconds)` decays the tail while the emitter idles, and `Samples` returns the live tail
   oldest-first to hand straight to `Scene3D.DrawTrail` (Render3D). No GPU dependency; headless-testable.
   Feed it the moving emitter's world position each frame (a sword tip, a thruster nozzle, a projectile).
+- `NumberFormatter` / `NumberNotation` - large-number display formatting for idle/incremental values in one
+  place: `Simple` short suffixes (1.23K, 45.6M ... up to 1e33 `Dc`, then scientific), `Scientific`, and
+  `Engineering` (exponent a multiple of 3). A settable process-wide `Notation` default a game binds to its
+  setting once, plus per-call notation overloads; `Format` / `FormatInt`. NaN -> "0", infinity -> "Inf",
+  culture-invariant output. A non-localizable value token: format here, compose into a localized string.
+- `TimeFormatter` / `DurationStyle` - duration formatting in two shapes: `Clock` (the ticking colon clock
+  `1:02:34`, rounds up to the next whole second) and `Coarse` (the two-unit summary `2h 15m`, with a
+  `coarseUnits` knob). Non-finite -> "---", non-positive -> "0s", culture-invariant.
 
 ```csharp
 var rng = new DeterministicRng(seed: 12345);

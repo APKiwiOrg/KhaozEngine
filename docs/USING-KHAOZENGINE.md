@@ -669,6 +669,38 @@ tip.Draw(batch, white);
 
 ---
 
+## Number + duration formatting (`NumberFormatter` / `TimeFormatter`)
+
+Two pure display formatters in `KhaozEngine.Primitives` (zero dependency; usable from a renderer, a headless
+server, or a balance-sim tool). They produce **value tokens** - digits, suffixes, unit letters - which sit below
+the localization layer: format the value here, then compose the result into a localized string (`"{0}"` slot).
+
+`NumberFormatter` renders large numbers in one of three `NumberNotation` modes: `Simple` (short suffixes
+`1.23K` / `45.6M` ... up to `1e33` `Dc`, then scientific), `Scientific`, and `Engineering` (exponent a multiple
+of 3). A settable process-wide `Notation` is the default a game binds to its "number format" setting once, so
+the parameterless overloads pick it up everywhere; pass a `NumberNotation` to override per call. NaN renders
+`"0"`, infinity `"Inf"`; output is culture-invariant.
+
+```csharp
+NumberFormatter.Notation = NumberNotation.Simple;   // once, from the user setting
+NumberFormatter.Format(1_500_000);       // "1.50M"
+NumberFormatter.FormatInt(1234);         // "1K"   (0 decimals below 1000)
+NumberFormatter.Format(1234, NumberNotation.Scientific);   // "1.23E+003" (explicit override)
+```
+
+`TimeFormatter.Format(seconds, style)` renders a duration in two `DurationStyle` shapes: `Clock` (the ticking
+colon clock `1:02:34`, rounds up to the next whole second - for timers/countdowns) and `Coarse` (the two-unit
+summary `2h 15m`, with a `coarseUnits` knob - for stats and "played for" lines). Non-finite renders `"---"`,
+non-positive `"0s"`.
+
+```csharp
+TimeFormatter.Format(3754);                          // "1:02:34"   (Clock, default)
+TimeFormatter.Format(8100, DurationStyle.Coarse);    // "2h 15m"
+TimeFormatter.Format(300, DurationStyle.Coarse, 1);  // "5m"        (one unit)
+```
+
+---
+
 ## Compile-time localization enforcement (`StringId` / `LocalizedText`)
 
 The Gui text sinks accept a `LocalizedText` (from `KhaozEngine.App`), not a raw `string`. The only implicit
@@ -913,7 +945,17 @@ batch.End();
   angular velocity, size/colour lerp over life, per-particle blend. `Emit(in cfg, origin, count)` (+ tint
   overload), `Update(dt)`, `Clear()`, `ActiveParticles()` (snapshots for tests), `Draw(batch, texture)` (per-
   particle blend) or `Draw(batch, texture, BlendMode)` (forced). Deterministic per seed.
-- `Particle2DEmitterConfig` is an immutable `record struct` - keep presets in content and derive with `with`.
+- **Ambient fields** (persistent dust / embers / snow): `EmitField(in cfg, Rect region, count)` (+ `tint` /
+  `exitMargin` overloads) fills a bounds region with particles that RESPAWN at a fresh random in-region position
+  when they die or drift past the region (+ `exitMargin` px), so the field holds a stable population with no
+  emission pop - the same `Update(dt)` drives it. The initial fill randomizes lives so the field starts already
+  populated and mid-envelope. `SetFieldTint(fieldId, tint)` recolours a live field instantly (follow a depth /
+  biome palette); size `Capacity` to the field's `count` so it owns its pool. This replaces a hand-rolled dust
+  pool: a persistent field can no longer only be built game-side.
+- `Particle2DEmitterConfig` is an immutable `record struct` - keep presets in content and derive with `with`. Its
+  `FadeInDuration` / `FadeOutDuration` give a trapezoid alpha envelope (fade in, hold, fade out - what an ambient
+  field needs so motes appear/disappear softly), and `SizeJitter` adds per-particle +/- size spread. All three
+  default to 0 (off), so a burst config is unchanged.
 - `EnergyBeam.Draw(batch, white, glow, a, b, in BeamParams, timeSeconds)`: additive A->B beam (glow band + core,
   flowing dashes, pulse, jitter, endpoint flares); time-driven and stateless. `VfxRenderer.DrawBeam` wraps it
   with the owned textures. `BeamParams.Caps = BeamCap.Round` rounds both ends into a capsule: a soft disc cap of
@@ -3047,6 +3089,25 @@ _sections.Add(DiagnosticsOverlay.NetworkSection(_client?.NetStats ?? default)); 
 _sections.Add(new OverlaySection("World", _worldRows));   // custom rows are always available
 _overlay.SetSections(_sections);
 _overlay.Update(Input, dt);                // reads the toggle key, advances the fade, returns Visible
+```
+
+**Throttled rebuild (built-in).** Rebuilding sections every frame is wasteful, and per-frame values strobe
+unreadably, so register a provider once instead of hand-rolling a timer around `SetSections`. `Update` then
+polls it on the interval (immediately on the first `Update`, then every interval seconds; interval `0` = every
+frame; a null provider detaches). Use one path or the other - the provider overwrites a manual `SetSections`:
+
+```csharp
+// OnLoad, once:
+_overlay.SetSectionsProvider(() =>              // polled on the interval, not every frame
+{
+    _sections.Clear();
+    _sections.Add(DiagnosticsOverlay.PerformanceSection(_frameStats));
+    return _sections;
+}, refreshInterval: 0.5f);
+
+// OnUpdate: just sample + Update; the overlay rebuilds the sections itself on the 0.5s interval.
+_frameStats.Sample(dt);
+_overlay.Update(Input, dt);
 ```
 
 **OnDraw2D(batch)** - draw it over the scene (under any modal screen):

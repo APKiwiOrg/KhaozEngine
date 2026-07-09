@@ -72,7 +72,7 @@ namespace KhaozEngine.Showcase
         readonly GuiAssets _a;
         readonly IDesignViewport _vp;
         Label _title = null!, _footer = null!;
-        Button _settings = null!, _widgets = null!, _immediate = null!, _overlay = null!;
+        Button _settings = null!, _widgets = null!, _immediate = null!, _overlay = null!, _patchNotes = null!;
 
         public GuiMenuScreen(GuiAssets a, IDesignViewport vp)
         {
@@ -88,10 +88,12 @@ namespace KhaozEngine.Showcase
 
             // Centered vertical button column, anchored to the design center so it stays put at any window size.
             Rect mid = Layout.Resolve(db, Anchor.Center, 220, 52);
-            _settings = new Button(mid with { Y = mid.Y - 96 }, ShowcaseStrings.MenuSettings, _a.Small, () => Manager.Add(new SettingsScreen(_a, _vp)));
-            _widgets = new Button(mid with { Y = mid.Y - 32 }, ShowcaseStrings.MenuWidgets, _a.Small, () => Manager.Add(new WidgetsScreen(_a, _vp)));
-            _immediate = new Button(mid with { Y = mid.Y + 32 }, ShowcaseStrings.MenuImmediate, _a.Small, () => Manager.Add(new ImmediateScreen(_a, _vp)));
-            _overlay = new Button(mid with { Y = mid.Y + 96 }, ShowcaseStrings.MenuOverlayDemo, _a.Small, () => Manager.Add(new OverlayHostScreen(_a, _vp)));
+            _settings = new Button(mid with { Y = mid.Y - 128 }, ShowcaseStrings.MenuSettings, _a.Small, () => Manager.Add(new SettingsScreen(_a, _vp)));
+            _widgets = new Button(mid with { Y = mid.Y - 64 }, ShowcaseStrings.MenuWidgets, _a.Small, () => Manager.Add(new WidgetsScreen(_a, _vp)));
+            _immediate = new Button(mid with { Y = mid.Y }, ShowcaseStrings.MenuImmediate, _a.Small, () => Manager.Add(new ImmediateScreen(_a, _vp)));
+            _overlay = new Button(mid with { Y = mid.Y + 64 }, ShowcaseStrings.MenuOverlayDemo, _a.Small, () => Manager.Add(new OverlayHostScreen(_a, _vp)));
+            _patchNotes = new Button(mid with { Y = mid.Y + 128 }, ShowcaseStrings.MenuPatchNotes, _a.Small,
+                () => Manager.Add(new PatchNotesScreen(PatchNotesLoader.Load(typeof(RoomGui).Assembly), _a.Small, _a.White, _vp)));
 
             _footer = new Label(Layout.Resolve(db, Anchor.Bottom, db.Width, 24, marginY: 36),
                 ShowcaseStrings.MenuFooter, _a.Small)
@@ -105,6 +107,7 @@ namespace KhaozEngine.Showcase
             _widgets.Update(Manager.Pointer);
             _immediate.Update(Manager.Pointer);
             _overlay.Update(Manager.Pointer);
+            _patchNotes.Update(Manager.Pointer);
             return true;
         }
 
@@ -116,6 +119,7 @@ namespace KhaozEngine.Showcase
             _widgets.Draw(batch, _a.White);
             _immediate.Draw(batch, _a.White);
             _overlay.Draw(batch, _a.White);
+            _patchNotes.Draw(batch, _a.White);
             _footer.Draw(batch);
         }
     }

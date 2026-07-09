@@ -843,6 +843,42 @@ device-pixel snapping (10.32.1). Override `ActiveStyle` / `InactiveStyle` to
 re-theme, and `Opacity` (0..1) fades the whole bar with a host transition. Labels are `LocalizedText`, so use a
 `StringId` for player-facing copy (`LocalizedText.Raw(...)` only for debug/non-localizable tokens).
 
+## In-game patch notes (`PatchNotesLoader` / `PatchNotesView` / `PatchNotesScreen`, 10.45.0)
+
+Renders a game's player-facing `docs/PLAY_CHANGELOG.md` (the shared changelog style, `docs/CHANGELOG-STYLE.md`)
+as an in-game panel: `---`-separated dated builds grouped under New/Major/Minor/Rebalance/Bug, with
+backtick-wrapped upgrade/entity/item names rendered as accented code spans.
+
+```csharp
+// At startup (or lazily, the first time the panel is shown):
+PatchNotesDocument doc = PatchNotesLoader.Load();   // disk PLAY_CHANGELOG.md next to the app, else embedded, else Empty
+
+// Push it as a modal screen from a menu button:
+var screen = new PatchNotesScreen(doc, font, whitePixel, viewport);   // theme defaults to PatchNotesTheme.Default
+screens.Add(screen);
+```
+
+`PatchNotesLoader.Load()` looks for `PLAY_CHANGELOG.md` on disk next to the running app first (so a shipped
+build always shows the exact file that was packaged with it), falls back to an embedded manifest resource of the
+same name in the entry assembly (`Load(Assembly, baseDirectory?)` for an explicit assembly/directory), and
+returns `PatchNotesDocument.Empty` if neither is found - it never throws, so a missing or malformed changelog
+degrades to an empty panel rather than a crash. `PatchNotesParser.Parse(text)` is the pure markdown-to-document
+step if you want to load the text yourself (e.g. from a different source).
+
+`PatchNotesView` is the collapsible, scrollable presenter: each build starts collapsed behind a header (tap to
+expand/collapse via `Toggle(buildIndex)` / `IsExpanded(buildIndex)`), wheel/drag scrolls the whole panel
+(scissor-clipped), and `CloseRequested` latches true the frame the close button is tapped or Escape is pressed.
+`PatchNotesScreen` is the drop-in `Screen` wrapper for `ScreenStack` games: always modal (blocks the screen
+below), `SettingsScreen`-style 0.18s in/out transitions, and it exits itself the frame `CloseRequested` latches -
+so a menu just pushes it and never has to poll for close. Use `PatchNotesView` directly for a `GuiSurface`
+Run-loop game with no `ScreenStack`.
+
+`PatchNotesTheme` (a settable `Theme` on the view, `PatchNotesTheme.Default` the crisp built-in palette) supplies
+panel/header fills, body/muted text, the code-span accent, and `CategoryColor(PatchNoteCategory)` per-category
+badge colors (Rebalance is a warm amber, distinct from the Bug red). `PatchNotesStrings` supplies the chrome text
+(title, close, empty-state, the six category labels) as `StringId`s; a built-in English `IStringCatalog`
+fallback means the panel renders correctly even before a game wires its own localization catalog.
+
 ---
 
 ## Render2D (`KhaozEngine.Render2D`)

@@ -18,6 +18,12 @@
     <None Include="assets/props/**" CopyToOutputDirectory="PreserveNewest" />
     <None Include="assets/character/**" CopyToOutputDirectory="PreserveNewest" />
     <None Include="assets/buildings/**" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Sample player changelog for the Gui room's "Patch Notes" demo button. LogicalName matches
+         PatchNotesLoader.ResourceName, so PatchNotesLoader.Load(typeof(RoomGui).Assembly) finds it as an
+         embedded resource (no disk copy shipped alongside the showcase binary). -->
+    <EmbeddedResource Include="PLAY_CHANGELOG.md">
+      <LogicalName>PLAY_CHANGELOG.md</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
     <!-- Let the engine test project verify the localization catalog (ShowcaseStrings + resx) resolves. -->

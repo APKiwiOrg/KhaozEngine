@@ -16,6 +16,7 @@ namespace KhaozEngine.Showcase
         public static readonly StringId MenuWidgets = new("Menu.Widgets");
         public static readonly StringId MenuImmediate = new("Menu.Immediate");
         public static readonly StringId MenuOverlayDemo = new("Menu.OverlayDemo");
+        public static readonly StringId MenuPatchNotes = new("Menu.PatchNotes");
         public static readonly StringId MenuFooter = new("Menu.Footer");
 
         // Settings

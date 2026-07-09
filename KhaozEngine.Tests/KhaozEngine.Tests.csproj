@@ -17,6 +17,13 @@
          path) so PatchNotesParserTests exercises the parser against real authored content, not just synthetic
          samples. -->
     <EmbeddedResource Include="Gui/Fixtures/RuinbornePlayChangelog.md" />
+    <!-- PatchNotesLoaderTests' embedded-fallback fixture: PatchNotesLoader looks up the resource by its
+         fixed, unqualified logical name (PatchNotesLoader.ResourceName), so LogicalName strips the default
+         folder-derived namespace prefix to match exactly what production code (and a real game's own
+         assembly) would embed it as. -->
+    <EmbeddedResource Include="Gui/Fixtures/PLAY_CHANGELOG.md">
+      <LogicalName>PLAY_CHANGELOG.md</LogicalName>
+    </EmbeddedResource>
     <!-- Bundled libre font (Roboto, Apache-2.0) so the 2D golden has identical glyph input on every OS/runner,
          instead of a hard-coded macOS system-font path that doesn't exist on Windows/Linux CI. -->
     <None Include="Assets/Roboto-Regular.ttf" CopyToOutputDirectory="PreserveNewest" />

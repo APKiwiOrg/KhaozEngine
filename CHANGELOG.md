@@ -5,6 +5,24 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.44.0
+
+Map document format: new `KhaozEngine.MapDoc` package (the zone/map JSON document: terrain config,
+scatter layers, exclusions/overrides, authored placements, spawns, regions) plus generalized scatter
+exclusion/override shapes on `KhaozEngine.Terrain`. Phase A of the map-editor program
+(docs/MAP-EDITOR-DESIGN.md).
+
+- New package `KhaozEngine.MapDoc` (joins the `Foundation` umbrella): versioned, schema-validated,
+  JSONC-tolerant zone documents with loud-fail load semantics (a bad document refuses to boot),
+  registry-extensible terrain feature types (built-ins: lake, flatten, ridge, rim), JsonObject-based
+  format migrations, an embedded JSON schema (`MapDocumentSchema`), and `MapRuntime` builders producing
+  `TerrainField`/`ScatterConfig`/`CompanionConfig`/ground-snapped `PropPlacement` lists so both heads
+  load one document through one deterministic path.
+- `KhaozEngine.Terrain`: new `IArea2D` (disc/box/polygon), `ScatterConfig.Exclusions` (shape list, any
+  hit skips the candidate) and `ScatterConfig.Overrides` (first-match region overrides: density
+  multiplier clamped 0..1, optional kind substitution). Additive: defaults are empty and the legacy
+  `ClearingRadius` disc keeps working. Tiling invariance verified with exclusions and overrides active.
+
 ## 10.43.0
 
 A three-part consumer-adoption batch: persistent ambient particle fields (a fade-in envelope + a respawn region) on the 2D `Particle2DSystem`, a built-in throttled section-refresh on `DiagnosticsOverlay`, and the idle-game number/duration formatters promoted to `KhaozEngine.Primitives`. All additive across `KhaozEngine.Render2D`, `KhaozEngine.Gui`, and `KhaozEngine.Primitives`, no breaking change, minor bump.

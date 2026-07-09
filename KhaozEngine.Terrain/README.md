@@ -51,9 +51,9 @@ state = CharacterMovement.Step(state, cmd, dt, ground.GroundHeight, MoveTuning.D
   the legacy `ClearingRadius` disc (which still works unchanged, a document-driven config just zeroes it
   and expresses clearings as exclusion shapes instead).
 - **`ScatterConfig.Overrides`** (`ScatterOverride[]`) - the first override (list order) whose `Area`
-  contains the candidate wins: its `DensityMultiplier` scales the biome rule's density (the product is
-  clamped to 0..1, so an override can only reduce or fully suppress spawns, never push density above 1),
-  and a non-empty `Kinds` replaces the rule's weighted kind mix inside the area.
+  contains the candidate wins: its `DensityMultiplier` scales the biome rule's density up or down (a
+  multiplier above 1 boosts spawns, 0 suppresses them, and the product is clamped to the 0..1 keep
+  probability range), and a non-empty `Kinds` replaces the rule's weighted kind mix inside the area.
 
 Both arrays default empty (no behaviour change) and must be the same set on every `Generate` call over the
 same world for tiling invariance to hold, exactly like every other input `PropScatter` reads.

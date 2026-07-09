@@ -219,4 +219,173 @@ public class Particle2DSystemTests
         sys.Clear();
         Assert.Equal(0, sys.ActiveCount);
     }
+
+    // -- Trapezoid alpha envelope (fade in / hold / fade out) --
+
+    // A still, constant-colour particle (no motion, alpha-1 colour that does not lerp) so the only thing
+    // touching alpha is the envelope, and its shape over life is hand-computable.
+    static Particle2DEmitterConfig Still(float maxLife) => Fixed(0f, new Vector2(1, 0)) with
+    {
+        MinLife = maxLife,
+        MaxLife = maxLife,
+        StartColor = Color.White,
+        EndColor = Color.White,
+    };
+
+    [Fact]
+    public void Envelope_FadeIn_RampsAlphaFromZeroToFull()
+    {
+        var cfg = Still(2f) with { FadeInDuration = 0.5f };
+        var sys = new Particle2DSystem(4, 1);
+        sys.Emit(cfg, Vector2.Zero, 1);
+
+        Assert.Equal(0f, sys.ActiveParticles().Single().Color.A, Tol);   // spawn: elapsed 0 -> alpha 0
+        sys.Update(0.25f);
+        Assert.Equal(0.5f, sys.ActiveParticles().Single().Color.A, Tol); // elapsed 0.25 / 0.5 -> 0.5
+        sys.Update(0.25f);
+        Assert.Equal(1f, sys.ActiveParticles().Single().Color.A, Tol);   // elapsed 0.5 -> full
+        sys.Update(0.5f);
+        Assert.Equal(1f, sys.ActiveParticles().Single().Color.A, Tol);   // holds at full past the fade-in leg
+    }
+
+    [Fact]
+    public void Envelope_FadeOut_RampsAlphaToZeroNearDeath()
+    {
+        var cfg = Still(2f) with { FadeOutDuration = 0.5f };
+        var sys = new Particle2DSystem(4, 1);
+        sys.Emit(cfg, Vector2.Zero, 1);
+
+        Assert.Equal(1f, sys.ActiveParticles().Single().Color.A, Tol);   // spawn: far from death -> full
+        sys.Update(1.5f);
+        Assert.Equal(1f, sys.ActiveParticles().Single().Color.A, Tol);   // Life 0.5 == fade-out leg start
+        sys.Update(0.25f);
+        Assert.Equal(0.5f, sys.ActiveParticles().Single().Color.A, Tol); // Life 0.25 / 0.5 -> 0.5
+    }
+
+    [Fact]
+    public void Envelope_Trapezoid_HoldsFullBetweenLegs()
+    {
+        var cfg = Still(2f) with { FadeInDuration = 0.5f, FadeOutDuration = 0.5f };
+        var sys = new Particle2DSystem(4, 1);
+        sys.Emit(cfg, Vector2.Zero, 1);
+
+        sys.Update(1.0f);   // elapsed 1.0 (>fade-in), Life 1.0 (>fade-out) -> both legs full
+        Assert.Equal(1f, sys.ActiveParticles().Single().Color.A, Tol);
+    }
+
+    [Fact]
+    public void Envelope_Defaults_LeaveColourAlphaUnchanged()
+    {
+        // No fade-in/out configured: alpha comes purely from the colour, exactly as before the envelope existed.
+        var cfg = Still(2f) with
+        {
+            StartColor = new Color(1, 1, 1, 0.7f),
+            EndColor = new Color(1, 1, 1, 0.7f),
+        };
+        var sys = new Particle2DSystem(4, 1);
+        sys.Emit(cfg, Vector2.Zero, 1);
+        Assert.Equal(0.7f, sys.ActiveParticles().Single().Color.A, Tol);
+        sys.Update(1.0f);
+        Assert.Equal(0.7f, sys.ActiveParticles().Single().Color.A, Tol);
+    }
+
+    // -- Ambient fields (respawn region + live tint) --
+
+    static Particle2DEmitterConfig FieldCfg(float maxLife, float speed, Vector2 dir) => new()
+    {
+        MinLife = maxLife,
+        MaxLife = maxLife,
+        MinSpeed = speed,
+        MaxSpeed = speed,
+        Emission = Particle2DEmission.Directional,
+        Direction = dir,
+        SpreadRadians = 0f,
+        StartColor = Color.White,
+        EndColor = Color.White,
+    };
+
+    [Fact]
+    public void EmitField_FillsPoolAndReportsField()
+    {
+        var sys = new Particle2DSystem(capacity: 32, seed: 5);
+        int id = sys.EmitField(FieldCfg(4f, 0f, new Vector2(1, 0)), new Rect(0, 0, 100, 100), 32);
+        Assert.Equal(0, id);
+        Assert.Equal(1, sys.FieldCount);
+        Assert.Equal(32, sys.ActiveCount);
+    }
+
+    [Fact]
+    public void Field_RespawnKeepsPopulationStable()
+    {
+        // Short lifetimes + drift out of the region force constant deaths/exits; respawns must hold the count.
+        var cfg = FieldCfg(0.4f, 30f, new Vector2(0, 1));
+        var sys = new Particle2DSystem(capacity: 48, seed: 9);
+        sys.EmitField(cfg, new Rect(0, 0, 200, 200), 48);
+
+        for (int i = 0; i < 200; i++)
+        {
+            sys.Update(0.05f);
+            Assert.Equal(48, sys.ActiveCount);   // never drops: a dying/exiting field particle respawns same frame
+        }
+    }
+
+    [Fact]
+    public void Field_RespawnsInsideRegionWhenParticleLeaves()
+    {
+        var region = new Rect(0, 0, 10, 10);
+        // Long life (won't die) + a fast rightward velocity so it clears the region in one step.
+        var cfg = FieldCfg(1000f, 1000f, new Vector2(1, 0));
+        var sys = new Particle2DSystem(capacity: 1, seed: 3);
+        sys.EmitField(cfg, region, 1);
+
+        Particle2DView before = sys.ActiveParticles().Single();
+        Assert.InRange(before.Position.X, region.X, region.Right);
+
+        sys.Update(0.1f);   // +100px on X -> well outside the 10px region -> respawn in-region
+
+        Assert.Equal(1, sys.ActiveCount);
+        Particle2DView after = sys.ActiveParticles().Single();
+        Assert.InRange(after.Position.X, region.X, region.Right);
+        Assert.InRange(after.Position.Y, region.Y, region.Bottom);
+    }
+
+    [Fact]
+    public void Field_ExitMargin_AllowsDriftBeforeRespawn()
+    {
+        var region = new Rect(0, 0, 10, 10);
+        var cfg = FieldCfg(1000f, 50f, new Vector2(1, 0));   // +5px per 0.1s step
+        var sys = new Particle2DSystem(capacity: 1, seed: 2);
+        sys.EmitField(cfg, region, Color.White, 1, exitMargin: 100f);
+
+        // With a 100px margin the particle drifts past the region edge without respawning.
+        for (int i = 0; i < 3; i++) sys.Update(0.1f);
+        Assert.True(sys.ActiveParticles().Single().Position.X > region.Right,
+            "a particle within the exit margin should keep drifting, not respawn");
+    }
+
+    [Fact]
+    public void SetFieldTint_RecoloursLiveParticlesImmediately()
+    {
+        var sys = new Particle2DSystem(capacity: 4, seed: 1);
+        int id = sys.EmitField(FieldCfg(10f, 0f, new Vector2(1, 0)), new Rect(0, 0, 50, 50), 4);
+
+        Assert.Equal(1f, sys.ActiveParticles().First().Color.G, Tol);   // white field particle
+
+        sys.SetFieldTint(id, new Color(1, 0, 0, 1));                    // -> red
+        Particle2DView p = sys.ActiveParticles().First();
+        Assert.Equal(1f, p.Color.R, Tol);
+        Assert.Equal(0f, p.Color.G, Tol);
+        Assert.Equal(0f, p.Color.B, Tol);
+    }
+
+    [Fact]
+    public void Clear_AlsoClearsFields()
+    {
+        var sys = new Particle2DSystem(capacity: 8, seed: 1);
+        sys.EmitField(FieldCfg(4f, 0f, new Vector2(1, 0)), new Rect(0, 0, 50, 50), 8);
+        Assert.Equal(1, sys.FieldCount);
+        sys.Clear();
+        Assert.Equal(0, sys.ActiveCount);
+        Assert.Equal(0, sys.FieldCount);
+    }
 }

@@ -75,5 +75,31 @@ namespace KhaozEngine.Render2D.Vfx
 
         /// <summary>Compositing mode for this preset's particles (see <see cref="BlendMode"/>).</summary>
         public BlendMode Blend { get; init; } = BlendMode.Alpha;
+
+        /// <summary>
+        /// Fade-IN leg of a trapezoid alpha envelope, in seconds: a particle's alpha ramps 0 -> 1 over the first
+        /// <see cref="FadeInDuration"/> seconds of life, then holds. Default 0 (no fade-in - alpha is full at spawn,
+        /// today's behaviour). Combine with <see cref="FadeOutDuration"/> for a fade-in / hold / fade-out shape,
+        /// which is what a persistent ambient field (dust, embers, snow) needs so particles appear and disappear
+        /// softly instead of popping. The envelope multiplies the particle's current colour alpha, so the
+        /// <see cref="StartColor"/>-&gt;<see cref="EndColor"/> colour lerp still applies on top.
+        /// </summary>
+        public float FadeInDuration { get; init; }
+
+        /// <summary>
+        /// Fade-OUT leg of the trapezoid alpha envelope, in seconds: a particle's alpha ramps 1 -> 0 over the last
+        /// <see cref="FadeOutDuration"/> seconds of life. Default 0 (the envelope adds no fade-out - the existing
+        /// colour-alpha lerp, e.g. an <see cref="EndColor"/> with alpha 0, still fades the particle if configured).
+        /// </summary>
+        public float FadeOutDuration { get; init; }
+
+        /// <summary>
+        /// Per-particle random size variation, as a fraction of the configured size. At emit each particle draws a
+        /// scale in <c>[1 - SizeJitter, 1 + SizeJitter]</c> (clamped at 0) and multiplies both
+        /// <see cref="StartSize"/> and <see cref="EndSize"/> by it, so a field of motes gets natural size spread
+        /// while still lerping proportionally. Default 0 (every particle the exact configured size, today's
+        /// behaviour); e.g. 0.4 = +/-40%.
+        /// </summary>
+        public float SizeJitter { get; init; }
     }
 }

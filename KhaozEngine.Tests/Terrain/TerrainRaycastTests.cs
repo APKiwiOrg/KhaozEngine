@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using KhaozEngine.Terrain;
 using Xunit;
@@ -80,6 +81,27 @@ namespace KhaozEngine.Tests.Terrain
         {
             var field = FlatField(2f);
             Assert.False(TerrainRaycast.Raycast(field, new Vector3(0f, 10f, 0f), new Vector3(1f, -1f, 0f), 5f, out _));
+        }
+
+        [Fact]
+        public void TailCrossing_WithinLastPartialStep_IsFound()
+        {
+            var field = FlatField(2.1f);
+            // True crossing at t = 7.9, strictly between the last full step multiple (7.75) and maxDistance (7.95).
+            bool hit = TerrainRaycast.Raycast(field, new Vector3(0f, 10f, 0f), new Vector3(1f, -1f, 0f), 7.95f, out Vector3 p);
+            Assert.True(hit);
+            Assert.Equal(7.9f, p.X, 2);
+            Assert.Equal(2.1f, p.Y, 2);
+        }
+
+        [Fact]
+        public void NonPositiveStep_Throws()
+        {
+            var field = FlatField(2f);
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                TerrainRaycast.Raycast(field, new Vector3(0f, 10f, 0f), new Vector3(1f, -1f, 0f), 10f, out _, 0f));
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                TerrainRaycast.Raycast(field, new Vector3(0f, 10f, 0f), new Vector3(1f, -1f, 0f), 10f, out _, -1f));
         }
     }
 }

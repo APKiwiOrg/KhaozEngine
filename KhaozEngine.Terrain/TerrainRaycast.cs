@@ -14,11 +14,14 @@ namespace KhaozEngine.Terrain
         /// <summary>March from origin along direction (need not be normalized) up to maxDistance (in units
         /// of the direction's length). Returns true with the surface point when the ray crosses the terrain,
         /// false when it stays above for the whole distance. A ray starting below the surface returns true
-        /// at the origin. step is the coarse march length in t units, bisected 24 times on a crossing.</summary>
+        /// at the origin. step is the coarse march length in t units, bisected 24 times on a crossing.
+        /// The final march sample is clamped to exactly maxDistance, so a crossing inside the last partial
+        /// step is still found. step must be positive (ArgumentOutOfRangeException otherwise).</summary>
         public static bool Raycast(TerrainField field, Vector3 origin, Vector3 direction, float maxDistance,
             out Vector3 hit, float step = 0.25f)
         {
-            if (field == null) throw new ArgumentNullException(nameof(field));
+            ArgumentNullException.ThrowIfNull(field);
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(step);
 
             if (origin.Y - field.SampleHeight(origin.X, origin.Z) <= 0f)
             {
@@ -27,9 +30,12 @@ namespace KhaozEngine.Terrain
             }
 
             float prevT = 0f;
+            float t = step;
 
-            for (float t = step; t <= maxDistance; t += step)
+            while (prevT < maxDistance)
             {
+                if (t > maxDistance) t = maxDistance;
+
                 Vector3 pos = origin + direction * t;
                 float diff = pos.Y - field.SampleHeight(pos.X, pos.Z);
 
@@ -51,6 +57,11 @@ namespace KhaozEngine.Terrain
                 }
 
                 prevT = t;
+                t += step;
+
+                // Float accumulation can stall once t is huge relative to step (t + step == t).
+                // Jump straight to the final sample so the march always terminates.
+                if (t <= prevT) t = maxDistance;
             }
 
             hit = default;

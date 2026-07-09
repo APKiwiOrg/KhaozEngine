@@ -29,6 +29,14 @@ landed. Goal: make props, trees, and buildings actually look good, not just read
   preset or opt in per-asset via the `textured` manifest flag), plus multi-texture-per-primitive support.
 - CC0-asset-friendly throughout (ambientCG terrain textures, the kit textures), no new heavy dependencies.
 
+### 3. Map editor (design approved 2026-07-09, in flight)
+
+The world-document program: `KhaozEngine.MapDoc` (zone document format: terrain config, authored
+placements, scatter exclusions and overrides, spawns, regions), the `KhaozEngine.MapEditor` in-engine
+GUI runtime plus per-game editor heads, and the `ke-mapedit` MCP server so AI can edit maps with
+world-aware queries and renders. Ruinborne is the first adopter. Four phases, MapDoc first, GUI and
+MCP in parallel after it. Full design: [MAP-EDITOR-DESIGN.md](MAP-EDITOR-DESIGN.md).
+
 ## Netcode / MMO refinements
 
 - Delta bit-packing / quantization: shrink per-delta bandwidth further (on top of the AoI delta path).

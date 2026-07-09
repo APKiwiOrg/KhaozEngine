@@ -88,6 +88,26 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void DragRight_LooksTowardStrafeRight()
+        {
+            var cam = new FlyCamera3D();
+            var ctl = new FlyCameraController(cam);
+            Vector3 right = Vector3.Normalize(Vector3.Cross(cam.Forward, Vector3.UnitY));
+            ctl.Update(Frame(mouseDown: new[] { MouseButton.Right }, mouseDelta: new Vector2(50f, 0f)), 0.016f);
+            Assert.True(Vector3.Dot(cam.Forward, right) > 0f, "drag right should rotate the view toward strafe right");
+        }
+
+        [Fact]
+        public void InvertX_FlipsYawDirection()
+        {
+            var cam = new FlyCamera3D();
+            var ctl = new FlyCameraController(cam) { InvertX = true };
+            Vector3 right = Vector3.Normalize(Vector3.Cross(cam.Forward, Vector3.UnitY));
+            ctl.Update(Frame(mouseDown: new[] { MouseButton.Right }, mouseDelta: new Vector2(50f, 0f)), 0.016f);
+            Assert.True(Vector3.Dot(cam.Forward, right) < 0f, "inverted drag right should rotate the view toward strafe left");
+        }
+
+        [Fact]
         public void Wheel_ScalesMoveSpeed_Clamped()
         {
             var cam = new FlyCamera3D();

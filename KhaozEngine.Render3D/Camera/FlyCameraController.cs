@@ -10,7 +10,9 @@ namespace KhaozEngine.Render3D
     /// <see cref="InputState.MouseDelta"/> scaled by <see cref="LookSpeed"/>, the engine has no pointer lock),
     /// WASD to fly along the view direction (W/S follow <see cref="FlyCamera3D.Forward"/> with pitch, so it is
     /// true flight; A/D strafe along the horizontal right vector), E/Q to rise/sink on world +Y, hold
-    /// <see cref="Key.LeftShift"/> to sprint, and the wheel to scale <see cref="MoveSpeed"/>. Touches no input
+    /// <see cref="Key.LeftShift"/> to sprint, and the wheel to scale <see cref="MoveSpeed"/>. Look convention is
+    /// standard first-person editor feel: drag right looks right (toward the A/D strafe-right vector) and drag up
+    /// looks up, with <see cref="InvertX"/> / <see cref="InvertY"/> to flip either axis. Touches no input
     /// statics (the snapshot is handed in), owns no smoothing: dt-scaled direct integration, deterministic, and
     /// allocation-free per frame.
     /// </summary>
@@ -34,7 +36,10 @@ namespace KhaozEngine.Render3D
         public float SpeedWheelStep { get; set; } = 1.25f;
         /// <summary>Speed multiplier while <see cref="Key.LeftShift"/> is held. Default 3.</summary>
         public float SprintMultiplier { get; set; } = 3f;
-        /// <summary>Invert the vertical look axis (pitch). Default false.</summary>
+        /// <summary>Invert the horizontal look axis (yaw), mirroring <see cref="FollowCameraController.InvertX"/>.
+        /// Default false (drag right looks right).</summary>
+        public bool InvertX { get; set; }
+        /// <summary>Invert the vertical look axis (pitch). Default false (drag up looks up).</summary>
         public bool InvertY { get; set; }
 
         public FlyCameraController(FlyCamera3D camera)
@@ -44,12 +49,13 @@ namespace KhaozEngine.Render3D
 
         /// <summary>
         /// Apply this frame's mouselook, wheel speed scaling, and WASD/EQ flight. While
-        /// <see cref="LookButton"/> is held the mouse delta swings <see cref="FlyCamera3D.Yaw"/> (horizontal) and
-        /// tilts <see cref="FlyCamera3D.Pitch"/> (vertical, flipped by <see cref="InvertY"/>, clamped by the
-        /// camera); the wheel multiplies <see cref="MoveSpeed"/> by <see cref="SpeedWheelStep"/> per notch,
-        /// clamped. Held movement keys translate <see cref="FlyCamera3D.Position"/> by <see cref="MoveSpeed"/> times
-        /// <paramref name="dt"/> (times <see cref="SprintMultiplier"/> while shift is down) along the view basis.
-        /// No input means no change.
+        /// <see cref="LookButton"/> is held the mouse delta swings <see cref="FlyCamera3D.Yaw"/> (horizontal,
+        /// drag right looks right, toward the strafe-right vector) and tilts <see cref="FlyCamera3D.Pitch"/>
+        /// (vertical, drag up looks up, clamped by the camera); flip either axis with <see cref="InvertX"/> /
+        /// <see cref="InvertY"/>. The wheel multiplies <see cref="MoveSpeed"/> by <see cref="SpeedWheelStep"/> per
+        /// notch, clamped. Held movement keys translate <see cref="FlyCamera3D.Position"/> by
+        /// <see cref="MoveSpeed"/> times <paramref name="dt"/> (times <see cref="SprintMultiplier"/> while shift
+        /// is down) along the view basis. No input means no change.
         /// </summary>
         public void Update(in InputState input, float dt)
         {
@@ -57,9 +63,11 @@ namespace KhaozEngine.Render3D
             if (input.IsDown(LookButton))
             {
                 Vector2 d = input.MouseDelta;
-                Camera.Yaw += d.X * LookSpeed;
+                float yawDelta = d.X * LookSpeed;
                 float pitchDelta = -d.Y * LookSpeed;   // mouse up (negative y) looks up
+                if (InvertX) yawDelta = -yawDelta;
                 if (InvertY) pitchDelta = -pitchDelta;
+                Camera.Yaw -= yawDelta;                // yaw decreasing turns toward strafe right (+Z-forward basis)
                 Camera.Pitch += pitchDelta;            // setter clamps
             }
 

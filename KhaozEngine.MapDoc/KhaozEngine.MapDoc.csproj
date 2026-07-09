@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.MapDoc</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>The KhaozEngine zone/map document: a versioned, schema-validated JSON format capturing what was previously world code (terrain config with parametric features, procedural scatter layers with exclusion and override shapes, authored prop placements, NPC spawn markers, tagged regions). Load/save/validate plus MapRuntime builders that produce the exact runtime objects games consume (TerrainField, ScatterConfig, CompanionConfig, PropPlacement lists), so client and server load one document through one deterministic path. GPU-free. The GUI editor (KhaozEngine.MapEditor) and the ke-mapedit MCP tool are frontends over this model.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
+    <ProjectReference Include="../KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
+    <ProjectReference Include="../KhaozEngine.Content/KhaozEngine.Content.csproj" />
+    <ProjectReference Include="../KhaozEngine.Terrain/KhaozEngine.Terrain.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Tests" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

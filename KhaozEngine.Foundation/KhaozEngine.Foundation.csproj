@@ -21,6 +21,7 @@
     <ProjectReference Include="../KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
     <ProjectReference Include="../KhaozEngine.Identity/KhaozEngine.Identity.csproj" />
     <ProjectReference Include="../KhaozEngine.Locomotion/KhaozEngine.Locomotion.csproj" />
+    <ProjectReference Include="../KhaozEngine.MapDoc/KhaozEngine.MapDoc.csproj" />
     <ProjectReference Include="../KhaozEngine.Objectives/KhaozEngine.Objectives.csproj" />
     <ProjectReference Include="../KhaozEngine.Persistence/KhaozEngine.Persistence.csproj" />
     <ProjectReference Include="../KhaozEngine.Physics/KhaozEngine.Physics.csproj" />

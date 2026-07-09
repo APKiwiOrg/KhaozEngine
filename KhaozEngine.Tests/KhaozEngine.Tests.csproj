@@ -49,6 +49,7 @@
     <ProjectReference Include="../KhaozEngine.Identity.Oidc/KhaozEngine.Identity.Oidc.csproj" />
     <ProjectReference Include="../KhaozEngine.Localization.TestKit/KhaozEngine.Localization.TestKit.csproj" />
     <ProjectReference Include="../KhaozEngine.Locomotion/KhaozEngine.Locomotion.csproj" />
+    <ProjectReference Include="../KhaozEngine.MapDoc/KhaozEngine.MapDoc.csproj" />
     <ProjectReference Include="../KhaozEngine.NetWorld/KhaozEngine.NetWorld.csproj" />
     <ProjectReference Include="../KhaozEngine.Server.Admin/KhaozEngine.Server.Admin.csproj" />
     <ProjectReference Include="../KhaozEngine.Netcode/KhaozEngine.Netcode.csproj" />

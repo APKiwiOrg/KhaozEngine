@@ -181,12 +181,15 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
     full-weight unmasked Override layer is byte-identical to the single-clip path, so existing skinned rendering is
     unchanged until a game adds a layer. Rotation blending matches the crossfade (shortest-arc `Quaternion.Slerp` +
     re-normalize). Steady-state `Update`/`GetBonePalette` allocate nothing.
-  - One-shot actions - `LayeredAnimator.PlayAction(clip, mask, fadeIn, fadeOut, speed)` -> `ActionHandle` plays a
-    clip once as a masked action over the base: fade in, play through, fade out overlapping the clip tail, then
-    auto-retire and free its layer slot (slots pooled + reused, so repeated actions allocate nothing). `Cancel(handle)`
-    fades an action out early from its current weight (no pose pop). `AnimatedCharacter.PlayAction` / `CancelAction`
-    wrap this over the locomotion base (the byte-stable single-player path when no action is live). Callable on a
-    remote character's brain too (no ownership state) - `ReplicatedCharacterAnimators.BrainFor(id)` reaches it.
+  - One-shot and held actions - `LayeredAnimator.PlayAction(clip, mask, fadeIn, fadeOut, speed, mode, hold)` ->
+    `ActionHandle` plays a clip as a masked action over the base: fade in, then (default `hold: false`) play through
+    and fade out overlapping the clip tail and auto-retire, or (`hold: true`) stay at full weight looping the clip as a
+    persistent masked pose (a drawn-weapon arm idle) until `Cancel`. `Cancel(handle)` fades an action out early from its
+    current weight (no pose pop) and retires it. Slots pooled + reused, so repeated actions allocate nothing. A held
+    action played first sits below later one-shot actions, which composite over it and fall back to it as they retire.
+    `AnimatedCharacter.PlayAction` / `CancelAction` wrap this over the locomotion base (the byte-stable single-player
+    path when no action is live). Callable on a remote character's brain too (no ownership state) -
+    `ReplicatedCharacterAnimators.BrainFor(id)` reaches it.
 
 Renderer deps (Veldrid/Veldrid.SPIRV/SharpGLTF) are confined to this package via `KhaozEngine.Gpu`. See
 `docs/USING-KHAOZENGINE.md`.

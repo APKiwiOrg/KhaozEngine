@@ -117,21 +117,26 @@ namespace KhaozEngine.Game
             }
         }
 
-        /// <summary>Play <paramref name="clip"/> once as a one-shot action stacked over locomotion (an attack, a cast):
-        /// fade in, play through, fade out overlapping the clip tail, then auto-retire. <paramref name="mask"/> gates it
-        /// to a body region (e.g. <c>BoneMask.Subtree(Skeleton, spineNode, 1f)</c> for an upper-body attack while the
-        /// legs keep running); null == the whole skeleton. Returns an <see cref="ActionHandle"/> for
-        /// <see cref="CancelAction"/>. Callable on a LOCAL or a REMOTE character's brain alike - drive a remote's action
-        /// by calling this when the game receives the replicated action trigger (replicating the trigger is a
-        /// game-message concern, out of scope here). <paramref name="speed"/> scales the playhead (the real play
-        /// duration is <c>clip.Duration / speed</c>), while <paramref name="fadeIn"/> / <paramref name="fadeOut"/> are
-        /// wall-clock seconds independent of <paramref name="speed"/>. The slot pool grows when no idle slot exists, so
-        /// an action is never rejected. When two live actions mask the same bone they composite by layer stack order
-        /// (higher slot index wins), which after slot reuse is slot-acquisition order, not play order - do not rely on
-        /// play-order precedence for overlapping masks. Client-cosmetic: never feed the pose back into
-        /// simulation/netcode.</summary>
+        /// <summary>Play <paramref name="clip"/> as an action stacked over locomotion (an attack, a cast). With
+        /// <paramref name="hold"/> false (default) it is a ONE-SHOT: fade in, play through, fade out overlapping the clip
+        /// tail, then auto-retire. With <paramref name="hold"/> true it is HELD indefinitely: after the fade-in it stays
+        /// at full weight and loops (a persistent masked pose, e.g. a drawn-weapon arm idle held over locomotion) until
+        /// <see cref="CancelAction"/> fades it out. <paramref name="mask"/> gates it to a body region (e.g.
+        /// <c>BoneMask.Subtree(Skeleton, spineNode, 1f)</c> for an upper-body attack while the legs keep running);
+        /// null == the whole skeleton. Returns an <see cref="ActionHandle"/> for <see cref="CancelAction"/>. Callable on
+        /// a LOCAL or a REMOTE character's brain alike - drive a remote's action by calling this when the game receives
+        /// the replicated action trigger (replicating the trigger is a game-message concern, out of scope here).
+        /// <paramref name="speed"/> scales the playhead (the real play duration is <c>clip.Duration / speed</c>), while
+        /// <paramref name="fadeIn"/> / <paramref name="fadeOut"/> are wall-clock seconds independent of
+        /// <paramref name="speed"/>. The slot pool grows when no idle slot exists, so an action is never rejected. When
+        /// two live actions mask the same bone they composite by layer stack order (higher slot index wins), which after
+        /// slot reuse is slot-acquisition order, not play order - do not rely on play-order precedence for overlapping
+        /// masks; a held action played FIRST sits below later one-shot actions, which composite over it and fall back to
+        /// it as they retire. <paramref name="hold"/> true holds the action indefinitely at full weight (looping) instead
+        /// of playing it once; the auto fade-out is suppressed and it ends only via <see cref="CancelAction"/>. Default
+        /// false (one-shot). Client-cosmetic: never feed the pose back into simulation/netcode.</summary>
         public ActionHandle PlayAction(AnimationClip clip, BoneMask? mask = null, float fadeIn = 0.1f, float fadeOut = 0.1f,
-            float speed = 1f, LayerMode mode = LayerMode.Override)
+            float speed = 1f, LayerMode mode = LayerMode.Override, bool hold = false)
         {
             if (clip is null) throw new ArgumentNullException(nameof(clip));
             if (_actions is null)
@@ -139,7 +144,7 @@ namespace KhaozEngine.Game
                 _actions = new LayeredAnimator(_skeleton);
                 _baseLocals = new JointPose[_skeleton.NodeCount];
             }
-            return _actions.PlayAction(clip, mask, fadeIn, fadeOut, speed, mode);
+            return _actions.PlayAction(clip, mask, fadeIn, fadeOut, speed, mode, hold);
         }
 
         /// <summary>Cancel an in-flight action early: fade it out cleanly from its current weight (no pose pop). A no-op

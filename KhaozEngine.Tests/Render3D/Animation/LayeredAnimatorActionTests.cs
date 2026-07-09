@@ -257,6 +257,143 @@ namespace KhaozEngine.Tests.Render3D.Animation
             Assert.Equal(2, ActiveActionCount(anim));
         }
 
+        // ---- held (persistent) actions: hold:true suppresses the auto fade-out so the slot loops at weight 1 ----
+
+        [Fact]
+        public void HeldAction_SustainsPastClipDuration_LoopsAtFullWeight()
+        {
+            Skeleton skel = OneBone();
+            var anim = new LayeredAnimator(skel);
+            var held = TranslationClip("hold", 0, new Vector3(10, 0, 0), duration: 1f);
+            const float dt = 1f / 60f;
+
+            anim.PlayAction(held, mask: null, fadeIn: 0.1f, fadeOut: 0.1f, hold: true);
+
+            // Drive well past the 1s clip (2.5 clips). A one-shot would have faded out and retired by ~1s; a held
+            // action must still be live, at full weight, with its playhead LOOPED back within [0, duration).
+            for (float t = 0f; t < 2.5f; t += dt) { anim.Update(dt); SetBase(anim, skel, 0f); }
+
+            Assert.True(anim.HasActiveActions);
+            Assert.Equal(10f, Locals(anim)[0].Translation.X, 3);   // sustained at full weight, not faded to base
+
+            AnimationLayer active = ActiveLayer(anim);
+            Assert.Equal(1f, active.Weight, 5);                    // held at weight 1
+            Assert.True(active.Time >= 0f && active.Time < held.Duration,
+                $"playhead should have wrapped (looped), got Time={active.Time} for duration {held.Duration}");
+        }
+
+        [Fact]
+        public void AttackAboveHeldAction_Wins_ThenFallsBackToHold_LegsUntouched()
+        {
+            Skeleton skel = Flat3();
+            var anim = new LayeredAnimator(skel);
+            // Node 1 = "arm": a held idle pose drives it to X=5; an attack drives it to X=20. Nodes 0/2 = "legs": base.
+            var heldArm = TranslationClip("armIdle", 1, new Vector3(5, 0, 0), duration: 1f);
+            var attack = TranslationClip("armAttack", 1, new Vector3(20, 0, 0), duration: 0.5f);
+            var armMask = new BoneMask(new[] { 0f, 1f, 0f });
+            const float dt = 1f / 60f;
+
+            // Hold the arm idle first (acquired first -> lower slot index), over a locomotion base at X=1 on every node.
+            anim.PlayAction(heldArm, armMask, fadeIn: 0.1f, fadeOut: 0.1f, hold: true);
+            for (float t = 0f; t < 1.4f; t += dt) { anim.Update(dt); SetBase(anim, skel, 1f); }   // past the clip: held
+            JointPose[] held = Locals(anim);
+            Assert.Equal(5f, held[1].Translation.X, 2);    // arm holds the idle pose
+            Assert.Equal(1f, held[0].Translation.X, 2);    // legs on the locomotion base
+            Assert.Equal(1f, held[2].Translation.X, 2);
+
+            // Now swing: the attack (acquired second -> higher slot index) wins on the arm while the hold persists below.
+            anim.PlayAction(attack, armMask, fadeIn: 0.05f, fadeOut: 0.05f, hold: false);
+            for (float t = 0f; t < 0.2f; t += dt) { anim.Update(dt); SetBase(anim, skel, 1f); }
+            Assert.Equal(20f, Locals(anim)[1].Translation.X, 1);   // attack composites over the held pose
+            Assert.Equal(1f, Locals(anim)[0].Translation.X, 2);    // legs still untouched
+
+            // Attack plays out and retires; the arm falls back to the still-held idle pose (X=5), hold still live.
+            for (float t = 0f; t < 0.6f; t += dt) { anim.Update(dt); SetBase(anim, skel, 1f); }
+            Assert.True(anim.HasActiveActions);                    // the hold remains after the attack retired
+            Assert.Equal(5f, Locals(anim)[1].Translation.X, 2);    // seamless fallback to the held pose
+            Assert.Equal(1f, Locals(anim)[0].Translation.X, 2);    // legs untouched throughout
+        }
+
+        [Fact]
+        public void Cancel_HeldAction_PastClipDuration_FadesCleanly_ThenRetires()
+        {
+            Skeleton skel = OneBone();
+            var anim = new LayeredAnimator(skel);
+            var held = TranslationClip("hold", 0, new Vector3(10, 0, 0), duration: 1f);
+            const float dt = 1f / 60f;
+
+            ActionHandle h = anim.PlayAction(held, fadeIn: 0.1f, fadeOut: 0.2f, hold: true);
+            // Drive PAST the clip duration into the held sustain (2 clips): weight 1, X=10, still live.
+            for (float t = 0f; t < 2f; t += dt) { anim.Update(dt); SetBase(anim, skel, 0f); }
+            float before = Locals(anim)[0].Translation.X;
+            Assert.Equal(10f, before, 3);
+            Assert.True(anim.HasActiveActions);
+
+            Assert.True(anim.Cancel(h));
+
+            // The frame immediately after cancel must NOT pop: continuity from the held weight.
+            anim.Update(dt); SetBase(anim, skel, 0f);
+            float justAfter = Locals(anim)[0].Translation.X;
+            Assert.True(MathF.Abs(justAfter - before) < 2f, $"pop at cancel: {before} -> {justAfter}");
+
+            // Monotone, pop-free decay to base over the cancel fade-out, then retire.
+            float prev = justAfter;
+            for (float t = 0f; t < 0.3f; t += dt)
+            {
+                anim.Update(dt); SetBase(anim, skel, 0f);
+                float x = Locals(anim)[0].Translation.X;
+                Assert.True(x <= prev + 1e-3f, $"cancel fade not monotone: {prev} -> {x}");
+                prev = x;
+            }
+            Assert.False(anim.HasActiveActions);
+            Assert.Equal(0f, Locals(anim)[0].Translation.X, 4);
+        }
+
+        [Fact]
+        public void NoHoldAction_ByteIdenticalToHeld_UntilFadeOut_ThenNoHoldRetires()
+        {
+            // hold changes NOTHING until the one-shot's fade-out would begin: a hold:false and a hold:true action driven
+            // identically are BIT-identical every frame through fade-in + sustain. They diverge only past fadeOutStart,
+            // where the one-shot fades out and retires while the held action stays at full weight (the byte-stable
+            // guarantee: the default hold:false path is unperturbed by the feature).
+            Skeleton skel = OneBone();
+            var noHold = new LayeredAnimator(skel);
+            var held = new LayeredAnimator(skel);
+            var clip = TranslationClip("swing", 0, new Vector3(10, 0, 0), duration: 1f);
+            const float dt = 1f / 60f;
+            const float fadeOutStart = 0.8f;   // duration 1 - fadeOut 0.2
+
+            noHold.PlayAction(clip, fadeIn: 0.1f, fadeOut: 0.2f, hold: false);
+            held.PlayAction(clip, fadeIn: 0.1f, fadeOut: 0.2f, hold: true);
+
+            // Through fade-in + sustain (strictly before fadeOutStart) the two are bit-identical.
+            float t = 0f;
+            for (; t < fadeOutStart - dt; t += dt)
+            {
+                noHold.Update(dt); SetBase(noHold, skel, 0f);
+                held.Update(dt); SetBase(held, skel, 0f);
+                Assert.Equal(Locals(noHold)[0].Translation.X, Locals(held)[0].Translation.X);   // exact
+            }
+
+            // Past the clip end: the one-shot has retired to base; the held action stays at full weight.
+            for (; t < 1.2f; t += dt)
+            {
+                noHold.Update(dt); SetBase(noHold, skel, 0f);
+                held.Update(dt); SetBase(held, skel, 0f);
+            }
+            Assert.False(noHold.HasActiveActions);
+            Assert.Equal(0f, Locals(noHold)[0].Translation.X, 4);
+            Assert.True(held.HasActiveActions);
+            Assert.Equal(10f, Locals(held)[0].Translation.X, 3);
+        }
+
+        static AnimationLayer ActiveLayer(LayeredAnimator anim)
+        {
+            for (int i = 0; i < anim.Layers.Count; i++)
+                if (anim.Layers[i].Weight > 0f) return anim.Layers[i];
+            throw new InvalidOperationException("no active (weight>0) layer");
+        }
+
         static int ActiveActionCount(LayeredAnimator anim) => anim.HasActiveActions ? CountNonZeroLayers(anim) : 0;
 
         static int CountNonZeroLayers(LayeredAnimator anim)

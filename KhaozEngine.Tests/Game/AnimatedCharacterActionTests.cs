@@ -193,5 +193,35 @@ namespace KhaozEngine.Tests.Game
             }
             Assert.False(remote.HasActiveActions);
         }
+
+        // ---- held action pass-through: hold:true threads AnimatedCharacter.PlayAction -> LayeredAnimator ----
+
+        [Fact]
+        public void HeldAction_KeepsCharacterActive_PastClipDuration_ThenCancelReleases()
+        {
+            // A held masked action keeps the character on the compositor path (arms hold their pose over running legs)
+            // indefinitely, past the clip duration, until CancelAction fades it out and the character returns to the
+            // byte-stable single-player path. Proves the hold flag threads through the AnimatedCharacter wrapper.
+            Skeleton skel = LegsArms();
+            var c = new AnimatedCharacter(skel, Clips(), crossfade: 0.05f, stateDebounceSeconds: 0f);
+            Settle(c, 5f);   // running: both nodes at X=3
+            Assert.False(c.HasActiveActions);
+
+            // Hold an upper-body pose (arms -> X=20) while the legs keep running.
+            ActionHandle h = c.PlayAction(Attack(1f), UpperBody(), fadeIn: 0.1f, fadeOut: 0.15f, hold: true);
+            const float dt = 1f / 60f;
+
+            // Drive well past the 1s clip: a one-shot would have retired; the held action keeps the arms posed.
+            for (float t = 0f; t < 2f; t += dt) c.Update(5f, true, 0f, dt);
+            Assert.True(c.HasActiveActions);
+            Assert.Equal(3f, Locals(c)[0].Translation.X, 2);    // legs still running
+            Assert.Equal(20f, Locals(c)[1].Translation.X, 1);   // arms held past the clip end
+
+            // Sheathe: cancel releases the hold and the character returns to pure locomotion.
+            Assert.True(c.CancelAction(h));
+            for (float t = 0f; t < 0.3f; t += dt) c.Update(5f, true, 0f, dt);
+            Assert.False(c.HasActiveActions);
+            Assert.Equal(3f, Locals(c)[1].Translation.X, 2);    // arms back on locomotion
+        }
     }
 }

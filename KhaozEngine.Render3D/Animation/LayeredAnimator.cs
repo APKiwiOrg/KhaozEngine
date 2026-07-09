@@ -218,6 +218,7 @@ namespace KhaozEngine.Render3D
             public float FadeIn;
             public float FadeOut;
             public float FadeOutStart;       // real-second mark the auto fade-out begins (PlayDuration - FadeOut)
+            public bool Hold;                // held action: suppress the auto Sustain->FadeOut so it loops at weight 1
             public bool Cancelling;          // Cancel() forced an early fade-out from the current weight
             public float CancelFromWeight;   // weight at the moment Cancel() was called (fade linearly from here)
             public float CancelElapsed;      // seconds into the cancel fade
@@ -232,22 +233,29 @@ namespace KhaozEngine.Render3D
         /// base-only path).</summary>
         public bool HasActiveActions => _activeActions > 0;
 
-        /// <summary>Play <paramref name="clip"/> ONCE as a one-shot action layered over the base (and any persistent
-        /// layers): fade in over <paramref name="fadeIn"/> seconds, play the clip through, fade out over
-        /// <paramref name="fadeOut"/> seconds ending as the clip finishes (the fade-out OVERLAPS the clip tail), then
-        /// auto-retire and free the layer slot for reuse. <paramref name="mask"/> gates it spatially (e.g. an upper-body
-        /// subtree so an attack drives the arms while the legs stay on locomotion); null == the whole skeleton.
-        /// <paramref name="mode"/> selects Override (default, replace the masked bones) or Additive (add the clip's
-        /// delta). <paramref name="speed"/> scales the clip playhead: the real play duration is
-        /// <c>clip.Duration / speed</c>, while <paramref name="fadeIn"/> / <paramref name="fadeOut"/> are wall-clock
-        /// seconds independent of <paramref name="speed"/> (the fades ride real time, not the sped-up playhead).
-        /// Returns an <see cref="ActionHandle"/> for <see cref="Cancel"/>. Reuses a pooled slot when one is free (and
-        /// grows the slot pool when none is idle - it never rejects an action or returns a sentinel), so repeated
-        /// actions allocate nothing in steady state. When two live actions mask the SAME bone, they composite by layer
-        /// stack order (higher slot index wins), which after slot reuse is slot-acquisition order, not play order - do
-        /// not rely on play-order precedence for overlapping masks.</summary>
+        /// <summary>Play <paramref name="clip"/> as an action layered over the base (and any persistent layers).
+        /// When <paramref name="hold"/> is false (the default) it is a ONE-SHOT: fade in over <paramref name="fadeIn"/>
+        /// seconds, play the clip through, fade out over <paramref name="fadeOut"/> seconds ending as the clip finishes
+        /// (the fade-out OVERLAPS the clip tail), then auto-retire and free the layer slot for reuse. When
+        /// <paramref name="hold"/> is true it is HELD indefinitely: after the fade-in it stays at full weight and LOOPS
+        /// the clip (the auto fade-out is suppressed), so it acts as a persistent masked pose - e.g. a drawn-weapon arm
+        /// idle held over locomotion - until <see cref="Cancel"/> fades it out from its current weight (no pose pop) and
+        /// retires it. <paramref name="mask"/> gates it spatially (e.g. an upper-body subtree so an attack drives the
+        /// arms while the legs stay on locomotion); null == the whole skeleton. <paramref name="mode"/> selects Override
+        /// (default, replace the masked bones) or Additive (add the clip's delta). <paramref name="speed"/> scales the
+        /// clip playhead: the real play duration is <c>clip.Duration / speed</c>, while <paramref name="fadeIn"/> /
+        /// <paramref name="fadeOut"/> are wall-clock seconds independent of <paramref name="speed"/> (the fades ride real
+        /// time, not the sped-up playhead). Returns an <see cref="ActionHandle"/> for <see cref="Cancel"/>. Reuses a
+        /// pooled slot when one is free (and grows the slot pool when none is idle - it never rejects an action or
+        /// returns a sentinel), so repeated actions allocate nothing in steady state. When two live actions mask the
+        /// SAME bone, they composite by layer stack order (higher slot index wins), which after slot reuse is
+        /// slot-acquisition order, not play order - do not rely on play-order precedence for overlapping masks. A held
+        /// action played FIRST therefore sits below later one-shot actions, which composite over it and fall back to it
+        /// seamlessly as they retire. <paramref name="hold"/> true holds the action indefinitely at full weight (looping
+        /// the clip) instead of playing it once; the auto fade-out is suppressed and it ends only via
+        /// <see cref="Cancel"/>. Default false (one-shot).</summary>
         public ActionHandle PlayAction(AnimationClip clip, BoneMask? mask = null, float fadeIn = 0.1f, float fadeOut = 0.1f,
-            float speed = 1f, LayerMode mode = LayerMode.Override)
+            float speed = 1f, LayerMode mode = LayerMode.Override, bool hold = false)
         {
             if (clip is null) throw new ArgumentNullException(nameof(clip));
 
@@ -274,6 +282,7 @@ namespace KhaozEngine.Render3D
             slot.FadeIn = fIn;
             slot.FadeOut = fOut;
             slot.FadeOutStart = fadeOutStart;
+            slot.Hold = hold;
             slot.Cancelling = false;
             _activeActions++;
 
@@ -327,7 +336,9 @@ namespace KhaozEngine.Render3D
                 if (slot.Phase == ActionPhase.Sustain)
                 {
                     slot.Layer.Weight = 1f;
-                    if (t >= slot.FadeOutStart) slot.Phase = ActionPhase.FadeOut;
+                    // A held action stays in Sustain forever (looping via AnimationLayer.Update) until Cancel; a one-shot
+                    // transitions to its auto fade-out once the playhead reaches FadeOutStart.
+                    if (t >= slot.FadeOutStart && !slot.Hold) slot.Phase = ActionPhase.FadeOut;
                 }
 
                 if (slot.Phase == ActionPhase.FadeOut && !slot.Cancelling)

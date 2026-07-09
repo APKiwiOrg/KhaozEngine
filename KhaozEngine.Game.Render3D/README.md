@@ -47,11 +47,14 @@ than crashing. The forward `Swim` clip speed-syncs (pass its authored move speed
 (exempt from the ground-state debounce, like air states) because the enter/exit is hysteresis-debounced in the
 movement sim.
 
-## One-shot actions over locomotion
+## One-shot and held actions over locomotion
 
-`AnimatedCharacter.PlayAction(clip, mask, fadeIn, fadeOut, speed)` -> `ActionHandle` plays a masked action (an
-attack, a cast) once over the locomotion base: fade in, play through, fade out overlapping the clip tail, then
-auto-retire. `CancelAction(handle)` fades it out early with no pose pop. The locomotion state machine keeps driving
+`AnimatedCharacter.PlayAction(clip, mask, fadeIn, fadeOut, speed, mode, hold)` -> `ActionHandle` plays a masked
+action (an attack, a cast) over the locomotion base. Default (`hold: false`) is a one-shot: fade in, play through,
+fade out overlapping the clip tail, then auto-retire. `hold: true` holds it indefinitely at full weight, looping the
+clip as a persistent masked pose (e.g. a drawn-weapon arm idle held over locomotion) until `CancelAction(handle)`
+fades it out with no pose pop. A held action played first sits below later one-shot actions, which composite over it
+during a swing and fall back to it as they retire. The locomotion state machine keeps driving
 the base layer exactly as before; while no action is live the pose is byte-identical to plain `AnimatedCharacter`,
 so this is opt-in with zero effect on existing rendering. Slots are pooled, so firing action after action allocates
 nothing in steady state. To play an action on a REPLICATED remote: reach its brain via

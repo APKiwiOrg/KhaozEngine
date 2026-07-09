@@ -4,7 +4,7 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **10.41.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **10.42.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan when it is scheduled.
 
@@ -78,7 +78,7 @@ Ordered gap list (2026-07-07 feature audit):
    `PixelPostProcessSettings.Bloom`): per-game tuning of threshold/intensity defaults once Ruinborne adopts it,
    and a second blur octave only if a game pulls for wider halos. A full HDR/tonemap pipeline is still not planned.
 7. Animation follow-ups (layered blending shipped in 10.31.0: `LayeredAnimator` with bone masks, override and
-   local-frame additive layers, and one-shot actions via `PlayAction` on `AnimatedCharacter`): skeletal IK (foot
+   local-frame additive layers, and one-shot or held actions via `PlayAction` on `AnimatedCharacter`): skeletal IK (foot
    placement) waits for adoption feedback, action-trigger replication stays a game-message pattern, and a
    per-layer sync-group mechanism (matching walk/run phase across layers) only if combat blending pulls for it.
 8. GPU skinning: skinning is CPU-side (deliberate: a Metal per-instance-attribute bug killed the old GPU path,

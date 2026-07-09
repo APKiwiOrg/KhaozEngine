@@ -1610,6 +1610,14 @@ character produces a pose **byte-identical** to plain `AnimatedCharacter` (the l
 to `DrawSkinned`, the action compositor is bypassed), so adopting actions never changes existing locomotion
 rendering. `HasActiveActions` tells you whether any action is live.
 
+**Held (persistent) masked poses.** Pass `hold: true` to `PlayAction` to hold an action indefinitely instead of
+playing it once: after the fade-in it stays at full weight and loops its clip, so it acts as a persistent masked
+pose over locomotion, e.g. a drawn-weapon arm idle held on the upper body while the legs keep walking/running. It
+ends only when you `Cancel` / `CancelAction` it (which fades from the current weight, no pop). One-shot actions
+layer over a hold: play the hold FIRST (so it sits on a lower slot), then fire one-shot swings normally, each
+composites over the held pose during the swing and falls back to it as it retires. Because a held action keeps
+`HasActiveActions` true, the compositor stays engaged for as long as the pose is held.
+
 The same API is on `LayeredAnimator` directly if you drive your own base: call `SetBaseLocals(...)` each frame
 with your base local poses (e.g. `AnimationPlayer.GetLocalPoses` for a locomotion crossfade), then
 `PlayAction` / `Cancel` / `Update(dt)` and `GetBonePalette`.

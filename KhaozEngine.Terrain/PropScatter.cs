@@ -56,6 +56,18 @@ namespace KhaozEngine.Terrain
         }
     }
 
+    /// <summary>A region-scoped tweak to scatter behaviour: inside <see cref="Area"/> the biome rule's density is
+    /// multiplied by <see cref="DensityMultiplier"/> (clamped to 0..1) and, when <see cref="Kinds"/> is non-empty,
+    /// the rule's kind mix is replaced. The first override (list order) containing a candidate applies. Stateless
+    /// per candidate, so tiling invariance holds.</summary>
+    public sealed class ScatterOverride
+    {
+        public IArea2D? Area;
+        public float DensityMultiplier = 1f;
+        /// <summary>Replacement kind mix inside the area; null or empty keeps the biome rule's kinds.</summary>
+        public PropKind[]? Kinds;
+    }
+
     /// <summary>Data-driven inputs for <see cref="PropScatter.Generate"/>: a jittered grid with per-biome density +
     /// kind mix, exclusions (below water / inside a clearing radius / above a height cap), and per-instance
     /// scale/yaw/variant from independent coordinate hashes. <see cref="ForestRing"/> reproduces the greybox
@@ -80,6 +92,10 @@ namespace KhaozEngine.Terrain
         /// single ClearingRadius disc (which keeps working); map documents author these as exclusion shapes.
         /// Default empty. Must be the same set on every query for tiling invariance to hold.</summary>
         public IArea2D[] Exclusions = Array.Empty<IArea2D>();
+
+        /// <summary>Region-scoped density/kind overrides, first match wins. Default empty. Must be the same set on
+        /// every query for tiling invariance to hold.</summary>
+        public ScatterOverride[] Overrides = Array.Empty<ScatterOverride>();
 
         /// <summary>Defaults reproducing the greybox forest ring: a single Meadow rule (density 0.55) over the
         /// committed CC0 kit (pines dominant, oaks fewer, rocks sparse), clearing radius 26 m, off-mountain at
@@ -195,7 +211,16 @@ namespace KhaozEngine.Terrain
                     BiomeScatterRule? rule = RuleFor(config, field.SampleBiome(x, z));
                     if (rule == null || rule.Kinds.Length == 0) continue;
 
-                    if (Hash01(gx, gz, config.Seed, SaltDensity) >= rule.Density) continue;
+                    float density = rule.Density;
+                    PropKind[] kinds = rule.Kinds;
+                    ScatterOverride? ov = OverrideFor(config.Overrides, x, z);
+                    if (ov != null)
+                    {
+                        density = Math.Clamp(density * ov.DensityMultiplier, 0f, 1f);
+                        if (ov.Kinds is { Length: > 0 }) kinds = ov.Kinds;
+                    }
+
+                    if (Hash01(gx, gz, config.Seed, SaltDensity) >= density) continue;
 
                     float y = field.SampleHeight(x, z);
                     if (y < field.WaterLevel) continue;
@@ -206,11 +231,11 @@ namespace KhaozEngine.Terrain
 
                     if (InExclusion(config.Exclusions, x, z)) continue;
 
-                    int variant = PickKind(rule.Kinds, Hash01(gx, gz, config.Seed, SaltKind));
+                    int variant = PickKind(kinds, Hash01(gx, gz, config.Seed, SaltKind));
                     float scale = config.ScaleMin + Hash01(gx, gz, config.Seed, SaltScale) * (config.ScaleMax - config.ScaleMin);
                     float yaw = Hash01(gx, gz, config.Seed, SaltYaw) * MathF.Tau;
 
-                    result.Add(new PropPlacement(rule.Kinds[variant].Id, x, y, z, scale, yaw, variant));
+                    result.Add(new PropPlacement(kinds[variant].Id, x, y, z, scale, yaw, variant));
                 }
             }
             return result;
@@ -303,6 +328,13 @@ namespace KhaozEngine.Terrain
             for (int i = 0; i < exclusions.Length; i++)
                 if (exclusions[i].Contains(x, z)) return true;
             return false;
+        }
+
+        static ScatterOverride? OverrideFor(ScatterOverride[] overrides, float x, float z)
+        {
+            for (int i = 0; i < overrides.Length; i++)
+                if (overrides[i].Area is IArea2D a && a.Contains(x, z)) return overrides[i];
+            return null;
         }
 
         // Weighted pick over the kind mix using u in [0,1); returns the chosen kind index.

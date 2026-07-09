@@ -7,7 +7,7 @@ namespace KhaozEngine.MapDoc;
 
 /// <summary>The root of a zone/map document: everything that describes a zone's static world content. One JSON
 /// file per zone, human-diffable, git-committed in the game repo. Both game heads load the same document through
-/// <see cref="MapDocumentFile"/> and build runtime objects with <c>MapRuntime</c>, so client and server
+/// <see cref="MapDocumentFile"/> and build runtime objects with <see cref="MapRuntime"/>, so client and server
 /// agree by construction.</summary>
 public sealed class MapDocument
 {

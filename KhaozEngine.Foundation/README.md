@@ -20,6 +20,10 @@ Pulls in:
 - `KhaozEngine.Physics` - the dependency-free 3D physics seam (`IPhysicsWorld`, shapes, queries).
 - `KhaozEngine.Locomotion` - render-free character movement (`CharacterMovement.Step`, `MoveTuning`).
 - `KhaozEngine.Terrain` - render-free analytic terrain field (height/normal/biome from `(x, z, seed)`).
+- `KhaozEngine.MapDoc` - the zone/map document format: load/save/validate/migrate a versioned JSON model
+  (terrain with parametric features, scatter and companion layers, exclusion/override shapes, authored
+  placements, spawns, regions) plus `MapRuntime` builders that produce the exact `TerrainField`/
+  `ScatterConfig`/`PropPlacement` objects games consume.
 - `KhaozEngine.Determinism` - `DeterministicFpScope` FP-environment pinning for lockstep sims.
 - `KhaozEngine.Platform` - cross-platform `Clipboard` facade.
 - `KhaozEngine.Updates` - delta auto-update pipeline.

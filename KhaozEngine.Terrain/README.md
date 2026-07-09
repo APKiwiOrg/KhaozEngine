@@ -40,6 +40,24 @@ state = CharacterMovement.Step(state, cmd, dt, ground.GroundHeight, MoveTuning.D
                                groundNormal: ground.GroundNormal);
 ```
 
+## Scatter exclusions and overrides
+
+`PropScatter.Generate` takes generalized region shapes alongside the legacy single clearing disc:
+
+- **`IArea2D`** (`DiscArea2D`, `BoxArea2D`, `PolygonArea2D`) - a pure, stateless XZ-plane region test
+  (`Contains(x, z)`), so a candidate's exclusion/override status depends only on the shape's own
+  construction values, never on call order or which chunk asked.
+- **`ScatterConfig.Exclusions`** (`IArea2D[]`) - a candidate inside ANY exclusion is skipped, on top of
+  the legacy `ClearingRadius` disc (which still works unchanged, a document-driven config just zeroes it
+  and expresses clearings as exclusion shapes instead).
+- **`ScatterConfig.Overrides`** (`ScatterOverride[]`) - the first override (list order) whose `Area`
+  contains the candidate wins: its `DensityMultiplier` scales the biome rule's density (the product is
+  clamped to 0..1, so an override can only reduce or fully suppress spawns, never push density above 1),
+  and a non-empty `Kinds` replaces the rule's weighted kind mix inside the area.
+
+Both arrays default empty (no behaviour change) and must be the same set on every `Generate` call over the
+same world for tiling invariance to hold, exactly like every other input `PropScatter` reads.
+
 Depends on `KhaozEngine.Primitives` and `KhaozEngine.Collision`. No render dependency: add
 [KhaozEngine.Terrain.Render3D](../KhaozEngine.Terrain.Render3D) to mesh and stream it. In the
 `Foundation` umbrella metapackage.

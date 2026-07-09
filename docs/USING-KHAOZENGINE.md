@@ -2610,6 +2610,68 @@ off-mountain placements.
 
 ---
 
+## Map documents (`KhaozEngine.MapDoc`)
+
+Everything above (terrain config, scatter layers, companion layers, authored placements) is normally wired
+up in code. `KhaozEngine.MapDoc` (GPU-free, `Foundation` umbrella) is the alternative: one JSON file per
+zone (for example `assets/maps/valley.map.json`, human-diffable, git-committed) capturing terrain, scatter
+and companion layers, exclusion and scatter-override shapes, authored placements, NPC spawns, and tagged
+regions. `MapDocumentFile` loads/saves/validates it, and `MapRuntime` turns a loaded document into the
+exact objects the sections above already consume, so a game swaps hand-wired `TerrainConfig`/
+`ScatterConfig` construction for a document load without touching anything downstream:
+
+```csharp
+var doc = MapDocumentFile.Load("assets/maps/valley.map.json");
+var registry = MapDocRegistry.CreateDefault();
+var field = MapRuntime.BuildField(doc, registry);
+var trees = MapRuntime.BuildScatterConfig(doc, "trees");
+var placements = MapRuntime.BuildPlacements(doc, field);
+// Both heads run exactly this, so client and server agree by construction.
+```
+
+`MapRuntime.BuildScatterConfigs(doc)` builds every scatter layer keyed by name in one call, and
+`BuildCompanionConfig(doc, name)` builds a companion layer (the host placements still come from
+`BuildScatterConfig` + `PropScatter.Generate` for the named `HostLayer`).
+
+**Exclusions and overrides.** A document's `exclusions` and `scatterOverrides` sections feed straight into
+the `ScatterConfig.Exclusions`/`.Overrides` covered above: each entry's `layers` list is null (every layer)
+or names the layers it scopes to, and `MapRuntime` filters them per scatter layer when it builds that
+layer's `ScatterConfig`. The document format has no clearing-radius concept - `MapRuntime` always zeroes
+`ScatterConfig.ClearingRadius` for document-built layers, so a document expresses a clearing as an
+exclusion shape instead.
+
+**Ground-snap.** A `placements` entry with no `y` ground-snaps deterministically: `MapRuntime.BuildPlacements`
+samples `field.SampleHeight(x, z)` for it, off the same field every other consumer of the document builds,
+so client and server (and re-loading the same document later) land on the same Y without either side
+carrying an explicit height.
+
+**Custom terrain features.** The built-in features (`lake`/`flatten`/`ridge`/`rim`) resolve through a
+`MapDocRegistry`. Register a game-specific one instead of touching the engine:
+
+```csharp
+var registry = MapDocRegistry.CreateDefault();
+registry.RegisterFeature("crater", typeof(CraterFeatureDoc), f => ((CraterFeatureDoc)f).Build());
+var doc = MapDocumentFile.Load(path, new MapDocumentLoadOptions { Registry = registry });
+```
+
+`CraterFeatureDoc : MapFeature` returns `"crater"` from `Type` and exposes a `Build()` producing the game's
+`ITerrainFeature`. A document referencing an unregistered feature type fails validation instead of
+silently dropping it.
+
+**Format migrations.** `MapDocumentLoadOptions.RegisterMigration(fromVersion, step)` registers a pure
+`JsonObject -> JsonObject` transform run before deserialization when an old document's `formatVersion` is
+behind `MapDocumentFile.CurrentFormatVersion`. Migrations must form a contiguous chain up to the current
+version or the load fails.
+
+**Boot fails loud.** Map documents are dev-authored content, not runtime state: a read error, invalid
+JSON, a bad or unmigratable `formatVersion`, or any `MapDocumentValidator` failure (a duplicate id, an
+unknown scatter layer reference, the reserved `terrainOverrides` section present) throws
+`MapDocumentException`, so a game does not boot on a bad document, the opposite of how the engine
+quarantines a corrupt runtime cell blob and carries on. See the `KhaozEngine.MapDoc` package README for
+the full section list and a complete example document.
+
+---
+
 ## Networked overworld (`KhaozEngine.Locomotion` + `KhaozEngine.NetWorld`)
 
 The movement math lives in one render-free place so local feel and networked feel are the same code.

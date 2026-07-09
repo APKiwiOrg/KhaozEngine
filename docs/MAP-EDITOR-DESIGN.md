@@ -202,7 +202,7 @@ execution uses Sonnet for mechanical and exploratory work and Opus for the forma
 editor-runtime cores. Never Fable-tier subagents.
 
 - **Phase A (blocking foundation)**: MapDoc package, Terrain exclusion/override support,
-  loader, schema, determinism guard tests. One release.
+  loader, schema, determinism guard tests. Shipped, see CHANGELOG.
 - **Phase B (parallel after A)**: Gui widgets (TreeView, PropertyGrid, NumberField),
   MapEditor runtime, fly cam, gizmos. One or two releases.
 - **Phase C (parallel after A, independent of B)**: ke-mapedit MCP tool. One release.

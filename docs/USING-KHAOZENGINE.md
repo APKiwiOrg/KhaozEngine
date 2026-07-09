@@ -2672,6 +2672,89 @@ the full section list and a complete example document.
 
 ---
 
+## Editor building blocks (`NumberField` / `TreeView` / `PropertyGrid` / `FlyCamera3D` / `RayMath` / `TerrainRaycast`)
+
+The primitives an in-engine editor viewport is built from: three inspector widgets (`KhaozEngine.Gui`), a
+free-fly camera (`KhaozEngine.Render3D`), and ray-based picking (`KhaozEngine.Primitives` +
+`KhaozEngine.Terrain`). Every game gets them, not just an eventual `MapEditor` (see
+`docs/MAP-EDITOR-DESIGN.md` for the program this building-block set feeds).
+
+**Inspector widgets.** `PropertyGrid` is a vertical stack of `PropertyRow`s split label/editor at
+`LabelFraction`, scrolling and scissor-clipped like `ScrollablePanel`. Add typed rows over plain get/set
+delegates, no reflection:
+
+```csharp
+var grid = new PropertyGrid(inspectorRect);
+grid.Rows.Add(new FloatRow(Strings.PosX, () => selected.Position.X,
+    v => selected.Position = selected.Position with { X = v }));
+grid.Rows.Add(new BoolRow(Strings.Visible, () => selected.Visible, v => selected.Visible = v));
+grid.Rows.Add(new ReadOnlyRow(Strings.ObjectId, () => selected.Id.ToString()));
+grid.Update(input, dt);   // each row polls its getter, unless the user is mid-edit/scrub on that row
+grid.Draw(batch, white, font);
+```
+
+`FloatRow` edits through a `NumberField` (drag to scrub `Value` by `DragScale` per pixel, tap under 3 draw
+units of travel to type instead, Enter commits clamped and rounded, Escape cancels), `BoolRow` through a
+`Toggle`, `TextRow` through a `TextInput`, and `ReadOnlyRow` just polls and displays a string. `NumberField`
+and `TreeView` also stand alone outside a grid, e.g. an outline panel beside the inspector:
+
+```csharp
+var tree = new TreeView(outlineRect);
+tree.Roots.Add(sceneRoot);                 // TreeNode: label + children + a caller-owned Tag
+tree.OnSelected = node => Select((SceneObject)node.Tag!);
+tree.Update(input);
+tree.Draw(batch, white, font);
+```
+
+A tap in a row's caret zone toggles a parent's `Expanded` flag, a tap elsewhere in the row selects it
+(`VisibleRows()` is the public depth-first walk both hit-testing and drawing share). All three widgets are
+`LocalizedText`-compliant like every other Gui sink.
+
+**Free-fly editor camera.** `FlyCamera3D` implements `IIsoCamera3D` (a world `Position` plus `Yaw`/`Pitch`, no
+orbit target) so it drops into `Scene3D.CameraOverride` exactly like `FollowCamera3D` above, and carries the
+same `ScreenToRay`/`ScreenToGround`/`WorldToScreen` picking methods. `FlyCameraController` drives it off the
+raw `InputState` snapshot:
+
+```csharp
+var camera = new FlyCamera3D { Position = new Vector3(0f, 20f, -10f) };
+var flyController = new FlyCameraController(camera);
+scene.CameraOverride = camera;
+
+// each frame:
+camera.AspectRatio = (float)frameWidth / frameHeight;
+flyController.Update(input, dt);      // hold right mouse to look, WASD to fly, E/Q up/down, wheel = speed
+```
+
+Hold `LookButton` (default right mouse) to mouselook, drag right looks right and drag up looks up
+(`InvertX`/`InvertY` flip either axis). WASD flies along the view direction (true flight, following pitch, not
+ground-locked), E/Q rise/sink on world +Y, `Key.LeftShift` sprints (`SprintMultiplier`), and the wheel scales
+`MoveSpeed` (clamped `MinMoveSpeed`..`MaxMoveSpeed`). No smoothing, dt-scaled direct integration, and no input
+statics touched (the snapshot is handed in), matching every other controller in the engine.
+
+**Picking.** Cast a screen-space ray with the camera's `ScreenToRay(pixel, viewportWidth, viewportHeight)`
+(every concrete camera carries it: `IsoCamera3D`, `FollowCamera3D`, `FlyCamera3D`), then test it against
+whatever the editor needs to pick:
+
+```csharp
+Ray ray = camera.ScreenToRay(mousePixel, viewportWidth, viewportHeight);
+
+// Ground / terrain: march-then-bisect against the analytic field, endpoint-inclusive up to maxDistance.
+if (TerrainRaycast.Raycast(field, ray.Origin, ray.Direction, 200f, out Vector3 groundHit))
+    PlaceAt(groundHit);
+
+// A prop's world AABB: allocation-free slab test, tNear the entry distance (0 when the origin starts inside).
+if (RayMath.IntersectAabb(ray.Origin, ray.Direction, propMin, propMax, out float tNear))
+    Select(prop, hitPoint: ray.Origin + ray.Direction * tNear);
+```
+
+`TerrainRaycast.Raycast` (`KhaozEngine.Terrain`, render-free) marches at `step` world units until the ray
+crosses `TerrainField.SampleHeight`, then bisects 24 times for a converged hit. A ray starting below the
+surface returns the origin. `RayMath.IntersectAabb` (`KhaozEngine.Primitives`, the zero-dependency leaf) is
+the box test any other spatial query can reuse. Neither depends on a renderer or a window, so both are
+headless-testable off a constructed `Ray`/`TerrainField`/box, the same standard as the rest of the engine.
+
+---
+
 ## Networked overworld (`KhaozEngine.Locomotion` + `KhaozEngine.NetWorld`)
 
 The movement math lives in one render-free place so local feel and networked feel are the same code.

@@ -4,6 +4,15 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
 
 - `IsoCamera3D` - orthographic isometric camera (configurable angle/zoom/target; `ScreenToRay`/`ScreenToGround`
   picking; `Frame` fit-to-bounds).
+- `FlyCamera3D` / `FlyCameraController` - free-fly editor camera: `FlyCamera3D` implements `IIsoCamera3D` (a
+  world `Position` plus `Yaw`/`Pitch`, no orbit target, pitch clamped short of vertical) so it drops into
+  `Scene3D.CameraOverride` exactly like `FollowCamera3D`, and carries the same `ScreenToRay`/`ScreenToGround`/
+  `WorldToScreen` picking methods. `FlyCameraController.Update(InputState, dt)` drives it off the raw snapshot:
+  hold `LookButton` (default right mouse) to mouselook (drag right looks right, drag up looks up,
+  `InvertX`/`InvertY` flip either axis), WASD to fly along the view direction (true flight, not ground-locked),
+  E/Q to rise/sink on world +Y, hold `Key.LeftShift` to sprint (`SprintMultiplier`), and the wheel to scale
+  `MoveSpeed` (clamped `MinMoveSpeed`..`MaxMoveSpeed`). No smoothing (dt-scaled direct integration), no input
+  statics touched (the snapshot is handed in), allocation-free per frame.
 - `GltfLoader` / `GltfMesh` / `MeshPrimitives` / `MeshBuilder` - runtime glTF load (SharpGLTF) + procedural meshes.
 - `Scene3D` + `Render3DSurface(AppWindow)` - multi-instance mesh draw (`LoadMesh`/`LoadTexture`/`Begin`/`Draw`
   with per-instance tint + `Material`), per-mesh albedo textures, lighting, camera-facing billboards, an

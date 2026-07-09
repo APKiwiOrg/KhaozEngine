@@ -15,6 +15,11 @@ color anywhere in the engine's public API is the `Color` from here.
 - `Easing` - `Linear`/`SmoothStep`/`EaseIn`/`EaseOut`/`EaseInOut`, all clamped to [0,1].
 - `ViewportMath` - `Fit` (letterbox) and `Cover` (crop) uniform-scale factors for aspect-preserving fits.
 - `Rect` - axis-aligned pixel rect (top-left origin) with `Contains`, the input hit-testing rect.
+- `RayMath` - allocation-free 3D ray-intersection helpers (`System.Numerics`), zero-dependency leaf math for
+  editor picking and future spatial queries. `IntersectAabb(origin, direction, min, max, out tNear)` is a slab
+  test against an axis-aligned box, true at `t >= 0` with `tNear` the entry distance (0 when the origin starts
+  inside). Directions need not be normalized, `tNear` is in units of the direction's length, and an
+  axis-parallel ray hits only when the origin already lies within that axis's slab (no division, no NaN risk).
 - `IDesignViewport` - the fakeable design-viewport seam (design size, scale + letterbox offset,
   screen to design mapping, and the `DesignBounds`/`ContentBounds`/`WindowBounds` rects) that rendering,
   layout, and headless tests target. Moved here from Windowing in 9.0.0, which carries the concrete
@@ -53,4 +58,9 @@ Bullet? b = pool.Rent();                    // null when exhausted
 for (int i = 0; i < pool.ActiveCount; i++)
     pool.GetActive(i).Update(dt);
 pool.Return(b!);                            // calls b.Reset()
+```
+
+```csharp
+bool hit = RayMath.IntersectAabb(ray.Origin, ray.Direction, box.Min, box.Max, out float tNear);
+Vector3 hitPoint = ray.Origin + ray.Direction * tNear;   // tNear is in units of Direction's length
 ```

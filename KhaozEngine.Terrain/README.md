@@ -20,6 +20,13 @@ up regardless of load order. Plain `float` math throughout.
   corridors out, the diegetic world border).
 - **`TerrainCollision`** - ground-follow over a field: `GroundHeight`, `GroundNormal` (feed both to
   `CharacterMovement.Step` so steep terrain gates movement), and `IsWalkable(x, z, maxSlope)`.
+- **`TerrainRaycast`** - GPU-free ray vs terrain intersection for editor and gameplay picking:
+  `Raycast(field, origin, direction, maxDistance, out hit, step)` marches at `step` world units until the ray
+  crosses the analytic surface, then bisects 24 times for a converged hit point. Endpoint-inclusive (a crossing
+  inside the final partial step is still found), a ray starting below the surface returns the origin, and
+  `step` must be positive. Deterministic: the same field, ray, and parameters always give the same hit.
+  `Vector3` in/out, so `Terrain` stays render-free (build the ray from a camera's `ScreenToRay` and pass its
+  `Origin`/`Direction`).
 - **`TerrainPresets`** - `Clearing()` (meadow + mountains + lake) and `BoundedClearing()` (meadow
   ringed by a rim wall with one pass out).
 - **`PropScatter`** (+ `PropPlacement`) - deterministic coordinate-hash prop placement, and
@@ -38,6 +45,14 @@ BiomeId biome = field.SampleBiome(x, z);
 var ground = new TerrainCollision(field);
 state = CharacterMovement.Step(state, cmd, dt, ground.GroundHeight, MoveTuning.Default,
                                groundNormal: ground.GroundNormal);
+```
+
+## Picking
+
+```csharp
+// ray from a camera's ScreenToRay (KhaozEngine.Render3D), maxDistance in units of direction's length
+if (TerrainRaycast.Raycast(field, ray.Origin, ray.Direction, 200f, out Vector3 hit))
+    PlaceAt(hit);                                  // hit.Y == field.SampleHeight(hit.X, hit.Z)
 ```
 
 ## Scatter exclusions and overrides

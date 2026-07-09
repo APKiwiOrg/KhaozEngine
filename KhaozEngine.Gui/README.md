@@ -43,6 +43,12 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     `Update` return for callers that inspect it later in the frame; `Opacity` fades the whole slider for a host transition.
   - `Toggle` - two-state switch flipped by a valid tap; fires `OnChanged`. `WasToggled` mirrors the `Update` return;
     `Opacity` fades the whole toggle for a host transition.
+  - `NumberField` - numeric field for editor inspectors, driven by `InputManager` (needs the keyboard). A drag
+    started inside scrubs `Value` by `DragScale` value units per pixel (grab-gated, so it keeps tracking off the
+    widget). A tap under 3 draw units of travel opens typing mode (`TextEntry` with a digits/one-minus/one-dot
+    filter). Enter commits (parsed, clamped to [`Min`, `Max`], rounded to `Decimals`), Escape cancels, and a tap
+    outside commits like Enter. `WasChanged` mirrors the `Update` return. `Opacity` fades the field for a host
+    transition.
   - `Dropdown` - trigger + option list (opens below); two-phase draw (`Draw` trigger / `DrawOverlay` list last).
     Opt-in (default off): `ShowChevron` draws an up/down caret reflecting the open state; `Opacity` fades the whole
     dropdown for a host transition.
@@ -87,6 +93,17 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     driven by an external `TransitionAlpha` from a docked bottom edge (`SlideFromBottom`); drag-to-resize the header
     within `MinHeight`/`MaxHeight` (`Resizable`); and a dimmed `Scrim` with tap-outside-to-close (`ScrimDismissed`).
     Geometry is exposed via `CurrentBounds`/`ContentBounds` (== `Bounds` with no knob set).
+  - `TreeView` - scrollable outline over `TreeNode` roots (a `LocalizedText` label, children, an `Expanded`
+    flag, a caller-owned `Tag`). `VisibleRows()` is the depth-first walk skipping collapsed subtrees. A tap in a
+    row's caret zone (the `Indent`-wide band at its depth) toggles expansion for a node with children, a tap
+    elsewhere in the row selects it (`Selected`, `OnSelected`). The wheel scrolls clamped to the content, and
+    rows are scissor-clipped to `Bounds`.
+  - `PropertyGrid` - a vertical stack of `PropertyRow`s split label/editor at `LabelFraction`, scrolling like
+    `ScrollablePanel` (wheel + scissor clip). Built-in rows: `FloatRow` (a `NumberField`), `BoolRow` (a
+    `Toggle`), `TextRow` (a `TextInput`), `ReadOnlyRow` (a polled display string, no input). Each row polls its
+    getter every `Update` unless the user is mid-edit/scrub/focus on that row's child widget, so external
+    changes (undo, another editor) stay in sync without a change-event bus. A row fully scrolled out of view is
+    skipped entirely, so it neither hit-tests nor reserves off-view input.
 - `UpdateOverlayView` / `UpdateOverlayScreen` (+ `UpdateOverlayTheme`) - the in-game auto-updater popup, a pure
   presenter over `KhaozEngine.Updates`' `IUpdateStatus`: it announces an available update, shows download
   progress, and prompts the restart-and-apply, driven by the theme's trigger key/button (default U / gamepad Y).
@@ -138,6 +155,33 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   beside a `DiagnosticsOverlay` in the same style. `LegendEntry(Color Swatch, string Label)` is one row. The
   collision-shape debug overlay (`KhaozEngine.Render3D.Debug.CollisionShapeOverlay`) is the first consumer,
   and it is reusable by any future overlay layer.
+
+**Editor inspector widgets (`NumberField` / `TreeView` / `PropertyGrid`).** The trio a `PropertyGrid`-based
+inspector is built from: a scrubbable/typeable number field, a hierarchy outline, and the grid that hosts typed
+rows over get/set delegates (no reflection). `NumberField` also stands alone outside a grid.
+
+```csharp
+// A property grid over a selected scene object: label left, typed editor right, split at LabelFraction.
+var grid = new PropertyGrid(inspectorRect);
+grid.Rows.Add(new FloatRow(Strings.PosX, () => obj.Position.X, v => obj.Position = obj.Position with { X = v },
+    dragScale: 0.1f));
+grid.Rows.Add(new BoolRow(Strings.Visible, () => obj.Visible, v => obj.Visible = v));
+grid.Rows.Add(new ReadOnlyRow(Strings.ObjectId, () => obj.Id.ToString()));
+grid.Update(input, dt);   // polls getters, runs the focused row's child widget, writes back on a real change
+grid.Draw(batch, white, font);
+
+// A scene outline beside it: depth-first rows, caret zone toggles a parent, body tap selects.
+var tree = new TreeView(outlineRect);
+tree.Roots.Add(sceneRoot);            // TreeNode: label + children + Tag (e.g. the scene object)
+tree.OnSelected = node => Select((SceneObject)node.Tag!);
+tree.Update(input);
+tree.Draw(batch, white, font);
+
+// NumberField also stands alone (drag to scrub, tap to type):
+var speed = new NumberField(fieldRect, value: 12f) { Min = 0f, Max = 200f, DragScale = 0.25f, Decimals = 1 };
+speed.Update(input, dt);   // InputManager, not Pointer - typing needs the keyboard
+speed.Draw(batch, white, font);
+```
 
 **DPI-aware pixel snapping** (since 10.12.0): when a widget is drawn inside a point-space UI pass (a
 `UiViewport` `SpriteBatch.Begin`), the retained widgets and `GuiDraw` snap their rect and border thickness

@@ -80,12 +80,15 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal((Color)t.Danger, theme.CategoryColor(PatchNoteCategory.Bug));
             Assert.Equal((Color)t.TextMuted, theme.CategoryColor(PatchNoteCategory.Other));
 
-            // Rebalance is a warm tone blended from the accent toward danger (GuiTheme has no dedicated warm
-            // swatch): it must differ from both source colors while still being derived from them.
+            // Rebalance must read as a warm tone (amber/orange family), distinct from the cool New tag and
+            // from the Bug tag it sits beside. Assert the perceptual property, not a formula: red is the
+            // strongest channel, blue the weakest, and green sits between them (the hallmark of a warm hue).
             Color rebalance = theme.CategoryColor(PatchNoteCategory.Rebalance);
-            Assert.NotEqual((Color)t.Accent, rebalance);
-            Assert.NotEqual((Color)t.Danger, rebalance);
-            Assert.Equal(Color.Lerp((Color)t.Accent, (Color)t.Danger, 0.5f), rebalance);
+            Assert.True(rebalance.R > rebalance.B, "Rebalance should have more red than blue to read warm.");
+            Assert.True(rebalance.G > rebalance.B, "Rebalance's green should exceed its blue to read warm.");
+            Assert.True(rebalance.G < rebalance.R, "Rebalance's green should stay below its red to read warm.");
+            Assert.NotEqual(theme.CategoryColor(PatchNoteCategory.Bug), rebalance);
+            Assert.NotEqual(theme.CategoryColor(PatchNoteCategory.New), rebalance);
         }
     }
 }

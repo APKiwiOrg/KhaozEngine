@@ -33,9 +33,8 @@ public class PatchNotesTheme
     /// The tag color for <paramref name="category"/>: <see cref="PatchNoteCategory.New"/> reads the theme
     /// accent, <see cref="PatchNoteCategory.Major"/> the bright accent, <see cref="PatchNoteCategory.Minor"/>
     /// and <see cref="PatchNoteCategory.Other"/> the muted text color (both are "no strong category"
-    /// styling), <see cref="PatchNoteCategory.Rebalance"/> a warm tone blended from the accent toward the
-    /// danger color (<see cref="GuiTheme"/> has no dedicated warm swatch to read instead), and
-    /// <see cref="PatchNoteCategory.Bug"/> the danger color.
+    /// styling), <see cref="PatchNoteCategory.Rebalance"/> a fixed warm amber (<see cref="GuiTheme"/> has no
+    /// warm swatch to derive one from), and <see cref="PatchNoteCategory.Bug"/> the danger color.
     /// </summary>
     public virtual Color CategoryColor(PatchNoteCategory category)
     {
@@ -45,7 +44,9 @@ public class PatchNotesTheme
             PatchNoteCategory.New => (Color)t.Accent,
             PatchNoteCategory.Major => (Color)t.AccentBright,
             PatchNoteCategory.Minor => (Color)t.TextMuted,
-            PatchNoteCategory.Rebalance => Color.Lerp((Color)t.Accent, (Color)t.Danger, 0.5f),
+            // GuiTheme has no warm swatch, so blending toward Danger reads mauve/violet rather than warm.
+            // Fixed amber instead, so Rebalance reads warm and distinct beside Danger red.
+            PatchNoteCategory.Rebalance => new Color(0.80f, 0.55f, 0.20f),
             PatchNoteCategory.Bug => (Color)t.Danger,
             _ => (Color)t.TextMuted,
         };

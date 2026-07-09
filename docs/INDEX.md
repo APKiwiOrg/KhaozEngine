@@ -27,7 +27,7 @@ The **engine current version** lives in `../Directory.Build.props` (`<KhaozEngin
 
 ## Process docs
 
-- [../CLAUDE.md](../CLAUDE.md) - concurrent-dev rule (worktree per change), the release ritual, build/test commands.
+- [../AGENTS.md](../AGENTS.md) - concurrent-dev rule (worktree per change), the release ritual, build/test commands.
 - Release ritual, short form: bump `Directory.Build.props` `<KhaozEngineVersion>` -> add the `CHANGELOG.md` entry ->
   update the engine-version line in `ROADMAP.md` (+ README) ->
   `dotnet pack -c Release -o ./local-feed` -> commit -> `scripts/tag-release.sh` (annotated `vX.Y.Z`) ->

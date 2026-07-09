@@ -41,7 +41,7 @@ artifacts/
 # Failure-evidence PNGs written by the GPU golden compare (got/want/diff/bake); local-only, uploaded as CI artifacts
 KhaozEngine.Tests/Gpu/goldens-evidence/
 
-# Dev-only local NuGet feed (packed packages live here; the durable store is GitHub Packages - see CLAUDE.md)
+# Dev-only local NuGet feed (packed packages live here; the durable store is GitHub Packages - see AGENTS.md)
 local-feed/
 
 # Runtime world DB written by the NetworkedWalkServer demo (SqliteWorldStore default path), plus its WAL/SHM sidecars

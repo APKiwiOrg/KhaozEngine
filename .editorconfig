@@ -4,7 +4,7 @@
 #   KELOC002 - a LocalizedText.Raw outside a debug or [LocalizationExempt] scope.
 #   KELOC003 - a raw string literal drawn straight to Render2D SpriteBatch.DrawString.
 # Numbers, format tokens, single glyphs, interpolation, and [LocalizationExempt] / #if DEBUG scopes are
-# left alone. See CLAUDE.md "## Localization" and KhaozEngine/docs/USING-KHAOZENGINE.md.
+# left alone. See AGENTS.md "## Localization" and KhaozEngine/docs/USING-KHAOZENGINE.md.
 root = true
 
 [*.cs]

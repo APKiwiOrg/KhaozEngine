@@ -210,7 +210,7 @@ editor-runtime cores. Never Fable-tier subagents.
   editor head and doc rewrite (after B).
 
 B and C share only the MapDoc contract from A, so they run concurrently in separate
-worktrees. Doc sweep obligations per phase follow `CLAUDE.md` (README catalog, per-package
+worktrees. Doc sweep obligations per phase follow `AGENTS.md` (README catalog, per-package
 READMEs, USING-KHAOZENGINE, DEPENDENCY-SEAMS, CHANGELOG).
 
 ## Explicit non-goals (v1)

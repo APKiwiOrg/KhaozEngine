@@ -158,7 +158,7 @@ The pattern is applied at the granularity the dependency warrants:
    the rest of the engine an immutable snapshot or an engine-native type. There is no second backend planned,
    but the dependency is still corralled to one place so it cannot leak across the codebase. The input rule
    ("only `AppWindow` touches Silk.NET/GLFW input statics") is enforced as a hard rule in
-   [USING-KHAOZENGINE.md](USING-KHAOZENGINE.md) and `../CLAUDE.md`.
+   [USING-KHAOZENGINE.md](USING-KHAOZENGINE.md) and `../AGENTS.md`.
 
 ## Adding a new backend
 
@@ -171,7 +171,7 @@ To swap or add a backend for a seam that already has the separate-package split:
    non-optional, so it stays opt-in like `Physics.Bepu` / `Netcode.LiteNetLib` / `WorldStore.Sqlite`.
 4. Headless test against the contract; for backends with a real device, gate device tests as the existing
    ones are.
-5. Run the full doc sweep (this table, the package catalog in `../README.md` and `../CLAUDE.md`) so the
+5. Run the full doc sweep (this table, the package catalog in `../README.md` and `../AGENTS.md`) so the
    new package is listed everywhere it should be.
 
 ## Where to look in the code

@@ -52,7 +52,7 @@ state = CharacterMovement.Step(state, cmd, dt, ground.GroundHeight, MoveTuning.D
 ```csharp
 // ray from a camera's ScreenToRay (KhaozEngine.Render3D), maxDistance in units of direction's length
 if (TerrainRaycast.Raycast(field, ray.Origin, ray.Direction, 200f, out Vector3 hit))
-    PlaceAt(hit);                                  // hit.Y == field.SampleHeight(hit.X, hit.Z)
+    PlaceAt(hit);   // a marched hit lies on the surface (a ray starting below ground returns its origin as-is)
 ```
 
 ## Scatter exclusions and overrides

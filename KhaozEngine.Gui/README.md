@@ -156,8 +156,8 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   collision-shape debug overlay (`KhaozEngine.Render3D.Debug.CollisionShapeOverlay`) is the first consumer,
   and it is reusable by any future overlay layer.
 
-**Editor inspector widgets (`NumberField` / `TreeView` / `PropertyGrid`).** The trio a `PropertyGrid`-based
-inspector is built from: a scrubbable/typeable number field, a hierarchy outline, and the grid that hosts typed
+**Editor inspector widgets (`NumberField` / `TreeView` / `PropertyGrid`).** The three widgets an inspector
+panel is built from: a scrubbable/typeable number field, a hierarchy outline, and the grid that hosts typed
 rows over get/set delegates (no reflection). `NumberField` also stands alone outside a grid.
 
 ```csharp

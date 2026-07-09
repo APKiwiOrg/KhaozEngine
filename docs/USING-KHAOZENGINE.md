@@ -2707,8 +2707,9 @@ tree.Draw(batch, white, font);
 ```
 
 A tap in a row's caret zone toggles a parent's `Expanded` flag, a tap elsewhere in the row selects it
-(`VisibleRows()` is the public depth-first walk both hit-testing and drawing share). All three widgets are
-`LocalizedText`-compliant like every other Gui sink.
+(`VisibleRows()` is the public depth-first walk both hit-testing and drawing share). `TreeView` node labels
+and `PropertyRow` labels are `LocalizedText` like every other Gui sink. `NumberField` is label-free (it
+renders only the numeric value, so it has no text sink to localize).
 
 **Free-fly editor camera.** `FlyCamera3D` implements `IIsoCamera3D` (a world `Position` plus `Yaw`/`Pitch`, no
 orbit target) so it drops into `Scene3D.CameraOverride` exactly like `FollowCamera3D` above, and carries the

@@ -201,10 +201,16 @@ public sealed class PatchNotesView
 
         Rect panel = PanelRect(viewport);
         GuiDraw.Fill(batch, white, panel, Theme.PanelFill);
-        GuiDraw.Border(batch, white, panel, 1f, GuiDraw.WithOpacity(Theme.MutedText, 0.5f));
 
         var titleBar = new Rect(panel.X, panel.Y, panel.Width, TitleBarHeight);
         GuiDraw.Fill(batch, white, titleBar, Theme.HeaderFill);
+
+        // Re-stroke the border after the title-bar fill: the fill above spans the panel's full width from
+        // its top-left, so drawing the border first let it paint over the top (and upper-side) border
+        // pixels, leaving the border appearing to start below the title bar. Mirrors PopupPanel.Draw's
+        // border re-stroke for the same reason, so the border wraps the whole panel, title bar included.
+        GuiDraw.Border(batch, white, panel, 1f, GuiDraw.WithOpacity(Theme.MutedText, 0.5f));
+
         string title = PatchNotesStrings.Resolve(PatchNotesStrings.Title);
         float titleY = panel.Y + (TitleBarHeight - font.LineHeight) * 0.5f;
         TextLayout.DrawAligned(batch, font, title, panel.X + ContentPadding, panel.Width - ContentPadding,

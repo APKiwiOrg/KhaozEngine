@@ -39,6 +39,11 @@ public sealed class MapEditorOptions
     /// up by this much, so the editor chrome never stacks on the same pixels as the host readout. Default 0 keeps
     /// the status strip flush with the window bottom.</summary>
     public float StatusBottomOffset;
+
+    /// <summary>When true (the default) the viewport draws translucent ground overlays for exclusions (red),
+    /// regions (blue), and terrain-feature centers (amber), with the selected element brightened, so those
+    /// otherwise-invisible authoring shapes are findable while editing. Set false to hide them.</summary>
+    public bool ShowOverlays = true;
 }
 
 /// <summary>The turn-key in-engine map editor scene a per-game head pushes onto its <see cref="SceneManager"/>:
@@ -70,6 +75,21 @@ public class MapEditorScene : GameScene, IGameScene3D
     static readonly Color PanelBackground = new(0.09f, 0.09f, 0.12f, 0.94f);
     static readonly Color StatusBackground = new(0.05f, 0.05f, 0.07f, 0.96f);
     static readonly Color SelectionHighlight = new(1.35f, 1.2f, 0.7f, 1f);
+
+    // Viewport overlay fills: a translucent ground disc/rect/fan per exclusion (red-ish) and region (blue-ish), and
+    // a small marker disc at each terrain-feature center (amber). The selected element's fill brightens (see Tint).
+    static readonly Color ExclusionOverlayColor = new(0.9f, 0.22f, 0.16f, 0.26f);
+    static readonly Color RegionOverlayColor = new(0.2f, 0.5f, 0.95f, 0.26f);
+    static readonly Color FeatureOverlayColor = new(0.96f, 0.76f, 0.22f, 0.55f);
+    /// <summary>Marker-disc radius (m) drawn at a terrain feature's center.</summary>
+    const float FeatureMarkerRadius = 1.5f;
+    /// <summary>World-space lift (m) added above the sampled ground height so an overlay fill clears the terrain
+    /// instead of z-fighting it.</summary>
+    const float OverlayLift = 0.1f;
+    /// <summary>RGB scale applied to a selected overlay's fill so it reads brighter than its neighbours.</summary>
+    const float OverlaySelectBrighten = 1.6f;
+    /// <summary>Alpha multiplier applied to a selected overlay's fill (clamped to 1) so it also firms up.</summary>
+    const float OverlaySelectAlphaBoost = 1.7f;
 
     static readonly LocalizedText[] ToolLabels =
     {
@@ -333,8 +353,149 @@ public class MapEditorScene : GameScene, IGameScene3D
         if (!_built || !_viewport.IsBuilt) return;
         string? selId = _document.Selection.Kind == SelectionKind.Placement ? _document.Selection.Id : null;
         _viewport.Draw(_camera.Position, selId, SelectionHighlight);
+        DrawOverlays(scene);
         DrawGizmo(scene);
     }
+
+    /// <summary>Submits the exclusion / region / feature overlay fills to the Scene3D debug-fill pass. The
+    /// doc-to-draw-list step is the pure, headless-tested <see cref="ComputeOverlayDrawList"/>; only the per-entry
+    /// GPU submission (a debug disc / quad / fan) lives here. No-op until the field exists (world built).</summary>
+    void DrawOverlays(Scene3D scene)
+    {
+        if (_controller.Field is not { } field) return;
+        foreach (OverlayDraw o in ComputeOverlayDrawList(
+                     _document.Doc, _document.Selection, field.SampleHeight, _options.ShowOverlays))
+        {
+            switch (o.Shape)
+            {
+                case OverlayShape.Disc:
+                    scene.DebugFilledCircle(o.Center, Vector3.UnitY, o.Radius, o.Color);
+                    break;
+                case OverlayShape.Rect:
+                    scene.DebugFilledQuad(o.Center, o.HalfExtents, o.Color);
+                    break;
+                case OverlayShape.Polygon:
+                    if (o.Rim is { Count: >= 3 } rim) scene.DebugFilledFan(o.Center, rim, o.Color);
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    /// <summary>Turns the document's exclusions, regions, and terrain features into a flat list of ground-plane
+    /// overlay fills: each authoring shape becomes a disc / rect / polygon fill (exclusions red-ish, regions
+    /// blue-ish) and each terrain feature a small amber marker disc at its center, all lifted a small epsilon above
+    /// the sampled ground so they clear the terrain. The overlay whose element matches <paramref name="selection"/>
+    /// is flagged and brightened. <paramref name="sampleHeight"/> supplies the ground height at an (x, z); a
+    /// <c>null</c> shape, a polygon with fewer than three points, or a feature whose center cannot be derived (an
+    /// unknown custom type) is skipped. Returns an empty list when <paramref name="showOverlays"/> is false. Pure
+    /// (no GPU, no scene state), so the whole computation is headless-testable; <see cref="DrawOverlays"/> submits
+    /// the result untested.</summary>
+    internal static List<OverlayDraw> ComputeOverlayDrawList(
+        MapDocument doc, EditorSelection selection, Func<float, float, float> sampleHeight, bool showOverlays)
+    {
+        ArgumentNullException.ThrowIfNull(doc);
+        ArgumentNullException.ThrowIfNull(selection);
+        ArgumentNullException.ThrowIfNull(sampleHeight);
+
+        var list = new List<OverlayDraw>();
+        if (!showOverlays) return list;
+
+        int selectedExclusion = selection.Kind == SelectionKind.Exclusion ? SelectedIndex(selection.Id) : -1;
+        int selectedFeature = selection.Kind == SelectionKind.Feature ? SelectedIndex(selection.Id) : -1;
+
+        for (int i = 0; i < doc.Exclusions.Count; i++)
+            AddShapeOverlay(list, doc.Exclusions[i].Shape, OverlayCategory.Exclusion, ExclusionOverlayColor,
+                selected: i == selectedExclusion, sampleHeight);
+
+        foreach (MapRegion region in doc.Regions)
+        {
+            bool selected = selection.Kind == SelectionKind.Region &&
+                            string.Equals(selection.Id, region.Name, StringComparison.Ordinal);
+            AddShapeOverlay(list, region.Shape, OverlayCategory.Region, RegionOverlayColor, selected, sampleHeight);
+        }
+
+        IReadOnlyList<MapFeature> features = doc.Terrain.Features;
+        for (int i = 0; i < features.Count; i++)
+        {
+            if (!TryFeatureCenter(features[i], out float fx, out float fz)) continue;   // unknown type: no marker
+            bool selected = i == selectedFeature;
+            var center = new Vector3(fx, sampleHeight(fx, fz) + OverlayLift, fz);
+            list.Add(new OverlayDraw(OverlayCategory.Feature, OverlayShape.Disc, center, FeatureMarkerRadius,
+                Vector2.Zero, rim: null, Tint(FeatureOverlayColor, selected), selected));
+        }
+        return list;
+    }
+
+    // Turn one authoring shape into its overlay fill, at ground height plus the lift epsilon. Disc -> a ground disc,
+    // rect -> a ground quad at the rect's midpoint, polygon (>= 3 points) -> a fan from the point centroid with each
+    // rim vertex sampled at its own ground height. A null shape or a degenerate polygon adds nothing.
+    static void AddShapeOverlay(List<OverlayDraw> list, MapShapeDoc? shape, OverlayCategory category,
+        Color baseColor, bool selected, Func<float, float, float> sampleHeight)
+    {
+        Color color = Tint(baseColor, selected);
+        switch (shape)
+        {
+            case DiscShapeDoc d:
+            {
+                var center = new Vector3(d.CenterX, sampleHeight(d.CenterX, d.CenterZ) + OverlayLift, d.CenterZ);
+                list.Add(new OverlayDraw(category, OverlayShape.Disc, center, d.Radius,
+                    Vector2.Zero, rim: null, color, selected));
+                break;
+            }
+            case RectShapeDoc r:
+            {
+                float cx = (r.MinX + r.MaxX) * 0.5f, cz = (r.MinZ + r.MaxZ) * 0.5f;
+                var center = new Vector3(cx, sampleHeight(cx, cz) + OverlayLift, cz);
+                var half = new Vector2(MathF.Abs(r.MaxX - r.MinX) * 0.5f, MathF.Abs(r.MaxZ - r.MinZ) * 0.5f);
+                list.Add(new OverlayDraw(category, OverlayShape.Rect, center, 0f, half, rim: null, color, selected));
+                break;
+            }
+            case PolygonShapeDoc p when p.Points.Count >= 3:
+            {
+                var rim = new List<Vector3>(p.Points.Count);
+                float sx = 0f, sz = 0f;
+                foreach (float[] pt in p.Points)
+                {
+                    float px = pt.Length > 0 ? pt[0] : 0f, pz = pt.Length > 1 ? pt[1] : 0f;
+                    sx += px; sz += pz;
+                    rim.Add(new Vector3(px, sampleHeight(px, pz) + OverlayLift, pz));
+                }
+                float cx = sx / p.Points.Count, cz = sz / p.Points.Count;
+                var center = new Vector3(cx, sampleHeight(cx, cz) + OverlayLift, cz);
+                list.Add(new OverlayDraw(category, OverlayShape.Polygon, center, 0f, Vector2.Zero, rim, color, selected));
+                break;
+            }
+            default:
+                break;   // null shape or a polygon with fewer than three points: no overlay
+        }
+    }
+
+    // The XZ center of a terrain feature, generically over the four built-ins: lake / flatten / rim expose
+    // CenterX/CenterZ, ridge exposes its PointX/PointZ. An unknown custom feature type has no known center field, so
+    // it is skipped (no marker) rather than guessed at via reflection.
+    static bool TryFeatureCenter(MapFeature feature, out float x, out float z)
+    {
+        switch (feature)
+        {
+            case LakeFeatureDoc l: x = l.CenterX; z = l.CenterZ; return true;
+            case FlattenFeatureDoc f: x = f.CenterX; z = f.CenterZ; return true;
+            case RimFeatureDoc r: x = r.CenterX; z = r.CenterZ; return true;
+            case RidgeFeatureDoc r: x = r.PointX; z = r.PointZ; return true;
+            default: x = 0f; z = 0f; return false;
+        }
+    }
+
+    // A selected overlay reads brighter: scale RGB up (ScaleRgb preserves the base alpha) then firm up that alpha,
+    // so the highlighted shape stands out against its unselected neighbours. Unselected returns the base color.
+    static Color Tint(Color baseColor, bool selected) => selected
+        ? baseColor.ScaleRgb(OverlaySelectBrighten).WithAlpha(MathF.Min(1f, baseColor.A * OverlaySelectAlphaBoost))
+        : baseColor;
+
+    // The list index a feature / exclusion selection id encodes, or -1 when it is not a valid non-negative index.
+    static int SelectedIndex(string id) =>
+        int.TryParse(id, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index) ? index : -1;
 
     /// <inheritdoc/>
     public override void OnDrawUi(SpriteBatch batch)
@@ -1090,5 +1251,70 @@ public class MapEditorScene : GameScene, IGameScene3D
             Toolbar = toolbar; Outline = outline; Inspector = inspector;
             Palette = palette; Status = status; Viewport = viewport;
         }
+    }
+}
+
+/// <summary>Which document collection a viewport <see cref="OverlayDraw"/> came from. Drives its base fill color
+/// (exclusions red-ish, regions blue-ish, features amber).</summary>
+internal enum OverlayCategory
+{
+    /// <summary>A scatter exclusion shape.</summary>
+    Exclusion,
+    /// <summary>A named, game-interpreted region shape.</summary>
+    Region,
+    /// <summary>A terrain feature's center marker.</summary>
+    Feature,
+}
+
+/// <summary>Which <see cref="Scene3D"/> debug-fill primitive draws an <see cref="OverlayDraw"/>.</summary>
+internal enum OverlayShape
+{
+    /// <summary>A flat ground disc (<see cref="Scene3D.DebugFilledCircle"/>).</summary>
+    Disc,
+    /// <summary>A flat ground quad (<see cref="Scene3D.DebugFilledQuad(System.Numerics.Vector3, System.Numerics.Vector2, Color)"/>).</summary>
+    Rect,
+    /// <summary>A flat ground triangle fan (<see cref="Scene3D.DebugFilledFan"/>).</summary>
+    Polygon,
+}
+
+/// <summary>One computed viewport overlay fill that makes an exclusion, region, or terrain feature visible: a
+/// ground-plane translucent shape lifted a small epsilon above the terrain. A pure value produced by
+/// <see cref="MapEditorScene.ComputeOverlayDrawList"/> and submitted to <see cref="Scene3D"/> untested, so the
+/// doc-to-draw-list computation is fully headless-testable.</summary>
+internal readonly struct OverlayDraw
+{
+    /// <summary>Which document collection this overlay came from (drives the base color).</summary>
+    public readonly OverlayCategory Category;
+    /// <summary>Which debug-fill primitive draws it.</summary>
+    public readonly OverlayShape Shape;
+    /// <summary>The fill center in world space, already lifted the overlay epsilon above the sampled ground. For a
+    /// <see cref="OverlayShape.Polygon"/> this is the fan hub at the point centroid.</summary>
+    public readonly Vector3 Center;
+    /// <summary>The radius for a <see cref="OverlayShape.Disc"/> (the shape radius, or the fixed marker radius for a
+    /// feature); zero for the other shapes.</summary>
+    public readonly float Radius;
+    /// <summary>The half-extents (X along world X, Y along world Z) for a <see cref="OverlayShape.Rect"/>; zero for
+    /// the other shapes.</summary>
+    public readonly Vector2 HalfExtents;
+    /// <summary>The ground-height rim ring for a <see cref="OverlayShape.Polygon"/> (each vertex sampled at its own
+    /// terrain height); null for the other shapes.</summary>
+    public readonly IReadOnlyList<Vector3>? Rim;
+    /// <summary>The RGBA fill color, already brightened when <see cref="Selected"/>.</summary>
+    public readonly Color Color;
+    /// <summary>True when this overlay's element is the current selection, so it is drawn brighter.</summary>
+    public readonly bool Selected;
+
+    /// <summary>Creates an overlay-draw record from its already-computed fields.</summary>
+    public OverlayDraw(OverlayCategory category, OverlayShape shape, Vector3 center, float radius,
+        Vector2 halfExtents, IReadOnlyList<Vector3>? rim, Color color, bool selected)
+    {
+        Category = category;
+        Shape = shape;
+        Center = center;
+        Radius = radius;
+        HalfExtents = halfExtents;
+        Rim = rim;
+        Color = color;
+        Selected = selected;
     }
 }

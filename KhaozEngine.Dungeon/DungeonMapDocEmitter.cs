@@ -16,9 +16,13 @@ public static class DungeonMapDocEmitter
 {
     /// <summary>Emits every piece, region, marker, terrain feature, and bounds expansion for
     /// <paramref name="layout"/> into <paramref name="target"/>, resolving kit ids through
-    /// <paramref name="kit"/> and world positions through <paramref name="plot"/>. Placement/spawn ids follow
-    /// <c>dungeon-&lt;layoutHash8&gt;-&lt;n&gt;</c> (n monotonic across every id this call mints), and every
-    /// placement/spawn/marker-region carries the "dungeon" tag. Every emitted <see cref="MapSpawn"/> gets
+    /// <paramref name="kit"/> and world positions through <paramref name="plot"/>. Placement/spawn/marker-region
+    /// ids follow <c>dungeon-&lt;bakeSalt8&gt;-&lt;n&gt;</c> and room regions
+    /// <c>dungeon-room-&lt;bakeSalt8&gt;-&lt;id&gt;</c>, where bakeSalt8 is an FNV-1a 64 fold of
+    /// <see cref="DungeonLayout.LayoutHash"/> with the plot's origin/baseY/yaw raw float bits: unique per
+    /// (layout, plot) pair, so several bakes (different layouts, or the same layout at different plots) can
+    /// accumulate in one document without id collisions. n is monotonic across every id one call mints, and
+    /// every placement/spawn/marker-region carries the "dungeon" tag. Every emitted <see cref="MapSpawn"/> gets
     /// <paramref name="spawnArchetypeId"/> as its <see cref="MapSpawn.ArchetypeId"/> (default
     /// <c>"dungeon-spawn"</c>, a placeholder the game maps or replaces), so a baked document always satisfies
     /// the validator's non-empty-archetype rule and saves cleanly.</summary>
@@ -37,7 +41,7 @@ public static class DungeonMapDocEmitter
         ArgumentNullException.ThrowIfNull(target);
         ArgumentException.ThrowIfNullOrWhiteSpace(spawnArchetypeId);
 
-        string hash8 = layout.LayoutHash().ToString("x16").Substring(0, 8);
+        string bakeSalt8 = BakeSalt8(layout, plot);
         int counter = 0;
 
         float cellSize = layout.CellSizeMeters;
@@ -47,11 +51,50 @@ public static class DungeonMapDocEmitter
         // DungeonStamp via PieceMapper, so the two sinks can never drift apart on placement/prop counts.
         Dictionary<DungeonTile, (int Dx, int Dz)> passageDirection = PieceMapper.BuildPassageDirections(layout);
 
-        EmitCells(layout, kit, plot, target, passageDirection, cellSize, floorHeight, hash8, ref counter);
-        EmitStairRuns(layout, kit, plot, target, cellSize, floorHeight, hash8, ref counter);
-        EmitRooms(layout, plot, target, cellSize);
-        EmitMarkers(layout, plot, target, spawnArchetypeId, cellSize, floorHeight, hash8, ref counter);
+        EmitCells(layout, kit, plot, target, passageDirection, cellSize, floorHeight, bakeSalt8, ref counter);
+        EmitStairRuns(layout, kit, plot, target, cellSize, floorHeight, bakeSalt8, ref counter);
+        EmitRooms(layout, plot, target, cellSize, bakeSalt8);
+        EmitMarkers(layout, plot, target, spawnArchetypeId, cellSize, floorHeight, bakeSalt8, ref counter);
         EmitTerrainAndBounds(layout, plot, target, cellSize);
+    }
+
+    // The per-bake id salt: the layout hash folded with the plot's placement (origin, baseY, yaw), so ids
+    // are unique per (layout, plot) pair. A bare layout hash collides in two accumulating-bake scenarios:
+    // two DIFFERENT layouts share the 0-based room ids the room-region names carry, and the SAME layout
+    // baked at two plots repeats every id verbatim. FNV-1a 64 with the same constants and float folding
+    // (raw bit pattern, never GetHashCode) as DungeonLayout.LayoutHash, so the salt stays cross-platform
+    // stable and deterministic for identical inputs.
+    private static string BakeSalt8(DungeonLayout layout, DungeonPlotTransform plot)
+    {
+        const ulong fnvOffsetBasis = 14695981039346656037UL;
+        const ulong fnvPrime = 1099511628211UL;
+
+        ulong hash = fnvOffsetBasis;
+        hash = MixUInt64(hash, fnvPrime, layout.LayoutHash());
+        hash = MixUInt32(hash, fnvPrime, BitConverter.SingleToUInt32Bits(plot.OriginX));
+        hash = MixUInt32(hash, fnvPrime, BitConverter.SingleToUInt32Bits(plot.OriginZ));
+        hash = MixUInt32(hash, fnvPrime, BitConverter.SingleToUInt32Bits(plot.BaseY));
+        hash = MixUInt32(hash, fnvPrime, BitConverter.SingleToUInt32Bits(plot.YawRadians));
+
+        return hash.ToString("x16").Substring(0, 8);
+    }
+
+    private static ulong MixUInt64(ulong hash, ulong prime, ulong value)
+    {
+        hash = MixUInt32(hash, prime, (uint)value);
+        hash = MixUInt32(hash, prime, (uint)(value >> 32));
+        return hash;
+    }
+
+    private static ulong MixUInt32(ulong hash, ulong prime, uint value)
+    {
+        for (int shift = 0; shift < 32; shift += 8)
+        {
+            hash ^= (byte)(value >> shift);
+            hash *= prime;
+        }
+
+        return hash;
     }
 
     private static void EmitCells(
@@ -62,13 +105,13 @@ public static class DungeonMapDocEmitter
         Dictionary<DungeonTile, (int Dx, int Dz)> passageDirection,
         float cellSize,
         float floorHeight,
-        string hash8,
+        string bakeSalt8,
         ref int counter)
     {
         foreach (PieceMapper.CellPiece cellPiece in PieceMapper.EnumerateCellPieces(layout, passageDirection))
         {
             float yaw = PieceMapper.LocalYaw(cellPiece.Dx, cellPiece.Dz) - plot.YawRadians;
-            AddPlacement(target, kit, cellPiece.Piece, plot, cellPiece.Tile, cellSize, floorHeight, yaw, hash8,
+            AddPlacement(target, kit, cellPiece.Piece, plot, cellPiece.Tile, cellSize, floorHeight, yaw, bakeSalt8,
                 ref counter);
         }
     }
@@ -80,7 +123,7 @@ public static class DungeonMapDocEmitter
         MapDocument target,
         float cellSize,
         float floorHeight,
-        string hash8,
+        string bakeSalt8,
         ref int counter)
     {
         foreach (PieceMapper.StairRun run in PieceMapper.EnumerateStairRuns(layout))
@@ -92,7 +135,7 @@ public static class DungeonMapDocEmitter
 
             target.Placements.Add(new MapPlacement
             {
-                Id = NextId(hash8, ref counter),
+                Id = NextId(bakeSalt8, ref counter),
                 Kind = kit.Require(DungeonPiece.StairUp),
                 X = (lx + ux) * 0.5f,
                 Y = (ly + uy) * 0.5f,
@@ -103,13 +146,18 @@ public static class DungeonMapDocEmitter
         }
     }
 
-    private static void EmitRooms(DungeonLayout layout, DungeonPlotTransform plot, MapDocument target, float cellSize)
+    private static void EmitRooms(
+        DungeonLayout layout,
+        DungeonPlotTransform plot,
+        MapDocument target,
+        float cellSize,
+        string bakeSalt8)
     {
         foreach (DungeonRoom room in layout.Rooms)
         {
             target.Regions.Add(new MapRegion
             {
-                Name = $"dungeon-room-{room.Id}",
+                Name = $"dungeon-room-{bakeSalt8}-{room.Id}",
                 Shape = new PolygonShapeDoc { Points = RoomCorners(plot, room, cellSize) },
                 Tags = new List<string> { "dungeon", "room", room.RoomType.ToString().ToLowerInvariant() },
             });
@@ -123,7 +171,7 @@ public static class DungeonMapDocEmitter
         string spawnArchetypeId,
         float cellSize,
         float floorHeight,
-        string hash8,
+        string bakeSalt8,
         ref int counter)
     {
         foreach (DungeonMarker marker in layout.Markers)
@@ -135,7 +183,7 @@ public static class DungeonMapDocEmitter
             {
                 target.Spawns.Add(new MapSpawn
                 {
-                    Id = NextId(hash8, ref counter),
+                    Id = NextId(bakeSalt8, ref counter),
                     ArchetypeId = spawnArchetypeId,
                     X = x,
                     Z = z,
@@ -146,7 +194,7 @@ public static class DungeonMapDocEmitter
             {
                 target.Regions.Add(new MapRegion
                 {
-                    Name = NextId(hash8, ref counter),
+                    Name = NextId(bakeSalt8, ref counter),
                     Shape = new DiscShapeDoc { CenterX = x, CenterZ = z, Radius = cellSize * 0.5f },
                     Tags = tags,
                 });
@@ -195,13 +243,13 @@ public static class DungeonMapDocEmitter
         float cellSize,
         float floorHeight,
         float yaw,
-        string hash8,
+        string bakeSalt8,
         ref int counter)
     {
         (float x, float y, float z) = plot.TileCenter(tile, cellSize, floorHeight);
         target.Placements.Add(new MapPlacement
         {
-            Id = NextId(hash8, ref counter),
+            Id = NextId(bakeSalt8, ref counter),
             Kind = kit.Require(piece),
             X = x,
             Y = y,
@@ -232,9 +280,9 @@ public static class DungeonMapDocEmitter
         points.Add(new[] { x, z });
     }
 
-    private static string NextId(string hash8, ref int counter)
+    private static string NextId(string bakeSalt8, ref int counter)
     {
-        string id = $"dungeon-{hash8}-{counter}";
+        string id = $"dungeon-{bakeSalt8}-{counter}";
         counter++;
         return id;
     }

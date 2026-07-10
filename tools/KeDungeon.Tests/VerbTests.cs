@@ -100,6 +100,75 @@ public class VerbTests
     }
 
     [Fact]
+    public void Bake_TwiceIntoSameMap_Accumulates()
+    {
+        string dir = NewTempDir();
+        try
+        {
+            string firstLayout = Path.Combine(dir, "layout-a.json");
+            string secondLayout = Path.Combine(dir, "layout-b.json");
+            Assert.Equal(0, Program.Main(new[] { "generate", "--seed", "3", "--out", firstLayout }));
+            Assert.Equal(0, Program.Main(new[] { "generate", "--seed", "4", "--out", secondLayout }));
+
+            string mapPath = Path.Combine(dir, "map.json");
+            int firstBake = Program.Main(new[]
+            {
+                "bake", "--layout", firstLayout, "--map", mapPath,
+                "--origin-x", "0", "--origin-z", "0", "--base-y", "0",
+            });
+            Assert.Equal(0, firstBake);
+
+            int placementsAfterFirst = MapDocumentFile.Load(mapPath).Placements.Count;
+
+            int secondBake = Program.Main(new[]
+            {
+                "bake", "--layout", secondLayout, "--map", mapPath,
+                "--origin-x", "300", "--origin-z", "0", "--base-y", "0",
+            });
+            Assert.Equal(0, secondBake);
+
+            MapDocument doc = MapDocumentFile.Load(mapPath);
+            Assert.True(doc.Placements.Count > placementsAfterFirst,
+                "second bake must append placements to the existing document");
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void MalformedConfig_Exits3_WithMessageNotStackTrace()
+    {
+        string dir = NewTempDir();
+        TextWriter originalError = Console.Error;
+        try
+        {
+            string configPath = Path.Combine(dir, "config.json");
+            File.WriteAllText(configPath, "{ not valid json !");
+            string layoutPath = Path.Combine(dir, "layout.json");
+
+            using var stderr = new StringWriter();
+            Console.SetError(stderr);
+
+            int exit = Program.Main(new[]
+            {
+                "generate", "--seed", "1", "--config", configPath, "--out", layoutPath,
+            });
+
+            Assert.Equal(3, exit);
+            string message = stderr.ToString();
+            Assert.Contains("config", message, StringComparison.Ordinal);
+            Assert.DoesNotContain("   at ", message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Console.SetError(originalError);
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void UnknownVerb_Exits2()
     {
         int exit = Program.Main(new[] { "frobnicate" });

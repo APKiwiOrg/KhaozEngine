@@ -318,6 +318,61 @@ namespace KhaozEngine.Tests.Dungeon
         }
 
         [Fact]
+        public void Emit_TwoDifferentLayouts_AccumulateInOneDocument()
+        {
+            // Two different layouts share 0-based room ids, so an unsalted room-region name collides
+            // and the validator rejects the save. The per-bake salt must keep every id unique.
+            DungeonLayout first = DungeonGenerator.Generate(SingleFloorConfig(), 3UL);
+            DungeonLayout second = DungeonGenerator.Generate(SingleFloorConfig(), 4UL);
+            DungeonKitMap kit = DungeonKitMap.Greybox();
+            var target = new MapDocument { Id = "accumulating-zone", DisplayName = "Accumulating Zone" };
+
+            DungeonMapDocEmitter.Emit(first, kit, new DungeonPlotTransform(0f, 0f, 0f, 0f), target);
+            DungeonMapDocEmitter.Emit(second, kit, new DungeonPlotTransform(200f, 0f, 0f, 0f), target);
+
+            string json = MapDocumentFile.SaveText(target);
+            MapDocument loaded = MapDocumentFile.LoadText(json);
+
+            Assert.Equal(first.Rooms.Count + second.Rooms.Count,
+                loaded.Regions.Count(r => r.Name.StartsWith("dungeon-room-", StringComparison.Ordinal)));
+        }
+
+        [Fact]
+        public void Emit_SameLayoutAtTwoPlots_AccumulateInOneDocument()
+        {
+            // The SAME layout baked twice repeats every unsalted id verbatim (same layout hash, same
+            // room ids), so the salt must also fold in the plot placement.
+            DungeonLayout layout = DungeonGenerator.Generate(SingleFloorConfig(), 3UL);
+            DungeonKitMap kit = DungeonKitMap.Greybox();
+            var target = new MapDocument { Id = "twin-plots-zone", DisplayName = "Twin Plots Zone" };
+
+            DungeonMapDocEmitter.Emit(layout, kit, new DungeonPlotTransform(0f, 0f, 0f, 0f), target);
+            DungeonMapDocEmitter.Emit(layout, kit, new DungeonPlotTransform(200f, 50f, 0f, MathF.PI / 2f), target);
+
+            string json = MapDocumentFile.SaveText(target);
+            MapDocument loaded = MapDocumentFile.LoadText(json);
+
+            Assert.Equal(2 * layout.Rooms.Count,
+                loaded.Regions.Count(r => r.Name.StartsWith("dungeon-room-", StringComparison.Ordinal)));
+            Assert.Equal(target.Placements.Count, loaded.Placements.Count);
+        }
+
+        [Fact]
+        public void Emit_RoomRegionNames_CarryBakeSalt()
+        {
+            DungeonLayout layout = DungeonGenerator.Generate(SingleFloorConfig(), 3UL);
+            DungeonKitMap kit = DungeonKitMap.Greybox();
+            var target = new MapDocument();
+
+            DungeonMapDocEmitter.Emit(layout, kit, new DungeonPlotTransform(0f, 0f, 0f, 0f), target);
+
+            var roomRegions = target.Regions
+                .Where(r => r.Name.StartsWith("dungeon-room-", StringComparison.Ordinal)).ToList();
+            Assert.Equal(layout.Rooms.Count, roomRegions.Count);
+            Assert.All(roomRegions, r => Assert.Matches("^dungeon-room-[0-9a-f]{8}-\\d+$", r.Name));
+        }
+
+        [Fact]
         public void Emit_AppendsWithoutClearingExistingContent()
         {
             DungeonLayout layout = SingleFloorLayoutWithSpawns();

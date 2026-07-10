@@ -24,7 +24,8 @@ public static class Program
 
     /// <summary>Dispatches to the requested verb and returns the process exit code: 0 on success, 1 for a
     /// failed <c>verify</c>, 2 for an unknown verb or a missing/invalid required option (usage is printed
-    /// in that case).</summary>
+    /// in that case), 3 for malformed input JSON (a config, layout, or map document that fails to parse or
+    /// validate, reported by message instead of a stack trace).</summary>
     public static int Main(string[] args)
     {
         if (args.Length == 0)
@@ -51,6 +52,16 @@ public static class Program
             Console.Error.WriteLine(ex.Message);
             Console.Error.WriteLine(Usage);
             return 2;
+        }
+        catch (DungeonJsonException ex)
+        {
+            Console.Error.WriteLine(ex.Message);
+            return 3;
+        }
+        catch (MapDocumentException ex)
+        {
+            Console.Error.WriteLine(ex.Message);
+            return 3;
         }
     }
 

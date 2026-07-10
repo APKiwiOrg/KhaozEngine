@@ -24,3 +24,39 @@ public sealed record MapSummary(string Id, string DisplayName, int FormatVersion
     int ExclusionCount, int ScatterOverrideCount,
     int PlacementCount, int SpawnCount, IReadOnlyList<string> RegionNames,
     bool Dirty);
+
+/// <summary>Ground height, slope, and water depth sampled at a single world point.</summary>
+public sealed record GroundInfo(float X, float Z, float Height, float SlopeDegrees, float WaterLevel, bool BelowWater);
+
+/// <summary>Whether a world point is walkable. Composes the engine's slope-only walkability gate with a water
+/// gate, since submerged ground is never walkable regardless of slope.</summary>
+public sealed record WalkableInfo(float X, float Z, bool Walkable, float SlopeDegrees, float MaxSlopeDegrees, bool BelowWater);
+
+/// <summary>One authored placement resolved for a query. <see cref="Y"/> is the placement's explicit value when
+/// set, otherwise the field's sampled ground height at (<see cref="X"/>, <see cref="Z"/>). <see cref="ExplicitY"/>
+/// flags which one it is.</summary>
+public sealed record PlacementEntry(string Id, string Kind, float X, float Y, float Z, float Yaw, float Scale,
+    bool ExplicitY, IReadOnlyList<string> Tags);
+
+/// <summary>One authored spawn resolved for a query. <see cref="GroundY"/> is always the field's sampled ground
+/// height, since spawns have no explicit Y.</summary>
+public sealed record SpawnEntry(string Id, string ArchetypeId, float X, float GroundY, float Z, bool Enabled,
+    IReadOnlyList<string> Tags);
+
+/// <summary>Placements and spawns whose position falls inside a query rect (inclusive bounds).</summary>
+public sealed record PlacementsInRectResult(IReadOnlyList<PlacementEntry> Placements, IReadOnlyList<SpawnEntry> Spawns);
+
+/// <summary>One generated scatter prop instance, previewed but not baked into a placement.</summary>
+public sealed record ScatterEntry(string Kind, float X, float Y, float Z, float Yaw, float Scale);
+
+/// <summary>A scatter layer preview over a rect: <see cref="Total"/> is the full generated count,
+/// <see cref="Entries"/> is capped at the caller's maxResults with <see cref="Truncated"/> flagging the cap.</summary>
+public sealed record ScatterPreviewResult(string Layer, int Total, bool Truncated, IReadOnlyList<ScatterEntry> Entries);
+
+/// <summary>One candidate flat spot found by <see cref="QueryService.FindFlatArea"/>: its ground height, the
+/// worst (max) slope among its sampled points, and the spread between their highest and lowest sampled height.</summary>
+public sealed record FlatSpot(float X, float Z, float GroundHeight, float MaxSlopeDegrees, float HeightSpread);
+
+/// <summary>Flat spots found by a brute-force grid search at the given radius, sorted by max slope ascending,
+/// then height spread ascending, then X, then Z.</summary>
+public sealed record FlatAreaResult(float Radius, IReadOnlyList<FlatSpot> Spots);

@@ -26,16 +26,18 @@ public sealed record DungeonStampResult(
 /// <see cref="DungeonMapDocEmitter"/> would place (both sinks share the cell-to-piece mapping via
 /// <see cref="PieceMapper"/>, so they can never drift apart). <see cref="DungeonStampResult.Statics"/> is a
 /// small, merged set of axis-run <see cref="BoxShape"/> collision boxes: one per contiguous wall run, one per
-/// contiguous walkable-floor run (excluding the stair tread cells, which are covered by their own pitched
-/// ramp box instead), one oriented ramp per stair run, and (when the layout is
-/// <see cref="DungeonCeilingMode.Roofed"/>) one per contiguous ceiling run. Render-free and
+/// contiguous walkable-floor run (excluding the stair tread cells, which are covered by their own solid step
+/// boxes instead), a run of solid box steps per stair run (upright treads the character's step-up probe mounts),
+/// and (when the layout is <see cref="DungeonCeilingMode.Roofed"/>) one per contiguous ceiling run. Render-free and
 /// physics-backend-free: callers turn props into actual scene content and register statics with whatever
 /// <see cref="IPhysicsWorld"/> they run.
 /// </summary>
 public static class DungeonStamp
 {
-    /// <summary>Half the 0.2m nominal slab/ramp thickness shared by floor slabs and stair ramps.</summary>
-    private const float ThinHalfThickness = 0.1f;
+    /// <summary>Half the 0.2m nominal slab/ramp thickness shared by floor slabs and stair ramps. Internal (not
+    /// private) so <see cref="PieceMapper.FloorPieceYOffset"/> can drop a rendered floor piece by the full slab
+    /// thickness (<c>2 * ThinHalfThickness</c>) to land its top flush on the collision slab.</summary>
+    internal const float ThinHalfThickness = 0.1f;
 
     /// <summary>Builds every prop instance and static collision shape for <paramref name="layout"/>, resolving
     /// kit ids through <paramref name="kit"/> and world positions/orientations through <paramref name="plot"/>.
@@ -60,7 +62,7 @@ public static class DungeonStamp
         var statics = new List<(PhysicsShape Shape, Pose Pose)>();
         BuildWalls(layout, plot, cellSize, floorHeight, statics);
         BuildFloorSlabs(layout, plot, cellSize, floorHeight, statics);
-        BuildStairRamps(layout, plot, cellSize, floorHeight, statics);
+        BuildStairSteps(layout, plot, cellSize, floorHeight, statics);
         BuildCeilingSlabs(layout, plot, cellSize, floorHeight, statics);
 
         return new DungeonStampResult(props, statics);
@@ -162,13 +164,16 @@ public static class DungeonStamp
         }
     }
 
-    /// <summary>Walkable cells that get a floor slab: every walkable kind except the two stair-tread cells
-    /// (<see cref="DungeonCellKind.StairLower"/>/<see cref="DungeonCellKind.StairUpper"/>), which sit under
-    /// the pitched stair ramp box (<see cref="BuildStairRamps"/>) instead of a flat slab.</summary>
+    /// <summary>Walkable cells that get a floor slab: every walkable kind except the three stair-tread cells
+    /// (<see cref="DungeonCellKind.StairLower"/>/<see cref="DungeonCellKind.StairMid"/>/<see cref="DungeonCellKind.StairUpper"/>),
+    /// which sit under the solid stair step boxes (<see cref="BuildStairSteps"/>) instead of a flat slab. The
+    /// landing (<see cref="DungeonCellKind.StairTop"/>) is NOT a tread - it sits past the ramp's top edge - so it
+    /// keeps its flat slab, the solid ground a climber emerges onto.</summary>
     private static bool IsFloorSlabCell(DungeonCellKind kind)
     {
         return DungeonLayout.IsWalkable(kind)
             && kind != DungeonCellKind.StairLower
+            && kind != DungeonCellKind.StairMid
             && kind != DungeonCellKind.StairUpper;
     }
 
@@ -199,44 +204,70 @@ public static class DungeonStamp
         }
     }
 
-    /// <summary>One oriented box per stair run, spanning the full <c>2*cellSize</c> horizontal run (the
-    /// <see cref="DungeonCellKind.StairLower"/> cell through the <see cref="DungeonCellKind.StairUpper"/>
-    /// cell) and the full <paramref name="floorHeight"/> rise to the upper floor's landing. The box's local
-    /// +Z is the run's length axis (matching the greybox stair piece's own "climbs local +Z" convention), so
-    /// its orientation composes the same yaw <see cref="PieceMapper.LocalYaw"/> gives the stair prop with an
-    /// additional pitch of <c>atan2(floorHeight, runMeters)</c> about the local X (width) axis, applied
-    /// BEFORE the yaw (pitch in the piece's own frame, then yaw to aim that frame at the run direction).
-    /// Positioned so the box's top face runs from the lower cell's floor to the upper floor's landing: the
-    /// un-thinned top-surface line's horizontal midpoint sits exactly halfway between the lower and upper
-    /// tile centers (by symmetry of the run's 2-cell span) at the average of the two floors' Y, then the box
-    /// center is that point offset by half the thickness along the box's own (rotated) local -Y axis.</summary>
-    private static void BuildStairRamps(
+    /// <summary>The nominal maximum stair riser (metres). Each stair is collided (and drawn) as a run of solid
+    /// upright box steps, each rising at most this much, kept BELOW the default <c>MoveTuning.StepHeight</c>
+    /// (0.4 m) so the character's step-up probe mounts every tread. A single smooth PITCHED ramp box is NOT
+    /// climbable from a flush floor in this engine: a capsule grounded at floor level cannot mount a
+    /// walkable-slope prop that rises out of the floor (the prop-support sweep is deliberately gated off at floor
+    /// level so a dome flank stays un-climbable), so the stair is discretised into step-up-mountable treads
+    /// instead. Kept in sync with <c>tools/DungeonKitGen</c>, whose greybox stair mesh uses the same step-count
+    /// formula so the visible steps coincide with the collision steps.</summary>
+    private const float MaxStairRiserMeters = 0.34f;
+
+    /// <summary>One run of solid box steps per stair, climbing the full <paramref name="floorHeight"/> over the
+    /// three-tread run (from the lower cell's near edge to the upper cell's far edge). The step count is
+    /// <c>ceil(floorHeight / <see cref="MaxStairRiserMeters"/>)</c>, so every riser stays under the default
+    /// step-up height and the whole run is walkable by the character's step-up probe (see
+    /// <see cref="MaxStairRiserMeters"/> for why a single pitched ramp box would not be). Each step box is UPRIGHT
+    /// (yaw only, no pitch, so its up axis stays world-up like a wall/floor slab) and spans the cell width, the
+    /// tread depth, and its own height (the lower floor up to that step's tread top); the boxes march along the
+    /// run direction, matching the greybox stair mesh (same step count and geometry, so collision and visual
+    /// coincide). The run length is derived from the two END treads (<see cref="PieceMapper.StairRun.Lower"/> and
+    /// <see cref="PieceMapper.StairRun.Upper"/>, whose centres are two cells apart) plus one cell, so it covers
+    /// all three tread cells and auto-adapts if the tread count ever changes. The top step reaches the upper
+    /// floor, flush with the landing slab (<see cref="DungeonCellKind.StairTop"/>) one cell beyond, which a
+    /// climber steps onto.</summary>
+    private static void BuildStairSteps(
         DungeonLayout layout,
         DungeonPlotTransform plot,
         float cellSize,
         float floorHeight,
         List<(PhysicsShape Shape, Pose Pose)> statics)
     {
-        float runMeters = 2f * cellSize;
-        float length = MathF.Sqrt(runMeters * runMeters + floorHeight * floorHeight);
-        float pitch = MathF.Atan2(floorHeight, runMeters);
-
         foreach (PieceMapper.StairRun run in PieceMapper.EnumerateStairRuns(layout))
         {
             (float lx, float ly, float lz) = plot.TileCenter(run.Lower, cellSize, floorHeight);
             (float ux, _, float uz) = plot.TileCenter(run.Upper, cellSize, floorHeight);
 
+            // Run length = end-tread centre distance ((treads-1)*cellSize) + one cell, so the steps cover every
+            // tread cell fully from the lower cell's near edge to the upper cell's far edge. The centre distance
+            // is Euclidean so it stays correct under a rotated plot (a Manhattan |dx|+|dz| would overshoot on a
+            // diagonal run and march the steps past the run footprint).
+            float runMeters = MathF.Sqrt((ux - lx) * (ux - lx) + (uz - lz) * (uz - lz)) + cellSize;
+
+            int steps = Math.Max(1, (int)MathF.Ceiling(floorHeight / MaxStairRiserMeters));
+            float riser = floorHeight / steps;
+            float depth = runMeters / steps;
+
             float yaw = PieceMapper.LocalYaw(run.Dx, run.Dz) - plot.YawRadians;
-            Quaternion orientation = Quaternion.CreateFromAxisAngle(Vector3.UnitY, yaw)
-                * Quaternion.CreateFromAxisAngle(Vector3.UnitX, -pitch);
+            Quaternion orientation = Quaternion.CreateFromAxisAngle(Vector3.UnitY, yaw);
 
-            Vector3 worldUpAxis = Vector3.Transform(Vector3.UnitY, orientation);
+            // The run's horizontal centre (midpoint of the two end-tread centres) and the unit world XZ climb
+            // direction (lower cell toward upper cell). Steps are laid out along it from the low end up.
+            var runCenter = new Vector3((lx + ux) * 0.5f, ly, (lz + uz) * 0.5f);
+            var lowerToUpper = new Vector3(ux - lx, 0f, uz - lz);
+            Vector3 climbDir = lowerToUpper.LengthSquared() > 1e-9f ? Vector3.Normalize(lowerToUpper) : Vector3.UnitZ;
 
-            var topMidpoint = new Vector3((lx + ux) * 0.5f, ly + floorHeight * 0.5f, (lz + uz) * 0.5f);
-            Vector3 center = topMidpoint - ThinHalfThickness * worldUpAxis;
+            for (int i = 0; i < steps; i++)
+            {
+                float treadTop = (i + 1) * riser;                          // this step's top, above the lower floor
+                float zLocal = -runMeters * 0.5f + (i + 0.5f) * depth;     // step centre along the run from its centre
+                Vector3 xz = runCenter + zLocal * climbDir;
 
-            var halfExtents = new Vector3(cellSize * 0.5f, ThinHalfThickness, length * 0.5f);
-            statics.Add((new BoxShape(halfExtents), new Pose(center, orientation)));
+                var halfExtents = new Vector3(cellSize * 0.5f, treadTop * 0.5f, depth * 0.5f);
+                var center = new Vector3(xz.X, ly + treadTop * 0.5f, xz.Z);
+                statics.Add((new BoxShape(halfExtents), new Pose(center, orientation)));
+            }
         }
     }
 

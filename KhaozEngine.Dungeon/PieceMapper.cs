@@ -17,14 +17,28 @@ internal static class PieceMapper
     /// <paramref name="Tile"/>, facing the plot-local direction (<paramref name="Dx"/>, <paramref name="Dz"/>)
     /// (zero for symmetric pieces). Feed the direction into <see cref="LocalYaw"/> to get the piece-local yaw
     /// component, then subtract the plot yaw per <see cref="LocalYaw"/>'s composition rule.
-    /// <paramref name="YOffset"/> is added to the resolved world Y (0 for floor-level pieces, the ceiling
-    /// height for a <see cref="DungeonPiece.Ceiling"/> so it sits above the floor rather than on it).</summary>
+    /// <paramref name="YOffset"/> is added to the resolved world Y: a small negative <see cref="FloorPieceYOffset"/>
+    /// for floor-level pieces (<see cref="DungeonPiece.Floor"/> and the <see cref="DungeonPiece.StairDown"/> landing)
+    /// so their TOP - not their base - lands on the floor collision slab, and the ceiling height for a
+    /// <see cref="DungeonPiece.Ceiling"/> so it sits above the floor rather than on it.</summary>
     internal readonly record struct CellPiece(DungeonTile Tile, DungeonPiece Piece, int Dx, int Dz, float YOffset = 0f);
 
-    /// <summary>One stair run: the <see cref="DungeonCellKind.StairLower"/> and <see cref="DungeonCellKind.StairUpper"/>
-    /// tiles (both on the lower floor, per <c>CommitStair</c>'s <c>[StairLower, StairUpper, StairTop]</c> path
-    /// ordering) plus the plot-local direction from one to the other.</summary>
+    /// <summary>One stair run: the two END treads, <see cref="DungeonCellKind.StairLower"/> and
+    /// <see cref="DungeonCellKind.StairUpper"/> (both on the lower floor, the first and second-to-last cells of
+    /// <c>CommitStair</c>'s <c>[StairLower, StairMid, StairUpper, StairTop]</c> path ordering, so the run spans
+    /// the full three-tread ramp) plus the plot-local direction from one to the other.</summary>
     internal readonly record struct StairRun(DungeonTile Lower, DungeonTile Upper, int Dx, int Dz);
+
+    /// <summary>The Y shift (metres) applied to a rendered floor-level piece (<see cref="DungeonPiece.Floor"/> and
+    /// the <see cref="DungeonPiece.StairDown"/> landing) so its TOP - not its base - lands at the floor's Y, flush
+    /// with the top of the <see cref="DungeonStamp"/> floor collision slab the capsule actually rests on. The
+    /// greybox floor/landing kit meshes are authored one collision-slab-thickness tall with their base at local
+    /// y=0 (<c>PropLoader</c> drops every mesh base to 0), so without this drop the visible floor would float one
+    /// slab thickness ABOVE the collision, reading as a character sunk into the floor. The greybox floor/landing
+    /// kit thickness EQUALS the collision slab thickness (<c>2 * DungeonStamp.ThinHalfThickness</c>) by design, so
+    /// dropping the piece by exactly that thickness lands its top on floorY. Both sinks (<see cref="DungeonStamp"/>
+    /// props and <see cref="DungeonMapDocEmitter"/> baked placements) apply it, so runtime and baked content match.</summary>
+    internal const float FloorPieceYOffset = -2f * DungeonStamp.ThinHalfThickness;
 
     /// <summary>Every door-frame (or stair-top landing) cell belongs to exactly one edge, on one end or the
     /// other of that edge's <see cref="DungeonEdge.Doors"/> pair. Both ends share the same horizontal passage
@@ -71,11 +85,11 @@ internal static class PieceMapper
                     {
                         case DungeonCellKind.RoomFloor:
                         case DungeonCellKind.Corridor:
-                            yield return new CellPiece(tile, DungeonPiece.Floor, 0, 0);
+                            yield return new CellPiece(tile, DungeonPiece.Floor, 0, 0, FloorPieceYOffset);
                             break;
 
                         case DungeonCellKind.DoorFrame:
-                            yield return new CellPiece(tile, DungeonPiece.Floor, 0, 0);
+                            yield return new CellPiece(tile, DungeonPiece.Floor, 0, 0, FloorPieceYOffset);
                             (int ddx, int ddz) = passageDirection.TryGetValue(tile, out (int Dx, int Dz) dir) ? dir : (0, 0);
                             yield return new CellPiece(tile, DungeonPiece.DoorFrame, ddx, ddz);
                             break;
@@ -86,10 +100,10 @@ internal static class PieceMapper
 
                         case DungeonCellKind.StairTop:
                             (int sdx, int sdz) = passageDirection.TryGetValue(tile, out (int Dx, int Dz) sdir) ? sdir : (0, 0);
-                            yield return new CellPiece(tile, DungeonPiece.StairDown, sdx, sdz);
+                            yield return new CellPiece(tile, DungeonPiece.StairDown, sdx, sdz, FloorPieceYOffset);
                             break;
 
-                        // StairLower/StairUpper: covered once per run by EnumerateStairRuns.
+                        // StairLower/StairMid/StairUpper: covered once per run by EnumerateStairRuns.
                         // StairVoid/Empty: nothing.
                     }
 
@@ -118,9 +132,10 @@ internal static class PieceMapper
                 continue;
             }
 
-            // CommitStair always orders Path as [StairLower, StairUpper, StairTop].
+            // CommitStair always orders Path as [StairLower, StairMid, StairUpper, StairTop]; the ramp spans the
+            // two END treads (Path[0] to Path[^2] = StairUpper), so it covers the full three-tread run.
             DungeonTile lower = edge.Path[0];
-            DungeonTile upper = edge.Path[1];
+            DungeonTile upper = edge.Path[^2];
             (int dx, int dz) = UnitDirection(lower, upper);
 
             yield return new StairRun(lower, upper, dx, dz);
@@ -130,14 +145,14 @@ internal static class PieceMapper
     /// <summary>Whether the cell at (<paramref name="x"/>, <paramref name="z"/>, <paramref name="f"/>) gets a
     /// ceiling: true when <paramref name="layout"/> is <see cref="DungeonCeilingMode.Roofed"/>, the cell is
     /// walkable, and the cell directly above it (floor <c>f + 1</c>, same XZ) is neither walkable nor
-    /// <see cref="DungeonCellKind.StairVoid"/>. Two exceptions keep the whole stairwell shaft open at both
-    /// ends: a stair's emergence cell, <see cref="DungeonCellKind.StairUpper"/>, has the walkable
-    /// <see cref="DungeonCellKind.StairTop"/> landing directly above it (where the floor above already has a
-    /// walkable cell, that floor's own slab is the roof, so a second ceiling would only z-fight); and a stair's
-    /// entry cell, <see cref="DungeonCellKind.StairLower"/>, has <see cref="DungeonCellKind.StairVoid"/> directly
-    /// above it, the deliberately-open headroom cutout the ramp climbs through, which must stay uncapped even
-    /// though it is not itself walkable. Both sinks call this so their ceiling pieces and ceiling collision slabs
-    /// cover exactly the same cells.</summary>
+    /// <see cref="DungeonCellKind.StairVoid"/>. The walkable-above exemption keeps stacked floors from
+    /// double-roofing: where the floor above already has a walkable cell, that floor's own slab is the roof, so a
+    /// second ceiling would only z-fight. The <see cref="DungeonCellKind.StairVoid"/> exemption keeps the whole
+    /// stair shaft open: a StairVoid sits directly above every tread (<see cref="DungeonCellKind.StairLower"/>,
+    /// <see cref="DungeonCellKind.StairMid"/>, <see cref="DungeonCellKind.StairUpper"/>) as the deliberately-open
+    /// headroom the ramp climbs through, so those treads must stay uncapped even though the void above them is not
+    /// itself walkable. Both sinks call this so their ceiling pieces and ceiling collision slabs cover exactly the
+    /// same cells.</summary>
     internal static bool HasCeiling(DungeonLayout layout, int x, int z, int f)
     {
         if (layout.CeilingMode != DungeonCeilingMode.Roofed || !DungeonLayout.IsWalkable(layout.GetCell(x, z, f)))

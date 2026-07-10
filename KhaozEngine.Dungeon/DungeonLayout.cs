@@ -242,8 +242,10 @@ public sealed class DungeonLayout
         return CellsMutable[CellIndex(x, z, floor)];
     }
 
-    /// <summary>True for the six walkable kinds (room floor, corridor, door frame, and the three stair tread
-    /// kinds). False for <see cref="DungeonCellKind.Empty"/>, <see cref="DungeonCellKind.Wall"/>, and
+    /// <summary>True for the seven walkable kinds (room floor, corridor, door frame, and the four stair
+    /// tread/landing kinds <see cref="DungeonCellKind.StairLower"/>, <see cref="DungeonCellKind.StairMid"/>,
+    /// <see cref="DungeonCellKind.StairUpper"/>, <see cref="DungeonCellKind.StairTop"/>). False for
+    /// <see cref="DungeonCellKind.Empty"/>, <see cref="DungeonCellKind.Wall"/>, and
     /// <see cref="DungeonCellKind.StairVoid"/>.</summary>
     public static bool IsWalkable(DungeonCellKind kind)
     {
@@ -253,6 +255,7 @@ public sealed class DungeonLayout
             case DungeonCellKind.Corridor:
             case DungeonCellKind.DoorFrame:
             case DungeonCellKind.StairLower:
+            case DungeonCellKind.StairMid:
             case DungeonCellKind.StairUpper:
             case DungeonCellKind.StairTop:
                 return true;

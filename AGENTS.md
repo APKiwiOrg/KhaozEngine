@@ -60,6 +60,10 @@ version/release work.
 
 ## Build / test / release
 - `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj` - every new behaviour ships with a headless test.
+- **Public repo, free CI.** `KhaozEngine` is public under the `APKiwiOrg` org, so its CI (including the
+  cross-platform GPU goldens on macOS/Windows/Linux) runs free on GitHub-hosted runners. The private
+  games instead run CI on self-hosted runners on the dev Mac; the fleet-wide CI model (org, both
+  runners, secretless OIDC, macOS arm64-only) is in `game-template/docs/CI-AND-RUNNERS.md`.
 - **Warnings are errors.** `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>` in `Directory.Build.props`
   (every config), so any compiler/analyzer warning fails the build, the tests, and CI. Keep the engine at zero
   warnings and fix them at the source, not with `<NoWarn>` / `#pragma warning disable` / `TreatWarningsAsErrors=false`

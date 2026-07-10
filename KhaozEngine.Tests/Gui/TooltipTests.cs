@@ -100,6 +100,58 @@ namespace KhaozEngine.Tests.Gui
         }
 
         [Fact]
+        public void Long_line_wraps_capping_width_and_growing_height()
+        {
+            // maxWidth 100 -> content width 80 (minus PadX*2) = 8 chars/line. "one two three four" wraps to
+            // ["one two"(70), "three"(50), "four"(40)] = 3 lines.
+            var r = Tooltip.ComputeBounds(Font, "", Font, One("one two three four"), new Vector2(400, 300), View, M, maxWidth: 100f);
+            // widest wrapped line "one two" = 70 -> panelW 90, capped under the 100 max.
+            Assert.Equal(90f, r.Width);
+            Assert.True(r.Width <= 100f);
+            // 3 lines: 3*(20+3) - 3 = 66 -> panelH 82.
+            Assert.Equal(82f, r.Height);
+
+            // Unbounded: one 180px line -> panelW 200, single-line panelH 36. Wrapping narrows and heightens.
+            var unbounded = Tooltip.ComputeBounds(Font, "", Font, One("one two three four"), new Vector2(400, 300), View, M);
+            Assert.True(r.Width < unbounded.Width);
+            Assert.True(r.Height > unbounded.Height);
+        }
+
+        [Fact]
+        public void Short_line_does_not_wrap_under_a_generous_max_width()
+        {
+            // "hi" (20) fits well within the 80px content budget, so bounds match the unbounded layout exactly.
+            var bounded = Tooltip.ComputeBounds(Font, "", Font, One("hi"), new Vector2(400, 300), View, M, maxWidth: 100f);
+            var unbounded = Tooltip.ComputeBounds(Font, "", Font, One("hi"), new Vector2(400, 300), View, M);
+            Assert.Equal(unbounded.Width, bounded.Width);
+            Assert.Equal(unbounded.Height, bounded.Height);
+        }
+
+        [Fact]
+        public void Unbreakable_token_hard_breaks_within_the_max_width()
+        {
+            // A single 18-char token with no spaces, content budget 80 (8 chars) -> three chunks (8,8,2) = 3 lines.
+            var r = Tooltip.ComputeBounds(Font, "", Font, One("aaaaaaaaaaaaaaaaaa"), new Vector2(400, 300), View, M, maxWidth: 100f);
+            Assert.True(r.Width <= 100f);
+            Assert.Equal(100f, r.Width);            // widest chunk 80 -> panelW 100
+            Assert.Equal(82f, r.Height);            // 3 lines -> panelH 82 (single-line would be 36)
+        }
+
+        [Fact]
+        public void Flip_below_still_triggers_with_the_taller_wrapped_bubble()
+        {
+            // The wrapped bubble is 82px tall; above the anchor at y=50 it would start at 50-82-10 = -42 < 0,
+            // so it flips below to anchor.Y + AnchorOffsetY.
+            var wrapped = Tooltip.ComputeBounds(Font, "", Font, One("one two three four"), new Vector2(400, 50), View, M, maxWidth: 100f);
+            Assert.Equal(50f + 10f, wrapped.Y);
+
+            // The unwrapped single-line bubble (36px) fits above at 50-36-10 = 4, so it does NOT flip: the taller
+            // wrapped size is what forces the flip.
+            var unbounded = Tooltip.ComputeBounds(Font, "", Font, One("one two three four"), new Vector2(400, 50), View, M);
+            Assert.Equal(4f, unbounded.Y);
+        }
+
+        [Fact]
         public void TapOutside_mode_dismisses_on_a_fresh_release_outside_the_bounds()
         {
             var bounds = new Rect(100, 100, 80, 40);

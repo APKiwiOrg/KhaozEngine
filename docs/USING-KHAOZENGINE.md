@@ -662,6 +662,8 @@ dropdown.DrawOverlay(batch, white, font, pointer);
 // A tooltip that works on both desktop and touch without a compile-time platform branch.
 tip.Dismiss = isTouch ? TooltipDismiss.TapOutside : TooltipDismiss.CallerDriven;
 tip.ShowTitleSeparator = true;
+tip.MaxWidthFraction = 0.4f;                       // cap at 40% of the viewport: long body lines wrap + grow down
+                                                   // (or an absolute tip.MaxWidth = 360f, smaller cap wins)
 tip.Show(Strings.CopperOre, LocalizedText.Raw("x128"), bodyLines, anchor); // left name (localized), right count (raw)
 tip.Update(pointer);                               // auto-dismisses on tap-outside in TapOutside mode
 tip.Draw(batch, white);

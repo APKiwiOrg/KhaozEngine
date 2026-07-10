@@ -5,6 +5,25 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.49.0
+
+`Tooltip` gains an opt-in width cap (`MaxWidth` px and/or `MaxWidthFraction` of the viewport) that word-wraps
+long body lines downward instead of overflowing the viewport, backed by a new opt-in `hardBreak` on
+`TextLayout.Wrap`. The default stays unbounded, so existing tooltips are unchanged.
+
+- **Opt-in tooltip width cap (`KhaozEngine.Gui`).** New `Tooltip.MaxWidth` (absolute design px) and
+  `Tooltip.MaxWidthFraction` (fraction of `Viewport.X`), the smaller resulting cap winning, both default `0`
+  = unbounded (the pre-existing look, the bubble sizes to its widest line). When set, a body line wider than
+  the cap minus horizontal padding word-wraps into extra lines, so the bubble grows in height and its width
+  stays `<= MaxWidth` instead of running off the viewport. New `maxWidth` overloads of the pure
+  `Tooltip.ComputeBounds` carry the cap (the existing overloads delegate with unbounded width), and `Draw`
+  renders the same wrapped lines so measured bounds and drawn content agree. The single-line title row is not
+  wrapped, so it clips rather than wraps if it alone exceeds the cap.
+- **Opt-in hard-break word-wrap (`KhaozEngine.Render2D`).** `TextLayout.Wrap` takes a new
+  `bool hardBreak = false`. Off (default) keeps the prior behavior, a word wider than the limit staying on
+  its own line. On, a token longer than `maxWidth` is sliced at character boundaries so every returned line
+  fits (always at least one character per line, so it always makes progress). Used by the width-capped tooltip.
+
 ## 10.48.0
 
 `PannableCanvas` gains an opt-in wheel-zoom mode: set `Wheel = CanvasWheelMode.Zoom` and the mouse wheel

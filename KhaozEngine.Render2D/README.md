@@ -13,6 +13,8 @@
 - `SpriteFont` - runtime TrueType text (stb_truetype glyph atlas), `DrawString` / `Measure`. `DrawString` has a
   `float scale` overload (uniform scale about the top-left); `TextLayout.AlignedX`/`DrawAligned`/`DrawWrapped`
   take an optional `scale` so aligned/wrapped text stays correct when drawn scaled (`scale = 1` is unchanged).
+  `TextLayout.Wrap(font, text, maxWidth, hardBreak)` word-wraps on spaces. The opt-in `hardBreak` (default off)
+  additionally slices a single token longer than `maxWidth` at character boundaries so every returned line fits.
   Default baked coverage is U+0020..U+017F (printable ASCII + Latin-1 Supplement + Latin Extended-A), so
   accented Western/Central European text renders out of the box. Anything outside the coverage (or missing
   from the face) measures AND draws as the visible `SpriteFont.FallbackChar` glyph (`?`) instead of silently

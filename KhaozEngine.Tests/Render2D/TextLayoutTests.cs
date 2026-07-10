@@ -56,6 +56,16 @@ namespace KhaozEngine.Tests.Render2D
         }
 
         [Fact]
+        public void Wrap_hard_breaks_a_word_wider_than_the_limit_when_enabled()
+        {
+            // maxWidth 60 = 6 chars. "enormouslylongword" (18) has no break point, so with hardBreak it is
+            // sliced into three 6-char chunks; the trailing "ngword" chunk cannot repack with the following
+            // "tiny" (would overflow), so "tiny" starts its own line.
+            var lines = TextLayout.Wrap(Font, "tiny enormouslylongword tiny", 60f, hardBreak: true);
+            Assert.Equal(new[] { "tiny", "enormo", "uslylo", "ngword", "tiny" }, lines);
+        }
+
+        [Fact]
         public void Wrap_of_empty_text_yields_no_lines()
         {
             Assert.Empty(TextLayout.Wrap(Font, "", 100f));

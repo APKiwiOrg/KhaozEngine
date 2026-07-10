@@ -40,8 +40,9 @@ namespace KhaozEngine.Gui
     /// <see cref="Hide"/> + <see cref="Draw"/>. The top margin is configurable via <see cref="TooltipMetrics"/>.
     /// <para>
     /// Opt-in extras (all default to the pre-existing look): a two-column title (<see cref="Show(string,string,IReadOnlyList{TooltipLine},Vector2)"/>
-    /// with a right-aligned value), a separator under the title (<see cref="ShowTitleSeparator"/>), and touch/mobile
-    /// auto-dismiss (<see cref="Dismiss"/> = <see cref="TooltipDismiss.TapOutside"/> + calling <see cref="Update"/>).
+    /// with a right-aligned value), a separator under the title (<see cref="ShowTitleSeparator"/>), a width cap that
+    /// word-wraps long body lines downward instead of overflowing (<see cref="MaxWidth"/> / <see cref="MaxWidthFraction"/>),
+    /// and touch/mobile auto-dismiss (<see cref="Dismiss"/> = <see cref="TooltipDismiss.TapOutside"/> + calling <see cref="Update"/>).
     /// </para>
     /// </summary>
     public sealed class Tooltip
@@ -69,6 +70,21 @@ namespace KhaozEngine.Gui
         /// in <see cref="Draw"/> so a forgotten assignment fails loudly instead of silently mis-positioning.
         /// </summary>
         public Vector2 Viewport = Vector2.Zero;
+
+        /// <summary>
+        /// Absolute cap (design pixels) on the bubble width. A body line wider than this (minus horizontal
+        /// padding) word-wraps into extra lines, growing the bubble downward, instead of widening it past the
+        /// cap. Default <c>0</c> = unbounded (the pre-existing look: the bubble sizes to its widest line). When
+        /// both this and <see cref="MaxWidthFraction"/> are set, the smaller resulting cap wins. The single-line
+        /// title row is not wrapped; if it alone exceeds the cap the width is still capped and the title clips.
+        /// </summary>
+        public float MaxWidth = 0f;
+        /// <summary>
+        /// Cap on the bubble width as a fraction of <see cref="Viewport"/>.X (e.g. <c>0.4f</c> = 40% of the
+        /// design width), so the cap tracks the resolution. Default <c>0</c> = unused. When both this and
+        /// <see cref="MaxWidth"/> are set the smaller resulting cap wins; if neither is set the bubble is unbounded.
+        /// </summary>
+        public float MaxWidthFraction = 0f;
 
         public Vector4 Background = new(0.055f, 0.055f, 0.094f, 0.94f);
         public Vector4 Border = new(0.24f, 0.255f, 0.31f, 0.78f);
@@ -132,7 +148,7 @@ namespace KhaozEngine.Gui
             if (!IsVisible) { _showedThisFrame = false; return; }
             bool shownFrame = _showedThisFrame;
             _showedThisFrame = false;
-            Rect bounds = ComputeBounds(_titleFont, _title, _titleRight, _bodyFont, _bodyFont, _lines, _anchor, Viewport, Metrics);
+            Rect bounds = ComputeBounds(_titleFont, _title, _titleRight, _bodyFont, _bodyFont, _lines, _anchor, Viewport, Metrics, ResolveMaxWidth());
             if (ShouldDismiss(Dismiss, shownFrame, pointer, bounds)) IsVisible = false;
         }
 
@@ -147,10 +163,21 @@ namespace KhaozEngine.Gui
         /// <summary>
         /// Pure layout: the on-screen rect for a tooltip with this content/anchor. Sizes to content, sits above
         /// the anchor (flips below if it would cross <see cref="TooltipMetrics.TopMargin"/>), clamps to the viewport.
+        /// Unbounded width (the pre-existing behaviour): use the <see cref="MaxWidth"/> overloads to cap it.
         /// </summary>
         public static Rect ComputeBounds(ITextMeasurer titleFont, string title, ITextMeasurer bodyFont,
             IReadOnlyList<TooltipLine> lines, Vector2 anchor, Vector2 viewport, TooltipMetrics m) =>
-            ComputeBounds(titleFont, title, "", bodyFont, bodyFont, lines, anchor, viewport, m);
+            ComputeBounds(titleFont, title, "", bodyFont, bodyFont, lines, anchor, viewport, m, float.PositiveInfinity);
+
+        /// <summary>
+        /// Width-capped single-column overload: as the 7-arg overload, but a body line wider than
+        /// <paramref name="maxWidth"/> (minus horizontal padding) word-wraps into extra lines so the bubble grows
+        /// downward and its width stays &lt;= <paramref name="maxWidth"/>. <paramref name="maxWidth"/> &lt;= 0 or
+        /// <see cref="float.PositiveInfinity"/> means unbounded (identical to the 7-arg overload).
+        /// </summary>
+        public static Rect ComputeBounds(ITextMeasurer titleFont, string title, ITextMeasurer bodyFont,
+            IReadOnlyList<TooltipLine> lines, Vector2 anchor, Vector2 viewport, TooltipMetrics m, float maxWidth) =>
+            ComputeBounds(titleFont, title, "", bodyFont, bodyFont, lines, anchor, viewport, m, maxWidth);
 
         /// <summary>
         /// Two-column overload: as above, but the title row is <paramref name="title"/> (left) plus
@@ -160,24 +187,40 @@ namespace KhaozEngine.Gui
         /// </summary>
         public static Rect ComputeBounds(ITextMeasurer titleFont, string title, string titleRight,
             ITextMeasurer titleRightFont, ITextMeasurer bodyFont,
-            IReadOnlyList<TooltipLine> lines, Vector2 anchor, Vector2 viewport, TooltipMetrics m)
+            IReadOnlyList<TooltipLine> lines, Vector2 anchor, Vector2 viewport, TooltipMetrics m) =>
+            ComputeBounds(titleFont, title, titleRight, titleRightFont, bodyFont, lines, anchor, viewport, m, float.PositiveInfinity);
+
+        /// <summary>
+        /// Width-capped two-column overload (the full layout): body lines wider than <paramref name="maxWidth"/>
+        /// minus horizontal padding word-wrap via <paramref name="bodyFont"/> (break on spaces, hard-break a token
+        /// longer than the budget), so the bubble grows in height and its width is capped at
+        /// <paramref name="maxWidth"/>. The title row stays single-line (it may clip if it alone exceeds the cap).
+        /// <paramref name="maxWidth"/> &lt;= 0 or <see cref="float.PositiveInfinity"/> means unbounded.
+        /// </summary>
+        public static Rect ComputeBounds(ITextMeasurer titleFont, string title, string titleRight,
+            ITextMeasurer titleRightFont, ITextMeasurer bodyFont,
+            IReadOnlyList<TooltipLine> lines, Vector2 anchor, Vector2 viewport, TooltipMetrics m, float maxWidth)
         {
-            float contentW = 0f;
+            bool bounded = maxWidth > 0f && !float.IsInfinity(maxWidth);
+            var visual = WrapBody(bodyFont, lines, ContentWidthCap(maxWidth, m));
+
             bool hasTitle = !string.IsNullOrEmpty(title);
             float titleRowW = hasTitle ? titleFont.Measure(title).X : 0f;
             if (!string.IsNullOrEmpty(titleRight))
                 titleRowW += m.TitleRightGap + titleRightFont.Measure(titleRight).X;
-            contentW = MathF.Max(contentW, titleRowW);
-            for (int i = 0; i < lines.Count; i++)
-                contentW = MathF.Max(contentW, bodyFont.Measure(lines[i].Text).X);
+
+            float contentW = titleRowW;
+            for (int i = 0; i < visual.Count; i++)
+                contentW = MathF.Max(contentW, bodyFont.Measure(visual[i].Text).X);
 
             float contentH = 0f;
             if (hasTitle) contentH += titleFont.LineHeight + m.TitleGap;
-            contentH += lines.Count * (bodyFont.LineHeight + m.LineSpacing);
-            if (lines.Count > 0) contentH -= m.LineSpacing;   // no trailing gap
+            contentH += visual.Count * (bodyFont.LineHeight + m.LineSpacing);
+            if (visual.Count > 0) contentH -= m.LineSpacing;   // no trailing gap
 
             float w = contentW + m.PadX * 2f;
             float h = contentH + m.PadY * 2f;
+            if (bounded) w = MathF.Min(w, maxWidth);            // cap width; a longer single-line title clips
 
             float x = anchor.X - w * 0.5f;
             float y = anchor.Y - h - m.AnchorOffsetY;          // above the anchor
@@ -188,6 +231,45 @@ namespace KhaozEngine.Gui
             return new Rect(x, y, w, h);
         }
 
+        /// <summary>The body word-wrap budget (design px) for a given bubble-width cap: the cap minus horizontal
+        /// padding, or <see cref="float.PositiveInfinity"/> when unbounded. One source so bounds and draw agree.</summary>
+        static float ContentWidthCap(float maxWidth, TooltipMetrics m) =>
+            (maxWidth > 0f && !float.IsInfinity(maxWidth)) ? MathF.Max(0f, maxWidth - m.PadX * 2f) : float.PositiveInfinity;
+
+        /// <summary>
+        /// The body lines as they lay out: each source line is kept verbatim when it fits (or when unbounded),
+        /// or word-wrapped (spaces, hard-breaking an over-long token) into several lines that each inherit the
+        /// source colour when it exceeds <paramref name="maxContentWidth"/>. Shared by <c>ComputeBounds</c>
+        /// and <see cref="Draw"/> so the measured height matches what is drawn.
+        /// </summary>
+        static List<TooltipLine> WrapBody(ITextMeasurer bodyFont, IReadOnlyList<TooltipLine> lines, float maxContentWidth)
+        {
+            bool bounded = maxContentWidth > 0f && !float.IsInfinity(maxContentWidth);
+            var outLines = new List<TooltipLine>(lines.Count);
+            for (int i = 0; i < lines.Count; i++)
+            {
+                TooltipLine line = lines[i];
+                if (!bounded || bodyFont.Measure(line.Text).X <= maxContentWidth)
+                {
+                    outLines.Add(line);
+                    continue;
+                }
+                foreach (string wrapped in TextLayout.Wrap(bodyFont, line.Text, maxContentWidth, hardBreak: true))
+                    outLines.Add(new TooltipLine(wrapped, line.Color));
+            }
+            return outLines;
+        }
+
+        /// <summary>The effective bubble-width cap (design px) from <see cref="MaxWidth"/> / <see cref="MaxWidthFraction"/>;
+        /// <see cref="float.PositiveInfinity"/> when neither is set. The smaller of the two positive caps wins.</summary>
+        float ResolveMaxWidth()
+        {
+            float max = float.PositiveInfinity;
+            if (MaxWidth > 0f) max = MaxWidth;
+            if (MaxWidthFraction > 0f && Viewport.X > 0f) max = MathF.Min(max, MaxWidthFraction * Viewport.X);
+            return max;
+        }
+
         /// <summary>Draw the tooltip if visible. <paramref name="white"/> is a 1x1 white texture.</summary>
         public void Draw(SpriteBatch batch, Texture2D white)
         {
@@ -195,7 +277,8 @@ namespace KhaozEngine.Gui
             if (Viewport == Vector2.Zero)
                 throw new InvalidOperationException(
                     "Tooltip.Viewport is unset (Vector2.Zero); assign the design viewport size before draw.");
-            Rect b = ComputeBounds(_titleFont, _title, _titleRight, _bodyFont, _bodyFont, _lines, _anchor, Viewport, Metrics);
+            float maxWidth = ResolveMaxWidth();
+            Rect b = ComputeBounds(_titleFont, _title, _titleRight, _bodyFont, _bodyFont, _lines, _anchor, Viewport, Metrics, maxWidth);
             GuiDraw.Fill(batch, white, b, Background);
             GuiDraw.Border(batch, white, b, 1f, Border);
 
@@ -217,9 +300,10 @@ namespace KhaozEngine.Gui
                     GuiDraw.Fill(batch, white, new Rect(b.X + Metrics.PadX, sepY, b.Width - Metrics.PadX * 2f, 1f), SeparatorColor);
                 }
             }
-            for (int i = 0; i < _lines.Count; i++)
+            List<TooltipLine> visual = WrapBody(_bodyFont, _lines, ContentWidthCap(maxWidth, Metrics));
+            for (int i = 0; i < visual.Count; i++)
             {
-                batch.DrawString(_bodyFont, _lines[i].Text, new Vector2(MathF.Floor(x), MathF.Floor(y)), (Color)_lines[i].Color);
+                batch.DrawString(_bodyFont, visual[i].Text, new Vector2(MathF.Floor(x), MathF.Floor(y)), (Color)visual[i].Color);
                 y += _bodyFont.LineHeight + Metrics.LineSpacing;
             }
         }

@@ -7,10 +7,11 @@ namespace KhaozEngine.Dungeon;
 /// <summary>
 /// Deterministic entry point for dungeon generation. <see cref="Generate"/> validates the config, grows a
 /// tree of rooms joined by corridors (and, when the config allows more than one floor, by upward stairs), runs
-/// the wall pass, assembles a completable-by-construction <see cref="DungeonLayout"/>, and re-proves that
-/// completability via <see cref="DungeonSolver.Verify"/> before returning it. Identical config and seed always
-/// produce an identical layout (see <see cref="DungeonLayout.LayoutHash"/>). Gating and markers arrive in later
-/// tasks. For now the layout carries empty keys and markers.
+/// the wall pass, plans gating (boss, locks on critical-path bridge edges, and reachability-proven key
+/// placement) via <c>GatingPlanner</c>, assembles a completable-by-construction <see cref="DungeonLayout"/>, and
+/// re-proves that completability via <see cref="DungeonSolver.Verify"/> before returning it. Identical config and
+/// seed always produce an identical layout (see <see cref="DungeonLayout.LayoutHash"/>). Markers arrive in a
+/// later task. For now the layout carries empty markers.
 /// </summary>
 public static class DungeonGenerator
 {
@@ -42,11 +43,18 @@ public static class DungeonGenerator
         LoopPlanner.PlanLoopEdges(config, rooms, grown);
         RoomGrower.ApplyWallPass(grown.Cells, width, depth, floors);
 
+        // Gating runs on the assembled room graph after the wall pass and before the solver: it marks the boss,
+        // locks bridge edges on the critical path, and places their keys in provably-reachable rooms. The stream
+        // is derived here (after the rooms stream) and only drawn from when a lock is placed, so LockCount=0 /
+        // BossRoom=false configs consume nothing and stay byte-identical to earlier tasks.
+        DeterministicRng gating = root.CreateDerived("gating");
+        GatingResult gatingResult = GatingPlanner.PlanGating(config, gating, grown.Rooms, grown.Edges);
+
         var layout = new DungeonLayout(width, depth, floors, config.CellSizeMeters, config.FloorHeightMeters)
         {
             Rooms = grown.Rooms,
             Edges = grown.Edges,
-            Keys = Array.Empty<DungeonKeyPlacement>(),
+            Keys = gatingResult.Keys,
             Markers = Array.Empty<DungeonMarker>(),
             Stats = new LayoutStats
             {
@@ -55,7 +63,7 @@ public static class DungeonGenerator
                 CriticalPathLength = 0,
                 FloorsUsed = RoomGrower.CountFloorsUsed(grown.Cells, width, depth, floors),
                 LocksRequested = config.LockCount,
-                LocksPlaced = 0,
+                LocksPlaced = gatingResult.LocksPlaced,
                 Saturated = grown.Saturated,
             },
         };

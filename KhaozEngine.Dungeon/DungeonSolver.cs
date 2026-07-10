@@ -27,11 +27,13 @@ public static class DungeonSolver
     /// treating a locked edge's <see cref="DungeonEdge.Doors"/> cells as closed until the fill reaches an
     /// interior tile of the room holding its key (iterated fill-collect-unlock to a fixpoint). Solvable requires
     /// every room's every interior tile to end up reached (which covers the Boss room too, when one exists).
-    /// Also runs three structural checks, independent of reachability: every edge's <see cref="DungeonEdge.Path"/>
+    /// Also runs four structural checks, independent of reachability: every edge's <see cref="DungeonEdge.Path"/>
     /// and <see cref="DungeonEdge.Doors"/> cells carry the cell kinds construction guarantees for that edge's
     /// <see cref="DungeonEdgeKind"/>, every <see cref="DungeonKeyPlacement.LockId"/> matches exactly one locked
-    /// edge, and every <see cref="DungeonRoom.Id"/> is unique. Any failing check appends a distinct error string.
-    /// The layout is solvable iff none did.</summary>
+    /// edge, every <see cref="DungeonRoom.Id"/> is unique, and no key sits inside its own lock's closed region
+    /// (the belt-and-braces key-before-lock check: a key's room must stay reachable from the entrance when its
+    /// lock's edge is removed). Any failing check appends a distinct error string. The layout is solvable iff
+    /// none did.</summary>
     /// <param name="layout">The layout to verify. Never mutated.</param>
     /// <exception cref="ArgumentNullException"><paramref name="layout"/> is null.</exception>
     public static DungeonSolveReport Verify(DungeonLayout layout)
@@ -43,6 +45,7 @@ public static class DungeonSolver
         CheckRoomIdsUnique(layout, errors);
         CheckEdgeCellKinds(layout, errors);
         CheckKeyLockMatching(layout, errors);
+        CheckKeyNotBehindOwnLock(layout, errors);
 
         DungeonRoom? entrance = FindEntrance(layout);
         if (entrance is null)
@@ -229,6 +232,90 @@ public static class DungeonSolver
                 errors.Add($"Lock {key.LockId} (key in room {key.RoomId}) matches {matches} locked edges, expected exactly 1.");
             }
         }
+    }
+
+    /// <summary>Belt-and-braces key-before-lock check, independent of the cell-level fixpoint fill: for every key
+    /// placement, the key's room must remain reachable from the entrance over the room graph once the single
+    /// locked edge that key opens is removed. Removing a lock's bridge edge exposes the region it closes off, so a
+    /// key found unreachable there sits behind the very lock it is meant to open. Appends a distinct error naming
+    /// the offending lock, key room, and its "closed region". A layout with no entrance or no keys is a
+    /// no-op.</summary>
+    private static void CheckKeyNotBehindOwnLock(DungeonLayout layout, List<string> errors)
+    {
+        if (layout.Keys.Count == 0)
+        {
+            return;
+        }
+
+        DungeonRoom? entrance = FindEntrance(layout);
+        if (entrance is null)
+        {
+            return;
+        }
+
+        foreach (DungeonKeyPlacement key in layout.Keys)
+        {
+            DungeonEdge? lockEdge = null;
+            foreach (DungeonEdge edge in layout.Edges)
+            {
+                if (edge.LockId.HasValue && edge.LockId.Value == key.LockId)
+                {
+                    lockEdge = edge;
+                    break;
+                }
+            }
+
+            if (lockEdge is null)
+            {
+                // CheckKeyLockMatching already reports a key whose lock has no (or many) edges.
+                continue;
+            }
+
+            HashSet<int> reachable = ReachableRoomsExcludingEdge(layout, entrance.Id, lockEdge);
+            if (!reachable.Contains(key.RoomId))
+            {
+                errors.Add(
+                    $"Lock {key.LockId}'s key in room {key.RoomId} is inside that lock's own closed region (unreachable from the entrance once the lock's edge is removed).");
+            }
+        }
+    }
+
+    /// <summary>Rooms reachable from <paramref name="entranceId"/> over the room graph with the single
+    /// <paramref name="excludedEdge"/> removed. Used only by <see cref="CheckKeyNotBehindOwnLock"/>.</summary>
+    private static HashSet<int> ReachableRoomsExcludingEdge(DungeonLayout layout, int entranceId, DungeonEdge excludedEdge)
+    {
+        var adjacency = new Dictionary<int, List<int>>();
+        foreach (DungeonRoom room in layout.Rooms)
+        {
+            adjacency[room.Id] = new List<int>();
+        }
+
+        foreach (DungeonEdge edge in layout.Edges)
+        {
+            if (ReferenceEquals(edge, excludedEdge))
+            {
+                continue;
+            }
+
+            adjacency[edge.RoomA].Add(edge.RoomB);
+            adjacency[edge.RoomB].Add(edge.RoomA);
+        }
+
+        var reached = new HashSet<int> { entranceId };
+        var queue = new Queue<int>();
+        queue.Enqueue(entranceId);
+        while (queue.Count > 0)
+        {
+            foreach (int next in adjacency[queue.Dequeue()])
+            {
+                if (reached.Add(next))
+                {
+                    queue.Enqueue(next);
+                }
+            }
+        }
+
+        return reached;
     }
 
     private static bool IsRoomFullyReached(DungeonRoom room, HashSet<(int X, int Z, int Floor)> reached)

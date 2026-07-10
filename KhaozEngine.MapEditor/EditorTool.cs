@@ -100,10 +100,13 @@ public sealed class EditorToolController
     string _dragId = "";
     float? _dragStartY;
 
-    // Draw-mode rubber-band state.
+    // Draw-mode rubber-band state (shared by the draw modes and the bake-region rect gesture).
     bool _drawing;
     Vector3 _drawStart;
     bool _drawRect;
+
+    // Explicit bake-layer override; null resolves to the document's first scatter layer (see BakeLayer).
+    string? _bakeLayer;
 
     /// <summary>Creates the controller over the document it mutates. Set <see cref="Field"/> and
     /// <see cref="HeightOf"/> before the first <see cref="Update"/> that picks or places.</summary>
@@ -130,6 +133,14 @@ public sealed class EditorToolController
 
     /// <summary>The archetype id a <see cref="EditorToolMode.PlaceSpawn"/> click stamps.</summary>
     public string SpawnArchetype { get; set; } = "";
+
+    /// <summary>The scatter layer a <see cref="EditorToolMode.BakeRegion"/> rect gesture freezes. Defaults to the
+    /// document's first scatter layer name (null when the document has none), and an explicit set overrides it.</summary>
+    public string? BakeLayer
+    {
+        get => _bakeLayer ?? (_document.Doc.ScatterLayers.Count > 0 ? _document.Doc.ScatterLayers[0].Name : null);
+        set => _bakeLayer = value;
+    }
 
     /// <summary>The terrain field the ground-snap and picking read. Null before the world is built (the tools
     /// then no-op). The scene assigns it after each viewport build / rebuild.</summary>
@@ -172,7 +183,7 @@ public sealed class EditorToolController
             case EditorToolMode.DrawExclusion: UpdateDraw(input, region: false); break;
             case EditorToolMode.DrawRegion: UpdateDraw(input, region: true); break;
             case EditorToolMode.EditFeature: break;
-            case EditorToolMode.BakeRegion: break;
+            case EditorToolMode.BakeRegion: UpdateBake(input); break;
         }
     }
 
@@ -403,6 +414,39 @@ public sealed class EditorToolController
         float radius = MathF.Sqrt(dx * dx + dz * dz);
         if (radius < MinDrawExtent) return null;
         return new DiscShapeDoc { CenterX = start.X, CenterZ = start.Z, Radius = radius };
+    }
+
+    // ---- bake region -------------------------------------------------------------------------------------
+
+    // Drag a rect on the ground (press hit -> release hit) and freeze the BakeLayer's scatter over it. Always a
+    // rect (no disc), and a no-op when there is no scatter layer to bake or the gesture is sub-threshold.
+    void UpdateBake(in EditorFrameInput input)
+    {
+        if (Field is null) return;
+
+        if (input.PointerPressed)
+        {
+            if (EditorPicking.PickTerrain(Field, input.RayOrigin, input.RayDirection, PickDistance, out Vector3 p))
+            {
+                _drawStart = p;
+                _drawing = true;
+            }
+            return;
+        }
+
+        if (!_drawing || !input.PointerReleased) return;
+        _drawing = false;
+        if (!EditorPicking.PickTerrain(Field, input.RayOrigin, input.RayDirection, PickDistance, out Vector3 end)) return;
+
+        string? layer = BakeLayer;
+        if (layer is null) return;   // nothing to bake without a scatter layer
+
+        float minX = MathF.Min(_drawStart.X, end.X), maxX = MathF.Max(_drawStart.X, end.X);
+        float minZ = MathF.Min(_drawStart.Z, end.Z), maxZ = MathF.Max(_drawStart.Z, end.Z);
+        if (maxX - minX < MinDrawExtent || maxZ - minZ < MinDrawExtent) return;   // stray click, no region
+
+        _document.Execute(new BakeRegionCommand(new RectArea(minX, minZ, maxX, maxZ), layer, _document.Registry));
+        _document.SealGesture();
     }
 
     // ---- delete ------------------------------------------------------------------------------------------

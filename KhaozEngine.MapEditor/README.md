@@ -14,10 +14,15 @@ The headless core is GPU-free and fully unit-tested:
   to one undo step).
 - `EditorCommands` are the reversible edits over the document model (placements, spawns, exclusions,
   regions, terrain features). Commands are the only mutation path, so undo is total by construction.
+- `BakeRegionCommand` freezes a scatter layer's procedural output over a rect region into authored
+  placements (tagged `baked`, explicit Y) plus a covering exclusion, so a designer can hand-edit props that
+  were procedural. It captures the generated placements on first apply and reuses them on redo, so an
+  undo/redo cycle is byte-identical.
 - `EditorToolController` is the GPU-free per-frame policy: it reads a plain `EditorFrameInput` (pick ray +
   pointer/keyboard edges) and emits commands. Select mode picks and drives the transform-gizmo drag
   (coalesced into one undo step, sealed on release); the place modes ground-snap a click into an Add; the
-  draw modes rubber-band a disc (drag) or rect (shift-drag) into an exclusion or an auto-named region.
+  draw modes rubber-band a disc (drag) or rect (shift-drag) into an exclusion or an auto-named region; the
+  bake mode drags a rect on the ground and bakes the `BakeLayer` scatter over it.
 
 `MapEditorScene` is the turn-key scene a per-game head pushes: it wires the streamed `ViewportWorld`, a fly
 camera, the `EditorToolController`, and the Gui chrome (toolbar tab bar, tree outline, property-grid

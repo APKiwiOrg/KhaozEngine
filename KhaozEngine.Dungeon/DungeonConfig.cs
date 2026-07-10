@@ -3,6 +3,23 @@ using System;
 namespace KhaozEngine.Dungeon;
 
 /// <summary>
+/// Whether a stamped/baked dungeon is left open-top or given roofed interiors. A pure sink-time geometry
+/// choice: it changes only the ceiling pieces the two sinks (<see cref="DungeonMapDocEmitter"/> and
+/// <see cref="DungeonStamp"/>) emit, never the generated layout structure (rooms, corridors, gating), so it
+/// is excluded from <see cref="DungeonLayout.LayoutHash"/> and does not affect determinism.
+/// </summary>
+public enum DungeonCeilingMode
+{
+    /// <summary>No ceilings: the dungeon reads as roofless ruins seen from above. The default, and the
+    /// original behaviour before roofed interiors were added.</summary>
+    Open,
+
+    /// <summary>A ceiling over every walkable cell (except where a walkable cell sits directly above, so
+    /// open stairwells and vertical shafts stay open), so the dungeon reads as an enclosed cave.</summary>
+    Roofed
+}
+
+/// <summary>
 /// Tunables for <c>DungeonGenerator.Generate</c>: plot and room sizing, floor count, the critical-path and
 /// loop-edge targets, lock/key count, and marker density caps. Call <see cref="Validate"/> before generating.
 /// It throws <see cref="ArgumentException"/> naming the first offending property.
@@ -81,12 +98,23 @@ public sealed class DungeonConfig
     /// <summary>Maximum loot markers placed per room.</summary>
     public int LootMarkersPerRoomMax { get; set; } = 1;
 
+    /// <summary>Whether the sinks roof the dungeon (<see cref="DungeonCeilingMode.Roofed"/>) or leave it
+    /// open-top (<see cref="DungeonCeilingMode.Open"/>, the default). A pure sink-time geometry choice that
+    /// never changes the generated layout structure.</summary>
+    public DungeonCeilingMode CeilingMode { get; set; } = DungeonCeilingMode.Open;
+
+    /// <summary>Height of the ceiling above each floor, in metres, when <see cref="CeilingMode"/> is
+    /// <see cref="DungeonCeilingMode.Roofed"/>. Null (the default) resolves to <see cref="FloorHeightMeters"/>,
+    /// so a roofed floor's ceiling sits flush with the floor above. Ignored in <see cref="DungeonCeilingMode.Open"/>.</summary>
+    public float? CeilingHeightMeters { get; set; }
+
     /// <summary>Throws <see cref="ArgumentException"/> naming the first invalid property, in check order:
     /// positive cell/floor sizes, RoomMinTiles between 1 and RoomMaxTiles inclusive, positive room count, floor
     /// count and critical-path target, non-negative loop budget, lock count and marker maxima, corridor widths
     /// (at least 1, min not exceeding max), hall knobs (chance in 0..100, min length at least 1 not exceeding
-    /// max), a plot large enough to fit the largest room plus a one-tile margin on each side, and (only when
-    /// halls are enabled) large enough to fit the largest hall on both axes.</summary>
+    /// max), a positive ceiling height when one is set, a plot large enough to fit the largest room plus a
+    /// one-tile margin on each side, and (only when halls are enabled) large enough to fit the largest hall on
+    /// both axes.</summary>
     public void Validate()
     {
         if (CellSizeMeters <= 0f)
@@ -167,6 +195,11 @@ public sealed class DungeonConfig
         if (HallMinLengthTiles > HallMaxLengthTiles)
         {
             throw new ArgumentException("HallMinLengthTiles must not exceed HallMaxLengthTiles.", nameof(HallMinLengthTiles));
+        }
+
+        if (CeilingHeightMeters is <= 0f)
+        {
+            throw new ArgumentException("CeilingHeightMeters must be greater than zero when set.", nameof(CeilingHeightMeters));
         }
 
         if (PlotWidthTiles < RoomMaxTiles + 2)

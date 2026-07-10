@@ -5,6 +5,13 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.57.0
+
+Turnkey roofed interiors for `KhaozEngine.Dungeon`: `DungeonConfig.CeilingMode = Roofed` roofs a generated dungeon so it reads as an enclosed cave instead of roofless ruins, in both sinks, with open-top staying the default.
+
+- **Roofed dungeon interiors (`KhaozEngine.Dungeon`).** New `DungeonCeilingMode` (`Open`, the default, or `Roofed`) and optional `DungeonConfig.CeilingHeightMeters` (null resolves to `FloorHeightMeters`). When `Roofed`, both sinks place a new `DungeonPiece.Ceiling` over every walkable cell at `floorY + ceiling height`, EXCEPT where a walkable cell sits directly above at the same XZ, so open stairwells and vertical shafts stay open and a floor above roofs the floor below with its own slab. `DungeonStamp` additionally emits greedy-merged ceiling collision slabs (same axis-run pattern as the floor slabs, lifted a ceiling height and facing down). A `dungeon_ceiling` greybox piece ships in the Showcase kit (`DungeonKitMap.Greybox()` now maps all six pieces), and the "Dungeon (walk)" Showcase room is now roofed.
+- **Pure sink-time geometry, determinism unchanged.** `CeilingMode` is a presentation choice carried on the layout but excluded from `DungeonLayout.LayoutHash` (like `Stats`), so `Open` and `Roofed` layouts from the same seed share a structure hash and `Open` output is byte-for-byte the pre-ceiling output. No new RNG draws.
+
 ## 10.56.0
 
 New `KhaozEngine.Dungeon` package: a deterministic, multi-level procedural dungeon generator whose layouts are completable by construction and re-proven by an always-on solver, with MapDoc-bake and runtime-stamp sinks, a greybox kit, and a `ke-dungeon` CLI.

@@ -176,6 +176,20 @@ public sealed class DungeonLayout
     /// <summary>World height between floors, in metres.</summary>
     public float FloorHeightMeters { get; init; }
 
+    /// <summary>Whether the sinks roof this layout or leave it open-top. Carried from
+    /// <see cref="DungeonConfig.CeilingMode"/> at generation. A pure sink-time presentation choice, so it is
+    /// deliberately NOT part of <see cref="LayoutHash"/> (like <see cref="Stats"/>): two layouts identical but
+    /// for their ceiling mode share a structure hash. A layout rebuilt from JSON is always
+    /// <see cref="DungeonCeilingMode.Open"/> (the field is not serialized, since the layout JSON is the
+    /// structural artifact).</summary>
+    public DungeonCeilingMode CeilingMode { get; init; } = DungeonCeilingMode.Open;
+
+    /// <summary>Resolved ceiling height above each floor, in metres, used by the sinks when
+    /// <see cref="CeilingMode"/> is <see cref="DungeonCeilingMode.Roofed"/>. Set by the generator to
+    /// <see cref="DungeonConfig.CeilingHeightMeters"/> or, when that is null, <see cref="FloorHeightMeters"/>.
+    /// Read only in <see cref="DungeonCeilingMode.Roofed"/>.</summary>
+    public float CeilingHeightMeters { get; init; }
+
     /// <summary>Raster width, in tiles.</summary>
     public int Width { get; init; }
 

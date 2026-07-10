@@ -12,6 +12,14 @@ namespace KhaozEngine.Tests.Dungeon
             new DungeonConfig().Validate();
         }
 
+        [Fact]
+        public void Defaults_AreOpenTop()
+        {
+            var config = new DungeonConfig();
+            Assert.Equal(DungeonCeilingMode.Open, config.CeilingMode);
+            Assert.Null(config.CeilingHeightMeters);
+        }
+
         [Theory]
         [InlineData(nameof(DungeonConfig.CellSizeMeters))]
         [InlineData(nameof(DungeonConfig.RoomMinTiles))]
@@ -20,6 +28,7 @@ namespace KhaozEngine.Tests.Dungeon
         [InlineData(nameof(DungeonConfig.CorridorMaxWidth))]
         [InlineData(nameof(DungeonConfig.HallChancePercent))]
         [InlineData(nameof(DungeonConfig.HallMinLengthTiles))]
+        [InlineData(nameof(DungeonConfig.CeilingHeightMeters))]
         public void Invalid_Throws_NamingProperty(string property)
         {
             var config = new DungeonConfig();
@@ -32,6 +41,7 @@ namespace KhaozEngine.Tests.Dungeon
                 case nameof(DungeonConfig.CorridorMaxWidth): config.CorridorMinWidth = 4; config.CorridorMaxWidth = 3; break; // min > max
                 case nameof(DungeonConfig.HallChancePercent): config.HallChancePercent = 101; break; // > 100
                 case nameof(DungeonConfig.HallMinLengthTiles): config.HallChancePercent = 20; config.HallMinLengthTiles = 30; config.HallMaxLengthTiles = 16; break; // min > max
+                case nameof(DungeonConfig.CeilingHeightMeters): config.CeilingHeightMeters = 0f; break; // <= 0 when set
             }
             var ex = Assert.Throws<ArgumentException>(() => config.Validate());
             Assert.Contains(property, ex.Message);

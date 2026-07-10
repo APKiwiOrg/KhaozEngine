@@ -117,6 +117,9 @@ the placement list (rendered via the existing instanced kit-prop path) and stati
 
 **Kit contract.** The layout speaks an abstract piece vocabulary. V1 minimum set: Floor, Wall,
 DoorFrame, StairUp, StairDown (additions are additive, each needs a kit mapping and an emitter rule).
+Ceiling was added post-V1 as the first such additive piece: `DungeonConfig.CeilingMode = Roofed` roofs
+every walkable cell (bar open verticals) at `floorY + CeilingHeightMeters` in both sinks, a pure sink-time
+geometry choice that leaves the layout structure and hash untouched (open-top stays the default).
 `DungeonKitMap` maps each piece to a manifest kit id
 sized to the tile cell, throwing on a missing mapping with the piece name. The engine ships a minimal
 CC0 greybox dungeon kit in Showcase assets so the whole path is testable and demoable engine-side.

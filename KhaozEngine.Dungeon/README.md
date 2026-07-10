@@ -28,9 +28,9 @@ DungeonSolveReport report = DungeonSolver.Verify(layout);
 Console.WriteLine($"solvable: {report.IsSolvable}, critical path: {layout.Stats.CriticalPathLength} edges");
 ```
 
-`DungeonConfig` covers plot and room sizing, floor count, the loop-edge target, lock/key count, and marker
-density caps. `Validate()` throws `ArgumentException` naming the first offending property (`Generate` calls
-it for you). `DungeonLayout` exposes the raster read-only via `GetCell(x, z, floor)` plus
+`DungeonConfig` covers plot and room sizing, floor count, the loop-edge target, lock/key count, marker
+density caps, and the roofed-interior toggle (`CeilingMode`, see below). `Validate()` throws
+`ArgumentException` naming the first offending property (`Generate` calls it for you). `DungeonLayout` exposes the raster read-only via `GetCell(x, z, floor)` plus
 `Rooms`/`Edges`/`Keys`/`Markers` and a `Stats` summary (`RoomsPlaced`, `CriticalPathLength`, `LocksPlaced`,
 `Saturated` when the plot or room budget ran out before hitting the target). `CriticalPathTarget` is
 validated but advisory and reserved: the boss room is derived as the farthest room from the entrance by BFS,
@@ -71,7 +71,7 @@ using KhaozEngine.Dungeon;
 DungeonStampResult stamp = DungeonStamp.Build(layout, kit, plot);
 // stamp.Props: one DungeonPropInstance (KitId, X, Y, Z, Yaw, Scale) per piece - hand these to your scene loader.
 // stamp.Statics: merged (PhysicsShape, Pose) pairs - one per wall run, one per floor-slab run, one ramp per
-// stair run - register each with an IPhysicsWorld.AddStatic(shape, pose).
+// stair run, plus one per ceiling run when Roofed - register each with an IPhysicsWorld.AddStatic(shape, pose).
 ```
 
 `DungeonStamp.Build` shares its cell-to-piece mapping with `DungeonMapDocEmitter` (both go through the internal
@@ -94,15 +94,38 @@ kit.Map(DungeonPiece.Wall, "my_wall_tile");
 kit.Map(DungeonPiece.DoorFrame, "my_doorframe");
 kit.Map(DungeonPiece.StairUp, "my_stair");
 kit.Map(DungeonPiece.StairDown, "my_landing");
+kit.Map(DungeonPiece.Ceiling, "my_ceiling");   // only emitted when CeilingMode is Roofed
 ```
 
 `Require(piece)` throws `InvalidOperationException` naming the missing piece if a mapping is absent, so a
 partially-configured kit fails loudly at bake/stamp time rather than silently dropping content.
-`DungeonKitMap.Greybox()` maps all five pieces to the placeholder ids `dungeon_floor`/`dungeon_wall`/
-`dungeon_doorframe`/`dungeon_stair`/`dungeon_landing`, matching the committed greybox kit under
+`DungeonKitMap.Greybox()` maps all six pieces to the placeholder ids `dungeon_floor`/`dungeon_wall`/
+`dungeon_doorframe`/`dungeon_stair`/`dungeon_landing`/`dungeon_ceiling`, matching the committed greybox kit under
 `KhaozEngine.Showcase/assets/dungeon/` (glTF pieces plus `dungeon.manifest.json`, loaded through
 `KhaozEngine.Render3D`'s `AssetManifest`/`PropLoader`) - useful for tests and early integration before real
 content exists.
+
+## Roofed interiors (`CeilingMode`)
+
+By default a dungeon is open-top (roofless, as seen from above). Set `DungeonConfig.CeilingMode = Roofed`
+to have both sinks roof it so it reads as an enclosed cave:
+
+```csharp
+var config = new DungeonConfig
+{
+    MaxFloors = 2,
+    CeilingMode = DungeonCeilingMode.Roofed,   // default is Open
+    CeilingHeightMeters = null,                 // null -> FloorHeightMeters (flush with the floor above)
+};
+```
+
+A ceiling (`DungeonPiece.Ceiling`) is placed over every walkable cell at `floorY + CeilingHeightMeters`,
+EXCEPT where a walkable cell sits directly above at the same XZ - so open stairwells and vertical shafts
+stay open, and where the floor above already has its own slab that slab is the roof (no double geometry).
+`DungeonStamp` additionally emits greedy-merged ceiling collision slabs (same pattern as the floor slabs,
+lifted a ceiling height and facing down). This is a pure sink-time geometry choice: it never changes the
+generated layout structure, so `Open` and `Roofed` layouts from the same seed share a `LayoutHash` and
+`Open` output is byte-for-byte the pre-ceiling output.
 
 ## CLI (`ke-dungeon`, `tools/KeDungeon`)
 

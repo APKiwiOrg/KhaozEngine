@@ -7,7 +7,8 @@ namespace KhaozEngine.MapEditor;
 /// first command stack: <see cref="Execute"/> applies a command and pushes it (clearing redo), and a newer
 /// command of the same gesture is absorbed by the one on top instead of pushing a second step. A merge barrier
 /// after any undo or redo guarantees the next edit starts a fresh step rather than coalescing into a
-/// reactivated one.</summary>
+/// reactivated one, and <see cref="SealGesture"/> raises the same barrier at explicit gesture boundaries
+/// (drag release, focus loss, save).</summary>
 public sealed class EditorHistory
 {
     readonly List<IEditorCommand> _undo = new();
@@ -37,6 +38,11 @@ public sealed class EditorHistory
 
     /// <summary>The command that <see cref="Redo"/> would reapply next, or null when empty.</summary>
     internal IEditorCommand? PeekRedo() => _redo.Count > 0 ? _redo[^1] : null;
+
+    /// <summary>Marks the end of the current gesture: the NEXT <see cref="Execute"/> never merges into the
+    /// current top command (the same barrier mechanism Undo/Redo already use). Call on gesture end (drag
+    /// release, focus loss). Idempotent.</summary>
+    public void SealGesture() => _mergeBarrier = true;
 
     /// <summary>Applies <paramref name="command"/> to the document and records it, clearing the redo stack.
     /// When the command coalesces into the current top (same gesture, no barrier), no new step is pushed.</summary>

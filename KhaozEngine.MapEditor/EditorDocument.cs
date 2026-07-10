@@ -87,8 +87,19 @@ public sealed class EditorDocument
         return true;
     }
 
-    /// <summary>Marks the current history position as the on-disk saved state, clearing <see cref="IsDirty"/>.</summary>
-    public void MarkSaved() => _savedMarker = History.UndoDepth;
+    /// <summary>Marks the end of the current input gesture (drag release, focus loss): the next
+    /// <see cref="Execute"/> starts a new undo step instead of coalescing into the current one. Delegates to
+    /// <see cref="EditorHistory.SealGesture"/>. Idempotent.</summary>
+    public void SealGesture() => History.SealGesture();
+
+    /// <summary>Marks the current history position as the on-disk saved state, clearing <see cref="IsDirty"/>.
+    /// A save is always a gesture boundary, so it also seals the current gesture: a later same-gesture edit
+    /// can never merge into the saved command and hide itself from <see cref="IsDirty"/>.</summary>
+    public void MarkSaved()
+    {
+        History.SealGesture();
+        _savedMarker = History.UndoDepth;
+    }
 
     static bool AffectsWorld(IEditorCommand command) => command is EditorCommand ec && ec.AffectsWorld;
 }

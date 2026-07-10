@@ -296,6 +296,46 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void SealGesture_SplitsSameIdDrags()
+        {
+            var doc = Sample();
+            var ed = new EditorDocument(doc);
+            ed.Execute(new MovePlacementCommand("inn", 1f, 1f, null));
+            ed.Execute(new MovePlacementCommand("inn", 2f, 2f, null));   // merges: one drag gesture
+            ed.SealGesture();                                            // drag release
+            ed.SealGesture();                                            // idempotent
+            ed.Execute(new MovePlacementCommand("inn", 3f, 3f, null));   // a second drag on the same id
+
+            Assert.True(ed.Undo());                        // undoes the second drag only
+            Assert.Equal(2f, FindP(doc, "inn").X);         // back to the seal point
+            Assert.True(ed.History.CanUndo);
+
+            Assert.True(ed.Undo());                        // then the first drag as its own step
+            Assert.Equal(-30f, FindP(doc, "inn").X);       // SampleDoc's inn origin
+            Assert.False(ed.History.CanUndo);
+        }
+
+        [Fact]
+        public void Merge_DoesNotCrossMarkSaved()
+        {
+            var doc = Sample();
+            var ed = new EditorDocument(doc);
+            ed.Execute(new MovePlacementCommand("inn", 1f, 1f, null));
+            ed.MarkSaved();
+            string saved = Save(doc);
+
+            // A save is a gesture boundary: the next same-id move must NOT merge into the saved
+            // command, otherwise the depth marker still matches and IsDirty silently reads false
+            // while the document changed (unsaved-change loss on close).
+            ed.Execute(new MovePlacementCommand("inn", 2f, 2f, null));
+            Assert.True(ed.IsDirty);
+
+            Assert.True(ed.Undo());                        // one step back to the saved state
+            Assert.Equal(saved, Save(doc));
+            Assert.False(ed.IsDirty);
+        }
+
+        [Fact]
         public void IsDirty_DiscardedSavedBranch_StaysDirty()
         {
             var ed = new EditorDocument(Sample());

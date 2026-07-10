@@ -191,7 +191,7 @@ KhaozEngine.Server.Admin/      Opt-in HTTPS admin endpoint (Kestrel) over Server
 # Umbrella metapackages
 KhaozEngine.Foundation/   KhaozEngine.Game2D/   KhaozEngine.Game3D/   KhaozEngine.Server/
 # Tests, samples, tools
-KhaozEngine.Tests/   KhaozEngine.Showcase/ (menu hub: 2D, GUI, input, mini-game, 3D-world, networked-walk rooms)
+KhaozEngine.Tests/   KhaozEngine.Showcase/ (menu hub: 2D, GUI, input, mini-game, 3D-world, networked-walk, map-editor rooms)
 SnapshotTool/ (also GPU-free `diff`/`score` subcommands)   MmoServerSample/ (reference dedicated MMO server)
 KhaozEngine.Updates.Tool/ (ke-updater)   KhaozEngine.Sfx.Tool/ (ke-sfxbake)   KhaozEngine.PropSurface.Tool/ (ke-propbake)
 tools/   docs/USING-KHAOZENGINE.md
@@ -209,7 +209,7 @@ The windowed ones open a GPU window (need a display); the server / snapshot head
 
 | Sample | Demonstrates | Run | Controls |
 |---|---|---|---|
-| `KhaozEngine.Showcase` | **Menu hub** of feature rooms: 2D sprites + text, Gui widgets + screen stack, input (gestures / clock / clipboard / audio), the "Catcher" mini-game, a **walkable streamed 3D overworld** (terrain streaming + follow camera + character controller + physics + a CC0-house village) with retro post-fx (cel / outline / palette), and an **in-app networked walk** (an authoritative server + a local client + scripted bots, all in-process over loopback UDP) | `dotnet run --project KhaozEngine.Showcase` | Menu: Up/Down + Enter or click a room, Esc leaves a room. 3D room: WASD move, mouse-drag orbit, scroll zoom, Shift run, F2 collision overlay, O/A/C/R/P post-fx. Networked room: WASD + mouse to walk among the bots |
+| `KhaozEngine.Showcase` | **Menu hub** of feature rooms: 2D sprites + text, Gui widgets + screen stack, input (gestures / clock / clipboard / audio), the "Catcher" mini-game, a **walkable streamed 3D overworld** (terrain streaming + follow camera + character controller + physics + a CC0-house village) with retro post-fx (cel / outline / palette), an **in-app networked walk** (an authoritative server + a local client + scripted bots, all in-process over loopback UDP), and the **in-engine map editor** (`KhaozEngine.MapEditor` over a committed demo document) | `dotnet run --project KhaozEngine.Showcase` | Menu: Up/Down + Enter or click a room, Esc leaves a room. 3D room: WASD move, mouse-drag orbit, scroll zoom, Shift run, F2 collision overlay, O/A/C/R/P post-fx. Networked room: WASD + mouse to walk among the bots. Map editor room: WASD + right-drag fly, toolbar tools, Ctrl+Z/Y undo/redo, Ctrl+S save, Shift+Esc leaves it (Esc is the editor's gesture cancel) |
 
 **Headless (no window)**:
 

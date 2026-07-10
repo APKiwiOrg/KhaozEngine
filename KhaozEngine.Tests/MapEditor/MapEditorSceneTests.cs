@@ -87,6 +87,20 @@ namespace KhaozEngine.Tests.MapEditor
                 down, new HashSet<MouseButton>(), pos, Vector2.Zero, 0, 960, 540);
         }
 
+        // A keyboard frame: the given keys fire their press edge this frame (and read as held), with an
+        // optional shift modifier held. Each frame is an independent snapshot, so two consecutive chord
+        // presses just construct this twice.
+        static InputState KeyFrame(bool shiftDown, params Key[] pressed)
+        {
+            var down = new HashSet<Key>(pressed);
+            if (shiftDown) down.Add(Key.LeftShift);
+            return new InputState(down, new HashSet<Key>(pressed), new HashSet<Key>(),
+                new HashSet<MouseButton>(), new HashSet<MouseButton>(),
+                Vector2.Zero, Vector2.Zero, 0, 960, 540);
+        }
+
+        static MapSpawn NewSpawn(string id) => new MapSpawn { Id = id, ArchetypeId = "wolf", X = 1f, Z = 1f };
+
         static FloatRow FloatRowByLabel(PropertyGrid grid, string label)
         {
             foreach (PropertyRow row in grid.Rows)
@@ -209,6 +223,78 @@ namespace KhaozEngine.Tests.MapEditor
             var scene = new SpyScene();
             scene.Init(null!, null!, null!, new MapEditorOptions());
             scene.OnUpdate(0.016f);   // never entered: built flag false, no throw
+        }
+
+        // ---- Shift+Escape exit chord -----------------------------------------------------------------------
+        // The scene is pushed onto a REAL SceneManager (the file's standard idiom), so a pop is observable
+        // directly: Manager.Pop() queued during Update is applied at the end of the pass, and m.Count drops to
+        // zero. No WantsExit flag is needed.
+
+        [Fact]
+        public void ShiftEscape_CleanDocument_Pops()
+        {
+            var scene = new SpyScene();
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager();
+            m.Push(scene);
+
+            m.Input = KeyFrame(shiftDown: true, Key.Escape);
+            m.Update(0.016f);
+
+            Assert.Equal(0, m.Count);   // clean document: popped immediately, no warning step
+        }
+
+        [Fact]
+        public void ShiftEscape_DirtyDocument_ArmsThenPops()
+        {
+            var scene = new SpyScene();
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager();
+            m.Push(scene);
+            scene.Document.Execute(new AddSpawnCommand(NewSpawn("s1")));   // dirty
+            Assert.True(scene.Document.IsDirty);
+
+            m.Input = KeyFrame(shiftDown: true, Key.Escape);
+            m.Update(0.016f);
+
+            Assert.Equal(1, m.Count);   // first press only arms
+            Assert.True(scene.ExitArmed);
+            Assert.Contains("unsaved", scene.StatusText, StringComparison.OrdinalIgnoreCase);
+
+            m.Update(0.016f);           // second consecutive Shift+Escape press
+
+            Assert.Equal(0, m.Count);   // armed: discards and pops
+        }
+
+        [Fact]
+        public void ShiftEscape_ArmedThenSave_Disarms()
+        {
+            string path = TempPath();
+            var scene = new SpyScene();
+            scene.Init(null!, null!, null!, new MapEditorOptions { DocumentPath = path });
+            var m = new SceneManager();
+            try
+            {
+                m.Push(scene);
+                scene.Document.Execute(new AddSpawnCommand(NewSpawn("s1")));   // dirty
+
+                m.Input = KeyFrame(shiftDown: true, Key.Escape);
+                m.Update(0.016f);
+                Assert.True(scene.ExitArmed);
+
+                scene.SaveDocument();                    // Ctrl+S path: disarms (and cleans)
+                Assert.False(scene.ExitArmed);
+
+                scene.Document.Execute(new AddSpawnCommand(NewSpawn("s2")));   // dirty again
+                m.Update(0.016f);                        // Shift+Escape after the disarm
+
+                Assert.Equal(1, m.Count);                // re-arms instead of popping
+                Assert.True(scene.ExitArmed);
+
+                scene.Document.Execute(new AddSpawnCommand(NewSpawn("s3")));   // any mutation disarms too
+                Assert.False(scene.ExitArmed);
+            }
+            finally { if (File.Exists(path)) File.Delete(path); }
         }
 
         // ---- inspector bindings --------------------------------------------------------------------------

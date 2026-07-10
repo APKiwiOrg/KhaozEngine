@@ -38,7 +38,9 @@ public sealed class MapEditorOptions
 /// <summary>The turn-key in-engine map editor scene a per-game head pushes onto its <see cref="SceneManager"/>:
 /// it wires a <see cref="ViewportWorld"/> + fly camera + <see cref="EditorToolController"/> together with the Gui
 /// chrome (toolbar tab bar, tree outline, property-grid inspector, kit palette, status strip) and the undo / redo
-/// / save hotkeys, over one <see cref="EditorDocument"/>. Developer tooling, so the whole class is
+/// / save hotkeys, over one <see cref="EditorDocument"/>. Shift+Escape is the exit chord: it pops the scene,
+/// arming a discard warning first when the document has unsaved changes (Escape alone stays the gesture cancel).
+/// Developer tooling, so the whole class is
 /// <see cref="LocalizationExemptAttribute">localization-exempt</see>.
 /// <para>The GPU-touching work lives behind the <see cref="BuildWorld"/> / <see cref="TeardownWorld"/> /
 /// <see cref="CheckWorldRebuild"/> / <see cref="UpdateStreaming"/> seams (the Task 5 pattern), and the per-frame
@@ -91,6 +93,10 @@ public class MapEditorScene : GameScene, IGameScene3D
     bool _built;
     string _statusText = "";
 
+    // Shift+Escape exit chord state: with unsaved changes the first press only ARMS the discard warning
+    // (status-strip message) and the next Shift+Escape pops. Any save or document mutation disarms it.
+    bool _exitArmed;
+
     // Region rename bookkeeping: the selection is keyed by region NAME, so after a rename it must follow the
     // new name. The sync is deferred until the rename row loses focus (an immediate Selection.Set would rebuild
     // the inspector mid-typing and drop the focus per keystroke).
@@ -120,6 +126,10 @@ public class MapEditorScene : GameScene, IGameScene3D
     /// <summary>The inspector grid, or null before <see cref="OnEnter"/>. Exposed for tests.</summary>
     internal PropertyGrid Inspector => _inspector;
 
+    /// <summary>True while the Shift+Escape discard warning is armed (dirty document, one chord press in).
+    /// Exposed for tests.</summary>
+    internal bool ExitArmed => _exitArmed;
+
     // ---- lifecycle ---------------------------------------------------------------------------------------
 
     /// <inheritdoc/>
@@ -146,6 +156,7 @@ public class MapEditorScene : GameScene, IGameScene3D
         BuildWorld();
         RebuildOutline();
         RebuildInspector();
+        _exitArmed = false;   // a re-entered scene starts with no leftover discard warning
         _built = true;
     }
 
@@ -374,19 +385,36 @@ public class MapEditorScene : GameScene, IGameScene3D
     void HandleShortcuts()
     {
         InputState s = Manager!.Input;
+        bool shift = s.IsDown(Key.LeftShift) || s.IsDown(Key.RightShift);
+        if (shift && s.WasPressed(Key.Escape)) { HandleExitChord(); return; }
         bool ctrl = s.IsDown(Key.LeftControl) || s.IsDown(Key.RightControl);
         if (!ctrl) return;
-        bool shift = s.IsDown(Key.LeftShift) || s.IsDown(Key.RightShift);
         if (s.WasPressed(Key.Z)) { if (shift) _document.Redo(); else _document.Undo(); }
         else if (s.WasPressed(Key.Y)) _document.Redo();
         else if (s.WasPressed(Key.S)) SaveDocument();
     }
 
+    // Shift+Escape: pop the scene right away when the document has no unsaved changes. With unsaved changes
+    // the first press only arms the discard warning (status strip), and the next Shift+Escape (with nothing
+    // disarming it in between, see SaveDocument / OnDocumentChanged) discards and pops.
+    void HandleExitChord()
+    {
+        if (!_document.IsDirty || _exitArmed)
+        {
+            Manager?.Pop();
+            return;
+        }
+        _exitArmed = true;
+        _statusText = "Unsaved changes. Shift+Escape again to discard and exit";
+    }
+
     /// <summary>Saves the document back to <see cref="MapEditorOptions.DocumentPath"/>, surfacing a
     /// <see cref="MapDocumentException"/> (invalid content) into the status strip instead of throwing. Internal so
-    /// the Ctrl+S handler and the tests share one path.</summary>
+    /// the Ctrl+S handler and the tests share one path. Any save attempt disarms the Shift+Escape discard
+    /// warning: the user chose to save, so the pending discard no longer reflects their intent.</summary>
     internal void SaveDocument()
     {
+        _exitArmed = false;
         if (string.IsNullOrWhiteSpace(_options.DocumentPath))
         {
             _statusText = "No document path set";
@@ -406,6 +434,7 @@ public class MapEditorScene : GameScene, IGameScene3D
 
     void OnDocumentChanged()
     {
+        _exitArmed = false;   // any mutation (execute / undo / redo) invalidates the pending discard warning
         _viewport.InvalidatePlacements();
         RebuildOutline();
     }
@@ -709,11 +738,14 @@ public class MapEditorScene : GameScene, IGameScene3D
         bool down = !overChrome && (ptr?.IsDown ?? false);
         bool released = ptr?.IsJustReleased ?? false;
 
+        bool shift = s.IsDown(Key.LeftShift) || s.IsDown(Key.RightShift);
         return new EditorFrameInput(ray.Origin, dir,
             pointerPressed: pressed, pointerDown: down, pointerReleased: released,
-            shift: s.IsDown(Key.LeftShift) || s.IsDown(Key.RightShift),
+            shift: shift,
             deletePressed: s.WasPressed(Key.Delete),
-            escapePressed: s.WasPressed(Key.Escape),
+            // Shift+Escape is the exit chord (HandleExitChord), so it never doubles as the tool gesture
+            // cancel. Escape alone stays the cancel edge.
+            escapePressed: s.WasPressed(Key.Escape) && !shift,
             dt: dt);
     }
 
@@ -755,7 +787,7 @@ public class MapEditorScene : GameScene, IGameScene3D
         string undo = _document.History.UndoLabel ?? "-";
         string redo = _document.History.RedoLabel ?? "-";
         string tail = string.IsNullOrEmpty(_statusText) ? "" : "  |  " + _statusText;
-        return $"{dirty}{_controller.Mode}   undo: {undo}   redo: {redo}{tail}";
+        return $"{dirty}{_controller.Mode}   undo: {undo}   redo: {redo}   Shift+Esc: exit{tail}";
     }
 
     void Fill(SpriteBatch batch, Rect r, Color color) =>

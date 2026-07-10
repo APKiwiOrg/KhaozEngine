@@ -89,8 +89,10 @@ namespace KhaozEngine.Showcase
 
             // Map editor: the turn-key KhaozEngine.MapEditor scene, registered directly (see RoomMapEditor's
             // doc comment for why a wrapper GameScene would leave it half-wired) over the committed showcase
-            // demo document. The manual verification room for Task 8: fly around, place a prop, drag it with
-            // the gizmo, undo/redo, bake a scatter region, and save.
+            // demo document. Unlike the other rooms, plain Esc does NOT leave this room (the editor reserves
+            // it for cancelling gizmo/draw gestures): Shift+Esc is the exit chord, with a discard warning
+            // when there are unsaved changes. The manual verification room for Task 8: fly around, place a
+            // prop, drag it with the gizmo, undo/redo, bake a scatter region, save, Shift+Esc back to menu.
             Rooms.Add(("Map editor", () => RoomMapEditor.Create(Scene, _white, dpi22)));
 
             // The landing menu draws through the point-space UI pass with the shared DpiFonts.

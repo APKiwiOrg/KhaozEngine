@@ -38,13 +38,23 @@ sceneManager.Push(new MapEditorScene().Init(scene, whiteTexture, dpiFont, option
 (its own `Init` chain mirrors any other room's Init-injection pattern). `GameScene.Manager` is set only by
 `SceneManager.Push` (an internal setter inside `KhaozEngine.Game`), so a wrapper `GameScene` that builds a
 `MapEditorScene` with `new` and forwards lifecycle calls to it by hand, instead of pushing it, leaves the
-inner scene's `Manager` permanently null and its first `Manager!.Input` read throws. If your game needs
-extra room-level behaviour (for example "Esc leaves this room", since `MapEditorScene` itself reserves
-Escape for cancelling the in-flight gizmo/draw gesture and never pops itself), add a thin **factory**
-function that builds the options and returns the pushed-ready `MapEditorScene`, and put the extra key
-handling in the outer scene that owns the `Push`/`Pop` call, not in a scene wrapping this one. See
-`KhaozEngine.Showcase/RoomMapEditor.cs` for a worked example (`RoomMapEditor.Create` plus one
+inner scene's `Manager` permanently null and its first `Manager!.Input` read throws. The scene also pops
+itself off the stack on the Shift+Escape exit chord (see Keys below), so a host needs no wrapper to leave
+the editor either. If your game needs extra room-level behaviour beyond the built-in keys, add a thin
+**factory** function that builds the options and returns the pushed-ready `MapEditorScene`, and put the
+extra key handling in the outer code that owns the `Push`/`Pop` call, not in a scene wrapping this one.
+See `KhaozEngine.Showcase/RoomMapEditor.cs` for a worked example (`RoomMapEditor.Create` plus one
 `Rooms.Add(("Map editor", () => RoomMapEditor.Create(...)))` line).
+
+## Keys
+
+Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, Delete removes the current selection. Escape
+cancels an in-flight gizmo/draw gesture and returns to Select. Shift+Escape exits the editor by popping
+the scene off the `SceneManager`: with no unsaved changes it pops immediately, and with unsaved changes
+the first press arms a status-strip warning ("Shift+Escape again to discard and exit") and a second
+Shift+Escape discards and exits. Any Ctrl+S or any document mutation (an edit, an undo, a redo) disarms
+the warning, so a stale discard confirmation can never fire after the user resumed working. The status
+strip shows the chord as a standing hint.
 
 ## The headless core
 

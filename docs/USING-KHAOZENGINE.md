@@ -2819,10 +2819,10 @@ sceneManager.Push(new MapEditorScene().Init(scene, whiteTexture, dpiFont, option
 Push it directly rather than wrapping it in your own `GameScene`. `GameScene.Manager` is set only by
 `SceneManager.Push` (an internal setter), so a hand-built wrapper that forwards lifecycle calls to a
 `new MapEditorScene()` it never pushes leaves that inner scene's `Manager` permanently null (its first
-`Manager!.Input` read throws). If your game wants extra room-level behavior, for example an "Esc leaves
-this room" convention (the editor itself reserves Escape for cancelling the in-flight gizmo/draw gesture
-and never pops itself), put a factory function next to your room list that builds the options and returns
-the ready-to-push scene, and handle the extra key in whatever outer code owns the `Push`/`Pop` call. See
+`Manager!.Input` read throws). The scene pops itself on the Shift+Escape exit chord (Keys below), so no
+wrapper is needed to leave the editor either. If your game wants extra room-level behavior beyond the
+built-in keys, put a factory function next to your room list that builds the options and returns the
+ready-to-push scene, and handle the extra key in whatever outer code owns the `Push`/`Pop` call. See
 `KhaozEngine.Showcase/RoomMapEditor.cs` for a worked example.
 
 **Tool modes** (`EditorToolController.Mode`, also the toolbar tab bar): `Select` (pick, then drag the
@@ -2833,7 +2833,9 @@ scrub, no viewport gesture), `BakeRegion` (drag a rect, freezes `BakeLayer`'s pr
 authored placements plus a covering exclusion).
 
 **Keys.** Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, Delete removes the current selection,
-Escape cancels an in-flight gizmo/draw gesture and returns to `Select`.
+Escape cancels an in-flight gizmo/draw gesture and returns to `Select`. Shift+Escape exits the editor
+(pops the scene): unsaved changes arm a status-strip warning on the first press and a second Shift+Escape
+discards and exits, while any save or document mutation disarms the warning.
 
 **Save semantics.** Ctrl+S (`MapEditorScene.SaveDocument`) validates through the same load-time
 `MapDocumentFile.Save` validator before writing, so an invalid document is never written to disk. A

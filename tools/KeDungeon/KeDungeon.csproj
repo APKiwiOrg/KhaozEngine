@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <AssemblyName>KeDungeon</AssemblyName>
+    <RootNamespace>KeDungeon</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../KhaozEngine.Dungeon/KhaozEngine.Dungeon.csproj" />
+    <ProjectReference Include="../../KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />
+  </ItemGroup>
+</Project>

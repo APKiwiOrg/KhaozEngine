@@ -74,5 +74,7 @@
   <Project Path="KhaozEngine.Benchmarks/KhaozEngine.Benchmarks.csproj" />
   <Project Path="tools/PixelLabSheetAssembler/PixelLabSheetAssembler.csproj" />
   <Project Path="tools/PixelLabSheetAssembler.Tests/PixelLabSheetAssembler.Tests.csproj" />
+  <Project Path="tools/KeDungeon/KeDungeon.csproj" />
+  <Project Path="tools/KeDungeon.Tests/KeDungeon.Tests.csproj" />
   <Project Path="KhaozEngine.Physics.AotProbe/KhaozEngine.Physics.AotProbe.csproj" />
 </Solution>

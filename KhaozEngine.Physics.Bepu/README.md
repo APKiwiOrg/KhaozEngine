@@ -166,4 +166,4 @@ client each build their own `BepuPhysicsWorld` from the same baked shapes
 (`PropCollisionFormat.LoadDirectory`), so prediction resolves the exact collision the server does and
 solid props do not rubber-band.
 
-Part of [KhaozEngine](https://github.com/APKiwi/KhaozEngine).
+Part of [KhaozEngine](https://github.com/APKiwiOrg/KhaozEngine).

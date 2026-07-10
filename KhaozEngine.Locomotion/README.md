@@ -85,4 +85,4 @@ MoveState s = CharacterMovement.Step(s, new MoveCommand(move, run, cameraYaw, ju
 Depends on `KhaozEngine.Primitives` and `KhaozEngine.Physics` (the `IPhysicsWorld` seam). No input, render,
 or netcode dependency. Part of the `Foundation` umbrella metapackage.
 
-Part of [KhaozEngine](https://github.com/APKiwi/KhaozEngine).
+Part of [KhaozEngine](https://github.com/APKiwiOrg/KhaozEngine).

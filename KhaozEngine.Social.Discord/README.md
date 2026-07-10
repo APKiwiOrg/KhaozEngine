@@ -31,4 +31,4 @@ social.Initialize();
 Get a Discord Application id from the Discord Developer Portal. If Discord is not running the provider
 stays disconnected and every call is a silent no-op.
 
-Part of [KhaozEngine](https://github.com/APKiwi/KhaozEngine).
+Part of [KhaozEngine](https://github.com/APKiwiOrg/KhaozEngine).

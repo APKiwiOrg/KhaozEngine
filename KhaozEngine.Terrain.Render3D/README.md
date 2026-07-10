@@ -68,4 +68,4 @@ streamer.Dispose();                     // teardown: frees the ring and the sink
 Depends on `KhaozEngine.Terrain`, `KhaozEngine.Render3D`, and `KhaozEngine.Physics` (chunk collision
 statics). See the 3D World room (`Room3D`) in `KhaozEngine.Showcase` for the walkable streamed overworld.
 
-Part of [KhaozEngine](https://github.com/APKiwi/KhaozEngine).
+Part of [KhaozEngine](https://github.com/APKiwiOrg/KhaozEngine).

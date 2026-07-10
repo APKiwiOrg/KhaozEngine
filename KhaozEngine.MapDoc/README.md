@@ -160,4 +160,4 @@ Depends on `KhaozEngine.Primitives`, `KhaozEngine.Serialization`, `KhaozEngine.C
 and the `ke-mapedit` MCP tool are later frontends over this model, see
 [`docs/MAP-EDITOR-DESIGN.md`](../docs/MAP-EDITOR-DESIGN.md).
 
-Part of [KhaozEngine](https://github.com/APKiwi/KhaozEngine).
+Part of [KhaozEngine](https://github.com/APKiwiOrg/KhaozEngine).

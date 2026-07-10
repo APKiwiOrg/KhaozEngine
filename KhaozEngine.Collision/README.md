@@ -50,4 +50,4 @@ for (int q = 0; q < n; q++)
 }
 ```
 
-Part of [KhaozEngine](https://github.com/APKiwi/KhaozEngine).
+Part of [KhaozEngine](https://github.com/APKiwiOrg/KhaozEngine).

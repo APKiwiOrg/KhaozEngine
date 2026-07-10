@@ -56,6 +56,8 @@ public class MapEditorScene : GameScene, IGameScene3D
     const float PanelWidth = 260f;
     /// <summary>Status-strip height in points.</summary>
     const float StatusHeight = 26f;
+    /// <summary>Height in points of the filter box slotted at the top of the palette / spawn-list region.</summary>
+    const float PaletteFilterHeight = 26f;
     /// <summary>Falls back to this world-space box height for a kit id absent from the manifests.</summary>
     const float FallbackKindHeight = 2f;
 
@@ -87,8 +89,23 @@ public class MapEditorScene : GameScene, IGameScene3D
     TabBar _toolbar = null!;
     TreeView _outline = null!;
     PropertyGrid _inspector = null!;
-    ScrollablePanel _palette = null!;
-    readonly List<string> _paletteKinds = new();
+
+    // Kit palette: a filter box above a category-grouped, collapsible tree. Spawn archetypes: a filter box above a
+    // flat list (a TreeView with leaf-only roots, so it renders and hit-tests exactly like the palette minus the
+    // categories). The two share the bottom-left panel region, swapped by the active tool (spawn tool -> spawn list,
+    // everything else -> kit palette), so each filter box slots into the existing side-panel bounds cleanly.
+    TextInput _paletteFilter = null!;
+    TreeView _paletteTree = null!;
+    TextInput _spawnFilter = null!;
+    TreeView _spawnList = null!;
+
+    // The grouped, twice-sorted palette source (categories ordinal, kit ids ordinal within each), parsed once from
+    // KindCategories in OnEnter (the map is immutable after ViewportWorld construction) and re-filtered without
+    // rebuilding. Per-category expansion is remembered across rebuilds so clearing a filter restores the tree.
+    readonly List<PaletteCategory> _paletteSource = new();
+    readonly Dictionary<string, bool> _paletteExpansion = new(StringComparer.Ordinal);
+    string _paletteTreeFilter = "";   // the filter text the live palette tree was last built for
+    string _spawnTreeFilter = "";     // the filter text the live spawn list was last built for
 
     bool _built;
     string _statusText = "";
@@ -126,6 +143,18 @@ public class MapEditorScene : GameScene, IGameScene3D
     /// <summary>The inspector grid, or null before <see cref="OnEnter"/>. Exposed for tests.</summary>
     internal PropertyGrid Inspector => _inspector;
 
+    /// <summary>The category-grouped kit palette tree, or null before <see cref="OnEnter"/>. Exposed for tests.</summary>
+    internal TreeView PaletteTree => _paletteTree;
+
+    /// <summary>The kit-palette filter box, or null before <see cref="OnEnter"/>. Exposed for tests.</summary>
+    internal TextInput PaletteFilter => _paletteFilter;
+
+    /// <summary>The flat spawn-archetype list (leaf-only roots), or null before <see cref="OnEnter"/>. Exposed for tests.</summary>
+    internal TreeView SpawnList => _spawnList;
+
+    /// <summary>The spawn-archetype filter box, or null before <see cref="OnEnter"/>. Exposed for tests.</summary>
+    internal TextInput SpawnFilter => _spawnFilter;
+
     /// <summary>True while the Shift+Escape discard warning is armed (dirty document, one chord press in).
     /// Exposed for tests.</summary>
     internal bool ExitArmed => _exitArmed;
@@ -145,10 +174,11 @@ public class MapEditorScene : GameScene, IGameScene3D
         _camController = new FlyCameraController(_camera);
 
         BuildChrome();
-        _paletteKinds.Clear();
-        foreach (string kind in _viewport.KindHeights.Keys) _paletteKinds.Add(kind);
+        BuildPaletteSource(PaletteKindCategories());
+        RebuildPaletteTree("");   // full tree, every category expanded
+        RebuildSpawnList("");     // full flat list
         if (_options.SpawnArchetypes.Count > 0) _controller.SpawnArchetype = _options.SpawnArchetypes[0];
-        if (_paletteKinds.Count > 0) _controller.PlaceKind = _paletteKinds[0];
+        _controller.PlaceKind = DefaultPlaceKind();
 
         _document.DocumentChanged += OnDocumentChanged;
         _document.Selection.Changed += OnSelectionChanged;
@@ -332,20 +362,23 @@ public class MapEditorScene : GameScene, IGameScene3D
     void DrawPalette(SpriteBatch batch, SpriteFont font, Rect bounds)
     {
         Fill(batch, bounds, PanelBackground);
-        _palette.Bounds = bounds;
-        _palette.ItemCount = _paletteKinds.Count;
-        _palette.BeginClip(batch);
-        for (int i = 0; i < _paletteKinds.Count; i++)
+        (Rect filterRect, Rect bodyRect) = SplitPaletteRegion(bounds);
+        if (SpawnMode)
         {
-            Rect row = _palette.ItemBounds(i);
-            if (row.Bottom <= bounds.Y || row.Y >= bounds.Bottom) continue;
-            bool selected = string.Equals(_paletteKinds[i], _controller.PlaceKind, StringComparison.Ordinal);
-            if (selected) Fill(batch, row, new Color(0.16f, 0.24f, 0.35f, 1f));
-            batch.DrawString(font, _paletteKinds[i],
-                new Vector2(MathF.Floor(row.X + 8f), MathF.Floor(row.Y + (row.Height - font.LineHeight) * 0.5f)),
-                new Color(0.82f, 0.85f, 0.9f, 1f));
+            _spawnFilter.Bounds = filterRect;
+            _spawnFilter.Font = font;
+            _spawnFilter.Draw(batch, _white);
+            _spawnList.Bounds = bodyRect;
+            _spawnList.Draw(batch, _white, font);
         }
-        _palette.EndClip(batch);
+        else
+        {
+            _paletteFilter.Bounds = filterRect;
+            _paletteFilter.Font = font;
+            _paletteFilter.Draw(batch, _white);
+            _paletteTree.Bounds = bodyRect;
+            _paletteTree.Draw(batch, _white, font);
+        }
     }
 
     // ---- chrome wiring -----------------------------------------------------------------------------------
@@ -355,8 +388,15 @@ public class MapEditorScene : GameScene, IGameScene3D
         _toolbar = new TabBar(ToolLabels);
         _outline = new TreeView(default) { RowHeight = 22f };
         _inspector = new PropertyGrid(default);
-        _palette = new ScrollablePanel(default) { ItemHeight = 24f, ItemSpacing = 2f };
         _outline.OnSelected = OnOutlineSelected;
+
+        _paletteFilter = new TextInput(default) { PlaceholderContent = LocalizedText.Raw("Filter kits...") };
+        _paletteTree = new TreeView(default) { RowHeight = 22f };
+        _paletteTree.OnSelected = OnPaletteSelected;
+
+        _spawnFilter = new TextInput(default) { PlaceholderContent = LocalizedText.Raw("Filter spawns...") };
+        _spawnList = new TreeView(default) { RowHeight = 22f };
+        _spawnList.OnSelected = OnSpawnSelected;
     }
 
     void UpdateWidgets(float dt)
@@ -375,12 +415,27 @@ public class MapEditorScene : GameScene, IGameScene3D
         _inspector.Bounds = L.Inspector;
         _inspector.Update(_ui, dt);
 
-        _palette.Bounds = L.Palette;
-        _palette.ItemCount = _paletteKinds.Count;
-        _palette.Update(_ui.Pointer, Manager.Input);
-        int tapped = _palette.TappedItemIndex(_ui.Pointer);
-        if (tapped >= 0 && tapped < _paletteKinds.Count) _controller.PlaceKind = _paletteKinds[tapped];
+        (Rect filterRect, Rect bodyRect) = SplitPaletteRegion(L.Palette);
+        if (SpawnMode)
+        {
+            _spawnFilter.Bounds = filterRect;
+            _spawnFilter.Update(_ui.Pointer, Manager.Input, dt);
+            _spawnList.Bounds = bodyRect;
+            _spawnList.Update(_ui);
+        }
+        else
+        {
+            _paletteFilter.Bounds = filterRect;
+            _paletteFilter.Update(_ui.Pointer, Manager.Input, dt);
+            _paletteTree.Bounds = bodyRect;
+            _paletteTree.Update(_ui);
+        }
+        RefreshPalettes();
     }
+
+    // The spawn tool swaps the bottom-left panel to the spawn-archetype picker; every other tool shows the kit
+    // palette. Both live in the same region, so only one filter box + list is driven / drawn per frame.
+    bool SpawnMode => _controller.Mode == EditorToolMode.PlaceSpawn;
 
     void HandleShortcuts()
     {
@@ -457,6 +512,124 @@ public class MapEditorScene : GameScene, IGameScene3D
     void OnOutlineSelected(TreeNode node)
     {
         if (node.Tag is OutlineRef r) _document.Selection.Set(r.Kind, r.Id);
+    }
+
+    // ---- palette + spawn-list wiring ---------------------------------------------------------------------
+
+    /// <summary>The kit-id -> category-label map the palette groups by. A seam (like <see cref="CreateDocument"/>)
+    /// so a headless test injects a fixed map without a manifest; defaults to the viewport's parsed
+    /// <see cref="ViewportWorld.KindCategories"/>, which is immutable after construction.</summary>
+    protected virtual IReadOnlyDictionary<string, string> PaletteKindCategories() => _viewport.KindCategories;
+
+    // Group the kit ids by category into the twice-sorted source (categories ordinal, kit ids ordinal within
+    // each). Built once in OnEnter because KindCategories never changes over a scene's lifetime.
+    void BuildPaletteSource(IReadOnlyDictionary<string, string> categories)
+    {
+        _paletteSource.Clear();
+        var byCategory = new SortedDictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (KeyValuePair<string, string> kv in categories)
+        {
+            if (!byCategory.TryGetValue(kv.Value, out List<string>? kinds))
+            {
+                kinds = new List<string>();
+                byCategory[kv.Value] = kinds;
+            }
+            kinds.Add(kv.Key);
+        }
+        foreach (KeyValuePair<string, List<string>> group in byCategory)
+        {
+            group.Value.Sort(StringComparer.Ordinal);
+            _paletteSource.Add(new PaletteCategory(group.Key, group.Value));
+        }
+    }
+
+    // Rebuild the category tree for a filter substring: keep only leaves that match case-insensitively, drop a
+    // category left with zero matches, and re-resolve each surviving category's expansion. Called only when the
+    // filter text changes (see RefreshPalettes), never per frame.
+    void RebuildPaletteTree(string filter)
+    {
+        string needle = filter.Trim();
+        bool filtering = needle.Length > 0;
+
+        // Snapshot expansion from the CURRENT (pre-clear) tree only while it is unfiltered, so a filter's
+        // forced-open categories never overwrite the user's real collapse choices and clearing the filter
+        // restores exactly what they left. A category the filter hides keeps its remembered value in the
+        // persistent map (it is absent from Roots to snapshot, but was captured the last time it was shown).
+        if (_paletteTreeFilter.Trim().Length == 0)
+            foreach (TreeNode root in _paletteTree.Roots)
+                if (root.Tag is string label) _paletteExpansion[label] = root.Expanded;
+
+        _paletteTree.Roots.Clear();
+        _paletteTree.Selected = null;
+        foreach (PaletteCategory category in _paletteSource)
+        {
+            var node = new TreeNode(LocalizedText.Raw(category.Label), category.Label);
+            foreach (string kind in category.Kinds)
+            {
+                if (filtering && kind.IndexOf(needle, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                node.Children.Add(new TreeNode(LocalizedText.Raw(kind), new PaletteLeaf(kind)));
+            }
+            if (node.Children.Count == 0) continue;   // hide categories with no matching leaves
+            // Filtering forces the matches visible; unfiltered restores the remembered state (default: expanded).
+            node.Expanded = filtering
+                || !_paletteExpansion.TryGetValue(category.Label, out bool wasExpanded) || wasExpanded;
+            _paletteTree.Roots.Add(node);
+        }
+        _paletteTreeFilter = filter;
+    }
+
+    // Rebuild the flat spawn-archetype list for a filter substring, preserving the game-authored order (no
+    // categories, no re-sort). Called only when the spawn filter text changes.
+    void RebuildSpawnList(string filter)
+    {
+        string needle = filter.Trim();
+        _spawnList.Roots.Clear();
+        _spawnList.Selected = null;
+        foreach (string archetype in _options.SpawnArchetypes)
+        {
+            if (needle.Length > 0 && archetype.IndexOf(needle, StringComparison.OrdinalIgnoreCase) < 0) continue;
+            _spawnList.Roots.Add(new TreeNode(LocalizedText.Raw(archetype), new PaletteLeaf(archetype)));
+        }
+        _spawnTreeFilter = filter;
+    }
+
+    /// <summary>Rebuilds the palette tree and / or the spawn list when its filter box text no longer matches what
+    /// the live view was built for. Called once per widget step after the filter boxes are driven, so a rebuild
+    /// happens only on a filter change, not every frame. Internal so a headless test can trigger it after a
+    /// <see cref="TextInput.SetText"/> without a full UI frame.</summary>
+    internal void RefreshPalettes()
+    {
+        if (!string.Equals(_paletteFilter.Text, _paletteTreeFilter, StringComparison.Ordinal))
+            RebuildPaletteTree(_paletteFilter.Text);
+        if (!string.Equals(_spawnFilter.Text, _spawnTreeFilter, StringComparison.Ordinal))
+            RebuildSpawnList(_spawnFilter.Text);
+    }
+
+    // A leaf carries the kit id; a category body-tap (Tag is the label string) never changes the placed kind.
+    void OnPaletteSelected(TreeNode node)
+    {
+        if (node.Tag is PaletteLeaf leaf) _controller.PlaceKind = leaf.Kind;
+    }
+
+    void OnSpawnSelected(TreeNode node)
+    {
+        if (node.Tag is PaletteLeaf leaf) _controller.SpawnArchetype = leaf.Kind;
+    }
+
+    // The initial placed kind: the first kit id of the first category (both sorted), or empty with no kits.
+    string DefaultPlaceKind() =>
+        _paletteSource.Count > 0 && _paletteSource[0].Kinds.Count > 0 ? _paletteSource[0].Kinds[0] : "";
+
+    // Slot a filter box across the top of the palette region and hand the rest to the tree / list. Guards a
+    // region shorter than the filter box (a degenerate window) so both sub-rects stay non-negative.
+    static (Rect Filter, Rect Body) SplitPaletteRegion(Rect region)
+    {
+        float filterH = MathF.Min(PaletteFilterHeight, region.Height);
+        var filter = new Rect(region.X + 4f, region.Y + 4f,
+            MathF.Max(0f, region.Width - 8f), MathF.Max(0f, filterH - 6f));
+        float bodyTop = region.Y + filterH;
+        var body = new Rect(region.X, bodyTop, region.Width, MathF.Max(0f, region.Bottom - bodyTop));
+        return (filter, body);
     }
 
     void RebuildOutline()
@@ -823,6 +996,15 @@ public class MapEditorScene : GameScene, IGameScene3D
 
     // Identity payload on an outline row: which document element the row selects.
     readonly record struct OutlineRef(SelectionKind Kind, string Id);
+
+    // A palette category label plus its ordinal-sorted kit ids. The source list is itself category-sorted, so this
+    // pair is all a tree build needs to emit a category root and its leaves.
+    readonly record struct PaletteCategory(string Label, IReadOnlyList<string> Kinds);
+
+    // Identity payload on a palette / spawn-list leaf: the kit id (PlaceKind) or archetype id (SpawnArchetype) the
+    // leaf selects. A category node's Tag is its label string instead, so a body-tap on a category is ignored while
+    // a leaf tap sets the placed kind.
+    readonly record struct PaletteLeaf(string Kind);
 
     // The chrome rectangles for one frame, computed in point space.
     readonly struct ChromeLayout

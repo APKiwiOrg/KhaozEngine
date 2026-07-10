@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Numerics;
 using KhaozEngine.Game;
 using KhaozEngine.Gui;
@@ -57,6 +58,40 @@ namespace KhaozEngine.Tests.MapEditor
             protected override void BuildWorld() { }
             protected override void TeardownWorld() { }
             protected override MapDocument CreateDocument(MapDocRegistry registry) => _factory();
+        }
+
+        // Injects a fixed kit-id -> category map (a manifest-free stand-in for ViewportWorld.KindCategories), so the
+        // palette-tree tests exercise the grouping / filtering / selection surface without a device or manifest.
+        sealed class PaletteScene : MapEditorScene
+        {
+            readonly IReadOnlyDictionary<string, string> _categories;
+            public PaletteScene(IReadOnlyDictionary<string, string> categories) => _categories = categories;
+            protected override void BuildWorld() { }
+            protected override void TeardownWorld() { }
+            protected override IReadOnlyDictionary<string, string> PaletteKindCategories() => _categories;
+        }
+
+        static PaletteScene PushPaletteScene(IReadOnlyDictionary<string, string> categories, params string[] spawns)
+        {
+            var scene = new PaletteScene(categories);
+            var options = new MapEditorOptions();
+            options.SpawnArchetypes.AddRange(spawns);
+            scene.Init(null!, null!, null!, options);
+            new SceneManager().Push(scene);
+            return scene;
+        }
+
+        static Dictionary<string, string> KitCategories() => new(StringComparer.Ordinal)
+        {
+            ["oak"] = "trees", ["pine"] = "trees", ["boulder"] = "rocks",
+        };
+
+        // A press-origin tap on a TreeView (press and release both at `at`), the way the pointer fires taps.
+        static void TapTree(TreeView tree, InputManager input, Vector2 at)
+        {
+            input.Update(MouseFrame(at, leftDown: false)); tree.Update(input);
+            input.Update(MouseFrame(at, leftDown: true)); tree.Update(input);
+            input.Update(MouseFrame(at, leftDown: false)); tree.Update(input);
         }
 
         static string TempPath() => Path.Combine(Path.GetTempPath(), $"ke-editor-{Guid.NewGuid():N}.map.json");
@@ -402,6 +437,71 @@ namespace KhaozEngine.Tests.MapEditor
 
             Assert.Equal(SelectionKind.Placement, scene.Document.Selection.Kind);
             Assert.Equal("placement-1", scene.Document.Selection.Id);
+        }
+
+        // ---- categorized palette + filters ---------------------------------------------------------------
+
+        [Fact]
+        public void Palette_GroupsKindsByCategory()
+        {
+            var scene = PushPaletteScene(KitCategories());
+
+            TreeView tree = scene.PaletteTree;
+            // Roots are the distinct categories, ordinal-sorted, expanded by default.
+            Assert.Equal(new[] { "rocks", "trees" }, tree.Roots.Select(r => r.Label.Resolve()).ToArray());
+            Assert.All(tree.Roots, r => Assert.True(r.Expanded));
+            // Leaves land under the right root, sorted ordinal within the category.
+            Assert.Equal(new[] { "boulder" }, tree.Roots[0].Children.Select(c => c.Label.Resolve()).ToArray());
+            Assert.Equal(new[] { "oak", "pine" }, tree.Roots[1].Children.Select(c => c.Label.Resolve()).ToArray());
+        }
+
+        [Fact]
+        public void Palette_FilterNarrowsAndHidesEmptyCategories()
+        {
+            var scene = PushPaletteScene(KitCategories());
+
+            scene.PaletteFilter.SetText("OAK");   // case-insensitive substring
+            scene.RefreshPalettes();
+
+            // Only the trees category survives, with its single matching leaf; rocks (no match) is hidden.
+            Assert.Equal(new[] { "trees" }, scene.PaletteTree.Roots.Select(r => r.Label.Resolve()).ToArray());
+            Assert.Equal(new[] { "oak" }, scene.PaletteTree.Roots[0].Children.Select(c => c.Label.Resolve()).ToArray());
+
+            scene.PaletteFilter.SetText("");      // clearing restores the full tree
+            scene.RefreshPalettes();
+            Assert.Equal(new[] { "rocks", "trees" }, scene.PaletteTree.Roots.Select(r => r.Label.Resolve()).ToArray());
+        }
+
+        [Fact]
+        public void Palette_LeafSelection_SetsPlaceKind()
+        {
+            var scene = PushPaletteScene(KitCategories());
+            scene.PaletteTree.Bounds = new Rect(0f, 0f, 200f, 240f);
+            scene.PaletteTree.RowHeight = 22f;
+
+            // VisibleRows (both categories expanded): rocks(0), boulder(1), trees(2), oak(3), pine(4). Tap the
+            // "oak" leaf at visible index 3, x well past the caret zone so it selects rather than toggles.
+            var input = new InputManager();
+            TapTree(scene.PaletteTree, input, new Vector2(120f, 3 * 22f + 11f));
+
+            Assert.Equal("oak", scene.Controller.PlaceKind);
+        }
+
+        [Fact]
+        public void SpawnList_FilterNarrows()
+        {
+            var scene = PushPaletteScene(new Dictionary<string, string>(StringComparer.Ordinal), "wolf", "bear", "wolfpup");
+
+            Assert.Equal(3, scene.SpawnList.Roots.Count);                 // full flat list
+            Assert.All(scene.SpawnList.Roots, r => Assert.Empty(r.Children));   // no categories: every root is a leaf
+
+            scene.SpawnFilter.SetText("WOLF");   // case-insensitive substring
+            scene.RefreshPalettes();
+            Assert.Equal(new[] { "wolf", "wolfpup" }, scene.SpawnList.Roots.Select(r => r.Label.Resolve()).ToArray());
+
+            scene.SpawnFilter.SetText("");
+            scene.RefreshPalettes();
+            Assert.Equal(3, scene.SpawnList.Roots.Count);                 // clearing restores the full list
         }
     }
 }

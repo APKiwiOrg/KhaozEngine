@@ -106,16 +106,18 @@ This is the instance-readiness property.
 
 **MapDoc bake: `DungeonMapDocEmitter`.** Layout + `DungeonKitMap` + plot transform appended into a
 `MapDocument`: kit-piece `MapPlacement`s with explicit frozen Y per floor (the `BakeRegionCommand`
-precedent), rooms as tagged `MapRegion`s, markers as `MapSpawn`s or tagged regions, and a
-`FlattenFeature` under the plot footprint. Output is inspectable and editable in the MapEditor.
+precedent), rooms as tagged `MapRegion`s, spawn markers as `MapSpawn`s, non-spawn markers (loot,
+objective, entrance) as small tagged disc `MapRegion`s, and a `FlattenFeature` under the plot
+footprint. Output is inspectable and editable in the MapEditor.
 
 **Runtime stamp: `DungeonStamp`.** Same inputs, world-ready output for a server or client at runtime:
 the placement list (rendered via the existing instanced kit-prop path) and static collision as
 `PhysicsShape`s (greedy-merged wall boxes per floor into `CompoundShape`s plus floor slabs) for
 `IPhysicsWorld.AddStatic`.
 
-**Kit contract.** The layout speaks an abstract piece vocabulary (Floor, Wall, DoorFrame, StairUp,
-StairDown, and room-to-corridor trim as needed). `DungeonKitMap` maps each piece to a manifest kit id
+**Kit contract.** The layout speaks an abstract piece vocabulary. V1 minimum set: Floor, Wall,
+DoorFrame, StairUp, StairDown (additions are additive, each needs a kit mapping and an emitter rule).
+`DungeonKitMap` maps each piece to a manifest kit id
 sized to the tile cell, throwing on a missing mapping with the piece name. The engine ships a minimal
 CC0 greybox dungeon kit in Showcase assets so the whole path is testable and demoable engine-side.
 Games swap in real kits via the same asset-manifest contract.
@@ -123,7 +125,8 @@ Games swap in real kits via the same asset-manifest contract.
 ## Co-op build surface (CLI now, MCP later)
 
 1. `DungeonConfig` and `DungeonLayout` get JSON serialization with schema validation, MapDoc-style.
-2. `ke-dungeon` CLI in the repo with verbs:
+2. `ke-dungeon` CLI at `tools/KeDungeon` (repo tools convention, references `KhaozEngine.Imaging` for
+   PNG previews) with verbs:
    - `generate`: config + seed to layout JSON plus stats.
    - `preview`: per-floor top-down PNGs of the tile grid via `KhaozEngine.Imaging.PngWriter` (no GPU).
    - `verify`: run `DungeonSolver` on a layout JSON.

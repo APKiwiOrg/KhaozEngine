@@ -61,6 +61,7 @@
   <Project Path="KhaozEngine.Social.Discord/KhaozEngine.Social.Discord.csproj" />
   <Project Path="KhaozEngine.Sfx.Tool/KhaozEngine.Sfx.Tool.csproj" />
   <Project Path="KhaozEngine.PropSurface.Tool/KhaozEngine.PropSurface.Tool.csproj" />
+  <Project Path="KhaozEngine.MapEdit.Tool/KhaozEngine.MapEdit.Tool.csproj" />
   <Project Path="KhaozEngine.Snapshot/KhaozEngine.Snapshot.csproj" />
   <Project Path="KhaozEngine.Snapshot.Render3D/KhaozEngine.Snapshot.Render3D.csproj" />
   <Project Path="KhaozEngine.Tests/KhaozEngine.Tests.csproj" />

@@ -42,6 +42,10 @@
     <PackageVersion Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" Version="8.19.1" />
     <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.19.1" />
 
+    <!-- ke-mapedit MCP server (author-time tool). MCP SDK pins its abstractions to 10.0.7. -->
+    <PackageVersion Include="ModelContextProtocol" Version="1.4.1" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.7" />
+
     <!-- Packaging / tests / tools -->
     <!-- Roslyn for the localization analyzer. Pinned to the .NET 10 SDK's compiler line so the analyzer is
          never built against a newer Roslyn than the host compiler. -->

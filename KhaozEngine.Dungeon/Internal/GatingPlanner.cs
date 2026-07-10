@@ -343,7 +343,7 @@ internal static class GatingPlanner
             }
         }
 
-        // Exclude the entrance only when the region offers another room; otherwise the entrance is the sole
+        // Exclude the entrance only when the region offers another room. Otherwise the entrance is the sole
         // legal home for the key.
         if (candidates.Count == 0)
         {

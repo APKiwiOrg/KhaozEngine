@@ -1965,6 +1965,84 @@ to a 4-byte boundary with spaces, then rewrite the chunk length + total length. 
 
 ---
 
+## Procedural dungeons (`KhaozEngine.Dungeon`)
+
+A deterministic, render-free procedural dungeon generator: `DungeonGenerator.Generate(config, seed)` grows a
+multi-level room graph (rooms, corridors, stairs) on a 3D tile grid, committing every connection with its edge
+atomically so the result is completable by construction, then re-proves that via the always-on
+`DungeonSolver.Verify` before returning. Same config and seed always produce the same layout
+(`DungeonLayout.LayoutHash`). `using KhaozEngine.Dungeon;`:
+
+```csharp
+var config = new DungeonConfig { RoomCountTarget = 12, MaxFloors = 2, LockCount = 1 };
+DungeonLayout layout = DungeonGenerator.Generate(config, seed: 2026UL);   // throws if DungeonSolver.Verify fails
+```
+
+A `DungeonLayout` is just a tile raster plus a room graph, no kit content or world position. Two sinks turn it
+into content, both resolving the abstract `DungeonPiece` vocabulary (Floor/Wall/DoorFrame/StairUp/StairDown)
+through a `DungeonKitMap` (`DungeonKitMap.Greybox()` for a placeholder kit, or `Map(piece, kitId)` your own) and
+a world placement through a `DungeonPlotTransform` (origin, base Y, yaw):
+
+```csharp
+var kit = DungeonKitMap.Greybox();
+var plot = new DungeonPlotTransform(originX: 120f, originZ: 0f, baseY: 0f, yawRadians: 0f);
+
+// 1. Bake into a MapDoc zone document (KhaozEngine.MapDoc), same load/save path as hand-authored content:
+var target = new MapDocument { Id = "dungeon-01", DisplayName = "dungeon-01" };
+DungeonMapDocEmitter.Emit(layout, kit, plot, target);   // always appends, never clears the target
+MapDocumentFile.Save(target, "dungeon-01.map.json");
+
+// 2. Or stamp straight into runtime content (no MapDoc in between):
+DungeonStampResult stamp = DungeonStamp.Build(layout, kit, plot);
+// stamp.Props: one DungeonPropInstance (KitId, X, Y, Z, Yaw, Scale) per piece - load through your prop pipeline
+// stamp.Statics: merged (PhysicsShape, Pose) pairs (one BoxShape per wall/floor run, one ramp per stair run) -
+// register each with physicsWorld.AddStatic(shape, pose)
+```
+
+Both sinks share the same cell-to-piece mapping internally, so a bake and a stamp of the same
+(layout, kit, plot) place identical props - see `KhaozEngine.Showcase`'s "Dungeon (walk)" room for a full
+wiring example (generate once, stamp, load the committed greybox kit through `AssetManifest`/`PropLoader`, spawn
+the player at the layout's `Entrance` marker).
+
+`DungeonJson.SaveConfig`/`LoadConfig` and `SaveLayout`/`LoadLayout` round-trip both types to JSON against an
+embedded schema (`DungeonSchema.GetJson()`), matching what the `ke-dungeon` CLI reads and writes. A hand-authored
+or generated config looks like:
+
+```jsonc
+{
+  "roomCountTarget": 12,
+  "roomMinTiles": 3,
+  "roomMaxTiles": 8,
+  "maxFloors": 2,
+  "plotWidthTiles": 64,
+  "plotDepthTiles": 64,
+  "criticalPathTarget": 6,
+  "loopEdgeBudget": 2,
+  "lockCount": 1,
+  "bossRoom": true,
+  "spawnMarkersPerRoomMax": 3,
+  "lootMarkersPerRoomMax": 1
+}
+```
+
+The `ke-dungeon` dev CLI (`tools/KeDungeon`) wraps the whole flow - `generate`, `preview` (one debug PNG per
+floor), `verify` (re-runs `DungeonSolver.Verify`), and `bake` (into a `MapDoc` document, accumulating on repeat
+runs):
+
+```bash
+dotnet run --project tools/KeDungeon -- generate --seed 2026 --config dungeon.config.json --out layout.json
+dotnet run --project tools/KeDungeon -- preview --layout layout.json --out-dir preview/
+dotnet run --project tools/KeDungeon -- verify --layout layout.json
+dotnet run --project tools/KeDungeon -- bake --layout layout.json --map zone.map.json \
+    --origin-x 120 --origin-z 0 --base-y 0 --yaw 0
+```
+
+Exit codes: 0 success, 1 a failed `verify`, 2 an unknown verb or a missing/invalid option, 3 malformed input
+JSON. See the `KhaozEngine.Dungeon` package README for the full kit contract and determinism/completability
+guarantees.
+
+---
+
 ## Bounded zones (`RimFeature` + `WorldBounds` + the slope gate)
 
 A designed zone (a start town/lake ringed by impassable mountains with one road out) wants a border that is both

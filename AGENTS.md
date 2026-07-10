@@ -139,10 +139,15 @@ version/release work.
 - **Commit subjects:** conventional-commit style `area(scope): summary`, e.g.
   `audio(4.3.1): MacOsMusicBackend loads built .ogg` or `docs(readme): ...`.
   On a release/version-bump commit, use the new version as the scope (`audio(4.3.1):`).
-- **One version bump per batch, not per item.** When a worktree promotes several
+- **One version bump per batch, not per item (avoid version-number churn).** When a worktree promotes several
   related items, commit each item individually but do the single `Directory.Build.props`
   bump + `CHANGELOG.md` entry + `dotnet pack` ONCE at the end of the batch, then do
-  per-consumer adopt PRs. Never bump the version per-item within a batch.
+  per-consumer adopt PRs. Never bump the version per-item within a batch. Same spirit for a small
+  standalone fix landing alongside other small work: fold it into that shared bump rather than cutting
+  its own `vX.Y.Z`, and lean on the trivial-change exception (no bump at all) for anything that ships no
+  package, so the engine version does not creep through a run of one-line releases. A FINISHED feature
+  still auto-publishes right away (merge + tag + push, don't hold) - batching is about not fragmenting one
+  unit of work across several tiny releases, never about holding a finished feature.
 - `local-feed/` is gitignored but MUST exist before `dotnet restore` (`mkdir -p local-feed`).
 - net10.0, MonoGame-free: Silk.NET (windowing + input, GLFW natives bundled per-RID), Veldrid behind
   `KhaozEngine.Gpu` (GPU), Silk.NET.OpenAL (audio), xUnit (tests).

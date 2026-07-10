@@ -79,6 +79,13 @@ public abstract class EditorCommand : IEditorCommand
             if (string.Equals(s.Id, id, StringComparison.Ordinal))
                 throw new InvalidOperationException($"A spawn with id '{id}' already exists in the document.");
     }
+
+    private protected static void GuardNoRegion(MapDocument doc, string name)
+    {
+        foreach (MapRegion r in doc.Regions)
+            if (string.Equals(r.Name, name, StringComparison.Ordinal))
+                throw new InvalidOperationException($"A region named '{name}' already exists in the document.");
+    }
 }
 
 // ---- placements ------------------------------------------------------------------------------------------
@@ -580,7 +587,9 @@ public sealed class RemoveRegionCommand : EditorCommand
     }
 }
 
-/// <summary>Renames a region. Regions are keyed by name, so the id-carrying selection follows the rename.</summary>
+/// <summary>Renames a region. Regions are keyed by name, so the id-carrying selection follows the rename. The
+/// target name must be unique: <see cref="Apply"/> throws (before it mutates) if a region already carries the new
+/// name, so a rejected rename lands no undo step. Renames never coalesce (no merge).</summary>
 public sealed class RenameRegionCommand : EditorCommand
 {
     readonly string _oldName;
@@ -599,7 +608,11 @@ public sealed class RenameRegionCommand : EditorCommand
     internal override bool AffectsWorld => false;
 
     /// <inheritdoc/>
-    public override void Apply(MapDocument doc) => doc.Regions[IndexOfRegion(doc, _oldName)].Name = _newName;
+    public override void Apply(MapDocument doc)
+    {
+        GuardNoRegion(doc, _newName);   // reject a duplicate target before touching the source
+        doc.Regions[IndexOfRegion(doc, _oldName)].Name = _newName;
+    }
 
     /// <inheritdoc/>
     public override void Revert(MapDocument doc) => doc.Regions[IndexOfRegion(doc, _newName)].Name = _oldName;

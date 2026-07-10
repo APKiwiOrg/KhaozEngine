@@ -93,6 +93,22 @@ namespace KhaozEngine.Tests.MapEditor
             AssertRoundTrip(Sample(), new RenameRegionCommand("town", "village"));
 
         [Fact]
+        public void RenameRegionCommand_GuardsDuplicates()
+        {
+            var doc = Sample();
+            doc.Regions.Add(new MapRegion { Name = "village", Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 3f } });   // a second region, so a duplicate target name exists
+
+            // Guards duplicates: renaming onto a name already in the document throws (the GuardNoRegion throw-pattern)
+            // and leaves the history untouched, because History.Execute applies BEFORE it pushes, so a throwing
+            // Apply never lands an undo step or mutates the source name.
+            var ed = new EditorDocument(doc);
+            Assert.Throws<InvalidOperationException>(() => ed.Execute(new RenameRegionCommand("town", "village")));
+            Assert.False(ed.History.CanUndo);
+            Assert.Contains(doc.Regions, r => r.Name == "town");     // source name intact
+            Assert.Single(doc.Regions, r => r.Name == "village");    // target still unique: no clone
+        }
+
+        [Fact]
         public void RenamePlacementCommand_AppliesRevertsAndGuardsDuplicates()
         {
             var doc = Sample();

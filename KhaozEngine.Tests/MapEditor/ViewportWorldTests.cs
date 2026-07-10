@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Numerics;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapEditor;
@@ -153,7 +154,7 @@ namespace KhaozEngine.Tests.MapEditor
         public void Draw_BeforeBuild_Throws()
         {
             ViewportWorld vw = Construct(TwoPropManifest);
-            Assert.Throws<InvalidOperationException>(() => vw.Draw(Vector3.Zero, null, default));
+            Assert.Throws<InvalidOperationException>(() => vw.Draw(Vector3.Zero, null, default, new EditorVisibility()));
         }
 
         [Fact]
@@ -176,7 +177,7 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Throws<ObjectDisposedException>(() => vw.Build(doc, registry));
             Assert.Throws<ObjectDisposedException>(() => vw.Rebuild(doc, registry));
             Assert.Throws<ObjectDisposedException>(() => vw.Update(Vector3.Zero, 0.016f));
-            Assert.Throws<ObjectDisposedException>(() => vw.Draw(Vector3.Zero, null, default));
+            Assert.Throws<ObjectDisposedException>(() => vw.Draw(Vector3.Zero, null, default, new EditorVisibility()));
         }
 
         [Fact]
@@ -330,6 +331,53 @@ namespace KhaozEngine.Tests.MapEditor
             cache.Invalidate();
             Assert.True(cache.IsDirty);
             Assert.Equal(2, cache.Get(doc, field).Count);   // rebuilt from the mutated document
+        }
+
+        // ---- visibility: scatter-layer rebuild filter --------------------------------------------------
+
+        [Fact]
+        public void HiddenScatterLayer_ExcludedFromRebuild()
+        {
+            // VisibleScatterLayerNames is the seam BuildPropLayers uses to decide which scatter prop layers a
+            // Build / Rebuild constructs, so pinning it pins that a hidden layer drops out of the rebuilt world.
+            var doc = new MapDocument { Id = "layers" };
+            doc.ScatterLayers.Add(new MapScatterLayer { Name = "trees" });
+            doc.ScatterLayers.Add(new MapScatterLayer { Name = "rocks" });
+            doc.ScatterLayers.Add(new MapScatterLayer { Name = "flowers" });
+
+            var vis = new EditorVisibility();
+            // All visible: every layer's props are built, in document order.
+            Assert.Equal(new[] { "trees", "rocks", "flowers" },
+                ViewportWorld.VisibleScatterLayerNames(doc, vis.GetLayer).ToArray());
+
+            // Hide one: it drops out of the rebuilt prop layers, and the order of the rest is preserved.
+            vis.SetLayer("rocks", false);
+            Assert.Equal(new[] { "trees", "flowers" },
+                ViewportWorld.VisibleScatterLayerNames(doc, vis.GetLayer).ToArray());
+
+            // Hiding every layer yields none (the sink still gets its one empty fallback layer, built separately).
+            vis.SetLayer("trees", false);
+            vis.SetLayer("flowers", false);
+            Assert.Empty(ViewportWorld.VisibleScatterLayerNames(doc, vis.GetLayer));
+        }
+
+        [Fact]
+        public void FilterVisiblePlacements_DropsHiddenAndRespectsGroup()
+        {
+            var placements = new List<EditorPlacement> { Ep("a", "hut"), Ep("b", "rock"), Ep("c", "tree") };
+            var vis = new EditorVisibility();
+
+            // Nothing hidden: the SAME list instance comes back (the fast path, no needless copy).
+            Assert.Same(placements, ViewportWorld.FilterVisiblePlacements(placements, vis));
+
+            // Hide the middle one: order preserved, only "b" dropped.
+            vis.SetElementHidden(SelectionKind.Placement, "b", true);
+            IReadOnlyList<EditorPlacement> kept = ViewportWorld.FilterVisiblePlacements(placements, vis);
+            Assert.Equal(new[] { "a", "c" }, kept.Select(k => k.Id).ToArray());
+
+            // Hide the whole Placements group: nothing draws.
+            vis.SetGroup(VisibilityGroup.Placements, false);
+            Assert.Empty(ViewportWorld.FilterVisiblePlacements(placements, vis));
         }
 
         [Fact]

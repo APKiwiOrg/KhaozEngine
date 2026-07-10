@@ -184,6 +184,11 @@ public sealed class EditorToolController
     /// handle region matches. The scene sets it from the camera distance each frame.</summary>
     public float GizmoScale { get; set; } = 1f;
 
+    /// <summary>Whether an element (kind, id) is pickable from the viewport, consulted by the Select-mode pick so a
+    /// hidden element cannot be clicked (it is still selectable from the outline, which does not go through here).
+    /// Defaults to everything pickable, and the scene points it at its <see cref="EditorVisibility.IsElementVisible"/>.</summary>
+    public Func<SelectionKind, string, bool> IsVisible { get; set; } = static (_, _) => true;
+
     /// <summary>True while a Select-mode gizmo drag is in flight.</summary>
     public bool IsDragging => _dragging;
 
@@ -309,11 +314,11 @@ public sealed class EditorToolController
         // ground point (exclusions, regions, feature markers), so those otherwise-invisible authoring shapes are
         // selectable with the mouse. A pick that finds nothing at all clears the selection.
         if (EditorPicking.Pick(_document.Doc, Field!, input.RayOrigin, input.RayDirection, PickDistance, HeightOf,
-                out EditorPicking.PickResult r))
+                out EditorPicking.PickResult r, IsVisible))
         {
             if (r.Kind != SelectionKind.None)
                 _document.Selection.Set(r.Kind, r.Id);
-            else if (OverlayPicking.Pick(_document.Doc, r.Point.X, r.Point.Z, out OverlayPicking.OverlayPickResult o))
+            else if (OverlayPicking.Pick(_document.Doc, r.Point.X, r.Point.Z, out OverlayPicking.OverlayPickResult o, IsVisible))
                 _document.Selection.Set(o.Kind, o.Id);
             else
                 _document.Selection.Clear();

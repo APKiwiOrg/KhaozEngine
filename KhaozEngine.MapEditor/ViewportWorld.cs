@@ -49,6 +49,8 @@ public sealed class ViewportWorld : IDisposable
     readonly Dictionary<string, MeshHandle> _propMeshes = new();
     readonly PlacementCache _placements = new();
 
+    Func<string, bool> _scatterLayerVisible = static _ => true;
+
     bool _built;
     bool _disposed;
 
@@ -90,6 +92,17 @@ public sealed class ViewportWorld : IDisposable
         _kindCategories = categories;
     }
 
+    /// <summary>Predicate deciding whether a named scatter layer is streamed: the next <see cref="Build"/> /
+    /// <see cref="Rebuild"/> skips the prop layers of any layer for which this returns false (its companions go with
+    /// it), so hiding a scatter layer strips its props from the streamed world while the terrain streams unchanged.
+    /// Defaults to streaming every layer, and the scene points it at its
+    /// <see cref="EditorVisibility.GetLayer"/> and calls <see cref="Rebuild"/> when a toggle changes.</summary>
+    public Func<string, bool> ScatterLayerVisible
+    {
+        get => _scatterLayerVisible;
+        set => _scatterLayerVisible = value ?? throw new ArgumentNullException(nameof(value));
+    }
+
     /// <summary>The built terrain field, or null before <see cref="Build"/> (and after <see cref="Dispose"/>).</summary>
     public TerrainField? Field => _field;
 
@@ -120,10 +133,13 @@ public sealed class ViewportWorld : IDisposable
     }
 
     /// <summary>Rebuilds the streamed world wholesale from <paramref name="doc"/>: tears down the current sink +
-    /// streamer + kit meshes (freeing the loaded ring), then reruns the full <see cref="Build"/> construction. The
-    /// editor calls this when <see cref="EditorDocument.WorldRebuildPending"/> is set (terrain shape or scatter
-    /// inputs changed); placement/spawn drags never reach here. Throws <see cref="ObjectDisposedException"/> after
-    /// <see cref="Dispose"/> and <see cref="InvalidOperationException"/> if never built.</summary>
+    /// streamer + kit meshes (freeing the loaded ring), then reruns the full <see cref="Build"/> construction,
+    /// honouring the live <see cref="ScatterLayerVisible"/> filter (a scatter-layer visibility toggle rebuilds
+    /// here, so hidden layers drop out of the fresh prop layers). The editor calls this when
+    /// <see cref="EditorDocument.WorldRebuildPending"/> is set (terrain shape or scatter inputs changed) and,
+    /// separately, when a scatter-layer visibility toggle flips. Placement/spawn drags never reach here. Throws
+    /// <see cref="ObjectDisposedException"/> after <see cref="Dispose"/> and
+    /// <see cref="InvalidOperationException"/> if never built.</summary>
     public void Rebuild(MapDocument doc, MapDocRegistry registry)
     {
         ThrowIfDisposed();
@@ -142,32 +158,63 @@ public sealed class ViewportWorld : IDisposable
         _streamer!.Update(viewPos, dt);
     }
 
-    /// <summary>Draws the streamed world plus the authored content. The terrain + streamed props go through the
-    /// sink; authored placements draw OUTSIDE it (instanced, so a drag never rebuilds a chunk); the placement whose
-    /// stable id is <paramref name="selectedPlacementId"/> re-draws once with <paramref name="highlightTint"/> via
-    /// the per-call tint; spawn markers draw as ground-height billboards. Throws
-    /// <see cref="ObjectDisposedException"/> after <see cref="Dispose"/> and <see cref="InvalidOperationException"/>
-    /// before <see cref="Build"/>.</summary>
-    public void Draw(Vector3 viewPos, string? selectedPlacementId, Color highlightTint)
+    /// <summary>Draws the streamed world plus the authored content, filtered by <paramref name="visibility"/>. The
+    /// terrain + streamed props go through the sink (hidden scatter layers already dropped out at
+    /// <see cref="Rebuild"/>). Authored placements draw OUTSIDE it (instanced, so a drag never rebuilds a chunk),
+    /// skipping any placement the <see cref="VisibilityGroup.Placements"/> group or its per-element hide flag turns
+    /// off. The placement whose stable id is <paramref name="selectedPlacementId"/> re-draws once with
+    /// <paramref name="highlightTint"/> when it is still visible. Spawn markers draw as ground-height billboards
+    /// under the <see cref="VisibilityGroup.Spawns"/> group and per-element hide. The water plane draws only when
+    /// the <see cref="VisibilityGroup.Water"/> group is on. Throws <see cref="ObjectDisposedException"/> after
+    /// <see cref="Dispose"/> and <see cref="InvalidOperationException"/> before <see cref="Build"/>.</summary>
+    public void Draw(Vector3 viewPos, string? selectedPlacementId, Color highlightTint, EditorVisibility visibility)
     {
         ThrowIfDisposed();
         ThrowIfNotBuilt();
+        ArgumentNullException.ThrowIfNull(visibility);
 
-        // One water plane per frame, covering the whole document at the live water level. Always submitted, with
-        // no "skip when dry" guard: the water pass is depth-tested against the terrain and its shore-fade drives
-        // the alpha to zero at the waterline, so a level below all terrain renders nothing at negligible cost (a
-        // fixed 17x17 grid, one draw). Deriving the plane live from the document means a water-level edit shows
-        // up without a rebuild; the wholesale rebuild an EditTerrainCommand triggers is for scatter (which skips
-        // underwater candidates), not for the surface.
-        _scene.DrawWater(BuildWaterPlane(_doc!.Bounds, _doc.Terrain.WaterLevel));
+        // One water plane per frame, covering the whole document at the live water level. Always submitted while
+        // the Water group is on, with no "skip when dry" guard: the water pass is depth-tested against the terrain
+        // and its shore-fade drives the alpha to zero at the waterline, so a level below all terrain renders
+        // nothing at negligible cost (a fixed 17x17 grid, one draw). Deriving the plane live from the document
+        // means a water-level edit shows up without a rebuild. The wholesale rebuild an EditTerrainCommand triggers
+        // is for scatter (which skips underwater candidates), not for the surface.
+        if (visibility.GetGroup(VisibilityGroup.Water))
+            _scene.DrawWater(BuildWaterPlane(_doc!.Bounds, _doc.Terrain.WaterLevel));
 
         _sink!.Draw(viewPos);
 
-        IReadOnlyList<EditorPlacement> placements = _placements.Get(_doc!, _field!);
+        IReadOnlyList<EditorPlacement> placements = FilterVisiblePlacements(_placements.Get(_doc!, _field!), visibility);
         (IReadOnlyList<EditorPlacement> unselected, EditorPlacement? selected) = Partition(placements, selectedPlacementId);
         DrawAuthoredPlacements(unselected, viewPos);
         if (selected is EditorPlacement sel) DrawHighlighted(sel, highlightTint);
-        DrawSpawnMarkers();
+        DrawSpawnMarkers(visibility);
+    }
+
+    /// <summary>Keeps only the placements <paramref name="visibility"/> shows: the
+    /// <see cref="VisibilityGroup.Placements"/> group is on AND the placement is not individually hidden. Pure and
+    /// order-preserving, so the draw filter is headless-testable. Returns the input unchanged (a fast path) when
+    /// nothing is hidden.</summary>
+    internal static IReadOnlyList<EditorPlacement> FilterVisiblePlacements(
+        IReadOnlyList<EditorPlacement> placements, EditorVisibility visibility)
+    {
+        if (!visibility.GetGroup(VisibilityGroup.Placements)) return Array.Empty<EditorPlacement>();
+        List<EditorPlacement>? kept = null;
+        for (int i = 0; i < placements.Count; i++)
+        {
+            bool visible = !visibility.IsElementHidden(SelectionKind.Placement, placements[i].Id);
+            if (visible) kept?.Add(placements[i]);
+            else kept ??= FirstN(placements, i);   // a hidden one: start copying the prefix we skipped over
+        }
+        return kept ?? placements;
+    }
+
+    // The first n elements of a list, used to seed the filtered copy only once the first hidden element is met.
+    static List<EditorPlacement> FirstN(IReadOnlyList<EditorPlacement> placements, int n)
+    {
+        var list = new List<EditorPlacement>(placements.Count);
+        for (int i = 0; i < n; i++) list.Add(placements[i]);
+        return list;
     }
 
     /// <summary>Marks the authored-placement cache dirty so the next <see cref="Draw"/> rebuilds it from the
@@ -219,26 +266,34 @@ public sealed class ViewportWorld : IDisposable
                 _propMeshes[entry.Id] = _scene.LoadMesh(PropLoader.LoadProp(entry));
     }
 
-    // Turns the document's scatter + companion layers into the sink's index-aligned PropLayer list: scatter
-    // layers first (recording each name's index), then companions pointing at their host scatter layer. A document
-    // with no scatter layers still gets one empty scatter layer so the terrain streams (the sink needs >= 1 layer).
+    // Turns the document's scatter + companion layers into the sink's index-aligned PropLayer list: the VISIBLE
+    // scatter layers first (recording each name's index), then companions pointing at their host scatter layer. A
+    // hidden scatter layer is skipped (its props drop out of the streamed world, terrain unchanged), and its
+    // companions go with it (their host is gone, so they cannot ring anything). A document with no visible scatter
+    // layers still gets one empty scatter layer so the terrain streams (the sink needs >= 1 layer).
     IReadOnlyList<PropLayer> BuildPropLayers(MapDocument doc)
     {
         var layers = new List<PropLayer>();
         var scatterIndex = new Dictionary<string, int>(StringComparer.Ordinal);
         IReadOnlyDictionary<string, ScatterConfig> scatters = MapRuntime.BuildScatterConfigs(doc);
 
-        foreach (MapScatterLayer sl in doc.ScatterLayers)
+        foreach (string name in VisibleScatterLayerNames(doc, _scatterLayerVisible))
         {
-            scatterIndex[sl.Name] = layers.Count;
-            layers.Add(PropLayer.ScatterLayer(scatters[sl.Name], _propMeshes, PropDrawRadius));
+            scatterIndex[name] = layers.Count;
+            layers.Add(PropLayer.ScatterLayer(scatters[name], _propMeshes, PropDrawRadius));
         }
 
         foreach (MapCompanionLayer cl in doc.CompanionLayers)
         {
             if (!scatterIndex.TryGetValue(cl.HostLayer, out int hostIndex))
+            {
+                // Host absent from the visible set: skip a companion whose host layer merely got hidden (a hidden
+                // host suppresses its companions too), but still surface a companion naming a host the document
+                // never declares at all (a genuine authoring error, the pre-visibility guard).
+                if (DeclaresScatterLayer(doc, cl.HostLayer)) continue;
                 throw new MapDocumentException(
                     $"companion layer '{cl.Name}' names unknown host scatter layer '{cl.HostLayer}' in map '{doc.Id}'.");
+            }
             CompanionConfig companions = MapRuntime.BuildCompanionConfig(doc, cl.Name);
             layers.Add(PropLayer.CompanionLayer(hostIndex, companions, _propMeshes, CompanionDrawRadius));
         }
@@ -246,6 +301,29 @@ public sealed class ViewportWorld : IDisposable
         if (layers.Count == 0)
             layers.Add(PropLayer.ScatterLayer(EmptyScatter(), _propMeshes, PropDrawRadius));
         return layers;
+    }
+
+    /// <summary>The document's scatter-layer names, in document order, keeping only those <paramref name="visible"/>
+    /// accepts. This is the seam <see cref="BuildPropLayers"/> uses to decide which scatter prop layers a
+    /// <see cref="Build"/> / <see cref="Rebuild"/> constructs, so a rebuild with a hidden layer omits it. Pure (no
+    /// GPU, no state), so the exclusion is headless-testable without building the world.</summary>
+    internal static List<string> VisibleScatterLayerNames(MapDocument doc, Func<string, bool> visible)
+    {
+        ArgumentNullException.ThrowIfNull(doc);
+        ArgumentNullException.ThrowIfNull(visible);
+        var names = new List<string>(doc.ScatterLayers.Count);
+        foreach (MapScatterLayer sl in doc.ScatterLayers)
+            if (visible(sl.Name)) names.Add(sl.Name);
+        return names;
+    }
+
+    // Whether the document declares a scatter layer of the given name (so a companion's missing host can be told
+    // apart: a hidden-but-declared host is skipped, an undeclared host is an authoring error).
+    static bool DeclaresScatterLayer(MapDocument doc, string name)
+    {
+        foreach (MapScatterLayer sl in doc.ScatterLayers)
+            if (string.Equals(sl.Name, name, StringComparison.Ordinal)) return true;
+        return false;
     }
 
     // A scatter config that places nothing (no biome rules), so a scatter-less zone still streams its terrain.
@@ -308,10 +386,12 @@ public sealed class ViewportWorld : IDisposable
         _scene.Draw(mesh, world, tint);
     }
 
-    void DrawSpawnMarkers()
+    void DrawSpawnMarkers(EditorVisibility visibility)
     {
+        if (!visibility.GetGroup(VisibilityGroup.Spawns)) return;   // whole group hidden: no markers
         foreach (MapSpawn spawn in _doc!.Spawns)
         {
+            if (visibility.IsElementHidden(SelectionKind.Spawn, spawn.Id)) continue;   // this one individually hidden
             float groundY = _field!.SampleHeight(spawn.X, spawn.Z);
             Color color = spawn.Enabled ? EnabledSpawnColor : DisabledSpawnColor;
             _scene.DrawBillboard(new Vector3(spawn.X, groundY + SpawnMarkerLift, spawn.Z), SpawnMarkerSize, color);

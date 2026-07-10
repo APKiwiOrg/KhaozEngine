@@ -58,7 +58,7 @@ namespace KhaozEngine.Tests.MapEditor
             doc.Terrain.Features.Add(new RidgeFeatureDoc { PointX = -3f, PointZ = 7f, Height = 3f });
             doc.Terrain.Features.Add(new UnknownFeatureDoc());   // no derivable center: must be skipped
 
-            List<OverlayDraw> list = MapEditorScene.ComputeOverlayDrawList(doc, Nothing(), FlatGround, showOverlays: true);
+            List<OverlayDraw> list = MapEditorScene.ComputeOverlayDrawList(doc, Nothing(), FlatGround, showOverlays: true, visibility: new EditorVisibility());
 
             // Two exclusions + one region + two known features = five overlays; the unknown feature is skipped.
             Assert.Equal(5, list.Count);
@@ -109,14 +109,14 @@ namespace KhaozEngine.Tests.MapEditor
             doc.Regions.Add(new MapRegion { Name = "zone", Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 9f, Radius = 3f } });
 
             // Nothing selected: no overlay is flagged, and both exclusions share the same base color.
-            List<OverlayDraw> baseline = MapEditorScene.ComputeOverlayDrawList(doc, Nothing(), FlatGround, showOverlays: true);
+            List<OverlayDraw> baseline = MapEditorScene.ComputeOverlayDrawList(doc, Nothing(), FlatGround, showOverlays: true, visibility: new EditorVisibility());
             Assert.All(baseline, o => Assert.False(o.Selected));
             Color baseColor = baseline[0].Color;
             Assert.Equal(baseColor, baseline[1].Color);
 
             // Selecting exclusion index 1 brightens only that overlay; its unselected sibling is untouched.
             List<OverlayDraw> withSel = MapEditorScene.ComputeOverlayDrawList(
-                doc, Select(SelectionKind.Exclusion, "1"), FlatGround, showOverlays: true);
+                doc, Select(SelectionKind.Exclusion, "1"), FlatGround, showOverlays: true, visibility: new EditorVisibility());
             Assert.False(withSel[0].Selected);
             Assert.True(withSel[1].Selected);
             Assert.Equal(baseColor, withSel[0].Color);
@@ -125,7 +125,7 @@ namespace KhaozEngine.Tests.MapEditor
 
             // Region selection is keyed by name and highlights only the region overlay.
             List<OverlayDraw> regionSel = MapEditorScene.ComputeOverlayDrawList(
-                doc, Select(SelectionKind.Region, "zone"), FlatGround, showOverlays: true);
+                doc, Select(SelectionKind.Region, "zone"), FlatGround, showOverlays: true, visibility: new EditorVisibility());
             OverlayDraw region = regionSel.First(o => o.Category == OverlayCategory.Region);
             Assert.True(region.Selected);
             Assert.All(regionSel.Where(o => o.Category == OverlayCategory.Exclusion), o => Assert.False(o.Selected));
@@ -139,7 +139,7 @@ namespace KhaozEngine.Tests.MapEditor
             doc.Regions.Add(new MapRegion { Name = "zone", Shape = new DiscShapeDoc { Radius = 3f } });
             doc.Terrain.Features.Add(new LakeFeatureDoc { Radius = 5f });
 
-            List<OverlayDraw> list = MapEditorScene.ComputeOverlayDrawList(doc, Nothing(), FlatGround, showOverlays: false);
+            List<OverlayDraw> list = MapEditorScene.ComputeOverlayDrawList(doc, Nothing(), FlatGround, showOverlays: false, visibility: new EditorVisibility());
 
             Assert.Empty(list);
         }

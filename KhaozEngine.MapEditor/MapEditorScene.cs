@@ -106,6 +106,7 @@ public class MapEditorScene : GameScene, IGameScene3D
     EditorDocument _document = null!;
     EditorToolController _controller = null!;
     ViewportWorld _viewport = null!;
+    readonly EditorVisibility _visibility = new();
     FlyCamera3D _camera = null!;
     FlyCameraController _camController = null!;
 
@@ -181,6 +182,13 @@ public class MapEditorScene : GameScene, IGameScene3D
     /// <summary>The inspector grid, or null before <see cref="OnEnter"/>. Exposed for tests.</summary>
     internal PropertyGrid Inspector => _inspector;
 
+    /// <summary>The tree outline, or null before <see cref="OnEnter"/>. Exposed for tests (a hidden element stays
+    /// listed here: visibility is view-only and never mutates the document).</summary>
+    internal TreeView Outline => _outline;
+
+    /// <summary>The editor-session visibility state (groups, scatter layers, per-element hides). Exposed for tests.</summary>
+    internal EditorVisibility Visibility => _visibility;
+
     /// <summary>The mode tab bar, or null before <see cref="OnEnter"/>. Exposed for tests (the selected tab
     /// tracks the controller mode, including one-shot returns to Select).</summary>
     internal TabBar Toolbar => _toolbar;
@@ -214,8 +222,8 @@ public class MapEditorScene : GameScene, IGameScene3D
 
         MapDocRegistry registry = _options.Registry ?? MapDocRegistry.CreateDefault();
         _document = new EditorDocument(CreateDocument(registry), registry);
-        _controller = new EditorToolController(_document) { HeightOf = KindHeight };
-        _viewport = new ViewportWorld(_scene, _options.ManifestPaths);
+        _controller = new EditorToolController(_document) { HeightOf = KindHeight, IsVisible = _visibility.IsElementVisible };
+        _viewport = new ViewportWorld(_scene, _options.ManifestPaths) { ScatterLayerVisible = _visibility.GetLayer };
         _camera = new FlyCamera3D { Position = new Vector3(0f, 24f, -32f), Pitch = -0.5f };
         _camController = new FlyCameraController(_camera);
 
@@ -373,7 +381,7 @@ public class MapEditorScene : GameScene, IGameScene3D
     {
         if (!_built || !_viewport.IsBuilt) return;
         string? selId = _document.Selection.Kind == SelectionKind.Placement ? _document.Selection.Id : null;
-        _viewport.Draw(_camera.Position, selId, SelectionHighlight);
+        _viewport.Draw(_camera.Position, selId, SelectionHighlight, _visibility);
         DrawOverlays(scene);
         DrawGizmo(scene);
     }
@@ -385,7 +393,7 @@ public class MapEditorScene : GameScene, IGameScene3D
     {
         if (_controller.Field is not { } field) return;
         foreach (OverlayDraw o in ComputeOverlayDrawList(
-                     _document.Doc, _document.Selection, field.SampleHeight, _options.ShowOverlays))
+                     _document.Doc, _document.Selection, field.SampleHeight, _options.ShowOverlays, _visibility))
         {
             switch (o.Shape)
             {
@@ -410,15 +418,18 @@ public class MapEditorScene : GameScene, IGameScene3D
     /// the sampled ground so they clear the terrain. The overlay whose element matches <paramref name="selection"/>
     /// is flagged and brightened. <paramref name="sampleHeight"/> supplies the ground height at an (x, z); a
     /// <c>null</c> shape, a polygon with fewer than three points, or a feature whose center cannot be derived (an
-    /// unknown custom type) is skipped. Returns an empty list when <paramref name="showOverlays"/> is false. Pure
-    /// (no GPU, no scene state), so the whole computation is headless-testable; <see cref="DrawOverlays"/> submits
-    /// the result untested.</summary>
+    /// unknown custom type) is skipped, and so is any element <paramref name="visibility"/> hides (its group is off
+    /// or it is individually hidden), so a hidden overlay is not drawn. Returns an empty list when
+    /// <paramref name="showOverlays"/> is false. Pure (no GPU, no scene state), so the whole computation is
+    /// headless-testable. <see cref="DrawOverlays"/> submits the result untested.</summary>
     internal static List<OverlayDraw> ComputeOverlayDrawList(
-        MapDocument doc, EditorSelection selection, Func<float, float, float> sampleHeight, bool showOverlays)
+        MapDocument doc, EditorSelection selection, Func<float, float, float> sampleHeight, bool showOverlays,
+        EditorVisibility visibility)
     {
         ArgumentNullException.ThrowIfNull(doc);
         ArgumentNullException.ThrowIfNull(selection);
         ArgumentNullException.ThrowIfNull(sampleHeight);
+        ArgumentNullException.ThrowIfNull(visibility);
 
         var list = new List<OverlayDraw>();
         if (!showOverlays) return list;
@@ -427,11 +438,15 @@ public class MapEditorScene : GameScene, IGameScene3D
         int selectedFeature = selection.Kind == SelectionKind.Feature ? SelectedIndex(selection.Id) : -1;
 
         for (int i = 0; i < doc.Exclusions.Count; i++)
+        {
+            if (!visibility.IsElementVisible(SelectionKind.Exclusion, Index(i))) continue;   // hidden: no overlay
             AddShapeOverlay(list, doc.Exclusions[i].Shape, OverlayCategory.Exclusion, ExclusionOverlayColor,
                 selected: i == selectedExclusion, sampleHeight);
+        }
 
         foreach (MapRegion region in doc.Regions)
         {
+            if (!visibility.IsElementVisible(SelectionKind.Region, region.Name)) continue;   // hidden: no overlay
             bool selected = selection.Kind == SelectionKind.Region &&
                             string.Equals(selection.Id, region.Name, StringComparison.Ordinal);
             AddShapeOverlay(list, region.Shape, OverlayCategory.Region, RegionOverlayColor, selected, sampleHeight);
@@ -440,6 +455,7 @@ public class MapEditorScene : GameScene, IGameScene3D
         IReadOnlyList<MapFeature> features = doc.Terrain.Features;
         for (int i = 0; i < features.Count; i++)
         {
+            if (!visibility.IsElementVisible(SelectionKind.Feature, Index(i))) continue;   // hidden: no marker
             if (!FeatureGeometry.TryCenter(features[i], out float fx, out float fz)) continue;   // unknown type: no marker
             bool selected = i == selectedFeature;
             var center = new Vector3(fx, sampleHeight(fx, fz) + OverlayLift, fz);
@@ -448,6 +464,9 @@ public class MapEditorScene : GameScene, IGameScene3D
         }
         return list;
     }
+
+    // An index-keyed element id (feature / exclusion), matching the selection and outline id encoding.
+    static string Index(int i) => i.ToString(CultureInfo.InvariantCulture);
 
     // Turn one authoring shape into its overlay fill, at ground height plus the lift epsilon. Disc -> a ground disc,
     // rect -> a ground quad at the rect's midpoint, polygon (>= 3 points) -> a fan from the point centroid with each
@@ -994,8 +1013,49 @@ public class MapEditorScene : GameScene, IGameScene3D
             case SelectionKind.Feature: BuildFeatureInspector(sel.Id); break;
             case SelectionKind.Exclusion: BuildExclusionInspector(sel.Id); break;
             case SelectionKind.Region: BuildRegionInspector(sel.Id); break;
-            default: break;
+            default: BuildLayersInspector(); break;   // nothing selected: the visibility Layers panel
         }
+    }
+
+    // The empty-selection inspector is the Layers panel: a Visible toggle per group, then one per named scatter
+    // layer. Group toggles only gate draws / picks (no rebuild); a scatter-layer toggle also rebuilds the streamed
+    // world so the hidden layer's props drop out (RebuildWorldForVisibility). Raw dev-tool labels (the editor is
+    // not player-facing). Rebuilt on every selection change, so the panel tracks the live scatter-layer set.
+    void BuildLayersInspector()
+    {
+        foreach (VisibilityGroup group in Enum.GetValues<VisibilityGroup>())
+        {
+            VisibilityGroup g = group;   // capture per iteration for the closures
+            _inspector.Rows.Add(new BoolRow(LocalizedText.Raw(GroupLabel(g)),
+                () => _visibility.GetGroup(g), v => _visibility.SetGroup(g, v)));
+        }
+        foreach (MapScatterLayer layer in _document.Doc.ScatterLayers)
+        {
+            string name = layer.Name;
+            _inspector.Rows.Add(new BoolRow(LocalizedText.Raw(name),
+                () => _visibility.GetLayer(name),
+                v => { _visibility.SetLayer(name, v); RebuildWorldForVisibility(); }));
+        }
+    }
+
+    // The raw dev-tool label for a visibility group (FeatureMarkers reads "Feature markers"; the rest are their
+    // enum name). No em / en dashes or semicolons (the editor label convention).
+    static string GroupLabel(VisibilityGroup group) => group switch
+    {
+        VisibilityGroup.FeatureMarkers => "Feature markers",
+        _ => group.ToString(),
+    };
+
+    /// <summary>GPU seam: rebuilds the streamed viewport world so a scatter-layer visibility toggle takes effect
+    /// (hidden layers drop out of the fresh prop layers). Called directly from the Layers-panel scatter toggle,
+    /// NOT through <see cref="EditorDocument.WorldRebuildPending"/> (visibility is not a document change). No-op
+    /// until the world is built, and overridden headless in tests. Re-points the controller field at the rebuilt
+    /// world, matching <see cref="CheckWorldRebuild"/>.</summary>
+    protected virtual void RebuildWorldForVisibility()
+    {
+        if (!_viewport.IsBuilt) return;
+        _viewport.Rebuild(_document.Doc, _document.Registry);
+        _controller.Field = _viewport.Field;
     }
 
     // The terrain root inspector: the editable water level (routed through EditTerrainCommand so it coalesces
@@ -1038,6 +1098,17 @@ public class MapEditorScene : GameScene, IGameScene3D
         return () => current;
     }
 
+    // The per-element "Visible" toggle, bound to the visibility hidden set (Visible on == not hidden). Added to
+    // every element inspector so the operator can hide a single placement / spawn / feature / exclusion / region
+    // from the viewport (draws and picks) while it stays in the outline. `id` is polled through a getter so a
+    // renamable element (its key follows the rename via the caller's `cur()` closure) keeps toggling the right key.
+    void AddVisibleRow(SelectionKind kind, Func<string> id)
+    {
+        _inspector.Rows.Add(new BoolRow(LocalizedText.Raw("Visible"),
+            () => !_visibility.IsElementHidden(kind, id()),
+            v => _visibility.SetElementHidden(kind, id(), !v)));
+    }
+
     void BuildPlacementInspector(string id)
     {
         if (Placement(id) is null) return;
@@ -1052,6 +1123,7 @@ public class MapEditorScene : GameScene, IGameScene3D
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Scale"),
             () => Placement(cur())?.Scale ?? 1f, v => _document.Execute(new ScalePlacementCommand(cur(), v)),
             min: 0.01f));
+        AddVisibleRow(SelectionKind.Placement, cur);
     }
 
     void BuildSpawnInspector(string id)
@@ -1067,6 +1139,7 @@ public class MapEditorScene : GameScene, IGameScene3D
             () => Spawn(cur())?.Enabled ?? false, v => _document.Execute(new SetSpawnEnabledCommand(cur(), v))));
         _inspector.Rows.Add(new TextRow(LocalizedText.Raw("Archetype"),
             () => Spawn(cur())?.ArchetypeId ?? "", v => { if (Spawn(cur()) is { } s) s.ArchetypeId = v; }));
+        AddVisibleRow(SelectionKind.Spawn, cur);
     }
 
     // ---- feature / exclusion / region inspectors -----------------------------------------------------------
@@ -1113,6 +1186,7 @@ public class MapEditorScene : GameScene, IGameScene3D
             default:
                 break;   // unknown/custom feature type: the read-only Type row above is the whole inspector
         }
+        AddVisibleRow(SelectionKind.Feature, () => id);   // index-keyed, non-renamable: a constant id getter
     }
 
     // One scrubbed parameter of the feature at `index`: get reads the LIVE DTO (the instance at the index is
@@ -1153,6 +1227,7 @@ public class MapEditorScene : GameScene, IGameScene3D
         if (index < 0 || index >= _document.Doc.Exclusions.Count) return;
         AddShapeRows(() => index < _document.Doc.Exclusions.Count ? _document.Doc.Exclusions[index].Shape : null,
             (newShape, oldShape) => _document.Execute(new EditExclusionShapeCommand(index, newShape, oldShape)));
+        AddVisibleRow(SelectionKind.Exclusion, () => id);   // after the shape rows so the kind ChoiceRow stays Rows[0]
     }
 
     void BuildRegionInspector(string name)
@@ -1162,6 +1237,7 @@ public class MapEditorScene : GameScene, IGameScene3D
             v => RegionByName(v) is not null, (oldName, newName) => new RenameRegionCommand(oldName, newName));
         AddShapeRows(() => RegionByName(cur())?.Shape,
             (newShape, oldShape) => _document.Execute(new EditRegionShapeCommand(cur(), newShape, oldShape)));
+        AddVisibleRow(SelectionKind.Region, cur);
     }
 
     /// <summary>The shape-kind options the inspector's kind selector offers. Polygon is read-only v1 (no

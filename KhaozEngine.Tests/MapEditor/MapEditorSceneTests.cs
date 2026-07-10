@@ -60,6 +60,18 @@ namespace KhaozEngine.Tests.MapEditor
             protected override MapDocument CreateDocument(MapDocRegistry registry) => _factory();
         }
 
+        // Injects a caller-supplied document AND a pure flat field on the controller (no GPU), so a viewport pick
+        // can be driven straight on the controller headless. Everything else is the DocScene idiom.
+        sealed class FieldDocScene : MapEditorScene
+        {
+            readonly Func<MapDocument> _factory;
+            public FieldDocScene(Func<MapDocument> factory) => _factory = factory;
+            protected override MapDocument CreateDocument(MapDocRegistry registry) => _factory();
+            protected override void BuildWorld() => Controller.Field =
+                new KhaozEngine.Terrain.TerrainField(new KhaozEngine.Terrain.TerrainConfig { GentleAmplitude = 0f });
+            protected override void TeardownWorld() { }
+        }
+
         // Injects a fixed kit-id -> category map (a manifest-free stand-in for ViewportWorld.KindCategories), so the
         // palette-tree tests exercise the grouping / filtering / selection surface without a device or manifest.
         sealed class PaletteScene : MapEditorScene
@@ -169,6 +181,36 @@ namespace KhaozEngine.Tests.MapEditor
                 if (row is ReadOnlyRow r && r.Label.Resolve() == label) return r;
             Assert.Fail($"no ReadOnlyRow labeled '{label}' (rows: {grid.Rows.Count})");
             return null!;   // unreachable
+        }
+
+        static BoolRow BoolRowByLabel(PropertyGrid grid, string label)
+        {
+            foreach (PropertyRow row in grid.Rows)
+                if (row is BoolRow b && b.Label.Resolve() == label) return b;
+            Assert.Fail($"no BoolRow labeled '{label}' (rows: {grid.Rows.Count})");
+            return null!;   // unreachable
+        }
+
+        // Drive one press-origin tap through a BoolRow's toggle cell (up, press, release), the way the pointer fires
+        // a tap. Returns whether the toggle flipped this frame.
+        static bool TapBool(BoolRow row)
+        {
+            var cell = new Rect(0f, 0f, 200f, 28f);
+            var ui = new InputManager();
+            ui.Update(MouseFrame(new Vector2(100f, 14f), leftDown: false)); row.Update(cell, ui, 0.016f);
+            ui.Update(MouseFrame(new Vector2(100f, 14f), leftDown: true)); row.Update(cell, ui, 0.016f);
+            ui.Update(MouseFrame(new Vector2(100f, 14f), leftDown: false));
+            return row.Update(cell, ui, 0.016f);
+        }
+
+        // Whether the outline lists a placement by id (its node label is "<id> (<kind>)"). The outline is rebuilt
+        // from the document, so a still-listed placement means the document still holds it.
+        static bool OutlineListsPlacement(TreeView outline, string id)
+        {
+            foreach (TreeNode root in outline.Roots)
+                foreach (TreeNode child in root.Children)
+                    if (child.Label.Resolve().StartsWith(id + " ", StringComparison.Ordinal)) return true;
+            return false;
         }
 
         static void Near(float expected, float actual, float eps = 1e-3f) =>
@@ -808,6 +850,95 @@ namespace KhaozEngine.Tests.MapEditor
             scene.OnUpdate(0.016f);
             Assert.Equal(SelectionKind.Spawn, scene.Document.Selection.Kind);
             Assert.Equal("spawn-1-renamed", scene.Document.Selection.Id);   // selection followed the new id
+        }
+
+        // ---- visibility layers ---------------------------------------------------------------------------
+
+        [Fact]
+        public void HiddenElement_NotPickable_StillInOutline()
+        {
+            var scene = new FieldDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Placements.Add(new MapPlacement { Id = "hut", Kind = "prop", X = 0f, Z = 0f, Y = null });
+                return doc;
+            });
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager();
+            m.Push(scene);
+
+            var down = new Vector3(0f, -1f, 0f);
+            EditorFrameInput Press() => new EditorFrameInput(new Vector3(0f, 100f, 0f), down,
+                pointerPressed: true, pointerDown: true, dt: 0.016f);
+
+            // Sanity: while visible, a viewport pick over the hut selects it.
+            scene.Controller.Update(Press());
+            Assert.Equal(SelectionKind.Placement, scene.Document.Selection.Kind);
+            Assert.Equal("hut", scene.Document.Selection.Id);
+
+            scene.Document.Selection.Clear();
+            scene.Visibility.SetElementHidden(SelectionKind.Placement, "hut", true);   // hide it
+
+            // The same pick now skips the hut and falls through to the bare ground: nothing is selectable there.
+            scene.Controller.Update(Press());
+            Assert.Equal(SelectionKind.None, scene.Document.Selection.Kind);
+
+            // But it is still in the outline: visibility is view-only and never mutates the document.
+            Assert.Contains(scene.Document.Doc.Placements, p => p.Id == "hut");
+            Assert.True(OutlineListsPlacement(scene.Outline, "hut"), "hidden placement still appears in the outline");
+        }
+
+        [Fact]
+        public void EmptySelection_InspectorShowsLayersPanel()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.ScatterLayers.Add(new MapScatterLayer { Name = "trees" });
+                doc.ScatterLayers.Add(new MapScatterLayer { Name = "rocks" });
+                return doc;
+            });
+
+            // Nothing is selected at startup, so the inspector is the Layers panel: one BoolRow per visibility group
+            // then one per named scatter layer.
+            Assert.Equal(SelectionKind.None, scene.Document.Selection.Kind);
+            List<BoolRow> bools = scene.Inspector.Rows.OfType<BoolRow>().ToList();
+            List<string> labels = bools.Select(b => b.Label.Resolve()).ToList();
+
+            Assert.Equal(6 + 2, bools.Count);   // six groups + two scatter layers
+            Assert.Contains("Placements", labels);
+            Assert.Contains("Spawns", labels);
+            Assert.Contains("Water", labels);
+            Assert.Contains("Exclusions", labels);
+            Assert.Contains("Regions", labels);
+            Assert.Contains("Feature markers", labels);
+            Assert.Contains("trees", labels);
+            Assert.Contains("rocks", labels);
+        }
+
+        [Fact]
+        public void SelectedElement_VisibleRowTogglesHiddenSet()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Placements.Add(new MapPlacement { Id = "hut", Kind = "prop", X = 1f, Z = 2f });
+                return doc;
+            });
+
+            scene.Document.Selection.Set(SelectionKind.Placement, "hut");
+            BoolRow visible = BoolRowByLabel(scene.Inspector, "Visible");
+
+            // Starts visible: the toggle is on, the hidden set is empty.
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.Placement, "hut"));
+
+            // Tap the toggle: the placement flips to hidden.
+            Assert.True(TapBool(visible));
+            Assert.True(scene.Visibility.IsElementHidden(SelectionKind.Placement, "hut"));
+
+            // Tapping again shows it: the hidden entry is removed.
+            Assert.True(TapBool(visible));
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.Placement, "hut"));
         }
 
         // ---- categorized palette + filters ---------------------------------------------------------------

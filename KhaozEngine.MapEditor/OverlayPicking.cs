@@ -25,26 +25,32 @@ internal static class OverlayPicking
 
     /// <summary>Picks the overlay shape under a terrain point, honouring the feature &gt; exclusion &gt; region
     /// priority (primary) with a nearest-center tiebreak within a category. Returns false (and a
-    /// <see cref="SelectionKind.None"/> result) when the point lies over nothing.</summary>
-    internal static bool Pick(MapDocument doc, float x, float z, out OverlayPickResult result)
+    /// <see cref="SelectionKind.None"/> result) when the point lies over nothing.
+    /// <para><paramref name="visible"/>, when supplied, filters out unpickable overlays: a feature / exclusion /
+    /// region for which <c>visible(kind, id)</c> is false is skipped (the editor hides it, so a hidden overlay is
+    /// not selectable by clicking, though the outline still selects it). Null means every overlay is pickable.</para></summary>
+    internal static bool Pick(MapDocument doc, float x, float z, out OverlayPickResult result,
+        Func<SelectionKind, string, bool>? visible = null)
     {
         ArgumentNullException.ThrowIfNull(doc);
 
-        if (TryFeature(doc, x, z, out result)) return true;
-        if (TryExclusion(doc, x, z, out result)) return true;
-        if (TryRegion(doc, x, z, out result)) return true;
+        if (TryFeature(doc, x, z, visible, out result)) return true;
+        if (TryExclusion(doc, x, z, visible, out result)) return true;
+        if (TryRegion(doc, x, z, visible, out result)) return true;
         result = new OverlayPickResult(SelectionKind.None, "");
         return false;
     }
 
     // Nearest feature whose marker disc (radius FeatureMarkerRadius) contains the point, by center distance.
-    static bool TryFeature(MapDocument doc, float x, float z, out OverlayPickResult result)
+    static bool TryFeature(MapDocument doc, float x, float z, Func<SelectionKind, string, bool>? visible,
+        out OverlayPickResult result)
     {
         const float r2 = FeatureMarkerRadius * FeatureMarkerRadius;
         int best = -1;
         float bestDist = 0f;
         for (int i = 0; i < doc.Terrain.Features.Count; i++)
         {
+            if (!Pickable(visible, SelectionKind.Feature, i)) continue;
             if (!FeatureGeometry.TryCenter(doc.Terrain.Features[i], out float cx, out float cz)) continue;
             float dx = x - cx, dz = z - cz, d = dx * dx + dz * dz;
             if (d <= r2 && (best < 0 || d < bestDist)) { best = i; bestDist = d; }
@@ -55,12 +61,14 @@ internal static class OverlayPicking
     }
 
     // Nearest exclusion whose shape area contains the point, by shape-center distance.
-    static bool TryExclusion(MapDocument doc, float x, float z, out OverlayPickResult result)
+    static bool TryExclusion(MapDocument doc, float x, float z, Func<SelectionKind, string, bool>? visible,
+        out OverlayPickResult result)
     {
         int best = -1;
         float bestDist = 0f;
         for (int i = 0; i < doc.Exclusions.Count; i++)
         {
+            if (!Pickable(visible, SelectionKind.Exclusion, i)) continue;
             if (!Contains(doc.Exclusions[i].Shape, x, z, out float d)) continue;
             if (best < 0 || d < bestDist) { best = i; bestDist = d; }
         }
@@ -70,12 +78,14 @@ internal static class OverlayPicking
     }
 
     // Nearest region whose shape area contains the point, by shape-center distance.
-    static bool TryRegion(MapDocument doc, float x, float z, out OverlayPickResult result)
+    static bool TryRegion(MapDocument doc, float x, float z, Func<SelectionKind, string, bool>? visible,
+        out OverlayPickResult result)
     {
         MapRegion? best = null;
         float bestDist = 0f;
         foreach (MapRegion region in doc.Regions)
         {
+            if (visible is not null && !visible(SelectionKind.Region, region.Name)) continue;
             if (!Contains(region.Shape, x, z, out float d)) continue;
             if (best is null || d < bestDist) { best = region; bestDist = d; }
         }
@@ -83,6 +93,10 @@ internal static class OverlayPicking
         result = new OverlayPickResult(SelectionKind.Region, best.Name);
         return true;
     }
+
+    // Whether an index-keyed overlay (feature / exclusion) is pickable under the optional visibility filter.
+    static bool Pickable(Func<SelectionKind, string, bool>? visible, SelectionKind kind, int index) =>
+        visible is null || visible(kind, index.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
     // True when a shape's XZ area contains the point, out its squared center distance for the nearest tiebreak. A
     // null shape or a shape with no derivable center contains nothing.

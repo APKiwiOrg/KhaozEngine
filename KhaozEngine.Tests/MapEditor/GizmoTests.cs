@@ -214,16 +214,33 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
-        public void YawDelta_NinetyDegrees_ReturnsHalfPi()
+        public void YawDelta_QuarterTurnTowardPlusZ_ReturnsMinusHalfPi()
         {
-            // Start handle at +X of the gizmo; the current ray lands at +Z. A quarter turn = pi/2.
+            // Start handle at +X of the gizmo; the current ray lands at +Z. A quarter turn, magnitude pi/2.
+            // The sign is NEGATIVE: the delta composes additively with the yaw fed to CreateRotationY, whose
+            // +yaw turns object +X toward -Z (row-vector convention), so a drag toward +Z needs a negative yaw.
             var g = new GizmoDrag.DragGesture(GizmoDrag.GizmoHandle.YawRing,
                 StartPoint: new Vector3(1f, 0f, 0f), ObjectStart: Vector3.Zero, ObjectStartYaw: 0f, ObjectStartScale: 1f);
             var origin = new Vector3(0f, 5f, 1f);
 
             float yaw = GizmoDrag.YawDelta(g, origin, Down);
-            Near(MathF.PI / 2f, yaw);
+            Near(-MathF.PI / 2f, yaw);
             Assert.Equal(yaw, GizmoDrag.YawDelta(g, origin, Down)); // purity
+        }
+
+        [Fact]
+        public void YawDelta_ComposedYaw_TracksPointerUnderCreateRotationY()
+        {
+            // Renderer-convention pin: a nub authored at object +X, gesture started at world +X, dragged to
+            // world +Z. Composing newYaw = ObjectStartYaw + YawDelta and rotating with the renderer's
+            // Matrix4x4.CreateRotationY must land the nub where the pointer is (+Z), not mirrored to -Z.
+            var g = new GizmoDrag.DragGesture(GizmoDrag.GizmoHandle.YawRing,
+                StartPoint: new Vector3(1f, 0f, 0f), ObjectStart: Vector3.Zero, ObjectStartYaw: 0f, ObjectStartScale: 1f);
+            var origin = new Vector3(0f, 5f, 1f);
+
+            float newYaw = g.ObjectStartYaw + GizmoDrag.YawDelta(g, origin, Down);
+            Vector3 nub = Vector3.Transform(new Vector3(1f, 0f, 0f), Matrix4x4.CreateRotationY(newYaw));
+            NearV(new Vector3(0f, 0f, 1f), nub);
         }
 
         [Fact]

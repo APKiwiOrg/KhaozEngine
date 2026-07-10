@@ -32,7 +32,9 @@ public static class GizmoDrag
     /// at that instant (<paramref name="ObjectStart"/> position, <paramref name="ObjectStartYaw"/> radians,
     /// <paramref name="ObjectStartScale"/>). The caller composes a per-frame result from a start value plus a
     /// delta, e.g. <c>newYaw = ObjectStartYaw + YawDelta(...)</c> and <c>newScale = ObjectStartScale *
-    /// ScaleFactor(...)</c>.</summary>
+    /// ScaleFactor(...)</c>. <paramref name="ObjectStartYaw"/> is the yaw the renderer feeds to
+    /// <c>Matrix4x4.CreateRotationY</c>, and <see cref="YawDelta"/> is signed to compose additively with it, so
+    /// the additive composition keeps an object feature under the pointer following the drag.</summary>
     public readonly record struct DragGesture(GizmoHandle Handle, Vector3 StartPoint, Vector3 ObjectStart,
         float ObjectStartYaw, float ObjectStartScale);
 
@@ -92,14 +94,21 @@ public static class GizmoDrag
     }
 
     /// <summary>Yaw about the gizmo: the signed ground-plane angle swept from the start handle direction to where
-    /// the current ray meets the y = <c>StartPoint.Y</c> plane, wrapped to (-pi, pi]. Zero when the ray does not
-    /// meet the plane.</summary>
+    /// the current ray meets the y = <c>StartPoint.Y</c> plane. The sign is the renderer's convention, NOT the raw
+    /// atan2 sweep: the delta composes additively with the yaw fed to <c>Matrix4x4.CreateRotationY</c> (whose
+    /// positive yaw turns object +X toward -Z in the row-vector convention), so
+    /// <c>newYaw = ObjectStartYaw + YawDelta(...)</c> keeps an object feature under the pointer following the
+    /// drag. A drag from world +X toward world +Z therefore returns a NEGATIVE delta. Wrapped to (-pi, pi]: a
+    /// single gesture reports the shortest signed sweep, so a drag past a half turn wraps and a multi-turn drag
+    /// needs the caller to accumulate per-frame deltas. Zero when the ray does not meet the plane.</summary>
     public static float YawDelta(in DragGesture g, Vector3 origin, Vector3 dir)
     {
         if (!IntersectHorizontalPlane(origin, dir, g.StartPoint.Y, out Vector3 hit)) return 0f;
         float start = AngleAround(g.ObjectStart, g.StartPoint);
         float now = AngleAround(g.ObjectStart, hit);
-        float d = now - start;
+        // Negated sweep (start - now): the +atan2 sweep is the OPPOSITE turn under CreateRotationY, which
+        // maps positive yaw to +X-toward-minus-Z, and this delta must compose additively with that yaw.
+        float d = start - now;
         return MathF.Atan2(MathF.Sin(d), MathF.Cos(d)); // shortest signed wrap to (-pi, pi]
     }
 

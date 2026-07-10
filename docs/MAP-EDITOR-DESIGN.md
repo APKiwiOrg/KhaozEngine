@@ -277,10 +277,10 @@ once it ships, the detail moves to `CHANGELOG.md`.
     `ScrollablePanel` family. Shift+Escape also cancels a focused field edit, a
     focus-routing case worth revisiting. `FloatRow` needs a scrub-end gesture seal:
     cross-parameter scrubs currently coalesce into one undo step. `ChoiceRow`'s open
-    option list draws INSIDE the grid's own scissor clip (the grid has no late overlay
-    pass), so it can be cut off at the grid bounds or drawn over by rows below it while
-    open, a documented v1 limitation. A host needing an unclipped list has to call
-    `Dropdown.DrawOverlay` itself after the grid's `Draw`.
+    option list now draws in the grid's late overlay pass (above the rows below the
+    selector, no longer overpainted), but still inside the grid's own scissor, so a long
+    list clips at the grid bounds. A host needing the list to spill past the grid has to
+    call `Dropdown.DrawOverlay` itself after the grid's `Draw`.
   - `RenameRegionCommand` needs a `TryMerge`. Typed renames today land one undo step per
     keystroke.
 - **Editor UX**: sibling-focus drop after a rename, defer the pending re-select while any

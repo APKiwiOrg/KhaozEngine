@@ -113,10 +113,11 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     Each row polls its getter every `Update` unless the user is mid-edit/scrub/focus on that row's child widget
     (a `ChoiceRow` polls only while its list is closed, so an in-progress pick is never stomped), so external
     changes (undo, another editor) stay in sync without a change-event bus. A `ChoiceRow`'s setter fires only on
-    a real change, so re-picking the already-selected option closes the list without writing. A `ChoiceRow`'s
-    open option list draws INSIDE the grid's own scissor (the grid has no late overlay pass - a documented v1
-    limitation): it is cut off at the grid bounds, and rows below it draw over it while open. A host that needs
-    an unclipped list calls `Dropdown.DrawOverlay` itself after the grid's `Draw`. Row labels and a
+    a real change, so re-picking the already-selected option closes the list without writing. The grid draws in
+    two passes (every row's label+editor, then a late overlay pass), so a `ChoiceRow`'s open option list draws
+    ABOVE the rows below the selector rather than being overpainted by them; the list still draws inside the
+    grid's own scissor, so it clips at the grid bounds. A host that needs the list to spill past the grid calls
+    `Dropdown.DrawOverlay` itself after the grid's `Draw`. Row labels and a
     `ReadOnlyRow`'s display string truncate to their column via `GuiDraw.TruncateWithEllipsis` (the longest
     prefix that fits plus three ASCII dots, never the single-glyph ellipsis, which may not be baked into a font
     atlas) instead of running under the neighbouring cell or getting hard-cut by the scissor mid-glyph. A row

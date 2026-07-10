@@ -342,6 +342,39 @@ namespace KhaozEngine.Tests.Gui
             Assert.False(grid.WasChanged);
         }
 
+        // The open option list must draw ABOVE the rows below the selector, not get overpainted by them. The grid
+        // draws in two passes (its DrawPlan): every visible row's label+editor first (the Row pass), then every
+        // visible row again in a late overlay pass (the Overlay pass) where an open Dropdown paints its list. So the
+        // ChoiceRow's overlay is emitted after EVERY sibling row's editor, including the rows beneath it. Pins the
+        // ordering seam headlessly (the pixel compositing itself is GPU order, not asserted here).
+        [Fact]
+        public void ChoiceRow_OpenList_DrawsAfterSiblingRows()
+        {
+            string kind = "disc";
+            var grid = new PropertyGrid(Area);
+            var choice = new ChoiceRow(LocalizedText.Raw("Kind"), new[] { "disc", "rect" }, () => kind, v => kind = v);
+            grid.Rows.Add(choice);                                              // row 0: the selector
+            grid.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("A"), () => "-"));  // row 1: a sibling below it
+            grid.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("B"), () => "-"));  // row 2: a sibling below it
+
+            var input = new InputManager();
+            Tap(input, grid, ChoiceTrigger);                                   // open the list
+            Assert.True(choice.Dropdown.IsOpen);
+
+            var plan = new List<(int Row, PropertyGrid.DrawPass Pass)>(grid.DrawPlan());
+
+            // Every Row-pass entry precedes every Overlay-pass entry: the whole grid of rows draws before any open
+            // list, so no sibling row can overpaint the list.
+            int lastRowPass = plan.FindLastIndex(e => e.Pass == PropertyGrid.DrawPass.Row);
+            int firstOverlayPass = plan.FindIndex(e => e.Pass == PropertyGrid.DrawPass.Overlay);
+            Assert.True(firstOverlayPass > lastRowPass);
+
+            // Concretely, the selector's own overlay (row 0) comes after the Row-pass entries of the rows beneath it.
+            int choiceOverlay = plan.FindIndex(e => e.Row == 0 && e.Pass == PropertyGrid.DrawPass.Overlay);
+            int siblingBelowRow = plan.FindLastIndex(e => e.Row == 2 && e.Pass == PropertyGrid.DrawPass.Row);
+            Assert.True(choiceOverlay > siblingBelowRow);
+        }
+
         // A ChoiceRow that scroll-culls with its list open has the dropdown CLOSED by the grid's Deactivate hook,
         // so an off-view open list cannot keep swallowing taps (same hygiene as the culled TextRow focus).
         [Fact]

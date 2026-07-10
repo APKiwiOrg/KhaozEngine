@@ -2740,9 +2740,10 @@ numpad/keypad keys the same as the top-row keys, digits/dot/minus, shift-indepen
 `Toggle`, `TextRow` through a `TextInput`, `ChoiceRow` through a `Dropdown` over a fixed set of option
 strings (get/set delegates over the selected option, like `TextRow`), and `ReadOnlyRow` just polls and
 displays a string. A `ChoiceRow` polls the getter only while its list is closed, so an in-progress pick is
-never stomped, and its open list draws INSIDE the grid's own scissor - a documented v1 limitation, since the
-grid has no late overlay pass - so a host needing an unclipped list calls `Dropdown.DrawOverlay` itself after
-the grid's `Draw`. A row's label and a `ReadOnlyRow`'s display string truncate to their column via `GuiDraw.TruncateWithEllipsis`
+never stomped. The grid draws in two passes (every row's label+editor, then a late overlay pass), so a
+`ChoiceRow`'s open list draws ABOVE the rows below the selector instead of being overpainted by them; the list
+still draws inside the grid's own scissor, so it clips at the grid bounds (a host wanting it to spill past the
+grid calls `Dropdown.DrawOverlay` itself after the grid's `Draw`). A row's label and a `ReadOnlyRow`'s display string truncate to their column via `GuiDraw.TruncateWithEllipsis`
 (longest fitting prefix plus three ASCII dots) instead of running under the neighbouring cell or getting
 hard-cut by the scissor mid-glyph. `NumberField` and `TreeView` also stand alone outside a grid, e.g. an
 outline panel beside the inspector:

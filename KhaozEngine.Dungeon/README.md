@@ -35,9 +35,10 @@ count, and marker density caps. `Validate()` throws `ArgumentException` naming t
 `Saturated` when the plot or room budget ran out before hitting the target).
 
 `DungeonJson.SaveConfig`/`LoadConfig` and `SaveLayout`/`LoadLayout` round-trip both types to JSON (JSONC-
-tolerant reads, deterministic byte-identical writes), validated against the embedded schema
-(`DungeonSchema.GetJson()`, a `oneOf` over a `config` and a `layout` `$def`). `DungeonJsonException` names the
-offending field in its own camelCase spelling.
+tolerant reads, deterministic byte-identical writes). The JSON matches the embedded schema
+(`DungeonSchema.GetJson()`, a `oneOf` over a `config` and a `layout` `$def`), which the package's tests
+validate against and which is available for editor/AI tooling. The load path itself enforces its own semantic
+checks, throwing `DungeonJsonException` naming the offending field in its own camelCase spelling.
 
 ## Baking into a `MapDocument` (`DungeonMapDocEmitter`)
 
@@ -55,8 +56,8 @@ MapDocumentFile.Save(target, "dungeon-01.map.json");
 
 `Emit` appends: never clears or replaces anything already in `target`, so a document can accumulate several
 dungeon bakes (different layouts, or the same layout at different plots) or dungeon content alongside
-hand-authored content. Placements, spawns, and marker regions carry the "dungeon" tag, and room regions
-additionally carry "room" and the room's type (lowercased). Every id is salted per `(layout, plot)` pair, so repeated bakes
+hand-authored content. Placements, spawns, and marker regions carry the "dungeon" tag, spawns and marker
+regions add a `floor:<n>` tag, and room regions additionally carry "room" and the room's type (lowercased). Every id is salted per `(layout, plot)` pair, so repeated bakes
 into the same document never collide.
 
 ## Runtime stamping (`DungeonStamp`)
@@ -75,8 +76,8 @@ DungeonStampResult stamp = DungeonStamp.Build(layout, kit, plot);
 are greedy axis-run merges, not one shape per tile: a contiguous wall run along a row becomes one `BoxShape`,
 same for a contiguous walkable floor run (stair-tread cells are excluded, they get their own pitched ramp box
 instead), and every stair run gets one oriented ramp box. See `KhaozEngine.Showcase`'s "Dungeon (walk)" room
-for a full wiring example (generate once, stamp, load the kit meshes, spawn the player at the `Entrance`
-marker).
+for a wiring example (generate once, stamp, load the kit meshes, spawn the player at the `Entrance`
+marker). Note the demo wires rendering and the walk camera only, it does not register the physics statics.
 
 ## Kit contract (`DungeonKitMap`)
 

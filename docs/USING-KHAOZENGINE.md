@@ -2000,13 +2000,16 @@ DungeonStampResult stamp = DungeonStamp.Build(layout, kit, plot);
 ```
 
 Both sinks share the same cell-to-piece mapping internally, so a bake and a stamp of the same
-(layout, kit, plot) place identical props - see `KhaozEngine.Showcase`'s "Dungeon (walk)" room for a full
+(layout, kit, plot) place identical props - see `KhaozEngine.Showcase`'s "Dungeon (walk)" room for a
 wiring example (generate once, stamp, load the committed greybox kit through `AssetManifest`/`PropLoader`, spawn
-the player at the layout's `Entrance` marker).
+the player at the layout's `Entrance` marker). The demo wires rendering and the walk camera only, it does not
+register the physics statics.
 
-`DungeonJson.SaveConfig`/`LoadConfig` and `SaveLayout`/`LoadLayout` round-trip both types to JSON against an
-embedded schema (`DungeonSchema.GetJson()`), matching what the `ke-dungeon` CLI reads and writes. A hand-authored
-or generated config looks like:
+`DungeonJson.SaveConfig`/`LoadConfig` and `SaveLayout`/`LoadLayout` round-trip both types to JSON, matching
+what the `ke-dungeon` CLI reads and writes. The JSON matches the embedded schema (`DungeonSchema.GetJson()`,
+a `oneOf` over the config and layout shapes), which the package's tests validate against and which is
+available for editor/AI tooling. The load path itself enforces its own semantic checks, throwing
+`DungeonJsonException` naming the offending field. A hand-authored or generated config looks like:
 
 ```jsonc
 {

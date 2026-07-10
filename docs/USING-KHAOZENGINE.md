@@ -2837,7 +2837,9 @@ the palette-selected `PlaceKind`), `PlaceSpawn` (click ground-snaps `SpawnArchet
 scrub, no viewport gesture), `BakeRegion` (drag a rect, freezes `BakeLayer`'s procedural scatter into
 authored placements plus a covering exclusion). The three draw tools (`DrawExclusion`, `DrawRegion`,
 `BakeRegion`) are one shot: a completed gesture (the release that emits the command) drops back to `Select`
-automatically, while an abandoned or sub-threshold gesture keeps the tool armed. `EditorToolController.ModeHint`
+automatically, while an abandoned or sub-threshold gesture keeps the tool armed. The toolbar tab bar mirrors
+the live controller mode every frame, so it re-highlights the `Select` tab on its own when a one-shot tool
+returns (or Escape cancels), without a second tap. `EditorToolController.ModeHint`
 gives a one-line description of the active tool (folding in `PlaceKind` / `SpawnArchetype`) that the scene
 renders at the head of the status strip.
 
@@ -2847,6 +2849,15 @@ manifest's own file-name stem (`ViewportWorld.KindCategories`, first-manifest-wi
 manifests). The `PlaceSpawn` tool swaps the same panel region to a flat, filtered spawn-archetype list
 instead, no categories. Typing in either filter box narrows leaves case-insensitively, and clearing it
 restores each category's remembered expand/collapse state.
+
+**Overlays.** Exclusions, regions, and terrain-feature markers are otherwise-invisible authoring shapes, so
+with `MapEditorOptions.ShowOverlays` (default true) the viewport draws them as translucent ground fills
+(exclusions red, regions blue, an amber marker disc per feature center), the selected one brightened. They
+go through the `Scene3D` debug-fill pass, which runs depth-disabled after post, so the overlays composite
+always-on-top of the terrain for authoring visibility rather than depth-testing against it. Set
+`ShowOverlays` false to hide them. `MapEditorOptions.StatusBottomOffset` (default 0) reserves that many
+points at the window bottom for a host that draws its own bottom chrome (the Showcase's F7-F10 display
+readout), shifting the status strip and editor body up so the editor never stacks on the host's pixels.
 
 **Water.** `ViewportWorld.Draw` submits one `Scene3D.DrawWater` plane every frame, sized to the document
 bounds and derived live from `Terrain.WaterLevel`, so a level edit shows up immediately, ahead of the

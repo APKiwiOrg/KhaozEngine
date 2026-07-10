@@ -83,8 +83,10 @@ public class MapEditorScene : GameScene, IGameScene3D
     static readonly Color FeatureOverlayColor = new(0.96f, 0.76f, 0.22f, 0.55f);
     /// <summary>Marker-disc radius (m) drawn at a terrain feature's center.</summary>
     const float FeatureMarkerRadius = 1.5f;
-    /// <summary>World-space lift (m) added above the sampled ground height so an overlay fill clears the terrain
-    /// instead of z-fighting it.</summary>
+    /// <summary>World-space lift (m) added above the sampled ground height when seating an overlay fill. Overlays
+    /// never z-fight the terrain regardless: the debug-fill pass runs depth-disabled after post, so the fills
+    /// composite on top of the scene rather than depth-testing against it. The lift only keeps the fill geometry a
+    /// touch above the sampled surface.</summary>
     const float OverlayLift = 0.1f;
     /// <summary>RGB scale applied to a selected overlay's fill so it reads brighter than its neighbours.</summary>
     const float OverlaySelectBrighten = 1.6f;

@@ -207,7 +207,7 @@ namespace KhaozEngine.Showcase
             // The readout occupies the bottom DisplayReadoutHeight band. A room that reserves it (the map editor,
             // via StatusBottomOffset) sits its own chrome directly above bandTop so nothing stacks on these pixels.
             float bandTop = Ui.Height - DisplayReadoutHeight;
-            batch.Draw(_white, new Vector4(0, bandTop, Ui.Width, 32f), new Color(0f, 0f, 0f, 0.55f));
+            batch.Draw(_white, new Vector4(0, bandTop, Ui.Width, DisplayReadoutHeight - 4f), new Color(0f, 0f, 0f, 0.55f));
             batch.DrawString(font, line, new Vector2(16f, bandTop + 6f), new Color(0.85f, 0.95f, 1f, 1f));
         }
     }

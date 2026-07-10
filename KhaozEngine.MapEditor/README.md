@@ -33,6 +33,11 @@ sceneManager.Push(new MapEditorScene().Init(scene, whiteTexture, dpiFont, option
   types (see the `KhaozEngine.MapDoc` README).
 - `SpawnArchetypes` seeds the spawn tool's dropdown. The editor never interprets the strings, it only
   stamps the chosen one onto a new `MapSpawn.ArchetypeId`.
+- `ShowOverlays` (default true) draws the translucent viewport overlays for exclusions, regions, and
+  terrain-feature markers (see Viewport overlays below). Set false to hide them.
+- `StatusBottomOffset` (default 0) reserves that many points of clearance at the window bottom for a host
+  that draws its own bottom chrome (the Showcase's F7-F10 display readout line), shifting the status strip
+  and editor body up so the editor never stacks on the host's pixels.
 
 **Push it directly, do not wrap it.** `MapEditorScene` already IS a complete `GameScene` + `IGameScene3D`
 (its own `Init` chain mirrors any other room's Init-injection pattern). `GameScene.Manager` is set only by
@@ -55,7 +60,9 @@ the first press arms a status-strip warning ("Shift+Escape again to discard and 
 Shift+Escape discards and exits. Any Ctrl+S or any document mutation (an edit, an undo, a redo) disarms
 the warning, so a stale discard confirmation can never fire after the user resumed working. The status
 strip leads with the active tool name and its `ModeHint` one-liner, then the undo/redo labels and the
-exit chord as a standing hint.
+exit chord as a standing hint. The toolbar tab bar is mirrored back onto the live controller mode every
+frame, so a one-shot draw / bake tool returning to Select on completion (or an Escape cancel) re-highlights
+the Select tab on its own, without a tap.
 
 ## Kit palette
 
@@ -72,6 +79,16 @@ The `PlaceSpawn` tool swaps the same panel region to a flat, filtered spawn-arch
 categories, since the archetypes are a flat game-supplied list from `MapEditorOptions.SpawnArchetypes`).
 Every other tool shows the kit palette. Selecting a palette leaf sets `EditorToolController.PlaceKind`,
 selecting a spawn-list leaf sets `SpawnArchetype`, and tapping a category row itself changes neither.
+
+## Viewport overlays
+
+Exclusions, regions, and terrain-feature markers are otherwise-invisible authoring shapes, so with
+`MapEditorOptions.ShowOverlays` (default true) the viewport draws them as translucent ground fills:
+exclusions red, regions blue, and a small amber marker disc at each terrain feature's center, with the
+selected element brightened. They render through the `Scene3D` debug-fill pass, which runs depth-disabled
+after post, so the overlays composite always-on-top of the terrain for authoring visibility rather than
+depth-testing against it. `MapEditorScene.ComputeOverlayDrawList` is the pure, headless-tested doc-to-draw
+step, and only the per-entry GPU submission lives in `DrawOverlays`. Set `ShowOverlays` false to hide the lot.
 
 ## The headless core
 

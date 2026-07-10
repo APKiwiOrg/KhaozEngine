@@ -242,6 +242,35 @@ public sealed class DungeonLayout
     /// identical across platforms and process runs for identical layout state.</summary>
     public ulong LayoutHash()
     {
+        ulong hash = ComputeStructureHash();
+
+        for (int i = 0; i < Markers.Count; i++)
+        {
+            DungeonMarker marker = Markers[i];
+            hash = MixByte(hash, (byte)marker.Type);
+            hash = MixTile(hash, marker.Tile);
+
+            for (int t = 0; t < marker.Tags.Count; t++)
+            {
+                hash = MixString(hash, marker.Tags[t]);
+            }
+        }
+
+        return hash;
+    }
+
+    /// <summary>The same FNV-1a fold as <see cref="LayoutHash"/> over dimensions, raster cells, rooms, edges,
+    /// and keys, but EXCLUDING <see cref="Markers"/> (and <see cref="Stats"/>, which was never part of either
+    /// fold). Internal: used by <c>DungeonMarkerTests.MarkerStream_Isolated</c> to prove that retuning the
+    /// marker phase's config never perturbs room growth or gating, independent of the marker phase's own
+    /// output.</summary>
+    internal ulong StructureHash()
+    {
+        return ComputeStructureHash();
+    }
+
+    private ulong ComputeStructureHash()
+    {
         ulong hash = FnvOffsetBasis;
 
         hash = MixInt(hash, Width);
@@ -295,18 +324,6 @@ public sealed class DungeonLayout
         {
             hash = MixInt(hash, Keys[i].LockId);
             hash = MixInt(hash, Keys[i].RoomId);
-        }
-
-        for (int i = 0; i < Markers.Count; i++)
-        {
-            DungeonMarker marker = Markers[i];
-            hash = MixByte(hash, (byte)marker.Type);
-            hash = MixTile(hash, marker.Tile);
-
-            for (int t = 0; t < marker.Tags.Count; t++)
-            {
-                hash = MixString(hash, marker.Tags[t]);
-            }
         }
 
         return hash;

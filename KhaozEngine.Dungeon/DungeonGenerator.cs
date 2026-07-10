@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using KhaozEngine.Dungeon.Internal;
 using KhaozEngine.Primitives;
 
@@ -8,10 +9,10 @@ namespace KhaozEngine.Dungeon;
 /// Deterministic entry point for dungeon generation. <see cref="Generate"/> validates the config, grows a
 /// tree of rooms joined by corridors (and, when the config allows more than one floor, by upward stairs), runs
 /// the wall pass, plans gating (boss, locks on critical-path bridge edges, and reachability-proven key
-/// placement) via <c>GatingPlanner</c>, assembles a completable-by-construction <see cref="DungeonLayout"/>, and
-/// re-proves that completability via <see cref="DungeonSolver.Verify"/> before returning it. Identical config and
-/// seed always produce an identical layout (see <see cref="DungeonLayout.LayoutHash"/>). Markers arrive in a
-/// later task. For now the layout carries empty markers.
+/// placement) via <c>GatingPlanner</c>, plans typed markers (spawn/loot/objective/entrance) via
+/// <c>MarkerPlanner</c>, assembles a completable-by-construction <see cref="DungeonLayout"/>, and re-proves
+/// that completability via <see cref="DungeonSolver.Verify"/> before returning it. Identical config and seed
+/// always produce an identical layout (see <see cref="DungeonLayout.LayoutHash"/>).
 /// </summary>
 public static class DungeonGenerator
 {
@@ -50,12 +51,18 @@ public static class DungeonGenerator
         DeterministicRng gating = root.CreateDerived("gating");
         GatingResult gatingResult = GatingPlanner.PlanGating(config, gating, grown.Rooms, grown.Edges);
 
+        // Markers are the last content phase: pure tagged data appended to the layout, never touching the
+        // grid, rooms, edges, or keys, so they cannot affect completability. The stream is derived after
+        // "gating" so it never perturbs growth or gating (see DungeonMarkerTests.MarkerStream_Isolated).
+        DeterministicRng markers = root.CreateDerived("markers");
+        List<DungeonMarker> plannedMarkers = MarkerPlanner.PlanMarkers(config, markers, grown.Rooms);
+
         var layout = new DungeonLayout(width, depth, floors, config.CellSizeMeters, config.FloorHeightMeters)
         {
             Rooms = grown.Rooms,
             Edges = grown.Edges,
             Keys = gatingResult.Keys,
-            Markers = Array.Empty<DungeonMarker>(),
+            Markers = plannedMarkers,
             Stats = new LayoutStats
             {
                 RoomsRequested = config.RoomCountTarget,

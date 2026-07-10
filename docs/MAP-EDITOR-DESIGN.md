@@ -208,8 +208,13 @@ editor-runtime cores. Never Fable-tier subagents.
   - **B1 (building blocks)**: the three Gui widgets (`NumberField`, `TreeView`,
     `PropertyGrid`), the editor fly camera (`FlyCamera3D`/`FlyCameraController`), and
     picking math (`RayMath.IntersectAabb`, `TerrainRaycast`). Shipped in 10.46.0, see CHANGELOG.
-  - Remaining: the `MapEditor` runtime package itself (viewport host, gizmos, undo/redo
-    command stack, per-game editor head).
+  - **B2 (editor runtime)**: the `MapEditor` runtime package itself, viewport host
+    (`ViewportWorld`), gizmos, the undo/redo command stack (`EditorDocument`/`EditorHistory`
+    with gesture coalescing, `EditorCommands`, `BakeRegionCommand`), the per-frame tool
+    policy (`EditorToolController`), the turn-key `MapEditorScene`, and a
+    `KhaozEngine.Showcase` demo room (`RoomMapEditor`) wiring it into a real game head as the
+    manual verification handoff. Shipped, version bump and CHANGELOG entry land with the
+    release commit.
 - **Phase C (parallel after A, independent of B)**: ke-mapedit MCP tool. One release.
 - **Phase D (game repo)**: Ruinborne export, both-heads loading, parity test (after A),
   editor head and doc rewrite (after B).

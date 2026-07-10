@@ -87,6 +87,12 @@ namespace KhaozEngine.Showcase
             // UDP, demonstrating predict/replicate/reconcile netcode. Reuses the same shared Scene3D as Room3D.
             Rooms.Add(("Networked walk", () => new RoomNet().Init(Scene, _white, dpi22)));
 
+            // Map editor: the turn-key KhaozEngine.MapEditor scene, registered directly (see RoomMapEditor's
+            // doc comment for why a wrapper GameScene would leave it half-wired) over the committed showcase
+            // demo document. The manual verification room for Task 8: fly around, place a prop, drag it with
+            // the gizmo, undo/redo, bake a scatter region, and save.
+            Rooms.Add(("Map editor", () => RoomMapEditor.Create(Scene, _white, dpi22)));
+
             // The landing menu draws through the point-space UI pass with the shared DpiFonts.
             _scenes.Push(new MenuScene(_white, dpi40, dpi22, Rooms));
 

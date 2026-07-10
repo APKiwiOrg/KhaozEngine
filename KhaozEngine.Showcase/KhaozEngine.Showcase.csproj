@@ -18,6 +18,8 @@
     <None Include="assets/props/**" CopyToOutputDirectory="PreserveNewest" />
     <None Include="assets/character/**" CopyToOutputDirectory="PreserveNewest" />
     <None Include="assets/buildings/**" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The map-editor room's demo document + its schema copy (KhaozEngine.MapEditor / KhaozEngine.MapDoc). -->
+    <None Include="assets/maps/**" CopyToOutputDirectory="PreserveNewest" />
     <!-- Sample player changelog for the Gui room's "Patch Notes" demo button. LogicalName matches
          PatchNotesLoader.ResourceName, so PatchNotesLoader.Load(typeof(RoomGui).Assembly) finds it as an
          embedded resource (no disk copy shipped alongside the showcase binary). -->
@@ -49,5 +51,7 @@
     <ProjectReference Include="../KhaozEngine.Locomotion/KhaozEngine.Locomotion.csproj" />
     <ProjectReference Include="../KhaozEngine.Netcode.LiteNetLib/KhaozEngine.Netcode.LiteNetLib.csproj" />
     <ProjectReference Include="../KhaozEngine.Simulation/KhaozEngine.Simulation.csproj" />
+    <ProjectReference Include="../KhaozEngine.MapDoc/KhaozEngine.MapDoc.csproj" />
+    <ProjectReference Include="../KhaozEngine.MapEditor/KhaozEngine.MapEditor.csproj" />
   </ItemGroup>
 </Project>

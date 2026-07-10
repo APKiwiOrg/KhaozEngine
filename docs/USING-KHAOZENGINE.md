@@ -2794,6 +2794,59 @@ headless-testable off a constructed `Ray`/`TerrainField`/box, the same standard 
 
 ---
 
+## Map editor (`KhaozEngine.MapEditor`)
+
+An opt-in, turn-key `MapEditorScene` over a `MapDoc` document: a streamed viewport (reusing
+`TerrainStreamer`/`Scene3DChunkSink`, so the preview is pixel-identical to the game), a fly camera, the
+select/place/draw/bake tools from the editor building blocks above, and undo/redo, wrapped in Gui chrome
+(toolbar tab bar, tree outline, property-grid inspector, kit palette, status strip). Not bundled in any
+umbrella (the `Server.Admin` precedent), so add it explicitly to a game head that wants to edit its zone
+documents.
+
+**Wiring.** Fill `MapEditorOptions` and push the scene directly onto your `SceneManager`, the same way
+every other room/scene gets pushed:
+
+```csharp
+var options = new MapEditorOptions
+{
+    DocumentPath = Path.Combine(AppContext.BaseDirectory, "assets", "maps", "valley.map.json"),
+    ManifestPaths = new List<string> { propsManifestPath, buildingsManifestPath },
+    SpawnArchetypes = new List<string> { "wolf", "boar" },   // fills the spawn-tool dropdown
+};
+sceneManager.Push(new MapEditorScene().Init(scene, whiteTexture, dpiFont, options));
+```
+
+Push it directly rather than wrapping it in your own `GameScene`. `GameScene.Manager` is set only by
+`SceneManager.Push` (an internal setter), so a hand-built wrapper that forwards lifecycle calls to a
+`new MapEditorScene()` it never pushes leaves that inner scene's `Manager` permanently null (its first
+`Manager!.Input` read throws). If your game wants extra room-level behavior, for example an "Esc leaves
+this room" convention (the editor itself reserves Escape for cancelling the in-flight gizmo/draw gesture
+and never pops itself), put a factory function next to your room list that builds the options and returns
+the ready-to-push scene, and handle the extra key in whatever outer code owns the `Push`/`Pop` call. See
+`KhaozEngine.Showcase/RoomMapEditor.cs` for a worked example.
+
+**Tool modes** (`EditorToolController.Mode`, also the toolbar tab bar): `Select` (pick, then drag the
+transform gizmo: translate XZ, translate Y, yaw ring, uniform scale), `PlacePlacement` (click ground-snaps
+the palette-selected `PlaceKind`), `PlaceSpawn` (click ground-snaps `SpawnArchetype`), `DrawExclusion` /
+`DrawRegion` (drag a disc, shift-drag a rect), `EditFeature` (inspector-driven terrain-feature parameter
+scrub, no viewport gesture), `BakeRegion` (drag a rect, freezes `BakeLayer`'s procedural scatter into
+authored placements plus a covering exclusion).
+
+**Keys.** Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, Delete removes the current selection,
+Escape cancels an in-flight gizmo/draw gesture and returns to `Select`.
+
+**Save semantics.** Ctrl+S (`MapEditorScene.SaveDocument`) validates through the same load-time
+`MapDocumentFile.Save` validator before writing, so an invalid document is never written to disk. A
+validation failure lands as a message in the status strip instead of throwing. A successful save also
+calls `EditorDocument.MarkSaved()`, clearing the dirty flag (the status strip's leading `*`) and sealing
+the current gesture, so a later same-gesture edit can never merge into the just-saved command and hide
+itself from `IsDirty`.
+
+See the `KhaozEngine.MapEditor` package README for the command stack and gesture sealing, world-rebuild
+semantics (including the one-frame `EditFeature` inspector lag), and the bake-region mechanics in full.
+
+---
+
 ## Networked overworld (`KhaozEngine.Locomotion` + `KhaozEngine.NetWorld`)
 
 The movement math lives in one render-free place so local feel and networked feel are the same code.

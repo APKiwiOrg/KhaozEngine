@@ -138,6 +138,26 @@ namespace KhaozEngine.Tests.Gui
         }
 
         [Fact]
+        public void Two_column_title_row_is_never_squeezed_below_its_width_by_the_cap()
+        {
+            // Two-column title "LongTitleName"(130) + gap(12) + "0/3"(30) = 172px title row, wider than the
+            // 100px cap. The title row is single-line and un-wrappable, so the bubble must stay wide enough to
+            // hold it (else the left name overlaps the right-aligned value). Body line is short.
+            var r = Tooltip.ComputeBounds(Font, "LongTitleName", "0/3", Font, Font, One("x"), new Vector2(400, 300), View, M, maxWidth: 100f);
+            Assert.Equal(192f, r.Width);            // 172 title row + PadX*2(20); NOT clamped to the 100 cap
+            Assert.True(r.Width > 100f);
+        }
+
+        [Fact]
+        public void Single_column_title_still_clips_at_the_cap()
+        {
+            // With no right value the title has nothing to overlap, so a title longer than the cap still clips
+            // at maxWidth (the width floor only applies to the two-column title row).
+            var r = Tooltip.ComputeBounds(Font, "LongTitleName", "", Font, Font, One("x"), new Vector2(400, 300), View, M, maxWidth: 100f);
+            Assert.Equal(100f, r.Width);
+        }
+
+        [Fact]
         public void Flip_below_still_triggers_with_the_taller_wrapped_bubble()
         {
             // The wrapped bubble is 82px tall; above the anchor at y=50 it would start at 50-82-10 = -42 < 0,

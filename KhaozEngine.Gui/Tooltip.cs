@@ -194,7 +194,9 @@ namespace KhaozEngine.Gui
         /// Width-capped two-column overload (the full layout): body lines wider than <paramref name="maxWidth"/>
         /// minus horizontal padding word-wrap via <paramref name="bodyFont"/> (break on spaces, hard-break a token
         /// longer than the budget), so the bubble grows in height and its width is capped at
-        /// <paramref name="maxWidth"/>. The title row stays single-line (it may clip if it alone exceeds the cap).
+        /// <paramref name="maxWidth"/>. The title row stays single-line: a two-column title (with
+        /// <paramref name="titleRight"/>) keeps the bubble at least wide enough to hold it so the name never
+        /// overlaps the right-aligned value (that floor can exceed the cap), while a one-column title just clips.
         /// <paramref name="maxWidth"/> &lt;= 0 or <see cref="float.PositiveInfinity"/> means unbounded.
         /// </summary>
         public static Rect ComputeBounds(ITextMeasurer titleFont, string title, string titleRight,
@@ -220,7 +222,16 @@ namespace KhaozEngine.Gui
 
             float w = contentW + m.PadX * 2f;
             float h = contentH + m.PadY * 2f;
-            if (bounded) w = MathF.Min(w, maxWidth);            // cap width; a longer single-line title clips
+            if (bounded)
+            {
+                // The cap governs the wrappable body. A two-column title row (left name + right-aligned value)
+                // is single-line and un-wrappable, so the bubble must stay at least its width or the name would
+                // overlap the value; that floor can exceed the cap. A one-column title has nothing to the right,
+                // so it just clips at the cap.
+                float cap = maxWidth;
+                if (!string.IsNullOrEmpty(titleRight)) cap = MathF.Max(cap, titleRowW + m.PadX * 2f);
+                w = MathF.Min(w, cap);
+            }
 
             float x = anchor.X - w * 0.5f;
             float y = anchor.Y - h - m.AnchorOffsetY;          // above the anchor

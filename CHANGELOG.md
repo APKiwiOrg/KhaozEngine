@@ -5,6 +5,17 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.49.1
+
+Fix a `Tooltip` regression from 10.49.0: a width cap (`MaxWidth` / `MaxWidthFraction`) could squeeze a
+two-column title row narrower than it needs, so the left name overlapped the right-aligned value.
+
+- **Two-column title no longer overlaps under a width cap (`KhaozEngine.Gui`).** The title row is
+  single-line and un-wrappable, so `Tooltip.ComputeBounds` now keeps the bubble at least wide enough to
+  hold a two-column title (`title` + `titleRight`), even when that width exceeds the cap. The cap still
+  governs body-line wrapping, and a one-column title (no right value) still clips at the cap since it has
+  nothing to overlap. Bubbles with no `MaxWidth` set are unaffected.
+
 ## 10.49.0
 
 `Tooltip` gains an opt-in width cap (`MaxWidth` px and/or `MaxWidthFraction` of the viewport) that word-wraps

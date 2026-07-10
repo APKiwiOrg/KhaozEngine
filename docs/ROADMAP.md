@@ -35,7 +35,9 @@ The world-document program: `KhaozEngine.MapDoc` (zone document format: terrain 
 placements, scatter exclusions and overrides, spawns, regions), the `KhaozEngine.MapEditor` in-engine
 GUI runtime plus per-game editor heads, and the `ke-mapedit` MCP server so AI can edit maps with
 world-aware queries and renders. Ruinborne is the first adopter. Four phases, MapDoc first, GUI and
-MCP in parallel after it. Full design: [MAP-EDITOR-DESIGN.md](MAP-EDITOR-DESIGN.md).
+MCP in parallel after it. Full design: [MAP-EDITOR-DESIGN.md](MAP-EDITOR-DESIGN.md). Items deferred
+by review across the program's phases are tracked in that doc's Deferred follow-ups section, not
+duplicated here.
 
 ## Netcode / MMO refinements
 

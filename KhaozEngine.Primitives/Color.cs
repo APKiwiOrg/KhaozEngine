@@ -28,8 +28,18 @@ namespace KhaozEngine.Primitives
         /// <summary>The same color with a replaced alpha.</summary>
         public Color WithAlpha(float a) => new(R, G, B, a);
 
+        /// <summary>The same color with R, G, B scaled by <paramref name="factor"/> and alpha preserved -
+        /// dims (or brightens) the visible color without touching opacity. Unclamped. Prefer this over
+        /// <c>* float</c> for tinting under straight-alpha blending (the 2D batch's SourceAlpha /
+        /// InverseSourceAlpha): <c>* float</c> scales <see cref="A"/> too, so <c>color * 0.6f</c> meant to
+        /// dim by 40% instead makes the sprite 40% translucent (opaque content beneath bleeds through), and
+        /// a faint <c>color * 0.13f</c> also attenuates alpha until it rounds below one gray level and the
+        /// draw renders invisible.</summary>
+        public Color ScaleRgb(float factor) => new(R * factor, G * factor, B * factor, A);
+
         /// <summary>Scale all four channels (including alpha) by <paramref name="s"/>. Unclamped; matches
-        /// <see cref="Vector4"/> <c>* float</c> and legacy MonoGame <c>Color * float</c>.</summary>
+        /// <see cref="Vector4"/> <c>* float</c> and legacy MonoGame <c>Color * float</c>. To dim the visible
+        /// color without changing opacity under straight-alpha blending, use <see cref="ScaleRgb(float)"/>.</summary>
         public static Color operator *(Color c, float s) => new(c.R * s, c.G * s, c.B * s, c.A * s);
 
         /// <summary>Scalar multiply (symmetric with <see cref="op_Multiply(Color,float)"/>).</summary>

@@ -51,7 +51,10 @@ These are not style preferences. Breaking them re-introduces the exact bugs this
 5. **Pass the design viewport to `Pointer.Update` / `InputManager.Update`** so hit-testing lines up with what's
    drawn. `GameApp` does this for you; if you build your own loop, do it yourself.
 6. **`System.Numerics` only** - `Vector2/3/4`, `Matrix4x4`. No XNA / MonoGame types anywhere. (An RGBA color
-   is `KhaozEngine.Primitives.Color`, not a bare `Vector4`. GPU-layout structs still use `Vector4`.)
+   is `KhaozEngine.Primitives.Color`, not a bare `Vector4`. GPU-layout structs still use `Vector4`.) To dim
+   or brighten a color for a tint, use `color.ScaleRgb(factor)`: it scales RGB and keeps alpha. `color *
+   factor` scales alpha too, which under the 2D batch's straight-alpha blend turns a dim into translucency
+   (content beneath bleeds through) or, at low factors, invisibility - use it only when you mean to fade.
 7. **Don't fork the packages.** Need an API that isn't there? Add it to KhaozEngine, ship a headless test, bump
    the version, and consume the new version. Pinned versions are how games stay green during each other's
    migrations.

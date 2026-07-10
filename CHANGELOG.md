@@ -5,6 +5,33 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.54.0
+
+Map-editor shape editing from the third playtest round (B2.3 of the map-editor program,
+`docs/MAP-EDITOR-DESIGN.md`): regions and exclusions gain per-parameter inspector rows and a disc/rect
+shape-kind selector, overlay picking plus translate and scale gizmos move and resize shapes and features
+from the viewport, the EditFeature tool places registry-listed features, and the Gui inspector gains a
+dropdown-backed `ChoiceRow` with numpad typing.
+
+- **`ChoiceRow` dropdown inspector row and numpad text entry (`KhaozEngine.Gui`, `KhaozEngine.Windowing`).**
+  A new `ChoiceRow` backs an inspector field with a dropdown option list. The open list draws in the grid's
+  late overlay pass, above the sibling rows below the selector, and clips at the grid bounds. Numpad typing
+  now reaches text fields: new `Keypad` members on the Windowing `Key` enum flow through `TextEntry` and
+  `NumberField`, so a numeric keypad edits a `NumberField`. `GuiDraw.TruncateWithEllipsis` clips over-long
+  cell text with an ellipsis.
+- **Shape editing for regions, exclusions, and features (`KhaozEngine.MapEditor`).** Regions and exclusions
+  now expose per-parameter inspector rows and a disc/rect shape-kind selector whose conversion preserves the
+  shape center (`EditExclusionShapeCommand`, `EditRegionShapeCommand`). Overlay picking selects features,
+  exclusions, and regions straight from the viewport. The translate and scale gizmos move and resize the
+  selected shape or feature through coalesced undoable edits. The `EditFeature` tool places a registry-listed
+  feature with its defaults at the click (`AddFeatureCommand`, `RemoveFeatureCommand`), and the kit palette
+  now shows only while the Place tool is active.
+- **`MapDocRegistry.FeatureTypes` enumeration (`KhaozEngine.MapDoc`).** The registry now enumerates its
+  registered feature types, which the EditFeature tool lists for placement.
+- **Deferred follow-ups are a durable ledger (`docs`).** The map-editor program's cross-phase code-review
+  follow-ups now live as a standing ledger in `docs/MAP-EDITOR-DESIGN.md`, since the per-worktree SDD ledger
+  is deleted at merge.
+
 ## 10.53.0
 
 Map-editor second-playtest fixes (B2.2 of the map-editor program, `docs/MAP-EDITOR-DESIGN.md`): the toolbar

@@ -219,7 +219,11 @@ editor-runtime cores. Never Fable-tier subagents.
     water surface with an editable water level, and inline placement/spawn rename. Shipped in 10.52.0,
     with 10.53.0 second-playtest fixes (toolbar tracks one-shot tool returns, a host-reserved status
     footer via `StatusBottomOffset`, the Showcase outline post effect defaults off, and translucent
-    exclusion/region/feature viewport overlays via `ShowOverlays`) following. See CHANGELOG.
+    exclusion/region/feature viewport overlays via `ShowOverlays`) following, and 10.54.0 shape editing
+    (per-parameter inspector rows and a disc/rect shape-kind selector for regions and exclusions,
+    overlay picking that selects features from the viewport, translate and scale gizmos that move and
+    resize shapes and features, the EditFeature placement tool, and a `ChoiceRow` dropdown inspector row
+    with numpad typing) after. See CHANGELOG.
 - **Phase C (parallel after A, independent of B)**: ke-mapedit MCP tool. One release.
 - **Phase D (game repo)**: Ruinborne export, both-heads loading, parity test (after A),
   editor head and doc rewrite (after B).

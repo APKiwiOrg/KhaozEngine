@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace KhaozEngine.Dungeon;
 
@@ -72,7 +73,8 @@ public sealed class DungeonRoom
     public int Depth { get; init; }
 
     /// <summary>The room's gameplay role.</summary>
-    public DungeonRoomType RoomType { get; set; }
+    [JsonInclude]
+    public DungeonRoomType RoomType { get; internal set; }
 }
 
 /// <summary>One connection between two rooms: either a same-floor corridor or a cross-floor stair, carved
@@ -97,7 +99,8 @@ public sealed class DungeonEdge
     public IReadOnlyList<DungeonTile> Doors { get; init; } = Array.Empty<DungeonTile>();
 
     /// <summary>Id of the lock guarding this edge, or null if it is not locked.</summary>
-    public int? LockId { get; set; }
+    [JsonInclude]
+    public int? LockId { get; internal set; }
 }
 
 /// <summary>Assigns a lock to the room its key is placed in.</summary>
@@ -133,7 +136,8 @@ public sealed class LayoutStats
     public int RoomsPlaced { get; init; }
 
     /// <summary>Length (in edges) of the realized entrance-to-boss critical path.</summary>
-    public int CriticalPathLength { get; set; }
+    [JsonInclude]
+    public int CriticalPathLength { get; internal set; }
 
     /// <summary>Number of floors actually used.</summary>
     public int FloorsUsed { get; init; }
@@ -142,7 +146,8 @@ public sealed class LayoutStats
     public int LocksRequested { get; init; }
 
     /// <summary>Locks actually placed.</summary>
-    public int LocksPlaced { get; set; }
+    [JsonInclude]
+    public int LocksPlaced { get; internal set; }
 
     /// <summary>True if the generator ran out of room to keep placing (plot or room budget exhausted).</summary>
     public bool Saturated { get; init; }

@@ -33,7 +33,11 @@ public sealed class DungeonConfig
     /// <summary>Plot depth, in tiles.</summary>
     public int PlotDepthTiles { get; set; } = 64;
 
-    /// <summary>Target length (in edges) of the entrance-to-boss critical path.</summary>
+    /// <summary>Advisory and reserved: validated but not yet consumed by generation. The boss room is
+    /// currently derived as the farthest room from the entrance by BFS edge-distance (see
+    /// <see cref="LayoutStats.CriticalPathLength"/> for the realized length), regardless of this value. The
+    /// knob is reserved for a future growth-heuristics/grammar layer that steers room placement toward a
+    /// target critical-path length.</summary>
     public int CriticalPathTarget { get; set; } = 6;
 
     /// <summary>Extra non-critical edges to add as loops, beyond the critical path.</summary>

@@ -38,8 +38,10 @@ public sealed class DungeonKitMap
     private readonly Dictionary<DungeonPiece, string> _ids = new();
 
     /// <summary>Maps <paramref name="piece"/> to <paramref name="kitId"/>, overwriting any prior mapping.</summary>
+    /// <exception cref="ArgumentException"><paramref name="kitId"/> is null, empty, or whitespace.</exception>
     public void Map(DungeonPiece piece, string kitId)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(kitId);
         _ids[piece] = kitId;
     }
 

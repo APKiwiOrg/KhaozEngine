@@ -29,6 +29,16 @@ namespace KhaozEngine.Tests.Dungeon
         }
 
         [Fact]
+        public void Map_WhitespaceKitId_Throws_NamingParameter()
+        {
+            var map = new DungeonKitMap();
+
+            var ex = Assert.Throws<ArgumentException>(() => map.Map(DungeonPiece.Floor, "   "));
+
+            Assert.Equal("kitId", ex.ParamName);
+        }
+
+        [Fact]
         public void TileCenter_IdentityTransform()
         {
             var transform = new DungeonPlotTransform(0f, 0f, 0f, 0f);

@@ -28,11 +28,14 @@ DungeonSolveReport report = DungeonSolver.Verify(layout);
 Console.WriteLine($"solvable: {report.IsSolvable}, critical path: {layout.Stats.CriticalPathLength} edges");
 ```
 
-`DungeonConfig` covers plot and room sizing, floor count, the critical-path and loop-edge targets, lock/key
-count, and marker density caps. `Validate()` throws `ArgumentException` naming the first offending property
-(`Generate` calls it for you). `DungeonLayout` exposes the raster read-only via `GetCell(x, z, floor)` plus
+`DungeonConfig` covers plot and room sizing, floor count, the loop-edge target, lock/key count, and marker
+density caps. `Validate()` throws `ArgumentException` naming the first offending property (`Generate` calls
+it for you). `DungeonLayout` exposes the raster read-only via `GetCell(x, z, floor)` plus
 `Rooms`/`Edges`/`Keys`/`Markers` and a `Stats` summary (`RoomsPlaced`, `CriticalPathLength`, `LocksPlaced`,
-`Saturated` when the plot or room budget ran out before hitting the target).
+`Saturated` when the plot or room budget ran out before hitting the target). `CriticalPathTarget` is
+validated but advisory and reserved: the boss room is derived as the farthest room from the entrance by BFS,
+not steered toward this length, so treat `Stats.CriticalPathLength` as the realized value. The knob is
+reserved for a future growth-heuristics/grammar layer.
 
 `DungeonJson.SaveConfig`/`LoadConfig` and `SaveLayout`/`LoadLayout` round-trip both types to JSON (JSONC-
 tolerant reads, deterministic byte-identical writes). The JSON matches the embedded schema

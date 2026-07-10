@@ -2735,9 +2735,17 @@ grid.Draw(batch, white, font);
 ```
 
 `FloatRow` edits through a `NumberField` (drag to scrub `Value` by `DragScale` per pixel, tap under 3 draw
-units of travel to type instead, Enter commits clamped and rounded, Escape cancels), `BoolRow` through a
-`Toggle`, `TextRow` through a `TextInput`, and `ReadOnlyRow` just polls and displays a string. `NumberField`
-and `TreeView` also stand alone outside a grid, e.g. an outline panel beside the inspector:
+units of travel to type instead, Enter commits clamped and rounded, Escape cancels, typing also accepts
+numpad/keypad keys the same as the top-row keys, digits/dot/minus, shift-independent), `BoolRow` through a
+`Toggle`, `TextRow` through a `TextInput`, `ChoiceRow` through a `Dropdown` over a fixed set of option
+strings (get/set delegates over the selected option, like `TextRow`), and `ReadOnlyRow` just polls and
+displays a string. A `ChoiceRow` polls the getter only while its list is closed, so an in-progress pick is
+never stomped, and its open list draws INSIDE the grid's own scissor - a documented v1 limitation, since the
+grid has no late overlay pass - so a host needing an unclipped list calls `Dropdown.DrawOverlay` itself after
+the grid's `Draw`. A row's label and a `ReadOnlyRow`'s display string truncate to their column via `GuiDraw.TruncateWithEllipsis`
+(longest fitting prefix plus three ASCII dots) instead of running under the neighbouring cell or getting
+hard-cut by the scissor mid-glyph. `NumberField` and `TreeView` also stand alone outside a grid, e.g. an
+outline panel beside the inspector:
 
 ```csharp
 var tree = new TreeView(outlineRect);
@@ -2830,25 +2838,34 @@ built-in keys, put a factory function next to your room list that builds the opt
 ready-to-push scene, and handle the extra key in whatever outer code owns the `Push`/`Pop` call. See
 `KhaozEngine.Showcase/RoomMapEditor.cs` for a worked example.
 
-**Tool modes** (`EditorToolController.Mode`, also the toolbar tab bar): `Select` (pick, then drag the
-transform gizmo: translate XZ, translate Y, yaw ring, uniform scale), `PlacePlacement` (click ground-snaps
-the palette-selected `PlaceKind`), `PlaceSpawn` (click ground-snaps `SpawnArchetype`), `DrawExclusion` /
-`DrawRegion` (drag a disc, shift-drag a rect), `EditFeature` (inspector-driven terrain-feature parameter
-scrub, no viewport gesture), `BakeRegion` (drag a rect, freezes `BakeLayer`'s procedural scatter into
-authored placements plus a covering exclusion). The three draw tools (`DrawExclusion`, `DrawRegion`,
-`BakeRegion`) are one shot: a completed gesture (the release that emits the command) drops back to `Select`
-automatically, while an abandoned or sub-threshold gesture keeps the tool armed. The toolbar tab bar mirrors
-the live controller mode every frame, so it re-highlights the `Select` tab on its own when a one-shot tool
-returns (or Escape cancels), without a second tap. `EditorToolController.ModeHint`
-gives a one-line description of the active tool (folding in `PlaceKind` / `SpawnArchetype`) that the scene
-renders at the head of the status strip.
+**Tool modes** (`EditorToolController.Mode`, also the toolbar tab bar): `Select` (pick a placement or spawn
+by ray - on a terrain-only hit, falls back to an overlay pick over features/exclusions/regions, feature beats
+exclusion beats region, nearest-shape-center tiebreak within a category - then drag the transform gizmo,
+whose handle set depends on what's selected: a placement gets the full transform (translate XZ, translate Y,
+yaw ring, uniform scale), a spawn only the ground-plane translate (a marker, no other handles), and a
+feature or a disc/rect shape (exclusion or region) only translate XZ + uniform scale, no yaw ring),
+`PlacePlacement` (click ground-snaps the palette-selected `PlaceKind`), `PlaceSpawn` (click ground-snaps
+`SpawnArchetype`), `DrawExclusion` / `DrawRegion` (drag a disc, shift-drag a rect), `EditFeature`
+(click-places a default-parameterized feature of the list-selected `PlaceFeatureType` at the terrain hit),
+`BakeRegion` (drag a rect, freezes `BakeLayer`'s procedural scatter into authored placements plus a covering
+exclusion). Four tools are one shot (`DrawExclusion`, `DrawRegion`, `BakeRegion`, `EditFeature`): a completed
+gesture (the release, or the click that places a feature) drops back to `Select` automatically, while an
+abandoned or sub-threshold gesture keeps the tool armed. The toolbar tab bar mirrors the live controller mode
+every frame, so it re-highlights the `Select` tab on its own when a one-shot tool returns (or Escape
+cancels), without a second tap. `EditorToolController.ModeHint` gives a one-line description of the active
+tool (folding in `PlaceKind` / `SpawnArchetype` / `PlaceFeatureType`) that the scene renders at the head of
+the status strip.
 
-**Kit palette.** The bottom-left panel groups every manifest kit id into a filter box over a collapsible
-`TreeView`, categorized by `AssetEntry.Category` when the manifest declares one, else the declaring
-manifest's own file-name stem (`ViewportWorld.KindCategories`, first-manifest-wins on a duplicate id across
-manifests). The `PlaceSpawn` tool swaps the same panel region to a flat, filtered spawn-archetype list
-instead, no categories. Typing in either filter box narrows leaves case-insensitively, and clearing it
-restores each category's remembered expand/collapse state.
+**Kit palette.** The bottom-left panel is tool-scoped, hosting at most one of three pickers. `PlacePlacement`
+shows every manifest kit id in a filter box over a collapsible `TreeView`, categorized by
+`AssetEntry.Category` when the manifest declares one, else the declaring manifest's own file-name stem
+(`ViewportWorld.KindCategories`, first-manifest-wins on a duplicate id across manifests). `PlaceSpawn` swaps
+the same region to a flat, filtered spawn-archetype list instead, no categories. `EditFeature` swaps it again
+to a flat, unfiltered list of the registry's feature types (`MapDocRegistry.FeatureTypes`, in registration
+order). Tapping a leaf sets `PlaceFeatureType`, the type the next click places. Every other tool (`Select`,
+the draw tools, `BakeRegion`) shows no panel at all, and the outline reflows to take the whole left column.
+Typing in a filter box narrows leaves case-insensitively, and clearing it restores each category's
+remembered expand/collapse state.
 
 **Overlays.** Exclusions, regions, and terrain-feature markers are otherwise-invisible authoring shapes, so
 with `MapEditorOptions.ShowOverlays` (default true) the viewport draws them as translucent ground fills
@@ -2858,6 +2875,17 @@ always-on-top of the terrain for authoring visibility rather than depth-testing 
 `ShowOverlays` false to hide them. `MapEditorOptions.StatusBottomOffset` (default 0) reserves that many
 points at the window bottom for a host that draws its own bottom chrome (the Showcase's F7-F10 display
 readout), shifting the status strip and editor body up so the editor never stacks on the host's pixels.
+
+**Shape and feature editing.** The exclusion and region inspectors edit the shape directly instead of
+showing a read-only summary: a `ChoiceRow` picks the kind (`disc` / `rect`) and one `FloatRow` per parameter
+(disc gets CenterX/CenterZ/Radius, rect gets MinX/MinZ/MaxX/MaxZ) scrubs it, each edit merging into one undo step
+like any other scrub. Switching the kind converts the shape center-preservingly (a disc becomes the square
+of side `2r` around its center, a rect becomes the disc centered on the rect with half its longer extent as
+radius) and swaps the row set to match. A polygon shape stays read-only v1: kind + point count, no
+conversion in or out. Dragging the gizmo on a selected feature/exclusion/region moves its center (translate
+XZ) and resizes its primary radius (scale: a lake or flatten's `Radius`, a rim's `InnerRadius`/`OuterRadius`
+together, a ridge's `Width`) through the same commands, coalescing the same way. See the
+`KhaozEngine.MapEditor` README's "Shape and feature editing" section for the full mechanics.
 
 **Water.** `ViewportWorld.Draw` submits one `Scene3D.DrawWater` plane every frame, sized to the document
 bounds and derived live from `Terrain.WaterLevel`, so a level edit shows up immediately, ahead of the

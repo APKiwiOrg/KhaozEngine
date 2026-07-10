@@ -75,12 +75,15 @@ tree rebuilds only when the filter box text changes, never every frame. Typing i
 case-insensitively, hides a category left with no matches, and forces every surviving category open. Clearing
 the filter restores each category's remembered expand/collapse state instead of resetting it.
 
-The panel is tool-scoped: the `PlacePlacement` tool shows the kit palette, and the `PlaceSpawn` tool swaps
-the same region to a flat, filtered spawn-archetype list instead (no categories, since the archetypes are a
-flat game-supplied list from `MapEditorOptions.SpawnArchetypes`). Every other tool shows no panel at all and
-the outline reflows over the freed space, taking the whole left column. Selecting a palette leaf sets
-`EditorToolController.PlaceKind`, selecting a spawn-list leaf sets `SpawnArchetype`, and tapping a category
-row itself changes neither.
+The panel is tool-scoped, hosting at most one of three pickers: the `PlacePlacement` tool shows the kit
+palette, the `PlaceSpawn` tool swaps the same region to a flat, filtered spawn-archetype list instead (no
+categories, since the archetypes are a flat game-supplied list from `MapEditorOptions.SpawnArchetypes`), and
+the `EditFeature` tool swaps it again to a flat, unfiltered list of the registry's feature types
+(`MapDocRegistry.FeatureTypes`, in registration order - no filter box, since the registered set is small and
+static). Every other tool shows no panel at all and the outline reflows over the freed space, taking the
+whole left column. Selecting a palette leaf sets `EditorToolController.PlaceKind`, selecting a spawn-list
+leaf sets `SpawnArchetype`, selecting a feature-list leaf sets `PlaceFeatureType`, and tapping a category row
+itself changes neither.
 
 ## Viewport overlays
 
@@ -91,6 +94,43 @@ selected element brightened. They render through the `Scene3D` debug-fill pass, 
 after post, so the overlays composite always-on-top of the terrain for authoring visibility rather than
 depth-testing against it. `MapEditorScene.ComputeOverlayDrawList` is the pure, headless-tested doc-to-draw
 step, and only the per-entry GPU submission lives in `DrawOverlays`. Set `ShowOverlays` false to hide the lot.
+
+## Shape and feature editing
+
+The exclusion and region inspectors show the shape as live-editable rows, not a read-only summary:
+`MapEditorScene.AddShapeRows` adds a `ChoiceRow` (kind: `disc` / `rect`) plus one `FloatRow` per parameter
+(disc gets CenterX/CenterZ/Radius, rect gets MinX/MinZ/MaxX/MaxZ), each writing a clone of the live
+`MapShapeDoc` with one field changed through `EditExclusionShapeCommand`/`EditRegionShapeCommand`, whose
+same-index/name `TryMerge` coalesces a scrub into one undo step. Switching the kind ChoiceRow converts the
+shape center-preservingly (`MapEditorScene.ConvertShape`): a disc becomes the square of side `2r` around its
+center, a rect becomes the disc centered on the rect with half its longer extent as the radius. A polygon
+shape is read-only v1 (kind + point count, no conversion in or out). A kind conversion (or an undo/redo of
+one) is caught by `MapEditorScene.SyncShapeInspector`, which rebuilds the inspector's row set the next chrome
+step so disc rows swap to rect rows and back.
+
+Exclusions, regions, and terrain features are also draggable through the transform gizmo once selected
+(`EditorToolController.TryGizmoTarget`/`RestrictHandle`, shared geometry helpers `ShapeGeometry`/
+`FeatureGeometry`): translate XZ moves the shape/feature center and the scale handle resizes its primary
+radius (a lake or flatten's `Radius`, a rim's `InnerRadius`/`OuterRadius` scaled together, a ridge's
+`Width`). There's no yaw ring, since none of these carry a yaw concept - only the placement gizmo draws and
+honours it. The drag snapshots the pre-drag shape/feature on grab and rewrites it from that fixed start each
+frame, routed through the same `Edit*ShapeCommand`/`EditFeatureCommand` merge as an inspector scrub, so a
+whole drag coalesces into one undo step.
+
+**Overlay picking.** In `Select` mode, a ray that hits only the terrain (no placement or spawn) falls back
+to `OverlayPicking.Pick`, a containment test over the otherwise-invisible authoring shapes: a feature marker
+(a disc of `OverlayPicking.FeatureMarkerRadius` at its center, matching the drawn overlay marker) beats an
+exclusion beats a region, even when the point also lies inside a lower-priority shape, with a
+nearest-shape-center tiebreak within one category for overlapping same-category shapes. This is what makes
+exclusions, regions, and feature markers selectable with the mouse instead of only through the outline tree.
+
+**Feature placement.** `EditorToolMode.EditFeature` click-places a default-parameterized feature of
+`EditorToolController.PlaceFeatureType` (list-selected from the bottom-left panel, see Kit palette above) at
+the terrain hit (`FeatureGeometry.CreateDefault`: a lake r10 d3, a flatten r10 target-height-at-click, a
+ridge through the point, or a rim centered there), executes `AddFeatureCommand`, selects the new feature, and
+one-shots back to `Select` so the next click picks it rather than placing another. A `PlaceFeatureType`
+outside the registry's four built-ins has no editor default, so a click with such a type selected consumes
+the click but places nothing. `Delete` on a selected feature routes through `RemoveFeatureCommand`.
 
 ## The headless core
 
@@ -174,8 +214,12 @@ rebuild only happens on the FOLLOWING frame's `CheckWorldRebuild`. This is a one
 correctness bug (the document itself is updated immediately, and a scrub coalesces every intermediate value
 into one undo step regardless), but it means an automated test asserting "the streamed world reflects the
 just-scrubbed radius" needs to step the scene one extra frame. Gizmo-driven edits (`UpdateTools`, which
-runs BEFORE `CheckWorldRebuild`) do not have this lag, though in practice only placement/spawn drags go
-through the gizmo and those never set `AffectsWorld` anyway.
+runs BEFORE `CheckWorldRebuild`) do not have this lag: a feature or exclusion drag rewrites the document in
+the same frame `CheckWorldRebuild` reads `AffectsWorld` from, so dragging a lake's radius (or an exclusion's)
+rebuilds the streamed world that same frame, with no one-frame lag. Placement/spawn drags never trigger a
+rebuild either way (`AffectsWorld` is always false, since they draw outside the streamed sink), and neither
+do region drags (game-interpreted, also `AffectsWorld` false) - only the inspector-driven scrub path above
+has the lag, and only for the `AffectsWorld`-true kinds (terrain features, exclusions, terrain globals).
 
 ## Bake-region
 

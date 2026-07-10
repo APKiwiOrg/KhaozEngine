@@ -276,7 +276,11 @@ once it ships, the detail moves to `CHANGELOG.md`.
     external values display unclamped. Wheel feel diverges from the rest of the
     `ScrollablePanel` family. Shift+Escape also cancels a focused field edit, a
     focus-routing case worth revisiting. `FloatRow` needs a scrub-end gesture seal:
-    cross-parameter scrubs currently coalesce into one undo step.
+    cross-parameter scrubs currently coalesce into one undo step. `ChoiceRow`'s open
+    option list draws INSIDE the grid's own scissor clip (the grid has no late overlay
+    pass), so it can be cut off at the grid bounds or drawn over by rows below it while
+    open, a documented v1 limitation. A host needing an unclipped list has to call
+    `Dropdown.DrawOverlay` itself after the grid's `Draw`.
   - `RenameRegionCommand` needs a `TryMerge`. Typed renames today land one undo step per
     keystroke.
 - **Editor UX**: sibling-focus drop after a rename, defer the pending re-select while any
@@ -289,7 +293,11 @@ once it ships, the detail moves to `CHANGELOG.md`.
   direct unit tests. `RoomMapEditor` cannot restore the outline post default on exit
   (documented, unobservable today). Custom `MapEditorScene` hosts must unsubscribe
   `DocumentChanged` themselves (documented). `BakeRegion`'s two-arg overload has a doc
-  nicety around its shadowed-discriminator caveat.
+  nicety around its shadowed-discriminator caveat. The shape/feature gizmo
+  (`GizmoAffordance.MoveScale`) draws the same translate-arrows mesh as a placement's full
+  transform, so it shows an inert +Y arrow even though only translate XZ and scale are
+  draggable for a feature or a disc/rect shape (`RestrictHandle` blocks a `TranslateY`
+  grab) - a cosmetic affordance mismatch, not a functional bug.
 - **Engine misc**: `RayMath`'s zero-length-ray edge is untested, and a NaN direction acts
   as an always-pass slab (garbage in, garbage out). `TerrainRaycast`'s NaN step is a silent
   miss, and its stall guard jumps to the endpoint at absurd ranges. Gizmo overlay builders

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Numerics;
 using SharpGLTF.Geometry;
@@ -12,9 +13,19 @@ using SharpGLTF.Scenes;
 // authored at its exact final size (PropLoader scales a loaded prop to the manifest heightMeters, so
 // authored height == heightMeters means no rescale) with the origin at the piece's base center (y=0 at
 // the floor, x/z centered), matching how PropLoader drops the origin to feet and recenters XZ anyway.
-// Run once; the output .glb files are committed.
-
-const float Cell = 2.0f; // one dungeon grid cell footprint, matches DungeonPlotTransform's tile size.
+// Run once per kit scale; the output .glb files are committed.
+//
+// Args: [outputDir] [cellSizeMeters] [floorHeightMeters]. Every piece dimension is derived from the two
+// scale parameters, so a caller with a differently-scaled DungeonConfig (see KhaozEngine.Dungeon) can bake
+// a matching kit. Defaults (2 m cell / 4 m floor) are the general-purpose scale (matches DungeonConfig's
+// own defaults); KhaozEngine.Showcase's RoomDungeon demo runs its own DungeonConfig at cell=3/floorHeight=6
+// (a grander, more cavernous feel), so its committed kit was baked with
+// `dotnet run --project tools/DungeonKitGen -- KhaozEngine.Showcase/assets/dungeon 3 6` - re-run the same
+// command to regenerate it after a change here (see assets/dungeon/CREDITS.md).
+const float DefaultCell = 2.0f;
+const float DefaultFloorHeight = 4.0f;
+float Cell = args.Length > 1 ? float.Parse(args[1], CultureInfo.InvariantCulture) : DefaultCell;
+float FloorHeight = args.Length > 2 ? float.Parse(args[2], CultureInfo.InvariantCulture) : DefaultFloorHeight;
 var gray = new Vector4(0.5f, 0.5f, 0.55f, 1f);
 
 // Yields the 12 triangles (as CCW-from-outside vertex triples) of an axis-aligned box centered at
@@ -68,23 +79,31 @@ void Build(string path, Vector4 color, IEnumerable<(Vector3 center, Vector3 size
 
 string dir = args.Length > 0 ? args[0] : "KhaozEngine.Showcase/assets/dungeon";
 
-// dungeon_floor: 2.0 x 0.2 x 2.0 slab, base at y=0.
+// Slab thickness is a fixed nominal 0.2 m regardless of cell size, matching DungeonStamp's own
+// ThinHalfThickness (0.1 m half-thickness) for the floor-slab and stair-ramp physics statics - the visual
+// slab should stay exactly as thin as the collision it represents, not scale with the footprint.
+const float SlabThickness = 0.2f;
+
+// dungeon_floor: Cell x SlabThickness x Cell slab, base at y=0.
 Build(Path.Combine(dir, "dungeon_floor.glb"), gray, new[]
 {
-    (new Vector3(0f, 0.1f, 0f), new Vector3(Cell, 0.2f, Cell)),
+    (new Vector3(0f, SlabThickness / 2f, 0f), new Vector3(Cell, SlabThickness, Cell)),
 });
 
-// dungeon_wall: 2.0 x 4.0 x 2.0 full-cell column, base at y=0.
+// dungeon_wall: Cell x FloorHeight x Cell full-cell column, base at y=0.
 Build(Path.Combine(dir, "dungeon_wall.glb"), gray, new[]
 {
-    (new Vector3(0f, 2.0f, 0f), new Vector3(Cell, 4.0f, Cell)),
+    (new Vector3(0f, FloorHeight / 2f, 0f), new Vector3(Cell, FloorHeight, Cell)),
 });
 
-// dungeon_doorframe: two 0.3 x 3.0 x 0.3 jambs at the cell's +-X edges (outer face flush with the
-// cell footprint) plus a 2.0 x 0.4 x 0.3 lintel spanning the top, one mesh, total height 3.4.
+// dungeon_doorframe: two jambs at the cell's +-X edges (outer face flush with the cell footprint) plus a
+// lintel spanning the top, one mesh. Every dimension scales proportionally off the original 2 m/4 m
+// authoring (jamb footprint 0.15 x cell, jamb height 0.75 x floorHeight, lintel height 0.1 x floorHeight),
+// so the doorframe keeps the same silhouette proportions - including its ~0.85 x floorHeight total height
+// relative to the wall - at any kit scale.
 {
-    const float jambW = 0.3f, jambH = 3.0f, jambD = 0.3f;
-    const float lintelH = 0.4f;
+    float jambW = 0.15f * Cell, jambH = 0.75f * FloorHeight, jambD = 0.15f * Cell;
+    float lintelH = 0.1f * FloorHeight;
     float jambX = Cell / 2f - jambW / 2f;
     Build(Path.Combine(dir, "dungeon_doorframe.glb"), gray, new[]
     {
@@ -94,12 +113,14 @@ Build(Path.Combine(dir, "dungeon_wall.glb"), gray, new[]
     });
 }
 
-// dungeon_stair: 8 steps climbing along +Z, rising 4.0 over a 4.0 run (two cells), 2.0 wide. Each step
-// is modeled as a solid block from the base up to its tread height (the standard greybox stair solid),
-// so the mesh silhouette is a stepped ramp; total height 4.0 at the top (far, +Z) step.
+// dungeon_stair: 8 steps climbing along +Z, rising FloorHeight over a run of two cells, Cell wide. Each
+// step is modeled as a solid block from the base up to its tread height (the standard greybox stair
+// solid), so the mesh silhouette is a stepped ramp; total height FloorHeight at the top (far, +Z) step -
+// matching DungeonStamp.BuildStairRamps's pitched physics ramp, which rises the same FloorHeight over the
+// same 2*Cell run.
 {
     const int steps = 8;
-    const float totalRise = 4.0f, totalRun = 2f * Cell;
+    float totalRise = FloorHeight, totalRun = 2f * Cell;
     float riser = totalRise / steps, run = totalRun / steps;
     var stairBoxes = new List<(Vector3 center, Vector3 size)>();
     for (int i = 0; i < steps; i++)
@@ -115,5 +136,5 @@ Build(Path.Combine(dir, "dungeon_wall.glb"), gray, new[]
 // dungeon_landing: visual twin of dungeon_floor (distinct id so games can style stair arrivals).
 Build(Path.Combine(dir, "dungeon_landing.glb"), gray, new[]
 {
-    (new Vector3(0f, 0.1f, 0f), new Vector3(Cell, 0.2f, Cell)),
+    (new Vector3(0f, SlabThickness / 2f, 0f), new Vector3(Cell, SlabThickness, Cell)),
 });

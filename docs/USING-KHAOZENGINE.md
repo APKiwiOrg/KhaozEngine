@@ -1846,7 +1846,7 @@ movement step: while airborne the character falls under `Gravity` (clamped to `M
 on the ground; a jump launches at `JumpSpeed` only when grounded (or within `CoyoteTime` of leaving the ground),
 and a jump pressed just before landing fires on contact (`JumpBuffer`). `character.Grounded` and
 `character.VerticalVelocity` are exposed (e.g. for jump/land animation or SFX). The feel is tunable via public
-fields - `Gravity` (25), `JumpSpeed` (8, apex ~1.28 m), `MaxFallSpeed` (50), `CoyoteTime` (0.1), `JumpBuffer`
+fields - `Gravity` (25), `JumpSpeed` (9.79796, apex ~1.92 m), `MaxFallSpeed` (50), `CoyoteTime` (0.1), `JumpBuffer`
 (0.1), `AirControl` (1, horizontal control while airborne), `GroundedEpsilon` (0.3, the slope skin so a downhill
 run does not flicker grounded/airborne) - matching `MoveTuning`. Run off a cliff or the bounded-clearing rim and
 you fall.

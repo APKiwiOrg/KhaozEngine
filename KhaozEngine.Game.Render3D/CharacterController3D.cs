@@ -45,8 +45,9 @@ namespace KhaozEngine.Game
 
         /// <summary>Gravity acceleration magnitude (m/s^2). Default 25.</summary>
         public float Gravity = 25f;
-        /// <summary>Jump launch velocity (m/s). Default 8 (apex ~1.28 m).</summary>
-        public float JumpSpeed = 8f;
+        /// <summary>Jump launch velocity (m/s). Default 9.79796 (= 8 * sqrt(1.5), +50% apex vs the old 8f: apex
+        /// ~1.92 m at <see cref="Gravity"/> 25), matching Ruinborne's deliberate jump-height value.</summary>
+        public float JumpSpeed = 9.79796f; // = 8 * sqrt(1.5), +50% apex vs the old 8f, matches Ruinborne's deliberate value
         /// <summary>Terminal fall speed (m/s). Default 50.</summary>
         public float MaxFallSpeed = 50f;
         /// <summary>Coyote-time window (seconds): jump still fires shortly after leaving the ground. Default 0.1.</summary>

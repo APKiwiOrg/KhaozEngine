@@ -6,7 +6,7 @@ namespace KhaozEngine.Locomotion;
 /// Feel constants for <see cref="CharacterMovement"/>. The single source of truth shared by the local
 /// controller, the server sim, and client prediction. <see cref="Default"/> matches the walkable-slice
 /// CharacterController3D defaults (walk 3, run 6, half-height 0.9 for a 1.8 m capsule, 45 deg max slope,
-/// footprint radius 0.4 for static-world collision) plus the vertical-physics feel (gravity 25, jump 8,
+/// footprint radius 0.4 for static-world collision) plus the vertical-physics feel (gravity 25, jump 9.79796,
 /// terminal 50, 0.1 s coyote + buffer, full air control, 0.3 m grounded skin).
 /// </summary>
 public readonly record struct MoveTuning(
@@ -16,7 +16,7 @@ public readonly record struct MoveTuning(
     float MaxSlopeRadians,
     float CapsuleRadius = 0.4f,
     float Gravity = 25f,
-    float JumpSpeed = 8f,
+    float JumpSpeed = 9.79796f, // = 8 * sqrt(1.5), +50% apex vs the old 8f, matches Ruinborne's deliberate value
     float MaxFallSpeed = 50f,
     float CoyoteTime = 0.1f,
     float JumpBuffer = 0.1f,
@@ -35,9 +35,12 @@ public readonly record struct MoveTuning(
     /// <summary>Walkable-slice defaults: walk 3 m/s, run 6 m/s, capsule half-height 0.9 m, max slope 45 deg
     /// (steep enough for normal hills, low enough that a RimFeature mountain wall is rejected, so the slope gate
     /// keeps the rim un-climbable when a <c>groundNormal</c> delegate is supplied), capsule footprint radius
-    /// 0.4 m used by static-world collision, plus vertical physics: gravity 25 m/s^2, jump launch 8 m/s
-    /// (apex ~1.28 m), terminal fall 50 m/s, 0.1 s coyote-time + jump-buffer, full (1.0) air control, and a
-    /// 0.3 m grounded skin so a downhill run does not jitter between grounded and airborne.</summary>
+    /// 0.4 m used by static-world collision, plus vertical physics: gravity 25 m/s^2, jump launch 9.79796 m/s
+    /// (= 8 * sqrt(1.5), +50% apex vs the old 8f: apex ~1.92 m, matching Ruinborne's deliberate jump-height
+    /// value), terminal fall 50 m/s, 0.1 s coyote-time + jump-buffer, full (1.0) air control, and a 0.3 m
+    /// grounded skin so a downhill run does not jitter between grounded and airborne. This matches
+    /// CharacterController3D's own field defaults exactly (same literal + comment in both places), so a caller
+    /// building either way gets identical feel.</summary>
     public static MoveTuning Default => new(
         WalkSpeed: 3f,
         RunSpeed: 6f,

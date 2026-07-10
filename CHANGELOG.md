@@ -5,6 +5,24 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.52.0
+
+Map-editor playtest polish (B2.1 of the map-editor program, `docs/MAP-EDITOR-DESIGN.md`): a categorized
+collapsible filterable kit palette, one-shot draw tools that snap back to Select, a visible water
+surface with an undoable water level, and inline placement/spawn rename from the inspector.
+
+- **`AssetManifest` entries take an optional category field (`KhaozEngine.Render3D`).** Additive: a
+  manifest entry can now carry a category, which the map editor reads to group kit props into palette
+  sections. Entries without one keep the old ungrouped behaviour.
+- **Categorized collapsible filterable kit palette plus a spawn filter (`KhaozEngine.MapEditor`).**
+  Categories come from the manifest field with a manifest-name fallback, and the first-manifest-wins
+  tiebreak is now uniform across heights, meshes, and categories. One-shot draw tools (exclusion,
+  region, and bake return to Select after each committed gesture) with a `ModeHint` tool description
+  leading the status strip. A visible water surface at the document water level, with a Terrain
+  inspector node editing it undoably (`EditTerrainCommand`). Placements and spawns are renamable from
+  the inspector (`RenamePlacementCommand`, `RenameSpawnCommand`, and the region sibling gains the same
+  duplicate guard). The demo map lake now holds water.
+
 ## 10.51.0
 
 Add `Color.ScaleRgb(float)` - scales R, G, B and preserves alpha - so tinting under straight-alpha

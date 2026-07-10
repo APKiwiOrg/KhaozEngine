@@ -39,6 +39,11 @@ namespace KhaozEngine.Tests.Dungeon
 
             Assert.False(report.IsSolvable);
             Assert.NotEmpty(report.Errors);
+
+            // The walled-off door trips the structural door-kind check AND severs the tree behind it, so pin
+            // the reachability engine specifically (Task 7's gating depends on it): a structural error alone
+            // must not satisfy this test.
+            Assert.Contains(report.Errors, e => e.Contains("not reachable"));
         }
 
         [Fact]

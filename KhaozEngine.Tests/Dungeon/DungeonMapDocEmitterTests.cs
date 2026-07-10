@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Numerics;
 using KhaozEngine.Dungeon;
 using KhaozEngine.MapDoc;
 using Xunit;
@@ -267,6 +268,76 @@ namespace KhaozEngine.Tests.Dungeon
             }
 
             Assert.Contains(target.Spawns, s => s.Tags.Contains("floor:1") || s.Tags.Contains("floor:2"));
+        }
+
+        [Fact]
+        public void Emit_DirectionalYaw_FacesWorldDirection_UnderPlotYaw()
+        {
+            // Binds the yaw CONVENTION, not just a number: applying the same rotation placement
+            // consumers apply (Quaternion.CreateFromAxisAngle(UnitY, Yaw), e.g. ChunkStatics) to the
+            // piece's authored local +Z must reproduce the true world direction of the run, derived
+            // independently from plot.TileCenter. Plot yaw pi/3 is deliberately not a multiple of
+            // pi/2, so a sign error in the plot-yaw composition cannot cancel out.
+            DungeonLayout layout = MultiFloorLayout();
+            DungeonKitMap kit = DungeonKitMap.Greybox();
+            var plot = new DungeonPlotTransform(3f, -7f, 0f, MathF.PI / 3f);
+            var target = new MapDocument();
+
+            DungeonMapDocEmitter.Emit(layout, kit, plot, target);
+
+            // EmitStairRuns walks layout.Edges in order, so the nth dungeon_stair placement pairs
+            // with the nth stair edge.
+            var stairEdges = layout.Edges.Where(e => e.Kind == DungeonEdgeKind.Stair).ToList();
+            var stairPlacements = target.Placements.Where(p => p.Kind == "dungeon_stair").ToList();
+            Assert.NotEmpty(stairEdges);
+            Assert.Equal(stairEdges.Count, stairPlacements.Count);
+
+            DungeonEdge stairEdge = stairEdges[0];
+            MapPlacement stair = stairPlacements[0];
+
+            (float lx, _, float lz) = plot.TileCenter(stairEdge.Path[0], layout.CellSizeMeters, layout.FloorHeightMeters);
+            (float ux, _, float uz) = plot.TileCenter(stairEdge.Path[1], layout.CellSizeMeters, layout.FloorHeightMeters);
+            Vector2 runDir = Vector2.Normalize(new Vector2(ux - lx, uz - lz));
+
+            Vector3 stairFacing = Vector3.Transform(Vector3.UnitZ, Quaternion.CreateFromAxisAngle(Vector3.UnitY, stair.Yaw));
+            Assert.Equal(runDir.X, stairFacing.X, 3);
+            Assert.Equal(runDir.Y, stairFacing.Z, 3);
+
+            // Same binding for a door frame: its local +Z must map onto the passage direction of the
+            // edge whose Doors pair it heads (Doors[0] -> Doors[1] is colinear with the whole run).
+            DungeonEdge corridor = layout.Edges.First(e => e.Kind == DungeonEdgeKind.Corridor);
+            (float ax, _, float az) = plot.TileCenter(corridor.Doors[0], layout.CellSizeMeters, layout.FloorHeightMeters);
+            (float bx, _, float bz) = plot.TileCenter(corridor.Doors[1], layout.CellSizeMeters, layout.FloorHeightMeters);
+            Vector2 passDir = Vector2.Normalize(new Vector2(bx - ax, bz - az));
+
+            MapPlacement door = target.Placements.Single(p => p.Kind == "dungeon_doorframe"
+                && MathF.Abs(p.X - ax) < 1e-3f && MathF.Abs(p.Z - az) < 1e-3f);
+            Vector3 doorFacing = Vector3.Transform(Vector3.UnitZ, Quaternion.CreateFromAxisAngle(Vector3.UnitY, door.Yaw));
+            Assert.Equal(passDir.X, doorFacing.X, 3);
+            Assert.Equal(passDir.Y, doorFacing.Z, 3);
+        }
+
+        [Fact]
+        public void Emit_AppendsWithoutClearingExistingContent()
+        {
+            DungeonLayout layout = SingleFloorLayoutWithSpawns();
+            DungeonKitMap kit = DungeonKitMap.Greybox();
+            var plot = new DungeonPlotTransform(0f, 0f, 0f, 0f);
+            var target = new MapDocument();
+            target.Placements.Add(new MapPlacement { Id = "pre-placement", Kind = "oak_tree", X = 1f, Z = 2f });
+            target.Spawns.Add(new MapSpawn { Id = "pre-spawn", ArchetypeId = "villager", X = 3f, Z = 4f });
+            target.Regions.Add(new MapRegion { Name = "pre-region", Shape = new DiscShapeDoc { Radius = 1f } });
+
+            DungeonMapDocEmitter.Emit(layout, kit, plot, target);
+
+            Assert.Equal("pre-placement", target.Placements[0].Id);
+            Assert.Equal("oak_tree", target.Placements[0].Kind);
+            Assert.Equal("pre-spawn", target.Spawns[0].Id);
+            Assert.Equal("villager", target.Spawns[0].ArchetypeId);
+            Assert.Equal("pre-region", target.Regions[0].Name);
+            Assert.True(target.Placements.Count > 1);
+            Assert.True(target.Spawns.Count > 1);
+            Assert.True(target.Regions.Count > 1);
         }
     }
 }

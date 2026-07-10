@@ -90,19 +90,19 @@ public static class DungeonMapDocEmitter
                         case DungeonCellKind.RoomFloor:
                         case DungeonCellKind.Corridor:
                             AddPlacement(target, kit, DungeonPiece.Floor, plot, tile, cellSize, floorHeight,
-                                plot.YawRadians, hash8, ref counter);
+                                -plot.YawRadians, hash8, ref counter);
                             break;
 
                         case DungeonCellKind.DoorFrame:
                             AddPlacement(target, kit, DungeonPiece.Floor, plot, tile, cellSize, floorHeight,
-                                plot.YawRadians, hash8, ref counter);
+                                -plot.YawRadians, hash8, ref counter);
                             AddPlacement(target, kit, DungeonPiece.DoorFrame, plot, tile, cellSize, floorHeight,
                                 PieceYaw(passageDirection, tile, plot), hash8, ref counter);
                             break;
 
                         case DungeonCellKind.Wall:
                             AddPlacement(target, kit, DungeonPiece.Wall, plot, tile, cellSize, floorHeight,
-                                plot.YawRadians, hash8, ref counter);
+                                -plot.YawRadians, hash8, ref counter);
                             break;
 
                         case DungeonCellKind.StairTop:
@@ -143,7 +143,7 @@ public static class DungeonMapDocEmitter
             (float ux, float uy, float uz) = plot.TileCenter(upper, cellSize, floorHeight);
 
             (int dx, int dz) = UnitDirection(lower, upper);
-            float yaw = LocalYaw(dx, dz) + plot.YawRadians;
+            float yaw = LocalYaw(dx, dz) - plot.YawRadians;
 
             target.Placements.Add(new MapPlacement
             {
@@ -266,24 +266,33 @@ public static class DungeonMapDocEmitter
         });
     }
 
-    /// <summary>The yaw (piece-local direction plus plot yaw) that rotates a directional piece's authored
-    /// local-Z axis to <paramref name="tile"/>'s edge passage direction, or just the plot yaw when the tile
-    /// (defensively) has no recorded direction. Every door-frame and stair-top cell has one in practice: it is
-    /// always one end of some <see cref="DungeonEdge.Doors"/> pair.</summary>
+    /// <summary>The yaw (piece-local direction composed with the plot yaw, see <see cref="LocalYaw"/> for the
+    /// sign rule) that rotates a directional piece's authored local-Z axis to <paramref name="tile"/>'s edge
+    /// passage direction, or just the plot contribution when the tile (defensively) has no recorded direction.
+    /// Every door-frame and stair-top cell has one in practice: it is always one end of some
+    /// <see cref="DungeonEdge.Doors"/> pair.</summary>
     private static float PieceYaw(Dictionary<DungeonTile, (int Dx, int Dz)> passageDirection, DungeonTile tile, DungeonPlotTransform plot)
     {
         if (passageDirection.TryGetValue(tile, out (int Dx, int Dz) dir))
         {
-            return LocalYaw(dir.Dx, dir.Dz) + plot.YawRadians;
+            return LocalYaw(dir.Dx, dir.Dz) - plot.YawRadians;
         }
 
-        return plot.YawRadians;
+        return -plot.YawRadians;
     }
 
-    /// <summary>The plot-local yaw (radians, plot yaw NOT included) that rotates local +Z onto the unit
+    /// <summary>The plot-local yaw (radians, plot yaw NOT composed) that rotates local +Z onto the unit
     /// direction (<paramref name="dx"/>, <paramref name="dz"/>), matching the engine-wide
     /// <c>Quaternion.CreateFromAxisAngle(Vector3.UnitY, yaw)</c> convention consumers apply to
-    /// <see cref="MapPlacement.Yaw"/> (e.g. <c>ChunkStatics</c>): local +Z rotates towards +X as yaw increases.</summary>
+    /// <see cref="MapPlacement.Yaw"/> (e.g. <c>ChunkStatics</c>): local +Z maps to (sin yaw, cos yaw), so +Z
+    /// rotates towards +X as yaw increases.
+    ///
+    /// Plot-yaw composition rule: <see cref="DungeonPlotTransform.TileCenter"/> rotates POSITIONS with
+    /// x' = x cos - z sin, z' = x sin + z cos, which maps a local direction at quaternion-yaw theta to the
+    /// world direction (sin(theta - yaw), cos(theta - yaw)), the OPPOSITE XZ handedness to the quaternion
+    /// convention. So the plot yaw enters every placement's <see cref="MapPlacement.Yaw"/> NEGATED:
+    /// worldYaw = LocalYaw(dx, dz) - plot.YawRadians (and bare -plot.YawRadians for symmetric pieces),
+    /// verified by <c>DungeonMapDocEmitterTests.Emit_DirectionalYaw_FacesWorldDirection_UnderPlotYaw</c>.</summary>
     private static float LocalYaw(int dx, int dz)
     {
         return MathF.Atan2(dx, dz);

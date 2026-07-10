@@ -228,6 +228,80 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Equal(2, doc.History.UndoDepth);            // the seal kept the two drags apart
         }
 
+        // ---- drags vs vanished objects -------------------------------------------------------------------
+
+        [Fact]
+        public void DeleteDuringDrag_CancelsDragWithoutThrowing()
+        {
+            var (doc, c) = Make();
+            doc.Doc.Placements.Add(new MapPlacement { Id = "p1", Kind = "hut", X = 0f, Z = 0f });
+            doc.Selection.Set(SelectionKind.Placement, "p1");
+
+            c.Update(Press(new Vector3(0.6f, 100f, 0f)));   // grab the +X translate arrow
+            Assert.True(c.IsDragging);
+
+            // The delete edge lands mid-drag: DeleteSelection removes p1 BEFORE the select-mode step runs in the
+            // same frame, so the drag continuation must not execute a move on the vanished id (no throw).
+            c.Update(new EditorFrameInput(new Vector3(2.6f, 100f, 0f), Down,
+                pointerDown: true, deletePressed: true, dt: 0.016f));
+
+            Assert.False(c.IsDragging);
+            Assert.Empty(doc.Doc.Placements);
+            Assert.Equal(1, doc.History.UndoDepth);   // just the remove, no move commands on the vanished id
+
+            // Further drag frames and the release stay inert.
+            c.Update(Drag(new Vector3(5.6f, 100f, 0f)));
+            c.Update(Release(new Vector3(5.6f, 100f, 0f)));
+            Assert.Equal(1, doc.History.UndoDepth);
+            Assert.False(c.IsDragging);
+        }
+
+        [Fact]
+        public void UndoDrainDuringDrag_CancelsDrag()
+        {
+            var (doc, c) = Make();
+            doc.Execute(new AddPlacementCommand(new MapPlacement { Id = "p1", Kind = "hut", X = 0f, Z = 0f }));
+            doc.SealGesture();
+            doc.Selection.Set(SelectionKind.Placement, "p1");
+
+            c.Update(Press(new Vector3(0.6f, 100f, 0f)));
+            c.Update(Drag(new Vector3(2.6f, 100f, 0f)));   // one move step on top of the add
+
+            // An undo drain mid-drag removes the move AND the object's own Add: the dragged id is gone.
+            Assert.True(doc.Undo());
+            Assert.True(doc.Undo());
+            Assert.Empty(doc.Doc.Placements);
+
+            c.Update(Drag(new Vector3(5.6f, 100f, 0f)));   // must cancel cleanly, not throw
+            Assert.False(c.IsDragging);
+            c.Update(Release(new Vector3(5.6f, 100f, 0f)));
+            Assert.Empty(doc.Doc.Placements);
+            Assert.False(doc.History.CanUndo);             // no new commands were emitted
+        }
+
+        // ---- gesture barrier on grab ---------------------------------------------------------------------
+
+        [Fact]
+        public void InspectorEditThenDrag_AreSeparateUndoSteps()
+        {
+            var (doc, c) = Make();
+            doc.Doc.Placements.Add(new MapPlacement { Id = "p1", Kind = "hut", X = 0f, Z = 0f });
+            doc.Selection.Set(SelectionKind.Placement, "p1");
+
+            // An inspector-style edit right before the drag: a merge-capable move of the same placement.
+            doc.Execute(new MovePlacementCommand("p1", 1f, 0f, null));
+            Assert.Equal(1, doc.History.UndoDepth);
+
+            // Gizmo grab at the placement's new position, then drag + release: the grab must seal the gesture,
+            // so the drag's moves start a NEW undo step instead of coalescing into the inspector edit.
+            c.Update(Press(new Vector3(1.6f, 100f, 0f)));
+            Assert.True(c.IsDragging);
+            c.Update(Drag(new Vector3(3.6f, 100f, 0f)));
+            c.Update(Release(new Vector3(3.6f, 100f, 0f)));
+
+            Assert.Equal(2, doc.History.UndoDepth);
+        }
+
         // ---- draw modes ----------------------------------------------------------------------------------
 
         [Fact]

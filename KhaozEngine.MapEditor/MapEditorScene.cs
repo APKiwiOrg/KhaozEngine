@@ -91,6 +91,12 @@ public class MapEditorScene : GameScene, IGameScene3D
     bool _built;
     string _statusText = "";
 
+    // Region rename bookkeeping: the selection is keyed by region NAME, so after a rename it must follow the
+    // new name. The sync is deferred until the rename row loses focus (an immediate Selection.Set would rebuild
+    // the inspector mid-typing and drop the focus per keystroke).
+    string? _pendingRegionSelect;
+    TextRow? _regionNameRow;
+
     /// <summary>Wires the render surface, the shared white pixel and UI font, and the editor options, then returns
     /// this for chaining (the Room3D Init-injection pattern). Nothing is dereferenced until <see cref="OnEnter"/>.</summary>
     public MapEditorScene Init(Scene3D scene, Texture2D white, DpiFont font, MapEditorOptions options)
@@ -110,6 +116,9 @@ public class MapEditorScene : GameScene, IGameScene3D
 
     /// <summary>The tool controller, or null before <see cref="OnEnter"/>. Exposed for tests.</summary>
     internal EditorToolController Controller => _controller;
+
+    /// <summary>The inspector grid, or null before <see cref="OnEnter"/>. Exposed for tests.</summary>
+    internal PropertyGrid Inspector => _inspector;
 
     // ---- lifecycle ---------------------------------------------------------------------------------------
 
@@ -235,6 +244,14 @@ public class MapEditorScene : GameScene, IGameScene3D
     {
         HandleShortcuts();
         UpdateWidgets(dt);
+
+        // Sync the selection to a renamed region once the rename row is done (outside the grid's row iteration,
+        // so the inspector rebuild this triggers never tears down a row mid-update).
+        if (_pendingRegionSelect is string pending && (_regionNameRow is null || !_regionNameRow.Input.IsFocused))
+        {
+            _pendingRegionSelect = null;
+            _document.Selection.Set(SelectionKind.Region, pending);
+        }
     }
 
     /// <summary>Streams the viewport world around the camera. Overridable for headless order tests. No-ops until
@@ -452,11 +469,15 @@ public class MapEditorScene : GameScene, IGameScene3D
     void RebuildInspector()
     {
         _inspector.Rows.Clear();
+        _regionNameRow = null;
         EditorSelection sel = _document.Selection;
         switch (sel.Kind)
         {
             case SelectionKind.Placement: BuildPlacementInspector(sel.Id); break;
             case SelectionKind.Spawn: BuildSpawnInspector(sel.Id); break;
+            case SelectionKind.Feature: BuildFeatureInspector(sel.Id); break;
+            case SelectionKind.Exclusion: BuildExclusionInspector(sel.Id); break;
+            case SelectionKind.Region: BuildRegionInspector(sel.Id); break;
             default: break;
         }
     }
@@ -484,6 +505,167 @@ public class MapEditorScene : GameScene, IGameScene3D
             () => Spawn(id)?.Enabled ?? false, v => _document.Execute(new SetSpawnEnabledCommand(id, v))));
         _inspector.Rows.Add(new TextRow(LocalizedText.Raw("Archetype"),
             () => Spawn(id)?.ArchetypeId ?? "", v => { if (Spawn(id) is { } s) s.ArchetypeId = v; }));
+    }
+
+    // ---- feature / exclusion / region inspectors -----------------------------------------------------------
+
+    void BuildFeatureInspector(string id)
+    {
+        if (!int.TryParse(id, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index)) return;
+        MapFeature? feature = FeatureAt(index);
+        if (feature is null) return;
+
+        _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Type"), () => FeatureAt(index)?.Type ?? ""));
+        switch (feature)
+        {
+            case LakeFeatureDoc:
+                AddFeatureRow<LakeFeatureDoc>(index, "CenterX", f => f.CenterX, (f, v) => f.CenterX = v);
+                AddFeatureRow<LakeFeatureDoc>(index, "CenterZ", f => f.CenterZ, (f, v) => f.CenterZ = v);
+                AddFeatureRow<LakeFeatureDoc>(index, "Radius", f => f.Radius, (f, v) => f.Radius = v);
+                AddFeatureRow<LakeFeatureDoc>(index, "Depth", f => f.Depth, (f, v) => f.Depth = v);
+                break;
+            case FlattenFeatureDoc:
+                AddFeatureRow<FlattenFeatureDoc>(index, "CenterX", f => f.CenterX, (f, v) => f.CenterX = v);
+                AddFeatureRow<FlattenFeatureDoc>(index, "CenterZ", f => f.CenterZ, (f, v) => f.CenterZ = v);
+                AddFeatureRow<FlattenFeatureDoc>(index, "Radius", f => f.Radius, (f, v) => f.Radius = v);
+                AddFeatureRow<FlattenFeatureDoc>(index, "TargetHeight", f => f.TargetHeight, (f, v) => f.TargetHeight = v);
+                AddFeatureRow<FlattenFeatureDoc>(index, "Blend", f => f.Blend, (f, v) => f.Blend = v);
+                break;
+            case RimFeatureDoc:
+                AddFeatureRow<RimFeatureDoc>(index, "CenterX", f => f.CenterX, (f, v) => f.CenterX = v);
+                AddFeatureRow<RimFeatureDoc>(index, "CenterZ", f => f.CenterZ, (f, v) => f.CenterZ = v);
+                AddFeatureRow<RimFeatureDoc>(index, "InnerRadius", f => f.InnerRadius, (f, v) => f.InnerRadius = v);
+                AddFeatureRow<RimFeatureDoc>(index, "OuterRadius", f => f.OuterRadius, (f, v) => f.OuterRadius = v);
+                AddFeatureRow<RimFeatureDoc>(index, "WallHeight", f => f.WallHeight, (f, v) => f.WallHeight = v);
+                AddFeatureRow<RimFeatureDoc>(index, "Ruggedness", f => f.Ruggedness, (f, v) => f.Ruggedness = v);
+                break;
+            case RidgeFeatureDoc:
+                AddFeatureRow<RidgeFeatureDoc>(index, "PointX", f => f.PointX, (f, v) => f.PointX = v);
+                AddFeatureRow<RidgeFeatureDoc>(index, "PointZ", f => f.PointZ, (f, v) => f.PointZ = v);
+                AddFeatureRow<RidgeFeatureDoc>(index, "Height", f => f.Height, (f, v) => f.Height = v);
+                AddFeatureRow<RidgeFeatureDoc>(index, "Width", f => f.Width, (f, v) => f.Width = v);
+                AddFeatureRow<RidgeFeatureDoc>(index, "PassAlong", f => f.PassAlong, (f, v) => f.PassAlong = v);
+                AddFeatureRow<RidgeFeatureDoc>(index, "PassWidth", f => f.PassWidth, (f, v) => f.PassWidth = v);
+                break;
+            default:
+                break;   // unknown/custom feature type: the read-only Type row above is the whole inspector
+        }
+    }
+
+    // One scrubbed parameter of the feature at `index`: get reads the LIVE DTO (the instance at the index is
+    // replaced by every edit), set clones the current DTO with the one property changed and routes it through
+    // EditFeatureCommand, whose same-index merge makes a scrub coalesce into one undo step.
+    void AddFeatureRow<T>(int index, string label, Func<T, float> get, Action<T, float> assign) where T : MapFeature
+    {
+        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw(label),
+            () => FeatureAt(index) is T f ? get(f) : 0f,
+            v =>
+            {
+                if (FeatureAt(index) is not T current) return;
+                var clone = (T)CloneFeature(current);
+                assign(clone, v);
+                _document.Execute(new EditFeatureCommand(index, clone, current));
+            }));
+    }
+
+    MapFeature? FeatureAt(int index)
+    {
+        List<MapFeature> features = _document.Doc.Terrain.Features;
+        return index >= 0 && index < features.Count ? features[index] : null;
+    }
+
+    // Copies one of the four built-in feature DTOs so an edit replaces the instance (EditFeatureCommand holds
+    // old + new by reference). Only ever called for the types the switch above binds.
+    static MapFeature CloneFeature(MapFeature feature) => feature switch
+    {
+        LakeFeatureDoc l => new LakeFeatureDoc
+        {
+            CenterX = l.CenterX, CenterZ = l.CenterZ, Radius = l.Radius, Depth = l.Depth,
+            InnerFraction = l.InnerFraction, OuterFraction = l.OuterFraction,
+        },
+        FlattenFeatureDoc f => new FlattenFeatureDoc
+        {
+            CenterX = f.CenterX, CenterZ = f.CenterZ, Radius = f.Radius,
+            TargetHeight = f.TargetHeight, Blend = f.Blend,
+        },
+        RidgeFeatureDoc r => new RidgeFeatureDoc
+        {
+            PointX = r.PointX, PointZ = r.PointZ, DirectionX = r.DirectionX, DirectionZ = r.DirectionZ,
+            Height = r.Height, Width = r.Width, PassAlong = r.PassAlong, PassWidth = r.PassWidth,
+        },
+        RimFeatureDoc rim => CloneRim(rim),
+        _ => throw new InvalidOperationException($"No clone support for feature type '{feature.Type}'."),
+    };
+
+    static RimFeatureDoc CloneRim(RimFeatureDoc r)
+    {
+        var clone = new RimFeatureDoc
+        {
+            CenterX = r.CenterX, CenterZ = r.CenterZ, InnerRadius = r.InnerRadius, OuterRadius = r.OuterRadius,
+            WallHeight = r.WallHeight, Ruggedness = r.Ruggedness, Seed = r.Seed, CrestFrequency = r.CrestFrequency,
+        };
+        foreach (RimPassDoc pass in r.Passes)
+            clone.Passes.Add(new RimPassDoc { AngleRadians = pass.AngleRadians, HalfWidth = pass.HalfWidth, Falloff = pass.Falloff });
+        return clone;
+    }
+
+    void BuildExclusionInspector(string id)
+    {
+        if (!int.TryParse(id, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index)) return;
+        if (index < 0 || index >= _document.Doc.Exclusions.Count) return;
+        AddShapeRows(() => index < _document.Doc.Exclusions.Count ? _document.Doc.Exclusions[index].Shape : null);
+    }
+
+    void BuildRegionInspector(string name)
+    {
+        if (RegionByName(name) is null) return;
+        // The closure tracks the CURRENT name across renames, so the row keeps working (and keeps focus) while
+        // the user types. The selection is synced to the new name once the rename row loses focus (see
+        // UpdateChrome), because a mid-typing sync would rebuild the inspector and drop the focus per keystroke.
+        string current = name;
+        var row = new TextRow(LocalizedText.Raw("Name"),
+            () => current,
+            v =>
+            {
+                if (string.IsNullOrWhiteSpace(v) || string.Equals(v, current, StringComparison.Ordinal)) return;
+                if (RegionByName(v) is not null || RegionByName(current) is null) return;   // collision or vanished
+                _document.Execute(new RenameRegionCommand(current, v));
+                current = v;
+                _pendingRegionSelect = v;
+            });
+        _regionNameRow = row;
+        _inspector.Rows.Add(row);
+        AddShapeRows(() => RegionByName(current)?.Shape);
+    }
+
+    void AddShapeRows(Func<MapShapeDoc?> shape)
+    {
+        _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Shape"), () => ShapeKind(shape())));
+        _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Params"), () => ShapeParams(shape())));
+    }
+
+    static string ShapeKind(MapShapeDoc? shape) => shape switch
+    {
+        DiscShapeDoc => "disc",
+        RectShapeDoc => "rect",
+        PolygonShapeDoc => "polygon",
+        null => "(none)",
+        _ => shape.GetType().Name,
+    };
+
+    static string ShapeParams(MapShapeDoc? shape) => shape switch
+    {
+        DiscShapeDoc d => FormattableString.Invariant($"center ({d.CenterX:0.##}, {d.CenterZ:0.##})  radius {d.Radius:0.##}"),
+        RectShapeDoc r => FormattableString.Invariant($"({r.MinX:0.##}, {r.MinZ:0.##}) .. ({r.MaxX:0.##}, {r.MaxZ:0.##})"),
+        PolygonShapeDoc p => FormattableString.Invariant($"{p.Points.Count} points"),
+        _ => "",
+    };
+
+    MapRegion? RegionByName(string name)
+    {
+        foreach (MapRegion r in _document.Doc.Regions)
+            if (string.Equals(r.Name, name, StringComparison.Ordinal)) return r;
+        return null;
     }
 
     void MovePlacement(string id, float? x = null, float? z = null)

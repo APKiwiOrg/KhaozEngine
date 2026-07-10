@@ -184,6 +184,16 @@ public sealed class EditorToolController
 
         if (_dragging)
         {
+            // The dragged object can vanish mid-gesture: a Delete edge earlier this same frame, or an undo
+            // drain past the object's own Add. Cancel the drag cleanly instead of executing a move on the
+            // vanished id (MovePlacementCommand/MoveSpawnCommand throw on a missing id). Guards both the
+            // mid-drag frames and the release path, since ApplyDrag only runs below this check.
+            if (!DragTargetExists())
+            {
+                _dragging = false;
+                _document.SealGesture();
+                return;
+            }
             if (input.PointerDown && !input.PointerReleased) ApplyDrag(input);
             if (input.PointerReleased)
             {
@@ -197,6 +207,14 @@ public sealed class EditorToolController
         if (input.PointerPressed) BeginGestureOrSelect(input);
     }
 
+    // True while the dragged element still exists in the document (drags only ever target placements/spawns).
+    bool DragTargetExists() => _dragKind switch
+    {
+        SelectionKind.Placement => FindPlacement(_dragId) is not null,
+        SelectionKind.Spawn => FindSpawn(_dragId) is not null,
+        _ => false,
+    };
+
     void BeginGestureOrSelect(in EditorFrameInput input)
     {
         if (TryGizmoTarget(out Vector3 gizmoPos, out SelectionKind kind, out string id,
@@ -209,6 +227,9 @@ public sealed class EditorToolController
 
             if (handle != GizmoDrag.GizmoHandle.None)
             {
+                // A grab starts a NEW gesture: seal so the drag's first command never coalesces into a
+                // preceding same-object edit (e.g. an inspector scrub the frame before).
+                _document.SealGesture();
                 Vector3 startPoint = StartPointFor(handle, gizmoPos, input.RayOrigin, input.RayDirection);
                 _drag = new GizmoDrag.DragGesture(handle, startPoint, gizmoPos, startYaw, startScale);
                 _dragHandle = handle;

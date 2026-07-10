@@ -9,8 +9,8 @@ namespace KhaozEngine.MapEditor;
 /// <summary>The active editing tool. <see cref="Select"/> drives gizmo gestures on the selection; the place
 /// modes ground-snap a click into an Add command; the draw modes rubber-band a disc (click-drag) or rect
 /// (shift-drag) into an exclusion or a region; <see cref="BakeRegion"/> drags a rect on the ground to freeze
-/// a scatter layer into placements; <see cref="EditFeature"/> is inspector-driven and takes no viewport
-/// gesture.</summary>
+/// a scatter layer into placements; <see cref="EditFeature"/> click-places a default-parameterized terrain
+/// feature of the selected type at the ground hit.</summary>
 public enum EditorToolMode
 {
     /// <summary>Pick + transform-gizmo drag on the current selection.</summary>
@@ -23,7 +23,9 @@ public enum EditorToolMode
     DrawExclusion,
     /// <summary>Rubber-band a named region shape (disc on drag, rect on shift-drag), auto-named region-N.</summary>
     DrawRegion,
-    /// <summary>Terrain-feature parameter editing (inspector-driven, no viewport gesture).</summary>
+    /// <summary>Click-place a default-parameterized terrain feature of
+    /// <see cref="EditorToolController.PlaceFeatureType"/> at the ground hit. One shot: a placed feature returns
+    /// to <see cref="Select"/>. The placed feature is then editable through the inspector and the gizmo.</summary>
     EditFeature,
     /// <summary>Drag a rect on the ground to freeze <see cref="EditorToolController.BakeLayer"/>'s scatter
     /// into placements. One shot: a completed bake returns to <see cref="Select"/>.</summary>
@@ -73,6 +75,22 @@ public readonly struct EditorFrameInput
     }
 }
 
+/// <summary>Which transform-gizmo handles the current selection exposes, resolved by
+/// <see cref="EditorToolController.TryGizmo"/> and shared with the viewport so the drawn handles match the
+/// controller's pickable region.</summary>
+internal enum GizmoAffordance
+{
+    /// <summary>No gizmo (nothing selected, or a selection with no draggable transform: terrain, a polygon shape,
+    /// an unknown feature type).</summary>
+    None,
+    /// <summary>A selection marker only, no draggable handles (a spawn: the ground-plane drag is invisible).</summary>
+    Marker,
+    /// <summary>Translate arrows plus the scale cube, no yaw ring (a feature or a disc / rect shape).</summary>
+    MoveScale,
+    /// <summary>The full transform: translate arrows, yaw ring, and scale cube (a placement).</summary>
+    Full,
+}
+
 /// <summary>The GPU-free per-frame editing policy: it reads the pick ray + pointer/keyboard edges from an
 /// <see cref="EditorFrameInput"/> and the <see cref="Field"/> and emits reversible commands through the
 /// <see cref="EditorDocument"/> choke point. Select mode picks the document (or grabs a transform-gizmo handle and
@@ -101,6 +119,11 @@ public sealed class EditorToolController
     SelectionKind _dragKind;
     string _dragId = "";
     float? _dragStartY;
+    // The pre-drag snapshot for a shape / feature gizmo drag, so each frame builds the new shape / feature from the
+    // grab-time value plus the gesture delta (the Edit*ShapeCommand / EditFeatureCommand merge coalesces the drag
+    // into one undo step). Null for a placement / spawn drag, which move through their own Move commands.
+    MapShapeDoc? _dragStartShape;
+    MapFeature? _dragStartFeature;
 
     // Draw-mode rubber-band state (shared by the draw modes and the bake-region rect gesture).
     bool _drawing;
@@ -135,6 +158,11 @@ public sealed class EditorToolController
 
     /// <summary>The archetype id a <see cref="EditorToolMode.PlaceSpawn"/> click stamps.</summary>
     public string SpawnArchetype { get; set; } = "";
+
+    /// <summary>The terrain-feature discriminator a <see cref="EditorToolMode.EditFeature"/> click places (a
+    /// registry feature type, list-selected). A type outside the four built-ins has no editor default, so a click
+    /// with such a type selected places nothing.</summary>
+    public string PlaceFeatureType { get; set; } = "";
 
     /// <summary>The scatter layer a <see cref="EditorToolMode.BakeRegion"/> rect gesture freezes. Defaults to the
     /// document's first scatter layer name (null when the document has none), and an explicit set overrides it.</summary>
@@ -173,7 +201,7 @@ public sealed class EditorToolController
         EditorToolMode.PlaceSpawn => "Place spawn. Click to place a " + SpawnArchetype + " spawn.",
         EditorToolMode.DrawExclusion => "Draw exclusion. Drag a disc, shift-drag a rect, scatter skips it. One shot.",
         EditorToolMode.DrawRegion => "Draw region. Drag out a named gameplay region. One shot.",
-        EditorToolMode.EditFeature => "Edit feature. Select terrain features in the outline, edit in the inspector.",
+        EditorToolMode.EditFeature => "Place feature. Click terrain to add a " + PlaceFeatureType + ". One shot.",
         EditorToolMode.BakeRegion => "Bake region. Drag a rect to freeze scatter into placements. One shot.",
         _ => _mode.ToString(),
     };
@@ -200,7 +228,7 @@ public sealed class EditorToolController
             case EditorToolMode.PlaceSpawn: UpdatePlaceSpawn(input); break;
             case EditorToolMode.DrawExclusion: UpdateDraw(input, region: false); break;
             case EditorToolMode.DrawRegion: UpdateDraw(input, region: true); break;
-            case EditorToolMode.EditFeature: break;
+            case EditorToolMode.EditFeature: UpdateEditFeature(input); break;
             case EditorToolMode.BakeRegion: UpdateBake(input); break;
         }
     }
@@ -236,11 +264,15 @@ public sealed class EditorToolController
         if (input.PointerPressed) BeginGestureOrSelect(input);
     }
 
-    // True while the dragged element still exists in the document (drags only ever target placements/spawns).
+    // True while the dragged element still exists in the document, so a Delete edge or an undo drain mid-drag
+    // cancels the gesture cleanly instead of executing an edit on a vanished target (which the commands throw on).
     bool DragTargetExists() => _dragKind switch
     {
         SelectionKind.Placement => FindPlacement(_dragId) is not null,
         SelectionKind.Spawn => FindSpawn(_dragId) is not null,
+        SelectionKind.Feature => FeatureAt(_dragId) is not null,
+        SelectionKind.Exclusion => ExclusionShape(_dragId) is not null,
+        SelectionKind.Region => RegionByName(_dragId) is not null,
         _ => false,
     };
 
@@ -249,10 +281,8 @@ public sealed class EditorToolController
         if (TryGizmoTarget(out Vector3 gizmoPos, out SelectionKind kind, out string id,
                 out float? startY, out float startYaw, out float startScale))
         {
-            GizmoDrag.GizmoHandle handle = GizmoDrag.HitTest(gizmoPos, GizmoScale, input.RayOrigin, input.RayDirection);
-            // Spawns have no yaw/scale in the model, so only the ground-plane translate handle applies.
-            if (kind == SelectionKind.Spawn && handle != GizmoDrag.GizmoHandle.TranslateXZ)
-                handle = GizmoDrag.GizmoHandle.None;
+            GizmoDrag.GizmoHandle handle = RestrictHandle(kind,
+                GizmoDrag.HitTest(gizmoPos, GizmoScale, input.RayOrigin, input.RayDirection));
 
             if (handle != GizmoDrag.GizmoHandle.None)
             {
@@ -265,39 +295,100 @@ public sealed class EditorToolController
                 _dragKind = kind;
                 _dragId = id;
                 _dragStartY = startY;
+                // Snapshot the grab-time shape / feature so the drag rewrites it from a fixed start each frame.
+                _dragStartShape = kind is SelectionKind.Exclusion or SelectionKind.Region
+                    ? SelectedShapeOf(kind, id) : null;
+                _dragStartFeature = kind == SelectionKind.Feature && FeatureAt(id) is { } f
+                    ? FeatureGeometry.Clone(f) : null;
                 _dragging = true;
                 return;
             }
         }
 
+        // No handle grabbed: pick a placement / spawn first, else fall through to the overlay shapes under the
+        // ground point (exclusions, regions, feature markers), so those otherwise-invisible authoring shapes are
+        // selectable with the mouse. A pick that finds nothing at all clears the selection.
         if (EditorPicking.Pick(_document.Doc, Field!, input.RayOrigin, input.RayDirection, PickDistance, HeightOf,
-                out EditorPicking.PickResult r) && r.Kind != SelectionKind.None)
-            _document.Selection.Set(r.Kind, r.Id);
+                out EditorPicking.PickResult r))
+        {
+            if (r.Kind != SelectionKind.None)
+                _document.Selection.Set(r.Kind, r.Id);
+            else if (OverlayPicking.Pick(_document.Doc, r.Point.X, r.Point.Z, out OverlayPicking.OverlayPickResult o))
+                _document.Selection.Set(o.Kind, o.Id);
+            else
+                _document.Selection.Clear();
+        }
         else
+        {
             _document.Selection.Clear();
+        }
     }
 
+    // Which gizmo handle a selection kind honours: a placement takes every handle, a spawn only the ground-plane
+    // translate (no yaw / scale in its model), and a feature / exclusion / region only translate + scale (their
+    // XZ center moves and their primary radius resizes, with no yaw concept, so the yaw ring is suppressed).
+    static GizmoDrag.GizmoHandle RestrictHandle(SelectionKind kind, GizmoDrag.GizmoHandle handle) => kind switch
+    {
+        SelectionKind.Spawn => handle == GizmoDrag.GizmoHandle.TranslateXZ ? handle : GizmoDrag.GizmoHandle.None,
+        SelectionKind.Feature or SelectionKind.Exclusion or SelectionKind.Region =>
+            handle is GizmoDrag.GizmoHandle.TranslateXZ or GizmoDrag.GizmoHandle.Scale
+                ? handle : GizmoDrag.GizmoHandle.None,
+        _ => handle,
+    };
+
     // The gizmo world position + starting transform of the selection, or false when the selection carries no
-    // gizmo (nothing / feature / exclusion / region). Placement Y respects the stored ground-snap mode.
+    // gizmo (nothing / terrain / polygon shape / unknown feature type). Placements take the full transform;
+    // spawns, features, and disc / rect shapes sit their gizmo at the element center on the ground. Placement Y
+    // respects the stored ground-snap mode.
     bool TryGizmoTarget(out Vector3 pos, out SelectionKind kind, out string id,
         out float? startY, out float startYaw, out float startScale)
     {
         pos = default; kind = SelectionKind.None; id = ""; startY = null; startYaw = 0f; startScale = 1f;
         EditorSelection sel = _document.Selection;
-        if (sel.Kind == SelectionKind.Placement && FindPlacement(sel.Id) is { } p)
+        switch (sel.Kind)
         {
-            float groundY = p.Y ?? Field!.SampleHeight(p.X, p.Z);
-            pos = new Vector3(p.X, groundY, p.Z);
-            kind = SelectionKind.Placement; id = p.Id; startY = p.Y; startYaw = p.Yaw; startScale = p.Scale;
-            return true;
+            case SelectionKind.Placement when FindPlacement(sel.Id) is { } p:
+                pos = new Vector3(p.X, p.Y ?? Field!.SampleHeight(p.X, p.Z), p.Z);
+                kind = SelectionKind.Placement; id = p.Id; startY = p.Y; startYaw = p.Yaw; startScale = p.Scale;
+                return true;
+            case SelectionKind.Spawn when FindSpawn(sel.Id) is { } s:
+                pos = new Vector3(s.X, Field!.SampleHeight(s.X, s.Z), s.Z);
+                kind = SelectionKind.Spawn; id = s.Id;
+                return true;
+            case SelectionKind.Feature when FeatureAt(sel.Id) is { } f && FeatureGeometry.TryCenter(f, out float fx, out float fz):
+                pos = new Vector3(fx, Field!.SampleHeight(fx, fz), fz);
+                kind = SelectionKind.Feature; id = sel.Id;
+                return true;
+            case SelectionKind.Exclusion when ExclusionShape(sel.Id) is { } ex
+                    && ShapeGeometry.IsGizmoEditable(ex) && ShapeGeometry.TryCenter(ex, out float ecx, out float ecz):
+                pos = new Vector3(ecx, Field!.SampleHeight(ecx, ecz), ecz);
+                kind = SelectionKind.Exclusion; id = sel.Id;
+                return true;
+            case SelectionKind.Region when RegionByName(sel.Id) is { Shape: { } rs }
+                    && ShapeGeometry.IsGizmoEditable(rs) && ShapeGeometry.TryCenter(rs, out float rcx, out float rcz):
+                pos = new Vector3(rcx, Field!.SampleHeight(rcx, rcz), rcz);
+                kind = SelectionKind.Region; id = sel.Id;
+                return true;
+            default:
+                return false;
         }
-        if (sel.Kind == SelectionKind.Spawn && FindSpawn(sel.Id) is { } s)
+    }
+
+    /// <summary>The gizmo world position for the current selection and which handle set the viewport should draw,
+    /// or <see cref="GizmoAffordance.None"/> when the selection carries no gizmo. Shared with the viewport so the
+    /// drawn handles and this controller's pickable region can never drift. No-op (None) before the field is set.</summary>
+    internal GizmoAffordance TryGizmo(out Vector3 pos)
+    {
+        pos = default;
+        if (Field is null) return GizmoAffordance.None;
+        if (!TryGizmoTarget(out pos, out SelectionKind kind, out _, out _, out _, out _))
+            return GizmoAffordance.None;
+        return kind switch
         {
-            pos = new Vector3(s.X, Field!.SampleHeight(s.X, s.Z), s.Z);
-            kind = SelectionKind.Spawn; id = s.Id;
-            return true;
-        }
-        return false;
+            SelectionKind.Placement => GizmoAffordance.Full,
+            SelectionKind.Spawn => GizmoAffordance.Marker,
+            _ => GizmoAffordance.MoveScale,   // feature / disc / rect shape: translate + scale, no yaw ring
+        };
     }
 
     // The world point the drag first grabs on the handle's constraint surface, chosen so the first-frame delta is
@@ -321,12 +412,24 @@ public sealed class EditorToolController
             case GizmoDrag.GizmoHandle.TranslateXZ:
             {
                 Vector3 delta = GizmoDrag.TranslateXZDelta(_drag, origin, dir);
-                float nx = _drag.ObjectStart.X + delta.X;
-                float nz = _drag.ObjectStart.Z + delta.Z;
-                if (_dragKind == SelectionKind.Placement)
-                    _document.Execute(new MovePlacementCommand(_dragId, nx, nz, _dragStartY));
-                else if (_dragKind == SelectionKind.Spawn)
-                    _document.Execute(new MoveSpawnCommand(_dragId, nx, nz));
+                switch (_dragKind)
+                {
+                    case SelectionKind.Placement:
+                        _document.Execute(new MovePlacementCommand(_dragId,
+                            _drag.ObjectStart.X + delta.X, _drag.ObjectStart.Z + delta.Z, _dragStartY));
+                        break;
+                    case SelectionKind.Spawn:
+                        _document.Execute(new MoveSpawnCommand(_dragId,
+                            _drag.ObjectStart.X + delta.X, _drag.ObjectStart.Z + delta.Z));
+                        break;
+                    case SelectionKind.Feature:
+                        ExecuteFeatureEdit(FeatureGeometry.Translated(_dragStartFeature!, delta.X, delta.Z));
+                        break;
+                    case SelectionKind.Exclusion:
+                    case SelectionKind.Region:
+                        ExecuteShapeEdit(ShapeGeometry.Translated(_dragStartShape!, delta.X, delta.Z));
+                        break;
+                }
                 break;
             }
             case GizmoDrag.GizmoHandle.TranslateY:
@@ -344,12 +447,49 @@ public sealed class EditorToolController
                 }
                 break;
             case GizmoDrag.GizmoHandle.Scale:
-                if (_dragKind == SelectionKind.Placement)
+            {
+                float factor = GizmoDrag.ScaleFactor(_drag, origin, dir);
+                switch (_dragKind)
                 {
-                    float newScale = _drag.ObjectStartScale * GizmoDrag.ScaleFactor(_drag, origin, dir);
-                    _document.Execute(new ScalePlacementCommand(_dragId, newScale));
+                    case SelectionKind.Placement:
+                        _document.Execute(new ScalePlacementCommand(_dragId, _drag.ObjectStartScale * factor));
+                        break;
+                    case SelectionKind.Feature:
+                        ExecuteFeatureEdit(FeatureGeometry.Scaled(_dragStartFeature!, factor));
+                        break;
+                    case SelectionKind.Exclusion:
+                    case SelectionKind.Region:
+                        ExecuteShapeEdit(ShapeGeometry.Scaled(_dragStartShape!, factor));
+                        break;
                 }
                 break;
+            }
+        }
+    }
+
+    // Route a dragged feature's new value through EditFeatureCommand (same-index merge coalesces the drag), keeping
+    // the live feature as the command's old value. A null new value (an untranslatable / unscalable type) no-ops.
+    void ExecuteFeatureEdit(MapFeature? newFeature)
+    {
+        if (newFeature is null || !TryFeatureIndex(_dragId, out int index) || FeatureAt(_dragId) is not { } current)
+            return;
+        _document.Execute(new EditFeatureCommand(index, newFeature, current));
+    }
+
+    // Route a dragged exclusion / region's new shape through the matching Edit*ShapeCommand (same-key merge
+    // coalesces the drag), keeping the live shape as the command's old value. A null new shape no-ops.
+    void ExecuteShapeEdit(MapShapeDoc? newShape)
+    {
+        if (newShape is null) return;
+        if (_dragKind == SelectionKind.Exclusion)
+        {
+            if (!TryExclusionIndex(_dragId, out int index) || _document.Doc.Exclusions[index].Shape is not { } current)
+                return;
+            _document.Execute(new EditExclusionShapeCommand(index, newShape, current));
+        }
+        else if (RegionByName(_dragId) is { Shape: { } current })
+        {
+            _document.Execute(new EditRegionShapeCommand(_dragId, newShape, current));
         }
     }
 
@@ -375,6 +515,28 @@ public sealed class EditorToolController
         _document.Execute(new AddSpawnCommand(new MapSpawn { Id = id, ArchetypeId = SpawnArchetype, X = p.X, Z = p.Z }));
         _document.SealGesture();
         _document.Selection.Set(SelectionKind.Spawn, id);
+    }
+
+    // ---- place feature -----------------------------------------------------------------------------------
+
+    // Click-place a default-parameterized feature of PlaceFeatureType at the terrain hit, select it, and one-shot
+    // back to Select. A type with no editor default (outside the four built-ins) places nothing but still consumes
+    // the click. The click height feeds the flatten default's target height.
+    void UpdateEditFeature(in EditorFrameInput input)
+    {
+        if (Field is null || !input.PointerPressed) return;
+        if (!EditorPicking.PickTerrain(Field, input.RayOrigin, input.RayDirection, PickDistance, out Vector3 p)) return;
+
+        MapFeature? feature = FeatureGeometry.CreateDefault(PlaceFeatureType, p.X, p.Z, p.Y);
+        if (feature is null) return;
+
+        _document.Execute(new AddFeatureCommand(feature));
+        _document.SealGesture();
+        int idx = _document.Doc.Terrain.Features.Count - 1;
+        _document.Selection.Set(SelectionKind.Feature, idx.ToString(CultureInfo.InvariantCulture));
+
+        // One shot: a placed feature returns to Select so the next click picks it rather than placing another.
+        _mode = EditorToolMode.Select;
     }
 
     // ---- draw (exclusion / region) ------------------------------------------------------------------------
@@ -489,6 +651,10 @@ public sealed class EditorToolController
                 if (FindSpawn(sel.Id) is null) return;
                 _document.Execute(new RemoveSpawnCommand(sel.Id));
                 break;
+            case SelectionKind.Feature:
+                if (!TryFeatureIndex(sel.Id, out int fi)) return;
+                _document.Execute(new RemoveFeatureCommand(fi));
+                break;
             case SelectionKind.Exclusion:
                 if (!int.TryParse(sel.Id, NumberStyles.Integer, CultureInfo.InvariantCulture, out int ei)
                     || ei < 0 || ei >= _document.Doc.Exclusions.Count) return;
@@ -534,12 +700,43 @@ public sealed class EditorToolController
 
     bool SpawnIdExists(string id) => FindSpawn(id) is not null;
 
-    bool RegionExists(string name)
+    bool RegionExists(string name) => RegionByName(name) is not null;
+
+    MapRegion? RegionByName(string name)
     {
         foreach (MapRegion r in _document.Doc.Regions)
-            if (string.Equals(r.Name, name, StringComparison.Ordinal)) return true;
-        return false;
+            if (string.Equals(r.Name, name, StringComparison.Ordinal)) return r;
+        return null;
     }
+
+    // The feature at the index a Feature-selection id encodes, or null when the id is not a valid in-range index.
+    MapFeature? FeatureAt(string id) =>
+        TryFeatureIndex(id, out int i) ? _document.Doc.Terrain.Features[i] : null;
+
+    // Parses a Feature id to a valid in-range feature index.
+    bool TryFeatureIndex(string id, out int index) =>
+        TryListIndex(id, _document.Doc.Terrain.Features.Count, out index);
+
+    // The shape of the exclusion at the index an Exclusion-selection id encodes, or null when out of range.
+    MapShapeDoc? ExclusionShape(string id) =>
+        TryExclusionIndex(id, out int i) ? _document.Doc.Exclusions[i].Shape : null;
+
+    // Parses an Exclusion id to a valid in-range exclusion index.
+    bool TryExclusionIndex(string id, out int index) =>
+        TryListIndex(id, _document.Doc.Exclusions.Count, out index);
+
+    // The live shape of the current exclusion / region selection, or null for any other kind.
+    MapShapeDoc? SelectedShapeOf(SelectionKind kind, string id) => kind switch
+    {
+        SelectionKind.Exclusion => ExclusionShape(id),
+        SelectionKind.Region => RegionByName(id)?.Shape,
+        _ => null,
+    };
+
+    // Parses an index-string selection id and range-checks it against a list count.
+    static bool TryListIndex(string id, int count, out int index) =>
+        int.TryParse(id, NumberStyles.Integer, CultureInfo.InvariantCulture, out index)
+            && index >= 0 && index < count;
 
     // The first "<prefix>-N" (N from 1) that is not already taken, so auto-named elements never collide.
     static string UniqueName(string prefix, Func<string, bool> exists)

@@ -151,6 +151,47 @@ namespace KhaozEngine.Tests.MapEditor
             AssertRoundTrip(doc, new EditFeatureCommand(0, updated, old));
         }
 
+        [Fact]
+        public void AddFeature_RoundTrips() =>
+            AssertRoundTrip(Sample(), new AddFeatureCommand(new LakeFeatureDoc { CenterX = 4f, CenterZ = 5f, Radius = 10f, Depth = 3f }));
+
+        [Fact]
+        public void RemoveFeature_RoundTrips() =>
+            AssertRoundTrip(Sample(), new RemoveFeatureCommand(0));
+
+        [Fact]
+        public void AddFeature_RestoresOnUndo_AndAffectsWorld()
+        {
+            var ed = new EditorDocument(Sample());
+            int before = ed.Doc.Terrain.Features.Count;
+
+            ed.Execute(new AddFeatureCommand(new LakeFeatureDoc { CenterX = 1f, CenterZ = 1f, Radius = 5f, Depth = 1f }));
+            Assert.Equal(before + 1, ed.Doc.Terrain.Features.Count);
+            Assert.True(ed.WorldRebuildPending);   // features change terrain shape
+
+            ed.Undo();
+            Assert.Equal(before, ed.Doc.Terrain.Features.Count);
+        }
+
+        [Fact]
+        public void RemoveFeature_RestoresAtOriginalIndex()
+        {
+            var doc = Sample();
+            doc.Terrain.Features.Clear();
+            doc.Terrain.Features.Add(new LakeFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 1f, Depth = 1f });
+            var middle = new FlattenFeatureDoc { CenterX = 2f, CenterZ = 2f, Radius = 3f, TargetHeight = 1f };
+            doc.Terrain.Features.Add(middle);
+            doc.Terrain.Features.Add(new RidgeFeatureDoc { PointX = 5f, PointZ = 5f, Height = 2f, Width = 4f });
+
+            var ed = new EditorDocument(doc);
+            ed.Execute(new RemoveFeatureCommand(1));
+            Assert.Equal(2, doc.Terrain.Features.Count);
+            Assert.DoesNotContain(middle, doc.Terrain.Features);
+
+            ed.Undo();
+            Assert.Same(middle, doc.Terrain.Features[1]);   // back at the middle, not appended
+        }
+
         // ---- removed placement restores at its original index ------------------------------------------
 
         [Fact]

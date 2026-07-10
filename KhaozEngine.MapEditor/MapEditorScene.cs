@@ -81,8 +81,6 @@ public class MapEditorScene : GameScene, IGameScene3D
     static readonly Color ExclusionOverlayColor = new(0.9f, 0.22f, 0.16f, 0.26f);
     static readonly Color RegionOverlayColor = new(0.2f, 0.5f, 0.95f, 0.26f);
     static readonly Color FeatureOverlayColor = new(0.96f, 0.76f, 0.22f, 0.55f);
-    /// <summary>Marker-disc radius (m) drawn at a terrain feature's center.</summary>
-    const float FeatureMarkerRadius = 1.5f;
     /// <summary>World-space lift (m) added above the sampled ground height when seating an overlay fill. Overlays
     /// never z-fight the terrain regardless: the debug-fill pass runs depth-disabled after post, so the fills
     /// composite on top of the scene rather than depth-testing against it. The lift only keeps the fill geometry a
@@ -126,6 +124,10 @@ public class MapEditorScene : GameScene, IGameScene3D
     TreeView _paletteTree = null!;
     TextInput _spawnFilter = null!;
     TreeView _spawnList = null!;
+    // The feature-type picker: a flat leaf-only TreeView of the registry's feature types, shown in the bottom-left
+    // panel only in the EditFeature tool. A leaf tap sets the controller's PlaceFeatureType. No filter box (the
+    // registered feature set is small and static), so it fills the whole panel region.
+    TreeView _featureList = null!;
 
     // The grouped, twice-sorted palette source (categories ordinal, kit ids ordinal within each), parsed once from
     // KindCategories in OnEnter (the map is immutable after ViewportWorld construction) and re-filtered without
@@ -195,6 +197,10 @@ public class MapEditorScene : GameScene, IGameScene3D
     /// <summary>The spawn-archetype filter box, or null before <see cref="OnEnter"/>. Exposed for tests.</summary>
     internal TextInput SpawnFilter => _spawnFilter;
 
+    /// <summary>The flat feature-type picker list (leaf-only roots), or null before <see cref="OnEnter"/>. Exposed
+    /// for tests.</summary>
+    internal TreeView FeatureList => _featureList;
+
     /// <summary>True while the Shift+Escape discard warning is armed (dirty document, one chord press in).
     /// Exposed for tests.</summary>
     internal bool ExitArmed => _exitArmed;
@@ -217,8 +223,10 @@ public class MapEditorScene : GameScene, IGameScene3D
         BuildPaletteSource(PaletteKindCategories());
         RebuildPaletteTree("");   // full tree, every category expanded
         RebuildSpawnList("");     // full flat list
+        RebuildFeatureList();     // flat feature-type picker
         if (_options.SpawnArchetypes.Count > 0) _controller.SpawnArchetype = _options.SpawnArchetypes[0];
         _controller.PlaceKind = DefaultPlaceKind();
+        _controller.PlaceFeatureType = DefaultFeatureType();
 
         _document.DocumentChanged += OnDocumentChanged;
         _document.Selection.Changed += OnSelectionChanged;
@@ -306,7 +314,8 @@ public class MapEditorScene : GameScene, IGameScene3D
     protected virtual void UpdateTools(float dt)
     {
         if (_controller.Field is null) return;
-        if (TryGizmoWorldPos(out Vector3 gizmoPos)) _controller.GizmoScale = GizmoScaleFor(gizmoPos);
+        if (_controller.TryGizmo(out Vector3 gizmoPos) != GizmoAffordance.None)
+            _controller.GizmoScale = GizmoScaleFor(gizmoPos);
         _controller.Update(BuildFrameInput(dt));
     }
 
@@ -431,11 +440,11 @@ public class MapEditorScene : GameScene, IGameScene3D
         IReadOnlyList<MapFeature> features = doc.Terrain.Features;
         for (int i = 0; i < features.Count; i++)
         {
-            if (!TryFeatureCenter(features[i], out float fx, out float fz)) continue;   // unknown type: no marker
+            if (!FeatureGeometry.TryCenter(features[i], out float fx, out float fz)) continue;   // unknown type: no marker
             bool selected = i == selectedFeature;
             var center = new Vector3(fx, sampleHeight(fx, fz) + OverlayLift, fz);
-            list.Add(new OverlayDraw(OverlayCategory.Feature, OverlayShape.Disc, center, FeatureMarkerRadius,
-                Vector2.Zero, rim: null, Tint(FeatureOverlayColor, selected), selected));
+            list.Add(new OverlayDraw(OverlayCategory.Feature, OverlayShape.Disc, center,
+                OverlayPicking.FeatureMarkerRadius, Vector2.Zero, rim: null, Tint(FeatureOverlayColor, selected), selected));
         }
         return list;
     }
@@ -484,21 +493,6 @@ public class MapEditorScene : GameScene, IGameScene3D
         }
     }
 
-    // The XZ center of a terrain feature, generically over the four built-ins: lake / flatten / rim expose
-    // CenterX/CenterZ, ridge exposes its PointX/PointZ. An unknown custom feature type has no known center field, so
-    // it is skipped (no marker) rather than guessed at via reflection.
-    static bool TryFeatureCenter(MapFeature feature, out float x, out float z)
-    {
-        switch (feature)
-        {
-            case LakeFeatureDoc l: x = l.CenterX; z = l.CenterZ; return true;
-            case FlattenFeatureDoc f: x = f.CenterX; z = f.CenterZ; return true;
-            case RimFeatureDoc r: x = r.CenterX; z = r.CenterZ; return true;
-            case RidgeFeatureDoc r: x = r.PointX; z = r.PointZ; return true;
-            default: x = 0f; z = 0f; return false;
-        }
-    }
-
     // A selected overlay reads brighter: scale RGB up (ScaleRgb preserves the base alpha) then firm up that alpha,
     // so the highlighted shape stands out against its unselected neighbours. Unselected returns the base color.
     static Color Tint(Color baseColor, bool selected) => selected
@@ -540,18 +534,27 @@ public class MapEditorScene : GameScene, IGameScene3D
 
     void DrawGizmo(Scene3D scene)
     {
-        if (!TryGizmoWorldPos(out Vector3 pos)) return;
+        GizmoAffordance affordance = _controller.TryGizmo(out Vector3 pos);
+        if (affordance == GizmoAffordance.None) return;
         float s = GizmoScaleFor(pos);
         Matrix4x4 world = Matrix4x4.CreateScale(s) * Matrix4x4.CreateTranslation(pos);
-        if (_document.Selection.Kind == SelectionKind.Placement)
+        switch (affordance)
         {
-            scene.DrawOverlayMesh(_translateArrows, world);
-            scene.DrawOverlayMesh(_yawRing, world);
-            scene.DrawOverlayMesh(_scaleHandle, world);
-        }
-        else
-        {
-            scene.DrawOverlayMesh(_selectionMarker, world);
+            case GizmoAffordance.Full:
+                scene.DrawOverlayMesh(_translateArrows, world);
+                scene.DrawOverlayMesh(_yawRing, world);
+                scene.DrawOverlayMesh(_scaleHandle, world);
+                break;
+            case GizmoAffordance.MoveScale:
+                // Feature / disc / rect shape: translate + scale, no yaw ring (there is no yaw concept).
+                scene.DrawOverlayMesh(_translateArrows, world);
+                scene.DrawOverlayMesh(_scaleHandle, world);
+                break;
+            case GizmoAffordance.Marker:
+                scene.DrawOverlayMesh(_selectionMarker, world);
+                break;
+            default:
+                break;
         }
     }
 
@@ -559,6 +562,12 @@ public class MapEditorScene : GameScene, IGameScene3D
     {
         if (!BottomPanelVisible) return;   // no panel this frame: the outline owns the whole left column
         Fill(batch, bounds, PanelBackground);
+        if (FeatureMode)
+        {
+            _featureList.Bounds = bounds;   // no filter box: the feature-type list fills the whole panel
+            _featureList.Draw(batch, _white, font);
+            return;
+        }
         (Rect filterRect, Rect bodyRect) = SplitPaletteRegion(bounds);
         if (SpawnMode)
         {
@@ -594,6 +603,9 @@ public class MapEditorScene : GameScene, IGameScene3D
         _spawnFilter = new TextInput(default) { PlaceholderContent = LocalizedText.Raw("Filter spawns...") };
         _spawnList = new TreeView(default) { RowHeight = 22f };
         _spawnList.OnSelected = OnSpawnSelected;
+
+        _featureList = new TreeView(default) { RowHeight = 22f };
+        _featureList.OnSelected = OnFeatureTypeSelected;
     }
 
     void UpdateWidgets(float dt)
@@ -612,7 +624,12 @@ public class MapEditorScene : GameScene, IGameScene3D
         _inspector.Bounds = L.Inspector;
         _inspector.Update(_ui, dt);
 
-        if (BottomPanelVisible)
+        if (FeatureMode)
+        {
+            _featureList.Bounds = L.Palette;
+            _featureList.Update(_ui);
+        }
+        else if (BottomPanelVisible)
         {
             (Rect filterRect, Rect bodyRect) = SplitPaletteRegion(L.Palette);
             if (SpawnMode)
@@ -634,17 +651,21 @@ public class MapEditorScene : GameScene, IGameScene3D
     }
 
     // The bottom-left panel hosts a tool-scoped picker: the spawn tool shows the spawn-archetype list, the
-    // prop-place tool shows the kit palette, and every other tool shows NO panel (the outline reflows over the
-    // freed space, see ComputeLayout). At most one filter box + list is driven / drawn per frame. Null-guarded
-    // because the layout helpers (StatusRect and friends) may run before OnEnter creates the controller.
+    // prop-place tool shows the kit palette, the feature tool shows the feature-type list, and every other tool
+    // shows NO panel (the outline reflows over the freed space, see ComputeLayout). At most one picker is driven /
+    // drawn per frame. Null-guarded because the layout helpers (StatusRect and friends) may run before OnEnter
+    // creates the controller.
     bool SpawnMode => _controller is not null && _controller.Mode == EditorToolMode.PlaceSpawn;
 
     /// <summary>True while the kit palette (filter + tree) occupies the bottom-left panel: ONLY in the
     /// prop-place tool. Exposed for tests.</summary>
     internal bool KitPaletteVisible => _controller is not null && _controller.Mode == EditorToolMode.PlacePlacement;
 
-    // Whether the bottom-left panel exists at all this frame (one of its two contents is active).
-    bool BottomPanelVisible => SpawnMode || KitPaletteVisible;
+    // Whether the feature-type picker occupies the bottom-left panel: ONLY in the EditFeature tool.
+    bool FeatureMode => _controller is not null && _controller.Mode == EditorToolMode.EditFeature;
+
+    // Whether the bottom-left panel exists at all this frame (one of its three contents is active).
+    bool BottomPanelVisible => SpawnMode || KitPaletteVisible || FeatureMode;
 
     void HandleShortcuts()
     {
@@ -823,6 +844,28 @@ public class MapEditorScene : GameScene, IGameScene3D
     void OnSpawnSelected(TreeNode node)
     {
         if (node.Tag is PaletteLeaf leaf) _controller.SpawnArchetype = leaf.Kind;
+    }
+
+    void OnFeatureTypeSelected(TreeNode node)
+    {
+        if (node.Tag is PaletteLeaf leaf) _controller.PlaceFeatureType = leaf.Kind;
+    }
+
+    // Rebuild the flat feature-type list from the registry's registered types, preserving registration order (the
+    // default registry yields lake, flatten, ridge, rim). Built once in OnEnter (the registry is immutable after).
+    void RebuildFeatureList()
+    {
+        _featureList.Roots.Clear();
+        _featureList.Selected = null;
+        foreach (string type in _document.Registry.FeatureTypes)
+            _featureList.Roots.Add(new TreeNode(LocalizedText.Raw(type), new PaletteLeaf(type)));
+    }
+
+    // The initial placed feature type: the first registered type, or empty when the registry has none.
+    string DefaultFeatureType()
+    {
+        foreach (string type in _document.Registry.FeatureTypes) return type;
+        return "";
     }
 
     // The initial placed kind: the first kit id of the first category (both sorted), or empty with no kits.
@@ -1041,7 +1084,7 @@ public class MapEditorScene : GameScene, IGameScene3D
             v =>
             {
                 if (FeatureAt(index) is not T current) return;
-                var clone = (T)CloneFeature(current);
+                var clone = (T)FeatureGeometry.Clone(current);
                 assign(clone, v);
                 _document.Execute(new EditFeatureCommand(index, clone, current));
             }));
@@ -1051,41 +1094,6 @@ public class MapEditorScene : GameScene, IGameScene3D
     {
         List<MapFeature> features = _document.Doc.Terrain.Features;
         return index >= 0 && index < features.Count ? features[index] : null;
-    }
-
-    // Copies one of the four built-in feature DTOs so an edit replaces the instance (EditFeatureCommand holds
-    // old + new by reference). Only ever called for the types the switch above binds.
-    static MapFeature CloneFeature(MapFeature feature) => feature switch
-    {
-        LakeFeatureDoc l => new LakeFeatureDoc
-        {
-            CenterX = l.CenterX, CenterZ = l.CenterZ, Radius = l.Radius, Depth = l.Depth,
-            InnerFraction = l.InnerFraction, OuterFraction = l.OuterFraction,
-        },
-        FlattenFeatureDoc f => new FlattenFeatureDoc
-        {
-            CenterX = f.CenterX, CenterZ = f.CenterZ, Radius = f.Radius,
-            TargetHeight = f.TargetHeight, Blend = f.Blend,
-        },
-        RidgeFeatureDoc r => new RidgeFeatureDoc
-        {
-            PointX = r.PointX, PointZ = r.PointZ, DirectionX = r.DirectionX, DirectionZ = r.DirectionZ,
-            Height = r.Height, Width = r.Width, PassAlong = r.PassAlong, PassWidth = r.PassWidth,
-        },
-        RimFeatureDoc rim => CloneRim(rim),
-        _ => throw new InvalidOperationException($"No clone support for feature type '{feature.Type}'."),
-    };
-
-    static RimFeatureDoc CloneRim(RimFeatureDoc r)
-    {
-        var clone = new RimFeatureDoc
-        {
-            CenterX = r.CenterX, CenterZ = r.CenterZ, InnerRadius = r.InnerRadius, OuterRadius = r.OuterRadius,
-            WallHeight = r.WallHeight, Ruggedness = r.Ruggedness, Seed = r.Seed, CrestFrequency = r.CrestFrequency,
-        };
-        foreach (RimPassDoc pass in r.Passes)
-            clone.Passes.Add(new RimPassDoc { AngleRadians = pass.AngleRadians, HalfWidth = pass.HalfWidth, Falloff = pass.Falloff });
-        return clone;
     }
 
     void BuildExclusionInspector(string id)
@@ -1300,24 +1308,6 @@ public class MapEditorScene : GameScene, IGameScene3D
         float dpi = ui.DpiScale > 0f ? ui.DpiScale : 1f;
         Vector2 p = windowPixel / dpi;
         return !ComputeLayout(ui.Width, ui.Height).Viewport.Contains(p);
-    }
-
-    bool TryGizmoWorldPos(out Vector3 pos)
-    {
-        pos = default;
-        if (_controller.Field is null) return false;
-        EditorSelection sel = _document.Selection;
-        if (sel.Kind == SelectionKind.Placement && Placement(sel.Id) is { } p)
-        {
-            pos = new Vector3(p.X, p.Y ?? _controller.Field.SampleHeight(p.X, p.Z), p.Z);
-            return true;
-        }
-        if (sel.Kind == SelectionKind.Spawn && Spawn(sel.Id) is { } s)
-        {
-            pos = new Vector3(s.X, _controller.Field.SampleHeight(s.X, s.Z), s.Z);
-            return true;
-        }
-        return false;
     }
 
     float GizmoScaleFor(Vector3 pos) => MathF.Max(0.25f, Vector3.Distance(_camera.Position, pos) * 0.12f);

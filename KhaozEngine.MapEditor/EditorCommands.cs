@@ -744,6 +744,55 @@ public sealed class EditTerrainCommand : EditorCommand
 
 // ---- terrain features (terrain-shape affecting) ----------------------------------------------------------
 
+/// <summary>Appends a terrain feature. Affects the streamed world (terrain shape changes).</summary>
+public sealed class AddFeatureCommand : EditorCommand
+{
+    readonly MapFeature _feature;
+
+    /// <summary>Creates the command for the given feature (added on <see cref="Apply"/>).</summary>
+    public AddFeatureCommand(MapFeature feature) =>
+        _feature = feature ?? throw new ArgumentNullException(nameof(feature));
+
+    /// <inheritdoc/>
+    public override string Label => "Add terrain feature";
+    internal override bool AffectsWorld => true;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc) => doc.Terrain.Features.Add(_feature);
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => doc.Terrain.Features.Remove(_feature);
+}
+
+/// <summary>Removes the terrain feature at the given index, restoring it at that index on revert. Affects the
+/// streamed world.</summary>
+public sealed class RemoveFeatureCommand : EditorCommand
+{
+    readonly int _index;
+    MapFeature? _removed;
+
+    /// <summary>Creates the command for the feature list index to remove.</summary>
+    public RemoveFeatureCommand(int index) => _index = index;
+
+    /// <inheritdoc/>
+    public override string Label => "Remove terrain feature";
+    internal override bool AffectsWorld => true;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc)
+    {
+        _removed = doc.Terrain.Features[_index];
+        doc.Terrain.Features.RemoveAt(_index);
+    }
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc)
+    {
+        if (_removed is null) throw new InvalidOperationException("Revert called before Apply.");
+        doc.Terrain.Features.Insert(_index, _removed);
+    }
+}
+
 /// <summary>Replaces the terrain feature at a given index with a new value (parameter scrub). The caller
 /// supplies both the new and old feature. Successive edits of the same index coalesce (scrub coalescing).
 /// Affects the streamed world.</summary>

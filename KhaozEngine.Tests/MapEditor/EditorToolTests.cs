@@ -484,5 +484,134 @@ namespace KhaozEngine.Tests.MapEditor
                 Assert.DoesNotContain(';', hint);
             }
         }
+
+        // ---- overlay picking (Select mode) ----------------------------------------------------------------
+
+        [Fact]
+        public void OverlayPick_SelectsRegionExclusionFeature()
+        {
+            var (doc, c) = Make();
+            // A big region disc, a medium exclusion disc, and a lake feature (a marker-radius disc at its
+            // center), all concentric on the origin, plus a lone region off to the side. No placement or spawn,
+            // so every pick falls through EditorPicking's terrain hit into the overlay test.
+            doc.Doc.Regions.Add(new MapRegion { Name = "town", Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 30f } });
+            doc.Doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 10f } });
+            doc.Doc.Terrain.Features.Add(new LakeFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 8f, Depth = 2f });
+
+            // Inside the lake marker (< 1.5 m of its center): features outrank exclusions and regions.
+            c.Update(Press(new Vector3(0.5f, 100f, 0.5f)));
+            Assert.Equal(SelectionKind.Feature, doc.Selection.Kind);
+            Assert.Equal("0", doc.Selection.Id);
+
+            // Inside the exclusion but clear of the marker: exclusions outrank the region they sit in.
+            c.Update(Press(new Vector3(5f, 100f, 0f)));
+            Assert.Equal(SelectionKind.Exclusion, doc.Selection.Kind);
+            Assert.Equal("0", doc.Selection.Id);
+
+            // Inside the region only: the region wins.
+            c.Update(Press(new Vector3(20f, 100f, 0f)));
+            Assert.Equal(SelectionKind.Region, doc.Selection.Kind);
+            Assert.Equal("town", doc.Selection.Id);
+
+            // Clear of every overlay: the selection clears.
+            c.Update(Press(new Vector3(60f, 100f, 60f)));
+            Assert.True(doc.Selection.IsEmpty);
+        }
+
+        // ---- shape / feature gizmo drags --------------------------------------------------------------------
+
+        [Fact]
+        public void ShapeDrag_MovesCenterThroughCommand()
+        {
+            var (doc, c) = Make();
+            doc.Doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f } });
+            doc.Selection.Set(SelectionKind.Exclusion, "0");
+
+            // Grab the +X translate arrow on the shape-center gizmo, drag the ground hit out +2 on X, release.
+            c.Update(Press(new Vector3(0.6f, 100f, 0f)));
+            Assert.True(c.IsDragging);
+            c.Update(Drag(new Vector3(2.6f, 100f, 0f)));
+            c.Update(Release(new Vector3(2.6f, 100f, 0f)));
+
+            Assert.False(c.IsDragging);
+            var disc = Assert.IsType<DiscShapeDoc>(doc.Doc.Exclusions[0].Shape);
+            Near(2f, disc.CenterX);
+            Near(0f, disc.CenterZ);
+            Near(5f, disc.Radius);                      // a translate leaves the radius alone
+            Assert.True(doc.WorldRebuildPending);        // exclusion shape edits rebuild the streamed world
+            Assert.Equal(1, doc.History.UndoDepth);      // the whole drag is one coalesced undo step
+
+            Assert.True(doc.Undo());
+            disc = Assert.IsType<DiscShapeDoc>(doc.Doc.Exclusions[0].Shape);
+            Near(0f, disc.CenterX);                      // undo restores the pre-drag center
+        }
+
+        [Fact]
+        public void ShapeScale_ResizesRadius()
+        {
+            var (doc, c) = Make();
+            doc.Doc.Regions.Add(new MapRegion { Name = "town", Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f } });
+            doc.Selection.Set(SelectionKind.Region, "town");
+
+            // Grab the corner scale cube (at (0.85, 0, 0.85) at gizmo scale 1) and drag out to double the radius
+            // measured from the shape center, so the scale factor is exactly 2.
+            c.Update(Press(new Vector3(0.85f, 100f, 0.85f)));
+            Assert.True(c.IsDragging);
+            c.Update(Drag(new Vector3(1.7f, 100f, 1.7f)));
+            c.Update(Release(new Vector3(1.7f, 100f, 1.7f)));
+
+            var disc = Assert.IsType<DiscShapeDoc>(doc.Doc.Regions[0].Shape);
+            Near(10f, disc.Radius);                      // 5 * 2
+            Near(0f, disc.CenterX);                      // the center is preserved under a scale
+            Near(0f, disc.CenterZ);
+            Assert.False(doc.WorldRebuildPending);        // regions are game-interpreted, never rebuild the world
+            Assert.Equal(1, doc.History.UndoDepth);
+
+            Assert.True(doc.Undo());
+            disc = Assert.IsType<DiscShapeDoc>(doc.Doc.Regions[0].Shape);
+            Near(5f, disc.Radius);
+        }
+
+        // ---- feature placement / delete ---------------------------------------------------------------------
+
+        [Fact]
+        public void FeaturePlace_AddsDefaultLakeAtClick()
+        {
+            var (doc, c) = Make();
+            c.Mode = EditorToolMode.EditFeature;
+            c.PlaceFeatureType = "lake";
+
+            c.Update(Press(new Vector3(5f, 100f, -3f)));
+
+            Assert.Single(doc.Doc.Terrain.Features);
+            var lake = Assert.IsType<LakeFeatureDoc>(doc.Doc.Terrain.Features[0]);
+            Near(5f, lake.CenterX);
+            Near(-3f, lake.CenterZ);
+            Near(10f, lake.Radius);                      // r10 default
+            Near(3f, lake.Depth);                        // d3 default
+            Assert.Equal(SelectionKind.Feature, doc.Selection.Kind);
+            Assert.Equal("0", doc.Selection.Id);
+            Assert.True(doc.WorldRebuildPending);         // features affect the streamed world
+            Assert.Equal(EditorToolMode.Select, c.Mode);  // one shot back to Select
+            Assert.Equal(1, doc.History.UndoDepth);
+        }
+
+        [Fact]
+        public void FeatureDelete_RemovesSelected()
+        {
+            var (doc, c) = Make();
+            doc.Doc.Terrain.Features.Add(new LakeFeatureDoc { CenterX = 1f, CenterZ = 2f, Radius = 6f, Depth = 3f });
+            doc.Selection.Set(SelectionKind.Feature, "0");
+
+            c.Update(new EditorFrameInput(default, default, deletePressed: true));
+
+            Assert.Empty(doc.Doc.Terrain.Features);
+            Assert.True(doc.Selection.IsEmpty);
+            Assert.True(doc.WorldRebuildPending);
+            Assert.Equal(1, doc.History.UndoDepth);
+
+            Assert.True(doc.Undo());
+            Assert.Single(doc.Doc.Terrain.Features);      // the removed feature is restored
+        }
     }
 }

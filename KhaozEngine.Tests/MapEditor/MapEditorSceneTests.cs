@@ -774,6 +774,42 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.False(scene.KitPaletteVisible);
         }
 
+        // ---- feature-type picker -------------------------------------------------------------------------
+
+        [Fact]
+        public void FeatureList_ShowsRegistryTypes_AndSelectionSetsPlaceFeatureType()
+        {
+            var scene = PushDocScene(ValidDoc);
+
+            // The feature-type picker lists the registry's built-in feature types in registration order, flat.
+            Assert.Equal(new[] { "lake", "flatten", "ridge", "rim" },
+                scene.FeatureList.Roots.Select(r => r.Label.Resolve()).ToArray());
+            Assert.All(scene.FeatureList.Roots, r => Assert.Empty(r.Children));
+
+            // The default placed type is the first registered type.
+            Assert.Equal("lake", scene.Controller.PlaceFeatureType);
+
+            // Tapping the "ridge" leaf (visible index 2) sets the controller's PlaceFeatureType.
+            scene.FeatureList.Bounds = new Rect(0f, 0f, 200f, 240f);
+            scene.FeatureList.RowHeight = 22f;
+            var input = new InputManager();
+            TapTree(scene.FeatureList, input, new Vector2(120f, 2 * 22f + 11f));
+            Assert.Equal("ridge", scene.Controller.PlaceFeatureType);
+        }
+
+        [Fact]
+        public void FeaturePanel_ShowsOnlyInEditFeatureMode()
+        {
+            var scene = PushDocScene(ValidDoc);
+
+            scene.Controller.Mode = EditorToolMode.EditFeature;
+            Assert.True(scene.PaletteRect(1000f, 600f).Height > 0f);   // the feature picker owns the bottom panel
+            Assert.False(scene.KitPaletteVisible);                     // but it is not the kit palette
+
+            scene.Controller.Mode = EditorToolMode.Select;
+            Near(0f, scene.PaletteRect(1000f, 600f).Height);           // no panel outside the picker tools
+        }
+
         // ---- status strip --------------------------------------------------------------------------------
 
         [Fact]

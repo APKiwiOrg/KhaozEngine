@@ -124,6 +124,9 @@ and exposes a `Build()` that constructs the game's `ITerrainFeature`. `MapDocume
 feature `type` the registry does not know, so a document referencing an unregistered feature fails to load
 instead of silently dropping it.
 
+`MapDocRegistry.FeatureTypes` enumerates the registered discriminators in registration order (the default
+registry yields `lake`, `flatten`, `ridge`, `rim`), so a tool can list the feature types it can place.
+
 ## Format versioning
 
 `MapDocumentFile.CurrentFormatVersion` is the version this engine build reads and writes. Loading a

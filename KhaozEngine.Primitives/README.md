@@ -5,7 +5,8 @@ no renderer, no window). Shared value types and pure helpers every other package
 color anywhere in the engine's public API is the `Color` from here.
 
 - `Color` - RGBA float struct, a typed wrapper over `Vector4` (implicit to `Vector4`, explicit back).
-  `FromBytes`, `FromHex`/`ToHex`, `WithAlpha`, `* float`, unclamped `Lerp`.
+  `FromBytes`, `FromHex`/`ToHex`, `WithAlpha`, `ScaleRgb` (scale RGB, keep alpha - dim a color without
+  making it translucent, unlike `* float`), `* float`, unclamped `Lerp`.
 - `DeterministicRng` - seeded xorshift128+ (splitmix64 init), reproducible across .NET versions and
   platforms. `State` get/set for save/resume, `CreateDerived("combat")` for decorrelated per-subsystem
   streams, `StableHash` for a platform-stable string hash.

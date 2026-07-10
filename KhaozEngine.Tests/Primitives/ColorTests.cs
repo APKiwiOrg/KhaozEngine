@@ -47,6 +47,30 @@ public class ColorTests
         Assert.Equal(new Color(0.2f, 0.4f, 0.6f, 0.5f), c);
     }
 
+    [Fact]
+    public void ScaleRgb_ScalesRgbAndPreservesAlpha()
+    {
+        var c = new Color(0.2f, 0.4f, 0.6f, 0.8f).ScaleRgb(0.5f);
+        Assert.Equal(new Color(0.1f, 0.2f, 0.3f, 0.8f), c);   // alpha untouched, unlike c * 0.5f
+    }
+
+    [Fact]
+    public void ScaleRgb_ContrastsWithMultiply_OnAlpha()
+    {
+        var c = new Color(0.2f, 0.4f, 0.6f, 1f);
+        Assert.Equal(1f, c.ScaleRgb(0.6f).A, 5);              // ScaleRgb keeps opacity
+        Assert.Equal(0.6f, (c * 0.6f).A, 5);                  // operator * dims alpha too
+    }
+
+    [Theory]
+    [InlineData(-0.25f)]   // unclamped below 0
+    [InlineData(1.5f)]     // unclamped above 1
+    public void ScaleRgb_IsUnclamped(float factor)
+    {
+        var c = new Color(0.2f, 0.4f, 0.6f, 0.8f).ScaleRgb(factor);
+        Assert.Equal(new Color(0.2f * factor, 0.4f * factor, 0.6f * factor, 0.8f), c);
+    }
+
     // --- error paths ---
 
     [Fact]

@@ -5,6 +5,21 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.51.0
+
+Add `Color.ScaleRgb(float)` - scales R, G, B and preserves alpha - so tinting under straight-alpha
+blending stops leaking into opacity the way `* float` does.
+
+- **`Color.ScaleRgb(float factor)` (`KhaozEngine.Primitives`).** Returns the color with RGB scaled and
+  alpha untouched, for dimming or brightening a visible color without changing its opacity. Unclamped,
+  the same convention as `* float` and `Lerp`. `* float` scales all four channels including alpha, which
+  under the 2D batch's SourceAlpha/InverseSourceAlpha blend reads as translucency (a `color * 0.6f` meant
+  to dim 40% instead makes the sprite 40% see-through) or, at low factors, invisibility (a faint
+  `color * 0.13f` attenuates alpha below one gray level and the draw vanishes). The `ScaleRgb` and
+  `operator *` XML docs now cross-reference each other so the contrast is visible at the call site. Two
+  shipped Nullwake bugs (a double-attenuated guide ring and bled-through state tints) traced to this
+  footgun; Nullwake's game-side `NwColors.Dim` is superseded by this helper.
+
 ## 10.50.0
 
 The in-engine map editor runtime lands as the new opt-in `KhaozEngine.MapEditor` package (Phase B2 of

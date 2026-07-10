@@ -114,11 +114,14 @@ public class MapEditorScene : GameScene, IGameScene3D
     // (status-strip message) and the next Shift+Escape pops. Any save or document mutation disarms it.
     bool _exitArmed;
 
-    // Region rename bookkeeping: the selection is keyed by region NAME, so after a rename it must follow the
-    // new name. The sync is deferred until the rename row loses focus (an immediate Selection.Set would rebuild
-    // the inspector mid-typing and drop the focus per keystroke).
-    string? _pendingRegionSelect;
-    TextRow? _regionNameRow;
+    // Inline-rename bookkeeping, shared by the region / placement / spawn inspectors: those selections are keyed
+    // by name (region) or id (placement, spawn), so after a rename the selection must follow the new key. The
+    // re-select is deferred until the rename row loses focus (an immediate Selection.Set would rebuild the
+    // inspector mid-typing and drop the field's focus per keystroke). Only one inspector row is ever focused, so
+    // a single pending slot covers all three renamable kinds.
+    TextRow? _nameRow;
+    SelectionKind _pendingSelectKind;
+    string? _pendingSelectId;
 
     /// <summary>Wires the render surface, the shared white pixel and UI font, and the editor options, then returns
     /// this for chaining (the Room3D Init-injection pattern). Nothing is dereferenced until <see cref="OnEnter"/>.</summary>
@@ -286,12 +289,14 @@ public class MapEditorScene : GameScene, IGameScene3D
         HandleShortcuts();
         UpdateWidgets(dt);
 
-        // Sync the selection to a renamed region once the rename row is done (outside the grid's row iteration,
-        // so the inspector rebuild this triggers never tears down a row mid-update).
-        if (_pendingRegionSelect is string pending && (_regionNameRow is null || !_regionNameRow.Input.IsFocused))
+        // Sync the selection to a renamed element (region by name, placement/spawn by id) once the rename row is
+        // done (outside the grid's row iteration, so the inspector rebuild this triggers never tears down a row
+        // mid-update).
+        if (_pendingSelectId is string pending && (_nameRow is null || !_nameRow.Input.IsFocused))
         {
-            _pendingRegionSelect = null;
-            _document.Selection.Set(SelectionKind.Region, pending);
+            SelectionKind kind = _pendingSelectKind;
+            _pendingSelectId = null;
+            _document.Selection.Set(kind, pending);
         }
     }
 
@@ -496,15 +501,15 @@ public class MapEditorScene : GameScene, IGameScene3D
 
     void OnSelectionChanged()
     {
-        // A region rename queues a pending re-select of the NEW name once the rename row loses focus (see
-        // UpdateChrome). The pending sync clears the field itself before it calls Selection.Set, so this only
-        // ever sees it still set when something ELSE changed the selection first (an outline click, a viewport
-        // pick) while the rename row was still focused. That selection must win: drop the stale pending re-select
-        // so it cannot fire next frame and stomp the user's new pick back onto the renamed region.
-        if (_pendingRegionSelect is string pending &&
-            !(_document.Selection.Kind == SelectionKind.Region && _document.Selection.Id == pending))
+        // A rename queues a pending re-select of the NEW key once the rename row loses focus (see UpdateChrome).
+        // The pending sync clears the field itself before it calls Selection.Set, so this only ever sees it still
+        // set when something ELSE changed the selection first (an outline click, a viewport pick) while the rename
+        // row was still focused. That selection must win: drop the stale pending re-select so it cannot fire next
+        // frame and stomp the user's new pick back onto the renamed element.
+        if (_pendingSelectId is string pending &&
+            !(_document.Selection.Kind == _pendingSelectKind && _document.Selection.Id == pending))
         {
-            _pendingRegionSelect = null;
+            _pendingSelectId = null;
         }
         RebuildInspector();
     }
@@ -691,7 +696,7 @@ public class MapEditorScene : GameScene, IGameScene3D
     void RebuildInspector()
     {
         _inspector.Rows.Clear();
-        _regionNameRow = null;
+        _nameRow = null;
         EditorSelection sel = _document.Selection;
         switch (sel.Kind)
         {
@@ -719,29 +724,61 @@ public class MapEditorScene : GameScene, IGameScene3D
             () => _document.Doc.Terrain.Biomes.Count.ToString(CultureInfo.InvariantCulture)));
     }
 
+    // The inline-rename Name row shared by the region, placement, and spawn inspectors. A closure tracks the
+    // CURRENT key across renames, so the row (and every downstream row that reads the returned getter) keeps
+    // working and keeps focus while the user types. The setter guards blank / unchanged / collision / vanished,
+    // routes the rename through `rename`, then queues a deferred re-select of the new key (fired once the row
+    // loses focus, see UpdateChrome) so the name-keyed selection follows the rename. Returns a getter for the
+    // live key so the caller's remaining rows track the element across a rename.
+    Func<string> AddNameRow(SelectionKind kind, string key, Func<string, bool> exists,
+        Func<string, string, IEditorCommand> rename)
+    {
+        string current = key;
+        var row = new TextRow(LocalizedText.Raw("Name"),
+            () => current,
+            v =>
+            {
+                if (string.IsNullOrWhiteSpace(v) || string.Equals(v, current, StringComparison.Ordinal)) return;
+                if (exists(v) || !exists(current)) return;   // collision or vanished
+                _document.Execute(rename(current, v));
+                current = v;
+                _pendingSelectKind = kind;
+                _pendingSelectId = v;
+            });
+        _nameRow = row;
+        _inspector.Rows.Add(row);
+        return () => current;
+    }
+
     void BuildPlacementInspector(string id)
     {
+        if (Placement(id) is null) return;
+        Func<string> cur = AddNameRow(SelectionKind.Placement, id,
+            v => Placement(v) is not null, (oldId, newId) => new RenamePlacementCommand(oldId, newId));
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("X"),
-            () => Placement(id)?.X ?? 0f, v => MovePlacement(id, x: v)));
+            () => Placement(cur())?.X ?? 0f, v => MovePlacement(cur(), x: v)));
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Z"),
-            () => Placement(id)?.Z ?? 0f, v => MovePlacement(id, z: v)));
+            () => Placement(cur())?.Z ?? 0f, v => MovePlacement(cur(), z: v)));
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Yaw"),
-            () => Placement(id)?.Yaw ?? 0f, v => _document.Execute(new RotatePlacementCommand(id, v))));
+            () => Placement(cur())?.Yaw ?? 0f, v => _document.Execute(new RotatePlacementCommand(cur(), v))));
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Scale"),
-            () => Placement(id)?.Scale ?? 1f, v => _document.Execute(new ScalePlacementCommand(id, v)),
+            () => Placement(cur())?.Scale ?? 1f, v => _document.Execute(new ScalePlacementCommand(cur(), v)),
             min: 0.01f));
     }
 
     void BuildSpawnInspector(string id)
     {
+        if (Spawn(id) is null) return;
+        Func<string> cur = AddNameRow(SelectionKind.Spawn, id,
+            v => Spawn(v) is not null, (oldId, newId) => new RenameSpawnCommand(oldId, newId));
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("X"),
-            () => Spawn(id)?.X ?? 0f, v => MoveSpawn(id, x: v)));
+            () => Spawn(cur())?.X ?? 0f, v => MoveSpawn(cur(), x: v)));
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Z"),
-            () => Spawn(id)?.Z ?? 0f, v => MoveSpawn(id, z: v)));
+            () => Spawn(cur())?.Z ?? 0f, v => MoveSpawn(cur(), z: v)));
         _inspector.Rows.Add(new BoolRow(LocalizedText.Raw("Enabled"),
-            () => Spawn(id)?.Enabled ?? false, v => _document.Execute(new SetSpawnEnabledCommand(id, v))));
+            () => Spawn(cur())?.Enabled ?? false, v => _document.Execute(new SetSpawnEnabledCommand(cur(), v))));
         _inspector.Rows.Add(new TextRow(LocalizedText.Raw("Archetype"),
-            () => Spawn(id)?.ArchetypeId ?? "", v => { if (Spawn(id) is { } s) s.ArchetypeId = v; }));
+            () => Spawn(cur())?.ArchetypeId ?? "", v => { if (Spawn(cur()) is { } s) s.ArchetypeId = v; }));
     }
 
     // ---- feature / exclusion / region inspectors -----------------------------------------------------------
@@ -856,23 +893,9 @@ public class MapEditorScene : GameScene, IGameScene3D
     void BuildRegionInspector(string name)
     {
         if (RegionByName(name) is null) return;
-        // The closure tracks the CURRENT name across renames, so the row keeps working (and keeps focus) while
-        // the user types. The selection is synced to the new name once the rename row loses focus (see
-        // UpdateChrome), because a mid-typing sync would rebuild the inspector and drop the focus per keystroke.
-        string current = name;
-        var row = new TextRow(LocalizedText.Raw("Name"),
-            () => current,
-            v =>
-            {
-                if (string.IsNullOrWhiteSpace(v) || string.Equals(v, current, StringComparison.Ordinal)) return;
-                if (RegionByName(v) is not null || RegionByName(current) is null) return;   // collision or vanished
-                _document.Execute(new RenameRegionCommand(current, v));
-                current = v;
-                _pendingRegionSelect = v;
-            });
-        _regionNameRow = row;
-        _inspector.Rows.Add(row);
-        AddShapeRows(() => RegionByName(current)?.Shape);
+        Func<string> cur = AddNameRow(SelectionKind.Region, name,
+            v => RegionByName(v) is not null, (oldName, newName) => new RenameRegionCommand(oldName, newName));
+        AddShapeRows(() => RegionByName(cur())?.Shape);
     }
 
     void AddShapeRows(Func<MapShapeDoc?> shape)

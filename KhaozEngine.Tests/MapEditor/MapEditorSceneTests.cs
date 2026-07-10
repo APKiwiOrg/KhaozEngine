@@ -486,7 +486,7 @@ namespace KhaozEngine.Tests.MapEditor
 
             // Drive the rename row headless, matching the NumberField-scrub idiom above but for text: focus the
             // field, replace its buffer, then run one row Update so the TextChanged write-through fires the
-            // setter (RenameRegionCommand) and queues _pendingRegionSelect.
+            // setter (RenameRegionCommand) and queues the deferred re-select.
             var ui = new InputManager();
             ui.Update(InputState.Empty);
             row.Input.IsFocused = true;
@@ -501,11 +501,87 @@ namespace KhaozEngine.Tests.MapEditor
             scene.Document.Selection.Set(SelectionKind.Placement, "placement-1");
 
             // One Update frame: the pending re-select sync lives in UpdateChrome. Without the fix, the rebuilt
-            // inspector's now-null _regionNameRow lets the stale _pendingRegionSelect fire and stomp this pick.
+            // inspector's now-null name row lets the stale pending re-select fire and stomp this pick.
             scene.OnUpdate(0.016f);
 
             Assert.Equal(SelectionKind.Placement, scene.Document.Selection.Kind);
             Assert.Equal("placement-1", scene.Document.Selection.Id);
+        }
+
+        [Fact]
+        public void PlacementRename_SelectionFollows_AndYieldsToNewSelections()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Placements.Add(new MapPlacement { Id = "placement-1", Kind = "prop" });
+                doc.Placements.Add(new MapPlacement { Id = "placement-2", Kind = "prop" });
+                return doc;
+            });
+
+            scene.Document.Selection.Set(SelectionKind.Placement, "placement-1");
+            var row = Assert.IsType<TextRow>(scene.Inspector.Rows[0]);   // the Name rename row leads the inspector
+
+            // ---- half 1: the selection follows the rename once the row blurs ----
+            // Drive the rename row headless (the region-rename idiom): focus the field, replace its buffer, then run
+            // one row Update so the TextChanged write-through fires the setter (RenamePlacementCommand) and queues
+            // the deferred re-select.
+            var ui = new InputManager();
+            ui.Update(InputState.Empty);
+            row.Input.IsFocused = true;
+            row.Input.SetText("placement-1-renamed");
+            row.Update(new Rect(0f, 0f, 200f, 28f), ui, 0.016f);
+
+            Assert.Equal("placement-1-renamed", scene.Document.Doc.Placements[0].Id);
+            Assert.True(row.Input.IsFocused);   // still typing: the deferred re-select has NOT fired yet
+
+            row.Input.IsFocused = false;        // the user tabs / clicks away from the rename row
+            scene.OnUpdate(0.016f);             // the deferred sync lives in UpdateChrome
+            Assert.Equal(SelectionKind.Placement, scene.Document.Selection.Kind);
+            Assert.Equal("placement-1-renamed", scene.Document.Selection.Id);   // selection followed the new id
+
+            // ---- half 2: a fresh pick made mid-rename yields (is not stomped by the pending sync) ----
+            var row2 = Assert.IsType<TextRow>(scene.Inspector.Rows[0]);
+            row2.Input.IsFocused = true;
+            row2.Input.SetText("placement-1-again");
+            row2.Update(new Rect(0f, 0f, 200f, 28f), ui, 0.016f);
+            Assert.Equal("placement-1-again", scene.Document.Doc.Placements[0].Id);
+
+            // The user picks a different placement (outline click / viewport pick) before ever blurring the row.
+            scene.Document.Selection.Set(SelectionKind.Placement, "placement-2");
+
+            // One Update frame: without the yield fix, the stale pending re-select fires here and stomps this pick.
+            scene.OnUpdate(0.016f);
+            Assert.Equal(SelectionKind.Placement, scene.Document.Selection.Kind);
+            Assert.Equal("placement-2", scene.Document.Selection.Id);
+        }
+
+        [Fact]
+        public void SpawnRename_SelectionFollows()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Spawns.Add(new MapSpawn { Id = "spawn-1", ArchetypeId = "wolf" });
+                return doc;
+            });
+
+            scene.Document.Selection.Set(SelectionKind.Spawn, "spawn-1");
+            var row = Assert.IsType<TextRow>(scene.Inspector.Rows[0]);   // the Name rename row leads the inspector
+
+            var ui = new InputManager();
+            ui.Update(InputState.Empty);
+            row.Input.IsFocused = true;
+            row.Input.SetText("spawn-1-renamed");
+            row.Update(new Rect(0f, 0f, 200f, 28f), ui, 0.016f);
+
+            Assert.Equal("spawn-1-renamed", scene.Document.Doc.Spawns[0].Id);
+            Assert.True(row.Input.IsFocused);   // still typing: the deferred re-select has NOT fired yet
+
+            row.Input.IsFocused = false;        // the user tabs / clicks away from the rename row
+            scene.OnUpdate(0.016f);
+            Assert.Equal(SelectionKind.Spawn, scene.Document.Selection.Kind);
+            Assert.Equal("spawn-1-renamed", scene.Document.Selection.Id);   // selection followed the new id
         }
 
         // ---- categorized palette + filters ---------------------------------------------------------------

@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapEditor;
@@ -90,6 +91,40 @@ namespace KhaozEngine.Tests.MapEditor
         [Fact]
         public void RenameRegion_RoundTrips() =>
             AssertRoundTrip(Sample(), new RenameRegionCommand("town", "village"));
+
+        [Fact]
+        public void RenamePlacementCommand_AppliesRevertsAndGuardsDuplicates()
+        {
+            var doc = Sample();
+            doc.Placements.Add(P("shed"));   // a second placement, so a duplicate target id exists
+
+            // Applies and reverts: "inn" -> "tavern" round-trips deep-equal (id-keyed selection would follow).
+            AssertRoundTrip(doc, new RenamePlacementCommand("inn", "tavern"));
+
+            // Guards duplicates: renaming onto an id already in the document throws (the FindPlacement throw-pattern)
+            // and leaves the history untouched, because History.Execute applies BEFORE it pushes, so a throwing
+            // Apply never lands an undo step or mutates the source id.
+            var ed = new EditorDocument(doc);
+            Assert.Throws<InvalidOperationException>(() => ed.Execute(new RenamePlacementCommand("inn", "shed")));
+            Assert.False(ed.History.CanUndo);
+            Assert.Contains(doc.Placements, p => p.Id == "inn");    // source id intact
+            Assert.Single(doc.Placements, p => p.Id == "shed");     // target still unique: no clone
+        }
+
+        [Fact]
+        public void RenameSpawnCommand_AppliesRevertsAndGuardsDuplicates()
+        {
+            var doc = Sample();
+            doc.Spawns.Add(new MapSpawn { Id = "bear-1", ArchetypeId = "bear", X = 4f, Z = 9f });
+
+            AssertRoundTrip(doc, new RenameSpawnCommand("wolf-1", "wolf-2"));
+
+            var ed = new EditorDocument(doc);
+            Assert.Throws<InvalidOperationException>(() => ed.Execute(new RenameSpawnCommand("wolf-1", "bear-1")));
+            Assert.False(ed.History.CanUndo);
+            Assert.Contains(doc.Spawns, s => s.Id == "wolf-1");
+            Assert.Single(doc.Spawns, s => s.Id == "bear-1");
+        }
 
         [Fact]
         public void EditFeature_RoundTrips()

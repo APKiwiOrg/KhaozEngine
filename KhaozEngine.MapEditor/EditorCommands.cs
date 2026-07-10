@@ -65,6 +65,20 @@ public abstract class EditorCommand : IEditorCommand
                 return i;
         throw new InvalidOperationException($"No region named '{name}' in the document.");
     }
+
+    private protected static void GuardNoPlacement(MapDocument doc, string id)
+    {
+        foreach (MapPlacement p in doc.Placements)
+            if (string.Equals(p.Id, id, StringComparison.Ordinal))
+                throw new InvalidOperationException($"A placement with id '{id}' already exists in the document.");
+    }
+
+    private protected static void GuardNoSpawn(MapDocument doc, string id)
+    {
+        foreach (MapSpawn s in doc.Spawns)
+            if (string.Equals(s.Id, id, StringComparison.Ordinal))
+                throw new InvalidOperationException($"A spawn with id '{id}' already exists in the document.");
+    }
 }
 
 // ---- placements ------------------------------------------------------------------------------------------
@@ -264,6 +278,36 @@ public sealed class ScalePlacementCommand : EditorCommand
     }
 }
 
+/// <summary>Renames a placement. Placements are keyed by id, so the id-carrying selection follows the rename.
+/// The target id must be unique: <see cref="Apply"/> throws (before it mutates) if a placement already carries
+/// the new id, so a rejected rename lands no undo step. Renames never coalesce (no merge).</summary>
+public sealed class RenamePlacementCommand : EditorCommand
+{
+    readonly string _oldId;
+    readonly string _newId;
+
+    /// <summary>Creates the command renaming placement <paramref name="oldId"/> to <paramref name="newId"/>.</summary>
+    public RenamePlacementCommand(string oldId, string newId)
+    {
+        _oldId = oldId ?? throw new ArgumentNullException(nameof(oldId));
+        _newId = newId ?? throw new ArgumentNullException(nameof(newId));
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Rename placement";
+    internal override bool AffectsWorld => false;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc)
+    {
+        GuardNoPlacement(doc, _newId);   // reject a duplicate target before touching the source
+        FindPlacement(doc, _oldId).Id = _newId;
+    }
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => FindPlacement(doc, _newId).Id = _oldId;
+}
+
 // ---- spawns ----------------------------------------------------------------------------------------------
 
 /// <summary>Appends an NPC spawn marker to the document.</summary>
@@ -399,6 +443,36 @@ public sealed class SetSpawnEnabledCommand : EditorCommand
 
     /// <inheritdoc/>
     public override void Revert(MapDocument doc) => FindSpawn(doc, _id).Enabled = _old;
+}
+
+/// <summary>Renames a spawn. Spawns are keyed by id, so the id-carrying selection follows the rename. The target
+/// id must be unique: <see cref="Apply"/> throws (before it mutates) if a spawn already carries the new id, so a
+/// rejected rename lands no undo step. Renames never coalesce (no merge).</summary>
+public sealed class RenameSpawnCommand : EditorCommand
+{
+    readonly string _oldId;
+    readonly string _newId;
+
+    /// <summary>Creates the command renaming spawn <paramref name="oldId"/> to <paramref name="newId"/>.</summary>
+    public RenameSpawnCommand(string oldId, string newId)
+    {
+        _oldId = oldId ?? throw new ArgumentNullException(nameof(oldId));
+        _newId = newId ?? throw new ArgumentNullException(nameof(newId));
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Rename spawn";
+    internal override bool AffectsWorld => false;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc)
+    {
+        GuardNoSpawn(doc, _newId);   // reject a duplicate target before touching the source
+        FindSpawn(doc, _oldId).Id = _newId;
+    }
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => FindSpawn(doc, _newId).Id = _oldId;
 }
 
 // ---- exclusions (terrain-shape affecting) ----------------------------------------------------------------

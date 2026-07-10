@@ -32,6 +32,18 @@ namespace KhaozEngine.Tests.MapEditor
             return path;
         }
 
+        // Writes a manifest under an EXPLICIT file name (its own fresh temp directory, so two calls with the same
+        // name never collide) so a test can assert the KindCategories manifest-stem fallback, e.g.
+        // "props.manifest.json" -> "props". The caller deletes the whole directory when done.
+        static string WriteManifestNamed(string fileName, string json)
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "ke-viewport-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            string path = Path.Combine(dir, fileName);
+            File.WriteAllText(path, json);
+            return path;
+        }
+
         static ViewportWorld Construct(params string[] jsons)
         {
             var paths = new List<string>(jsons.Length);
@@ -58,7 +70,7 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
-        public void KindHeights_MergesManifests_LaterEntryWinsOnDuplicateId()
+        public void KindHeights_FirstManifestWins()
         {
             const string second =
                 "{ \"props\": [ { \"id\": \"hut\", \"file\": \"hut2.glb\", \"heightMeters\": 9.0 }, " +
@@ -66,7 +78,7 @@ namespace KhaozEngine.Tests.MapEditor
             ViewportWorld vw = Construct(TwoPropManifest, second);
 
             Assert.Equal(3, vw.KindHeights.Count);
-            Assert.Equal(9f, vw.KindHeights["hut"]);   // the second manifest overrides the first
+            Assert.Equal(3f, vw.KindHeights["hut"]);   // the FIRST manifest wins, matching the mesh tiebreak
             Assert.Equal(1f, vw.KindHeights["rock"]);
             Assert.Equal(12f, vw.KindHeights["tree"]);
         }
@@ -76,6 +88,40 @@ namespace KhaozEngine.Tests.MapEditor
         {
             var vw = new ViewportWorld(null!, Array.Empty<string>());
             Assert.Empty(vw.KindHeights);
+        }
+
+        // ---- KindCategories parsing ---------------------------------------------------------------------
+
+        [Fact]
+        public void KindCategories_FallbackToManifestStem_AndFirstWins()
+        {
+            string first = WriteManifestNamed("props.manifest.json",
+                "{ \"props\": [ { \"id\": \"pine_a\", \"file\": \"pine_a.glb\", \"heightMeters\": 12.0 }, " +
+                "{ \"id\": \"hut\", \"file\": \"hut.glb\", \"heightMeters\": 3.0, \"category\": \"buildings\" } ] }");
+            string second = WriteManifestNamed("groundcover.manifest.json",
+                "{ \"props\": [ { \"id\": \"hut\", \"file\": \"hut2.glb\", \"heightMeters\": 9.0, \"category\": \"structures\" }, " +
+                "{ \"id\": \"grass_a\", \"file\": \"grass_a.glb\", \"heightMeters\": 0.3 } ] }");
+            try
+            {
+                var vw = new ViewportWorld(null!, new[] { first, second });
+
+                Assert.Equal(3, vw.KindCategories.Count);
+                Assert.Equal("props", vw.KindCategories["pine_a"]);        // no "category" -> falls back to the manifest file stem
+                Assert.Equal("buildings", vw.KindCategories["hut"]);       // explicit category, and the FIRST manifest wins over "structures"
+                Assert.Equal("groundcover", vw.KindCategories["grass_a"]); // "groundcover.manifest.json" -> "groundcover"
+            }
+            finally
+            {
+                Directory.Delete(Path.GetDirectoryName(first)!, true);
+                Directory.Delete(Path.GetDirectoryName(second)!, true);
+            }
+        }
+
+        [Fact]
+        public void KindCategories_EmptyManifestList_IsEmpty()
+        {
+            var vw = new ViewportWorld(null!, Array.Empty<string>());
+            Assert.Empty(vw.KindCategories);
         }
 
         [Fact]

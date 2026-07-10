@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Numerics;
 using KhaozEngine.MapDoc;
 using KhaozEngine.Primitives;
@@ -44,6 +45,7 @@ public sealed class ViewportWorld : IDisposable
     readonly Scene3D _scene;
     readonly IReadOnlyList<AssetEntry> _entries;
     readonly Dictionary<string, float> _kindHeights;
+    readonly Dictionary<string, string> _kindCategories;
     readonly Dictionary<string, MeshHandle> _propMeshes = new();
     readonly PlacementCache _placements = new();
 
@@ -56,10 +58,10 @@ public sealed class ViewportWorld : IDisposable
     TerrainStreamer? _streamer;
 
     /// <summary>Reads and parses every manifest in <paramref name="manifestPaths"/> into
-    /// <see cref="KindHeights"/> and retains the entries for the mesh upload in <see cref="Build"/>. Does NO GPU
-    /// work: <paramref name="scene"/> is stored and only dereferenced from <see cref="Build"/> onward (so a null
-    /// scene is a valid headless fixture for the parse + guard surface). Throws
-    /// <see cref="ArgumentNullException"/> if <paramref name="manifestPaths"/> is null, and
+    /// <see cref="KindHeights"/> / <see cref="KindCategories"/> and retains the entries for the mesh upload in
+    /// <see cref="Build"/>. Does NO GPU work: <paramref name="scene"/> is stored and only dereferenced from
+    /// <see cref="Build"/> onward (so a null scene is a valid headless fixture for the parse + guard surface).
+    /// Throws <see cref="ArgumentNullException"/> if <paramref name="manifestPaths"/> is null, and
     /// <see cref="InvalidOperationException"/> (via <see cref="AssetManifest.Load"/>) for an unreadable or
     /// malformed manifest.</summary>
     public ViewportWorld(Scene3D scene, IReadOnlyList<string> manifestPaths)
@@ -69,17 +71,23 @@ public sealed class ViewportWorld : IDisposable
 
         var entries = new List<AssetEntry>();
         var heights = new Dictionary<string, float>(StringComparer.Ordinal);
+        var categories = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (string path in manifestPaths)
         {
             AssetManifest manifest = AssetManifest.Load(path);
+            string stem = ManifestStem(path);
             foreach (AssetEntry entry in manifest.Props)
             {
                 entries.Add(entry);
-                heights[entry.Id] = entry.HeightMeters;   // a later manifest overrides an earlier duplicate id
+                // First-manifest-wins on a duplicate id, matching the mesh tiebreak in LoadKitMeshes (keeps
+                // heights/categories/meshes consistent; heights used to be last-wins, a divergence closed here).
+                if (!heights.ContainsKey(entry.Id)) heights[entry.Id] = entry.HeightMeters;
+                if (!categories.ContainsKey(entry.Id)) categories[entry.Id] = entry.Category ?? stem;
             }
         }
         _entries = entries;
         _kindHeights = heights;
+        _kindCategories = categories;
     }
 
     /// <summary>The built terrain field, or null before <see cref="Build"/> (and after <see cref="Dispose"/>).</summary>
@@ -89,8 +97,16 @@ public sealed class ViewportWorld : IDisposable
     public bool IsBuilt => _built;
 
     /// <summary>Each manifest kit id's declared <see cref="AssetEntry.HeightMeters"/>, the world-space box height
-    /// picking multiplies by a placement's scale (feeds <see cref="EditorPicking"/>).</summary>
+    /// picking multiplies by a placement's scale (feeds <see cref="EditorPicking"/>). First-manifest-wins on a
+    /// duplicate id across manifests, matching <see cref="KindCategories"/> and the mesh tiebreak in
+    /// <see cref="LoadKitMeshes"/>.</summary>
     public IReadOnlyDictionary<string, float> KindHeights => _kindHeights;
+
+    /// <summary>Each manifest kit id's palette grouping label: <see cref="AssetEntry.Category"/> when the entry
+    /// declares one, else the declaring manifest's own file-name stem with any <c>.manifest</c> suffix stripped
+    /// (<c>props.manifest.json</c> falls back to <c>"props"</c>). First-manifest-wins on a duplicate id, matching
+    /// <see cref="KindHeights"/> and the mesh tiebreak in <see cref="LoadKitMeshes"/>.</summary>
+    public IReadOnlyDictionary<string, string> KindCategories => _kindCategories;
 
     /// <summary>Builds the streamed world from <paramref name="doc"/> for the first time (field, kit meshes,
     /// scatter/companion prop layers, splat material, sink with NO physics, streamer, and a primed ring). Throws
@@ -295,6 +311,18 @@ public sealed class ViewportWorld : IDisposable
     }
 
     // ---- headless surface -------------------------------------------------------------------------------
+
+    // The fallback category label for an entry with no declared AssetEntry.Category: the manifest's own file
+    // name minus its extension, minus a trailing ".manifest" suffix if present, so "props.manifest.json" and
+    // "props.json" both fall back to "props".
+    static string ManifestStem(string path)
+    {
+        string stem = Path.GetFileNameWithoutExtension(path);
+        const string manifestSuffix = ".manifest";
+        return stem.EndsWith(manifestSuffix, StringComparison.OrdinalIgnoreCase)
+            ? stem[..^manifestSuffix.Length]
+            : stem;
+    }
 
     /// <summary>Splits <paramref name="placements"/> into the unselected list plus the single placement whose
     /// stable id equals <paramref name="selectedId"/> (or null when the id is null or unmatched). Total and

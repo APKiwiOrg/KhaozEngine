@@ -190,5 +190,23 @@ namespace KhaozEngine.Tests.Render3D
             AssetManifest m = AssetManifest.Parse(json);
             Assert.False(m.Props[0].Textured);
         }
+
+        [Fact]
+        public void AssetManifest_ParsesOptionalCategory()
+        {
+            const string json = """
+            { "props": [ { "id": "pine_a", "file": "pine_a.glb", "heightMeters": 12.0, "category": "trees" } ] }
+            """;
+            AssetManifest m = AssetManifest.Parse(json);
+            Assert.Equal("trees", m.Props[0].Category);
+        }
+
+        [Fact]
+        public void AssetManifest_CategoryAbsent_IsNull()
+        {
+            string json = @"{ ""props"": [ { ""id"": ""p"", ""file"": ""p.glb"", ""heightMeters"": 2.0 } ] }";
+            AssetManifest m = AssetManifest.Parse(json);
+            Assert.Null(m.Props[0].Category);
+        }
     }
 }

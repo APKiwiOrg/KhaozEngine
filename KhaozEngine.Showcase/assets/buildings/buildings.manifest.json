@@ -1,12 +1,12 @@
 {
   "_comment": "CC0 Quaternius Medieval Village buildings for the KhaozEngine.Showcase 3D World room. heightMeters is the real-world height PropLoader normalizes each mesh to. collisionShape is the baked compound-of-convex .coll. See CREDITS.md.",
   "props": [
-    { "id": "inn",        "file": "inn.glb",        "heightMeters": 6.5, "source": "Quaternius Medieval Village (via levy-street/world-of-claudecraft)", "license": "CC0", "collisionShape": "inn.coll" },
-    { "id": "bell_tower", "file": "bell_tower.glb", "heightMeters": 9.0, "source": "Quaternius Medieval Village (via levy-street/world-of-claudecraft)", "license": "CC0", "collisionShape": "bell_tower.coll" },
-    { "id": "blacksmith", "file": "blacksmith.glb", "heightMeters": 5.0, "source": "Quaternius Medieval Village (via levy-street/world-of-claudecraft)", "license": "CC0", "collisionShape": "blacksmith.coll" },
-    { "id": "house_1",    "file": "house_1.glb",    "heightMeters": 4.8, "source": "Quaternius Medieval Village (via levy-street/world-of-claudecraft)", "license": "CC0", "collisionShape": "house_1.coll" },
-    { "id": "house_2",    "file": "house_2.glb",    "heightMeters": 4.8, "source": "Quaternius Medieval Village (via levy-street/world-of-claudecraft)", "license": "CC0", "collisionShape": "house_2.coll" },
-    { "id": "house_3",    "file": "house_3.glb",    "heightMeters": 3.0, "source": "Quaternius Medieval Village (via levy-street/world-of-claudecraft)", "license": "CC0", "collisionShape": "house_3.coll" },
-    { "id": "well",       "file": "well.glb",       "heightMeters": 2.2, "source": "Quaternius Medieval Village (via levy-street/world-of-claudecraft)", "license": "CC0", "collisionShape": "well.coll" }
+    { "id": "inn",        "file": "inn.glb",        "heightMeters": 6.5, "source": "Quaternius Medieval Village (via levy-street/world-of-claudecraft)", "license": "CC0", "collisionShape": "inn.coll", "category": "buildings" },
+    { "id": "bell_tower", "file": "bell_tower.glb", "heightMeters": 9.0, "source": "Quaternius Medieval Village (via levy-street/world-of-claudecraft)", "license": "CC0", "collisionShape": "bell_tower.coll", "category": "buildings" },
+    { "id": "blacksmith", "file": "blacksmith.glb", "heightMeters": 5.0, "source": "Quaternius Medieval Village (via levy-street/world-of-claudecraft)", "license": "CC0", "collisionShape": "blacksmith.coll", "category": "buildings" },
+    { "id": "house_1",    "file": "house_1.glb",    "heightMeters": 4.8, "source": "Quaternius Medieval Village (via levy-street/world-of-claudecraft)", "license": "CC0", "collisionShape": "house_1.coll", "category": "buildings" },
+    { "id": "house_2",    "file": "house_2.glb",    "heightMeters": 4.8, "source": "Quaternius Medieval Village (via levy-street/world-of-claudecraft)", "license": "CC0", "collisionShape": "house_2.coll", "category": "buildings" },
+    { "id": "house_3",    "file": "house_3.glb",    "heightMeters": 3.0, "source": "Quaternius Medieval Village (via levy-street/world-of-claudecraft)", "license": "CC0", "collisionShape": "house_3.coll", "category": "buildings" },
+    { "id": "well",       "file": "well.glb",       "heightMeters": 2.2, "source": "Quaternius Medieval Village (via levy-street/world-of-claudecraft)", "license": "CC0", "collisionShape": "well.coll", "category": "buildings" }
   ]
 }

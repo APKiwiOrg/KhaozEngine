@@ -153,6 +153,14 @@ public sealed class ViewportWorld : IDisposable
         ThrowIfDisposed();
         ThrowIfNotBuilt();
 
+        // One water plane per frame, covering the whole document at the live water level. Always submitted, with
+        // no "skip when dry" guard: the water pass is depth-tested against the terrain and its shore-fade drives
+        // the alpha to zero at the waterline, so a level below all terrain renders nothing at negligible cost (a
+        // fixed 17x17 grid, one draw). Deriving the plane live from the document means a water-level edit shows
+        // up without a rebuild; the wholesale rebuild an EditTerrainCommand triggers is for scatter (which skips
+        // underwater candidates), not for the surface.
+        _scene.DrawWater(BuildWaterPlane(_doc!.Bounds, _doc.Terrain.WaterLevel));
+
         _sink!.Draw(viewPos);
 
         IReadOnlyList<EditorPlacement> placements = _placements.Get(_doc!, _field!);
@@ -311,6 +319,19 @@ public sealed class ViewportWorld : IDisposable
     }
 
     // ---- headless surface -------------------------------------------------------------------------------
+
+    /// <summary>Derives the editor's single water plane from the document <paramref name="bounds"/> and
+    /// <paramref name="level"/>: centred on the bounds midpoint at the water level, spanning the full XZ
+    /// footprint. Pure (no GPU, no state) so the derivation is headless-testable; <see cref="Draw"/> submits the
+    /// result via <see cref="Scene3D.DrawWater(in WaterPlane)"/> every frame.</summary>
+    internal static WaterPlane BuildWaterPlane(MapBounds bounds, float level)
+    {
+        float centerX = (bounds.MinX + bounds.MaxX) * 0.5f;
+        float centerZ = (bounds.MinZ + bounds.MaxZ) * 0.5f;
+        float halfExtentX = (bounds.MaxX - bounds.MinX) * 0.5f;
+        float halfExtentZ = (bounds.MaxZ - bounds.MinZ) * 0.5f;
+        return new WaterPlane(centerX, level, centerZ, halfExtentX, halfExtentZ);
+    }
 
     // The fallback category label for an entry with no declared AssetEntry.Category: the manifest's own file
     // name minus its extension, minus a trailing ".manifest" suffix if present, so "props.manifest.json" and

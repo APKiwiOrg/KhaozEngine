@@ -66,7 +66,8 @@ GPU-free and fully unit-tested:
 - `EditorHistory` is the engine's first undo/redo command stack, with gesture coalescing (a drag collapses
   to one undo step).
 - `EditorCommands` are the reversible edits over the document model (placements, spawns, exclusions,
-  regions, terrain features). Commands are the only mutation path, so undo is total by construction.
+  regions, terrain features, terrain globals). Commands are the only mutation path, so undo is total by
+  construction. `EditTerrainCommand` carries the terrain-wide globals (v1: the water level, scrub-coalesced).
 - `BakeRegionCommand` freezes a scatter layer's procedural output over a rect region into authored
   placements (tagged `baked`, explicit Y) plus a covering exclusion, so a designer can hand-edit props that
   were procedural. It captures the generated placements on first apply and reuses them on redo, so an
@@ -109,10 +110,21 @@ keep coalescing into later, unrelated edits of the same object.
 
 ## Rebuild semantics
 
-`EditorCommand.AffectsWorld` (internal) classifies each command: terrain features, scatter exclusions, and
-bake-region are `true` (they change terrain shape or scatter inputs). Placement/spawn/region edits are
-`false` (they draw outside the streamed sink, so a drag never triggers a chunk rebuild). `EditorDocument`
-sets `WorldRebuildPending` whenever an executed, undone, or redone command's `AffectsWorld` is true.
+`EditorCommand.AffectsWorld` (internal) classifies each command: terrain features, terrain globals (the
+water level, `EditTerrainCommand`), scatter exclusions, and bake-region are `true` (they change terrain shape
+or scatter inputs). Placement/spawn/region edits are `false` (they draw outside the streamed sink, so a drag
+never triggers a chunk rebuild). `EditorDocument` sets `WorldRebuildPending` whenever an executed, undone, or
+redone command's `AffectsWorld` is true.
+
+The water level is `AffectsWorld` because scatter honours it (underwater candidates skip), so a change must
+rebuild the streamed world. The water SURFACE itself is separate: `ViewportWorld.Draw` submits one
+`Scene3D.DrawWater` plane per frame, derived live from the document bounds and `Terrain.WaterLevel`
+(`ViewportWorld.BuildWaterPlane`), covering the whole zone. It is always submitted (no "skip when dry" guard):
+the water pass is depth-tested against the terrain and its shore-fade drives the alpha to zero at the
+waterline, so a level below all terrain renders nothing at negligible cost. Deriving the plane live means the
+surface tracks a water-level edit immediately, ahead of the scatter rebuild. The terrain root in the outline
+(a `SelectionKind.Terrain` node) selects into an inspector with the editable water level plus read-only seed
+and biome count.
 
 `MapEditorScene.OnUpdate` runs, in order, `UpdateCamera` -> `UpdateTools` -> `CheckWorldRebuild` ->
 `UpdateChrome` -> `UpdateStreaming`. `CheckWorldRebuild` is what actually calls `ViewportWorld.Rebuild`

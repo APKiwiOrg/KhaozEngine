@@ -531,6 +531,48 @@ public sealed class RenameRegionCommand : EditorCommand
     public override void Revert(MapDocument doc) => doc.Regions[IndexOfRegion(doc, _newName)].Name = _oldName;
 }
 
+// ---- terrain globals (terrain-shape affecting) -----------------------------------------------------------
+
+/// <summary>Edits the terrain's global settings. Named for terrain-wide globals so later globals can join it, but
+/// v1 carries the water level only. Successive edits coalesce into one undo step (scrub coalescing). Affects the
+/// streamed world: scatter honours the water level (underwater candidates skip), so a change forces a wholesale
+/// rebuild. The water surface itself derives live from the document, so it also updates on the same edit.</summary>
+public sealed class EditTerrainCommand : EditorCommand
+{
+    float _newWaterLevel;
+    readonly float _oldWaterLevel;
+
+    /// <summary>Creates the command setting the water level to <paramref name="newWaterLevel"/>, capturing
+    /// <paramref name="oldWaterLevel"/> for revert.</summary>
+    public EditTerrainCommand(float newWaterLevel, float oldWaterLevel)
+    {
+        _newWaterLevel = newWaterLevel;
+        _oldWaterLevel = oldWaterLevel;
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Edit terrain";
+    internal override bool AffectsWorld => true;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc) => doc.Terrain.WaterLevel = _newWaterLevel;
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => doc.Terrain.WaterLevel = _oldWaterLevel;
+
+    /// <inheritdoc/>
+    public override bool TryMerge(IEditorCommand next)
+    {
+        // Terrain is a singleton, so any two terrain edits of the same gesture coalesce (no id/index to match).
+        if (next is EditTerrainCommand t)
+        {
+            _newWaterLevel = t._newWaterLevel;
+            return true;
+        }
+        return false;
+    }
+}
+
 // ---- terrain features (terrain-shape affecting) ----------------------------------------------------------
 
 /// <summary>Replaces the terrain feature at a given index with a new value (parameter scrub). The caller

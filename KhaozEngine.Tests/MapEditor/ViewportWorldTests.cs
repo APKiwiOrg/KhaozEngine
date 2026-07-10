@@ -4,6 +4,7 @@ using System.IO;
 using System.Numerics;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapEditor;
+using KhaozEngine.Render3D;
 using KhaozEngine.Terrain;
 using Xunit;
 
@@ -255,6 +256,25 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Equal("hut", selected!.Value.Prop.Id);   // the first "a" is the selected one
             Assert.Single(unselected);
             Assert.Equal("rock", unselected[0].Prop.Id);
+        }
+
+        // ---- water plane derivation --------------------------------------------------------------------
+
+        [Fact]
+        public void WaterPlane_DerivesFromDocumentBoundsAndLevel()
+        {
+            // Asymmetric bounds so the centre and each half-extent are independently checkable (a square footprint
+            // would hide an X/Z swap). The plane centres on the bounds midpoint at the water level and spans the
+            // full XZ footprint, so the editor draws one plane covering the whole document.
+            var bounds = new MapBounds { MinX = -64f, MinZ = -32f, MaxX = 64f, MaxZ = 96f };
+
+            WaterPlane plane = ViewportWorld.BuildWaterPlane(bounds, -1.2f);
+
+            Assert.Equal(0f, plane.CenterX);       // (-64 + 64) / 2
+            Assert.Equal(32f, plane.CenterZ);      // (-32 + 96) / 2
+            Assert.Equal(-1.2f, plane.SurfaceY);   // the water level maps straight to the surface height
+            Assert.Equal(64f, plane.HalfExtentX);  // (64 - -64) / 2
+            Assert.Equal(64f, plane.HalfExtentZ);  // (96 - -32) / 2
         }
 
         // ---- placement cache ---------------------------------------------------------------------------

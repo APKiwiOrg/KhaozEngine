@@ -203,6 +203,29 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void EditTerrainCommand_AppliesRevertsAndMerges()
+        {
+            var doc = Sample();
+            float original = doc.Terrain.WaterLevel;   // SampleDoc's -0.5
+            var ed = new EditorDocument(doc);
+
+            // Apply sets the new water level and forces a wholesale world rebuild (scatter honours water).
+            ed.Execute(new EditTerrainCommand(newWaterLevel: -1.2f, oldWaterLevel: original));
+            Assert.Equal(-1.2f, doc.Terrain.WaterLevel);
+            Assert.True(ed.WorldRebuildPending);
+
+            // A second edit of the same gesture coalesces into the first (scrub coalescing), so the level moves
+            // but no new undo step is pushed.
+            ed.Execute(new EditTerrainCommand(newWaterLevel: -2.4f, oldWaterLevel: -1.2f));
+            Assert.Equal(-2.4f, doc.Terrain.WaterLevel);
+
+            // One undo reverts the whole scrub back to the pre-edit level, and nothing is left to undo.
+            Assert.True(ed.Undo());
+            Assert.Equal(original, doc.Terrain.WaterLevel);
+            Assert.False(ed.History.CanUndo);
+        }
+
+        [Fact]
         public void EditFeature_DifferentIndex_DoesNotMerge()
         {
             var doc = Sample();

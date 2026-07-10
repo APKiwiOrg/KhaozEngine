@@ -635,12 +635,19 @@ public class MapEditorScene : GameScene, IGameScene3D
     void RebuildOutline()
     {
         _outline.Roots.Clear();
+        _outline.Roots.Add(TerrainNode());
         _outline.Roots.Add(Category("Placements", PlacementNodes()));
         _outline.Roots.Add(Category("Spawns", SpawnNodes()));
         _outline.Roots.Add(Category("Features", FeatureNodes()));
         _outline.Roots.Add(Category("Exclusions", ExclusionNodes()));
         _outline.Roots.Add(Category("Regions", RegionNodes()));
     }
+
+    // The terrain root: a single selectable leaf (no children) carrying the singleton Terrain selection, so its
+    // inspector exposes the editable water level plus the read-only seed / biome count. Terrain has no id (the
+    // kind is the whole key), so the OutlineRef id is the empty string.
+    static TreeNode TerrainNode() =>
+        new TreeNode(LocalizedText.Raw("Terrain"), new OutlineRef(SelectionKind.Terrain, ""));
 
     static TreeNode Category(string label, IEnumerable<TreeNode> children)
     {
@@ -688,6 +695,7 @@ public class MapEditorScene : GameScene, IGameScene3D
         EditorSelection sel = _document.Selection;
         switch (sel.Kind)
         {
+            case SelectionKind.Terrain: BuildTerrainInspector(); break;
             case SelectionKind.Placement: BuildPlacementInspector(sel.Id); break;
             case SelectionKind.Spawn: BuildSpawnInspector(sel.Id); break;
             case SelectionKind.Feature: BuildFeatureInspector(sel.Id); break;
@@ -695,6 +703,20 @@ public class MapEditorScene : GameScene, IGameScene3D
             case SelectionKind.Region: BuildRegionInspector(sel.Id); break;
             default: break;
         }
+    }
+
+    // The terrain root inspector: the editable water level (routed through EditTerrainCommand so it coalesces
+    // scrubs and forces the scatter-honouring world rebuild) plus read-only seed and biome-count displays. The
+    // setter captures the LIVE water level as the command's old value before Execute applies the new one.
+    void BuildTerrainInspector()
+    {
+        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("WaterLevel"),
+            () => _document.Doc.Terrain.WaterLevel,
+            v => _document.Execute(new EditTerrainCommand(v, _document.Doc.Terrain.WaterLevel))));
+        _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Seed"),
+            () => _document.Doc.Terrain.Seed.ToString(CultureInfo.InvariantCulture)));
+        _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Biomes"),
+            () => _document.Doc.Terrain.Biomes.Count.ToString(CultureInfo.InvariantCulture)));
     }
 
     void BuildPlacementInspector(string id)

@@ -144,6 +144,14 @@ namespace KhaozEngine.Tests.MapEditor
             return null!;   // unreachable
         }
 
+        static ReadOnlyRow ReadOnlyRowByLabel(PropertyGrid grid, string label)
+        {
+            foreach (PropertyRow row in grid.Rows)
+                if (row is ReadOnlyRow r && r.Label.Resolve() == label) return r;
+            Assert.Fail($"no ReadOnlyRow labeled '{label}' (rows: {grid.Rows.Count})");
+            return null!;   // unreachable
+        }
+
         static void Near(float expected, float actual, float eps = 1e-3f) =>
             Assert.True(MathF.Abs(expected - actual) < eps, $"expected ~{expected} but got {actual}");
 
@@ -367,6 +375,67 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.True(scene.Document.Undo());
             lake = Assert.IsType<LakeFeatureDoc>(scene.Document.Doc.Terrain.Features[0]);
             Near(6f, lake.Radius);                                  // undo restores the pre-scrub DTO
+        }
+
+        [Fact]
+        public void TerrainNode_InspectorEditsWaterLevel_TriggersRebuild()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Terrain.WaterLevel = -1f;
+                return doc;
+            });
+
+            scene.Document.Selection.Set(SelectionKind.Terrain, "");
+            FloatRow water = FloatRowByLabel(scene.Inspector, "WaterLevel");
+
+            // Scrub the water-level row headless, same NumberField idiom as the feature test: press inside the
+            // editor cell, then drag +100 px (DragScale 0.01 -> +1.0), so the row writes through EditTerrainCommand.
+            var cell = new Rect(0f, 0f, 200f, 28f);
+            var ui = new InputManager();
+            ui.Update(MouseFrame(new Vector2(100f, 10f), leftDown: false));
+            water.Update(cell, ui, 0.016f);
+            ui.Update(MouseFrame(new Vector2(100f, 10f), leftDown: true));   // press inside (grab-gate origin)
+            water.Update(cell, ui, 0.016f);
+            ui.Update(MouseFrame(new Vector2(200f, 10f), leftDown: true));   // +100 px at DragScale 0.01 = +1.0
+            bool changed = water.Update(cell, ui, 0.016f);
+
+            Assert.True(changed);
+            Near(0f, scene.Document.Doc.Terrain.WaterLevel);   // -1 + 1 scrub
+            Assert.True(scene.Document.WorldRebuildPending);   // water level feeds scatter, so the world rebuilds
+            Assert.True(scene.Document.History.CanUndo);
+
+            Assert.True(scene.Document.Undo());
+            Near(-1f, scene.Document.Doc.Terrain.WaterLevel);  // undo restores the pre-scrub level
+        }
+
+        [Fact]
+        public void TerrainNode_InspectorShowsSeedAndBiomeReadouts()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Terrain.Seed = 99;
+                doc.Terrain.Biomes.Add(new MapBiomeBand { Biome = KhaozEngine.Terrain.BiomeId.Meadow });
+                doc.Terrain.Biomes.Add(new MapBiomeBand { Biome = KhaozEngine.Terrain.BiomeId.Marsh });
+                return doc;
+            });
+
+            scene.Document.Selection.Set(SelectionKind.Terrain, "");
+
+            // The editable water level is a FloatRow; seed and biome count are read-only displays.
+            Assert.IsType<FloatRow>(FloatRowByLabel(scene.Inspector, "WaterLevel"));
+            ReadOnlyRow seed = ReadOnlyRowByLabel(scene.Inspector, "Seed");
+            ReadOnlyRow biomes = ReadOnlyRowByLabel(scene.Inspector, "Biomes");
+
+            // ReadOnlyRow polls its display getter on Update, so drive each row once before reading Display.
+            var cell = new Rect(0f, 0f, 200f, 28f);
+            var ui = new InputManager();
+            seed.Update(cell, ui, 0f);
+            biomes.Update(cell, ui, 0f);
+            Assert.Equal("99", seed.Display);
+            Assert.Equal("2", biomes.Display);
         }
 
         [Fact]

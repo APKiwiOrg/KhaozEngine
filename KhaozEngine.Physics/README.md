@@ -105,4 +105,4 @@ world.RemoveStatic(rock);
 
 No render, window, or GPU dependency. In the `Foundation` umbrella metapackage.
 
-Part of [KhaozEngine](https://github.com/APKiwi/KhaozEngine).
+Part of [KhaozEngine](https://github.com/APKiwiOrg/KhaozEngine).

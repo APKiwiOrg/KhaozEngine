@@ -138,7 +138,7 @@ Published to a private GitHub Packages feed on tagged releases, and packed to a 
 ```xml
 <!-- nuget.config (additive) -->
 <add key="khaozengine-local" value="/Users/antonio/KhaozEngine/local-feed" />
-<!-- or the GitHub Packages feed: https://nuget.pkg.github.com/APKiwi/index.json -->
+<!-- or the GitHub Packages feed: https://nuget.pkg.github.com/APKiwiOrg/index.json -->
 ```
 ```xml
 <!-- One reference per project via an umbrella metapackage. Pick the bundle that fits: -->

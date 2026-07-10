@@ -5,6 +5,83 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.49.1
+
+Fix a `Tooltip` regression from 10.49.0: a width cap (`MaxWidth` / `MaxWidthFraction`) could squeeze a
+two-column title row narrower than it needs, so the left name overlapped the right-aligned value.
+
+- **Two-column title no longer overlaps under a width cap (`KhaozEngine.Gui`).** The title row is
+  single-line and un-wrappable, so `Tooltip.ComputeBounds` now keeps the bubble at least wide enough to
+  hold a two-column title (`title` + `titleRight`), even when that width exceeds the cap. The cap still
+  governs body-line wrapping, and a one-column title (no right value) still clips at the cap since it has
+  nothing to overlap. Bubbles with no `MaxWidth` set are unaffected.
+
+## 10.49.0
+
+`Tooltip` gains an opt-in width cap (`MaxWidth` px and/or `MaxWidthFraction` of the viewport) that word-wraps
+long body lines downward instead of overflowing the viewport, backed by a new opt-in `hardBreak` on
+`TextLayout.Wrap`. The default stays unbounded, so existing tooltips are unchanged.
+
+- **Opt-in tooltip width cap (`KhaozEngine.Gui`).** New `Tooltip.MaxWidth` (absolute design px) and
+  `Tooltip.MaxWidthFraction` (fraction of `Viewport.X`), the smaller resulting cap winning, both default `0`
+  = unbounded (the pre-existing look, the bubble sizes to its widest line). When set, a body line wider than
+  the cap minus horizontal padding word-wraps into extra lines, so the bubble grows in height and its width
+  stays `<= MaxWidth` instead of running off the viewport. New `maxWidth` overloads of the pure
+  `Tooltip.ComputeBounds` carry the cap (the existing overloads delegate with unbounded width), and `Draw`
+  renders the same wrapped lines so measured bounds and drawn content agree. The single-line title row is not
+  wrapped, so it clips rather than wraps if it alone exceeds the cap.
+- **Opt-in hard-break word-wrap (`KhaozEngine.Render2D`).** `TextLayout.Wrap` takes a new
+  `bool hardBreak = false`. Off (default) keeps the prior behavior, a word wider than the limit staying on
+  its own line. On, a token longer than `maxWidth` is sliced at character boundaries so every returned line
+  fits (always at least one character per line, so it always makes progress). Used by the width-capped tooltip.
+
+## 10.48.0
+
+`PannableCanvas` gains an opt-in wheel-zoom mode: set `Wheel = CanvasWheelMode.Zoom` and the mouse wheel
+zooms toward the pointer instead of panning vertically, with a `ZoomStep` knob and an optional
+`SnapZoomLevels` for discrete crisp stops. The default stays `CanvasWheelMode.Pan`, so existing callers are
+unchanged.
+
+- **Opt-in wheel zoom (`KhaozEngine.Gui`).** New `PannableCanvas.Wheel` (`CanvasWheelMode.Pan` | `.Zoom`,
+  default `Pan`). In `Zoom` mode a wheel event applies `Zoom *= ZoomStep^wheelDelta` (new `ZoomStep`
+  property, default `1.1`, wheel-up zooms in), clamped to the existing `MinZoom`/`MaxZoom`, keeping the
+  world point under the cursor fixed (zoom-toward-pointer), then re-clamps position to `ContentBounds`.
+  Drag still pans, and `Pan` mode is the previous vertical-pan behavior unchanged.
+- **Discrete zoom stops (`SnapZoomLevels`).** Optional `float[]? PannableCanvas.SnapZoomLevels`; when set,
+  the wheel snaps to the adjacent listed stop in the scroll direction (order-independent, one stop per
+  event) instead of stepping continuously by `ZoomStep`. Each stop is still clamped to `MinZoom`/`MaxZoom`.
+- **Sharp-text tradeoff (surfaced, not fixed).** Bitmap `SpriteFont` text is baked at a fixed size, so
+  world-space text blurs at any non-1.0 zoom. A caller that needs crisp text either pins
+  `MinZoom = MaxZoom = 1` (no zoom, the prior Nullwake tree-canvas default) or lists a few stops in
+  `SnapZoomLevels` and accepts blur only at those stops. This is a deliberate consumer choice: free zoom
+  trades some text sharpness for navigability.
+
+## 10.47.0
+
+`SpriteFont` bakes Latin-1 and Latin Extended-A by default with a visible fallback glyph, and the
+in-game `PatchNotesView` picks up a title-bar border fix, a draggable scrollbar thumb, and a localized
+close-button tooltip.
+
+- **Default glyph coverage + fallback glyph (`KhaozEngine.Render2D`).** `SpriteFont.BakeCpu` covered only
+  printable ASCII (U+0020..U+007E); any accented codepoint (French, German, and every other Western/
+  Central European localization) was silently dropped by both `Measure` and `DrawString`. The default
+  bake now covers U+0020..U+007E plus U+00A0..U+017F (Latin-1 Supplement + Latin Extended-A), skipping
+  codepoints the face has no outline for (`stbtt_FindGlyphIndex == 0`) instead of baking empty boxes.
+  Unbaked codepoints no longer drop silently: `Measure` and `DrawString` share one resolver
+  (`SpriteFont.ResolveGlyph`) that substitutes the new public `SpriteFont.FallbackChar` glyph (`?`),
+  keeps control characters zero-width, and collapses a surrogate pair to a single fallback glyph, so
+  text metrics and rendering always agree. ASCII packs into the atlas first, in the original order, so
+  existing glyph cells, ASCII metrics, and GPU goldens are unchanged; the density-1 atlas stays 512x256
+  (319 glyphs vs 95 in the same footprint).
+- **`PatchNotesView` border, scrollbar, and tooltip fixes (`KhaozEngine.Gui`).** The panel border no
+  longer disappears under the title bar: the header fill was painting over the top/upper-side border
+  pixels, so the border is now re-stroked after the header fill (mirroring `PopupPanel.Draw`'s same
+  fix). The scrollbar thumb is now draggable: press-and-hold captures it via the same press-origin grab
+  gate `Slider`/`ScrollablePanel` use, and the drag maps linearly onto the scroll range, clamped at both
+  ends. The close button's `PatchNotesStrings.Close` tooltip (defined but previously unused) now shows
+  on hover, anchored above the button. Test hardening: new headless coverage for content-area drag-to-
+  scroll and header-tap toggling, plus a Latin Extended-A width assertion in `SpriteFontCoverageTests`.
+
 ## 10.46.0
 
 Editor building blocks (Phase B1 of the map-editor program, `docs/MAP-EDITOR-DESIGN.md`): new `KhaozEngine.Gui`

@@ -79,8 +79,10 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     `Placeholder` string is an `[Obsolete]` shim); `Opacity` fades the whole field for a host transition.
   - `Tooltip` - auto-sized floating bubble; `ComputeBounds` (flip/clamp) is a pure, testable layout function.
     Opt-in (default off): a two-column title (`Show(title, titleRight, ...)`), a `ShowTitleSeparator` rule under the
-    title, and platform-aware dismissal via `Dismiss` (`CallerDriven` desktop-hover vs `TapOutside` touch, driven by
-    `Update(Pointer)`) - the dismissal policy is a runtime value, not a compile-time platform branch.
+    title, a width cap (`MaxWidth` px and/or `MaxWidthFraction` of the viewport) that word-wraps long body lines
+    downward instead of overflowing the viewport (hard-breaking a token longer than the cap), and platform-aware
+    dismissal via `Dismiss` (`CallerDriven` desktop-hover vs `TapOutside` touch, driven by `Update(Pointer)`) - the
+    dismissal policy is a runtime value, not a compile-time platform branch.
   - `PopupPanel` - modal dialog: scrim + title + `PopupRow` content + dismiss/primary footer; blocks the pointer.
     Text is `LocalizedText`: `TitleContent` / `DismissContent` / `PrimaryActionContent` and the resolve-at-build
     `PopupRow.Header(LocalizedText)` / `Stat(LocalizedText, LocalizedText, ...)` factories (rebuild the rows to pick

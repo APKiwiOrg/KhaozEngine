@@ -168,5 +168,114 @@ namespace KhaozEngine.Tests.Gui
             Assert.True(p.IsBlocked(new Vector2(400, 300)));  // inside the reserved viewport
             Assert.False(p.IsBlocked(new Vector2(10, 10)));   // outside
         }
+
+        [Fact]
+        public void Wheel_mode_defaults_to_pan()
+        {
+            Assert.Equal(CanvasWheelMode.Pan, Canvas().Wheel);
+        }
+
+        [Fact]
+        public void Update_wheel_zoom_keeps_the_world_point_under_the_cursor_fixed()
+        {
+            var c = Canvas();
+            c.Wheel = CanvasWheelMode.Zoom;
+            c.Camera.Position = new Vector2(1000, 1000);
+            c.Camera.Zoom = 1f;
+            var p = new Pointer();
+
+            var cursor = new Vector2(520, 390); // inside Vp, off-centre
+            p.Update(Frame(cursor, false));
+
+            var worldBefore = c.ScreenToWorld(cursor);
+            c.Update(p, 4f); // wheel up -> zoom in
+            var worldAfter = c.ScreenToWorld(cursor);
+
+            Assert.True(c.Camera.Zoom > 1f, c.Camera.Zoom.ToString());              // zoomed in
+            Assert.True(Vector2.Distance(worldBefore, worldAfter) < 1e-2f,          // cursor pins its world point
+                $"{worldBefore} -> {worldAfter}");
+        }
+
+        [Fact]
+        public void Update_wheel_zoom_does_not_translate_when_cursor_at_viewport_centre()
+        {
+            var c = Canvas();
+            c.Wheel = CanvasWheelMode.Zoom;
+            c.Camera.Position = new Vector2(1000, 1000);
+            c.Camera.Zoom = 1f;
+            var p = new Pointer();
+
+            p.Update(Frame(new Vector2(400, 300), false)); // viewport centre
+            c.Update(p, 3f);
+
+            Assert.NotEqual(1f, c.Camera.Zoom);                                         // zoom changed
+            Assert.True(Vector2.Distance(c.Camera.Position, new Vector2(1000, 1000)) < 1e-2f,
+                c.Camera.Position.ToString());                                          // no translation
+        }
+
+        [Fact]
+        public void Update_wheel_zoom_clamps_to_max_zoom()
+        {
+            var c = Canvas();
+            c.Wheel = CanvasWheelMode.Zoom;
+            c.MaxZoom = 2f;
+            c.Camera.Zoom = 1f;
+            var p = new Pointer();
+
+            p.Update(Frame(new Vector2(400, 300), false));
+            c.Update(p, 100f); // far past MaxZoom
+            Assert.Equal(2f, c.Camera.Zoom);
+        }
+
+        [Fact]
+        public void Update_wheel_zoom_clamps_to_min_zoom()
+        {
+            var c = Canvas();
+            c.Wheel = CanvasWheelMode.Zoom;
+            c.MinZoom = 0.5f;
+            c.Camera.Zoom = 1f;
+            var p = new Pointer();
+
+            p.Update(Frame(new Vector2(400, 300), false));
+            c.Update(p, -100f); // far past MinZoom
+            Assert.Equal(0.5f, c.Camera.Zoom);
+        }
+
+        [Fact]
+        public void Update_wheel_zoom_snaps_to_discrete_levels()
+        {
+            var c = Canvas();
+            c.Wheel = CanvasWheelMode.Zoom;
+            c.SnapZoomLevels = new[] { 1f, 1.5f, 2f, 3f };
+            c.Camera.Zoom = 1f;
+            var p = new Pointer();
+            p.Update(Frame(new Vector2(400, 300), false));
+
+            c.Update(p, 1f);            // one notch in -> next stop up
+            Assert.Equal(1.5f, c.Camera.Zoom);
+
+            c.Update(p, 1f);            // -> 2f (magnitude does not skip stops)
+            Assert.Equal(2f, c.Camera.Zoom);
+
+            c.Update(p, -1f);           // one notch out -> back to 1.5f
+            Assert.Equal(1.5f, c.Camera.Zoom);
+        }
+
+        [Fact]
+        public void Update_wheel_zoom_does_not_pan_vertically()
+        {
+            var c = Canvas();
+            c.Wheel = CanvasWheelMode.Zoom;
+            c.Camera.Position = new Vector2(1000, 1000);
+            c.Camera.Zoom = 1f;
+            var p = new Pointer();
+
+            p.Update(Frame(new Vector2(400, 300), false)); // centre, so zoom introduces no translation
+            c.Update(p, 10f);
+
+            // Pan mode would have moved Y by -10*ScrollPanSpeed; Zoom mode leaves position put.
+            Assert.True(Vector2.Distance(c.Camera.Position, new Vector2(1000, 1000)) < 1e-2f,
+                c.Camera.Position.ToString());
+        }
     }
 }

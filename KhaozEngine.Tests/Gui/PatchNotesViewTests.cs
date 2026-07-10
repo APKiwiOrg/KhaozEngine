@@ -202,6 +202,228 @@ public sealed class PatchNotesViewTests
         Assert.Equal(0f, view.ScrollOffset, 3);
     }
 
+    // ---- content drag-to-scroll -------------------------------------------------------------------
+
+    // A large synthetic window, decoupled from the small (320x220) viewport PatchNotesView lays out in:
+    // Pointer.Update only accepts a position within [0, Width) x [0, Height) as "in the window", so a big
+    // multi-hundred-pixel synthetic drag needs headroom in both directions without leaving that window.
+    // The viewport itself is offset well inside this window (not at the window's own origin) for the same
+    // reason: a drag toward the top must still land at a non-negative on-screen Y.
+    const int DragWindowW = 320, DragWindowH = 20_000;
+    static readonly Rect DragViewport = new(0, 10_000, 320, 220);
+
+    static InputState MouseDownFrame(Vector2 pos, int w, int h) =>
+        new(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
+            new HashSet<MouseButton> { MouseButton.Left }, new HashSet<MouseButton>(),
+            pos, Vector2.Zero, 0f, w, h);
+
+    [Fact]
+    public void Dragging_the_content_area_scrolls_it_and_clamps()
+    {
+        Rect viewport = DragViewport;
+        var view = new PatchNotesView(Doc(1, groups: 4, notes: 6));
+        float max = ExpectedMaxScroll(view, viewport);
+        Assert.True(max > 0f);
+
+        Rect content = view.ContentViewport(viewport);
+        Vector2 start = Center(content);
+        var pointer = new Pointer();
+
+        // Press inside the content area (no motion yet: this frame only sets the press origin).
+        InputState press = MouseDownFrame(start, DragWindowW, DragWindowH);
+        pointer.Update(press);
+        view.Update(pointer, press, 0.016f, viewport, Measurer);
+        Assert.Equal(0f, view.ScrollOffset, 3);
+
+        // Drag upward (negative Y): dragging the content up scrolls further DOWN the document.
+        InputState dragUp = MouseDownFrame(start - new Vector2(0f, 50f), DragWindowW, DragWindowH);
+        pointer.Update(dragUp);
+        view.Update(pointer, dragUp, 0.016f, viewport, Measurer);
+        Assert.Equal(50f, view.ScrollOffset, 2);
+
+        // Drag far past the bottom of the content: clamps to max, does not overshoot.
+        InputState dragPastEnd = MouseDownFrame(start - new Vector2(0f, 5000f), DragWindowW, DragWindowH);
+        pointer.Update(dragPastEnd);
+        view.Update(pointer, dragPastEnd, 0.016f, viewport, Measurer);
+        Assert.Equal(max, view.ScrollOffset, 2);
+
+        // Drag back down (positive Y) past the top: clamps to zero.
+        InputState dragPastTop = MouseDownFrame(start + new Vector2(0f, 5000f), DragWindowW, DragWindowH);
+        pointer.Update(dragPastTop);
+        view.Update(pointer, dragPastTop, 0.016f, viewport, Measurer);
+        Assert.Equal(0f, view.ScrollOffset, 2);
+    }
+
+    // ---- header tap toggling ----------------------------------------------------------------------
+
+    [Fact]
+    public void Tapping_a_build_header_toggles_its_expansion()
+    {
+        var viewport = new Rect(0, 0, 640, 480);
+        var view = new PatchNotesView(Doc(2));
+        Assert.True(view.IsExpanded(0));
+        Assert.False(view.IsExpanded(1));
+
+        Rect content = view.ContentViewport(viewport);
+        // Build 0's header sits at the very top of the content column.
+        var headerPoint = new Vector2(content.X + 10f, content.Y + 10f);
+
+        var pointer = new Pointer();
+        InputState press = MouseDownFrame(headerPoint, 640, 480);
+        pointer.Update(press);
+        view.Update(pointer, press, 0.016f, viewport, Measurer);
+
+        InputState release = WheelFrame(headerPoint, 0f, 640, 480); // same position, button up
+        pointer.Update(release);
+        view.Update(pointer, release, 0.016f, viewport, Measurer);
+
+        Assert.False(view.IsExpanded(0)); // tap collapsed it
+    }
+
+    [Fact]
+    public void Tapping_a_header_scrolled_under_the_title_bar_does_not_toggle_it()
+    {
+        var viewport = new Rect(0, 0, 320, 220);
+        var view = new PatchNotesView(Doc(2, groups: 4, notes: 6));
+        float max = ExpectedMaxScroll(view, viewport);
+        Assert.True(max > 0f);
+        Assert.True(view.IsExpanded(0));
+
+        Rect content = view.ContentViewport(viewport);
+        var pointer = new Pointer();
+
+        // Nudge the scroll offset to exactly half of build 0's header row (a single wheel tick with a
+        // known delta, hovering the content): the header's Rect now straddles content.Y, half still above
+        // it (behind the title-bar padding, not clipped-drawn but still geometrically there) and half
+        // inside the visible content.
+        const float halfHeader = 16f; // BuildHeaderHeight / 2, mirrored here since the constant is private
+        const float scrollWheelSpeed = 40f; // mirrors PatchNotesView's private ScrollWheelSpeed
+        InputState wheel = WheelFrame(Center(content), -(halfHeader / scrollWheelSpeed), 320, 220);
+        pointer.Update(wheel);
+        view.Update(pointer, wheel, 0.016f, viewport, Measurer);
+        Assert.Equal(halfHeader, view.ScrollOffset, 2);
+
+        // Tap the UPPER half of that straddling header rect: geometrically part of the header, but above
+        // content.Y - i.e. over the chrome outside the scroll area. Must not toggle.
+        var aboveContent = new Vector2(content.X + 10f, content.Y - 8f);
+        Assert.False(content.Contains(aboveContent), "test setup: the tap must land above the content viewport");
+
+        InputState press = MouseDownFrame(aboveContent, 320, 220);
+        pointer.Update(press);
+        view.Update(pointer, press, 0.016f, viewport, Measurer);
+        InputState release = WheelFrame(aboveContent, 0f, 320, 220);
+        pointer.Update(release);
+        view.Update(pointer, release, 0.016f, viewport, Measurer);
+
+        Assert.True(view.IsExpanded(0)); // untouched: the tap fell outside the content viewport
+
+        // Control: tapping the LOWER half of the very same header row (still inside content) DOES toggle
+        // it - proving the header really is there and it is specifically the out-of-content tap that is
+        // rejected, not some unrelated geometry mistake.
+        var insideContent = new Vector2(content.X + 10f, content.Y + 8f);
+        Assert.True(content.Contains(insideContent), "test setup: the control tap must land inside the content viewport");
+
+        InputState press2 = MouseDownFrame(insideContent, 320, 220);
+        pointer.Update(press2);
+        view.Update(pointer, press2, 0.016f, viewport, Measurer);
+        InputState release2 = WheelFrame(insideContent, 0f, 320, 220);
+        pointer.Update(release2);
+        view.Update(pointer, release2, 0.016f, viewport, Measurer);
+
+        Assert.False(view.IsExpanded(0)); // the same header, tapped inside content, does toggle
+    }
+
+    // ---- scrollbar thumb drag ----------------------------------------------------------------------
+
+    [Fact]
+    public void Thumb_drag_moves_the_scroll_offset_proportionally_and_clamps_at_both_ends()
+    {
+        Rect viewport = DragViewport;
+        var view = new PatchNotesView(Doc(1, groups: 4, notes: 6));
+        float max = ExpectedMaxScroll(view, viewport);
+        Assert.True(max > 0f);
+
+        Rect thumb = view.ScrollbarThumbRect(viewport, Measurer);
+        Rect content = view.ContentViewport(viewport);
+        float travel = content.Height - thumb.Height;
+        Assert.True(travel > 0f, "test is only meaningful when the thumb can travel");
+
+        Vector2 grab = Center(thumb);
+        var pointer = new Pointer();
+
+        // Press on the thumb: captures it, but this frame alone must not move the offset.
+        InputState press = MouseDownFrame(grab, DragWindowW, DragWindowH);
+        pointer.Update(press);
+        view.Update(pointer, press, 0.016f, viewport, Measurer);
+        Assert.Equal(0f, view.ScrollOffset, 2);
+
+        // Drag the thumb down its full travel, in steps (each step feeds a fresh pointer position so
+        // Pointer.Delta reflects the incremental move): the offset should land on the max.
+        const int steps = 10;
+        for (int i = 1; i <= steps; i++)
+        {
+            Vector2 at = grab + new Vector2(0f, travel * i / steps);
+            InputState f = MouseDownFrame(at, DragWindowW, DragWindowH);
+            pointer.Update(f);
+            view.Update(pointer, f, 0.016f, viewport, Measurer);
+        }
+        Assert.Equal(max, view.ScrollOffset, 1);
+
+        // Keep dragging past the end of the track: stays clamped at max, no overshoot.
+        InputState overshoot = MouseDownFrame(grab + new Vector2(0f, travel * 3f), DragWindowW, DragWindowH);
+        pointer.Update(overshoot);
+        view.Update(pointer, overshoot, 0.016f, viewport, Measurer);
+        Assert.Equal(max, view.ScrollOffset, 1);
+
+        // Drag back up past the start of the track: clamps to zero.
+        InputState back = MouseDownFrame(grab - new Vector2(0f, travel * 3f), DragWindowW, DragWindowH);
+        pointer.Update(back);
+        view.Update(pointer, back, 0.016f, viewport, Measurer);
+        Assert.Equal(0f, view.ScrollOffset, 1);
+
+        // Release: dragging further now (button up) must not move the offset any more.
+        InputState release = WheelFrame(grab, 0f, DragWindowW, DragWindowH);
+        pointer.Update(release);
+        view.Update(pointer, release, 0.016f, viewport, Measurer);
+        InputState afterRelease = WheelFrame(grab + new Vector2(0f, travel), 0f, DragWindowW, DragWindowH);
+        pointer.Update(afterRelease);
+        view.Update(pointer, afterRelease, 0.016f, viewport, Measurer);
+        Assert.Equal(0f, view.ScrollOffset, 1);
+    }
+
+    [Fact]
+    public void Drag_starting_off_the_thumb_does_not_capture_it()
+    {
+        Rect viewport = DragViewport;
+        var view = new PatchNotesView(Doc(1, groups: 4, notes: 6));
+        float max = ExpectedMaxScroll(view, viewport);
+        Assert.True(max > 0f);
+
+        Rect thumb = view.ScrollbarThumbRect(viewport, Measurer);
+        Rect content = view.ContentViewport(viewport);
+
+        // A point in the scrollbar's track column but off the thumb (near the bottom of the track,
+        // clear of the thumb which starts at the top while ScrollOffset is 0), and outside the content
+        // viewport too, so neither the thumb-drag nor the content-drag path can pick it up.
+        var offThumb = new Vector2(thumb.X + thumb.Width * 0.5f, content.Bottom - 2f);
+        Assert.False(thumb.Contains(offThumb), "test setup: the press point must actually miss the thumb");
+        Assert.False(content.Contains(offThumb), "test setup: the press point must also miss the content area");
+
+        var pointer = new Pointer();
+        InputState press = MouseDownFrame(offThumb, DragWindowW, DragWindowH);
+        pointer.Update(press);
+        view.Update(pointer, press, 0.016f, viewport, Measurer);
+
+        // Drag as if moving the thumb its whole travel: since the press origin missed the thumb, the
+        // press-origin invariant must keep this gesture from capturing it.
+        float travel = content.Height - thumb.Height;
+        InputState drag = MouseDownFrame(offThumb + new Vector2(0f, travel), DragWindowW, DragWindowH);
+        pointer.Update(drag);
+        view.Update(pointer, drag, 0.016f, viewport, Measurer);
+
+        Assert.Equal(0f, view.ScrollOffset, 2);
+    }
+
     // ---- empty document --------------------------------------------------------------------------
 
     [Fact]

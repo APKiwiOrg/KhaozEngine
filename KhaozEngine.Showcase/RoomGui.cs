@@ -65,8 +65,9 @@ namespace KhaozEngine.Showcase
         public GuiAssets(Texture2D white, SpriteFont big, SpriteFont small) { White = white; Big = big; Small = small; }
     }
 
-    /// <summary>Root screen: buttons push the modal Settings / heavy Widgets / immediate-mode screens, or the
-    /// overlay demo. No Quit button (leaving the room is Esc, handled by <see cref="RoomGui"/> itself).</summary>
+    /// <summary>Root screen: buttons push the modal Settings / heavy Widgets / immediate-mode screens, the
+    /// overlay demo, or the Patch Notes panel. No Quit button (leaving the room is Esc, handled by
+    /// <see cref="RoomGui"/> itself).</summary>
     sealed class GuiMenuScreen : Screen
     {
         readonly GuiAssets _a;

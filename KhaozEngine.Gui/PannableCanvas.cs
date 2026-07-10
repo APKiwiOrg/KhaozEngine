@@ -6,19 +6,34 @@ using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Gui
 {
+    /// <summary>Whether <see cref="PannableCanvas.Update"/> applies the mouse wheel as a vertical pan or a zoom.</summary>
+    public enum CanvasWheelMode
+    {
+        /// <summary>Wheel pans the view vertically (the historical default; back-compat).</summary>
+        Pan,
+
+        /// <summary>Wheel zooms the view toward the pointer, clamped to <see cref="PannableCanvas.MinZoom"/>/<see cref="PannableCanvas.MaxZoom"/>.</summary>
+        Zoom,
+    }
+
     /// <summary>
     /// A generic pannable viewport over world-space content larger than a caller-supplied viewport.
-    /// Drag and wheel pan (wheel = vertical pan), clamps to caller-supplied content bounds plus padding,
+    /// Drag pans; the wheel either pans vertically or zooms toward the pointer per <see cref="Wheel"/>
+    /// (default <see cref="CanvasWheelMode.Pan"/>). Clamps to caller-supplied content bounds plus padding,
     /// scissor-clips rendering, and exposes world/screen transforms plus a click-through-safe tap helper.
     /// No game-specific concepts.
     ///
-    /// <para>Delegates its transform / clamp / pan math to a backing <see cref="Render2D.Camera2D"/>, so
+    /// <para>Delegates its transform / clamp / pan / zoom math to a backing <see cref="Render2D.Camera2D"/>, so
     /// the gesture math has a single implementation. Per frame: set <see cref="Viewport"/> and
-    /// <see cref="ContentBounds"/>, call <see cref="Update"/> to pan/clamp, then <see cref="Draw"/> with a
+    /// <see cref="ContentBounds"/>, call <see cref="Update"/> to pan/zoom/clamp, then <see cref="Draw"/> with a
     /// world-space draw callback. Query <see cref="TryGetTap"/> for the world point(s) tapped this frame.</para>
     ///
-    /// <para>This release is pan-only (drag + wheel). Two-finger pinch zoom is a follow-up.
-    /// <see cref="MinZoom"/>/<see cref="MaxZoom"/> still bound <see cref="Focus"/>.</para>
+    /// <para>Wheel zoom is opt-in via <see cref="Wheel"/>. Two-finger pinch zoom is a follow-up.
+    /// <see cref="MinZoom"/>/<see cref="MaxZoom"/> bound both <see cref="Focus"/> and wheel zoom.
+    /// Note: bitmap <c>SpriteFont</c> text is baked at a fixed size, so world-space text blurs at any
+    /// non-1.0 zoom. A caller that needs crisp text either pins <see cref="MinZoom"/> = <see cref="MaxZoom"/> = 1
+    /// (no zoom) or lists a few whole-number-ish stops in <see cref="SnapZoomLevels"/> and accepts blur only
+    /// at those stops.</para>
     /// </summary>
     public sealed class PannableCanvas
     {
@@ -47,6 +62,21 @@ namespace KhaozEngine.Gui
 
         /// <summary>Largest allowed camera zoom (bounds <see cref="Focus"/>).</summary>
         public float MaxZoom { get; set; } = 10f;
+
+        /// <summary>Whether the wheel pans vertically or zooms toward the pointer. Default <see cref="CanvasWheelMode.Pan"/> (back-compat).</summary>
+        public CanvasWheelMode Wheel { get; set; } = CanvasWheelMode.Pan;
+
+        /// <summary>Multiplicative zoom applied per unit of wheel delta when <see cref="Wheel"/> is <see cref="CanvasWheelMode.Zoom"/>:
+        /// each frame <c>Zoom *= ZoomStep^wheelDelta</c> (so wheel-up zooms in, wheel-down zooms out). Ignored when
+        /// <see cref="SnapZoomLevels"/> is set. Must be &gt; 1.</summary>
+        public float ZoomStep { get; set; } = 1.1f;
+
+        /// <summary>When set (non-empty) and <see cref="Wheel"/> is <see cref="CanvasWheelMode.Zoom"/>, the wheel snaps to
+        /// these discrete zoom stops instead of stepping continuously by <see cref="ZoomStep"/>: each wheel event moves
+        /// to the adjacent stop in the scroll direction (magnitude does not skip stops). Lets a caller keep bitmap text
+        /// crisp at a few chosen zoom levels. Stops need not be sorted; each is still clamped to
+        /// <see cref="MinZoom"/>/<see cref="MaxZoom"/>.</summary>
+        public float[]? SnapZoomLevels { get; set; }
 
         /// <summary>The backing camera. Exposed so callers can read or drive position/zoom directly;
         /// direct writes bypass clamping, so call <see cref="Update"/> (which clamps) afterward to keep the view in bounds.</summary>
@@ -82,8 +112,9 @@ namespace KhaozEngine.Gui
         public void CenterContent() =>
             CenterOn(new Vector2(ContentBounds.X + ContentBounds.Width / 2f, ContentBounds.Y + ContentBounds.Height / 2f));
 
-        /// <summary>Reserves the viewport (if <see cref="BlockInput"/>), pans on drag and wheel, then clamps.
-        /// Call once per frame before drawing. Pass <c>InputState.ScrollDelta</c> for <paramref name="wheelDelta"/>.</summary>
+        /// <summary>Reserves the viewport (if <see cref="BlockInput"/>), pans on drag, applies the wheel per
+        /// <see cref="Wheel"/> (vertical pan or zoom-toward-pointer), then clamps. Call once per frame before
+        /// drawing. Pass <c>InputState.ScrollDelta</c> for <paramref name="wheelDelta"/>.</summary>
         public void Update(Pointer pointer, float wheelDelta)
         {
             if (BlockInput) pointer.BlockRegion(Viewport);
@@ -93,10 +124,64 @@ namespace KhaozEngine.Gui
                 _camera.PanByScreenDelta(pointer.GetDragDelta(Viewport));
 
                 if (wheelDelta != 0f && pointer.IsPointerIn(Viewport))
-                    _camera.Position += new Vector2(0f, -wheelDelta * ScrollPanSpeed / _camera.Zoom);
+                {
+                    if (Wheel == CanvasWheelMode.Zoom)
+                        ZoomTowardCursor(wheelDelta, pointer.Position);
+                    else
+                        _camera.Position += new Vector2(0f, -wheelDelta * ScrollPanSpeed / _camera.Zoom);
+                }
             }
 
             Clamp();
+        }
+
+        /// <summary>Applies a wheel zoom step (continuous <see cref="ZoomStep"/> or a <see cref="SnapZoomLevels"/> stop),
+        /// clamped to <see cref="MinZoom"/>/<see cref="MaxZoom"/>, keeping the world point under
+        /// <paramref name="cursorScreen"/> fixed. The trailing <see cref="Clamp"/> in <see cref="Update"/> re-clamps
+        /// position to <see cref="ContentBounds"/>.</summary>
+        void ZoomTowardCursor(float wheelDelta, Vector2 cursorScreen)
+        {
+            float target = Math.Clamp(TargetZoom(wheelDelta), MinZoom, MaxZoom);
+            if (target == _camera.Zoom) return;
+
+            // Keep the cursor's world point fixed: adjust position by how far that point drifts under the new zoom.
+            var worldBefore = ScreenToWorld(cursorScreen);
+            _camera.Zoom = target;
+            var worldAfter = ScreenToWorld(cursorScreen);
+            _camera.Position += worldBefore - worldAfter;
+        }
+
+        /// <summary>The desired zoom for a wheel event before min/max clamping: the next
+        /// <see cref="SnapZoomLevels"/> stop in the scroll direction when set, else <c>Zoom * ZoomStep^wheelDelta</c>.</summary>
+        float TargetZoom(float wheelDelta)
+        {
+            if (SnapZoomLevels is { Length: > 0 } levels)
+                return NextSnap(_camera.Zoom, wheelDelta, levels);
+
+            return _camera.Zoom * MathF.Pow(ZoomStep, wheelDelta);
+        }
+
+        /// <summary>The stop in <paramref name="levels"/> adjacent to <paramref name="current"/> in the scroll
+        /// direction (up when <paramref name="wheelDelta"/> &gt; 0, down otherwise). Returns <paramref name="current"/>
+        /// unchanged when no stop lies further in that direction. Order-independent.</summary>
+        static float NextSnap(float current, float wheelDelta, float[] levels)
+        {
+            const float eps = 1e-4f;
+            float best = current;
+            bool found = false;
+
+            if (wheelDelta > 0f)
+            {
+                foreach (var l in levels)
+                    if (l > current + eps && (!found || l < best)) { best = l; found = true; }
+            }
+            else
+            {
+                foreach (var l in levels)
+                    if (l < current - eps && (!found || l > best)) { best = l; found = true; }
+            }
+
+            return found ? best : current;
         }
 
         /// <summary>The given pointer's position in world coordinates (for hover highlighting).</summary>

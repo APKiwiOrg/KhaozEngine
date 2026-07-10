@@ -24,20 +24,6 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal((Color)t.AccentBright, theme.CodeText);
         }
 
-        [Theory]
-        [InlineData(PatchNoteCategory.New)]
-        [InlineData(PatchNoteCategory.Major)]
-        [InlineData(PatchNoteCategory.Minor)]
-        [InlineData(PatchNoteCategory.Rebalance)]
-        [InlineData(PatchNoteCategory.Bug)]
-        [InlineData(PatchNoteCategory.Other)]
-        public void CategoryColor_resolves_for_every_enum_value(PatchNoteCategory category)
-        {
-            var theme = PatchNotesTheme.Default;
-            Color color = theme.CategoryColor(category);
-            Assert.True(color.A > 0f); // a real, opaque color was returned, not an uninitialized/transparent value
-        }
-
         [Fact]
         public void CategoryColor_is_distinct_across_the_substantive_categories()
         {

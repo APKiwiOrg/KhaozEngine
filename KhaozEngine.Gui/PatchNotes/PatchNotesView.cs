@@ -58,6 +58,11 @@ public sealed class PatchNotesView
 
     float _scrollOffset;
     bool _closeHover;
+    bool _draggingScrollbar;
+
+    /// <summary>Lazily constructed the first <see cref="Draw"/> call (it needs a <see cref="SpriteFont"/>, which
+    /// only <see cref="Draw"/> receives, not <see cref="Update"/>): the close button's hover tooltip.</summary>
+    Tooltip? _closeTooltip;
 
     /// <summary>The scrim behind the panel (dims the screen below). Fixed dark, non-themed.</summary>
     readonly Color _scrimColor = new(0f, 0f, 0f, 0.6f);
@@ -148,19 +153,54 @@ public sealed class PatchNotesView
         if (!_document.IsEmpty && pointer.IsJustReleased)
             ToggleTappedHeader(pointer, content, measurer);
 
+        float contentHeight = MeasureContentHeight(measurer, content.Width);
+        UpdateScrollbarDrag(pointer, content, contentHeight);
+
         // Wheel while hovering the content, plus drag-to-scroll and held Up / Down keys.
         if (input.ScrollDelta != 0f && pointer.IsPointerIn(content))
             _scrollOffset -= input.ScrollDelta * ScrollWheelSpeed;
 
-        float dragY = pointer.GetDragDelta(content).Y;
-        if (dragY != 0f)
-            _scrollOffset -= dragY;
+        // A thumb drag already owns the gesture (its press began off the content, in the gutter, so
+        // GetDragDelta(content) never fires for it) - the guard just documents the mutual exclusion.
+        if (!_draggingScrollbar)
+        {
+            float dragY = pointer.GetDragDelta(content).Y;
+            if (dragY != 0f)
+                _scrollOffset -= dragY;
+        }
 
         if (input.IsDown(Key.Down)) _scrollOffset += KeyScrollSpeed * dt;
         if (input.IsDown(Key.Up)) _scrollOffset -= KeyScrollSpeed * dt;
 
         ClampScroll(content, measurer);
         return !CloseRequested;
+    }
+
+    /// <summary>
+    /// Press-and-hold on the scrollbar thumb (<see cref="ScrollbarThumbRect(Rect,float)"/>) captures it via the
+    /// shared press-origin grab gate (<see cref="Pointer.IsDragStartIn"/>, same rule <see cref="Slider"/> and
+    /// <see cref="ScrollablePanel"/>'s header-resize use); while held, vertical pointer movement maps linearly
+    /// onto the scroll range (moving the thumb across its whole travel moves the offset across its whole
+    /// range). Releasing the button frees it. A no-op when the content does not overflow (no thumb to grab).
+    /// </summary>
+    void UpdateScrollbarDrag(Pointer pointer, Rect content, float contentHeight)
+    {
+        if (contentHeight <= content.Height) { _draggingScrollbar = false; return; }
+
+        if (_draggingScrollbar)
+        {
+            if (!pointer.IsDown) { _draggingScrollbar = false; return; }
+            float travel = MathF.Max(0f, content.Height - ScrollbarThumbHeight(content, contentHeight));
+            if (travel > 0f)
+            {
+                float max = contentHeight - content.Height;
+                _scrollOffset += pointer.Delta.Y * (max / travel);
+            }
+            return;
+        }
+
+        if (pointer.IsDragStartIn(ScrollbarThumbRect(content, contentHeight)))
+            _draggingScrollbar = true;
     }
 
     void ToggleTappedHeader(Pointer pointer, Rect content, ITextMeasurer measurer)
@@ -201,10 +241,16 @@ public sealed class PatchNotesView
 
         Rect panel = PanelRect(viewport);
         GuiDraw.Fill(batch, white, panel, Theme.PanelFill);
-        GuiDraw.Border(batch, white, panel, 1f, GuiDraw.WithOpacity(Theme.MutedText, 0.5f));
 
         var titleBar = new Rect(panel.X, panel.Y, panel.Width, TitleBarHeight);
         GuiDraw.Fill(batch, white, titleBar, Theme.HeaderFill);
+
+        // Re-stroke the border after the title-bar fill: the fill above spans the panel's full width from
+        // its top-left, so drawing the border first let it paint over the top (and upper-side) border
+        // pixels, leaving the border appearing to start below the title bar. Mirrors PopupPanel.Draw's
+        // border re-stroke for the same reason, so the border wraps the whole panel, title bar included.
+        GuiDraw.Border(batch, white, panel, 1f, GuiDraw.WithOpacity(Theme.MutedText, 0.5f));
+
         string title = PatchNotesStrings.Resolve(PatchNotesStrings.Title);
         float titleY = panel.Y + (TitleBarHeight - font.LineHeight) * 0.5f;
         TextLayout.DrawAligned(batch, font, title, panel.X + ContentPadding, panel.Width - ContentPadding,
@@ -218,14 +264,43 @@ public sealed class PatchNotesView
             string empty = PatchNotesStrings.Resolve(PatchNotesStrings.Empty);
             float ey = content.Y + (content.Height - font.LineHeight) * 0.5f;
             TextLayout.DrawAligned(batch, font, empty, content.X, content.Width, ey, TextAlign.Center, Theme.MutedText);
-            return;
+        }
+        else
+        {
+            batch.SetScissor(content);
+            DrawColumn(batch, font, white, content);
+            batch.ClearScissor();
+
+            DrawScrollbar(batch, white, content, MeasureContentHeight(font, content.Width));
         }
 
-        batch.SetScissor(content);
-        DrawColumn(batch, font, white, content);
-        batch.ClearScissor();
+        DrawCloseTooltip(batch, font, white, viewport);
+    }
 
-        DrawScrollbar(batch, white, content, MeasureContentHeight(font, content.Width));
+    // The close button's hover tooltip: PatchNotesStrings.Close resolved once through the same chrome
+    // fallback path as the title/empty-state text, then handed to Tooltip as already-resolved raw text
+    // (Tooltip.Show takes a LocalizedText but has no notion of the PatchNotesStrings English fallback, so
+    // resolving here keeps that fallback behaviour instead of bypassing it). Driven straight off _closeHover
+    // (set in Update) rather than a separate Show/Hide call site, since Draw is the first place a SpriteFont
+    // is available to construct the Tooltip at all.
+    void DrawCloseTooltip(SpriteBatch batch, SpriteFont font, Texture2D white, Rect viewport)
+    {
+        _closeTooltip ??= new Tooltip(font, font);
+        _closeTooltip.Viewport = new Vector2(viewport.Width, viewport.Height);
+
+        if (_closeHover)
+        {
+            Rect r = CloseButtonRect(viewport);
+            string label = PatchNotesStrings.Resolve(PatchNotesStrings.Close);
+            _closeTooltip.Show(LocalizedText.Raw(label), Array.Empty<TooltipLine>(),
+                new Vector2(r.X + r.Width * 0.5f, r.Y));
+        }
+        else
+        {
+            _closeTooltip.Hide();
+        }
+
+        _closeTooltip.Draw(batch, white);
     }
 
     void DrawColumn(SpriteBatch batch, SpriteFont font, Texture2D white, Rect content)
@@ -333,12 +408,37 @@ public sealed class PatchNotesView
 
         float trackX = content.Right + ScrollbarGap;
         GuiDraw.Fill(batch, white, new Rect(trackX, content.Y, ScrollbarWidth, content.Height), GuiDraw.WithOpacity(Theme.MutedText, 0.25f));
+        GuiDraw.Fill(batch, white, ScrollbarThumbRect(content, contentHeight), Theme.MutedText);
+    }
 
-        float max = contentHeight - content.Height;
-        float thumbH = MathF.Max(24f, content.Height * (content.Height / contentHeight));
+    // The thumb's height alone, shared between the draw geometry and the drag-travel math in
+    // UpdateScrollbarDrag. Depends only on the content/overflow ratio, never on the current scroll offset.
+    static float ScrollbarThumbHeight(Rect content, float contentHeight) =>
+        MathF.Max(24f, content.Height * (content.Height / contentHeight));
+
+    /// <summary>The scrollbar thumb's current on-screen rect within the track to the right of <paramref name="content"/>,
+    /// given the full (unclipped) <paramref name="contentHeight"/>. Position reflects <see cref="ScrollOffset"/>;
+    /// height reflects the content/viewport overflow ratio (never below a 24-unit grab target). Meaningless (but
+    /// still returned) when there is no overflow; callers gate on that separately (<see cref="DrawScrollbar"/>,
+    /// <see cref="UpdateScrollbarDrag"/>).</summary>
+    Rect ScrollbarThumbRect(Rect content, float contentHeight)
+    {
+        float trackX = content.Right + ScrollbarGap;
+        float max = MathF.Max(0f, contentHeight - content.Height);
+        float thumbH = ScrollbarThumbHeight(content, contentHeight);
         float travel = MathF.Max(0f, content.Height - thumbH);
         float t = max > 0f ? Math.Clamp(_scrollOffset / max, 0f, 1f) : 0f;
-        GuiDraw.Fill(batch, white, new Rect(trackX, content.Y + t * travel, ScrollbarWidth, thumbH), Theme.MutedText);
+        return new Rect(trackX, content.Y + t * travel, ScrollbarWidth, thumbH);
+    }
+
+    /// <summary>Test/tooling hook: the scrollbar thumb's current rect within <paramref name="viewport"/>, measured
+    /// with <paramref name="measurer"/>. Mirrors the geometry <see cref="Draw"/> uses for <see cref="DrawScrollbar"/>
+    /// and <see cref="Update"/> uses for the drag grab-gate.</summary>
+    internal Rect ScrollbarThumbRect(Rect viewport, ITextMeasurer measurer)
+    {
+        Rect content = ContentViewport(viewport);
+        float contentHeight = MeasureContentHeight(measurer, content.Width);
+        return ScrollbarThumbRect(content, contentHeight);
     }
 
     /// <summary>The centered, clamped panel rectangle within <paramref name="viewport"/>.</summary>
@@ -362,7 +462,8 @@ public sealed class PatchNotesView
         return new Rect(x, top, MathF.Max(1f, w), MathF.Max(0f, bottom - top));
     }
 
-    Rect CloseButtonRect(Rect viewport)
+    /// <summary>The close (X) button's rect within <paramref name="viewport"/>, top-right of the title bar.</summary>
+    internal Rect CloseButtonRect(Rect viewport)
     {
         Rect p = PanelRect(viewport);
         float margin = (TitleBarHeight - CloseButtonSize) * 0.5f;

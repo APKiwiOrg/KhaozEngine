@@ -33,8 +33,11 @@ namespace KhaozEngine.Render2D
         }
 
         /// <summary>Word-wraps <paramref name="text"/> so each line fits within <paramref name="maxWidth"/>
-        /// pixels. A single word wider than the limit stays on its own line (never dropped).</summary>
-        public static List<string> Wrap(ITextMeasurer font, string text, float maxWidth)
+        /// pixels, breaking on spaces. By default a single word wider than the limit stays on its own line
+        /// (never dropped); set <paramref name="hardBreak"/> to instead slice such a word at character
+        /// boundaries so every returned line fits within <paramref name="maxWidth"/> (a word narrower than one
+        /// character still yields at least one character per line, so it always makes progress).</summary>
+        public static List<string> Wrap(ITextMeasurer font, string text, float maxWidth, bool hardBreak = false)
         {
             var lines = new List<string>();
             string[] words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -43,19 +46,46 @@ namespace KhaozEngine.Render2D
             foreach (string word in words)
             {
                 string test = current.Length == 0 ? word : current + " " + word;
-                if (current.Length > 0 && font.Measure(test).X > maxWidth)
+                if (current.Length == 0 || font.Measure(test).X <= maxWidth)
+                {
+                    current = test;
+                }
+                else
                 {
                     lines.Add(current);
                     current = word;
                 }
-                else
+
+                // `current` may now be a lone word wider than the limit (a fresh line start, or the very first
+                // word). With hardBreak, slice it: emit the full chunks and keep the trailing remainder as
+                // `current` so following words can still pack onto it.
+                if (hardBreak && current.IndexOf(' ') < 0 && font.Measure(current).X > maxWidth)
                 {
-                    current = test;
+                    var chunks = HardBreak(font, current, maxWidth);
+                    for (int c = 0; c < chunks.Count - 1; c++) lines.Add(chunks[c]);
+                    current = chunks[chunks.Count - 1];
                 }
             }
 
             if (current.Length > 0) lines.Add(current);
             return lines;
+        }
+
+        // Slice a single (space-free) word into the fewest chunks that each fit within maxWidth, growing each
+        // chunk greedily and always taking at least one character so a word narrower than a glyph still advances.
+        static List<string> HardBreak(ITextMeasurer font, string word, float maxWidth)
+        {
+            var chunks = new List<string>();
+            int start = 0;
+            while (start < word.Length)
+            {
+                int len = 1;
+                while (start + len < word.Length && font.Measure(word.Substring(start, len + 1)).X <= maxWidth)
+                    len++;
+                chunks.Add(word.Substring(start, len));
+                start += len;
+            }
+            return chunks;
         }
 
         /// <summary>Total height (pixels) of <paramref name="text"/> word-wrapped to <paramref name="maxWidth"/>.</summary>

@@ -514,9 +514,12 @@ void main() {
             // 1:1 for the device (integer texel offsets), a device-aligned origin lands the whole glyph on the pixel
             // grid, so text is crisp instead of bilinear-blurred across a fractional phase. No-op elsewhere.
             bool snap = _deviceScale.X > 0f;
-            foreach (char c in text)
+            for (int i = 0; i < text.Length; i++)
             {
-                if (!font.Glyphs.TryGetValue(c, out var g)) continue;
+                // Shared resolution with SpriteFont.Measure: unbaked codepoints draw as the visible
+                // SpriteFont.FallbackChar glyph (control chars stay zero-width), so metrics match rendering.
+                GlyphInfo? g = SpriteFont.ResolveGlyph(font.Glyphs, text, ref i);
+                if (g == null) continue;
                 if (g.W > 0 && g.H > 0)
                 {
                     float gx = penX + g.XOff * k, gy = baseline + g.YOff * k;

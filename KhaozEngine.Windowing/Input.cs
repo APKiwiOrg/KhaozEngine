@@ -14,6 +14,11 @@ namespace KhaozEngine.Windowing
         Space, Enter, Escape, Tab, Backspace, Delete, Insert, Home, End, PageUp, PageDown,
         LeftShift, RightShift, LeftControl, RightControl, LeftAlt, RightAlt, LeftSuper, RightSuper,
         Minus, Equals, LeftBracket, RightBracket, Backslash, Semicolon, Apostrophe, Comma, Period, Slash, Grave,
+        // Keypad (numpad) block, appended after the original members so existing Key values stay stable.
+        // There is deliberately no KeypadEnter: AppWindow folds the physical keypad Enter into Enter, so a
+        // numpad Enter commits/confirms exactly like the main Enter key everywhere.
+        Keypad0, Keypad1, Keypad2, Keypad3, Keypad4, Keypad5, Keypad6, Keypad7, Keypad8, Keypad9,
+        KeypadDecimal, KeypadAdd, KeypadSubtract, KeypadMultiply, KeypadDivide, KeypadEqual,
     }
 
     /// <summary>Engine-native mouse buttons.</summary>

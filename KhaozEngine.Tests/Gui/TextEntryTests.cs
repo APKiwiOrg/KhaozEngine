@@ -122,6 +122,38 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal("A", TextEntry.Apply("", Frame(new[] { Key.A }, held: new[] { Key.LeftShift })));
         }
 
+        // ---- Numpad: keypad keys type digits, dot, minus (shift-independent; no symbol row on a keypad). ----
+
+        [Fact]
+        public void NumpadKeys_TypeDigitsIntoTextEntry()
+        {
+            // Each keypad digit types its digit, one per frame, in order.
+            string s = "";
+            for (Key k = Key.Keypad0; k <= Key.Keypad9; k++)
+                s = TextEntry.Apply(s, Frame(new[] { k }));
+            Assert.Equal("0123456789", s);
+
+            // Shift does not change a keypad key: still the digit, never a US-layout symbol.
+            Assert.Equal("7", TextEntry.Apply("", Frame(new[] { Key.Keypad7 }, held: new[] { Key.LeftShift })));
+
+            // The keypad's dot and minus type through too (what a numeric field needs).
+            Assert.Equal(".", TextEntry.Apply("", Frame(new[] { Key.KeypadDecimal })));
+            Assert.Equal("-", TextEntry.Apply("", Frame(new[] { Key.KeypadSubtract })));
+
+            // The keypad operator keys are printable as well.
+            Assert.Equal("+", TextEntry.Apply("", Frame(new[] { Key.KeypadAdd })));
+            Assert.Equal("*", TextEntry.Apply("", Frame(new[] { Key.KeypadMultiply })));
+            Assert.Equal("/", TextEntry.Apply("", Frame(new[] { Key.KeypadDivide })));
+            Assert.Equal("=", TextEntry.Apply("", Frame(new[] { Key.KeypadEqual })));
+        }
+
+        [Fact]
+        public void Numpad_repeat_types_on_the_repeat_frame()
+        {
+            // Holding a keypad digit auto-repeats like any printable key.
+            Assert.Equal("55", TextEntry.Apply("5", Repeat(new[] { Key.Keypad5 })));
+        }
+
         // ---- Hold-to-repeat: a held key auto-repeats off the OS repeat signal (InputState.WasRepeated). ----
 
         [Fact]

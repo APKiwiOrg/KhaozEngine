@@ -271,6 +271,125 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal(5f, val, 3);                          // reverted, NOT committed to 9
         }
 
+        // ---- ChoiceRow: a Dropdown over string options with get/set delegates on the selected option string. ----
+
+        // Row 0's editor cell is x 135..300, y 0..28 (LabelFraction 0.45 of 300). The dropdown trigger fills the
+        // cell, so with two options the open list rows sit at y 28..56 (option 0) and y 56..84 (option 1).
+        static readonly Vector2 ChoiceTrigger = new(200, 14);
+        static readonly Vector2 ChoiceOption1 = new(200, 70);
+
+        [Fact]
+        public void ChoiceRow_SelectsAndWritesThrough()
+        {
+            string kind = "disc";
+            var grid = new PropertyGrid(Area);
+            var row = new ChoiceRow(LocalizedText.Raw("Kind"), new[] { "disc", "rect" }, () => kind, v => kind = v);
+            grid.Rows.Add(row);
+
+            var input = new InputManager();
+            Assert.Equal("disc", row.Selected);           // seeded from the getter
+
+            Tap(input, grid, ChoiceTrigger);              // open the list
+            Assert.True(row.Dropdown.IsOpen);
+
+            Tap(input, grid, ChoiceOption1);              // pick "rect"
+            Assert.Equal("rect", kind);                   // written through the setter
+            Assert.Equal("rect", row.Selected);
+            Assert.True(grid.WasChanged);                 // the pick frame reports the change
+            Assert.False(row.Dropdown.IsOpen);            // picking closes the list
+        }
+
+        [Fact]
+        public void ChoiceRow_PollsExternalChange()
+        {
+            string kind = "disc";
+            var grid = new PropertyGrid(Area);
+            var row = new ChoiceRow(LocalizedText.Raw("Kind"), new[] { "disc", "rect" }, () => kind, v => kind = v);
+            grid.Rows.Add(row);
+
+            var input = new InputManager();
+            kind = "rect";                                     // changed externally (undo, multi-edit)
+            Step(input, grid, new Vector2(400, 300), false);   // idle frame
+
+            Assert.Equal("rect", row.Selected);                // polled into the dropdown
+            Assert.False(grid.WasChanged);                     // a poll is not a change
+
+            // While the list is OPEN the poll is skipped, so an in-progress pick is never stomped.
+            Tap(input, grid, ChoiceTrigger);                   // open
+            kind = "disc";                                     // external change lands mid-pick
+            Step(input, grid, ChoiceTrigger, false);           // idle frame with the list open
+            Assert.Equal("rect", row.Selected);                // NOT polled while open
+
+            Tap(input, grid, new Vector2(400, 300));           // release outside dismisses without selecting
+            Step(input, grid, new Vector2(400, 300), false);   // next closed frame polls again
+            Assert.Equal("disc", row.Selected);
+        }
+
+        // Re-picking the already selected option closes the list without firing the setter.
+        [Fact]
+        public void ChoiceRow_RepickIsNotAChange()
+        {
+            string kind = "disc";
+            int sets = 0;
+            var grid = new PropertyGrid(Area);
+            grid.Rows.Add(new ChoiceRow(LocalizedText.Raw("Kind"), new[] { "disc", "rect" },
+                () => kind, v => { kind = v; sets++; }));
+
+            var input = new InputManager();
+            Tap(input, grid, ChoiceTrigger);                   // open
+            Tap(input, grid, new Vector2(200, 42));            // option 0 = "disc", already selected
+            Assert.Equal(0, sets);
+            Assert.False(grid.WasChanged);
+        }
+
+        // A ChoiceRow that scroll-culls with its list open has the dropdown CLOSED by the grid's Deactivate hook,
+        // so an off-view open list cannot keep swallowing taps (same hygiene as the culled TextRow focus).
+        [Fact]
+        public void ChoiceRow_CulledOpenDropdown_Closes()
+        {
+            string kind = "disc";
+            var grid = new PropertyGrid(Area);
+            var row = new ChoiceRow(LocalizedText.Raw("Kind"), new[] { "disc", "rect" }, () => kind, v => kind = v);
+            grid.Rows.Add(row);
+            for (int i = 1; i < 10; i++)
+                grid.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("R"), () => "-"));
+
+            var input = new InputManager();
+            Tap(input, grid, ChoiceTrigger);                   // open the list
+            Assert.True(row.Dropdown.IsOpen);
+
+            grid.ScrollOffset = 100f;                          // push row 0 fully above the view
+            Step(input, grid, new Vector2(400, 300), false);   // one Update: culled -> deactivated
+
+            Assert.False(row.Dropdown.IsOpen);                 // the grid closed it on the cull
+        }
+
+        // ---- Cell text ellipsis: the pure width-based truncation helper the grid text draws go through. ----
+
+        [Fact]
+        public void GridCellText_TruncatesWithEllipsis()
+        {
+            // A deterministic 10-units-per-char measure keeps the math exact and font-free.
+            static float Width(string s) => s.Length * 10f;
+
+            // Fits: returned unchanged (exact fit included).
+            Assert.Equal("abc", GuiDraw.TruncateWithEllipsis("abc", 100f, Width));
+            Assert.Equal("abc", GuiDraw.TruncateWithEllipsis("abc", 30f, Width));
+
+            // Too long: the longest prefix that fits WITH the trailing dots, then "..." (three ASCII dots,
+            // never the single-glyph ellipsis, which may not be baked into a font atlas).
+            Assert.Equal("cen...", GuiDraw.TruncateWithEllipsis("center (0, 18) radius 12", 60f, Width));
+
+            // One char narrower cuts one more prefix char.
+            Assert.Equal("ce...", GuiDraw.TruncateWithEllipsis("center (0, 18) radius 12", 59f, Width));
+
+            // Floor: when not even the dots fit, the dots are still returned (the caller's scissor clips).
+            Assert.Equal("...", GuiDraw.TruncateWithEllipsis("abcdef", 20f, Width));
+
+            // Empty text passes through.
+            Assert.Equal("", GuiDraw.TruncateWithEllipsis("", 50f, Width));
+        }
+
         // The wheel rate is aligned across the two editor widgets: one notch scrolls each by WheelRowsPerNotch (3)
         // rows of its own row height, so they feel identical side by side. TreeView RowHeight 24 -> 72 px; a
         // PropertyGrid of default 28-tall rows -> 84 px. Both use the shared default of 3 rows per notch.

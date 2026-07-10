@@ -199,6 +199,87 @@ namespace KhaozEngine.Gui
         internal override void ApplyOpacity(float opacity) => Input.Opacity = opacity;
     }
 
+    /// <summary>
+    /// Choice property backed by get/set delegates over an option string, edited with a <see cref="Gui.Dropdown"/>.
+    /// The options are raw data strings (enum kinds, ids), not player-facing copy, so the sink is the string
+    /// delegates - same rationale as <see cref="TextRow"/>. The external value is polled in only while the list is
+    /// closed, so an in-progress pick is never stomped, and the setter fires only on a real change.
+    /// </summary>
+    public sealed class ChoiceRow : PropertyRow
+    {
+        readonly Func<string> _get;
+        readonly Action<string> _set;
+        Pointer? _pointer;   // captured on Update so Draw can render the open list's hover highlight
+
+        /// <summary>The selector, exposed for style/inspection. Its trigger bounds are driven by the grid each frame.</summary>
+        public Dropdown Dropdown { get; }
+
+        /// <summary>The option string currently shown by the selector.</summary>
+        public string Selected => Dropdown.SelectedLabel;
+
+        /// <summary>
+        /// Build a choice row over the given options and get/set delegates. <paramref name="options"/> must be
+        /// non-empty (the underlying <see cref="Gui.Dropdown"/> requires at least one option); the initial selection
+        /// is the option matching <paramref name="get"/>, or the first option when the value matches none.
+        /// </summary>
+        public ChoiceRow(LocalizedText label, IReadOnlyList<string> options, Func<string> get, Action<string> set)
+            : base(label)
+        {
+            _get = get;
+            _set = set;
+            var opts = new List<DropdownOption>(options.Count);
+            for (int i = 0; i < options.Count; i++) opts.Add(new DropdownOption(options[i], i));
+            Dropdown = new Dropdown(opts, default) { ShowChevron = true };
+            SelectOption(get());
+        }
+
+        /// <inheritdoc/>
+        public override bool Update(Rect editorRect, InputManager input, float dt)
+        {
+            Dropdown.TriggerBounds = editorRect;
+            _pointer = input.Pointer;
+            // Poll the external value in only while the list is closed, so an in-progress pick is never stomped
+            // (the open list is the row's live gesture, like a NumberField scrub or a focused TextInput).
+            if (!Dropdown.IsOpen) SelectOption(_get());
+
+            bool changed = Dropdown.Update(input.Pointer);
+            // Fire the setter only on a real change: re-picking the current option closes without writing.
+            if (changed && Dropdown.SelectedLabel != _get())
+            {
+                _set(Dropdown.SelectedLabel);
+                return true;
+            }
+            return false;
+        }
+
+        /// <inheritdoc/>
+        public override void Deactivate() => Dropdown.Close();
+
+        /// <summary>
+        /// Draw the trigger and, when open, the option list. The grid draws all rows inside one scissor
+        /// (<see cref="PropertyGrid.Draw"/>) and has no late overlay pass, so the open list is drawn here INSIDE
+        /// the grid clip: it is cut off at the grid bounds and rows below this one draw over it. Acceptable for
+        /// inspector-length option lists; a host needing an unclipped list can call
+        /// <see cref="Gui.Dropdown.DrawOverlay"/> itself after the grid's draw.
+        /// </summary>
+        public override void Draw(SpriteBatch batch, Texture2D white, SpriteFont font, Rect editorRect)
+        {
+            Dropdown.TriggerBounds = editorRect;
+            Dropdown.Draw(batch, white, font);
+            if (_pointer != null) Dropdown.DrawOverlay(batch, white, font, _pointer);
+        }
+
+        internal override void ApplyOpacity(float opacity) => Dropdown.Opacity = opacity;
+
+        // Point the dropdown at the option matching `value`. An unknown external value leaves the selection where
+        // it is (the dropdown always shows a real option).
+        void SelectOption(string value)
+        {
+            for (int i = 0; i < Dropdown.Options.Count; i++)
+                if (Dropdown.Options[i].Label == value) { Dropdown.SelectByValue(i); return; }
+        }
+    }
+
     /// <summary>Read-only display row: a label plus a polled value string (coordinates, counts). Ignores input.</summary>
     public sealed class ReadOnlyRow : PropertyRow
     {
@@ -227,9 +308,12 @@ namespace KhaozEngine.Gui
         /// <inheritdoc/>
         public override void Draw(SpriteBatch batch, Texture2D white, SpriteFont font, Rect editorRect)
         {
-            Vector2 measured = font.Measure(Display);
+            // Truncate to the cell so a long value (a shape summary, a path) ends in "..." instead of running to
+            // the grid edge where the scissor would hard-cut it mid-glyph.
+            string shown = GuiDraw.TruncateWithEllipsis(Display, editorRect.Width - LabelPad * 2f, s => font.Measure(s).X);
+            Vector2 measured = font.Measure(shown);
             Vector2 pos = GuiDraw.AlignedTextPos(editorRect, measured, font.LineHeight, GuiAlign.Left, 1f, LabelPad);
-            batch.DrawString(font, Display, new Vector2(MathF.Floor(pos.X), MathF.Floor(pos.Y)),
+            batch.DrawString(font, shown, new Vector2(MathF.Floor(pos.X), MathF.Floor(pos.Y)),
                 (Color)GuiDraw.WithOpacity(TextColor, _opacity));
         }
 
@@ -399,7 +483,10 @@ namespace KhaozEngine.Gui
 
                 PropertyRow row = Rows[i];
                 Rect label = RowLabelBounds(i, cell);
-                string text = row.Label.Resolve();
+                // Truncate the label to its column so a long label ends in "..." instead of running under the
+                // editor cell beside it.
+                string text = GuiDraw.TruncateWithEllipsis(row.Label.Resolve(), label.Width - LabelPad * 2f,
+                    s => font.Measure(s).X);
                 Vector2 pos = GuiDraw.AlignedTextPos(label, font.Measure(text), font.LineHeight, GuiAlign.Left, 1f, LabelPad);
                 batch.DrawString(font, text, new Vector2(MathF.Floor(pos.X), MathF.Floor(pos.Y)),
                     (Color)GuiDraw.WithOpacity(LabelColor, Opacity));

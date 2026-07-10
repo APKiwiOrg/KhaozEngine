@@ -235,13 +235,17 @@ namespace KhaozEngine.Gui
             return false;
         }
 
-        // True if this frame carries a text-edit keystroke the field accepts (a digit, minus, dot, or backspace).
-        // Used to end the select-all seed so the first accepted key replaces the seeded value.
+        // True if this frame carries a text-edit keystroke the field accepts (a digit, minus, dot, or backspace,
+        // from the top row or the keypad). Used to end the select-all seed so the first accepted key replaces the
+        // seeded value rather than appending to it.
         static bool HasEditKeystroke(InputState state)
         {
-            if (state.WasTyped(Key.Backspace) || state.WasTyped(Key.Minus) || state.WasTyped(Key.Period))
+            if (state.WasTyped(Key.Backspace) || state.WasTyped(Key.Minus) || state.WasTyped(Key.Period)
+                || state.WasTyped(Key.KeypadSubtract) || state.WasTyped(Key.KeypadDecimal))
                 return true;
             for (Key k = Key.D0; k <= Key.D9; k++)
+                if (state.WasTyped(k)) return true;
+            for (Key k = Key.Keypad0; k <= Key.Keypad9; k++)
                 if (state.WasTyped(k)) return true;
             return false;
         }

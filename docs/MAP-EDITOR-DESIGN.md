@@ -213,8 +213,7 @@ editor-runtime cores. Never Fable-tier subagents.
     with gesture coalescing, `EditorCommands`, `BakeRegionCommand`), the per-frame tool
     policy (`EditorToolController`), the turn-key `MapEditorScene`, and a
     `KhaozEngine.Showcase` demo room (`RoomMapEditor`) wiring it into a real game head as the
-    manual verification handoff. Shipped, version bump and CHANGELOG entry land with the
-    release commit.
+    manual verification handoff. Shipped in 10.50.0, see CHANGELOG.
 - **Phase C (parallel after A, independent of B)**: ke-mapedit MCP tool. One release.
 - **Phase D (game repo)**: Ruinborne export, both-heads loading, parity test (after A),
   editor head and doc rewrite (after B).

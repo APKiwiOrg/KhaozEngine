@@ -5,6 +5,30 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.50.0
+
+The in-engine map editor runtime lands as the new opt-in `KhaozEngine.MapEditor` package (Phase B2 of
+`docs/MAP-EDITOR-DESIGN.md`): a viewport host, transform gizmos, tool modes, the engine's first
+undo/redo command stack, and a turn-key editor scene, plus editor-widget hardening in `KhaozEngine.Gui`
+from the B1 review queue and a `KhaozEngine.Showcase` demo room.
+
+- **New opt-in map editor package (`KhaozEngine.MapEditor`, in no umbrella).** The engine's first
+  undo/redo command stack (`EditorHistory` with gesture sealing so drags coalesce into one reversible
+  step and saves act as barriers), `EditorDocument` dirty and rebuild tracking, document picking across
+  placements, spawns, and terrain, vertex-colored transform gizmos with pure drag math (yaw tracks the
+  pointer under `CreateRotationY`), `ViewportWorld` document-driven streaming with a wholesale rebuild on
+  terrain edits, an `EditorToolController` covering the select, place, spawn, exclusion, region, and bake
+  tool modes with a drag-vanish crash guard, a turn-key `MapEditorScene` (fly camera, `TreeView` outline,
+  `PropertyGrid` inspector including parametric terrain features, Ctrl+S save with loud validation
+  surfaced, Shift+Escape exit chord with a dirty guard), and `BakeRegionCommand` freezing procedural
+  scatter into authored placements with exact revert.
+- **Editor-widget hardening from the B1 review queue (`KhaozEngine.Gui`).** `PropertyRow.Deactivate`
+  deactivate-on-cull fixes a dual-focus double-typing bug, `NumberField` gains `IsScrubbing` and
+  `CancelEdit`, and `TreeView` and `PropertyGrid` now share an aligned `WheelRowsPerNotch` (default 3
+  rows per notch, so the `PropertyGrid` wheel feel changed from the old flat 30 px).
+- **Map-editor demo room (`KhaozEngine.Showcase`).** A new map-editor demo room wires the editor into a
+  real game head over a committed demo zone document.
+
 ## 10.49.1
 
 Fix a `Tooltip` regression from 10.49.0: a width cap (`MaxWidth` / `MaxWidthFraction`) could squeeze a

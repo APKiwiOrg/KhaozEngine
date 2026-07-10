@@ -9,11 +9,13 @@ namespace KhaozEngine.MapEdit;
 
 /// <summary>Mutates the session's open document: placements, spawns, and regions (terrain globals, features,
 /// exclusions, and scatter overrides land in Task 4, reusing the same choke point). Every mutation routes through
-/// <see cref="Apply"/>: apply the <see cref="EditorCommand"/>, validate the document, and on any validation error
-/// revert the command and throw, so the in-session document is never left invalid. A rejected mutation leaves the
-/// session exactly as it was before the attempt, including the dirty flag, because
-/// <see cref="MapEditSession.Mutate{T}"/> only marks dirty when its callback returns normally and a rejected
-/// mutation throws out of that callback.</summary>
+/// <see cref="Apply(EditorCommand, string, string)"/> (or its factory overload,
+/// <see cref="Apply(Func{MapDocument, MapDocRegistry, EditorCommand}, string, Func{EditorCommand, string}, bool)"/>,
+/// for verbs that need a document read to build the command): apply the <see cref="EditorCommand"/>, validate the
+/// document, and on any validation error revert the command and throw, so the in-session document is never left
+/// invalid. A rejected mutation leaves the session exactly as it was before the attempt, including the dirty
+/// flag, because <see cref="MapEditSession.Mutate{T}"/> only marks dirty when its callback returns normally and a
+/// rejected mutation throws out of that callback.</summary>
 public sealed class MutationService(MapEditSession session)
 {
     /// <summary>The shared mutation choke point used by every verb below: applies <paramref name="command"/> to
@@ -35,6 +37,40 @@ public sealed class MutationService(MapEditSession session)
                 throw new InvalidOperationException("mutation rejected: " + string.Join("; ", errors));
             }
             return new MutationResult(verb, detail, worldChanged);
+        }, worldChanged);
+    }
+
+    /// <summary>Overload of <see cref="Apply(EditorCommand, string, string)"/> for verbs whose command needs a
+    /// document read to construct (a precondition lookup, or a captured "old" value the command needs to be
+    /// reversible). <paramref name="factory"/> runs INSIDE the <see cref="MapEditSession.Mutate{T}"/> callback,
+    /// so the read, the apply, the validate, and any revert all happen under the same lock acquisition: no other
+    /// call can mutate the document between the read and the apply. <paramref name="worldChanged"/> must equal
+    /// the constructed command's <see cref="EditorCommand.AffectsWorld"/>; <see cref="MapEditSession.Mutate{T}"/>
+    /// needs that flag before the callback runs (to decide whether to invalidate the cached field), so it cannot
+    /// be read off the command itself, and a mismatch throws rather than silently mis-tagging the mutation.</summary>
+    internal MutationResult Apply(Func<MapDocument, MapDocRegistry, EditorCommand> factory, string verb,
+        Func<EditorCommand, string> detail, bool worldChanged)
+    {
+        ArgumentNullException.ThrowIfNull(factory);
+        ArgumentNullException.ThrowIfNull(detail);
+        return session.Mutate((doc, registry) =>
+        {
+            EditorCommand command = factory(doc, registry);
+            if (command.AffectsWorld != worldChanged)
+            {
+                throw new InvalidOperationException(
+                    $"internal error: Apply was called with worldChanged={worldChanged} but " +
+                    $"{command.GetType().Name}.AffectsWorld={command.AffectsWorld}.");
+            }
+
+            command.Apply(doc);
+            IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, registry);
+            if (errors.Count > 0)
+            {
+                command.Revert(doc);
+                throw new InvalidOperationException("mutation rejected: " + string.Join("; ", errors));
+            }
+            return new MutationResult(verb, detail(command), worldChanged);
         }, worldChanged);
     }
 
@@ -202,24 +238,25 @@ public sealed class MutationService(MapEditSession session)
         return Apply(new AddRegionCommand(region), "region_add", $"added region {name}");
     }
 
-    /// <summary>Replaces a region's shape. Fetches the region's current shape from the open document first
-    /// (<see cref="EditRegionShapeCommand"/> needs both the new and old shape to be reversible), then routes the
-    /// replacement through the choke point.</summary>
+    /// <summary>Replaces a region's shape. Looks up the region and captures its current shape (
+    /// <see cref="EditRegionShapeCommand"/> needs both the new and old shape to be reversible) inside the
+    /// factory overload of the choke point, so the read and the apply+validate+revert happen under the same
+    /// lock acquisition; otherwise a concurrent mutation of the same region between a separate read and the
+    /// eventual apply could make the captured old shape stale, and a validation-rejected edit would revert to
+    /// that stale shape and silently clobber the concurrent change.</summary>
     public MutationResult RegionEditShape(string name, MapShapeDoc shape)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(shape);
 
-        MapShapeDoc oldShape = session.WithDocument((doc, _) =>
+        return Apply((doc, _) =>
         {
             MapRegion region = doc.Regions.FirstOrDefault(r => string.Equals(r.Name, name, StringComparison.Ordinal))
                 ?? throw new InvalidOperationException($"No region named '{name}' in the document.");
-            return region.Shape
+            MapShapeDoc oldShape = region.Shape
                 ?? throw new InvalidOperationException($"region '{name}' has no shape to edit.");
-        });
-
-        return Apply(new EditRegionShapeCommand(name, shape, oldShape), "region_edit_shape",
-            $"edited region {name} shape");
+            return new EditRegionShapeCommand(name, shape, oldShape);
+        }, "region_edit_shape", _ => $"edited region {name} shape", worldChanged: false);
     }
 
     /// <summary>Renames a region. The target name must be unique in the document (validated at the choke

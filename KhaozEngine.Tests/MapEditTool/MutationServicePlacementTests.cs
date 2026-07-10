@@ -226,6 +226,54 @@ namespace KhaozEngine.Tests.MapEditTool
             finally { Directory.Delete(dir, recursive: true); }
         }
 
+        /// <summary>Covers the atomicity fix: <see cref="MutationService.RegionEditShape"/> now builds
+        /// <see cref="KhaozEngine.MapEditor.EditRegionShapeCommand"/> (region lookup and old-shape capture) inside the choke point's
+        /// mutate callback instead of a separate, earlier <see cref="MapEditSession.WithDocument{T}"/> read. A
+        /// concurrent-mutation race between the two acquisitions can't be reproduced single-threaded, so this
+        /// exercises the observable contract that race would break: forces the whole-document validation to
+        /// reject the edit (via an unrelated pre-existing document defect) and asserts revert restores the shape
+        /// this call captured, and only this call, proving the read and the revert operate on the same value
+        /// from one lock acquisition.</summary>
+        [Fact]
+        public void RegionEditShape_RejectedEdit_RevertsShapeCapturedInSameCall()
+        {
+            string dir = NewTempDir();
+            try
+            {
+                (MapEditSession session, MutationService mutation) = OpenSample(dir);
+
+                var disc = new DiscShapeDoc { CenterX = 1f, CenterZ = 2f, Radius = 5f };
+                mutation.RegionAdd("camp", disc);
+
+                // Push the document into an invalid state for a reason unrelated to the region shape (a
+                // duplicate placement id), so the upcoming edit's apply+validate+revert cycle is exercised
+                // honestly: apply succeeds, validate fails on the pre-existing defect, and revert must put
+                // back the shape captured by this call's factory, not a shape from an earlier read.
+                session.Mutate((doc, _) =>
+                {
+                    doc.Placements.Add(new MapPlacement { Id = "dup", Kind = "pine_a", X = 0f, Z = 0f });
+                    doc.Placements.Add(new MapPlacement { Id = "dup", Kind = "pine_a", X = 1f, Z = 1f });
+                    return 0;
+                }, worldChanged: false);
+                bool dirtyBefore = session.IsDirty;
+
+                var rect = new RectShapeDoc { MinX = -5f, MinZ = -5f, MaxX = 5f, MaxZ = 5f };
+                InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
+                    mutation.RegionEditShape("camp", rect));
+
+                Assert.StartsWith("mutation rejected:", ex.Message);
+                Assert.Contains("duplicate placement id", ex.Message);
+
+                DiscShapeDoc reverted = Assert.IsType<DiscShapeDoc>(
+                    session.WithDocument((doc, _) => doc.Regions.Single(r => r.Name == "camp").Shape));
+                Assert.Equal(disc.CenterX, reverted.CenterX);
+                Assert.Equal(disc.CenterZ, reverted.CenterZ);
+                Assert.Equal(disc.Radius, reverted.Radius);
+                Assert.Equal(dirtyBefore, session.IsDirty);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
         [Fact]
         public void Mutation_MarksSessionDirty()
         {

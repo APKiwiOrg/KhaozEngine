@@ -8,7 +8,9 @@ namespace KhaozEngine.Tests.Render2D
     /// <summary>
     /// Headless coverage for <see cref="SpriteFont.BakeCpu(byte[], float, float)"/> (the device-free path): oversampling
     /// must raise atlas texel density without changing the logical layout metrics, and the default (oversample 1)
-    /// must keep the original 512x256 bake so existing GPU goldens stay byte-identical.
+    /// must keep the original 512x256 atlas dimensions. ASCII packs first, in the original order, so those glyph
+    /// cells stay where the GPU goldens expect them; the widened default coverage (Latin-1 Supplement + Latin
+    /// Extended-A, see SpriteFontCoverageTests) fills rows after them.
     /// </summary>
     public sealed class SpriteFontBakeTests
     {

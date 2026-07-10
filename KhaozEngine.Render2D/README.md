@@ -13,6 +13,10 @@
 - `SpriteFont` - runtime TrueType text (stb_truetype glyph atlas), `DrawString` / `Measure`. `DrawString` has a
   `float scale` overload (uniform scale about the top-left); `TextLayout.AlignedX`/`DrawAligned`/`DrawWrapped`
   take an optional `scale` so aligned/wrapped text stays correct when drawn scaled (`scale = 1` is unchanged).
+  Default baked coverage is U+0020..U+017F (printable ASCII + Latin-1 Supplement + Latin Extended-A), so
+  accented Western/Central European text renders out of the box. Anything outside the coverage (or missing
+  from the face) measures AND draws as the visible `SpriteFont.FallbackChar` glyph (`?`) instead of silently
+  dropping; control characters stay zero-width.
 - `PrimitiveRenderer` - filled/outlined 2D primitives through a `SpriteBatch` (owns a 1x1 white pixel):
   rects, lines, circles/rings, filled circles, vertical gradients, progress bars, filled sectors/arc-bands, and
   partial-ring strokes `DrawArc` (a general arc outline) / `DrawRadialProgress` (a 0..1 countdown/cooldown ring).

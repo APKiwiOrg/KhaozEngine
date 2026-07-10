@@ -45,7 +45,7 @@ public sealed class MutationService(MapEditSession session)
     /// reversible). <paramref name="factory"/> runs INSIDE the <see cref="MapEditSession.Mutate{T}"/> callback,
     /// so the read, the apply, the validate, and any revert all happen under the same lock acquisition: no other
     /// call can mutate the document between the read and the apply. <paramref name="worldChanged"/> must equal
-    /// the constructed command's <see cref="EditorCommand.AffectsWorld"/>; <see cref="MapEditSession.Mutate{T}"/>
+    /// the constructed command's <see cref="EditorCommand.AffectsWorld"/>. <see cref="MapEditSession.Mutate{T}"/>
     /// needs that flag before the callback runs (to decide whether to invalidate the cached field), so it cannot
     /// be read off the command itself, and a mismatch throws rather than silently mis-tagging the mutation.</summary>
     internal MutationResult Apply(Func<MapDocument, MapDocRegistry, EditorCommand> factory, string verb,
@@ -241,7 +241,7 @@ public sealed class MutationService(MapEditSession session)
     /// <summary>Replaces a region's shape. Looks up the region and captures its current shape (
     /// <see cref="EditRegionShapeCommand"/> needs both the new and old shape to be reversible) inside the
     /// factory overload of the choke point, so the read and the apply+validate+revert happen under the same
-    /// lock acquisition; otherwise a concurrent mutation of the same region between a separate read and the
+    /// lock acquisition. Otherwise, a concurrent mutation of the same region between a separate read and the
     /// eventual apply could make the captured old shape stale, and a validation-rejected edit would revert to
     /// that stale shape and silently clobber the concurrent change.</summary>
     public MutationResult RegionEditShape(string name, MapShapeDoc shape)

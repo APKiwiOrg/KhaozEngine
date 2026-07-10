@@ -153,7 +153,7 @@ public sealed class PatchNotesView
         if (!_document.IsEmpty && pointer.IsJustReleased)
             ToggleTappedHeader(pointer, content, measurer);
 
-        float contentHeight = _document.IsEmpty ? measurer.LineHeight : MeasureContentHeight(measurer, content.Width);
+        float contentHeight = MeasureContentHeight(measurer, content.Width);
         UpdateScrollbarDrag(pointer, content, contentHeight);
 
         // Wheel while hovering the content, plus drag-to-scroll and held Up / Down keys.
@@ -437,7 +437,7 @@ public sealed class PatchNotesView
     internal Rect ScrollbarThumbRect(Rect viewport, ITextMeasurer measurer)
     {
         Rect content = ContentViewport(viewport);
-        float contentHeight = _document.IsEmpty ? measurer.LineHeight : MeasureContentHeight(measurer, content.Width);
+        float contentHeight = MeasureContentHeight(measurer, content.Width);
         return ScrollbarThumbRect(content, contentHeight);
     }
 

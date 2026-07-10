@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.MapEditor</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <Description>Opt-in in-engine map editor runtime for KhaozEngine games. A GPU-free headless core (EditorDocument with dirty tracking and selection, EditorHistory the engine's first undo/redo command stack with drag coalescing, EditorCommands over the MapDocument model, selection, picking, and gizmo math) plus a turn-key MapEditorScene a per-game head pushes onto its SceneManager. Deliberately NOT bundled in any umbrella (the Server.Admin precedent), so a shipping game never pulls the editor. Every mutation routes through a reversible command, so undo is total by construction.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.MapDoc/KhaozEngine.MapDoc.csproj" />
+    <ProjectReference Include="../KhaozEngine.Gui/KhaozEngine.Gui.csproj" />
+    <ProjectReference Include="../KhaozEngine.Terrain.Render3D/KhaozEngine.Terrain.Render3D.csproj" />
+    <ProjectReference Include="../KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
+    <ProjectReference Include="../KhaozEngine.Game/KhaozEngine.Game.csproj" />
+    <ProjectReference Include="../KhaozEngine.Game.Render3D/KhaozEngine.Game.Render3D.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Tests" />
+  </ItemGroup>
+</Project>

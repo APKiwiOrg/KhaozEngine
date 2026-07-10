@@ -1,0 +1,574 @@
+using System;
+using KhaozEngine.MapDoc;
+
+namespace KhaozEngine.MapEditor;
+
+/// <summary>One reversible edit to a <see cref="MapDocument"/>. Commands are the ONLY mutation path the editor
+/// uses, so undo is total by construction.</summary>
+public interface IEditorCommand
+{
+    /// <summary>A short human-readable label for the undo/redo menu (developer-facing tooling text).</summary>
+    string Label { get; }
+
+    /// <summary>Applies the edit to the document.</summary>
+    void Apply(MapDocument doc);
+
+    /// <summary>Reverses the edit, restoring the document to its pre-<see cref="Apply"/> state.</summary>
+    void Revert(MapDocument doc);
+
+    /// <summary>True when this command can absorb a newer one of the same gesture (drag coalescing): the pair
+    /// collapses to one undo step. Default implementations return false.</summary>
+    bool TryMerge(IEditorCommand next);
+}
+
+/// <summary>Shared base for the concrete editor commands. Carries the world-rebuild classification the
+/// <see cref="EditorDocument"/> reads (<see cref="AffectsWorld"/>) and a no-merge default. Public so game heads
+/// can script edits through the concrete commands, but the classification stays internal to the engine.</summary>
+public abstract class EditorCommand : IEditorCommand
+{
+    /// <inheritdoc/>
+    public abstract string Label { get; }
+
+    /// <summary>True when applying or reverting this command changes terrain shape or scatter inputs, so the
+    /// viewport must rebuild its streamed world. Placement/spawn/region edits are false.</summary>
+    internal abstract bool AffectsWorld { get; }
+
+    /// <inheritdoc/>
+    public abstract void Apply(MapDocument doc);
+
+    /// <inheritdoc/>
+    public abstract void Revert(MapDocument doc);
+
+    /// <inheritdoc/>
+    public virtual bool TryMerge(IEditorCommand next) => false;
+
+    private protected static MapPlacement FindPlacement(MapDocument doc, string id)
+    {
+        foreach (MapPlacement p in doc.Placements)
+            if (string.Equals(p.Id, id, StringComparison.Ordinal))
+                return p;
+        throw new InvalidOperationException($"No placement with id '{id}' in the document.");
+    }
+
+    private protected static MapSpawn FindSpawn(MapDocument doc, string id)
+    {
+        foreach (MapSpawn s in doc.Spawns)
+            if (string.Equals(s.Id, id, StringComparison.Ordinal))
+                return s;
+        throw new InvalidOperationException($"No spawn with id '{id}' in the document.");
+    }
+
+    private protected static int IndexOfRegion(MapDocument doc, string name)
+    {
+        for (int i = 0; i < doc.Regions.Count; i++)
+            if (string.Equals(doc.Regions[i].Name, name, StringComparison.Ordinal))
+                return i;
+        throw new InvalidOperationException($"No region named '{name}' in the document.");
+    }
+}
+
+// ---- placements ------------------------------------------------------------------------------------------
+
+/// <summary>Appends an authored placement to the document.</summary>
+public sealed class AddPlacementCommand : EditorCommand
+{
+    readonly MapPlacement _placement;
+
+    /// <summary>Creates the command for the given placement (added on <see cref="Apply"/>).</summary>
+    public AddPlacementCommand(MapPlacement placement) =>
+        _placement = placement ?? throw new ArgumentNullException(nameof(placement));
+
+    /// <inheritdoc/>
+    public override string Label => "Add placement";
+    internal override bool AffectsWorld => false;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc) => doc.Placements.Add(_placement);
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => doc.Placements.Remove(_placement);
+}
+
+/// <summary>Removes the placement with the given id, capturing the removed item and its index so
+/// <see cref="Revert"/> restores it at its original position.</summary>
+public sealed class RemovePlacementCommand : EditorCommand
+{
+    readonly string _id;
+    MapPlacement? _removed;
+    int _index = -1;
+
+    /// <summary>Creates the command for the placement id to remove.</summary>
+    public RemovePlacementCommand(string id) =>
+        _id = id ?? throw new ArgumentNullException(nameof(id));
+
+    /// <inheritdoc/>
+    public override string Label => "Remove placement";
+    internal override bool AffectsWorld => false;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc)
+    {
+        MapPlacement p = FindPlacement(doc, _id);
+        _index = doc.Placements.IndexOf(p);
+        _removed = p;
+        doc.Placements.RemoveAt(_index);
+    }
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc)
+    {
+        if (_removed is null) throw new InvalidOperationException("Revert called before Apply.");
+        doc.Placements.Insert(_index, _removed);
+    }
+}
+
+/// <summary>Moves a placement to a new XZ (and optional Y). Successive moves of the same placement coalesce
+/// into one undo step (drag coalescing).</summary>
+public sealed class MovePlacementCommand : EditorCommand
+{
+    readonly string _id;
+    float _newX, _newZ;
+    float? _newY;
+    float _oldX, _oldZ;
+    float? _oldY;
+    bool _captured;
+
+    /// <summary>Creates the command moving placement <paramref name="id"/> to (<paramref name="newX"/>,
+    /// <paramref name="newZ"/>) with an optional new Y (null = ground-snap).</summary>
+    public MovePlacementCommand(string id, float newX, float newZ, float? newY)
+    {
+        _id = id ?? throw new ArgumentNullException(nameof(id));
+        _newX = newX;
+        _newZ = newZ;
+        _newY = newY;
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Move placement";
+    internal override bool AffectsWorld => false;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc)
+    {
+        MapPlacement p = FindPlacement(doc, _id);
+        if (!_captured) { _oldX = p.X; _oldZ = p.Z; _oldY = p.Y; _captured = true; }
+        p.X = _newX;
+        p.Z = _newZ;
+        p.Y = _newY;
+    }
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc)
+    {
+        MapPlacement p = FindPlacement(doc, _id);
+        p.X = _oldX;
+        p.Z = _oldZ;
+        p.Y = _oldY;
+    }
+
+    /// <inheritdoc/>
+    public override bool TryMerge(IEditorCommand next)
+    {
+        if (next is MovePlacementCommand m && string.Equals(m._id, _id, StringComparison.Ordinal))
+        {
+            _newX = m._newX;
+            _newZ = m._newZ;
+            _newY = m._newY;
+            return true;
+        }
+        return false;
+    }
+}
+
+/// <summary>Sets a placement's yaw. Successive rotations of the same placement coalesce.</summary>
+public sealed class RotatePlacementCommand : EditorCommand
+{
+    readonly string _id;
+    float _newYaw;
+    float _oldYaw;
+    bool _captured;
+
+    /// <summary>Creates the command rotating placement <paramref name="id"/> to <paramref name="newYaw"/>.</summary>
+    public RotatePlacementCommand(string id, float newYaw)
+    {
+        _id = id ?? throw new ArgumentNullException(nameof(id));
+        _newYaw = newYaw;
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Rotate placement";
+    internal override bool AffectsWorld => false;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc)
+    {
+        MapPlacement p = FindPlacement(doc, _id);
+        if (!_captured) { _oldYaw = p.Yaw; _captured = true; }
+        p.Yaw = _newYaw;
+    }
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => FindPlacement(doc, _id).Yaw = _oldYaw;
+
+    /// <inheritdoc/>
+    public override bool TryMerge(IEditorCommand next)
+    {
+        if (next is RotatePlacementCommand r && string.Equals(r._id, _id, StringComparison.Ordinal))
+        {
+            _newYaw = r._newYaw;
+            return true;
+        }
+        return false;
+    }
+}
+
+/// <summary>Sets a placement's uniform scale. Successive scalings of the same placement coalesce.</summary>
+public sealed class ScalePlacementCommand : EditorCommand
+{
+    readonly string _id;
+    float _newScale;
+    float _oldScale;
+    bool _captured;
+
+    /// <summary>Creates the command scaling placement <paramref name="id"/> to <paramref name="newScale"/>.</summary>
+    public ScalePlacementCommand(string id, float newScale)
+    {
+        _id = id ?? throw new ArgumentNullException(nameof(id));
+        _newScale = newScale;
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Scale placement";
+    internal override bool AffectsWorld => false;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc)
+    {
+        MapPlacement p = FindPlacement(doc, _id);
+        if (!_captured) { _oldScale = p.Scale; _captured = true; }
+        p.Scale = _newScale;
+    }
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => FindPlacement(doc, _id).Scale = _oldScale;
+
+    /// <inheritdoc/>
+    public override bool TryMerge(IEditorCommand next)
+    {
+        if (next is ScalePlacementCommand s && string.Equals(s._id, _id, StringComparison.Ordinal))
+        {
+            _newScale = s._newScale;
+            return true;
+        }
+        return false;
+    }
+}
+
+// ---- spawns ----------------------------------------------------------------------------------------------
+
+/// <summary>Appends an NPC spawn marker to the document.</summary>
+public sealed class AddSpawnCommand : EditorCommand
+{
+    readonly MapSpawn _spawn;
+
+    /// <summary>Creates the command for the given spawn (added on <see cref="Apply"/>).</summary>
+    public AddSpawnCommand(MapSpawn spawn) =>
+        _spawn = spawn ?? throw new ArgumentNullException(nameof(spawn));
+
+    /// <inheritdoc/>
+    public override string Label => "Add spawn";
+    internal override bool AffectsWorld => false;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc) => doc.Spawns.Add(_spawn);
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => doc.Spawns.Remove(_spawn);
+}
+
+/// <summary>Removes the spawn with the given id, restoring it at its original index on revert.</summary>
+public sealed class RemoveSpawnCommand : EditorCommand
+{
+    readonly string _id;
+    MapSpawn? _removed;
+    int _index = -1;
+
+    /// <summary>Creates the command for the spawn id to remove.</summary>
+    public RemoveSpawnCommand(string id) =>
+        _id = id ?? throw new ArgumentNullException(nameof(id));
+
+    /// <inheritdoc/>
+    public override string Label => "Remove spawn";
+    internal override bool AffectsWorld => false;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc)
+    {
+        MapSpawn s = FindSpawn(doc, _id);
+        _index = doc.Spawns.IndexOf(s);
+        _removed = s;
+        doc.Spawns.RemoveAt(_index);
+    }
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc)
+    {
+        if (_removed is null) throw new InvalidOperationException("Revert called before Apply.");
+        doc.Spawns.Insert(_index, _removed);
+    }
+}
+
+/// <summary>Moves a spawn to a new XZ. Successive moves of the same spawn coalesce.</summary>
+public sealed class MoveSpawnCommand : EditorCommand
+{
+    readonly string _id;
+    float _newX, _newZ;
+    float _oldX, _oldZ;
+    bool _captured;
+
+    /// <summary>Creates the command moving spawn <paramref name="id"/> to (<paramref name="newX"/>,
+    /// <paramref name="newZ"/>).</summary>
+    public MoveSpawnCommand(string id, float newX, float newZ)
+    {
+        _id = id ?? throw new ArgumentNullException(nameof(id));
+        _newX = newX;
+        _newZ = newZ;
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Move spawn";
+    internal override bool AffectsWorld => false;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc)
+    {
+        MapSpawn s = FindSpawn(doc, _id);
+        if (!_captured) { _oldX = s.X; _oldZ = s.Z; _captured = true; }
+        s.X = _newX;
+        s.Z = _newZ;
+    }
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc)
+    {
+        MapSpawn s = FindSpawn(doc, _id);
+        s.X = _oldX;
+        s.Z = _oldZ;
+    }
+
+    /// <inheritdoc/>
+    public override bool TryMerge(IEditorCommand next)
+    {
+        if (next is MoveSpawnCommand m && string.Equals(m._id, _id, StringComparison.Ordinal))
+        {
+            _newX = m._newX;
+            _newZ = m._newZ;
+            return true;
+        }
+        return false;
+    }
+}
+
+/// <summary>Toggles a spawn's enabled flag.</summary>
+public sealed class SetSpawnEnabledCommand : EditorCommand
+{
+    readonly string _id;
+    readonly bool _enabled;
+    bool _old;
+    bool _captured;
+
+    /// <summary>Creates the command setting spawn <paramref name="id"/>'s enabled flag to
+    /// <paramref name="enabled"/>.</summary>
+    public SetSpawnEnabledCommand(string id, bool enabled)
+    {
+        _id = id ?? throw new ArgumentNullException(nameof(id));
+        _enabled = enabled;
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Set spawn enabled";
+    internal override bool AffectsWorld => false;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc)
+    {
+        MapSpawn s = FindSpawn(doc, _id);
+        if (!_captured) { _old = s.Enabled; _captured = true; }
+        s.Enabled = _enabled;
+    }
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => FindSpawn(doc, _id).Enabled = _old;
+}
+
+// ---- exclusions (terrain-shape affecting) ----------------------------------------------------------------
+
+/// <summary>Appends a scatter exclusion shape. Affects the streamed world (scatter inputs change).</summary>
+public sealed class AddExclusionCommand : EditorCommand
+{
+    readonly MapExclusion _exclusion;
+
+    /// <summary>Creates the command for the given exclusion (added on <see cref="Apply"/>).</summary>
+    public AddExclusionCommand(MapExclusion exclusion) =>
+        _exclusion = exclusion ?? throw new ArgumentNullException(nameof(exclusion));
+
+    /// <inheritdoc/>
+    public override string Label => "Add exclusion";
+    internal override bool AffectsWorld => true;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc) => doc.Exclusions.Add(_exclusion);
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => doc.Exclusions.Remove(_exclusion);
+}
+
+/// <summary>Removes the exclusion at the given index, restoring it at that index on revert. Affects the
+/// streamed world.</summary>
+public sealed class RemoveExclusionCommand : EditorCommand
+{
+    readonly int _index;
+    MapExclusion? _removed;
+
+    /// <summary>Creates the command for the exclusion list index to remove.</summary>
+    public RemoveExclusionCommand(int index) => _index = index;
+
+    /// <inheritdoc/>
+    public override string Label => "Remove exclusion";
+    internal override bool AffectsWorld => true;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc)
+    {
+        _removed = doc.Exclusions[_index];
+        doc.Exclusions.RemoveAt(_index);
+    }
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc)
+    {
+        if (_removed is null) throw new InvalidOperationException("Revert called before Apply.");
+        doc.Exclusions.Insert(_index, _removed);
+    }
+}
+
+// ---- regions (game-interpreted markers, not terrain-affecting) --------------------------------------------
+
+/// <summary>Appends a named region marker. Regions are game-interpreted, so this does not affect the
+/// streamed world.</summary>
+public sealed class AddRegionCommand : EditorCommand
+{
+    readonly MapRegion _region;
+
+    /// <summary>Creates the command for the given region (added on <see cref="Apply"/>).</summary>
+    public AddRegionCommand(MapRegion region) =>
+        _region = region ?? throw new ArgumentNullException(nameof(region));
+
+    /// <inheritdoc/>
+    public override string Label => "Add region";
+    internal override bool AffectsWorld => false;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc) => doc.Regions.Add(_region);
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => doc.Regions.Remove(_region);
+}
+
+/// <summary>Removes the region with the given name, restoring it at its original index on revert.</summary>
+public sealed class RemoveRegionCommand : EditorCommand
+{
+    readonly string _name;
+    MapRegion? _removed;
+    int _index = -1;
+
+    /// <summary>Creates the command for the region name to remove.</summary>
+    public RemoveRegionCommand(string name) =>
+        _name = name ?? throw new ArgumentNullException(nameof(name));
+
+    /// <inheritdoc/>
+    public override string Label => "Remove region";
+    internal override bool AffectsWorld => false;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc)
+    {
+        _index = IndexOfRegion(doc, _name);
+        _removed = doc.Regions[_index];
+        doc.Regions.RemoveAt(_index);
+    }
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc)
+    {
+        if (_removed is null) throw new InvalidOperationException("Revert called before Apply.");
+        doc.Regions.Insert(_index, _removed);
+    }
+}
+
+/// <summary>Renames a region. Regions are keyed by name, so the id-carrying selection follows the rename.</summary>
+public sealed class RenameRegionCommand : EditorCommand
+{
+    readonly string _oldName;
+    readonly string _newName;
+
+    /// <summary>Creates the command renaming the region <paramref name="oldName"/> to
+    /// <paramref name="newName"/>.</summary>
+    public RenameRegionCommand(string oldName, string newName)
+    {
+        _oldName = oldName ?? throw new ArgumentNullException(nameof(oldName));
+        _newName = newName ?? throw new ArgumentNullException(nameof(newName));
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Rename region";
+    internal override bool AffectsWorld => false;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc) => doc.Regions[IndexOfRegion(doc, _oldName)].Name = _newName;
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => doc.Regions[IndexOfRegion(doc, _newName)].Name = _oldName;
+}
+
+// ---- terrain features (terrain-shape affecting) ----------------------------------------------------------
+
+/// <summary>Replaces the terrain feature at a given index with a new value (parameter scrub). The caller
+/// supplies both the new and old feature. Successive edits of the same index coalesce (scrub coalescing).
+/// Affects the streamed world.</summary>
+public sealed class EditFeatureCommand : EditorCommand
+{
+    readonly int _index;
+    MapFeature _newValue;
+    readonly MapFeature _oldValue;
+
+    /// <summary>Creates the command replacing feature <paramref name="featureIndex"/> with
+    /// <paramref name="newValue"/>, capturing <paramref name="oldValue"/> for revert.</summary>
+    public EditFeatureCommand(int featureIndex, MapFeature newValue, MapFeature oldValue)
+    {
+        _index = featureIndex;
+        _newValue = newValue ?? throw new ArgumentNullException(nameof(newValue));
+        _oldValue = oldValue ?? throw new ArgumentNullException(nameof(oldValue));
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Edit terrain feature";
+    internal override bool AffectsWorld => true;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc) => doc.Terrain.Features[_index] = _newValue;
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => doc.Terrain.Features[_index] = _oldValue;
+
+    /// <inheritdoc/>
+    public override bool TryMerge(IEditorCommand next)
+    {
+        if (next is EditFeatureCommand f && f._index == _index)
+        {
+            _newValue = f._newValue;
+            return true;
+        }
+        return false;
+    }
+}

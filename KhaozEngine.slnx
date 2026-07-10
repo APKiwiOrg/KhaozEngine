@@ -28,6 +28,7 @@
   <Project Path="KhaozEngine.Localization.TestKit/KhaozEngine.Localization.TestKit.csproj" />
   <Project Path="KhaozEngine.Locomotion/KhaozEngine.Locomotion.csproj" />
   <Project Path="KhaozEngine.MapDoc/KhaozEngine.MapDoc.csproj" />
+  <Project Path="KhaozEngine.MapEditor/KhaozEngine.MapEditor.csproj" />
   <Project Path="KhaozEngine.NetWorld/KhaozEngine.NetWorld.csproj" />
   <Project Path="KhaozEngine.Netcode.Abstractions/KhaozEngine.Netcode.Abstractions.csproj" />
   <Project Path="KhaozEngine.Netcode/KhaozEngine.Netcode.csproj" />

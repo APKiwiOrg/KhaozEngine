@@ -64,6 +64,13 @@ namespace KhaozEngine.Gui
         /// <summary>Horizontal indent per depth level, and the width of the caret zone at each level. Default 16.</summary>
         public float Indent { get; set; } = 16f;
 
+        /// <summary>
+        /// Rows advanced per wheel notch. The wheel step is <c>notches * RowHeight * WheelRowsPerNotch</c>, so one
+        /// notch moves this many rows. Default 3 matches <see cref="PropertyGrid.WheelRowsPerNotch"/> for the same
+        /// side-by-side feel.
+        /// </summary>
+        public float WheelRowsPerNotch { get; set; } = 3f;
+
         /// <summary>Vertical scroll in pixels. Wheel scrolling clamps this to the content, but a direct set is honoured as-is.</summary>
         public float ScrollOffset { get; set; }
 
@@ -134,7 +141,7 @@ namespace KhaozEngine.Gui
             if (notches != 0)
             {
                 float max = MathF.Max(0f, rows.Count * RowHeight - Bounds.Height);
-                ScrollOffset = Math.Clamp(ScrollOffset - notches * RowHeight * 3f, 0f, max);
+                ScrollOffset = Math.Clamp(ScrollOffset - notches * RowHeight * WheelRowsPerNotch, 0f, max);
             }
 
             // A tap must land inside the view to hit a row, which also drops taps in the band a scrolled-away row

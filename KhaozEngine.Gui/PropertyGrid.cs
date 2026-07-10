@@ -37,6 +37,13 @@ namespace KhaozEngine.Gui
         /// <summary>Draw the child editor into <paramref name="editorRect"/>. <paramref name="white"/> is a 1x1 white texture.</summary>
         public abstract void Draw(SpriteBatch batch, Texture2D white, SpriteFont font, Rect editorRect);
 
+        /// <summary>
+        /// Grid hook: the row ran last frame but is culled this frame (scrolled out of view), so the grid is tearing
+        /// it down. Close any live interaction the row owns (a focus, an open edit) so a widget behind the cull can
+        /// no longer consume input the grid never routes to it. No-op by default.
+        /// </summary>
+        public virtual void Deactivate() { }
+
         /// <summary>Grid hook: push the grid's fade into this row's child widget before it draws. No-op by default.</summary>
         internal virtual void ApplyOpacity(float opacity) { }
     }
@@ -72,15 +79,18 @@ namespace KhaozEngine.Gui
         {
             Field.Bounds = editorRect;
             // Poll the external value in, unless the user is actively editing or scrubbing, so a live gesture is never
-            // stomped. Typing is flagged by IsEditing; a scrub is a held drag whose press began in the cell (the
-            // grab-gate, IsDragStartIn) - NumberField exposes no scrub flag, so infer it from the same press-origin rule.
-            bool interacting = Field.IsEditing || input.Pointer.IsDragStartIn(editorRect);
+            // stomped. The field owns both flags now: IsEditing while typing, IsScrubbing while the grab-gate drag is
+            // held. Reading them (rather than re-deriving the press-origin rule) keeps the guard in one place.
+            bool interacting = Field.IsScrubbing || Field.IsEditing;
             if (!interacting) Field.Value = _get();
 
             bool changed = Field.Update(input, dt);
             if (changed) _set(Field.Value);
             return changed;
         }
+
+        /// <inheritdoc/>
+        public override void Deactivate() => Field.CancelEdit();
 
         /// <inheritdoc/>
         public override void Draw(SpriteBatch batch, Texture2D white, SpriteFont font, Rect editorRect)
@@ -176,6 +186,9 @@ namespace KhaozEngine.Gui
         }
 
         /// <inheritdoc/>
+        public override void Deactivate() => Input.Unfocus();
+
+        /// <inheritdoc/>
         public override void Draw(SpriteBatch batch, Texture2D white, SpriteFont font, Rect editorRect)
         {
             Input.Bounds = editorRect;
@@ -237,15 +250,22 @@ namespace KhaozEngine.Gui
     /// Rows fully above or below <see cref="Bounds"/> are skipped entirely in <see cref="Update"/>: their editor cell
     /// is still computed (scroll-aware), but a skipped row never runs its child widget, so it neither hit-tests
     /// off-view geometry nor reserves an off-view region (block-region pollution). Combined with the scroll-aware
-    /// cell, a scrolled-away row cannot act on a tap that lands where it used to sit.
+    /// cell, a scrolled-away row cannot act on a tap that lands where it used to sit. A row that ran last frame but is
+    /// culled this frame is also <see cref="PropertyRow.Deactivate"/>d once as it leaves, so a focused/open editor
+    /// cannot keep consuming input behind the cull (the dual-focus double-typing bug).
     /// </para>
     /// </summary>
     public sealed class PropertyGrid
     {
-        // Pixels scrolled per wheel notch (matches the ScrollablePanel feel).
-        const float WheelSpeed = 30f;
+        // Nominal row height used for the wheel step when the grid has no rows to average.
+        const float DefaultRowHeight = 28f;
         // Left pad of the label text inside its cell.
         const float LabelPad = 6f;
+
+        // Rows that ran Update last frame. A row present here but culled this frame is Deactivated exactly once as it
+        // leaves view. Two sets are swapped each frame so the bookkeeping allocates nothing after construction.
+        HashSet<PropertyRow> _ranLastFrame = new();
+        HashSet<PropertyRow> _ranThisFrame = new();
 
         /// <summary>The view rect the caller owns. Rows lay out downward from its top edge, offset by <see cref="ScrollOffset"/>.</summary>
         public Rect Bounds;
@@ -258,6 +278,13 @@ namespace KhaozEngine.Gui
 
         /// <summary>Vertical gap in pixels between stacked rows. Default 4.</summary>
         public float RowSpacing { get; set; } = 4f;
+
+        /// <summary>
+        /// Rows advanced per wheel notch. The wheel step is <c>notches * (average row height) * WheelRowsPerNotch</c>,
+        /// so one notch moves this many rows. Default 3 matches <see cref="TreeView.WheelRowsPerNotch"/> for the same
+        /// side-by-side feel (a <see cref="TreeView"/> notch moves 3 of its rows too).
+        /// </summary>
+        public float WheelRowsPerNotch { get; set; } = 3f;
 
         /// <summary>Vertical scroll in pixels. Wheel scrolling clamps this to the content, and every <see cref="Update"/> re-clamps it.</summary>
         public float ScrollOffset { get; set; }
@@ -320,20 +347,42 @@ namespace KhaozEngine.Gui
             input.BlockInputRegion(Bounds);
             if (!Enabled) return false;
 
-            // Wheel scroll while the pointer is over the grid, clamped to the content.
+            // Wheel scroll while the pointer is over the grid, clamped to the content. One notch moves
+            // WheelRowsPerNotch rows (via the average row height), matching the TreeView feel side by side.
             int notches = input.GetScrollIn(Bounds);
-            if (notches != 0) ScrollOffset -= notches * WheelSpeed;
+            if (notches != 0) ScrollOffset -= notches * AverageRowHeight() * WheelRowsPerNotch;
             ScrollOffset = Math.Clamp(ScrollOffset, 0f, MaxScroll);
 
+            _ranThisFrame.Clear();
             for (int i = 0; i < Rows.Count; i++)
             {
                 Rect cell = RowEditorBounds(i);
+                PropertyRow row = Rows[i];
                 // Skip rows scrolled fully out of view: do not run their child widget, so it neither hit-tests
-                // off-view geometry nor reserves an off-view region (block-region pollution).
-                if (cell.Bottom <= Bounds.Y || cell.Y >= Bounds.Bottom) continue;
-                if (Rows[i].Update(cell, input, dt)) WasChanged = true;
+                // off-view geometry nor reserves an off-view region (block-region pollution). A row that ran last
+                // frame but is culled now is Deactivated once as it leaves, so a focused/open editor cannot keep
+                // consuming input behind the cull (the dual-focus double-typing bug).
+                if (cell.Bottom <= Bounds.Y || cell.Y >= Bounds.Bottom)
+                {
+                    if (_ranLastFrame.Contains(row)) row.Deactivate();
+                    continue;
+                }
+                if (row.Update(cell, input, dt)) WasChanged = true;
+                _ranThisFrame.Add(row);
             }
+            // This frame's in-view rows become next frame's reference set (swap, no allocation).
+            (_ranLastFrame, _ranThisFrame) = (_ranThisFrame, _ranLastFrame);
             return WasChanged;
+        }
+
+        // Mean row height, used to size the wheel step so one notch moves WheelRowsPerNotch rows. Falls back to the
+        // default row height when the grid is empty.
+        float AverageRowHeight()
+        {
+            if (Rows.Count == 0) return DefaultRowHeight;
+            float total = 0f;
+            foreach (PropertyRow row in Rows) total += row.Height;
+            return total / Rows.Count;
         }
 
         /// <summary>

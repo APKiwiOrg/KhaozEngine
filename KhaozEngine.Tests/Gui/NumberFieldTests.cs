@@ -170,5 +170,43 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal(5f, f.Value, 3);
             Assert.False(f.IsEditing);
         }
+
+        // IsScrubbing mirrors the grab-gate: true from the press inside through every drag frame (even once the
+        // cursor strays off the field), and false once the button releases.
+        [Fact]
+        public void NumberField_IsScrubbing_TracksGrabGate()
+        {
+            var f = new NumberField(Field, 5f) { DragScale = 0.1f };
+            var input = new InputManager();
+
+            Step(input, f, Inside, false);                 // idle, button up
+            Assert.False(f.IsScrubbing);
+            Step(input, f, Inside, true);                  // press inside: the grab-gate is held
+            Assert.True(f.IsScrubbing);
+            Step(input, f, new Vector2(200, 114), true);   // drag, still inside
+            Assert.True(f.IsScrubbing);
+            Step(input, f, new Vector2(400, 114), true);   // dragged OUTSIDE the field, grab-gate still holds
+            Assert.True(f.IsScrubbing);
+            Step(input, f, new Vector2(400, 114), false);  // release
+            Assert.False(f.IsScrubbing);
+        }
+
+        // CancelEdit exits typing mode without committing the buffer, leaving Value at the pre-edit value.
+        [Fact]
+        public void NumberField_CancelEdit_RevertsAndCloses()
+        {
+            var f = new NumberField(Field, 5f) { Max = 100f };
+            var input = new InputManager();
+            TapToEdit(input, f, Inside);
+            Assert.True(f.IsEditing);
+            Step(input, f, Inside, false, new[] { Key.D9 });   // buffer becomes "9"; value not committed
+            Assert.Equal(5f, f.Value, 3);
+
+            f.CancelEdit();                                    // close the edit without committing
+
+            Assert.False(f.IsEditing);
+            Assert.Equal(5f, f.Value, 3);                      // reverted to the pre-edit value, never committed to 9
+            Assert.False(f.WasChanged);                        // a cancel is not a change
+        }
     }
 }

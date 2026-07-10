@@ -164,8 +164,8 @@ namespace KhaozEngine.Tests.Gui
             var input = new InputManager();
             var inside = new Vector2(150, 75);
 
-            Step(input, grid, inside, false, scroll: -1f);     // wheel down one notch (WheelSpeed 30)
-            Assert.Equal(30f, grid.ScrollOffset, 3);
+            Step(input, grid, inside, false, scroll: -1f);     // wheel down one notch: 28 avg row * 3 rows/notch = 84
+            Assert.Equal(84f, grid.ScrollOffset, 3);
 
             Step(input, grid, inside, false, scroll: -100f);   // overshoot down -> clamp to max
             Assert.Equal(170f, grid.ScrollOffset, 3);
@@ -213,6 +213,85 @@ namespace KhaozEngine.Tests.Gui
             Assert.False(visible);
             Assert.Equal(50f, health, 3);
             Assert.False(grid.WasChanged);
+        }
+
+        // The dual-focus double-typing bug from the B1 review, pinned. A focused TextRow that scroll-culls used to
+        // keep its focus behind the cull (the grid skipped its Update, so it never saw the tap that would defocus it),
+        // and a second focus elsewhere left BOTH fields focused, double-typing through both setters. The grid now
+        // deactivates any row it culls that ran last frame, so the culled field is unfocused and cannot double-write.
+        [Fact]
+        public void PropertyGrid_CulledFocusedTextRow_IsDeactivated()
+        {
+            string id = "a";
+            var grid = new PropertyGrid(Area);
+            var row = new TextRow(LocalizedText.Raw("Id"), () => id, v => id = v);
+            grid.Rows.Add(row);
+            for (int i = 1; i < 10; i++)                       // fillers so row 0 can scroll fully out of view
+                grid.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("R"), () => "-"));
+
+            var input = new InputManager();
+            var inside = new Vector2(200, 14);                 // row 0's editor cell
+            Tap(input, grid, inside);                          // focus the text field
+            Assert.True(row.Input.IsFocused);                  // precondition: it took focus
+
+            grid.ScrollOffset = 100f;                          // push row 0 fully above the view
+            Step(input, grid, new Vector2(400, 300), false);   // one Update: row 0 is culled and deactivated
+
+            Assert.False(row.Input.IsFocused);                 // the grid unfocused it on the cull
+
+            // Typing frames afterward do NOT write through its setter: there is no phantom focused field behind the
+            // cull. Bring it back into view and type, and the value is untouched (no double-typing).
+            grid.ScrollOffset = 0f;
+            Step(input, grid, inside, false, keys: new[] { Key.B });
+            Assert.Equal("a", id);
+        }
+
+        // A FloatRow that scroll-culls mid-edit has its NumberField edit CANCELLED (revert + close), not committed.
+        [Fact]
+        public void PropertyGrid_CulledEditingFloatRow_CancelsEdit()
+        {
+            float val = 5f;
+            var grid = new PropertyGrid(Area);
+            var row = new FloatRow(LocalizedText.Raw("V"), () => val, v => val = v, min: 0f, max: 100f);
+            grid.Rows.Add(row);
+            for (int i = 1; i < 10; i++)
+                grid.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("R"), () => "-"));
+
+            var input = new InputManager();
+            var inside = new Vector2(200, 14);
+            Tap(input, grid, inside);                          // tap enters typing mode on the NumberField
+            Assert.True(row.Field.IsEditing);                  // precondition: it is editing
+            Step(input, grid, inside, false, keys: new[] { Key.D9 });   // buffer becomes "9"; value not committed yet
+            Assert.Equal(5f, val, 3);                          // still the pre-edit value
+
+            grid.ScrollOffset = 100f;                          // push the row out of view
+            Step(input, grid, new Vector2(400, 300), false);   // one Update: culled -> deactivated -> edit cancelled
+
+            Assert.False(row.Field.IsEditing);                 // the edit was closed
+            Assert.Equal(5f, val, 3);                          // reverted, NOT committed to 9
+        }
+
+        // The wheel rate is aligned across the two editor widgets: one notch scrolls each by WheelRowsPerNotch (3)
+        // rows of its own row height, so they feel identical side by side. TreeView RowHeight 24 -> 72 px; a
+        // PropertyGrid of default 28-tall rows -> 84 px. Both use the shared default of 3 rows per notch.
+        [Fact]
+        public void WheelRates_DefaultAligned()
+        {
+            var tree = new TreeView(new Rect(0, 0, 200, 120));
+            for (int i = 0; i < 20; i++) tree.Roots.Add(new TreeNode(LocalizedText.Raw("R")));
+            var treeInput = new InputManager();
+            treeInput.Update(Frame(new Vector2(100, 60), false, scroll: -1f));   // one notch down over the tree
+            tree.Update(treeInput);
+
+            var grid = new PropertyGrid(new Rect(0, 0, 300, 120));
+            for (int i = 0; i < 20; i++) grid.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("R"), () => "-"));
+            var gridInput = new InputManager();
+            Step(gridInput, grid, new Vector2(150, 60), false, scroll: -1f);     // one notch down over the grid
+
+            Assert.Equal(3f, tree.WheelRowsPerNotch, 3);        // shared default feel
+            Assert.Equal(3f, grid.WheelRowsPerNotch, 3);
+            Assert.Equal(3f * tree.RowHeight, tree.ScrollOffset, 3);   // 3 * 24 = 72
+            Assert.Equal(3f * 28f, grid.ScrollOffset, 3);             // 3 * 28 = 84
         }
     }
 }

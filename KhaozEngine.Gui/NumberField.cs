@@ -61,6 +61,14 @@ namespace KhaozEngine.Gui
         /// <summary>True while the field is in typing mode (a tap opened it, no commit/cancel yet).</summary>
         public bool IsEditing { get; private set; }
 
+        /// <summary>
+        /// True while a scrub is in progress: a held drag whose press began inside <see cref="Bounds"/> (the
+        /// grab-gate), so it stays true even after the cursor strays off the field, and drops on release. A caller
+        /// (e.g. a <see cref="PropertyGrid"/> row) reads this instead of re-deriving the press-origin rule to know
+        /// whether the field is mid-gesture and must not be stomped by an external poll.
+        /// </summary>
+        public bool IsScrubbing { get; private set; }
+
         /// <summary>Fired on a real change to <see cref="Value"/> (scrub step or commit), with the new value.</summary>
         public Action<float>? OnChanged;
 
@@ -108,6 +116,7 @@ namespace KhaozEngine.Gui
             if (!Enabled)
             {
                 IsEditing = false;
+                IsScrubbing = false;
                 _selectAll = false;
                 return false;
             }
@@ -116,6 +125,7 @@ namespace KhaozEngine.Gui
 
             if (IsEditing)
             {
+                IsScrubbing = false;   // typing mode never scrubs
                 // The first edit after entering replaces the seeded value (select-all-on-focus): clear the buffer
                 // before applying so the numeric filter validates against an empty buffer, then feed this frame's
                 // typed keys through TextEntry with the numeric filter.
@@ -137,12 +147,15 @@ namespace KhaozEngine.Gui
             }
 
             // Scrub: a drag whose press began inside keeps tracking (the grab-gate), moving Value by the pointer's
-            // horizontal delta scaled by DragScale, clamped.
+            // horizontal delta scaled by DragScale, clamped. IsScrubbing mirrors the grab-gate so it holds even once
+            // the cursor strays off the field, and clears the moment the button releases.
             if (pointer.IsDragStartIn(Bounds))
             {
+                IsScrubbing = true;
                 float dx = pointer.Delta.X;
                 if (dx != 0f) SetValue(Value + dx * DragScale);
             }
+            else IsScrubbing = false;
 
             // Tap-to-edit: a press+release inside with negligible travel (distinguishes a tap from a scrub) opens
             // typing mode, seeding the buffer with the current value.
@@ -190,7 +203,13 @@ namespace KhaozEngine.Gui
             _selectAll = false;
         }
 
-        void CancelEdit()
+        /// <summary>
+        /// Exit typing mode WITHOUT committing the buffer, leaving <see cref="Value"/> at the pre-edit value (the
+        /// field never mutates <see cref="Value"/> while editing, so no revert is needed). Mirrors the Escape path
+        /// and is the hook a host uses to close an edit it is tearing down (e.g. a <see cref="PropertyGrid"/> row
+        /// scrolling out of view). No-op when not editing.
+        /// </summary>
+        public void CancelEdit()
         {
             // Value was never mutated while editing, so exiting leaves it at the pre-edit value.
             IsEditing = false;

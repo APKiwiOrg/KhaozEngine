@@ -40,6 +40,9 @@ namespace KhaozEngine.Showcase
                     Path.Combine(assets, "buildings", "buildings.manifest.json"),
                 },
                 SpawnArchetypes = new List<string>(SpawnArchetypes),
+                // Reserve the bottom band the app's F7-F10 display readout draws in, so the editor's own status
+                // strip sits directly above it instead of stacking on the same pixels.
+                StatusBottomOffset = ShowcaseApp.DisplayReadoutHeight,
             };
             return new MapEditorScene().Init(scene, white, font, options);
         }

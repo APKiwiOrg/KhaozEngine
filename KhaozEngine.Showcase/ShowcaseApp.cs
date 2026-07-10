@@ -18,6 +18,11 @@ namespace KhaozEngine.Showcase
     {
         readonly SceneManager _scenes = new();
 
+        /// <summary>Points of bottom-edge clearance the F7-F10 display readout band occupies, so a room can reserve
+        /// it (the map editor's <see cref="KhaozEngine.MapEditor.MapEditorOptions.StatusBottomOffset"/>) and not
+        /// draw its own chrome under the readout line.</summary>
+        public const float DisplayReadoutHeight = 36f;
+
         /// <summary>Room registry, in menu order. Rooms append here in OnLoad.</summary>
         public readonly List<(string Name, Func<GameScene> Factory)> Rooms = new();
 
@@ -199,9 +204,11 @@ namespace KhaozEngine.Showcase
             string line = $"F7 vsync:{d.PresentMode}  F8 cap:{cap}  F9 mode:{d.WindowMode}  F10 res:{d.Width}x{d.Height}" +
                           $"   [fb {Window.FramebufferWidth}x{Window.FramebufferHeight}  {Backend}]";
             SpriteFont font = _readoutFont.For(Ui.DpiScale);
-            float y = Ui.Height - 30f;
-            batch.Draw(_white, new Vector4(0, y - 6f, Ui.Width, 32f), new Color(0f, 0f, 0f, 0.55f));
-            batch.DrawString(font, line, new Vector2(16f, y), new Color(0.85f, 0.95f, 1f, 1f));
+            // The readout occupies the bottom DisplayReadoutHeight band. A room that reserves it (the map editor,
+            // via StatusBottomOffset) sits its own chrome directly above bandTop so nothing stacks on these pixels.
+            float bandTop = Ui.Height - DisplayReadoutHeight;
+            batch.Draw(_white, new Vector4(0, bandTop, Ui.Width, 32f), new Color(0f, 0f, 0f, 0.55f));
+            batch.DrawString(font, line, new Vector2(16f, bandTop + 6f), new Color(0.85f, 0.95f, 1f, 1f));
         }
     }
 }

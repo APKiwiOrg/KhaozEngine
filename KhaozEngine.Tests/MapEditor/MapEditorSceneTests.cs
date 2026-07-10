@@ -670,5 +670,57 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Contains(hint, line);
             Assert.True(line.IndexOf(hint, StringComparison.Ordinal) < line.IndexOf("undo:", StringComparison.Ordinal));
         }
+
+        // ---- toolbar mode sync ---------------------------------------------------------------------------
+
+        [Fact]
+        public void Toolbar_ReflectsOneShotReturnToSelect()
+        {
+            var scene = new SpyScene();
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager { Input = InputState.Empty };
+            m.Push(scene);
+
+            // The user taps the Region tab: the toolbar and controller both enter the one-shot DrawRegion tool.
+            scene.Toolbar.ActiveIndex = (int)EditorToolMode.DrawRegion;
+            scene.Controller.Mode = EditorToolMode.DrawRegion;
+
+            // Drive a completed disc-drag over a flat field straight on the controller (the viewport gesture the
+            // scene would feed it). A finished draw commits one region and returns the controller to Select on its
+            // own, which the one-way tab tap never observes.
+            scene.Controller.Field = new KhaozEngine.Terrain.TerrainField(
+                new KhaozEngine.Terrain.TerrainConfig { GentleAmplitude = 0f });
+            var down = new Vector3(0f, -1f, 0f);
+            scene.Controller.Update(new EditorFrameInput(new Vector3(0f, 100f, 0f), down,
+                pointerPressed: true, pointerDown: true, dt: 0.016f));
+            scene.Controller.Update(new EditorFrameInput(new Vector3(3f, 100f, 0f), down,
+                pointerReleased: true, dt: 0.016f));
+
+            Assert.Equal(EditorToolMode.Select, scene.Controller.Mode);                  // one shot returned to Select
+            Assert.Equal((int)EditorToolMode.DrawRegion, scene.Toolbar.ActiveIndex);     // toolbar still stale
+
+            m.Update(0.016f);   // the scene's per-frame toolbar-to-mode sync fires
+
+            Assert.Equal((int)EditorToolMode.Select, scene.Toolbar.ActiveIndex);
+        }
+
+        // ---- status-strip bottom offset ------------------------------------------------------------------
+
+        [Fact]
+        public void StatusStrip_HonorsBottomOffset()
+        {
+            var flush = new SpyScene();
+            flush.Init(null!, null!, null!, new MapEditorOptions());
+
+            var reserved = new SpyScene();
+            reserved.Init(null!, null!, null!, new MapEditorOptions { StatusBottomOffset = 36f });
+
+            Rect a = flush.StatusRect(1000f, 600f);
+            Rect b = reserved.StatusRect(1000f, 600f);
+
+            Near(36f, a.Y - b.Y);          // the strip shifts UP by exactly the reserved offset
+            Near(a.Height, b.Height);      // same strip height, just relocated
+            Near(a.Width, b.Width);
+        }
     }
 }

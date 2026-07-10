@@ -33,6 +33,12 @@ public sealed class MapEditorOptions
 
     /// <summary>Spawn archetype ids the game offers in the spawn tool (dropdown content).</summary>
     public List<string> SpawnArchetypes = new();
+
+    /// <summary>Points of extra clearance reserved at the bottom of the window for a host-drawn overlay (for
+    /// example the Showcase's F7-F10 display readout line): the status strip and the editor body above it shift
+    /// up by this much, so the editor chrome never stacks on the same pixels as the host readout. Default 0 keeps
+    /// the status strip flush with the window bottom.</summary>
+    public float StatusBottomOffset;
 }
 
 /// <summary>The turn-key in-engine map editor scene a per-game head pushes onto its <see cref="SceneManager"/>:
@@ -145,6 +151,10 @@ public class MapEditorScene : GameScene, IGameScene3D
 
     /// <summary>The inspector grid, or null before <see cref="OnEnter"/>. Exposed for tests.</summary>
     internal PropertyGrid Inspector => _inspector;
+
+    /// <summary>The mode tab bar, or null before <see cref="OnEnter"/>. Exposed for tests (the selected tab
+    /// tracks the controller mode, including one-shot returns to Select).</summary>
+    internal TabBar Toolbar => _toolbar;
 
     /// <summary>The category-grouped kit palette tree, or null before <see cref="OnEnter"/>. Exposed for tests.</summary>
     internal TreeView PaletteTree => _paletteTree;
@@ -288,6 +298,14 @@ public class MapEditorScene : GameScene, IGameScene3D
     {
         HandleShortcuts();
         UpdateWidgets(dt);
+
+        // The mode tab bar is driven one-way in UpdateWidgets (a tap sets the controller mode). But the
+        // controller can also change mode on its own, which that tap never sees: a one-shot draw / bake tool
+        // returning to Select on completion, or Escape cancelling a gesture. Mirror the live controller mode back
+        // onto the tab selection every frame so the highlighted tab always tracks the active tool. Runs outside
+        // UpdateWidgets' UiViewport guard so the toolbar stays in sync even headless, and ActiveIndex's setter
+        // never raises a change event, so this cannot loop back into a mode switch.
+        _toolbar.ActiveIndex = (int)_controller.Mode;
 
         // Sync the selection to a renamed element (region by name, placement/spawn by id) once the rename row is
         // done (outside the grid's row iteration, so the inspector rebuild this triggers never tears down a row
@@ -1028,11 +1046,19 @@ public class MapEditorScene : GameScene, IGameScene3D
     void Fill(SpriteBatch batch, Rect r, Color color) =>
         batch.Draw(_white, new Vector4(r.X, r.Y, r.Width, r.Height), color);
 
+    /// <summary>The status-strip rectangle the chrome lays out for a window of <paramref name="w"/> x
+    /// <paramref name="h"/> points, honouring <see cref="MapEditorOptions.StatusBottomOffset"/>. Exposed so a
+    /// headless test can assert the strip shifts up to clear a host-reserved bottom band.</summary>
+    internal Rect StatusRect(float w, float h) => ComputeLayout(w, h).Status;
+
     ChromeLayout ComputeLayout(float w, float h)
     {
         var toolbar = new Rect(0f, 0f, w, ToolbarHeight);
         float bodyTop = ToolbarHeight;
-        float bodyBottom = MathF.Max(bodyTop, h - StatusHeight);
+        // Reserve StatusBottomOffset points at the bottom for a host overlay (the Showcase display readout), so
+        // the status strip and the body above it sit clear of it instead of stacking on the same pixels.
+        float bottomReserve = StatusHeight + MathF.Max(0f, _options.StatusBottomOffset);
+        float bodyBottom = MathF.Max(bodyTop, h - bottomReserve);
         float bodyH = bodyBottom - bodyTop;
         float half = bodyH * 0.5f;
         var outline = new Rect(0f, bodyTop, PanelWidth, half);

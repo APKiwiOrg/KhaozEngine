@@ -92,13 +92,26 @@ namespace KhaozEngine.Tests.Dungeon
             Assert.Matches("No kit id mapped for dungeon piece '\\w+'\\.", ex.Message);
         }
 
+        // The first seed in the scanned range whose single-floor layout carries at least one Spawn marker,
+        // so spawn-bearing tests never pass vacuously (a room's spawn count draw can legitimately be zero).
+        static DungeonLayout SingleFloorLayoutWithSpawns()
+        {
+            for (ulong seed = 1; seed <= 50; seed++)
+            {
+                DungeonLayout layout = DungeonGenerator.Generate(SingleFloorConfig(), seed);
+                if (layout.Markers.Any(m => m.Type == DungeonMarkerType.Spawn))
+                {
+                    return layout;
+                }
+            }
+
+            throw new Xunit.Sdk.XunitException("No seed in 1..50 produced a spawn marker.");
+        }
+
         [Fact]
         public void Emit_RoundTrips_ThroughMapDocumentFile()
         {
-            DungeonConfig config = SingleFloorConfig();
-            config.SpawnMarkersPerRoomMax = 0;
-            config.LootMarkersPerRoomMax = 0;
-            DungeonLayout layout = DungeonGenerator.Generate(config, 3UL);
+            DungeonLayout layout = SingleFloorLayoutWithSpawns();
             DungeonKitMap kit = DungeonKitMap.Greybox();
             var plot = new DungeonPlotTransform(5f, -5f, 0f, 0f);
             var target = new MapDocument
@@ -141,6 +154,30 @@ namespace KhaozEngine.Tests.Dungeon
             // Placement id + tag rule from the task brief.
             Assert.All(target.Placements, p => Assert.Matches("^dungeon-[0-9a-f]{8}-\\d+$", p.Id));
             Assert.All(target.Placements, p => Assert.Contains("dungeon", p.Tags));
+
+            // The document really contains spawns, and they survive the save/load with the default
+            // placeholder archetype id intact, proving the validator's non-empty-archetype rule is
+            // satisfied for the common (spawn-bearing) case.
+            Assert.NotEmpty(target.Spawns);
+            Assert.Equal(target.Spawns.Count, loaded.Spawns.Count);
+            Assert.All(loaded.Spawns, s => Assert.Equal("dungeon-spawn", s.ArchetypeId));
+        }
+
+        [Fact]
+        public void Emit_CustomSpawnArchetypeId_FlowsThrough()
+        {
+            DungeonLayout layout = SingleFloorLayoutWithSpawns();
+            DungeonKitMap kit = DungeonKitMap.Greybox();
+            var plot = new DungeonPlotTransform(0f, 0f, 0f, 0f);
+            var target = new MapDocument();
+
+            DungeonMapDocEmitter.Emit(layout, kit, plot, target, "goblin-scout");
+
+            Assert.NotEmpty(target.Spawns);
+            Assert.All(target.Spawns, s => Assert.Equal("goblin-scout", s.ArchetypeId));
+
+            Assert.Throws<ArgumentException>(
+                () => DungeonMapDocEmitter.Emit(layout, kit, plot, new MapDocument(), " "));
         }
 
         [Fact]

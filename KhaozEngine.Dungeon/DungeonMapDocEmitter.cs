@@ -18,17 +18,24 @@ public static class DungeonMapDocEmitter
     /// <paramref name="layout"/> into <paramref name="target"/>, resolving kit ids through
     /// <paramref name="kit"/> and world positions through <paramref name="plot"/>. Placement/spawn ids follow
     /// <c>dungeon-&lt;layoutHash8&gt;-&lt;n&gt;</c> (n monotonic across every id this call mints), and every
-    /// placement/spawn/marker-region carries the "dungeon" tag.</summary>
+    /// placement/spawn/marker-region carries the "dungeon" tag. Every emitted <see cref="MapSpawn"/> gets
+    /// <paramref name="spawnArchetypeId"/> as its <see cref="MapSpawn.ArchetypeId"/> (default
+    /// <c>"dungeon-spawn"</c>, a placeholder the game maps or replaces), so a baked document always satisfies
+    /// the validator's non-empty-archetype rule and saves cleanly.</summary>
     /// <exception cref="ArgumentNullException"><paramref name="layout"/>, <paramref name="kit"/>, or
     /// <paramref name="target"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="spawnArchetypeId"/> is null, empty, or
+    /// whitespace.</exception>
     /// <exception cref="InvalidOperationException"><paramref name="kit"/> has no mapping for a
     /// <see cref="DungeonPiece"/> the layout needs. The message names the missing piece
     /// (see <see cref="DungeonKitMap.Require"/>).</exception>
-    public static void Emit(DungeonLayout layout, DungeonKitMap kit, DungeonPlotTransform plot, MapDocument target)
+    public static void Emit(DungeonLayout layout, DungeonKitMap kit, DungeonPlotTransform plot, MapDocument target,
+        string spawnArchetypeId = "dungeon-spawn")
     {
         ArgumentNullException.ThrowIfNull(layout);
         ArgumentNullException.ThrowIfNull(kit);
         ArgumentNullException.ThrowIfNull(target);
+        ArgumentException.ThrowIfNullOrWhiteSpace(spawnArchetypeId);
 
         string hash8 = layout.LayoutHash().ToString("x16").Substring(0, 8);
         int counter = 0;
@@ -56,7 +63,7 @@ public static class DungeonMapDocEmitter
         EmitCells(layout, kit, plot, target, passageDirection, cellSize, floorHeight, hash8, ref counter);
         EmitStairRuns(layout, kit, plot, target, cellSize, floorHeight, hash8, ref counter);
         EmitRooms(layout, plot, target, cellSize);
-        EmitMarkers(layout, plot, target, cellSize, floorHeight, hash8, ref counter);
+        EmitMarkers(layout, plot, target, spawnArchetypeId, cellSize, floorHeight, hash8, ref counter);
         EmitTerrainAndBounds(layout, plot, target, cellSize);
     }
 
@@ -168,6 +175,7 @@ public static class DungeonMapDocEmitter
         DungeonLayout layout,
         DungeonPlotTransform plot,
         MapDocument target,
+        string spawnArchetypeId,
         float cellSize,
         float floorHeight,
         string hash8,
@@ -183,7 +191,7 @@ public static class DungeonMapDocEmitter
                 target.Spawns.Add(new MapSpawn
                 {
                     Id = NextId(hash8, ref counter),
-                    ArchetypeId = "",
+                    ArchetypeId = spawnArchetypeId,
                     X = x,
                     Z = z,
                     Tags = tags,

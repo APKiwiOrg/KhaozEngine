@@ -129,17 +129,24 @@ internal static class PieceMapper
 
     /// <summary>Whether the cell at (<paramref name="x"/>, <paramref name="z"/>, <paramref name="f"/>) gets a
     /// ceiling: true when <paramref name="layout"/> is <see cref="DungeonCeilingMode.Roofed"/>, the cell is
-    /// walkable, and the cell directly above it (floor <c>f + 1</c>, same XZ) is NOT walkable. The
-    /// walkable-above exception keeps open stairwells and vertical shafts open (a stair's emergence cell,
-    /// <see cref="DungeonCellKind.StairUpper"/>, has the walkable <see cref="DungeonCellKind.StairTop"/> landing
-    /// directly above it, so it is left open; where the floor above already has a walkable cell, that floor's
-    /// own slab is the roof, so a second ceiling would only z-fight). Both sinks call this so their ceiling
-    /// pieces and ceiling collision slabs cover exactly the same cells.</summary>
+    /// walkable, and the cell directly above it (floor <c>f + 1</c>, same XZ) is neither walkable nor
+    /// <see cref="DungeonCellKind.StairVoid"/>. Two exceptions keep the whole stairwell shaft open at both
+    /// ends: a stair's emergence cell, <see cref="DungeonCellKind.StairUpper"/>, has the walkable
+    /// <see cref="DungeonCellKind.StairTop"/> landing directly above it (where the floor above already has a
+    /// walkable cell, that floor's own slab is the roof, so a second ceiling would only z-fight); and a stair's
+    /// entry cell, <see cref="DungeonCellKind.StairLower"/>, has <see cref="DungeonCellKind.StairVoid"/> directly
+    /// above it, the deliberately-open headroom cutout the ramp climbs through, which must stay uncapped even
+    /// though it is not itself walkable. Both sinks call this so their ceiling pieces and ceiling collision slabs
+    /// cover exactly the same cells.</summary>
     internal static bool HasCeiling(DungeonLayout layout, int x, int z, int f)
     {
-        return layout.CeilingMode == DungeonCeilingMode.Roofed
-            && DungeonLayout.IsWalkable(layout.GetCell(x, z, f))
-            && !DungeonLayout.IsWalkable(layout.GetCell(x, z, f + 1));
+        if (layout.CeilingMode != DungeonCeilingMode.Roofed || !DungeonLayout.IsWalkable(layout.GetCell(x, z, f)))
+        {
+            return false;
+        }
+
+        DungeonCellKind above = layout.GetCell(x, z, f + 1);
+        return !DungeonLayout.IsWalkable(above) && above != DungeonCellKind.StairVoid;
     }
 
     /// <summary>The plot-local yaw (radians, plot yaw NOT composed) that rotates local +Z onto the unit

@@ -5,8 +5,11 @@ namespace KhaozEngine.Tests.Dungeon
 {
     // Proves the corridor-width + hall feature is a pure no-op at its defaults (CorridorMinWidth == CorridorMaxWidth
     // == 1, HallChancePercent == 0): the width/hall draws are guarded so they never touch the "rooms" RNG stream,
-    // and the corridor carve reduces exactly to the legacy single-line geometry. The golden hashes below were
-    // captured on the pre-feature generator; if a guard leaks a draw or the width-1 geometry drifts, they change.
+    // and the corridor carve reduces exactly to the legacy single-line geometry. The single-floor Simple hashes are
+    // still the original pre-feature goldens (single-floor rasters carry no stair cells, so the three-tread stair
+    // change left them byte-identical). The multi-floor Full hashes were re-captured after that stair change (the
+    // raster and stair edges legitimately differ); the corridor-width no-op property they guard is still enforced
+    // relatively by ExplicitWidthOneAndNoHalls_EqualsImplicitDefault below.
     public class DungeonCorridorWidthBackCompatTests
     {
         static DungeonConfig Simple() => new() { RoomCountTarget = 10, MaxFloors = 1, LockCount = 0, BossRoom = false, LoopEdgeBudget = 0 };
@@ -22,11 +25,11 @@ namespace KhaozEngine.Tests.Dungeon
         }
 
         [Theory]
-        [InlineData(0UL, 0x3602D17138BAA37BUL)]
-        [InlineData(1UL, 0x38F8189C95E586FBUL)]
-        [InlineData(100UL, 0x58754A0351744A6DUL)]
-        [InlineData(999UL, 0xF393BC0C943B0765UL)]
-        public void Full_DefaultConfig_ReproducesPreFeatureHash(ulong seed, ulong expected)
+        [InlineData(0UL, 0x34C5B526E908A159UL)]
+        [InlineData(1UL, 0x61E11D853207DCDFUL)]
+        [InlineData(100UL, 0x3D3430AE12176C40UL)]
+        [InlineData(999UL, 0xFDBABC916B1E92E1UL)]
+        public void Full_DefaultConfig_ReproducesGoldenHash(ulong seed, ulong expected)
         {
             Assert.Equal(expected, DungeonGenerator.Generate(Full(), seed).LayoutHash());
         }

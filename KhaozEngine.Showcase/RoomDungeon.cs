@@ -38,15 +38,6 @@ namespace KhaozEngine.Showcase
         const float CapsuleRadius = 0.3f;
         const float CapsuleHalfHeight = 0.9f;     // 1.8 m total (height 1.2 + 2*radius 0.6)
 
-        // Demo-scoped slope tolerance: DungeonStamp.BuildStairRamps pitches every stair ramp at
-        // atan(FloorHeightMeters / (2*CellSizeMeters)) = atan(6/6) = 45 degrees, exactly the engine-wide
-        // CharacterController3D.MaxSlopeRadians default (45 deg). A contact AT the limit is rejected as too
-        // steep (CharacterMovement.Step's walkable check is strictly-below), so the default tolerance slides
-        // the character back down instead of letting it climb. Raised here (not the engine default, which
-        // would affect every game) to comfortably clear the ramp's exact angle; see CharacterMovement.Step's
-        // `n.Y >= cosMaxSlope` walkable-contact check for the strictly-below rule this satisfies.
-        const float StairSlopeToleranceDeg = 52f;
-
         // Max yaw turn rate (rad/s) when facing toward horizontal motion, matching Room3D's animated-character
         // facing turn bound (a one-frame collision jitter cannot snap the model).
         const float MaxTurnRate = 12f;
@@ -131,30 +122,14 @@ namespace KhaozEngine.Showcase
             foreach (AssetEntry entry in manifest.Props)
                 _kitMeshes[entry.Id] = _scene.LoadMesh(PropLoader.LoadProp(entry));
 
-            // Floor-like kit pieces (the walkable floor tile and the stair landing) are authored as thin slabs
-            // with their BASE at local y=0 (PropLoader.Normalize drops the origin to the mesh's own minimum Y),
-            // so once placed at DungeonStamp's floorY (the same Y DungeonStamp.BuildFloorSlabs gives the PHYSICS
-            // floor slab's TOP, i.e. the surface the character's capsule actually rests on) the VISIBLE tile
-            // rises floorY..floorY+heightMeters - its walkable top sits one tile-thickness ABOVE where physics
-            // stops the capsule. The correctly-positioned character then reads as sunk into the tile by that
-            // thickness. The ceiling piece has no such mismatch (it is deliberately placed base-up so its base,
-            // the visible underside, IS the physics-matching face; see DungeonKitGen's dungeon_ceiling comment).
-            // Shift the two floor-like pieces down by their own manifest height so their visible top lines up
-            // with the physics floor instead.
-            var floorLikeIds = new HashSet<string> { kit.Require(DungeonPiece.Floor), kit.Require(DungeonPiece.StairDown) };
-            var pieceHeights = new Dictionary<string, float>();
-            foreach (AssetEntry entry in manifest.Props) pieceHeights[entry.Id] = entry.HeightMeters;
-
             // DungeonPropInstance -> PropPlacement so the stamped props can go through the same instanced
             // DrawProps path Room3D uses for its town buildings (variant is unused by DungeonStamp; always 0).
+            // The feet-on-floor alignment (dropping the floor/landing pieces so their visible top lands on the
+            // physics floor slab's top) is now done in the engine via PieceMapper.FloorPieceYOffset, so it is
+            // correct here AND in baked MapDocs - no demo-side shift.
             _placements = new List<PropPlacement>(stamp.Props.Count);
             foreach (DungeonPropInstance p in stamp.Props)
-            {
-                float y = p.Y;
-                if (floorLikeIds.Contains(p.KitId) && pieceHeights.TryGetValue(p.KitId, out float pieceHeight))
-                    y -= pieceHeight;
-                _placements.Add(new PropPlacement(p.KitId, p.X, y, p.Z, p.Scale, p.Yaw, variant: 0));
-            }
+                _placements.Add(new PropPlacement(p.KitId, p.X, p.Y, p.Z, p.Scale, p.Yaw, variant: 0));
 
             _capsule = _scene.LoadMesh(MeshPrimitives.Capsule(radius: CapsuleRadius, height: 1.2f, segments: 16, rings: 6));
 
@@ -172,11 +147,14 @@ namespace KhaozEngine.Showcase
             (float ex, float ey, float ez) = plot.TileCenter(entranceMarker.Tile, layout.CellSizeMeters, layout.FloorHeightMeters);
             _groundY = ey;
 
+            // Default MaxSlopeRadians (45 deg) is left as-is: DungeonStamp now pitches every stair ramp over a
+            // three-cell run at ~34 degrees (atan(FloorHeightMeters / (3*CellSizeMeters)) = atan(6/9)), comfortably
+            // walkable at the engine default, so no per-game slope override is needed. (The old 52-degree override
+            // existed only because the previous two-cell run sat exactly on the 45-degree limit.)
             _character = new CharacterController3D
             {
                 CapsuleHalfHeight = CapsuleHalfHeight,
                 CapsuleRadius = CapsuleRadius,
-                MaxSlopeRadians = MathF.PI * StairSlopeToleranceDeg / 180f,
             };
             _character.SetXZ(ex, ez);
             _character.Update(InputState.Empty, 0f, 0f, GroundHeight, GroundNormal, _physics);

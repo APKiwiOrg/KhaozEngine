@@ -5,6 +5,27 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.53.0
+
+Map-editor second-playtest fixes (B2.2 of the map-editor program, `docs/MAP-EDITOR-DESIGN.md`): the toolbar
+tracks one-shot tool returns, the status strip clears a host's bottom readout, the Showcase outline post
+effect defaults off, and exclusions/regions/feature markers show as translucent viewport overlays.
+
+- **Map-editor toolbar sync and a host-reserved footer (`KhaozEngine.MapEditor`).** The toolbar tab bar now
+  mirrors the live controller mode every frame, so a one-shot draw / bake tool returning to Select (or an
+  Escape cancel) re-highlights the Select tab on its own, without a tap. The new
+  `MapEditorOptions.StatusBottomOffset` reserves that many points of clearance at the window bottom for a
+  host that draws its own bottom chrome (the Showcase F7-F10 display readout), shifting the status strip and
+  editor body up so the editor never stacks on the host's pixels.
+- **Outline cel post effect defaults off in every Showcase room (`KhaozEngine.Showcase`).** The 3D rooms no
+  longer boot with the cel outline post pass enabled, so the map editor and the other rooms render clean
+  unless a room opts the outline back on.
+- **Translucent viewport overlays for authoring shapes (`KhaozEngine.MapEditor`).** Exclusions (red),
+  regions (blue), and terrain-feature centers (an amber marker disc) now draw as translucent ground fills
+  through the depth-disabled `Scene3D` debug-fill pass, so they composite always-on-top for authoring
+  visibility, with the selected element brightened. The new `MapEditorOptions.ShowOverlays` (default true)
+  toggles them off.
+
 ## 10.52.0
 
 Map-editor playtest polish (B2.1 of the map-editor program, `docs/MAP-EDITOR-DESIGN.md`): a categorized

@@ -217,7 +217,9 @@ editor-runtime cores. Never Fable-tier subagents.
   - **B2.1 (polish)**: kit-palette categories with a collapsible filterable tree (manifest `category`
     field, spawn-mode swap), one-shot draw and bake tools with an active-tool status hint, a visible
     water surface with an editable water level, and inline placement/spawn rename. Shipped in 10.52.0,
-    see CHANGELOG.
+    with 10.53.0 second-playtest fixes (toolbar tracks one-shot tool returns, a host-reserved status
+    footer via `StatusBottomOffset`, the Showcase outline post effect defaults off, and translucent
+    exclusion/region/feature viewport overlays via `ShowOverlays`) following. See CHANGELOG.
 - **Phase C (parallel after A, independent of B)**: ke-mapedit MCP tool. One release.
 - **Phase D (game repo)**: Ruinborne export, both-heads loading, parity test (after A),
   editor head and doc rewrite (after B).

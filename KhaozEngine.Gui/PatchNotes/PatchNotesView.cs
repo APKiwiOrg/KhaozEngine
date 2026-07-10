@@ -60,6 +60,10 @@ public sealed class PatchNotesView
     bool _closeHover;
     bool _draggingScrollbar;
 
+    /// <summary>Lazily constructed the first <see cref="Draw"/> call (it needs a <see cref="SpriteFont"/>, which
+    /// only <see cref="Draw"/> receives, not <see cref="Update"/>): the close button's hover tooltip.</summary>
+    Tooltip? _closeTooltip;
+
     /// <summary>The scrim behind the panel (dims the screen below). Fixed dark, non-themed.</summary>
     readonly Color _scrimColor = new(0f, 0f, 0f, 0.6f);
 
@@ -260,14 +264,43 @@ public sealed class PatchNotesView
             string empty = PatchNotesStrings.Resolve(PatchNotesStrings.Empty);
             float ey = content.Y + (content.Height - font.LineHeight) * 0.5f;
             TextLayout.DrawAligned(batch, font, empty, content.X, content.Width, ey, TextAlign.Center, Theme.MutedText);
-            return;
+        }
+        else
+        {
+            batch.SetScissor(content);
+            DrawColumn(batch, font, white, content);
+            batch.ClearScissor();
+
+            DrawScrollbar(batch, white, content, MeasureContentHeight(font, content.Width));
         }
 
-        batch.SetScissor(content);
-        DrawColumn(batch, font, white, content);
-        batch.ClearScissor();
+        DrawCloseTooltip(batch, font, white, viewport);
+    }
 
-        DrawScrollbar(batch, white, content, MeasureContentHeight(font, content.Width));
+    // The close button's hover tooltip: PatchNotesStrings.Close resolved once through the same chrome
+    // fallback path as the title/empty-state text, then handed to Tooltip as already-resolved raw text
+    // (Tooltip.Show takes a LocalizedText but has no notion of the PatchNotesStrings English fallback, so
+    // resolving here keeps that fallback behaviour instead of bypassing it). Driven straight off _closeHover
+    // (set in Update) rather than a separate Show/Hide call site, since Draw is the first place a SpriteFont
+    // is available to construct the Tooltip at all.
+    void DrawCloseTooltip(SpriteBatch batch, SpriteFont font, Texture2D white, Rect viewport)
+    {
+        _closeTooltip ??= new Tooltip(font, font);
+        _closeTooltip.Viewport = new Vector2(viewport.Width, viewport.Height);
+
+        if (_closeHover)
+        {
+            Rect r = CloseButtonRect(viewport);
+            string label = PatchNotesStrings.Resolve(PatchNotesStrings.Close);
+            _closeTooltip.Show(LocalizedText.Raw(label), Array.Empty<TooltipLine>(),
+                new Vector2(r.X + r.Width * 0.5f, r.Y));
+        }
+        else
+        {
+            _closeTooltip.Hide();
+        }
+
+        _closeTooltip.Draw(batch, white);
     }
 
     void DrawColumn(SpriteBatch batch, SpriteFont font, Texture2D white, Rect content)
@@ -429,7 +462,8 @@ public sealed class PatchNotesView
         return new Rect(x, top, MathF.Max(1f, w), MathF.Max(0f, bottom - top));
     }
 
-    Rect CloseButtonRect(Rect viewport)
+    /// <summary>The close (X) button's rect within <paramref name="viewport"/>, top-right of the title bar.</summary>
+    internal Rect CloseButtonRect(Rect viewport)
     {
         Rect p = PanelRect(viewport);
         float margin = (TitleBarHeight - CloseButtonSize) * 0.5f;

@@ -34,11 +34,26 @@ namespace KhaozEngine.Showcase
 
         // The dungeon's props are hand-placed once at generation time and drawn every frame (not streamed),
         // same as Room3D's town buildings. The draw radius just needs to comfortably cover the generated
-        // plot regardless of where the player wanders; the default 64x64-tile plot at 2 m cells spans at
-        // most ~128 m per side, so 400 m never culls anything in this demo.
-        const float PropDrawRadius = 400f;
+        // plot regardless of where the player wanders; the 128x128-tile plot at 3 m cells spans at most
+        // ~384 m per side, so 1000 m never culls anything in this demo.
+        const float PropDrawRadius = 1000f;
 
-        readonly DungeonConfig _config = new() { RoomCountTarget = 12, MaxFloors = 2, LockCount = 1 };
+        // Sized up for a grand, cavernous feel: same 12-room count as before, but each room spans roughly
+        // 24-60 m (RoomMinTiles/RoomMaxTiles at CellSizeMeters), floors are 6 m tall, and the plot is large
+        // enough that 12 big rooms place cleanly without saturating. Verified via `ke-dungeon generate`
+        // (tools/KeDungeon) at seed 2026: roomsPlaced: 12, saturated: false (also checked seeds 1, 7, 42).
+        readonly DungeonConfig _config = new()
+        {
+            RoomCountTarget = 12,
+            RoomMinTiles = 8,
+            RoomMaxTiles = 20,
+            MaxFloors = 2,
+            PlotWidthTiles = 128,
+            PlotDepthTiles = 128,
+            CellSizeMeters = 3f,
+            FloorHeightMeters = 6f,
+            LockCount = 1,
+        };
         const ulong Seed = 2026UL;
 
         Scene3D _scene = null!;

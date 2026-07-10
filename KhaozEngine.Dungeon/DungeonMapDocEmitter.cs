@@ -43,22 +43,9 @@ public static class DungeonMapDocEmitter
         float cellSize = layout.CellSizeMeters;
         float floorHeight = layout.FloorHeightMeters;
 
-        // Every door-frame (or stair-top landing) cell belongs to exactly one edge, on one end or the
-        // other of that edge's Doors pair. Both ends share the same horizontal passage direction (the
-        // edge is a straight axis-aligned run), so one dictionary built from Doors[0]->Doors[1] covers
-        // both cells for every corridor, stair, and loop edge.
-        var passageDirection = new Dictionary<DungeonTile, (int Dx, int Dz)>();
-        foreach (DungeonEdge edge in layout.Edges)
-        {
-            if (edge.Doors.Count < 2)
-            {
-                continue;
-            }
-
-            (int dx, int dz) = UnitDirection(edge.Doors[0], edge.Doors[1]);
-            passageDirection[edge.Doors[0]] = (dx, dz);
-            passageDirection[edge.Doors[1]] = (dx, dz);
-        }
+        // The cell-to-piece mapping (which piece goes where, and which way it faces) is shared with
+        // DungeonStamp via PieceMapper, so the two sinks can never drift apart on placement/prop counts.
+        Dictionary<DungeonTile, (int Dx, int Dz)> passageDirection = PieceMapper.BuildPassageDirections(layout);
 
         EmitCells(layout, kit, plot, target, passageDirection, cellSize, floorHeight, hash8, ref counter);
         EmitStairRuns(layout, kit, plot, target, cellSize, floorHeight, hash8, ref counter);
@@ -78,43 +65,11 @@ public static class DungeonMapDocEmitter
         string hash8,
         ref int counter)
     {
-        for (int f = 0; f < layout.Floors; f++)
+        foreach (PieceMapper.CellPiece cellPiece in PieceMapper.EnumerateCellPieces(layout, passageDirection))
         {
-            for (int z = 0; z < layout.Depth; z++)
-            {
-                for (int x = 0; x < layout.Width; x++)
-                {
-                    var tile = new DungeonTile(x, z, f);
-                    switch (layout.GetCell(x, z, f))
-                    {
-                        case DungeonCellKind.RoomFloor:
-                        case DungeonCellKind.Corridor:
-                            AddPlacement(target, kit, DungeonPiece.Floor, plot, tile, cellSize, floorHeight,
-                                -plot.YawRadians, hash8, ref counter);
-                            break;
-
-                        case DungeonCellKind.DoorFrame:
-                            AddPlacement(target, kit, DungeonPiece.Floor, plot, tile, cellSize, floorHeight,
-                                -plot.YawRadians, hash8, ref counter);
-                            AddPlacement(target, kit, DungeonPiece.DoorFrame, plot, tile, cellSize, floorHeight,
-                                PieceYaw(passageDirection, tile, plot), hash8, ref counter);
-                            break;
-
-                        case DungeonCellKind.Wall:
-                            AddPlacement(target, kit, DungeonPiece.Wall, plot, tile, cellSize, floorHeight,
-                                -plot.YawRadians, hash8, ref counter);
-                            break;
-
-                        case DungeonCellKind.StairTop:
-                            AddPlacement(target, kit, DungeonPiece.StairDown, plot, tile, cellSize, floorHeight,
-                                PieceYaw(passageDirection, tile, plot), hash8, ref counter);
-                            break;
-
-                        // StairLower/StairUpper: no floor (covered by the single StairUp placement per run).
-                        // StairVoid/Empty: nothing.
-                    }
-                }
-            }
+            float yaw = PieceMapper.LocalYaw(cellPiece.Dx, cellPiece.Dz) - plot.YawRadians;
+            AddPlacement(target, kit, cellPiece.Piece, plot, cellPiece.Tile, cellSize, floorHeight, yaw, hash8,
+                ref counter);
         }
     }
 
@@ -128,22 +83,12 @@ public static class DungeonMapDocEmitter
         string hash8,
         ref int counter)
     {
-        foreach (DungeonEdge edge in layout.Edges)
+        foreach (PieceMapper.StairRun run in PieceMapper.EnumerateStairRuns(layout))
         {
-            if (edge.Kind != DungeonEdgeKind.Stair)
-            {
-                continue;
-            }
+            (float lx, float ly, float lz) = plot.TileCenter(run.Lower, cellSize, floorHeight);
+            (float ux, float uy, float uz) = plot.TileCenter(run.Upper, cellSize, floorHeight);
 
-            // CommitStair always orders Path as [StairLower, StairUpper, StairTop].
-            DungeonTile lower = edge.Path[0];
-            DungeonTile upper = edge.Path[1];
-
-            (float lx, float ly, float lz) = plot.TileCenter(lower, cellSize, floorHeight);
-            (float ux, float uy, float uz) = plot.TileCenter(upper, cellSize, floorHeight);
-
-            (int dx, int dz) = UnitDirection(lower, upper);
-            float yaw = LocalYaw(dx, dz) - plot.YawRadians;
+            float yaw = PieceMapper.LocalYaw(run.Dx, run.Dz) - plot.YawRadians;
 
             target.Placements.Add(new MapPlacement
             {
@@ -214,10 +159,10 @@ public static class DungeonMapDocEmitter
         float plotWidth = layout.Width * cellSize;
         float plotDepth = layout.Depth * cellSize;
 
-        (float x0, float z0) = TransformXZ(plot, 0f, 0f);
-        (float x1, float z1) = TransformXZ(plot, plotWidth, 0f);
-        (float x2, float z2) = TransformXZ(plot, plotWidth, plotDepth);
-        (float x3, float z3) = TransformXZ(plot, 0f, plotDepth);
+        (float x0, float z0) = PieceMapper.TransformXZ(plot, 0f, 0f);
+        (float x1, float z1) = PieceMapper.TransformXZ(plot, plotWidth, 0f);
+        (float x2, float z2) = PieceMapper.TransformXZ(plot, plotWidth, plotDepth);
+        (float x3, float z3) = PieceMapper.TransformXZ(plot, 0f, plotDepth);
 
         float minX = MathF.Min(MathF.Min(x0, x1), MathF.Min(x2, x3));
         float maxX = MathF.Max(MathF.Max(x0, x1), MathF.Max(x2, x3));
@@ -229,7 +174,7 @@ public static class DungeonMapDocEmitter
         target.Bounds.MaxX = MathF.Max(target.Bounds.MaxX, maxX);
         target.Bounds.MaxZ = MathF.Max(target.Bounds.MaxZ, maxZ);
 
-        (float centerX, float centerZ) = TransformXZ(plot, plotWidth * 0.5f, plotDepth * 0.5f);
+        (float centerX, float centerZ) = PieceMapper.TransformXZ(plot, plotWidth * 0.5f, plotDepth * 0.5f);
         float radius = 0.5f * MathF.Sqrt(plotWidth * plotWidth + plotDepth * plotDepth);
 
         target.Terrain.Features.Add(new FlattenFeatureDoc
@@ -266,46 +211,6 @@ public static class DungeonMapDocEmitter
         });
     }
 
-    /// <summary>The yaw (piece-local direction composed with the plot yaw, see <see cref="LocalYaw"/> for the
-    /// sign rule) that rotates a directional piece's authored local-Z axis to <paramref name="tile"/>'s edge
-    /// passage direction, or just the plot contribution when the tile (defensively) has no recorded direction.
-    /// Every door-frame and stair-top cell has one in practice: it is always one end of some
-    /// <see cref="DungeonEdge.Doors"/> pair.</summary>
-    private static float PieceYaw(Dictionary<DungeonTile, (int Dx, int Dz)> passageDirection, DungeonTile tile, DungeonPlotTransform plot)
-    {
-        if (passageDirection.TryGetValue(tile, out (int Dx, int Dz) dir))
-        {
-            return LocalYaw(dir.Dx, dir.Dz) - plot.YawRadians;
-        }
-
-        return -plot.YawRadians;
-    }
-
-    /// <summary>The plot-local yaw (radians, plot yaw NOT composed) that rotates local +Z onto the unit
-    /// direction (<paramref name="dx"/>, <paramref name="dz"/>), matching the engine-wide
-    /// <c>Quaternion.CreateFromAxisAngle(Vector3.UnitY, yaw)</c> convention consumers apply to
-    /// <see cref="MapPlacement.Yaw"/> (e.g. <c>ChunkStatics</c>): local +Z maps to (sin yaw, cos yaw), so +Z
-    /// rotates towards +X as yaw increases.
-    ///
-    /// Plot-yaw composition rule: <see cref="DungeonPlotTransform.TileCenter"/> rotates POSITIONS with
-    /// x' = x cos - z sin, z' = x sin + z cos, which maps a local direction at quaternion-yaw theta to the
-    /// world direction (sin(theta - yaw), cos(theta - yaw)), the OPPOSITE XZ handedness to the quaternion
-    /// convention. So the plot yaw enters every placement's <see cref="MapPlacement.Yaw"/> NEGATED:
-    /// worldYaw = LocalYaw(dx, dz) - plot.YawRadians (and bare -plot.YawRadians for symmetric pieces),
-    /// verified by <c>DungeonMapDocEmitterTests.Emit_DirectionalYaw_FacesWorldDirection_UnderPlotYaw</c>.</summary>
-    private static float LocalYaw(int dx, int dz)
-    {
-        return MathF.Atan2(dx, dz);
-    }
-
-    /// <summary>The axis-aligned unit step (one of (+-1, 0) or (0, +-1)) from <paramref name="from"/> to
-    /// <paramref name="to"/>'s X/Z, ignoring floor. Every edge endpoint pair used here is a straight run, so
-    /// exactly one component is non-zero.</summary>
-    private static (int Dx, int Dz) UnitDirection(DungeonTile from, DungeonTile to)
-    {
-        return (Math.Sign(to.X - from.X), Math.Sign(to.Z - from.Z));
-    }
-
     private static List<float[]> RoomCorners(DungeonPlotTransform plot, DungeonRoom room, float cellSize)
     {
         float minX = room.X * cellSize;
@@ -323,22 +228,8 @@ public static class DungeonMapDocEmitter
 
     private static void AddCorner(DungeonPlotTransform plot, List<float[]> points, float localX, float localZ)
     {
-        (float x, float z) = TransformXZ(plot, localX, localZ);
+        (float x, float z) = PieceMapper.TransformXZ(plot, localX, localZ);
         points.Add(new[] { x, z });
-    }
-
-    /// <summary>Rotates the plot-local point (<paramref name="localX"/>, <paramref name="localZ"/>) by
-    /// <see cref="DungeonPlotTransform.YawRadians"/> and offsets it to world space, the same rotation formula
-    /// as <see cref="DungeonPlotTransform.TileCenter"/> but for an arbitrary local point rather than a tile
-    /// center.</summary>
-    private static (float X, float Z) TransformXZ(DungeonPlotTransform plot, float localX, float localZ)
-    {
-        float cos = MathF.Cos(plot.YawRadians);
-        float sin = MathF.Sin(plot.YawRadians);
-
-        float x = localX * cos - localZ * sin + plot.OriginX;
-        float z = localX * sin + localZ * cos + plot.OriginZ;
-        return (x, z);
     }
 
     private static string NextId(string hash8, ref int counter)

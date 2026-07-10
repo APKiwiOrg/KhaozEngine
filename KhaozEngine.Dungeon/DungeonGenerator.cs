@@ -6,7 +6,8 @@ namespace KhaozEngine.Dungeon;
 
 /// <summary>
 /// Deterministic entry point for dungeon generation. <see cref="Generate"/> validates the config, grows a
-/// tree of rooms joined by corridors on floor 0, runs the wall pass, and assembles a completable-by-construction
+/// tree of rooms joined by corridors (and, when the config allows more than one floor, by upward stairs), runs
+/// the wall pass, and assembles a completable-by-construction
 /// <see cref="DungeonLayout"/>. Identical config and seed always produce an identical layout (see
 /// <see cref="DungeonLayout.LayoutHash"/>). Loop edges, gating, markers, and the solver arrive in later tasks;
 /// for now the layout carries empty keys and markers and a zero critical-path length.
@@ -47,7 +48,7 @@ public static class DungeonGenerator
                 RoomsRequested = config.RoomCountTarget,
                 RoomsPlaced = grown.Rooms.Count,
                 CriticalPathLength = 0,
-                FloorsUsed = 1,
+                FloorsUsed = RoomGrower.CountFloorsUsed(grown.Cells, width, depth, floors),
                 LocksRequested = config.LockCount,
                 LocksPlaced = 0,
                 Saturated = grown.Saturated,

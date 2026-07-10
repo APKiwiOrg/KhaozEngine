@@ -13,11 +13,12 @@ internal sealed record GrowResult(
     bool Saturated);
 
 /// <summary>
-/// Same-floor room growth for <c>DungeonGenerator</c>. Stateless: <see cref="Grow"/> owns all mutable state
-/// locally so concurrent generations never interfere. Places an entrance room centered on floor 0, then grows
-/// a tree of rooms joined by straight axis-aligned corridors, committing each room together with its corridor,
-/// two door frames, and edge atomically (validated whole before any cell is written). Stairs and cross-floor
-/// growth arrive in a later task; this pass never proposes them.
+/// Room growth for <c>DungeonGenerator</c>. Stateless: <see cref="Grow"/> owns all mutable state locally so
+/// concurrent generations never interfere. Places an entrance room centered on floor 0, then grows a tree of
+/// rooms joined by straight axis-aligned corridors and, when the config allows more than one floor, by upward
+/// stair runs. Each room is committed together with its connection (corridor or stair), its door frames, and its
+/// edge atomically, validated whole before any cell is written. Growth is upward only: a stair carries a room
+/// from floor F to floor F+1, the entrance stays on floor 0, and no stair ever descends.
 /// </summary>
 internal static class RoomGrower
 {
@@ -30,9 +31,9 @@ internal static class RoomGrower
         (-1, 0),
     };
 
-    /// <summary>Grows the layout on floor 0 using the given RNG stream, returning the raster and room graph
-    /// before the wall pass. Deterministic in <paramref name="config"/> and the <paramref name="rooms"/>
-    /// stream.</summary>
+    /// <summary>Grows the layout from the floor-0 entrance using the given RNG stream, spreading across floors via
+    /// stairs when <see cref="DungeonConfig.MaxFloors"/> exceeds 1, and returning the raster and room graph before
+    /// the wall pass. Deterministic in <paramref name="config"/> and the <paramref name="rooms"/> stream.</summary>
     internal static GrowResult Grow(DungeonConfig config, DeterministicRng rooms)
     {
         int width = config.PlotWidthTiles;
@@ -174,6 +175,26 @@ internal static class RoomGrower
             int lateralSpan = horizontal ? source.Depth : source.Width;
             for (int attempt = 0; attempt < 8; attempt++)
             {
+                // Per-candidate stair draw, taken first so the corridor branch keeps Task 3's exact draw order.
+                // The floor check short-circuits before the draw, so a single-floor config (or a room already on
+                // the top floor) never consumes a stair draw and grows byte-for-byte identically to before stairs.
+                bool tryStair = source.Floor < config.MaxFloors - 1 && rooms.Next(4) == 0;
+                if (tryStair)
+                {
+                    int stairWidth = rooms.Next(config.RoomMinTiles, config.RoomMaxTiles + 1);
+                    int stairDepth = rooms.Next(config.RoomMinTiles, config.RoomMaxTiles + 1);
+                    int stairLateral = rooms.Next(lateralSpan);
+
+                    StairCandidate stair = BuildStairCandidate(source, dir, stairWidth, stairDepth, stairLateral);
+                    if (ValidateStair(grid, source, stair))
+                    {
+                        CommitStair(grid, source, stair, roomList, edgeList);
+                        return true;
+                    }
+
+                    continue;
+                }
+
                 int length = rooms.Next(1, 5);
                 int newWidth = rooms.Next(config.RoomMinTiles, config.RoomMaxTiles + 1);
                 int newDepth = rooms.Next(config.RoomMinTiles, config.RoomMaxTiles + 1);
@@ -419,6 +440,223 @@ internal static class RoomGrower
         });
     }
 
+    private static StairCandidate BuildStairCandidate(
+        DungeonRoom source,
+        (int Dx, int Dz) dir,
+        int newWidth,
+        int newDepth,
+        int lateral)
+    {
+        int floor = source.Floor;
+        int upper = floor + 1;
+        int sx0 = source.X;
+        int sx1 = source.X + source.Width - 1;
+        int sz0 = source.Z;
+        int sz1 = source.Z + source.Depth - 1;
+
+        // The source interior cell the door frame attaches to, on the chosen line.
+        int lineX;
+        int lineZ;
+        if (dir.Dz == 0)
+        {
+            lineZ = sz0 + lateral;
+            lineX = dir.Dx > 0 ? sx1 : sx0;
+        }
+        else
+        {
+            lineX = sx0 + lateral;
+            lineZ = dir.Dz > 0 ? sz1 : sz0;
+        }
+
+        // doorA -> StairLower -> StairUpper march straight out on floor F; StairTop is directly above StairUpper
+        // and StairVoid directly above StairLower on floor F+1. StairTop IS room B's ring door.
+        var doorA = new DungeonTile(lineX + dir.Dx, lineZ + dir.Dz, floor);
+        var stairLower = new DungeonTile(doorA.X + dir.Dx, doorA.Z + dir.Dz, floor);
+        var stairUpper = new DungeonTile(stairLower.X + dir.Dx, stairLower.Z + dir.Dz, floor);
+        var stairTop = new DungeonTile(stairUpper.X, stairUpper.Z, upper);
+        var stairVoid = new DungeonTile(stairLower.X, stairLower.Z, upper);
+
+        // Room B on floor F+1 extends one step further out from its door (StairTop), on the same line.
+        int nearX = stairTop.X + dir.Dx;
+        int nearZ = stairTop.Z + dir.Dz;
+
+        int roomX;
+        int roomZ;
+        if (dir.Dz == 0)
+        {
+            roomX = dir.Dx > 0 ? nearX : nearX - (newWidth - 1);
+            roomZ = lineZ - newDepth / 2;
+        }
+        else
+        {
+            roomZ = dir.Dz > 0 ? nearZ : nearZ - (newDepth - 1);
+            roomX = lineX - newWidth / 2;
+        }
+
+        return new StairCandidate(floor, roomX, roomZ, newWidth, newDepth, doorA, stairLower, stairUpper, stairTop, stairVoid);
+    }
+
+    private static bool ValidateStair(Grid grid, DungeonRoom source, StairCandidate candidate)
+    {
+        int lower = candidate.Floor;
+        int upper = candidate.Floor + 1;
+
+        // Room B interior (floor F+1): one tile clear of the plot border and currently empty.
+        for (int x = candidate.RoomX; x < candidate.RoomX + candidate.RoomWidth; x++)
+        {
+            for (int z = candidate.RoomZ; z < candidate.RoomZ + candidate.RoomDepth; z++)
+            {
+                if (!grid.InPlotWithMargin(x, z))
+                {
+                    return false;
+                }
+
+                if (grid.Get(x, z, upper) != DungeonCellKind.Empty)
+                {
+                    return false;
+                }
+            }
+        }
+
+        // Room B's 1-cell margin ring (floor F+1): in-plot and currently empty. StairTop, the new door, sits on
+        // this ring and is empty until committed.
+        for (int x = candidate.RoomX - 1; x <= candidate.RoomX + candidate.RoomWidth; x++)
+        {
+            for (int z = candidate.RoomZ - 1; z <= candidate.RoomZ + candidate.RoomDepth; z++)
+            {
+                bool interior = x >= candidate.RoomX && x < candidate.RoomX + candidate.RoomWidth
+                    && z >= candidate.RoomZ && z < candidate.RoomZ + candidate.RoomDepth;
+                if (interior)
+                {
+                    continue;
+                }
+
+                if (!grid.InBounds(x, z))
+                {
+                    return false;
+                }
+
+                if (grid.Get(x, z, upper) != DungeonCellKind.Empty)
+                {
+                    return false;
+                }
+            }
+        }
+
+        // Lower-floor stair cells: doorA on A's ring, StairLower, StairUpper. Clear of the border and empty.
+        if (!IsClearWalkableCell(grid, candidate.DoorA, lower))
+        {
+            return false;
+        }
+
+        if (!IsClearWalkableCell(grid, candidate.StairLower, lower))
+        {
+            return false;
+        }
+
+        if (!IsClearWalkableCell(grid, candidate.StairUpper, lower))
+        {
+            return false;
+        }
+
+        // Upper-floor stair cells: StairTop (room B's ring door) clear, StairVoid empty above StairLower.
+        if (!IsClearWalkableCell(grid, candidate.StairTop, upper))
+        {
+            return false;
+        }
+
+        if (!IsClearWalkableCell(grid, candidate.StairVoid, upper))
+        {
+            return false;
+        }
+
+        // The lower-floor run must not sit alongside any existing walkable cell other than the source interior it
+        // leaves (same isolation rule as corridors). Room B's empty margin ring already isolates the upper floor.
+        HashSet<(int X, int Z)> allowed = SourceInterior(source);
+        if (HasForeignOrthogonalWalkable(grid, candidate.DoorA, lower, allowed))
+        {
+            return false;
+        }
+
+        if (HasForeignOrthogonalWalkable(grid, candidate.StairLower, lower, allowed))
+        {
+            return false;
+        }
+
+        if (HasForeignOrthogonalWalkable(grid, candidate.StairUpper, lower, allowed))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static void CommitStair(
+        Grid grid,
+        DungeonRoom source,
+        StairCandidate candidate,
+        List<DungeonRoom> roomList,
+        List<DungeonEdge> edgeList)
+    {
+        int newId = roomList.Count;
+        var room = new DungeonRoom
+        {
+            Id = newId,
+            Floor = candidate.Floor + 1,
+            X = candidate.RoomX,
+            Z = candidate.RoomZ,
+            Width = candidate.RoomWidth,
+            Depth = candidate.RoomDepth,
+            RoomType = DungeonRoomType.Normal,
+        };
+        WriteRoom(grid, room);
+
+        grid.Set(candidate.DoorA.X, candidate.DoorA.Z, candidate.DoorA.Floor, DungeonCellKind.DoorFrame);
+        grid.Set(candidate.StairLower.X, candidate.StairLower.Z, candidate.StairLower.Floor, DungeonCellKind.StairLower);
+        grid.Set(candidate.StairUpper.X, candidate.StairUpper.Z, candidate.StairUpper.Floor, DungeonCellKind.StairUpper);
+        grid.Set(candidate.StairTop.X, candidate.StairTop.Z, candidate.StairTop.Floor, DungeonCellKind.StairTop);
+        grid.Set(candidate.StairVoid.X, candidate.StairVoid.Z, candidate.StairVoid.Floor, DungeonCellKind.StairVoid);
+
+        roomList.Add(room);
+        edgeList.Add(new DungeonEdge
+        {
+            RoomA = source.Id,
+            RoomB = newId,
+            Kind = DungeonEdgeKind.Stair,
+            Path = new[] { candidate.StairLower, candidate.StairUpper, candidate.StairTop },
+            Doors = new[] { candidate.DoorA, candidate.StairTop },
+        });
+    }
+
+    /// <summary>Counts the floors that hold at least one walkable cell, the real value for
+    /// <see cref="LayoutStats.FloorsUsed"/>.</summary>
+    internal static int CountFloorsUsed(DungeonCellKind[] cells, int width, int depth, int floors)
+    {
+        int used = 0;
+        for (int f = 0; f < floors; f++)
+        {
+            bool any = false;
+            for (int z = 0; z < depth && !any; z++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    if (DungeonLayout.IsWalkable(cells[(f * depth + z) * width + x]))
+                    {
+                        any = true;
+                        break;
+                    }
+                }
+            }
+
+            if (any)
+            {
+                used++;
+            }
+        }
+
+        return used;
+    }
+
     private static void WriteRoom(Grid grid, DungeonRoom room)
     {
         for (int x = room.X; x < room.X + room.Width; x++)
@@ -439,6 +677,21 @@ internal static class RoomGrower
         DungeonTile DoorSrc,
         DungeonTile DoorNew,
         DungeonTile[] Corridor);
+
+    /// <summary>A proposed stair from a source room on <see cref="Floor"/> to a new room B on <see cref="Floor"/>
+    /// + 1. The room rect (<see cref="RoomX"/>/<see cref="RoomZ"/>/<see cref="RoomWidth"/>/<see cref="RoomDepth"/>)
+    /// lives on the upper floor; <see cref="StairTop"/> is both the run's landing and room B's ring door.</summary>
+    private readonly record struct StairCandidate(
+        int Floor,
+        int RoomX,
+        int RoomZ,
+        int RoomWidth,
+        int RoomDepth,
+        DungeonTile DoorA,
+        DungeonTile StairLower,
+        DungeonTile StairUpper,
+        DungeonTile StairTop,
+        DungeonTile StairVoid);
 
     private sealed class Grid
     {

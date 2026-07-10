@@ -28,9 +28,11 @@ DungeonSolveReport report = DungeonSolver.Verify(layout);
 Console.WriteLine($"solvable: {report.IsSolvable}, critical path: {layout.Stats.CriticalPathLength} edges");
 ```
 
-`DungeonConfig` covers plot and room sizing, floor count, the loop-edge target, lock/key count, and marker
-density caps. `Validate()` throws `ArgumentException` naming the first offending property (`Generate` calls
-it for you). `DungeonLayout` exposes the raster read-only via `GetCell(x, z, floor)` plus
+`DungeonConfig` covers plot and room sizing, floor count, the loop-edge target, lock/key count, marker
+density caps, corridor width (`CorridorMinWidth`/`CorridorMaxWidth`, see below), the hall knobs
+(`HallChancePercent`, `HallMinLengthTiles`/`HallMaxLengthTiles`, see below), and the roofed-interior toggle
+(`CeilingMode`, see below). `Validate()` throws
+`ArgumentException` naming the first offending property (`Generate` calls it for you). `DungeonLayout` exposes the raster read-only via `GetCell(x, z, floor)` plus
 `Rooms`/`Edges`/`Keys`/`Markers` and a `Stats` summary (`RoomsPlaced`, `CriticalPathLength`, `LocksPlaced`,
 `Saturated` when the plot or room budget ran out before hitting the target). `CriticalPathTarget` is
 validated but advisory and reserved: the boss room is derived as the farthest room from the entrance by BFS,
@@ -71,7 +73,7 @@ using KhaozEngine.Dungeon;
 DungeonStampResult stamp = DungeonStamp.Build(layout, kit, plot);
 // stamp.Props: one DungeonPropInstance (KitId, X, Y, Z, Yaw, Scale) per piece - hand these to your scene loader.
 // stamp.Statics: merged (PhysicsShape, Pose) pairs - one per wall run, one per floor-slab run, one ramp per
-// stair run - register each with an IPhysicsWorld.AddStatic(shape, pose).
+// stair run, plus one per ceiling run when Roofed - register each with an IPhysicsWorld.AddStatic(shape, pose).
 ```
 
 `DungeonStamp.Build` shares its cell-to-piece mapping with `DungeonMapDocEmitter` (both go through the internal
@@ -94,15 +96,67 @@ kit.Map(DungeonPiece.Wall, "my_wall_tile");
 kit.Map(DungeonPiece.DoorFrame, "my_doorframe");
 kit.Map(DungeonPiece.StairUp, "my_stair");
 kit.Map(DungeonPiece.StairDown, "my_landing");
+kit.Map(DungeonPiece.Ceiling, "my_ceiling");   // only emitted when CeilingMode is Roofed
 ```
 
 `Require(piece)` throws `InvalidOperationException` naming the missing piece if a mapping is absent, so a
 partially-configured kit fails loudly at bake/stamp time rather than silently dropping content.
-`DungeonKitMap.Greybox()` maps all five pieces to the placeholder ids `dungeon_floor`/`dungeon_wall`/
-`dungeon_doorframe`/`dungeon_stair`/`dungeon_landing`, matching the committed greybox kit under
+`DungeonKitMap.Greybox()` maps all six pieces to the placeholder ids `dungeon_floor`/`dungeon_wall`/
+`dungeon_doorframe`/`dungeon_stair`/`dungeon_landing`/`dungeon_ceiling`, matching the committed greybox kit under
 `KhaozEngine.Showcase/assets/dungeon/` (glTF pieces plus `dungeon.manifest.json`, loaded through
 `KhaozEngine.Render3D`'s `AssetManifest`/`PropLoader`) - useful for tests and early integration before real
 content exists.
+
+## Wide corridors and halls
+
+Corridors default to 1-tile single-file connectors. Open the width range to carve grand, multi-tile halls,
+and turn on halls for elongated grand-connector rooms:
+
+```csharp
+var config = new DungeonConfig
+{
+    CorridorMinWidth = 2,        // default 1/1 (single-file, exact back-compat)
+    CorridorMaxWidth = 5,
+    HallChancePercent = 30,      // default 0 (no halls)
+    HallMinLengthTiles = 10,     // hall long-axis span (only used when the chance is positive)
+    HallMaxLengthTiles = 18,
+};
+```
+
+When the width range is open, growth corridors and loop corridors carve a straight rectangular tube (a
+constant perpendicular band from one room edge to the other) and their door frames become multi-cell
+openings. The drawn width is capped to the narrower of the two room edges the corridor spans, so a wide
+draw still places against a smaller room by narrowing, and a loop corridor falls back to a 1-wide edge when
+a wide band would not fit (so a loop still forms). A hall is a `DungeonRoomType.Hall` room whose long axis
+runs along the corridor that reached it and whose girth is a normal room span, so it is provably longer than
+any `RoomMaxTiles` room. When halls are enabled the plot must fit `HallMaxLengthTiles + 2` on both axes.
+
+Both are deterministic: the width and hall decisions draw from the `rooms` RNG stream only when their range
+is open, so a default config (`CorridorMinWidth == CorridorMaxWidth == 1`, `HallChancePercent == 0`) consumes
+no extra randomness and reproduces every existing seed byte-for-byte (`DungeonLayout.LayoutHash`). The
+per-cell sinks and `DungeonSolver` handle wide corridors and halls with no extra work.
+
+## Roofed interiors (`CeilingMode`)
+
+By default a dungeon is open-top (roofless, as seen from above). Set `DungeonConfig.CeilingMode = Roofed`
+to have both sinks roof it so it reads as an enclosed cave:
+
+```csharp
+var config = new DungeonConfig
+{
+    MaxFloors = 2,
+    CeilingMode = DungeonCeilingMode.Roofed,   // default is Open
+    CeilingHeightMeters = null,                 // null -> FloorHeightMeters (flush with the floor above)
+};
+```
+
+A ceiling (`DungeonPiece.Ceiling`) is placed over every walkable cell at `floorY + CeilingHeightMeters`,
+EXCEPT where a walkable cell sits directly above at the same XZ - so open stairwells and vertical shafts
+stay open, and where the floor above already has its own slab that slab is the roof (no double geometry).
+`DungeonStamp` additionally emits greedy-merged ceiling collision slabs (same pattern as the floor slabs,
+lifted a ceiling height and facing down). This is a pure sink-time geometry choice: it never changes the
+generated layout structure, so `Open` and `Roofed` layouts from the same seed share a `LayoutHash` and
+`Open` output is byte-for-byte the pre-ceiling output.
 
 ## CLI (`ke-dungeon`, `tools/KeDungeon`)
 

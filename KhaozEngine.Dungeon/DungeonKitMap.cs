@@ -24,7 +24,10 @@ public enum DungeonPiece
     StairUp,
 
     /// <summary>A stair tread descending to the floor below.</summary>
-    StairDown
+    StairDown,
+
+    /// <summary>A ceiling tile roofing a walkable cell, emitted only in <see cref="DungeonCeilingMode.Roofed"/>.</summary>
+    Ceiling
 }
 
 /// <summary>
@@ -71,6 +74,7 @@ public sealed class DungeonKitMap
         map.Map(DungeonPiece.DoorFrame, "dungeon_doorframe");
         map.Map(DungeonPiece.StairUp, "dungeon_stair");
         map.Map(DungeonPiece.StairDown, "dungeon_landing");
+        map.Map(DungeonPiece.Ceiling, "dungeon_ceiling");
         return map;
     }
 }

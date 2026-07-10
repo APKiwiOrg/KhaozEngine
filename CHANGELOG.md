@@ -5,6 +5,21 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.58.0
+
+Variable-width corridors and a Hall room type for `KhaozEngine.Dungeon`: corridors were fixed 1-tile single-file connectors, now they can be grand multi-tile halls, with elongated Hall rooms as grand connectors. Default config stays byte-for-byte identical to before.
+
+- **Variable-width corridors (`KhaozEngine.Dungeon`).** New `DungeonConfig.CorridorMinWidth`/`CorridorMaxWidth` (default 1/1). When the range opens, growth and loop corridors carve a straight rectangular tube (a constant perpendicular band from one room edge to the other) instead of a single-file line, and door frames become multi-cell openings. The drawn width is capped to the narrower of the two room edges the corridor spans, so a wide draw still places against a smaller room by narrowing. The per-cell sinks (`DungeonMapDocEmitter`, `DungeonStamp`) and `DungeonSolver` handle wide corridors for free.
+- **Hall room type (`KhaozEngine.Dungeon`).** New `DungeonRoomType.Hall` plus `DungeonConfig.HallChancePercent` (default 0) and `HallMinLengthTiles`/`HallMaxLengthTiles`. When enabled, a share of grown rooms become elongated halls whose long axis runs along the corridor that reached them (girth stays a normal room span), so a run of them reads as monumental halls. A hall can still hold a key and be promoted to the boss room. When halls are enabled the plot must fit the largest hall on both axes.
+- **Determinism unchanged at the defaults.** The width and hall decisions are drawn from the `rooms` stream only when their range is open (`CorridorMaxWidth > CorridorMinWidth`, `HallChancePercent > 0`), guarded exactly like the stair and loop-edge draws, so a default config consumes no extra randomness and reproduces every existing seed byte-for-byte (`DungeonLayout.LayoutHash`). The width-1 carve reduces to the exact legacy single-line geometry, and loop corridors fall back to the 1-wide edge when a wide band does not fit so a loop still forms. Backed by pinned pre-feature back-compat hashes and a second 1000-seed sweep with wide corridors and halls proving solvability and every invariant.
+
+## 10.57.0
+
+Turnkey roofed interiors for `KhaozEngine.Dungeon`: `DungeonConfig.CeilingMode = Roofed` roofs a generated dungeon so it reads as an enclosed cave instead of roofless ruins, in both sinks, with open-top staying the default.
+
+- **Roofed dungeon interiors (`KhaozEngine.Dungeon`).** New `DungeonCeilingMode` (`Open`, the default, or `Roofed`) and optional `DungeonConfig.CeilingHeightMeters` (null resolves to `FloorHeightMeters`). When `Roofed`, both sinks place a new `DungeonPiece.Ceiling` over every walkable cell at `floorY + ceiling height`, EXCEPT where a walkable cell sits directly above at the same XZ, so open stairwells and vertical shafts stay open and a floor above roofs the floor below with its own slab. `DungeonStamp` additionally emits greedy-merged ceiling collision slabs (same axis-run pattern as the floor slabs, lifted a ceiling height and facing down). A `dungeon_ceiling` greybox piece ships in the Showcase kit (`DungeonKitMap.Greybox()` now maps all six pieces), and the "Dungeon (walk)" Showcase room is now roofed.
+- **Pure sink-time geometry, determinism unchanged.** `CeilingMode` is a presentation choice carried on the layout but excluded from `DungeonLayout.LayoutHash` (like `Stats`), so `Open` and `Roofed` layouts from the same seed share a structure hash and `Open` output is byte-for-byte the pre-ceiling output. No new RNG draws.
+
 ## 10.56.0
 
 New `KhaozEngine.Dungeon` package: a deterministic, multi-level procedural dungeon generator whose layouts are completable by construction and re-proven by an always-on solver, with MapDoc-bake and runtime-stamp sinks, a greybox kit, and a `ke-dungeon` CLI.

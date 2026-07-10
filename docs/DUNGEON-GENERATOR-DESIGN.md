@@ -90,9 +90,14 @@ This is the instance-readiness property.
    space, connected same-floor by a corridor or cross-floor by a stair cell pair. The edge and its
    geometry are committed atomically, so the graph never contains an unrealized connection. Candidate
    positions enumerate deterministically with hard attempt caps. A tight plot yields fewer rooms
-   (recorded in stats), never a hang and never a throw.
+   (recorded in stats), never a hang and never a throw. Corridors carry a width (`CorridorMinWidth`/
+   `CorridorMaxWidth`, default 1/1): above 1 the corridor is a rectangular tube (a perpendicular band,
+   multi-cell doors), capped to the narrower room edge. A grown room may be an elongated
+   `DungeonRoomType.Hall` (`HallChancePercent`), long axis along its corridor. Both draws are guarded so
+   the defaults consume no RNG and reproduce prior seeds byte-for-byte.
 3. **Loop edges**: after the tree is complete, spend the loop budget on extra corridors between
-   spatially adjacent rooms that are graph-distant.
+   spatially adjacent rooms that are graph-distant. Loop corridors widen the same way, clamped to the
+   two rooms' facing overlap and falling back to a 1-wide edge when a wide band would not fit.
 4. **Gating**: boss room is the farthest room on the critical path. For each lock edge, compute the
    region reachable from the entrance with that lock closed and place its key strictly inside that
    region. Key-before-lock is guaranteed by construction.
@@ -117,6 +122,9 @@ the placement list (rendered via the existing instanced kit-prop path) and stati
 
 **Kit contract.** The layout speaks an abstract piece vocabulary. V1 minimum set: Floor, Wall,
 DoorFrame, StairUp, StairDown (additions are additive, each needs a kit mapping and an emitter rule).
+Ceiling was added post-V1 as the first such additive piece: `DungeonConfig.CeilingMode = Roofed` roofs
+every walkable cell (bar open verticals) at `floorY + CeilingHeightMeters` in both sinks, a pure sink-time
+geometry choice that leaves the layout structure and hash untouched (open-top stays the default).
 `DungeonKitMap` maps each piece to a manifest kit id
 sized to the tile cell, throwing on a missing mapping with the piece name. The engine ships a minimal
 CC0 greybox dungeon kit in Showcase assets so the whole path is testable and demoable engine-side.

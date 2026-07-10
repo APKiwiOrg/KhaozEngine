@@ -1,8 +1,8 @@
 # Dungeon kit credits
 
-The five greybox meshes in this folder (`dungeon_floor.glb`, `dungeon_wall.glb`,
-`dungeon_doorframe.glb`, `dungeon_stair.glb`, `dungeon_landing.glb`) are **self-generated, CC0
-(public domain)** placeholder assets for `KhaozEngine.Dungeon`.
+The six greybox meshes in this folder (`dungeon_floor.glb`, `dungeon_wall.glb`,
+`dungeon_doorframe.glb`, `dungeon_stair.glb`, `dungeon_landing.glb`, `dungeon_ceiling.glb`) are
+**self-generated, CC0 (public domain)** placeholder assets for `KhaozEngine.Dungeon`.
 
 - Author: KhaozEngine project (generated, not sourced from a third party)
 - License: CC0 1.0 Universal (public domain dedication)

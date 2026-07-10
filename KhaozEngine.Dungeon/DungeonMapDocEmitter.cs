@@ -111,8 +111,8 @@ public static class DungeonMapDocEmitter
         foreach (PieceMapper.CellPiece cellPiece in PieceMapper.EnumerateCellPieces(layout, passageDirection))
         {
             float yaw = PieceMapper.LocalYaw(cellPiece.Dx, cellPiece.Dz) - plot.YawRadians;
-            AddPlacement(target, kit, cellPiece.Piece, plot, cellPiece.Tile, cellSize, floorHeight, yaw, bakeSalt8,
-                ref counter);
+            AddPlacement(target, kit, cellPiece.Piece, plot, cellPiece.Tile, cellSize, floorHeight, yaw,
+                cellPiece.YOffset, bakeSalt8, ref counter);
         }
     }
 
@@ -243,6 +243,7 @@ public static class DungeonMapDocEmitter
         float cellSize,
         float floorHeight,
         float yaw,
+        float yOffset,
         string bakeSalt8,
         ref int counter)
     {
@@ -252,7 +253,7 @@ public static class DungeonMapDocEmitter
             Id = NextId(bakeSalt8, ref counter),
             Kind = kit.Require(piece),
             X = x,
-            Y = y,
+            Y = y + yOffset,
             Z = z,
             Yaw = yaw,
             Tags = new List<string> { "dungeon" },

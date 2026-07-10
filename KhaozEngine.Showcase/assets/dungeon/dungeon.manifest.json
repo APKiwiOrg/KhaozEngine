@@ -35,6 +35,13 @@
       "heightMeters": 0.2,
       "source": "KhaozEngine DungeonKitGen (generated)",
       "license": "CC0"
+    },
+    {
+      "id": "dungeon_ceiling",
+      "file": "dungeon_ceiling.glb",
+      "heightMeters": 0.2,
+      "source": "KhaozEngine DungeonKitGen (generated)",
+      "license": "CC0"
     }
   ]
 }

@@ -27,8 +27,10 @@ public sealed record DungeonStampResult(
 /// <see cref="PieceMapper"/>, so they can never drift apart). <see cref="DungeonStampResult.Statics"/> is a
 /// small, merged set of axis-run <see cref="BoxShape"/> collision boxes: one per contiguous wall run, one per
 /// contiguous walkable-floor run (excluding the stair tread cells, which are covered by their own pitched
-/// ramp box instead), and one oriented ramp per stair run. Render-free and physics-backend-free: callers turn
-/// props into actual scene content and register statics with whatever <see cref="IPhysicsWorld"/> they run.
+/// ramp box instead), one oriented ramp per stair run, and (when the layout is
+/// <see cref="DungeonCeilingMode.Roofed"/>) one per contiguous ceiling run. Render-free and
+/// physics-backend-free: callers turn props into actual scene content and register statics with whatever
+/// <see cref="IPhysicsWorld"/> they run.
 /// </summary>
 public static class DungeonStamp
 {
@@ -59,6 +61,7 @@ public static class DungeonStamp
         BuildWalls(layout, plot, cellSize, floorHeight, statics);
         BuildFloorSlabs(layout, plot, cellSize, floorHeight, statics);
         BuildStairRamps(layout, plot, cellSize, floorHeight, statics);
+        BuildCeilingSlabs(layout, plot, cellSize, floorHeight, statics);
 
         return new DungeonStampResult(props, statics);
     }
@@ -76,7 +79,7 @@ public static class DungeonStamp
         {
             (float x, float y, float z) = plot.TileCenter(cellPiece.Tile, cellSize, floorHeight);
             float yaw = PieceMapper.LocalYaw(cellPiece.Dx, cellPiece.Dz) - plot.YawRadians;
-            props.Add(new DungeonPropInstance(kit.Require(cellPiece.Piece), x, y, z, yaw, 1f));
+            props.Add(new DungeonPropInstance(kit.Require(cellPiece.Piece), x, y + cellPiece.YOffset, z, yaw, 1f));
         }
 
         foreach (PieceMapper.StairRun run in PieceMapper.EnumerateStairRuns(layout))
@@ -112,7 +115,7 @@ public static class DungeonStamp
         {
             for (int z = 0; z < layout.Depth; z++)
             {
-                ForEachRun(layout, f, z, cell => cell == DungeonCellKind.Wall, (runStart, runLength) =>
+                ForEachRun(layout, f, z, x => layout.GetCell(x, z, f) == DungeonCellKind.Wall, (runStart, runLength) =>
                 {
                     float localCenterX = (runStart + runLength * 0.5f) * cellSize;
                     float localCenterZ = (z + 0.5f) * cellSize;
@@ -143,7 +146,7 @@ public static class DungeonStamp
         {
             for (int z = 0; z < layout.Depth; z++)
             {
-                ForEachRun(layout, f, z, IsFloorSlabCell, (runStart, runLength) =>
+                ForEachRun(layout, f, z, x => IsFloorSlabCell(layout.GetCell(x, z, f)), (runStart, runLength) =>
                 {
                     float localCenterX = (runStart + runLength * 0.5f) * cellSize;
                     float localCenterZ = (z + 0.5f) * cellSize;
@@ -170,23 +173,24 @@ public static class DungeonStamp
     }
 
     /// <summary>Greedy-merges the contiguous run of X cells on (<paramref name="z"/>, <paramref name="f"/>)
-    /// satisfying <paramref name="predicate"/>, invoking <paramref name="onRun"/> once per run with the run's
-    /// start X and length. Cells failing the predicate simply break the run, same greedy behaviour whether
-    /// there is one qualifying kind (walls) or several (the floor-slab kinds).</summary>
-    private static void ForEachRun(DungeonLayout layout, int f, int z, Func<DungeonCellKind, bool> predicate,
+    /// whose X index satisfies <paramref name="predicate"/>, invoking <paramref name="onRun"/> once per run
+    /// with the run's start X and length. Cells failing the predicate simply break the run. The predicate is
+    /// keyed by X (not by cell kind) so a run can depend on more than the cell itself, e.g. the ceiling run
+    /// tests the cell above via <see cref="PieceMapper.HasCeiling"/>.</summary>
+    private static void ForEachRun(DungeonLayout layout, int f, int z, Func<int, bool> predicate,
         Action<int, int> onRun)
     {
         int x = 0;
         while (x < layout.Width)
         {
-            if (!predicate(layout.GetCell(x, z, f)))
+            if (!predicate(x))
             {
                 x++;
                 continue;
             }
 
             int runStart = x;
-            while (x < layout.Width && predicate(layout.GetCell(x, z, f)))
+            while (x < layout.Width && predicate(x))
             {
                 x++;
             }
@@ -233,6 +237,42 @@ public static class DungeonStamp
 
             var halfExtents = new Vector3(cellSize * 0.5f, ThinHalfThickness, length * 0.5f);
             statics.Add((new BoxShape(halfExtents), new Pose(center, orientation)));
+        }
+    }
+
+    /// <summary>Per floor, per Z row: greedy-merges the contiguous run of ceiling cells (per
+    /// <see cref="PieceMapper.HasCeiling"/>, the same predicate the prop sink uses, so slabs and ceiling props
+    /// cover identical cells) along X into one thin (0.2m) box whose BOTTOM face sits at the ceiling underside
+    /// (<c>floorY + ceilingHeight</c>), mirroring <see cref="BuildFloorSlabs"/> but lifted a ceiling height and
+    /// facing down. Emits nothing in <see cref="DungeonCeilingMode.Open"/> (no cell satisfies the predicate).
+    /// Same axis-aligned orientation rule as <see cref="BuildWalls"/>.</summary>
+    private static void BuildCeilingSlabs(
+        DungeonLayout layout,
+        DungeonPlotTransform plot,
+        float cellSize,
+        float floorHeight,
+        List<(PhysicsShape Shape, Pose Pose)> statics)
+    {
+        Quaternion orientation = Quaternion.CreateFromAxisAngle(Vector3.UnitY, -plot.YawRadians);
+        float ceilingHeight = layout.CeilingHeightMeters;
+
+        for (int f = 0; f < layout.Floors; f++)
+        {
+            for (int z = 0; z < layout.Depth; z++)
+            {
+                ForEachRun(layout, f, z, x => PieceMapper.HasCeiling(layout, x, z, f), (runStart, runLength) =>
+                {
+                    float localCenterX = (runStart + runLength * 0.5f) * cellSize;
+                    float localCenterZ = (z + 0.5f) * cellSize;
+                    (float worldX, float worldZ) = PieceMapper.TransformXZ(plot, localCenterX, localCenterZ);
+                    float undersideY = plot.BaseY + f * floorHeight + ceilingHeight;
+                    float worldY = undersideY + ThinHalfThickness;
+
+                    var halfExtents = new Vector3(runLength * cellSize * 0.5f, ThinHalfThickness, cellSize * 0.5f);
+                    var pose = new Pose(new Vector3(worldX, worldY, worldZ), orientation);
+                    statics.Add((new BoxShape(halfExtents), pose));
+                });
+            }
         }
     }
 }

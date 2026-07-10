@@ -196,14 +196,48 @@ internal static class RoomGrower
                 }
 
                 int length = rooms.Next(1, 5);
-                int newWidth = rooms.Next(config.RoomMinTiles, config.RoomMaxTiles + 1);
-                int newDepth = rooms.Next(config.RoomMinTiles, config.RoomMaxTiles + 1);
-                int lateral = rooms.Next(lateralSpan);
 
-                Candidate candidate = BuildCandidate(source, dir, length, newWidth, newDepth, lateral);
+                // A hall is an elongated room whose long axis runs along the corridor that reaches it. The hall
+                // decision draw is guarded like the width/stair draws, so a HallChancePercent==0 config consumes
+                // nothing and takes the normal two room-dimension draws in the original order (byte-compat).
+                bool isHall = DrawIsHall(config, rooms);
+                int newWidth;
+                int newDepth;
+                if (isHall)
+                {
+                    int hallLength = rooms.Next(config.HallMinLengthTiles, config.HallMaxLengthTiles + 1);
+                    int hallGirth = rooms.Next(config.RoomMinTiles, config.RoomMaxTiles + 1);
+                    if (horizontal)
+                    {
+                        newWidth = hallLength;
+                        newDepth = hallGirth;
+                    }
+                    else
+                    {
+                        newWidth = hallGirth;
+                        newDepth = hallLength;
+                    }
+                }
+                else
+                {
+                    newWidth = rooms.Next(config.RoomMinTiles, config.RoomMaxTiles + 1);
+                    newDepth = rooms.Next(config.RoomMinTiles, config.RoomMaxTiles + 1);
+                }
+
+                // The corridor width is drawn (and only drawn) when the config opens a range, guarded exactly like
+                // the stair/loop draws so a min==max==1 config consumes nothing and grows byte-for-byte as before.
+                // It is then capped to the narrower of the source edge (lateralSpan) and the new room's facing edge
+                // (perpNewRoom) so the door band fits both, and the lateral start is bounded so the whole band lies
+                // on the source edge. For width 1 that bound is rooms.Next(lateralSpan) - the identical legacy draw.
+                int corridorWidth = DrawCorridorWidth(config, rooms);
+                int perpNewRoom = horizontal ? newDepth : newWidth;
+                int w = Math.Min(corridorWidth, Math.Min(lateralSpan, perpNewRoom));
+                int lateral = rooms.Next(lateralSpan - w + 1);
+
+                Candidate candidate = BuildCandidate(source, dir, length, newWidth, newDepth, lateral, w);
                 if (Validate(grid, source, candidate))
                 {
-                    Commit(grid, source, candidate, roomList, edgeList);
+                    Commit(grid, source, candidate, isHall, roomList, edgeList);
                     return true;
                 }
             }
@@ -212,13 +246,47 @@ internal static class RoomGrower
         return false;
     }
 
+    /// <summary>Draws a corridor width from <paramref name="rooms"/> only when the config opens a range
+    /// (<see cref="DungeonConfig.CorridorMaxWidth"/> &gt; <see cref="DungeonConfig.CorridorMinWidth"/>); a fixed
+    /// width consumes nothing, so a default 1/1 config draws nothing and stays byte-identical. Same guard
+    /// discipline as the stair and loop-edge draws.</summary>
+    internal static int DrawCorridorWidth(DungeonConfig config, DeterministicRng rooms)
+    {
+        if (config.CorridorMaxWidth > config.CorridorMinWidth)
+        {
+            return rooms.Next(config.CorridorMinWidth, config.CorridorMaxWidth + 1);
+        }
+
+        return config.CorridorMinWidth;
+    }
+
+    /// <summary>Draws the per-attempt hall decision from <paramref name="rooms"/> only when
+    /// <see cref="DungeonConfig.HallChancePercent"/> is positive; a zero chance consumes nothing, so a halls-off
+    /// config draws nothing and stays byte-identical. Same guard discipline as the corridor-width draw.</summary>
+    private static bool DrawIsHall(DungeonConfig config, DeterministicRng rooms)
+    {
+        if (config.HallChancePercent <= 0)
+        {
+            return false;
+        }
+
+        return rooms.Next(100) < config.HallChancePercent;
+    }
+
+    /// <summary>Builds a <paramref name="corridorWidth"/>-wide corridor candidate: a straight rectangular tube of
+    /// door + corridor cells (constant perpendicular band from source edge to new room edge) plus the new room
+    /// rect. The band spans <paramref name="corridorWidth"/> cells perpendicular to the march direction, starting
+    /// at the source edge offset <paramref name="lateral"/>. The new room is centered so the band lies fully on
+    /// its facing edge; for width 1 it uses the legacy single-line centering, so a width-1 candidate is identical
+    /// to the pre-width geometry (cells, order, and room position).</summary>
     private static Candidate BuildCandidate(
         DungeonRoom source,
         (int Dx, int Dz) dir,
         int length,
         int newWidth,
         int newDepth,
-        int lateral)
+        int lateral,
+        int corridorWidth)
     {
         int floor = source.Floor;
         int sx0 = source.X;
@@ -226,44 +294,58 @@ internal static class RoomGrower
         int sz0 = source.Z;
         int sz1 = source.Z + source.Depth - 1;
 
-        // The source interior cell the door frame attaches to, on the chosen line.
-        int lineX;
-        int lineZ;
-        if (dir.Dz == 0)
-        {
-            lineZ = sz0 + lateral;
-            lineX = dir.Dx > 0 ? sx1 : sx0;
-        }
-        else
-        {
-            lineX = sx0 + lateral;
-            lineZ = dir.Dz > 0 ? sz1 : sz0;
-        }
-
-        var doorSrc = new DungeonTile(lineX + dir.Dx, lineZ + dir.Dz, floor);
-        var corridor = new DungeonTile[length];
-        for (int k = 0; k < length; k++)
-        {
-            corridor[k] = new DungeonTile(doorSrc.X + dir.Dx * (k + 1), doorSrc.Z + dir.Dz * (k + 1), floor);
-        }
-
-        var doorNew = new DungeonTile(doorSrc.X + dir.Dx * (length + 1), doorSrc.Z + dir.Dz * (length + 1), floor);
-
-        // The new interior cell adjacent to the new door frame, on the same line.
-        int nearX = doorNew.X + dir.Dx;
-        int nearZ = doorNew.Z + dir.Dz;
+        var doorSrc = new DungeonTile[corridorWidth];
+        var doorNew = new DungeonTile[corridorWidth];
+        var corridor = new DungeonTile[corridorWidth * length];
 
         int roomX;
         int roomZ;
+
         if (dir.Dz == 0)
         {
+            // Horizontal march: the band spans Z; the source edge column and door column are fixed in X.
+            int lineX = dir.Dx > 0 ? sx1 : sx0;
+            int doorX = lineX + dir.Dx;
+            int bandZ0 = sz0 + lateral;
+
+            for (int p = 0; p < corridorWidth; p++)
+            {
+                int z = bandZ0 + p;
+                doorSrc[p] = new DungeonTile(doorX, z, floor);
+                for (int k = 0; k < length; k++)
+                {
+                    corridor[k * corridorWidth + p] = new DungeonTile(doorX + dir.Dx * (k + 1), z, floor);
+                }
+
+                doorNew[p] = new DungeonTile(doorX + dir.Dx * (length + 1), z, floor);
+            }
+
+            int nearX = doorNew[0].X + dir.Dx;
             roomX = dir.Dx > 0 ? nearX : nearX - (newWidth - 1);
-            roomZ = lineZ - newDepth / 2;
+            roomZ = corridorWidth == 1 ? bandZ0 - newDepth / 2 : bandZ0 - (newDepth - corridorWidth) / 2;
         }
         else
         {
+            // Vertical march: the band spans X; the source edge row and door row are fixed in Z.
+            int lineZ = dir.Dz > 0 ? sz1 : sz0;
+            int doorZ = lineZ + dir.Dz;
+            int bandX0 = sx0 + lateral;
+
+            for (int p = 0; p < corridorWidth; p++)
+            {
+                int x = bandX0 + p;
+                doorSrc[p] = new DungeonTile(x, doorZ, floor);
+                for (int k = 0; k < length; k++)
+                {
+                    corridor[k * corridorWidth + p] = new DungeonTile(x, doorZ + dir.Dz * (k + 1), floor);
+                }
+
+                doorNew[p] = new DungeonTile(x, doorZ + dir.Dz * (length + 1), floor);
+            }
+
+            int nearZ = doorNew[0].Z + dir.Dz;
             roomZ = dir.Dz > 0 ? nearZ : nearZ - (newDepth - 1);
-            roomX = lineX - newWidth / 2;
+            roomX = corridorWidth == 1 ? bandX0 - newWidth / 2 : bandX0 - (newWidth - corridorWidth) / 2;
         }
 
         return new Candidate(floor, roomX, roomZ, newWidth, newDepth, doorSrc, doorNew, corridor);
@@ -313,15 +395,22 @@ internal static class RoomGrower
             }
         }
 
-        // Corridor and both door cells: clear of the border and currently empty.
-        if (!IsClearWalkableCell(grid, candidate.DoorSrc, candidate.Floor))
+        // Every door-band and corridor-band cell: clear of the border and currently empty. The band cells are
+        // unwritten during validation, so they never count each other as occupied (a wide tube validates whole).
+        foreach (DungeonTile tile in candidate.DoorSrc)
         {
-            return false;
+            if (!IsClearWalkableCell(grid, tile, candidate.Floor))
+            {
+                return false;
+            }
         }
 
-        if (!IsClearWalkableCell(grid, candidate.DoorNew, candidate.Floor))
+        foreach (DungeonTile tile in candidate.DoorNew)
         {
-            return false;
+            if (!IsClearWalkableCell(grid, tile, candidate.Floor))
+            {
+                return false;
+            }
         }
 
         foreach (DungeonTile tile in candidate.Corridor)
@@ -332,17 +421,24 @@ internal static class RoomGrower
             }
         }
 
-        // Corridor and door cells must not be orthogonally adjacent to any existing walkable cell other than
-        // the source room interior they join (their own path and the new interior are not written yet).
+        // No door-band or corridor-band cell may be orthogonally adjacent to any existing walkable cell other
+        // than the source room interior they join (their own band and the new interior are not written yet, so
+        // the band's own cells read as empty here and only foreign structure trips the check).
         HashSet<(int X, int Z)> allowed = RoomInterior(source);
-        if (HasForeignOrthogonalWalkable(grid, candidate.DoorSrc, candidate.Floor, allowed))
+        foreach (DungeonTile tile in candidate.DoorSrc)
         {
-            return false;
+            if (HasForeignOrthogonalWalkable(grid, tile, candidate.Floor, allowed))
+            {
+                return false;
+            }
         }
 
-        if (HasForeignOrthogonalWalkable(grid, candidate.DoorNew, candidate.Floor, allowed))
+        foreach (DungeonTile tile in candidate.DoorNew)
         {
-            return false;
+            if (HasForeignOrthogonalWalkable(grid, tile, candidate.Floor, allowed))
+            {
+                return false;
+            }
         }
 
         foreach (DungeonTile tile in candidate.Corridor)
@@ -416,6 +512,7 @@ internal static class RoomGrower
         Grid grid,
         DungeonRoom source,
         Candidate candidate,
+        bool isHall,
         List<DungeonRoom> roomList,
         List<DungeonEdge> edgeList)
     {
@@ -428,7 +525,7 @@ internal static class RoomGrower
             Z = candidate.RoomZ,
             Width = candidate.RoomWidth,
             Depth = candidate.RoomDepth,
-            RoomType = DungeonRoomType.Normal,
+            RoomType = isHall ? DungeonRoomType.Hall : DungeonRoomType.Normal,
         };
         WriteRoom(grid, room);
 
@@ -437,8 +534,21 @@ internal static class RoomGrower
             grid.Set(tile.X, tile.Z, tile.Floor, DungeonCellKind.Corridor);
         }
 
-        grid.Set(candidate.DoorSrc.X, candidate.DoorSrc.Z, candidate.DoorSrc.Floor, DungeonCellKind.DoorFrame);
-        grid.Set(candidate.DoorNew.X, candidate.DoorNew.Z, candidate.DoorNew.Floor, DungeonCellKind.DoorFrame);
+        foreach (DungeonTile tile in candidate.DoorSrc)
+        {
+            grid.Set(tile.X, tile.Z, tile.Floor, DungeonCellKind.DoorFrame);
+        }
+
+        foreach (DungeonTile tile in candidate.DoorNew)
+        {
+            grid.Set(tile.X, tile.Z, tile.Floor, DungeonCellKind.DoorFrame);
+        }
+
+        // Doors list is the source-end band followed by the new-end band (for width 1 this is exactly the legacy
+        // [doorSrc, doorNew] pair, so the edge hashes identically).
+        var doors = new DungeonTile[candidate.DoorSrc.Length + candidate.DoorNew.Length];
+        candidate.DoorSrc.CopyTo(doors, 0);
+        candidate.DoorNew.CopyTo(doors, candidate.DoorSrc.Length);
 
         roomList.Add(room);
         edgeList.Add(new DungeonEdge
@@ -447,7 +557,7 @@ internal static class RoomGrower
             RoomB = newId,
             Kind = DungeonEdgeKind.Corridor,
             Path = candidate.Corridor,
-            Doors = new[] { candidate.DoorSrc, candidate.DoorNew },
+            Doors = doors,
         });
     }
 
@@ -679,14 +789,17 @@ internal static class RoomGrower
         }
     }
 
+    /// <summary>A proposed same-floor room B reached from the source by a <see cref="DoorSrc"/>.Length-wide
+    /// corridor. <see cref="DoorSrc"/>/<see cref="DoorNew"/> are the door-frame bands at each end (one cell each
+    /// for a 1-wide corridor), and <see cref="Corridor"/> is the full corridor tube (band width x length).</summary>
     private readonly record struct Candidate(
         int Floor,
         int RoomX,
         int RoomZ,
         int RoomWidth,
         int RoomDepth,
-        DungeonTile DoorSrc,
-        DungeonTile DoorNew,
+        DungeonTile[] DoorSrc,
+        DungeonTile[] DoorNew,
         DungeonTile[] Corridor);
 
     /// <summary>A proposed stair from a source room on <see cref="Floor"/> to a new room B on <see cref="Floor"/>

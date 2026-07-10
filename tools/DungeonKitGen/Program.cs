@@ -8,8 +8,8 @@ using SharpGLTF.Geometry.VertexTypes;
 using SharpGLTF.Materials;
 using SharpGLTF.Scenes;
 
-// One-off generator: emits the five greybox KhaozEngine.Dungeon kit pieces (floor, wall, doorframe,
-// stair, landing) as plain gray box .glb meshes matching DungeonKitMap.Greybox()'s ids. Each piece is
+// One-off generator: emits the six greybox KhaozEngine.Dungeon kit pieces (floor, wall, doorframe,
+// stair, landing, ceiling) as plain gray box .glb meshes matching DungeonKitMap.Greybox()'s ids. Each piece is
 // authored at its exact final size (PropLoader scales a loaded prop to the manifest heightMeters, so
 // authored height == heightMeters means no rescale) with the origin at the piece's base center (y=0 at
 // the floor, x/z centered), matching how PropLoader drops the origin to feet and recenters XZ anyway.
@@ -137,4 +137,12 @@ Build(Path.Combine(dir, "dungeon_wall.glb"), gray, new[]
 Build(Path.Combine(dir, "dungeon_landing.glb"), gray, new[]
 {
     (new Vector3(0f, SlabThickness / 2f, 0f), new Vector3(Cell, SlabThickness, Cell)),
+});
+
+// dungeon_ceiling: 2.0 x 0.2 x 2.0 slab, base at y=0 (same geometry as dungeon_floor). The sinks place it
+// at floorY + ceiling height with base-center origin, so its underside (base) is the visible ceiling face
+// and the 0.2 thickness rises into the empty/wall/void space above.
+Build(Path.Combine(dir, "dungeon_ceiling.glb"), gray, new[]
+{
+    (new Vector3(0f, 0.1f, 0f), new Vector3(Cell, 0.2f, Cell)),
 });

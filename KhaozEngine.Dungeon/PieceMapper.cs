@@ -16,8 +16,10 @@ internal static class PieceMapper
     /// <summary>One piece placement resolved from a single raster cell: <paramref name="Piece"/> at
     /// <paramref name="Tile"/>, facing the plot-local direction (<paramref name="Dx"/>, <paramref name="Dz"/>)
     /// (zero for symmetric pieces). Feed the direction into <see cref="LocalYaw"/> to get the piece-local yaw
-    /// component, then subtract the plot yaw per <see cref="LocalYaw"/>'s composition rule.</summary>
-    internal readonly record struct CellPiece(DungeonTile Tile, DungeonPiece Piece, int Dx, int Dz);
+    /// component, then subtract the plot yaw per <see cref="LocalYaw"/>'s composition rule.
+    /// <paramref name="YOffset"/> is added to the resolved world Y (0 for floor-level pieces, the ceiling
+    /// height for a <see cref="DungeonPiece.Ceiling"/> so it sits above the floor rather than on it).</summary>
+    internal readonly record struct CellPiece(DungeonTile Tile, DungeonPiece Piece, int Dx, int Dz, float YOffset = 0f);
 
     /// <summary>One stair run: the <see cref="DungeonCellKind.StairLower"/> and <see cref="DungeonCellKind.StairUpper"/>
     /// tiles (both on the lower floor, per <c>CommitStair</c>'s <c>[StairLower, StairUpper, StairTop]</c> path
@@ -90,6 +92,15 @@ internal static class PieceMapper
                         // StairLower/StairUpper: covered once per run by EnumerateStairRuns.
                         // StairVoid/Empty: nothing.
                     }
+
+                    // A ceiling roofs every walkable cell (whatever piece it resolved to above, including the
+                    // stair-tread cells that yield nothing here) when the layout is roofed and no walkable cell
+                    // sits directly above it. Emitted at YOffset = ceiling height so the sink lifts it off the
+                    // floor. Shared with DungeonStamp's ceiling slabs via HasCeiling, so both sinks agree.
+                    if (HasCeiling(layout, x, z, f))
+                    {
+                        yield return new CellPiece(tile, DungeonPiece.Ceiling, 0, 0, layout.CeilingHeightMeters);
+                    }
                 }
             }
         }
@@ -114,6 +125,21 @@ internal static class PieceMapper
 
             yield return new StairRun(lower, upper, dx, dz);
         }
+    }
+
+    /// <summary>Whether the cell at (<paramref name="x"/>, <paramref name="z"/>, <paramref name="f"/>) gets a
+    /// ceiling: true when <paramref name="layout"/> is <see cref="DungeonCeilingMode.Roofed"/>, the cell is
+    /// walkable, and the cell directly above it (floor <c>f + 1</c>, same XZ) is NOT walkable. The
+    /// walkable-above exception keeps open stairwells and vertical shafts open (a stair's emergence cell,
+    /// <see cref="DungeonCellKind.StairUpper"/>, has the walkable <see cref="DungeonCellKind.StairTop"/> landing
+    /// directly above it, so it is left open; where the floor above already has a walkable cell, that floor's
+    /// own slab is the roof, so a second ceiling would only z-fight). Both sinks call this so their ceiling
+    /// pieces and ceiling collision slabs cover exactly the same cells.</summary>
+    internal static bool HasCeiling(DungeonLayout layout, int x, int z, int f)
+    {
+        return layout.CeilingMode == DungeonCeilingMode.Roofed
+            && DungeonLayout.IsWalkable(layout.GetCell(x, z, f))
+            && !DungeonLayout.IsWalkable(layout.GetCell(x, z, f + 1));
     }
 
     /// <summary>The plot-local yaw (radians, plot yaw NOT composed) that rotates local +Z onto the unit

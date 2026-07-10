@@ -63,6 +63,7 @@ namespace KhaozEngine.Showcase
             CellSizeMeters = 3f,
             FloorHeightMeters = 6f,
             LockCount = 1,
+            CeilingMode = DungeonCeilingMode.Roofed,   // roofed interiors: the walk reads as an enclosed cave
         };
         const ulong Seed = 2026UL;
 
@@ -79,8 +80,8 @@ namespace KhaozEngine.Showcase
         CharacterController3D _character = null!;
         MeshHandle _capsule;
 
-        // One uploaded mesh per kit id (dungeon_floor/wall/doorframe/stair/landing), and the flat prop-placement
-        // list stamped from the generated layout. Not streamed: the whole dungeon is drawn every frame.
+        // One uploaded mesh per kit id (dungeon_floor/wall/doorframe/stair/landing/ceiling), and the flat
+        // prop-placement list stamped from the generated layout. Not streamed: the whole dungeon is drawn every frame.
         readonly Dictionary<string, MeshHandle> _kitMeshes = new();
         List<PropPlacement> _placements = null!;
 

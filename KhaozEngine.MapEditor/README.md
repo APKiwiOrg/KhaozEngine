@@ -14,6 +14,13 @@ The headless core is GPU-free and fully unit-tested:
   to one undo step).
 - `EditorCommands` are the reversible edits over the document model (placements, spawns, exclusions,
   regions, terrain features). Commands are the only mutation path, so undo is total by construction.
+- `EditorToolController` is the GPU-free per-frame policy: it reads a plain `EditorFrameInput` (pick ray +
+  pointer/keyboard edges) and emits commands. Select mode picks and drives the transform-gizmo drag
+  (coalesced into one undo step, sealed on release); the place modes ground-snap a click into an Add; the
+  draw modes rubber-band a disc (drag) or rect (shift-drag) into an exclusion or an auto-named region.
 
-The turn-key `MapEditorScene`, viewport streaming, picking, and gizmos land alongside. Developer-only tooling,
-so the editor UI is `LocalizationExempt`.
+`MapEditorScene` is the turn-key scene a per-game head pushes: it wires the streamed `ViewportWorld`, a fly
+camera, the `EditorToolController`, and the Gui chrome (toolbar tab bar, tree outline, property-grid
+inspector, kit palette, status strip) with the undo/redo/save hotkeys. The GPU work sits behind build /
+teardown / rebuild seams, so the lifecycle, update ordering, and save-failure handling stay
+headless-testable. Developer-only tooling, so the editor UI is `LocalizationExempt`.

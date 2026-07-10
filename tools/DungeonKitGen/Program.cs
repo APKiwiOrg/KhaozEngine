@@ -13,12 +13,12 @@ using SharpGLTF.Scenes;
 // authored at its exact final size (PropLoader scales a loaded prop to the manifest heightMeters, so
 // authored height == heightMeters means no rescale) with the origin at the piece's base center (y=0 at
 // the floor, x/z centered), matching how PropLoader drops the origin to feet and recenters XZ anyway.
-// Run once per kit scale; the output .glb files are committed.
+// Run once per kit scale, the output .glb files are committed.
 //
 // Args: [outputDir] [cellSizeMeters] [floorHeightMeters]. Every piece dimension is derived from the two
 // scale parameters, so a caller with a differently-scaled DungeonConfig (see KhaozEngine.Dungeon) can bake
 // a matching kit. Defaults (2 m cell / 4 m floor) are the general-purpose scale (matches DungeonConfig's
-// own defaults); KhaozEngine.Showcase's RoomDungeon demo runs its own DungeonConfig at cell=3/floorHeight=6
+// own defaults). KhaozEngine.Showcase's RoomDungeon demo runs its own DungeonConfig at cell=3/floorHeight=6
 // (a grander, more cavernous feel), so its committed kit was baked with
 // `dotnet run --project tools/DungeonKitGen -- KhaozEngine.Showcase/assets/dungeon 3 6` - re-run the same
 // command to regenerate it after a change here (see assets/dungeon/CREDITS.md).
@@ -115,7 +115,7 @@ Build(Path.Combine(dir, "dungeon_wall.glb"), gray, new[]
 
 // dungeon_stair: 8 steps climbing along +Z, rising FloorHeight over a run of two cells, Cell wide. Each
 // step is modeled as a solid block from the base up to its tread height (the standard greybox stair
-// solid), so the mesh silhouette is a stepped ramp; total height FloorHeight at the top (far, +Z) step -
+// solid), so the mesh silhouette is a stepped ramp, total height FloorHeight at the top (far, +Z) step,
 // matching DungeonStamp.BuildStairRamps's pitched physics ramp, which rises the same FloorHeight over the
 // same 2*Cell run.
 {

@@ -28,7 +28,7 @@ namespace KhaozEngine.Showcase
     /// heightfield model - exactly one ground Y per (x, z). A generated dungeon has no such single-valued
     /// analogue: floors stack vertically and a floor-1 room can sit directly above a floor-0 corridor at the
     /// same (x, z). So <see cref="GroundHeight"/> stays a flat fallback at the entrance floor's world Y (never
-    /// varies with x/z); the real per-position support (standing on a floor slab, climbing a stair ramp) comes
+    /// varies with x/z). The real per-position support (standing on a floor slab, climbing a stair ramp) comes
     /// from the physics statics via <c>CharacterMovement</c>'s downward prop sweep, which takes the HIGHER of
     /// the analytic ground and the physics floor every tick - so the flat fallback only matters where no static
     /// is underfoot (there is none in a fully-stamped layout, but it keeps the character from ever falling
@@ -165,7 +165,7 @@ namespace KhaozEngine.Showcase
         }
 
         // Constant ground height (see the type doc's collision-decision note): no per-(x, z) sampling, the
-        // whole demo's analytic fallback sits at the entrance floor's Y; the physics statics carry the real
+        // whole demo's analytic fallback sits at the entrance floor's Y, and the physics statics carry the real
         // per-position support.
         float GroundHeight(float x, float z) => _groundY;
 

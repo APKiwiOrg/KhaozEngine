@@ -10,8 +10,8 @@ The five greybox meshes in this folder (`dungeon_floor.glb`, `dungeon_wall.glb`,
   `MeshBuilder`. Each piece is a flat-gray (`Vector4(0.5, 0.5, 0.55, 1)`) box or box assembly, authored
   at its exact final size with the origin at the piece's base center, matching the dimensions in
   `dungeon.manifest.json`. This kit is baked at cell=3 m / floorHeight=6 m to match `RoomDungeon`'s
-  `DungeonConfig` (`dotnet run --project tools/DungeonKitGen -- KhaozEngine.Showcase/assets/dungeon 3 6`);
-  re-run with those args to regenerate. The output `.glb` files are committed so no build step is
+  `DungeonConfig` (`dotnet run --project tools/DungeonKitGen -- KhaozEngine.Showcase/assets/dungeon 3 6`).
+  Re-run with those args to regenerate. The output `.glb` files are committed so no build step is
   required to load the kit.
 
 These are greybox placeholders for early integration and tests, not final art. See

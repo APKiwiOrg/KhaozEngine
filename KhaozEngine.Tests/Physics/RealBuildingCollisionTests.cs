@@ -21,11 +21,12 @@ namespace KhaozEngine.Tests.Physics;
 public class RealBuildingCollisionTests
 {
     const float Scale = 1.5f;   // RuinborneWorld.BuildingScale
-    // The live Ruinborne movement feel (MaxSlope 40deg, +50% jump height), so this faithfully matches the alpha.
+    // The live Ruinborne movement feel (MaxSlope 40deg, +50% jump height). The engine default JumpSpeed now IS
+    // that Ruinborne value (8 * sqrt(1.5), apex ~1.92m), so this only overrides the slope gate and keeps the
+    // baseline jump, matching the alpha.
     static readonly MoveTuning Tuning = MoveTuning.Default with
     {
         MaxSlopeRadians = MathF.PI * 40f / 180f,
-        JumpSpeed = MoveTuning.Default.JumpSpeed * MathF.Sqrt(1.5f),
     };
     static float Flat(float x, float z) => 0f;
 

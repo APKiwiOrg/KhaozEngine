@@ -60,3 +60,12 @@ public sealed record FlatSpot(float X, float Z, float GroundHeight, float MaxSlo
 /// <summary>Flat spots found by a brute-force grid search at the given radius, sorted by max slope ascending,
 /// then height spread ascending, then X, then Z.</summary>
 public sealed record FlatAreaResult(float Radius, IReadOnlyList<FlatSpot> Spots);
+
+/// <summary>Result of a mutation: the verb name, a short human-readable detail sentence, and whether it affected
+/// the streamed world (terrain or scatter inputs), mirroring the underlying command's AffectsWorld flag.
+/// <see cref="GroundY"/> is set for placement_add, the resolved ground height at the placement's XZ (reported
+/// even when the placement itself keeps a null Y for live ground snap). <see cref="Id"/> carries an
+/// auto-generated id or a renamed id/name. <see cref="Index"/> is reserved for list-position verbs added later
+/// (terrain features, exclusions, scatter overrides).</summary>
+public sealed record MutationResult(string Verb, string Detail, bool WorldChanged,
+    float? GroundY = null, string? Id = null, int? Index = null);

@@ -48,7 +48,11 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     widget). A tap under 3 draw units of travel opens typing mode (`TextEntry` with a digits/one-minus/one-dot
     filter). Enter commits (parsed, clamped to [`Min`, `Max`], rounded to `Decimals`), Escape cancels, and a tap
     outside commits like Enter. `WasChanged` mirrors the `Update` return. `Opacity` fades the field for a host
-    transition.
+    transition. `IsScrubbing` mirrors the grab-gate (true from the inside press to the release, even once the
+    cursor strays off the widget) and pairs with `IsEditing`, so a host like `PropertyGrid`'s `FloatRow` can skip
+    its external-value poll while either is true instead of stomping a live gesture. `CancelEdit()` exits typing
+    mode without committing, leaving `Value` at its pre-edit value (the same path Escape takes, made directly
+    callable), the hook a host uses to close an in-progress edit it is tearing down.
   - `Dropdown` - trigger + option list (opens below); two-phase draw (`Draw` trigger / `DrawOverlay` list last).
     Opt-in (default off): `ShowChevron` draws an up/down caret reflecting the open state; `Opacity` fades the whole
     dropdown for a host transition.
@@ -96,14 +100,19 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   - `TreeView` - scrollable outline over `TreeNode` roots (a `LocalizedText` label, children, an `Expanded`
     flag, a caller-owned `Tag`). `VisibleRows()` is the depth-first walk skipping collapsed subtrees. A tap in a
     row's caret zone (the `Indent`-wide band at its depth) toggles expansion for a node with children, a tap
-    elsewhere in the row selects it (`Selected`, `OnSelected`). The wheel scrolls clamped to the content, and
-    rows are scissor-clipped to `Bounds`.
+    elsewhere in the row selects it (`Selected`, `OnSelected`). The wheel scrolls clamped to the content,
+    `WheelRowsPerNotch` rows per notch (default 3), and rows are scissor-clipped to `Bounds`.
   - `PropertyGrid` - a vertical stack of `PropertyRow`s split label/editor at `LabelFraction`, scrolling like
     `ScrollablePanel` (wheel + scissor clip). Built-in rows: `FloatRow` (a `NumberField`), `BoolRow` (a
     `Toggle`), `TextRow` (a `TextInput`), `ReadOnlyRow` (a polled display string, no input). Each row polls its
     getter every `Update` unless the user is mid-edit/scrub/focus on that row's child widget, so external
     changes (undo, another editor) stay in sync without a change-event bus. A row fully scrolled out of view is
-    skipped entirely, so it neither hit-tests nor reserves off-view input.
+    skipped entirely, so it neither hit-tests nor reserves off-view input. Wheel scrolling moves
+    `WheelRowsPerNotch` rows per notch (default 3, matching `TreeView`'s knob for the same side-by-side feel). A
+    row that ran last frame but is culled this frame (scrolled out of view) is `Deactivate()`d exactly once as
+    it leaves: the base `PropertyRow.Deactivate()` is a no-op, but `FloatRow` cancels its `NumberField` edit and
+    `TextRow` unfocuses its `TextInput`, so a focused or mid-edit row cannot keep consuming input the grid no
+    longer routes to it.
 - `UpdateOverlayView` / `UpdateOverlayScreen` (+ `UpdateOverlayTheme`) - the in-game auto-updater popup, a pure
   presenter over `KhaozEngine.Updates`' `IUpdateStatus`: it announces an available update, shows download
   progress, and prompts the restart-and-apply, driven by the theme's trigger key/button (default U / gamepad Y).

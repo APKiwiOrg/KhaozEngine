@@ -439,7 +439,20 @@ public class MapEditorScene : GameScene, IGameScene3D
         RebuildOutline();
     }
 
-    void OnSelectionChanged() => RebuildInspector();
+    void OnSelectionChanged()
+    {
+        // A region rename queues a pending re-select of the NEW name once the rename row loses focus (see
+        // UpdateChrome). The pending sync clears the field itself before it calls Selection.Set, so this only
+        // ever sees it still set when something ELSE changed the selection first (an outline click, a viewport
+        // pick) while the rename row was still focused. That selection must win: drop the stale pending re-select
+        // so it cannot fire next frame and stomp the user's new pick back onto the renamed region.
+        if (_pendingRegionSelect is string pending &&
+            !(_document.Selection.Kind == SelectionKind.Region && _document.Selection.Id == pending))
+        {
+            _pendingRegionSelect = null;
+        }
+        RebuildInspector();
+    }
 
     void OnOutlineSelected(TreeNode node)
     {

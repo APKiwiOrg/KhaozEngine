@@ -365,5 +365,43 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.NotEmpty(scene.Inspector.Rows);
             Assert.IsType<TextRow>(scene.Inspector.Rows[0]);        // the rename row, bound through RenameRegionCommand
         }
+
+        [Fact]
+        public void RegionRename_ThenSelectingAnotherElement_KeepsTheNewSelection()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Regions.Add(new MapRegion { Name = "region-1", Shape = new DiscShapeDoc { Radius = 4f } });
+                doc.Placements.Add(new MapPlacement { Id = "placement-1", Kind = "prop" });
+                return doc;
+            });
+
+            scene.Document.Selection.Set(SelectionKind.Region, "region-1");
+            var row = Assert.IsType<TextRow>(scene.Inspector.Rows[0]);
+
+            // Drive the rename row headless, matching the NumberField-scrub idiom above but for text: focus the
+            // field, replace its buffer, then run one row Update so the TextChanged write-through fires the
+            // setter (RenameRegionCommand) and queues _pendingRegionSelect.
+            var ui = new InputManager();
+            ui.Update(InputState.Empty);
+            row.Input.IsFocused = true;
+            row.Input.SetText("region-1-renamed");
+            row.Update(new Rect(0f, 0f, 200f, 28f), ui, 0.016f);
+
+            Assert.Equal("region-1-renamed", scene.Document.Doc.Regions[0].Name);
+            Assert.True(row.Input.IsFocused);   // still typing: the pending re-select sync has NOT fired yet
+
+            // The user picks a different element (outline click / viewport pick) before ever blurring the
+            // rename row.
+            scene.Document.Selection.Set(SelectionKind.Placement, "placement-1");
+
+            // One Update frame: the pending re-select sync lives in UpdateChrome. Without the fix, the rebuilt
+            // inspector's now-null _regionNameRow lets the stale _pendingRegionSelect fire and stomp this pick.
+            scene.OnUpdate(0.016f);
+
+            Assert.Equal(SelectionKind.Placement, scene.Document.Selection.Kind);
+            Assert.Equal("placement-1", scene.Document.Selection.Id);
+        }
     }
 }

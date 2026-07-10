@@ -1,0 +1,465 @@
+using System;
+using System.Collections.Generic;
+using KhaozEngine.Primitives;
+
+namespace KhaozEngine.Dungeon.Internal;
+
+/// <summary>Output of one <see cref="RoomGrower.Grow"/> pass: the filled (pre-wall-pass) cell raster plus the
+/// room and edge lists carved on it, and whether the grower stopped short of the requested room count.</summary>
+internal sealed record GrowResult(
+    DungeonCellKind[] Cells,
+    List<DungeonRoom> Rooms,
+    List<DungeonEdge> Edges,
+    bool Saturated);
+
+/// <summary>
+/// Same-floor room growth for <c>DungeonGenerator</c>. Stateless: <see cref="Grow"/> owns all mutable state
+/// locally so concurrent generations never interfere. Places an entrance room centered on floor 0, then grows
+/// a tree of rooms joined by straight axis-aligned corridors, committing each room together with its corridor,
+/// two door frames, and edge atomically (validated whole before any cell is written). Stairs and cross-floor
+/// growth arrive in a later task; this pass never proposes them.
+/// </summary>
+internal static class RoomGrower
+{
+    // North, East, South, West as (dx, dz) unit steps.
+    private static readonly (int Dx, int Dz)[] Directions =
+    {
+        (0, -1),
+        (1, 0),
+        (0, 1),
+        (-1, 0),
+    };
+
+    /// <summary>Grows the layout on floor 0 using the given RNG stream, returning the raster and room graph
+    /// before the wall pass. Deterministic in <paramref name="config"/> and the <paramref name="rooms"/>
+    /// stream.</summary>
+    internal static GrowResult Grow(DungeonConfig config, DeterministicRng rooms)
+    {
+        int width = config.PlotWidthTiles;
+        int depth = config.PlotDepthTiles;
+        int floors = config.MaxFloors;
+        var grid = new Grid(width, depth, floors);
+
+        var roomList = new List<DungeonRoom>();
+        var edgeList = new List<DungeonEdge>();
+
+        int entranceWidth = rooms.Next(config.RoomMinTiles, config.RoomMaxTiles + 1);
+        int entranceDepth = rooms.Next(config.RoomMinTiles, config.RoomMaxTiles + 1);
+        var entrance = new DungeonRoom
+        {
+            Id = 0,
+            Floor = 0,
+            X = (width - entranceWidth) / 2,
+            Z = (depth - entranceDepth) / 2,
+            Width = entranceWidth,
+            Depth = entranceDepth,
+            RoomType = DungeonRoomType.Entrance,
+        };
+        WriteRoom(grid, entrance);
+        roomList.Add(entrance);
+
+        int target = config.RoomCountTarget;
+        int attemptCap = target * 64;
+        int attempts = 0;
+        var saturated = new HashSet<int>();
+
+        while (roomList.Count < target && attempts < attemptCap)
+        {
+            var open = new List<DungeonRoom>();
+            foreach (DungeonRoom room in roomList)
+            {
+                if (!saturated.Contains(room.Id))
+                {
+                    open.Add(room);
+                }
+            }
+
+            if (open.Count == 0)
+            {
+                break;
+            }
+
+            attempts++;
+            DungeonRoom frontier = open[rooms.Next(open.Count)];
+            if (!TryGrow(config, rooms, grid, frontier, roomList, edgeList))
+            {
+                saturated.Add(frontier.Id);
+            }
+        }
+
+        bool wasSaturated = roomList.Count < target;
+        return new GrowResult(grid.Cells, roomList, edgeList, wasSaturated);
+    }
+
+    /// <summary>Turns every <see cref="DungeonCellKind.Empty"/> cell that is 8-adjacent (same floor) to a
+    /// walkable cell into a <see cref="DungeonCellKind.Wall"/>. Runs once after all placement so no walkable
+    /// cell is left 8-adjacent to empty. Non-empty cells (including <see cref="DungeonCellKind.StairVoid"/>)
+    /// are untouched.</summary>
+    internal static void ApplyWallPass(DungeonCellKind[] cells, int width, int depth, int floors)
+    {
+        var toWall = new List<int>();
+        for (int f = 0; f < floors; f++)
+        {
+            for (int z = 0; z < depth; z++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    int idx = (f * depth + z) * width + x;
+                    if (cells[idx] != DungeonCellKind.Empty)
+                    {
+                        continue;
+                    }
+
+                    if (HasWalkableNeighbor(cells, width, depth, x, z, f))
+                    {
+                        toWall.Add(idx);
+                    }
+                }
+            }
+        }
+
+        foreach (int idx in toWall)
+        {
+            cells[idx] = DungeonCellKind.Wall;
+        }
+    }
+
+    private static bool HasWalkableNeighbor(DungeonCellKind[] cells, int width, int depth, int x, int z, int f)
+    {
+        for (int dz = -1; dz <= 1; dz++)
+        {
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                if (dx == 0 && dz == 0)
+                {
+                    continue;
+                }
+
+                int nx = x + dx;
+                int nz = z + dz;
+                if (nx < 0 || nx >= width || nz < 0 || nz >= depth)
+                {
+                    continue;
+                }
+
+                if (DungeonLayout.IsWalkable(cells[(f * depth + nz) * width + nx]))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryGrow(
+        DungeonConfig config,
+        DeterministicRng rooms,
+        Grid grid,
+        DungeonRoom source,
+        List<DungeonRoom> roomList,
+        List<DungeonEdge> edgeList)
+    {
+        var dirs = new (int Dx, int Dz)[Directions.Length];
+        Array.Copy(Directions, dirs, Directions.Length);
+        for (int i = dirs.Length - 1; i > 0; i--)
+        {
+            int j = rooms.Next(i + 1);
+            (dirs[i], dirs[j]) = (dirs[j], dirs[i]);
+        }
+
+        foreach ((int Dx, int Dz) dir in dirs)
+        {
+            bool horizontal = dir.Dz == 0;
+            int lateralSpan = horizontal ? source.Depth : source.Width;
+            for (int attempt = 0; attempt < 8; attempt++)
+            {
+                int length = rooms.Next(1, 5);
+                int newWidth = rooms.Next(config.RoomMinTiles, config.RoomMaxTiles + 1);
+                int newDepth = rooms.Next(config.RoomMinTiles, config.RoomMaxTiles + 1);
+                int lateral = rooms.Next(lateralSpan);
+
+                Candidate candidate = BuildCandidate(source, dir, length, newWidth, newDepth, lateral);
+                if (Validate(grid, source, candidate))
+                {
+                    Commit(grid, source, candidate, roomList, edgeList);
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static Candidate BuildCandidate(
+        DungeonRoom source,
+        (int Dx, int Dz) dir,
+        int length,
+        int newWidth,
+        int newDepth,
+        int lateral)
+    {
+        int floor = source.Floor;
+        int sx0 = source.X;
+        int sx1 = source.X + source.Width - 1;
+        int sz0 = source.Z;
+        int sz1 = source.Z + source.Depth - 1;
+
+        // The source interior cell the door frame attaches to, on the chosen line.
+        int lineX;
+        int lineZ;
+        if (dir.Dz == 0)
+        {
+            lineZ = sz0 + lateral;
+            lineX = dir.Dx > 0 ? sx1 : sx0;
+        }
+        else
+        {
+            lineX = sx0 + lateral;
+            lineZ = dir.Dz > 0 ? sz1 : sz0;
+        }
+
+        var doorSrc = new DungeonTile(lineX + dir.Dx, lineZ + dir.Dz, floor);
+        var corridor = new DungeonTile[length];
+        for (int k = 0; k < length; k++)
+        {
+            corridor[k] = new DungeonTile(doorSrc.X + dir.Dx * (k + 1), doorSrc.Z + dir.Dz * (k + 1), floor);
+        }
+
+        var doorNew = new DungeonTile(doorSrc.X + dir.Dx * (length + 1), doorSrc.Z + dir.Dz * (length + 1), floor);
+
+        // The new interior cell adjacent to the new door frame, on the same line.
+        int nearX = doorNew.X + dir.Dx;
+        int nearZ = doorNew.Z + dir.Dz;
+
+        int roomX;
+        int roomZ;
+        if (dir.Dz == 0)
+        {
+            roomX = dir.Dx > 0 ? nearX : nearX - (newWidth - 1);
+            roomZ = lineZ - newDepth / 2;
+        }
+        else
+        {
+            roomZ = dir.Dz > 0 ? nearZ : nearZ - (newDepth - 1);
+            roomX = lineX - newWidth / 2;
+        }
+
+        return new Candidate(floor, roomX, roomZ, newWidth, newDepth, doorSrc, doorNew, corridor);
+    }
+
+    private static bool Validate(Grid grid, DungeonRoom source, Candidate candidate)
+    {
+        // New room interior: one tile clear of the plot border (so its ring is in-plot) and currently empty.
+        for (int x = candidate.RoomX; x < candidate.RoomX + candidate.RoomWidth; x++)
+        {
+            for (int z = candidate.RoomZ; z < candidate.RoomZ + candidate.RoomDepth; z++)
+            {
+                if (!grid.InPlotWithMargin(x, z))
+                {
+                    return false;
+                }
+
+                if (grid.Get(x, z, candidate.Floor) != DungeonCellKind.Empty)
+                {
+                    return false;
+                }
+            }
+        }
+
+        // New room's 1-cell margin ring: in-plot and currently empty (the wall pass fills it later; the new
+        // door frame sits on it and is empty until committed).
+        for (int x = candidate.RoomX - 1; x <= candidate.RoomX + candidate.RoomWidth; x++)
+        {
+            for (int z = candidate.RoomZ - 1; z <= candidate.RoomZ + candidate.RoomDepth; z++)
+            {
+                bool interior = x >= candidate.RoomX && x < candidate.RoomX + candidate.RoomWidth
+                    && z >= candidate.RoomZ && z < candidate.RoomZ + candidate.RoomDepth;
+                if (interior)
+                {
+                    continue;
+                }
+
+                if (!grid.InBounds(x, z))
+                {
+                    return false;
+                }
+
+                if (grid.Get(x, z, candidate.Floor) != DungeonCellKind.Empty)
+                {
+                    return false;
+                }
+            }
+        }
+
+        // Corridor and both door cells: clear of the border and currently empty.
+        if (!IsClearWalkableCell(grid, candidate.DoorSrc, candidate.Floor))
+        {
+            return false;
+        }
+
+        if (!IsClearWalkableCell(grid, candidate.DoorNew, candidate.Floor))
+        {
+            return false;
+        }
+
+        foreach (DungeonTile tile in candidate.Corridor)
+        {
+            if (!IsClearWalkableCell(grid, tile, candidate.Floor))
+            {
+                return false;
+            }
+        }
+
+        // Corridor and door cells must not be orthogonally adjacent to any existing walkable cell other than
+        // the source room interior they join (their own path and the new interior are not written yet).
+        HashSet<(int X, int Z)> allowed = SourceInterior(source);
+        if (HasForeignOrthogonalWalkable(grid, candidate.DoorSrc, candidate.Floor, allowed))
+        {
+            return false;
+        }
+
+        if (HasForeignOrthogonalWalkable(grid, candidate.DoorNew, candidate.Floor, allowed))
+        {
+            return false;
+        }
+
+        foreach (DungeonTile tile in candidate.Corridor)
+        {
+            if (HasForeignOrthogonalWalkable(grid, tile, candidate.Floor, allowed))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsClearWalkableCell(Grid grid, DungeonTile tile, int floor)
+    {
+        if (!grid.InPlotWithMargin(tile.X, tile.Z))
+        {
+            return false;
+        }
+
+        return grid.Get(tile.X, tile.Z, floor) == DungeonCellKind.Empty;
+    }
+
+    private static bool HasForeignOrthogonalWalkable(Grid grid, DungeonTile tile, int floor, HashSet<(int X, int Z)> allowed)
+    {
+        Span<(int Dx, int Dz)> steps = stackalloc (int, int)[] { (1, 0), (-1, 0), (0, 1), (0, -1) };
+        foreach ((int dx, int dz) in steps)
+        {
+            int nx = tile.X + dx;
+            int nz = tile.Z + dz;
+            if (!grid.InBounds(nx, nz))
+            {
+                continue;
+            }
+
+            if (DungeonLayout.IsWalkable(grid.Get(nx, nz, floor)) && !allowed.Contains((nx, nz)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static HashSet<(int X, int Z)> SourceInterior(DungeonRoom source)
+    {
+        var set = new HashSet<(int X, int Z)>();
+        for (int x = source.X; x < source.X + source.Width; x++)
+        {
+            for (int z = source.Z; z < source.Z + source.Depth; z++)
+            {
+                set.Add((x, z));
+            }
+        }
+
+        return set;
+    }
+
+    private static void Commit(
+        Grid grid,
+        DungeonRoom source,
+        Candidate candidate,
+        List<DungeonRoom> roomList,
+        List<DungeonEdge> edgeList)
+    {
+        int newId = roomList.Count;
+        var room = new DungeonRoom
+        {
+            Id = newId,
+            Floor = candidate.Floor,
+            X = candidate.RoomX,
+            Z = candidate.RoomZ,
+            Width = candidate.RoomWidth,
+            Depth = candidate.RoomDepth,
+            RoomType = DungeonRoomType.Normal,
+        };
+        WriteRoom(grid, room);
+
+        foreach (DungeonTile tile in candidate.Corridor)
+        {
+            grid.Set(tile.X, tile.Z, tile.Floor, DungeonCellKind.Corridor);
+        }
+
+        grid.Set(candidate.DoorSrc.X, candidate.DoorSrc.Z, candidate.DoorSrc.Floor, DungeonCellKind.DoorFrame);
+        grid.Set(candidate.DoorNew.X, candidate.DoorNew.Z, candidate.DoorNew.Floor, DungeonCellKind.DoorFrame);
+
+        roomList.Add(room);
+        edgeList.Add(new DungeonEdge
+        {
+            RoomA = source.Id,
+            RoomB = newId,
+            Kind = DungeonEdgeKind.Corridor,
+            Path = candidate.Corridor,
+            Doors = new[] { candidate.DoorSrc, candidate.DoorNew },
+        });
+    }
+
+    private static void WriteRoom(Grid grid, DungeonRoom room)
+    {
+        for (int x = room.X; x < room.X + room.Width; x++)
+        {
+            for (int z = room.Z; z < room.Z + room.Depth; z++)
+            {
+                grid.Set(x, z, room.Floor, DungeonCellKind.RoomFloor);
+            }
+        }
+    }
+
+    private readonly record struct Candidate(
+        int Floor,
+        int RoomX,
+        int RoomZ,
+        int RoomWidth,
+        int RoomDepth,
+        DungeonTile DoorSrc,
+        DungeonTile DoorNew,
+        DungeonTile[] Corridor);
+
+    private sealed class Grid
+    {
+        private readonly int _width;
+        private readonly int _depth;
+
+        internal Grid(int width, int depth, int floors)
+        {
+            _width = width;
+            _depth = depth;
+            Cells = new DungeonCellKind[width * depth * floors];
+        }
+
+        internal DungeonCellKind[] Cells { get; }
+
+        internal bool InBounds(int x, int z) => x >= 0 && x < _width && z >= 0 && z < _depth;
+
+        internal bool InPlotWithMargin(int x, int z) => x >= 1 && x < _width - 1 && z >= 1 && z < _depth - 1;
+
+        internal DungeonCellKind Get(int x, int z, int floor) => Cells[(floor * _depth + z) * _width + x];
+
+        internal void Set(int x, int z, int floor, DungeonCellKind kind) => Cells[(floor * _depth + z) * _width + x] = kind;
+    }
+}

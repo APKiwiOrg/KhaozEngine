@@ -13,8 +13,15 @@ using SharpGLTF.Scenes;
 // authored height == heightMeters means no rescale) with the origin at the piece's base center (y=0 at
 // the floor, x/z centered), matching how PropLoader drops the origin to feet and recenters XZ anyway.
 // Run once; the output .glb files are committed.
+//
+// The kit is authored to the KhaozEngine.Showcase "Dungeon (walk)" grid: Cell matches its
+// CellSizeMeters so pieces tile the floor with no gaps, and FloorHeight matches its FloorHeightMeters so
+// walls and stairs span exactly one floor (wall top meets the ceiling underside). PropLoader never scales
+// a piece to the cell/floor, and DungeonStamp never scales pieces, so a kit MUST be authored to the grid
+// it is used at - regenerate here if the demo's CellSizeMeters/FloorHeightMeters change.
 
-const float Cell = 2.0f; // one dungeon grid cell footprint, matches DungeonPlotTransform's tile size.
+const float Cell = 3.0f;        // = RoomDungeon CellSizeMeters: one dungeon grid cell footprint.
+const float FloorHeight = 6.0f; // = RoomDungeon FloorHeightMeters: walls and stairs span exactly one floor.
 var gray = new Vector4(0.5f, 0.5f, 0.55f, 1f);
 
 // Yields the 12 triangles (as CCW-from-outside vertex triples) of an axis-aligned box centered at
@@ -68,23 +75,26 @@ void Build(string path, Vector4 color, IEnumerable<(Vector3 center, Vector3 size
 
 string dir = args.Length > 0 ? args[0] : "KhaozEngine.Showcase/assets/dungeon";
 
-// dungeon_floor: 2.0 x 0.2 x 2.0 slab, base at y=0.
+// dungeon_floor: 3.0 x 0.2 x 3.0 slab, base at y=0. The 0.2 thickness is cosmetic (kept constant, not
+// scaled with the cell) and matches DungeonStamp's 0.2m floor collision slab.
 Build(Path.Combine(dir, "dungeon_floor.glb"), gray, new[]
 {
     (new Vector3(0f, 0.1f, 0f), new Vector3(Cell, 0.2f, Cell)),
 });
 
-// dungeon_wall: 2.0 x 4.0 x 2.0 full-cell column, base at y=0.
+// dungeon_wall: 3.0 x 6.0 x 3.0 full-cell column, base at y=0 - full floor height, so its top meets the
+// ceiling underside with no gap.
 Build(Path.Combine(dir, "dungeon_wall.glb"), gray, new[]
 {
-    (new Vector3(0f, 2.0f, 0f), new Vector3(Cell, 4.0f, Cell)),
+    (new Vector3(0f, FloorHeight / 2f, 0f), new Vector3(Cell, FloorHeight, Cell)),
 });
 
-// dungeon_doorframe: two 0.3 x 3.0 x 0.3 jambs at the cell's +-X edges (outer face flush with the
-// cell footprint) plus a 2.0 x 0.4 x 0.3 lintel spanning the top, one mesh, total height 3.4.
+// dungeon_doorframe: two 0.45 x 4.5 x 0.45 jambs at the cell's +-X edges (outer face flush with the cell
+// footprint) plus a 3.0 x 0.6 x 0.45 lintel spanning the top, one mesh, total height 5.1 (0.85 of the
+// floor height, a tall archway that nearly fills the opening rather than a short frame floating in it).
 {
-    const float jambW = 0.3f, jambH = 3.0f, jambD = 0.3f;
-    const float lintelH = 0.4f;
+    const float jambW = 0.45f, jambH = 4.5f, jambD = 0.45f;
+    const float lintelH = 0.6f;
     float jambX = Cell / 2f - jambW / 2f;
     Build(Path.Combine(dir, "dungeon_doorframe.glb"), gray, new[]
     {
@@ -94,12 +104,13 @@ Build(Path.Combine(dir, "dungeon_wall.glb"), gray, new[]
     });
 }
 
-// dungeon_stair: 8 steps climbing along +Z, rising 4.0 over a 4.0 run (two cells), 2.0 wide. Each step
-// is modeled as a solid block from the base up to its tread height (the standard greybox stair solid),
-// so the mesh silhouette is a stepped ramp; total height 4.0 at the top (far, +Z) step.
+// dungeon_stair: 8 steps climbing along +Z, rising the full floor height (6.0) over a 6.0 run (two cells),
+// 3.0 wide, so it lands exactly on the floor above. Each step is modeled as a solid block from the base up
+// to its tread height (the standard greybox stair solid), so the mesh silhouette is a stepped ramp; total
+// height 6.0 at the top (far, +Z) step.
 {
     const int steps = 8;
-    const float totalRise = 4.0f, totalRun = 2f * Cell;
+    float totalRise = FloorHeight, totalRun = 2f * Cell;
     float riser = totalRise / steps, run = totalRun / steps;
     var stairBoxes = new List<(Vector3 center, Vector3 size)>();
     for (int i = 0; i < steps; i++)
@@ -118,7 +129,7 @@ Build(Path.Combine(dir, "dungeon_landing.glb"), gray, new[]
     (new Vector3(0f, 0.1f, 0f), new Vector3(Cell, 0.2f, Cell)),
 });
 
-// dungeon_ceiling: 2.0 x 0.2 x 2.0 slab, base at y=0 (same geometry as dungeon_floor). The sinks place it
+// dungeon_ceiling: 3.0 x 0.2 x 3.0 slab, base at y=0 (same geometry as dungeon_floor). The sinks place it
 // at floorY + ceiling height with base-center origin, so its underside (base) is the visible ceiling face
 // and the 0.2 thickness rises into the empty/wall/void space above.
 Build(Path.Combine(dir, "dungeon_ceiling.glb"), gray, new[]

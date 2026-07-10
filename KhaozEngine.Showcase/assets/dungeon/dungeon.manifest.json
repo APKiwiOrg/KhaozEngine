@@ -11,21 +11,21 @@
     {
       "id": "dungeon_wall",
       "file": "dungeon_wall.glb",
-      "heightMeters": 4.0,
+      "heightMeters": 6.0,
       "source": "KhaozEngine DungeonKitGen (generated)",
       "license": "CC0"
     },
     {
       "id": "dungeon_doorframe",
       "file": "dungeon_doorframe.glb",
-      "heightMeters": 3.4,
+      "heightMeters": 5.1,
       "source": "KhaozEngine DungeonKitGen (generated)",
       "license": "CC0"
     },
     {
       "id": "dungeon_stair",
       "file": "dungeon_stair.glb",
-      "heightMeters": 4.0,
+      "heightMeters": 6.0,
       "source": "KhaozEngine DungeonKitGen (generated)",
       "license": "CC0"
     },

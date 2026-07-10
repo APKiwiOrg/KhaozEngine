@@ -47,13 +47,18 @@ namespace KhaozEngine.Render3D
         /// bound (via <see cref="PropLoader.LoadPropWithMaterial"/>). Default false: the prop renders with its flat
         /// per-material base colour as before. Degrades gracefully if a flagged asset turns out to have no textures.</summary>
         public bool Textured { get; }
+        /// <summary>Optional grouping label (e.g. <c>"trees"</c>, <c>"rocks"</c>, <c>"buildings"</c>) for kind
+        /// palettes and other kit browsers. Null when the manifest declares none, in which case a consumer such as
+        /// <c>KhaozEngine.MapEditor.ViewportWorld.KindCategories</c> falls back to the manifest's own file stem.</summary>
+        public string? Category { get; }
         public AssetEntry(string id, string file, float heightMeters, string source, string license,
                           ColliderShape? collider = null, bool surface = false, string? heightmap = null,
-                          string? collisionShape = null, string? collisionProxy = null, bool textured = false)
+                          string? collisionShape = null, string? collisionProxy = null, bool textured = false,
+                          string? category = null)
         {
             Id = id; File = file; HeightMeters = heightMeters; Source = source; License = license; Collider = collider;
             Surface = surface; Heightmap = heightmap; CollisionShape = collisionShape; CollisionProxy = collisionProxy;
-            Textured = textured;
+            Textured = textured; Category = category;
         }
     }
 
@@ -115,9 +120,10 @@ namespace KhaozEngine.Render3D
                 string? heightmap = string.IsNullOrWhiteSpace(p.Heightmap) ? null : ResolveFile(p.Heightmap!, baseDir);
                 string? collisionShape = string.IsNullOrWhiteSpace(p.CollisionShape) ? null : ResolveFile(p.CollisionShape!, baseDir);
                 string? collisionProxy = string.IsNullOrWhiteSpace(p.CollisionProxy) ? null : ResolveFile(p.CollisionProxy!, baseDir);
+                string? category = string.IsNullOrWhiteSpace(p.Category) ? null : p.Category;
                 entries.Add(new AssetEntry(p.Id!, ResolveFile(p.File!, baseDir), p.HeightMeters,
                                            p.Source ?? "", p.License ?? "", ParseCollider(p.Id!, p.Collider),
-                                           p.Surface, heightmap, collisionShape, collisionProxy, p.Textured));
+                                           p.Surface, heightmap, collisionShape, collisionProxy, p.Textured, category));
             }
             return new AssetManifest(entries);
         }
@@ -160,6 +166,7 @@ namespace KhaozEngine.Render3D
                 [JsonPropertyName("collisionShape")] public string? CollisionShape { get; set; }
                 [JsonPropertyName("collisionProxy")] public string? CollisionProxy { get; set; }
                 [JsonPropertyName("textured")] public bool Textured { get; set; }
+                [JsonPropertyName("category")] public string? Category { get; set; }
             }
 
             public sealed class ColliderDto

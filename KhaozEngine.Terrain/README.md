@@ -82,4 +82,4 @@ Depends on `KhaozEngine.Primitives` and `KhaozEngine.Collision`. No render depen
 [KhaozEngine.Terrain.Render3D](../KhaozEngine.Terrain.Render3D) to mesh and stream it. In the
 `Foundation` umbrella metapackage.
 
-Part of [KhaozEngine](https://github.com/APKiwi/KhaozEngine).
+Part of [KhaozEngine](https://github.com/APKiwiOrg/KhaozEngine).

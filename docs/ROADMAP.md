@@ -4,7 +4,7 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **10.51.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **10.55.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan when it is scheduled.
 
@@ -35,7 +35,9 @@ The world-document program: `KhaozEngine.MapDoc` (zone document format: terrain 
 placements, scatter exclusions and overrides, spawns, regions), the `KhaozEngine.MapEditor` in-engine
 GUI runtime plus per-game editor heads, and the `ke-mapedit` MCP server so AI can edit maps with
 world-aware queries and renders. Ruinborne is the first adopter. Four phases, MapDoc first, GUI and
-MCP in parallel after it. Full design: [MAP-EDITOR-DESIGN.md](MAP-EDITOR-DESIGN.md).
+MCP in parallel after it. Full design: [MAP-EDITOR-DESIGN.md](MAP-EDITOR-DESIGN.md). Items deferred
+by review across the program's phases are tracked in that doc's Deferred follow-ups section, not
+duplicated here.
 
 ## Netcode / MMO refinements
 

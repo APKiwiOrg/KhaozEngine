@@ -12,7 +12,8 @@ namespace KhaozEngine.Gui
     /// Holding Ctrl or Super (Cmd) suppresses character entry so shortcut chords don't type the letter into the
     /// field; Shift is a text modifier and still applies. The one chord that is acted on is Ctrl+V / Cmd+V, which
     /// pastes the system clipboard (filtered + length-capped like typed text; opt out with <c>allowPaste: false</c>).
-    /// US keyboard layout for shifted symbols. Used by the <see cref="TextInput"/> widget, and consumable by a
+    /// US keyboard layout for shifted symbols. Keypad (numpad) keys type their digit, dot, and operator characters
+    /// shift-independently. Used by the <see cref="TextInput"/> widget, and consumable by a
     /// retained custom widget via the <see cref="InputManager"/> overload.
     /// Hold-to-repeat works because it acts on <see cref="InputState.WasTyped"/> (press edge OR an OS auto-repeat
     /// tick), so a held Backspace or character key deletes / types at the OS repeat rate.
@@ -48,8 +49,9 @@ namespace KhaozEngine.Gui
 
             bool shift = input.IsDown(Key.LeftShift) || input.IsDown(Key.RightShift);
 
-            // Iterate the printable range in enum order for deterministic multi-key frames.
-            for (Key k = Key.A; k <= Key.Grave; k++)
+            // Iterate the printable range in enum order for deterministic multi-key frames. KeypadEqual is the
+            // last printable member (the keypad block sits after Grave); unmapped members in between no-op.
+            for (Key k = Key.A; k <= Key.KeypadEqual; k++)
             {
                 if (!input.WasTyped(k)) continue;
                 if (!TryMapChar(k, shift, out char c)) continue;
@@ -97,6 +99,12 @@ namespace KhaozEngine.Gui
                 c = shift ? ")!@#$%^&*("[k - Key.D0] : (char)('0' + (k - Key.D0));
                 return true;
             }
+            if (k >= Key.Keypad0 && k <= Key.Keypad9)
+            {
+                // Keypad keys are shift-independent: a numpad has no symbol row.
+                c = (char)('0' + (k - Key.Keypad0));
+                return true;
+            }
             switch (k)
             {
                 case Key.Space: c = ' '; return true;
@@ -111,6 +119,13 @@ namespace KhaozEngine.Gui
                 case Key.Period: c = shift ? '>' : '.'; return true;
                 case Key.Slash: c = shift ? '?' : '/'; return true;
                 case Key.Grave: c = shift ? '~' : '`'; return true;
+                // Keypad punctuation/operators, all shift-independent like the keypad digits above.
+                case Key.KeypadDecimal: c = '.'; return true;
+                case Key.KeypadAdd: c = '+'; return true;
+                case Key.KeypadSubtract: c = '-'; return true;
+                case Key.KeypadMultiply: c = '*'; return true;
+                case Key.KeypadDivide: c = '/'; return true;
+                case Key.KeypadEqual: c = '='; return true;
                 default: c = '\0'; return false;
             }
         }

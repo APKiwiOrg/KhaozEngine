@@ -2816,9 +2816,18 @@ grid.Draw(batch, white, font);
 ```
 
 `FloatRow` edits through a `NumberField` (drag to scrub `Value` by `DragScale` per pixel, tap under 3 draw
-units of travel to type instead, Enter commits clamped and rounded, Escape cancels), `BoolRow` through a
-`Toggle`, `TextRow` through a `TextInput`, and `ReadOnlyRow` just polls and displays a string. `NumberField`
-and `TreeView` also stand alone outside a grid, e.g. an outline panel beside the inspector:
+units of travel to type instead, Enter commits clamped and rounded, Escape cancels, typing also accepts
+numpad/keypad keys the same as the top-row keys, digits/dot/minus, shift-independent), `BoolRow` through a
+`Toggle`, `TextRow` through a `TextInput`, `ChoiceRow` through a `Dropdown` over a fixed set of option
+strings (get/set delegates over the selected option, like `TextRow`), and `ReadOnlyRow` just polls and
+displays a string. A `ChoiceRow` polls the getter only while its list is closed, so an in-progress pick is
+never stomped. The grid draws in two passes (every row's label+editor, then a late overlay pass), so a
+`ChoiceRow`'s open list draws ABOVE the rows below the selector instead of being overpainted by them; the list
+still draws inside the grid's own scissor, so it clips at the grid bounds (a host wanting it to spill past the
+grid calls `Dropdown.DrawOverlay` itself after the grid's `Draw`). A row's label and a `ReadOnlyRow`'s display string truncate to their column via `GuiDraw.TruncateWithEllipsis`
+(longest fitting prefix plus three ASCII dots) instead of running under the neighbouring cell or getting
+hard-cut by the scissor mid-glyph. `NumberField` and `TreeView` also stand alone outside a grid, e.g. an
+outline panel beside the inspector:
 
 ```csharp
 var tree = new TreeView(outlineRect);
@@ -2911,17 +2920,85 @@ built-in keys, put a factory function next to your room list that builds the opt
 ready-to-push scene, and handle the extra key in whatever outer code owns the `Push`/`Pop` call. See
 `KhaozEngine.Showcase/RoomMapEditor.cs` for a worked example.
 
-**Tool modes** (`EditorToolController.Mode`, also the toolbar tab bar): `Select` (pick, then drag the
-transform gizmo: translate XZ, translate Y, yaw ring, uniform scale), `PlacePlacement` (click ground-snaps
-the palette-selected `PlaceKind`), `PlaceSpawn` (click ground-snaps `SpawnArchetype`), `DrawExclusion` /
-`DrawRegion` (drag a disc, shift-drag a rect), `EditFeature` (inspector-driven terrain-feature parameter
-scrub, no viewport gesture), `BakeRegion` (drag a rect, freezes `BakeLayer`'s procedural scatter into
-authored placements plus a covering exclusion).
+**Tool modes** (`EditorToolController.Mode`, also the toolbar tab bar): `Select` (pick a placement or spawn
+by ray - on a terrain-only hit, falls back to an overlay pick over features/exclusions/regions, feature beats
+exclusion beats region, nearest-shape-center tiebreak within a category - then drag the transform gizmo,
+whose handle set depends on what's selected: a placement gets the full transform (translate XZ, translate Y,
+yaw ring, uniform scale), a spawn only the ground-plane translate (a marker, no other handles), and a
+feature or a disc/rect shape (exclusion or region) only translate XZ + uniform scale, no yaw ring),
+`PlacePlacement` (click ground-snaps the palette-selected `PlaceKind`), `PlaceSpawn` (click ground-snaps
+`SpawnArchetype`), `DrawExclusion` / `DrawRegion` (drag a disc, shift-drag a rect), `EditFeature`
+(click-places a default-parameterized feature of the list-selected `PlaceFeatureType` at the terrain hit),
+`BakeRegion` (drag a rect, freezes `BakeLayer`'s procedural scatter into authored placements plus a covering
+exclusion). Four tools are one shot (`DrawExclusion`, `DrawRegion`, `BakeRegion`, `EditFeature`): a completed
+gesture (the release, or the click that places a feature) drops back to `Select` automatically, while an
+abandoned or sub-threshold gesture keeps the tool armed. The toolbar tab bar mirrors the live controller mode
+every frame, so it re-highlights the `Select` tab on its own when a one-shot tool returns (or Escape
+cancels), without a second tap. `EditorToolController.ModeHint` gives a one-line description of the active
+tool (folding in `PlaceKind` / `SpawnArchetype` / `PlaceFeatureType`) that the scene renders at the head of
+the status strip.
 
-**Keys.** Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, Delete removes the current selection,
-Escape cancels an in-flight gizmo/draw gesture and returns to `Select`. Shift+Escape exits the editor
-(pops the scene): unsaved changes arm a status-strip warning on the first press and a second Shift+Escape
-discards and exits, while any save or document mutation disarms the warning.
+**Kit palette.** The bottom-left panel is tool-scoped, hosting at most one of three pickers. `PlacePlacement`
+shows every manifest kit id in a filter box over a collapsible `TreeView`, categorized by
+`AssetEntry.Category` when the manifest declares one, else the declaring manifest's own file-name stem
+(`ViewportWorld.KindCategories`, first-manifest-wins on a duplicate id across manifests). `PlaceSpawn` swaps
+the same region to a flat, filtered spawn-archetype list instead, no categories. `EditFeature` swaps it again
+to a flat, unfiltered list of the registry's feature types (`MapDocRegistry.FeatureTypes`, in registration
+order). Tapping a leaf sets `PlaceFeatureType`, the type the next click places. Every other tool (`Select`,
+the draw tools, `BakeRegion`) shows no panel at all, and the outline reflows to take the whole left column.
+Typing in a filter box narrows leaves case-insensitively, and clearing it restores each category's
+remembered expand/collapse state.
+
+**Overlays.** Exclusions, regions, and terrain-feature markers are otherwise-invisible authoring shapes, so
+with `MapEditorOptions.ShowOverlays` (default true) the viewport draws them as translucent ground fills
+(exclusions red, regions blue, an amber marker disc per feature center), the selected one brightened. They
+go through the `Scene3D` debug-fill pass, which runs depth-disabled after post, so the overlays composite
+always-on-top of the terrain for authoring visibility rather than depth-testing against it. Set
+`ShowOverlays` false to hide them. `MapEditorOptions.StatusBottomOffset` (default 0) reserves that many
+points at the window bottom for a host that draws its own bottom chrome (the Showcase's F7-F10 display
+readout), shifting the status strip and editor body up so the editor never stacks on the host's pixels.
+
+**Shape and feature editing.** The exclusion and region inspectors edit the shape directly instead of
+showing a read-only summary: a `ChoiceRow` picks the kind (`disc` / `rect`) and one `FloatRow` per parameter
+(disc gets CenterX/CenterZ/Radius, rect gets MinX/MinZ/MaxX/MaxZ) scrubs it, each edit merging into one undo step
+like any other scrub. Switching the kind converts the shape center-preservingly (a disc becomes the square
+of side `2r` around its center, a rect becomes the disc centered on the rect with half its longer extent as
+radius) and swaps the row set to match. A polygon shape stays read-only v1: kind + point count, no
+conversion in or out. Dragging the gizmo on a selected feature/exclusion/region moves its center (translate
+XZ) and resizes its primary radius (scale: a lake or flatten's `Radius`, a rim's `InnerRadius`/`OuterRadius`
+together, a ridge's `Width`) through the same commands, coalescing the same way. See the
+`KhaozEngine.MapEditor` README's "Shape and feature editing" section for the full mechanics.
+
+**Feature apply order.** Terrain features fold in list order (`MapRuntime.BuildField` runs each feature's
+height modifier on the height the prior feature produced), so where two features cover the same ground the
+LAST one in the list wins the overlap. Ctrl+Up / Ctrl+Down (`MapEditorScene.ReorderSelectedFeature`) move
+the selected feature through `ReorderFeatureCommand`, clamped at the list ends, and it triggers the same
+streamed-world rebuild as any other terrain-feature edit (`AffectsWorld` true). The feature inspector's
+read-only "Apply order N of M (last wins overlap)" row tracks the feature's live fold position. See the
+`KhaozEngine.MapEditor` README's "Feature apply order" section for the undo/redo selection-following caveat.
+
+**Water.** `ViewportWorld.Draw` submits one `Scene3D.DrawWater` plane every frame, sized to the document
+bounds and derived live from `Terrain.WaterLevel`, so a level edit shows up immediately, ahead of the
+scatter rebuild it also triggers. The terrain root in the outline tree opens an inspector with an editable
+`WaterLevel` float row routed through `EditTerrainCommand` (forces the scatter rebuild, since scatter skips
+underwater candidates) plus read-only seed and biome-count rows.
+
+**Visibility.** `EditorVisibility` is editor-session view state, not the document: it gates six
+`VisibilityGroup`s (placements, spawns, water, exclusions, regions, feature markers), named scatter layers,
+and individual elements, and toggling any of it never dirties the document or lands an undo step. With
+nothing selected the inspector is the Layers panel (`MapEditorScene.BuildLayersInspector`): a `BoolRow` per
+group, then one per scatter layer in the open document (toggling a scatter layer also rebuilds the streamed
+world so its props actually drop out). Every element inspector also gets a per-element "Visible" `BoolRow`.
+A hidden element is neither drawn nor pickable from the viewport, but stays selectable from the outline tree
+(which reads straight off the document), so hiding something is always reversible. See the
+`KhaozEngine.MapEditor` README's "Visibility" section for the full mechanics.
+
+**Keys.** Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, Delete removes the current selection, R
+snaps the selected placement to the ground (undoable, a no-op when already grounded or nothing
+placement-shaped is selected), Ctrl+Up / Ctrl+Down reorder the selected terrain feature (see Feature apply
+order above), Escape cancels an in-flight gizmo/draw gesture and returns to `Select`. Shift+Escape exits the
+editor (pops the scene): unsaved changes arm a status-strip warning on the first press and a second
+Shift+Escape discards and exits, while any save or document mutation disarms the warning.
 
 **Save semantics.** Ctrl+S (`MapEditorScene.SaveDocument`) validates through the same load-time
 `MapDocumentFile.Save` validator before writing, so an invalid document is never written to disk. A
@@ -2930,8 +3007,14 @@ calls `EditorDocument.MarkSaved()`, clearing the dirty flag (the status strip's 
 the current gesture, so a later same-gesture edit can never merge into the just-saved command and hide
 itself from `IsDirty`.
 
+**Renaming.** The placement, spawn, and region inspectors lead with an inline-editable Name row. Committing
+a new value renames the element through `RenamePlacementCommand`, `RenameSpawnCommand`, or
+`RenameRegionCommand`, rejecting a blank, unchanged, or colliding target, and the selection follows the
+renamed key once the row loses focus.
+
 See the `KhaozEngine.MapEditor` package README for the command stack and gesture sealing, world-rebuild
-semantics (including the one-frame `EditFeature` inspector lag), and the bake-region mechanics in full.
+semantics (including the one-frame `EditFeature` inspector lag), the feature apply-order and visibility
+mechanics, and the bake-region and rename mechanics in full.
 
 ---
 
@@ -3691,7 +3774,7 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
 
 - **`KhaozEngine.Primitives`**: the zero-dependency leaf: `Color` (`FromHex`/`ToHex`, `* float`, `Lerp`),
   `DeterministicRng`, `XorRng`, `MathUtil`, `ViewportMath`, `Easing`. The bottom of the dependency graph.
-- **`KhaozEngine.App`**: app identity / data paths: `AppDataPaths` (publisher-rooted: `<base>/APKiwi/<game>/`),
+- **`KhaozEngine.App`**: app identity / data paths: `AppDataPaths` (publisher-rooted: `<base>/APKiwiOrg/<game>/`),
   `BuildMetadata`, `ServiceLocator`, and `AppInstallStamp` (local first-ran/updated stamp; see "Install / update
   stamp" below).
 - **`KhaozEngine.Persistence`**: crash-safe saves: `AtomicJsonWriter`, `PersistenceQueue` (coalesced async

@@ -7,7 +7,8 @@
       "heightMeters": 12.0,
       "source": "Quaternius Stylized Nature (via world-of-claudecraft)",
       "license": "CC0",
-      "collisionShape": "pine_a.coll"
+      "collisionShape": "pine_a.coll",
+      "category": "trees"
     },
     {
       "id": "pine_b",
@@ -15,7 +16,8 @@
       "heightMeters": 11.0,
       "source": "Quaternius Stylized Nature (via world-of-claudecraft)",
       "license": "CC0",
-      "collisionShape": "pine_b.coll"
+      "collisionShape": "pine_b.coll",
+      "category": "trees"
     },
     {
       "id": "pine_c",
@@ -23,7 +25,8 @@
       "heightMeters": 10.0,
       "source": "Quaternius Stylized Nature (via world-of-claudecraft)",
       "license": "CC0",
-      "collisionShape": "pine_c.coll"
+      "collisionShape": "pine_c.coll",
+      "category": "trees"
     },
     {
       "id": "oak_a",
@@ -31,7 +34,8 @@
       "heightMeters": 9.0,
       "source": "Quaternius Stylized Nature (via world-of-claudecraft)",
       "license": "CC0",
-      "collisionShape": "oak_a.coll"
+      "collisionShape": "oak_a.coll",
+      "category": "trees"
     },
     {
       "id": "oak_b",
@@ -39,7 +43,8 @@
       "heightMeters": 8.0,
       "source": "Quaternius Stylized Nature (via world-of-claudecraft)",
       "license": "CC0",
-      "collisionShape": "oak_b.coll"
+      "collisionShape": "oak_b.coll",
+      "category": "trees"
     },
     {
       "id": "rock_a",
@@ -49,7 +54,8 @@
       "license": "CC0",
       "surface": true,
       "heightmap": "rock_a.surf",
-      "collisionShape": "rock_a.coll"
+      "collisionShape": "rock_a.coll",
+      "category": "rocks"
     },
     {
       "id": "rock_b",
@@ -59,7 +65,8 @@
       "license": "CC0",
       "surface": true,
       "heightmap": "rock_b.surf",
-      "collisionShape": "rock_b.coll"
+      "collisionShape": "rock_b.coll",
+      "category": "rocks"
     }
   ]
 }

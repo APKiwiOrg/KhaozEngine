@@ -12,6 +12,15 @@ public sealed class MapDocRegistry
     readonly Dictionary<string, (Type DocType, Func<MapFeature, ITerrainFeature> Build)> _features =
         new(StringComparer.Ordinal);
 
+    // Registration order of the discriminators, so FeatureTypes reads back in the order they were registered
+    // (CreateDefault yields lake, flatten, ridge, rim), which a UI can list deterministically.
+    readonly List<string> _featureOrder = new();
+
+    /// <summary>The discriminators of every registered feature type, in registration order (the default registry
+    /// yields <c>lake</c>, <c>flatten</c>, <c>ridge</c>, <c>rim</c>). A stable, deterministic list a feature-type
+    /// picker can enumerate.</summary>
+    public IReadOnlyList<string> FeatureTypes => _featureOrder;
+
     /// <summary>A registry pre-loaded with the built-in feature types: lake, flatten, ridge, rim.</summary>
     public static MapDocRegistry CreateDefault()
     {
@@ -37,6 +46,7 @@ public sealed class MapDocRegistry
         if (_features.ContainsKey(type))
             throw new ArgumentException($"Feature type '{type}' is already registered.", nameof(type));
         _features.Add(type, (docType, build));
+        _featureOrder.Add(type);
     }
 
     /// <summary>Resolves a discriminator to its DTO type for deserialization.</summary>

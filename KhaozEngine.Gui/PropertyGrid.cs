@@ -38,6 +38,14 @@ namespace KhaozEngine.Gui
         public abstract void Draw(SpriteBatch batch, Texture2D white, SpriteFont font, Rect editorRect);
 
         /// <summary>
+        /// Grid hook: draw content that must sit ABOVE the sibling rows below this one (an open <see cref="Gui.Dropdown"/>
+        /// list). The grid runs this for every visible row AFTER every row's <see cref="Draw"/>, still inside the grid
+        /// scissor, so an open list overlays the rows beneath it (it still clips at the grid bounds). No-op by default,
+        /// so a row without pop-up content ignores it.
+        /// </summary>
+        public virtual void DrawOverlay(SpriteBatch batch, Texture2D white, SpriteFont font, Rect editorRect) { }
+
+        /// <summary>
         /// Grid hook: the row ran last frame but is culled this frame (scrolled out of view), so the grid is tearing
         /// it down. Close any live interaction the row owns (a focus, an open edit) so a widget behind the cull can
         /// no longer consume input the grid never routes to it. No-op by default.
@@ -199,6 +207,97 @@ namespace KhaozEngine.Gui
         internal override void ApplyOpacity(float opacity) => Input.Opacity = opacity;
     }
 
+    /// <summary>
+    /// Choice property backed by get/set delegates over an option string, edited with a <see cref="Gui.Dropdown"/>.
+    /// The options are raw data strings (enum kinds, ids), not player-facing copy, so the sink is the string
+    /// delegates - same rationale as <see cref="TextRow"/>. The external value is polled in only while the list is
+    /// closed, so an in-progress pick is never stomped, and the setter fires only on a real change.
+    /// </summary>
+    public sealed class ChoiceRow : PropertyRow
+    {
+        readonly Func<string> _get;
+        readonly Action<string> _set;
+        Pointer? _pointer;   // captured on Update so Draw can render the open list's hover highlight
+
+        /// <summary>The selector, exposed for style/inspection. Its trigger bounds are driven by the grid each frame.</summary>
+        public Dropdown Dropdown { get; }
+
+        /// <summary>The option string currently shown by the selector.</summary>
+        public string Selected => Dropdown.SelectedLabel;
+
+        /// <summary>
+        /// Build a choice row over the given options and get/set delegates. <paramref name="options"/> must be
+        /// non-empty (the underlying <see cref="Gui.Dropdown"/> requires at least one option); the initial selection
+        /// is the option matching <paramref name="get"/>, or the first option when the value matches none.
+        /// </summary>
+        public ChoiceRow(LocalizedText label, IReadOnlyList<string> options, Func<string> get, Action<string> set)
+            : base(label)
+        {
+            _get = get;
+            _set = set;
+            var opts = new List<DropdownOption>(options.Count);
+            for (int i = 0; i < options.Count; i++) opts.Add(new DropdownOption(options[i], i));
+            Dropdown = new Dropdown(opts, default) { ShowChevron = true };
+            SelectOption(get());
+        }
+
+        /// <inheritdoc/>
+        public override bool Update(Rect editorRect, InputManager input, float dt)
+        {
+            Dropdown.TriggerBounds = editorRect;
+            _pointer = input.Pointer;
+            // Poll the external value in only while the list is closed, so an in-progress pick is never stomped
+            // (the open list is the row's live gesture, like a NumberField scrub or a focused TextInput).
+            if (!Dropdown.IsOpen) SelectOption(_get());
+
+            bool changed = Dropdown.Update(input.Pointer);
+            // Fire the setter only on a real change: re-picking the current option closes without writing.
+            if (changed && Dropdown.SelectedLabel != _get())
+            {
+                _set(Dropdown.SelectedLabel);
+                return true;
+            }
+            return false;
+        }
+
+        /// <inheritdoc/>
+        public override void Deactivate() => Dropdown.Close();
+
+        /// <summary>
+        /// Draw the trigger only. The open option list is drawn separately in <see cref="DrawOverlay"/>, which the
+        /// grid runs in a late pass after every row, so the open list sits above the rows below the selector instead
+        /// of being overpainted by them.
+        /// </summary>
+        public override void Draw(SpriteBatch batch, Texture2D white, SpriteFont font, Rect editorRect)
+        {
+            Dropdown.TriggerBounds = editorRect;
+            Dropdown.Draw(batch, white, font);
+        }
+
+        /// <summary>
+        /// Draw the open option list. The grid runs this for every row AFTER every row's <see cref="Draw"/>
+        /// (<see cref="PropertyGrid.Draw"/>'s overlay pass), so the list overlays the rows beneath the selector. It
+        /// draws inside the grid scissor, so it clips at the grid bounds (an inspector-length list is the intended
+        /// use); a host wanting the list to spill past the grid can call <see cref="Gui.Dropdown.DrawOverlay"/> itself
+        /// after the grid's draw. No-op while the list is closed (<see cref="Gui.Dropdown.DrawOverlay"/> early-outs).
+        /// </summary>
+        public override void DrawOverlay(SpriteBatch batch, Texture2D white, SpriteFont font, Rect editorRect)
+        {
+            Dropdown.TriggerBounds = editorRect;
+            if (_pointer != null) Dropdown.DrawOverlay(batch, white, font, _pointer);
+        }
+
+        internal override void ApplyOpacity(float opacity) => Dropdown.Opacity = opacity;
+
+        // Point the dropdown at the option matching `value`. An unknown external value leaves the selection where
+        // it is (the dropdown always shows a real option).
+        void SelectOption(string value)
+        {
+            for (int i = 0; i < Dropdown.Options.Count; i++)
+                if (Dropdown.Options[i].Label == value) { Dropdown.SelectByValue(i); return; }
+        }
+    }
+
     /// <summary>Read-only display row: a label plus a polled value string (coordinates, counts). Ignores input.</summary>
     public sealed class ReadOnlyRow : PropertyRow
     {
@@ -227,9 +326,12 @@ namespace KhaozEngine.Gui
         /// <inheritdoc/>
         public override void Draw(SpriteBatch batch, Texture2D white, SpriteFont font, Rect editorRect)
         {
-            Vector2 measured = font.Measure(Display);
+            // Truncate to the cell so a long value (a shape summary, a path) ends in "..." instead of running to
+            // the grid edge where the scissor would hard-cut it mid-glyph.
+            string shown = GuiDraw.TruncateWithEllipsis(Display, editorRect.Width - LabelPad * 2f, s => font.Measure(s).X);
+            Vector2 measured = font.Measure(shown);
             Vector2 pos = GuiDraw.AlignedTextPos(editorRect, measured, font.LineHeight, GuiAlign.Left, 1f, LabelPad);
-            batch.DrawString(font, Display, new Vector2(MathF.Floor(pos.X), MathF.Floor(pos.Y)),
+            batch.DrawString(font, shown, new Vector2(MathF.Floor(pos.X), MathF.Floor(pos.Y)),
                 (Color)GuiDraw.WithOpacity(TextColor, _opacity));
         }
 
@@ -385,21 +487,63 @@ namespace KhaozEngine.Gui
             return total / Rows.Count;
         }
 
+        /// <summary>Which pass of <see cref="Draw"/> a <see cref="DrawPlan"/> entry belongs to.</summary>
+        internal enum DrawPass
+        {
+            /// <summary>Main pass: the row's label and editor.</summary>
+            Row,
+            /// <summary>Late pass: content that must sit above later sibling rows (an open dropdown list).</summary>
+            Overlay,
+        }
+
+        /// <summary>
+        /// The ordered draw plan <see cref="Draw"/> follows: every visible row once in the main (row) pass, then every
+        /// visible row again in a late overlay pass. Emitting every row before any overlay is what lifts an open
+        /// dropdown list ABOVE the rows below the selector (the list draws in the overlay pass, those rows in the
+        /// earlier row pass) while it still sits inside the grid scissor. Pure arithmetic, no drawing - the seam that
+        /// pins the draw ordering for tests and hosts.
+        /// </summary>
+        internal IEnumerable<(int Row, DrawPass Pass)> DrawPlan()
+        {
+            for (int i = 0; i < Rows.Count; i++)
+                if (IsRowVisible(i)) yield return (i, DrawPass.Row);
+            for (int i = 0; i < Rows.Count; i++)
+                if (IsRowVisible(i)) yield return (i, DrawPass.Overlay);
+        }
+
+        // A row is visible this frame when its editor cell overlaps the view band - the same cull test Update uses.
+        bool IsRowVisible(int rowIndex)
+        {
+            Rect cell = RowEditorBounds(rowIndex);
+            return cell.Bottom > Bounds.Y && cell.Y < Bounds.Bottom;
+        }
+
         /// <summary>
         /// Draw the visible rows clipped to <see cref="Bounds"/>: each row's label in the left column, then its editor
-        /// in the right cell. <paramref name="white"/> is a 1x1 white texture.
+        /// in the right cell, then a late overlay pass so an open dropdown list draws above the rows below it (still
+        /// clipped at the grid bounds). Follows the two-phase <see cref="DrawPlan"/>. <paramref name="white"/> is a
+        /// 1x1 white texture.
         /// </summary>
         public void Draw(SpriteBatch batch, Texture2D white, SpriteFont font)
         {
             batch.SetScissor(Bounds);
-            for (int i = 0; i < Rows.Count; i++)
+            foreach ((int i, DrawPass pass) in DrawPlan())
             {
                 Rect cell = RowEditorBounds(i);
-                if (cell.Bottom <= Bounds.Y || cell.Y >= Bounds.Bottom) continue;   // fully scrolled out of view
-
                 PropertyRow row = Rows[i];
+                if (pass == DrawPass.Overlay)
+                {
+                    // Late overlay pass: an open dropdown list, drawn after every row so the rows below it no longer
+                    // overpaint it. No-op for a row with no pop-up content.
+                    row.DrawOverlay(batch, white, font, cell);
+                    continue;
+                }
+
                 Rect label = RowLabelBounds(i, cell);
-                string text = row.Label.Resolve();
+                // Truncate the label to its column so a long label ends in "..." instead of running under the
+                // editor cell beside it.
+                string text = GuiDraw.TruncateWithEllipsis(row.Label.Resolve(), label.Width - LabelPad * 2f,
+                    s => font.Measure(s).X);
                 Vector2 pos = GuiDraw.AlignedTextPos(label, font.Measure(text), font.LineHeight, GuiAlign.Left, 1f, LabelPad);
                 batch.DrawString(font, text, new Vector2(MathF.Floor(pos.X), MathF.Floor(pos.Y)),
                     (Color)GuiDraw.WithOpacity(LabelColor, Opacity));

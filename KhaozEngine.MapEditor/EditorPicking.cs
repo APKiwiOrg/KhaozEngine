@@ -33,9 +33,14 @@ public static class EditorPicking
     /// sampled at (X, Z). Each spawn is boxed as a fixed 1.5-tall, 1.0-wide box based at the sampled ground. The
     /// terrain is raycast for a fallback ground hit. Placements and spawns beat terrain at equal T; the smallest
     /// entry T wins overall. Returns false when nothing is hit within <paramref name="maxDistance"/> (T units).
-    /// Direction normalization is the caller's job.</summary>
+    /// Direction normalization is the caller's job.
+    /// <para><paramref name="visible"/>, when supplied, filters out unpickable elements: a placement or spawn for
+    /// which <c>visible(kind, id)</c> is false is skipped (the editor hides it from the viewport, so a hidden thing
+    /// is not selectable by clicking, though the terrain under it still hits). Null means every element is
+    /// pickable.</para></summary>
     public static bool Pick(MapDocument doc, TerrainField field, Vector3 origin, Vector3 direction,
-        float maxDistance, Func<string, float> heightOf, out PickResult result)
+        float maxDistance, Func<string, float> heightOf, out PickResult result,
+        Func<SelectionKind, string, bool>? visible = null)
     {
         ArgumentNullException.ThrowIfNull(doc);
         ArgumentNullException.ThrowIfNull(field);
@@ -48,6 +53,7 @@ public static class EditorPicking
 
         foreach (MapPlacement p in doc.Placements)
         {
+            if (visible is not null && !visible(SelectionKind.Placement, p.Id)) continue;   // hidden: not pickable
             float h = heightOf(p.Kind) * p.Scale;
             float groundY = p.Y ?? field.SampleHeight(p.X, p.Z);
             float half = h * 0.3f;
@@ -65,6 +71,7 @@ public static class EditorPicking
 
         foreach (MapSpawn s in doc.Spawns)
         {
+            if (visible is not null && !visible(SelectionKind.Spawn, s.Id)) continue;   // hidden: not pickable
             float groundY = field.SampleHeight(s.X, s.Z);
             var min = new Vector3(s.X - SpawnHalfWidth, groundY, s.Z - SpawnHalfWidth);
             var max = new Vector3(s.X + SpawnHalfWidth, groundY + SpawnHeight, s.Z + SpawnHalfWidth);

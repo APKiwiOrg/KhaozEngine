@@ -50,4 +50,4 @@ social.JoinRequested += secret => myNetcode.JoinFromSecret(secret);
 `SocialPresenceController` dedupes and throttles, so calling `SetPresence`/`SetElapsedPresence` every
 frame is cheap. Any provider error disables social for the session without touching the game loop.
 
-Part of [KhaozEngine](https://github.com/APKiwi/KhaozEngine).
+Part of [KhaozEngine](https://github.com/APKiwiOrg/KhaozEngine).

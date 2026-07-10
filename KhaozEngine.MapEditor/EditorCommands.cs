@@ -65,6 +65,27 @@ public abstract class EditorCommand : IEditorCommand
                 return i;
         throw new InvalidOperationException($"No region named '{name}' in the document.");
     }
+
+    private protected static void GuardNoPlacement(MapDocument doc, string id)
+    {
+        foreach (MapPlacement p in doc.Placements)
+            if (string.Equals(p.Id, id, StringComparison.Ordinal))
+                throw new InvalidOperationException($"A placement with id '{id}' already exists in the document.");
+    }
+
+    private protected static void GuardNoSpawn(MapDocument doc, string id)
+    {
+        foreach (MapSpawn s in doc.Spawns)
+            if (string.Equals(s.Id, id, StringComparison.Ordinal))
+                throw new InvalidOperationException($"A spawn with id '{id}' already exists in the document.");
+    }
+
+    private protected static void GuardNoRegion(MapDocument doc, string name)
+    {
+        foreach (MapRegion r in doc.Regions)
+            if (string.Equals(r.Name, name, StringComparison.Ordinal))
+                throw new InvalidOperationException($"A region named '{name}' already exists in the document.");
+    }
 }
 
 // ---- placements ------------------------------------------------------------------------------------------
@@ -264,6 +285,36 @@ public sealed class ScalePlacementCommand : EditorCommand
     }
 }
 
+/// <summary>Renames a placement. Placements are keyed by id, so the id-carrying selection follows the rename.
+/// The target id must be unique: <see cref="Apply"/> throws (before it mutates) if a placement already carries
+/// the new id, so a rejected rename lands no undo step. Renames never coalesce (no merge).</summary>
+public sealed class RenamePlacementCommand : EditorCommand
+{
+    readonly string _oldId;
+    readonly string _newId;
+
+    /// <summary>Creates the command renaming placement <paramref name="oldId"/> to <paramref name="newId"/>.</summary>
+    public RenamePlacementCommand(string oldId, string newId)
+    {
+        _oldId = oldId ?? throw new ArgumentNullException(nameof(oldId));
+        _newId = newId ?? throw new ArgumentNullException(nameof(newId));
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Rename placement";
+    internal override bool AffectsWorld => false;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc)
+    {
+        GuardNoPlacement(doc, _newId);   // reject a duplicate target before touching the source
+        FindPlacement(doc, _oldId).Id = _newId;
+    }
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => FindPlacement(doc, _newId).Id = _oldId;
+}
+
 // ---- spawns ----------------------------------------------------------------------------------------------
 
 /// <summary>Appends an NPC spawn marker to the document.</summary>
@@ -401,6 +452,36 @@ public sealed class SetSpawnEnabledCommand : EditorCommand
     public override void Revert(MapDocument doc) => FindSpawn(doc, _id).Enabled = _old;
 }
 
+/// <summary>Renames a spawn. Spawns are keyed by id, so the id-carrying selection follows the rename. The target
+/// id must be unique: <see cref="Apply"/> throws (before it mutates) if a spawn already carries the new id, so a
+/// rejected rename lands no undo step. Renames never coalesce (no merge).</summary>
+public sealed class RenameSpawnCommand : EditorCommand
+{
+    readonly string _oldId;
+    readonly string _newId;
+
+    /// <summary>Creates the command renaming spawn <paramref name="oldId"/> to <paramref name="newId"/>.</summary>
+    public RenameSpawnCommand(string oldId, string newId)
+    {
+        _oldId = oldId ?? throw new ArgumentNullException(nameof(oldId));
+        _newId = newId ?? throw new ArgumentNullException(nameof(newId));
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Rename spawn";
+    internal override bool AffectsWorld => false;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc)
+    {
+        GuardNoSpawn(doc, _newId);   // reject a duplicate target before touching the source
+        FindSpawn(doc, _oldId).Id = _newId;
+    }
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => FindSpawn(doc, _newId).Id = _oldId;
+}
+
 // ---- exclusions (terrain-shape affecting) ----------------------------------------------------------------
 
 /// <summary>Appends a scatter exclusion shape. Affects the streamed world (scatter inputs change).</summary>
@@ -449,6 +530,47 @@ public sealed class RemoveExclusionCommand : EditorCommand
     {
         if (_removed is null) throw new InvalidOperationException("Revert called before Apply.");
         doc.Exclusions.Insert(_index, _removed);
+    }
+}
+
+/// <summary>Replaces the shape of the exclusion at a given index with a new value (parameter scrub or kind
+/// conversion). The caller supplies both the new and old shape, cloned with the changed field (the
+/// <see cref="EditFeatureCommand"/> idiom). Successive edits of the same index coalesce (scrub coalescing).
+/// Affects the streamed world (scatter inputs change).</summary>
+public sealed class EditExclusionShapeCommand : EditorCommand
+{
+    readonly int _index;
+    MapShapeDoc _newShape;
+    readonly MapShapeDoc _oldShape;
+
+    /// <summary>Creates the command replacing exclusion <paramref name="index"/>'s shape with
+    /// <paramref name="newShape"/>, capturing <paramref name="oldShape"/> for revert.</summary>
+    public EditExclusionShapeCommand(int index, MapShapeDoc newShape, MapShapeDoc oldShape)
+    {
+        _index = index;
+        _newShape = newShape ?? throw new ArgumentNullException(nameof(newShape));
+        _oldShape = oldShape ?? throw new ArgumentNullException(nameof(oldShape));
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Edit exclusion shape";
+    internal override bool AffectsWorld => true;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc) => doc.Exclusions[_index].Shape = _newShape;
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => doc.Exclusions[_index].Shape = _oldShape;
+
+    /// <inheritdoc/>
+    public override bool TryMerge(IEditorCommand next)
+    {
+        if (next is EditExclusionShapeCommand e && e._index == _index)
+        {
+            _newShape = e._newShape;
+            return true;
+        }
+        return false;
     }
 }
 
@@ -506,7 +628,9 @@ public sealed class RemoveRegionCommand : EditorCommand
     }
 }
 
-/// <summary>Renames a region. Regions are keyed by name, so the id-carrying selection follows the rename.</summary>
+/// <summary>Renames a region. Regions are keyed by name, so the id-carrying selection follows the rename. The
+/// target name must be unique: <see cref="Apply"/> throws (before it mutates) if a region already carries the new
+/// name, so a rejected rename lands no undo step. Renames never coalesce (no merge).</summary>
 public sealed class RenameRegionCommand : EditorCommand
 {
     readonly string _oldName;
@@ -525,13 +649,149 @@ public sealed class RenameRegionCommand : EditorCommand
     internal override bool AffectsWorld => false;
 
     /// <inheritdoc/>
-    public override void Apply(MapDocument doc) => doc.Regions[IndexOfRegion(doc, _oldName)].Name = _newName;
+    public override void Apply(MapDocument doc)
+    {
+        GuardNoRegion(doc, _newName);   // reject a duplicate target before touching the source
+        doc.Regions[IndexOfRegion(doc, _oldName)].Name = _newName;
+    }
 
     /// <inheritdoc/>
     public override void Revert(MapDocument doc) => doc.Regions[IndexOfRegion(doc, _newName)].Name = _oldName;
 }
 
+/// <summary>Replaces the shape of the region with a given name (parameter scrub or kind conversion). The caller
+/// supplies both the new and old shape, cloned with the changed field (the <see cref="EditFeatureCommand"/>
+/// idiom). Successive edits of the same region coalesce (scrub coalescing). Regions are game-interpreted, so
+/// this does not affect the streamed world.</summary>
+public sealed class EditRegionShapeCommand : EditorCommand
+{
+    readonly string _name;
+    MapShapeDoc _newShape;
+    readonly MapShapeDoc _oldShape;
+
+    /// <summary>Creates the command replacing region <paramref name="name"/>'s shape with
+    /// <paramref name="newShape"/>, capturing <paramref name="oldShape"/> for revert.</summary>
+    public EditRegionShapeCommand(string name, MapShapeDoc newShape, MapShapeDoc oldShape)
+    {
+        _name = name ?? throw new ArgumentNullException(nameof(name));
+        _newShape = newShape ?? throw new ArgumentNullException(nameof(newShape));
+        _oldShape = oldShape ?? throw new ArgumentNullException(nameof(oldShape));
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Edit region shape";
+    internal override bool AffectsWorld => false;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc) => doc.Regions[IndexOfRegion(doc, _name)].Shape = _newShape;
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => doc.Regions[IndexOfRegion(doc, _name)].Shape = _oldShape;
+
+    /// <inheritdoc/>
+    public override bool TryMerge(IEditorCommand next)
+    {
+        if (next is EditRegionShapeCommand r && string.Equals(r._name, _name, StringComparison.Ordinal))
+        {
+            _newShape = r._newShape;
+            return true;
+        }
+        return false;
+    }
+}
+
+// ---- terrain globals (terrain-shape affecting) -----------------------------------------------------------
+
+/// <summary>Edits the terrain's global settings. Named for terrain-wide globals so later globals can join it, but
+/// v1 carries the water level only. Successive edits coalesce into one undo step (scrub coalescing). Affects the
+/// streamed world: scatter honours the water level (underwater candidates skip), so a change forces a wholesale
+/// rebuild. The water surface itself derives live from the document, so it also updates on the same edit.</summary>
+public sealed class EditTerrainCommand : EditorCommand
+{
+    float _newWaterLevel;
+    readonly float _oldWaterLevel;
+
+    /// <summary>Creates the command setting the water level to <paramref name="newWaterLevel"/>, capturing
+    /// <paramref name="oldWaterLevel"/> for revert.</summary>
+    public EditTerrainCommand(float newWaterLevel, float oldWaterLevel)
+    {
+        _newWaterLevel = newWaterLevel;
+        _oldWaterLevel = oldWaterLevel;
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Edit terrain";
+    internal override bool AffectsWorld => true;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc) => doc.Terrain.WaterLevel = _newWaterLevel;
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => doc.Terrain.WaterLevel = _oldWaterLevel;
+
+    /// <inheritdoc/>
+    public override bool TryMerge(IEditorCommand next)
+    {
+        // Terrain is a singleton, so any two terrain edits of the same gesture coalesce (no id/index to match).
+        if (next is EditTerrainCommand t)
+        {
+            _newWaterLevel = t._newWaterLevel;
+            return true;
+        }
+        return false;
+    }
+}
+
 // ---- terrain features (terrain-shape affecting) ----------------------------------------------------------
+
+/// <summary>Appends a terrain feature. Affects the streamed world (terrain shape changes).</summary>
+public sealed class AddFeatureCommand : EditorCommand
+{
+    readonly MapFeature _feature;
+
+    /// <summary>Creates the command for the given feature (added on <see cref="Apply"/>).</summary>
+    public AddFeatureCommand(MapFeature feature) =>
+        _feature = feature ?? throw new ArgumentNullException(nameof(feature));
+
+    /// <inheritdoc/>
+    public override string Label => "Add terrain feature";
+    internal override bool AffectsWorld => true;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc) => doc.Terrain.Features.Add(_feature);
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => doc.Terrain.Features.Remove(_feature);
+}
+
+/// <summary>Removes the terrain feature at the given index, restoring it at that index on revert. Affects the
+/// streamed world.</summary>
+public sealed class RemoveFeatureCommand : EditorCommand
+{
+    readonly int _index;
+    MapFeature? _removed;
+
+    /// <summary>Creates the command for the feature list index to remove.</summary>
+    public RemoveFeatureCommand(int index) => _index = index;
+
+    /// <inheritdoc/>
+    public override string Label => "Remove terrain feature";
+    internal override bool AffectsWorld => true;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc)
+    {
+        _removed = doc.Terrain.Features[_index];
+        doc.Terrain.Features.RemoveAt(_index);
+    }
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc)
+    {
+        if (_removed is null) throw new InvalidOperationException("Revert called before Apply.");
+        doc.Terrain.Features.Insert(_index, _removed);
+    }
+}
 
 /// <summary>Replaces the terrain feature at a given index with a new value (parameter scrub). The caller
 /// supplies both the new and old feature. Successive edits of the same index coalesce (scrub coalescing).
@@ -570,5 +830,44 @@ public sealed class EditFeatureCommand : EditorCommand
             return true;
         }
         return false;
+    }
+}
+
+/// <summary>Moves a terrain feature from one list position to another. Terrain features fold in list order
+/// (<see cref="MapDoc.MapRuntime.BuildField"/> runs each feature's height modifier on the height the prior
+/// feature produced), so where two features cover the same ground the LAST one in the list dominates the
+/// overlap. Reordering is therefore how the author picks the winner between overlapping features (a lake and a
+/// flatten over the same clearing, say): move the feature that should win to a later position. <see cref="Revert"/>
+/// moves it back. Affects the streamed world (terrain shape changes), and never coalesces (no merge).</summary>
+public sealed class ReorderFeatureCommand : EditorCommand
+{
+    readonly int _fromIndex;
+    readonly int _toIndex;
+
+    /// <summary>Creates the command moving the feature at <paramref name="fromIndex"/> to
+    /// <paramref name="toIndex"/> in the terrain feature list.</summary>
+    public ReorderFeatureCommand(int fromIndex, int toIndex)
+    {
+        _fromIndex = fromIndex;
+        _toIndex = toIndex;
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Reorder terrain feature";
+    internal override bool AffectsWorld => true;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc) => Move(doc, _fromIndex, _toIndex);
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => Move(doc, _toIndex, _fromIndex);
+
+    // A list move: pull the feature out at `from` and re-insert it at `to`. Its own inverse (remove at `to`,
+    // insert at `from`), so Revert is just Move with the endpoints swapped.
+    static void Move(MapDocument doc, int from, int to)
+    {
+        MapFeature feature = doc.Terrain.Features[from];
+        doc.Terrain.Features.RemoveAt(from);
+        doc.Terrain.Features.Insert(to, feature);
     }
 }

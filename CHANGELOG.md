@@ -5,6 +5,88 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.55.0
+
+Map-editor apply-order controls and visibility layers from the fourth playtest round (B2.4 of the
+map-editor program, `docs/MAP-EDITOR-DESIGN.md`): features gain apply-order controls that reorder the
+fold order, R snaps the selected placement to the ground, and a session-only visibility system turns the
+empty-selection inspector into a Layers panel with per-selectable Visible toggles.
+
+- **Feature apply-order controls, R snap-to-ground, and a visibility system (`KhaozEngine.MapEditor`).**
+  Features now expose apply-order controls: `ReorderFeatureCommand` with Ctrl+Up and Ctrl+Down moves the
+  selected feature in the fold order, the inspector shows apply order N of M, and features fold in list
+  order so the last overlapping feature wins. R snaps the selected placement to the ground undoably. A new
+  visibility system makes the empty-selection inspector a Layers panel with group toggles, including
+  per-scatter-layer toggles that rebuild the streamed world, and every selectable gains a Visible toggle.
+  Hidden elements are unpickable from the viewport but remain in the outline, and visibility is
+  editor-session state that never dirties the document.
+
+## 10.54.0
+
+Map-editor shape editing from the third playtest round (B2.3 of the map-editor program,
+`docs/MAP-EDITOR-DESIGN.md`): regions and exclusions gain per-parameter inspector rows and a disc/rect
+shape-kind selector, overlay picking plus translate and scale gizmos move and resize shapes and features
+from the viewport, the EditFeature tool places registry-listed features, and the Gui inspector gains a
+dropdown-backed `ChoiceRow` with numpad typing.
+
+- **`ChoiceRow` dropdown inspector row and numpad text entry (`KhaozEngine.Gui`, `KhaozEngine.Windowing`).**
+  A new `ChoiceRow` backs an inspector field with a dropdown option list. The open list draws in the grid's
+  late overlay pass, above the sibling rows below the selector, and clips at the grid bounds. Numpad typing
+  now reaches text fields: new `Keypad` members on the Windowing `Key` enum flow through `TextEntry` and
+  `NumberField`, so a numeric keypad edits a `NumberField`. `GuiDraw.TruncateWithEllipsis` clips over-long
+  cell text with an ellipsis.
+- **Shape editing for regions, exclusions, and features (`KhaozEngine.MapEditor`).** Regions and exclusions
+  now expose per-parameter inspector rows and a disc/rect shape-kind selector whose conversion preserves the
+  shape center (`EditExclusionShapeCommand`, `EditRegionShapeCommand`). Overlay picking selects features,
+  exclusions, and regions straight from the viewport. The translate and scale gizmos move and resize the
+  selected shape or feature through coalesced undoable edits. The `EditFeature` tool places a registry-listed
+  feature with its defaults at the click (`AddFeatureCommand`, `RemoveFeatureCommand`), and the kit palette
+  now shows only while the Place tool is active.
+- **`MapDocRegistry.FeatureTypes` enumeration (`KhaozEngine.MapDoc`).** The registry now enumerates its
+  registered feature types, which the EditFeature tool lists for placement.
+- **Deferred follow-ups are a durable ledger (`docs`).** The map-editor program's cross-phase code-review
+  follow-ups now live as a standing ledger in `docs/MAP-EDITOR-DESIGN.md`, since the per-worktree SDD ledger
+  is deleted at merge.
+
+## 10.53.0
+
+Map-editor second-playtest fixes (B2.2 of the map-editor program, `docs/MAP-EDITOR-DESIGN.md`): the toolbar
+tracks one-shot tool returns, the status strip clears a host's bottom readout, the Showcase outline post
+effect defaults off, and exclusions/regions/feature markers show as translucent viewport overlays.
+
+- **Map-editor toolbar sync and a host-reserved footer (`KhaozEngine.MapEditor`).** The toolbar tab bar now
+  mirrors the live controller mode every frame, so a one-shot draw / bake tool returning to Select (or an
+  Escape cancel) re-highlights the Select tab on its own, without a tap. The new
+  `MapEditorOptions.StatusBottomOffset` reserves that many points of clearance at the window bottom for a
+  host that draws its own bottom chrome (the Showcase F7-F10 display readout), shifting the status strip and
+  editor body up so the editor never stacks on the host's pixels.
+- **Outline cel post effect defaults off in every Showcase room (`KhaozEngine.Showcase`).** The 3D rooms no
+  longer boot with the cel outline post pass enabled, so the map editor and the other rooms render clean
+  unless a room opts the outline back on.
+- **Translucent viewport overlays for authoring shapes (`KhaozEngine.MapEditor`).** Exclusions (red),
+  regions (blue), and terrain-feature centers (an amber marker disc) now draw as translucent ground fills
+  through the depth-disabled `Scene3D` debug-fill pass, so they composite always-on-top for authoring
+  visibility, with the selected element brightened. The new `MapEditorOptions.ShowOverlays` (default true)
+  toggles them off.
+
+## 10.52.0
+
+Map-editor playtest polish (B2.1 of the map-editor program, `docs/MAP-EDITOR-DESIGN.md`): a categorized
+collapsible filterable kit palette, one-shot draw tools that snap back to Select, a visible water
+surface with an undoable water level, and inline placement/spawn rename from the inspector.
+
+- **`AssetManifest` entries take an optional category field (`KhaozEngine.Render3D`).** Additive: a
+  manifest entry can now carry a category, which the map editor reads to group kit props into palette
+  sections. Entries without one keep the old ungrouped behaviour.
+- **Categorized collapsible filterable kit palette plus a spawn filter (`KhaozEngine.MapEditor`).**
+  Categories come from the manifest field with a manifest-name fallback, and the first-manifest-wins
+  tiebreak is now uniform across heights, meshes, and categories. One-shot draw tools (exclusion,
+  region, and bake return to Select after each committed gesture) with a `ModeHint` tool description
+  leading the status strip. A visible water surface at the document water level, with a Terrain
+  inspector node editing it undoably (`EditTerrainCommand`). Placements and spawns are renamable from
+  the inspector (`RenamePlacementCommand`, `RenameSpawnCommand`, and the region sibling gains the same
+  duplicate guard). The demo map lake now holds water.
+
 ## 10.51.0
 
 Add `Color.ScaleRgb(float)` - scales R, G, B and preserves alpha - so tinting under straight-alpha

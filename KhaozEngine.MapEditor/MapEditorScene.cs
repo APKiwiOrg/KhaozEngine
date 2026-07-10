@@ -33,6 +33,17 @@ public sealed class MapEditorOptions
 
     /// <summary>Spawn archetype ids the game offers in the spawn tool (dropdown content).</summary>
     public List<string> SpawnArchetypes = new();
+
+    /// <summary>Points of extra clearance reserved at the bottom of the window for a host-drawn overlay (for
+    /// example the Showcase's F7-F10 display readout line): the status strip and the editor body above it shift
+    /// up by this much, so the editor chrome never stacks on the same pixels as the host readout. Default 0 keeps
+    /// the status strip flush with the window bottom.</summary>
+    public float StatusBottomOffset;
+
+    /// <summary>When true (the default) the viewport draws translucent ground overlays for exclusions (red),
+    /// regions (blue), and terrain-feature centers (amber), with the selected element brightened, so those
+    /// otherwise-invisible authoring shapes are findable while editing. Set false to hide them.</summary>
+    public bool ShowOverlays = true;
 }
 
 /// <summary>The turn-key in-engine map editor scene a per-game head pushes onto its <see cref="SceneManager"/>:
@@ -56,12 +67,29 @@ public class MapEditorScene : GameScene, IGameScene3D
     const float PanelWidth = 260f;
     /// <summary>Status-strip height in points.</summary>
     const float StatusHeight = 26f;
+    /// <summary>Height in points of the filter box slotted at the top of the palette / spawn-list region.</summary>
+    const float PaletteFilterHeight = 26f;
     /// <summary>Falls back to this world-space box height for a kit id absent from the manifests.</summary>
     const float FallbackKindHeight = 2f;
 
     static readonly Color PanelBackground = new(0.09f, 0.09f, 0.12f, 0.94f);
     static readonly Color StatusBackground = new(0.05f, 0.05f, 0.07f, 0.96f);
     static readonly Color SelectionHighlight = new(1.35f, 1.2f, 0.7f, 1f);
+
+    // Viewport overlay fills: a translucent ground disc/rect/fan per exclusion (red-ish) and region (blue-ish), and
+    // a small marker disc at each terrain-feature center (amber). The selected element's fill brightens (see Tint).
+    static readonly Color ExclusionOverlayColor = new(0.9f, 0.22f, 0.16f, 0.26f);
+    static readonly Color RegionOverlayColor = new(0.2f, 0.5f, 0.95f, 0.26f);
+    static readonly Color FeatureOverlayColor = new(0.96f, 0.76f, 0.22f, 0.55f);
+    /// <summary>World-space lift (m) added above the sampled ground height when seating an overlay fill. Overlays
+    /// never z-fight the terrain regardless: the debug-fill pass runs depth-disabled after post, so the fills
+    /// composite on top of the scene rather than depth-testing against it. The lift only keeps the fill geometry a
+    /// touch above the sampled surface.</summary>
+    const float OverlayLift = 0.1f;
+    /// <summary>RGB scale applied to a selected overlay's fill so it reads brighter than its neighbours.</summary>
+    const float OverlaySelectBrighten = 1.6f;
+    /// <summary>Alpha multiplier applied to a selected overlay's fill (clamped to 1) so it also firms up.</summary>
+    const float OverlaySelectAlphaBoost = 1.7f;
 
     static readonly LocalizedText[] ToolLabels =
     {
@@ -78,6 +106,7 @@ public class MapEditorScene : GameScene, IGameScene3D
     EditorDocument _document = null!;
     EditorToolController _controller = null!;
     ViewportWorld _viewport = null!;
+    readonly EditorVisibility _visibility = new();
     FlyCamera3D _camera = null!;
     FlyCameraController _camController = null!;
 
@@ -87,8 +116,27 @@ public class MapEditorScene : GameScene, IGameScene3D
     TabBar _toolbar = null!;
     TreeView _outline = null!;
     PropertyGrid _inspector = null!;
-    ScrollablePanel _palette = null!;
-    readonly List<string> _paletteKinds = new();
+
+    // Kit palette: a filter box above a category-grouped, collapsible tree. Spawn archetypes: a filter box above a
+    // flat list (a TreeView with leaf-only roots, so it renders and hit-tests exactly like the palette minus the
+    // categories). The two share the bottom-left panel region, swapped by the active tool (spawn tool -> spawn list,
+    // everything else -> kit palette), so each filter box slots into the existing side-panel bounds cleanly.
+    TextInput _paletteFilter = null!;
+    TreeView _paletteTree = null!;
+    TextInput _spawnFilter = null!;
+    TreeView _spawnList = null!;
+    // The feature-type picker: a flat leaf-only TreeView of the registry's feature types, shown in the bottom-left
+    // panel only in the EditFeature tool. A leaf tap sets the controller's PlaceFeatureType. No filter box (the
+    // registered feature set is small and static), so it fills the whole panel region.
+    TreeView _featureList = null!;
+
+    // The grouped, twice-sorted palette source (categories ordinal, kit ids ordinal within each), parsed once from
+    // KindCategories in OnEnter (the map is immutable after ViewportWorld construction) and re-filtered without
+    // rebuilding. Per-category expansion is remembered across rebuilds so clearing a filter restores the tree.
+    readonly List<PaletteCategory> _paletteSource = new();
+    readonly Dictionary<string, bool> _paletteExpansion = new(StringComparer.Ordinal);
+    string _paletteTreeFilter = "";   // the filter text the live palette tree was last built for
+    string _spawnTreeFilter = "";     // the filter text the live spawn list was last built for
 
     bool _built;
     string _statusText = "";
@@ -97,11 +145,19 @@ public class MapEditorScene : GameScene, IGameScene3D
     // (status-strip message) and the next Shift+Escape pops. Any save or document mutation disarms it.
     bool _exitArmed;
 
-    // Region rename bookkeeping: the selection is keyed by region NAME, so after a rename it must follow the
-    // new name. The sync is deferred until the rename row loses focus (an immediate Selection.Set would rebuild
-    // the inspector mid-typing and drop the focus per keystroke).
-    string? _pendingRegionSelect;
-    TextRow? _regionNameRow;
+    // Inline-rename bookkeeping, shared by the region / placement / spawn inspectors: those selections are keyed
+    // by name (region) or id (placement, spawn), so after a rename the selection must follow the new key. The
+    // re-select is deferred until the rename row loses focus (an immediate Selection.Set would rebuild the
+    // inspector mid-typing and drop the field's focus per keystroke). Only one inspector row is ever focused, so
+    // a single pending slot covers all three renamable kinds.
+    TextRow? _nameRow;
+    SelectionKind _pendingSelectKind;
+    string? _pendingSelectId;
+
+    // The kind string ("disc"/"rect"/...) the current inspector's shape rows were built for, or null when the
+    // inspector holds no shape rows. Compared each chrome step against the live selected shape so a kind
+    // conversion (or an undo/redo of one) swaps the param rows: see SyncShapeInspector.
+    string? _inspectorShapeKind;
 
     /// <summary>Wires the render surface, the shared white pixel and UI font, and the editor options, then returns
     /// this for chaining (the Room3D Init-injection pattern). Nothing is dereferenced until <see cref="OnEnter"/>.</summary>
@@ -126,6 +182,33 @@ public class MapEditorScene : GameScene, IGameScene3D
     /// <summary>The inspector grid, or null before <see cref="OnEnter"/>. Exposed for tests.</summary>
     internal PropertyGrid Inspector => _inspector;
 
+    /// <summary>The tree outline, or null before <see cref="OnEnter"/>. Exposed for tests (a hidden element stays
+    /// listed here: visibility is view-only and never mutates the document).</summary>
+    internal TreeView Outline => _outline;
+
+    /// <summary>The editor-session visibility state (groups, scatter layers, per-element hides). Exposed for tests.</summary>
+    internal EditorVisibility Visibility => _visibility;
+
+    /// <summary>The mode tab bar, or null before <see cref="OnEnter"/>. Exposed for tests (the selected tab
+    /// tracks the controller mode, including one-shot returns to Select).</summary>
+    internal TabBar Toolbar => _toolbar;
+
+    /// <summary>The category-grouped kit palette tree, or null before <see cref="OnEnter"/>. Exposed for tests.</summary>
+    internal TreeView PaletteTree => _paletteTree;
+
+    /// <summary>The kit-palette filter box, or null before <see cref="OnEnter"/>. Exposed for tests.</summary>
+    internal TextInput PaletteFilter => _paletteFilter;
+
+    /// <summary>The flat spawn-archetype list (leaf-only roots), or null before <see cref="OnEnter"/>. Exposed for tests.</summary>
+    internal TreeView SpawnList => _spawnList;
+
+    /// <summary>The spawn-archetype filter box, or null before <see cref="OnEnter"/>. Exposed for tests.</summary>
+    internal TextInput SpawnFilter => _spawnFilter;
+
+    /// <summary>The flat feature-type picker list (leaf-only roots), or null before <see cref="OnEnter"/>. Exposed
+    /// for tests.</summary>
+    internal TreeView FeatureList => _featureList;
+
     /// <summary>True while the Shift+Escape discard warning is armed (dirty document, one chord press in).
     /// Exposed for tests.</summary>
     internal bool ExitArmed => _exitArmed;
@@ -139,16 +222,19 @@ public class MapEditorScene : GameScene, IGameScene3D
 
         MapDocRegistry registry = _options.Registry ?? MapDocRegistry.CreateDefault();
         _document = new EditorDocument(CreateDocument(registry), registry);
-        _controller = new EditorToolController(_document) { HeightOf = KindHeight };
-        _viewport = new ViewportWorld(_scene, _options.ManifestPaths);
+        _controller = new EditorToolController(_document) { HeightOf = KindHeight, IsVisible = _visibility.IsElementVisible };
+        _viewport = new ViewportWorld(_scene, _options.ManifestPaths) { ScatterLayerVisible = _visibility.GetLayer };
         _camera = new FlyCamera3D { Position = new Vector3(0f, 24f, -32f), Pitch = -0.5f };
         _camController = new FlyCameraController(_camera);
 
         BuildChrome();
-        _paletteKinds.Clear();
-        foreach (string kind in _viewport.KindHeights.Keys) _paletteKinds.Add(kind);
+        BuildPaletteSource(PaletteKindCategories());
+        RebuildPaletteTree("");   // full tree, every category expanded
+        RebuildSpawnList("");     // full flat list
+        RebuildFeatureList();     // flat feature-type picker
         if (_options.SpawnArchetypes.Count > 0) _controller.SpawnArchetype = _options.SpawnArchetypes[0];
-        if (_paletteKinds.Count > 0) _controller.PlaceKind = _paletteKinds[0];
+        _controller.PlaceKind = DefaultPlaceKind();
+        _controller.PlaceFeatureType = DefaultFeatureType();
 
         _document.DocumentChanged += OnDocumentChanged;
         _document.Selection.Changed += OnSelectionChanged;
@@ -236,7 +322,8 @@ public class MapEditorScene : GameScene, IGameScene3D
     protected virtual void UpdateTools(float dt)
     {
         if (_controller.Field is null) return;
-        if (TryGizmoWorldPos(out Vector3 gizmoPos)) _controller.GizmoScale = GizmoScaleFor(gizmoPos);
+        if (_controller.TryGizmo(out Vector3 gizmoPos) != GizmoAffordance.None)
+            _controller.GizmoScale = GizmoScaleFor(gizmoPos);
         _controller.Update(BuildFrameInput(dt));
     }
 
@@ -256,13 +343,28 @@ public class MapEditorScene : GameScene, IGameScene3D
         HandleShortcuts();
         UpdateWidgets(dt);
 
-        // Sync the selection to a renamed region once the rename row is done (outside the grid's row iteration,
-        // so the inspector rebuild this triggers never tears down a row mid-update).
-        if (_pendingRegionSelect is string pending && (_regionNameRow is null || !_regionNameRow.Input.IsFocused))
+        // The mode tab bar is driven one-way in UpdateWidgets (a tap sets the controller mode). But the
+        // controller can also change mode on its own, which that tap never sees: a one-shot draw / bake tool
+        // returning to Select on completion, or Escape cancelling a gesture. Mirror the live controller mode back
+        // onto the tab selection every frame so the highlighted tab always tracks the active tool. Runs outside
+        // UpdateWidgets' UiViewport guard so the toolbar stays in sync even headless, and ActiveIndex's setter
+        // never raises a change event, so this cannot loop back into a mode switch.
+        _toolbar.ActiveIndex = (int)_controller.Mode;
+
+        // Sync the selection to a renamed element (region by name, placement/spawn by id) once the rename row is
+        // done (outside the grid's row iteration, so the inspector rebuild this triggers never tears down a row
+        // mid-update).
+        if (_pendingSelectId is string pending && (_nameRow is null || !_nameRow.Input.IsFocused))
         {
-            _pendingRegionSelect = null;
-            _document.Selection.Set(SelectionKind.Region, pending);
+            SelectionKind kind = _pendingSelectKind;
+            _pendingSelectId = null;
+            _document.Selection.Set(kind, pending);
         }
+
+        // A shape-kind conversion (or an undo/redo of one) changes WHICH param rows the region / exclusion
+        // inspector needs (disc rows vs rect rows), but only a selection change rebuilds the inspector.
+        // Deferred here, after the widget step, so the rebuild never tears rows down mid-grid-update.
+        SyncShapeInspector();
     }
 
     /// <summary>Streams the viewport world around the camera. Overridable for headless order tests. No-ops until
@@ -279,9 +381,146 @@ public class MapEditorScene : GameScene, IGameScene3D
     {
         if (!_built || !_viewport.IsBuilt) return;
         string? selId = _document.Selection.Kind == SelectionKind.Placement ? _document.Selection.Id : null;
-        _viewport.Draw(_camera.Position, selId, SelectionHighlight);
+        _viewport.Draw(_camera.Position, selId, SelectionHighlight, _visibility);
+        DrawOverlays(scene);
         DrawGizmo(scene);
     }
+
+    /// <summary>Submits the exclusion / region / feature overlay fills to the Scene3D debug-fill pass. The
+    /// doc-to-draw-list step is the pure, headless-tested <see cref="ComputeOverlayDrawList"/>; only the per-entry
+    /// GPU submission (a debug disc / quad / fan) lives here. No-op until the field exists (world built).</summary>
+    void DrawOverlays(Scene3D scene)
+    {
+        if (_controller.Field is not { } field) return;
+        foreach (OverlayDraw o in ComputeOverlayDrawList(
+                     _document.Doc, _document.Selection, field.SampleHeight, _options.ShowOverlays, _visibility))
+        {
+            switch (o.Shape)
+            {
+                case OverlayShape.Disc:
+                    scene.DebugFilledCircle(o.Center, Vector3.UnitY, o.Radius, o.Color);
+                    break;
+                case OverlayShape.Rect:
+                    scene.DebugFilledQuad(o.Center, o.HalfExtents, o.Color);
+                    break;
+                case OverlayShape.Polygon:
+                    if (o.Rim is { Count: >= 3 } rim) scene.DebugFilledFan(o.Center, rim, o.Color);
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    /// <summary>Turns the document's exclusions, regions, and terrain features into a flat list of ground-plane
+    /// overlay fills: each authoring shape becomes a disc / rect / polygon fill (exclusions red-ish, regions
+    /// blue-ish) and each terrain feature a small amber marker disc at its center, all lifted a small epsilon above
+    /// the sampled ground so they clear the terrain. The overlay whose element matches <paramref name="selection"/>
+    /// is flagged and brightened. <paramref name="sampleHeight"/> supplies the ground height at an (x, z); a
+    /// <c>null</c> shape, a polygon with fewer than three points, or a feature whose center cannot be derived (an
+    /// unknown custom type) is skipped, and so is any element <paramref name="visibility"/> hides (its group is off
+    /// or it is individually hidden), so a hidden overlay is not drawn. Returns an empty list when
+    /// <paramref name="showOverlays"/> is false. Pure (no GPU, no scene state), so the whole computation is
+    /// headless-testable. <see cref="DrawOverlays"/> submits the result untested.</summary>
+    internal static List<OverlayDraw> ComputeOverlayDrawList(
+        MapDocument doc, EditorSelection selection, Func<float, float, float> sampleHeight, bool showOverlays,
+        EditorVisibility visibility)
+    {
+        ArgumentNullException.ThrowIfNull(doc);
+        ArgumentNullException.ThrowIfNull(selection);
+        ArgumentNullException.ThrowIfNull(sampleHeight);
+        ArgumentNullException.ThrowIfNull(visibility);
+
+        var list = new List<OverlayDraw>();
+        if (!showOverlays) return list;
+
+        int selectedExclusion = selection.Kind == SelectionKind.Exclusion ? SelectedIndex(selection.Id) : -1;
+        int selectedFeature = selection.Kind == SelectionKind.Feature ? SelectedIndex(selection.Id) : -1;
+
+        for (int i = 0; i < doc.Exclusions.Count; i++)
+        {
+            if (!visibility.IsElementVisible(SelectionKind.Exclusion, Index(i))) continue;   // hidden: no overlay
+            AddShapeOverlay(list, doc.Exclusions[i].Shape, OverlayCategory.Exclusion, ExclusionOverlayColor,
+                selected: i == selectedExclusion, sampleHeight);
+        }
+
+        foreach (MapRegion region in doc.Regions)
+        {
+            if (!visibility.IsElementVisible(SelectionKind.Region, region.Name)) continue;   // hidden: no overlay
+            bool selected = selection.Kind == SelectionKind.Region &&
+                            string.Equals(selection.Id, region.Name, StringComparison.Ordinal);
+            AddShapeOverlay(list, region.Shape, OverlayCategory.Region, RegionOverlayColor, selected, sampleHeight);
+        }
+
+        IReadOnlyList<MapFeature> features = doc.Terrain.Features;
+        for (int i = 0; i < features.Count; i++)
+        {
+            if (!visibility.IsElementVisible(SelectionKind.Feature, Index(i))) continue;   // hidden: no marker
+            if (!FeatureGeometry.TryCenter(features[i], out float fx, out float fz)) continue;   // unknown type: no marker
+            bool selected = i == selectedFeature;
+            var center = new Vector3(fx, sampleHeight(fx, fz) + OverlayLift, fz);
+            list.Add(new OverlayDraw(OverlayCategory.Feature, OverlayShape.Disc, center,
+                OverlayPicking.FeatureMarkerRadius, Vector2.Zero, rim: null, Tint(FeatureOverlayColor, selected), selected));
+        }
+        return list;
+    }
+
+    // An index-keyed element id (feature / exclusion), matching the selection and outline id encoding.
+    static string Index(int i) => i.ToString(CultureInfo.InvariantCulture);
+
+    // Turn one authoring shape into its overlay fill, at ground height plus the lift epsilon. Disc -> a ground disc,
+    // rect -> a ground quad at the rect's midpoint, polygon (>= 3 points) -> a fan from the point centroid with each
+    // rim vertex sampled at its own ground height. A null shape or a degenerate polygon adds nothing.
+    static void AddShapeOverlay(List<OverlayDraw> list, MapShapeDoc? shape, OverlayCategory category,
+        Color baseColor, bool selected, Func<float, float, float> sampleHeight)
+    {
+        Color color = Tint(baseColor, selected);
+        switch (shape)
+        {
+            case DiscShapeDoc d:
+            {
+                var center = new Vector3(d.CenterX, sampleHeight(d.CenterX, d.CenterZ) + OverlayLift, d.CenterZ);
+                list.Add(new OverlayDraw(category, OverlayShape.Disc, center, d.Radius,
+                    Vector2.Zero, rim: null, color, selected));
+                break;
+            }
+            case RectShapeDoc r:
+            {
+                float cx = (r.MinX + r.MaxX) * 0.5f, cz = (r.MinZ + r.MaxZ) * 0.5f;
+                var center = new Vector3(cx, sampleHeight(cx, cz) + OverlayLift, cz);
+                var half = new Vector2(MathF.Abs(r.MaxX - r.MinX) * 0.5f, MathF.Abs(r.MaxZ - r.MinZ) * 0.5f);
+                list.Add(new OverlayDraw(category, OverlayShape.Rect, center, 0f, half, rim: null, color, selected));
+                break;
+            }
+            case PolygonShapeDoc p when p.Points.Count >= 3:
+            {
+                var rim = new List<Vector3>(p.Points.Count);
+                float sx = 0f, sz = 0f;
+                foreach (float[] pt in p.Points)
+                {
+                    float px = pt.Length > 0 ? pt[0] : 0f, pz = pt.Length > 1 ? pt[1] : 0f;
+                    sx += px; sz += pz;
+                    rim.Add(new Vector3(px, sampleHeight(px, pz) + OverlayLift, pz));
+                }
+                float cx = sx / p.Points.Count, cz = sz / p.Points.Count;
+                var center = new Vector3(cx, sampleHeight(cx, cz) + OverlayLift, cz);
+                list.Add(new OverlayDraw(category, OverlayShape.Polygon, center, 0f, Vector2.Zero, rim, color, selected));
+                break;
+            }
+            default:
+                break;   // null shape or a polygon with fewer than three points: no overlay
+        }
+    }
+
+    // A selected overlay reads brighter: scale RGB up (ScaleRgb preserves the base alpha) then firm up that alpha,
+    // so the highlighted shape stands out against its unselected neighbours. Unselected returns the base color.
+    static Color Tint(Color baseColor, bool selected) => selected
+        ? baseColor.ScaleRgb(OverlaySelectBrighten).WithAlpha(MathF.Min(1f, baseColor.A * OverlaySelectAlphaBoost))
+        : baseColor;
+
+    // The list index a feature / exclusion selection id encodes, or -1 when it is not a valid non-negative index.
+    static int SelectedIndex(string id) =>
+        int.TryParse(id, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index) ? index : -1;
 
     /// <inheritdoc/>
     public override void OnDrawUi(SpriteBatch batch)
@@ -314,38 +553,57 @@ public class MapEditorScene : GameScene, IGameScene3D
 
     void DrawGizmo(Scene3D scene)
     {
-        if (!TryGizmoWorldPos(out Vector3 pos)) return;
+        GizmoAffordance affordance = _controller.TryGizmo(out Vector3 pos);
+        if (affordance == GizmoAffordance.None) return;
         float s = GizmoScaleFor(pos);
         Matrix4x4 world = Matrix4x4.CreateScale(s) * Matrix4x4.CreateTranslation(pos);
-        if (_document.Selection.Kind == SelectionKind.Placement)
+        switch (affordance)
         {
-            scene.DrawOverlayMesh(_translateArrows, world);
-            scene.DrawOverlayMesh(_yawRing, world);
-            scene.DrawOverlayMesh(_scaleHandle, world);
-        }
-        else
-        {
-            scene.DrawOverlayMesh(_selectionMarker, world);
+            case GizmoAffordance.Full:
+                scene.DrawOverlayMesh(_translateArrows, world);
+                scene.DrawOverlayMesh(_yawRing, world);
+                scene.DrawOverlayMesh(_scaleHandle, world);
+                break;
+            case GizmoAffordance.MoveScale:
+                // Feature / disc / rect shape: translate + scale, no yaw ring (there is no yaw concept).
+                scene.DrawOverlayMesh(_translateArrows, world);
+                scene.DrawOverlayMesh(_scaleHandle, world);
+                break;
+            case GizmoAffordance.Marker:
+                scene.DrawOverlayMesh(_selectionMarker, world);
+                break;
+            default:
+                break;
         }
     }
 
     void DrawPalette(SpriteBatch batch, SpriteFont font, Rect bounds)
     {
+        if (!BottomPanelVisible) return;   // no panel this frame: the outline owns the whole left column
         Fill(batch, bounds, PanelBackground);
-        _palette.Bounds = bounds;
-        _palette.ItemCount = _paletteKinds.Count;
-        _palette.BeginClip(batch);
-        for (int i = 0; i < _paletteKinds.Count; i++)
+        if (FeatureMode)
         {
-            Rect row = _palette.ItemBounds(i);
-            if (row.Bottom <= bounds.Y || row.Y >= bounds.Bottom) continue;
-            bool selected = string.Equals(_paletteKinds[i], _controller.PlaceKind, StringComparison.Ordinal);
-            if (selected) Fill(batch, row, new Color(0.16f, 0.24f, 0.35f, 1f));
-            batch.DrawString(font, _paletteKinds[i],
-                new Vector2(MathF.Floor(row.X + 8f), MathF.Floor(row.Y + (row.Height - font.LineHeight) * 0.5f)),
-                new Color(0.82f, 0.85f, 0.9f, 1f));
+            _featureList.Bounds = bounds;   // no filter box: the feature-type list fills the whole panel
+            _featureList.Draw(batch, _white, font);
+            return;
         }
-        _palette.EndClip(batch);
+        (Rect filterRect, Rect bodyRect) = SplitPaletteRegion(bounds);
+        if (SpawnMode)
+        {
+            _spawnFilter.Bounds = filterRect;
+            _spawnFilter.Font = font;
+            _spawnFilter.Draw(batch, _white);
+            _spawnList.Bounds = bodyRect;
+            _spawnList.Draw(batch, _white, font);
+        }
+        else
+        {
+            _paletteFilter.Bounds = filterRect;
+            _paletteFilter.Font = font;
+            _paletteFilter.Draw(batch, _white);
+            _paletteTree.Bounds = bodyRect;
+            _paletteTree.Draw(batch, _white, font);
+        }
     }
 
     // ---- chrome wiring -----------------------------------------------------------------------------------
@@ -355,8 +613,18 @@ public class MapEditorScene : GameScene, IGameScene3D
         _toolbar = new TabBar(ToolLabels);
         _outline = new TreeView(default) { RowHeight = 22f };
         _inspector = new PropertyGrid(default);
-        _palette = new ScrollablePanel(default) { ItemHeight = 24f, ItemSpacing = 2f };
         _outline.OnSelected = OnOutlineSelected;
+
+        _paletteFilter = new TextInput(default) { PlaceholderContent = LocalizedText.Raw("Filter kits...") };
+        _paletteTree = new TreeView(default) { RowHeight = 22f };
+        _paletteTree.OnSelected = OnPaletteSelected;
+
+        _spawnFilter = new TextInput(default) { PlaceholderContent = LocalizedText.Raw("Filter spawns...") };
+        _spawnList = new TreeView(default) { RowHeight = 22f };
+        _spawnList.OnSelected = OnSpawnSelected;
+
+        _featureList = new TreeView(default) { RowHeight = 22f };
+        _featureList.OnSelected = OnFeatureTypeSelected;
     }
 
     void UpdateWidgets(float dt)
@@ -375,12 +643,48 @@ public class MapEditorScene : GameScene, IGameScene3D
         _inspector.Bounds = L.Inspector;
         _inspector.Update(_ui, dt);
 
-        _palette.Bounds = L.Palette;
-        _palette.ItemCount = _paletteKinds.Count;
-        _palette.Update(_ui.Pointer, Manager.Input);
-        int tapped = _palette.TappedItemIndex(_ui.Pointer);
-        if (tapped >= 0 && tapped < _paletteKinds.Count) _controller.PlaceKind = _paletteKinds[tapped];
+        if (FeatureMode)
+        {
+            _featureList.Bounds = L.Palette;
+            _featureList.Update(_ui);
+        }
+        else if (BottomPanelVisible)
+        {
+            (Rect filterRect, Rect bodyRect) = SplitPaletteRegion(L.Palette);
+            if (SpawnMode)
+            {
+                _spawnFilter.Bounds = filterRect;
+                _spawnFilter.Update(_ui.Pointer, Manager.Input, dt);
+                _spawnList.Bounds = bodyRect;
+                _spawnList.Update(_ui);
+            }
+            else
+            {
+                _paletteFilter.Bounds = filterRect;
+                _paletteFilter.Update(_ui.Pointer, Manager.Input, dt);
+                _paletteTree.Bounds = bodyRect;
+                _paletteTree.Update(_ui);
+            }
+        }
+        RefreshPalettes();
     }
+
+    // The bottom-left panel hosts a tool-scoped picker: the spawn tool shows the spawn-archetype list, the
+    // prop-place tool shows the kit palette, the feature tool shows the feature-type list, and every other tool
+    // shows NO panel (the outline reflows over the freed space, see ComputeLayout). At most one picker is driven /
+    // drawn per frame. Null-guarded because the layout helpers (StatusRect and friends) may run before OnEnter
+    // creates the controller.
+    bool SpawnMode => _controller is not null && _controller.Mode == EditorToolMode.PlaceSpawn;
+
+    /// <summary>True while the kit palette (filter + tree) occupies the bottom-left panel: ONLY in the
+    /// prop-place tool. Exposed for tests.</summary>
+    internal bool KitPaletteVisible => _controller is not null && _controller.Mode == EditorToolMode.PlacePlacement;
+
+    // Whether the feature-type picker occupies the bottom-left panel: ONLY in the EditFeature tool.
+    bool FeatureMode => _controller is not null && _controller.Mode == EditorToolMode.EditFeature;
+
+    // Whether the bottom-left panel exists at all this frame (one of its three contents is active).
+    bool BottomPanelVisible => SpawnMode || KitPaletteVisible || FeatureMode;
 
     void HandleShortcuts()
     {
@@ -388,10 +692,50 @@ public class MapEditorScene : GameScene, IGameScene3D
         bool shift = s.IsDown(Key.LeftShift) || s.IsDown(Key.RightShift);
         if (shift && s.WasPressed(Key.Escape)) { HandleExitChord(); return; }
         bool ctrl = s.IsDown(Key.LeftControl) || s.IsDown(Key.RightControl);
-        if (!ctrl) return;
+        if (!ctrl)
+        {
+            // R snaps the selected placement to the ground. It is a bare key, so suppress it while the rename
+            // field has focus (the user is typing an 'R' into a name, not asking for a snap).
+            if (s.WasPressed(Key.R) && (_nameRow is null || !_nameRow.Input.IsFocused))
+                SnapSelectedPlacementToGround();
+            return;
+        }
         if (s.WasPressed(Key.Z)) { if (shift) _document.Redo(); else _document.Undo(); }
         else if (s.WasPressed(Key.Y)) _document.Redo();
         else if (s.WasPressed(Key.S)) SaveDocument();
+        else if (s.WasPressed(Key.Up)) ReorderSelectedFeature(-1);     // earlier in the fold order
+        else if (s.WasPressed(Key.Down)) ReorderSelectedFeature(+1);   // later in the fold order (toward winning)
+    }
+
+    // Ctrl+Up / Ctrl+Down: move the selected terrain feature one step earlier (delta -1) or later (delta +1) in
+    // the fold order. Features fold in list order and the LAST feature over an overlap wins, so Ctrl+Down promotes
+    // the selected feature toward dominating its overlaps. Clamped at the ends (no no-op command is executed at a
+    // boundary), and the index-string selection is remapped to the feature's new index so it stays selected. Undo
+    // / redo of a reorder does NOT re-follow the feature (v1): the selection is a bare index string, so after an
+    // undo it stays on the same index, which may then address a different feature. The direct Ctrl+Up/Down action
+    // is what keeps the selection glued to the moved feature.
+    void ReorderSelectedFeature(int delta)
+    {
+        EditorSelection selection = _document.Selection;
+        if (selection.Kind != SelectionKind.Feature) return;
+        int from = SelectedIndex(selection.Id);
+        int count = _document.Doc.Terrain.Features.Count;
+        if (from < 0 || from >= count) return;
+        int to = from + delta;
+        if (to < 0 || to >= count) return;   // clamp at the ends: nothing to move, so land no command
+        _document.Execute(new ReorderFeatureCommand(from, to));
+        selection.Set(SelectionKind.Feature, to.ToString(CultureInfo.InvariantCulture));
+    }
+
+    // R: snap the selected placement back onto the ground by re-issuing its move with a null Y (the runtime
+    // ground-snaps a null Y to the deterministic field height). A no-op for non-placement selections and when the
+    // placement already carries a null Y (already grounded), so no empty command lands on the undo stack.
+    void SnapSelectedPlacementToGround()
+    {
+        if (_document.Selection.Kind != SelectionKind.Placement) return;
+        if (Placement(_document.Selection.Id) is not { } p) return;
+        if (p.Y is null) return;   // already grounded: do not execute an empty command
+        _document.Execute(new MovePlacementCommand(p.Id, p.X, p.Z, null));
     }
 
     // Shift+Escape: pop the scene right away when the document has no unsaved changes. With unsaved changes
@@ -441,15 +785,15 @@ public class MapEditorScene : GameScene, IGameScene3D
 
     void OnSelectionChanged()
     {
-        // A region rename queues a pending re-select of the NEW name once the rename row loses focus (see
-        // UpdateChrome). The pending sync clears the field itself before it calls Selection.Set, so this only
-        // ever sees it still set when something ELSE changed the selection first (an outline click, a viewport
-        // pick) while the rename row was still focused. That selection must win: drop the stale pending re-select
-        // so it cannot fire next frame and stomp the user's new pick back onto the renamed region.
-        if (_pendingRegionSelect is string pending &&
-            !(_document.Selection.Kind == SelectionKind.Region && _document.Selection.Id == pending))
+        // A rename queues a pending re-select of the NEW key once the rename row loses focus (see UpdateChrome).
+        // The pending sync clears the field itself before it calls Selection.Set, so this only ever sees it still
+        // set when something ELSE changed the selection first (an outline click, a viewport pick) while the rename
+        // row was still focused. That selection must win: drop the stale pending re-select so it cannot fire next
+        // frame and stomp the user's new pick back onto the renamed element.
+        if (_pendingSelectId is string pending &&
+            !(_document.Selection.Kind == _pendingSelectKind && _document.Selection.Id == pending))
         {
-            _pendingRegionSelect = null;
+            _pendingSelectId = null;
         }
         RebuildInspector();
     }
@@ -459,15 +803,162 @@ public class MapEditorScene : GameScene, IGameScene3D
         if (node.Tag is OutlineRef r) _document.Selection.Set(r.Kind, r.Id);
     }
 
+    // ---- palette + spawn-list wiring ---------------------------------------------------------------------
+
+    /// <summary>The kit-id -> category-label map the palette groups by. A seam (like <see cref="CreateDocument"/>)
+    /// so a headless test injects a fixed map without a manifest; defaults to the viewport's parsed
+    /// <see cref="ViewportWorld.KindCategories"/>, which is immutable after construction.</summary>
+    protected virtual IReadOnlyDictionary<string, string> PaletteKindCategories() => _viewport.KindCategories;
+
+    // Group the kit ids by category into the twice-sorted source (categories ordinal, kit ids ordinal within
+    // each). Built once in OnEnter because KindCategories never changes over a scene's lifetime.
+    void BuildPaletteSource(IReadOnlyDictionary<string, string> categories)
+    {
+        _paletteSource.Clear();
+        var byCategory = new SortedDictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (KeyValuePair<string, string> kv in categories)
+        {
+            if (!byCategory.TryGetValue(kv.Value, out List<string>? kinds))
+            {
+                kinds = new List<string>();
+                byCategory[kv.Value] = kinds;
+            }
+            kinds.Add(kv.Key);
+        }
+        foreach (KeyValuePair<string, List<string>> group in byCategory)
+        {
+            group.Value.Sort(StringComparer.Ordinal);
+            _paletteSource.Add(new PaletteCategory(group.Key, group.Value));
+        }
+    }
+
+    // Rebuild the category tree for a filter substring: keep only leaves that match case-insensitively, drop a
+    // category left with zero matches, and re-resolve each surviving category's expansion. Called only when the
+    // filter text changes (see RefreshPalettes), never per frame.
+    void RebuildPaletteTree(string filter)
+    {
+        string needle = filter.Trim();
+        bool filtering = needle.Length > 0;
+
+        // Snapshot expansion from the CURRENT (pre-clear) tree only while it is unfiltered, so a filter's
+        // forced-open categories never overwrite the user's real collapse choices and clearing the filter
+        // restores exactly what they left. A category the filter hides keeps its remembered value in the
+        // persistent map (it is absent from Roots to snapshot, but was captured the last time it was shown).
+        if (_paletteTreeFilter.Trim().Length == 0)
+            foreach (TreeNode root in _paletteTree.Roots)
+                if (root.Tag is string label) _paletteExpansion[label] = root.Expanded;
+
+        _paletteTree.Roots.Clear();
+        _paletteTree.Selected = null;
+        foreach (PaletteCategory category in _paletteSource)
+        {
+            var node = new TreeNode(LocalizedText.Raw(category.Label), category.Label);
+            foreach (string kind in category.Kinds)
+            {
+                if (filtering && kind.IndexOf(needle, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                node.Children.Add(new TreeNode(LocalizedText.Raw(kind), new PaletteLeaf(kind)));
+            }
+            if (node.Children.Count == 0) continue;   // hide categories with no matching leaves
+            // Filtering forces the matches visible; unfiltered restores the remembered state (default: expanded).
+            node.Expanded = filtering
+                || !_paletteExpansion.TryGetValue(category.Label, out bool wasExpanded) || wasExpanded;
+            _paletteTree.Roots.Add(node);
+        }
+        _paletteTreeFilter = filter;
+    }
+
+    // Rebuild the flat spawn-archetype list for a filter substring, preserving the game-authored order (no
+    // categories, no re-sort). Called only when the spawn filter text changes.
+    void RebuildSpawnList(string filter)
+    {
+        string needle = filter.Trim();
+        _spawnList.Roots.Clear();
+        _spawnList.Selected = null;
+        foreach (string archetype in _options.SpawnArchetypes)
+        {
+            if (needle.Length > 0 && archetype.IndexOf(needle, StringComparison.OrdinalIgnoreCase) < 0) continue;
+            _spawnList.Roots.Add(new TreeNode(LocalizedText.Raw(archetype), new PaletteLeaf(archetype)));
+        }
+        _spawnTreeFilter = filter;
+    }
+
+    /// <summary>Rebuilds the palette tree and / or the spawn list when its filter box text no longer matches what
+    /// the live view was built for. Called once per widget step after the filter boxes are driven, so a rebuild
+    /// happens only on a filter change, not every frame. Internal so a headless test can trigger it after a
+    /// <see cref="TextInput.SetText"/> without a full UI frame.</summary>
+    internal void RefreshPalettes()
+    {
+        if (!string.Equals(_paletteFilter.Text, _paletteTreeFilter, StringComparison.Ordinal))
+            RebuildPaletteTree(_paletteFilter.Text);
+        if (!string.Equals(_spawnFilter.Text, _spawnTreeFilter, StringComparison.Ordinal))
+            RebuildSpawnList(_spawnFilter.Text);
+    }
+
+    // A leaf carries the kit id; a category body-tap (Tag is the label string) never changes the placed kind.
+    void OnPaletteSelected(TreeNode node)
+    {
+        if (node.Tag is PaletteLeaf leaf) _controller.PlaceKind = leaf.Kind;
+    }
+
+    void OnSpawnSelected(TreeNode node)
+    {
+        if (node.Tag is PaletteLeaf leaf) _controller.SpawnArchetype = leaf.Kind;
+    }
+
+    void OnFeatureTypeSelected(TreeNode node)
+    {
+        if (node.Tag is PaletteLeaf leaf) _controller.PlaceFeatureType = leaf.Kind;
+    }
+
+    // Rebuild the flat feature-type list from the registry's registered types, preserving registration order (the
+    // default registry yields lake, flatten, ridge, rim). Built once in OnEnter (the registry is immutable after).
+    void RebuildFeatureList()
+    {
+        _featureList.Roots.Clear();
+        _featureList.Selected = null;
+        foreach (string type in _document.Registry.FeatureTypes)
+            _featureList.Roots.Add(new TreeNode(LocalizedText.Raw(type), new PaletteLeaf(type)));
+    }
+
+    // The initial placed feature type: the first registered type, or empty when the registry has none.
+    string DefaultFeatureType()
+    {
+        foreach (string type in _document.Registry.FeatureTypes) return type;
+        return "";
+    }
+
+    // The initial placed kind: the first kit id of the first category (both sorted), or empty with no kits.
+    string DefaultPlaceKind() =>
+        _paletteSource.Count > 0 && _paletteSource[0].Kinds.Count > 0 ? _paletteSource[0].Kinds[0] : "";
+
+    // Slot a filter box across the top of the palette region and hand the rest to the tree / list. Guards a
+    // region shorter than the filter box (a degenerate window) so both sub-rects stay non-negative.
+    static (Rect Filter, Rect Body) SplitPaletteRegion(Rect region)
+    {
+        float filterH = MathF.Min(PaletteFilterHeight, region.Height);
+        var filter = new Rect(region.X + 4f, region.Y + 4f,
+            MathF.Max(0f, region.Width - 8f), MathF.Max(0f, filterH - 6f));
+        float bodyTop = region.Y + filterH;
+        var body = new Rect(region.X, bodyTop, region.Width, MathF.Max(0f, region.Bottom - bodyTop));
+        return (filter, body);
+    }
+
     void RebuildOutline()
     {
         _outline.Roots.Clear();
+        _outline.Roots.Add(TerrainNode());
         _outline.Roots.Add(Category("Placements", PlacementNodes()));
         _outline.Roots.Add(Category("Spawns", SpawnNodes()));
         _outline.Roots.Add(Category("Features", FeatureNodes()));
         _outline.Roots.Add(Category("Exclusions", ExclusionNodes()));
         _outline.Roots.Add(Category("Regions", RegionNodes()));
     }
+
+    // The terrain root: a single selectable leaf (no children) carrying the singleton Terrain selection, so its
+    // inspector exposes the editable water level plus the read-only seed / biome count. Terrain has no id (the
+    // kind is the whole key), so the OutlineRef id is the empty string.
+    static TreeNode TerrainNode() =>
+        new TreeNode(LocalizedText.Raw("Terrain"), new OutlineRef(SelectionKind.Terrain, ""));
 
     static TreeNode Category(string label, IEnumerable<TreeNode> children)
     {
@@ -511,42 +1002,144 @@ public class MapEditorScene : GameScene, IGameScene3D
     void RebuildInspector()
     {
         _inspector.Rows.Clear();
-        _regionNameRow = null;
+        _nameRow = null;
+        _inspectorShapeKind = null;
         EditorSelection sel = _document.Selection;
         switch (sel.Kind)
         {
+            case SelectionKind.Terrain: BuildTerrainInspector(); break;
             case SelectionKind.Placement: BuildPlacementInspector(sel.Id); break;
             case SelectionKind.Spawn: BuildSpawnInspector(sel.Id); break;
             case SelectionKind.Feature: BuildFeatureInspector(sel.Id); break;
             case SelectionKind.Exclusion: BuildExclusionInspector(sel.Id); break;
             case SelectionKind.Region: BuildRegionInspector(sel.Id); break;
-            default: break;
+            default: BuildLayersInspector(); break;   // nothing selected: the visibility Layers panel
         }
+    }
+
+    // The empty-selection inspector is the Layers panel: a Visible toggle per group, then one per named scatter
+    // layer. Group toggles only gate draws / picks (no rebuild); a scatter-layer toggle also rebuilds the streamed
+    // world so the hidden layer's props drop out (RebuildWorldForVisibility). Raw dev-tool labels (the editor is
+    // not player-facing). Rebuilt on every selection change, so the panel tracks the live scatter-layer set.
+    void BuildLayersInspector()
+    {
+        foreach (VisibilityGroup group in Enum.GetValues<VisibilityGroup>())
+        {
+            VisibilityGroup g = group;   // capture per iteration for the closures
+            _inspector.Rows.Add(new BoolRow(LocalizedText.Raw(GroupLabel(g)),
+                () => _visibility.GetGroup(g), v => _visibility.SetGroup(g, v)));
+        }
+        foreach (MapScatterLayer layer in _document.Doc.ScatterLayers)
+        {
+            string name = layer.Name;
+            _inspector.Rows.Add(new BoolRow(LocalizedText.Raw(name),
+                () => _visibility.GetLayer(name),
+                v => { _visibility.SetLayer(name, v); RebuildWorldForVisibility(); }));
+        }
+    }
+
+    // The raw dev-tool label for a visibility group (FeatureMarkers reads "Feature markers"; the rest are their
+    // enum name). No em / en dashes or semicolons (the editor label convention).
+    static string GroupLabel(VisibilityGroup group) => group switch
+    {
+        VisibilityGroup.FeatureMarkers => "Feature markers",
+        _ => group.ToString(),
+    };
+
+    /// <summary>GPU seam: rebuilds the streamed viewport world so a scatter-layer visibility toggle takes effect
+    /// (hidden layers drop out of the fresh prop layers). Called directly from the Layers-panel scatter toggle,
+    /// NOT through <see cref="EditorDocument.WorldRebuildPending"/> (visibility is not a document change). No-op
+    /// until the world is built, and overridden headless in tests. Re-points the controller field at the rebuilt
+    /// world, matching <see cref="CheckWorldRebuild"/>.</summary>
+    protected virtual void RebuildWorldForVisibility()
+    {
+        if (!_viewport.IsBuilt) return;
+        _viewport.Rebuild(_document.Doc, _document.Registry);
+        _controller.Field = _viewport.Field;
+    }
+
+    // The terrain root inspector: the editable water level (routed through EditTerrainCommand so it coalesces
+    // scrubs and forces the scatter-honouring world rebuild) plus read-only seed and biome-count displays. The
+    // setter captures the LIVE water level as the command's old value before Execute applies the new one.
+    void BuildTerrainInspector()
+    {
+        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("WaterLevel"),
+            () => _document.Doc.Terrain.WaterLevel,
+            v => _document.Execute(new EditTerrainCommand(v, _document.Doc.Terrain.WaterLevel))));
+        _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Seed"),
+            () => _document.Doc.Terrain.Seed.ToString(CultureInfo.InvariantCulture)));
+        _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Biomes"),
+            () => _document.Doc.Terrain.Biomes.Count.ToString(CultureInfo.InvariantCulture)));
+    }
+
+    // The inline-rename Name row shared by the region, placement, and spawn inspectors. A closure tracks the
+    // CURRENT key across renames, so the row (and every downstream row that reads the returned getter) keeps
+    // working and keeps focus while the user types. The setter guards blank / unchanged / collision / vanished,
+    // routes the rename through `rename`, then queues a deferred re-select of the new key (fired once the row
+    // loses focus, see UpdateChrome) so the name-keyed selection follows the rename. Returns a getter for the
+    // live key so the caller's remaining rows track the element across a rename.
+    Func<string> AddNameRow(SelectionKind kind, string key, Func<string, bool> exists,
+        Func<string, string, IEditorCommand> rename)
+    {
+        string current = key;
+        var row = new TextRow(LocalizedText.Raw("Name"),
+            () => current,
+            v =>
+            {
+                if (string.IsNullOrWhiteSpace(v) || string.Equals(v, current, StringComparison.Ordinal)) return;
+                if (exists(v) || !exists(current)) return;   // collision or vanished
+                _document.Execute(rename(current, v));
+                current = v;
+                _pendingSelectKind = kind;
+                _pendingSelectId = v;
+            });
+        _nameRow = row;
+        _inspector.Rows.Add(row);
+        return () => current;
+    }
+
+    // The per-element "Visible" toggle, bound to the visibility hidden set (Visible on == not hidden). Added to
+    // every element inspector so the operator can hide a single placement / spawn / feature / exclusion / region
+    // from the viewport (draws and picks) while it stays in the outline. `id` is polled through a getter so a
+    // renamable element (its key follows the rename via the caller's `cur()` closure) keeps toggling the right key.
+    void AddVisibleRow(SelectionKind kind, Func<string> id)
+    {
+        _inspector.Rows.Add(new BoolRow(LocalizedText.Raw("Visible"),
+            () => !_visibility.IsElementHidden(kind, id()),
+            v => _visibility.SetElementHidden(kind, id(), !v)));
     }
 
     void BuildPlacementInspector(string id)
     {
+        if (Placement(id) is null) return;
+        Func<string> cur = AddNameRow(SelectionKind.Placement, id,
+            v => Placement(v) is not null, (oldId, newId) => new RenamePlacementCommand(oldId, newId));
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("X"),
-            () => Placement(id)?.X ?? 0f, v => MovePlacement(id, x: v)));
+            () => Placement(cur())?.X ?? 0f, v => MovePlacement(cur(), x: v)));
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Z"),
-            () => Placement(id)?.Z ?? 0f, v => MovePlacement(id, z: v)));
+            () => Placement(cur())?.Z ?? 0f, v => MovePlacement(cur(), z: v)));
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Yaw"),
-            () => Placement(id)?.Yaw ?? 0f, v => _document.Execute(new RotatePlacementCommand(id, v))));
+            () => Placement(cur())?.Yaw ?? 0f, v => _document.Execute(new RotatePlacementCommand(cur(), v))));
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Scale"),
-            () => Placement(id)?.Scale ?? 1f, v => _document.Execute(new ScalePlacementCommand(id, v)),
+            () => Placement(cur())?.Scale ?? 1f, v => _document.Execute(new ScalePlacementCommand(cur(), v)),
             min: 0.01f));
+        AddVisibleRow(SelectionKind.Placement, cur);
     }
 
     void BuildSpawnInspector(string id)
     {
+        if (Spawn(id) is null) return;
+        Func<string> cur = AddNameRow(SelectionKind.Spawn, id,
+            v => Spawn(v) is not null, (oldId, newId) => new RenameSpawnCommand(oldId, newId));
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("X"),
-            () => Spawn(id)?.X ?? 0f, v => MoveSpawn(id, x: v)));
+            () => Spawn(cur())?.X ?? 0f, v => MoveSpawn(cur(), x: v)));
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Z"),
-            () => Spawn(id)?.Z ?? 0f, v => MoveSpawn(id, z: v)));
+            () => Spawn(cur())?.Z ?? 0f, v => MoveSpawn(cur(), z: v)));
         _inspector.Rows.Add(new BoolRow(LocalizedText.Raw("Enabled"),
-            () => Spawn(id)?.Enabled ?? false, v => _document.Execute(new SetSpawnEnabledCommand(id, v))));
+            () => Spawn(cur())?.Enabled ?? false, v => _document.Execute(new SetSpawnEnabledCommand(cur(), v))));
         _inspector.Rows.Add(new TextRow(LocalizedText.Raw("Archetype"),
-            () => Spawn(id)?.ArchetypeId ?? "", v => { if (Spawn(id) is { } s) s.ArchetypeId = v; }));
+            () => Spawn(cur())?.ArchetypeId ?? "", v => { if (Spawn(cur()) is { } s) s.ArchetypeId = v; }));
+        AddVisibleRow(SelectionKind.Spawn, cur);
     }
 
     // ---- feature / exclusion / region inspectors -----------------------------------------------------------
@@ -558,6 +1151,7 @@ public class MapEditorScene : GameScene, IGameScene3D
         if (feature is null) return;
 
         _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Type"), () => FeatureAt(index)?.Type ?? ""));
+        _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Apply order"), () => FeatureOrderText(index)));
         switch (feature)
         {
             case LakeFeatureDoc:
@@ -592,6 +1186,7 @@ public class MapEditorScene : GameScene, IGameScene3D
             default:
                 break;   // unknown/custom feature type: the read-only Type row above is the whole inspector
         }
+        AddVisibleRow(SelectionKind.Feature, () => id);   // index-keyed, non-renamable: a constant id getter
     }
 
     // One scrubbed parameter of the feature at `index`: get reads the LIVE DTO (the instance at the index is
@@ -604,7 +1199,7 @@ public class MapEditorScene : GameScene, IGameScene3D
             v =>
             {
                 if (FeatureAt(index) is not T current) return;
-                var clone = (T)CloneFeature(current);
+                var clone = (T)FeatureGeometry.Clone(current);
                 assign(clone, v);
                 _document.Execute(new EditFeatureCommand(index, clone, current));
             }));
@@ -616,74 +1211,153 @@ public class MapEditorScene : GameScene, IGameScene3D
         return index >= 0 && index < features.Count ? features[index] : null;
     }
 
-    // Copies one of the four built-in feature DTOs so an edit replaces the instance (EditFeatureCommand holds
-    // old + new by reference). Only ever called for the types the switch above binds.
-    static MapFeature CloneFeature(MapFeature feature) => feature switch
+    // "N of M (last wins overlap)": the feature's 1-based fold position and the feature count, with the last-wins
+    // reminder. Features fold in list order, so the last feature over an overlap dominates it (Ctrl+Up / Ctrl+Down
+    // reorder the selected feature). Polled live by the inspector's read-only row, so it tracks reorders.
+    string FeatureOrderText(int index)
     {
-        LakeFeatureDoc l => new LakeFeatureDoc
-        {
-            CenterX = l.CenterX, CenterZ = l.CenterZ, Radius = l.Radius, Depth = l.Depth,
-            InnerFraction = l.InnerFraction, OuterFraction = l.OuterFraction,
-        },
-        FlattenFeatureDoc f => new FlattenFeatureDoc
-        {
-            CenterX = f.CenterX, CenterZ = f.CenterZ, Radius = f.Radius,
-            TargetHeight = f.TargetHeight, Blend = f.Blend,
-        },
-        RidgeFeatureDoc r => new RidgeFeatureDoc
-        {
-            PointX = r.PointX, PointZ = r.PointZ, DirectionX = r.DirectionX, DirectionZ = r.DirectionZ,
-            Height = r.Height, Width = r.Width, PassAlong = r.PassAlong, PassWidth = r.PassWidth,
-        },
-        RimFeatureDoc rim => CloneRim(rim),
-        _ => throw new InvalidOperationException($"No clone support for feature type '{feature.Type}'."),
-    };
-
-    static RimFeatureDoc CloneRim(RimFeatureDoc r)
-    {
-        var clone = new RimFeatureDoc
-        {
-            CenterX = r.CenterX, CenterZ = r.CenterZ, InnerRadius = r.InnerRadius, OuterRadius = r.OuterRadius,
-            WallHeight = r.WallHeight, Ruggedness = r.Ruggedness, Seed = r.Seed, CrestFrequency = r.CrestFrequency,
-        };
-        foreach (RimPassDoc pass in r.Passes)
-            clone.Passes.Add(new RimPassDoc { AngleRadians = pass.AngleRadians, HalfWidth = pass.HalfWidth, Falloff = pass.Falloff });
-        return clone;
+        int count = _document.Doc.Terrain.Features.Count;
+        if (index < 0 || index >= count) return "";
+        return string.Create(CultureInfo.InvariantCulture, $"{index + 1} of {count} (last wins overlap)");
     }
 
     void BuildExclusionInspector(string id)
     {
         if (!int.TryParse(id, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index)) return;
         if (index < 0 || index >= _document.Doc.Exclusions.Count) return;
-        AddShapeRows(() => index < _document.Doc.Exclusions.Count ? _document.Doc.Exclusions[index].Shape : null);
+        AddShapeRows(() => index < _document.Doc.Exclusions.Count ? _document.Doc.Exclusions[index].Shape : null,
+            (newShape, oldShape) => _document.Execute(new EditExclusionShapeCommand(index, newShape, oldShape)));
+        AddVisibleRow(SelectionKind.Exclusion, () => id);   // after the shape rows so the kind ChoiceRow stays Rows[0]
     }
 
     void BuildRegionInspector(string name)
     {
         if (RegionByName(name) is null) return;
-        // The closure tracks the CURRENT name across renames, so the row keeps working (and keeps focus) while
-        // the user types. The selection is synced to the new name once the rename row loses focus (see
-        // UpdateChrome), because a mid-typing sync would rebuild the inspector and drop the focus per keystroke.
-        string current = name;
-        var row = new TextRow(LocalizedText.Raw("Name"),
-            () => current,
-            v =>
-            {
-                if (string.IsNullOrWhiteSpace(v) || string.Equals(v, current, StringComparison.Ordinal)) return;
-                if (RegionByName(v) is not null || RegionByName(current) is null) return;   // collision or vanished
-                _document.Execute(new RenameRegionCommand(current, v));
-                current = v;
-                _pendingRegionSelect = v;
-            });
-        _regionNameRow = row;
-        _inspector.Rows.Add(row);
-        AddShapeRows(() => RegionByName(current)?.Shape);
+        Func<string> cur = AddNameRow(SelectionKind.Region, name,
+            v => RegionByName(v) is not null, (oldName, newName) => new RenameRegionCommand(oldName, newName));
+        AddShapeRows(() => RegionByName(cur())?.Shape,
+            (newShape, oldShape) => _document.Execute(new EditRegionShapeCommand(cur(), newShape, oldShape)));
+        AddVisibleRow(SelectionKind.Region, cur);
     }
 
-    void AddShapeRows(Func<MapShapeDoc?> shape)
+    /// <summary>The shape-kind options the inspector's kind selector offers. Polygon is read-only v1 (no
+    /// conversion in or out), so it is not an option: a polygon shape shows a read-only kind row instead.</summary>
+    static readonly string[] ShapeKindChoices = { "disc", "rect" };
+
+    // The editable shape surface of the selected region / exclusion: a kind ChoiceRow (disc <-> rect, converted
+    // center-preservingly) plus one FloatRow per parameter, each writing a clone of the live DTO with the one
+    // field changed through `execute` (newShape, oldShape), so a scrub coalesces via the command's merge.
+    // Polygon gets a read-only kind + point count v1; a null / unknown shape keeps the read-only kind row.
+    // `shape` reads the LIVE DTO (every edit replaces the instance), so the rows track edits and undo.
+    void AddShapeRows(Func<MapShapeDoc?> shape, Action<MapShapeDoc, MapShapeDoc> execute)
     {
-        _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Shape"), () => ShapeKind(shape())));
-        _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Params"), () => ShapeParams(shape())));
+        MapShapeDoc? current = shape();
+        switch (current)
+        {
+            case DiscShapeDoc:
+                AddShapeKindRow(shape, execute);
+                AddShapeRow<DiscShapeDoc>(shape, execute, "CenterX", s => s.CenterX, (s, v) => s.CenterX = v);
+                AddShapeRow<DiscShapeDoc>(shape, execute, "CenterZ", s => s.CenterZ, (s, v) => s.CenterZ = v);
+                AddShapeRow<DiscShapeDoc>(shape, execute, "Radius", s => s.Radius, (s, v) => s.Radius = v);
+                break;
+            case RectShapeDoc:
+                AddShapeKindRow(shape, execute);
+                AddShapeRow<RectShapeDoc>(shape, execute, "MinX", s => s.MinX, (s, v) => s.MinX = v);
+                AddShapeRow<RectShapeDoc>(shape, execute, "MinZ", s => s.MinZ, (s, v) => s.MinZ = v);
+                AddShapeRow<RectShapeDoc>(shape, execute, "MaxX", s => s.MaxX, (s, v) => s.MaxX = v);
+                AddShapeRow<RectShapeDoc>(shape, execute, "MaxZ", s => s.MaxZ, (s, v) => s.MaxZ = v);
+                break;
+            case PolygonShapeDoc:
+                _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Shape"), () => ShapeKind(shape())));
+                _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Points"),
+                    () => ((shape() as PolygonShapeDoc)?.Points.Count ?? 0).ToString(CultureInfo.InvariantCulture)));
+                break;
+            default:
+                _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Shape"), () => ShapeKind(shape())));
+                break;
+        }
+        _inspectorShapeKind = ShapeKind(current);
+    }
+
+    // The shape-kind selector: disc <-> rect, converted center-preservingly (see ConvertShape). ChoiceRow fires
+    // the setter only on a real change, so re-picking the current kind never lands a command.
+    void AddShapeKindRow(Func<MapShapeDoc?> shape, Action<MapShapeDoc, MapShapeDoc> execute)
+    {
+        _inspector.Rows.Add(new ChoiceRow(LocalizedText.Raw("Shape"), ShapeKindChoices,
+            () => ShapeKind(shape()),
+            v =>
+            {
+                if (shape() is not { } current || ConvertShape(current, v) is not { } converted) return;
+                execute(converted, current);
+            }));
+    }
+
+    // One scrubbed parameter of the selected shape (the AddFeatureRow idiom): get reads the LIVE DTO, set clones
+    // the current DTO with the one property changed and routes the (new, old) pair through `execute`, whose
+    // command's same-key merge makes a scrub coalesce into one undo step.
+    void AddShapeRow<T>(Func<MapShapeDoc?> shape, Action<MapShapeDoc, MapShapeDoc> execute, string label,
+        Func<T, float> get, Action<T, float> assign) where T : MapShapeDoc
+    {
+        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw(label),
+            () => shape() is T s ? get(s) : 0f,
+            v =>
+            {
+                if (shape() is not T current) return;
+                var clone = (T)CloneShape(current);
+                assign(clone, v);
+                execute(clone, current);
+            }));
+    }
+
+    // Copies a disc / rect shape DTO so an edit replaces the instance (the shape commands hold old + new by
+    // reference). Polygon rows are read-only v1, so only the two editable kinds are cloned.
+    static MapShapeDoc CloneShape(MapShapeDoc shape) => shape switch
+    {
+        DiscShapeDoc d => new DiscShapeDoc { CenterX = d.CenterX, CenterZ = d.CenterZ, Radius = d.Radius },
+        RectShapeDoc r => new RectShapeDoc { MinX = r.MinX, MinZ = r.MinZ, MaxX = r.MaxX, MaxZ = r.MaxZ },
+        _ => throw new InvalidOperationException($"No clone support for shape type '{shape.GetType().Name}'."),
+    };
+
+    // Converts a disc / rect to the requested kind, preserving the center: disc -> the square of side 2r around
+    // its center; rect -> the disc at the rect's center with half the max extent as the radius. Returns null for
+    // a same-kind request or an unconvertible shape (polygon, read-only v1).
+    static MapShapeDoc? ConvertShape(MapShapeDoc current, string kind) => (current, kind) switch
+    {
+        (DiscShapeDoc d, "rect") => new RectShapeDoc
+        {
+            MinX = d.CenterX - d.Radius, MinZ = d.CenterZ - d.Radius,
+            MaxX = d.CenterX + d.Radius, MaxZ = d.CenterZ + d.Radius,
+        },
+        (RectShapeDoc r, "disc") => new DiscShapeDoc
+        {
+            CenterX = (r.MinX + r.MaxX) * 0.5f,
+            CenterZ = (r.MinZ + r.MaxZ) * 0.5f,
+            Radius = MathF.Max(r.MaxX - r.MinX, r.MaxZ - r.MinZ) * 0.5f,
+        },
+        _ => null,
+    };
+
+    /// <summary>Rebuilds the inspector when the selected shape's kind no longer matches the kind the current
+    /// rows were built for (a kind-ChoiceRow conversion, or an undo / redo of one), so disc rows swap to rect
+    /// rows and back. Deferred to the chrome step so the rebuild never happens inside the grid's row iteration.
+    /// No-op while the inspector holds no shape rows. Internal so a headless test can fire the sync directly.</summary>
+    internal void SyncShapeInspector()
+    {
+        if (_inspectorShapeKind is not string built) return;
+        if (!string.Equals(ShapeKind(SelectedShape()), built, StringComparison.Ordinal)) RebuildInspector();
+    }
+
+    // The shape of the selected exclusion / region, or null (no shape-carrying selection, vanished element).
+    MapShapeDoc? SelectedShape()
+    {
+        EditorSelection sel = _document.Selection;
+        return sel.Kind switch
+        {
+            SelectionKind.Exclusion when int.TryParse(sel.Id, NumberStyles.Integer, CultureInfo.InvariantCulture,
+                out int i) && i >= 0 && i < _document.Doc.Exclusions.Count => _document.Doc.Exclusions[i].Shape,
+            SelectionKind.Region => RegionByName(sel.Id)?.Shape,
+            _ => null,
+        };
     }
 
     static string ShapeKind(MapShapeDoc? shape) => shape switch
@@ -693,14 +1367,6 @@ public class MapEditorScene : GameScene, IGameScene3D
         PolygonShapeDoc => "polygon",
         null => "(none)",
         _ => shape.GetType().Name,
-    };
-
-    static string ShapeParams(MapShapeDoc? shape) => shape switch
-    {
-        DiscShapeDoc d => FormattableString.Invariant($"center ({d.CenterX:0.##}, {d.CenterZ:0.##})  radius {d.Radius:0.##}"),
-        RectShapeDoc r => FormattableString.Invariant($"({r.MinX:0.##}, {r.MinZ:0.##}) .. ({r.MaxX:0.##}, {r.MaxZ:0.##})"),
-        PolygonShapeDoc p => FormattableString.Invariant($"{p.Points.Count} points"),
-        _ => "",
     };
 
     MapRegion? RegionByName(string name)
@@ -771,50 +1437,57 @@ public class MapEditorScene : GameScene, IGameScene3D
         return !ComputeLayout(ui.Width, ui.Height).Viewport.Contains(p);
     }
 
-    bool TryGizmoWorldPos(out Vector3 pos)
-    {
-        pos = default;
-        if (_controller.Field is null) return false;
-        EditorSelection sel = _document.Selection;
-        if (sel.Kind == SelectionKind.Placement && Placement(sel.Id) is { } p)
-        {
-            pos = new Vector3(p.X, p.Y ?? _controller.Field.SampleHeight(p.X, p.Z), p.Z);
-            return true;
-        }
-        if (sel.Kind == SelectionKind.Spawn && Spawn(sel.Id) is { } s)
-        {
-            pos = new Vector3(s.X, _controller.Field.SampleHeight(s.X, s.Z), s.Z);
-            return true;
-        }
-        return false;
-    }
-
     float GizmoScaleFor(Vector3 pos) => MathF.Max(0.25f, Vector3.Distance(_camera.Position, pos) * 0.12f);
 
     float KindHeight(string kind) =>
         _viewport is not null && _viewport.KindHeights.TryGetValue(kind, out float h) ? h : FallbackKindHeight;
 
-    string StatusLine()
+    /// <summary>Composes the status-strip text. The active mode name and its <see cref="EditorToolController.ModeHint"/>
+    /// lead the line (the operator's most useful cue), followed by the undo/redo labels, the exit chord, and any
+    /// transient message (save result, discard warning). Internal so a headless test can assert the ordering.</summary>
+    internal string StatusLine()
     {
         string dirty = _document.IsDirty ? "*" : "";
+        string hint = _controller.ModeHint;
         string undo = _document.History.UndoLabel ?? "-";
         string redo = _document.History.RedoLabel ?? "-";
         string tail = string.IsNullOrEmpty(_statusText) ? "" : "  |  " + _statusText;
-        return $"{dirty}{_controller.Mode}   undo: {undo}   redo: {redo}   Shift+Esc: exit{tail}";
+        return $"{dirty}{_controller.Mode}   {hint}   undo: {undo}   redo: {redo}   " +
+            $"R: snap to ground   Ctrl+Up/Down: reorder feature   Shift+Esc: exit{tail}";
     }
 
     void Fill(SpriteBatch batch, Rect r, Color color) =>
         batch.Draw(_white, new Vector4(r.X, r.Y, r.Width, r.Height), color);
 
+    /// <summary>The status-strip rectangle the chrome lays out for a window of <paramref name="w"/> x
+    /// <paramref name="h"/> points, honouring <see cref="MapEditorOptions.StatusBottomOffset"/>. Exposed so a
+    /// headless test can assert the strip shifts up to clear a host-reserved bottom band.</summary>
+    internal Rect StatusRect(float w, float h) => ComputeLayout(w, h).Status;
+
+    /// <summary>The bottom-left panel rectangle for a window of <paramref name="w"/> x <paramref name="h"/>
+    /// points (zero-height when neither Place tool is active). Exposed so a headless test can assert the palette
+    /// region exists only in the Place modes.</summary>
+    internal Rect PaletteRect(float w, float h) => ComputeLayout(w, h).Palette;
+
+    /// <summary>The outline rectangle for a window of <paramref name="w"/> x <paramref name="h"/> points.
+    /// Exposed so a headless test can assert the outline reflows over the freed palette space outside the
+    /// Place modes.</summary>
+    internal Rect OutlineRect(float w, float h) => ComputeLayout(w, h).Outline;
+
     ChromeLayout ComputeLayout(float w, float h)
     {
         var toolbar = new Rect(0f, 0f, w, ToolbarHeight);
         float bodyTop = ToolbarHeight;
-        float bodyBottom = MathF.Max(bodyTop, h - StatusHeight);
+        // Reserve StatusBottomOffset points at the bottom for a host overlay (the Showcase display readout), so
+        // the status strip and the body above it sit clear of it instead of stacking on the same pixels.
+        float bottomReserve = StatusHeight + MathF.Max(0f, _options.StatusBottomOffset);
+        float bodyBottom = MathF.Max(bodyTop, h - bottomReserve);
         float bodyH = bodyBottom - bodyTop;
-        float half = bodyH * 0.5f;
-        var outline = new Rect(0f, bodyTop, PanelWidth, half);
-        var palette = new Rect(0f, bodyTop + half, PanelWidth, bodyH - half);
+        // The bottom-left panel (kit palette / spawn picker) exists only in the two Place tools; otherwise the
+        // outline takes the whole left column and the panel rect collapses to zero height at its bottom edge.
+        float outlineH = BottomPanelVisible ? bodyH * 0.5f : bodyH;
+        var outline = new Rect(0f, bodyTop, PanelWidth, outlineH);
+        var palette = new Rect(0f, bodyTop + outlineH, PanelWidth, bodyH - outlineH);
         var inspector = new Rect(w - PanelWidth, bodyTop, PanelWidth, bodyH);
         var status = new Rect(0f, bodyBottom, w, StatusHeight);
         var viewport = new Rect(PanelWidth, bodyTop, MathF.Max(0f, w - 2f * PanelWidth), bodyH);
@@ -823,6 +1496,15 @@ public class MapEditorScene : GameScene, IGameScene3D
 
     // Identity payload on an outline row: which document element the row selects.
     readonly record struct OutlineRef(SelectionKind Kind, string Id);
+
+    // A palette category label plus its ordinal-sorted kit ids. The source list is itself category-sorted, so this
+    // pair is all a tree build needs to emit a category root and its leaves.
+    readonly record struct PaletteCategory(string Label, IReadOnlyList<string> Kinds);
+
+    // Identity payload on a palette / spawn-list leaf: the kit id (PlaceKind) or archetype id (SpawnArchetype) the
+    // leaf selects. A category node's Tag is its label string instead, so a body-tap on a category is ignored while
+    // a leaf tap sets the placed kind.
+    readonly record struct PaletteLeaf(string Kind);
 
     // The chrome rectangles for one frame, computed in point space.
     readonly struct ChromeLayout
@@ -833,5 +1515,70 @@ public class MapEditorScene : GameScene, IGameScene3D
             Toolbar = toolbar; Outline = outline; Inspector = inspector;
             Palette = palette; Status = status; Viewport = viewport;
         }
+    }
+}
+
+/// <summary>Which document collection a viewport <see cref="OverlayDraw"/> came from. Drives its base fill color
+/// (exclusions red-ish, regions blue-ish, features amber).</summary>
+internal enum OverlayCategory
+{
+    /// <summary>A scatter exclusion shape.</summary>
+    Exclusion,
+    /// <summary>A named, game-interpreted region shape.</summary>
+    Region,
+    /// <summary>A terrain feature's center marker.</summary>
+    Feature,
+}
+
+/// <summary>Which <see cref="Scene3D"/> debug-fill primitive draws an <see cref="OverlayDraw"/>.</summary>
+internal enum OverlayShape
+{
+    /// <summary>A flat ground disc (<see cref="Scene3D.DebugFilledCircle"/>).</summary>
+    Disc,
+    /// <summary>A flat ground quad (<see cref="Scene3D.DebugFilledQuad(System.Numerics.Vector3, System.Numerics.Vector2, Color)"/>).</summary>
+    Rect,
+    /// <summary>A flat ground triangle fan (<see cref="Scene3D.DebugFilledFan"/>).</summary>
+    Polygon,
+}
+
+/// <summary>One computed viewport overlay fill that makes an exclusion, region, or terrain feature visible: a
+/// ground-plane translucent shape lifted a small epsilon above the terrain. A pure value produced by
+/// <see cref="MapEditorScene.ComputeOverlayDrawList"/> and submitted to <see cref="Scene3D"/> untested, so the
+/// doc-to-draw-list computation is fully headless-testable.</summary>
+internal readonly struct OverlayDraw
+{
+    /// <summary>Which document collection this overlay came from (drives the base color).</summary>
+    public readonly OverlayCategory Category;
+    /// <summary>Which debug-fill primitive draws it.</summary>
+    public readonly OverlayShape Shape;
+    /// <summary>The fill center in world space, already lifted the overlay epsilon above the sampled ground. For a
+    /// <see cref="OverlayShape.Polygon"/> this is the fan hub at the point centroid.</summary>
+    public readonly Vector3 Center;
+    /// <summary>The radius for a <see cref="OverlayShape.Disc"/> (the shape radius, or the fixed marker radius for a
+    /// feature); zero for the other shapes.</summary>
+    public readonly float Radius;
+    /// <summary>The half-extents (X along world X, Y along world Z) for a <see cref="OverlayShape.Rect"/>; zero for
+    /// the other shapes.</summary>
+    public readonly Vector2 HalfExtents;
+    /// <summary>The ground-height rim ring for a <see cref="OverlayShape.Polygon"/> (each vertex sampled at its own
+    /// terrain height); null for the other shapes.</summary>
+    public readonly IReadOnlyList<Vector3>? Rim;
+    /// <summary>The RGBA fill color, already brightened when <see cref="Selected"/>.</summary>
+    public readonly Color Color;
+    /// <summary>True when this overlay's element is the current selection, so it is drawn brighter.</summary>
+    public readonly bool Selected;
+
+    /// <summary>Creates an overlay-draw record from its already-computed fields.</summary>
+    public OverlayDraw(OverlayCategory category, OverlayShape shape, Vector3 center, float radius,
+        Vector2 halfExtents, IReadOnlyList<Vector3>? rim, Color color, bool selected)
+    {
+        Category = category;
+        Shape = shape;
+        Center = center;
+        Radius = radius;
+        HalfExtents = halfExtents;
+        Rim = rim;
+        Color = color;
+        Selected = selected;
     }
 }

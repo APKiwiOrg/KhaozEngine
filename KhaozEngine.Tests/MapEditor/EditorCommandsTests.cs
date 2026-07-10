@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapEditor;
@@ -92,12 +93,151 @@ namespace KhaozEngine.Tests.MapEditor
             AssertRoundTrip(Sample(), new RenameRegionCommand("town", "village"));
 
         [Fact]
+        public void RenameRegionCommand_GuardsDuplicates()
+        {
+            var doc = Sample();
+            doc.Regions.Add(new MapRegion { Name = "village", Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 3f } });   // a second region, so a duplicate target name exists
+
+            // Guards duplicates: renaming onto a name already in the document throws (the GuardNoRegion throw-pattern)
+            // and leaves the history untouched, because History.Execute applies BEFORE it pushes, so a throwing
+            // Apply never lands an undo step or mutates the source name.
+            var ed = new EditorDocument(doc);
+            Assert.Throws<InvalidOperationException>(() => ed.Execute(new RenameRegionCommand("town", "village")));
+            Assert.False(ed.History.CanUndo);
+            Assert.Contains(doc.Regions, r => r.Name == "town");     // source name intact
+            Assert.Single(doc.Regions, r => r.Name == "village");    // target still unique: no clone
+        }
+
+        [Fact]
+        public void RenamePlacementCommand_AppliesRevertsAndGuardsDuplicates()
+        {
+            var doc = Sample();
+            doc.Placements.Add(P("shed"));   // a second placement, so a duplicate target id exists
+
+            // Applies and reverts: "inn" -> "tavern" round-trips deep-equal (id-keyed selection would follow).
+            AssertRoundTrip(doc, new RenamePlacementCommand("inn", "tavern"));
+
+            // Guards duplicates: renaming onto an id already in the document throws (the FindPlacement throw-pattern)
+            // and leaves the history untouched, because History.Execute applies BEFORE it pushes, so a throwing
+            // Apply never lands an undo step or mutates the source id.
+            var ed = new EditorDocument(doc);
+            Assert.Throws<InvalidOperationException>(() => ed.Execute(new RenamePlacementCommand("inn", "shed")));
+            Assert.False(ed.History.CanUndo);
+            Assert.Contains(doc.Placements, p => p.Id == "inn");    // source id intact
+            Assert.Single(doc.Placements, p => p.Id == "shed");     // target still unique: no clone
+        }
+
+        [Fact]
+        public void RenameSpawnCommand_AppliesRevertsAndGuardsDuplicates()
+        {
+            var doc = Sample();
+            doc.Spawns.Add(new MapSpawn { Id = "bear-1", ArchetypeId = "bear", X = 4f, Z = 9f });
+
+            AssertRoundTrip(doc, new RenameSpawnCommand("wolf-1", "wolf-2"));
+
+            var ed = new EditorDocument(doc);
+            Assert.Throws<InvalidOperationException>(() => ed.Execute(new RenameSpawnCommand("wolf-1", "bear-1")));
+            Assert.False(ed.History.CanUndo);
+            Assert.Contains(doc.Spawns, s => s.Id == "wolf-1");
+            Assert.Single(doc.Spawns, s => s.Id == "bear-1");
+        }
+
+        [Fact]
         public void EditFeature_RoundTrips()
         {
             var doc = Sample();
             MapFeature old = doc.Terrain.Features[0];
             var updated = new LakeFeatureDoc { CenterX = 1f, CenterZ = 2f, Radius = 9f, Depth = 4f };
             AssertRoundTrip(doc, new EditFeatureCommand(0, updated, old));
+        }
+
+        [Fact]
+        public void AddFeature_RoundTrips() =>
+            AssertRoundTrip(Sample(), new AddFeatureCommand(new LakeFeatureDoc { CenterX = 4f, CenterZ = 5f, Radius = 10f, Depth = 3f }));
+
+        [Fact]
+        public void RemoveFeature_RoundTrips() =>
+            AssertRoundTrip(Sample(), new RemoveFeatureCommand(0));
+
+        [Fact]
+        public void AddFeature_RestoresOnUndo_AndAffectsWorld()
+        {
+            var ed = new EditorDocument(Sample());
+            int before = ed.Doc.Terrain.Features.Count;
+
+            ed.Execute(new AddFeatureCommand(new LakeFeatureDoc { CenterX = 1f, CenterZ = 1f, Radius = 5f, Depth = 1f }));
+            Assert.Equal(before + 1, ed.Doc.Terrain.Features.Count);
+            Assert.True(ed.WorldRebuildPending);   // features change terrain shape
+
+            ed.Undo();
+            Assert.Equal(before, ed.Doc.Terrain.Features.Count);
+        }
+
+        [Fact]
+        public void RemoveFeature_RestoresAtOriginalIndex()
+        {
+            var doc = Sample();
+            doc.Terrain.Features.Clear();
+            doc.Terrain.Features.Add(new LakeFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 1f, Depth = 1f });
+            var middle = new FlattenFeatureDoc { CenterX = 2f, CenterZ = 2f, Radius = 3f, TargetHeight = 1f };
+            doc.Terrain.Features.Add(middle);
+            doc.Terrain.Features.Add(new RidgeFeatureDoc { PointX = 5f, PointZ = 5f, Height = 2f, Width = 4f });
+
+            var ed = new EditorDocument(doc);
+            ed.Execute(new RemoveFeatureCommand(1));
+            Assert.Equal(2, doc.Terrain.Features.Count);
+            Assert.DoesNotContain(middle, doc.Terrain.Features);
+
+            ed.Undo();
+            Assert.Same(middle, doc.Terrain.Features[1]);   // back at the middle, not appended
+        }
+
+        [Fact]
+        public void ReorderFeatureCommand_MovesAndReverts()
+        {
+            var doc = Sample();
+            doc.Terrain.Features.Clear();
+            var a = new LakeFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 1f, Depth = 1f };
+            var b = new FlattenFeatureDoc { CenterX = 2f, CenterZ = 2f, Radius = 3f, TargetHeight = 1f };
+            var c = new RidgeFeatureDoc { PointX = 5f, PointZ = 5f, Height = 2f, Width = 4f };
+            doc.Terrain.Features.Add(a);
+            doc.Terrain.Features.Add(b);
+            doc.Terrain.Features.Add(c);
+
+            var ed = new EditorDocument(doc);
+            ed.Execute(new ReorderFeatureCommand(0, 2));   // move `a` to the end: it now folds last, so it wins overlaps
+            Assert.Same(b, doc.Terrain.Features[0]);
+            Assert.Same(c, doc.Terrain.Features[1]);
+            Assert.Same(a, doc.Terrain.Features[2]);
+            Assert.True(ed.WorldRebuildPending);           // reordering changes terrain shape
+
+            Assert.True(ed.Undo());
+            Assert.Same(a, doc.Terrain.Features[0]);        // revert restores the original fold order
+            Assert.Same(b, doc.Terrain.Features[1]);
+            Assert.Same(c, doc.Terrain.Features[2]);
+        }
+
+        [Fact]
+        public void ReorderChangesTerrainWinner()
+        {
+            // A lake and a flatten cover the same ground. Terrain features fold in list order, so whichever folds
+            // LAST dominates the overlap. Reordering the two flips who wins, sampled through the real terrain field
+            // (MapRuntime.BuildField -> SampleHeight): this pins the user-facing "last wins" semantics end to end.
+            var doc = Sample();
+            doc.Terrain.Features.Clear();
+            doc.Terrain.Features.Add(new LakeFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 20f, Depth = 8f });
+            doc.Terrain.Features.Add(new FlattenFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 20f, TargetHeight = 5f, Blend = 0.4f });
+
+            var registry = MapDocRegistry.CreateDefault();
+            float flattenWins = MapRuntime.BuildField(doc, registry).SampleHeight(0f, 0f);
+
+            var ed = new EditorDocument(doc, registry);
+            ed.Execute(new ReorderFeatureCommand(1, 0));   // flatten now folds first, lake folds last
+            float lakeWins = MapRuntime.BuildField(doc, registry).SampleHeight(0f, 0f);
+
+            // Flatten-last levels the centre to its target; lake-last carves the depth back out, so the overlap
+            // height changes by the lake depth. The exact winner flipped.
+            Assert.NotEqual(flattenWins, lakeWins);
         }
 
         // ---- removed placement restores at its original index ------------------------------------------
@@ -203,6 +343,29 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void EditTerrainCommand_AppliesRevertsAndMerges()
+        {
+            var doc = Sample();
+            float original = doc.Terrain.WaterLevel;   // SampleDoc's -0.5
+            var ed = new EditorDocument(doc);
+
+            // Apply sets the new water level and forces a wholesale world rebuild (scatter honours water).
+            ed.Execute(new EditTerrainCommand(newWaterLevel: -1.2f, oldWaterLevel: original));
+            Assert.Equal(-1.2f, doc.Terrain.WaterLevel);
+            Assert.True(ed.WorldRebuildPending);
+
+            // A second edit of the same gesture coalesces into the first (scrub coalescing), so the level moves
+            // but no new undo step is pushed.
+            ed.Execute(new EditTerrainCommand(newWaterLevel: -2.4f, oldWaterLevel: -1.2f));
+            Assert.Equal(-2.4f, doc.Terrain.WaterLevel);
+
+            // One undo reverts the whole scrub back to the pre-edit level, and nothing is left to undo.
+            Assert.True(ed.Undo());
+            Assert.Equal(original, doc.Terrain.WaterLevel);
+            Assert.False(ed.History.CanUndo);
+        }
+
+        [Fact]
         public void EditFeature_DifferentIndex_DoesNotMerge()
         {
             var doc = Sample();
@@ -219,6 +382,57 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Same(f1, doc.Terrain.Features[1]);
             Assert.Same(newF0, doc.Terrain.Features[0]);
             Assert.True(ed.History.CanUndo);
+        }
+
+        [Fact]
+        public void EditExclusionShapeCommand_AppliesRevertsMerges()
+        {
+            var doc = Sample();
+            var original = Assert.IsType<DiscShapeDoc>(doc.Exclusions[0].Shape);
+            var v1 = new DiscShapeDoc { CenterX = -32f, CenterZ = 22f, Radius = 40f };
+            var v2 = new RectShapeDoc { MinX = -72f, MinZ = -18f, MaxX = 8f, MaxZ = 62f };
+            string before = Save(doc);
+
+            // Apply replaces the shape instance and forces a world rebuild (scatter inputs changed).
+            var ed = new EditorDocument(doc);
+            ed.Execute(new EditExclusionShapeCommand(0, v1, original));
+            Assert.Same(v1, doc.Exclusions[0].Shape);
+            Assert.True(ed.WorldRebuildPending);
+
+            // A second edit of the same index coalesces (scrub coalescing): the shape moves on, no new undo step.
+            ed.Execute(new EditExclusionShapeCommand(0, v2, v1));
+            Assert.Same(v2, doc.Exclusions[0].Shape);
+
+            // One undo reverts the whole gesture to the original shape, deep-equal to the pre-edit document.
+            Assert.True(ed.Undo());
+            Assert.Same(original, doc.Exclusions[0].Shape);
+            Assert.False(ed.History.CanUndo);
+            Assert.Equal(before, Save(doc));
+        }
+
+        [Fact]
+        public void EditRegionShapeCommand_AppliesRevertsMerges_NoWorldRebuild()
+        {
+            var doc = Sample();
+            var original = Assert.IsType<DiscShapeDoc>(doc.Regions[0].Shape);   // SampleDoc's "town"
+            var v1 = new DiscShapeDoc { CenterX = -32f, CenterZ = 22f, Radius = 20f };
+            var v2 = new DiscShapeDoc { CenterX = -32f, CenterZ = 22f, Radius = 21f };
+            string before = Save(doc);
+
+            // Apply replaces the shape; regions are game-interpreted, so no world rebuild is forced.
+            var ed = new EditorDocument(doc);
+            ed.Execute(new EditRegionShapeCommand("town", v1, original));
+            Assert.Same(v1, doc.Regions[0].Shape);
+            Assert.False(ed.WorldRebuildPending);
+
+            // A second edit of the same region name coalesces into the first.
+            ed.Execute(new EditRegionShapeCommand("town", v2, v1));
+            Assert.Same(v2, doc.Regions[0].Shape);
+
+            Assert.True(ed.Undo());
+            Assert.Same(original, doc.Regions[0].Shape);
+            Assert.False(ed.History.CanUndo);
+            Assert.Equal(before, Save(doc));
         }
 
         // ---- world-rebuild classification --------------------------------------------------------------

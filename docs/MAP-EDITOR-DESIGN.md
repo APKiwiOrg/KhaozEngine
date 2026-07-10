@@ -214,6 +214,18 @@ editor-runtime cores. Never Fable-tier subagents.
     policy (`EditorToolController`), the turn-key `MapEditorScene`, and a
     `KhaozEngine.Showcase` demo room (`RoomMapEditor`) wiring it into a real game head as the
     manual verification handoff. Shipped in 10.50.0, see CHANGELOG.
+  - **B2.1 (polish)**: kit-palette categories with a collapsible filterable tree (manifest `category`
+    field, spawn-mode swap), one-shot draw and bake tools with an active-tool status hint, a visible
+    water surface with an editable water level, and inline placement/spawn rename. Shipped in 10.52.0,
+    with 10.53.0 second-playtest fixes (toolbar tracks one-shot tool returns, a host-reserved status
+    footer via `StatusBottomOffset`, the Showcase outline post effect defaults off, and translucent
+    exclusion/region/feature viewport overlays via `ShowOverlays`) following, 10.54.0 shape editing
+    (per-parameter inspector rows and a disc/rect shape-kind selector for regions and exclusions,
+    overlay picking that selects features from the viewport, translate and scale gizmos that move and
+    resize shapes and features, the EditFeature placement tool, and a `ChoiceRow` dropdown inspector row
+    with numpad typing) after, and 10.55.0 apply-order and visibility (feature apply-order controls that
+    reorder the fold order with Ctrl+Up/Down, R that snaps a placement to the ground undoably, and a
+    visibility system with a Layers panel and per-selectable Visible toggles) after that. See CHANGELOG.
 - **Phase C (parallel after A, independent of B)**: ke-mapedit MCP tool. One release.
 - **Phase D (game repo)**: Ruinborne export, both-heads loading, parity test (after A),
   editor head and doc rewrite (after B).
@@ -237,3 +249,76 @@ READMEs, USING-KHAOZENGINE, DEPENDENCY-SEAMS, CHANGELOG).
 - Whether `find_flat_area` ships in the first MCP release or follows.
 - PropertyGrid descriptor API shape (explicit descriptors confirmed, exact fluent surface
   to be designed in Phase B).
+
+## Deferred follow-ups
+
+Items surfaced by code review across the map-editor program's phases, kept here because
+the per-worktree SDD ledger gets deleted at merge. A few overlap the non-goals and open
+questions above, which predate implementation. This section is what later review
+dispatches keep appending to. Same convention as the rest of the roadmap: delete an item
+once it ships, the detail moves to `CHANGELOG.md`.
+
+- **Format and schema (MapDoc)**: schema `additionalProperties` tightening for the closed
+  structures (or serializer `UnmappedMemberHandling`), once tooling generates documents.
+  Timing lines up with Phase C. Polygon shape end-to-end save/load round-trip test.
+  `MapTerrain` duplicates `TerrainConfig` defaults, a drift risk that is only partially
+  parity-tested. The Showcase demo's schema copy can drift from the canonical embedded
+  schema. Copy it at build time, or drop the `$schema` ref.
+- **Ruinborne adoption**: document-to-SQL spawn seed automation. `PostDeploy.sql` still
+  hand-carries the wolf values, currently in agreement with the document. Retained
+  constants (lake, town, rim, play area) are still read directly by game code. Migrate
+  those consumers to document reads in the editor era. `LegacyWorldReference` and the
+  parity tests get deleted on the first intentional edit to `valley.map.json`.
+  Clearing-disc boundary semantics differ at exactly the radius, strict vs inclusive, a
+  measure-zero case. Phase D2: the `Ruinborne.Editor` head plus the doc rewrite (see
+  Phasing above).
+- **Gui widgets**:
+  - `NumberField`: the numeric filter is frame-granular, so a multi-key frame or a paste
+    can admit a second dot. Public `Value` bypasses the clamp, the same gap as `Slider`.
+    Disable-mid-edit is untested. A sub-3px scrub also opens typing.
+  - `TreeView`: the caret zone at depth above 0 is untested. `VisibleRows` returns the
+    shared rebuilt list rather than a copy. `RowBounds` is never directly asserted.
+  - `PropertyGrid`: a partial row's `BlockRegion` slivers past the clip. Out-of-range
+    external values display unclamped. Wheel feel diverges from the rest of the
+    `ScrollablePanel` family. Shift+Escape also cancels a focused field edit, a
+    focus-routing case worth revisiting. `FloatRow` needs a scrub-end gesture seal:
+    cross-parameter scrubs currently coalesce into one undo step. `ChoiceRow`'s open
+    option list now draws in the grid's late overlay pass (above the rows below the
+    selector, no longer overpainted), but still inside the grid's own scissor, so a long
+    list clips at the grid bounds. A host needing the list to spill past the grid has to
+    call `Dropdown.DrawOverlay` itself after the grid's `Draw`.
+  - `RenameRegionCommand` needs a `TryMerge`. Typed renames today land one undo step per
+    keystroke.
+- **Editor UX**: sibling-focus drop after a rename, defer the pending re-select while any
+  inspector row is focused. Stale exit-chord warning text lingers after disarm. Status-line
+  length can overflow the strip, no truncation yet. Default `PlaceKind` pre-arm changed to
+  sorted-first. Stale inactive filter focus survives across a mode swap. Whitespace-only
+  filter edits trigger a redundant rebuild. Concave polygon overlays self-overlap, the
+  centroid fan. The overlay draw list allocates per frame. Selected-overlay brighten clamps
+  channels, a slight hue shift. Feature-selection highlight and spawn-drag-vanish lack
+  direct unit tests. `RoomMapEditor` cannot restore the outline post default on exit
+  (documented, unobservable today). Custom `MapEditorScene` hosts must unsubscribe
+  `DocumentChanged` themselves (documented). `BakeRegion`'s two-arg overload has a doc
+  nicety around its shadowed-discriminator caveat. The shape/feature gizmo
+  (`GizmoAffordance.MoveScale`) draws the same translate-arrows mesh as a placement's full
+  transform, so it shows an inert +Y arrow even though only translate XZ and scale are
+  draggable for a feature or a disc/rect shape (`RestrictHandle` blocks a `TranslateY`
+  grab) - a cosmetic affordance mismatch, not a functional bug. Index-keyed hides (the
+  feature and exclusion `Visible` rows key on list index) do not remap on a Ctrl+Up/Ctrl+Down
+  reorder or a Delete, so the hidden flag can end up stuck on the wrong element once the list
+  shifts under it. Renaming a placement, spawn, or region orphans its hide entry instead of
+  following it: the `Visible` row polls the live post-rename key, so the renamed element shows
+  again by default while the old-key entry lingers unreachable in `EditorVisibility`, a
+  stale-key leak rather than a correctness bug.
+- **Engine misc**: `RayMath`'s zero-length-ray edge is untested, and a NaN direction acts
+  as an always-pass slab (garbage in, garbage out). `TerrainRaycast`'s NaN step is a silent
+  miss, and its stall guard jumps to the endpoint at absurd ranges. Gizmo overlay builders
+  compute normals the unlit pass never uses. `RemoveExclusionCommand`'s raw indexing throws
+  the wrong exception type for a bad index. No partial chunk invalidation, wholesale
+  viewport rebuild is the perf ceiling for large zones. Inspector-driven terrain edits lag
+  the streamed world by one frame.
+- **Program phases**: Phase C, the `ke-mapedit` MCP server (document CRUD, world-aware
+  queries, headless renders). Phase D2, see Ruinborne adoption above. Sculpting via the
+  reserved `terrainOverrides` delta layer. Live server editing and hot reload. Multi-user
+  editing. Polygon click-path authoring gesture for exclusions and regions. The
+  `find_flat_area` MCP verb: ship in the first MCP release, or follow.

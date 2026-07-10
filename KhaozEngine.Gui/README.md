@@ -52,7 +52,9 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     cursor strays off the widget) and pairs with `IsEditing`, so a host like `PropertyGrid`'s `FloatRow` can skip
     its external-value poll while either is true instead of stomping a live gesture. `CancelEdit()` exits typing
     mode without committing, leaving `Value` at its pre-edit value (the same path Escape takes, made directly
-    callable), the hook a host uses to close an in-progress edit it is tearing down.
+    callable), the hook a host uses to close an in-progress edit it is tearing down. Typing accepts numpad
+    (keypad) keys the same as the top-row keys - digits, dot, minus - and the FIRST keypad keystroke ends the
+    select-all seed exactly like a top-row one (replace the seeded value, not append to it).
   - `Dropdown` - trigger + option list (opens below); two-phase draw (`Draw` trigger / `DrawOverlay` list last).
     Opt-in (default off): `ShowChevron` draws an up/down caret reflecting the open state; `Opacity` fades the whole
     dropdown for a host transition.
@@ -106,15 +108,25 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     `WheelRowsPerNotch` rows per notch (default 3), and rows are scissor-clipped to `Bounds`.
   - `PropertyGrid` - a vertical stack of `PropertyRow`s split label/editor at `LabelFraction`, scrolling like
     `ScrollablePanel` (wheel + scissor clip). Built-in rows: `FloatRow` (a `NumberField`), `BoolRow` (a
-    `Toggle`), `TextRow` (a `TextInput`), `ReadOnlyRow` (a polled display string, no input). Each row polls its
-    getter every `Update` unless the user is mid-edit/scrub/focus on that row's child widget, so external
-    changes (undo, another editor) stay in sync without a change-event bus. A row fully scrolled out of view is
-    skipped entirely, so it neither hit-tests nor reserves off-view input. Wheel scrolling moves
-    `WheelRowsPerNotch` rows per notch (default 3, matching `TreeView`'s knob for the same side-by-side feel). A
-    row that ran last frame but is culled this frame (scrolled out of view) is `Deactivate()`d exactly once as
-    it leaves: the base `PropertyRow.Deactivate()` is a no-op, but `FloatRow` cancels its `NumberField` edit and
-    `TextRow` unfocuses its `TextInput`, so a focused or mid-edit row cannot keep consuming input the grid no
-    longer routes to it.
+    `Toggle`), `TextRow` (a `TextInput`), `ChoiceRow` (a `Dropdown` over a fixed set of option strings, get/set
+    delegates over the selected option like `TextRow`), `ReadOnlyRow` (a polled display string, no input).
+    Each row polls its getter every `Update` unless the user is mid-edit/scrub/focus on that row's child widget
+    (a `ChoiceRow` polls only while its list is closed, so an in-progress pick is never stomped), so external
+    changes (undo, another editor) stay in sync without a change-event bus. A `ChoiceRow`'s setter fires only on
+    a real change, so re-picking the already-selected option closes the list without writing. The grid draws in
+    two passes (every row's label+editor, then a late overlay pass), so a `ChoiceRow`'s open option list draws
+    ABOVE the rows below the selector rather than being overpainted by them; the list still draws inside the
+    grid's own scissor, so it clips at the grid bounds. A host that needs the list to spill past the grid calls
+    `Dropdown.DrawOverlay` itself after the grid's `Draw`. Row labels and a
+    `ReadOnlyRow`'s display string truncate to their column via `GuiDraw.TruncateWithEllipsis` (the longest
+    prefix that fits plus three ASCII dots, never the single-glyph ellipsis, which may not be baked into a font
+    atlas) instead of running under the neighbouring cell or getting hard-cut by the scissor mid-glyph. A row
+    fully scrolled out of view is skipped entirely, so it neither hit-tests nor reserves off-view input. Wheel
+    scrolling moves `WheelRowsPerNotch` rows per notch (default 3, matching `TreeView`'s knob for the same
+    side-by-side feel). A row that ran last frame but is culled this frame (scrolled out of view) is
+    `Deactivate()`d exactly once as it leaves: the base `PropertyRow.Deactivate()` is a no-op, but `FloatRow`
+    cancels its `NumberField` edit, `TextRow` unfocuses its `TextInput`, and `ChoiceRow` closes its `Dropdown`,
+    so a focused, mid-edit, or open-list row cannot keep consuming input the grid no longer routes to it.
 - `UpdateOverlayView` / `UpdateOverlayScreen` (+ `UpdateOverlayTheme`) - the in-game auto-updater popup, a pure
   presenter over `KhaozEngine.Updates`' `IUpdateStatus`: it announces an available update, shows download
   progress, and prompts the restart-and-apply, driven by the theme's trigger key/button (default U / gamepad Y).
@@ -171,7 +183,11 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
 - `TextEntry` - headless key→char text-entry helper (US layout + shift), used by `TextInput`. No SDL plumbing.
   Ctrl/Super (Cmd) held suppresses character entry so shortcut chords like Ctrl+V / Cmd+V paste instead of typing.
   Acts on `InputState.WasTyped` (press edge OR OS auto-repeat tick), so a held Backspace or character key repeats at
-  the OS rate; the chord suppression still blocks repeated character entry while Ctrl/Cmd is held.
+  the OS rate; the chord suppression still blocks repeated character entry while Ctrl/Cmd is held. Keypad (numpad)
+  keys type their digit/dot/operator characters shift-independently (a keypad has no symbol row) via the
+  `Keypad0`..`Keypad9`/`KeypadDecimal`/`KeypadAdd`/`KeypadSubtract`/`KeypadMultiply`/`KeypadDivide`/`KeypadEqual`
+  members on `KhaozEngine.Windowing.Key`. A physical keypad Enter is folded into the regular `Enter` by
+  `AppWindow`, so it commits/confirms identically everywhere, with no separate `KeypadEnter` member.
 - `OverlayLegend` (+ `LegendEntry`, `OverlayLegendTheme`) - a domain-agnostic color-swatch + label panel for
   debug overlays: `SetEntries(IReadOnlyList<LegendEntry>)`, `EntryCount`, `Measure(SpriteFont)` -> `Rect` (empty
   when no entries), and two `Draw` overloads - `Draw(SpriteBatch, SpriteFont, Texture2D, Rect viewport)`

@@ -3,7 +3,8 @@ using System;
 namespace KhaozEngine.MapEditor;
 
 /// <summary>What kind of document element a <see cref="EditorSelection"/> refers to. The id string is
-/// interpreted per kind: a placement or spawn id, or a feature/exclusion list index rendered as a string.</summary>
+/// interpreted per kind: a placement or spawn id, a feature/exclusion list index rendered as a string, or the
+/// empty string for the singleton <see cref="Terrain"/> root.</summary>
 public enum SelectionKind
 {
     /// <summary>Nothing selected.</summary>
@@ -12,6 +13,11 @@ public enum SelectionKind
     Placement,
     /// <summary>An NPC spawn marker, keyed by its stable id.</summary>
     Spawn,
+    /// <summary>The terrain root: the document's single terrain block (water level, seed, biomes). A singleton,
+    /// so the id is unused (the empty string). A dedicated kind, rather than a sentinel <see cref="Feature"/>
+    /// index, keeps the index-parsing feature inspector and the placement/spawn gizmo checks free of a special
+    /// case.</summary>
+    Terrain,
     /// <summary>A terrain feature, keyed by its list index as a string.</summary>
     Feature,
     /// <summary>A scatter exclusion shape, keyed by its list index as a string.</summary>

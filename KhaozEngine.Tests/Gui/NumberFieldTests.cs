@@ -115,6 +115,22 @@ namespace KhaozEngine.Tests.Gui
             Assert.True(f.WasChanged);
         }
 
+        // Numpad entry drives the same edit path as the top-row keys: the FIRST keypad keystroke must also end the
+        // select-all seed (replace, not append), and keypad dot/digits type through the numeric filter.
+        [Fact]
+        public void NumpadDigits_ReplaceSeededValueAndCommit()
+        {
+            var f = new NumberField(Field, 5f) { Decimals = 1 };
+            var input = new InputManager();
+            TapToEdit(input, f, Inside);                              // buffer seeded "5.0", select-all armed
+            Step(input, f, Inside, false, new[] { Key.Keypad9 });     // replaces the seed, buffer "9"
+            Step(input, f, Inside, false, new[] { Key.KeypadDecimal });
+            Step(input, f, Inside, false, new[] { Key.Keypad5 });     // buffer "9.5"
+            Step(input, f, Inside, false, new[] { Key.Enter });
+            Assert.False(f.IsEditing);
+            Assert.Equal(9.5f, f.Value, 3);                           // NOT 5.095 rounded (append would give that)
+        }
+
         [Fact]
         public void Escape_CancelsEdit()
         {

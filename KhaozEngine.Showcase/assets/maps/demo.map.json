@@ -11,7 +11,7 @@
   },
   "terrain": {
     "seed": 4242,
-    "waterLevel": -1,
+    "waterLevel": -1.2,
     "biomeBlend": 24,
     "gentleFrequency": 0.02,
     "gentleAmplitude": 1.5,

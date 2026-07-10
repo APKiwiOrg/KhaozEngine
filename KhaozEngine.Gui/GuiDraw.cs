@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using KhaozEngine.App;
 using KhaozEngine.Primitives;
@@ -283,6 +284,30 @@ namespace KhaozEngine.Gui
             };
             float y = rect.Y + (rect.Height - lineHeight * scale) * 0.5f;
             return new Vector2(x, y);
+        }
+
+        /// <summary>
+        /// Fit a single line of text into <paramref name="maxWidth"/>: returns <paramref name="text"/> unchanged
+        /// when it already fits, otherwise the longest prefix that fits with a trailing "..." appended (three
+        /// ASCII dots, never the single-glyph ellipsis, which may not be baked into a font atlas).
+        /// <paramref name="measureWidth"/> is the caller's width function (e.g. <c>s =&gt; font.Measure(s).X</c>),
+        /// so the helper is pure and headless-testable. When not even the dots fit, "..." is still returned (the
+        /// caller's scissor clips the residue - dots beat drawing nothing). Width is assumed monotonic in prefix
+        /// length, so the fitting prefix is found by binary search.
+        /// </summary>
+        public static string TruncateWithEllipsis(string text, float maxWidth, Func<string, float> measureWidth)
+        {
+            if (string.IsNullOrEmpty(text) || measureWidth(text) <= maxWidth) return text;
+
+            const string Ellipsis = "...";
+            int lo = 0, hi = text.Length - 1;   // hi < Length: the full text already failed the fit test
+            while (lo < hi)
+            {
+                int mid = (lo + hi + 1) / 2;
+                if (measureWidth(text[..mid] + Ellipsis) <= maxWidth) lo = mid;
+                else hi = mid - 1;
+            }
+            return text[..lo] + Ellipsis;
         }
     }
 }

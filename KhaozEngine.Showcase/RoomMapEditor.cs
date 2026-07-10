@@ -30,6 +30,19 @@ namespace KhaozEngine.Showcase
         /// actually renders.</summary>
         public static MapEditorScene Create(Scene3D scene, Texture2D white, DpiFont font)
         {
+            // Outline post-process starts OFF in this room too, matching Room3D/RoomNet: MapEditorScene itself never
+            // touches Post (it has no cel/outline key bindings of its own), so without this the shared
+            // PixelPostProcessSettings default (on) would bleed through untouched whenever the map editor is entered
+            // without having visited Room3D/RoomNet first. Create() is called synchronously right before Push
+            // (see MenuScene), i.e. at the same moment the other rooms' OnEnter runs, so setting it here is
+            // equivalent to an OnEnter override. There is no matching OnExit reset here: unlike Room3D/RoomNet,
+            // this room is the scene itself (not a wrapper GameScene, see the class doc above), so there is no
+            // Showcase-owned exit hook to restore the shared default from. This leaves Post.Outline off rather than
+            // reverting to the engine's on-by-default value on the way back to the menu. The menu is a 2D-only room
+            // (ShowcaseApp.OnDraw2D never renders the 3D scene behind it) and every 3D room forces its own explicit
+            // value on entry, so nothing observes the difference.
+            scene.Post.Outline = false;
+
             string assets = Path.Combine(AppContext.BaseDirectory, "assets");
             var options = new MapEditorOptions
             {
@@ -40,6 +53,9 @@ namespace KhaozEngine.Showcase
                     Path.Combine(assets, "buildings", "buildings.manifest.json"),
                 },
                 SpawnArchetypes = new List<string>(SpawnArchetypes),
+                // Reserve the bottom band the app's F7-F10 display readout draws in, so the editor's own status
+                // strip sits directly above it instead of stacking on the same pixels.
+                StatusBottomOffset = ShowcaseApp.DisplayReadoutHeight,
             };
             return new MapEditorScene().Init(scene, white, font, options);
         }

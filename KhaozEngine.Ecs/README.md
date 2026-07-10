@@ -23,4 +23,4 @@ world.ForEach((Entity id, ref Position p) => { if (p.X > 100) world.Commands.Des
 world.Commands.Playback(world);   // (World.Update flushes Commands after each system automatically)
 ```
 
-Full docs: [KhaozEngine README](https://github.com/APKiwi/KhaozEngine).
+Full docs: [KhaozEngine README](https://github.com/APKiwiOrg/KhaozEngine).

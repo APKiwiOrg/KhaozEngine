@@ -60,6 +60,10 @@ version/release work.
 
 ## Build / test / release
 - `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj` - every new behaviour ships with a headless test.
+- **Public repo, free CI.** `KhaozEngine` is public under the `APKiwiOrg` org, so its CI (including the
+  cross-platform GPU goldens on macOS/Windows/Linux) runs free on GitHub-hosted runners. The private
+  games instead run CI on self-hosted runners on the dev Mac; the fleet-wide CI model (org, both
+  runners, secretless OIDC, macOS arm64-only) is in `game-template/docs/CI-AND-RUNNERS.md`.
 - **Warnings are errors.** `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>` in `Directory.Build.props`
   (every config), so any compiler/analyzer warning fails the build, the tests, and CI. Keep the engine at zero
   warnings and fix them at the source, not with `<NoWarn>` / `#pragma warning disable` / `TreatWarningsAsErrors=false`
@@ -139,10 +143,15 @@ version/release work.
 - **Commit subjects:** conventional-commit style `area(scope): summary`, e.g.
   `audio(4.3.1): MacOsMusicBackend loads built .ogg` or `docs(readme): ...`.
   On a release/version-bump commit, use the new version as the scope (`audio(4.3.1):`).
-- **One version bump per batch, not per item.** When a worktree promotes several
+- **One version bump per batch, not per item (avoid version-number churn).** When a worktree promotes several
   related items, commit each item individually but do the single `Directory.Build.props`
   bump + `CHANGELOG.md` entry + `dotnet pack` ONCE at the end of the batch, then do
-  per-consumer adopt PRs. Never bump the version per-item within a batch.
+  per-consumer adopt PRs. Never bump the version per-item within a batch. Same spirit for a small
+  standalone fix landing alongside other small work: fold it into that shared bump rather than cutting
+  its own `vX.Y.Z`, and lean on the trivial-change exception (no bump at all) for anything that ships no
+  package, so the engine version does not creep through a run of one-line releases. A FINISHED feature
+  still auto-publishes right away (merge + tag + push, don't hold) - batching is about not fragmenting one
+  unit of work across several tiny releases, never about holding a finished feature.
 - `local-feed/` is gitignored but MUST exist before `dotnet restore` (`mkdir -p local-feed`).
 - net10.0, MonoGame-free: Silk.NET (windowing + input, GLFW natives bundled per-RID), Veldrid behind
   `KhaozEngine.Gpu` (GPU), Silk.NET.OpenAL (audio), xUnit (tests).

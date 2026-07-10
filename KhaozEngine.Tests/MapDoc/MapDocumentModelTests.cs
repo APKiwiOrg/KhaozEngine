@@ -112,6 +112,16 @@ namespace KhaozEngine.Tests.MapDoc
         }
 
         [Fact]
+        public void FeatureTypes_ListsBuiltInsInRegistrationOrder_AndAppendsCustom()
+        {
+            var registry = MapDocRegistry.CreateDefault();
+            Assert.Equal(new[] { "lake", "flatten", "ridge", "rim" }, registry.FeatureTypes);
+
+            registry.RegisterFeature("step", typeof(StepFeatureDoc), f => new StepFeature(((StepFeatureDoc)f).Amount));
+            Assert.Equal(new[] { "lake", "flatten", "ridge", "rim", "step" }, registry.FeatureTypes);
+        }
+
+        [Fact]
         public void RimFeatureDoc_BuildsWithPasses()
         {
             var registry = MapDocRegistry.CreateDefault();

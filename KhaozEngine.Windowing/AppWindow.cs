@@ -798,6 +798,14 @@ namespace KhaozEngine.Windowing
                 SilkKey.Period => Key.Period,
                 SilkKey.Slash => Key.Slash,
                 SilkKey.GraveAccent => Key.Grave,
+                // Keypad block (GLFW KP_0..KP_9 are contiguous). KeypadEnter stays folded into Key.Enter above.
+                >= SilkKey.Keypad0 and <= SilkKey.Keypad9 => Key.Keypad0 + (k - SilkKey.Keypad0),
+                SilkKey.KeypadDecimal => Key.KeypadDecimal,
+                SilkKey.KeypadAdd => Key.KeypadAdd,
+                SilkKey.KeypadSubtract => Key.KeypadSubtract,
+                SilkKey.KeypadMultiply => Key.KeypadMultiply,
+                SilkKey.KeypadDivide => Key.KeypadDivide,
+                SilkKey.KeypadEqual => Key.KeypadEqual,
                 _ => Key.None,
             };
             return r != Key.None;

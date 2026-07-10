@@ -301,7 +301,13 @@ once it ships, the detail moves to `CHANGELOG.md`.
   (`GizmoAffordance.MoveScale`) draws the same translate-arrows mesh as a placement's full
   transform, so it shows an inert +Y arrow even though only translate XZ and scale are
   draggable for a feature or a disc/rect shape (`RestrictHandle` blocks a `TranslateY`
-  grab) - a cosmetic affordance mismatch, not a functional bug.
+  grab) - a cosmetic affordance mismatch, not a functional bug. Index-keyed hides (the
+  feature and exclusion `Visible` rows key on list index) do not remap on a Ctrl+Up/Ctrl+Down
+  reorder or a Delete, so the hidden flag can end up stuck on the wrong element once the list
+  shifts under it. Renaming a placement, spawn, or region orphans its hide entry instead of
+  following it: the `Visible` row polls the live post-rename key, so the renamed element shows
+  again by default while the old-key entry lingers unreachable in `EditorVisibility`, a
+  stale-key leak rather than a correctness bug.
 - **Engine misc**: `RayMath`'s zero-length-ray edge is untested, and a NaN direction acts
   as an always-pass slab (garbage in, garbage out). `TerrainRaycast`'s NaN step is a silent
   miss, and its stall guard jumps to the endpoint at absurd ranges. Gizmo overlay builders

@@ -53,16 +53,20 @@ See `KhaozEngine.Showcase/RoomMapEditor.cs` for a worked example (`RoomMapEditor
 
 ## Keys
 
-Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, Delete removes the current selection. Escape
-cancels an in-flight gizmo/draw gesture and returns to Select. Shift+Escape exits the editor by popping
-the scene off the `SceneManager`: with no unsaved changes it pops immediately, and with unsaved changes
-the first press arms a status-strip warning ("Shift+Escape again to discard and exit") and a second
-Shift+Escape discards and exits. Any Ctrl+S or any document mutation (an edit, an undo, a redo) disarms
-the warning, so a stale discard confirmation can never fire after the user resumed working. The status
-strip leads with the active tool name and its `ModeHint` one-liner, then the undo/redo labels and the
-exit chord as a standing hint. The toolbar tab bar is mirrored back onto the live controller mode every
-frame, so a one-shot draw / bake tool returning to Select on completion (or an Escape cancel) re-highlights
-the Select tab on its own, without a tap.
+Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, Delete removes the current selection. R snaps the
+selected placement to the ground (an undoable re-move with a null Y, a no-op when nothing placement-shaped
+is selected or the placement is already grounded), suppressed while the rename field has focus so typing
+an "R" into a name does not fire it. Ctrl+Up and Ctrl+Down reorder the selected terrain feature one step
+earlier or later in the fold order (see Feature apply order below), clamped at the list ends so a boundary
+press lands no command. Escape cancels an in-flight gizmo/draw gesture and returns to Select. Shift+Escape
+exits the editor by popping the scene off the `SceneManager`: with no unsaved changes it pops immediately,
+and with unsaved changes the first press arms a status-strip warning ("Shift+Escape again to discard and
+exit") and a second Shift+Escape discards and exits. Any Ctrl+S or any document mutation (an edit, an undo,
+a redo) disarms the warning, so a stale discard confirmation can never fire after the user resumed working.
+The status strip leads with the active tool name and its `ModeHint` one-liner, then the undo/redo labels
+and the exit chord as a standing hint. The toolbar tab bar is mirrored back onto the live controller mode
+every frame, so a one-shot draw / bake tool returning to Select on completion (or an Escape cancel)
+re-highlights the Select tab on its own, without a tap.
 
 ## Kit palette
 
@@ -132,6 +136,54 @@ one-shots back to `Select` so the next click picks it rather than placing anothe
 outside the registry's four built-ins has no editor default, so a click with such a type selected consumes
 the click but places nothing. `Delete` on a selected feature routes through `RemoveFeatureCommand`.
 
+## Feature apply order
+
+Terrain features fold in list order: `MapRuntime.BuildField` runs each feature's height modifier on the
+height the prior feature produced, so where two features cover the same ground the LAST one in the list
+wins the overlap (a lake and a flatten over the same clearing, say). Reordering is how the author picks the
+winner between overlapping features. Ctrl+Up and Ctrl+Down (`MapEditorScene.ReorderSelectedFeature`) move
+the selected feature one step earlier or later through `ReorderFeatureCommand`, clamped at the list ends (a
+press at a boundary lands no command). The move is its own inverse (`Revert` is `Apply` with the endpoints
+swapped) and it never coalesces, so each reorder is its own undo step. The feature inspector's read-only
+"Apply order N of M (last wins overlap)" row (`MapEditorScene.FeatureOrderText`) polls the feature's live
+1-based fold position and the total count, so it tracks reorders and undo/redo live. Reordering is
+`AffectsWorld` (it changes the folded terrain shape), triggering the same streamed-world rebuild as any
+other terrain-feature edit (see Rebuild semantics below).
+
+Undo/redo of a reorder does not re-follow the feature (v1): the selection is a bare index string, so an
+undo leaves the selection on the same index, which may then address a different feature. Ctrl+Up/Ctrl+Down
+itself re-selects the moved feature's new index, which is what keeps the selection glued to it during
+ordinary use.
+
+## Visibility
+
+`EditorVisibility` is editor-session view state, not part of the document: it gates whole
+`VisibilityGroup`s (`Placements`, `Spawns`, `Water`, `Exclusions`, `Regions`, `FeatureMarkers`), named
+scatter layers, and individual elements, and none of it is saved or undoable. A group or element toggle
+writes straight to `EditorVisibility`, never through `EditorDocument.Execute`, so hiding something never
+dirties the document (no leading `*` in the status strip) and never lands an undo step.
+
+**Layers panel.** The empty-selection inspector (`MapEditorScene.BuildLayersInspector`) is the Layers
+panel: one `BoolRow` per `VisibilityGroup` (raw dev-tool labels, `FeatureMarkers` reads "Feature markers"),
+then one `BoolRow` per named scatter layer in the open document. A group toggle only gates draws and picks,
+no rebuild. A scatter-layer toggle also calls `ViewportWorld.Rebuild` (`RebuildWorldForVisibility`), so a
+hidden layer's props actually drop out of the streamed world, taking its companion layers with it (their
+host is gone). The panel rebuilds on every selection change, so it always tracks the document's live
+scatter-layer set. `Water` has no matching selection kind or per-element hide: its toggle turns the single
+water-plane draw on or off outright.
+
+**Per-element hide.** Every placement, spawn, feature, exclusion, and region inspector ends with a
+"Visible" `BoolRow` (`MapEditorScene.AddVisibleRow`) bound to that one element's hidden flag, independent
+of its group. A renamable element's row is polled through the same live-key closure the Name row uses
+(`AddNameRow`'s returned getter), so it keeps toggling the right key across a rename.
+
+**Hidden but still selectable in the outline.** A hidden element is neither drawn nor pickable from the
+viewport: `EditorPicking.Pick` and `OverlayPicking.Pick` both take an optional visibility filter, wired to
+`EditorToolController.IsVisible` (which the scene points at `EditorVisibility.IsElementVisible`), that skips
+it. But it stays exactly where it was in the outline tree, since the outline is rebuilt straight from the
+document and visibility never touches the document. Selecting it from the outline still opens its
+inspector, Visible row included, so hiding something never blocks un-hiding it.
+
 ## The headless core
 
 GPU-free and fully unit-tested:
@@ -143,6 +195,11 @@ GPU-free and fully unit-tested:
 - `EditorCommands` are the reversible edits over the document model (placements, spawns, exclusions,
   regions, terrain features, terrain globals). Commands are the only mutation path, so undo is total by
   construction. `EditTerrainCommand` carries the terrain-wide globals (v1: the water level, scrub-coalesced).
+  `ReorderFeatureCommand` moves a terrain feature within the list (see Feature apply order above). It never
+  coalesces, so each reorder is its own undo step.
+- `EditorVisibility` is the GPU-free, headless-tested editor-session view state described in Visibility
+  above: visibility groups, scatter-layer toggles, and per-element hides. It never touches the document, so
+  visibility carries no dirty flag and no undo/redo of its own.
 - `BakeRegionCommand` freezes a scatter layer's procedural output over a rect region into authored
   placements (tagged `baked`, explicit Y) plus a covering exclusion, so a designer can hand-edit props that
   were procedural. It captures the generated placements on first apply and reuses them on redo, so an
@@ -185,11 +242,17 @@ keep coalescing into later, unrelated edits of the same object.
 
 ## Rebuild semantics
 
-`EditorCommand.AffectsWorld` (internal) classifies each command: terrain features, terrain globals (the
-water level, `EditTerrainCommand`), scatter exclusions, and bake-region are `true` (they change terrain shape
-or scatter inputs). Placement/spawn/region edits are `false` (they draw outside the streamed sink, so a drag
-never triggers a chunk rebuild). `EditorDocument` sets `WorldRebuildPending` whenever an executed, undone, or
-redone command's `AffectsWorld` is true.
+`EditorCommand.AffectsWorld` (internal) classifies each command: terrain features (add, edit, remove, and
+reorder via `ReorderFeatureCommand`), terrain globals (the water level, `EditTerrainCommand`), scatter
+exclusions, and bake-region are `true` (they change terrain shape or scatter inputs). Placement/spawn/region
+edits are `false` (they draw outside the streamed sink, so a drag never triggers a chunk rebuild).
+`EditorDocument` sets `WorldRebuildPending` whenever an executed, undone, or redone command's `AffectsWorld`
+is true.
+
+A scatter-layer visibility toggle also rebuilds the streamed world, but through a separate path
+(`MapEditorScene.RebuildWorldForVisibility` calling `ViewportWorld.Rebuild` directly), never through
+`WorldRebuildPending`: visibility is view-only session state, not a document change, so it never touches the
+command/dirty machinery above. See Visibility above.
 
 The water level is `AffectsWorld` because scatter honours it (underwater candidates skip), so a change must
 rebuild the streamed world. The water SURFACE itself is separate: `ViewportWorld.Draw` submits one

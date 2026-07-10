@@ -2888,16 +2888,36 @@ XZ) and resizes its primary radius (scale: a lake or flatten's `Radius`, a rim's
 together, a ridge's `Width`) through the same commands, coalescing the same way. See the
 `KhaozEngine.MapEditor` README's "Shape and feature editing" section for the full mechanics.
 
+**Feature apply order.** Terrain features fold in list order (`MapRuntime.BuildField` runs each feature's
+height modifier on the height the prior feature produced), so where two features cover the same ground the
+LAST one in the list wins the overlap. Ctrl+Up / Ctrl+Down (`MapEditorScene.ReorderSelectedFeature`) move
+the selected feature through `ReorderFeatureCommand`, clamped at the list ends, and it triggers the same
+streamed-world rebuild as any other terrain-feature edit (`AffectsWorld` true). The feature inspector's
+read-only "Apply order N of M (last wins overlap)" row tracks the feature's live fold position. See the
+`KhaozEngine.MapEditor` README's "Feature apply order" section for the undo/redo selection-following caveat.
+
 **Water.** `ViewportWorld.Draw` submits one `Scene3D.DrawWater` plane every frame, sized to the document
 bounds and derived live from `Terrain.WaterLevel`, so a level edit shows up immediately, ahead of the
 scatter rebuild it also triggers. The terrain root in the outline tree opens an inspector with an editable
 `WaterLevel` float row routed through `EditTerrainCommand` (forces the scatter rebuild, since scatter skips
 underwater candidates) plus read-only seed and biome-count rows.
 
-**Keys.** Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, Delete removes the current selection,
-Escape cancels an in-flight gizmo/draw gesture and returns to `Select`. Shift+Escape exits the editor
-(pops the scene): unsaved changes arm a status-strip warning on the first press and a second Shift+Escape
-discards and exits, while any save or document mutation disarms the warning.
+**Visibility.** `EditorVisibility` is editor-session view state, not the document: it gates six
+`VisibilityGroup`s (placements, spawns, water, exclusions, regions, feature markers), named scatter layers,
+and individual elements, and toggling any of it never dirties the document or lands an undo step. With
+nothing selected the inspector is the Layers panel (`MapEditorScene.BuildLayersInspector`): a `BoolRow` per
+group, then one per scatter layer in the open document (toggling a scatter layer also rebuilds the streamed
+world so its props actually drop out). Every element inspector also gets a per-element "Visible" `BoolRow`.
+A hidden element is neither drawn nor pickable from the viewport, but stays selectable from the outline tree
+(which reads straight off the document), so hiding something is always reversible. See the
+`KhaozEngine.MapEditor` README's "Visibility" section for the full mechanics.
+
+**Keys.** Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, Delete removes the current selection, R
+snaps the selected placement to the ground (undoable, a no-op when already grounded or nothing
+placement-shaped is selected), Ctrl+Up / Ctrl+Down reorder the selected terrain feature (see Feature apply
+order above), Escape cancels an in-flight gizmo/draw gesture and returns to `Select`. Shift+Escape exits the
+editor (pops the scene): unsaved changes arm a status-strip warning on the first press and a second
+Shift+Escape discards and exits, while any save or document mutation disarms the warning.
 
 **Save semantics.** Ctrl+S (`MapEditorScene.SaveDocument`) validates through the same load-time
 `MapDocumentFile.Save` validator before writing, so an invalid document is never written to disk. A
@@ -2912,8 +2932,8 @@ a new value renames the element through `RenamePlacementCommand`, `RenameSpawnCo
 renamed key once the row loses focus.
 
 See the `KhaozEngine.MapEditor` package README for the command stack and gesture sealing, world-rebuild
-semantics (including the one-frame `EditFeature` inspector lag), and the bake-region and rename mechanics in
-full.
+semantics (including the one-frame `EditFeature` inspector lag), the feature apply-order and visibility
+mechanics, and the bake-region and rename mechanics in full.
 
 ---
 

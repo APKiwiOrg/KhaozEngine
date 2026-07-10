@@ -5,6 +5,25 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.46.0
+
+Editor building blocks (Phase B1 of the map-editor program, `docs/MAP-EDITOR-DESIGN.md`): new `KhaozEngine.Gui`
+inspector widgets, a free-fly editor camera in `KhaozEngine.Render3D`, and shared picking math. Additive across
+three packages, no breaking change, minor bump.
+
+- **`NumberField`, `TreeView`, `PropertyGrid` (`KhaozEngine.Gui`).** `NumberField` scrub-drags the value by
+  `DragScale` per pixel, and a tap under 3 px opens inline typing via `TextEntry` with a numeric filter (Enter
+  commits clamped and rounded, Escape cancels, a tap outside commits). `TreeView` walks a `TreeNode` hierarchy
+  (DFS `VisibleRows`), a caret zone toggles parents, wheel scroll, scissor-clipped. `PropertyGrid` stacks a
+  `PropertyRow` base plus `FloatRow`/`BoolRow`/`TextRow`/`ReadOnlyRow` over get/set delegates with
+  interaction-guarded polling, out-of-view rows skipped.
+- **`FlyCamera3D` + `FlyCameraController` (`KhaozEngine.Render3D`).** `FlyCamera3D` implements `IIsoCamera3D` and
+  plugs into `Scene3D.CameraOverride`. `FlyCameraController` drives it: WASD plus E/Q, `LeftShift` sprint,
+  right-drag mouselook (drag right looks right, `InvertX`/`InvertY` flip either axis), wheel-scaled speed.
+- **Picking math (`KhaozEngine.Primitives` + `KhaozEngine.Terrain`).** `RayMath.IntersectAabb` is a slab test in
+  `KhaozEngine.Primitives`, and `TerrainRaycast` is a march-plus-bisect in `KhaozEngine.Terrain`
+  (endpoint-inclusive up to `maxDistance`, positive-step guarded).
+
 ## 10.45.0
 
 Player-facing in-game patch notes: a new `PatchNotes` namespace in `KhaozEngine.Gui` parses a game's

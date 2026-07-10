@@ -2774,17 +2774,19 @@ whatever the editor needs to pick:
 
 ```csharp
 Ray ray = camera.ScreenToRay(mousePixel, viewportWidth, viewportHeight);
+Vector3 dir = Vector3.Normalize(ray.Direction);   // so step and tNear read as world units
 
 // Ground / terrain: march-then-bisect against the analytic field, endpoint-inclusive up to maxDistance.
-if (TerrainRaycast.Raycast(field, ray.Origin, ray.Direction, 200f, out Vector3 groundHit))
+if (TerrainRaycast.Raycast(field, ray.Origin, dir, 200f, out Vector3 groundHit))
     PlaceAt(groundHit);
 
 // A prop's world AABB: allocation-free slab test, tNear the entry distance (0 when the origin starts inside).
-if (RayMath.IntersectAabb(ray.Origin, ray.Direction, propMin, propMax, out float tNear))
-    Select(prop, hitPoint: ray.Origin + ray.Direction * tNear);
+if (RayMath.IntersectAabb(ray.Origin, dir, propMin, propMax, out float tNear))
+    Select(prop, hitPoint: ray.Origin + dir * tNear);
 ```
 
-`TerrainRaycast.Raycast` (`KhaozEngine.Terrain`, render-free) marches at `step` world units until the ray
+`TerrainRaycast.Raycast` (`KhaozEngine.Terrain`, render-free) marches `step` in units of the direction's
+length (t units, so normalize the direction to march in world units) until the ray
 crosses `TerrainField.SampleHeight`, then bisects 24 times for a converged hit. A ray starting below the
 surface returns the origin. `RayMath.IntersectAabb` (`KhaozEngine.Primitives`, the zero-dependency leaf) is
 the box test any other spatial query can reuse. Neither depends on a renderer or a window, so both are

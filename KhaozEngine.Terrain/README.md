@@ -21,7 +21,8 @@ up regardless of load order. Plain `float` math throughout.
 - **`TerrainCollision`** - ground-follow over a field: `GroundHeight`, `GroundNormal` (feed both to
   `CharacterMovement.Step` so steep terrain gates movement), and `IsWalkable(x, z, maxSlope)`.
 - **`TerrainRaycast`** - GPU-free ray vs terrain intersection for editor and gameplay picking:
-  `Raycast(field, origin, direction, maxDistance, out hit, step)` marches at `step` world units until the ray
+  `Raycast(field, origin, direction, maxDistance, out hit, step)` marches `step` in units of the direction's
+  length (t units, so pass a normalized direction to march in world units) until the ray
   crosses the analytic surface, then bisects 24 times for a converged hit point. Endpoint-inclusive (a crossing
   inside the final partial step is still found), a ray starting below the surface returns the origin, and
   `step` must be positive. Deterministic: the same field, ray, and parameters always give the same hit.
@@ -50,8 +51,9 @@ state = CharacterMovement.Step(state, cmd, dt, ground.GroundHeight, MoveTuning.D
 ## Picking
 
 ```csharp
-// ray from a camera's ScreenToRay (KhaozEngine.Render3D), maxDistance in units of direction's length
-if (TerrainRaycast.Raycast(field, ray.Origin, ray.Direction, 200f, out Vector3 hit))
+// ray from a camera's ScreenToRay (KhaozEngine.Render3D), normalize so step and maxDistance are world units
+var dir = Vector3.Normalize(ray.Direction);
+if (TerrainRaycast.Raycast(field, ray.Origin, dir, 200f, out Vector3 hit))
     PlaceAt(hit);   // a marched hit lies on the surface (a ray starting below ground returns its origin as-is)
 ```
 

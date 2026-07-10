@@ -207,7 +207,7 @@ editor-runtime cores. Never Fable-tier subagents.
   MapEditor runtime, fly cam, gizmos. One or two releases.
   - **B1 (building blocks)**: the three Gui widgets (`NumberField`, `TreeView`,
     `PropertyGrid`), the editor fly camera (`FlyCamera3D`/`FlyCameraController`), and
-    picking math (`RayMath.IntersectAabb`, `TerrainRaycast`). Shipped, see CHANGELOG.
+    picking math (`RayMath.IntersectAabb`, `TerrainRaycast`). Shipped in 10.46.0, see CHANGELOG.
   - Remaining: the `MapEditor` runtime package itself (viewport host, gizmos, undo/redo
     command stack, per-game editor head).
 - **Phase C (parallel after A, independent of B)**: ke-mapedit MCP tool. One release.

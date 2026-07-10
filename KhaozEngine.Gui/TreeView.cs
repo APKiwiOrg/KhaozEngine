@@ -166,7 +166,7 @@ namespace KhaozEngine.Gui
 
         /// <summary>
         /// Draw the visible rows clipped to <see cref="Bounds"/>: a fill under the selected row, a caret chevron for
-        /// nodes with children (down when expanded, matching the <see cref="Dropdown"/> chevron idiom), and the
+        /// nodes with children (up when expanded, matching the <see cref="Dropdown"/> chevron idiom), and the
         /// label. <paramref name="white"/> is a 1x1 white texture.
         /// </summary>
         public void Draw(SpriteBatch batch, Texture2D white, SpriteFont font)

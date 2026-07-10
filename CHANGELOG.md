@@ -5,6 +5,15 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.56.0
+
+New `KhaozEngine.Dungeon` package: a deterministic, multi-level procedural dungeon generator whose layouts are completable by construction and re-proven by an always-on solver, with MapDoc-bake and runtime-stamp sinks, a greybox kit, and a `ke-dungeon` CLI.
+
+- **Procedural dungeon generator (`KhaozEngine.Dungeon`, new Foundation package).** `DungeonGenerator.Generate(config, seed)` grows a multi-level room graph on a 3D tile grid (rooms, corridors, cross-floor stairs), committing every corridor and stair together with its edge so a layout is connected by construction. Loop edges add cycles within a budget, bridge-edge gating places lock, key, and boss progression with keys proven reachable before their locks, and typed markers (spawn, loot, objective, entrance) ride along as pure data. `DungeonSolver.Verify` runs on every `Generate` call and throws if a layout is ever unsolvable, and a 1000-seed sweep test backs the guarantee.
+- **Deterministic and instance-ready.** Generation draws only from seeded `DeterministicRng` streams (`rooms`, `gating`, `markers`), and every layout is dungeon-local (tile coordinates plus a metre scale) with world placement applied only at the sinks via `DungeonPlotTransform`, so the same output drops into a far-corner overworld plot today or a true instance later.
+- **Two sinks.** `DungeonMapDocEmitter.Emit` bakes a layout into a `MapDocument` as kit-piece placements, tagged room regions, spawns, and a flatten feature, salted per bake so several dungeons accumulate in one document. `DungeonStamp.Build` produces runtime prop instances plus merged `PhysicsShape` static collision (greedy-merged wall boxes, floor slabs, and oriented stair ramps).
+- **Kit, JSON, CLI, demo.** A greybox dungeon kit ships in the Showcase assets with a `DungeonKitMap` piece vocabulary. `DungeonJson` round-trips configs and layouts with an embedded schema (`DungeonSchema`) for editor and tooling use. The `ke-dungeon` CLI generates, previews per-floor PNGs, verifies, and bakes. A "Dungeon (walk)" Showcase room renders a generated dungeon.
+
 ## 10.55.0
 
 Map-editor apply-order controls and visibility layers from the fourth playtest round (B2.4 of the

@@ -5,6 +5,22 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.55.0
+
+Map-editor apply-order controls and visibility layers from the fourth playtest round (B2.4 of the
+map-editor program, `docs/MAP-EDITOR-DESIGN.md`): features gain apply-order controls that reorder the
+fold order, R snaps the selected placement to the ground, and a session-only visibility system turns the
+empty-selection inspector into a Layers panel with per-selectable Visible toggles.
+
+- **Feature apply-order controls, R snap-to-ground, and a visibility system (`KhaozEngine.MapEditor`).**
+  Features now expose apply-order controls: `ReorderFeatureCommand` with Ctrl+Up and Ctrl+Down moves the
+  selected feature in the fold order, the inspector shows apply order N of M, and features fold in list
+  order so the last overlapping feature wins. R snaps the selected placement to the ground undoably. A new
+  visibility system makes the empty-selection inspector a Layers panel with group toggles, including
+  per-scatter-layer toggles that rebuild the streamed world, and every selectable gains a Visible toggle.
+  Hidden elements are unpickable from the viewport but remain in the outline, and visibility is
+  editor-session state that never dirties the document.
+
 ## 10.54.0
 
 Map-editor shape editing from the third playtest round (B2.3 of the map-editor program,

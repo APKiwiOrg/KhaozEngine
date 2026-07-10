@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using KhaozEngine.Content;
 using KhaozEngine.Dungeon;
@@ -75,6 +76,26 @@ namespace KhaozEngine.Tests.Dungeon
         }
 
         [Fact]
+        public void PartialConfig_SchemaValidates_AndLoadsDefaults()
+        {
+            // Every DungeonConfig property has an engine-side default, so a hand-authored partial config
+            // (the CLI/MCP use case) must both pass the schema and load with defaults filled in.
+            string json = "{ \"roomCountTarget\": 20 }";
+
+            ValidationReport report = JsonSchemaValidator.Validate(json, DungeonSchema.GetJson());
+            Assert.True(report.IsValid, string.Join("\n", report.Errors));
+
+            DungeonConfig defaults = new();
+            DungeonConfig loaded = DungeonJson.LoadConfig(json);
+            Assert.Equal(20, loaded.RoomCountTarget);
+            Assert.Equal(defaults.CellSizeMeters, loaded.CellSizeMeters);
+            Assert.Equal(defaults.MaxFloors, loaded.MaxFloors);
+            Assert.Equal(defaults.PlotWidthTiles, loaded.PlotWidthTiles);
+            Assert.Equal(defaults.LockCount, loaded.LockCount);
+            Assert.Equal(defaults.BossRoom, loaded.BossRoom);
+        }
+
+        [Fact]
         public void BadField_Throws_NamingField()
         {
             string json = DungeonJson.SaveConfig(new DungeonConfig())
@@ -117,6 +138,43 @@ namespace KhaozEngine.Tests.Dungeon
 
             DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() => DungeonJson.LoadLayout(json2));
             Assert.Contains("roomA", ex.Message);
+        }
+
+        [Fact]
+        public void NullGridRow_Throws_NamingField()
+        {
+            DungeonLayout layout = DungeonGenerator.Generate(Config(), 1UL);
+            string json = DungeonJson.SaveLayout(layout);
+            string firstRow = FindFirstGridRow(json);
+            string json2 = json.Replace(firstRow, "null");
+
+            DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() => DungeonJson.LoadLayout(json2));
+            Assert.Contains("grid", ex.Message);
+        }
+
+        [Fact]
+        public void NullRoomEntry_Throws_NamingField()
+        {
+            DungeonLayout layout = DungeonGenerator.Generate(Config(), 1UL);
+            JsonNode node = JsonNode.Parse(DungeonJson.SaveLayout(layout))!;
+            node["rooms"]![0] = null;
+
+            DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() => DungeonJson.LoadLayout(node.ToJsonString()));
+            Assert.Contains("rooms[0]", ex.Message);
+        }
+
+        [Fact]
+        public void UnknownGridChar_Throws_NamingPosition()
+        {
+            DungeonLayout layout = DungeonGenerator.Generate(Config(), 1UL);
+            string json = DungeonJson.SaveLayout(layout);
+            string firstRow = FindFirstGridRow(json);
+            string mutatedRow = "\"X" + firstRow.Substring(2);
+            string json2 = json.Replace(firstRow, mutatedRow);
+
+            DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() => DungeonJson.LoadLayout(json2));
+            Assert.Contains("grid[0][0][0]", ex.Message);
+            Assert.Contains("'X'", ex.Message);
         }
 
         // Finds the first quoted row string under the "grid" property (the opening bracket of the grid array

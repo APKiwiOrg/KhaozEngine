@@ -9,22 +9,8 @@
   "$defs": {
     "config": {
       "type": "object",
-      "required": [
-        "cellSizeMeters",
-        "floorHeightMeters",
-        "roomCountTarget",
-        "roomMinTiles",
-        "roomMaxTiles",
-        "maxFloors",
-        "plotWidthTiles",
-        "plotDepthTiles",
-        "criticalPathTarget",
-        "loopEdgeBudget",
-        "lockCount",
-        "bossRoom",
-        "spawnMarkersPerRoomMax",
-        "lootMarkersPerRoomMax"
-      ],
+      "description": "Generator tunables. Every property has an engine-side default, so none are required and a partial hand-authored config is valid. A config document is distinguished from a layout document by the absence of the grid property.",
+      "not": { "required": ["grid"] },
       "properties": {
         "cellSizeMeters": { "type": "number", "exclusiveMinimum": 0 },
         "floorHeightMeters": { "type": "number", "exclusiveMinimum": 0 },

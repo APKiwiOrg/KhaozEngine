@@ -132,10 +132,10 @@ public static class DungeonJson
     }
 
     /// <summary>Parses and deserializes a <see cref="DungeonLayout"/> from JSON (JSONC-tolerant), then applies
-    /// semantic checks (dimensions positive, grid string lengths matching the declared dimensions, and
-    /// room/lock ids referenced by edges and keys actually existing) before rebuilding the layout. Throws
-    /// <see cref="DungeonJsonException"/> naming the offending field on any failure. The rebuilt layout's
-    /// <see cref="DungeonLayout.LayoutHash"/> equals the saved one's.</summary>
+    /// semantic checks (dimensions positive, no null sections or array entries, grid string lengths matching
+    /// the declared dimensions, and room/lock ids referenced by edges and keys actually existing) before
+    /// rebuilding the layout. Throws <see cref="DungeonJsonException"/> naming the offending field on any
+    /// failure. The rebuilt layout's <see cref="DungeonLayout.LayoutHash"/> equals the saved one's.</summary>
     public static DungeonLayout LoadLayout(string json)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(json);
@@ -268,6 +268,10 @@ public static class DungeonJson
         _ => throw new DungeonJsonException($"grid[{floor}][{row}][{col}]: unknown cell character '{c}'."),
     };
 
+    // Every section (grid, rooms, edges, keys, markers, stats) and every entry inside its arrays is checked
+    // for JSON null before use: the DTO declares them non-nullable, but System.Text.Json happily assigns
+    // null from an explicit "grid": null or a null array element, and a corrupted document must always
+    // surface as DungeonJsonException naming the field, never as a NullReferenceException.
     private static void ValidateLayoutDto(LayoutDto dto)
     {
         if (dto.Width <= 0)
@@ -295,6 +299,36 @@ public static class DungeonJson
             throw new DungeonJsonException("floorHeightMeters: must be greater than zero.");
         }
 
+        if (dto.Grid is null)
+        {
+            throw new DungeonJsonException("grid: must not be null.");
+        }
+
+        if (dto.Rooms is null)
+        {
+            throw new DungeonJsonException("rooms: must not be null.");
+        }
+
+        if (dto.Edges is null)
+        {
+            throw new DungeonJsonException("edges: must not be null.");
+        }
+
+        if (dto.Keys is null)
+        {
+            throw new DungeonJsonException("keys: must not be null.");
+        }
+
+        if (dto.Markers is null)
+        {
+            throw new DungeonJsonException("markers: must not be null.");
+        }
+
+        if (dto.Stats is null)
+        {
+            throw new DungeonJsonException("stats: must not be null.");
+        }
+
         if (dto.Grid.Count != dto.Floors)
         {
             throw new DungeonJsonException($"grid: expected {dto.Floors} floor(s), found {dto.Grid.Count}.");
@@ -303,6 +337,11 @@ public static class DungeonJson
         for (int floor = 0; floor < dto.Grid.Count; floor++)
         {
             List<string> rows = dto.Grid[floor];
+            if (rows is null)
+            {
+                throw new DungeonJsonException($"grid[{floor}]: must not be null.");
+            }
+
             if (rows.Count != dto.Depth)
             {
                 throw new DungeonJsonException($"grid[{floor}]: expected {dto.Depth} row(s), found {rows.Count}.");
@@ -310,6 +349,11 @@ public static class DungeonJson
 
             for (int z = 0; z < rows.Count; z++)
             {
+                if (rows[z] is null)
+                {
+                    throw new DungeonJsonException($"grid[{floor}][{z}]: must not be null.");
+                }
+
                 if (rows[z].Length != dto.Width)
                 {
                     throw new DungeonJsonException(
@@ -319,11 +363,17 @@ public static class DungeonJson
         }
 
         var roomIds = new HashSet<int>();
-        foreach (DungeonRoom room in dto.Rooms)
+        for (int i = 0; i < dto.Rooms.Count; i++)
         {
+            DungeonRoom room = dto.Rooms[i];
+            if (room is null)
+            {
+                throw new DungeonJsonException($"rooms[{i}]: must not be null.");
+            }
+
             if (!roomIds.Add(room.Id))
             {
-                throw new DungeonJsonException($"rooms: duplicate room id {room.Id}.");
+                throw new DungeonJsonException($"rooms[{i}]: duplicate room id {room.Id}.");
             }
         }
 
@@ -331,6 +381,21 @@ public static class DungeonJson
         for (int i = 0; i < dto.Edges.Count; i++)
         {
             DungeonEdge edge = dto.Edges[i];
+            if (edge is null)
+            {
+                throw new DungeonJsonException($"edges[{i}]: must not be null.");
+            }
+
+            if (edge.Path is null)
+            {
+                throw new DungeonJsonException($"edges[{i}].path: must not be null.");
+            }
+
+            if (edge.Doors is null)
+            {
+                throw new DungeonJsonException($"edges[{i}].doors: must not be null.");
+            }
+
             if (!roomIds.Contains(edge.RoomA))
             {
                 throw new DungeonJsonException($"edges[{i}].roomA: room id {edge.RoomA} does not exist.");
@@ -350,6 +415,11 @@ public static class DungeonJson
         for (int i = 0; i < dto.Keys.Count; i++)
         {
             DungeonKeyPlacement key = dto.Keys[i];
+            if (key is null)
+            {
+                throw new DungeonJsonException($"keys[{i}]: must not be null.");
+            }
+
             if (!roomIds.Contains(key.RoomId))
             {
                 throw new DungeonJsonException($"keys[{i}].roomId: room id {key.RoomId} does not exist.");
@@ -358,6 +428,20 @@ public static class DungeonJson
             if (!lockIds.Contains(key.LockId))
             {
                 throw new DungeonJsonException($"keys[{i}].lockId: lock id {key.LockId} has no matching locked edge.");
+            }
+        }
+
+        for (int i = 0; i < dto.Markers.Count; i++)
+        {
+            DungeonMarker marker = dto.Markers[i];
+            if (marker is null)
+            {
+                throw new DungeonJsonException($"markers[{i}]: must not be null.");
+            }
+
+            if (marker.Tags is null)
+            {
+                throw new DungeonJsonException($"markers[{i}].tags: must not be null.");
             }
         }
     }

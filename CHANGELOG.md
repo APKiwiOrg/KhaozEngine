@@ -5,6 +5,15 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.59.0
+
+Walk-demo polish: the default jump height rises to match Ruinborne (+50% apex), the Showcase dungeon demo gains real physics collision and the animated character, and the greybox kit is regenerated at the demo's larger scale.
+
+- **Default jump height raised to match Ruinborne (`KhaozEngine.Locomotion`, `KhaozEngine.Game.Render3D`).** The default `MoveTuning.JumpSpeed` and `CharacterController3D.JumpSpeed` both rise from `8` to `9.79796` (= 8 * sqrt(1.5), apex ~1.28 m to ~1.92 m), matching Ruinborne's deliberate feel. Every walk demo inherits it.
+- **ADOPTION NOTE (breaking for one pattern): any consumer that expresses its jump relative to the engine baseline as `MoveTuning.Default.JumpSpeed * MathF.Sqrt(1.5f)` must DROP that multiplier when adopting this version.** Ruinborne's `RuinborneWorld.cs` does exactly this: the baseline now already equals that value, so leaving the multiplier in place double-compounds the jump to ~11.997 (apex ~2.88 m). The equivalent expression in the engine's own `RealBuildingCollisionTests` was corrected in this release.
+- **Dungeon demo collision and animated character (`KhaozEngine.Showcase`).** `RoomDungeon` now registers every `DungeonStamp` static (walls, floor slabs, stair ramps, and, when roofed, ceiling slabs) with a `BepuPhysicsWorld` and drives the character through it, so the player collides with walls and climbs stairs instead of clipping. It also loads the rigged animated character (idle/walk/run/jump/fall) via Room3D's pattern, with a capsule fallback.
+- **Greybox kit regenerated at 3 m / 6 m (`KhaozEngine.Showcase`).** `tools/DungeonKitGen` is parameterized by cell size and floor height (defaults still 2 m / 4 m), and the committed Showcase kit (all pieces including the ceiling) is regenerated at the demo's 3 m / 6 m scale so stairs span floor-to-floor and the roof tiles cover full cells.
+
 ## 10.58.0
 
 Variable-width corridors and a Hall room type for `KhaozEngine.Dungeon`: corridors were fixed 1-tile single-file connectors, now they can be grand multi-tile halls, with elongated Hall rooms as grand connectors. Default config stays byte-for-byte identical to before.

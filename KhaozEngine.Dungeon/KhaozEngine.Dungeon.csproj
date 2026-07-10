@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Dungeon</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>Deterministic procedural dungeon generator for KhaozEngine. DungeonGenerator.Generate(config, seed) grows a multi-level room graph on a 3D tile grid where every corridor and stair is committed together with its edge, so layouts are completable by construction and re-proven by the always-on DungeonSolver. Emits dungeon-local layouts consumed by two sinks: DungeonMapDocEmitter (bake into a MapDoc zone document) and DungeonStamp (runtime kit-prop instances plus PhysicsShape statics). Render-free and GPU-free.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
+    <ProjectReference Include="../KhaozEngine.MapDoc/KhaozEngine.MapDoc.csproj" />
+    <ProjectReference Include="../KhaozEngine.Physics/KhaozEngine.Physics.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Tests" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

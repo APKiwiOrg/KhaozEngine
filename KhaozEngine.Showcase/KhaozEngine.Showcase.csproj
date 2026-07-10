@@ -20,6 +20,8 @@
     <None Include="assets/buildings/**" CopyToOutputDirectory="PreserveNewest" />
     <!-- The map-editor room's demo document + its schema copy (KhaozEngine.MapEditor / KhaozEngine.MapDoc). -->
     <None Include="assets/maps/**" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Greybox KhaozEngine.Dungeon kit pieces (DungeonKitMap.Greybox() ids); see assets/dungeon/CREDITS.md. -->
+    <None Include="assets/dungeon/**" CopyToOutputDirectory="PreserveNewest" />
     <!-- Sample player changelog for the Gui room's "Patch Notes" demo button. LogicalName matches
          PatchNotesLoader.ResourceName, so PatchNotesLoader.Load(typeof(RoomGui).Assembly) finds it as an
          embedded resource (no disk copy shipped alongside the showcase binary). -->

@@ -334,7 +334,7 @@ internal static class RoomGrower
 
         // Corridor and door cells must not be orthogonally adjacent to any existing walkable cell other than
         // the source room interior they join (their own path and the new interior are not written yet).
-        HashSet<(int X, int Z)> allowed = SourceInterior(source);
+        HashSet<(int X, int Z)> allowed = RoomInterior(source);
         if (HasForeignOrthogonalWalkable(grid, candidate.DoorSrc, candidate.Floor, allowed))
         {
             return false;
@@ -356,7 +356,10 @@ internal static class RoomGrower
         return true;
     }
 
-    private static bool IsClearWalkableCell(Grid grid, DungeonTile tile, int floor)
+    /// <summary>True when <paramref name="tile"/> is in-plot (one tile clear of the border, so its own ring
+    /// stays in-plot) and currently <see cref="DungeonCellKind.Empty"/> on <paramref name="floor"/>. Shared by
+    /// growth corridor/door validation and <c>LoopPlanner</c>'s loop-edge corridor validation.</summary>
+    internal static bool IsClearWalkableCell(Grid grid, DungeonTile tile, int floor)
     {
         if (!grid.InPlotWithMargin(tile.X, tile.Z))
         {
@@ -366,7 +369,11 @@ internal static class RoomGrower
         return grid.Get(tile.X, tile.Z, floor) == DungeonCellKind.Empty;
     }
 
-    private static bool HasForeignOrthogonalWalkable(Grid grid, DungeonTile tile, int floor, HashSet<(int X, int Z)> allowed)
+    /// <summary>True when <paramref name="tile"/> is orthogonally adjacent, on <paramref name="floor"/>, to a
+    /// walkable cell that is not in <paramref name="allowed"/> (the room interiors the corridor is meant to
+    /// join). Shared by growth corridor/door validation and <c>LoopPlanner</c>'s loop-edge corridor
+    /// validation.</summary>
+    internal static bool HasForeignOrthogonalWalkable(Grid grid, DungeonTile tile, int floor, HashSet<(int X, int Z)> allowed)
     {
         Span<(int Dx, int Dz)> steps = stackalloc (int, int)[] { (1, 0), (-1, 0), (0, 1), (0, -1) };
         foreach ((int dx, int dz) in steps)
@@ -387,12 +394,16 @@ internal static class RoomGrower
         return false;
     }
 
-    private static HashSet<(int X, int Z)> SourceInterior(DungeonRoom source)
+    /// <summary>The set of interior tile coordinates <paramref name="room"/> occupies, used as the
+    /// "allowed" set for <see cref="HasForeignOrthogonalWalkable"/> so a corridor endpoint's own room(s) don't
+    /// count as foreign. Shared by growth corridor/door validation and <c>LoopPlanner</c>'s loop-edge corridor
+    /// validation (which unions the sets of both rooms an existing-to-existing loop edge joins).</summary>
+    internal static HashSet<(int X, int Z)> RoomInterior(DungeonRoom room)
     {
         var set = new HashSet<(int X, int Z)>();
-        for (int x = source.X; x < source.X + source.Width; x++)
+        for (int x = room.X; x < room.X + room.Width; x++)
         {
-            for (int z = source.Z; z < source.Z + source.Depth; z++)
+            for (int z = room.Z; z < room.Z + room.Depth; z++)
             {
                 set.Add((x, z));
             }
@@ -572,7 +583,7 @@ internal static class RoomGrower
 
         // The lower-floor run must not sit alongside any existing walkable cell other than the source interior it
         // leaves (same isolation rule as corridors). Room B's empty margin ring already isolates the upper floor.
-        HashSet<(int X, int Z)> allowed = SourceInterior(source);
+        HashSet<(int X, int Z)> allowed = RoomInterior(source);
         if (HasForeignOrthogonalWalkable(grid, candidate.DoorA, lower, allowed))
         {
             return false;
@@ -693,7 +704,11 @@ internal static class RoomGrower
         DungeonTile StairTop,
         DungeonTile StairVoid);
 
-    private sealed class Grid
+    /// <summary>Thin bounds/indexing wrapper over a <see cref="DungeonCellKind"/> raster. Internal (not private)
+    /// so <c>LoopPlanner</c> can wrap the already-grown raster via the second constructor and reuse
+    /// <see cref="IsClearWalkableCell"/>/<see cref="HasForeignOrthogonalWalkable"/> instead of duplicating the
+    /// bounds/adjacency arithmetic for loop-edge corridor validation.</summary>
+    internal sealed class Grid
     {
         private readonly int _width;
         private readonly int _depth;
@@ -703,6 +718,15 @@ internal static class RoomGrower
             _width = width;
             _depth = depth;
             Cells = new DungeonCellKind[width * depth * floors];
+        }
+
+        /// <summary>Wraps an existing (already-grown) raster in place, without allocating a new array. Used by
+        /// <c>LoopPlanner</c>, which mutates <paramref name="cells"/> directly via <see cref="Set"/>.</summary>
+        internal Grid(DungeonCellKind[] cells, int width, int depth)
+        {
+            _width = width;
+            _depth = depth;
+            Cells = cells;
         }
 
         internal DungeonCellKind[] Cells { get; }

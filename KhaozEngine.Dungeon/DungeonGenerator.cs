@@ -35,6 +35,7 @@ public static class DungeonGenerator
         DeterministicRng rooms = root.CreateDerived("rooms");
 
         GrowResult grown = RoomGrower.Grow(config, rooms);
+        LoopPlanner.PlanLoopEdges(config, rooms, grown);
         RoomGrower.ApplyWallPass(grown.Cells, width, depth, floors);
 
         var layout = new DungeonLayout(width, depth, floors, config.CellSizeMeters, config.FloorHeightMeters)

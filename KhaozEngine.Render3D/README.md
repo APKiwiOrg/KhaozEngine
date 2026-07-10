@@ -135,6 +135,11 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   (dependency-free 3D convex-hull triangulation for `ConvexHullShape` proxies), `CollisionOverlayPalette` /
   `CollisionShapeKind` (per-kind color + name lookup) / `CollisionStatic` (the `PhysicsShape`+`Pose` input
   record). See `docs/USING-KHAOZENGINE.md`, "Collision-shape debug overlay".
+- Asset manifest categories: `AssetEntry.Category` (an optional `"category"` manifest field, e.g. `"trees"`,
+  `"rocks"`, `"buildings"`) tags a prop-kit entry for palette or browser grouping. Null when the manifest
+  declares none, in which case a consumer such as `KhaozEngine.MapEditor.ViewportWorld.KindCategories` falls
+  back to the declaring manifest's own file-name stem (`props.manifest.json` maps to `props`),
+  first-manifest-wins on a duplicate id across manifests.
 - Textured props: `PropLoader.LoadPropWithMaterial(AssetEntry, PropValidation?) -> (GltfMesh Mesh, GltfMaterialMaps
   Maps)` loads + normalizes a prop like `LoadProp`, AND auto-reads its glTF's first textured material's
   baseColor/normal/metallicRoughness textures (via `GltfLoader.LoadWithMaterial`). A prop whose glTF has no

@@ -8,8 +8,9 @@ namespace KhaozEngine.MapEditor;
 
 /// <summary>The active editing tool. <see cref="Select"/> drives gizmo gestures on the selection; the place
 /// modes ground-snap a click into an Add command; the draw modes rubber-band a disc (click-drag) or rect
-/// (shift-drag) into an exclusion or a region; <see cref="EditFeature"/> and <see cref="BakeRegion"/> are
-/// inspector-driven and take no viewport gesture.</summary>
+/// (shift-drag) into an exclusion or a region; <see cref="BakeRegion"/> drags a rect on the ground to freeze
+/// a scatter layer into placements; <see cref="EditFeature"/> is inspector-driven and takes no viewport
+/// gesture.</summary>
 public enum EditorToolMode
 {
     /// <summary>Pick + transform-gizmo drag on the current selection.</summary>
@@ -24,7 +25,8 @@ public enum EditorToolMode
     DrawRegion,
     /// <summary>Terrain-feature parameter editing (inspector-driven, no viewport gesture).</summary>
     EditFeature,
-    /// <summary>Region bake tooling (inspector-driven, no viewport gesture).</summary>
+    /// <summary>Drag a rect on the ground to freeze <see cref="EditorToolController.BakeLayer"/>'s scatter
+    /// into placements. One shot: a completed bake returns to <see cref="Select"/>.</summary>
     BakeRegion,
 }
 

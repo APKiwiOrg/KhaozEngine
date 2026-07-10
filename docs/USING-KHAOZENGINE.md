@@ -2838,6 +2838,19 @@ automatically, while an abandoned or sub-threshold gesture keeps the tool armed.
 gives a one-line description of the active tool (folding in `PlaceKind` / `SpawnArchetype`) that the scene
 renders at the head of the status strip.
 
+**Kit palette.** The bottom-left panel groups every manifest kit id into a filter box over a collapsible
+`TreeView`, categorized by `AssetEntry.Category` when the manifest declares one, else the declaring
+manifest's own file-name stem (`ViewportWorld.KindCategories`, first-manifest-wins on a duplicate id across
+manifests). The `PlaceSpawn` tool swaps the same panel region to a flat, filtered spawn-archetype list
+instead, no categories. Typing in either filter box narrows leaves case-insensitively, and clearing it
+restores each category's remembered expand/collapse state.
+
+**Water.** `ViewportWorld.Draw` submits one `Scene3D.DrawWater` plane every frame, sized to the document
+bounds and derived live from `Terrain.WaterLevel`, so a level edit shows up immediately, ahead of the
+scatter rebuild it also triggers. The terrain root in the outline tree opens an inspector with an editable
+`WaterLevel` float row routed through `EditTerrainCommand` (forces the scatter rebuild, since scatter skips
+underwater candidates) plus read-only seed and biome-count rows.
+
 **Keys.** Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, Delete removes the current selection,
 Escape cancels an in-flight gizmo/draw gesture and returns to `Select`. Shift+Escape exits the editor
 (pops the scene): unsaved changes arm a status-strip warning on the first press and a second Shift+Escape
@@ -2850,8 +2863,14 @@ calls `EditorDocument.MarkSaved()`, clearing the dirty flag (the status strip's 
 the current gesture, so a later same-gesture edit can never merge into the just-saved command and hide
 itself from `IsDirty`.
 
+**Renaming.** The placement, spawn, and region inspectors lead with an inline-editable Name row. Committing
+a new value renames the element through `RenamePlacementCommand`, `RenameSpawnCommand`, or
+`RenameRegionCommand`, rejecting a blank, unchanged, or colliding target, and the selection follows the
+renamed key once the row loses focus.
+
 See the `KhaozEngine.MapEditor` package README for the command stack and gesture sealing, world-rebuild
-semantics (including the one-frame `EditFeature` inspector lag), and the bake-region mechanics in full.
+semantics (including the one-frame `EditFeature` inspector lag), and the bake-region and rename mechanics in
+full.
 
 ---
 

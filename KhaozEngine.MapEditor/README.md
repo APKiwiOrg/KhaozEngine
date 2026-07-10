@@ -57,6 +57,22 @@ the warning, so a stale discard confirmation can never fire after the user resum
 strip leads with the active tool name and its `ModeHint` one-liner, then the undo/redo labels and the
 exit chord as a standing hint.
 
+## Kit palette
+
+The bottom-left panel is a filter box over a collapsible, category-grouped `TreeView`. A kit id's category is
+`AssetEntry.Category` when the manifest declares one, else the declaring manifest's own file-name stem with a
+trailing `.manifest` suffix stripped (`props.manifest.json` falls back to `props`), first-manifest-wins on a
+duplicate id across manifests (`ViewportWorld.KindCategories`). `MapEditorScene.BuildPaletteSource` groups the
+map once, on enter, into a twice-sorted source (categories ordinal, kit ids ordinal within each), and the live
+tree rebuilds only when the filter box text changes, never every frame. Typing in the filter narrows leaves
+case-insensitively, hides a category left with no matches, and forces every surviving category open. Clearing
+the filter restores each category's remembered expand/collapse state instead of resetting it.
+
+The `PlaceSpawn` tool swaps the same panel region to a flat, filtered spawn-archetype list instead (no
+categories, since the archetypes are a flat game-supplied list from `MapEditorOptions.SpawnArchetypes`).
+Every other tool shows the kit palette. Selecting a palette leaf sets `EditorToolController.PlaceKind`,
+selecting a spawn-list leaf sets `SpawnArchetype`, and tapping a category row itself changes neither.
+
 ## The headless core
 
 GPU-free and fully unit-tested:
@@ -155,6 +171,17 @@ drift it, and a `baked` tag), and adds a matching rect exclusion scoped to that 
 props are never re-scattered on top of themselves. The generated placement list and exclusion are captured
 on the FIRST `Apply` and replayed verbatim on every redo (never regenerated), so an Apply/Revert/Apply
 cycle is byte-identical even though `PropScatter` is otherwise deterministic only against a fixed field.
+
+## Renaming
+
+The placement, spawn, and region inspectors lead with an inline-editable Name row (`MapEditorScene.AddNameRow`,
+shared by all three). Typing a new id or name and moving focus away routes the edit through
+`RenamePlacementCommand`, `RenameSpawnCommand`, or `RenameRegionCommand`, rejecting a blank, unchanged, or
+colliding target before it touches the document, so a rejected rename lands no undo step. Placements and
+spawns are keyed by id and regions by name, so a rename must move the selection to the new key. An immediate
+`Selection.Set` mid-keystroke would rebuild the inspector and drop the row's focus, so the re-select is
+deferred until the Name row itself loses focus. A different selection made first, an outline click or a
+viewport pick while the row is still focused, wins over the stale pending re-select and drops it.
 
 ## `DocumentChanged` unsubscribe note for custom hosts
 

@@ -1488,7 +1488,7 @@ var clips = new Dictionary<LocomotionState, AnimationClip>
 };
 
 // AnimatedCharacter (KhaozEngine.Game / Game.Render3D) wraps the skeleton + clips + player + state machine.
-var character = new AnimatedCharacter(skeleton, clips, new LocomotionThresholds(0.1f, 4.5f), crossfade: 0.15f);
+var character = new AnimatedCharacter(skeleton, clips, new LocomotionThresholds(0.1f, 9f), crossfade: 0.15f);
 ```
 
 Each frame, feed it the movement state your controller already computes, then draw with its pose
@@ -1609,7 +1609,7 @@ at 1x. **Default OFF** - every existing consumer is byte-identical until it opts
 
 ```csharp
 // Per AnimatedCharacter: pass the authored ground speeds of the Walk/Run clips + enable.
-var character = new AnimatedCharacter(skeleton, clips, new LocomotionThresholds(0.1f, 4.5f), crossfade: 0.15f,
+var character = new AnimatedCharacter(skeleton, clips, new LocomotionThresholds(0.1f, 9f), crossfade: 0.15f,
     speedSync: LocomotionSpeedSync.Enable(walkClipSpeed: 1.4f, runClipSpeed: 4.0f));
 
 // Or set it ONCE per model on the tuning that ReplicatedCharacterAnimators builds brains from:

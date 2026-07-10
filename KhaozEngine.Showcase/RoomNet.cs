@@ -409,7 +409,7 @@ namespace KhaozEngine.Showcase
                 float scale = modelHeight > 0.01f ? (CapsuleHalfHeight * 2f) / modelHeight : 1f;
                 CharacterAnimatorTuning tuning = CharacterAnimatorTuning.Default;
                 tuning.Scale = scale;
-                tuning.Locomotion = new LocomotionThresholds(0.1f, 4.5f);   // split walk/run at the server's 3/6 m/s feel
+                tuning.Locomotion = new LocomotionThresholds(0.1f, 9f);   // split walk/run at the server's 6/12 m/s feel
 
                 // The convenience ctor builds one brain per entity off the shared skeleton + clips, applying the tuning.
                 _animators = new ReplicatedCharacterAnimators(charMesh.Skeleton, clips, tuning);

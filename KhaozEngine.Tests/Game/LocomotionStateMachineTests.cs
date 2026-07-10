@@ -5,7 +5,7 @@ namespace KhaozEngine.Tests.Game
 {
     public class LocomotionStateMachineTests
     {
-        static readonly LocomotionThresholds T = LocomotionThresholds.Default;   // WalkSpeed 0.1, RunSpeed 4.5
+        static readonly LocomotionThresholds T = LocomotionThresholds.Default;   // WalkSpeed 0.1, RunSpeed 9
 
         [Fact]
         public void GroundedStill_IsIdle()
@@ -22,7 +22,7 @@ namespace KhaozEngine.Tests.Game
         [Fact]
         public void GroundedFast_IsRun()
         {
-            Assert.Equal(LocomotionState.Run, LocomotionStateMachine.Evaluate(6f, grounded: true, verticalVelocity: 0f, T));
+            Assert.Equal(LocomotionState.Run, LocomotionStateMachine.Evaluate(12f, grounded: true, verticalVelocity: 0f, T));
         }
 
         [Fact]

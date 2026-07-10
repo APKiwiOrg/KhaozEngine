@@ -13,7 +13,7 @@ namespace KhaozEngine.Game
     /// <see cref="WalkSpeed"/> is the dead-zone above which the character is considered moving; at or above
     /// <see cref="RunSpeed"/> it runs. <see cref="SwimForwardThreshold"/> is the dead-zone above which a swimming
     /// character swims forward (<see cref="LocomotionState.Swim"/>) instead of treading water (<see cref="LocomotionState.SwimIdle"/>).
-    /// Defaults match the CharacterController3D walk/run feel (walk ~3, run ~6) and a gentle swim dead-zone.</summary>
+    /// Defaults match the CharacterController3D walk/run feel (walk ~6, run ~12) and a gentle swim dead-zone.</summary>
     public struct LocomotionThresholds
     {
         public float WalkSpeed;
@@ -43,8 +43,8 @@ namespace KhaozEngine.Game
         public const float DefaultSwimForwardThreshold = 0.1f;
 
         /// <summary>Walk above 0.1 m/s (a small dead-zone so a near-zero residual speed stays Idle), run at/above
-        /// 4.5 m/s (between the default 3 m/s walk and 6 m/s run speeds); swim forward above 0.1 m/s.</summary>
-        public static LocomotionThresholds Default => new LocomotionThresholds(0.1f, 4.5f, DefaultSwimForwardThreshold);
+        /// 9 m/s (between the default 6 m/s walk and 12 m/s run speeds); swim forward above 0.1 m/s.</summary>
+        public static LocomotionThresholds Default => new LocomotionThresholds(0.1f, 9f, DefaultSwimForwardThreshold);
     }
 
     /// <summary>Maps a character's movement state to its locomotion clip. Swim wins over both ground and air (a

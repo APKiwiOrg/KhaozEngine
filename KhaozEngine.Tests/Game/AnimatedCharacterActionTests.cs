@@ -72,7 +72,7 @@ namespace KhaozEngine.Tests.Game
         {
             Skeleton skel = LegsArms();
             var c = new AnimatedCharacter(skel, Clips(), crossfade: 0.05f, stateDebounceSeconds: 0f);
-            Settle(c, 5f);   // running: both nodes at X=3
+            Settle(c, 12f);   // running: both nodes at X=3
 
             Assert.False(c.HasActiveActions);
             Assert.Equal(3f, Locals(c)[0].Translation.X, 2);
@@ -83,12 +83,12 @@ namespace KhaozEngine.Tests.Game
 
             // Drive into the sustain, keeping the run input. Legs must still read the run clip (X=3), arms the attack.
             const float dt = 1f / 60f;
-            for (float t = 0f; t < 0.35f; t += dt) c.Update(5f, true, 0f, dt);
+            for (float t = 0f; t < 0.35f; t += dt) c.Update(12f, true, 0f, dt);
             Assert.Equal(3f, Locals(c)[0].Translation.X, 2);    // legs: locomotion base unaffected
             Assert.Equal(20f, Locals(c)[1].Translation.X, 1);   // arms: the attack drives them
 
             // Play out: the action retires and the arms return to tracking locomotion (X=3).
-            for (float t = 0f; t < 0.6f; t += dt) c.Update(5f, true, 0f, dt);
+            for (float t = 0f; t < 0.6f; t += dt) c.Update(12f, true, 0f, dt);
             Assert.False(c.HasActiveActions);
             Assert.Equal(3f, Locals(c)[0].Translation.X, 2);
             Assert.Equal(3f, Locals(c)[1].Translation.X, 2);
@@ -126,20 +126,20 @@ namespace KhaozEngine.Tests.Game
         {
             Skeleton skel = LegsArms();
             var c = new AnimatedCharacter(skel, Clips(), crossfade: 0.05f, stateDebounceSeconds: 0f);
-            Settle(c, 5f);
+            Settle(c, 12f);
             ActionHandle h = c.PlayAction(Attack(5f), UpperBody(), fadeIn: 0.1f, fadeOut: 0.2f);
 
             const float dt = 1f / 60f;
-            for (float t = 0f; t < 0.5f; t += dt) c.Update(5f, true, 0f, dt);   // into sustain: arms at X=20
+            for (float t = 0f; t < 0.5f; t += dt) c.Update(12f, true, 0f, dt);   // into sustain: arms at X=20
             float before = Locals(c)[1].Translation.X;
             Assert.Equal(20f, before, 1);
 
             Assert.True(c.CancelAction(h));
-            c.Update(5f, true, 0f, dt);
+            c.Update(12f, true, 0f, dt);
             float justAfter = Locals(c)[1].Translation.X;
             Assert.True(MathF.Abs(justAfter - before) < 4f, $"pop at cancel: {before} -> {justAfter}");
 
-            for (float t = 0f; t < 0.3f; t += dt) c.Update(5f, true, 0f, dt);
+            for (float t = 0f; t < 0.3f; t += dt) c.Update(12f, true, 0f, dt);
             Assert.False(c.HasActiveActions);
             Assert.Equal(3f, Locals(c)[1].Translation.X, 2);   // arms back on locomotion
         }
@@ -204,7 +204,7 @@ namespace KhaozEngine.Tests.Game
             // byte-stable single-player path. Proves the hold flag threads through the AnimatedCharacter wrapper.
             Skeleton skel = LegsArms();
             var c = new AnimatedCharacter(skel, Clips(), crossfade: 0.05f, stateDebounceSeconds: 0f);
-            Settle(c, 5f);   // running: both nodes at X=3
+            Settle(c, 12f);   // running: both nodes at X=3
             Assert.False(c.HasActiveActions);
 
             // Hold an upper-body pose (arms -> X=20) while the legs keep running.
@@ -212,14 +212,14 @@ namespace KhaozEngine.Tests.Game
             const float dt = 1f / 60f;
 
             // Drive well past the 1s clip: a one-shot would have retired; the held action keeps the arms posed.
-            for (float t = 0f; t < 2f; t += dt) c.Update(5f, true, 0f, dt);
+            for (float t = 0f; t < 2f; t += dt) c.Update(12f, true, 0f, dt);
             Assert.True(c.HasActiveActions);
             Assert.Equal(3f, Locals(c)[0].Translation.X, 2);    // legs still running
             Assert.Equal(20f, Locals(c)[1].Translation.X, 1);   // arms held past the clip end
 
             // Sheathe: cancel releases the hold and the character returns to pure locomotion.
             Assert.True(c.CancelAction(h));
-            for (float t = 0f; t < 0.3f; t += dt) c.Update(5f, true, 0f, dt);
+            for (float t = 0f; t < 0.3f; t += dt) c.Update(12f, true, 0f, dt);
             Assert.False(c.HasActiveActions);
             Assert.Equal(3f, Locals(c)[1].Translation.X, 2);    // arms back on locomotion
         }

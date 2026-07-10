@@ -155,6 +155,7 @@ namespace KhaozEngine.Showcase
 
             _camera = new FollowCamera3D { Target = _character.Position, HeightOffset = 1.2f };
             _camera.Distance = 9f;
+            _camera.Occlusion = _physics;   // spring-arm: pull the eye in through a wall/ceiling rather than clip it
             _camController = new FollowCameraController(_camera);
             _scene.CameraOverride = _camera;
 
@@ -289,8 +290,8 @@ namespace KhaozEngine.Showcase
                 float modelHeight = ModelHeight(charMesh);
                 _charScale = modelHeight > 0.01f ? (CapsuleHalfHeight * 2f) / modelHeight : 1f;
 
-                // Thresholds split walk/run between the controller's 3 m/s walk and 6 m/s run.
-                _animChar = new AnimatedCharacter(charMesh.Skeleton, clips, new LocomotionThresholds(0.1f, 4.5f), crossfade: 0.15f);
+                // Thresholds split walk/run between the controller's 6 m/s walk and 12 m/s run.
+                _animChar = new AnimatedCharacter(charMesh.Skeleton, clips, new LocomotionThresholds(0.1f, 9f), crossfade: 0.15f);
                 _animated = true;
                 Console.WriteLine($"Animated character: {charMesh.BoneCount} bones, states [{string.Join(", ", clips.Keys)}], scale {_charScale:0.00}.");
             }

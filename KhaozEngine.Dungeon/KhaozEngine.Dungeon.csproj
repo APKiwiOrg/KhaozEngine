@@ -13,5 +13,6 @@
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Tests" />
     <None Include="README.md" Pack="true" PackagePath="\" />
+    <EmbeddedResource Include="dungeon.schema.json" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://khaozengine.dev/schemas/dungeon.schema.json",
+  "title": "KhaozEngine dungeon config and layout",
+  "oneOf": [
+    { "$ref": "#/$defs/config" },
+    { "$ref": "#/$defs/layout" }
+  ],
+  "$defs": {
+    "config": {
+      "type": "object",
+      "required": [
+        "cellSizeMeters",
+        "floorHeightMeters",
+        "roomCountTarget",
+        "roomMinTiles",
+        "roomMaxTiles",
+        "maxFloors",
+        "plotWidthTiles",
+        "plotDepthTiles",
+        "criticalPathTarget",
+        "loopEdgeBudget",
+        "lockCount",
+        "bossRoom",
+        "spawnMarkersPerRoomMax",
+        "lootMarkersPerRoomMax"
+      ],
+      "properties": {
+        "cellSizeMeters": { "type": "number", "exclusiveMinimum": 0 },
+        "floorHeightMeters": { "type": "number", "exclusiveMinimum": 0 },
+        "roomCountTarget": { "type": "integer", "minimum": 1 },
+        "roomMinTiles": { "type": "integer", "minimum": 1 },
+        "roomMaxTiles": { "type": "integer", "minimum": 1 },
+        "maxFloors": { "type": "integer", "minimum": 1 },
+        "plotWidthTiles": { "type": "integer", "minimum": 1 },
+        "plotDepthTiles": { "type": "integer", "minimum": 1 },
+        "criticalPathTarget": { "type": "integer", "minimum": 1 },
+        "loopEdgeBudget": { "type": "integer", "minimum": 0 },
+        "lockCount": { "type": "integer", "minimum": 0 },
+        "bossRoom": { "type": "boolean" },
+        "spawnMarkersPerRoomMax": { "type": "integer", "minimum": 0 },
+        "lootMarkersPerRoomMax": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "layout": {
+      "type": "object",
+      "required": [
+        "cellSizeMeters",
+        "floorHeightMeters",
+        "width",
+        "depth",
+        "floors",
+        "grid",
+        "rooms",
+        "edges",
+        "keys",
+        "markers",
+        "stats"
+      ],
+      "properties": {
+        "cellSizeMeters": { "type": "number", "exclusiveMinimum": 0 },
+        "floorHeightMeters": { "type": "number", "exclusiveMinimum": 0 },
+        "width": { "type": "integer", "minimum": 1 },
+        "depth": { "type": "integer", "minimum": 1 },
+        "floors": { "type": "integer", "minimum": 1 },
+        "grid": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^[.RCWDluvt]*$" }
+          }
+        },
+        "rooms": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "floor", "x", "z", "width", "depth", "roomType"],
+            "properties": {
+              "id": { "type": "integer" },
+              "floor": { "type": "integer", "minimum": 0 },
+              "x": { "type": "integer" },
+              "z": { "type": "integer" },
+              "width": { "type": "integer", "minimum": 1 },
+              "depth": { "type": "integer", "minimum": 1 },
+              "roomType": { "enum": ["Entrance", "Normal", "Key", "Treasure", "Boss"] }
+            }
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["roomA", "roomB", "kind", "path", "doors"],
+            "properties": {
+              "roomA": { "type": "integer" },
+              "roomB": { "type": "integer" },
+              "kind": { "enum": ["Corridor", "Stair"] },
+              "path": { "type": "array", "items": { "$ref": "#/$defs/tile" } },
+              "doors": { "type": "array", "items": { "$ref": "#/$defs/tile" } },
+              "lockId": { "type": ["integer", "null"] }
+            }
+          }
+        },
+        "keys": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["lockId", "roomId"],
+            "properties": {
+              "lockId": { "type": "integer" },
+              "roomId": { "type": "integer" }
+            }
+          }
+        },
+        "markers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["type", "tile", "tags"],
+            "properties": {
+              "type": { "enum": ["Spawn", "Loot", "Objective", "Entrance"] },
+              "tile": { "$ref": "#/$defs/tile" },
+              "tags": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "stats": {
+          "type": "object",
+          "required": [
+            "roomsRequested",
+            "roomsPlaced",
+            "criticalPathLength",
+            "floorsUsed",
+            "locksRequested",
+            "locksPlaced",
+            "saturated"
+          ],
+          "properties": {
+            "roomsRequested": { "type": "integer", "minimum": 0 },
+            "roomsPlaced": { "type": "integer", "minimum": 0 },
+            "criticalPathLength": { "type": "integer", "minimum": 0 },
+            "floorsUsed": { "type": "integer", "minimum": 0 },
+            "locksRequested": { "type": "integer", "minimum": 0 },
+            "locksPlaced": { "type": "integer", "minimum": 0 },
+            "saturated": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "tile": {
+      "type": "object",
+      "required": ["x", "z", "floor"],
+      "properties": {
+        "x": { "type": "integer" },
+        "z": { "type": "integer" },
+        "floor": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

@@ -503,5 +503,27 @@ namespace KhaozEngine.Tests.MapEditor
             scene.RefreshPalettes();
             Assert.Equal(3, scene.SpawnList.Roots.Count);                 // clearing restores the full list
         }
+
+        // ---- status strip --------------------------------------------------------------------------------
+
+        [Fact]
+        public void StatusLine_LeadsWithModeAndHint()
+        {
+            var scene = new SpyScene();
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager();
+            m.Push(scene);
+
+            scene.Controller.Mode = EditorToolMode.PlacePlacement;
+            scene.Controller.PlaceKind = "hut";
+
+            string line = scene.StatusLine();
+            string hint = scene.Controller.ModeHint;
+
+            // The active mode name leads the line, its hint follows, and both sit ahead of the undo/redo tail.
+            Assert.StartsWith("PlacePlacement", line);
+            Assert.Contains(hint, line);
+            Assert.True(line.IndexOf(hint, StringComparison.Ordinal) < line.IndexOf("undo:", StringComparison.Ordinal));
+        }
     }
 }

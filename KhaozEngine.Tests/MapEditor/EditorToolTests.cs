@@ -33,6 +33,28 @@ namespace KhaozEngine.Tests.MapEditor
             return (doc, c);
         }
 
+        // Like Make() but with one scatter layer, so a BakeRegion rect gesture has a layer to freeze and its
+        // command actually executes (BakeLayer resolves to the document's first scatter layer).
+        static (EditorDocument doc, EditorToolController c) MakeWithScatterLayer()
+        {
+            var md = new MapDocument
+            {
+                Id = "tool-zone",
+                Bounds = new MapBounds { MinX = -100f, MinZ = -100f, MaxX = 100f, MaxZ = 100f },
+            };
+            md.Terrain.GentleAmplitude = 0f;
+            md.ScatterLayers.Add(new MapScatterLayer
+            {
+                Name = "trees",
+                Seed = 4242,
+                CellSize = 10f,
+                Rules = { new MapBiomeScatterRule { Biome = BiomeId.Meadow, Density = 1f, Kinds = { new MapPropKind { Id = "pine_a", Weight = 1f } } } },
+            });
+            var doc = new EditorDocument(md);
+            var c = new EditorToolController(doc) { Field = FlatField(), HeightOf = HeightOf, GizmoScale = 1f };
+            return (doc, c);
+        }
+
         static void Near(float expected, float actual, float eps = 1e-3f) =>
             Assert.True(System.MathF.Abs(expected - actual) < eps, $"expected ~{expected} but got {actual}");
 
@@ -353,8 +375,10 @@ namespace KhaozEngine.Tests.MapEditor
             var disc = Assert.IsType<DiscShapeDoc>(doc.Doc.Regions[0].Shape);
             Near(3f, disc.Radius);
             Assert.False(doc.WorldRebuildPending);          // regions are game-interpreted, not terrain-affecting
+            Assert.Equal(EditorToolMode.Select, c.Mode);    // one shot: the first draw disarmed the tool
 
-            // A second region auto-names past the first.
+            // A second region auto-names past the first. The draw tool is one shot, so re-arm it before drawing.
+            c.Mode = EditorToolMode.DrawRegion;
             c.Update(Press(new Vector3(20f, 100f, 20f)));
             c.Update(Release(new Vector3(23f, 100f, 20f)));
             Assert.Equal("region-2", doc.Doc.Regions[1].Name);
@@ -371,6 +395,94 @@ namespace KhaozEngine.Tests.MapEditor
 
             Assert.Empty(doc.Doc.Exclusions);
             Assert.False(doc.History.CanUndo);
+        }
+
+        // ---- one-shot draw tools -------------------------------------------------------------------------
+
+        [Fact]
+        public void DrawExclusion_CompletedGesture_ReturnsToSelect()
+        {
+            var (doc, c) = Make();
+            c.Mode = EditorToolMode.DrawExclusion;
+
+            c.Update(Press(new Vector3(3f, 100f, 4f)));
+            c.Update(Release(new Vector3(3f, 100f, 8f)));   // radius 4 -> a real exclusion commits
+
+            Assert.Single(doc.Doc.Exclusions);
+            Assert.Equal(EditorToolMode.Select, c.Mode);    // one shot: the commit disarms the tool
+        }
+
+        [Fact]
+        public void DrawRegion_CompletedGesture_ReturnsToSelect()
+        {
+            var (doc, c) = Make();
+            c.Mode = EditorToolMode.DrawRegion;
+
+            c.Update(Press(new Vector3(0f, 100f, 0f)));
+            c.Update(Release(new Vector3(3f, 100f, 0f)));   // radius 3 -> a real region commits
+
+            Assert.Single(doc.Doc.Regions);
+            Assert.Equal(EditorToolMode.Select, c.Mode);
+        }
+
+        [Fact]
+        public void BakeRegion_CompletedGesture_ReturnsToSelect()
+        {
+            var (doc, c) = MakeWithScatterLayer();
+            c.Mode = EditorToolMode.BakeRegion;
+
+            c.Update(Press(new Vector3(-15f, 100f, -15f)));
+            c.Update(Release(new Vector3(15f, 100f, 15f)));   // a real rect over a scatter layer commits
+
+            Assert.Equal(1, doc.History.UndoDepth);           // the bake command ran
+            Assert.Equal(EditorToolMode.Select, c.Mode);
+        }
+
+        [Fact]
+        public void AbandonedGesture_DoesNotReturnToSelect()
+        {
+            var (doc, c) = Make();
+            c.Mode = EditorToolMode.DrawExclusion;
+
+            // A degenerate click emits no command, so the one-shot return never fires and the tool stays armed
+            // for the next draw. Abandonment (Escape / mode switch) keeps its own behavior, tested elsewhere.
+            c.Update(Press(new Vector3(4f, 100f, 4f)));
+            c.Update(Release(new Vector3(4f, 100f, 4f)));     // zero radius -> nothing committed
+
+            Assert.Empty(doc.Doc.Exclusions);
+            Assert.Equal(EditorToolMode.DrawExclusion, c.Mode);
+        }
+
+        // ---- mode hint -----------------------------------------------------------------------------------
+
+        [Fact]
+        public void ModeHint_ReflectsModeAndPlaceKind()
+        {
+            var (_, c) = Make();
+
+            Assert.Equal(EditorToolMode.Select, c.Mode);
+            Assert.Contains("select", c.ModeHint, System.StringComparison.OrdinalIgnoreCase);
+
+            c.Mode = EditorToolMode.PlacePlacement;
+            c.PlaceKind = "hut";
+            Assert.Contains("hut", c.ModeHint, System.StringComparison.Ordinal);
+
+            c.Mode = EditorToolMode.PlaceSpawn;
+            c.SpawnArchetype = "wolf";
+            Assert.Contains("wolf", c.ModeHint, System.StringComparison.Ordinal);
+
+            c.Mode = EditorToolMode.DrawExclusion;
+            Assert.Contains("one shot", c.ModeHint, System.StringComparison.OrdinalIgnoreCase);
+
+            // No em / en dashes or prose semicolons in any hint (the shipped-writing punctuation rule).
+            foreach (EditorToolMode m in System.Enum.GetValues<EditorToolMode>())
+            {
+                c.Mode = m;
+                string hint = c.ModeHint;
+                Assert.DoesNotContain((char)0x2014, hint);   // no em dash
+                Assert.DoesNotContain((char)0x2013, hint);   // no en dash
+                Assert.DoesNotContain(';', hint);
+            }
         }
     }
 }

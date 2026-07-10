@@ -2832,7 +2832,11 @@ transform gizmo: translate XZ, translate Y, yaw ring, uniform scale), `PlacePlac
 the palette-selected `PlaceKind`), `PlaceSpawn` (click ground-snaps `SpawnArchetype`), `DrawExclusion` /
 `DrawRegion` (drag a disc, shift-drag a rect), `EditFeature` (inspector-driven terrain-feature parameter
 scrub, no viewport gesture), `BakeRegion` (drag a rect, freezes `BakeLayer`'s procedural scatter into
-authored placements plus a covering exclusion).
+authored placements plus a covering exclusion). The three draw tools (`DrawExclusion`, `DrawRegion`,
+`BakeRegion`) are one shot: a completed gesture (the release that emits the command) drops back to `Select`
+automatically, while an abandoned or sub-threshold gesture keeps the tool armed. `EditorToolController.ModeHint`
+gives a one-line description of the active tool (folding in `PlaceKind` / `SpawnArchetype`) that the scene
+renders at the head of the status strip.
 
 **Keys.** Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, Delete removes the current selection,
 Escape cancels an in-flight gizmo/draw gesture and returns to `Select`. Shift+Escape exits the editor

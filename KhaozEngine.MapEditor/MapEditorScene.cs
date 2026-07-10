@@ -967,13 +967,17 @@ public class MapEditorScene : GameScene, IGameScene3D
     float KindHeight(string kind) =>
         _viewport is not null && _viewport.KindHeights.TryGetValue(kind, out float h) ? h : FallbackKindHeight;
 
-    string StatusLine()
+    /// <summary>Composes the status-strip text. The active mode name and its <see cref="EditorToolController.ModeHint"/>
+    /// lead the line (the operator's most useful cue), followed by the undo/redo labels, the exit chord, and any
+    /// transient message (save result, discard warning). Internal so a headless test can assert the ordering.</summary>
+    internal string StatusLine()
     {
         string dirty = _document.IsDirty ? "*" : "";
+        string hint = _controller.ModeHint;
         string undo = _document.History.UndoLabel ?? "-";
         string redo = _document.History.RedoLabel ?? "-";
         string tail = string.IsNullOrEmpty(_statusText) ? "" : "  |  " + _statusText;
-        return $"{dirty}{_controller.Mode}   undo: {undo}   redo: {redo}   Shift+Esc: exit{tail}";
+        return $"{dirty}{_controller.Mode}   {hint}   undo: {undo}   redo: {redo}   Shift+Esc: exit{tail}";
     }
 
     void Fill(SpriteBatch batch, Rect r, Color color) =>

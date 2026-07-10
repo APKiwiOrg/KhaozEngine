@@ -160,6 +160,22 @@ public sealed class EditorToolController
     /// <summary>True while a draw-mode rubber-band is in flight (press captured, release pending).</summary>
     public bool IsDrawing => _drawing;
 
+    /// <summary>A one-line, mode-specific hint for the active tool, folding in <see cref="PlaceKind"/> and
+    /// <see cref="SpawnArchetype"/> where they apply. The one-shot draw tools (exclusion, region, bake) say so.
+    /// The scene renders this alongside the mode name in the status strip. Developer-tool text, so it is a raw
+    /// string (the editor is not player-facing) and carries no em / en dashes or semicolons.</summary>
+    public string ModeHint => _mode switch
+    {
+        EditorToolMode.Select => "Select. Click selects, drag the gizmo handles to move.",
+        EditorToolMode.PlacePlacement => "Place placement. Click to place " + PlaceKind + ".",
+        EditorToolMode.PlaceSpawn => "Place spawn. Click to place a " + SpawnArchetype + " spawn.",
+        EditorToolMode.DrawExclusion => "Draw exclusion. Drag a disc, shift-drag a rect, scatter skips it. One shot.",
+        EditorToolMode.DrawRegion => "Draw region. Drag out a named gameplay region. One shot.",
+        EditorToolMode.EditFeature => "Edit feature. Select terrain features in the outline, edit in the inspector.",
+        EditorToolMode.BakeRegion => "Bake region. Drag a rect to freeze scatter into placements. One shot.",
+        _ => _mode.ToString(),
+    };
+
     /// <summary>Advances the tool for one frame from <paramref name="input"/>. Global edges run first (Escape
     /// cancels and returns to Select, Delete removes the selection), then the per-mode gesture policy.</summary>
     public void Update(in EditorFrameInput input)
@@ -396,6 +412,10 @@ public sealed class EditorToolController
             int idx = _document.Doc.Exclusions.Count - 1;
             _document.Selection.Set(SelectionKind.Exclusion, idx.ToString(CultureInfo.InvariantCulture));
         }
+
+        // One shot: a completed draw commits exactly one shape, then falls back to Select so the next click picks
+        // it rather than starting another. A degenerate gesture returned above without committing and stays armed.
+        _mode = EditorToolMode.Select;
     }
 
     // A disc centred on the press point (radius = XZ distance to the release), or a rect spanning the two XZ
@@ -447,6 +467,9 @@ public sealed class EditorToolController
 
         _document.Execute(new BakeRegionCommand(new RectArea(minX, minZ, maxX, maxZ), layer, _document.Registry));
         _document.SealGesture();
+
+        // One shot: freezing a region is a discrete commit, so return to Select once it lands.
+        _mode = EditorToolMode.Select;
     }
 
     // ---- delete ------------------------------------------------------------------------------------------

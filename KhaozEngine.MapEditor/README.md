@@ -54,7 +54,8 @@ the scene off the `SceneManager`: with no unsaved changes it pops immediately, a
 the first press arms a status-strip warning ("Shift+Escape again to discard and exit") and a second
 Shift+Escape discards and exits. Any Ctrl+S or any document mutation (an edit, an undo, a redo) disarms
 the warning, so a stale discard confirmation can never fire after the user resumed working. The status
-strip shows the chord as a standing hint.
+strip leads with the active tool name and its `ModeHint` one-liner, then the undo/redo labels and the
+exit chord as a standing hint.
 
 ## The headless core
 
@@ -74,7 +75,12 @@ GPU-free and fully unit-tested:
   pointer/keyboard edges) and emits commands. Select mode picks and drives the transform-gizmo drag
   (coalesced into one undo step, sealed on release). The place modes ground-snap a click into an Add. The
   draw modes rubber-band a disc (drag) or rect (shift-drag) into an exclusion or an auto-named region. The
-  bake mode drags a rect on the ground and bakes the `BakeLayer` scatter over it.
+  bake mode drags a rect on the ground and bakes the `BakeLayer` scatter over it. The three draw tools
+  (draw-exclusion, draw-region, bake-region) are one shot: a completed gesture (the release that emits the
+  command) falls back to Select automatically, so the next click picks the shape rather than starting another.
+  An abandoned gesture (Escape, a mode switch, or a degenerate sub-threshold click that emits nothing) keeps
+  the tool armed. `EditorToolController.ModeHint` returns a one-line description of the active tool, folding in
+  `PlaceKind` / `SpawnArchetype`, which the scene renders in the status strip.
 
 `MapEditorScene` is the turn-key scene a per-game head pushes: it wires the streamed `ViewportWorld`, a fly
 camera, the `EditorToolController`, and the Gui chrome (toolbar tab bar, tree outline, property-grid
@@ -128,7 +134,8 @@ through the gizmo and those never set `AffectsWorld` anyway.
 
 `EditorToolMode.BakeRegion` drags a rect on the ground. On release, `EditorToolController` executes a
 `BakeRegionCommand(region, layer, registry)` for `EditorToolController.BakeLayer` (defaults to the
-document's first scatter layer, null when the document has none, in which case the drag is a no-op).
+document's first scatter layer, null when the document has none, in which case the drag is a no-op). Like the
+draw tools it is one shot: a committed bake returns the tool to Select.
 `BakeRegionCommand.Apply` runs `PropScatter.Generate` against the document-built field and scatter config
 for that layer over the rect, converts each generated placement to an authored `MapPlacement` (a
 document-unique `baked-<layer>-N` id, the scatter kit id, the frozen ground Y so a later re-snap cannot

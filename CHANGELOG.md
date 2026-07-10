@@ -5,6 +5,43 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.45.0
+
+Player-facing in-game patch notes: a new `PatchNotes` namespace in `KhaozEngine.Gui` parses a game's
+`PLAY_CHANGELOG.md` (the shared player-changelog style, `docs/CHANGELOG-STYLE.md`) into a document model
+and renders it as a collapsible, scrollable in-game panel. Additive to `KhaozEngine.Gui`, no breaking
+change, minor bump.
+
+- **`PatchNotesParser.Parse(string?)` + `PatchNotesDocument` (`KhaozEngine.Gui`).** Turns the changelog
+  markdown into an immutable document: `---`-separated `PatchNotesBuild`s (version, build name, date),
+  each holding `PatchNoteGroup`s labelled by `PatchNoteCategory` (New/Major/Minor/Rebalance/Bug/Other),
+  each a list of `PatchNote`s decomposed into plain and backtick-wrapped `PatchNoteSpan`s (the
+  upgrade/entity/item name convention). Malformed or missing input parses to `PatchNotesDocument.Empty`;
+  the parser never throws.
+- **`PatchNotesLoader.Load()` / `Load(Assembly, baseDirectory?)` (`KhaozEngine.Gui`).** Reads the fixed
+  `PLAY_CHANGELOG.md` name disk-first (next to the running app), falling back to an embedded manifest
+  resource of the same name in the given assembly, then to `PatchNotesDocument.Empty` - mirrors
+  `KhaozEngine.Content.ConfigLoader`'s disk-then-embedded convention without adding a Gui-to-Content
+  dependency. Every IO attempt is swallowed, so a read failure just falls through to the next source.
+- **`PatchNotesView` + `PatchNotesScreen` (`KhaozEngine.Gui`).** `PatchNotesView` is the collapsible,
+  scrollable presenter: one header per build, tap to expand/collapse, wheel/drag scroll
+  (scissor-clipped), `CloseRequested` latches on a close-tap or Escape. `PatchNotesScreen` is a drop-in
+  modal `Screen` wrapper for `ScreenStack` games (`SettingsScreen`-style 0.18s in/out transitions,
+  always modal, exits itself when `CloseRequested` latches).
+- **`PatchNotesTheme` + `PatchNotesStrings` (`KhaozEngine.Gui`).** `PatchNotesTheme` supplies the palette
+  (panel/header fills, body/muted text, a code-span accent, and `CategoryColor(PatchNoteCategory)`
+  per-category badge colors - Rebalance a warm amber) with a `Default` preset. `PatchNotesStrings`
+  supplies the chrome text (title, close, empty-state, per-category labels) as `StringId`s with a
+  built-in English `IStringCatalog` fallback, so an unlocalized build still renders correctly.
+- **Tests.** `PatchNotesParserTests` (12 cases), `PatchNotesLoaderTests` (4), `PatchNotesViewTests` (12),
+  `PatchNotesScreenTests` (4), `PatchNotesStringsTests` (4), `PatchNotesThemeTests` (5) - parser edge
+  cases, disk-vs-embedded precedence, expand/collapse + scroll + close latching, screen wrapper
+  behaviour, string fallback, theme colors - plus a `KhaozEngine.Showcase` demo room wired to a fixture
+  `PLAY_CHANGELOG.md`.
+- **Consumer note (games).** Re-pin to adopt. A game wires `PatchNotesLoader.Load()` (or embeds its own
+  `PLAY_CHANGELOG.md` as a resource) into a `PatchNotesScreen` pushed from a menu button; nothing is
+  forced on existing screens.
+
 ## 10.44.0
 
 Map document format: new `KhaozEngine.MapDoc` package (the zone/map JSON document: terrain config,

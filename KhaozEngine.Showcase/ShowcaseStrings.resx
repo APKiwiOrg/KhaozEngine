@@ -63,7 +63,8 @@
   <data name="Menu.Widgets" xml:space="preserve"><value>Widgets</value></data>
   <data name="Menu.Immediate" xml:space="preserve"><value>Immediate</value></data>
   <data name="Menu.OverlayDemo" xml:space="preserve"><value>Overlay demo</value></data>
-  <data name="Menu.Footer" xml:space="preserve"><value>Settings = core widgets    Widgets = heavy widgets    Immediate = GuiSurface    Overlay demo = push/pop    Esc for menu</value></data>
+  <data name="Menu.PatchNotes" xml:space="preserve"><value>Patch Notes</value></data>
+  <data name="Menu.Footer" xml:space="preserve"><value>Settings = core widgets    Widgets = heavy widgets    Immediate = GuiSurface    Overlay demo = push/pop    Patch Notes = changelog    Esc for menu</value></data>
   <data name="Settings.Title" xml:space="preserve"><value>Settings</value></data>
   <data name="Settings.Volume" xml:space="preserve"><value>Volume</value></data>
   <data name="Settings.Fullscreen" xml:space="preserve"><value>Fullscreen</value></data>

@@ -125,6 +125,24 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   `KhaozEngine.Updates`) from the same theme (accent from `ProgressFill`, background from `PanelFill`, text from
   `BodyText`), so the in-game overlay and the apply window share one palette. See `docs/UPDATER.md` for the key
   table.
+- **Patch notes (`PatchNotesLoader`/`PatchNotesParser`/`PatchNotesDocument` + `PatchNotesView`/`PatchNotesScreen`/
+  `PatchNotesTheme`/`PatchNotesStrings`).** Renders a game's player-facing `docs/PLAY_CHANGELOG.md` in-game, in
+  the shared changelog style (`docs/CHANGELOG-STYLE.md`): `---`-separated dated builds grouped under
+  New/Major/Minor/Rebalance/Bug, with backtick-wrapped upgrade/entity/item names. `PatchNotesParser.Parse(text)`
+  turns the markdown into an immutable `PatchNotesDocument` (`Builds` of `PatchNotesBuild`, each a
+  `PatchNoteGroup` list of category-labelled `PatchNote`s decomposed into plain/backtick `PatchNoteSpan`s); a bad
+  or missing document parses to `PatchNotesDocument.Empty`, never throws. `PatchNotesLoader.Load()` /
+  `Load(Assembly, baseDirectory?)` reads `PLAY_CHANGELOG.md` disk-first (next to the running app) then falls
+  back to an embedded resource of the same name in the given assembly, mirroring
+  `KhaozEngine.Content.ConfigLoader`'s disk-then-embedded convention without a Gui-to-Content dependency; every
+  IO attempt is swallowed so a read failure just falls through. `PatchNotesView` is the collapsible, scrollable
+  presenter (one build per header, tap to expand/collapse, wheel/drag scroll, `CloseRequested` latches on
+  close-tap or Escape); `PatchNotesScreen` is the drop-in modal `Screen` wrapper (`SettingsScreen`-style 0.18s
+  transitions, always modal) for `ScreenStack` games. `PatchNotesTheme` supplies the palette (panel/header
+  fills, text, muted text, code-span accent, and a `CategoryColor(PatchNoteCategory)` per-category badge color -
+  Rebalance a warm amber) with a `Default` preset; `PatchNotesStrings` supplies the chrome text (title/close/
+  empty-state, per-category labels) as `StringId`s with a built-in English `IStringCatalog` fallback so an
+  unlocalized build renders correctly.
 - `DiagnosticsOverlay` (+ `DiagnosticsOverlayTheme`, `OverlayRow`/`OverlaySection`) - a reusable in-game
   telemetry HUD, a pure presenter modeled on `UpdateOverlayView`. The game assembles sections each frame and
   feeds them via `SetSections`, or registers a provider once with `SetSectionsProvider(provider, refreshInterval)`

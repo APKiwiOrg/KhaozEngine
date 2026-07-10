@@ -5,6 +5,27 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.48.0
+
+`PannableCanvas` gains an opt-in wheel-zoom mode: set `Wheel = CanvasWheelMode.Zoom` and the mouse wheel
+zooms toward the pointer instead of panning vertically, with a `ZoomStep` knob and an optional
+`SnapZoomLevels` for discrete crisp stops. The default stays `CanvasWheelMode.Pan`, so existing callers are
+unchanged.
+
+- **Opt-in wheel zoom (`KhaozEngine.Gui`).** New `PannableCanvas.Wheel` (`CanvasWheelMode.Pan` | `.Zoom`,
+  default `Pan`). In `Zoom` mode a wheel event applies `Zoom *= ZoomStep^wheelDelta` (new `ZoomStep`
+  property, default `1.1`, wheel-up zooms in), clamped to the existing `MinZoom`/`MaxZoom`, keeping the
+  world point under the cursor fixed (zoom-toward-pointer), then re-clamps position to `ContentBounds`.
+  Drag still pans, and `Pan` mode is the previous vertical-pan behavior unchanged.
+- **Discrete zoom stops (`SnapZoomLevels`).** Optional `float[]? PannableCanvas.SnapZoomLevels`; when set,
+  the wheel snaps to the adjacent listed stop in the scroll direction (order-independent, one stop per
+  event) instead of stepping continuously by `ZoomStep`. Each stop is still clamped to `MinZoom`/`MaxZoom`.
+- **Sharp-text tradeoff (surfaced, not fixed).** Bitmap `SpriteFont` text is baked at a fixed size, so
+  world-space text blurs at any non-1.0 zoom. A caller that needs crisp text either pins
+  `MinZoom = MaxZoom = 1` (no zoom, the prior Nullwake tree-canvas default) or lists a few stops in
+  `SnapZoomLevels` and accepts blur only at those stops. This is a deliberate consumer choice: free zoom
+  trades some text sharpness for navigability.
+
 ## 10.47.0
 
 `SpriteFont` bakes Latin-1 and Latin Extended-A by default with a visible fallback glyph, and the

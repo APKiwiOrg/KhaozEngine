@@ -5,6 +5,32 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.47.0
+
+`SpriteFont` bakes Latin-1 and Latin Extended-A by default with a visible fallback glyph, and the
+in-game `PatchNotesView` picks up a title-bar border fix, a draggable scrollbar thumb, and a localized
+close-button tooltip.
+
+- **Default glyph coverage + fallback glyph (`KhaozEngine.Render2D`).** `SpriteFont.BakeCpu` covered only
+  printable ASCII (U+0020..U+007E); any accented codepoint (French, German, and every other Western/
+  Central European localization) was silently dropped by both `Measure` and `DrawString`. The default
+  bake now covers U+0020..U+007E plus U+00A0..U+017F (Latin-1 Supplement + Latin Extended-A), skipping
+  codepoints the face has no outline for (`stbtt_FindGlyphIndex == 0`) instead of baking empty boxes.
+  Unbaked codepoints no longer drop silently: `Measure` and `DrawString` share one resolver
+  (`SpriteFont.ResolveGlyph`) that substitutes the new public `SpriteFont.FallbackChar` glyph (`?`),
+  keeps control characters zero-width, and collapses a surrogate pair to a single fallback glyph, so
+  text metrics and rendering always agree. ASCII packs into the atlas first, in the original order, so
+  existing glyph cells, ASCII metrics, and GPU goldens are unchanged; the density-1 atlas stays 512x256
+  (319 glyphs vs 95 in the same footprint).
+- **`PatchNotesView` border, scrollbar, and tooltip fixes (`KhaozEngine.Gui`).** The panel border no
+  longer disappears under the title bar: the header fill was painting over the top/upper-side border
+  pixels, so the border is now re-stroked after the header fill (mirroring `PopupPanel.Draw`'s same
+  fix). The scrollbar thumb is now draggable: press-and-hold captures it via the same press-origin grab
+  gate `Slider`/`ScrollablePanel` use, and the drag maps linearly onto the scroll range, clamped at both
+  ends. The close button's `PatchNotesStrings.Close` tooltip (defined but previously unused) now shows
+  on hover, anchored above the button. Test hardening: new headless coverage for content-area drag-to-
+  scroll and header-tap toggling, plus a Latin Extended-A width assertion in `SpriteFontCoverageTests`.
+
 ## 10.46.0
 
 Editor building blocks (Phase B1 of the map-editor program, `docs/MAP-EDITOR-DESIGN.md`): new `KhaozEngine.Gui`

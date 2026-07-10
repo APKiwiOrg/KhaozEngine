@@ -11,30 +11,16 @@ namespace KhaozEngine.Tests.Dungeon
     /// <see cref="DungeonKitMap.Greybox"/> maps a <see cref="DungeonPiece"/> to, and that each entry's
     /// file actually exists on disk, so the committed kit and the greybox map never drift apart.
     ///
-    /// No existing test in this project loads a real committed Showcase asset by path (the
-    /// <c>AssetManifest</c> tests in <c>Render3D/AssetManifestTests.cs</c> and
-    /// <c>Render3D/PropSurfaceLoaderTests.cs</c> only use synthetic manifests in a temp directory), so
-    /// there is no established "load a Showcase asset from the test project's output" pattern to
-    /// follow. This walks up from the test assembly's own directory to the repo root (identified by
-    /// the checked-in <c>KhaozEngine.slnx</c>) and resolves the manifest from there, rather than
-    /// depending on any MSBuild output-copy wiring.</summary>
+    /// The manifest is read from the test output directory (the project idiom for committed assets,
+    /// see <c>Render3D/GltfLoaderTangentTests.cs</c>): the Showcase csproj's <c>assets/dungeon/**</c>
+    /// copy item flows transitively into this project's output via the Showcase project
+    /// reference.</summary>
     public class DungeonKitAssetTests
     {
-        static string RepoRoot()
-        {
-            DirectoryInfo? dir = new DirectoryInfo(AppContext.BaseDirectory);
-            while (dir != null && !File.Exists(Path.Combine(dir.FullName, "KhaozEngine.slnx")))
-                dir = dir.Parent;
-            if (dir == null)
-                throw new InvalidOperationException(
-                    $"DungeonKitAssetTests could not locate the repo root (KhaozEngine.slnx) above '{AppContext.BaseDirectory}'.");
-            return dir.FullName;
-        }
-
         [Fact]
         public void Manifest_ResolvesAllGreyboxKitIds()
         {
-            string manifestPath = Path.Combine(RepoRoot(), "KhaozEngine.Showcase", "assets", "dungeon", "dungeon.manifest.json");
+            string manifestPath = Path.Combine(AppContext.BaseDirectory, "assets", "dungeon", "dungeon.manifest.json");
             Assert.True(File.Exists(manifestPath), $"dungeon.manifest.json not found at '{manifestPath}'.");
 
             AssetManifest manifest = AssetManifest.Load(manifestPath);

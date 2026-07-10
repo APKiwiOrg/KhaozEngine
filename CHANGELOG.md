@@ -5,6 +5,14 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.60.0
+
+Third-person walk feel: a camera occlusion spring-arm keeps the follow camera out of walls and ceilings, and the default walk and sprint speeds double fleet-wide.
+
+- **Camera occlusion spring-arm (`KhaozEngine.Render3D`).** `FollowCamera3D` gains opt-in occlusion: set `Occlusion` to an `IPhysicsWorld` (with optional `OcclusionRadius`, `OcclusionSkin`, `MinOcclusionDistance`) and the `Eye` getter sweeps a sphere probe from the target along the boom and pulls the eye in to the first static hit, so the camera never clips through a wall or ceiling. Off by default, so cameras that do not set it are unchanged. Wired into the Room3D and RoomDungeon Showcase demos.
+- **Default walk and sprint speed doubled (`KhaozEngine.Locomotion`, `KhaozEngine.Game.Render3D`).** `MoveTuning.Default.WalkSpeed` 3 to 6 and `RunSpeed` 6 to 12, parity'd in `CharacterController3D`, and the `LocomotionThresholds.Default` walk-to-run animation threshold moves 4.5 to 9 so the run animation still selects correctly. Every walk demo and every game using the defaults inherits the faster movement.
+- **ADOPTION NOTE (Ruinborne and any consumer using the default speeds).** Walk and sprint speed double on pin-bump. If a game wants its old feel, override `WalkSpeed`/`RunSpeed` back. Ruinborne additionally hardcodes animation clip speeds (`WalkClipSpeed = 3`, `RunClipSpeed = 6`) that must be bumped to 6 and 12 on adoption or the avatar's feet will slide. (The 10.59.0 jump adoption note still applies: drop Ruinborne's `Default.JumpSpeed * sqrt(1.5)` override, since the engine baseline now equals that value.)
+
 ## 10.59.0
 
 Walk-demo polish: the default jump height rises to match Ruinborne (+50% apex), the Showcase dungeon demo gains real physics collision and the animated character, and the greybox kit is regenerated at the demo's larger scale.

@@ -86,11 +86,15 @@ public class PatchNotesLoaderTests
     [Fact]
     public void Load_EntryAssemblyOverload_NeverThrows()
     {
-        // No entry-assembly disk/resource fixture exists in the test host: this only proves the
-        // parameterless overload runs to completion (Assembly.GetEntryAssembly() plus
-        // AppContext.BaseDirectory) without throwing, whatever it resolves to.
+        // The test host's entry assembly (xunit's testhost) has neither a disk copy of ResourceName next
+        // to it nor an embedded PLAY_CHANGELOG.md resource, so this deterministically falls through both
+        // sources to PatchNotesDocument.Empty - a well-formed document, not a null or a half-built one.
         var doc = PatchNotesLoader.Load();
 
         Assert.NotNull(doc);
+        Assert.NotNull(doc.Builds);
+        Assert.True(doc.IsEmpty);
+        Assert.Empty(doc.Builds);
+        Assert.Equal(string.Empty, doc.Title);
     }
 }

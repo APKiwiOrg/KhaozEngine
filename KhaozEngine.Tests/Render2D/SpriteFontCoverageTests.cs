@@ -56,6 +56,18 @@ namespace KhaozEngine.Tests.Render2D
         }
 
         [Fact]
+        public void Measure_counts_latin_extended_a_chars()
+        {
+            // Same shape as Measure_counts_accented_chars, but for a Latin Extended-A letter (U+0141, "L with
+            // stroke") rather than a Latin-1 Supplement one: both blocks must actually measure real glyphs,
+            // not silently fall back to zero width.
+            BakedFont baked = Bake();
+
+            Assert.True(Width(baked, "Ł") > 0);
+            Assert.True(Width(baked, "LŁ") > Width(baked, "L"));
+        }
+
+        [Fact]
         public void Measure_of_a_localized_string_equals_its_glyph_by_glyph_width()
         {
             BakedFont baked = Bake();

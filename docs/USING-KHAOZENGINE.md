@@ -2005,6 +2005,13 @@ walkable cell at `floorY + ceiling height`, except where a walkable cell sits di
 and shafts stay open). It is pure sink-time geometry - the layout structure and `LayoutHash` are unchanged, so
 `Open` output is byte-for-byte identical to before.
 
+Corridors are 1-tile single-file by default. Set `CorridorMinWidth`/`CorridorMaxWidth` above 1 to carve grand
+multi-tile halls (growth and loop corridors both widen into a straight rectangular tube with multi-cell door
+openings, capped to the narrower room edge). Set `HallChancePercent` above 0 (with `HallMinLengthTiles`/
+`HallMaxLengthTiles`) to grow a share of rooms as elongated `DungeonRoomType.Hall` grand connectors whose long
+axis runs along the corridor that reached them. Both draw from the `rooms` RNG only when their range is open,
+so a default config (1/1 widths, 0% halls) consumes no extra randomness and reproduces existing seeds exactly.
+
 Both sinks share the same cell-to-piece mapping internally, so a bake and a stamp of the same
 (layout, kit, plot) place identical props - see `KhaozEngine.Showcase`'s "Dungeon (walk)" room for a
 wiring example (generate once, stamp, load the committed greybox kit through `AssetManifest`/`PropLoader`, spawn
@@ -2030,7 +2037,12 @@ available for editor/AI tooling. The load path itself enforces its own semantic 
   "lockCount": 1,
   "bossRoom": true,
   "spawnMarkersPerRoomMax": 3,
-  "lootMarkersPerRoomMax": 1
+  "lootMarkersPerRoomMax": 1,
+  "corridorMinWidth": 1,
+  "corridorMaxWidth": 1,
+  "hallChancePercent": 0,
+  "hallMinLengthTiles": 10,
+  "hallMaxLengthTiles": 16
 }
 ```
 

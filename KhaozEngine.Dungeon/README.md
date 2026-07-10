@@ -29,7 +29,9 @@ Console.WriteLine($"solvable: {report.IsSolvable}, critical path: {layout.Stats.
 ```
 
 `DungeonConfig` covers plot and room sizing, floor count, the loop-edge target, lock/key count, marker
-density caps, and the roofed-interior toggle (`CeilingMode`, see below). `Validate()` throws
+density caps, corridor width (`CorridorMinWidth`/`CorridorMaxWidth`, see below), the hall knobs
+(`HallChancePercent`, `HallMinLengthTiles`/`HallMaxLengthTiles`, see below), and the roofed-interior toggle
+(`CeilingMode`, see below). `Validate()` throws
 `ArgumentException` naming the first offending property (`Generate` calls it for you). `DungeonLayout` exposes the raster read-only via `GetCell(x, z, floor)` plus
 `Rooms`/`Edges`/`Keys`/`Markers` and a `Stats` summary (`RoomsPlaced`, `CriticalPathLength`, `LocksPlaced`,
 `Saturated` when the plot or room budget ran out before hitting the target). `CriticalPathTarget` is
@@ -104,6 +106,35 @@ partially-configured kit fails loudly at bake/stamp time rather than silently dr
 `KhaozEngine.Showcase/assets/dungeon/` (glTF pieces plus `dungeon.manifest.json`, loaded through
 `KhaozEngine.Render3D`'s `AssetManifest`/`PropLoader`) - useful for tests and early integration before real
 content exists.
+
+## Wide corridors and halls
+
+Corridors default to 1-tile single-file connectors. Open the width range to carve grand, multi-tile halls,
+and turn on halls for elongated grand-connector rooms:
+
+```csharp
+var config = new DungeonConfig
+{
+    CorridorMinWidth = 2,        // default 1/1 (single-file, exact back-compat)
+    CorridorMaxWidth = 5,
+    HallChancePercent = 30,      // default 0 (no halls)
+    HallMinLengthTiles = 10,     // hall long-axis span (only used when the chance is positive)
+    HallMaxLengthTiles = 18,
+};
+```
+
+When the width range is open, growth corridors and loop corridors carve a straight rectangular tube (a
+constant perpendicular band from one room edge to the other) and their door frames become multi-cell
+openings. The drawn width is capped to the narrower of the two room edges the corridor spans, so a wide
+draw still places against a smaller room by narrowing, and a loop corridor falls back to a 1-wide edge when
+a wide band would not fit (so a loop still forms). A hall is a `DungeonRoomType.Hall` room whose long axis
+runs along the corridor that reached it and whose girth is a normal room span, so it is provably longer than
+any `RoomMaxTiles` room. When halls are enabled the plot must fit `HallMaxLengthTiles + 2` on both axes.
+
+Both are deterministic: the width and hall decisions draw from the `rooms` RNG stream only when their range
+is open, so a default config (`CorridorMinWidth == CorridorMaxWidth == 1`, `HallChancePercent == 0`) consumes
+no extra randomness and reproduces every existing seed byte-for-byte (`DungeonLayout.LayoutHash`). The
+per-cell sinks and `DungeonSolver` handle wide corridors and halls with no extra work.
 
 ## Roofed interiors (`CeilingMode`)
 

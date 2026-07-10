@@ -26,6 +26,7 @@ namespace KhaozEngine.Tests.Dungeon
             Assert.Equal("dungeon_doorframe", map.Require(DungeonPiece.DoorFrame));
             Assert.Equal("dungeon_stair", map.Require(DungeonPiece.StairUp));
             Assert.Equal("dungeon_landing", map.Require(DungeonPiece.StairDown));
+            Assert.Equal("dungeon_ceiling", map.Require(DungeonPiece.Ceiling));
         }
 
         [Fact]

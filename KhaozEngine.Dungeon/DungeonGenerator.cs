@@ -59,6 +59,8 @@ public static class DungeonGenerator
 
         var layout = new DungeonLayout(width, depth, floors, config.CellSizeMeters, config.FloorHeightMeters)
         {
+            CeilingMode = config.CeilingMode,
+            CeilingHeightMeters = config.CeilingHeightMeters ?? config.FloorHeightMeters,
             Rooms = grown.Rooms,
             Edges = grown.Edges,
             Keys = gatingResult.Keys,

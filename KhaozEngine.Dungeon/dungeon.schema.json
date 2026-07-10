@@ -25,7 +25,12 @@
         "lockCount": { "type": "integer", "minimum": 0 },
         "bossRoom": { "type": "boolean" },
         "spawnMarkersPerRoomMax": { "type": "integer", "minimum": 0 },
-        "lootMarkersPerRoomMax": { "type": "integer", "minimum": 0 }
+        "lootMarkersPerRoomMax": { "type": "integer", "minimum": 0 },
+        "corridorMinWidth": { "type": "integer", "minimum": 1 },
+        "corridorMaxWidth": { "type": "integer", "minimum": 1 },
+        "hallChancePercent": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "hallMinLengthTiles": { "type": "integer", "minimum": 1 },
+        "hallMaxLengthTiles": { "type": "integer", "minimum": 1 }
       }
     },
     "layout": {
@@ -68,7 +73,7 @@
               "z": { "type": "integer" },
               "width": { "type": "integer", "minimum": 1 },
               "depth": { "type": "integer", "minimum": 1 },
-              "roomType": { "enum": ["Entrance", "Normal", "Key", "Treasure", "Boss"] }
+              "roomType": { "enum": ["Entrance", "Normal", "Key", "Treasure", "Boss", "Hall"] }
             }
           }
         },

@@ -27,6 +27,23 @@ namespace KhaozEngine.Tests.Dungeon
             LoopEdgeBudget = 2,
         };
 
+        // Same shape as Config() but with wide corridors, elongated halls, and a larger plot to place them in.
+        // Exercises the widened growth + loop carve and the hall room type across the full seed range.
+        static DungeonConfig WideConfig() => new()
+        {
+            RoomCountTarget = 14,
+            MaxFloors = 3,
+            LockCount = 2,
+            LoopEdgeBudget = 3,
+            PlotWidthTiles = 80,
+            PlotDepthTiles = 80,
+            CorridorMinWidth = 1,
+            CorridorMaxWidth = 4,
+            HallChancePercent = 25,
+            HallMinLengthTiles = 10,
+            HallMaxLengthTiles = 16,
+        };
+
         [Fact]
         public void SweepThousandSeeds_AllSolvable_AllInvariants()
         {
@@ -54,6 +71,71 @@ namespace KhaozEngine.Tests.Dungeon
             Assert.True(
                 stopwatch.Elapsed.TotalSeconds < 60,
                 $"sweep of {SeedCount} seeds took {stopwatch.Elapsed.TotalSeconds:F1}s, exceeding the 60s runtime guard.");
+        }
+
+        [Fact]
+        public void SweepThousandSeeds_WideCorridorsAndHalls_AllSolvable_AllInvariants()
+        {
+            DungeonConfig config = WideConfig();
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            bool sawWideCorridor = false;
+            bool sawHall = false;
+
+            for (ulong seed = 0; seed < SeedCount; seed++)
+            {
+                DungeonLayout layout = DungeonGenerator.Generate(config, seed);
+
+                DungeonSolveReport report = DungeonSolver.Verify(layout);
+                Assert.True(report.IsSolvable, $"seed {seed} produced an unsolvable layout: {string.Join(" ", report.Errors)}");
+                Assert.Empty(report.Errors);
+
+                AssertWallPassHolds(layout, seed);
+                AssertPlacementsWithinPlotBounds(layout, seed);
+                AssertStairPairsConsistent(layout, seed);
+                AssertCorridorBandsRectangular(layout, seed);
+
+                foreach (DungeonEdge edge in layout.Edges.Where(e => e.Kind == DungeonEdgeKind.Corridor))
+                {
+                    if (edge.Doors.Count > 2)
+                    {
+                        sawWideCorridor = true;
+                    }
+                }
+
+                if (layout.Rooms.Any(r => r.RoomType == DungeonRoomType.Hall))
+                {
+                    sawHall = true;
+                }
+            }
+
+            stopwatch.Stop();
+            _out.WriteLine($"Swept {SeedCount} wide+hall seeds (0..{SeedCount - 1}) in {stopwatch.ElapsedMilliseconds} ms.");
+
+            // The sweep is only meaningful if the new code paths actually fire somewhere in the range.
+            Assert.True(sawWideCorridor, "no wide corridor was produced across the wide-config seed range");
+            Assert.True(sawHall, "no hall room was produced across the wide-config seed range");
+
+            Assert.True(
+                stopwatch.Elapsed.TotalSeconds < 60,
+                $"wide+hall sweep of {SeedCount} seeds took {stopwatch.Elapsed.TotalSeconds:F1}s, exceeding the 60s runtime guard.");
+        }
+
+        // Every corridor edge is a straight rectangular tube: its door band is 2 * w cells (w per end) and its
+        // path is a multiple of that per-end width, spanning exactly w cells on one axis.
+        static void AssertCorridorBandsRectangular(DungeonLayout layout, ulong seed)
+        {
+            foreach (DungeonEdge edge in layout.Edges.Where(e => e.Kind == DungeonEdgeKind.Corridor))
+            {
+                Assert.True(edge.Doors.Count % 2 == 0, $"seed {seed}: corridor {edge.RoomA}->{edge.RoomB} has an odd door count {edge.Doors.Count}.");
+                int w = edge.Doors.Count / 2;
+                Assert.True(w >= 1, $"seed {seed}: corridor {edge.RoomA}->{edge.RoomB} has width {w}.");
+                Assert.True(edge.Path.Count % w == 0, $"seed {seed}: corridor {edge.RoomA}->{edge.RoomB} path {edge.Path.Count} is not a multiple of width {w}.");
+
+                int perpAxisSpanX = edge.Path.Select(t => t.X).Distinct().Count();
+                int perpAxisSpanZ = edge.Path.Select(t => t.Z).Distinct().Count();
+                Assert.True(perpAxisSpanX == w || perpAxisSpanZ == w,
+                    $"seed {seed}: corridor {edge.RoomA}->{edge.RoomB} band does not span exactly width {w} on one axis (X={perpAxisSpanX}, Z={perpAxisSpanZ}).");
+            }
         }
 
         // No walkable cell may be 8-adjacent (same floor) to an Empty cell after the wall pass.

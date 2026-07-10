@@ -20,7 +20,13 @@ public enum DungeonRoomType
     Treasure,
 
     /// <summary>The room at the end of the critical path.</summary>
-    Boss
+    Boss,
+
+    /// <summary>An elongated grand connector room: longer along the corridor that reached it than a normal room,
+    /// so a run of them reads as monumental halls. Placed by growth when <see cref="DungeonConfig.HallChancePercent"/>
+    /// is positive; otherwise a purely structural role (it can still hold keys and be promoted to
+    /// <see cref="Boss"/>).</summary>
+    Hall
 }
 
 /// <summary>How two rooms are connected by a <see cref="DungeonEdge"/>.</summary>

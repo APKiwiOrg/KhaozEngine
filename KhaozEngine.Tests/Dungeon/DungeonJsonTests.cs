@@ -44,6 +44,29 @@ namespace KhaozEngine.Tests.Dungeon
         }
 
         [Fact]
+        public void Config_WithCorridorWidthAndHalls_RoundTrips_AndSchemaValidates()
+        {
+            DungeonConfig config = Config();
+            config.CorridorMinWidth = 2;
+            config.CorridorMaxWidth = 4;
+            config.HallChancePercent = 30;
+            config.HallMinLengthTiles = 9;
+            config.HallMaxLengthTiles = 14;
+
+            string json = DungeonJson.SaveConfig(config);
+
+            ValidationReport report = JsonSchemaValidator.Validate(json, DungeonSchema.GetJson());
+            Assert.True(report.IsValid, string.Join("\n", report.Errors));
+
+            DungeonConfig loaded = DungeonJson.LoadConfig(json);
+            Assert.Equal(2, loaded.CorridorMinWidth);
+            Assert.Equal(4, loaded.CorridorMaxWidth);
+            Assert.Equal(30, loaded.HallChancePercent);
+            Assert.Equal(9, loaded.HallMinLengthTiles);
+            Assert.Equal(14, loaded.HallMaxLengthTiles);
+        }
+
+        [Fact]
         public void Layout_RoundTrips_HashEqual()
         {
             DungeonLayout layout = DungeonGenerator.Generate(Config(), 42UL);

@@ -47,16 +47,216 @@ internal static class LoopPlanner
 
             DungeonRoom roomA = grown.Rooms[candidate.RoomAId];
             DungeonRoom roomB = grown.Rooms[candidate.RoomBId];
-            if (!ValidateGeometry(grown.Cells, width, depth, candidate.Floor, candidate.DoorA, candidate.DoorB, candidate.Corridor, roomA, roomB))
+
+            // Same guarded width draw as growth: a min==max==1 config draws nothing here and takes the legacy
+            // 1-wide validate+commit path below unchanged, so loop edges stay byte-identical when the feature is
+            // off. When a width is drawn, the stored 1-wide geometry is widened into a band (clamped to the
+            // rooms' facing overlap) and, if the band does not fit, falls back to the exact 1-wide edge so a loop
+            // still forms.
+            int w = RoomGrower.DrawCorridorWidth(config, rooms);
+            if (TryCommitLoopEdge(grown, width, depth, candidate, roomA, roomB, w))
             {
-                // Stale: an earlier commit in this phase carved a cell this candidate's geometry needs.
-                // Already removed above, so it is deterministically skipped without spending the budget.
-                continue;
+                budget--;
             }
 
-            Commit(grown, width, depth, candidate);
-            budget--;
+            // else: stale even at width 1 (an earlier commit carved a cell this candidate needs). Already removed
+            // above, so it is deterministically skipped without spending the budget.
         }
+    }
+
+    /// <summary>Commits the picked loop edge, preferring a <paramref name="w"/>-wide band when one is drawn and
+    /// fits the rooms' facing overlap and the live raster, and falling back to the stored 1-wide geometry
+    /// otherwise. Returns false only when even the 1-wide edge is stale.</summary>
+    private static bool TryCommitLoopEdge(
+        GrowResult grown,
+        int width,
+        int depth,
+        LoopCandidate candidate,
+        DungeonRoom roomA,
+        DungeonRoom roomB,
+        int w)
+    {
+        var grid = new RoomGrower.Grid(grown.Cells, width, depth);
+
+        if (w > 1)
+        {
+            WideBand? band = BuildWideBand(candidate, roomA, roomB, w);
+            if (band.HasValue && ValidateBand(grid, candidate.Floor, band.Value, roomA, roomB))
+            {
+                CommitBand(grown, width, depth, candidate, band.Value);
+                return true;
+            }
+        }
+
+        // Legacy 1-wide path (byte-identical to pre-width behaviour).
+        if (ValidateGeometry(grown.Cells, width, depth, candidate.Floor, candidate.DoorA, candidate.DoorB, candidate.Corridor, roomA, roomB))
+        {
+            Commit(grown, width, depth, candidate);
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>Widens the stored 1-wide loop geometry into a straight band perpendicular to the corridor,
+    /// clamped to the two rooms' facing overlap so every door cell still lands on both room edges. The band is
+    /// centred on the stored line and shifted to stay inside the overlap. Returns null when the effective width
+    /// collapses to 1 (no overlap to widen into), leaving the caller on the 1-wide path.</summary>
+    private static WideBand? BuildWideBand(LoopCandidate candidate, DungeonRoom roomA, DungeonRoom roomB, int w)
+    {
+        int floor = candidate.Floor;
+        bool horizontal = candidate.DoorA.Z == candidate.DoorB.Z;
+
+        if (horizontal)
+        {
+            int lineZ = candidate.DoorA.Z;
+            int lo = Math.Max(roomA.Z, roomB.Z);
+            int hi = Math.Min(roomA.Z + roomA.Depth - 1, roomB.Z + roomB.Depth - 1);
+            int effective = Math.Min(w, hi - lo + 1);
+            if (effective <= 1)
+            {
+                return null;
+            }
+
+            int start = Math.Clamp(lineZ - (effective - 1) / 2, lo, hi - effective + 1);
+            var doorA = new DungeonTile[effective];
+            var doorB = new DungeonTile[effective];
+            var corridor = new DungeonTile[candidate.Corridor.Length * effective];
+            for (int p = 0; p < effective; p++)
+            {
+                int z = start + p;
+                doorA[p] = new DungeonTile(candidate.DoorA.X, z, floor);
+                doorB[p] = new DungeonTile(candidate.DoorB.X, z, floor);
+                for (int k = 0; k < candidate.Corridor.Length; k++)
+                {
+                    corridor[k * effective + p] = new DungeonTile(candidate.Corridor[k].X, z, floor);
+                }
+            }
+
+            return new WideBand(doorA, doorB, corridor);
+        }
+        else
+        {
+            int lineX = candidate.DoorA.X;
+            int lo = Math.Max(roomA.X, roomB.X);
+            int hi = Math.Min(roomA.X + roomA.Width - 1, roomB.X + roomB.Width - 1);
+            int effective = Math.Min(w, hi - lo + 1);
+            if (effective <= 1)
+            {
+                return null;
+            }
+
+            int start = Math.Clamp(lineX - (effective - 1) / 2, lo, hi - effective + 1);
+            var doorA = new DungeonTile[effective];
+            var doorB = new DungeonTile[effective];
+            var corridor = new DungeonTile[candidate.Corridor.Length * effective];
+            for (int p = 0; p < effective; p++)
+            {
+                int x = start + p;
+                doorA[p] = new DungeonTile(x, candidate.DoorA.Z, floor);
+                doorB[p] = new DungeonTile(x, candidate.DoorB.Z, floor);
+                for (int k = 0; k < candidate.Corridor.Length; k++)
+                {
+                    corridor[k * effective + p] = new DungeonTile(x, candidate.Corridor[k].Z, floor);
+                }
+            }
+
+            return new WideBand(doorA, doorB, corridor);
+        }
+    }
+
+    /// <summary>The same cell-level validation the 1-wide loop path uses (via <see cref="RoomGrower"/>'s shared
+    /// helpers), applied across every band cell: each door-band and corridor-band cell must be
+    /// in-plot-with-margin and empty, and none may be orthogonally adjacent to a walkable cell outside the two
+    /// rooms the loop edge joins.</summary>
+    private static bool ValidateBand(RoomGrower.Grid grid, int floor, WideBand band, DungeonRoom roomA, DungeonRoom roomB)
+    {
+        foreach (DungeonTile tile in band.DoorA)
+        {
+            if (!RoomGrower.IsClearWalkableCell(grid, tile, floor))
+            {
+                return false;
+            }
+        }
+
+        foreach (DungeonTile tile in band.DoorB)
+        {
+            if (!RoomGrower.IsClearWalkableCell(grid, tile, floor))
+            {
+                return false;
+            }
+        }
+
+        foreach (DungeonTile tile in band.Corridor)
+        {
+            if (!RoomGrower.IsClearWalkableCell(grid, tile, floor))
+            {
+                return false;
+            }
+        }
+
+        HashSet<(int X, int Z)> allowed = RoomGrower.RoomInterior(roomA);
+        allowed.UnionWith(RoomGrower.RoomInterior(roomB));
+
+        foreach (DungeonTile tile in band.DoorA)
+        {
+            if (RoomGrower.HasForeignOrthogonalWalkable(grid, tile, floor, allowed))
+            {
+                return false;
+            }
+        }
+
+        foreach (DungeonTile tile in band.DoorB)
+        {
+            if (RoomGrower.HasForeignOrthogonalWalkable(grid, tile, floor, allowed))
+            {
+                return false;
+            }
+        }
+
+        foreach (DungeonTile tile in band.Corridor)
+        {
+            if (RoomGrower.HasForeignOrthogonalWalkable(grid, tile, floor, allowed))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static void CommitBand(GrowResult grown, int width, int depth, LoopCandidate candidate, WideBand band)
+    {
+        var grid = new RoomGrower.Grid(grown.Cells, width, depth);
+        int floor = candidate.Floor;
+
+        foreach (DungeonTile tile in band.Corridor)
+        {
+            grid.Set(tile.X, tile.Z, floor, DungeonCellKind.Corridor);
+        }
+
+        foreach (DungeonTile tile in band.DoorA)
+        {
+            grid.Set(tile.X, tile.Z, floor, DungeonCellKind.DoorFrame);
+        }
+
+        foreach (DungeonTile tile in band.DoorB)
+        {
+            grid.Set(tile.X, tile.Z, floor, DungeonCellKind.DoorFrame);
+        }
+
+        var doors = new DungeonTile[band.DoorA.Length + band.DoorB.Length];
+        band.DoorA.CopyTo(doors, 0);
+        band.DoorB.CopyTo(doors, band.DoorA.Length);
+
+        grown.Edges.Add(new DungeonEdge
+        {
+            RoomA = candidate.RoomAId,
+            RoomB = candidate.RoomBId,
+            Kind = DungeonEdgeKind.Corridor,
+            Path = band.Corridor,
+            Doors = doors,
+        });
     }
 
     private static List<LoopCandidate> BuildCandidates(GrowResult grown, int width, int depth)
@@ -358,5 +558,13 @@ internal static class LoopPlanner
         int Floor,
         DungeonTile DoorA,
         DungeonTile DoorB,
+        DungeonTile[] Corridor);
+
+    /// <summary>A widened loop-edge band: the door-frame band at each end (<see cref="DoorA"/> on room A,
+    /// <see cref="DoorB"/> on room B, one cell per perpendicular row) and the full corridor tube
+    /// (<see cref="Corridor"/>, band width x gap length).</summary>
+    private readonly record struct WideBand(
+        DungeonTile[] DoorA,
+        DungeonTile[] DoorB,
         DungeonTile[] Corridor);
 }

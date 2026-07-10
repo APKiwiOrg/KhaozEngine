@@ -27,6 +27,32 @@ public sealed class DungeonConfig
     /// <summary>Number of vertical floors the layout may use.</summary>
     public int MaxFloors { get; set; } = 1;
 
+    /// <summary>Smallest corridor width, in tiles. Default 1. A per-corridor width is drawn from the growth RNG
+    /// only when <see cref="CorridorMaxWidth"/> exceeds this value; when they are equal every corridor is exactly
+    /// this wide and no randomness is consumed, so <c>min == max == 1</c> reproduces the pre-width layouts
+    /// byte-for-byte. The drawn width is capped at generation time to the narrower of the source room edge and the
+    /// destination room edge it spans, so a wide draw still places against a smaller room by narrowing.</summary>
+    public int CorridorMinWidth { get; set; } = 1;
+
+    /// <summary>Largest corridor width, in tiles. Default 1 (single-file corridors, exact back-compat). Raise it
+    /// above <see cref="CorridorMinWidth"/> for grand, multi-tile connector halls.</summary>
+    public int CorridorMaxWidth { get; set; } = 1;
+
+    /// <summary>Percent chance in [0, 100] that a grown room is an elongated <see cref="DungeonRoomType.Hall"/>
+    /// grand connector instead of a normal room. Default 0: no halls, and no randomness is consumed (byte-compat).
+    /// When positive, the plot must fit a hall (see <see cref="HallMaxLengthTiles"/>) on both axes.</summary>
+    public int HallChancePercent { get; set; } = 0;
+
+    /// <summary>Smallest hall long-axis span, in tiles. Only consulted when <see cref="HallChancePercent"/> is
+    /// positive. A hall's long axis runs along the corridor that reached it; its short axis (girth) is a normal
+    /// room span in <see cref="RoomMinTiles"/>..<see cref="RoomMaxTiles"/>.</summary>
+    public int HallMinLengthTiles { get; set; } = 10;
+
+    /// <summary>Largest hall long-axis span, in tiles. Only consulted when <see cref="HallChancePercent"/> is
+    /// positive. When halls are enabled the plot must be at least this plus two on both axes (a hall can run in
+    /// either orientation).</summary>
+    public int HallMaxLengthTiles { get; set; } = 16;
+
     /// <summary>Plot width, in tiles.</summary>
     public int PlotWidthTiles { get; set; } = 64;
 
@@ -57,8 +83,10 @@ public sealed class DungeonConfig
 
     /// <summary>Throws <see cref="ArgumentException"/> naming the first invalid property, in check order:
     /// positive cell/floor sizes, RoomMinTiles between 1 and RoomMaxTiles inclusive, positive room count, floor
-    /// count and critical-path target, non-negative loop budget, lock count and marker maxima, and a plot large
-    /// enough to fit the largest room plus a one-tile margin on each side.</summary>
+    /// count and critical-path target, non-negative loop budget, lock count and marker maxima, corridor widths
+    /// (at least 1, min not exceeding max), hall knobs (chance in 0..100, min length at least 1 not exceeding
+    /// max), a plot large enough to fit the largest room plus a one-tile margin on each side, and (only when
+    /// halls are enabled) large enough to fit the largest hall on both axes.</summary>
     public void Validate()
     {
         if (CellSizeMeters <= 0f)
@@ -116,6 +144,31 @@ public sealed class DungeonConfig
             throw new ArgumentException("LootMarkersPerRoomMax must not be negative.", nameof(LootMarkersPerRoomMax));
         }
 
+        if (CorridorMinWidth < 1)
+        {
+            throw new ArgumentException("CorridorMinWidth must be at least 1.", nameof(CorridorMinWidth));
+        }
+
+        if (CorridorMinWidth > CorridorMaxWidth)
+        {
+            throw new ArgumentException("CorridorMinWidth must not exceed CorridorMaxWidth.", nameof(CorridorMinWidth));
+        }
+
+        if (HallChancePercent < 0 || HallChancePercent > 100)
+        {
+            throw new ArgumentException("HallChancePercent must be between 0 and 100.", nameof(HallChancePercent));
+        }
+
+        if (HallMinLengthTiles < 1)
+        {
+            throw new ArgumentException("HallMinLengthTiles must be at least 1.", nameof(HallMinLengthTiles));
+        }
+
+        if (HallMinLengthTiles > HallMaxLengthTiles)
+        {
+            throw new ArgumentException("HallMinLengthTiles must not exceed HallMaxLengthTiles.", nameof(HallMinLengthTiles));
+        }
+
         if (PlotWidthTiles < RoomMaxTiles + 2)
         {
             throw new ArgumentException("PlotWidthTiles must be at least RoomMaxTiles + 2.", nameof(PlotWidthTiles));
@@ -124,6 +177,21 @@ public sealed class DungeonConfig
         if (PlotDepthTiles < RoomMaxTiles + 2)
         {
             throw new ArgumentException("PlotDepthTiles must be at least RoomMaxTiles + 2.", nameof(PlotDepthTiles));
+        }
+
+        // Only enforced when halls are enabled: a hall's long axis (up to HallMaxLengthTiles) can run in either
+        // orientation, so both plot dimensions must fit it plus a one-tile margin on each side. Gated on
+        // HallChancePercent so a halls-off config with a tight plot stays valid.
+        if (HallChancePercent > 0 && PlotWidthTiles < HallMaxLengthTiles + 2)
+        {
+            throw new ArgumentException(
+                "PlotWidthTiles must be at least HallMaxLengthTiles + 2 when HallChancePercent is positive.", nameof(PlotWidthTiles));
+        }
+
+        if (HallChancePercent > 0 && PlotDepthTiles < HallMaxLengthTiles + 2)
+        {
+            throw new ArgumentException(
+                "PlotDepthTiles must be at least HallMaxLengthTiles + 2 when HallChancePercent is positive.", nameof(PlotDepthTiles));
         }
     }
 }

@@ -63,5 +63,32 @@ namespace KhaozEngine.Tests.Render3D
             float wallNearFaceZ = wallCentre.Z - wallHalfExtents.Z;
             Assert.True(eye.Z < wallNearFaceZ, $"eye should stay on the target side of the wall, eye={eye}");
         }
+
+        [Fact]
+        public void A_static_at_the_target_floors_the_boom_at_min_distance_without_a_degenerate_eye()
+        {
+            using IPhysicsWorld world = new BepuPhysicsWorld();
+            // A box straddling the target itself: the boom sweep contacts within a skin of the target centre, which
+            // without a floor would collapse the eye onto the target and leave Forward/View with a zero-length look
+            // direction (NaN). The MinOcclusionDistance floor must keep the eye finite and off the target.
+            world.AddStatic(new BoxShape(new Vector3(0.5f, 0.5f, 0.5f)), Pose.At(Vector3.Zero));
+            world.Step(1f / 60f);
+
+            var cam = new FollowCamera3D
+            {
+                Target = Vector3.Zero, Yaw = 0f, HeightOffset = 0f, MinPitch = 0f, Occlusion = world,
+            };
+            cam.Pitch = 0f;
+            cam.Distance = 10f;
+
+            Vector3 eye = cam.Eye;
+            Assert.False(float.IsNaN(eye.X) || float.IsNaN(eye.Y) || float.IsNaN(eye.Z), $"eye is NaN: {eye}");
+            float distFromTarget = Vector3.Distance(eye, cam.Target);
+            Assert.True(distFromTarget >= cam.MinOcclusionDistance - 1e-4f,
+                $"eye should sit at least MinOcclusionDistance from the target, dist={distFromTarget}");
+            // And the look direction is a real unit vector (not NaN), so View is well-formed.
+            Assert.False(float.IsNaN(cam.Forward.X) || float.IsNaN(cam.Forward.Y) || float.IsNaN(cam.Forward.Z),
+                $"Forward is NaN: {cam.Forward}");
+        }
     }
 }

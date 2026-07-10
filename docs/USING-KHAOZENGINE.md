@@ -1863,6 +1863,15 @@ character off this controller's movement state (see "Animated characters" above)
 server. `FollowCameraController.Update(input, dt)` drives it (so pass the real frame `dt`); with damping off the
 camera reads `Target` directly and is unchanged. Read `EffectiveTarget` for the smoothed look-at point.
 
+**Optional occlusion spring-arm (off by default).** Set `FollowCamera3D.Occlusion` to an `IPhysicsWorld` and the
+camera sweeps a sphere probe (radius `OcclusionRadius`, default 0.25) from the target along the boom toward the
+geometric eye and pulls the eye in to the first static hit, so the eye never clips through a wall or a ceiling
+between the target and the desired eye (the roofed-dungeon case). `OcclusionSkin` (default 0.05) keeps the
+pulled-in eye just off the surface, and `MinOcclusionDistance` (default 0.2) floors how far in the boom is ever
+pulled so the eye can never collapse onto the target. The sweep hits statics only, and it runs before the
+`GroundHeight` clamp, so a ground dip still lifts the already pulled-in eye. Null (the default) leaves the eye
+purely geometric, so existing cameras are unchanged.
+
 ---
 
 ## Prop scatter + asset pipeline (`AssetManifest` / `PropScatter` / `Scene3D.DrawProps`)

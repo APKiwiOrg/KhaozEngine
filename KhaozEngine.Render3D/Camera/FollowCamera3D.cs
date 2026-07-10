@@ -108,6 +108,11 @@ namespace KhaozEngine.Render3D
         /// collide-and-slide skin-width convention), so the eye sits just off the wall rather than flush against
         /// it. Default 0.05.</summary>
         public float OcclusionSkin = 0.05f;
+        /// <summary>The closest the <see cref="Occlusion"/> sweep is ever allowed to pull the boom (metres), so the
+        /// eye never collapses onto the target and leave <see cref="Forward"/>/<see cref="View"/> degenerate (a
+        /// zero-length look direction). A static within a skin of the target (e.g. a character pressed flush against
+        /// a wall) is clamped to this floor instead. Default 0.2.</summary>
+        public float MinOcclusionDistance = 0.2f;
 
         float _pitch = MathF.PI / 6f;   // 30 deg, a comfortable default tilt
         float _distance = 8f;
@@ -145,8 +150,10 @@ namespace KhaozEngine.Render3D
                 if (Occlusion is { } world)
                 {
                     // Sweep a sphere probe (a zero-length capsule) from the target toward the desired eye along the
-                    // boom; the first static hit clamps how far out the boom can extend, mirroring the
-                    // hit.Distance - skin convention CharacterMovement uses for its own swept collide-and-slide.
+                    // boom. The first static hit clamps how far out the boom can extend, mirroring the
+                    // hit.Distance - skin convention CharacterMovement uses for its own swept collide-and-slide. The
+                    // pull-in is floored at MinOcclusionDistance so a static right at the target never collapses the
+                    // eye onto it (which would leave Forward/View with a zero-length look direction).
                     Vector3 toEye = eye - target;
                     float dist = toEye.Length();
                     if (dist > 1e-6f)
@@ -154,7 +161,7 @@ namespace KhaozEngine.Render3D
                         Vector3 dir = toEye / dist;
                         if (world.SweepCapsule(new CapsuleShape(OcclusionRadius, 0f), Pose.At(target), dir, dist,
                                 out SweepHit hit, QueryFilter.StaticsOnly))
-                            eye = target + dir * MathF.Max(0f, hit.Distance - OcclusionSkin);
+                            eye = target + dir * MathF.Max(MinOcclusionDistance, hit.Distance - OcclusionSkin);
                     }
                 }
                 if (GroundHeight is { } ground)

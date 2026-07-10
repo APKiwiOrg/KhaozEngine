@@ -832,3 +832,42 @@ public sealed class EditFeatureCommand : EditorCommand
         return false;
     }
 }
+
+/// <summary>Moves a terrain feature from one list position to another. Terrain features fold in list order
+/// (<see cref="MapDoc.MapRuntime.BuildField"/> runs each feature's height modifier on the height the prior
+/// feature produced), so where two features cover the same ground the LAST one in the list dominates the
+/// overlap. Reordering is therefore how the author picks the winner between overlapping features (a lake and a
+/// flatten over the same clearing, say): move the feature that should win to a later position. <see cref="Revert"/>
+/// moves it back. Affects the streamed world (terrain shape changes), and never coalesces (no merge).</summary>
+public sealed class ReorderFeatureCommand : EditorCommand
+{
+    readonly int _fromIndex;
+    readonly int _toIndex;
+
+    /// <summary>Creates the command moving the feature at <paramref name="fromIndex"/> to
+    /// <paramref name="toIndex"/> in the terrain feature list.</summary>
+    public ReorderFeatureCommand(int fromIndex, int toIndex)
+    {
+        _fromIndex = fromIndex;
+        _toIndex = toIndex;
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Reorder terrain feature";
+    internal override bool AffectsWorld => true;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc) => Move(doc, _fromIndex, _toIndex);
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => Move(doc, _toIndex, _fromIndex);
+
+    // A list move: pull the feature out at `from` and re-insert it at `to`. Its own inverse (remove at `to`,
+    // insert at `from`), so Revert is just Move with the endpoints swapped.
+    static void Move(MapDocument doc, int from, int to)
+    {
+        MapFeature feature = doc.Terrain.Features[from];
+        doc.Terrain.Features.RemoveAt(from);
+        doc.Terrain.Features.Insert(to, feature);
+    }
+}

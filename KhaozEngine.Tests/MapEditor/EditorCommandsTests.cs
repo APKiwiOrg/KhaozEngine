@@ -192,6 +192,54 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Same(middle, doc.Terrain.Features[1]);   // back at the middle, not appended
         }
 
+        [Fact]
+        public void ReorderFeatureCommand_MovesAndReverts()
+        {
+            var doc = Sample();
+            doc.Terrain.Features.Clear();
+            var a = new LakeFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 1f, Depth = 1f };
+            var b = new FlattenFeatureDoc { CenterX = 2f, CenterZ = 2f, Radius = 3f, TargetHeight = 1f };
+            var c = new RidgeFeatureDoc { PointX = 5f, PointZ = 5f, Height = 2f, Width = 4f };
+            doc.Terrain.Features.Add(a);
+            doc.Terrain.Features.Add(b);
+            doc.Terrain.Features.Add(c);
+
+            var ed = new EditorDocument(doc);
+            ed.Execute(new ReorderFeatureCommand(0, 2));   // move `a` to the end: it now folds last, so it wins overlaps
+            Assert.Same(b, doc.Terrain.Features[0]);
+            Assert.Same(c, doc.Terrain.Features[1]);
+            Assert.Same(a, doc.Terrain.Features[2]);
+            Assert.True(ed.WorldRebuildPending);           // reordering changes terrain shape
+
+            Assert.True(ed.Undo());
+            Assert.Same(a, doc.Terrain.Features[0]);        // revert restores the original fold order
+            Assert.Same(b, doc.Terrain.Features[1]);
+            Assert.Same(c, doc.Terrain.Features[2]);
+        }
+
+        [Fact]
+        public void ReorderChangesTerrainWinner()
+        {
+            // A lake and a flatten cover the same ground. Terrain features fold in list order, so whichever folds
+            // LAST dominates the overlap. Reordering the two flips who wins, sampled through the real terrain field
+            // (MapRuntime.BuildField -> SampleHeight): this pins the user-facing "last wins" semantics end to end.
+            var doc = Sample();
+            doc.Terrain.Features.Clear();
+            doc.Terrain.Features.Add(new LakeFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 20f, Depth = 8f });
+            doc.Terrain.Features.Add(new FlattenFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 20f, TargetHeight = 5f, Blend = 0.4f });
+
+            var registry = MapDocRegistry.CreateDefault();
+            float flattenWins = MapRuntime.BuildField(doc, registry).SampleHeight(0f, 0f);
+
+            var ed = new EditorDocument(doc, registry);
+            ed.Execute(new ReorderFeatureCommand(1, 0));   // flatten now folds first, lake folds last
+            float lakeWins = MapRuntime.BuildField(doc, registry).SampleHeight(0f, 0f);
+
+            // Flatten-last levels the centre to its target; lake-last carves the depth back out, so the overlap
+            // height changes by the lake depth. The exact winner flipped.
+            Assert.NotEqual(flattenWins, lakeWins);
+        }
+
         // ---- removed placement restores at its original index ------------------------------------------
 
         [Fact]

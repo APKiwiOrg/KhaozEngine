@@ -143,6 +143,16 @@ namespace KhaozEngine.Tests.MapEditor
                 Vector2.Zero, Vector2.Zero, 0, 960, 540);
         }
 
+        // A keyboard frame with Ctrl held: the given keys fire their press edge this frame (and read as held),
+        // with LeftControl down so the scene's ctrl-modified shortcuts (undo/redo, feature reorder) trigger.
+        static InputState CtrlKeyFrame(params Key[] pressed)
+        {
+            var down = new HashSet<Key>(pressed) { Key.LeftControl };
+            return new InputState(down, new HashSet<Key>(pressed), new HashSet<Key>(),
+                new HashSet<MouseButton>(), new HashSet<MouseButton>(),
+                Vector2.Zero, Vector2.Zero, 0, 960, 540);
+        }
+
         static MapSpawn NewSpawn(string id) => new MapSpawn { Id = id, ArchetypeId = "wolf", X = 1f, Z = 1f };
 
         static FloatRow FloatRowByLabel(PropertyGrid grid, string label)
@@ -384,6 +394,131 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.True(scene.Document.Undo());
             lake = Assert.IsType<LakeFeatureDoc>(scene.Document.Doc.Terrain.Features[0]);
             Near(6f, lake.Radius);                                  // undo restores the pre-scrub DTO
+        }
+
+        [Fact]
+        public void SelectFeature_InspectorShowsApplyOrderRow()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Terrain.Features.Add(new LakeFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f, Depth = 2f });
+                doc.Terrain.Features.Add(new FlattenFeatureDoc { CenterX = 1f, CenterZ = 1f, Radius = 4f, TargetHeight = 1f });
+                return doc;
+            });
+
+            scene.Document.Selection.Set(SelectionKind.Feature, "0");
+            ReadOnlyRow order = ReadOnlyRowByLabel(scene.Inspector, "Apply order");
+
+            // ReadOnlyRow polls its display getter on Update, so drive it once before reading Display.
+            order.Update(new Rect(0f, 0f, 200f, 28f), new InputManager(), 0f);
+            Assert.Equal("1 of 2 (last wins overlap)", order.Display);
+        }
+
+        [Fact]
+        public void CtrlDown_MovesSelectedFeatureAndSelectionFollows()
+        {
+            var lake = new LakeFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f, Depth = 2f };
+            var flatten = new FlattenFeatureDoc { CenterX = 1f, CenterZ = 1f, Radius = 4f, TargetHeight = 1f };
+            var scene = new DocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Terrain.Features.Add(lake);
+                doc.Terrain.Features.Add(flatten);
+                return doc;
+            });
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager();
+            m.Push(scene);
+
+            scene.Document.Selection.Set(SelectionKind.Feature, "0");   // select the lake (folds first)
+
+            m.Input = CtrlKeyFrame(Key.Down);
+            m.Update(0.016f);
+
+            // The lake moved one step later (index 1: it now folds last and wins overlaps) and the index-string
+            // selection followed it, so the same feature stays selected.
+            Assert.Same(flatten, scene.Document.Doc.Terrain.Features[0]);
+            Assert.Same(lake, scene.Document.Doc.Terrain.Features[1]);
+            Assert.Equal(SelectionKind.Feature, scene.Document.Selection.Kind);
+            Assert.Equal("1", scene.Document.Selection.Id);
+            Assert.True(scene.Document.History.CanUndo);
+        }
+
+        [Fact]
+        public void CtrlDown_AtEnd_IsNoOp()
+        {
+            var lake = new LakeFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f, Depth = 2f };
+            var flatten = new FlattenFeatureDoc { CenterX = 1f, CenterZ = 1f, Radius = 4f, TargetHeight = 1f };
+            var scene = new DocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Terrain.Features.Add(lake);
+                doc.Terrain.Features.Add(flatten);
+                return doc;
+            });
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager();
+            m.Push(scene);
+
+            scene.Document.Selection.Set(SelectionKind.Feature, "1");   // the last feature: cannot move later
+
+            m.Input = CtrlKeyFrame(Key.Down);
+            m.Update(0.016f);
+
+            // Clamped at the end: no reorder command lands on the undo stack, and the order is untouched.
+            Assert.Same(lake, scene.Document.Doc.Terrain.Features[0]);
+            Assert.Same(flatten, scene.Document.Doc.Terrain.Features[1]);
+            Assert.False(scene.Document.History.CanUndo);
+        }
+
+        [Fact]
+        public void RKey_SnapsPlacementToGround()
+        {
+            var scene = new DocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Placements.Add(new MapPlacement { Id = "hut", Kind = "prop", X = 3f, Z = 4f, Y = 12f });
+                return doc;
+            });
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager();
+            m.Push(scene);
+
+            scene.Document.Selection.Set(SelectionKind.Placement, "hut");
+            Assert.NotNull(scene.Document.Doc.Placements[0].Y);   // starts airborne
+
+            m.Input = KeyFrame(shiftDown: false, Key.R);
+            m.Update(0.016f);
+
+            // R re-issued the move with a null Y: the placement ground-snaps and its X/Z are preserved.
+            Assert.Null(scene.Document.Doc.Placements[0].Y);
+            Near(3f, scene.Document.Doc.Placements[0].X);
+            Near(4f, scene.Document.Doc.Placements[0].Z);
+            Assert.True(scene.Document.History.CanUndo);
+        }
+
+        [Fact]
+        public void RKey_NoOpWhenAlreadyGrounded()
+        {
+            var scene = new DocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Placements.Add(new MapPlacement { Id = "hut", Kind = "prop", X = 3f, Z = 4f, Y = null });
+                return doc;
+            });
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager();
+            m.Push(scene);
+
+            scene.Document.Selection.Set(SelectionKind.Placement, "hut");
+
+            m.Input = KeyFrame(shiftDown: false, Key.R);
+            m.Update(0.016f);
+
+            // Already grounded (null Y): no empty command lands on the undo stack.
+            Assert.Null(scene.Document.Doc.Placements[0].Y);
+            Assert.False(scene.Document.History.CanUndo);
         }
 
         [Fact]

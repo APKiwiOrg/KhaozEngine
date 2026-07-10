@@ -673,10 +673,50 @@ public class MapEditorScene : GameScene, IGameScene3D
         bool shift = s.IsDown(Key.LeftShift) || s.IsDown(Key.RightShift);
         if (shift && s.WasPressed(Key.Escape)) { HandleExitChord(); return; }
         bool ctrl = s.IsDown(Key.LeftControl) || s.IsDown(Key.RightControl);
-        if (!ctrl) return;
+        if (!ctrl)
+        {
+            // R snaps the selected placement to the ground. It is a bare key, so suppress it while the rename
+            // field has focus (the user is typing an 'R' into a name, not asking for a snap).
+            if (s.WasPressed(Key.R) && (_nameRow is null || !_nameRow.Input.IsFocused))
+                SnapSelectedPlacementToGround();
+            return;
+        }
         if (s.WasPressed(Key.Z)) { if (shift) _document.Redo(); else _document.Undo(); }
         else if (s.WasPressed(Key.Y)) _document.Redo();
         else if (s.WasPressed(Key.S)) SaveDocument();
+        else if (s.WasPressed(Key.Up)) ReorderSelectedFeature(-1);     // earlier in the fold order
+        else if (s.WasPressed(Key.Down)) ReorderSelectedFeature(+1);   // later in the fold order (toward winning)
+    }
+
+    // Ctrl+Up / Ctrl+Down: move the selected terrain feature one step earlier (delta -1) or later (delta +1) in
+    // the fold order. Features fold in list order and the LAST feature over an overlap wins, so Ctrl+Down promotes
+    // the selected feature toward dominating its overlaps. Clamped at the ends (no no-op command is executed at a
+    // boundary), and the index-string selection is remapped to the feature's new index so it stays selected. Undo
+    // / redo of a reorder does NOT re-follow the feature (v1): the selection is a bare index string, so after an
+    // undo it stays on the same index, which may then address a different feature. The direct Ctrl+Up/Down action
+    // is what keeps the selection glued to the moved feature.
+    void ReorderSelectedFeature(int delta)
+    {
+        EditorSelection selection = _document.Selection;
+        if (selection.Kind != SelectionKind.Feature) return;
+        int from = SelectedIndex(selection.Id);
+        int count = _document.Doc.Terrain.Features.Count;
+        if (from < 0 || from >= count) return;
+        int to = from + delta;
+        if (to < 0 || to >= count) return;   // clamp at the ends: nothing to move, so land no command
+        _document.Execute(new ReorderFeatureCommand(from, to));
+        selection.Set(SelectionKind.Feature, to.ToString(CultureInfo.InvariantCulture));
+    }
+
+    // R: snap the selected placement back onto the ground by re-issuing its move with a null Y (the runtime
+    // ground-snaps a null Y to the deterministic field height). A no-op for non-placement selections and when the
+    // placement already carries a null Y (already grounded), so no empty command lands on the undo stack.
+    void SnapSelectedPlacementToGround()
+    {
+        if (_document.Selection.Kind != SelectionKind.Placement) return;
+        if (Placement(_document.Selection.Id) is not { } p) return;
+        if (p.Y is null) return;   // already grounded: do not execute an empty command
+        _document.Execute(new MovePlacementCommand(p.Id, p.X, p.Z, null));
     }
 
     // Shift+Escape: pop the scene right away when the document has no unsaved changes. With unsaved changes
@@ -1038,6 +1078,7 @@ public class MapEditorScene : GameScene, IGameScene3D
         if (feature is null) return;
 
         _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Type"), () => FeatureAt(index)?.Type ?? ""));
+        _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Apply order"), () => FeatureOrderText(index)));
         switch (feature)
         {
             case LakeFeatureDoc:
@@ -1094,6 +1135,16 @@ public class MapEditorScene : GameScene, IGameScene3D
     {
         List<MapFeature> features = _document.Doc.Terrain.Features;
         return index >= 0 && index < features.Count ? features[index] : null;
+    }
+
+    // "N of M (last wins overlap)": the feature's 1-based fold position and the feature count, with the last-wins
+    // reminder. Features fold in list order, so the last feature over an overlap dominates it (Ctrl+Up / Ctrl+Down
+    // reorder the selected feature). Polled live by the inspector's read-only row, so it tracks reorders.
+    string FeatureOrderText(int index)
+    {
+        int count = _document.Doc.Terrain.Features.Count;
+        if (index < 0 || index >= count) return "";
+        return string.Create(CultureInfo.InvariantCulture, $"{index + 1} of {count} (last wins overlap)");
     }
 
     void BuildExclusionInspector(string id)
@@ -1325,7 +1376,8 @@ public class MapEditorScene : GameScene, IGameScene3D
         string undo = _document.History.UndoLabel ?? "-";
         string redo = _document.History.RedoLabel ?? "-";
         string tail = string.IsNullOrEmpty(_statusText) ? "" : "  |  " + _statusText;
-        return $"{dirty}{_controller.Mode}   {hint}   undo: {undo}   redo: {redo}   Shift+Esc: exit{tail}";
+        return $"{dirty}{_controller.Mode}   {hint}   undo: {undo}   redo: {redo}   " +
+            $"R: snap to ground   Ctrl+Up/Down: reorder feature   Shift+Esc: exit{tail}";
     }
 
     void Fill(SpriteBatch batch, Rect r, Color color) =>

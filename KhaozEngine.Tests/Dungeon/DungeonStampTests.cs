@@ -233,12 +233,106 @@ namespace KhaozEngine.Tests.Dungeon
             Assert.Equal(target.Placements.Count, stamp.Props.Count);
 
             // Per-kind breakdown for extra confidence the two sinks agree piece-by-piece, not just in total.
+            // Every kind must actually occur (MultiFloorLayout guarantees rooms, walls, doors, and a stair
+            // run, hence a landing too), so no per-kind comparison can pass vacuously as 0 == 0.
             foreach (string kitId in new[] { "dungeon_floor", "dungeon_wall", "dungeon_doorframe", "dungeon_stair", "dungeon_landing" })
             {
                 int placementCount = target.Placements.Count(p => p.Kind == kitId);
                 int propCount = stamp.Props.Count(p => p.KitId == kitId);
+                Assert.True(placementCount > 0, $"no '{kitId}' placements: the per-kind comparison would be vacuous");
                 Assert.Equal(placementCount, propCount);
             }
+        }
+
+        [Fact]
+        public void StaticPoses_ComposePlotYaw()
+        {
+            // Pins the pose CONVENTION under a real plot rotation, not just at identity: a re-flipped
+            // plot-yaw sign or a swapped pitch/yaw composition order reproduces identity-transform output
+            // exactly, so only a non-90-degree yaw can catch it (the Task 12 emitter failure mode).
+            DungeonLayout layout = MultiFloorLayout();
+            DungeonKitMap kit = DungeonKitMap.Greybox();
+            var plot = new DungeonPlotTransform(4f, -6f, 2f, MathF.PI / 3f);
+
+            DungeonStampResult result = DungeonStamp.Build(layout, kit, plot);
+
+            float cell = layout.CellSizeMeters;
+            float floorHeight = layout.FloorHeightMeters;
+
+            // (a) Wall boxes carry the symmetric-piece orientation, -plot.YawRadians in the engine-wide
+            // Quaternion.CreateFromAxisAngle(UnitY, yaw) convention. Identify a real wall box by containment
+            // of a known Wall cell sampled at MID-height: TileCenter's Y is the floor line, which is a shared
+            // face between vertically stacked wall boxes, so a floor-level sample could sit in two boxes
+            // within tolerance.
+            var wallBoxes = result.Statics
+                .Where(s => s.Shape is BoxShape b && MathF.Abs(b.HalfExtents.Y - floorHeight * 0.5f) < 1e-3f)
+                .Select(s => ((BoxShape)s.Shape, s.Pose))
+                .ToList();
+            Assert.NotEmpty(wallBoxes);
+
+            DungeonTile wallTile = FirstWallTile(layout);
+            (float wx, _, float wz) = plot.TileCenter(wallTile, cell, floorHeight);
+            var midHeight = new Vector3(wx, plot.BaseY + wallTile.Floor * floorHeight + floorHeight * 0.5f, wz);
+            (BoxShape, Pose) wall = Assert.Single(wallBoxes, wb => ContainsPoint(wb.Item1, wb.Item2, midHeight));
+
+            Quaternion expectedWall = Quaternion.CreateFromAxisAngle(Vector3.UnitY, -plot.YawRadians);
+            float dot = Quaternion.Dot(wall.Item2.Orientation, expectedWall);
+            Assert.True(MathF.Abs(dot) > 1f - 1e-5f,
+                $"wall orientation {wall.Item2.Orientation} != CreateFromAxisAngle(UnitY, -plotYaw) {expectedWall}");
+
+            // (b) The stair ramp's local +Z (its climb axis), rotated by its pose orientation, must project
+            // horizontally onto the world run direction derived independently from plot.TileCenter, and the
+            // ramp must still climb (positive Y) all the way to the upper floor.
+            var stairEdges = layout.Edges.Where(e => e.Kind == DungeonEdgeKind.Stair).ToList();
+            var stairBoxes = result.Statics
+                .Where(s => s.Shape is BoxShape b && MathF.Abs(b.HalfExtents.Y - 0.1f) < 1e-3f
+                    && Vector3.Transform(Vector3.UnitY, s.Pose.Orientation).Y < 0.99f)
+                .Select(s => ((BoxShape)s.Shape, s.Pose))
+                .ToList();
+            Assert.NotEmpty(stairEdges);
+            Assert.Equal(stairEdges.Count, stairBoxes.Count);
+
+            DungeonEdge stairEdge = stairEdges[0];
+            (BoxShape Shape, Pose Pose) ramp = stairBoxes[0];
+
+            (float lx, _, float lz) = plot.TileCenter(stairEdge.Path[0], cell, floorHeight);
+            (float ux, _, float uz) = plot.TileCenter(stairEdge.Path[1], cell, floorHeight);
+            Vector2 runDir = Vector2.Normalize(new Vector2(ux - lx, uz - lz));
+
+            Vector3 climb = Vector3.Transform(Vector3.UnitZ, ramp.Pose.Orientation);
+            Assert.True(climb.Y > 0f, $"ramp local +Z must climb upward, got Y component {climb.Y}");
+            Vector2 climbHorizontal = Vector2.Normalize(new Vector2(climb.X, climb.Z));
+            Assert.Equal(runDir.X, climbHorizontal.X, 3);
+            Assert.Equal(runDir.Y, climbHorizontal.Y, 3);
+
+            float maxY = float.MinValue;
+            foreach (Vector3 corner in BoxCorners(ramp.Shape, ramp.Pose))
+            {
+                maxY = MathF.Max(maxY, corner.Y);
+            }
+
+            float upperFloorY = plot.BaseY + (stairEdge.Path[0].Floor + 1) * floorHeight;
+            Assert.True(MathF.Abs(maxY - upperFloorY) < 0.3f,
+                $"expected ramp AABB max Y near upper floor {upperFloorY}, got {maxY}");
+        }
+
+        private static DungeonTile FirstWallTile(DungeonLayout layout)
+        {
+            for (int f = 0; f < layout.Floors; f++)
+            {
+                for (int z = 0; z < layout.Depth; z++)
+                {
+                    for (int x = 0; x < layout.Width; x++)
+                    {
+                        if (layout.GetCell(x, z, f) == DungeonCellKind.Wall)
+                        {
+                            return new DungeonTile(x, z, f);
+                        }
+                    }
+                }
+            }
+
+            throw new Xunit.Sdk.XunitException("Layout has no wall cells.");
         }
     }
 }

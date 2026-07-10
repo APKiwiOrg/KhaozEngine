@@ -94,6 +94,15 @@ namespace KhaozEngine.Tests.MapEditor
             input.Update(MouseFrame(at, leftDown: false)); tree.Update(input);
         }
 
+        // A press-origin tap driven through a PropertyGrid (press and release both at `at`), the PropertyGridTests
+        // idiom, so a ChoiceRow's dropdown open/pick runs exactly as it does live (block regions included).
+        static void TapGrid(PropertyGrid grid, InputManager input, Vector2 at)
+        {
+            input.Update(MouseFrame(at, leftDown: false)); grid.Update(input, 0.016f);
+            input.Update(MouseFrame(at, leftDown: true)); grid.Update(input, 0.016f);
+            input.Update(MouseFrame(at, leftDown: false)); grid.Update(input, 0.016f);
+        }
+
         static string TempPath() => Path.Combine(Path.GetTempPath(), $"ke-editor-{Guid.NewGuid():N}.map.json");
 
         static MapDocument ValidDoc()
@@ -450,8 +459,90 @@ namespace KhaozEngine.Tests.MapEditor
 
             scene.Document.Selection.Set(SelectionKind.Exclusion, "0");
 
-            Assert.NotEmpty(scene.Inspector.Rows);                  // shape read-only rows, not a blank panel
-            Assert.All(scene.Inspector.Rows, row => Assert.IsType<ReadOnlyRow>(row));
+            // A disc exclusion gets the editable shape surface: the kind selector plus one FloatRow per param.
+            Assert.IsType<ChoiceRow>(scene.Inspector.Rows[0]);
+            Assert.NotNull(FloatRowByLabel(scene.Inspector, "CenterX"));
+            Assert.NotNull(FloatRowByLabel(scene.Inspector, "CenterZ"));
+            Assert.NotNull(FloatRowByLabel(scene.Inspector, "Radius"));
+        }
+
+        [Fact]
+        public void RegionInspector_EditsDiscParams()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Regions.Add(new MapRegion { Name = "town", Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 18f, Radius = 12f } });
+                return doc;
+            });
+
+            scene.Document.Selection.Set(SelectionKind.Region, "town");
+            FloatRow radius = FloatRowByLabel(scene.Inspector, "Radius");
+
+            // Scrub the radius row headless (the NumberField grab-gate idiom): press inside the editor cell,
+            // then drag +100 px at DragScale 0.01 = +1.0, so the row writes through EditRegionShapeCommand.
+            var cell = new Rect(0f, 0f, 200f, 28f);
+            var ui = new InputManager();
+            ui.Update(MouseFrame(new Vector2(100f, 10f), leftDown: false));
+            radius.Update(cell, ui, 0.016f);
+            ui.Update(MouseFrame(new Vector2(100f, 10f), leftDown: true));    // press inside (grab-gate origin)
+            radius.Update(cell, ui, 0.016f);
+            ui.Update(MouseFrame(new Vector2(200f, 10f), leftDown: true));    // +100 px at DragScale 0.01 = +1.0
+            bool changed = radius.Update(cell, ui, 0.016f);
+
+            Assert.True(changed);
+            var disc = Assert.IsType<DiscShapeDoc>(scene.Document.Doc.Regions[0].Shape);
+            Near(13f, disc.Radius);                                // 12 + 1 scrub
+            Near(0f, disc.CenterX);                                // the clone changed ONLY the scrubbed field
+            Near(18f, disc.CenterZ);
+            Assert.False(scene.Document.WorldRebuildPending);      // regions never force a world rebuild
+            Assert.True(scene.Document.History.CanUndo);
+
+            Assert.True(scene.Document.Undo());
+            disc = Assert.IsType<DiscShapeDoc>(scene.Document.Doc.Regions[0].Shape);
+            Near(12f, disc.Radius);                                // undo restores the pre-scrub shape
+        }
+
+        [Fact]
+        public void ShapeKindChoice_ConvertsDiscToRectPreservingCenter()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { CenterX = 2f, CenterZ = 3f, Radius = 5f } });
+                return doc;
+            });
+
+            scene.Document.Selection.Set(SelectionKind.Exclusion, "0");
+            scene.Inspector.Bounds = new Rect(0f, 0f, 300f, 400f);
+            Assert.IsType<ChoiceRow>(scene.Inspector.Rows[0]);
+
+            // Row 0's editor cell is x 135..300, y 0..28 (LabelFraction 0.45 of 300); with two options the open
+            // list sits at y 28..56 ("disc") and y 56..84 ("rect"). Tap the trigger, then pick "rect".
+            var ui = new InputManager();
+            TapGrid(scene.Inspector, ui, new Vector2(200f, 14f));   // open the kind list
+            TapGrid(scene.Inspector, ui, new Vector2(200f, 70f));   // pick "rect"
+
+            // Disc to rect converts center-preservingly: the square of side 2r around the disc center.
+            var rect = Assert.IsType<RectShapeDoc>(scene.Document.Doc.Exclusions[0].Shape);
+            Near(-3f, rect.MinX);
+            Near(-2f, rect.MinZ);
+            Near(7f, rect.MaxX);
+            Near(8f, rect.MaxZ);
+            Assert.True(scene.Document.WorldRebuildPending);        // exclusion shape edits rebuild the world
+            Assert.True(scene.Document.History.CanUndo);
+
+            // The kind changed, so the inspector reflows to rect param rows on the next chrome step.
+            scene.OnUpdate(0.016f);
+            Assert.NotNull(FloatRowByLabel(scene.Inspector, "MinX"));
+
+            // Converting back picks the rect's center plus half its max extent, landing on the original disc.
+            TapGrid(scene.Inspector, ui, new Vector2(200f, 14f));   // open the kind list (now showing "rect")
+            TapGrid(scene.Inspector, ui, new Vector2(200f, 42f));   // pick "disc" (option 0)
+            var disc = Assert.IsType<DiscShapeDoc>(scene.Document.Doc.Exclusions[0].Shape);
+            Near(2f, disc.CenterX);
+            Near(3f, disc.CenterZ);
+            Near(5f, disc.Radius);
         }
 
         [Fact]
@@ -647,6 +738,40 @@ namespace KhaozEngine.Tests.MapEditor
             scene.SpawnFilter.SetText("");
             scene.RefreshPalettes();
             Assert.Equal(3, scene.SpawnList.Roots.Count);                 // clearing restores the full list
+        }
+
+        // ---- palette visibility ----------------------------------------------------------------------------
+
+        [Fact]
+        public void Palette_VisibleOnlyInPlaceMode()
+        {
+            var scene = PushPaletteScene(KitCategories(), "wolf");
+
+            // The kit palette shows ONLY in the prop-place mode; the spawn picker owns the panel in spawn mode.
+            foreach (EditorToolMode mode in Enum.GetValues<EditorToolMode>())
+            {
+                scene.Controller.Mode = mode;
+                Assert.Equal(mode == EditorToolMode.PlacePlacement, scene.KitPaletteVisible);
+            }
+
+            // Outside the two Place modes the panel region is empty and the outline reflows over the freed space.
+            scene.Controller.Mode = EditorToolMode.Select;
+            Rect outlineFull = scene.OutlineRect(1000f, 600f);
+            Near(0f, scene.PaletteRect(1000f, 600f).Height);
+            Near(scene.StatusRect(1000f, 600f).Y, outlineFull.Bottom);   // the outline runs to the status strip
+
+            // In the place mode the panel returns and the outline gives the space back (the two stack exactly).
+            scene.Controller.Mode = EditorToolMode.PlacePlacement;
+            Rect outlineHalf = scene.OutlineRect(1000f, 600f);
+            Rect palette = scene.PaletteRect(1000f, 600f);
+            Assert.True(palette.Height > 0f);
+            Near(palette.Y, outlineHalf.Bottom);
+            Near(scene.StatusRect(1000f, 600f).Y, palette.Bottom);
+
+            // The spawn tool also shows the bottom panel (the spawn picker), just not the kit palette.
+            scene.Controller.Mode = EditorToolMode.PlaceSpawn;
+            Assert.True(scene.PaletteRect(1000f, 600f).Height > 0f);
+            Assert.False(scene.KitPaletteVisible);
         }
 
         // ---- status strip --------------------------------------------------------------------------------

@@ -295,6 +295,57 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.True(ed.History.CanUndo);
         }
 
+        [Fact]
+        public void EditExclusionShapeCommand_AppliesRevertsMerges()
+        {
+            var doc = Sample();
+            var original = Assert.IsType<DiscShapeDoc>(doc.Exclusions[0].Shape);
+            var v1 = new DiscShapeDoc { CenterX = -32f, CenterZ = 22f, Radius = 40f };
+            var v2 = new RectShapeDoc { MinX = -72f, MinZ = -18f, MaxX = 8f, MaxZ = 62f };
+            string before = Save(doc);
+
+            // Apply replaces the shape instance and forces a world rebuild (scatter inputs changed).
+            var ed = new EditorDocument(doc);
+            ed.Execute(new EditExclusionShapeCommand(0, v1, original));
+            Assert.Same(v1, doc.Exclusions[0].Shape);
+            Assert.True(ed.WorldRebuildPending);
+
+            // A second edit of the same index coalesces (scrub coalescing): the shape moves on, no new undo step.
+            ed.Execute(new EditExclusionShapeCommand(0, v2, v1));
+            Assert.Same(v2, doc.Exclusions[0].Shape);
+
+            // One undo reverts the whole gesture to the original shape, deep-equal to the pre-edit document.
+            Assert.True(ed.Undo());
+            Assert.Same(original, doc.Exclusions[0].Shape);
+            Assert.False(ed.History.CanUndo);
+            Assert.Equal(before, Save(doc));
+        }
+
+        [Fact]
+        public void EditRegionShapeCommand_AppliesRevertsMerges_NoWorldRebuild()
+        {
+            var doc = Sample();
+            var original = Assert.IsType<DiscShapeDoc>(doc.Regions[0].Shape);   // SampleDoc's "town"
+            var v1 = new DiscShapeDoc { CenterX = -32f, CenterZ = 22f, Radius = 20f };
+            var v2 = new DiscShapeDoc { CenterX = -32f, CenterZ = 22f, Radius = 21f };
+            string before = Save(doc);
+
+            // Apply replaces the shape; regions are game-interpreted, so no world rebuild is forced.
+            var ed = new EditorDocument(doc);
+            ed.Execute(new EditRegionShapeCommand("town", v1, original));
+            Assert.Same(v1, doc.Regions[0].Shape);
+            Assert.False(ed.WorldRebuildPending);
+
+            // A second edit of the same region name coalesces into the first.
+            ed.Execute(new EditRegionShapeCommand("town", v2, v1));
+            Assert.Same(v2, doc.Regions[0].Shape);
+
+            Assert.True(ed.Undo());
+            Assert.Same(original, doc.Regions[0].Shape);
+            Assert.False(ed.History.CanUndo);
+            Assert.Equal(before, Save(doc));
+        }
+
         // ---- world-rebuild classification --------------------------------------------------------------
 
         [Fact]

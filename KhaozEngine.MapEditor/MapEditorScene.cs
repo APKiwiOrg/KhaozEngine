@@ -151,6 +151,11 @@ public class MapEditorScene : GameScene, IGameScene3D
     SelectionKind _pendingSelectKind;
     string? _pendingSelectId;
 
+    // The kind string ("disc"/"rect"/...) the current inspector's shape rows were built for, or null when the
+    // inspector holds no shape rows. Compared each chrome step against the live selected shape so a kind
+    // conversion (or an undo/redo of one) swaps the param rows: see SyncShapeInspector.
+    string? _inspectorShapeKind;
+
     /// <summary>Wires the render surface, the shared white pixel and UI font, and the editor options, then returns
     /// this for chaining (the Room3D Init-injection pattern). Nothing is dereferenced until <see cref="OnEnter"/>.</summary>
     public MapEditorScene Init(Scene3D scene, Texture2D white, DpiFont font, MapEditorOptions options)
@@ -338,6 +343,11 @@ public class MapEditorScene : GameScene, IGameScene3D
             _pendingSelectId = null;
             _document.Selection.Set(kind, pending);
         }
+
+        // A shape-kind conversion (or an undo/redo of one) changes WHICH param rows the region / exclusion
+        // inspector needs (disc rows vs rect rows), but only a selection change rebuilds the inspector.
+        // Deferred here, after the widget step, so the rebuild never tears rows down mid-grid-update.
+        SyncShapeInspector();
     }
 
     /// <summary>Streams the viewport world around the camera. Overridable for headless order tests. No-ops until
@@ -547,6 +557,7 @@ public class MapEditorScene : GameScene, IGameScene3D
 
     void DrawPalette(SpriteBatch batch, SpriteFont font, Rect bounds)
     {
+        if (!BottomPanelVisible) return;   // no panel this frame: the outline owns the whole left column
         Fill(batch, bounds, PanelBackground);
         (Rect filterRect, Rect bodyRect) = SplitPaletteRegion(bounds);
         if (SpawnMode)
@@ -601,27 +612,39 @@ public class MapEditorScene : GameScene, IGameScene3D
         _inspector.Bounds = L.Inspector;
         _inspector.Update(_ui, dt);
 
-        (Rect filterRect, Rect bodyRect) = SplitPaletteRegion(L.Palette);
-        if (SpawnMode)
+        if (BottomPanelVisible)
         {
-            _spawnFilter.Bounds = filterRect;
-            _spawnFilter.Update(_ui.Pointer, Manager.Input, dt);
-            _spawnList.Bounds = bodyRect;
-            _spawnList.Update(_ui);
-        }
-        else
-        {
-            _paletteFilter.Bounds = filterRect;
-            _paletteFilter.Update(_ui.Pointer, Manager.Input, dt);
-            _paletteTree.Bounds = bodyRect;
-            _paletteTree.Update(_ui);
+            (Rect filterRect, Rect bodyRect) = SplitPaletteRegion(L.Palette);
+            if (SpawnMode)
+            {
+                _spawnFilter.Bounds = filterRect;
+                _spawnFilter.Update(_ui.Pointer, Manager.Input, dt);
+                _spawnList.Bounds = bodyRect;
+                _spawnList.Update(_ui);
+            }
+            else
+            {
+                _paletteFilter.Bounds = filterRect;
+                _paletteFilter.Update(_ui.Pointer, Manager.Input, dt);
+                _paletteTree.Bounds = bodyRect;
+                _paletteTree.Update(_ui);
+            }
         }
         RefreshPalettes();
     }
 
-    // The spawn tool swaps the bottom-left panel to the spawn-archetype picker; every other tool shows the kit
-    // palette. Both live in the same region, so only one filter box + list is driven / drawn per frame.
-    bool SpawnMode => _controller.Mode == EditorToolMode.PlaceSpawn;
+    // The bottom-left panel hosts a tool-scoped picker: the spawn tool shows the spawn-archetype list, the
+    // prop-place tool shows the kit palette, and every other tool shows NO panel (the outline reflows over the
+    // freed space, see ComputeLayout). At most one filter box + list is driven / drawn per frame. Null-guarded
+    // because the layout helpers (StatusRect and friends) may run before OnEnter creates the controller.
+    bool SpawnMode => _controller is not null && _controller.Mode == EditorToolMode.PlaceSpawn;
+
+    /// <summary>True while the kit palette (filter + tree) occupies the bottom-left panel: ONLY in the
+    /// prop-place tool. Exposed for tests.</summary>
+    internal bool KitPaletteVisible => _controller is not null && _controller.Mode == EditorToolMode.PlacePlacement;
+
+    // Whether the bottom-left panel exists at all this frame (one of its two contents is active).
+    bool BottomPanelVisible => SpawnMode || KitPaletteVisible;
 
     void HandleShortcuts()
     {
@@ -878,6 +901,7 @@ public class MapEditorScene : GameScene, IGameScene3D
     {
         _inspector.Rows.Clear();
         _nameRow = null;
+        _inspectorShapeKind = null;
         EditorSelection sel = _document.Selection;
         switch (sel.Kind)
         {
@@ -1068,7 +1092,8 @@ public class MapEditorScene : GameScene, IGameScene3D
     {
         if (!int.TryParse(id, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index)) return;
         if (index < 0 || index >= _document.Doc.Exclusions.Count) return;
-        AddShapeRows(() => index < _document.Doc.Exclusions.Count ? _document.Doc.Exclusions[index].Shape : null);
+        AddShapeRows(() => index < _document.Doc.Exclusions.Count ? _document.Doc.Exclusions[index].Shape : null,
+            (newShape, oldShape) => _document.Execute(new EditExclusionShapeCommand(index, newShape, oldShape)));
     }
 
     void BuildRegionInspector(string name)
@@ -1076,13 +1101,128 @@ public class MapEditorScene : GameScene, IGameScene3D
         if (RegionByName(name) is null) return;
         Func<string> cur = AddNameRow(SelectionKind.Region, name,
             v => RegionByName(v) is not null, (oldName, newName) => new RenameRegionCommand(oldName, newName));
-        AddShapeRows(() => RegionByName(cur())?.Shape);
+        AddShapeRows(() => RegionByName(cur())?.Shape,
+            (newShape, oldShape) => _document.Execute(new EditRegionShapeCommand(cur(), newShape, oldShape)));
     }
 
-    void AddShapeRows(Func<MapShapeDoc?> shape)
+    /// <summary>The shape-kind options the inspector's kind selector offers. Polygon is read-only v1 (no
+    /// conversion in or out), so it is not an option: a polygon shape shows a read-only kind row instead.</summary>
+    static readonly string[] ShapeKindChoices = { "disc", "rect" };
+
+    // The editable shape surface of the selected region / exclusion: a kind ChoiceRow (disc <-> rect, converted
+    // center-preservingly) plus one FloatRow per parameter, each writing a clone of the live DTO with the one
+    // field changed through `execute` (newShape, oldShape), so a scrub coalesces via the command's merge.
+    // Polygon gets a read-only kind + point count v1; a null / unknown shape keeps the read-only kind row.
+    // `shape` reads the LIVE DTO (every edit replaces the instance), so the rows track edits and undo.
+    void AddShapeRows(Func<MapShapeDoc?> shape, Action<MapShapeDoc, MapShapeDoc> execute)
     {
-        _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Shape"), () => ShapeKind(shape())));
-        _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Params"), () => ShapeParams(shape())));
+        MapShapeDoc? current = shape();
+        switch (current)
+        {
+            case DiscShapeDoc:
+                AddShapeKindRow(shape, execute);
+                AddShapeRow<DiscShapeDoc>(shape, execute, "CenterX", s => s.CenterX, (s, v) => s.CenterX = v);
+                AddShapeRow<DiscShapeDoc>(shape, execute, "CenterZ", s => s.CenterZ, (s, v) => s.CenterZ = v);
+                AddShapeRow<DiscShapeDoc>(shape, execute, "Radius", s => s.Radius, (s, v) => s.Radius = v);
+                break;
+            case RectShapeDoc:
+                AddShapeKindRow(shape, execute);
+                AddShapeRow<RectShapeDoc>(shape, execute, "MinX", s => s.MinX, (s, v) => s.MinX = v);
+                AddShapeRow<RectShapeDoc>(shape, execute, "MinZ", s => s.MinZ, (s, v) => s.MinZ = v);
+                AddShapeRow<RectShapeDoc>(shape, execute, "MaxX", s => s.MaxX, (s, v) => s.MaxX = v);
+                AddShapeRow<RectShapeDoc>(shape, execute, "MaxZ", s => s.MaxZ, (s, v) => s.MaxZ = v);
+                break;
+            case PolygonShapeDoc:
+                _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Shape"), () => ShapeKind(shape())));
+                _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Points"),
+                    () => ((shape() as PolygonShapeDoc)?.Points.Count ?? 0).ToString(CultureInfo.InvariantCulture)));
+                break;
+            default:
+                _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Shape"), () => ShapeKind(shape())));
+                break;
+        }
+        _inspectorShapeKind = ShapeKind(current);
+    }
+
+    // The shape-kind selector: disc <-> rect, converted center-preservingly (see ConvertShape). ChoiceRow fires
+    // the setter only on a real change, so re-picking the current kind never lands a command.
+    void AddShapeKindRow(Func<MapShapeDoc?> shape, Action<MapShapeDoc, MapShapeDoc> execute)
+    {
+        _inspector.Rows.Add(new ChoiceRow(LocalizedText.Raw("Shape"), ShapeKindChoices,
+            () => ShapeKind(shape()),
+            v =>
+            {
+                if (shape() is not { } current || ConvertShape(current, v) is not { } converted) return;
+                execute(converted, current);
+            }));
+    }
+
+    // One scrubbed parameter of the selected shape (the AddFeatureRow idiom): get reads the LIVE DTO, set clones
+    // the current DTO with the one property changed and routes the (new, old) pair through `execute`, whose
+    // command's same-key merge makes a scrub coalesce into one undo step.
+    void AddShapeRow<T>(Func<MapShapeDoc?> shape, Action<MapShapeDoc, MapShapeDoc> execute, string label,
+        Func<T, float> get, Action<T, float> assign) where T : MapShapeDoc
+    {
+        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw(label),
+            () => shape() is T s ? get(s) : 0f,
+            v =>
+            {
+                if (shape() is not T current) return;
+                var clone = (T)CloneShape(current);
+                assign(clone, v);
+                execute(clone, current);
+            }));
+    }
+
+    // Copies a disc / rect shape DTO so an edit replaces the instance (the shape commands hold old + new by
+    // reference). Polygon rows are read-only v1, so only the two editable kinds are cloned.
+    static MapShapeDoc CloneShape(MapShapeDoc shape) => shape switch
+    {
+        DiscShapeDoc d => new DiscShapeDoc { CenterX = d.CenterX, CenterZ = d.CenterZ, Radius = d.Radius },
+        RectShapeDoc r => new RectShapeDoc { MinX = r.MinX, MinZ = r.MinZ, MaxX = r.MaxX, MaxZ = r.MaxZ },
+        _ => throw new InvalidOperationException($"No clone support for shape type '{shape.GetType().Name}'."),
+    };
+
+    // Converts a disc / rect to the requested kind, preserving the center: disc -> the square of side 2r around
+    // its center; rect -> the disc at the rect's center with half the max extent as the radius. Returns null for
+    // a same-kind request or an unconvertible shape (polygon, read-only v1).
+    static MapShapeDoc? ConvertShape(MapShapeDoc current, string kind) => (current, kind) switch
+    {
+        (DiscShapeDoc d, "rect") => new RectShapeDoc
+        {
+            MinX = d.CenterX - d.Radius, MinZ = d.CenterZ - d.Radius,
+            MaxX = d.CenterX + d.Radius, MaxZ = d.CenterZ + d.Radius,
+        },
+        (RectShapeDoc r, "disc") => new DiscShapeDoc
+        {
+            CenterX = (r.MinX + r.MaxX) * 0.5f,
+            CenterZ = (r.MinZ + r.MaxZ) * 0.5f,
+            Radius = MathF.Max(r.MaxX - r.MinX, r.MaxZ - r.MinZ) * 0.5f,
+        },
+        _ => null,
+    };
+
+    /// <summary>Rebuilds the inspector when the selected shape's kind no longer matches the kind the current
+    /// rows were built for (a kind-ChoiceRow conversion, or an undo / redo of one), so disc rows swap to rect
+    /// rows and back. Deferred to the chrome step so the rebuild never happens inside the grid's row iteration.
+    /// No-op while the inspector holds no shape rows. Internal so a headless test can fire the sync directly.</summary>
+    internal void SyncShapeInspector()
+    {
+        if (_inspectorShapeKind is not string built) return;
+        if (!string.Equals(ShapeKind(SelectedShape()), built, StringComparison.Ordinal)) RebuildInspector();
+    }
+
+    // The shape of the selected exclusion / region, or null (no shape-carrying selection, vanished element).
+    MapShapeDoc? SelectedShape()
+    {
+        EditorSelection sel = _document.Selection;
+        return sel.Kind switch
+        {
+            SelectionKind.Exclusion when int.TryParse(sel.Id, NumberStyles.Integer, CultureInfo.InvariantCulture,
+                out int i) && i >= 0 && i < _document.Doc.Exclusions.Count => _document.Doc.Exclusions[i].Shape,
+            SelectionKind.Region => RegionByName(sel.Id)?.Shape,
+            _ => null,
+        };
     }
 
     static string ShapeKind(MapShapeDoc? shape) => shape switch
@@ -1092,14 +1232,6 @@ public class MapEditorScene : GameScene, IGameScene3D
         PolygonShapeDoc => "polygon",
         null => "(none)",
         _ => shape.GetType().Name,
-    };
-
-    static string ShapeParams(MapShapeDoc? shape) => shape switch
-    {
-        DiscShapeDoc d => FormattableString.Invariant($"center ({d.CenterX:0.##}, {d.CenterZ:0.##})  radius {d.Radius:0.##}"),
-        RectShapeDoc r => FormattableString.Invariant($"({r.MinX:0.##}, {r.MinZ:0.##}) .. ({r.MaxX:0.##}, {r.MaxZ:0.##})"),
-        PolygonShapeDoc p => FormattableString.Invariant($"{p.Points.Count} points"),
-        _ => "",
     };
 
     MapRegion? RegionByName(string name)
@@ -1214,6 +1346,16 @@ public class MapEditorScene : GameScene, IGameScene3D
     /// headless test can assert the strip shifts up to clear a host-reserved bottom band.</summary>
     internal Rect StatusRect(float w, float h) => ComputeLayout(w, h).Status;
 
+    /// <summary>The bottom-left panel rectangle for a window of <paramref name="w"/> x <paramref name="h"/>
+    /// points (zero-height when neither Place tool is active). Exposed so a headless test can assert the palette
+    /// region exists only in the Place modes.</summary>
+    internal Rect PaletteRect(float w, float h) => ComputeLayout(w, h).Palette;
+
+    /// <summary>The outline rectangle for a window of <paramref name="w"/> x <paramref name="h"/> points.
+    /// Exposed so a headless test can assert the outline reflows over the freed palette space outside the
+    /// Place modes.</summary>
+    internal Rect OutlineRect(float w, float h) => ComputeLayout(w, h).Outline;
+
     ChromeLayout ComputeLayout(float w, float h)
     {
         var toolbar = new Rect(0f, 0f, w, ToolbarHeight);
@@ -1223,9 +1365,11 @@ public class MapEditorScene : GameScene, IGameScene3D
         float bottomReserve = StatusHeight + MathF.Max(0f, _options.StatusBottomOffset);
         float bodyBottom = MathF.Max(bodyTop, h - bottomReserve);
         float bodyH = bodyBottom - bodyTop;
-        float half = bodyH * 0.5f;
-        var outline = new Rect(0f, bodyTop, PanelWidth, half);
-        var palette = new Rect(0f, bodyTop + half, PanelWidth, bodyH - half);
+        // The bottom-left panel (kit palette / spawn picker) exists only in the two Place tools; otherwise the
+        // outline takes the whole left column and the panel rect collapses to zero height at its bottom edge.
+        float outlineH = BottomPanelVisible ? bodyH * 0.5f : bodyH;
+        var outline = new Rect(0f, bodyTop, PanelWidth, outlineH);
+        var palette = new Rect(0f, bodyTop + outlineH, PanelWidth, bodyH - outlineH);
         var inspector = new Rect(w - PanelWidth, bodyTop, PanelWidth, bodyH);
         var status = new Rect(0f, bodyBottom, w, StatusHeight);
         var viewport = new Rect(PanelWidth, bodyTop, MathF.Max(0f, w - 2f * PanelWidth), bodyH);

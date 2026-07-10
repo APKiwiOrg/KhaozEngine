@@ -533,6 +533,47 @@ public sealed class RemoveExclusionCommand : EditorCommand
     }
 }
 
+/// <summary>Replaces the shape of the exclusion at a given index with a new value (parameter scrub or kind
+/// conversion). The caller supplies both the new and old shape, cloned with the changed field (the
+/// <see cref="EditFeatureCommand"/> idiom). Successive edits of the same index coalesce (scrub coalescing).
+/// Affects the streamed world (scatter inputs change).</summary>
+public sealed class EditExclusionShapeCommand : EditorCommand
+{
+    readonly int _index;
+    MapShapeDoc _newShape;
+    readonly MapShapeDoc _oldShape;
+
+    /// <summary>Creates the command replacing exclusion <paramref name="index"/>'s shape with
+    /// <paramref name="newShape"/>, capturing <paramref name="oldShape"/> for revert.</summary>
+    public EditExclusionShapeCommand(int index, MapShapeDoc newShape, MapShapeDoc oldShape)
+    {
+        _index = index;
+        _newShape = newShape ?? throw new ArgumentNullException(nameof(newShape));
+        _oldShape = oldShape ?? throw new ArgumentNullException(nameof(oldShape));
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Edit exclusion shape";
+    internal override bool AffectsWorld => true;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc) => doc.Exclusions[_index].Shape = _newShape;
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => doc.Exclusions[_index].Shape = _oldShape;
+
+    /// <inheritdoc/>
+    public override bool TryMerge(IEditorCommand next)
+    {
+        if (next is EditExclusionShapeCommand e && e._index == _index)
+        {
+            _newShape = e._newShape;
+            return true;
+        }
+        return false;
+    }
+}
+
 // ---- regions (game-interpreted markers, not terrain-affecting) --------------------------------------------
 
 /// <summary>Appends a named region marker. Regions are game-interpreted, so this does not affect the
@@ -616,6 +657,47 @@ public sealed class RenameRegionCommand : EditorCommand
 
     /// <inheritdoc/>
     public override void Revert(MapDocument doc) => doc.Regions[IndexOfRegion(doc, _newName)].Name = _oldName;
+}
+
+/// <summary>Replaces the shape of the region with a given name (parameter scrub or kind conversion). The caller
+/// supplies both the new and old shape, cloned with the changed field (the <see cref="EditFeatureCommand"/>
+/// idiom). Successive edits of the same region coalesce (scrub coalescing). Regions are game-interpreted, so
+/// this does not affect the streamed world.</summary>
+public sealed class EditRegionShapeCommand : EditorCommand
+{
+    readonly string _name;
+    MapShapeDoc _newShape;
+    readonly MapShapeDoc _oldShape;
+
+    /// <summary>Creates the command replacing region <paramref name="name"/>'s shape with
+    /// <paramref name="newShape"/>, capturing <paramref name="oldShape"/> for revert.</summary>
+    public EditRegionShapeCommand(string name, MapShapeDoc newShape, MapShapeDoc oldShape)
+    {
+        _name = name ?? throw new ArgumentNullException(nameof(name));
+        _newShape = newShape ?? throw new ArgumentNullException(nameof(newShape));
+        _oldShape = oldShape ?? throw new ArgumentNullException(nameof(oldShape));
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Edit region shape";
+    internal override bool AffectsWorld => false;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc) => doc.Regions[IndexOfRegion(doc, _name)].Shape = _newShape;
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => doc.Regions[IndexOfRegion(doc, _name)].Shape = _oldShape;
+
+    /// <inheritdoc/>
+    public override bool TryMerge(IEditorCommand next)
+    {
+        if (next is EditRegionShapeCommand r && string.Equals(r._name, _name, StringComparison.Ordinal))
+        {
+            _newShape = r._newShape;
+            return true;
+        }
+        return false;
+    }
 }
 
 // ---- terrain globals (terrain-shape affecting) -----------------------------------------------------------

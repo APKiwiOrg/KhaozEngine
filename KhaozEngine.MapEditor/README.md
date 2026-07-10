@@ -75,10 +75,12 @@ tree rebuilds only when the filter box text changes, never every frame. Typing i
 case-insensitively, hides a category left with no matches, and forces every surviving category open. Clearing
 the filter restores each category's remembered expand/collapse state instead of resetting it.
 
-The `PlaceSpawn` tool swaps the same panel region to a flat, filtered spawn-archetype list instead (no
-categories, since the archetypes are a flat game-supplied list from `MapEditorOptions.SpawnArchetypes`).
-Every other tool shows the kit palette. Selecting a palette leaf sets `EditorToolController.PlaceKind`,
-selecting a spawn-list leaf sets `SpawnArchetype`, and tapping a category row itself changes neither.
+The panel is tool-scoped: the `PlacePlacement` tool shows the kit palette, and the `PlaceSpawn` tool swaps
+the same region to a flat, filtered spawn-archetype list instead (no categories, since the archetypes are a
+flat game-supplied list from `MapEditorOptions.SpawnArchetypes`). Every other tool shows no panel at all and
+the outline reflows over the freed space, taking the whole left column. Selecting a palette leaf sets
+`EditorToolController.PlaceKind`, selecting a spawn-list leaf sets `SpawnArchetype`, and tapping a category
+row itself changes neither.
 
 ## Viewport overlays
 

@@ -217,6 +217,21 @@ Wire: a control frame distinct by length from a move (`MoveProtocol.ClientContro
 `EncodeClientControl` / `TryDecodeClientControl`), so it shares the client->server Data channel without aliasing
 and a server that predates the feature harmlessly ignores it (no protocol-version break).
 
+## Teleport epoch: hard cut + client signal (since 10.65.0)
+
+An intentional teleport must CUT (avatar + camera), not glide, even when the destination is near. A monotonic
+**teleport epoch** rides the replicated `MovementState` (wire generation 4) and reaches the local owner's
+`ClientPrediction` basis via `PlayerMoveState`. The server advances it ONLY at teleport sites, through the
+`IWorldPersistenceHost.SetPlayerState(slot, state, teleport: true)` param (load-on-join placement, admin `Teleport`,
+self-rescue) on both `WorldServer` and `ShardedWorldServer`. Normal per-tick movement preserves it (the single-World
+sim carries it through `PlayerMoveSimulator.Step`; the sharded `PlayerMovementSystem` writes movement fields in place
+and never touches it). `ClientPrediction.Reconcile` force-cuts on an epoch advance regardless of `HardSnapDistance`.
+
+`WorldClient` surfaces one uniform signal for join, reconnect, AND in-session teleports: the **`LocalTeleported`**
+event plus a monotonic **`LocalTeleportEpoch`** counter (poll it frame-to-frame if you prefer). A consumer uses it to
+snap the follow camera (`FollowCamera3D.Warp`) and optionally run a screen transition (see `KhaozEngine.Render3D`
+`ITransition`). Mismatched wire generations are rejected at connect by the always-on `WireGenerationAuthenticator`.
+
 ## Reconnect input backlog (since 8.8.0)
 
 Holding the movement key through a long auto-reconnect outage no longer freezes the player on rejoin. Two guards:

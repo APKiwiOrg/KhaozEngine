@@ -31,8 +31,16 @@ public readonly record struct PredictionSettings(
 /// <param name="AuthoritativeTick">The server tick this reconciliation was against.</param>
 /// <param name="PositionError">Prediction-divergence magnitude (world units, 3D): the distance between the pre-rebase
 /// predicted state and the rebased authoritative state (the in-flight render smoothing offset is excluded).</param>
-/// <param name="HardSnapApplied">True if the error met <see cref="PredictionSettings.HardSnapDistance"/> and snapped instantly.</param>
+/// <param name="HardSnapApplied">True if the correction cut instantly (rather than glided): the error met
+/// <see cref="PredictionSettings.HardSnapDistance"/>, OR the authoritative <see cref="IPredictedState{T}.TeleportEpoch"/>
+/// advanced (an in-session teleport cuts regardless of distance).</param>
+/// <param name="Teleported">True when a teleport landed this reconciliation: the FIRST reconcile after a (re)seed
+/// (join/reconnect placement) OR an advance of the authoritative <see cref="IPredictedState{T}.TeleportEpoch"/> (an
+/// in-session teleport). The consumer reacts by snapping a follow camera and/or running a screen transition; an
+/// ordinary smoothed correction never sets it. Note a join/reconnect (re)seed sets this but not necessarily
+/// <see cref="HardSnapApplied"/>, since the seed already places the avatar with no glide.</param>
 public readonly record struct ReconciliationResult(
     int AuthoritativeTick,
     float PositionError,
-    bool HardSnapApplied);
+    bool HardSnapApplied,
+    bool Teleported = false);

@@ -62,6 +62,31 @@ namespace KhaozEngine.Render3D
             _dampedTarget = Vector3.Lerp(_dampedTarget, Target, a);
         }
 
+        /// <summary>
+        /// Hard-cuts the camera onto <paramref name="target"/>, bypassing target damping: sets <see cref="Target"/>
+        /// and forces the smoothed target so <see cref="EffectiveTarget"/> equals <paramref name="target"/> THIS
+        /// frame with zero trailing; normal damping resumes on the next <see cref="AdvanceTarget"/>. The 3D
+        /// counterpart of <c>Render2D.CameraFollow.Warp</c> - use it on a teleport (login/reconnect placement,
+        /// self-rescue, fast-travel) so the follow camera does not ease ("fly") across the jump. While
+        /// <see cref="EnableTargetDamping"/> is off the effective target already tracks <see cref="Target"/>, so the
+        /// cut is invisible, but it still updates <see cref="Target"/> and arms the smoothed state so enabling
+        /// damping later starts without a lurch.
+        /// </summary>
+        /// <param name="target">The world-space point to cut the camera onto (also the new follow point).</param>
+        public void Warp(Vector3 target)
+        {
+            Target = target;
+            _dampedTarget = target;
+            _dampedInit = true;
+        }
+
+        /// <summary>
+        /// Collapses any in-flight target damping onto the current <see cref="Target"/> without moving the follow
+        /// point, so <see cref="EffectiveTarget"/> equals <see cref="Target"/> this frame. Equivalent to
+        /// <c>Warp(Target)</c>; use it to kill a residual ease after <see cref="Target"/> was set directly.
+        /// </summary>
+        public void SnapToTarget() => Warp(Target);
+
         /// <summary>Lower clamp for <see cref="Pitch"/>, radians (kept &gt; 0 so the view never goes flat). Default ~6 deg.</summary>
         public float MinPitch = MathF.PI / 30f;
         /// <summary>Upper clamp for <see cref="Pitch"/>, radians (kept &lt; 90 deg so LookAt never degenerates). Default ~80 deg.</summary>

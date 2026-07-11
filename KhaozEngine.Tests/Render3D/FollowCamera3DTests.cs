@@ -161,5 +161,53 @@ namespace KhaozEngine.Tests.Render3D
             for (int i = 0; i < 600; i++) cam.AdvanceTarget(1f / 60f);
             Assert.True(Vector3.Distance(cam.Eye, new Vector3(20, 0, 10)) < 1e-2f, cam.Eye.ToString());
         }
+
+        [Fact]
+        public void Warp_snaps_the_effective_target_onto_the_destination_with_no_trailing_under_damping()
+        {
+            // Damping on, eased only partway toward a far target (the "fly"), then Warp cuts to a new destination.
+            var cam = new FollowCamera3D { Target = Vector3.Zero, EnableTargetDamping = true, TargetDampingRate = 10f };
+            cam.AdvanceTarget(1f / 60f);             // init the damped target at origin
+            cam.Target = new Vector3(100, 0, 0);
+            cam.AdvanceTarget(1f / 60f);             // one step: still trailing far behind the target
+            Assert.True(cam.EffectiveTarget.X < 50f, $"precondition: damping should still be trailing, got {cam.EffectiveTarget.X}");
+
+            cam.Warp(new Vector3(-7, 3, 12));
+            Assert.Equal(new Vector3(-7, 3, 12), cam.EffectiveTarget);   // cut this frame, zero trailing
+            Assert.Equal(new Vector3(-7, 3, 12), cam.Target);           // Warp also moves the follow point
+        }
+
+        [Fact]
+        public void Warp_leaves_no_ease_on_the_next_advance()
+        {
+            var cam = new FollowCamera3D { Target = Vector3.Zero, EnableTargetDamping = true, TargetDampingRate = 10f };
+            cam.AdvanceTarget(1f / 60f);
+            cam.Warp(new Vector3(40, 0, 0));
+            cam.AdvanceTarget(1f / 60f);             // damping resumes, but Target == damped target so it does not move
+            Assert.Equal(new Vector3(40, 0, 0), cam.EffectiveTarget);
+        }
+
+        [Fact]
+        public void Warp_forces_the_effective_target_even_before_the_first_advance()
+        {
+            // A brand-new camera with damping on that has never been advanced: Warp still cuts immediately.
+            var cam = new FollowCamera3D { EnableTargetDamping = true, TargetDampingRate = 20f };
+            cam.Warp(new Vector3(2, 0, -5));
+            Assert.Equal(new Vector3(2, 0, -5), cam.EffectiveTarget);
+        }
+
+        [Fact]
+        public void SnapToTarget_collapses_in_flight_damping_onto_the_current_target_without_moving_it()
+        {
+            var cam = new FollowCamera3D { Target = Vector3.Zero, EnableTargetDamping = true, TargetDampingRate = 10f };
+            cam.AdvanceTarget(1f / 60f);
+            cam.Target = new Vector3(100, 0, 0);
+            cam.AdvanceTarget(1f / 60f);             // trailing
+            Assert.True(cam.EffectiveTarget.X < 50f);
+
+            cam.SnapToTarget();
+            Assert.Equal(cam.Target, cam.EffectiveTarget);      // collapsed onto the current Target
+            Assert.Equal(new Vector3(100, 0, 0), cam.Target);   // Target itself unchanged
+        }
     }
 }

@@ -1839,6 +1839,28 @@ flag on `Scene3DChunkSink` (requires a `physics` world), then swap the ground de
 face is collidable) if you want the shape directly. A Bepu mesh is one-sided and not recentered, so terrain
 must present its top face up (the helper handles this) and is registered at `Pose.Identity`.
 
+**Server-authoritative AI agents move with the player's collision (`CharacterMovement.StepTowards`, 10.64.0).**
+A non-player, server-simulated agent (an enemy NPC) needs the SAME collision the player gets - swept
+collide-and-slide + `StepHeight` step-up against the `IPhysicsWorld`, the terrain support floor, the slope gate,
+and the play-area clamp - but it steers by an actual **world heading** (toward its target), not a camera yaw.
+Drive it with `StepTowards`, which takes a world-space XZ direction whose length scales speed in `[0,1]`:
+
+    // In the authoritative server tick, once per agent. enemyTuning carries this creature's capsule
+    // radius/half-height and walk/run speed, so different creatures move at different sizes/speeds.
+    Vector2 toTarget = new(target.X - agent.Position.X, target.Z - agent.Position.Z);
+    if (toTarget.LengthSquared() > 1e-6f) toTarget = Vector2.Normalize(toTarget);   // unit = full speed
+    agent = CharacterMovement.StepTowards(agent, toTarget, run: chasing, dt,
+                                          probe.HeightDelegate, enemyTuning,
+                                          groundNormal: probe.NormalDelegate, world: world,
+                                          clampXz: bounds.Clamp);
+
+Internally the camera-relative player `Step` and the world-space `StepTowards` resolve their input to the same
+shape (a unit direction + a speed fraction) and share one collision core, so an agent walks into a wall, mounts a
+stair, is denied a too-steep slope, and is held inside the bounds **exactly** as a player would - parity by
+construction. There is no jump bit (NPCs do not jump in v1) and no client-prediction path (AI is server-only).
+Shrink `toTarget` below unit length for a slower saunter (e.g. a patrol), or pass a longer vector (clamped to full
+speed).
+
 On the client, `KhaozEngine.Terrain.Render3D` (in the `Game3D` umbrella) meshes finite chunks off the field,
 `using KhaozEngine.Terrain;`:
 
@@ -5285,6 +5307,53 @@ reconciles to the client exactly like an admin teleport. Both `WorldServer` and 
 identically (the sharded one teleports across cells). Under the hood it rides a short control frame on the existing
 client->server channel (`MoveProtocol.ClientControlKind`), distinct by length from a move, so a server that predates
 the feature just ignores it.
+
+### Teleport (hard cut) + screen transitions
+
+A teleport is two problems. (1) The **avatar + camera must cut, not glide**, even when the destination is near.
+Client reconciliation decides cut-vs-glide by distance, so a short in-session hop would smooth. The server carries a
+monotonic **teleport epoch** on the authoritative movement state and bumps it only at teleport sites (join/reconnect
+placement, admin `Teleport`, self-rescue) via `SetPlayerState(..., teleport: true)`. `ClientPrediction.Reconcile`
+force-cuts on an epoch advance regardless of distance, and `WorldClient` surfaces one uniform signal:
+
+```csharp
+// Push: react the frame a local teleport lands (join, reconnect, or an in-session server teleport).
+client.LocalTeleported += () =>
+{
+    camera.Warp(client.LocalRenderState.Position);   // FollowCamera3D: cut the follow camera, no ease (the whole login-fly fix)
+    transition?.Begin();                             // optionally mask the swap (below)
+};
+// Poll alternative (robust to multiple teleports between frames, needs no clearing):
+if (client.LocalTeleportEpoch != _lastSeen) { _lastSeen = client.LocalTeleportEpoch; /* warp + transition */ }
+```
+
+`FollowCamera3D.Warp(target)` forces the smoothed target so `EffectiveTarget == target` that frame with zero
+trailing (normal damping resumes next frame); `SnapToTarget()` collapses in-flight damping onto the current `Target`.
+This is the whole fix for the follow camera "flying" from spawn to a persisted position on login/reconnect.
+
+(2) The swap + destination pop-in should be **masked**. `ITransition` is a phased
+`cover -> swap -> optional streaming hold -> reveal` state machine (pure timing) with a `Swapped` callback (do the
+`Warp` + reposition under cover), a `Completed` event, and a per-`Update` "ready" predicate that releases the hold as
+soon as the destination has streamed in (bounded by a timeout so it never hangs). Three built-ins:
+
+```csharp
+// Screen-space effects: assign one to the scene and drive it each frame.
+scene.ScreenTransition = new HardBlink();          // fast fade to black + back (self-rescue: snappy)
+// scene.ScreenTransition = new CameraDissolve();  // crossfade the frozen frame to the live view (login: far/unstreamed)
+t.Swapped += () => { camera.Warp(dest); /* reposition */ };
+t.Begin();
+// per frame:
+t.Update(dt, destinationReady: streamer.ChunkReadyAt(dest));   // ready releases the streaming hold early
+
+// World-space effect: the avatar dissolves out then in (assumes an already-streamed destination, never holds).
+var cd = new CharDissolve();
+scene.DrawSkinned(mesh, bones, model, tint, material, dissolve: cd.Cover, edgeWidth: cd.EdgeWidth, edgeColor: cd.EdgeColor);
+```
+
+`HardBlink`/`CameraDissolve` implement `IScreenTransition` and render as a fullscreen pass over the final image (the
+scene captures the frozen frame for the crossfade). `CharDissolve` renders through a dedicated skinned pipeline
+variant; a `dissolve` of 0 draws exactly like the plain overload, so it is safe to call unconditionally. All of it is
+byte-identical when no transition is active, and a consumer can author its own `ITransition`.
 
 ### Game messages (attack / interact / chat / inventory)
 

@@ -6,15 +6,21 @@ namespace KhaozEngine.Locomotion;
 
 /// <summary>
 /// Character locomotion: the single movement step run by the local controller, the authoritative server sim,
-/// and client-side prediction alike. Two overloads share one horizontal core (camera-relative move, normalized
-/// diagonals, walk/run speed, optional slope gate):
+/// and client-side prediction alike. Every entry point funnels a resolved horizontal move (unit direction + a
+/// speed fraction in [0,1]), walk/run speed, and an optional slope gate through ONE collision core, so a
+/// camera-relative player command and a world-space AI steering direction resolve identically - parity by
+/// construction, not by copy:
 /// <list type="bullet">
 /// <item><see cref="Step(Vector3, in MoveCommand, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, Func{float, float, float, MovementMedium}?)"/>
 /// is the horizontal-only step: Y is a pure function of XZ (ground + half-height), no air.</item>
 /// <item><see cref="Step(in MoveState, in MoveCommand, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, IPhysicsWorld?, Func{float, float, Vector2}?, Func{float, float, float, MovementMedium}?)"/>
-/// is the vertical-physics step: gravity, jump (coyote + jump-buffer), land/clamp, air control, plus 3D
-/// swept collide-and-slide prop resolution via an <see cref="IPhysicsWorld"/> (substepped
-/// <see cref="IPhysicsWorld.SweepCapsule"/> + step-up probe), over the carried <see cref="MoveState"/>.</item>
+/// is the camera-relative vertical-physics step (player / local prediction): gravity, jump (coyote + jump-buffer),
+/// land/clamp, air control, plus 3D swept collide-and-slide prop resolution via an <see cref="IPhysicsWorld"/>
+/// (substepped <see cref="IPhysicsWorld.SweepCapsule"/> + step-up probe), over the carried <see cref="MoveState"/>.</item>
+/// <item><see cref="StepTowards(in MoveState, Vector2, bool, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, IPhysicsWorld?, Func{float, float, Vector2}?, Func{float, float, float, MovementMedium}?)"/>
+/// is the WORLD-SPACE kinematic step for server-authoritative NPCs (enemy AI): the identical terrain follow,
+/// swept collide-and-slide + step-up, slope gate, and bounds clamp, driven by a world-space steering direction
+/// instead of a camera yaw. No jump and no client prediction (AI is server-only).</item>
 /// </list>
 /// No input, render, or netcode dependency.
 /// </summary>
@@ -40,8 +46,10 @@ public static class CharacterMovement
     {
         if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
 
+        (Vector2 moveDir, float speedFraction) = ResolveCameraRelative(cmd);
         float wade = WadeSpeedScale(position.X, position.Z, position.Y - tuning.CapsuleHalfHeight, tuning, medium);
-        (float x, float z) = DesiredHorizontal(position.X, position.Z, cmd, dt, tuning, groundNormal, speedScale: wade);
+        (float x, float z) = DesiredHorizontalCore(position.X, position.Z, moveDir, speedFraction, cmd.Run, dt,
+            tuning, groundNormal, speedScale: wade);
         var result = new Vector3(x, groundHeight(x, z) + tuning.CapsuleHalfHeight, z);
         // Defense-in-depth: never return a non-finite position from a finite input. A pathological command is
         // already neutralized by the move gate, but a misbehaving groundHeight/bound could still inject a NaN/Inf
@@ -85,7 +93,97 @@ public static class CharacterMovement
         Func<float, float, float, MovementMedium>? medium = null)
     {
         if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
+        (Vector2 moveDir, float speedFraction) = ResolveCameraRelative(cmd);
+        return StepCore(state, moveDir, speedFraction, cmd.Run, cmd.Jump, dt, groundHeight, tuning,
+            groundNormal, world, clampXz, medium);
+    }
 
+    /// <summary>The WORLD-SPACE kinematic movement step for server-authoritative, non-player agents (enemy NPCs):
+    /// it drives the SAME collision resolution the player gets - swept collide-and-slide + step-up against the
+    /// <paramref name="world"/> (<see cref="IPhysicsWorld.SweepCapsule"/>), the analytic terrain support floor, the
+    /// <paramref name="groundNormal"/> slope gate, and the <paramref name="clampXz"/> bounds - but from a world-space
+    /// steering direction instead of a camera yaw, so an agent moves through the world exactly as a player would.
+    /// Per-agent capsule radius / half-height / walk-run speed all come from <paramref name="tuning"/>, so different
+    /// creatures get different sizes and speeds with no extra plumbing. There is no jump bit (NPCs do not jump in
+    /// v1) and no client prediction path: AI is server-only, so this is called once per tick by the authoritative
+    /// sim. Shares <c>StepCore</c> with the camera-relative player
+    /// <see cref="Step(in MoveState, in MoveCommand, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, IPhysicsWorld?, Func{float, float, Vector2}?, Func{float, float, float, MovementMedium}?)"/>,
+    /// so the two can never drift apart.</summary>
+    /// <param name="state">The carried kinematic state (position + vertical velocity + grounded + feel timers).</param>
+    /// <param name="worldDir">The desired horizontal travel direction in WORLD space (XZ). Its length scales speed in
+    /// [0,1] (a unit vector = full speed, a shorter vector = a slower saunter, a longer one is clamped to full); a
+    /// near-zero vector is idle. Not camera-relative - the caller supplies the actual world heading (e.g. toward a
+    /// target).</param>
+    /// <param name="run">True to use <see cref="MoveTuning.RunSpeed"/> instead of <see cref="MoveTuning.WalkSpeed"/>.</param>
+    /// <param name="dt">Timestep in seconds.</param>
+    /// <param name="groundHeight">Terrain height at (x, z).</param>
+    /// <param name="tuning">Per-agent speed/half-height/radius/slope + gravity/fall constants.</param>
+    /// <param name="groundNormal">Optional ground normal; when given, gates a horizontal step by slope exactly as the
+    /// player path does.</param>
+    /// <param name="world">The physics world to resolve against, or null for terrain-only.</param>
+    /// <param name="clampXz">Optional XZ clamp (a play-area bound), applied after the move and re-applied after
+    /// depenetration.</param>
+    /// <param name="medium">Optional fluid-medium provider; wades/swims identically to the player path. Must be pure.</param>
+    /// <returns>The advanced <see cref="MoveState"/>.</returns>
+    public static MoveState StepTowards(in MoveState state, Vector2 worldDir, bool run, float dt,
+        Func<float, float, float> groundHeight, in MoveTuning tuning,
+        Func<float, float, Vector3>? groundNormal = null, IPhysicsWorld? world = null,
+        Func<float, float, Vector2>? clampXz = null,
+        Func<float, float, float, MovementMedium>? medium = null)
+    {
+        if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
+        (Vector2 moveDir, float speedFraction) = ResolveWorldDir(worldDir);
+        return StepCore(state, moveDir, speedFraction, run, jump: false, dt, groundHeight, tuning,
+            groundNormal, world, clampXz, medium);
+    }
+
+    /// <summary>Resolve a camera-relative <see cref="MoveCommand"/> into the unit world-space move direction (XZ) and
+    /// a speed fraction the shared core consumes. The player always moves at full speed (the axis is normalized), so
+    /// the fraction is exactly 1 when there is input and 0 when idle - preserving the pre-refactor behaviour
+    /// bit-for-bit (the same <see cref="Vector3.Normalize(Vector3)"/> over the same camera basis, gated by the same
+    /// 1e-6 length-squared threshold).</summary>
+    private static (Vector2 dir, float fraction) ResolveCameraRelative(in MoveCommand cmd)
+    {
+        float sY = MathF.Sin(cmd.CameraYaw), cY = MathF.Cos(cmd.CameraYaw);
+        Vector3 forward = new(-sY, 0f, -cY);
+        Vector3 right = new(cY, 0f, -sY);
+        Vector3 move = right * cmd.Move.X + forward * cmd.Move.Y;
+        if (move.LengthSquared() > 1e-6f)
+        {
+            Vector3 n = Vector3.Normalize(move);
+            return (new Vector2(n.X, n.Z), 1f);
+        }
+        return (Vector2.Zero, 0f);
+    }
+
+    /// <summary>Resolve a world-space steering direction into the unit move direction (XZ) and a speed fraction: the
+    /// vector's length scales speed in [0,1] (unit = full speed, shorter = slower, longer clamped to 1), and a
+    /// length below the same 1e-6 length-squared dead-zone the player path uses is treated as idle. This is the only
+    /// difference between the AI and player entry points - once resolved, both drive the identical
+    /// <c>StepCore</c>.</summary>
+    private static (Vector2 dir, float fraction) ResolveWorldDir(Vector2 worldDir)
+    {
+        float lenSq = worldDir.LengthSquared();
+        if (lenSq > 1e-6f)
+        {
+            float len = MathF.Sqrt(lenSq);
+            float fraction = len > 1f ? 1f : len;
+            return (worldDir / len, fraction);
+        }
+        return (Vector2.Zero, 0f);
+    }
+
+    /// <summary>The shared vertical-physics collision core behind both the camera-relative player
+    /// <see cref="Step(in MoveState, in MoveCommand, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, IPhysicsWorld?, Func{float, float, Vector2}?, Func{float, float, float, MovementMedium}?)"/>
+    /// and the world-space AI <see cref="StepTowards(in MoveState, Vector2, bool, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, IPhysicsWorld?, Func{float, float, Vector2}?, Func{float, float, float, MovementMedium}?)"/>.
+    /// Both callers resolve their input to the same shape - a unit <paramref name="moveDir"/> (XZ) plus a
+    /// <paramref name="speedFraction"/> in [0,1] - then hand off here, so terrain follow, swept collide-and-slide,
+    /// step-up, the slope gate, and the bounds clamp are byte-for-byte the same for player and AI.</summary>
+    private static MoveState StepCore(in MoveState state, Vector2 moveDir, float speedFraction, bool run, bool jump,
+        float dt, Func<float, float, float> groundHeight, in MoveTuning tuning,
+        Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world,
+        Func<float, float, Vector2>? clampXz, Func<float, float, float, MovementMedium>? medium)
+    {
         MoveState s = state;
         MoveTuning t = tuning;
 
@@ -104,18 +202,19 @@ public static class CharacterMovement
         // threshold, never flickering at the boundary. Only meaningful with a provider; dry land never swims.
         bool swimming = ResolveSwimming(s.Swimming, medNow, s.Position.Y - halfH, t);
         if (swimming)
-            return SwimStep(s, cmd, dt, t, medNow, groundHeight, clampXz, halfH);
+            return SwimStep(s, moveDir, speedFraction, jump, dt, t, medNow, groundHeight, clampXz, halfH);
 
-        // 1. Horizontal desired (UNCHANGED when dry): camera-relative move + terrain slope gate. The grounded/air
-        //    scale composes with the wade scale (1 when no provider or out of water, so the dry path is untouched).
+        // 1. Horizontal desired (UNCHANGED when dry): resolved unit move direction + speed fraction + terrain slope
+        //    gate. The grounded/air scale composes with the wade scale (1 when no provider or out of water, so the
+        //    dry path is untouched).
         float wade = WadeSpeedScale(s.Position.X, s.Position.Z, s.Position.Y - halfH, t, medium);
         float speedScale = (s.Grounded ? 1f : t.AirControl) * wade;
-        (float dx, float dz) = DesiredHorizontal(s.Position.X, s.Position.Z, cmd, dt, t, groundNormal, speedScale);
+        (float dx, float dz) = DesiredHorizontalCore(s.Position.X, s.Position.Z, moveDir, speedFraction, run, dt, t, groundNormal, speedScale);
         if (clampXz is not null) { Vector2 c = clampXz(dx, dz); dx = c.X; dz = c.Y; }
 
         // 2. Vertical integrate (UNCHANGED math): jump-buffer countdown, gravity, terminal clamp.
-        bool jumpRequested = cmd.Jump || s.JumpBufferRemaining > 0f;
-        float jumpBuffer = cmd.Jump ? t.JumpBuffer : MathF.Max(0f, s.JumpBufferRemaining - dt);
+        bool jumpRequested = jump || s.JumpBufferRemaining > 0f;
+        float jumpBuffer = jump ? t.JumpBuffer : MathF.Max(0f, s.JumpBufferRemaining - dt);
         float vVel = s.VerticalVelocity - t.Gravity * dt;
         if (vVel < -t.MaxFallSpeed) vVel = -t.MaxFallSpeed;
         float desiredY = s.Position.Y + vVel * dt;
@@ -459,24 +558,21 @@ public static class CharacterMovement
     /// through the same damped settle rather than snapping. The terrain floor is still respected (the capsule never
     /// sinks below ground + half-height, e.g. in shallow water at the edge). Deterministic: pure float math over the
     /// pure provider sample.</summary>
-    private static MoveState SwimStep(in MoveState state, in MoveCommand cmd, float dt, in MoveTuning t,
-        in MovementMedium medium, Func<float, float, float> groundHeight, Func<float, float, Vector2>? clampXz, float halfH)
+    private static MoveState SwimStep(in MoveState state, Vector2 moveDir, float speedFraction, bool jump, float dt,
+        in MoveTuning t, in MovementMedium medium, Func<float, float, float> groundHeight,
+        Func<float, float, Vector2>? clampXz, float halfH)
     {
         // Horizontal: swim speed (run has no effect while swimming), scaled by the medium's zone multiplier so a
-        // swamp/current still composes, clamped >= 0 so a hostile negative zone scale cannot reverse travel. Reuses
-        // the same camera-relative basis + normalized-diagonal as the walk step, at SwimSpeed.
+        // swamp/current still composes, clamped >= 0 so a hostile negative zone scale cannot reverse travel. Uses the
+        // resolved unit move direction + speed fraction shared with the walk path (so the camera-relative player and
+        // the world-space AI swim identically), at SwimSpeed.
         float zoneScale = medium.WadeSpeedScale < 0f ? 0f : medium.WadeSpeedScale;
-        float sY = MathF.Sin(cmd.CameraYaw), cY = MathF.Cos(cmd.CameraYaw);
-        Vector3 forward = new(-sY, 0f, -cY);
-        Vector3 right = new(cY, 0f, -sY);
-        Vector3 move = right * cmd.Move.X + forward * cmd.Move.Y;
         float x = state.Position.X, z = state.Position.Z;
-        if (move.LengthSquared() > 1e-6f)
+        if (speedFraction > 0f)
         {
-            move = Vector3.Normalize(move);
-            float speed = t.SwimSpeed * zoneScale;
-            x += move.X * speed * dt;
-            z += move.Z * speed * dt;
+            float speed = t.SwimSpeed * zoneScale * speedFraction;
+            x += moveDir.X * speed * dt;
+            z += moveDir.Y * speed * dt;
         }
         if (clampXz is not null) { Vector2 c = clampXz(x, z); x = c.X; z = c.Y; }
 
@@ -514,7 +610,7 @@ public static class CharacterMovement
         // jump velocity and DROPS swim: the next land tick reads a jumping, airborne, non-swimming state.
         bool swimmingNext = true;
         float vVel = v;
-        if (cmd.Jump)
+        if (jump)
         {
             // Deliberately reads the POST-settle feet (y - halfH from the settled y above), not the step-start feetY the
             // enter/exit hysteresis uses: near-shore reflects where the body ended up resting this tick, not where it began.
@@ -599,7 +695,7 @@ public static class CharacterMovement
     /// signal: a client repeatedly driving into a wall, slope, or boundary keeps this large. Pass
     /// <paramref name="speedScale"/> = the value the step used (1 grounded, <see cref="MoveTuning.AirControl"/>
     /// airborne) so the comparison isolates only the denial, not the air-control scaling. Mirrors the basis +
-    /// speed of <see cref="DesiredHorizontal"/> (pre-gate).</summary>
+    /// speed of <see cref="DesiredHorizontalCore"/> (pre-gate).</summary>
     public static Vector2 IntendedHorizontalTarget(Vector3 position, in MoveCommand cmd, float dt,
         in MoveTuning tuning, float speedScale = 1f)
     {
@@ -897,23 +993,19 @@ public static class CharacterMovement
         return true;
     }
 
-    // Desired world XZ position after camera-relative input + slope gate, WITHOUT collision.
-    // Handles the input/slope section only; prop collision is resolved separately by the swept
-    // collide-and-slide block in the vertical-physics Step overload.
-    private static (float x, float z) DesiredHorizontal(float x, float z, in MoveCommand cmd, float dt,
-        in MoveTuning tuning, Func<float, float, Vector3>? groundNormal, float speedScale)
+    // Desired world XZ position after applying the resolved horizontal move (unit direction + speed fraction) and the
+    // slope gate, WITHOUT collision. The direction + speed fraction are resolved upstream from either a
+    // camera-relative MoveCommand (ResolveCameraRelative) or a world-space steering direction (ResolveWorldDir), so
+    // player and AI share this exact input/slope section; prop collision is resolved separately by the swept
+    // collide-and-slide block in StepCore. moveDir is a unit vector when speedFraction > 0.
+    private static (float x, float z) DesiredHorizontalCore(float x, float z, Vector2 moveDir, float speedFraction,
+        bool run, float dt, in MoveTuning tuning, Func<float, float, Vector3>? groundNormal, float speedScale)
     {
-        float sY = MathF.Sin(cmd.CameraYaw), cY = MathF.Cos(cmd.CameraYaw);
-        Vector3 forward = new(-sY, 0f, -cY);
-        Vector3 right = new(cY, 0f, -sY);
-
-        Vector3 move = right * cmd.Move.X + forward * cmd.Move.Y;
-        if (move.LengthSquared() > 1e-6f)
+        if (speedFraction > 0f)
         {
-            move = Vector3.Normalize(move);
-            float speed = (cmd.Run ? tuning.RunSpeed : tuning.WalkSpeed) * speedScale;
-            float nx = x + move.X * speed * dt;
-            float nz = z + move.Z * speed * dt;
+            float speed = (run ? tuning.RunSpeed : tuning.WalkSpeed) * speedScale * speedFraction;
+            float nx = x + moveDir.X * speed * dt;
+            float nz = z + moveDir.Y * speed * dt;
 
             bool blocked = false;
             if (groundNormal is not null)

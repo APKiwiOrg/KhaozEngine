@@ -40,7 +40,7 @@ public class WorldPersistenceLoadRaceTests
             players.Remove(slot);
         }
 
-        public void SetPlayerState(int slot, in PlayerMoveState state)
+        public void SetPlayerState(int slot, in PlayerMoveState state, bool teleport = false)
         {
             if (players.TryGetValue(slot, out (string acct, PlayerMoveState state) p)) players[slot] = (p.acct, state);
         }

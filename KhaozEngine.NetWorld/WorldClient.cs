@@ -290,6 +290,22 @@ public sealed class WorldClient : IDisposable
     /// during a steady run. Zero until the first snapshot seeds prediction.</summary>
     public float LocalHorizontalSpeed => prediction.PredictedHorizontalSpeed;
 
+    /// <summary>
+    /// Raised during <see cref="Poll"/> (on snapshot/delta ingest) when a local teleport landed this ingest: the
+    /// first authoritative frame after a connect or reconnect (join/reconnect placement), or an in-session server
+    /// teleport (an advance of the authoritative <see cref="MovementState.TeleportEpoch"/> - admin, self-rescue,
+    /// fast-travel). The local avatar has already cut to the new position; the consumer reacts by snapping the follow
+    /// camera onto <see cref="LocalRenderState"/> (<c>FollowCamera3D.Warp</c>) and optionally running a screen
+    /// transition. Distinct from an ordinary reconciliation correction, which never fires this.
+    /// </summary>
+    public event Action? LocalTeleported;
+
+    /// <summary>Monotonic count of local teleports that have landed (bumped once per <see cref="LocalTeleported"/>).
+    /// A consumer that polls each frame instead of subscribing compares this frame-to-frame to detect a teleport
+    /// robustly - it survives multiple teleports between frames and needs no clearing. Zero until the first teleport
+    /// lands (the initial join placement bumps it to 1).</summary>
+    public uint LocalTeleportEpoch { get; private set; }
+
     /// <summary>The debug per-frame presentation trace, or null unless <see cref="WorldClientConfig.PresentationTraceEnabled"/>
     /// was set. When enabled it accrues one row per rendered entity per <see cref="AdvancePresentation"/> (the render
     /// clock, interpolation delay, render time, seconds-since-snapshot, arrival marks, local reconcile-error, and the
@@ -715,6 +731,11 @@ public sealed class WorldClient : IDisposable
             ReconciliationResult rr = prediction.Reconcile(authoritativeTick++, basis, ackSeq);
             RecordCorrection(rr.PositionError);                  // NetStats: predicted-vs-authoritative delta (m)
             lastReconcileError = rr.PositionError;               // for the trace's local reconcile-error signal
+            if (rr.Teleported)                                   // a teleport landed: seed placement or an epoch advance
+            {
+                LocalTeleportEpoch++;
+                LocalTeleported?.Invoke();
+            }
         }
     }
 

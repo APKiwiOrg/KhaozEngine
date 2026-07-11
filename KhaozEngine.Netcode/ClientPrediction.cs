@@ -58,6 +58,13 @@ public sealed class ClientPrediction<TState, TCommand>
     // not mistaken for movement: a consumer HUD/audio/locomotion gets a clean steady value under lag instead of the
     // wobble from differencing RenderedState.Position (which carries the decaying reconciliation render offset).
     private float predictedHorizontalSpeed;
+    // The last authoritative teleport epoch observed in Reconcile. An advance forces an unconditional hard cut,
+    // independent of HardSnapDistance (see IPredictedState.TeleportEpoch). Captured on (re)seed so the seed's own
+    // epoch is never mistaken for an in-session advance.
+    private uint lastTeleportEpoch;
+    // Set by Reset/Reseed so the FIRST reconcile after a (re)seed reports a teleport (the uniform join/reconnect
+    // signal the consumer uses to snap the camera), without that seed also counting as an in-session epoch advance.
+    private bool justSeeded;
 
     public ClientPrediction(ITickSimulator<TState, TCommand> simulator, PredictionSettings? settings = null)
     {
@@ -111,6 +118,9 @@ public sealed class ClientPrediction<TState, TCommand>
         verticalRenderOffsetVelocity = 0f;
         predictedHorizontalSpeed = 0f;
         nextSeq = 0;
+        // Capture the seed epoch (so it is not re-counted as an in-session advance) and arm the join teleport signal.
+        lastTeleportEpoch = initialState.TeleportEpoch;
+        justSeeded = true;
     }
 
     /// <summary>
@@ -138,6 +148,9 @@ public sealed class ClientPrediction<TState, TCommand>
         predictedHorizontalSpeed = 0f;
         // nextSeq intentionally preserved (monotonic across the reconnect); pendingCommands intentionally kept
         // (the following Reconcile drops acked / replays unacked against the new server's ack).
+        // Capture the reseed epoch and arm the teleport signal so the reconnect placement fires it exactly once.
+        lastTeleportEpoch = basis.TeleportEpoch;
+        justSeeded = true;
     }
 
     /// <summary>Predicts one command forward and retains it for reconciliation. Returns its seq.</summary>
@@ -199,7 +212,18 @@ public sealed class ClientPrediction<TState, TCommand>
         Vector2 planarError = oldPlanar - predictedState.Position;
         float verticalError = oldVertical - predictedState.Vertical;
         float positionError = new Vector3(planarError.X, verticalError, planarError.Y).Length();
-        bool hardSnapApplied = positionError >= settings.HardSnapDistance;
+
+        // Authoritative teleport marker: an advance of the monotonic epoch is an intentional discontinuity that CUTS
+        // regardless of distance. justSeeded suppresses counting the (re)seed's own epoch as an advance, but the seed
+        // itself still reports Teleported (the uniform join/reconnect signal) - the (re)seed already placed the avatar
+        // with no glide, so it does not additionally force the hard-snap branch here.
+        uint epoch = authoritativeBasis.TeleportEpoch;
+        bool epochAdvanced = !justSeeded && epoch != lastTeleportEpoch;
+        bool teleported = justSeeded || epochAdvanced;
+        justSeeded = false;
+        lastTeleportEpoch = epoch;
+
+        bool hardSnapApplied = positionError >= settings.HardSnapDistance || epochAdvanced;
 
         if (hardSnapApplied)
         {
@@ -247,7 +271,7 @@ public sealed class ClientPrediction<TState, TCommand>
             verticalRenderOffsetVelocity = 0f;
         }
 
-        return new ReconciliationResult(authoritativeTick, positionError, hardSnapApplied);
+        return new ReconciliationResult(authoritativeTick, positionError, hardSnapApplied, teleported);
     }
 
     /// <summary>Advances the inter-tick interpolation clock and decays the smoothing offset toward zero;

@@ -306,15 +306,22 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
         return false;
     }
 
-    /// <summary>Places a joined player at <paramref name="state"/> (load-on-join). Writes its owning cell's
-    /// <see cref="ReplicatedPosition"/>; if that position falls in another cell the next <see cref="Tick"/>'s
-    /// handoff relocates the entity there (NetId stable). No-op for an unknown slot.</summary>
-    public void SetPlayerState(int slot, in PlayerMoveState state)
+    /// <summary>Places a joined player at <paramref name="state"/> (load-on-join, admin/self-rescue teleport). Writes
+    /// its owning cell's <see cref="ReplicatedPosition"/>; if that position falls in another cell the next
+    /// <see cref="Tick"/>'s handoff relocates the entity there (NetId stable). No-op for an unknown slot. When
+    /// <paramref name="teleport"/> is true the player's monotonic teleport epoch (held on the cell's
+    /// <see cref="MovementState"/>) is advanced so the client cuts to the new position instead of gliding; otherwise
+    /// the current epoch is preserved. The per-cell <see cref="PlayerMovementSystem"/> preserves it in place, so
+    /// ordinary movement never advances it.</summary>
+    public void SetPlayerState(int slot, in PlayerMoveState state, bool teleport = false)
     {
         if (netIdBySlot.TryGetValue(slot, out long netId) && host.TryGetOwner(netId, out CellSim cell, out Entity e))
         {
-            cell.World.Set(e, new ReplicatedPosition { Value = state.Position });
-            cell.World.Set(e, MovementState.From(state));
+            uint baseEpoch = cell.World.TryGet(e, out MovementState prev) ? prev.TeleportEpoch : 0u;
+            PlayerMoveState next = state;
+            next.TeleportEpoch = teleport ? baseEpoch + 1u : baseEpoch;   // server owns the monotonic epoch
+            cell.World.Set(e, new ReplicatedPosition { Value = next.Position });
+            cell.World.Set(e, MovementState.From(next));
         }
     }
 
@@ -555,7 +562,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
                 {
                     st.Position = cmd.Position;
                     st.VerticalVelocity = 0f;
-                    SetPlayerState(slot, st);
+                    SetPlayerState(slot, st, teleport: true);   // admin + self-rescue teleports cut on the client
                 }
                 break;
             }

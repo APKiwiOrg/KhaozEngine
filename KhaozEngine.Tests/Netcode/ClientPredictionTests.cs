@@ -38,6 +38,28 @@ public class ClientPredictionTests
             => new(state.Planar + command.Planar * dt, state.Height + command.Vert * dt);
     }
 
+    // A planar state that also carries the authoritative teleport epoch, to exercise the epoch-driven hard cut
+    // generically (no NetWorld dependency). The command is a velocity like FakeState. The epoch is not part of the
+    // prediction replay - the simulator ignores it - it only rides the authoritative basis into Reconcile.
+    private readonly record struct EpochState(Vector2 Position, uint Epoch) : IPredictedState<EpochState>
+    {
+        uint IPredictedState<EpochState>.TeleportEpoch => Epoch;
+        public EpochState WithPosition(Vector2 position) => this with { Position = position };
+    }
+
+    private sealed class EpochSimulator : ITickSimulator<EpochState, Vector2>
+    {
+        public EpochState Step(in EpochState state, in Vector2 command, float dt)
+            => state.WithPosition(state.Position + command * dt);
+    }
+
+    private static ClientPrediction<EpochState, Vector2> NewEpoch(uint seedEpoch)
+    {
+        var p = new ClientPrediction<EpochState, Vector2>(new EpochSimulator());
+        p.Reset(new EpochState(Vector2.Zero, seedEpoch));
+        return p;
+    }
+
     private static ClientPrediction<FakeState, Vector2> NewPrediction(PredictionSettings? settings = null)
     {
         var p = new ClientPrediction<FakeState, Vector2>(new MoveSimulator(), settings);
@@ -412,6 +434,64 @@ public class ClientPredictionTests
         // The next real commanded tick reports the steady commanded speed (off the rebased basis, not the snap).
         p.Predict(new Vector2(60f, 0f));
         Assert.Equal(60f, p.PredictedHorizontalSpeed, 3);
+    }
+
+    [Fact]
+    public void Reconcile_epoch_advance_forces_a_hard_snap_below_the_hardsnap_distance()
+    {
+        var p = NewEpoch(seedEpoch: 0);
+        p.Reconcile(0, new EpochState(Vector2.Zero, 0), lastAcknowledgedSeq: -1); // settle the seed (consume the join signal)
+
+        p.Predict(new Vector2(60f, 0f)); // predicted X = 1
+        p.AdvancePresentation(Tick);     // rendered catches up to 1
+        // A 4-unit correction, well under HardSnapDistance (100), but the authoritative epoch ADVANCED 0 -> 1: cut.
+        var r = p.Reconcile(1, new EpochState(new Vector2(5f, 0f), 1), lastAcknowledgedSeq: 0);
+        Assert.True(r.HardSnapApplied, "an epoch advance must force a hard snap regardless of distance");
+        Assert.True(r.Teleported);
+        Assert.Equal(5f, p.PredictedState.Position.X, 3);
+        Assert.Equal(5f, p.RenderedState.Position.X, 3);   // snapped: no residual smoothing offset
+    }
+
+    [Fact]
+    public void Reconcile_without_an_epoch_advance_glides_a_sub_hardsnap_correction()
+    {
+        var p = NewEpoch(seedEpoch: 7);
+        p.Reconcile(0, new EpochState(Vector2.Zero, 7), lastAcknowledgedSeq: -1); // settle the seed; lastEpoch = 7
+
+        p.Predict(new Vector2(60f, 0f)); // predicted X = 1
+        p.AdvancePresentation(Tick);     // rendered = 1
+        float before = p.RenderedState.Position.X;
+        // Same correction, but the epoch is UNCHANGED (7): the sub-hardsnap error glides, no cut, no signal.
+        var r = p.Reconcile(1, new EpochState(new Vector2(5f, 0f), 7), lastAcknowledgedSeq: 0);
+        Assert.False(r.HardSnapApplied);
+        Assert.False(r.Teleported);
+        Assert.Equal(before, p.RenderedState.Position.X, 3);   // continuity: no pop, the correction eases in
+    }
+
+    [Fact]
+    public void First_reconcile_after_reset_reports_teleported_then_steady_does_not()
+    {
+        // The uniform join signal: the first reconcile after a Reset seed reports a teleport (so the consumer snaps
+        // the camera on login), and a subsequent steady reconcile at the same epoch does not re-fire.
+        var p = NewEpoch(seedEpoch: 3);
+        var r = p.Reconcile(0, new EpochState(Vector2.Zero, 3), lastAcknowledgedSeq: -1);
+        Assert.True(r.Teleported);
+        var r2 = p.Reconcile(1, new EpochState(Vector2.Zero, 3), lastAcknowledgedSeq: -1);
+        Assert.False(r2.Teleported);
+    }
+
+    [Fact]
+    public void First_reconcile_after_reseed_reports_teleported_without_double_firing()
+    {
+        // The reconnect signal: Reseed captures the epoch it seeds on, so the first post-reseed reconcile fires the
+        // teleport once (from the seed), not twice (it must not also count the seed epoch as an advance).
+        var p = NewEpoch(seedEpoch: 1);
+        p.Reconcile(0, new EpochState(Vector2.Zero, 1), lastAcknowledgedSeq: -1); // consume the join signal
+        p.Reseed(new EpochState(new Vector2(50f, 0f), 5));
+        var r = p.Reconcile(1, new EpochState(new Vector2(50f, 0f), 5), lastAcknowledgedSeq: -1);
+        Assert.True(r.Teleported);
+        var r2 = p.Reconcile(2, new EpochState(new Vector2(50f, 0f), 5), lastAcknowledgedSeq: -1);
+        Assert.False(r2.Teleported);   // steady after the reseed: no re-fire
     }
 
     [Fact]

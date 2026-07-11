@@ -44,6 +44,9 @@ public sealed class PlayerMoveSimulator : ITickSimulator<PlayerMoveState, MoveCo
     public PlayerMoveState Step(in PlayerMoveState state, in MoveCommand command, float dt)
     {
         MoveState m = CharacterMovement.Step(state.Move, command, dt, groundHeight, tuning, groundNormal, physics, clampXz, medium);
-        return new PlayerMoveState { Move = m };
+        // Carry the teleport epoch through unchanged: it is a networking marker, not a movement quantity, so a step
+        // only advances position/vertical. This keeps a teleport marker alive across the single-World server's next
+        // per-tick step (the sharded head preserves it in-place via PlayerMovementSystem's ref-component write).
+        return new PlayerMoveState { Move = m, TeleportEpoch = state.TeleportEpoch };
     }
 }

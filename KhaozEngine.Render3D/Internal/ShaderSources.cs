@@ -230,6 +230,91 @@ void main() {
     oDepth = vec4(vDepth, vDepth, vDepth, 1.0);
 }";
 
+        // ---- CharDissolve variant of ModelFrag: noise-thresholded alpha clip + emissive edge ----
+        // Identical lighting to ModelFrag, plus a world-space value-noise dissolve mask: fragments where the mask is
+        // below the threshold (vSpecParams.z, 0=solid .. 1=gone; fed CharDissolve.Cover) are discarded, and a thin
+        // band just above the threshold (width vSpecParams.w) glows with the edge colour (which rides vEmissive during
+        // a dissolve). World-space noise so the pattern is stable as the avatar moves. Only skinned draws the consumer
+        // marks as dissolving use this pipeline; the normal path keeps ModelFrag byte-identical.
+        public const string ModelDissolveFrag = @"#version 450
+layout(set=0, binding=0) uniform U {
+    mat4 ViewProj;
+    vec4 LightDir;
+    vec4 LightColor;
+    vec4 Ambient;
+    vec4 Params;
+    vec4 FillDir;
+    vec4 FillColor;
+    vec4 CameraPos;
+    vec4 PointPosRadius[16];
+    vec4 PointColorIntensity[16];
+    mat4 ShadowMat;
+    vec4 ShadowParams;
+};
+layout(set=0, binding=1) uniform texture2D Albedo;
+layout(set=0, binding=2) uniform texture2D NormalMap;
+layout(set=0, binding=3) uniform texture2D RoughnessMap;
+layout(set=0, binding=4) uniform sampler Samp;
+layout(set=0, binding=5) uniform texture2D ShadowMap;
+layout(set=0, binding=6) uniform sampler ShadowSamp;
+layout(location=0) in vec3 vNormalW;
+layout(location=1) in vec4 vColor;
+layout(location=2) in float vDepth;
+layout(location=3) in vec3 vWorldPos;
+layout(location=4) in vec2 vUv;
+layout(location=5) in vec4 vTint;
+layout(location=6) in vec4 vEmissive;   // during a dissolve this carries the emissive EDGE colour
+layout(location=7) in vec4 vSpecParams; // x=spec strength, y=shininess, z=dissolve threshold, w=dissolve edge width
+layout(location=8) in vec4 vTangent;
+layout(location=0) out vec4 oColor;
+layout(location=1) out vec4 oNormal;
+layout(location=2) out vec4 oDepth;
+" + LightingCommonGlsl + @"
+float dhash(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
+float dnoise(vec3 p) {
+    vec3 i = floor(p); vec3 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+    float n000 = dhash(i + vec3(0,0,0)), n100 = dhash(i + vec3(1,0,0));
+    float n010 = dhash(i + vec3(0,1,0)), n110 = dhash(i + vec3(1,1,0));
+    float n001 = dhash(i + vec3(0,0,1)), n101 = dhash(i + vec3(1,0,1));
+    float n011 = dhash(i + vec3(0,1,1)), n111 = dhash(i + vec3(1,1,1));
+    return mix(mix(mix(n000, n100, f.x), mix(n010, n110, f.x), f.y),
+               mix(mix(n001, n101, f.x), mix(n011, n111, f.x), f.y), f.z);
+}
+void main() {
+    float threshold = clamp(vSpecParams.z, 0.0, 1.0);
+    float edgeW = max(vSpecParams.w, 1e-3);
+    float mask = dnoise(vWorldPos * 6.0);   // 0..1 world-space dissolve mask
+    if (mask < threshold) discard;          // dissolved away
+
+    vec3 Ngeo = normalize(vNormalW);
+    vec3 texRgb = texture(sampler2D(Albedo, Samp), vUv).rgb;
+    vec3 normalTex = texture(sampler2D(NormalMap, Samp), vUv).xyz;
+    float rough = texture(sampler2D(RoughnessMap, Samp), vUv).g;
+    vec3 N = Ngeo;
+    if (dot(vTangent.xyz, vTangent.xyz) > 1e-10) {
+        vec3 T = normalize(vTangent.xyz);
+        T = normalize(T - Ngeo * dot(Ngeo, T));
+        vec3 B = cross(Ngeo, T) * vTangent.w;
+        vec3 nTS = normalTex * 2.0 - 1.0;
+        N = normalize(mat3(T, B, Ngeo) * nTS);
+    }
+    vec3 albedo = vColor.rgb * vTint.rgb * texRgb;
+    float specStrength = vSpecParams.x * (1.0 - rough);
+    float specExp = max(mix(vSpecParams.y, 8.0, rough), 1.0);
+    float ndlKeyForShadow = max(dot(N, -normalize(LightDir.xyz)), 0.0);
+    float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, ShadowMat, ShadowParams, vWorldPos, ndlKeyForShadow);
+    vec3 diffuse; vec3 specColor;
+    computeLighting(N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
+    vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor;   // no base emissive: vEmissive is the edge colour here
+    // Emissive edge: a bright band just above the discard threshold. step(threshold) suppresses any edge at
+    // threshold 0 (a fully-solid avatar routed through this pipeline still reads clean).
+    float edge = (1.0 - smoothstep(threshold, threshold + edgeW, mask)) * step(0.001, threshold);
+    lit += vEmissive.rgb * edge;
+    oColor = vec4(lit, 1.0);
+    oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0);
+    oDepth = vec4(vDepth, vDepth, vDepth, 1.0);
+}";
+
         // ---- Splat-terrain vertex shader. Identical to ModelVert, except the per-frame UBO (binding 0) carries the
         //      per-material splat params appended after the point-light arrays - so the splat pipeline binds exactly
         //      ONE uniform buffer. (Veldrid/SPIRV-Cross on Metal mis-binds a SECOND uniform buffer in a set: it reads
@@ -802,6 +887,35 @@ void main() {
     // background composites transparently (geometry a=1 stays opaque, cleared background a=0 stays clear).
     float outA = (Params.y > 0.5) ? s.a : 1.0;
     oColor = vec4(col, outA);
+}";
+
+        // ---- Teleport transition: solid fullscreen fill (HardBlink) ----
+        // A fullscreen quad of Fill.rgb at opacity Fill.a, drawn OVER the final image with standard src-alpha blend
+        // (so result = fill*a + dst*(1-a)). Orientation-independent (no texture sample). Only ever drawn when a
+        // transition is active with Cover > 0, so a frame with no active transition is byte-identical to before.
+        public const string TransitionSolidFrag = @"#version 450
+layout(set=0, binding=0) uniform Fill { vec4 ColorAlpha; }; // rgb = fill colour, a = opacity (the transition's Cover)
+layout(location=0) in vec2 vUv;
+layout(location=0) out vec4 oColor;
+void main() { oColor = ColorAlpha; }";
+
+        // ---- Teleport transition: frozen-frame crossfade (CameraDissolve) ----
+        // Samples the captured pre-teleport frame (a raw copy of the resolved ColorTex) and draws it OVER the live
+        // final image at opacity Params.x (the frozen weight = Cover), with src-alpha blend: result = frozen*Cover +
+        // live*(1-Cover). The V flip is constant: the frozen texture is a ColorTex copy, and a fullscreen pass reading
+        // ColorTex needs the same single flip the final blit applies for a ColorTex source (BlitFrag's even-parity
+        // flipV=1 case), so it lands upright over the already-upright target. Only drawn while active, so inactive
+        // frames stay byte-identical.
+        public const string TransitionCrossfadeFrag = @"#version 450
+layout(set=0, binding=0) uniform texture2D Src;
+layout(set=0, binding=1) uniform sampler Samp;
+layout(set=0, binding=2) uniform Params { vec4 P; }; // P.x = frozen-frame opacity (the transition's Cover)
+layout(location=0) in vec2 vUv;
+layout(location=0) out vec4 oColor;
+void main() {
+    vec2 suv = vec2(vUv.x, 1.0 - vUv.y);   // match the blit's ColorTex flip so the frozen frame aligns with the target
+    vec4 s = texture(sampler2D(Src, Samp), suv);
+    oColor = vec4(s.rgb, P.x);
 }";
 
         // ---- FXAA (fast approximate anti-aliasing) ----

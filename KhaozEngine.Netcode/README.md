@@ -77,6 +77,15 @@ back to seq 0 would make every subsequent command land at or below that ack and 
 freezes). `Reset` is only for the genuine initial connect. `Reconcile` then prunes acked / replays unacked from
 the retained pending buffer.
 
+Since 10.65.0 a **teleport epoch** makes an intentional teleport cut regardless of distance. `IPredictedState<T>`
+carries an optional monotonic `TeleportEpoch` (a default-interface member returning 0, so a state with no teleport
+concept is unchanged). When the epoch on the authoritative basis advances, `Reconcile` force-hard-snaps (bypassing
+the `HardSnapDistance` gate, so a short in-session teleport cuts instead of gliding) and returns
+`ReconciliationResult.Teleported = true`. `Teleported` is also set on the FIRST reconcile after a `Reset`/`Reseed`,
+so a consumer gets one uniform "a teleport landed this frame" signal for join, reconnect, AND in-session teleports
+(e.g. to snap a follow camera + run a transition). An ordinary smoothed correction never sets it. The host is
+expected to advance the epoch ONLY at real teleport sites; normal movement leaves it unchanged.
+
 ## RemoteCommandQueue&lt;TCommand&gt;
 
 Host-side per-slot, seq-ordered command queue. Dedups retransmits and negative seqs, returns a neutral

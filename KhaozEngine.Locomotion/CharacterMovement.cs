@@ -281,20 +281,34 @@ public static class CharacterMovement
             float climbCap = MathF.Max(terrainGroundY, s.Position.Y + t.MaxStepClimbSpeed * dt);
             if (pos.Y > climbCap)
             {
-                // Pace the climb as a COHERENT unit. When the rise came from mounting discrete step geometry (a
-                // stair riser - steppedUp), scale the WHOLE step-up displacement by the same ratio the vertical is
-                // capped by, not just pos.Y. Capping Y alone let the step-up's forward teleport (a full probe length,
-                // ~one radius) race ahead horizontally while the vertical lagged; with the forward then blocked by the
-                // next riser, the leftover horizontal speed projected SIDEWAYS along the tread and accumulated into the
-                // shaft wall, wedging an angled climb (and pulsing a fore-aft lurch even head-on). Scaling horizontal
-                // WITH vertical keeps the capsule on its intended line and the pace uniform - a stair now feels like a
-                // ramp. A NON-step rise (a prop-top/dome mount or the support settle) keeps the Y-only cap unchanged.
-                float rise = pos.Y - s.Position.Y;
-                if (steppedUp && rise > 1e-6f)
+                // Pace a step-up mount so a stair climbs like a ramp:
+                //  - cap the vertical RISE to MaxStepClimbSpeed (a smooth, steady ascent), and
+                //  - CAP the horizontal advance to the distance the player actually intended to walk this tick. The
+                //    step-up probe teleports the capsule forward by up to a capsule radius to land it on the tread; left
+                //    alone that pulses a fore-aft LURCH (a ~0.4 m jump then a wait). Capping it to the walk step removes
+                //    the lurch while still advancing the FULL walk step onto the tread - which is what keeps the mount
+                //    ROBUST: an earlier version SCALED the advance down proportionally to the paced vertical, but in a
+                //    stair-shaft corner that starved the advance below the swept-collision depenetration pushback, so
+                //    the capsule never cleared the first riser and VIBRATED on the spot (rise, lose the tread, fall,
+                //    repeat). Capping (not scaling) keeps enough forward travel to clear the riser and stay supported.
+                //    Scoped to steppedUp, so a terrain slope / prop-top mount / support settle keeps the Y-only cap.
+                if (steppedUp)
                 {
-                    float scale = (climbCap - s.Position.Y) / rise;   // in (0, 1): H advances in lock-step with the paced V
-                    pos.X = s.Position.X + (pos.X - s.Position.X) * scale;
-                    pos.Z = s.Position.Z + (pos.Z - s.Position.Z) * scale;
+                    // Cap the step-up's forward teleport to the intended walk step (kill the lurch), but never below a
+                    // small CLEARANCE floor: the advance must still carry the capsule's footprint onto the tread past
+                    // the swept-collision depenetration pushback, or the mount is undone and the climb stalls (a slow
+                    // walker whose step is under the floor would otherwise never clear the first riser). The floor is a
+                    // hair over the pushback and at or below a normal walk step, so a normal-speed climb is unaffected.
+                    float intendedH = MathF.Sqrt((dx - s.Position.X) * (dx - s.Position.X) + (dz - s.Position.Z) * (dz - s.Position.Z));
+                    float hCap = MathF.Max(intendedH, StepMountClearance);
+                    float hx = pos.X - s.Position.X, hz = pos.Z - s.Position.Z;
+                    float hLen = MathF.Sqrt(hx * hx + hz * hz);
+                    if (hLen > hCap && hLen > 1e-6f)
+                    {
+                        float k = hCap / hLen;
+                        pos.X = s.Position.X + hx * k;
+                        pos.Z = s.Position.Z + hz * k;
+                    }
                 }
                 pos.Y = climbCap;
                 grounded = true;
@@ -546,6 +560,11 @@ public static class CharacterMovement
     private const float SubstepFraction = 0.5f;
     private const int   SlideIterations = 4;
     private const float SkinWidth       = 0.01f;
+    // Minimum per-tick forward advance of a paced step-up mount (metres). The step-up's forward teleport is capped to
+    // the walk step for smoothness, but never below this: the advance must clear the riser past the depenetration
+    // settle's pushback or the mount is undone and the climb vibrates in place. ~10 cm sits above that pushback and at
+    // or below a normal walk step, so a normal-speed climb is unchanged while a slow walker still mounts reliably.
+    private const float StepMountClearance = 0.1f;
     // Downward reach of the wall-slide gravity GATE (NOT the support height itself, which step 4 owns): a walkable
     // floor within this far below the feet means "supported", so the wall slide keeps its usual on-slope projection;
     // beyond it the slide must not cancel gravity. > StepHeight + SkinWidth (a step you could mount still counts as

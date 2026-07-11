@@ -153,5 +153,40 @@ namespace KhaozEngine.Tests.Dungeon
                     "the wall-slide is amplifying the sideways push.");
             }
         }
+
+        // Walking INTO the first riser from the flat lower floor must START the ascent, not vibrate on the spot.
+        // Regression pin for the playtest bug: at the DEMO capsule radius (0.3, not the 0.4 the other stair tests use)
+        // an off-axis approach into the first step used to buzz in place - the paced step-up's scaled-back forward
+        // advance never cleared the riser against the shaft-corner depenetration pushback, so the capsule rose a
+        // little, lost the tread, fell back, and repeated, never ascending. Starts a full cell BEFORE the bottom
+        // tread on the flat floor and walks in at a range of angles; every one must reach the upper floor.
+        [Theory]
+        [InlineData(0f)]
+        [InlineData(8f)]
+        [InlineData(15f)]
+        [InlineData(-12f)]
+        public void WalkingIntoFirstStair_FromFlatFloor_StartsAscending_NoVibrate(float degrees)
+        {
+            var (world, doorStart, climb, _, axisYaw, lowerFloorY, upperFloorY, halfH) = BuildClimb();
+            using (world as IDisposable)
+            {
+                // DEMO tuning: capsule radius 0.3 (Room3D/RoomDungeon), and start a whole cell back on the flat floor.
+                MoveTuning tuning = MoveTuning.Default with { CapsuleRadius = 0.3f };
+                var start = new Vector3(doorStart.X - climb.X, doorStart.Y, doorStart.Z - climb.Y);   // ~1 m before the door
+                var state = new MoveState { Position = start, Grounded = true };
+                float yaw = axisYaw + degrees * MathF.PI / 180f;
+                var cmd = new MoveCommand(new Vector2(0f, 1f), run: false, cameraYaw: yaw, jump: false);
+                float GroundHeight(float x, float z) => lowerFloorY;
+                Func<float, float, Vector3> flatNormal = (x, z) => Vector3.UnitY;   // the demos pass a flat normal
+
+                for (int i = 0; i < 600; i++)
+                    state = CharacterMovement.Step(state, cmd, Dt, GroundHeight, tuning, flatNormal, world);
+
+                float upperStandingY = upperFloorY + halfH;
+                Assert.True(state.Position.Y > upperStandingY - 0.25f,
+                    $"approaching the first stair at {degrees:0} deg from the flat floor never ascended (vibrated in place): " +
+                    $"final Y {state.Position.Y:F3}, expected ~{upperStandingY:F3}");
+            }
+        }
     }
 }

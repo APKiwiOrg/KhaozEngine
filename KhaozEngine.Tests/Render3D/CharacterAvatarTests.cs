@@ -140,6 +140,52 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void RenderHeight_EasesAGroundedStepSnap_ThenConverges()
+        {
+            // A terrain step that jumps 1 m up at x = 3 (no physics, so the controller clamps straight onto it): the
+            // physics height snaps a full metre in one tick when crossed, but the DRAW height (RenderPosition.Y) must
+            // ease at the capped rate - this is the stair-bump smoothing, exercised without stair geometry.
+            var controller = new CharacterController3D { CapsuleHalfHeight = 0.9f };
+            controller.SetXZ(0f, 0f);
+            var avatar = new CharacterAvatar(controller, OneBoneAnim(), mesh: default) { RenderHeightSmoothRate = 6f };
+            Func<float, float, float> steppedGround = (x, z) => x > 3f ? 1f : 0f;
+
+            for (int i = 0; i < 10; i++) avatar.Update(Keys(), Dt, 0f, steppedGround);   // settle on the low floor
+            Assert.Equal(avatar.Position.Y, avatar.RenderPosition.Y, 3);                  // drawn exactly at physics when flat
+
+            float maxRenderStep = 0f, maxRenderVsPhysicsGap = 0f;
+            bool physicsJumped = false;
+            for (int i = 0; i < 120; i++)   // walk +X (D at yaw 0) across the step
+            {
+                float prevRenderY = avatar.RenderPosition.Y;
+                avatar.Update(Keys(Key.D), Dt, 0f, steppedGround);
+                maxRenderStep = MathF.Max(maxRenderStep, MathF.Abs(avatar.RenderPosition.Y - prevRenderY));
+                maxRenderVsPhysicsGap = MathF.Max(maxRenderVsPhysicsGap, MathF.Abs(avatar.Position.Y - avatar.RenderPosition.Y));
+                if (avatar.Position.Y > 1.5f) physicsJumped = true;                       // physics snapped up onto the 1.9 m step
+            }
+
+            Assert.True(physicsJumped, "the character should have crossed the 1 m terrain step (physics height snapped up)");
+            Assert.True(maxRenderVsPhysicsGap > 0.2f, "the draw height should have visibly lagged the physics snap (proof it eased)");
+            Assert.True(maxRenderStep <= 6f * Dt + 1e-3f,
+                $"draw height jumped {maxRenderStep:F4} m in one frame, over the {6f * Dt:F4} m/frame cap: not smoothed");
+            Assert.Equal(avatar.Position.Y, avatar.RenderPosition.Y, 2);                  // and it converges back onto physics
+        }
+
+        [Fact]
+        public void RenderHeight_SnapsWhileAirborne_SoJumpsStayCrisp()
+        {
+            var avatar = FlatAvatar(out _);
+            for (int i = 0; i < 10; i++) avatar.Update(Keys(), Dt, 0f, FlatGround);
+            avatar.Update(Pressed(Key.Space), Dt, 0f, FlatGround);   // jump
+            for (int i = 0; i < 40 && !avatar.Grounded; i++)
+            {
+                avatar.Update(Keys(), Dt, 0f, FlatGround);
+                if (!avatar.Grounded)
+                    Assert.Equal(avatar.Position.Y, avatar.RenderPosition.Y, 4);   // airborne: draw height tracks physics exactly
+            }
+        }
+
+        [Fact]
         public void NullPiece_Throws()
         {
             var controller = new CharacterController3D();

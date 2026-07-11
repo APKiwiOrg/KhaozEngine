@@ -49,6 +49,13 @@ greybox fallback. The composed pieces stay usable on their own - a movement-only
 directly, a remote player uses `ReplicatedCharacterAnimators`, the facing math is the static `CharacterFacing` - the
 bundle is the convenient default, never a requirement. Client-cosmetic: pose and facing never feed sim or netcode.
 
+Discrete stair geometry snaps the physics height a whole riser per tick (most visible descending). The avatar eases
+its DRAW height toward the physics height at a bounded rate (`RenderHeightSmoothRate`, default 6 m/s) so the model
+glides instead of jolting, and exposes that as **`RenderPosition`** (physics X/Z + the smoothed height) - point the
+follow camera at `RenderPosition` (not `Position`) so the camera glides on stairs too. Only grounded height eases; a
+jump/fall snaps (crisp arc), horizontal is never smoothed (no input lag), and a teleport-sized jump snaps
+(`RenderHeightSnapDistance`). Use `Position` (crisp physics) for gameplay/streaming/queries.
+
 ### CharacterFacing
 
 The canonical facing math, so games stop re-deriving it (and stop hitting the wall-spin bug that velocity-steered

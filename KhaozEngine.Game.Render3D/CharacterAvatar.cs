@@ -35,6 +35,7 @@ namespace KhaozEngine.Game
         readonly SkinnedMeshHandle _mesh;
         readonly float _modelScale;
         float _facingYaw;
+        float _renderY;   // presentation-smoothed draw height (eases the discrete stair step snaps; see RenderPosition)
 
         /// <summary>Default facing turn rate (radians/second): how fast the model rotates toward the intended move
         /// direction. 12 rad/s (~690 deg/s) turns a quarter-circle in about 0.13 s - responsive without snapping.</summary>
@@ -44,6 +45,24 @@ namespace KhaozEngine.Game
         /// <see cref="CharacterFacing.TurnTowards"/>. Set &lt;= 0 to snap instantly. Default
         /// <see cref="DefaultMaxTurnRate"/>.</summary>
         public float MaxTurnRate = DefaultMaxTurnRate;
+
+        /// <summary>Default draw-height smoothing rate (metres/second): see <see cref="RenderHeightSmoothRate"/>.
+        /// 6 m/s eases a ~0.33 m stair riser over ~3-4 frames.</summary>
+        public const float DefaultRenderHeightSmoothRate = 6f;
+
+        /// <summary>Rate (metres/second) at which the DRAWN height (and <see cref="RenderPosition"/>, which a follow
+        /// camera should target) eases toward the physics height, so the discrete height snaps of stair geometry - a
+        /// descending stair drops a whole riser in one physics tick - read as a smooth glide instead of a bumpy jolt on
+        /// the model and the camera. Only GROUNDED height changes are eased; while airborne (a jump or a real fall) the
+        /// draw height snaps to physics so the arc stays crisp, and a teleport-sized jump (beyond
+        /// <see cref="RenderHeightSnapDistance"/>) snaps rather than crawling. Horizontal position is never smoothed (no
+        /// input lag). Set &lt;= 0 to disable (draw exactly at the physics height). Default
+        /// <see cref="DefaultRenderHeightSmoothRate"/>.</summary>
+        public float RenderHeightSmoothRate = DefaultRenderHeightSmoothRate;
+
+        /// <summary>Height gap (metres) beyond which the draw height snaps to physics instead of easing - a respawn or
+        /// teleport should not crawl. Default 1.5 (well above any single stair riser, below a floor-to-floor jump).</summary>
+        public float RenderHeightSnapDistance = 1.5f;
 
         /// <summary>The composed movement body. Read its tuning fields (speeds, capsule size, step-climb) or its state
         /// directly; do not call its <see cref="CharacterController3D.Update"/> yourself while using the avatar (the
@@ -55,8 +74,16 @@ namespace KhaozEngine.Game
         /// the avatar drives its locomotion <see cref="AnimatedCharacter.Update(float,bool,float,bool,float)"/> each frame.</summary>
         public AnimatedCharacter Animation => _animation;
 
-        /// <summary>Current world position (capsule centre) from the controller.</summary>
+        /// <summary>Current world position (capsule centre) from the controller - the crisp physics position (use this
+        /// for gameplay/streaming/queries). For the follow camera's target and any presentation that should not bump on
+        /// stairs, use <see cref="RenderPosition"/>.</summary>
         public Vector3 Position => _controller.Position;
+
+        /// <summary>The presentation position the character is DRAWN at: the physics X/Z (never smoothed, so movement
+        /// stays responsive) with the height eased toward the physics height at <see cref="RenderHeightSmoothRate"/>.
+        /// Point a follow camera's target at this (not <see cref="Position"/>) so the camera glides up and down stairs
+        /// instead of jolting on each discrete step.</summary>
+        public Vector3 RenderPosition => new(_controller.Position.X, _renderY, _controller.Position.Z);
 
         /// <summary>True while grounded (from the controller).</summary>
         public bool Grounded => _controller.Grounded;
@@ -93,6 +120,7 @@ namespace KhaozEngine.Game
             _mesh = mesh;
             _modelScale = modelScale;
             _facingYaw = CharacterFacing.WrapAngle(initialFacingYaw);
+            _renderY = controller.Position.Y;   // start drawn exactly at the physics height (no ease-in on spawn)
         }
 
         /// <summary>Advance the character one frame: move + climb + collision (via the controller), turn to face the
@@ -117,7 +145,18 @@ namespace KhaozEngine.Game
         {
             Vector3 prev = _controller.Position;
             _controller.Update(input, dt, cameraYaw, groundHeight, groundNormal, physics, medium);
-            if (dt <= 1e-6f) return;   // a priming / paused tick: settle position, don't animate or turn
+            if (dt <= 1e-6f) { _renderY = _controller.Position.Y; return; }   // priming/paused: snap, don't animate/turn
+
+            // Ease the DRAW height toward the physics height so a stair's discrete per-step height snaps (a descent
+            // drops a whole riser in one physics tick) read as a smooth glide on the model and the camera. Grounded
+            // only, capped rate; airborne (jump/fall) or a teleport-sized gap snaps so those stay crisp. X/Z are never
+            // smoothed - horizontal stays exactly on the physics position, so movement has no input lag.
+            float targetY = _controller.Position.Y;
+            if (!_controller.Grounded || RenderHeightSmoothRate <= 0f
+                || MathF.Abs(targetY - _renderY) > RenderHeightSnapDistance)
+                _renderY = targetY;
+            else
+                _renderY += Math.Clamp(targetY - _renderY, -RenderHeightSmoothRate * dt, RenderHeightSmoothRate * dt);
 
             // Face the INTENDED move direction (input steered by camera yaw), NOT the collision-resolved velocity, so a
             // wall/prop the capsule slides along cannot swing or spin the model. Turned at a bounded rate; a stationary
@@ -138,7 +177,7 @@ namespace KhaozEngine.Game
         public void Draw(Scene3D scene, Color tint)
         {
             if (scene is null) throw new ArgumentNullException(nameof(scene));
-            Vector3 p = _controller.Position;
+            Vector3 p = RenderPosition;   // physics X/Z + the smoothed draw height, so the model glides on stairs
             float footY = p.Y - _controller.CapsuleHalfHeight;
             Matrix4x4 model = Matrix4x4.CreateScale(_modelScale)
                               * Matrix4x4.CreateRotationY(_facingYaw)

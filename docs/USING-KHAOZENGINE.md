@@ -1492,6 +1492,18 @@ greybox capsule fallback. Tune facing turn speed with `avatar.MaxTurnRate`. The 
 static `CharacterFacing` for the facing math - the bundle is the convenient default, never a requirement.
 Client-cosmetic: pose and facing never feed sim or netcode.
 
+**Point the follow camera at `avatar.RenderPosition`, not `avatar.Position`.** Discrete stair steps snap the physics
+height a whole riser per tick (most visible descending), which bumps the model and the camera. The avatar eases its
+DRAW height toward the physics height at a bounded rate (`RenderHeightSmoothRate`, default 6 m/s) and exposes the
+result as `RenderPosition` (physics X/Z + smoothed height), so both the model and a camera targeting it glide up and
+down stairs. Grounded height only (a jump/fall stays crisp), horizontal is never smoothed (no input lag). Use the
+crisp `Position` for gameplay, streaming, and queries.
+
+```csharp
+avatar?.Draw(scene);
+camera.Target = avatar?.RenderPosition ?? fallbackTargetPosition;   // glides on stairs
+```
+
 ### Under the hood (the pieces `CharacterAvatar` composes)
 
 The skinned path above poses a mesh from bone matrices you supply. To play *authored glTF animation

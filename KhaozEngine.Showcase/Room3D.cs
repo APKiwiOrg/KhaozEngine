@@ -359,7 +359,8 @@ namespace KhaozEngine.Showcase
             if (_collisionOverlay.Enabled && !_overlayBuiltChunks.SetEquals(_streamer.Loaded))
                 RebuildCollisionOverlay();
 
-            _camera.Target = _character.Position;
+            // Target the avatar's presentation position (physics XZ + smoothed height) so the camera glides on stairs.
+            _camera.Target = _avatar?.RenderPosition ?? _character.Position;
             _camera.AspectRatio = Manager!.FrameHeight > 0 ? (float)Manager!.FrameWidth / Manager!.FrameHeight : _camera.AspectRatio;
             _camController.Update(Manager!.Input, dt);
         }

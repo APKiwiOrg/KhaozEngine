@@ -37,7 +37,12 @@ public enum DungeonCellKind : byte
     /// <summary>The landing cell of a stair, on the upper floor, one cell past the top tread at the shaft edge.</summary>
     StairTop,
 
-    /// <summary>The carved-out hole a stair run passes through: not walkable.</summary>
+    /// <summary>The carved-out hole a stair run passes through: not walkable, and left open at the TREAD's head
+    /// height for climb clearance (the tread on the floor below is not roofed, because the cell directly above it
+    /// is this StairVoid). When roofed, the StairVoid itself IS capped, at its OWN (upper) floor's ceiling height -
+    /// a full ceiling height above the floor the climb emerges onto - so the shaft is roofed overhead rather than
+    /// open to the sky while the ramp keeps its headroom. The wall pass encloses its lateral SIDES: an empty cell
+    /// 8-adjacent to a StairVoid becomes a wall, so a climber cannot jump out the side of the shaft near the top.</summary>
     StairVoid,
 
     /// <summary>The middle tread cell of a stair, on the lower floor between <see cref="StairLower"/> and

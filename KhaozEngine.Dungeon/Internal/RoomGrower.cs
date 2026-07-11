@@ -93,9 +93,13 @@ internal static class RoomGrower
     }
 
     /// <summary>Turns every <see cref="DungeonCellKind.Empty"/> cell that is 8-adjacent (same floor) to a
-    /// walkable cell into a <see cref="DungeonCellKind.Wall"/>. Runs once after all placement so no walkable
-    /// cell is left 8-adjacent to empty. Non-empty cells (including <see cref="DungeonCellKind.StairVoid"/>)
-    /// are untouched.</summary>
+    /// walkable cell - or to a <see cref="DungeonCellKind.StairVoid"/> shaft cell - into a
+    /// <see cref="DungeonCellKind.Wall"/>. Runs once after all placement so no walkable cell is left 8-adjacent to
+    /// empty, and the upper-floor stair shaft is enclosed on its sides (its lateral empty neighbours become wall)
+    /// so a climber cannot jump out the side of the shaft near the top. Non-empty cells (including
+    /// <see cref="DungeonCellKind.StairVoid"/> itself) are untouched, so the shaft stays open above for headroom
+    /// (the ceiling pass exempts <see cref="DungeonCellKind.StairVoid"/> via <c>PieceMapper.HasCeiling</c>) and the
+    /// treads/landing stay walkable.</summary>
     internal static void ApplyWallPass(DungeonCellKind[] cells, int width, int depth, int floors)
     {
         var toWall = new List<int>();
@@ -111,7 +115,7 @@ internal static class RoomGrower
                         continue;
                     }
 
-                    if (HasWalkableNeighbor(cells, width, depth, x, z, f))
+                    if (HasWallInducingNeighbor(cells, width, depth, x, z, f))
                     {
                         toWall.Add(idx);
                     }
@@ -125,7 +129,13 @@ internal static class RoomGrower
         }
     }
 
-    private static bool HasWalkableNeighbor(DungeonCellKind[] cells, int width, int depth, int x, int z, int f)
+    /// <summary>True when the empty cell at (<paramref name="x"/>, <paramref name="z"/>, <paramref name="f"/>) has
+    /// an 8-neighbour (same floor) that induces a wall: a walkable cell (the normal room/corridor perimeter) OR a
+    /// <see cref="DungeonCellKind.StairVoid"/> shaft cell (so the upper-floor stairwell is enclosed on its lateral
+    /// sides, closing the gap a climber could jump out of near the top). The <see cref="DungeonCellKind.StairVoid"/>
+    /// cells are only ever lateral to the empty cell here (the shaft's own footprint is StairVoid, not empty), so
+    /// the induced walls sit strictly beside the shaft and never over a tread, the landing, or the climb path.</summary>
+    private static bool HasWallInducingNeighbor(DungeonCellKind[] cells, int width, int depth, int x, int z, int f)
     {
         for (int dz = -1; dz <= 1; dz++)
         {
@@ -143,7 +153,8 @@ internal static class RoomGrower
                     continue;
                 }
 
-                if (DungeonLayout.IsWalkable(cells[(f * depth + nz) * width + nx]))
+                DungeonCellKind neighbor = cells[(f * depth + nz) * width + nx];
+                if (DungeonLayout.IsWalkable(neighbor) || neighbor == DungeonCellKind.StairVoid)
                 {
                     return true;
                 }

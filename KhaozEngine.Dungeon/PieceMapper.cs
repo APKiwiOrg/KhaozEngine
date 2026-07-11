@@ -144,18 +144,31 @@ internal static class PieceMapper
 
     /// <summary>Whether the cell at (<paramref name="x"/>, <paramref name="z"/>, <paramref name="f"/>) gets a
     /// ceiling: true when <paramref name="layout"/> is <see cref="DungeonCeilingMode.Roofed"/>, the cell is
-    /// walkable, and the cell directly above it (floor <c>f + 1</c>, same XZ) is neither walkable nor
-    /// <see cref="DungeonCellKind.StairVoid"/>. The walkable-above exemption keeps stacked floors from
-    /// double-roofing: where the floor above already has a walkable cell, that floor's own slab is the roof, so a
-    /// second ceiling would only z-fight. The <see cref="DungeonCellKind.StairVoid"/> exemption keeps the whole
-    /// stair shaft open: a StairVoid sits directly above every tread (<see cref="DungeonCellKind.StairLower"/>,
-    /// <see cref="DungeonCellKind.StairMid"/>, <see cref="DungeonCellKind.StairUpper"/>) as the deliberately-open
-    /// headroom the ramp climbs through, so those treads must stay uncapped even though the void above them is not
-    /// itself walkable. Both sinks call this so their ceiling pieces and ceiling collision slabs cover exactly the
-    /// same cells.</summary>
+    /// either walkable OR a <see cref="DungeonCellKind.StairVoid"/> shaft-headroom cutout, and the cell directly
+    /// above it (floor <c>f + 1</c>, same XZ) is neither walkable nor <see cref="DungeonCellKind.StairVoid"/>. The
+    /// walkable-above exemption keeps stacked floors from double-roofing: where the floor above already has a
+    /// walkable cell, that floor's own slab is the roof, so a second ceiling would only z-fight; the StairVoid-above
+    /// exemption is the same rule for a stacked shaft (only the topmost void of a column gets the cap).
+    ///
+    /// A <see cref="DungeonCellKind.StairVoid"/> is the open headroom cutout on the UPPER floor directly above a
+    /// tread (<see cref="DungeonCellKind.StairLower"/>, <see cref="DungeonCellKind.StairMid"/>,
+    /// <see cref="DungeonCellKind.StairUpper"/>). It IS roofed - at its OWN floor's ceiling height, i.e.
+    /// <c>floorY(upperFloor) + CeilingHeightMeters</c>, the same height as the surrounding upper-floor ceiling and
+    /// the <see cref="DungeonCellKind.StairTop"/> emergence landing - so the shaft is capped overhead instead of
+    /// open to the sky, while the ~1.8 m climbing/emerging capsule keeps its clearance (the roof sits a full ceiling
+    /// height above the upper floor the treads climb to). What must stay UNroofed is each TREAD on the lower floor:
+    /// because the cell directly above a tread is a StairVoid, this returns false for the tread (the StairVoid-above
+    /// exemption), so no ceiling caps the ramp at head height on the way up. Both sinks call this so their ceiling
+    /// pieces and ceiling collision slabs cover exactly the same cells.</summary>
     internal static bool HasCeiling(DungeonLayout layout, int x, int z, int f)
     {
-        if (layout.CeilingMode != DungeonCeilingMode.Roofed || !DungeonLayout.IsWalkable(layout.GetCell(x, z, f)))
+        if (layout.CeilingMode != DungeonCeilingMode.Roofed)
+        {
+            return false;
+        }
+
+        DungeonCellKind cell = layout.GetCell(x, z, f);
+        if (!DungeonLayout.IsWalkable(cell) && cell != DungeonCellKind.StairVoid)
         {
             return false;
         }

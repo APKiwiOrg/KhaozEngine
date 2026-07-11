@@ -202,6 +202,57 @@ public class ControllerOnPhysicsTests
             "capsule must mount the dome (be grounded elevated above terrain at some point) by jumping onto it");
     }
 
+    // Ledge-release safety for the stair-climb grounded-stick (CharacterMovement step 4a). That stick holds the
+    // capsule grounded when it was grounded, sits above the terrain floor, and a walkable surface is still within
+    // the feet-down ray fan - so a paced stair climb never reads airborne between steps. This pins the OTHER side:
+    // it must NOT keep a capsule stuck/floating when it genuinely walks off a ledge (no support under the feet).
+    // No existing with-world test covers this: the fall tests all START airborne. Here a GROUNDED capsule stands
+    // on a raised static box (top at y=3) over open terrain far below (analytic ground at y=0), walks off the
+    // -Z edge, and must go airborne and FALL below the box top - not hang at the edge or float at box-top height.
+    [Fact]
+    public void GroundedCapsule_WalksOffLedge_ReleasesAndFalls()
+    {
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        // Raised platform: half-extents (2, 1.5, 2) centred at (0, 1.5, 0) => top surface at y = 3.0, spanning
+        // x,z in [-2, 2]. The only static in the world; the terrain below is analytic (Flat => y=0), so once the
+        // capsule clears the box footprint there is genuinely nothing under its feet in the physics world.
+        const float BoxTop = 3.0f;
+        world.AddStatic(new BoxShape(new Vector3(2f, 1.5f, 2f)), Pose.At(new Vector3(0f, 1.5f, 0f)));
+        world.Step(1f / 60f);
+
+        const float HalfH = 0.9f;
+        // Start GROUNDED, resting on the box top (centre = box top + half-height), near the centre of the platform.
+        var state = new MoveState { Position = new Vector3(0f, BoxTop + HalfH, 0f), Grounded = true };
+        // At yaw=0: forward = (0,0,-1). Move.Y=1 => walk toward -Z, straight off the -Z edge at z=-2.
+        var offTheEdge = new MoveCommand(new Vector2(0f, 1f), run: false, cameraYaw: 0f, jump: false);
+
+        // Confirm the precondition really holds: one tick in, the capsule is still grounded on the box (this is a
+        // grounded-off-a-ledge test, not an already-airborne one).
+        state = CharacterMovement.Step(state, offTheEdge, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
+        Assert.True(state.Grounded, "precondition: the capsule must start grounded on the platform");
+
+        bool releasedAndFell = false;   // at some tick past the edge: airborne AND below the box top (a real fall)
+        float minZ = state.Position.Z;
+        for (int i = 0; i < 200; i++)
+        {
+            state = CharacterMovement.Step(state, offTheEdge, 1f / 60f, Flat, Tuning, groundNormal: null, world: world);
+            minZ = MathF.Min(minZ, state.Position.Z);
+            // The stick must let go once there is no support under the feet: airborne while dropping below the box
+            // top proves it neither hung grounded at the edge nor floated at box-top height.
+            if (!state.Grounded && state.Position.Y < BoxTop - 0.05f) releasedAndFell = true;
+        }
+
+        // Sanity: it actually walked off the platform footprint (radius 0.4 fully clears the z=-2 edge past ~-2.4),
+        // so the assertion is not vacuous.
+        Assert.True(minZ < -2.4f, $"capsule did not walk off the platform, min z={minZ:F3}");
+        // The core release safety: it went airborne and fell below the box top instead of sticking/floating.
+        Assert.True(releasedAndFell,
+            $"grounded-stick over-held: capsule never released off the ledge (final grounded={state.Grounded}, y={state.Position.Y:F3})");
+        // And it fell all the way to the terrain far below (rest y = 0 + half-height), landing grounded again.
+        Assert.True(state.Grounded && MathF.Abs(state.Position.Y - HalfH) < 0.2f,
+            $"capsule did not settle on the terrain below the ledge: grounded={state.Grounded}, y={state.Position.Y:F3} (expected ~{HalfH:F3})");
+    }
+
     // Regression for the no-tunnel base-blocking invariant: walking horizontally into the dome at ground
     // level must never penetrate the sphere, whether the capsule stops, slides laterally, or rides up.
     // Dome: SphereShape(2) centred at (0,-1,0). Capsule starts at (0, 0.9, 3.0) and walks toward -Z.

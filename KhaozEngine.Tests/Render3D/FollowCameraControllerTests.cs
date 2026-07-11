@@ -23,13 +23,20 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void OrbitButton_defaults_to_right_mouse()
+        {
+            var cam = new FollowCamera3D();
+            Assert.Equal(MouseButton.Right, new FollowCameraController(cam).OrbitButton);
+        }
+
+        [Fact]
         public void Drag_with_button_held_changes_yaw_and_pitch()
         {
             // Default mapping: drag right turns the view left (yaw -=), drag down looks up (pitch +=).
             var cam = new FollowCamera3D { Yaw = 0f };
             cam.Pitch = 0.5f;
             var ctl = new FollowCameraController(cam);
-            ctl.Update(Frame(mouseDelta: new Vector2(10, 4), down: MouseButton.Left), 1f / 60f);
+            ctl.Update(Frame(mouseDelta: new Vector2(10, 4), down: ctl.OrbitButton), 1f / 60f);
             Assert.Equal(-10f * ctl.OrbitYawSpeed, cam.Yaw, 5);
             Assert.Equal(0.5f + 4f * ctl.OrbitPitchSpeed, cam.Pitch, 5);
         }
@@ -40,7 +47,7 @@ namespace KhaozEngine.Tests.Render3D
             var cam = new FollowCamera3D { Yaw = 0f };
             cam.Pitch = 0.5f;
             var ctl = new FollowCameraController(cam) { InvertX = true, InvertY = true };
-            ctl.Update(Frame(mouseDelta: new Vector2(10, 4), down: MouseButton.Left), 1f / 60f);
+            ctl.Update(Frame(mouseDelta: new Vector2(10, 4), down: ctl.OrbitButton), 1f / 60f);
             Assert.Equal(10f * ctl.OrbitYawSpeed, cam.Yaw, 5);
             Assert.Equal(0.5f - 4f * ctl.OrbitPitchSpeed, cam.Pitch, 5);
         }
@@ -75,7 +82,7 @@ namespace KhaozEngine.Tests.Render3D
             var cam = new FollowCamera3D();
             var ctl = new FollowCameraController(cam);
             // Drag far past the pitch limit.
-            ctl.Update(Frame(mouseDelta: new Vector2(0, -100000), down: MouseButton.Left), 1f / 60f);
+            ctl.Update(Frame(mouseDelta: new Vector2(0, -100000), down: ctl.OrbitButton), 1f / 60f);
             Assert.True(cam.Pitch <= cam.MaxPitch + 1e-4f && cam.Pitch >= cam.MinPitch - 1e-4f);
             // Scroll in hard.
             for (int i = 0; i < 200; i++) ctl.Update(Frame(scroll: 1f), 1f / 60f);

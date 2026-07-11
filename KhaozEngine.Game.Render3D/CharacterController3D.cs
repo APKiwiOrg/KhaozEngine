@@ -29,6 +29,12 @@ namespace KhaozEngine.Game
         /// <summary>Current vertical velocity (m/s, positive up).</summary>
         public float VerticalVelocity => _state.VerticalVelocity;
 
+        /// <summary>True while the capsule is surface-swimming: submersion has crossed the swim-enter threshold via a
+        /// fluid-medium provider (see the <c>medium</c> parameter of <see cref="Update"/>). Always false when no medium
+        /// is supplied (dry land). Feed this to an <see cref="AnimatedCharacter"/> so a swimming character plays the
+        /// swim/tread clips instead of walk/fall.</summary>
+        public bool Swimming => _state.Swimming;
+
         /// <summary>Metres per second while walking. Default 6.</summary>
         public float WalkSpeed = 6f;
         /// <summary>Metres per second while running (shift held). Default 12.</summary>
@@ -61,6 +67,10 @@ namespace KhaozEngine.Game
         /// <summary>Max upward support rise (metres) auto-mounted while grounded without a jump (a low rock/curb).
         /// Default 0.4.</summary>
         public float StepHeight = 0.4f;
+        /// <summary>Max vertical climb speed (m/s) a step-up mount rises at, so a stair run ascends at a steady
+        /// walking pace instead of snapping up a whole riser per tick (see <see cref="MoveTuning.MaxStepClimbSpeed"/>).
+        /// Default 3.5. A single low curb still mounts in one tick; a value &lt;= 0 disables the limit.</summary>
+        public float MaxStepClimbSpeed = 3.5f;
 
         /// <summary>
         /// Advance the character for one frame. <paramref name="cameraYaw"/> is the follow camera's yaw (radians);
@@ -80,12 +90,10 @@ namespace KhaozEngine.Game
         {
             if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
 
-            // Map the input snapshot to a camera-relative move axis + jump and run the shared movement step.
-            Vector2 move = Vector2.Zero;
-            if (input.IsDown(Key.W)) move.Y += 1f;
-            if (input.IsDown(Key.S)) move.Y -= 1f;
-            if (input.IsDown(Key.D)) move.X += 1f;
-            if (input.IsDown(Key.A)) move.X -= 1f;
+            // Map the input snapshot to a camera-relative move axis + jump and run the shared movement step. The WASD
+            // axis comes from CharacterFacing.MoveAxis - the same mapping the facing helper reads - so the direction
+            // the capsule MOVES and the direction a CharacterAvatar FACES are built from one source and cannot drift.
+            Vector2 move = CharacterFacing.MoveAxis(input);
             bool run = input.IsDown(Key.LeftShift) || input.IsDown(Key.RightShift);
             bool jump = input.WasPressed(Key.Space);   // edge-triggered: one jump per press (buffer handles timing)
 
@@ -95,6 +103,7 @@ namespace KhaozEngine.Game
                 Gravity = Gravity, JumpSpeed = JumpSpeed, MaxFallSpeed = MaxFallSpeed,
                 CoyoteTime = CoyoteTime, JumpBuffer = JumpBuffer, AirControl = AirControl,
                 GroundedEpsilon = GroundedEpsilon, StepHeight = StepHeight,
+                MaxStepClimbSpeed = MaxStepClimbSpeed,
             };
             _state = CharacterMovement.Step(_state, cmd, dt, groundHeight, tuning, groundNormal, world: physics, medium: medium);
         }

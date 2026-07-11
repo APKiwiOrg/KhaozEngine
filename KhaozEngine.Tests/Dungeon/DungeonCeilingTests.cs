@@ -51,10 +51,11 @@ namespace KhaozEngine.Tests.Dungeon
             throw new Xunit.Sdk.XunitException("No seed in 11..60 grew onto an upper floor.");
         }
 
-        // The independent oracle for HasCeiling, derived only from the public raster: a walkable cell whose
-        // same-XZ cell one floor up is neither walkable nor StairVoid (the deliberately-open stair headroom
-        // cutout, which must stay uncapped even though it is not itself walkable; out-of-range floors read
-        // Empty, hence not walkable and not StairVoid either).
+        // The independent oracle for HasCeiling, derived only from the public raster: a cell that is walkable OR a
+        // StairVoid shaft-headroom cutout, whose same-XZ cell one floor up is neither walkable nor StairVoid. The
+        // StairVoid is roofed at its own (upper) floor's ceiling height so the shaft is capped overhead, but a tread
+        // (walkable, on the lower floor) stays uncapped because the cell directly above it IS a StairVoid (the
+        // above-is-StairVoid exemption); out-of-range floors read Empty, hence not walkable and not StairVoid either.
         static int ExpectedCeilingCells(DungeonLayout layout)
         {
             int count = 0;
@@ -64,7 +65,8 @@ namespace KhaozEngine.Tests.Dungeon
                 {
                     for (int x = 0; x < layout.Width; x++)
                     {
-                        if (!DungeonLayout.IsWalkable(layout.GetCell(x, z, f)))
+                        DungeonCellKind cell = layout.GetCell(x, z, f);
+                        if (!DungeonLayout.IsWalkable(cell) && cell != DungeonCellKind.StairVoid)
                         {
                             continue;
                         }
@@ -164,8 +166,10 @@ namespace KhaozEngine.Tests.Dungeon
 
             DungeonEdge stair = layout.Edges.First(e => e.Kind == DungeonEdgeKind.Stair);
             // Path is [StairLower, StairMid, StairUpper, StairTop]. Every tread has a StairVoid open-shaft cutout
-            // directly above it, so none of the three tread cells may be roofed at its own floor level - the whole
-            // shaft stays walkable-through from the base to the emergence.
+            // directly above it, so none of the three tread cells may be roofed at its OWN (lower) floor level - the
+            // ramp stays walkable-through at head height from the base to the emergence. (The shaft is still roofed
+            // higher up, at the StairVoid's own upper-floor ceiling level, a full ceiling height above the climb -
+            // asserted by Roofed_StairwellShaft_RoofedAtTop_ClearForTheClimb; this test only pins the head clearance.)
             DungeonTile stairLower = stair.Path[0];
             DungeonTile stairMid = stair.Path[1];
             DungeonTile stairUpper = stair.Path[2];
@@ -180,13 +184,15 @@ namespace KhaozEngine.Tests.Dungeon
         }
 
         [Fact]
-        public void Roofed_StairwellShaft_NotCoveredByFloorSlabOrCeilingSlab()
+        public void Roofed_StairwellShaft_RoofedAtTop_ClearForTheClimb()
         {
-            // A walker climbing the stair must find the whole shaft clear of flat slabs: no floor slab or ceiling
-            // slab over the StairVoid headroom cutout above ANY tread, and no ceiling capping the treads, so the
-            // only shaft geometry is the solid step boxes themselves. StairTop, the landing beyond the top tread
-            // that the walker steps onto once they reach the upper floor, is deliberately NOT part of the shaft:
-            // it DOES carry its own floor slab - without it the walker would step onto thin air.
+            // A walker climbing the stair must find the ramp itself clear - no floor slab capping the shaft
+            // mid-climb and no ceiling capping a tread at head height - while the shaft is still ROOFED overhead so
+            // it does not read as open to the sky. Concretely, over every tread's shaft column (the StairVoid above
+            // it): (a) no floor slab at the void's own floor level, (b) no ceiling at the tread's own (lower)
+            // ceiling level, but (c) a ceiling slab DOES sit at the void's own (upper) ceiling level - the roof,
+            // a full ceiling height above the floor the treads climb to, well clear of the ~1.8 m capsule.
+            // StairTop, the landing beyond the top tread, keeps its own floor slab (the walker steps onto it).
             DungeonLayout layout = RoofedMultiFloorLayout();
             DungeonKitMap kit = DungeonKitMap.Greybox();
             var plot = new DungeonPlotTransform(0f, 0f, 0f, 0f);
@@ -203,8 +209,7 @@ namespace KhaozEngine.Tests.Dungeon
             DungeonTile stairTop = stair.Path[3];
 
             // Flat (world-up) thin slabs only - floor OR ceiling. The solid step boxes are NOT thin (their halfY
-            // is a tread height, not 0.1), so they are excluded here on purpose: the shaft is meant to hold the
-            // steps, just no flat slabs that would cap it.
+            // is a tread height, not 0.1), so they are excluded here on purpose.
             var slabBoxes = stamp.Statics
                 .Where(s => s.Shape is BoxShape b && MathF.Abs(b.HalfExtents.Y - 0.1f) < 1e-3f
                     && Vector3.Transform(Vector3.UnitY, s.Pose.Orientation).Y > 0.99f)
@@ -212,23 +217,27 @@ namespace KhaozEngine.Tests.Dungeon
                 .ToList();
             Assert.NotEmpty(slabBoxes);
 
-            // Every tread's open shaft (the StairVoid above it) is clear of any flat slab at BOTH its floor level
-            // and its ceiling level, and the tread itself is not roofed. Sampling all three treads pins the whole
-            // shaft open, base to emergence.
+            // Clearance check: the roof (void ceiling level = upperFloorY + ceilingHeight) sits a full ceiling
+            // height above the upper floor the climb reaches, so a 1.8 m capsule emerging there never hits it.
+            Assert.True(layout.CeilingHeightMeters >= 2f * 0.9f,
+                $"roof clearance {layout.CeilingHeightMeters:F2} m must exceed the 1.8 m capsule height");
+
             foreach (DungeonTile tread in new[] { stairLower, stairMid, stairUpper })
             {
                 (float tx, float tyy, float tz) = plot.TileCenter(tread, cell, floorHeight);
-                var voidFloorPoint = new Vector3(tx, tyy + floorHeight - 0.05f, tz);            // top of a would-be slab over the void
-                var voidCeilingPoint = new Vector3(tx, tyy + floorHeight + layout.CeilingHeightMeters + 0.1f, tz);
-                var treadCeilingPoint = new Vector3(tx, tyy + layout.CeilingHeightMeters + 0.1f, tz);
+                var voidFloorPoint = new Vector3(tx, tyy + floorHeight - 0.05f, tz);                          // a would-be slab capping the void's floor level
+                var voidCeilingPoint = new Vector3(tx, tyy + floorHeight + layout.CeilingHeightMeters + 0.1f, tz); // the shaft roof (upper ceiling level)
+                var treadCeilingPoint = new Vector3(tx, tyy + layout.CeilingHeightMeters + 0.1f, tz);          // the tread's own (lower) ceiling level - head height on the climb
+
+                // (a) no floor slab mid-shaft, and (b) no ceiling at the tread's head height: the ramp stays clear.
                 Assert.DoesNotContain(slabBoxes, sb => ContainsPoint(sb.Item1, sb.Item2, voidFloorPoint));
-                Assert.DoesNotContain(slabBoxes, sb => ContainsPoint(sb.Item1, sb.Item2, voidCeilingPoint));
                 Assert.DoesNotContain(slabBoxes, sb => ContainsPoint(sb.Item1, sb.Item2, treadCeilingPoint));
+                // (c) the shaft IS roofed at the top (upper ceiling level) - no open sky.
+                Assert.Contains(slabBoxes, sb => ContainsPoint(sb.Item1, sb.Item2, voidCeilingPoint));
             }
 
             // StairTop DOES carry its own floor slab (the landing a walker steps onto, sampled just below its
-            // floor level) - a sanity/regression guard that opening the shaft did not also remove the solid
-            // ground the walker needs at the top.
+            // floor level) - a sanity/regression guard that the walker still has solid ground at the top.
             (float sx, float sy, float sz) = plot.TileCenter(stairTop, cell, floorHeight);
             var stairTopFloorPoint = new Vector3(sx, sy - 0.05f, sz);
             Assert.Contains(slabBoxes, sb => ContainsPoint(sb.Item1, sb.Item2, stairTopFloorPoint));
@@ -366,7 +375,13 @@ namespace KhaozEngine.Tests.Dungeon
         // the same rule the production code applies without reaching into internals.
         static bool PieceMapperHasCeiling(DungeonLayout layout, int x, int z, int f)
         {
-            if (layout.CeilingMode != DungeonCeilingMode.Roofed || !DungeonLayout.IsWalkable(layout.GetCell(x, z, f)))
+            if (layout.CeilingMode != DungeonCeilingMode.Roofed)
+            {
+                return false;
+            }
+
+            DungeonCellKind cell = layout.GetCell(x, z, f);
+            if (!DungeonLayout.IsWalkable(cell) && cell != DungeonCellKind.StairVoid)
             {
                 return false;
             }

@@ -56,7 +56,9 @@ public static class CharacterMovement
     /// never enters a closed mesh (no inner-face suck-through). Walkable contacts (slope at or below the slope gate)
     /// are followed (walk across / mount a domed prop top); steep contacts block and redirect the velocity
     /// tangentially (no dead-stop). A step-up probe wires <see cref="MoveTuning.StepHeight"/>: a stair tread or
-    /// curb below <c>StepHeight</c> is mounted without a jump. Depenetration via
+    /// curb below <c>StepHeight</c> is mounted without a jump, rising toward the ledge at no more than
+    /// <see cref="MoveTuning.MaxStepClimbSpeed"/> per tick (a tall stair run ascends as a steady walk, a single low
+    /// curb still mounts in one tick). Depenetration via
     /// <see cref="IPhysicsWorld.ComputePenetration"/> is retained as a residual-overlap settle pass (rarely
     /// fires after the swept move). The analytic terrain stays the floor (resolved on the final XZ).
     /// <paramref name="world"/> null = terrain only (byte-identical to pre-8.4.0). The same world + math runs
@@ -225,6 +227,94 @@ public static class CharacterMovement
         {
             grounded = false;
             tSinceGround = s.TimeSinceGrounded + dt;
+        }
+
+        // 4a. Stair-climb ground-stick. The paced step-up (4b) commits the capsule BELOW the tread it is mounting,
+        //     so on the ticks BETWEEN mounts (no step-up fired, the paced feet drifted more than a StepHeight below
+        //     the tread ahead) step 4's downward capsule probe - which returns only the HIGHEST surface under the
+        //     footprint and rejects it as too high - reports no support, and `grounded` flips false with a one-tick
+        //     gravity dip. On a stair that reads as the character stuttering airborne between steps and spamming the
+        //     fall animation. But the capsule is still resting on the LOWER treads its footprint spans: if it was
+        //     grounded last tick, is above the terrain floor (genuinely on a step run, not on flat ground), is not
+        //     rising ballistically (a jump owns vVel > 0), and a walkable surface still sits within reach beneath its
+        //     feet, it has not left the ground - hold it grounded. Uses the same feet-down ray fan the wall slide
+        //     trusts for "am I supported" (rays never hit the zero-normal degeneracy a capsule sweep can), so a real
+        //     walk-off-a-ledge - where no floor sits under the feet - still falls on the very next tick.
+        if (!grounded && vVel <= 0f && s.Grounded && world is not null &&
+            pos.Y > terrainGroundY + OnPropSkin && WalkableFloorUnderFeet(world, capsule, pos, t))
+        {
+            grounded = true;
+            tSinceGround = 0f;
+            if (vVel < 0f) vVel = 0f;
+        }
+
+        // 4b. Smooth step-up climb: cap the per-tick RISE onto step/prop support above the terrain floor to
+        //     MaxStepClimbSpeed. The step-up mounts a whole riser in one tick, so a dungeon stair run (12-18 risers
+        //     of ~0.33 m) otherwise snaps up ~0.33 m per mounting tick - it reads as shooting/jerking up. This paces
+        //     that rise to a steady walk. Scoped tightly so nothing else changes:
+        //       - only when NOT rising ballistically (vVel <= 0): a JUMP (vVel > 0, applied in step 5 below) is
+        //         never throttled, so jump height/arc is untouched; this covers both the grounded climb ticks and
+        //         the brief airborne transition at a stair's emergence, where the support still lifts the capsule a
+        //         step;
+        //       - only the UPWARD delta (a fall/descent, pos.Y < prev, is below the cap and passes through); and
+        //       - only the portion of support ABOVE the analytic terrain floor - a terrain slope is never throttled
+        //         (its height passes through via the terrainGroundY floor of the cap), so horizontal walk speed,
+        //         coyote, and landing stay untouched and only the discrete static step geometry is paced.
+        //     The capped capsule lags the tread it is mounting by at most the few frames it takes to catch up (it
+        //     stays on the step run, resting on the lower treads its footprint still spans); the next tick
+        //     re-resolves the support and rises another budget's worth, so the climb still reliably reaches the top.
+        //     A low curb whose rise is within one tick's budget is unaffected (mounted in one tick as before), and
+        //     MaxStepClimbSpeed <= 0 disables the pacing entirely (the pre-smoothing instant snap).
+        //
+        //     Grounded-through-the-climb: when the cap clamps pos.Y, the real support (the tread/prop the step-up
+        //     mounted) sits ABOVE the paced height, so the capsule is genuinely resting on the step run (its
+        //     footprint still spans the lower treads) while it rises toward the tread ahead - it is NOT airborne.
+        //     Left alone, the paced lag makes step 4's support probe miss the tread once it drifts more than a
+        //     StepHeight above the lagging feet, so `grounded` flips false and vVel goes negative for a few ticks
+        //     between steps - the capsule reads as briefly FALLING mid-climb, which spams the fall animation (the
+        //     10.61 climb jank). So while the cap is actively holding the capsule below its support, force it
+        //     grounded and kill any residual downward velocity: the committed height still lags smoothly for the
+        //     visible rise, but the movement state reports a steady grounded climb. Only reached when NOT rising
+        //     ballistically (vVel <= 0), so a jump is never grounded-forced here.
+        if (vVel <= 0f && world is not null && t.MaxStepClimbSpeed > 0f)
+        {
+            float climbCap = MathF.Max(terrainGroundY, s.Position.Y + t.MaxStepClimbSpeed * dt);
+            if (pos.Y > climbCap)
+            {
+                // Pace a step-up mount so a stair climbs like a ramp:
+                //  - cap the vertical RISE to MaxStepClimbSpeed (a smooth, steady ascent), and
+                //  - CAP the horizontal advance to the distance the player actually intended to walk this tick. The
+                //    step-up probe teleports the capsule forward by up to a capsule radius to land it on the tread; left
+                //    alone that pulses a fore-aft LURCH (a ~0.4 m jump then a wait). Capping it to the walk step removes
+                //    the lurch while still advancing the FULL walk step onto the tread - which is what keeps the mount
+                //    ROBUST: an earlier version SCALED the advance down proportionally to the paced vertical, but in a
+                //    stair-shaft corner that starved the advance below the swept-collision depenetration pushback, so
+                //    the capsule never cleared the first riser and VIBRATED on the spot (rise, lose the tread, fall,
+                //    repeat). Capping (not scaling) keeps enough forward travel to clear the riser and stay supported.
+                //    Scoped to steppedUp, so a terrain slope / prop-top mount / support settle keeps the Y-only cap.
+                if (steppedUp)
+                {
+                    // Cap the step-up's forward teleport to the intended walk step (kill the lurch), but never below a
+                    // small CLEARANCE floor: the advance must still carry the capsule's footprint onto the tread past
+                    // the swept-collision depenetration pushback, or the mount is undone and the climb stalls (a slow
+                    // walker whose step is under the floor would otherwise never clear the first riser). The floor is a
+                    // hair over the pushback and at or below a normal walk step, so a normal-speed climb is unaffected.
+                    float intendedH = MathF.Sqrt((dx - s.Position.X) * (dx - s.Position.X) + (dz - s.Position.Z) * (dz - s.Position.Z));
+                    float hCap = MathF.Max(intendedH, StepMountClearance);
+                    float hx = pos.X - s.Position.X, hz = pos.Z - s.Position.Z;
+                    float hLen = MathF.Sqrt(hx * hx + hz * hz);
+                    if (hLen > hCap && hLen > 1e-6f)
+                    {
+                        float k = hCap / hLen;
+                        pos.X = s.Position.X + hx * k;
+                        pos.Z = s.Position.Z + hz * k;
+                    }
+                }
+                pos.Y = climbCap;
+                grounded = true;
+                tSinceGround = 0f;
+                if (vVel < 0f) vVel = 0f;
+            }
         }
 
         // 5. Jump after contact (UNCHANGED): grounded or within coyote-time, consume both windows.
@@ -470,6 +560,11 @@ public static class CharacterMovement
     private const float SubstepFraction = 0.5f;
     private const int   SlideIterations = 4;
     private const float SkinWidth       = 0.01f;
+    // Minimum per-tick forward advance of a paced step-up mount (metres). The step-up's forward teleport is capped to
+    // the walk step for smoothness, but never below this: the advance must clear the riser past the depenetration
+    // settle's pushback or the mount is undone and the climb vibrates in place. ~10 cm sits above that pushback and at
+    // or below a normal walk step, so a normal-speed climb is unchanged while a slow walker still mounts reliably.
+    private const float StepMountClearance = 0.1f;
     // Downward reach of the wall-slide gravity GATE (NOT the support height itself, which step 4 owns): a walkable
     // floor within this far below the feet means "supported", so the wall slide keeps its usual on-slope projection;
     // beyond it the slide must not cancel gravity. > StepHeight + SkinWidth (a step you could mount still counts as
@@ -595,7 +690,7 @@ public static class CharacterMovement
             // Step-up: only while grounded, only over a near-vertical contact (a riser/wall), only on the
             // horizontal remainder. Climbs a stair tread; a real wall has no ledge within StepHeight so it slides.
             if (grounded && MathF.Abs(n.Y) < StepUpNormalY &&
-                TryStepUp(world, capsule, pos, remaining, t, out Vector3 stepped))
+                TryStepUp(world, capsule, pos, remaining, n, t, out Vector3 stepped))
             {
                 steppedUp = true; steppedFloorY = stepped.Y;
                 pos = stepped;
@@ -688,13 +783,21 @@ public static class CharacterMovement
     /// walkable-slope ledge strictly higher than the start (a stair tread/curb). A vertical wall has no such ledge
     /// within StepHeight, so this returns false and the caller slides. Returns the stepped capsule centre.</summary>
     private static bool TryStepUp(IPhysicsWorld world, CapsuleShape capsule, Vector3 pos, Vector3 remaining,
-        in MoveTuning t, out Vector3 stepped)
+        in Vector3 contactNormal, in MoveTuning t, out Vector3 stepped)
     {
         stepped = pos;
         Vector3 horiz = new(remaining.X, 0f, remaining.Z);
         float horizLen = horiz.Length();
         if (horizLen <= 1e-6f) return false;
-        Vector3 horizDir = horiz / horizLen;
+        // Probe forward PERPENDICULAR to the riser edge - straight UP the stairs (opposite the contact's horizontal
+        // normal) - not along the raw (possibly angled) move direction. An angled approach used to drive this probe
+        // SIDEWAYS: pressed against a stair-shaft side wall, the along-move probe swept into that wall, failed to
+        // advance, and the riser fell through to a wall-slide that killed the forward (up-stairs) motion - the climb
+        // wedged in the corner. Climbing square to the tread instead lets the side wall merely shave the lateral
+        // (a normal flat-ground wall slide) while the ascent continues. Falls back to the move direction when the
+        // contact normal has no usable horizontal component (degenerate one-sided hit).
+        Vector3 nHoriz = new(contactNormal.X, 0f, contactNormal.Z);
+        Vector3 horizDir = nHoriz.LengthSquared() > 1e-8f ? Vector3.Normalize(-nHoriz) : horiz / horizLen;
         float step = t.StepHeight;
         // Probe forward at least the capsule radius: the per-tick remainder after the contact is only a few mm
         // (walk speed * dt minus the swept distance), far too short to carry the raised capsule over the step lip

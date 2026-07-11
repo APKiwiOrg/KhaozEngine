@@ -127,6 +127,106 @@ namespace KhaozEngine.Tests.Dungeon
             Assert.Equal(layout.Rooms.Count, seen.Count);
         }
 
+        // Roofed multi-floor scan: the first seed whose growth carves a stair, so the shaft-enclosure test always
+        // exercises a real cross-floor shaft. Roofed so the "shaft stays open above" check (no ceiling over a
+        // tread beneath a StairVoid) is meaningful rather than vacuous.
+        static DungeonLayout RoofedStairLayout()
+        {
+            DungeonConfig config = new()
+            {
+                MaxFloors = 3,
+                RoomCountTarget = 16,
+                LockCount = 0,
+                BossRoom = false,
+                LoopEdgeBudget = 0,
+                CeilingMode = DungeonCeilingMode.Roofed,
+            };
+
+            for (ulong seed = 11; seed <= 60; seed++)
+            {
+                DungeonLayout layout = DungeonGenerator.Generate(config, seed);
+                if (layout.Edges.Any(e => e.Kind == DungeonEdgeKind.Stair))
+                {
+                    return layout;
+                }
+            }
+
+            throw new Xunit.Sdk.XunitException("No stair edge was produced across seeds 11..60.");
+        }
+
+        // The upper-floor stairwell shaft must be enclosed on its lateral sides so a climber cannot jump out the
+        // side near the top: every empty cell 8-adjacent to a StairVoid becomes a wall. The shaft must still be
+        // open ABOVE (no ceiling over a tread beneath a StairVoid) and the treads/landing stay walkable.
+        [Fact]
+        public void StairwellShaft_EnclosedOnSides_StaysOpenAbove()
+        {
+            DungeonLayout layout = RoofedStairLayout();
+
+            int voidCells = 0;
+            int lateralWalls = 0;
+            for (int f = 0; f < layout.Floors; f++)
+            {
+                for (int z = 0; z < layout.Depth; z++)
+                {
+                    for (int x = 0; x < layout.Width; x++)
+                    {
+                        if (layout.GetCell(x, z, f) != DungeonCellKind.StairVoid)
+                        {
+                            continue;
+                        }
+
+                        voidCells++;
+                        for (int dz = -1; dz <= 1; dz++)
+                        {
+                            for (int dx = -1; dx <= 1; dx++)
+                            {
+                                if (dx == 0 && dz == 0)
+                                {
+                                    continue;
+                                }
+
+                                DungeonCellKind neighbor = layout.GetCell(x + dx, z + dz, f);
+                                // No open gap is left beside the shaft: every lateral neighbour is wall, walkable
+                                // (a landing/room the shaft opens onto), or more shaft - never empty.
+                                Assert.NotEqual(DungeonCellKind.Empty, neighbor);
+                                if (neighbor == DungeonCellKind.Wall)
+                                {
+                                    lateralWalls++;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Assert.True(voidCells > 0, "layout must contain a stair shaft to enclose");
+            Assert.True(lateralWalls > 0, "the shaft must gain at least some enclosing side walls");
+
+            foreach (DungeonEdge stair in layout.Edges.Where(e => e.Kind == DungeonEdgeKind.Stair))
+            {
+                DungeonTile lower = stair.Path[0];
+                DungeonTile mid = stair.Path[1];
+                DungeonTile upper = stair.Path[2];
+                DungeonTile top = stair.Path[3];
+
+                foreach (DungeonTile tread in new[] { lower, mid, upper })
+                {
+                    // Treads stay walkable and their shaft cutout stays StairVoid (never walled over).
+                    Assert.True(DungeonLayout.IsWalkable(layout.GetCell(tread.X, tread.Z, tread.Floor)),
+                        $"tread ({tread.X},{tread.Z},{tread.Floor}) must stay walkable");
+                    Assert.Equal(DungeonCellKind.StairVoid, layout.GetCell(tread.X, tread.Z, tread.Floor + 1));
+
+                    // Open above: the tread beneath a StairVoid is not roofed, so the shaft is climbable-through.
+                    Assert.False(PieceMapper.HasCeiling(layout, tread.X, tread.Z, tread.Floor),
+                        $"tread ({tread.X},{tread.Z},{tread.Floor}) under a StairVoid must not be roofed");
+                }
+
+                // The emergence landing stays walkable (a climber steps onto solid floor at the top).
+                Assert.True(DungeonLayout.IsWalkable(layout.GetCell(top.X, top.Z, top.Floor)),
+                    $"stair landing ({top.X},{top.Z},{top.Floor}) must stay walkable");
+            }
+        }
+
         [Fact]
         public void WallPass_HoldsPerFloor()
         {

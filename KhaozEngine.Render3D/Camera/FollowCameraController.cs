@@ -16,8 +16,11 @@ namespace KhaozEngine.Render3D
         /// <summary>The camera this controller drives.</summary>
         public FollowCamera3D Camera { get; }
 
-        /// <summary>Mouse button that, while held, orbits the camera. Default <see cref="MouseButton.Left"/>.</summary>
-        public MouseButton OrbitButton = MouseButton.Left;
+        /// <summary>Mouse button that, while held, orbits the camera. Default <see cref="MouseButton.Right"/>
+        /// (right-drag to orbit, matching the sibling <see cref="FlyCameraController"/> and the walkable-slice
+        /// games; left-drag stays free for gameplay). Assign <see cref="MouseButton.Left"/> to restore left-drag
+        /// orbit.</summary>
+        public MouseButton OrbitButton = MouseButton.Right;
         /// <summary>Radians of yaw applied per pixel of horizontal drag. Default 0.01.</summary>
         public float OrbitYawSpeed = 0.01f;
         /// <summary>Radians of pitch applied per pixel of vertical drag. Default 0.01.</summary>

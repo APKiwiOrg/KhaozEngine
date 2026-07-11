@@ -14,8 +14,11 @@ public enum DungeonCeilingMode
     /// original behaviour before roofed interiors were added.</summary>
     Open,
 
-    /// <summary>A ceiling over every walkable cell (except where a walkable cell sits directly above, so
-    /// open stairwells and vertical shafts stay open), so the dungeon reads as an enclosed cave.</summary>
+    /// <summary>A ceiling over every walkable cell AND over each stair shaft's <see cref="DungeonCellKind.StairVoid"/>
+    /// headroom cutout (except where a walkable cell or another StairVoid sits directly above, whose own slab is the
+    /// roof), so the dungeon reads as an enclosed cave. The stair shaft is roofed at the UPPER floor's ceiling height
+    /// (the StairVoids sit on the upper floor above the treads), so it is capped overhead rather than open to the
+    /// sky, while the treads stay clear at head height for the climb.</summary>
     Roofed
 }
 

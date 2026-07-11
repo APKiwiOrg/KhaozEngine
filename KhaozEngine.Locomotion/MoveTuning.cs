@@ -30,7 +30,8 @@ public readonly record struct MoveTuning(
     float SwimExitDepthFraction = 0.55f,
     float SwimSpeed = 2.5f,
     float SwimSurfaceSubmersionFraction = 0.6f,
-    float SwimBuoyancyStiffness = 8f)
+    float SwimBuoyancyStiffness = 8f,
+    float MaxStepClimbSpeed = 3.5f)
 {
     /// <summary>Walkable-slice defaults: walk 6 m/s, run 12 m/s, capsule half-height 0.9 m, max slope 45 deg
     /// (steep enough for normal hills, low enough that a RimFeature mountain wall is rejected, so the slope gate
@@ -74,6 +75,15 @@ public readonly record struct MoveTuning(
     /// <summary>Max upward support rise (metres) auto-mounted while grounded without a jump (a low rock/curb/log);
     /// a larger rise behaves as a wall (the move is blocked). Used by the surface-aware vertical step.</summary>
     public float StepHeight { get; init; } = StepHeight;
+
+    /// <summary>Maximum vertical climb speed (metres/second) a step-up mount rises at. A detected step-up
+    /// (curb, stair riser) no longer snaps the whole riser in a single tick: it rises toward the ledge by at most
+    /// <c>MaxStepClimbSpeed * dt</c> per tick, holding horizontal progress against the riser until the feet reach
+    /// the tread, so a stair run ascends at a steady walking pace instead of shooting up. Default 3.5: a single
+    /// low curb (rise below one tick's budget) still mounts in one tick as before, while a tall run of risers is
+    /// smoothed. A value &lt;= 0 disables the limit (instant snap, the pre-smoothing behaviour). Does not change
+    /// horizontal walk speed and never makes a climbable step unclimbable.</summary>
+    public float MaxStepClimbSpeed { get; init; } = MaxStepClimbSpeed;
 
     /// <summary>Wade ramp start: submersion depth (as a fraction of the character's full body height, 2 *
     /// <see cref="CapsuleHalfHeight"/>) at or below which wading has NO speed penalty. Default 0.15 (~ankle depth on a

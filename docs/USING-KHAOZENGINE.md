@@ -1463,6 +1463,49 @@ state, not the reverse.
 
 ## Animated characters (glTF clip playback + locomotion blend)
 
+### Turnkey: `CharacterAvatar` (one `Update`/`Draw`)
+
+For a LOCAL third-person player, `CharacterAvatar` (`KhaozEngine.Game.Render3D`) is the one object to build. It
+composes `CharacterController3D` (movement + smooth stair climbing + collision) + `AnimatedCharacter` (clip brain) +
+`CharacterFacing` (facing) + the skinned draw, so you do NOT hand-wire the facing, the speed-derive, the animation
+feed, and the feet-draw matrix (that manual wiring is spelled out under *Under the hood* below, for when you need the
+pieces on their own):
+
+```csharp
+var controller = new CharacterController3D { CapsuleHalfHeight = 0.9f, CapsuleRadius = 0.4f };
+controller.SetXZ(spawnX, spawnZ);
+// TryLoadGltf does the rig load (skinned-ingest, map clip names to states, scale to the capsule); null on failure.
+CharacterAvatar? avatar = CharacterAvatar.TryLoadGltf(scene, "player.glb", controller,
+    onFailure: reason => Console.WriteLine($"rig load failed ({reason}); using a greybox"));
+
+// Per frame - Update mirrors CharacterController3D.Update, then faces the intended dir + animates:
+avatar?.Update(input, dt, cameraYaw, terrain.GroundHeight, terrain.GroundNormal, physics);
+avatar?.Draw(scene);   // draws the skinned mesh at the capsule's feet with the right facing + scale
+```
+
+It faces the player's INTENDED move direction (`CharacterFacing`, input steered by camera yaw), never the
+collision-slid velocity, so a wall/prop the capsule scrapes cannot spin the model; it feeds the animator the REAL
+collision-clamped horizontal speed plus the controller's grounded / vertical-velocity / swim state; and
+`TryLoadGltf` returns `null` (never throws) on a missing/unreadable/skeleton-less/clip-less asset so you can keep a
+greybox capsule fallback. Tune facing turn speed with `avatar.MaxTurnRate`. The composed pieces stay usable alone -
+`CharacterController3D` for a movement-only game, `ReplicatedCharacterAnimators` (below) for remote players, the
+static `CharacterFacing` for the facing math - the bundle is the convenient default, never a requirement.
+Client-cosmetic: pose and facing never feed sim or netcode.
+
+**Point the follow camera at `avatar.RenderPosition`, not `avatar.Position`.** Discrete stair steps snap the physics
+height a whole riser per tick (most visible descending), which bumps the model and the camera. The avatar eases its
+DRAW height toward the physics height at a bounded rate (`RenderHeightSmoothRate`, default 6 m/s) and exposes the
+result as `RenderPosition` (physics X/Z + smoothed height), so both the model and a camera targeting it glide up and
+down stairs. Grounded height only (a jump/fall stays crisp), horizontal is never smoothed (no input lag). Use the
+crisp `Position` for gameplay, streaming, and queries.
+
+```csharp
+avatar?.Draw(scene);
+camera.Target = avatar?.RenderPosition ?? fallbackTargetPosition;   // glides on stairs
+```
+
+### Under the hood (the pieces `CharacterAvatar` composes)
+
 The skinned path above poses a mesh from bone matrices you supply. To play *authored glTF animation
 clips* (idle/walk/run/jump, plus swim/tread in water) and crossfade them off a character's movement, ingest the rig
 through the skinned loader (which now also reads the joint hierarchy) and read its clips:
@@ -1821,7 +1864,9 @@ For a walkable 3D world, pair `FollowCamera3D` (`KhaozEngine.Render3D`) with `Ch
 (`KhaozEngine.Game.Render3D`). The camera is a perspective sibling of `IsoCamera3D`: it orbits behind a `Target`
 at a clamped `Pitch`/`Distance` and always looks at the target (same Y-up convention, same `Eye`/`Forward`/
 `ScreenToGround`; it implements `IIsoCamera3D`). Drive it from the input snapshot with `FollowCameraController`
-(hold the orbit button and drag to swing yaw/pitch, scroll to zoom). To render through it, set
+(hold the orbit button - right mouse by default, matching the fly camera and leaving left-drag free for
+gameplay - and drag to swing yaw/pitch, scroll to zoom; set `FollowCameraController.OrbitButton` to change it).
+To render through it, set
 `Scene3D.CameraOverride` (null = the built-in iso `Camera`) and feed the override its aspect ratio each frame:
 
 ```csharp
@@ -1850,6 +1895,13 @@ fields - `Gravity` (25), `JumpSpeed` (9.79796, apex ~1.92 m), `MaxFallSpeed` (50
 (0.1), `AirControl` (1, horizontal control while airborne), `GroundedEpsilon` (0.3, the slope skin so a downhill
 run does not flicker grounded/airborne) - matching `MoveTuning`. Run off a cliff or the bounded-clearing rim and
 you fall.
+
+**Smooth stair climbing.** A step-up (curb or stair riser under `StepHeight`) is mounted without a jump, but it no
+longer snaps a whole riser up in one tick - the per-tick vertical rise onto step/prop support is paced to
+`MaxStepClimbSpeed` (m/s, default 3.5 on both `CharacterController3D` and `MoveTuning`), so a dungeon stair run
+ascends at a steady walking pace instead of shooting up. A single low curb (rise within one tick's budget) still
+mounts in one tick, terrain slopes and jumps are untouched, and `MaxStepClimbSpeed <= 0` restores the instant
+snap.
 
 Speeds, capsule half-height, max slope, the vertical-feel fields above, the camera distance/pitch limits,
 orbit/zoom sensitivity, per-axis drag inversion (`FollowCameraController.InvertX` / `InvertY`, for an "invert axis"
@@ -2010,9 +2062,12 @@ DungeonStampResult stamp = DungeonStamp.Build(layout, kit, plot);
 
 Dungeons are open-top by default. Set `config.CeilingMode = DungeonCeilingMode.Roofed` (optionally
 `CeilingHeightMeters`, default the floor height) for turnkey roofed interiors: both sinks then roof every
-walkable cell at `floorY + ceiling height`, except where a walkable cell sits directly above (open stairwells
-and shafts stay open). It is pure sink-time geometry - the layout structure and `LayoutHash` are unchanged, so
-`Open` output is byte-for-byte identical to before.
+walkable cell - and each stair shaft's `StairVoid` headroom cutout - at that cell's `floorY + ceiling height`,
+except where a walkable cell or another `StairVoid` sits directly above (its slab is the roof). The stair shaft
+is capped at the UPPER floor's ceiling height (the `StairVoid`s sit on the upper floor above the treads), so it
+is roofed overhead, not open to the sky, while the treads stay clear at head height for the climb. It is pure
+sink-time geometry - the layout structure and `LayoutHash` are unchanged, so `Open` output is byte-for-byte
+identical to before.
 
 Corridors are 1-tile single-file by default. Set `CorridorMinWidth`/`CorridorMaxWidth` above 1 to carve grand
 multi-tile halls (growth and loop corridors both widen into a straight rectangular tube with multi-cell door

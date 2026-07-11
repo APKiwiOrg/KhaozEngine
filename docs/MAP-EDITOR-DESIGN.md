@@ -229,7 +229,7 @@ editor-runtime cores. Never Fable-tier subagents.
 - **Phase C (parallel after A, independent of B)**: ke-mapedit MCP tool, an MCP server over stdio
   exposing 39 document, query, mutation, and headless-render verbs over the same `MapDoc` model the
   GUI editor uses (`docs/USING-KHAOZENGINE.md` "ke-mapedit" section, `KhaozEngine.MapEdit.Tool`
-  README). Shipped in the next release after 10.55.0, version filled at release.
+  README). Shipped in 10.63.0, see CHANGELOG.
 - **Phase D (game repo)**: Ruinborne export, both-heads loading, parity test (after A),
   editor head and doc rewrite (after B).
 

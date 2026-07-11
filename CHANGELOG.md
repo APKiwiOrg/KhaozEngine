@@ -5,6 +5,15 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.63.0
+
+New `KhaozEngine.MapEdit.Tool` dotnet tool (`ke-mapedit`), an MCP server over stdio exposing 39 verbs for AI-driven map-document editing, plus MapDoc JSON schema tightening.
+
+- **`ke-mapedit` MCP server (`KhaozEngine.MapEdit.Tool`).** A new opt-in dev tool, packaged as a dotnet tool (`ke-mapedit`, `PackAsTool`), built on the official ModelContextProtocol C# SDK 1.4.1 speaking MCP over stdio. It exposes 39 verbs across four groups: document (`map_open`, `map_create`, `map_save`, `map_validate`, `map_summary`), world queries (`ground_height`, `is_walkable`, `placements_in_rect`, `scatter_preview_in_rect`, `find_flat_area`), the full mutation surface (placements, spawns, terrain, features, exclusions, scatter overrides, regions, `bake_region`) routed through the same `EditorCommands` the GUI editor uses, and GPU render verbs (`render_topdown` with overlay markers, `render_view`) via the `KhaozEngine.Snapshot` capture path returning PNG image blocks. Every mutation runs under a validate-revert invariant, so the session document is never left invalid. Everything except the two render verbs is GPU-free. In no umbrella, following the `ke-propbake` opt-in-tool precedent.
+- **MapDoc JSON schema tightening (`KhaozEngine.MapDoc`).** `additionalProperties: false` on every closed structure in the schema, so an unknown property on a closed object now fails schema validation instead of silently passing through. The terrain feature union stays open for registry-registered custom feature types. Added an end-to-end polygon shape save/load round-trip test.
+- **Showcase schema copy dropped (`KhaozEngine.Showcase`).** The demo's duplicated schema copy is replaced with a build-time link to the canonical embedded `KhaozEngine.MapDoc` schema, so the two cannot drift.
+- **`InternalsVisibleTo` for the tool (`KhaozEngine.MapDoc`, `KhaozEngine.MapEditor`).** Both packages grant internals visibility to `KhaozEngine.MapEdit.Tool` so the MCP verbs can reach the same editor internals the GUI uses. New pins: `ModelContextProtocol` 1.4.1, `Microsoft.Extensions.Hosting` 10.0.7.
+
 ## 10.62.0
 
 Turnkey animated third-person character (`CharacterAvatar`) that composes movement + collision-robust facing + locomotion animation + drawing in one object, plus a stair-climb smoothness fix so an angled climb feels like a ramp.

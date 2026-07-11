@@ -23,6 +23,13 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void OrbitButton_defaults_to_right_mouse()
+        {
+            var cam = new FollowCamera3D();
+            Assert.Equal(MouseButton.Right, new FollowCameraController(cam).OrbitButton);
+        }
+
+        [Fact]
         public void Drag_with_button_held_changes_yaw_and_pitch()
         {
             // Default mapping: drag right turns the view left (yaw -=), drag down looks up (pitch +=).

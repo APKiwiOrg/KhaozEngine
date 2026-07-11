@@ -19,7 +19,10 @@ optional slope gate via a ground-normal delegate):
   collide-and-slide** over `IPhysicsWorld.SweepCapsule` (8.4.0): a fast move can no longer tunnel through a
   thin one-sided wall, and the capsule never gets trapped inside a closed mesh. Walkable contacts (slope at or
   below the gate) are followed; steep contacts block and redirect tangentially. A **step-up probe** wires
-  `MoveTuning.StepHeight`: stair treads and curbs below `StepHeight` are mounted without a jump. Depenetration
+  `MoveTuning.StepHeight`: stair treads and curbs below `StepHeight` are mounted without a jump. Step-up climbing
+  rises at a **bounded vertical rate** (`MoveTuning.MaxStepClimbSpeed`, default 3.5 m/s), so a stair run ascends at
+  a steady walking pace instead of snapping up a whole riser per tick. A low curb whose rise fits one tick's budget
+  still mounts in one tick, and `MaxStepClimbSpeed <= 0` restores the instant snap. Depenetration
   via `ComputePenetration` is retained as a residual settle pass. Pass `world: null` for terrain-only
   (byte-identical to pre-8.4.0).
 

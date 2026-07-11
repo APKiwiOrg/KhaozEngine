@@ -5,6 +5,14 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.64.0
+
+Kinematic agent movement seam: server-authoritative NPCs move through the world with the SAME collision as the player, driven by a world-space steering direction instead of a camera yaw.
+
+- **`CharacterMovement.StepTowards` for AI agents (`KhaozEngine.Locomotion`).** A new public overload `StepTowards(in MoveState, Vector2 worldDir, bool run, float dt, groundHeight, in MoveTuning, groundNormal?, IPhysicsWorld?, clampXz?, medium?)` drives a non-player, server-simulated agent (enemy NPC) through the identical collision resolution the player already gets: swept collide-and-slide + `StepHeight` step-up against the `IPhysicsWorld`, the analytic terrain support floor, the `groundNormal` slope gate, and the `clampXz` play-area clamp. It takes a WORLD-SPACE steering direction (a normalized XZ `Vector2` whose length scales speed in [0,1]) rather than a camera-relative `MoveCommand`, so AI steers by an actual world heading with no fake camera yaw. Per-agent capsule radius / half-height / walk-run speed all come from the caller's `MoveTuning`, so different creatures get different sizes and speeds with no new plumbing. No jump bit and no client-prediction path (AI is server-authoritative only).
+- **One shared collision core, parity by construction (`KhaozEngine.Locomotion`).** The camera-relative player `Step` and the world-space AI `StepTowards` both resolve their input to the same shape - a unit move direction plus a speed fraction in [0,1] - and hand off to one private `StepCore`, so terrain follow, swept collide-and-slide, step-up, the slope gate, and the bounds clamp can never drift apart between player and AI. The refactor is behaviour-preserving for the player path: the camera-relative resolution feeds the core a unit direction at full speed exactly as before, so every existing movement test stays green (byte-for-byte). A headless test drives an axis-aligned world direction through the collider and asserts `StepTowards` produces byte-identical state to the equivalent player command every tick.
+- **Headless coverage (`KhaozEngine.Tests`).** New `CharacterMovementStepTowardsTests`: an agent steered straight at a real baked `.coll` collider (the solid blacksmith proxy) stops without penetrating instead of tunneling; a steer up a slope past `MaxSlopeRadians` is blocked (with a gentle-slope control that still advances); a steer past a `CircleBounds` edge is clamped to the boundary; and the player/AI bit-for-bit parity test above.
+
 ## 10.63.0
 
 New `KhaozEngine.MapEdit.Tool` dotnet tool (`ke-mapedit`), an MCP server over stdio exposing 39 verbs for AI-driven map-document editing, plus MapDoc JSON schema tightening.

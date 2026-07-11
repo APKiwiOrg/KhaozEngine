@@ -1839,6 +1839,28 @@ flag on `Scene3DChunkSink` (requires a `physics` world), then swap the ground de
 face is collidable) if you want the shape directly. A Bepu mesh is one-sided and not recentered, so terrain
 must present its top face up (the helper handles this) and is registered at `Pose.Identity`.
 
+**Server-authoritative AI agents move with the player's collision (`CharacterMovement.StepTowards`, 10.64.0).**
+A non-player, server-simulated agent (an enemy NPC) needs the SAME collision the player gets - swept
+collide-and-slide + `StepHeight` step-up against the `IPhysicsWorld`, the terrain support floor, the slope gate,
+and the play-area clamp - but it steers by an actual **world heading** (toward its target), not a camera yaw.
+Drive it with `StepTowards`, which takes a world-space XZ direction whose length scales speed in `[0,1]`:
+
+    // In the authoritative server tick, once per agent. enemyTuning carries this creature's capsule
+    // radius/half-height and walk/run speed, so different creatures move at different sizes/speeds.
+    Vector2 toTarget = new(target.X - agent.Position.X, target.Z - agent.Position.Z);
+    if (toTarget.LengthSquared() > 1e-6f) toTarget = Vector2.Normalize(toTarget);   // unit = full speed
+    agent = CharacterMovement.StepTowards(agent, toTarget, run: chasing, dt,
+                                          probe.HeightDelegate, enemyTuning,
+                                          groundNormal: probe.NormalDelegate, world: world,
+                                          clampXz: bounds.Clamp);
+
+Internally the camera-relative player `Step` and the world-space `StepTowards` resolve their input to the same
+shape (a unit direction + a speed fraction) and share one collision core, so an agent walks into a wall, mounts a
+stair, is denied a too-steep slope, and is held inside the bounds **exactly** as a player would - parity by
+construction. There is no jump bit (NPCs do not jump in v1) and no client-prediction path (AI is server-only).
+Shrink `toTarget` below unit length for a slower saunter (e.g. a patrol), or pass a longer vector (clamped to full
+speed).
+
 On the client, `KhaozEngine.Terrain.Render3D` (in the `Game3D` umbrella) meshes finite chunks off the field,
 `using KhaozEngine.Terrain;`:
 

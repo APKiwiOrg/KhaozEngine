@@ -32,6 +32,18 @@ optional slope gate via a ground-normal delegate):
   via `ComputePenetration` is retained as a residual settle pass. Pass `world: null` for terrain-only
   (byte-identical to pre-8.4.0).
 
+- **`StepTowards(in MoveState, Vector2 worldDir, bool run, float, groundHeight, in MoveTuning, groundNormal?, IPhysicsWorld?, clampXz?, medium?) -> MoveState`** (10.64.0)
+  The world-space kinematic step for **server-authoritative, non-player agents (enemy NPCs)**. It drives the SAME
+  collision resolution the player gets - swept collide-and-slide + `StepHeight` step-up against the `IPhysicsWorld`,
+  the analytic terrain support floor, the `groundNormal` slope gate, and the `clampXz` bounds - but from a
+  **world-space steering direction** instead of a camera yaw. `worldDir` is an XZ direction whose length scales speed
+  in `[0,1]` (unit = full speed, shorter = a slower saunter, longer clamped to full; near-zero = idle). Per-agent
+  capsule radius / half-height / walk-run speed come from `MoveTuning`, so different creatures get different sizes and
+  speeds with no extra plumbing. **No jump bit** (NPCs do not jump in v1) and **no client prediction** (AI is
+  server-only). Both the camera-relative player `Step` and this world-space `StepTowards` resolve their input to one
+  shape (a unit direction + a speed fraction) and share a single collision core, so player and AI can never drift
+  apart - the player path stays byte-for-byte identical to before.
+
 ### Movement medium (wading)
 
 Both overloads take an **optional medium provider** `medium: (x, z, feetY) -> MovementMedium`. It is a **pure,
@@ -89,6 +101,13 @@ MoveState s = CharacterMovement.Step(s, new MoveCommand(move, run, cameraYaw, ju
                                      terrain.GroundHeight, MoveTuning.Default,
                                      groundNormal: terrain.GroundNormal, world: physicsWorld);
 // s.Position, s.VerticalVelocity, s.Grounded
+
+// Server-authoritative enemy NPC: same collision as the player, steered by a world heading.
+Vector2 toTarget = Vector2.Normalize(new Vector2(target.X - a.Position.X, target.Z - a.Position.Z));
+a = CharacterMovement.StepTowards(a, toTarget, run: true, dt,
+                                  terrain.GroundHeight, enemyTuning,
+                                  groundNormal: terrain.GroundNormal, world: physicsWorld,
+                                  clampXz: bounds.Clamp);
 ```
 
 Depends on `KhaozEngine.Primitives` and `KhaozEngine.Physics` (the `IPhysicsWorld` seam). No input, render,

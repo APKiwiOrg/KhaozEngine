@@ -11,6 +11,7 @@ on:
     tags: [ 'v*' ]   # all four packages share one version + tag line
   pull_request:
     branches: [ main ]
+  workflow_dispatch:   # manual re-trigger (e.g. after a self-hosted runner change) without a dummy commit
 
 jobs:
   # Full build/test/pack/publish on the self-hosted arm64 Linux container (free minutes; the engine is

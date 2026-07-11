@@ -1,0 +1,131 @@
+using System;
+using System.IO;
+using System.Numerics;
+using KhaozEngine.Locomotion;
+using KhaozEngine.NetWorld;
+using KhaozEngine.Physics;
+using KhaozEngine.Physics.Bepu;
+using Xunit;
+
+namespace KhaozEngine.Tests.Locomotion;
+
+/// <summary>
+/// The kinematic AI movement seam: <see cref="CharacterMovement.StepTowards"/> drives a server-authoritative NPC
+/// through the SAME collision resolution as the player (swept collide-and-slide against an
+/// <see cref="IPhysicsWorld"/>, the terrain support floor, the groundNormal slope gate, and the clampXz bounds),
+/// but from a WORLD-SPACE steering direction rather than a camera-relative <see cref="MoveCommand"/>. The parity
+/// test pins the headline guarantee: an axis-aligned world direction resolves bit-identically to the equivalent
+/// camera-relative command, so the AI and player share one collision implementation by construction.
+/// </summary>
+public class CharacterMovementStepTowardsTests
+{
+    const float Scale = 1.5f;   // RuinborneWorld.BuildingScale, matching the other real-collider fixtures.
+    static readonly MoveTuning Tuning = MoveTuning.Default;   // walk 6 / run 12, half-height 0.9, radius 0.4, 45 deg slope
+    static readonly Func<float, float, float> Flat = (x, z) => 0f;
+    const float Dt = 1f / 60f;
+
+    // A REAL baked collision shape (a solid convex compound authored by ke-propbake), not a synthetic box - so the
+    // test exercises the same Bepu sweep/depenetration path the game hits.
+    static CompoundShape BlacksmithProxy()
+    {
+        string path = Path.Combine(AppContext.BaseDirectory, "Physics", "Fixtures", "blacksmith_proxy.coll");
+        var shape = (CompoundShape)PropCollisionFormat.Read(path);
+        return (CompoundShape)PhysicsShapeScale.Uniform(shape, Scale);
+    }
+
+    // A ground normal tilted in +X so the surface slope (angle from +Y) is exactly `degrees` (mirrors the player
+    // slope-gate tests).
+    static Func<float, float, Vector3> SlopeNormal(float degrees)
+    {
+        float a = degrees * MathF.PI / 180f;
+        var n = new Vector3(MathF.Sin(a), MathF.Cos(a), 0f);
+        return (x, z) => n;
+    }
+
+    [Fact]
+    public void SteeredStraightAtAStaticCollider_StopsInsteadOfPenetrating()
+    {
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        world.AddStatic(BlacksmithProxy(), Pose.At(Vector3.Zero));
+        world.Step(Dt);
+        CapsuleShape cap = CharacterMovement.CapsuleFor(Tuning);
+
+        // Start on flat ground well clear on the +X side, steer straight at the solid body in -X world space. Free
+        // travel would carry it ~18 m (run 12 * 1.5 s), far past the far side.
+        var s = new MoveState { Position = new Vector3(6f, Tuning.CapsuleHalfHeight, 0f), Grounded = true };
+        Assert.False(world.ComputePenetration(cap, Pose.At(s.Position), out _), "start must be outside the mesh");
+        for (int i = 0; i < 180; i++)
+            s = CharacterMovement.StepTowards(s, new Vector2(-1f, 0f), run: true, Dt, Flat, Tuning, null, world);
+
+        Assert.False(world.ComputePenetration(cap, Pose.At(s.Position), out _),
+            $"agent penetrated the collider, ended inside the mesh at {s.Position}");
+        Assert.True(s.Position.X > 0f,
+            $"agent tunneled through the solid body to the far side (x={s.Position.X:F2}); it should stop on the near side");
+    }
+
+    [Fact]
+    public void SteeringMatchesTheEquivalentCameraRelativeCommand_BitForBit()
+    {
+        // Parity by construction: an axis-aligned world direction (-1,0) resolves to the SAME unit direction and
+        // full speed fraction as a pure-strafe command at yaw 0, so player Step and AI StepTowards must produce
+        // byte-identical state every tick, INCLUDING through the collider - proving one shared collision core.
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        world.AddStatic(BlacksmithProxy(), Pose.At(Vector3.Zero));
+        world.Step(Dt);
+
+        var start = new MoveState { Position = new Vector3(6f, Tuning.CapsuleHalfHeight, 0f), Grounded = true };
+        MoveState player = start, ai = start;
+        var cmd = new MoveCommand(new Vector2(-1f, 0f), run: true, cameraYaw: 0f);   // strafe left => world (-1,0,0)
+        for (int i = 0; i < 180; i++)
+        {
+            player = CharacterMovement.Step(player, cmd, Dt, Flat, Tuning, null, world);
+            ai = CharacterMovement.StepTowards(ai, new Vector2(-1f, 0f), run: true, Dt, Flat, Tuning, null, world);
+            Assert.Equal(player.Position, ai.Position);
+            Assert.Equal(player.VerticalVelocity, ai.VerticalVelocity);
+            Assert.Equal(player.Grounded, ai.Grounded);
+        }
+    }
+
+    [Fact]
+    public void SteeringUpASlopePastMaxSlope_IsBlocked()
+    {
+        // No physics world: pure terrain slope gate. A normal tilted to 47 deg exceeds the 45 deg default budget, so
+        // any horizontal advance onto it is denied - the agent stays put in XZ.
+        var s = new MoveState { Position = new Vector3(0f, Tuning.CapsuleHalfHeight, 0f), Grounded = true };
+        Vector3 startPos = s.Position;
+        for (int i = 0; i < 60; i++)
+            s = CharacterMovement.StepTowards(s, new Vector2(1f, 0f), run: true, Dt, Flat, Tuning, SlopeNormal(47f));
+
+        Assert.Equal(startPos.X, s.Position.X, 5);
+        Assert.Equal(startPos.Z, s.Position.Z, 5);
+    }
+
+    [Fact]
+    public void SteeringUpAGentleSlope_Advances()
+    {
+        // Control for the block test: a 30 deg slope is under the budget, so the same steer DOES advance (the gate
+        // only rejects the too-steep case, it does not block all sloped ground).
+        var s = new MoveState { Position = new Vector3(0f, Tuning.CapsuleHalfHeight, 0f), Grounded = true };
+        for (int i = 0; i < 60; i++)
+            s = CharacterMovement.StepTowards(s, new Vector2(1f, 0f), run: true, Dt, Flat, Tuning, SlopeNormal(30f));
+
+        Assert.True(s.Position.X > 0.1f, $"a 30 deg slope should be walkable, x={s.Position.X:F3}");
+    }
+
+    [Fact]
+    public void SteeringPastACircleBoundsEdge_IsClamped()
+    {
+        var bounds = new CircleBounds(new Vector2(0f, 0f), radius: 5f);
+        Func<float, float, Vector2> clampXz = (x, z) => bounds.Clamp(x, z);
+
+        // Start inside near the +X edge and steer straight out. Free travel would push X well past 5; the clamp holds
+        // the agent on the boundary circle.
+        var s = new MoveState { Position = new Vector3(4f, Tuning.CapsuleHalfHeight, 0f), Grounded = true };
+        for (int i = 0; i < 120; i++)
+            s = CharacterMovement.StepTowards(s, new Vector2(1f, 0f), run: true, Dt, Flat, Tuning, null, null, clampXz);
+
+        float r = MathF.Sqrt(s.Position.X * s.Position.X + s.Position.Z * s.Position.Z);
+        Assert.True(r <= 5f + 1e-3f, $"agent escaped the CircleBounds (r={r:F4} > 5)");
+        Assert.True(r >= 5f - 1e-2f, $"agent did not reach the bound edge (r={r:F4}); clamp not exercised");
+    }
+}

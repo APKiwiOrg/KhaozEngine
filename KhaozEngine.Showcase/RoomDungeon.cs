@@ -124,6 +124,9 @@ namespace KhaozEngine.Showcase
 
             // DungeonPropInstance -> PropPlacement so the stamped props can go through the same instanced
             // DrawProps path Room3D uses for its town buildings (variant is unused by DungeonStamp; always 0).
+            // The feet-on-floor alignment (dropping the floor/landing pieces so their visible top lands on the
+            // physics floor slab's top) is now done in the engine via PieceMapper.FloorPieceYOffset, so it is
+            // correct here AND in baked MapDocs - no demo-side shift.
             _placements = new List<PropPlacement>(stamp.Props.Count);
             foreach (DungeonPropInstance p in stamp.Props)
                 _placements.Add(new PropPlacement(p.KitId, p.X, p.Y, p.Z, p.Scale, p.Yaw, variant: 0));
@@ -144,7 +147,15 @@ namespace KhaozEngine.Showcase
             (float ex, float ey, float ez) = plot.TileCenter(entranceMarker.Tile, layout.CellSizeMeters, layout.FloorHeightMeters);
             _groundY = ey;
 
-            _character = new CharacterController3D { CapsuleHalfHeight = CapsuleHalfHeight, CapsuleRadius = CapsuleRadius };
+            // Default MaxSlopeRadians (45 deg) is left as-is: DungeonStamp now pitches every stair ramp over a
+            // three-cell run at ~34 degrees (atan(FloorHeightMeters / (3*CellSizeMeters)) = atan(6/9)), comfortably
+            // walkable at the engine default, so no per-game slope override is needed. (The old 52-degree override
+            // existed only because the previous two-cell run sat exactly on the 45-degree limit.)
+            _character = new CharacterController3D
+            {
+                CapsuleHalfHeight = CapsuleHalfHeight,
+                CapsuleRadius = CapsuleRadius,
+            };
             _character.SetXZ(ex, ez);
             _character.Update(InputState.Empty, 0f, 0f, GroundHeight, GroundNormal, _physics);
             _prevCharPos = _character.Position;
@@ -158,6 +169,13 @@ namespace KhaozEngine.Showcase
             _camera.Occlusion = _physics;   // spring-arm: pull the eye in through a wall/ceiling rather than clip it
             _camController = new FollowCameraController(_camera);
             _scene.CameraOverride = _camera;
+
+            // Outline post-process starts OFF in this room too, matching Room3D/RoomNet/the map editor: without
+            // this the shared PixelPostProcessSettings default (on) would bleed through whenever the dungeon
+            // room is entered without having visited Room3D first, showing the stylized cel/outline look instead
+            // of the plain lit dungeon. Press O to toggle it back on (see OnUpdate); OnExit restores the shared
+            // default for the menu / other rooms.
+            _scene.Post.Outline = false;
 
             // Step the physics world once so Bepu's broad phase is current before the first rendered frame,
             // matching Room3D's post-load priming step.
@@ -179,6 +197,13 @@ namespace KhaozEngine.Showcase
         public override void OnUpdate(float dt)
         {
             if (Manager!.Input.WasPressed(Key.Escape)) { Manager!.Pop(); return; }
+
+            // Outline post-process toggle, matching Room3D's O key exactly (see OnEnter for why it starts off).
+            if (Manager!.Input.WasPressed(Key.O))
+            {
+                _scene.Post.Outline = !_scene.Post.Outline;
+                Console.WriteLine($"[post] Outline = {_scene.Post.Outline}");
+            }
 
             // Physics world ticks once per frame before movement, matching Room3D's ordering.
             _physics.Step(dt);
@@ -245,6 +270,11 @@ namespace KhaozEngine.Showcase
             if (_animated) _scene.UnloadSkinnedMesh(_characterMesh);
 
             _scene.CameraOverride = null;
+
+            // Reset the Post field this room's OnEnter/OnUpdate mutated, back to PixelPostProcessSettings's own
+            // default (Post has no setter, it is a shared instance owned by Scene3D, so the field is reset
+            // individually rather than reassigning the property), matching Room3D's OnExit.
+            _scene.Post.Outline = true;
 
             _physics = null!;
             _characterMesh = default;

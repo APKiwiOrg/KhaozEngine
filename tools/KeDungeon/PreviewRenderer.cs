@@ -19,6 +19,7 @@ public static class PreviewRenderer
     static readonly (byte R, byte G, byte B) WallColor = (0x46, 0x46, 0x5A);
     static readonly (byte R, byte G, byte B) DoorFrameColor = (0x8C, 0x5A, 0x2D);
     static readonly (byte R, byte G, byte B) StairLowerColor = (0x50, 0x78, 0xC8);
+    static readonly (byte R, byte G, byte B) StairMidColor = (0x5E, 0x87, 0xD7);
     static readonly (byte R, byte G, byte B) StairUpperColor = (0x6E, 0x96, 0xE6);
     static readonly (byte R, byte G, byte B) StairTopColor = (0x96, 0xBE, 0xFF);
     static readonly (byte R, byte G, byte B) StairVoidColor = (0x28, 0x28, 0x3C);
@@ -83,6 +84,7 @@ public static class PreviewRenderer
         DungeonCellKind.Wall => WallColor,
         DungeonCellKind.DoorFrame => DoorFrameColor,
         DungeonCellKind.StairLower => StairLowerColor,
+        DungeonCellKind.StairMid => StairMidColor,
         DungeonCellKind.StairUpper => StairUpperColor,
         DungeonCellKind.StairTop => StairTopColor,
         DungeonCellKind.StairVoid => StairVoidColor,

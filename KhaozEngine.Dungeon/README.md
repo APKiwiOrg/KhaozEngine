@@ -72,15 +72,17 @@ using KhaozEngine.Dungeon;
 
 DungeonStampResult stamp = DungeonStamp.Build(layout, kit, plot);
 // stamp.Props: one DungeonPropInstance (KitId, X, Y, Z, Yaw, Scale) per piece - hand these to your scene loader.
-// stamp.Statics: merged (PhysicsShape, Pose) pairs - one per wall run, one per floor-slab run, one ramp per
-// stair run, plus one per ceiling run when Roofed - register each with an IPhysicsWorld.AddStatic(shape, pose).
+// stamp.Statics: merged (PhysicsShape, Pose) pairs - one per wall run, one per floor-slab run, a run of solid
+// box steps per stair, plus one per ceiling run when Roofed - register each with IPhysicsWorld.AddStatic(shape, pose).
 ```
 
 `DungeonStamp.Build` shares its cell-to-piece mapping with `DungeonMapDocEmitter` (both go through the internal
 `PieceMapper`), so `stamp.Props` is identical to what a bake of the same layout/kit/plot would place. Statics
 are greedy axis-run merges, not one shape per tile: a contiguous wall run along a row becomes one `BoxShape`,
-same for a contiguous walkable floor run (stair-tread cells are excluded, they get their own pitched ramp box
-instead), and every stair run gets one oriented ramp box. See `KhaozEngine.Showcase`'s "Dungeon (walk)" room
+same for a contiguous walkable floor run (stair-tread cells are excluded, they are covered by their stair's step
+boxes instead). Each stair run climbs one floor over a three-cell run as a row of solid upright box steps (riser
+under the default step-up height, so the character mounts every tread; a single pitched ramp box is not walkable
+from a flush floor), matching the greybox stair mesh. See `KhaozEngine.Showcase`'s "Dungeon (walk)" room
 for a wiring example (generate once, stamp, load the kit meshes, spawn the player at the `Entrance`
 marker). Note the demo wires rendering and the walk camera only, it does not register the physics statics.
 
@@ -151,8 +153,9 @@ var config = new DungeonConfig
 ```
 
 A ceiling (`DungeonPiece.Ceiling`) is placed over every walkable cell at `floorY + CeilingHeightMeters`,
-EXCEPT where a walkable cell sits directly above at the same XZ - so open stairwells and vertical shafts
-stay open, and where the floor above already has its own slab that slab is the roof (no double geometry).
+EXCEPT where a walkable cell OR a `StairVoid` headroom cutout sits directly above at the same XZ - so the whole
+stair shaft stays open (a `StairVoid` sits above every tread, the headroom the steps climb through), and where the
+floor above already has its own slab that slab is the roof (no double geometry).
 `DungeonStamp` additionally emits greedy-merged ceiling collision slabs (same pattern as the floor slabs,
 lifted a ceiling height and facing down). This is a pure sink-time geometry choice: it never changes the
 generated layout structure, so `Open` and `Roofed` layouts from the same seed share a `LayoutHash` and

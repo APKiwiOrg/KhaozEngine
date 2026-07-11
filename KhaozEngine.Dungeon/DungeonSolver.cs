@@ -141,6 +141,7 @@ public static class DungeonSolver
     private static readonly DungeonCellKind[] StairPathKinds =
     {
         DungeonCellKind.StairLower,
+        DungeonCellKind.StairMid,
         DungeonCellKind.StairUpper,
         DungeonCellKind.StairTop,
     };
@@ -452,9 +453,16 @@ public static class DungeonSolver
         return reached;
     }
 
+    // The four same-floor orthogonal steps, reused to read a stair's climb direction from its tread geometry.
+    private static readonly (int Dx, int Dz)[] OrthogonalSteps = { (1, 0), (-1, 0), (0, 1), (0, -1) };
+
     /// <summary>The same-floor orthogonal neighbors of <paramref name="tile"/>, plus the single cross-floor
-    /// adjacency the geometry model allows: a <see cref="DungeonCellKind.StairUpper"/> cell connects to the
-    /// <see cref="DungeonCellKind.StairTop"/> cell directly above it, and vice versa.</summary>
+    /// adjacency the geometry model allows: the top tread (<see cref="DungeonCellKind.StairUpper"/>) connects to
+    /// the landing (<see cref="DungeonCellKind.StairTop"/>) one cell PAST it along the climb direction on the
+    /// floor above, and vice versa. The climb direction is read from the run's own tread cells (the adjacent lower
+    /// tread on the way up, the shaft <see cref="DungeonCellKind.StairVoid"/> above the top tread on the way
+    /// down), so the link is exactly the one <c>CommitStair</c> built and can never bridge to a foreign
+    /// stair.</summary>
     private static IEnumerable<DungeonTile> Neighbors(DungeonLayout layout, DungeonTile tile)
     {
         yield return tile with { X = tile.X + 1 };
@@ -465,18 +473,39 @@ public static class DungeonSolver
         DungeonCellKind kind = layout.GetCell(tile.X, tile.Z, tile.Floor);
         if (kind == DungeonCellKind.StairUpper)
         {
-            var above = tile with { Floor = tile.Floor + 1 };
-            if (layout.GetCell(above.X, above.Z, above.Floor) == DungeonCellKind.StairTop)
+            // Climb direction = the step from the adjacent lower tread (StairMid/StairLower) toward this top
+            // tread; the landing sits one cell further along it on the floor above.
+            foreach ((int dx, int dz) in OrthogonalSteps)
             {
-                yield return above;
+                DungeonCellKind back = layout.GetCell(tile.X - dx, tile.Z - dz, tile.Floor);
+                if (back != DungeonCellKind.StairMid && back != DungeonCellKind.StairLower)
+                {
+                    continue;
+                }
+
+                var landing = new DungeonTile(tile.X + dx, tile.Z + dz, tile.Floor + 1);
+                if (layout.GetCell(landing.X, landing.Z, landing.Floor) == DungeonCellKind.StairTop)
+                {
+                    yield return landing;
+                }
             }
         }
         else if (kind == DungeonCellKind.StairTop)
         {
-            var below = tile with { Floor = tile.Floor - 1 };
-            if (layout.GetCell(below.X, below.Z, below.Floor) == DungeonCellKind.StairUpper)
+            // Descend: the StairVoid directly above the top tread is the landing's neighbor toward the shaft, so
+            // the top tread is one floor below that void.
+            foreach ((int dx, int dz) in OrthogonalSteps)
             {
-                yield return below;
+                if (layout.GetCell(tile.X + dx, tile.Z + dz, tile.Floor) != DungeonCellKind.StairVoid)
+                {
+                    continue;
+                }
+
+                var upper = new DungeonTile(tile.X + dx, tile.Z + dz, tile.Floor - 1);
+                if (layout.GetCell(upper.X, upper.Z, upper.Floor) == DungeonCellKind.StairUpper)
+                {
+                    yield return upper;
+                }
             }
         }
     }

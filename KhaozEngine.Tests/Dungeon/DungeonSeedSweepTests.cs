@@ -201,28 +201,38 @@ namespace KhaozEngine.Tests.Dungeon
                 $"seed {seed}: edge {edge.RoomA}->{edge.RoomB} {role} tile ({tile.X},{tile.Z},{tile.Floor}) is out of plot bounds.");
         }
 
-        // Every stair edge is the [StairLower, StairUpper, StairTop] run the geometry model requires, with the
-        // StairVoid headroom cutout directly above StairLower on the floor above.
+        // Every stair edge is the [StairLower, StairMid, StairUpper, StairTop] run the geometry model requires:
+        // three colinear treads on the lower floor, then the landing one cell PAST the top tread on the floor
+        // above, with a StairVoid open-shaft cutout directly above every tread.
         static void AssertStairPairsConsistent(DungeonLayout layout, ulong seed)
         {
             foreach (DungeonEdge edge in layout.Edges.Where(e => e.Kind == DungeonEdgeKind.Stair))
             {
-                Assert.True(edge.Path.Count == 3, $"seed {seed}: stair edge {edge.RoomA}->{edge.RoomB} has {edge.Path.Count} path cells, expected 3.");
+                Assert.True(edge.Path.Count == 4, $"seed {seed}: stair edge {edge.RoomA}->{edge.RoomB} has {edge.Path.Count} path cells, expected 4.");
 
                 DungeonTile lower = edge.Path[0];
-                DungeonTile upper = edge.Path[1];
-                DungeonTile top = edge.Path[2];
+                DungeonTile mid = edge.Path[1];
+                DungeonTile upper = edge.Path[2];
+                DungeonTile top = edge.Path[3];
 
-                Assert.True(lower.Floor == upper.Floor, $"seed {seed}: stair {edge.RoomA}->{edge.RoomB} lower/upper floor mismatch.");
+                Assert.True(lower.Floor == mid.Floor && lower.Floor == upper.Floor,
+                    $"seed {seed}: stair {edge.RoomA}->{edge.RoomB} treads not all on the lower floor.");
+                int dx = upper.X - mid.X, dz = upper.Z - mid.Z;
+                Assert.True((mid.X - lower.X, mid.Z - lower.Z) == (dx, dz) && System.Math.Abs(dx) + System.Math.Abs(dz) == 1,
+                    $"seed {seed}: stair {edge.RoomA}->{edge.RoomB} treads not a straight unit run.");
                 Assert.True(upper.Floor + 1 == top.Floor, $"seed {seed}: stair {edge.RoomA}->{edge.RoomB} upper/top floor mismatch.");
-                Assert.True(upper.X == top.X && upper.Z == top.Z, $"seed {seed}: stair {edge.RoomA}->{edge.RoomB} upper/top XZ mismatch.");
+                Assert.True(top.X == upper.X + dx && top.Z == upper.Z + dz,
+                    $"seed {seed}: stair {edge.RoomA}->{edge.RoomB} landing not one cell past the top tread.");
 
                 Assert.Equal(DungeonCellKind.StairLower, layout.GetCell(lower.X, lower.Z, lower.Floor));
+                Assert.Equal(DungeonCellKind.StairMid, layout.GetCell(mid.X, mid.Z, mid.Floor));
                 Assert.Equal(DungeonCellKind.StairUpper, layout.GetCell(upper.X, upper.Z, upper.Floor));
                 Assert.Equal(DungeonCellKind.StairTop, layout.GetCell(top.X, top.Z, top.Floor));
 
-                // The cell directly above StairLower (its head-room cutout on the upper floor) is StairVoid.
+                // The open shaft: StairVoid directly above every tread on the floor above.
                 Assert.Equal(DungeonCellKind.StairVoid, layout.GetCell(lower.X, lower.Z, lower.Floor + 1));
+                Assert.Equal(DungeonCellKind.StairVoid, layout.GetCell(mid.X, mid.Z, mid.Floor + 1));
+                Assert.Equal(DungeonCellKind.StairVoid, layout.GetCell(upper.X, upper.Z, upper.Floor + 1));
             }
         }
     }

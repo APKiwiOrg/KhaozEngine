@@ -589,13 +589,21 @@ internal static class RoomGrower
             lineZ = dir.Dz > 0 ? sz1 : sz0;
         }
 
-        // doorA -> StairLower -> StairUpper march straight out on floor F; StairTop is directly above StairUpper
-        // and StairVoid directly above StairLower on floor F+1. StairTop IS room B's ring door.
+        // doorA -> StairLower -> StairMid -> StairUpper march straight out on floor F: a three-tread run that
+        // climbs the whole floor at a walkable ~34-degree pitch (atan(floorHeight / 3*cellSize)), well under the
+        // default 45-degree max slope. The run is capped on floor F+1 by an OPEN shaft - a StairVoid directly
+        // above every tread, the headroom the ramp climbs through - and the landing StairTop sits one cell PAST
+        // the top tread at the shaft's upper edge (StairTop IS room B's ring door). So a climber ascends through
+        // the open shaft and steps onto solid landing floor, instead of wedging its head under a landing slab
+        // parked over the top tread.
         var doorA = new DungeonTile(lineX + dir.Dx, lineZ + dir.Dz, floor);
         var stairLower = new DungeonTile(doorA.X + dir.Dx, doorA.Z + dir.Dz, floor);
-        var stairUpper = new DungeonTile(stairLower.X + dir.Dx, stairLower.Z + dir.Dz, floor);
-        var stairTop = new DungeonTile(stairUpper.X, stairUpper.Z, upper);
-        var stairVoid = new DungeonTile(stairLower.X, stairLower.Z, upper);
+        var stairMid = new DungeonTile(stairLower.X + dir.Dx, stairLower.Z + dir.Dz, floor);
+        var stairUpper = new DungeonTile(stairMid.X + dir.Dx, stairMid.Z + dir.Dz, floor);
+        var stairTop = new DungeonTile(stairUpper.X + dir.Dx, stairUpper.Z + dir.Dz, upper);
+        var voidLower = new DungeonTile(stairLower.X, stairLower.Z, upper);
+        var voidMid = new DungeonTile(stairMid.X, stairMid.Z, upper);
+        var voidUpper = new DungeonTile(stairUpper.X, stairUpper.Z, upper);
 
         // Room B on floor F+1 extends one step further out from its door (StairTop), on the same line.
         int nearX = stairTop.X + dir.Dx;
@@ -614,7 +622,9 @@ internal static class RoomGrower
             roomX = lineX - newWidth / 2;
         }
 
-        return new StairCandidate(floor, roomX, roomZ, newWidth, newDepth, doorA, stairLower, stairUpper, stairTop, stairVoid);
+        return new StairCandidate(
+            floor, roomX, roomZ, newWidth, newDepth,
+            doorA, stairLower, stairMid, stairUpper, stairTop, voidLower, voidMid, voidUpper);
     }
 
     private static bool ValidateStair(Grid grid, DungeonRoom source, StairCandidate candidate)
@@ -664,7 +674,7 @@ internal static class RoomGrower
             }
         }
 
-        // Lower-floor stair cells: doorA on A's ring, StairLower, StairUpper. Clear of the border and empty.
+        // Lower-floor stair cells: doorA on A's ring plus the three treads. Clear of the border and empty.
         if (!IsClearWalkableCell(grid, candidate.DoorA, lower))
         {
             return false;
@@ -675,18 +685,33 @@ internal static class RoomGrower
             return false;
         }
 
+        if (!IsClearWalkableCell(grid, candidate.StairMid, lower))
+        {
+            return false;
+        }
+
         if (!IsClearWalkableCell(grid, candidate.StairUpper, lower))
         {
             return false;
         }
 
-        // Upper-floor stair cells: StairTop (room B's ring door) clear, StairVoid empty above StairLower.
+        // Upper-floor cells: StairTop (room B's ring door) clear, and the open shaft above every tread empty.
         if (!IsClearWalkableCell(grid, candidate.StairTop, upper))
         {
             return false;
         }
 
-        if (!IsClearWalkableCell(grid, candidate.StairVoid, upper))
+        if (!IsClearWalkableCell(grid, candidate.VoidLower, upper))
+        {
+            return false;
+        }
+
+        if (!IsClearWalkableCell(grid, candidate.VoidMid, upper))
+        {
+            return false;
+        }
+
+        if (!IsClearWalkableCell(grid, candidate.VoidUpper, upper))
         {
             return false;
         }
@@ -700,6 +725,11 @@ internal static class RoomGrower
         }
 
         if (HasForeignOrthogonalWalkable(grid, candidate.StairLower, lower, allowed))
+        {
+            return false;
+        }
+
+        if (HasForeignOrthogonalWalkable(grid, candidate.StairMid, lower, allowed))
         {
             return false;
         }
@@ -734,9 +764,12 @@ internal static class RoomGrower
 
         grid.Set(candidate.DoorA.X, candidate.DoorA.Z, candidate.DoorA.Floor, DungeonCellKind.DoorFrame);
         grid.Set(candidate.StairLower.X, candidate.StairLower.Z, candidate.StairLower.Floor, DungeonCellKind.StairLower);
+        grid.Set(candidate.StairMid.X, candidate.StairMid.Z, candidate.StairMid.Floor, DungeonCellKind.StairMid);
         grid.Set(candidate.StairUpper.X, candidate.StairUpper.Z, candidate.StairUpper.Floor, DungeonCellKind.StairUpper);
         grid.Set(candidate.StairTop.X, candidate.StairTop.Z, candidate.StairTop.Floor, DungeonCellKind.StairTop);
-        grid.Set(candidate.StairVoid.X, candidate.StairVoid.Z, candidate.StairVoid.Floor, DungeonCellKind.StairVoid);
+        grid.Set(candidate.VoidLower.X, candidate.VoidLower.Z, candidate.VoidLower.Floor, DungeonCellKind.StairVoid);
+        grid.Set(candidate.VoidMid.X, candidate.VoidMid.Z, candidate.VoidMid.Floor, DungeonCellKind.StairVoid);
+        grid.Set(candidate.VoidUpper.X, candidate.VoidUpper.Z, candidate.VoidUpper.Floor, DungeonCellKind.StairVoid);
 
         roomList.Add(room);
         edgeList.Add(new DungeonEdge
@@ -744,7 +777,7 @@ internal static class RoomGrower
             RoomA = source.Id,
             RoomB = newId,
             Kind = DungeonEdgeKind.Stair,
-            Path = new[] { candidate.StairLower, candidate.StairUpper, candidate.StairTop },
+            Path = new[] { candidate.StairLower, candidate.StairMid, candidate.StairUpper, candidate.StairTop },
             Doors = new[] { candidate.DoorA, candidate.StairTop },
         });
     }
@@ -804,7 +837,10 @@ internal static class RoomGrower
 
     /// <summary>A proposed stair from a source room on <see cref="Floor"/> to a new room B on <see cref="Floor"/>
     /// + 1. The room rect (<see cref="RoomX"/>/<see cref="RoomZ"/>/<see cref="RoomWidth"/>/<see cref="RoomDepth"/>)
-    /// lives on the upper floor; <see cref="StairTop"/> is both the run's landing and room B's ring door.</summary>
+    /// lives on the upper floor; the three treads (<see cref="StairLower"/>, <see cref="StairMid"/>,
+    /// <see cref="StairUpper"/>) are on the lower floor, the three <c>Void*</c> cells are the open shaft directly
+    /// above them, and <see cref="StairTop"/> (one cell past the top tread) is both the run's landing and room
+    /// B's ring door.</summary>
     private readonly record struct StairCandidate(
         int Floor,
         int RoomX,
@@ -813,9 +849,12 @@ internal static class RoomGrower
         int RoomDepth,
         DungeonTile DoorA,
         DungeonTile StairLower,
+        DungeonTile StairMid,
         DungeonTile StairUpper,
         DungeonTile StairTop,
-        DungeonTile StairVoid);
+        DungeonTile VoidLower,
+        DungeonTile VoidMid,
+        DungeonTile VoidUpper);
 
     /// <summary>Thin bounds/indexing wrapper over a <see cref="DungeonCellKind"/> raster. Internal (not private)
     /// so <c>LoopPlanner</c> can wrap the already-grown raster via the second constructor and reuse

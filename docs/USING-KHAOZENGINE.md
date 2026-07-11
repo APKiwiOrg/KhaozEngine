@@ -2004,8 +2004,8 @@ MapDocumentFile.Save(target, "dungeon-01.map.json");
 // 2. Or stamp straight into runtime content (no MapDoc in between):
 DungeonStampResult stamp = DungeonStamp.Build(layout, kit, plot);
 // stamp.Props: one DungeonPropInstance (KitId, X, Y, Z, Yaw, Scale) per piece - load through your prop pipeline
-// stamp.Statics: merged (PhysicsShape, Pose) pairs (one BoxShape per wall/floor/ceiling run, one ramp per stair run) -
-// register each with physicsWorld.AddStatic(shape, pose)
+// stamp.Statics: merged (PhysicsShape, Pose) pairs (one BoxShape per wall/floor/ceiling run, a run of solid box
+// steps per stair) - register each with physicsWorld.AddStatic(shape, pose)
 ```
 
 Dungeons are open-top by default. Set `config.CeilingMode = DungeonCeilingMode.Roofed` (optionally

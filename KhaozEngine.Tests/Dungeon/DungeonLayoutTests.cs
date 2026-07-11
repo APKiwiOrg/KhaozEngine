@@ -38,6 +38,7 @@ namespace KhaozEngine.Tests.Dungeon
         [InlineData(DungeonCellKind.Corridor, true)]
         [InlineData(DungeonCellKind.DoorFrame, true)]
         [InlineData(DungeonCellKind.StairLower, true)]
+        [InlineData(DungeonCellKind.StairMid, true)]
         [InlineData(DungeonCellKind.StairUpper, true)]
         [InlineData(DungeonCellKind.StairTop, true)]
         [InlineData(DungeonCellKind.Empty, false)]
@@ -49,7 +50,7 @@ namespace KhaozEngine.Tests.Dungeon
         }
 
         [Fact]
-        public void IsWalkable_ExactlySixKindsWalkable()
+        public void IsWalkable_ExactlySevenKindsWalkable()
         {
             int walkableCount = 0;
             foreach (DungeonCellKind kind in Enum.GetValues<DungeonCellKind>())
@@ -60,7 +61,7 @@ namespace KhaozEngine.Tests.Dungeon
                 }
             }
 
-            Assert.Equal(6, walkableCount);
+            Assert.Equal(7, walkableCount);
         }
 
         [Fact]

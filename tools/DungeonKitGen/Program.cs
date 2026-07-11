@@ -113,14 +113,17 @@ Build(Path.Combine(dir, "dungeon_wall.glb"), gray, new[]
     });
 }
 
-// dungeon_stair: 8 steps climbing along +Z, rising FloorHeight over a run of two cells, Cell wide. Each
-// step is modeled as a solid block from the base up to its tread height (the standard greybox stair
-// solid), so the mesh silhouette is a stepped ramp, total height FloorHeight at the top (far, +Z) step,
-// matching DungeonStamp.BuildStairRamps's pitched physics ramp, which rises the same FloorHeight over the
-// same 2*Cell run.
+// dungeon_stair: solid box steps climbing along +Z, rising FloorHeight over a run of THREE cells, Cell wide.
+// Each step is a solid block from the base up to its tread height (the standard greybox stair solid), so the
+// silhouette is a stepped ramp reaching FloorHeight at the top (far, +Z) step. The step count is
+// ceil(FloorHeight / MaxRiser) with MaxRiser = 0.34 m, kept in sync with DungeonStamp.MaxStairRiserMeters so
+// the visible steps coincide with the collision step boxes DungeonStamp.BuildStairSteps emits (each riser
+// under the default step-up height, so the character mounts every tread). The three-cell run makes the whole
+// stair walkable and gives the ramp head clearance under the landing.
 {
-    const int steps = 8;
-    float totalRise = FloorHeight, totalRun = 2f * Cell;
+    const float MaxRiser = 0.34f; // == DungeonStamp.MaxStairRiserMeters
+    int steps = Math.Max(1, (int)MathF.Ceiling(FloorHeight / MaxRiser));
+    float totalRise = FloorHeight, totalRun = 3f * Cell;
     float riser = totalRise / steps, run = totalRun / steps;
     var stairBoxes = new List<(Vector3 center, Vector3 size)>();
     for (int i = 0; i < steps; i++)

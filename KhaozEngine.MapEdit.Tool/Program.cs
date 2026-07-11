@@ -1,7 +1,8 @@
 // ke-mapedit MCP server entry point.
 // A hosted stdio MCP server: the same composition path the integration tests reuse (AddMapEditServices plus
 // WithMapEditTools) behind a stdio transport. Logging routes to stderr so it never corrupts the JSON-RPC stream
-// on stdout. When stdin closes the transport ends and the host shuts down cleanly. Renders join in a later task.
+// on stdout. When stdin closes the transport ends and the host shuts down cleanly. The document, query, mutation,
+// and render tool classes all register through WithMapEditTools.
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;

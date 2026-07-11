@@ -27,8 +27,8 @@ namespace KhaozEngine.Tests.MapEditTool
     /// end, not just the service methods in isolation.</summary>
     public class McpAdapterTests
     {
-        /// <summary>The 37 non-render verb names, spelled exactly as the plan header's verb table. Renders
-        /// (render_topdown, render_view) land in Task 6, so they are deliberately absent here.</summary>
+        /// <summary>All 39 verb names, spelled exactly as the plan header's verb table, including the two render
+        /// verbs added in Task 6.</summary>
         static readonly string[] ExpectedVerbs =
         {
             // Document
@@ -47,6 +47,8 @@ namespace KhaozEngine.Tests.MapEditTool
             "scatter_override_remove", "bake_region",
             // Regions
             "region_add", "region_edit_shape", "region_rename", "region_remove",
+            // Renders
+            "render_topdown", "render_view",
         };
 
         [Fact]

@@ -152,10 +152,14 @@ var config = new DungeonConfig
 };
 ```
 
-A ceiling (`DungeonPiece.Ceiling`) is placed over every walkable cell at `floorY + CeilingHeightMeters`,
-EXCEPT where a walkable cell OR a `StairVoid` headroom cutout sits directly above at the same XZ - so the whole
-stair shaft stays open (a `StairVoid` sits above every tread, the headroom the steps climb through), and where the
-floor above already has its own slab that slab is the roof (no double geometry).
+A ceiling (`DungeonPiece.Ceiling`) is placed over every walkable cell - AND over each `StairVoid`
+headroom cutout - at that cell's own `floorY + CeilingHeightMeters`, EXCEPT where a walkable cell or another
+`StairVoid` sits directly above at the same XZ (that upper cell's own slab is the roof, no double geometry). A
+`StairVoid` sits on the UPPER floor above every tread, so roofing it caps the stair shaft at the upper floor's
+ceiling height - a full ceiling height above the floor the climb emerges onto, well clear of the ~1.8 m capsule -
+rather than leaving the shaft open to the sky. The treads themselves stay UNroofed at head height (the cell
+directly above a tread is a `StairVoid`, which triggers the above-is-`StairVoid` exemption), so the ramp keeps
+its climb clearance.
 `DungeonStamp` additionally emits greedy-merged ceiling collision slabs (same pattern as the floor slabs,
 lifted a ceiling height and facing down). This is a pure sink-time geometry choice: it never changes the
 generated layout structure, so `Open` and `Roofed` layouts from the same seed share a `LayoutHash` and

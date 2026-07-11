@@ -2019,9 +2019,12 @@ DungeonStampResult stamp = DungeonStamp.Build(layout, kit, plot);
 
 Dungeons are open-top by default. Set `config.CeilingMode = DungeonCeilingMode.Roofed` (optionally
 `CeilingHeightMeters`, default the floor height) for turnkey roofed interiors: both sinks then roof every
-walkable cell at `floorY + ceiling height`, except where a walkable cell sits directly above (open stairwells
-and shafts stay open). It is pure sink-time geometry - the layout structure and `LayoutHash` are unchanged, so
-`Open` output is byte-for-byte identical to before.
+walkable cell - and each stair shaft's `StairVoid` headroom cutout - at that cell's `floorY + ceiling height`,
+except where a walkable cell or another `StairVoid` sits directly above (its slab is the roof). The stair shaft
+is capped at the UPPER floor's ceiling height (the `StairVoid`s sit on the upper floor above the treads), so it
+is roofed overhead, not open to the sky, while the treads stay clear at head height for the climb. It is pure
+sink-time geometry - the layout structure and `LayoutHash` are unchanged, so `Open` output is byte-for-byte
+identical to before.
 
 Corridors are 1-tile single-file by default. Set `CorridorMinWidth`/`CorridorMaxWidth` above 1 to carve grand
 multi-tile halls (growth and loop corridors both widen into a straight rectangular tube with multi-cell door

@@ -13,6 +13,15 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   E/Q to rise/sink on world +Y, hold `Key.LeftShift` to sprint (`SprintMultiplier`), and the wheel to scale
   `MoveSpeed` (clamped `MinMoveSpeed`..`MaxMoveSpeed`). No smoothing (dt-scaled direct integration), no input
   statics touched (the snapshot is handed in), allocation-free per frame.
+- `FollowCamera3D.Warp(target)` / `SnapToTarget()` (since 10.65.0) - hard-cut the third-person follow camera onto a
+  point with no ease (the 3D counterpart of `Render2D.CameraFollow.Warp`), for a teleport/respawn so the smoothed
+  camera does not "fly" across the jump.
+- Teleport transitions (`ITransition` + `HardBlink` / `CameraDissolve` / `CharDissolve`, since 10.65.0) - a phased
+  cover -> swap -> optional streaming hold -> reveal state machine (pure timing) that masks a teleport swap +
+  destination pop-in. Screen-space effects (`IScreenTransition`) render over the final image via
+  `Scene3D.ScreenTransition` (the scene captures the frozen frame for the crossfade); the world-space `CharDissolve`
+  rides the `Scene3D.DrawSkinned(..., dissolve, edgeWidth, edgeColor)` overload through a dedicated pipeline variant.
+  Byte-identical when none is active. See docs/USING-KHAOZENGINE.md.
 - `GltfLoader` / `GltfMesh` / `MeshPrimitives` / `MeshBuilder` - runtime glTF load (SharpGLTF) + procedural meshes.
 - `Scene3D` + `Render3DSurface(AppWindow)` - multi-instance mesh draw (`LoadMesh`/`LoadTexture`/`Begin`/`Draw`
   with per-instance tint + `Material`), per-mesh albedo textures, lighting, camera-facing billboards, an

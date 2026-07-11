@@ -5308,6 +5308,53 @@ identically (the sharded one teleports across cells). Under the hood it rides a 
 client->server channel (`MoveProtocol.ClientControlKind`), distinct by length from a move, so a server that predates
 the feature just ignores it.
 
+### Teleport (hard cut) + screen transitions
+
+A teleport is two problems. (1) The **avatar + camera must cut, not glide**, even when the destination is near.
+Client reconciliation decides cut-vs-glide by distance, so a short in-session hop would smooth. The server carries a
+monotonic **teleport epoch** on the authoritative movement state and bumps it only at teleport sites (join/reconnect
+placement, admin `Teleport`, self-rescue) via `SetPlayerState(..., teleport: true)`. `ClientPrediction.Reconcile`
+force-cuts on an epoch advance regardless of distance, and `WorldClient` surfaces one uniform signal:
+
+```csharp
+// Push: react the frame a local teleport lands (join, reconnect, or an in-session server teleport).
+client.LocalTeleported += () =>
+{
+    camera.Warp(client.LocalRenderState.Position);   // FollowCamera3D: cut the follow camera, no ease (the whole login-fly fix)
+    transition?.Begin();                             // optionally mask the swap (below)
+};
+// Poll alternative (robust to multiple teleports between frames, needs no clearing):
+if (client.LocalTeleportEpoch != _lastSeen) { _lastSeen = client.LocalTeleportEpoch; /* warp + transition */ }
+```
+
+`FollowCamera3D.Warp(target)` forces the smoothed target so `EffectiveTarget == target` that frame with zero
+trailing (normal damping resumes next frame); `SnapToTarget()` collapses in-flight damping onto the current `Target`.
+This is the whole fix for the follow camera "flying" from spawn to a persisted position on login/reconnect.
+
+(2) The swap + destination pop-in should be **masked**. `ITransition` is a phased
+`cover -> swap -> optional streaming hold -> reveal` state machine (pure timing) with a `Swapped` callback (do the
+`Warp` + reposition under cover), a `Completed` event, and a per-`Update` "ready" predicate that releases the hold as
+soon as the destination has streamed in (bounded by a timeout so it never hangs). Three built-ins:
+
+```csharp
+// Screen-space effects: assign one to the scene and drive it each frame.
+scene.ScreenTransition = new HardBlink();          // fast fade to black + back (self-rescue: snappy)
+// scene.ScreenTransition = new CameraDissolve();  // crossfade the frozen frame to the live view (login: far/unstreamed)
+t.Swapped += () => { camera.Warp(dest); /* reposition */ };
+t.Begin();
+// per frame:
+t.Update(dt, destinationReady: streamer.ChunkReadyAt(dest));   // ready releases the streaming hold early
+
+// World-space effect: the avatar dissolves out then in (assumes an already-streamed destination, never holds).
+var cd = new CharDissolve();
+scene.DrawSkinned(mesh, bones, model, tint, material, dissolve: cd.Cover, edgeWidth: cd.EdgeWidth, edgeColor: cd.EdgeColor);
+```
+
+`HardBlink`/`CameraDissolve` implement `IScreenTransition` and render as a fullscreen pass over the final image (the
+scene captures the frozen frame for the crossfade). `CharDissolve` renders through a dedicated skinned pipeline
+variant; a `dissolve` of 0 draws exactly like the plain overload, so it is safe to call unconditionally. All of it is
+byte-identical when no transition is active, and a consumer can author its own `ITransition`.
+
 ### Game messages (attack / interact / chat / inventory)
 
 The movement protocol is not the only thing a game needs on the wire. `WorldClient` + both servers carry a generic,
